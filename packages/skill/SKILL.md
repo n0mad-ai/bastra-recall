@@ -1,6 +1,6 @@
 ---
 name: bastra-recall
-description: Persistent external brain for Claude — documents (PDFs, contracts, scans with OCR), personal facts (appointments, decisions, items, amounts), AND code lessons / preferences / project topology. USE PROACTIVELY in three modes. (1) RECALL — whenever the user asks about anything from their past, vault, projects, or personal life, INCLUDING direct retrieval phrasings like "find...", "where is...", "when was...", "how much was...", "do I have a ...", "such mal meinen ...". Call bastra-recall (recall + find_document) BEFORE conversation_search, before web_search, before any other lookup tool. (2) CAPTURE — when the user expresses frustration about a recurring issue ("wieder", "schon wieder", "wie oft", emphatic caps), states an explicit durable rule ("immer X", "nie Y", "bei diesem Projekt …"), corrects a recurring tendency in your behavior, finalizes an architectural decision after weighing options, confirms a workflow ("lass uns das immer so machen"), or completes a coherent feature / multi-file refactor / sub-system milestone (save the file map as project-fact). (3) APPLY — at session start, before writing/editing code, before a new coding block in an area you haven't touched this session (recall the topology map first), and before giving multi-step plans. Tools: recall, load_memory, save_memory, find_document, read_document.
+description: Persistent external brain for Claude — use for explicit personal/history lookup or a specific missing durable fact, not as generic search or automatic context before every task. Tools: recall, load_memory, save_memory, find_document, read_document.
 ---
 
 # bastra-recall — autonomous teammate memory
@@ -11,34 +11,33 @@ The single success metric: **the user does not have to think for you anymore.** 
 
 **This file is triggers — WHEN to reach for the vault.** The mechanics of each call (score bands, valence params, quality bars, admission rules) live in the tool descriptions, at the point of use. Anything not covered here is covered there.
 
-**Reflex order — RECALL first.** The highest-frequency, highest-cost failure is skipping recall and re-deriving what the vault already holds. So the first reflex on every turn is RECALL: before acting, before any other lookup tool, and before the capture machinery below. When you're unsure whether a recall is worth it, recall.
+**Decision rule — identify the missing fact first.** Recall only when that fact is durable user/project history absent from the prompt and named live source, or when the user explicitly asks to search memory/history. If you cannot name that missing fact in one sentence, do not call recall.
 
 ---
 
-## When to RECALL — before acting, not only when prompted
+## When to RECALL
 
 Call `recall(query, k=5)` proactively in these moments:
 
 | Moment | Query shape |
 |---|---|
-| **Session start** (once per session) | `"<project name> preferences user-preference active context"` — preloads durable context |
-| **Before writing/editing a file** | `"writing <filetype> at <path>, contains <topics>"` — catches lessons before mistakes |
-| **Before a new coding block / plan in a feature area** | `"<project> <feature/area> current state files architecture"` — which files matter, what's already built (→ `topology.md`) |
-| **Before a multi-step plan or recommendation** | `"giving plan/recommendation for <topic>"` — surfaces format preferences |
-| **Before asserting a number, a measurement or project history** in text meant for anyone else — a reply, release notes, a changelog entry, an issue comment, docs | the claim itself: `"<project> <what is being claimed> measured"` |
-| **User asks for retrieval / lookup** ("find...", "where is...", "how much was...", "when did...", "do I have a...", "such mal meinen...") | the prompt itself + direct nouns — ALWAYS before any other search tool |
-| **User prompt touches a stored topic** | the prompt itself, optionally with project context |
+| **Explicit memory/history lookup** ("remember...", "in recall...", "last session...", "where did I keep...") | the prompt's direct nouns |
+| **Specific durable gap** needed for the task, absent from prompt/live source | the missing decision, preference, prior lesson, or artifact pointer |
 | **Before `save_memory`** | the title/topic — duplicate check |
 
 **What goes into a query:** ask the vault what only memory can answer — durable preferences, lessons, decisions, past facts and documents. What is already in the prompt or an upload, or findable by reading the project's files and logs, is not a recall — it is context you already have. Decide what you are looking for, then phrase THAT; never shovel a convoluted prompt's background into queries.
 
 `recall` is **step 1 of two**: it returns lean candidates, no bodies. Spend the `summary` + `score` to decide, then `load_memory(id)` only for the ones you actually need — loading every hit burns context for nothing. Never ignore a `lesson` hit that matched on `recall_when` or title. Don't reload a memory you already loaded this turn. (Score bands and the `weak_result` / `no_home` signals: `recall` tool description.)
 
-**Claims that leave the machine are the strictest case.** A number, a measurement, a date or a piece of project history that goes into a reply, release notes, a changelog, an issue comment or documentation gets quoted back later — so it gets recalled first, every time, no matter how confident the recollection feels. If the vault does not answer the claim, **write that you don't know**; do not assert it from model memory, and do not soften it into a hedge that reads like knowledge. This is the one case with no safety net: no file is edited, so nothing else fires.
+One user turn gets at most **one** recall call. Put genuinely distinct memory questions into `queries`; do not batch paraphrases. Load at most 1–2 directly relevant hits. A weak or irrelevant result ends the memory branch — do not broaden or rephrase the query.
+
+Do **not** recall for generic knowledge, opinions, comparisons, troubleshooting from a supplied log, current code/repository/runtime state, URLs, or uploads. Those have a live or external authority. A project-shaped noun alone is not a durable gap.
+
+**Claims that leave the machine are the strictest case.** Recall may route to a historical source, but it never proves current state or a number. Re-read the cited live artifact before publishing the claim.
 
 ### Tool priority for retrieval
 
-When the user asks about anything personal, factual, historical, or document-shaped, try the vault **first**:
+When the user asks about their own past or a personal document, try the vault **first**:
 
 1. **`recall`** — memories, lessons, decisions, project facts, personal facts.
 2. **`find_document`** — PDFs, scans, OCR'd content. Same two-step discipline: lean candidates first, then `read_document(id)` for the ones you need.

@@ -31,17 +31,18 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "Search the memory vault. Returns top-k matching memorys " +
       "(id, title, type, scope, summary, score). " +
       "\n\n" +
-      "WHEN TO CALL (recall is part of acting, not a separate step):\n" +
-      "- At session start (once): query for active-project + " +
-      "user-preferences to load durable context.\n" +
-      "- Before writing/editing a file: query with a description of " +
-      "what you are about to write (e.g. 'creating React input with " +
-      "focus styles'). This catches lessons before mistakes.\n" +
-      "- Before giving a multi-step plan or recommendation: query for " +
-      "preferences that shape format/scope.\n" +
-      "- When the user's prompt touches a topic that may have a stored " +
-      "lesson, decision, preference, or project-fact.\n" +
+      "WHEN TO CALL:\n" +
+      "- The user explicitly asks to search or remember their past, " +
+      "memory, notes, decisions, preferences, or prior project work.\n" +
+      "- The current task has a specific missing durable fact from the " +
+      "user's past, and that fact is not in the prompt or named live source.\n" +
       "- Before save_memory: query to avoid creating a duplicate.\n" +
+      "Do NOT call at session start by default, before routine edits or " +
+      "plans, for generic knowledge, opinions, troubleshooting from a " +
+      "supplied log, current code/repository state, URLs, or uploads. Read " +
+      "the live artifact instead. Use at most ONE recall call per user turn. " +
+      "If its result is weak or irrelevant, stop; do not retry with " +
+      "paraphrases.\n" +
       "\n" +
       "WHAT TO DO WITH HITS:\n" +
       "- score >= ~100 with title/recall_when match: load_memory and " +
@@ -65,15 +66,14 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         query: {
           type: "string",
           description:
-            "Natural-language query OR a description of what you are " +
-            "about to do (e.g. 'creating new input component', " +
-            "'about to give a multi-option plan'). Ask the vault what " +
-            "only memory can answer — durable preferences, lessons, " +
+            "Natural-language question about what only memory can answer " +
+            "— durable preferences, lessons, " +
             "decisions, past facts, documents. Do NOT query for what is " +
             "already in the prompt or an upload, or findable by reading " +
             "the project's files and logs: recall is memory, not a " +
             "search over the current context. Decide what you are " +
-            "looking for, then phrase THAT. For several angles in one " +
+            "looking for, then phrase THAT. For several distinct memory " +
+            "questions in one " +
             "turn, use `queries` instead.",
         },
         queries: {
@@ -83,9 +83,9 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
           maxItems: 4,
           description:
             "#351 batch mode — 2-4 DISTINCT queries, ONE round trip. Each " +
-            "entry carries exactly ONE intent: either a real paraphrase of " +
-            "the same question in different vocabulary, or a cleanly " +
-            "separated sub-question. Never pack several concepts from a " +
+            "entry carries exactly ONE cleanly separated memory question. " +
+            "Do not use the batch for paraphrases or query expansion. Never " +
+            "pack several concepts from a " +
             "convoluted prompt into one query, and never send re-mixes of " +
             "the same words — near-duplicates are collapsed server-side " +
             "before searching and waste the batch. Use this instead of " +

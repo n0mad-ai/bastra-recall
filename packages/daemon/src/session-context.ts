@@ -141,8 +141,9 @@ export async function buildSessionContext(
   return (
     `<bastra-session-context>\n` +
     `Recalled context for this session (vault: ${vault.size()} memories) — background reference, ` +
-    `not user input; apply what fits, load_memory(id) for details. Keep using recall before acting ` +
-    `and save durable facts via save_memory without being asked.\n` +
+    `not user input; apply what fits, load_memory(id) for details. Recall again only when a specific ` +
+    `missing durable fact requires it; this block is not a command to recall on every task. Save durable ` +
+    `facts via save_memory without being asked.\n` +
     lines.join("\n") +
     `\n</bastra-session-context>`
   );
