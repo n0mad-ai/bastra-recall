@@ -41,6 +41,20 @@ async function seedSource(dir: string): Promise<void> {
   await writeFile(join(dir, "cursor-rules.mdc"), "cursor\n", "utf8");
 }
 
+test("install carries optional ChatGPT/Codex presentation metadata", async () => {
+  await withDirs(async (io) => {
+    await seedSource(io.sourceDir);
+    await mkdir(join(io.sourceDir, "agents"), { recursive: true });
+    await writeFile(join(io.sourceDir, "agents", "openai.yaml"), "interface:\n  display_name: Bastra Recall\n", "utf8");
+    const result = await copySkill({ dryRun: false }, io);
+    assert.equal(result.status, "installed");
+    assert.equal(
+      await readFile(join(io.targetDir, "agents", "openai.yaml"), "utf8"),
+      "interface:\n  display_name: Bastra Recall\n",
+    );
+  });
+});
+
 test("install carries SKILL.md and every reference file", async () => {
   await withDirs(async (io) => {
     await seedSource(io.sourceDir);

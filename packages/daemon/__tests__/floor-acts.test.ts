@@ -11,7 +11,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendAct, liveIntent, readActs } from "../src/floor-acts.js";
@@ -72,6 +72,38 @@ test("an identical redelivery appends nothing; a differing why is a distinct eve
     // tie breaks on the engine clock.
     const live = liveIntent("m1", FLOORED_AT, await readActs(actsPath), fallback);
     assert.equal(live.why, "reason B");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("zwei Acts in derselben Millisekunde: die spätere Zeile gewinnt, nicht die frühere", async () => {
+  // Der Tiebreak hing an `recorded`, und das hat Millisekunden-Auflösung. Zwei
+  // dicht aufeinander geschriebene Acts tragen denselben Wert — dann gewann die
+  // FRÜHERE Fassung. Aufgefallen als Node-22-Testfehler; unter Node 24 lief
+  // derselbe Test grün, weil er langsam genug war, dass die Millisekunde
+  // wechselte. Hier wird der Gleichstand deshalb erzwungen statt erhofft.
+  const { actsPath, cleanup } = await tmpPaths();
+  try {
+    const recorded = "2026-07-11T10:00:00.000Z";
+    const base = { memory_id: "m1", occurred_at: "2026-07-10T09:00:00.000Z", affirmed_by: "sweep" };
+    // Direkt in den Log geschrieben, damit beide Zeilen garantiert dasselbe
+    // `recorded` tragen — appendAct stempelt die echte Uhr.
+    await writeFile(
+      actsPath,
+      `${JSON.stringify({ ...base, why: "erste", recorded })}\n` +
+        `${JSON.stringify({ ...base, why: "zweite", recorded })}\n`,
+      "utf8",
+    );
+
+    const acts = await readActs(actsPath);
+    assert.equal(acts.length, 2, "beide Zeilen sind gelesen");
+    const live = liveIntent("m1", FLOORED_AT, acts, fallback);
+    assert.equal(
+      live.why,
+      "zweite",
+      "bei gleicher Millisekunde entscheidet die Append-Reihenfolge — der Log ist die Ordnung, die die Uhr nicht mehr hergibt",
+    );
   } finally {
     await cleanup();
   }

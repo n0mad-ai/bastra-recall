@@ -63,12 +63,20 @@ function slugFromFilename(filePath: string): string {
  *  a line with no leading whitespace that looks like `key:`; indented lines,
  *  `- ` items and blank lines belong to the entry above them. Without this a
  *  line-by-line rescue would tear a list away from its key and quietly turn
- *  `tags:\n  - a` into an empty node. */
+ *  `tags:\n  - a` into an empty node.
+ *
+ *  #365: a list item at COLUMN ZERO is still a list item. `- "when it: fires"`
+ *  has no leading whitespace and contains a `:`, so it used to start a new
+ *  entry — leaving the key above it parsed as `null` and the orphaned items
+ *  parsed as a bare array. Obsidian and hand-written frontmatter put lists at
+ *  column zero routinely (Bastra's own writer indents, which is why this never
+ *  showed up in-house). The lookahead excludes `- ` and a bare `-` only: a key
+ *  that merely begins with a dash (`-notakey:`) stays a key. */
 function splitTopLevelEntries(block: string): string[] {
   const entries: string[] = [];
   let current: string[] = [];
   for (const line of block.split("\n")) {
-    const startsEntry = /^[^\s#][^:]*:/.test(line);
+    const startsEntry = /^(?!-(?:\s|$))[^\s#][^:]*:/.test(line);
     if (startsEntry && current.length > 0) {
       entries.push(current.join("\n"));
       current = [];
@@ -114,8 +122,15 @@ export function rescueFrontmatter(matter: MatterFn, raw: string): RescueResult |
       // shape: nothing here is a document. `matter.engines.yaml.parse` is
       // gray-matter's public YAML engine and takes the fragment directly.
       const parsed = parseYamlFragment(entry);
-      if (parsed && typeof parsed === "object") Object.assign(data, parsed as Record<string, unknown>);
-      else damaged.push({ field: entryField(entry), reason: "frontmatter entry did not parse as YAML" });
+      // An ARRAY is not a `key: value` entry — assigning one would write
+      // positional `"0"`, `"1"` keys into the frontmatter. Unreachable now
+      // that the splitter keeps column-zero lists with their key, and kept as
+      // the belt to that pair of braces (#365).
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        Object.assign(data, parsed as Record<string, unknown>);
+      } else {
+        damaged.push({ field: entryField(entry), reason: "frontmatter entry did not parse as a `key: value` mapping" });
+      }
     } catch (err) {
       damaged.push({
         field: entryField(entry),

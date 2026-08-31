@@ -181,6 +181,8 @@ test("/hook/act logs the CLAUDE session id on the hook_act event, not the daemon
         tool_input_excerpt: "echo cross-check",
         exit_code: null,
         session_id: "claude-session-cross-check",
+        client: "claude-code",
+        hook_source: "bash-fail",
       });
       assert.equal(res.status, 200);
       // write() ist fire-and-forget — kurz auf die Event-Zeile pollen.
@@ -197,9 +199,16 @@ test("/hook/act logs the CLAUDE session id on the hook_act event, not the daemon
         }
       }
       assert.ok(line, "hook_act event was not written");
-      const event = JSON.parse(line) as { session_id: string; exit_code: number | null };
+      const event = JSON.parse(line) as {
+        session_id: string;
+        exit_code: number | null;
+        dimensions: { client: string; hook_source: string; experiment_session: string | null };
+      };
       assert.equal(event.session_id, "claude-session-cross-check");
       assert.equal(event.exit_code, null); // act ohne Exit-Code zählt trotzdem
+      assert.equal(event.dimensions.client, "claude-code");
+      assert.equal(event.dimensions.hook_source, "bash-fail");
+      assert.match(event.dimensions.experiment_session ?? "", /^[a-f0-9]{16}$/);
     } finally {
       await srv.close();
     }

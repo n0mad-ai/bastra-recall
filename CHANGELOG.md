@@ -4,9 +4,388 @@ All notable changes to bastra-recall are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.9.2] — 2026-08-27
 
 ### Added
+
+- **`bastra autostart on|off|status` — the daemon can now be kept running, and
+  the LaunchAgent finally has an owner in the code.** A user reported that after
+  a plain `brew upgrade` neither the plist was updated nor the daemon restarted.
+  The investigation found an uncomfortable reason: nothing in this repository
+  ever *wrote* a LaunchAgent plist. There were only places that read one,
+  kickstarted it, or removed it on uninstall — `daemon-start.ts` says so
+  verbatim: "no install path registers one". Whoever had one had written it by
+  hand, and what was never written cannot be maintained by an update.
+
+  The default does not change: without this command the daemon still starts on
+  demand through the MCP forwarder and shuts down after 30 minutes idle, which
+  is all Claude Code, Claude Desktop and Cursor need. Turning autostart on
+  disables the idle shutdown.
+
+  The real gain is ownership. `bastra update` now repoints its *own* autostart
+  at the new installation after an upgrade — Homebrew puts every version in its
+  own directory, and a plist holds an absolute path. `bastra doctor` reports one
+  that points at nothing, or one that is installed but not loaded. Both were
+  previously impossible.
+
+  A hand-written plist is never touched. It usually points somewhere on purpose
+  (a source checkout, a custom model setup), so `on` refuses and names `--force`.
+  Ownership is recognised by a marker inside the plist, and the file is read
+  through `plutil` rather than a homegrown XML parser — otherwise exactly the
+  cases that matter (binary or unusually formatted files) would have been
+  misread. Unreadable counts as foreign.
+
+  No `service do` block in the Homebrew formula: Homebrew forces the label
+  `homebrew.mxcl.bastra-recall` while the code checks `ai.n0mad.bastra-recall`,
+  which would mean two autostart worlds competing for a port that exists once.
+  The caveats now say what a plain `brew upgrade` does not do.
+
+### Performance
+
+- **Recall got roughly twice as fast, with an identical ranking.** MiniSearch
+  searched every *occurrence* of a term separately — a trie walk plus prefix and
+  fuzzy expansion, per occurrence. A long prompt repeats half its words (1186
+  emitted against 649 unique in the median), so half the work was repetition.
+  Each unique term is now searched once and weighted by how often it was asked
+  (`boostTerm`), which is only free if the counting happens AFTER folding:
+  grouped before folding gives 0/30 identical rankings, grouped after gives
+  30/30, with a score delta of 1.77e-8 — float rounding from the changed
+  addition order.
+
+  Measured through the production path over 30 real prompts against 991
+  memories: lexical arm p50 **1137 → 461 ms**, total recall p50
+  **1327 → 689 ms**. Live against the running daemon on a real 7962-character
+  prompt: 651 ms total, where the same shape used to sit near 1800 ms.
+
+  No flag, no opt-in — this is on for everyone.
+
+### Fixed
+
+- **One id, one file, one transactional writer.** The vault had an id-based
+  commit lock, but only `saveMemory` used it — `saveDocument`, `auditedRestore`,
+  `mutateMemoryFile` and the area writers wrote past it. Reproduced: two parallel
+  `saveDocument` calls for `a+b.pdf` and `a-b.pdf` both produced a sidecar with
+  the derived id `doc-a-b-pdf`, and the vault silently loaded only one of them on
+  the next start.
+
+  The lock alone was not enough either. Under it the same index was asked again
+  that the pre-check had already answered from; if that index came from another
+  process and was stale, the second question also said `none`. Every
+  ownership-changing writer now runs through `withIdClaim()`, and the answer
+  under the lock is an authoritative disk scan, not an index. The scan is the
+  price of this invariant, so it is measured rather than estimated — `onIdScan`
+  reports directory count, file count, bytes and duration per operation.
+
+- **Area operations serialise against saves and against each other.** A
+  tombstone under `.bastra/areas/` answers the historical name question — "this
+  shelf name moved away" — but it is not mutual exclusion. Between the tombstone
+  check and the actual publish lie a target read, parsing, frontmatter assembly,
+  a temp file and a rename; a rename running through that window left the save
+  publishing into the old shelf, and both existed afterwards. Twelve parallel
+  attempts at `carnexus → target-a` versus `carnexus → target-b` produced, in
+  twelve of twelve runs, a tombstone pointing at the *loser's* target — an old
+  client would have been redirected somewhere that does not exist.
+
+  There is now a reader-writer lock beside the tombstone: saves take a shared
+  claim (they do not exclude each other), while create, rename and delete take an
+  exclusive one, for both source and target name, acquired in sorted order. The
+  lock order across the whole vault is area claim before id claim. The key comes
+  from the *resolved path*, not from the frontmatter scope, because an explicit
+  `folder` can point at an entirely different shelf.
+
+- **Rollbacks no longer delete someone else's version.** In the document hub the
+  overwrite rollback removed the current original blindly and restored the backup
+  blindly, swallowing every error. Reproduced: bastra replaces V1 with V2, an
+  external writer then writes V3, the sidecar compare-and-swap correctly fails —
+  and the rollback deleted V3 and restored V1. The sidecar protection had merely
+  moved the data loss onto the original. The move rollback had the same shape and
+  additionally reported success after a failure it had swallowed.
+
+  Both now compare file identity against the state captured right after
+  publishing, claim their target paths atomically (`link` instead of
+  `exists` + `rename`) and report per file what stayed behind. `true` only when
+  original *and* sidecar are verifiably back where they were.
+
+- **An id claim now proves which file it belongs to.** `moveToTrashUnderClaim`
+  took the caller's path on trust: with a genuine claim for A and the path of B,
+  A stayed active, B disappeared from the vault, and the trash held B's content
+  under A's name. The primitive now reads the raw bytes once and requires the
+  file to hold the claim's memory — and the same read produces the audit
+  evidence, so the version that moved and the version that was logged can no
+  longer differ.
+
+- **Audit records describe what actually happened.** Conflict marking took its
+  "before" image from the vault cache while the disk held something else;
+  restore logged the state from *before* the delete as `diff_after`, so a trash
+  file edited in between was recorded as something that was never restored. Both
+  now come from the mutation itself. And a failed audit append no longer turns an
+  already committed mutation into an error — it returns `audit_warning` telling
+  the caller not to retry, because the write has already happened.
+
+- **`overwrite` is a patch, not a rebuild** — and a re-file keeps its metadata.
+  A save sends only the fields it wants to change; everything else has to survive
+  the refresh. When re-filing into another shelf the target did not exist yet, so
+  the template was empty and the move silently dropped `created`, `related`,
+  `sensitivity`, `source` and a lowered `confidence`. The template is now the
+  source, read under the same transaction.
+
+- **The file system answers questions about the file system.** Three places
+  answered them from a path string instead: an unreadable file counted as absent
+  and was replaced, a different spelling counted as a different file (on APFS the
+  re-file trashed the very file it had just written), and "the string starts with
+  the vault path" counted as "inside the vault", so a symlink in `folder` wrote
+  outside successfully.
+
+- **One score space per answer.** A recall that mixed arms reported numbers from
+  different spaces as if they were comparable, and a mid-call degradation was not
+  visible at all. Every hit now carries the arm set it was scored in — on the MCP
+  path and on the hook path alike — and commons is a third arm rather than a
+  second score space.
+
+### Changed
+
+- The publish workflow runs on Node 24, which bundles npm 11.19.0. OIDC trusted
+  publishing needs npm >= 11.5.1, and the global `npm install -g npm@…` that
+  provided it could not be pinned by hash — Scorecard flagged it. The step is
+  gone; the npm that publishes is the one the pinned Node release brought.
+
+
+### Fixed
+
+- **Scope identity is one decision in core now, and two more places where a
+  project was foreign to itself are closed.** Yesterday's fix folded the case in
+  `isScopeCompatible()` alone; a counter-review found the class was still open.
+
+  SessionStart asks for the project's memories by name and sends the raw
+  directory segment, and the core compared `opts.scope` case-sensitively in the
+  BM25, vector and hop paths — so `scope: "CarNexus"` returned nothing while
+  `scope: "carnexus"` returned hits. Since global scopes kept answering, the
+  failure read as "there is nothing for this project". Project-bound floors had
+  the same defect in `listFloors()`, which is worse: floors are contractually
+  guaranteed to be present, and they were silently absent instead.
+
+  Rather than scattering more `.toLowerCase()`, comparison now lives in
+  `core/scope.ts` — `normalizeScopeKey`, `scopeEquals`, `isScopeCompatible`,
+  `GLOBAL_SCOPES` — and every comparison site uses it: the three core recall
+  paths, the floor registry, `list_memorys`, the save-quality pool, the hook
+  scope filter and the eval tool, whose private copy is gone. Stored frontmatter
+  is untouched: any spelling stays loadable and is normalised only when compared.
+
+  `detectProjectDetailed()` now reports `{raw, key, confidence}`, because the
+  old fallback returned a name for every path — `/tmp/worktree/packages/core`
+  became `core` — and callers could not tell detection from guessing.
+
+  Correcting an earlier claim in this changelog: it was NOT "all four lanes".
+  The write lane, SessionStart, the core recall filter and the floor registry
+  were affected. The prompt and todo lanes were not — because they apply no
+  project scope filter at all, which is its own finding in the opposite
+  direction: foreign hits pass there where #110 would filter them.
+
+- **A project whose directory is capitalised was foreign to its own memories.**
+  `detectProject()` returns the directory segment as written — `CarNexus` for
+  `~/Projekte/CarNexus` — while vault scopes are conventionally lowercase.
+  `isScopeCompatible()` compared them case-sensitively, so in such a session the
+  project's OWN memories failed the scope filter and were dropped from every
+  score band, while global ones kept coming through. Silent, and precisely
+  backwards. All four lanes that call `detectProject()` were affected. Both
+  sides are folded now; the prefix family (`bastra` covering `bastra-recall`)
+  and the separation between siblings (`bastra-io` vs `bastra-recall`) are
+  unchanged and pinned by tests. Found while verifying the eval tool, not by
+  anything that reported it.
+
+- **The two-term anchor rule could still fire on a single query term.** It
+  counted distinct word ORIGINS but not distinct matched TERMS, so
+  `recall_when: "my-app your-app"` with the query `app` produced two origins
+  from one term. It now requires a matching of size two — two origins covering
+  two distinct significant terms (`|A ∪ B| >= 2`, checked across all pairs).
+
+- **Two of the three control states in the candidate tool were unreachable or
+  mislabelled.** `random-control-global-only` could not occur (recognition
+  implied the scope existed), and `random-control-unscoped` was not unfiltered
+  at all — with 191 globally-scoped memories the pool never empties, so all 16
+  such candidates came from `all-projects` / `taxonomy` / `user-preference`.
+  Recognition and scope existence are now two independent facts, and each state
+  builds its pool explicitly.
+
+- **Third counter-review round: the anchor counted spellings, the project
+  detection proved nothing, and the worksheet still named its sources.**
+
+  The two-term rule deduplicated before normalising, so `recall_when: "foo, foo"`
+  produced two origins — `foo,` and `foo` — for one word. Same defect class as
+  the previous round, one level down; dedup now keys on the word's normalised
+  emission signature, while the identifier check keeps reading the raw spelling.
+
+  The candidate tool decided "project unknown" by whether the scope-filtered
+  pool came back empty. With 191 globally-scoped memories in the vault it never
+  does, so a completely wrong detection looked like a clean one — which is why
+  the earlier "fallback fires on 0 of 4" said nothing at all. Detection now
+  reads the `cwd` field the transcripts actually carry on every user turn
+  instead of guessing from the #-encoded directory name, reports whether it is
+  confident, and the control sample is three-way: matched scope, recognised but
+  global-only, and unrecognised. Measured again: 2 of 4 queries are unrecognised,
+  both legitimately so.
+
+  And the worksheet named its own sources — `above-inject-floor`,
+  `random-control`, `dense-top`. Score-blind is not retrieval-blind: whoever
+  reads that a candidate is already being injected labels it differently.
+  Provenance moved to the meta file; the sheet carries id, title and an empty
+  label. Those labels are supposed to decide whether the router ships, and a
+  sheet that hands over the answer cannot decide that.
+
+- **The cross-scope anchor stops counting tokenizer emissions as authored
+  intent, and the candidate worksheet stops showing the answer while asking the
+  question** (second counter-review round).
+
+  The two-term rule ran over a phrase's flat token list — the tokenizer's dual
+  emission. `recall_when: "foo bei foo"` counted `foo` twice, and a single
+  `my-app` satisfied the rule through its own parts `my-app`/`my`/`app`, which
+  bypassed the rarity condition outright. It now counts distinct words of the
+  raw phrase, each at most once, and "significant" is finally implemented: the
+  same stopword and length rule the reflex path has used since the 20.08.
+  incident, moved to `core/stopwords.ts` rather than copied.
+
+  Rarity measured the wrong thing. `docFreq()` sums across seven fields, so a
+  term appearing in five triggers and ten bodies broke the threshold while
+  being rare as a trigger — 607 such cases in the vault. `recallWhenDocFreq()`
+  counts distinct memories carrying the term in `recall_when`, maintained at
+  index time; its lifecycle (add → change → change back → remove → double
+  remove) is pinned by a test, because a hand-maintained count drifts silently
+  and this one decides which foreign memory may enter a session. The identifier
+  check now runs on the RAW phrase — terms arrive folded, so camelCase was
+  structurally invisible — and the `length >= 12` rule is gone: long natural
+  words are ordinary in German, and 646 terms hung on it alone.
+
+  On the eval side: the worksheet is now blind. Score, rank below the floor and
+  distance to 30 move to a separate `*.meta.json`; the sheet carries id, title,
+  provenance and an empty label, shuffled deterministically per query. Whoever
+  sees the number labels the number. The below-floor margin rises to 10 behind
+  `--below-floor-margin`, so "were five enough?" stays answerable afterwards.
+  The control sample is query-hashed and scope-filtered instead of near-identical
+  per query, with a MARKED fallback when project detection fails — measured, it
+  fires on 0 of 4. And "found by no retriever" no longer counts hybrid-pool
+  near-misses, which were found, just not inside the evaluated top 20.
+
+### Added
+
+- **A cost-based retrieval router, a fast lexical path, and the candidate set
+  that has to judge them — all three deliberately inert for now** (#362
+  Phases 0, 2 and 3).
+
+  `routeRetrieval()` picks between hybrid, dense-primary, lexical-full and
+  lexical-fast from what the search will COST (`terms_unique`, estimated at
+  ~0.75 ms per unique term) and whether a dense arm exists — not from prompt
+  length, which is a poor proxy: one live prompt carried 502 emitted but only
+  25 unique terms. The decision is written to telemetry as `shadow_route` and
+  changes nothing. On a real 7962-char prompt it chose `dense-primary` and
+  estimated 584 ms against 644 ms measured.
+
+  `bm25_no_fuzzy` is the fast lexical path (exact + prefix, 140 ms p50 /
+  194 ms p90 against 1137 ms), default off, with a test that states the price
+  outright: the typo stops finding its memory.
+
+  `npm run candidate-union --workspace @bastra-recall/eval` builds the set both
+  can finally be judged against — the union of dense top-N, lexical top-N,
+  what is injected today, what sits just under the floor, and exact identifier
+  hits. Over 12 queries it produced 545 candidates of which **19** are what
+  today's answer contains, with 84 proposed only by the dense arm and 74 only
+  by the lexical one. Those 158 are precisely what a set built from today's
+  hits cannot contain, which is why every measurement so far was circular.
+
+  All three stay inert until those candidates carry labels: they move ranks,
+  and admission still hangs on a rank-derived score.
+
+### Fixed
+
+- **A recall that degrades mid-call now says so, names its score space, and
+  stops lending a common word the authority to open a foreign project**
+  (P0 points 2, 4 and 6 from `docs/recall-performance-handoff.md`).
+
+  `recall-handler.ts` decided `hybridActive` from the circuit-breaker state
+  BEFORE the search. A vector arm that misses its deadline or dies mid-call
+  opens no breaker — it simply returns nothing and `recallHybrid` degrades to
+  raw BM25 — so the handler kept calling that answer hybrid and computed
+  `weak_result` / `no_home` for a fusion that never ran. It now reads the
+  degradation off the same `done` stage the hook route already watched, and the
+  response carries `score_kind` (`"rrf"` | `"bm25"`) plus `unfused` and
+  `degraded`. No consumer has to infer the scale from the size of the number.
+
+  The cross-scope bypass (#148) let a foreign-project memory into the session on
+  one exact trigger term. After the anchor fix that term is at least verbatim,
+  but a single ordinary word — "arbeit", "datei", "test" — sits in dozens of
+  trigger phrases and declares nothing. `anchor_strength` now grades it the way
+  `reflex.ts` has graded phrases since the 20.08. incident: two exact trigger
+  terms, or one rare enough to speak for itself (document frequency from the
+  live index, so rarity is a property of THIS vault). The bypass requires
+  `"strong"`; an absent field keeps the pre-P0 behaviour, so an older daemon or
+  a foreign caller never silently gets stricter.
+
+- **Two correctness fixes in what reaches the model: the deliberate-trigger
+  anchor stops accepting typos, and a degraded recall stops posing as a fused
+  one** (P0 from `docs/recall-performance-handoff.md`).
+
+  `matched_recall_when` means "the author declared exactly this situation as a
+  trigger", and two permissions hang off it: the cross-scope bypass
+  (`hook-skip.ts`) and the suppression of `weak_result` (`weak-result.ts`). It
+  was read out of MiniSearch's `match` map, whose keys are DOCUMENT terms — so
+  a prefix or fuzzy hit set it with a word the query never contained. Measured
+  against the real vault, `obsidan` (one edit) and `tripwir` (a prefix) both
+  claimed authored intent. It now requires a query term verbatim.
+
+  When the dense arm times out, errors or is absent, `recallHybrid` returns raw
+  MiniSearch scores instead of fused ones — an open-ended scale where the
+  telemetry recorded 405,584 against a fused ceiling of 163.934. The endpoint
+  says so via `unfused`/`degraded`; the prompt lane did not carry either field
+  and measured the raw numbers against the 100 floor anyway: everything became
+  REQUIRED, bypassed the backoff, and was announced as "both search paths
+  agreed" while only one had run. The lane now carries both fields through to
+  backoff, formatter and telemetry — no REQUIRED band, no bypass, no
+  two-path claim, and the number is omitted rather than shown on a scale that
+  cannot support a comparison. `write-lane.ts` already knew the field; this
+  closes the same hole on the surface that was still open.
+
+### Added
+
+- **A rarity-based fuzzy switch for the lexical arm, plus the acceptance
+  harness that measured it — and the measurement says it does not carry**
+  (#362). The premise was that the BM25 time is the prefix/fuzzy EXPANSION of
+  each query term rather than the term COUNT, so steering the expansion of
+  common terms would be free where capping the query was not: no term is
+  removed, so no document leaves the candidate set. In isolation that held
+  (540 → 238 ms on the real vault, every baseline top-10 hit still inside the
+  top 50). Through the production path it does not: `npm run bm25-expansion
+  --workspace @bastra-recall/eval` runs 30 real prompts (2000–8000 chars) over
+  the full hybrid pipeline and reports 1137 → 966 ms p50 at best, with one
+  injectable id lost at every threshold that saves anything. Only `df ≤ 400`
+  passes the ship rule, and it saves ~8 % against a ~3 % noise floor measured
+  by running the baseline twice. The reason is structural: injection is
+  decided by a rank-derived RRF score, so anything that permutes ranks moves
+  hits across the floor of 100 — reordering is not qualitatively free, only
+  cheaper-looking than removing. `bm25_fuzzy_rare_df_max` therefore ships
+  default off, as the knob the harness measures with, not as a
+  recommendation. The baseline it leaves behind is the usable result: the
+  lexical arm sits at 1137 ms p50 / 1621 ms p90 on ordinary long prompts
+  against a 200 ms target (#305).
+
+## [0.9.1] — 2026-08-24
+
+### Added
+
+- **BM25 query cap (#362) lands as groundwork, off by default pending
+  calibration** — the acceptance harness (15 probe queries, injection-relevant
+  ids marked) found both measured budgets short of the ship bar (zero ids lost
+  AND ≥90 % identical injectable sets): 200 chars lost an injection-relevant id
+  on 15/15 queries (avg 2.27), 2000 chars still lost on 12/15 (avg 0.47), so
+  `bm25_query_max_chars` stays unset — the mechanism (`bm25-query-cap.ts`)
+  ships ready, only an explicit value activates it.
+
+- **Stop, session and todo hook lanes join the compiled stub — the last three
+  hook clients drop from ~80 ms node start to under 50 ms end-to-end** (#369).
+  The lane logic moves from the CLI entries into stop/session/todo-lane
+  modules behind `/hook/stop`, `/hook/session` and `/hook/todo` — the same
+  daemon-side pattern the pre-lanes took in #343/#344. The thin clients and
+  the compiled stub call them over HTTP with the #350 opt-in marker; without
+  the marker, or against an old daemon, they degrade to the node fallback
+  unchanged.
 
 - **The embedding model is warmed at turn start — one small embed on
   `UserPromptSubmit`, fire-and-forget, so the assertion lane never lands
@@ -103,6 +482,240 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `packages/eval/README.md` documents when each corpus is the finding and when
   it is the replication, why an absent query set is mandatory and has to be
   written per corpus, and why the harness prints two medians instead of one.
+
+### Fixed
+
+- **The two recall arms now overlap instead of running sequentially — BM25
+  fires in the shadow of the dense arm's network roundtrip instead of after
+  it** (#370). `recallHybrid` dispatched the dense-arm embed only after
+  `this.mini.search()` had run to completion, even though the two arms share
+  no data dependency (`fuseRRF` consumes both rank lists only after both
+  return) — the wall clock paid their SUM instead of their MAX. Measured over
+  n=1545 `hook_recall` events (19.–24.08.): `latency_ms_recall − (bm25 +
+  vector)` sat at p50 1 ms / p90 2 ms, i.e. the stage timers summed exactly to
+  the total and nothing overlapped. The dense arm is now dispatched first and
+  awaited only after the BM25 pass, dropping the wall clock from p50 157 ms to
+  p50 137 ms (prompt lane: 200 ms → 144 ms). Pure reordering — identical
+  inputs into both arms, identical RRF result — with one invariant preserved:
+  the dense-arm deadline (`abandonAfter`) is armed synchronously at dispatch,
+  not at the `await`, so the reordering cannot silently widen its timeout
+  budget. `vector.search`'s stage event now carries `overlapped: true`, since
+  the two stage timers no longer partition the total.
+
+- **`mode: none` only pays for a recall that could contribute — the wired pool
+  and its 4h dedup are checked first** (#371). Since a50f849 (#217), `mode:
+  none` — 91 % of prompts — ran a full-vault recall over ~955 memories and
+  threw away everything not reflex-wired: p50 210 ms against p50 10 ms before
+  19.08., with 83.5 % of those recalls injecting nothing. The lane now asks
+  two query-independent questions first — is any memory wired reflex at all,
+  and is at least one of them outside its 4h suppression window — and only
+  then runs the recall; when it runs, it is byte-identical, so no hit that
+  injects today is lost. Skips are visible as `recall_skipped` in
+  `prompt_hook_call`.
+
+- **`hook_recall` carries the session from the hook payload, and
+  `ollama_lifecycle` says `session_id: null` instead of the boot id** (#363).
+  cf411ca (#356) fixed the four hook-CLI lanes but not the daemon-side recall
+  emitter: `logHookRecall` declared `Omit<…, 'session_id'>`, the type forbade
+  the caller a session, and the boot UUID always won — on 22.08. 194
+  `hook_recall` events sat under exactly 4 ids, the same 4 as
+  `ollama_lifecycle`, i.e. 4 daemon boots. The value had long been in the
+  route (`hookSessionId`) and fell out at the emitter. `ollama_lifecycle` has
+  no session — `null` instead of a boot-id lie; the boot id stays as `run_id`
+  so prewarm→unload pairing and boots-per-day stay readable.
+
+- **Every generation call now names its own context window, and asks the model
+  not to think** (#366, #367). `ollamaChat` is the only live chat client in the
+  repo — the doc2query expander, the `/ui/chat` copilot, the far-bridge harvest
+  and the expander compare tool all share it — and it sent neither
+  `options.num_ctx` nor `think`. Without `num_ctx` the server default applies,
+  and on the machine this was measured on that default is
+  `OLLAMA_CONTEXT_LENGTH=262144` — above every installed model's maximum, so
+  each one loads at its own ceiling: 262144 for `qwen3:4b`, a 36 GB KV cache on
+  a 24 GB machine, 21.5 GB of it on the CPU side, 56.87 s to load — longer than
+  the client's own timeout, which is why #143 recorded two models as failures
+  that were never actually measured on expansion quality.
+
+  Calls now send 4096 (the recipe `qwen3-recall`'s Modelfile already pinned —
+  the one model that escaped the env, and only for that reason), overridable per
+  call and via `BASTRA_OLLAMA_NUM_CTX`. Two lanes ask for more, each because its
+  prompt is measurably bigger: the copilot (`buildQueryPrompt` carries the last
+  4 messages at 2000 chars each ≈ 3k tokens) and the far-bridge harvest, whose
+  rerank prompt is the largest in the repo — the candidate pool is
+  `max(k*4, 20)` entries, uncapped downstream, at 200 chars each ≈ up to 5.4k
+  tokens. That one was the sharper risk: over the limit Ollama truncates from
+  the front, taking the query and the top candidates with it, and the harvest
+  would have minted bridges from a silently shortened list.
+  `packages/eval/src/persona-gen.ts` sends its own `num_ctx` on the same
+  grounds. The request body is the right place for all of this rather than the
+  server env: `options.num_ctx` overrides both that env and a Modelfile
+  `PARAMETER`, while the env is a system-wide default governing every other
+  Ollama use on the machine.
+
+  `think: false` is the other half. A thinking model puts its entire reply into
+  `message.thinking` and returns an empty `content` — `gemma4:12b` did exactly
+  that on 8 of 8 sampled memories, `done_reason: "length"`, no error anywhere.
+  Verified against the local Ollama that non-thinking models accept the field
+  without complaint, so it is sent unconditionally rather than probed.
+
+- **A failed expansion is no longer stamped into the vault as a finished one**
+  (#367). `TriggerExpander.expand` wrote `recall_when_expanded` and the
+  `recall_when_expanded_src` hash whenever it got that far, including when the
+  model had returned nothing at all. The stamp is what made it unrecoverable:
+  both `expand()` and `backfill()` skip a memory whose source hash matches, so
+  an empty expansion written against an unchanged source is never regenerated —
+  not by a restart, not by a reindex, not by a sweep, only by an author editing
+  the memory. Pointed at a thinking model, the two paths that legitimately
+  regenerate (every save from then on, and a deliberate
+  `strip-trigger-expand.ts` re-expand) would have replaced the vault's ~4300
+  phrases with empty arrays and frozen them there, silently.
+
+  An empty *reply* is now treated as the failure it is: nothing written, nothing
+  stamped, a log line naming the memory, and the next sweep retries it. The test
+  is the raw reply, not the parse result — text that parses to nothing (the
+  model echoed the existing triggers, or wrote only over-long lines) is a real
+  answer for that source and still gets its stamp, because generation here is
+  deterministic and retrying it would regenerate the identical nothing on every
+  sweep. The self-test case is likewise untouched: when the model answered but
+  no phrase survived filtering, the empty result and its stamp still persist,
+  which is what keeps the reindex→embed→expand loop broken.
+
+  A backfill sweep now also stops after five consecutive failed generations
+  instead of discovering a broken model one call at a time — it runs on every
+  daemon start, and a vault this size is hours of them. And the two swallowed
+  errors on that path now log: an Ollama that rejects the request outright (an
+  older server refusing `think`, a model no longer pulled) took doc2query out of
+  service without a single line anywhere, which is quieter than the bug above.
+
+- **A bare YAML date is still a date — an overwrite stops eating `created` and
+  `valid_until`** (#364, #240). #240/A6 made overwrite a PATCH: every field a
+  refresh does not send has to survive it, and `packages/core/src/save.ts`
+  decided that with a type check against the value gray-matter parsed out of
+  the file. YAML 1.1 parses a bare `created: 2020-01-01` into a JS `Date`, so
+  the check said "not a string", the carry-over dropped the value, and the
+  assembly fell through to its default: `created` restamped to today,
+  `valid_until` and `last_reviewed_at` gone from the file entirely. The bare
+  form is not an edge case — it is what Obsidian Properties writes and what a
+  hand edit leaves; only files written by our own `matter.stringify` carry the
+  quoted form the roundtrip test seeds, which is why the suite that exists
+  precisely for this loss never saw it. The write path now coerces `Date` back
+  to `YYYY-MM-DD` once, before any type check sees the value, the way
+  `schema.ts` has always done on the read path; an unparsable date is left
+  untouched rather than crashing `toISOString()`. Patch by zzallirog.
+
+- **An overwrite stops eating `saved_at` — and stops poisoning gray-matter's
+  parse cache** (#364, #240). Three leftovers from the fix above, all in
+  `packages/core/src/save.ts`. The `Date`→`YYYY-MM-DD` coercion wrote into the
+  object gray-matter caches per input string, so any later parse of identical
+  content would have inherited a string where the file says `Date` — the very
+  trap `related-enrich.ts` and `trigger-expand.ts` already warn about; the
+  carry-over works on a copy now. `updated` left that coercion list, where it
+  sat without a reader — `updated: today` restamps it on every write anyway.
+  And the bookmark half never carried anything over: `saved_at` is a bookmark's
+  capture time, not its write time, yet every overwrite restamped it — along
+  with `url`, `og_image`, `read_status`, `categories` and `source_app`, which a
+  summary-only refresh dropped from the file entirely. All six follow the same
+  PATCH semantics as the rest of the frontmatter now.
+
+- **The patch rollback copies bytes back and verifies them — `rolledBack` stops
+  being a constant** (#365, item 1). `applySeries` in
+  `packages/daemon/src/patch-registry.ts` discarded the `GitRun` of the reverse
+  and reported `rolledBack: true` unconditionally — and a `--3way` merge cannot
+  be undone by reversing the patch, so the operator was told the install runs
+  unpatched while patched files sat on disk. The snapshot now lives at run level
+  (first write wins, mode bits included), the reverse checks its exit status,
+  and the copy-back has the last word: every file is read back and compared byte
+  for byte. `rolledBack` is a measurement, `unrestored[]` names what did not go
+  back, and `pendingPatchNotice` points at `~/.bastra/update-backups`;
+  `last-run.json` grows additively. Reported by zzallirog.
+
+- **A `private` memory is no longer named in someone else's file** (#365, item
+  13). The auto-related enricher is the one write path that puts foreign ids
+  into foreign memories, and `packages/core/src/related-enrich.ts` was the one
+  place that never read `sensitivity` — every read path does (`search.ts`,
+  `graph.ts`, the tool handlers), and `graph.ts` already suppresses exactly this
+  edge rather than drawing it as a ghost silhouette. Any cosine neighbour above
+  the threshold got a `related_via` entry plus a `- [[<id>]]` line in the body
+  of whatever memory it sat near, and the id **is** the title
+  (`id = slugify(title)`) — so the leak was the private title in plaintext,
+  served to external MCP clients through `verbosity: 'full'`, through
+  `read_document`'s raw body, and drawn as an edge in the Obsidian graph, two
+  lines under a `sensitivity: team` nobody consulted.
+
+  Private neighbours are dropped before the topN cut now, so they neither
+  surface nor cost a visible neighbour its slot. The filter is one-directional:
+  a private memory keeps its own `related_via` and its own auto-section,
+  private neighbours included — that file carries the classification, and its
+  content does not leave it; only the mention elsewhere was the leak. Existing
+  edges heal without a migration script: the enricher's target/actual
+  comparison sees the difference on the next embed (which fires on every save,
+  cache hits included), rewrites the file exactly once, and is a no-op from
+  there on. Reported by zzallirog.
+
+- **The Ollama loopback guard classifies the host instead of its spelling, and
+  fence-marker stripping runs to a fixpoint** (#365, items 8 and 10).
+  `packages/core/src/ollama-egress.ts` tested the hostname text against
+  `/^127\./`, so `127.evil.example` and `127.0.0.1.nip.io` read as loopback and
+  memory text could leave the box, while `0.0.0.0`, `localhost.` and
+  IPv4-mapped IPv6 were refused although they are local; `net.isIP` decides
+  after a bracket strip now. In `scrub.ts`, `stripFenceMarkers` re-formed a
+  working marker out of the halves of a nested spoof
+  (`<recall-hints<recall-hints>>`) — it now iterates to a fixpoint, and an input
+  that outruns the cap loses its angle brackets instead of handing back the
+  fence the cap was meant to close. Reported by zzallirog.
+
+- **A dead provider stops looking like an empty vault, and a warm query cache
+  stops eating the deep pool** (#365, items 4, 5, 14 and 16). A provider error
+  was indistinguishable from an empty vector arm, and the one-armed result was
+  cached — `runtimeHealth()` now carries a monotonic `errorCount`,
+  `packages/core/src/search.ts` compares it around the vector call, skips the
+  cache and labels the result `vector-arm-error`. A query-cache hit fired
+  `onCandidatePool` not at all (BM25) or with the served k hits (hybrid)
+  instead of the deep pool; the pool travels in the cache entry now and is
+  emitted on every hit, cloned only when a callback is set. Staleness treats a
+  non-positive touch window as fresh on the `valid_until` branch too, and the
+  ranking callback runs after damping, on the ranked list. No new await and no
+  new I/O on the hot path. Reported by zzallirog.
+
+- **The audit cache follows the file, and trash lookups stop at the id
+  boundary** (#365, items 3 and 11). The ledger is cross-process, but
+  `packages/core/src/audit-log.ts` held a per-instance `readAll` cache that hid
+  foreign appends, so `lastDeleteFor` missed a delete sitting in the file. The
+  cache is keyed on mtime + size instead; only `ENOENT` counts as a missing
+  ledger, and any other stat error serves the warm cache or throws rather than
+  reporting an unreadable log as an empty one. `latestTrashPathFor` matched by
+  prefix, so `foo.bar.md` passed as a version of `foo`; it requires the exact
+  stamp format now. Reported by zzallirog.
+
+- **A vault under a dot-root is watched again, column-zero lists keep their key,
+  and a finished recall stops saying it drags** (#365, items 2, 9 and 15). The
+  watcher's dot filter in `packages/core/src/vault.ts` ran on the absolute path,
+  so a vault under `~/.local/share` watched nothing at all; it filters relative
+  to the root now, with a leading `..` only counting as an escape as a whole
+  segment (`..sync/` stays ignored). `frontmatter-rescue.ts` treated a
+  column-zero list item carrying `": "` as a key, silently dropping
+  `recall_when` and logging a misleading damage entry. And the banter's duration
+  checks skip terminal stages now (`done`, `cache.hit`, `error`), so a recall
+  that is already finished no longer narrates itself as dragging. Reported by
+  zzallirog.
+
+- **`bridges harvest` judges with the configured model, `import vault` counts
+  landings, and the update docstring stops denying its own body** (#365, items
+  6, 7 and 12). The far-slice reranker in `packages/daemon/src/cli/bridges.ts`
+  ignored the persisted generation model and read only the env/default pair —
+  it calls `resolveGenerationModel()` the way the daemon does now
+  (`BASTRA_EXPAND_MODEL` outranks `BASTRA_RERANK_MODEL` when both are set).
+  `import-vault.ts` counted attempts in `byAdapter`, not imports; the increment
+  moved next to the save. And the `update-check.ts` docstring described an
+  auto-apply that has lived elsewhere since #81. Reported by zzallirog.
+
+- **The audit log reads stat and content through one file handle, and
+  `abandonAfter()` clamps its timer at the sink** — the release CodeQL pass
+  flagged both: the ledger's separate `stat` + `readFile` left a TOCTOU window
+  a concurrent rotate could fall into, and the deadline timer trusted its
+  caller to bound the duration. `readAll()` now opens once and stats/reads the
+  same descriptor; no timer outlives `MAX_DEADLINE_MS` (10 s) regardless of
+  what a future caller passes.
 
 ## [0.9.0] — 2026-08-02
 

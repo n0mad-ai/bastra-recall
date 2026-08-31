@@ -34,6 +34,9 @@ export interface ToolDeps {
    *  is silently served BM25-only (no embed attempt). Recall telemetry flags
    *  those events as embedding_degraded. Absent = no breaker (embeddings off). */
   embeddingDegraded?: () => boolean;
+  /** #264: Ist der Evidenzentscheid scharf? Beim Boot aufgelöst, Default aus.
+   *  Aus heißt: Der Entscheid läuft und wird geloggt, wirkt aber auf nichts. */
+  evidenceGateEnabled?: () => boolean;
   /** #361: fires the turn-start embedding prewarm and reports what it did.
    *  Injected by index.ts where the provider lives; the prompt lane calls it
    *  and never awaits the embed behind it. Absent = no embedding provider. */

@@ -253,3 +253,187 @@ test("#287: an unavailable audit log never aborts a folder import", async () => 
     await rm(sourcePath, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });
+
+/**
+ * #377 — ein gescheitertes Audit-Append auf DIESEM Pfad muss ein Ereignis
+ * hinterlassen, nicht nur eine Zeile auf stderr.
+ *
+ * Der Pfad trägt jeden Agentenschreibvorgang über MCP und REST. Fällt er
+ * stillschweigend aus, steht die Änderung und ihr Beleg fehlt — und genau das
+ * ließ sich hinterher nicht mehr feststellen, weil stderr im Moment des
+ * Fehlers existiert und zwei Wochen später nicht.
+ */
+test("#377: ein gescheitertes Audit-Append meldet audit_failed statt nur auf stderr zu gehen", async (t) => {
+  const { onMutationIncident } = await import("@bastra-recall/core");
+  const { recordAudit } = await import("../src/audit-trail.js");
+  const { mkdir } = await import("node:fs/promises");
+
+  resetAuditLogCache();
+  const vaultPath = await mkdtemp(join(tmpdir(), "bastra-audit-fail-"));
+  t.after(() => rm(vaultPath, { recursive: true, force: true }));
+
+  // Ein VERZEICHNIS am Pfad des Ledgers: der Append scheitert deterministisch
+  // mit EISDIR — kein Zeitfenster, keine Flakiness.
+  await mkdir(join(vaultPath, ".bastra", "audit-log.ndjson"), { recursive: true });
+
+  // Die Fehlermeldung geht weiterhin auf stderr; im Test wäre sie nur Lärm.
+  const err = console.error;
+  console.error = () => {};
+  const seen: Array<Record<string, unknown>> = [];
+  const off = onMutationIncident((i) => seen.push(i as unknown as Record<string, unknown>));
+  try {
+    await recordAudit({
+      vaultRoot: vaultPath,
+      memoryId: "m-377",
+      operation: "update",
+      actor: "assistant",
+      actorDetail: "mcp:save_memory",
+      diffBefore: null,
+      diffAfter: { title: "GEHEIMER-TITEL" },
+    });
+  } finally {
+    off();
+    console.error = err;
+  }
+
+  assert.equal(seen.length, 1, `genau ein Incident erwartet, gesehen: ${JSON.stringify(seen)}`);
+  const incident = seen[0];
+  assert.equal(incident.status, "audit_failed", "die Mutation steht — sie darf nicht wiederholt werden");
+  assert.equal(incident.phase, "audit");
+  assert.equal(incident.op, "audit_update");
+  assert.equal(incident.memory_id, "m-377");
+  assert.equal(typeof incident.operation_id, "string");
+
+  // Und weiterhin: keine Inhalte, keine Pfade. `err.message` trägt hier den
+  // Pfad des Ledgers, deshalb steht er ausdrücklich NICHT im Ereignis.
+  const raw = JSON.stringify(incident);
+  assert.ok(!raw.includes("GEHEIMER-TITEL"), "kein Frontmatter-Wert im Ereignis");
+  assert.ok(!raw.includes(vaultPath), "kein absoluter Pfad im Ereignis");
+});
+
+test("#377: ein erfolgreiches Audit-Append meldet gar nichts", async (t) => {
+  const { onMutationIncident } = await import("@bastra-recall/core");
+  const { recordAudit } = await import("../src/audit-trail.js");
+
+  resetAuditLogCache();
+  const vaultPath = await mkdtemp(join(tmpdir(), "bastra-audit-ok-"));
+  t.after(() => rm(vaultPath, { recursive: true, force: true }));
+
+  const seen: unknown[] = [];
+  const off = onMutationIncident((i) => seen.push(i));
+  try {
+    await recordAudit({
+      vaultRoot: vaultPath,
+      memoryId: "m-ok",
+      operation: "create",
+      actor: "assistant",
+      actorDetail: "mcp:save_memory",
+      diffBefore: null,
+      diffAfter: { title: "T" },
+    });
+  } finally {
+    off();
+  }
+
+  assert.deepEqual(seen, [], "der Normalfall ist kein Incident");
+});
+
+/**
+ * #380 — `audit_warning` erreichte nur den Bridge-Pfad.
+ *
+ * `auditedSave` in core kennt den Satz seit `dfb044e`: die Mutation steht, ihr
+ * Beleg fehlt, NICHT wiederholen. Über MCP und REST sah ein Aufrufer davon
+ * nichts — die Antwort war ein gewöhnlicher Erfolg. Für den Betreiber ist der
+ * Fall seit #377 als `mutation_incident` sichtbar; hier geht es um den
+ * AUFRUFER, der wissen muss, dass sein Schreibvorgang unprotokolliert blieb.
+ */
+test("#380: recordAudit gibt die Warnung heraus, statt sie zu behalten", async (t) => {
+  const { recordAudit } = await import("../src/audit-trail.js");
+  const { mkdir } = await import("node:fs/promises");
+
+  resetAuditLogCache();
+  const vaultPath = await mkdtemp(join(tmpdir(), "bastra-audit-warn-"));
+  t.after(() => rm(vaultPath, { recursive: true, force: true }));
+  await mkdir(join(vaultPath, ".bastra", "audit-log.ndjson"), { recursive: true });
+
+  const err = console.error;
+  console.error = () => {};
+  let warning: string | undefined;
+  try {
+    warning = await recordAudit({
+      vaultRoot: vaultPath,
+      memoryId: "m-380",
+      operation: "update",
+      actor: "assistant",
+      actorDetail: "mcp:save_memory",
+      diffBefore: null,
+      diffAfter: null,
+    });
+  } finally {
+    console.error = err;
+  }
+
+  assert.ok(warning, "im Fehlerfall muss ein Satz zurückkommen");
+  assert.match(warning, /do NOT retry/, "das ist die eigentliche Botschaft");
+  assert.match(warning, /was committed/, "und die Mutation gilt als geschehen");
+});
+
+test("#380: im Normalfall gibt recordAudit nichts heraus", async () => {
+  const { deps, cleanup } = await makeDeps();
+  try {
+    const res = (await saveMemoryHandler(deps, memo("Ohne Warnung"))) as Record<string, unknown>;
+    assert.ok(!("warning" in res) || !String(res.warning).includes("audit"), 
+      `eine gelungene Protokollierung erzeugt keine Warnung: ${JSON.stringify(res.warning)}`);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("#380: die MCP-Antwort trägt die Warnung, wenn der Beleg fehlt", async () => {
+  const { mkdir } = await import("node:fs/promises");
+  const { deps, vaultPath, cleanup } = await makeDeps();
+  const err = console.error;
+  console.error = () => {};
+  try {
+    // Ledgerpfad als Verzeichnis: der Append scheitert, der Save läuft durch.
+    await mkdir(join(vaultPath, ".bastra", "audit-log.ndjson"), { recursive: true });
+    resetAuditLogCache();
+
+    const res = (await saveMemoryHandler(deps, memo("Mit Warnung"))) as Record<string, unknown>;
+
+    assert.ok(res.id, "der Save selbst ist gelungen — das ist die Zusage von dfb044e");
+    assert.ok(
+      typeof res.warning === "string" && res.warning.includes("do NOT retry"),
+      `die Antwort muss die Warnung tragen, war: ${JSON.stringify(res.warning)}`,
+    );
+  } finally {
+    console.error = err;
+    await cleanup();
+  }
+});
+
+test("#380: auch archive_memory sagt es, wenn sein Beleg fehlt", async () => {
+  const { mkdir } = await import("node:fs/promises");
+  const { deps, vaultPath, cleanup } = await makeDeps();
+  const err = console.error;
+  console.error = () => {};
+  try {
+    const saved = await saveMemoryHandler(deps, memo("Wird archiviert"));
+    // Erst NACH dem Save den Ledger unbrauchbar machen, damit der Save selbst
+    // sauber protokolliert ist und nur das Archivieren die Warnung erzeugt.
+    await rm(join(vaultPath, ".bastra", "audit-log.ndjson"), { force: true });
+    await mkdir(join(vaultPath, ".bastra", "audit-log.ndjson"), { recursive: true });
+    resetAuditLogCache();
+
+    const res = (await archiveMemoryHandler(deps, { id: saved.id })) as Record<string, unknown>;
+
+    assert.equal(res.id, saved.id, "archiviert wurde trotzdem");
+    assert.ok(
+      typeof res.warning === "string" && res.warning.includes("do NOT retry"),
+      `die Antwort muss die Warnung tragen, war: ${JSON.stringify(res.warning)}`,
+    );
+  } finally {
+    console.error = err;
+    await cleanup();
+  }
+});

@@ -216,3 +216,37 @@ test("#245 P2: the synthetic index skips instead of landing on a foreign node wh
     await rm(vault, { recursive: true, force: true });
   }
 });
+
+/**
+ * Codex-Gegenreview: Die Besitzprüfung sah nur den erwarteten Importpfad. Ein
+ * fremdes Memory mit derselben id an einem ANDEREN Ort blieb unsichtbar — der
+ * Import schrieb daneben, und danach trugen zwei Dateien dieselbe id.
+ */
+test("import: eine id, die anderswo im Vault vergeben ist, gilt als fremd", async () => {
+  const vault = await tmp("guard-elsewhere-vault-");
+  const src = await tmp("guard-elsewhere-src-");
+  try {
+    // Ein von Hand angelegtes Memory, dessen id der Import gleich minten will
+    // — aber NICHT am Importpfad, sondern in einem gewöhnlichen Projektregal.
+    const handmade = join(vault, "memories", "projects", "proj", "lbl-note.md");
+    await mkdir(dirname(handmade), { recursive: true });
+    await writeFile(
+      handmade,
+      "---\nid: lbl-note\ntitle: Handgeschrieben\ntype: reference\nsummary: s\ntopic_path:\n  - t\ntags:\n  - t\nscope: proj\nrecall_when:\n  - t\ncreated: 2026-08-26\nupdated: 2026-08-26\n---\n\nORIGINAL\n",
+      "utf8",
+    );
+    await writeSrc(src, "note.md", "# Note\n\nAus der Quelle.\n");
+
+    const result = await importVault(vault, src, { label: "lbl" });
+
+    // Das Original bleibt unberührt …
+    assert.match(await readFile(handmade, "utf8"), /ORIGINAL/);
+    // … und der Import hat die fremde id nicht beansprucht: er weicht auf
+    // einen Hash-Kandidaten aus (oder überspringt), aber legt keine zweite
+    // Datei mit derselben id an.
+    assert.ok(!result.ids.includes("lbl-note"), "die fremde id wurde nicht beansprucht");
+  } finally {
+    await rm(vault, { recursive: true, force: true });
+    await rm(src, { recursive: true, force: true });
+  }
+});

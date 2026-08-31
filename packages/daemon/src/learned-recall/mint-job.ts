@@ -14,7 +14,6 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import type { Vault } from "@bastra-recall/core";
 import { distinctiveTerms, MIN_BRIDGE_EVIDENCE } from "./bridges.js";
 import { readEventLog, reconstructReaches, harvestBridges, writeBridges } from "./harvest.js";
@@ -115,7 +114,10 @@ async function writeMintTelemetry(record: LastMintRecord): Promise<void> {
     const event = {
       kind: "bridges_mint",
       ts: record.ts,
-      session_id: randomUUID(),
+      // #363: no Claude session touches this path (CLI subcommand or
+      // daemon boot/interval trigger) — null is the honest value, matching
+      // ollama_lifecycle, not a boot-id lie.
+      session_id: null,
       host: record.host,
       trigger: record.trigger,
       minted: record.minted,

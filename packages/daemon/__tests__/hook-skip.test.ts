@@ -7,7 +7,7 @@
  */
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { shouldSkipPath, isScopeCompatible, passesScopeFilter } from "../src/hook-skip.js";
+import { shouldSkipPath } from "../src/hook-skip.js";
 
 interface MatrixRow {
   path: string;
@@ -91,61 +91,4 @@ test("shouldSkipPath (#297): memory-shaped .md outside docs/ is NOT skipped", ()
   assert.equal(shouldSkipPath("/tmp/x.md", undefined, { content: "---\ntype: banana\n---\n" }), true);
   // Edit on a nonexistent file (no inline content, unreadable head) → fail-open skip
   assert.equal(shouldSkipPath("/nonexistent/dir/x.md", undefined, { old_string: "a", new_string: "b" }), true);
-});
-
-test("isScopeCompatible (#107): foreign project scopes are filtered, family/global scopes pass", () => {
-  // Das beobachtete Problem: bastra-io-Hint bei einem bastra-recall-Edit.
-  assert.equal(isScopeCompatible("bastra-io", "bastra-recall"), false);
-  assert.equal(isScopeCompatible("carnexus", "bastra-recall"), false);
-  // Eigener Scope + Scope-Familie über Präfix.
-  assert.equal(isScopeCompatible("bastra-recall", "bastra-recall"), true);
-  assert.equal(isScopeCompatible("bastra", "bastra-recall"), true);
-  assert.equal(isScopeCompatible("bastra-recall", "bastra"), true);
-  // Globale Scopes immer.
-  assert.equal(isScopeCompatible("all-projects", "bastra-recall"), true);
-  assert.equal(isScopeCompatible("user-preference", "bastra-recall"), true);
-  assert.equal(isScopeCompatible("taxonomy", "bastra-recall"), true);
-  // Ohne erkanntes Projekt oder ohne Scope: kein Filter.
-  assert.equal(isScopeCompatible("bastra-io", null), true);
-  assert.equal(isScopeCompatible("", "bastra-recall"), true);
-});
-
-test("passesScopeFilter (#148): strong, deliberate cross-scope hits pass; tag/topic noise stays filtered", () => {
-  const MUST_LOAD = 100;
-  const p = "bastra-recall";
-
-  // Compatible scopes always pass, regardless of recall_when / score.
-  assert.equal(passesScopeFilter({ scope: "bastra-recall", score: 40 }, p, MUST_LOAD), true);
-  assert.equal(passesScopeFilter({ scope: "all-projects", score: 40 }, p, MUST_LOAD), true);
-  assert.equal(passesScopeFilter({ scope: "bastra", score: 40 }, p, MUST_LOAD), true);
-
-  // ── The #148 case: a foreign-scope hit that matched its hand-written
-  //    recall_when in the REQUIRED band IS deliberate cross-project relevance.
-  assert.equal(
-    passesScopeFilter({ scope: "bastra-io", score: 150, matched_recall_when: true }, p, MUST_LOAD),
-    true,
-    "foreign scope + recall_when match + REQUIRED band → passes (the Discord #dev case)",
-  );
-
-  // ── The #110 noise case MUST stay filtered: a foreign-scope hit that scored
-  //    high on tag/topic overlap WITHOUT a recall_when match (the bastra-io
-  //    hit at 159 that disproved the original score-only bypass).
-  assert.equal(
-    passesScopeFilter({ scope: "bastra-io", score: 159, matched_recall_when: false }, p, MUST_LOAD),
-    false,
-    "foreign scope, high score, but no recall_when match → still filtered (#110)",
-  );
-  assert.equal(
-    passesScopeFilter({ scope: "bastra-io", score: 159 }, p, MUST_LOAD),
-    false,
-    "missing matched_recall_when is treated as no-match → filtered",
-  );
-
-  // ── A recall_when match BELOW the REQUIRED band does not pass — deliberate
-  //    but weak is still curation noise for a foreign project.
-  assert.equal(
-    passesScopeFilter({ scope: "bastra-io", score: 80, matched_recall_when: true }, p, MUST_LOAD),
-    false,
-    "recall_when match but below REQUIRED band → filtered",
-  );
 });

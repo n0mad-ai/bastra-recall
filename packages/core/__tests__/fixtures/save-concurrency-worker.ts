@@ -1,9 +1,7 @@
 import { readFile } from "node:fs/promises";
-import {
-  MEMORY_WRITE_CONFLICT,
-  saveMemory,
-} from "../../src/save.js";
-import type { SaveMemoryInput } from "../../src/save.js";
+import { saveMemory } from "../../src/save.js";
+import { MEMORY_WRITE_CONFLICT } from "../../src/save-schema.js";
+import type { SaveMemoryInput } from "../../src/save-schema.js";
 
 const [vault, body, expectedFile] = process.argv.slice(2);
 

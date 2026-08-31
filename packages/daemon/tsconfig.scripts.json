@@ -1,0 +1,9 @@
+{
+  "$comment": "Type-checking for the operational scripts (#419). They are not BUILT — `tsc` still compiles src/ into dist/ from tsconfig.json alone, so neither the build's output nor its speed changes. What this adds is a guard: a script that stops compiling fails `npm run check:types` instead of failing mid-operation on real data. `rootDir` is widened to the repo root because several scripts import core straight from source rather than through the built package; with `noEmit` it shapes nothing, it only has to be wide enough not to reject those files.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "../.."
+  },
+  "include": ["scripts/**/*.ts"]
+}

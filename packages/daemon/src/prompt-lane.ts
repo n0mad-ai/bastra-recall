@@ -1,5 +1,5 @@
 /**
- * UserPromptSubmit lane, daemon-side (#343 — stage A of #305 direction 2).
+ * UserPromptSubmit lane, daemon-side (#343/#15 — stage A of #305 direction 2).
  *
  * This is the pipeline that lived in `prompt-hook.ts` (#33/#252/#217/#151),
  * moved server-side verbatim: mode detection, trivial gate, recall + reflex
@@ -33,12 +33,16 @@ import { randomUUID } from "node:crypto";
 import { detectProject } from "@bastra-recall/core/topics";
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
-import { requiredHeadline } from "./band-wording.js";
+import { requiredHeadline, unfusedHeadline } from "./band-wording.js";
+import { applyLaneScopeFilter, projectConfidence, projectForFilter, type ScopeFilterMode } from "./scope-filter.js";
+
 import { envFirst, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { claudeSessionPidFrom, sessionFeedPath, STATUSLINE_DIR } from "./statusline-session.js";
 import { idleStatuslineState } from "./statusline-feed.js";
 import { reportHinted } from "./hook-hinted.js";
+import { hookClient } from "./hook-surface.js";
+import { governContext } from "./context-governor.js";
 import type { Prewarmer, PrewarmOutcome } from "./embedding-prewarm.js";
 import {
   bumpShown,
@@ -103,6 +107,25 @@ interface RecallResponse {
   weak_result?: boolean;
   /** #230: stricter subset of weak_result — the fact has no home in this vault. */
   no_home?: boolean;
+  /**
+   * #302/P0: RRF lief NICHT — der Vector-Arm fehlte, lief in seine Deadline
+   * oder fiel aus, und `score` trägt rohe MiniSearch-Werte statt der fusionierten
+   * Skala. Die sind nach oben offen (sechsstellig auf einem echten Vault), also
+   * beschreiben die Floors 50/100 dort gar nichts.
+   *
+   * Die Lane las das Feld bisher nicht und maß rohe Werte trotzdem an
+   * MUST_LOAD_SCORE: alles wurde REQUIRED, umging den Backoff und wurde als
+   * „beide Suchpfade waren sich einig" angekündigt, während nur einer lief.
+   */
+  unfused?: boolean;
+  /** Codex-Gegenreview: Kennt der VAULT den mitgeschickten Projektnamen als
+   *  Scope (oder Familienmitglied)? Nur der Daemon kann das beantworten — die
+   *  Lane sieht den Vault nicht. `false` heißt: nicht filtern. */
+  project_known?: boolean;
+  /** #342: warum die Fusion ausfiel — `vector-arm-timeout` | `vector-arm-error`
+   *  | `vector-arm-empty`. Trennt „diese Maschine degradiert gerade" von
+   *  „Embeddings sind hier aus". */
+  degraded?: string;
 }
 
 /** #217 Reflex-Lane: lean hit vom /hook/reflex-Endpoint. */
@@ -294,8 +317,15 @@ export async function runPromptLane(
    *  forget by contract — this lane never awaits it (see below). Absent =
    *  no embedding provider wired at all. */
   prewarm?: Prewarmer,
+  /** #371: the ids of the memories the user wired as `recall_mode: reflex`,
+   *  read straight off the vault index by the route (in-memory, no I/O). Mode
+   *  "none" can inject nothing else, so this list is what decides whether the
+   *  recall below is worth paying for. Absent = no accessor wired (an older
+   *  caller, a unit test): the lane then recalls exactly as it did before. */
+  reflexPool?: () => string[],
 ): Promise<string> {
   const startedAt = Date.now();
+  const client = hookClient(payload);
 
   if (payload.hook_event_name !== "UserPromptSubmit") return "{}";
 
@@ -351,7 +381,10 @@ export async function runPromptLane(
     detectedMode = "none";
   }
 
-  const project = detectProject(payload.cwd ?? process.cwd());
+  const cwd = payload.cwd ?? process.cwd();
+  const project = detectProject(cwd);
+  // §20.5: geratenes Projekt filtert nicht — siehe projectForFilter.
+  const filterProject = projectForFilter(cwd);
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
 
   // #217 Reflex-Lane: feuert unabhängig vom Retrieval-Gate — auch bei
@@ -368,6 +401,45 @@ export async function runPromptLane(
   const k = detectedMode === "generic" ? 3 : 5;
   const effectiveFloor = effectiveScoreFloor(detectedMode);
 
+  const sessionId = payload.session_id ?? "";
+  const state = await loadSessionState(sessionId);
+
+  // #371: in mode "none" the recall can only ever contribute a memory that
+  // the user wired as `recall_mode: reflex` (the filter below) and that this
+  // session has not already shown inside the 4h window (the dedup further
+  // down). Both questions are independent of the query and answerable in
+  // microseconds — the vault index and the session-state file are already in
+  // hand. Asked BEFORE the recall they turn ~210ms of full-vault hybrid search
+  // into nothing on exactly the prompts whose result was going to be thrown
+  // away. Measured on the 19.–24.08. log: 91% of prompts run in mode "none",
+  // 83.5% of those inject nothing, and 10.9% ran inside a window in which
+  // every wired memory was already suppressed.
+  //
+  // What this deliberately is NOT: a restriction of the recall's CANDIDATE
+  // SPACE to the wired pool. The floor of 50 in mode "none" means "top 4 of an
+  // arm over the WHOLE vault" — RRF_SCALE/(RRF_K + rank) ≥ 50 ⇔ rank ≤ 4 —
+  // and ranked against a two-document pool every wired memory scores 70–164 by
+  // construction, so the gate would stop gating and both conventions would
+  // inject on the first prompt of every 4h window instead of on the prompt
+  // they belong to (#371). The recall that still runs here is byte-identical
+  // to the one that ran before; only whether it runs at all is new.
+  let recallSkipped: "reflex-pool-empty" | "reflex-all-suppressed" | undefined;
+  if (detectedMode === "none" && reflexPool) {
+    const wired = reflexPool();
+    if (wired.length === 0) {
+      recallSkipped = "reflex-pool-empty";
+    } else {
+      let anyEligible = false;
+      for (const id of wired) {
+        if (!shouldDropHit(state.shown[id], await getLoadedMarkerMtime(id))) {
+          anyEligible = true;
+          break;
+        }
+      }
+      if (!anyEligible) recallSkipped = "reflex-all-suppressed";
+    }
+  }
+
   let resp: RecallResponse | null = null;
   let status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error" = "ok";
   let errMsg: string | null = null;
@@ -378,12 +450,29 @@ export async function runPromptLane(
   // recall that DOES understand it never ran on ordinary work prompts. Now it
   // runs on every non-trivial prompt; what may inject in mode "none" is
   // filtered below to user-wired reflex memories at REQUIRED strength.
-  {
+  // #371 narrowed "every non-trivial prompt" to "every non-trivial prompt on
+  // which a wired memory could actually be injected" — see the gate above.
+  if (recallSkipped !== undefined) {
+    // The same outcome the filter below would have produced, without the
+    // search: no hits, and the status the telemetry series already carries for
+    // this case (`resp` stays null, so the `no-hits` line below cannot fire).
+    status = "no-hits";
+  } else {
     try {
       resp = await postJson<RecallResponse>(
         selfBaseUrl,
         "/hook/recall",
-        { query: prompt, project, k, tool_name: "UserPromptSubmit", session_id: payload.session_id ?? null },
+        {
+          query: prompt,
+          project,
+          k,
+          tool_name: "UserPromptSubmit",
+          session_id: payload.session_id ?? null,
+          // #445: die Lane weist sich aus — wie bash-pre/bash-fail seit #263.
+          // Ohne die beiden Felder liest der Empfänger `unknown/unknown`.
+          client,
+          hook_source: "prompt",
+        },
         remainingMs,
       );
     } catch (err) {
@@ -423,19 +512,27 @@ export async function runPromptLane(
   }
   if (resp && filtered.length === 0) status = "no-hits";
 
-  const sessionId = payload.session_id ?? "";
-  const state = await loadSessionState(sessionId);
-
   // #217: Session-Dedup für Reflex-Hits (max 1×/4h pro Memory, wie hook.ts).
   // Danach id-Dedup gegen die Recall-Liste — Reflex ist das vom User
   // verdrahtete, stärkere Signal und behält den Hit.
   const rawReflexHits: PromptReflexHit[] = Array.isArray(reflexResp?.hits) ? reflexResp.hits : [];
-  const reflexKept: PromptReflexHit[] = [];
-  for (const h of rawReflexHits) {
-    const loadedMtime = await getLoadedMarkerMtime(h.id);
-    if (shouldDropHit(state.shown[h.id], loadedMtime)) continue;
-    reflexKept.push(h);
-  }
+  // #266: dieselbe Entscheidung wie in der Bash-Lane, über denselben Governor.
+  // Was „bereits gezeigt" heißt, bleibt bei `shouldDropHit` (4h-Fenster,
+  // MAX_SHOW, Load-Marker); ohne Budget aufgerufen, weil diese Lane heute
+  // keines hat — Mechanik vereinheitlichen, nicht verschärfen.
+  const reflexGoverned = governContext(
+    await Promise.all(
+      rawReflexHits.map(async (h, i) => ({
+        id: h.id,
+        priority: i,
+        text: h.summary ?? "",
+        alreadyShown: shouldDropHit(state.shown[h.id], await getLoadedMarkerMtime(h.id)),
+      })),
+    ),
+    {},
+  );
+  const reflexKeptIds = new Set(reflexGoverned.kept.map((g) => g.id));
+  const reflexKept: PromptReflexHit[] = rawReflexHits.filter((h) => reflexKeptIds.has(h.id));
   const reflexIds = new Set(reflexKept.map((h) => h.id));
   let recallHits = filtered.filter((h) => !reflexIds.has(h.id));
   // Semantic-reflex hits share the reflex lane's per-memory session dedup
@@ -444,14 +541,45 @@ export async function runPromptLane(
   // 1× per 4h window, and an already-loaded memory never re-injects. The
   // ordinary hint modes stay backoff-governed as before.
   if (detectedMode === "none") {
-    const kept: RecallHit[] = [];
-    for (const h of recallHits) {
-      const loadedMtime = await getLoadedMarkerMtime(h.id);
-      if (shouldDropHit(state.shown[h.id], loadedMtime)) continue;
-      kept.push(h);
-    }
-    recallHits = kept;
+    const governed = governContext(
+      await Promise.all(
+        recallHits.map(async (h, i) => ({
+          id: h.id,
+          priority: i,
+          text: h.summary ?? "",
+          alreadyShown: shouldDropHit(state.shown[h.id], await getLoadedMarkerMtime(h.id)),
+        })),
+      ),
+      {},
+    );
+    const keptIds = new Set(governed.kept.map((g) => g.id));
+    recallHits = recallHits.filter((h) => keptIds.has(h.id));
   }
+
+  // §20.5: Diese Lane filterte nie nach Projekt-Scope — fremde Treffer kamen
+  // durch, während Write-Lane und SessionStart seit #110 hart filtern. Der
+  // Filter läuft hier zuerst im SHADOW-Modus: er misst, was er verwerfen
+  // würde, und verwirft nichts. Die Anker-Ausnahme bleibt (ein hand-
+  // geschriebener Trigger aus einem anderen Projekt IST eine Absicht),
+  // Reflex-Treffer sind ausgenommen, und ohne Fusion ist die Ausnahme zu.
+  const scopeFilter = applyLaneScopeFilter(
+    recallHits,
+    filterProject,
+    {
+      allowAnchoredCrossScope: true,
+      mustLoadScore: MUST_LOAD_SCORE,
+      unfused: resp?.unfused === true,
+      exemptReflex: true,
+      projectKnown: resp?.project_known,
+    },
+  );
+  recallHits = scopeFilter.hits;
+  // Codex-Gegenreview: `no-hits` wurde oben bestimmt, VOR diesem Filter. Trägt
+  // er im enforce-Modus alles ab, meldete die Telemetrie weiter "ok" bei null
+  // injizierten Treffern — die Serie hätte den Filter nicht von einem stillen
+  // Recall unterscheiden können, also genau das nicht gezeigt, wofür der
+  // Shadow-Modus da ist.
+  if (resp && recallHits.length === 0) status = "no-hits";
 
   let backoffStreak = 0;
   let suppressed = false;
@@ -468,11 +596,23 @@ export async function runPromptLane(
     // an diesem Backoff komplett vorbei (#217): vom User verdrahtet = nie Noise.
     const entry = state.sources?.[BACKOFF_SOURCE];
     consumedForEmit = await wasEmitConsumed(entry);
-    const hasRequired = recallHits.some((h) => h.score >= MUST_LOAD_SCORE);
+    // P0: Auf der unfused Skala ist `>= MUST_LOAD_SCORE` keine Aussage — rohe
+    // BM25-Werte reißen die 100 fast immer. Ein Bypass daraus hieße: Der
+    // Backoff hört genau dann auf zu greifen, wenn der Recall am wenigsten
+    // weiß. Ohne Fusion gibt es deshalb kein REQUIRED und keinen Bypass.
+    const hasRequired =
+      resp?.unfused !== true && recallHits.some((h) => h.score >= MUST_LOAD_SCORE);
     const decision = decideBackoff(entry, consumedForEmit, hasRequired);
     backoffStreak = decision.streak;
     suppressed = detectedMode === "retrieval" ? false : decision.suppress;
-    const block = formatHintBlock(recallHits, project, detectedMode, resp?.weak_result === true);
+    const block = formatHintBlock(
+      recallHits,
+      project,
+      detectedMode,
+      resp?.weak_result === true,
+      resp?.unfused === true,
+      client,
+    );
     if (suppressed) {
       // Suppressed drops only the recall block (#161); reflex still emits.
       suppressedTokensEst = Math.ceil(block.length / 4);
@@ -482,7 +622,7 @@ export async function runPromptLane(
     }
   }
 
-  const reflexBlock = reflexKept.length > 0 ? formatReflexBlock(reflexKept, project) : null;
+  const reflexBlock = reflexKept.length > 0 ? formatReflexBlock(reflexKept, project, client) : null;
   const blocks = [reflexBlock, recallBlock].filter((b): b is string => b !== null);
   const stdout =
     blocks.length === 0
@@ -522,18 +662,36 @@ export async function runPromptLane(
     detected_mode: detectedMode,
     prompt_chars: prompt.length,
     daemon_url: selfBaseUrl,
-    daemon_reachable: resp !== null || reflexResp !== null,
+    // A skipped recall (#371) is not an unreachable daemon: the lane IS the
+    // daemon and the vault answered the question locally.
+    daemon_reachable: resp !== null || reflexResp !== null || recallSkipped !== undefined,
     hint_count: suppressed ? 0 : recallHits.length,
     reflex_hint_count: reflexKept.length,
     hint_tokens_est: blocks.length === 0 ? 0 : Math.ceil(blocks.join("\n").length / 4),
     top_score: resp?.hits?.[0]?.score ?? null,
     latency_ms_total: Date.now() - startedAt,
     backoff_streak: backoffStreak,
+    // §20.5 Shadow-Messung: was ein Scope-Filter hier verwerfen WÜRDE, plus
+    // der Kontext, in dem die Entscheidung fällt — Modus (shadow/enforce),
+    // Projekt-Scope, Retrieval-Modus (steht schon als detected_mode oben) und
+    // `unfused`. Die Scope-Namen kommen mit, damit sich auswerten lässt, ob
+    // dieselben zwei Fremdprojekte alles ausmachen oder ob es breit streut.
+    scope_filter_mode: scopeFilter.mode,
+    dropped_scope_count: scopeFilter.droppedCount,
+    project_confidence: projectConfidence(cwd),
+    filter_project: scopeFilter.filterProject,
+    ...(scopeFilter.skipped ? { scope_filter_skipped: scopeFilter.skipped } : {}),
+    ...(scopeFilter.droppedScopes.length > 0
+      ? { dropped_scopes: scopeFilter.droppedScopes }
+      : {}),
+    ...(resp?.unfused === true ? { unfused: true } : {}),
+    ...(resp?.degraded ? { degraded: resp.degraded } : {}),
     suppressed,
     suppressed_tokens_est: suppressedTokensEst,
     status: suppressed ? "suppressed" : status,
     error: errMsg,
     prewarm: prewarmOutcome,
+    recall_skipped: recallSkipped,
   });
 
   return stdout;
@@ -541,18 +699,33 @@ export async function runPromptLane(
 
 // ─── formatting ─────────────────────────────────────────────────────────────
 
-function formatHintLine(h: RecallHit): string {
+function formatHintLine(h: RecallHit, hideScore = false): string {
   const summary = h.summary.length > 220 ? h.summary.slice(0, 217) + "…" : h.summary;
-  return `- ${h.id} (${h.type}, score ${Math.round(h.score)}): ${summary}`;
+  // P0: Auf der unfused Skala ist die Zahl nicht vergleichbar — weder mit den
+  // Bändern noch zwischen zwei Aufrufen. Sie wegzulassen ist ehrlicher, als
+  // eine Größenordnung zu zeigen, die zum Vergleichen einlädt.
+  return hideScore
+    ? `- ${h.id} (${h.type}): ${summary}`
+    : `- ${h.id} (${h.type}, score ${Math.round(h.score)}): ${summary}`;
 }
 
-export function formatHintBlock(hits: RecallHit[], project: string | null, mode: DetectedMode, weak = false): string {
+export function formatHintBlock(
+  hits: RecallHit[],
+  project: string | null,
+  mode: DetectedMode,
+  weak = false,
+  unfused = false,
+  surface = "claude-code",
+): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
-  const head = `<recall-hints surface="claude-code" trigger="prompt-lookup"${projAttr}>`;
+  const head = `<recall-hints surface="${escapeAttr(surface)}" trigger="prompt-lookup"${projAttr}>`;
   const tail = `</recall-hints>`;
 
-  const required = hits.filter((h) => h.score >= MUST_LOAD_SCORE);
-  const optional = hits.filter((h) => h.score < MUST_LOAD_SCORE);
+  // P0: Ohne Fusion gibt es keine Bänder. Die Werte stammen aus einer offenen
+  // Skala, auf der die 100 kein Signal ist — also wird nicht gebandet, sondern
+  // gesagt, woran das Modell die Treffer stattdessen misst: Titel und Summary.
+  const required = unfused ? [] : hits.filter((h) => h.score >= MUST_LOAD_SCORE);
+  const optional = unfused ? [] : hits.filter((h) => h.score < MUST_LOAD_SCORE);
   const sections: string[] = [];
 
   if (mode === "retrieval") {
@@ -572,11 +745,20 @@ export function formatHintBlock(hits: RecallHit[], project: string | null, mode:
         `if the vault does not answer it, write that you do not know instead of guessing. ` +
         `Pre-recalled candidates for this prompt:`,
     );
-  } else {
+  } else if (!unfused) {
     sections.push(
       `Pre-recall found memories both search paths agreed on for this prompt ` +
         `(score >=${MUST_LOAD_SCORE}). Load them via bastra-recall:load_memory before answering.`,
     );
+  }
+
+  if (unfused) {
+    // Die Ankündigung darf nicht behaupten, ein zweiter Pfad habe zugestimmt —
+    // es lief nur einer. `unfusedHeadline` sagt genau das, in derselben
+    // Wortwahl, die die Write-Lane bereits benutzt.
+    sections.push(unfusedHeadline("this prompt"));
+    sections.push("");
+    for (const h of hits) sections.push(formatHintLine(h, true));
   }
 
   if (required.length > 0) {
@@ -608,9 +790,9 @@ export function formatHintBlock(hits: RecallHit[], project: string | null, mode:
  * #217 Reflex-Block: eigener trigger="reflex"-Frame, damit das Modell die
  * Herkunft (vom User verdrahteter Trigger, kein Score-Ranking) erkennt.
  */
-export function formatReflexBlock(hits: PromptReflexHit[], project: string | null): string {
+export function formatReflexBlock(hits: PromptReflexHit[], project: string | null, surface = "claude-code"): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
-  const head = `<recall-hints surface="claude-code" trigger="reflex"${projAttr}>`;
+  const head = `<recall-hints surface="${escapeAttr(surface)}" trigger="reflex"${projAttr}>`;
   const sections: string[] = [
     `Reflex memories: the user wired these to fire when their trigger matches ` +
       `a prompt — this prompt matched. load_memory(id) before answering:`,
@@ -707,6 +889,22 @@ interface PromptHookTelemetry {
    *  connectivity counter (#352): it is the empty-injection suppression
    *  cadence and climbs on perfectly healthy `status:"ok"` responses. */
   backoff_streak?: number;
+  /**
+   * §20.5 Shadow-Messung: In welchem Modus der Lane-Scope-Filter lief
+   * ("shadow" misst nur) und wie viele Treffer ein Erzwingen verworfen hätte.
+   * `dropped_scopes` nennt die fremden Scope-Namen — ohne sie ist eine Zahl
+   * nicht auswertbar: „12 verworfen" kann ein einziges Nachbarprojekt sein
+   * oder breite Streuung, und das sind zwei verschiedene Entscheidungen.
+   */
+  scope_filter_mode?: ScopeFilterMode;
+  dropped_scope_count?: number;
+  dropped_scopes?: string[];
+  /** §20.5: "fallback" heißt, der Projektname war geraten — dann filtert die
+   *  Lane nicht, und ein `dropped_scope_count` von 0 sagt nichts über Scopes. */
+  project_confidence?: "git-root" | "root-match" | "fallback" | "none";
+  /** Der Name, gegen den verglichen wurde — null heißt: nicht gefiltert. */
+  filter_project?: string | null;
+  scope_filter_skipped?: "no-project" | "no-scope-evidence";
   /** #161: true when the empty-streak backoff suppressed the injection. */
   suppressed?: boolean;
   /** #161: est. tokens of the NOT-injected block — the savings side of ROI. */
@@ -721,6 +919,28 @@ interface PromptHookTelemetry {
    *  "vector-arm-timeout"` (#342): the count of those on the FIRST assertion
    *  call of a turn is what the prewarm is supposed to drive to zero. */
   prewarm?: PrewarmOutcome;
+  /** #371: why mode "none" did not run a recall on this prompt —
+   *  "reflex-pool-empty" (no memory is wired as `recall_mode: reflex`, so the
+   *  mode-"none" filter could not have passed anything) or
+   *  "reflex-all-suppressed" (every wired memory is inside its 4h session
+   *  dedup window, so every hit would have been dropped). Absent means the
+   *  recall ran. This is the field that measures the fix: on a skipped prompt
+   *  `latency_ms_total` should sit in the pre-19.08. band. */
+  recall_skipped?: "reflex-pool-empty" | "reflex-all-suppressed";
+  /**
+   * P0: Dieser Aufruf lief OHNE Fusion — nur der lexikalische Arm, `score` auf
+   * roher Skala, keine Bänder, kein REQUIRED, kein Backoff-Bypass. Absent =
+   * regulär fusioniert.
+   *
+   * Die Lane las den Zustand vorher nicht, also war ein degradierter Aufruf in
+   * ihrer eigenen Telemetrie von einem gesunden nicht zu unterscheiden — nur
+   * die Recall-Telemetrie wusste davon. Genau diese Lücke macht eine Maschine,
+   * die bei JEDEM Aufruf degradiert, unsichtbar.
+   */
+  unfused?: boolean;
+  /** P0/#342: der Grund dafür — `vector-arm-timeout` | `vector-arm-error` |
+   *  `vector-arm-empty`. Trennt „zu langsam" von „aus" von „kein Vektor da". */
+  degraded?: string;
 }
 
 async function writeTelemetry(payload: PromptHookTelemetry): Promise<void> {

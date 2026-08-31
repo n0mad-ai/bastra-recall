@@ -121,3 +121,83 @@ test("roundtrip: a framed hint block with hostile vault text scrubs away complet
   assert.match(text, /user prose/);
   assert.match(text, /tail prose/);
 });
+
+// ─── #365 item 10: nested marker spoofs survive a single pass ─────────────
+//
+// Stripping is a rewrite: removing the inner marker of `<recall-hints<recall-
+// hints>>` re-forms a valid outer one from the surviving halves. One pass
+// therefore leaves a working fence marker in a hint body — exactly what the
+// #152 anti-spoof exists to prevent.
+
+/** Every nesting shape that reconstitutes a marker after one replacement. */
+const NESTED_SPOOFS = [
+  "<recall-hints<recall-hints>>",
+  "</recall-<recall-hints>hints>",
+  "<<recall-hints>recall-hints>",
+  "</recall-hints<system-reminder>>",
+  "<system-rem<system-reminder>inder>",
+];
+
+test("stripFenceMarkers strips nested marker spoofs to a fixpoint (#365 item 10)", () => {
+  for (const spoof of NESTED_SPOOFS) {
+    const out = stripFenceMarkers(spoof);
+    assert.ok(!out.includes("recall-hints"), `${spoof} left a recall-hints marker: ${out}`);
+    assert.ok(!out.includes("system-reminder"), `${spoof} left a system-reminder marker: ${out}`);
+    assert.equal(stripFenceMarkers(out), out, "result must be a fixpoint");
+  }
+});
+
+test("stripFenceMarkers keeps the prose around a nested spoof", () => {
+  const out = stripFenceMarkers(`title <recall-hints<recall-hints>> tail`);
+  assert.ok(!out.includes("recall-hints"));
+  assert.match(out, /^title {2}tail$/);
+});
+
+/** `<tag<tag…<tag>…>>` — n levels, each costing exactly one stripping pass. */
+function nest(levels: number, tag = "recall-hints"): string {
+  let s = `<${tag}>`;
+  for (let i = 0; i < levels; i++) s = `<${tag}${s}>`;
+  return s;
+}
+
+test("nesting deeper than the cap leaves NO usable marker behind", () => {
+  // The cap has to bound the work, not hand back a working fence. One pass
+  // short of the fixpoint the residue is exactly `<recall-hints>` — a valid
+  // opener, from a memory title a hint body would then embed verbatim. So
+  // nothing that could form a marker may survive the cap: no angle brackets.
+  // The bare tag NAME may survive as prose — without brackets it can never
+  // re-form a marker, and the module already leaves bare mentions alone.
+  for (const levels of [10, 11, 12, 40]) {
+    const out = stripFenceMarkers(nest(levels));
+    assert.ok(!out.includes("<recall-hints"), `nest(${levels}) left an opener: ${out}`);
+    assert.ok(!out.includes("<"), `nest(${levels}) left an opener fragment: ${out}`);
+    assert.ok(!out.includes(">"), `nest(${levels}) left a closer fragment: ${out}`);
+    assert.equal(stripFenceMarkers(out), out, "result must be a fixpoint");
+  }
+});
+
+test("nesting within the cap is cleaned completely", () => {
+  for (const levels of [1, 5, 8, 9]) {
+    assert.equal(stripFenceMarkers(nest(levels, "system-reminder")), "", `nest(${levels})`);
+  }
+});
+
+test("the cap's bracket sweep never touches text that settles", () => {
+  // Only an input that outruns the cap loses its brackets. Ordinary prose with
+  // a stray `<` reaches the fixpoint on the first pass and comes back intact.
+  const input = "compare a < b, then </recall-hints> is dropped, and 3 > 2 stays";
+  const out = stripFenceMarkers(input);
+  assert.ok(!out.includes("recall-hints"));
+  assert.match(out, /compare a < b, then {2}is dropped, and 3 > 2 stays/);
+});
+
+test("scrubInjectedBlocks still leaves an orphaned closer alone (module contract)", () => {
+  // Deliberate, documented (scrub.ts header): only a COMPLETE paired block is
+  // injected context. The fixpoint fix belongs to the render-side anti-spoof
+  // only — an ingest scrub that ate bare fragments would break memories that
+  // document bastra's own hook formats.
+  const input = "normal text </recall-hints> more text";
+  const { text, removed } = scrubInjectedBlocks(input);
+  assert.equal(text, input);
+  assert.deepEqual(removed, []);
+});

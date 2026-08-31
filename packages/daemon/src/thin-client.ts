@@ -1,5 +1,5 @@
 /**
- * Shared transport for the thin hook clients (#343/#344).
+ * Shared transport for the thin hook clients (#343/#344/#15).
  *
  * Every migrated hook CLI is the same ~100 lines: read stdin, POST the
  * payload to its daemon lane, write the response body to stdout VERBATIM,
@@ -15,6 +15,7 @@
  */
 import { request } from "node:http";
 import { envFirst } from "./env.js";
+import { decorateHookPayload } from "./hook-surface.js";
 
 export const DEFAULT_PORT = 6723;
 
@@ -50,7 +51,13 @@ export function postLane(
       reject(err);
       return;
     }
-    const payload = Buffer.from(JSON.stringify(body), "utf8");
+    const record = body && typeof body === "object" && !Array.isArray(body)
+      ? body as Record<string, unknown>
+      : null;
+    const wireBody = record && "payload" in record
+      ? { ...record, payload: decorateHookPayload(record.payload) }
+      : body;
+    const payload = Buffer.from(JSON.stringify(wireBody), "utf8");
     const req = request(
       {
         method: "POST",

@@ -46,9 +46,17 @@ function args(positional: string[], dryRun = false): ParsedArgs {
 
 async function withProject(fn: (dir: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-rules-"));
+  // `cmdRules` reports progress on stdout, and under `node --test` the child's
+  // stdout is the same pipe that carries the runner's v8-serialized result
+  // frames. Node <= 22.23.2 / 24.19.0 read the frame length signed, so a
+  // non-ASCII byte landing where a length is expected crashes the parent's
+  // decoder (nodejs/node#64061). Capturing the output keeps it off that pipe.
+  const origWrite = process.stdout.write.bind(process.stdout);
+  process.stdout.write = (() => true) as typeof process.stdout.write;
   try {
     await fn(dir);
   } finally {
+    process.stdout.write = origWrite;
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 }

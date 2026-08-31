@@ -12,7 +12,8 @@ import { mkdtemp, rm, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isPathSafeComponent } from "../src/schema.js";
-import { SaveMemoryInput, saveMemory } from "../src/save.js";
+import { saveMemory } from "../src/save.js";
+import { SaveMemoryInput } from "../src/save-schema.js";
 import { trashPathFor } from "../src/audit-log.js";
 
 const VALID_INPUT = {

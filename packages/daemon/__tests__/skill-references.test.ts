@@ -61,13 +61,15 @@ test("gated subsystems name their reference file inside the gate signal", async 
   const adoption = formatAdoptionCandidateBlock({ id: "mem-1", title: "Ein Fund", count: 4 });
   assert.match(adoption, /intake\.md/);
 
-  const sessionHook = await readFile(
-    join(dirname(fileURLToPath(import.meta.url)), "..", "src", "session-hook.ts"),
+  // #369: the block lives in the daemon-side lane now — session-hook.ts is a
+  // thin client and carries no prompt text at all.
+  const sessionLane = await readFile(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "src", "session-lane.ts"),
     "utf8",
   );
-  const taxonomyBlock = sessionHook.slice(
-    sessionHook.indexOf("<vault-taxonomy>"),
-    sessionHook.indexOf("</vault-taxonomy>"),
+  const taxonomyBlock = sessionLane.slice(
+    sessionLane.indexOf("<vault-taxonomy>"),
+    sessionLane.indexOf("</vault-taxonomy>"),
   );
   assert.ok(taxonomyBlock.length > 0, "the vault-taxonomy block moved — update this test");
   assert.match(taxonomyBlock, /taxonomy\.md/);

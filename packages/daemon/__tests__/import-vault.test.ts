@@ -8,7 +8,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readdir, rm, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readdir, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import matter from "gray-matter";
@@ -377,3 +377,43 @@ test("#220 archive skip: _archive/, archive/ and --exclude dirs never import", a
     await rm(vault, { recursive: true, force: true });
   }
 });
+
+/**
+ * #365/7: `byAdapter` was incremented BEFORE the save, so it counted attempts.
+ * A vault the process cannot write to reported `byAdapter.generic: 80` next to
+ * `imported: 0, ids: []` — the itemisation contradicting the total it exists to
+ * itemise, i.e. exactly the invariant the #312 block above pins. The counter now
+ * sits immediately before `ids.push`, the one place that means "this landed".
+ */
+test(
+  "#365 a failed save lands in neither counter: byAdapter still sums to imported",
+  { skip: typeof process.getuid === "function" && process.getuid() === 0 ? "root writes through 0555" : false },
+  async () => {
+    const src = await tmp("iv-365-src-");
+    const vault = await tmp("iv-365-vault-");
+    try {
+      // one per adapter, so a regression would show up in either counter
+      await writeSrc(src, "alpha.md", "---\nname: Alpha\ndescription: Alpha-Projekt\ntype: project\n---\nAlpha body.");
+      await writeSrc(src, "beta.md", "# Beta\n\nDie Beta-Notiz ohne Frontmatter.\n");
+      // r-x: the sources still map cleanly, every write below fails with EACCES.
+      await chmod(vault, 0o555);
+
+      const r = await importVault(vault, src, { label: "eacces" });
+
+      assert.equal(r.scanned, 2, "both files are scanned and mapped — the failure is at the write");
+      assert.equal(r.imported, 0, "nothing landed");
+      assert.deepEqual(r.ids, []);
+      assert.equal(
+        r.byAdapter.claudeCode + r.byAdapter.generic + r.byAdapter.index,
+        r.imported,
+        `breakdown must sum to imported (${JSON.stringify(r.byAdapter)} vs ${r.imported})`,
+      );
+      assert.equal(r.skipped.length, 2, "content that did not land is reported as skipped");
+      for (const sk of r.skipped) assert.match(sk.reason, /save failed/);
+    } finally {
+      await chmod(vault, 0o755).catch(() => {});
+      await rm(src, { recursive: true, force: true });
+      await rm(vault, { recursive: true, force: true });
+    }
+  },
+);

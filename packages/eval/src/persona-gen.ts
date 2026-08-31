@@ -60,7 +60,10 @@ async function ollama(model: string, prompt: string, baseURL: string): Promise<s
       stream: false,
       // Low but not zero: identical phrasing across six voices would defeat the
       // point, and greedy decoding on a small model tends to converge on one.
-      options: { temperature: 0.4, num_predict: 80 },
+      // num_ctx explicit: without it Ollama sizes the context from the model and
+      // a stock tag loads at its full training context — 262144 for qwen3:4b,
+      // a 36 GB KV cache that the cold load never finishes allocating (#366).
+      options: { temperature: 0.4, num_predict: 80, num_ctx: 4096 },
     }),
   });
   if (!res.ok) throw new Error(`ollama ${res.status}: ${await res.text()}`);

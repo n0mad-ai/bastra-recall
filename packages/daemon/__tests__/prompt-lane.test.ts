@@ -262,6 +262,9 @@ function startMockDaemon(handler: (req: IncomingMessage, res: ServerResponse) =>
 async function runHook(
   payload: object,
   env: Record<string, string>,
+  /** #371: the wired reflex pool the route injects in production. Omitted =
+   *  the pre-#371 lane, which recalls on every non-trivial prompt. */
+  reflexPool?: () => string[],
 ): Promise<{ stdout: string }> {
   const applied: Record<string, string | undefined> = {};
   const withDefaults: Record<string, string> = { BASTRA_TELEMETRY: "off", ...env };
@@ -271,7 +274,13 @@ async function runHook(
   }
   try {
     const baseUrl = withDefaults.BASTRA_HTTP_URL ?? "http://127.0.0.1:1";
-    const stdout = await runPromptLane(payload as Parameters<typeof runPromptLane>[0], null, baseUrl);
+    const stdout = await runPromptLane(
+      payload as Parameters<typeof runPromptLane>[0],
+      null,
+      baseUrl,
+      undefined,
+      reflexPool,
+    );
     return { stdout };
   } finally {
     for (const [k, v] of Object.entries(applied)) {
@@ -773,6 +782,405 @@ test("#356 — prompt_hook_call carries the payload session_id and the injected 
   } finally {
     await daemon.close();
     await rm(logDir, { recursive: true, force: true });
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+// ─── #371: mode "none" only pays for a recall that could contribute ─────────
+//
+// The lane's mode-"none" filter lets exactly one class of memory through: the
+// ones the user wired as `recall_mode: reflex`, and only while the session has
+// not already shown them inside the 4h window. Since a50f849 (19.08.) the lane
+// paid a full-vault hybrid recall to find that out — 210ms p50 on 91% of
+// prompts, 83.5% of them injecting nothing.
+//
+// The four tests below pin BOTH directions. Two fix today's semantics (what
+// injects, and what never did) so the gate cannot quietly change them; two
+// prove the gate skips only where the result was going to be discarded.
+
+test("#371 — a reflex-wired hit injects in mode none, with the pool gate exactly as without it", async () => {
+  // Fixation of the injecting case: the same prompt, the same mock, run once
+  // WITHOUT the pool accessor (the pre-#371 lane) and once WITH it. Both must
+  // produce the identical block — the gate may not cost an injection.
+  const before = await mkdtemp(join(tmpdir(), "bastra-371-before-"));
+  const after = await mkdtemp(join(tmpdir(), "bastra-371-after-"));
+  let recallCalls = 0;
+  const daemon = await startMockDaemon((req, res) => {
+    if (req.url === "/hook/recall") recallCalls += 1;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    if (req.url === "/hook/reflex") {
+      res.end('{"hits":[],"recall_id":null}');
+      return;
+    }
+    if (req.url === "/hook/hinted") {
+      res.end('{"ok":true}');
+      return;
+    }
+    res.end(
+      JSON.stringify({
+        hits: [
+          {
+            id: "nachrichtenkonvention",
+            title: "Nachrichtenkonvention",
+            type: "meta-working",
+            scope: "all-projects",
+            summary: "Erst die deutsche Fassung, Plain-Text, Ich-Form.",
+            score: 84,
+            recall_mode: "reflex",
+          },
+          { id: "ordinary-fact", title: "T", type: "project-fact", scope: "p", summary: "s", score: 150 },
+        ],
+        vault_size: 2,
+        latency_ms: 1,
+        recall_id: "x",
+      }),
+    );
+  });
+  try {
+    const payload = {
+      hook_event_name: "UserPromptSubmit",
+      prompt: "dann möchte ich dass du mir eine Nachricht entwirfst, kurz und knapp",
+      cwd: process.cwd(),
+    };
+    const url = `http://127.0.0.1:${daemon.port}`;
+
+    const pre = await runHook(
+      { ...payload, session_id: "s371-before" },
+      { BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: before },
+    );
+    const post = await runHook(
+      { ...payload, session_id: "s371-after" },
+      { BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: after },
+      () => ["nachrichtenkonvention"],
+    );
+
+    assert.match(pre.stdout, /nachrichtenkonvention/, "pre-#371 lane injects the wired convention");
+    assert.equal(post.stdout, pre.stdout, "the gate must not change the injected block by a single byte");
+    assert.equal(recallCalls, 2, "an eligible wired memory still buys a real recall");
+  } finally {
+    await daemon.close();
+    await rm(before, { recursive: true, force: true });
+    await rm(after, { recursive: true, force: true });
+  }
+});
+
+test("#371 — a NON-wired hit never injected in mode none, before or after the gate", async () => {
+  // The other half of the fixation: the strongest possible ordinary hit (150,
+  // REQUIRED band) was already invisible in mode "none" before the gate, and
+  // stays invisible with a non-empty pool. Nothing is lost here because
+  // nothing was ever passed through.
+  const before = await mkdtemp(join(tmpdir(), "bastra-371-nw-before-"));
+  const after = await mkdtemp(join(tmpdir(), "bastra-371-nw-after-"));
+  let recallCalls = 0;
+  const daemon = await startMockDaemon((req, res) => {
+    if (req.url === "/hook/recall") recallCalls += 1;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    if (req.url === "/hook/reflex") {
+      res.end('{"hits":[],"recall_id":null}');
+      return;
+    }
+    res.end(
+      JSON.stringify({
+        hits: [
+          { id: "ordinary-fact", title: "T", type: "project-fact", scope: "p", summary: "s", score: 150 },
+        ],
+        reflex_hits: [],
+        vault_size: 1,
+        latency_ms: 1,
+        recall_id: "x",
+      }),
+    );
+  });
+  try {
+    const payload = {
+      hook_event_name: "UserPromptSubmit",
+      prompt: "lass uns das implementieren",
+      cwd: process.cwd(),
+    };
+    const url = `http://127.0.0.1:${daemon.port}`;
+
+    const pre = await runHook(
+      { ...payload, session_id: "s371-nw-before" },
+      { BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: before },
+    );
+    assert.equal(pre.stdout.trim(), "{}", "a non-wired hit never reached the agent in mode none");
+    assert.equal(recallCalls, 1, "…and the pre-#371 lane paid a full recall to learn that");
+
+    const post = await runHook(
+      { ...payload, session_id: "s371-nw-after" },
+      { BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: after },
+      () => ["nachrichtenkonvention"],
+    );
+    assert.equal(post.stdout.trim(), "{}", "still nothing — the filter, not the gate, keeps it out");
+    assert.equal(recallCalls, 2, "an eligible wired memory means the recall runs, hit or no hit");
+  } finally {
+    await daemon.close();
+    await rm(before, { recursive: true, force: true });
+    await rm(after, { recursive: true, force: true });
+  }
+});
+
+test("#371 — an empty reflex pool skips the recall entirely", async () => {
+  // The default state of a vault: `recall_mode: reflex` is an opt-in reachable
+  // only through a confirmed curator promotion. Nothing can pass the
+  // mode-"none" filter, so the recall is dead work — 210ms p50 on 91% of
+  // prompts, for a filter that cannot fire.
+  const logDir = await mkdtemp(join(tmpdir(), "bastra-371-empty-log-"));
+  const stateDir = await mkdtemp(join(tmpdir(), "bastra-371-empty-state-"));
+  let recallCalled = false;
+  let reflexCalled = false;
+  const daemon = await startMockDaemon((req, res) => {
+    if (req.url === "/hook/recall") recallCalled = true;
+    if (req.url === "/hook/reflex") reflexCalled = true;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    if (req.url === "/hook/reflex") {
+      res.end('{"hits":[],"recall_id":null}');
+      return;
+    }
+    // Would have been a REQUIRED wired hit — must never be requested.
+    res.end(
+      JSON.stringify({
+        hits: [
+          {
+            id: "nachrichtenkonvention",
+            title: "Nachrichtenkonvention",
+            type: "meta-working",
+            scope: "all-projects",
+            summary: "s",
+            score: 150,
+            recall_mode: "reflex",
+          },
+        ],
+        vault_size: 1,
+        latency_ms: 1,
+        recall_id: "x",
+      }),
+    );
+  });
+  try {
+    const { stdout } = await runHook(
+      {
+        hook_event_name: "UserPromptSubmit",
+        session_id: "s371-empty",
+        prompt: "dann möchte ich dass du mir eine Nachricht entwirfst, kurz und knapp",
+        cwd: process.cwd(),
+      },
+      {
+        BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
+        BASTRA_HOOK_STATE_DIR: stateDir,
+        BASTRA_TELEMETRY: "on",
+        BASTRA_LOG_PATH: logDir,
+      },
+      () => [],
+    );
+    assert.equal(stdout.trim(), "{}");
+    assert.equal(recallCalled, false, "no wired memory exists — the recall must not be paid for");
+    assert.equal(reflexCalled, true, "the hard reflex lane is untouched by the gate");
+
+    // The measurement series must survive the fix: same event, same mode, a
+    // latency, plus the reason the recall was skipped.
+    const ev = (await readTelemetryEvents(logDir)).find((e) => e.kind === "prompt_hook_call");
+    assert.ok(ev, "a prompt_hook_call event is still written on a skipped prompt");
+    assert.equal(ev.detected_mode, "none", "the mode field is unchanged");
+    assert.equal(typeof ev.latency_ms_total, "number");
+    assert.equal(ev.recall_skipped, "reflex-pool-empty");
+    assert.equal(ev.status, "no-hits", "the status the discarded-result case already carried");
+    assert.equal(ev.daemon_reachable, true, "a skipped recall is not an unreachable daemon");
+  } finally {
+    await daemon.close();
+    await rm(logDir, { recursive: true, force: true });
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+test("#371 — once every wired memory is session-suppressed, the recall stops running", async () => {
+  // The contamination guard of #217 drops a wired memory that was already
+  // shown in this session (1× / 4h). Before the gate the lane still ran the
+  // full recall on every following prompt of that window and threw the result
+  // away at the dedup — measured on the 19.–24.08. log: 47 of 432 mode-"none"
+  // prompts (10.9%), 10.3s of blocked turn start.
+  const stateDir = await mkdtemp(join(tmpdir(), "bastra-371-supp-"));
+  const logDir = await mkdtemp(join(tmpdir(), "bastra-371-supp-log-"));
+  let recallCalls = 0;
+  const daemon = await startMockDaemon((req, res) => {
+    if (req.url === "/hook/recall") recallCalls += 1;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    if (req.url === "/hook/reflex") {
+      res.end('{"hits":[],"recall_id":null}');
+      return;
+    }
+    if (req.url === "/hook/hinted") {
+      res.end('{"ok":true}');
+      return;
+    }
+    res.end(
+      JSON.stringify({
+        hits: [
+          {
+            id: "nachrichtenkonvention",
+            title: "Nachrichtenkonvention",
+            type: "meta-working",
+            scope: "all-projects",
+            summary: "Erst die deutsche Fassung, Plain-Text, Ich-Form.",
+            score: 84,
+            recall_mode: "reflex",
+          },
+        ],
+        vault_size: 1,
+        latency_ms: 1,
+        recall_id: "x",
+      }),
+    );
+  });
+  try {
+    const payload = {
+      hook_event_name: "UserPromptSubmit",
+      session_id: "s371-suppressed",
+      prompt: "dann möchte ich dass du mir eine Nachricht entwirfst, kurz und knapp",
+      cwd: process.cwd(),
+    };
+    const env = {
+      BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
+      BASTRA_HOOK_STATE_DIR: stateDir,
+      BASTRA_TELEMETRY: "on",
+      BASTRA_LOG_PATH: logDir,
+    };
+    const pool = () => ["nachrichtenkonvention"];
+
+    const first = await runHook(payload, env, pool);
+    assert.match(first.stdout, /nachrichtenkonvention/, "the first prompt of the window injects");
+    assert.equal(recallCalls, 1);
+
+    const second = await runHook(payload, env, pool);
+    assert.equal(second.stdout.trim(), "{}", "the dedup verdict is unchanged: no re-injection");
+    assert.equal(recallCalls, 1, "…and it is now reached WITHOUT a recall");
+
+    const ev = (await readTelemetryEvents(logDir))
+      .filter((e) => e.kind === "prompt_hook_call")
+      .at(-1);
+    assert.equal(ev?.recall_skipped, "reflex-all-suppressed");
+    assert.equal(ev?.detected_mode, "none");
+  } finally {
+    await daemon.close();
+    await rm(stateDir, { recursive: true, force: true });
+    await rm(logDir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * P0 (docs/recall-performance-handoff.md §4.6): Fällt der Vector-Arm aus, liefert
+ * `recallHybrid` rohe MiniSearch-Scores statt fusionierter. Die sind nach oben
+ * offen — im belegten Incident stand 405.584 dort, wo fusioniert höchstens
+ * 163,934 möglich sind. Die Lane las den `unfused`-Marker nicht und maß die
+ * rohen Werte an MUST_LOAD_SCORE: alles wurde REQUIRED, umging den Backoff und
+ * wurde als „beide Suchpfade waren sich einig" angekündigt.
+ */
+test("formatHintBlock — unfused never claims both search paths agreed", () => {
+  const hits: RecallHit[] = [
+    { id: "raw-bm25-hit", title: "R", type: "lesson", scope: "p", summary: "s", score: 405584.777 },
+  ];
+  const block = formatHintBlock(hits, "bastra-recall", "generic", false, true);
+  assert.doesNotMatch(block, /both search paths agreed/);
+  assert.match(block, /semantic search is off/i);
+  assert.match(block, /raw-bm25-hit/, "the hit itself must still be offered");
+});
+
+test("formatHintBlock — unfused shows no REQUIRED band and no score number", () => {
+  const hits: RecallHit[] = [
+    { id: "big", title: "B", type: "lesson", scope: "p", summary: "s", score: 405584.777 },
+    { id: "small", title: "S", type: "lesson", scope: "p", summary: "s", score: 61.2 },
+  ];
+  const block = formatHintBlock(hits, "bastra-recall", "generic", false, true);
+  assert.doesNotMatch(block, /REQUIRED/, "an open-ended scale cannot produce a REQUIRED band");
+  assert.doesNotMatch(block, /OPTIONAL \(score/, "nor an OPTIONAL band");
+  assert.doesNotMatch(block, /405584|405585/, "the raw number invites a comparison it cannot support");
+  assert.match(block, /big/);
+  assert.match(block, /small/, "below the old floor is meaningless here — the hit stays");
+});
+
+test("formatHintBlock — the fused path keeps its bands and its number", () => {
+  const hits: RecallHit[] = [
+    { id: "fused", title: "F", type: "lesson", scope: "p", summary: "s", score: 152.4 },
+  ];
+  const block = formatHintBlock(hits, "bastra-recall", "generic", false, false);
+  assert.match(block, /both search paths agreed/);
+  assert.match(block, /score 152/, "on the fused scale the number is comparable and stays");
+});
+
+test("integration — P0: an unfused recall gets no REQUIRED bypass out of the backoff", async () => {
+  // Der belegte Incident: Vector-Arm in die Deadline gelaufen, `score` roh bei
+  // 405.584. Die alte Lane las das als REQUIRED (>= 100), umging damit den
+  // Backoff und behauptete Einigkeit zweier Suchpfade, von denen nur einer lief.
+  // Ein heißes Suppression-Fenster ist hier der Prüfstand: Ohne Bypass MUSS die
+  // Unterdrückung greifen.
+  const { mkdtemp, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const stateDir = await mkdtemp(join(tmpdir(), "bastra-prompt-unfused-"));
+  const sessionId = "prompt-unfused-no-bypass";
+  await writeFile(
+    join(stateDir, `${sessionId}.json`),
+    JSON.stringify({
+      shown: {},
+      sources: {
+        "prompt-lookup": { streak: 6, at: Date.now() - 1000, ids: ["old-hit"], skipped: 0 },
+      },
+    }),
+    "utf8",
+  );
+
+  const daemon = await startMockDaemon((req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    if (req.url === "/hook/recall") {
+      res.end(
+        JSON.stringify({
+          hits: [
+            {
+              id: "raw-scale-hit",
+              title: "Raw",
+              type: "lesson",
+              scope: "other-project",
+              summary: "reached the lane on the unfused scale",
+              score: 405584.777,
+            },
+          ],
+          vault_size: 989,
+          latency_ms: 400,
+          recall_id: "t",
+          unfused: true,
+          degraded: "vector-arm-timeout",
+        }),
+      );
+    } else {
+      res.end("{}");
+    }
+  });
+
+  try {
+    const { stdout } = await runHook(
+      {
+        hook_event_name: "UserPromptSubmit",
+        // Kein Retrieval-Wortlaut: Die Retrieval-Ausnahme darf den Test nicht
+        // von hinten retten, geprüft wird allein der fehlende REQUIRED-Bypass.
+        prompt: "ich baue hier gerade eine funktion um und schaue mir den code an",
+        session_id: sessionId,
+        cwd: process.cwd(),
+      },
+      {
+        BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
+        BASTRA_HOOK_STATE_DIR: stateDir,
+        BASTRA_PROMPT_HINTS: "all",
+      },
+    );
+    const parsed = JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } };
+    const ctx = parsed.hookSpecificOutput?.additionalContext ?? "";
+    assert.doesNotMatch(ctx, /both search paths agreed/, "only one path ran — do not claim two");
+    if (ctx.includes("raw-scale-hit")) {
+      assert.doesNotMatch(ctx, /REQUIRED/, "a raw score must not be presented as a REQUIRED band");
+      assert.doesNotMatch(ctx, /405584|405585/, "the raw number must not be shown as a comparable score");
+    }
+  } finally {
+    await daemon.close();
     await rm(stateDir, { recursive: true, force: true });
   }
 });

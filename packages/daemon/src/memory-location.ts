@@ -35,7 +35,10 @@ async function pendingHead(filePath: string, toolInput: Record<string, unknown>)
 
 function isInside(root: string, filePath: string): boolean {
   const rel = path.relative(path.resolve(root), path.resolve(filePath));
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  // Ein Vault-Unterordner darf `..sync` heißen — nur ein `..`-SEGMENT
+  // verlässt den Baum (Codex-Gegenreview, P2).
+  const escapes = rel === ".." || rel.startsWith(".." + path.sep) || rel.startsWith("../");
+  return rel === "" || (!escapes && !path.isAbsolute(rel));
 }
 
 /**

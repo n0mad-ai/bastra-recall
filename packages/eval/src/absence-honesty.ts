@@ -42,39 +42,15 @@ import {
   SearchIndex,
   EmbeddingIndex,
   OllamaEmbeddingProvider,
-  type RecallHit,
+  isWeakResult,
+  isNoHome,
 } from "@bastra-recall/core";
 
-// ── the two predicates under test, kept byte-identical to the daemon ─────────
-// (packages/daemon/src/weak-result.ts — imported by value would drag the daemon
-// workspace into eval's dependency graph; the drift guard is the assertion in
-// __tests__/absence-honesty-parity.test.ts)
-function hitTitleMatches(hit: RecallHit): boolean {
-  if (!hit.matched_terms || hit.matched_terms.length === 0) return false;
-  const titleTokens = hit.title
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter(Boolean);
-  return hit.matched_terms.some((term) => {
-    const t = term.toLowerCase();
-    return titleTokens.some((tok) => tok === t || tok.startsWith(t) || t.startsWith(tok));
-  });
-}
-
-function isWeakResult(hits: RecallHit[], hybridActive: boolean): boolean {
-  return (
-    hybridActive &&
-    hits.length > 0 &&
-    !hits.some((h) => h.matched_recall_when === true || hitTitleMatches(h))
-  );
-}
-
-function isNoHome(hits: RecallHit[], hybridActive: boolean): boolean {
-  if (!isWeakResult(hits, hybridActive)) return false;
-  const top = hits[0];
-  if (!top?.rrf) return false;
-  return top.rrf.rank_bm25 === null || top.rrf.rank_vector === null;
-}
+// The two predicates under test used to be copied in here, because they lived
+// in packages/daemon and eval does not depend on that workspace. They moved to
+// core with the M1 measurement (#262), so the harness now measures the code
+// that ships instead of a copy of it — and the drift guard that watched the
+// copy (__tests__/absence-honesty-parity.test.ts) retired with it.
 
 // ── grep baseline ───────────────────────────────────────────────────────────
 /** A lexical baseline needs a stoplist, and a stoplist is corpus-dependent.

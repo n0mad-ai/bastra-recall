@@ -116,7 +116,7 @@ echo "════════════════════════�
 echo "  ✓ Done."
 echo
 echo "  Restart the AI clients you selected (Claude Code /"
-echo "  Claude Desktop / Cursor) to pick up the memory tool."
+echo "  Claude Desktop / Codex / ChatGPT Desktop / Cursor) to pick up the memory tool."
 echo "════════════════════════════════════════════════════════════"
 echo
 echo "(This window will stay open. Press any key to close.)"

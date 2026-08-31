@@ -13,7 +13,7 @@ import {
   consumePendingSuggestions,
   PENDING_MAX_AGE_MS,
 } from "../src/pending-suggestions.js";
-import { normalizeTurns, evaluateHeuristics } from "../src/stop-hook.js";
+import { normalizeTurns, evaluateHeuristics } from "../src/stop-lane.js";
 
 test("pending-suggestions (#48): write → consume-once round-trip, stale entries dropped", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-pending-"));

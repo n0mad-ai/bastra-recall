@@ -9,25 +9,25 @@
  * Damit teilen sich beide Pfade dieselbe Validierung, Telemetry und
  * Vault-Mutation — kein doppelter Code, kein Drift.
  */
-import { relative, dirname } from "node:path";
-import { readFile, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import matter from "gray-matter";
 import { z } from "zod";
 import {
   saveMemory,
-  slugify,
-  moveToTrash,
+  mutateMemoryFile,
+  withIdClaim,
+  resolveMemoryTarget,
+  moveToTrashUnderClaim,
   SaveMemoryInput,
   stripAutoRelatedSection,
 } from "@bastra-recall/core";
 import { fireAndForget } from "./telemetry.js";
 import { recordAudit } from "./audit-trail.js";
 import { markConflict } from "./conflict-marking.js";
+import { claimGateResult, unansweredClaims, GENERATED_TRIGGER_TYPES, type ClaimGateResult } from "./claim-gate.js";
 import { touchLoadedMarker } from "./session-state.js";
 import { tokens as words } from "./save-similarity.js";
 
 import type { ToolDeps } from "./tool-deps.js";
+import { vaultLocator } from "./vault-locator.js";
 import { scoreSaveQuality, GENERIC_TRIGGER_WORDS, type SaveQualityResult } from "./save-quality.js";
 import { MEMORY_TOOL_DEFS } from "./tool-defs-memory.js";
 
@@ -317,8 +317,8 @@ export function resetSaveFailures(): void {
 export async function saveMemoryHandler(
   deps: ToolDeps,
   rawArgs: unknown,
-): Promise<SaveMemoryResult> {
-  let result: SaveMemoryResult;
+): Promise<SaveMemoryResult | ClaimGateResult> {
+  let result: SaveMemoryResult | ClaimGateResult;
   try {
     result = await saveMemoryInner(deps, rawArgs);
   } catch (err) {
@@ -344,20 +344,60 @@ export async function saveMemoryHandler(
 async function saveMemoryInner(
   deps: ToolDeps,
   rawArgs: unknown,
-): Promise<SaveMemoryResult> {
+): Promise<SaveMemoryResult | ClaimGateResult> {
   const parsed = SaveMemoryInput.safeParse(rawArgs);
   if (!parsed.success) throw new Error(parsed.error.message);
 
   // Die effektive id muss VOR dem Quality-Scoring feststehen — sonst schließt
   // scoreSaveQuality das Memory nicht von seinen eigenen Duplikat- und
   // Kollisions-Checks aus (#239).
-  const finalId = parsed.data.id ?? slugify(parsed.data.title);
+  // Codex-Gegenreview zu #360-D: hier stand eine EIGENE Kopie der
+  // id-Ableitung. Seit die Faltung existiert, wich sie vom tatsächlich
+  // geschriebenen Ziel ab — der Quality-Selbstausschluss (#239) hätte das
+  // Memory dann als sein eigenes Duplikat gewertet. `resolveMemoryTarget`
+  // ist die Stelle, die das Ziel bestimmt, inklusive Bestandsschutz (auch
+  // für Memories, die in memorys/ oder einem folder-Regal liegen); sie fasst
+  // nichts an und ist deshalb auch vor dem Schreiben die richtige Auskunft.
+  const finalId = resolveMemoryTarget(deps.vaultPath, parsed.data, vaultLocator(deps.vault)).id;
 
   // #205: a save declaring a contradiction is a conflict report, not a write —
   // diverted before any quality scoring or file I/O touches the vault.
   if (parsed.data.conflict_with) return markConflict(deps, parsed.data, finalId);
 
   const saveQuality = scoreSaveQuality(deps, parsed.data, finalId);
+
+  // #360: the claim gate. A save whose recall_when fully contains an existing
+  // memory's trigger declares a situation that memory already owns — that is a
+  // successor, a contradiction or a deliberate pair, and the daemon is the
+  // layer that can see it but must not guess. Held here, before any file I/O,
+  // and only for a CREATE: an `overwrite` names its target, which is itself an
+  // answer, and re-saving a memory must never be blocked by its own triggers.
+  //
+  // Documents and bookmarks are out: their triggers come from the importer, not
+  // from an author, so there is no declaration to reconcile — and a bulk import
+  // must not stall on the first repeated phrase.
+  if (!parsed.data.overwrite && !GENERATED_TRIGGER_TYPES.has(parsed.data.type)) {
+    const claimed = unansweredClaims(
+      parsed.data,
+      saveQuality,
+      (id) => {
+        const m = deps.vault.get(id);
+        return m ? { summary: m.fm.summary, body: m.body } : undefined;
+      },
+      (id) => {
+        // Walk down the version chain. `seen` guards a hand-written cycle.
+        const out = new Set<string>();
+        let cursor: string | undefined = id;
+        while (cursor !== undefined && !out.has(cursor)) {
+          out.add(cursor);
+          const predecessor: unknown = deps.vault.get(cursor)?.fm.replaces;
+          cursor = typeof predecessor === "string" ? predecessor : undefined;
+        }
+        return out;
+      },
+    );
+    if (claimed.length > 0) return claimGateResult(finalId, claimed, saveQuality);
+  }
 
   // #164: validate the supersession target BEFORE writing anything. A
   // `replaces` pointing at nothing is an authoring mistake, and failing early
@@ -388,45 +428,25 @@ async function saveMemoryInner(
     );
   }
 
-  // In-place update: overwriting an existing memory WITHOUT an explicit folder
-  // must keep it where it already lives. Otherwise the scope/type default
-  // routing silently relocates it on any edit (and trashes the original) — e.g.
-  // a memories/people/ memo updated without folder gets re-routed to
-  // memories/projects/<scope>/. An explicit folder still moves it (#64 re-filing).
-  // #188: Bestehende Obsidian-Aliases durchreichen — saveMemory erhält sie
-  // sonst nur beim Same-Path-Overwrite; beim Re-Filing (neuer Ordner) liest
-  // es den neuen Pfad und fände sie nicht. Kein Tool-Schema-Feld: aliases
-  // ist Substrat-Plumbing, kein Agent-Knob.
-  const base =
-    previous && parsed.data.aliases === undefined
-      ? { ...parsed.data, aliases: previous.fm.aliases }
-      : parsed.data;
-  const input =
-    previous && !parsed.data.folder
-      ? { ...base, folder: relative(deps.vaultPath, dirname(previous.filePath)) }
-      : base;
-
-  const result = await saveMemory(deps.vaultPath, input);
-  let refileWarning: string | undefined;
-  if (previous && previous.filePath !== result.file_path) {
-    try {
-      await moveToTrash(deps.vaultPath, previous.filePath, finalId);
-      deps.vault.forgetFile(previous.filePath);
-    } catch (err) {
-      // Alte Datei schon weg (extern gelöscht/verschoben) → nichts aufzuräumen.
-      console.error(`[bastra-recall] re-file: could not trash old path: ${(err as Error).message}`);
-      // …aber wenn sie NOCH da ist, tragen jetzt zwei Dateien dieselbe id.
-      // Der Vault nimmt beim Init still eine davon, und das Aufräumen der
-      // anderen reißt die Memory mit aus dem Index (#240/A2.3). Das darf der
-      // Caller nicht nur im Daemon-Log finden.
-      if (existsSync(previous.filePath)) {
-        refileWarning =
-          `re-file incomplete: the old file at ${previous.filePath} could not be trashed and now shares ` +
-          `id '${finalId}' with ${result.file_path}. Remove or fix one of them — two files with the same ` +
-          `id make the memory disappear from the index on the next reconcile.`;
-      }
-    }
-  }
+  // Codex-Gegenreview (P0): Hier stand eine Ordner-Injektion — ein Overwrite
+  // ohne expliziten `folder` bekam den Ordner der INDEXIERTEN Datei mit, damit
+  // das Default-Routing das Memory nicht bei jeder Bearbeitung verschiebt. Das
+  // machte aus einer Index-Auskunft eine Anweisung: War die Datei extern
+  // verschoben worden, schrieb der Save auf den veralteten Pfad, und die
+  // autoritative Auskunft las die Abweichung als bewusstes Re-Filing — danach
+  // zwei aktive Dateien mit einer id.
+  //
+  // Dasselbe leistet jetzt `saveMemory` selbst, und zwar richtig: Ohne
+  // ausdrücklichen `folder` zeigt es unter dem Claim auf die Datei, die die
+  // PLATTE nennt. Aus demselben Grund entfällt auch die Aliases-Injektion —
+  // die Patch-Basis ist seither die Quelldatei, nicht der Index.
+  const result = await saveMemory(deps.vaultPath, parsed.data, {
+    locator: vaultLocator(deps.vault),
+  });
+  // Das Trashen der alten Datei erledigt `saveMemory` unter der Transaktion;
+  // hier bleibt nur der Index.
+  if (result.refiled_from !== undefined) deps.vault.forgetFile(result.refiled_from);
+  const refileWarning: string | undefined = undefined;
   // Don't trust the watcher on cloud-storage mounts — force-index now
   // so a follow-up recall() in the same session sees the new memory.
   await deps.vault.reindexFile(result.file_path);
@@ -443,13 +463,22 @@ async function saveMemoryInner(
     const target = deps.vault.get(supersedes);
     if (target) {
       try {
-        const raw = await readFile(target.filePath, "utf8");
-        const { data, content } = matter(raw);
-        await writeFile(
+        // Atomar, mit Identitätsprüfung und Vergleich vor dem Commit: Ein
+        // direktes writeFile ließ die Datei kurzzeitig halb geschrieben, und
+        // ein paralleler Save darauf wäre still rückgängig gemacht worden.
+        const stamped = await mutateMemoryFile(
           target.filePath,
-          matter.stringify(content, { ...(data as Record<string, unknown>), superseded_by: result.id }),
-          "utf8",
+          supersedes,
+          { frontmatter: (fm) => ({ ...fm, superseded_by: result.id }) },
+          { vaultRoot: deps.vaultPath },
         );
+        if (stamped.kind !== "written") {
+          throw new Error(
+            stamped.kind === "raced"
+              ? `'${supersedes}' changed while the supersede edge was being stamped`
+              : `${target.filePath} does not hold memory '${supersedes}'`,
+          );
+        }
         await deps.vault.reindexFile(target.filePath);
       } catch (err) {
         // The new memory is written and carries `replaces`, so the edge is
@@ -483,20 +512,35 @@ async function saveMemoryInner(
   // throws when an assistant mutation has no `reason`, and the tool schema has
   // no reason field, so routing through it would break every agent save or
   // force a fabricated reason into the log.
-  await recordAudit({
+  const auditWarning = await recordAudit({
     vaultRoot: deps.vaultPath,
     memoryId: result.id,
     operation: result.created ? "create" : "update",
     actor: "assistant",
     actorDetail: "mcp:save_memory",
-    diffBefore: previous ? { ...previous.fm } : null,
-    diffAfter: { ...(deps.vault.get(result.id)?.fm ?? {}) },
+    // Codex-Gegenreview (P1): Hier standen der Vault-CACHE als Vorbild und ein
+    // Index-Lookup als Nachbild. Beides beschreibt nicht zwingend die Datei,
+    // die der Save angefasst hat — bei einem Re-File war das Vorbild die
+    // indexierte Version am alten Pfad, gepatcht wurde aber die Quelldatei in
+    // dem Stand, den der Claim gesehen hat. Der Save reicht beides jetzt
+    // selbst heraus.
+    diffBefore: result.audit_before,
+    diffAfter: result.audit_after,
     filePath: result.file_path,
     sessionId: deps.telemetry.runId(),
   });
 
-  const warning = [refileWarning, supersedeWarning].filter(Boolean).join(" ");
-  return { ...result, save_quality: saveQuality, ...(warning ? { warning } : {}) };
+  // #380: Der fehlende Beleg gehört in dieselbe Zeile wie die anderen
+  // Warnungen — er sagt dem Aufrufer das Wichtigste überhaupt, nämlich NICHT
+  // zu wiederholen. Zuletzt, weil die anderen beiden von der Mutation selbst
+  // handeln und diese von ihrer Protokollierung.
+  const warning = [refileWarning, supersedeWarning, auditWarning].filter(Boolean).join(" ");
+  // Vor- und Nachbild sind AUDIT-Material und gehören nicht in die
+  // Tool-Antwort: Sie sind vollständige Frontmatter-Abbilder (inklusive
+  // `sensitivity: private`) und würden über den Spread still an jeden Client
+  // gehen, der `save_memory` ruft.
+  const { audit_before: _b, audit_after: _a, ...payload } = result;
+  return { ...payload, save_quality: saveQuality, ...(warning ? { warning } : {}) };
 }
 
 // ─── archive_memory (#217 Intake-Adoption) ──────────────────────
@@ -528,35 +572,73 @@ export async function archiveMemoryHandler(
   if (!mem) {
     throw new Error(`unknown memory: ${id} — archive_memory only archives memories that exist in the vault.`);
   }
-  const archivedTo = await moveToTrash(deps.vaultPath, mem.filePath, id);
-  deps.vault.forgetFile(mem.filePath);
-  if (superseded_by) {
-    try {
-      const raw = await readFile(archivedTo, "utf8");
-      const { data, content } = matter(raw);
-      const fm = { ...(data as Record<string, unknown>), obsolete: true, superseded_by };
-      await writeFile(archivedTo, matter.stringify(content, fm), "utf8");
-    } catch {
-      /* Audit-Stempel ist best-effort — das Archiv selbst steht bereits. */
-    }
-  }
+  // Codex-Gegenreview (P0): Verschoben wurde der Pfad aus dem CACHE, ohne ihn
+  // noch einmal anzusehen. War die Datei extern durch etwas anderes ersetzt
+  // worden, wanderte diese fremde Datei in den Trash — und das Archiv
+  // behauptete, es sei dieses Memory gewesen. Archivieren ist eine
+  // besitzverändernde Operation und gehört unter denselben Claim wie ein
+  // Schreiben, mit derselben autoritativen Auskunft.
+  const { archivedTo, originalPath, diffBefore } = await withIdClaim(
+    { vaultRoot: deps.vaultPath, id, filePath: mem.filePath, op: "archive" },
+    async (claim) => {
+      const located = await claim.locate();
+      if (located.kind !== "unique") {
+        throw new Error(
+          located.kind === "none"
+            ? `cannot archive "${id}": no file on disk holds it (the index is stale).`
+            : `cannot archive "${id}": the vault scan is not conclusive (${located.kind}) — ` +
+              `fix that first, archiving now would move the wrong file.`,
+        );
+      }
+      // Codex-Gegenreview Runde 10 (P1-4): Hier stand ein eigener Read, dessen
+      // Ergebnis als `diff_before` ins Ledger ging — ohne Bindung an die
+      // Fassung, die gleich danach wegwanderte. Beweis und Bewegung kommen
+      // jetzt aus EINEM Read in der Trash-Primitive selbst.
+      const { trashPath: to, frontmatter: onDisk } = await moveToTrashUnderClaim(
+        deps.vaultPath,
+        located.filePath,
+        claim,
+      );
+      deps.vault.forgetFile(located.filePath);
+      if (superseded_by) {
+        try {
+          // `expectedId: null` — die Datei liegt im Trash und ist per
+          // Definition kein indexiertes Memory mehr; geprüft wird nur, dass
+          // niemand sie zwischen Lesen und Schreiben angefasst hat.
+          await mutateMemoryFile(to, null, {
+            frontmatter: (fm) => ({ ...fm, obsolete: true, superseded_by }),
+          });
+        } catch {
+          /* Audit-Stempel ist best-effort — das Archiv selbst steht bereits. */
+        }
+      }
+      return { archivedTo: to, originalPath: located.filePath, diffBefore: onDisk };
+    },
+  );
   // #206: archiving is the one operation that takes a memory out of the active
   // index, so it is the one that most needs a record. `diff_before` keeps the
   // frontmatter as it was — the trash file is recoverable, but the log is what
   // says WHEN and through which run it left.
-  await recordAudit({
+  const auditWarning = await recordAudit({
     vaultRoot: deps.vaultPath,
     memoryId: id,
     operation: "delete",
     actor: "assistant",
     actorDetail: "mcp:archive_memory",
-    diffBefore: { ...mem.fm },
+    diffBefore: diffBefore ?? { ...mem.fm },
     diffAfter: null,
-    filePath: mem.filePath,
+    filePath: originalPath,
     ...(superseded_by ? { reason: `superseded by ${superseded_by}` } : {}),
     sessionId: deps.telemetry.runId(),
   });
-  return { id, archived_to: archivedTo, superseded_by: superseded_by ?? null };
+  return {
+    id,
+    archived_to: archivedTo,
+    superseded_by: superseded_by ?? null,
+    // #380: Ein Archivieren ohne Beleg ist der Fall, der am meisten wehtut —
+    // das Memory ist aus dem aktiven Index, und das Log sollte sagen, wann.
+    ...(auditWarning ? { warning: auditWarning } : {}),
+  };
 }
 
 // ─── MCP Tool-Definitionen ───────────────────────────────────────

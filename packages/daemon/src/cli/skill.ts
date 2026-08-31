@@ -1,5 +1,6 @@
+/** Cross-client Skill installation, including OpenAI metadata (#232/#15). */
 import { copyFile, mkdir, readFile, readdir, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { SERVER_KEY, fileExists, getServersBlock, readJsonConfig } from "./helpers.js";
 import {
   CLAUDE_CODE_CONFIG,
@@ -18,14 +19,16 @@ export type SkillStepStatus =
   | "error";
 
 /**
- * The skill payload: every markdown file directly in the skill source dir —
- * SKILL.md plus the reference files it points at (#232). Everything else that
- * lives next to it (install scripts, the Cursor rules) is deliberately not part
- * of the skill and must not land in ~/.claude/skills/.
+ * The skill payload: every markdown file directly in the skill source dir,
+ * plus OpenAI's optional agents/openai.yaml metadata (#15/#232). Everything
+ * else next to it (install scripts, Cursor rules) is deliberately excluded.
  */
 async function skillPayload(sourceDir: string): Promise<string[]> {
   const entries = await readdir(sourceDir, { withFileTypes: true });
-  return entries.filter((e) => e.isFile() && e.name.endsWith(".md")).map((e) => e.name).sort();
+  const payload = entries.filter((e) => e.isFile() && e.name.endsWith(".md")).map((e) => e.name);
+  const openAiMetadata = join("agents", "openai.yaml");
+  if (await fileExists(join(sourceDir, openAiMetadata))) payload.push(openAiMetadata);
+  return payload.sort();
 }
 
 /**
@@ -69,6 +72,7 @@ export async function copySkill(
   }
   await mkdir(targetDir, { recursive: true });
   for (const name of outdated) {
+    await mkdir(dirname(join(targetDir, name)), { recursive: true });
     await copyFile(join(sourceDir, name), join(targetDir, name));
   }
   return { status: "installed", detail: `skill installed at ${targetDir} (${outdated.join(", ")})` };

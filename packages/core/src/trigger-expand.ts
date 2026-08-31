@@ -26,10 +26,10 @@
  * recall_when_expanded survive each other). The LLM gen takes ~1-3 s, well after
  * the in-memory related write lands, so the fresh read sees it.
  */
-import { readFile, writeFile, rename, unlink } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import matter from "gray-matter";
 import type { Vault } from "./vault.js";
+import { mutateMemoryFile, type MutateOutcome } from "./memory-mutate.js";
+import { MEMORY_WRITE_CONFLICT } from "./save-schema.js";
 import type { EmbeddingIndex } from "./embeddings.js";
 import type { Memory } from "./schema.js";
 import { scrubInjectedBlocks } from "./scrub.js";
@@ -59,6 +59,11 @@ export interface TriggerExpanderOptions {
 }
 
 const DEFAULT_MAX_PHRASES = 5;
+/** Consecutive failed generations that stop a backfill sweep (#367). A model
+ *  that cannot answer this prompt cannot answer it 900 times either — without
+ *  a brake, every daemon start spends hours discovering that one call at a
+ *  time. Five is past any plausible run of bad luck on individual memories. */
+const MAX_CONSECUTIVE_GEN_FAILURES = 5;
 /** Drop generated phrases longer than this — a paraphrase is a short query,
  *  not a sentence; long lines are usually the model narrating, not a trigger. */
 const MAX_PHRASE_LEN = 80;
@@ -73,6 +78,10 @@ export class TriggerExpander {
   /** Guards against re-entrant expansion of the same id (onEmbed can fire again
    *  mid-generation). */
   private readonly inFlight = new Set<string>();
+  /** Consecutive failed generations — an empty reply or a throwing chat (#367).
+   *  Any generation that produced text resets it. Read by backfill() only;
+   *  the onEmbed path has no sweep to stop. */
+  private consecutiveGenFailures = 0;
 
   constructor(
     private readonly vault: Vault,
@@ -92,7 +101,12 @@ export class TriggerExpander {
       // expand() can reject — the Ollama chat may time out / abort. Swallow it
       // here so a failed expansion never becomes an unhandled promise rejection
       // that crashes the whole daemon. (The backfill path has its own catch.)
-      void this.expand(id).catch(() => {});
+      void this.expand(id).catch((err) => {
+        // Swallowed, but not silent: an Ollama that rejects the request (an
+        // older server refusing `think`, a pulled model gone) would otherwise
+        // take doc2query out of service without a single line anywhere (#367).
+        console.error(`[bastra.expand] generation failed: ${(err as Error).message}`);
+      });
     });
     if (this.backfillOnStart) void this.backfill().catch(() => {});
   }
@@ -111,14 +125,27 @@ export class TriggerExpander {
    */
   async backfill(): Promise<number> {
     let expanded = 0;
+    this.consecutiveGenFailures = 0;
     for (const m of this.vault.list()) {
       if (m.fm.obsolete === true) continue;
       if (sourceHash(m) === m.fm.recall_when_expanded_src) continue; // up to date
       try {
         const r = await this.expand(m.fm.id);
         if (r) expanded++;
-      } catch {
-        /* one memory's failure must not stall the whole sweep */
+      } catch (err) {
+        // One memory's failure must not stall the whole sweep — but it must not
+        // vanish either: a chat that throws every time is the shape of a broken
+        // model, and the breaker below needs to see it.
+        this.consecutiveGenFailures++;
+        console.error(`[bastra.expand] generation failed: ${(err as Error).message}`);
+      }
+      // Breaker: a model that cannot answer this prompt will not answer the
+      // remaining ~900 either, and the sweep runs on every daemon start (#367).
+      if (this.consecutiveGenFailures >= MAX_CONSECUTIVE_GEN_FAILURES) {
+        console.error(
+          `[bastra.expand] backfill stopped after ${MAX_CONSECUTIVE_GEN_FAILURES} consecutive generation failures — check the generation model`,
+        );
+        break;
       }
     }
     return expanded;
@@ -126,8 +153,10 @@ export class TriggerExpander {
 
   /**
    * Generate, filter, and persist paraphrases for one memory. Returns the kept
-   * phrases, or null when nothing was written (source unchanged, gated out, or
-   * no phrase survived the self-test).
+   * phrases (possibly an empty array when the parser or the self-test dropped
+   * them all — the model still answered), or null when nothing was written:
+   * source unchanged, gated out, re-entrant, or the generation came back empty
+   * (#367).
    */
   async expand(id: string): Promise<string[] | null> {
     const memory = this.vault.get(id);
@@ -142,18 +171,43 @@ export class TriggerExpander {
     this.inFlight.add(id);
     try {
       const raw = await this.chat(buildExpandPrompt(memory));
-      const candidates = parseExpansions(raw, memory.fm.recall_when, this.maxPhrases);
 
+      // The model returned nothing at all — a failed generation, not an empty
+      // answer. A thinking model puts its whole reply in `message.thinking` and
+      // leaves `content` empty, which reaches us as "" (#367). Stamping that
+      // against an unchanged source would freeze the failure: neither expand()
+      // nor backfill() revisits a matching hash, so the memory would keep an
+      // empty expansion until its author edits it. Refuse the write instead.
+      //
+      // Keyed on the RAW reply, deliberately, not on the parse result. Text
+      // that parses to nothing — the model echoed the existing triggers, or
+      // wrote only over-long lines — is a real answer *for this source*, and
+      // gets the stamp below like any other. Generation here is deterministic
+      // (temperature 0, same prompt), so retrying that case would regenerate
+      // the identical nothing on every sweep, forever.
+      if (raw.trim().length === 0) {
+        this.consecutiveGenFailures++;
+        console.error(`[bastra.expand] empty generation for ${id} — not written, will retry`);
+        return null;
+      }
+      this.consecutiveGenFailures = 0;
+
+      const candidates = parseExpansions(raw, memory.fm.recall_when, this.maxPhrases);
       const kept: string[] = [];
       for (const phrase of candidates) {
         if (this.selfTest && !(await this.selfTest(phrase, id))) continue;
         kept.push(phrase);
       }
 
-      // Persist even when kept is empty: writing the src hash marks "we tried,
-      // source is X" so we don't regenerate this same source on every embed.
+      // Persist even when kept is empty: the model DID answer, so writing the
+      // src hash marks "we tried, source is X" and we don't regenerate this same
+      // source on every embed. Empty here means the parser or the self-test
+      // dropped everything — the failed-generation case returned above.
       if (this.writeGate && !(await this.writeGate())) return null;
-      await rewriteFile(memory.filePath, kept, srcHash);
+      const outcome = await rewriteFile(this.vault.root, memory.filePath, id, kept, srcHash);
+      // Ein Hintergrundlauf darf ausfallen: Hat ein anderer Writer die Datei
+      // inzwischen angefasst, bleibt dessen Fassung stehen.
+      if (outcome.kind !== "written") return null;
       await this.vault.reindexFile(memory.filePath);
       return kept;
     } finally {
@@ -265,25 +319,37 @@ export function parseExpansions(raw: string, existing: string[], max: number): s
  * before writing (not the cached Memory) so a concurrent RelatedEnricher write
  * isn't clobbered. Atomic via temp+rename, same as RelatedEnricher.
  */
-async function rewriteFile(filePath: string, expanded: string[], srcHash: string): Promise<void> {
-  const raw = await readFile(filePath, "utf8");
-  const parsed = matter(raw);
-  // Copy, don't mutate parsed.data: gray-matter caches matter(content) by
-  // string, so mutating the parsed object in place poisons that cache entry —
-  // any later parse of identical content would inherit our fields.
-  const fm = { ...(parsed.data as Record<string, unknown>) };
-  fm.recall_when_expanded = expanded;
-  fm.recall_when_expanded_src = srcHash;
-  const next = matter.stringify(
-    parsed.content.startsWith("\n") ? parsed.content : `\n${parsed.content}`,
-    fm,
-  );
-  const tmp = `${filePath}.${process.pid}.expand.tmp`;
-  await writeFile(tmp, next, "utf8");
+/**
+ * Codex-Gegenreview (P0): Auch hier stand eine Handkopie von
+ * `mutateMemoryFile` — ohne ID-Transaktion und ohne Identitätsprüfung. Ein
+ * Hintergrundlauf stempelte damit auf eine Datei, die inzwischen ein anderes
+ * Memory hielt, und sein Rename konnte einen parallelen Save rückgängig
+ * machen. Jetzt derselbe Weg wie jeder andere Writer; ein Write-Conflict am
+ * id-Lock ist für einen Hintergrundlauf schlicht `raced`.
+ */
+async function rewriteFile(
+  vaultRoot: string,
+  filePath: string,
+  id: string,
+  expanded: string[],
+  srcHash: string,
+): Promise<MutateOutcome> {
   try {
-    await rename(tmp, filePath);
+    return await mutateMemoryFile(
+      filePath,
+      id,
+      {
+        frontmatter: (parsed) => ({
+          ...parsed,
+          recall_when_expanded: expanded,
+          recall_when_expanded_src: srcHash,
+        }),
+        body: (content) => (content.startsWith("\n") ? content : `\n${content}`),
+      },
+      { vaultRoot },
+    );
   } catch (err) {
-    await unlink(tmp).catch(() => {});
+    if ((err as { code?: string })?.code === MEMORY_WRITE_CONFLICT) return { kind: "raced" };
     throw err;
   }
 }

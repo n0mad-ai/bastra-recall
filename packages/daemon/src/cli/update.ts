@@ -1,3 +1,4 @@
+/** Installer update orchestration and cross-client restart guidance (#15). */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -10,6 +11,8 @@ import { activePatches, applySeries, formatApplyOutcome, writeLastRun } from "..
 import { isEphemeralInstallPath } from "./stable-runtime.js";
 import { clearBlockedUpdate, recordBlockedUpdate } from "../update-blocked.js";
 import type { ParsedArgs } from "./types.js";
+
+import { refreshManagedAutostart } from "./autostart.js";
 
 const LAUNCH_AGENT_LABEL = "ai.n0mad.bastra-recall";
 
@@ -463,6 +466,13 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
     return 0;
   }
 
+  // Der Schritt, der bisher fehlte: Ein Update verschiebt die Installation
+  // (Homebrew legt jede Version in ein eigenes Verzeichnis), und ein
+  // LaunchAgent zeigt auf einen ABSOLUTEN Pfad. Zeigt er noch auf die alte,
+  // startet er danach entweder nichts mehr oder weiter den alten Code — genau
+  // der gemeldete Fall. Fremde plists bleiben unangetastet.
+  await refreshManagedAutostart((s) => process.stdout.write(s));
+
   process.stdout.write("→ restarting daemon\n");
   const uid = String(process.getuid?.() ?? 0);
   if (launchAgentPresent(uid)) {
@@ -484,6 +494,6 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
     process.stdout.write("    kill <pid>                 # forwarder respawns it with new code on next call\n\n");
   }
 
-  process.stdout.write("→ done. Restart any open AI clients (Claude Code, Claude Desktop, Cursor) to pick up the new code.\n");
+  process.stdout.write("→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\n");
   return 0;
 }

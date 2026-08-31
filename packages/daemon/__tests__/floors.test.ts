@@ -219,6 +219,28 @@ test("listFloors(scope) returns scoped + unscoped (global) entries only", async 
   }
 });
 
+// #360-Folgefund B: `fetchFloors()` schickt den rohen `detectProject()`-Namen
+// ("CarNexus") als scope, Floors werden konventionell klein gescopet
+// ("carnexus") — ein ungefaltetes `===` liess ein projektgebundenes Floor für
+// genau sein eigenes Projekt lautlos verschwinden. Ohne den Fix in
+// `listFloors` (scopeEquals statt `===`) ist dieser Test rot.
+test("listFloors: a capitalised project name still finds its own lowercase-scoped floor (#360)", async () => {
+  const { path, actsPath, cleanup } = await tmpFloorsPath();
+  try {
+    await addFloor({ memory_id: "ga", condition: "c", reason: "global floor" }, path);
+    await addFloor({ memory_id: "pc", condition: "c", reason: "CarNexus floor", scope: "carnexus" }, path);
+
+    const scoped = await listFloors("CarNexus", path);
+    assert.deepEqual(
+      scoped.map((e) => e.memory_id).sort(),
+      ["ga", "pc"],
+      "the project's own floor must not vanish just because the detected cwd segment is capitalised",
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
 // ─── HTTP-Ebene (echter Server, Pattern hook-act.test.ts) ────────
 
 function httpPost(port: number, path: string, payload: unknown): Promise<{ status: number; body: string }> {

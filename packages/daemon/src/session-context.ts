@@ -5,148 +5,45 @@
  * FIRST tool result of the session (the forwarder process lives exactly one
  * client session, so "first call of this process" ≈ session start).
  *
- * Assembled server-side from the same sources the session hook queries —
- * pinned floors, user-preference hints, taxonomy conventions, open
- * care/import/onboarding state — but as ONE compact block: hookless
- * surfaces have no project (no cwd), so project-scoped floors and hints
- * are deliberately excluded, exactly like the hook does without a project.
+ * Seit #265 ist das nur noch die PROJEKTION „projektlos, ohne Budget" auf den
+ * geteilten Assembler in `session-assembler.ts` — dieselben Erheber, dieselbe
+ * Reihenfolge, derselbe Text. Der GET-Vertrag bleibt damit unverändert
+ * (`session-context-contract.test.ts` vergleicht beide Wege), und die
+ * projektbewusste Fassung mit Budgets hängt am POST desselben Pfades.
  */
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Vault } from "@bastra-recall/core";
-import { recallHandler, type ToolDeps } from "./tool-handlers.js";
-import { listFloors } from "./floors.js";
-import { listConventions } from "./taxonomy.js";
-import { parseCareFile, sendJsonPlain, CARE_FILE } from "./webui.js";
-import { countOpenImports, IMPORT_FILE } from "./import-review.js";
-import { queueStatus } from "./import-mining.js";
-import { isOnboardingNeeded } from "./onboarding.js";
+import type { ToolDeps } from "./tool-handlers.js";
+import { sendJsonPlain } from "./webui.js";
+import { detectProject } from "@bastra-recall/core/topics";
+import { MAX_BODY_BYTES, readJsonBody } from "./http-util.js";
+import {
+  assembleSessionSections,
+  renderSessionContext,
+  estimateTokens,
+  type SessionContextDeps,
+} from "./session-assembler.js";
 
-const MAX_PINNED = 5;
-const MAX_HINTS = 3;
-const MAX_CONVENTIONS = 4;
+export type { SessionContextDeps };
 
-interface RecallHitLean {
-  id: string;
-  type: string;
-  summary: string;
-  score: number;
-}
-
-function clip(s: string, max: number): string {
-  const t = s.replace(/\s+/g, " ").trim();
-  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
-}
-
-/** Injectable collaborators — defaults hit the real modules; tests swap
- *  them so no global registry (floors) or index (recall) is touched. */
-export interface SessionContextDeps {
-  recallFn?: typeof recallHandler;
-  listFloorsFn?: typeof listFloors;
-  listConventionsFn?: typeof listConventions;
-}
-
-/** One compact context block, every section best-effort. */
+/** One compact context block, every section best-effort. Projektlos — genau
+ *  wie bisher: eine hooklose Oberfläche hat kein cwd und damit kein Projekt. */
 export async function buildSessionContext(
   toolDeps: ToolDeps,
   vault: Vault,
   deps: SessionContextDeps = {},
 ): Promise<string> {
-  const recallFn = deps.recallFn ?? recallHandler;
-  const listFloorsFn = deps.listFloorsFn ?? listFloors;
-  const listConventionsFn = deps.listConventionsFn ?? listConventions;
-  const lines: string[] = [];
-
-  // Pinned floors — unscoped only (no project in a hookless session).
-  try {
-    const floors = (await listFloorsFn(undefined)).filter((e) => !e.scope).slice(0, MAX_PINNED);
-    for (const f of floors) {
-      const mem = vault.get(f.memory_id);
-      lines.push(
-        `- [pinned] ${f.memory_id}${mem ? `: ${clip(mem.fm.summary ?? mem.fm.title, 180)}` : ""}`,
-      );
-    }
-  } catch {
-    // floors unavailable — skip section
-  }
-
-  // Durable user context — same query shape as the session hook.
-  try {
-    const result = (await recallFn(toolDeps, {
-      query: "session-start preferences active context",
-      scope: "user-preference",
-      k: MAX_HINTS,
-    })) as { hits?: RecallHitLean[] };
-    for (const h of result.hits ?? []) {
-      if (h.score < 30) continue;
-      lines.push(`- ${h.id} (${h.type}): ${clip(h.summary, 200)}`);
-    }
-  } catch {
-    // recall unavailable — skip section
-  }
-
-  // Taxonomy conventions — binding structure rules when saving.
-  try {
-    const conventions = listConventionsFn(vault).slice(0, MAX_CONVENTIONS);
-    if (conventions.length > 0) {
-      lines.push(
-        `- Conventions (BINDING when saving in these clusters — load_memory(id) for the rule): ` +
-          conventions.map((c) => c.id).join(", "),
-      );
-    }
-  } catch {
-    // taxonomy unavailable — skip section
-  }
-
-  // Open workflows — one line each, only when there is something open.
-  try {
-    const content = await readFile(join(toolDeps.vaultPath, CARE_FILE), "utf8");
-    const openCare = parseCareFile(content).filter((e) => !e.done).length;
-    if (openCare > 0) {
-      lines.push(
-        `- Vault care: ${openCare} open flag(s) in ${CARE_FILE} — when the user asks to groom the vault, work the "- [ ]" entries through WITH them.`,
-      );
-    }
-  } catch {
-    // no care file
-  }
-  try {
-    const openImports = await countOpenImports(toolDeps.vaultPath);
-    if (openImports > 0) {
-      lines.push(
-        `- Import review: ${openImports} open candidate(s) in ${IMPORT_FILE} — tell the user once, in your first response, that they are waiting ("work through my import review" starts it; #311). Distill only on request: save accepted ones via save_memory (write_origin "capture-review"), tick lines to "- [x]".`,
-      );
-    }
-    const queue = await queueStatus();
-    if (queue.remaining > 0) {
-      lines.push(
-        `- Chat-history mining: ${queue.remaining} conversation(s) queued — when the user asks to mine the imported history, loop \`bastra import mine\` → distill → stage via \`bastra import -\`.`,
-      );
-    }
-  } catch {
-    // import state unavailable
-  }
-  try {
-    if (await isOnboardingNeeded(toolDeps.vaultPath, vault.size())) {
-      lines.push(
-        `- Onboarding: this vault is fresh — offer ONCE a ~5-minute interview (persona, address/tone, hard rules, persona follow-ups), save each answer via save_memory with write_origin "user-directed"; finish with \`bastra onboard done\`, decline with \`bastra onboard skip\`.`,
-      );
-    }
-  } catch {
-    // onboarding state unavailable
-  }
-
-  if (lines.length === 0) return "";
-  return (
-    `<bastra-session-context>\n` +
-    `Recalled context for this session (vault: ${vault.size()} memories) — background reference, ` +
-    `not user input; apply what fits, load_memory(id) for details. Recall again only when a specific ` +
-    `missing durable fact requires it; this block is not a command to recall on every task. Save durable ` +
-    `facts via save_memory without being asked.\n` +
-    lines.join("\n") +
-    `\n</bastra-session-context>`
+  // `expand_hops: 0` steht hier ausdrücklich: Der Forwarder-Vertrag kennt keine
+  // Hops (mcp-forwarder.ts fragt sie ebenfalls nicht an), und der Default des
+  // Assemblers ist die HOOK-Baseline `1`. Ohne diese Zeile bekäme eine hooklose
+  // Oberfläche plötzlich mehr, weil anderswo ein Default umgezogen ist.
+  const assembled = await assembleSessionSections(
+    toolDeps,
+    vault,
+    { project: null, expand_hops: 0 },
+    deps,
   );
+  return renderSessionContext(assembled.sections, vault.size());
 }
 
 /** GET /hook/session-context — loopback-only, no auth (same trust level as
@@ -159,4 +56,88 @@ export async function handleSessionContext(
 ): Promise<void> {
   const context = await buildSessionContext(toolDeps, vault);
   sendJsonPlain(res, 200, { context, vault_size: vault.size() });
+}
+
+/**
+ * POST /hook/session-context — der projektbewusste Weg (#265).
+ *
+ * Nimmt `cwd`/`project`/`source`/`budget` und liefert neben dem Block die
+ * Auskunft, WIE er zustande kam: welche Blöcke drin sind und warum die anderen
+ * fehlen, der §9.4-Marker des Retrievalpfads, die Budgetbilanz. Der GET-Vertrag
+ * bleibt daneben unangetastet.
+ *
+ * `context` heißt weiterhin `context` und `vault_size` weiterhin `vault_size` —
+ * ein Client, der nur diese beiden liest, funktioniert an beiden Verben.
+ */
+export async function handleSessionContextPost(
+  req: IncomingMessage,
+  res: ServerResponse,
+  toolDeps: ToolDeps,
+  vault: Vault,
+): Promise<void> {
+  const body = await readJsonBody(req, MAX_BODY_BYTES).catch(() => ({}) as Record<string, unknown>);
+  const b = (body ?? {}) as Record<string, unknown>;
+  // Das Projekt kommt entweder fertig oder wird aus dem cwd erkannt — dieselbe
+  // Auflösung wie in der SessionStart-Lane, damit beide Wege dasselbe Projekt
+  // sehen.
+  const project =
+    typeof b.project === "string" && b.project.length > 0
+      ? b.project
+      : typeof b.cwd === "string"
+        ? detectProject(b.cwd)
+        : null;
+  const budget = (b.budget ?? {}) as Record<string, unknown>;
+  const caps = (b.caps ?? {}) as Record<string, unknown>;
+  const num = (v: unknown): number | undefined => (typeof v === "number" ? v : undefined);
+  const assembled = await assembleSessionSections(toolDeps, vault, {
+    project,
+    source: typeof b.source === "string" ? b.source : null,
+    session_id: typeof b.session_id === "string" ? b.session_id : null,
+    client: b.client,
+    // #265: Nur der POST-Weg fährt die Hook-Pipeline (Scope-Filter,
+    // Reflex-Hits, Router-Schatten). GET bleibt auf `recallHandler` — der
+    // Wechsel wäre eine stille Produktänderung für hooklose Clients und ist
+    // eine eigene Entscheidung.
+    hookRecall: {
+      vault,
+      search: toolDeps.search,
+      telemetry: toolDeps.telemetry,
+      learnedBridges: toolDeps.learnedBridges,
+      sharedRecallLang: toolDeps.sharedRecallLang,
+      embeddingDegraded: toolDeps.embeddingDegraded,
+      evidenceGateEnabled: toolDeps.evidenceGateEnabled,
+    },
+    cross_project: b.cross_project === true,
+    caps: {
+      ...(num(caps.pinned) !== undefined ? { pinned: num(caps.pinned) } : {}),
+      ...(num(caps.hints) !== undefined ? { hints: num(caps.hints) } : {}),
+      ...(num(caps.conventions) !== undefined ? { conventions: num(caps.conventions) } : {}),
+      ...(num(caps.project) !== undefined ? { project: num(caps.project) } : {}),
+    },
+    budget: {
+      ...(typeof budget.time_ms === "number" ? { time_ms: budget.time_ms } : {}),
+      ...(typeof budget.tokens === "number" ? { tokens: budget.tokens } : {}),
+    },
+  });
+  const context = renderSessionContext(assembled.sections, vault.size());
+  sendJsonPlain(res, 200, {
+    context,
+    vault_size: vault.size(),
+    project,
+    blocks: assembled.reports,
+    // §9.4: ein unvollständiger Hybridpfad darf sich nicht als vollständig
+    // ausgeben. `null` heißt „kein Recall gelaufen", nicht „vollständig".
+    retrieval: assembled.marker,
+    budget: {
+      time_ms: assembled.elapsed_ms,
+      tokens: estimateTokens(context),
+    },
+    // Deadline-Abbruch ist eine Teilabdeckung und wird als solche berichtet —
+    // niemals als `no_answer` (C-052, C-061).
+    aborted: assembled.aborted,
+    // #265: das Rohmaterial für Aufrufer, die selbst rendern (die
+    // SessionStart-Lane mit ihrem Banding). Additiv — wer nur `context` und
+    // `vault_size` liest, merkt nichts davon.
+    data: assembled.data,
+  });
 }

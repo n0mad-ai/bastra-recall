@@ -75,3 +75,53 @@ export function unfusedHeadline(subject: string): string {
     `summary, not by the number.`
   );
 }
+
+/**
+ * Die Bandzuweisung selbst — zentral, damit kein Surface sie noch einmal
+ * inline erfindet.
+ *
+ * P0: Ohne Vektor-Arm gibt es keine Fusion, keine Obergrenze und damit kein
+ * Band. Die Cuts (50/100) sind Punkte auf der Rang-Summen-Skala; auf rohe
+ * BM25-Werte angewendet selektieren sie nichts — gemessen wurden dort
+ * sechsstellige Top-Scores, die jeden Cut trivial reißen. `unbanded` trägt in
+ * diesem Fall ALLE Hits, und der Aufrufer stellt sie unter
+ * `unfusedHeadline()`, statt eine Auswahl zu behaupten.
+ */
+export interface BandedHits<H> {
+  required: H[];
+  optional: H[];
+  /** Nur im unfused Fall belegt: die Hits ohne jeden Bandanspruch. */
+  unbanded: H[];
+}
+
+/**
+ * #265/C-046: Ein Treffer, der NUR über einen Graph-Hop erreicht wurde, wird
+ * nie `required`.
+ *
+ * Die Regel steht hier ausdrücklich, statt aus der Score-Skalierung zu folgen.
+ * Bisher hielt sie durch zwei Zufälle: Auf dem Hybridpfad deckelt die skalierte
+ * Rang-Summe einen Nachbarn bei rund 82, also unter dem Cut von 100; auf dem
+ * BM25-Fallback sind die Werte unbegrenzt, aber dort bandet `unfused` ohnehin
+ * gar nichts. Beide Zufälle können sich ändern — ein anderer Cut, eine andere
+ * Skalierung —, und dann wäre die Auflage still weg. Ein Nachbar muss die
+ * Evidenz auf eigener Stärke bestehen; dass ihn ein `related_via` erreichbar
+ * gemacht hat, ist keine.
+ *
+ * Greift nur, wo der Aufrufer den Hop überhaupt kennt: Die schlanke
+ * Hook-Projektion trägt ihn bewusst nicht (§13.1), also bandet die Lane wie
+ * bisher. Serverseitig — vor der Projektion, wo die Auflage laut C-046 gelten
+ * muss — liegt er an, und dort wirkt die Regel.
+ */
+export function bandHits<H extends { score: number; hop?: "direct" | "1-hop" }>(
+  hits: H[],
+  cut: number,
+  unfused: boolean,
+): BandedHits<H> {
+  if (unfused) return { required: [], optional: [], unbanded: hits };
+  const isRequired = (h: H): boolean => h.score >= cut && h.hop !== "1-hop";
+  return {
+    required: hits.filter(isRequired),
+    optional: hits.filter((h) => !isRequired(h)),
+    unbanded: [],
+  };
+}

@@ -182,3 +182,80 @@ test("non-markdown files and dotfolders stay out of the vault", async (t) => {
   assert.equal(vault.get("hidden"), undefined, "dotfolders must stay ignored");
   assert.equal(vault.size(), 1, "only the anchor memory may be indexed");
 });
+
+test("a vault living under a dot-directory is watched — the ignore filter is relative to the root", async (t) => {
+  // #365/2: the ignore predicate split the ABSOLUTE path, so a vault under
+  // ~/.local/share/bastra/vault, ~/.bastra/vault or ~/.config/… matched on a
+  // parent segment it does not own — chokidar ignored the entire tree and the
+  // watcher emitted nothing at all, silently and forever. `init()` looks
+  // perfectly healthy in that state (walkDir starts INSIDE the root and never
+  // sees the parent), so only an event assertion from a dot-rooted vault
+  // catches it. Every other test here lives under /var/folders/… — not one
+  // dot segment among them, which is exactly how this survived.
+  const base = await mkdtemp(path.join(tmpdir(), "bastra-dotroot-"));
+  const dir = path.join(base, ".local", "share", "bastra", "vault");
+  await mkdir(dir, { recursive: true });
+  const vault = new Vault(dir);
+  await vault.init();
+  const events: VaultEvent[] = [];
+  vault.on((e) => events.push(e));
+  vault.startWatching();
+  await new Promise((r) => setTimeout(r, 300));
+  t.after(async () => {
+    await vault.stop();
+    await rm(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  });
+
+  // A dotfolder INSIDE the vault must still be ignored — the filter moved,
+  // it did not go away.
+  await mkdir(path.join(dir, ".obsidian"), { recursive: true });
+  await writeFile(path.join(dir, ".obsidian", "hidden.md"), memoryMd("hidden"), "utf8");
+  await writeFile(path.join(dir, "theta.md"), memoryMd("theta"), "utf8");
+
+  await waitFor(events, (e) => e.kind === "add" && e.memory?.fm.id === "theta");
+  assert.equal(vault.get("hidden"), undefined, "dotfolders under the root stay ignored");
+  assert.equal(vault.size(), 1, "only the plain memory may be indexed");
+});
+
+test("a dot-child of the root is still ignored — a leading '..' is only an escape as a whole segment", async (t) => {
+  // The relative filter has to tell "outside the root" from "a child whose
+  // name happens to begin with two dots": `relative(root, root + "/..sync/x")`
+  // is `"..sync/x"`, and a plain `startsWith("..")` reads that as an escape and
+  // waves it through. The watcher would then index `..sync/hidden.md` while
+  // `walkDir` and `reconcile` keep filtering it — one add per watcher event,
+  // one remove per 60-second reconcile, forever.
+  const { dir, vault, events } = await watchedVault(t);
+
+  // "sub" is created and proven-watched *before* any other top-level entry
+  // lands next to it. chokidar has no native recursive watch on any platform
+  // here (it never passes `recursive: true` to fs.watch) — recursion is
+  // manual, one `fs.watch` per directory, discovered via a readdir of the
+  // parent that chokidar throttles to one pass/second per directory
+  // (chokidar/handler.js `_handleRead`). Two brand-new top-level directories
+  // created back-to-back would both compete for that single readdir of the
+  // vault root; on a loaded Linux/inotify CI runner that race can cost the
+  // second directory's discovery outright rather than merely delay it, which
+  // is what made this test see zero events for the full 8s window. Anchoring
+  // on "sub" alone first — the same shape as the earlier "a nested .md file
+  // is watched too" test, which never races — sidesteps the collision
+  // instead of papering over it with a longer timeout.
+  await mkdir(path.join(dir, "sub"), { recursive: true });
+  await writeFile(path.join(dir, "sub", "seen.md"), memoryMd("seen"), "utf8");
+  await waitFor(events, (e) => e.kind === "add" && e.memory?.fm.id === "seen");
+
+  // Now layer the dot-prefixed entries on: "sub" is already watched, so
+  // writes into it no longer depend on discovering a new top-level directory.
+  await mkdir(path.join(dir, "..sync"), { recursive: true });
+  await writeFile(path.join(dir, "..sync", "hidden.md"), memoryMd("dotdot-child"), "utf8");
+  await mkdir(path.join(dir, "sub", ".hidden"), { recursive: true });
+  await writeFile(path.join(dir, "sub", ".hidden", "deep.md"), memoryMd("nested-dot"), "utf8");
+
+  // Second anchor, so the ignored writes above are proven to have been
+  // considered (and rejected) by the watcher — not just not yet reached.
+  await writeFile(path.join(dir, "sub", "seen-after.md"), memoryMd("seen-after"), "utf8");
+  await waitFor(events, (e) => e.kind === "add" && e.memory?.fm.id === "seen-after");
+
+  assert.equal(vault.get("dotdot-child"), undefined, "`..sync/` is a dotfolder, not an escape");
+  assert.equal(vault.get("nested-dot"), undefined, "a dotfolder deeper in the tree stays ignored");
+  assert.equal(vault.size(), 2, "only the two plain nested memories may be indexed");
+});

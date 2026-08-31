@@ -200,6 +200,13 @@ export interface EmbeddingRuntimeHealth {
   lastError: string | null;
   lastErrorAt: number | null;
   lastOkAt: number | null;
+  /** #365/4: monoton steigende Zahl der Provider-Fehler seit Prozessstart.
+   *  `lastErrorAt` hat ms-Auflösung und taugt deshalb NICHT als Diskriminator
+   *  „ist genau dieser Call gescheitert?" — zwei Fehler in derselben
+   *  Millisekunde sind darüber nicht unterscheidbar, und der zweite Leser
+   *  sieht seinen eigenen Fehler als „schon vorher da". Der Zähler ist die
+   *  Kante, der Timestamp bleibt die Anzeige. */
+  errorCount: number;
 }
 
 // ─── Embedding Index ─────────────────────────────────────────────
@@ -224,6 +231,8 @@ export class EmbeddingIndex {
   private lastError: string | null = null;
   private lastErrorAt: number | null = null;
   private lastOkAt: number | null = null;
+  /** #365/4: monotoner Fehlerzähler — siehe EmbeddingRuntimeHealth.errorCount. */
+  private errorCount = 0;
   /** Provider-Calls seit Prozessstart (query + batch) — Energie-Telemetrie (#109). */
   private providerCalls = 0;
   /** Wie oft `enqueue()` wegen voller Queue gestallt hat (#331). Der Stall ist
@@ -492,6 +501,7 @@ export class EmbeddingIndex {
       lastError: this.lastError,
       lastErrorAt: this.lastErrorAt,
       lastOkAt: this.lastOkAt,
+      errorCount: this.errorCount,
     };
   }
 
@@ -509,6 +519,7 @@ export class EmbeddingIndex {
   private markProviderError(err: unknown): void {
     this.lastError = err instanceof Error ? err.message : String(err);
     this.lastErrorAt = Date.now();
+    this.errorCount++;
   }
 
   /** Cache-Hits zu Beobachtungszwecken (Tests). */

@@ -287,8 +287,15 @@ export async function checkForUpdate(opts: CheckOptions): Promise<UpdateState | 
  *
  * Respects the stored update mode: "off" skips detection entirely, so /health,
  * the CLI hint and the SessionStart block all stay silent without any extra
- * checks downstream. "notify" and "auto" both detect normally; the auto-apply
- * lives in the SessionStart hook, not here.
+ * checks downstream. "notify" and "auto" both detect normally; "notify" only
+ * surfaces the result and stages nothing.
+ *
+ * "auto" DOES stage here as well (#81, see the body): surfaces without a hook —
+ * Claude Desktop, a LaunchAgent daemon — never reach the SessionStart path, so
+ * the daemon applies the staged update itself and reports it via `onAutoStaged`.
+ * Both paths share the ONE day marker (`stagedToday()` / `markStagedToday()`;
+ * SessionStart side: session-hook.ts), so there is no double-stage on the same
+ * day, and a recorded refusal (#268) skips staging here too.
  */
 export function startBackgroundCheck(
   currentVersion: string,

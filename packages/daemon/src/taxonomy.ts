@@ -13,6 +13,7 @@
  *     automatisch.
  */
 import type { Vault } from "@bastra-recall/core";
+import { scopeEquals } from "@bastra-recall/core/scope";
 import { envInt } from "./env.js";
 
 export interface ConventionLean {
@@ -24,10 +25,19 @@ export interface ConventionLean {
 
 export const TAXONOMY_SCOPE = "taxonomy";
 
+/** #360-D: Bestands-Frontmatter kann von Hand geschrieben sein — ein
+ *  "Taxonomy" hätte die Konventionen still aus der Session-Injektion fallen
+ *  lassen UND dasselbe Memory zugleich als Drift-Kandidat behandelt (die
+ *  beiden Prüfungen unten sind Negationen voneinander und müssen deshalb
+ *  dieselbe Faltung benutzen). */
+function isTaxonomyScope(scope: unknown): boolean {
+  return typeof scope === "string" && scopeEquals(scope, TAXONOMY_SCOPE);
+}
+
 export function listConventions(vault: Vault, cap = 12): ConventionLean[] {
   return vault
     .list()
-    .filter((m) => m.fm.scope === TAXONOMY_SCOPE && !m.fm.obsolete)
+    .filter((m) => isTaxonomyScope(m.fm.scope) && !m.fm.obsolete)
     .sort((a, b) => String(b.fm.updated).localeCompare(String(a.fm.updated)))
     .slice(0, cap)
     .map((m) => ({
@@ -93,7 +103,7 @@ export function detectTaxonomyDrift(vault: Vault, now: number = Date.now()): Dri
   // Coverage-Korpus: was bestehende Konventionen bereits benennen.
   const covered = new Set<string>();
   for (const c of all) {
-    if (c.fm.scope !== TAXONOMY_SCOPE || c.fm.obsolete) continue;
+    if (!isTaxonomyScope(c.fm.scope) || c.fm.obsolete) continue;
     for (const t of c.fm.tags) covered.add(norm(t));
     for (const seg of c.fm.topic_path) covered.add(norm(seg));
     for (const w of c.fm.title.toLowerCase().split(/[^a-zäöüß0-9_-]+/u)) {
@@ -106,7 +116,7 @@ export function detectTaxonomyDrift(vault: Vault, now: number = Date.now()): Dri
 
   const clusters = new Map<string, { kind: "tag" | "topic"; ids: Set<string> }>();
   for (const m of all) {
-    if (m.fm.scope === TAXONOMY_SCOPE || m.fm.obsolete) continue;
+    if (isTaxonomyScope(m.fm.scope) || m.fm.obsolete) continue;
     const updatedMs = Date.parse(String(m.fm.updated));
     if (!Number.isFinite(updatedMs) || updatedMs < cutoff) continue;
 

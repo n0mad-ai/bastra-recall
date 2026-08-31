@@ -313,6 +313,55 @@ components:
             additionally lives in only ONE of the two retrieval arms, which is
             the shape a genuinely absent fact takes. Kept separate from
             weak_result because it is a higher-confidence claim.
+        score_kind:
+          type: string
+          enum: [rrf, bm25]
+          description: >
+            Which space hits[].score lives in — read this BEFORE applying any
+            band. "rrf" is the fused reciprocal-rank sum: bounded, and the
+            30/50/100 bands describe something. "bm25" is raw MiniSearch:
+            open-ended (six figures on a real vault), so 100 means nothing and
+            every hit would read as REQUIRED. A machine without an embedding
+            model serves "bm25" on every call.
+        unfused:
+          type: boolean
+          description: >
+            Short form of score_kind == "bm25" — the fusion did not run. Sent
+            only when true.
+        score_arms:
+          type: array
+          items:
+            type: string
+          description: >
+            Which arms formed the number, sorted. Two scores are comparable
+            only within the same arm set: ["bm25","vector"] tops out at
+            163.934, ["bm25","commons","vector"] at 241.803 (the Bastra Commons
+            contribute a third arm), and the degraded collapse path
+            ["commons","personal-rank"] at 147.541. Consumers that compare
+            scores across arm sets must re-fuse by RANK instead.
+        score_version:
+          type: string
+          description: >
+            Version of the score FORMULA. It changes when the same arm set
+            starts producing a different number; scores are not comparable
+            across versions.
+        degraded:
+          type: string
+          enum: [vector-arm-timeout, vector-arm-error, vector-arm-empty]
+          description: >
+            Present when the fusion fell back to BM25-only DURING this call,
+            and why. Distinct from a permanently absent embedding model, which
+            simply serves score_kind "bm25" without this field.
+        merged_by:
+          type: string
+          enum: [score, query-rank-fusion]
+          description: >
+            Batch mode (queries[]) only. "score" means every phrasing returned
+            the same score_arms/score_version, so the numbers were directly
+            comparable. "query-rank-fusion" means they did not: the order comes
+            from the ranks of the sub-lists, the reported scores are genuine
+            single-query values in DIFFERENT spaces, and the response is
+            flagged unfused — order is meaningful, the numbers are not a band.
     RecallHit:
       type: object
       required: [id, title, type, scope, summary, score]
@@ -329,6 +378,33 @@ components:
           type: string
         score:
           type: number
+          description: >
+            Read together with the response-level score_kind / score_arms —
+            the number alone does not name its scale.
+        rrf:
+          type: object
+          description: >
+            verbosity "full" only: what the score is made of. rank_bm25 /
+            rank_vector are the 1-based ranks in the personal arms (null when
+            that arm did not carry the hit). When the Bastra Commons
+            contributed, rank_commons, commons_weight and personal_score are
+            also present — personal_score is what the same recall would have
+            served without the commons arm.
+          properties:
+            rank_bm25:
+              type: integer
+              nullable: true
+            rank_vector:
+              type: integer
+              nullable: true
+            raw:
+              type: number
+            rank_commons:
+              type: integer
+            commons_weight:
+              type: number
+            personal_score:
+              type: number
     LoadMemoryResponse:
       type: object
       required: [id, frontmatter, body, file_path]

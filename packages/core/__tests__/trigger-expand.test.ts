@@ -286,3 +286,117 @@ test("buildExpandPrompt scrubs injected context blocks from source fields (#149)
   assert.ok(!p.includes("session-context"), "scaffolding tag must not seed paraphrases");
   assert.ok(!p.includes("packages/daemon/src/hook.ts"), "block content must not seed paraphrases");
 });
+
+test("empty generation is a failure: nothing written, nothing stamped, backfill retries (#367)", async () => {
+  // A thinking model returns its whole reply in `message.thinking` and leaves
+  // `content` empty — that reaches expand() as "". Stamping the src hash for it
+  // would freeze the failure forever (expand + backfill both skip a matching
+  // hash), so the file must stay untouched and stay eligible.
+  const { dir, vault } = await vaultWith(["a"]);
+  try {
+    const before = await readFile(path.join(dir, "a.md"), "utf8");
+    let chatCalls = 0;
+    const expander = new TriggerExpander(vault, stubEmbeddings(), {
+      chat: async () => { chatCalls++; return ""; },
+      backfillOnStart: false,
+    });
+
+    assert.equal(await expander.expand("a"), null, "empty generation reports failure, not []");
+    assert.equal(await readFile(path.join(dir, "a.md"), "utf8"), before, "file byte-identical");
+
+    // The stamp is the part that would be unrecoverable — it must be absent.
+    assert.doesNotMatch(before, /recall_when_expanded_src/);
+    assert.equal(await expander.backfill(), 0, "failed memory is not counted as expanded");
+    assert.equal(chatCalls, 2, "backfill retries it — the source hash never blocked it");
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("text that parses to nothing is still an answer — stamped, not retried (#367)", async () => {
+  // The failure test is the RAW reply, not the parse result. A model that
+  // answers with only slug-chains (or only echoes of the existing triggers) did
+  // respond; generation is deterministic here, so retrying that memory would
+  // regenerate the identical nothing on every sweep. It gets its stamp.
+  const { dir, vault } = await vaultWith(["a"]);
+  try {
+    let chatCalls = 0;
+    const expander = new TriggerExpander(vault, stubEmbeddings(), {
+      chat: async () => { chatCalls++; return "panel-close-fix\nsome_id_token\noriginal trigger"; },
+      backfillOnStart: false,
+    });
+    assert.deepEqual(await expander.expand("a"), [], "empty kept, not null");
+
+    const raw = await readFile(path.join(dir, "a.md"), "utf8");
+    assert.match(raw, /recall_when_expanded_src:/, "stamped");
+    assert.equal(await expander.backfill(), 0, "nothing left to do");
+    assert.equal(chatCalls, 1, "not regenerated — the stamp holds");
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("backfill stops after 5 consecutive failed generations (#367)", async () => {
+  // Without the breaker a systematically incompatible model burns one LLM call
+  // per memory on every daemon start — hours, for a result that was decided at
+  // call one.
+  const { dir, vault } = await vaultWith(["a", "b", "c", "d", "e", "f", "g", "h"]);
+  try {
+    let chatCalls = 0;
+    const expander = new TriggerExpander(vault, stubEmbeddings(), {
+      chat: async () => { chatCalls++; return ""; },
+      backfillOnStart: false,
+    });
+    assert.equal(await expander.backfill(), 0);
+    assert.equal(chatCalls, 5, "stopped at the 5th failure, 3 memories left untouched");
+
+    // A throwing chat is the same failure shape and must trip the same brake.
+    chatCalls = 0;
+    const throwing = new TriggerExpander(vault, stubEmbeddings(), {
+      chat: async () => { chatCalls++; throw new Error("ollama aborted"); },
+      backfillOnStart: false,
+    });
+    assert.equal(await throwing.backfill(), 0);
+    assert.equal(chatCalls, 5, "throwing chat trips the breaker too");
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("a successful generation resets the failure counter — the breaker needs them consecutive", async () => {
+  const { dir, vault } = await vaultWith(["a", "b", "c", "d", "e", "f", "g", "h"]);
+  try {
+    let n = 0;
+    const expander = new TriggerExpander(vault, stubEmbeddings(), {
+      // fail, fail, succeed, then fail forever: the run of 5 only starts after
+      // the success, so the sweep reaches memory 8 rather than stopping at 5.
+      chat: async () => { n++; return n === 3 ? "a real phrase" : ""; },
+      backfillOnStart: false,
+    });
+    assert.equal(await expander.backfill(), 1, "the one success was written");
+    assert.equal(n, 8, "all eight visited — no 5 in a row until the end");
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("the model DID answer but the self-test dropped everything → still written and stamped", async () => {
+  // The pre-#367 behaviour that must survive: this is a real "we tried, source
+  // is X" result, and the stamp is what breaks the reindex→embed→expand loop.
+  const { dir, vault } = await vaultWith(["a"]);
+  try {
+    const expander = new TriggerExpander(vault, stubEmbeddings(), {
+      chat: async () => "a plausible phrase\nanother one",
+      selfTest: async () => false,
+      backfillOnStart: false,
+    });
+    assert.deepEqual(await expander.expand("a"), [], "empty kept, not null");
+
+    const raw = await readFile(path.join(dir, "a.md"), "utf8");
+    assert.match(raw, /recall_when_expanded_src:/, "stamped");
+    assert.match(raw, /recall_when_expanded: \[\]/, "empty expansion persisted");
+    assert.equal(await expander.expand("a"), null, "second pass is a no-op — loop stays broken");
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});

@@ -282,3 +282,29 @@ test("save_memory: traversal folder is rejected", async () => {
     await close();
   }
 });
+
+/**
+ * #360-D (Codex-Gegenreview): der Reserved-Scope-Vergleich lief exakt. Ein von
+ * Hand geschriebenes `scope: Taxonomy` fiel damit still aus der
+ * Session-Injektion — und wurde von der Drift-Erkennung, die dieselbe Prüfung
+ * negiert, zugleich als gewöhnliches Memory behandelt.
+ */
+test("listConventions: reserved scope compare is case-folded", async () => {
+  const { vault, close } = await makeVault([
+    {
+      rel: "memories/taxonomy/conv-upper.md",
+      content: memoryFile({
+        id: "conv-upper",
+        title: "convention written by hand",
+        scope: "Taxonomy",
+        tags: ["convention"],
+      }),
+    },
+  ]);
+  try {
+    const ids = listConventions(vault).map((c) => c.id);
+    assert.deepEqual(ids, ["conv-upper"]);
+  } finally {
+    await close();
+  }
+});

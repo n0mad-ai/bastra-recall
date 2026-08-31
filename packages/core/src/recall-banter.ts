@@ -191,6 +191,11 @@ const VERY_SLOW_PHRASES: PhrasePool = {
 const SLOW_STAGE_MS = 500;
 const VERY_SLOW_STAGE_MS = 1000;
 
+/** Stages, die einen Abschluss melden statt Fortschritt. Ihre `durationMs`
+ *  misst den ganzen Recall, nicht einen Schritt — eine Warte-Phrase wäre hier
+ *  eine Aussage über etwas bereits Fertiges (#365). */
+const TERMINAL_STAGES = new Set<RecallStage["name"]>(["done", "cache.hit", "error"]);
+
 /**
  * Phrasen für die nicht-streamenden MCP-Tools (load_memory, save_memory,
  * find_document, …). Anders als recall haben sie keine Stages — der Forwarder
@@ -239,6 +244,8 @@ export function banterModeFromEnv(env: NodeJS.ProcessEnv = process.env): BanterM
  * mit `durationMs > 500 ms` wird zusätzlich aus dem SLOW-Pool gepickt,
  * statt aus dem Stage-Pool — der User sieht, dass die App den
  * Latenz-Spike erkannt hat, statt einer normalen Stage-Phrase.
+ * Ausgenommen sind Terminal-Stages (`TERMINAL_STAGES`): die melden ein
+ * Ergebnis, keinen Fortschritt.
  */
 export function pickPhrase(
   stage: RecallStage,
@@ -248,11 +255,17 @@ export function pickPhrase(
   if (mode === "off" || mode === "terse") return null;
 
   const duration = stage.durationMs ?? 0;
-  if (duration >= VERY_SLOW_STAGE_MS) {
-    return pickFromPool(VERY_SLOW_PHRASES, lang, deterministicSeed(stage));
-  }
-  if (duration >= SLOW_STAGE_MS) {
-    return pickFromPool(SLOW_PHRASES, lang, deterministicSeed(stage));
+  // #365: „langsam" ist eine Aussage über eine LAUFENDE Stage, nie über einen
+  // Abschluss. `done` trägt `durationMs = Date.now() - recallStart`, also die
+  // Gesamtlaufzeit des Recalls — ohne diese Klammer schloss jeder Recall über
+  // 500 ms strukturell mit „das dauert noch" statt mit einem Ergebnis-Satz.
+  if (!TERMINAL_STAGES.has(stage.name)) {
+    if (duration >= VERY_SLOW_STAGE_MS) {
+      return pickFromPool(VERY_SLOW_PHRASES, lang, deterministicSeed(stage));
+    }
+    if (duration >= SLOW_STAGE_MS) {
+      return pickFromPool(SLOW_PHRASES, lang, deterministicSeed(stage));
+    }
   }
   const pool = STAGE_PHRASES[stage.name];
   if (!pool) return null;

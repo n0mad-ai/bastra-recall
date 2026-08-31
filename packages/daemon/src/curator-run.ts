@@ -9,6 +9,7 @@
  * /curator/state) so http.ts — already past the file-size comfort line —
  * only grows by routing lines.
  */
+import { scopeEquals } from "@bastra-recall/core/scope";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readdir, stat } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
@@ -30,7 +31,10 @@ import { readEventLog, reconstructReaches, type TelemetryEvent } from "./learned
 import { logDirFor } from "./telemetry.js";
 import { writePendingSuggestion } from "./pending-suggestions.js";
 import { envInt } from "./env.js";
+import { collectClaimedTwice } from "./claimed-twice.js";
+import { isMarkdownFile } from "@bastra-recall/core";
 import {
+  claimedTwiceReportLimit,
   writeVaultHealthReport,
   type ReportConflictCluster,
   type ReportDanglingLink,
@@ -126,7 +130,7 @@ function collectFacts(vault: VaultLike, flooredIds: Set<string>): CuratorMemoryF
       // untouchable for automated lifecycle passes by definition.
       protected:
         mem.fm.type === "doc" ||
-        mem.fm.scope === "taxonomy" ||
+        scopeEquals(String(mem.fm.scope ?? ""), "taxonomy") ||
         mem.fm.write_origin === "user-directed",
     });
   }
@@ -280,7 +284,9 @@ async function collectEmptyFiles(vaultRoot: string): Promise<string[]> {
     const entries = await readdir(vaultRoot, { recursive: true, withFileTypes: true });
     const empty: string[] = [];
     for (const e of entries) {
-      if (!e.isFile() || !e.name.endsWith(".md")) continue;
+      // Dieselbe Extension-Regel wie der Vault-Index (Codex-Befund 7):
+      // eine leere `.MD` ist genauso eine leere Obsidian-Notiz.
+      if (!e.isFile() || !isMarkdownFile(e.name)) continue;
       const rel = relative(vaultRoot, join(e.parentPath, e.name));
       if (rel.split(sep).some((part) => part.startsWith("."))) continue;
       try {
@@ -582,6 +588,9 @@ async function runCuratorPassInner(
     })),
     floors: await collectFloorReview(deps.vault, nowMs),
     ...collectConflictsAndDangling(deps.vault, new Set((await listSkills()).map((s) => s.id))),
+    // #360: the claim gate holds new saves; this is the same question asked of
+    // everything written before the gate existed.
+    claimedTwice: collectClaimedTwice(deps.vault, claimedTwiceReportLimit()),
     emptyFiles: await collectEmptyFiles(deps.vaultRoot),
     flagged: collectFlaggedCaptures(deps.vault),
     damaged: collectDamagedFrontmatter(deps.vault, deps.vaultRoot),

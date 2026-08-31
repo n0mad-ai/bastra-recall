@@ -185,7 +185,18 @@ export function liveIntent(
     const ka = orderKey(a);
     const kb = orderKey(best);
     if (ka !== kb) return ka > kb ? a : best;
-    return a.recorded > best.recorded ? a : best;
+    // `>=`, nicht `>`. `recorded` hat Millisekunden-Auflösung, und zwei Acts,
+    // die dicht aufeinander geschrieben werden, tragen denselben Wert — dann
+    // war `>` falsch und die FRÜHERE Fassung gewann. Aufgefallen als
+    // Node-22-Testfehler: derselbe Test entschied unter Node 24 richtig, weil
+    // der Lauf dort langsam genug war, dass die Millisekunde wechselte. Das
+    // war Glück, kein Verhalten.
+    //
+    // Der Log ist append-only und `readActs` liest ihn in Zeilenreihenfolge,
+    // also ist bei gleicher Millisekunde die SPÄTERE ZEILE die spätere Tat —
+    // eine Ordnung, die die Uhr in dieser Auflösung nicht mehr hergibt. Da
+    // `reduce` in Array-Reihenfolge läuft, wählt `>=` genau sie.
+    return a.recorded >= best.recorded ? a : best;
   });
 
   const gap = win.occurred_at !== undefined

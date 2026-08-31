@@ -1,9 +1,11 @@
+/** Shared installer helpers, including Codex vault discovery (#15). */
 import { copyFile, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { request as httpRequest } from "node:http";
 import { Vault } from "@bastra-recall/core";
 import { FORWARDER_SCRIPT_PATH, CLAUDE_DESKTOP_CONFIG, CLAUDE_CODE_CONFIG } from "./paths.js";
+import { codexMcpGet, findCodexExecutable } from "./codex-cli.js";
 import type { CodeStale } from "../code-staleness.js";
 import type { InstallOpts } from "./types.js";
 
@@ -117,6 +119,14 @@ async function detectExistingVault(): Promise<string | null> {
       const vault = data?.mcpServers?.[SERVER_KEY]?.env?.BASTRA_VAULT_PATH;
       if (typeof vault === "string" && vault.length > 0) return vault;
     } catch { /* ignore — try next */ }
+  }
+  // Codex owns TOML serialization; ask its official CLI for the normalized
+  // registration instead of maintaining a second TOML parser (#15).
+  const codex = findCodexExecutable();
+  if (codex) {
+    const existing = codexMcpGet(codex);
+    const vault = existing.server?.transport.env?.BASTRA_VAULT_PATH;
+    if (typeof vault === "string" && vault.length > 0) return vault;
   }
   return null;
 }

@@ -1,6 +1,6 @@
 # bastra-recall
 
-Persistent **recall memory** for AI coding agents — Claude Code, Claude Desktop, and Cursor. This package is a thin launcher that installs and wires up bastra-recall across every MCP-capable client with one command.
+Persistent **recall memory** for AI coding agents — ChatGPT Desktop, Codex, Claude Code, Claude Desktop, and Cursor. This package is a thin launcher that installs and wires up bastra-recall across every supported MCP client with one command.
 
 ## Install
 
@@ -16,7 +16,8 @@ bastra install
 Both expose the `bastra` CLI. After installing, restart your AI client.
 
 - `bastra install` — guided setup (interactive): pick vault, AI clients, semantic recall.
-- `bastra install all` — register the MCP server, Skill, and hooks across Claude Code, Claude Desktop, and Cursor (script-friendly).
+- `bastra install all` — register the MCP server, Skill, and hooks across ChatGPT Desktop/Codex, Claude Code, Claude Desktop, and Cursor (script-friendly).
+- `bastra install codex` — install the shared Codex/ChatGPT Desktop MCP entry, native hooks, and `~/.agents/skills/bastra-recall`.
 - `bastra doctor` — check / repair registrations.
 - `bastra uninstall all` — remove everything again.
 

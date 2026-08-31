@@ -1,0 +1,10 @@
+interface:
+  display_name: "Bastra Recall"
+  short_description: "Private local memory for ChatGPT and Codex"
+  default_prompt: "Use $bastra-recall proactively: retrieve relevant durable context before acting and save only strong, lasting signals."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "bastra-recall"
+      description: "Local Bastra Recall memory and document tools"

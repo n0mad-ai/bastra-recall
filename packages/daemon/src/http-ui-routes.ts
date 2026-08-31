@@ -23,7 +23,7 @@ import { handleUiSkills } from "./skills-registry.js";
 import { handleUiAreas } from "./webui-areas.js";
 import type { createLiveUpdates } from "./live-updates.js";
 import { handleHookOnboarding, handleUiOnboarding } from "./onboarding.js";
-import { handleSessionContext } from "./session-context.js";
+import { handleSessionContext, handleSessionContextPost } from "./session-context.js";
 import { sendJson } from "./http-util.js";
 
 export interface UiRouteCtx {
@@ -119,6 +119,15 @@ export function dispatchUiRoutes(
   // Loopback-only (Host-Gate above), read-only, no auth — like /hook/care.
   if (method === "GET" && url === "/hook/session-context") {
     handleSessionContext(req, res, toolDeps, vault).catch(() =>
+      sendJson(res, 500, { error: "session-context error" }),
+    );
+    return true;
+  }
+  // #265: derselbe Pfad, projektbewusst und mit Budgets. GET bleibt der
+  // projektlose Forwarder-Vertrag; POST nimmt cwd/project/source/budget und
+  // liefert die Blockliste, den §9.4-Marker und die Budgetbilanz daneben.
+  if (method === "POST" && url === "/hook/session-context") {
+    handleSessionContextPost(req, res, toolDeps, vault).catch(() =>
       sendJson(res, 500, { error: "session-context error" }),
     );
     return true;

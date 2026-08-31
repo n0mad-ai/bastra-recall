@@ -10,7 +10,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { Vault } from "../src/vault.js";
@@ -49,7 +49,7 @@ async function harness(t: { after: (fn: () => unknown) => void }) {
     await vault.reindexFile(out.result.file_path);
     return out;
   };
-  return { save };
+  return { save, vault, auditLog, dir };
 }
 
 test("a slug-inferred overwrite is audited as update, with the pre-image kept", async (t) => {
@@ -84,4 +84,63 @@ test("an explicit id still classifies correctly", async (t) => {
 
   assert.equal(second.audit.operation, "update");
   assert.ok(second.audit.diff_before);
+});
+
+/**
+ * Codex-Gegenreview (P1): Autoritative Besitzprüfung, aber Vorbild aus dem
+ * Cache.
+ *
+ * Die Mutation arbeitet seit dem Umbau auf die ID-Transaktion autoritativ von
+ * der PLATTE (`claim.locate()`), `diff_before` kam aber weiter aus dem
+ * Vault-Index. Zwei nachgestellte Fälle, beide mit einem Audit, das eine andere
+ * Datei beschreibt als die mutierte:
+ *
+ *   1. Der Index kennt das Memory nicht (extern nach der Initialisierung
+ *      aufgetaucht) — protokolliert wurde `diff_before: null`, also „neu
+ *      angelegt", während auf der Platte überschrieben wurde.
+ *   2. Der Index ist veraltet (extern geändert) — protokolliert wurde die ALTE
+ *      Fassung, überschrieben die neue.
+ *
+ * `operation` ist davon unberührt: sie kommt aus `result.created` und damit
+ * ohnehin aus der Mutation selbst.
+ */
+test("das Save-Audit liest sein Vorbild von der Platte, auch wenn der Index es nicht kennt", async (t) => {
+  const { save, vault } = await harness(t);
+  const first = await save(INPUT);
+  // Der Index vergisst die Datei — sie bleibt liegen. Genau der Zustand, in dem
+  // ein extern aufgetauchtes Memory beim nächsten Save überschrieben wird.
+  vault.forgetFile(first.result.file_path);
+  assert.equal(vault.get(first.result.id), undefined, "Kontrolle: der Cache kennt es nicht mehr");
+
+  const second = await save({ ...INPUT, body: "Body v2.", overwrite: true });
+
+  assert.equal(second.result.created, false, "auf der Platte lag die Datei sehr wohl");
+  assert.ok(
+    second.audit.diff_before,
+    "ein Overwrite ohne Vorbild ist ein Trail, aus dem die Mutation nicht rekonstruierbar ist",
+  );
+  assert.equal((second.audit.diff_before as Record<string, unknown>).id, first.result.id);
+});
+
+test("das Save-Audit nennt die Fassung von der Platte, nicht den veralteten Cache-Stand", async (t) => {
+  const { save, vault } = await harness(t);
+  const first = await save(INPUT);
+  const file = first.result.file_path;
+
+  // Extern geändert, ohne Reindex: der Cache hält v1, die Platte v-extern.
+  const raw = await readFile(file, "utf8");
+  await writeFile(file, raw.replace("summary: How to roll back a deploy.", "summary: extern geaendert"), "utf8");
+  assert.equal(
+    vault.get(first.result.id)?.fm.summary,
+    "How to roll back a deploy.",
+    "Kontrolle: der Cache weiß nichts von der externen Änderung",
+  );
+
+  const second = await save({ ...INPUT, body: "Body v3.", overwrite: true });
+
+  assert.equal(
+    (second.audit.diff_before as Record<string, unknown>).summary,
+    "extern geaendert",
+    "das Vorbild muss die Datei beschreiben, die wirklich überschrieben wurde",
+  );
 });

@@ -36,12 +36,35 @@ export type ChatFn = (prompt: string) => Promise<string>;
 // env BASTRA_RERANK_MODEL still overrides; the install wizard persists per-machine.
 export const DEFAULT_RERANK_MODEL = "gemma3:4b";
 
+/**
+ * Context window every generation call asks for (#366). Without an explicit
+ * `num_ctx` the server default applies, and on this machine that default is
+ * `OLLAMA_CONTEXT_LENGTH=262144` — above every installed model's maximum, so
+ * each one loads at its own ceiling: 262144 for qwen3:4b, a 36 GB KV cache on a
+ * 24 GB box. Only `qwen3-recall` escapes that, and only because its Modelfile
+ * pins `PARAMETER num_ctx 4096` — nothing in this code path exempts it.
+ *
+ * The request body is the right place to fix it: `options.num_ctx` overrides
+ * both the server env AND a Modelfile parameter (measured), while the env is a
+ * system-wide default we have no business lowering for one client. 4096 matches
+ * the working `~/.bastra/qwen3-recall.Modelfile` recipe and covers
+ * buildExpandPrompt (title + summary + recall_when).
+ * Per-call override via `numCtx`; env override via BASTRA_OLLAMA_NUM_CTX. The
+ * rerank lane needs one: buildRerankPrompt scales with the candidate pool and
+ * overruns 4096 (see the call site in cli/bridges.ts).
+ */
+export const DEFAULT_NUM_CTX = 4096;
+
 /** A live Ollama chat client (POST /api/chat, non-streaming). */
-export function ollamaChat(opts: { baseURL?: string; model?: string; timeoutMs?: number } = {}): ChatFn {
+export function ollamaChat(
+  opts: { baseURL?: string; model?: string; timeoutMs?: number; numCtx?: number } = {},
+): ChatFn {
   const baseURL = (opts.baseURL ?? process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434").replace(/\/+$/, "");
   assertLocalOrOptIn(baseURL);
   const model = opts.model ?? process.env.BASTRA_RERANK_MODEL ?? DEFAULT_RERANK_MODEL;
   const timeoutMs = opts.timeoutMs ?? 30_000;
+  const envCtx = Number.parseInt(process.env.BASTRA_OLLAMA_NUM_CTX ?? "", 10);
+  const numCtx = opts.numCtx ?? (envCtx > 0 ? envCtx : DEFAULT_NUM_CTX);
   return async (prompt: string): Promise<string> => {
     const ctrl = new AbortController();
     const tid = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -53,7 +76,13 @@ export function ollamaChat(opts: { baseURL?: string; model?: string; timeoutMs?:
           model,
           messages: [{ role: "user", content: prompt }],
           stream: false,
-          options: { temperature: 0 },
+          // A thinking model otherwise puts its whole answer in
+          // `message.thinking` and returns an empty `content` — 0 phrases, no
+          // error, and the expander stamps that void into the vault (#367).
+          // Verified live: non-thinking models accept the field without
+          // complaint, so it is sent unconditionally rather than probed.
+          think: false,
+          options: { temperature: 0, num_ctx: numCtx },
         }),
         signal: ctrl.signal,
       });

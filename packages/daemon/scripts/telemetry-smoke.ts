@@ -40,7 +40,16 @@ async function main(): Promise<void> {
   const followup = t.recentRecallId();
   assert(followup === recallId, "recentRecallId should return the just-created id");
 
-  await t.logLoadMemory({ id: "foo", found: true, follows_recall: followup });
+  // The two hook-hint fields are part of the event since #144; the smoke check
+  // exercises the MCP load path, where no hook_recall preceded the load, so
+  // null is what a real event carries here.
+  await t.logLoadMemory({
+    id: "foo",
+    found: true,
+    follows_recall: followup,
+    from_hook_recall: null,
+    hook_hint_rank: null,
+  });
   await t.logSaveMemory({
     id: "bar",
     type: "lesson",

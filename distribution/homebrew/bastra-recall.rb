@@ -1,10 +1,15 @@
 # bastra-recall — Homebrew formula
 #
-# THIS FILE IS THE SOURCE OF TRUTH. The live copy lives in
-# https://github.com/n0mad-ai/homebrew-tap as Formula/bastra-recall.rb —
-# copy this file there on every release and set `url` / `sha256` to the new
-# tag's tarball. The two drifted apart once (the tap sat on v0.7.6 and was
-# missing six of the seven hook shims); keep them in lockstep.
+# THIS FILE IS THE SOURCE OF TRUTH for everything EXCEPT `url` and `sha256`.
+# The live copy lives in https://github.com/n0mad-ai/homebrew-tap as
+# Formula/bastra-recall.rb.
+#
+# `url` / `sha256` down there are bumped automatically by the tap's own
+# .github/workflows/update-formula.yml on every stable release — never copy
+# the two lines from here, this file's version deliberately lags behind.
+# Everything else (build steps, bin shims, caveats) is authored HERE and has to
+# be copied over by hand. The two drifted apart once (the tap sat on v0.7.6 and
+# was missing six of the seven hook shims); keep them in lockstep.
 #
 # Install via:
 #   brew tap n0mad-ai/tap
@@ -59,11 +64,21 @@ class BastraRecall < Formula
         bastra install all
 
       That registers bastra-recall with every supported AI client
-      (Claude Code, Claude Desktop, Cursor) and verifies the install.
+      (Claude Code, Claude Desktop, Codex/ChatGPT Desktop, Cursor) and verifies the install.
 
-      The MCP forwarder auto-starts the daemon on first use. To start it
-      eagerly for REST clients:
-        bastra-recall &
+      The MCP forwarder auto-starts the daemon on first use, and it shuts
+      down again after 30 minutes idle. That is all Claude Code, Claude
+      Desktop and Cursor need.
+
+      To keep it running permanently (REST clients, warm embedding model):
+        bastra autostart on
+        bastra autostart off    # back to on-demand
+
+      After a plain 'brew upgrade' the running daemon keeps the OLD code in
+      memory — Homebrew does not know about it. Either use:
+        bastra update           # upgrade + re-register + restart, all in one
+      or restart the daemon yourself. 'bastra doctor' says when the running
+      daemon is older than what is installed.
 
       Vault path: pass --vault, set BASTRA_VAULT_PATH, or let the CLI
       auto-detect from an existing claude.json registration.

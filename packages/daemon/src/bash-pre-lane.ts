@@ -1,5 +1,5 @@
 /**
- * Bash tripwire lane, daemon-side (#343 pattern, applied to the hottest path).
+ * Bash tripwire lane, daemon-side (#343/#15 pattern, shared by Claude and Codex).
  *
  * The pipeline from `bash-pre-hook.ts`: pattern-match destructive/risky shell
  * commands, recall safety lessons, emit the STOP/CAUTION tripwire block.
@@ -23,7 +23,11 @@ import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { envFirst, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { reportHinted } from "./hook-hinted.js";
+import { hookClient } from "./hook-surface.js";
+import { governContext } from "./context-governor.js";
 import { postLane } from "./thin-client.js";
+import { isUnfused, type HookRecallHit, type HookRecallResponse } from "./hook-recall-response.js";
+import { unfusedHeadline } from "./band-wording.js";
 import { extractCommandHead, invokesOwnBinary } from "./bash-fail-lane.js";
 import {
   bumpShown,
@@ -45,21 +49,12 @@ export interface BashHookPayload {
   tool_input?: Record<string, unknown>;
 }
 
-interface RecallHit {
-  id: string;
-  title: string;
-  type: string;
-  scope: string;
-  summary: string;
-  score: number;
-}
-
-interface RecallResponse {
-  hits: RecallHit[];
-  vault_size: number;
-  latency_ms: number;
-  recall_id: string;
-}
+// P0: EIN gemeinsamer Response-Typ für alle Lanes. Die lokale Kopie hier
+// kannte `score_kind`/`unfused` nicht — das Feld fiel beim Parsen still weg,
+// und diese Lane bandete danach rohe BM25-Werte mit einem Cut, den nur die
+// fusionierte Skala trägt.
+type RecallHit = HookRecallHit;
+type RecallResponse = HookRecallResponse;
 
 /**
  * Destructive patterns — always need a recall.
@@ -86,7 +81,10 @@ const DESTRUCTIVE_PATTERNS: Array<{ label: string; re: RegExp }> = [
   { label: "pnpm rm", re: /\bpnpm\s+(?:rm|remove)\b/ },
   { label: "DROP TABLE", re: /\bDROP\s+TABLE\b/i },
   { label: "DROP DATABASE", re: /\bDROP\s+DATABASE\b/i },
-  { label: "TRUNCATE", re: /\bTRUNCATE\b/i },
+  // #415: `TRUNCATE` alone is an English word. Requiring the object — the same
+  // shape the two DROP patterns above already have — is what separates the
+  // statement from a sentence that mentions truncating.
+  { label: "TRUNCATE TABLE", re: /\bTRUNCATE\s+TABLE\b/i },
   { label: "docker rm", re: /\bdocker\s+rm\b/ },
   { label: "docker volume rm", re: /\bdocker\s+volume\s+rm\b/ },
   { label: "kubectl delete", re: /\bkubectl\s+delete\b/ },
@@ -109,12 +107,40 @@ const RISKY_PATTERNS: Array<{ label: string; re: RegExp }> = [
   // value. Destructive patterns above keep the STOP warning.
 ];
 
+/**
+ * Command heads that only READ (#415).
+ *
+ * `grep -rn "DROP TABLE" .` and `rg "git reset --hard" docs/` carry a
+ * destructive pattern as their SEARCH TERM. Matching them fired a STOP warning
+ * at somebody looking something up — observed on legitimate work, and the same
+ * shape of noise that got the `>` redirect pattern removed in August: a
+ * tripwire that cries on reading gets ignored when it warns on writing.
+ */
+const SEARCH_ONLY_HEAD = /^(?:sudo\s+)?(?:grep|egrep|fgrep|rg|ag|ack|git\s+grep)\b/;
+
+/**
+ * The parts of a command line that actually run something (#415).
+ *
+ * Split on pipeline and sequence separators, then drop the segments that only
+ * search. Per SEGMENT and not per command on purpose: `grep -rn "x" . | xargs
+ * rm -rf` must still trip on its second half, and it does — only the `grep`
+ * segment is dropped. A command with no separators is one segment, so the
+ * common case costs a split of a short string.
+ */
+function executableSegments(cmd: string): string[] {
+  return cmd
+    .split(/\|\||&&|[|;\n]/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && !SEARCH_ONLY_HEAD.test(s));
+}
+
 function matchPattern(cmd: string): { label: string; severity: "destructive" | "risky" } | null {
+  const segments = executableSegments(cmd);
   for (const p of DESTRUCTIVE_PATTERNS) {
-    if (p.re.test(cmd)) return { label: p.label, severity: "destructive" };
+    if (segments.some((s) => p.re.test(s))) return { label: p.label, severity: "destructive" };
   }
   for (const p of RISKY_PATTERNS) {
-    if (p.re.test(cmd)) return { label: p.label, severity: "risky" };
+    if (segments.some((s) => p.re.test(s))) return { label: p.label, severity: "risky" };
   }
   return null;
 }
@@ -125,6 +151,7 @@ function matchPattern(cmd: string): { label: string; severity: "destructive" | "
  */
 export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: string): Promise<string> {
   const startedAt = Date.now();
+  const client = hookClient(payload);
 
   if (payload.hook_event_name !== "PreToolUse") return "{}";
   if (payload.tool_name !== "Bash") return "{}";
@@ -170,6 +197,9 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
           tool_input_excerpt: command.slice(0, 4096),
           scope: "all-projects",
           k: 3,
+          // #263: siehe bash-fail-lane — die Lane weist sich aus.
+          client,
+          hook_source: "bash-pre",
         },
         remainingMs,
       ),
@@ -186,10 +216,13 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
     }
   }
 
+  // P0: siehe bash-fail-lane.ts — auf der unfused Skala markiert der Floor
+  // keinen Punkt. Die Warnung selbst hängt ohnehin nicht an einem Score.
+  const unfused = isUnfused(resp);
   const hits: RecallHit[] = [];
   if (resp && Array.isArray(resp.hits)) {
     for (const h of resp.hits) {
-      if (h.score >= SCORE_FLOOR) hits.push(h);
+      if (unfused || h.score >= SCORE_FLOOR) hits.push(h);
     }
   }
   if (resp && hits.length === 0) status = "no-hits";
@@ -203,12 +236,34 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
   let emitted: RecallHit[] = hits;
   if (sessionId && hits.length > 0) {
     const state = await loadSessionState(sessionId);
-    const kept: RecallHit[] = [];
-    for (const h of hits) {
-      const loadedMtime = await getLoadedMarkerMtime(h.id);
-      if (shouldDropHit(state.shown[h.id], loadedMtime)) droppedDedupCount += 1;
-      else kept.push(h);
-    }
+    // #266: Die Entscheidung fällt der Context Governor — die Frage „darf ein
+    // bereits gezeigtes Memory erneut erwähnt werden?" ist seine (§16.3). Was
+    // „bereits gezeigt" HEISST, bleibt hier: `shouldDropHit` kennt das
+    // 4h-Fenster, MAX_SHOW und den Load-Marker, der den Zähler zurücksetzt.
+    // Der Governor bekommt das Ergebnis, nicht die Regel.
+    //
+    // Ohne Budget aufgerufen — das ist der heutige effektive Wert dieser Lane:
+    // Es gibt keine Token- und keine Stückgrenze, nur `k` auf der Recall-Seite.
+    // Ein Budget hier zu setzen wäre eine Verschärfung und keine
+    // Vereinheitlichung; sie gehört in eine Konfigurationsentscheidung mit
+    // gemessenen Zahlen (#354), nicht in diesen Umbau.
+    const governed = governContext(
+      await Promise.all(
+        hits.map(async (h, i) => ({
+          id: h.id,
+          // Die Recall-Liste ist bereits gerankt: Position = Priorität.
+          priority: i,
+          // Was der Hint kosten würde. Bei fehlendem Budget folgenlos, aber
+          // nicht erfunden — die Summary ist der Löwenanteil der Zeile.
+          text: h.summary ?? "",
+          alreadyShown: shouldDropHit(state.shown[h.id], await getLoadedMarkerMtime(h.id)),
+        })),
+      ),
+      {},
+    );
+    droppedDedupCount = governed.dropped.filter((d) => d.reason === "already_shown").length;
+    const keptIds = new Set(governed.kept.map((g) => g.id));
+    const kept = hits.filter((h) => keptIds.has(h.id));
     emitted = kept;
     if (kept.length > 0) {
       const now = Date.now();
@@ -219,7 +274,7 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
 
   // Emit hint even if no memories match — the warning itself is the point.
   // #161 CONSTRAINT (see top of file): the tripwire is exempt from backoff.
-  const block = formatHintBlock(match.label, match.severity, emitted);
+  const block = formatHintBlock(match.label, match.severity, emitted, unfused, client);
   const stdout = JSON.stringify({
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
@@ -251,17 +306,22 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
   return stdout;
 }
 
-function formatHintLine(h: RecallHit): string {
+function formatHintLine(h: RecallHit, hideScore = false): string {
   const summary = h.summary.length > 220 ? h.summary.slice(0, 217) + "…" : h.summary;
-  return `- ${h.id} (${h.type}, score ${Math.round(h.score)}): ${summary}`;
+  // P0: gleiche Wahl wie in prompt-lane.ts — ohne Fusion keine Zahl.
+  return hideScore
+    ? `- ${h.id} (${h.type}): ${summary}`
+    : `- ${h.id} (${h.type}, score ${Math.round(h.score)}): ${summary}`;
 }
 
-function formatHintBlock(
+export function formatHintBlock(
   pattern: string,
   severity: "destructive" | "risky",
   hits: RecallHit[],
+  unfused = false,
+  surface = "claude-code",
 ): string {
-  const head = `<recall-hints surface="claude-code" trigger="bash-${severity}">`;
+  const head = `<recall-hints surface="${surface}" trigger="bash-${severity}">`;
   const tail = `</recall-hints>`;
   const lines: string[] = [];
 
@@ -281,9 +341,12 @@ function formatHintBlock(
   if (hits.length > 0) {
     lines.push("");
     lines.push(
-      `Relevant lessons / preferences from the vault — load_memory(id) before deciding to run:`,
+      unfused
+        ? `Relevant lessons / preferences from the vault — load_memory(id) before deciding to run. ` +
+          unfusedHeadline("this command")
+        : `Relevant lessons / preferences from the vault — load_memory(id) before deciding to run:`,
     );
-    for (const h of hits) lines.push(formatHintLine(h));
+    for (const h of hits) lines.push(formatHintLine(h, unfused));
   }
 
   return [head, HINT_FRAME_NOTE, stripFenceMarkers(lines.join("\n")), tail].join("\n");
@@ -339,4 +402,4 @@ async function writeTelemetry(payload: BashHookCallTelemetry): Promise<void> {
 }
 
 // Export for testing.
-export { matchPattern, formatHintBlock, DESTRUCTIVE_PATTERNS, RISKY_PATTERNS };
+export { matchPattern, DESTRUCTIVE_PATTERNS, RISKY_PATTERNS };

@@ -36,11 +36,13 @@ The **`Stop`** save-eval hook is on by default: since the #48 redesign it is sil
 
 The hook entry points can run as a **compiled client** (`bastra-hook`, built with `deno compile`, #344) instead of a `node` process, which takes the interpreter start out of every hook call. Plain npm installs get it on demand: `bastra install claude-code` asks once whether to download it (~70 MB, one GitHub Release asset per platform — macOS arm64/x64, Linux x64/arm64 — verified against the sha256 manifest shipped inside the package), `--stub` takes it without asking, `--no-stub` keeps the node client. The answer is remembered across updates. Without the binary every hook runs on the node client: same daemon lanes, just a slower start.
 
-More: [architecture.md](./architecture.md), [hooks.md](./hooks.md), [triggers.md](./triggers.md).
+More: [architecture.md](./architecture.md), [hooks.md](./hooks.md), [triggers.md](./triggers.md), [Codex + ChatGPT Desktop](./CODEX.md).
 
 ### Fully manual install — fallback
 
 Add the MCP server block to your client's config (`~/.claude.json` for Claude Code, `~/Library/Application Support/Claude/claude_desktop_config.json` for Claude Desktop, `~/.cursor/mcp.json` for Cursor).
+
+Codex and ChatGPT Desktop share TOML rather than these JSON blocks. Use `bastra install codex` (recommended) or the official `codex mcp add` flow documented in [CODEX.md](./CODEX.md).
 
 **Recommended (forwarder mode — shares one daemon across all sessions):**
 
@@ -54,7 +56,7 @@ Add the MCP server block to your client's config (`~/.claude.json` for Claude Co
 }
 ```
 
-The forwarder is a thin stdio-MCP wrapper that talks to a single local HTTP daemon (port 6723 by default). All MCP clients — Claude Code, Claude Desktop, Cursor, additional sessions — share the same vault state, embedding index, and telemetry. The forwarder auto-spawns the daemon on first run if no one is listening yet.
+The forwarder is a thin stdio-MCP wrapper that talks to a single local HTTP daemon (port 6723 by default). All MCP clients — Claude Code, Claude Desktop, Codex/ChatGPT Desktop, Cursor, additional sessions — share the same vault state, embedding index, and telemetry. The forwarder auto-spawns the daemon on first run if no one is listening yet.
 
 **Standalone mode (one MCP client only, no sharing):**
 
@@ -77,7 +79,7 @@ bash packages/skill/install-hook.sh   # registers all 7 reflex-layer hooks (opt 
 
 `bastra install claude-code` does both of these for you. Re-run `install.sh` whenever a skill file changes; re-run `install-hook.sh` only if hook binary paths move. To remove the hooks again: `bash packages/skill/install-hook.sh --uninstall`.
 
-Every adapter write is **idempotent** (re-runs are no-ops), **atomic** (tmp file + rename), **backed up** (timestamped `.bak-…` next to the original), and **parse-safe** (broken JSON aborts the run instead of corrupting it). Vault path resolves in this order: `--vault <path>` flag → `BASTRA_VAULT_PATH` env → auto-detect from an existing registration in `~/.claude.json` or `claude_desktop_config.json`. If none of those produce a path (a fresh machine), an interactive `bastra install` offers to create `~/BastraVault` for you; non-interactive runs (piped, `--yes`, `--dry-run`) keep the clear deterministic error.
+Every adapter write is **idempotent** (re-runs are no-ops), **atomic** (tmp file + rename), **backed up** (timestamped `.bak-…` next to the original), and **parse-safe** (broken JSON aborts the run instead of corrupting it). Vault path resolves in this order: `--vault <path>` flag → `BASTRA_VAULT_PATH` env → auto-detect from an existing Claude or Codex registration. If none of those produce a path (a fresh machine), an interactive `bastra install` offers to create `~/BastraVault` for you; non-interactive runs (piped, `--yes`, `--dry-run`) keep the clear deterministic error.
 
 ### Vault care — flag it now, groom it later
 
@@ -182,7 +184,7 @@ To reach this daemon from a hosted web app (e.g. a site's admin talking to the u
 ### Troubleshooting
 
 - **Daemon not reachable / `ECONNREFUSED`** — the MCP forwarder normally auto-spawns the daemon on the first tool call. Check with `curl -sS http://127.0.0.1:6723/health`; `bastra status` shows the same thing in readable form. If the forwarder was disabled (`BASTRA_FORWARDER_SPAWN=0`), remove that override and restart your AI client.
-- **MCP is not registered with Claude Code, Claude Desktop, or Cursor** — run `bastra doctor` to see which config is missing or broken, then re-run `bastra install <surface>`. The config paths are printed in both outputs.
+- **MCP is not registered with Claude Code, Claude Desktop, Codex/ChatGPT Desktop, or Cursor** — run `bastra doctor` to see which config is missing or broken, then re-run `bastra install <surface>`. The config paths are printed in both outputs.
 - **Vault path missing or not writable** — pass `--vault <path>` during install or set `BASTRA_VAULT_PATH`. The directory must exist and your user must be able to create `.md` files in it; use a throwaway vault while testing.
 - **Port `6723` already in use** — find the owner with `lsof -i :6723 -P -n`. Either stop the stale process or move the daemon with `BASTRA_HTTP_PORT=<port>` and point forwarders/hooks at the same endpoint via `BASTRA_DAEMON_URL` / `BASTRA_HTTP_URL`.
 - **Recall returns nothing, or hits from the wrong vault** — confirm the registered vault with `bastra doctor`. Memory files need valid YAML frontmatter; files that fail validation are skipped. Weak or missing `recall_when` values are the other common cause — that field carries the most search weight.
@@ -222,11 +224,13 @@ Der **`Stop`** Save-Eval-Hook ist standardmäßig an: seit dem #48-Redesign ist 
 
 Die Hook-Einstiegspunkte können statt als `node`-Prozess als **kompilierter Client** laufen (`bastra-hook`, gebaut mit `deno compile`, #344) — das nimmt jedem Hook-Aufruf den Interpreter-Start. Normale npm-Installationen bekommen ihn auf Wunsch: `bastra install claude-code` fragt einmal, ob er geladen werden soll (~70 MB, ein GitHub-Release-Asset pro Plattform — macOS arm64/x64, Linux x64/arm64 — geprüft gegen das sha256-Manifest im Paket), `--stub` lädt ohne Nachfrage, `--no-stub` bleibt beim node-Client. Die Antwort wird über Updates hinweg gemerkt. Ohne die Binary laufen alle Hooks auf dem node-Client: dieselben Daemon-Lanes, nur ein langsamerer Start.
 
-Mehr: [architecture.md](./architecture.md), [hooks.md](./hooks.md), [triggers.md](./triggers.md).
+Mehr: [architecture.md](./architecture.md), [hooks.md](./hooks.md), [triggers.md](./triggers.md), [Codex + ChatGPT Desktop](./CODEX.md).
 
 ### Komplett manuelle Installation — Fallback
 
 MCP-Server-Block in die Client-Config eintragen (für Claude Code: `~/.claude.json`, für Claude Desktop: `~/Library/Application Support/Claude/claude_desktop_config.json`, für Cursor: `~/.cursor/mcp.json`).
+
+Codex und ChatGPT Desktop teilen sich TOML statt dieser JSON-Blöcke. Empfohlen ist `bastra install codex`; der offizielle manuelle `codex mcp add`-Weg steht in [CODEX.md](./CODEX.md).
 
 **Empfohlen (Forwarder-Modus — ein Daemon für alle Sitzungen):**
 
@@ -240,7 +244,7 @@ MCP-Server-Block in die Client-Config eintragen (für Claude Code: `~/.claude.js
 }
 ```
 
-Der Forwarder ist ein dünner stdio-MCP-Wrapper, der mit einem einzigen lokalen HTTP-Daemon spricht (Standard-Port 6723). Alle MCP-Clients — Claude Code, Claude Desktop, Cursor, weitere Sitzungen — teilen sich denselben Vault-State, Embedding-Index und Telemetry-Stream. Der Forwarder spawnt den Daemon beim ersten Start automatisch, falls noch keiner läuft.
+Der Forwarder ist ein dünner stdio-MCP-Wrapper, der mit einem einzigen lokalen HTTP-Daemon spricht (Standard-Port 6723). Alle MCP-Clients — Claude Code, Claude Desktop, Codex/ChatGPT Desktop, Cursor, weitere Sitzungen — teilen sich denselben Vault-State, Embedding-Index und Telemetry-Stream. Der Forwarder spawnt den Daemon beim ersten Start automatisch, falls noch keiner läuft.
 
 **Standalone-Modus (nur ein MCP-Client, kein Sharing):**
 
@@ -263,7 +267,7 @@ bash packages/skill/install-hook.sh   # registriert alle 7 Reflex-Layer-Hooks (S
 
 `bastra install claude-code` erledigt beides für dich. `install.sh` neu ausführen, wenn sich eine Skill-Datei ändert; `install-hook.sh` nur, wenn sich Hook-Binärpfade verschieben. Hooks wieder entfernen: `bash packages/skill/install-hook.sh --uninstall`.
 
-Jeder Adapter-Write ist **idempotent** (Re-Runs sind No-Ops), **atomar** (Tmp-File + Rename), **gesichert** (timestamped `.bak-…` neben dem Original) und **parse-safe** (kaputtes JSON bricht den Lauf ab statt es zu zerstören). Vault-Pfad-Auflösung in dieser Reihenfolge: `--vault <pfad>`-Flag → `BASTRA_VAULT_PATH`-ENV → Auto-Detect aus bestehender Registrierung in `~/.claude.json` oder `claude_desktop_config.json`. Greift nichts davon (frische Maschine), bietet ein interaktives `bastra install` an, `~/BastraVault` anzulegen; nicht-interaktive Läufe (gepiped, `--yes`, `--dry-run`) behalten die klare, deterministische Fehlermeldung.
+Jeder Adapter-Write ist **idempotent** (Re-Runs sind No-Ops), **atomar** (Tmp-File + Rename), **gesichert** (timestamped `.bak-…` neben dem Original) und **parse-safe** (kaputtes JSON bricht den Lauf ab statt es zu zerstören). Vault-Pfad-Auflösung in dieser Reihenfolge: `--vault <pfad>`-Flag → `BASTRA_VAULT_PATH`-ENV → Auto-Detect aus bestehender Claude- oder Codex-Registrierung. Greift nichts davon (frische Maschine), bietet ein interaktives `bastra install` an, `~/BastraVault` anzulegen; nicht-interaktive Läufe (gepiped, `--yes`, `--dry-run`) behalten die klare, deterministische Fehlermeldung.
 
 ### Vault-Pflege — jetzt markieren, später aufräumen
 
@@ -368,7 +372,7 @@ Um diesen Daemon aus einer gehosteten Web-App zu erreichen (z.B. das Admin einer
 ### Fehlerbehebung
 
 - **Daemon nicht erreichbar / `ECONNREFUSED`** — der MCP-Forwarder startet den Daemon normalerweise beim ersten Tool-Aufruf selbst. Prüfen mit `curl -sS http://127.0.0.1:6723/health`; `bastra status` zeigt dasselbe in lesbar. Falls der Forwarder abgeschaltet wurde (`BASTRA_FORWARDER_SPAWN=0`), die Variable entfernen und den AI-Client neu starten.
-- **MCP ist in Claude Code, Claude Desktop oder Cursor nicht registriert** — `bastra doctor` zeigt, welche Config fehlt oder kaputt ist, danach `bastra install <surface>` erneut ausführen. Die Config-Pfade stehen in beiden Ausgaben.
+- **MCP ist in Claude Code, Claude Desktop, Codex/ChatGPT Desktop oder Cursor nicht registriert** — `bastra doctor` zeigt, welche Config fehlt oder kaputt ist, danach `bastra install <surface>` erneut ausführen. Die Config-Pfade stehen in beiden Ausgaben.
 - **Vault-Pfad fehlt oder ist nicht beschreibbar** — beim Installieren `--vault <pfad>` übergeben oder `BASTRA_VAULT_PATH` setzen. Der Ordner muss existieren und dein User dort `.md`-Dateien anlegen dürfen; zum Testen einen Wegwerf-Vault nehmen.
 - **Port `6723` ist belegt** — Besitzer finden mit `lsof -i :6723 -P -n`. Entweder den alten Prozess stoppen oder den Daemon per `BASTRA_HTTP_PORT=<port>` umziehen und Forwarder/Hooks über `BASTRA_DAEMON_URL` / `BASTRA_HTTP_URL` auf denselben Endpoint zeigen lassen.
 - **Recall liefert nichts oder Treffer aus dem falschen Vault** — den registrierten Vault mit `bastra doctor` prüfen. Memory-Dateien brauchen gültiges YAML-Frontmatter; ungültige werden übersprungen. Die zweite häufige Ursache sind schwache oder fehlende `recall_when`-Werte — dieses Feld hat das größte Suchgewicht.

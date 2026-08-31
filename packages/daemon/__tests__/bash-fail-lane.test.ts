@@ -8,6 +8,7 @@ import {
   extractCommandHead,
   extractErrorKeywords,
   formatHintBlock,
+  normalizeToolResponse,
   isThrottled,
   markThrottle,
   throttleFile,
@@ -36,6 +37,12 @@ describe("bash-fail-hook: readExitCode", () => {
   });
   it("returns null when missing", () => {
     assert.equal(readExitCode({}), null);
+  });
+  it("reads Codex plain-text tool responses", () => {
+    assert.equal(readExitCode(normalizeToolResponse("Process exited with code 17\nError: failed")), 17);
+  });
+  it("reads Claude Code PostToolUseFailure's official non-zero status wording", () => {
+    assert.equal(readExitCode({ error: "Command exited with non-zero status code 7" }), 7);
   });
 });
 
@@ -117,7 +124,9 @@ interface SeenRequest {
   body: Record<string, unknown>;
 }
 
-function startRecordingDaemon(): Promise<{ port: number; seen: SeenRequest[]; close: () => Promise<void> }> {
+function startRecordingDaemon(
+  recallHits: Record<string, unknown>[] = [],
+): Promise<{ port: number; seen: SeenRequest[]; close: () => Promise<void> }> {
   const seen: SeenRequest[] = [];
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     let raw = "";
@@ -126,7 +135,7 @@ function startRecordingDaemon(): Promise<{ port: number; seen: SeenRequest[]; cl
       seen.push({ path: req.url ?? "", body: raw ? (JSON.parse(raw) as Record<string, unknown>) : {} });
       res.writeHead(200, { "Content-Type": "application/json" });
       if (req.url === "/hook/act") res.end(JSON.stringify({ matched: 0 }));
-      else res.end(JSON.stringify({ hits: [], vault_size: 0, latency_ms: 1, recall_id: "t" }));
+      else res.end(JSON.stringify({ hits: recallHits, vault_size: 0, latency_ms: 1, recall_id: "t" }));
     });
   });
   return new Promise((ok) => {
@@ -174,6 +183,84 @@ describe("bash-fail-hook: #144 act-signal", () => {
       assert.deepEqual(paths, ["/hook/act"]);
       assert.equal(daemon.seen[0].body.tool_input_excerpt, "npm test");
       assert.equal(daemon.seen[0].body.exit_code, 0);
+      assert.equal(daemon.seen[0].body.client, "claude-code");
+      assert.equal(daemon.seen[0].body.hook_source, "bash-fail");
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  it("PostToolUseFailure sends the act-signal and recalls from its top-level error", async () => {
+    const daemon = await startRecordingDaemon([{
+      id: "failure-lesson",
+      title: "Known build failure",
+      type: "lesson",
+      scope: "all",
+      summary: "Use the generated type before building.",
+      score: 80,
+    }]);
+    try {
+      const stdout = await runFailHook(
+        {
+          hook_event_name: "PostToolUseFailure",
+          tool_name: "Bash",
+          session_id: `act-failure-event-${Date.now()}`,
+          tool_input: { command: "npm run build" },
+          error: "Command exited with non-zero status code 1: TS2304 missing name",
+          is_interrupt: false,
+          duration_ms: 4187,
+        },
+        daemon.port,
+      );
+      const output = JSON.parse(stdout) as { hookSpecificOutput?: { hookEventName?: string } };
+      assert.equal(output.hookSpecificOutput?.hookEventName, "PostToolUseFailure");
+      assert.deepEqual(daemon.seen.map((r) => r.path), ["/hook/act", "/hook/recall", "/hook/hinted"]);
+      assert.equal(daemon.seen[0].body.exit_code, 1);
+      assert.equal(daemon.seen[0].body.client, "claude-code");
+      assert.equal(daemon.seen[0].body.hook_source, "bash-fail");
+      assert.match(String(daemon.seen[1].body.query), /missing/);
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  it("PostToolUseFailure interrupt remains silent", async () => {
+    const daemon = await startRecordingDaemon();
+    try {
+      const stdout = await runFailHook(
+        {
+          hook_event_name: "PostToolUseFailure",
+          tool_name: "Bash",
+          session_id: `act-failure-interrupt-${Date.now()}`,
+          tool_input: { command: "npm run dev" },
+          error: "Interrupted by user",
+          is_interrupt: true,
+        },
+        daemon.port,
+      );
+      assert.equal(stdout.trim(), "{}");
+      assert.equal(daemon.seen.length, 0);
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  it("explicit Codex marker reaches hook_act dimensions", async () => {
+    const daemon = await startRecordingDaemon();
+    try {
+      await runFailHook(
+        {
+          bastra_client: "codex",
+          hook_event_name: "PostToolUse",
+          tool_name: "Bash",
+          session_id: `act-codex-${Date.now()}`,
+          tool_input: { command: "git status" },
+          tool_response: { exit_code: 0 },
+        },
+        daemon.port,
+      );
+      assert.equal(daemon.seen[0].body.client, "codex");
+      assert.equal(daemon.seen[0].body.hook_source, "bash-fail");
     } finally {
       await daemon.close();
     }

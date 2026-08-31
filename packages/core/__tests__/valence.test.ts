@@ -187,3 +187,41 @@ test("staleness: high salience slows aging (#217)", () => {
   // salience 0 ändert nichts
   assert.equal(computeStaleness({ ...base, salience: 0 }, now), "stale");
 });
+
+test("staleness #365/14: ein unbekanntes touch sagt mit und ohne valid_until dasselbe", () => {
+  // `touch` = max(updated, last_reviewed_at); ist keines davon parsebar, ist es
+  // 0 = Unix-Epoche. Der Zweig OHNE valid_until fängt das ab (touch <= 0 →
+  // fresh), der Zweig MIT valid_until rechnete elapsed/total gegen 1970 und
+  // landete damit für jedes Ablaufdatum nahe heute bei ≈0.99 → "aging".
+  const now = new Date("2026-08-23T00:00:00Z");
+  const soon = "2026-12-31";
+
+  for (const [label, base] of [
+    ["unparsebares updated", { type: "lesson", updated: "irgendwann letztens" }],
+    ["fehlendes updated", { type: "lesson" }],
+  ] as const) {
+    assert.equal(computeStaleness(base, now), "fresh", `${label}: ohne valid_until`);
+    assert.equal(
+      computeStaleness({ ...base, valid_until: soon }, now),
+      "fresh",
+      `${label}: mit valid_until muss dasselbe sagen`,
+    );
+  }
+
+  // Gegenproben: der valid_until-Zweig rechnet weiter, wenn touch bekannt ist,
+  // und ein abgelaufenes Datum bleibt expired — auch ohne touch.
+  assert.equal(
+    computeStaleness({ type: "lesson", updated: "2026-08-01", valid_until: "2026-08-25" }, now),
+    "aging",
+    "bekanntes touch: 22 von 24 Tagen verbraucht = 0.92 ≥ 0.75",
+  );
+  assert.equal(
+    computeStaleness({ type: "lesson", updated: "2026-08-01", valid_until: "2026-09-30" }, now),
+    "fresh",
+  );
+  assert.equal(
+    computeStaleness({ type: "lesson", valid_until: "2026-01-01" }, now),
+    "expired",
+    "ein abgelaufenes valid_until gewinnt vor dem touch-Guard",
+  );
+});

@@ -33,7 +33,13 @@ import type { Adapter, DoctorResult, InstallOpts, InstallResult, UninstallResult
 
 // ─── Hook helpers (claude-code-only surface) ─────────────────────
 
-type HookEventName = "SessionStart" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "Stop";
+type HookEventName =
+  | "SessionStart"
+  | "UserPromptSubmit"
+  | "PreToolUse"
+  | "PostToolUse"
+  | "PostToolUseFailure"
+  | "Stop";
 
 interface HookDef {
   event: HookEventName;
@@ -43,9 +49,10 @@ interface HookDef {
   note: string;
   /** #344: subcommand of the compiled stub that serves this lane. When set
    *  AND the stub binary exists, registration prefers `<stub> <subcommand>`
-   *  over `node <bin>` — the stub starts in ~20ms against node's ~45ms floor,
-   *  which is the whole point of compiling it. Lanes without a daemon-side
-   *  pipeline (session, todo, stop) have no subcommand yet and stay on node. */
+   *  over `node <bin>` — the stub starts in ~25ms against node's ~75ms floor,
+   *  which is the whole point of compiling it. Since #369 every lane has one:
+   *  session, todo and stop got their daemon-side pipelines (#369) and joined
+   *  the stub, Stop being the one that fires at the end of every answer. */
   stubSubcommand?: string;
 }
 
@@ -53,7 +60,7 @@ interface HookDef {
 // Stop hook still needs its definition — to refresh an already-registered one
 // (see planHookEntries).
 const STOP_HOOK_DEF: HookDef = {
-  event: "Stop", bin: STOP_HOOK_BIN, timeout: 3, note: "bastra-recall Stop hook (optional autonomous save-eval, #35)",
+  event: "Stop", bin: STOP_HOOK_BIN, timeout: 3, note: "bastra-recall Stop hook (optional autonomous save-eval, #35)", stubSubcommand: "stop",
 };
 
 // Single source of truth for the reflex layer. The Stop hook is ON by default
@@ -63,24 +70,33 @@ const STOP_HOOK_DEF: HookDef = {
 // into the chat. Live-validated → default on; opt out with --no-stop-hook.
 function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[] {
   const defs: HookDef[] = [
-    { event: "SessionStart", matcher: "startup|resume|clear|compact", bin: SESSION_HOOK_BIN, timeout: 3, note: "bastra-recall SessionStart hook" },
+    { event: "SessionStart", matcher: "startup|resume|clear|compact", bin: SESSION_HOOK_BIN, timeout: 3, note: "bastra-recall SessionStart hook", stubSubcommand: "session" },
     { event: "UserPromptSubmit", bin: PROMPT_HOOK_BIN, timeout: 2, note: "bastra-recall UserPromptSubmit hook (lookup-mode, #33)", stubSubcommand: "prompt" },
     { event: "PreToolUse", matcher: "Write|Edit|MultiEdit|NotebookEdit", bin: PRE_TOOL_HOOK_BIN, timeout: 2, note: "bastra-recall PreToolUse hook", stubSubcommand: "write" },
-    { event: "PreToolUse", matcher: "TodoWrite", bin: TODO_HOOK_BIN, timeout: 2, note: "bastra-recall TodoWrite hook (topology-recall, #36)" },
+    { event: "PreToolUse", matcher: "TodoWrite", bin: TODO_HOOK_BIN, timeout: 2, note: "bastra-recall TodoWrite hook (topology-recall, #36)", stubSubcommand: "todo" },
     { event: "PreToolUse", matcher: "Bash", bin: BASH_PRE_HOOK_BIN, timeout: 2, note: "bastra-recall Bash-pre hook (safety, #34)", stubSubcommand: "bash-pre" },
     { event: "PostToolUse", matcher: "Bash", bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall Bash post hook (act-signal #144 + lesson recall on fail #37)", stubSubcommand: "bash-fail" },
+    { event: "PostToolUseFailure", matcher: "Bash", bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall Bash failure hook (act-signal #144 + lesson recall on fail #37)", stubSubcommand: "bash-fail" },
   ];
   if (opts.includeStop) defs.push(STOP_HOOK_DEF);
   return defs;
 }
 
-function buildHookEntry(def: HookDef): Record<string, unknown> {
-  // #344: prefer the compiled stub when this lane has a subcommand and the
-  // binary actually exists on this host. Plain npm installs have no stub
-  // (it is built locally via deno) — they keep the node thin client, which
-  // serves the same daemon lane, just with node's start cost.
+/**
+ * #344: prefer the compiled stub when this lane has a subcommand and the
+ * binary actually exists on this host. Plain npm installs have no stub (it is
+ * downloaded per #350 or built locally via deno) — they keep the node thin
+ * client, which serves the same daemon lane, just with node's start cost.
+ *
+ * `stubPresent` is injectable so the planner tests can pin BOTH registered
+ * forms; production passes nothing and probes the disk.
+ */
+function buildHookEntry(
+  def: HookDef,
+  stubPresent: boolean = existsSync(HOOK_STUB_BIN),
+): Record<string, unknown> {
   const command =
-    def.stubSubcommand && existsSync(HOOK_STUB_BIN)
+    def.stubSubcommand && stubPresent
       ? `${HOOK_STUB_BIN} ${def.stubSubcommand}`
       : `node ${def.bin}`;
   const entry: Record<string, unknown> = {};
@@ -103,6 +119,41 @@ const OUR_HOOK_FILES = [
 ];
 const REQUIRED_HOOK_FILES = OUR_HOOK_FILES.filter((f) => f !== "stop-hook.js");
 
+/**
+ * The stub subcommand that serves the lane whose node client is `<file>`, or
+ * null when the lane has none. Derived from the defs above rather than a second
+ * table: a lane's file and its subcommand drifting apart is exactly how the
+ * detection below would go quietly blind again.
+ */
+export function stubSubcommandForFile(file: string): string | null {
+  for (const def of hookDefinitions({ includeStop: true })) {
+    if (def.bin.endsWith(`/${file}`) && def.stubSubcommand) return def.stubSubcommand;
+  }
+  return null;
+}
+
+/**
+ * The stub binary a registered command executes for lane `sub`, or null when
+ * the command is not that lane on the stub.
+ *
+ * Needed because a lane has TWO registered forms since #344/#350 —
+ * `node /…/dist/prompt-hook.js` and `/…/stub/bastra-hook prompt` — and every
+ * consumer that only knew the first went blind on stub installs: doctor
+ * reported 3/7 registered and called a healthy surface broken (found while
+ * moving the last three lanes onto the stub, #369).
+ */
+export function stubLaneCommandPath(cmd: string, sub: string, home: string = homedir()): string | null {
+  // Leading program token, quoted (a path with spaces can only appear so) or bare.
+  const m = /^\s*(?:"([^"]+)"|'([^']+)'|(\S+))\s*(.*)$/.exec(cmd);
+  if (!m) return null;
+  const prog = m[1] ?? m[2] ?? m[3] ?? "";
+  const base = prog.split("/").pop() ?? "";
+  if (base !== "bastra-hook" && base !== "bastra-hook.exe") return null;
+  const args = (m[4] ?? "").trim().split(/\s+/);
+  if (args[0] !== sub) return null;
+  return prog.startsWith("~/") ? join(home, prog.slice(2)) : prog;
+}
+
 function isOurHookEntry(matcher: unknown): boolean {
   if (typeof matcher !== "object" || matcher === null) return false;
   const m = matcher as Record<string, unknown>;
@@ -121,7 +172,7 @@ function isOurHookEntry(matcher: unknown): boolean {
 }
 
 const HOOK_EVENTS: HookEventName[] = [
-  "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop",
+  "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop",
 ];
 
 /**
@@ -165,7 +216,7 @@ export function hookCommandPath(
  * `io` is injectable for tests; production passes nothing.
  */
 export async function checkHookPaths(
-  found: Map<string, string>,
+  found: Iterable<readonly [string, string]>,
   io: {
     exists?: (p: string) => Promise<boolean>;
     running?: string;
@@ -176,7 +227,10 @@ export async function checkHookPaths(
   const home = io.home ?? homedir();
   const problems: string[] = [];
   for (const [file, cmd] of found) {
-    const path = hookCommandPath(cmd, file, home);
+    const sub = stubSubcommandForFile(file);
+    const path =
+      hookCommandPath(cmd, file, home)
+      ?? (sub ? stubLaneCommandPath(cmd, sub, home) : null);
     if (path === null) {
       problems.push(`${file}: no path in '${cmd}'`);
       continue;
@@ -191,7 +245,13 @@ export async function checkHookPaths(
 // the command that runs them — doctor reports N/7 coverage from the keys and
 // checks the paths from the values (#321).
 export function registeredHookBins(hooks: Record<string, unknown>): Map<string, string> {
-  const found = new Map<string, string>();
+  return new Map(registeredHookCommands(hooks));
+}
+
+/** Every owned hook command, without deduplicating two event registrations
+ * that intentionally share one binary (PostToolUse + PostToolUseFailure). */
+export function registeredHookCommands(hooks: Record<string, unknown>): Array<[string, string]> {
+  const found: Array<[string, string]> = [];
   for (const ev of HOOK_EVENTS) {
     const arr = Array.isArray(hooks[ev]) ? (hooks[ev] as unknown[]) : [];
     for (const entry of arr) {
@@ -202,11 +262,48 @@ export function registeredHookBins(hooks: Record<string, unknown>): Map<string, 
         const cmd = typeof (h as Record<string, unknown>)?.command === "string"
           ? ((h as Record<string, unknown>).command as string)
           : "";
-        for (const f of OUR_HOOK_FILES) if (cmd.includes(`/${f}`)) found.set(f, cmd);
+        for (const f of OUR_HOOK_FILES) {
+          if (cmd.includes(`/${f}`)) {
+            found.push([f, cmd]);
+            continue;
+          }
+          // …or the same lane on the compiled stub (#344/#350).
+          const sub = stubSubcommandForFile(f);
+          if (sub && stubLaneCommandPath(cmd, sub)) found.push([f, cmd]);
+        }
       }
     }
   }
   return found;
+}
+
+/**
+ * Required logical registrations that are absent from their exact event and
+ * matcher. Counting hook binaries alone cannot see that the same bash-fail
+ * binary must be registered on both PostToolUse and PostToolUseFailure: an old
+ * seven-entry install otherwise still looks like 7/7 healthy to doctor.
+ */
+export function missingRequiredHookRegistrations(hooks: Record<string, unknown>): string[] {
+  const missing: string[] = [];
+  for (const def of hookDefinitions()) {
+    const entries = Array.isArray(hooks[def.event]) ? hooks[def.event] as unknown[] : [];
+    const file = def.bin.split("/").pop() ?? "";
+    const found = entries.some((entry) => {
+      if (!entry || typeof entry !== "object") return false;
+      const record = entry as Record<string, unknown>;
+      if ((record.matcher ?? undefined) !== (def.matcher ?? undefined)) return false;
+      const handlers = Array.isArray(record.hooks) ? record.hooks : [];
+      return handlers.some((handler) => {
+        if (!handler || typeof handler !== "object") return false;
+        const command = (handler as Record<string, unknown>).command;
+        if (typeof command !== "string") return false;
+        return command.includes(`/${file}`) ||
+          (def.stubSubcommand ? stubLaneCommandPath(command, def.stubSubcommand) !== null : false);
+      });
+    });
+    if (!found) missing.push(`${def.event}${def.matcher ? `:${def.matcher}` : ""}`);
+  }
+  return missing;
 }
 
 type HookStepStatus = "installed" | "already-installed" | "would-install" | "removed" | "not-present" | "would-remove" | "error";
@@ -225,7 +322,12 @@ export interface HookPlan {
 export function planHookEntries(
   action: "install" | "uninstall",
   hooks: Record<string, unknown>,
-  opts: { includeStop: boolean; mapBin?: (bin: string) => string },
+  opts: {
+    includeStop: boolean;
+    mapBin?: (bin: string) => string;
+    /** Test seam — see buildHookEntry. Omitted in production. */
+    stubPresent?: boolean;
+  },
 ): HookPlan {
   // Register the stable-runtime copy of each bin when active (#180) — hooks
   // pointing into the npx cache break on eviction just like the forwarder.
@@ -234,6 +336,7 @@ export function planHookEntries(
     opts.mapBin ? { ...def, bin: opts.mapBin(def.bin) } : def;
   const defs = hookDefinitions({ includeStop: opts.includeStop }).map(withBin);
   const stopDef = withBin(STOP_HOOK_DEF);
+  const stubPresent = opts.stubPresent ?? existsSync(HOOK_STUB_BIN);
 
   // Per event: keep all foreign entries, append our (possibly re-built) entries.
   const before: Record<HookEventName, unknown[]> = {} as Record<HookEventName, unknown[]>;
@@ -252,13 +355,13 @@ export function planHookEntries(
     // is re-built from the current def, in place; foreign ones stay verbatim.
     if (action === "install" && !opts.includeStop && ev === "Stop") {
       stopPreserved = cur.some((m) => isOurHookEntry(m));
-      after[ev] = cur.map((m) => (isOurHookEntry(m) ? buildHookEntry(stopDef) : m));
+      after[ev] = cur.map((m) => (isOurHookEntry(m) ? buildHookEntry(stopDef, stubPresent) : m));
     } else {
       after[ev] = cur.filter((m) => !isOurHookEntry(m));
     }
   }
   if (action === "install") {
-    for (const def of defs) after[def.event].push(buildHookEntry(def));
+    for (const def of defs) after[def.event].push(buildHookEntry(def, stubPresent));
   }
   return { before, after, stopPreserved };
 }
@@ -326,7 +429,7 @@ async function patchClaudeCodeHooks(
   return action === "install"
     ? {
         status: "installed",
-        detail: `${sourceDefs.length} hooks registered (SessionStart, UserPromptSubmit, PreToolUse×3, PostToolUse${includeStop ? ", Stop" : stopPreserved ? "; Stop kept at current path" : "; Stop optional/off"})`,
+        detail: `${sourceDefs.length} hooks registered (SessionStart, UserPromptSubmit, PreToolUse×3, PostToolUse, PostToolUseFailure${includeStop ? ", Stop" : stopPreserved ? "; Stop kept at current path" : "; Stop optional/off"})`,
         backupPath: backupPath ?? undefined,
       }
     : { status: "removed", detail: "bastra-recall hook entries removed", backupPath: backupPath ?? undefined };
@@ -623,18 +726,23 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
       ? settingsRead.data.hooks as Record<string, unknown>
       : {};
     const found = registeredHookBins(hooks);
+    const registeredCommands = registeredHookCommands(hooks);
     const requiredMissing = REQUIRED_HOOK_FILES.filter((f) => !found.has(f));
+    const registrationMissing = missingRequiredHookRegistrations(hooks);
     const optionalMissing = OUR_HOOK_FILES
       .filter((f) => !REQUIRED_HOOK_FILES.includes(f))
       .filter((f) => !found.has(f));
-    requiredHooksMissing = requiredMissing.length > 0;
+    requiredHooksMissing = requiredMissing.length > 0 || registrationMissing.length > 0;
     details["hooks"] = requiredHooksMissing
-      ? `${found.size}/${OUR_HOOK_FILES.length} registered (missing required: ${requiredMissing.join(", ")})`
+      ? `${found.size}/${OUR_HOOK_FILES.length} lanes registered (missing required: ${[
+          ...requiredMissing,
+          ...registrationMissing,
+        ].join(", ")})`
       : optionalMissing.length > 0
         ? `${found.size}/${OUR_HOOK_FILES.length} registered (optional disabled: ${optionalMissing.join(", ")})`
         : `${OUR_HOOK_FILES.length}/${OUR_HOOK_FILES.length} registered`;
 
-    const hookPathProblems = await checkHookPaths(found);
+    const hookPathProblems = await checkHookPaths(registeredCommands);
     hookPathBroken = hookPathProblems.length > 0;
     if (hookPathBroken) details["hook-paths"] = hookPathProblems.join("; ");
 

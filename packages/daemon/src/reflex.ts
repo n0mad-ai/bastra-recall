@@ -26,33 +26,18 @@
  * Client-Report via /hook/hinted (Phantom-Demand-Regel, telemetry.ts).
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { tokenizeWithIdentifiers } from "@bastra-recall/core";
+import { tokenizeWithIdentifiers, PHRASE_STOPWORDS, MIN_SIGNIFICANT_TOKEN_LEN } from "@bastra-recall/core";
 import type { Vault, Memory } from "@bastra-recall/core";
 import { envFirst, envInt } from "./env.js";
 import { readSettings } from "./settings.js";
 import { fireAndForget, type Telemetry } from "./telemetry.js";
 import { truncateSummary } from "./tool-handlers.js";
 
-const MIN_TOKEN_LEN = 3;
+// #360: nach core verschoben (PHRASE_STOPWORDS/MIN_SIGNIFICANT_TOKEN_LEN) —
+// `anchorStrength` in search.ts braucht denselben Begriff von "Allerweltswort"
+// für die Zweierregel. Ein Alias hier, damit der lokale Name unverändert bleibt.
+const MIN_TOKEN_LEN = MIN_SIGNIFICANT_TOKEN_LEN;
 const DEFAULT_MAX_PER_TURN = 2;
-
-/**
- * Funktionswörter (DE+EN), die in natürlich formulierten recall_when-Phrasen
- * („about to write a tailwind grid") kein Trigger-Signal tragen. Ohne diesen
- * Filter müsste der Prompt auch „about"/„beim" enthalten — der Reflex würde
- * praktisch nie feuern. Inhaltswörter bleiben alle Pflicht (Token-AND).
- */
-const PHRASE_STOPWORDS = new Set([
-  // EN
-  "about", "after", "and", "any", "are", "before", "for", "from", "have",
-  "into", "just", "should", "that", "the", "then", "this", "when", "will",
-  "with", "would", "you", "your",
-  // DE
-  "aber", "als", "auch", "auf", "aus", "bei", "beim", "bitte", "das", "dass",
-  "dem", "den", "der", "die", "ein", "eine", "einem", "einen", "einer", "für",
-  "mal", "mit", "nach", "oder", "sich", "sind", "soll", "und", "von", "vor",
-  "wenn", "wird", "über",
-]);
 
 export interface ReflexHit {
   id: string;
@@ -113,6 +98,36 @@ interface ReflexMatch {
   matches: number;
 }
 
+/**
+ * Der Reflex-Pool: jedes Memory, das der User auf `recall_mode: reflex`
+ * promoviert hat und das ein Recall überhaupt servieren könnte.
+ *
+ * Exportiert, weil die Prompt-Lane denselben Pool braucht (#371): ihr
+ * mode-"none"-Filter (prompt-lane.ts:420) lässt nichts anderes durch, also
+ * entscheidet diese Liste, ob der Voll-Recall, den die Lane gleich bezahlt,
+ * überhaupt etwas beitragen kann. EINE Definition, damit die beiden Seiten
+ * nicht auseinanderlaufen — `collectReflexHits` benutzt sie mit.
+ *
+ * Die drei Bedingungen spiegeln, was der Hook-Recall-Pfad servieren kann:
+ * `obsolete` maskiert `passesRecallFilters` (und der Vector-Arm über den
+ * Vault-Filter), `sensitivity: private` fällt heraus, weil der Hook-Pfad
+ * `allow_private` nie setzt. Was dieser Filter verwirft, kann also auch nicht
+ * als Hit auftauchen — die Lane verliert durch das Vorziehen nichts.
+ */
+export function reflexPool(vault: Vault): Memory[] {
+  return vault.list().filter(
+    (m) =>
+      m.fm.recall_mode === "reflex" &&
+      m.fm.obsolete !== true &&
+      m.fm.sensitivity !== "private",
+  );
+}
+
+/** Nur die ids — was die Prompt-Lane für ihre Session-Dedup-Vorprüfung braucht. */
+export function reflexPoolIds(vault: Vault): string[] {
+  return reflexPool(vault).map((m) => m.fm.id);
+}
+
 const salienceOf = (m: Memory): number =>
   typeof m.fm.salience === "number" ? m.fm.salience : 0;
 
@@ -129,12 +144,7 @@ export function collectReflexHits(
   const contextTokens = new Set(contextTokenList);
   // Tokenfolge für den wörtlichen Phrasen-Match (siehe phraseMatchesContext).
   const contextSequence = ` ${contextTokenList.join(" ")} `;
-  const pool = vault.list().filter(
-    (m) =>
-      m.fm.recall_mode === "reflex" &&
-      m.fm.obsolete !== true &&
-      m.fm.sensitivity !== "private",
-  );
+  const pool = reflexPool(vault);
   const matched: ReflexMatch[] = [];
   for (const m of pool) {
     // recall_when_expanded zählt mit: die Expansion ist deterministisch aus

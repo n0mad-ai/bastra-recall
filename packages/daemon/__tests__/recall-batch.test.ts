@@ -73,7 +73,12 @@ test("RecallArgs (#351): query XOR queries", () => {
   assert.equal(RecallArgs.safeParse({}).success, true, "schema allows absence — handler enforces presence");
 });
 
-test("mergeBatchResults: best score wins, weak_result only when ALL sub-results are weak", () => {
+test("mergeBatchResults: unfused Phrasierungen fusionieren über die Ränge, weak_result nur wenn ALLE weak sind", () => {
+  // Ohne `score_kind` gilt fail-closed der unbegrenzte Raum. Codex-Gegenreview
+  // (P0): Rohe BM25-Werte sind auch UNTEREINANDER nicht vergleichbar —
+  // Termzahl, Querylänge und Expansion verschieben die absolute Höhe, ohne dass
+  // der Treffer besser passt. Zwei unfused Listen werden deshalb über die
+  // Ränge zusammengeführt, nicht über die Zahlen.
   const merged = mergeBatchResults(
     ["q1", "q2"],
     [
@@ -82,8 +87,13 @@ test("mergeBatchResults: best score wins, weak_result only when ALL sub-results 
     ],
     5,
   );
-  assert.equal(merged.hits[0]!.id, "x");
-  assert.equal(merged.hits[0]!.score, 120, "best original score kept — no re-fusion");
+  assert.equal(merged.merged_by, "query-rank-fusion");
+  assert.equal(merged.hits[0]!.id, "x", "in beiden Listen vorn — das ist das Rang-Signal");
+  // `x` steht in BEIDEN Listen auf Rang 1; bei Gleichstand gewinnt die erste.
+  // Ausgewiesen wird deren echter Score — nie eine aus zwei Skalen
+  // zusammengerechnete Mischzahl.
+  assert.equal(merged.hits[0]!.score, 50);
+  assert.equal(merged.score_version, undefined, "auf einer rohen Skala gibt es keine Formelversion");
   assert.equal(merged.weak_result, undefined, "one anchored phrasing clears the batch");
   assert.deepEqual(merged.recall_ids, ["r1", "r2"]);
 
@@ -156,4 +166,39 @@ test("recallHandler (#351 guard): a duplicate query is collapsed, the result say
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
+});
+
+/**
+ * Codex-Gegenreview (P0): Zwei Sub-Ergebnisse können BEIDE `score_kind: "rrf"`
+ * melden und trotzdem in verschiedenen Zahlenräumen liegen — eine Phrasierung
+ * mit Commons-Treffern reicht bis 241.803, eine ohne bis 163.934. Der
+ * Best-Score-Merge stellte den Dreiarm-Wert nach vorn, weil seine Skala höher
+ * reicht, nicht weil er besser passte. Verglichen wird deshalb die ARMMENGE.
+ */
+test("verschiedene Armmengen werden über die Ränge fusioniert, nicht über die Zahlen", () => {
+  const zweiarm = {
+    hits: [{ id: "persoenlich", score: 160 }],
+    score_kind: "rrf" as const,
+    score_arms: ["bm25", "vector"],
+    score_version: "rrf-1",
+  };
+  const dreiarm = {
+    hits: [{ id: "mit-commons", score: 230 }],
+    score_kind: "rrf" as const,
+    score_arms: ["bm25", "commons", "vector"],
+    score_version: "rrf-1",
+  };
+
+  const merged = mergeBatchResults(["a", "b"], [zweiarm, dreiarm], 5);
+  assert.equal(merged.merged_by, "query-rank-fusion");
+  assert.equal(merged.score_kind, "bm25", "gemischte Bauart trägt kein Band");
+  assert.equal(merged.unfused, true);
+  assert.equal(merged.score_arms, undefined);
+
+  // Gleiche Armmenge bleibt dagegen der billige Best-Score-Merge.
+  const gleich = mergeBatchResults(["a", "b"], [zweiarm, { ...zweiarm, hits: [{ id: "z", score: 90 }] }], 5);
+  assert.equal(gleich.merged_by, "score");
+  assert.equal(gleich.score_kind, "rrf");
+  assert.deepEqual(gleich.score_arms, ["bm25", "vector"]);
+  assert.equal(gleich.score_version, "rrf-1");
 });

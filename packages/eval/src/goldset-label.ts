@@ -135,6 +135,14 @@ function main(): void {
     );
     console.error(`[goldset] wrote ${cases.length} gold cases to ${args.out}`);
     console.error(`[goldset] coverage: ${JSON.stringify(cov)}`);
+    if (cov.probes) {
+      // Said out loud because the two numbers differ and a reader who sees only
+      // the file's case count would otherwise take the larger one as the set.
+      console.error(
+        `[goldset] ${cov.probes} of ${cov.total_with_probes} cases are probes ` +
+          `(${JSON.stringify(cov.by_probe_group)}) — main denominator is ${cov.total}`,
+      );
+    }
     // §19 lists the categories the set must reach. Naming the empty ones is the
     // point of the report — a gold set is judged by what it does NOT cover.
     const gaps: string[] = [];

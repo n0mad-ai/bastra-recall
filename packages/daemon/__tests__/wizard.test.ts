@@ -49,9 +49,10 @@ test("surface choices: detected clients are preselected and hinted", () => {
   const { options, initialValues } = buildSurfaceChoices({
     "claude-code": true,
     "claude-desktop": false,
+    codex: false,
     cursor: true,
   });
-  assert.deepEqual(options.map((o) => o.value), ["claude-desktop", "claude-code", "cursor"]);
+  assert.deepEqual(options.map((o) => o.value), ["claude-desktop", "claude-code", "codex", "cursor"]);
   assert.deepEqual(new Set(initialValues), new Set(["claude-code", "cursor"]));
   assert.equal(options.find((o) => o.value === "claude-code")?.hint, "detected");
   assert.equal(options.find((o) => o.value === "claude-desktop")?.hint, "not detected");
@@ -76,7 +77,9 @@ test("detectSurfaces: home-relative traces are found in the given home", async (
   try {
     assert.equal(detectSurfaces(home)["claude-code"], false);
     await writeFile(join(home, ".claude.json"), "{}", "utf8");
+    await mkdir(join(home, ".codex"));
     assert.equal(detectSurfaces(home)["claude-code"], true);
+    assert.equal(detectSurfaces(home).codex, true);
   } finally {
     await rm(home, { recursive: true, force: true });
   }

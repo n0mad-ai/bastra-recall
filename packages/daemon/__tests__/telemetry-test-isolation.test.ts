@@ -30,6 +30,40 @@ import { Telemetry } from "../src/telemetry.js";
 /** Where a Telemetry built under the current env would write. */
 const REAL_LOG_DIR = resolve(join(homedir(), ".bastra", "logs"));
 
+/** The probe's identity, used both to write it and to recognise it again (#374). */
+const PROBE_MEMORY_ID = "isolation-probe";
+const PROBE_RECALL_ID = "iso-recall";
+
+/**
+ * Probe events this run could have written — the guard's actual predicate (#374).
+ *
+ * It used to be `doesNotMatch(realRows, /isolation-probe/)`, a substring sweep
+ * over the whole day's file, and that was red for two reasons that are not
+ * contamination by the current run. One stale line from an earlier run without
+ * the isolation kept it red until midnight. And so did a legitimate `hook_recall`
+ * whose logged prompt merely DISCUSSED this test — talking about the failure
+ * reproduced it. A guard that cannot tell those from a real leak gets muted.
+ *
+ * Two narrowings, both from the issue: the id has to sit in a FIELD that carries
+ * an identity, not anywhere in the line; and the event has to be newer than the
+ * moment this run began.
+ */
+export function probeEventsSince(rows: string, startedAt: string): Record<string, unknown>[] {
+  return rows
+    .split("\n")
+    .filter(Boolean)
+    .map((line): Record<string, unknown> | null => {
+      try {
+        return JSON.parse(line) as Record<string, unknown>;
+      } catch {
+        return null; // a half-written line is not evidence of anything
+      }
+    })
+    .filter((e): e is Record<string, unknown> => e !== null)
+    .filter((e) => e.memory_id === PROBE_MEMORY_ID || e.recall_id === PROBE_RECALL_ID)
+    .filter((e) => typeof e.ts === "string" && e.ts >= startedAt);
+}
+
 test("the ambient log dir under test is never the developer's real one", () => {
   const configured = process.env.BASTRA_LOG_PATH;
   assert.ok(
@@ -48,14 +82,18 @@ test("the ambient log dir under test is never the developer's real one", () => {
 });
 
 test("a default-constructed Telemetry writes an acted-on episode to the throwaway dir, not to $HOME", async () => {
+  // Taken BEFORE anything is written, so the check at the end can separate what
+  // this run produced from what was already in the file (#374).
+  const startedAt = new Date().toISOString();
+
   // Exactly the shape hook-act.test.ts produced: a loaded memory, then an edit
   // that mentions two of its distinctive tokens.
   const t = new Telemetry();
   t.rotateTurn("iso-session");
   t.recordLoadedMemory({
-    memory_id: "isolation-probe",
+    memory_id: PROBE_MEMORY_ID,
     distinctive_tokens: ["zirconflux", "pallasgate"],
-    hook_hint: { recall_id: "iso-recall", score: 90 },
+    hook_hint: { recall_id: PROBE_RECALL_ID, score: 90 },
     session_id: "iso-session",
   });
   const episodes = t.matchLoadedMemories({
@@ -77,6 +115,7 @@ test("a default-constructed Telemetry writes an acted-on episode to the throwawa
 
   // And the real dir must not have grown a row for this probe. Reading it is safe:
   // if it does not exist, there is nothing to contaminate.
+  // The predicate lives in `probeEventsSince` (#374) and is unit-tested below.
   let realRows = "";
   try {
     const { readFile } = await import("node:fs/promises");
@@ -84,9 +123,38 @@ test("a default-constructed Telemetry writes an acted-on episode to the throwawa
   } catch {
     /* no real log on this machine — the property holds trivially */
   }
-  assert.doesNotMatch(
-    realRows,
-    /isolation-probe/,
-    "the probe reached the developer's real telemetry log",
+  const leaked = probeEventsSince(realRows, startedAt);
+
+  assert.deepEqual(
+    leaked,
+    [],
+    `this run wrote ${leaked.length} probe event(s) into the developer's real telemetry log`,
   );
+});
+
+test("the guard reports only probe events this run could have written (#374)", () => {
+  const startedAt = "2026-08-29T10:00:00.000Z";
+  const rows = [
+    // 1. Contamination from an earlier run, already in the file. Real, but not
+    //    ours — under the old substring sweep it kept the suite red all day.
+    { ts: "2026-08-29T06:23:00.000Z", kind: "recall_episode", memory_id: PROBE_MEMORY_ID, recall_id: PROBE_RECALL_ID },
+    // 2. Legitimate telemetry that merely QUOTES the string: a hook recall whose
+    //    prompt discussed this very test failure. Talking about it reproduced it.
+    { ts: "2026-08-29T11:00:00.000Z", kind: "hook_recall", query: `why does ${PROBE_MEMORY_ID} keep failing`, memory_id: "some-other-memory" },
+    // 3. A half-written line — a torn write is not evidence of anything.
+    "{not json",
+  ]
+    .map((r) => (typeof r === "string" ? r : JSON.stringify(r)))
+    .join("\n");
+
+  assert.deepEqual(probeEventsSince(rows, startedAt), [], "neither an old row nor a mention is contamination by this run");
+
+  // What the guard must still catch: a probe event written after this run began.
+  const fresh = { ts: "2026-08-29T10:00:01.000Z", kind: "recall_episode", memory_id: PROBE_MEMORY_ID, acted_on: true };
+  const withLeak = `${rows}\n${JSON.stringify(fresh)}`;
+  assert.deepEqual(probeEventsSince(withLeak, startedAt), [fresh], "a real leak is still reported");
+
+  // And the recall_id alone identifies it too, for events that carry no memory_id.
+  const byRecallId = { ts: "2026-08-29T10:00:02.000Z", kind: "recall", recall_id: PROBE_RECALL_ID };
+  assert.deepEqual(probeEventsSince(JSON.stringify(byRecallId), startedAt), [byRecallId]);
 });

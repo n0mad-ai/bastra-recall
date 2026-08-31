@@ -19,7 +19,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import matter from "gray-matter";
 import { truncateSummaryTo, clampSummary, SUMMARY_MAX } from "../src/summary.js";
-import { SaveMemoryInput, saveMemory } from "../src/save.js";
+import { saveMemory } from "../src/save.js";
+import { SaveMemoryInput } from "../src/save-schema.js";
 import { FrontmatterSchema, parseMemoryWith } from "../src/schema.js";
 
 test("SUMMARY_MAX is 400 (shared by save + load → SAVE cap == LOAD cap)", () => {

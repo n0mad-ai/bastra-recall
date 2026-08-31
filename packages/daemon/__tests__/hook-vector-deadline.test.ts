@@ -146,6 +146,10 @@ test("#342: a dense arm past its deadline returns hits, names the reason, and ma
     true,
     "no RRF ran, so the bands do not apply — leaving this off revives the #302 defect",
   );
+  // P0: `unfused` sagt es indirekt, über eine Abwesenheit. `score_kind` sagt es
+  // direkt — ein Konsument soll den Score-Raum lesen können, statt ihn aus der
+  // Höhe der Zahl zu erraten. Genau dieses Raten war der Incident.
+  assert.equal(body.score_kind, "bm25", "the raw, unbounded scale must name itself");
 });
 
 test("#342: a warm dense arm reports neither flag", async (t) => {
@@ -159,6 +163,7 @@ test("#342: a warm dense arm reports neither flag", async (t) => {
   assert.ok(Array.isArray(body.hits) && (body.hits as unknown[]).length > 0);
   assert.equal(body.degraded, undefined, "nothing degraded, so nothing to report");
   assert.equal(body.unfused, undefined, "fusion ran; the bands mean what they say");
+  assert.equal(body.score_kind, "rrf", "and the fused scale names itself too — always present");
 });
 
 test("#342: the deadline is read per call, so the kill switch needs no restart", async (t) => {

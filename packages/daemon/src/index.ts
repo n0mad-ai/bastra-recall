@@ -38,9 +38,10 @@ import { Telemetry, logDirFor } from "./telemetry.js";
 import { startHttpServer } from "./http.js";
 import { recordUsage } from "./usage-sidecar.js";
 import { loadCuratorState } from "./curator.js";
+import { wireBootObservers } from "./boot-observers.js";
 import { startBackgroundJobs } from "./daemon-jobs.js";
 import { embeddingStatusLine, type EmbeddingStatus, type EmbeddingSource } from "./embedding-status.js";
-import { resolveEmbeddingChoice, getCommonsEnabled, getSharedRecallEnabled, getSharedRecallLanguage, getPrimaryLanguage, resolveGenerationModel } from "./settings.js";
+import { resolveEmbeddingChoice, getCommonsEnabled, getSharedRecallEnabled, getSharedRecallLanguage, getPrimaryLanguage, resolveGenerationModel, getEvidenceGateEnabled, getExperimentConfig } from "./settings.js";
 import { commonsPath, loadVerificationCounts } from "./cli/commons.js";
 import { bridgesPath } from "./cli/bridges.js";
 import { BridgePool } from "./learned-recall/bridges.js";
@@ -189,6 +190,17 @@ async function main(): Promise<void> {
   // that widens recall queries. Same discipline as Commons — never written, only
   // loaded when opted in. Off = pool stays null and nothing is constructed or
   // contacted (local-first). The optional language override skips per-query detection.
+  // #264: einmal gelesen, nicht je Recall — der Hook-Pfad ist der
+  // frequentierteste und verträgt keinen Datei-Zugriff pro Aufruf. Ein
+  // Umschalten wirkt nach einem Daemon-Neustart; der Rückfall bei einem DEFEKT
+  // ist davon unabhängig und sofort (fail-open in runHookRecall).
+  const evidenceGateOn = await getEvidenceGateEnabled();
+  if (evidenceGateOn) {
+    console.error(
+      "[bastra-recall] evidence gate: ACTIVE — no_answer suppresses hits (#264)",
+    );
+  }
+
   let learnedBridges: BridgePool | null = null;
   let sharedRecallLang: SupportedLanguage | null = null;
   if (await getSharedRecallEnabled()) {
@@ -217,6 +229,23 @@ async function main(): Promise<void> {
       void recordUsage(VAULT_PATH!, events);
     },
   });
+
+  // #267: Die Armzuweisung der §17.4-Experimente. Ohne registrierte
+  // Konfiguration bleibt jedes Ereignis `unassigned` — die Spalte existiert
+  // seit #263, behauptet aber kein laufendes Experiment. Erst diese Zeile macht
+  // die Naht echt statt tot.
+  const experimentConfig = await getExperimentConfig();
+  telemetry.setExperiment(experimentConfig);
+  if (experimentConfig) {
+    console.error(
+      `[bastra-recall] experiment ACTIVE: ${experimentConfig.experiment} — arms ${experimentConfig.arms.join(", ")} (#267)`,
+    );
+  }
+
+  // Die Meldekanäle aus core (ID-Scan-Kosten, Mutations-Incidents) und die
+  // Start-Detection des Recovery-Journals — wer zuhört, steht in
+  // boot-observers.ts.
+  await wireBootObservers({ telemetry, vaultPath: VAULT_PATH! });
 
   // Curator-Demotions (#155) überleben Daemon-Restarts: Score-Set aus dem
   // State-File beim Boot in den Index laden. Best-effort.
@@ -390,6 +419,10 @@ async function main(): Promise<void> {
     embeddingDegraded: embeddingBreaker
       ? () => embeddingBreaker.state(Date.now()) === "open"
       : undefined,
+    // #264: Der Evidenzentscheid, scharf oder nicht. Beim Boot aufgelöst wie
+    // die übrigen Schalter; Default aus. Aus heißt NICHT „läuft nicht" — er
+    // läuft und wird geloggt, er wirkt nur auf nichts (§21.1: erst shadow).
+    evidenceGateEnabled: () => evidenceGateOn,
     // #361: the prompt lane fires this at turn start (fire-and-forget).
     prewarmEmbedding,
   };
@@ -422,7 +455,13 @@ async function main(): Promise<void> {
           // Such-Copilot (#207): gleiche lokale Gen-Model-Auflösung wie
           // doc2query; ohne Ollama bleibt /ui/chat aus (503).
           uiChat: ollama
-            ? ollamaChat({ baseURL: ollama.baseURL, model: await resolveGenerationModel(), timeoutMs: 45_000 })
+            // 8192 statt des 4096-Defaults (#366): die Lane feuert zwei
+            // getrennte Calls. buildQueryPrompt nimmt history.slice(-4) ×
+            // MAX_MESSAGE 2000 Zeichen + die Frage (webui-chat.ts:34,42) ≈ 10k
+            // Zeichen ≈ 3k Tokens; buildAnswerPrompt läuft ohne History, dafür
+            // mit HITS_TOTAL 8 × 600 Zeichen Body (:38,69) ≈ 1,5k Tokens. Der
+            // Query-Prompt passt knapp in 4096 — 8192 ist der Headroom.
+            ? ollamaChat({ baseURL: ollama.baseURL, model: await resolveGenerationModel(), timeoutMs: 45_000, numCtx: 8192 })
             : null,
           curator: { vaultRoot: VAULT_PATH!, vault, setDemotions: (ids) => search.setDemotions(ids) },
         });

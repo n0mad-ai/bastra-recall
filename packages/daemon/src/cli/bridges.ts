@@ -26,13 +26,14 @@ import {
   getSharedRecallLanguage,
   setSharedRecallLanguage,
   clearSharedRecallLanguage,
+  resolveGenerationModel,
 } from "../settings.js";
 import { envFirst } from "../env.js";
 import { commonsPath, COMMONS_REPO_URL } from "./commons.js";
 import { BridgePool, distinctiveTerms, MIN_BRIDGE_EVIDENCE } from "../learned-recall/bridges.js";
 import { readEventLog, writeBridges, extractCandidatePools, harvestFarBridges } from "../learned-recall/harvest.js";
 import { runInBandMint, readLastMint } from "../learned-recall/mint-job.js";
-import { ollamaChat, DEFAULT_RERANK_MODEL, listOllamaModels, resolveRerankModel } from "../learned-recall/reranker.js";
+import { ollamaChat, listOllamaModels, resolveRerankModel } from "../learned-recall/reranker.js";
 import { isSupportedLanguage, SUPPORTED_LANGUAGES } from "../learned-recall/language.js";
 
 /** Bridges share the Commons clone. Env override kept for tests/relocation. */
@@ -145,7 +146,22 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       // Probe what Ollama actually has before firing 50 chat calls: on a machine that
       // never pulled the default model, /api/chat 404s and the run dies at case 1/50
       // with a cryptic error. Resolve to an installed model (or a clear "pull it" hint).
-      const preferred = process.env.BASTRA_RERANK_MODEL ?? DEFAULT_RERANK_MODEL;
+      // #365/6: Der GEWÜNSCHTE Judge kommt aus derselben Auflösung wie im Daemon
+      // (settings.ts: BASTRA_EXPAND_MODEL > BASTRA_RERANK_MODEL > generation.model
+      // > GENERATION_MODEL_DEFAULT). Vorher las die CLI nur BASTRA_RERANK_MODEL und
+      // fiel sonst auf DEFAULT_RERANK_MODEL zurück — ein per `bastra models set`
+      // persistiertes Model wurde ignoriert. Der Settings-Key deckt per Definition
+      // beide Lanes ab (doc2query UND reranking), und harvest ruft über
+      // harvestFarBridges → rerank() exakt diese Lane. Auf einer 24-GB-Box, die
+      // gemma4:12b persistiert hat, judgte harvest still auf gemma3:4b — und
+      // verlangte im Fehlerfall sogar den Pull eines bewusst abgewählten Models.
+      //
+      // Bewusster Präzedenz-Wechsel, KEIN reines Superset: sind BEIDE Env-Vars
+      // gesetzt, gewinnt hier ab jetzt BASTRA_EXPAND_MODEL über
+      // BASTRA_RERANK_MODEL (settings.ts:381) — genau wie im Daemon. Allein
+      // gesetzt pinnt BASTRA_RERANK_MODEL den Judge unverändert; nur die
+      // Kollision der beiden kippt, und sie kippt zugunsten der Daemon-Parität.
+      const preferred = await resolveGenerationModel();
       const ollamaURL = process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434";
       let installed: string[];
       try {
@@ -166,19 +182,27 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       if (!choice.model) {
         process.stderr.write(
           `✗ reranker model '${preferred}' is not pulled and no other chat model is installed.\n` +
-            `  run 'ollama pull ${preferred}' (or set BASTRA_RERANK_MODEL to a model you already have).\n`,
+            `  run 'ollama pull ${preferred}' (or 'bastra models set <tag>' to pick a model you already have).\n`,
         );
         return 1;
       }
       if (choice.fellBack) {
         process.stderr.write(
           `  note: '${preferred}' is not pulled — falling back to '${choice.model}'. ` +
-            `run 'ollama pull ${preferred}' or set BASTRA_RERANK_MODEL to pin one.\n`,
+            `run 'ollama pull ${preferred}' or 'bastra models set <tag>' to pin one.\n`,
         );
       }
       const model = choice.model;
       process.stdout.write(`harvesting far slice with local reranker (${model}) over ${pools.length} pools…\n`);
-      const result = await harvestFarBridges(pools, getMemoryInfo, ollamaChat({ model }), {
+      // 8192 statt des 4096-Defaults (#366): der Rerank-Prompt ist der größte
+      // im Repo. Der geloggte candidate_pool ist `Math.max(k*4, 20)` groß
+      // (core/src/search.ts:310), k geht bis 20 (recall-handler.ts:33) → bis zu
+      // 80 Kandidaten, und harvest.ts cappt nicht. buildRerankPrompt schneidet
+      // jeden auf 200 Zeichen (reranker.ts:144) ⇒ bis ~16k Zeichen ≈ 4–5,4k
+      // Tokens. In 4096 schneidet Ollama vorn ab — also Query und Top-
+      // Kandidaten — und `parseRerankAnswer(answer, 80)` mintet die Bridge
+      // stillschweigend aus der beschnittenen Liste.
+      const result = await harvestFarBridges(pools, getMemoryInfo, ollamaChat({ model, numCtx: 8192 }), {
         onProgress: (done, total) => process.stderr.write(`  judged ${done}/${total}\r`),
       });
       // 20.08.: same evidence gate as the in-band mint — one judged reach stays an anecdote.

@@ -16,6 +16,7 @@ import {
   containsInjectedBlock,
   scanForInjection,
   formatInjectionAdvisory,
+  scopeEquals,
 } from "@bastra-recall/core";
 import { detectLanguage } from "./learned-recall/language.js";
 import {
@@ -49,6 +50,8 @@ export interface SaveQualityResult {
     trigger: string;
     count: number;
     examples: string[];
+    /** #360: every colliding id, uncapped — what the claim gate decides on. */
+    claimants?: string[];
     /** #300: the colliding memory's OWN trigger — the phrase that makes this a
      *  collision. Without it the advisory names a conflict the author cannot
      *  see, which is how the previous count stayed unactionable even when it
@@ -130,7 +133,11 @@ function buildSpecificTriggerSuggestion(input: SaveMemoryInput): string {
  * between them cover this one's words do not claim its situation, they just
  * share vocabulary — which is the mistake this whole issue is about.
  */
-function claimingTrigger(trigger: string, theirs: string[]): string | undefined {
+/** #360: exported so the write-time claim gate and the curator's `claimed
+ *  twice` sweep answer the containment question with the same primitive the
+ *  save-time advisory uses — three implementations of "declares the same
+ *  situation" would drift apart the moment one of them is tuned. */
+export function claimingTrigger(trigger: string, theirs: string[]): string | undefined {
   return theirs.find((candidate) => containedIn(trigger, candidate) >= TRIGGER_CLAIMS_SITUATION_MIN);
 }
 
@@ -339,7 +346,7 @@ export function scoreSaveQuality(
     .list()
     .filter(
       (m) =>
-        m.fm.scope === input.scope &&
+        scopeEquals(m.fm.scope, input.scope) &&
         m.fm.type === input.type &&
         m.fm.id !== excludeId &&
         !m.fm.obsolete &&
@@ -383,6 +390,12 @@ export function scoreSaveQuality(
         trigger,
         count: hits.length,
         examples: hits.slice(0, 3).map((h) => h.id),
+        // #360: the gate decides on this, so it must NOT be the display slice.
+        // `examples` is capped at three to keep the advisory readable; a gate
+        // reading that cap would let a save through once its first three
+        // collisions are answered while further ones stay open — measured on a
+        // four-deep chain plus one outsider, where the outsider fell off the end.
+        claimants: hits.map((h) => h.id),
         claim: hits[0]?.claim,
         // Bounded either by our own cap or by the pool being bigger than it.
         ...(raw.length >= k && admittedPool > k ? { at_least: true } : {}),

@@ -76,20 +76,30 @@
  *
  * A patch series that leaves the daemon unable to boot is worse than a reverted
  * local fix. After the series, the patched CLI is actually started; if it does
- * not come up, every patch applied in this run is reversed and the install is
- * left exactly as the updater produced it. Rolling back is not a repair either
- * — it is a return to the one state that is known to work.
+ * not come up, every file this run touched is copied back from a snapshot taken
+ * before each apply, and then READ AGAIN. Reverse-applying the patches cannot
+ * do this: a `--3way` merge leaves a tree that no longer matches the patch's
+ * post-image, so the reverse simply fails and the patched bytes stay. `git
+ * stash` and `git checkout --` are out for the same reason #268 exists — they
+ * would take the user's own uncommitted work with them, and they need a repo
+ * the npm-global root does not have. What did not go back is named rather than
+ * assumed away: `rolledBack` is the verdict of that read-back, never a
+ * constant, and an install that is neither patched nor the one the updater
+ * produced says exactly that. Rolling back is not a repair either — it is a
+ * return to the one state that is known to work.
  */
 import { spawnSync } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
-import { join, basename, isAbsolute, resolve } from "node:path";
+import { join, basename, dirname, isAbsolute, resolve } from "node:path";
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
   renameSync,
   unlinkSync,
@@ -136,7 +146,12 @@ export interface ApplyOutcome {
   setAside: Array<{ entry: PatchEntry; detail: string }>;
   /** False when the smoke check failed and the series was reversed. */
   ok: boolean;
+  /** Measured, not assumed: true only once every file the run touched was read
+   *  back and matched the bytes taken before it. */
   rolledBack: boolean;
+  /** What the rollback could not put back, when it could not. The install is
+   *  then neither patched nor the one the updater produced. */
+  unrestored?: string[];
   /** Present when the smoke check ran and failed. */
   smokeError?: string;
   /** Set when nothing could run at all (no git, no patches). Not a failure. */
@@ -469,28 +484,49 @@ interface FileSnapshot {
   path: string;
   /** null = the file did not exist, and must not exist again after a restore. */
   bytes: Buffer | null;
+  /** The permission bits it carried. A restore that has to CREATE the file —
+   *  the source side of a rename — would otherwise hand back 0644 to something
+   *  that was executable. */
+  mode?: number;
 }
 
 function snapshot(root: string, relPaths: string[]): FileSnapshot[] {
   return relPaths.map((rel) => {
     const abs = join(root, rel);
-    return { path: abs, bytes: existsSync(abs) ? readFileSync(abs) : null };
+    if (!existsSync(abs)) return { path: abs, bytes: null };
+    return { path: abs, bytes: readFileSync(abs), mode: statSync(abs).mode & 0o7777 };
   });
 }
 
-function restore(snap: FileSnapshot[]): void {
+/**
+ * Put the snapshotted files back, and return the paths that did not go back.
+ *
+ * Every write is read again and compared to the bytes that were taken: a
+ * rollback nobody verified is a rollback nobody may claim. Still best effort
+ * per file — one unwritable path must not stop the rest from going back — but
+ * that path is now named instead of swallowed.
+ */
+function restore(snap: FileSnapshot[]): string[] {
+  const failed: string[] = [];
   for (const f of snap) {
     try {
       if (f.bytes === null) {
         if (existsSync(f.path)) unlinkSync(f.path);
-      } else {
-        writeFileSync(f.path, f.bytes);
+        if (existsSync(f.path)) failed.push(f.path);
+        continue;
       }
+      // The directory can be gone: `git apply` removes one a rename emptied,
+      // and then the copy-back is an ENOENT that would be reported as a file
+      // needing hand repair — over a rollback nothing was actually wrong with.
+      mkdirSync(dirname(f.path), { recursive: true });
+      writeFileSync(f.path, f.bytes);
+      if (f.mode !== undefined) chmodSync(f.path, f.mode);
+      if (!readFileSync(f.path).equals(f.bytes)) failed.push(f.path);
     } catch {
-      // Best effort per file: one unwritable path must not stop the rest from
-      // going back. What could not be restored still shows in `patches status`.
+      failed.push(f.path);
     }
   }
+  return failed;
 }
 
 /**
@@ -580,6 +616,20 @@ export function applySeries(root: string, opts: ApplyOptions = {}): ApplyOutcome
   // that is not this program.
   const repo = roots.apply !== roots.boot || sourceRepoRoot(roots.boot) !== null;
 
+  // The run-level snapshot the rollback below copies back from, filled lazily
+  // right before each apply. FIRST WRITE WINS: a file two patches touch has to
+  // go back to what it was before the RUN, not to what the first patch left.
+  const taken = new Map<string, FileSnapshot>();
+  // Patches whose file list could not be established. Nothing here is snapshot
+  // covered, so the rollback falls back to a reverse-apply for them — and reads
+  // its exit status instead of assuming it worked.
+  const unenumerable = new Set<string>();
+  const takeSnapshot = (file: string): boolean => {
+    const addressed = patchPaths(roots.apply, file);
+    for (const f of snapshot(roots.apply, addressed.paths)) if (!taken.has(f.path)) taken.set(f.path, f);
+    return addressed.complete;
+  };
+
   for (const entry of series) {
     const file = join(dir, entry.file);
     const { state, detail } = probePatch(root, file, roots.apply);
@@ -591,13 +641,21 @@ export function applySeries(root: string, opts: ApplyOptions = {}): ApplyOutcome
     }
 
     if (state === "clean") {
-      if (opts.dryRun || applyPatch(roots.apply, file).ok) out.applied.push(entry);
-      else out.setAside.push({ entry, detail: "probe said clean but the apply failed" });
+      if (opts.dryRun) {
+        out.applied.push(entry);
+        continue;
+      }
+      const covered = takeSnapshot(file);
+      if (applyPatch(roots.apply, file).ok) {
+        out.applied.push(entry);
+        if (!covered) unenumerable.add(entry.id);
+      } else out.setAside.push({ entry, detail: "probe said clean but the apply failed" });
       continue;
     }
 
     // Conflict — one more attempt, and only where it is actually available.
     if (state === "conflict" && repo && !opts.dryRun) {
+      takeSnapshot(file);
       if (tryThreeWay(roots.apply, file)) {
         out.applied.push(entry);
         continue;
@@ -611,13 +669,32 @@ export function applySeries(root: string, opts: ApplyOptions = {}): ApplyOutcome
   const smoke = smokeCheck(roots.boot);
   if (smoke.ok) return out;
 
-  // The series broke the install. Reverse exactly what this run applied, newest
-  // first — the same order a stack unwinds in, so a later patch never blocks the
-  // reversal of the one it sat on.
+  // The series broke the install. The patches nothing could enumerate go back
+  // the only way left, newest first — the same order a stack unwinds in, so a
+  // later patch never blocks the reversal of the one it sat on. Everything else
+  // is copied back from the snapshot, which is the only move that also undoes a
+  // `--3way` merge, and the copy-back has the last word on any path both cover.
+  const unrestored: string[] = [];
   for (const entry of [...out.applied].reverse()) {
-    git(roots.apply, ["apply", "--reverse", join(dir, entry.file)]);
+    if (!unenumerable.has(entry.id)) continue;
+    if (!applyPatch(roots.apply, join(dir, entry.file), ["--reverse"]).ok) {
+      unrestored.push(`${entry.id} — its files could not be listed and reversing it failed`);
+    }
   }
-  return { ...out, ok: false, rolledBack: true, smokeError: smoke.detail, applied: [] };
+  unrestored.push(...restore([...taken.values()]));
+
+  const rolledBack = unrestored.length === 0;
+  return {
+    ...out,
+    ok: false,
+    rolledBack,
+    smokeError: smoke.detail,
+    ...(unrestored.length > 0 ? { unrestored } : {}),
+    // Blanked only when the rollback was verified. A half-restored install has
+    // to keep naming what went on: that list is the only thing the operator can
+    // work from when they go to the backup by hand.
+    ...(rolledBack ? { applied: [] } : {}),
+  };
 }
 
 /**
@@ -632,6 +709,9 @@ export interface LastRun {
   retired: string[];
   setAside: Array<{ id: string; subject: string; detail: string }>;
   rolledBack: boolean;
+  /** Added later, so it is optional: a record written before this existed still
+   *  parses, it simply has nothing to say about what did not go back. */
+  unrestored?: string[];
   smokeError?: string;
 }
 
@@ -648,6 +728,7 @@ export function writeLastRun(o: ApplyOutcome, home = homedir()): void {
       retired: o.retired.map((e) => e.id),
       setAside: o.setAside.map((s) => ({ id: s.entry.id, subject: s.entry.subject, detail: s.detail })),
       rolledBack: o.rolledBack,
+      ...(o.unrestored?.length ? { unrestored: o.unrestored } : {}),
       ...(o.smokeError ? { smokeError: o.smokeError } : {}),
     };
     writeFileSync(lastRunPath(home), JSON.stringify(rec, null, 2) + "\n", "utf8");
@@ -678,13 +759,29 @@ export function pendingPatchNotice(home = homedir()): string | null {
   if (!rec) return null;
   const stillActive = new Set(activePatches(home).map((p) => p.id));
   const aside = rec.setAside.filter((s) => stillActive.has(s.id));
-  if (aside.length === 0 && !rec.rolledBack) return null;
+  const unrestored = rec.unrestored ?? [];
+  if (aside.length === 0 && !rec.rolledBack && unrestored.length === 0) return null;
 
   const lines: string[] = [];
   if (rec.rolledBack) {
     lines.push(
       `The last update reapplied local patches, the patched install failed its boot check, ` +
         `and every patch from that run was reversed. bastra is running unpatched.`,
+    );
+    if (rec.smokeError) lines.push(`Boot error: ${rec.smokeError.split("\n")[0]}`);
+  } else if (unrestored.length > 0) {
+    // The one notice that must not read like the line above it: "running
+    // unpatched" would send the operator looking in the wrong place entirely.
+    lines.push(
+      `The last update reapplied local patches, the patched install failed its boot check, and ` +
+        `reversing that run did not put everything back. This install is now neither patched nor the ` +
+        `one the updater produced — what did not go back:`,
+    );
+    for (const u of unrestored) lines.push(`  · ${u}`);
+    lines.push(
+      `A 3-way merge cannot be undone by reversing the patch, which is why the reversal stopped short. ` +
+        `The pre-update backup under ~/.bastra/update-backups still holds these files as they were — ` +
+        `put them back by hand before trusting this install.`,
     );
     if (rec.smokeError) lines.push(`Boot error: ${rec.smokeError.split("\n")[0]}`);
   }
@@ -716,6 +813,10 @@ export function formatApplyOutcome(o: ApplyOutcome): string {
   }
   if (o.rolledBack) {
     lines.push(`  ✗ the patched install did not boot — every patch from this run was reversed`);
+    if (o.smokeError) lines.push(`    ${o.smokeError.split("\n")[0]}`);
+  } else if (o.unrestored?.length) {
+    lines.push(`  ✗ the patched install did not boot, and the reversal did not put everything back:`);
+    for (const u of o.unrestored) lines.push(`    · ${u}`);
     if (o.smokeError) lines.push(`    ${o.smokeError.split("\n")[0]}`);
   }
   return lines.length ? lines.join("\n") + "\n" : "";

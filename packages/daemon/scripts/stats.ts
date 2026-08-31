@@ -10,6 +10,9 @@ import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { readUsage, type UsageAggregate } from "../src/usage-sidecar.js";
+import { governorWhatIf } from "./stats-governor.js";
+import { summarizeEvidenceGate } from "./stats-evidence.js";
 
 function defaultLogDir(): string {
   const next = join(homedir(), ".bastra", "logs");
@@ -296,6 +299,77 @@ function summarizeUseRate(events: AnyEvent[]): void {
     const [l, a] = epBySource[src];
     console.log(`    ${src.padEnd(14)} surfaced ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)})  acted_on ${a.toString().padStart(4)} (${pct(a, s)})`);
   }
+
+  // #263/§17.4 Punkt 5: „Auswertung getrennt nach Client, Hook-Quelle und
+  // Query-Klasse". Die Episode selbst trägt keine Dimensionen — sie hängt über
+  // `recall_id` an dem hook_recall, der sie ausgelöst hat, und DER trägt sie.
+  // Derselbe Join, den `recallTool` oben schon benutzt.
+  for (const dim of ["client", "hook_source", "arm"] as const) {
+    printDimensionSplit(dim, hookRecalls, surfacedEpisodes);
+  }
+}
+
+/** Vor #263 geschriebene Ereignisse haben die Spalte nicht. Das ist etwas
+ *  anderes als `unknown` („Oberfläche hat sich nicht ausgewiesen") und wird
+ *  deshalb auch anders benannt — sonst liest man Altbestand als Messwert. */
+const PRE_DIMENSIONS = "(pre-#263)";
+
+function dimensionValue(event: AnyEvent | undefined, field: "client" | "hook_source" | "arm"): string {
+  if (!event) return PRE_DIMENSIONS;
+  const dims = event.dimensions as Record<string, unknown> | undefined;
+  if (!dims) return PRE_DIMENSIONS;
+  const raw = dims[field];
+  return typeof raw === "string" ? raw : "unknown";
+}
+
+/**
+ * Use-Rate je Ausprägung einer Dimension.
+ *
+ * `surfaced` kommt aus den Hits der hook_recalls, `loaded`/`acted_on` aus den
+ * Episoden, die über `recall_id` daran hängen — beide Seiten also aus derselben
+ * Population, sonst teilte man Zähler und Nenner aus zwei verschiedenen Welten.
+ */
+function printDimensionSplit(
+  field: "client" | "hook_source" | "arm",
+  hookRecalls: AnyEvent[],
+  surfacedEpisodes: AnyEvent[],
+): void {
+  const byRecallId = new Map<string, AnyEvent>();
+  for (const r of hookRecalls) byRecallId.set(String(r.recall_id), r);
+
+  const surfaced = new Map<string, number>();
+  const loaded = new Map<string, number>();
+  const acted = new Map<string, number>();
+  const bump = (m: Map<string, number>, key: string, n = 1): void => {
+    m.set(key, (m.get(key) ?? 0) + n);
+  };
+
+  for (const r of hookRecalls) {
+    bump(surfaced, dimensionValue(r, field), (r.hits as unknown[]).length);
+  }
+  for (const e of surfacedEpisodes) {
+    const key = dimensionValue(byRecallId.get(String(e.recall_id)), field);
+    bump(loaded, key);
+    if (e.acted_on === true) bump(acted, key);
+  }
+
+  const keys = [...new Set([...surfaced.keys(), ...loaded.keys()])].sort();
+  if (keys.length === 0) return;
+  console.log(`  by ${field}:`);
+  if (field === "arm" && keys.every((k) => k === "unassigned" || k === PRE_DIMENSIONS)) {
+    // §17.4/#267: `unassigned` ist kein Arm, sondern die Abwesenheit eines
+    // Experiments. Ohne diesen Satz liest jemand die Zeile als Armvergleich mit
+    // einem Arm — und das wäre eine Aussage, die niemand gemacht hat.
+    console.log(`    (no experiment configured — \`unassigned\` is the absence of an arm, not an arm)`);
+  }
+  for (const key of keys) {
+    const s = surfaced.get(key) ?? 0;
+    const l = loaded.get(key) ?? 0;
+    const a = acted.get(key) ?? 0;
+    console.log(
+      `    ${key.padEnd(14)} surfaced ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)})  acted_on ${a.toString().padStart(4)}  (${pct(a, l)} of loaded)`,
+    );
+  }
 }
 
 function topHints(events: AnyEvent[]): void {
@@ -370,6 +444,31 @@ function summarizeContextROI(events: AnyEvent[]): void {
     );
   }
   console.log(`  acted-on surfaced loads:      ${actedSurfaced.length}`);
+
+  // #263/§17.4: der ROI getrennt nach Oberfläche — soweit die Daten es
+  // hergeben. Die TOKENSEITE stammt aus den Hook-CLI-Events (`hook_call` &
+  // Co.), die eigene Prozesse mit eigenen Telemetrie-Interfaces schreiben und
+  // die Dimensionen nicht führen. Attribuierbar ist deshalb nur die
+  // Ertragsseite. Eine Zuordnung der Tokens über die Session zu erraten wäre
+  // eine Zahl mit einer Genauigkeit, die sie nicht hat.
+  const hookRecalls = events.filter((e) => e.kind === "hook_recall");
+  const byRecallId = new Map<string, AnyEvent>();
+  for (const r of hookRecalls) byRecallId.set(String(r.recall_id), r);
+  for (const field of ["client", "hook_source", "arm"] as const) {
+    const actedBy = new Map<string, number>();
+    for (const e of actedSurfaced) {
+      const key = dimensionValue(byRecallId.get(String(e.recall_id)), field);
+      actedBy.set(key, (actedBy.get(key) ?? 0) + 1);
+    }
+    if (actedBy.size === 0) continue;
+    console.log(`  acted-on loads by ${field}:`);
+    for (const [key, n] of [...actedBy.entries()].sort((a, b) => b[1] - a[1])) {
+      console.log(`    ${key.padEnd(14)} ${n.toString().padStart(4)}`);
+    }
+  }
+  console.log(
+    `  (token side not split: hook-CLI emissions carry no dimensions — only the yield side is attributable)`,
+  );
   console.log(
     actedSurfaced.length > 0
       ? `  tokens per acted-on load:     ~${Math.round(totalTokens / actedSurfaced.length)}`
@@ -478,6 +577,142 @@ function summarizeBridges(events: AnyEvent[]): void {
   }
 }
 
+/**
+ * Exposure-normalisierte Nutzungsraten (#263, §17.5, C-037/C-044/C-071).
+ *
+ * §17.5: „Ein häufig ausgespieltes Memory sammelt automatisch mehr positive
+ * Ereignisse und gilt deshalb nicht als besser belegt. Jedes Signal wird auf
+ * die Zahl seiner Ausspielungen normiert, und diese Normalisierung wird im
+ * Report als solche ausgewiesen."
+ *
+ * Der Nenner kommt aus dem BESTEHENDEN Usage-Sidecar (C-071) und nicht aus
+ * einer zweiten, hier gebauten Zählung: `.bastra/usage/` führt `surfaced`,
+ * `loaded` und `acted_on` je Memory-ID bereits. Ein Memory ohne Historie dort
+ * zählt `unknown` — NICHT 0. Der Unterschied ist der ganze Punkt: 0 hieße „nie
+ * ausgespielt und deshalb nie genutzt", unknown heißt „wir wissen nicht, wie
+ * oft es ausgespielt wurde", und eine Rate mit unbekanntem Nenner ist keine
+ * Rate.
+ */
+async function summarizeExposureNormalised(events: AnyEvent[]): Promise<void> {
+  const vaultRoot = process.env.BASTRA_VAULT_PATH ?? process.env.NEXUS_VAULT_PATH;
+  const episodes = events.filter((e) => e.kind === "recall_episode" && e.acted_on === true);
+  if (episodes.length === 0) return;
+  if (!vaultRoot) {
+    console.log(`\n## Exposure-normalised use  (skipped: BASTRA_VAULT_PATH not set — the denominator lives in the vault's usage sidecar)`);
+    return;
+  }
+
+  let usage: UsageAggregate;
+  try {
+    usage = await readUsage(vaultRoot);
+  } catch (err) {
+    console.log(`\n## Exposure-normalised use  (skipped: usage sidecar unreadable — ${(err as Error).message})`);
+    return;
+  }
+
+  const actedByMemory = new Map<string, number>();
+  for (const e of episodes) {
+    const id = String(e.memory_id);
+    actedByMemory.set(id, (actedByMemory.get(id) ?? 0) + 1);
+  }
+
+  const rows: { id: string; acted: number; surfaced: number | null }[] = [];
+  for (const [id, acted] of actedByMemory) {
+    const entry = usage[id];
+    rows.push({ id, acted, surfaced: entry ? entry.surfaced : null });
+  }
+  const known = rows.filter((r) => r.surfaced !== null && r.surfaced > 0);
+  const unknown = rows.filter((r) => r.surfaced === null);
+  const neverSurfaced = rows.filter((r) => r.surfaced === 0);
+
+  console.log(`\n## Exposure-normalised use  (acted_on per surfacing, denominator from the usage sidecar)`);
+  console.log(`  NORMALISATION, NOT BIAS CORRECTION (§17.5). Dividing by the number of`);
+  console.log(`  surfacings makes rates comparable; it says nothing about WHY a memory was`);
+  console.log(`  surfaced, because the selection itself depends on the current ranking. A`);
+  console.log(`  causal utility claim needs logged selection propensities, controlled`);
+  console.log(`  exploration, and non-surfaced candidates treated as censored rather than`);
+  console.log(`  negative. None of the three is in place, so what follows is descriptive.`);
+
+  const top = known.sort((a, b) => b.acted / b.surfaced! - a.acted / a.surfaced!).slice(0, 10);
+  if (top.length > 0) {
+    console.log(`  highest acted_on rate (of memories with a known denominator):`);
+    for (const r of top) {
+      console.log(
+        `    ${(r.acted / r.surfaced!).toFixed(3).padStart(6)}  ${r.acted.toString().padStart(3)}/${String(r.surfaced).padStart(4)}  ${r.id}`,
+      );
+    }
+  }
+  console.log(`  memories with a known denominator: ${known.length}`);
+  if (neverSurfaced.length > 0) {
+    console.log(
+      `  acted_on but sidecar says surfaced=0: ${neverSurfaced.length} (rate undefined, not 0 — the sidecar is behind or the load came without a hint)`,
+    );
+  }
+  if (unknown.length > 0) {
+    console.log(
+      `  no sidecar history — counted UNKNOWN, never 0: ${unknown.length} (${unknown.slice(0, 5).map((r) => r.id).join(", ")}${unknown.length > 5 ? ", …" : ""})`,
+    );
+  }
+}
+
+/**
+ * Was ein Sitzungsbudget gekostet hätte (#354).
+ *
+ * Die Frage, die #354 stellt, ist nicht „wieviel Kontext kostet uns das" — das
+ * beantwortet der ROI-Abschnitt oben. Sie lautet: Was hätte ein Budget
+ * abgeschnitten? Ohne diese Gegenfrage ist jede Budgetzahl geraten.
+ *
+ * Die Rechnung steht in `stats-governor.ts`; hier wird nur gedruckt. Ihre
+ * Grenze steht in der Ausgabe, weil eine Zahl ohne ihre Grenze schlechter ist
+ * als keine.
+ */
+function summarizeContextGovernor(events: AnyEvent[]): void {
+  // Drei Stufen um den beobachteten Median: knapp darunter, darüber, weit
+  // darüber. Über `--budgets` überschreibbar, damit eine andere Maschine ihre
+  // eigenen Größenordnungen durchrechnen kann.
+  const arg = process.argv.indexOf("--budgets");
+  const budgets =
+    arg >= 0 && process.argv[arg + 1]
+      ? process.argv[arg + 1]
+          .split(",")
+          .map((s) => Number(s.trim()))
+          .filter((n) => Number.isFinite(n) && n > 0)
+      : [2000, 5000, 10000];
+
+  const wi = governorWhatIf(events, budgets);
+  if (wi.sessionsMultiEmission === 0) return;
+
+  console.log(`\n## Context governor  (#354 — what a session budget would have trimmed)`);
+  console.log(
+    `  today: no budget is set — \`governContext\` defaults to 0 (unlimited) on all three wired lanes`,
+  );
+  console.log(
+    `  sessions with injections:     ${wi.sessionsWithInjection}  (of those, ${wi.sessionsMultiEmission} with 2+ — only these are readable as a session)`,
+  );
+  console.log(
+    `  hint tokens per session:      p50 ${wi.tokensPerSession.p50}  p75 ${wi.tokensPerSession.p75}  p90 ${wi.tokensPerSession.p90}  max ${wi.tokensPerSession.max}`,
+  );
+  console.log(
+    `  injections per session:       p50 ${wi.emissionsPerSession.p50}  p90 ${wi.emissionsPerSession.p90}  max ${wi.emissionsPerSession.max}`,
+  );
+  console.log(`  budget      sessions hit   injections trimmed   tokens trimmed`);
+  for (const r of wi.rows) {
+    console.log(
+      `  ${String(r.budget).padStart(6)}   ${String(r.sessionsAffected).padStart(13)}   ${String(r.emissionsTrimmed).padStart(18)}   ${String(r.tokensTrimmed).padStart(14)}`,
+    );
+  }
+  console.log(
+    `  (per-injection granularity: the events carry one token sum per injection, while the governor`,
+  );
+  console.log(
+    `   decides per ENTRY by priority — so this is coarser than the governor and reads as an upper bound`,
+  );
+  console.log(
+    `   on what a budget touches. Single-injection sessions are excluded: the bash lane stamps a fresh`,
+  );
+  console.log(`   synthetic session id per call.)`);
+}
+
 async function main(): Promise<void> {
   const events = await loadEvents();
   if (events.length === 0) {
@@ -496,6 +731,9 @@ async function main(): Promise<void> {
   summarizeUseRate(events);
   summarizeActSignals(events);
   summarizeContextROI(events);
+  summarizeContextGovernor(events);
+  await summarizeExposureNormalised(events);
+  summarizeEvidenceGate(events, { pct, MUST_LOAD_SCORE, SCORE_FLOOR });
   summarizeBridges(events);
   summarizeOllamaLifecycle(events);
   topProjects(events);

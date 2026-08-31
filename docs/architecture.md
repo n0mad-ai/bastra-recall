@@ -2,7 +2,7 @@
 
 ## Goal
 
-Bastra.Recall is a local-first memory layer for AI assistants. It gives Claude Code, Claude Desktop, Cursor, ChatGPT Actions, and other MCP/HTTP clients one shared vault of durable lessons, preferences, project facts, decisions, workflows, bookmarks, and document sidecars.
+Bastra.Recall is a local-first memory layer for AI assistants. It gives Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor, ChatGPT Actions, and other MCP/HTTP clients one shared vault of durable lessons, preferences, project facts, decisions, workflows, bookmarks, and document sidecars.
 
 The operating goal is simple: the user should not have to re-explain stable context. The assistant saves durable memories when a lesson or rule is learned, and recalls relevant memories before acting.
 
@@ -145,6 +145,8 @@ On the hybrid path the returned `score` is a **rank quantity, not a similarity**
 - The documented `min_score` floor (default 30) is very hard to reach on the hybrid path: a hit needs roughly rank 28 in **both** arms to fall below it (it was rank 273 at the old `RRF_K = 60`). The floor is mainly meaningful in BM25-only mode (no embeddings), where the score is a genuine BM25 quantity. Note that the band boundaries move with `RRF_K` even though the anchors do not — the cuts are absolute and the curve between the anchors is not, so a telemetry series over `band` is not comparable across a change to that constant.
 - `recall` returns a top-level `weak_result: true` when, on the hybrid path, no returned hit has a `recall_when` or title match — an explicit "nothing here" signal riding alongside the rank-1-of-nothing score. It is informational and filters nothing. With `verbosity: "full"` each hit also carries `rrf: { rank_bm25, rank_vector, raw }` so callers can see the rank pair the score is built from.
 
+**The ceiling is not one number, so the response names its arms.** `163.934` is the ceiling of the *two personal arms*. When the Bastra Commons are active they fuse in as a **third arm** (`commons-fusion.ts`), and the ceiling rises to `163.934 + 0.95 × 81.967 ≈ 241.803`; on the degraded collapse path (personal arm unfused, only its list rank enters) it is `147.541` instead. All three call themselves `score_kind: "rrf"`, so `score_kind` alone does not make two numbers comparable. Every response therefore carries `score_arms` (sorted: `["bm25","vector"]`, `["bm25","commons","vector"]`, `["commons","personal-rank"]`) and `score_version` — the formula version, to be bumped whenever the same arm set starts producing a different number. **Compare scores only within an identical `score_version`/`score_arms` pair; across them, re-fuse by RANK.** Batch recall does exactly that: sub-results with differing signatures are merged via `query-rank-fusion` and the response drops back to `unfused`, because a band that means one thing in one list and another in the next is not a band. With `verbosity: "full"` a hit that the commons contributed to additionally carries `rrf: { rank_commons, commons_weight, personal_score }` — `personal_score` is what the same recall would have served without them.
+
 ### Multi-Hop Recall
 
 If `expand_hops: 1` is passed, recall adds one-hop neighbors from `frontmatter.related_via`. Those neighbors are filtered with the same obsolete/scope/type/sensitivity rules and receive a reduced score.
@@ -262,7 +264,7 @@ Topic detection is deterministic and based on file extension, path segments, and
 | Vault parsing | `gray-matter` + Zod frontmatter schema |
 | File watching | `chokidar` with polling on cloud mounts |
 | HTTP | Node `http` server |
-| CLI/install adapters | Claude Code, Claude Desktop, Cursor |
+| CLI/install adapters | Claude Code, Claude Desktop, Codex/ChatGPT Desktop, Cursor |
 
 ## Historical Note
 

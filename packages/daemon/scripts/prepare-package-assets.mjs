@@ -1,3 +1,4 @@
+/** Package Skill assets for Claude, Codex and ChatGPT desktop (#232/#15). */
 import { copyFile, mkdir, readdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,3 +22,9 @@ await mkdir(dst, { recursive: true });
 for (const name of assets) {
   await copyFile(resolve(src, name), resolve(dst, name));
 }
+
+// ChatGPT/Codex skill presentation + MCP dependency metadata (#15).
+const agentsSrc = resolve(src, "agents");
+const agentsDst = resolve(dst, "agents");
+await mkdir(agentsDst, { recursive: true });
+await copyFile(resolve(agentsSrc, "openai.yaml"), resolve(agentsDst, "openai.yaml"));

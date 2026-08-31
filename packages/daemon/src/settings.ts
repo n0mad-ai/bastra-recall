@@ -72,6 +72,41 @@ export interface CliSettings {
   // recall queries. `language` is an optional override for the auto-detected
   // query language (e.g. force "de" when you always search in German).
   sharedRecall?: { enabled: boolean; language?: string };
+  /**
+   * Der deterministische Evidenzentscheid (#264): `undefined` = AUS, und das
+   * ist der Auslieferungszustand.
+   *
+   * NICHT scharfschalten, bevor beides vorliegt (§18.2, Issue #264):
+   *   1. Shadow-Acceptance: ≥14 Kalendertage ODER ≥500 geloggte
+   *      Hook-Entscheidungen, und jede `required`/`no_answer`-Abweichung
+   *      gegenüber dem Legacy-Verhalten durch Merkmale, Grund oder Review
+   *      erklärt — unerklärte Abweichungen blockieren die Freigabe. Die Daten
+   *      dafür liegen seit d1abff4 im `evidence_decision`-Event.
+   *   2. Die Komponenten-Gates auf dem versionierten Goldset (#262, offen).
+   *
+   * Solange das Flag aus ist, verhält sich der Recall exakt wie vorher: Der
+   * Entscheid läuft, wird geloggt und wirkt auf nichts.
+   */
+  evidenceGate?: { enabled: boolean };
+  /**
+   * Die Experimentkonfiguration für die §17.4-Arme (#267): `undefined` = kein
+   * Experiment, jedes Ereignis trägt `unassigned`. Das ist der
+   * Auslieferungszustand und heute auch der richtige.
+   *
+   * WARUM HIER UND NICHT AUS DER REGISTRIERUNG. §17.4 verlangt Mindest-N,
+   * Zuweisungsfunktion und Konfiguration versioniert abgelegt — das ist
+   * `packages/eval/registrations/presentation-experiment.json`. Der Daemon
+   * hängt aber nicht an `@bastra-recall/eval` und wird ohne dieses Verzeichnis
+   * ausgeliefert; er KANN die Datei im Betrieb nicht lesen. Deshalb trägt die
+   * Konfiguration den Verweis auf ihre Registrierung mit: `registration` und
+   * `registration_version` sind Pflicht, damit ein laufendes Experiment sich
+   * einer versionierten Registrierung zuordnen lässt statt frei zu schweben.
+   *
+   * Eine Konfiguration ohne diesen Verweis oder mit weniger als zwei Armen wird
+   * beim Boot verworfen — keine Stufe ohne ihre Voraussetzungen, dieselbe Regel
+   * wie im Registrierungs-Validator.
+   */
+  experiment?: { name: string; arms: string[]; registration: string; registration_version: number };
   // Product-documentation capture: undefined = off. mode gates the session-hook
   // instruction ("suggest" proposes, "auto" writes without asking); language is
   // the language product docs are written in (free short tag, e.g. "de").
@@ -523,6 +558,59 @@ export async function setUiEnabled(on: boolean, path: string = settingsFilePath(
 /** Shared learned-recall bridges enabled? Default false (opt-in, privacy-respecting). */
 export async function getSharedRecallEnabled(path?: string): Promise<boolean> {
   return (await readSettings(path)).sharedRecall?.enabled ?? false;
+}
+
+/**
+ * Ist der Evidenzentscheid scharf? Default `false`.
+ *
+ * Der Env-Schalter steht daneben, weil ein Betreiber ihn im Zweifel SOFORT
+ * ausmachen können muss, ohne eine Datei zu bearbeiten — der Rückfall aufs
+ * Legacy-Verhalten ist die wichtigere Richtung. `BASTRA_EVIDENCE_GATE=0`
+ * überstimmt deshalb die Einstellung, nicht umgekehrt.
+ */
+export async function getEvidenceGateEnabled(path?: string): Promise<boolean> {
+  const env = process.env.BASTRA_EVIDENCE_GATE;
+  if (env !== undefined && env !== "") {
+    return !["0", "false", "off", "no"].includes(env.toLowerCase());
+  }
+  return (await readSettings(path)).evidenceGate?.enabled ?? false;
+}
+
+/**
+ * Die Experimentkonfiguration, oder `null`.
+ *
+ * `null` heißt: keine Armzuweisung, jedes Ereignis trägt `unassigned`. Eine
+ * unvollständige Konfiguration ergibt ebenfalls `null` — und sagt es, statt
+ * still ein halbes Experiment zu fahren.
+ */
+export async function getExperimentConfig(
+  path?: string,
+): Promise<{ experiment: string; arms: string[] } | null> {
+  const cfg = (await readSettings(path)).experiment;
+  if (!cfg) return null;
+  const complete =
+    typeof cfg.name === "string" &&
+    cfg.name.length > 0 &&
+    Array.isArray(cfg.arms) &&
+    cfg.arms.length >= 2 &&
+    typeof cfg.registration === "string" &&
+    cfg.registration.length > 0 &&
+    typeof cfg.registration_version === "number";
+  if (!complete) {
+    console.error(
+      "[bastra-recall] experiment config incomplete (needs name, >=2 arms, registration + registration_version) — no arm assignment (#267)",
+    );
+    return null;
+  }
+  return { experiment: cfg.name, arms: cfg.arms };
+}
+
+export async function setEvidenceGateEnabled(
+  on: boolean,
+  path: string = settingsFilePath(),
+): Promise<void> {
+  const current = await readSettings(path);
+  await writeSettings({ ...current, evidenceGate: { enabled: on } }, path);
 }
 
 export async function setSharedRecallEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {

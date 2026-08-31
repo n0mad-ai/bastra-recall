@@ -282,12 +282,26 @@ export function formatEmbeddingDoctorLines(i: {
   envValue: string | undefined;
   /** probeOllama() result when the effective provider is ollama, else null. */
   probe: OllamaProbeResult | null;
+  /** Live daemon state can differ from the invoking shell when a LaunchAgent
+   * supplies its own embedding environment (#15/#79). */
+  daemon?: {
+    semanticRecall?: string;
+    embeddingMode?: string;
+    embeddingSource?: string;
+  } | null;
 }): string[] {
   const lines: string[] = ["→ semantic recall"];
   const { choice } = i;
 
   if (choice.provider === "none") {
-    lines.push(`  note: ${RECALL_OFF_NOTE}`);
+    if (i.daemon?.semanticRecall === "on") {
+      lines.push(
+        `  ✓ ok: running daemon uses ${i.daemon.embeddingMode ?? "semantic recall"}` +
+        ` (source: ${i.daemon.embeddingSource ?? "daemon environment"})`,
+      );
+    } else {
+      lines.push(`  note: ${RECALL_OFF_NOTE}`);
+    }
     if (choice.requested === "openai") {
       lines.push(`  note: openai is requested (source: ${choice.source}) but no API key is set (OPENAI_API_KEY / BASTRA_EMBEDDING_KEY)`);
     }
@@ -319,11 +333,31 @@ export async function printEmbeddingDoctorNote(): Promise<void> {
     const choice = await resolveEmbeddingChoice();
     const fileProvider = await getEmbeddingProvider();
     const probe = choice.provider === "ollama" ? await probeOllama() : null;
+    let daemon: {
+      semanticRecall?: string;
+      embeddingMode?: string;
+      embeddingSource?: string;
+    } | null = null;
+    if (choice.provider === "none") {
+      try {
+        const live = await probeDaemon();
+        if (live.ok) {
+          daemon = {
+            semanticRecall: live.semanticRecall,
+            embeddingMode: live.embeddingMode,
+            embeddingSource: live.embeddingSource,
+          };
+        }
+      } catch {
+        /* unreachable daemon = no stronger signal than the shell view */
+      }
+    }
     const lines = formatEmbeddingDoctorLines({
       choice,
       fileProvider,
       envValue: process.env.BASTRA_EMBEDDING_PROVIDER,
       probe,
+      daemon,
     });
     for (const line of lines) write(line);
     write("");

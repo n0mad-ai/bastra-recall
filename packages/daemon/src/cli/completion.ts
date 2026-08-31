@@ -1,5 +1,5 @@
 /**
- * `bastra completion <shell>` — Tab completion for bash, zsh and fish.
+ * `bastra completion <shell>` — Tab completion for bash, zsh and fish (#15).
  *
  * The scripts are static templates over one list of commands. That list is the
  * thing that rots: a new subcommand lands in cli.ts and completion keeps
@@ -14,6 +14,7 @@ export const COMMANDS = [
   "install",
   "uninstall",
   "doctor",
+  "autostart",
   "status",
   "logs",
   "update",
@@ -37,7 +38,7 @@ export const COMMANDS = [
 ] as const;
 
 /** Surfaces accepted by install / uninstall / doctor. */
-export const SURFACES = ["claude-desktop", "claude-code", "cursor", "all"] as const;
+export const SURFACES = ["claude-desktop", "claude-code", "codex", "cursor", "all"] as const;
 
 /** Flags worth completing — the ones with a stable meaning across commands. */
 export const FLAGS = [

@@ -10,27 +10,14 @@
  * leafs only, never the @bastra-recall/core barrel.
  */
 import { request } from "node:http";
+import type { HookRecallResponse as RecallResponse } from "./hook-recall-response.js";
 import type { PinnedFloorLean } from "./pinned-block.js";
 
-export interface RecallHit {
-  id: string;
-  title: string;
-  type: string;
-  scope: string;
-  summary: string;
-  score: number;
-}
-
-export interface RecallResponse {
-  hits: RecallHit[];
-  vault_size: number;
-  latency_ms: number;
-  recall_id: string;  /** #249: no returned hit lexically anchors — the top score is rank-1-of-
-   *  nothing. Absent means "not weak". */
-  weak_result?: boolean;
-  /** #230: stricter subset of weak_result — the fact has no home in this vault. */
-  no_home?: boolean;
-}
+// P0: der Transporttyp kannte den Score-Modus nicht — `score_kind`/`unfused`
+// fielen beim Parsen still weg, und die SessionStart-Lane bandete danach rohe
+// BM25-Werte mit Cuts, die nur auf der fusionierten Skala existieren. Jetzt
+// derselbe Typ wie in allen anderen Lanes.
+export type { HookRecallHit as RecallHit, HookRecallResponse as RecallResponse } from "./hook-recall-response.js";
 
 export interface UpdateAvailable {
   current: string;
@@ -61,6 +48,83 @@ export interface RecallRequestBody {
   k: number;
   project: string | null;
   source: string | null;
+}
+
+/**
+ * Die Antwort des projektbewussten Session-Assemblers (#265).
+ *
+ * Nur die Felder, die die Lane liest. `context` und `vault_size` ignoriert sie
+ * bewusst — sie rendert ihr Dokument selbst, mit Banding und eigenen Mengen.
+ */
+export interface SessionContextResponse {
+  data?: {
+    recalls?: Array<{ scope: string; resp: RecallResponse | null }>;
+    floors?: PinnedFloorLean[];
+    conventions?: ConventionLean[];
+    care?: { open: number; queued: number };
+    imports?: { open: number; queued: number };
+    onboarding?: boolean;
+  };
+}
+
+/**
+ * EIN Aufruf statt sechs (#265, §26.1).
+ *
+ * Die Lane holte Recalls, Floors, Taxonomie, Care, Import und Onboarding in
+ * sechs einzelnen Loopback-Requests. Der Assembler erhebt dasselbe serverseitig
+ * und nebenläufig; hier bleibt der Transport. Gleiche Disziplin wie
+ * `postRecall`: harter Timeout, Fehler nach oben, der Aufrufer entscheidet.
+ */
+export function postSessionContext(
+  baseUrl: string,
+  body: Record<string, unknown>,
+  timeoutMs: number,
+): Promise<SessionContextResponse> {
+  return new Promise((resolve, reject) => {
+    let url: URL;
+    try {
+      url = new URL("/hook/session-context", baseUrl);
+    } catch (err) {
+      reject(err);
+      return;
+    }
+    const payload = Buffer.from(JSON.stringify(body), "utf8");
+    const req = request(
+      {
+        method: "POST",
+        hostname: url.hostname,
+        port: url.port || 80,
+        path: url.pathname,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Content-Length": payload.byteLength.toString(),
+        },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c: Buffer) => chunks.push(c));
+        res.on("end", () => {
+          const raw = Buffer.concat(chunks).toString("utf8");
+          if ((res.statusCode ?? 500) >= 400) {
+            reject(new Error(`HTTP ${res.statusCode}: ${raw.slice(0, 200)}`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(raw) as SessionContextResponse);
+          } catch {
+            reject(new Error("invalid JSON response from daemon"));
+          }
+        });
+      },
+    );
+    req.on("timeout", () => {
+      req.destroy(new Error("timeout"));
+    });
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
 }
 
 export function postRecall(

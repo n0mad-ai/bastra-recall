@@ -511,8 +511,9 @@ const VALID_STAGE_NAMES: ReadonlySet<RecallStage["name"]> = new Set([
  *
  * Note: this reuses `/hook/recall` — that endpoint is open (no token)
  * and already SSE-capable. The side-effect is that hook_recall telemetry
- * gets logged for MCP recalls too; the `tool_name: "mcp-forwarder"`
- * marker lets us filter those out later.
+ * gets logged for MCP recalls too; since #263 the `hook_source: "mcp"`
+ * dimension says so as its own column (the `tool_name: "mcp-forwarder"`
+ * marker stays for the events written before it existed).
  */
 interface HookRecallDonePayload {
   hits: unknown[];
@@ -549,6 +550,10 @@ async function callRecallStreaming(
   const body: Record<string, unknown> = {
     query: typeof a.query === "string" ? a.query : "",
     tool_name: "mcp-forwarder",
+    // #263: Dieser Aufruf ist KEIN Hook — er kommt über denselben Endpunkt,
+    // weil der offen und SSE-fähig ist. `hook_source: "mcp"` sagt das als
+    // eigene Spalte, statt es wie bisher am `tool_name`-Marker abzulesen.
+    hook_source: "mcp",
     // #74: echte CC-Session an die hook_recall-Telemetrie durchreichen.
     session_id: typeof liveStatusline.cc_session_id === "string" ? liveStatusline.cc_session_id : null,
   };

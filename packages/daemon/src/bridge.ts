@@ -36,6 +36,7 @@ import {
   auditedSave,
   auditedSoftDelete,
   auditedRestore,
+  scopeEquals,
 } from "@bastra-recall/core";
 import { envFirst, envInt, envFloat, envBool } from "./env.js";
 import { embeddingStatusLine, type EmbeddingStatus, type EmbeddingSource } from "./embedding-status.js";
@@ -279,17 +280,21 @@ async function main(): Promise<void> {
             allow_private: true,
             expand_hops: (params?.expand_hops === 1 ? 1 : 0) as 0 | 1,
           };
-          const recallQuery = expandQuery(String(params?.query ?? ""), learnedBridges, {
+          const authoredQuery = String(params?.query ?? "");
+          const recallQuery = expandQuery(authoredQuery, learnedBridges, {
             configuredLang: sharedRecallLang,
           }).query;
+          // Anker und Berechtigungen nur aus der authored Query — die
+          // Erweiterung darf Treffer finden, aber keine Absicht behaupten.
+          const anchoredOpts = { ...opts, authored_query: authoredQuery };
           if (search.hasEmbeddings()) {
             search
-              .recallHybrid(recallQuery, opts)
+              .recallHybrid(recallQuery, anchoredOpts)
               .then((hits) => send({ id, result: hits }))
               .catch((err: Error) => send({ id, error: { message: err.message } }));
             return;
           }
-          result = search.recall(recallQuery, opts);
+          result = search.recall(recallQuery, anchoredOpts);
           break;
         }
         case "list_memorys": {
@@ -299,7 +304,7 @@ async function main(): Promise<void> {
           const filtered = all
             .filter((m) => !m.fm.obsolete)
             .filter((m) => !wantType || m.fm.type === wantType)
-            .filter((m) => !wantScope || m.fm.scope === wantScope);
+            .filter((m) => !wantScope || scopeEquals(m.fm.scope, wantScope));
           result = filtered.map((m) => m.fm);
           break;
         }
@@ -334,9 +339,23 @@ async function main(): Promise<void> {
             input: parsed.data,
             context: ctx,
           })
-            .then(async ({ result, audit }) => {
+            .then(async ({ result, audit, audit_warning }) => {
               await vault.reindexFile(result.file_path);
-              send({ id, result: { ...result, audit_id: audit.id } });
+              // Codex-Gegenreview Runde 10 (Security): Der Spread schickte
+              // `audit_before`/`audit_after` mit — vollständige
+              // Frontmatter-Abbilder inklusive `sensitivity: private`. Der
+              // MCP-Pfad entfernt sie seit langem ausdrücklich
+              // (`tool-handlers.ts`), die Bridge tat es nicht; derselbe Client
+              // bekam über den einen Weg Audit-Material, über den anderen nicht.
+              const { audit_before: _b, audit_after: _a, ...payload } = result;
+              send({
+                id,
+                result: {
+                  ...payload,
+                  audit_id: audit?.id ?? null,
+                  ...(audit_warning ? { audit_warning } : {}),
+                },
+              });
             })
             .catch((err: Error) => {
               send({ id, error: { message: err.message } });
@@ -356,14 +375,15 @@ async function main(): Promise<void> {
             memoryID: targetId,
             context: ctx,
           })
-            .then(({ id: deletedId, trashPath, audit }) => {
+            .then(({ id: deletedId, trashPath, audit, audit_warning }) => {
               send({
                 id,
                 result: {
                   id: deletedId,
                   file_path: trashPath,
                   deleted: true,
-                  audit_id: audit.id,
+                  audit_id: audit?.id ?? null,
+                  ...(audit_warning ? { audit_warning } : {}),
                 },
               });
             })
@@ -385,12 +405,13 @@ async function main(): Promise<void> {
               : undefined;
           auditedRestore({
             auditLog,
+            vault,
             vaultRoot: VAULT_PATH!,
             memoryID: targetId,
             destFilePath: destOverride,
             context: ctx,
           })
-            .then(async ({ id: restoredId, restoredTo, audit }) => {
+            .then(async ({ id: restoredId, restoredTo, audit, audit_warning }) => {
               // Restore = neuer File-Add für den Vault — explicit reindex.
               await vault.reindexFile(restoredTo);
               send({
@@ -398,7 +419,8 @@ async function main(): Promise<void> {
                 result: {
                   id: restoredId,
                   file_path: restoredTo,
-                  audit_id: audit.id,
+                  audit_id: audit?.id ?? null,
+                  ...(audit_warning ? { audit_warning } : {}),
                 },
               });
             })

@@ -19,6 +19,8 @@
 import { z } from "zod";
 import {
   isPathSafeComponent,
+  normalizeScopeKey,
+  scopeEquals,
   saveMemory,
   slugify,
   truncateSummaryTo,
@@ -26,6 +28,7 @@ import {
 } from "@bastra-recall/core";
 import type { ToolDeps } from "./tool-handlers.js";
 import { recordAudit } from "./audit-trail.js";
+import { vaultLocator } from "./vault-locator.js";
 
 export const SaveProductDocArgs = z.object({
   project: z.string().min(1).refine(isPathSafeComponent, {
@@ -46,6 +49,58 @@ export interface SaveProductDocResult {
   updated: boolean;
 }
 
+/**
+ * Das Dokument dieser Area, über seine Identität statt über seinen Namen.
+ *
+ * Die Signatur muss VOLLSTÄNDIG passen. Die erste Fassung prüfte nur type,
+ * Scope und `topic_path[2]` — und fand damit jedes beliebige Dokument im
+ * selben Scope, dessen dritter topic_path-Eintrag zufällig gleich hieß.
+ * Reproduziert mit `topic_path: [manual, unrelated, area]`: Das fremde
+ * Dokument wurde vollständig überschrieben (Codex-Gegenreview). Ein
+ * Produktdoku-topic_path ist immer `["doku", <projekt>, <area>]` — genau das
+ * wird verlangt, mit gefaltetem Projektsegment, denn ein Bestandsdokument kann
+ * `[doku, CarNexus, …]` tragen. Der Scope wird aus demselben Grund gefaltet.
+ */
+/**
+ * Das Produktdokument dieses Projekts für diese Area — oder ein lautes Nein.
+ *
+ * Codex-Gegenreview: Bei ZWEI Dokumenten mit derselben Signatur nahm diese
+ * Funktion still das erste. Nachgestellt: `old-one` wurde überschrieben,
+ * `old-two` blieb als zweites logisches Dokument derselben Area aktiv — der
+ * Vault hatte damit zwei Wahrheiten für dieselbe Frage, und welche ein Save
+ * traf, hing an der Iterationsreihenfolge des Index.
+ *
+ * Mehrere Treffer sind kein Auswahlproblem, sondern ein Defekt: Wer sie
+ * auflöst, muss es wissentlich tun.
+ */
+function findDocFor(
+  deps: ToolDeps,
+  projectKey: string,
+  areaSlug: string,
+): { fm: { id: string } } | undefined {
+  const matches: { fm: { id: string } }[] = [];
+  for (const m of deps.vault.list()) {
+    const fm = m.fm as { id: string; type?: unknown; scope?: unknown; topic_path?: unknown };
+    if (fm.type !== "doc") continue;
+    if (typeof fm.scope !== "string" || !scopeEquals(fm.scope, projectKey)) continue;
+    const path = fm.topic_path;
+    if (!Array.isArray(path) || path.length !== 3) continue;
+    if (path[0] !== "doku") continue;
+    if (typeof path[1] !== "string" || !scopeEquals(path[1], projectKey)) continue;
+    if (path[2] !== areaSlug) continue;
+    matches.push(m as { fm: { id: string } });
+  }
+  if (matches.length > 1) {
+    throw new Error(
+      `${matches.length} product docs claim ${projectKey}/${areaSlug}: ` +
+        `${matches.map((m) => m.fm.id).join(", ")}. ` +
+        `Merge or re-file all but one — saving now would update one of them and leave ` +
+        `the other standing as a second document for the same area.`,
+    );
+  }
+  return matches[0];
+}
+
 export async function saveProductDocHandler(
   deps: ToolDeps,
   rawArgs: unknown,
@@ -56,38 +111,61 @@ export async function saveProductDocHandler(
 
   const areaSlug = slugify(area);
   if (!areaSlug) throw new Error(`area slugifies to nothing: ${JSON.stringify(area)}`);
-  const id = `doku-${project}-${areaSlug}`;
+  // #360-Folgefund D (Codex-Gegenreview): `project` kam roh vom Aufrufer und
+  // wurde ungefaltet zu id, Scope, Ordner, topic_path und Tags. Ein zweiter
+  // Aufruf mit anderer Schreibweise erzeugte damit eine zweite logische
+  // Doku — auf case-insensitiven Dateisystemen ein stilles Überschreiben.
+  // Kanonischer Key für jede IDENTITÄT, rohe Schreibweise nur in title/body.
+  const projectKey = normalizeScopeKey(project);
+
+  // Codex-Gegenreview: Die id ist ein historischer NAME, kein Schlüssel. Nach
+  // einem Projekt-Rename heißt das Dokument weiter `doku-carnexus-area` — die
+  // id umzubenennen würde jedes `related:` und jeden `[[wikilink]]` darauf
+  // brechen (der Graph löst keine Aliase auf). Gesucht wird deshalb zuerst
+  // über die IDENTITÄT dieses Dokuments — Scope + Area —, und erst wenn es
+  // keines gibt, wird eine id abgeleitet. Genau so bleibt die
+  // update-in-place-Semantik über einen Rename hinweg erhalten.
+  const existing = findDocFor(deps, projectKey, areaSlug);
+  const id = existing?.fm.id ?? `doku-${projectKey}-${areaSlug}`;
 
   const before = deps.vault.get(id);
   const existed = before !== undefined;
-  const result = await saveMemory(deps.vaultPath, {
-    id,
-    title,
-    type: "doc",
-    summary: truncateSummaryTo(summary, SUMMARY_MAX),
-    body,
-    topic_path: ["doku", project, areaSlug],
-    tags: parsed.data.tags ?? ["product-doc", project],
-    scope: project,
-    recall_when: parsed.data.recall_when ?? [
-      `how to use ${title}`,
-      `${project} ${area} user guide`,
-    ],
-    overwrite: true,
-  });
+  const result = await saveMemory(
+    deps.vaultPath,
+    {
+      id,
+      title,
+      type: "doc",
+      summary: truncateSummaryTo(summary, SUMMARY_MAX),
+      body,
+      topic_path: ["doku", projectKey, areaSlug],
+      tags: parsed.data.tags ?? ["product-doc", projectKey],
+      scope: projectKey,
+      recall_when: parsed.data.recall_when ?? [
+        `how to use ${title}`,
+        `${project} ${area} user guide`,
+      ],
+      overwrite: true,
+    },
+    { locator: vaultLocator(deps.vault) },
+  );
   // Watcher is unreliable on cloud mounts — index now so find_document sees it.
   await deps.vault.reindexFile(result.file_path);
 
   // #206: product docs are vault writes like any other — they were the second
   // path with no audit record at all.
-  await recordAudit({
+  const auditWarning = await recordAudit({
     vaultRoot: deps.vaultPath,
     memoryId: result.id,
     operation: result.created ? "create" : "update",
     actor: "assistant",
     actorDetail: "mcp:save_product_doc",
-    diffBefore: before ? { ...before.fm } : null,
-    diffAfter: { ...(deps.vault.get(result.id)?.fm ?? {}) },
+    // Codex-Gegenreview (P1): Vorbild aus dem Vault-CACHE, Nachbild aus dem
+    // Index — beides musste nicht die Datei beschreiben, die der Save wirklich
+    // gepatcht hat (bei einem Re-File war die Vorlage die Quelldatei). Der
+    // Save reicht beides jetzt selbst heraus, unter seinem Claim gelesen.
+    diffBefore: result.audit_before,
+    diffAfter: result.audit_after,
     filePath: result.file_path,
     sessionId: deps.telemetry.runId(),
   });
@@ -97,6 +175,9 @@ export async function saveProductDocHandler(
     file_path: result.file_path,
     created: !existed,
     updated: existed,
+    // #380: bis hierher sah dieser Pfad wie ein glatter Erfolg aus, auch wenn
+    // kein Beleg geschrieben wurde.
+    ...(auditWarning ? { warning: auditWarning } : {}),
   };
 }
 

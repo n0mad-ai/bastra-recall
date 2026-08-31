@@ -134,7 +134,12 @@ function makeLog(nFar = 60, nNear = 60): LabeledQuery[] {
 
 /** A LabeledQuery log carries no pool ids; for the hash we project it onto minimal CandidatePoolEntry. */
 function asEntries(log: LabeledQuery[]): CandidatePoolEntry[] {
-  return log.map((q) => ({ query: q.query, pool: [{ id: q.query, score: 1 }], topScore: 1 }));
+  // `scoreKind: null` is the honest value, not a placeholder: these entries are
+  // projected from a synthetic label log, not read off a telemetry event, so
+  // nothing has said which score space `topScore` lives in. It is also the
+  // value that keeps the harvest behaving as it did while the field was merely
+  // absent — only "bm25" is treated specially there.
+  return log.map((q) => ({ query: q.query, pool: [{ id: q.query, score: 1 }], topScore: 1, scoreKind: null }));
 }
 
 function synthetic(): void {

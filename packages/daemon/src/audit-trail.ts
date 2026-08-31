@@ -31,12 +31,11 @@
  * That is a deliberate trade: this log is for reconstructing what happened,
  * not a transaction gate.
  */
-import { readFile } from "node:fs/promises";
-import matter from "gray-matter";
 import {
   AuditLog,
-  resolveMemoryTarget,
   saveMemory,
+  newOperationId,
+  reportMutationIncident,
   type AuditActor,
   type AuditOperation,
   type SaveMemoryCommitOptions,
@@ -79,8 +78,18 @@ export interface AuditTrailInput {
 /**
  * Append one entry. Never throws — a broken audit log must not turn a
  * successful save into a failed tool call.
+ *
+ * #380: Gibt im Fehlerfall den Satz zurück, den der AUFRUFER sehen soll.
+ * `auditedSave` in core kennt ihn seit `dfb044e` als `audit_warning`, aber nur
+ * der Bridge-Pfad reichte ihn durch — über MCP und REST sah ein Aufrufer eine
+ * gewöhnliche Erfolgsantwort, obwohl kein Beleg geschrieben wurde. `undefined`
+ * heißt: alles protokolliert.
+ *
+ * Der Satz sagt ausdrücklich NICHT WIEDERHOLEN: Die Mutation steht bereits,
+ * ein zweiter Versuch wäre ein zweiter Schreibvorgang auf einen schon
+ * geschriebenen Zustand.
  */
-export async function recordAudit(input: AuditTrailInput): Promise<void> {
+export async function recordAudit(input: AuditTrailInput): Promise<string | undefined> {
   try {
     await logFor(input.vaultRoot).record({
       memory_id: input.memoryId,
@@ -97,7 +106,35 @@ export async function recordAudit(input: AuditTrailInput): Promise<void> {
     console.error(
       `[bastra-recall] audit: could not record ${input.operation} of ${input.memoryId}: ${(err as Error).message}`,
     );
+    // #377: stderr ist im Moment des Fehlers da und zwei Wochen später nicht.
+    // Genau dieser Pfad trägt JEDEN Agentenschreibvorgang über MCP und REST —
+    // ein stiller Ausfall hier heißt, dass die Änderung steht und ihr Beleg
+    // fehlt, und niemand kann es hinterher feststellen.
+    //
+    // `audit_failed` und nicht `partial`: Der Schreibvorgang ist vollständig
+    // durchgelaufen, nur sein Beleg fehlt. Wer das Ereignis liest, darf die
+    // Operation deshalb NICHT wiederholen — das wäre ein zweiter Schreibvorgang
+    // auf einen bereits geschriebenen Zustand.
+    //
+    // Ohne Fehlertext: `err.message` trägt hier regelmäßig den Pfad des
+    // Audit-Logs, und Pfade gehören nicht in dieses Ereignis. Die Meldung mit
+    // Pfad steht eine Zeile höher auf stderr, wo sie hingehört.
+    reportMutationIncident({
+      operation_id: newOperationId(),
+      op: `audit_${input.operation}`,
+      status: "audit_failed",
+      phase: "audit",
+      memory_id: input.memoryId,
+      detail: "append failed",
+    });
+    // #380: Wortgleich mit `recordOrWarn` in core — ein Aufrufer soll denselben
+    // Satz lesen, egal über welchen Transport er schreibt.
+    return (
+      `the ${input.operation} was committed, but the audit entry could not be written ` +
+      `(${(err as Error).message}) — do NOT retry the operation; it already happened.`
+    );
   }
+  return undefined;
 }
 
 export interface SaveMemoryWithAuditTrailInput {
@@ -114,14 +151,13 @@ export interface SaveMemoryWithAuditTrailInput {
 /**
  * Audit a direct daemon `saveMemory` caller without requiring a live Vault
  * instance. Imports and onboarding both write before the watcher/index exists;
- * this wrapper snapshots the exact target path around the write, then delegates
+ * this wrapper takes the pre- and postimage FROM the mutation, then delegates
  * to the same best-effort `recordAudit` seam as MCP writes.
  *
  * Failure boundary for auditors:
- * - target resolution and `saveMemory` are the mutation path; their errors
- *   propagate to the caller;
- * - frontmatter reads are evidence only, so missing/unreadable data becomes
- *   `null` instead of changing the write outcome;
+ * - `saveMemory` is the mutation path; its errors propagate to the caller;
+ * - the pre-/postimage travels with the result, so there is no separate read
+ *   that could describe a different file than the one that was written;
  * - `recordAudit` runs after the committed write and never throws, so an audit
  *   append failure cannot roll back or misreport a successful save.
  *
@@ -131,35 +167,25 @@ export interface SaveMemoryWithAuditTrailInput {
 export async function saveMemoryWithAuditTrail(
   args: SaveMemoryWithAuditTrailInput,
 ): Promise<SaveMemoryResult> {
-  const target = resolveMemoryTarget(args.vaultRoot, args.input);
-  const diffBefore = await readFrontmatter(target.filePath);
+  // Codex-Gegenreview (P1): Das Vorbild wurde hier aus dem aufgelösten
+  // ZIELPFAD gelesen. Bei einem Re-File existiert dieses Ziel aber noch gar
+  // nicht — die Vorlage ist die Quelldatei. Nachgestellt: ein gewöhnliches
+  // Re-File protokollierte `operation: update` mit `diff_before: null`, also
+  // eine Änderung ohne Vorzustand. Vor- und Nachbild kommen deshalb aus der
+  // Mutation selbst, die beide unter ihrem Claim gelesen bzw. geschrieben hat.
   const result = await saveMemory(args.vaultRoot, args.input, args.commit);
-  const diffAfter = await readFrontmatter(result.file_path);
   await recordAudit({
     vaultRoot: args.vaultRoot,
     memoryId: result.id,
     operation: result.created ? "create" : "update",
     actor: args.actor,
     actorDetail: args.actorDetail,
-    diffBefore,
-    diffAfter,
+    diffBefore: result.audit_before,
+    diffAfter: result.audit_after,
     filePath: result.file_path,
     sessionId: args.sessionId,
   });
   return result;
-}
-
-async function readFrontmatter(
-  filePath: string,
-): Promise<Record<string, unknown> | null> {
-  try {
-    const raw = await readFile(filePath, "utf8");
-    return matter(raw).data as Record<string, unknown>;
-  } catch {
-    // Audit evidence is optional. The authoritative save path decides whether
-    // the mutation succeeded; an unreadable snapshot must not override it.
-    return null;
-  }
 }
 
 /** Test seam — the module-level cache would otherwise leak between vaults. */

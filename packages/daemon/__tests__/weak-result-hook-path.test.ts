@@ -17,7 +17,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { RecallHit } from "@bastra-recall/core";
-import { isWeakResult, isNoHome, hitTitleMatches } from "../src/weak-result.js";
+import { isWeakResult, isNoHome, hitTitleMatches } from "@bastra-recall/core";
 
 const hit = (over: Partial<RecallHit> = {}): RecallHit => ({
   id: "some-memory",

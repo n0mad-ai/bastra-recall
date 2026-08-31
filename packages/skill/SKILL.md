@@ -1,6 +1,6 @@
 ---
 name: bastra-recall
-description: Persistent external brain for Claude — use for explicit personal/history lookup or a specific missing durable fact, not as generic search or automatic context before every task. Tools: recall, load_memory, save_memory, find_document, read_document.
+description: Persistent external brain for ChatGPT, Codex, Claude, and other MCP clients — use for explicit personal/history lookup or a specific missing durable fact, not as generic search or automatic context before every task. Tools: recall, load_memory, save_memory, find_document, read_document.
 ---
 
 # bastra-recall — autonomous teammate memory

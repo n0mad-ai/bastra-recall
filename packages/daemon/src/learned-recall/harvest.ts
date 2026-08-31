@@ -121,6 +121,68 @@ export interface CandidatePoolEntry {
   query: string;
   pool: { id: string; score: number }[];
   topScore: number;
+  /** In welchem Raum `topScore` liegt. `null` = das Event hat es nicht gesagt
+   *  (Altbestand). Der Far-Harvest schneidet bei einem absoluten Score (100),
+   *  und dieser Schnitt bedeutet nur auf der fusionierten Skala etwas. */
+  scoreKind: "rrf" | "bm25" | null;
+  /** Die ARMMENGE und die FORMELVERSION hinter `topScore`, sofern das Event sie
+   *  genannt hat. Optional, damit ältere Aufrufer (scripts/) weiter minimale
+   *  Einträge bauen können. */
+  scoreArms?: string[] | null;
+  scoreVersion?: string | null;
+}
+
+/** Die vollständige Signatur eines Score-Raums: Kind + Formelversion + Armmenge. */
+interface ScoreSpace {
+  kind: "rrf" | "bm25" | null;
+  version: string | null;
+  arms: string[] | null;
+}
+
+/**
+ * Sind zwei Scores im selben Raum — und damit gegeneinander lesbar?
+ *
+ * Codex-Gegenreview (P1): Vorher wurde nur `score_kind` verglichen. Gemessen:
+ * `top_score: 150` aus drei Armen (bm25+commons+vector, Skala bis 241.803)
+ * gegen einen Pool mit Spitzenwert 80 aus zwei Armen (bm25+vector, Skala bis
+ * 163.934) — beide melden `"rrf"`, also galten sie als derselbe Raum und die
+ * 150 wurde als Pool-Score gelesen. Ein eigentlich schwacher persönlicher
+ * Recall lief damit nie ins Bridge-Reranking: der `< maxScore`-Schnitt sah
+ * einen starken Treffer, den es im Pool-Raum gar nicht gab.
+ *
+ * FAIL-CLOSED: Ein fehlendes Feld heißt „unbekannt", nicht „gleich". Alte
+ * Events ohne Armmenge sind deshalb NICHT vergleichbar — der Preis ist, dass
+ * für sie der Pool-Spitzenwert statt `top_score` gilt, und der liegt garantiert
+ * im Pool-Raum.
+ */
+function sameScoreSpace(a: ScoreSpace, b: ScoreSpace): boolean {
+  if (a.kind === null || b.kind === null || a.kind !== b.kind) return false;
+  if (a.arms === null || b.arms === null) return false;
+  if (a.arms.length !== b.arms.length || a.arms.some((arm, i) => arm !== b.arms![i])) return false;
+  // Auf roher Skala gibt es keine Formelversion — dort ist „beide ohne" der
+  // korrekte Zustand, nicht eine Lücke. Auf `rrf` MUSS sie dastehen und
+  // übereinstimmen, sonst hat die Zahl zwischen den beiden Zeilen ihre
+  // Bedeutung geändert.
+  if (a.kind === "rrf") return a.version !== null && a.version === b.version;
+  return a.version === null && b.version === null;
+}
+
+/** Liest eine Score-Signatur aus einem Telemetrie-Event, unbekannt = `null`. */
+function readScoreSpace(
+  e: TelemetryEvent,
+  kindKey: string,
+  versionKey: string,
+  armsKey: string,
+): ScoreSpace {
+  const rawKind = e[kindKey];
+  const rawVersion = e[versionKey];
+  const rawArms = e[armsKey];
+  return {
+    kind: rawKind === "rrf" || rawKind === "bm25" ? rawKind : null,
+    version: typeof rawVersion === "string" ? rawVersion : null,
+    arms:
+      Array.isArray(rawArms) && rawArms.every((x) => typeof x === "string") ? (rawArms as string[]) : null,
+  };
 }
 
 /** Pull (query → deeper candidate pool) entries from recall/hook_recall events (#121). */
@@ -134,8 +196,35 @@ export function extractCandidatePools(events: TelemetryEvent[]): CandidatePoolEn
       .filter((p) => typeof p.id === "string" && typeof p.score === "number")
       .map((p) => ({ id: p.id as string, score: p.score as number }));
     if (pool.length === 0) continue;
-    const topScore = typeof e.top_score === "number" ? e.top_score : pool[0].score;
-    out.push({ query: e.query, pool, topScore });
+    // Zweiter Gegenreview: `top_score` und `candidate_pool` können aus
+    // verschiedenen Räumen kommen (Commons-Recall: der Pool aus der
+    // persönlichen Suche, `top_score` aus der Liste danach). Nur wenn beide
+    // denselben Raum nennen, darf `top_score` gegen den Pool gelesen werden;
+    // sonst zählt der Pool-Spitzenwert, der garantiert im Pool-Raum liegt.
+    //
+    // Codex-Gegenreview (P1): „denselben Raum" hieß hier nur `score_kind`, und
+    // das ist zu grob. Gemessen: top_score 150 (drei Arme) gegen pool top 80
+    // (zwei Arme), beide `"rrf"` — extractCandidatePools() meldete topScore 150
+    // und der Far-Harvest hielt einen schwachen Recall für einen starken.
+    // Verglichen wird jetzt die VOLLE Signatur, und fehlende Felder gelten als
+    // unbekannt (fail-closed), nicht als gleich.
+    const topSpace = readScoreSpace(e, "score_kind", "score_version", "score_arms");
+    const poolSpace = readScoreSpace(
+      e,
+      "candidate_pool_score_kind",
+      "candidate_pool_score_version",
+      "candidate_pool_score_arms",
+    );
+    const useTop = sameScoreSpace(topSpace, poolSpace) && typeof e.top_score === "number";
+    const space = useTop ? topSpace : poolSpace;
+    out.push({
+      query: e.query,
+      pool,
+      topScore: useTop ? (e.top_score as number) : pool[0].score,
+      scoreKind: space.kind,
+      scoreArms: space.arms,
+      scoreVersion: space.version,
+    });
   }
   return out;
 }
@@ -171,6 +260,14 @@ export async function harvestFarBridges(
   let judged = 0;
   for (const entry of pools) {
     if (judged >= maxJudge) break;
+    // Zweiter Gegenreview: `maxScore` ist ein absoluter Schnitt auf der
+    // fusionierten Skala. Auf rohem BM25 (offen, sechsstellig) reißt ihn jeder
+    // Treffer — der ganze Recall sähe „zuversichtlich" aus und würde nie
+    // geprüft, während umgekehrt kein einziger echter far-Fall erkannt wird.
+    // Ein Event, das seinen Raum ausdrücklich als `bm25` nennt, wird deshalb
+    // übersprungen. `null` (Altbestand ohne das Feld) bleibt wie bisher drin —
+    // fail-closed hieße hier, den kompletten historischen Log wegzuwerfen.
+    if (entry.scoreKind === "bm25") continue;
     if (entry.topScore >= maxScore) continue; // already a confident hit → not a far case
     const lang = detectLanguage(entry.query).lang;
     if (!lang) continue;

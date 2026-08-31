@@ -131,3 +131,23 @@ test("pickToolPhrase: seed cycles through the pool (a series varies)", () => {
   }
   assert.ok(seen.size > 1, "a series of calls should not all show the same phrase");
 });
+
+test("pickPhrase: a terminal stage keeps its own phrase, however long the recall took", () => {
+  // #365/15. The duration check ran BEFORE the stage lookup, and `done` carries
+  // `durationMs = Date.now() - recallStart` — the TOTAL runtime, not the time
+  // that last step took. So every recall over 500 ms closed with "this is
+  // taking a while" instead of a result phrase: a waiting noise as the final
+  // word, structurally, on exactly the recalls that already felt slow.
+  // "Slow" is a statement about a RUNNING stage, never about a finished one.
+  for (const name of ["done", "cache.hit", "error"] as RecallStage["name"][]) {
+    const at = 1_700_000_000_000;
+    const fast = pickPhrase({ name, startedAtMs: at, durationMs: 20 }, "on", "de");
+    for (const durationMs of [750, 1500, 9000]) {
+      assert.equal(
+        pickPhrase({ name, startedAtMs: at, durationMs }, "on", "de"),
+        fast,
+        `${name} at ${durationMs}ms must still draw from its own pool`,
+      );
+    }
+  }
+});

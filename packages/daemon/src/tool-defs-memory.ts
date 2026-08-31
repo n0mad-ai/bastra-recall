@@ -45,12 +45,27 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "paraphrases.\n" +
       "\n" +
       "WHAT TO DO WITH HITS:\n" +
-      "- score >= ~100 with title/recall_when match: load_memory and " +
-      "apply the lesson before acting.\n" +
-      "- score 30-100: read the summary, load if directly relevant.\n" +
-      "- score < 30: usually noise; skip unless the summary is a " +
-      "perfect topic match.\n" +
+      "READ `score_kind` FIRST — the bands below only exist on the fused " +
+      "scale.\n" +
+      "- `score_kind: \"rrf\"` (fused rank sum, bounded): score >= ~100 with " +
+      "title/recall_when match: load_memory and apply the lesson before " +
+      "acting. score 30-100: read the summary, load if directly relevant. " +
+      "score < 30: usually noise; skip unless the summary is a perfect " +
+      "topic match.\n" +
+      "- `score_kind: \"bm25\"` (also flagged `unfused: true`): the vector " +
+      "arm did not run — no embedding model, a cold-start timeout, or an " +
+      "open circuit breaker (`degraded` names which). These are raw " +
+      "MiniSearch scores on an OPEN scale — six figures on a real vault — " +
+      "so 100 means nothing here and every hit would look REQUIRED. Judge " +
+      "those hits by title, summary and recall_when match, and by their " +
+      "ORDER, never by the number.\n" +
       "Never ignore a `lesson` hit with strong recall_when match.\n" +
+      "Two scores are comparable only within the same `score_arms` (and the " +
+      "same `score_version`): the fused scale reaches 163.934 with the two " +
+      "personal arms and 241.803 once the Bastra Commons contribute a third. " +
+      "A batch response whose phrasings disagreed on that reports " +
+      "`merged_by: \"query-rank-fusion\"` and drops back to `unfused` — its " +
+      "order is meaningful, its numbers are not a band.\n" +
       "On the hybrid (BM25 + vector) path the score is a scaled rank sum, " +
       "not a similarity — a top hit is high by construction. When the " +
       "response carries top-level `weak_result: true`, no returned hit has " +
@@ -217,6 +232,27 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "an existing memory you should update (overwrite=true) instead " +
       "of creating a duplicate.\n" +
       "\n" +
+      "THE CLAIM GATE: a save whose recall_when declares a situation " +
+      "another memory already declares is HELD — nothing is written, and " +
+      "the result carries `claim_gate` naming that memory, both triggers, " +
+      "ITS BODY, and `delta.new_terms` — the content words your text would " +
+      "add to it. Read that first: if your save adds nothing (empty " +
+      "new_terms, or only filler words), DROP it — say the memory already " +
+      "covers it, do not link it, do not re-send. If it adds a real fact " +
+      "that belongs there, do not create a second memory: re-save THAT one " +
+      "with overwrite=true, its id, and a body carrying its existing " +
+      "content plus your addition. Only a genuinely separate memory needs " +
+      "one of the three links. Two memories answering one cue is a " +
+      "successor, a contradiction, or a deliberate pair, and only you can " +
+      "tell which. " +
+      "Re-send the save with `replaces: <id>` (the older one is out of " +
+      "date), `conflict_with: <id>` (both current, incompatible), or " +
+      "`sibling_of: [<id>]` (different entities that share wording and " +
+      "both apply forever) — or narrow this save's recall_when so it stops " +
+      "claiming their situation. Never re-send it unchanged: the gate is " +
+      "deterministic and will hold it again. Writing sharp, situation-" +
+      "specific triggers in the first place is what keeps this rare.\n" +
+      "\n" +
       "QUALITY BARS:\n" +
       "- Title: short, specific, non-generic.\n" +
       "- Summary: one sentence, aim ~250-300 chars, core gist in the first " +
@@ -368,6 +404,20 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
             "memory, and its recall hits carry `conflict: true` until " +
             "someone resolves it. Resolve by deciding with the user which " +
             "claim stands, then re-saving that memory with overwrite=true.",
+        },
+        sibling_of: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Ids this memory deliberately stands BESIDE. Answer to the claim " +
+            "gate: when a save's recall_when declares a situation another " +
+            "memory already declares, the save is held and nothing is " +
+            "written. Three things resolve it — replaces (the older one is " +
+            "out of date), conflict_with (both current, incompatible), or " +
+            "this field, for several entities that are permanently valid at " +
+            "once and only share wording (one memo per contributor, one per " +
+            "project). Use it only when both really do apply forever; " +
+            "quittances accumulate, so a pair is never asked about twice.",
         },
         related: {
           type: "array",

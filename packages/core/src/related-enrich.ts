@@ -13,6 +13,7 @@
  *   EmbeddingIndex.onEmbed(id)
  *     → findSimilarById(id, topN+self)
  *     → cosine ≥ threshold filtern
+ *     → `private`-Nachbarn verwerfen, außer das Memory ist selbst private
  *     → mit existing related_via UND existing body-section vergleichen
  *     → wenn etwas abweicht: file rewrite (frontmatter + body), vault.reindexFile
  *
@@ -28,11 +29,11 @@
  *   → "0.80" vs "0.81") dasselbe File im Sekundentakt gegenseitig
  *   überschreiben — Dauer-Re-Embed, Ollama-Modell entlud nie.
  */
-import { readFile, writeFile, rename, unlink } from "node:fs/promises";
-import matter from "gray-matter";
 import type { Vault } from "./vault.js";
+import { mutateMemoryFile, type MutateOutcome } from "./memory-mutate.js";
+import { MEMORY_WRITE_CONFLICT } from "./save-schema.js";
 import type { EmbeddingIndex } from "./embeddings.js";
-import { AUTO_RELATED_START, AUTO_RELATED_END, stripAutoRelatedSection } from "./save.js";
+import { AUTO_RELATED_START, AUTO_RELATED_END, stripAutoRelatedSection } from "./save-text.js";
 
 export interface RelatedEnricherOptions {
   /** Wieviele Nachbarn maximal nach related_via schreiben. Default 5. */
@@ -115,8 +116,21 @@ export class RelatedEnricher {
     // Nachbar, der zwischen zwei Prozessen um die Schwelle pendelt (0.699 vs
     // 0.701), als add/remove-Ping-Pong.
     const keepIds = new Set(existing.map((e) => e.id));
+    // #365/13: ein `private`-Nachbar wird nie in eine Datei anderer
+    // sensitivity geschrieben — weder als related_via-Kante noch als
+    // [[slug]]-Wikilink. Der Slug IST der Titel (`id = slugify(title)`,
+    // save.ts), die Kante trägt also Klartext an jeden Leser der fremden
+    // Datei: `verbosity:'full'`, `read_document`, Obsidian-Graph. graph.ts
+    // unterdrückt dieselbe Kante schon als Ghost-Node.
+    // Umgekehrt gilt der Filter NICHT: im privaten Memory selbst dürfen
+    // private Nachbarn stehen — die Datei trägt die Einstufung, ihr Inhalt
+    // verlässt sie nicht. Der Filter läuft vor `.slice(0, topN)`, damit ein
+    // ausgeschlossener Nachbar keinen Slot verbraucht, und nach der
+    // Hysterese, damit eine Bestandskante ihn nicht überlebt.
+    const hostIsPrivate = memory.fm.sensitivity === "private";
     const filtered = similar
       .filter((h) => h.score >= this.threshold - (keepIds.has(h.id) ? SCORE_EPSILON : 0))
+      .filter((h) => hostIsPrivate || this.vault.get(h.id)?.fm.sensitivity !== "private")
       .slice(0, this.topN)
       .map<RelatedViaEntry>((h) => ({
         id: h.id,
@@ -142,7 +156,17 @@ export class RelatedEnricher {
 
     if (this.writeGate && !(await this.writeGate())) return null;
 
-    await rewriteFile(memory.filePath, filtered, expectedBody, aliasId);
+    // Ein Hintergrundlauf darf jederzeit ausfallen — ein Save nicht. `raced`
+    // heißt: ein anderer Writer war schneller, seine Fassung bleibt stehen.
+    const outcome = await rewriteFile(
+      this.vault.root,
+      memory.filePath,
+      id,
+      filtered,
+      expectedBody,
+      aliasId,
+    );
+    if (outcome.kind !== "written") return null;
     await this.vault.reindexFile(memory.filePath);
     return filtered;
   }
@@ -219,51 +243,55 @@ function rebuildBodyWithAutoSection(
   return stripped + lines.join("\n");
 }
 
+/**
+ * Codex-Gegenreview (P0): Hier stand eine eigene Kopie von
+ * `mutateMemoryFile` — Read, Transform, Compare-and-Swap, Rename, alles von
+ * Hand. Sie kannte weder die ID-Transaktion noch die Identitätsprüfung: Ein
+ * Hintergrundlauf stempelte damit auf eine Datei, die inzwischen ein anderes
+ * Memory hielt, und sein Rename konnte einen parallelen Save rückgängig
+ * machen. Jetzt derselbe Weg wie jeder andere Writer.
+ */
 async function rewriteFile(
+  vaultRoot: string,
   filePath: string,
+  id: string,
   related_via: RelatedViaEntry[],
   newBody: string,
   ensureAlias?: string,
-): Promise<void> {
-  const raw = await readFile(filePath, "utf8");
-  const parsed = matter(raw);
-  // Copy statt in-place: gray-matter cached matter(content) per Input-String —
-  // Mutation von parsed.data würde den Cache-Eintrag vergiften (siehe
-  // trigger-expand.ts).
-  const fm = { ...(parsed.data as Record<string, unknown>) };
-  fm.related_via = related_via;
-  if (ensureAlias !== undefined) {
-    // Bestehende (User-)Aliases bleiben erhalten, die id wird nur ergänzt —
-    // Obsidian erlaubt auch die Bare-String-Form, deshalb normalisieren.
-    const existing = Array.isArray(fm.aliases)
-      ? fm.aliases.map(String)
-      : typeof fm.aliases === "string"
-        ? [fm.aliases]
-        : [];
-    if (!existing.includes(ensureAlias)) {
-      fm.aliases = [...existing, ensureAlias];
-    }
-  }
-  const next = matter.stringify(
-    newBody.startsWith("\n") ? newBody : `\n${newBody}`,
-    fm,
-  );
-  // Atomar via temp+rename: ein direkter writeFile lässt das File kurzzeitig
-  // leer (live beobachtet) — Datenverlust-Fenster für Watcher, Cloud-Sync und
-  // parallele Reader. Temp liegt im selben Verzeichnis (gleiches Volume,
-  // rename bleibt atomar) und endet nicht auf .md (Vault-Walker ignoriert es).
-  // #240/B3, third site: unique per WRITE, not per process. A fixed
-  // `.<pid>.tmp` lets two overlapping enrichments of the same memory — a
-  // backfill and a save arriving together — write into one temp file and race
-  // for the rename; the loser then fails with ENOENT on a file it created
-  // milliseconds earlier. That crash took the daemon down until the detached
-  // call site learned to catch. Same fix as embed-cache.ts and embeddings.ts.
-  const tmp = `${filePath}.${process.pid}.${Math.random().toString(36).slice(2, 10)}.tmp`;
-  await writeFile(tmp, next, "utf8");
+): Promise<MutateOutcome> {
   try {
-    await rename(tmp, filePath);
+    return await mutateMemoryFile(
+      filePath,
+      id,
+      {
+        frontmatter: (parsed) => {
+          const fm = { ...parsed };
+          fm.related_via = related_via;
+          if (ensureAlias !== undefined) {
+            // Bestehende (User-)Aliases bleiben erhalten, die id wird nur
+            // ergänzt — Obsidian erlaubt auch die Bare-String-Form, deshalb
+            // normalisieren.
+            const existing = Array.isArray(fm.aliases)
+              ? fm.aliases.map(String)
+              : typeof fm.aliases === "string"
+                ? [fm.aliases]
+                : [];
+            if (!existing.includes(ensureAlias)) fm.aliases = [...existing, ensureAlias];
+          }
+          return fm;
+        },
+        body: () => (newBody.startsWith("\n") ? newBody : `\n${newBody}`),
+      },
+      { vaultRoot },
+    );
   } catch (err) {
-    await unlink(tmp).catch(() => {});
+    // Zwei Anreicherungen desselben Memories treffen sich jetzt am id-Lock,
+    // und der Verlierer bekommt einen Write-Conflict. Für einen
+    // Hintergrundlauf ist das kein Fehler, sondern genau die Aussage von
+    // `raced`: Ein anderer Writer war schneller, seine Fassung bleibt stehen.
+    // Das gilt auch für einen Save, der gleichzeitig läuft — der darf nicht
+    // scheitern, diese Anreicherung schon.
+    if ((err as { code?: string })?.code === MEMORY_WRITE_CONFLICT) return { kind: "raced" };
     throw err;
   }
 }

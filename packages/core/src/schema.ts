@@ -215,6 +215,21 @@ export const FrontmatterSchema = z.object({
   obsolete: z.boolean().optional(),
   replaces: z.string().optional(),
   superseded_by: z.string().optional(),
+  /**
+   * #360 — ids this memory deliberately stands beside.
+   *
+   * The write-time claim gate diverts a save whose `recall_when` fully
+   * contains an existing memory's trigger: two memories declaring the same
+   * situation are a successor, a contradiction, or siblings, and only the
+   * agent knows which. `siblings` is the record of the third answer — "both
+   * apply, permanently, side by side" — so the pair is not asked about again
+   * and the curator's `claimed twice` section skips it.
+   *
+   * Recorded on ONE side only, by the memory that was gated. The curator
+   * checks both directions, so a second stamp would buy nothing and cost a
+   * write into a file the save never touched.
+   */
+  siblings: z.array(z.string()).optional(),
   // Bookmark-only fields (only present when type === "bookmark")
   url: z.string().optional(),
   categories: z.array(z.string()).default([]),

@@ -122,7 +122,7 @@ else
   echo "════════════════════════════════════════════════════════════"
   echo "  ✓ Bastra removed."
   echo
-  echo "  Restart Claude Code / Claude Desktop / Cursor to drop the"
+  echo "  Restart Claude Code / Claude Desktop / Codex / ChatGPT Desktop / Cursor to drop the"
   echo "  memory tool from their sessions."
   echo
   echo "  Installed via Homebrew? Remove the package itself with:"

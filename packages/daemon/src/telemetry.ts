@@ -5,6 +5,11 @@ import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { envFirst, envInt } from "./env.js";
 import { readJoinStateSync, writeJoinState } from "./telemetry-join-store.js";
+import {
+  dimensionsFrom,
+  type ExperimentConfig,
+  type TelemetryDimensions,
+} from "./telemetry-dimensions.js";
 
 /**
  * Migration-aware default log directory: prefer `~/.bastra/logs`, aber
@@ -27,6 +32,7 @@ function defaultLogDir(): string {
 export * from "./telemetry-events.js";
 import type {
   TelemetryEvent,
+  IdScanEvent,
   RecallEvent,
   LoadMemoryEvent,
   SaveMemoryEvent,
@@ -34,6 +40,8 @@ import type {
   HookReflexEvent,
   HookActEvent,
   RecallEpisodeEvent,
+  EvidenceDecisionEvent,
+  MutationIncidentEvent,
   OllamaLifecycleEvent,
   RecallBand,
   TurnSource,
@@ -152,6 +160,14 @@ export class Telemetry {
   private readonly enabled: boolean;
   private readonly logDir: string;
   private readonly sessionId: string;
+  /**
+   * Die registrierte Experimentkonfiguration (#263, §17.4). `null` heißt: kein
+   * Experiment hinterlegt, jedes Ereignis trägt `unassigned`. Die Konfiguration
+   * kommt später aus einer versionierten Registrierung, nicht aus dem Code —
+   * §17.4 verlangt Mindest-N, Zuweisungsfunktion und Konfiguration gemeinsam
+   * abgelegt.
+   */
+  private experiment: ExperimentConfig | null = null;
   private lastRecall: { id: string; ts: number } | null = null;
   /** Map<memory_id, most-recent HookHintTrace>. Older traces are evicted lazily. */
   private hookHints = new Map<string, HookHintTrace>();
@@ -422,7 +438,39 @@ export class Telemetry {
     });
   }
 
-  async logRecall(payload: Omit<RecallEvent, "kind" | "ts" | "session_id">): Promise<void> {
+  /**
+   * Die vier Auswertungsspalten, an EINER Stelle gefüllt (#263).
+   *
+   * Absichtlich hier und nicht bei den Produzenten: `client` und `hook_source`
+   * kommen aus einem Request-Body, und drei Produzenten, die drei eigene
+   * Normalisierungen schreiben, sind drei Gelegenheiten, eine Allowlist zu
+   * vergessen. Was ein Aufrufer mitschickt, ist ein HINWEIS; die Spalte
+   * entsteht hier.
+   */
+  private dimensionsFor(hints: {
+    client?: unknown;
+    hook_source?: unknown;
+    session_id?: unknown;
+  }): TelemetryDimensions {
+    return dimensionsFrom(hints, this.experiment);
+  }
+
+  /** Die registrierte Experimentkonfiguration setzen. Ohne Aufruf bleibt jedes
+   *  Ereignis `unassigned` — die Spalte existiert, behauptet aber nichts. */
+  setExperiment(config: ExperimentConfig | null): void {
+    this.experiment = config;
+  }
+
+  async logRecall(
+    payload: Omit<RecallEvent, "kind" | "ts" | "session_id" | "dimensions"> & {
+      /** Hinweise auf die Oberfläche — normalisiert, nie durchgereicht. */
+      client?: unknown;
+      hook_source?: unknown;
+      /** Die Session des AUFRUFERS, nicht die Boot-id: Aus ihr entsteht das
+       *  Pseudonym und daraus der Arm. Fehlt sie, gibt es keinen Arm. */
+      session_id?: string | null;
+    },
+  ): Promise<void> {
     // "surfaced"-Notice VOR dem enabled-Gate — die Map-Notice ist ein UI-Signal,
     // unabhängig von der Telemetrie-Persistenz (wie onMemoryLoaded). Das Band filtert.
     try {
@@ -431,11 +479,13 @@ export class Telemetry {
       /* Notices dürfen einen Recall nie brechen */
     }
     if (!this.enabled) return;
+    const { client, hook_source, session_id, ...rest } = payload;
     await this.write({
       kind: "recall",
       ts: new Date().toISOString(),
       session_id: this.sessionId,
-      ...payload,
+      ...rest,
+      dimensions: this.dimensionsFor({ client, hook_source, session_id }),
     });
   }
 
@@ -463,8 +513,32 @@ export class Telemetry {
     });
   }
 
+  /** Siehe {@link IdScanEvent} — der Preis der ID-Transaktion, dauerhaft
+   *  gemessen statt einmal geschätzt. */
+  async logIdScan(
+    payload: Omit<IdScanEvent, "kind" | "ts" | "session_id">,
+  ): Promise<void> {
+    if (!this.enabled) return;
+    await this.write({
+      kind: "id_scan",
+      ts: new Date().toISOString(),
+      session_id: this.sessionId,
+      ...payload,
+    });
+  }
+
   async logHookRecall(
-    payload: Omit<HookRecallEvent, "kind" | "ts" | "session_id">,
+    // #363: session_id optional wie bei logHookReflex/logHookAct. Der Hook
+    // liefert die echte Claude-Session-id mit (prompt-lane sendet sie im
+    // /hook/recall-Body, die Route reicht sie durch) — sie überschreibt via
+    // Spread die Daemon-Boot-UUID. Ohne diesen Hatch stempelte jeder der 194
+    // hook_recall-Events eines Tages dieselben 4 Boot-ids: keine Auswertung
+    // auf Recall-Ebene konnte nach Session oder Turn gruppieren (#305, #361).
+    payload: Omit<HookRecallEvent, "kind" | "ts" | "session_id" | "dimensions"> & {
+      session_id?: string;
+      client?: unknown;
+      hook_source?: unknown;
+    },
   ): Promise<void> {
     // "surfaced"-Notice VOR dem enabled-Gate — der Hook-Pfad ist der
     // Löwenanteil des Traffics; die Map-Notice ist UI, nicht Persistenz. Das Band filtert.
@@ -474,11 +548,53 @@ export class Telemetry {
       /* Notices dürfen einen Hook-Recall nie brechen */
     }
     if (!this.enabled) return;
+    const { client, hook_source, ...rest } = payload;
+    // #305/#361: der Turn, in dem dieser Recall lief. `session_id` allein
+    // beantwortet keine Frage auf Turn-Ebene — „wie oft reißt der erste Recall
+    // eines Turns seine Deadline" braucht die Turn-Grenze, und die kennt nur
+    // diese Klasse (`rotateTurn` bei UserPromptSubmit). Ohne das Feld musste
+    // jede solche Auswertung die Grenze aus Zeitstempeln raten.
+    //
+    // `currentTurn` liefert auch dann etwas, wenn kein Turn bekannt ist —
+    // `turn_source` sagt, ob die Zuordnung aus der Session stammt oder
+    // erschlossen ist. Beides mitzuschreiben ist der Unterschied zwischen einer
+    // Gruppierung, der man trauen kann, und einer, die stillschweigend rät.
+    const turn = this.currentTurn(payload.session_id ?? null);
     await this.write({
       kind: "hook_recall",
       ts: new Date().toISOString(),
       session_id: this.sessionId,
-      ...payload,
+      ...rest,
+      turn_id: turn.turn_id,
+      turn_source: turn.turn_source,
+      dimensions: this.dimensionsFor({ client, hook_source, session_id: payload.session_id }),
+    });
+  }
+
+  /**
+   * Der Evidenzentscheid eines Aufrufs (#264) — im Schatten.
+   *
+   * Eigene Methode und eigene Ereignisklasse, nicht ein Feld am
+   * `hook_recall`-Event: Der Entscheid hat einen anderen Lebenszyklus (er wird
+   * scharf geschaltet, während der Recall bleibt) und eine andere
+   * Vertragsklasse (§10.3 gegen §8.5). Zwei Dinge, die man nie addieren darf,
+   * gehören nicht in dasselbe Objekt.
+   */
+  async logEvidenceDecision(
+    payload: Omit<EvidenceDecisionEvent, "kind" | "ts" | "session_id" | "dimensions"> & {
+      session_id?: string;
+      client?: unknown;
+      hook_source?: unknown;
+    },
+  ): Promise<void> {
+    if (!this.enabled) return;
+    const { client, hook_source, ...rest } = payload;
+    await this.write({
+      kind: "evidence_decision",
+      ts: new Date().toISOString(),
+      session_id: this.sessionId,
+      ...rest,
+      dimensions: this.dimensionsFor({ client, hook_source, session_id: payload.session_id }),
     });
   }
 
@@ -501,11 +617,39 @@ export class Telemetry {
     // session_id optional: der Hook liefert die CLAUDE-Session-id mit — sie
     // überschreibt (via Spread) die Daemon-Boot-UUID, sonst ist ein
     // per-Session-Join gegen Transcripts strukturell unmöglich (Audit 2026-07-10).
-    payload: Omit<HookActEvent, "kind" | "ts" | "session_id"> & { session_id?: string },
+    payload: Omit<HookActEvent, "kind" | "ts" | "session_id" | "dimensions"> & {
+      session_id?: string;
+      client?: unknown;
+      hook_source?: unknown;
+    },
+  ): Promise<void> {
+    if (!this.enabled) return;
+    const { client, hook_source, ...rest } = payload;
+    await this.write({
+      kind: "hook_act",
+      ts: new Date().toISOString(),
+      session_id: this.sessionId,
+      ...rest,
+      dimensions: this.dimensionsFor({ client, hook_source, session_id: payload.session_id }),
+    });
+  }
+
+  /**
+   * Ein Mutations-Incident (#377). Kommt über `onMutationIncident` aus core —
+   * core kennt den Daemon nicht, dieselbe Bauform wie `logIdScan`.
+   *
+   * Trägt die Boot-id als `session_id`: Eine Mutation kann aus jedem Pfad
+   * kommen (MCP, REST, Bridge, CLI), und eine Claude-Session gibt es dabei nur
+   * manchmal. Die Boot-id sagt wenigstens, WELCHER Daemon-Lauf es war — anders
+   * als bei `ollama_lifecycle` ist das hier keine Behauptung über eine Session,
+   * weil der Incident selbst über `operation_id` gruppiert wird.
+   */
+  async logMutationIncident(
+    payload: Omit<MutationIncidentEvent, "kind" | "ts" | "session_id">,
   ): Promise<void> {
     if (!this.enabled) return;
     await this.write({
-      kind: "hook_act",
+      kind: "mutation_incident",
       ts: new Date().toISOString(),
       session_id: this.sessionId,
       ...payload,
@@ -513,13 +657,19 @@ export class Telemetry {
   }
 
   async logOllamaLifecycle(
-    payload: Omit<OllamaLifecycleEvent, "kind" | "ts" | "session_id">,
+    payload: Omit<OllamaLifecycleEvent, "kind" | "ts" | "session_id" | "run_id">,
   ): Promise<void> {
     if (!this.enabled) return;
     await this.write({
       kind: "ollama_lifecycle",
       ts: new Date().toISOString(),
-      session_id: this.sessionId,
+      // #363: hier gibt es keine Session — der prewarm läuft im Boot-Pfad, der
+      // unload auf einem Timer. `null` sagt das; die Boot-UUID behauptete
+      // stattdessen eine Session, die nie existierte. Die Boot-id bleibt
+      // erhalten, aber als run_id: nur so bleibt das prewarm→unload-Pairing
+      // über Daemon-Starts hinweg auswertbar (#109).
+      session_id: null,
+      run_id: this.sessionId,
       ...payload,
     });
   }

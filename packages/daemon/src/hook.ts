@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * bastra-recall hook CLI — THIN CLIENT (#343, stage A of #305 direction 2).
+ * bastra-recall hook CLI — THIN CLIENT (#343/#15, stage A of #305 direction 2).
  *
  * The PreToolUse pipeline this file used to run (topics, recall, scope filter,
  * dedup, backoff, formatting, telemetry — 600 lines) lives daemon-side in
@@ -33,12 +33,14 @@ import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { envFirst, envInt } from "./env.js";
 import { shouldSkipPath } from "./hook-skip.js";
+import { decorateHookPayload } from "./hook-surface.js";
+import { normalizeWritePayload } from "./hook-write-input.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 600, "NEXUS_HOOK_TIMEOUT_MS");
 const DEFAULT_PORT = 6723;
 const HOOK_VERSION = "0.4.0-thin";
 
-const SUPPORTED_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
+const SUPPORTED_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"]);
 
 interface ClaudeHookPayload {
   session_id?: string;
@@ -178,6 +180,10 @@ async function main(): Promise<void> {
   }
 
   if (payload.hook_event_name !== "PreToolUse") return emitEmpty();
+  const decorated = decorateHookPayload(payload);
+  const normalized = normalizeWritePayload(decorated);
+  if (!normalized) return emitEmpty();
+  payload = normalized;
   const toolName = payload.tool_name ?? "";
   if (!SUPPORTED_TOOLS.has(toolName)) return emitEmpty();
 

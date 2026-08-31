@@ -3,17 +3,23 @@
 > Status: Release- und Zielarchitektur; V1.0 ist der nächste verbindliche
 > Releasevertrag, V2.0 das langfristige, messungsabhängige Zielbild
 >
-> Stand: 26. Juli 2026
+> Stand: 29. August 2026 (Vertragsänderung C-083, Vertragsergänzungen C-084
+> und C-085, Präzisierung C-086; abgenommene Basis vom 26. Juli 2026 im
+> Übrigen unverändert)
 >
 > Ausgangsstand: Bastra Recall 0.8.6, aktueller Vault, reale
 > 30-Tage-Telemetrie und bestehende Eval-Geometrie
 >
 > **Diese Datei ist die maßgebliche Fassung.** Verbindlicher Ledgerstand:
-> C-001–C-082, elf Reviewrunden, am 26. Juli 2026 abgenommen.
+> C-001–C-086, elf Reviewrunden, eine Vertragsänderung, zwei
+> Vertragsergänzungen und eine Präzisierung; C-001–C-082 am 26. Juli 2026
+> abgenommen, C-083 bis C-086 am 29. August 2026 entschieden.
 >
 > Entstehung: abgenommener Ausgangsstand C-001–C-028, fortgeschrieben durch die
 > Revisionen C-029–C-039, C-040–C-048, C-049–C-054, C-055–C-059, C-060–C-062,
-> C-063–C-067, C-068–C-073, C-074–C-077, C-078–C-079, C-080–C-081 und C-082.
+> C-063–C-067, C-068–C-073, C-074–C-077, C-078–C-079, C-080–C-081 und C-082
+> sowie durch die Vertragsänderung C-083, die Vertragsergänzungen C-084 und
+> C-085 und die Präzisierung C-086.
 > Alle zwölf Zwischenfassungen und der Ausgangsstand liegen unverändert unter
 > `docs/architecture-history/`; sie sind Belegmaterial, keine geltenden
 > Verträge.
@@ -33,7 +39,7 @@
 > Die Product-Owner-Entscheidungen in Abschnitt 31 sind getroffen und binden
 > die Umsetzung.
 >
-> Nächste freie ID: C-083. Ein neues Delta wird in dieser Datei fortgeschrieben
+> Nächste freie ID: C-087. Ein neues Delta wird in dieser Datei fortgeschrieben
 > und nicht mehr als eigene Revisionsdatei geführt.
 
 ## 0. Entscheidungs- und Reviewstatus
@@ -107,7 +113,7 @@ neuer Evidenz erneut geöffnet.
 | ID | Urteil | Verbindliche Konsequenz im Dokument |
 |---|---|---|
 | C-001 | bestätigt | BM25-Rohscore und skalierter RRF dürfen keine gemeinsamen absoluten 30/100-Bänder mehr als Relevanzversprechen verwenden. |
-| C-002 | bestätigt | Das heutige `weak_result` ist nur ein informatives MCP-Signal und kein Hook-Gate; V1.0 führt einen echten Evidenzentscheid mit Abstention ein. |
+| C-002 | bestätigt | **Präzisiert durch C-086:** Die Required-Bedingungen des Evidenzentscheids sind enger gefasst — Teilabdeckung zählt erst ab 50 %, der harte Identifier-Anker liest den Body nicht mehr. Das heutige `weak_result` ist nur ein informatives MCP-Signal und kein Hook-Gate; V1.0 führt einen echten Evidenzentscheid mit Abstention ein. |
 | C-003 | korrigiert | Der produktive Candidate Pool ist `max(k × 4, 20)`, nicht überall 20; für Out-of-pool-Evals wird er explizit auf 100/200 erweitert. |
 | C-004 | korrigiert | `GET /hook/session-context` existiert, ist aber projektlos und intern seriell; er wird erweitert, nicht unverändert als Ersatz für SessionStart eingesetzt. |
 | C-005 | korrigiert | Bridges sind opt-in und ohne Pool ein No-op; auf dieser Instanz waren zwei Bridges aktiv und erweiterten in der Messperiode 853 Queries. Diese Feuerrate belegt Aktivität, nicht Nutzen oder Qualitätslift. |
@@ -127,9 +133,9 @@ neuer Evidenz erneut geöffnet.
 | C-019 | bestätigt | `acted_on` und die daraus berechneten Tokenkosten werden durchgängig als Token-Overlap-Proxy bezeichnet, nicht als nachweisliche Nutzung. |
 | C-020 | bestätigt | V1.0-Telemetrie erhält `client`, `hook_source` und eine pseudonyme Session-Dimension, damit die beschlossenen Auswertungen und Experimentarme ausführbar sind. |
 | C-021 | bestätigt | M0 liefert nach dem Baseline-Run versionierte numerische M1-Toleranzen. |
-| C-022 | Product-Owner-Entscheid | Shadow-Abnahme nach mindestens 14 Tagen oder 500 geloggten Hook-Entscheidungen; zusätzlich müssen Goldset-Gates bestehen und alle `required`/`no_answer`-Divergenzen erklärt sein. |
+| C-022 | Product-Owner-Entscheid | **Ergänzt durch C-085:** Die Entscheidungs-Route verlangt zusätzlich Streuung über mindestens 20 Sessions bei höchstens 25 % Anteil je Session; gezählt wird pro Memory-Entscheidung. Shadow-Abnahme nach mindestens 14 Tagen oder 500 geloggten Hook-Entscheidungen; zusätzlich müssen Goldset-Gates bestehen und alle `required`/`no_answer`-Divergenzen erklärt sein. |
 | C-023 | Product-Owner-Entscheid | Der Live-Evidenzentscheid läuft hinter einem Konfigurations-Flag mit sofortigem Fallback auf das heutige Floor-Verhalten; kein Hard-Cutover. |
-| C-024 | Product-Owner-Entscheid | Retrieval-/Präsentationsexperimente weisen den Arm deterministisch pro pseudonymer Session-ID zu; Mindest-N pro Arm wird nach M0 versioniert festgelegt. |
+| C-024 | Product-Owner-Entscheid | **Releasezuordnung geändert durch C-083:** Die Zuweisungs- und Fallzahlregel selbst gilt unverändert, aber das Erreichen des Mindest-N ist keine V1.0-Anforderung mehr. Retrieval-/Präsentationsexperimente weisen den Arm deterministisch pro pseudonymer Session-ID zu; Mindest-N pro Arm wird nach M0 versioniert festgelegt. |
 | C-025 | Product-Owner-Entscheid | Private Run-Artefakte liegen unter `~/.bastra/eval-runs/<datum>-<hash>/`; das öffentliche Repo erhält nur aggregierte Reports ohne Vault-abgeleitete Query-Texte. |
 | C-026 | bestätigt | Chunking wird nicht durch M2 freigegeben, sondern benötigt einen gesonderten Repräsentationsentscheid auf Basis einer Chunking-on/off-Ablation. |
 | C-027 | bestätigt | Produktmetriken sind erst ab ihrer jeweils gegateten Datenquelle messbar; vorher bleiben sie ausdrücklich Zielbild. |
@@ -188,6 +194,10 @@ neuer Evidenz erneut geöffnet.
 | C-080 | Ist-Korrektur | Das Feld `GraphNode.bridge` belegt weder eine graphentheoretische Brücke noch einen Artikulationsknoten: `buildGraph` setzt es, sobald ein Knoten Nachbarn in mindestens zwei unterschiedlichen fremden Clustern besitzt, ohne zu prüfen, ob diese Cluster ohne ihn unverbunden wären. Es bleibt Bestandteil des Strukturkriteriums, aber ausschließlich mit dieser Bedeutung; eine echte Artikulationsanalyse wäre zusätzliche Grapharbeit und wird nicht behauptet. |
 | C-081 | Architekturentscheidung | **Gate korrigiert durch C-082:** Zuordnung und Nachweisartefakt sind jederzeit zulässige Sidecar-/Run-Artefakte nach C-018 und C-025 und an kein Messgate gebunden. Der eingefrorene Graph-Snapshot wird im Queue- beziehungsweise Run-Artefakt belegt — Projektionsschema und Version, Snapshot-Hash, Erstellungszeitpunkt, angewandtes Kriterium samt Schwellenwert oder Quantil und je zugeordnetem historieunbekannten Memory ID, `degree`, fremde Cluster beziehungsweise `bridge`-Wert und resultierende Stufe; alternativ content-addressed persistiert und referenziert. Ein Zeitstempel allein genügt nicht. Während eines laufenden Reviews wird nicht neu berechnet oder neu zugeordnet, ein Neustart setzt dieselbe Warteschlange fort. Ein unbekannter Reason-Code führt konservativ zu keiner Wiedervorlage. |
 | C-082 | Ist-Korrektur | Das versionierte Queue- beziehungsweise Run-Artefakt der Bestandsprüfung fällt nicht unter M4 und nicht unter den Schemaentscheid aus 21.4: Es verändert weder Memory-Inhalt noch Vault-Schema und darf sofort persistiert werden. 21.4 greift erst, wenn Snapshot-, Queue- oder Reviewfelder in das Memory-Frontmatter beziehungsweise das persistente Memory-Schema übernommen werden. |
+| C-083 | Vertragsänderung | V1.0 schuldet vom Retrieval-/Präsentationsexperiment aus 17.4 nur noch die vorab registrierte Anlage, die deterministische Armzuweisung und den ehrlichen Statusbericht (`underpowered` beziehungsweise `not_evaluable` nach 18.1). Der hinreichend besetzte Lauf — erreichtes Mindest-N je Arm, zweiter Hook-Wortlaut, je Session schaltbares Gate, erhobene Query-Klasse, unabhängige Relevanzlabels — ist nach 26.2 verschoben. Begründung ist gemessen: Die Versuchseinheit ist die Session, und die Ein-Nutzer-Population trägt in vertretbarer Zeit kein Mindest-N. |
+| C-084 | Vertragsergänzung | Ab V1.0 steht das Frontmatter-Format unter einer ausdrücklichen Zusicherung (26.1): Pflichtfelder, Memory-Typen, Bedeutung der dokumentierten optionalen Felder und die Ladetoleranz ändern sich nur mit einem Major-Bump. Ein 1.x-Reader verlangt kein Formatversionsfeld. Unbekannte Schlüssel werden beim Laden toleriert, überleben einen `overwrite` aber nicht garantiert. Nicht gedeckt sind Ranking, interne `.bastra/`-Ablagen und Projektionsinhalte; die `recall`-Ausgabeform fällt unter den eigenen API-Vertrag. Eine Loader-Verschärfung ist nur unter der eng gefassten Sicherheitsausnahme ohne Major-Bump zulässig. |
+| C-085 | Vertragsergänzung | Die 500-Entscheidungen-Route der Shadow-Abnahme (18.2) gilt nur bei Streuung: mindestens 20 verschiedene Sessions tragen die zählenden Entscheidungen, und keine einzelne Session stellt mehr als 25 % von ihnen. Die 14-Tage-Route bleibt unberührt. Klarstellung im selben Eintrag: Gezählt wird pro Memory-Entscheidung, nicht pro Hook-Aufruf — so ist die Schwelle implementiert und so ist sie gemeint. |
+| C-086 | Präzisierung | Beide Wege zu `required` werden enger gefasst (10.3): Das Teilabdeckungs-Signal der Zwei-von-drei-Zählung zählt erst ab 50 % Trigger-Abdeckung statt ab dem ersten gemeinsamen Term, und der harte Identifier-Anker liest Titel, `recall_when` und Frontmatter statt zusätzlich den Body. Beziffert vor der Änderung: Anti-Query-Gate von 50 % auf 12,5 %, Recall@3 gegated, Identifier-Queries und Falsch-Abstention unverändert, längenneutral. Offen bleiben die zu kleine Anti-Probenmenge und die Kosten des Pflichtverlusts, die erst die Shadow-Telemetrie zeigt. |
 
 **Abnahmestand 24.07.2026:** Vollabgleich Ledger C-001–C-027,
 Gate-Messbarkeit, Ist-Behauptungs-Sweep (58 Aussagen, alle gedeckt),
@@ -305,7 +315,51 @@ den Schemaentscheid nach M4 gestellt und damit eine Regel, die sofort gelten
 soll, an ein Gate gebunden, das erst nach mehreren Messstufen fällt. C-082 hebt
 das auf: Das Artefakt ist ein Sidecar-/Run-Artefakt nach C-018 und C-025.
 
-**Nächste freie ID: C-083.** Neue Delta-Reviews beginnen dort. Ein Urteil
+**Vertragsänderung, 29.08.2026 (diese Fassung):** Erstmals ändert ein Eintrag
+nicht ein Urteil, sondern den Umfang des V1.0-Releasevertrags selbst. C-083
+nimmt das Erreichen des Mindest-N im Retrieval-/Präsentationsexperiment aus
+26.1 heraus und verschiebt den hinreichend besetzten Lauf nach 26.2. Anlass ist
+die Fallzahlmessung aus der Registrierung des Experiments: Die Versuchseinheit
+ist nach 17.4 die Session, und auf der heutigen Ein-Nutzer-Population erreicht
+kein Arm in vertretbarer Zeit eine tragfähige Besetzung. Was V1.0 schuldet,
+bleibt vollständig prüfbar — Registrierung, deterministische Zuweisung und die
+ehrliche Auskunft, dass ein Arm nicht auswertbar ist. Die ersetzte Fassung
+bleibt in 26.1 als solche kenntlich; kein Urteil aus C-001–C-082 wird
+umgedeutet.
+
+**Vertragsergänzung, 29.08.2026 (diese Fassung):** C-084 schreibt die
+Frontmatter- und Schemazusicherung fest, die V1.0 mit dem Wegfall der führenden
+`0.` abgibt. Sie war bis dahin nirgends dokumentiert — weder in 26.1 noch in 22
+noch in `docs/memory-schema.md` —, obwohl ab 1.0 jede Änderung am Vault-Format
+einen Major-Bump verlangt. Der Eintrag verspricht ausschließlich, was der Code
+heute hält: die zehn Pflichtfelder, die erkannten Typen, die Bedeutung der
+optionalen Felder und die Ladetoleranz aus dem Rescue-Pfad. Ausdrücklich nicht
+zugesichert sind Ranking, interne Ablagen, Projektionsinhalte und die
+Erhaltung fremder Schlüssel über einen `overwrite` hinweg; die
+`recall`-Ausgabeform ist gebunden, aber über den eigenen API-Vertrag.
+
+**Vertragsergänzung, 29.08.2026 (diese Fassung):** C-085 bindet die
+Entscheidungs-Route der Shadow-Abnahme an Streuung. Die Schwelle „500
+Entscheidungen oder 14 Tage" kannte nur eine Menge; im realen Bestand stammten
+2040 von 2052 geloggten Entscheidungen aus einer einzigen Session, womit ein
+Arbeitstag das Tor formal gefüllt hätte. Künftig zählt die Entscheidungs-Route
+nur bei mindestens 20 verschiedenen Sessions und höchstens 25 % Anteil je
+Session; die 14-Tage-Route bleibt unberührt. Derselbe Eintrag hält die
+Zähl-Lesart fest: pro Memory-Entscheidung, nicht pro Hook-Aufruf.
+
+**Präzisierung, 29.08.2026 (diese Fassung):** C-086 fasst beide Wege zu
+`required` enger. Die Zwei-von-drei-Zählung wertete jede Trigger-Abdeckung über
+null als unabhängiges Signal, sodass ein einziger zufällig geteilter Term eine
+Pflicht mittrug; künftig zählt sie erst ab 50 % Abdeckung. Der harte
+Identifier-Anker suchte zusätzlich im Body und machte damit eine Erwähnung im
+Fließtext zur Zuständigkeit; er liest künftig nur Titel, `recall_when` und
+Frontmatter. Beide Verengungen wurden vor der Änderung beziffert: Das
+Anti-Query-Gate fällt von 50 % auf 12,5 %, Recall@3 gegated, Identifier-Queries
+und Falsch-Abstention bleiben unverändert. Zwei Vorbehalte stehen ausdrücklich
+im Eintrag — acht Anti-Proben können die 5-%-Schwelle nicht darstellen, und die
+Kosten des Pflichtverlusts sieht erst die Shadow-Telemetrie.
+
+**Nächste freie ID: C-087.** Neue Delta-Reviews beginnen dort. Ein Urteil
 ändert sich nur mit neuer Code-, Telemetrie- oder Run-Evidenz; Geschmacksfragen
 werden als Architekturentscheidung statt als Faktenfehler markiert.
 
@@ -1980,6 +2034,63 @@ Deep-Recall-Stufe hinzu.
 Die alten absoluten Schwellen `30` und `100` werden nicht auf die neue Semantik
 übertragen.
 
+**Präzisierung der Required-Bedingungen (C-086).** Beide Wege zu `required`
+waren zu weit gefasst, und der Fehler lag jeweils in der Begründungsqualität,
+nicht in der Trefferqualität.
+
+*Unabhängige Signale.* Die Zwei-von-drei-Zählung — Trigger-Abdeckung,
+Rangübereinstimmung der Arme, Scope-Treffer — wertete bisher jede Abdeckung
+über null als Signal. Ein einziger zufällig geteilter Term genügte damit als
+eine der beiden Säulen einer Pflicht. Das Teilabdeckungs-Signal zählt künftig
+erst **ab 50 % Abdeckung der Anfrageterme durch den handgeschriebenen
+Trigger**. Die vollständige Abdeckung bleibt unverändert harter Anker.
+
+> Ersetzte Lesart: ~~das Teilabdeckungs-Signal zählt, sobald ein Anfrageterm im
+> `recall_when` vorkommt (`recall_when_coverage > 0`)~~.
+
+*Harter Anker.* Der exakte Identifier-, Pfad- und Symboltreffer suchte bisher
+auch im **Body** des Memorys. Ein Bezeichner, der irgendwo im Fließtext
+vorkommt — in einem Codeblock, einem Zitat, einer Aufzählung von Dateien —,
+begründete damit allein eine Pflicht. Der Anker liest künftig **Titel,
+`recall_when` und Frontmatter**; der Body zählt nicht mehr.
+
+> Ersetzte Lesart: ~~der Identifier-Heuhaufen umfasst Titel, `recall_when` und
+> den Memory-Body~~.
+
+Die Begründung ist die Trennung, die 10.2 ohnehin zieht: Titel, Trigger und
+Frontmatter sind autorisierter Text, den jemand als Abrufsignal geschrieben
+hat. Prosa im Body ist Inhalt. Ein Treffer dort belegt, dass das Memory das
+Thema erwähnt — nicht, dass es für diese Anfrage zuständig ist. Wer den Body
+als Anker liest, verwechselt Erwähnung mit Zuständigkeit.
+
+**Messgrundlage.** Beide Verengungen sind vor der Änderung beziffert worden
+(Läufe `2026-08-29-0e1dd5659433` und `2026-08-29-f5d803104893`, zehn
+Gold-Dateien, 679 Fälle, alle Varianten auf demselben servierten Pool). Das
+Anti-Query-Gate fällt von 50 % auf 12,5 % Fehlinjektion. Recall@3 gegated
+(0,4743 gegen 0,4777 ungegated), Recall@3 auf Identifier-Queries (0,7429) und
+die Falsch-Abstention (0,0000) sind in **allen** geprüften Varianten
+unverändert: Keine der Verengungen nimmt den Goldtreffer aus den ersten drei
+Rängen. Die Abdeckungsschwelle wirkt zudem längenneutral — der Pflichtrückgang
+liegt über alle Query-Längen zwischen 58 % und 65 % —, während die geprüfte
+Alternative „mindestens zwei getroffene Terme" genau dort kaum greift, wo die
+Evidenz am schwächsten ist: 12 % Rückgang bei elf und mehr Termen.
+
+Vom Body-Anker hingen 361 Pflichten ab. 49 von ihnen entfallen, die übrigen 312
+bleiben Pflicht, tragen ihre Begründung aber jetzt aus der Zwei-von-drei-Zählung
+statt aus einem Fund im Fließtext.
+
+**Was diese Messung nicht zeigt.** Zwei Vorbehalte gehören zum Entscheid und
+werden nicht wegformuliert. Erstens ist die 5-%-Schwelle des Anti-Query-Gates
+auf acht Proben gar nicht darstellbar: Erreichbar sind nur 0 %, 12,5 %, 25 %
+und so fort, die Schwelle liegt zwischen den ersten beiden Werten. Ob die
+verengte Fassung sie hält, kann dieser Probensatz nicht beantworten; die
+Probenmenge wird auf etwa zwanzig Anti-Queries erweitert. Zweitens ist der
+Goldsatz blind für die Kosten des Pflichtverlusts: Gemessen wird, ob der
+Goldtreffer auf Rang ≤ 3 überlebt, nicht ob die Memories, die keine Pflicht mehr
+sind, in einer Sitzung genützt hätten. Beide Verengungen zusammen streichen
+71 % aller Pflichten. Diese Kosten sieht erst die Shadow-Telemetrie nach dem
+Deploy — die Entscheidung wird bewusst unter diesem Vorbehalt getroffen.
+
 ### 10.4 Training und Kalibrierung
 
 Stufen:
@@ -2802,6 +2913,15 @@ Session verbleibt für alle zugehörigen Ereignisse im selben Arm. Das Mindest-N
 pro Arm wird nach dem M0-Baseline-Run festgelegt und gemeinsam mit
 Zuweisungsfunktion und Experimentkonfiguration versioniert abgelegt.
 
+**Releasezuordnung geändert durch C-083.** Die fünf vorstehenden Punkte
+beschreiben das vollständige Experiment; sie sind ab dem 29.08.2026 nicht mehr
+in dieser Vollständigkeit V1.0-Vertrag. V1.0 schuldet die vorab registrierte
+Anlage, die deterministische Zuweisung und den ehrlichen Statusbericht nach
+18.1; der hinreichend besetzte Lauf mit erreichtem Mindest-N, zweitem
+Hook-Wortlaut, je Session schaltbarem Gate, erhobener Query-Klasse und
+unabhängigen Relevanzlabels ist nach 26.2 verschoben. Verbindlich sind 26.1 und
+26.2 in ihrer geänderten Fassung.
+
 Tokens pro `acted_on` bleiben eine wichtige System-ROI-Metrik, werden aber nicht
 als reine Retrieval-Precision interpretiert.
 
@@ -3024,12 +3144,32 @@ reproduzierbaren M0-Baseline-Run finalisiert.
 Shadow-Abnahme:
 
 - mindestens 14 Kalendertage oder mindestens 500 geloggte
-  Hook-Entscheidungen;
+  Hook-Entscheidungen; die Entscheidungs-Route gilt nur, wenn diese
+  Entscheidungen aus **mindestens 20 verschiedenen Sessions** stammen und
+  **keine einzelne Session mehr als 25 %** von ihnen stellt (C-085);
 - alle retrieval-isolierten Komponentengates bestehen auf dem versionierten
   Goldset;
 - jede beobachtete `required`/`no_answer`-Divergenz zwischen Legacy- und
   Evidenzentscheid ist durch Features, Reason-Code oder Review erklärbar;
 - unerklärte Divergenzen blockieren die Live-Aktivierung.
+
+**Streuungsanforderung an die Entscheidungs-Route (C-085).** Die Schwelle
+kannte bislang nur eine Menge, keine Verteilung. Der Zweck des Shadow-Betriebs
+ist aber, das Prädikat gegen die Verteilung echter Nutzung zu beobachten, und
+eine Menge aus einer einzigen Sitzung ist keine Verteilung: Sie trägt einen
+Vault-Zustand, ein Projekt, eine Arbeitsweise und einen Tagesrhythmus. Ein
+einziger intensiver Arbeitstag konnte das Tor formal füllen. Die 14-Tage-Route
+bleibt davon unberührt — Zeit erzeugt Streuung von allein und braucht keine
+zusätzliche Auflage.
+
+**Was gezählt wird.** Gezählt wird pro **Memory-Entscheidung**, nicht pro
+Hook-Aufruf: Ein Aufruf, der über acht Kandidaten entscheidet, liefert acht
+zählende Entscheidungen. So ist die Schwelle implementiert
+(`packages/daemon/scripts/stats.ts`, `shadowDecisions`), und so ist sie
+gemeint; die Formulierung „geloggte Hook-Entscheidungen" in C-022 bezeichnet
+dieselbe Größe. Die Session-Zuordnung folgt derselben Zählung: Eine Session
+zählt, sobald sie mindestens eine zählende Entscheidung trägt, und ihr Anteil
+bemisst sich an den Entscheidungen, nicht an den Aufrufen.
 
 Rollout und Rollback:
 
@@ -3819,6 +3959,28 @@ bestandenen Messgates.
   und behält seine heutige Bedeutung.
 - Der heutige `related_via`-Hop im Hook-Pfad bleibt aktiv, bis eine Messung
   eine bessere Sicht belegt.
+- Ab V1.0 steht das Frontmatter-Format unter der Zusicherung aus 26.1:
+  Pflichtfelder, Memory-Typen und die Bedeutung der dokumentierten optionalen
+  Felder ändern sich nur mit einem Major-Bump (C-084).
+- Die Ladetoleranz ist Teil dieser Zusicherung. Reparatur fehlender
+  Pflichtfelder, eintragsweise Rettung eines nicht parsenden Blocks, Verwerfen
+  eines ungültigen optionalen Feldes, Kappen eines überlangen `summary` und
+  Folgenlosigkeit unbekannter Schlüssel bleiben erhalten; sie zu verschärfen
+  ist ein Breaking Change. Zulässig bleibt allein die eng gefasste
+  Sicherheitsausnahme aus 26.1.
+- Unbekannte Schlüssel werden beim Laden toleriert, überleben ein
+  `save_memory` mit `overwrite` aber nicht garantiert: Dieser Pfad baut das
+  Frontmatter aus seiner bekannten Feldliste neu.
+- Ein 1.x-Reader verlangt kein Formatversionsfeld im Frontmatter. Eine von Hand
+  angelegte Datei muss nichts deklarieren, um vollwertig zu sein; ein später
+  additiv eingeführtes Versionsfeld dürfte nur optional sein.
+- Alle in diesem Abschnitt genannten V2-Felder — insbesondere
+  `provenance_class` und die Provenienz-/Review-Projektion samt
+  `unknown_legacy` und `imported_unverified` — sind additiv geplant und
+  existieren im V1-Schema **nicht**. Ihre Abwesenheit ist der definierte
+  Zustand und kein Migrationsrückstand.
+- Kein Release der 1er-Reihe schreibt Bestandsdateien in Masse um, um sein
+  eigenes Format herzustellen.
 
 ## 23. Privacy und Sicherheit
 
@@ -4002,11 +4164,93 @@ V1.0 ist fertig, wenn:
   ausgewertet werden;
 - `client`, `hook_source` und pseudonyme Session-Zuordnung die dafür
   erforderlichen Telemetriedimensionen liefern;
-- Experimentarme deterministisch pro Session zugewiesen werden und ihr nach M0
-  versioniertes Mindest-N erreicht haben;
+- das Retrieval-/Präsentationsexperiment aus 17.4 vor jedem Lauf registriert
+  ist, seine Arme deterministisch pro pseudonymer Session zugewiesen werden und
+  seine Auswertung einen Arm unterhalb des Mindest-N ausdrücklich als **nicht
+  auswertbar** ausweist statt als Nullbefund;
 - Context-ROI als Systemmetrik reproduzierbar messbar ist, ohne die
   Live-Schaltung einer korrekten Retrievalentscheidung zirkulär zu steuern;
 - dafür weder Vault-Schema, Memory-Typen noch Vector-Backend migriert werden.
+
+**Vertragsänderung C-083, 29.08.2026 — Anforderung ersetzt.** Der vorstehende
+Experimentpunkt trug bis zu diesem Datum die Fassung:
+
+> ~~Experimentarme deterministisch pro Session zugewiesen werden und ihr nach
+> M0 versioniertes Mindest-N erreicht haben;~~
+
+Diese Fassung gilt nicht mehr. V1.0 schuldet die **Registrierung**, die
+**deterministische Zuweisung** und einen **ehrlichen Statusbericht** —
+`underpowered` beziehungsweise `not_evaluable` mit ausgewiesener Begründung.
+Das Erreichen des Mindest-N und damit der ausgewertete, hinreichend besetzte
+Lauf sind kein V1.0-Bestandteil mehr; sie wandern nach 26.2. Der Grund ist
+gemessen und nicht abgewogen: Die Versuchseinheit aus 17.4 ist die Session,
+und auf einer Ein-Nutzer-Population erreicht kein Arm in vertretbarer Zeit eine
+tragfähige Fallzahl. Ein Releasevertrag, der eine Zahl fordert, die die
+Population nicht hergibt, ist entweder unerfüllbar oder lädt dazu ein, einen
+unterbesetzten Lauf als Befund auszugeben. Die Berichtsregel aus 18.1 bleibt
+davon unberührt und wird durch diesen Eintrag ausdrücklich Teil des
+V1.0-Vertrags.
+
+**Frontmatter- und Schemazusicherung ab V1.0 (C-084).** Mit V1.0 entfällt das
+Beta-Signal der führenden `0.`, und das Vault-Format steht ab dieser Version
+unter einer ausdrücklichen Zusicherung. Markdown mit YAML-Frontmatter bleibt
+Source of Truth. Die zehn Pflichtfelder — `id`, `title`, `type`, `summary`,
+`topic_path`, `tags`, `scope`, `recall_when`, `created`, `updated` — behalten
+Name, Typ und Bedeutung; die erkannten Memory-Typen bleiben gültig; die
+dokumentierten optionalen Felder werden nicht umgedeutet. Ein unter einer
+1.x-Version geschriebener Vault bleibt von jeder späteren 1.x-Version lesbar,
+ohne Migrationsschritt.
+
+Ein 1.x-Reader verlangt **kein Formatversionsfeld** im Frontmatter. Eine Datei
+ohne ein solches Feld ist heute und in jeder späteren 1.x-Version vollwertig.
+Ob ein Versionsfeld später additiv eingeführt wird, bleibt offen; es dürfte
+dann nur optional sein und niemals Ladebedingung werden.
+
+Ebenso zugesichert ist die Ladetoleranz selbst, weil sie die eigentliche Zusage
+an einen handgepflegten Vault ist: fehlende Pflichtfelder werden aus Dateiname,
+Body und Dateizeit repariert, ein nicht parsender Frontmatter-Block wird
+eintragsweise gerettet, ein ungültiges optionales Feld wird verworfen statt die
+Memory zu verlieren, ein überlanges `summary` wird beim Laden gekappt, und
+unbekannte Schlüssel bleiben folgenlos. Reparaturen sind in-memory und werden
+nie auf die Platte zurückgeschrieben. Den Loader strenger zu machen ist deshalb
+ein Breaking Change und kein Bugfix.
+
+Unbekannte Schlüssel werden beim **Laden** toleriert. Sie überleben ein
+`save_memory` mit `overwrite` jedoch **nicht garantiert**: Dieser Pfad baut das
+Frontmatter aus seiner bekannten Feldliste neu und trägt nur die Felder weiter,
+die er kennt. Die Zusicherung deckt das Lesen, nicht die Erhaltung fremder
+Felder über einen Rewrite hinweg.
+
+Breaking und damit einen Major-Bump verlangen: ein Pflichtfeld entfernen,
+umbenennen oder umtypisieren; einen Memory-Typ streichen oder umdeuten; ein
+dokumentiertes optionales Feld entfernen; den Loader so verschärfen, dass eine
+bisher ladende Datei nicht mehr lädt; die Auflösung über die `id` brechen; oder
+eine Migration verlangen, ohne die ein bestehender Vault nicht mehr geladen
+wird. Additiv und damit Minor sind: neue optionale Felder, neue Typen, weitere
+Ladetoleranz, neue Projektionen und neue Schreibrouten neben den bestehenden.
+
+Nicht Teil dieser Zusicherung sind Ranking, Trefferreihenfolge,
+Staleness-Kurven und Triggergewichte; die internen Ablagen unter
+`<vault>/.bastra/`; und die maschinell erzeugten Projektionsfelder, deren
+Berechnungsweg sich jederzeit ändern darf, während Feldname und grobe Bedeutung
+gedeckt bleiben. Die **Ausgabeform von `recall`** fällt nicht unter die
+Schemazusicherung, sondern unter den eigenen API-Vertrag, der denselben
+SemVer-Regeln folgt; sie ist damit gebunden, nur an anderer Stelle.
+
+**Sicherheitsausnahme, eng gefasst.** Eine Verschärfung des Loaders ist
+zulässig, ohne einen Major-Bump auszulösen, wenn alle vier Bedingungen erfüllt
+sind: sie schließt eine konkrete, benannte Schwachstelle; sie wird im Changelog
+ausdrücklich als sicherheitsbedingte Verschärfung ausgewiesen; die betroffene
+Datei erzeugt einen **sichtbaren Fehler** statt still verworfen zu werden; und
+der übrige Bestand bleibt so weit lesbar, wie es die Schwachstelle zulässt. Als
+Freibrief für Aufräumarbeiten am Parser taugt die Ausnahme nicht — sie deckt
+den Ernstfall und sonst nichts.
+
+Innerhalb von 1.x gibt es keinen erzwungenen Migrationsschritt. Kein Release
+schreibt Bestandsdateien in Masse um, um sein eigenes Format herzustellen; wo
+neue Felder gebraucht werden, gilt ihre Abwesenheit als definierter Default —
+so wie heute ein fehlendes `write_origin` als `agent-session` und ein fehlendes
+`recall_mode` als `deliberate` gilt.
 
 ### 26.2 Promotion zu V2.0
 
@@ -4035,6 +4279,12 @@ Promotion erfolgt erst, wenn:
   bestätigt unklare Herkunft trägt, wobei Beobachtung, Ableitung und Vermutung
   unterscheidbar bleiben;
 - Zugänglichkeitsentscheidungen von inhaltlichen Versionen getrennt bleiben;
+- das Retrieval-/Präsentationsexperiment aus 17.4 mindestens einmal
+  **hinreichend besetzt gelaufen** ist: Arm A mit einem zweiten Hook-Wortlaut,
+  Arm B mit je Session schaltbarem Gate, beide mit erreichtem, nach M0
+  versioniertem Mindest-N je Arm, mit erhobener Query-Klassen-Dimension und mit
+  unabhängigen Relevanzlabels für ausgespielte und zurückgehaltene Kandidaten
+  (C-083, aus 26.1 hierher verschoben);
 - HNSW nur dann automatisch aktiviert wird, wenn es auf der aktuellen Hardware
   messbar sinnvoll und qualitativ sicher ist;
 - jede adaptive Entscheidung shadow-getestet, erklärbar und zurückrollbar ist.
@@ -4066,10 +4316,11 @@ Das Ziel ist nicht maximaler Recall. Das Ziel ist:
 
 > Zur richtigen Zeit die richtige Erinnerung – und ansonsten Ruhe.
 
-## 28. Delta-Ledger (C-029–C-082)
+## 28. Delta-Ledger (C-029–C-086)
 
 Dieser Abschnitt dokumentiert elf aufeinanderfolgende Runden von Deltas
-gegenüber dem abgenommenen Stand C-001–C-028. Jeder Eintrag nennt die betroffene
+gegenüber dem abgenommenen Stand C-001–C-028 sowie vier spätere Einträge zu
+Vertrag und Prädikat. Jeder Eintrag nennt die betroffene
 Passage, die Art des Deltas, die tragende Evidenz, das Gate, die Datenquelle,
 das Abnahmekriterium und den Rollback. Kein Eintrag deutet ein früheres Urteil
 um.
@@ -4200,6 +4451,35 @@ beseitigt einen Gate-Widerspruch, den Runde 10 eingeführt hatte:
 | Runde 10 | wird korrigiert durch | Art |
 |---|---|---|
 | C-081 | C-082 | Ist-Korrektur: das Nachweisartefakt hing an M4, obwohl es kein Schemafeld berührt |
+
+**Vertragsänderung — C-083**, 29.08.2026, ist keine Reviewrunde. Sie korrigiert
+kein Urteil, sondern ändert den Umfang des V1.0-Releasevertrags, nachdem die
+Registrierung des Experiments seine Fallzahl gemessen hat:
+
+| Bisheriger Vertrag | wird geändert durch | Art |
+|---|---|---|
+| C-024, 26.1 Experimentpunkt | C-083 | Vertragsänderung: Mindest-N-Erreichung wandert von 26.1 nach 26.2 |
+
+**Vertragsergänzung — C-084**, 29.08.2026, ergänzt den V1.0-Vertrag um eine
+Zusage, die bislang nur im Code stand und in keinem Dokument:
+
+| Bisherige Lücke | wird geschlossen durch | Art |
+|---|---|---|
+| 26.1 und 22 ohne Frontmatter-Zusicherung | C-084 | Vertragsergänzung: Schemazusage, Ladetoleranz, Breaking-/Additiv-Grenze |
+
+**Vertragsergänzung — C-085**, 29.08.2026, bindet eine bestehende Schwelle an
+eine Bedingung, die ihr Zweck immer schon verlangte:
+
+| Bisheriger Vertrag | wird ergänzt durch | Art |
+|---|---|---|
+| C-022, 18.2 Shadow-Abnahme | C-085 | Vertragsergänzung: Streuung über Sessions als Bedingung der Entscheidungs-Route |
+
+**Präzisierung — C-086**, 29.08.2026, verengt das Required-Prädikat, nachdem
+beide Verengungen auf demselben Pool beziffert waren:
+
+| Bisherige Lesart | wird präzisiert durch | Art |
+|---|---|---|
+| C-002, 10.3 Required-Bedingungen | C-086 | Präzisierung: Teilabdeckung erst ab 50 %, Identifier-Anker ohne Body |
 
 ### C-029 – Evidenzklassen für Fremdsystemzahlen
 
@@ -5787,6 +6067,197 @@ Product-Owner-Entscheidungen.*
   beabsichtigt war und keine Schutzwirkung hatte. Die Nachweispflicht aus C-081
   bleibt unverändert bestehen.
 
+---
+
+*Ab hier die Vertragsänderung vom 29.08.2026. Sie ist keine Reviewrunde: kein
+Urteil wird umgedeutet, geändert wird der Umfang des Releasevertrags.*
+
+### C-083 – Das Präsentationsexperiment liefert in V1.0 die Anlage, nicht den besetzten Lauf
+
+- **Passage:** 26.1 Experimentpunkt neu gefasst, ersetzte Fassung als solche
+  kenntlich; 26.2 um den hinreichend besetzten Lauf ergänzt; 17.4
+  Releasezuordnung; Ledgerzeile C-024 mit Änderungsverweis, neue Ledgerzeile
+  C-083; 0.4 Abnahmeblock und nächste freie ID; 28 Überschrift, Zuordnung und
+  dieser Eintrag; 33.
+- **Art:** Vertragsänderung.
+- **Evidenz:** Die Registrierung des Experiments
+  (`packages/eval/registrations/presentation-experiment.json`, #267) hat die
+  Fallzahl gemessen statt geschätzt. Über 14 Tage auf dem Ein-Nutzer-Vault:
+  3876 Hook-Recall-Ereignisse, aber nur 80 unterscheidbare Sessions, davon 16
+  mit überhaupt einem geladenen Ereignis. Die Versuchseinheit ist nach 17.4 die
+  Session — die armstabile Zuweisung clustert alle Ereignisse einer Sitzung —,
+  weshalb die Gegenrechnung über Ausspielungen nicht gilt. Bei zwei Bedingungen
+  ergeben sich 18 Tage für 50, 35 Tage für 100 und 88 Tage für 50
+  ergebnistragende Sessions je Arm; bei Basisraten um 1 % trägt keine dieser
+  Besetzungen eine Aussage. Der strukturelle Grund steht über der Rechnung:
+  17.4 setzt eine Population voraus, dieser Vault hat einen Nutzer. Hinzu
+  kommen drei Voraussetzungen, die keine Fallzahlfrage sind — Arm A hat keinen
+  zweiten Hook-Wortlaut (`band-wording.ts` führt genau eine Fassung je Fall),
+  Arm B verlangt ein je Session schaltbares Gate und muss die
+  Shadow-Acceptance abwarten, weil halbscharfe Sessions genau die Beobachtung
+  verunreinigen würden, aus der die Freigabe folgt, und die nach 17.4 bindende
+  Query-Klassen-Dimension wird heute nicht erhoben.
+- **Gate:** keines. Die Änderung entfernt eine Anforderung aus dem
+  V1.0-Vertrag und fügt keine Live-Wirkung hinzu. Registrierung, Zuweisung und
+  Statusbericht sind nach C-018 jederzeit zulässige Mess- und Sidecar-Arbeit.
+- **Datenquelle:** die Registrierung selbst samt ihrem `underpowered_fallback`;
+  die Ereignisprotokolle unter `~/.bastra/logs/events-*.jsonl` für das Fenster
+  15.–28.08.2026; die Zuweisungsfunktion `assignArm` in
+  `packages/daemon/src/telemetry-dimensions.ts`.
+- **Abnahmekriterium:** V1.0 gilt in diesem Punkt als erfüllt, wenn die Anlage
+  vor jedem Lauf registriert ist, die Armzuweisung deterministisch und
+  session-stabil erfolgt und die Auswertung einen Arm unterhalb seines
+  Mindest-N als nicht auswertbar ausweist — mit ausgewiesener Begründung und
+  ohne Nullbefund. Kein Bericht darf aus einem unterbesetzten Arm ein „kein
+  Unterschied gefunden“ machen. Für V2.0 gilt der Punkt aus 26.2.
+- **Rollback:** Die Änderung ist rein vertraglich und ohne Codewirkung; sie
+  lässt sich durch Rückgängigmachen dieser Passagen aufheben. Fällt der Grund
+  weg — eine Mehrnutzer-Population entsteht, oder die Versuchseinheit wird
+  bewusst geändert —, wandert die Anforderung nach einem neuen Eintrag zurück
+  in 26.1. Eine Änderung der Versuchseinheit wäre selbst eine Änderung an 17.4
+  und keine Konfiguration.
+
+---
+
+*Ab hier die Vertragsergänzung vom 29.08.2026.*
+
+### C-084 – Die Frontmatter-Zusicherung ab V1.0
+
+- **Passage:** 26.1 neuer Zusicherungsblock; 22 um sechs Spiegelstriche
+  ergänzt; Ledgerzeile C-084; 0.4 Abnahmeblock und nächste freie ID; 28
+  Überschrift, Zuordnung und dieser Eintrag; 34. Außerhalb dieser Datei:
+  `docs/memory-schema.md`, Abschnitt „Compatibility Promise (1.0)“.
+- **Art:** Vertragsergänzung.
+- **Evidenz:** Mit 1.0.0 entfällt das SemVer-Beta-Signal der führenden `0.`;
+  ab dann verlangt jede Breaking-Änderung am Vault-Format einen Major-Bump.
+  Was das Format zusichert, stand bis dahin in keinem Dokument — weder in 26.1
+  noch in 22 noch in `docs/memory-schema.md`. Der Inhalt der Zusage ist am Code
+  belegt: die zehn Pflichtfelder in `packages/core/src/schema.ts`, die
+  Reparatur- und Rettungslogik in `packages/core/src/frontmatter-rescue.ts`,
+  das Verwerfen ungültiger optionaler Felder und das Kappen überlanger
+  `summary`-Werte im Parser, und die feste Feldliste des Overwrite-Pfads in
+  `packages/core/src/save.ts`. Aus derselben Prüfung stammt eine Klarstellung
+  zu diesem Abschnitt: `provenance_class`, `unknown_legacy` und
+  `imported_unverified` existieren im V1-Schema nicht; 22 las sich bislang, als
+  wären sie Bestand.
+- **Gate:** keines. Die Ergänzung dokumentiert bestehendes Verhalten und ändert
+  weder Code noch Schema.
+- **Datenquelle:** der Code selbst; `docs/memory-schema.md` als
+  Nutzerdokumentation derselben Zusage.
+- **Abnahmekriterium:** Die drei Fassungen — 26.1, 22 und
+  `docs/memory-schema.md` — sagen dasselbe, und keine von ihnen verspricht
+  etwas, das der Code nicht hält. Insbesondere: kein Versprechen, dass niemals
+  ein Formatversionsfeld eingeführt wird, sondern nur, dass ein 1.x-Reader
+  keines verlangt; keine Zusage über die Erhaltung unbekannter Schlüssel über
+  einen `overwrite` hinweg; und keine Behauptung, die `recall`-Ausgabeform sei
+  ungebunden — sie fällt unter den eigenen API-Vertrag.
+- **Rollback:** Rein dokumentarisch und ohne Codewirkung. Sollte sich die
+  Ladetoleranz als Angriffsfläche erweisen, greift die eng gefasste
+  Sicherheitsausnahme aus 26.1 — vier Bedingungen, darunter ein sichtbarer
+  Fehler statt stillem Verwerfen; sie ersetzt keinen Major-Bump für alles
+  Übrige.
+
+---
+
+*Ab hier die Vertragsergänzung C-085 vom 29.08.2026.*
+
+### C-085 – Die Entscheidungs-Route der Shadow-Abnahme verlangt Streuung
+
+- **Passage:** 18.2 Shadow-Abnahme um die Streuungsbedingung und die
+  Zähl-Lesart erweitert; Ledgerzeile C-022 mit Ergänzungsverweis, neue
+  Ledgerzeile C-085; 0.4 Abnahmeblock und nächste freie ID; 28 Überschrift,
+  Zuordnung und dieser Eintrag; 35.
+- **Art:** Vertragsergänzung.
+- **Evidenz:** Die Schwelle aus C-022 nennt eine Menge und keine Verteilung.
+  Im realen Bestand über 91 Logtage tragen die
+  `evidence_decision`-Ereignisse 2052 Memory-Entscheidungen — davon **2040 aus
+  einer einzigen Session**, die drei übrigen Sessions steuern zusammen zwölf
+  bei. Die 500er-Schwelle wäre damit viermal erfüllt, ohne dass je eine zweite
+  Arbeitssituation beobachtet worden wäre. Das widerspricht dem in 18.2
+  festgehaltenen Zweck des Shadow-Betriebs, das Prädikat gegen die Verteilung
+  echter Nutzung zu beobachten: Eine Sitzung trägt einen Vault-Zustand, ein
+  Projekt, eine Arbeitsweise und einen Tagesrhythmus. Zur Kalibrierung der
+  Zahl: Im selben 14-Tage-Fenster tragen 132 verschiedene Sessions
+  `hook_call`-Ereignisse, im Tagesmittel etwa neun und an einzelnen Tagen bis
+  27. Zwanzig verschiedene Sessions sind auf dieser Nutzung also erreichbar,
+  ohne dass ein einzelner Arbeitstag sie zuverlässig allein liefert — und die
+  Anteilsgrenze fängt den beobachteten Fall ab, dass zwar viele Sessions
+  zählen, eine davon aber praktisch alles beiträgt.
+- **Gate:** keines. Die Ergänzung verschärft eine Abnahmebedingung und schaltet
+  nichts live; sie kann sofort gelten.
+- **Datenquelle:** die Ereignisprotokolle unter `~/.bastra/logs/events-*.jsonl`
+  (`kind: "evidence_decision"`, Feld `session_id`); die Auswertung in
+  `packages/daemon/scripts/stats.ts`.
+- **Abnahmekriterium:** Die Entscheidungs-Route gilt als erfüllt, wenn die
+  zählenden Entscheidungen aus mindestens 20 verschiedenen Sessions stammen und
+  keine einzelne Session mehr als 25 % von ihnen stellt. Die 14-Tage-Route
+  bleibt ohne zusätzliche Bedingung. Gezählt wird pro Memory-Entscheidung, nicht
+  pro Hook-Aufruf; eine Session zählt, sobald sie eine zählende Entscheidung
+  trägt.
+- **Rollback:** Rein vertraglich, ohne Codewirkung. Erweist sich die
+  Sessionzahl auf einer größeren Population als zu niedrig oder die
+  Anteilsgrenze als zu streng, werden beide nach dem M0-Baseline-Run mit den
+  übrigen numerischen Größen versioniert nachgezogen; bis dahin gelten die hier
+  festgeschriebenen Werte. Wer die schnellere Route nicht erreicht, verliert
+  nichts — die 14-Tage-Route bleibt offen.
+
+---
+
+*Ab hier die Präzisierung C-086 vom 29.08.2026.*
+
+### C-086 – Beide Wege zu `required` werden enger gefasst
+
+- **Passage:** 10.3 um die präzisierten Required-Bedingungen, die Messgrundlage
+  und die Vorbehalte erweitert, ersetzte Lesarten kenntlich; Ledgerzeile C-002
+  mit Präzisierungsverweis, neue Ledgerzeile C-086; 0.4 Abnahmeblock und
+  nächste freie ID; 28 Überschrift, Zuordnung und dieser Eintrag; 36.
+- **Art:** Präzisierung.
+- **Evidenz:** Beide Wege zu `required` waren in der Begründungsqualität zu
+  weit, nicht in der Trefferqualität. Die Zwei-von-drei-Zählung wertete jede
+  Trigger-Abdeckung über null als eines der beiden nötigen Signale — ein
+  einzelner zufällig geteilter Term genügte. Der harte Identifier-Anker suchte
+  zusätzlich im Body; ein Bezeichner in einem Codeblock oder einer Dateiliste
+  begründete damit allein eine Pflicht, obwohl ein Fund in Prosa nur belegt,
+  dass das Memory das Thema erwähnt, und nicht, dass es zuständig ist. 10.2
+  trennt autorisierten Abruftext von Inhalt bereits; das Prädikat tat es nicht.
+  Beide Verengungen wurden **vor** der Änderung beziffert (Läufe
+  `2026-08-29-0e1dd5659433` und `2026-08-29-f5d803104893`, zehn Gold-Dateien,
+  679 Fälle, sechs Varianten auf demselben servierten Pool, damit ein
+  Unterschied zwischen zwei Zeilen die Regel ist und nichts sonst): Das
+  Anti-Query-Gate fällt von 0,5000 auf 0,1250, während Recall@3 gegated
+  (0,4743 gegen 0,4777 ungegated), Recall@3 auf Identifier-Queries (0,7429) und
+  die Falsch-Abstention (0,0000) in allen sechs Varianten identisch bleiben.
+  Die Abdeckungsschwelle wirkt längenneutral (58–65 % Pflichtrückgang über alle
+  Query-Längen), die geprüfte Alternative „mindestens zwei getroffene Terme"
+  dagegen nicht: Sie greift bei elf und mehr Termen nur mit 12 % Rückgang,
+  also genau dort am schwächsten, wo ein einzelner geteilter Term die
+  schwächste Evidenz ist. Auf dem Body-Anker ruhten 361 Pflichten; 49 entfallen,
+  312 bleiben Pflicht auf der Zwei-von-drei-Zählung.
+- **Gate:** keines für die Schattenmessung; die Live-Schaltung des
+  Evidenzentscheids bleibt an 18.2 und das Konfigurations-Flag aus C-023
+  gebunden.
+- **Datenquelle:** die beiden privaten Run-Artefakte unter
+  `~/.bastra/eval-runs/` samt ihren `NOTES.md`; der Verifikationslauf
+  `2026-08-29-50163fb9a0d0` nach der Umsetzung; das Prädikat in
+  `packages/core/src/evidence-decision.ts`.
+- **Abnahmekriterium:** Das Teilabdeckungs-Signal zählt erst ab einer Abdeckung
+  von 0,5; die vollständige Abdeckung bleibt harter Anker. Der Identifier-Anker
+  liest Titel, `recall_when` und Frontmatter und nicht den Body. Beides ist im
+  Report der Komponentengates nach 18.2 auszuweisen. Umgesetzt in `b30486e`
+  (`MIN_TRIGGER_COVERAGE = 0.5`, Body aus dem Identifier-Heuhaufen entfernt) und
+  gegengerechnet: Der Lauf `2026-08-29-50163fb9a0d0` reproduziert die
+  Vorhersage der Variantenrechnung über alle 679 Fälle mit null Abweichungen.
+- **Rollback:** Beide Schwellen sind Konstanten des Prädikats und ohne
+  Datenmigration zurückzunehmen. Zwei Vorbehalte bleiben ausdrücklich offen und
+  werden nicht als erledigt geführt: Die 5-%-Schwelle des Anti-Query-Gates ist
+  auf acht Proben nicht darstellbar — erreichbar sind nur 0 %, 12,5 %, 25 % und
+  so fort —, weshalb die Probenmenge auf etwa zwanzig Anti-Queries erweitert
+  wird; und die Kosten des Pflichtverlusts (beide Verengungen zusammen streichen
+  71 % aller Pflichten) sieht der Goldsatz nicht, sondern erst die
+  Shadow-Telemetrie nach dem Deploy. Zeigt sie, dass gestrichene Pflichten in
+  Sitzungen gefehlt haben, ist die Abdeckungsschwelle die erste Größe, die
+  zurückgedreht wird.
+
 ## 29. Quellen- und Behauptungsmatrix
 
 Alle Angaben wurden am **25. Juli 2026** durch Abruf der jeweiligen Primärquelle
@@ -6135,4 +6606,215 @@ im Stand C-001–C-028 ist ins Archiv gewandert. Nebenbefund ohne C-ID: Die Daem
 beschreibt abgelaufene Memories als „(or excluded if expired)"; der Code dämpft
 sie nur auf 20 %.
 
-**Nächste freie ID: C-083.**
+**Nächste freie ID: C-083.** *(Historischer Stand vom 26.07.2026. Die aktuell
+gültige nächste freie ID steht am Ende von Abschnitt 36.)*
+
+## 33. Übergabe nach der Vertragsänderung C-083
+
+**Was geändert wurde.** Diese Fassung fügt die Vertragsänderung C-083 hinzu.
+Geändert wurden ausschließlich die folgenden Passagen:
+
+| Passage | Delta |
+|---|---|
+| Präambel: Ledgerstand, Entstehung, Stand-Datum, nächste freie ID | C-083 |
+| 0.4 Änderungsverweis an C-024, neue Ledgerzeile C-083 | C-083 |
+| 0.4 Abnahmeblock und nächste freie ID | C-083 |
+| 17.4 Releasezuordnung des Experiments | C-083 |
+| 26.1 Experimentpunkt neu gefasst, ersetzte Fassung kenntlich | C-083 |
+| 26.2 hinreichend besetzter Lauf ergänzt | C-083 |
+| 28 Überschrift, Vorspann, Zuordnungstabelle, Delta-Eintrag C-083 | C-083 |
+| 32 Klammervermerk zur historischen ID | C-083 |
+| 33 dieser Abschnitt | — |
+
+Alle übrigen Passagen sind unangetastet. Produktcode, die Registrierung des
+Experiments und die Fassungen unter `docs/architecture-history/` wurden nicht
+verändert.
+
+**Was die Änderung bewirkt.** Der V1.0-Releasevertrag verlangte, dass die
+Experimentarme „ihr nach M0 versioniertes Mindest-N erreicht haben“. Diese
+Anforderung ist auf der heutigen Population nicht erfüllbar, und das ist seit
+der Registrierung des Experiments gemessen statt vermutet: Die Versuchseinheit
+ist die Session, der Vault hat einen Nutzer, und selbst 50 ergebnistragende
+Sessions je Arm lägen rund 88 Tage entfernt. Ein Vertrag, der eine unerreichbare
+Zahl fordert, blockiert entweder das Release oder lädt dazu ein, einen
+unterbesetzten Lauf als Befund auszugeben — beides schlechter als die ehrliche
+Auskunft.
+
+V1.0 schuldet deshalb ab sofort drei prüfbare Dinge: die vor jedem Lauf
+registrierte Anlage, die deterministische und session-stabile Armzuweisung und
+den ehrlichen Statusbericht nach 18.1, der einen unterbesetzten Arm als **nicht
+auswertbar** ausweist statt als Nullbefund. Der hinreichend besetzte Lauf steht
+in 26.2 und bleibt Voraussetzung der Promotion nach V2.0. Die ersetzte Fassung
+bleibt in 26.1 sichtbar; die Zuweisungs- und Fallzahlregel aus C-024 gilt
+unverändert, nur ihre Releasezuordnung hat sich verschoben.
+
+**Was besonders zu prüfen ist.**
+
+1. Ob die Wiederaufnahme an eine Mehrnutzer-Population gebunden bleibt oder ob
+   die Versuchseinheit bewusst geändert wird — je Turn statt je Session wäre
+   eine Änderung an 17.4 und verlangt einen eigenen Eintrag, keine
+   Konfiguration.
+2. Ob der Statusbericht als Vertragsbestandteil eine eigene abnehmbare
+   Ausgabe braucht — heute trägt die Registrierung das Verdikt, ein Report
+   existiert noch nicht.
+3. Ob die drei nicht-fallzahlbedingten Voraussetzungen — zweiter Hook-Wortlaut,
+   je Session schaltbares Gate, Query-Klassen-Dimension — in 26.2 einzeln
+   gegatet oder gemeinsam mit dem Lauf abgenommen werden.
+
+**Noch offen.** Unverändert die offenen Punkte aus Abschnitt 32, jetzt
+zusätzlich der zweite Hook-Wortlaut für Arm A als Produkt- und Textentscheidung
+und die Aktivierungsentscheidung, von der Arm B abhängt.
+
+**Nächste freie ID: C-084.** *(Stand dieses Abschnitts. Die aktuell gültige
+nächste freie ID steht am Ende von Abschnitt 36.)*
+
+## 34. Übergabe nach der Vertragsergänzung C-084
+
+**Was geändert wurde.** Diese Fassung fügt die Vertragsergänzung C-084 hinzu.
+Geändert wurden ausschließlich die folgenden Passagen:
+
+| Passage | Delta |
+|---|---|
+| Präambel: Ledgerstand, Entstehung, Stand-Datum, nächste freie ID | C-084 |
+| 0.4 neue Ledgerzeile C-084 | C-084 |
+| 0.4 Abnahmeblock und nächste freie ID | C-084 |
+| 22 sechs Spiegelstriche zur Zusicherung und zum V2-Feldstatus | C-084 |
+| 26.1 Zusicherungsblock | C-084 |
+| 28 Überschrift, Vorspann, Zuordnungstabelle, Delta-Eintrag C-084 | C-084 |
+| 33 Vermerk zur ID | C-084 |
+| 34 dieser Abschnitt | — |
+
+Außerhalb dieser Datei trägt `docs/memory-schema.md` denselben Inhalt als
+Abschnitt „Compatibility Promise (1.0)“. Produktcode wurde nicht verändert.
+
+**Was die Ergänzung bewirkt.** Mit 1.0.0 fällt das Beta-Signal der führenden
+`0.`, und ab dann verlangt jede Breaking-Änderung am Vault-Format einen
+Major-Bump. Was genau zugesichert ist, stand bis dahin nirgends. C-084 schließt
+diese Lücke und verspricht ausschließlich, was der Code hält: Pflichtfelder,
+Typen, Bedeutung der optionalen Felder — und die Ladetoleranz, weil sie die
+eigentliche Zusage an einen handgepflegten Vault ist. Vier Stellen sind bewusst
+eng gefasst: Ein 1.x-Reader verlangt kein Formatversionsfeld, ohne dass damit
+ein späteres optionales Feld ausgeschlossen wäre. Die `recall`-Ausgabeform ist
+gebunden, aber über den API-Vertrag statt über das Schema. Unbekannte Schlüssel
+werden beim Laden toleriert und überleben einen `overwrite` nicht garantiert.
+Und die Sicherheitsausnahme trägt vier Bedingungen, darunter einen sichtbaren
+Fehler statt stillem Verwerfen.
+
+**Was besonders zu prüfen ist.**
+
+1. ~~Ob die Erhaltungslücke beim `overwrite` bestehen bleiben soll oder ob der
+   Save-Pfad unbekannte Schlüssel künftig durchreicht~~ — **entschieden am
+   29.08.2026: Der Save-Pfad reicht sie durch.** Bei einem `overwrite` wird
+   jeder Schlüssel, den der Save-Pfad nicht selbst verwaltet, unverändert aus
+   dem bestehenden Frontmatter übernommen; die verwalteten Felder behalten ihre
+   heutige Semantik und gewinnen jede Namenskollision. Der Vertragswortlaut in
+   C-084 bleibt, wie er ist: Die Lücke ist im Code geschlossen, nicht in eine
+   Zusage verwandelt — über andere Wege als diesen kann ein Schlüssel weiterhin
+   verlorengehen, und eine Garantie müsste sie alle benennen.
+2. Ob die Sicherheitsausnahme je Anwendung eine C-ID bekommt. Der Text verlangt
+   heute nur den Changelog-Ausweis.
+3. Ob `docs/memory-schema.md` als Nutzerdokumentation zusätzlich auf 26.1
+   verweisen soll, damit die beiden Fassungen nicht auseinanderlaufen.
+
+**Nächste freie ID: C-085.** *(Stand dieses Abschnitts. Die aktuell gültige
+nächste freie ID steht am Ende von Abschnitt 36.)*
+
+## 35. Übergabe nach der Vertragsergänzung C-085
+
+**Was geändert wurde.** Diese Fassung fügt die Vertragsergänzung C-085 hinzu.
+Geändert wurden ausschließlich die folgenden Passagen:
+
+| Passage | Delta |
+|---|---|
+| Präambel: Ledgerstand, Entstehung, Stand-Datum, nächste freie ID | C-085 |
+| 0.4 Ergänzungsverweis an C-022, neue Ledgerzeile C-085 | C-085 |
+| 0.4 Abnahmeblock und nächste freie ID | C-085 |
+| 18.2 Shadow-Abnahme: Streuungsbedingung und Zähl-Lesart | C-085 |
+| 28 Überschrift, Vorspann, Zuordnungstabelle, Delta-Eintrag C-085 | C-085 |
+| 34 Vermerk zur ID | C-085 |
+| 35 dieser Abschnitt | — |
+
+Alle übrigen Passagen sind unangetastet. Produktcode wurde nicht verändert; die
+Auswertung in `packages/daemon/scripts/stats.ts` erfüllt die neue Bedingung
+heute noch nicht und muss sie nachziehen.
+
+**Was die Ergänzung bewirkt.** Die Shadow-Abnahme kannte zwei gleichwertige
+Routen: 500 geloggte Entscheidungen oder 14 Kalendertage. Die erste zählte nur
+eine Menge. Im realen Bestand stammen 2040 von 2052 Entscheidungen aus einer
+Session — die Schwelle wäre viermal erfüllt, ohne dass je eine zweite
+Arbeitssituation beobachtet worden wäre. Genau das soll der Shadow-Betrieb
+verhindern. Die Entscheidungs-Route verlangt deshalb künftig mindestens 20
+verschiedene Sessions und höchstens 25 % Anteil je Session. Die 14-Tage-Route
+bleibt unverändert: Zeit erzeugt Streuung von allein.
+
+Im selben Eintrag steht die Zähl-Lesart, die bis dahin nur im Code stand:
+Gezählt wird pro Memory-Entscheidung, nicht pro Hook-Aufruf. Ein Aufruf über
+acht Kandidaten liefert acht zählende Entscheidungen — so rechnet
+`stats.ts`, und die Formulierung „geloggte Hook-Entscheidungen" in C-022
+bezeichnet dieselbe Größe.
+
+**Was besonders zu prüfen ist.**
+
+1. Ob 20 Sessions und 25 % nach dem M0-Baseline-Run als versionierte Zahlen
+   bestätigt oder nachgezogen werden. Beide Werte sind aus der heutigen
+   Ein-Nutzer-Nutzung kalibriert und teilen deren Grenzen.
+2. Ob `stats.ts` die Bedingung als eigene Zeile ausweisen soll — heute meldet
+   die Ausgabe nur Entscheidungen und Tage, sodass eine erreichte Schwelle ohne
+   Streuung als „REACHED" erschiene.
+3. Ob dieselbe Streuungsanforderung für den Präsentationsexperiment-Arm aus
+   17.4 gelten soll. Dort ist die Session bereits die Versuchseinheit, weshalb
+   die Frage sich anders stellt — aber sie stellt sich.
+
+**Nächste freie ID: C-086.** *(Stand dieses Abschnitts. Die aktuell gültige
+nächste freie ID steht am Ende von Abschnitt 36.)*
+
+## 36. Übergabe nach der Präzisierung C-086
+
+**Was geändert wurde.** Diese Fassung fügt die Präzisierung C-086 hinzu.
+Geändert wurden ausschließlich die folgenden Passagen:
+
+| Passage | Delta |
+|---|---|
+| Präambel: Ledgerstand, Entstehung, Stand-Datum, nächste freie ID | C-086 |
+| 0.4 Präzisierungsverweis an C-002, neue Ledgerzeile C-086 | C-086 |
+| 0.4 Abnahmeblock und nächste freie ID | C-086 |
+| 10.3 Required-Bedingungen, Messgrundlage, Vorbehalte | C-086 |
+| 28 Überschrift, Vorspann, Zuordnungstabelle, Delta-Eintrag C-086 | C-086 |
+| 35 Vermerk zur ID | C-086 |
+| 36 dieser Abschnitt | — |
+
+Alle übrigen Passagen sind unangetastet. Der Produktcode trägt die Änderung
+inzwischen: `packages/core/src/evidence-decision.ts` exportiert
+`MIN_TRIGGER_COVERAGE = 0.5` und führt den Body nicht mehr im
+Identifier-Heuhaufen (Commit `b30486e`). Verifiziert durch den Lauf
+`2026-08-29-50163fb9a0d0`: Das geänderte Prädikat reproduziert die Vorhersage
+der Variantenrechnung über alle 679 Fälle ohne eine einzige Abweichung — acht
+verglichene Felder je Fall, 5432 Werte. Im Daemon wirkt die Änderung erst nach
+einem Neustart; die Shadow-Beobachtung beginnt damit neu.
+
+**Was die Präzisierung bewirkt.** Die Produktsemantik von `required` — harter
+Anker oder mehrere unabhängige Signale — blieb unverändert; korrigiert wird,
+was als Anker und was als unabhängiges Signal durchging. Ein einzelner geteilter
+Term ist keine unabhängige Evidenz, und ein Bezeichner im Fließtext ist kein
+Anker. Beides zusammen erzeugte Pflichten, deren Begründung der Prüfung nicht
+standhielt: 361 Pflichten ruhten allein auf einem Fund im Body.
+
+Die Messung ist der eigentliche Gehalt des Eintrags. Sie lief **vor** der
+Änderung und über sechs Varianten auf demselben Pool, weshalb ein Unterschied
+zwischen zwei Zeilen die Regel ist und kein zweiter Lauf. Das Ergebnis ist
+ungewöhnlich eindeutig: Das Anti-Query-Gate viertelt sich, und keine der drei
+Qualitätsgrößen bewegt sich um eine einzige Stelle.
+
+**Was besonders zu prüfen ist.**
+
+1. Ob die 5-%-Schwelle des Anti-Query-Gates nach der Erweiterung auf etwa
+   zwanzig Anti-Queries hält. Vorher ist die Frage nicht beantwortbar, und der
+   heutige Wert von 1/8 darf nicht als Bestehen gelesen werden.
+2. Ob die Shadow-Telemetrie nach dem Deploy Pflichten vermisst, die jetzt
+   entfallen. 71 % weniger Pflichten sind ein großer Eingriff, dessen Kosten
+   dieser Goldsatz strukturell nicht sehen kann.
+3. Ob die Schwelle 0,5 nach dem M0-Baseline-Run versioniert bestätigt wird. Sie
+   ist heute aus der Längenaufschlüsselung begründet, nicht aus einer
+   Kalibrierung.
+
+**Nächste freie ID: C-087.**

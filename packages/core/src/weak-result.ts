@@ -16,8 +16,15 @@
  * Extracted here so both paths compute the same thing from the same code. A
  * second implementation would have drifted, and the two paths disagreeing about
  * what "weak" means is worse than neither having it.
+ *
+ * It sat in `packages/daemon` until the M1 tolerances (#262, §18.1) needed it:
+ * `false_abstention` is to be measured as the share of answerable cases with
+ * `weak_result`, and the gold-set runner in `packages/eval` cannot depend on
+ * the daemon. core is the one workspace every path already depends on, so the
+ * predicate moved here rather than being copied a third time — which is the
+ * drift this docstring has been warning about since #249.
  */
-import type { RecallHit } from "@bastra-recall/core";
+import type { RecallHit } from "./search.js";
 
 /**
  * Did a lexical BM25 match (`matched_terms`) land in the hit's TITLE?
@@ -88,5 +95,10 @@ export function isNoHome(hits: RecallHit[], hybridActive: boolean): boolean {
   // Commons-fused hits come from the BM25 path and carry no `rrf` block at all.
   // Requiring it present is what keeps them from being read as one-armed.
   if (!top?.rrf) return false;
+  // Ein Treffer, den NUR die Commons kennen, trägt seit dem Commons-Beleg
+  // (Codex-Gegenreview P0) ein `rrf`-Objekt mit zwei leeren PERSÖNLICHEN
+  // Rängen. Das ist Evidenz über den Commons-Arm, keine Aussage über die
+  // Einigkeit zweier persönlicher Arme — und genau die misst `no_home`.
+  if (top.rrf.personal_score === 0) return false;
   return top.rrf.rank_bm25 === null || top.rrf.rank_vector === null;
 }

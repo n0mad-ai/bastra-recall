@@ -126,9 +126,35 @@ export const FROZEN_FRAME_NOTES: readonly string[] = [HINT_FRAME_NOTE];
  * marker fragments — correct here because NO fragment is legitimate inside a
  * hint body (the memory file itself stays untouched; only its hint rendering
  * loses the marker).
+ *
+ * Stripping is a rewrite, so it can CREATE a marker out of the halves that
+ * survive one: `<recall-hints<recall-hints>>` loses its inner marker and reads
+ * `<recall-hints>` — a working fence, from text a single pass called clean.
+ * Hence the loop to a fixpoint.
  */
 export function stripFenceMarkers(text: string): string {
   if (!text.includes("<")) return text;
   const re = new RegExp(`</?(?:${INJECTED_BLOCK_TAGS.join("|")})(?:\\s[^>]*)?>`, "g");
-  return text.replace(re, "");
+  let out = text;
+  for (let pass = 0; pass < MAX_STRIP_PASSES; pass++) {
+    const next = out.replace(re, "");
+    if (next === out) return out; // fixpoint: nothing left that could re-form
+    out = next;
+  }
+  // Cap exhausted, so the input is adversarial by construction: nesting deeper
+  // than the ceiling. Returning the residue would be the bypass the cap was
+  // meant to close — one pass short of the fixpoint the leftover is a WORKING
+  // marker (`nest(10)` reduces to exactly `<recall-hints>`). Nothing that could
+  // form a fence may survive, so drop every angle bracket. This is unreachable
+  // for text that settles, which is all real text: a body carrying `<` without
+  // markers hits the fixpoint on pass one and returns above, untouched.
+  return out.replace(/[<>]/g, "");
 }
+
+/**
+ * Hard ceiling on the fixpoint loop. Every pass strictly shortens the string
+ * and each nesting level costs exactly one pass, so real hint bodies settle
+ * after one or two; the cap only bounds a hand-built adversarial input — this
+ * runs once per rendered hint and must not become a budget hole.
+ */
+const MAX_STRIP_PASSES = 10;

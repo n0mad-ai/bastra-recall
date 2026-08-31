@@ -455,3 +455,51 @@ describe("bash-pre-hook: query is the command head, hints dedup per session (22.
     }
   });
 });
+
+describe("#415 — the tripwire reads context, not just words", () => {
+  it("does not fire on a destructive pattern used as a SEARCH TERM", () => {
+    // Observed on legitimate work: looking a pattern up got a STOP warning.
+    // A tripwire that cries on reading gets ignored when it warns on writing —
+    // the same noise argument that removed the `>` redirect pattern in August.
+    assert.equal(matchPattern('grep -rn "DROP TABLE" .'), null);
+    assert.equal(matchPattern('rg "git reset --hard" docs/'), null);
+    assert.equal(matchPattern('git grep -n "rm -rf"'), null);
+    assert.equal(matchPattern('sudo grep -rn "kubectl delete" /etc'), null);
+  });
+
+  it("still fires on the destructive half of a pipeline that starts with a search", () => {
+    // The segment is dropped, not the command: dropping the whole line here
+    // would hide a real deletion behind a leading grep.
+    assert.deepEqual(matchPattern('grep -rl "tmp" . | xargs rm -rf'), {
+      label: "rm -rf",
+      severity: "destructive",
+    });
+    assert.deepEqual(matchPattern("rg -l TODO | xargs git checkout -- docs/"), {
+      label: "git checkout --",
+      severity: "destructive",
+    });
+  });
+
+  it("does not fire on prose that mentions truncating", () => {
+    // Twice in one afternoon of label writing: a rationale mentioning the word
+    // inside a heredoc body tripped the SQL keyword.
+    const heredoc = 'cat > out.json <<\'EOF2\'\n{"rationale": "the server does a TRUNCATE on overflow"}\nEOF2';
+    assert.equal(matchPattern(heredoc), null);
+    assert.equal(matchPattern('echo "wir haben die Tabelle mit TRUNCATE geleert" >> notes.md'), null);
+  });
+
+  it("still fires on the statements themselves", () => {
+    // The narrowing must not cost the guard its job.
+    assert.deepEqual(matchPattern('psql -c "TRUNCATE TABLE sessions"'), {
+      label: "TRUNCATE TABLE",
+      severity: "destructive",
+    });
+    assert.deepEqual(matchPattern('psql -c "DROP TABLE users"'), { label: "DROP TABLE", severity: "destructive" });
+    assert.deepEqual(matchPattern("rm -rf build/"), { label: "rm -rf", severity: "destructive" });
+    assert.deepEqual(matchPattern("git push --force origin main"), {
+      label: "git push --force",
+      severity: "destructive",
+    });
+    assert.deepEqual(matchPattern("chmod -R 777 ."), { label: "chmod -R", severity: "risky" });
+  });
+});

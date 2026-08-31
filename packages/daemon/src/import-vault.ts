@@ -24,7 +24,7 @@ import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { slugify, extractWikilinks } from "@bastra-recall/core";
+import { slugify, extractWikilinks, snapshotLocator } from "@bastra-recall/core";
 import { sendJsonPlain } from "./webui.js";
 import { getUiEnabled } from "./settings.js";
 import { saveMemoryWithAuditTrail } from "./audit-trail.js";
@@ -69,6 +69,9 @@ const KNOWN_ADAPTERS = new Set(["claude-code-memory", "markdown"]);
 type OwnershipCheck =
   | { owner: "free"; target: null }
   | { owner: "mine" | "foreign"; target: string }
+  /** Fremd, aber die Datei steht woanders — es gibt keinen `target` am
+   *  Importpfad zu zeigen. */
+  | { owner: "foreign"; target: null }
   | { owner: "unverifiable" };
 
 /** Result of minting an id: either a usable one, or a reason to skip the file
@@ -96,7 +99,11 @@ export interface ImportVaultResult {
    *  breakdown always sums to `imported`. `index` is the synthetic
    *  curated-index node (#217) — it is a written memory like any other, but it
    *  comes from no source file and therefore from no adapter, which is why it
-   *  used to fall out of the itemisation while still inflating the total. */
+   *  used to fall out of the itemisation while still inflating the total.
+   *  #365/7: counted is the import that LANDED, not the attempt. A dry-run and
+   *  the real run therefore still predict the same numbers as long as no save
+   *  fails; a failed write shows up in `skipped` and in no counter — deliberate,
+   *  because the breakdown must keep summing to `imported`. */
   byAdapter: { claudeCode: number; generic: number; index: number };
   skipped: ImportVaultSkip[];
   ids: string[];
@@ -215,14 +222,48 @@ export async function importVault(
   // batch-allocated id could still land on a stranger. Ownership is read back
   // from the `source` stamp: files carry "<adapter>:<label>:<relKey>", the
   // synthetic index carries "index:<label>".
+  // Codex-Gegenreview: Die Prüfung sah nur den ERWARTETEN Importpfad. Ein
+  // fremdes Memory mit derselben id an einem anderen Ort — von Hand angelegt,
+  // aus einem anderen Import, re-filed — blieb unsichtbar, und der Import
+  // schrieb seine Datei daneben. Danach tragen zwei Dateien dieselbe id, und
+  // der Vault lädt beim nächsten Start still nur eine davon; gewinnt der
+  // Import alphabetisch, verdrängt er das Original aus dem aktiven Index.
+  // Ein Snapshot des ganzen Vaults, EINMAL: die Frage lautet "gehört diese id
+  // schon jemandem, bevor ich anfange", und die beantwortet der Ausgangsstand.
+  // Der Snapshot beantwortet das ROUTING (welches Regal, welche Schreibweise)
+  // für alle Quelldateien mit EINEM Scan. Er ist ausdrücklich NICHT mehr die
+  // Kollisionsauskunft:
+  //
+  // Codex-Gegenreview (P0): Als Authority eingesetzt war er nicht
+  // prozesssicher. `used` kennt nur die ids, die dieser Import selbst vergeben
+  // hat — nicht die Saves eines parallel laufenden Daemons oder einer zweiten
+  // Maschine auf demselben Vault. Nachgestellt: Snapshot auf leerem Vault,
+  // danach ein normaler Save von `race-id`, danach der Import mit der alten
+  // Authority — zwei Dateien mit `race-id`. „Ein Prozess pro Import" ist keine
+  // Zusicherung, solange andere Prozesse denselben Vault schreiben dürfen.
+  //
+  // Der Import zahlt deshalb die autoritative Prüfung je id wie jeder andere
+  // Writer. Das kostet einen Vaultscan pro Datei; ein Import ist ein einmaliger
+  // Vorgang, und Korrektheit ist hier den Preis wert.
+  const vaultIds = snapshotLocator(vaultRoot);
+  const importPathOf = (id: string): string => join(vaultRoot, folder, `${id}.md`);
+
   const ownership = async (
     id: string,
     myKey: string,
     isIndex: boolean,
   ): Promise<OwnershipCheck> => {
+    // Liegt die id ANDERSWO im Vault, ist sie vergeben — unabhängig davon,
+    // was am Importpfad steht. Auch `ambiguous` ist vergeben: Dann ist der
+    // Vault schon defekt, und ein weiterer Anwärter macht es nicht besser.
+    const located = vaultIds.locate(id);
+    if (located.kind === "ambiguous") return { owner: "foreign", target: null };
+    if (located.kind === "unique" && located.filePath !== importPathOf(id)) {
+      return { owner: "foreign", target: null };
+    }
     let raw: string;
     try {
-      raw = await readFile(join(vaultRoot, folder, `${id}.md`), "utf8");
+      raw = await readFile(importPathOf(id), "utf8");
     } catch (err) {
       // #245 P1: fail CLOSED. Only a confirmed ENOENT means "no node here".
       // Any other failure — EACCES/EIO/ETIMEDOUT are all reachable on the
@@ -399,8 +440,6 @@ export async function importVault(
       }
       expectedTarget = check.target;
     }
-    if (mapped.input.source?.startsWith("claude-code-memory")) byAdapter.claudeCode++;
-    else byAdapter.generic++;
     if (!dryRun) {
       try {
         await saveMemoryWithAuditTrail({
@@ -409,7 +448,7 @@ export async function importVault(
           actor: "import",
           actorDetail: "import:vault",
           sessionId: runId,
-          commit: { expectedTarget },
+          commit: { expectedTarget, locator: vaultIds },
         });
       } catch (err) {
         // `recordAudit` absorbs audit-only failures. Reaching this catch means
@@ -419,6 +458,16 @@ export async function importVault(
         continue;
       }
     }
+    // #365/7: erst zählen, wenn der Save wirklich gelandet ist. Vorher stand das
+    // Inkrement VOR dem Write — ein nicht beschreibbarer Vault meldete
+    // `byAdapter.generic: 80` neben `imported: 0, ids: []` und brach damit genau
+    // die Invariante, die der Header dieser Datei zusichert. Der Dry-Run bleibt
+    // unberührt: ohne Write gibt es kein Fehler-`continue`, und der
+    // Ownership-Check darüber ist per `if (!dryRun)` ohnehin übersprungen — eine
+    // gemappte Datei erreicht diese Zeile im Dry-Run wie zuvor. Pass D unten
+    // zählt bereits nach demselben Muster.
+    if (mapped.input.source?.startsWith("claude-code-memory")) byAdapter.claudeCode++;
+    else byAdapter.generic++;
     ids.push(mapped.input.id as string);
   }
 
@@ -497,7 +546,7 @@ export async function importVault(
               actor: "import",
               actorDetail: "import:vault",
               sessionId: runId,
-              commit: { expectedTarget: indexCheck.target },
+              commit: { expectedTarget: indexCheck.target, locator: vaultIds },
             });
             landed = true;
           } catch {

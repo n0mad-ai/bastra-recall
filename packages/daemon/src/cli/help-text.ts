@@ -1,5 +1,5 @@
 /**
- * `bastra help` and `bastra <command> --help` (#330).
+ * `bastra help` and `bastra <command> --help` (#330/#15).
  *
  * `--help` is the convention by which someone finds out what a command does
  * BEFORE running it. Until #330 the effect was inverted: the help flag was
@@ -37,6 +37,10 @@ Commands:
                              removed once no surface references it anymore)
   update                     brew upgrade (if brew-installed) + re-register +
                              daemon restart. Use this after pulling new code.
+  autostart <on|off|status>  Keep the daemon running permanently (off by
+                             default — it otherwise starts on demand and shuts
+                             down after 30 min idle). 'on' writes a LaunchAgent;
+                             a hand-written one is never replaced without --force
   patches <list|add <file>|remove <id>|status>
                              Local patches that survive an update: an ordered
                              series reapplied onto the fresh install. One that
@@ -117,6 +121,7 @@ Commands:
 Surfaces:
   claude-desktop             Claude Desktop App
   claude-code                Claude Code
+  codex                      Codex + ChatGPT Desktop
   cursor                     Cursor
   all                        Every surface above
 
@@ -147,6 +152,7 @@ Options:
 
 Examples:
   bastra install claude-desktop
+  bastra install codex
   bastra install all --dry-run
   bastra status --json
   bastra doctor
@@ -159,6 +165,7 @@ Supported surfaces (this build): ${supportedSurfaces}
 const SURFACE_ARG = `Surfaces:
   claude-desktop  Claude Desktop App
   claude-code     Claude Code
+  codex           Codex + ChatGPT Desktop
   cursor          Cursor
   all             Every surface above
 `;
@@ -260,6 +267,28 @@ Options:
   --lines <n>            Cap the number of lines printed (default 200)
   --stats                Aggregate per lane instead of printing lines
 `,
+
+  autostart: `bastra autostart — keep the daemon running, or let it start on demand
+
+Usage:
+  bastra autostart status     Show what is installed and what it points at
+  bastra autostart on         Install and load the LaunchAgent (macOS)
+  bastra autostart off        Unload and remove it
+  bastra autostart on --force Replace a LaunchAgent bastra did not write
+
+Off by default. Without autostart the daemon starts when an AI client first
+calls it and shuts down again after 30 minutes idle — that is enough for
+Claude Code, Claude Desktop and Cursor. Turn it on when you use the REST API,
+want the embedding model to stay warm, or simply want instant answers.
+
+'on' disables the idle shutdown, so the daemon stays up until you turn it off.
+
+A LaunchAgent that bastra did not write is left alone: it usually points
+somewhere on purpose (a source checkout, a custom model setup), and replacing
+it would break that. --force replaces it anyway.
+
+macOS only. On Linux the daemon keeps starting on demand; write a systemd user
+unit if you want it permanent.`,
 
   update: `bastra update — upgrade, re-register, restart
 

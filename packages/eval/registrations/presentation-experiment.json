@@ -1,0 +1,124 @@
+{
+  "$comment": "Pre-registration of the §17.4 retrieval-vs-presentation experiment (#267). Registered BEFORE any arm runs. Two things are registered at different times and `status` says which stage this file is in: the STRUCTURE (arms, unit of randomisation, assignment function) is fixed now; the NUMBERS (min-N per arm) cannot be fixed yet, and the reason is measured rather than assumed — see `underpowered_fallback`. Amending anything after an arm has started invalidates that arm: bump registration_version and say which version a report belongs to.",
+  "schema_version": 1,
+  "registration_version": 1,
+  "registered_at": "2026-08-28",
+  "registered_by": "Daniel Nevoigt",
+  "status": "structure_registered",
+
+  "$comment_status": "structure_pending_decision -> structure_registered -> numbers_registered. This registration stops at structure_registered on purpose: §17.4 puts the min-N per arm after the M0 baseline, and the measurement below shows that no honest number is reachable on the current population. A validator refuses an arm run below numbers_registered.",
+
+  "experiment": "presentation-vs-retrieval",
+
+  "unit_of_randomisation": {
+    "unit": "pseudonymous_session",
+    "$comment": "§17.4 wörtlich: „Die Arm-Zuweisung erfolgt deterministisch pro pseudonymer Session-ID. Eine Session verbleibt für alle zugehörigen Ereignisse im selben Arm.\" Das ist keine Implementierungswahl, sondern die Auflage — und der Grund, warum die Fallzahl unten an Sessions hängt und nicht an Ereignissen.",
+    "assignment_function": {
+      "name": "assignArm",
+      "source": "packages/daemon/src/telemetry-dimensions.ts",
+      "registered_at_commit": "649753d",
+      "$comment": "Deterministisch aus dem Session-Pseudonym (SHA-256 der Session-id, 16 Hex-Stellen; die letzten 8 als Zahl modulo Armzahl). Session-stabil und gleichverteilt — beides testgesichert in packages/daemon/__tests__/telemetry-dimensions.test.ts. Ohne registrierte Konfiguration liefert sie `unassigned`; die Spalte existiert dann, behauptet aber kein laufendes Experiment."
+    },
+    "pseudonymity": "§23: Das Pseudonym ist gehasht, damit die Spalte strukturell keinen Query- oder Vault-Inhalt tragen kann — unabhängig davon, was ein Aufrufer als session_id schickt."
+  },
+
+  "arms": {
+    "$comment": "Zwei ARMPAARE, nicht vier Zellen. Sie messen verschiedene Dinge und werden getrennt ausgewertet (§17.4: Retrieval, Hook-Formulierung und Konsumentenverhalten getrennt messen). Ein gemeinsames 2x2 würde die beiden Effekte konfundieren, und keiner der beiden ist der Kontrollarm des anderen.",
+    "A_wording": {
+      "question": "Identische Treffer, unterschiedlicher Hook-Wortlaut — wieviel der Load-Quote hängt an der Formulierung statt am Ranking?",
+      "conditions": ["wording_current", "wording_variant"],
+      "held_constant": "Trefferliste, Ranking, Bänder, Budgets, Evidenzentscheid",
+      "status": "blocked_on_open_text_decision",
+      "$comment_blocked": "Es gibt heute genau eine Fassung je Fall (`requiredHeadline`, `unfusedHeadline` in packages/daemon/src/band-wording.ts). Der Zweitwortlaut ist eine Produkt- und Textentscheidung, keine Implementierung; er ist nicht Teil dieser Registrierung und wird nachgetragen, bevor Arm A startet."
+    },
+    "B_gate": {
+      "question": "Identischer Wortlaut, mit und ohne deterministisches Abstention-Gate — wieviel hängt am Zurückhalten statt am Zeigen?",
+      "conditions": ["gate_off", "gate_on"],
+      "held_constant": "Trefferliste, Ranking, Wortlaut, Budgets",
+      "status": "blocked_on_422",
+      "$comment_blocked": "Zwei Gründe, und beide sind hart. (1) Der Evidenzentscheid ist heute global beim Boot aufgelöst (`evidenceGateEnabled` in packages/daemon/src/index.ts), nicht je Session schaltbar — Arm B verlangt beides nebeneinander. (2) Wichtiger: Solange die Shadow-Acceptance aus #264/#422 läuft, wäre eine Hälfte der Sessions bereits scharf geschaltet. Das verunreinigt genau die Beobachtung, aus der die Freigabe folgen soll. Arm B startet frühestens nach der #422-Entscheidung."
+    }
+  },
+
+  "min_n_per_arm": null,
+  "$comment_min_n": "STILL OPEN, und zwar nicht aus Nachlässigkeit. §17.4 setzt das Mindest-N nach den M0-Baseline-Run; die Messung unten zeigt, dass auf der heutigen Population kein Wert existiert, der in vertretbarer Zeit erreichbar wäre. Eine Zahl hier einzutragen, die nie erreicht wird, machte den Arm nach §18.1 „nicht auswertbar\" statt ihn zu widerlegen — mit dem Unterschied, dass niemand es vorher gewusst hätte.",
+
+  "underpowered_fallback": {
+    "$comment": "Der Abschnitt, der diese Registrierung von einer Absichtserklärung unterscheidet. Gemessen, nicht geschätzt.",
+    "measured_from": {
+      "source": "~/.bastra/logs/events-*.jsonl",
+      "window": "2026-08-15 .. 2026-08-28 (14 Tage)",
+      "vault": "Ein-Nutzer-Vault (Daniel)"
+    },
+    "measured": {
+      "hook_recall_events": { "total": 3876, "median_per_day": 280.5 },
+      "recall_episode_loaded": { "total": 189, "median_per_day": 12.5 },
+      "acted_on": { "total": 178, "median_per_day": 12 },
+      "distinct_sessions_on_hook_recall": {
+        "total_window": 80,
+        "median_per_day": 4,
+        "mean_per_day": 5.7,
+        "$comment": "Ohne Daemon-Boot-ids gezählt — die tragen die session_id-Spalte als Rückfall und wären sonst mitgezählt worden."
+      },
+      "sessions_with_at_least_one_loaded": 16
+    },
+    "projection_two_arms": {
+      "$comment": "Bei zwei Bedingungen und ~5,7 Sessions/Tag. Die Versuchseinheit ist die Session, nicht das Ereignis — deshalb zählt hier nicht die Zahl der Ausspielungen.",
+      "50_sessions_per_arm_days": 18,
+      "100_sessions_per_arm_days": 35,
+      "255_sessions_per_arm_days": 89,
+      "50_outcome_bearing_sessions_per_arm_days": 88,
+      "$comment_255": "255 ist die Zahl, die die Cue-Registrierung für ihren gepaarten Goldset-Vergleich trägt — hier zum Vergleich, nicht als Vorgabe.",
+      "$comment_naive": "Eine Gegenrechnung über Ausspielungen (~800/Tag) käme auf ~22 Tage. Sie gilt nur ohne Clusterung und ist deshalb falsch: Die session-stabile Zuweisung aus §17.4 clustert alle Ereignisse einer Sitzung in denselben Arm."
+    },
+    "conclusion": {
+      "verdict": "not_evaluable_on_current_population",
+      "$comment": "Der strukturelle Grund steht über der Rechnung: §17.4 setzt implizit eine Population voraus, dieser Vault hat einen Nutzer. Bei ~40 Sessions je Arm in zwei Wochen — davon 8 mit überhaupt einem Ergebnis — trägt keine Rate mit Basiswert um 1% eine Aussage.",
+      "reporting_rule": "§18.1: Ein Arm unterhalb seines Mindest-N wird als NICHT AUSWERTBAR berichtet, niemals als Nullbefund. Kein „kein Unterschied gefunden\", kein „der Wortlaut wirkt nicht\" — beides wären Aussagen, die die Fallzahl nicht hergibt.",
+      "revisit_when": "Eine Mehrnutzer-Basis existiert, oder die Versuchseinheit wird bewusst geändert (z.B. je Turn statt je Session). Letzteres wäre eine Änderung an §17.4 und keine Konfiguration."
+    }
+  },
+
+  "evaluation_rule": {
+    "split_by": ["client", "hook_source", "query_class"],
+    "$comment_split": "§17.4 Punkt 5, bindend. Die ersten beiden Spalten liegen seit #263 an jedem Ereignis; die Query-Klasse ist noch nicht erhoben und wäre vor einer Auswertung nachzurüsten.",
+    "exposure_normalisation": {
+      "required": true,
+      "denominator": "Ausspielungszahl aus dem bestehenden Usage-Sidecar (C-071)",
+      "$comment": "§17.5: Jedes Signal wird auf seine Ausspielungen normiert, und der Report weist das als NORMALISIERUNG aus — sie macht Raten vergleichbar und korrigiert den Selektionsbias nicht (C-044). Der Mechanismus steht in packages/daemon/scripts/stats.ts."
+    },
+    "causal_claims": {
+      "allowed": false,
+      "$comment": "C-044/§24: Kein kausaler Utility-Lift aus einem Armvergleich — weder im Report noch als Begründung einer Live-Schaltung —, solange nicht alle drei Voraussetzungen erfüllt sind: geloggte Auswahlwahrscheinlichkeiten je Kandidat und Ausspielung, kontrollierte Exploration oder ein randomisierter Arm, und nicht ausgespielte Kandidaten als ZENSIERT statt negativ. Keine der drei liegt vor. Zulässig bleiben deskriptive Ratenvergleiche."
+    },
+    "weak_negatives": "Nichtreaktion bleibt ein schwaches Negativ und wird nie als sicheres Negativlabel verwendet (§17.5).",
+    "live_effect": "Kein Signal aus diesem Experiment wirkt vor bestandenem M6 live auf das Ranking (C-037).",
+    "context_roi": "Token je acted_on bleibt eine System-ROI-Metrik und wird nie als reine Retrieval-Precision gelesen (§17.4)."
+  },
+
+  "preconditions": {
+    "$comment": "Unerfüllte Voraussetzungen blockieren die nächste Stufe. Eine vollständig ausgefüllte Registrierung, für die keine Bedingung existiert, beschreibt kein Experiment — dieselbe Lehre wie bei der Cue-Registrierung.",
+    "items": [
+      {
+        "id": "arm_a_second_wording",
+        "satisfied": false,
+        "what": "Der Zweitwortlaut für Arm A ist eine offene Produkt- und Textentscheidung (Daniel). Heute existiert genau eine Fassung je Fall in band-wording.ts."
+      },
+      {
+        "id": "arm_b_per_session_gate",
+        "satisfied": false,
+        "what": "Der Evidenzentscheid ist global beim Boot aufgelöst, nicht je Session schaltbar — und er darf es nicht werden, solange die Shadow-Acceptance aus #422 läuft."
+      },
+      {
+        "id": "min_n_reachable",
+        "satisfied": false,
+        "what": "Auf der heutigen Ein-Nutzer-Population ist kein Mindest-N je Arm in vertretbarer Zeit erreichbar — siehe underpowered_fallback."
+      },
+      {
+        "id": "query_class_dimension",
+        "satisfied": false,
+        "what": "Die Aufschlüsselung nach Query-Klasse ist nach §17.4 bindend, die Spalte wird heute nicht erhoben."
+      }
+    ]
+  }
+}

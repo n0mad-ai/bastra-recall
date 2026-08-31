@@ -13,7 +13,7 @@
  * Any viewer (daemon web UI, Mac app, external tools) renders from this same
  * projection; none of them is privileged (#140).
  */
-import { basename, relative, sep } from "node:path";
+import { basename, relative, sep, sep as sepChar } from "node:path";
 import type { Vault } from "./vault.js";
 import type { Memory } from "./schema.js";
 
@@ -113,6 +113,13 @@ export interface VaultGraph {
 
 /** Source hierarchy an import batch recorded in `topic_path`, past its own
  *  ["imported", <label>] prefix. Empty for files that sat flat in the source. */
+/** `rel.startsWith("..")` ist zu grob: Ein legitimer Vault-Unterordner namens
+ *  `..sync` beginnt ebenfalls mit zwei Punkten und galt damit als außerhalb
+ *  (Codex-Gegenreview, P2). Nur ein `..`-SEGMENT verlässt den Baum. */
+function escapesTree(rel: string): boolean {
+  return rel === ".." || rel.startsWith(".." + sepChar) || rel.startsWith("../");
+}
+
 function importedTopicSegments(m: Memory): string[] {
   const tp = m.fm.topic_path ?? [];
   return tp[0] === "imported" ? tp.slice(2) : [];
@@ -147,7 +154,7 @@ function importedTopicSegments(m: Memory): string[] {
  */
 export function clusterKeyFor(m: Memory, vaultRoot: string): string {
   const rel = relative(vaultRoot, m.filePath);
-  if (rel.startsWith("..")) return m.fm.scope;
+  if (escapesTree(rel)) return m.fm.scope;
   const parts = rel.split(sep).filter(Boolean);
   if (parts.length < 2) return m.fm.scope; // file directly at the root
   const top = parts[0] === "memories" && parts.length > 2 ? parts[1] : parts[0];
@@ -175,7 +182,7 @@ export function clusterKeyFor(m: Memory, vaultRoot: string): string {
 export function groupKeyFor(m: Memory, vaultRoot: string): string {
   if (m.fm.type === "doc" || m.fm.type === "bookmark") return "artifacts";
   const rel = relative(vaultRoot, m.filePath);
-  if (rel.startsWith("..")) return "other";
+  if (escapesTree(rel)) return "other";
   const parts = rel.split(sep).filter(Boolean);
   const top = parts[0] === "memories" && parts.length > 2 ? parts[1] : parts[0];
   switch (top) {
@@ -211,7 +218,7 @@ export function groupKeyFor(m: Memory, vaultRoot: string): string {
  */
 export function subKeyFor(m: Memory, vaultRoot: string): string {
   const rel = relative(vaultRoot, m.filePath);
-  if (rel.startsWith("..")) return "general";
+  if (escapesTree(rel)) return "general";
   const parts = rel.split(sep).filter(Boolean);
   // index of the cluster folder inside the path — projects/<scope> and
   // imported/<label> both put the cluster one level deeper

@@ -54,6 +54,28 @@ export interface ReportDanglingLink {
   target: string;
 }
 
+/** #360: how many `claimed twice` rows one report shows. The full set can run
+ *  into the hundreds on a vault that predates the gate — 244 on the author's —
+ *  and a report nobody finishes reading is a report nobody acts on.
+ *
+ *  `BASTRA_CLAIMED_TWICE_LIMIT` raises it for the case the default is wrong
+ *  for: working the backlog down in one sitting rather than over five passes.
+ *  Read per call rather than at module load, so a run can change it without a
+ *  daemon restart. */
+export function claimedTwiceReportLimit(): number {
+  const raw = Number(process.env.BASTRA_CLAIMED_TWICE_LIMIT);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 50;
+}
+
+/** #360: two active memories declaring one situation, with no answer on
+ *  either side (`replaces` / `superseded_by` / `siblings`). */
+export interface ReportClaimedTwicePair {
+  fromId: string;
+  toId: string;
+  trigger: string;
+  claim: string;
+}
+
 export interface VaultHealthData {
   generatedAt: string;
   vaultSize: number;
@@ -62,6 +84,9 @@ export interface VaultHealthData {
   pending?: ReportPendingCandidate[];
   floors: ReportFloorEntry[];
   conflicts: ReportConflictCluster[];
+  /** #360: pairs the write-time claim gate would have held today. Optional so
+   *  the report renders unchanged for callers that do not run the sweep. */
+  claimedTwice?: ReportClaimedTwicePair[];
   dangling: ReportDanglingLink[];
   /** Vault-relative paths of 0-byte .md files — usually Obsidian's
    *  auto-created empty notes from clicking an unresolved wikilink. */
@@ -160,6 +185,39 @@ export function renderVaultHealthReport(data: VaultHealthData): string {
     }
   }
   L.push("");
+
+  if (data.claimedTwice !== undefined) {
+    L.push("<!-- bastra-report:claimed-twice -->");
+    L.push("## Claimed twice (one situation, two memories)");
+    L.push("");
+    if (data.claimedTwice.length === 0) {
+      L.push("None. No `recall_when` trigger fully restates another memory's trigger.");
+    } else {
+      L.push(
+        "Both memories declare the same situation, so both answer that cue and neither says which one is meant. " +
+          "Saves made from now on are held at the claim gate until this is answered; these predate it. " +
+          "Each pair is one of three things — decide which, then re-save the memory that should carry the answer:",
+      );
+      L.push("");
+      L.push("- **successor** → `replaces: <id>` on the newer one");
+      L.push("- **contradiction** → `conflict_with: <id>`");
+      L.push("- **siblings** (different entities, same wording) → `sibling_of: [<id>]`");
+      L.push("");
+      L.push("A fourth way out is narrowing one of the two triggers so it stops claiming the other's situation.");
+      L.push("");
+      for (const p of data.claimedTwice) {
+        L.push(`- [[${p.fromId}]] → [[${p.toId}]]: \`${p.trigger}\` ⊆ \`${p.claim}\``);
+      }
+      if (data.claimedTwice.length >= claimedTwiceReportLimit()) {
+        L.push("");
+        L.push(
+          `_Bounded at ${claimedTwiceReportLimit()} rows — there are more. Answer some and the next pass shows the next batch, ` +
+            `or set BASTRA_CLAIMED_TWICE_LIMIT to see the full set._`,
+        );
+      }
+    }
+    L.push("");
+  }
 
   L.push("<!-- bastra-report:dangling -->");
   L.push("## Dangling wikilinks");

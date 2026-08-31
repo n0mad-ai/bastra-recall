@@ -1,3 +1,4 @@
+/** CLI command orchestration, including Codex/ChatGPT installation (#15). */
 import { resolveTargets } from "./registry.js";
 import {
   VERSION,
@@ -24,6 +25,7 @@ import { confirm, isInteractive } from "./prompt.js";
 import { getEmbeddingProvider } from "../settings.js";
 import { showHelp } from "./help-text.js";
 import { describeStale } from "../code-staleness.js";
+import { autostartWarning } from "./autostart.js";
 import type { InstallOpts, ParsedArgs } from "./types.js";
 
 export function showVersion(): void {
@@ -224,11 +226,11 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
   if (firstRun.exit !== null) return firstRun.exit;
   if (firstRun.vaultPath) opts.vaultPath = firstRun.vaultPath;
 
-  // #350: the compiled hook client for Claude Code. Runs before the adapters
+  // #350/#15: the compiled hook client for Claude Code and Codex. Runs before the adapters
   // plan their hook entries, because registration prefers the stub only when
   // the binary already exists on disk (buildHookEntry). Nothing here fails the
   // install — the node client serves the same daemon lanes, just slower.
-  if (targets.some((a) => a.surface === "claude-code")) {
+  if (targets.some((a) => a.surface === "claude-code" || a.surface === "codex")) {
     const stub = await ensureHookStub({ dryRun: args.dryRun, mode: args.stub ?? "ask", interactive: isInteractive() });
     process.stdout.write(`${stub.status === "failed" ? "⚠" : "·"} hook client: ${stub.detail}\n\n`);
   }
@@ -379,8 +381,28 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   // broken, so it never flips doctor's exit code (#79).
   await printEmbeddingDoctorNote();
   await printVersionPairNote();
+  await printAutostartNote();
 
   return hadBroken ? 1 : 0;
+}
+
+/**
+ * Der Autostart — dritter globaler Check, und der einzige, der einen Zustand
+ * AUSSERHALB der Installation beschreibt.
+ *
+ * Ein LaunchAgent zeigt auf einen absoluten Pfad. Nach einem Update, das die
+ * Installation verschiebt (Homebrew legt jede Version in ein eigenes
+ * Verzeichnis), zeigt er ins Leere — und niemand sagt es, weil launchd einen
+ * Agenten, der nicht startet, still liegen lässt. Wie die beiden Notes darüber:
+ * niemals ein Fehlschlag, nur ein Hinweis mit einer Handlung dran.
+ */
+async function printAutostartNote(): Promise<void> {
+  try {
+    const warning = await autostartWarning();
+    if (warning) process.stdout.write(`→ autostart\n  ⚠ ${warning}\n\n`);
+  } catch {
+    /* a diagnostics NOTE must never break doctor */
+  }
 }
 
 /**

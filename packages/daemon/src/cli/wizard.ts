@@ -1,5 +1,5 @@
 /**
- * `bastra install` (no surface, on a terminal) — the guided setup wizard.
+ * `bastra install` (no surface, on a terminal) — the guided setup wizard (#15).
  *
  * Selection lists instead of y/n text prompts: vault location (create the
  * default or pick a folder), AI clients (multiselect, detected ones
@@ -79,6 +79,7 @@ export function shouldRunWizard(i: {
 /** Filesystem traces that mean "this client exists on this machine". */
 const SURFACE_TRACES: Record<string, string[]> = {
   "claude-code": [".claude.json", ".claude"],
+  codex: [".codex", "/Applications/ChatGPT.app"],
   "claude-desktop": [
     "Library/Application Support/Claude",
     "/Applications/Claude.app",
@@ -294,17 +295,18 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   });
   if (bailed(chosen)) { p.cancel(CANCEL_MSG); return 1; }
 
-  // ── 2b. stop hook (claude-code only — the sole surface with hooks) ─────────
+  // ── 2b. stop hook (Claude Code and Codex) ──────────────────────────────────
   // Live-validated (#48), so it now defaults ON, but stays a visible toggle: if
   // it ever gets noisy the user can turn it off here (or re-run
   // `bastra install claude-code --no-stop-hook`).
   let stopHook = args.withStopHook;
-  if ((chosen as string[]).includes("claude-code")) {
+  const hookSurfaces = (chosen as string[]).filter((surface) => surface === "claude-code" || surface === "codex");
+  if (hookSurfaces.length > 0) {
     const hookAns = await p.select({
-      message: "Stop-hook for Claude Code? (at the end of a turn, suggests what's worth saving to memory)",
+      message: `Stop-hook for ${hookSurfaces.map((surface) => surface === "codex" ? "Codex/ChatGPT" : "Claude Code").join(" + ")}? (at the end of a turn, suggests what's worth saving to memory)`,
       options: [
         { value: "on", label: "Enable — recommended", hint: "silently writes save-suggestions to a file; no chat noise" },
-        { value: "off", label: "Off", hint: "enable later: bastra install claude-code --with-stop-hook" },
+        { value: "off", label: "Off", hint: `enable later: bastra install ${hookSurfaces[0]} --with-stop-hook` },
       ],
       initialValue: "on",
     });
@@ -529,7 +531,7 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   // #350: the compiled hook client — asked here, before the spinner, because
   // registration prefers the stub only when the binary is already on disk.
   // A cancel at this question cancels the wizard like at every other one.
-  if (surfaces.includes("claude-code")) {
+  if (surfaces.includes("claude-code") || surfaces.includes("codex")) {
     const CANCELLED = Symbol("cancelled");
     try {
       const stub = await ensureHookStub(

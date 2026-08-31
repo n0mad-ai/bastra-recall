@@ -21,6 +21,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import matter from "gray-matter";
 import { parseMemoryWith, NotAMemoryFile } from "../src/schema.js";
+import { rescueFrontmatter } from "../src/frontmatter-rescue.js";
 
 const parse = (raw: string, path = "/vault/memories/note.md", mtime = Date.UTC(2026, 4, 17)) =>
   parseMemoryWith((input) => matter(input), raw, path, mtime);
@@ -128,4 +129,48 @@ test("damaged entries name the field and carry a reason a human can act on", () 
   const entry = m.damaged?.find((d) => d.field === "title");
   assert.ok(entry);
   assert.ok(entry!.reason.length > 0, "a bare flag without a reason is not actionable");
+});
+
+test("A: a column-zero list is not torn off its key by an item that contains a colon", () => {
+  // #365/9. The entry splitter started a new top-level entry on any line whose
+  // first character is not whitespace and that contains a `:` — which a list
+  // item written at column zero (`- "when the daemon: restarts"`) satisfies.
+  // The key `recall_when:` was then left alone and parsed as `null`, and the
+  // orphaned list parsed as an ARRAY that got Object.assign'd over the data
+  // map. zod strips the resulting `"0"`/`"1"` keys, so nothing visibly broke:
+  // the authored triggers were simply gone, and the damage report claimed
+  // "missing recall_when" — pointing the user at a field they had written.
+  // Obsidian and hand-written frontmatter put lists at column zero routinely;
+  // Bastra's own writer indents, which is why this never showed up in-house.
+  const m = parse(
+    `---\nid: note\ntitle: "bad\\'escape"\ntype: lesson\nsummary: ok\ntopic_path: [a]\ntags: [t]\nscope: s\nrecall_when:\n- "when the daemon: restarts"\n- second trigger\ncreated: 2026-05-01\nupdated: 2026-05-01\n---\nbody`,
+  );
+  assert.deepEqual(
+    m.fm.recall_when,
+    ["when the daemon: restarts", "second trigger"],
+    "the authored triggers must survive the rescue",
+  );
+  assert.ok(
+    !m.damaged?.some((d) => d.field === "recall_when"),
+    `an intact field must not be reported as damaged, got ${JSON.stringify(m.damaged)}`,
+  );
+  assert.ok(m.damaged?.some((d) => d.field === "title"), "the actually broken field is still flagged");
+});
+
+test("a key that starts with a dash is still a key, and no list ever leaks in as `0`/`1` entries", () => {
+  // Guarding the split with "a line starting `- ` is a list item" must not
+  // swallow a legitimate key whose name begins with a dash, and the array
+  // guard in the assign is the belt to that braces: an Object.assign of a
+  // list would write positional `"0"`, `"1"` keys into the frontmatter.
+  const boom = (): never => {
+    throw new Error("forced into the rescue path");
+  };
+  const rescued = rescueFrontmatter(
+    boom as unknown as Parameters<typeof rescueFrontmatter>[0],
+    `---\n-notakey: still a key\ntags:\n- "a: b"\n- c\n---\nbody\n`,
+  );
+  assert.ok(rescued, "a delimited block is rescuable");
+  assert.equal(rescued!.data["-notakey"], "still a key");
+  assert.deepEqual(rescued!.data.tags, ["a: b", "c"]);
+  assert.ok(!("0" in rescued!.data), `positional keys must never reach the data map: ${JSON.stringify(rescued!.data)}`);
 });

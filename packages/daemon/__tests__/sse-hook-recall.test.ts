@@ -195,7 +195,11 @@ test("hook/recall: content-axis recall is opt-in and additive", async () => {
   }
 });
 
-test("hook/recall: fusion keeps max score and combines lexical evidence", () => {
+// P0 (Codex-Gegenreview): Die Belege wurden hier bewusst NICHT mehr
+// zusammengeführt. Score, Ankerstärke und Matchbeweis gehören zu EINER Query;
+// ein Treffer mit dem Score der einen und dem Triggerbeleg der anderen hat nie
+// existiert und öffnete den Cross-Scope-Bypass. Siehe score-space-merges.test.ts.
+test("hook/recall: fusion keeps max score and the winner's own lexical evidence", () => {
   const fileHit: RecallHit = {
     id: "same",
     title: "same",
@@ -216,8 +220,8 @@ test("hook/recall: fusion keeps max score and combines lexical evidence", () => 
   const merged = mergeHookRecallHits([fileHit], [contentHit], 1);
   assert.equal(merged.length, 1);
   assert.equal(merged[0].score, 12);
-  assert.deepEqual(merged[0].matched_terms, ["file", "content"]);
-  assert.equal(merged[0].matched_recall_when, true);
+  assert.deepEqual(merged[0].matched_terms, ["file"], "der Beleg des Verlierers geht mit dem Verlierer");
+  assert.equal(merged[0].matched_recall_when, false);
 });
 
 test("hook/recall: content-axis failure preserves the file-axis response", async () => {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * bastra-recall prompt hook — THIN CLIENT (#343, stage A of #305 direction 2).
+ * bastra-recall prompt hook — THIN CLIENT (#343/#15, stage A of #305 direction 2).
  *
  * The UserPromptSubmit pipeline this file used to run (mode detection, gates,
  * recall, dedup/backoff, formatting, telemetry — 700 lines) lives daemon-side
@@ -37,6 +37,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { envFirst, envInt } from "./env.js";
+import { decorateHookPayload } from "./hook-surface.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 600, "NEXUS_HOOK_TIMEOUT_MS");
 const DEFAULT_PORT = 6723;
@@ -115,6 +116,7 @@ async function writeClientTelemetry(
   status: "daemon-unreachable" | "timeout" | "error",
   error: string | null,
   startedAt: number,
+  sessionId: string | null,
 ): Promise<void> {
   if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
   try {
@@ -125,7 +127,9 @@ async function writeClientTelemetry(
     const event = {
       kind: "prompt_hook_call",
       ts,
-      session_id: randomUUID(),
+      // The session_id from the Claude payload is real session state — fall
+      // back to a synthetic UUID only if no payload session was given (#356).
+      session_id: sessionId ?? randomUUID(),
       hook_version: HOOK_VERSION,
       detected_mode: "none",
       prompt_chars: 0,
@@ -160,7 +164,11 @@ async function main(): Promise<void> {
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
 
   try {
-    const body = await postPromptLane(url, { payload, client_ppid: process.ppid }, remainingMs);
+    const body = await postPromptLane(
+      url,
+      { payload: decorateHookPayload(payload), client_ppid: process.ppid },
+      remainingMs,
+    );
     emitOnce(body);
   } catch (err) {
     const e = err as NodeJS.ErrnoException;
@@ -171,7 +179,15 @@ async function main(): Promise<void> {
         : e.message === "timeout"
           ? "timeout"
           : "error";
-    await writeClientTelemetry(url, status, status === "error" ? (e.message ?? String(err)) : null, startedAt);
+    const p = payload as { session_id?: unknown } | null;
+    const hookSessionId = typeof p?.session_id === "string" ? p.session_id : null;
+    await writeClientTelemetry(
+      url,
+      status,
+      status === "error" ? (e.message ?? String(err)) : null,
+      startedAt,
+      hookSessionId,
+    );
   }
 }
 

@@ -6,9 +6,7 @@
  * (rendering lives in core/conflict.ts), the index is refreshed, and the
  * audit log records the diversion (which puts it in the #288 journal too).
  */
-import { readFile, writeFile } from "node:fs/promises";
-import matter from "gray-matter";
-import { renderConflictBlock, type SaveMemoryInput } from "@bastra-recall/core";
+import { mutateMemoryFile, renderConflictBlock, type SaveMemoryInput } from "@bastra-recall/core";
 import { recordAudit } from "./audit-trail.js";
 import type { ToolDeps } from "./tool-deps.js";
 
@@ -43,8 +41,6 @@ export async function markConflict(
     );
   }
 
-  const raw = await readFile(target.filePath, "utf8");
-  const { data, content } = matter(raw);
   const today = new Date().toISOString().slice(0, 10);
   const block = renderConflictBlock(
     {
@@ -55,18 +51,54 @@ export async function markConflict(
     { statement: input.summary, detail: input.body, date: today, source: input.source },
     today,
   );
-  const nextBody = `${content.replace(/\s*$/, "")}\n\n${block}\n`;
-  await writeFile(target.filePath, matter.stringify(nextBody, data as Record<string, unknown>), "utf8");
+  // Über `mutateMemoryFile`: atomar (ein direktes writeFile ließ die Datei
+  // kurzzeitig halb geschrieben), mit Identitätsprüfung (ein Pfad beweist
+  // nicht, welches Memory dort liegt) und mit Vergleich vor dem Commit, damit
+  // ein paralleler Save nicht rückgängig gemacht wird.
+  const outcome = await mutateMemoryFile(
+    target.filePath,
+    targetId,
+    { body: (content) => `${content.replace(/\s*$/, "")}\n\n${block}\n` },
+    { vaultRoot: deps.vaultPath },
+  );
+  if (outcome.kind === "identity-mismatch") {
+    throw new Error(
+      `conflict_with: ${target.filePath} does not hold memory '${targetId}' ` +
+        `(found ${outcome.found ?? "no memory"}) — refusing to mark a conflict on a foreign file.`,
+    );
+  }
+  if (outcome.kind === "raced") {
+    throw new Error(
+      `conflict_with: '${targetId}' changed while the conflict block was being written — ` +
+        `nothing was modified. Retry.`,
+    );
+  }
+  if (outcome.kind !== "written") {
+    // Kann hier nicht eintreten (dieser Aufruf patcht nur den Body und gibt nie
+    // `null` zurück), aber ein Beleg wird nur aus einem WRITTEN gebildet —
+    // stillschweigend etwas anderes zu protokollieren wäre genau der Fehler,
+    // den P1-2 meint.
+    throw new Error(
+      `conflict_with: '${targetId}' reported '${outcome.kind}' — nothing was modified.`,
+    );
+  }
   await deps.vault.reindexFile(target.filePath);
 
+  // Codex-Gegenreview Runde 10 (P1-2): `diffBefore` kam aus `target.fm`, also
+  // aus dem Vault-CACHE, und `diffAfter` aus einem Cache-Lookup nach dem
+  // Reindex. Nachgestellt: Auf der Platte stand `external-on-disk`, das Audit
+  // meldete vorher `cache-summary` — ein Beleg, der eine Fassung beschreibt,
+  // die dieser Schreibvorgang nie gesehen hat. Beide Abbilder kommen jetzt aus
+  // der Mutation selbst, gelesen unter demselben Claim aus denselben Bytes,
+  // die überschrieben wurden.
   await recordAudit({
     vaultRoot: deps.vaultPath,
     memoryId: targetId,
     operation: "update",
     actor: "assistant",
     actorDetail: "mcp:save_memory:conflict",
-    diffBefore: { ...target.fm },
-    diffAfter: { ...(deps.vault.get(targetId)?.fm ?? {}) },
+    diffBefore: outcome.before,
+    diffAfter: outcome.after,
     filePath: target.filePath,
     reason: `conflict marked: incoming save '${input.title}' contradicts this memory`,
     sessionId: deps.telemetry.runId(),

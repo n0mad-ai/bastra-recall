@@ -195,6 +195,22 @@ test("doctor: effective none → the exact OFF note, as a note (not a failure)",
   assert.match(RECALL_OFF_NOTE, /bastra embeddings on/);
 });
 
+test("doctor: live semantic daemon overrides a shell-only none view", () => {
+  const lines = formatEmbeddingDoctorLines({
+    choice: { provider: "none", source: "none" },
+    fileProvider: undefined,
+    envValue: undefined,
+    probe: null,
+    daemon: {
+      semanticRecall: "on",
+      embeddingMode: "ollama-embeddinggemma",
+      embeddingSource: "env",
+    },
+  });
+  assert.ok(lines.includes("  ✓ ok: running daemon uses ollama-embeddinggemma (source: env)"));
+  assert.ok(!lines.some((line) => line.includes("Semantic recall is OFF")));
+});
+
 test("doctor: configured ollama with the model missing → actionable warning", () => {
   const lines = formatEmbeddingDoctorLines({
     choice: { provider: "ollama", source: "cli-settings" },

@@ -21,7 +21,7 @@
 
 ## 🇬🇧 English
 
-**What it is** — A long-term memory for your AI assistant. Whenever you correct it, state a rule, or commit to a decision, it gets saved as a small note. In your next chat — days or weeks later — the AI pulls those notes back automatically. No more repeating yourself. Everything stays on your own Mac as plain Markdown files (Obsidian-compatible), and every connected tool shares the same memory at the same time. Today that means **Claude Code and Claude Desktop, tested in daily use** — see the support matrix below for what's wired and what's next.
+**What it is** — A long-term memory for your AI assistant. Whenever you correct it, state a rule, or commit to a decision, it gets saved as a small note. In your next chat — days or weeks later — the AI pulls those notes back automatically. No more repeating yourself. Everything stays on your own Mac as plain Markdown files (Obsidian-compatible), and every connected tool shares the same memory at the same time. Today that includes **Claude Code, Claude Desktop, Codex, and the ChatGPT desktop app** — see the support matrix below for what's wired and what's next.
 
 **Status** — 🟢 Early beta, `v0.9.x`. v0.9 "Honest numbers, nothing silently lost" is out — 45 issues against the class of bug where nothing fails, nothing is logged, and the number you are shown is not true. Next is the V1.0 release contract: a reproducibly measured, selective, controllable recall base, fully specified. See [PLAN.md](./PLAN.md).
 
@@ -31,9 +31,9 @@
 |---|---|---|
 | **Claude Code** | ✅ tested — in daily use | MCP + Skill + seven quiet hooks + statusline |
 | **Claude Desktop** | ✅ tested | MCP + Skill, autonomous session context without hooks; `.mcpb` double-click extension |
-| **Cursor** | 🟡 implemented | installs and registers cleanly; not yet verified in daily use — targeted testing planned for v1.0 |
+| **Codex + ChatGPT Desktop** | ✅ implemented for v1.0 | one shared local MCP config + Skill + seven Codex-native quiet hooks; `bastra install codex` |
+| **Cursor** | 🟡 implemented | installs and registers cleanly; implemented, but not yet field-tested |
 | **ChatGPT** (Custom GPT Actions) | 🗺️ planned | the REST gateway and an OpenAPI starter spec ship today; the packaged Custom-GPT action is next in line — tracked in [#13](https://github.com/n0mad-ai/bastra-recall/issues/13) |
-| **Codex CLI** | 🗺️ planned | lands via the same MCP forwarder — adapter tracked in [#15](https://github.com/n0mad-ai/bastra-recall/issues/15) |
 
 Anything else that speaks MCP can attach through the forwarder today — untested surfaces are exactly that, and field reports are welcome. Non-MCP clients can use the REST API (`docs/USAGE.md`).
 
@@ -49,7 +49,7 @@ The cost isn't just frustration — it's that the user ends up thinking *for* th
 
 A persistent memory layer that:
 
-- **Saves autonomously** — when a lesson is learned (frustration, repeated correction, durable preference, finalized decision), the AI writes it to the vault without being asked. Trigger discipline ships as a Claude Code Skill; other clients are conditioned through their own rules layer.
+- **Saves autonomously** — when a lesson is learned (frustration, repeated correction, durable preference, finalized decision), the AI writes it to the vault without being asked. Trigger discipline ships as a shared ChatGPT/Codex/Claude Skill; client-native hooks add the reflex layer where supported.
 - **Recalls before acting** — not only when the user prompts. The AI is instructed to query the vault before writing code, before plans, and at session start. The highest-weighted search field is `recall_when`, declared at save time.
 - **Works across surfaces** — one local daemon serves all your connected AI tools at once, over MCP or HTTP. One vault, one index, shared state (see the support matrix above).
 - **Plain markdown, Obsidian-compatible** — the vault is a folder of `.md` files with YAML frontmatter. Edit in Obsidian, in the AI, or by hand. Vaults on Google Drive / iCloud / Dropbox mounts are supported via automatic polling-mode in the file watcher.
@@ -73,13 +73,16 @@ flowchart TB
     CC["Claude Code"]
     CD["Claude Desktop"]
     CU["Cursor"]
+    OX["Codex + ChatGPT Desktop"]
     WEB["REST clients<br/>(web apps, scripts)"]
 
     CC -->|stdio MCP| FWD["MCP forwarder<br/>stdio to HTTP"]
     CD -->|stdio MCP| FWD
     CU -->|stdio MCP| FWD
+    OX -->|stdio MCP| FWD
     WEB -->|"REST /api/v1 + token"| D
     CC -.->|"hooks: recall before edits,<br/>context at session start"| D
+    OX -.->|"Codex hooks: recall before patches/plans,<br/>context at session start"| D
 
     FWD --> D["bastra-recall daemon<br/>127.0.0.1:6723<br/>one process for every client"]
     D --> IDX["BM25 index<br/>+ optional embeddings"]
@@ -88,7 +91,7 @@ flowchart TB
     D -.->|"save_memory writes a file,<br/>then re-indexes it"| V
 ```
 
-Everything above runs on your machine. Nothing leaves it unless you point a tunnel at the REST gateway yourself. Recall is hybrid — an in-memory BM25 index (with `recall_when` weighted highest) plus an optional local embedding pass, fused via RRF. In Claude Code, seven quiet hooks recall before edits, at session start, before plans, before a claim about measured project state goes into text someone else reads, and after failed commands.
+Everything above runs on your machine. Nothing leaves it unless you point a tunnel at the REST gateway yourself. Recall is hybrid — an in-memory BM25 index (with `recall_when` weighted highest) plus an optional local embedding pass, fused via RRF. In Claude Code and Codex/ChatGPT desktop, seven quiet hooks recall before edits or patches, at session start, before plans, before a claim about measured project state goes into text someone else reads, and after failed commands.
 
 Details: [docs/architecture.md](./docs/architecture.md) · [docs/hooks.md](./docs/hooks.md) · [docs/triggers.md](./docs/triggers.md) · [docs/USAGE.md](./docs/USAGE.md).
 
@@ -125,7 +128,7 @@ The `recall_when` field is the bridge between save and recall: when saving, the 
 curl -fsSL https://bastra.io/install | bash
 ```
 
-Paste it into Terminal, press Return, answer the setup questions. It installs Homebrew if it's missing, adds the bastra tap, installs `bastra-recall`, and hands over to the guided setup — no terminal knowledge beyond pasting one line. Then restart Claude Code / Claude Desktop / Cursor. To read the script before running it, open [bastra.io/install](https://bastra.io/install); it is the same file as [`distribution/install.sh`](./distribution/install.sh).
+Paste it into Terminal, press Return, answer the setup questions. It installs Homebrew if it's missing, adds the bastra tap, installs `bastra-recall`, and hands over to the guided setup — no terminal knowledge beyond pasting one line. Then restart Claude Code / Claude Desktop / Codex / ChatGPT Desktop / Cursor. To read the script before running it, open [bastra.io/install](https://bastra.io/install); it is the same file as [`distribution/install.sh`](./distribution/install.sh).
 
 **Alternative — double-click.** Download **Install Bastra.command** from the [latest GitHub release](https://github.com/n0mad-ai/bastra-recall/releases/latest), then **right-click → Open** and confirm the dialog. A plain double-click does *not* work: macOS quarantines every browser download, so Gatekeeper blocks it. If macOS then refuses with a permissions error, the download also lost its executable bit — `chmod +x ~/Downloads/Install*.command` restores it. The same applies to **Uninstall Bastra.command**, which unregisters every client and stops the daemon, never deleting a memory.
 
@@ -167,6 +170,7 @@ Details and system requirements: **[System Requirements](https://github.com/n0ma
 - **Bastra Commons (beta)** — a community vault of verified engineering recipes as a second, read-only recall source: [wiki](../../wiki/Bastra-Commons)
 - **Product docs** — living user-facing documentation per project, updated by the agent: [wiki](https://github.com/n0mad-ai/bastra-recall/wiki/Product-Docs)
 - **Claude Desktop autonomy** — memory without hooks, via server instructions + first-call session context: [wiki](https://github.com/n0mad-ai/bastra-recall/wiki/Claude-Desktop)
+- **Codex + ChatGPT desktop** — shared config, native hooks, skill and plugin: [docs/CODEX.md](./docs/CODEX.md)
 - **Onboarding & import** — five-minute warm start, and `bastra import` for ChatGPT/Claude/Gemini exports, rules files, and whole memory folders: [docs/USAGE.md](./docs/USAGE.md#importing-memories--skip-the-cold-start)
 - **Vault care** — flag stale memories on the map, groom them with your next session: [docs/USAGE.md](./docs/USAGE.md#vault-care--flag-it-now-groom-it-later)
 - **Updating** — `bastra update`, or hands-off with `update.mode auto`: [wiki](https://github.com/n0mad-ai/bastra-recall/wiki/Updating)
@@ -204,7 +208,7 @@ Built by [@n0mad-ai](https://github.com/n0mad-ai).
 
 ## 🇩🇪 Deutsch
 
-**Was es ist** — Ein Langzeit-Gedächtnis für deinen AI-Assistenten. Sobald du etwas korrigierst, eine Regel aufstellst oder eine Entscheidung triffst, wird das als kleine Notiz gespeichert. In der nächsten Sitzung — Tage oder Wochen später — holt die AI diese Notizen automatisch wieder hervor. Schluss mit ewigem Wiederholen. Alles bleibt lokal auf deinem Mac als reine Markdown-Dateien (Obsidian-kompatibel), und alle verbundenen Tools teilen sich dasselbe Gedächtnis gleichzeitig. Heute heißt das: **Claude Code und Claude Desktop, im Alltag getestet** — was verdrahtet ist und was als Nächstes kommt, zeigt die Support-Matrix.
+**Was es ist** — Ein Langzeit-Gedächtnis für deinen AI-Assistenten. Sobald du etwas korrigierst, eine Regel aufstellst oder eine Entscheidung triffst, wird das als kleine Notiz gespeichert. In der nächsten Sitzung — Tage oder Wochen später — holt die AI diese Notizen automatisch wieder hervor. Schluss mit ewigem Wiederholen. Alles bleibt lokal auf deinem Mac als reine Markdown-Dateien (Obsidian-kompatibel), und alle verbundenen Tools teilen sich dasselbe Gedächtnis gleichzeitig. Heute gehören **Claude Code, Claude Desktop, Codex und die ChatGPT-Desktop-App** dazu — was verdrahtet ist und was als Nächstes kommt, zeigt die Support-Matrix.
 
 **Status** — 🟢 Frühe Beta, `v0.9.x`. v0.9 „Honest numbers, nothing silently lost" ist draußen — 45 Issues gegen die Fehlerklasse, bei der nichts fehlschlägt, nichts geloggt wird und die angezeigte Zahl trotzdem nicht stimmt. Als Nächstes der V1.0-Releasevertrag: eine reproduzierbar gemessene, selektive, kontrollierbare Recall-Basis, vollständig spezifiziert. Siehe [PLAN.md](./PLAN.md).
 
@@ -214,9 +218,9 @@ Built by [@n0mad-ai](https://github.com/n0mad-ai).
 |---|---|---|
 | **Claude Code** | ✅ getestet — im täglichen Einsatz | MCP + Skill + sieben ruhige Hooks + Statusline |
 | **Claude Desktop** | ✅ getestet | MCP + Skill, autonomer Session-Kontext ohne Hooks; `.mcpb`-Doppelklick-Extension |
-| **Cursor** | 🟡 implementiert | installiert und registriert sauber; noch nicht im Alltag verifiziert — gezielter Test ab v1.0 geplant |
+| **Codex + ChatGPT Desktop** | ✅ für v1.0 implementiert | eine gemeinsame lokale MCP-Config + Skill + sieben ruhige Codex-native Hooks; `bastra install codex` |
+| **Cursor** | 🟡 implementiert | installiert und registriert sauber; implementiert, aber noch nicht im Feld getestet |
 | **ChatGPT** (Custom GPT Actions) | 🗺️ geplant | REST-Gateway und OpenAPI-Starter-Spec sind da; die verpackte Custom-GPT-Action ist als Nächstes dran — verfolgt in [#13](https://github.com/n0mad-ai/bastra-recall/issues/13) |
-| **Codex CLI** | 🗺️ geplant | kommt über denselben MCP-Forwarder — Adapter verfolgt in [#15](https://github.com/n0mad-ai/bastra-recall/issues/15) |
 
 Alles andere, was MCP spricht, kann sich heute über den Forwarder verbinden — ungetestete Oberflächen sind genau das, und Erfahrungsberichte sind willkommen. Nicht-MCP-Clients nutzen die REST-API (`docs/USAGE.md`).
 
@@ -232,7 +236,7 @@ Der Preis ist nicht nur Frust — sondern dass am Ende der User für die AI mitd
 
 Eine persistente Gedächtnis-Schicht, die:
 
-- **Autonom speichert** — wenn etwas gelernt wird (Frust, wiederholte Korrektur, dauerhafte Vorliebe, finale Entscheidung), schreibt die AI das ungefragt in den Vault. Die Trigger-Disziplin wird als Claude Code Skill ausgeliefert; andere Clients werden über ihre eigene Rules-Schicht konditioniert.
+- **Autonom speichert** — wenn etwas gelernt wird (Frust, wiederholte Korrektur, dauerhafte Vorliebe, finale Entscheidung), schreibt die AI das ungefragt in den Vault. Die Trigger-Disziplin wird als gemeinsamer ChatGPT-/Codex-/Claude-Skill ausgeliefert; Client-native Hooks ergänzen den Reflex-Layer, wo sie unterstützt werden.
 - **Vor dem Handeln erinnert** — nicht erst auf User-Anfrage. Die AI wird angewiesen, den Vault vor dem Code-Schreiben, vor Plänen und beim Sitzungsstart abzufragen. Das höchstgewichtete Suchfeld ist `recall_when`, das beim Speichern deklariert wird.
 - **Über Oberflächen hinweg funktioniert** — ein lokaler Daemon bedient alle verbundenen AI-Tools gleichzeitig, über MCP oder HTTP. Ein Vault, ein Index, geteilter Zustand (siehe Support-Matrix oben).
 - **Reines Markdown, Obsidian-kompatibel** — der Vault ist ein Ordner mit `.md`-Dateien und YAML-Frontmatter. Bearbeitbar in Obsidian, durch die AI oder per Hand. Vaults auf Google Drive / iCloud / Dropbox werden über den automatischen Polling-Modus des File-Watchers unterstützt.
@@ -256,13 +260,16 @@ flowchart TB
     CC["Claude Code"]
     CD["Claude Desktop"]
     CU["Cursor"]
+    OX["Codex + ChatGPT Desktop"]
     WEB["REST-Clients<br/>(Web-Apps, Skripte)"]
 
     CC -->|stdio MCP| FWD["MCP-Forwarder<br/>stdio zu HTTP"]
     CD -->|stdio MCP| FWD
     CU -->|stdio MCP| FWD
+    OX -->|stdio MCP| FWD
     WEB -->|"REST /api/v1 + Token"| D
     CC -.->|"Hooks: Recall vor Edits,<br/>Kontext beim Session-Start"| D
+    OX -.->|"Codex-Hooks: Recall vor Patches/Plänen,<br/>Kontext beim Session-Start"| D
 
     FWD --> D["bastra-recall-Daemon<br/>127.0.0.1:6723<br/>ein Prozess für alle Clients"]
     D --> IDX["BM25-Index<br/>+ optionale Embeddings"]
@@ -271,7 +278,7 @@ flowchart TB
     D -.->|"save_memory schreibt eine Datei<br/>und indiziert sie neu"| V
 ```
 
-Alles davon läuft auf deiner Maschine. Nichts verlässt sie, solange du nicht selbst einen Tunnel auf das REST-Gateway legst. Recall ist hybrid — ein In-Memory-BM25-Index (mit `recall_when` als höchstgewichtetem Feld) plus ein optionaler lokaler Embedding-Pass, fusioniert via RRF. In Claude Code erinnern sieben ruhige Hooks vor Edits, beim Session-Start, vor Plänen, bevor eine Aussage über gemessenen Projektzustand in Text geht, den jemand anderes liest, und nach fehlgeschlagenen Commands.
+Alles davon läuft auf deiner Maschine. Nichts verlässt sie, solange du nicht selbst einen Tunnel auf das REST-Gateway legst. Recall ist hybrid — ein In-Memory-BM25-Index (mit `recall_when` als höchstgewichtetem Feld) plus ein optionaler lokaler Embedding-Pass, fusioniert via RRF. In Claude Code und Codex/ChatGPT Desktop erinnern sieben ruhige Hooks vor Edits oder Patches, beim Session-Start, vor Plänen, bevor eine Aussage über gemessenen Projektzustand in Text geht, den jemand anderes liest, und nach fehlgeschlagenen Commands.
 
 Details: [docs/architecture.md](./docs/architecture.md) · [docs/hooks.md](./docs/hooks.md) · [docs/triggers.md](./docs/triggers.md) · [docs/USAGE.md](./docs/USAGE.md).
 
@@ -308,7 +315,7 @@ Das `recall_when`-Feld ist die Brücke zwischen Save und Recall: beim Speichern 
 curl -fsSL https://bastra.io/install | bash
 ```
 
-Ins Terminal einfügen, Return drücken, die Setup-Fragen beantworten. Das Skript installiert bei Bedarf Homebrew, fügt den bastra-Tap hinzu, installiert `bastra-recall` und startet das geführte Setup — mehr Terminal-Wissen als „eine Zeile einfügen“ braucht es nicht. Danach Claude Code / Claude Desktop / Cursor neu starten. Wer das Skript vorher lesen will, öffnet [bastra.io/install](https://bastra.io/install) — dieselbe Datei wie [`distribution/install.sh`](./distribution/install.sh).
+Ins Terminal einfügen, Return drücken, die Setup-Fragen beantworten. Das Skript installiert bei Bedarf Homebrew, fügt den bastra-Tap hinzu, installiert `bastra-recall` und startet das geführte Setup — mehr Terminal-Wissen als „eine Zeile einfügen“ braucht es nicht. Danach Claude Code / Claude Desktop / Codex / ChatGPT Desktop / Cursor neu starten. Wer das Skript vorher lesen will, öffnet [bastra.io/install](https://bastra.io/install) — dieselbe Datei wie [`distribution/install.sh`](./distribution/install.sh).
 
 **Alternative — Doppelklick.** **Install Bastra.command** aus dem [aktuellen GitHub-Release](https://github.com/n0mad-ai/bastra-recall/releases/latest) laden, dann **Rechtsklick → Öffnen** und den Dialog bestätigen. Ein normaler Doppelklick funktioniert *nicht*: macOS setzt jeden Browser-Download unter Quarantäne, Gatekeeper blockt ihn. Kommt danach eine Fehlermeldung wegen fehlender Rechte, hat der Download auch das Ausführbar-Bit verloren — `chmod +x ~/Downloads/Install*.command` setzt es zurück. Dasselbe gilt für **Uninstall Bastra.command**, das Bastra bei allen Clients abmeldet und den Daemon stoppt — ohne je eine Memory zu löschen.
 

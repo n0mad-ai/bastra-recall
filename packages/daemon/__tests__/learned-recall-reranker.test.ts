@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 
-import { assertLocalOrOptIn, buildRerankPrompt, parseRerankAnswer, rerank, resolveRerankModel, type RerankCandidate } from "../src/learned-recall/reranker.js";
+import { assertLocalOrOptIn, buildRerankPrompt, DEFAULT_NUM_CTX, ollamaChat, parseRerankAnswer, rerank, resolveRerankModel, type RerankCandidate } from "../src/learned-recall/reranker.js";
 
 const CANDS: RerankCandidate[] = [
   { id: "a", text: "css flexbox note" },
@@ -106,4 +106,87 @@ test("assertLocalOrOptIn refuses a non-loopback endpoint unless opted in", () =>
 
 test("assertLocalOrOptIn lets a malformed URL through (fetch reports it, behaviour unchanged)", () => {
   assert.doesNotThrow(() => assertLocalOrOptIn("not a url"));
+});
+
+/** Capture the request body ollamaChat sends, without a live Ollama. */
+async function captureChatBody(
+  opts: Parameters<typeof ollamaChat>[0],
+): Promise<Record<string, unknown>> {
+  const real = globalThis.fetch;
+  let body: Record<string, unknown> = {};
+  globalThis.fetch = (async (_url: string, init: { body: string }) => {
+    body = JSON.parse(init.body) as Record<string, unknown>;
+    return { ok: true, json: async () => ({ message: { content: "1" } }) };
+  }) as unknown as typeof fetch;
+  try {
+    await ollamaChat(opts)("prompt");
+  } finally {
+    globalThis.fetch = real;
+  }
+  return body;
+}
+
+test("ollamaChat sends think:false and an explicit num_ctx (#366, #367)", async () => {
+  // think:false — a thinking model otherwise answers into `message.thinking`
+  // and returns empty content. num_ctx — without it Ollama sizes the context
+  // from the model and a stock tag loads at its full training context.
+  const body = await captureChatBody({});
+  assert.equal(body.think, false);
+  assert.deepEqual(body.options, { temperature: 0, num_ctx: DEFAULT_NUM_CTX });
+  assert.equal(DEFAULT_NUM_CTX, 4096);
+});
+
+test("ollamaChat: numCtx is overridable per call (the /ui/chat copilot needs 8192)", async () => {
+  const body = await captureChatBody({ numCtx: 8192 });
+  assert.deepEqual(body.options, { temperature: 0, num_ctx: 8192 });
+});
+
+test("ollamaChat: BASTRA_OLLAMA_NUM_CTX overrides the default but not an explicit numCtx", async () => {
+  const prev = process.env.BASTRA_OLLAMA_NUM_CTX;
+  process.env.BASTRA_OLLAMA_NUM_CTX = "2048";
+  try {
+    assert.deepEqual((await captureChatBody({})).options, { temperature: 0, num_ctx: 2048 });
+    assert.deepEqual((await captureChatBody({ numCtx: 8192 })).options, { temperature: 0, num_ctx: 8192 });
+    process.env.BASTRA_OLLAMA_NUM_CTX = "nonsense";
+    assert.deepEqual((await captureChatBody({})).options, { temperature: 0, num_ctx: DEFAULT_NUM_CTX });
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_OLLAMA_NUM_CTX;
+    else process.env.BASTRA_OLLAMA_NUM_CTX = prev;
+  }
+});
+
+test("ollamaChat: a non-positive BASTRA_OLLAMA_NUM_CTX falls back to the default", async () => {
+  const prev = process.env.BASTRA_OLLAMA_NUM_CTX;
+  try {
+    for (const bad of ["0", "-1", ""]) {
+      process.env.BASTRA_OLLAMA_NUM_CTX = bad;
+      assert.deepEqual(
+        (await captureChatBody({})).options,
+        { temperature: 0, num_ctx: DEFAULT_NUM_CTX },
+        `"${bad}" must not become the context size`,
+      );
+    }
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_OLLAMA_NUM_CTX;
+    else process.env.BASTRA_OLLAMA_NUM_CTX = prev;
+  }
+});
+
+test("ollamaChat returns \"\" for a thinking model's wire shape (#367)", async () => {
+  // The exact response gemma4:12b produced: the whole answer in `thinking`,
+  // `content` empty. The client must surface that as "" so the expander's
+  // empty-generation guard sees it — not throw, and not dig the thinking out.
+  const real = globalThis.fetch;
+  globalThis.fetch = (async () => ({
+    ok: true,
+    json: async () => ({
+      message: { role: "assistant", thinking: "*   Topic: A cat.\n    *   Constraint 1:", content: "" },
+      done_reason: "length",
+    }),
+  })) as unknown as typeof fetch;
+  try {
+    assert.equal(await ollamaChat({})("prompt"), "");
+  } finally {
+    globalThis.fetch = real;
+  }
 });

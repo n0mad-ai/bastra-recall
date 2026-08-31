@@ -7,7 +7,7 @@ import { Vault } from "../src/vault.js";
 import type { EmbeddingIndex } from "../src/embeddings.js";
 import { RelatedEnricher } from "../src/related-enrich.js";
 
-function memoryMd(id: string): string {
+function memoryMd(id: string, sensitivity?: "private" | "team" | "public"): string {
   return `---
 id: ${id}
 title: ${id}
@@ -18,7 +18,7 @@ tags: [t]
 scope: t
 recall_when: ["w"]
 created: 2026-05-01
-updated: 2026-05-01
+updated: 2026-05-01${sensitivity ? `\nsensitivity: ${sensitivity}` : ""}
 ---
 
 body ${id}
@@ -43,6 +43,20 @@ async function vaultWith(ids: string[]): Promise<{ dir: string; vault: Vault }> 
   const dir = await mkdtemp(path.join(tmpdir(), "bastra-related-"));
   for (const id of ids) {
     await writeFile(path.join(dir, `${id}.md`), memoryMd(id));
+  }
+  const vault = new Vault(dir);
+  await vault.init();
+  return { dir, vault };
+}
+
+/** Vault aus id→sensitivity — für die #365/13-Fälle, in denen die Einstufung
+ *  der Nachbarn das eigentliche Testobjekt ist. */
+async function vaultWithSensitivity(
+  spec: Record<string, "private" | "team" | "public">,
+): Promise<{ dir: string; vault: Vault }> {
+  const dir = await mkdtemp(path.join(tmpdir(), "bastra-related-sens-"));
+  for (const [id, sensitivity] of Object.entries(spec)) {
+    await writeFile(path.join(dir, `${id}.md`), memoryMd(id, sensitivity));
   }
   const vault = new Vault(dir);
   await vault.init();
@@ -232,6 +246,133 @@ test("two enrichments of the same memory do not race for one temp file", async (
     // no temp files left behind
     const leftovers = (await readdir(dir)).filter((f) => f.endsWith(".tmp"));
     assert.deepEqual(leftovers, []);
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("#365/13: ein private-Nachbar landet weder als Kante noch als Wikilink im Team-Memory", async () => {
+  // Der Slug IST der Titel — die Kante trägt Klartext in eine Datei, die
+  // externe Clients lesen dürfen. Der Team-Nachbar muss dabei erhalten
+  // bleiben, sonst hätte der Filter zu viel abgeräumt.
+  const { dir, vault } = await vaultWithSensitivity({
+    host: "team",
+    "therapie-termin-notizen": "private",
+    "sprint-planning": "team",
+  });
+  try {
+    const { index } = stubEmbeddings([
+      { id: "therapie-termin-notizen", score: 0.92 },
+      { id: "sprint-planning", score: 0.85 },
+    ]);
+    const written = await new RelatedEnricher(vault, index).enrich("host");
+
+    assert.deepEqual(written?.map((e) => e.id), ["sprint-planning"]);
+    const raw = await readFile(path.join(dir, "host.md"), "utf8");
+    assert.doesNotMatch(raw, /therapie-termin-notizen/);
+    assert.match(raw, /- \[\[sprint-planning\]\] \(cosine 0\.85\)/);
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("#365/13: der private-Filter kostet keinen topN-Slot", async () => {
+  // Der Filter läuft vor `.slice(0, topN)` — sonst verdrängt ein
+  // ausgeschlossener Nachbar einen sichtbaren aus der Liste.
+  const { dir, vault } = await vaultWithSensitivity({
+    host: "team",
+    p: "private",
+    b: "team",
+    c: "team",
+  });
+  try {
+    const { index } = stubEmbeddings([
+      { id: "p", score: 0.95 },
+      { id: "b", score: 0.9 },
+      { id: "c", score: 0.85 },
+    ]);
+    const written = await new RelatedEnricher(vault, index, { topN: 2 }).enrich("host");
+    assert.deepEqual(written?.map((e) => e.id), ["b", "c"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("#365/13: ein privates Memory behält seine eigenen private-Nachbarn", async () => {
+  // Die Datei trägt die Einstufung selbst — ihr Inhalt verlässt sie nicht.
+  // Nur die Erwähnung ANDERSWO ist das Leck.
+  const { dir, vault } = await vaultWithSensitivity({ host: "private", p: "private" });
+  try {
+    const { index } = stubEmbeddings([{ id: "p", score: 0.9 }]);
+    const written = await new RelatedEnricher(vault, index).enrich("host");
+
+    assert.deepEqual(written?.map((e) => e.id), ["p"]);
+    assert.match(await readFile(path.join(dir, "host.md"), "utf8"), /- \[\[p\]\] \(cosine 0\.90\)/);
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("#365/13: Bestandskante auf ein private-Memory heilt sich beim nächsten Lauf", async () => {
+  // Kein Migrationsskript: der Soll-Ist-Abgleich sieht die Abweichung, löst
+  // GENAU einen Rewrite aus, und der zweite Lauf ist wieder no-op.
+  const dir = await mkdtemp(path.join(tmpdir(), "bastra-related-heal-"));
+  try {
+    await writeFile(path.join(dir, "p.md"), memoryMd("p", "private"));
+    await writeFile(path.join(dir, "b.md"), memoryMd("b", "team"));
+    await writeFile(
+      path.join(dir, "host.md"),
+      `---
+id: host
+title: host
+type: lesson
+summary: s
+topic_path: [t]
+tags: [t]
+scope: t
+recall_when: ["w"]
+created: 2026-05-01
+updated: 2026-05-01
+sensitivity: team
+related_via:
+  - id: p
+    reason: cosine 0.920
+    score: 0.92
+  - id: b
+    reason: cosine 0.850
+    score: 0.85
+---
+
+body host
+
+## Auto-Related <!-- bastra:auto-related:start -->
+
+- [[p]] (cosine 0.92)
+- [[b]] (cosine 0.85)
+
+<!-- bastra:auto-related:end -->
+`,
+    );
+    const vault = new Vault(dir);
+    await vault.init();
+
+    const { index } = stubEmbeddings([
+      { id: "p", score: 0.92 },
+      { id: "b", score: 0.85 },
+    ]);
+    const enricher = new RelatedEnricher(vault, index);
+
+    const healed = await enricher.enrich("host");
+    assert.deepEqual(healed?.map((e) => e.id), ["b"]);
+    const raw = await readFile(path.join(dir, "host.md"), "utf8");
+    assert.doesNotMatch(raw, /\[\[p\]\]/);
+    assert.doesNotMatch(raw, /id: p/);
+    assert.match(raw, /- \[\[b\]\] \(cosine 0\.85\)/);
+    assert.match(raw, /body host/);
+
+    // Zweiter Lauf: nichts mehr zu tun, kein Endlos-Rewrite.
+    assert.equal(await enricher.enrich("host"), null);
+    assert.equal(await readFile(path.join(dir, "host.md"), "utf8"), raw);
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }

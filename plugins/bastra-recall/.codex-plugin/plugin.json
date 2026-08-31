@@ -1,0 +1,18 @@
+{
+  "name": "bastra-recall",
+  "version": "1.0.0",
+  "description": "Proactive local memory skill for Bastra Recall in ChatGPT and Codex.",
+  "author": {
+    "name": "n0mad.ai"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Bastra Recall",
+    "shortDescription": "Private local memory for ChatGPT and Codex.",
+    "longDescription": "Adds the proactive Bastra Recall memory workflow to ChatGPT desktop and Codex. Install the local MCP server and native hooks with `bastra install codex`; this plugin supplies the portable skill behavior.",
+    "developerName": "n0mad.ai",
+    "category": "Productivity",
+    "capabilities": ["Skills"],
+    "defaultPrompt": "Use $bastra-recall to retrieve relevant durable context before acting."
+  }
+}

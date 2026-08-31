@@ -13,7 +13,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { slugify } from "../src/save.js";
+import { slugify } from "../src/save-text.js";
 
 test("umlauts transliterate to ae/oe/ue (not stripped to a/o/u)", () => {
   assert.equal(slugify("Präferenz"), "praeferenz");

@@ -11,7 +11,17 @@
  */
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
@@ -512,6 +522,173 @@ test("a rename path git C-quotes is enumerated, not guessed at", () => {
     assert.equal(readFileSync(fromAbs, "utf8"), before);
     assert.ok(!existsSync(toAbs), "the destination must not be left behind");
     assert.equal(gitIn(s.repo, "status", "--porcelain").stdout, "", "the index must be untouched");
+  } finally {
+    s.cleanup();
+  }
+});
+
+/**
+ * A repo where one patch merges ONLY through `--3way`, which is the case a
+ * reverse-apply cannot undo. The merge produces a file that matches neither
+ * side of the patch, so `git apply --reverse` cannot find its post-image and
+ * fails — leaving the patched bytes on disk under a report that says they were
+ * reversed.
+ */
+function threeWayFixture(s: { repo: string }): { target: string; patch: string } {
+  const target = join(s.repo, "packages", "core", "src", "a.txt");
+  const lines = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+  const at = (i: number, text: string) => lines.map((l, n) => (n === i ? text : l)).join("\n") + "\n";
+
+  writeFileSync(target, lines.join("\n") + "\n", "utf8");
+  gitIn(s.repo, "commit", "-qam", "ten lines");
+  writeFileSync(target, at(1, "local fix"), "utf8");
+  gitIn(s.repo, "commit", "-qam", "local fix");
+  const patch = gitIn(s.repo, "format-patch", "-1", "--stdout").stdout;
+  gitIn(s.repo, "reset", "-q", "--hard", "HEAD~1");
+
+  // Upstream rewrites a CONTEXT line of the same hunk: near enough that the
+  // plain apply can no longer find its context, far enough that the 3-way has
+  // an unambiguous merge and succeeds.
+  writeFileSync(target, at(4, "upstream"), "utf8");
+  gitIn(s.repo, "commit", "-qam", "upstream");
+  return { target, patch };
+}
+
+function bootBreaker(installRoot: string, extra: string[] = []): string {
+  mkdirSync(join(installRoot, "dist"), { recursive: true });
+  writeFileSync(join(installRoot, "dist", "cli.js"), "process.exit(0);\n", "utf8");
+  return diffFor("packages/daemon/dist/cli.js", ["process.exit(0);"], [...extra, "process.exit(3);"]);
+}
+
+test("a 3-way patch is put back by the rollback", () => {
+  const s = sourceCheckout();
+  try {
+    const { target, patch } = threeWayFixture(s);
+    const boom = bootBreaker(s.installRoot);
+    const cli = join(s.installRoot, "dist", "cli.js");
+
+    const before = readFileSync(target, "utf8");
+    const statusBefore = gitIn(s.repo, "status", "--porcelain").stdout;
+
+    addPatch(writePatchFile(s.home, "threeway.patch", patch), s.home);
+    addPatch(writePatchFile(s.home, "boom.patch", boom), s.home);
+
+    const out = applySeries(s.installRoot, { home: s.home });
+
+    assert.equal(out.ok, false);
+    assert.equal(out.rolledBack, true, "everything went back, so the run may say so");
+    assert.equal(out.unrestored, undefined);
+    assert.equal(out.applied.length, 0, "a verified rollback reports nothing as applied");
+    // The claim is about the tree, not the report. Reversing the patch fails
+    // here — this passes only because the rollback copies bytes back.
+    assert.equal(readFileSync(target, "utf8"), before, "the merged file must be byte-identical again");
+    assert.ok(!readFileSync(target, "utf8").includes("local fix"), "no patched line may survive");
+    assert.equal(readFileSync(cli, "utf8"), "process.exit(0);\n", "and the patch that broke the boot is gone too");
+    assert.equal(gitIn(s.repo, "status", "--porcelain").stdout, statusBefore, "the index must be untouched");
+  } finally {
+    s.cleanup();
+  }
+});
+
+test("a rollback that cannot put a file back says so instead of claiming it worked", (t) => {
+  if (process.getuid?.() === 0) {
+    t.skip("running as root, which ignores the permission bits this case is built on");
+    return;
+  }
+  const s = sourceCheckout();
+  try {
+    const rel = "packages/core/src/a.txt";
+    const target = join(s.repo, rel);
+    // The paths the module reports come from `git rev-parse --show-toplevel`,
+    // which resolves symlinks — and on macOS the temp root is one (/var).
+    const reported = join(realpathSync(s.repo), rel);
+    // The boot check runs the PATCHED cli, which is the one hook a test has
+    // between the apply and the rollback: it takes the write permission off the
+    // very file the rollback is about to put back, then fails to boot.
+    const boom = bootBreaker(s.installRoot, [`require("fs").chmodSync(${JSON.stringify(target)}, 0o444);`]);
+
+    addPatch(writePatchFile(s.home, "p.patch", diffFor(rel, ["old"], ["local fix"])), s.home);
+    addPatch(writePatchFile(s.home, "boom.patch", boom), s.home);
+
+    const out = applySeries(s.installRoot, { home: s.home });
+    chmodSync(target, 0o644); // so the assertions below and the teardown can get at it
+
+    assert.equal(out.ok, false);
+    assert.equal(out.rolledBack, false, "a rollback nobody could verify must not be reported as one");
+    assert.deepEqual(out.unrestored, [reported]);
+    assert.equal(out.applied.length, 2, "a half-restored install keeps naming what went on");
+    assert.equal(readFileSync(target, "utf8"), "local fix\n", "and the file really is still patched");
+
+    writeLastRun(out, s.home);
+    assert.deepEqual(readLastRun(s.home)?.unrestored, [reported], "the record carries it to the next session");
+
+    const notice = pendingPatchNotice(s.home);
+    assert.ok(notice, "an install in this state has to speak up");
+    assert.ok(notice!.includes("neither patched nor the one the updater produced"));
+    assert.ok(notice!.includes(reported), "the operator has to be told which file");
+    assert.ok(notice!.includes("~/.bastra/update-backups"), "and where the pre-update bytes still are");
+    assert.ok(!notice!.includes("running unpatched"), "which is the one thing this install is NOT");
+    assert.ok(formatApplyOutcome(out).includes(reported));
+  } finally {
+    s.cleanup();
+  }
+});
+
+test("a restore that has to recreate a file keeps its permission bits", () => {
+  const s = sourceCheckout();
+  try {
+    const { patch, fromAbs } = conflictingRenamePatch(s, "a.txt", "b.txt");
+    chmodSync(fromAbs, 0o755);
+    gitIn(s.repo, "commit", "-qam", "make it executable");
+
+    addPatch(writePatchFile(s.home, "p.patch", patch), s.home);
+    const out = applySeries(s.installRoot, { home: s.home, skipSmoke: true });
+
+    assert.equal(out.setAside.length, 1, "the rename still cannot merge");
+    assert.ok(existsSync(fromAbs), "and the source path is put back");
+    // The apply DELETES the rename source, so the restore has to create it
+    // again — a plain writeFileSync hands back 0644 to a file that was runnable.
+    assert.equal(statSync(fromAbs).mode & 0o777, 0o755, "including the bit that makes it runnable");
+  } finally {
+    s.cleanup();
+  }
+});
+
+test("a rollback recreates a directory the rename emptied", () => {
+  const s = sourceCheckout();
+  try {
+    // A file alone in its directory, renamed OUT of it. `git apply` removes the
+    // directory it empties, so the copy-back has nowhere to write the source
+    // back to — and an ENOENT here would be reported as a file needing hand
+    // repair, over a rollback there was nothing wrong with.
+    const dir = join(s.repo, "packages", "core", "src", "lonely");
+    const from = join(dir, "a.txt");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(from, "one\ntwo\nthree\nfour\nfive\nsix\n", "utf8");
+    gitIn(s.repo, "add", "-A");
+    gitIn(s.repo, "commit", "-qm", "a file alone in a directory");
+    gitIn(s.repo, "mv", "packages/core/src/lonely/a.txt", "packages/core/src/renamed.txt");
+    gitIn(s.repo, "commit", "-qm", "rename it out");
+    const patch = gitIn(s.repo, "format-patch", "-1", "--stdout").stdout;
+    gitIn(s.repo, "reset", "-q", "--hard", "HEAD~1");
+    assert.match(patch, /^rename from /m, "fixture must actually be a rename patch");
+
+    const boom = bootBreaker(s.installRoot);
+    const before = readFileSync(from, "utf8");
+    const statusBefore = gitIn(s.repo, "status", "--porcelain").stdout;
+
+    addPatch(writePatchFile(s.home, "rename.patch", patch), s.home);
+    addPatch(writePatchFile(s.home, "boom.patch", boom), s.home);
+
+    const out = applySeries(s.installRoot, { home: s.home });
+
+    assert.equal(out.ok, false);
+    assert.equal(out.unrestored, undefined, "a directory that can be made again is not a hand repair");
+    assert.equal(out.rolledBack, true);
+    assert.ok(existsSync(dir), "the emptied directory has to come back");
+    assert.equal(readFileSync(from, "utf8"), before, "with the file byte-identical inside it");
+    assert.ok(!existsSync(join(s.repo, "packages", "core", "src", "renamed.txt")), "and the destination gone");
+    assert.equal(gitIn(s.repo, "status", "--porcelain").stdout, statusBefore, "the index must be untouched");
   } finally {
     s.cleanup();
   }

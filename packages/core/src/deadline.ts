@@ -22,9 +22,18 @@
  *
  * `deadlineMs <= 0` disables the deadline and simply awaits `p` — the
  * pre-#342 behaviour, and the kill switch.
+ *
+ * `deadlineMs` reaches here from an HTTP request body (`vector_deadline_ms`,
+ * clamped to [50, 10_000] in `http-hook-routes.ts` before the call) — this
+ * function has no way to see that its caller already bounded it, so it
+ * clamps again at the sink: no timer this function creates outlives
+ * `MAX_DEADLINE_MS`, regardless of what a future caller passes.
  */
+const MAX_DEADLINE_MS = 10_000;
+
 export async function abandonAfter<T>(p: Promise<T>, deadlineMs: number): Promise<T | null> {
   if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) return p;
+  const clampedMs = Math.min(deadlineMs, MAX_DEADLINE_MS);
 
   // The loser of this race is still live. Without this handler, a later
   // rejection on an abandoned arm would surface as an unhandled rejection —
@@ -33,7 +42,7 @@ export async function abandonAfter<T>(p: Promise<T>, deadlineMs: number): Promis
 
   let timer: NodeJS.Timeout | undefined;
   const expiry = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), deadlineMs);
+    timer = setTimeout(() => resolve(null), clampedMs);
     // Never hold the event loop open on this timer's account. A hook CLI that
     // finished its work must be free to exit; an un-unref'd timer would keep
     // the process alive for the remainder of the deadline.

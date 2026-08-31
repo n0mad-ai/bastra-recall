@@ -18,6 +18,7 @@ import {
   checkHookPaths,
   hookCommandPath,
   registeredHookBins,
+  registeredHookCommands,
 } from "../src/cli/adapters/claude-code.js";
 
 const HOME = "/Users/tester";
@@ -98,6 +99,25 @@ test("every registered hook is checked, not just the first one", async () => {
     home: HOME,
   });
   assert.equal(problems.length, 3, `all three are stale; reported: ${problems.join(" | ")}`);
+});
+
+test("both event registrations of the shared bash-fail binary are path-checked", async () => {
+  const entry = (cmd: string) => ({ hooks: [{ type: "command", command: cmd, __bastraRecall: true }] });
+  const settings = vmSettings();
+  settings.PostToolUseFailure = [entry(`node ${CURRENT}/bash-fail-hook.js`)];
+  settings.PostToolUse = [entry(`node ${OLD_PIN}/bash-fail-hook.js`)];
+
+  const commands = registeredHookCommands(settings);
+  assert.equal(
+    commands.filter(([file]) => file === "bash-fail-hook.js").length,
+    2,
+    "the two event registrations must not collapse before path validation",
+  );
+  const problems = await checkHookPaths(commands, { exists: allExist, running: "0.8.9", home: HOME });
+  assert.ok(
+    problems.some((problem) => problem.startsWith("bash-fail-hook.js") && /STALE PIN/.test(problem)),
+    problems.join(" | "),
+  );
 });
 
 // ─── path extraction ─────────────────────────────────────────────────────────

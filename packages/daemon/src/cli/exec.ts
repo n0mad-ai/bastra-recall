@@ -1,5 +1,5 @@
 /**
- * Shared exec hardening for CLI spawns (#91, lifted out of ollama.ts / #79).
+ * Shared exec hardening for CLI spawns (#91/#15, lifted out of ollama.ts / #79).
  *
  * Every external command the CLI runs should (a) resolve to an absolute,
  * non-world-writable path via findExecutable() — never a bare name — and
@@ -14,6 +14,45 @@ export interface RunResult {
   ok: boolean;
   signal: boolean;
   detail: string;
+}
+
+export interface CapturedRunResult extends RunResult {
+  stdout: string;
+  stderr: string;
+}
+
+/** Captured sibling of run(), used for machine-readable CLI integrations. */
+export function runCaptured(
+  bin: string,
+  args: string[],
+  opts: { timeoutMs: number; env?: Record<string, string> },
+): CapturedRunResult {
+  const r = spawnSync(bin, args, {
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf8",
+    timeout: opts.timeoutMs,
+    env: opts.env ? { ...process.env, ...opts.env } : undefined,
+  });
+  const stdout = typeof r.stdout === "string" ? r.stdout : "";
+  const stderr = typeof r.stderr === "string" ? r.stderr : "";
+  if (r.error) {
+    const code = (r.error as NodeJS.ErrnoException).code;
+    return {
+      ok: false,
+      signal: false,
+      detail: code === "ETIMEDOUT" ? `timed out after ${opts.timeoutMs}ms` : r.error.message,
+      stdout,
+      stderr,
+    };
+  }
+  if (r.signal) {
+    return { ok: false, signal: true, detail: `killed by ${r.signal}`, stdout, stderr };
+  }
+  if (r.status !== 0) {
+    const message = stderr.trim() || stdout.trim();
+    return { ok: false, signal: false, detail: message || `exit ${r.status}`, stdout, stderr };
+  }
+  return { ok: true, signal: false, detail: "ok", stdout, stderr };
 }
 
 /**

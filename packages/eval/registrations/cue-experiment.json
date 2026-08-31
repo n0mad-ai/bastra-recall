@@ -1,77 +1,304 @@
 {
-  "$comment": "Pre-registration of the M2 cue experiment (§18.1, §18.3; C-057, C-072, C-074). Registered BEFORE the run. Two things are registered at different times and the status field says which stage this file is in: the STRUCTURE can be fixed now, the NUMBERS cannot — §18.1 puts every numeric quantity after the M0 baseline run, and §32 keeps them on the open list until then. Amending anything after a run has started invalidates that run: bump registration_version and say which version a report belongs to.",
+  "$comment": "Pre-registration of the M2 cue experiment (§18.1, §18.3; C-057, C-072, C-074). Registered BEFORE the run. Two things are registered at different times and the status field says which stage this file is in: the STRUCTURE was fixed on 2026-07-26, the NUMBERS on 2026-08-28 once the M0 baseline had shown the spread of the metric. Amending anything after a run has started invalidates that run: bump registration_version and say which version a report belongs to.",
   "schema_version": 1,
-  "registration_version": 1,
+  "registration_version": 3,
   "registered_at": "2026-07-26",
   "registered_by": "Daniel Nevoigt",
   "status": "structure_registered",
-
   "$comment_status": "structure_pending_decision -> structure_registered -> numbers_registered. The validator refuses an M2 run below numbers_registered, and refuses a design choice that does not match §18.3.",
-
+  "numbers_registered_at": "2026-08-28",
+  "numbers_derived_from": {
+    "run_artifact": "~/.bastra/eval-runs/2026-08-28-5653e6987eac",
+    "arm": "Hybrid (BM25 + Vector RRF) · ollama-embeddinggemma",
+    "git": "53b42a344ff65f7fe0cdb0c8e00d765059d7ee3d",
+    "$comment": "The M0 baseline over the §19 gold set: 432 cases in the main denominator, 372 answerable, 60 no-answer, 16 probes reported apart. Every number below is derived from that run and from nothing else. A second baseline on a different vault or arm would move them.",
+    "measured": {
+      "recall_at_1": 0.4704,
+      "recall_at_3": 0.6882,
+      "recall_at_10": 0.8145,
+      "mrr": 0.5873,
+      "control_arm_recall_at_3": 0.0,
+      "n_answerable": 372
+    }
+  },
   "design": "A",
   "$comment_design": "Product-owner decision, taken 2026-07-26. Exactly two designs are admissible (§18.3) and there is no third; adding the generation path as an extra arm during or after a run is inadmissible, because that yields an incompletely occupied design whose main effects are confounded with the generation path. A was chosen because it is paired on the same gold cases, which lowers the required N substantially, and because the open question is whether the generation path matters at all — B's eight cells are only worth their N once A shows an effect.",
-
   "admissible_designs": {
     "A": {
       "name": "paired two-condition comparison",
       "recommended_by_contract": true,
-      "conditions": ["agent_generated_cues", "batch_generated_cues"],
+      "conditions": [
+        "agent_generated_cues",
+        "batch_generated_cues"
+      ],
       "condition_count": 2,
       "$comment_cells": "Two CONDITIONS, not four cells. The 2x2 belongs to the cue-axis experiment; here the axes are held fixed, so those cells do not exist (C-074).",
       "paired": true,
       "paired_on": "the same gold cases run through both generation paths, which lowers the required N substantially",
       "fixed_cue_configuration": {
-        "descriptive_associative": "descriptive",
-        "item_scene": "item"
+        "descriptive_associative": "associative",
+        "item_scene": "item",
+        "cue_family": "associative_bridge"
       },
-      "$comment_configuration": "Decided 2026-07-26. The result of design A is valid ONLY for this configuration; whether a generation path performs differently at another one stays unanswered and must not be asserted.",
+      "$comment_configuration": "Reconfigured 2026-08-28 (v3) from descriptive/item after the OB pre-question showed the descriptive family moves nothing. The result of design A is valid ONLY for this configuration; whether a generation path performs differently at another one stays unanswered and must not be asserted.",
       "contamination_guard": {
         "mode": "selection_holdout_split",
         "$comment": "Decided 2026-07-26, one of exactly two permitted options (§18.3). A separate selection part determines the cue configuration and an independent holdout runs the comparison, so the comparison is not contaminated by the selection.",
-        "permitted": ["selection_holdout_split", "nested_evaluation"],
-        "selection_share": null,
-        "holdout_share": null,
-        "split_seed": null,
-        "$comment_shares": "STILL OPEN and required before the run (§18.3: the split is part of the registration). The shares are a design choice, not a baseline result — but they trade off against the min-N the baseline will produce, so they are set together with it at the numbers_registered stage.",
-        "split_is_frozen_before_run": true
+        "permitted": [
+          "selection_holdout_split",
+          "nested_evaluation"
+        ],
+        "selection_share": 0.3,
+        "holdout_share": 0.7,
+        "split_seed": 20260828,
+        "$comment_shares": "Registered 2026-08-28. On the eligible pool for the fixed configuration — the 365 answerable descriptive cases — a 30/70 split leaves 110 for choosing the configuration and 255 for the comparison. 255 clears the 213 the power assumption needs, with roughly 20% headroom. A 20% selection share would raise the holdout to 292 (detectable difference 5.2pp) but leave only 73 cases to configure on; 40% would drop the holdout to 219 (5.9pp).",
+        "stratify_by": [
+          "origin_type",
+          "lang"
+        ],
+        "$comment_stratify": "BINDING, and the most important condition on the split. Recall@3 per gold file in the M0 baseline: blind 31.3%, tel-1 84.9%, tel-2 67.6%, tel-3 72.7%, tel-4 82.7% — a standard deviation of 21.6pp between files, driven by origin. A plain random split can put the blind batch lopsidedly on one side and shift the comparison baseline by more than any effect this experiment looks for. Without stratification the seed is not a safeguard, it is a lottery.",
+        "$comment_seed": "The value itself is arbitrary; what matters is that it was fixed BEFORE the run and not chosen after seeing a split. 20260828 is the run date as an integer — auditable and obviously not picked for a favourable division. Changing it after a run has started invalidates that run.",
+        "split_is_frozen_before_run": true,
+        "$comment_split_rule_amendments": "AMENDMENTS to the split rule, appended and dated — never folded back into the fields above. `stratify_by` above says WHAT the split balances on; an amendment says how the implementation resolves a case the bare field list does not decide. Each entry names when it was added, why, and what it demonstrably changed, so a reader can tell a rule that was registered up front from one that was added after a defect was found.",
+        "split_rule_amendments": [
+          {
+            "amended_at": "2026-08-28",
+            "amends": "stratify_by",
+            "issue": "#444",
+            "$comment": "Added AFTER the original registration, and marked as such. The split rejected only an empty stratify_by list, which left two ways to defeat the balance it promises: a named field that turns out constant over the eligible pool passes the check and leaves a seeded but unstratified draw, and round(n × selection_share) puts a stratum of one entirely on one side, so that factor level is absent from selection or from holdout. The gold set has exactly such a stratum, so this is a real configuration and not a hypothetical one.",
+            "rule": {
+              "field_must_vary": "Every field named in stratify_by must take at least two distinct values over the ELIGIBLE pool — the pool after probes and no_answer cases are removed. A field that does not vary there names a factor that is not present and balances nothing; the split is refused rather than run.",
+              "coalescing": "A stratum too small to reach both halves (round(n × selection_share) is 0 or n) is merged into the LARGEST stratum sharing its key minus the trailing field. Ties break by key, so the result does not depend on iteration order.",
+              "leading_field_is_never_backed_off": "Coalescing may drop trailing fields only. Merging across the levels of the leading field — origin_type in this registration — would fuse the very factor the split exists to balance, which is the unstratified draw arrived at politely.",
+              "otherwise_refused": "A stratum that still cannot reach both halves after coalescing aborts the split. At that point the pool is too small for the configured share, and a seed does not fix that."
+            },
+            "known_effect_on_this_registration": {
+              "$comment": "Measured on the gold set as it stands on 2026-08-28 (477 cases, 393 eligible), at selection_share 0.30 and split_seed 20260828. Reported for the descriptive pool because that is the pool the v2 share comment was derived on; the associative pool the v3 configuration needs does not exist yet (#418), so the effect there cannot be stated.",
+              "coalesced": [
+                {
+                  "from": "user_query|en",
+                  "into": "user_query|neutral",
+                  "n": 1,
+                  "$comment": "The single English user_query case. Before the amendment round(1 × 0.30) = 0 placed it deterministically in the holdout; now it is drawn inside a stratum of 41."
+                }
+              ],
+              "descriptive_pool": {
+                "n_eligible": 365,
+                "selection": 109,
+                "holdout": 256,
+                "$comment": "Unchanged by the amendment — the same 109/256 the split produced before it. Only WHICH cases fall into the coalesced stratum moves. Note that these are the per-stratum sums; $comment_shares above quotes 110/255, which is round(365 × 0.30) computed on the aggregate. The per-stratum figure is the one the split actually produces, and it predates this amendment."
+              }
+            },
+            "implemented_in": "packages/eval/src/goldset-split.ts",
+            "tested_in": "packages/eval/__tests__/goldset-split.test.ts"
+          }
+        ]
       },
       "min_n_per_condition": null,
+      "$comment_min_n_per_condition": "RESET TO OPEN in v3, and this is the substantive consequence of the reconfiguration. The previous value of 255 was derived from a paired discordance of 10.8% measured on the M0 baseline — and 98.1% of the cases that discordance came from were descriptive (365 of 372). The two axes do not share a base rate: descriptive sits at 70.1% Recall@3, associative at 0.0% on the seven cases that exist. A discordance measured at a 70% base rate says nothing about one near 0%, where two arms can barely disagree because neither finds anything. Re-derive on the associative pool once #418 has authored it.",
       "interaction_evaluated": false,
       "$comment_interaction": "Not a choice. Design A cannot make an interaction claim: whether a generation path performs differently at another cue configuration stays unanswered and must not be asserted (C-074)."
     },
     "B": {
       "name": "fully crossed 2x2x2",
       "recommended_by_contract": false,
-      "factors": ["descriptive_associative", "item_scene", "generation_path"],
+      "factors": [
+        "descriptive_associative",
+        "item_scene",
+        "generation_path"
+      ],
       "cell_count": 8,
       "$comment_cells": "Only design B has eight cells, and only it can measure interactions between generation path and cue axis.",
       "min_n_per_cell": null,
-      "$comment_min_n": "OPEN, and necessarily larger than A's per-condition N — an interaction of a given size needs roughly four times the N of a main effect of the same size.",
+      "$comment_min_n": "STILL OPEN, deliberately. B is only worth its N once A has shown an effect, and without a result from A there is no effect size to hang it on. It stays unregistered until then; the validator only demands the numbers for the design actually chosen.",
       "interaction_evaluated": true
     }
   },
-
   "power_assumption": {
-    "$comment": "OPEN until the M0 baseline run. §18.1 requires a power assumption and a minimum N fixed and stored versioned, stated SEPARATELY for the main effects and for the interaction, because the interaction needs the larger N. The effect size of interest cannot be picked honestly before the baseline shows the spread of the metric.",
+    "$comment": "RESET TO OPEN in v3. These numbers governed the 2x2 cue-axis experiment while the held-fixed configuration was descriptive. They were derived on a pool that was 98.1% descriptive and are not transferable to the associative axis — see admissible_designs.A.$comment_min_n_per_condition. The superseded values are kept below so the derivation is not lost when it is redone.",
     "alpha": null,
+    "alpha_sided": "two-sided",
+    "$comment_alpha": "Contract standard; nothing in §18.3 asks for more. Two-sided because it is open which cue configuration or generation path is better. At 0.01 the requirement would rise from 213 to about 290 cases at the same effect size.",
     "power": null,
-    "main_effects": { "smallest_effect_of_interest": null, "unit": null, "min_n": null },
-    "interaction": { "smallest_effect_of_interest": null, "unit": null, "min_n": null },
-    "derived_from": "the M0 baseline run — see the run artifact hash once it exists"
+    "$comment_power": "0.80. The contract motivates a higher power for interactions, not for main effects; 0.90 would raise the main-effect requirement from 213 to 275.",
+    "main_effects": {
+      "smallest_effect_of_interest": null,
+      "unit": null,
+      "min_n": null
+    },
+    "interaction": {
+      "smallest_effect_of_interest": null,
+      "unit": null,
+      "min_n": null
+    },
+    "derived_from": "Re-derived on the associative pool 2026-08-28 — see numbers_amendments[0]. The derivation was carried out and its result is that min_n is NOT derivable at the v2 smallest effect of interest: at the measured discordance of 0.0352 a difference of 6pp is arithmetically impossible. The fields above therefore stay null for a measured reason, not for lack of data.",
+    "$comment_numbers_amendments": "AMENDMENTS to the power assumption, appended and dated — never folded back into the fields above, and never into `superseded_v2_values`, which stays as it is. Each entry records a derivation that was actually carried out: its inputs, the method it followed, its result, and what the result means for the pool. An amendment may report that a number is NOT derivable; that is a result, not a gap.",
+    "numbers_amendments": [
+      {
+        "amended_at": "2026-08-28",
+        "issue": "#418",
+        "amends": "power_assumption.main_effects.min_n and admissible_designs.A.min_n_per_condition",
+        "$comment": "First re-derivation on the associative axis, carried out after the axis became measurable (156 associative cases, 142 of them answerable). It follows the v2 method unchanged; only the inputs are new. RESULT: at the v2 smallest effect of interest of 6pp the minimum N is NOT derivable, because a difference of that size is arithmetically impossible at the measured discordance. The v2 registration anticipated this case and prescribed the response — see superseded_v2_values.paired_discordance.robustness. min_n_per_condition therefore stays null, now for a measured reason rather than for lack of data.",
+        "method": {
+          "$comment": "The v2 method, reconstructed from its own calibration points and verified against them before being reused. Reproduces the registered 213 (pi_d 0.108, SESOI 6pp), the registered robustness value 141 (pi_d 0.08) and the registered 275 (power 0.90) exactly, and reproduces the two detectable differences quoted in contamination_guard.$comment_shares (holdout 292 -> 5.19pp against '5.2pp', holdout 219 -> 5.92pp against '5.9pp'). No new statistics were introduced.",
+          "steps": [
+            "1. pi_d — the paired discordance — is measured as a PROXY: the hybrid arm against the BM25-only arm, case by case, on Recall@3, over the same answerable cases of the same dataset.",
+            "2. Split it at the smallest effect of interest: p01 = (pi_d + delta) / 2, p10 = (pi_d - delta) / 2, and p1 = p01 / pi_d is the favourable share among the discordant pairs.",
+            "3. Required discordant pairs, normal approximation to the binomial test against p = 0.5: n_disc = (z_(alpha/2) * 0.5 + z_power * sqrt(p1 * (1 - p1)))^2 / (p1 - 0.5)^2.",
+            "4. n = ceil(n_disc / pi_d), the number of paired cases per condition.",
+            "5. The interaction requirement is 4 x the main-effect requirement (v2: 852 = 4 x 213)."
+          ],
+          "arithmetic_ceiling": "delta must be strictly smaller than pi_d: the difference p01 - p10 cannot exceed p01 + p10. A SESOI at or above pi_d is not a hard measurement, it is an impossible one."
+        },
+        "inputs": {
+          "alpha": 0.05,
+          "alpha_sided": "two-sided",
+          "power": 0.8,
+          "$comment_alpha_power": "Unchanged from v2 — the contract standard named in $comment_alpha and $comment_power. Only pi_d is new.",
+          "paired_discordance_associative": {
+            "value": 0.0352,
+            "exact": "5 / 142",
+            "metric": "Recall@3",
+            "contingency": "both arms hit 5, hybrid only 4, BM25 only 1, neither 132",
+            "$comment": "Same proxy construction as v2 and the same caveat: two cue-generation paths on the SAME arm are likely more similar than two different arms, which lowers the discordance further. The associative axis is far more concordant than the descriptive one because both arms mostly fail on it — 132 of 142 cases are missed by both."
+          },
+          "paired_discordance_descriptive_for_comparison": {
+            "value": 0.1123,
+            "exact": "41 / 365",
+            "contingency": "both 229, hybrid only 26, BM25 only 15, neither 95",
+            "$comment": "Measured on the same run pair. Close to the v2 value of 0.108 on the same 365 descriptive cases, which is what makes the associative figure interpretable as an axis property rather than a drift of the method."
+          }
+        },
+        "result": {
+          "min_n_per_condition_at_sesoi_0_06": null,
+          "$comment_result": "Not derivable. A 6pp difference requires |p01 - p10| = 0.06 while p01 + p10 = 0.0352. Per the registered robustness rule the honest finding on this axis is not 'no difference' but 'a difference of this size does not exist', and a report must say so rather than reporting a null result.",
+          "arithmetic_ceiling_pp": 3.52,
+          "smallest_requirement_over_all_admissible_sesoi": 110,
+          "$comment_floor": "Even at the ceiling the requirement does not fall below about 110 paired cases per condition (the limit of the formula as delta approaches pi_d is z_(alpha/2)^2 / pi_d = 3.8415 / 0.0352). No SESOI makes this axis cheaper than that.",
+          "available_pool": {
+            "associative_answerable": 142,
+            "selection": 44,
+            "holdout": 98,
+            "$comment": "From splitGoldCases at the registered seed and shares on the associative pool. The comparison runs on the HOLDOUT, so 98 is the number the requirement is measured against — below the floor of 110. As it stands the associative axis cannot detect any effect size at all."
+          }
+        },
+        "what_the_pool_would_need": {
+          "$comment": "Holdout size required per SESOI at pi_d = 0.0352, and the associative pool that implies at the registered 30/70 split. For orientation before authoring more cases; none of these is registered as a target.",
+          "sesoi_3_5pp": { "holdout": 122, "pool": 175 },
+          "sesoi_3_0pp": { "holdout": 226, "pool": 323 },
+          "sesoi_2_5pp": { "holdout": 368, "pool": 526 },
+          "sesoi_2_0pp": { "holdout": 620, "pool": 886 }
+        },
+        "uncertainty": {
+          "$comment": "The load-bearing input rests on FIVE discordant pairs. This is the weakest part of the derivation and must not be quoted as a precise quantity.",
+          "wilson_95_ci_for_pi_d": "[0.0151, 0.0798]",
+          "implication": "At the lower bound the ceiling drops to 1.51pp and the floor rises to 254 cases; at the upper bound the ceiling is 7.98pp and the floor 49. The qualitative result — the registered 6pp SESOI is out of reach and the present holdout of 98 is below the floor — holds across the whole interval except its extreme upper end.",
+          "recommended_follow_up": "Re-measure pi_d once the associative pool grows. The estimate stabilises with the count of discordant pairs, not with the count of cases."
+        },
+        "measured_from": {
+          "hybrid_run": "~/.bastra/eval-runs/2026-08-28-61c940b62a8c",
+          "bm25_run": "~/.bastra/eval-runs/2026-08-28-6faf4f3b68f3",
+          "dataset_hash": "8dc20b0154083f38d7db637225e3c66f2610e65502d0d7d2bba1ce39ef123732",
+          "$comment": "Both runs carry the identical dataset hash, so the pairing is over the same cases by construction. Associative Recall@3: 0.0634 hybrid, and the axis contributes 142 of the 507 answerable cases."
+        }
+      }
+    ],
+    "superseded_v2_values": {
+      "$comment": "HISTORY. Valid for the descriptive configuration, kept for the re-derivation to compare against.",
+      "alpha": 0.05,
+      "power": 0.8,
+      "paired_discordance": {
+        "value": 0.108,
+        "metric": "Recall@3",
+        "$comment": "The load-bearing input for every case count here, and a PROXY. Measured on the M0 baseline by comparing the hybrid arm against BM25-only case by case over the same 372 answerable cases: 230 hit in both, 26 only hybrid, 14 only BM25, 102 in neither — 40 discordant pairs, 10.8%. Two cue-generation paths on the SAME arm are likely more similar than two different arms, which lowers the discordance.",
+        "robustness": "At 8% discordance the requirement falls to 141 cases and the design still holds. Below roughly 6% a difference of 6pp is arithmetically IMPOSSIBLE — it would need more discordant pairs than exist. In that case the honest finding is not \"no difference\" but \"a difference of this size does not exist\", and the report must say so rather than reporting a null result.",
+        "alternatives_measured": {
+          "recall_at_1": 0.145,
+          "recall_at_10": 0.073
+        }
+      },
+      "main_effects_min_n": 213,
+      "interaction_min_n": 852,
+      "smallest_effect_of_interest": 0.06,
+      "derived_from": "~/.bastra/eval-runs/2026-08-28-5653e6987eac"
+    }
   },
-
   "evaluation_rule": null,
-  "$comment_evaluation_rule": "OPEN. Fixed before the run so the analysis is not chosen after seeing the data.",
-
+  "$comment_evaluation_rule": "RESET TO OPEN in v3. The v2 rule named Recall@3 on the descriptive holdout with exact McNemar. The test and the metric are likely to carry over, but the rule is registered together with the numbers it is sized for, so it is re-registered in one step rather than half-inherited.",
   "underpowered_fallback": {
     "$comment": "NOT open — these follow from §18.3 and are registered now, because the whole point is that the answer is not chosen after seeing the data.",
     "interaction_missed": "reported as explorative; carries neither a gate nor a live release",
     "main_effect_missed": "the arm is reported as not evaluable — never as a null finding"
   },
-
   "gold_set_requirement": {
     "$comment": "§18.1: the gold set must expose descriptive and associative case sets separately, so both axes of the cue experiment are measurable independently of each other (C-057). Authoring the cases is #262.",
     "separate_descriptive_and_associative_sets": true,
-    "satisfied": false
+    "satisfied": false,
+    "$comment_satisfied": "False because of the associative axis alone. Design A is unaffected and can run today: it holds the configuration at descriptive/item, and that pool has 365 answerable cases. The 2x2 cue-axis experiment cannot run until the associative axis reaches its own min_n.",
+    "measured_2026_08_28": {
+      "answerable_total": 372,
+      "descriptive": 365,
+      "associative": 7,
+      "non_application_c036": 4,
+      "english": 30
+    },
+    "authoring_targets": {
+      "$comment": "Approved 2026-08-28. Minimum = carries the gate; comfortable = also carries subgroup statements. Derived in the same run: the associative figure from the power assumption above, the other two from the width of a Wilson interval at that n (n=40 gives +/-14.8pp, n=96 gives +/-9.8pp, and today's n=7 gives +/-29.8pp).",
+      "associative": {
+        "minimum": 150,
+        "comfortable": 215
+      },
+      "non_application_c036": {
+        "minimum": 40,
+        "comfortable": 96
+      },
+      "english": {
+        "minimum": 40,
+        "comfortable": 96
+      },
+      "$comment_associative": "150 corresponds to a detectable difference of 7pp, 215 to 6pp — the same figure the main effects carry. Below 150 the associative main effect is reported as NOT EVALUABLE, never as a null finding (§18.1). The baseline measured 0 of 7 associative cases in the top 3 and 1 in the top 10, against 0.827 Recall@10 for descriptive cases; at n=7 that carries no gate, but it is the clearest signal in the run that something real sits there.",
+      "$comment_authoring": "The cases must be authored by someone who has not read the vault for this purpose — §19 fixes the query before the gold is assigned, and a labeller who knows the answer set cannot write an independent associative query."
+    }
+  },
+  "$comment_version_3": "v3 (2026-08-28): the held-fixed cue configuration moves from descriptive/item to associative/item, and the status drops back to structure_registered because the registered numbers do NOT carry over. Reason: the OB pre-question measured the descriptive family and found nothing — see reconfigured_from. This is a deliberate downgrade, not a loss: a registration that keeps numbers derived on a different pool would let the validator clear an M2 run those numbers do not cover.",
+  "reconfigured_from": {
+    "previous_configuration": {
+      "descriptive_associative": "descriptive",
+      "item_scene": "item"
+    },
+    "decided_at": "2026-08-28",
+    "decided_by": "Daniel Nevoigt",
+    "evidence_run": "~/.bastra/eval-runs/2026-08-28-ffdcb4436d91",
+    "$comment_evidence": "Explorative paired comparison of batch-generated descriptive_entity cues against no cues, on the registered 30/70 split of the descriptive pool. Holdout n=256: Recall@3 71.48% with cues against 72.27% without. Discordant pairs b=0 / c=2 — the cues won not a single case and lost two. McNemar exact p=0.50, 95% CI of the difference [-2.80pp, +1.26pp], entirely BELOW the registered smallest effect of interest of 6pp. On the selection part, none of nine boost x confidence combinations beat the cue-less baseline; three tied it and six were worse.",
+    "$comment_why_this_family": "§11.4 states the hypothesis this confirms: 'Die Erwartung ist, dass nur die assoziative Achse einen eigenen Beitrag leistet, weil Titel, Tags, topic_path und Summary die beschreibende Achse im bestehenden Index bereits abdecken.' An entity cue tells the index nothing the title and topic_path do not already say. The associative family asks a different question — in which future situation would this fact matter — and that is the one the index cannot answer from what is already there."
+  },
+  "preconditions": {
+    "$comment": "What must be true before design A can run at all. The validator refuses `numbers_registered` while any of these is unsatisfied, so the registration cannot quietly clear a run that is not buildable.",
+    "items": [
+      {
+        "id": "associative_gold_cases",
+        "satisfied": false,
+        "what": "The gold set must carry enough associative cases to size the run.",
+        "today": "7 associative answerable cases against 365 descriptive",
+        "needs": "#418 authoring — registered targets: 150 minimum, 215 comfortable",
+        "$comment": "Also the reason min_n_per_condition is open: the pool it would be measured on does not exist yet."
+      },
+      {
+        "id": "associative_batch_generator",
+        "satisfied": false,
+        "what": "A batch generator for the associative_bridge family.",
+        "today": "only descriptive_entity exists (fd42fd6) — one prompt, one family",
+        "needs": "its own prompt: the family asks in which future situation a fact would matter, not which term it falls under",
+        "$comment": "The generation machinery, the sidecar and the eighth index field carry over unchanged; only the prompt is family-specific."
+      },
+      {
+        "id": "agent_generation_path",
+        "satisfied": false,
+        "what": "The agent-side generation path — the second condition of design A.",
+        "today": "deferred by product decision (Daniel, 2026-08-28) until a cue family is shown to work",
+        "needs": "a family with a measured effect first; then save-schema, MCP tool definition and skill guidance",
+        "$comment": "This one is deferred on purpose, not merely unbuilt: it changes what Claude does on every save, and doing that for a family that moves nothing would be expensive and risky."
+      }
+    ]
   }
 }

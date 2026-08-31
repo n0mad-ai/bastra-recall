@@ -36,7 +36,7 @@ After `npm run build` the daemon package exposes these bin entries:
 | `bastra-recall-prompt-hook`       | `UserPromptSubmit` | — (every user message)                    | Lookup-mode reflex (#33)                                  |
 | `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`                               | Topology recall before multi-step plans (#36)             |
 | `bastra-recall-bash-pre-hook`     | `PreToolUse`       | `Bash` (destructive/risky)                | Safety recall before destructive shell ops (#34)          |
-| `bastra-recall-bash-fail-hook`    | `PostToolUse`      | `Bash` (every completed command)          | Act-signal for acted_on (#144); lesson recall on failure (#37) |
+| `bastra-recall-bash-fail-hook`    | `PostToolUse` / `PostToolUseFailure` | `Bash` (every completed or failed command) | Act-signal for acted_on (#144); lesson recall on failure (#37) |
 | `bastra-recall-stop-hook`         | `Stop`             | —                                         | Optional autonomous save-eval at end of session (#35)      |
 
 ## Activation snippet for `~/.claude/settings.json`
@@ -72,6 +72,12 @@ Default shape written by `bastra install claude-code`:
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "bastra-recall-bash-fail-hook", "timeout": 2 }]
+      }
+    ],
+    "PostToolUseFailure": [
       {
         "matcher": "Bash",
         "hooks": [{ "type": "command", "command": "bastra-recall-bash-fail-hook", "timeout": 2 }]
@@ -238,25 +244,29 @@ top_score, status`.
 
 ### `bastra-recall-bash-fail-hook` (#37, #144)
 
-Fires on `PostToolUse` for every completed Bash command (excluding 130 =
-Ctrl-C) and does two jobs:
+Fires on `PostToolUse` for every completed Bash command and on
+`PostToolUseFailure` for failed executions. Ctrl-C/`is_interrupt` stays silent.
+The failure event's top-level `error` field is normalized into the same query
+path as a structured `tool_response`. The lane does two jobs:
 
 1. **Act-signal (#144), every command — success and failure.** Sends the
    command text as a lightweight telemetry-only ping to `POST /hook/act`;
    the daemon matches it against open loaded-memory episodes so shell-driven
    applications of a memory can score `acted_on`. No recall, no injection,
    never throttled; failures are swallowed within a ≤120 ms budget.
-2. **Fail-recall (#37), `exit_code !== 0` only.** Extracts the command head +
-   last interesting error lines, recalls similar failure-mode memories, and
-   emits `<recall-hints surface="claude-code" trigger="bash-fail">`.
+2. **Fail-recall (#37), explicit failure event or `exit_code !== 0`.** Extracts
+   the command head + last interesting error lines, recalls similar
+   failure-mode memories, and emits
+   `<recall-hints surface="claude-code" trigger="bash-fail">`.
 
 The fail-recall is throttled to one hint per 30 s per session (marker file in
 `$TMPDIR/bastra-hook/fail-throttle-<session>.ts`); the act-signal is not.
 Skips its own `bastra-recall-*` invocations to avoid loops.
 
 Telemetry: `bash_fail_hook_call` with `exit_code, command_head, hit_count,
-top_score, status` (hook side) and `hook_act` with `tool_name, excerpt_chars,
-matched_episodes, exit_code` (daemon side).
+top_score, status` (hook side) and dimensioned `hook_act` with `tool_name,
+excerpt_chars, matched_episodes, exit_code`, plus `client`, `hook_source` and
+the pseudonymous experiment session (daemon side).
 
 ### `bastra-recall-stop-hook` (#35, opt-in)
 
@@ -366,6 +376,7 @@ new MCP tool):
 | `BASTRA_REFLEX_MAX_PER_TURN`  | `2`              | Reflex injection budget per prompt (clamp 1–5)                |
 | `BASTRA_REFLEX_PROMOTION_MIN` | `3`              | Acted-on recalls (30d) before the curator proposes a reflex promotion |
 | `BASTRA_ADOPTION_PROMOTION_MIN` | `2`            | Acted-on recalls (30d) before the curator proposes adopting an intake memory (#217) |
+| `BASTRA_SCOPE_FILTER_LANES`   | `shadow`         | `shadow` \| `enforce` — Projekt-Scope-Filter für Prompt- und Todo-Lane. `shadow` misst nur (`dropped_scope_count`, `dropped_scopes`, `project_confidence` in der Telemetrie), `enforce` verwirft. Write-Lane und SessionStart filtern unabhängig davon seit #110 |
 | `BASTRA_SALIENCE_RANK`        | `shadow`         | `off` \| `shadow` \| `live` — salience ranking multiplier (#217, lift-gated) |
 | `BASTRA_SALIENCE_RANK_CAP`    | `0.25`           | Max salience score boost (`1 + salience × cap`)               |
 | `BASTRA_SAMPLE_ROT_DAYS`      | `28`             | Sample floor: days a memory may go unmeasured before it must re-enter the sample, whatever its salience (#160) |

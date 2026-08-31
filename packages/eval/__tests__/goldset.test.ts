@@ -11,6 +11,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  checkGoldCases,
+  checkGoldShape,
   checkLabels,
   checkStaged,
   coverage,
@@ -191,6 +193,51 @@ test("merging joins the two steps and the coverage names what is still missing",
   assert.equal(cov.by_kind.descriptive, 1);
   assert.equal(cov.by_kind.associative, 1);
   assert.equal(cov.non_application, 0, "C-036 cases are still missing, and the count says so");
+  assert.equal(cov.probes, 0, "nothing here is a probe");
+  assert.equal(cov.total_with_probes, 2, "and so the two totals agree");
+});
+
+test("a probe is counted beside the set, never inside it", () => {
+  const real = staged("wie war die regel für force pushes");
+  const noise = staged("zebra quantum marmalade orchestra");
+  const diag = staged("body-loss diagnostic interleave churn four connection state");
+  const cases = mergeCases(
+    [real, noise, diag],
+    [
+      label(real.id),
+      label(noise.id, {
+        no_answer: true, expected_ids: [], rationale: "none of the tokens occurs in the vault",
+        probe_group: "gibberish-probe",
+      }),
+      label(diag.id, { probe_group: "body-loss" }),
+    ],
+  );
+
+  const cov = coverage(cases as GoldCase[]);
+  assert.equal(cov.total, 1, "the main denominator is the one query somebody actually asked");
+  assert.equal(cov.total_with_probes, 3, "while the file still holds three cases");
+  assert.equal(cov.probes, 2);
+  assert.deepEqual(cov.by_probe_group, { "gibberish-probe": 1, "body-loss": 1 });
+  assert.equal(
+    cov.no_answer, 0,
+    "a nonsense string must not make the set's no-answer share look healthier than it is",
+  );
+  assert.equal(cov.by_kind.descriptive, 1, "and probes do not pad the kind counts either");
+});
+
+test("probe_group is optional, but a typo in it is not silently accepted", () => {
+  const s = staged("wie war die regel für force pushes");
+  assert.deepEqual(checkLabels([label(s.id)], [s]), [], "absent is the normal case");
+  assert.deepEqual(
+    checkLabels([label(s.id, { probe_group: "body-loss" })], [s]), [],
+    "a known group passes",
+  );
+  assert.match(
+    checkLabels([label(s.id, { probe_group: "bodyloss" as GoldLabel["probe_group"] })], [s])
+      .map((i) => i.problem).join(" | "),
+    /unknown probe_group/,
+    "a typo would silently move the case out of the main denominator",
+  );
 });
 
 test("the no-answer aid is derived from the engine's verdict and stays OUT of step 1", () => {
@@ -268,4 +315,195 @@ test("hook-composed strings are not formulations and never reach the set", () =>
     ["readabilityHandler subprocess pipe blocking read"],
     "a quarter of the set being one machine sentence with the nouns swapped is not coverage",
   );
+});
+
+/**
+ * A finished, well-formed gold case — the shape a gold FILE holds, not the two
+ * halves the authoring pipeline joins. Overrides are deliberately typed loosely
+ * so a test can put a wrong TYPE in a field, which is the whole point of #434.
+ */
+const goldCase = (q: string, over: Record<string, unknown> = {}): unknown => ({
+  ...staged(q),
+  expected_ids: ["m1"],
+  acceptable_alternatives: [],
+  expected_zone: "orbit",
+  no_answer: false,
+  scope: null,
+  time_view: null,
+  allowed_retrieval_depth: 3,
+  rationale: "m1 is the only memory stating this rule",
+  kind: "descriptive",
+  labelled_at: "2026-08-28",
+  labelled_by: "Daniel",
+  ...over,
+});
+
+test("a well-formed gold case passes both validation layers (#434)", () => {
+  assert.deepEqual(checkGoldCases([goldCase("wie war die regel für force pushes")]), []);
+});
+
+test("wrong field TYPES are caught before the semantic checks see them (#434)", () => {
+  // Codex' repro cases: each of these returned zero issues on ea3a910, because
+  // checkStaged/checkLabels answer "is this label admissible", not "is this the
+  // right type".
+  const cases: [string, Record<string, unknown>, RegExp][] = [
+    ["has_identifier", { has_identifier: "false" }, /has_identifier must be a boolean/],
+    ["scope", { scope: 42 }, /scope must be a string or null/],
+    ["labelled_at", { labelled_at: "yesterday" }, /labelled_at must be a YYYY-MM-DD date/],
+    ["no_answer", { no_answer: "nein" }, /no_answer must be a boolean/],
+    ["time_view", { time_view: 7 }, /time_view must be a string or null/],
+    ["allowed_retrieval_depth", { allowed_retrieval_depth: "3" }, /allowed_retrieval_depth must be a number/],
+    ["labelled_by", { labelled_by: "  " }, /labelled_by must be a non-empty string/],
+    ["probe_group", { probe_group: 1 }, /probe_group must be a string when present/],
+    ["non_application", { correct_answer_is_non_application: "ja" }, /correct_answer_is_non_application must be a boolean/],
+  ];
+  for (const [field, over, expected] of cases) {
+    const issues = checkGoldCases([goldCase("eine frage", over)]);
+    assert.ok(issues.length > 0, `${field} with a wrong type must be reported`);
+    assert.match(issues.map((i) => i.problem).join(" | "), expected);
+  }
+});
+
+test("an unknown language is reported rather than counted (#434)", () => {
+  // `lang` had no value check anywhere: the shape guard sees a string and waves
+  // it through, so the enum check belongs with the other §19 enums.
+  const issues = checkGoldCases([goldCase("eine frage", { lang: "englisch" })]);
+  assert.match(issues.map((i) => i.problem).join(" | "), /lang `englisch` is not one of de, en, mixed, neutral/);
+  for (const lang of ["de", "en", "mixed", "neutral"]) {
+    assert.deepEqual(checkGoldCases([goldCase("eine frage", { lang })]), [], `${lang} is admissible`);
+  }
+});
+
+test("a missing or non-array id list is a dataset error, never an exception (#434)", () => {
+  // These used to throw MID-validation: every later check reads .length or
+  // .filter on them, so the caller got a TypeError instead of a report.
+  for (const over of [
+    { expected_ids: undefined },
+    { expected_ids: "m1" },
+    { expected_ids: ["m1", 7] },
+    { acceptable_alternatives: undefined },
+    { acceptable_alternatives: {} },
+  ]) {
+    const field = "expected_ids" in over ? "expected_ids" : "acceptable_alternatives";
+    let issues: ReturnType<typeof checkGoldCases> = [];
+    assert.doesNotThrow(() => { issues = checkGoldCases([goldCase("eine frage", over)]); }, `${field} must not throw`);
+    assert.match(issues.map((i) => i.problem).join(" | "), new RegExp(`${field} must be an array of strings`));
+  }
+});
+
+test("a case that is not an object at all is reported by position (#434)", () => {
+  for (const raw of [null, 42, "a string", ["nested"]]) {
+    const issues = checkGoldShape([raw]);
+    assert.deepEqual(issues, [{ where: "case #0", problem: "is not a JSON object" }]);
+  }
+});
+
+test("a broken shape short-circuits the semantic checks (#434)", () => {
+  // Both layers would have something to say here; only the shape layer reports,
+  // because the semantic checks cannot be trusted on input they never expected.
+  const issues = checkGoldCases([goldCase("eine frage", { expected_ids: undefined, kind: "erzaehlend" })]);
+  assert.match(issues.map((i) => i.problem).join(" | "), /expected_ids must be an array of strings/);
+  assert.ok(
+    !issues.some((i) => /unknown kind/.test(i.problem)),
+    "the semantic layer does not run on a broken shape",
+  );
+});
+
+test("the three composed families the English regex missed are filtered too (#413)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "goldset-tmpl-413-"));
+  const file = join(dir, "events-2026-08-29.jsonl");
+  writeFileSync(
+    file,
+    [
+      // The language-neutral default of #231 — the SHIPPED composition since
+      // then, and the one the old three regexes let through completely.
+      JSON.stringify({ kind: "hook_recall", query: "html markup daemon input form button", ts: 1 }),
+      JSON.stringify({ kind: "hook_recall", query: "css styles daemon overflow scrollbar", ts: 2 }),
+      JSON.stringify({ kind: "hook_recall", query: "mjs javascript esm script sql query crypto", ts: 3 }),
+      // The English template with an empty topic list: no ` involving `, so the
+      // first regex never matched it.
+      JSON.stringify({ kind: "hook_recall", query: "editing command", ts: 4 }),
+      JSON.stringify({ kind: "hook_recall", query: "writing CODEOWNERS", ts: 5 }),
+      // The bash lane before 22.08.2026 padded a command label with filler.
+      JSON.stringify({ kind: "hook_recall", query: "git reset --hard safety workflow user-preference", ts: 6 }),
+      JSON.stringify({ kind: "hook_recall", query: "DROP TABLE safety workflow user-preference", ts: 7 }),
+      // And the queries a person actually typed survive — including a keyword
+      // chain, which is what most real telemetry queries look like. Separating
+      // those from a composed one is exactly why the filter reads the hook's
+      // vocabulary instead of the shape.
+      JSON.stringify({ kind: "recall", query: "readabilityHandler subprocess pipe blocking read", ts: 8 }),
+      JSON.stringify({ kind: "recall", query: "wie war die regel für force pushes", ts: 9 }),
+    ].join("\n") + "\n",
+    "utf8",
+  );
+
+  const r = harvestFromEvents([file], 100, 12);
+  assert.equal(r.skippedTemplate, 7, "all three composed families are recognised");
+  assert.deepEqual(
+    r.staged.map((s) => s.query),
+    ["readabilityHandler subprocess pipe blocking read", "wie war die regel für force pushes"],
+    "and nothing a person formulated is dropped with them",
+  );
+});
+
+test("a keyword chain outside the hook vocabulary is a real query (#413)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "goldset-tmpl-vocab-"));
+  const file = join(dir, "events-2026-08-29.jsonl");
+  writeFileSync(
+    file,
+    [
+      // Same SHAPE as the neutral composition — lowercase words joined by
+      // spaces — but the words are not the hook's. A shape rule would have
+      // eaten this; membership does not.
+      JSON.stringify({ kind: "recall", query: "chokidar glob watcher silently stops", ts: 1 }),
+      // One token from the vocabulary is not enough either.
+      JSON.stringify({ kind: "recall", query: "daemon restart nach dem deploy vergessen", ts: 2 }),
+    ].join("\n") + "\n",
+    "utf8",
+  );
+
+  const r = harvestFromEvents([file], 100, 12);
+  assert.equal(r.skippedTemplate, 0);
+  assert.equal(r.staged.length, 2, "the language-neutral cases the set needs must survive");
+});
+
+test("German prose without the old fifteen markers is German, not neutral (#423)", () => {
+  // The issue's own example: not one of der|die|das|und|nicht|wie|warum|beim|
+  // nach|für|mit|von|ist|wird|soll appears in it.
+  assert.equal(detectLang("Welcher Fehler hat mich einen ganzen Samstag gekostet?"), "de");
+  for (const q of [
+    "Was zählt als echter Beleg dafür, dass eine Erinnerung geholfen hat",
+    "Welche Semantik hat CURATOR_DEMOTION_MULTIPLIER in search.ts",
+    "Worauf achten wir, bevor wir zwei Auswertungen nebeneinanderstellen",
+  ]) {
+    assert.equal(detectLang(q), "de", q);
+  }
+  for (const q of [
+    "What makes cloud-mounted vaults switch to polling",
+    "What decides whether embeddings use Ollama, OpenAI, or nothing",
+  ]) {
+    assert.equal(detectLang(q), "en", q);
+  }
+});
+
+test("a borrowed identifier does not make a sentence bilingual (#423)", () => {
+  // Identifier fragments split like words and would vote like them: `by` out of
+  // `survival-by-id`, `no` out of `no-answer`. A second language needs weight.
+  assert.equal(detectLang("Welche Garantie prüft survival-by-id.test.ts beim Entpinnen"), "de");
+  assert.equal(detectLang("Warum wurde #230 als no-answer Problem eröffnet"), "de");
+  assert.equal(detectLang("Wie konnte das Anheben einer fremden Abhängigkeit still etwas lahmlegen"), "de");
+  // A genuinely bilingual query still reads as one.
+  assert.equal(detectLang("what is the diff für diese Datei"), "mixed");
+});
+
+test("keyword chains stay neutral — the bucket exists for them (#423)", () => {
+  // 94% of a harvest is this shape, and calling it a language would make the
+  // language balance meaningless.
+  for (const q of [
+    "memory format schema json yaml markdown frontmatter structure",
+    "readabilityHandler subprocess pipe blocking read",
+    "NSPanel resignKey Observer attachedSheet",
+  ]) {
+    assert.equal(detectLang(q), "neutral", q);
+  }
 });

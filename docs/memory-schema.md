@@ -167,6 +167,7 @@ These optional fields affect staleness and recall ranking:
 | `obsolete` | If true, the memory is filtered out of normal recall |
 | `replaces` | Memory id this one is the new version of — settable via `save_memory` |
 | `superseded_by` | Newer memory that supersedes this one — stamped by the daemon, never by a caller |
+| `siblings` | Memory ids this one deliberately stands beside — set via `save_memory`'s `sibling_of` |
 
 Staleness is computed lazily during recall. Stale and expired memories are downranked; obsolete memories are removed from normal search results.
 
@@ -220,6 +221,86 @@ it does not pre-empt the decision about what to do with it.
 
 Save refuses a `replaces` that points at a nonexistent memory, or at the memory
 being saved, before writing anything.
+
+### The claim gate (#360)
+
+Two memories that declare the same situation both answer that cue, and recall
+has no way to say which one is meant. Before the gate, that happened silently:
+the trigger-collision advisory (#300) warned at save time but decided nothing,
+the write went through, and afterwards nobody looked again.
+
+A save is now **held** when one of its `recall_when` phrases is fully contained
+in an existing memory's trigger — every content word of the incoming phrase
+already appears in theirs. Nothing is written, and the result carries
+`claim_gate.claimed` naming the memory that got there first, both triggers, and
+the save's `save_quality` advisory.
+
+The threshold is full containment and nothing softer. The 0.80–0.99 similarity
+band mixes genuine restatements with templated triggers whose only distinguishing
+word is a proper noun, and no number separates the two classes (#325) — so the
+boundary is a property of the measure rather than a value someone picked.
+
+Two memories declaring one situation are exactly one of three things, and the
+daemon adjudicates none of them:
+
+| Answer | Field | Meaning |
+|---|---|---|
+| Successor | `replaces: <id>` | One chain — the older wording is out of date |
+| Contradiction | `conflict_with: <id>` | Both current, incompatible; diverted into a conflict block (#205) |
+| Siblings | `sibling_of: [<id>]` | Several entities, permanently valid at once |
+
+A fourth way out is narrowing the save's own trigger until it no longer claims
+the other's situation.
+
+#### Does the text add anything?
+
+Naming the collision is not enough to act on. A second memory on one cue that
+says nothing new is a save to **drop**; one carrying a new fact is an **edit to
+the first**. Those are opposite actions, so the refusal carries what is needed
+to tell them apart, without a second roundtrip:
+
+| Field | What it holds |
+|---|---|
+| `existing_body` | The colliding memory's authored text (excerpt past 2000 chars) |
+| `delta.covered` | 0–1, share of the incoming body's content words already present |
+| `delta.new_terms` | The content words that would be added, in order |
+
+The auto-related block and any conflict block are stripped first — they are
+machine-appended, and their wikilinked ids would otherwise show up as
+vocabulary the author never wrote.
+
+There is **no threshold** on `covered`. Prose never reaches 1.0: one stray
+filler word the other memory happens not to use drags a verbatim restatement to
+0.83, so any cut would be a number picked to make a fixture pass. An empty
+`new_terms` is a fact rather than a threshold, and a list of two filler words
+tells the agent as much as a score would.
+
+`covered` is vocabulary only. It cannot see that *"we use Postgres"* and *"we
+use MySQL"* are opposites — that is the agent's reading, and the contradiction
+path is where it lands. What the measure provides is the cheap half: the words
+the text would add, so the agent only reads closely when there is something to
+read.
+
+**Cost.** Measured on a 982-memory vault: 0.000 ms when nothing collides (the
+comparison never runs), 0.184 ms when something does — against the 3.0 ms
+`save_quality` already spent before any of this existed, so 5.7% of the save
+path in the rare case and nothing in the common one. The curator sweep is
+23 ms, once per pass, in idle.
+
+`sibling_of` lands in the `siblings` frontmatter list, **merged** with whatever
+the file already carries — quittances accumulate, and an empty list clears
+nothing. It is recorded on one side only; the curator checks both directions, so
+a second stamp would buy nothing and cost a write into a file the save never
+touched.
+
+Answers are subtracted **per id**: a save that supersedes A and also collides
+with B has answered for A only, and is still held for B.
+
+`overwrite=true` is never gated — an overwrite names its target, which is itself
+an answer, and re-saving a memory must not be blocked by its own triggers.
+
+Pairs that predate the gate are found by the curator and listed in REPORT.md
+under *Claimed twice*; the human decides there and nothing is mutated.
 
 ### Valence And Reflex Fields (#217)
 
@@ -429,3 +510,49 @@ Files without a recognized `type` are treated as ordinary notes and skipped, not
 The save path rejects duplicate ids at the destination path unless `overwrite: true` is passed. It does not require `scope` to come from a registry.
 
 `overwrite: true` permits an update; it does not give a stale writer permission to replace a newer file. `saveMemory` compares the target again under an exclusive per-path commit claim. Concurrent or stale saves fail with `MemoryWriteConflictError` (`code: "BASTRA_WRITE_CONFLICT"`) and must retry from the current file. Callers that inspect provenance or ownership before saving pass the approved raw file as `expectedTarget` (`null` for a confirmed-absent target), extending the same comparison back to that inspection. See [Architecture: Write commit contract](./architecture.md#write-commit-contract).
+
+## Compatibility Promise (1.0)
+
+From 1.0 on, this schema is under a stated compatibility promise. The package version carries the contract.
+
+**Stable across all 1.x releases**
+
+- Markdown with YAML frontmatter stays the source of truth; files remain editable in Obsidian and by hand.
+- The ten required fields keep their name, type, and meaning: `id`, `title`, `type`, `summary`, `topic_path`, `tags`, `scope`, `recall_when`, `created`, `updated`.
+- The recognized `type` values stay valid and keep their meaning.
+- The documented optional fields keep their name and meaning. Their absence stays legal and keeps its documented default.
+- `id` stays the stable key; a memory keeps resolving under the id it was written with.
+- **No 1.x reader requires a format-version field in frontmatter.** A file that carries none is fully valid, today and in every later 1.x release. Whether such a field is added later is left open; it would be optional and never a load requirement.
+- Loader leniency is part of the promise, not an implementation detail: missing required fields are repaired from filename, body, and mtime; a frontmatter block that does not parse as a whole is rescued entry by entry; an invalid *optional* field is dropped rather than costing the node; unknown keys are ignored, not rejected; an over-long `summary` is clamped on load. Repairs are in-memory and are never written back — the file on disk stays as you wrote it. Tightening any of this is a breaking change, not a bug fix.
+- A file with no recognized `type` stays an ordinary note and is skipped.
+- A vault written by any 1.x release stays readable by every later 1.x release, with no migration step.
+
+**Unknown keys: read, and carried through a re-save**
+
+Unknown frontmatter keys are tolerated on **load** — they never cost a memory its place in the index. Since 29 August 2026 a `save_memory` with `overwrite: true` also carries them through: the save path still rebuilds frontmatter from its known field list, and appends every key it does not manage itself, unchanged. The fields it does manage keep their own rules and win any name collision.
+
+This is behaviour, not a guarantee. The schema promise still covers reading unknown keys, not preserving them across every write — other paths write into a vault, and a later one may not carry them. Hand-added data that must survive under all circumstances still belongs in the body.
+
+**Not covered by the promise**
+
+- Ranking, hit order, scores, staleness curves, and trigger weights. These change in minor and patch releases.
+- The shape of `recall` output. It is not part of the *schema* promise; it falls under the API contract, which follows the same SemVer rules — bound, but elsewhere.
+- Machine-written projections — `recall_when_expanded`, `recall_when_expanded_src`, `related_via`, `superseded_by`, `stale_status`, `injection_flags`, and the in-memory `damaged` annotation. The field names and their rough meaning are covered; their content, their computation, and when they get written are not.
+- Everything under `<vault>/.bastra/` — embeddings, audit log, trash, and any later projection. Internal storage, free to change.
+- The write-routing folders under `memories/`. Scanning is recursive, so these are a convention for new writes, not a load requirement. Routes may change; the readability of existing layouts may not.
+
+**Breaking (major bump)**
+
+Removing, renaming, or retyping a required field; removing a `type` or changing what it means; removing or reinterpreting a documented optional field; tightening the loader so that a file which used to load no longer loads; breaking id resolution; or requiring a migration without which an existing vault no longer loads.
+
+**Additive (minor bump)**
+
+New optional fields, always tolerant of absence; new `type` values; more loader leniency; new projections under `.bastra/`; changed ranking and trigger behavior; new write routes alongside the existing ones.
+
+**Security exception, narrowly drawn**
+
+The loader may be tightened without a major bump only when all four hold: it closes a specific, named vulnerability; the change is called out in the changelog as a security-driven tightening; an affected file produces a **visible error** rather than being dropped silently; and the rest of the vault stays as readable as the vulnerability allows. This is not a licence for parser cleanup — it covers the real case and nothing else.
+
+**Migration**
+
+No 1.x release rewrites existing files in bulk to produce its own format. Where a new field is needed, its absence is a defined default — as a missing `write_origin` reads as `agent-session` and a missing `recall_mode` as `deliberate` today.

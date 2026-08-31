@@ -246,6 +246,95 @@ export function triggerRestatesSummary(trigger: string, summary: string): boolea
 export const TRIGGER_CLAIMS_SITUATION_MIN = 1;
 
 /**
+ * #360b — how much of an incoming body is already said by an existing one.
+ *
+ * The claim gate answers "is this situation taken". It cannot answer the
+ * question that actually decides what to do next: does this text ADD anything?
+ * Two memories on one cue where the second says nothing new is a save to drop;
+ * one that carries a new fact is an edit to the first. Those are opposite
+ * actions and the gate used to leave both to guesswork.
+ *
+ * Containment rather than Jaccard, and deliberately asymmetric: the question is
+ * what fraction of the INCOMING words the existing memory already covers. The
+ * existing memory being longer must not count against it — a two-line addendum
+ * to a long note is still fully covered if every word of it is in there.
+ *
+ * There is deliberately NO threshold on `covered`. Prose never reaches 1.0 —
+ * one stray filler word ("er", "da") that the other memory happens not to use
+ * drags a verbatim restatement to 0.83 — so any cut here would be a number
+ * picked to make a fixture pass. The honest output is the raw pair: the share
+ * already covered, and the exact words that would be added. An EMPTY
+ * `new_terms` is a fact rather than a threshold, and a list of two filler words
+ * tells the agent as much as a score would.
+ *
+ * `covered` is a vocabulary measure and nothing more. It cannot see that "we
+ * use Postgres" and "we use MySQL" are opposites, and it is not asked to: that
+ * is the agent's job, and the contradiction path (#205) is where it lands. What
+ * this gives the agent is the cheap half — the words its text would add — so it
+ * only has to read carefully when there is something to read.
+ */
+export interface ContentDelta {
+  /** 0..1 — share of the incoming body's content words already present. */
+  covered: number;
+  /** The incoming content words that do NOT appear in the existing memory,
+   *  in first-appearance order. The concrete answer to "what would I add". */
+  new_terms: string[];
+}
+
+/** How many new terms to name before the list stops being read. */
+const NEW_TERMS_MAX = 25;
+
+/**
+ * Every hyphen-separated piece of a compound, alongside the whole.
+ *
+ * Measured against a real memory: a note writing "FSRS-6-Decay" made a later
+ * save's "FSRS-6" read as a brand-new term, because the tokenizer keeps
+ * hyphenated compounds whole. German writes half its vocabulary that way
+ * ("Staging-Deploy", "Kryptowaehrungs-Bezahlpfad"), so the failure is the
+ * common case, not an edge one, and it points the agent at an addition the
+ * memory already makes.
+ *
+ * Applied to the EXISTING side only, and only here. Widening the incoming side
+ * too would let "Deploy" count as covered because some unrelated note says
+ * "Deploy-Runbook" — the asymmetry is the point: a compound the author already
+ * wrote covers its parts, a part never covers the compound. `contentTokens`
+ * itself stays untouched, because the trigger checks (#300/#325) are calibrated
+ * on whole tokens and are not this question.
+ */
+function withHyphenParts(tokens: Set<string>): Set<string> {
+  const out = new Set(tokens);
+  for (const token of tokens) {
+    if (!token.includes("-")) continue;
+    const parts = token.split("-");
+    // Every contiguous run, not just the atoms: "FSRS-6-Decay-Modell" has to
+    // cover "FSRS-6", which is a two-part prefix. Compounds grow at both ends
+    // ("Staging-Deploy" → "Staging-Deploy-Ablauf", but also "Deploy-Ablauf"),
+    // so prefixes alone would miss half the cases. Real compounds run two to
+    // four parts, which is at most ten runs — the cost stays under the
+    // tokenisation that produced them.
+    for (let i = 0; i < parts.length; i++) {
+      for (let j = i + 1; j <= parts.length; j++) {
+        const run = parts.slice(i, j).join("-");
+        if (run.length >= MIN_TOKEN_LENGTH) out.add(run);
+      }
+    }
+  }
+  return out;
+}
+
+export function contentDelta(incoming: string, existing: string): ContentDelta {
+  const mine = contentTokens(incoming);
+  const theirs = withHyphenParts(contentTokens(existing));
+  if (mine.size === 0) return { covered: 1, new_terms: [] };
+  const missing: string[] = [];
+  for (const token of mine) if (!theirs.has(token)) missing.push(token);
+  return {
+    covered: Math.round(((mine.size - missing.length) / mine.size) * 1000) / 1000,
+    new_terms: missing.slice(0, NEW_TERMS_MAX),
+  };
+}
+
+/**
  * Above this, two memories are close enough that the agent should look before
  * creating a third one.
  *

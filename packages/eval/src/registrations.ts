@@ -66,6 +66,10 @@ export function loadCueRegistration(): Record<string, unknown> {
   return load<Record<string, unknown>>("cue-experiment.json");
 }
 
+export function loadPresentationRegistration(): Record<string, unknown> {
+  return load<Record<string, unknown>>("presentation-experiment.json");
+}
+
 /** Citation fields §29.1 demands of every quoted foreign claim. */
 const REQUIRED_FIELDS: Array<keyof ForeignFigure> = [
   "id", "system", "claim", "evidence_class", "source", "version", "locus", "retrieved",
@@ -202,6 +206,21 @@ export function checkCueRegistration(
   }
 
   if (stage === "numbers_registered") {
+    // Numbers alone do not make a run possible. A registration can be fully
+    // filled in and still describe an experiment neither condition exists for —
+    // which is exactly the state design A was in when the descriptive family
+    // turned out to move nothing. Unsatisfied preconditions block the stage, so
+    // the gap is refused here rather than discovered at the start of a run.
+    const pre = at("preconditions") as { items?: { id?: string; satisfied?: boolean }[] } | undefined;
+    for (const item of pre?.items ?? []) {
+      if (item.satisfied !== true) {
+        issues.push({
+          where: `precondition ${String(item.id)}`,
+          problem: "unsatisfied — the run is not buildable yet, so the numbers cannot clear it (§18.3)",
+        });
+      }
+    }
+
     const power = at("power_assumption") as Record<string, Record<string, unknown>> | undefined;
     for (const arm of ["main_effects", "interaction"] as const) {
       if (power?.[arm]?.min_n == null) {
@@ -213,6 +232,21 @@ export function checkCueRegistration(
     }
     if (at("evaluation_rule") == null) {
       issues.push({ where: "evaluation_rule", problem: "fixed before the run, so the analysis is not chosen after seeing the data (§18.3)" });
+    }
+
+    // §18.1: "In beiden Fällen werden Bedingungs- beziehungsweise Zellstruktur,
+    // Mindest-N je Bedingung oder Zelle und Auswertungsregel vorab festgelegt."
+    // The power assumption above governs the 2x2 cue-AXIS experiment; the
+    // generation-path experiment carries its own N, and without it the
+    // registration would reach `numbers_registered` while the one number the
+    // chosen design actually runs on is still open.
+    const chosenNow = (at("admissible_designs") as Record<string, Record<string, unknown>> | undefined)?.[String(design)];
+    const perUnit = design === "A" ? "min_n_per_condition" : "min_n_per_cell";
+    if (chosenNow && typeof chosenNow[perUnit] !== "number") {
+      issues.push({
+        where: `design ${String(design)}`,
+        problem: `${perUnit} is required before the run — the power assumption covers the cue-axis experiment, not this design (§18.1)`,
+      });
     }
 
     // §18.3: "Die Aufteilung beziehungsweise das Verschachtelungsschema ist
@@ -232,6 +266,127 @@ export function checkCueRegistration(
       }
       if (guard.split_seed == null) {
         issues.push({ where: "contamination_guard", problem: "the split needs a seed, or it is not the same split on the next run" });
+      }
+      // A seed alone only makes an UNBALANCED split reproducible. The M0
+      // baseline measured Recall@3 per gold file between 31.3% and 84.9% — a
+      // standard deviation of 21.6pp, driven by origin. A plain random split
+      // can therefore move the comparison baseline by more than the effect the
+      // experiment looks for, and reproducibly so.
+      if (!Array.isArray(guard.stratify_by) || guard.stratify_by.length === 0) {
+        issues.push({
+          where: "contamination_guard",
+          problem: "the split must name what it stratifies by — a seed makes an unbalanced split reproducible, not balanced",
+        });
+      }
+    }
+  }
+  return issues;
+}
+
+/**
+ * Das §17.4-Präsentationsexperiment (#267).
+ *
+ * Dieselben Stufen wie bei der Cue-Registrierung, und aus demselben Grund: Eine
+ * Registrierung darf keine Stufe behaupten, deren Voraussetzungen fehlen. Hier
+ * ist das keine Vorsichtsmaßnahme, sondern der Normalfall — die Fallzahl ist
+ * auf der heutigen Population nicht erreichbar, und genau das soll die
+ * Registrierung festhalten statt es zu verschweigen.
+ *
+ * Was geprüft wird, ist deshalb weniger „sind die Zahlen plausibel" als „steht
+ * da, warum es keine gibt": Ein `min_n_per_arm: null` ohne gemessenen
+ * `underpowered_fallback` wäre eine Lücke, die später als Versäumnis gelesen
+ * würde statt als Befund.
+ */
+export function checkPresentationRegistration(
+  requiredStage: CueStage = "structure_registered",
+  reg: Record<string, unknown> = loadPresentationRegistration(),
+): RegistrationIssue[] {
+  const issues: RegistrationIssue[] = [];
+  const at = (k: string): unknown => reg[k];
+  const stage = at("status") as CueStage;
+  const order: CueStage[] = ["structure_pending_decision", "structure_registered", "numbers_registered"];
+
+  if (!order.includes(stage)) {
+    issues.push({ where: "status", problem: `unknown status \`${String(stage)}\`` });
+    return issues;
+  }
+  if (order.indexOf(stage) < order.indexOf(requiredStage)) {
+    issues.push({
+      where: "status",
+      problem: `registration is at \`${stage}\`, but \`${requiredStage}\` is required — the design must be registered before the run (§18.1)`,
+    });
+  }
+
+  if (order.indexOf(stage) >= order.indexOf("structure_registered")) {
+    // §17.4: Die Zuweisung ist deterministisch je pseudonymer Session, und die
+    // FUNKTION gehört versioniert in die Registrierung. Ohne sie beschreibt der
+    // Report ein Experiment, dessen Zuordnung niemand nachvollziehen kann.
+    const unit = at("unit_of_randomisation") as Record<string, unknown> | undefined;
+    if (unit?.unit !== "pseudonymous_session") {
+      issues.push({
+        where: "unit_of_randomisation",
+        problem: "§17.4 randomises per pseudonymous session — a session stays in its arm for all its events",
+      });
+    }
+    const fn = unit?.assignment_function as Record<string, unknown> | undefined;
+    if (!fn?.name || !fn?.source || !fn?.registered_at_commit) {
+      issues.push({
+        where: "assignment_function",
+        problem: "name, source and commit are part of the registration (§17.4: versioned together with the config)",
+      });
+    }
+
+    // Beide Armpaare müssen benannt sein — auch die blockierten. Ein Arm, der
+    // in der Registrierung fehlt, ist später ein nachträglich hinzugefügter,
+    // und das ist genau die Konfundierung, die §18.3 verbietet.
+    const arms = at("arms") as Record<string, Record<string, unknown>> | undefined;
+    for (const key of ["A_wording", "B_gate"]) {
+      const arm = arms?.[key];
+      if (!arm) {
+        issues.push({ where: `arms.${key}`, problem: "both arm pairs are registered before the run, blocked ones included" });
+        continue;
+      }
+      if (!Array.isArray(arm.conditions) || arm.conditions.length !== 2) {
+        issues.push({ where: `arms.${key}`, problem: "each arm pair has exactly two conditions" });
+      }
+      if (typeof arm.held_constant !== "string") {
+        issues.push({ where: `arms.${key}`, problem: "what stays constant is what makes the comparison an experiment (§18.3)" });
+      }
+    }
+  }
+
+  // Kein Mindest-N? Dann muss die MESSUNG dastehen, die das begründet — sonst
+  // ist die Lücke später von einem Versäumnis nicht zu unterscheiden.
+  if (at("min_n_per_arm") == null) {
+    const fb = at("underpowered_fallback") as Record<string, unknown> | undefined;
+    const measured = fb?.measured as Record<string, unknown> | undefined;
+    const conclusion = fb?.conclusion as Record<string, unknown> | undefined;
+    if (!fb || !measured || !conclusion) {
+      issues.push({
+        where: "min_n_per_arm",
+        problem: "no min-N is registrable only WITH the measurement that shows why — otherwise the gap reads as an omission (§18.1)",
+      });
+    } else {
+      if (!fb.measured_from) {
+        issues.push({ where: "underpowered_fallback", problem: "the measurement names its source window and vault, or it cannot be re-checked" });
+      }
+      if (typeof conclusion.reporting_rule !== "string") {
+        issues.push({
+          where: "underpowered_fallback",
+          problem: "§18.1: an arm below its min-N is reported as NOT EVALUABLE, never as a null result — the rule belongs in the registration",
+        });
+      }
+    }
+  }
+
+  if (stage === "numbers_registered") {
+    const pre = at("preconditions") as { items?: { id?: string; satisfied?: boolean }[] } | undefined;
+    for (const item of pre?.items ?? []) {
+      if (item.satisfied !== true) {
+        issues.push({
+          where: `precondition ${String(item.id)}`,
+          problem: "unsatisfied — the arm is not runnable yet, so the numbers cannot clear it (§18.1)",
+        });
       }
     }
   }

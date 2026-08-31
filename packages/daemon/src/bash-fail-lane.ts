@@ -1,5 +1,5 @@
 /**
- * Bash post-run lane, daemon-side (#343 pattern, second bash lane).
+ * Bash post-run lane, daemon-side (#343/#15 pattern, shared by Claude and Codex).
  *
  * The pipeline from `bash-fail-hook.ts`: fire the #144 act-signal for EVERY
  * completed Bash command, and on real failures (non-zero exit, not Ctrl-C)
@@ -25,6 +25,9 @@ import { envFirst, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { reportHinted } from "./hook-hinted.js";
 import { postLane } from "./thin-client.js";
+import { isUnfused, type HookRecallHit, type HookRecallResponse } from "./hook-recall-response.js";
+import { unfusedHeadline } from "./band-wording.js";
+import { hookClient } from "./hook-surface.js";
 import {
   decideBackoff,
   loadSessionState,
@@ -45,30 +48,26 @@ const THROTTLE_DIR = join(tmpdir(), "bastra-hook");
 const BACKOFF_SOURCE = "bash-fail";
 
 export interface BashFailPayload {
+  bastra_client?: "claude-code" | "codex";
   session_id?: string;
   cwd?: string;
   hook_event_name?: string;
   tool_name?: string;
   tool_input?: Record<string, unknown>;
-  tool_result?: Record<string, unknown>;
-  tool_response?: Record<string, unknown>;
+  tool_result?: unknown;
+  tool_response?: unknown;
+  /** Claude Code PostToolUseFailure carries failure details at top level. */
+  error?: string;
+  is_interrupt?: boolean;
+  duration_ms?: number;
 }
 
-interface RecallHit {
-  id: string;
-  title: string;
-  type: string;
-  scope: string;
-  summary: string;
-  score: number;
-}
-
-interface RecallResponse {
-  hits: RecallHit[];
-  vault_size: number;
-  latency_ms: number;
-  recall_id: string;
-}
+// P0: EIN gemeinsamer Response-Typ für alle Lanes. Die lokale Kopie hier
+// kannte `score_kind`/`unfused` nicht — das Feld fiel beim Parsen still weg,
+// und diese Lane bandete danach rohe BM25-Werte mit einem Cut, den nur die
+// fusionierte Skala trägt.
+type RecallHit = HookRecallHit;
+type RecallResponse = HookRecallResponse;
 
 /**
  * Run the post-Bash pipeline; return the exact stdout document for the thin
@@ -76,13 +75,20 @@ interface RecallResponse {
  */
 export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: string): Promise<string> {
   const startedAt = Date.now();
+  const client = hookClient(payload);
 
-  if (payload.hook_event_name !== "PostToolUse") return "{}";
+  const hookEventName = payload.hook_event_name;
+  if (hookEventName !== "PostToolUse" && hookEventName !== "PostToolUseFailure") return "{}";
   if (payload.tool_name !== "Bash") return "{}";
+  const failureEvent = hookEventName === "PostToolUseFailure";
 
   // Schema is in flux across Claude-Code versions: `tool_result` and
-  // `tool_response` have both been observed. Accept either.
-  const result = (payload.tool_result ?? payload.tool_response ?? {}) as Record<string, unknown>;
+  // `tool_response` have both been observed. PostToolUseFailure instead puts
+  // `error` and `is_interrupt` at the top level (official Claude Code schema).
+  const result = normalizeToolResponse(payload.tool_result ?? payload.tool_response);
+  if (failureEvent && typeof payload.error === "string" && !("error" in result)) {
+    result.error = payload.error;
+  }
   const exitCode = readExitCode(result);
   // Aktuelle Claude-Code-Payloads tragen z.T. GAR KEIN Exit-Code-Feld mehr —
   // readExitCode() liefert dann null. Das act-Signal muss trotzdem feuern
@@ -90,6 +96,7 @@ export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: str
   // echten non-zero Code. Ein frühes `exitCode === null → return` war ein
   // Kill-Switch: 3-Tage-Audit 2026-07-10 fand 15 von ~7200 erwarteten
   // act-Signalen (0,2 %).
+  if (payload.is_interrupt === true) return "{}"; // PostToolUseFailure Ctrl-C
   if (exitCode === 130) return "{}"; // SIGINT — user Ctrl-C
   if (result.interrupted === true) return "{}"; // Schema-Äquivalent von 130
 
@@ -112,12 +119,14 @@ export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: str
       tool_input_excerpt: command.slice(0, 1000),
       exit_code: exitCode,
       session_id: typeof payload.session_id === "string" ? payload.session_id : null,
+      client,
+      hook_source: "bash-fail",
     },
     Math.min(120, Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt))),
   );
 
   // Success path ends here — the act-signal was the only job.
-  if (exitCode === null || exitCode === 0) return "{}";
+  if (!failureEvent && (exitCode === null || exitCode === 0)) return "{}";
 
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : "default";
   if (await isThrottled(sessionId)) return "{}";
@@ -137,7 +146,20 @@ export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: str
       await postLane(
         selfBaseUrl,
         "/hook/recall",
-        { query, topics: ["bash", "failure"], project: null, tool_name: "Bash", k: 3 },
+        {
+          query,
+          topics: ["bash", "failure"],
+          project: null,
+          tool_name: "Bash",
+          k: 3,
+          // #445: die Session-id fehlte als einzige — ohne sie stempelt der
+          // Sink seine Boot-UUID und nichts lässt sich nach Session gruppieren.
+          session_id: typeof payload.session_id === "string" ? payload.session_id : null,
+          // #263: die Lane weist sich aus, sonst ist ihr Ereignis von dem des
+          // MCP-Forwarders nicht zu unterscheiden — beide gehen hier durch.
+          client,
+          hook_source: "bash-fail",
+        },
         remainingMs,
       ),
     ) as RecallResponse;
@@ -153,10 +175,15 @@ export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: str
     }
   }
 
+  // P0: Ohne Fusion sind die Scores rohe BM25-Werte auf offener Skala — der
+  // Floor 50 markiert dort keinen Punkt (gemessen: sechsstellige Top-Scores),
+  // also wird nicht geflooert, sondern die vom Daemon gelieferte Rangfolge
+  // (k=3) unverändert übernommen.
+  const unfused = isUnfused(resp);
   const hits: RecallHit[] = [];
   if (resp && Array.isArray(resp.hits)) {
     for (const h of resp.hits) {
-      if (h.score >= SCORE_FLOOR) hits.push(h);
+      if (unfused || h.score >= SCORE_FLOOR) hits.push(h);
     }
   }
   if (resp && hits.length === 0) status = "no-hits";
@@ -172,11 +199,15 @@ export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: str
     const state = await loadSessionState(sessionId);
     const entry = state.sources?.[BACKOFF_SOURCE];
     const consumed = await wasEmitConsumed(entry);
-    const hasRequired = hits.some((h) => h.score >= MUST_LOAD_SCORE);
+    // P0: Die Backoff-Umgehung ist eine Band-Aussage. Auf der unfused Skala
+    // reißt praktisch jeder Hit die 100 — die Umgehung feuerte also immer und
+    // der Backoff war faktisch abgeschaltet. Fail-closed: kein Band, keine
+    // Umgehung.
+    const hasRequired = !unfused && hits.some((h) => h.score >= MUST_LOAD_SCORE);
     const decision = decideBackoff(entry, consumed, hasRequired);
     backoffStreak = decision.streak;
     suppressed = decision.suppress;
-    const block = formatHintBlock(hits);
+    const block = formatHintBlock(hits, unfused, client);
     if (suppressed) {
       // Suppressed emits {} like the no-hits path; the throttle stays
       // unmarked (nothing was emitted), the saved tokens go to telemetry.
@@ -193,7 +224,7 @@ export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: str
       await saveSessionState(sessionId, state);
       stdout = JSON.stringify({
         hookSpecificOutput: {
-          hookEventName: "PostToolUse",
+          hookEventName,
           additionalContext: block,
         },
       });
@@ -248,7 +279,33 @@ export function readExitCode(result: Record<string, unknown>): number | null {
       if (Number.isFinite(n)) return n;
     }
   }
+  const text = ["stderr", "error", "output", "stdout", "content"]
+    .map((key) => result[key])
+    .filter((value): value is string => typeof value === "string")
+    .join("\n");
+  const match = /(?:exit(?:ed)?(?:\s+with)?(?:\s+(?:non-zero\s+)?status)?(?:\s+code)?|status\s+code|exit_code)\D{0,8}(-?\d+)/i.exec(text);
+  if (match) {
+    const parsed = Number.parseInt(match[1] ?? "", 10);
+    if (Number.isFinite(parsed)) return parsed;
+  }
   return null;
+}
+
+/** Codex permits any JSON value in tool_response, including plain text. */
+export function normalizeToolResponse(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Plain output is still useful for exit-code and error-context extraction.
+  }
+  return { output: value };
 }
 
 export function extractErrorContext(result: Record<string, unknown>): string {
@@ -294,19 +351,25 @@ export function extractErrorKeywords(ctx: string): string {
   return out.join(" ");
 }
 
-function formatHintLine(h: RecallHit): string {
+function formatHintLine(h: RecallHit, hideScore = false): string {
   const summary = h.summary.length > 220 ? h.summary.slice(0, 217) + "…" : h.summary;
-  return `- ${h.id} (${h.type}, score ${Math.round(h.score)}): ${summary}`;
+  // P0: die unfused Zahl ist weder mit den Bändern noch zwischen zwei
+  // Aufrufen vergleichbar — gleiche Wahl wie in prompt-lane.ts.
+  return hideScore
+    ? `- ${h.id} (${h.type}): ${summary}`
+    : `- ${h.id} (${h.type}, score ${Math.round(h.score)}): ${summary}`;
 }
 
-export function formatHintBlock(hits: RecallHit[]): string {
-  const head = `<recall-hints surface="claude-code" trigger="bash-fail">`;
+export function formatHintBlock(hits: RecallHit[], unfused = false, surface = "claude-code"): string {
+  const head = `<recall-hints surface="${surface}" trigger="bash-fail">`;
   const tail = `</recall-hints>`;
   const lines: string[] = [];
   lines.push(
     `The Bash command above failed. These memories describe similar failure modes — check before re-running or trying alternatives.`,
   );
-  for (const h of hits) lines.push(formatHintLine(h));
+  // P0: ohne Fusion sagen, woran das Modell die Treffer stattdessen misst.
+  if (unfused) lines.push(unfusedHeadline("this failure"));
+  for (const h of hits) lines.push(formatHintLine(h, unfused));
   return [head, HINT_FRAME_NOTE, stripFenceMarkers(lines.join("\n")), tail].join("\n");
 }
 
@@ -343,7 +406,14 @@ export async function markThrottle(sessionId: string): Promise<void> {
  *  outcome; the act-signal must never break or delay the lane's main job. */
 async function postAct(
   baseUrl: string,
-  body: { tool_name: string; tool_input_excerpt: string; exit_code: number | null; session_id: string | null },
+  body: {
+    tool_name: string;
+    tool_input_excerpt: string;
+    exit_code: number | null;
+    session_id: string | null;
+    client: ReturnType<typeof hookClient>;
+    hook_source: "bash-fail";
+  },
   timeoutMs: number,
 ): Promise<void> {
   try {
@@ -358,7 +428,7 @@ interface BashFailHookTelemetry {
    *  session_id, so per-session aggregation (context tax, #354) is possible.
    *  A synthetic UUID is the fallback only when the payload carried none. */
   session_id?: string | null;
-  exit_code: number;
+  exit_code: number | null;
   command_head: string;
   daemon_url: string;
   daemon_reachable: boolean;

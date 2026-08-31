@@ -1,3 +1,4 @@
+/** Shared installer paths, including Codex/ChatGPT desktop (#15). */
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
@@ -51,6 +52,8 @@ export const SKILL_SOURCE_PATH = firstExisting([
 export const SKILL_SOURCE_DIR = dirname(SKILL_SOURCE_PATH);
 export const SKILL_TARGET_DIR = resolve(homedir(), ".claude/skills/bastra-recall");
 export const SKILL_TARGET_FILE = resolve(SKILL_TARGET_DIR, "SKILL.md");
+export const CODEX_SKILL_TARGET_DIR = resolve(homedir(), ".agents/skills/bastra-recall");
+export const CODEX_SKILL_TARGET_FILE = resolve(CODEX_SKILL_TARGET_DIR, "SKILL.md");
 
 /** Cursor's convention layer. Unlike the Claude skill this has no global home:
  *  Cursor's User Rules live in its settings UI, not on disk, so project rules
@@ -81,3 +84,6 @@ export const CLAUDE_DESKTOP_CONFIG = resolve(CLAUDE_DESKTOP_DIR, "claude_desktop
 export const CLAUDE_CODE_CONFIG = resolve(homedir(), ".claude.json");
 export const CLAUDE_CODE_SETTINGS = resolve(homedir(), ".claude/settings.json");
 export const CURSOR_CONFIG = resolve(homedir(), ".cursor/mcp.json");
+/** Codex CLI, IDE and ChatGPT desktop share this host-level configuration. */
+export const CODEX_CONFIG = resolve(homedir(), ".codex/config.toml");
+export const CODEX_HOOKS = resolve(homedir(), ".codex/hooks.json");

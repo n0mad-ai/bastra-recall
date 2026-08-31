@@ -32,6 +32,7 @@ import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { appendAct } from "./floor-acts.js";
+import { scopeEquals } from "@bastra-recall/core/scope";
 
 export interface FloorEntry {
   memory_id: string;
@@ -317,9 +318,15 @@ export async function affirm(
  * Lists floors. With a `scope`, returns the entries for that scope PLUS the
  * unscoped (global) ones — mirrors how global memory scopes apply in every
  * project context. Without a scope, returns the full registry.
+ *
+ * #360-Folgefund: `scope` here is usually `detectProject(cwd)`'s raw result
+ * ("CarNexus"), while a floor's `e.scope` is written in vault-convention
+ * lowercase ("carnexus") — an unfaded `===` silently dropped every project-
+ * bound floor for such a project. Compared via `scopeEquals` now, same fix
+ * as the recall-side scope filters in `@bastra-recall/core/search.ts`.
  */
 export async function listFloors(scope?: string, path: string = floorsFilePath()): Promise<FloorEntry[]> {
   const entries = await readRegistry(path);
   if (!scope) return entries;
-  return entries.filter((e) => !e.scope || e.scope === scope);
+  return entries.filter((e) => !e.scope || scopeEquals(e.scope, scope));
 }

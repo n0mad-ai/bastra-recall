@@ -1,0 +1,169 @@
+{
+  "$comment": "The numeric M1 tolerances (§18.1, §18.2, §26.1). §18.1 puts them AFTER the M0 baseline run — an effect size or a tolerance picked before the baseline shows the spread of the metric is a guess with a number attached. §26.1 makes them a V1.0 release condition: 'die numerischen M1-Toleranzen nach dem M0-Baseline-Run versioniert festgeschrieben sind'. Changing a value here means bumping registration_version and saying which version a report belongs to.",
+  "schema_version": 1,
+  "registration_version": 4,
+  "registered_at": "2026-08-28",
+  "$comment_version_2": "v2 (2026-08-28): false_abstention moves from not-registrable to a registered tolerance on weak_result, after faa7050 moved that predicate into core and a second run measured it. relevant_loss unchanged at that point.",
+  "$comment_version_3": "v3 (2026-08-28): relevant_loss raised 0.23 -> 0.24. Two confirming runs pushed the upper bound of the measured interval to 23.10%, just above the old tolerance, so a clean re-run could have breached a gate nothing had regressed against. See relevant_loss.$comment_v3_raise. false_abstention unchanged.",
+  "$comment_version_4": "v4 (2026-08-29): NEITHER TOLERANCE CHANGED — what changed is the DENOMINATOR of relevant_loss, and that is why this is a version bump and not an amendment. Until v3 the gate was measured against 'the answerable cases of the gold set', a set that moves whenever authoring adds a case family. Two runs made the consequence visible: on the 595-case set the aggregate went to 37.87% and on the 679-case set to 40.75%, both far past 0.24, while nothing in retrieval had regressed. The descriptive slice was no better as a denominator — it held at ~17.5% over four runs only because no descriptive cases were added in that window, and jumped to 25.28% the moment the 82 C-036 cases entered it. What is stable is not an axis but a FIXED SET OF CASES, so the tolerance is now measured against a frozen, named, independently checkable reference set (packages/eval/registrations/m1-reference-set.json). Decided by Daniel on 2026-08-29 after the 679-case run. false_abstention needed no such change and is confirmed unchanged.",
+  "registered_by": "Daniel Nevoigt",
+
+  "derived_from": {
+    "run_artifact": "~/.bastra/eval-runs/2026-08-28-5653e6987eac",
+    "arm": "Hybrid (BM25 + Vector RRF) · ollama-embeddinggemma",
+    "git": "53b42a344ff65f7fe0cdb0c8e00d765059d7ee3d",
+    "denominator": "the 432-case main denominator of the §19 gold set — 372 answerable, 60 no-answer; the 16 probe cases are excluded (probe_group)",
+    "$comment": "One run, one arm. A tolerance derived here does not transfer to a different vault, a different embedding model or the BM25-only arm without being re-derived."
+  },
+
+  "relevant_loss": {
+    "tolerance": 0.24,
+    "comparator": "<=",
+    "unit": "share of reference-set cases whose expected_ids never appear in the production pool (k=10)",
+    "denominator": "the frozen reference set `m1-descriptive-365`, nothing else",
+    "reference_set": {
+      "id": "m1-descriptive-365",
+      "file": "packages/eval/registrations/m1-reference-set.json",
+      "case_count": 365,
+      "case_ids_sha256": "0c21045c4acd98dd641c1d5ec0e394255a5f2417efd988cc0391bb7f69082a74",
+      "frozen_at": "2026-08-29",
+      "definition": "the descriptive, answerable, non-probe gold cases of the M0 baseline run 2026-08-28-5653e6987eac (dataset 9628ef51e341a10e...)",
+      "$comment": "The gate needs a denominator that does not move when authoring works. This one is a named list of 365 case ids, stored in full so it can be checked without the private run artifact, and hashed so a silent edit is detectable. Measuring the tolerance means: take these 365 ids, look them up in the run's rows, count the ones with rank_expected == 0. A run that no longer contains all 365 does not produce a smaller sample of the gate — it produces no gate reading at all, and must say so.",
+      "growth_rule": "BINDING. New case families — C-036, further descriptive batches, the associative axis — are reported BESIDE this set and never inside it. They enter the reference set only through a deliberate registration that names the added ids, re-derives the tolerance on the enlarged set and bumps registration_version. Nothing grows into the gate by being authored; that is the entire point of freezing it.",
+      "$comment_why_not_the_axis": "v4 considered binding the gate to `kind == descriptive` instead and rejected it on measurement. Over the four runs to 2026-08-28 that slice sat at 17.26/17.53/17.53/17.81% and looked like a stable denominator; it was stable only because no descriptive cases were added in that window. On the 679-case run the same slice reads 25.28% (113/447), because the 82 newly added descriptive cases lose at 57.32% (47/82). An axis is a label, not a population."
+    },
+    "measured": { "value": 0.1726, "count": "63/365", "wilson_95_ci": [0.1373, 0.2147] },
+    "$comment_measured_v4": "Restated on the reference set. The 0.1855 (69/372) of v1-v3 was the same run measured on the then-current answerable denominator, which included seven associative cases; on the frozen 365 the same run reads 63/365 = 17.26%. Nothing was re-measured — the run artifact is unchanged, only the denominator is now named.",
+    "confirmed_by": [
+      {
+        "run_artifact": "~/.bastra/eval-runs/2026-08-28-d907fa554780",
+        "git": "320e19b-dirty",
+        "value": 0.1753,
+        "count": "64/365",
+        "wilson_95_ci": [0.1398, 0.2177],
+        "vault_size": 1033
+      },
+      {
+        "run_artifact": "~/.bastra/eval-runs/2026-08-28-1157aadc8342",
+        "git": "faa7050-dirty",
+        "value": 0.1753,
+        "count": "64/365",
+        "wilson_95_ci": [0.1398, 0.2177],
+        "vault_size": 1033
+      },
+      {
+        "run_artifact": "~/.bastra/eval-runs/2026-08-28-61c940b62a8c",
+        "git": "885aa9b8e8c90ab64e1a7a4bf5a9aa216b0241a7",
+        "dataset_hash": "8dc20b0154083f38d7db637225e3c66f2610e65502d0d7d2bba1ce39ef123732",
+        "value": 0.1781,
+        "count": "65/365",
+        "wilson_95_ci": [0.1422, 0.2206],
+        "vault_size": 1036,
+        "$comment": "First run on the 595-case gold set. Its own aggregate over all 507 answerable cases was 37.87% — the reading that made the moving denominator visible."
+      },
+      {
+        "run_artifact": "~/.bastra/eval-runs/2026-08-29-c3d175bfa18f",
+        "git": "76ea7fde844e96bca8db962869c33db3855d85b4-dirty",
+        "dataset_hash": "06e637eb7c5b3910169fc18aaad88f8c4510de32ba06fe30ec074db7be2f4e7f",
+        "value": 0.1808,
+        "count": "66/365",
+        "wilson_95_ci": [0.1447, 0.2236],
+        "vault_size": 1040,
+        "$comment": "679-case gold set, after the C-036 families and the associative relabel. Aggregate 40.75%, descriptive slice 25.28%, reference set 18.08%. The `-dirty` was an uncommitted README.md from parallel work; the eval code of this run is committed (f9dbf8b, HEAD 76ea7fd)."
+      }
+    ],
+    "$comment_derivation": "Measured 17.26% on the baseline (63/365, vault 1028) and confirmed four times since, on vaults from 1028 to 1040 memories and gold sets from 448 to 679 cases: 17.53%, 17.53%, 17.81%, 18.08%. The tolerance is set above the HIGHEST upper bound across all five runs, 22.36%, because a gate that a clean re-run can breach is a gate nobody trusts. 0.24 clears it by 1.64pp.",
+    "$comment_derivation_history": "v1-v3 quoted this derivation on the 372-case answerable denominator (18.55%, then 18.82% twice, upper bound 23.10%, cleared by 0.90pp). The figures above are the SAME runs on the frozen reference set; the tolerance was not re-derived, and 0.24 clears both readings. Kept so the v3 reasoning stays legible next to the v4 one.",
+    "$comment_v3_raise": "v3 (2026-08-28) raised the tolerance from 0.23 to 0.24. 0.23 was derived from the baseline alone, where the upper bound was 22.81%. The two confirming runs moved that bound to 23.10% — 0.10pp ABOVE the old tolerance — so a re-run that changed nothing could have failed the gate. Both point estimates (18.55%, 18.82%) stay far below either figure, so the gate's meaning is unchanged; only its noise margin was restored.",
+    "$comment_stricter": "0.23 is now INSIDE the interval of the two later runs — that is exactly why it was raised. Anything below that fails runs that changed nothing.",
+    "$comment_looser": "0.30 would let a real regression of more than 10pp pass — more than the entire distance between the hybrid arm and BM25-only on this set (3.2pp at Recall@3).",
+    "report_separately": ["origin_type", "kind"],
+    "$comment_report_separately": "BINDING, and the reason the aggregate alone is not enough. Relevant loss is wildly uneven across origins: second_person (the independently working second person of §19) 37/67 = 55.2%, user_query 9/45 = 20.0%, session_transcript 23/260 = 8.8%. The aggregate of 18.5% is dominated by hook telemetry, which makes up 260 of 372 cases. A future set with a different origin mix would move the aggregate without anything in retrieval changing, and a degradation confined to the blind batch could hide entirely under the tolerance. The per-origin figures are reported next to the aggregate, never folded into it.",
+    "$comment_report_separately_v4": "`kind` was added in v4 for the reason the sentence above predicted, arriving through the other door. The 679-case run reads 18.08% on the reference set, 25.28% on the whole descriptive slice and 91.24% on the associative axis; one number covering all three would describe none of them. The two axes are reported side by side, and only the reference set carries the tolerance.",
+    "measured_by_origin": {
+      "second_person": { "value": 0.5522, "count": "37/67" },
+      "user_query": { "value": 0.2, "count": "9/45" },
+      "session_transcript": { "value": 0.0885, "count": "23/260" }
+    },
+    "measured_beside_the_reference_set": {
+      "$comment": "Reported, never gated, and never folded into the figure above. All from the 679-case run 2026-08-29-c3d175bfa18f unless stated. These populations are why the reference set is frozen: each of them would move the gate on its own without anything in retrieval changing.",
+      "as_of": "2026-08-29",
+      "descriptive_cases_outside_the_reference_set": {
+        "value": 0.5732,
+        "count": "47/82",
+        "wilson_95_ci": [0.4652, 0.6746],
+        "$comment": "The 82 descriptive cases added after the freeze: 77 answerable C-036 cases plus five relabelled from associative. By source file: gold-c036-2.json 32/44 = 72.7% (its Recall@3 is 0.1364), gold-c036-1.json 13/33 = 39.4%, gold-authored-1.json 2/5."
+      },
+      "c036_non_application_cases": {
+        "value": 0.5577,
+        "count": "29/52",
+        "wilson_95_ci": [0.4234, 0.684],
+        "$comment": "Cases carrying `correct_answer_is_non_application` — the answer is to NOT apply an existing memory (C-036). They are constructed to be hard and behave accordingly; a high relevant loss here is the case design showing, not a retrieval defect. No tolerance: what a good result would look like on this family has not been decided."
+      },
+      "associative_axis": {
+        "value": 0.9124,
+        "count": "125/137",
+        "wilson_95_ci": [0.8531, 0.9492],
+        "previous_run": { "value": 0.8944, "count": "127/142", "run_artifact": "~/.bastra/eval-runs/2026-08-28-61c940b62a8c" },
+        "$comment": "No tolerance, and none is planned: the axis is PARKED (decided 2026-08-29 after the #418 re-derivation showed a 6pp effect is arithmetically impossible there). Both arms miss almost everything on it, which is the documented finding, not a regression signal. See packages/eval/registrations/cue-experiment.json power_assumption.numbers_amendments[0]."
+      }
+    }
+  },
+
+  "false_abstention": {
+    "tolerance": 0.015,
+    "comparator": "<=",
+    "mechanism": "weak_result",
+    "mechanism_source": "packages/core/src/weak-result.ts",
+    "unit": "share of answerable cases for which weak_result fires — no hit in the pool anchors lexically (neither matched_recall_when nor a title match)",
+    "denominator": "answerable cases in the main denominator, probes excluded",
+    "measured": { "value": 0.0, "count": "0/372", "wilson_95_ci": [0.0, 0.0102] },
+    "derived_from": {
+      "run_artifact": "~/.bastra/eval-runs/2026-08-28-d907fa554780",
+      "arm": "Hybrid (BM25 + Vector RRF) · ollama-embeddinggemma",
+      "commit": "faa7050",
+      "$comment_commit": "The measured code is the working tree that became faa7050 ('weak_result zieht nach core'). The manifest of that run records git as 320e19b-dirty, because the move was not yet committed when it ran — the artifact and this field describe the same code from two sides, and neither is wrong.",
+      "$comment": "A second run on the same gold set, taken after weak_result moved to core so the gold-set runner could call the production predicate instead of reimplementing it."
+    },
+    "$comment_derivation": "Measured 0 of 372. With zero events the point estimate carries no information on its own, so the tolerance is set from the upper bound of the Wilson 95% interval: 1.02%. 0.015 sits 0.48pp above it — close enough that a genuine regression shows up, far enough that the interval itself does not breach the gate. Same construction as relevant_loss, only from a zero count instead of a rate.",
+    "confirmed_by": [
+      {
+        "run_artifact": "~/.bastra/eval-runs/2026-08-28-61c940b62a8c",
+        "value": 0.0,
+        "count": "0/507",
+        "wilson_95_ci": [0.0, 0.0075],
+        "denominator": "all answerable cases of the 595-case set"
+      },
+      {
+        "run_artifact": "~/.bastra/eval-runs/2026-08-29-c3d175bfa18f",
+        "value": 0.0,
+        "count": "0/584",
+        "wilson_95_ci": [0.0, 0.0065],
+        "denominator": "all answerable cases of the 679-case set",
+        "by_kind": { "descriptive": "0/447", "associative": "0/137" }
+      }
+    ],
+    "$comment_v4_confirmation": "v4 (2026-08-29) CONFIRMS 0.015 unchanged. Two larger runs added 0 further events; the Wilson upper bound falls from 1.02% over 0.75% to 0.65%, so the tolerance now clears it by 0.85pp instead of 0.48pp. Applying the original construction to the newest bound would suggest something near 0.012, and that was deliberately not done: tightening a gate that has never fired buys no sensitivity and would invalidate the comparison to three earlier runs.",
+    "$comment_v4_denominator": "Unlike relevant_loss this tolerance keeps the FULL answerable denominator and needs no frozen reference set. The reason is in the numbers: the count is zero on every population measured, including the new C-036 families (0/447 descriptive) and the associative axis (0/137). A metric that reads zero everywhere cannot be moved by changing the case mix, so the failure mode that forced the reference set for relevant_loss does not exist here. If it ever fires, this decision is revisited.",
+    "$comment_stricter": "0.010 sits ON the interval bound: with 372 cases even a single false abstention is 0.27%, so a handful of them would breach a gate that the measurement cannot distinguish from the baseline.",
+    "$comment_looser": "0.03 would allow eleven answerable cases to be suppressed before the gate notices — against a baseline of zero, that is a regression nobody would see.",
+    "discriminance": {
+      "$comment": "A tolerance on a predicate that never fires would be as empty as the score floor was. These two counts are the evidence that weak_result actually discriminates: it stays silent on answerable cases and speaks on cases where there is nothing to find.",
+      "gibberish_probes": "3/8",
+      "no_answer_cases": "1/60",
+      "answerable_cases": "0/372",
+      "$comment_reading": "It fires on 3 of 8 nonsense probes and on 1 of 60 no-answer cases while staying silent on all 372 answerable ones. Sensitivity is clearly incomplete — 5 of 8 nonsense probes still produce a lexically anchored hit — but the direction is right and the false-positive side is clean, which is what a false-abstention tolerance is set against."
+    },
+    "supersedes": {
+      "$comment": "HISTORY, kept on purpose: it explains why the mechanism was changed rather than the number tuned. Do not delete when this entry is next revised.",
+      "previous_status": "not_registrable_on_the_current_mechanism",
+      "previous_mechanism": "score floor",
+      "why_abandoned": "Abstention used to be a score floor, and on the hybrid path that floor cannot fire. The lowest possible score of a rank-1 hit is RRF_SCALE/(RRF_K+1) = 81.967 while the documented floor is 30 — unreachable by construction. The M0 baseline measured 0 of 372 false abstentions AND 0 of 60 correct abstentions: the metric was pinned at zero and would have passed any tolerance, including 0%.",
+      "why_not_a_threshold": "A score threshold does not rescue it either. The best achievable cut was measured on both arms (Youden J over every observed score): hybrid at 139.3 keeps 64.8% of answerable cases while still letting 23.3% of no-answer cases through (J=0.415); BM25-only at 2104.3 keeps only 54.0% to block 91.7% (J=0.457). Even at the optimum a third to a half of all correct answers would be suppressed — the score does not separate the two groups.",
+      "resolved_by": "faa7050 moved weak_result from packages/daemon to packages/core, so the gold-set runner calls the production predicate instead of reimplementing it."
+    },
+    "$comment_open_dependency": "OPEN as of 2026-08-28: a separate run is investigating WHY weak_result is silent on all 372 answerable cases — whether that is genuine precision or the predicate being too permissive (its title match is tolerant by design, and a tolerant anchor is easy to satisfy). If that investigation changes the reading, this entry is revised and registration_version bumped. The tolerance stands until then; it is derived from what was measured, not from what the measurement means."
+  },
+
+  "$comment_not_registered": "Only the two tolerances named in the M0 checklist are settled here. Anything else M1 may need (§18.2) waits for its own measurement — an unmeasured tolerance is a guess whether or not it sits in a versioned file."
+}
