@@ -59,6 +59,13 @@ function contentText(content: unknown): string | null {
   return text || null;
 }
 
+function humanIntent(record: Record<string, unknown>): string | null {
+  if (record.isMeta === true || "sourceToolUseID" in record) return null;
+  const text = contentText((record.message as { content?: unknown } | undefined)?.content);
+  if (!text || /^\[Image:\s*source:/i.test(text)) return null;
+  return text;
+}
+
 function toolUses(record: Record<string, unknown>): ToolUse[] {
   const content = (record.message as { content?: unknown } | undefined)?.content;
   if (!Array.isArray(content)) return [];
@@ -161,12 +168,12 @@ export function harvestReviewedMisses(
       continue;
     }
     if (record.type === "user") {
-      const humanText = contentText((record.message as { content?: unknown } | undefined)?.content);
-      if (humanText) {
+      const intentText = humanIntent(record);
+      if (intentText) {
         if (pending && evidence) {
           emit();
         }
-        intent = humanText;
+        intent = intentText;
         pending = null;
         evidence = null;
       }

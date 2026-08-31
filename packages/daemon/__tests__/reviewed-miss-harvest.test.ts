@@ -55,6 +55,29 @@ test("an unrelated empty tool result cannot taint a nonempty Recall", () => {
   assert.equal(harvestReviewedMisses(session, "session.jsonl")[0].status, "needs-relevance-label");
 });
 
+test("transcript control envelopes cannot become a Recall intent", () => {
+  const session = [
+    line({ type: "user", message: { content: "real human request" } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "skill", name: "Skill" }] } }),
+    line({ type: "user", isMeta: true, sourceToolUseID: "skill", message: { content: [{ type: "text", text: "Base directory for this skill: /private/skill" }] } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall", name: "mcp__bastra-recall__recall" }] } }),
+    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall", content: '{"hits":[]}' }] } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] } }),
+  ].join("\n");
+  const [candidate] = harvestReviewedMisses(session, "session.jsonl");
+  assert.equal(candidate.query, "real human request");
+});
+
+test("image placeholders cannot become a Recall intent", () => {
+  const session = [
+    line({ type: "user", isMeta: true, message: { content: [{ type: "text", text: "[Image: source: /private/screenshot.png]" }] } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall", name: "mcp__bastra-recall__recall" }] } }),
+    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall", content: '{"hits":[]}' }] } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] } }),
+  ].join("\n");
+  assert.deepEqual(harvestReviewedMisses(session, "session.jsonl"), []);
+});
+
 test("seeded raw transcript preserves the expected candidate ledger", async () => {
   const fixture = fileURLToPath(new URL("../__fixtures__/reviewed-miss-harvest/explicit-miss.jsonl", import.meta.url));
   const candidates = harvestReviewedMisses(await readFile(fixture, "utf8"), "seed-explicit-miss");
