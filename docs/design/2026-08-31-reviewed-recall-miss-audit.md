@@ -33,6 +33,16 @@ result class; it returns `recall-relevant`, `bridge-review`, `note-draft`, or
 `uncertain`. A note draft is output only. Saving it and minting a bridge remain
 separate writer actions.
 
+## Rung2 read rubric
+
+After a source Read, the Rung2 adapter may ask the session model to utter a
+single attestation with three fields: `read` (`exhaustive`, `partial`,
+`unresolved`), `recall` (`sufficient`, `partial`, `miss`) and `vault`
+(`none`, `note-candidate`). A relevant Recall result can therefore be marked
+`partial`: the source supplied the needed fact while the vault still lacks the
+durable note. Batch paraphrases test retrieval misses; this rubric detects the
+other class, a missing vault concept.
+
 ## Hot-file template
 
 `--relative-to <live-root> --zone <stable-name>` emits a local
