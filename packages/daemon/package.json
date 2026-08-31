@@ -47,6 +47,7 @@
     "smoke": "tsx scripts/smoke.ts",
     "smoke:telemetry": "tsx scripts/telemetry-smoke.ts",
     "backfill:related": "tsx scripts/backfill-related.ts",
+    "harvest:reviewed-misses": "tsx scripts/harvest-reviewed-misses.ts",
     "cues:batch": "tsx scripts/cue-batch.ts",
     "eval:robust": "tsx scripts/eval-stress.ts --slice all",
     "test:update": "tsx --test scripts/update-check.test.ts",
