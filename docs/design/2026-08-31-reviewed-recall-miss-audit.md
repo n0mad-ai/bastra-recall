@@ -24,6 +24,15 @@ Closing-loop acceptance is therefore four separate proofs: seeded replay,
 raw-session replay, curator review, and an existing bridge-mint acceptance.
 No green parser test upgrades a candidate to a learned behavior.
 
+## Local judge input
+
+`--judge` extracts the recap after the source-read result and the first assistant
+reply after the next real human turn. Tool results cannot occupy either slot.
+The local Ollama judge receives those two texts, the user intent and Recall
+result class; it returns `recall-relevant`, `bridge-review`, `note-draft`, or
+`uncertain`. A note draft is output only. Saving it and minting a bridge remain
+separate writer actions.
+
 ## Hot-file template
 
 `--relative-to <live-root> --zone <stable-name>` emits a local
