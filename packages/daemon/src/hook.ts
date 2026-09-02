@@ -156,6 +156,7 @@ async function writeClientTelemetry(fields: {
       dropped_scope_count: 0,
       hint_tokens_est: 0,
       hinted_ids: [],
+      hinted_types: [],
       backoff_streak: 0,
       suppressed: false,
       suppressed_tokens_est: 0,

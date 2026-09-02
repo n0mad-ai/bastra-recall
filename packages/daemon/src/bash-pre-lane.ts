@@ -294,6 +294,7 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
     latency_ms_total: Date.now() - startedAt,
     hint_tokens_est: Math.ceil(block.length / 4),
     hinted_ids: emitted.map((h) => h.id),
+    hinted_types: emitted.map((h) => h.type),
     backoff_streak: 0,
     suppressed: false,
     suppressed_tokens_est: 0,
@@ -369,6 +370,8 @@ interface BashHookCallTelemetry {
   /** Geschätzte Tokens des injizierten Tripwire-Blocks (#72). */
   hint_tokens_est: number;
   hinted_ids: string[];
+  /** #354: Memory-Typ je `hinted_ids`-Eintrag, gleiche Reihenfolge. */
+  hinted_types: string[];
   /** #161: Tripwire ist backoff-EXEMPT — Felder bleiben fürs Stats-Schema,
    *  sind aber konstant „nie unterdrückt“ (streak 0, suppressed false, 0). */
   backoff_streak: 0;

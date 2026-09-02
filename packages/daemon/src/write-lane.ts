@@ -288,6 +288,7 @@ export async function runWriteLane(
   // actually injected block — the cost side of net-context ROI.
   let hintTokensEst = 0;
   let hintedIds: string[] = [];
+  let hintedTypes: string[] = [];
   const envelope = (context: string): string =>
     JSON.stringify({
       hookSpecificOutput: {
@@ -321,6 +322,7 @@ export async function runWriteLane(
     const block = detNote ? `${detNote}\n${hintsBlock}` : hintsBlock;
     hintTokensEst = Math.ceil(block.length / 4);
     hintedIds = [...requiredHits, ...optionalHits].map((h) => h.id);
+    hintedTypes = [...requiredHits, ...optionalHits].map((h) => h.type);
     stdout = envelope(block);
     recordSourceEmit(sessionState, BACKOFF_SOURCE, hintedIds, backoffConsumed);
   }
@@ -360,6 +362,7 @@ export async function runWriteLane(
     ...(scopeFilter.droppedScopes.length > 0 ? { dropped_scopes: scopeFilter.droppedScopes } : {}),
     hint_tokens_est: hintTokensEst,
     hinted_ids: hintedIds,
+    hinted_types: hintedTypes,
     backoff_streak: backoffStreak,
     suppressed,
     suppressed_tokens_est: suppressedTokensEst,
@@ -547,6 +550,12 @@ interface HookCallTelemetry {
   hint_tokens_est: number;
   /** IDs, die tatsächlich emittiert wurden (#72 context-tax per memory). */
   hinted_ids: string[];
+  /** #354: Memory-Typ je Eintrag von `hinted_ids`, gleiche Reihenfolge und
+   *  Länge. Trägt die Auswertung, die `acted_on` allein nicht leisten kann:
+   *  eine Direktive („niemals X“) wirkt, indem NICHTS passiert, erzeugt also
+   *  nie ein acted_on-Signal — ohne den Typ liest sich das in der Statistik
+   *  wie eine ungenutzte Faktenmemory und lädt zum falschen Ausmisten ein. */
+  hinted_types: string[];
   /** #161: aufgelöster Streak der Backoff-Entscheidung dieses Events. */
   backoff_streak: number;
   /** #161: true, wenn der Backoff die Injektion unterdrückt hat. */

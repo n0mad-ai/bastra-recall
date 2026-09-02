@@ -667,6 +667,12 @@ export async function runPromptLane(
     daemon_reachable: resp !== null || reflexResp !== null || recallSkipped !== undefined,
     hint_count: suppressed ? 0 : recallHits.length,
     reflex_hint_count: reflexKept.length,
+    // #354: which memories this lane actually injected, and of what type.
+    // The prompt lane was the one hint source the context-tax evaluation could
+    // not see per memory — it reported only counts. Suppressed emits stay
+    // empty: nothing reached the transcript, so nothing was taxed.
+    hinted_ids: suppressed ? [] : [...recallHits, ...reflexKept].map((h) => h.id),
+    hinted_types: suppressed ? [] : [...recallHits, ...reflexKept].map((h) => h.type),
     hint_tokens_est: blocks.length === 0 ? 0 : Math.ceil(blocks.join("\n").length / 4),
     top_score: resp?.hits?.[0]?.score ?? null,
     latency_ms_total: Date.now() - startedAt,
@@ -879,6 +885,14 @@ interface PromptHookTelemetry {
   hint_count: number;
   /** #217: Reflex-Hits, die nach Session-Dedup injiziert wurden. */
   reflex_hint_count?: number;
+  /** #354: tatsächlich injizierte Memory-IDs dieser Lane (Recall + Reflex). */
+  hinted_ids?: string[];
+  /** #354: Memory-Typ je `hinted_ids`-Eintrag, gleiche Reihenfolge und Länge.
+   *  Trennt Direktiven von Fakten in der Context-Tax-Auswertung: eine Regel
+   *  der Form „niemals X“ wirkt, indem NICHTS passiert, und kann deshalb per
+   *  Konstruktion nie ein `acted_on` erzeugen. Ohne den Typ sieht sie in der
+   *  Statistik aus wie eine ungenutzte Faktenmemory. */
+  hinted_types?: string[];
   /** #356: est. tokens of what was ACTUALLY injected (recall + reflex
    *  blocks, ~4 chars/token) — the cost side of the context tax (#354).
    *  0 when nothing reached stdout. */

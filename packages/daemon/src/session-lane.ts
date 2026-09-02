@@ -48,6 +48,7 @@ import { spawnStagedUpdate, stagedToday, markStagedToday } from "./update-check.
 import { formatBlockedUpdate, readBlockedUpdate } from "./update-blocked.js";
 import { pendingPatchNotice } from "./patch-registry.js";
 import { consumePendingSuggestions } from "./pending-suggestions.js";
+import { clearShown } from "./session-state.js";
 import { formatPinnedBlock, dropPinnedFromRanked, type PinnedFloorLean } from "./pinned-block.js";
 import { reportHinted } from "./hook-hinted.js";
 import { hookClient } from "./hook-surface.js";
@@ -82,6 +83,21 @@ export async function runSessionLane(
   const client = hookClient(payload);
 
   if (payload.hook_event_name !== "SessionStart") return "{}";
+
+  // #354: compact/clear/resume keep the session id but rebuild the transcript,
+  // so every hint the per-session dedup was holding back is gone from the
+  // context. Verified over all Aug/Sep session starts: ids like 01a05b6f carry
+  // `startup,compact,compact`. Releasing the counters here is what lets the 4h
+  // window go — it was the only thing covering this case, and it paid for that
+  // coverage with a re-injection into every session that merely ran long.
+  // "startup" is a fresh id and needs nothing; best-effort, never blocking.
+  if (payload.source === "compact" || payload.source === "clear" || payload.source === "resume") {
+    try {
+      await clearShown(payload.session_id ?? "");
+    } catch {
+      /* dedup is best-effort by construction — a stale counter costs tokens, not correctness */
+    }
+  }
 
   const project = detectProject(payload.cwd ?? process.cwd());
   // The self-call target is passed in by the route (this server's own
@@ -497,6 +513,7 @@ export async function runSessionLane(
     latency_ms_total: Date.now() - startedAt,
     hint_tokens_est: Math.ceil(injected.length / 4),
     hinted_ids: top.map((h) => h.id),
+    hinted_types: top.map((h) => h.type),
     status,
     error: errMsg,
   });
@@ -666,6 +683,8 @@ interface SessionHookTelemetry {
   /** Geschätzte Tokens des injizierten Session-Kontexts (#72). */
   hint_tokens_est: number;
   hinted_ids: string[];
+  /** #354: Memory-Typ je `hinted_ids`-Eintrag, gleiche Reihenfolge. */
+  hinted_types: string[];
   status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error";
   error: string | null;
 }

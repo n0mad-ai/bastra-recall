@@ -9,8 +9,7 @@
  * `/tmp/bastra-hook/<session_id>.json` with shape `{ shown: { [memId]:
  * { count, at } } }`. Each hook call:
  *   1. Loads the session state (best-effort, returns empty on any error).
- *   2. Filters hits: if a hit has been shown >= MAX_SHOW times AND was
- *      shown within the last RESET_WINDOW_MS, drop it.
+ *   2. Filters hits: if a hit has been shown >= MAX_SHOW times, drop it.
  *   3. After emitting the hint block, bumps `count` for every hit that
  *      was actually shown and writes the state atomically (tmpfile + rename).
  *
@@ -60,10 +59,15 @@ export interface SessionState {
  *  load_memory-Marker resettet weiterhin (nach Kompaktierung darf der Hint
  *  wiederkommen). Env-tunable ohne Rebuild. */
 export const MAX_SHOW = Math.max(1, envInt("BASTRA_HOOK_MAX_SHOW", 1));
-/** Window in ms after which the dedup counter expires (4h per #32). */
+/** #32 legacy: the dedup counter used to expire after 4h. #354 removed that
+ *  window from `shouldDropHit`/`bumpShown` — a hint still standing in the
+ *  transcript gains nothing from being repeated, and compact/clear/resume now
+ *  reset the state by signal. Kept only as the documented former value. */
 export const RESET_WINDOW_MS = 4 * 60 * 60 * 1000;
-/** Cleanup: drop session files older than this (mtime). */
-export const STATE_MAX_AGE_MS = 4 * 60 * 60 * 1000;
+/** Cleanup: drop session files older than this (mtime). #354: this has to
+ *  outlive a working day. At the old 4h it deleted the state of a session that
+ *  was still running and re-opened exactly the hole the dedup closes. */
+export const STATE_MAX_AGE_MS = 36 * 60 * 60 * 1000;
 
 const DEFAULT_DIR = path.join(os.tmpdir(), "bastra-hook");
 
@@ -196,33 +200,54 @@ export async function getLoadedMarkerMtime(memId: string): Promise<number | null
  *   shouldDrop(state.shown[memId], loadedMarkerMtime, now)
  *
  *   - No prior entry → false (always show).
- *   - Entry older than RESET_WINDOW_MS → false (stale, treat as fresh).
  *   - load_memory marker newer than entry.at → false (agent consumed it,
  *     dedup clock resets).
- *   - count >= MAX_SHOW AND within window AND no newer load marker → true.
+ *   - count >= MAX_SHOW AND no newer load marker → true.
+ *
+ * #354: there is deliberately no time window here any more. The old 4h
+ * RESET_WINDOW_MS was a proxy for "same session" from a time when the lanes
+ * stamped a random session id per call (#356). With a real session id the
+ * proxy is redundant — and it was expensive: 180 of 873 injections in the
+ * 23.08.–01.09. window were the same memory re-entering the same still-running
+ * session after its window expired, 33,661 tokens, 17.9 % of that window's
+ * whole context tax. A hint whose text is still in the transcript buys nothing
+ * by being repeated. What genuinely empties the transcript — compact, clear,
+ * resume — now resets the state explicitly via `clearShown` (session-lane.ts),
+ * which is a signal, not a timer.
  */
 export function shouldDropHit(
   entry: ShownEntry | undefined,
   loadedMarkerMtime: number | null,
-  now: number = Date.now(),
+  _now: number = Date.now(),
 ): boolean {
   if (!entry) return false;
-  if (now - entry.at >= RESET_WINDOW_MS) return false;
   if (loadedMarkerMtime !== null && loadedMarkerMtime > entry.at) return false;
   return entry.count >= MAX_SHOW;
 }
 
 /**
  * Bump the shown-count for `memId` in `state` (mutates in place) and
- * stamp the current time.
+ * stamp the current time. #354: counts accumulate for the life of the
+ * session state — only `clearShown` and the load-marker reset them.
  */
 export function bumpShown(state: SessionState, memId: string, now: number = Date.now()): void {
   const prev = state.shown[memId];
-  if (!prev || now - prev.at >= RESET_WINDOW_MS) {
-    state.shown[memId] = { count: 1, at: now };
-  } else {
-    state.shown[memId] = { count: prev.count + 1, at: now };
-  }
+  state.shown[memId] = { count: (prev?.count ?? 0) + 1, at: now };
+}
+
+/**
+ * #354: drop the shown-counters for a session because its transcript was
+ * rebuilt (SessionStart with source compact/clear/resume). The hint text the
+ * dedup was protecting against repeating is gone from the context, so every
+ * memory becomes eligible again. Backoff state (`sources`) deliberately
+ * survives: an empty streak describes the retrieval side, not the transcript.
+ */
+export async function clearShown(sessionId: string): Promise<void> {
+  if (!sessionId) return;
+  const state = await loadSessionState(sessionId);
+  if (Object.keys(state.shown).length === 0) return;
+  state.shown = {};
+  await saveSessionState(sessionId, state);
 }
 
 /* ── #161: per hook-source empty-streak backoff ────────────────────────────

@@ -487,30 +487,67 @@ function summarizeContextROI(events: AnyEvent[]): void {
     console.log(`    ${n.toString().padStart(6)}  ${sid.slice(0, 8)}…`);
   }
 
-  // Context-Tax: Memories, die oft emittiert werden, aber (fast) nie eine
-  // acted-on-Episode verursachen — Archiv-Kandidaten.
+  // Context-Tax: Memories, die oft emittiert werden, aber nie eine acted-on-
+  // Episode verursachen.
+  //
+  // #354 — WARUM DIESE LISTE ZWEIGETEILT IST, und warum die eine Hälfte KEINE
+  // Archiv-Kandidaten sind: `acted_on` misst, ob ein geladener Hint den
+  // nächsten Tool-Input verändert hat. Für eine Direktive („niemals X ohne
+  // Auftrag", „erst fragen, dann löschen") kann dieses Signal per Konstruktion
+  // nicht entstehen — sie wirkt, indem NICHTS passiert. In der ungeteilten
+  // Liste standen genau solche Regeln ganz oben und sahen aus wie der größte
+  // Ballast im Vault. Nach `acted_on = 0` auszumisten hätte zielsicher die
+  // wirksamen Regeln gelöscht und die geschwätzigen behalten.
+  //
+  // Die Zuordnung ist eine Heuristik über den Memory-Typ, keine Messung: Typen,
+  // die Verhalten vorschreiben, gegen Typen, die etwas behaupten. `lesson` zählt
+  // bewusst zu den bewertbaren — eine Lesson trägt meist einen Fix, den man
+  // anwendet, und schlägt sich dann in `acted_on` nieder.
+  const DIRECTIVE_TYPES = new Set(["preference", "user-preference", "meta-working", "workflow"]);
   const emitted = new Map<string, number>();
+  const typeById = new Map<string, string>();
   for (const e of hookEvents) {
     if (!Array.isArray(e.hinted_ids)) continue;
-    for (const id of e.hinted_ids as string[]) {
+    const ids = e.hinted_ids as string[];
+    const types = Array.isArray(e.hinted_types) ? (e.hinted_types as string[]) : [];
+    ids.forEach((id, i) => {
       emitted.set(id, (emitted.get(id) ?? 0) + 1);
-    }
+      // Gleiche Reihenfolge und Länge per Lane-Vertrag; ältere Events tragen
+      // das Feld nicht, die bleiben "unknown" statt geraten zu werden.
+      if (types[i]) typeById.set(id, types[i]);
+    });
   }
   const actedByMemory = new Map<string, number>();
   for (const e of actedSurfaced) {
     const id = String(e.memory_id);
     actedByMemory.set(id, (actedByMemory.get(id) ?? 0) + 1);
   }
-  const tax = [...emitted.entries()]
-    .map(([id, n]) => ({ id, emitted: n, acted: actedByMemory.get(id) ?? 0 }))
-    .filter((t) => t.acted === 0 && t.emitted >= 3)
-    .sort((a, b) => b.emitted - a.emitted)
-    .slice(0, 10);
-  if (tax.length > 0) {
+  const unused = [...emitted.entries()]
+    .map(([id, n]) => ({ id, emitted: n, type: typeById.get(id) ?? "unknown" }))
+    .filter((t) => (actedByMemory.get(t.id) ?? 0) === 0 && t.emitted >= 3)
+    .sort((a, b) => b.emitted - a.emitted);
+  const archival = unused.filter((t) => !DIRECTIVE_TYPES.has(t.type));
+  const directives = unused.filter((t) => DIRECTIVE_TYPES.has(t.type));
+  if (archival.length > 0) {
     console.log(`  top context-tax memories (emitted ≥3×, acted_on 0 — archival candidates):`);
-    for (const t of tax) {
-      console.log(`    ${t.emitted.toString().padStart(4)}×  ${t.id}`);
+    for (const t of archival.slice(0, 10)) {
+      console.log(`    ${t.emitted.toString().padStart(4)}×  [${t.type}] ${t.id}`);
     }
+  }
+  if (directives.length > 0) {
+    console.log(
+      `  directive-type memories with acted_on 0 (${directives.length}) — NOT archival candidates:`,
+    );
+    console.log(`    a rule that works produces no acted_on signal; this list is not evidence of waste`);
+    for (const t of directives.slice(0, 10)) {
+      console.log(`    ${t.emitted.toString().padStart(4)}×  [${t.type}] ${t.id}`);
+    }
+  }
+  const unknownTyped = unused.filter((t) => t.type === "unknown").length;
+  if (unknownTyped > 0) {
+    console.log(
+      `  (${unknownTyped} of them from events before hinted_types existed — counted as archival, unverified)`,
+    );
   }
 }
 
