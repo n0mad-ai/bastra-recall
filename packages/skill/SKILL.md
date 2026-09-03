@@ -106,7 +106,7 @@ Always `recall()` the title/topic first. If a near-duplicate exists, update it i
 
 `save_memory(overwrite=true)` stays for a full rewrite or for a field `edit_memory` does not cover.
 
-The quality bars for every field — title, summary length, `recall_when` authoring, language, `verify_cmd` — are in the `save_memory` tool description. Follow them there.
+The quality bars for every field — title, summary length, `recall_when` authoring, language, `verify_cmd`, `derived_claims` — are in the `save_memory` tool description. Follow them there.
 
 ### After saving — ack format
 

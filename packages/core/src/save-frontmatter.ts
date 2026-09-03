@@ -13,7 +13,7 @@
  * (`save-target.ts`), ob geschrieben werden darf (`save-commit.ts`) und wie
  * der Text serialisiert wird (der Aufrufer).
  */
-import { coerceAliases } from "./schema.js";
+import { coerceAliases, DerivedClaimSchema } from "./schema.js";
 import { clampSummary } from "./summary.js";
 import type { SaveMemoryInput } from "./save-schema.js";
 import { extractWikilinks, todayISO, dedupe } from "./save-text.js";
@@ -80,6 +80,7 @@ export const SAVE_MANAGED_FRONTMATTER_KEYS: ReadonlySet<string> = new Set([
   "replaces",
   "siblings",
   "verify_cmd",
+  "derived_claims",
   "superseded_by",
   "salience",
   "emotion",
@@ -221,6 +222,11 @@ export function buildFrontmatter(
     // pair the agent has already answered for.
     ...mergedSiblings(),
     ...optional("verify_cmd", input.verify_cmd, isStr),
+    ...optional(
+      "derived_claims",
+      input.derived_claims,
+      (value) => DerivedClaimSchema.array().safeParse(value).success,
+    ),
     ...optional("superseded_by", undefined, isStr),
     confidence: input.confidence ?? kept(prev.confidence, isNum) ?? 1,
     // #217: `!= null` statt truthy — salience 0 ist ein gültiger Wert.

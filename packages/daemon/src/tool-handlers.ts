@@ -42,6 +42,7 @@ import {
   repairCallCorruption,
   requiredFieldsOf,
 } from "./call-corruption.js";
+import { resolveDerivedClaims, type DerivedClaimResult } from "./derived-claims.js";
 
 // Re-exported so the 18 existing importers keep their import path.
 export type { ToolDeps };
@@ -93,6 +94,8 @@ export interface LoadMemoryResult {
    *  NEVER runs it — this is a prompt for the agent, under the session's own
    *  permission rules. */
   verify?: { cmd: string; hint: string };
+  /** #467: lazy outputs for declarative claims; they live in the reply only. */
+  derived?: { claims: DerivedClaimResult[] };
 }
 
 /** Frontmatter-Felder, die das Modell zum Anwenden eines Memorys braucht.
@@ -126,6 +129,9 @@ const LEAN_FRONTMATTER_KEYS = [
   "superseded_by",
   // #235: the anchor that can prove this memory's claim.
   "verify_cmd",
+  // #467: the formula is relevant to applying the memory; its value is a
+  // separate, ephemeral `derived` block returned by load_memory.
+  "derived_claims",
 ] as const;
 
 /** Projiziert die volle Frontmatter auf die lean-Teilmenge. Unbekannte/
@@ -268,6 +274,10 @@ export async function loadMemoryHandler(
   const revision = await readFile(m.filePath, "utf8")
     .then(memoryRevision)
     .catch(() => undefined);
+  const derivedClaims = m.fm.derived_claims ?? [];
+  const derivedBlock = derivedClaims.length > 0
+    ? { derived: { claims: await resolveDerivedClaims(deps.vaultPath, derivedClaims) } }
+    : {};
   const result = {
     id: m.fm.id,
     frontmatter: full ? fm : leanFrontmatter(fm),
@@ -276,6 +286,7 @@ export async function loadMemoryHandler(
     ...(revision ? { revision } : {}),
     ...verifyBlock,
     ...verifyAnchor,
+    ...derivedBlock,
   };
   logLoad({
     delivered_chars: JSON.stringify(result, null, 2).length,
