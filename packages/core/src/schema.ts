@@ -40,6 +40,32 @@ export const MemoryTypeEnum = z.enum([
   "bookmark",
   "doc",
 ]);
+
+/** A source path that a daemon may read only beneath the vault root. */
+export function isVaultRelativePath(value: string): boolean {
+  return (
+    !value.includes("\0") &&
+    !value.includes("\\") &&
+    !value.startsWith("/") &&
+    value.split("/").every((part) => part.length > 0 && part !== "." && part !== "..")
+  );
+}
+
+/**
+ * A declaration, not a stored result.  The resolver name is a closed list, so
+ * vault content stays data that load_memory reads.  Results are derived on load
+ * and the note keeps its own bytes.
+ */
+export const DerivedClaimSchema = z.object({
+  id: z.string().regex(/^[a-z0-9][a-z0-9.-]*$/, "claim id must be lowercase kebab/dot form"),
+  resolver: z.literal("count.markdown-numbered-list.v1"),
+  source: z.string().min(1).refine(isVaultRelativePath, {
+    message: "source must be a vault-relative path without dot segments",
+  }),
+  /** Stable reference to an independent case; Bastra stores it and leaves it alone. */
+  case_ref: z.string().min(1).optional(),
+});
+export type DerivedClaim = z.infer<typeof DerivedClaimSchema>;
 export type MemoryType = z.infer<typeof MemoryTypeEnum>;
 
 const MEMORY_TYPES: ReadonlySet<string> = new Set(MemoryTypeEnum.options);
@@ -212,6 +238,8 @@ export const FrontmatterSchema = z.object({
    * might read out of a note.
    */
   verify_cmd: z.string().min(1).optional(),
+  /** #467 follow-up — formulas; the values stay in their sources. */
+  derived_claims: z.array(DerivedClaimSchema).optional(),
   obsolete: z.boolean().optional(),
   replaces: z.string().optional(),
   superseded_by: z.string().optional(),
