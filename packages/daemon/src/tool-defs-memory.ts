@@ -407,6 +407,28 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
             "the memory, who decides under their own permission rules. Leave it out unless " +
             "the claim is genuinely checkable by one short command.",
         },
+        derived_claims: {
+          type: "array",
+          description:
+            "Optional lazy facts for a memory. Each declaration stores a closed resolver and " +
+            "a vault-relative source, so the value stays in the source file. load_memory " +
+            "evaluates the resolver locally and returns the observed value, or an " +
+            "unverifiable result, alongside the note, which keeps its own bytes.",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string", description: "Stable lowercase claim id." },
+              resolver: {
+                type: "string",
+                enum: ["count.markdown-numbered-list.v1"],
+                description: "The only supported bounded local resolver.",
+              },
+              source: { type: "string", description: "Path relative to the vault directory." },
+              case_ref: { type: "string", description: "Optional stable reference to an independent case; Bastra stores it and leaves it alone." },
+            },
+            required: ["id", "resolver", "source"],
+          },
+        },
         replaces: {
           type: "string",
           description:

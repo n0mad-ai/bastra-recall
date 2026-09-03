@@ -75,8 +75,10 @@ export {
   parseMemoryWith,
   NotAMemoryFile,
   isPathSafeComponent,
+  isVaultRelativePath,
+  DerivedClaimSchema,
 } from "./schema.js";
-export type { Memory, MemoryType, Frontmatter } from "./schema.js";
+export type { DerivedClaim, Memory, MemoryType, Frontmatter } from "./schema.js";
 
 export { truncateSummaryTo, clampSummary, SUMMARY_MAX } from "./summary.js";
 
