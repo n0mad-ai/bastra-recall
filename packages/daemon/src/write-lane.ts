@@ -24,9 +24,10 @@ import { randomUUID } from "node:crypto";
 import { detectTopics, detectProject, extractContentExcerpt } from "@bastra-recall/core";
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
-import { requiredHeadline, unfusedHeadline } from "./band-wording.js";
+import { requiredHeadline, unfusedHeadline, CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
 import { envFirst, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
+import { recordBudgetShadow } from "./session-budget.js";
 import { applyLaneScopeFilter, projectConfidence, projectForFilter } from "./scope-filter.js";
 import { fileSizeNote } from "./file-size-check.js";
 import { memoryLocationNote } from "./memory-location.js";
@@ -342,6 +343,9 @@ export async function runWriteLane(
     void cleanupOldStates().catch(() => {});
   }
 
+  // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den
+  // Governor-Entscheid loggen — nichts wird gekürzt.
+  recordBudgetShadow(sessionId || null, "hook_call", hintTokensEst);
   await writeTelemetry({
     session_id: sessionId || null,
     tool_name: toolName,
@@ -422,7 +426,7 @@ export function formatHintBlock(
         ? `${unfusedHeadline("what you're about to do")} ` +
           `load_memory(id) the ones that bear on this edit.`
         : `${requiredHeadline("what you're about to do", MUST_LOAD_SCORE, { k: RRF_K, scale: RRF_SCALE })} ` +
-          `load_memory(id) the ones that bear on this edit. ` +
+          `${CANDIDATES_ONLY_NOTICE} load_memory(id) the ones that bear on this edit. ` +
           `Hints, not obligations: load only what fits, don't batch-load the list.`,
     );
     for (const h of required) sections.push(formatHintLine(h, unfused));

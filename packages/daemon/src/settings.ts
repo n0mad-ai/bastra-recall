@@ -216,7 +216,7 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
   }
   if (raw.trim() === "") return { update: { mode: DEFAULT_UPDATE_MODE } };
 
-  let data: { update?: { mode?: unknown }; embedding?: { provider?: unknown }; ollama?: { autostart?: unknown }; api?: { token?: unknown }; cors?: { origins?: unknown }; commons?: { enabled?: unknown }; sharedRecall?: { enabled?: unknown; language?: unknown }; docs?: { mode?: unknown; language?: unknown }; generation?: { model?: unknown }; ui?: { enabled?: unknown }; reflex?: { enabled?: unknown; maxPerTurn?: unknown } };
+  let data: { update?: { mode?: unknown }; embedding?: { provider?: unknown }; ollama?: { autostart?: unknown }; api?: { token?: unknown }; cors?: { origins?: unknown }; commons?: { enabled?: unknown }; sharedRecall?: { enabled?: unknown; language?: unknown }; docs?: { mode?: unknown; language?: unknown }; generation?: { model?: unknown }; ui?: { enabled?: unknown }; reflex?: { enabled?: unknown; maxPerTurn?: unknown }; evidenceGate?: { enabled?: unknown } };
   try {
     data = JSON.parse(raw);
   } catch (e) {
@@ -315,6 +315,13 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
   }
   if (typeof data?.ui?.enabled === "boolean") {
     settings.ui = { enabled: data.ui.enabled };
+  }
+  // #422: der Block wurde von `setEvidenceGateEnabled` geschrieben, aber hier
+  // nie zurückgelesen — die Datei konnte den Entscheid nicht schalten, nur der
+  // Env-Schalter. Seit dem Default `true` ist das dauerhafte Aus genau dieser
+  // Block, also muss er ankommen.
+  if (typeof data?.evidenceGate?.enabled === "boolean") {
+    settings.evidenceGate = { enabled: data.evidenceGate.enabled };
   }
   if (data?.reflex !== undefined) {
     // Invalid values drop to undefined (= defaults), same policy as docs.
@@ -561,19 +568,27 @@ export async function getSharedRecallEnabled(path?: string): Promise<boolean> {
 }
 
 /**
- * Ist der Evidenzentscheid scharf? Default `false`.
+ * Ist der Evidenzentscheid scharf? Default `true` seit #422 (03.09.2026).
+ *
+ * Aktiviert nach §18.2: Shadow-Abnahme erreicht (6.544 Entscheidungen, 40
+ * Sessions), jede required-/no_answer-Abweichung per Merkmalssignatur
+ * erklärt, Komponenten-Gates auf dem vollen Goldsatz innerhalb der Schwellen
+ * (Anti-Query 1/28, Falsch-Abstention 0/584, Recall@3-Delta −0,0034).
  *
  * Der Env-Schalter steht daneben, weil ein Betreiber ihn im Zweifel SOFORT
  * ausmachen können muss, ohne eine Datei zu bearbeiten — der Rückfall aufs
  * Legacy-Verhalten ist die wichtigere Richtung. `BASTRA_EVIDENCE_GATE=0`
- * überstimmt deshalb die Einstellung, nicht umgekehrt.
+ * überstimmt deshalb die Einstellung, nicht umgekehrt; `evidenceGate.enabled:
+ * false` in den Settings schaltet dauerhaft ab.
  */
+export const EVIDENCE_GATE_DEFAULT = true;
+
 export async function getEvidenceGateEnabled(path?: string): Promise<boolean> {
   const env = process.env.BASTRA_EVIDENCE_GATE;
   if (env !== undefined && env !== "") {
     return !["0", "false", "off", "no"].includes(env.toLowerCase());
   }
-  return (await readSettings(path)).evidenceGate?.enabled ?? false;
+  return (await readSettings(path)).evidenceGate?.enabled ?? EVIDENCE_GATE_DEFAULT;
 }
 
 /**

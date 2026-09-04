@@ -1,4 +1,5 @@
 /** Cross-client Skill installation, including OpenAI metadata (#232/#15). */
+import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { SERVER_KEY, fileExists, getServersBlock, readJsonConfig } from "./helpers.js";
@@ -29,6 +30,70 @@ async function skillPayload(sourceDir: string): Promise<string[]> {
   const openAiMetadata = join("agents", "openai.yaml");
   if (await fileExists(join(sourceDir, openAiMetadata))) payload.push(openAiMetadata);
   return payload.sort();
+}
+
+/**
+ * #456: one revision for the whole instruction bundle — sha256 over the
+ * payload file names and contents, as shipped in the package. Doctor prints
+ * it, so two machines can be compared by one short string, and a stale
+ * installed copy is a difference against it, not a guess.
+ */
+export async function skillBundleRevision(sourceDir: string): Promise<string> {
+  const h = createHash("sha256");
+  for (const name of await skillPayload(sourceDir)) {
+    h.update(name).update("\0").update(await readFile(join(sourceDir, name))).update("\0");
+  }
+  return h.digest("hex").slice(0, 12);
+}
+
+export interface SkillInstallInspection {
+  status: "missing" | "stale" | "up-to-date";
+  /** Revision of the SOURCE bundle (what an up-to-date install would carry). */
+  revision: string;
+  /** Payload files absent from the target. */
+  missing: string[];
+  /** Payload files present but differing from the source. */
+  stale: string[];
+}
+
+/**
+ * #456: what an installed skill dir is, measured against the package source.
+ * `bastra doctor` used to report "present" for any SKILL.md at the path — an
+ * installed client could keep an older bundle indefinitely and look healthy.
+ * Same comparison `copySkill` uses to decide what to copy, so doctor and
+ * install can never disagree.
+ */
+export async function inspectSkillInstall(
+  sourceDir: string,
+  targetDir: string,
+): Promise<SkillInstallInspection> {
+  const payload = await skillPayload(sourceDir);
+  const revision = await skillBundleRevision(sourceDir);
+  const missing: string[] = [];
+  const stale: string[] = [];
+  for (const name of payload) {
+    const target = join(targetDir, name);
+    if (!(await fileExists(target))) {
+      missing.push(name);
+      continue;
+    }
+    const [src, dst] = await Promise.all([readFile(join(sourceDir, name), "utf8"), readFile(target, "utf8")]);
+    if (src !== dst) stale.push(name);
+  }
+  if (missing.length === payload.length) return { status: "missing", revision, missing, stale };
+  if (missing.length > 0 || stale.length > 0) return { status: "stale", revision, missing, stale };
+  return { status: "up-to-date", revision, missing, stale };
+}
+
+/** Doctor wording for one skill install — identical on every surface. */
+export function describeSkillInstall(i: SkillInstallInspection, targetDir: string): string {
+  if (i.status === "missing") return "missing";
+  if (i.status === "up-to-date") return `present, up to date (bundle ${i.revision}, ${targetDir})`;
+  const parts = [
+    ...(i.stale.length > 0 ? [`stale: ${i.stale.join(", ")}`] : []),
+    ...(i.missing.length > 0 ? [`missing: ${i.missing.join(", ")}`] : []),
+  ];
+  return `STALE — ${parts.join("; ")} (installed copy differs from bundle ${i.revision})`;
 }
 
 /**

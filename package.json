@@ -16,6 +16,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "skill:build": "node scripts/build-skill-projections.mjs",
     "check:types": "npm run check:types --workspaces --if-present",
     "pretest": "npm run build --workspace=@bastra-recall/core",
     "test": "node --import tsx --import ./scripts/test-env.mjs --test packages/core/__tests__/*.test.ts packages/daemon/__tests__/*.test.ts packages/eval/__tests__/*.test.ts tools/__tests__/*.test.mjs",

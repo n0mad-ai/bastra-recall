@@ -13,7 +13,8 @@ import {
   BASH_FAIL_HOOK_BIN,
   STOP_HOOK_BIN,
   STATUSLINE_BIN,
-  SKILL_TARGET_FILE,
+  SKILL_SOURCE_DIR,
+  SKILL_TARGET_DIR,
 } from "../paths.js";
 import {
   SERVER_KEY,
@@ -27,7 +28,7 @@ import {
   readJsonConfig,
   resolveVault,
 } from "../helpers.js";
-import { copySkill } from "../skill.js";
+import { copySkill, describeSkillInstall, inspectSkillInstall } from "../skill.js";
 import { checkForwarderRegistration, ensureStableForwarder, mapBinToStableRuntime } from "../stable-runtime.js";
 import type { Adapter, DoctorResult, InstallOpts, InstallResult, UninstallResult } from "../types.js";
 
@@ -710,8 +711,9 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
     }
   }
 
-  // Skill
-  details["skill"] = (await fileExists(SKILL_TARGET_FILE)) ? `present (${SKILL_TARGET_FILE})` : "missing";
+  // Skill — #456: compared against the shipped bundle, not merely present.
+  const skillState = await inspectSkillInstall(SKILL_SOURCE_DIR, SKILL_TARGET_DIR);
+  details["skill"] = describeSkillInstall(skillState, SKILL_TARGET_DIR);
 
   // Hooks. Stop is optional: some users intentionally disable autonomous
   // save-eval while keeping the rest of the reflex layer active.
@@ -765,7 +767,7 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
     details["vault-path"]?.includes("MISSING") === true ||
     requiredHooksMissing ||
     hookPathBroken ||
-    details["skill"] === "missing";
+    (details["skill"] === "missing" || details["skill"].startsWith("STALE"));
   if (broken) return { status: "broken", message: "registered but some pieces need repair — re-run 'bastra install claude-code'", details };
   return { status: "ok", message: "MCP + skill + required hooks registered and healthy", details };
 }

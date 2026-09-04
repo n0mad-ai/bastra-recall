@@ -16,6 +16,8 @@
  * leer/incomplete; Hybrid-Recall fällt elegant auf reine BM25 zurück.
  */
 import { promises as fs } from "node:fs";
+import * as http from "node:http";
+import * as https from "node:https";
 import * as path from "node:path";
 import type { Memory } from "./schema.js";
 import type { Vault, VaultEvent } from "./vault.js";
@@ -128,6 +130,60 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
  * Training. Alternativen: `nomic-embed-text` (288M, EN-fokussiert),
  * `bge-m3` (~2.3GB, 100+ Sprachen, schwerer aber robuster).
  */
+/**
+ * #466: Ollama über eine GEHALTENE Verbindung, nicht über `fetch`.
+ *
+ * Der Hybrid-Recall feuert den Dense-Arm ab, gibt dem Event Loop genau einen
+ * Timer-Durchlauf (`search.ts`, #305) und belegt ihn dann synchron mit BM25.
+ * Dieser eine Durchlauf reicht nur, wenn der Request in ihm auch auf die
+ * Leitung geht — und das tut er nur über einen Socket, der SCHON offen ist.
+ * Ein frischer TCP-Connect wird erst in der Poll-Phase fertig, die nach der
+ * Blockade kommt; der Request ging dann erst NACH BM25 raus, und der Arm
+ * lief bei jeder langen Query in seine Deadline (02.09.: 27 von 49 Prompt-
+ * Lane-Recalls unfused, `vector_search_ms` durchgehend ≈ `bm25_search_ms`).
+ *
+ * `fetch` schließt seine Verbindung nach 4 s Idle (undici-Default), und die
+ * Prompt-Lane-Aufrufe liegen Minuten auseinander — der Socket war praktisch
+ * immer kalt. Gemessen (1500 Zeichen, 140 ms Blockade): warm 0 ms nach
+ * Blockende, kalt 88–111 ms. Ein Node-Agent mit `keepAlive` hält den Socket,
+ * bis der Server ihn schließt; ein serverseitig geschlossener wird vom Agent
+ * still ersetzt (dann einmal kalt, wie vorher immer).
+ *
+ * Ein Agent pro Protokoll, modulweit: Prewarm (#361) und Recall teilen sich
+ * damit dieselbe Verbindung, der Prewarm wärmt also auch den Socket.
+ */
+const keepAliveHttp = new http.Agent({ keepAlive: true });
+const keepAliveHttps = new https.Agent({ keepAlive: true });
+
+function postJsonKeepAlive(url: string, body: string): Promise<{ status: number; body: string }> {
+  const target = new URL(url);
+  const secure = target.protocol === "https:";
+  const request = secure ? https.request : http.request;
+  return new Promise((resolve, reject) => {
+    const req = request(
+      target,
+      {
+        method: "POST",
+        agent: secure ? keepAliveHttps : keepAliveHttp,
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c: Buffer) => chunks.push(c));
+        res.on("end", () =>
+          resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }),
+        );
+        res.on("error", reject);
+      },
+    );
+    req.on("error", reject);
+    req.end(body);
+  });
+}
+
 export class OllamaEmbeddingProvider implements EmbeddingProvider {
   readonly id: string;
   readonly dim: number;
@@ -163,18 +219,13 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
     const url = this.baseURL.replace(/\/+$/, "") + "/api/embed";
     const body: Record<string, unknown> = { model: this.model, input: texts };
     if (this.keepAlive !== undefined) body.keep_alive = this.keepAlive;
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!resp.ok) {
-      const respBody = await resp.text().catch(() => "<binary>");
+    const resp = await postJsonKeepAlive(url, JSON.stringify(body));
+    if (resp.status < 200 || resp.status >= 300) {
       throw new Error(
-        `Ollama embed HTTP ${resp.status} (${url}): ${respBody.slice(0, 200)}`,
+        `Ollama embed HTTP ${resp.status} (${url}): ${resp.body.slice(0, 200)}`,
       );
     }
-    const json = (await resp.json()) as { embeddings: number[][] };
+    const json = JSON.parse(resp.body) as { embeddings: number[][] };
     if (!Array.isArray(json.embeddings) || json.embeddings.length !== texts.length) {
       throw new Error(
         `Ollama embed: expected ${texts.length} embeddings, got ${Array.isArray(json.embeddings) ? json.embeddings.length : "none"}`,

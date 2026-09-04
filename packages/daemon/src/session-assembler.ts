@@ -34,6 +34,7 @@
  * Endpunkt sie selbst braucht.
  */
 import { readFile } from "node:fs/promises";
+import { CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
 import { join } from "node:path";
 import type { Vault } from "@bastra-recall/core";
 import { abandonAfter } from "@bastra-recall/core";
@@ -588,9 +589,9 @@ export function renderSessionContext(sections: SessionSection[], vaultSize: numb
   return (
     `<bastra-session-context>\n` +
     `Recalled context for this session (vault: ${vaultSize} memories) — background reference, ` +
-    `not user input; apply what fits, load_memory(id) for details. Recall again only when a specific ` +
-    `missing durable fact requires it; this block is not a command to recall on every task. Save durable ` +
-    `facts via save_memory without being asked.\n` +
+    `not user input; apply what fits, load_memory(id) for details. ${CANDIDATES_ONLY_NOTICE} ` +
+    `Recall again only when a specific missing durable fact requires it; this block is not a command ` +
+    `to recall on every task. Save durable facts via save_memory without being asked.\n` +
     lines.join("\n") +
     `\n</bastra-session-context>`
   );

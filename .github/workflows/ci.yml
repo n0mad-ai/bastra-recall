@@ -51,6 +51,14 @@ jobs:
       - name: Type-check
         run: npm run check:types
 
+      # #456: the Cursor rule and the Codex/ChatGPT plugin skill are generated
+      # from packages/skill/SKILL.md (#455). A PR that edits the canonical file
+      # without regenerating — or edits a projection by hand — fails here.
+      - name: Skill projections in sync
+        run: |
+          npm run skill:build
+          git diff --exit-code --stat -- packages/skill plugins
+
       - name: Test
         run: npm test
 

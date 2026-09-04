@@ -15,13 +15,13 @@ import {
   CODEX_CONFIG,
   CODEX_HOOKS,
   CODEX_SKILL_TARGET_DIR,
-  CODEX_SKILL_TARGET_FILE,
   HOOK_STUB_BIN,
   PRE_TOOL_HOOK_BIN,
   PROMPT_HOOK_BIN,
   SESSION_HOOK_BIN,
   STOP_HOOK_BIN,
   TODO_HOOK_BIN,
+  SKILL_SOURCE_DIR,
 } from "../paths.js";
 import {
   SERVER_KEY,
@@ -33,7 +33,7 @@ import {
   readJsonConfig,
   resolveVault,
 } from "../helpers.js";
-import { copySkill } from "../skill.js";
+import { copySkill, describeSkillInstall, inspectSkillInstall } from "../skill.js";
 import { findCodexExecutable, codexMcpGet, codexServerMatches } from "../codex-cli.js";
 import { runCaptured } from "../exec.js";
 import { checkForwarderRegistration, ensureStableForwarder, mapBinToStableRuntime } from "../stable-runtime.js";
@@ -426,9 +426,8 @@ async function codexDoctor(): Promise<DoctorResult> {
       ? `${vault}${await fileExists(vault) ? " (exists)" : " (MISSING)"}`
       : "not set in env";
   }
-  details.skill = await fileExists(CODEX_SKILL_TARGET_FILE)
-    ? `present (${CODEX_SKILL_TARGET_FILE})`
-    : "missing";
+  // #456: compared against the shipped bundle, not merely present.
+  details.skill = describeSkillInstall(await inspectSkillInstall(SKILL_SOURCE_DIR, CODEX_SKILL_TARGET_DIR), CODEX_SKILL_TARGET_DIR);
 
   let hooksBroken = false;
   const hookRead = await readJsonConfig(CODEX_HOOKS);
@@ -452,7 +451,7 @@ async function codexDoctor(): Promise<DoctorResult> {
   const probe = await probeDaemon();
   details["daemon-on-6723"] = probe.ok ? `reachable (${probe.detail})` : probe.detail;
   if (!registered) return { status: "missing", message: "MCP not registered with Codex/ChatGPT desktop", details };
-  const broken = forwarderBroken || hooksBroken || details.skill === "missing" ||
+  const broken = forwarderBroken || hooksBroken || (details.skill === "missing" || details.skill.startsWith("STALE")) ||
     details["vault-path"]?.includes("MISSING") === true || details["vault-path"]?.startsWith("not ") === true;
   if (broken) return { status: "broken", message: "registered but some pieces need repair — re-run 'bastra install codex'", details };
   return { status: "ok", message: "MCP + Codex/ChatGPT skill + required hooks registered and healthy", details };

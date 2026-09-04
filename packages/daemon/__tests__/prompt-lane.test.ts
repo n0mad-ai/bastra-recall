@@ -146,14 +146,14 @@ test("effectiveScoreFloor — assertion recalls at the retrieval floor, not the 
   assert.notEqual(effectiveScoreFloor("assertion"), effectiveScoreFloor("generic"));
 });
 
-test("formatHintBlock — assertion mode forbids asserting from memory and names the alternative", () => {
+test("formatHintBlock — assertion mode states that model memory is no source and names the alternative (#384)", () => {
   const hits: RecallHit[] = [
     { id: "pool-measurement", title: "P", type: "project-fact", scope: "p", summary: "96 of 103", score: 120 },
   ];
   const block = formatHintBlock(hits, "bastra-recall", "assertion");
   assert.match(block, /makes a CLAIM/);
-  assert.match(block, /Do NOT assert numbers/);
-  assert.match(block, /do not know instead of guessing/);
+  assert.match(block, /model memory is not a source/);
+  assert.match(block, /the vault does not answer is unknown/);
   assert.match(block, /pool-measurement/);
   assert.doesNotMatch(block, /LOOKUP \/ retrieval query/);
 });

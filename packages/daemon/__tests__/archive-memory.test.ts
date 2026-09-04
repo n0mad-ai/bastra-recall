@@ -14,13 +14,14 @@ import { Vault, SearchIndex } from "@bastra-recall/core";
 import { archiveMemoryHandler, type ToolDeps } from "../src/tool-handlers.js";
 import { Telemetry } from "../src/telemetry.js";
 
-function intakeMemory(id: string): string {
+function intakeMemory(id: string, sensitivity?: string): string {
   return [
     "---",
     `id: ${id}`,
     `title: Imported note ${id}`,
     "type: reference",
     "summary: An imported intake memory.",
+    ...(sensitivity ? [`sensitivity: ${sensitivity}`] : []),
     "topic_path:",
     "  - imported",
     "  - testlabel",
@@ -41,6 +42,7 @@ function intakeMemory(id: string): string {
 async function makeDeps(): Promise<{ deps: ToolDeps; dir: string; close: () => Promise<void> }> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-archive-test-"));
   await writeFile(join(dir, "int-1.md"), intakeMemory("int-1"), "utf8");
+  await writeFile(join(dir, "priv-1.md"), intakeMemory("priv-1", "private"), "utf8");
   const vault = new Vault(dir);
   await vault.init();
   const search = new SearchIndex(vault);
@@ -95,6 +97,24 @@ test("archive_memory without superseded_by keeps the file byte-comparable and er
       "unknown id is a hard error, not a silent no-op",
     );
     await assert.rejects(archiveMemoryHandler(deps, {}), /invalid archive_memory args/);
+  } finally {
+    await close();
+  }
+});
+
+test("#464: archive_memory hides a private memory from an external caller exactly as load_memory does", async () => {
+  const { deps, dir, close } = await makeDeps();
+  try {
+    // Ohne allow_private: dieselbe Antwort wie für eine Id, die es nicht gibt —
+    // ein Caller, der nicht lesen darf, erfährt auch nicht, dass sie existiert.
+    await assert.rejects(archiveMemoryHandler(deps, { id: "priv-1" }), /unknown memory: priv-1/);
+    await stat(join(dir, "priv-1.md"));
+    assert.ok(deps.vault.get("priv-1"), "the private memory is still in the vault");
+
+    // Die Mac-App (allow_private: true) darf weiterhin archivieren.
+    const result = await archiveMemoryHandler(deps, { id: "priv-1", allow_private: true });
+    assert.equal(result.id, "priv-1");
+    await assert.rejects(stat(join(dir, "priv-1.md")));
   } finally {
     await close();
   }

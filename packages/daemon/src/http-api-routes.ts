@@ -111,6 +111,20 @@ export async function dispatchApi(
       const parsed = ReadDocumentArgs.safeParse(body);
       if (!parsed.success) throw new Error(parsed.error.message);
       const doc = readDocument(vault, parsed.data);
+      // #457: read_document liefert ganze Dokumentkörper — bisher der größte
+      // Posten, der in keiner Kontextrechnung stand.
+      void toolDeps.telemetry.logReadDocument({
+        id: parsed.data.id,
+        found: doc !== null,
+        ...(doc
+          ? {
+              delivered_chars: JSON.stringify(doc, null, 2).length,
+              delivered_tokens_est: Math.ceil(JSON.stringify(doc, null, 2).length / 4),
+              body_chars: doc.body.length,
+            }
+          : {}),
+        caller_session: ctx.ccSessionId ?? null,
+      }).catch(() => {});
       if (!doc) throw new Error(`document not found: ${parsed.data.id}`);
       return doc;
     }

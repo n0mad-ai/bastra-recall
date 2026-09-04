@@ -917,23 +917,32 @@ export class SearchIndex {
     // zum Total, es überlappte nichts).
     //
     // Reines Reordering: identische Eingaben in beide Arme, identisches
-    // RRF-Ergebnis. Die eine Invariante, die dabei nicht kippen darf: die
-    // Deadline muss ab dem ABFEUERN laufen, nicht ab dem `await`.
-    // `abandonAfter` startet seinen Timer synchron beim Aufruf — deshalb steht
-    // der Aufruf hier oben und nicht unten am `await`. Unten aufgerufen bekäme
-    // der Arm sein Budget PLUS die BM25-Zeit, und seine Timeout-Rate wäre
-    // nicht mehr messbar.
+    // RRF-Ergebnis.
+    //
+    // #466: Die Deadline läuft ab dem `await` unten, NICHT ab dem Abfeuern.
+    // #370 wollte sie ab dem Abfeuern, damit der Arm nicht „Budget plus
+    // BM25-Zeit" bekommt. Das setzt voraus, dass der Arm während BM25 auch
+    // läuft — und das tat er nicht: Der Request geht erst auf die Leitung,
+    // wenn der Loop frei ist, und danach hält BM25 ihn synchron. Ein Timer,
+    // der beim Abfeuern startet, misst deshalb die BM25-Dauer, nicht den Arm.
+    // Am 02.09. waren 27 von 49 Prompt-Lane-Recalls unfused, `vector_search_ms`
+    // lag bei jedem davon auf `bm25_search_ms` + 2…7 ms bzw. exakt auf der
+    // Deadline — bei einem Ollama, das die Embeds in 25–66 ms beantwortet.
+    // Die Folge war kein Latenzgewinn, sondern ein stiller Qualitätsverlust:
+    // ohne Fusion kein REQUIRED-Band, kein Backoff-Bypass, kein semantischer
+    // Reflex (prompt-lane.ts).
+    //
+    // Ab dem `await` bekommt der Arm sein volles Budget für die Zeit, in der
+    // er tatsächlich auf Antwort wartet. Ein Arm, der wirklich zu langsam ist,
+    // läuft weiterhin in seinen Timeout (dense-arm-dispatch.test.ts). Die
+    // Stage `vector.search` misst weiterhin ab dem Abfeuern — sie ist die
+    // Wanduhr des Arms, nicht seine Frist.
     // #240/A8: ask for a deeper pool when a filter is active. The vault/scope/
     // type/private filter below runs AFTER the provider's global top-k, so a
     // fixed 100 silently truncated eligible candidates for every scoped query
     // — measured on a real 514-memory vault: 95.3% of scoped queries lost
     // in-scope candidates, and the smallest scopes lost a third of theirs.
     const filtered = opts.scope != null || opts.type != null || !opts.allow_private;
-    // #342: race the dense arm against its own deadline. `abandonAfter` never
-    // rejects and never cancels — on expiry it hands back null and leaves the
-    // embed in flight, which is the point: the model finishes loading on the
-    // call that gave up on it, so the NEXT call is warm. Cancelling here would
-    // re-pay the cold load every single time.
     // #365/4: `EmbeddingIndex.search()` fängt JEDEN Provider-Fehler ab und
     // returnt `[]` — byte-identisch zu „dieser Vault hat keine Vektoren".
     // Diskriminiert wird über `runtimeHealth().errorCount`, der ausschließlich
@@ -945,10 +954,7 @@ export class SearchIndex {
     // vorhandenen await — kein zusätzlicher Call, kein I/O.
     const errBefore = this.embeddings.runtimeHealth().errorCount;
     const tVec = stage.start("vector.search");
-    const vectorArm = abandonAfter(
-      this.embeddings.search(query, filtered ? 1000 : 100),
-      opts.vector_deadline_ms ?? 0,
-    );
+    const vectorArm = this.embeddings.search(query, filtered ? 1000 : 100);
 
     // #305: EIN Durchlauf des Event Loops, bevor der lexikalische Arm ihn
     // synchron belegt.
@@ -967,10 +973,14 @@ export class SearchIndex {
     //
     // WAS DAS NICHT TUT. Es ändert weder die Reihenfolge der Arme noch ihre
     // Eingaben noch die Fusion — beide bekommen dieselbe Query wie vorher, RRF
-    // rechnet unverändert. Und es verschiebt die Deadline nicht: `abandonAfter`
-    // hat seinen Timer oben schon gestartet, die Frist läuft weiterhin ab dem
-    // Abfeuern. Ein Arm, der wirklich zu langsam ist, läuft weiterhin in seinen
-    // Timeout.
+    // rechnet unverändert.
+    //
+    // Der Durchlauf reicht nur, wenn der Request in ihm auch geschrieben wird —
+    // das setzt einen SCHON offenen Socket voraus (#466: der Ollama-Provider
+    // hält seine Verbindung deshalb über einen Keep-Alive-Agent, embeddings.ts).
+    // Auf einem kalten Socket wird der Connect erst nach BM25 fertig; dann
+    // läuft der Arm sequentiell hinter BM25 und bekommt seine Frist ab dem
+    // `await` unten.
     //
     // WARUM EIN TIMER UND KEIN `setImmediate`. Gemessen gegen einen echten
     // Fremdprozess, je 5 Läufe mit 300 ms Blockade:
@@ -1011,7 +1021,13 @@ export class SearchIndex {
       terms_unique: plan.unique,
     });
 
-    const vecOrTimeout = await vectorArm;
+    // #342: race the dense arm against its own deadline. `abandonAfter` never
+    // rejects and never cancels — on expiry it hands back null and leaves the
+    // embed in flight, which is the point: the model finishes loading on the
+    // call that gave up on it, so the NEXT call is warm. Cancelling here would
+    // re-pay the cold load every single time.
+    // #466: Der Timer startet HIER, beim echten Warten (siehe oben).
+    const vecOrTimeout = await abandonAfter(vectorArm, opts.vector_deadline_ms ?? 0);
     const vectorArmTimedOut = vecOrTimeout === null;
     const errAfter = this.embeddings.runtimeHealth().errorCount;
     // Ein gewachsener Zähler heißt: über diesem await ist mindestens ein

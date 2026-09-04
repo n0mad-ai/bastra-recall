@@ -197,8 +197,11 @@ async function main(): Promise<void> {
   const evidenceGateOn = await getEvidenceGateEnabled();
   if (evidenceGateOn) {
     console.error(
-      "[bastra-recall] evidence gate: ACTIVE — no_answer suppresses hits (#264)",
+      "[bastra-recall] evidence gate: ACTIVE — no_answer suppresses hits (#264/#422); BASTRA_EVIDENCE_GATE=0 is the instant off-switch",
     );
+  } else {
+    // #422: seit dem Default `true` ist AUS die Abweichung, die man sehen muss.
+    console.error("[bastra-recall] evidence gate: OFF (settings or BASTRA_EVIDENCE_GATE) — legacy bands serve every hit");
   }
 
   let learnedBridges: BridgePool | null = null;
@@ -592,6 +595,19 @@ async function main(): Promise<void> {
       const parsed = ReadDocumentArgs.safeParse(args);
       if (!parsed.success) return errorResult(parsed.error.message);
       const doc = readDocument(vault, parsed.data);
+      // #457: derselbe Größen-Eintrag wie auf dem HTTP-Pfad.
+      void toolDeps.telemetry.logReadDocument({
+        id: parsed.data.id,
+        found: doc !== null,
+        ...(doc
+          ? {
+              delivered_chars: JSON.stringify(doc, null, 2).length,
+              delivered_tokens_est: Math.ceil(JSON.stringify(doc, null, 2).length / 4),
+              body_chars: doc.body.length,
+            }
+          : {}),
+        caller_session: null,
+      }).catch(() => {});
       if (!doc) return errorResult(`document not found: ${parsed.data.id}`);
       return {
         content: [

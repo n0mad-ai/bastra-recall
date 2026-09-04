@@ -1,5 +1,5 @@
 /**
- * Die beiden Report-Rechnungen aus `scripts/stats-governor.ts` (#354, §18.2).
+ * Die beiden Report-Rechnungen aus `src/stats-governor.ts` (#354, §18.2).
  *
  * Beide beantworten Gegenfragen, die der Report bisher nicht stellte: Was hätte
  * ein Sitzungsbudget beschnitten, und welche `no_answer`-Abweichungen gibt es
@@ -14,9 +14,10 @@ import { strict as assert } from "node:assert";
 import {
   governorWhatIf,
   noAnswerDivergence,
+  requiredDivergence,
   shadowAcceptance,
   type AnyEventLike,
-} from "../scripts/stats-governor.js";
+} from "../src/stats-governor.js";
 
 const injektion = (session: string, tokens: number, kind = "hook_call"): AnyEventLike => ({
   kind,
@@ -297,4 +298,28 @@ test("C-085: ein leeres Fenster meldet keine Abnahme und keine Division durch nu
   assert.equal(acc.decisions, 0);
   assert.equal(acc.topSessionShare, 0);
   assert.equal(acc.route, null);
+});
+
+test("#422: required-Abweichungen werden in beide Richtungen nach Signatur gruppiert", () => {
+  const shadow = [
+    entscheid("r1", [
+      // Legacy required (Score 120), Entscheid nur optional — der Gate hält zurück.
+      { memory_id: "m1", decision: "optional", abstain_reason: "weak_evidence", evidence: merkmale({ lexical_score: 120, arm_agreement: true }) },
+      { memory_id: "m2", decision: "optional", abstain_reason: "weak_evidence", evidence: merkmale({ lexical_score: 130, arm_agreement: true }) },
+      // Entscheid required, Legacy nur optional (Score 60) — der Gate befördert.
+      { memory_id: "m3", decision: "required", evidence: merkmale({ lexical_score: 60, exact_identifier: true }) },
+      // Einig — keine Abweichung.
+      { memory_id: "m4", decision: "required", evidence: merkmale({ lexical_score: 150, arm_agreement: true }) },
+    ]),
+  ];
+  const d = requiredDivergence([recall("r1")], shadow, decisionsOf, 100, 30);
+  assert.equal(d.legacyRequiredGateNot.length, 1, "eine Signatur für beide zurückgehaltenen");
+  assert.equal(d.legacyRequiredGateNot[0].events, 2);
+  assert.equal(d.legacyRequiredGateNot[0].memories, 2);
+  assert.equal(d.legacyRequiredGateNot[0].signature.legacyBand, "required");
+  assert.equal(d.legacyRequiredGateNot[0].signature.armAgreement, true);
+  assert.equal(d.gateRequiredLegacyNot.length, 1);
+  assert.equal(d.gateRequiredLegacyNot[0].signature.legacyBand, "optional");
+  assert.equal(d.gateRequiredLegacyNot[0].signature.exactIdentifier, true);
+  assert.equal(d.unknownSpace, 0);
 });

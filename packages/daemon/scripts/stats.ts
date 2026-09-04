@@ -11,8 +11,9 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { readUsage, type UsageAggregate } from "../src/usage-sidecar.js";
-import { governorWhatIf } from "./stats-governor.js";
+import { governorWhatIf } from "../src/stats-governor.js";
 import { summarizeEvidenceGate } from "./stats-evidence.js";
+import { buildContextLedger, HOOK_LANE_KINDS, TOOL_PAYLOAD_KINDS } from "../src/context-ledger.js";
 
 function defaultLogDir(): string {
   const next = join(homedir(), ".bastra", "logs");
@@ -156,6 +157,47 @@ function summarizeSessionHook(events: AnyEvent[]): void {
   console.log(`  by source:`);
   for (const [s, n] of [...sources.entries()].sort((a, b) => b[1] - a[1])) {
     console.log(`     ${n.toString().padStart(4)}  ${s}`);
+  }
+
+  // #462: welcher der zehn Teile gibt die Tokens aus? Nur Zeilen mit dem
+  // Feld (ab #462); ältere Starts tragen eine Summe und keine Teile.
+  const withParts = calls.filter((c) => c.hint_tokens_by_part && typeof c.hint_tokens_by_part === "object");
+  if (withParts.length === 0) return;
+  const partTotals = new Map<string, number>();
+  const partHits = new Map<string, number>();
+  let allParts = 0;
+  for (const c of withParts) {
+    for (const [part, v] of Object.entries(c.hint_tokens_by_part as Record<string, unknown>)) {
+      const n = typeof v === "number" ? v : 0;
+      partTotals.set(part, (partTotals.get(part) ?? 0) + n);
+      if (n > 0) partHits.set(part, (partHits.get(part) ?? 0) + 1);
+      allParts += n;
+    }
+  }
+  console.log(`  tokens by part (${withParts.length} starts with per-part data, ${allParts} tokens):`);
+  console.log(`     part          total   share   avg/start  present-in`);
+  for (const [part, total] of [...partTotals.entries()].sort((a, b) => b[1] - a[1])) {
+    if (total === 0 && (partHits.get(part) ?? 0) === 0) continue;
+    console.log(
+      `     ${part.padEnd(12)} ${total.toString().padStart(6)}  ${pct(total, allParts).padStart(6)}  ${(total / withParts.length).toFixed(0).padStart(9)}  ${(partHits.get(part) ?? 0).toString().padStart(4)}/${withParts.length}`,
+    );
+  }
+  // Derselbe Schnitt nach Startquelle — `clear` war der teuerste Start.
+  const bySource = new Map<string, { n: number; parts: Map<string, number> }>();
+  for (const c of withParts) {
+    const s = String(c.source ?? "unknown");
+    const row = bySource.get(s) ?? { n: 0, parts: new Map<string, number>() };
+    row.n++;
+    for (const [part, v] of Object.entries(c.hint_tokens_by_part as Record<string, unknown>)) {
+      row.parts.set(part, (row.parts.get(part) ?? 0) + (typeof v === "number" ? v : 0));
+    }
+    bySource.set(s, row);
+  }
+  console.log(`  avg tokens per part by source:`);
+  for (const [s, row] of [...bySource.entries()].sort((a, b) => b[1].n - a[1].n)) {
+    const top = [...row.parts.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 4)
+      .map(([p, v]) => `${p} ${(v / row.n).toFixed(0)}`).join(", ");
+    console.log(`     ${s.padEnd(8)} n=${row.n.toString().padStart(3)}  ${top}`);
   }
 }
 
@@ -402,6 +444,56 @@ function topProjects(events: AnyEvent[]): void {
   for (const [p, n] of [...projCount.entries()].sort((a, b) => b[1] - a[1])) {
     console.log(`  ${n.toString().padStart(4)}  ${p}`);
   }
+}
+
+/**
+ * #457: die VOLLSTÄNDIGE Kontextrechnung — alle sechs Hook-Lanes plus die
+ * Tool-Payloads (`recall`, `load_memory`, `read_document`). Der historische
+ * `Net-context-ROI`-Block darunter zählt bewusst nur drei Lanes; er bleibt als
+ * Vergleichsgröße stehen, beschreibt aber nicht „den Kontext".
+ */
+function summarizeContextTax(events: AnyEvent[]): void {
+  const ledger = buildContextLedger(events);
+  const t = ledger.total;
+  const emissions = [...Object.values(t.lanes), ...Object.values(t.tools)].reduce((s, p) => s + p.emissions, 0);
+  if (emissions === 0) return;
+  console.log(`\n## Context tax — complete  (ledger v${ledger.version}, estimator ${ledger.estimator})`);
+  console.log(`  total (known parts):          ${t.totalTokens} tokens across ${emissions} emissions`);
+  if (t.totalUnknown > 0) {
+    console.log(
+      `  unknown residual:             ${t.totalUnknown} emissions carry no size field (pre-#457/#72 rows) — the total is a lower bound`,
+    );
+  }
+  const row = (label: string, p: { emissions: number; tokens: number; unknown: number }): void => {
+    if (p.emissions === 0) return;
+    console.log(
+      `    ${label.padEnd(22)} ${p.tokens.toString().padStart(8)}  ${p.emissions.toString().padStart(5)} emissions` +
+        (p.unknown > 0 ? `  (${p.unknown} unknown)` : ""),
+    );
+  };
+  console.log(`  by lane:`);
+  for (const k of HOOK_LANE_KINDS) row(k, t.lanes[k]);
+  console.log(`  by tool payload:`);
+  for (const k of TOOL_PAYLOAD_KINDS) row(k, t.tools[k]);
+  if (t.loadByPresentation.lean.emissions + t.loadByPresentation.full.emissions > 0) {
+    console.log(`  load_memory by presentation:`);
+    row("lean", t.loadByPresentation.lean);
+    row("full", t.loadByPresentation.full);
+  }
+  const laneSum = Object.values(t.lanes).reduce((s, p) => s + p.tokens, 0);
+  const toolSum = Object.values(t.tools).reduce((s, p) => s + p.tokens, 0);
+  console.log(`  parts: lanes ${laneSum} + tool payloads ${toolSum} = ${laneSum + toolSum}`);
+  const top = [...ledger.sessions.values()]
+    .filter((s) => s.session !== "(none)")
+    .sort((a, b) => b.totalTokens - a.totalTokens)
+    .slice(0, 5);
+  if (top.length > 0) {
+    console.log(`  top sessions by total context:`);
+    for (const s of top) console.log(`    ${s.totalTokens.toString().padStart(7)}  ${s.session.slice(0, 8)}…`);
+  }
+  console.log(
+    `  (tool payloads are attributed to the caller session where the forwarder sent one; hook lanes to their own session_id)`,
+  );
 }
 
 function summarizeContextROI(events: AnyEvent[]): void {
@@ -767,6 +859,7 @@ async function main(): Promise<void> {
   summarizeFollowThrough(events);
   summarizeUseRate(events);
   summarizeActSignals(events);
+  summarizeContextTax(events);
   summarizeContextROI(events);
   summarizeContextGovernor(events);
   await summarizeExposureNormalised(events);

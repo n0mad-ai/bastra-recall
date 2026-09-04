@@ -140,17 +140,38 @@ export async function loadMemoryHandler(
   const m = own ?? deps.commonsSearch?.loadFull(parsed.data.id);
   const fromCommons = !own && m !== undefined;
   const hookHint = deps.telemetry.findHookHintFor(parsed.data.id);
-  fireAndForget(
-    deps.telemetry.logLoadMemory({
-      id: parsed.data.id,
-      found: !!m,
-      follows_recall: deps.telemetry.recentRecallId(),
-      from_hook_recall: hookHint?.recall_id ?? null,
-      hook_hint_rank: hookHint?.rank ?? null,
-    }),
-  );
+  const followsRecall = deps.telemetry.recentRecallId();
+  // #457: das Ereignis trägt die GELIEFERTE Größe, also erst nach der
+  // Projektion — ein Load, der nichts liefert, trägt keine.
+  const logLoad = (delivered?: {
+    delivered_chars: number;
+    body_chars: number;
+    presentation: "lean" | "full";
+  }): void =>
+    fireAndForget(
+      deps.telemetry.logLoadMemory({
+        id: parsed.data.id,
+        found: !!m,
+        follows_recall: followsRecall,
+        from_hook_recall: hookHint?.recall_id ?? null,
+        hook_hint_rank: hookHint?.rank ?? null,
+        ...(delivered
+          ? {
+              delivered_chars: delivered.delivered_chars,
+              delivered_tokens_est: Math.ceil(delivered.delivered_chars / 4),
+              body_chars: delivered.body_chars,
+              presentation: delivered.presentation,
+              origin: hookHint ? "hook" : followsRecall ? "recall" : "direct",
+            }
+          : {}),
+        caller_session: ctx?.sessionId ?? null,
+      }),
+    );
 
-  if (!m) throw new Error(`memory not found: ${parsed.data.id}`);
+  if (!m) {
+    logLoad();
+    throw new Error(`memory not found: ${parsed.data.id}`);
+  }
 
   // Sensitivity-Filter (#58): externe Caller sehen Private-Memories
   // nicht — auch nicht über direkte ID-Lookups. Mac-App overridet mit
@@ -160,6 +181,7 @@ export async function loadMemoryHandler(
     !allowPrivate &&
     (m.fm as { sensitivity?: string }).sensitivity === "private"
   ) {
+    logLoad();
     throw new Error(`memory not found: ${parsed.data.id}`);
   }
 
@@ -219,7 +241,7 @@ export async function loadMemoryHandler(
         },
       }
     : {};
-  return {
+  const result = {
     id: m.fm.id,
     frontmatter: full ? fm : leanFrontmatter(fm),
     body: full ? m.body : bodyForTelemetry,
@@ -227,6 +249,12 @@ export async function loadMemoryHandler(
     ...verifyBlock,
     ...verifyAnchor,
   };
+  logLoad({
+    delivered_chars: JSON.stringify(result, null, 2).length,
+    body_chars: result.body.length,
+    presentation: full ? "full" : "lean",
+  });
+  return result;
 }
 
 // ─── Save Memory ─────────────────────────────────────────────────
@@ -364,7 +392,29 @@ async function saveMemoryInner(
   // diverted before any quality scoring or file I/O touches the vault.
   if (parsed.data.conflict_with) return markConflict(deps, parsed.data, finalId);
 
-  const saveQuality = scoreSaveQuality(deps, parsed.data, finalId);
+  const asString = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+
+  // Die Versionskette, die dieser Save ablöst: der `replaces`-Vorgänger und
+  // alles, was DIESER schon ersetzt hatte. `out` guards a hand-written cycle.
+  const supersededChain = (start: string | undefined): Set<string> => {
+    const out = new Set<string>();
+    let cursor: string | undefined = start;
+    while (cursor !== undefined && !out.has(cursor)) {
+      out.add(cursor);
+      const predecessor: unknown = deps.vault.get(cursor)?.fm.replaces;
+      cursor = typeof predecessor === "string" ? predecessor : undefined;
+    }
+    return out;
+  };
+
+  // Beim Overwrite trägt der Payload die Supersession meist nicht erneut — sie
+  // steht längst im Frontmatter des Memories, das hier neu geschrieben wird.
+  // Ohne diesen Rückgriff meldete ausgerechnet die Aktualisierung eines
+  // Nachfolgers wieder die Kollision mit dem Vorgänger, den sie abgelöst hat.
+  const declaredReplaces = parsed.data.replaces
+    ?? (parsed.data.overwrite ? asString(deps.vault.get(finalId)?.fm.replaces) : undefined);
+
+  const saveQuality = scoreSaveQuality(deps, parsed.data, finalId, supersededChain(declaredReplaces));
 
   // #360: the claim gate. A save whose recall_when fully contains an existing
   // memory's trigger declares a situation that memory already owns — that is a
@@ -384,17 +434,7 @@ async function saveMemoryInner(
         const m = deps.vault.get(id);
         return m ? { summary: m.fm.summary, body: m.body } : undefined;
       },
-      (id) => {
-        // Walk down the version chain. `seen` guards a hand-written cycle.
-        const out = new Set<string>();
-        let cursor: string | undefined = id;
-        while (cursor !== undefined && !out.has(cursor)) {
-          out.add(cursor);
-          const predecessor: unknown = deps.vault.get(cursor)?.fm.replaces;
-          cursor = typeof predecessor === "string" ? predecessor : undefined;
-        }
-        return out;
-      },
+      supersededChain,
     );
     if (claimed.length > 0) return claimGateResult(finalId, claimed, saveQuality);
   }
@@ -548,6 +588,9 @@ async function saveMemoryInner(
 export const ArchiveMemoryArgs = z.object({
   id: z.string().min(1),
   superseded_by: z.string().optional(),
+  /** #464: spiegelt `LoadMemoryArgs.allow_private`. Nur die Mac-App setzt
+   *  es; ein MCP-Caller kann Private-Memories weder lesen noch archivieren. */
+  allow_private: z.boolean().optional(),
 });
 
 /**
@@ -570,6 +613,15 @@ export async function archiveMemoryHandler(
   const { id, superseded_by } = parsed.data;
   const mem = deps.vault.get(id);
   if (!mem) {
+    throw new Error(`unknown memory: ${id} — archive_memory only archives memories that exist in the vault.`);
+  }
+  // #464: Der Lesepfad (`loadMemoryHandler`) verbirgt Private-Memories vor
+  // externen Callern, der Archivpfad tat es nicht — ein Caller konnte
+  // entfernen, was er nicht sehen durfte, und lernte aus dem Erfolg sogar,
+  // dass die Id existiert. Dieselbe Antwort wie beim Lesen: als gäbe es
+  // die Id nicht.
+  const allowPrivate = parsed.data.allow_private ?? false;
+  if (!allowPrivate && (mem.fm as { sensitivity?: string }).sensitivity === "private") {
     throw new Error(`unknown memory: ${id} — archive_memory only archives memories that exist in the vault.`);
   }
   // Codex-Gegenreview (P0): Verschoben wurde der Pfad aus dem CACHE, ohne ihn

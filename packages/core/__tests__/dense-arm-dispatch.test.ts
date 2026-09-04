@@ -19,6 +19,11 @@
  * Query-Terme, gemessen ~290 ms. Kein künstliches `while`, sondern derselbe
  * MiniSearch-Lauf, um den es geht.
  *
+ * #466: Der Durchlauf sendet den Request nur auf einem SCHON OFFENEN Socket.
+ * Die ersten Tests wärmen deshalb vor (warmer Socket, Arme laufen parallel);
+ * der Kalt-Test darunter prüft den Produktionsfall der Prompt-Lane, in dem
+ * der Arm erst nach BM25 gesendet wird und seine Frist ab dem `await` läuft.
+ *
  * Runner: node --import tsx --test packages/core/__tests__/dense-arm-dispatch.test.ts
  */
 import test from "node:test";
@@ -27,7 +32,7 @@ import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
-import { get } from "node:http";
+import { Agent, get } from "node:http";
 import { Vault } from "../src/vault.js";
 import { SearchIndex } from "../src/search.js";
 
@@ -59,7 +64,12 @@ async function providerProzess(t: {
   const quelle = `
     const http = require("node:http");
     const s = http.createServer((req, res) => {
-      const ms = Number(new URL(req.url, "http://x").searchParams.get("ms") || "0");
+      const raw = new URL(req.url, "http://x").searchParams.get("ms") || "0";
+      // "never": die Antwort kommt nie — der Socket bleibt offen, bis der
+      // Prozess stirbt. Ein Arm, der WIRKLICH zu langsam ist, unabhängig davon,
+      // wie lange der Testprozess vorher blockiert war.
+      if (raw === "never") return;
+      const ms = Number(raw);
       setTimeout(() => {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify([{ id: "m0", score: 0.9 }]));
@@ -79,14 +89,16 @@ async function providerProzess(t: {
   return { port };
 }
 
-/** Ein Embedding-Index-Doppel, das seine Treffer über echtes Netz-I/O holt. */
-function embeddingsUeberNetz(port: number, antwortNachMs: number) {
+/** Ein Embedding-Index-Doppel, das seine Treffer über echtes Netz-I/O holt.
+ *  Ohne `agent` läuft es über Nodes globalen Agent, der seit Node 19 Keep-
+ *  Alive hält — nach dem ersten Lauf ist der Socket also WARM. */
+function embeddingsUeberNetz(port: number, antwortNachMs: number | "never", agent?: Agent) {
   return {
     size: () => 1,
     runtimeHealth: () => ({ errorCount: 0 }),
     search: () =>
       new Promise((resolve, reject) => {
-        get({ host: "127.0.0.1", port, path: `/?ms=${antwortNachMs}` }, (res) => {
+        get({ host: "127.0.0.1", port, path: `/?ms=${antwortNachMs}`, ...(agent ? { agent } : {}) }, (res) => {
           let roh = "";
           res.on("data", (c) => (roh += c));
           res.on("end", () => resolve(JSON.parse(roh)));
@@ -122,11 +134,12 @@ const teureQuery = (versatz = 0): string =>
 
 async function laufMitTimeoutMarke(
   search: SearchIndex,
-  antwortNachMs: number,
+  antwortNachMs: number | "never",
   port: number,
   versatz = 0,
+  agent?: Agent,
 ): Promise<{ timeout: boolean; bm25Ms: number }> {
-  search.useEmbeddings(embeddingsUeberNetz(port, antwortNachMs));
+  search.useEmbeddings(embeddingsUeberNetz(port, antwortNachMs, agent));
   let timeout = false;
   let bm25Ms = 0;
   await search.recallHybrid(teureQuery(versatz), {
@@ -174,14 +187,53 @@ test("der dichte Arm überlebt eine lange lexikalische Suche", async (t) => {
   );
 });
 
+test("#466: auf einem KALTEN Socket überlebt der dichte Arm die lexikalische Suche ebenfalls", async (t) => {
+  const search = await vaultMitVielenMemories(t);
+  const { port } = await providerProzess(t);
+
+  // Der Produktionsfall der Prompt-Lane: Die Aufrufe liegen Minuten
+  // auseinander, die Verbindung ist zu. Ein frischer TCP-Connect wird erst in
+  // der Poll-Phase fertig — NACH der Blockade —, der Request geht also erst
+  // dann raus, und der Arm läuft sequentiell hinter BM25. Mit einer Frist ab
+  // dem Abfeuern war das 02.09. bei jeder langen Query ein Timeout (27 von 49).
+  // Die Frist ab dem `await` gibt ihm sein Budget für die Zeit, in der er
+  // wirklich wartet. `keepAlive: false` je Lauf erzwingt den kalten Socket.
+  for (let i = 0; i < 3; i++) {
+    await laufMitTimeoutMarke(search, ANTWORT_NACH_MS, port, 200 + i, new Agent({ keepAlive: false }));
+  }
+
+  const ergebnisse: Array<{ timeout: boolean; bm25Ms: number }> = [];
+  for (let i = 0; i < 5; i++) {
+    ergebnisse.push(
+      await laufMitTimeoutMarke(search, ANTWORT_NACH_MS, port, 300 + i, new Agent({ keepAlive: false })),
+    );
+  }
+
+  const median = ergebnisse.map((e) => e.bm25Ms).sort((a, b) => a - b)[2];
+  assert.ok(
+    median > DEADLINE_MS,
+    `der lexikalische Arm muss länger als die Deadline blockieren, war ${median} ms`,
+  );
+  const timeouts = ergebnisse.filter((e) => e.timeout).length;
+  assert.equal(
+    timeouts,
+    0,
+    `kein Lauf darf in den Timeout gehen — der Provider antwortet ${ANTWORT_NACH_MS} ms nach dem Connect, ` +
+      `also innerhalb der ${DEADLINE_MS}-ms-Frist ab dem Warten. ${timeouts} von 5 taten es trotzdem.`,
+  );
+});
+
 test("ein wirklich zu langsamer Arm läuft weiterhin in seinen Timeout", async (t) => {
   const search = await vaultMitVielenMemories(t);
   const { port } = await providerProzess(t);
 
-  // Die Invariante aus #342: Die Frist läuft ab dem Abfeuern. Ein Provider, der
-  // länger braucht als sie, muss weiterhin abgeschnitten werden — sonst hätte
-  // der Durchlauf oben die Deadline stillschweigend verlängert.
-  const { timeout } = await laufMitTimeoutMarke(search, DEADLINE_MS * 4, port, 7);
+  // Die Frist läuft seit #466 ab dem Warten (nach BM25). Ein Provider mit
+  // FESTER Verzögerung taugt hier nicht mehr als „zu langsam": Auf einem
+  // langsamen CI-Runner dauert BM25 länger als die Verzögerung, die Antwort
+  // liegt beim Blockende schon gepuffert und der Arm kommt durch — genau so
+  // fiel der Test am 03.09. auf Node 22 und 24. Ein Provider, der NIE
+  // antwortet, ist die einzige Verzögerung, die von der Maschine unabhängig ist.
+  const { timeout } = await laufMitTimeoutMarke(search, "never", port, 7);
   assert.ok(timeout, "die Deadline muss weiterhin greifen, wenn der Arm sie wirklich reißt");
 });
 

@@ -45,25 +45,20 @@ test("#160: a memory with no history is neutral, not suspect", () => {
   assert.equal(trustScore(entry(0, 0, 0)), TRUST_CEILING);
 });
 
-test("#160: shown and never opened sinks; acted on buys the ground back", () => {
+test("#160: shown and never opened sinks; opening neutralises it", () => {
   const step = 0.02;
   // Ten times in front of the user, never opened: 10 × 2 × 0.02 off the top.
   assert.equal(trustScore(entry(10, 0, 0), step), 0.6);
   // Same exposure, but every hit was opened — nothing was ignored.
   assert.equal(trustScore(entry(10, 10, 0), step), TRUST_CEILING);
-  // Ignored five times, acted on four: 5×0.04 down, 4×0.02 up.
-  assert.equal(Number(trustScore(entry(5, 0, 4), step).toFixed(4)), 0.88);
 });
 
-test("#160: the decay is twice the rise — dead weight sinks faster than good rises", () => {
+test("#469: acted_on does not move trust — the proxy has no gradient", () => {
   const step = 0.02;
-  const down = TRUST_CEILING - trustScore(entry(1, 0, 0), step);
-  // Measured mid-range on purpose: at the ceiling a rise has nowhere to go, and
-  // at the floor it is swallowed — 20 ignored hits already clamp to 0.5, where
-  // acting on the memory moves nothing. Five ignored sits between both bounds.
-  const base = trustScore(entry(5, 0, 0), step);
-  const up = trustScore(entry(5, 0, 1), step) - base;
-  assert.equal(Number((down / up).toFixed(4)), 2);
+  // Ignored five times: 5 × 0.04 down, whatever acted_on says.
+  assert.equal(Number(trustScore(entry(5, 0, 0), step).toFixed(4)), 0.8);
+  assert.equal(Number(trustScore(entry(5, 0, 4), step).toFixed(4)), 0.8);
+  assert.equal(Number(trustScore(entry(5, 0, 400), step).toFixed(4)), 0.8);
 });
 
 test("#160: bounded on both ends", () => {

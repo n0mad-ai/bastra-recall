@@ -1,0 +1,214 @@
+/* ── telemetry tab (#463) ──────────────────────────────────────────
+   A scroll page over the canvas. Sections are separated by rules, numbers sit
+   in columns — no nested boxes, no cards: the report is a document, and it
+   reads like one. */
+#telemetry-view[hidden] { display: none !important; }
+#telemetry-view {
+  position: fixed;
+  /* the right edge stops short of the system panel (250px + 16px margin) —
+     the sidebar stays usable, the report never runs under it */
+  inset: 58px 282px 0 0;
+  z-index: 16; /* above the canvas hints, below topbar (30) and sidebar (20) */
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--bg);
+}
+/* the map's own overlays have no business over a document */
+body.telemetry-open #minimap,
+body.telemetry-open #hint,
+body.telemetry-open #ring-hint,
+body.telemetry-open #semantic-hint,
+body.telemetry-open #orbit-hint,
+body.telemetry-open #live-lane { display: none !important; }
+#tv-page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 18px 28px 64px;
+}
+#tv-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--panel-border);
+}
+#tv-head h1 { padding: 0 0 6px; }
+#tv-lead {
+  max-width: 640px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+#tv-lead code { font: 11.5px var(--font-mono); color: var(--text); }
+#tv-controls { flex: none; width: 220px; }
+#tv-window-note {
+  margin-top: 7px;
+  font: 10.5px var(--font-mono);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+#tv-status {
+  padding: 14px 0;
+  font: 12px var(--font-mono);
+  color: var(--text-dim);
+}
+#tv-status.err { color: #d06a6a; }
+#tv-status[hidden] { display: none !important; }
+
+/* ── overview strip: one row of figures, ruled columns ─────────── */
+#tv-overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  border-bottom: 1px solid var(--panel-border);
+}
+#tv-overview > div {
+  padding: 14px 16px 14px 0;
+  border-right: 1px solid var(--panel-border);
+  margin-right: 16px;
+}
+#tv-overview > div:last-child { border-right: 0; margin-right: 0; }
+.tv-fig-k {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--text-dim);
+}
+.tv-fig-v {
+  margin-top: 6px;
+  font: 22px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.tv-fig-v.ok { color: var(--accent); }
+.tv-fig-sub {
+  margin-top: 3px;
+  font: 10.5px var(--font-mono);
+  color: var(--text-dim);
+}
+
+/* ── sections ──────────────────────────────────────────────────── */
+.tv-section {
+  padding: 18px 0 22px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.tv-section:last-child { border-bottom: 0; }
+.tv-section > h2 { padding: 0 0 4px; }
+.tv-section > .tv-q {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+}
+.tv-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  column-gap: 32px;
+  row-gap: 18px;
+}
+.tv-cols > div + div { border-left: 1px solid var(--panel-border); padding-left: 32px; margin-left: -16px; }
+@media (max-width: 760px) {
+  .tv-cols > div + div { border-left: 0; padding-left: 0; margin-left: 0; }
+}
+.tv-h3 {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--text-dim);
+  padding: 0 0 8px;
+}
+.tv-h3 + .tv-h3, .tv-table + .tv-h3, .tv-chart + .tv-h3, .tv-list + .tv-h3, .tv-note + .tv-h3 { padding-top: 16px; }
+
+/* notes: the honesty lines — gaps, exclusions, lower bounds */
+.tv-note {
+  margin-top: 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.tv-note.warn { color: var(--text); }
+.tv-note.warn::before { content: "▲ "; color: var(--accent); }
+.tv-empty { font: 12px var(--font-mono); color: var(--text-dim); padding: 6px 0; }
+
+/* ── tables ────────────────────────────────────────────────────── */
+.tv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.tv-table th, .tv-table td {
+  padding: 5px 8px 5px 0;
+  text-align: right;
+  border-bottom: 1px solid var(--panel-border);
+  font: 11.5px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tv-table th {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.tv-table th:first-child, .tv-table td:first-child { text-align: left; }
+.tv-table td.id { text-align: left; white-space: normal; overflow-wrap: anywhere; max-width: 360px; }
+.tv-table td.dim { color: var(--text-dim); }
+.tv-table td.left { text-align: left; }
+.tv-table td.ok { color: var(--accent); }
+.tv-table tr:last-child td { border-bottom: 0; }
+.tv-table td.bar { width: 120px; padding-left: 10px; }
+.tv-bar { display: block; height: 7px; background: var(--chip-bg); position: relative; }
+.tv-bar > i { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+.tv-bar > i.mute { background: var(--text-dim); opacity: 0.6; }
+
+/* ── charts (inline svg) ───────────────────────────────────────── */
+.tv-chart { display: block; width: 100%; height: 150px; margin: 4px 0 6px; overflow: visible; }
+.tv-chart .axis { stroke: var(--panel-border); stroke-width: 1; }
+.tv-chart .tick { font: 9px var(--font-mono); fill: var(--text-dim); }
+.tv-chart .lanes { fill: var(--accent); }
+.tv-chart .tools { fill: var(--accent); opacity: 0.45; }
+.tv-chart .p95 { stroke: var(--text-dim); stroke-width: 1.5; }
+.tv-chart .recall { fill: var(--text-dim); }
+.tv-legend {
+  display: flex;
+  gap: 18px;
+  font: 10px var(--font-mono);
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.tv-legend span::before {
+  content: "";
+  display: inline-block;
+  width: 9px; height: 9px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  background: var(--accent);
+}
+.tv-legend span.tools::before { opacity: 0.45; }
+.tv-legend span.recall::before { background: var(--text-dim); }
+.tv-legend span.p95::before { height: 2px; vertical-align: 2px; background: var(--text-dim); }
+
+/* ── criteria (evidence gate) ──────────────────────────────────── */
+.tv-list { list-style: none; }
+.tv-list li {
+  display: grid;
+  grid-template-columns: 1fr 140px 90px;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 12px;
+}
+.tv-list li:last-child { border-bottom: 0; }
+.tv-list .v { font: 11.5px var(--font-mono); text-align: right; font-variant-numeric: tabular-nums; }
+.tv-list .v.ok { color: var(--accent); }
+.tv-verdict {
+  margin-bottom: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--panel-border);
+  border-bottom: 1px solid var(--panel-border);
+  font: 12px var(--font-mono);
+}
+.tv-verdict.ok { color: var(--accent); }

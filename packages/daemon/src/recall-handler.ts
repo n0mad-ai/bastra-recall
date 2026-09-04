@@ -435,6 +435,38 @@ export async function recallHandler(
       ? computeTrustShadow(hits, (id) => usageForShadow(deps.vaultPath)[id])
       : undefined;
 
+  // Prong 1 (#50): lean-by-default. `verbosity: "full"` liefert alle
+  // Felder + den stages-Block (Mac-App / Debug).
+  const full = parsed.data.verbosity === "full";
+  // #205: ein Hit auf ein Memory mit ungelöstem Konflikt-Block trägt das
+  // Flag — das Modell kann „der Vault widerspricht sich hier" sagen, statt
+  // selbstbewusst eine Seite zu servieren. Nur gesetzt wenn true (lean).
+  const flagConflict = (h: { id: string }): unknown =>
+    hasUnresolvedConflict(deps.vault.get(h.id)?.body) ? { ...h, conflict: true } : h;
+  const result = {
+    query: query,
+    vault_size: deps.vault.size(),
+    hits: (full ? hits : hits.map(toLeanHit)).map(flagConflict),
+    recall_id: recallId,
+    latency_ms: latencyMs,
+    // #230: nur setzen wenn true — Abwesenheit = nicht weak, hält lean schlank.
+    ...(weakResult ? { weak_result: true } : {}),
+    ...(noHome ? { no_home: true } : {}),
+    // P0: Kein Caller darf den Score-Raum aus der Höhe der Zahl erraten.
+    score_kind: scoreKind,
+    // `score_arms` beschreibt auch eine rohe Liste ehrlich („nur der
+    // BM25-Arm lief"). `score_version` dagegen NICHT: Codex-Gegenreview (P0)
+    // — eine Formelversion auf einer unfusionierten Zahl behauptet eine
+    // Vergleichbarkeit, die es dort nicht gibt. Rohe BM25-Werte sind nicht
+    // einmal untereinander vergleichbar.
+    score_arms: scoreArms,
+    ...(scoreKind === "rrf" ? { score_version: SCORE_VERSION } : { unfused: true }),
+    ...(degradedDuringCall ? { degraded: degradedDuringCall } : {}),
+    ...(full ? { stages: collector.timings } : {}),
+  };
+  // #457: Größe erst NACH dem Bau des Ergebnisses — das Ereignis beschreibt
+  // den gelieferten Payload, nicht die interne Trefferliste.
+  const payloadChars = JSON.stringify(result, null, 2).length;
   fireAndForget(
     deps.telemetry.logRecall({
         recall_id: recallId,
@@ -498,36 +530,13 @@ export async function recallHandler(
         degraded_reason: degradedDuringCall,
         salience_shadow: salienceShadow,
         trust_shadow: trustShadow,
+        // #457: was der Aufrufer wirklich bekommt — serialisiert wie MCP und
+        // Forwarder es in den Transkript-Text schreiben (pretty JSON).
+        payload_chars: payloadChars,
+        payload_tokens_est: Math.ceil(payloadChars / 4),
+        presentation: full ? "full" : "lean",
     }),
   );
 
-  // Prong 1 (#50): lean-by-default. `verbosity: "full"` liefert alle
-  // Felder + den stages-Block (Mac-App / Debug).
-  const full = parsed.data.verbosity === "full";
-  // #205: ein Hit auf ein Memory mit ungelöstem Konflikt-Block trägt das
-  // Flag — das Modell kann „der Vault widerspricht sich hier" sagen, statt
-  // selbstbewusst eine Seite zu servieren. Nur gesetzt wenn true (lean).
-  const flagConflict = (h: { id: string }): unknown =>
-    hasUnresolvedConflict(deps.vault.get(h.id)?.body) ? { ...h, conflict: true } : h;
-  return {
-    query: query,
-    vault_size: deps.vault.size(),
-    hits: (full ? hits : hits.map(toLeanHit)).map(flagConflict),
-    recall_id: recallId,
-    latency_ms: latencyMs,
-    // #230: nur setzen wenn true — Abwesenheit = nicht weak, hält lean schlank.
-    ...(weakResult ? { weak_result: true } : {}),
-    ...(noHome ? { no_home: true } : {}),
-    // P0: Kein Caller darf den Score-Raum aus der Höhe der Zahl erraten.
-    score_kind: scoreKind,
-    // `score_arms` beschreibt auch eine rohe Liste ehrlich („nur der
-    // BM25-Arm lief"). `score_version` dagegen NICHT: Codex-Gegenreview (P0)
-    // — eine Formelversion auf einer unfusionierten Zahl behauptet eine
-    // Vergleichbarkeit, die es dort nicht gibt. Rohe BM25-Werte sind nicht
-    // einmal untereinander vergleichbar.
-    score_arms: scoreArms,
-    ...(scoreKind === "rrf" ? { score_version: SCORE_VERSION } : { unfused: true }),
-    ...(degradedDuringCall ? { degraded: degradedDuringCall } : {}),
-    ...(full ? { stages: collector.timings } : {}),
-  };
+  return result;
 }

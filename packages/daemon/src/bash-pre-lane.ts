@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { envFirst, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
+import { recordBudgetShadow } from "./session-budget.js";
 import { reportHinted } from "./hook-hinted.js";
 import { hookClient } from "./hook-surface.js";
 import { governContext } from "./context-governor.js";
@@ -282,6 +283,9 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
     },
   });
 
+  // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den
+  // Governor-Entscheid loggen — nichts wird gekürzt.
+  recordBudgetShadow(payload.session_id ?? null, "bash_hook_call", Math.ceil(block.length / 4));
   await writeTelemetry({
     session_id: payload.session_id ?? null,
     matched_pattern: match.label,

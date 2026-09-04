@@ -26,6 +26,7 @@
         <button data-view="clouds" class="active">Clouds</button>
         <button data-view="ring">Ring</button>
         <button data-view="semantic">Semantic</button>
+        <button data-view="telemetry">Telemetry</button>
       </div>
       <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/>
@@ -414,6 +415,33 @@
       <div id="live-history-list"></div>
     </div>
   </div>
+
+  <!-- Telemetry tab (#463): the stats.ts series, rendered. A scroll page over
+       the canvas rather than a view of it — nothing here has a position. -->
+  <section id="telemetry-view" hidden aria-label="Telemetry">
+    <div id="tv-page">
+      <header id="tv-head">
+        <div>
+          <h1 class="section-title">Telemetry — what recall does with your context</h1>
+          <p id="tv-lead">Your own event logs, read locally — nothing is uploaded or shared. Every number is the
+            <code>bastra logs --stats</code> series, rendered; where a series has a known gap it says so
+            instead of drawing a line through it.</p>
+        </div>
+        <div id="tv-controls">
+          <div class="filter-label">Window</div>
+          <div id="tv-window" class="seg">
+            <button data-days="1">1d</button>
+            <button data-days="7" class="active">7d</button>
+            <button data-days="30">30d</button>
+            <button data-days="90">90d</button>
+          </div>
+          <div id="tv-window-note"></div>
+        </div>
+      </header>
+      <div id="tv-status" hidden></div>
+      <div id="tv-body"></div>
+    </div>
+  </section>
 
   <div id="tooltip" hidden></div>
   <div id="hint">drag to pan · scroll to zoom · click a node to inspect · drag a label to move its cloud</div>

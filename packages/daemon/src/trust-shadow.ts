@@ -37,8 +37,9 @@ export function trustRankMode(): TrustRankMode {
   return raw === "off" || raw === "live" ? raw : "shadow";
 }
 
-/** The up-step. One acted-on recall moves trust by this much; one surfaced-but-
- *  never-loaded hit moves it by twice this much downward (see `trustScore`). */
+/** The step. One surfaced-but-never-loaded hit moves trust down by twice this
+ *  much (see `trustScore`); since #469 nothing moves it up — `acted_on` was
+ *  the up-step and is a token-overlap proxy without a gradient. */
 export function trustStep(): number {
   return Math.max(0, envFloat("BASTRA_TRUST_STEP", 0.02));
 }
@@ -49,17 +50,19 @@ export const TRUST_CEILING = 1;
 /**
  * Trust for one memory, bounded [0.5, 1.0].
  *
- * `acted_on` nudges up, `surfaced` without a matching `loaded` nudges down at
- * twice the rate — the asymmetry is the point of #160: dead weight has to sink
- * faster than good memories rise, or a memory that surfaces constantly and is
- * never opened keeps its place forever.
+ * `surfaced` without a matching `loaded` nudges down at twice the step — dead
+ * weight has to sink, or a memory that surfaces constantly and is never opened
+ * keeps its place forever (#160). The up-step on `acted_on` is gone (#469):
+ * the proxy fires on two shared tokens and closed three unrelated memories on
+ * one Bash call, so the 21.08. shadow result (11 higher / 4 lower, p ≈ 0.12)
+ * rested on it. Opening a hit already neutralises its "ignored" count; that
+ * is the one engagement signal with a defined meaning.
  *
  * WHY THE CEILING IS THE NEUTRAL VALUE, not the middle: a memory with no
  * history at all scores exactly 1.0 and is therefore ranked exactly as it is
  * today. Starting everyone at 0.75 and letting engagement climb would penalise
  * every memory saved this week for the sin of being new — the multiplier would
- * encode age, not trust. So this factor can only ever demote, and `acted_on`
- * buys back ground that was lost rather than buying advantage. That also makes
+ * encode age, not trust. So this factor can only ever demote. That also makes
  * the live-mode blast radius small enough to reason about: no memory can be
  * pushed above where the fusion already put it.
  *
@@ -71,9 +74,8 @@ export function trustScore(entry: UsageEntry | undefined, step: number = trustSt
   if (!entry) return TRUST_CEILING;
   const surfaced = entry.surfaced ?? 0;
   const loaded = entry.loaded ?? 0;
-  const actedOn = entry.acted_on ?? 0;
   const ignored = Math.max(0, surfaced - loaded);
-  const raw = TRUST_CEILING + step * actedOn - 2 * step * ignored;
+  const raw = TRUST_CEILING - 2 * step * ignored;
   return Math.min(TRUST_CEILING, Math.max(TRUST_FLOOR, raw));
 }
 

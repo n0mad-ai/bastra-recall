@@ -45,6 +45,7 @@ import type {
   OllamaLifecycleEvent,
   RecallBand,
   TurnSource,
+  ReadDocumentEvent,
 } from "./telemetry-events.js";
 
 const RECALL_FOLLOWUP_WINDOW_MS = 5 * 60 * 1000;
@@ -91,7 +92,8 @@ const SCORE_FLOOR = envInt("BASTRA_RECALL_FLOOR", 30);
 const MUST_LOAD_SCORE = envInt("BASTRA_MUST_LOAD_SCORE", 100);
 
 function bandForScore(score: number | null): RecallBand {
-  if (score === null) return "below_floor";
+  // #469: kein Hint, kein Score, kein Band — nicht „unter dem Floor".
+  if (score === null) return "not_hinted";
   if (score >= MUST_LOAD_SCORE) return "required";
   if (score >= SCORE_FLOOR) return "optional";
   return "below_floor";
@@ -495,6 +497,19 @@ export class Telemetry {
     if (!this.enabled) return;
     await this.write({
       kind: "load_memory",
+      ts: new Date().toISOString(),
+      session_id: this.sessionId,
+      ...payload,
+    });
+  }
+
+  /** #457: eine Zeile pro `read_document`, nur Größen, kein Text. */
+  async logReadDocument(
+    payload: Omit<ReadDocumentEvent, "kind" | "ts" | "session_id">,
+  ): Promise<void> {
+    if (!this.enabled) return;
+    await this.write({
+      kind: "read_document",
       ts: new Date().toISOString(),
       session_id: this.sessionId,
       ...payload,

@@ -67,6 +67,18 @@ export function requiredHeadline(subject: string, cut: number, rrf: RrfConstants
  * raw BM25 scale is unbounded — #302 measured top hits into six digits — so no
  * band claim can be made at all.
  */
+/**
+ * #465: what a hint block IS. Every block delivers candidates — id, title,
+ * summary, score — never the memory body. Read as-is, a model concludes the
+ * content is already in context and acts on a one-line summary while believing
+ * it has read the lesson (01./02.09.: an override memory ranked top with score
+ * 163, never loaded, the session followed the opposite rule). The sentence is
+ * the same on every surface so no lane can be misread differently.
+ */
+export const CANDIDATES_ONLY_NOTICE =
+  "These are candidates (id, title, summary), NOT the memories themselves — nothing here is in your " +
+  "context until you load_memory(id) and read it. A summary is a pointer, not the rule.";
+
 export function unfusedHeadline(subject: string): string {
   return (
     `Lexical matches for ${subject}, ranked by term overlap alone — semantic ` +

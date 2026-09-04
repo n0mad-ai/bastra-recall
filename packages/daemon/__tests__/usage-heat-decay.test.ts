@@ -56,12 +56,15 @@ test("uniformly fresh contenders keep their order — decay is inert there", () 
   };
   const withTime = computeHeat(sameDay, NOW);
   const order = Object.entries(withTime).sort((x, y) => y[1] - x[1]).map(([id]) => id);
-  assert.deepEqual(order, ["a", "b", "c"], "weight still decides among equals in age");
+  // #469: weight is `loaded` alone (13 > 10 > 7) — before, 2 × acted_on
+  // lifted a and b above c.
+  assert.deepEqual(order, ["c", "a", "b"], "weight still decides among equals in age");
 });
 
-test("acted_on keeps counting double, decay does not change that", () => {
-  const heat = computeHeat({ applied: entry(0, 3, 1), opened: entry(3, 0, 1) }, NOW);
-  assert.ok(heat.applied > heat.opened, "applying a memory outweighs opening it");
+test("#469: acted_on no longer weighs — only loads make heat", () => {
+  const heat = computeHeat({ applied: entry(3, 3, 1), opened: entry(3, 0, 1) }, NOW);
+  assert.equal(heat.applied, heat.opened, "three acted_on episodes on top of three loads change nothing");
+  assert.deepEqual(computeHeat({ onlyActed: entry(0, 5, 1) }, NOW), {}, "acted_on without a load is no heat");
 });
 
 test("a memory without timestamps is not demoted for our bookkeeping", () => {

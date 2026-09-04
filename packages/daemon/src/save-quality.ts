@@ -158,12 +158,24 @@ const IMPERATIVE_LEAD_RE =
  *   Normalpfad `undefined` (der Agent schickt nur den Titel), und ein Filter
  *   gegen `undefined` schließt nichts aus — das Memory fand beim Overwrite
  *   sich selbst als Top-Duplikat und kollidierte mit den eigenen Triggern.
+ * @param supersededIds Die Versionskette, die dieser Save per `replaces`
+ *   ablöst — der direkte Vorgänger und alles, was DIESER schon ersetzt hat.
+ *   Ein Vorgänger ist der einzige Kollisionspartner, den der Autor bereits
+ *   beantwortet hat: `replaces` IST die Antwort. Das Gate weiß das
+ *   (`claim-gate.ts`, `unansweredClaims`) und lässt den Save durch, aber der
+ *   Bericht entsteht VOR dem Gate und sah die Kollision weiterhin — eine
+ *   Warnung über etwas, das derselbe Aufruf schon aufgelöst hat. Muss hier
+ *   greifen und nicht erst im Gate, weil `overwrite: true` das Gate
+ *   überspringt (`tool-handlers.ts`) und die Warnung dort sonst ungefiltert
+ *   herauskäme. Fremde Kollisionen bleiben unberührt.
  */
 export function scoreSaveQuality(
   deps: ToolDeps,
   input: SaveMemoryInput,
   excludeId: string,
+  supersededIds: ReadonlySet<string> = new Set(),
 ): SaveQualityResult {
+  const excluded = (id: string): boolean => id === excludeId || supersededIds.has(id);
   const issues: string[] = [];
   const suggestions: string[] = [];
   let score = 100;
@@ -301,7 +313,7 @@ export function scoreSaveQuality(
   const self = asFields(input);
   const duplicateCandidates = deps.search
     .recall(duplicateQuery, { k: 10, scope: input.scope, type: input.type, allow_private: false })
-    .filter((hit) => hit.id !== excludeId)
+    .filter((hit) => !excluded(hit.id))
     .map((hit) => {
       // The hit carries only title/summary; tags and recall_when — the fields
       // the author wrote to be matched — come from the vault.
@@ -348,7 +360,7 @@ export function scoreSaveQuality(
       (m) =>
         scopeEquals(m.fm.scope, input.scope) &&
         m.fm.type === input.type &&
-        m.fm.id !== excludeId &&
+        !excluded(m.fm.id) &&
         !m.fm.obsolete &&
         m.fm.sensitivity !== "private",
     ).length;
@@ -383,7 +395,7 @@ export function scoreSaveQuality(
       const k = Math.max(20, Math.min(admittedPool, COLLISION_SCAN_MAX));
       const raw = deps.search.recall(trigger, { k, scope: input.scope, type: input.type, allow_private: false });
       const hits = raw
-        .filter((hit) => hit.id !== excludeId)
+        .filter((hit) => !excluded(hit.id))
         .map((hit) => ({ id: hit.id, claim: claimingTrigger(trigger, deps.vault.get(hit.id)?.fm.recall_when ?? []) }))
         .filter((hit): hit is { id: string; claim: string } => hit.claim !== undefined);
       return {

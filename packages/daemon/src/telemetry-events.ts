@@ -25,7 +25,8 @@ export type TelemetryEvent =
   | IdScanEvent
   | MutationIncidentEvent
   | EvidenceDecisionEvent
-  | OllamaLifecycleEvent;
+  | OllamaLifecycleEvent
+  | ReadDocumentEvent;
 
 /**
  * Pro-Stage-Timings eines Recalls (#38) plus die Querykosten-Merkmale aus
@@ -211,7 +212,20 @@ export interface RecallEvent extends BaseEvent, DimensionedEvent {
    *  (shadow mode). Absent when every served hit sits at the trust ceiling —
    *  i.e. nothing has been shown-and-ignored — or the mode isn't shadow. */
   trust_shadow?: TrustShadow;
+  /**
+   * #457: Größe des Payloads, den der Aufrufer tatsächlich bekommen hat —
+   * das serialisierte Ergebnis (pretty JSON, wie MCP und Forwarder es in den
+   * Transkript-Text schreiben). Tokens sind chars/4, derselbe Schätzer wie
+   * `hint_tokens_est` in den Hook-Lanes. Kein Rohtext. Alte Zeilen ohne das
+   * Feld zählen im Ledger als `unknown`, nie als 0.
+   */
+  payload_chars?: number;
+  payload_tokens_est?: number;
+  presentation?: "lean" | "full";
 }
+
+/** #457: Woher ein Load kam — Hook-Hint, eigener `recall()` oder kalt. */
+export type LoadOrigin = "hook" | "recall" | "direct";
 
 export interface LoadMemoryEvent extends BaseEvent {
   kind: "load_memory";
@@ -222,9 +236,37 @@ export interface LoadMemoryEvent extends BaseEvent {
   from_hook_recall: string | null;
   /** Rank (1-based) at which this id appeared in that hook_recall's hits[]. */
   hook_hint_rank: number | null;
+  /**
+   * #457: Größe des tatsächlich gelieferten Payloads NACH der lean/full-
+   * Projektion (nicht die Vault-Datei). `delivered_chars` ist das
+   * serialisierte Ergebnis, `body_chars` nur der Body-Anteil. Nur auf
+   * erfolgreichen Loads; fehlt auf alten Zeilen → `unknown` im Ledger.
+   */
+  delivered_chars?: number;
+  delivered_tokens_est?: number;
+  body_chars?: number;
+  presentation?: "lean" | "full";
+  origin?: LoadOrigin;
+  /** #457: Echte Session des Aufrufers (Forwarder-Header), wenn bekannt. */
+  caller_session?: string | null;
 }
 
-export type RecallBand = "required" | "optional" | "below_floor";
+/** #457: `read_document` liefert ganze Dokumentkörper — der größte
+ *  einzelne Posten, der bisher in keiner Kontextrechnung stand. */
+export interface ReadDocumentEvent extends BaseEvent {
+  kind: "read_document";
+  id: string;
+  found: boolean;
+  delivered_chars?: number;
+  delivered_tokens_est?: number;
+  body_chars?: number;
+  caller_session?: string | null;
+}
+
+/** #469: `not_hinted` = the load had no hook hint and therefore no score —
+ *  there was never a floor for it to be below. Before, such episodes were
+ *  filed as `below_floor` and every readout counted them as ranking failures. */
+export type RecallBand = "required" | "optional" | "below_floor" | "not_hinted";
 export type TurnSource = "session" | "inferred";
 
 export interface RecallEpisodeEvent extends BaseEvent {

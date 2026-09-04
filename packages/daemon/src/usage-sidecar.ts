@@ -72,9 +72,16 @@ export type UsageAggregate = Record<string, UsageEntry>;
 
 /**
  * #217 Phase 3: Usage-Heat 0..1 pro Memory — log-skaliert (log1p) relativ
- * zum heißesten Memory; loaded zählt einfach, acted_on doppelt. Die zweite
- * Demand-Uhr neben der Valenz: der Daemon stampt sie beim Graph-Serve auf
- * die Nodes (core/graph.ts bleibt reine Vault-Projektion).
+ * zum heißesten Memory. Die zweite Demand-Uhr neben der Valenz: der Daemon
+ * stampt sie beim Graph-Serve auf die Nodes (core/graph.ts bleibt reine
+ * Vault-Projektion).
+ *
+ * #469: Nur `loaded` zählt. `acted_on` zählte doppelt, ist aber ein Token-
+ * Overlap-Proxy, der ab ZWEI gemeinsamen Wörtern feuert — am 01.09. schloss
+ * ein einzelner Bash-Aufruf drei thematisch fremde Memories als acted_on,
+ * und über 84 Episoden trennte die Stärke nichts (Median 4 gegen 3). Ein
+ * Signal ohne Gradient darf keine abgeleitete Größe doppelt wiegen. Der
+ * Zähler bleibt im Aggregat erhalten; er ist nur kein Gewicht mehr.
  */
 /**
  * Half-life of a memory's heat, in days (#227).
@@ -109,7 +116,7 @@ export function computeHeat(usage: UsageAggregate, now: number = Date.now()): Re
   const raw = new Map<string, number>();
   let max = 0;
   for (const [id, e] of Object.entries(usage)) {
-    const w = (e.loaded ?? 0) + 2 * (e.acted_on ?? 0);
+    const w = e.loaded ?? 0;
     if (w <= 0) continue;
     // No stamp means "we don't know when", not "long ago" — an entry written
     // before the timestamps existed must not be demoted for our bookkeeping.
@@ -130,7 +137,8 @@ export function computeHeat(usage: UsageAggregate, now: number = Date.now()): Re
 export interface UsageReach {
   loaded: number;
   acted_on: number;
-  /** The weight heat is computed from: loaded + 2 × acted_on. */
+  /** The weight heat is computed from: `loaded` alone (#469 — `acted_on`
+   *  is reported next to it but no longer weighs). */
   weight: number;
   /** Newest of the three last_*_at stamps, ISO, or null if never reached. */
   last_at: string | null;
@@ -162,7 +170,7 @@ export function computeReach(usage: UsageAggregate): Record<string, UsageReach> 
     out[id] = {
       loaded,
       acted_on: acted,
-      weight: loaded + 2 * acted,
+      weight: loaded,
       last_at: stamps.length > 0 ? stamps[stamps.length - 1] : null,
     };
   }

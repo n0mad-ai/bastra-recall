@@ -29,6 +29,7 @@ import { createWeather } from "./managers/weather.js";
 import { createWeatherChip } from "./managers/weather-chip.js";
 import { createDrillSwitcher } from "./managers/drill-switcher.js";
 import { createContextMenu } from "./managers/context-menu.js";
+import { createTelemetryView } from "./managers/telemetry-view.js";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -172,8 +173,25 @@ async function main() {
 
   const drillSwitcher = createDrillSwitcher({ ringView });
 
+  // Telemetry tab (#463): a scroll page over the stage, not a canvas view.
+  // The canvas keeps its view underneath and comes back untouched.
+  const telemetryView = createTelemetryView();
+  const markViewButton = (v) =>
+    $("#view-switch")
+      .querySelectorAll("button")
+      .forEach((b) => b.classList.toggle("active", b.dataset.view === v));
+
   let viewLoading = false; // semantic layout fetch in flight — don't re-enter
   async function switchView(v) {
+    if (v === "telemetry") {
+      telemetryView.open();
+      markViewButton(v);
+      return;
+    }
+    if (telemetryView.isOpen()) {
+      telemetryView.close();
+      markViewButton(currentView);
+    }
     if (v === currentView || viewTransition || viewLoading) return;
     // fetch the semantic layout first — it can fail (no embeddings yet),
     // and then the current view must stay untouched
@@ -242,9 +260,7 @@ async function main() {
     }
     currentView = v;
     localStorage.setItem(VIEW_KEY, v);
-    $("#view-switch")
-      .querySelectorAll("button")
-      .forEach((b) => b.classList.toggle("active", b.dataset.view === v));
+    markViewButton(v);
     viewTransition = { t0: performance.now(), ms: 950, from, to, noFit: true };
   }
 

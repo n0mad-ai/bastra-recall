@@ -34,7 +34,7 @@
 // start against +0.8ms for the three leafs, on a fresh spawn per event.
 import { detectProject } from "@bastra-recall/core/topics";
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
-import { bandHits, requiredHeadline, unfusedHeadline } from "./band-wording.js";
+import { bandHits, requiredHeadline, unfusedHeadline, CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
 import { isUnfused } from "./hook-recall-response.js";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { appendFile, mkdir } from "node:fs/promises";
@@ -44,6 +44,7 @@ import { envFirst, envInt } from "./env.js";
 import { effectiveUpdateMode, getDocsLanguage, getDocsMode, getPrimaryLanguage } from "./settings.js";
 import { formatDokuBlock } from "./doku-block.js";
 import { defaultLogDir } from "./telemetry.js";
+import { recordBudgetShadow, resetBudgetOnSource } from "./session-budget.js";
 import { spawnStagedUpdate, stagedToday, markStagedToday } from "./update-check.js";
 import { formatBlockedUpdate, readBlockedUpdate } from "./update-blocked.js";
 import { pendingPatchNotice } from "./patch-registry.js";
@@ -91,6 +92,10 @@ export async function runSessionLane(
   // window go — it was the only thing covering this case, and it paid for that
   // coverage with a re-injection into every session that merely ran long.
   // "startup" is a fresh id and needs nothing; best-effort, never blocking.
+  // #458 (shadow): nur `clear` beginnt einen neuen Kontext — compact und
+  // resume lassen den bisher injizierten Kontext im Transkript stehen, also
+  // bleibt auch das Sitzungsbudget stehen.
+  resetBudgetOnSource(payload.session_id, payload.source);
   if (payload.source === "compact" || payload.source === "clear" || payload.source === "resume") {
     try {
       await clearShown(payload.session_id ?? "");
@@ -472,6 +477,9 @@ export async function runSessionLane(
   // hint_tokens_est (#72): Token-Schätzung des injizierten Kontexts.
   let injected = "";
   let out = "{}";
+  // #462: der Recall-Block einmal gebaut, damit er als eigener Posten messbar
+  // ist — bisher gab es EINE Zahl für zehn Teile.
+  let recallBlock = "";
   if (top.length === 0 && pinnedBlock === "" && extras === "") {
     if (status === "ok") status = "no-hits";
     // stays "{}"
@@ -490,7 +498,8 @@ export async function runSessionLane(
     // real signal here, and framing the whole block as noise would hide it.
     const answered = responses.filter((r) => r.resp !== null);
     const allWeak = answered.length > 0 && answered.every((r) => r.resp!.weak_result === true);
-    injected = pinnedHead + formatBlock(top, project, payload.source ?? null, allWeak, unfused, client) + extras;
+    recallBlock = formatBlock(top, project, payload.source ?? null, allWeak, unfused, client);
+    injected = pinnedHead + recallBlock + extras;
     out = JSON.stringify({
       hookSpecificOutput: {
         hookEventName: "SessionStart",
@@ -499,6 +508,9 @@ export async function runSessionLane(
     });
   }
 
+  // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den
+  // Governor-Entscheid loggen — nichts wird gekürzt.
+  recordBudgetShadow(payload.session_id ?? null, "session_hook_call", Math.ceil(injected.length / 4), { source: payload.source ?? null });
   await writeTelemetry({
     session_id: payload.session_id ?? null,
     source: payload.source ?? null,
@@ -512,6 +524,24 @@ export async function runSessionLane(
     top_score: top[0]?.score ?? null,
     latency_ms_total: Date.now() - startedAt,
     hint_tokens_est: Math.ceil(injected.length / 4),
+    // #462: dieselbe Schätzung je Teil. Nichts injiziert = alle Teile 0.
+    hint_tokens_by_part: tokensByPart(
+      injected === ""
+        ? {}
+        : {
+            pinned: pinnedBlock,
+            recalls: recallBlock,
+            taxonomy: taxonomyBlock,
+            language: languageBlock,
+            care: careBlock,
+            import: importBlock,
+            onboarding: onboardingBlock,
+            update: updateBlock,
+            patch: patchBlock,
+            pending: pendingBlock,
+            doku: dokuBlock,
+          },
+    ),
     hinted_ids: top.map((h) => h.id),
     hinted_types: top.map((h) => h.type),
     status,
@@ -588,7 +618,7 @@ export function formatBlock(
 
   if (unbanded.length > 0) {
     sections.push(
-      `${unfusedHeadline(`the ${project ?? "current"} session`)} ` +
+      `${unfusedHeadline(`the ${project ?? "current"} session`)} ${CANDIDATES_ONLY_NOTICE} ` +
         `load_memory(id) the ones relevant to what the user actually asks for. ` +
         `These are hints, not obligations.`,
     );
@@ -601,6 +631,7 @@ export function formatBlock(
       weak
         ? `Ranked matches, but NONE anchors lexically (no trigger phrase, no title term matched) — on the hybrid path a high score is rank-1-of-nothing. Treat these as probably-not-relevant unless one obviously fits; do not load them just because they are listed.`
         : `${requiredHeadline(`the ${project ?? "current"} session`, MUST_LOAD_SCORE, { k: RRF_K, scale: RRF_SCALE })} ` +
+          `${CANDIDATES_ONLY_NOTICE} ` +
           `load_memory(id) the ones relevant to what the user actually asks for. ` +
           `These are hints, not obligations: load only what fits, don't batch-load the list, ` +
           `and if the user requested a specific number or scope, honor that over this list.`,
@@ -682,11 +713,48 @@ interface SessionHookTelemetry {
   latency_ms_total: number;
   /** Geschätzte Tokens des injizierten Session-Kontexts (#72). */
   hint_tokens_est: number;
+  /** #462: dieselbe Schätzung je Teil des Blocks (pinned, recalls, taxonomy,
+   *  language, care, import, onboarding, update, patch, pending, doku). Die
+   *  Teile runden einzeln, ihre Summe kann `hint_tokens_est` um wenige Tokens
+   *  übersteigen. Fehlt auf Zeilen vor #462. */
+  hint_tokens_by_part: Record<SessionContextPart, number>;
   hinted_ids: string[];
   /** #354: Memory-Typ je `hinted_ids`-Eintrag, gleiche Reihenfolge. */
   hinted_types: string[];
   status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error";
   error: string | null;
+}
+
+export const SESSION_CONTEXT_PARTS = [
+  "pinned",
+  "recalls",
+  "taxonomy",
+  "language",
+  "care",
+  "import",
+  "onboarding",
+  "update",
+  "patch",
+  "pending",
+  "doku",
+] as const;
+export type SessionContextPart = (typeof SESSION_CONTEXT_PARTS)[number];
+
+/**
+ * #462: Token-Schätzung je Teil des Session-Start-Blocks — derselbe chars/4-
+ * Schätzer wie `hint_tokens_est`, auf jeden Teil einzeln. 152 Starts trugen
+ * 14,5 % der gesamten Kontextsteuer, und niemand konnte sagen, welcher der
+ * zehn Teile die 2.344 Tokens pro Start ausgibt. Erst messen, dann über die
+ * Kadenz entscheiden — die Entscheidung bleibt beim Nutzer, nicht hier.
+ * Fehlende Teile zählen 0; ein leerer Eingabe-Record heißt „nichts injiziert".
+ */
+export function tokensByPart(parts: Partial<Record<SessionContextPart, string>>): Record<SessionContextPart, number> {
+  const out = {} as Record<SessionContextPart, number>;
+  for (const name of SESSION_CONTEXT_PARTS) {
+    const text = parts[name] ?? "";
+    out[name] = text.length === 0 ? 0 : Math.ceil(text.trim().length / 4);
+  }
+  return out;
 }
 
 async function writeTelemetry(payload: SessionHookTelemetry): Promise<void> {

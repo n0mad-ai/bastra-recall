@@ -5,6 +5,14 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+// #455: the client projections (Cursor rule, Codex/ChatGPT plugin skill) are
+// GENERATED from packages/skill/SKILL.md. Regenerate before copying, so the
+// package can never ship a Cursor rule that disagrees with the skill.
+const { buildSkillProjections } = await import(
+  resolve(packageRoot, "..", "..", "scripts", "build-skill-projections.mjs")
+);
+await buildSkillProjections();
+
 // The convention layers live in packages/skill/ but must ship inside the daemon
 // package (that is what npm publishes). Discovered, not listed (#232): every
 // markdown file is skill payload — SKILL.md plus the reference files it points

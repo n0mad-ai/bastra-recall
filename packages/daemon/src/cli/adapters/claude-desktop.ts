@@ -1,4 +1,4 @@
-import { CLAUDE_DESKTOP_CONFIG, CLAUDE_DESKTOP_DIR, SKILL_TARGET_FILE } from "../paths.js";
+import { CLAUDE_DESKTOP_CONFIG, CLAUDE_DESKTOP_DIR, SKILL_SOURCE_DIR, SKILL_TARGET_DIR } from "../paths.js";
 import {
   SERVER_KEY,
   atomicWriteJson,
@@ -11,7 +11,7 @@ import {
   readJsonConfig,
   resolveVault,
 } from "../helpers.js";
-import { copySkill } from "../skill.js";
+import { copySkill, describeSkillInstall, inspectSkillInstall } from "../skill.js";
 import { checkForwarderRegistration, ensureStableForwarder } from "../stable-runtime.js";
 import type { Adapter, DoctorResult, InstallOpts, InstallResult, UninstallResult } from "../types.js";
 
@@ -171,7 +171,9 @@ async function claudeDesktopDoctor(): Promise<DoctorResult> {
   }
 
   // 3. Skill (shared with Claude Code under ~/.claude/skills/)
-  details["skill"] = (await fileExists(SKILL_TARGET_FILE)) ? `present (${SKILL_TARGET_FILE})` : "missing";
+  // #456: compared against the shipped bundle, not merely present.
+  const skillState = await inspectSkillInstall(SKILL_SOURCE_DIR, SKILL_TARGET_DIR);
+  details["skill"] = describeSkillInstall(skillState, SKILL_TARGET_DIR);
 
   // 4. Daemon reachable
   const probe = await probeDaemon();
@@ -182,7 +184,8 @@ async function claudeDesktopDoctor(): Promise<DoctorResult> {
     forwarderBroken ||
     details["vault-path"]?.includes("MISSING") === true ||
     details["vault-path"]?.startsWith("not ") === true ||
-    details["skill"] === "missing";
+    details["skill"] === "missing" ||
+    details["skill"].startsWith("STALE");
   if (broken) return { status: "broken", message: "registered but skill or referenced paths need repair — re-run 'bastra install claude-desktop'", details };
   return { status: "ok", message: "registered with skill, looks healthy", details };
 }
