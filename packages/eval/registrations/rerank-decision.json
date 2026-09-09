@@ -1,0 +1,181 @@
+{
+  "$comment": "Pre-registration of the #501 query-time cross-encoder rerank DECISION (§18.3). Registered before a single quality number exists. #501 is a decision issue: the deliverable is a table plus a recommendation to Daniel, not a shipped reranker. The prose version, with the model spike that produced the numbers below, is docs/design/2026-09-09-501-cross-encoder-rerank-messplan.md. Amending anything after a run has started invalidates that run: bump registration_version and say which version a report belongs to.",
+  "schema_version": 1,
+  "registration_version": 1,
+  "registered_at": "2026-09-09",
+  "status": "structure_registered",
+  "issue": 501,
+  "depends_on": [500],
+
+  "$comment_status": "structure_registered — the free parameters, slices, metrics and decision bars are fixed; no quality or latency number has been produced yet. #500 (LongMemEval as the external arm) is the precondition and must have landed before the LongMemEval side runs.",
+
+  "question": "The remaining recall deficit is mis-ranking, not missing recall (#103: hybrid keeps 99/115 far golds in the pool at R@3 far 70.4%; #118: a deeper pool pulls in 12 more of which NONE reaches the top 3). Does a cross-encoder — the one mechanism that looks at the query and a candidate together — fix the order, and does the lift pay for the latency?",
+
+  "not_in_scope": [
+    "Wiring a cross-encoder into the production recall path. Zero production latency impact from this work.",
+    "Score blending between the cross-encoder logit and the RRF score — a second free parameter, registered separately only if the simple form carries.",
+    "Learned thresholds.",
+    "Reranking the full body.",
+    "Quantizing the main arm: its repo ships no quantized ONNX and a self-conversion is its own undertaking, considered only if the lift carries."
+  ],
+
+  "insertion_point": {
+    "$comment": "Where a rerank stage WOULD sit, and why measuring it needs no production change at all.",
+    "would_sit": "between staleness.rank and slice(0, k) in SearchIndex.recallHybrid",
+    "measured_through": "opts.onCandidatePool (#121, packages/core/src/search.ts:1226) — the damped, pre-slice pool, in the same order and on the same score scale as the served hits",
+    "pool_depth": "HOP_SEED_POOL = max(k*4, 20); at PRODUCTION_K = 10 the pool is 40 deep, so N up to 30 is measurable without moving a shipped constant",
+    "ceiling": "The pool is bm25Top(50) ∪ vectorTop(50). A gold outside it cannot be rescued by any reranker, so recall_any@N is reported per run — without it a small lift is indistinguishable from an exhausted lever."
+  },
+
+  "free_parameters": {
+    "$comment": "Fixed here, before the first number. The passage length is on this list because the spike showed it moves cost by a factor of 3.4 — more than N does — which makes it a registered choice rather than an implementation detail.",
+    "n": [10, 20, 30],
+    "k_cuts": [1, 3, 5],
+    "passage_modes": {
+      "short": "title + summary — measured at ~80 tokens/pair",
+      "body": "title + summary + body[0..400] — measured at ~191 tokens/pair"
+    },
+    "fusion": "pure rerank ranking; the cross-encoder logit orders the window alone, ties keep RRF order",
+    "staleness": "applied BEFORE the rerank — the pool handed out is the damped one, which is where the stage would sit in production",
+    "seed": 20260909,
+    "resampling": "paired per case; 10,000-iteration percentile bootstrap CI and a two-sided sign-flip permutation test, the same construction rrf-k-beir.ts used for RRF_K"
+  },
+
+  "models": {
+    "$comment": "Spiked 2026-09-09 on an Apple M4 Pro through transformers.js (ONNX Runtime in Node). Real loads, real pairs. Ollama was ruled out because it has no rerank endpoint — a cross-encoder is a sequence classifier, not a generator.",
+    "en-de": {
+      "repo": "cross-encoder/msmarco-MiniLM-L6-en-de-v1",
+      "dtype": "fp32",
+      "role": "main arm",
+      "languages": ["de", "en"],
+      "spike": "DE query: gold +1.75, related distractor -7.41, unrelated -10.97 / -11.10. Graded, not just separated.",
+      "cost_ms_p50_warm": { "80_tokens": { "10": 26, "20": 52, "30": 83 }, "191_tokens": { "10": 77, "20": 178, "30": 286 } }
+    },
+    "bge": {
+      "repo": "Xenova/bge-reranker-base",
+      "dtype": "q8",
+      "role": "offline quality reference only",
+      "languages": ["de", "en"],
+      "spike": "DE query: gold -3.01, distractors ≈ -10.18 — works, but the negative tail is flat.",
+      "cost_ms_p50_warm": { "191_tokens": { "10": 263, "20": 580, "30": 956 } },
+      "why_reference_only": "956 ms p50 at N=30 is over the ~500 ms hook budget before any retrieval. It answers the one question the cheap model cannot: is the hypothesis wrong, or was the model too weak?"
+    },
+    "ms-marco": {
+      "repo": "Xenova/ms-marco-MiniLM-L-6-v2",
+      "dtype": "q8",
+      "role": "LongMemEval arm only",
+      "languages": ["en"],
+      "spike": "EN (Berlin classic): gold +8.85, distractor -11.25 — works. DE: gold -11.16, distractor -11.30 — NO SIGNAL AT ALL.",
+      "$comment_guard": "Running this on the German gold set would produce a number that reads as 'reranking does not help' and means 'this model does not speak the language'. rerank-model.ts carries the language list as a guard for exactly that reason."
+    },
+    "rejected": {
+      "mixedbread-ai/mxbai-rerank-base-v2": "no ONNX in the repo",
+      "onnx-community/bge-reranker-v2-m3-ONNX": "568M params, XLM-R-large class — certainly over budget given the bge-base numbers",
+      "onnx-community/Qwen3-Reranker-0.6B-ONNX": "causal LM with a yes/no logit; not a SequenceClassification head, high integration cost, certainly over budget",
+      "jinaai/jina-reranker-v2-base-multilingual": "XLM-R base class, cost profile coincides with bge-reranker-base"
+    }
+  },
+
+  "datasets": {
+    "$comment": "The two sets are not the same language, and the main arm is bilingual. Without a fixed assignment a cross-set model comparison would measure languages instead of models: on English LongMemEval the English-only ms-marco could beat the bilingual favourite while saying nothing about our production case.",
+    "gold": {
+      "path": "~/.bastra/eval-goldset/gold-*.json",
+      "role": "CARRIES THE PRODUCTION RECOMMENDATION",
+      "models": ["en-de", "bge"],
+      "counted_2026_09_09": {
+        "total": 699,
+        "probes_excluded": 36,
+        "answerable_non_probe": 584,
+        "no_answer_non_probe": 79,
+        "by_lang": { "de": 272, "neutral": 205, "en": 103, "mixed": 4 }
+      }
+    },
+    "longmemeval": {
+      "role": "externally comparable control figure, plus the probe of whether the bilingual arm costs quality on English",
+      "models": ["en-de", "bge", "ms-marco"],
+      "blocked_on": 500
+    },
+    "$comment_divergence": "A lift that appears on LongMemEval and not on the gold set is not a contradiction — it is a language finding, and the recommendation follows the gold set."
+  },
+
+  "slices": {
+    "$comment": "Registered now so no slice can be discovered after the fact to rescue a null result.",
+    "lang_de_vs_en": "The main arm is bilingual; whether it carries on both sides is a number, not an assumption.",
+    "neutral_vs_prose": "205 of the 584 answerable gold cases carry lang=neutral — keyword chains out of hooks ('memory format schema json yaml frontmatter'), not questions. A cross-encoder is trained on natural-language pairs. If the lift is prose-only, 'prose queries only' is a legitimate recommendation shape, and it has to be visible in the data rather than invented afterwards."
+  },
+
+  "guards": {
+    "no_answer": {
+      "$comment": "A reranker can raise R@3 and still hurt, by confidently promoting something on a question that has no answer. The 79 no_answer cases run as a guard, never as a lift metric.",
+      "reported": "how often the top position changes under rerank",
+      "consequence": "a regression here vetoes the 'always on' recommendation regardless of R@3"
+    },
+    "regression_share": "Per-case better/worse/unchanged is reported alongside every mean. #118 is the standing reminder that a plausible lever can move a mean and rescue nothing."
+  },
+
+  "latency_protocol": {
+    "$comment": "Ollama and the cross-encoder share this machine. A naively differenced end-to-end time would charge the reranker for whatever the dense arm was doing.",
+    "measurement": "an hrtime span around the rerank stage INSIDE the call — whatever a case cost in recallHybrid sits outside the span entirely",
+    "baseline": "the same call without the rerank, timed at the same place",
+    "batches": "real N-sized batches; everywhere else one deep scoring pass covers every N, but here the batch size IS the question",
+    "cold": "first scored batch in a fresh process, with the model file cached and the network off; model load (446-507 ms measured) is reported BESIDE the score times and never folded into a 'cold p95' — it is a prewarm-lane cost (#361), not a recall cost",
+    "contention": "vector.search wait_ms / timed_out / provider_outcome are logged per run; a run with a conspicuous dense-arm timeout rate is DISCARDED, not interpreted. No other model work on the machine during a latency run.",
+    "hardware": "Apple M4 Pro — the FAST side of the hardware tiers. Every latency figure is a LOWER BOUND and is labelled as one. No hardware matrix is built. The useful direction: what is already marginal here is decided everywhere; a comfortable figure here says nothing about an 8 GB machine, which is why #492 exists.",
+    "compared_against": ["~500 ms hook budget (#118)", "150 / 350 / 1500 ms dense-arm deadlines (#492)", "cumulative context budget (#458) — not a time budget, but a rerank changes what fills it"]
+  },
+
+  "decision_bars": {
+    "$comment": "Written before the first number so the recommendation cannot be fitted to whatever appears. A small lift is a fully acceptable outcome.",
+    "always_on": [
+      "R@3 lift on the GOLD set positive with the bootstrap CI entirely above 0",
+      "not negative on either language slice (de, en)",
+      "the lift is essentially already there at N=10 — the cheap case carries",
+      "added p95 at that N <= 50 ms ON THE M4 PRO (deliberately strict, because it is a lower bound)",
+      "no gold loses rank against the RRF ranking (regression share reported, not just the mean)",
+      "the no_answer guard shows no regression"
+    ],
+    "above_pool_size": [
+      "the lift is real but concentrates on queries with a large candidate pool",
+      "evidence is a breakdown BY POOL SIZE, not by score — a threshold on the RRF score would be a disguised weak_result variant and belongs in the next shape"
+    ],
+    "only_on_weak_result": [
+      "the lift on the subset where weak_result fires is clearly above the overall lift",
+      "the overall lift is too small or too expensive for 'always on'",
+      "predicate comes from packages/core/src/weak-result.ts and is NOT reimplemented"
+    ],
+    "prose_only": [
+      "the lift is real on prose and vanishes or turns negative on the neutral (keyword-chain) slice",
+      "then the model is doing what it was trained for, and the hook lanes that emit keyword chains would carry only the cost"
+    ],
+    "close_501": [
+      "R@3 lift on the gold set at N=30 below roughly 2 percentage points, or its CI includes 0",
+      "AND the bge-reranker-base reference shows the same",
+      "then mis-ranking is not what a cross-encoder repairs. No further models are tried to find a lift."
+    ],
+    "special_case_big_lift_unpayable_latency": "Neither 'on' nor 'close'. It would mean query-candidate interaction carries, which is an argument for #119 (cross-encoder offline over doc2query expansions, at write time), not for the query path."
+  },
+
+  "non_measurement_factors": {
+    "$comment": "These belong in the recommendation to Daniel and are not answered by any number here.",
+    "language_island": "The main arm is EN+DE. For a user with a Russian or Spanish vault it would be exactly what ms-marco is for us — a model with no signal (#480 names those users). 'Always on' would therefore be a German island solution unless a genuinely multilingual model fits the budget, and bge-reranker-base fits linguistically but not temporally.",
+    "hardware": "See latency_protocol.hardware. The same stage costs a multiple on the 8 GB baseline and nobody has measured it there."
+  },
+
+  "dependency": {
+    "package": "@huggingface/transformers",
+    "version": "^4.2.0",
+    "$comment_version": "4.2.0 is the version the spike numbers above were measured on.",
+    "scope": "devDependency of @bastra-recall/eval only",
+    "constraints": [
+      "must appear in no runtime dependency of core or daemon",
+      "is REMOVED again if #501 ends in 'close it'"
+    ]
+  },
+
+  "pending_wiring": {
+    "$comment": "Not done yet, on purpose: registrations.ts is being written by the #500 work and must not be touched until that has landed. This is the note of what still has to happen there.",
+    "file": "packages/eval/src/registrations.ts",
+    "needed": "a loadRerankDecisionRegistration() beside loadLongMemEvalRegistration(), plus a checkRerankDecisionRegistration() in the same shape as the other checkers, and its case in __tests__/registrations.test.ts",
+    "blocked_until": "#500 is committed"
+  }
+}

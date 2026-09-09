@@ -57,8 +57,14 @@ import {
 } from "./goldset-gate.js";
 import type { GoldCase } from "./goldset.js";
 
-/** The k the product serves. Ranks are measured here and nowhere else. */
-const PRODUCTION_K = 10;
+/**
+ * The k the product serves. Ranks are measured here and nowhere else.
+ *
+ * Exported for #501's rerank replay, which must measure at the SAME pool:
+ * `HOP_SEED_POOL = max(k*4, 20)` in `recallHybrid` makes this k the thing that
+ * decides how deep the candidate pool it reranks actually is.
+ */
+export const PRODUCTION_K = 10;
 /** Documented default of BASTRA_RECALL_FLOOR — below it a hit is not shown. */
 const SCORE_FLOOR = 30;
 /** Bound on a cold-store backfill; a stuck provider must fail, not hang. */
@@ -244,7 +250,13 @@ function groupBy(rows: CaseResult[], key: (r: CaseResult) => string): Record<str
   return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, metricsFor(v)]));
 }
 
-async function attachHybrid(vault: Vault, search: SearchIndex, vaultPath: string): Promise<{
+/**
+ * Exported for #501's rerank replay. It reuses this rather than standing up a
+ * second hybrid arm: the probe, the copied store, the backfill wait and the
+ * refusal to report a partial arm as a measurement are the reasons the number
+ * is trustworthy, and a second implementation of them would drift.
+ */
+export async function attachHybrid(vault: Vault, search: SearchIndex, vaultPath: string): Promise<{
   label: string; vectors: number; cleanup: () => Promise<void>;
 }> {
   const provider = new OllamaEmbeddingProvider({
