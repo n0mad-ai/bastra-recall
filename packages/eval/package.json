@@ -22,6 +22,7 @@
     "tripwire-usage": "tsx src/tripwire-usage.ts",
     "bm25-expansion": "tsx src/bm25-expansion.ts",
     "candidate-union": "tsx src/candidate-union.ts",
+    "longmemeval": "tsx src/longmemeval-run.ts",
     "rerank-replay": "tsx src/rerank-replay.ts"
   },
   "dependencies": {

@@ -1,0 +1,196 @@
+{
+  "$comment": "The external LongMemEval arm (#500), registered before it may be quoted. Every other recall number this project owns is self-referential — the gold sets are harvested from our own vault and the persona queries are generated from our own title+summary — so an outside number is the whole point of this arm, and an outside number that is quietly measured under a different protocol than the ones it is placed beside is worse than none. This file fixes the protocol, names the two figures it is compared against by their id in foreign-figures.json, and carries the measurement. `checkLongMemEvalRegistration` in src/registrations.ts is the program that reads it.",
+  "$comment_archive": "This run does NOT enter ~/.bastra/eval-runs (#446). That directory holds the M0/M1 baselines that m1-tolerances.json cites by path; an external retrieval measurement on a public corpus has no business among them, and a broad cleanup there must never be able to hit a registered baseline. The only artifact is the --out file named in `measurement.run_out`.",
+  "schema_version": 1,
+  "status": "numbers_registered",
+  "harness": "packages/eval/src/longmemeval-run.ts",
+  "loader": "packages/eval/src/longmemeval-dataset.ts",
+  "fetch": "packages/eval/scripts/fetch-longmemeval.sh",
+  "corpus": {
+    "dataset": "LongMemEval",
+    "citation": "Zhong et al., ICLR 2025, arXiv:2410.10813",
+    "license": "MIT",
+    "variant": "S (cleaned)",
+    "file": "longmemeval_s_cleaned.json",
+    "source": "huggingface.co/datasets/xiaowu0162/longmemeval-cleaned",
+    "n_questions": 500,
+    "n_sessions": 23867,
+    "$comment_variant": "S, not M and not Oracle. Both figures in `compared_against` are measured on S-cleaned: MemPalace's README passes longmemeval_s_cleaned.json to its bench script, agentmemory's LONGMEMEVAL.md names the cleaned repo as its source. Oracle contains only the gold sessions, so retrieval on it is close to trivial; M multiplies the haystack roughly tenfold. A number from either is a different task and may not be placed beside these two."
+  },
+  "protocol": {
+    "index_scope": "one fresh index per question over that question's own haystack",
+    "granularity": "session — one document per haystack session",
+    "document_text": "the session's turns verbatim, `role: content` newline-joined (--turns all); no summarisation, no extraction, no model at write time",
+    "query": "the raw question text, unrewritten",
+    "metric": "recall_any@k — a hit is any gold session id in the top k",
+    "reranker": "none",
+    "llm_in_loop": "none, at either end",
+    "$comment_protocol": "Points 1-5 are matched to the two reference harnesses deliberately, so that what differs between the numbers is the retriever and not the setup. The one axis on which the two references themselves disagree is document_text: MemPalace joins the USER turns only, agentmemory joins both roles. We follow agentmemory, and `--turns user` runs the other convention."
+  },
+  "arms": [
+    {
+      "id": "bm25",
+      "call": "SearchIndex.recall — production BM25, unmodified",
+      "compare_to": "agentmemory's 86.2% BM25-only row"
+    },
+    {
+      "id": "hybrid",
+      "call": "SearchIndex.recallHybrid — production BM25 + EmbeddingIndex + fuseRRF, unmodified",
+      "compare_to": "agentmemory's 95.2% and MemPalace's 96.6%"
+    }
+  ],
+  "$comment_survival": "The survival metric of #103 is `lift(far)/lift(near)` over the recall_when ablation. LongMemEval sessions carry no authored recall_when, so that lever does not exist here and that number is NOT computable on this corpus. The harness keeps the formula and states the substituted lever: control is the lexical arm, treatment is the hybrid arm, so survival(dense) is the fraction of the dense arm's benefit that holds when the question shares little vocabulary with its gold session. near/far is split at the median coverage because the 0.30 cut was calibrated against short trigger phrases and puts nearly every question on the near side of a whole transcript.",
+  "compared_against": [
+    "mempalace-longmemeval-r5",
+    "agentmemory-longmemeval-r5"
+  ],
+  "$comment_configurations": "Two configurations, because the two figures this arm is placed beside do not share a protocol. Writing that down as a caveat would have left the registry's own rule blocking the MemPalace pairing on `top_k`; running the second configuration removes it instead. Every other axis — variant, per-question index, session granularity, recall_any@k, all 500 questions with the abstention items kept, no reranker, no LLM — is identical across both, so what differs between the two rows is exactly what differs between the two reference harnesses.",
+  "configurations": [
+    {
+      "id": "default",
+      "matches": "agentmemory-longmemeval-r5",
+      "cli": "--arms bm25,hybrid --k 20",
+      "turns": "all — `role: content`, both sides of the session, as agentmemory's chunkSessionToText does",
+      "self_figure": {
+        "id": "bastra-recall-longmemeval-r5",
+        "system": "bastra-recall",
+        "evidence_class": "project_self_measurement",
+        "source": "packages/eval/src/longmemeval-run.ts",
+        "locus": "registrations/longmemeval-run.json, configurations[].measurement.results",
+        "reader": "none — retrieval only, no answer generation",
+        "judge": "none — recall_any@k against answer_session_ids, no judged answer",
+        "top_k": "R@5 from a top-20 candidate list",
+        "top_k_note": "longmemeval-run.ts is called with --k 20, as agentmemory searches with limit 20",
+        "context_budget": "none — no reader, so nothing is fitted into a context"
+      },
+      "measurement": {
+        "command": "npm run longmemeval --workspace=@bastra-recall/eval -- --corpus <s_cleaned> --arms bm25,hybrid --k 20 --out <path>",
+        "embedding_model": "embeddinggemma (768d, Ollama), the production default",
+        "run_out": "not archived — only the path given to --out",
+        "dataset_hash": "7e0305dd37722ff4718467d7ec176b72bcdb1e32251eb09e01c8177d3351ae8f",
+        "code_hash": "36bb59514190b3f35f6a2d51bca3c949d76546175d67234e6a5c5b609bdf44e8",
+        "results": {
+          "bm25": {
+            "r@1": 0.614,
+            "r@3": 0.776,
+            "r@5": 0.846,
+            "r@10": 0.92,
+            "r@20": 0.972,
+            "ndcg@10": 0.709,
+            "mrr": 0.7164
+          },
+          "hybrid": {
+            "r@1": 0.796,
+            "r@3": 0.952,
+            "r@5": 0.982,
+            "r@10": 0.986,
+            "r@20": 0.996,
+            "ndcg@10": 0.8808,
+            "mrr": 0.8747
+          }
+        },
+        "n_questions": 500,
+        "n_documents_indexed": 23854,
+        "survival_dense": 2.5972,
+        "far_retention": {
+          "bm25": 0.8429,
+          "hybrid": 0.9837
+        },
+        "abstention_subset": {
+          "n": 30,
+          "kept": true,
+          "note": "question ids ending in `_abs`; kept and scored, because neither reference harness drops them",
+          "r@5": {
+            "bm25": 0.6667,
+            "hybrid": 0.9667
+          }
+        }
+      }
+    },
+    {
+      "id": "mempalace-matched",
+      "matches": "mempalace-longmemeval-r5",
+      "cli": "--arms bm25,hybrid --k 50 --turns user",
+      "turns": "user — the user turns only, as MemPalace's session granularity does",
+      "self_figure": {
+        "id": "bastra-recall-longmemeval-r5-mempalace-matched",
+        "system": "bastra-recall",
+        "evidence_class": "project_self_measurement",
+        "source": "packages/eval/src/longmemeval-run.ts",
+        "locus": "registrations/longmemeval-run.json, configurations[].measurement.results",
+        "reader": "none — retrieval only, no answer generation",
+        "judge": "none — recall_any@k against answer_session_ids, no judged answer",
+        "top_k": "R@5 from a top-50 candidate list",
+        "top_k_note": "longmemeval-run.ts is called with --k 50, as benchmarks/longmemeval_bench.py uses n_results=50",
+        "context_budget": "none — no reader, so nothing is fitted into a context"
+      },
+      "measurement": {
+        "command": "npm run longmemeval --workspace=@bastra-recall/eval -- --corpus <s_cleaned> --arms bm25,hybrid --k 50 --turns user --out <path>",
+        "embedding_model": "embeddinggemma (768d, Ollama), the production default",
+        "run_out": "not archived — only the path given to --out",
+        "dataset_hash": "475b5423e2d1ab62226bf182a1e2b525cde80b5af5e3f9cd9a71e936d6742ceb",
+        "code_hash": "36bb59514190b3f35f6a2d51bca3c949d76546175d67234e6a5c5b609bdf44e8",
+        "results": {
+          "bm25": {
+            "r@1": 0.602,
+            "r@3": 0.778,
+            "r@5": 0.828,
+            "r@10": 0.896,
+            "r@20": 0.956,
+            "ndcg@10": 0.6905,
+            "mrr": 0.7088
+          },
+          "hybrid": {
+            "r@1": 0.832,
+            "r@3": 0.944,
+            "r@5": 0.972,
+            "r@10": 0.982,
+            "r@20": 0.996,
+            "ndcg@10": 0.8919,
+            "mrr": 0.8919
+          }
+        },
+        "n_questions": 500,
+        "n_documents_indexed": 23854,
+        "survival_dense": 3.7265,
+        "far_retention": {
+          "bm25": 0.7588,
+          "hybrid": 0.9531
+        },
+        "abstention_subset": {
+          "n": 30,
+          "kept": true,
+          "note": "question ids ending in `_abs`; kept and scored, because neither reference harness drops them",
+          "r@5": {
+            "bm25": 0.7,
+            "hybrid": 0.9667
+          }
+        }
+      }
+    }
+  ],
+  "$comment_headline": "If the reference-matched configuration scores LOWER than the default, the lower number is the one quoted next to that reference. A configuration is chosen to match a comparator, never to win against it.",
+  "robustness_check": {
+    "$comment": "The same default configuration on the ORIGINAL, uncleaned longmemeval_s.json. `cleaned` is an upstream release, not a filter of ours — it drops no question and changes no gold set, but it removes 1,243 distractor sessions from the haystacks we index (25,097 vs 23,854 documents). Running both says how much of the result rests on that, and the answer is: almost none.",
+    "corpus": "longmemeval_s.json (original, deprecated upstream in favour of the cleaned release)",
+    "cli": "--arms bm25,hybrid --k 20",
+    "dataset_hash": "7073524683926882c9bb20101dd3715448750757004bd90e20a1a0c82f7a81f4",
+    "code_hash": "36bb59514190b3f35f6a2d51bca3c949d76546175d67234e6a5c5b609bdf44e8",
+    "n_questions": 500,
+    "n_documents_indexed": 25097,
+    "results": {
+      "bm25": {
+        "r@1": 0.614,
+        "r@3": 0.776,
+        "r@5": 0.854
+      },
+      "hybrid": {
+        "r@1": 0.798,
+        "r@3": 0.946,
+        "r@5": 0.978
+      }
+    },
+    "survival_dense": 2.8112
+  },
+  "$comment_determinism": "The default configuration was run twice, before and after a cosmetic edit to the harness (two different code hashes, same dataset hash). Every reported figure came back identical to four decimals, so the dense arm is deterministic here and the numbers below are not one sample of a spread."
+}

@@ -70,6 +70,10 @@ export function loadPresentationRegistration(): Record<string, unknown> {
   return load<Record<string, unknown>>("presentation-experiment.json");
 }
 
+export function loadLongMemEvalRegistration(): Record<string, unknown> {
+  return load<Record<string, unknown>>("longmemeval-run.json");
+}
+
 /** Citation fields §29.1 demands of every quoted foreign claim. */
 const REQUIRED_FIELDS: Array<keyof ForeignFigure> = [
   "id", "system", "claim", "evidence_class", "source", "version", "locus", "retrieved",
@@ -391,4 +395,191 @@ export function checkPresentationRegistration(
     }
   }
   return issues;
+}
+
+/**
+ * Die Registrierung des externen LongMemEval-Arms (#500).
+ *
+ * Die anderen drei Arme messen gegen uns selbst. Dieser misst gegen einen
+ * öffentlichen Korpus, und zwar ausdrücklich, um zwei fremde Zahlen daneben
+ * stellen zu können — 96.6 % und 95.2 % R@5. Genau dafür gilt C-029: Zwei
+ * Messungen mit verschiedenem Reader, Judge, Top-k oder Kontextbudget teilen
+ * keine Rangliste.
+ *
+ * Deshalb prüft das hier nicht, ob die Zahl gut ist, sondern ob sie überhaupt
+ * neben die genannte gestellt werden darf. Und weil die beiden Referenzläufe
+ * untereinander KEIN gemeinsames Protokoll haben — MemPalace liest R@5 von
+ * einer Top-50-Liste und baut sein Dokument nur aus den User-Turns, agentmemory
+ * liest von Top-20 und nimmt beide Rollen —, trägt die Registrierung eine
+ * Konfiguration JE Vergleichszahl. Der Unterschied wird gemessen statt als
+ * Vorbehalt notiert: `longMemEvalComparability` rechnet ihn mit demselben
+ * `rankingBlocker` aus, dem jedes andere Paar im Register unterliegt.
+ */
+export function checkLongMemEvalRegistration(
+  requiredStage: CueStage = "structure_registered",
+  reg: Record<string, unknown> = loadLongMemEvalRegistration(),
+  figures: ForeignFigure[] = loadForeignFigures(),
+): RegistrationIssue[] {
+  const issues: RegistrationIssue[] = [];
+  const at = (k: string): unknown => reg[k];
+  const stage = at("status") as CueStage;
+  const order: CueStage[] = ["structure_pending_decision", "structure_registered", "numbers_registered"];
+
+  if (!order.includes(stage)) {
+    issues.push({ where: "status", problem: `unknown status \`${String(stage)}\`` });
+    return issues;
+  }
+  if (order.indexOf(stage) < order.indexOf(requiredStage)) {
+    issues.push({
+      where: "status",
+      problem: `registration is at \`${stage}\`, but \`${requiredStage}\` is required — the protocol must be registered before the run (§18.3)`,
+    });
+  }
+
+  // Welche VARIANTE gemessen wurde, entscheidet die Vergleichbarkeit allein:
+  // Oracle enthält nur die Gold-Sessions, M hat rund 500 Sessions je Frage
+  // statt der ~40 von S. Beide fremden Zahlen stehen auf S-cleaned, also muss
+  // die Variante dastehen und darf nicht aus dem Dateinamen erschlossen werden.
+  const corpus = at("corpus") as Record<string, unknown> | undefined;
+  for (const field of ["dataset", "variant", "file", "source", "license", "n_questions"]) {
+    if (corpus?.[field] == null) {
+      issues.push({ where: "corpus", problem: `\`${field}\` is part of the registration — the variant decides the task` });
+    }
+  }
+
+  // Die Protokollpunkte, auf denen die beiden Referenzläufe übereinstimmen.
+  // Fehlt einer, ist später nicht mehr entscheidbar, ob ein Unterschied vom
+  // Retriever kam oder vom Aufbau.
+  const protocol = at("protocol") as Record<string, unknown> | undefined;
+  for (const field of ["index_scope", "granularity", "document_text", "query", "metric", "reranker", "llm_in_loop"]) {
+    if (typeof protocol?.[field] !== "string") {
+      issues.push({ where: "protocol", problem: `\`${field}\` is fixed before the run, not chosen after seeing the numbers (§18.3)` });
+    }
+  }
+
+  const known = new Map(figures.map((f) => [f.id, f]));
+  const against = at("compared_against");
+  if (!Array.isArray(against) || against.length === 0) {
+    issues.push({
+      where: "compared_against",
+      problem: "an external arm exists to be placed beside named figures — name them by id (§29.1)",
+    });
+  } else {
+    for (const id of against) {
+      if (!known.has(String(id))) {
+        issues.push({
+          where: `compared_against ${String(id)}`,
+          problem: "no such figure in foreign-figures.json — a comparison target must itself carry an evidence class (C-040)",
+        });
+      }
+    }
+  }
+
+  const configs = at("configurations") as Record<string, unknown>[] | undefined;
+  if (!Array.isArray(configs) || configs.length === 0) {
+    issues.push({ where: "configurations", problem: "at least one measured configuration is part of the registration" });
+    return issues;
+  }
+
+  // Jede genannte Vergleichszahl braucht eine Konfiguration, die auf sie zielt.
+  // Sonst steht eine Zahl im Register, neben die nie etwas gemessen wurde —
+  // und genau das ist der Zustand, den dieser Arm beenden soll.
+  for (const id of (against as string[] | undefined) ?? []) {
+    if (!configs.some((c) => c.matches === id)) {
+      issues.push({
+        where: `compared_against ${id}`,
+        problem: "no configuration is built to match this figure — a comparison target without a matched run is a caveat, not a comparison",
+      });
+    }
+  }
+
+  for (const c of configs) {
+    const where = `configurations.${String(c.id ?? "<unnamed>")}`;
+    if (typeof c.cli !== "string") {
+      issues.push({ where, problem: "the exact command is part of the registration, or the configuration is not reproducible" });
+    }
+    if (typeof c.matches !== "string" || !known.has(String(c.matches))) {
+      issues.push({ where, problem: "`matches` names the registered figure this configuration is built to be comparable to" });
+    }
+    // Unsere eigene Zahl ist eine Messung wie jede andere und trägt dieselben
+    // Konfigurationsfelder. Ohne sie könnte `rankingBlocker` nie mehr sagen als
+    // „unbekannt", und die Vergleichbarkeitsfrage bliebe genau dort offen, wo
+    // dieser Arm sie beantworten soll.
+    const self = c.self_figure as Partial<ForeignFigure> | undefined;
+    if (!self) {
+      issues.push({ where, problem: "the run's own measurement configuration is part of the registration (§29.1)" });
+    } else {
+      for (const field of ["reader", "judge", "top_k", "context_budget"] as const) {
+        if (!(field in self)) {
+          issues.push({ where: `${where}.self_figure`, problem: `\`${field}\` is absent — state it, or state null (§29.1)` });
+        }
+      }
+      if (self.evidence_class !== "project_self_measurement") {
+        issues.push({ where: `${where}.self_figure`, problem: "our own run is a project_self_measurement, whatever corpus it ran on (§2.3)" });
+      }
+    }
+
+    const m = c.measurement as Record<string, unknown> | undefined;
+    // #446: Der private Zitierarchiv-Pfad ist für die registrierten Baselines
+    // reserviert. Eine externe Retrieval-Messung gehört nicht dazu, und die
+    // Registrierung ist die Stelle, an der das nachprüfbar dasteht.
+    if (typeof m?.run_out === "string" && /\.bastra\/eval-runs/.test(m.run_out)) {
+      issues.push({ where: `${where}.measurement.run_out`, problem: "this arm must not write into the private eval-run archive (#446)" });
+    }
+
+    if (stage === "numbers_registered") {
+      for (const field of ["dataset_hash", "code_hash", "results", "embedding_model"]) {
+        if (m?.[field] == null) {
+          issues.push({
+            where: `${where}.measurement.${field}`,
+            problem: "a registered number carries the identity of the run that produced it, or it cannot be re-checked",
+          });
+        }
+      }
+      const results = m?.results as Record<string, Record<string, number>> | undefined;
+      for (const arm of (at("arms") as { id?: string }[] | undefined) ?? []) {
+        const row = results?.[String(arm.id)];
+        // R@5 ist die Zahl, gegen die verglichen wird; R@1 und R@3 stehen
+        // daneben, weil #500 sie ausdrücklich verlangt und weil eine
+        // R@5-Zahl ohne sie nicht verrät, ob der Treffer oben oder gerade
+        // noch drin lag.
+        for (const k of ["r@1", "r@3", "r@5"]) {
+          if (typeof row?.[k] !== "number") {
+            issues.push({ where: `${where}.measurement.results.${String(arm.id)}`, problem: `\`${k}\` is missing` });
+          }
+        }
+      }
+    }
+  }
+  return issues;
+}
+
+/**
+ * Darf unsere LongMemEval-Zahl neben die genannte fremde gestellt werden?
+ *
+ * Berechnet, nicht behauptet: dieselbe `rankingBlocker`-Regel, die für jedes
+ * andere Paar im Register gilt, angewandt auf jede Konfiguration gegen genau
+ * die Zahl, für die sie gebaut wurde. `blocker: null` heißt, dass die vier
+ * Konfigurationsgrößen genannt UND gleich sind — mehr sagt es nicht, und die
+ * `caveat`-Felder der Gegenseite bleiben zu lesen.
+ */
+export function longMemEvalComparability(
+  reg: Record<string, unknown> = loadLongMemEvalRegistration(),
+  figures: ForeignFigure[] = loadForeignFigures(),
+): { configuration: string; against: string; blocker: string | null }[] {
+  const known = new Map(figures.map((f) => [f.id, f]));
+  const configs = (reg.configurations as Record<string, unknown>[] | undefined) ?? [];
+  return configs.map((c) => {
+    const self = c.self_figure as ForeignFigure | undefined;
+    const other = known.get(String(c.matches));
+    return {
+      configuration: String(c.id),
+      against: String(c.matches),
+      blocker: !self
+        ? "the configuration states no self_figure"
+        : !other
+          ? `no figure \`${String(c.matches)}\` in the registry`
+          : rankingBlocker(self, other),
+    };
+  });
 }

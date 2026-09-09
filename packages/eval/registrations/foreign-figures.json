@@ -298,6 +298,42 @@
       "judge_note": "model not named",
       "top_k": "RAG baseline Top 5; ablation over 5/10/15/20",
       "context_budget": "1M for the proprietary models, 128k resp. 32k for Qwen"
+    },
+    {
+      "id": "mempalace-longmemeval-r5",
+      "system": "MemPalace",
+      "claim": "96.6% recall_any@5 on LongMemEval-S (cleaned), retrieval only, no LLM at any stage",
+      "evidence_class": "implemented_code",
+      "source": "github.com/MemPalace/mempalace",
+      "version": "f9297a2, 2026-09-08, MIT",
+      "locus": "README.md, table \"LongMemEval — retrieval recall (R@5, 500 questions)\", row \"Raw (semantic search, no heuristics, no LLM)\"",
+      "retrieved": "2026-09-09",
+      "reader": "none — retrieval only, no answer generation",
+      "judge": "none — recall_any@k against answer_session_ids, no judged answer",
+      "top_k": "R@5 from a top-50 candidate list",
+      "context_budget": "none — no reader, so nothing is fitted into a context",
+      "reader_note": "the README states no LLM at any stage for the raw mode",
+      "judge_note": "the README states no LLM at any stage for the raw mode",
+      "top_k_note": "benchmarks/longmemeval_bench.py, n_results=50",
+      "caveat": "The same table gives 98.4% for the tuned hybrid pipeline on a 450-question held-out split and >=99% with an LLM reranker; 96.6% is the untuned vector-only mode over the full 500. The README names longmemeval_s_cleaned.json as the input but does not state the embedding model, and the session document is built from the USER turns only (longmemeval_bench.py, granularity=\"session\"), while agentmemory's number is built from both roles."
+    },
+    {
+      "id": "agentmemory-longmemeval-r5",
+      "system": "agentmemory",
+      "claim": "95.2% recall_any@5 on LongMemEval-S (cleaned) with BM25+vector; 86.2% with BM25 alone",
+      "evidence_class": "implemented_code",
+      "source": "github.com/rohitg00/agentmemory",
+      "version": "e04ba88, 2026-08-23, Apache-2.0",
+      "locus": "benchmark/LONGMEMEVAL.md, results table; harness benchmark/longmemeval-bench.ts",
+      "retrieved": "2026-09-09",
+      "reader": "none — retrieval only, no answer generation",
+      "judge": "none — recall_any@k against answer_session_ids, no judged answer",
+      "top_k": "R@5 from a top-20 candidate list",
+      "context_budget": "none — no reader, so nothing is fitted into a context",
+      "reader_note": "benchmark/LONGMEMEVAL.md states no LLM in the loop",
+      "judge_note": "benchmark/LONGMEMEVAL.md states no LLM in the loop",
+      "top_k_note": "benchmark/longmemeval-bench.ts searches with limit 20",
+      "caveat": "Embeddings are all-MiniLM-L6-v2 over only the FIRST 512 CHARACTERS of a session (longmemeval-bench.ts), against a median session length of ~10,400 characters — so the dense leg sees about 5% of each document. The report itself states these are retrieval-recall scores and not LongMemEval QA accuracy. The abstention filter in the harness matches no question type in longmemeval_s_cleaned.json, so all 500 questions are scored."
     }
   ]
 }
