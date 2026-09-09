@@ -220,15 +220,45 @@ berichtet wird, ob der Rerank auf ihnen die Spitzenposition verändert und ob
 `weak_result` danach seltener feuern würde. Eine Verschlechterung hier kippt
 die Empfehlung „immer an", egal wie gut R@3 aussieht.
 
-### Abhängigkeit
+### Abhängigkeit — und was sie wirklich kostet
 
-`@huggingface/transformers` kommt als **`devDependency` von
-`@bastra-recall/eval`** hinzu — reine Eval-Abhängigkeit, in keinem
-ausgelieferten Paket. Bedingungen, unter denen das entschieden wurde: sie
-taucht **nirgends** in den Runtime-Abhängigkeiten von `core` oder `daemon` auf,
-und **sie wird wieder entfernt, falls #501 mit „schließen" endet.** Ohne sie
-wäre die Messung nicht reproduzierbar committet, und das wäre der schlechtere
-Zustand.
+`@huggingface/transformers` (`^4.2.0`, die Version, auf der die Zahlen in §1
+gemessen wurden) kommt als **`devDependency` von `@bastra-recall/eval`** hinzu
+— reine Eval-Abhängigkeit, in keinem ausgelieferten Paket. Bedingungen, unter
+denen das entschieden wurde: sie taucht **nirgends** in den
+Runtime-Abhängigkeiten von `core` oder `daemon` auf, und **sie wird wieder
+entfernt, falls #501 mit „schließen" endet.** Ohne sie wäre die Messung nicht
+reproduzierbar committet, und das wäre der schlechtere Zustand.
+
+Der Fußabdruck gehört dazu, weil er kein kleiner Anhang ist. Ausgezählt gegen
+den Lockfile-Stand davor:
+
+| | |
+|---|---|
+| neue Lockfile-Einträge | **69**, alle `dev: true` |
+| davon optional / plattformspezifisch | 26 |
+| bewegte bestehende Versionen | **0** |
+| entfernte Einträge | **0** |
+| Platz in `node_modules` | ~226 MB (`onnxruntime-node` 210 MB, `@huggingface` 14 MB) |
+
+Die 69 zerfallen in vier Gruppen: ONNX-Runtime (8), `sharp` und seine 25
+Plattform-Binaries (29), protobufjs (10) und der Binary-Downloader-Unterbau
+von `onnxruntime-node` (`global-agent`, `adm-zip`, `roarr`, `serialize-error`
+und Umfeld, 19). **`sharp` ist eine Bildbibliothek**, die transformers.js für
+Bildmodelle mitbringt, die wir nie anfassen — sie ist mitgeschleppt, nicht
+gebraucht. Falls #501 mit „immer an" endete und daraus je eine
+Produktionsabhängigkeit würde, wäre genau das der Punkt, an dem man eine
+schlankere ONNX-Anbindung suchen müsste. Für einen Eval-Pfad ist es vertretbar.
+
+**Korrektur zu einem früheren Nebenbefund:** In der Commit-Message von
+`f095a94` steht, der Lockfile-Refresh habe `@hono/node-server` von 2.0.5 auf
+2.1.1 gezogen. **Das stimmt nicht.** 2.1.1 stand schon vorher im Lockfile,
+identisch bei `3476718` und danach; die Tabelle oben zeigt null bewegte
+Versionen. Der Fehlbefund entstand beim Lesen des Diffs — ein 1055-Zeilen-
+Einschub verschiebt den Block, sodass unveränderte Zeilen einmal als `-` und
+einmal als `+` erscheinen. Die Commit-Message bleibt stehen (kein
+History-Rewrite); maßgeblich ist diese Korrektur. Ein „Zurückdrehen" auf 2.0.5
+hätte keine Drift behoben, sondern eine erzeugt.
 
 ---
 
