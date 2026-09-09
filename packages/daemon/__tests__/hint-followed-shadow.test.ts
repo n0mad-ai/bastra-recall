@@ -24,10 +24,18 @@ import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
 
 /** Telemetry with its own log dir, plus a record of every usage moment. */
-async function harness() {
+async function harness(opts: { telemetry?: "on" | "off" } = {}) {
   const logDir = await mkdtemp(join(tmpdir(), "bastra-hintshadow-"));
   const usage: Array<{ id: string; kind: string }> = [];
+  // `enabled` is resolved in the constructor, so the opt-out has to be in the
+  // environment for exactly that call (#485).
+  const before = process.env.BASTRA_TELEMETRY;
+  if (opts.telemetry) process.env.BASTRA_TELEMETRY = opts.telemetry;
   const telemetry = new Telemetry({ logDir, onUsage: (events) => usage.push(...events) });
+  if (opts.telemetry) {
+    if (before === undefined) delete process.env.BASTRA_TELEMETRY;
+    else process.env.BASTRA_TELEMETRY = before;
+  }
   return {
     telemetry,
     usage,
@@ -490,6 +498,207 @@ test("fourth review find: a load without a session clears every window for that 
       [],
       "it was loaded — a sessionless load must not leave the claim standing",
     );
+  } finally {
+    await h.cleanup();
+  }
+});
+
+/* ------------------------------------------------------------------ #485 --
+ * Three defects found in this path after it landed (fe33d79): the shadow
+ * write ignored the opt-out, a foreign session could close someone else's
+ * window, and a load BEFORE the hint still produced "followed without a load".
+ */
+
+test("#485 defect 1: BASTRA_TELEMETRY=off writes no shadow event", async () => {
+  const h = await harness({ telemetry: "off" });
+  try {
+    assert.equal(h.telemetry.isEnabled(), false);
+    h.telemetry.rotateTurn("sess-off");
+    h.telemetry.recordSurfacedHints([{ memory_id: "m1", distinctive_tokens: TOKENS }], "sess-off");
+
+    h.telemetry.matchLoadedMemories({
+      tool_name: "Bash",
+      tool_input_excerpt: "portrace eaddrinuse",
+      session_id: "sess-off",
+    });
+
+    assert.deepEqual(
+      await h.events(),
+      [],
+      "with telemetry off nothing may reach disk — not even a shadow event",
+    );
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test("#485 defect 2: an unregistered parallel session cannot close A's window", async () => {
+  const h = await harness();
+  try {
+    h.telemetry.rotateTurn("sess-A");
+    h.telemetry.recordSurfacedHints([{ memory_id: "m1", distinctive_tokens: TOKENS }], "sess-A");
+
+    // B has no turn of its own, so `currentTurn` hands it A's latest turn.
+    // The turn id therefore matches — only the session id separates them.
+    h.telemetry.matchLoadedMemories({
+      tool_name: "Bash",
+      tool_input_excerpt: "portrace eaddrinuse in a parallel session",
+      session_id: "sess-B",
+    });
+
+    assert.deepEqual(
+      (await h.events()).filter((e) => e.kind === "hint_followed_shadow"),
+      [],
+      "B never saw the hint — it must not report it as followed",
+    );
+
+    // And the window is still A's to close: the foreign act left it open.
+    h.telemetry.matchLoadedMemories({
+      tool_name: "Edit",
+      tool_input_excerpt: "portrace eaddrinuse applied by the session that was hinted",
+      session_id: "sess-A",
+    });
+    const shadow = (await h.events(1)).filter((e) => e.kind === "hint_followed_shadow");
+    assert.equal(shadow.length, 1);
+    assert.equal(shadow[0]!.followed, true);
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test("#485 defect 2: a registered parallel session cannot close A's window", async () => {
+  const h = await harness();
+  try {
+    h.telemetry.rotateTurn("sess-A");
+    h.telemetry.recordSurfacedHints([{ memory_id: "m1", distinctive_tokens: TOKENS }], "sess-A");
+    h.telemetry.rotateTurn("sess-B");
+
+    h.telemetry.matchLoadedMemories({
+      tool_name: "Bash",
+      tool_input_excerpt: "portrace eaddrinuse in a registered parallel session",
+      session_id: "sess-B",
+    });
+
+    assert.deepEqual(
+      (await h.events()).filter((e) => e.kind === "hint_followed_shadow"),
+      [],
+    );
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test("#485 defect 2: an act without a session id cannot close a hint window", async () => {
+  const h = await harness();
+  try {
+    h.telemetry.rotateTurn("sess-A");
+    h.telemetry.recordSurfacedHints([{ memory_id: "m1", distinctive_tokens: TOKENS }], "sess-A");
+
+    h.telemetry.matchLoadedMemories({
+      tool_name: "Bash",
+      tool_input_excerpt: "portrace eaddrinuse from an unidentified caller",
+    });
+
+    assert.deepEqual(
+      (await h.events()).filter((e) => e.kind === "hint_followed_shadow"),
+      [],
+      "unknown identity must not borrow the hinted session's turn",
+    );
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test("#485 defect 3: a load BEFORE the hint keeps it out of the shadow population", async () => {
+  const h = await harness();
+  try {
+    h.telemetry.rotateTurn("sess-pre");
+    h.telemetry.recordLoadedMemory({
+      memory_id: "m1",
+      distinctive_tokens: TOKENS,
+      hook_hint: null,
+      session_id: "sess-pre",
+    });
+    // A later hook surfaces the same memory again — that is not a new,
+    // unloaded hint.
+    h.telemetry.recordSurfacedHints([{ memory_id: "m1", distinctive_tokens: TOKENS }], "sess-pre");
+
+    const episodes = h.telemetry.matchLoadedMemories({
+      tool_name: "Edit",
+      tool_input_excerpt: "portrace eaddrinuse now applied",
+      session_id: "sess-pre",
+    });
+
+    // The ordinary accounting is untouched: one episode, and the usage
+    // moments the curator reads.
+    assert.equal(episodes.length, 1);
+    assert.equal(episodes[0]!.acted_on, true);
+    assert.deepEqual(
+      h.usage.map((u) => u.kind),
+      ["loaded", "acted_on"],
+    );
+    assert.deepEqual(
+      (await h.events()).filter((e) => e.kind === "hint_followed_shadow"),
+      [],
+      "it was loaded in this session — it cannot have been followed without a load",
+    );
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test("#485 defect 3: a prior load without distinctive tokens excludes it too", async () => {
+  const h = await harness();
+  try {
+    h.telemetry.rotateTurn("sess-terse-pre");
+    // A terse body opens no acted_on window at all, so `loadedMemories` keeps
+    // no trace of the load — the exclusion cannot be read from there.
+    h.telemetry.recordLoadedMemory({
+      memory_id: "m1",
+      distinctive_tokens: [],
+      hook_hint: null,
+      session_id: "sess-terse-pre",
+    });
+    // Title and summary do carry distinctive words, so the hint has tokens.
+    h.telemetry.recordSurfacedHints([{ memory_id: "m1", distinctive_tokens: TOKENS }], "sess-terse-pre");
+
+    h.telemetry.matchLoadedMemories({
+      tool_name: "Edit",
+      tool_input_excerpt: "portrace eaddrinuse now applied",
+      session_id: "sess-terse-pre",
+    });
+
+    assert.deepEqual(
+      (await h.events()).filter((e) => e.kind === "hint_followed_shadow"),
+      [],
+    );
+  } finally {
+    await h.cleanup();
+  }
+});
+
+test("#485 defect 3: a load in A does not exclude B's own unloaded hint", async () => {
+  const h = await harness();
+  try {
+    h.telemetry.rotateTurn("sess-A");
+    h.telemetry.rotateTurn("sess-B");
+    h.telemetry.recordLoadedMemory({
+      memory_id: "m1",
+      distinctive_tokens: TOKENS,
+      hook_hint: null,
+      session_id: "sess-A",
+    });
+    h.telemetry.recordSurfacedHints([{ memory_id: "m1", distinctive_tokens: TOKENS }], "sess-B");
+
+    h.telemetry.matchLoadedMemories({
+      tool_name: "Edit",
+      tool_input_excerpt: "portrace eaddrinuse applied in B",
+      session_id: "sess-B",
+    });
+
+    const shadow = (await h.events(1)).filter((e) => e.kind === "hint_followed_shadow");
+    assert.equal(shadow.length, 1, "A's load says nothing about B's hint");
+    assert.equal(shadow[0]!.followed, true);
   } finally {
     await h.cleanup();
   }

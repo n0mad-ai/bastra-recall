@@ -186,6 +186,19 @@ export class Telemetry {
   private turns = new Map<string, TurnTrace>();
   private latestTurn: TurnTrace | null = null;
   private loadedMemories: LoadedMemoryTrace[] = [];
+  /**
+   * #485: which memories a session has already LOADED, `${session}\0${id}` →
+   * ts. `loadedMemories` cannot answer this — a load entry closes on the first
+   * matching act and never exists at all when the body has no distinctive
+   * tokens — so a hint surfaced AFTER a load would otherwise open a fresh
+   * shadow window and report "followed without ever being loaded" about a
+   * memory this session loaded. A load without a session id lands under the
+   * wildcard key (empty session), matching the clearing rule in
+   * `recordLoadedMemory`: not knowing which session loaded it, no session may
+   * still claim it was never loaded. Pruned against ACTED_ON_WINDOW_MS, the
+   * horizon in which a hint window can be matched at all.
+   */
+  private loadedIds = new Map<string, number>();
   /** Usage-sidecar sink (#154) — wired by index.ts to recordUsage(vault). */
   private readonly onUsage?: UsageSink;
   private initPromise: Promise<void> | null = null;
@@ -323,6 +336,12 @@ export class Telemetry {
       // Same gate as the load path: without distinctive tokens there is
       // nothing an act could match against.
       if (tokens.size === 0) continue;
+      // #485: a memory this session has already LOADED is not part of the
+      // unloaded-hint population. The reverse order (hint, then load) is
+      // handled in `recordLoadedMemory`; this closes the load-then-hint order,
+      // which otherwise emitted a positive shadow event next to the regular
+      // recall_episode for the very same memory.
+      if (this.wasLoaded(hint.memory_id, session_id)) continue;
       // NO recall provenance on purpose (review finds 3 and 4, Vera 06.09.):
       // `hookHints` holds ONE slot per memory_id, overwritten by the newest
       // recall — across sessions and across overlapping tool calls within one
@@ -405,6 +424,25 @@ export class Telemetry {
     return { turn_id: fallback, turn_source: "inferred" };
   }
 
+  /** #485: note that `session` loaded `memory_id`, and drop stale notes. */
+  private rememberLoad(memory_id: string, session: string | null): void {
+    const now = Date.now();
+    for (const [key, ts] of this.loadedIds) {
+      if (now - ts > ACTED_ON_WINDOW_MS) this.loadedIds.delete(key);
+    }
+    this.loadedIds.set(`${session ?? ""} ${memory_id}`, now);
+  }
+
+  /** #485: did this session (or a session-less load) already load this id? */
+  private wasLoaded(memory_id: string, session: string): boolean {
+    const now = Date.now();
+    for (const key of [`${session} ${memory_id}`, ` ${memory_id}`]) {
+      const ts = this.loadedIds.get(key);
+      if (ts !== undefined && now - ts <= ACTED_ON_WINDOW_MS) return true;
+    }
+    return false;
+  }
+
   /** Live-Notices (#216): optionaler Hook der Map — jede geladene Memory
    *  wird dort als "read"-Ereignis angezeigt. Best-effort, nie werfend. */
   onMemoryLoaded?: (id: string) => void;
@@ -455,6 +493,7 @@ export class Telemetry {
     // drop every open window for this memory — the load happened, so none of
     // them may still claim "followed without ever being loaded".
     const loadingSession = payload.session_id ?? null;
+    this.rememberLoad(payload.memory_id, loadingSession);
     this.loadedMemories = this.loadedMemories.filter(
       (entry) =>
         !(entry.hint_only
@@ -506,6 +545,12 @@ export class Telemetry {
         continue;
       }
       if (entry.turn_source === "session" && entry.turn_id !== current.turn_id) continue;
+      // #485: the turn id alone does not identify a session. `currentTurn`
+      // hands an unregistered — or session-less — caller the LATEST turn of a
+      // foreign session, which then matches the guard above and closes that
+      // session's hint window. Only the session the hint was shown to may
+      // close it; anyone else leaves it open.
+      if (entry.hint_only && entry.hint_session_id !== (payload.session_id ?? null)) continue;
 
       let matchStrength = 0;
       for (const token of entry.distinctive_tokens) {
@@ -520,6 +565,11 @@ export class Telemetry {
       // And no `acted_on` usage either: `hint-suppression.ts:93` reads that,
       // and Package 2 delivers a number, not a behaviour change.
       if (entry.hint_only) {
+        // #485: the shadow write is the one event that reached disk with
+        // telemetry switched off — every other emitter gates on `enabled`,
+        // the private writer does not. The window still closes; only the
+        // record of it is suppressed, as documented for BASTRA_TELEMETRY=off.
+        if (!this.enabled) continue;
         void this.write({
           kind: "hint_followed_shadow",
           ts: new Date().toISOString(),
