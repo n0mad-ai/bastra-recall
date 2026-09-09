@@ -27,6 +27,80 @@ export const ALL_TOOL_DEFS = [
 ];
 
 /**
+ * #481: the tool surface a single MCP client sees. Chosen at install time
+ * (the installer writes `BASTRA_TOOL_SURFACE` into the client's server block)
+ * and overridable there by hand.
+ *
+ * - `search` — read only: recall, load_memory, find_document, read_document
+ * - `write`  — search + save_memory, save_document, save_product_doc
+ * - `full`   — everything, including the lifecycle operations
+ *
+ * Lifecycle operations (archive_memory, move_document, recategorize_document)
+ * reshape the vault, and an agent reaching them through the same list as
+ * `recall` is the whole reason for this: nothing structural made a 47-memory
+ * move a deliberate act. They stay `full`-only, and so does anything not
+ * named below — a new tool is lifecycle-shaped until someone says otherwise.
+ *
+ * `full` is the fallback when nothing is set, so the Mac app, the CLI and
+ * every registration made before this existed keep today's behaviour.
+ */
+export type ToolSurface = "search" | "write" | "full";
+
+export const DEFAULT_TOOL_SURFACE: ToolSurface = "full";
+
+/** What a fresh MCP-client install gets: agents save, they do not reorganise. */
+export const INSTALL_TOOL_SURFACE: ToolSurface = "write";
+
+const SEARCH_SURFACE_TOOLS = ["recall", "load_memory", "find_document", "read_document"] as const;
+
+const WRITE_SURFACE_TOOLS = [
+  ...SEARCH_SURFACE_TOOLS,
+  "save_memory",
+  "save_document",
+  "save_product_doc",
+] as const;
+
+export function toolSurfaceFrom(raw: string | undefined): ToolSurface {
+  const v = raw?.trim().toLowerCase();
+  return v === "search" || v === "write" || v === "full" ? v : DEFAULT_TOOL_SURFACE;
+}
+
+/** The tool names a surface allows, or `null` for "no restriction" (`full`). */
+export function toolNamesForSurface(surface: ToolSurface): readonly string[] | null {
+  if (surface === "search") return SEARCH_SURFACE_TOOLS;
+  if (surface === "write") return WRITE_SURFACE_TOOLS;
+  return null;
+}
+
+export function isToolAllowed(name: string, surface: ToolSurface): boolean {
+  const allowed = toolNamesForSurface(surface);
+  return allowed === null || allowed.includes(name);
+}
+
+export function filterToolDefsForSurface<T extends { name: string }>(
+  defs: readonly T[],
+  surface: ToolSurface,
+): T[] {
+  const allowed = toolNamesForSurface(surface);
+  return allowed === null ? [...defs] : defs.filter((d) => allowed.includes(d.name));
+}
+
+/**
+ * The refusal an agent gets for a call outside its surface. It names the
+ * surface and how to widen it, so the agent tells the user instead of
+ * retrying the same call.
+ */
+export function toolSurfaceDenial(name: string, surface: ToolSurface): string {
+  const allowed = toolNamesForSurface(surface) ?? [];
+  return (
+    `${name} is not available on the "${surface}" tool surface of bastra-recall ` +
+    `(allowed: ${allowed.join(", ")}). Do not retry — tell the user instead. ` +
+    `To widen it, set BASTRA_TOOL_SURFACE=full (or =write) in the bastra-recall ` +
+    `MCP server config and restart this client.`
+  );
+}
+
+/**
  * #482: what each tool needs, resolved ONCE at module load — the corrupted-
  * arguments check runs on every tool call, so it must not rebuild anything.
  * Derived from the definitions above rather than a hand-kept constant, so a

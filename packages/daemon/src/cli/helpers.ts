@@ -6,6 +6,7 @@ import { request as httpRequest } from "node:http";
 import { Vault } from "@bastra-recall/core";
 import { FORWARDER_SCRIPT_PATH, CLAUDE_DESKTOP_CONFIG, CLAUDE_CODE_CONFIG } from "./paths.js";
 import { codexMcpGet, findCodexExecutable } from "./codex-cli.js";
+import { INSTALL_TOOL_SURFACE } from "../tool-defs.js";
 import type { CodeStale } from "../code-staleness.js";
 import type { InstallOpts } from "./types.js";
 
@@ -50,11 +51,16 @@ export interface McpServerBlock {
 
 // forwarderPath defaults to this CLI's own dist; npx installs pass the
 // stable-runtime copy instead (#180 — the npx cache is ephemeral).
+//
+// BASTRA_TOOL_SURFACE (#481): a fresh MCP-client registration gets `write` —
+// the agent recalls and saves, but does not archive or move anything. It is
+// written into the block so the user can widen it to `full` (or narrow it to
+// `search`) by editing the same config the installer wrote.
 export function buildServerBlock(vaultPath: string, forwarderPath: string = FORWARDER_SCRIPT_PATH): McpServerBlock {
   return {
     command: "node",
     args: [forwarderPath],
-    env: { BASTRA_VAULT_PATH: vaultPath },
+    env: { BASTRA_VAULT_PATH: vaultPath, BASTRA_TOOL_SURFACE: INSTALL_TOOL_SURFACE },
   };
 }
 

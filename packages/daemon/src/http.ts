@@ -97,7 +97,7 @@ import {
   isDocsLanguage,
   DOCS_MODES,
 } from "./settings.js";
-import { ALL_TOOL_DEFS } from "./tool-defs.js";
+import { ALL_TOOL_DEFS, filterToolDefsForSurface, toolSurfaceFrom } from "./tool-defs.js";
 import type { EmbeddingStatus } from "./embedding-status.js";
 import { MAX_BODY_BYTES, readJsonBody, sendCors, sendJson } from "./http-util.js";
 import {
@@ -326,8 +326,13 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     // validates — no skew when a forwarder build is newer than the daemon code
     // in RAM. Loopback-only + token-free like /health (the Host-gate above
     // covers it; this is non-/api/v1).
-    if (method === "GET" && url === "/tools") {
-      sendJson(res, 200, { tools: ALL_TOOL_DEFS });
+    // #481: `?surface=search|write|full` narrows the list to what that client's
+    // tool surface allows. Absent or unknown → `full`, today's behaviour.
+    if (method === "GET" && (url === "/tools" || url.startsWith("/tools?"))) {
+      const surface = toolSurfaceFrom(
+        new URL(url, "http://127.0.0.1").searchParams.get("surface") ?? undefined,
+      );
+      sendJson(res, 200, { tools: filterToolDefsForSurface(ALL_TOOL_DEFS, surface) });
       return;
     }
 

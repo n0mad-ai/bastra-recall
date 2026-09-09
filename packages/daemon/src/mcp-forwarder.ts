@@ -35,6 +35,9 @@
  *                             wo der Daemon als launchd-Service läuft)
  *   BASTRA_VAULT_PATH       — wird beim Auto-Spawn an den Daemon vererbt
  *                             (alle weiteren BASTRA_*-Vars ebenfalls).
+ *   BASTRA_TOOL_SURFACE     — `search` | `write` | `full` (#481). Bestimmt,
+ *                             welche Tools DIESER Client sieht und aufrufen
+ *                             darf. Default ohne Wert: `full`.
  */
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -51,7 +54,13 @@ import {
   RECALL_STAGE_ORDER,
   type RecallStage,
 } from "@bastra-recall/core";
-import { ALL_TOOL_DEFS } from "./tool-defs.js";
+import {
+  ALL_TOOL_DEFS,
+  filterToolDefsForSurface,
+  isToolAllowed,
+  toolSurfaceDenial,
+  toolSurfaceFrom,
+} from "./tool-defs.js";
 import { mergeBatchResults, projectRecallResult } from "./recall-batch.js";
 import { claudeSessionPid, sessionFeedPath, STATUSLINE_DIR, reapStaleFeeds } from "./statusline-session.js";
 import { commandOf, parentPidOf } from "./reap-forwarders.js";
@@ -211,6 +220,11 @@ async function main(): Promise<void> {
     { capabilities: { tools: {} }, instructions: SERVER_INSTRUCTIONS },
   );
 
+  // #481: the surface THIS client runs on. Read once — it comes from the
+  // server block the installer wrote, and a client restart is what applies a
+  // change to it anyway.
+  const toolSurface = toolSurfaceFrom(process.env.BASTRA_TOOL_SURFACE);
+
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     // Fetch the tool schemas from the DAEMON (#132), so the schema the client
     // is told always matches what the daemon actually validates. The forwarder
@@ -228,19 +242,33 @@ async function main(): Promise<void> {
     // cold start would serve ALL_TOOL_DEFS and reintroduce the very forwarder↔
     // daemon skew this fixes. The fallback then only applies if the daemon is
     // genuinely unreachable after boot.
+    //
+    // #481: the surface is sent along so the daemon filters the list it
+    // serves; the fallback is filtered here with the same rule, so a daemon
+    // too old to know the parameter cannot hand a `search` client a
+    // `move_document`.
     await awaitDaemonReady();
     try {
-      const resp = await fetchWithTimeout(`${DAEMON_URL}/tools`, {}, 2000);
+      const resp = await fetchWithTimeout(
+        `${DAEMON_URL}/tools?surface=${encodeURIComponent(toolSurface)}`,
+        {},
+        2000,
+      );
       if (resp.ok) {
-        const body = (await resp.json()) as { tools?: unknown[] };
+        const body = (await resp.json()) as { tools?: { name?: string }[] };
         if (Array.isArray(body.tools) && body.tools.length > 0) {
-          return { tools: body.tools };
+          return {
+            tools: filterToolDefsForSurface(
+              body.tools.filter((t): t is { name: string } => typeof t?.name === "string"),
+              toolSurface,
+            ),
+          };
         }
       }
     } catch {
       // daemon down / old daemon without /tools → fall back to the bundled defs
     }
-    return { tools: ALL_TOOL_DEFS };
+    return { tools: filterToolDefsForSurface(ALL_TOOL_DEFS, toolSurface) };
   });
 
   const banterMode = banterModeFromEnv(process.env);
@@ -250,6 +278,17 @@ async function main(): Promise<void> {
     const { name, arguments: args } = req.params;
     const progressToken = (req.params as { _meta?: { progressToken?: string | number } })._meta
       ?.progressToken;
+
+    // #481: a call outside this client's surface never reaches the daemon.
+    // The list already hides it, so this catches the client that remembers a
+    // tool from a wider surface — the refusal names the surface and how to
+    // widen it, so the agent tells the user instead of trying again.
+    if (!isToolAllowed(name, toolSurface)) {
+      return {
+        isError: true,
+        content: [{ type: "text" as const, text: toolSurfaceDenial(name, toolSurface) }],
+      };
+    }
 
     // Diagnostic (BASTRA_PROGRESS_DEBUG=1): logs whether Claude Code attaches a
     // progressToken to each tool call. Without one, no notifications/progress

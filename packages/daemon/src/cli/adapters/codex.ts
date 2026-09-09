@@ -232,7 +232,15 @@ async function replaceMcpRegistration(
   }
   const added = runCaptured(
     bin,
-    ["mcp", "add", SERVER_KEY, "--env", `BASTRA_VAULT_PATH=${target.env.BASTRA_VAULT_PATH}`, "--", target.command, ...target.args],
+    [
+      "mcp",
+      "add",
+      SERVER_KEY,
+      ...Object.entries(target.env).flatMap(([k, v]) => ["--env", `${k}=${v}`]),
+      "--",
+      target.command,
+      ...target.args,
+    ],
     { timeoutMs: 15_000 },
   );
   if (added.ok) return { ok: true, detail: `registered '${SERVER_KEY}'`, backupPath: backupPath ?? undefined };
