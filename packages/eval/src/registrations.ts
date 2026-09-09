@@ -74,6 +74,10 @@ export function loadLongMemEvalRegistration(): Record<string, unknown> {
   return load<Record<string, unknown>>("longmemeval-run.json");
 }
 
+export function loadRerankDecisionRegistration(): Record<string, unknown> {
+  return load<Record<string, unknown>>("rerank-decision.json");
+}
+
 /** Citation fields §29.1 demands of every quoted foreign claim. */
 const REQUIRED_FIELDS: Array<keyof ForeignFigure> = [
   "id", "system", "claim", "evidence_class", "source", "version", "locus", "retrieved",
@@ -626,4 +630,84 @@ export function longMemEvalComparability(
       like_for_like: sameClass ? String(c.same_retriever_class) : null,
     };
   });
+}
+
+/**
+ * #501's rerank decision: the checks that make the registration BIND.
+ *
+ * Version 1 of that file failed exactly where a pre-registration is supposed to
+ * hold. It declared five recommendation shapes and no primary endpoint, so with
+ * several hundred confidence intervals in a run whichever cell came out best
+ * would have been "the finding". It described a language guard in prose that no
+ * code executed. And four of its thresholds were words — "essentially",
+ * "clearly", "about" — which are not thresholds.
+ *
+ * So this checker does not verify that fields exist. It verifies the three
+ * properties that make the difference between a registration and a note:
+ *
+ *   1. exactly ONE primary endpoint, fully specified;
+ *   2. a precedence order over the shapes, whose `close` condition contains the
+ *      negation of the conditional shapes — otherwise "close first" makes them
+ *      structurally unreachable and the ordering means nothing;
+ *   3. no hedging words left anywhere in the decision bars.
+ *
+ * Plus the two that keep the amendment honest: a version above 1 must carry a
+ * `$comment_amendment`, and no shape may be listed in `precedence.order`
+ * without a bar to clear.
+ */
+const HEDGE_WORDS = ["essentially", "clearly", "roughly", "about ", "substantially", "materially"];
+
+export function checkRerankDecisionRegistration(
+  reg: Record<string, unknown> = loadRerankDecisionRegistration(),
+): RegistrationIssue[] {
+  const issues: RegistrationIssue[] = [];
+  const where = "rerank-decision.json";
+
+  const primary = reg.primary_endpoint as Record<string, unknown> | undefined;
+  if (!primary) {
+    issues.push({ where, problem: "no primary_endpoint — with several hundred intervals per run, a registration without one cannot conclude anything" });
+  } else {
+    for (const field of ["metric", "dataset", "model", "passage", "n", "estimator"]) {
+      if (primary[field] === undefined || primary[field] === null || primary[field] === "") {
+        issues.push({ where, problem: `primary_endpoint.${field} is missing — a partly specified endpoint leaves the choice open` });
+      }
+    }
+  }
+
+  const bars = reg.decision_bars as Record<string, unknown> | undefined;
+  const precedence = reg.precedence as { order?: string[] } | undefined;
+  if (!precedence?.order?.length) {
+    issues.push({ where, problem: "no precedence.order — overlapping shapes would leave the choice to whoever writes the report" });
+  } else if (bars) {
+    for (const shape of precedence.order) {
+      if (!(shape in bars)) {
+        issues.push({ where, problem: `precedence lists ${shape} but decision_bars has no bar for it` });
+      }
+    }
+    // The trap that made the first draft's ordering meaningless.
+    const close = JSON.stringify(bars.close_501 ?? {});
+    const conditional = precedence.order.filter((o) => o !== "close_501" && o !== "always_on" && o !== "unresolved_fallback");
+    if (precedence.order[0] === "close_501" && conditional.length > 0 && !/none of|neither/i.test(close)) {
+      issues.push({
+        where,
+        problem: "close_501 is first in precedence but its condition does not exclude the conditional shapes — they would be structurally unreachable",
+      });
+    }
+  }
+  if (!bars) issues.push({ where, problem: "no decision_bars" });
+  else {
+    const text = JSON.stringify(bars).toLowerCase();
+    for (const w of HEDGE_WORDS) {
+      if (text.includes(w)) {
+        issues.push({ where, problem: `decision_bars still contains the hedging word ${JSON.stringify(w.trim())} — a bar that can be argued is not a bar` });
+      }
+    }
+  }
+
+  const version = reg.registration_version;
+  if (typeof version === "number" && version > 1 && typeof reg.$comment_amendment !== "string") {
+    issues.push({ where, problem: `registration_version ${version} without a $comment_amendment — an amendment must say what changed and that no run preceded it` });
+  }
+
+  return issues;
 }

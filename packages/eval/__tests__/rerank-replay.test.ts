@@ -27,6 +27,7 @@ import {
   checkBatchInvariance,
 } from "../src/rerank-replay.js";
 import {
+  ASSOCIATIVE_MIN_N,
   MIN_SLICE_N,
   assignPoolBuckets,
   noAnswerGuard,
@@ -288,6 +289,7 @@ function row(id: string, poolIds: string[], expected: string[], over: Partial<Ca
     id,
     query: "q",
     lang: "de",
+    kind: "descriptive",
     expected: new Set(expected),
     expectedAny: new Set(expected),
     baseline: poolIds.map((p) => hit(p)),
@@ -476,4 +478,35 @@ test("the eval package declares transformers.js as a devDependency and nothing e
     assert.equal(pkg.dependencies?.["@huggingface/transformers"], undefined, `${p} must not carry it at runtime`);
     assert.equal(pkg.devDependencies?.["@huggingface/transformers"], undefined, `${p} must not carry it at all`);
   }
+});
+
+test("§18.1: the associative axis under its registered minimum is NOT EVALUABLE, never a null finding", () => {
+  // 137 answerable associative cases against a registered minimum of 150. The
+  // bar lives in code because a report writer can forget a rule; a checker
+  // cannot. Above MIN_SLICE_N=30, so nothing else would have caught this.
+  const rows = Array.from({ length: 137 }, (_, i) =>
+    row(`a${i}`, ["gold", "x"], ["gold"], { kind: "associative" }),
+  );
+  const rep = reportArm({
+    model: "en-de", passage: "short", n: 10, primary: true,
+    rows, rankings: ranked(rows, (r) => r.baseline.map((h) => h.id)),
+    floor: 30, serveK: 10, seed: 1, poolSplit: assignPoolBuckets([...rows], 40),
+  });
+  assert.ok(rep.by_kind.associative.not_evaluable?.includes("§18.1"), JSON.stringify(rep.by_kind.associative));
+  assert.ok(rep.by_kind.associative.not_evaluable?.includes("never as a null finding"));
+  assert.equal(rep.by_kind.associative.at, undefined, "no interval may be emitted for it");
+  assert.equal(rep.by_kind.associative.n, 137);
+  assert.ok(137 < ASSOCIATIVE_MIN_N, "the real gold set is 13 cases short of the registered minimum");
+});
+
+test("the descriptive axis is NOT bound by the associative minimum", () => {
+  const rows = Array.from({ length: 60 }, (_, i) =>
+    row(`d${i}`, ["gold", "x"], ["gold"], { kind: "descriptive" }),
+  );
+  const rep = reportArm({
+    model: "en-de", passage: "short", n: 10, primary: true,
+    rows, rankings: ranked(rows, (r) => r.baseline.map((h) => h.id)),
+    floor: 30, serveK: 10, seed: 1, poolSplit: assignPoolBuckets([...rows], 40),
+  });
+  assert.ok(rep.by_kind.descriptive.at, "60 descriptive cases clear MIN_SLICE_N and must be measured");
 });

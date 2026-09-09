@@ -277,7 +277,8 @@ const yaml = (s: string): string => JSON.stringify(s);
  * reason `rrf-k-beir.ts` states — a public corpus has no author-written
  * triggers, and inventing them would measure doc2query, not retrieval.
  */
-async function writeQuestionVault(root: string, memories: SessionMemory[]): Promise<void> {
+/** Exported for #501's rerank control pass — it must build the SAME per-question vault. */
+export async function writeQuestionVault(root: string, memories: SessionMemory[]): Promise<void> {
   const dir = path.join(root, "memories");
   await fs.mkdir(dir, { recursive: true });
   await Promise.all(
@@ -300,7 +301,8 @@ async function writeQuestionVault(root: string, memories: SessionMemory[]): Prom
  * the one `rrf-k-beir.ts` carries and for the same reason: a down Ollama would
  * otherwise read as "slow" and waste an hour.
  */
-async function awaitBackfill(emb: EmbeddingIndex, want: number, label: string): Promise<void> {
+/** Exported for #501's rerank control pass — same reason as `writeQuestionVault`. */
+export async function awaitBackfill(emb: EmbeddingIndex, want: number, label: string): Promise<void> {
   let last = -1;
   let stalledSince = Date.now();
   while (emb.size() < want) {
@@ -648,4 +650,11 @@ async function main(): Promise<void> {
   }
 }
 
-void main();
+// Only when RUN, never when imported. #501's control pass imports
+// `writeQuestionVault` and `awaitBackfill` from here so that it builds the
+// identical per-question haystack; without this guard that import executed the
+// CLI, which then parsed the importer's argv and died on an unknown flag. Same
+// guard `goldset-run.ts` carries, and for the same reason.
+if (import.meta.filename === process.argv[1]) {
+  void main();
+}

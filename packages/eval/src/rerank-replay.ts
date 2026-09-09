@@ -132,6 +132,8 @@ function parseArgs(argv: string[]): Args {
     else if (f === "--limit") a.limit = Number(argv[++i]);
     else if (f === "--latency") a.latency = true;
     else if (f === "--latency-sample") a.latencySample = Number(argv[++i]);
+    // Kept as an accepted no-op: the check is unconditional now, because its
+    // result decides how the arm is scored rather than only what is reported.
     else if (f === "--check-batch-invariance") a.checkBatchInvariance = true;
     else if (f === "--seed") a.seed = Number(argv[++i]);
     else throw new Error(`unknown flag: ${f}`);
@@ -228,6 +230,7 @@ async function collectPools(
       id: c.id,
       query: c.query,
       lang: c.lang,
+      kind: c.kind,
       expected: new Set(c.expected_ids),
       expectedAny: new Set([...c.expected_ids, ...c.acceptable_alternatives]),
       baseline: pool,
@@ -269,9 +272,12 @@ export async function rankArm(
     const ranking: ArmRanking = {};
     for (const n of ns) ranking[n] = rerankWindow(row.baseline, n, (_h, j) => scores[j] ?? -Infinity);
     out.set(row.id, ranking);
-    if ((i + 1) % 25 === 0) process.stderr.write(`\r[${label}] scored ${i + 1}/${rows.length}`);
+    // An empty label means "caller drives its own progress": the LongMemEval
+    // pass calls this once per question, and a line per call would be 1000
+    // lines of noise around three numbers.
+    if (label && (i + 1) % 25 === 0) process.stderr.write(`\r[${label}] scored ${i + 1}/${rows.length}`);
   }
-  process.stderr.write(`\r[${label}] scored ${rows.length}/${rows.length}\n`);
+  if (label) process.stderr.write(`\r[${label}] scored ${rows.length}/${rows.length}\n`);
   return out;
 }
 
@@ -401,15 +407,41 @@ async function main(): Promise<void> {
         latency.push(...(await measureLatency(scorer, mode, sample, (id) => vault.get(id), modelKey, NS, state)));
       }
     }
-    if (args.checkBatchInvariance && rows.length > 0) {
-      for (const mode of PASSAGE_MODES) {
+    // Batch invariance is CHECKED, not assumed — and when it fails the harness
+    // does not footnote it, it stops taking the shortcut. `bge-reranker-base`
+    // fails it (max |Δlogit| 0.28-0.39, order NOT stable) while the main arm
+    // `en-de` is exactly 0. So for bge every N gets its own scoring pass at its
+    // own batch size, which is what a production stage at that N would do; the
+    // deep pass would otherwise have reported "rerank the top 10 using scores
+    // computed in a batch of 30", a procedure nobody would ship.
+    for (const mode of PASSAGE_MODES) {
+      if (rows.length > 0) {
         invariance[`${modelKey}/${mode}`] = await checkBatchInvariance(scorer, mode, rows[0], (id) => vault.get(id));
       }
     }
+    const stable = PASSAGE_MODES.every((m) => invariance[`${modelKey}/${m}`]?.orderStable !== false);
+    if (!stable) {
+      console.error(
+        `[rerank-replay] ${modelKey}: batch invariance FAILED — scoring each N separately (costs more, and is the only correct option)`,
+      );
+    }
+    const rankFor = async (
+      mode: PassageMode,
+      subject: readonly CaseRow[],
+      label: string,
+    ): Promise<Map<string, ArmRanking>> => {
+      if (stable) return rankArm(scorer, mode, subject, (id) => vault.get(id), label);
+      const merged = new Map<string, ArmRanking>();
+      for (const n of NS) {
+        const part = await rankArm(scorer, mode, subject, (id) => vault.get(id), `${label} N=${n}`, [n]);
+        for (const [id, r] of part) merged.set(id, { ...(merged.get(id) ?? {}), ...r });
+      }
+      return merged;
+    };
     for (const mode of PASSAGE_MODES) {
       const label = `${modelKey}/${mode}`;
-      const rankings = await rankArm(scorer, mode, rows, (id) => vault.get(id), label);
-      const guardRankings = await rankArm(scorer, mode, guardRows, (id) => vault.get(id), `${label} guard`);
+      const rankings = await rankFor(mode, rows, label);
+      const guardRankings = await rankFor(mode, guardRows, `${label} guard`);
       for (const n of NS) {
         reports.push(
           reportArm({
@@ -447,6 +479,18 @@ async function main(): Promise<void> {
         `better ${c.paired.better} / worse ${c.paired.worse} / unchanged ${c.paired.unchanged}`,
     );
     L.push(`    rank regression ${pct(primary.rank_regression_share)} · recall_any@${primary.n} ${pct(primary.recall_any_at_n)}`);
+    const ip = primary.in_pool_only;
+    if (ip.at) {
+      const d = ip.at[PRIMARY.cut];
+      L.push(
+        `    EXPLORATORY, same arm over the ${ip.n} cases whose gold is inside the window at all: ` +
+          `Δ ${pp(d.delta)} pp · CI95 [${pp(d.ci95[0])}, ${pp(d.ci95[1])}] — the dilution check, not the endpoint`,
+      );
+    }
+    for (const [k, sl] of Object.entries(primary.by_kind)) {
+      const d = sl.at?.[PRIMARY.cut];
+      L.push(`    by kind · ${k.padEnd(12)} n=${String(sl.n).padStart(3)} ${d ? `Δ ${pp(d.delta)} pp · CI95 [${pp(d.ci95[0])}, ${pp(d.ci95[1])}]` : (sl.not_evaluable ?? "")}`);
+    }
   } else {
     L.push("  PRIMARY ENDPOINT NOT MEASURED — the registered cell is not among the arms this run scored.");
   }
@@ -525,6 +569,19 @@ async function main(): Promise<void> {
             sources,
           },
           dense_arm_health: { main: main.health, guard: guard.health },
+          // Per-case baseline diagnostics. Cheap, and the reason it is here:
+          // tonight the run had to be repeated because the artifact carried
+          // aggregates only and a new slice (by kind) could not be computed
+          // from it. Rows travel so the next question does not cost a re-run.
+          cases_baseline: rows.map((r) => ({
+            id: r.id,
+            lang: r.lang,
+            kind: r.kind,
+            pool_size: r.poolSize,
+            weak_result: r.weakResult,
+            rank_in_pool: r.baseline.findIndex((h) => r.expected.has(h.id)) + 1,
+            served_rank: served(r.baseline, PRODUCTION_K, SCORE_FLOOR).findIndex((id) => r.expected.has(id)) + 1,
+          })),
           interval_count: countIntervals(reports),
           reports,
           no_answer_guard: guards,

@@ -53,6 +53,30 @@ import {
  */
 export const MIN_SLICE_N = 30;
 
+/**
+ * §18.1's registered minimum for the ASSOCIATIVE cue axis — and it is a
+ * different kind of bar from `MIN_SLICE_N`.
+ *
+ * `gold_set_requirement.authoring_targets` in `cue-experiment.json` reads
+ * `associative: { minimum: 150, comfortable: 215 }`, with: "Below 150 the
+ * associative main effect is reported as NOT EVALUABLE, **never as a null
+ * finding**." That registration's own status is `structure_registered` and its
+ * `$comment_satisfied` says "False because of the associative axis alone".
+ *
+ * The gold set holds 137 answerable associative cases. Thirteen short.
+ *
+ * So the bar is enforced HERE rather than remembered by whoever writes the
+ * report. A statistical floor can be argued about; a registered one cannot, and
+ * the difference between "not evaluable" and "no effect" is exactly the
+ * difference between an honest measurement and a claim the data does not carry.
+ *
+ * This does NOT touch the primary endpoint, which runs on the mixed denominator
+ * it was registered on, nor the descriptive axis, nor the plain descriptive
+ * statistics of pool coverage — those are proportion estimates over a defined
+ * set, not effect estimates of the cue experiment.
+ */
+export const ASSOCIATIVE_MIN_N = 150;
+
 /** The cuts reported. R@3 is the one #103/#118 measured the deficit at. */
 export const KS = [1, 3, 5] as const;
 
@@ -60,6 +84,15 @@ export interface CaseRow {
   id: string;
   query: string;
   lang: string;
+  /**
+   * `descriptive` or `associative` — the C-051/C-057 cue axis, and NOT a
+   * detail. The associative sets are authored so that no term of the incident
+   * report survives in the query (lexical overlap 4 % against 65 % on the
+   * telemetry-harvested sets), so they are deliberately decoupled from both
+   * arms. Mixing them into one denominator makes a measured property of the
+   * DATA read like a defect of our retrieval.
+   */
+  kind: string;
   /** `expected_ids` — the strict set. `goldset-run.ts`'s headline uses this. */
   expected: Set<string>;
   /** `expected_ids ∪ acceptable_alternatives` — its `rank_any` companion. */
@@ -117,6 +150,18 @@ export interface ArmReport {
   /** Share of cases whose first expected id ended up at a WORSE rank. */
   rank_regression_share: number;
   by_lang: Record<string, SliceReport>;
+  by_kind: Record<string, SliceReport>;
+  /**
+   * EXPLORATORY. The same lift over only those cases whose gold is inside the
+   * N-window at all.
+   *
+   * A case whose gold is nowhere in the pool cannot contribute to any lift —
+   * no reranker retrieves — but it sits in the primary denominator and dilutes
+   * every delta. On this set that is 29.5 % of cases. This slice shows how
+   * strong the dilution is; it does NOT replace the primary, which stays on the
+   * full registered denominator.
+   */
+  in_pool_only: SliceReport;
   by_pool: Record<string, SliceReport>;
   /** Whether `by_pool` measured anything at all. */
   pool_split: PoolSplit;
@@ -219,6 +264,29 @@ export function reportArm(opts: {
   // Both buckets ALWAYS, even when empty: `sliceBy` omits a bucket with no
   // rows, and an artifact holding only `large` reads like a finished split.
   const grouped = sliceBy(rows, (r) => r.poolBucket ?? "unassigned");
+  const byKind: Record<string, SliceReport> = {};
+  for (const [kind, sub] of Object.entries(sliceBy(rows, (r) => r.kind))) {
+    // §18.1: the associative axis carries its own registered minimum, and
+    // below it the result is NOT EVALUABLE — never a null finding.
+    const minN = kind === "associative" ? ASSOCIATIVE_MIN_N : MIN_SLICE_N;
+    const rep = sliceReport(sub, rankings, n, floor, serveK, seed, minN);
+    byKind[kind] =
+      kind === "associative" && rep.not_evaluable
+        ? {
+            n: rep.n,
+            not_evaluable:
+              `§18.1 registered minimum for the associative axis is ${ASSOCIATIVE_MIN_N}; this run has ${rep.n}. ` +
+              "Reported as NOT EVALUABLE, never as a null finding — an absent lift here says nothing about the axis.",
+          }
+        : rep;
+  }
+  // "Gold is inside this arm's window" — the numerator of recall_any_at_n, so
+  // the subset is defined by the arm's own N rather than by a second rule.
+  const reachable = rows.filter(
+    (r) => recallAny(r.baseline.slice(0, n).map((h) => h.id), r.expected, n) === 1,
+  );
+  const inPoolOnly = sliceReport(reachable, rankings, n, floor, serveK, seed);
+
   const byPool: Record<string, SliceReport> = {};
   for (const bucket of ["small", "large"]) {
     const sub = grouped[bucket] ?? [];
@@ -248,6 +316,8 @@ export function reportArm(opts: {
     recall_any_at_n: mean(rows.map((r) => recallAny(r.baseline.slice(0, n).map((h) => h.id), r.expected, n))),
     rank_regression_share: rows.length === 0 ? 0 : regressions / rows.length,
     by_lang: byLang,
+    by_kind: byKind,
+    in_pool_only: inPoolOnly,
     by_pool: byPool,
     pool_split: opts.poolSplit,
     // 50, not MIN_SLICE_N: an entire recommendation shape hangs on this one
@@ -269,7 +339,13 @@ export function countIntervals(reports: readonly ArmReport[]): number {
   let n = 0;
   for (const r of reports) {
     n += Object.keys(r.at).length + Object.keys(r.at_incl_acceptable).length + Object.keys(r.at_no_floor_upper_bound).length;
-    for (const s of [...Object.values(r.by_lang), ...Object.values(r.by_pool), r.weak_result]) {
+    for (const s of [
+      ...Object.values(r.by_lang),
+      ...Object.values(r.by_kind),
+      ...Object.values(r.by_pool),
+      r.in_pool_only,
+      r.weak_result,
+    ]) {
       n += Object.keys(s.at ?? {}).length;
     }
   }
