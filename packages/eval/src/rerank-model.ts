@@ -29,7 +29,24 @@
  * entry may be measured in, and the runner refuses the combinations that would
  * produce such a number. See `docs/design/2026-09-09-501-cross-encoder-rerank-messplan.md`.
  */
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { Memory } from "@bastra-recall/core";
+
+/**
+ * Where the ONNX weights live.
+ *
+ * transformers.js defaults `env.cacheDir` to
+ * `node_modules/@huggingface/transformers/.cache/`, which is the wrong place
+ * for half a gigabyte per model: `npm ci` deletes `node_modules`, so every
+ * clean install would re-download the whole set, and the weights would sit
+ * inside a directory whose contents are supposed to be disposable.
+ *
+ * Overridable for a machine that keeps its caches elsewhere; the default is
+ * the conventional user cache location.
+ */
+export const CACHE_DIR =
+  process.env.BASTRA_RERANK_CACHE_DIR ?? join(homedir(), ".cache", "bastra-rerank");
 
 /** Passage shape. Registered as a free parameter: it costs more than N does. */
 export type PassageMode = "short" | "body";
@@ -123,6 +140,10 @@ export async function loadCrossEncoder(key: keyof typeof MODELS | string): Promi
         `npm i --workspace=@bastra-recall/eval (${(e as Error).message})`,
     );
   }
+  // Must be set BEFORE the first `from_pretrained` — the value is read when a
+  // file is resolved, so setting it afterwards would leave the first model in
+  // `node_modules` and split the cache across two directories.
+  mod.env.cacheDir = CACHE_DIR;
   const t0 = Date.now();
   const tokenizer = await mod.AutoTokenizer.from_pretrained(spec.repo);
   const model = await mod.AutoModelForSequenceClassification.from_pretrained(spec.repo, {

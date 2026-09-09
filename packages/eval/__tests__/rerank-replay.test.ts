@@ -9,7 +9,7 @@ import {
   seededRandom,
   sliceBy,
 } from "../src/rerank-metrics.js";
-import { BODY_CHARS, MODELS, passageFor, type PairScorer } from "../src/rerank-model.js";
+import { BODY_CHARS, CACHE_DIR, MODELS, passageFor, type PairScorer } from "../src/rerank-model.js";
 import { partitionCases } from "../src/rerank-replay.js";
 import type { GoldCase } from "../src/goldset.js";
 import type { Memory } from "@bastra-recall/core";
@@ -240,4 +240,8 @@ test("a stub PairScorer drives the same rerank path the real model does", async 
   assert.equal(ranked[0], "d");
   assert.equal(recallAny(POOL, new Set(["d"]), 3), 0, "baseline: the gold was outside the top 3");
   assert.equal(recallAny(ranked, new Set(["d"]), 3), 1, "reranked: it is inside");
+});
+
+test("the model cache is not under node_modules — npm ci must not throw away half a gigabyte per model", () => {
+  assert.ok(!CACHE_DIR.includes("node_modules"), `cache dir must live outside node_modules, got ${CACHE_DIR}`);
 });
