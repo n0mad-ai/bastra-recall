@@ -246,6 +246,16 @@ export interface RecallEvent extends BaseEvent, DimensionedEvent {
   payload_chars?: number;
   payload_tokens_est?: number;
   presentation?: "lean" | "full";
+  /**
+   * #487: Das ANGEFORDERTE Kontextbudget dieses Aufrufs in Token. Fehlt, wenn
+   * der Aufrufer keines gesetzt hat. Zusammen mit `payload_tokens_est` (was
+   * wirklich ausging) ist das die Zuordnung, die #457 für die Ersparnis
+   * braucht — eine der beiden Zahlen allein sagt sie nicht.
+   */
+  max_tokens?: number;
+  /** #487: wie viele gerankte Treffer das Budget weggelassen hat. Fehlt, wenn
+   *  keiner fiel; die ausgespielte Zahl ist `hit_count` minus dieser Wert. */
+  dropped_by_budget?: number;
 }
 
 /** #457: Woher ein Load kam — Hook-Hint, eigener `recall()` oder kalt. */
@@ -735,6 +745,20 @@ export interface HookRecallEvent extends BaseEvent, DimensionedEvent {
    *  counted (`shadow`). Absent on events written before the mode existed —
    *  those are live by definition. */
   usage_suppressed_mode?: "shadow" | "live";
+  /**
+   * #487: das angeforderte Kontextbudget dieses Aufrufs in Token, und was das
+   * ausgelieferte Payload davon gebraucht hat. Dieselben Zahlen wie auf dem
+   * MCP-Pfad — der Forwarder proxyt `recall` über diesen Endpunkt, also
+   * entstünde die Ersparnis sonst genau dort, wo sie niemand messen kann.
+   *
+   * Nur auf Aufrufen MIT Budget: Die Größe zu messen heißt, das Payload ein
+   * zweites Mal zu serialisieren, und dieser Endpunkt läuft an jedem Bash und
+   * jedem Edit. Wer kein Budget schickt, zahlt die Messung nicht.
+   */
+  max_tokens?: number;
+  dropped_by_budget?: number;
+  payload_chars?: number;
+  payload_tokens_est?: number;
   latency_ms_recall: number;
   latency_ms_total: number;
   /** Pro-Stage-Timings (#38). Optional — alte Hook-Events ohne Stage-

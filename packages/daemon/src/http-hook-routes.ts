@@ -25,6 +25,7 @@ import { tokenizeWithIdentifiers } from "@bastra-recall/core";
 import { armsOf, SCORE_VERSION } from "./score-space.js";
 import { hintSuppressionMode, suppressRepeatedUnused } from "./hint-suppression.js";
 import { mergeHookRecallHits } from "./hook-recall-merge.js";
+import { fitRecallToBudget, measurePayload } from "./recall-budget.js";
 import { type DeadlineShadow } from "./latency-profile.js";
 // #493: die Schattenbuchführung eines Recalls, herausgelöst aus dieser Datei.
 import {
@@ -259,6 +260,12 @@ export async function runHookRecall(
        * seinem eigenen Block (die SessionStart-Lane: „not in memory").
        */
       const lexicalOnly = body.lexical_only === true;
+      // #487: Das Kontextbudget des Aufrufs in geschätzten Token. `0` (der
+      // Default, also auch „nicht geschickt") heißt unbegrenzt und ändert an
+      // dieser Antwort nichts. Der MCP-Forwarder reicht das Feld durch — für
+      // ein Modell, das sein Restfenster kennt, ist das die Größe, in der es
+      // rechnet, und `k` ist es nicht.
+      const maxTokens = clampInt(body.max_tokens, 0, 1_000_000, 0);
       // Dieselbe Regel wie bei der Deadline eine Zeile darüber: Das Budget, gegen
       // das der Schatten-Router rechnet, gehört zum AUFRUF, nicht zum Endpunkt.
       // Die 200 sind die Wanduhr der Prompt-Lane; die SessionStart-Lane hat ihre
@@ -806,6 +813,108 @@ export async function runHookRecall(
       const weakResult = isWeakResult(hits, hybridActiveAtRecall);
       const noHome = isNoHome(hits, hybridActiveAtRecall);
 
+
+      // Lean projection (#50): the hook CLI only consumes lean fields, so we
+      // never need to send matched_terms/mode/hop/topic_path over the wire.
+      // Telemetry above already logged the full hits. #148: the hook scope
+      // filter needs the one extra bit `matched_recall_when` (kept here only,
+      // not in the shared toLeanHit — MCP recall stays the documented lean shape).
+      // #249: the honesty flag has to reach THIS path above all. /hook/recall
+      // writes <recall-hints> into the agent's context on every Bash and Edit,
+      // and without the flag the formatters label pure noise as "Strong
+      // matches" — the daemon computed the contradicting signal and simply did
+      // not send it. Same computation as the MCP path, from the same module.
+      // 20.08.: reflex-wired memories (recall_mode "reflex") from the deeper
+      // candidate pool that the top-k cut left out. The prompt lane's semantic
+      // reflex filter only ever saw `hits`; on 20.08. the wired convention sat
+      // at pool rank 6 behind a k of 5 and never reached the agent. The pool is
+      // the user's explicit wiring — two memories — so scanning it is cheap,
+      // and the lane keeps every floor and dedup it already applies.
+      const hitIds = new Set(hits.map((h) => h.id));
+      const reflexHits = candidatePool.flatMap((c) => {
+        if (hitIds.has(c.id)) return [];
+        const mem = vault.get(c.id);
+        if (mem?.fm.recall_mode !== "reflex") return [];
+        return [{
+          id: c.id,
+          title: mem.fm.title,
+          type: mem.fm.type,
+          scope: mem.fm.scope,
+          summary: truncateSummary(mem.fm.summary),
+          score: c.score,
+          matched_recall_when: false,
+          recall_mode: "reflex" as const,
+        }];
+      });
+      // recall_mode rides along only when the user wired the memory as
+      // reflex: the prompt lane's mode-"none" semantic filter keys on it
+      // (19.08. incident — see prompt-lane.ts).
+      const leanHits = hits.map((h) => ({
+        ...toLeanHit(h),
+        matched_recall_when: h.matched_recall_when ?? false,
+        // P0: Der Cross-Scope-Bypass in den Lanes braucht mehr als das Flag —
+        // ein einzelnes häufiges Wort in einer fremden Triggerphrase ist
+        // keine Absicht. Nur gesetzt, wenn überhaupt ein Trigger-Term traf.
+        ...(h.anchor_strength ? { anchor_strength: h.anchor_strength } : {}),
+        ...(vault.get(h.id)?.fm.recall_mode === "reflex" ? { recall_mode: "reflex" as const } : {}),
+      }));
+      // #487: Das Kontextbudget des AUFRUFS. Gestrichen wird aus der gerankten
+      // Liste, von hinten — `reflex_hits` bleiben, sie sind die ausdrückliche
+      // Verdrahtung des Nutzers und stehen nicht im Rang. Gemessen wird das
+      // ganze Payload, also kosten sie trotzdem mit. Ohne `max_tokens` (0) ist
+      // die Antwort byte-gleich zu der vor #487.
+      const budgeted = fitRecallToBudget(leanHits, maxTokens, (emittedHits, droppedByBudget) => ({
+        hits: emittedHits,
+        ...(reflexHits.length > 0 ? { reflex_hits: reflexHits } : {}),
+        vault_size: vault.size(),
+        latency_ms: totalLatencyMs,
+        recall_id: recallId,
+        ...(weakResult ? { weak_result: true } : {}),
+        // #230: the stricter half travels the same wire. A strict subset of
+        // weak_result, so a consumer that only knows weak_result is unaffected.
+        ...(noHome ? { no_home: true } : {}),
+        // #302: whether RRF ran at all. Without a vector arm there is no
+        // fusion and no ceiling — raw BM25 is unbounded (top hits into six
+        // digits on a real vault), so the 30/100 cuts describe nothing there.
+        // The formatter has to say so rather than band an unbounded scale.
+        // Same shape as the flags above: present only when it has something
+        // to say, computed once from the value the honesty flags already use.
+        // P0: derselbe explizite Score-Raum wie auf dem MCP-Pfad. `unfused`
+        // sagt es indirekt, aber ein Konsument soll das Feld lesen können,
+        // statt aus einer Abwesenheit zu schließen.
+        // Codex-Gegenreview zum Confidence-Gate: Kennt der Vault den
+        // Projektnamen überhaupt? `detectProject()` liefert für
+        // `/workspace/packages/core` das Projekt "packages" — mit voller
+        // Zuversicht, denn ein Pfadsegment hieß "workspace". Ein scharfer
+        // Scope-Filter würde damit das ganze eigene Gedächtnis entfernen.
+        // Die Frage ist nur HIER beantwortbar, wo der Vault liegt; die Lanes
+        // sehen ihn nicht. Früher Abbruch beim ersten Treffer: der Normalfall
+        // (eigenes Projekt) kostet nichts, nur der seltene Fehlerfall läuft
+        // einmal durch.
+        ...(hookProject !== null ? { project_known: vaultKnowsProject(vault, hookProject) } : {}),
+        score_kind: hybridActiveAtRecall ? ("rrf" as const) : ("bm25" as const),
+        // Dieselbe Angabe wie auf dem MCP-Pfad: `score_kind` allein macht zwei
+        // Zahlen nicht vergleichbar, die Armmenge tut es. Der Hook-Pfad kennt
+        // keine Commons — hier sind es immer die persönlichen Arme, und genau
+        // das muss auf der Leitung stehen, statt vom Konsumenten geraten zu
+        // werden.
+        score_arms: armsOf({ hybridActive: hybridActiveAtRecall, commonsFused: false }),
+        // Keine Formelversion auf einer rohen Skala — siehe recall-handler.ts.
+        ...(hybridActiveAtRecall ? { score_version: SCORE_VERSION } : { unfused: true }),
+        // #342: name the reason on the wire too. `unfused` says the bands do
+        // not apply; this says why, so a slow machine degrading on every call
+        // is distinguishable from embeddings being off — from the response
+        // alone, without correlating against the telemetry log.
+        ...(degradedReason ? { degraded: degradedReason } : {}),
+        // #487: nur gesetzt, wenn das Budget wirklich gestrichen hat.
+        ...(droppedByBudget > 0
+          ? { truncated_by_budget: true, dropped_by_budget: droppedByBudget }
+          : {}),
+      }));
+      const payload = budgeted.payload;
+      // #487: Gemessen wird nur, wo ein Budget galt — die Serialisierung
+      // kostet, und dieser Endpunkt läuft an jedem Bash und jedem Edit.
+      const budgetSize = maxTokens > 0 ? measurePayload(payload) : null;
       fireAndForget(
         telemetry.logHookRecall({
           recall_id: recallId,
@@ -937,95 +1046,18 @@ export async function runHookRecall(
           // because nothing ever wrote it down.
           weak_result: weakResult || undefined,
           no_home: noHome || undefined,
+          // #487: angefordertes Budget gegen ausgeliefertes Payload — erst
+          // beide Zahlen zusammen ordnen die Ersparnis jemandem zu (#457).
+          ...(budgetSize
+            ? {
+                max_tokens: maxTokens,
+                dropped_by_budget: budgeted.dropped > 0 ? budgeted.dropped : undefined,
+                payload_chars: budgetSize.chars,
+                payload_tokens_est: budgetSize.tokens,
+              }
+            : {}),
         }),
       );
 
-      // Lean projection (#50): the hook CLI only consumes lean fields, so we
-      // never need to send matched_terms/mode/hop/topic_path over the wire.
-      // Telemetry above already logged the full hits. #148: the hook scope
-      // filter needs the one extra bit `matched_recall_when` (kept here only,
-      // not in the shared toLeanHit — MCP recall stays the documented lean shape).
-      // #249: the honesty flag has to reach THIS path above all. /hook/recall
-      // writes <recall-hints> into the agent's context on every Bash and Edit,
-      // and without the flag the formatters label pure noise as "Strong
-      // matches" — the daemon computed the contradicting signal and simply did
-      // not send it. Same computation as the MCP path, from the same module.
-      // 20.08.: reflex-wired memories (recall_mode "reflex") from the deeper
-      // candidate pool that the top-k cut left out. The prompt lane's semantic
-      // reflex filter only ever saw `hits`; on 20.08. the wired convention sat
-      // at pool rank 6 behind a k of 5 and never reached the agent. The pool is
-      // the user's explicit wiring — two memories — so scanning it is cheap,
-      // and the lane keeps every floor and dedup it already applies.
-      const hitIds = new Set(hits.map((h) => h.id));
-      const reflexHits = candidatePool.flatMap((c) => {
-        if (hitIds.has(c.id)) return [];
-        const mem = vault.get(c.id);
-        if (mem?.fm.recall_mode !== "reflex") return [];
-        return [{
-          id: c.id,
-          title: mem.fm.title,
-          type: mem.fm.type,
-          scope: mem.fm.scope,
-          summary: truncateSummary(mem.fm.summary),
-          score: c.score,
-          matched_recall_when: false,
-          recall_mode: "reflex" as const,
-        }];
-      });
-      const payload = {
-        // recall_mode rides along only when the user wired the memory as
-        // reflex: the prompt lane's mode-"none" semantic filter keys on it
-        // (19.08. incident — see prompt-lane.ts).
-        hits: hits.map((h) => ({
-          ...toLeanHit(h),
-          matched_recall_when: h.matched_recall_when ?? false,
-          // P0: Der Cross-Scope-Bypass in den Lanes braucht mehr als das Flag —
-          // ein einzelnes häufiges Wort in einer fremden Triggerphrase ist
-          // keine Absicht. Nur gesetzt, wenn überhaupt ein Trigger-Term traf.
-          ...(h.anchor_strength ? { anchor_strength: h.anchor_strength } : {}),
-          ...(vault.get(h.id)?.fm.recall_mode === "reflex" ? { recall_mode: "reflex" as const } : {}),
-        })),
-        ...(reflexHits.length > 0 ? { reflex_hits: reflexHits } : {}),
-        vault_size: vault.size(),
-        latency_ms: totalLatencyMs,
-        recall_id: recallId,
-        ...(weakResult ? { weak_result: true } : {}),
-        // #230: the stricter half travels the same wire. A strict subset of
-        // weak_result, so a consumer that only knows weak_result is unaffected.
-        ...(noHome ? { no_home: true } : {}),
-        // #302: whether RRF ran at all. Without a vector arm there is no
-        // fusion and no ceiling — raw BM25 is unbounded (top hits into six
-        // digits on a real vault), so the 30/100 cuts describe nothing there.
-        // The formatter has to say so rather than band an unbounded scale.
-        // Same shape as the flags above: present only when it has something
-        // to say, computed once from the value the honesty flags already use.
-        // P0: derselbe explizite Score-Raum wie auf dem MCP-Pfad. `unfused`
-        // sagt es indirekt, aber ein Konsument soll das Feld lesen können,
-        // statt aus einer Abwesenheit zu schließen.
-        // Codex-Gegenreview zum Confidence-Gate: Kennt der Vault den
-        // Projektnamen überhaupt? `detectProject()` liefert für
-        // `/workspace/packages/core` das Projekt "packages" — mit voller
-        // Zuversicht, denn ein Pfadsegment hieß "workspace". Ein scharfer
-        // Scope-Filter würde damit das ganze eigene Gedächtnis entfernen.
-        // Die Frage ist nur HIER beantwortbar, wo der Vault liegt; die Lanes
-        // sehen ihn nicht. Früher Abbruch beim ersten Treffer: der Normalfall
-        // (eigenes Projekt) kostet nichts, nur der seltene Fehlerfall läuft
-        // einmal durch.
-        ...(hookProject !== null ? { project_known: vaultKnowsProject(vault, hookProject) } : {}),
-        score_kind: hybridActiveAtRecall ? ("rrf" as const) : ("bm25" as const),
-        // Dieselbe Angabe wie auf dem MCP-Pfad: `score_kind` allein macht zwei
-        // Zahlen nicht vergleichbar, die Armmenge tut es. Der Hook-Pfad kennt
-        // keine Commons — hier sind es immer die persönlichen Arme, und genau
-        // das muss auf der Leitung stehen, statt vom Konsumenten geraten zu
-        // werden.
-        score_arms: armsOf({ hybridActive: hybridActiveAtRecall, commonsFused: false }),
-        // Keine Formelversion auf einer rohen Skala — siehe recall-handler.ts.
-        ...(hybridActiveAtRecall ? { score_version: SCORE_VERSION } : { unfused: true }),
-        // #342: name the reason on the wire too. `unfused` says the bands do
-        // not apply; this says why, so a slow machine degrading on every call
-        // is distinguishable from embeddings being off — from the response
-        // alone, without correlating against the telemetry log.
-        ...(degradedReason ? { degraded: degradedReason } : {}),
-      };
       return payload;
 }

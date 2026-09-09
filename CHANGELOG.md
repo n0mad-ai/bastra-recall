@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`recall` takes a context budget, not just a count** (#487). `k` counts
+  results; what costs context is text, and the same `k=5` answer varies by
+  more than 2× in size depending on summary length. `recall` now accepts an
+  optional `max_tokens` on MCP and REST (and on `/hook/recall`, the route the
+  MCP forwarder actually uses): after ranking, the score floor and the
+  evidence gate, hits are emitted in rank order until the serialized payload
+  would exceed the budget; the rest are dropped whole — never truncated — and
+  the response says so with `truncated_by_budget: true` and
+  `dropped_by_budget: <n>`, so an agent can re-query with more room or
+  `load_memory` what it needs. `k` stays the hard upper bound, the estimate is
+  the context governor's own (chars/4, #266/#458) so the per-call and the
+  session budget mean the same number, and the telemetry records the requested
+  budget beside the delivered payload so #457 can attribute the saving.
+  Without the parameter nothing changes — measured on the gold set (699
+  queries × four budgets, 2,796 calls): no payload over budget, no call that
+  dropped more than it had to, mean slack 66.5 tokens, and 52.5 % less recall
+  payload at those budgets. `scripts/measure-recall-budget.ts` re-runs the
+  measurement.
+
 - **One cumulative context budget per session, across all six lanes — in
   shadow mode** (#458, first slice). The governor decided per lane call and
   no lane knew what the others had already spent in the same session, so a

@@ -62,6 +62,7 @@ import {
   toolSurfaceFrom,
 } from "./tool-defs.js";
 import { mergeBatchResults, projectRecallResult } from "./recall-batch.js";
+import { fitRecallToBudget } from "./recall-budget.js";
 import { claudeSessionPid, sessionFeedPath, STATUSLINE_DIR, reapStaleFeeds } from "./statusline-session.js";
 import { commandOf, parentPidOf } from "./reap-forwarders.js";
 import { DAEMON_VERSION } from "./version.js";
@@ -571,12 +572,24 @@ async function callRecallStreaming(
     const subs = (await Promise.all(
       queries.map((q, i) =>
         callRecallStreaming(
-          { ...a, queries: undefined, query: q, batch_of: queries.length },
+          // #487: Das Budget gilt für die GEMERGTE Antwort, nicht je
+          // Phrasierung — drei Sub-Recalls, jeder für sich im Budget, ergeben
+          // zusammen das Dreifache. Es wird unten auf das Ergebnis angewandt.
+          { ...a, queries: undefined, max_tokens: undefined, query: q, batch_of: queries.length },
           i === 0 ? onStage : () => undefined,
         ),
       ),
     )) as Parameters<typeof mergeBatchResults>[1];
-    return mergeBatchResults(queries, subs, typeof a.k === "number" ? a.k : 5);
+    const merged = mergeBatchResults(queries, subs, typeof a.k === "number" ? a.k : 5);
+    return fitRecallToBudget(
+      merged.hits,
+      typeof a.max_tokens === "number" ? a.max_tokens : 0,
+      (emitted, dropped) => ({
+        ...merged,
+        hits: emitted,
+        ...(dropped > 0 ? { truncated_by_budget: true, dropped_by_budget: dropped } : {}),
+      }),
+    ).payload;
   }
   const body: Record<string, unknown> = {
     query: typeof a.query === "string" ? a.query : "",
@@ -589,6 +602,9 @@ async function callRecallStreaming(
     session_id: typeof liveStatusline.cc_session_id === "string" ? liveStatusline.cc_session_id : null,
   };
   if (typeof a.k === "number") body.k = a.k;
+  // #487: Das Kontextbudget des Modells reicht bis in die Pipeline durch — der
+  // Forwarder ist der Weg, den ein MCP-Client wirklich geht.
+  if (typeof a.max_tokens === "number") body.max_tokens = a.max_tokens;
   if (typeof a.scope === "string") body.scope = a.scope;
   if (typeof a.type === "string") body.type = a.type;
   // #351: batch width rides along so the hook_recall event can count it.
