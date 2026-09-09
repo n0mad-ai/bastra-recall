@@ -105,6 +105,37 @@ export const MODELS: Readonly<Record<string, ModelSpec>> = {
 };
 
 /**
+ * The language guard, as a function that actually runs.
+ *
+ * An earlier version of this file carried `ModelSpec.languages` and a comment
+ * claiming the runner would refuse a forbidden combination. Nothing read the
+ * field: `--models ms-marco --gold <german set>` ran happily over 272 German
+ * cases and would have reported the resulting null as a statement about
+ * reranking. The guard was the human typing the flag.
+ *
+ * `neutral` and `mixed` are deliberately NOT checked. `neutral` cases are
+ * keyword chains with no function words — they belong to no language pool, and
+ * refusing them would rule out 205 of 584 cases for every model. `mixed` is
+ * four cases and is reported as not evaluable anyway.
+ *
+ * @throws when the set carries a language the model was not measured in.
+ */
+export function assertLanguagesAllowed(spec: ModelSpec, langs: Iterable<string>): void {
+  const seen = new Set(langs);
+  const forbidden = [...seen].filter(
+    (l) => (l === "de" || l === "en") && !spec.languages.includes(l),
+  );
+  if (forbidden.length > 0) {
+    throw new Error(
+      `${spec.repo} was measured in [${spec.languages.join(", ")}] and this set carries ` +
+        `[${forbidden.join(", ")}]. Scoring it would produce a number that reads as ` +
+        `"reranking does not help" and means "this model does not speak the language". ` +
+        `See the spike in docs/design/2026-09-09-501-cross-encoder-rerank-messplan.md.`,
+    );
+  }
+}
+
+/**
  * What the runner needs from a model. A stub implementing this is how the
  * replay is tested without a 400 MB download or an ONNX session.
  */

@@ -12,7 +12,7 @@
  */
 import type { Memory } from "@bastra-recall/core";
 import { passageFor, type PairScorer, type PassageMode } from "./rerank-model.js";
-import type { CaseRow } from "./rerank-replay.js";
+import type { CaseRow } from "./rerank-report.js";
 
 export interface LatencyReport {
   model: string;
@@ -78,9 +78,9 @@ export async function measureLatency(
       // A pool shallower than N would time a smaller batch and report it under
       // this N. Skipping is the honest choice; `samples` says how many remain.
       if (window.length < n) continue;
-      const passages = window.map((id) => {
-        const m = memoryOf(id);
-        if (!m) throw new Error(`pooled id ${id} is not in the vault`);
+      const passages = window.map((h) => {
+        const m = memoryOf(h.id);
+        if (!m) throw new Error(`pooled id ${h.id} is not in the vault`);
         return passageFor(m, mode);
       });
       const t = process.hrtime.bigint();

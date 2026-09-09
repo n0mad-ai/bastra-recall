@@ -65,8 +65,15 @@ import type { GoldCase } from "./goldset.js";
  * decides how deep the candidate pool it reranks actually is.
  */
 export const PRODUCTION_K = 10;
-/** Documented default of BASTRA_RECALL_FLOOR — below it a hit is not shown. */
-const SCORE_FLOOR = 30;
+/**
+ * Documented default of BASTRA_RECALL_FLOOR — below it a hit is not shown.
+ *
+ * Exported for #501's rerank replay. Measuring rank on the UNFILTERED pool
+ * would credit a reranker for lifting a candidate that production never shows:
+ * the floor sits after the cut, so a promotion from below it is invisible to
+ * the user and must be invisible to the number.
+ */
+export const SCORE_FLOOR = 30;
 /** Bound on a cold-store backfill; a stuck provider must fail, not hang. */
 const BACKFILL_TIMEOUT_MS = 15 * 60 * 1000;
 

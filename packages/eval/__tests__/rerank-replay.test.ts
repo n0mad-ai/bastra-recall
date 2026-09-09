@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import {
   mean,
   pairedComparison,
@@ -9,29 +11,58 @@ import {
   seededRandom,
   sliceBy,
 } from "../src/rerank-metrics.js";
-import { BODY_CHARS, CACHE_DIR, MODELS, passageFor, type PairScorer } from "../src/rerank-model.js";
-import { partitionCases } from "../src/rerank-replay.js";
+import {
+  BODY_CHARS,
+  CACHE_DIR,
+  MODELS,
+  assertLanguagesAllowed,
+  passageFor,
+  type PairScorer,
+} from "../src/rerank-model.js";
+import {
+  PRIMARY,
+  NS,
+  partitionCases,
+  rankArm,
+  checkBatchInvariance,
+} from "../src/rerank-replay.js";
+import {
+  MIN_SLICE_N,
+  assignPoolBuckets,
+  noAnswerGuard,
+  reportArm,
+  served,
+  type ArmRanking,
+  type CaseRow,
+} from "../src/rerank-report.js";
 import type { GoldCase } from "../src/goldset.js";
-import type { Memory } from "@bastra-recall/core";
+import type { Memory, RecallHit } from "@bastra-recall/core";
 
 /**
  * Guards for the #501 rerank decision harness.
  *
- * None of this touches Ollama or downloads a model: the parts that decide what
- * the number MEANS are pure by construction (`rerank-metrics.ts`), and the
- * model is reached through the `PairScorer` interface, which a stub satisfies.
- * That is the whole reason the split exists — a statistic nobody can test
- * without a 400 MB ONNX session is a statistic nobody tests.
+ * Nothing here touches Ollama or downloads a model: the parts that decide what
+ * a number MEANS are pure (`rerank-metrics.ts`, `rerank-report.ts`), and the
+ * model is reached through `PairScorer`, which a stub satisfies. That split is
+ * the reason these can exist at all — a statistic nobody can test without a
+ * 400 MB ONNX session is a statistic nobody tests.
+ *
+ * Where a test drives production code, it drives the REAL function. An earlier
+ * version re-implemented `rankArm`'s loop inside the test, which is precisely
+ * the shape in which an off-by-one in the score index survives a green suite.
  */
-
-// ── rerankWindow: the window, the tail, and the ties ────────────────────────
 
 const POOL = ["a", "b", "c", "d", "e"];
 
+/** A pooled hit at a given RRF score — the floor needs real scores. */
+function hit(id: string, score = 100): RecallHit {
+  return { id, title: id, type: "lesson", scope: "s", summary: "", topic_path: [], score, matched_terms: [] } as unknown as RecallHit;
+}
+
+// ── rerankWindow: the window, the tail, and the ties ────────────────────────
+
 test("rerankWindow reorders the window and leaves the tail alone", () => {
-  // Reverse the first three by score; d and e must not move.
-  const out = rerankWindow(POOL, 3, (_x, i) => i);
-  assert.deepEqual(out, ["c", "b", "a", "d", "e"]);
+  assert.deepEqual(rerankWindow(POOL, 3, (_x, i) => i), ["c", "b", "a", "d", "e"]);
 });
 
 test("rerankWindow keeps the tail even when it is longer than the window", () => {
@@ -41,27 +72,23 @@ test("rerankWindow keeps the tail even when it is longer than the window", () =>
 });
 
 test("rerankWindow: a tie keeps pool order — a model that cannot separate two candidates has said nothing", () => {
-  const out = rerankWindow(POOL, 4, () => 1);
-  assert.deepEqual(out, POOL);
+  assert.deepEqual(rerankWindow(POOL, 4, () => 1), POOL);
 });
 
 test("rerankWindow with n >= pool size reorders everything and loses nothing", () => {
-  const out = rerankWindow(POOL, 30, (_x, i) => -i);
-  assert.deepEqual(out, POOL);
-  assert.equal(out.length, 5);
+  assert.deepEqual(rerankWindow(POOL, 30, (_x, i) => -i), POOL);
 });
 
 test("rerankWindow with n <= 0 is the identity — no window, no rerank", () => {
   assert.deepEqual(rerankWindow(POOL, 0, () => 99), POOL);
 });
 
-// ── the metrics themselves ─────────────────────────────────────────────────
+// ── the metrics ────────────────────────────────────────────────────────────
 
 test("recallAny is 1 only when an expected id is inside the cut", () => {
   const exp = new Set(["d"]);
   assert.equal(recallAny(POOL, exp, 3), 0);
   assert.equal(recallAny(POOL, exp, 4), 1);
-  // No expected id at all cannot be a hit — the no_answer cases live elsewhere.
   assert.equal(recallAny(POOL, new Set<string>(), 5), 0);
 });
 
@@ -75,30 +102,28 @@ test("mean of an empty slice is 0, not NaN — an empty slice has no lift", () =
   assert.equal(mean([1, 0, 1, 0]), 0.5);
 });
 
-// ── the resampling ─────────────────────────────────────────────────────────
+// ── resampling ─────────────────────────────────────────────────────────────
 
-test("seededRandom is deterministic — a CI that moves on unchanged data is not reportable", () => {
+test("seededRandom is deterministic on the same seed and differs on another", () => {
   const a = seededRandom(42);
   const b = seededRandom(42);
+  const c = seededRandom(43);
   const xs = [a(), a(), a()];
-  const ys = [b(), b(), b()];
-  assert.deepEqual(xs, ys);
-  assert.notDeepEqual(xs, [seededRandom(43)(), 0, 0].slice(0, 1));
+  assert.deepEqual(xs, [b(), b(), b()]);
+  // The earlier version of this test compared a 3-element array to a
+  // 1-element one, so the second assertion could never fail.
+  assert.notDeepEqual(xs, [c(), c(), c()]);
 });
 
 test("pairedComparison on all-zero deltas reports no effect and a wide-open p", () => {
   const r = pairedComparison(new Array(200).fill(0), { iterations: 2000 });
   assert.equal(r.delta, 0);
-  assert.equal(r.better, 0);
-  assert.equal(r.worse, 0);
   assert.equal(r.unchanged, 200);
   assert.equal(r.p, 1);
 });
 
 test("pairedComparison finds a real effect: CI excludes 0 and p is small", () => {
-  // 100 cases, 40 improved, none regressed — a lift nobody should miss.
-  const deltas = [...new Array(40).fill(1), ...new Array(60).fill(0)];
-  const r = pairedComparison(deltas, { iterations: 4000 });
+  const r = pairedComparison([...new Array(40).fill(1), ...new Array(60).fill(0)], { iterations: 4000 });
   assert.equal(r.better, 40);
   assert.equal(r.worse, 0);
   assert.ok(r.ci95[0] > 0, `CI lower bound should be above 0, got ${r.ci95[0]}`);
@@ -106,68 +131,67 @@ test("pairedComparison finds a real effect: CI excludes 0 and p is small", () =>
 });
 
 test("pairedComparison does not manufacture significance from a wash", () => {
-  // Equal numbers up and down: the mean is 0 and the interval must straddle it.
-  const deltas = [...new Array(50).fill(1), ...new Array(50).fill(-1)];
-  const r = pairedComparison(deltas, { iterations: 4000 });
+  const r = pairedComparison([...new Array(50).fill(1), ...new Array(50).fill(-1)], { iterations: 4000 });
   assert.equal(r.delta, 0);
   assert.ok(r.ci95[0] < 0 && r.ci95[1] > 0, `CI should straddle 0, got ${JSON.stringify(r.ci95)}`);
   assert.ok(r.p > 0.5, `p should be large, got ${r.p}`);
 });
 
 test("pairedComparison never reports p = 0 — no permutation test licenses that", () => {
-  const r = pairedComparison(new Array(300).fill(1), { iterations: 1000 });
-  assert.ok(r.p > 0, "p must be strictly positive");
+  assert.ok(pairedComparison(new Array(300).fill(1), { iterations: 1000 }).p > 0);
 });
 
 test("pairedComparison is reproducible across calls with the same seed", () => {
-  const deltas = [1, 0, 1, -1, 0, 1, 0, 0, 1, -1];
-  const a = pairedComparison(deltas, { iterations: 1000, seed: 7 });
-  const b = pairedComparison(deltas, { iterations: 1000, seed: 7 });
-  assert.deepEqual(a, b);
+  const d = [1, 0, 1, -1, 0, 1, 0, 0, 1, -1];
+  assert.deepEqual(pairedComparison(d, { iterations: 1000, seed: 7 }), pairedComparison(d, { iterations: 1000, seed: 7 }));
 });
 
 test("pairedComparison on an empty sample is neutral, not a crash", () => {
   const r = pairedComparison([]);
   assert.equal(r.n, 0);
-  assert.equal(r.delta, 0);
   assert.equal(r.p, 1);
 });
 
 test("sliceBy partitions without dropping or duplicating a row", () => {
-  const rows = [{ l: "de" }, { l: "en" }, { l: "de" }];
-  const out = sliceBy(rows, (r) => r.l);
+  const out = sliceBy([{ l: "de" }, { l: "en" }, { l: "de" }], (r) => r.l);
+  assert.equal(Object.values(out).flat().length, 3);
   assert.equal(out.de.length, 2);
-  assert.equal(out.en.length, 1);
-  assert.equal(Object.values(out).flat().length, rows.length);
+});
+
+// ── the production cut: serve k, then floor ────────────────────────────────
+
+test("served applies the cut BEFORE the floor and never backfills from deeper", () => {
+  const hits = [hit("a", 160), hit("b", 20), hit("c", 150)];
+  // k=2 takes a and b; b is under the floor and drops. c must NOT move up.
+  assert.deepEqual(served(hits, 2, 30), ["a"]);
+});
+
+test("served drops sub-floor hits — a promotion from below the floor is invisible in production", () => {
+  assert.deepEqual(served([hit("a", 29), hit("b", 31)], 10, 30), ["b"]);
+});
+
+test("a rerank that lifts a sub-floor candidate to rank 1 scores no hit", () => {
+  // The exact failure the floor exists to stop: without it this would count.
+  const pool = [hit("wrong", 160), hit("gold", 10)];
+  const reranked = rerankWindow(pool, 2, (h) => (h.id === "gold" ? 99 : 0));
+  assert.equal(reranked[0].id, "gold", "the rerank did promote it");
+  assert.equal(recallAny(served(reranked, 10, 30), new Set(["gold"]), 3), 0, "but production never shows it");
+  assert.equal(recallAny(reranked.map((h) => h.id), new Set(["gold"]), 3), 1, "the floor-free upper bound does");
 });
 
 // ── the case partition ─────────────────────────────────────────────────────
 
 function goldCase(over: Partial<GoldCase>): GoldCase {
   return {
-    id: "x",
-    query: "q",
-    origin_type: "harvested",
-    authoring_mode: "test",
-    origin_ref_hash: "h",
-    lang: "de",
-    has_identifier: false,
-    expected_ids: ["m1"],
-    acceptable_alternatives: [],
-    expected_zone: "core",
-    no_answer: false,
-    scope: null,
-    time_view: null,
-    allowed_retrieval_depth: 3,
-    rationale: "r",
-    kind: "descriptive",
-    labelled_at: "2026-09-09",
-    labelled_by: "test",
-    ...over,
+    id: "x", query: "q", origin_type: "harvested", authoring_mode: "test", origin_ref_hash: "h",
+    lang: "de", has_identifier: false, expected_ids: ["m1"], acceptable_alternatives: [],
+    expected_zone: "core", no_answer: false, scope: null, time_view: null,
+    allowed_retrieval_depth: 3, rationale: "r", kind: "descriptive",
+    labelled_at: "2026-09-09", labelled_by: "test", ...over,
   } as GoldCase;
 }
 
-test("partitionCases: probes are excluded, no_answer is kept apart as the guard", () => {
+test("partitionCases: probes out, no_answer apart, and the three buckets add up", () => {
   const cases = [
     goldCase({ id: "a" }),
     goldCase({ id: "b", no_answer: true, expected_ids: [] }),
@@ -178,14 +202,16 @@ test("partitionCases: probes are excluded, no_answer is kept apart as the guard"
   assert.deepEqual(p.answerable.map((c) => c.id), ["a", "d"]);
   assert.deepEqual(p.noAnswer.map((c) => c.id), ["b"]);
   assert.equal(p.probes, 1);
+  assert.equal(p.answerable.length + p.noAnswer.length + p.malformed.length + p.probes, cases.length);
 });
 
-test("partitionCases refuses a case that claims an answer but names no id", () => {
+test("partitionCases surfaces a malformed case instead of dropping it silently", () => {
   const p = partitionCases([goldCase({ id: "a", expected_ids: [] })]);
-  assert.equal(p.answerable.length, 0, "an empty expected_ids cannot be scored as a hit");
+  assert.equal(p.answerable.length, 0);
+  assert.deepEqual(p.malformed.map((c) => c.id), ["a"], "it must land somewhere the runner can refuse");
 });
 
-// ── passages: the registered free parameter ────────────────────────────────
+// ── passages ───────────────────────────────────────────────────────────────
 
 function memo(over: Partial<{ title: string; summary: string; body: string }> = {}): Memory {
   return {
@@ -197,12 +223,10 @@ function memo(over: Partial<{ title: string; summary: string; body: string }> = 
 test("passageFor short mode omits the body entirely — the 80-token variant", () => {
   const p = passageFor(memo(), "short");
   assert.equal(p, "Titel\nZusammenfassung");
-  assert.ok(!p.includes("B"));
 });
 
 test("passageFor body mode adds exactly BODY_CHARS of body", () => {
   const p = passageFor(memo(), "body");
-  assert.ok(p.startsWith("Titel\nZusammenfassung\n"));
   assert.equal(p.length - "Titel\nZusammenfassung\n".length, BODY_CHARS);
 });
 
@@ -210,38 +234,208 @@ test("passageFor drops empty fields rather than emitting blank lines", () => {
   assert.equal(passageFor(memo({ summary: "" }), "short"), "Titel");
 });
 
-// ── the model registry is a guard, not a catalogue ─────────────────────────
+// ── the language guard, which has to actually run ──────────────────────────
 
-test("ms-marco is registered as English-only — measured, and the reason it is not the main arm", () => {
-  assert.deepEqual([...MODELS["ms-marco"].languages], ["en"]);
-  assert.ok(MODELS["en-de"].languages.includes("de"));
-  assert.ok(MODELS["bge"].languages.includes("de"));
+test("the language guard REFUSES ms-marco on a set carrying German", () => {
+  // The regression this pins: `languages` used to be a metadata field nothing
+  // read, so `--models ms-marco --gold <german>` ran over 272 German cases and
+  // would have reported the null as a statement about reranking.
+  assert.throws(
+    () => assertLanguagesAllowed(MODELS["ms-marco"], ["de", "neutral"]),
+    /does not speak the language|was measured in/,
+    "an English-only model must not be scorable on a German set",
+  );
 });
 
-test("the main arm is pinned to fp32 — its repo ships no quantized ONNX", () => {
-  assert.equal(MODELS["en-de"].dtype, "fp32");
+test("the language guard lets ms-marco through on an English set", () => {
+  assert.doesNotThrow(() => assertLanguagesAllowed(MODELS["ms-marco"], ["en", "neutral"]));
 });
 
-// ── the seam that keeps the model out of the tests ─────────────────────────
+test("the language guard ignores neutral and mixed — they belong to no language pool", () => {
+  // 205 of 584 cases are `neutral` keyword chains; refusing them would rule out
+  // every model on every set.
+  assert.doesNotThrow(() => assertLanguagesAllowed(MODELS["ms-marco"], ["neutral", "mixed"]));
+});
 
-test("a stub PairScorer drives the same rerank path the real model does", async () => {
-  // Scores the pool so that the LAST candidate wins — the shape of the thing
-  // #501 hopes for: a gold that RRF buried climbs to rank 1.
-  const stub: PairScorer = {
-    id: "stub",
+test("the bilingual arm passes on both languages", () => {
+  assert.doesNotThrow(() => assertLanguagesAllowed(MODELS["en-de"], ["de", "en", "neutral"]));
+  assert.equal(MODELS["en-de"].dtype, "fp32", "its repo ships no quantized ONNX");
+});
+
+// ── the primary endpoint ───────────────────────────────────────────────────
+
+test("the primary endpoint is the cheapest cell — the only one that can pass the latency bar", () => {
+  assert.equal(PRIMARY.n, Math.min(...NS));
+  assert.equal(PRIMARY.passage, "short");
+  assert.equal(PRIMARY.model, "en-de");
+  assert.equal(PRIMARY.cut, "r@3");
+});
+
+// ── rankArm, driven for real ───────────────────────────────────────────────
+
+/** Scores by position so the last candidate in the window always wins. */
+const lastWins: PairScorer = {
+  id: "stub-last-wins",
+  loadMs: 0,
+  async score(_q, passages) {
+    return passages.map((_p, i) => i);
+  },
+  close() {},
+};
+
+function row(id: string, poolIds: string[], expected: string[], over: Partial<CaseRow> = {}): CaseRow {
+  return {
+    id,
+    query: "q",
+    lang: "de",
+    expected: new Set(expected),
+    expectedAny: new Set(expected),
+    baseline: poolIds.map((p) => hit(p)),
+    poolSize: poolIds.length,
+    weakResult: false,
+    ...over,
+  };
+}
+
+const MEMS = (id: string): Memory => memo({ title: id, summary: id });
+
+test("rankArm reranks through the real function and rescues a buried gold", async () => {
+  const pool = ["m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9"];
+  const rows = [row("c1", pool, ["m9"])];
+  const rankings = await rankArm(lastWins, "short", rows, MEMS, "t", [10]);
+  const after = rankings.get("c1")![10];
+  assert.equal(after[0].id, "m9", "the last candidate scored highest and must lead");
+  assert.equal(recallAny(rows[0].baseline.map((h) => h.id), rows[0].expected, 3), 0, "baseline: outside the top 3");
+  assert.equal(recallAny(after.map((h) => h.id), rows[0].expected, 3), 1, "reranked: inside");
+});
+
+test("rankArm maps score i to candidate i — an off-by-one here would be invisible in the aggregate", async () => {
+  const pool = ["a", "b", "c", "d"];
+  const rows = [row("c1", pool, ["a"])];
+  const rankings = await rankArm(lastWins, "short", rows, MEMS, "t", [4]);
+  // lastWins gives score j to the j-th passage, so the exact reversal is the
+  // only correct answer. Any index shift produces a different permutation.
+  assert.deepEqual(rankings.get("c1")![4].map((h) => h.id), ["d", "c", "b", "a"]);
+});
+
+test("one deep pass yields the same windows as separate shallow passes — the harness's core claim", async () => {
+  const pool = Array.from({ length: 30 }, (_, i) => `m${i}`);
+  const rows = [row("c1", pool, ["m29"])];
+  const deep = await rankArm(lastWins, "short", rows, MEMS, "t", [10, 20, 30]);
+  for (const n of [10, 20, 30]) {
+    const separate = await rankArm(lastWins, "short", rows, MEMS, "t", [n]);
+    assert.deepEqual(
+      deep.get("c1")![n].map((h) => h.id),
+      separate.get("c1")![n].map((h) => h.id),
+      `N=${n} derived from the deep pass must equal a dedicated N=${n} pass`,
+    );
+  }
+});
+
+test("checkBatchInvariance reports a stable order for a batch-invariant scorer", async () => {
+  const pool = Array.from({ length: 30 }, (_, i) => `m${i}`);
+  const r = await checkBatchInvariance(lastWins, "short", row("c1", pool, ["m0"]), MEMS);
+  assert.equal(r.maxAbsDelta, 0);
+  assert.equal(r.orderStable, true);
+});
+
+test("checkBatchInvariance catches a scorer whose order depends on the batch size", async () => {
+  const batchDependent: PairScorer = {
+    id: "stub-batch-dependent",
     loadMs: 0,
     async score(_q, passages) {
-      return passages.map((_p, i) => i);
+      // Reverses its ranking once the batch is deep — the exact failure the
+      // "one pass covers every N" claim would hide.
+      return passages.map((_p, i) => (passages.length > 10 ? -i : i));
     },
     close() {},
   };
-  const scores = await stub.score("q", POOL.slice(0, 4));
-  const ranked = rerankWindow(POOL, 4, (_x, i) => scores[i]);
-  assert.equal(ranked[0], "d");
-  assert.equal(recallAny(POOL, new Set(["d"]), 3), 0, "baseline: the gold was outside the top 3");
-  assert.equal(recallAny(ranked, new Set(["d"]), 3), 1, "reranked: it is inside");
+  const pool = Array.from({ length: 30 }, (_, i) => `m${i}`);
+  const r = await checkBatchInvariance(batchDependent, "short", row("c1", pool, ["m0"]), MEMS);
+  assert.equal(r.orderStable, false);
 });
+
+// ── the report ─────────────────────────────────────────────────────────────
+
+function ranked(rows: CaseRow[], order: (r: CaseRow) => string[]): Map<string, ArmRanking> {
+  const m = new Map<string, ArmRanking>();
+  for (const r of rows) {
+    const byId = new Map(r.baseline.map((h) => [h.id, h]));
+    m.set(r.id, Object.fromEntries(NS.map((n) => [n, order(r).map((id) => byId.get(id)!)])) as ArmRanking);
+  }
+  return m;
+}
+
+test("a slice below MIN_SLICE_N is reported as not evaluable, never as a number", () => {
+  const rows = [row("c1", ["a", "b"], ["a"], { lang: "mixed" })];
+  const rep = reportArm({
+    model: "en-de", passage: "short", n: 10, primary: true,
+    rows, rankings: ranked(rows, (r) => r.baseline.map((h) => h.id)),
+    floor: 30, serveK: 10, seed: 1,
+  });
+  assert.ok(rep.by_lang.mixed.not_evaluable, "mixed (n=4 in the real set) must not carry an interval");
+  assert.equal(rep.by_lang.mixed.at, undefined);
+  assert.ok(MIN_SLICE_N > 4);
+});
+
+test("rank_regression_share counts a gold that fell out of the served list", () => {
+  const rows = [row("c1", ["gold", "x", "y"], ["gold"])];
+  // Push the gold to the back; with serveK=1 it leaves the served list entirely.
+  const rankings = ranked(rows, () => ["x", "y", "gold"]);
+  const rep = reportArm({
+    model: "en-de", passage: "short", n: 10, primary: true,
+    rows, rankings, floor: 30, serveK: 1, seed: 1,
+  });
+  assert.equal(rep.rank_regression_share, 1);
+});
+
+test("the no_answer guard counts a changed top-1 and says so as a share", () => {
+  const rows = [row("g1", ["a", "b"], [])];
+  assert.equal(noAnswerGuard(rows, ranked(rows, () => ["b", "a"]), 10, 10, 30).top1_changed, 1);
+  assert.equal(noAnswerGuard(rows, ranked(rows, () => ["a", "b"]), 10, 10, 30).share, 0);
+});
+
+test("assignPoolBuckets splits at the in-run median, not at a chosen number", () => {
+  const rows = [
+    row("a", ["1"], ["1"], { poolSize: 5 }),
+    row("b", ["1"], ["1"], { poolSize: 10 }),
+    row("c", ["1"], ["1"], { poolSize: 40 }),
+  ];
+  assert.equal(assignPoolBuckets(rows), 10);
+  assert.deepEqual(rows.map((r) => r.poolBucket), ["small", "large", "large"]);
+});
+
+// ── the cache location ─────────────────────────────────────────────────────
 
 test("the model cache is not under node_modules — npm ci must not throw away half a gigabyte per model", () => {
   assert.ok(!CACHE_DIR.includes("node_modules"), `cache dir must live outside node_modules, got ${CACHE_DIR}`);
+});
+
+test("env.cacheDir is assigned BEFORE the first from_pretrained", () => {
+  // A source-order assertion, deliberately. The behaviour it protects is only
+  // observable by loading a real model, and the regression it catches is
+  // somebody moving the assignment below the first call — after which the
+  // first model lands in node_modules and the cache silently lives in two
+  // places. A test that only checks the constant's value stays green through
+  // exactly that change.
+  const src = readFileSync(resolve(import.meta.dirname, "..", "src", "rerank-model.ts"), "utf8");
+  const assign = src.indexOf("env.cacheDir = CACHE_DIR");
+  // `.from_pretrained(` — the CALL. Matching the bare name would also hit the
+  // comment that explains the ordering, which sits above the assignment.
+  const firstLoad = src.indexOf(".from_pretrained(");
+  assert.ok(assign > 0, "the assignment must exist");
+  assert.ok(firstLoad > 0, "there must be a from_pretrained call to order against");
+  assert.ok(assign < firstLoad, "the assignment must precede the first from_pretrained call");
+});
+
+test("the eval package declares transformers.js as a devDependency and nothing else does", () => {
+  const root = resolve(import.meta.dirname, "..", "..");
+  const evalPkg = JSON.parse(readFileSync(join(root, "eval", "package.json"), "utf8"));
+  assert.ok(evalPkg.devDependencies["@huggingface/transformers"], "eval must declare it");
+  assert.equal(evalPkg.dependencies?.["@huggingface/transformers"], undefined, "never a runtime dependency");
+  for (const p of ["core", "daemon"]) {
+    const pkg = JSON.parse(readFileSync(join(root, p, "package.json"), "utf8"));
+    assert.equal(pkg.dependencies?.["@huggingface/transformers"], undefined, `${p} must not carry it at runtime`);
+    assert.equal(pkg.devDependencies?.["@huggingface/transformers"], undefined, `${p} must not carry it at all`);
+  }
 });

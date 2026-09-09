@@ -1,7 +1,7 @@
 {
   "$comment": "Pre-registration of the #501 query-time cross-encoder rerank DECISION (§18.3). Registered before a single quality number exists. #501 is a decision issue: the deliverable is a table plus a recommendation to Daniel, not a shipped reranker. The prose version, with the model spike that produced the numbers below, is docs/design/2026-09-09-501-cross-encoder-rerank-messplan.md. Amending anything after a run has started invalidates that run: bump registration_version and say which version a report belongs to.",
   "schema_version": 1,
-  "registration_version": 1,
+  "registration_version": 2,
   "registered_at": "2026-09-09",
   "status": "structure_registered",
   "issue": 501,
@@ -43,7 +43,9 @@
     "fusion": "pure rerank ranking; the cross-encoder logit orders the window alone, ties keep RRF order",
     "staleness": "applied BEFORE the rerank — the pool handed out is the damped one, which is where the stage would sit in production",
     "seed": 20260909,
-    "resampling": "paired per case; 10,000-iteration percentile bootstrap CI and a two-sided sign-flip permutation test, the same construction rrf-k-beir.ts used for RRF_K"
+    "resampling": "paired per case; 10,000-iteration percentile bootstrap CI and a two-sided sign-flip permutation test, the same construction rrf-k-beir.ts used for RRF_K",
+    "acceptable_alternatives": "The primary uses expected_ids only — which MATCHES goldset-run.ts's headline recall_at_3 (it scores rank_expected). Its rank_any companion is reported beside it as at_incl_acceptable, so the two harnesses can be laid side by side without a hidden divergence.",
+    "pool_size_buckets": "Median of poolSize over the run's answerable cases, computed IN-RUN (assignPoolBuckets) and reported as pool_size_median. Fixed by construction, the same discipline longmemeval-run.ts applies to its near/far cut. Explicitly NOT a cut on the RRF score — that would be a disguised weak_result variant and belongs in the weak_result shape."
   },
   "models": {
     "$comment": "Spiked 2026-09-09 on an Apple M4 Pro through transformers.js (ONNX Runtime in Node). Real loads, real pairs. Ollama was ruled out because it has no rerank endpoint — a cross-encoder is a sequence classifier, not a generator.",
@@ -140,15 +142,18 @@
   "slices": {
     "$comment": "Registered now so no slice can be discovered after the fact to rescue a null result.",
     "lang_de_vs_en": "The main arm is bilingual; whether it carries on both sides is a number, not an assumption.",
-    "neutral_vs_prose": "205 of the 584 answerable gold cases carry lang=neutral — keyword chains out of hooks ('memory format schema json yaml frontmatter'), not questions. A cross-encoder is trained on natural-language pairs. If the lift is prose-only, 'prose queries only' is a legitimate recommendation shape, and it has to be visible in the data rather than invented afterwards."
+    "neutral_vs_prose": "205 of the 584 answerable gold cases carry lang=neutral — keyword chains out of hooks ('memory format schema json yaml frontmatter'), not questions. A cross-encoder is trained on natural-language pairs. If the lift is prose-only, 'prose queries only' is a legitimate recommendation shape, and it has to be visible in the data rather than invented afterwards.",
+    "mixed_not_evaluable": "lang=mixed is 4 cases. Any slice below MIN_SLICE_N=30 is reported as not_evaluable with its n instead of as an interval: a percentile bootstrap over four paired 0/1 deltas describes the resampling, not the data."
   },
   "guards": {
     "no_answer": {
       "$comment": "A reranker can raise R@3 and still hurt, by confidently promoting something on a question that has no answer. The 79 no_answer cases run as a guard, never as a lift metric.",
       "reported": "how often the top position changes under rerank",
-      "consequence": "a regression here vetoes the 'always on' recommendation regardless of R@3"
+      "consequence": "a regression here vetoes the 'always on' recommendation regardless of R@3",
+      "limit_of_the_metric": "A top-1 change on an unanswerable question is NOT harm — there is no right answer there and both candidates are equally wrong. The metric measures only whether the rerank reorders that subset SYSTEMATICALLY. The 20% threshold is a veto trigger and must never be read as a quality statement.",
+      "threshold": "veto 'always on' when the top-1 position changes on more than 20% of the no_answer cases (>15 of 79)"
     },
-    "regression_share": "Per-case better/worse/unchanged is reported alongside every mean. #118 is the standing reminder that a plausible lever can move a mean and rescue nothing."
+    "regression_share": "rank_regression_share: share of cases whose first expected id ends at a worse rank in the served, floored list (falling out of it counts as worst). Threshold 15%. This replaces 'no gold loses rank', which is never satisfied over hundreds of cases and would therefore have excluded 'always on' independently of the data — a dead criterion, not a strict one."
   },
   "latency_protocol": {
     "$comment": "Ollama and the cross-encoder share this machine. A naively differenced end-to-end time would charge the reranker for whatever the dense arm was doing.",
@@ -165,34 +170,57 @@
     ]
   },
   "decision_bars": {
-    "$comment": "Written before the first number so the recommendation cannot be fitted to whatever appears. A small lift is a fully acceptable outcome.",
-    "always_on": [
-      "R@3 lift on the GOLD set positive with the bootstrap CI entirely above 0",
-      "not negative on either language slice (de, en)",
-      "the lift is essentially already there at N=10 — the cheap case carries",
-      "added p95 at that N <= 50 ms ON THE M4 PRO (deliberately strict, because it is a lower bound)",
-      "no gold loses rank against the RRF ranking (regression share reported, not just the mean)",
-      "the no_answer guard shows no regression"
-    ],
-    "above_pool_size": [
-      "the lift is real but concentrates on queries with a large candidate pool",
-      "evidence is a breakdown BY POOL SIZE, not by score — a threshold on the RRF score would be a disguised weak_result variant and belongs in the next shape"
-    ],
-    "only_on_weak_result": [
-      "the lift on the subset where weak_result fires is clearly above the overall lift",
-      "the overall lift is too small or too expensive for 'always on'",
-      "predicate comes from packages/core/src/weak-result.ts and is NOT reimplemented"
-    ],
-    "prose_only": [
-      "the lift is real on prose and vanishes or turns negative on the neutral (keyword-chain) slice",
-      "then the model is doing what it was trained for, and the hook lanes that emit keyword chains would carry only the cost"
-    ],
-    "close_501": [
-      "R@3 lift on the gold set at N=30 below roughly 2 percentage points, or its CI includes 0",
-      "AND the bge-reranker-base reference shows the same",
-      "then mis-ranking is not what a cross-encoder repairs. No further models are tried to find a lift."
-    ],
-    "special_case_big_lift_unpayable_latency": "Neither 'on' nor 'close'. It would mean query-candidate interaction carries, which is an argument for #119 (cross-encoder offline over doc2query expansions, at write time), not for the query path."
+    "$comment": "Written before the first number. Estimator throughout: paired bootstrap CI95. Values in percentage points. A small lift is a fully acceptable outcome.",
+    "close_501": {
+      "all_of": [
+        "primary: delta < 2.0 pp OR CI95 includes 0",
+        "none of only_on_weak_result / prose_only / above_pool_size clears its own bar",
+        "bge at N=30/body on the gold set shows the same (delta < 2.0 pp or CI95 includes 0)"
+      ],
+      "mandatory_classification": "see effect_classification — 'no effect' and 'no affordable effect' are different findings and the report must say which"
+    },
+    "always_on": {
+      "all_of": [
+        "primary: CI95 lower bound > 0 AND delta >= 2.0 pp",
+        "language veto: on neither de (n=272) nor en (n=103) is the CI95 UPPER bound < 0. Stated as an upper bound, not a point estimate: en at n=103 can produce a negative point estimate from noise, and only 'this slice is demonstrably harmed' should veto",
+        "latency: added p95 <= 50 ms at N=10/short ON THE M4 PRO — deliberately strict because it is a lower bound",
+        "rank_regression_share <= 15%",
+        "no_answer guard: top-1 changes on <= 20% of cases",
+        "recall_any@10 < 100% — otherwise the lever is exhausted by construction and the lift cannot be coming from the rerank"
+      ]
+    },
+    "only_on_weak_result": {
+      "subset": "cases where isWeakResult(served baseline, true) is true — the shipped predicate from packages/core/src/weak-result.ts, wired into the harness, not reimplemented",
+      "all_of": [
+        "at least 50 cases in the subset, otherwise reported 'not evaluable' rather than as a result",
+        "delta >= 5.0 pp on the subset",
+        "CI95 lower bound > 0",
+        "at least 2x the primary delta"
+      ]
+    },
+    "prose_only": {
+      "slices": "prose = de + en + mixed (379 cases); keyword = neutral (205)",
+      "all_of": [
+        "prose: delta >= 2.0 pp AND CI95 lower bound > 0",
+        "neutral: delta <= 0 OR CI95 includes 0"
+      ],
+      "why": "a cross-encoder is trained on natural-language pairs; the hook lanes that emit keyword chains would carry only the cost"
+    },
+    "above_pool_size": {
+      "all_of": [
+        "large-pool half: delta >= 2.0 pp AND CI95 lower bound > 0",
+        "small-pool half: CI95 includes 0"
+      ]
+    },
+    "unresolved_fallback": {
+      "$comment": "B5. Not a precedence problem — precedence orders OVERLAPPING rules, and this is the case where NONE matches. The review constructed it: +3.0 pp at N=30 with CI [+1.2, +4.8], only +0.6 pp at N=10, even across languages, no pool concentration, p95 286 ms. It is not an exotic corner: the 50 ms bar is already broken by short/N=20 at 52 ms, so an affordable-only-at-depth result is a likely outcome.",
+      "rule": "When no shape above matches, the recommendation is DO NOT SHIP, plus the mandatory effect_classification, plus the exact reason no shape matched. The default is never 'ship the best-looking arm'.",
+      "big_lift_unaffordable_latency": {
+        "$comment": "The special case named in version 1 but left undefined. 'Large' now has a number.",
+        "definition": "some arm reaches delta >= 5.0 pp at R@3 with CI95 lower bound > 0 while its added p95 exceeds the 50 ms bar",
+        "consequence": "not 'on' and not merely 'close'. It means query-candidate interaction carries and only the query path cannot pay for it — positive evidence for #119 (cross-encoder offline over doc2query expansions at write time), and it must be written into the recommendation as such."
+      }
+    }
   },
   "non_measurement_factors": {
     "$comment": "These belong in the recommendation to Daniel and are not answered by any number here.",
@@ -231,5 +259,59 @@
     "file": "packages/eval/src/registrations.ts",
     "needed": "a loadRerankDecisionRegistration() beside loadLongMemEvalRegistration(), plus a checkRerankDecisionRegistration() in the same shape as the other checkers, and its case in __tests__/registrations.test.ts",
     "blocked_until": "#500 is committed"
+  },
+  "amended_at": "2026-09-09T19:11Z",
+  "$comment_amendment": "Version 1 of this registration carried NO RUN. At the time of this amendment — 2026-09-09T19:11Z / 21:11 CEST — no quality figure and no latency figure from the harness existed for #501; the only measurements in the plan came from the model spike (isolated model cost and example pairs, §1), not from an evaluation of the gold set or of LongMemEval. Version 1 had neither a primary endpoint nor a precedence rule between the five recommendation shapes, and it described a language guard that no code executed. Those are the reasons for this amendment. It is therefore a correction BEFORE the first number, not an adjustment to data already seen. Independently checkable evidence: (a) the model cache ~/.cache/bastra-rerank (set in rerank-model.ts, commit 57a670e) did not exist at that moment — no model had been loaded since the path was set, and without a loaded model there is no score; (b) no run artifact: --out was never passed, and the harness writes nowhere else; (c) the git history holds no result commit between cddbd70 (the harness) and this amendment.",
+  "primary_endpoint": {
+    "$comment": "Exactly one cell carries the recommendation. Fixed in code as PRIMARY in rerank-replay.ts so the run marks it rather than a reader inferring it from a row position.",
+    "metric": "delta R@3",
+    "dataset": "gold",
+    "model": "en-de",
+    "passage": "short",
+    "n": 10,
+    "cases": "the answerable non-probe cases (584 in the full set)",
+    "estimator": "paired bootstrap, 10000 resamples, percentile CI95, seed 20260909",
+    "why_this_cell": "N=10 with the short passage is the only combination that can pass the latency bar at all — 26 ms p50 in the spike, while short/N=20 already sits at 52 ms against a 50 ms threshold. A lift that appears only at N=30 or on the long passage is unaffordable regardless of size, so the primary test belongs where the decision is actually made.",
+    "everything_else": "EXPLORATORY. Reported with intervals, carries no recommendation — not even a weakened one. The run counts and prints how many intervals it produced (countIntervals); the review of version 1 counted 180 for the arm shape of the time, and the slices added since push it higher. At alpha=0.05 several are 'significant' under pure noise."
+  },
+  "measurement_order": {
+    "$comment": "B3. Production serves slice(0, k) and the consumer drops everything below BASTRA_RECALL_FLOOR. Measuring rank on the unfiltered pool would credit the reranker for promoting a candidate the user never sees.",
+    "order": [
+      "rerank the window of N",
+      "slice(0, PRODUCTION_K=10)",
+      "apply SCORE_FLOOR=30",
+      "measure R@k"
+    ],
+    "floor_free_figure": "reported beside it as at_no_floor_upper_bound and named an UPPER BOUND. Never the headline.",
+    "open_design_question": "A rerank stage that only REORDERS leaves the published `score` as the RRF value, so score stops being monotone in rank — and the downstream bands (30/50/100, MUST_LOAD at 100) read that score. Any shipped rerank must therefore also decide what to publish as `score`. That is unregistered and unmeasured here, and it belongs in Daniel's decision: 'always on' is not merely a latency question, it is also a band-semantics question."
+  },
+  "degradation_gate": {
+    "$comment": "B2. recallHybrid fires onCandidatePool from its BM25 fallback too (search.ts:840), with raw BM25 scores in BM25 order. An ungated replay would have counted those rows inside a denominator labelled hybrid.",
+    "mechanism": "gatedHybridRecaller from goldset-run.ts — the same gate the gold runner uses; a degraded case stops the run",
+    "telemetry": "an onStage listener records vector.search wait_ms / timed_out / provider_outcome per case and the run reports dense_arm_health, so the latency protocol's discard rule is executable rather than merely stated"
+  },
+  "precedence": {
+    "$comment": "Evaluated in this order, FIRST MATCH WINS, default 'do not ship'.",
+    "order": [
+      "close_501",
+      "always_on",
+      "only_on_weak_result",
+      "prose_only",
+      "above_pool_size",
+      "unresolved_fallback"
+    ],
+    "$comment_close_is_inclusive": "close_501's condition deliberately CONTAINS the negation of the three conditional shapes. Without that, putting 'close' first would make them structurally unreachable — a null primary with a large weak_result lift is exactly the case shape 3 exists for — and the ordering would be meaningless."
+  },
+  "effect_classification": {
+    "$comment": "Mandatory whenever the primary comes out null. 'No effect' and 'no affordable effect' are completely different statements: the first buries the hypothesis, the second is an argument for #119.",
+    "no_effect": "no arm at any (N, passage, model) on the gold set reaches delta >= 2.0 pp at R@3 with CI95 lower bound > 0 → close #501, the hypothesis is refuted",
+    "no_affordable_effect": "at least one more expensive arm (N=30 and/or body, or bge) reaches that bar while the primary arm does not → close #501 for the QUERY PATH, and state explicitly that this is positive evidence for #119",
+    "$comment_consistency": "The exploratory arms still carry no recommendation, but they do carry this one classification — consistent, because the classification recommends shipping nothing."
+  },
+  "language_guard": {
+    "$comment": "B1. Version 1 claimed in prose that ms-marco 'may not be scored' on the German set while ModelSpec.languages was read by no code: --models ms-marco --gold <german> ran over 272 German cases. The guard was the human typing the flag.",
+    "mechanism": "assertLanguagesAllowed(spec, langs) in rerank-model.ts, called by the runner before any model loads; refuses de/en outside the model's measured set",
+    "not_checked": "neutral and mixed — they belong to no language pool, and refusing them would rule out 205 of 584 cases for every model",
+    "test": "the test asserts the REFUSAL, and was verified to go red when the guard is neutered"
   }
 }

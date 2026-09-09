@@ -11,69 +11,96 @@
  *
  * **This is a decision harness, not a feature.** Nothing here is imported by
  * `core` or `daemon`, no ranking changes, and the deliverable is a table plus a
- * recommendation. The pre-registration — free parameters, slices and the bar
- * each recommendation shape has to clear — is
+ * recommendation. The pre-registration — primary endpoint, free parameters,
+ * slices and the bar each recommendation shape has to clear — is
  * `docs/design/2026-09-09-501-cross-encoder-rerank-messplan.md` and
- * `registrations/rerank-decision.json`, both written before the first number.
+ * `registrations/rerank-decision.json`, both fixed before the first number.
  *
  * ── Nothing is reimplemented ───────────────────────────────────────────────
- * The retrieval is the production `SearchIndex.recallHybrid`: real BM25, real
- * `EmbeddingIndex` over the real Ollama provider, real `fuseRRF`, real
- * staleness. Same rule as #103 and #500 — a number produced any other way
- * describes a retriever we do not ship.
+ * Retrieval is the production `SearchIndex.recallHybrid` behind
+ * `gatedHybridRecaller`, the same gate `goldset-run.ts` uses: a case whose
+ * dense arm fell back to BM25 stops the run instead of entering the
+ * denominator. That path is not hypothetical — `recallHybrid` fires
+ * `onCandidatePool` from the BM25 fallback too (`search.ts:840`), with raw
+ * BM25 scores in BM25 order, and an ungated replay would have counted those
+ * rows as hybrid.
  *
- * The rerank window comes from `opts.onCandidatePool` (#121, `search.ts:1226`),
- * which hands out the damped, pre-`slice(k)` pool: exactly the list a real
- * rerank stage would see, in the same order and on the same score scale as the
- * served hits. That is why this measurement needs no production change at all.
+ * The rerank window comes from `opts.onCandidatePool` (#121, `search.ts:1226`):
+ * the damped, pre-`slice(k)` pool, in the same order and on the same score
+ * scale as the served hits. That is why this measurement needs no production
+ * change at all. At `PRODUCTION_K = 10` the pool is `max(k*4, 20)` = 40 deep,
+ * so N up to 30 is measurable without moving a shipped constant.
  *
- * At `PRODUCTION_K = 10` that pool is `max(k*4, 20)` = 40 deep, so N up to 30
- * is measurable without moving a shipped constant. Reranking the SERVED hits
- * instead would hand back 10 candidates and report a truncation as a result.
+ * ── The score floor is part of the measurement ─────────────────────────────
+ * Production serves `slice(0, k)` and drops everything under `SCORE_FLOOR`.
+ * Rank is therefore measured AFTER both, in that order (`rerank-report.ts`).
+ * The floor-free number rides along as an explicitly named upper bound.
  *
  * ── One scoring pass covers every N ────────────────────────────────────────
- * `rerankWindow(pool, 10, …)` only ever consults the scores of the first ten
- * candidates. So the model scores the top `max(N)` once per (case, model,
- * passage mode) and every smaller N is derived from the same scores — exact,
- * not an approximation, and three times cheaper. Latency is the exception and
- * is measured with real N-sized batches (`--latency`), because there the batch
- * size IS the question.
+ * `rerankWindow(pool, 10, …)` only consults the scores of the first ten
+ * candidates, so the model scores the top `max(N)` once per (case, model,
+ * passage mode) and every smaller N is DERIVED from those scores. The
+ * derivation is exact and pinned by a test. The scores themselves are not
+ * exact by construction: batches are padded to the longest sequence and ONNX
+ * Runtime guarantees no batch invariance — mathematically the attention mask
+ * makes padding neutral, in floating point it is the last bits. Batch
+ * invariance is CHECKED, not assumed (`--check-batch-invariance`). For the
+ * same reason the latency pass and the quality pass do not score bit-identical
+ * values: they use different batch sizes on purpose, and a small discrepancy
+ * between them is expected rather than a bug.
  *
  * ── Run ────────────────────────────────────────────────────────────────────
  *   BASTRA_VAULT_PATH=/path/to/vault npm run rerank-replay --workspace=@bastra-recall/eval -- \
  *     --gold ~/.bastra/eval-goldset/gold-blind.json \
- *     --gold ~/.bastra/eval-goldset/gold-tel-1.json \
  *     --models en-de,bge --out /tmp/rerank-501.json
  */
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { SearchIndex, Vault } from "@bastra-recall/core";
-import type { Memory, RecallHit } from "@bastra-recall/core";
+import { SearchIndex, Vault, isWeakResult } from "@bastra-recall/core";
+import type { Memory, RecallHit, RecallStage } from "@bastra-recall/core";
 import { loadGoldFiles } from "./goldset-dataset.js";
 import type { GoldCase } from "./goldset.js";
-import { PRODUCTION_K, attachHybrid } from "./goldset-run.js";
+import { PRODUCTION_K, SCORE_FLOOR, attachHybrid, gatedHybridRecaller } from "./goldset-run.js";
 import {
   MODELS,
+  assertLanguagesAllowed,
   loadCrossEncoder,
   passageFor,
   type PairScorer,
   type PassageMode,
 } from "./rerank-model.js";
+import { rerankWindow } from "./rerank-metrics.js";
 import {
-  mean,
-  pairedComparison,
-  recallAny,
-  rerankWindow,
-  sliceBy,
-  type PairedResult,
-} from "./rerank-metrics.js";
+  assignPoolBuckets,
+  countIntervals,
+  noAnswerGuard,
+  reportArm,
+  served,
+  type ArmRanking,
+  type ArmReport,
+  type CaseRow,
+} from "./rerank-report.js";
 import { measureLatency, type LatencyReport } from "./rerank-latency.js";
 
 /** Registered in `registrations/rerank-decision.json`; #501 names the three. */
-const NS = [10, 20, 30] as const;
-/** The cuts the decision is made on. R@3 is the one #103/#118 reported. */
-const KS = [1, 3, 5] as const;
+export const NS = [10, 20, 30] as const;
 const PASSAGE_MODES: readonly PassageMode[] = ["short", "body"];
+
+/**
+ * The single cell that carries the recommendation. Everything else describes.
+ *
+ * A full run produces 180 confidence intervals. At α=0.05 several of them are
+ * "significant" under pure noise, so a run without ONE designated endpoint
+ * cannot conclude anything — whichever cell happened to come out well would be
+ * the finding. This cell is fixed here, in code, before any data exists.
+ *
+ * Why this cell and not a better-looking one: N=10 with the short passage is
+ * the only combination that can pass the latency bar at all (26 ms p50 in the
+ * spike; `short`/N=20 already sits at 52 ms against a 50 ms threshold). A lift
+ * that appears only at N=30 or on the long passage is unaffordable regardless
+ * of its size, so the primary test belongs where the decision is actually made.
+ */
+export const PRIMARY = { model: "en-de", passage: "short" as PassageMode, n: 10, cut: "r@3" } as const;
 
 interface Args {
   gold: string[];
@@ -81,11 +108,22 @@ interface Args {
   out: string | null;
   limit: number | null;
   latency: boolean;
+  latencySample: number;
+  checkBatchInvariance: boolean;
   seed: number;
 }
 
 function parseArgs(argv: string[]): Args {
-  const a: Args = { gold: [], models: ["en-de"], out: null, limit: null, latency: false, seed: 20260909 };
+  const a: Args = {
+    gold: [],
+    models: ["en-de"],
+    out: null,
+    limit: null,
+    latency: false,
+    latencySample: 40,
+    checkBatchInvariance: false,
+    seed: 20260909,
+  };
   for (let i = 0; i < argv.length; i++) {
     const f = argv[i];
     if (f === "--gold") a.gold.push(argv[++i]);
@@ -93,6 +131,8 @@ function parseArgs(argv: string[]): Args {
     else if (f === "--out") a.out = argv[++i];
     else if (f === "--limit") a.limit = Number(argv[++i]);
     else if (f === "--latency") a.latency = true;
+    else if (f === "--latency-sample") a.latencySample = Number(argv[++i]);
+    else if (f === "--check-batch-invariance") a.checkBatchInvariance = true;
     else if (f === "--seed") a.seed = Number(argv[++i]);
     else throw new Error(`unknown flag: ${f}`);
   }
@@ -104,111 +144,130 @@ function parseArgs(argv: string[]): Args {
 }
 
 /**
- * The cases this run scores.
+ * The cases this run scores, in three buckets that must add up.
  *
- * Probe cases are out — they are diagnostics, not questions anyone asked, and
- * they are excluded from every other main denominator too. `no_answer` cases
- * are also out of the LIFT denominator, but they are NOT discarded: they are
- * the guard in `noAnswerGuard` below, because a reranker can raise R@3 and
- * still hurt by confidently promoting something on a question with no answer.
+ * Probes are diagnostics, not questions anyone asked, and are excluded from
+ * every other main denominator too. `no_answer` cases leave the LIFT
+ * denominator but are not discarded — they are the guard. `malformed` is the
+ * third category: a case claiming an answer while naming no id would otherwise
+ * vanish between the first two filters, and the run would report a smaller
+ * denominator than the file holds without saying so. Today it is empty; the
+ * point is that it cannot stop being empty in silence.
  */
 export function partitionCases(cases: readonly GoldCase[]): {
   answerable: GoldCase[];
   noAnswer: GoldCase[];
+  malformed: GoldCase[];
   probes: number;
 } {
   const nonProbe = cases.filter((c) => !c.probe_group);
-  return {
-    answerable: nonProbe.filter((c) => !c.no_answer && c.expected_ids.length > 0),
-    noAnswer: nonProbe.filter((c) => c.no_answer),
-    probes: cases.length - nonProbe.length,
-  };
+  const answerable: GoldCase[] = [];
+  const noAnswer: GoldCase[] = [];
+  const malformed: GoldCase[] = [];
+  for (const c of nonProbe) {
+    if (c.no_answer) noAnswer.push(c);
+    else if (c.expected_ids.length === 0) malformed.push(c);
+    else answerable.push(c);
+  }
+  return { answerable, noAnswer, malformed, probes: cases.length - nonProbe.length };
+}
+
+/** Telemetry the latency protocol's discard rule needs, per case. */
+export interface ArmHealth {
+  vector_timeouts: number;
+  vector_errors: number;
+  wait_ms: number[];
+  cases: number;
 }
 
 /**
- * The reporting slice a case belongs to.
+ * Retrieve every case through the gated production path.
  *
- * `neutral` is 205 of the 584 answerable cases and is kept apart on purpose:
- * those are keyword chains out of hooks ("memory format schema json yaml"),
- * not questions. A cross-encoder is trained on natural-language query/passage
- * pairs, so whether it carries keyword chains at all is an open question with
- * 35 % of the denominator behind it — and if the lift is prose-only, that is a
- * recommendation shape ("prose queries only") which has to be visible in the
- * data rather than invented afterwards.
+ * Two things ride on the `onStage` listener, and neither is decoration:
+ * `gatedHybridRecaller` reads `done.degraded` and refuses a BM25 row in a
+ * hybrid denominator, and the latency protocol's discard rule needs
+ * `wait_ms` / `timed_out` — a rule nobody can apply without the numbers.
  */
-export function langSlice(c: GoldCase): string {
-  return c.lang;
-}
-
-export interface CaseRow {
-  id: string;
-  query: string;
-  lang: string;
-  /** Ids of the damped pre-slice pool, in RRF order — the baseline ranking. */
-  baseline: string[];
-  expected: Set<string>;
-  poolSize: number;
-}
-
-/** One (model, passage mode) arm's ranking for one case, per N. */
-type ArmRanking = Record<number, string[]>;
-
 async function collectPools(
   search: SearchIndex,
   cases: readonly GoldCase[],
+  knownIds: Set<string>,
   label: string,
-): Promise<CaseRow[]> {
+): Promise<{ rows: CaseRow[]; health: ArmHealth }> {
   const rows: CaseRow[] = [];
+  const health: ArmHealth = { vector_timeouts: 0, vector_errors: 0, wait_ms: [], cases: cases.length };
   for (let i = 0; i < cases.length; i++) {
     const c = cases[i];
+    // A gold id the vault no longer holds is a stale label, and scoring it
+    // would report the staleness as a retrieval miss (#432). Checked HERE, per
+    // case, so the run dies in the first seconds rather than after a full
+    // Ollama pass — the failure is a property of the files, not of the run.
+    for (const id of [...c.expected_ids, ...c.acceptable_alternatives]) {
+      if (!knownIds.has(id)) {
+        throw new Error(`case ${c.id}: gold id ${id} is not in the vault — a stale label, never a miss`);
+      }
+    }
     let pool: RecallHit[] = [];
-    await search.recallHybrid(c.query, {
-      k: PRODUCTION_K,
-      onCandidatePool: (p) => {
-        pool = p;
-      },
-    });
+    const recall = gatedHybridRecaller((q, o) =>
+      search.recallHybrid(q, {
+        ...o,
+        onStage: (s: RecallStage) => {
+          o.onStage(s);
+          if (s.name !== "vector.search" || s.durationMs === undefined) return;
+          if (s.meta?.timed_out === true) health.vector_timeouts++;
+          if (s.meta?.provider_outcome === "error") health.vector_errors++;
+          if (typeof s.meta?.wait_ms === "number") health.wait_ms.push(s.meta.wait_ms);
+        },
+        onCandidatePool: (p) => {
+          pool = p;
+        },
+      }),
+    );
+    const hits = await recall(c.query, c.id);
     rows.push({
       id: c.id,
       query: c.query,
-      lang: langSlice(c),
-      baseline: pool.map((h) => h.id),
+      lang: c.lang,
       expected: new Set(c.expected_ids),
+      expectedAny: new Set([...c.expected_ids, ...c.acceptable_alternatives]),
+      baseline: pool,
       poolSize: pool.length,
+      weakResult: isWeakResult(hits, true),
     });
     if ((i + 1) % 25 === 0) process.stderr.write(`\r[${label}] retrieved ${i + 1}/${cases.length}`);
   }
   process.stderr.write(`\r[${label}] retrieved ${cases.length}/${cases.length}\n`);
-  return rows;
+  return { rows, health };
 }
 
 /**
- * Score one arm over every case, once, at the deepest N — see the header for
- * why every smaller N falls out of the same scores.
+ * Score one arm over every case, once, at the deepest N.
+ *
+ * Exported so a stub scorer can drive the real function in tests. The previous
+ * version tested a hand-inlined copy of this loop, which is exactly the shape
+ * where an off-by-one in the score index survives a green suite.
  */
-async function rankArm(
+export async function rankArm(
   scorer: PairScorer,
   mode: PassageMode,
   rows: readonly CaseRow[],
   memoryOf: (id: string) => Memory | undefined,
   label: string,
+  ns: readonly number[] = NS,
 ): Promise<Map<string, ArmRanking>> {
-  const deepest = Math.max(...NS);
+  const deepest = Math.max(...ns);
   const out = new Map<string, ArmRanking>();
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const window = row.baseline.slice(0, deepest);
-    const passages = window.map((id) => {
-      const m = memoryOf(id);
-      // A pooled id the vault no longer holds is a stale label, not a miss —
-      // `goldset-run.ts` refuses the run over exactly this. Scoring an empty
-      // passage would quietly bury the candidate instead.
-      if (!m) throw new Error(`pooled id ${id} is not in the vault — stale label, refusing to score it`);
+    const passages = window.map((h) => {
+      const m = memoryOf(h.id);
+      if (!m) throw new Error(`pooled id ${h.id} is not in the vault — refusing to score an empty passage`);
       return passageFor(m, mode);
     });
     const scores = await scorer.score(row.query, passages);
     const ranking: ArmRanking = {};
-    for (const n of NS) ranking[n] = rerankWindow(row.baseline, n, (_id, j) => scores[j] ?? -Infinity);
+    for (const n of ns) ranking[n] = rerankWindow(row.baseline, n, (_h, j) => scores[j] ?? -Infinity);
     out.set(row.id, ranking);
     if ((i + 1) % 25 === 0) process.stderr.write(`\r[${label}] scored ${i + 1}/${rows.length}`);
   }
@@ -216,73 +275,34 @@ async function rankArm(
   return out;
 }
 
-export interface ArmReport {
-  model: string;
-  passage: PassageMode;
-  n: number;
-  /** Per k: baseline R@k, reranked R@k, and the paired comparison of the two. */
-  at: Record<string, { baseline: number; reranked: number; paired: PairedResult }>;
-  /** The ceiling: any expected id anywhere in the reranked window. */
-  recall_any_at_n: number;
-  by_lang: Record<string, Record<string, PairedResult>>;
-}
-
-function reportArm(
-  model: string,
-  passage: PassageMode,
-  n: number,
-  rows: readonly CaseRow[],
-  rankings: Map<string, ArmRanking>,
-  seed: number,
-): ArmReport {
-  const at: ArmReport["at"] = {};
-  for (const k of KS) {
-    const base = rows.map((r) => recallAny(r.baseline, r.expected, k));
-    const rer = rows.map((r) => recallAny(rankings.get(r.id)![n], r.expected, k));
-    at[`r@${k}`] = {
-      baseline: mean(base),
-      reranked: mean(rer),
-      paired: pairedComparison(rer.map((v, i) => v - base[i]), { seed }),
-    };
-  }
-  const byLang: ArmReport["by_lang"] = {};
-  for (const [lang, sub] of Object.entries(sliceBy(rows, (r) => r.lang))) {
-    byLang[lang] = {};
-    for (const k of KS) {
-      const base = sub.map((r) => recallAny(r.baseline, r.expected, k));
-      const rer = sub.map((r) => recallAny(rankings.get(r.id)![n], r.expected, k));
-      byLang[lang][`r@${k}`] = pairedComparison(rer.map((v, i) => v - base[i]), { seed });
-    }
-  }
-  return {
-    model,
-    passage,
-    n,
-    at,
-    recall_any_at_n: mean(rows.map((r) => recallAny(r.baseline, r.expected, n))),
-    by_lang: byLang,
-  };
-}
-
 /**
- * The counter-test. A rerank that lifts R@3 and also promotes something on a
- * question with no answer has not helped — it has made a confident mistake
- * louder. Reported as "how often did the top position change", which is the
- * observable part; whether that costs `weak_result` its trigger is the second
- * half and needs the shipped predicate, not a copy of it.
+ * Does a batch of 30 score its first ten pairs like a batch of 10?
+ *
+ * The whole "one pass covers every N" claim rests on this, and it is not
+ * guaranteed: padding to the longest sequence can change kernel paths and
+ * reduction order. If the ORDER of the first ten differs, the efficiency is
+ * gone and each N must be scored separately — that is the price, not a reason
+ * to keep the assumption.
  */
-export function noAnswerGuard(
-  rows: readonly CaseRow[],
-  rankings: Map<string, ArmRanking>,
-  n: number,
-): { n_cases: number; top1_changed: number } {
-  let changed = 0;
-  for (const r of rows) {
-    const after = rankings.get(r.id)?.[n];
-    if (!after) continue;
-    if ((r.baseline[0] ?? null) !== (after[0] ?? null)) changed++;
-  }
-  return { n_cases: rows.length, top1_changed: changed };
+export async function checkBatchInvariance(
+  scorer: PairScorer,
+  mode: PassageMode,
+  row: CaseRow,
+  memoryOf: (id: string) => Memory | undefined,
+): Promise<{ maxAbsDelta: number; orderStable: boolean }> {
+  const passages = (k: number): string[] =>
+    row.baseline.slice(0, k).map((h) => {
+      const m = memoryOf(h.id);
+      if (!m) throw new Error(`pooled id ${h.id} is not in the vault`);
+      return passageFor(m, mode);
+    });
+  const deep = await scorer.score(row.query, passages(30));
+  const shallow = await scorer.score(row.query, passages(10));
+  let maxAbsDelta = 0;
+  for (let i = 0; i < shallow.length; i++) maxAbsDelta = Math.max(maxAbsDelta, Math.abs(deep[i] - shallow[i]));
+  const orderOf = (s: number[]): string =>
+    s.map((v, i) => [v, i] as const).sort((a, b) => (b[0] - a[0]) || (a[1] - b[1])).map(([, i]) => i).join(",");
+  return { maxAbsDelta, orderStable: orderOf(deep.slice(0, 10)) === orderOf(shallow) };
 }
 
 function pct(x: number): string {
@@ -301,8 +321,27 @@ async function main(): Promise<void> {
 
   const { cases, sources } = loadGoldFiles(args.gold);
   const part = partitionCases(cases);
+  if (part.malformed.length > 0) {
+    throw new Error(
+      `${part.malformed.length} case(s) claim an answer but name no expected id: ` +
+        `${part.malformed.map((c) => c.id).join(", ")}`,
+    );
+  }
   let answerable = part.answerable;
-  if (args.limit !== null) answerable = answerable.slice(0, args.limit);
+  let guardCases = part.noAnswer;
+  if (args.limit !== null) {
+    // The guard is cut proportionally, not left at full size: a --limit run
+    // that scores 20 answerable cases against all 79 guard cases spends most
+    // of its time on the smoke test's least interesting half.
+    answerable = answerable.slice(0, args.limit);
+    guardCases = guardCases.slice(0, Math.max(1, Math.round(args.limit * (part.noAnswer.length / Math.max(1, part.answerable.length)))));
+  }
+
+  // B1: the guard that used to be a comment. `ms-marco` scored no signal at
+  // all on German pairs in the spike (gold -11.16 vs distractor -11.30), and
+  // the resulting null would have read as a statement about reranking.
+  const langs = new Set([...answerable, ...guardCases].map((c) => c.lang));
+  for (const m of args.models) assertLanguagesAllowed(MODELS[m], langs);
 
   const vault = new Vault(vaultPath);
   await vault.init();
@@ -311,19 +350,23 @@ async function main(): Promise<void> {
   if (search.size() !== vault.size()) {
     throw new Error(`lexical index holds ${search.size()} of ${vault.size()} memories — the BM25 arm would be blind.`);
   }
-  // The dense arm is not optional here. #501 asks what a reranker adds ON TOP
-  // of the shipped hybrid ranking; measured over a BM25-only pool it would
-  // answer a question nobody asked.
+  const knownIds = new Set(vault.list().map((m) => String(m.fm.id)));
+  // The dense arm is not optional: #501 asks what a reranker adds ON TOP of the
+  // shipped hybrid ranking. Measured over a BM25-only pool it would answer a
+  // question nobody asked.
   const arm = await attachHybrid(vault, search, vaultPath);
   console.error(`[rerank-replay] ${arm.label}`);
-
   console.error(
-    `[rerank-replay] ${answerable.length} answerable · ${part.noAnswer.length} no_answer guard · ` +
-      `${part.probes} probes excluded · sources ${JSON.stringify(sources)}`,
+    `[rerank-replay] ${answerable.length} answerable · ${guardCases.length} no_answer guard · ` +
+      `${part.probes} probes excluded · floor ${SCORE_FLOOR} · serve k=${PRODUCTION_K} · sources ${JSON.stringify(sources)}`,
   );
 
-  const rows = await collectPools(search, answerable, "answerable");
-  const guardRows = await collectPools(search, part.noAnswer, "no_answer");
+  const main = await collectPools(search, answerable, knownIds, "answerable");
+  const guard = await collectPools(search, guardCases, knownIds, "no_answer");
+  const rows = main.rows;
+  const guardRows = guard.rows;
+  const medianPool = assignPoolBuckets(rows);
+  console.error(`[rerank-replay] pool-size median ${medianPool} — the registered split, computed in-run`);
 
   const shallow = rows.filter((r) => r.poolSize < Math.max(...NS)).length;
   if (shallow > 0) {
@@ -336,16 +379,22 @@ async function main(): Promise<void> {
   const reports: ArmReport[] = [];
   const guards: Record<string, ReturnType<typeof noAnswerGuard>> = {};
   const latency: LatencyReport[] = [];
+  const invariance: Record<string, Awaited<ReturnType<typeof checkBatchInvariance>>> = {};
   for (const modelKey of args.models) {
     const scorer = await loadCrossEncoder(modelKey);
     console.error(`[rerank-replay] ${scorer.id} loaded in ${scorer.loadMs} ms`);
-    // The latency pass runs FIRST and on a fresh scorer, so its first sample
-    // is a genuine cold call. Doing it after the quality pass would time a
-    // session warmed by hundreds of batches and report that as cold.
+    // The latency pass runs FIRST on a fresh scorer, so its first sample is a
+    // genuine cold call rather than a session warmed by hundreds of batches.
     if (args.latency) {
       const state = { scoredAnything: false };
+      const sample = rows.slice(0, args.latencySample);
       for (const mode of PASSAGE_MODES) {
-        latency.push(...(await measureLatency(scorer, mode, rows, (id) => vault.get(id), modelKey, NS, state)));
+        latency.push(...(await measureLatency(scorer, mode, sample, (id) => vault.get(id), modelKey, NS, state)));
+      }
+    }
+    if (args.checkBatchInvariance && rows.length > 0) {
+      for (const mode of PASSAGE_MODES) {
+        invariance[`${modelKey}/${mode}`] = await checkBatchInvariance(scorer, mode, rows[0], (id) => vault.get(id));
       }
     }
     for (const mode of PASSAGE_MODES) {
@@ -353,53 +402,90 @@ async function main(): Promise<void> {
       const rankings = await rankArm(scorer, mode, rows, (id) => vault.get(id), label);
       const guardRankings = await rankArm(scorer, mode, guardRows, (id) => vault.get(id), `${label} guard`);
       for (const n of NS) {
-        reports.push(reportArm(modelKey, mode, n, rows, rankings, args.seed));
-        guards[`${label}/N=${n}`] = noAnswerGuard(guardRows, guardRankings, n);
+        reports.push(
+          reportArm({
+            model: modelKey,
+            passage: mode,
+            n,
+            primary: modelKey === PRIMARY.model && mode === PRIMARY.passage && n === PRIMARY.n,
+            rows,
+            rankings,
+            floor: SCORE_FLOOR,
+            serveK: PRODUCTION_K,
+            seed: args.seed,
+          }),
+        );
+        guards[`${label}/N=${n}`] = noAnswerGuard(guardRows, guardRankings, n, PRODUCTION_K, SCORE_FLOOR);
       }
     }
     scorer.close();
   }
 
+  const primary = reports.find((r) => r.primary);
   const L: string[] = [];
   L.push("");
-  L.push(`  #501 — query-time cross-encoder rerank · ${answerable.length} answerable gold cases`);
-  L.push("  M4 Pro — the FAST side of the hardware tiers. Every latency figure is a lower bound.");
+  L.push(`  #501 — query-time cross-encoder rerank · ${rows.length} answerable gold cases`);
+  L.push("  M4 Pro — the FAST side of the hardware tiers. Every latency figure is a LOWER BOUND.");
+  L.push(`  Served k=${PRODUCTION_K}, score floor ${SCORE_FLOOR} — the production order, applied before measuring.`);
   L.push("");
-  L.push(`  ${"model/passage".padEnd(16)} | ${"N".padStart(3)} | ${"R@3".padStart(7)} | ${"ΔR@3".padStart(6)} | ${"95% CI".padStart(15)} | ${"R@5".padStart(7)} | ${"ΔR@5".padStart(6)} | any@N`);
-  L.push(`  ${"-".repeat(16)}-+-----+---------+--------+-----------------+---------+--------+------`);
+  if (primary) {
+    const c = primary.at[PRIMARY.cut];
+    L.push(`  PRIMARY ENDPOINT — ${PRIMARY.model}/${PRIMARY.passage}, N=${PRIMARY.n}, ${PRIMARY.cut}. This cell alone carries a recommendation.`);
+    L.push(
+      `    baseline ${pct(c.baseline)} → reranked ${pct(c.reranked)} · Δ ${pp(c.paired.delta)} pp · ` +
+        `CI95 [${pp(c.paired.ci95[0])}, ${pp(c.paired.ci95[1])}] · p ${c.paired.p.toFixed(4)} · ` +
+        `better ${c.paired.better} / worse ${c.paired.worse} / unchanged ${c.paired.unchanged}`,
+    );
+    L.push(`    rank regression ${pct(primary.rank_regression_share)} · recall_any@${primary.n} ${pct(primary.recall_any_at_n)}`);
+  } else {
+    L.push("  PRIMARY ENDPOINT NOT MEASURED — the registered cell is not among the arms this run scored.");
+  }
+  L.push("");
+  L.push(`  EXPLORATORY — ${countIntervals(reports)} confidence intervals in this run. At α=0.05 several are`);
+  L.push("  \"significant\" under pure noise. This table describes; it does not decide.");
+  L.push(`  ${"model/passage".padEnd(16)} | ${"N".padStart(3)} | ${"R@3".padStart(7)} | ${"ΔR@3".padStart(6)} | ${"95% CI".padStart(15)} | ${"ΔR@5".padStart(6)} | any@N | regr`);
   for (const r of reports) {
     const c3 = r.at["r@3"].paired.ci95;
     L.push(
-      `  ${`${r.model}/${r.passage}`.padEnd(16)} | ${String(r.n).padStart(3)} | ` +
+      `  ${`${r.model}/${r.passage}`.padEnd(16)}${r.primary ? "*" : " "}| ${String(r.n).padStart(3)} | ` +
         `${pct(r.at["r@3"].reranked).padStart(7)} | ${pp(r.at["r@3"].paired.delta).padStart(6)} | ` +
-        `${`[${pp(c3[0])}, ${pp(c3[1])}]`.padStart(15)} | ` +
-        `${pct(r.at["r@5"].reranked).padStart(7)} | ${pp(r.at["r@5"].paired.delta).padStart(6)} | ` +
-        `${pct(r.recall_any_at_n)}`,
+        `${`[${pp(c3[0])}, ${pp(c3[1])}]`.padStart(15)} | ${pp(r.at["r@5"].paired.delta).padStart(6)} | ` +
+        `${pct(r.recall_any_at_n)} | ${pct(r.rank_regression_share)}`,
     );
   }
   L.push("");
-  L.push("  baseline (no rerank): " + KS.map((k) => `R@${k} ${pct(reports[0]?.at[`r@${k}`].baseline ?? 0)}`).join(" · "));
-  L.push("");
+  L.push("  no_answer guard — a top-1 change here is NOT harm (there is no right answer);");
+  L.push("  it measures only whether the rerank reorders that subset systematically.");
+  for (const [key, g] of Object.entries(guards)) {
+    L.push(`    ${key.padEnd(24)} top-1 changed on ${g.top1_changed}/${g.n_cases} (${pct(g.share)})`);
+  }
   if (latency.length) {
-    L.push("  added latency — M4 Pro, lower bound. Model load is beside these, never inside them:");
-    L.push(`    ${"model/passage".padEnd(16)} | ${"N".padStart(3)} | ${"p50".padStart(8)} | ${"p95".padStart(8)} | first call | n`);
+    L.push("");
+    L.push("  added latency — M4 Pro, lower bound, direct span (NOT a difference: contention is not cancelled).");
     for (const l of latency) {
       L.push(
-        `    ${`${l.model}/${l.passage}`.padEnd(16)} | ${String(l.n).padStart(3)} | ` +
-          `${`${l.warm_p50_ms.toFixed(1)} ms`.padStart(8)} | ${`${l.warm_p95_ms.toFixed(1)} ms`.padStart(8)} | ` +
-          `${l.first_call_ms.toFixed(1)} ms${l.first_call_is_cold ? " (cold)" : ""} | ${l.samples}`,
+        `    ${`${l.model}/${l.passage}`.padEnd(16)} | N=${String(l.n).padStart(2)} | ` +
+          `p50 ${l.warm_p50_ms.toFixed(1)} ms | p95 ${l.warm_p95_ms.toFixed(1)} ms | ` +
+          `first ${l.first_call_ms.toFixed(1)} ms${l.first_call_is_cold ? " (cold)" : ""} | n=${l.samples}`,
       );
     }
     L.push(`    model load: ${latency[0].load_ms} ms — a prewarm-lane cost (#361), not a recall cost.`);
-    L.push("");
-  }
-  L.push("  no_answer guard — a rerank that moves the top slot here made a confident mistake louder:");
-  for (const [key, g] of Object.entries(guards)) {
-    L.push(`    ${key.padEnd(24)} top-1 changed on ${g.top1_changed}/${g.n_cases}`);
   }
   L.push("");
-  const out = L.join("\n");
-  console.log(out);
+  const totalCases = main.health.cases + guard.health.cases;
+  L.push(
+    `  dense-arm health — ${main.health.vector_timeouts + guard.health.vector_timeouts} timeout(s), ` +
+      `${main.health.vector_errors + guard.health.vector_errors} error(s) over ${totalCases} recalls. ` +
+      "A run with a conspicuous timeout rate is DISCARDED, not interpreted.",
+  );
+  if (Object.keys(invariance).length) {
+    L.push("");
+    for (const [k, v] of Object.entries(invariance)) {
+      L.push(`  batch invariance ${k}: max |Δlogit| ${v.maxAbsDelta.toExponential(2)}, order stable: ${v.orderStable}`);
+    }
+  }
+  L.push("");
+  console.log(L.join("\n"));
 
   if (args.out) {
     mkdirSync(dirname(args.out), { recursive: true });
@@ -409,13 +495,26 @@ async function main(): Promise<void> {
         {
           issue: 501,
           registration: "packages/eval/registrations/rerank-decision.json",
-          hardware: "Apple M4 Pro — fast side of the tiers; latency figures are lower bounds",
+          registration_version: 2,
+          hardware: "Apple M4 Pro — fast side of the tiers; latency figures are LOWER BOUNDS",
           arm_label: arm.label,
-          cases: { answerable: rows.length, no_answer: guardRows.length, probes_excluded: part.probes, sources },
+          primary_endpoint: PRIMARY,
           production_k: PRODUCTION_K,
+          score_floor: SCORE_FLOOR,
+          pool_size_median: medianPool,
+          cases: {
+            answerable: rows.length,
+            no_answer: guardRows.length,
+            probes_excluded: part.probes,
+            malformed: part.malformed.length,
+            sources,
+          },
+          dense_arm_health: { main: main.health, guard: guard.health },
+          interval_count: countIntervals(reports),
           reports,
           no_answer_guard: guards,
           latency,
+          batch_invariance: invariance,
         },
         null,
         2,
@@ -429,6 +528,8 @@ async function main(): Promise<void> {
   search.stop();
   await vault.stop();
 }
+
+export { served };
 
 if (import.meta.filename === process.argv[1]) {
   main().catch((e: Error) => {

@@ -6,10 +6,20 @@ in diesem Dokument stammen aus dem Modell-Spike (§1), nicht aus einem Lauf.
 #501 ist eine Entscheidungsfrage: Das Ergebnis ist eine Tabelle plus eine
 Empfehlung an Daniel, kein ausgelieferter Reranker.
 
-Dieses Dokument ist die **Voranmeldung** der Messung im Sinne von §18.3 — die
-freien Parameter, die Metriken und die Entscheidungsschwellen stehen hier fest,
-bevor die erste Zahl existiert. Wer die Empfehlung nachträglich an die Zahl
-anpasst, die zufällig herauskommt, hat #501 nicht beantwortet.
+Dieses Dokument ist die **Voranmeldung** der Messung im Sinne von §18.3 — der
+primäre Endpunkt, die freien Parameter, die Metriken und die
+Entscheidungsschwellen stehen hier fest, bevor die erste Zahl existiert. Wer
+die Empfehlung nachträglich an die Zahl anpasst, die zufällig herauskommt, hat
+#501 nicht beantwortet.
+
+**Registrierungsversion 2** (`registrations/rerank-decision.json`), geändert am
+09.09.2026, 19:11 UTC. Version 1 hatte weder einen primären Endpunkt noch eine
+Präzedenzregel und beschrieb einen Sprach-Wächter, den kein Code ausführte;
+außerdem maß sie Rang ohne den Score-Floor. **Version 1 hat keinen einzigen
+Lauf getragen** — zum Zeitpunkt der Änderung existierte keine Qualitäts- und
+keine Latenzzahl aus dem Harness. Die Belege dafür stehen in
+`$comment_amendment` der Registrierungsdatei und sind ohne Kenntnis der
+Beteiligten prüfbar.
 
 Vorbedingung ist #500 (LongMemEval als externer Arm). Der Messteil beginnt erst,
 wenn dessen Läufe gelandet und committet sind.
@@ -145,6 +155,63 @@ ausgeschöpften Hebel zu unterscheiden.
 
 Festgelegt, bevor eine Zahl existiert.
 
+### Der primäre Endpunkt — genau eine Zahl entscheidet
+
+> **ΔR@3, Gold-Satz, Modell `en-de`, Passage `short`, N=10**, gepaart über die
+> 584 beantwortbaren Nicht-Probe-Fälle, Bootstrap-KI95 aus 10 000 Resamples,
+> Seed 20260909.
+
+Alles Übrige — jedes andere N, jede andere Passagenlänge, `bge`, `ms-marco`,
+R@1/R@5, alle Sprach-, Pool- und `weak_result`-Slices — ist **exploratorisch**
+und trägt **keine** Empfehlung, auch keine abgeschwächte.
+
+Warum das nötig ist: Ein voller Lauf produziert mehrere hundert
+Konfidenzintervalle (der Lauf zählt sie und druckt die Zahl; die Prüfung von
+Version 1 kam für die damalige Armform auf 180). Bei α=0.05 sind mehrere davon
+auch unter reinem Rauschen „signifikant". Ohne einen designierten Haupttest
+wäre der Befund schlicht die Zelle, die zufällig gut aussieht.
+
+Warum **diese** Zelle: N=10 mit kurzer Passage ist die einzige Kombination, die
+die Latenzschwelle überhaupt bestehen kann — 26 ms p50 im Spike, während
+`short`/N=20 mit 52 ms bereits an der 50-ms-Schwelle scheitert. Ein Lift, der
+erst bei N=30 oder auf der langen Passage erscheint, ist unabhängig von seiner
+Größe unbezahlbar. Der Haupttest gehört dorthin, wo die Entscheidung fällt.
+
+Er steht als Konstante `PRIMARY` im Runner, damit der Lauf ihn markiert und
+kein Leser ihn aus einer Zeilenposition erschließen muss.
+
+### Gemessen wird in der Produktionsreihenfolge — mit Score-Floor
+
+Produktion serviert `slice(0, k)` und der Konsument verwirft alles unter
+`BASTRA_RECALL_FLOOR` (30). Rang wird deshalb **nach beidem** gemessen:
+
+```
+Rerank des N-Fensters → slice(0, PRODUCTION_K=10) → Floor 30 → R@k
+```
+
+Ohne den Floor bekäme der Reranker gutgeschrieben, einen Kandidaten unter die
+Top 3 gehoben zu haben, den Produktion nie zeigt — die Verzerrung zeigt also
+ausgerechnet Richtung „einbauen". Die floor-freie Zahl läuft als ausdrücklich
+benannte **Obergrenze** daneben mit, nie als Schlagzeile.
+
+**Eine offene Designfrage, die daraus folgt und in Daniels Entscheidung
+gehört:** Eine Rerank-Stufe, die nur *umsortiert*, lässt den veröffentlichten
+`score` auf dem RRF-Wert stehen — damit ist der Score nicht mehr monoton im
+Rang, und genau darauf sitzen die Bänder (30/50/100, `MUST_LOAD` bei 100). Ein
+ausgelieferter Reranker müsste also auch entscheiden, was er als `score`
+veröffentlicht. Das ist hier weder angemeldet noch gemessen. „Immer an" ist
+demnach nicht nur eine Latenz-, sondern auch eine Band-Semantik-Frage.
+
+### Das Degradations-Gate aus #428 gilt hier genauso
+
+`recallHybrid` feuert `onCandidatePool` **auch aus dem BM25-Rückfall**
+(`search.ts:840`) — mit rohen BM25-Scores in BM25-Reihenfolge. Ein ungegatetes
+Replay hätte solche Zeilen unerkannt in einen Nenner gezählt, der „hybrid"
+heißt. Der Lauf geht deshalb durch `gatedHybridRecaller`, dasselbe Gate wie im
+Gold-Runner: Ein degradierter Fall beendet den Lauf, statt in die Messung zu
+gehen.
+
+
 | Parameter | Wert(e) | Begründung |
 |---|---|---|
 | Modell (Hauptarm) | `cross-encoder/msmarco-MiniLM-L6-en-de-v1`, fp32 | einziges gespiketes Modell mit abgestuftem Deutsch-Signal bei MiniLM-L6-Kosten |
@@ -215,10 +282,18 @@ angemeldet, nicht nachträglich gefunden:
 
 Ein Reranker kann R@3 heben und trotzdem schaden, indem er auf Fragen ohne
 Antwort selbstbewusst etwas nach oben sortiert. Die `no_answer`-Fälle sind
-genau dieser Test und laufen als **Guard** mit, nicht als Lift-Metrik:
-berichtet wird, ob der Rerank auf ihnen die Spitzenposition verändert und ob
-`weak_result` danach seltener feuern würde. Eine Verschlechterung hier kippt
-die Empfehlung „immer an", egal wie gut R@3 aussieht.
+dieser Test und laufen als **Guard** mit, nicht als Lift-Metrik: berichtet
+wird, ob der Rerank auf ihnen die Spitzenposition verändert. Die Schwelle steht
+in §5.2 (≤ 20 %), und eine Verschlechterung kippt „immer an" unabhängig davon,
+wie gut R@3 aussieht.
+
+**Grenze der Aussagekraft, und sie ist hart:** Ein Top-1-Wechsel auf einer
+unbeantwortbaren Frage ist **per se kein Schaden** — dort gibt es keine
+richtige Antwort, und beide Kandidaten sind gleich falsch. Die Metrik misst
+allein, ob der Rerank diese Teilmenge *systematisch* umsortiert. Die 20 % sind
+ein Veto-Auslöser und **keine Qualitätsaussage**; sie dürfen später nicht als
+eine gelesen werden. „Gegenprobe" ist damit schon zu viel gesagt: Der Guard
+kann ein Veto begründen, aber nichts belegen.
 
 ### Abhängigkeit — und was sie wirklich kostet
 
@@ -273,10 +348,23 @@ Rerank-Kosten ausweisen.
 
 Deshalb:
 
-1. **Die Zusatzlatenz ist eine gepaarte Differenz pro Query**, nicht die
-   Differenz zweier Läufe. Ein Lauf, ein `recallHybrid`-Aufruf, und um die
-   Rerank-Stufe herum eine eigene `hrtime`-Spanne. Was Ollama in diesem Aufruf
-   getan hat, steht in beiden Hälften der Differenz und kürzt sich weg.
+1. **Die Zusatzlatenz ist eine direkte `hrtime`-Spanne um die Rerank-Stufe,
+   keine Differenz — und sie kürzt deshalb nichts.** Last auf der Maschine
+   während der Spanne geht voll in die Zahl ein.
+
+   Eine frühere Fassung dieses Abschnitts nannte sie eine „gepaarte Differenz,
+   in der sich Ollamas Verhalten wegkürzt". Das war falsch und in sich
+   widersprüchlich: Das Kürzungsargument gilt für die **Qualitäts**-Deltas —
+   dort steht Ollamas Zustand tatsächlich in beiden Hälften derselben gepaarten
+   Differenz — und wurde fälschlich auf die Latenz ausgedehnt. Die reale
+   Absicherung der Latenzzahlen ist **prozedural**: exklusiver Lauf (Punkt 6)
+   und Verwerfen kontaminierter Läufe (Punkt 5). Das ist Disziplin, keine
+   Statistik, und wird hier nicht als Statistik ausgegeben.
+
+   Entlastend, aber kein Ersatz: `embeddinggemma` liegt zu 100 % auf der GPU,
+   der Cross-Encoder rechnet auf der CPU. Die Konkurrenz ist geringer als bei
+   einer gemeinsamen Recheneinheit, aber nicht null — ONNX Runtime nimmt
+   mehrere CPU-Threads, Ollamas HTTP und Tokenisierung kosten ebenfalls CPU.
 2. **Basislinie ist derselbe Aufruf ohne Rerank**, gemessen an derselben
    Stelle (`staleness.rank` fertig → `slice(0, k)`), nicht ein anderer Lauf und
    nicht die Telemetrie eines anderen Tages.
@@ -288,12 +376,20 @@ Deshalb:
    Prozess, ≈450–510 ms gemessen) und erster Score-Aufruf. Sie werden **nicht**
    addiert in eine „kalte p95" — die Ladung ist ein Prozessstart-Kostenpunkt
    und gehörte in Produktion in die Prewarm-Lane (#361), nicht in den Recall.
-5. **Ollama-Kontention wird gemessen statt weggeredet.** Jeder Lauf
-   protokolliert `vector.search.wait_ms`, `timed_out` und `provider_outcome`
-   aus den bereits existierenden Stage-Events. Ein Lauf, in dem der dichte Arm
-   auffällig oft in die Frist läuft, ist kein gültiger Latenzlauf und wird
-   verworfen, nicht interpretiert.
-6. **Keine parallele Modellarbeit auf der Maschine während des Latenzlaufs.**
+5. **Ollama-Kontention wird gemessen statt weggeredet.** Der Lauf hängt einen
+   `onStage`-Listener ein und protokolliert `vector.search.wait_ms`,
+   `timed_out` und `provider_outcome`; die Summe steht als `dense_arm_health`
+   in Tabelle und Artefakt. Ein Lauf, in dem der dichte Arm auffällig oft in
+   die Frist läuft, ist kein gültiger Latenzlauf und wird verworfen, nicht
+   interpretiert. **Das war bis Version 1 der Registrierung eine Regel ohne
+   Instrument:** Es gab keinen `onStage`-Listener im Harness, die drei Felder
+   wurden nirgends erfasst, und das Verwerfungskriterium war nicht ausführbar.
+6. **Der Latenzlauf ist eine Stichprobe (`--latency-sample`, Default 40), kein
+   Vollauf.** Über alle 584 Fälle × 6 Kombinationen wären es ~25 Minuten reine
+   Inferenz je Modell — ein Lauf, den man nicht wiederholen kann, ist gegen
+   Kontention nicht abzusichern, und Wiederholbarkeit ist hier die einzige
+   echte Verteidigung.
+7. **Keine parallele Modellarbeit auf der Maschine während des Latenzlaufs.**
    Der Qualitätslauf (§3) darf parallel laufen, der Latenzlauf nicht.
 
 ### Jede Latenzzahl ist eine untere Schranke, und sie wird so etikettiert
@@ -320,55 +416,124 @@ das Budget füllt.
 
 Die Lieferung ist eine Tabelle (N, R@3-Lift, R@5-Lift, zusätzliche p50,
 zusätzliche p95) plus eine Empfehlung. Damit die Empfehlung nicht hinterher an
-die Zahl angepasst wird, steht hier, welcher Befund welche Form rechtfertigt.
+die Zahl angepasst wird, steht hier, welcher Befund welche Form rechtfertigt —
+durchgehend mit Zahlen. „Im Wesentlichen", „deutlich" und „etwa" kommen in
+diesem Abschnitt nicht mehr vor; sie standen in Version 1 und waren vier
+Stellen, an denen sich hinterher argumentieren ließe.
 
-**Empfehlung „immer an"** — nur wenn *alle* gelten:
-- R@3-Lift auf dem **Gold-Satz** positiv, mit Bootstrap-KI vollständig über 0,
-  und auf **beiden** Sprach-Slices (`de`, `en`) nicht negativ,
-- der Lift ist bei N=10 im Wesentlichen schon da (der billige Fall trägt),
-- zusätzliche p95 bei diesem N ≤ 50 ms **auf dem M4 Pro** — die Schwelle ist
-  bewusst streng, weil sie eine untere Schranke ist (§4),
-- kein Gold verliert Rang gegenüber dem RRF-Ranking (Regressionsanteil pro
-  Query berichtet, nicht nur der Mittelwert),
-- der `no_answer`-Guard zeigt keine Verschlechterung.
+Schätzer überall: **Bootstrap-KI95 über die gepaarten Deltas**, Werte in
+Prozentpunkten (pp), Satz jeweils benannt.
 
-**Empfehlung „erst ab einer Poolgröße"** — wenn:
-- der Lift real ist, aber sich auf Queries mit großem Kandidatenpool
-  konzentriert (kleine Pools sind bereits richtig sortiert), und
-- die Kosten nur dort anfallen, wo sie sich lohnen.
-- Der Nachweis ist eine Aufschlüsselung des Lifts **nach Poolgröße**, nicht
-  nach Score — eine Schwelle auf dem RRF-Score wäre eine verkappte
-  `weak_result`-Variante und gehört in den nächsten Fall.
+### Präzedenz
 
-**Empfehlung „nur wenn `weak_result` sonst feuern würde"** — wenn:
-- der Lift auf der Teilmenge, auf der `weak_result` greift, deutlich über dem
-  Gesamt-Lift liegt, und
-- der Gesamt-Lift für „immer an" zu klein oder zu teuer ist.
-- Das ist der Fall, in dem der Rerank kein Ranker, sondern eine Rettung ist.
-  Er kostet nichts im Normalfall, und der Nutzer wartet ohnehin schon auf eine
-  schlechte Antwort. `packages/core/src/weak-result.ts` liefert das Prädikat;
-  es wird **nicht** nachgebaut.
+Geprüft in dieser Reihenfolge, **erste zutreffende Form gewinnt**,
+Voreinstellung „nicht ausliefern":
 
-**Empfehlung „nur für Prosa-Queries"** — wenn:
-- der Lift auf dem Prosa-Slice real ist und auf dem `neutral`-Slice (205 von
-  584 Fällen, Keyword-Ketten aus Hooks) verschwindet oder negativ wird.
-- Dann ist der Cross-Encoder das, wofür er trainiert wurde — ein Bewerter
-  natürlichsprachiger Paare — und die Hook-Lanes, die Stichwortketten
-  absetzen, hätten nichts davon außer den Kosten.
+1. `schließen` · 2. `immer an` · 3. `nur weak_result` · 4. `nur Prosa` ·
+5. `ab Poolgröße` · 6. `Auffangregel`
 
-**Empfehlung „#501 schließen"** — wenn:
-- der R@3-Lift auf dem Gold-Satz bei N=30 unter etwa 2 Prozentpunkten liegt
-  oder seine KI die 0 einschließt, **und** die `bge-reranker-base`-Referenz
-  denselben Befund zeigt.
-- Dann ist die Fehlsortierung nicht das, was ein Cross-Encoder repariert, und
-  das ist ein vollwertiges, billig erkauftes Ergebnis. Kein Nachschieben
-  weiterer Modelle, um doch noch einen Lift zu finden.
+Die Bedingung von Form 1 enthält **bewusst** die Negation der Formen 3–5. Ohne
+das würde „schließen zuerst" die bedingten Formen strukturell unerreichbar
+machen — ein null-Primärtest bei großem `weak_result`-Lift ist genau der Fall,
+für den Form 3 existiert — und die Reihenfolge wäre bedeutungslos.
 
-Ein Sonderfall, der vorher benannt gehört: **großer Lift, unbezahlbare
-Latenz.** Dann ist die Empfehlung weder „an" noch „schließen", sondern die
-Frage nach der Schreibbahn — der Befund würde bedeuten, dass Query-Kandidat-
-Interaktion trägt, und das ist ein Argument für #119 (Cross-Encoder offline
-über doc2query-Expansionen), nicht für den Abfragepfad.
+### 1. `schließen` — alle drei
+- **primär:** Δ < 2.0 pp **oder** KI95 schließt 0 ein;
+- **keine** der Formen 3–5 erfüllt ihre eigene Schwelle;
+- `bge` bei N=30/`body` auf dem Gold-Satz zeigt dasselbe.
+
+Dazu **verpflichtend** die Klassifikation aus §5.7. Kein Nachschieben weiterer
+Modelle, um doch noch einen Lift zu finden.
+
+### 2. `immer an` — alle sechs
+- **primär:** KI95-Untergrenze > 0 **und** Δ ≥ 2.0 pp;
+- **Sprach-Veto:** weder auf `de` (n=272) noch auf `en` (n=103) liegt die
+  KI95-**Obergrenze** unter 0. Als Obergrenze formuliert, nicht als
+  Punktschätzer: `en` kann bei n=103 einen negativen Punktschätzer aus Rauschen
+  erzeugen, und verboten sein soll nur „dieser Slice ist nachweislich
+  geschädigt";
+- **Latenz:** zusätzliche p95 ≤ 50 ms bei N=10/`short` **auf dem M4 Pro** —
+  bewusst streng, weil es eine untere Schranke ist (§4);
+- **Rang-Regression ≤ 15 %.** Ersetzt „kein Gold verliert Rang": das gilt über
+  hunderte Fälle nie, hätte „immer an" also unabhängig von den Daten
+  ausgeschlossen — ein totes Kriterium, kein strenges;
+- **`no_answer`-Guard:** Top-1 wechselt auf ≤ 20 % der Fälle;
+- **`recall_any@10` < 100 %** — sonst ist der Hebel per Konstruktion
+  ausgeschöpft und der Lift kann nicht vom Rerank kommen.
+
+### 3. `nur wenn weak_result` sonst feuern würde
+Teilmenge: Fälle, für die `isWeakResult(served, true)` auf dem **Baseline**-
+Ranking wahr ist — das ausgelieferte Prädikat aus
+`packages/core/src/weak-result.ts`, im Harness angeschlossen, **nicht**
+nachgebaut.
+- **mindestens 50 Fälle**, sonst „nicht auswertbar" statt Ergebnis;
+- Δ ≥ 5.0 pp **und** KI95-Untergrenze > 0 **und** ≥ 2 × der primäre Δ.
+
+Das ist der Fall, in dem der Rerank kein Ranker ist, sondern eine Rettung: Er
+kostet im Normalfall nichts, und der Nutzer wartet ohnehin auf eine schlechte
+Antwort.
+
+### 4. `nur für Prosa-Queries`
+Prosa = `de` + `en` + `mixed` (379 Fälle), Keyword = `neutral` (205).
+- Prosa: Δ ≥ 2.0 pp **und** KI95-Untergrenze > 0;
+- `neutral`: Δ ≤ 0 **oder** KI95 schließt 0 ein.
+
+Dann ist der Cross-Encoder das, wofür er trainiert wurde — ein Bewerter
+natürlichsprachiger Paare — und die Hook-Lanes, die Stichwortketten absetzen,
+hätten nichts davon außer den Kosten.
+
+### 5. `ab einer Poolgröße`
+Split am **Median von `poolSize`**, im Lauf berechnet und als
+`pool_size_median` berichtet — durch Konstruktion festgelegt, nicht nach Sicht
+der Zahlen gewählt (dieselbe Disziplin wie der Median-Split in #500).
+- große Hälfte: Δ ≥ 2.0 pp und KI95-Untergrenze > 0;
+- kleine Hälfte: KI95 schließt 0 ein.
+
+Ausdrücklich **nicht** auf dem RRF-Score geschnitten — das wäre eine verkappte
+`weak_result`-Variante und gehört in Form 3.
+
+### 6. Auffangregel — wenn *keine* Form zutrifft
+
+Das ist **kein** Präzedenzproblem: Präzedenz ordnet *überlappende* Regeln, hier
+trifft gar keine zu. Der Fall ist konstruierbar und **wahrscheinlich**, nicht
+exotisch: +3,0 pp bei N=30 mit KI [+1,2, +4,8], bei N=10 nur +0,6 pp,
+gleichmäßig über die Sprachen, keine Pool-Konzentration, p95 286 ms. `immer an`
+fällt an der Latenz, `schließen` fällt an „Δ ≥ 2 pp mit KI über 0", die
+bedingten Formen greifen nicht. Die 50-ms-Schwelle reißt bereits `short`/N=20
+mit 52 ms — ein „erst in der Tiefe bezahlbar"-Ergebnis ist ein realistischer
+Ausgang.
+
+**Regel:** Trifft keine Form zu, lautet die Empfehlung **„nicht ausliefern"**,
+zusammen mit der Klassifikation aus §5.7 und der ausdrücklichen Angabe, an
+welcher Bedingung welche Form gescheitert ist. Die Voreinstellung ist niemals
+„den bestaussehenden Arm ausliefern".
+
+**Sonderfall „großer Lift, unbezahlbare Latenz" — jetzt mit Zahl.** „Groß"
+heißt: irgendein Arm erreicht **Δ ≥ 5.0 pp** bei R@3 mit KI95-Untergrenze > 0,
+während seine zusätzliche p95 die 50-ms-Schwelle reißt. Dann ist die Empfehlung
+weder „an" noch bloß „schließen": Der Befund bedeutet, dass
+Query-Kandidat-Interaktion trägt und nur der Abfragepfad sie nicht bezahlen
+kann — ein Argument für **#119** (Cross-Encoder offline über
+doc2query-Expansionen in der Schreibbahn), und es muss so in der Empfehlung
+stehen.
+
+### 7. „kein Effekt" ist nicht „kein bezahlbarer Effekt"
+
+Fällt der Primärtest null aus, **muss** der Bericht klassifizieren. Die beiden
+Aussagen sind völlig verschieden, und die Verwechslung wäre der teuerste
+Fehler, den dieser Bericht machen könnte:
+
+- **`kein Effekt`** — kein Arm bei irgendeinem (N, Passage, Modell) auf dem
+  Gold-Satz erreicht Δ ≥ 2.0 pp bei R@3 mit KI95-Untergrenze > 0.
+  → #501 schließen, die Hypothese ist widerlegt.
+- **`kein bezahlbarer Effekt`** — mindestens ein teurerer Arm erreicht diese
+  Schwelle, der Primärarm nicht.
+  → #501 für den **Abfragepfad** schließen, **und** das ist positive Evidenz
+  für #119. Muss ausdrücklich so in der Empfehlung stehen.
+
+Die exploratorischen Arme tragen damit weiterhin **keine Empfehlung**, aber
+diese eine **Klassifikation** — konsistent, weil die Klassifikation nichts zum
+Ausliefern empfiehlt.
 
 ### Zwei Faktoren, die in die Empfehlung gehören und keine Messfragen sind
 
@@ -394,26 +559,44 @@ Qualitätswert.
 
 | Datei | Rolle |
 |---|---|
-| `packages/eval/src/rerank-metrics.ts` | die Arithmetik — Rerank-Fenster, R@k, gepaarter Bootstrap, Vorzeichen-Permutation. Rein, ohne Vault, Modell oder Uhr; deshalb testbar. |
-| `packages/eval/src/rerank-model.ts` | der Cross-Encoder über transformers.js, plus die Modell-Registry. Die Sprachliste ist dort ein **Wächter**: `ms-marco` darf auf dem deutschen Satz gar nicht erst gescored werden. |
-| `packages/eval/src/rerank-replay.ts` | der Lauf über die Gold-Fälle: echter `recallHybrid`, Pool über `onCandidatePool`, Rerank, Slices, `no_answer`-Guard. |
-| `packages/eval/src/rerank-latency.ts` | die Kostenhälfte, getrennt gehalten — echte N-große Batches, Ladezeit daneben statt darin. |
-| `packages/eval/__tests__/rerank-replay.test.ts` | 24 Tests, keiner braucht Ollama oder einen Modell-Download (`PairScorer` ist die Naht). |
-| `packages/eval/registrations/rerank-decision.json` | diese Voranmeldung in Maschinenform. |
+| `packages/eval/src/rerank-metrics.ts` | die Arithmetik — Rerank-Fenster, R@k, gepaarter Bootstrap, Vorzeichen-Permutation. Rein, ohne Vault, Modell oder Uhr. |
+| `packages/eval/src/rerank-report.ts` | Slices, Floor-Reihenfolge, Rang-Regression, `no_answer`-Guard, Median-Split, Intervall-Zähler. Ebenfalls rein. |
+| `packages/eval/src/rerank-model.ts` | der Cross-Encoder über transformers.js, die Modell-Registry und `assertLanguagesAllowed` — der Sprach-Wächter, der **läuft**. |
+| `packages/eval/src/rerank-replay.ts` | der Lauf: `gatedHybridRecaller`, Pool über `onCandidatePool`, `PRIMARY`, Stage-Telemetrie, Batch-Invarianz-Prüfung. |
+| `packages/eval/src/rerank-latency.ts` | die Kostenhälfte — echte N-große Batches auf einer Stichprobe, Ladezeit daneben statt darin. |
+| `packages/eval/__tests__/rerank-replay.test.ts` | 41 Tests, keiner braucht Ollama oder einen Modell-Download. |
+| `packages/eval/registrations/rerank-decision.json` | diese Voranmeldung in Maschinenform, `registration_version` 2. |
 
-Zwei Zeilen in `goldset-run.ts` wurden exportiert (`PRODUCTION_K`,
-`attachHybrid`) — bewusst statt sie zu kopieren: Probe, kopierter Store,
-Backfill-Wartelogik und die Weigerung, einen unvollständigen Arm als Messung
-auszugeben, sind genau die Gründe, warum die Zahl belastbar ist. Eine zweite
-Implementierung davon würde driften.
+Drei Konstanten sind aus `goldset-run.ts` exportiert statt kopiert:
+`PRODUCTION_K`, `SCORE_FLOOR` und `attachHybrid`/`gatedHybridRecaller`. Genau
+deren Eigenschaften — Probe, kopierter Store, Backfill-Wartelogik, die
+Weigerung, einen unvollständigen Arm als Messung auszugeben, und der Floor —
+sind die Gründe, warum die Zahl belastbar ist. Eine zweite Implementierung
+davon würde driften.
+
+### Die Tests sind auf Rot geprüft, nicht nur auf Grün
+
+Ein Test, der nur grün sein kann, ist keiner. Drei Mutationen wurden
+eingespielt und alle drei fangen:
+
+| Mutation | Ergebnis |
+|---|---|
+| Sprach-Wächter entschärft (`if (false && …)`) | 1 Test rot |
+| Score-Floor aus `served()` entfernt | 3 Tests rot |
+| Off-by-one im Score-Index von `rankArm` (`scores[j+1]`) | 3 Tests rot |
+
+Das war nötig, weil die Vorgängerfassung drei Tests enthielt, die nichts
+prüften: einer verglich ein 3-elementiges mit einem 1-elementigen Array (der
+Assert konnte nicht fehlschlagen), einer prüfte nur, dass ein Metadatenfeld
+seinen eigenen Inhalt hat, und der „stub drives the same rerank path"-Test
+fuhr eine im Test nachgebaute Kopie der Schleife statt `rankArm` selbst.
 
 Ein Ausbau ist **absichtlich offen**: Die Registrierung ist noch nicht in
-`packages/eval/src/registrations.ts` verdrahtet, weil diese Datei gerade zu
-#500 gehört. Was dort fehlt, steht in `pending_wiring` der Registrierungsdatei.
+`packages/eval/src/registrations.ts` verdrahtet, weil diese Datei zu #500
+gehört. Was dort fehlt, steht in `pending_wiring` der Registrierungsdatei.
 
 Der LongMemEval-Arm kommt nach #500 als eigener kleiner Adapter dazu — die
-Naht dafür ist `CaseRow`. Er wird jetzt nicht gegen eine uncommittete,
-bewegliche Datei gebaut.
+Naht dafür ist `CaseRow`.
 
 ## 7. Was diese Arbeit nicht tut
 
