@@ -21,13 +21,15 @@
     "rrf-k-beir": "tsx src/rrf-k-beir.ts",
     "tripwire-usage": "tsx src/tripwire-usage.ts",
     "bm25-expansion": "tsx src/bm25-expansion.ts",
-    "candidate-union": "tsx src/candidate-union.ts"
+    "candidate-union": "tsx src/candidate-union.ts",
+    "rerank-replay": "tsx src/rerank-replay.ts"
   },
   "dependencies": {
     "@bastra-recall/core": "0.9.2",
     "minisearch": "^7.1.1"
   },
   "devDependencies": {
+    "@huggingface/transformers": "^4.2.0",
     "@types/node": "^22.20.1",
     "tsx": "^4.23.13",
     "typescript": "^6.0.3"
