@@ -20,10 +20,16 @@
  * `MIN_SLICE_N` is reported as `not_evaluable` with its n, rather than as a
  * number somebody might quote.
  *
- * **3. One primary endpoint.** A full run produces 180 intervals (2 models × 2
- * passage modes × 3 N × 3 cuts, plus the same again per language slice). At
- * α=0.05 several of those are "significant" under pure noise. Exactly one cell
- * is marked `primary` and carries the recommendation; the rest describe.
+ * **3. One primary endpoint.** A full run produces several hundred confidence
+ * intervals across arms, cuts and slices. At α=0.05 several of those are
+ * "significant" under pure noise. Exactly one cell is marked `primary` and
+ * carries the recommendation; the rest describe. `countIntervals` reports the
+ * actual number rather than a figure written down once and left to go stale.
+ *
+ * **4. Splits that did not split.** A slice can be too small to read
+ * (`MIN_SLICE_N`) or, worse, can look like a split while every case landed on
+ * one side. `assignPoolBuckets` detects the second case and marks `by_pool`
+ * unusable — see its comment for why the pool size is nearly constant here.
  */
 import type { RecallHit } from "@bastra-recall/core";
 import {
@@ -112,6 +118,8 @@ export interface ArmReport {
   rank_regression_share: number;
   by_lang: Record<string, SliceReport>;
   by_pool: Record<string, SliceReport>;
+  /** Whether `by_pool` measured anything at all. */
+  pool_split: PoolSplit;
   weak_result: SliceReport;
 }
 
@@ -191,6 +199,8 @@ export function reportArm(opts: {
   floor: number;
   serveK: number;
   seed: number;
+  /** From `assignPoolBuckets`. A degenerate split must not be reported as one. */
+  poolSplit: PoolSplit;
 }): ArmReport {
   const { rows, rankings, n, floor, serveK, seed } = opts;
   const at: Record<string, CutMetrics> = {};
@@ -206,9 +216,15 @@ export function reportArm(opts: {
   for (const [lang, sub] of Object.entries(sliceBy(rows, (r) => r.lang))) {
     byLang[lang] = sliceReport(sub, rankings, n, floor, serveK, seed);
   }
+  // Both buckets ALWAYS, even when empty: `sliceBy` omits a bucket with no
+  // rows, and an artifact holding only `large` reads like a finished split.
+  const grouped = sliceBy(rows, (r) => r.poolBucket ?? "unassigned");
   const byPool: Record<string, SliceReport> = {};
-  for (const [bucket, sub] of Object.entries(sliceBy(rows, (r) => r.poolBucket ?? "unassigned"))) {
-    byPool[bucket] = sliceReport(sub, rankings, n, floor, serveK, seed);
+  for (const bucket of ["small", "large"]) {
+    const sub = grouped[bucket] ?? [];
+    byPool[bucket] = opts.poolSplit.degenerate
+      ? { n: sub.length, not_evaluable: `pool split degenerate: ${opts.poolSplit.degenerate}` }
+      : sliceReport(sub, rankings, n, floor, serveK, seed);
   }
 
   const regressions = rows.filter((r) =>
@@ -233,6 +249,7 @@ export function reportArm(opts: {
     rank_regression_share: rows.length === 0 ? 0 : regressions / rows.length,
     by_lang: byLang,
     by_pool: byPool,
+    pool_split: opts.poolSplit,
     // 50, not MIN_SLICE_N: an entire recommendation shape hangs on this one
     // slice, so it carries the higher registered bar.
     weak_result: sliceReport(rows.filter((r) => r.weakResult), rankings, n, floor, serveK, seed, 50),
@@ -290,16 +307,52 @@ export function noAnswerGuard(
   };
 }
 
+export interface PoolSplit {
+  median: number;
+  cap: number;
+  small: number;
+  large: number;
+  /** Set when the split did not actually split. `by_pool` is then unusable. */
+  degenerate?: string;
+}
+
 /**
- * The median split over pool size, computed inside the run.
+ * The median split over pool size — and the check that it split anything.
  *
- * Fixed by construction rather than chosen after seeing the recall numbers —
- * the same discipline `longmemeval-run.ts` applies to its near/far cut. A
- * threshold picked once the lift is visible is not a finding, it is a choice.
+ * The threshold is fixed by construction rather than chosen after seeing the
+ * recall numbers, the same discipline `longmemeval-run.ts` applies to its
+ * near/far cut. That part was never the risk.
+ *
+ * **The risk is that this split degenerates silently on our data.** The pool is
+ * near-constant by construction: `bm25Top` (50) ∪ `vectorTop` (up to 50) is
+ * fused and then cut to `HOP_SEED_POOL = max(k*4, 20)` = 40. On a vault well
+ * over 50 memories the fused set exceeds 40 for practically every query, so
+ * `poolSize == 40` throughout, the median is 40, `>= median` puts EVERY case in
+ * `large`, and `small` stays empty. A plain `sliceBy` then omits the empty
+ * bucket entirely and the artifact reads `by_pool: { large: { n: 584 } }` —
+ * which looks like a result. The `above_pool_size` recommendation shape would
+ * be dead again, this time behind a plausible-looking mechanism.
+ *
+ * So: both buckets are always emitted, and a split that did not split says so
+ * in the artifact rather than on stderr, where nobody reads it afterwards.
+ *
+ * This is a PREDICTION derived from the code, not an observation — it could not
+ * be measured without Ollama. It is falsified if the vector arm routinely
+ * returns fewer than ~40 hits after filtering. The warning is correct either
+ * way: if the prediction does not hold, it stays silent.
  */
-export function assignPoolBuckets(rows: CaseRow[]): number {
+export function assignPoolBuckets(rows: CaseRow[], cap: number): PoolSplit {
   const sizes = rows.map((r) => r.poolSize).sort((a, b) => a - b);
   const median = sizes.length === 0 ? 0 : sizes[Math.floor(sizes.length / 2)];
   for (const r of rows) r.poolBucket = r.poolSize >= median ? "large" : "small";
-  return median;
+  const small = rows.filter((r) => r.poolBucket === "small").length;
+  const large = rows.length - small;
+  let degenerate: string | undefined;
+  if (rows.length === 0) degenerate = "no cases";
+  else if (small === 0 || large === 0) {
+    degenerate = `one bucket is empty (small=${small}, large=${large}) — pool size does not vary in this run, so there is nothing to split on`;
+  } else if (median >= cap) {
+    degenerate = `median ${median} sits at the pool cap ${cap} — the split is an artefact of the cap, not of query difficulty`;
+  }
+  return { median, cap, small, large, ...(degenerate ? { degenerate } : {}) };
 }

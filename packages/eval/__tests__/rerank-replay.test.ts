@@ -371,7 +371,7 @@ test("a slice below MIN_SLICE_N is reported as not evaluable, never as a number"
   const rep = reportArm({
     model: "en-de", passage: "short", n: 10, primary: true,
     rows, rankings: ranked(rows, (r) => r.baseline.map((h) => h.id)),
-    floor: 30, serveK: 10, seed: 1,
+    floor: 30, serveK: 10, seed: 1, poolSplit: assignPoolBuckets([...rows], 40),
   });
   assert.ok(rep.by_lang.mixed.not_evaluable, "mixed (n=4 in the real set) must not carry an interval");
   assert.equal(rep.by_lang.mixed.at, undefined);
@@ -384,7 +384,7 @@ test("rank_regression_share counts a gold that fell out of the served list", () 
   const rankings = ranked(rows, () => ["x", "y", "gold"]);
   const rep = reportArm({
     model: "en-de", passage: "short", n: 10, primary: true,
-    rows, rankings, floor: 30, serveK: 1, seed: 1,
+    rows, rankings, floor: 30, serveK: 1, seed: 1, poolSplit: assignPoolBuckets([...rows], 40),
   });
   assert.equal(rep.rank_regression_share, 1);
 });
@@ -401,8 +401,46 @@ test("assignPoolBuckets splits at the in-run median, not at a chosen number", ()
     row("b", ["1"], ["1"], { poolSize: 10 }),
     row("c", ["1"], ["1"], { poolSize: 40 }),
   ];
-  assert.equal(assignPoolBuckets(rows), 10);
+  const split = assignPoolBuckets(rows, 40);
+  assert.equal(split.median, 10);
+  assert.equal(split.degenerate, undefined);
   assert.deepEqual(rows.map((r) => r.poolBucket), ["small", "large", "large"]);
+});
+
+test("assignPoolBuckets flags a constant pool — the split that silently does not split", () => {
+  // The predicted shape on this vault: HOP_SEED_POOL caps every pool at 40, so
+  // poolSize is 40 everywhere, the median is 40, every case lands in `large`
+  // and `small` is empty. Without this flag the artifact would read
+  // `by_pool: { large: { n: 584 } }` and look like a finished split.
+  const rows = Array.from({ length: 20 }, (_, i) => row(`c${i}`, ["1"], ["1"], { poolSize: 40 }));
+  const split = assignPoolBuckets(rows, 40);
+  assert.ok(split.degenerate, "a one-sided split must be flagged");
+  assert.equal(split.small, 0);
+  assert.equal(split.large, 20);
+});
+
+test("assignPoolBuckets flags a median sitting on the pool cap even when both buckets fill", () => {
+  const rows = [
+    ...Array.from({ length: 5 }, (_, i) => row(`s${i}`, ["1"], ["1"], { poolSize: 39 })),
+    ...Array.from({ length: 6 }, (_, i) => row(`l${i}`, ["1"], ["1"], { poolSize: 40 })),
+  ];
+  const split = assignPoolBuckets(rows, 40);
+  assert.ok(split.degenerate?.includes("cap"), "a cap-driven split is an artefact, not query difficulty");
+});
+
+test("a degenerate pool split makes both by_pool buckets not evaluable — including the full one", () => {
+  const rows = Array.from({ length: 40 }, (_, i) => row(`c${i}`, ["a", "b"], ["a"], { poolSize: 40 }));
+  const split = assignPoolBuckets(rows, 40);
+  const rep = reportArm({
+    model: "en-de", passage: "short", n: 10, primary: true,
+    rows, rankings: ranked(rows, (r) => r.baseline.map((h) => h.id)),
+    floor: 30, serveK: 10, seed: 1, poolSplit: split,
+  });
+  assert.ok(rep.by_pool.small, "the empty bucket must still appear");
+  assert.ok(rep.by_pool.large, "the full bucket must appear");
+  assert.ok(rep.by_pool.large.not_evaluable, "and must NOT carry an interval when the split degenerated");
+  assert.equal(rep.by_pool.large.at, undefined);
+  assert.ok(rep.pool_split.degenerate);
 });
 
 // ── the cache location ─────────────────────────────────────────────────────

@@ -194,13 +194,37 @@ Top 3 gehoben zu haben, den Produktion nie zeigt — die Verzerrung zeigt also
 ausgerechnet Richtung „einbauen". Die floor-freie Zahl läuft als ausdrücklich
 benannte **Obergrenze** daneben mit, nie als Schlagzeile.
 
-**Eine offene Designfrage, die daraus folgt und in Daniels Entscheidung
-gehört:** Eine Rerank-Stufe, die nur *umsortiert*, lässt den veröffentlichten
-`score` auf dem RRF-Wert stehen — damit ist der Score nicht mehr monoton im
-Rang, und genau darauf sitzen die Bänder (30/50/100, `MUST_LOAD` bei 100). Ein
-ausgelieferter Reranker müsste also auch entscheiden, was er als `score`
-veröffentlicht. Das ist hier weder angemeldet noch gemessen. „Immer an" ist
-demnach nicht nur eine Latenz-, sondern auch eine Band-Semantik-Frage.
+**Drei offene Designfolgen, die daraus fallen und in Daniels Entscheidung
+gehören.** Keine davon ist hier gemessen, und keine ist eine Latenzfrage:
+
+1. **Band-Semantik.** Eine Stufe, die nur *umsortiert*, lässt den
+   veröffentlichten `score` auf dem RRF-Wert stehen — damit ist der Score nicht
+   mehr monoton im Rang, und genau darauf sitzen die Bänder (30/50/100,
+   `MUST_LOAD` bei 100). Ein ausgelieferter Reranker müsste also auch
+   entscheiden, *was er als `score` veröffentlicht*.
+2. **Die Trefferliste wird kürzer.** `slice(k)` läuft vor dem Floor. Ein
+   Rerank, der Kandidaten unter Floor 30 nach vorn holt, belegt damit
+   Top-10-Plätze, die der Floor anschließend leert — während die hoch
+   bewerteten Treffer, die diese Plätze gefüllt hätten, auf Rang 11+ gerutscht
+   sind. **Der Nutzer sieht dann weniger Treffer als vorher.** Der Harness
+   bildet das korrekt ab, der gemessene Lift enthält es also; als
+   Produktwirkung ist es aber eine eigene Aussage und für die Entscheidung
+   mindestens so wichtig wie die Millisekunden.
+3. **`isNoHome` (#230)** in `weak-result.ts:88-95` liest `hits[0]` und dessen
+   `rrf`-Block. Eine reine Umsortierung wechselt den Spitzentreffer und damit
+   dieses Signal — ganz ohne Score-Frage. Genau deshalb wird `weakResult` auf
+   dem **Baseline**-Ranking berechnet, nie auf dem gererankten.
+
+### Grenze des Sprach-Wächters
+
+Er prüft die **Query**-Sprache, nicht die Passagensprache. Die Passagen kommen
+aus dem Vault und sind deutsch, egal in welcher Sprache die Query steht — der
+Wächter trägt also nur, solange Vault- und Query-Sprache zusammenfallen. Auf
+beiden registrierten Sätzen ist das der Fall (auf Gold sind nur zweisprachige
+Modelle registriert, auf LongMemEval sind Korpus und Fragen beide englisch),
+aber das ist eine Eigenschaft der Daten, nicht des Wächters. Festgehalten,
+damit ein künftiger Satz mit auseinanderfallenden Sprachen nicht stillschweigend
+durchkommt.
 
 ### Das Degradations-Gate aus #428 gilt hier genauso
 
@@ -483,14 +507,32 @@ natürlichsprachiger Paare — und die Hook-Lanes, die Stichwortketten absetzen,
 hätten nichts davon außer den Kosten.
 
 ### 5. `ab einer Poolgröße`
-Split am **Median von `poolSize`**, im Lauf berechnet und als
-`pool_size_median` berichtet — durch Konstruktion festgelegt, nicht nach Sicht
-der Zahlen gewählt (dieselbe Disziplin wie der Median-Split in #500).
+Split am **Median von `poolSize`**, im Lauf berechnet und als `pool_split`
+berichtet — durch Konstruktion festgelegt, nicht nach Sicht der Zahlen gewählt
+(dieselbe Disziplin wie der Median-Split in #500).
 - große Hälfte: Δ ≥ 2.0 pp und KI95-Untergrenze > 0;
 - kleine Hälfte: KI95 schließt 0 ein.
 
 Ausdrücklich **nicht** auf dem RRF-Score geschnitten — das wäre eine verkappte
 `weak_result`-Variante und gehört in Form 3.
+
+**Dieser Split entartet auf unseren Daten wahrscheinlich, und das wird
+geprüft.** Der Pool ist per Konstruktion nahezu konstant: `bm25Top` (50) ∪
+`vectorTop` (bis 50), fusioniert und auf `HOP_SEED_POOL = max(k*4, 20)` = 40
+geschnitten. Bei einem Vault deutlich über 50 Memories ist die fusionierte
+Menge fast immer größer als 40 — also `poolSize == 40` für praktisch jeden
+Fall, Median 40, **alle** Fälle in `large`, `small` leer. Ein schlichtes
+Gruppieren legte für den leeren Bucket gar keinen Schlüssel an, und im Artefakt
+stünde `by_pool: { large: { n: 584 } }`, was wie ein fertiger Split aussieht.
+Diese Form wäre damit wieder tot — diesmal hinter einem plausibel wirkenden
+Mechanismus.
+
+Deshalb: Beide Buckets werden **immer** ausgegeben, und ein Split, der nicht
+gesplittet hat, markiert `by_pool` als `not_evaluable` — im Artefakt, nicht nur
+auf stderr. Das ist eine **aus dem Code abgeleitete Vorhersage, keine
+Beobachtung**; sie ist widerlegt, wenn der Vektorarm regelmäßig unter ~40
+Treffer nach Filter liefert. Die Warnung ist in beide Richtungen richtig: Trifft
+die Vorhersage nicht zu, schweigt sie.
 
 ### 6. Auffangregel — wenn *keine* Form zutrifft
 

@@ -327,6 +327,13 @@ async function main(): Promise<void> {
         `${part.malformed.map((c) => c.id).join(", ")}`,
     );
   }
+  // B1 guard FIRST, on the UNLIMITED set. Run after `--limit` it would see
+  // only the surviving cases, and a small limit on a neutral-heavy file could
+  // let an English-only model through on a German set. Smoke tests only, but
+  // the ordering costs nothing.
+  const langs = new Set([...part.answerable, ...part.noAnswer].map((c) => c.lang));
+  for (const m of args.models) assertLanguagesAllowed(MODELS[m], langs);
+
   let answerable = part.answerable;
   let guardCases = part.noAnswer;
   if (args.limit !== null) {
@@ -336,12 +343,6 @@ async function main(): Promise<void> {
     answerable = answerable.slice(0, args.limit);
     guardCases = guardCases.slice(0, Math.max(1, Math.round(args.limit * (part.noAnswer.length / Math.max(1, part.answerable.length)))));
   }
-
-  // B1: the guard that used to be a comment. `ms-marco` scored no signal at
-  // all on German pairs in the spike (gold -11.16 vs distractor -11.30), and
-  // the resulting null would have read as a statement about reranking.
-  const langs = new Set([...answerable, ...guardCases].map((c) => c.lang));
-  for (const m of args.models) assertLanguagesAllowed(MODELS[m], langs);
 
   const vault = new Vault(vaultPath);
   await vault.init();
@@ -365,8 +366,16 @@ async function main(): Promise<void> {
   const guard = await collectPools(search, guardCases, knownIds, "no_answer");
   const rows = main.rows;
   const guardRows = guard.rows;
-  const medianPool = assignPoolBuckets(rows);
-  console.error(`[rerank-replay] pool-size median ${medianPool} — the registered split, computed in-run`);
+  // The cap the pool cannot exceed: HOP_SEED_POOL = max(k*4, 20) in
+  // `recallHybrid`. Derived from PRODUCTION_K so it cannot drift from it.
+  const POOL_CAP = Math.max(PRODUCTION_K * 4, 20);
+  const poolSplit = assignPoolBuckets(rows, POOL_CAP);
+  console.error(
+    `[rerank-replay] pool-size median ${poolSplit.median} (cap ${POOL_CAP}) — small ${poolSplit.small} / large ${poolSplit.large}`,
+  );
+  if (poolSplit.degenerate) {
+    console.error(`[rerank-replay] WARNING: by_pool is NOT evaluable — ${poolSplit.degenerate}`);
+  }
 
   const shallow = rows.filter((r) => r.poolSize < Math.max(...NS)).length;
   if (shallow > 0) {
@@ -413,6 +422,7 @@ async function main(): Promise<void> {
             floor: SCORE_FLOOR,
             serveK: PRODUCTION_K,
             seed: args.seed,
+            poolSplit,
           }),
         );
         guards[`${label}/N=${n}`] = noAnswerGuard(guardRows, guardRankings, n, PRODUCTION_K, SCORE_FLOOR);
@@ -472,6 +482,11 @@ async function main(): Promise<void> {
     L.push(`    model load: ${latency[0].load_ms} ms — a prewarm-lane cost (#361), not a recall cost.`);
   }
   L.push("");
+  if (poolSplit.degenerate) {
+    L.push(`  by_pool NOT EVALUABLE — ${poolSplit.degenerate}`);
+    L.push("  The 'above pool size' recommendation shape cannot be decided from this run.");
+    L.push("");
+  }
   const totalCases = main.health.cases + guard.health.cases;
   L.push(
     `  dense-arm health — ${main.health.vector_timeouts + guard.health.vector_timeouts} timeout(s), ` +
@@ -501,7 +516,7 @@ async function main(): Promise<void> {
           primary_endpoint: PRIMARY,
           production_k: PRODUCTION_K,
           score_floor: SCORE_FLOOR,
-          pool_size_median: medianPool,
+          pool_split: poolSplit,
           cases: {
             answerable: rows.length,
             no_answer: guardRows.length,
