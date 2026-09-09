@@ -288,6 +288,87 @@ test("every registered number names the engine that produced it (#500 follow-up)
   assert.equal(hashes.size, 1, "the three runs share one engine revision");
 });
 
+test("a protocol match is not a retriever match (#500 follow-up)", () => {
+  // The error this guard exists for: MemPalace's published 96.6% is their
+  // DENSE-ONLY row, and our fused number was quoted beside it as if it cleared
+  // a like-for-like figure. rankingBlocker compares reader, judge, top_k and
+  // context budget — four quantities that can all match while the two systems
+  // retrieve by entirely different means. So the registration must also name
+  // the row built the way we build.
+  const verdicts = longMemEvalComparability();
+  const byConfig = new Map(verdicts.map((v) => [v.configuration, v]));
+
+  const agent = byConfig.get("default")!;
+  assert.equal(agent.blocker, null);
+  assert.equal(agent.retriever_match, true, "agentmemory's 95.2% IS a fused, rerankerless row — this one carries");
+  assert.equal(agent.like_for_like, "agentmemory-longmemeval-r5");
+
+  const mp = byConfig.get("mempalace-matched")!;
+  assert.equal(mp.blocker, null, "the protocol matches");
+  assert.equal(mp.retriever_match, false, "but MemPalace's 96.6% is dense-only — it is not our class");
+  assert.equal(
+    mp.like_for_like,
+    "mempalace-longmemeval-hybrid-r5",
+    "the honest counterpart is their hybrid row, which stands ABOVE us",
+  );
+
+  // A configuration that names a row of the wrong class is refused.
+  const reg = loadLongMemEvalRegistration();
+  const configs = reg.configurations as Record<string, unknown>[];
+  const wrong = {
+    ...reg,
+    configurations: [{ ...configs[1], same_retriever_class: "mempalace-longmemeval-r5" }],
+    compared_against: ["mempalace-longmemeval-r5"],
+  };
+  assert.ok(
+    checkLongMemEvalRegistration("structure_registered", wrong)
+      .some((i) => /does not share our retriever class/.test(i.problem)),
+  );
+
+  // And one that names none at all is refused too.
+  const none = { ...configs[0] };
+  delete (none as { same_retriever_class?: unknown }).same_retriever_class;
+  const missing = { ...reg, configurations: [none], compared_against: ["agentmemory-longmemeval-r5"] };
+  assert.ok(
+    checkLongMemEvalRegistration("structure_registered", missing)
+      .some((i) => /same_retriever_class/.test(i.problem)),
+  );
+});
+
+test("the committed excerpt matches the registered figures", () => {
+  // The full artifacts live outside the repo and will not survive forever. The
+  // excerpt is what keeps the published numbers checkable, so it must not be
+  // able to drift from the registration it summarises.
+  const excerpt = JSON.parse(
+    readFileSync(join(import.meta.dirname, "..", "registrations", "longmemeval-results.json"), "utf8"),
+  ) as { runs: { id: string; dataset_hash: string; code_hash: string; summary: Record<string, Record<string, number>> }[] };
+  const reg = loadLongMemEvalRegistration();
+
+  for (const c of reg.configurations as { id: string; measurement: Record<string, unknown> }[]) {
+    const row = excerpt.runs.find((r) => r.id === c.id);
+    assert.ok(row, `${c.id} is missing from the excerpt`);
+    assert.equal(row!.dataset_hash, c.measurement.dataset_hash);
+    assert.equal(row!.code_hash, c.measurement.code_hash);
+    const registered = c.measurement.results as Record<string, Record<string, number>>;
+    for (const arm of Object.keys(registered)) {
+      for (const k of ["r@1", "r@3", "r@5"]) {
+        // The registration rounds to four places; the excerpt carries the raw value.
+        assert.ok(
+          Math.abs(row!.summary[arm][k] - registered[arm][k]) < 5e-5,
+          `${c.id}/${arm}/${k}: excerpt ${row!.summary[arm][k]} vs registered ${registered[arm][k]}`,
+        );
+      }
+    }
+  }
+
+  // The two default runs are the determinism claim; it must be in the excerpt.
+  const a = excerpt.runs.find((r) => r.id === "default")!;
+  const b = excerpt.runs.find((r) => r.id === "default-first-run")!;
+  assert.equal(a.dataset_hash, b.dataset_hash);
+  assert.notEqual(a.code_hash, b.code_hash, "different harness revisions");
+  assert.deepEqual(a.summary, b.summary, "identical results — that is the claim");
+});
+
 test("the arm writes nothing into the private eval-run archive (#446)", () => {
   for (const f of ["longmemeval-run.ts", "longmemeval-dataset.ts"]) {
     const src = readFileSync(join(import.meta.dirname, "..", "src", f), "utf8");

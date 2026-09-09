@@ -269,47 +269,75 @@ caveat, the arm runs a configuration per comparator. Every row below is
 LongMemEval-**S (cleaned)**, 500 questions, a fresh index per question over that
 question's own ~48 sessions, **session** granularity, `recall_any@k`, all 500
 questions scored with the abstention items kept, no reranker and no LLM at
-either end. What differs is only what differs between the reference harnesses:
+either end.
 
-| configuration | turns | `top_k` | **hybrid R@5** | R@1 | R@3 | bm25 R@5 | stands next to |
-|---|---|---:|---:|---:|---:|---:|---|
-| **mempalace-matched** | user | 50 | **97.2%** | 83.2% | 94.4% | 82.8% | **MemPalace 96.6%** |
-| **default** | all | 20 | **98.2%** | 79.6% | 95.2% | 84.6% | **agentmemory 95.2%** (bm25-only 86.2%) |
-| robustness: uncleaned S | all | 20 | 97.8% | 79.8% | 94.6% | 85.4% | — |
+| our configuration | turns | `top_k` | **hybrid R@5** | R@1 | R@3 | bm25 R@5 |
+|---|---|---:|---:|---:|---:|---:|
+| default | all | 20 | **98.2%** | 79.6% | 95.2% | 84.6% |
+| mempalace-matched | user | 50 | **97.2%** | 83.2% | 94.4% | 82.8% |
+| robustness: uncleaned S | all | 20 | 97.8% | 79.8% | 94.6% | 85.4% |
 
-The MemPalace comparison is the **97.2%** row, not the 98.2% one: it is the
-configuration built to match their conventions, and a configuration is chosen to
-match a comparator, never to win against one. `longMemEvalComparability()`
-confirms both pairings with the same `rankingBlocker` rule every other pair in
-the registry is held to — `blocker: null` for both. Point the default
-configuration at MemPalace instead and it is correctly blocked on `top_k`.
+**Which published number each of those actually stands against — and this is the
+part that decides how to read them:**
 
-**The line to read first is the bm25 control.** At 84.6% it lands **1.6 pp below**
-agentmemory's BM25-only 86.2%. A smaller or less confusable haystack would
-inflate the lexical arm too; it does not. So the lift sits entirely in the dense
-leg, where there is a plain capability difference rather than a task difference:
-agentmemory embeds the **first 512 characters** of a session with
-all-MiniLM-L6-v2 (384d, 256-token window), against a median session of ~10 400
-characters, while the production `buildEmbedText` takes 4 000 with embeddinggemma
-(768d, 2048-token window). That, not a better fusion, is the most likely reading
-of the gap.
+| published figure | their retriever | R@5 | ours, same class | verdict |
+|---|---|---:|---:|---|
+| agentmemory, BM25+Vector | lexical+dense fused, no reranker | 95.2% | **98.2%** | **ahead** |
+| agentmemory, BM25-only | lexical only | 86.2% | **84.6%** | **behind** |
+| MemPalace, "Raw (semantic search…)" | **dense only**, no lexical arm | 96.6% | — | *not our class* |
+| MemPalace, "Hybrid v4, held-out 450q" | lexical+dense fused, no reranker | **98.4%** | **97.2%** | **behind** |
+| MemPalace, "Hybrid v4 + LLM rerank" | fused + LLM reranker | ≥99% | — | out of scope |
+
+So: **ahead of one published system, behind the comparable configuration of the
+other.** MemPalace's widely quoted 96.6% is their **dense-only baseline** — their
+own README lists it as "Raw (semantic search, no heuristics, no LLM)", and
+agentmemory's report independently calls it "MemPalace raw (vector-only)".
+Putting our fused 97.2% beside it compares a hybrid against a non-hybrid and
+reads as a win that was never earned. The row in their table built the way we
+build stands at 98.4%, above us. An earlier version of this section quoted only
+the 96.6% and got exactly that wrong.
+
+Two things that stop this recurring rather than being remembered.
+`longMemEvalComparability()` now reports `retriever_match` beside the protocol
+blocker, and the registration must name a `same_retriever_class` figure for
+every configuration — a `blocker: null` says the four C-029 quantities match, it
+never said the two systems retrieve alike, and that gap is what went wrong here.
+Read their caveats too: the 98.4% is on a 450-question held-out split tuned on
+the other 50, so it is not a clean head-to-head in their favour either.
+
+**The line to read first is still the bm25 control.** At 84.6% it lands **1.6 pp
+below** agentmemory's BM25-only 86.2%. A smaller or less confusable haystack
+would inflate the lexical arm too; it does not. The lift sits entirely in the
+dense leg, where the difference is capability rather than task: agentmemory
+embeds the **first 512 characters** of a session with all-MiniLM-L6-v2 (384d,
+256-token window), against a median session of ~10 400 characters, while the
+production `buildEmbedText` takes 4 000 with embeddinggemma (768d, 2048-token
+window).
+
+**The missing arm.** A like-for-like answer to MemPalace's dense-only 96.6% would
+be our dense arm alone, and `--arms` offers `bm25` and `hybrid` only. That
+measurement does not exist here; it is named rather than approximated.
 
 Two checks that the pool is the intended one. The official README defines
 LongMemEval_S as "roughly 115k tokens (~40 history sessions)" per question; ours
 measures 38-62 sessions (median 48) and ~122k tokens — the ~500-sessions-per-
 question variant is LongMemEval_**M**, which neither we nor either reference ran.
 And "cleaned" is the **upstream release**, not a filter of ours: against the
-original file it drops 0 of 500 questions and changes 0 gold sets, removing 1 243
-distractor sessions. The robustness row puts those distractors back and the
-number moves by 0.4 pp.
+original file it drops 0 of 500 questions and changes 0 gold sets, removing
+1 243 distractor sessions, none of which was ever a gold session. The robustness
+row puts them back and the number moves by 0.4 pp.
 
 The abstention items are reported separately rather than hidden — 30 question ids
 end in `_abs`, and on the default configuration they score bm25 66.7% / hybrid
 96.7% R@5. Neither reference harness drops them either.
 
-The default configuration was run twice, before and after a cosmetic edit to the
-harness — two code hashes, one dataset hash, every figure identical to four
-decimals. The numbers are not one sample of a spread.
+The default configuration was run twice across a cosmetic edit to the harness.
+Every value in both artifacts is identical — not to four decimals but to the last
+one, `survival_dense` to its 16th, and all 500 per-question ranking lists in the
+same order. The only field that differs is the `code_hash` itself.
+
+Full artifacts and the committed excerpt: see `registrations/longmemeval-run.json`
+(`measurement.run_out`) and `registrations/longmemeval-results.json`.
 
 ### survival is not the #103 survival here
 

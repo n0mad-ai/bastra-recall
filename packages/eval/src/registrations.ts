@@ -505,10 +505,45 @@ export function checkLongMemEvalRegistration(
     // Konfigurationsfelder. Ohne sie könnte `rankingBlocker` nie mehr sagen als
     // „unbekannt", und die Vergleichbarkeitsfrage bliebe genau dort offen, wo
     // dieser Arm sie beantworten soll.
-    const self = c.self_figure as Partial<ForeignFigure> | undefined;
+    const self = c.self_figure as (Partial<ForeignFigure> & { retriever_class?: string }) | undefined;
     if (!self) {
       issues.push({ where, problem: "the run's own measurement configuration is part of the registration (§29.1)" });
     } else {
+      // The axis C-029's four fields do not carry, and the one this arm got
+      // wrong once: reader, judge, top-k and context budget can all match while
+      // the two systems retrieve by entirely different means. MemPalace's
+      // published 96.6% is a DENSE-ONLY baseline; quoting our fused number
+      // beside it read as clearing a figure that was never the same kind of
+      // measurement. So a configuration must also name the row that shares its
+      // retriever class, and when that is a DIFFERENT figure from the one whose
+      // protocol it reproduces, both have to be on the record.
+      if (typeof self.retriever_class !== "string") {
+        issues.push({ where: `${where}.self_figure`, problem: "`retriever_class` is required — matching a protocol is not retrieving alike" });
+      }
+      const matched = known.get(String(c.matches)) as (ForeignFigure & { retriever_class?: string }) | undefined;
+      const sameClassId = c.same_retriever_class;
+      if (typeof sameClassId !== "string" || !known.has(String(sameClassId))) {
+        issues.push({
+          where,
+          problem: "`same_retriever_class` names the registered figure built the way we build — it is the number our own is honestly measured against",
+        });
+      } else {
+        const sameClass = known.get(String(sameClassId)) as (ForeignFigure & { retriever_class?: string }) | undefined;
+        if (sameClass?.retriever_class !== self.retriever_class) {
+          issues.push({
+            where: `${where}.same_retriever_class`,
+            problem: `\`${String(sameClassId)}\` does not share our retriever class — it cannot be the like-for-like row`,
+          });
+        }
+        if (matched && matched.retriever_class !== self.retriever_class && sameClassId === c.matches) {
+          issues.push({
+            where,
+            problem: "the protocol-matched figure retrieves differently, so it cannot also be the like-for-like row — name the one that is",
+          });
+        }
+      }
+    }
+    if (self) {
       for (const field of ["reader", "judge", "top_k", "context_budget"] as const) {
         if (!(field in self)) {
           issues.push({ where: `${where}.self_figure`, problem: `\`${field}\` is absent — state it, or state null (§29.1)` });
@@ -566,12 +601,15 @@ export function checkLongMemEvalRegistration(
 export function longMemEvalComparability(
   reg: Record<string, unknown> = loadLongMemEvalRegistration(),
   figures: ForeignFigure[] = loadForeignFigures(),
-): { configuration: string; against: string; blocker: string | null }[] {
+): { configuration: string; against: string; blocker: string | null; retriever_match: boolean; like_for_like: string | null }[] {
   const known = new Map(figures.map((f) => [f.id, f]));
   const configs = (reg.configurations as Record<string, unknown>[] | undefined) ?? [];
   return configs.map((c) => {
     const self = c.self_figure as ForeignFigure | undefined;
     const other = known.get(String(c.matches));
+    const sameClass = known.get(String(c.same_retriever_class)) as
+      (ForeignFigure & { retriever_class?: string }) | undefined;
+    const ourClass = (self as (ForeignFigure & { retriever_class?: string }) | undefined)?.retriever_class;
     return {
       configuration: String(c.id),
       against: String(c.matches),
@@ -580,6 +618,12 @@ export function longMemEvalComparability(
         : !other
           ? `no figure \`${String(c.matches)}\` in the registry`
           : rankingBlocker(self, other),
+      // A null blocker says the four configuration quantities match. It does
+      // NOT say the two systems retrieve alike, and reading it that way is how
+      // a hybrid ends up quoted against a dense-only baseline.
+      retriever_match: other != null
+        && (other as ForeignFigure & { retriever_class?: string }).retriever_class === ourClass,
+      like_for_like: sameClass ? String(c.same_retriever_class) : null,
     };
   });
 }

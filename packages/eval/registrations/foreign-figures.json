@@ -315,7 +315,9 @@
       "reader_note": "the README states no LLM at any stage for the raw mode",
       "judge_note": "the README states no LLM at any stage for the raw mode",
       "top_k_note": "benchmarks/longmemeval_bench.py, n_results=50",
-      "caveat": "The same table gives 98.4% for the tuned hybrid pipeline on a 450-question held-out split and >=99% with an LLM reranker; 96.6% is the untuned vector-only mode over the full 500. The README names longmemeval_s_cleaned.json as the input but does not state the embedding model, and the session document is built from the USER turns only (longmemeval_bench.py, granularity=\"session\"), while agentmemory's number is built from both roles."
+      "caveat": "The same table gives 98.4% for the tuned hybrid pipeline on a 450-question held-out split and >=99% with an LLM reranker; 96.6% is the untuned vector-only mode over the full 500. The README names longmemeval_s_cleaned.json as the input but does not state the embedding model, and the session document is built from the USER turns only (longmemeval_bench.py, granularity=\"session\"), while agentmemory's number is built from both roles.",
+      "retriever_class": "dense only, no reranker",
+      "retriever_class_note": "semantic search over ChromaDB, no lexical arm and no fusion; agentmemory's report calls this row \"MemPalace raw (vector-only)\""
     },
     {
       "id": "agentmemory-longmemeval-r5",
@@ -333,7 +335,29 @@
       "reader_note": "benchmark/LONGMEMEVAL.md states no LLM in the loop",
       "judge_note": "benchmark/LONGMEMEVAL.md states no LLM in the loop",
       "top_k_note": "benchmark/longmemeval-bench.ts searches with limit 20",
-      "caveat": "Embeddings are all-MiniLM-L6-v2 over only the FIRST 512 CHARACTERS of a session (longmemeval-bench.ts), against a median session length of ~10,400 characters — so the dense leg sees about 5% of each document. The report itself states these are retrieval-recall scores and not LongMemEval QA accuracy. The abstention filter in the harness matches no question type in longmemeval_s_cleaned.json, so all 500 questions are scored."
+      "caveat": "Embeddings are all-MiniLM-L6-v2 over only the FIRST 512 CHARACTERS of a session (longmemeval-bench.ts), against a median session length of ~10,400 characters — so the dense leg sees about 5% of each document. The report itself states these are retrieval-recall scores and not LongMemEval QA accuracy. The abstention filter in the harness matches no question type in longmemeval_s_cleaned.json, so all 500 questions are scored.",
+      "retriever_class": "lexical+dense fused, no reranker",
+      "retriever_class_note": "BM25 + vector, fused; the report states \"No LLM in the loop\""
+    },
+    {
+      "id": "mempalace-longmemeval-hybrid-r5",
+      "system": "MemPalace",
+      "claim": "98.4% recall_any@5 on LongMemEval-S (cleaned), hybrid v4, on a 450-question held-out split tuned on 50 dev",
+      "evidence_class": "implemented_code",
+      "source": "github.com/MemPalace/mempalace",
+      "version": "f9297a2, 2026-09-08, MIT",
+      "locus": "README.md, table \"LongMemEval — retrieval recall (R@5, 500 questions)\", row \"Hybrid v4, held-out 450q (tuned on 50 dev, not seen during training)\"",
+      "retrieved": "2026-09-09",
+      "retriever_class": "lexical+dense fused, no reranker",
+      "reader": "none — retrieval only, no answer generation",
+      "reader_note": "the table's \"LLM required\" column reads None for this row",
+      "judge": "none — recall_any@k against answer_session_ids, no judged answer",
+      "judge_note": "the table's \"LLM required\" column reads None for this row",
+      "top_k": null,
+      "top_k_note": "the README does not state a candidate depth for this row. NOT carried over from the raw row's n_results=50 — an unstated value is a finding, not a default (§29.1)",
+      "context_budget": "none — no reader, so nothing is fitted into a context",
+      "caveat": "This is the row that matches OUR retriever class, and it is the honest counterpart to our hybrid arm — but it is not a clean head-to-head either: the denominator is 450 questions, not the 500 every other figure here averages over, and the configuration was tuned on the remaining 50. The README calls it \"the honest generalisable figure\" for their own system. A third row in the same table reaches >=99% by promoting the best of the top 20 with an LLM reader, which is outside this arm's scope entirely — nothing here puts a model on the query path.",
+      "retriever_class_note": "the README describes it as adding \"keyword boosting, temporal-proximity boosting, and preference-pattern extraction\" on top of the dense arm; the table's \"LLM required\" column reads None"
     }
   ]
 }
