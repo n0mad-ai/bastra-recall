@@ -260,6 +260,34 @@ test("each configuration is comparable to the figure it was built for", () => {
   for (const v of verdicts) assert.ok(known.has(v.against), `${v.against} must be in foreign-figures.json`);
 });
 
+test("every registered number names the engine that produced it (#500 follow-up)", () => {
+  // `code_hash` pins the harness, not the retriever. For an internal ablation
+  // that is right — both arms see the same engine. For an external figure the
+  // engine IS the thing being cited, and "versioned and re-runnable" is a
+  // stated success condition of #500, so a result without it is incomplete.
+  const reg = loadLongMemEvalRegistration();
+  const blocks = [
+    ...(reg.configurations as { measurement: Record<string, unknown> }[]).map((c) => c.measurement.engine),
+    (reg.robustness_check as Record<string, unknown>).engine,
+  ] as (Record<string, unknown> | undefined)[];
+
+  assert.equal(blocks.length, 3);
+  for (const e of blocks) {
+    assert.ok(e, "every measured result carries an engine identity");
+    assert.match(String(e!.core_src_sha256), /^[0-9a-f]{64}$/);
+    // A hand-entered provenance field must never be indistinguishable from one
+    // the run wrote itself.
+    assert.equal(e!.backfilled, true, "these three runs predate the harness writing the block");
+    assert.ok(String(e!.$comment).includes("BACKFILLED"), "the backfill says so in words too");
+    // Null, not a plausible-looking SHA: HEAD moved during the runs.
+    assert.equal(e!.repo_commit, null);
+  }
+
+  // All three ran on one engine, so one hash covers them.
+  const hashes = new Set(blocks.map((e) => String(e!.core_src_sha256)));
+  assert.equal(hashes.size, 1, "the three runs share one engine revision");
+});
+
 test("the arm writes nothing into the private eval-run archive (#446)", () => {
   for (const f of ["longmemeval-run.ts", "longmemeval-dataset.ts"]) {
     const src = readFileSync(join(import.meta.dirname, "..", "src", f), "utf8");

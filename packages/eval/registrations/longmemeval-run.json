@@ -104,6 +104,15 @@
             "bm25": 0.6667,
             "hybrid": 0.9667
           }
+        },
+        "engine": {
+          "core_src_sha256": "d987a003aaa76a0495d67ae6371951e8b7b233a9e2d8d319cf36855540f394dd",
+          "core_src_files": 50,
+          "core_src_last_commit": "dd75532, 2026-09-08 19:52:39 +0200",
+          "repo_commit": null,
+          "repo_dirty": true,
+          "backfilled": true,
+          "$comment": "BACKFILLED BY HAND. The three runs predate the `engine` block the harness now writes itself (added after d955191), so these values were not printed by the runs — saying otherwise would let a hand-entered field pass as machine-recorded. They are nonetheless verifiable: `packages/core/src` carries no uncommitted changes and was last committed in dd75532 on 2026-09-08 19:52, a day before the runs, so the content hash above IS the engine that produced the numbers and re-hashing that directory at dd75532 reproduces it. `repo_commit` is null on purpose rather than filled with a plausible SHA: HEAD moved three times DURING the runs (57a670e 21:03, 70ac4b3 21:05, 58d48c0 21:27, all from a sibling agent working on #501 in packages/eval) and the harness itself was still uncommitted, so no single commit describes the state that ran. The engine hash is the pin; the commit would have been the weaker claim even if one existed."
         }
       }
     },
@@ -165,6 +174,15 @@
             "bm25": 0.7,
             "hybrid": 0.9667
           }
+        },
+        "engine": {
+          "core_src_sha256": "d987a003aaa76a0495d67ae6371951e8b7b233a9e2d8d319cf36855540f394dd",
+          "core_src_files": 50,
+          "core_src_last_commit": "dd75532, 2026-09-08 19:52:39 +0200",
+          "repo_commit": null,
+          "repo_dirty": true,
+          "backfilled": true,
+          "$comment": "BACKFILLED BY HAND. The three runs predate the `engine` block the harness now writes itself (added after d955191), so these values were not printed by the runs — saying otherwise would let a hand-entered field pass as machine-recorded. They are nonetheless verifiable: `packages/core/src` carries no uncommitted changes and was last committed in dd75532 on 2026-09-08 19:52, a day before the runs, so the content hash above IS the engine that produced the numbers and re-hashing that directory at dd75532 reproduces it. `repo_commit` is null on purpose rather than filled with a plausible SHA: HEAD moved three times DURING the runs (57a670e 21:03, 70ac4b3 21:05, 58d48c0 21:27, all from a sibling agent working on #501 in packages/eval) and the harness itself was still uncommitted, so no single commit describes the state that ran. The engine hash is the pin; the commit would have been the weaker claim even if one existed."
         }
       }
     }
@@ -190,7 +208,17 @@
         "r@5": 0.978
       }
     },
-    "survival_dense": 2.8112
+    "survival_dense": 2.8112,
+    "engine": {
+      "core_src_sha256": "d987a003aaa76a0495d67ae6371951e8b7b233a9e2d8d319cf36855540f394dd",
+      "core_src_files": 50,
+      "core_src_last_commit": "dd75532, 2026-09-08 19:52:39 +0200",
+      "repo_commit": null,
+      "repo_dirty": true,
+      "backfilled": true,
+      "$comment": "BACKFILLED BY HAND. The three runs predate the `engine` block the harness now writes itself (added after d955191), so these values were not printed by the runs — saying otherwise would let a hand-entered field pass as machine-recorded. They are nonetheless verifiable: `packages/core/src` carries no uncommitted changes and was last committed in dd75532 on 2026-09-08 19:52, a day before the runs, so the content hash above IS the engine that produced the numbers and re-hashing that directory at dd75532 reproduces it. `repo_commit` is null on purpose rather than filled with a plausible SHA: HEAD moved three times DURING the runs (57a670e 21:03, 70ac4b3 21:05, 58d48c0 21:27, all from a sibling agent working on #501 in packages/eval) and the harness itself was still uncommitted, so no single commit describes the state that ran. The engine hash is the pin; the commit would have been the weaker claim even if one existed."
+    }
   },
-  "$comment_determinism": "The default configuration was run twice, before and after a cosmetic edit to the harness (two different code hashes, same dataset hash). Every reported figure came back identical to four decimals, so the dense arm is deterministic here and the numbers below are not one sample of a spread."
+  "$comment_determinism": "The default configuration was run twice, before and after a cosmetic edit to the harness (two different code hashes, same dataset hash). Every reported figure came back identical to four decimals, so the dense arm is deterministic here and the numbers below are not one sample of a spread.",
+  "$comment_engine": "Why an engine hash sits beside the code hash at all: `code_hash` covers this arm's harness and loader, the convention goldset-run.ts:hashCode() follows and the right one for an internal ablation, where both arms see the same engine and its version cancels. For an EXTERNAL figure it is the wrong pin — #500 asks for a number that is versioned and re-runnable, and what a reader of \"97.2% R@5\" needs later is which revision of search.ts earned it, not which revision of the printer printed it. Runs after d955191 record this block themselves; the ones below carry it backfilled and say so."
 }

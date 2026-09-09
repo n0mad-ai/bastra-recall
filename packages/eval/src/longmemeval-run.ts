@@ -85,7 +85,8 @@
  */
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
@@ -320,6 +321,70 @@ async function awaitBackfill(emb: EmbeddingIndex, want: number, label: string): 
 
 // ── the run ────────────────────────────────────────────────────
 
+/**
+ * Which RETRIEVER produced the numbers (#500 follow-up to d955191).
+ *
+ * `codeHash` below covers this harness and its loader — the house convention
+ * `goldset-run.ts:hashCode()` follows, and the right one for an internal
+ * ablation, where both arms see the same engine and its version cancels out.
+ * It is the wrong one for an EXTERNAL figure. #500 asks for a number that is
+ * "versioned and re-runnable", and the thing a reader of "97.2% R@5" needs
+ * half a year later is not which revision of this file printed it but which
+ * revision of `search.ts` earned it. That was not recoverable from the
+ * artifact, so it is recorded here.
+ *
+ * The engine is pinned by CONTENT rather than by commit, because a commit is
+ * the weaker claim in exactly the situation this arm runs in: the harness may
+ * be uncommitted, a sibling agent may be committing to the same package
+ * mid-run, and `@bastra-recall/core` resolves to a BUILT `dist` that a later
+ * `pretest` can rebuild. A hash over the engine sources is true regardless of
+ * any of that. The repo commit is recorded beside it as the coarser locator,
+ * with its dirty flag, and never instead of it.
+ *
+ * Every field degrades to null rather than throwing: this is provenance, and
+ * a measurement must not fail because it could not describe itself.
+ */
+function engineIdentity(): {
+  core_src_sha256: string | null;
+  core_src_files: number | null;
+  repo_commit: string | null;
+  repo_dirty: boolean | null;
+} {
+  let coreHash: string | null = null;
+  let coreFiles: number | null = null;
+  try {
+    const dir = path.resolve(import.meta.dirname, "..", "..", "core", "src");
+    const names = readdirSync(dir).filter((f) => f.endsWith(".ts")).sort();
+    const h = createHash("sha256");
+    for (const name of names) {
+      // The name goes in too, so a renamed file changes the identity even
+      // when the bytes are unchanged.
+      h.update(name).update("\0").update(readFileSync(path.join(dir, name)));
+    }
+    coreHash = h.digest("hex");
+    coreFiles = names.length;
+  } catch {
+    // Running against an installed package rather than the workspace.
+  }
+
+  let commit: string | null = null;
+  let dirty: boolean | null = null;
+  try {
+    const opts = {
+      cwd: import.meta.dirname,
+      encoding: "utf8" as const,
+      // stderr silenced: outside a checkout git writes a fatal there, and this
+      // helper reports "unknown" rather than staining a measurement's output.
+      stdio: ["ignore", "pipe", "ignore"] as ("ignore" | "pipe")[],
+    };
+    commit = execFileSync("git", ["rev-parse", "HEAD"], opts).trim();
+    dirty = execFileSync("git", ["status", "--porcelain"], opts).trim().length > 0;
+  } catch {
+    // Not a git checkout, or no git on PATH.
+  }
+  return { core_src_sha256: coreHash, core_src_files: coreFiles, repo_commit: commit, repo_dirty: dirty };
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const corpus = path.resolve(args.corpus);
@@ -358,7 +423,12 @@ async function main(): Promise<void> {
       `${loaded.dropped ? ` (${loaded.dropped} abstention-typed dropped)` : ""}` +
       ` · arms ${args.arms.join("+")} · turns ${args.turns} · k=${args.k}`,
   );
+  const engine = engineIdentity();
   console.error(`dataset ${datasetHash.slice(0, 12)} · code ${codeHash.slice(0, 12)} · ${corpus}`);
+  console.error(
+    `engine core/src ${engine.core_src_sha256?.slice(0, 12) ?? "unknown"}`
+      + ` · repo ${engine.repo_commit?.slice(0, 12) ?? "unknown"}${engine.repo_dirty ? "-dirty" : ""}`,
+  );
 
   const wantHybrid = args.arms.includes("hybrid");
   const provider = wantHybrid
@@ -557,6 +627,7 @@ async function main(): Promise<void> {
           corpus: path.basename(corpus),
           dataset_hash: datasetHash,
           code_hash: codeHash,
+          engine,
           turns: args.turns,
           k: args.k,
           n_questions: questions.length,
