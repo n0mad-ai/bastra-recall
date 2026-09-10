@@ -205,7 +205,11 @@ test("der dichte Arm überlebt eine lange lexikalische Suche", async (t) => {
   // aussperrt.
   for (let i = 0; i < 3; i++) await laufMitTimeoutMarke(search, ANTWORT_NACH_MS, port, 100 + i);
 
-  const ergebnisse: Array<{ timeout: boolean; bm25Ms: number }> = [];
+  const ergebnisse: Array<{
+    timeout: boolean;
+    bm25Ms: number;
+    spaeteStichprobe: Promise<{ settle_ms: number }>;
+  }> = [];
   for (let i = 0; i < 5; i++) ergebnisse.push(await laufMitTimeoutMarke(search, ANTWORT_NACH_MS, port, i));
 
   // Die Voraussetzung des Tests: Der lexikalische Arm muss den Loop wirklich
@@ -216,12 +220,27 @@ test("der dichte Arm überlebt eine lange lexikalische Suche", async (t) => {
     `der lexikalische Arm muss länger als die Deadline blockieren, war ${median} ms`,
   );
 
-  const timeouts = ergebnisse.filter((e) => e.timeout).length;
+  // Dieselbe Diagnose wie im KALTEN Zwilling unten, aus demselben Grund: Ein
+  // Timeout ohne seine Zahl zwingt den nächsten Leser zum Raten. Hier ist die
+  // Ursache sogar noch schwerer zu erraten, weil der warme Pfad drei
+  // Aufwärmläufe hinter sich hat — wer ihn rot sieht, muss unterscheiden
+  // können, ob der Dispatch gebrochen ist (Arm settelt weit jenseits der
+  // Frist) oder ob nur die Maschine überbucht war (knapp darüber).
+  const timeouts = ergebnisse.filter((e) => e.timeout);
+  const settles = await Promise.all(
+    timeouts.map((e) =>
+      Promise.race([
+        e.spaeteStichprobe.then((s) => `${Math.round(s.settle_ms)} ms`),
+        new Promise<string>((ok) => void setTimeout(() => ok("nie gesettelt"), 1000).unref?.()),
+      ]),
+    ),
+  );
   assert.equal(
-    timeouts,
+    timeouts.length,
     0,
     `kein Lauf darf in den Timeout gehen — der Provider antwortet nach ${ANTWORT_NACH_MS} ms, ` +
-      `also lange vor der ${DEADLINE_MS}-ms-Frist. ${timeouts} von 5 taten es trotzdem.`,
+      `also lange vor der ${DEADLINE_MS}-ms-Frist. ${timeouts.length} von 5 taten es trotzdem ` +
+      `(settle_ms je Timeout: ${settles.join(", ") || "—"}; BM25-Median ${Math.round(median)} ms).`,
   );
 });
 
