@@ -3,7 +3,7 @@
   "schema_version": 1,
   "registration_version": 2,
   "registered_at": "2026-09-09",
-  "status": "structure_registered",
+  "status": "decided",
   "issue": 501,
   "depends_on": [
     500
@@ -314,5 +314,35 @@
     "not_checked": "neutral and mixed — they belong to no language pool, and refusing them would rule out 205 of 584 cases for every model",
     "test": "the test asserts the REFUSAL, and was verified to go red when the guard is neutered",
     "scope_limit": "The guard checks the QUERY language, not the passage language. Passages come from the vault and are German regardless of what language the query is in, so the guard only holds while vault language and query language coincide. That is true for both registered sets — on gold only bilingual models are registered, and on LongMemEval corpus and questions are both English — but it is a property of the data, not of the guard, and is recorded here so a future set with a language split between corpus and queries is not silently admitted."
+  },
+  "decided_at": "2026-09-10",
+  "outcome": {
+    "$comment": "Filled in AFTER the run. The bars above are unchanged from version 2, which was fixed before any number existed — compare them against this block to check that the recommendation was not fitted to the result.",
+    "recommendation": "close_501",
+    "classification": "no_effect",
+    "primary": {
+      "delta_pp": 0.2,
+      "ci95_pp": [
+        -3.1,
+        3.4
+      ],
+      "p": 1.0,
+      "n": 584,
+      "baseline": 0.4332191780821918,
+      "better": 47,
+      "worse": 46,
+      "unchanged": 491,
+      "reproduced_bit_identical": true
+    },
+    "why_no_effect_and_not_unaffordable": "The best exploratory arm anywhere is bge/short N=10 at +1.9 pp with CI [-1.4, +5.3] — below the 2.0 pp bar AND its interval contains 0. No lift exists that latency could have been too expensive for.",
+    "robustness": "Null on three independent cuts: full denominator +0.2, reachable subset (n=342) +0.3 [-5.3, +5.8], descriptive axis (n=447) +0.0 [-4.3, +4.3]. The dilution hypothesis does not carry.",
+    "control_set": "LongMemEval, 500 questions, 3 models: ALL 18 rows negative with every CI entirely below zero, main arm -9.4 pp [-12.6, -6.4]. Protocol baseline recall_any@20 = 99.6 %, matching #500's published figure. The control SUPPORTS the recommendation; it does not create it — the gold set decides and would have decided the same alone.",
+    "bilingual_surcharge": "Answered: none. ms-marco (English-only) gives no advantage over the bilingual en-de on the English set — identical at body/N=10 (-5.8) and worse at short (-10.0 vs -9.4).",
+    "latency_step_not_run": "#501 step 2 is conditional on a real lift ('only if the lift is real'). There is none, so no latency run was performed.",
+    "shapes_not_evaluable": {
+      "only_on_weak_result": "isWeakResult fired on 0 of 584 gold cases and 0 of 500 LongMemEval questions — the shape was not merely empty but unmeasurable.",
+      "above_pool_size": "Gold set: the pool is a constant 40 deep by construction, so the median split leaves one bucket empty. LongMemEval: measurable (248/252) and harmful in both halves."
+    },
+    "bars_not_relaxed": "No bar was lowered, no slice was registered after the coverage numbers were known, and the primary was not moved to the reachable subset although its dilution (19.9 % structural non-contributors) was quantified and known."
   }
 }

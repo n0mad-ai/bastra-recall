@@ -1,10 +1,16 @@
 # Query-Zeit-Rerank — Messplan und Modell-Spike zu #501
 
-Stand 09.09.2026. **Nichts davon gehört in den Produktionspfad, und gelaufen
-ist noch nichts.** Der Mess-Harness steht als Code (§6); die einzigen Zahlen
-in diesem Dokument stammen aus dem Modell-Spike (§1), nicht aus einem Lauf.
-#501 ist eine Entscheidungsfrage: Das Ergebnis ist eine Tabelle plus eine
-Empfehlung an Daniel, kein ausgelieferter Reranker.
+Stand 10.09.2026, **gemessen und abgeschlossen**. #501 war eine
+Entscheidungsfrage; das Ergebnis steht in **§8**.
+
+> **Empfehlung: #501 schließen.** Der Primärtest ist null (ΔR@3 = +0,2 pp,
+> KI95 [−3,1, +3,4]) und bleibt es auf allen geprüften Schnitten. Der externe
+> Kontrollsatz zeigt darüber hinaus deutlichen Schaden. Nichts davon ist je in
+> den Produktionspfad gelangt.
+
+§1–§7 sind die **Voranmeldung**, geschrieben bevor eine Zahl existierte, und
+stehen unverändert — auch dort, wo die Messung sie widerlegt hat. Wer prüfen
+will, ob die Empfehlung an die Zahlen angepasst wurde, vergleicht §5 mit §8.
 
 Dieses Dokument ist die **Voranmeldung** der Messung im Sinne von §18.3 — der
 primäre Endpunkt, die freien Parameter, die Metriken und die
@@ -651,3 +657,284 @@ Naht dafür ist `CaseRow`.
   existiert seit #121.
 - Kein Lauf. Die Zahlen in §1 stammen aus dem Modell-Spike in Isolation, nicht
   aus dem Harness.
+
+---
+
+## 8. Das Ergebnis — gemessen am 09./10.09.2026
+
+**Empfehlung: #501 schließen. Klassifikation: `kein Effekt`.**
+
+Der Primärtest ist null, und er ist es auf drei unabhängigen Schnitten. Der
+externe Kontrollsatz zeigt darüber hinaus **klaren Schaden**. Kein Arm, in
+keiner Kombination aus N, Passagenlänge und Modell, auf keinem der beiden
+Sätze, erreicht die registrierte Schwelle.
+
+### 8.1 Der Primärtest
+
+> **ΔR@3 = +0,2 pp · KI95 [−3,1, +3,4] · p = 1,0000**
+> Gold-Satz, `en-de`, `short`, N=10, n=584, Basislinie 43,3 %
+> 47 besser · 46 schlechter · 491 unverändert
+
+Das ist die eine Zahl, die entscheidet. Sie wurde **zweimal unabhängig
+gerechnet und war bitgleich** (`0.0017123287671232876`).
+
+### 8.2 Die Entscheidungsregel, Bedingung für Bedingung
+
+`close_501` verlangt drei Dinge, alle drei sind erfüllt:
+
+| Bedingung | Befund |
+|---|---|
+| primär: Δ < 2,0 pp **oder** KI enthält 0 | **beides** — +0,2 pp, KI [−3,1, +3,4] |
+| keine bedingte Form erfüllt ihre Schwelle | `weak_result` n=0 · `prose_only` scheitert (`de` −1,8 pp) · `ab Poolgröße` nicht auswertbar |
+| `bge` bei N=30/`body` zeigt dasselbe | −0,5 pp, KI [−4,1, +3,1] |
+
+**Klassifikation `kein Effekt`, nicht `kein bezahlbarer Effekt`:** Der beste
+explorative Wert überhaupt ist `bge/short` N=10 mit **+1,9 pp, KI [−1,4, +5,3]**
+— unter der 2,0-pp-Schwelle *und* mit 0 im Intervall. Es ist also nicht so,
+dass ein Lift existierte und zu teuer wäre. Er existiert nicht.
+
+Damit entfällt Schritt 2 von #501 („only if the lift is real"): **Der Latenzlauf
+wurde nicht gefahren.** Die Modellkosten aus §1 bleiben die einzigen Zeitzahlen.
+
+### 8.3 Die vollständige Tabelle, Gold-Satz
+
+n=584, Basislinie R@3 43,3 %, serviertes k=10, Floor 30.
+
+| Modell/Passage | N | R@3 nach Rerank | ΔR@3 | KI95 | ΔR@5 | any@N | Rang-Regression |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **en-de/short** ← primär | 10 | 43,5 % | **+0,2** | [−3,1, +3,4] | −0,2 | 58,6 % | 17,3 % |
+| en-de/short | 20 | 41,9 % | −1,4 | [−5,1, +2,2] | −2,9 | 64,9 % | 22,1 % |
+| en-de/short | 30 | 41,8 % | −1,5 | [−5,3, +2,1] | −2,9 | 68,2 % | 22,9 % |
+| en-de/body | 10 | 43,2 % | −0,2 | [−3,4, +3,1] | +0,3 | 58,6 % | 17,0 % |
+| en-de/body | 20 | 40,9 % | −2,4 | [−6,0, +1,0] | −2,4 | 64,9 % | 21,7 % |
+| en-de/body | 30 | 40,6 % | −2,7 | [−6,2, +0,7] | −2,7 | 68,2 % | 22,1 % |
+| bge/short | 10 | 45,2 % | +1,9 | [−1,4, +5,3] | +0,0 | 58,6 % | 17,8 % |
+| bge/short | 20 | 43,0 % | −0,3 | [−3,8, +3,3] | −1,7 | 64,9 % | 21,4 % |
+| bge/short | 30 | 41,9 % | −1,4 | [−5,0, +2,2] | −2,7 | 68,2 % | 22,3 % |
+| bge/body | 10 | 45,0 % | +1,7 | [−1,7, +5,0] | +0,2 | 58,6 % | 16,3 % |
+| bge/body | 20 | 43,2 % | −0,2 | [−3,8, +3,4] | −1,4 | 64,9 % | 21,9 % |
+| bge/body | 30 | 42,8 % | −0,5 | [−4,1, +3,1] | −1,5 | 68,2 % | 22,4 % |
+
+**288 Konfidenzintervalle in diesem Lauf.** Bei α=0.05 sind mehrere davon auch
+unter reinem Rauschen „signifikant". Diese Tabelle beschreibt; sie entscheidet
+nicht. Entschieden hat allein die markierte Zeile.
+
+Nebenbei: Die Rang-Regression liegt bei **17,3 %** und damit über dem
+registrierten 15-%-Balken. Selbst wenn der Lift gereicht hätte, wäre „immer an"
+auch daran gescheitert.
+
+### 8.4 Drei unabhängige Schnitte — der Nullbefund ist keine Verdünnung
+
+Die naheliegendste Ausrede für einen Nullbefund wäre, dass der Nenner ihn
+verwässert: 172 der 584 Fälle haben ihr Gold nirgends im Pool und können per
+Konstruktion nichts beitragen. Sie ist geprüft und trägt nicht.
+
+| Schnitt | n | ΔR@3 | KI95 |
+|---|---:|---:|---:|
+| voller Nenner (**Primärtest**) | 584 | +0,2 | [−3,1, +3,4] |
+| nur Fälle mit Gold im Fenster (exploratorisch) | 342 | +0,3 | [−5,3, +5,8] |
+| deskriptive Achse (exploratorisch) | 447 | +0,0 | [−4,3, +4,3] |
+| assoziative Achse | 137 | **NICHT AUSWERTBAR** (§18.1, Minimum 150) | — |
+
+Das ist der Unterschied zwischen „hat nicht gewirkt" und **„hat auch dort nicht
+gewirkt, wo es hätte wirken können"**. Auf genau der Teilmenge, in der ein
+Reranker überhaupt etwas ausrichten kann, tut er nichts.
+
+Die beiden Achsenschnitte sind **nicht vorangemeldet** (siehe §8.9) und tragen
+deshalb keine Empfehlung. Sie ordnen ein, mehr nicht.
+
+### 8.5 Die Obergrenze, gegen die alles zu lesen ist
+
+Ein Cross-Encoder sortiert um; er ruft nicht ab. Was nicht im Pool liegt, kann
+er nicht holen. Gemessen über dieselben 584 Fälle, ohne Modell:
+
+| Achse | n | @1 | @3 | @10 | @30 | @40 | ohne Gold im Pool |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| assoziativ | 137 | 2,2 % | 4,4 % | 8,0 % | 13,1 % | **15,3 %** | 116 (84,7 %) |
+| deskriptiv | 447 | 36,2 % | 55,3 % | 74,0 % | 84,8 % | **87,5 %** | 56 (12,5 %) |
+| gesamt | 584 | 28,3 % | 43,3 % | 58,6 % | 68,0 % | 70,5 % | 172 (29,5 %) |
+
+**Auf der deskriptiven Achse — der, die den Betrieb beschreibt — lagen 29,5
+Prozentpunkte Spielraum offen** (55,3 % Basislinie gegen 84,8 % Deckel). Die
+Fehlsortierung aus #103/#118 ist also real und hat Masse. Sie wurde nicht
+gehoben, obwohl sie da war. Das ist der eigentliche Inhalt des Nullbefunds.
+
+Die gemischten 68,0 % sind im Wesentlichen ein Mischungsverhältnis der beiden
+Achsen und beschreiben keine von beiden. `m1-tolerances.json` hat das am
+29.08.2026 knapper gesagt, als wir es hier hergeleitet haben:
+
+> „**An axis is a label, not a population.**"
+
+**Zur assoziativen Achse gibt es keine Wirkungsaussage**, weder positiv noch
+negativ: §18.1 setzt ein Minimum von 150 Fällen, der Satz hält 137. Die
+Abdeckungszahlen oben sind Anteilsschätzer über eine definierte Menge, keine
+Effektschätzung — daraus folgt **keine** Aussage über die Achse. Und die
+niedrigen Werte sind kein Qualitätsproblem: `gold-authored-2/3` sind
+absichtlich so verfasst, dass kein Term des Vorfallsberichts in der Query
+überlebt (lexikalische Überlappung 4 % gegen 65 % bei den
+Telemetrie-Sätzen). Sie existieren, um diese Lücke messbar zu machen.
+
+### 8.6 Der Kontrollpass — und er ist nicht null, sondern negativ
+
+500 LongMemEval-Fragen, drei Modelle, k=20. **Trägt nach der Registrierung
+keine Empfehlung.**
+
+Die Protokoll-Basislinie reproduziert #500 exakt: `recall_any@20 = 99,6 %`.
+Damit ist die Zahl gegen die veröffentlichte Größe prüfbar — genau dafür läuft
+die zweite Basislinie mit.
+
+**Alle 18 Zeilen negativ. Alle 18 Konfidenzintervalle vollständig unter null.**
+
+| Modell/Passage | ΔR@3 bei N=10 | N=20 | N=30 |
+|---|---:|---:|---:|
+| en-de/short | **−9,4** [−12,6, −6,4] | −15,2 | −18,0 |
+| en-de/body | −5,8 | −8,6 | −9,4 |
+| bge/short | −7,4 | −9,8 | −10,2 |
+| bge/body | −6,0 | −7,2 | −7,2 |
+| ms-marco/short | −10,0 | −12,6 | −13,8 |
+| ms-marco/body | −5,8 | −6,8 | −7,6 |
+
+Basislinie dort: R@3 = 95,2 %.
+
+**Hypothese, nicht Befund:** Bei einer Basislinie von 95,2 % R@3 und 99,6 %
+`recall_any@20` ist das RRF-Ranking dort bereits nahezu optimal sortiert — ein
+Reranker, der umsortiert, kann fast nur verlieren. Das deckt sich mit #500s
+Feststellung, dass auf jenem Satz fast alles schon in den Top 20 steckt. **Es
+ist nicht gemessen**, also steht es hier als Lesart und nicht als Ursache.
+
+**Die registrierte Nebenfrage ist damit beantwortet:** `ms-marco` (englisch-only)
+bringt auf dem englischen Satz **keinen Vorteil** gegenüber dem zweisprachigen
+`en-de` — bei `body`/N=10 exakt gleich (−5,8), bei `short` sogar schlechter
+(−10,0 gegen −9,4). **Der Zweisprachigkeits-Aufschlag kostet auf Englisch keine
+Qualität.** Zwei Minuten Rechenzeit für eine Frage, die sonst offen geblieben
+wäre.
+
+**Was der Kontrollpass darf und was nicht:** Er **stützt** die Empfehlung, er
+**erzeugt** sie nicht. Die Empfehlung steht auf dem Gold-Satz und wäre ohne
+LongMemEval dieselbe. Was sich durch ihn ändert, ist die Belastbarkeit der
+Begründung: nicht „bei uns kein Effekt gemessen", sondern **auf zwei
+unabhängigen Korpora — eigener und öffentlicher, verschiedene Sprache,
+verschiedene Poolstruktur — keine Verbesserung, und auf dem externen mit klarem
+Schaden.**
+
+### 8.7 Vier Nebenbefunde, die unabhängig von #501 gelten
+
+**(a) Der Score-Floor beißt nach dem Rerank exakt null Mal.** `at` und
+`at_no_floor_upper_bound` sind für **jeden** Arm identisch. Die Sorge, ein
+Reranker könne Sub-Floor-Kandidaten nach vorn holen und damit die Trefferliste
+verkürzen, war berechtigt gestellt und ist **gemessen widerlegt**. Der
+Zusammenhang mit dem Nullbefund ist erklärbar: Ein Reranker, der nichts bewegt,
+bewegt auch nichts unter den Floor. Beide Beobachtungen stützen sich.
+
+**(b) `weak_result` feuert 0 von 584 Mal — und 0 von 500 auf LongMemEval.**
+Das ausgelieferte Prädikat (`packages/core/src/weak-result.ts`) löste auf
+keinem einzigen Fall aus, auf keinem der beiden Sätze. Empfehlungsform 3 war
+damit nicht bloß zufällig leer, sondern **prinzipiell nicht messbar**.
+
+Das ist ein Befund über eine ausgelieferte Funktion, nicht über #501: Entweder
+ist sie richtig kalibriert — die Queries beider Sätze tragen durchweg genug
+Signal — oder sie ist faktisch tot. **Beides wäre wissenswert, und ich
+entscheide es hier nicht.** Es gehört eigenständig untersucht.
+
+**(c) Unsere Gold-Läufe messen gegen einen lebenden Vault.** Zwei Läufe über
+„denselben" Satz ergaben `recall_any@30` = 397/584 und 398/584 — ein Fall,
+allein in Tiefe 21–30. Es war **kein** Determinismus-Defekt: 100 Fälle zweimal
+im selben Prozess abgerufen ergaben 100/100 identische Pools inklusive Scores.
+Der Vault hatte sich geändert — zwei Memories, geschrieben um 22:00 und 01:46
+**von der Session, die die Messung fuhr, über die Messung**. Der Vektorspeicher
+ging von 1171 auf 1173.
+
+Zwei zusätzliche Dokumente verschieben die BM25-Dokumentfrequenzen für *alle*
+Terme, nicht nur für die eigenen — deshalb kann ein Gold von Rang 31 auf 30
+rutschen, und deshalb ist „neue Nicht-Gold-Dokumente können Golds nur nach
+unten drücken" die falsche Intuition.
+
+#500s Determinismus hält bis zur 16. Dezimale, weil LongMemEvals Korpus eine
+**eingefrorene Datei** ist. Unserer ist ein lebender Vault mit einem Daemon
+darauf. Eine Determinismusprüfung über den Gold-Satz kann deshalb „gleicher
+Vault → gleiches Ergebnis" belegen und niemals „gleiche Zahl morgen". Die
+Artefakte tragen jetzt einen Vault-Fingerabdruck (Anzahl plus Hash über Ids und
+`updated`, damit auch Änderungen an bestehenden Memories sichtbar werden).
+
+**(d) `bge` und `ms-marco/short` sind nicht batch-invariant.** Für `en-de` ist
+die Abweichung exakt 0 und die Reihenfolge stabil; für `bge` liegt sie bei
+0,13–0,58 Logit mit **instabiler Reihenfolge**. Der Harness scored diese Modelle
+deshalb pro N getrennt, mit der jeweils echten Batchgröße. Ohne das hätten die
+bge-Zeilen bei N=10 und N=20 eine Prozedur beschrieben, die niemand ausliefern
+würde: „ranke die Top 10 mit Scores aus einem 30er-Batch".
+
+**Wichtig für die Lesart des Nullbefunds:** Die einzige bge-Zahl, die in einer
+Entscheidungsschwelle steht — N=30/`body` — war davon **nie betroffen**, weil
+dort der 30er-Batch der echte ist. Der Nullbefund ist kein Messfehler.
+
+### 8.8 „Ab Poolgröße" ist auf dem Gold-Satz nicht entscheidbar
+
+Der Kandidatenpool ist dort per Konstruktion konstant 40 tief
+(`HOP_SEED_POOL = max(k*4, 20)` bei `PRODUCTION_K = 10`), auf einem Vault von
+über 1100 Memories also für praktisch jede Query ausgeschöpft. Der Median-Split
+legt damit **alle** 584 Fälle in einen Bucket. Das ist ein gemessenes Ergebnis,
+keine Lücke: Die Form ist auf diesem Satz nicht prüfbar.
+
+Auf LongMemEval war sie prüfbar (Haystacks von ~48 Sessions, Split 248/252) und
+zeigt in beiden Hälften Schaden: −8,9 pp und −9,9 pp, beide KI vollständig
+unter null. Auch dort trägt die Form also nicht.
+
+### 8.9 Was wir nachträglich NICHT getan haben
+
+Zwei Entscheidungen, die den Befund hätten freundlicher aussehen lassen und
+bewusst unterblieben sind:
+
+**Der `kind`-Slice wurde nicht nachregistriert.** Als die Abdeckungszahlen
+zeigten, dass die deskriptive Achse günstiger schneidet, war das formale Fenster
+noch offen — es existierte keine Rerank-Zahl. Das formale Kriterium ist aber
+nicht das richtige. Das richtige lautet: *Weiß ich schon, in welche Richtung der
+Slice schneidet?* Und das war bekannt. **Das erkenntnistheoretische Fenster
+schließt vor dem formalen.** Die Achsenzahlen stehen deshalb als
+nicht-vorangemeldete, exploratorische Einordnung im Bericht und tragen keine
+Empfehlung.
+
+**Der Primärtest wurde nicht auf die erreichbare Teilmenge verschoben**, obwohl
+die Verdünnung mit 19,9 % strukturellem Nullbeitrag beziffert und bekannt war.
+Er lief auf dem Nenner, auf dem er angemeldet war. (Es hätte ohnehin nichts
+geändert: +0,3 statt +0,2 pp.)
+
+### 8.10 Die Lehre, die über #501 hinausgeht
+
+Viermal in einer Nacht dasselbe Muster, jedes Mal an anderer Stelle:
+
+| Regel | stand geschrieben in | ausgeführt hat sie |
+|---|---|---|
+| „`ms-marco` darf nicht auf dem deutschen Satz laufen" | Messplan §6 + Registrierung | niemand — `--models ms-marco` lief anstandslos über 272 deutsche Fälle |
+| „ein Pool-Split, der nicht splittet, ist kein Ergebnis" | nirgends | niemand — `by_pool: { large: { n: 584 } }` hätte wie ein Befund ausgesehen |
+| „unter 150 assoziativen Fällen: NICHT AUSWERTBAR" (§18.1) | `cue-experiment.json`, seit 28.08. | niemand — und 137 liegt **über** der allgemeinen Schwelle von 30, es hätte also nichts gegriffen |
+| „der Kontrollsatz trägt keine Empfehlung" | Registrierung | niemand — es stand nur im Text |
+
+Alle vier führen jetzt aus: als Wächterfunktion, als Entartungsprüfung, als
+eigene Mindestfallzahl, als Feld im Artefakt selbst. **Eine Regel, die dasteht,
+während nichts sie ausführt, ist keine Regel** — sie ist eine Absichtserklärung,
+die bei der nächsten Messung genau dann nicht greift, wenn es darauf ankommt.
+
+Dazu eine fünfte, spezifischere: **§18.1 verlangt, deskriptive und assoziative
+Fälle getrennt auszuweisen.** Diese Voranmeldung hat den Sprachschnitt sorgfältig
+geregelt und die Cue-Achse übersehen, obwohl sie im selben Satz registriert ist.
+Ein künftiger Primärtest über diesen Gold-Satz gehört **von vornherein** nach
+Achse geschnitten — oder muss begründen, warum eine Mischung gewollt ist.
+
+### 8.11 Offene Punkte für Daniel
+
+1. **`weak_result` feuert nie** (0 von 1084 Fällen über beide Sätze). Richtig
+   kalibriert oder tot? Eigenständige Untersuchung, unabhängig von #501.
+2. **Der Deckel auf der deskriptiven Achse liegt bei 87,5 %**, und 12,5 % der
+   deskriptiven Fälle haben ihr Gold nirgends im 40er-Pool. Das ist ein
+   Abruf-Thema, kein Ranking-Thema — also die Richtung, in die #103/#118 **nicht**
+   zeigten. Ob es sich lohnt, ist eine Produktfrage.
+3. **`gold-blind` liegt auf der deskriptiven Achse unter deren Durchschnitt.**
+   Beobachtung, keine Diagnose; die Ursache ist nicht untersucht.
+4. **#119 bleibt unberührt.** Dieser Befund spricht **nicht** gegen einen
+   Cross-Encoder in der Schreibbahn: Dort filtert er Expansionen gegen ihr
+   eigenes Memory, statt Kandidaten gegen eine Query zu ordnen — eine andere
+   Aufgabe, und die hier gemessene sagt nichts über jene.
+5. **`@huggingface/transformers` kann entfernt werden**, sobald dieser Befund
+   akzeptiert ist — so registriert („removed again if #501 ends in 'close it'").
+   Ich habe es **nicht** getan: Der Harness soll reproduzierbar bleiben, bis die
+   Entscheidung steht. Umkehrbare Annahme, ein Commit.
