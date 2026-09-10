@@ -1,0 +1,234 @@
+{
+  "$comment": "The external LongMemEval arm (#500), registered before it may be quoted. Every other recall number this project owns is self-referential — the gold sets are harvested from our own vault and the persona queries are generated from our own title+summary — so an outside number is the whole point of this arm, and an outside number that is quietly measured under a different protocol than the ones it is placed beside is worse than none. This file fixes the protocol, names the two figures it is compared against by their id in foreign-figures.json, and carries the measurement. `checkLongMemEvalRegistration` in src/registrations.ts is the program that reads it.",
+  "$comment_archive": "The artifacts live at ~/.bastra/longmemeval-runs/2026-09-09, with a committed excerpt (identities, summaries and per-file sha256) at registrations/longmemeval-results.json so the figures stay checkable without the large files. Deliberately NOT ~/.bastra/eval-runs (#446): that directory holds the registered M0/M1 baselines cited by path from m1-tolerances.json and stands at 500 entries, untouched. The harness writes nowhere but its --out path — the copy into the archive was made by hand, and a test pins that no source file in this arm can even resolve a home-directory path.",
+  "schema_version": 1,
+  "status": "numbers_registered",
+  "harness": "packages/eval/src/longmemeval-run.ts",
+  "loader": "packages/eval/src/longmemeval-dataset.ts",
+  "fetch": "packages/eval/scripts/fetch-longmemeval.sh",
+  "corpus": {
+    "dataset": "LongMemEval",
+    "citation": "Zhong et al., ICLR 2025, arXiv:2410.10813",
+    "license": "MIT",
+    "variant": "S (cleaned)",
+    "file": "longmemeval_s_cleaned.json",
+    "source": "huggingface.co/datasets/xiaowu0162/longmemeval-cleaned",
+    "n_questions": 500,
+    "n_sessions": 23867,
+    "$comment_variant": "S, not M and not Oracle. Both figures in `compared_against` are measured on S-cleaned: MemPalace's README passes longmemeval_s_cleaned.json to its bench script, agentmemory's LONGMEMEVAL.md names the cleaned repo as its source. Oracle contains only the gold sessions, so retrieval on it is close to trivial; M multiplies the haystack roughly tenfold. A number from either is a different task and may not be placed beside these two."
+  },
+  "protocol": {
+    "index_scope": "one fresh index per question over that question's own haystack",
+    "granularity": "session — one document per haystack session",
+    "document_text": "the session's turns verbatim, `role: content` newline-joined (--turns all); no summarisation, no extraction, no model at write time",
+    "query": "the raw question text, unrewritten",
+    "metric": "recall_any@k — a hit is any gold session id in the top k",
+    "reranker": "none",
+    "llm_in_loop": "none, at either end",
+    "$comment_protocol": "Points 1-5 are matched to the two reference harnesses deliberately, so that what differs between the numbers is the retriever and not the setup. The one axis on which the two references themselves disagree is document_text: MemPalace joins the USER turns only, agentmemory joins both roles. We follow agentmemory, and `--turns user` runs the other convention."
+  },
+  "arms": [
+    {
+      "id": "bm25",
+      "call": "SearchIndex.recall — production BM25, unmodified",
+      "compare_to": "agentmemory's 86.2% BM25-only row"
+    },
+    {
+      "id": "hybrid",
+      "call": "SearchIndex.recallHybrid — production BM25 + EmbeddingIndex + fuseRRF, unmodified",
+      "compare_to": "agentmemory's 95.2% and MemPalace's 96.6%"
+    }
+  ],
+  "$comment_survival": "The survival metric of #103 is `lift(far)/lift(near)` over the recall_when ablation. LongMemEval sessions carry no authored recall_when, so that lever does not exist here and that number is NOT computable on this corpus. The harness keeps the formula and states the substituted lever: control is the lexical arm, treatment is the hybrid arm, so survival(dense) is the fraction of the dense arm's benefit that holds when the question shares little vocabulary with its gold session. near/far is split at the median coverage because the 0.30 cut was calibrated against short trigger phrases and puts nearly every question on the near side of a whole transcript.",
+  "compared_against": [
+    "mempalace-longmemeval-r5",
+    "agentmemory-longmemeval-r5"
+  ],
+  "$comment_configurations": "Two configurations, because the two figures this arm is placed beside do not share a protocol. Writing that down as a caveat would have left the registry's own rule blocking the MemPalace pairing on `top_k`; running the second configuration removes it instead. Every other axis — variant, per-question index, session granularity, recall_any@k, all 500 questions with the abstention items kept, no reranker, no LLM — is identical across both, so what differs between the two rows is exactly what differs between the two reference harnesses.",
+  "configurations": [
+    {
+      "id": "default",
+      "matches": "agentmemory-longmemeval-r5",
+      "cli": "--arms bm25,hybrid --k 20",
+      "turns": "all — `role: content`, both sides of the session, as agentmemory's chunkSessionToText does",
+      "self_figure": {
+        "id": "bastra-recall-longmemeval-r5",
+        "system": "bastra-recall",
+        "evidence_class": "project_self_measurement",
+        "source": "packages/eval/src/longmemeval-run.ts",
+        "locus": "registrations/longmemeval-run.json, configurations[].measurement.results",
+        "reader": "none — retrieval only, no answer generation",
+        "judge": "none — recall_any@k against answer_session_ids, no judged answer",
+        "top_k": "R@5 from a top-20 candidate list",
+        "top_k_note": "longmemeval-run.ts is called with --k 20, as agentmemory searches with limit 20",
+        "context_budget": "none — no reader, so nothing is fitted into a context",
+        "retriever_class": "lexical+dense fused, no reranker",
+        "retriever_class_note": "SearchIndex.recallHybrid — production BM25 + EmbeddingIndex, fused with fuseRRF, nothing on the query path"
+      },
+      "measurement": {
+        "command": "npm run longmemeval --workspace=@bastra-recall/eval -- --corpus <s_cleaned> --arms bm25,hybrid --k 20 --out <path>",
+        "embedding_model": "embeddinggemma (768d, Ollama), the production default",
+        "run_out": "~/.bastra/longmemeval-runs/2026-09-09/longmemeval-final.json",
+        "dataset_hash": "7e0305dd37722ff4718467d7ec176b72bcdb1e32251eb09e01c8177d3351ae8f",
+        "code_hash": "36bb59514190b3f35f6a2d51bca3c949d76546175d67234e6a5c5b609bdf44e8",
+        "results": {
+          "bm25": {
+            "r@1": 0.614,
+            "r@3": 0.776,
+            "r@5": 0.846,
+            "r@10": 0.92,
+            "r@20": 0.972,
+            "ndcg@10": 0.709,
+            "mrr": 0.7164
+          },
+          "hybrid": {
+            "r@1": 0.796,
+            "r@3": 0.952,
+            "r@5": 0.982,
+            "r@10": 0.986,
+            "r@20": 0.996,
+            "ndcg@10": 0.8808,
+            "mrr": 0.8747
+          }
+        },
+        "n_questions": 500,
+        "n_documents_indexed": 23854,
+        "survival_dense": 2.5972,
+        "far_retention": {
+          "bm25": 0.8429,
+          "hybrid": 0.9837
+        },
+        "abstention_subset": {
+          "n": 30,
+          "kept": true,
+          "note": "question ids ending in `_abs`; kept and scored, because neither reference harness drops them",
+          "r@5": {
+            "bm25": 0.6667,
+            "hybrid": 0.9667
+          }
+        },
+        "engine": {
+          "core_src_sha256": "d987a003aaa76a0495d67ae6371951e8b7b233a9e2d8d319cf36855540f394dd",
+          "core_src_files": 50,
+          "core_src_last_commit": "dd75532, 2026-09-08 19:52:39 +0200",
+          "repo_commit": null,
+          "repo_dirty": true,
+          "backfilled": true,
+          "$comment": "BACKFILLED BY HAND. The three runs predate the `engine` block the harness now writes itself (added after d955191), so these values were not printed by the runs — saying otherwise would let a hand-entered field pass as machine-recorded. They are nonetheless verifiable: `packages/core/src` carries no uncommitted changes and was last committed in dd75532 on 2026-09-08 19:52, a day before the runs, so the content hash above IS the engine that produced the numbers and re-hashing that directory at dd75532 reproduces it. `repo_commit` is null on purpose rather than filled with a plausible SHA: HEAD moved three times DURING the runs (57a670e 21:03, 70ac4b3 21:05, 58d48c0 21:27, all from a sibling agent working on #501 in packages/eval) and the harness itself was still uncommitted, so no single commit describes the state that ran. The engine hash is the pin; the commit would have been the weaker claim even if one existed."
+        }
+      },
+      "same_retriever_class": "agentmemory-longmemeval-r5",
+      "$comment_class": "Here `matches` and `same_retriever_class` are the same figure, and that is what makes this the comparison that carries: agentmemory's 95.2% is their BM25+Vector row with, in their words, \"No LLM in the loop\" — the same retriever class as ours, at the same depth, on the same 500."
+    },
+    {
+      "id": "mempalace-matched",
+      "matches": "mempalace-longmemeval-r5",
+      "cli": "--arms bm25,hybrid --k 50 --turns user",
+      "turns": "user — the user turns only, as MemPalace's session granularity does",
+      "self_figure": {
+        "id": "bastra-recall-longmemeval-r5-mempalace-matched",
+        "system": "bastra-recall",
+        "evidence_class": "project_self_measurement",
+        "source": "packages/eval/src/longmemeval-run.ts",
+        "locus": "registrations/longmemeval-run.json, configurations[].measurement.results",
+        "reader": "none — retrieval only, no answer generation",
+        "judge": "none — recall_any@k against answer_session_ids, no judged answer",
+        "top_k": "R@5 from a top-50 candidate list",
+        "top_k_note": "longmemeval-run.ts is called with --k 50, as benchmarks/longmemeval_bench.py uses n_results=50",
+        "context_budget": "none — no reader, so nothing is fitted into a context",
+        "retriever_class": "lexical+dense fused, no reranker",
+        "retriever_class_note": "SearchIndex.recallHybrid — production BM25 + EmbeddingIndex, fused with fuseRRF, nothing on the query path"
+      },
+      "measurement": {
+        "command": "npm run longmemeval --workspace=@bastra-recall/eval -- --corpus <s_cleaned> --arms bm25,hybrid --k 50 --turns user --out <path>",
+        "embedding_model": "embeddinggemma (768d, Ollama), the production default",
+        "run_out": "~/.bastra/longmemeval-runs/2026-09-09/longmemeval-mempalace-matched.json",
+        "dataset_hash": "475b5423e2d1ab62226bf182a1e2b525cde80b5af5e3f9cd9a71e936d6742ceb",
+        "code_hash": "36bb59514190b3f35f6a2d51bca3c949d76546175d67234e6a5c5b609bdf44e8",
+        "results": {
+          "bm25": {
+            "r@1": 0.602,
+            "r@3": 0.778,
+            "r@5": 0.828,
+            "r@10": 0.896,
+            "r@20": 0.956,
+            "ndcg@10": 0.6905,
+            "mrr": 0.7088
+          },
+          "hybrid": {
+            "r@1": 0.832,
+            "r@3": 0.944,
+            "r@5": 0.972,
+            "r@10": 0.982,
+            "r@20": 0.996,
+            "ndcg@10": 0.8919,
+            "mrr": 0.8919
+          }
+        },
+        "n_questions": 500,
+        "n_documents_indexed": 23854,
+        "survival_dense": 3.7265,
+        "far_retention": {
+          "bm25": 0.7588,
+          "hybrid": 0.9531
+        },
+        "abstention_subset": {
+          "n": 30,
+          "kept": true,
+          "note": "question ids ending in `_abs`; kept and scored, because neither reference harness drops them",
+          "r@5": {
+            "bm25": 0.7,
+            "hybrid": 0.9667
+          }
+        },
+        "engine": {
+          "core_src_sha256": "d987a003aaa76a0495d67ae6371951e8b7b233a9e2d8d319cf36855540f394dd",
+          "core_src_files": 50,
+          "core_src_last_commit": "dd75532, 2026-09-08 19:52:39 +0200",
+          "repo_commit": null,
+          "repo_dirty": true,
+          "backfilled": true,
+          "$comment": "BACKFILLED BY HAND. The three runs predate the `engine` block the harness now writes itself (added after d955191), so these values were not printed by the runs — saying otherwise would let a hand-entered field pass as machine-recorded. They are nonetheless verifiable: `packages/core/src` carries no uncommitted changes and was last committed in dd75532 on 2026-09-08 19:52, a day before the runs, so the content hash above IS the engine that produced the numbers and re-hashing that directory at dd75532 reproduces it. `repo_commit` is null on purpose rather than filled with a plausible SHA: HEAD moved three times DURING the runs (57a670e 21:03, 70ac4b3 21:05, 58d48c0 21:27, all from a sibling agent working on #501 in packages/eval) and the harness itself was still uncommitted, so no single commit describes the state that ran. The engine hash is the pin; the commit would have been the weaker claim even if one existed."
+        }
+      },
+      "same_retriever_class": "mempalace-longmemeval-hybrid-r5",
+      "$comment_class": "`matches` names the figure whose MEASUREMENT CONFIGURATION this run reproduces — same absent reader, same absent judge, same top-50 depth, same user-turn document. It does NOT mean the two systems retrieve alike, and here they do not: MemPalace's 96.6% is their DENSE-ONLY row, ours is BM25 + dense + RRF. Putting our 97.2% beside their 96.6% therefore compares a hybrid against a non-hybrid baseline, and reads as a win that was never earned. The row in their table that matches our retriever class is `same_retriever_class` below, at 98.4% — ABOVE us. Both are quoted, and the second one first."
+    }
+  ],
+  "$comment_headline": "WHAT STANDS AGAINST WHAT. Against agentmemory the comparison is like-for-like — their fused BM25+vector row, no reranker, 500 questions — and our default configuration is ahead, 98.2% against 95.2%, with the lexical control BELOW theirs (84.6% against 86.2%). Against MemPalace it is not: their published 96.6% is a DENSE-ONLY baseline, and their row that matches our retriever class stands at 98.4%, above our 97.2%. So the honest summary is that this arm is ahead of one published system and behind the comparable configuration of the other. An earlier version of this registration quoted only the 96.6% and read 97.2% as clearing it; that was a hybrid measured against a non-hybrid, and it was wrong. If a reference-matched configuration scores lower than our default, the lower number is the one quoted. A configuration is chosen to match a comparator, never to win against one.",
+  "robustness_check": {
+    "$comment": "The same default configuration on the ORIGINAL, uncleaned longmemeval_s.json. `cleaned` is an upstream release, not a filter of ours — it drops no question and changes no gold set, but it removes 1,243 distractor sessions from the haystacks we index (25,097 vs 23,854 documents). Running both says how much of the result rests on that, and the answer is: almost none.",
+    "corpus": "longmemeval_s.json (original, deprecated upstream in favour of the cleaned release)",
+    "cli": "--arms bm25,hybrid --k 20",
+    "dataset_hash": "7073524683926882c9bb20101dd3715448750757004bd90e20a1a0c82f7a81f4",
+    "code_hash": "36bb59514190b3f35f6a2d51bca3c949d76546175d67234e6a5c5b609bdf44e8",
+    "n_questions": 500,
+    "n_documents_indexed": 25097,
+    "results": {
+      "bm25": {
+        "r@1": 0.614,
+        "r@3": 0.776,
+        "r@5": 0.854
+      },
+      "hybrid": {
+        "r@1": 0.798,
+        "r@3": 0.946,
+        "r@5": 0.978
+      }
+    },
+    "survival_dense": 2.8112,
+    "engine": {
+      "core_src_sha256": "d987a003aaa76a0495d67ae6371951e8b7b233a9e2d8d319cf36855540f394dd",
+      "core_src_files": 50,
+      "core_src_last_commit": "dd75532, 2026-09-08 19:52:39 +0200",
+      "repo_commit": null,
+      "repo_dirty": true,
+      "backfilled": true,
+      "$comment": "BACKFILLED BY HAND. The three runs predate the `engine` block the harness now writes itself (added after d955191), so these values were not printed by the runs — saying otherwise would let a hand-entered field pass as machine-recorded. They are nonetheless verifiable: `packages/core/src` carries no uncommitted changes and was last committed in dd75532 on 2026-09-08 19:52, a day before the runs, so the content hash above IS the engine that produced the numbers and re-hashing that directory at dd75532 reproduces it. `repo_commit` is null on purpose rather than filled with a plausible SHA: HEAD moved three times DURING the runs (57a670e 21:03, 70ac4b3 21:05, 58d48c0 21:27, all from a sibling agent working on #501 in packages/eval) and the harness itself was still uncommitted, so no single commit describes the state that ran. The engine hash is the pin; the commit would have been the weaker claim even if one existed."
+    },
+    "run_out": "~/.bastra/longmemeval-runs/2026-09-09/longmemeval-s-uncleaned.json"
+  },
+  "$comment_determinism": "The default configuration was run twice across a cosmetic edit to the harness. The artifacts are identical in EVERY field except code_hash itself — not to four decimals but exactly, survival_dense to its last digit, and all 500 per-question ranking lists in the same order. An earlier wording here claimed only \"identical to four decimals\" and understated its own evidence.",
+  "$comment_engine": "Why an engine hash sits beside the code hash at all: `code_hash` covers this arm's harness and loader, the convention goldset-run.ts:hashCode() follows and the right one for an internal ablation, where both arms see the same engine and its version cancels. For an EXTERNAL figure it is the wrong pin — #500 asks for a number that is versioned and re-runnable, and what a reader of \"97.2% R@5\" needs later is which revision of search.ts earned it, not which revision of the printer printed it. Runs after d955191 record this block themselves; the ones below carry it backfilled and say so.",
+  "$comment_missing_arm": "The comparison that WOULD be like-for-like against MemPalace's 96.6% is our dense arm alone, and this harness has no such arm — `--arms` offers bm25 and hybrid only. That is the measurement missing from this result, named rather than worked around; adding a vector-only arm is the obvious next step and is deliberately not shipped untested here."
+}

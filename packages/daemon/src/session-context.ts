@@ -15,8 +15,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Vault } from "@bastra-recall/core";
 import type { ToolDeps } from "./tool-handlers.js";
 import { sendJsonPlain } from "./webui.js";
-import { detectProject } from "@bastra-recall/core/topics";
 import { MAX_BODY_BYTES, readJsonBody } from "./http-util.js";
+import { projectForLane } from "./scope-filter.js";
 import {
   assembleSessionSections,
   renderSessionContext,
@@ -84,7 +84,9 @@ export async function handleSessionContextPost(
     typeof b.project === "string" && b.project.length > 0
       ? b.project
       : typeof b.cwd === "string"
-        ? detectProject(b.cwd)
+        ? // §20.5: dieselbe Konfidenz-Regel wie die Lanes — eine geratene
+          // Erkennung (`~/.buzz` → ".buzz") ist kein Projekt.
+          projectForLane(b.cwd)
         : null;
   const budget = (b.budget ?? {}) as Record<string, unknown>;
   const caps = (b.caps ?? {}) as Record<string, unknown>;
@@ -106,8 +108,30 @@ export async function handleSessionContextPost(
       sharedRecallLang: toolDeps.sharedRecallLang,
       embeddingDegraded: toolDeps.embeddingDegraded,
       evidenceGateEnabled: toolDeps.evidenceGateEnabled,
+      // #491: Der Schatten gehört AUCH auf diesen Weg — die SessionStart-Lane
+      // ist die mit dem echten Fristendruck (BM25 kostet dort 10 ms, die
+      // Wartezeit IST der dichte Arm) und damit die, für die eine gelernte
+      // Zahl überhaupt etwas ändern würde.
+      deadlineShadow: toolDeps.deadlineShadow,
     },
     cross_project: b.cross_project === true,
+    // Die Deadline des dichten Arms reist mit dem Aufruf, nicht mit dem
+    // Endpunkt: Nur die SessionStart-Lane schickt sie, und nur sie bekommt
+    // damit mehr als die hookweiten 150 ms. Ungesetzt bleibt alles wie bisher.
+    ...(typeof b.vector_deadline_ms === "number"
+      ? { vector_deadline_ms: b.vector_deadline_ms }
+      : {}),
+    // #494: Der Verzicht auf den dichten Arm reist genauso mit dem Aufruf.
+    // Nur der SessionStart auf kaltem Modell setzt ihn.
+    ...(b.lexical_only === true ? { lexical_only: true } : {}),
+    // Dasselbe für das Schatten-Budget: reist mit dem Aufruf, nicht mit dem
+    // Endpunkt. Ungesetzt bleibt es bei den hookweiten 200.
+    ...(typeof b.hook_budget_ms === "number" ? { hook_budget_ms: b.hook_budget_ms } : {}),
+    // #493: Die Gruppierung eines Sitzungsstarts reist mit dem Aufruf bis auf
+    // jedes einzelne `hook_recall`-Event.
+    ...(typeof b.session_start_call_id === "string"
+      ? { session_start_call_id: b.session_start_call_id }
+      : {}),
     caps: {
       ...(num(caps.pinned) !== undefined ? { pinned: num(caps.pinned) } : {}),
       ...(num(caps.hints) !== undefined ? { hints: num(caps.hints) } : {}),

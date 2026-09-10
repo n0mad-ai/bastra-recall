@@ -6,7 +6,7 @@
  * content/trigger edit changes the revision hash and starts a clean trial.
  */
 import { createHash } from "node:crypto";
-import { envInt } from "./env.js";
+import { envFirst, envInt } from "./env.js";
 import type { UsageAggregate } from "./usage-sidecar.js";
 
 const DIRECTIVE_TYPES = new Set(["preference", "user-preference", "meta-working", "workflow"]);
@@ -33,6 +33,23 @@ export interface SuppressedHint {
   type: string;
   surfaced: number;
   tokens_est: number;
+}
+
+export type HintSuppressionMode = "off" | "shadow" | "live";
+
+/**
+ * #484: the breaker decides on explicit loads alone — `acted_on` can never be
+ * the deciding half, because it is only ever written for memories that went
+ * through the load path (telemetry.ts matchLoadedMemories iterates
+ * `loadedMemories`). Since #478 established that loaded/surfaced is a lower
+ * bound — a hint can be read and followed inside the injected block without
+ * the note ever being opened — removing on that basis cuts a class of hints
+ * that were in fact used. Default is `shadow`: count and report what WOULD be
+ * removed, remove nothing.
+ */
+export function hintSuppressionMode(): HintSuppressionMode {
+  const raw = (envFirst("BASTRA_HINT_SUPPRESS") ?? "shadow").toLowerCase();
+  return raw === "off" || raw === "live" ? raw : "shadow";
 }
 
 /** Eight actual emissions means eight sessions under the per-session MAX_SHOW=1 guard. */

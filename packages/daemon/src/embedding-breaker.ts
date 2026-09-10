@@ -18,7 +18,7 @@
  * back to an empty vector leg, so a BreakerOpenError degrades recallHybrid
  * to BM25-only without touching any search code.
  */
-import type { EmbeddingProvider } from "@bastra-recall/core";
+import type { EmbeddingProvider, EmbedWithMeta } from "@bastra-recall/core";
 
 /** K — consecutive failures before the breaker opens. */
 export const BREAKER_FAILURE_THRESHOLD = 3;
@@ -165,14 +165,28 @@ export class BreakerGuardedProvider implements EmbeddingProvider {
   }
 
   async embed(texts: string[]): Promise<Float32Array[]> {
+    return (await this.embedWithMeta(texts)).vectors;
+  }
+
+  /**
+   * #493: derselbe Schutz für den Weg, der die Providerangaben mitbringt
+   * (Ollama meldet `load_duration`). Ohne diese Weiterleitung hätte der
+   * Breaker die Grundwahrheit über die Residenz weggekapselt — der Index sieht
+   * nur den gewrappten Provider, und `embedWithMeta` wäre dort schlicht nicht
+   * vorhanden gewesen. Ein innerer Provider ohne die Fähigkeit bekommt hier
+   * dieselbe Antwort wie überall: `loadMs: null`, keine Angabe.
+   */
+  async embedWithMeta(texts: string[]): Promise<EmbedWithMeta> {
     // Empty input returns [] without a provider roundtrip — no evidence of
     // health either way, so it must neither trip nor close the breaker.
-    if (texts.length === 0) return this.inner.embed(texts);
+    if (texts.length === 0) return { vectors: await this.inner.embed(texts), loadMs: null };
     if (!this.breaker.shouldAttempt(this.now())) {
       throw new BreakerOpenError(this.breaker.lastFailureMessage());
     }
     try {
-      const out = await this.inner.embed(texts);
+      const out = this.inner.embedWithMeta
+        ? await this.inner.embedWithMeta(texts)
+        : { vectors: await this.inner.embed(texts), loadMs: null };
       this.breaker.recordSuccess();
       return out;
     } catch (err) {

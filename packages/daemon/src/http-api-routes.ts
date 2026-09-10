@@ -29,6 +29,8 @@ import {
 } from "./documents-write-handler.js";
 import { addFloor, affirm, release } from "./floors.js";
 import { saveProductDocHandler } from "./product-doc-handler.js";
+import { recoverCallArguments } from "./call-corruption.js";
+import { TOOL_ARG_EXPECTATIONS } from "./tool-defs.js";
 
 // ─── /api/v1 dispatcher ──────────────────────────────────────────
 
@@ -46,6 +48,15 @@ export async function dispatchApi(
 ): Promise<unknown | undefined> {
   const { toolDeps, documentWriteEnabled } = ctx;
   const { vault, search } = toolDeps;
+
+  // #482: the corrupted-arguments check belongs at the boundary, not in one
+  // handler. This is where every tool call from the forwarder arrives, so a
+  // client that turns its JSON arguments into XML gets the same honest answer
+  // whatever it called — instead of anonymous "received undefined" lines.
+  // 08.09.: and it repairs what it can. A `body` glued into `summary` by the
+  // client's XML fallback is fully present — only its framing was lost, so the
+  // call runs on the recovered arguments instead of costing the user the save.
+  body = recoverCallArguments(tool, body, TOOL_ARG_EXPECTATIONS) as Record<string, unknown>;
 
   switch (tool) {
     case "recall":

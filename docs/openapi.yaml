@@ -273,6 +273,18 @@ components:
         verbosity:
           type: string
           enum: [lean, full]
+        max_tokens:
+          type: integer
+          minimum: 1
+          description: >
+            Optional context budget for this call, in estimated tokens
+            (chars/4 — the same estimator the context governor uses, so both
+            budgets mean the same number). Hits are emitted in rank order
+            until the serialized payload would exceed it; the rest are
+            dropped, and the response carries truncated_by_budget plus
+            dropped_by_budget. k stays the hard upper bound — the budget can
+            only remove hits, never add them. Omitted means no budget, and
+            the response is byte-identical to one without the field.
         min_score:
           type: number
           description: >
@@ -306,6 +318,16 @@ components:
             high score is rank-1-of-nothing. Absent means "not weak" — it is
             never sent as false, which keeps the lean payload lean. Purely
             informational: it filters nothing.
+        truncated_by_budget:
+          type: boolean
+          description: >
+            Present and true when max_tokens dropped ranked hits from this
+            response. Absent means the response is complete.
+        dropped_by_budget:
+          type: integer
+          description: >
+            How many ranked hits the budget left out. Only sent next to
+            truncated_by_budget.
         no_home:
           type: boolean
           description: >

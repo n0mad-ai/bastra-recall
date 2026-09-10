@@ -2,7 +2,7 @@
 description: Persistent memory across sessions via the bastra-recall MCP server — recall before acting, save durable rules and hard-won fixes.
 alwaysApply: true
 ---
-<!-- GENERATED from packages/skill/SKILL.md (canonical 8d2ece37ca9e36f3) by scripts/build-skill-projections.mjs — do not edit; edit the canonical file and run `npm run skill:build` -->
+<!-- GENERATED from packages/skill/SKILL.md (canonical 43ebfe31a548d2d7) by scripts/build-skill-projections.mjs — do not edit; edit the canonical file and run `npm run skill:build` -->
 
 # bastra-recall — autonomous teammate memory
 
@@ -32,6 +32,8 @@ Call `recall(query, k=5)` proactively in these moments:
 | **Before `save_memory`** | the title/topic — duplicate check |
 
 **What goes into a query:** ask the vault what only memory can answer — durable preferences, lessons, decisions, past facts and documents. What is already in the prompt or an upload, or findable by reading the project's files and logs, is not a recall — it is context you already have. Decide what you are looking for, then phrase THAT; never shovel a convoluted prompt's background into queries.
+
+**When context is tight, say so in tokens.** `k` counts results, not context, and the same `k=5` answer varies by more than 2× in size. Pass `max_tokens` — an optional budget for that one call: hits come back in rank order until the payload would exceed it, and a response that had to leave hits out says so with `truncated_by_budget` and `dropped_by_budget`. `k` stays the hard upper bound, and without `max_tokens` nothing changes.
 
 `recall` is **step 1 of two**: it returns lean candidates, no bodies. Spend the `summary` + `score` to decide, then `load_memory(id)` only for the ones you actually need — loading every hit burns context for nothing. Never ignore a `lesson` hit that matched on `recall_when` or title. Don't reload a memory you already loaded this turn. (Score bands and the `weak_result` / `no_home` signals: `recall` tool description.)
 

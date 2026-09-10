@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { recallHandler, RecallArgs, type ToolDeps } from "../src/tool-handlers.js";
-import { mergeBatchResults } from "../src/recall-batch.js";
+import { mergeBatchResults, projectRecallResult } from "../src/recall-batch.js";
 
 function memoryMd(id: string, title: string, trigger: string): string {
   const ts = new Date().toISOString();
@@ -201,4 +201,65 @@ test("verschiedene Armmengen werden über die Ränge fusioniert, nicht über die
   assert.equal(gleich.score_kind, "rrf");
   assert.deepEqual(gleich.score_arms, ["bm25", "vector"]);
   assert.equal(gleich.score_version, "rrf-1");
+});
+
+/**
+ * 08.09.2026: Der Forwarder ließ die Skalenangaben des Daemons fallen, und der
+ * Merge las die Abwesenheit fail-closed als „anderer Score-Raum". Ergebnis:
+ * JEDER Batch war gemischt und meldete `unfused`, obwohl beide Arme liefen.
+ */
+test("projectRecallResult reicht Score-Raum und Ehrlichkeitsflags durch", () => {
+  const out = projectRecallResult("q", {
+    hits: [{ id: "a", score: 152.2 }],
+    vault_size: 1149,
+    recall_id: "r1",
+    latency_ms: 61,
+    score_kind: "rrf",
+    score_arms: ["bm25", "vector"],
+    score_version: "rrf-1",
+    weak_result: true,
+  });
+  assert.equal(out.score_kind, "rrf");
+  assert.deepEqual(out.score_arms, ["bm25", "vector"]);
+  assert.equal(out.score_version, "rrf-1");
+  assert.equal(out.weak_result, true);
+  // Abwesendes bleibt abwesend — kein erfundenes `unfused: false`.
+  assert.ok(!("unfused" in out));
+  assert.ok(!("no_home" in out));
+});
+
+test("zwei fusionierte Sub-Ergebnisse aus dem Forwarder bleiben ein Score-Raum", () => {
+  const sub = (id: string, score: number) =>
+    projectRecallResult("q", {
+      hits: [{ id, score }],
+      vault_size: 1149,
+      recall_id: id,
+      latency_ms: 30,
+      score_kind: "rrf",
+      score_arms: ["bm25", "vector"],
+      score_version: "rrf-1",
+    }) as Parameters<typeof mergeBatchResults>[1][number];
+  const merged = mergeBatchResults(["a", "b"], [sub("a", 152.2), sub("b", 124.9)], 5);
+  assert.equal(merged.score_kind, "rrf");
+  assert.equal(merged.merged_by, "score");
+  assert.ok(!merged.unfused, "beide Arme liefen — der Batch darf kein Band absprechen");
+});
+
+test("ein degradiertes Sub-Ergebnis macht den Batch weiterhin bandlos", () => {
+  const fused = projectRecallResult("a", {
+    hits: [{ id: "a", score: 152.2 }],
+    score_kind: "rrf",
+    score_arms: ["bm25", "vector"],
+    score_version: "rrf-1",
+  }) as Parameters<typeof mergeBatchResults>[1][number];
+  const degraded = projectRecallResult("b", {
+    hits: [{ id: "b", score: 405585 }],
+    score_kind: "bm25",
+    unfused: true,
+    degraded: "vector-deadline",
+  }) as Parameters<typeof mergeBatchResults>[1][number];
+  const merged = mergeBatchResults(["a", "b"], [fused, degraded], 5);
+  assert.equal(merged.score_kind, "bm25");
+  assert.equal(merged.unfused, true);
+  assert.equal(merged.merged_by, "query-rank-fusion");
 });

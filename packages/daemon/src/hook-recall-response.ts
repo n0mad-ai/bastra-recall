@@ -36,6 +36,13 @@ export interface HookRecallResponse {
   score_kind?: "rrf" | "bm25";
   /** Kurzform von `score_kind === "bm25"`. */
   unfused?: boolean;
+  /** #342: WARUM nur ein Arm lief — `vector-arm-timeout` (Deadline gerissen)
+   *  oder `vector-arm-empty` (der Arm hatte nichts zu sagen). Abwesend heißt
+   *  „kein Arm ist ausgefallen"; das ist nicht dasselbe wie fusioniert, denn
+   *  auf einer Maschine ohne Embeddings gibt es gar keinen zweiten Arm.
+   *  `/hook/recall` sendet das Feld seit #342 als `degraded` — die Lanes haben
+   *  es beim Parsen bisher fallen lassen. */
+  degraded?: string;
 }
 
 /**

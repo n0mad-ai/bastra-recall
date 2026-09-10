@@ -284,6 +284,25 @@ function renderContextTax(c) {
   );
 }
 
+/** #484: in shadow the same candidate list is produced but nothing leaves the
+ *  payload — saying "removed"/"avoided" there reports a cut that never happened.
+ *  Wording mirrors the CLI report (src/cli/log-stats.ts). Events without the
+ *  field already count as live in the read model. */
+export function hintSuppressionLabels(modes) {
+  const list = modes ?? [];
+  const live = list.some((m) => m.mode === "live");
+  const shadow = list.some((m) => m.mode !== "live");
+  return {
+    verb: live && shadow ? "removed or would have been removed" : shadow ? "would have been removed" : "removed",
+    tokensLabel: shadow ? "hook payload" : "hook payload avoided",
+    heading: shadow ? "Most often matched" : "Most often suppressed",
+    tokensNote: shadow
+      ? "Token figures estimate the serialized lean hit at chars/4 and exclude wrapper markup; shadow calls removed nothing, so that part is not a saving."
+      : "Token savings estimate the serialized lean hit at chars/4 and exclude wrapper markup.",
+    modeLine: shadow ? `mode: ${list.map((m) => `${m.mode}×${m.calls}`).join(", ")}` : null,
+  };
+}
+
 function renderHintSuppression(hs) {
   if (!hs) {
     return section(
@@ -294,20 +313,22 @@ function renderHintSuppression(hs) {
     );
   }
   const max = Math.max(1, ...hs.byType.map((r) => r.count));
+  const l = hintSuppressionLabels(hs.modes);
   return section(
     "Cross-session hint suppression",
-    "Which repeatedly ignored fact hints were removed from automatic hook responses?",
+    `Which repeatedly ignored fact hints were ${l.verb} from automatic hook responses?`,
     h(
       "div",
       { class: "tv-figs" },
-      h("div", null, h("div", { class: "tv-fig-k" }, "hints removed"), h("div", { class: "tv-fig-v ok" }, fmt(hs.hints)), h("div", { class: "tv-fig-sub" }, `${fmt(hs.calls)} hook recall(s)`)),
-      h("div", null, h("div", { class: "tv-fig-k" }, "hook payload avoided"), h("div", { class: "tv-fig-v" }, `~${fmt(hs.tokensAvoided)}`), h("div", { class: "tv-fig-sub" }, `tokens · ${fmt(hs.unknownTokenCalls)} unknown call(s)`)),
+      h("div", null, h("div", { class: "tv-fig-k" }, `hints ${l.verb}`), h("div", { class: "tv-fig-v ok" }, fmt(hs.hints)), h("div", { class: "tv-fig-sub" }, `${fmt(hs.calls)} hook recall(s)`)),
+      h("div", null, h("div", { class: "tv-fig-k" }, l.tokensLabel), h("div", { class: "tv-fig-v" }, `~${fmt(hs.tokensAvoided)}`), h("div", { class: "tv-fig-sub" }, `tokens · ${fmt(hs.unknownTokenCalls)} unknown call(s)`)),
       h("div", null, h("div", { class: "tv-fig-k" }, "memory versions"), h("div", { class: "tv-fig-v" }, fmt(hs.uniqueMemories))),
     ),
-    table(["type", "", "removed"], hs.byType.map((r) => h("tr", null, td(r.type), barCell(r.count, max), td(fmt(r.count))))),
-    h3("Most often suppressed"),
-    table(["memory", "type", "removed", "prior surfaces"], hs.topMemories.map((r) => h("tr", null, td(r.id, "id"), td(r.type, "dim"), td(fmt(r.count)), td(fmt(r.surfaced), "dim")))),
-    note("Suppression is version-local: changing the memory text or recall_when gives it a clean trial. Token savings estimate the serialized lean hit at chars/4 and exclude wrapper markup."),
+    l.modeLine ? note(l.modeLine) : null,
+    table(["type", "", l.verb], hs.byType.map((r) => h("tr", null, td(r.type), barCell(r.count, max), td(fmt(r.count))))),
+    h3(l.heading),
+    table(["memory", "type", l.verb, "prior surfaces"], hs.topMemories.map((r) => h("tr", null, td(r.id, "id"), td(r.type, "dim"), td(fmt(r.count)), td(fmt(r.surfaced), "dim")))),
+    note(`Suppression is version-local: changing the memory text or recall_when gives it a clean trial. ${l.tokensNote}`),
   );
 }
 

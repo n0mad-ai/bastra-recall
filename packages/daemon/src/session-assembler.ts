@@ -192,6 +192,49 @@ export interface AssembleOptions {
    * Entscheidung (offener Punkt zu #265, vermutlich mit #264).
    */
   hookRecall?: HookRecallDeps;
+  /**
+   * Deadline des dichten Arms in ms, pro Aufruf (`vector_deadline_ms`).
+   *
+   * Fehlt das Feld, gilt der hookweite Default (`BASTRA_VECTOR_DEADLINE_MS`,
+   * 150) — die Prompt-Lane und der GET-Weg bleiben damit unangetastet. Gesetzt
+   * wird es nur von der SessionStart-Lane: der Deep-Dive vom 07.09.2026 hat
+   * gemessen, dass 46 % ihrer Recalls bei 150 ms einarmig zurückkommen, weil
+   * der erste Embed auf kaltem Modell ~160-180 ms braucht und diese Route
+   * keinen Prewarmer hat. Nur wirksam auf dem `hookRecall`-Weg — der GET-Weg
+   * fährt `recallHandler`, der die Deadline nicht kennt.
+   */
+  vector_deadline_ms?: number;
+  /**
+   * #494: Ohne dichten Arm erheben (`lexical_only`).
+   *
+   * Gesetzt vom SessionStart auf einem Modell, das NICHT im Speicher liegt.
+   * Vorher schickte er dort eine 50-ms-Frist — ein Embed, der sicher aufgegeben
+   * wird, dreimal parallel, neben dem Warmup, der daneben ohnehin läuft. Der
+   * Verzicht ist billiger und liefert dasselbe Ergebnis. Schlägt
+   * `vector_deadline_ms`: Wo kein Arm läuft, gibt es keine Frist zu setzen.
+   */
+  lexical_only?: boolean;
+  /**
+   * Das Budget, gegen das der Schatten-Router seine Kostenschätzung hält, in ms
+   * (`hook_budget_ms`).
+   *
+   * Fehlt das Feld, gilt der hookweite Wert (`BASTRA_HOOK_BUDGET_MS`, 200).
+   * Gesetzt wird es nur von der SessionStart-Lane, die eine andere Wanduhr hat
+   * als die Prompt-Lane. Rein diagnostisch: der Wert erreicht `routeRetrieval`
+   * und von dort ausschließlich das `shadow_route`-Telemetriefeld — kein
+   * Timeout, kein Abbruch, keine Trefferauswahl (#362 Phase 2 ist Schatten).
+   */
+  hook_budget_ms?: number;
+  /**
+   * #493: Die Klammer um die (bis zu drei) Recalls EINES Sitzungsstarts.
+   *
+   * Sie reist bis auf jedes `hook_recall`-Event durch. Ohne sie ist „20
+   * Kaltstarts" (Tor 3 aus #492) nicht von „7 Kaltstarts × 3 Recalls" zu
+   * unterscheiden, und die `session_id` beantwortet die Frage nicht: Sie
+   * bleibt über compact/clear/resume dieselbe, also über beliebig viele
+   * Starts hinweg.
+   */
+  session_start_call_id?: string | null;
   /** #263: Wer fragt. Der Endpunkt weist sich als eigene Hook-Quelle aus,
    *  sonst wären seine Recalls von denen des Forwarders nicht zu trennen.
    *  `unknown`, weil der Wert aus einem Request-Body kommt — normalisiert wird
@@ -345,6 +388,15 @@ export async function assembleSessionSections(
           // unten — es ist dieselbe Oberfläche, nur die andere Pipeline.
           client: opts.client,
           hook_source: "session-context",
+          ...(opts.vector_deadline_ms !== undefined
+            ? { vector_deadline_ms: opts.vector_deadline_ms }
+            : {}),
+          // #494: siehe `lexical_only` oben — der Verzicht reist bis an die
+          // Pipeline durch, sonst führe hier doch ein dichter Arm.
+          ...(opts.lexical_only ? { lexical_only: true } : {}),
+          ...(opts.hook_budget_ms !== undefined ? { hook_budget_ms: opts.hook_budget_ms } : {}),
+          // #493: siehe `session_start_call_id` oben.
+          ...(opts.session_start_call_id ? { session_start_call_id: opts.session_start_call_id } : {}),
         },
         query,
         startedAt,

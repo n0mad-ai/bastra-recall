@@ -17,6 +17,26 @@ const HEALTH_TIMEOUT_MS = 60_000;
 const HEALTH_POLL_INTERVAL_MS = 200;
 export const REQUEST_TIMEOUT_MS = 30_000;
 
+/**
+ * #493: Die Wanduhr, die der Forwarder mit jedem Recall MITSCHICKT
+ * (`hook_budget_ms`).
+ *
+ * Er schickte bisher keine, also fiel `/hook/recall` auf `BASTRA_HOOK_BUDGET_MS`
+ * zurück — die 200 ms der Prompt-Lane. Die Schattenzeilen der MCP-Lane lasen
+ * live `deadline_ms 1500, lane_budget_ms 200, cap_reason floor`: ein gesunder
+ * 400-ms-Arm, gemessen an einer Grenze, die für ihn nie galt.
+ *
+ * Die echte Wanduhr dieses Aufrufs ist {@link REQUEST_TIMEOUT_MS}; der Endpunkt
+ * nimmt höchstens 10 s an. Also die kleinere von beiden — sie ist damit
+ * ohnehin nie bindend, und genau das ist die Aussage: Hier wartet ein Modell
+ * auf eine Antwort, keine Hook-Frist.
+ *
+ * Steht hier und nicht in `mcp-forwarder.ts`, weil sie aus dem Timeout darüber
+ * abgeleitet ist — und weil diese Datei importierbar ist, der Einstiegspunkt
+ * daneben aber beim Import seinen Server startet.
+ */
+export const FORWARDER_HOOK_BUDGET_MS = Math.min(REQUEST_TIMEOUT_MS, 10_000);
+
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

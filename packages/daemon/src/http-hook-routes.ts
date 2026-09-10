@@ -5,6 +5,7 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type {
+  LateSettleSample,
   Vault,
   SearchIndex,
   RecallStage,
@@ -22,8 +23,16 @@ import { type SupportedLanguage } from "./learned-recall/language.js";
 import { isWeakResult, isNoHome, decideHits, type RecallDecisionHit } from "@bastra-recall/core";
 import { tokenizeWithIdentifiers } from "@bastra-recall/core";
 import { armsOf, SCORE_VERSION } from "./score-space.js";
-import { suppressRepeatedUnused } from "./hint-suppression.js";
+import { hintSuppressionMode, suppressRepeatedUnused } from "./hint-suppression.js";
 import { mergeHookRecallHits } from "./hook-recall-merge.js";
+import { fitRecallWithReflexToBudget, measurePayload } from "./recall-budget.js";
+import { type DeadlineShadow } from "./latency-profile.js";
+// #493: die Schattenbuchführung eines Recalls, herausgelöst aus dieser Datei.
+import {
+  observeDeadlineShadow,
+  recordLateSettleSample,
+  type VectorArmReport,
+} from "./deadline-shadow-row.js";
 import {
   MAX_BODY_BYTES,
   clampInt,
@@ -81,6 +90,9 @@ export function handleHookRecall(
   sharedRecallLang?: SupportedLanguage | null,
   embeddingDegraded?: () => boolean,
   evidenceGateEnabled?: () => boolean,
+  /** #491: das Latenzprofil im Schatten. Fehlt es, wird nichts gelernt und
+   *  nichts protokolliert — die Antwort ist in beiden Fällen dieselbe. */
+  deadlineShadow?: DeadlineShadow,
 ): void {
   // SSE-Branch (#38): wenn der Caller `Accept: text/event-stream`
   // sendet, streamen wir Stages live. Default-JSON-Response bleibt
@@ -111,7 +123,7 @@ export function handleHookRecall(
         body,
         query,
         t0,
-        { vault, search, telemetry, learnedBridges, sharedRecallLang, embeddingDegraded, evidenceGateEnabled },
+        { vault, search, telemetry, learnedBridges, sharedRecallLang, embeddingDegraded, evidenceGateEnabled, deadlineShadow },
         wantsSse
           ? (s: RecallStage) => {
               // Nur Stop- + cache.hit + done-Events streamen (Start-Events
@@ -174,6 +186,13 @@ export interface HookRecallDeps {
    *  die Naht existiert, weil sich der fail-open-Pfad sonst nicht prüfen lässt
    *  — ein Defekt, der nur in echt auftritt, ist kein geprüfter Defekt. */
   decideFn?: typeof decideHits;
+  /**
+   * #491: das gelernte Latenzprofil des dichten Arms, im SCHATTEN. Fehlt es,
+   * wird nichts gelernt und nichts protokolliert — an der Antwort ändert sich
+   * so oder so nichts. Ein Bündel statt dreier Getter, weil Schlüssel, Residenz
+   * und Profil nur gemeinsam eine Prognose ergeben.
+   */
+  deadlineShadow?: DeadlineShadow;
 }
 
 /**
@@ -224,6 +243,52 @@ export async function runHookRecall(
       // deadline for nothing — 15 of 19 MCP recalls on 20.08. came back
       // BM25-only because a 3-query batch (#351) serialises on one Ollama.
       const vectorDeadlineMs = clampInt(body.vector_deadline_ms, 50, 10_000, hookVectorDeadlineMs());
+      /**
+       * #494: Der Aufrufer verzichtet auf den dichten Arm — GAR KEIN Embed,
+       * nicht bloß eine kurze Frist.
+       *
+       * #490 wollte genau das und konnte es nicht bauen (`search.ts` lag
+       * damals bei #489), also bekam der kalte SessionStart 50 ms statt eines
+       * Verzichts. Als EINZIGER aufgegebener Embed, der das Modell nebenbei
+       * wärmt, wäre das vertretbar gewesen; neben einem eigenen Warmup und
+       * drei parallelen Session-Recalls ist es redundante Last, aufgebracht
+       * genau dann, wenn die Maschine am langsamsten ist.
+       *
+       * Die Antwort ist ehrlich einarmig (`score_kind: "bm25"`, `unfused`) —
+       * aber ohne `degraded`: Es ist kein Arm ausgefallen, es war keiner
+       * vorgesehen. Wer den Verzicht ausgelöst hat, sagt der Aufrufer in
+       * seinem eigenen Block (die SessionStart-Lane: „not in memory").
+       */
+      const lexicalOnly = body.lexical_only === true;
+      // #487: Das Kontextbudget des Aufrufs in geschätzten Token. `0` (der
+      // Default, also auch „nicht geschickt") heißt unbegrenzt und ändert an
+      // dieser Antwort nichts. Der MCP-Forwarder reicht das Feld durch — für
+      // ein Modell, das sein Restfenster kennt, ist das die Größe, in der es
+      // rechnet, und `k` ist es nicht.
+      const maxTokens = clampInt(body.max_tokens, 0, 1_000_000, 0);
+      // Dieselbe Regel wie bei der Deadline eine Zeile darüber: Das Budget, gegen
+      // das der Schatten-Router rechnet, gehört zum AUFRUF, nicht zum Endpunkt.
+      // Die 200 sind die Wanduhr der Prompt-Lane; die SessionStart-Lane hat ihre
+      // eigene (`HOOK_TIMEOUT_MS`, 500) und schickt sie mit. Ohne das würde der
+      // Schatten für sie eine Grenze prüfen, unter der sie gar nicht läuft.
+      // `0` heißt weiterhin „kein Budget" (siehe `lexicalFitsBudget`).
+      const budgetMs = clampInt(body.hook_budget_ms, 0, 10_000, hookBudgetMs());
+      // #493: WOHER diese Zahl kommt. Sie stand bisher ohne Herkunft in der
+      // Telemetrie, und genau daran ist die MCP-Lane verunglückt: Der
+      // Forwarder schickte nichts, also galt für ihn die 200 der Prompt-Lane,
+      // und die Zeilen lasen live `deadline_ms 1500, lane_budget_ms 200,
+      // cap_reason floor` — ein gesunder 400-ms-Arm gemessen an einer
+      // Wanduhr, die es für ihn nie gab. Der Forwarder schickt seitdem sein
+      // eigenes Budget; die Spalte sagt, ob ein Aufrufer das getan hat.
+      const budgetSource: "caller" | "endpoint-default" =
+        typeof body.hook_budget_ms === "number" && Number.isFinite(body.hook_budget_ms)
+          ? "caller"
+          : "endpoint-default";
+      // #493: Die Klammer um die (bis zu drei) Recalls EINES Sitzungsstarts.
+      // Ohne sie ist ein Sitzungsstart mit drei kalten Armen von drei
+      // Sitzungsstarts nicht zu unterscheiden — siehe HookRecallEvent.
+      const sessionStartCallId =
+        typeof body.session_start_call_id === "string" ? body.session_start_call_id : null;
 
       const stageTimings: NonNullable<Parameters<Telemetry["logHookRecall"]>[0]["recall_stages"]> = {};
       // #342: why the hit list came back one-armed, if it did. Recorded rather
@@ -233,6 +298,9 @@ export async function runHookRecall(
       // faster. `vector-arm-timeout` is the deadline firing, `vector-arm-empty`
       // the pre-existing case where the arm had nothing to say.
       let degradedReason: string | undefined;
+      // #493: Was der dichte Arm über sich selbst berichtet hat. `null`, solange
+      // er noch läuft (Timeout) — dann trägt die späte Stichprobe den Ausgang nach.
+      let armReport: VectorArmReport | null = null;
       const collectStage = (s: RecallStage): void => {
         if (s.name === "done" && typeof s.meta?.degraded === "string") {
           degradedReason = s.meta.degraded;
@@ -249,6 +317,27 @@ export async function runHookRecall(
         if (s.name === "cache.hit") {
           stageTimings.cache_hit = true;
           return;
+        }
+        // #489: Die Wartezeit reitet auf der vector-Stage mit — `durationMs`
+        // bleibt die alte, überlappende Spanne, `wait_ms` ist das, was der
+        // Aufrufer wirklich gewartet hat. Beide Zahlen nebeneinander sind der
+        // ganze Punkt: Ohne sie las die Prompt-Lane 82,6 % gerissene Deadlines,
+        // wo 14 von 323 Aufrufen ihre Frist rissen.
+        if (s.name === "vector.search" && typeof s.meta?.wait_ms === "number") {
+          stageTimings.vector_wait_ms = s.meta.wait_ms;
+        }
+        // #493: Der strukturierte Ausgang des Arms reitet auf derselben Stage
+        // mit. Er entscheidet, ob dieser Aufruf überhaupt eine Latenzstichprobe
+        // ist: Ein Providerfehler kam vorher als aufgelöste Promise zurück und
+        // wurde als gültige Dauer gelernt.
+        if (s.name === "vector.search" && typeof s.meta?.provider_outcome === "string") {
+          armReport = {
+            outcome: s.meta.provider_outcome as VectorArmReport["outcome"],
+            hit_count: typeof s.meta.provider_hit_count === "number" ? s.meta.provider_hit_count : 0,
+            provider_load_ms:
+              typeof s.meta.provider_load_ms === "number" ? s.meta.provider_load_ms : null,
+            cold_start_observed: s.meta.cold_start_observed === true,
+          };
         }
         if (s.durationMs === undefined) return;
         switch (s.name) {
@@ -313,32 +402,81 @@ export async function runHookRecall(
       // beschreibt, der tatsächlich serviert wird (siehe recallHandler).
       const embeddingDegradedAtRecall =
         search.hasEmbeddings() && (embeddingDegraded?.() ?? false);
-      let hits = search.hasEmbeddings()
-        ? await search.recallHybrid(expansion.query, {
-            authored_query: query,
-            k,
-            scope,
-            type,
-            expand_hops,
-            onStage,
-            onCandidatePool: onQueryCandidatePool,
-            vector_deadline_ms: vectorDeadlineMs,
-          })
-        : search.recall(expansion.query, {
-            authored_query: query,
-            k,
-            scope,
-            type,
-            expand_hops,
-            onStage,
-            onCandidatePool: onQueryCandidatePool,
-          });
+      // #489: Das echte Ende eines aufgegebenen Arms. Feuert erst, wenn der
+      // weiterlaufende Embed fertig ist — da ist die Antwort längst raus und
+      // das `hook_recall`-Event geschrieben, deshalb eine eigene Zeile mit
+      // derselben `recall_id`. Ohne sie steht beim Timeout nur die Deadline in
+      // der Telemetrie, und ein Lerner (#491) lernt aus lauter Deadlines die
+      // Deadline, die schon gilt.
+      //
+      // Gepuffert, weil die `recall_id` erst NACH dem Recall gezogen wird
+      // (`telemetry.newRecallId()` unten) — ein Arm, der eine Millisekunde nach
+      // seiner Frist fertig wird, käme sonst vor ihr an. Der Puffer ist genau
+      // ein Sample: pro Recall gibt es einen dichten Arm.
+      let lateSettleSeen: LateSettleSample | null = null;
+      let emitLateSettle = (sample: LateSettleSample): void => {
+        lateSettleSeen = sample;
+      };
+      const onVectorLateSettle = (sample: LateSettleSample): void => emitLateSettle(sample);
+      // #491: der Schatten. Er greift nur, wo es überhaupt einen dichten Arm
+      // gibt, den er beschreiben könnte — kein Provider oder ein offener
+      // Breaker (#165) heißt: kein Arm, keine Prognose, keine Stichprobe. Ein
+      // vom Breaker übersprungener Arm antwortet in ~0 ms, und diese Null als
+      // Latenz zu lernen wäre schlimmer als gar nicht zu lernen.
+      // #494: Ein `lexical_only`-Recall feuert keinen Arm, also gibt es auch
+      // nichts zu prognostizieren. Ohne diese Zeile stünde eine Schattenzeile
+      // ohne Messung in der Auswertung, und das Zeit-Tor am 13.09. sähe einen
+      // Kaltstart, der nie stattgefunden hat.
+      const shadowKey =
+        search.hasEmbeddings() && !embeddingDegradedAtRecall && !lexicalOnly
+          ? (deps.deadlineShadow?.key() ?? null)
+          : null;
+      const shadow = shadowKey ? deps.deadlineShadow! : null;
+      // Vor dem Abfeuern gelesen, nicht danach: Ein Arm, der das Modell selbst
+      // lädt, macht es warm — die Residenz NACH dem Aufruf beschriebe die
+      // Maschine, die er hinterlassen hat, nicht die, auf die er traf.
+      const shadowResidency = shadow?.residency() ?? null;
+      // #493: Providercalls in Flug, inklusive dieses — GELESEN statt selbst
+      // hochgezählt. Der Zähler sitzt seit #493 am Providerrand (`index.ts`),
+      // weil er dort die Arbeit des Providers beschreibt statt der wartenden
+      // Aufrufer: Er fiel vorher beim Timeout, während der Embed weiterlief,
+      // und Warmups, Backfill und der Content-Recall zählten gar nicht mit.
+      const shadowConcurrency = shadow ? shadow.profile.inFlight() + 1 : 0;
+      let hits: Awaited<ReturnType<typeof search.recallHybrid>>;
+      {
+        // #494: `lexicalOnly` schlägt `hasEmbeddings()` — der Verzicht ist eine
+        // Entscheidung des Aufrufers und keine Eigenschaft der Maschine.
+        hits = search.hasEmbeddings() && !lexicalOnly
+          ? await search.recallHybrid(expansion.query, {
+              authored_query: query,
+              k,
+              scope,
+              type,
+              expand_hops,
+              onStage,
+              onCandidatePool: onQueryCandidatePool,
+              vector_deadline_ms: vectorDeadlineMs,
+              onVectorLateSettle,
+            })
+          : search.recall(expansion.query, {
+              authored_query: query,
+              k,
+              scope,
+              type,
+              expand_hops,
+              onStage,
+              onCandidatePool: onQueryCandidatePool,
+            });
+      }
 
       // #342/P0: Lief für DIESE Anfrage eine echte Fusion? Direkt hier
       // festgehalten, weil der Content-Recall gleich seinen eigenen
       // Degradations-Grund bekommt und die beiden nicht vermischt werden dürfen.
+      // #494: Ein `lexical_only`-Lauf ist nie fusioniert — es lief nur ein Arm,
+      // also sind die Zahlen rohes BM25 und die 30/100-Bänder beschreiben sie
+      // nicht (#302). Dass niemand ausgefallen ist, ändert daran nichts.
       const promptFused =
-        search.hasEmbeddings() && !embeddingDegradedAtRecall && degradedReason === undefined;
+        search.hasEmbeddings() && !embeddingDegradedAtRecall && !lexicalOnly && degradedReason === undefined;
 
       const contentQuery = typeof body.tool_input_excerpt === "string"
         ? body.tool_input_excerpt.trim().slice(0, 4096)
@@ -373,7 +511,11 @@ export async function runHookRecall(
               contentDegradedReason = st.meta.degraded;
             }
           };
-          const contentHits = search.hasEmbeddings()
+          // #494: Derselbe Verzicht wie oben. Ein Content-Recall mit dichtem
+          // Arm neben einem Prompt-Recall ohne wäre genau die Last, die
+          // `lexical_only` vermeiden soll — und das Merge-Gate darunter würde
+          // ihn wegen des Skalenbruchs ohnehin verwerfen.
+          const contentHits = search.hasEmbeddings() && !lexicalOnly
             ? await search.recallHybrid(contentQuery, {
                 k,
                 scope,
@@ -447,24 +589,126 @@ export async function runHookRecall(
           ? routeRetrieval({
               uniqueTerms: stageTimings.terms_unique,
               denseAvailable: search.hasEmbeddings() && !embeddingDegradedAtRecall,
-              budgetMs: hookBudgetMs(),
+              budgetMs,
               denseReservedMs: vectorDeadlineMs,
             })
           : undefined;
       const totalLatencyMs = Date.now() - t0;
+      // #491: Die Prognose gegen die Wirklichkeit — SCHATTEN, es ändert sich
+      // nichts. `vectorDeadlineMs` (150/350/1500) hat oben gegolten und gilt
+      // weiter; hier steht daneben, was ein gelerntes Profil gesagt hätte.
+      //
+      // Gerechnet wird an der Stelle, an der das Warten beginnt: NACH BM25.
+      // Der Überlapp ist genau die Differenz der beiden #489-Zahlen — die
+      // Spanne ab Abfeuern minus die Wartezeit ab dem `await` ist das, was der
+      // Arm im Schatten von BM25 schon verbraucht hatte. Gemessen 06.–08.09.
+      // ist das in der Prompt-Lane praktisch alles (vector p50 336 ms,
+      // Wartezeit p50 5 ms) und in der Session-Lane fast nichts (BM25 10 ms).
+      const shadowVectorMs = stageTimings.vector_search_ms;
+      const shadowWaitMs = stageTimings.vector_wait_ms;
+      let deadlineShadowRow: NonNullable<Parameters<Telemetry["logHookRecall"]>[0]["deadline_shadow"]> | undefined;
+      if (shadow && shadowResidency && shadowVectorMs !== undefined && shadowWaitMs !== undefined) {
+        // #493: Die Buchführung steht als eigenes Modul daneben
+        // (`deadline-shadow-row.ts`) — sie war hier ein Block von gut hundert
+        // Zeilen mitten in der Pipeline. `budgetMs` ist die Wanduhr, die der
+        // AUFRUF mitbringt (SessionStart 500, Prompt-Lane 200, MCP sein
+        // eigenes seit #493); `0` heißt „kein Budget" und deckelt nicht.
+        deadlineShadowRow = observeDeadlineShadow({
+          shadow,
+          key: shadowKey!,
+          residency: shadowResidency,
+          concurrency: shadowConcurrency,
+          // Die Länge, die der DICHTE Arm bekommen hat: die brückenerweiterte,
+          // ungekappte Query (#362 kappt nur den lexikalischen Arm).
+          queryChars: expansion.query.length,
+          vectorMs: shadowVectorMs,
+          waitMs: shadowWaitMs,
+          spentBeforeRecallMs: tRecall0 - t0,
+          budgetMs,
+          budgetSource,
+          deadlineMs: vectorDeadlineMs,
+          timedOut: degradedReason === "vector-arm-timeout",
+          report: armReport,
+        });
+      }
       // #479: automatic hook hints get a version-local circuit breaker. Manual
       // recall is untouched; directives/reflexes are exempt inside the helper.
-      const usageSuppression = suppressRepeatedUnused(
-        hits,
-        (id) => vault.get(id),
-        usageForShadow(vault.root),
-        undefined,
-        (hit) => Math.ceil(JSON.stringify(toLeanHit(hit)).length / 4),
-      );
-      hits = usageSuppression.kept;
+      // #484: `shadow` (default) counts what the breaker WOULD remove and
+      // removes nothing; only `live` applies the cut. `off` skips the pass
+      // entirely, so no would-be list is written either.
+      const suppressionMode = hintSuppressionMode();
+      const usageSuppression = suppressionMode === "off"
+        ? { kept: hits, suppressed: [] }
+        : suppressRepeatedUnused(
+          hits,
+          (id) => vault.get(id),
+          usageForShadow(vault.root),
+          undefined,
+          (hit) => Math.ceil(JSON.stringify(toLeanHit(hit)).length / 4),
+        );
+      if (suppressionMode === "live") hits = usageSuppression.kept;
       const usageSuppressedTokensEst = usageSuppression.suppressed.reduce((n, s) => n + s.tokens_est, 0);
       const recallId = telemetry.newRecallId();
       telemetry.recordHookHints(recallId, hits);
+      // #489: Ab hier ist die `recall_id` bekannt — die späte Stichprobe kann
+      // geschrieben werden. Ein Sample, das schon eingetroffen ist, wird
+      // nachgeholt.
+      emitLateSettle = (sample: LateSettleSample): void => {
+        // #491/#493: Genau hier lernt das Profil den kalten Schwanz — der Wert
+        // kommt aus dem weiterlaufenden Arm, den niemand bezahlt hat. Was davon
+        // eine Stichprobe ist, entscheidet `recordLateSettleSample`.
+        if (deadlineShadowRow && shadow && shadowResidency) {
+          recordLateSettleSample(shadow, shadowKey!, shadowResidency, deadlineShadowRow, sample);
+        }
+        fireAndForget(
+          telemetry.logVectorLateSettle({
+            recall_id: recallId,
+            deadline_ms: vectorDeadlineMs,
+            wait_ms: stageTimings.vector_wait_ms ?? 0,
+            settle_ms: sample.settle_ms,
+            settled: sample.settled,
+            // #493: das ERGEBNIS des aufgegebenen Arms. Kriterium 4 aus #492
+            // fragt nach der kontrafaktischen Fusionsrate — die Laufzeit allein
+            // sagt nicht, ob eine längere Frist diesen Recall fusioniert hätte.
+            ...(sample.outcome ? { provider_outcome: sample.outcome } : {}),
+            ...(sample.hit_count !== undefined ? { vector_hit_count: sample.hit_count } : {}),
+            ...(sample.cold_start_observed !== undefined
+              ? { cold_start_observed: sample.cold_start_observed }
+              : {}),
+            ...(typeof sample.provider_load_ms === "number"
+              ? { provider_load_ms: sample.provider_load_ms }
+              : {}),
+            ...(sessionStartCallId ? { session_start_call_id: sessionStartCallId } : {}),
+            ...(shadow ? { host_profile_id: shadow.hostProfileId() } : {}),
+            // #491: Die Prognose reist mit, statt nur über `recall_id`
+            // joinbar zu sein. Diese Zeile IST die Wirklichkeit für den
+            // aufgegebenen Arm; sie muss die Frage „hätte die gelernte Frist
+            // gehalten?" allein beantworten können.
+            ...(deadlineShadowRow
+              ? {
+                  predicted_deadline_ms: deadlineShadowRow.predicted_deadline_ms,
+                  cap_reason: deadlineShadowRow.cap_reason,
+                  residency: deadlineShadowRow.residency,
+                  residency_source: deadlineShadowRow.residency_source,
+                  residency_estimated: deadlineShadowRow.residency_estimated,
+                  shadow_would_run: deadlineShadowRow.shadow_would_run,
+                  shadow_would_wait: deadlineShadowRow.shadow_would_wait,
+                  // #499: Der Vergleich steht auf JEDER Zeile. Bis hierher
+                  // fehlte er bei einer Prognose von 0, weil die als „kein
+                  // dichter Arm" gelesen wurde — der Arm lief aber, er wäre
+                  // nur nicht mehr abgewartet worden. Genau dann ist die
+                  // Antwort auch klar: Ein Arm, der erst spät settelt, reißt
+                  // eine Frist von null definitionsgemäß.
+                  shadow_timeout: sample.settle_ms > deadlineShadowRow.predicted_deadline_ms,
+                }
+              : {}),
+            ...(hookSessionId ? { session_id: hookSessionId } : {}),
+            client: body.client,
+            hook_source: body.hook_source,
+          }),
+        );
+      };
+      if (lateSettleSeen) emitLateSettle(lateSettleSeen);
 
       const toolInputExcerpt = typeof body.tool_input_excerpt === "string"
         ? body.tool_input_excerpt.slice(0, 4096)
@@ -569,6 +813,114 @@ export async function runHookRecall(
       const weakResult = isWeakResult(hits, hybridActiveAtRecall);
       const noHome = isNoHome(hits, hybridActiveAtRecall);
 
+
+      // Lean projection (#50): the hook CLI only consumes lean fields, so we
+      // never need to send matched_terms/mode/hop/topic_path over the wire.
+      // Telemetry above already logged the full hits. #148: the hook scope
+      // filter needs the one extra bit `matched_recall_when` (kept here only,
+      // not in the shared toLeanHit — MCP recall stays the documented lean shape).
+      // #249: the honesty flag has to reach THIS path above all. /hook/recall
+      // writes <recall-hints> into the agent's context on every Bash and Edit,
+      // and without the flag the formatters label pure noise as "Strong
+      // matches" — the daemon computed the contradicting signal and simply did
+      // not send it. Same computation as the MCP path, from the same module.
+      // 20.08.: reflex-wired memories (recall_mode "reflex") from the deeper
+      // candidate pool that the top-k cut left out. The prompt lane's semantic
+      // reflex filter only ever saw `hits`; on 20.08. the wired convention sat
+      // at pool rank 6 behind a k of 5 and never reached the agent. The pool is
+      // the user's explicit wiring — two memories — so scanning it is cheap,
+      // and the lane keeps every floor and dedup it already applies.
+      const hitIds = new Set(hits.map((h) => h.id));
+      const reflexHits = candidatePool.flatMap((c) => {
+        if (hitIds.has(c.id)) return [];
+        const mem = vault.get(c.id);
+        if (mem?.fm.recall_mode !== "reflex") return [];
+        return [{
+          id: c.id,
+          title: mem.fm.title,
+          type: mem.fm.type,
+          scope: mem.fm.scope,
+          summary: truncateSummary(mem.fm.summary),
+          score: c.score,
+          matched_recall_when: false,
+          recall_mode: "reflex" as const,
+        }];
+      });
+      // recall_mode rides along only when the user wired the memory as
+      // reflex: the prompt lane's mode-"none" semantic filter keys on it
+      // (19.08. incident — see prompt-lane.ts).
+      const leanHits = hits.map((h) => ({
+        ...toLeanHit(h),
+        matched_recall_when: h.matched_recall_when ?? false,
+        // P0: Der Cross-Scope-Bypass in den Lanes braucht mehr als das Flag —
+        // ein einzelnes häufiges Wort in einer fremden Triggerphrase ist
+        // keine Absicht. Nur gesetzt, wenn überhaupt ein Trigger-Term traf.
+        ...(h.anchor_strength ? { anchor_strength: h.anchor_strength } : {}),
+        ...(vault.get(h.id)?.fm.recall_mode === "reflex" ? { recall_mode: "reflex" as const } : {}),
+      }));
+      // #487: Das Kontextbudget des AUFRUFS. Gestrichen wird von hinten, und
+      // die Streichliste ist [reflex …, gerankt …]: zuerst fallen die
+      // gerankten Treffer (der schwächste zuerst), und erst wenn keiner mehr
+      // da ist, die `reflex_hits` (der schwächste zuerst). Sie behalten damit
+      // den Vorrang, der ihnen als ausdrückliche Verdrahtung des Nutzers
+      // zusteht — aber sie sind nicht mehr vom Budget ausgenommen. Waren sie
+      // es (bis P1/#487), stand bei `max_tokens: 1` und 32 reflex-Memories ein
+      // Payload von 2352 Token auf der Leitung: ein Budget mit unbegrenzter
+      // Ausnahme ist kein Budget. Gemessen wird wie überall das ganze Payload.
+      // Ohne `max_tokens` (0) baut die Funktion einmal und die Antwort ist
+      // byte-gleich zu der vor #487.
+      const budgeted = fitRecallWithReflexToBudget(leanHits, reflexHits, maxTokens, (emittedHits, emittedReflex, droppedByBudget) => ({
+        hits: emittedHits,
+        ...(emittedReflex.length > 0 ? { reflex_hits: emittedReflex } : {}),
+        vault_size: vault.size(),
+        latency_ms: totalLatencyMs,
+        recall_id: recallId,
+        ...(weakResult ? { weak_result: true } : {}),
+        // #230: the stricter half travels the same wire. A strict subset of
+        // weak_result, so a consumer that only knows weak_result is unaffected.
+        ...(noHome ? { no_home: true } : {}),
+        // #302: whether RRF ran at all. Without a vector arm there is no
+        // fusion and no ceiling — raw BM25 is unbounded (top hits into six
+        // digits on a real vault), so the 30/100 cuts describe nothing there.
+        // The formatter has to say so rather than band an unbounded scale.
+        // Same shape as the flags above: present only when it has something
+        // to say, computed once from the value the honesty flags already use.
+        // P0: derselbe explizite Score-Raum wie auf dem MCP-Pfad. `unfused`
+        // sagt es indirekt, aber ein Konsument soll das Feld lesen können,
+        // statt aus einer Abwesenheit zu schließen.
+        // Codex-Gegenreview zum Confidence-Gate: Kennt der Vault den
+        // Projektnamen überhaupt? `detectProject()` liefert für
+        // `/workspace/packages/core` das Projekt "packages" — mit voller
+        // Zuversicht, denn ein Pfadsegment hieß "workspace". Ein scharfer
+        // Scope-Filter würde damit das ganze eigene Gedächtnis entfernen.
+        // Die Frage ist nur HIER beantwortbar, wo der Vault liegt; die Lanes
+        // sehen ihn nicht. Früher Abbruch beim ersten Treffer: der Normalfall
+        // (eigenes Projekt) kostet nichts, nur der seltene Fehlerfall läuft
+        // einmal durch.
+        ...(hookProject !== null ? { project_known: vaultKnowsProject(vault, hookProject) } : {}),
+        score_kind: hybridActiveAtRecall ? ("rrf" as const) : ("bm25" as const),
+        // Dieselbe Angabe wie auf dem MCP-Pfad: `score_kind` allein macht zwei
+        // Zahlen nicht vergleichbar, die Armmenge tut es. Der Hook-Pfad kennt
+        // keine Commons — hier sind es immer die persönlichen Arme, und genau
+        // das muss auf der Leitung stehen, statt vom Konsumenten geraten zu
+        // werden.
+        score_arms: armsOf({ hybridActive: hybridActiveAtRecall, commonsFused: false }),
+        // Keine Formelversion auf einer rohen Skala — siehe recall-handler.ts.
+        ...(hybridActiveAtRecall ? { score_version: SCORE_VERSION } : { unfused: true }),
+        // #342: name the reason on the wire too. `unfused` says the bands do
+        // not apply; this says why, so a slow machine degrading on every call
+        // is distinguishable from embeddings being off — from the response
+        // alone, without correlating against the telemetry log.
+        ...(degradedReason ? { degraded: degradedReason } : {}),
+        // #487: nur gesetzt, wenn das Budget wirklich gestrichen hat.
+        ...(droppedByBudget > 0
+          ? { truncated_by_budget: true, dropped_by_budget: droppedByBudget }
+          : {}),
+      }));
+      const payload = budgeted.payload;
+      // #487: Gemessen wird nur, wo ein Budget galt — die Serialisierung
+      // kostet, und dieser Endpunkt läuft an jedem Bash und jedem Edit.
+      const budgetSize = maxTokens > 0 ? measurePayload(payload) : null;
       fireAndForget(
         telemetry.logHookRecall({
           recall_id: recallId,
@@ -580,6 +932,10 @@ export async function runHookRecall(
           // matchLoadedMemories genutzt), nur nicht am Event. Gleiche Form wie
           // logHookAct/logHookReflex: fehlt sie, bleibt die Boot-UUID.
           ...(hookSessionId ? { session_id: hookSessionId } : {}),
+          // #493: Die Klammer um die Recalls EINES Sitzungsstarts. Ohne sie ist
+          // „20 Kaltstarts" (Tor 3 aus #492) nicht von „7 Kaltstarts × 3
+          // Recalls" zu unterscheiden.
+          ...(sessionStartCallId ? { session_start_call_id: sessionStartCallId } : {}),
           // #263: Oberflächen-Hinweise. `hook_source` trennt die Lanes
           // voneinander UND vom MCP-Forwarder, der `recall` über denselben
           // Endpunkt proxyt — ohne die Spalte wären beide dasselbe Ereignis.
@@ -607,9 +963,17 @@ export async function runHookRecall(
           })),
           usage_suppressed: usageSuppression.suppressed.length > 0 ? usageSuppression.suppressed : undefined,
           usage_suppressed_tokens_est: usageSuppression.suppressed.length > 0 ? usageSuppressedTokensEst : undefined,
+          // Without the mode a report cannot tell the live history (up to
+          // 2026-09-06) from the shadow counts after it — both write the same
+          // `usage_suppressed` list, only one of them acted on it.
+          usage_suppressed_mode:
+            usageSuppression.suppressed.length > 0 && suppressionMode !== "off" ? suppressionMode : undefined,
           latency_ms_recall: recallLatencyMs,
           latency_ms_total: totalLatencyMs,
           recall_stages: stageTimings,
+          // #491: Prognose neben der Zahl, die tatsächlich galt. Reiner
+          // Schatten — an dieser Antwort hat sie nichts geändert.
+          deadline_shadow: deadlineShadowRow,
           // #362 Phase 0: nur melden, wenn überhaupt spürbar blockiert wurde —
           // eine 0 in jedem Event wäre Rauschen, das die Auswertung verwässert.
           // Hat die Sonde überhaupt getickt? Wenn nicht, lief alles synchron und
@@ -665,6 +1029,11 @@ export async function runHookRecall(
           embedding_degraded: embeddingDegradedAtRecall ? true : undefined,
           // #342: which arm dropped out, if one did.
           degraded_reason: degradedReason,
+          // #494: Dieser Recall hat den dichten Arm ABGEWÄHLT. Ohne die Spalte
+          // wäre er von einem Recall auf einer Maschine ohne Embeddings nicht
+          // zu unterscheiden — und die Auswertung zu #492 würde einen
+          // Kaltstart zählen, der nie gemessen wurde.
+          lexical_only: lexicalOnly ? true : undefined,
           // #217: would-be Salience-Reihenfolge (shadow-only).
           salience_shadow: computeSalienceShadow(
             hits,
@@ -683,95 +1052,18 @@ export async function runHookRecall(
           // because nothing ever wrote it down.
           weak_result: weakResult || undefined,
           no_home: noHome || undefined,
+          // #487: angefordertes Budget gegen ausgeliefertes Payload — erst
+          // beide Zahlen zusammen ordnen die Ersparnis jemandem zu (#457).
+          ...(budgetSize
+            ? {
+                max_tokens: maxTokens,
+                dropped_by_budget: budgeted.dropped > 0 ? budgeted.dropped : undefined,
+                payload_chars: budgetSize.chars,
+                payload_tokens_est: budgetSize.tokens,
+              }
+            : {}),
         }),
       );
 
-      // Lean projection (#50): the hook CLI only consumes lean fields, so we
-      // never need to send matched_terms/mode/hop/topic_path over the wire.
-      // Telemetry above already logged the full hits. #148: the hook scope
-      // filter needs the one extra bit `matched_recall_when` (kept here only,
-      // not in the shared toLeanHit — MCP recall stays the documented lean shape).
-      // #249: the honesty flag has to reach THIS path above all. /hook/recall
-      // writes <recall-hints> into the agent's context on every Bash and Edit,
-      // and without the flag the formatters label pure noise as "Strong
-      // matches" — the daemon computed the contradicting signal and simply did
-      // not send it. Same computation as the MCP path, from the same module.
-      // 20.08.: reflex-wired memories (recall_mode "reflex") from the deeper
-      // candidate pool that the top-k cut left out. The prompt lane's semantic
-      // reflex filter only ever saw `hits`; on 20.08. the wired convention sat
-      // at pool rank 6 behind a k of 5 and never reached the agent. The pool is
-      // the user's explicit wiring — two memories — so scanning it is cheap,
-      // and the lane keeps every floor and dedup it already applies.
-      const hitIds = new Set(hits.map((h) => h.id));
-      const reflexHits = candidatePool.flatMap((c) => {
-        if (hitIds.has(c.id)) return [];
-        const mem = vault.get(c.id);
-        if (mem?.fm.recall_mode !== "reflex") return [];
-        return [{
-          id: c.id,
-          title: mem.fm.title,
-          type: mem.fm.type,
-          scope: mem.fm.scope,
-          summary: truncateSummary(mem.fm.summary),
-          score: c.score,
-          matched_recall_when: false,
-          recall_mode: "reflex" as const,
-        }];
-      });
-      const payload = {
-        // recall_mode rides along only when the user wired the memory as
-        // reflex: the prompt lane's mode-"none" semantic filter keys on it
-        // (19.08. incident — see prompt-lane.ts).
-        hits: hits.map((h) => ({
-          ...toLeanHit(h),
-          matched_recall_when: h.matched_recall_when ?? false,
-          // P0: Der Cross-Scope-Bypass in den Lanes braucht mehr als das Flag —
-          // ein einzelnes häufiges Wort in einer fremden Triggerphrase ist
-          // keine Absicht. Nur gesetzt, wenn überhaupt ein Trigger-Term traf.
-          ...(h.anchor_strength ? { anchor_strength: h.anchor_strength } : {}),
-          ...(vault.get(h.id)?.fm.recall_mode === "reflex" ? { recall_mode: "reflex" as const } : {}),
-        })),
-        ...(reflexHits.length > 0 ? { reflex_hits: reflexHits } : {}),
-        vault_size: vault.size(),
-        latency_ms: totalLatencyMs,
-        recall_id: recallId,
-        ...(weakResult ? { weak_result: true } : {}),
-        // #230: the stricter half travels the same wire. A strict subset of
-        // weak_result, so a consumer that only knows weak_result is unaffected.
-        ...(noHome ? { no_home: true } : {}),
-        // #302: whether RRF ran at all. Without a vector arm there is no
-        // fusion and no ceiling — raw BM25 is unbounded (top hits into six
-        // digits on a real vault), so the 30/100 cuts describe nothing there.
-        // The formatter has to say so rather than band an unbounded scale.
-        // Same shape as the flags above: present only when it has something
-        // to say, computed once from the value the honesty flags already use.
-        // P0: derselbe explizite Score-Raum wie auf dem MCP-Pfad. `unfused`
-        // sagt es indirekt, aber ein Konsument soll das Feld lesen können,
-        // statt aus einer Abwesenheit zu schließen.
-        // Codex-Gegenreview zum Confidence-Gate: Kennt der Vault den
-        // Projektnamen überhaupt? `detectProject()` liefert für
-        // `/workspace/packages/core` das Projekt "packages" — mit voller
-        // Zuversicht, denn ein Pfadsegment hieß "workspace". Ein scharfer
-        // Scope-Filter würde damit das ganze eigene Gedächtnis entfernen.
-        // Die Frage ist nur HIER beantwortbar, wo der Vault liegt; die Lanes
-        // sehen ihn nicht. Früher Abbruch beim ersten Treffer: der Normalfall
-        // (eigenes Projekt) kostet nichts, nur der seltene Fehlerfall läuft
-        // einmal durch.
-        ...(hookProject !== null ? { project_known: vaultKnowsProject(vault, hookProject) } : {}),
-        score_kind: hybridActiveAtRecall ? ("rrf" as const) : ("bm25" as const),
-        // Dieselbe Angabe wie auf dem MCP-Pfad: `score_kind` allein macht zwei
-        // Zahlen nicht vergleichbar, die Armmenge tut es. Der Hook-Pfad kennt
-        // keine Commons — hier sind es immer die persönlichen Arme, und genau
-        // das muss auf der Leitung stehen, statt vom Konsumenten geraten zu
-        // werden.
-        score_arms: armsOf({ hybridActive: hybridActiveAtRecall, commonsFused: false }),
-        // Keine Formelversion auf einer rohen Skala — siehe recall-handler.ts.
-        ...(hybridActiveAtRecall ? { score_version: SCORE_VERSION } : { unfused: true }),
-        // #342: name the reason on the wire too. `unfused` says the bands do
-        // not apply; this says why, so a slow machine degrading on every call
-        // is distinguishable from embeddings being off — from the response
-        // alone, without correlating against the telemetry log.
-        ...(degradedReason ? { degraded: degradedReason } : {}),
-      };
       return payload;
 }

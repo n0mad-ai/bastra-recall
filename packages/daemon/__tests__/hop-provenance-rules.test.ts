@@ -101,7 +101,9 @@ test("auch die Hook-Antwort projiziert den Hop nicht", () => {
   // Spread-Zeile, die niemand mehr liest.
   const here = dirname(fileURLToPath(import.meta.url));
   const src = readFileSync(join(here, "..", "src", "http-hook-routes.ts"), "utf8");
-  const start = src.indexOf("const payload = {");
+  // #487: Die Projektion steht seit dem Budget in `leanHits` — sie muss VOR
+  // dem Payload stehen, weil das Budget die fertigen Treffer beschneidet.
+  const start = src.indexOf("const leanHits = hits.map(");
   assert.ok(start > 0, "die Antwortprojektion des Hook-Pfades ist unauffindbar");
   // Bis zum ersten `vault_size` NACH dem Payload-Anfang: derselbe Ausdruck
   // steht weiter oben schon einmal in einer anderen Antwort.

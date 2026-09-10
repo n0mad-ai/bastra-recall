@@ -58,8 +58,8 @@
  *     Origin erlaubt ist).
  */
 import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
-import { buildGraph, buildSemanticLayout, type SemanticLayout } from "@bastra-recall/core";
+import { createServer as createNetServer, type AddressInfo } from "node:net";
+import { buildGraph, buildSemanticLayout, truncateSummaryTo, type SemanticLayout } from "@bastra-recall/core";
 import type {
   Vault,
   SearchIndex,
@@ -76,7 +76,7 @@ import { dispatchLaneRoutes } from "./http-lane-routes.js";
 import { computeHeat, computeReach, readUsage } from "./usage-sidecar.js";
 import { buildHealthPayload } from "./http-health.js";
 import { createStalenessMonitor, defaultStalenessIo } from "./code-staleness.js";
-import { type ToolDeps } from "./tool-handlers.js";
+import { distinctiveTokensForActedOn, type ToolDeps } from "./tool-handlers.js";
 import { getUpdateState } from "./update-check.js";
 import { handleHookCare } from "./webui.js";
 import { type ChatFn } from "./webui-chat.js";
@@ -97,7 +97,7 @@ import {
   isDocsLanguage,
   DOCS_MODES,
 } from "./settings.js";
-import { ALL_TOOL_DEFS } from "./tool-defs.js";
+import { ALL_TOOL_DEFS, filterToolDefsForSurface, toolSurfaceFrom } from "./tool-defs.js";
 import type { EmbeddingStatus } from "./embedding-status.js";
 import { MAX_BODY_BYTES, readJsonBody, sendCors, sendJson } from "./http-util.js";
 import {
@@ -162,6 +162,51 @@ export interface HttpOptions {
 export interface HttpHandle {
   port: number | null;
   close: () => Promise<void>;
+  /** #483: true when the port was already taken. The caller is then NOT the
+   *  daemon and must not keep running background work — see index.ts. */
+  addressInUse?: boolean;
+}
+
+/**
+ * #483 review find: may this process give up when the port is taken?
+ *
+ * Only when nothing else depends on it staying alive. `dist/index.js` is two
+ * surfaces in one file (`packages/daemon/README.md:21`): the shared daemon the
+ * forwarder spawns, AND the standalone stdio MCP server a single client starts
+ * for itself. The second one talks over stdin, not over 6723 — exiting there
+ * would take a working MCP session down over a port it never needed.
+ *
+ * The two are distinguishable at fd 0. The forwarder spawns the shared daemon
+ * with `stdio: "ignore"` (`forwarder-daemon-client.ts:52-56`) and launchd hands
+ * it /dev/null — a character device either way. A stdio MCP client connects a
+ * pipe, and a human running it in a terminal gets a TTY. Both mean: someone is
+ * attached, keep running.
+ */
+export function mayExitOnBusyPort(stdin: { isTTY?: boolean; isPipe: boolean }): boolean {
+  if (stdin.isTTY) return false;
+  return !stdin.isPipe;
+}
+
+/**
+ * #483: is the daemon port free? Asked BEFORE the vault, the embedding index
+ * and the Ollama prewarm come up, so the loser of a start race exits before it
+ * duplicates any of them. A plain TCP bind is enough — we only need to know
+ * whether someone holds the port, not who.
+ *
+ * The probe closes immediately, so a race window of milliseconds remains until
+ * the real listen(); `startHttpServer` reports EADDRINUSE via `addressInUse`
+ * for that case.
+ */
+export async function probeDaemonPort(port: number): Promise<"free" | "in-use"> {
+  return new Promise((resolve) => {
+    const probe = createNetServer();
+    probe.once("error", (err: NodeJS.ErrnoException) => {
+      resolve(err.code === "EADDRINUSE" ? "in-use" : "free");
+    });
+    probe.listen(port, "127.0.0.1", () => {
+      probe.close(() => resolve("free"));
+    });
+  });
 }
 
 export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
@@ -281,8 +326,13 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     // validates — no skew when a forwarder build is newer than the daemon code
     // in RAM. Loopback-only + token-free like /health (the Host-gate above
     // covers it; this is non-/api/v1).
-    if (method === "GET" && url === "/tools") {
-      sendJson(res, 200, { tools: ALL_TOOL_DEFS });
+    // #481: `?surface=search|write|full` narrows the list to what that client's
+    // tool surface allows. Absent or unknown → `full`, today's behaviour.
+    if (method === "GET" && (url === "/tools" || url.startsWith("/tools?"))) {
+      const surface = toolSurfaceFrom(
+        new URL(url, "http://127.0.0.1").searchParams.get("surface") ?? undefined,
+      );
+      sendJson(res, 200, { tools: filterToolDefsForSurface(ALL_TOOL_DEFS, surface) });
       return;
     }
 
@@ -299,7 +349,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     }
 
     if (method === "POST" && url === "/hook/recall") {
-      handleHookRecall(req, res, t0, vault, search, telemetry, toolDeps.learnedBridges, toolDeps.sharedRecallLang, toolDeps.embeddingDegraded, toolDeps.evidenceGateEnabled);
+      handleHookRecall(req, res, t0, vault, search, telemetry, toolDeps.learnedBridges, toolDeps.sharedRecallLang, toolDeps.embeddingDegraded, toolDeps.evidenceGateEnabled, toolDeps.deadlineShadow);
       return;
     }
 
@@ -401,7 +451,9 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     // #369, same pattern, three more lanes: /hook/stop, /hook/session,
     // /hook/todo. Their routes live in http-lane-routes.ts (file-size
     // convention) — the contract is identical to the four above.
-    if (dispatchLaneRoutes(req, res, method, url)) return;
+    // #490: the session lane among them takes the shared embedding warm-up,
+    // injected here the same way the prompt lane takes its prewarmer.
+    if (dispatchLaneRoutes(req, res, method, url, toolDeps.warmupEmbedding)) return;
 
     // #144: lightweight act-signal (PostToolUse:Bash). No recall, no injection —
     // only matches the excerpt against open loadedMemories episodes so
@@ -422,6 +474,46 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
             ? ((body as { ids: unknown[] }).ids.filter((x) => typeof x === "string") as string[])
             : [];
           telemetry.recordSurfacedUsage(ids);
+          // #478 Part 2 (shadow): open an act-detection window for what was
+          // actually injected.
+          //
+          // TWO REVIEW FINDS SHAPE THIS (Vera, 06.09.):
+          //
+          // 1. Tokens come from what the model SAW. The lanes print
+          //    `id (type): summary` (`write-lane.ts:384-391`) or
+          //    `id (type/scope): summary` (`session-lane.ts:653-659`) — the ID
+          //    and the truncated summary, never the body and never the title.
+          //    Matching the body would score a hint as followed on words
+          //    nobody read; matching the title would do the same for a title
+          //    that is not on screen. The id is split on its slug separators
+          //    first: `distinctiveTokensForActedOn` keeps `a-b` as one token
+          //    (`save-similarity.ts` tokenizer), so a reader typing the words
+          //    of the id they just saw would otherwise never match. `type` and
+          //    `scope` stay out on purpose — they are rubrics, and counting a
+          //    later command that merely says "lesson" would be a false
+          //    positive by construction.
+          //
+          // 2. No session id, no window. Without it the entry lands on an
+          //    `inferred` turn, where the session lock in `matchLoadedMemories`
+          //    does not apply and a command from a PARALLEL session can close
+          //    it. A missing number beats a number about the wrong session.
+          //    `recordSurfacedUsage` above is unaffected — it never needed one.
+          const hintedSession =
+            typeof (body as { session_id?: unknown })?.session_id === "string"
+              && (body as { session_id: string }).session_id.length > 0
+              ? (body as { session_id: string }).session_id
+              : null;
+          if (hintedSession) {
+            telemetry.recordSurfacedHints(
+              ids.flatMap((id) => {
+                const memory = vault.get(id);
+                if (!memory) return [];
+                const shown = `${id.replace(/[-_]+/g, " ")} ${truncateSummaryTo(String(memory.fm.summary ?? ""), 160)}`;
+                return [{ memory_id: id, distinctive_tokens: distinctiveTokensForActedOn(shown) }];
+              }),
+              hintedSession,
+            );
+          }
           sendJson(res, 200, { ok: true, counted: ids.length });
         })
         .catch(() => sendJson(res, 400, { error: "invalid body" }));
@@ -711,13 +803,15 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     const onError = (err: NodeJS.ErrnoException): void => {
       if (err.code === "EADDRINUSE") {
         console.error(
-          `[bastra-recall] http: port ${port} already in use — assuming another bastra-recall daemon owns it. Hooks will reach that one.`,
+          `[bastra-recall] http: port ${port} already in use — if another bastra-recall daemon owns it, hooks will reach that one.`,
         );
         server.removeAllListeners("error");
         server.removeAllListeners("listening");
         resolve({
           port: null,
           close: async () => undefined,
+          // #483: the caller decides — it must stop, not continue headless.
+          addressInUse: true,
         });
         return;
       }

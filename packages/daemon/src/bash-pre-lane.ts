@@ -306,7 +306,7 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
     error: errMsg,
   });
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
-  await reportHinted(selfBaseUrl, emitted.map((h) => h.id));
+  await reportHinted(selfBaseUrl, emitted.map((h) => h.id), payload.session_id ?? null);
 
   return stdout;
 }

@@ -35,6 +35,9 @@
  *                             wo der Daemon als launchd-Service läuft)
  *   BASTRA_VAULT_PATH       — wird beim Auto-Spawn an den Daemon vererbt
  *                             (alle weiteren BASTRA_*-Vars ebenfalls).
+ *   BASTRA_TOOL_SURFACE     — `search` | `write` | `full` (#481). Bestimmt,
+ *                             welche Tools DIESER Client sieht und aufrufen
+ *                             darf. Default ohne Wert: `full`.
  */
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -51,8 +54,15 @@ import {
   RECALL_STAGE_ORDER,
   type RecallStage,
 } from "@bastra-recall/core";
-import { ALL_TOOL_DEFS } from "./tool-defs.js";
-import { mergeBatchResults } from "./recall-batch.js";
+import {
+  ALL_TOOL_DEFS,
+  filterToolDefsForSurface,
+  isToolAllowed,
+  toolSurfaceDenial,
+  toolSurfaceFrom,
+} from "./tool-defs.js";
+import { mergeBatchResults, projectRecallResult } from "./recall-batch.js";
+import { fitRecallToBudget } from "./recall-budget.js";
 import { claudeSessionPid, sessionFeedPath, STATUSLINE_DIR, reapStaleFeeds } from "./statusline-session.js";
 import { commandOf, parentPidOf } from "./reap-forwarders.js";
 import { DAEMON_VERSION } from "./version.js";
@@ -62,12 +72,14 @@ import {
   defaultStatuslineState,
   type StatuslineState,
 } from "./statusline-feed.js";
+import { SERVER_INSTRUCTIONS } from "./mcp-instructions.js";
 
 import {
   DAEMON_URL,
   API_TOKEN,
   SPAWN_ENABLED,
   REQUEST_TIMEOUT_MS,
+  FORWARDER_HOOK_BUDGET_MS,
   fetchWithTimeout,
   holdForDaemon,
   primeDaemon,
@@ -132,25 +144,6 @@ async function callDaemon(tool: string, args: unknown): Promise<unknown> {
   }
   return body;
 }
-
-/**
- * Server instructions (MCP InitializeResult.instructions): loaded into the
- * model's context at session start by Claude Code (official channel, works
- * like a skill description); currently ignored by Claude Desktop, but free
- * to ship and live the day Anthropic wires it up. Kept compact — in Claude
- * Code the skill + hooks already carry the long form.
- */
-const SERVER_INSTRUCTIONS =
-  "bastra-recall is the user's persistent local memory. Treat it as YOUR long-term memory and use it " +
-  "without being asked: (1) At the start of a conversation and before acting on a task, call `recall` " +
-  "with the topic — durable preferences, lessons, decisions and project facts live there. When several " +
-  "angles are worth asking in one turn, batch the phrasings into ONE call via `queries: [...]` (2-4) " +
-  "instead of firing separate recalls. (2) For ANY " +
-  "question about the user's past, projects, documents, people or preferences ('find…', 'where is…', " +
-  "'when did I…', 'how much was…'), search `recall` + `find_document` BEFORE any other lookup tool. " +
-  "(3) When the user states a durable rule or preference, finalizes a decision, or a hard-won fix " +
-  "lands, save it via `save_memory` immediately and acknowledge in one short line. recall returns lean " +
-  "candidates — call `load_memory` only for the hits you actually need.";
 
 /**
  * Session-context inject for hookless clients (Claude Desktop, Cursor): the
@@ -228,6 +221,11 @@ async function main(): Promise<void> {
     { capabilities: { tools: {} }, instructions: SERVER_INSTRUCTIONS },
   );
 
+  // #481: the surface THIS client runs on. Read once — it comes from the
+  // server block the installer wrote, and a client restart is what applies a
+  // change to it anyway.
+  const toolSurface = toolSurfaceFrom(process.env.BASTRA_TOOL_SURFACE);
+
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     // Fetch the tool schemas from the DAEMON (#132), so the schema the client
     // is told always matches what the daemon actually validates. The forwarder
@@ -245,19 +243,33 @@ async function main(): Promise<void> {
     // cold start would serve ALL_TOOL_DEFS and reintroduce the very forwarder↔
     // daemon skew this fixes. The fallback then only applies if the daemon is
     // genuinely unreachable after boot.
+    //
+    // #481: the surface is sent along so the daemon filters the list it
+    // serves; the fallback is filtered here with the same rule, so a daemon
+    // too old to know the parameter cannot hand a `search` client a
+    // `move_document`.
     await awaitDaemonReady();
     try {
-      const resp = await fetchWithTimeout(`${DAEMON_URL}/tools`, {}, 2000);
+      const resp = await fetchWithTimeout(
+        `${DAEMON_URL}/tools?surface=${encodeURIComponent(toolSurface)}`,
+        {},
+        2000,
+      );
       if (resp.ok) {
-        const body = (await resp.json()) as { tools?: unknown[] };
+        const body = (await resp.json()) as { tools?: { name?: string }[] };
         if (Array.isArray(body.tools) && body.tools.length > 0) {
-          return { tools: body.tools };
+          return {
+            tools: filterToolDefsForSurface(
+              body.tools.filter((t): t is { name: string } => typeof t?.name === "string"),
+              toolSurface,
+            ),
+          };
         }
       }
     } catch {
       // daemon down / old daemon without /tools → fall back to the bundled defs
     }
-    return { tools: ALL_TOOL_DEFS };
+    return { tools: filterToolDefsForSurface(ALL_TOOL_DEFS, toolSurface) };
   });
 
   const banterMode = banterModeFromEnv(process.env);
@@ -267,6 +279,17 @@ async function main(): Promise<void> {
     const { name, arguments: args } = req.params;
     const progressToken = (req.params as { _meta?: { progressToken?: string | number } })._meta
       ?.progressToken;
+
+    // #481: a call outside this client's surface never reaches the daemon.
+    // The list already hides it, so this catches the client that remembers a
+    // tool from a wider surface — the refusal names the surface and how to
+    // widen it, so the agent tells the user instead of trying again.
+    if (!isToolAllowed(name, toolSurface)) {
+      return {
+        isError: true,
+        content: [{ type: "text" as const, text: toolSurfaceDenial(name, toolSurface) }],
+      };
+    }
 
     // Diagnostic (BASTRA_PROGRESS_DEBUG=1): logs whether Claude Code attaches a
     // progressToken to each tool call. Without one, no notifications/progress
@@ -519,6 +542,16 @@ interface HookRecallDonePayload {
   vault_size: number;
   latency_ms: number;
   recall_id: string;
+  /** Die Ehrlichkeitsfelder des Daemons. Sie standen schon immer im
+   *  `done`-Event, fehlten aber hier — und was der Typ nicht kennt, hat die
+   *  Projektion unten nicht weitergereicht. Siehe `projectRecallResult`. */
+  weak_result?: boolean;
+  no_home?: boolean;
+  score_kind?: "rrf" | "bm25";
+  score_arms?: string[];
+  score_version?: string;
+  unfused?: boolean;
+  degraded?: string;
 }
 
 /** Dense-arm deadline for model-triggered recalls (see body.vector_deadline_ms). */
@@ -539,12 +572,24 @@ async function callRecallStreaming(
     const subs = (await Promise.all(
       queries.map((q, i) =>
         callRecallStreaming(
-          { ...a, queries: undefined, query: q, batch_of: queries.length },
+          // #487: Das Budget gilt für die GEMERGTE Antwort, nicht je
+          // Phrasierung — drei Sub-Recalls, jeder für sich im Budget, ergeben
+          // zusammen das Dreifache. Es wird unten auf das Ergebnis angewandt.
+          { ...a, queries: undefined, max_tokens: undefined, query: q, batch_of: queries.length },
           i === 0 ? onStage : () => undefined,
         ),
       ),
     )) as Parameters<typeof mergeBatchResults>[1];
-    return mergeBatchResults(queries, subs, typeof a.k === "number" ? a.k : 5);
+    const merged = mergeBatchResults(queries, subs, typeof a.k === "number" ? a.k : 5);
+    return fitRecallToBudget(
+      merged.hits,
+      typeof a.max_tokens === "number" ? a.max_tokens : 0,
+      (emitted, dropped) => ({
+        ...merged,
+        hits: emitted,
+        ...(dropped > 0 ? { truncated_by_budget: true, dropped_by_budget: dropped } : {}),
+      }),
+    ).payload;
   }
   const body: Record<string, unknown> = {
     query: typeof a.query === "string" ? a.query : "",
@@ -557,6 +602,9 @@ async function callRecallStreaming(
     session_id: typeof liveStatusline.cc_session_id === "string" ? liveStatusline.cc_session_id : null,
   };
   if (typeof a.k === "number") body.k = a.k;
+  // #487: Das Kontextbudget des Modells reicht bis in die Pipeline durch — der
+  // Forwarder ist der Weg, den ein MCP-Client wirklich geht.
+  if (typeof a.max_tokens === "number") body.max_tokens = a.max_tokens;
   if (typeof a.scope === "string") body.scope = a.scope;
   if (typeof a.type === "string") body.type = a.type;
   // #351: batch width rides along so the hook_recall event can count it.
@@ -570,6 +618,14 @@ async function callRecallStreaming(
   // the dense arm room. At the hook default (150ms) a 3-query batch (#351)
   // serialised on one Ollama and 15 of 19 MCP recalls came back BM25-only.
   body.vector_deadline_ms = MCP_VECTOR_DEADLINE_MS;
+  // #493: Die eigene Wanduhr, statt stillschweigend die einer fremden Lane zu
+  // erben. Ohne dieses Feld fiel die Route auf `BASTRA_HOOK_BUDGET_MS` zurück
+  // — die 200 ms der Prompt-Lane — und die Schattenzeilen der MCP-Lane lasen
+  // live `deadline_ms 1500, lane_budget_ms 200, cap_reason floor`: ein
+  // gesunder 400-ms-Arm, gemessen an einer Grenze, die für ihn nie galt.
+  //
+  // Die Zahl selbst steht bei ihrem Ursprung (`FORWARDER_HOOK_BUDGET_MS`).
+  body.hook_budget_ms = FORWARDER_HOOK_BUDGET_MS;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -642,13 +698,10 @@ async function callRecallStreaming(
   // No `stages` block in the tool-result (#50): stage events already drove
   // the live progress channel via onStage; the timing map would just bloat
   // the context Claude reads. Debug timings live in /api/v1/recall + telemetry.
-  return {
-    query: body.query,
-    vault_size: payload.vault_size,
-    hits: payload.hits,
-    recall_id: payload.recall_id,
-    latency_ms: payload.latency_ms,
-  };
+  // Alles Übrige — Score-Raum, Armmenge, Formelversion, weak_result/no_home —
+  // reicht `projectRecallResult` durch: der Batch-Merge liest genau daraus
+  // seine Vergleichbarkeitssignatur, und ohne sie war jeder Batch „gemischt".
+  return projectRecallResult(body.query as string, payload);
 }
 
 // Feed is namespaced by the CC session (claude ancestor PID) so concurrent

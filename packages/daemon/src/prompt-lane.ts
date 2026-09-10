@@ -30,11 +30,10 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { request } from "node:http";
 import { randomUUID } from "node:crypto";
-import { detectProject } from "@bastra-recall/core/topics";
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { requiredHeadline, unfusedHeadline, CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
-import { applyLaneScopeFilter, projectConfidence, projectForFilter, type ScopeFilterMode } from "./scope-filter.js";
+import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane, type ScopeFilterMode } from "./scope-filter.js";
 
 import { envFirst, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
@@ -383,7 +382,10 @@ export async function runPromptLane(
   }
 
   const cwd = payload.cwd ?? process.cwd();
-  const project = detectProject(cwd);
+  // §20.5: geratene Erkennung = kein Projekt (projectForLane) — sonst fragt
+  // die Lane Kandidaten für ein erfundenes Projekt ab und schreibt dessen
+  // Namen als `project=` in den Block.
+  const project = projectForLane(cwd);
   // §20.5: geratenes Projekt filtert nicht — siehe projectForFilter.
   const filterProject = projectForFilter(cwd);
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
@@ -655,7 +657,7 @@ export async function runPromptLane(
     ...(recallBlock ? recallHits.map((h) => h.id) : []),
   ];
   if (injectedIds.length > 0) {
-    await reportHinted(selfBaseUrl, injectedIds);
+    await reportHinted(selfBaseUrl, injectedIds, payload.session_id ?? null);
   }
 
   // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den

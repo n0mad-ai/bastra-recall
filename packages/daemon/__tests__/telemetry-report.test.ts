@@ -189,6 +189,7 @@ test("#479 suppression: report measures removed hints and estimated context", ()
       kind: "hook_recall",
       ts: ts("2026-09-05"),
       usage_suppressed: [{ id: "fact-a", type: "project-fact", surfaced: 9 }],
+      usage_suppressed_mode: "shadow",
     },
   ])!;
   assert.deepEqual(
@@ -213,6 +214,12 @@ test("#479 suppression: report measures removed hints and estimated context", ()
     },
   );
   assert.deepEqual(section.topMemories[0], { id: "fact-a", type: "project-fact", count: 2, surfaced: 9 });
+  // #484: der Modus trennt die Live-Historie von den Schattenzahlen danach.
+  // Ein Event ohne das Feld ist älter als der Modus und war damit live.
+  assert.deepEqual(section.modes, [
+    { mode: "live", calls: 1 },
+    { mode: "shadow", calls: 1 },
+  ]);
   assert.equal(summarizeHintSuppression([]), null);
 });
 

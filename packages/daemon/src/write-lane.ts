@@ -21,14 +21,14 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { request } from "node:http";
 import { randomUUID } from "node:crypto";
-import { detectTopics, detectProject, extractContentExcerpt } from "@bastra-recall/core";
+import { detectTopics, extractContentExcerpt } from "@bastra-recall/core";
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { requiredHeadline, unfusedHeadline, CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
 import { envFirst, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
-import { applyLaneScopeFilter, projectConfidence, projectForFilter } from "./scope-filter.js";
+import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane } from "./scope-filter.js";
 import { fileSizeNote } from "./file-size-check.js";
 import { memoryLocationNote } from "./memory-location.js";
 import { reportHinted } from "./hook-hinted.js";
@@ -153,11 +153,13 @@ export async function runWriteLane(
   };
   const topics = detectTopics(intent);
   const cwd = payload.cwd ?? process.cwd();
-  const project = detectProject(cwd);
-  // §20.5: Der Name, den der Filter benutzen darf, ist NICHT immer der Name,
-  // den Query und Anzeige benutzen. `projectForFilter` liefert null, sobald
-  // die Erkennung nur geraten war — dann filtert diese Lane nicht, statt auf
-  // einem Fallback-Namen eigene Treffer wegzuwerfen.
+  // §20.5: geratene Erkennung = kein Projekt. Der Filter hatte diese Regel als
+  // erste Lane (`projectForFilter`), Query und Anzeige nicht — die schickten
+  // den geratenen Namen weiter als `project` an /hook/recall und druckten ihn
+  // als `project=` in den Hint-Block.
+  const project = projectForLane(cwd);
+  // Beide Namen kommen aus derselben Konfidenz-Regel, unterscheiden sich aber
+  // in der Projektion: `key` (kanonisch) zum Vergleichen, `raw` zum Anzeigen.
   const filterProject = projectForFilter(cwd);
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
 
@@ -374,7 +376,7 @@ export async function runWriteLane(
     error: errMsg,
   });
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
-  await reportHinted(selfBaseUrl, hintedIds);
+  await reportHinted(selfBaseUrl, hintedIds, payload.session_id ?? null);
 
   return stdout;
 }

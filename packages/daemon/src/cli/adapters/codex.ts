@@ -28,6 +28,7 @@ import {
   atomicWriteJson,
   backupConfig,
   buildServerBlock,
+  existingToolSurface,
   fileExists,
   probeDaemon,
   readJsonConfig,
@@ -232,7 +233,15 @@ async function replaceMcpRegistration(
   }
   const added = runCaptured(
     bin,
-    ["mcp", "add", SERVER_KEY, "--env", `BASTRA_VAULT_PATH=${target.env.BASTRA_VAULT_PATH}`, "--", target.command, ...target.args],
+    [
+      "mcp",
+      "add",
+      SERVER_KEY,
+      ...Object.entries(target.env).flatMap(([k, v]) => ["--env", `${k}=${v}`]),
+      "--",
+      target.command,
+      ...target.args,
+    ],
     { timeoutMs: 15_000 },
   );
   if (added.ok) return { ok: true, detail: `registered '${SERVER_KEY}'`, backupPath: backupPath ?? undefined };
@@ -253,11 +262,17 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
 
   const runtime = await ensureStableForwarder({ dryRun: opts.dryRun });
   const mapBin = (path: string) => mapBinToStableRuntime(path, runtime);
-  const target = buildServerBlock(vault.path, runtime.path);
   const current = codexMcpGet(bin);
   if (!current.result.ok && !mcpMissing(current.result.detail)) {
     return { status: "error", message: `cannot inspect Codex MCP config: ${current.result.detail}`, configPath };
   }
+  // #481: keep a surface the user set by hand instead of resetting it to the
+  // install default on every reinstall.
+  const target = buildServerBlock(
+    vault.path,
+    runtime.path,
+    existingToolSurface(current.server?.transport) ?? undefined,
+  );
   const mcpMatches = codexServerMatches(current.server, target);
 
   // Preflight file-backed pieces before asking Codex to mutate TOML.

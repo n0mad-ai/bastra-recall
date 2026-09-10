@@ -112,6 +112,20 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
           type: "number",
           description: "Max results (default 5, range 1-20).",
         },
+        max_tokens: {
+          type: "number",
+          description:
+            "Optional context budget for THIS call, in estimated tokens " +
+            "(~4 characters each). Hits are emitted in rank order until the " +
+            "payload would exceed it; the rest are dropped and the response " +
+            "says so with `truncated_by_budget: true` and " +
+            "`dropped_by_budget: <n>`. Use it when you know how much window " +
+            "you can spend — `k` counts results, not context, and a k=5 " +
+            "answer varies by more than 2x in size. `k` stays the hard upper " +
+            "bound: this can only drop hits, never add them. Leave unset for " +
+            "no budget. If the response comes back truncated, re-query with " +
+            "a larger budget or load_memory the ids you need.",
+        },
         scope: {
           type: "string",
           description:

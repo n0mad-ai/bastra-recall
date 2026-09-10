@@ -100,7 +100,8 @@ npm run backfill:related   # populate related_via on legacy memories
 | `BASTRA_OLLAMA_KEEP_ALIVE` | no | `10m` | per-request `keep_alive` window — how long Ollama keeps the embedding model in RAM after each embed |
 | `BASTRA_OLLAMA_IDLE_UNLOAD_MS` | no | `600000` (10 min) | unload the embedding model from Ollama RAM after this long without an embed (battery saver); `0` disables |
 | `OPENAI_API_KEY` | no | unset | required when `BASTRA_EMBEDDING_PROVIDER=openai` |
-| `BASTRA_FORWARDER_SPAWN` | no | `1` | when `0`, the MCP forwarder will not auto-spawn the daemon |
+| `BASTRA_FORWARDER_SPAWN` | no | `1` | when `0`, the MCP forwarder will not auto-spawn the daemon. Set this when a service manager (launchd, systemd) owns the daemon, together with `BASTRA_DAEMON_URL` naming that owner — a spawned second process exits as soon as it sees the port taken (#483), but not starting it at all is cheaper |
+| `BASTRA_DAEMON_URL` | no | `http://127.0.0.1:6723` | which daemon the MCP forwarder talks to |
 | `BASTRA_HOOK_TIMEOUT_MS` | no | `500` | per-hook wall-clock budget before fail-silent |
 | `BASTRA_VECTOR_DEADLINE_MS` | no | `150` | hook path only: how long a recall waits for the dense arm before serving BM25-only. Bounds that stage, not the call — measured warm the arm costs 87–96ms (total 106–113ms), cold 668ms (total 694ms), so 150ms passes every warm call and caps a cold one near 180ms. The embed is abandoned, not cancelled, so the model still finishes loading and the next call is warm. Degradations are visible as `degraded: "vector-arm-timeout"`; `0` disables (kill switch) |
 | `BASTRA_HOOK_MAX_SHOW` | no | `1` | how often the same memory may appear in `<recall-hints>` per session (4h window); a `load_memory` of that id resets the counter |

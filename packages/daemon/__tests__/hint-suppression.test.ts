@@ -1,7 +1,7 @@
 /** #479: version-local suppression of repeatedly unused automatic hints. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { hintRevision, suppressRepeatedUnused, type HintMemory } from "../src/hint-suppression.js";
+import { hintRevision, hintSuppressionMode, suppressRepeatedUnused, type HintMemory } from "../src/hint-suppression.js";
 import type { UsageAggregate } from "../src/usage-sidecar.js";
 
 const memory = (type = "project-fact", body = "Use the deployment checklist.", recall_mode?: string): HintMemory => ({
@@ -61,4 +61,19 @@ test("directive memories, explicit reflexes, and the zero kill switch are never 
   }
   const m = memory();
   assert.equal(suppressRepeatedUnused([{ id: "fact", type: "project-fact" }], () => m, ignoredUsage(m), 0).kept.length, 1);
+});
+
+test("#484: der Modus ist Schatten, solange nichts anderes gesetzt ist", () => {
+  const prev = process.env.BASTRA_HINT_SUPPRESS;
+  try {
+    delete process.env.BASTRA_HINT_SUPPRESS;
+    assert.equal(hintSuppressionMode(), "shadow");
+    for (const [raw, expected] of [["live", "live"], ["LIVE", "live"], ["off", "off"], ["quatsch", "shadow"], ["", "shadow"]]) {
+      process.env.BASTRA_HINT_SUPPRESS = raw;
+      assert.equal(hintSuppressionMode(), expected, `${raw} → ${expected}`);
+    }
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_HINT_SUPPRESS;
+    else process.env.BASTRA_HINT_SUPPRESS = prev;
+  }
 });

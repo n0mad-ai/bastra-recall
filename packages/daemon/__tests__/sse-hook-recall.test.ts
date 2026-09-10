@@ -149,8 +149,12 @@ test("hook/recall: without Accept header returns JSON", async () => {
   }
 });
 
-test("#479: hook recall removes a repeatedly unused current memory version", async () => {
+test("#479/#484: under BASTRA_HINT_SUPPRESS=live a repeatedly unused version is removed", async () => {
   const d = await makeDaemon();
+  // #484 moved the breaker to shadow by default — the removal only happens in
+  // the live mode now, so the case has to ask for it explicitly.
+  const previousMode = process.env.BASTRA_HINT_SUPPRESS;
+  process.env.BASTRA_HINT_SUPPRESS = "live";
   try {
     const revision = hintRevision(d.vault.get("alpha"));
     assert.ok(revision);
@@ -169,6 +173,8 @@ test("#479: hook recall removes a repeatedly unused current memory version", asy
     assert.equal(response.status, 200);
     assert.deepEqual(JSON.parse(response.body).hits, []);
   } finally {
+    if (previousMode === undefined) delete process.env.BASTRA_HINT_SUPPRESS;
+    else process.env.BASTRA_HINT_SUPPRESS = previousMode;
     resetUsageShadowCache();
     await d.close();
   }

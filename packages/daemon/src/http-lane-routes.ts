@@ -22,6 +22,7 @@ import { runStopLane, type ClaudeStopPayload } from "./stop-lane.js";
 import { runSessionLane, type SessionPayload } from "./session-lane.js";
 import { runTodoLane, type ClaudeHookPayload as TodoPayload } from "./todo-lane.js";
 import { MAX_BODY_BYTES, readJsonBody } from "./http-util.js";
+import type { WarmupCoordinator } from "./embedding-warmup.js";
 
 /** The one shape all three share: read `{payload}`, run the lane, answer with
  *  its stdout document; `{}` + 200 on any failure. */
@@ -47,6 +48,12 @@ export function dispatchLaneRoutes(
   res: ServerResponse,
   method: string,
   url: string,
+  /** #490: the shared embedding warm-up, so the session lane can ask it for
+   *  residency and start the load BESIDE its recall instead of inside it.
+   *  Same route-level injection as the prompt lane's prewarmer (#361, in
+   *  http.ts). Absent = no embedding provider, and the lane behaves exactly
+   *  as it did before #490. */
+  warmupEmbedding?: WarmupCoordinator,
 ): boolean {
   if (method !== "POST") return false;
 
@@ -58,7 +65,9 @@ export function dispatchLaneRoutes(
   }
   // SessionStart: the recall + floors + taxonomy + care/import/update block.
   if (url === "/hook/session") {
-    runLane<SessionPayload>(req, res, runSessionLane);
+    runLane<SessionPayload>(req, res, (payload, self) =>
+      runSessionLane(payload, self, warmupEmbedding),
+    );
     return true;
   }
   // PreToolUse TodoWrite (#36): topology recall for a fresh multi-step plan.

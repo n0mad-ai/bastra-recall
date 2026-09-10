@@ -7,6 +7,11 @@
 import type { SalienceShadow } from "./salience-shadow.js";
 import type { TrustShadow } from "./trust-shadow.js";
 import type { TelemetryDimensions } from "./telemetry-dimensions.js";
+import type {
+  OllamaLifecycleEvent,
+  WarmupSettleEvent,
+  VectorLateSettleEvent,
+} from "./telemetry-events-embedding.js";
 
 // Nur die Events, die DIESE Klasse via write() schreibt. Die Hook-CLIs
 // (hook_call, session_hook_call, prompt_hook_call, bash_hook_call,
@@ -23,10 +28,13 @@ export type TelemetryEvent =
   | HookReflexEvent
   | HookActEvent
   | RecallEpisodeEvent
+  | HintFollowedShadowEvent
   | IdScanEvent
   | MutationIncidentEvent
   | EvidenceDecisionEvent
   | OllamaLifecycleEvent
+  | WarmupSettleEvent
+  | VectorLateSettleEvent
   | ReadDocumentEvent;
 
 /**
@@ -43,6 +51,21 @@ export interface RecallStageBuckets {
   query_parse_ms?: number;
   bm25_search_ms?: number;
   vector_search_ms?: number;
+  /**
+   * #489: Die WARTEZEIT des Aufrufers auf den dichten Arm — vom `await` bis
+   * Settle oder Aufgabe.
+   *
+   * `vector_search_ms` daneben ist die Wanduhr des Arms ab dem Abfeuern und
+   * überlappt `bm25_search_ms` (`overlapped: true`); die Stages sind seit #370
+   * bewusst keine Partition des Totals. Gemessen 06.–08.09.2026 klaffen die
+   * beiden Größen in der Prompt-Lane um zwei Größenordnungen auseinander:
+   * `vector_search_ms` p50 336 ms, echte Wartezeit p50 5 ms — der Embed
+   * versteckte sich hinter einem langen BM25-Lauf.
+   *
+   * Optional, weil Events vor #489 das Feld nicht haben. Fehlt es, ist die
+   * Wartezeit UNBEKANNT — nicht null und schon gar nicht `vector_search_ms`.
+   */
+  vector_wait_ms?: number;
   rrf_fuse_ms?: number;
   hops_expand_ms?: number;
   staleness_rank_ms?: number;
@@ -223,6 +246,16 @@ export interface RecallEvent extends BaseEvent, DimensionedEvent {
   payload_chars?: number;
   payload_tokens_est?: number;
   presentation?: "lean" | "full";
+  /**
+   * #487: Das ANGEFORDERTE Kontextbudget dieses Aufrufs in Token. Fehlt, wenn
+   * der Aufrufer keines gesetzt hat. Zusammen mit `payload_tokens_est` (was
+   * wirklich ausging) ist das die Zuordnung, die #457 für die Ersparnis
+   * braucht — eine der beiden Zahlen allein sagt sie nicht.
+   */
+  max_tokens?: number;
+  /** #487: wie viele gerankte Treffer das Budget weggelassen hat. Fehlt, wenn
+   *  keiner fiel; die ausgespielte Zahl ist `hit_count` minus dieser Wert. */
+  dropped_by_budget?: number;
 }
 
 /** #457: Woher ein Load kam — Hook-Hint, eigener `recall()` oder kalt. */
@@ -285,6 +318,40 @@ export interface RecallEpisodeEvent extends BaseEvent {
   acted_on: boolean;
   match_strength: number;
   tool_name: string | null;
+}
+
+/**
+ * #478 Part 2 / #484 shadow: did an injected hint get FOLLOWED without ever
+ * being loaded? `acted_on` can only ever answer that for an explicit
+ * `load_memory` — the breaker in `hint-suppression.ts:93` therefore treats an
+ * unobservable signal as evidence of worthlessness.
+ *
+ * Deliberately its OWN kind rather than a field on `RecallEpisodeEvent`:
+ * `telemetry-report.ts:184-188` counts every surfaced episode as `loaded`, so
+ * emitting these as episodes would inflate the USE rate — a measurement that
+ * changes the numbers it measures. Nothing reads this kind yet; it is a
+ * parallel count for the 10.09. evaluation.
+ *
+ * NO recall_id, score or band: `hookHints` keeps one slot per memory id and
+ * the newest recall overwrites it, so any provenance here would be the wrong
+ * recall's as often as not (review finds, Vera 06.09.). The question — was an
+ * injected hint followed — needs none of it.
+ *
+ * READ IT AS AN UPPER BOUND. A hint is injected BECAUSE it fits the context,
+ * so its words are more likely to appear in the next tool input anyway. Where
+ * `loaded` is a lower bound for "used", this is a ceiling.
+ */
+export interface HintFollowedShadowEvent extends BaseEvent {
+  kind: "hint_followed_shadow";
+  memory_id: string;
+  turn_id: string;
+  turn_source: TurnSource;
+  /** Same threshold as `acted_on` (>= 2) so both numbers stay comparable. */
+  followed: boolean;
+  match_strength: number;
+  tool_name: string | null;
+  /** ms between the hint being injected and this tool input. */
+  age_ms: number;
 }
 
 export interface SaveMemoryEvent extends BaseEvent {
@@ -482,9 +549,152 @@ export interface HookActEvent extends BaseEvent, DimensionedEvent {
 }
 
 /** Recall served from the HTTP /hook/recall endpoint (server-side view). */
+/**
+ * #491 — Prognose gegen Wirklichkeit für den dichten Arm, pro Recall.
+ *
+ * Reine Beobachtung. Die Felder sind so gewählt, dass die Auswertung am
+ * 13.09.2026 (#492) ohne Nacharbeit läuft: Jede Zeile trägt die Prognose, die
+ * Zahl die galt, die Dimension in der sie stand, den Deckelungsgrund und —
+ * sobald sie feststeht — die Wirklichkeit.
+ */
+export interface DeadlineShadowRow {
+  /** `provider:model`, für das dieses Profil gilt. Ein Modellwechsel startet
+   *  ein frisches; der Schlüssel ist die Stelle, an der man das sieht. */
+  profile_key: string;
+  /** Die Frist, die das gelernte Profil gesetzt hätte, ab dem `await`. */
+  predicted_deadline_ms: number;
+  /** Die Frist, die tatsächlich galt. */
+  deadline_ms: number;
+  /** Warum die Prognose so aussieht — insbesondere, ob die Wanduhr der Lane
+   *  sie gedeckelt hat (`lane-wall-clock`) oder das Profil noch leer war
+   *  (`profile-empty`, also einmal lexikalisch). #494: `lane-too-short` heißt
+   *  `predicted_deadline_ms: 0` — unter der Mindestfrist läuft KEIN dichter
+   *  Arm, statt einer Frist, die länger wäre als die Wanduhr. */
+  cap_reason: "profile-empty" | "lane-wall-clock" | "lane-too-short" | "floor" | "max-deadline" | "none";
+  /**
+   * Auf welcher Ebene des hierarchischen Rückfalls die Zahl steht — eine grobe
+   * Prognose darf nicht wie eine feine aussehen.
+   *
+   * `profile-wide` steht nur auf Zeilen VOR #493: Damals griff der Rückfall
+   * über alle Eimer des Profils und damit über die Residenzgrenze, wodurch die
+   * ersten kalten Stichproben das warme ~70-ms-Profil erbten. Solche Zeilen
+   * gehören aus einer Kaltstart-Auswertung heraus.
+   */
+  basis: "bucket" | "length-wide" | "residency-wide" | "profile-wide" | "empty";
+  /** Wieviele Stichproben sie trägt. */
+  samples: number;
+  /** Das p95 der GESAMTZEIT (Abfeuern → echtes Settle), aus dem sie stammt. */
+  expected_total_ms?: number;
+  /** Der Dimensions-Eimer: `residenz|längenband|nebenläufigkeit`. */
+  bucket: string;
+  /** Residenz beim Abfeuern, aus dem Warmup-Koordinator (#490). */
+  residency: "warm" | "cold" | "unknown" | "hosted";
+  /** Dichte Arme in Flug, inklusive dieses. */
+  concurrency: number;
+  /** Zeichen der Query, die der dichte Arm bekam (ungekappt). */
+  query_chars: number;
+  /** Was der Arm im Schatten von BM25 schon verbraucht hatte
+   *  (`vector_search_ms − vector_wait_ms`, #489). */
+  overlap_ms: number;
+  /** Die Wanduhr der Lane, gegen die gedeckelt wurde. `0` = kein Budget. */
+  lane_budget_ms: number;
+  /** Ist der Arm an der TATSÄCHLICH geltenden Frist gescheitert? */
+  timed_out: boolean;
+  /** Die echte Gesamtzeit — nur wenn der Arm im Aufruf settelte. Beim
+   *  aufgegebenen Arm steht sie in `vector_late_settle` (#489). */
+  actual_settle_ms?: number;
+  /**
+   * #495: Hätte das Profil überhaupt einen dichten Arm GESTARTET?
+   *
+   * #499: Seit dieser Runde konstant `true`, und das ist kein Schönreden,
+   * sondern die Korrektur eines Denkfehlers. Der dichte Arm wird VOR BM25
+   * abgefeuert; die Prognose entsteht danach und kann ihn nicht mehr
+   * verhindern. Eine Schattenzeile ohne Arm gibt es zudem gar nicht — ohne
+   * Provider, mit offenem Breaker oder bei `lexical_only` (#494) wird keine
+   * gebaut. Das Feld bleibt, weil die Auswertung des laufenden Fensters es
+   * liest; die Unterscheidung, die es sein wollte, heißt jetzt
+   * {@link DeadlineShadowRow.shadow_would_wait}.
+   */
+  shadow_would_run: boolean;
+  /**
+   * #499: Hätte das Profil an dieser Stelle noch GEWARTET?
+   *
+   * `false` = nein (`predicted_deadline_ms: 0`, `cap_reason:
+   * "lane-too-short"`): Der Arm läuft, die gelernte Politik hätte ihn aber
+   * nicht mehr abgewartet, sondern spät auslaufen lassen. Bis #499 stand
+   * dieser Fall als `shadow_would_run: false` in der Zeile und trug keinen
+   * `shadow_timeout` — 3 von 21 Zeilen der ersten Messnacht fielen damit aus
+   * Kriterium 4 heraus, obwohl alle drei unter der festen Zahl fusioniert
+   * hatten.
+   */
+  shadow_would_wait: boolean;
+  /** Hätte die GELERNTE Frist gehalten? `true` = sie wäre gerissen. Zusammen
+   *  mit `timed_out` ist das der direkte Vergleich der beiden Timeout-Quoten,
+   *  den Kriterium 4 aus #492 verlangt. #499: Steht auf JEDER im Aufruf
+   *  gesettelten Zeile, auch bei `shadow_would_wait: false` — dort heißt
+   *  `true`, dass die gelernte Politik diese Fusion verloren hätte. Fehlt nur
+   *  beim aufgegebenen Arm, dessen Wirklichkeit erst in `vector_late_settle`
+   *  feststeht. */
+  shadow_timeout?: boolean;
+  /**
+   * #493: Wie der dichte Arm ausgegangen ist.
+   *
+   * `hits` ist die EINZIGE Latenzstichprobe. Vorher fing `EmbeddingIndex
+   * .search()` jeden Providerfehler ab und gab `[]` zurück; für `abandonAfter`
+   * war das ein `settled: true`, also lernte das Profil die Dauer eines
+   * HTTP 500 als „normalen dichten Arm". Fehlt auf Zeilen vor #493 und beim
+   * aufgegebenen Arm — dessen Ausgang steht in `vector_late_settle`.
+   */
+  provider_outcome?: "hits" | "empty" | "error";
+  /** Rohe Treffer des Providers, VOR dem Vault-Filter. Die gefilterte Zahl
+   *  bleibt `recall_stages`-seitig, wo sie immer stand. */
+  vector_hit_count?: number;
+  /** GRUNDWAHRHEIT für Tor 3 aus #492: Der Provider hat für diesen Call ein
+   *  Modell geladen (Ollama `load_duration`). Ohne dieses Feld musste „echter
+   *  Kaltstart" aus Zeitstempeln erschlossen werden. */
+  cold_start_observed?: boolean;
+  /** Die gemeldete Ladezeit, roh in ms — damit die Kaltstartschwelle
+   *  (`PROVIDER_COLD_LOAD_MS`) aus den Daten selbst nachgezogen werden kann. */
+  provider_load_ms?: number;
+  /** #493: Woher die Residenz stammt und ob sie geschätzt ist. Tor 3 darf auf
+   *  geschätzten Zeilen nicht zählen. */
+  residency_source?: "unload-observed" | "provider-load" | "warm-up" | "last-ok" | "hosted" | "none";
+  residency_estimated?: boolean;
+  /**
+   * #493: Woher `lane_budget_ms` kommt.
+   *
+   * Live belegt: Die MCP-Lane wurde gegen eine fremde Wanduhr geschattet —
+   * der Forwarder schickte kein `hook_budget_ms`, die Route fiel auf die 200
+   * der Prompt-Lane zurück, und ein gesunder 400-ms-Arm las
+   * `cap_reason: floor` gegen ein Budget, das für ihn nie galt. Seit #493
+   * schickt jede Lane ihre eigene Zahl, und diese Spalte sagt, ob das
+   * geschehen ist.
+   */
+  budget_source?: "caller" | "endpoint-default";
+  /** #493: die datensparsame Kennung dieses Hosts (`host-profile.ts`) — Tor 5
+   *  aus #492 fragt nach einer zweiten Maschine, und zusammengeführte Logs
+   *  konnten Hosts vorher nicht auseinanderhalten. */
+  host_profile_id?: string;
+}
+
 export interface HookRecallEvent extends BaseEvent, DimensionedEvent {
   kind: "hook_recall";
   recall_id: string;
+  /**
+   * #493: Die Klammer um die Recalls EINES Sitzungsstarts.
+   *
+   * Ein SessionStart feuert bis zu drei korrelierte Recalls (user-preference,
+   * all-projects, Projekt-Scope) — jeder mit eigener `recall_id` und, auf
+   * einem kalten Modell, jeder mit eigenem Kaltstart-Verdacht. Ohne diese
+   * Klammer ist „20 Kaltstarts" (Tor 3 aus #492) nicht von „7 Kaltstarts × 3
+   * Recalls" zu unterscheiden, und die `session_id` hilft nicht: Sie ist über
+   * die ganze Sitzung dieselbe, also über beliebig viele Starts hinweg
+   * (compact/clear/resume behalten sie).
+   *
+   * Fehlt auf jedem Recall, der nicht aus einem Sitzungsstart kommt — und auf
+   * Zeilen vor #493.
+   */
+  session_start_call_id?: string;
   /**
    * #305/#361: der Turn, in dem dieser Recall lief — und woher die Zuordnung
    * stammt.
@@ -531,6 +741,24 @@ export interface HookRecallEvent extends BaseEvent, DimensionedEvent {
   }>;
   /** Sum of the lean-hit token estimates above (chars/4). */
   usage_suppressed_tokens_est?: number;
+  /** #484: whether the list above was actually removed (`live`) or only
+   *  counted (`shadow`). Absent on events written before the mode existed —
+   *  those are live by definition. */
+  usage_suppressed_mode?: "shadow" | "live";
+  /**
+   * #487: das angeforderte Kontextbudget dieses Aufrufs in Token, und was das
+   * ausgelieferte Payload davon gebraucht hat. Dieselben Zahlen wie auf dem
+   * MCP-Pfad — der Forwarder proxyt `recall` über diesen Endpunkt, also
+   * entstünde die Ersparnis sonst genau dort, wo sie niemand messen kann.
+   *
+   * Nur auf Aufrufen MIT Budget: Die Größe zu messen heißt, das Payload ein
+   * zweites Mal zu serialisieren, und dieser Endpunkt läuft an jedem Bash und
+   * jedem Edit. Wer kein Budget schickt, zahlt die Messung nicht.
+   */
+  max_tokens?: number;
+  dropped_by_budget?: number;
+  payload_chars?: number;
+  payload_tokens_est?: number;
   latency_ms_recall: number;
   latency_ms_total: number;
   /** Pro-Stage-Timings (#38). Optional — alte Hook-Events ohne Stage-
@@ -643,6 +871,36 @@ export interface HookRecallEvent extends BaseEvent, DimensionedEvent {
   /** #342: which leg dropped out — `vector-arm-timeout` (missed its per-arm
    *  deadline) or `vector-arm-empty` (had nothing to say). See the hook event. */
   degraded_reason?: string;
+  /**
+   * #494: Der Aufrufer hat den dichten Arm ABGEWÄHLT — kein Embed, kein
+   * Timeout, keine Latenzstichprobe. Ausdrücklich verschieden von
+   * `degraded_reason` (ein Arm ist ausgefallen) und von seiner Abwesenheit auf
+   * einer Maschine ohne Embeddings (es gibt gar keinen Arm). Ohne die
+   * Unterscheidung zählte die Auswertung zu #492 Kaltstarts, die nie gemessen
+   * wurden. Gesetzt vom kalten SessionStart (`session-lane.ts`).
+   */
+  lexical_only?: boolean;
+  /**
+   * #491 — die SCHATTENSPALTE des gelernten Latenzprofils.
+   *
+   * Was hier steht, hat auf diesen Recall nichts bewirkt: `deadline_ms` ist die
+   * Zahl, die tatsächlich galt (150 / 350 / 1500, von Hand getippt),
+   * `predicted_deadline_ms` die, die ein aus dieser Maschine gelerntes Profil
+   * gesagt hätte. Der Sinn der Spalte ist, dass sie nichts tut — sie sagt vor
+   * dem Scharfschalten (#492), ob die gelernte Zahl die feste schlägt oder
+   * mindestens hält.
+   *
+   * Die fünf Torbedingungen aus #492 lesen sich direkt hieraus: Anzahl der
+   * Zeilen pro Lane (`dimensions.hook_source`), `residency: "cold"` für die
+   * Kaltstarts, `predicted_deadline_ms` gegen `actual_settle_ms` für die
+   * Timeout-Quote, `cap_reason` für die Deckelung, `profile_key` für eine
+   * zweite Maschine.
+   *
+   * Fehlt bei einem Recall ohne dichten Arm, bei offenem Breaker und bei einem
+   * Cache-Hit — überall dort gab es keinen Arm, über den etwas zu prognostizieren
+   * gewesen wäre.
+   */
+  deadline_shadow?: DeadlineShadowRow;
   /** #217: would-be re-ranking under the salience multiplier (shadow mode). */
   salience_shadow?: SalienceShadow;
   /** #160: same projection for the usage-driven trust multiplier. Present on
@@ -669,34 +927,11 @@ export interface HookReflexEvent extends BaseEvent {
   latency_ms: number;
 }
 
-/**
- * Ollama-Modell-Lifecycle (#109): prewarm (Boot-Wakeup) und idle-unload.
- * Aus den Paaren prewarm→unload lässt sich die RAM-Residenz des Embedding-
- * Modells schätzen — die Messgröße hinter dem #78-Energie-Design.
- */
-export interface OllamaLifecycleEvent extends Omit<BaseEvent, "session_id"> {
-  kind: "ollama_lifecycle";
-  /**
-   * #363: immer `null` — und das ist die Aussage, nicht ein fehlendes Feld.
-   * Beide Emitter laufen ohne jede Claude-Session: der prewarm im Boot-Pfad
-   * (index.ts), der unload auf einem 60-s-Timer (daemon-jobs.ts). Vorher
-   * stempelte der Sink hier seine Boot-UUID; die sah in `events-*.jsonl` wie
-   * eine Session aus und war der Grund, dass "4 Sessions" am 22.08. in
-   * Wahrheit 4 Daemon-Starts waren.
-   */
-  session_id: null;
-  /**
-   * #363: die Daemon-Boot-id, jetzt unter dem Namen, der sie beschreibt.
-   * Nötig, weil das prewarm→unload-Pairing (siehe Doc-Kommentar oben) sonst
-   * mit dem session_id-Feld verschwinden würde — die id war echt, nur falsch
-   * beschriftet. Identisch mit `Telemetry.runId()` / `AuditEntry.session_id`.
-   */
-  run_id: string;
-  action: "prewarm" | "unload";
-  model: string;
-  ok: boolean;
-  /** Beim unload: Alter des letzten erfolgreichen Embeds (ms); sonst null. */
-  last_embed_age_ms: number | null;
-  /** Provider-Calls (query + backfill batches) seit Daemon-Boot. */
-  embed_calls_since_boot: number | null;
-}
+// #495: Die Zeilen des Embedding-Pfades stehen seit dem Herausschneiden in
+// `telemetry-events-embedding.ts` (Datei lag über der 800-Zeilen-Grenze). Der
+// Re-Export hält jeden bestehenden Importpfad gültig.
+export type {
+  OllamaLifecycleEvent,
+  WarmupSettleEvent,
+  VectorLateSettleEvent,
+} from "./telemetry-events-embedding.js";

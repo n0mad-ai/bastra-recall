@@ -149,8 +149,27 @@ test("cross-session hint suppression reports avoided hints and context", () => {
       { type: "project-fact", count: 2 },
       { type: "lesson", count: 1 },
     ],
+    // Ohne Modusfeld: älter als #484 und damit im Wirkbetrieb entstanden.
+    modes: [{ mode: "live", calls: 2 }],
   });
-  assert.match(renderStats(stats, 600), /3 repeated-unused hint\(s\).*~104 hook-payload tokens avoided/);
+  assert.match(renderStats(stats, 600), /3 repeated-unused hint\(s\) removed.*~104 hook-payload tokens avoided/);
+});
+
+test("#484 shadow: der Bericht sagt nicht 'removed', wenn nichts entfernt wurde", () => {
+  const stats = aggregate([
+    {
+      kind: "hook_recall",
+      ts: "2026-09-06T05:00:00.000Z",
+      usage_suppressed: [{ id: "a", type: "lesson" }],
+      usage_suppressed_tokens_est: 40,
+      usage_suppressed_mode: "shadow",
+    },
+  ]);
+  assert.deepEqual(stats.hintSuppression.modes, [{ mode: "shadow", calls: 1 }]);
+  const rendered = renderStats(stats, 600);
+  assert.match(rendered, /would have been removed/);
+  assert.doesNotMatch(rendered, /tokens avoided/);
+  assert.match(rendered, /mode: shadow×1/);
 });
 
 test("the render names the budget and the headroom against it", () => {

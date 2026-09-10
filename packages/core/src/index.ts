@@ -95,7 +95,7 @@ export type { MutationIncident, MutationStatus } from "./mutation-incident.js";
 export { isWeakResult, isNoHome, hitTitleMatches } from "./weak-result.js";
 // #265: der Session-Assembler braucht dieselbe Abbruch-Semantik wie die Arme
 // des Recalls — abandon, nicht cancel (siehe deadline.ts).
-export { abandonAfter } from "./deadline.js";
+export { abandonAfter, type LateSettleSample, type LateSettleDescriber } from "./deadline.js";
 // #264: der deterministische Evidenzentscheid. In core, damit BEIDE
 // Recall-Pipelines und die Eval-Harness dieselbe Entscheidung treffen — §16.2
 // verlangt eine zentrale Implementierung, nicht eine pro Oberfläche.
@@ -190,7 +190,17 @@ export {
   RRF_K,
   RRF_SCALE,
 } from "./embeddings.js";
-export type { EmbeddingProvider, EmbeddingHit, EmbedListener, EmbeddingRuntimeHealth } from "./embeddings.js";
+export type {
+  EmbeddingProvider,
+  EmbeddingHit,
+  EmbedListener,
+  EmbeddingRuntimeHealth,
+  // #493: der strukturierte Ausgang des dichten Arms.
+  ProviderOutcome,
+  VectorSearchOutcome,
+  EmbedWithMeta,
+} from "./embeddings.js";
+export { PROVIDER_COLD_LOAD_MS } from "./embeddings.js";
 
 export { EmbedCache, hashEmbedContent } from "./embed-cache.js";
 export type { EmbedCacheEntry, EmbedCacheFile } from "./embed-cache.js";

@@ -17,10 +17,9 @@
  */
 // #305: subpath leafs, never the core barrel — measured +40ms of process
 // start against +0.8ms for the three leafs, on a fresh spawn per event.
-import { detectProject } from "@bastra-recall/core/topics";
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { requiredHeadline, unfusedHeadline } from "./band-wording.js";
-import { applyLaneScopeFilter, projectConfidence, projectForFilter, type ScopeFilterMode } from "./scope-filter.js";
+import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane, type ScopeFilterMode } from "./scope-filter.js";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { request } from "node:http";
 import { appendFile, mkdir } from "node:fs/promises";
@@ -224,7 +223,10 @@ export async function runTodoLane(
   }
 
   const cwd = payload.cwd ?? process.cwd();
-  const project = detectProject(cwd);
+  // §20.5: geratene Erkennung = kein Projekt (projectForLane) — sonst fragt
+  // die Lane Kandidaten für ein erfundenes Projekt ab und schreibt dessen
+  // Namen als `project=` in den Block.
+  const project = projectForLane(cwd);
   // §20.5: geratenes Projekt filtert nicht — siehe projectForFilter.
   const filterProject = projectForFilter(cwd);
   // The self-call target is passed in by the route (this server's own
@@ -335,7 +337,7 @@ export async function runTodoLane(
       recordSourceEmit(state, BACKOFF_SOURCE, filtered.map((h) => h.id), consumed);
       await saveSessionState(sessionId, state);
       // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
-      await reportHinted(url, filtered.map((h) => h.id));
+      await reportHinted(url, filtered.map((h) => h.id), payload.session_id ?? null);
     }
   }
 

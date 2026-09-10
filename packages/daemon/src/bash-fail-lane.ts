@@ -224,7 +224,7 @@ export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: str
       await markThrottle(sessionId);
       hintTokensEst = Math.ceil(block.length / 4);
       // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
-      await reportHinted(selfBaseUrl, hits.map((h) => h.id));
+      await reportHinted(selfBaseUrl, hits.map((h) => h.id), typeof payload.session_id === "string" ? payload.session_id : null);
       recordSourceEmit(state, BACKOFF_SOURCE, hits.map((h) => h.id), consumed);
       await saveSessionState(sessionId, state);
       stdout = JSON.stringify({

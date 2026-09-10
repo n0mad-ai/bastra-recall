@@ -6,7 +6,11 @@
  *
  *   - prewarm  = "Wakeup": Mini-Embed lädt das Modell, fire-and-forget beim
  *     Daemon-Boot, damit der erste echte Recall ein warmes Modell trifft.
- *     Der SessionStart-Hook-Recall wirkt als natürlicher Wakeup danach.
+ *     Seit #494 steht er NICHT mehr hier: Er lief als eigener HTTP-Call an
+ *     der Singleflight-Grenze, am Breaker und am Nebenläufigkeitszähler
+ *     vorbei, und war damit einer von bis zu fünf gleichzeitigen Embeds beim
+ *     kalten Start. Es gibt jetzt genau einen Weg, dieses Modell zu wärmen —
+ *     `WarmupCoordinator.ensureWarm` in `embedding-warmup.ts`.
  *   - unload   = "Idle-Befehl": keep_alive:0 entlädt das Modell sofort —
  *     ~600 MB RAM frei statt Dauerbelegung (mobiler Akku). Der nächste
  *     Embed lädt es in 1–2 s zurück.
@@ -15,30 +19,6 @@
  * für immer im RAM — genau das Gegenteil des Energie-Ziels.
  * Alle Calls best-effort: werfen nie, loggen nur.
  */
-
-/** Modell laden (Wakeup). true = Modell ist warm. */
-export async function prewarmOllamaModel(
-  baseURL: string,
-  model: string,
-  keepAlive: string | number,
-): Promise<boolean> {
-  try {
-    const resp = await fetchWithTimeout(
-      `${baseURL.replace(/\/+$/, "")}/api/embed`,
-      { model, input: "warmup", keep_alive: keepAlive },
-      120_000, // Cold-Load von Disk kann auf gedrosselter Hardware dauern
-    );
-    if (resp.ok) {
-      console.error(`[bastra-recall] ollama prewarm: ${model} loaded`);
-      return true;
-    }
-    console.error(`[bastra-recall] ollama prewarm failed: HTTP ${resp.status}`);
-    return false;
-  } catch (err) {
-    console.error(`[bastra-recall] ollama prewarm failed: ${(err as Error).message}`);
-    return false;
-  }
-}
 
 /** Modell sofort entladen (Idle). true = unload akzeptiert. */
 export async function unloadOllamaModel(baseURL: string, model: string): Promise<boolean> {

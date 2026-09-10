@@ -248,6 +248,21 @@ async function main(): Promise<void> {
     console.log(`    ${scope.padEnd(18)} ${pct(e.colliding, e.n).padStart(6)}  (${e.colliding}/${e.n})`);
   }
 
+  // #289: the same split by type. The pool is scope×type-local, so the type is
+  // the other half of the question — a scope can look bad only because one
+  // type inside it does.
+  const byType = new Map<string, { n: number; colliding: number }>();
+  for (const r of withTriggers) {
+    const e = byType.get(r.type) ?? { n: 0, colliding: 0 };
+    e.n += 1;
+    if (r.collisions.length > 0) e.colliding += 1;
+    byType.set(r.type, e);
+  }
+  console.log(`\n  by type (memories with >=1 colliding trigger):`);
+  for (const [type, e] of [...byType.entries()].sort((a, b) => b[1].colliding - a[1].colliding)) {
+    console.log(`    ${type.padEnd(18)} ${pct(e.colliding, e.n).padStart(6)}  (${e.colliding}/${e.n})`);
+  }
+
   search.stop();
   await vault.stop();
   if (outPath) {

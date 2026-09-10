@@ -31,7 +31,12 @@ import type { ToolDeps } from "./tool-deps.js";
 import { vaultLocator } from "./vault-locator.js";
 import { scoreSaveQuality, GENERIC_TRIGGER_WORDS, type SaveQualityResult } from "./save-quality.js";
 import { MEMORY_TOOL_DEFS } from "./tool-defs-memory.js";
-import { detectSaveCallCorruption, saveCallCorruptionMessage } from "./save-call-corruption.js";
+import {
+  callCorruptionMessage,
+  detectCallCorruption,
+  repairCallCorruption,
+  requiredFieldsOf,
+} from "./call-corruption.js";
 
 // Re-exported so the 18 existing importers keep their import path.
 export type { ToolDeps };
@@ -349,11 +354,25 @@ export async function saveMemoryHandler(
   rawArgs: unknown,
 ): Promise<SaveMemoryResult | ClaimGateResult> {
   // Claude/Opus can switch from native JSON arguments into legacy XML inside
-  // the first multiline value. That is terminal immediately: retrying the same
-  // generated call cannot recreate fields that never crossed the MCP boundary,
-  // and it must not poison the ordinary save-failure counter.
-  const corruption = detectSaveCallCorruption(rawArgs);
-  if (corruption) throw new Error(saveCallCorruptionMessage(corruption));
+  // the first multiline value. Retrying the generated call cannot help — it
+  // reproduces the same framing — so this must never poison the ordinary
+  // save-failure counter. 08.09.: where the swallowed content is still in the
+  // container, the framing is undone and the save goes through.
+  // #482: the shared detector, fed from save_memory's own schema rather than a
+  // hand-kept constant. The boundary (dispatchApi / the stdio CallTool handler)
+  // runs the same check for every tool; this one stays so a direct handler call
+  // gets the same answer.
+  const corruption = detectCallCorruption(
+    rawArgs,
+    requiredFieldsOf(MEMORY_TOOL_DEFS.find((def) => def.name === "save_memory")),
+  );
+  if (corruption) {
+    // 08.09.: the framing is recoverable more often than not — see
+    // `repairCallCorruption`. Only a body that did NOT survive is terminal.
+    const repaired = repairCallCorruption(rawArgs, corruption);
+    if (!repaired) throw new Error(callCorruptionMessage("save_memory", corruption));
+    rawArgs = repaired;
+  }
   let result: SaveMemoryResult | ClaimGateResult;
   try {
     result = await saveMemoryInner(deps, rawArgs);

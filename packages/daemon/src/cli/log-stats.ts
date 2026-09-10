@@ -67,6 +67,9 @@ export interface HintSuppressionStats {
   hints: number;
   tokens: number;
   byType: Array<{ type: string; count: number }>;
+  /** #484: calls per suppression mode. Events without the field predate the
+   *  mode and were live. */
+  modes: Array<{ mode: string; calls: number }>;
 }
 
 export function percentiles(values: number[]): Percentiles | null {
@@ -93,6 +96,7 @@ export function aggregate(events: Array<Record<string, unknown>>): LogStats {
   let suppressionCalls = 0;
   let suppressionHints = 0;
   let suppressionTokens = 0;
+  const suppressionModes = new Map<string, number>();
   let from: string | null = null;
   let to: string | null = null;
 
@@ -111,6 +115,8 @@ export function aggregate(events: Array<Record<string, unknown>>): LogStats {
       suppressionCalls++;
       suppressionHints += e.usage_suppressed.length;
       suppressionTokens += typeof e.usage_suppressed_tokens_est === "number" ? e.usage_suppressed_tokens_est : 0;
+      const suppressionMode = typeof e.usage_suppressed_mode === "string" ? e.usage_suppressed_mode : "live";
+      suppressionModes.set(suppressionMode, (suppressionModes.get(suppressionMode) ?? 0) + 1);
       for (const item of e.usage_suppressed as Array<Record<string, unknown>>) {
         const type = String(item.type ?? "unknown");
         suppressedTypes.set(type, (suppressedTypes.get(type) ?? 0) + 1);
@@ -178,6 +184,9 @@ export function aggregate(events: Array<Record<string, unknown>>): LogStats {
       byType: [...suppressedTypes.entries()]
         .map(([type, count]) => ({ type, count }))
         .sort((a, b) => b.count - a.count),
+      modes: [...suppressionModes.entries()]
+        .map(([mode, calls]) => ({ mode, calls }))
+        .sort((a, b) => b.calls - a.calls),
     },
   };
 }
@@ -197,10 +206,18 @@ function renderSaves(s: SaveStats): string[] {
 
 function renderHintSuppression(s: HintSuppressionStats): string[] {
   if (s.hints === 0) return [];
-  return [
-    `  hint suppression — ${s.hints} repeated-unused hint(s) removed across ${s.calls} recall(s), ~${s.tokens} hook-payload tokens avoided`,
+  // #484: in shadow the same list is produced but nothing leaves the payload —
+  // saying "removed"/"avoided" there would report a cut that never happened.
+  const live = s.modes.some((m) => m.mode === "live");
+  const shadow = s.modes.some((m) => m.mode !== "live");
+  const verb = live && shadow ? "removed or would have been removed" : live ? "removed" : "would have been removed";
+  const tokens = live && !shadow ? "hook-payload tokens avoided" : "hook-payload tokens";
+  const out = [
+    `  hint suppression — ${s.hints} repeated-unused hint(s) ${verb} across ${s.calls} recall(s), ~${s.tokens} ${tokens}`,
     `    by type: ${s.byType.map((r) => `${r.type}×${r.count}`).join(", ")}`,
   ];
+  if (shadow) out.push(`    mode: ${s.modes.map((m) => `${m.mode}×${m.calls}`).join(", ")}`);
+  return out;
 }
 
 function pct(part: number, whole: number): string {
