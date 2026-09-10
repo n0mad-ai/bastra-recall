@@ -193,6 +193,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Ollama autostart is a supervised `systemd --user` unit on Linux, not an
+  unref'd orphan** (#496). `ensureServing()` only had a persistent-agent path
+  for macOS (`brew services`); on Linux, `ollama.autostart` unconditionally
+  fell through to a one-shot `spawn(..., {detached: true}); child.unref()` —
+  invisible to `systemctl`, not tied to the daemon's lifecycle, holding
+  GPU-resident models with no idle-teardown story. It now starts ollama via
+  `systemd-run --user --unit=bastra-ollama --collect -- ollama serve`, the
+  platform-native analogue of brew services: a named, supervised unit that
+  `systemctl --user status/stop bastra-ollama` can see and manage. Falls back
+  to the previous detached spawn only when `systemd-run` isn't available.
+
 - **The context governor decides per entry, not per id** (#438). Kept
   candidates were tracked in a set keyed by id and the output filtered by that
   set, so with duplicate ids one accepted occurrence marked all of them as kept:

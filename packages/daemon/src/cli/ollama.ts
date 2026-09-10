@@ -5,7 +5,12 @@
  * via Homebrew (if missing), start it, pull the model, and persist
  * `embedding.provider=ollama` into ~/.bastra/cli-settings.json. We delegate
  * the *install* to Homebrew (we bundle no binary — that stays Pro); we own
- * the *lifecycle* so semantic recall works without the Mac app.
+ * the *lifecycle* so semantic recall works without the Mac app. `bastra
+ * embeddings on` (the install path) stays macOS-only (#84 tracks Windows);
+ * the daemon-boot autostart path (`ensureOllamaServerForDaemon`, used once
+ * `embedding.provider=ollama` is already configured — e.g. a manual Linux
+ * install) also supervises the server via `systemd --user` on Linux, the
+ * platform-native analogue of brew services.
  *
  * Consent lives with the CALLERS (`bastra embeddings on` is the consent; the
  * install-end prompt asks before calling) — this module never prompts.
@@ -250,6 +255,15 @@ async function modelPresent(): Promise<boolean> {
   }
 }
 
+/** Pure arg builder for the Linux `systemd --user` autostart path — the
+ *  platform-native analogue of `brew services start ollama`: a named,
+ *  `--collect`-ed unit that `systemctl --user status/stop bastra-ollama`
+ *  can see and manage, instead of an unref'd orphan with no supervisor.
+ *  Kept pure (no spawn) so it's testable without shelling out. */
+export function systemdRunOllamaArgs(ollamaPath: string): string[] {
+  return ["--user", "--unit=bastra-ollama", "--collect", "--", ollamaPath, "serve"];
+}
+
 /** Loopback-Guard für den Daemon-Autostart: nur einen LOKALEN Ollama-Server
  *  starten — eine Remote-BASTRA_OLLAMA_URL kann der Daemon nicht "starten".
  *  Exported for unit tests. */
@@ -322,11 +336,25 @@ async function ensureServing(
   // before spawning a competing instance (avoids an EADDRINUSE race on 11434).
   if (await serverVersion()) return { ok: true, detail: "started via brew services (login agent)" };
 
-  // one-shot detached serve (autostart off, or brew services failed)
+  // Linux: systemd --user is the persistent-agent equivalent to brew services
+  // on the one platform where a real service manager is standardly available.
+  // A named, --collect-ed unit is supervised and stoppable (`systemctl --user
+  // status/stop bastra-ollama`) instead of an unref'd orphan with no owner.
+  if (autostart && process.platform === "linux") {
+    const systemdRunBin = findExecutable("systemd-run");
+    if (systemdRunBin) {
+      const r = run(systemdRunBin, systemdRunOllamaArgs(ollamaPath), { timeoutMs: 10_000 });
+      if (r.ok && (await pollServer(15_000))) {
+        return { ok: true, detail: "started via systemd --user (bastra-ollama.service)" };
+      }
+    }
+  }
+
+  // one-shot detached serve (autostart off, or no supervisor is available)
   const child = spawn(ollamaPath, ["serve"], { detached: true, stdio: "ignore" });
   child.unref();
   if (await pollServer(15_000)) {
-    return { ok: true, detail: autostart ? "started (detached — brew services unavailable)" : "started (one-shot, autostart off)" };
+    return { ok: true, detail: autostart ? "started (detached — no supervisor available)" : "started (one-shot, autostart off)" };
   }
   return { ok: false, detail: "server not reachable within 15s" };
 }
