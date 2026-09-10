@@ -2,9 +2,21 @@
  * The cross-encoder behind the #501 decision — loaded, never shipped.
  *
  * This module exists only so the replay runner can ask one question of one
- * model: given a query and a candidate passage, how related are they? It is an
- * EVAL dependency. Nothing in `core` or `daemon` imports it, and if #501 ends
- * in "close it", this file and `@huggingface/transformers` leave together.
+ * model: given a query and a candidate passage, how related are they?
+ *
+ * ── The package is GONE, and this file stays ───────────────────────────────
+ * #501 ended in "close it", so `@huggingface/transformers` was removed from the
+ * repo as the registration required. This file is kept, because the decision it
+ * produced has to remain reproducible: someone repeating the measurement needs
+ * the exact model ids, dtypes, passage shapes and the language guard, not a
+ * description of them. The evidence itself lives elsewhere — the archived
+ * artifacts and `registrations/rerank-results.json`, hashed — so this code is
+ * documentation of a method, not the proof of a result.
+ *
+ * To repeat the measurement: `npm i -D --workspace=@bastra-recall/eval
+ * @huggingface/transformers@^4.2.0`, which is the version every figure in the
+ * plan was measured on. Nothing else has to change; `loadCrossEncoder` finds it
+ * again and says so plainly when it is absent.
  *
  * ── Why transformers.js and not Ollama, not Python ─────────────────────────
  * Ollama has no rerank endpoint: a cross-encoder is a sequence classifier, not
@@ -151,24 +163,48 @@ export interface PairScorer {
 /**
  * Load a cross-encoder through transformers.js.
  *
- * The import is dynamic on purpose: `@huggingface/transformers` is a
- * devDependency, and everything else in this package — including the metrics
- * and their tests — has to keep working in an install that does not have it.
- * A missing dependency must say so in one line, not fail at module load in an
- * unrelated file.
+ * The import is dynamic and the types are declared locally, both on purpose:
+ * the package is no longer installed, so a `typeof import(...)` would break
+ * `check:types` for the whole workspace, and a static import would break every
+ * module that merely sits beside this one. A missing dependency must say so in
+ * one sentence at the moment it is needed — not fail at load time in a file
+ * that has nothing to do with it.
+ *
+ * The surface below is the whole of what this harness ever used. It is written
+ * out rather than imported so that the compiler does not need the package to
+ * exist, and it is deliberately minimal: three entry points and one settings
+ * field.
  */
+interface TransformersModule {
+  env: { cacheDir: string };
+  AutoTokenizer: {
+    from_pretrained(repo: string): Promise<
+      (queries: string[], opts: { text_pair: string[]; padding: boolean; truncation: boolean; max_length: number }) => unknown
+    >;
+  };
+  AutoModelForSequenceClassification: {
+    from_pretrained(repo: string, opts: { dtype: string }): Promise<
+      (inputs: unknown) => Promise<{ logits: { tolist(): unknown } }>
+    >;
+  };
+}
+
 export async function loadCrossEncoder(key: keyof typeof MODELS | string): Promise<PairScorer> {
   const spec = MODELS[key];
   if (!spec) {
     throw new Error(`unknown model key ${JSON.stringify(key)} — registered: ${Object.keys(MODELS).join(", ")}`);
   }
-  let mod: typeof import("@huggingface/transformers");
+  let mod: TransformersModule;
   try {
-    mod = await import("@huggingface/transformers");
+    // Built from a variable so the compiler does not try to resolve a package
+    // that is intentionally absent.
+    const pkg = "@huggingface/transformers";
+    mod = (await import(/* @vite-ignore */ pkg)) as unknown as TransformersModule;
   } catch (e) {
     throw new Error(
-      "@huggingface/transformers is not installed. It is a devDependency of @bastra-recall/eval: " +
-        `npm i --workspace=@bastra-recall/eval (${(e as Error).message})`,
+      "@huggingface/transformers is not installed — it was removed when #501 closed. " +
+        "To repeat the measurement, install the version it was measured on: " +
+        `npm i -D --workspace=@bastra-recall/eval @huggingface/transformers@^4.2.0 (${(e as Error).message})`,
     );
   }
   // Must be set BEFORE the first `from_pretrained` — the value is read when a

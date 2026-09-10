@@ -229,30 +229,14 @@
   },
   "dependency": {
     "package": "@huggingface/transformers",
-    "version": "^4.2.0",
-    "$comment_version": "4.2.0 is the version the spike numbers above were measured on.",
-    "scope": "devDependency of @bastra-recall/eval only",
-    "constraints": [
-      "must appear in no runtime dependency of core or daemon",
-      "is REMOVED again if #501 ends in 'close it'"
-    ],
-    "footprint": {
-      "$comment": "Counted against the lockfile state before the install, not estimated. Reported because it is not a small appendix.",
-      "new_lockfile_entries": 69,
-      "all_dev_only": true,
-      "optional_platform_specific": 26,
-      "existing_versions_moved": 0,
-      "entries_removed": 0,
-      "node_modules_mb_approx": 226,
-      "groups": {
-        "onnxruntime": 8,
-        "sharp_and_platform_binaries": 29,
-        "protobufjs": 10,
-        "onnxruntime_binary_downloader": 19
-      },
-      "$comment_sharp": "sharp is an image library transformers.js brings along for image models we never touch. Carried, not needed. If this ever became a production dependency, that is the point at which a leaner ONNX binding would have to be found."
-    },
-    "$comment_hono_correction": "Commit f095a94's message claims the lock refresh pulled @hono/node-server from 2.0.5 to 2.1.1. It did not: 2.1.1 was already in the lockfile at 3476718 and nothing moved. The false reading came from a 1055-line insertion shifting the diff block. The message stands (no history rewrite); this is the correction of record."
+    "version_measured_on": "^4.2.0",
+    "status": "REMOVED on 2026-09-10, as this registration required for the outcome 'close it'",
+    "$comment_removal": "69 lockfile entries removed, 0 added, 0 existing versions changed — the exact mirror of the 69 dev-only entries the install added. sharp and its platform binaries, the onnxruntime tree and protobufjs are gone with it; node_modules is roughly 226 MB lighter.",
+    "$comment_code_kept": "packages/eval/src/rerank-* stays. The decision has to remain repeatable, and that needs the exact model ids, dtypes, passage shapes and the language guard rather than a description of them. The code is the METHOD; the evidence is the archived artifacts plus rerank-results.json with their hashes. rerank-model.ts declares the three transformers.js entry points it uses locally instead of importing their types, so check:types passes with the package absent, and names the install line to bring it back.",
+    "$comment_reinstall": "npm i -D --workspace=@bastra-recall/eval @huggingface/transformers@^4.2.0",
+    "constraints_still_hold": [
+      "appears in no dependency field of any package in the repo — pinned by a test"
+    ]
   },
   "pending_wiring": {
     "$comment": "Not done yet, on purpose: registrations.ts is being written by the #500 work and must not be touched until that has landed. This is the note of what still has to happen there.",

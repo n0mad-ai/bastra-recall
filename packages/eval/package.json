@@ -32,7 +32,6 @@
     "minisearch": "^7.1.1"
   },
   "devDependencies": {
-    "@huggingface/transformers": "^4.2.0",
     "@types/node": "^22.20.1",
     "tsx": "^4.23.13",
     "typescript": "^6.0.3"
