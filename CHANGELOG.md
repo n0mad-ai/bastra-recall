@@ -193,16 +193,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- **Ollama autostart is a supervised `systemd --user` unit on Linux, not an
-  unref'd orphan** (#496). `ensureServing()` only had a persistent-agent path
-  for macOS (`brew services`); on Linux, `ollama.autostart` unconditionally
-  fell through to a one-shot `spawn(..., {detached: true}); child.unref()` —
-  invisible to `systemctl`, not tied to the daemon's lifecycle, holding
-  GPU-resident models with no idle-teardown story. It now starts ollama via
-  `systemd-run --user --unit=bastra-ollama --collect -- ollama serve`, the
-  platform-native analogue of brew services: a named, supervised unit that
-  `systemctl --user status/stop bastra-ollama` can see and manage. Falls back
-  to the previous detached spawn only when `systemd-run` isn't available.
+- **Ollama autostart is a named `systemd --user` unit on Linux, not an unref'd
+  orphan** (#496, contributed by @zzallirog in #497). `ensureServing()` only had
+  a persistent-agent path for macOS (`brew services`); on Linux,
+  `ollama.autostart` unconditionally fell through to a one-shot
+  `spawn(..., {detached: true}); child.unref()` — invisible to `systemctl` and
+  not tied to the daemon's lifecycle. It now starts ollama via
+  `systemd-run --user --unit=bastra-ollama --collect -- ollama serve`: a named,
+  visible, stoppable unit that `systemctl --user status/stop bastra-ollama` can
+  see and manage. As on the brew path, the server is re-probed after the systemd attempt before the
+  detached fallback runs, so a unit that binds slowly (or one that already
+  exists) does not get a second, competing ollama on 11434. Falls back to the
+  previous detached spawn only when `systemd-run` isn't available. macOS is
+  untouched: the whole branch sits behind a `process.platform === "linux"` gate
+  and the darwin log line still names brew services as the missing supervisor.
+  **Still open in #496:** the unit carries no `Restart=` and no idle teardown, so
+  it is named, visible and stoppable — not supervised. The idle-unload half (the
+  Linux equivalent of the macOS story in #78, which unloads the *model*, not the
+  server) remains unsolved. So does the environment: `systemd-run` starts the
+  unit in the user manager's environment, so `OLLAMA_*` variables a plain spawn
+  would have inherited do not reach it. That costs a slow start rather than a
+  wrong one — with a non-default `OLLAMA_HOST` the unit binds 11434, the poll
+  runs out its 15 s and the detached fallback then serves correctly — and
+  choosing what to forward wants a machine with systemd to verify it on.
 
 - **The context governor decides per entry, not per id** (#438). Kept
   candidates were tracked in a set keyed by id and the output filtered by that

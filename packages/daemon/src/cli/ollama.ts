@@ -9,8 +9,9 @@
  * embeddings on` (the install path) stays macOS-only (#84 tracks Windows);
  * the daemon-boot autostart path (`ensureOllamaServerForDaemon`, used once
  * `embedding.provider=ollama` is already configured — e.g. a manual Linux
- * install) also supervises the server via `systemd --user` on Linux, the
- * platform-native analogue of brew services.
+ * install) also starts the server as a named `systemd --user` unit on Linux, the
+ * platform-native analogue of brew services (visible and stoppable — it is
+ * not restarted or idle-torn-down; see #496).
  *
  * Consent lives with the CALLERS (`bastra embeddings on` is the consent; the
  * install-end prompt asks before calling) — this module never prompts.
@@ -258,7 +259,10 @@ async function modelPresent(): Promise<boolean> {
 /** Pure arg builder for the Linux `systemd --user` autostart path — the
  *  platform-native analogue of `brew services start ollama`: a named,
  *  `--collect`-ed unit that `systemctl --user status/stop bastra-ollama`
- *  can see and manage, instead of an unref'd orphan with no supervisor.
+ *  can see and manage, instead of an unref'd orphan with no owner. Named,
+ *  visible and stoppable — NOT restarted or idle-torn-down: the unit carries
+ *  no `Restart=`, so the idle-teardown half of #496 stays open (#78 unloads
+ *  the *model*, not the server).
  *  Kept pure (no spawn) so it's testable without shelling out. */
 export function systemdRunOllamaArgs(ollamaPath: string): string[] {
   return ["--user", "--unit=bastra-ollama", "--collect", "--", ollamaPath, "serve"];
@@ -336,17 +340,32 @@ async function ensureServing(
   // before spawning a competing instance (avoids an EADDRINUSE race on 11434).
   if (await serverVersion()) return { ok: true, detail: "started via brew services (login agent)" };
 
-  // Linux: systemd --user is the persistent-agent equivalent to brew services
-  // on the one platform where a real service manager is standardly available.
-  // A named, --collect-ed unit is supervised and stoppable (`systemctl --user
-  // status/stop bastra-ollama`) instead of an unref'd orphan with no owner.
+  // Linux: systemd --user is the closest equivalent to brew services on the one
+  // platform where a real service manager is standardly available. A named,
+  // --collect-ed unit is visible and stoppable (`systemctl --user status/stop
+  // bastra-ollama`) instead of an unref'd orphan with no owner. It is not
+  // *supervised*: no Restart=, no idle teardown — that half of #496 is open.
   if (autostart && process.platform === "linux") {
     const systemdRunBin = findExecutable("systemd-run");
     if (systemdRunBin) {
+      // Known gap, still open in #496: the unit does NOT inherit this process's
+      // environment. `systemd-run --user` starts it in the user manager's
+      // environment, so OLLAMA_* variables a plain spawn would have inherited —
+      // OLLAMA_HOST above all — are dropped. The consequence is bounded, not
+      // broken: with a non-default OLLAMA_HOST the unit still binds 11434, the
+      // poll below runs out its 15 s, and the detached fallback then serves
+      // correctly. It costs a slow daemon start, not a wrong one. Forwarding the
+      // right set via `--setenv=` needs a machine with systemd to verify which
+      // variables matter and how they behave unset — deliberately not guessed.
       const r = run(systemdRunBin, systemdRunOllamaArgs(ollamaPath), { timeoutMs: 10_000 });
       if (r.ok && (await pollServer(15_000))) {
         return { ok: true, detail: "started via systemd --user (bastra-ollama.service)" };
       }
+      // Same reasoning as the brew re-probe above: a non-zero systemd-run short-
+      // circuits the poll (`r.ok &&`), and its most likely cause is that the unit
+      // already exists — in which case ollama may well be serving. Re-probe before
+      // spawning a competitor on 11434, or a slow unit costs a second server.
+      if (await serverVersion()) return { ok: true, detail: "started via systemd --user (bastra-ollama.service)" };
     }
   }
 
@@ -354,7 +373,10 @@ async function ensureServing(
   const child = spawn(ollamaPath, ["serve"], { detached: true, stdio: "ignore" });
   child.unref();
   if (await pollServer(15_000)) {
-    return { ok: true, detail: autostart ? "started (detached — no supervisor available)" : "started (one-shot, autostart off)" };
+    // The diagnosis stays platform-precise: on macOS the only supervisor we ever
+    // try is brew services, and saying so is more useful than a generic phrase.
+    const noSupervisor = process.platform === "darwin" ? "brew services unavailable" : "no supervisor available";
+    return { ok: true, detail: autostart ? `started (detached — ${noSupervisor})` : "started (one-shot, autostart off)" };
   }
   return { ok: false, detail: "server not reachable within 15s" };
 }
