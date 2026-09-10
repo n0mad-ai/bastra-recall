@@ -22,6 +22,7 @@ import {
   backupConfig,
   blocksMatch,
   buildServerBlock,
+  existingToolSurface,
   fileExists,
   getServersBlock,
   probeDaemon,
@@ -553,12 +554,14 @@ async function claudeCodeInstall(opts: InstallOpts): Promise<InstallResult> {
   // forwarder — register the stable-runtime copy of every bin when active.
   // On non-npx installs mapBin is the identity (byte-identical no-op).
   const mapBin = (bin: string) => mapBinToStableRuntime(bin, fwd);
-  const block = buildServerBlock(vault.path, fwd.path);
   const read = await readJsonConfig(configPath);
   if ("error" in read) return { status: "error", message: read.error, configPath };
 
   const data = read.data;
   const servers = getServersBlock(data) ?? {};
+  // #481: keep a surface the user set by hand instead of resetting it to the
+  // install default on every reinstall.
+  const block = buildServerBlock(vault.path, fwd.path, existingToolSurface(servers[SERVER_KEY]) ?? undefined);
 
   const mcpMatches = blocksMatch(servers[SERVER_KEY], block);
   const skillResult = await copySkill({ dryRun: opts.dryRun });

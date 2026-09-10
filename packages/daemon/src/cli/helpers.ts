@@ -6,7 +6,7 @@ import { request as httpRequest } from "node:http";
 import { Vault } from "@bastra-recall/core";
 import { FORWARDER_SCRIPT_PATH, CLAUDE_DESKTOP_CONFIG, CLAUDE_CODE_CONFIG } from "./paths.js";
 import { codexMcpGet, findCodexExecutable } from "./codex-cli.js";
-import { INSTALL_TOOL_SURFACE } from "../tool-defs.js";
+import { INSTALL_TOOL_SURFACE, type ToolSurface } from "../tool-defs.js";
 import type { CodeStale } from "../code-staleness.js";
 import type { InstallOpts } from "./types.js";
 
@@ -55,13 +55,43 @@ export interface McpServerBlock {
 // BASTRA_TOOL_SURFACE (#481): a fresh MCP-client registration gets `write` —
 // the agent recalls and saves, but does not archive or move anything. It is
 // written into the block so the user can widen it to `full` (or narrow it to
-// `search`) by editing the same config the installer wrote.
-export function buildServerBlock(vaultPath: string, forwarderPath: string = FORWARDER_SCRIPT_PATH): McpServerBlock {
+// `search`) by editing the same config the installer wrote. `surface` carries
+// what that config already says, so a hand-set value survives a reinstall.
+export function buildServerBlock(
+  vaultPath: string,
+  forwarderPath: string = FORWARDER_SCRIPT_PATH,
+  surface: ToolSurface = INSTALL_TOOL_SURFACE,
+): McpServerBlock {
   return {
     command: "node",
     args: [forwarderPath],
-    env: { BASTRA_VAULT_PATH: vaultPath, BASTRA_TOOL_SURFACE: INSTALL_TOOL_SURFACE },
+    env: { BASTRA_VAULT_PATH: vaultPath, BASTRA_TOOL_SURFACE: surface },
   };
+}
+
+/**
+ * The surface an existing registration already carries (#481).
+ *
+ * Editing `BASTRA_TOOL_SURFACE` in the client config is the documented way to
+ * widen or narrow the surface, but the installer's target block always said
+ * `write` — so a hand-set `full` read as a mismatch and the next `bastra
+ * install` overwrote it. The vault path has survived reinstalls all along
+ * (resolveVault detects it); the surface now does too.
+ *
+ * `null` means "nothing explicitly set": an absent key (every registration
+ * made before #481) and an unparseable value both fall through to the install
+ * default, so a fresh install still gets `write` and a typo gets corrected
+ * rather than frozen. Accepts anything with an `env` bag — the JSON server
+ * block of the file-backed adapters and Codex's `transport` alike.
+ */
+export function existingToolSurface(existing: unknown): ToolSurface | null {
+  if (typeof existing !== "object" || existing === null) return null;
+  const env = (existing as { env?: unknown }).env;
+  if (typeof env !== "object" || env === null) return null;
+  const raw = (env as Record<string, unknown>).BASTRA_TOOL_SURFACE;
+  if (typeof raw !== "string") return null;
+  const v = raw.trim().toLowerCase();
+  return v === "search" || v === "write" || v === "full" ? v : null;
 }
 
 export function blocksMatch(existing: unknown, target: McpServerBlock): boolean {

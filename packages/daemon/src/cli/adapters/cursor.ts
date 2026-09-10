@@ -8,6 +8,7 @@ import {
   backupConfig,
   blocksMatch,
   buildServerBlock,
+  existingToolSurface,
   fileExists,
   getServersBlock,
   probeDaemon,
@@ -24,12 +25,14 @@ async function cursorInstall(opts: InstallOpts): Promise<InstallResult> {
 
   const fwd = await ensureStableForwarder({ dryRun: opts.dryRun });
   const runtimeNote = fwd.note ? `\n  · runtime: ${fwd.note}` : "";
-  const block = buildServerBlock(vault.path, fwd.path);
   const read = await readJsonConfig(configPath);
   if ("error" in read) return { status: "error", message: read.error, configPath };
 
   const data = read.data;
   const servers = getServersBlock(data) ?? {};
+  // #481: keep a surface the user set by hand instead of resetting it to the
+  // install default on every reinstall.
+  const block = buildServerBlock(vault.path, fwd.path, existingToolSurface(servers[SERVER_KEY]) ?? undefined);
 
   if (blocksMatch(servers[SERVER_KEY], block)) {
     return {

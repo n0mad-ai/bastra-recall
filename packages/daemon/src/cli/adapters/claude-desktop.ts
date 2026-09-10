@@ -5,6 +5,7 @@ import {
   backupConfig,
   blocksMatch,
   buildServerBlock,
+  existingToolSurface,
   fileExists,
   getServersBlock,
   probeDaemon,
@@ -46,12 +47,14 @@ async function claudeDesktopInstall(opts: InstallOpts): Promise<InstallResult> {
   if ("error" in vault) return { status: "error", message: vault.error, configPath };
 
   const fwd = await ensureStableForwarder({ dryRun: opts.dryRun });
-  const block = buildServerBlock(vault.path, fwd.path);
   const read = await readJsonConfig(configPath);
   if ("error" in read) return { status: "error", message: read.error, configPath };
 
   const data = read.data;
   const servers = getServersBlock(data) ?? {};
+  // #481: keep a surface the user set by hand instead of resetting it to the
+  // install default on every reinstall.
+  const block = buildServerBlock(vault.path, fwd.path, existingToolSurface(servers[SERVER_KEY]) ?? undefined);
   const mcpMatches = blocksMatch(servers[SERVER_KEY], block);
 
   // Claude Desktop reads skills from the same ~/.claude/skills/ path as
