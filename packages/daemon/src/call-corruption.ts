@@ -61,12 +61,17 @@ export function detectCallCorruption(raw: unknown, requiredFields: readonly stri
 /**
  * #55 (CodeQL js/log-injection): the names quoted back below come from the
  * client — the swallowed fields out of `name="…"` attributes in its own text,
- * the container out of a KEY of the argument payload. A newline in one of them
- * writes its own `[bastra-recall] …` line into the daemon log, which is how a
- * forged log entry gets in. The line breaks are dropped and the remaining
- * control characters become spaces, then the name is capped: a real tool
- * argument is a short identifier, so nothing that could have been legible is
- * lost.
+ * the container out of a KEY of the argument payload, and the tool name
+ * straight out of the route (`dispatchApi`). The tool is only ever one this
+ * daemon declares, because an unknown one returns before any of this runs, but
+ * that is a lookup CodeQL cannot follow, and it is the third value quoted into
+ * the same line — so it takes the same route as the other two.
+ *
+ * A newline in any of them writes its own `[bastra-recall] …` line into the
+ * daemon log, which is how a forged log entry gets in. The line breaks are
+ * dropped and the remaining control characters become spaces, then the name is
+ * capped: a real tool argument is a short identifier, so nothing that could
+ * have been legible is lost.
  *
  * #57 is #55 again, moved to the repair notice: turning a line break into a
  * SPACE ends the forgery but is not a barrier CodeQL knows — it accepts only an
@@ -97,7 +102,7 @@ export function callCorruptionMessage(
     // one is an error message, not a log line, but it is quoted back into the
     // model's transcript — a newline in a field name would forge a line of the
     // diagnosis itself, so it gets the same treatment.
-    `${tool} arguments were corrupted before validation: ${corruption.swallowed.map(forLog).join(", ")} ` +
+    `${forLog(tool)} arguments were corrupted before validation: ${corruption.swallowed.map(forLog).join(", ")} ` +
     `were embedded as XML inside '${forLog(corruption.container)}' instead of arriving as JSON properties ` +
     `(missing required fields: ${corruption.missing.map(forLog).join(", ")}). ${nothingHappened} ` +
     `This is a caller-side MCP serialization failure, not a vault or schema rejection. ` +
@@ -161,7 +166,7 @@ export function recoverCallArguments(
 
 function defaultRepairNotice(tool: string, corruption: CallCorruption): void {
   console.error(
-    `[bastra-recall] ${tool}: recovered ${corruption.swallowed.map(forLog).join(", ")} from XML embedded in ` +
+    `[bastra-recall] ${forLog(tool)}: recovered ${corruption.swallowed.map(forLog).join(", ")} from XML embedded in ` +
       `'${forLog(corruption.container)}' — the client sent legacy XML instead of JSON arguments`,
   );
 }
