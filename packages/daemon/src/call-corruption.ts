@@ -203,7 +203,14 @@ export function repairCallCorruption(
   const args = raw as Record<string, unknown>;
   const value = args[corruption.container];
   if (typeof value !== "string") return null;
-  if (!isSafeArgumentName(corruption.container)) return null;
+  // The container is a key of the payload, so the safe keys of that payload are
+  // the complete list of names this may write — and resolving it against that
+  // list HERE, rather than through `isSafeArgumentName` alone, is what CodeQL
+  // reads as the barrier (#56 stayed open on `c958d05` because it does not
+  // follow the denylist through the call; the field loop below has always
+  // passed, for exactly this reason).
+  const writableContainers = Object.keys(args).filter(isSafeArgumentName);
+  if (!writableContainers.includes(corruption.container)) return null;
 
   const closing = value.search(new RegExp(`(?:<|&lt;)/${corruption.container}\\s*(?:>|&gt;)`, "i"));
   const firstOpener = value.search(/(?:<|&lt;)parameter\s+name=["'][^"']+["']\s*(?:>|&gt;)/i);
