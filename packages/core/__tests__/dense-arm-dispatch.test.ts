@@ -240,7 +240,7 @@ test("#466: auf einem KALTEN Socket überlebt der dichte Arm die lexikalische Su
     await laufMitTimeoutMarke(search, ANTWORT_NACH_MS, port, 200 + i, new Agent({ keepAlive: false }));
   }
 
-  const ergebnisse: Array<{ timeout: boolean; bm25Ms: number }> = [];
+  const ergebnisse: Lauf[] = [];
   for (let i = 0; i < 5; i++) {
     ergebnisse.push(
       await laufMitTimeoutMarke(search, ANTWORT_NACH_MS, port, 300 + i, new Agent({ keepAlive: false })),
@@ -252,12 +252,33 @@ test("#466: auf einem KALTEN Socket überlebt der dichte Arm die lexikalische Su
     median > DEADLINE_MS,
     `der lexikalische Arm muss länger als die Deadline blockieren, war ${median} ms`,
   );
-  const timeouts = ergebnisse.filter((e) => e.timeout).length;
+
+  // Ein Timeout OHNE seine Zahl ist eine Ratesitzung — genau das kostete am
+  // 10.09.2026 einen halben Review: EIN roter Lauf unter voller Suite, und die
+  // Meldung sagte „1 von 5" und sonst nichts. `settle_ms` ist ab dem `await`
+  // gemessen und trennt die beiden möglichen Ursachen:
+  //   - bricht der Dispatch, war die Frist schon während BM25 verbraucht, und
+  //     der Arm settelt ein Vielfaches jenseits von ihr (gemessen 268–276 ms);
+  //   - war bloß die Maschine überbucht, settelt er knapp über der Frist.
+  // Connect + Antwort liegen hier bei 42 ms (p90, auch unter CPU-Last), die
+  // Frist ist 150 — wer den Test rot sieht, muss wissen, welcher Fall vorlag.
+  // Die Nachmessung läuft nur im Fehlerfall und hat eine eigene Frist, weil ein
+  // nie settelnder Arm sie sonst hängen ließe.
+  const timeouts = ergebnisse.filter((e) => e.timeout);
+  const settles = await Promise.all(
+    timeouts.map((e) =>
+      Promise.race([
+        e.spaeteStichprobe.then((s) => `${Math.round(s.settle_ms)} ms`),
+        new Promise<string>((ok) => void setTimeout(() => ok("nie gesettelt"), 1000).unref?.()),
+      ]),
+    ),
+  );
   assert.equal(
-    timeouts,
+    timeouts.length,
     0,
     `kein Lauf darf in den Timeout gehen — der Provider antwortet ${ANTWORT_NACH_MS} ms nach dem Connect, ` +
-      `also innerhalb der ${DEADLINE_MS}-ms-Frist ab dem Warten. ${timeouts} von 5 taten es trotzdem.`,
+      `also innerhalb der ${DEADLINE_MS}-ms-Frist ab dem Warten. ${timeouts.length} von 5 taten es trotzdem ` +
+      `(settle_ms je Timeout: ${settles.join(", ") || "—"}; BM25-Median ${Math.round(median)} ms).`,
   );
 });
 
