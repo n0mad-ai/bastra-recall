@@ -35,7 +35,7 @@ import { renderSessionContext } from "../src/session-assembler.js";
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 type RecallExpectation = "proactive" | "on-request";
-type SaveAuthority = "autonomous" | "human-authorized";
+type SaveAuthority = "autonomous" | "consent-required";
 
 interface Stance {
   /** When the model is told to reach for `recall` at all. */
@@ -50,6 +50,19 @@ interface Stance {
  * Markers, not prose comparison. A surface has to SAY something on axes 1 and 3
  * — silence there is a finding of its own, because a surface that grants tools
  * without stating the policy is how the drift started.
+ *
+ * Every marker is counted only inside a clause that is ABOUT the axis it speaks
+ * for (#472). "without being asked" is the phrase both policies reach for, and
+ * counting it globally made this text pass as proactive recall AND autonomous
+ * save:
+ *
+ *   "Use recall without being asked before acting.
+ *    Before writing any memory, request explicit user approval."
+ *
+ * — a surface that grants recall freely and requires consent to write, read as
+ * a surface that writes to the user's vault unasked. Bound to its clause, the
+ * phrase counts for recall only, and the second sentence is what decides the
+ * save axis.
  */
 const RECALL_PROACTIVE = [
   /without being asked/i,
@@ -81,16 +94,50 @@ const SAVE_AUTONOMOUS = [
   /save it via `save_memory` immediately/i,
   /fire `save_memory` immediately/i,
 ];
-const SAVE_HUMAN_AUTHORIZED = [
+const SAVE_CONSENT_REQUIRED = [
   /never save memory automatically/i,
   /save only when the user explicitly asks/i,
+  /explicit user approval/i,
+  /ask (?:the user )?(?:first|before saving)/i,
 ];
 
+/**
+ * The clauses a text is read in. A marker belongs to the axis its own clause
+ * talks about, so the split has to be finer than a sentence: the session inject
+ * states both policies in one line ("Keep using recall before acting and save
+ * durable facts via save_memory without being asked"), and each half is about a
+ * different axis.
+ */
+function clauses(text: string): string[] {
+  return text
+    .split(/\n+/)
+    .flatMap((line) => line.split(/(?<=[.!?;:])\s+/))
+    .flatMap((sentence) => sentence.split(/\s+and\s+/i))
+    .map((c) => c.trim())
+    .filter(Boolean);
+}
+
+/** A clause is about recall when it names a retrieval act. */
+const ABOUT_RECALL = /\brecall|load_memory|find_document|read_document|retriev|lookup|look up|conversation_search|web_search/i;
+/** …and about saving when it names a write to the vault. */
+const ABOUT_SAVE = /\bsaves?\b|\bsaving\b|save_memory|\bcaptur|\bstore\b|\bwrit(?:e|es|ing)\b[^.]{0,24}\bmemor/i;
+
+/**
+ * Markers matched inside the clauses that are about `axis`. A clause naming
+ * both acts counts for both — the ambiguity is the author's, and both readings
+ * are then real.
+ */
+function hitsAbout(text: string, markers: RegExp[], axis: RegExp): RegExp[] {
+  const relevant = clauses(text).filter((c) => axis.test(c));
+  return markers.filter((m) => relevant.some((c) => m.test(c)));
+}
+
+/** Axis 2 needs no binding: no marker below is shared with another axis. */
 const hits = (text: string, markers: RegExp[]): RegExp[] => markers.filter((m) => m.test(text));
 
 function classify(surface: string, text: string): Stance {
-  const proactive = hits(text, RECALL_PROACTIVE);
-  const onRequest = hits(text, RECALL_ON_REQUEST);
+  const proactive = hitsAbout(text, RECALL_PROACTIVE, ABOUT_RECALL);
+  const onRequest = hitsAbout(text, RECALL_ON_REQUEST, ABOUT_RECALL);
   assert.ok(
     proactive.length > 0 || onRequest.length > 0,
     `${surface}: says nothing about WHEN recall is expected — it grants the tool without stating the policy`,
@@ -100,21 +147,21 @@ function classify(surface: string, text: string): Stance {
     `${surface}: states both recall policies at once (proactive: ${proactive}, on-request: ${onRequest})`,
   );
 
-  const autonomous = hits(text, SAVE_AUTONOMOUS);
-  const humanOnly = hits(text, SAVE_HUMAN_AUTHORIZED);
+  const autonomous = hitsAbout(text, SAVE_AUTONOMOUS, ABOUT_SAVE);
+  const consentFirst = hitsAbout(text, SAVE_CONSENT_REQUIRED, ABOUT_SAVE);
   assert.ok(
-    autonomous.length > 0 || humanOnly.length > 0,
+    autonomous.length > 0 || consentFirst.length > 0,
     `${surface}: says nothing about whether save_memory may fire without a human ask`,
   );
   assert.ok(
-    autonomous.length === 0 || humanOnly.length === 0,
-    `${surface}: states both save policies at once (autonomous: ${autonomous}, human-authorized: ${humanOnly})`,
+    autonomous.length === 0 || consentFirst.length === 0,
+    `${surface}: states both save policies at once (autonomous: ${autonomous}, consent-required: ${consentFirst})`,
   );
 
   return {
     recall: proactive.length > 0 ? "proactive" : "on-request",
     liveSourcesOutrankRecall: hits(text, LIVE_SOURCE_FIRST).length > 0,
-    save: autonomous.length > 0 ? "autonomous" : "human-authorized",
+    save: autonomous.length > 0 ? "autonomous" : "consent-required",
   };
 }
 
@@ -142,6 +189,15 @@ const BOUNDED_FIXTURE =
   "the live source first. Do not search supplied logs, URLs, uploads, generic questions or ordinary " +
   "current-state work. Make at most one Recall call per turn; load only 1-2 directly relevant hits. " +
   "Never save memory automatically: save only when the user explicitly asks.";
+
+/**
+ * The text that used to pass as proactive-recall + autonomous-save (#472): a
+ * shared phrase read on both axes at once. It states the opposite save policy
+ * of the three surfaces around it, and the classifier has to say so.
+ */
+const SPLIT_POLICY_FIXTURE =
+  "Use recall without being asked before acting. " +
+  "Before writing any memory, request explicit user approval.";
 
 const skill = await readFile(join(REPO, "packages", "skill", "SKILL.md"), "utf8");
 
@@ -180,7 +236,7 @@ test("#473: the rejected bounded text classifies as the opposite policy", () => 
   assert.deepEqual(classify("bounded fixture", BOUNDED_FIXTURE), {
     recall: "on-request",
     liveSourcesOutrankRecall: true,
-    save: "human-authorized",
+    save: "consent-required",
   });
 });
 
@@ -191,4 +247,22 @@ test("#472: parity fails loudly when the bounded text is one of the surfaces", (
     ),
   );
   assert.throws(() => assertParity(stances), /contradiction on "recall"/);
+});
+
+test("#472: a shared phrase counts for the axis its own clause is about", () => {
+  assert.deepEqual(
+    classify("split-policy fixture", SPLIT_POLICY_FIXTURE),
+    { recall: "proactive", liveSourcesOutrankRecall: false, save: "consent-required" },
+    "the save sentence decides the save axis — `without being asked` belongs to the recall sentence",
+  );
+});
+
+test("#472: parity fails loudly when a surface requires consent to save", () => {
+  const stances = Object.fromEntries(
+    Object.entries({
+      ...SURFACES,
+      "MCP entry instructions (mcp-instructions.ts)": SPLIT_POLICY_FIXTURE,
+    }).map(([name, text]) => [name, classify(name, text)]),
+  );
+  assert.throws(() => assertParity(stances), /contradiction on "save"/);
 });
