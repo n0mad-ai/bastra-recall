@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile, utimes } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -72,17 +72,17 @@ test("lexicon (#476): a bad/unreadable path falls back to defaults, never throws
   }
 });
 
-test("lexicon (#476): an edit is picked up on the next read (mtime cache invalidates)", async () => {
+test("lexicon (#476): an edit is picked up immediately (read-fresh, no cache)", async () => {
   await withLexiconDir(async (dir) => {
     const path = join(dir, "decision.txt");
     await writeFile(path, "beschlossen\n", "utf8");
     assert.ok(decisionCues().includes("beschlossen"));
-    // rewrite with a different cue and bump mtime so the cache re-reads
+    // Rewrite with a different cue — no mtime bump, no cache to invalidate:
+    // the very next read must reflect the edit regardless of mtime granularity.
     await writeFile(path, "vereinbart\n", "utf8");
-    await utimes(path, new Date(), new Date(Date.now() + 5000));
     const after = decisionCues();
-    assert.ok(after.includes("vereinbart"), "edit not reloaded");
-    assert.ok(!after.includes("beschlossen"), "stale entry survived reload");
+    assert.ok(after.includes("vereinbart"), "edit not reflected on next read");
+    assert.ok(!after.includes("beschlossen"), "old entry survived the rewrite");
   });
 });
 

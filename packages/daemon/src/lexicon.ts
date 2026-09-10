@@ -18,7 +18,7 @@
  *
  * Location: $BASTRA_LEXICON_DIR, else ~/.bastra/lexicon/<name>.txt.
  */
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -48,14 +48,6 @@ export function lexiconDir(): string {
   return process.env.BASTRA_LEXICON_DIR ?? join(homedir(), ".bastra", "lexicon");
 }
 
-interface CacheEntry {
-  mtimeMs: number;
-  merged: string[];
-}
-// Keyed by the full resolved path (not the bare name), so a changed
-// BASTRA_LEXICON_DIR — as tests flip it — never returns another dir's list.
-const cache = new Map<string, CacheEntry>();
-
 /**
  * A cue is a regex fragment, and a hand-edited file's likeliest malformation is
  * a regex typo (`schei(`). stop-lane.ts compiles the cues into a RegExp, so a
@@ -75,21 +67,19 @@ function isValidCue(cue: string): boolean {
 }
 
 /**
- * Defaults + the file's additions, deduped, defaults first. mtime-cached.
- * Never throws: any fs or parse error falls back to the shipped defaults, and a
- * regex-invalid line is dropped (see isValidCue) rather than poisoning the set.
+ * Defaults + the file's additions, deduped, defaults first. Never throws: any
+ * fs or parse error falls back to the shipped defaults, and a regex-invalid
+ * line is dropped (see isValidCue) rather than poisoning the set.
  *
- * Freshness is keyed on mtime only: fine for human cross-session edits (each
- * gets a distinct mtime). A same-millisecond programmatic rewrite — e.g. a
- * future harvester writing repeatedly in one process — could read stale; add a
- * size/content hash here if that lands.
+ * Read fresh every call. The file is tiny and this runs ~twice per Stop event,
+ * so a cache buys nothing worth its cost — and dropping it removes the whole
+ * class of freshness bugs a stat/mtime cache brings: no mtime granularity, no
+ * same-millisecond staleness, no check-then-read (TOCTOU) race. An edit to the
+ * file is simply picked up on the next read.
  */
 function loadCues(name: string, defaults: readonly string[]): string[] {
   const path = join(lexiconDir(), `${name}.txt`);
   try {
-    const mtimeMs = statSync(path).mtimeMs;
-    const hit = cache.get(path);
-    if (hit && hit.mtimeMs === mtimeMs) return hit.merged;
     const extra = readFileSync(path, "utf8")
       .split("\n")
       .map((line) => line.replace(/#.*$/, "").trim())
@@ -102,7 +92,6 @@ function loadCues(name: string, defaults: readonly string[]): string[] {
         merged.push(e);
       }
     }
-    cache.set(path, { mtimeMs, merged });
     return merged;
   } catch {
     return [...defaults];

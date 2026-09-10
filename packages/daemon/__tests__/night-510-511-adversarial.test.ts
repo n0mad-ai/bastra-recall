@@ -11,7 +11,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, rm, utimes } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -133,26 +133,22 @@ test("isDokuProject (#511) composed with the live detector: a real repo earns a 
 
 // ─────────────────────────── #476 lexicon-as-data ───────────────────────────
 
-test("lexicon (#476): the mtime cache is keyed by full path — two dirs whose files SHARE an mtime don't leak", async () => {
+test("lexicon (#476): switching BASTRA_LEXICON_DIR gives each dir its own cues — no cross-dir leak", async () => {
+  // The loader now reads fresh every call (the mtime cache was removed, which
+  // was the sole source of a possible cross-dir leak). This still guards the
+  // user-facing invariant — and would catch a leak if a shared cache ever came
+  // back keyed by anything coarser than the resolved path.
   const dirA = await mkdtemp(join(tmpdir(), "night476-A-"));
   const dirB = await mkdtemp(join(tmpdir(), "night476-B-"));
   const prev = process.env.BASTRA_LEXICON_DIR;
   try {
     await writeFile(join(dirA, "frustration.txt"), "aaa-only-in-a\n", "utf8");
     await writeFile(join(dirB, "frustration.txt"), "bbb-only-in-b\n", "utf8");
-    // Pin BOTH files to the SAME mtime. This is what makes the test bite the
-    // key choice: if the cache were keyed by the bare name "frustration"
-    // instead of the full resolved path, dir B would hit dir A's cache entry
-    // (same name, same mtime → looks fresh) and return A's list. Distinct
-    // mtimes would let the mtime guard mask a name-keyed cache, so we remove
-    // that variable deliberately.
-    const shared = new Date(1_600_000_000_000);
-    await utimes(join(dirA, "frustration.txt"), shared, shared);
-    await utimes(join(dirB, "frustration.txt"), shared, shared);
 
     process.env.BASTRA_LEXICON_DIR = dirA;
     const a = frustrationCues();
     assert.ok(a.includes("aaa-only-in-a"), "dir A's cue must load");
+    assert.ok(!a.includes("bbb-only-in-b"), "dir B's cue must not appear under dir A");
 
     process.env.BASTRA_LEXICON_DIR = dirB;
     const b = frustrationCues();
