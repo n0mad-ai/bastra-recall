@@ -1039,7 +1039,26 @@ Achse geschnitten — oder muss begründen, warum eine Mischung gewollt ist.
    Cross-Encoder in der Schreibbahn: Dort filtert er Expansionen gegen ihr
    eigenes Memory, statt Kandidaten gegen eine Query zu ordnen — eine andere
    Aufgabe, und die hier gemessene sagt nichts über jene.
-5. **`@huggingface/transformers` kann entfernt werden**, sobald dieser Befund
-   akzeptiert ist — so registriert („removed again if #501 ends in 'close it'").
-   Ich habe es **nicht** getan: Der Harness soll reproduzierbar bleiben, bis die
-   Entscheidung steht. Umkehrbare Annahme, ein Commit.
+5. **`@huggingface/transformers` ist entfernt** (10.09.2026), nachdem der Befund
+   geprüft und freigegeben war — so registriert („removed again if #501 ends in
+   'close it'"). Bilanz: **69 Lockfile-Einträge entfernt, 0 hinzugefügt, 0
+   Versionen bewegt** — exakt das Spiegelbild der 69 Einträge, die der Einbau
+   gebracht hatte. `sharp` samt Plattform-Binaries, der onnxruntime-Baum und
+   protobufjs sind mit gegangen; `node_modules` ist rund 226 MB leichter.
+
+   **Der Harness-Code bleibt.** Die Entscheidung muss wiederholbar sein, und
+   dafür braucht es die exakten Modell-Ids, dtypes, Passagenformen und den
+   Sprach-Wächter — nicht deren Beschreibung. Der Code ist die **Methode**; der
+   **Beleg** sind die archivierten Artefakte und `rerank-results.json` mit ihren
+   Hashes (§8.0). `rerank-model.ts` deklariert die drei genutzten
+   transformers.js-Einstiegspunkte lokal, statt ihre Typen zu importieren —
+   deshalb läuft `check:types` ohne das Paket durch — und nennt die
+   Installationszeile für eine Wiederholung:
+
+   ```
+   npm i -D --workspace=@bastra-recall/eval @huggingface/transformers@^4.2.0
+   ```
+
+   Ein Test pinnt, dass das Paket in **keinem** Abhängigkeitsfeld irgendeines
+   Pakets im Repo mehr auftaucht, und ein zweiter, dass die Installationszeile
+   samt gemessener Version im Code steht.

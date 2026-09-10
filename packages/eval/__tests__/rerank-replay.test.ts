@@ -469,16 +469,37 @@ test("env.cacheDir is assigned BEFORE the first from_pretrained", () => {
   assert.ok(assign < firstLoad, "the assignment must precede the first from_pretrained call");
 });
 
-test("the eval package declares transformers.js as a devDependency and nothing else does", () => {
+test("transformers.js is gone from every package — #501 closed, the dependency left with it", () => {
+  // The registration made this a condition of the outcome: "removed again if
+  // #501 ends in 'close it'". It ended that way, so the check inverts — it used
+  // to assert the eval package DECLARED it. Keeping the old assertion would
+  // have quietly re-permitted the dependency the moment someone re-added it.
   const root = resolve(import.meta.dirname, "..", "..");
-  const evalPkg = JSON.parse(readFileSync(join(root, "eval", "package.json"), "utf8"));
-  assert.ok(evalPkg.devDependencies["@huggingface/transformers"], "eval must declare it");
-  assert.equal(evalPkg.dependencies?.["@huggingface/transformers"], undefined, "never a runtime dependency");
-  for (const p of ["core", "daemon"]) {
-    const pkg = JSON.parse(readFileSync(join(root, p, "package.json"), "utf8"));
-    assert.equal(pkg.dependencies?.["@huggingface/transformers"], undefined, `${p} must not carry it at runtime`);
-    assert.equal(pkg.devDependencies?.["@huggingface/transformers"], undefined, `${p} must not carry it at all`);
+  const rootPkg = JSON.parse(readFileSync(join(root, "..", "package.json"), "utf8"));
+  for (const [where, pkg] of [
+    ["<root>", rootPkg],
+    ...["core", "daemon", "eval", "bastra-recall", "statusline"].map((p) => [
+      p,
+      JSON.parse(readFileSync(join(root, p, "package.json"), "utf8")),
+    ] as [string, Record<string, Record<string, string> | undefined>]),
+  ] as [string, Record<string, Record<string, string> | undefined>][]) {
+    for (const field of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]) {
+      assert.equal(
+        pkg[field]?.["@huggingface/transformers"],
+        undefined,
+        `${where}/${field} still carries the dependency`,
+      );
+    }
   }
+});
+
+test("the harness still says how to bring the dependency back for a repeat", () => {
+  // The code stays as the method; the evidence lives in the archive. Someone
+  // repeating the measurement needs the exact install line, and the version it
+  // was measured on, not a description of them.
+  const src = readFileSync(resolve(import.meta.dirname, "..", "src", "rerank-model.ts"), "utf8");
+  assert.match(src, /@huggingface\/transformers@\^4\.2\.0/, "the pinned version must be named");
+  assert.match(src, /npm i -D --workspace=@bastra-recall\/eval/, "and the exact install command");
 });
 
 test("§18.1: the associative axis under its registered minimum is NOT EVALUABLE, never a null finding", () => {
