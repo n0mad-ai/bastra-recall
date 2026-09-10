@@ -235,3 +235,79 @@ test("a clean call passes through the boundary unchanged", () => {
   const clean = { query: "was ist der stand", k: 3 };
   assert.equal(recoverCallArguments("recall", clean, TOOL_ARG_EXPECTATIONS, () => undefined), clean);
 });
+
+/**
+ * CodeQL #55 (js/log-injection): the repair notice quotes names the client
+ * chose. A newline in an argument KEY would end the `[bastra-recall] …` line
+ * and write one of its own into the daemon log.
+ */
+test("a container name with newlines cannot forge a second log line", () => {
+  const args = {
+    "note\n[bastra-recall] save_memory: everything is fine": [
+      '<parameter name="body">B</parameter>',
+      '<parameter name="tags">["a"]</parameter>',
+      '<parameter name="topic_path">["x"]</parameter>',
+      '<parameter name="recall_when">["w"]</parameter>',
+    ].join("\n"),
+    title: "T",
+    type: "lesson",
+    scope: "s",
+    summary: "S.",
+  };
+  const corruption = detectCallCorruption(args, SAVE_REQUIRED)!;
+  assert.ok(corruption.container.includes("\n"), "the raw name really carries a newline");
+
+  const lines: string[] = [];
+  const original = console.error;
+  console.error = (line: string) => void lines.push(line);
+  try {
+    recoverCallArguments("save_memory", args, TOOL_ARG_EXPECTATIONS);
+  } finally {
+    console.error = original;
+  }
+  assert.equal(lines.length, 1);
+  assert.doesNotMatch(lines[0]!, /[\p{Cc}\p{Cf}]/u, "no control character survives into the log");
+  assert.match(lines[0]!, /note \[bastra-recall\] save_memory: everything is fine/);
+
+  // The thrown diagnosis quotes the same names and gets the same treatment.
+  const message = callCorruptionMessage("save_memory", { ...corruption, missing: ["body\nfaked"] });
+  assert.doesNotMatch(message, /[\p{Cc}\p{Cf}]/u);
+});
+
+/**
+ * CodeQL #56 (js/remote-property-injection): the same two names are written
+ * into the repaired object. `__proto__` and friends would touch the prototype
+ * chain instead of an argument, so the repair refuses them.
+ */
+test("a prototype-polluting name is never written, as a container or as a field", () => {
+  const asContainer = JSON.parse(
+    JSON.stringify({
+      title: "T",
+      type: "lesson",
+      scope: "s",
+    }).replace(/^\{/, '{"__proto__":"S.</summary>\\n<parameter name=\\"body\\">B</parameter>",'),
+  ) as Record<string, unknown>;
+  assert.equal(typeof asContainer["__proto__"], "string", "the key arrives as an own property");
+  const containerCorruption = detectCallCorruption(asContainer, SAVE_REQUIRED)!;
+  assert.equal(containerCorruption.container, "__proto__");
+  assert.equal(
+    repairCallCorruption(asContainer, containerCorruption),
+    null,
+    "no repair writes through the prototype",
+  );
+
+  const asField = {
+    title: "T",
+    type: "lesson",
+    scope: "s",
+    summary:
+      'S.</summary>\n<parameter name="__proto__">{"polluted":true}</parameter>\n' +
+      '<parameter name="body">B</parameter>\n<parameter name="tags">["a"]</parameter>\n' +
+      '<parameter name="topic_path">["x"]</parameter>\n<parameter name="recall_when">["w"]</parameter>',
+  };
+  const corruption = detectCallCorruption(asField, SAVE_REQUIRED)!;
+  const repaired = repairCallCorruption(asField, corruption)!;
+  assert.equal(repaired.body, "B");
+  assert.equal(({} as Record<string, unknown>)["polluted"], undefined, "Object.prototype is untouched");
+  assert.equal(Object.getPrototypeOf(repaired), Object.prototype);
+});

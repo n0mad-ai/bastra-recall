@@ -58,6 +58,20 @@ export function detectCallCorruption(raw: unknown, requiredFields: readonly stri
   return null;
 }
 
+/**
+ * #55 (CodeQL js/log-injection): the names quoted back below come from the
+ * client — the swallowed fields out of `name="…"` attributes in its own text,
+ * the container out of a KEY of the argument payload. A newline in one of them
+ * writes its own `[bastra-recall] …` line into the daemon log, which is how a
+ * forged log entry gets in. Control characters become spaces and the name is
+ * capped: a real tool argument is a short identifier, so nothing that could
+ * have been legible is lost.
+ */
+function forLog(name: string): string {
+  const flat = name.replace(/[\p{Cc}\p{Cf}]/gu, " ").trim();
+  return flat.length > 80 ? `${flat.slice(0, 80)}...` : flat;
+}
+
 export function callCorruptionMessage(
   tool: string,
   corruption: CallCorruption,
@@ -67,9 +81,13 @@ export function callCorruptionMessage(
 ): string {
   const nothingHappened = readOnly ? "THE CALL DID NOT RUN." : "NOTHING WAS SAVED.";
   return (
-    `${tool} arguments were corrupted before validation: ${corruption.swallowed.join(", ")} ` +
-    `were embedded as XML inside '${corruption.container}' instead of arriving as JSON properties ` +
-    `(missing required fields: ${corruption.missing.join(", ")}). ${nothingHappened} ` +
+    // The same client-controlled names as in the log notice below (#55). This
+    // one is an error message, not a log line, but it is quoted back into the
+    // model's transcript — a newline in a field name would forge a line of the
+    // diagnosis itself, so it gets the same treatment.
+    `${tool} arguments were corrupted before validation: ${corruption.swallowed.map(forLog).join(", ")} ` +
+    `were embedded as XML inside '${forLog(corruption.container)}' instead of arriving as JSON properties ` +
+    `(missing required fields: ${corruption.missing.map(forLog).join(", ")}). ${nothingHappened} ` +
     `This is a caller-side MCP serialization failure, not a vault or schema rejection. ` +
     `STOP retrying this call in the current session; start a fresh client session, update the client if possible, and retry once.`
   );
@@ -131,9 +149,27 @@ export function recoverCallArguments(
 
 function defaultRepairNotice(tool: string, corruption: CallCorruption): void {
   console.error(
-    `[bastra-recall] ${tool}: recovered ${corruption.swallowed.join(", ")} from XML embedded in ` +
-      `'${corruption.container}' — the client sent legacy XML instead of JSON arguments`,
+    `[bastra-recall] ${tool}: recovered ${corruption.swallowed.map(forLog).join(", ")} from XML embedded in ` +
+      `'${forLog(corruption.container)}' — the client sent legacy XML instead of JSON arguments`,
   );
+}
+
+/**
+ * #56 (CodeQL js/remote-property-injection): both names written into the
+ * repaired object come out of the client. The container is a KEY of the
+ * argument payload — `JSON.parse('{"__proto__": "…"}')` makes that an own
+ * property, so `Object.entries` hands it over like any other — and the field is
+ * the `name="…"` of a block parsed out of client text. The repaired object is
+ * an object literal, so those names would write the prototype chain instead of
+ * an argument.
+ *
+ * No tool declares a parameter called `__proto__`, `constructor` or
+ * `prototype`, so refusing them costs no repair that could have worked: the
+ * container check fails the whole repair, a field falls through to the
+ * completeness check below, and both end in the honest diagnosis.
+ */
+function isSafeArgumentName(name: string): boolean {
+  return name !== "__proto__" && name !== "constructor" && name !== "prototype";
 }
 
 /**
@@ -167,6 +203,7 @@ export function repairCallCorruption(
   const args = raw as Record<string, unknown>;
   const value = args[corruption.container];
   if (typeof value !== "string") return null;
+  if (!isSafeArgumentName(corruption.container)) return null;
 
   const closing = value.search(new RegExp(`(?:<|&lt;)/${corruption.container}\\s*(?:>|&gt;)`, "i"));
   const firstOpener = value.search(/(?:<|&lt;)parameter\s+name=["'][^"']+["']\s*(?:>|&gt;)/i);
@@ -184,6 +221,7 @@ export function repairCallCorruption(
   const repaired: Record<string, unknown> = { ...args };
   repaired[corruption.container] = value.slice(0, cut).trimEnd();
   for (const [i, block] of found.entries()) {
+    if (!isSafeArgumentName(block.field)) continue;
     if (!corruption.missing.includes(block.field)) continue;
     // A block ends where the next one opens — or at the end of the tail for the
     // last one, which is how the 08.09. case arrived: the closing `</parameter>`
