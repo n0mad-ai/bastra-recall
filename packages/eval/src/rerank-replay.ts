@@ -54,6 +54,7 @@
  *     --gold ~/.bastra/eval-goldset/gold-blind.json \
  *     --models en-de,bge --out /tmp/rerank-501.json
  */
+import { createHash } from "node:crypto";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { SearchIndex, Vault, isWeakResult } from "@bastra-recall/core";
@@ -172,6 +173,37 @@ export function partitionCases(cases: readonly GoldCase[]): {
     else answerable.push(c);
   }
   return { answerable, noAnswer, malformed, probes: cases.length - nonProbe.length };
+}
+
+/**
+ * What the vault WAS when this run measured it.
+ *
+ * The reason is a real incident, not tidiness: two runs of this harness over
+ * "the same" gold set produced `recall_any@30` = 397/584 and 398/584. The
+ * primary number was bit-identical and retrieval proved deterministic on a
+ * fixed vault (100 cases retrieved twice in one process, 100/100 identical
+ * pools including scores) — but two memories had been written BETWEEN the runs,
+ * by the very session that was running them. Two extra documents move the BM25
+ * document frequencies for every term, so a gold at rank 31 can land at 30.
+ *
+ * #500's determinism holds to the sixteenth decimal because LongMemEval's
+ * corpus is a frozen file. Ours is a live vault. A determinism check over the
+ * gold set can therefore only prove "same vault, same result" — never "same
+ * number tomorrow", and the artifact has to say which vault it saw.
+ *
+ * The hash covers ids AND `updated`, so an edit to an existing memory changes
+ * it too; a count alone would only catch growth. Nothing vault-derived travels
+ * beyond the digest.
+ */
+export function vaultFingerprint(vault: Vault): { size: number; ids_updated_sha256: string } {
+  const lines = vault
+    .list()
+    .map((m) => `${String(m.fm.id)}\t${String((m.fm as { updated?: string }).updated ?? "")}`)
+    .sort();
+  return {
+    size: vault.size(),
+    ids_updated_sha256: createHash("sha256").update(lines.join("\n")).digest("hex"),
+  };
 }
 
 /** Telemetry the latency protocol's discard rule needs, per case. */
@@ -557,6 +589,7 @@ async function main(): Promise<void> {
           registration_version: 2,
           hardware: "Apple M4 Pro — fast side of the tiers; latency figures are LOWER BOUNDS",
           arm_label: arm.label,
+          vault: vaultFingerprint(vault),
           primary_endpoint: PRIMARY,
           production_k: PRODUCTION_K,
           score_floor: SCORE_FLOOR,

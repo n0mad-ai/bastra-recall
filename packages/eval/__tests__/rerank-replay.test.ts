@@ -25,6 +25,7 @@ import {
   partitionCases,
   rankArm,
   checkBatchInvariance,
+  vaultFingerprint,
 } from "../src/rerank-replay.js";
 import {
   ASSOCIATIVE_MIN_N,
@@ -509,4 +510,32 @@ test("the descriptive axis is NOT bound by the associative minimum", () => {
     floor: 30, serveK: 10, seed: 1, poolSplit: assignPoolBuckets([...rows], 40),
   });
   assert.ok(rep.by_kind.descriptive.at, "60 descriptive cases clear MIN_SLICE_N and must be measured");
+});
+
+test("the vault fingerprint changes when a memory is added AND when one is edited", () => {
+  // Both cases, because the incident that prompted this was growth (+2
+  // memories) but an edit to an existing file would be just as invisible to a
+  // bare count — and just as capable of moving BM25 document frequencies.
+  const mem = (id: string, updated: string) => ({ fm: { id, updated } });
+  const fake = (items: { fm: { id: string; updated: string } }[]) =>
+    ({ list: () => items, size: () => items.length }) as unknown as Parameters<typeof vaultFingerprint>[0];
+
+  const base = fake([mem("a", "2026-09-01"), mem("b", "2026-09-02")]);
+  const grown = fake([mem("a", "2026-09-01"), mem("b", "2026-09-02"), mem("c", "2026-09-03")]);
+  const edited = fake([mem("a", "2026-09-01"), mem("b", "2026-09-09")]);
+
+  const f = vaultFingerprint(base);
+  assert.equal(f.size, 2);
+  assert.notEqual(vaultFingerprint(grown).ids_updated_sha256, f.ids_updated_sha256, "growth must show");
+  assert.notEqual(vaultFingerprint(edited).ids_updated_sha256, f.ids_updated_sha256, "an edit must show too");
+  assert.equal(vaultFingerprint(edited).size, f.size, "and the count alone would NOT have shown it");
+});
+
+test("the vault fingerprint does not depend on listing order", () => {
+  const mem = (id: string, updated: string) => ({ fm: { id, updated } });
+  const fake = (items: { fm: { id: string; updated: string } }[]) =>
+    ({ list: () => items, size: () => items.length }) as unknown as Parameters<typeof vaultFingerprint>[0];
+  const a = fake([mem("a", "2026-09-01"), mem("b", "2026-09-02")]);
+  const b = fake([mem("b", "2026-09-02"), mem("a", "2026-09-01")]);
+  assert.equal(vaultFingerprint(a).ids_updated_sha256, vaultFingerprint(b).ids_updated_sha256);
 });

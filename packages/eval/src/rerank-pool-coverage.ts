@@ -30,7 +30,7 @@ import { SearchIndex, Vault } from "@bastra-recall/core";
 import type { RecallHit } from "@bastra-recall/core";
 import { loadGoldFiles } from "./goldset-dataset.js";
 import { PRODUCTION_K, SCORE_FLOOR, attachHybrid, gatedHybridRecaller } from "./goldset-run.js";
-import { partitionCases } from "./rerank-replay.js";
+import { partitionCases, vaultFingerprint } from "./rerank-replay.js";
 
 /** The depths reported. 40 is `HOP_SEED_POOL` — the whole pool a rerank sees. */
 const DEPTHS = [1, 3, 5, 10, 20, 30, 40] as const;
@@ -176,7 +176,7 @@ async function main(): Promise<void> {
 
   if (out) {
     mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, JSON.stringify({ issue: 501, note: "retrieval only — no cross-encoder involved", production_k: PRODUCTION_K, score_floor: SCORE_FLOOR, per_file: perFile, total }, null, 2) + "\n", { mode: 0o600 });
+    writeFileSync(out, JSON.stringify({ issue: 501, note: "retrieval only — no cross-encoder involved", vault: vaultFingerprint(vault), production_k: PRODUCTION_K, score_floor: SCORE_FLOOR, per_file: perFile, total }, null, 2) + "\n", { mode: 0o600 });
     console.error(`[pool-coverage] wrote ${out}`);
   }
 
