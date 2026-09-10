@@ -48,6 +48,78 @@ export async function writePendingSuggestion(blocks: string): Promise<void> {
   }
 }
 
+/**
+ * Zeichen-Budget für den GESAMTEN Entry-Inhalt des Blocks (#510). Die
+ * Schreibseite kappt die ANZAHL (`MAX_ENTRIES = 5`), nichts die GRÖSSE — im
+ * #462-Baseline war `pending` mit 2.648 Tokens der größte Einzel-Part eines
+ * Session-Starts, größer als jeder andere. Gebudgetet wird gegen die
+ * gemessene Verteilung (Median 332, Schnitt-wenn-präsent 667 Tokens), nicht
+ * gegen den Ausreißer: ~3.000 Zeichen ≈ 750 Tokens lassen den Normalfall
+ * unangetastet und schneiden nur den Ausreißer. Form wie `pinned-block.ts`:
+ * Gesamt-Budget, Einträge fallen vom Ende, eine sichtbare Truncation-Zeile —
+ * ein unterdrückter Vorschlag ist sichtbar statt still weg.
+ */
+export const PENDING_BLOCK_CHAR_BUDGET = 3000;
+
+/**
+ * Formatiert die Pending-Einträge als <pending-save-suggestions>-Block —
+ * leere Liste → leerer String (kein Block). Der Inhalt wird auf
+ * {@link PENDING_BLOCK_CHAR_BUDGET} Zeichen rationiert: Einträge werden in
+ * Speicher-Reihenfolge (ältester zuerst) aufgenommen, bis das Budget greift;
+ * der Rest fällt vom Ende und wird als Truncation-Zeile ausgewiesen. Ein
+ * einzelner Eintrag, der allein schon größer als das Budget ist (der 2.648-
+ * Token-Fall), wird auf das Budget gekürzt statt ganz verworfen — sonst
+ * verschwände genau der Ausreißer, um den es geht, unsichtbar.
+ *
+ * Achtung: `consumePendingSuggestions` hat die Datei bereits gelöscht
+ * (consume-once), also sind gedroppte Vorschläge in DIESER Session endgültig
+ * fort — die Truncation-Zeile sagt das ehrlich, sie tut nicht so, als warteten
+ * sie weiter.
+ */
+export function formatPendingBlock(entries: PendingSuggestion[]): string {
+  if (entries.length === 0) return "";
+  const head = `<pending-save-suggestions source="stop-hook">`;
+  const intro =
+    `From earlier session(s) — evaluate silently, save via bastra-recall:save_memory only what genuinely qualifies:`;
+  const foot = `</pending-save-suggestions>`;
+
+  const rendered: string[] = [];
+  let used = 0;
+  let dropped = 0;
+  let clipped = false;
+  for (let i = 0; i < entries.length; i++) {
+    const block = entries[i].blocks;
+    const sep = rendered.length > 0 ? 1 : 0; // Join-Newline zwischen Blöcken.
+    if (used + sep + block.length <= PENDING_BLOCK_CHAR_BUDGET) {
+      rendered.push(block);
+      used += sep + block.length;
+      continue;
+    }
+    if (rendered.length === 0) {
+      // Erster Eintrag sprengt allein das Budget: gekürzt statt ganz weg.
+      rendered.push(block.slice(0, Math.max(0, PENDING_BLOCK_CHAR_BUDGET - 1)) + "…");
+      clipped = true;
+      dropped = entries.length - 1;
+    } else {
+      dropped = entries.length - i;
+    }
+    break;
+  }
+
+  const lines = [head, intro, ...rendered];
+  if (clipped || dropped > 0) {
+    const parts: string[] = [];
+    if (clipped) parts.push("one suggestion was clipped to fit");
+    if (dropped > 0)
+      parts.push(`${dropped} earlier ${dropped === 1 ? "suggestion" : "suggestions"} suppressed`);
+    lines.push(
+      `… ${parts.join(", ")} — the pending set exceeded the ${PENDING_BLOCK_CHAR_BUDGET}-char budget ` +
+        `and the rest were not shown this session.`,
+    );
+  }
+  return lines.join("\n") + "\n" + foot;
+}
+
 /** Read fresh entries and delete the file (consume-once). Never throws. */
 export async function consumePendingSuggestions(now: number = Date.now()): Promise<PendingSuggestion[]> {
   const path = pendingSuggestionsPath();
