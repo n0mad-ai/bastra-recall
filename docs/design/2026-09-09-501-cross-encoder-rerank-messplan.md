@@ -689,9 +689,17 @@ gerechnet und war bitgleich** (`0.0017123287671232876`).
 | `bge` bei N=30/`body` zeigt dasselbe | −0,5 pp, KI [−4,1, +3,1] |
 
 **Klassifikation `kein Effekt`, nicht `kein bezahlbarer Effekt`:** Der beste
-explorative Wert überhaupt ist `bge/short` N=10 mit **+1,9 pp, KI [−1,4, +5,3]**
-— unter der 2,0-pp-Schwelle *und* mit 0 im Intervall. Es ist also nicht so,
-dass ein Lift existierte und zu teuer wäre. Er existiert nicht.
+explorative Wert überhaupt ist `bge/short` N=10 mit **+2,2 pp, KI [−1,0, +5,5]**.
+Er liegt damit **über** der 2,0-pp-Punktschwelle und scheitert **allein am
+Intervall**, das die 0 einschließt — die registrierte Bedingung verlangt beides
+(Δ ≥ 2,0 pp **und** KI-Untergrenze > 0). Die Klassifikation steht also, aber der
+Abstand zur Schwelle ist kleiner, als eine frühere Fassung dieses Absatzes
+behauptet hat: Sie nannte +1,9 pp aus einem verworfenen Vorlauf und schrieb, der
+Wert liege unter der Punktschwelle. Das war falsch und in unsere eigene
+Richtung falsch.
+
+Was gleich bleibt: Es existiert kein Lift, der die 0 ausschließt — also keiner,
+für den Latenz zu teuer hätte sein können.
 
 Damit entfällt Schritt 2 von #501 („only if the lift is real"): **Der Latenzlauf
 wurde nicht gefahren.** Die Modellkosten aus §1 bleiben die einzigen Zeitzahlen.
@@ -703,17 +711,22 @@ n=584, Basislinie R@3 43,3 %, serviertes k=10, Floor 30.
 | Modell/Passage | N | R@3 nach Rerank | ΔR@3 | KI95 | ΔR@5 | any@N | Rang-Regression |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | **en-de/short** ← primär | 10 | 43,5 % | **+0,2** | [−3,1, +3,4] | −0,2 | 58,6 % | 17,3 % |
-| en-de/short | 20 | 41,9 % | −1,4 | [−5,1, +2,2] | −2,9 | 64,9 % | 22,1 % |
-| en-de/short | 30 | 41,8 % | −1,5 | [−5,3, +2,1] | −2,9 | 68,2 % | 22,9 % |
-| en-de/body | 10 | 43,2 % | −0,2 | [−3,4, +3,1] | +0,3 | 58,6 % | 17,0 % |
-| en-de/body | 20 | 40,9 % | −2,4 | [−6,0, +1,0] | −2,4 | 64,9 % | 21,7 % |
-| en-de/body | 30 | 40,6 % | −2,7 | [−6,2, +0,7] | −2,7 | 68,2 % | 22,1 % |
-| bge/short | 10 | 45,2 % | +1,9 | [−1,4, +5,3] | +0,0 | 58,6 % | 17,8 % |
-| bge/short | 20 | 43,0 % | −0,3 | [−3,8, +3,3] | −1,7 | 64,9 % | 21,4 % |
-| bge/short | 30 | 41,9 % | −1,4 | [−5,0, +2,2] | −2,7 | 68,2 % | 22,3 % |
-| bge/body | 10 | 45,0 % | +1,7 | [−1,7, +5,0] | +0,2 | 58,6 % | 16,3 % |
-| bge/body | 20 | 43,2 % | −0,2 | [−3,8, +3,4] | −1,4 | 64,9 % | 21,9 % |
-| bge/body | 30 | 42,8 % | −0,5 | [−4,1, +3,1] | −1,5 | 68,2 % | 22,4 % |
+| en-de/short | 20 | 41,8 % | −1,5 | [−5,3, +2,1] | −3,1 | 64,9 % | 22,3 % |
+| en-de/short | 30 | 41,8 % | −1,5 | [−5,3, +2,1] | −3,1 | 68,2 % | 22,9 % |
+| en-de/body | 10 | 43,0 % | −0,3 | [−3,6, +2,9] | +0,2 | 58,6 % | 17,0 % |
+| en-de/body | 20 | 40,8 % | −2,6 | [−6,0, +0,9] | −2,4 | 64,9 % | 21,6 % |
+| en-de/body | 30 | 40,4 % | −2,9 | [−6,5, +0,5] | −2,9 | 68,2 % | 22,1 % |
+| bge/short | 10 | 45,5 % | **+2,2** | [−1,0, +5,5] | −0,7 | 58,6 % | 18,2 % |
+| bge/short | 20 | 43,0 % | −0,3 | [−3,9, +3,3] | −1,4 | 64,9 % | 21,6 % |
+| bge/short | 30 | 42,1 % | −1,2 | [−4,8, +2,4] | −2,7 | 68,2 % | 22,3 % |
+| bge/body | 10 | 45,2 % | +1,9 | [−1,4, +5,1] | −0,3 | 58,6 % | 16,3 % |
+| bge/body | 20 | 43,3 % | +0,0 | [−3,6, +3,6] | −1,4 | 64,9 % | 21,4 % |
+| bge/body | 30 | 42,8 % | −0,5 | [−4,1, +3,1] | −1,7 | 68,2 % | 22,4 % |
+
+Quelle: `rerank-501-gold-v2.json`, der Lauf mit getrennten N-Pässen für `bge`.
+Eine frühere Fassung dieser Tabelle stand versehentlich auf dem verworfenen
+Vorlauf; unentdeckt blieb das, weil die Primärzeile in beiden Läufen bitgleich
+ist — also ausgerechnet die Zeile, die zweimal geprüft wurde.
 
 **288 Konfidenzintervalle in diesem Lauf.** Bei α=0.05 sind mehrere davon auch
 unter reinem Rauschen „signifikant". Diese Tabelle beschreibt; sie entscheidet
@@ -819,12 +832,37 @@ Schaden.**
 
 ### 8.7 Vier Nebenbefunde, die unabhängig von #501 gelten
 
-**(a) Der Score-Floor beißt nach dem Rerank exakt null Mal.** `at` und
-`at_no_floor_upper_bound` sind für **jeden** Arm identisch. Die Sorge, ein
-Reranker könne Sub-Floor-Kandidaten nach vorn holen und damit die Trefferliste
-verkürzen, war berechtigt gestellt und ist **gemessen widerlegt**. Der
-Zusammenhang mit dem Nullbefund ist erklärbar: Ein Reranker, der nichts bewegt,
-bewegt auch nichts unter den Floor. Beide Beobachtungen stützen sich.
+**(a) Der Score-Floor beißt — ab N=20, und in beide Richtungen.**
+
+Eine frühere Fassung dieses Absatzes behauptete, `at` und
+`at_no_floor_upper_bound` seien für **jeden** Arm identisch und die Sorge um die
+verkürzte Trefferliste sei „gemessen widerlegt". **Das ist falsch.**
+Nachgerechnet über beide Artefakte: **17 von 36 Zellen weichen ab, in 7 von 12
+Armen** — aber verteilt sich das so:
+
+| N | abweichende Zellen (von 12) |
+|---:|---:|
+| 10 | **0** |
+| 20 | 6 |
+| 30 | 11 |
+
+Wahr ist die ursprüngliche Aussage also **nur für die N=10-Arme**, zu denen die
+Primärzelle gehört. Für den Primärtest ändert der Floor nichts; für tiefere
+Fenster sehr wohl.
+
+**Und die Richtung ist die überraschende Hälfte:** In 15 der 17 Fälle **hebt**
+der Floor die servierte Trefferquote. Das ist kein Widerspruch, sondern die
+Mechanik: `served` schneidet erst auf k und filtert dann: Fällt ein
+Sub-Floor-Eintrag aus den ersten Positionen, rücken die dahinterliegenden im
+Index nach, und ein Gold auf Position 4 landet auf Position 3. In 2 Fällen
+kostet der Floor entsprechend — dann war das Gold selbst unter der Schwelle.
+
+**Damit ist die offene Designfrage aus §3 nicht widerlegt, sondern belegt.** Ein
+Reranker holt bei N ≥ 20 tatsächlich Sub-Floor-Kandidaten nach vorn, die der
+Floor anschließend entfernt — die servierte Liste wird dann kürzer. Für eine
+Entscheidung über „immer an" wäre das ein echter Produkteffekt gewesen. Er ist
+hier folgenlos, weil nichts ausgeliefert wird, aber er bleibt offen für jeden
+künftigen Rerank-Versuch.
 
 **(b) `weak_result` feuert 0 von 584 Mal — und 0 von 500 auf LongMemEval.**
 Das ausgelieferte Prädikat (`packages/core/src/weak-result.ts`) löste auf
