@@ -345,5 +345,13 @@
     },
     "bars_not_relaxed": "No bar was lowered and no threshold moved: decision_bars, primary_endpoint, slices and guards are byte-identical to the version fixed before any number existed. The primary was not moved to the reachable subset although its dilution (19.9 % structural non-contributors) was quantified and known — it would have read +0.3 instead of +0.2. Honest qualification: the by_kind split WAS added to the harness after the coverage numbers were known and because of them. It was deliberately NOT added to `slices` in this registration, precisely because its favourable direction was already known — see the measurement plan §8.9. It is reported as exploratory and carries no recommendation.",
     "floor_effect": "Measured, and it corrects a claim an earlier report made twice, in both directions. The score floor changes the served figures in 17 of 36 cells — 0 at N=10 (which includes the primary cell), 6 at N=20, 11 at N=30. In 15 of the 17 it RAISES the served hit rate, because `served` cuts to k and then filters, so dropping a sub-floor entry moves a deeper candidate up an index position. Two separate conclusions follow and only one is evidence: the PRECONDITION of the open design question is demonstrated (a reranker does pull sub-floor candidates into the served ranks at N >= 20), while the feared HARM is not — what remains after filtering is fewer entries, not worse ones. How much shorter the list becomes is explicitly NOT measured: the artifacts carry hit rates, not list lengths. Whether a shorter list is itself a product disadvantage is a product question, not a measurement question, and stays open."
+  },
+  "run_out": {
+    "$comment": "Where the raw artifacts live. An earlier state of this registration named none, and the report cited a session scratchpad path with mode 0600 — so an independent reviewer could not check a single figure. The evidence excerpt beside this file (rerank-results.json) carries a sha256 per artifact plus the numbers the decision rests on, so the decision is checkable even without the large files.",
+    "directory": "~/.bastra/rerank-501-runs/2026-09-09",
+    "excerpt": "packages/eval/registrations/rerank-results.json",
+    "deciding_artifact": "rerank-501-gold-v2.json",
+    "control_artifact": "rerank-501-lme.json",
+    "$comment_rerun": "A re-run does NOT restore this evidence. The gold pass measured a live vault: two runs over the same set differed by one case at depth 30 because two memories were written between them (1171 -> 1173 vectors). Worse, that run predates the vault fingerprint (d383f22), so the exact vault it saw cannot be reconstructed at all. Runs from d383f22 onward carry the fingerprint; this one does not, and the excerpt says so."
   }
 }

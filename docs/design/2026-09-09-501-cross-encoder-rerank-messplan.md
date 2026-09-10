@@ -669,6 +669,31 @@ externe Kontrollsatz zeigt darüber hinaus **klaren Schaden**. Kein Arm, in
 keiner Kombination aus N, Passagenlänge und Modell, auf keinem der beiden
 Sätze, erreicht die registrierte Schwelle.
 
+### 8.0 Wo die Rohdaten liegen — und warum ein Neulauf sie nicht ersetzt
+
+Die Artefakte aller fünf Läufe liegen dauerhaft unter
+**`~/.bastra/rerank-501-runs/2026-09-09/`**, jedes mit sha256 im committeten
+Auszug `packages/eval/registrations/rerank-results.json`. Der Auszug trägt
+Identitäten, Kennzahlen und Armtabellen, sodass jede Zahl dieses Berichts
+nachprüfbar ist, **ohne** die großen Dateien zu haben; ein Test hält Auszug und
+Registrierung deckungsgleich und verifiziert die Hashes gegen die echten Bytes.
+
+Bewusst **nicht** in `~/.bastra/eval-runs` — dort stehen die registrierten
+M0/M1-Baselines, die `m1-tolerances.json` per Pfad zitiert (#446).
+
+**Ein Neulauf ersetzt diese Dateien nicht.** Der Gold-Lauf hat einen *lebenden*
+Vault gemessen: Zwei Läufe über denselben Satz unterschieden sich bereits um
+einen Fall in Tiefe 30, weil zwischen ihnen zwei Memories geschrieben wurden
+(1171 → 1173 Vektoren, §8.7c). Erschwerend liegt dieser Lauf **vor** der
+Einführung des Vault-Fingerabdrucks — die genaue Vault-Identität, die er sah,
+ist damit nicht rekonstruierbar. Läufe ab `d383f22` tragen sie; dieser nicht,
+und der Auszug sagt das ausdrücklich statt die Lücke zu verschweigen.
+
+Dass die Dateien überhaupt beinahe verloren gegangen wären — sie lagen nur in
+einem sitzungsgebundenen Scratchpad mit Modus `0600`, während der Bericht sie
+als Quelle zitierte — ist die siebte Zeile zu §8.10: **Ein Beleg, den nur der
+Autor lesen kann, ist kein Beleg.**
+
 ### 8.1 Der Primärtest
 
 > **ΔR@3 = +0,2 pp · KI95 [−3,1, +3,4] · p = 1,0000**
