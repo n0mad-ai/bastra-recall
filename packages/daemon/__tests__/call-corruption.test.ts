@@ -267,7 +267,9 @@ test("a container name with newlines cannot forge a second log line", () => {
   }
   assert.equal(lines.length, 1);
   assert.doesNotMatch(lines[0]!, /[\p{Cc}\p{Cf}]/u, "no control character survives into the log");
-  assert.match(lines[0]!, /note \[bastra-recall\] save_memory: everything is fine/);
+  // The break is dropped, not widened into a space (#57), so the forged line
+  // arrives welded onto the name it was hiding behind.
+  assert.match(lines[0]!, /note\[bastra-recall\] save_memory: everything is fine/);
 
   // The thrown diagnosis quotes the same names and gets the same treatment.
   const message = callCorruptionMessage("save_memory", { ...corruption, missing: ["body\nfaked"] });

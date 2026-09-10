@@ -63,12 +63,22 @@ export function detectCallCorruption(raw: unknown, requiredFields: readonly stri
  * client — the swallowed fields out of `name="…"` attributes in its own text,
  * the container out of a KEY of the argument payload. A newline in one of them
  * writes its own `[bastra-recall] …` line into the daemon log, which is how a
- * forged log entry gets in. Control characters become spaces and the name is
- * capped: a real tool argument is a short identifier, so nothing that could
- * have been legible is lost.
+ * forged log entry gets in. The line breaks are dropped and the remaining
+ * control characters become spaces, then the name is capped: a real tool
+ * argument is a short identifier, so nothing that could have been legible is
+ * lost.
+ *
+ * #57 is #55 again, moved to the repair notice: turning a line break into a
+ * SPACE ends the forgery but is not a barrier CodeQL knows — it accepts only an
+ * empty replacement, and only for a class of literal characters. Dropping the
+ * break outright is what the protection is actually about, so it is now written
+ * that way and the space is left to the characters that cannot split a line.
  */
 function forLog(name: string): string {
-  const flat = name.replace(/[\p{Cc}\p{Cf}]/gu, " ").trim();
+  const flat = name
+    .replace(/[\r\n\u2028\u2029]/g, "")
+    .replace(/[\p{Cc}\p{Cf}]/gu, " ")
+    .trim();
   return flat.length > 80 ? `${flat.slice(0, 80)}...` : flat;
 }
 
