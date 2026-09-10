@@ -70,13 +70,15 @@ export function detectCallCorruption(raw: unknown, requiredFields: readonly stri
  *
  * #57 is #55 again, moved to the repair notice: turning a line break into a
  * SPACE ends the forgery but is not a barrier CodeQL knows — it accepts only an
- * empty replacement, and only for a class of literal characters. Dropping the
- * break outright is what the protection is actually about, so it is now written
- * that way and the space is left to the characters that cannot split a line.
+ * empty replacement of a break it can name. Dropping the break outright is what
+ * the protection is actually about, so it is written that way, spelled with
+ * plain string arguments rather than a character class, and the space is left
+ * to the characters that cannot split a line.
  */
 function forLog(name: string): string {
   const flat = name
-    .replace(/[\r\n\u2028\u2029]/g, "")
+    .replaceAll("\n", "")
+    .replaceAll("\r", "")
     .replace(/[\p{Cc}\p{Cf}]/gu, " ")
     .trim();
   return flat.length > 80 ? `${flat.slice(0, 80)}...` : flat;
