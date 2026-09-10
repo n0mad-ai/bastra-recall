@@ -857,12 +857,35 @@ Sub-Floor-Eintrag aus den ersten Positionen, rücken die dahinterliegenden im
 Index nach, und ein Gold auf Position 4 landet auf Position 3. In 2 Fällen
 kostet der Floor entsprechend — dann war das Gold selbst unter der Schwelle.
 
-**Damit ist die offene Designfrage aus §3 nicht widerlegt, sondern belegt.** Ein
-Reranker holt bei N ≥ 20 tatsächlich Sub-Floor-Kandidaten nach vorn, die der
-Floor anschließend entfernt — die servierte Liste wird dann kürzer. Für eine
-Entscheidung über „immer an" wäre das ein echter Produkteffekt gewesen. Er ist
-hier folgenlos, weil nichts ausgeliefert wird, aber er bleibt offen für jeden
-künftigen Rerank-Versuch.
+**Für die offene Designfrage aus §3 zerfällt das in zwei Aussagen, und nur eine
+davon ist belegt.**
+
+**Belegt ist die Voraussetzung.** Ein Reranker holt bei N ≥ 20 tatsächlich
+Sub-Floor-Kandidaten in die servierten Ränge — sonst könnte das Filtern das
+Ergebnis nicht verändern, und bei N=10 tut es das ja auch in keiner einzigen
+Zelle. Ohne diese Voraussetzung wäre die Designfrage gegenstandslos; mit ihr
+ist sie real.
+
+**Nicht belegt ist der befürchtete Schaden.** Gemessen an der *Trefferquote*
+wirkt der Floor überwiegend **positiv** (15 von 17). Die Liste wird kürzer — die
+gefilterten Einträge sind weg —, aber was übrig bleibt, ist nicht schlechter,
+sondern im Mittel besser sortiert.
+
+Damit ist der Befund: **weniger Einträge, nicht schlechtere.** Das ist etwas
+anderes als „der Nutzer bekommt weniger Nützliches", und eine frühere Fassung
+dieses Absatzes hat genau diesen stärkeren Satz behauptet — erst in die eine
+Richtung („widerlegt"), dann in die andere („belegt"). Beide waren zu grob.
+
+**Was ausdrücklich NICHT gemessen ist: um wie viel die Liste kürzer wird.** Die
+Artefakte tragen Trefferquoten, keine Listenlängen — `ArmReport` kennt
+`baseline`/`reranked`/`paired` je Schnitt und sonst nichts. Wer die Frage
+beantworten will, muss die servierte Listenlänge pro Fall mitschreiben; das ist
+eine Zeile im Harness und wurde hier versäumt.
+
+Ob eine kürzere Liste für sich genommen ein Produktnachteil ist, ist ohnehin
+eine **Produktfrage und keine Messfrage**. Sie gehört Daniel und bleibt offen —
+folgenlos für diese Entscheidung, weil nichts ausgeliefert wird, aber relevant
+für jeden künftigen Rerank-Versuch.
 
 **(b) `weak_result` feuert 0 von 584 Mal — und 0 von 500 auf LongMemEval.**
 Das ausgelieferte Prädikat (`packages/core/src/weak-result.ts`) löste auf
@@ -951,6 +974,25 @@ Alle vier führen jetzt aus: als Wächterfunktion, als Entartungsprüfung, als
 eigene Mindestfallzahl, als Feld im Artefakt selbst. **Eine Regel, die dasteht,
 während nichts sie ausführt, ist keine Regel** — sie ist eine Absichtserklärung,
 die bei der nächsten Messung genau dann nicht greift, wenn es darauf ankommt.
+
+Dazu eine sechste Zeile, die nicht das System betrifft, sondern das Ablesen —
+zweimal derselbe Fehler, und beide Male hat erst die Prüfung ihn gefunden:
+
+| Fehlschluss | geprüfter Ausschnitt | ungeprüfter Rest |
+|---|---|---|
+| „der Lockfile hat `@hono/node-server` gehoben" | eine `+`-Zeile mit `2.1.1` | der Vorher-Wert, der ebenfalls `2.1.1` war |
+| „der Floor beißt für **jeden** Arm null Mal" | die Deltas der drei N=10-Arme | die übrigen 24 Zellen, von denen 17 abweichen |
+
+Der gemeinsame Nenner ist nicht „zu wenig nachgerechnet", sondern schärfer:
+**Aus einem geprüften Ausschnitt wurde auf das Ungeprüfte geschlossen.** In
+beiden Fällen war der Ausschnitt korrekt, sorgfältig geprüft und trug die
+Verallgemeinerung trotzdem nicht.
+
+Die Tabelle in §8.3 ist der dritte Fall derselben Familie: Ihre Primärzeile war
+zweimal verifiziert und in beiden Läufen bitgleich — und **genau deshalb** fiel
+nicht auf, dass die elf Zeilen darunter aus dem verworfenen Vorlauf stammten.
+Eine zweimal geprüfte Zeile erzeugt Vertrauen in ihre Nachbarn, das sie nicht
+deckt.
 
 Dazu eine fünfte, spezifischere: **§18.1 verlangt, deskriptive und assoziative
 Fälle getrennt auszuweisen.** Diese Voranmeldung hat den Sprachschnitt sorgfältig
