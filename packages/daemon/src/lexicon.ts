@@ -57,8 +57,32 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 
 /**
+ * A cue is a regex fragment, and a hand-edited file's likeliest malformation is
+ * a regex typo (`schei(`). stop-lane.ts compiles the cues into a RegExp, so a
+ * single invalid fragment would throw there — outside the Stop lane's try/catch
+ * — and kill every heuristic. Validate each fragment in the SAME wrapped shape
+ * both call sites compile (`(?<!\p{L})(?:…)(?!\p{L})`, `u`), and skip the bad
+ * ones. This is what makes this module's "malformed → falls back to defaults"
+ * guarantee actually hold for the malformation users will actually produce.
+ */
+function isValidCue(cue: string): boolean {
+  try {
+    new RegExp(`(?<!\\p{L})(?:${cue})(?!\\p{L})`, "u");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Defaults + the file's additions, deduped, defaults first. mtime-cached.
- * Never throws: any fs or parse error falls back to the shipped defaults.
+ * Never throws: any fs or parse error falls back to the shipped defaults, and a
+ * regex-invalid line is dropped (see isValidCue) rather than poisoning the set.
+ *
+ * Freshness is keyed on mtime only: fine for human cross-session edits (each
+ * gets a distinct mtime). A same-millisecond programmatic rewrite — e.g. a
+ * future harvester writing repeatedly in one process — could read stale; add a
+ * size/content hash here if that lands.
  */
 function loadCues(name: string, defaults: readonly string[]): string[] {
   const path = join(lexiconDir(), `${name}.txt`);
@@ -73,7 +97,7 @@ function loadCues(name: string, defaults: readonly string[]): string[] {
     const seen = new Set<string>(defaults);
     const merged = [...defaults];
     for (const e of extra) {
-      if (!seen.has(e)) {
+      if (!seen.has(e) && isValidCue(e)) {
         seen.add(e);
         merged.push(e);
       }
