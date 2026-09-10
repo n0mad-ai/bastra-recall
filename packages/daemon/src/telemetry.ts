@@ -430,13 +430,13 @@ export class Telemetry {
     for (const [key, ts] of this.loadedIds) {
       if (now - ts > ACTED_ON_WINDOW_MS) this.loadedIds.delete(key);
     }
-    this.loadedIds.set(`${session ?? ""} ${memory_id}`, now);
+    this.loadedIds.set(`${session ?? ""}\0${memory_id}`, now);
   }
 
   /** #485: did this session (or a session-less load) already load this id? */
   private wasLoaded(memory_id: string, session: string): boolean {
     const now = Date.now();
-    for (const key of [`${session} ${memory_id}`, ` ${memory_id}`]) {
+    for (const key of [`${session}\0${memory_id}`, `\0${memory_id}`]) {
       const ts = this.loadedIds.get(key);
       if (ts !== undefined && now - ts <= ACTED_ON_WINDOW_MS) return true;
     }
