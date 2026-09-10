@@ -68,3 +68,41 @@ export function fitRecallToBudget<H, R>(
     }
   }
 }
+
+/**
+ * Dasselbe Budget für eine Antwort mit ZWEI Listen: die gerankten Treffer und
+ * die `reflex_hits` des Hook-Pfads (die verdrahteten Memories, die der
+ * top-k-Schnitt weggelassen hat und die deshalb nicht im Rang stehen).
+ *
+ * DIE REIHENFOLGE DES STREICHENS ist [reflex …, gerankt …], gestrichen wird
+ * von hinten: erst fällt der schwächste gerankte Treffer, und erst wenn keiner
+ * mehr da ist, der schwächste Reflex. Reflexe behalten damit den Vorrang, der
+ * ihnen als ausdrückliche Verdrahtung des Nutzers zusteht — aber sie sind
+ * nicht vom Budget AUSGENOMMEN. Waren sie es, war das Budget bei vielen
+ * verdrahteten Memories nur noch eine Bitte: `max_tokens: 1` gegen 32 Reflexe
+ * lieferte gemessen 2352 Token, und die Antwort sagte kein Wort darüber.
+ *
+ * `droppedByBudget` zählt beide Listen zusammen — die Zahl beantwortet „wie
+ * viel hat das Budget mir weggenommen", und dafür ist die Herkunft egal.
+ *
+ * Ohne Budget (`0`/fehlend) wird wie oben EINMAL mit allem gebaut.
+ */
+export function fitRecallWithReflexToBudget<H, F, R>(
+  hits: H[],
+  reflexHits: F[],
+  budget: number | undefined,
+  build: (emittedHits: H[], emittedReflex: F[], droppedByBudget: number) => R,
+): BudgetedPayload<R> {
+  type Entry = { reflex: true; hit: F } | { reflex: false; hit: H };
+  const order: Entry[] = [
+    ...reflexHits.map((hit): Entry => ({ reflex: true, hit })),
+    ...hits.map((hit): Entry => ({ reflex: false, hit })),
+  ];
+  return fitRecallToBudget(order, budget, (emitted, dropped) =>
+    build(
+      emitted.flatMap((e) => (e.reflex ? [] : [e.hit])),
+      emitted.flatMap((e) => (e.reflex ? [e.hit] : [])),
+      dropped,
+    ),
+  );
+}

@@ -25,7 +25,7 @@ import { tokenizeWithIdentifiers } from "@bastra-recall/core";
 import { armsOf, SCORE_VERSION } from "./score-space.js";
 import { hintSuppressionMode, suppressRepeatedUnused } from "./hint-suppression.js";
 import { mergeHookRecallHits } from "./hook-recall-merge.js";
-import { fitRecallToBudget, measurePayload } from "./recall-budget.js";
+import { fitRecallWithReflexToBudget, measurePayload } from "./recall-budget.js";
 import { type DeadlineShadow } from "./latency-profile.js";
 // #493: die Schattenbuchführung eines Recalls, herausgelöst aus dieser Datei.
 import {
@@ -858,14 +858,20 @@ export async function runHookRecall(
         ...(h.anchor_strength ? { anchor_strength: h.anchor_strength } : {}),
         ...(vault.get(h.id)?.fm.recall_mode === "reflex" ? { recall_mode: "reflex" as const } : {}),
       }));
-      // #487: Das Kontextbudget des AUFRUFS. Gestrichen wird aus der gerankten
-      // Liste, von hinten — `reflex_hits` bleiben, sie sind die ausdrückliche
-      // Verdrahtung des Nutzers und stehen nicht im Rang. Gemessen wird das
-      // ganze Payload, also kosten sie trotzdem mit. Ohne `max_tokens` (0) ist
-      // die Antwort byte-gleich zu der vor #487.
-      const budgeted = fitRecallToBudget(leanHits, maxTokens, (emittedHits, droppedByBudget) => ({
+      // #487: Das Kontextbudget des AUFRUFS. Gestrichen wird von hinten, und
+      // die Streichliste ist [reflex …, gerankt …]: zuerst fallen die
+      // gerankten Treffer (der schwächste zuerst), und erst wenn keiner mehr
+      // da ist, die `reflex_hits` (der schwächste zuerst). Sie behalten damit
+      // den Vorrang, der ihnen als ausdrückliche Verdrahtung des Nutzers
+      // zusteht — aber sie sind nicht mehr vom Budget ausgenommen. Waren sie
+      // es (bis P1/#487), stand bei `max_tokens: 1` und 32 reflex-Memories ein
+      // Payload von 2352 Token auf der Leitung: ein Budget mit unbegrenzter
+      // Ausnahme ist kein Budget. Gemessen wird wie überall das ganze Payload.
+      // Ohne `max_tokens` (0) baut die Funktion einmal und die Antwort ist
+      // byte-gleich zu der vor #487.
+      const budgeted = fitRecallWithReflexToBudget(leanHits, reflexHits, maxTokens, (emittedHits, emittedReflex, droppedByBudget) => ({
         hits: emittedHits,
-        ...(reflexHits.length > 0 ? { reflex_hits: reflexHits } : {}),
+        ...(emittedReflex.length > 0 ? { reflex_hits: emittedReflex } : {}),
         vault_size: vault.size(),
         latency_ms: totalLatencyMs,
         recall_id: recallId,

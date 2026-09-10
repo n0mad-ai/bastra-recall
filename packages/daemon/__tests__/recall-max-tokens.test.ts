@@ -271,3 +271,105 @@ test("#487: /hook/recall kürzt auf dasselbe Budget und meldet es", async (t) =>
   assert.equal(res.truncated_by_budget, true);
   assert.equal(res.dropped_by_budget, alle - (res.hits as unknown[]).length);
 });
+
+// ── 7. P1: `reflex_hits` sind nicht vom Budget ausgenommen ───────
+//
+// Bis hierher blieben die reflex-verdrahteten Memories des Hook-Pfads in
+// voller Länge stehen, egal wie klein das Budget war. Gemessen: `max_tokens:
+// 1` gegen 32 verdrahtete Memories lieferte `hits: 0`, `reflex_hits: 24` und
+// 2352 Token auf der Leitung — 2351 über dem Budget, ohne ein Wort darüber.
+// Ein Budget mit unbegrenzter Ausnahme ist kein Budget (#487 sagt „das
+// Payload überschreitet das Budget um höchstens einen Treffer" zu).
+//
+// Die Reihenfolge des Streichens bleibt: erst die gerankten Treffer, dann die
+// Reflexe — der Vorrang der ausdrücklichen Verdrahtung ist erhalten, die
+// Ausnahme ist es nicht.
+
+/** Ein Vault mit vielen reflex-verdrahteten Memories neben den gerankten. */
+async function reflexVaultDir(reflexCount: number): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-budget-reflex-"));
+  for (let i = 1; i <= 8; i++) await writeFile(join(dir, `m${i}.md`), memo(`m${i}`, i), "utf8");
+  for (let i = 1; i <= reflexCount; i++) {
+    const withMode = memo(`r${i}`, i).replace("scope: budget-test", "scope: budget-test\nrecall_mode: reflex");
+    await writeFile(join(dir, `r${i}.md`), withMode, "utf8");
+  }
+  return dir;
+}
+
+async function hookServer(t: { after: (fn: () => unknown) => void }, dir: string): Promise<number> {
+  const vault = new Vault(dir);
+  await vault.init();
+  const search = new SearchIndex(vault);
+  search.start();
+  const telemetry = new Telemetry();
+  const handle = await startHttpServer({
+    port: 0, vault, search, telemetry, version: "test",
+    toolDeps: { vault, search, telemetry, vaultPath: dir },
+    documentWriteEnabled: false,
+    embedding: { on: false, providerId: "none", source: "none" },
+  });
+  t.after(async () => {
+    search.stop();
+    await vault.stop?.();
+    await handle.close();
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  });
+  return handle.port!;
+}
+
+test("#487 P1: viele reflex_hits + winziges Budget sprengen das Budget nicht mehr", async (t) => {
+  const port = await hookServer(t, await reflexVaultDir(32));
+  const voll = await httpPost(port, "/hook/recall", { query: "deployen", k: 8, min_score: 0 });
+  const reflexeVoll = (voll.reflex_hits as unknown[]) ?? [];
+  assert.ok(reflexeVoll.length >= 8, `der Fall braucht viele reflex_hits, waren ${reflexeVoll.length}`);
+  assert.ok(measurePayload(voll).tokens > 1000, "ungebudgetiert ist das Payload wirklich groß");
+
+  const res = await httpPost(port, "/hook/recall", { query: "deployen", k: 8, max_tokens: 1 });
+  assert.equal((res.hits as unknown[]).length, 0, "kein gerankter Treffer passt in ein Budget von 1");
+  assert.equal(res.reflex_hits, undefined, "und auch kein Reflex — sie sind nicht ausgenommen");
+  // Der dokumentierte Boden ist der UMSCHLAG: mehr kann kein Budget einsparen.
+  // Die Toleranz ist ein Treffer — EIN Reflex mehr hätte es gerissen.
+  const einerMehr = { ...res, reflex_hits: [reflexeVoll[0]] };
+  assert.ok(
+    measurePayload(einerMehr).tokens > 1,
+    "die Toleranz bleibt ein Treffer",
+  );
+  assert.ok(
+    measurePayload(res).tokens < measurePayload(voll).tokens / 10,
+    `der Umschlag allein (${measurePayload(res).tokens}) statt 2352 Token`,
+  );
+  assert.equal(res.truncated_by_budget, true);
+  assert.equal(
+    res.dropped_by_budget,
+    (voll.hits as unknown[]).length + reflexeVoll.length,
+    "gemeldet wird, was das Budget INSGESAMT weggenommen hat",
+  );
+});
+
+test("#487 P1: gestrichen wird erst gerankt, dann reflex — der Vorrang bleibt", async (t) => {
+  const port = await hookServer(t, await reflexVaultDir(32));
+  const voll = await httpPost(port, "/hook/recall", { query: "deployen", k: 8, min_score: 0 });
+  const budget = Math.floor(measurePayload(voll).tokens / 2);
+  const res = await httpPost(port, "/hook/recall", { query: "deployen", k: 8, max_tokens: budget });
+  assert.ok(measurePayload(res).tokens <= budget, "das Payload passt ins Budget");
+  const reflexe = (res.reflex_hits as unknown[]) ?? [];
+  assert.ok(reflexe.length > 0, "bei einem Budget, das für die Hälfte reicht, überleben Reflexe");
+  assert.equal(
+    (res.hits as unknown[]).length,
+    0,
+    "und zwar bevor der erste Reflex fällt: die gerankten Treffer gehen zuerst",
+  );
+});
+
+test("#487 P1: ohne max_tokens bleibt die Antwort mit reflex_hits unverändert", async (t) => {
+  const port = await hookServer(t, await reflexVaultDir(32));
+  const ohne = await httpPost(port, "/hook/recall", { query: "deployen", k: 8, min_score: 0 });
+  const mit = await httpPost(port, "/hook/recall", { query: "deployen", k: 8, min_score: 0, max_tokens: 100_000 });
+  assert.equal(ohne.truncated_by_budget, undefined);
+  assert.ok((ohne.reflex_hits as unknown[]).length > 0, "die reflex_hits sind da wie zuvor");
+  assert.equal(
+    JSON.stringify(stable(mit), null, 2),
+    JSON.stringify(stable(ohne), null, 2),
+    "ein Budget, das nie greift, fasst auch die reflex_hits nicht an",
+  );
+});
