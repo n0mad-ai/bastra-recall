@@ -21,7 +21,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Vault } from "@bastra-recall/core";
@@ -212,6 +212,55 @@ test("SessionStart mit erkanntem Projekt (root-match): unverändert", async () =
     assert.match(ctx, /project="bastra-recall"/, "die echte Erkennung trägt weiter ihr Attribut");
     const posted = seen.filter((s) => s.path === "/hook/session-context");
     assert.equal(posted[0].body.project, "bastra-recall");
+  });
+});
+
+/**
+ * #511 an der VERDRAHTUNG, nicht nur an `isDokuProject()`. Der Gate steht in
+ * `session-lane.ts`; drehte man ihn dort auf `if (project)` zurück, blieb die
+ * ganze Daemon-Suite grün, weil niemand den ausgelieferten Block darauf ansah.
+ *
+ * Das Feature ist opt-in (`docs.mode`, default "off"), also braucht dieser Test
+ * ein eigenes HOME mit eingeschalteter Einstellung — sonst prüfte er nur, dass
+ * ein abgeschaltetes Feature schweigt.
+ */
+async function withDocsOn<T>(fn: () => Promise<T>): Promise<T> {
+  const home = await mkdtemp(join(tmpdir(), "bastra-docs-home-"));
+  await mkdir(join(home, ".bastra"), { recursive: true });
+  await writeFile(
+    join(home, ".bastra", "cli-settings.json"),
+    JSON.stringify({ docs: { mode: "suggest", language: "de" } }),
+    "utf8",
+  );
+  const prev = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    return await fn();
+  } finally {
+    if (prev === undefined) delete process.env.HOME;
+    else process.env.HOME = prev;
+    await rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+}
+
+test("SessionStart (#511): root-match zahlt keine Doku-Tokens, ein echtes Repo schon", async () => {
+  await withDocsOn(async () => {
+    await withDaemon(SESSION_BODIES, async (base) => {
+      const rootMatch = context(await runSession(DETECTED_CWD, base));
+      assert.match(rootMatch, /project="bastra-recall"/, "Vorbedingung: erkannt wird weiter — nur der Doku-Block hängt am Gate");
+      assert.doesNotMatch(rootMatch, /<bastra-product-docs/, "ein Container-Root ohne .git ist kein Repo — kein Doku-Block");
+
+      // Gegenprobe am selben HOME: Sie beweist, dass `docs.mode` hier wirklich
+      // an ist — ohne sie wäre die Abwesenheit oben nichts wert.
+      const repo = await mkdtemp(join(tmpdir(), "bastra-docs-repo-"));
+      try {
+        await mkdir(join(repo, ".git"), { recursive: true });
+        const gitRoot = context(await runSession(repo, base));
+        assert.match(gitRoot, /<bastra-product-docs mode="suggest"/, "git-root bekommt den Block unverändert");
+      } finally {
+        await rm(repo, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+      }
+    });
   });
 });
 

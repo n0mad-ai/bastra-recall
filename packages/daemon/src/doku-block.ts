@@ -16,8 +16,11 @@ import type { DetectedProject } from "@bastra-recall/core/topics";
  * (`root-match`), ein beliebiges Verzeichnis fällt auf sein letztes Segment
  * zurück (`fallback`). Der Doku-Block gatete früher auf `if (project)` und
  * zahlte damit 239 Tokens/Start „wie dokumentiere ich dieses Projekt" für
- * Verzeichnisse, die gar keins sind — im #462-Baseline für `Projekte` (3×)
- * und `CarNexus` (1×), Projekte, die als Repo nicht existieren.
+ * Verzeichnisse, die gar keins sind. Getroffen werden davon tatsächlich die
+ * `root-match`-Verzeichnisse ohne `.git` — unter `~/Projekte` auf dieser
+ * Maschine 15 von 29 (nachgezählt 2026-09-11). `fallback` war hier schon
+ * vorher aus — `projectForLane` setzt ihn seit §20.5 auf null, und `~/Projekte`
+ * selbst ist `fallback`, nicht `root-match`.
  *
  * Doku ist per-Projekt-Doku; sie wird aus dem Repo heraus geschrieben.
  * `git-root` ist die einzige Confidence, die wirklich ein Repository benennt

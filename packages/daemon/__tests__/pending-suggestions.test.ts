@@ -16,6 +16,7 @@ import {
   PENDING_MAX_AGE_MS,
 } from "../src/pending-suggestions.js";
 import { normalizeTurns, evaluateHeuristics } from "../src/stop-lane.js";
+import { runSessionLane } from "../src/session-lane.js";
 
 test("pending-suggestions (#48): write → consume-once round-trip, stale entries dropped", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-pending-"));
@@ -102,6 +103,50 @@ test("formatPendingBlock (#510): single oversized entry → clipped, not dropped
   assert.match(block, /…/); // ellipsis marks the cut
   // The runaway is bounded now, not passed through whole.
   assert.ok(block.length < PENDING_BLOCK_CHAR_BUDGET + 400, `not clipped: ${block.length}`);
+});
+
+/**
+ * #510 an der VERDRAHTUNG. Die Tests darüber prüfen `formatPendingBlock` als
+ * Funktion — aber das Budget wirkt erst, wenn `session-lane.ts` den Block auch
+ * darüber baut. Ersetzte man den Aufruf dort durch den alten Inline-Block
+ * (`pending.map((p) => p.blocks).join("\n")`), blieben alle obigen Tests grün
+ * und der Ausreißer ginge wieder ungekürzt an den Agenten.
+ *
+ * Der Daemon ist absichtlich unerreichbar (`127.0.0.1:1`): ohne Treffer bleibt
+ * vom ausgelieferten Kontext genau der Teil übrig, um den es hier geht.
+ */
+test("SessionStart (#510): der AUSGELIEFERTE pending-Block ist auf das Budget rationiert", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-pending-lane-"));
+  const prev = process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
+  const prevTelemetry = process.env.BASTRA_TELEMETRY;
+  process.env.BASTRA_PENDING_SUGGESTIONS_PATH = join(dir, "pending.json");
+  process.env.BASTRA_TELEMETRY = "off";
+  try {
+    const runaway = "x".repeat(PENDING_BLOCK_CHAR_BUDGET * 2);
+    await writePendingSuggestion(`<save-eval>${runaway}</save-eval>`);
+
+    const out = await runSessionLane(
+      { hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "pending-budget-wiring" },
+      "http://127.0.0.1:1",
+    );
+    const parsed = JSON.parse(out) as { hookSpecificOutput?: { additionalContext?: string } };
+    const ctx = parsed.hookSpecificOutput?.additionalContext ?? "";
+
+    assert.match(ctx, /<pending-save-suggestions/, "der Relay-Block wird überhaupt ausgeliefert");
+    assert.match(ctx, /one suggestion was clipped to fit/, "der Ausreißer muss im ausgelieferten Block gekürzt sein");
+    assert.ok(!ctx.includes(runaway), "der ungekürzte Lauf darf den Agenten nicht erreichen");
+    const block = ctx.slice(ctx.indexOf("<pending-save-suggestions"));
+    assert.ok(
+      block.length < PENDING_BLOCK_CHAR_BUDGET + 400,
+      `der ausgelieferte Block ist unbegrenzt: ${block.length}`,
+    );
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
+    else process.env.BASTRA_PENDING_SUGGESTIONS_PATH = prev;
+    if (prevTelemetry === undefined) delete process.env.BASTRA_TELEMETRY;
+    else process.env.BASTRA_TELEMETRY = prevTelemetry;
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
 });
 
 test("stop-hook (#48): injected skill body in role=user does not feed the heuristics", () => {

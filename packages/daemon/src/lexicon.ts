@@ -7,8 +7,8 @@
  * user-editable runtime file per lexicon. The defaults are always the floor;
  * the file EXTENDS them (it never has to restate a built-in). A missing or
  * malformed file falls back to defaults, so the Stop hook is never broken by
- * it. Reads are mtime-cached, so an edit takes effect on the next session with
- * no daemon restart and no rebuild.
+ * it. Every read hits the file fresh (see loadCues), so an edit takes effect on
+ * the next Stop event with no daemon restart and no rebuild.
  *
  * File format: one cue per line, `#` starts a comment, blank lines ignored.
  * A cue is a regex fragment in the same dialect as the defaults; stop-lane.ts
