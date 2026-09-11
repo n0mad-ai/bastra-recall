@@ -56,6 +56,7 @@ import { scrubInjectedBlocks } from "@bastra-recall/core/scrub";
 import { envFirst } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { writePendingSuggestion } from "./pending-suggestions.js";
+import { frustrationCues, decisionCues } from "./lexicon.js";
 import { getDocsMode, type DocsMode } from "./settings.js";
 import {
   claudeToolUseCommands,
@@ -450,23 +451,17 @@ function evaluateHeuristics(turns: TranscriptTurn[], deps: HeuristicDeps = {}): 
   return suggestions;
 }
 
-// Explicit frustration words, per language (#476). The retrieval side of
-// recall is script-neutral; this lane was not, so for a user who does not
-// write German it could not fire at all. Longer variants come first so the
-// same span is not double-counted; the global flag counts occurrences.
+// Explicit frustration words, per language (#476) — the list is DATA now, in
+// lexicon.ts (shipped defaults + a user-editable file), not a `const` here.
+// The regex is rebuilt per detection so an edit to the lexicon file takes
+// effect on the next session without a restart; the list is tiny.
 //
 // `\b` is unusable here: JS word boundaries are defined over [A-Za-z0-9_], so
 // `\bснова\b` never matches and `\bÄRGER\b` matches in the wrong places. The
 // Unicode letter lookarounds below are the same idea, correct for every script.
-const FRUST_WORDS = [
-  // de
-  "schon\\s+wieder", "wieder", "wie\\s+oft", "verdammt", "schei(?:ss|ß)e",
-  // en
-  "yet\\s+again", "again", "how\\s+(?:often|many\\s+times)", "damn", "fuck", "shit",
-  // ru
-  "снова", "опять", "сколько\\s+раз", "ч[её]рт", "бл(?:ин|ять)",
-];
-const FRUST_WORD_RE = new RegExp(`(?<!\\p{L})(?:${FRUST_WORDS.join("|")})(?!\\p{L})`, "giu");
+function frustWordRe(): RegExp {
+  return new RegExp(`(?<!\\p{L})(?:${frustrationCues().join("|")})(?!\\p{L})`, "giu");
+}
 // Letter runs in any script (Latin incl. Umlauts, Cyrillic, …) and all-caps
 // tokens by Unicode case, not by Latin alphabet.
 const WORD_TOKEN_RE = /\p{L}+/gu;
@@ -480,8 +475,8 @@ const CAPS_STOPLIST = new Set([
   "SVG", "PNG", "PDF", "JPG", "TODO", "FIXME",
 ]);
 
-function countFrustWords(content: string): number {
-  const m = content.match(FRUST_WORD_RE);
+function countFrustWords(content: string, re: RegExp): number {
+  const m = content.match(re);
   return m ? m.length : 0;
 }
 
@@ -508,11 +503,12 @@ function countQualifyingCaps(content: string): number {
 
 function detectFrustration(turns: TranscriptTurn[]): SaveSuggestion | null {
   const userTurns = turns.filter((t) => t.role === "user").slice(-FRUSTRATION_WINDOW_TURNS);
+  const re = frustWordRe();
   let frustWordCount = 0;
   let capsCueCount = 0;
   const exemplars: string[] = [];
   for (const t of userTurns) {
-    const fw = countFrustWords(t.content);
+    const fw = countFrustWords(t.content, re);
     if (fw > 0) {
       frustWordCount += fw;
       if (exemplars.length < 3) exemplars.push(t.content.slice(0, 120));
@@ -615,27 +611,18 @@ function detectFeatureCompletion(turns: TranscriptTurn[], deps: HeuristicDeps = 
   };
 }
 
-// Decision cues, per language (#476) — same boundary reasoning as FRUST_WORDS.
-const DECISION_WORDS = [
-  // de
-  "ok\\s+dann", "lass\\s+uns", "entschieden", "gehen\\s+wir\\s+mit",
-  // en
-  "ok(?:ay)?\\s+then", "let['\u2019]?s\\s+(?:go\\s+with|use)", "we(?:['\u2019]ll|\\s+will)\\s+go\\s+with",
-  "decided", "settled\\s+on",
-  // ru
-  "решено", "остановимся\\s+на", "договорились",
-  // language-neutral
-  "final",
-];
-const DECISION_PATTERNS: RegExp[] = DECISION_WORDS.map(
-  (w) => new RegExp(`(?<!\\p{L})(?:${w})(?!\\p{L})`, "iu"),
-);
+// Decision cues (#476) are DATA in lexicon.ts (defaults + a user file), not a
+// `const` here — same story as frustration. Patterns rebuilt per detection.
+function decisionPatterns(): RegExp[] {
+  return decisionCues().map((w) => new RegExp(`(?<!\\p{L})(?:${w})(?!\\p{L})`, "iu"));
+}
 
 function detectArchitectureDecision(turns: TranscriptTurn[]): SaveSuggestion | null {
   const userTurns = turns.filter((t) => t.role === "user").slice(-DECISION_WINDOW_TURNS);
+  const patterns = decisionPatterns();
   const exemplars: string[] = [];
   for (const t of userTurns) {
-    for (const p of DECISION_PATTERNS) {
+    for (const p of patterns) {
       if (p.test(t.content)) {
         if (exemplars.length < 2) exemplars.push(t.content.slice(0, 160));
         break;

@@ -32,6 +32,7 @@
  */
 // #305: subpath leafs, never the core barrel — measured +40ms of process
 // start against +0.8ms for the three leafs, on a fresh spawn per event.
+import { detectProjectDetailed } from "@bastra-recall/core/topics";
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { projectForLane } from "./scope-filter.js";
 import { bandHits, requiredHeadline, unfusedHeadline, CANDIDATES_ONLY_NOTICE, type UnfusedReason } from "./band-wording.js";
@@ -42,13 +43,13 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { envFirst, envInt } from "./env.js";
 import { effectiveUpdateMode, getDocsLanguage, getDocsMode, getPrimaryLanguage } from "./settings.js";
-import { formatDokuBlock } from "./doku-block.js";
+import { formatDokuBlock, isDokuProject } from "./doku-block.js";
 import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow, resetBudgetOnSource } from "./session-budget.js";
 import { spawnStagedUpdate, stagedToday, markStagedToday } from "./update-check.js";
 import { formatBlockedUpdate, readBlockedUpdate } from "./update-blocked.js";
 import { pendingPatchNotice } from "./patch-registry.js";
-import { consumePendingSuggestions } from "./pending-suggestions.js";
+import { consumePendingSuggestions, formatPendingBlock } from "./pending-suggestions.js";
 import { clearShown } from "./session-state.js";
 import { formatPinnedBlock, dropPinnedFromRanked, type PinnedFloorLean } from "./pinned-block.js";
 import { reportHinted } from "./hook-hinted.js";
@@ -217,6 +218,10 @@ export async function runSessionLane(
   // `project=` in den Block. `projectForLane` liefert dort null: keine
   // Projekt-Query, kein Projekt-Attribut.
   const project = projectForLane(payload.cwd ?? process.cwd());
+  // #511: doku is per-project docs — inject only for a REAL repo (git-root),
+  // not the `root-match` container dirs (`~/Projekte`) that projectForLane
+  // still admits for scoping. Confidence is read here for the doku gate below.
+  const projectConfidence = detectProjectDetailed(payload.cwd ?? process.cwd()).confidence;
   // The self-call target is passed in by the route (this server's own
   // address), not read from the environment: the lane IS the daemon.
   const url = selfBaseUrl;
@@ -565,22 +570,22 @@ export async function runSessionLane(
   let pendingBlock = "";
   try {
     const pending = await consumePendingSuggestions();
-    if (pending.length > 0) {
-      pendingBlock =
-        `\n<pending-save-suggestions source="stop-hook">\n` +
-        `From earlier session(s) — evaluate silently, save via bastra-recall:save_memory only what genuinely qualifies:\n` +
-        pending.map((p) => p.blocks).join("\n") +
-        `\n</pending-save-suggestions>`;
-    }
+    // #510: der Block wird auf ein Zeichen-Budget rationiert (größter Einzel-
+    // Part im #462-Baseline). Formatierung + Truncation liegen im Modul, damit
+    // sie ohne CLI-Seiteneffekte testbar sind — dieselbe Trennung wie pinned.
+    const block = formatPendingBlock(pending);
+    if (block) pendingBlock = `\n${block}`;
   } catch {
     /* relay is best-effort */
   }
 
   // Produkt-Doku (docs.mode): Anweisung nur injizieren, wenn das Feature
-  // eingeschaltet ist UND ein Projekt erkannt wurde (Doku ist per-project).
-  // Settings-Read ist ein lokaler File-Read — kein Daemon-Roundtrip nötig.
+  // eingeschaltet ist UND ein echtes Repo erkannt wurde. #511: `git-root`, nicht
+  // `if (project)` — sonst zahlt ein Container-Root (`~/Projekte`, root-match)
+  // oder ein Fallback-Verzeichnis Doku-Tokens für ein Projekt, das nicht
+  // existiert (isDokuProject). Settings-Read ist ein lokaler File-Read.
   let dokuBlock = "";
-  if (project) {
+  if (project && isDokuProject(projectConfidence)) {
     try {
       const docsMode = await getDocsMode();
       if (docsMode !== "off") {
