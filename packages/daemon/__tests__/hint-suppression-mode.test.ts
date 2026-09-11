@@ -18,7 +18,12 @@ import { request } from "node:http";
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { startHttpServer } from "../src/http.js";
-import { hintRevision } from "../src/hint-suppression.js";
+import {
+  hintRevision,
+  primeHintSuppressionMode,
+  resetHintSuppressionMode,
+  type HintSuppressionMode,
+} from "../src/hint-suppression.js";
 import { primeUsageShadowCache, resetUsageShadowCache } from "../src/trust-shadow.js";
 
 function memo(id: string, title: string, trigger: string, body: string): string {
@@ -65,8 +70,16 @@ async function readHookRecall(logDir: string): Promise<Record<string, unknown>[]
 }
 
 /** Ein Vault mit einem Treffer, dessen Version achtmal eingeblendet und nie
- *  geladen wurde — genau der Fall, den der Breaker schneidet. */
-async function daemon(t: { after: (fn: () => unknown) => void }, mode: string | undefined) {
+ *  geladen wurde — genau der Fall, den der Breaker schneidet.
+ *
+ *  `mode` ist das, was in der Umgebung steht; `armed` die Naht aus #484, über
+ *  die der Wirkbetrieb noch prüfbar ist, seit `BASTRA_HINT_SUPPRESS=live` ihn
+ *  nicht mehr scharf schaltet. */
+async function daemon(
+  t: { after: (fn: () => unknown) => void },
+  mode: string | undefined,
+  armed?: HintSuppressionMode,
+) {
   const dir = await mkdtemp(join(tmpdir(), "bastra-suppress-vault-"));
   const logDir = await mkdtemp(join(tmpdir(), "bastra-suppress-logs-"));
   await writeFile(join(dir, "a.md"), memo("a", "Deployment-Strategie", "wenn wir deployen", "Text über deployen."), "utf8");
@@ -83,6 +96,9 @@ async function daemon(t: { after: (fn: () => unknown) => void }, mode: string | 
   else process.env.BASTRA_LOG_PATH = prevLog;
   if (mode === undefined) delete process.env.BASTRA_HINT_SUPPRESS;
   else process.env.BASTRA_HINT_SUPPRESS = mode;
+
+  resetHintSuppressionMode();
+  if (armed) primeHintSuppressionMode(armed);
 
   resetUsageShadowCache();
   primeUsageShadowCache(dir, {
@@ -102,6 +118,7 @@ async function daemon(t: { after: (fn: () => unknown) => void }, mode: string | 
   t.after(async () => {
     if (prevMode === undefined) delete process.env.BASTRA_HINT_SUPPRESS;
     else process.env.BASTRA_HINT_SUPPRESS = prevMode;
+    resetHintSuppressionMode();
     resetUsageShadowCache();
     search.stop();
     await vault.stop?.();
@@ -127,8 +144,8 @@ test("Voreinstellung: der Treffer bleibt in der Antwort, das Event zählt ihn al
   assert.equal(event.hit_count, 1, "die gezählte Ausspielung ist die tatsächliche");
 });
 
-test("live: dieselbe Liste, aber der Treffer verlässt die Antwort", async (t) => {
-  const d = await daemon(t, "live");
+test("live über die Naht: dieselbe Liste, aber der Treffer verlässt die Antwort", async (t) => {
+  const d = await daemon(t, undefined, "live");
   const res = await httpPost(d.port, "/hook/recall", { query: "deployen", k: 5 });
   assert.deepEqual(res.json.hits, [], "im Wirkbetrieb wird geschnitten");
   const [event] = await readHookRecall(d.logDir);
@@ -143,4 +160,25 @@ test("off: der Durchlauf entfällt ganz, das Event trägt keine Liste", async (t
   const [event] = await readHookRecall(d.logDir);
   assert.equal(event.usage_suppressed, undefined);
   assert.equal(event.usage_suppressed_mode, undefined);
+});
+
+/**
+ * #484 — der Wächter für die Entscheidung, die diesen Pfad stilllegt: Der
+ * Wirkbetrieb ist aus der Konfiguration nicht mehr erreichbar. Gesetztes
+ * `BASTRA_HINT_SUPPRESS=live` ist Schatten, und im Durchlauf wird nichts
+ * entfernt — die Zählung läuft weiter, der Treffer bleibt.
+ */
+test("#484: BASTRA_HINT_SUPPRESS=live schaltet nichts scharf — der Treffer bleibt in der Antwort", async (t) => {
+  const d = await daemon(t, "live");
+  const res = await httpPost(d.port, "/hook/recall", { query: "deployen", k: 5 });
+  assert.equal(res.status, 200);
+  assert.deepEqual(
+    (res.json.hits as { id: string }[]).map((h) => h.id),
+    ["a"],
+    "aus der Umgebung darf der Breaker nicht mehr schneiden",
+  );
+
+  const [event] = await readHookRecall(d.logDir);
+  assert.deepEqual((event.usage_suppressed as { id: string }[]).map((s) => s.id), ["a"], "die Schattenmessung bleibt");
+  assert.equal(event.usage_suppressed_mode, "shadow", "`live` aus der Umgebung ist Schatten");
 });

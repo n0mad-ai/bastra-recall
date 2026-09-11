@@ -23,7 +23,7 @@ import { type SupportedLanguage } from "./learned-recall/language.js";
 import { isWeakResult, isNoHome, decideHits, type RecallDecisionHit } from "@bastra-recall/core";
 import { tokenizeWithIdentifiers } from "@bastra-recall/core";
 import { armsOf, SCORE_VERSION } from "./score-space.js";
-import { hintSuppressionMode, suppressRepeatedUnused } from "./hint-suppression.js";
+import { effectiveHintSuppressionMode, suppressRepeatedUnused } from "./hint-suppression.js";
 import { mergeHookRecallHits } from "./hook-recall-merge.js";
 import { fitRecallWithReflexToBudget, measurePayload } from "./recall-budget.js";
 import { type DeadlineShadow } from "./latency-profile.js";
@@ -635,8 +635,10 @@ export async function runHookRecall(
       // recall is untouched; directives/reflexes are exempt inside the helper.
       // #484: `shadow` (default) counts what the breaker WOULD remove and
       // removes nothing; only `live` applies the cut. `off` skips the pass
-      // entirely, so no would-be list is written either.
-      const suppressionMode = hintSuppressionMode();
+      // entirely, so no would-be list is written either. Since #484 `live` can
+      // no longer be armed from the environment — only a test seam reaches it,
+      // see `hint-suppression.ts`.
+      const suppressionMode = effectiveHintSuppressionMode();
       const usageSuppression = suppressionMode === "off"
         ? { kept: hits, suppressed: [] }
         : suppressRepeatedUnused(

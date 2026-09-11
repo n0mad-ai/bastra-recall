@@ -22,7 +22,7 @@ import { request } from "node:http";
 import { Vault, SearchIndex, type RecallHit } from "@bastra-recall/core";
 import { mergeHookRecallHits, startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
-import { hintRevision } from "../src/hint-suppression.js";
+import { hintRevision, primeHintSuppressionMode, resetHintSuppressionMode } from "../src/hint-suppression.js";
 import { primeUsageShadowCache, resetUsageShadowCache } from "../src/trust-shadow.js";
 
 function memoryMarkdown(id: string, title: string): string {
@@ -149,12 +149,12 @@ test("hook/recall: without Accept header returns JSON", async () => {
   }
 });
 
-test("#479/#484: under BASTRA_HINT_SUPPRESS=live a repeatedly unused version is removed", async () => {
+test("#479/#484: in the live mode a repeatedly unused version is removed", async () => {
   const d = await makeDaemon();
-  // #484 moved the breaker to shadow by default — the removal only happens in
-  // the live mode now, so the case has to ask for it explicitly.
-  const previousMode = process.env.BASTRA_HINT_SUPPRESS;
-  process.env.BASTRA_HINT_SUPPRESS = "live";
+  // #484 moved the breaker to shadow by default and then took `live` out of
+  // the environment altogether — the removal path stays under test through the
+  // seam in `hint-suppression.ts`, which nothing but a case can arm.
+  primeHintSuppressionMode("live");
   try {
     const revision = hintRevision(d.vault.get("alpha"));
     assert.ok(revision);
@@ -173,8 +173,7 @@ test("#479/#484: under BASTRA_HINT_SUPPRESS=live a repeatedly unused version is 
     assert.equal(response.status, 200);
     assert.deepEqual(JSON.parse(response.body).hits, []);
   } finally {
-    if (previousMode === undefined) delete process.env.BASTRA_HINT_SUPPRESS;
-    else process.env.BASTRA_HINT_SUPPRESS = previousMode;
+    resetHintSuppressionMode();
     resetUsageShadowCache();
     await d.close();
   }

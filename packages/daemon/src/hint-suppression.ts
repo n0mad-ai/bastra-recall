@@ -49,7 +49,47 @@ export type HintSuppressionMode = "off" | "shadow" | "live";
  */
 export function hintSuppressionMode(): HintSuppressionMode {
   const raw = (envFirst("BASTRA_HINT_SUPPRESS") ?? "shadow").toLowerCase();
-  return raw === "off" || raw === "live" ? raw : "shadow";
+  if (raw === "off") return "off";
+  // #484: `live` is deliberately NOT returned here any more — the breaker does
+  // not go live in v1.0, and `BASTRA_HINT_SUPPRESS=live` now lands in `shadow`
+  // like any other unknown value. The measurement on 35 suppressed memories
+  // showed the decision is wrong for `lesson`/`decision` in 7 of 15 cases, and
+  // in 6 of 6 for the still-valid project lessons; the documented case
+  // `daemon-tests-messen-core-dist-nicht-core-src` was suppressed 198 times
+  // and demonstrably followed three times without ever being loaded. On top of
+  // that, a hint suppressed in the automatic lane does not come back on its
+  // own: it no longer counts as surfaced, so `revision_surfaced` can never
+  // catch up. There IS a way out — an explicit `load_memory` of the same
+  // revision writes `revision_loaded` and makes it eligible again
+  // (`telemetry.ts:460`) — but the user only finds it by deliberately looking
+  // up the memory that has already gone quiet. The mode logic and the removal
+  // code below stay in the repo: the feature is meant to graduate later, only
+  // arming it from the environment is gone.
+  return "shadow";
+}
+
+/** The mode armed by {@link primeHintSuppressionMode}, or `null` for none. */
+let hintSuppressionModeSeam: HintSuppressionMode | null = null;
+
+/**
+ * Test seam — arms a mode the environment can no longer produce, so the
+ * removal path of #479 stays under test while it is unreachable in the field.
+ */
+export function primeHintSuppressionMode(mode: HintSuppressionMode): void {
+  hintSuppressionModeSeam = mode;
+}
+
+/** Test seam — drops the armed mode, back to what the environment says. */
+export function resetHintSuppressionMode(): void {
+  hintSuppressionModeSeam = null;
+}
+
+/**
+ * The mode the hook route runs in: the armed seam when a case set one,
+ * otherwise {@link hintSuppressionMode}.
+ */
+export function effectiveHintSuppressionMode(): HintSuppressionMode {
+  return hintSuppressionModeSeam ?? hintSuppressionMode();
 }
 
 /** Eight actual emissions means eight sessions under the per-session MAX_SHOW=1 guard. */

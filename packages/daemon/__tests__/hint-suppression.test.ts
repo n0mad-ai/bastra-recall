@@ -63,12 +63,14 @@ test("directive memories, explicit reflexes, and the zero kill switch are never 
   assert.equal(suppressRepeatedUnused([{ id: "fact", type: "project-fact" }], () => m, ignoredUsage(m), 0).kept.length, 1);
 });
 
-test("#484: der Modus ist Schatten, solange nichts anderes gesetzt ist", () => {
+test("#484: der Modus ist Schatten, solange nichts anderes gesetzt ist — `live` ist aus der Umgebung nicht mehr erreichbar", () => {
   const prev = process.env.BASTRA_HINT_SUPPRESS;
   try {
     delete process.env.BASTRA_HINT_SUPPRESS;
     assert.equal(hintSuppressionMode(), "shadow");
-    for (const [raw, expected] of [["live", "live"], ["LIVE", "live"], ["off", "off"], ["quatsch", "shadow"], ["", "shadow"]]) {
+    // `live` fällt seit #484 auf `shadow` zurück wie jeder unbekannte Wert:
+    // der Wirkbetrieb geht in v1.0 nicht scharf.
+    for (const [raw, expected] of [["live", "shadow"], ["LIVE", "shadow"], ["off", "off"], ["quatsch", "shadow"], ["", "shadow"]]) {
       process.env.BASTRA_HINT_SUPPRESS = raw;
       assert.equal(hintSuppressionMode(), expected, `${raw} → ${expected}`);
     }
