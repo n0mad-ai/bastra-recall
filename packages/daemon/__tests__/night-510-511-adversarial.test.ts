@@ -21,7 +21,7 @@ import {
 import { isDokuProject } from "../src/doku-block.js";
 import { detectProject, detectProjectDetailed } from "@bastra-recall/core/topics";
 import { frustrationCues } from "../src/lexicon.js";
-import { detectFrustration, type TranscriptTurn } from "../src/stop-lane.js";
+import { detectFrustration, runStopLane, type TranscriptTurn } from "../src/stop-lane.js";
 
 // ─────────────────────────── #510 pending char-budget ───────────────────────
 
@@ -196,5 +196,191 @@ test("lexicon (#476) DEFECT: a regex-invalid cue must fall back to defaults, nev
     if (prev === undefined) delete process.env.BASTRA_LEXICON_DIR;
     else process.env.BASTRA_LEXICON_DIR = prev;
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+// ─────────────────── follow-ups: 510/511 review round ───────────────────────
+
+test("formatPendingBlock (#510): an oversized entry that is NOT first is clipped, not dropped whole", () => {
+  // The clip was gated on `rendered.length === 0`, so only a FIRST outlier was
+  // clipped; a later one fell off silently — exactly the case the clip exists
+  // for. Small entry, then the 2,648-token-shape outlier, then a small tail:
+  // the outlier must survive as a clip, and only the tail counts as suppressed.
+  // The first entry is large on purpose: the clip must fit the REMAINING room,
+  // so its content plus the clipped outlier must still sum to the budget.
+  const first = "a".repeat(2000);
+  const block = formatPendingBlock([
+    { ts: 1, blocks: first },
+    { ts: 2, blocks: "z".repeat(B * 2) },
+    { ts: 3, blocks: "v" },
+  ]);
+  assert.match(block, /one suggestion was clipped to fit/, "a non-first outlier must be clipped, not dropped");
+  assert.ok(block.includes("z".repeat(100)), "the outlier's content must actually be present, clipped");
+  assert.match(block, /1 earlier suggestion suppressed/, "only the single trailing entry is suppressed");
+  const clipLine = block.split("\n").find((l) => l.startsWith("z"));
+  assert.ok(clipLine, "the clipped outlier is rendered on its own line");
+  assert.equal(
+    first.length + 1 + clipLine.length,
+    B,
+    "entry content (first + join newline + clip) must fill the budget exactly, not overrun it",
+  );
+});
+
+test("formatPendingBlock (#510): an outlier with no room left counts as suppressed, not as a bare '…' clip", () => {
+  const block = formatPendingBlock([
+    { ts: 1, blocks: "a".repeat(B - 1) },
+    { ts: 2, blocks: "z".repeat(B * 2) },
+  ]);
+  assert.doesNotMatch(block, /clipped to fit/, "nothing of the outlier fits — it is not 'clipped'");
+  assert.ok(!block.split("\n").includes("…"), "no bare ellipsis line");
+  assert.match(block, /1 earlier suggestion suppressed/);
+});
+
+test("lexicon (#476): a catastrophic-backtracking cue is rejected, not compiled into the matcher", async () => {
+  // `(a+)+b` is a valid RegExp but ReDoS: seconds against ordinary text.
+  // isValidCue now rejects the nested-quantifier shape, so the loader drops it
+  // and keeps the shipped defaults — the Stop hook stays fast.
+  const dir = await mkdtemp(join(tmpdir(), "night476-redos-"));
+  const prev = process.env.BASTRA_LEXICON_DIR;
+  process.env.BASTRA_LEXICON_DIR = dir;
+  try {
+    await writeFile(join(dir, "frustration.txt"), "(a+)+b\ngenuinecue\n", "utf8");
+    const cues = frustrationCues();
+    assert.ok(!cues.includes("(a+)+b"), "the ReDoS cue must be dropped");
+    assert.ok(cues.includes("genuinecue"), "a normal cue on the same file still loads");
+    assert.ok(cues.includes("again"), "shipped defaults survive");
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_LEXICON_DIR;
+    else process.env.BASTRA_LEXICON_DIR = prev;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("lexicon (#476): an unbalanced cue cannot break out of the wrapper group to smuggle a nested quantifier", async () => {
+  // `a+)+(b` compiles when wrapped — as `(?:a+)+(b)`, the exact ReDoS shape the
+  // guard exists for — while the guard regex, which needs a `(` before the `)`,
+  // never sees it. Each cue must also compile on its own.
+  const dir = await mkdtemp(join(tmpdir(), "night476-breakout-"));
+  const prev = process.env.BASTRA_LEXICON_DIR;
+  process.env.BASTRA_LEXICON_DIR = dir;
+  try {
+    await writeFile(join(dir, "frustration.txt"), "a+)+(b\na+)*(?:b\na)|(b\n(a{1,})+b\ngenuinecue\n", "utf8");
+    const cues = frustrationCues();
+    for (const bad of ["a+)+(b", "a+)*(?:b", "a)|(b", "(a{1,})+b"]) {
+      assert.ok(!cues.includes(bad), `${bad} must be dropped`);
+    }
+    assert.ok(cues.includes("genuinecue"), "a normal cue on the same file still loads");
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_LEXICON_DIR;
+    else process.env.BASTRA_LEXICON_DIR = prev;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("lexicon (#476): no cue may repeat a group — every ambiguous-body shape is dropped, `?` stays allowed", async () => {
+  // The narrower nested-quantifier guard let `(a{1,2})+b` through (2.8 s on 42
+  // chars, exponential) as well as `((a+))+b` and `(a|a)+b`. A repeated group
+  // is the precondition for all of them, so it is rejected as such.
+  const dir = await mkdtemp(join(tmpdir(), "night476-group-"));
+  const prev = process.env.BASTRA_LEXICON_DIR;
+  process.env.BASTRA_LEXICON_DIR = dir;
+  try {
+    const bad = ["(a{1,2})+b", "((a+))+b", "(a|a)+b", "(?:a|aa)*b", "(ha){2,}"];
+    const good = ["ok(?:ay)?\\s+dann", "schei(?:ss|ß)e2", "haha+"];
+    await writeFile(join(dir, "frustration.txt"), [...bad, ...good].join("\n") + "\n", "utf8");
+    const cues = frustrationCues();
+    for (const b of bad) assert.ok(!cues.includes(b), `${b} must be dropped`);
+    for (const g of good) assert.ok(cues.includes(g), `${g} must still load`);
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_LEXICON_DIR;
+    else process.env.BASTRA_LEXICON_DIR = prev;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("lexicon (#476): an over-long cue is dropped", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "night476-long-"));
+  const prev = process.env.BASTRA_LEXICON_DIR;
+  process.env.BASTRA_LEXICON_DIR = dir;
+  try {
+    const long = "x".repeat(201);
+    await writeFile(join(dir, "frustration.txt"), `${long}\n${"y".repeat(200)}\n`, "utf8");
+    const cues = frustrationCues();
+    assert.ok(!cues.includes(long), "a 201-char cue must be dropped");
+    assert.ok(cues.includes("y".repeat(200)), "a 200-char cue is still allowed");
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_LEXICON_DIR;
+    else process.env.BASTRA_LEXICON_DIR = prev;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("lexicon (#476): a cue cut in half by the byte cap is dropped, not loaded as a shorter cue", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "night476-halfline-"));
+  const prev = process.env.BASTRA_LEXICON_DIR;
+  process.env.BASTRA_LEXICON_DIR = dir;
+  try {
+    const cap = 64 * 1024;
+    const head = "#".repeat(cap - 10) + "\n"; // one comment line ending 9 bytes before the cap
+    const straddler = "halfwaycueXYZ"; // bytes 0-8 before the cap, the rest past it
+    await writeFile(join(dir, "frustration.txt"), head + straddler + "\n", "utf8");
+    const cues = frustrationCues();
+    assert.ok(!cues.some((c) => c.startsWith("halfway")), "the straddling line must not load in any form");
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_LEXICON_DIR;
+    else process.env.BASTRA_LEXICON_DIR = prev;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("lexicon (#476): the user cue file read is byte-capped — a cue past the cap is ignored", async () => {
+  // A pathological file (a 200k-line paste) used to be read and validated in
+  // full, seconds per Stop event. The loader now reads at most 64 KiB; a cue
+  // sitting past the cap must not appear, one before it must.
+  const dir = await mkdtemp(join(tmpdir(), "night476-cap-"));
+  const prev = process.env.BASTRA_LEXICON_DIR;
+  process.env.BASTRA_LEXICON_DIR = dir;
+  try {
+    const padding = "# padding comment line\n".repeat(4000); // > 64 KiB of comments
+    await writeFile(join(dir, "frustration.txt"), "earlycue\n" + padding + "latecue\n", "utf8");
+    const cues = frustrationCues();
+    assert.ok(cues.includes("earlycue"), "a cue before the cap loads");
+    assert.ok(!cues.includes("latecue"), "a cue past the 64 KiB cap must be ignored");
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_LEXICON_DIR;
+    else process.env.BASTRA_LEXICON_DIR = prev;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("runStopLane (#48): a transcript entry that throws while being read degrades to {} — Never-throws holds", async () => {
+  // loadTranscript's array path runs normalizeTurns OUTSIDE its own try/catch,
+  // and normalizeTurns reads `obj.content`. A throwing getter there used to
+  // propagate straight through runStopLane, violating "Never throws; every
+  // failure degrades to {}". The fail-open backstop must swallow it.
+  const prevTelemetry = process.env.BASTRA_TELEMETRY;
+  process.env.BASTRA_TELEMETRY = "off"; // keep the test from writing a telemetry file
+  const payload = {
+    hook_event_name: "Stop",
+    cwd: "/tmp",
+    transcript: [
+      {
+        role: "user",
+        get content(): string {
+          throw new Error("boom");
+        },
+      },
+    ],
+  } as unknown as Parameters<typeof runStopLane>[0];
+  try {
+    let out: string | undefined;
+    await assert.doesNotReject(async () => {
+      out = await runStopLane(payload, "http://127.0.0.1:9"); // no daemon; must not matter
+    }, "runStopLane must never throw");
+    assert.equal(out, "{}", "a failed evaluation must return the empty JSON envelope");
+  } finally {
+    if (prevTelemetry === undefined) delete process.env.BASTRA_TELEMETRY;
+    else process.env.BASTRA_TELEMETRY = prevTelemetry;
   }
 });

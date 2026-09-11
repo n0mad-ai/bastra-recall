@@ -18,7 +18,7 @@
  *
  * Location: $BASTRA_LEXICON_DIR, else ~/.bastra/lexicon/<name>.txt.
  */
-import { readFileSync } from "node:fs";
+import { closeSync, openSync, readSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -48,6 +48,28 @@ export function lexiconDir(): string {
   return process.env.BASTRA_LEXICON_DIR ?? join(homedir(), ".bastra", "lexicon");
 }
 
+/** A real cue fragment is a few characters; anything this long is a mistake
+ *  and only bloats the compiled alternation. */
+const MAX_CUE_LENGTH = 200;
+
+/**
+ * Catastrophic (exponential) backtracking needs a repeated GROUP whose body can
+ * match the same text in more than one way — `(a+)+`, `((a+))+`, `(a{1,2})+`,
+ * `(a|a)+`. Recognising the ambiguous bodies is a losing game (every narrower
+ * guard here had a bypass), so a cue may not repeat a group at all: `)`
+ * followed by `+`, `*` or `{` is rejected. `?` stays allowed (`ok(?:ay)?`), and
+ * none of the shipped defaults repeat a group. Such a cue compiles fine, but it
+ * runs in the daemon on every Stop event: `(a+)+b` costs ~1 minute on a long
+ * line and freezes the daemon for every session meanwhile. A repeated word is
+ * still expressible without it (`haha+`, `ha(?:ha)?(?:ha)?`).
+ *
+ * NOT covered: polynomial blowup from adjacent overlapping repeats without a
+ * group — `\w*\w*\w*\w*x` costs ~15 s on a 500-char word run. Closing that
+ * needs a matching time limit or a narrower cue grammar, not another pattern
+ * check here.
+ */
+const RE_QUANTIFIED_GROUP = /\)[+*{]/;
+
 /**
  * A cue is a regex fragment, and a hand-edited file's likeliest malformation is
  * a regex typo (`schei(`). stop-lane.ts compiles the cues into a RegExp, so a
@@ -56,13 +78,46 @@ export function lexiconDir(): string {
  * both call sites compile (`(?<!\p{L})(?:…)(?!\p{L})`, `u`), and skip the bad
  * ones. This is what makes this module's "malformed → falls back to defaults"
  * guarantee actually hold for the malformation users will actually produce.
+ *
+ * The fragment must ALSO compile on its own. The wrapped check alone lets an
+ * unbalanced cue close the wrapper's group and reopen one (`a+)+(b` compiles
+ * wrapped as `(?:a+)+(b)`), which smuggles a repeated group past the wrapper
+ * and lets one cue rewrite the joined alternation.
  */
 function isValidCue(cue: string): boolean {
+  if (cue.length > MAX_CUE_LENGTH) return false;
+  if (RE_QUANTIFIED_GROUP.test(cue)) return false;
   try {
+    new RegExp(cue, "u");
     new RegExp(`(?<!\\p{L})(?:${cue})(?!\\p{L})`, "u");
     return true;
   } catch {
     return false;
+  }
+}
+
+/** A real cue file is well under a kilobyte. Cap the read so a pathological
+ *  file (a 200k-line paste) cannot turn every Stop event into a multi-second
+ *  read+validate pass — only the first MAX_LEXICON_BYTES are ever parsed. */
+const MAX_LEXICON_BYTES = 64 * 1024;
+
+/**
+ * Read at most `max` bytes from `path` without pulling a huge file into memory.
+ * If the file exceeds the cap the read stops at the boundary and the final,
+ * possibly half-written line is dropped, so a cue is never truncated into a
+ * different (still valid) cue.
+ */
+function readCapped(path: string, max: number): string {
+  const fd = openSync(path, "r");
+  try {
+    const buf = Buffer.alloc(max);
+    const n = readSync(fd, buf, 0, max, 0);
+    const text = buf.toString("utf8", 0, n);
+    if (n < max) return text; // whole file fit under the cap
+    const cut = text.lastIndexOf("\n");
+    return cut >= 0 ? text.slice(0, cut) : ""; // drop the truncated last line
+  } finally {
+    closeSync(fd);
   }
 }
 
@@ -80,7 +135,7 @@ function isValidCue(cue: string): boolean {
 function loadCues(name: string, defaults: readonly string[]): string[] {
   const path = join(lexiconDir(), `${name}.txt`);
   try {
-    const extra = readFileSync(path, "utf8")
+    const extra = readCapped(path, MAX_LEXICON_BYTES)
       .split("\n")
       .map((line) => line.replace(/#.*$/, "").trim())
       .filter((line) => line.length > 0);
