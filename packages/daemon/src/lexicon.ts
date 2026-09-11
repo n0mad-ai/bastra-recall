@@ -18,7 +18,7 @@
  *
  * Location: $BASTRA_LEXICON_DIR, else ~/.bastra/lexicon/<name>.txt.
  */
-import { readFileSync } from "node:fs";
+import { closeSync, openSync, readSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -57,12 +57,55 @@ export function lexiconDir(): string {
  * ones. This is what makes this module's "malformed → falls back to defaults"
  * guarantee actually hold for the malformation users will actually produce.
  */
+/** A real cue fragment is a few characters; anything this long is a mistake
+ *  and only bloats the compiled alternation. */
+const MAX_CUE_LENGTH = 200;
+
+/**
+ * The common catastrophic-backtracking shape: a group that is itself
+ * unbounded-quantified sitting under another quantifier — `(a+)+`, `(a*)*`,
+ * `(?:a+)*`, `(a+){2,}`. Such a cue COMPILES fine but can cost seconds against
+ * ordinary transcript text (ReDoS: `(a+)+b` runs ~1 minute on a long line).
+ * This is a TARGETED guard, not a full ReDoS analysis — alternation-overlap
+ * blowups like `(a|a)+` and nested-group shapes like `((a+))+` are NOT caught.
+ * It rejects the nested-quantifier typo a hand-edited cue file will realistically
+ * produce; none of the shipped defaults match it.
+ */
+const RE_NESTED_QUANTIFIER = /\([^()]*[+*][^()]*\)[+*{]/;
+
 function isValidCue(cue: string): boolean {
+  if (cue.length > MAX_CUE_LENGTH) return false;
+  if (RE_NESTED_QUANTIFIER.test(cue)) return false;
   try {
     new RegExp(`(?<!\\p{L})(?:${cue})(?!\\p{L})`, "u");
     return true;
   } catch {
     return false;
+  }
+}
+
+/** A real cue file is well under a kilobyte. Cap the read so a pathological
+ *  file (a 200k-line paste) cannot turn every Stop event into a multi-second
+ *  read+validate pass — only the first MAX_LEXICON_BYTES are ever parsed. */
+const MAX_LEXICON_BYTES = 64 * 1024;
+
+/**
+ * Read at most `max` bytes from `path` without pulling a huge file into memory.
+ * If the file exceeds the cap the read stops at the boundary and the final,
+ * possibly half-written line is dropped, so a cue is never truncated into a
+ * different (still valid) cue.
+ */
+function readCapped(path: string, max: number): string {
+  const fd = openSync(path, "r");
+  try {
+    const buf = Buffer.alloc(max);
+    const n = readSync(fd, buf, 0, max, 0);
+    const text = buf.toString("utf8", 0, n);
+    if (n < max) return text; // whole file fit under the cap
+    const cut = text.lastIndexOf("\n");
+    return cut >= 0 ? text.slice(0, cut) : ""; // drop the truncated last line
+  } finally {
+    closeSync(fd);
   }
 }
 
@@ -80,7 +123,7 @@ function isValidCue(cue: string): boolean {
 function loadCues(name: string, defaults: readonly string[]): string[] {
   const path = join(lexiconDir(), `${name}.txt`);
   try {
-    const extra = readFileSync(path, "utf8")
+    const extra = readCapped(path, MAX_LEXICON_BYTES)
       .split("\n")
       .map((line) => line.replace(/#.*$/, "").trim())
       .filter((line) => line.length > 0);

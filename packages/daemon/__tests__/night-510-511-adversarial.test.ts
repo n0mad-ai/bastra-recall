@@ -21,7 +21,7 @@ import {
 import { isDokuProject } from "../src/doku-block.js";
 import { detectProject, detectProjectDetailed } from "@bastra-recall/core/topics";
 import { frustrationCues } from "../src/lexicon.js";
-import { detectFrustration, type TranscriptTurn } from "../src/stop-lane.js";
+import { detectFrustration, runStopLane, type TranscriptTurn } from "../src/stop-lane.js";
 
 // ─────────────────────────── #510 pending char-budget ───────────────────────
 
@@ -196,5 +196,95 @@ test("lexicon (#476) DEFECT: a regex-invalid cue must fall back to defaults, nev
     if (prev === undefined) delete process.env.BASTRA_LEXICON_DIR;
     else process.env.BASTRA_LEXICON_DIR = prev;
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+// ─────────────────── follow-ups: 510/511 review round ───────────────────────
+
+test("formatPendingBlock (#510): an oversized entry that is NOT first is clipped, not dropped whole", () => {
+  // The clip was gated on `rendered.length === 0`, so only a FIRST outlier was
+  // clipped; a later one fell off silently — exactly the case the clip exists
+  // for. Small entry, then the 2,648-token-shape outlier, then a small tail:
+  // the outlier must survive as a clip, and only the tail counts as suppressed.
+  const block = formatPendingBlock([
+    { ts: 1, blocks: "a".repeat(10) },
+    { ts: 2, blocks: "z".repeat(B * 2) },
+    { ts: 3, blocks: "v" },
+  ]);
+  assert.match(block, /one suggestion was clipped to fit/, "a non-first outlier must be clipped, not dropped");
+  assert.ok(block.includes("z".repeat(100)), "the outlier's content must actually be present, clipped");
+  assert.match(block, /1 earlier suggestion suppressed/, "only the single trailing entry is suppressed");
+  assert.ok(block.length < B + 400, `the runaway must stay bounded, got ${block.length}`);
+});
+
+test("lexicon (#476): a catastrophic-backtracking cue is rejected, not compiled into the matcher", async () => {
+  // `(a+)+b` is a valid RegExp but ReDoS: seconds against ordinary text.
+  // isValidCue now rejects the nested-quantifier shape, so the loader drops it
+  // and keeps the shipped defaults — the Stop hook stays fast.
+  const dir = await mkdtemp(join(tmpdir(), "night476-redos-"));
+  const prev = process.env.BASTRA_LEXICON_DIR;
+  process.env.BASTRA_LEXICON_DIR = dir;
+  try {
+    await writeFile(join(dir, "frustration.txt"), "(a+)+b\ngenuinecue\n", "utf8");
+    const cues = frustrationCues();
+    assert.ok(!cues.includes("(a+)+b"), "the ReDoS cue must be dropped");
+    assert.ok(cues.includes("genuinecue"), "a normal cue on the same file still loads");
+    assert.ok(cues.includes("again"), "shipped defaults survive");
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_LEXICON_DIR;
+    else process.env.BASTRA_LEXICON_DIR = prev;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("lexicon (#476): the user cue file read is byte-capped — a cue past the cap is ignored", async () => {
+  // A pathological file (a 200k-line paste) used to be read and validated in
+  // full, seconds per Stop event. The loader now reads at most 64 KiB; a cue
+  // sitting past the cap must not appear, one before it must.
+  const dir = await mkdtemp(join(tmpdir(), "night476-cap-"));
+  const prev = process.env.BASTRA_LEXICON_DIR;
+  process.env.BASTRA_LEXICON_DIR = dir;
+  try {
+    const padding = "# padding comment line\n".repeat(4000); // > 64 KiB of comments
+    await writeFile(join(dir, "frustration.txt"), "earlycue\n" + padding + "latecue\n", "utf8");
+    const cues = frustrationCues();
+    assert.ok(cues.includes("earlycue"), "a cue before the cap loads");
+    assert.ok(!cues.includes("latecue"), "a cue past the 64 KiB cap must be ignored");
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_LEXICON_DIR;
+    else process.env.BASTRA_LEXICON_DIR = prev;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("runStopLane (#48): a transcript entry that throws while being read degrades to {} — Never-throws holds", async () => {
+  // loadTranscript's array path runs normalizeTurns OUTSIDE its own try/catch,
+  // and normalizeTurns reads `obj.content`. A throwing getter there used to
+  // propagate straight through runStopLane, violating "Never throws; every
+  // failure degrades to {}". The fail-open backstop must swallow it.
+  const prevTelemetry = process.env.BASTRA_TELEMETRY;
+  process.env.BASTRA_TELEMETRY = "off"; // keep the test from writing a telemetry file
+  const payload = {
+    hook_event_name: "Stop",
+    cwd: "/tmp",
+    transcript: [
+      {
+        role: "user",
+        get content(): string {
+          throw new Error("boom");
+        },
+      },
+    ],
+  } as unknown as Parameters<typeof runStopLane>[0];
+  try {
+    let out: string | undefined;
+    await assert.doesNotReject(async () => {
+      out = await runStopLane(payload, "http://127.0.0.1:9"); // no daemon; must not matter
+    }, "runStopLane must never throw");
+    assert.equal(out, "{}", "a failed evaluation must return the empty JSON envelope");
+  } finally {
+    if (prevTelemetry === undefined) delete process.env.BASTRA_TELEMETRY;
+    else process.env.BASTRA_TELEMETRY = prevTelemetry;
   }
 });

@@ -113,6 +113,37 @@ export async function runStopLane(
   if (payload.hook_event_name !== "Stop") return "{}";
   if (payload.stop_hook_active === true) return "{}";
 
+  // Fail-open backstop for the "Never throws" contract. No known input reaches
+  // this catch today — loadTranscript swallows its own IO errors and cues are
+  // validated in lexicon.ts — but per-cue validation cannot see a join-time
+  // RegExp compile error, and a future detector may throw. A broken Stop
+  // evaluation must degrade to `{}`, never take the hook down.
+  try {
+    return await evaluateStop(payload, selfBaseUrl, startedAt);
+  } catch (err) {
+    try {
+      await writeTelemetry({
+        session_id: payload.session_id ?? null,
+        heuristic: null,
+        suggested_count: 0,
+        drift_clusters: 0,
+        drift_keys: [],
+        turn_count: 0,
+        latency_ms_total: Date.now() - startedAt,
+        error: String((err as { message?: unknown })?.message ?? err),
+      });
+    } catch {
+      /* telemetry must never break the hook */
+    }
+    return "{}";
+  }
+}
+
+async function evaluateStop(
+  payload: ClaudeStopPayload,
+  selfBaseUrl: string,
+  startedAt: number,
+): Promise<string> {
   const turns = await loadTranscript(payload);
   if (turns.length === 0) return "{}";
 
@@ -683,6 +714,9 @@ interface StopHookTelemetry {
   drift_keys: string[];
   turn_count: number;
   latency_ms_total: number;
+  /** Set only on the fail-open backstop path: the error that made the Stop
+   *  evaluation degrade to `{}`. Absent on every normal event. */
+  error?: string;
 }
 
 async function writeTelemetry(payload: StopHookTelemetry): Promise<void> {
