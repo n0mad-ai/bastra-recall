@@ -130,7 +130,9 @@ export async function runStopLane(
         drift_keys: [],
         turn_count: 0,
         latency_ms_total: Date.now() - startedAt,
-        error: String((err as { message?: unknown })?.message ?? err),
+        // A RegExp compile error quotes the whole joined pattern (up to the
+        // 64 KiB cue file) — keep the telemetry line bounded.
+        error: String((err as { message?: unknown })?.message ?? err).slice(0, 200),
       });
     } catch {
       /* telemetry must never break the hook */

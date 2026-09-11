@@ -48,6 +48,22 @@ export function lexiconDir(): string {
   return process.env.BASTRA_LEXICON_DIR ?? join(homedir(), ".bastra", "lexicon");
 }
 
+/** A real cue fragment is a few characters; anything this long is a mistake
+ *  and only bloats the compiled alternation. */
+const MAX_CUE_LENGTH = 200;
+
+/**
+ * The common catastrophic-backtracking shape: a group that is itself
+ * unbounded-quantified sitting under another quantifier — `(a+)+`, `(a*)*`,
+ * `(?:a+)*`, `(a+){2,}`, `(a{1,})+`. Such a cue COMPILES fine but can cost
+ * seconds against ordinary transcript text (ReDoS: `(a+)+b` runs ~1 minute on
+ * a long line). This is a TARGETED guard, not a full ReDoS analysis —
+ * alternation-overlap blowups like `(a|a)+` and nested-group shapes like
+ * `((a+))+` are NOT caught. It rejects the nested-quantifier typo a hand-edited
+ * cue file will realistically produce; none of the shipped defaults match it.
+ */
+const RE_NESTED_QUANTIFIER = /\([^()]*(?:[+*]|\{\d+,\})[^()]*\)[+*{]/;
+
 /**
  * A cue is a regex fragment, and a hand-edited file's likeliest malformation is
  * a regex typo (`schei(`). stop-lane.ts compiles the cues into a RegExp, so a
@@ -56,27 +72,17 @@ export function lexiconDir(): string {
  * both call sites compile (`(?<!\p{L})(?:…)(?!\p{L})`, `u`), and skip the bad
  * ones. This is what makes this module's "malformed → falls back to defaults"
  * guarantee actually hold for the malformation users will actually produce.
+ *
+ * The fragment must ALSO compile on its own. The wrapped check alone lets an
+ * unbalanced cue close the wrapper's group and reopen one (`a+)+(b` compiles
+ * wrapped as `(?:a+)+(b)`), which smuggles the nested quantifier past
+ * RE_NESTED_QUANTIFIER and lets one cue rewrite the joined alternation.
  */
-/** A real cue fragment is a few characters; anything this long is a mistake
- *  and only bloats the compiled alternation. */
-const MAX_CUE_LENGTH = 200;
-
-/**
- * The common catastrophic-backtracking shape: a group that is itself
- * unbounded-quantified sitting under another quantifier — `(a+)+`, `(a*)*`,
- * `(?:a+)*`, `(a+){2,}`. Such a cue COMPILES fine but can cost seconds against
- * ordinary transcript text (ReDoS: `(a+)+b` runs ~1 minute on a long line).
- * This is a TARGETED guard, not a full ReDoS analysis — alternation-overlap
- * blowups like `(a|a)+` and nested-group shapes like `((a+))+` are NOT caught.
- * It rejects the nested-quantifier typo a hand-edited cue file will realistically
- * produce; none of the shipped defaults match it.
- */
-const RE_NESTED_QUANTIFIER = /\([^()]*[+*][^()]*\)[+*{]/;
-
 function isValidCue(cue: string): boolean {
   if (cue.length > MAX_CUE_LENGTH) return false;
   if (RE_NESTED_QUANTIFIER.test(cue)) return false;
   try {
+    new RegExp(cue, "u");
     new RegExp(`(?<!\\p{L})(?:${cue})(?!\\p{L})`, "u");
     return true;
   } catch {

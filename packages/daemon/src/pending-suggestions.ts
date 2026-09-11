@@ -95,13 +95,15 @@ export function formatPendingBlock(entries: PendingSuggestion[]): string {
       used += sep + block.length;
       continue;
     }
-    if (block.length > PENDING_BLOCK_CHAR_BUDGET) {
+    const room = PENDING_BLOCK_CHAR_BUDGET - used - sep - 1;
+    if (block.length > PENDING_BLOCK_CHAR_BUDGET && room > 0) {
       // Dieser Eintrag sprengt ALLEIN das Budget — der Ausreißer, für den die
       // Kürzung existiert. Egal an welcher Position: in den Restplatz kürzen
       // statt ganz zu verwerfen. (Vorher an `rendered.length === 0` gekoppelt,
       // also wurde nur der ERSTE Eintrag gekürzt; ein späterer Ausreißer fiel
       // still komplett weg — genau der Fall, den die Kürzung abfangen soll.)
-      const room = Math.max(0, PENDING_BLOCK_CHAR_BUDGET - used - sep - 1);
+      // Ohne Restplatz bliebe nur ein nacktes „…" — dann zählt er als
+      // unterdrückt statt als gekürzt.
       rendered.push(block.slice(0, room) + "…");
       clipped = true;
       dropped = entries.length - i - 1;
