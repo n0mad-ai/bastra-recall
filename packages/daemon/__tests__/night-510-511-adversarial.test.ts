@@ -278,6 +278,27 @@ test("lexicon (#476): an unbalanced cue cannot break out of the wrapper group to
   }
 });
 
+test("lexicon (#476): no cue may repeat a group — every ambiguous-body shape is dropped, `?` stays allowed", async () => {
+  // The narrower nested-quantifier guard let `(a{1,2})+b` through (2.8 s on 42
+  // chars, exponential) as well as `((a+))+b` and `(a|a)+b`. A repeated group
+  // is the precondition for all of them, so it is rejected as such.
+  const dir = await mkdtemp(join(tmpdir(), "night476-group-"));
+  const prev = process.env.BASTRA_LEXICON_DIR;
+  process.env.BASTRA_LEXICON_DIR = dir;
+  try {
+    const bad = ["(a{1,2})+b", "((a+))+b", "(a|a)+b", "(?:a|aa)*b", "(ha){2,}"];
+    const good = ["ok(?:ay)?\\s+dann", "schei(?:ss|ß)e2", "haha+"];
+    await writeFile(join(dir, "frustration.txt"), [...bad, ...good].join("\n") + "\n", "utf8");
+    const cues = frustrationCues();
+    for (const b of bad) assert.ok(!cues.includes(b), `${b} must be dropped`);
+    for (const g of good) assert.ok(cues.includes(g), `${g} must still load`);
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_LEXICON_DIR;
+    else process.env.BASTRA_LEXICON_DIR = prev;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("lexicon (#476): an over-long cue is dropped", async () => {
   const dir = await mkdtemp(join(tmpdir(), "night476-long-"));
   const prev = process.env.BASTRA_LEXICON_DIR;

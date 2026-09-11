@@ -53,16 +53,22 @@ export function lexiconDir(): string {
 const MAX_CUE_LENGTH = 200;
 
 /**
- * The common catastrophic-backtracking shape: a group that is itself
- * unbounded-quantified sitting under another quantifier — `(a+)+`, `(a*)*`,
- * `(?:a+)*`, `(a+){2,}`, `(a{1,})+`. Such a cue COMPILES fine but can cost
- * seconds against ordinary transcript text (ReDoS: `(a+)+b` runs ~1 minute on
- * a long line). This is a TARGETED guard, not a full ReDoS analysis —
- * alternation-overlap blowups like `(a|a)+` and nested-group shapes like
- * `((a+))+` are NOT caught. It rejects the nested-quantifier typo a hand-edited
- * cue file will realistically produce; none of the shipped defaults match it.
+ * Catastrophic (exponential) backtracking needs a repeated GROUP whose body can
+ * match the same text in more than one way — `(a+)+`, `((a+))+`, `(a{1,2})+`,
+ * `(a|a)+`. Recognising the ambiguous bodies is a losing game (every narrower
+ * guard here had a bypass), so a cue may not repeat a group at all: `)`
+ * followed by `+`, `*` or `{` is rejected. `?` stays allowed (`ok(?:ay)?`), and
+ * none of the shipped defaults repeat a group. Such a cue compiles fine, but it
+ * runs in the daemon on every Stop event: `(a+)+b` costs ~1 minute on a long
+ * line and freezes the daemon for every session meanwhile. A repeated word is
+ * still expressible without it (`haha+`, `ha(?:ha)?(?:ha)?`).
+ *
+ * NOT covered: polynomial blowup from adjacent overlapping repeats without a
+ * group — `\w*\w*\w*\w*x` costs ~15 s on a 500-char word run. Closing that
+ * needs a matching time limit or a narrower cue grammar, not another pattern
+ * check here.
  */
-const RE_NESTED_QUANTIFIER = /\([^()]*(?:[+*]|\{\d+,\})[^()]*\)[+*{]/;
+const RE_QUANTIFIED_GROUP = /\)[+*{]/;
 
 /**
  * A cue is a regex fragment, and a hand-edited file's likeliest malformation is
@@ -75,12 +81,12 @@ const RE_NESTED_QUANTIFIER = /\([^()]*(?:[+*]|\{\d+,\})[^()]*\)[+*{]/;
  *
  * The fragment must ALSO compile on its own. The wrapped check alone lets an
  * unbalanced cue close the wrapper's group and reopen one (`a+)+(b` compiles
- * wrapped as `(?:a+)+(b)`), which smuggles the nested quantifier past
- * RE_NESTED_QUANTIFIER and lets one cue rewrite the joined alternation.
+ * wrapped as `(?:a+)+(b)`), which smuggles a repeated group past the wrapper
+ * and lets one cue rewrite the joined alternation.
  */
 function isValidCue(cue: string): boolean {
   if (cue.length > MAX_CUE_LENGTH) return false;
-  if (RE_NESTED_QUANTIFIER.test(cue)) return false;
+  if (RE_QUANTIFIED_GROUP.test(cue)) return false;
   try {
     new RegExp(cue, "u");
     new RegExp(`(?<!\\p{L})(?:${cue})(?!\\p{L})`, "u");
