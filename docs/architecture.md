@@ -53,12 +53,12 @@ The scanner is recursive, so older flat vaults and hand-organized Obsidian folde
 
 ### Write commit contract
 
-`saveMemory` builds a complete temporary file and commits per destination path. The destination path—not only the memory id—is the concurrency boundary, so the same id in two explicitly different folders does not block.
+`saveMemory` builds a complete temporary file and commits under a vault-wide claim on the memory **id**. The id—not the destination path—is the concurrency boundary, so two writers that want the same id in two explicitly different folders are two contenders for one place, not two independent writes. The invariant the claim carries is **one ID, one file, one transactional writer** (`packages/core/src/id-transaction.ts`).
 
 Every commit has these invariants:
 
 1. The target is read before the candidate is built. Only `ENOENT` means free; permission, device, and cloud-mount read failures abort the save.
-2. The writer acquires `<target>.bastra-write.lock` with exclusive-create semantics. A second `saveMemory` writer, including one in another process, receives `MemoryWriteConflictError` with code `BASTRA_WRITE_CONFLICT`.
+2. The writer acquires `<vault>/.bastra/locks/<sha256(id)>.bastra-write.lock` with exclusive-create semantics — one lock per id for the whole vault, not one per destination path. A second `saveMemory` writer for that id, including one in another process, receives `MemoryWriteConflictError` with code `BASTRA_WRITE_CONFLICT`.
 3. Under that claim, the writer re-reads the target and compares the exact bytes with the first read. A change aborts the commit.
 4. A create hard-links the completed temporary inode into the free destination, so it cannot replace a target that appeared late. An overwrite renames the complete temporary file atomically.
 5. Normal success and handled conflicts remove the writer's temporary and lock files. A process killed while it owns the claim can leave the lock behind; the destination is still either the complete old file or the complete committed file, never a partial write. Verify that no writer is active before removing such a stale lock.
@@ -75,7 +75,7 @@ await saveMemory(vaultRoot, input, {
 
 Omitting `expectedTarget` preserves the ordinary save API. Passing it makes the call compare-and-swap: if the destination no longer matches, the writer reports a conflict before publishing. `importVault` passes the raw target returned by its final provenance check, closing the previous ownership-check → rename window (#245, #285).
 
-The per-path claim is the cooperation boundary: every project write path that calls `saveMemory` participates, across Node processes. A program that edits the markdown file directly does not acquire this claim. Creates still cannot clobber such an external late writer because their final publication is no-replace; portable Node filesystem APIs do not provide an atomic content-CAS replacement for the overwrite case.
+The id claim is the cooperation boundary: every project write path that goes through the id transaction participates, across Node processes. A program that edits the markdown file directly does not acquire this claim. Creates still cannot clobber such an external late writer because their final publication is no-replace; portable Node filesystem APIs do not provide an atomic content-CAS replacement for the overwrite case.
 
 The regression matrix covers:
 
@@ -90,16 +90,16 @@ The regression matrix covers:
 | writers in separate Node processes | exactly one commit for one preimage |
 | sequential overwrites | both succeed; ordinary update behavior unchanged |
 | different ids in one folder | both commit independently |
-| same id in different folders | both commit independently |
+| same id in different folders | exactly one commit; the loser conflicts and leaves no file behind |
 | target inspection fails with non-`ENOENT` | fail closed before temp/lock creation |
 | success or handled conflict | no owned temp/lock artifact remains |
 | winning overwrite is a patch | omitted frontmatter, including sensitivity, survives |
 
 The watcher uses `chokidar`. On paths that look like cloud-storage mounts (`CloudStorage`, `Dropbox`, `iCloud`), it switches to polling because native file events are unreliable there. Write paths call `vault.reindexFile(...)` after known writes so a save and a recall in the same turn stay consistent.
 
-A memory's **id survives** the engine's lifecycle operations: demote changes score only, soft-delete moves the file to append-only `.bastra/trash/` (recoverable), and only a hard delete removes a cell. This is the substrate guarantee the pin/floor lifecycle and any citation layer build on — pinned by a CI regression test. Details: [docs/survival.md](./docs/survival.md).
+A memory's **id survives** the engine's lifecycle operations: demote changes score only, soft-delete moves the file to append-only `.bastra/trash/` (recoverable), and only a hard delete removes a cell. This is the substrate guarantee the pin/floor lifecycle and any citation layer build on — pinned by a CI regression test. Details: [survival.md](./survival.md).
 
-Every vault write through the daemon appends to `<vault>/.bastra/audit-log.ndjson` (#206) — `save_memory`, `edit_memory` (#519), `save_product_doc` and `archive_memory`, alongside the Mac-app bridge that already used it. Each entry carries the memory id, the operation, the actor and the surface (`mcp:save_memory`, `mcp:edit_memory`, `mcp:archive_memory`, …), the frontmatter before and after, the file path, and the daemon run id, so an entry can be correlated with the telemetry of the same run. Telemetry is not a substitute: it can be switched off and is pruned after 90 days, while this log is append-only and permanent. Recording is best-effort by design (`packages/daemon/src/audit-trail.ts`) — a write that already landed is never failed because its trail could not be written. The MCP path records directly rather than through `auditedSave`, because that wrapper requires a `reason` for assistant mutations and the tool schema has no reason field; a missing reason is honest, a generated one would be noise dressed as provenance.
+The audited daemon write paths append to `<vault>/.bastra/audit-log.ndjson` (#206): `save_memory`, `edit_memory` (#519), `save_product_doc` and `archive_memory`, alongside the Mac-app bridge that already used it. The opt-in document mutation tools (`save_document`, `recategorize_document`, `move_document`) are **not** audited yet — tracked in [#452](https://github.com/n0mad-ai/bastra-recall/issues/452). Each entry carries the memory id, the operation, the actor and the surface (`mcp:save_memory`, `mcp:edit_memory`, `mcp:archive_memory`, …), the frontmatter before and after, the file path, and the daemon run id, so an entry can be correlated with the telemetry of the same run. Telemetry is not a substitute: it can be switched off and is pruned after 90 days, while this log is append-only and permanent. Recording is best-effort by design (`packages/daemon/src/audit-trail.ts`) — a write that already landed is never failed because its trail could not be written. The MCP path records directly rather than through `auditedSave`, because that wrapper requires a `reason` for assistant mutations and the tool schema has no reason field; a missing reason is honest, a generated one would be noise dressed as provenance.
 
 ## Search And Recall
 
