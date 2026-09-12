@@ -11,9 +11,11 @@
  * through the same `import-review.md` gate as #208 — never auto-saved.
  * The queue never leaves the machine and is deleted when mining completes.
  */
-import { appendFile, readFile, unlink, writeFile, mkdir } from "node:fs/promises";
+import { readFile, rename, unlink, writeFile, mkdir } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { withPathLock } from "./path-lock.js";
 
 export const QUEUE_FILE = "import-queue.jsonl";
 export const CURSOR_FILE = "import-queue.cursor";
@@ -158,13 +160,24 @@ export interface QueueStatus {
   remaining: number;
 }
 
-async function readQueueLines(dir: string): Promise<string[]> {
+async function readQueueRaw(dir: string): Promise<string> {
   try {
-    const content = await readFile(join(dir, QUEUE_FILE), "utf8");
-    return content.split("\n").filter((l) => l.trim().length > 0);
+    return await readFile(join(dir, QUEUE_FILE), "utf8");
   } catch {
-    return [];
+    return "";
   }
+}
+
+async function readQueueLines(dir: string): Promise<string[]> {
+  return (await readQueueRaw(dir)).split("\n").filter((l) => l.trim().length > 0);
+}
+
+/** Atomic tmp+rename — a crash mid-write leaves the previous queue/cursor
+ *  intact instead of a half-written one (#529, hardening as in floors.ts). */
+async function writeAtomic(path: string, content: string): Promise<void> {
+  const tmp = `${path}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
+  await writeFile(tmp, content, "utf8");
+  await rename(tmp, path);
 }
 
 async function readCursor(dir: string): Promise<number> {
@@ -177,26 +190,31 @@ async function readCursor(dir: string): Promise<number> {
 }
 
 /** Append conversations to the local mining queue (survives across runs —
- *  a ChatGPT and a Claude export can be queued back to back). */
+ *  a ChatGPT and a Claude export can be queued back to back).
+ *
+ *  #529: serialised per queue directory and written tmp+rename. Unguarded,
+ *  every concurrent caller took the initial-empty branch and `writeFile()` over
+ *  the others — 80 parallel calls reported 80 queued conversations with 1 on
+ *  disk. `queued` is the durable count now: those lines are part of the file
+ *  that was renamed into place before the result is returned. */
 export async function buildQueue(
   conversations: ConversationRecord[],
   dir: string = defaultQueueDir(),
 ): Promise<{ queued: number; messages: number; queueFile: string }> {
-  await mkdir(dir, { recursive: true });
   const queueFile = join(dir, QUEUE_FILE);
-  const existing = await readQueueLines(dir);
-  const lines = conversations.map((c) => JSON.stringify(c)).join("\n") + "\n";
-  if (existing.length === 0) {
-    await writeFile(queueFile, lines, "utf8");
-    await writeFile(join(dir, CURSOR_FILE), "0", "utf8");
-  } else {
-    await appendFile(queueFile, lines, "utf8");
-  }
-  return {
-    queued: conversations.length,
-    messages: conversations.reduce((n, c) => n + c.messages.length, 0),
-    queueFile,
-  };
+  return withPathLock(dir, async () => {
+    await mkdir(dir, { recursive: true });
+    const existing = await readQueueRaw(dir);
+    const lines = conversations.map((c) => JSON.stringify(c)).join("\n") + "\n";
+    const head = existing.length > 0 && !existing.endsWith("\n") ? `${existing}\n` : existing;
+    await writeAtomic(queueFile, head + lines);
+    if (existing.trim().length === 0) await writeAtomic(join(dir, CURSOR_FILE), "0");
+    return {
+      queued: conversations.length,
+      messages: conversations.reduce((n, c) => n + c.messages.length, 0),
+      queueFile,
+    };
+  });
 }
 
 export async function queueStatus(dir: string = defaultQueueDir()): Promise<QueueStatus> {
@@ -206,7 +224,8 @@ export async function queueStatus(dir: string = defaultQueueDir()): Promise<Queu
   return { total: lines.length, remaining: Math.max(0, lines.length - cursor) };
 }
 
-export async function clearQueue(dir: string = defaultQueueDir()): Promise<void> {
+/** Inner form — `readNextChunk` already holds the directory lock. */
+async function clearQueueLocked(dir: string): Promise<void> {
   for (const f of [QUEUE_FILE, CURSOR_FILE]) {
     try {
       await unlink(join(dir, f));
@@ -214,6 +233,10 @@ export async function clearQueue(dir: string = defaultQueueDir()): Promise<void>
       // already gone
     }
   }
+}
+
+export async function clearQueue(dir: string = defaultQueueDir()): Promise<void> {
+  return withPathLock(dir, () => clearQueueLocked(dir));
 }
 
 export interface MiningChunk {
@@ -231,42 +254,48 @@ export interface MiningChunk {
  * Next chunk of the queue (~16k chars, at least one conversation, newest
  * first). Advances the cursor immediately — mining is best-effort, a chunk
  * lost to a crash is re-importable. Deletes the queue when drained.
+ *
+ * #529: the cursor transition runs under the same per-directory lock as
+ * `buildQueue()`, so two overlapping readers never hand out one chunk twice
+ * and no queue write lands between the read and the cursor bump.
  */
 export async function readNextChunk(dir: string = defaultQueueDir()): Promise<MiningChunk | null> {
-  const lines = await readQueueLines(dir);
-  const cursor = await readCursor(dir);
-  if (lines.length === 0 || cursor >= lines.length) {
-    await clearQueue(dir);
-    return null;
-  }
-
-  const sections: string[] = [];
-  const sources = new Map<string, number>();
-  let used = 0;
-  let taken = 0;
-  for (let i = cursor; i < lines.length; i++) {
-    let rec: ConversationRecord;
-    try {
-      rec = JSON.parse(lines[i]) as ConversationRecord;
-    } catch {
-      taken++; // corrupt line — skip, never stall the cursor
-      continue;
+  return withPathLock(dir, async () => {
+    const lines = await readQueueLines(dir);
+    const cursor = await readCursor(dir);
+    if (lines.length === 0 || cursor >= lines.length) {
+      await clearQueueLocked(dir);
+      return null;
     }
-    const section = `### ${rec.date} · ${rec.title} (${rec.source})\n` + rec.messages.map((m) => `- ${m}`).join("\n");
-    if (taken > 0 && used + section.length > CHUNK_CHAR_BUDGET) break;
-    sections.push(section);
-    sources.set(rec.source, (sources.get(rec.source) ?? 0) + 1);
-    used += section.length;
-    taken++;
-  }
 
-  const nextCursor = cursor + taken;
-  const remaining = Math.max(0, lines.length - nextCursor);
-  if (remaining === 0) {
-    await clearQueue(dir);
-  } else {
-    await writeFile(join(dir, CURSOR_FILE), String(nextCursor), "utf8");
-  }
-  const source = [...sources.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "text";
-  return { body: sections.join("\n\n"), conversations: sections.length, remaining, source };
+    const sections: string[] = [];
+    const sources = new Map<string, number>();
+    let used = 0;
+    let taken = 0;
+    for (let i = cursor; i < lines.length; i++) {
+      let rec: ConversationRecord;
+      try {
+        rec = JSON.parse(lines[i]) as ConversationRecord;
+      } catch {
+        taken++; // corrupt line — skip, never stall the cursor
+        continue;
+      }
+      const section = `### ${rec.date} · ${rec.title} (${rec.source})\n` + rec.messages.map((m) => `- ${m}`).join("\n");
+      if (taken > 0 && used + section.length > CHUNK_CHAR_BUDGET) break;
+      sections.push(section);
+      sources.set(rec.source, (sources.get(rec.source) ?? 0) + 1);
+      used += section.length;
+      taken++;
+    }
+
+    const nextCursor = cursor + taken;
+    const remaining = Math.max(0, lines.length - nextCursor);
+    if (remaining === 0) {
+      await clearQueueLocked(dir);
+    } else {
+      await writeAtomic(join(dir, CURSOR_FILE), String(nextCursor));
+    }
+    const source = [...sources.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "text";
+    return { body: sections.join("\n\n"), conversations: sections.length, remaining, source };
+  });
 }

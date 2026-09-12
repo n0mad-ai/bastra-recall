@@ -11,12 +11,14 @@
  * candidates via the session hook and distills accepted ones into real
  * memories WITH the user.
  */
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rename, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { sendJsonPlain } from "./webui.js";
 import { getUiEnabled } from "./settings.js";
 import { queueStatus } from "./import-mining.js";
+import { withPathLock } from "./path-lock.js";
 
 export const IMPORT_FILE = "import-review.md";
 export const IMPORT_SOURCES = ["chatgpt", "claude", "gemini", "text", "rules"] as const;
@@ -161,40 +163,52 @@ export interface StageResult {
 }
 
 /** Append candidates to `import-review.md`, deduped against every entry
- *  already in the file (ticked or not — a rejected fact must not resurface). */
+ *  already in the file (ticked or not — a rejected fact must not resurface).
+ *
+ *  #529: serialised per file and written tmp+rename. The read-modify-write ran
+ *  unguarded, so concurrent CLI/UI imports all read the same content and the
+ *  last write replaced the others — 80 parallel calls reported 80 staged
+ *  candidates with 1 on disk. The counts are the durable ones now: they are
+ *  taken inside the lock from the content that was just renamed into place. */
 export async function stageImport(
   vaultPath: string,
   source: ImportSource,
   candidates: string[],
 ): Promise<StageResult> {
   const filePath = join(vaultPath, IMPORT_FILE);
-  let content: string;
-  try {
-    content = await readFile(filePath, "utf8");
-  } catch {
-    content = IMPORT_HEADER;
-  }
-  const existing = new Set(parseImportFile(content).map((e) => e.text.toLowerCase()));
-  const today = new Date().toISOString().slice(0, 10);
-  let staged = 0;
-  let skipped = 0;
-  const lines: string[] = [];
-  for (const c of candidates) {
-    if (existing.has(c.toLowerCase())) {
-      skipped++;
-      continue;
+  return withPathLock(filePath, async () => {
+    let content: string;
+    try {
+      content = await readFile(filePath, "utf8");
+    } catch {
+      content = IMPORT_HEADER;
     }
-    existing.add(c.toLowerCase());
-    lines.push(`- [ ] ${today} · ${source} · ${c}`);
-    staged++;
-  }
-  if (staged > 0) {
-    if (!content.endsWith("\n")) content += "\n";
-    content += lines.join("\n") + "\n";
-    await writeFile(filePath, content, "utf8");
-  }
-  const openTotal = parseImportFile(content).filter((e) => !e.done).length;
-  return { staged, skippedDuplicates: skipped, openTotal, filePath };
+    const existing = new Set(parseImportFile(content).map((e) => e.text.toLowerCase()));
+    const today = new Date().toISOString().slice(0, 10);
+    let staged = 0;
+    let skipped = 0;
+    const lines: string[] = [];
+    for (const c of candidates) {
+      if (existing.has(c.toLowerCase())) {
+        skipped++;
+        continue;
+      }
+      existing.add(c.toLowerCase());
+      lines.push(`- [ ] ${today} · ${source} · ${c}`);
+      staged++;
+    }
+    if (staged > 0) {
+      if (!content.endsWith("\n")) content += "\n";
+      content += lines.join("\n") + "\n";
+      // Atomic: a crash mid-write leaves the previous review file intact
+      // instead of a truncated one (same hardening as floors.ts).
+      const tmp = `${filePath}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
+      await writeFile(tmp, content, "utf8");
+      await rename(tmp, filePath);
+    }
+    const openTotal = parseImportFile(content).filter((e) => !e.done).length;
+    return { staged, skippedDuplicates: skipped, openTotal, filePath };
+  });
 }
 
 export async function countOpenImports(vaultPath: string): Promise<number> {

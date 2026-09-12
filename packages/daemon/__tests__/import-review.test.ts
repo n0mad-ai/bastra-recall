@@ -9,7 +9,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, request } from "node:http";
@@ -174,5 +174,59 @@ test("POST /ui/import: gated on ui.enabled, stages like the CLI", async () => {
     await new Promise<void>((r) => server.close(() => r()));
     await rm(vaultDir, { recursive: true, force: true });
     await rm(settingsDir, { recursive: true, force: true });
+  }
+});
+
+test("#529: overlapping stageImport writers keep the union and report durable counts", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-import-race-"));
+  try {
+    const writers = 40;
+    const shared = "Every writer stages this very same shared candidate line";
+    const results = await Promise.all(
+      Array.from({ length: writers }, (_, i) =>
+        stageImport(dir, "text", [`independent import candidate number ${String(i).padStart(3, "0")}`, shared]),
+      ),
+    );
+
+    // Durable union: every unique candidate plus the shared one exactly once.
+    const persisted = parseImportFile(await readFile(join(dir, IMPORT_FILE), "utf8"));
+    assert.equal(persisted.length, writers + 1);
+    assert.equal(persisted.filter((e) => e.text === shared).length, 1, "the shared candidate is staged once");
+    assert.equal(await countOpenImports(dir), writers + 1);
+
+    // Reported numbers describe what is on disk, not an overwritten draft.
+    const staged = results.reduce((n, r) => n + r.staged, 0);
+    const skipped = results.reduce((n, r) => n + r.skippedDuplicates, 0);
+    assert.equal(staged, writers + 1);
+    assert.equal(skipped, writers - 1, "every writer but the first sees the shared line as a duplicate");
+    assert.equal(Math.max(...results.map((r) => r.openTotal)), writers + 1);
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("#529: an aborted stageImport write leaves the review file intact", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-import-crash-"));
+  try {
+    await stageImport(dir, "text", ["A first candidate that must survive a crashed write"]);
+    const filePath = join(dir, IMPORT_FILE);
+    const before = await readFile(filePath, "utf8");
+
+    // What a crash mid-write leaves behind: a half-written tmp file. The live
+    // file is only ever replaced by rename, so it is never truncated.
+    const halfWritten = `${filePath}.tmp-${process.pid}-deadbeef`;
+    await writeFile(halfWritten, "# Import Review\n\n- [ ] 2026-09-12 · text · trunc", "utf8");
+    assert.equal(await readFile(filePath, "utf8"), before);
+    assert.equal(await countOpenImports(dir), 1);
+
+    // A write-protected review file proves the point: the old read/modify/
+    // write opened it for truncation, the fix renames a fresh file over it.
+    await chmod(filePath, 0o444);
+    const second = await stageImport(dir, "text", ["A second candidate staged over a write-protected file"]);
+    assert.equal(second.staged, 1);
+    assert.equal(second.openTotal, 2);
+    assert.equal(await countOpenImports(dir), 2);
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });
