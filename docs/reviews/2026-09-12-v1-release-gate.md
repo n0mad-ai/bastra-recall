@@ -488,3 +488,61 @@ No new fix followed the pass-2 finding. The 70-call generic MCP SDK harness rema
 ### GitHub state at pass 3
 
 All 27 original v1 milestone issues still appeared open even though most fixes are now on `origin/main`. Newly created durability/policy issues #538, #539 and #541 also remained open outside the milestone. The final release cannot be GO until the remaining behavioral blockers are corrected and every landed issue is triaged/closed with evidence.
+
+## Independent Codex counter-review — pass 4
+
+Counter-reviewed revision: `ff9655d87c499221c89b6d20a4050b059557b803` (also `origin/main`).
+Counter-review verdict: **NO-GO remains**. The local code and package suite is green, but #62, #305 and #506 remain behavioral release blockers, #525 now fails its own live-distribution workflow, and all 27 v1 milestone issues are still open.
+
+### Mechanical suite on `ff9655d`
+
+- `npm ci`: clean install, 0 vulnerabilities
+- `npm run check:types`: pass
+- `npm test`: 2,762 tests; 2,760 passed, 0 failed, 1 skipped, 1 todo
+- `npm run pack:check`: pass for all four published packages
+- `npm audit --audit-level=low`: 0 vulnerabilities
+- `npm run smoke`: 7/7
+- `npm run smoke:telemetry`: pass, 3 correlated events
+- `npm run test:update`: 20/20
+- Focused #530 import/audit suite: 16/16
+- Focused #539/#541 prompt/session-state suite: 46/46
+- Support-matrix/local-link suite: 8/8; repository link scan: 0 broken local links
+- GitHub CI and CodeQL for `ff9655d`: pass
+- GitHub `formula drift` for `ff9655d`: **fail**
+
+### Additional fixes cleared in pass 4
+
+- **#523:** the architecture now describes the vault-wide id claim rather than the obsolete per-path contract, qualifies the audited write paths, fixes the survival link and restores unresolved CHANGELOG references. The positive-control link tests and the full repository link scan pass.
+- **#539 follow-up:** the first mutex refactor dropped prompt-lane suppression bookkeeping because it mutated an abandoned snapshot. `57368ea` moves that delta into `mutateSessionState`; the formerly broken cadence now persists three skips and emits the fourth probe, including under a concurrent write. `7a01993` also makes the early snapshots readonly. The lack of a compiler-enforced negative test is separately tracked as #542 and does not invalidate the runtime fix.
+- **#541:** the accepted prompt-lane per-session dedup policy remains green for assertion/retrieval/generic modes, including its reset signals.
+- **#538:** curator single-flight remains green under the full suite; the overlapping second pass is skipped rather than performing another read-modify-write.
+
+### #530 — main no-op fix passes; one P2 marker edge remains
+
+An identical re-import now writes no memory, changes no mtime, appends no audit entry, leaves `.bastra-imported` byte-identical and reports created/updated/unchanged truthfully. The comparison re-reads under the id claim and falls back to the ordinary CAS path if an external writer changed the target, so the no-op does not create a lost-update window.
+
+A source-set shrink is still represented inconsistently. Independent reproduction: import two source notes, delete one source note, then re-import. The second result reports `imported: 1`, `unchanged: 1`, while the existing marker still says `imported: 2`. Marker refresh is gated only by created/updated writes; the old imported target is not removed either. This is **P2/post-1.0**, but #530 should remain open until the marker is explicitly defined as cumulative/non-mirroring or updated when the source set changes.
+
+### Remaining release blockers after pass 4
+
+#### #305 — accepted budgets, but the implemented gate is still red and incomplete
+
+The product-owner decision to use 600 ms for normal recall and 1000 ms for assertion, retaining 200 ms as the fast-lane p90 target, is accepted by this pass. That removes the policy-decision item from pass 3; it does not make the measurement pass.
+
+The fresh readout on `ff9655d` contains 1,436 steady-state judged calls and prints `gate: NOT MET`: assertion has 66/284 calls returning nothing (23.2% against the accepted 5% ceiling). The exact cross-session reproduction still folds a session-A daemon success with a session-B stub timeout 100 ms later, because `foldClientDuplicates()` ignores `session_id`; the surviving A row is rewritten to timeout. Plan, SessionStart, Bash pre/post and Stop still do not enter `LaneStats` or the threshold table, so they cannot fail the gate. #305 therefore needs session-aware call identity, verdict participation for every advertised automatic lane and a fresh packaged-client window that actually meets the accepted thresholds.
+
+#### #506 — the default Codex/ChatGPT plan promise remains unreachable
+
+The installed Codex CLI is 0.153.4. The reference config has all seven Bastra hook registrations but no `[tools]` / `tools.update_plan.enabled = true` setting, and this desktop task exposes no `update_plan` tool. `bastra install codex` still registers `PreToolUse: ^update_plan$` without enabling or onboarding the opt-in. README additionally calls the Codex/ChatGPT surface implemented with seven native hooks. The real CLI capture under an explicit override proves the parser path only; normal install, ChatGPT Desktop and IDE behavior remain unproved. Enable/onboard and verify those surfaces, or narrow the promise.
+
+#### #62 — the Claude Code transport boundary remains untested
+
+No implementation or supported-client evidence changed after pass 3. The 70-call generic MCP SDK test remains useful coverage of Bastra's transport, but it does not launch Claude Code and cannot reproduce or clear the client-specific progress-notification failure. Keep #62 open until a real supported Claude Code run covers the original boundary or the explicit idempotent fallback/diagnostic mitigation is implemented.
+
+#### #525 — the new drift guard correctly exposes an unfixed live artifact
+
+The repository support matrix, package descriptions, formula source and tests agree. The live `n0mad-ai/homebrew-tap` formula still omits Codex/ChatGPT Desktop in two caveat lines. `node tools/check-tap-drift.mjs` exits 1, and GitHub Actions run `34703506103` fails on current HEAD. Sync the live formula while preserving the tap-owned URL/checksum lines, then require the workflow to pass before release.
+
+### Issue-state gate after pass 4
+
+The v1 milestone contains 87 issues: 60 closed and **27 open**. Those 27 are the complete original release-gate set, including every landed P0/P1 fix as well as #62, #305 and #506. #523, #538, #539 and #541 now have independent green evidence and can be closed; #542 is a real P2 test-coverage gap and is not a v1 blocker. The milestone/closure gate remains unmet until fixes are closed with their evidence rather than left as unexplained open release blockers.
