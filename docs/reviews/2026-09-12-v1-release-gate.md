@@ -436,3 +436,55 @@ The injected block now commands the model to run onboarding immediately. Its own
 ### GitHub state at pass 2
 
 All 27 original v1 milestone issues remained open. Most fix commits were now on `origin/main`, but the #62 and #308 commits were still local only. This does not invalidate a code fix, but it independently fails the final release condition: every P0/P1 must be closed with evidence and the current v1 milestone must contain no unexplained open item.
+
+## Independent Codex counter-review — pass 3
+
+Counter-reviewed revision: `b95778024fcc9b0373a060f768e6dfd7785d31b4` (also `origin/main` during this pass).
+Counter-review verdict: **NO-GO remains**, narrowed to #62, #305 and #506 plus issue/closure hygiene. #308, #522 and #531 now clear the specific pass-2 findings.
+
+### Mechanical suite on `b957780`
+
+- `npm ci`: clean install, 0 vulnerabilities
+- `npm run check:types`: pass
+- `npm test`: 2,749 tests; 2,747 passed, 0 failed, 1 skipped, 1 todo
+- `npm run pack:check`: pass for all four published packages
+- `npm audit --audit-level=low`: 0 vulnerabilities
+- `npm run smoke`: 7/7
+- `npm run smoke:telemetry`: pass, 3 correlated events
+- `npm run test:update`: 20/20
+- Focused #305/#506/#522/#531/#541 suite: 95/95
+
+### Pass-2 blockers now cleared
+
+- **#531:** one endpoint resolver now covers daemon bind, forwarder, thin/stub hooks, status, panel, Map, doctor adapters, embeddings, update hints, process discovery and recovery output. A configured endpoint is persisted into every client registration and the managed LaunchAgent. The integration test runs two real daemons with different ports, versions and vault sizes and rejects every cross-instance merge. Targeted suite: 11/11.
+- **#522:** README, PLAN, the governing German architecture and its English mirror now consistently define V1 as a cumulative cross-lane shadow ledger with live token enforcement moved to the measured post-1.0 gate. C-087 records the replacement instead of silently rewriting the old contract, and a source-level drift test covers the versioned documents.
+- **#308:** launch copy now promises only Map and CLI as deterministic onboarding surfaces. Hooked AI sessions are described as receiving the interview and “usually” opening it, no longer as a guaranteed third surface. This matches the implementation's honest limit.
+
+### Additional changes reviewed
+
+- **#435 follow-up:** managed autostart now persists a stable Homebrew node path rather than a versioned keg path, verifies both node and daemon script, and reports the exact missing program. The macOS update suite passes 20/20 on the review host.
+- **#541:** the prompt lane now applies the existing per-session shown-memory gate to assertion/retrieval/generic modes, not only mode `none`. A load marker or transcript rebuild still releases the hit. This is a user-visible policy change, but it aligns the prompt lane with the already accepted #354 invariant and the write/bash lanes, while removing the measured 50.2% same-session assertion replay; the focused behavior test passes.
+
+### Remaining blockers after pass 3
+
+#### #305 — the new gate still does not measure the release it claims to gate
+
+The new per-lane constants and renderer work, but the current seven-day readout says `gate: NOT MET`: assertion has 66/285 calls returning nothing (23.2% against a 5% ceiling). Those rows were generated under the old 600 ms budget; the claimed 99.3–100% delivery at 1000 ms is a reconstruction, not packaged-client observation under the shipped budget. A fresh window is still required.
+
+The pass-2 cross-session false fold is unchanged. Two observations 100 ms apart with different `session_id` values are still collapsed into one, and the surviving successful row is rewritten as the other session's timeout. Evidence was re-posted to #305.
+
+The gate also excludes most advertised automatic lanes. `aggregate()` creates verdict rows only for `prompt_hook_call` and the Write/Edit `hook_call`; plan, SessionStart, Bash pre/post and Stop remain in `otherKinds`. Their documentation explicitly has no p90/failure thresholds, and `releaseGateMet()` accepts `no-threshold` lanes. A failing plan/session lane can therefore coexist with `gate: MET`. Evidence was added to #305.
+
+Finally, changing the issue's explicit universal 200 ms ceiling to 600 ms/1000 ms per-lane budgets is a product-contract decision. The measured split may justify it, but it must be accepted as the new promise rather than described as proof that the old promise passed.
+
+#### #506 — real CLI event captured, but the installed/default product still cannot emit it
+
+A real Codex CLI 0.153.4 run with `tools.update_plan.enabled=true` captured the expected `PreToolUse: update_plan` payload, and its parser/registration test passes. The same probe establishes that Codex 0.152+ disables that tool by default. The reference installation has no `[tools]` setting, and `bastra install codex` neither enables nor asks to enable it. Thus the plan matcher remains unreachable after a normal install. The probe also explicitly excludes ChatGPT Desktop and the IDE extension from its evidence. The default product promise still needs installer/onboarding support plus real client coverage, or narrower copy. Evidence was added to #506.
+
+#### #62 — unchanged
+
+No new fix followed the pass-2 finding. The 70-call generic MCP SDK harness remains green but does not exercise the Claude Code client-specific progress-notification failure boundary.
+
+### GitHub state at pass 3
+
+All 27 original v1 milestone issues still appeared open even though most fixes are now on `origin/main`. Newly created durability/policy issues #538, #539 and #541 also remained open outside the milestone. The final release cannot be GO until the remaining behavioral blockers are corrected and every landed issue is triaged/closed with evidence.
