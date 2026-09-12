@@ -6,7 +6,8 @@
  * self-calls, session dedup/backoff, formatting, telemetry. The hook file is
  * now a thin client — stdin → POST /hook/prompt → stdout — so the per-prompt
  * cost on the client side is process start alone (#305 measured ~120ms of
- * node spawn against a 200ms budget; the logic itself was never the problem).
+ * node spawn against the fast lanes' 200ms p90 target; the logic itself was
+ * never the problem). Budgets are per lane since #305 — see hook-budgets.ts.
  *
  * Two deliberate non-changes, so stage A stays "require-path rewiring, not a
  * rewrite":
@@ -36,6 +37,7 @@ import { requiredHeadline, unfusedHeadline, CANDIDATES_ONLY_NOTICE } from "./ban
 import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane, type ScopeFilterMode } from "./scope-filter.js";
 
 import { envFirst, envInt } from "./env.js";
+import { PROMPT_ASSERTION_BUDGET_MS, RECALL_BUDGET_MS } from "./hook-budgets.js";
 import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { claudeSessionPidFrom, sessionFeedPath, STATUSLINE_DIR } from "./statusline-session.js";
@@ -56,11 +58,15 @@ import {
   wasEmitConsumed,
 } from "./session-state.js";
 
-// 600ms — same reasoning as hook.ts. The lanes that actually recall sat at
-// the old 250ms ceiling: retrieval median 222ms, the first assertion call
-// 259ms and thus a timeout. The `none` lane's 4ms median hid this in any
-// average, because it never recalls at all.
-const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 600, "NEXUS_HOOK_TIMEOUT_MS");
+// Per trigger class since #305 — see hook-budgets.ts for the measurement.
+// 600ms for the quiet classes, 1000ms for assertion: that lane sits at the
+// start of a turn, pays a cold embedding model by construction, and was being
+// cut off on 23.4% of its calls against the flat 600ms. `BASTRA_HOOK_TIMEOUT_MS`
+// still overrides, for the classes that had it.
+const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", RECALL_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
+function laneBudgetMs(mode: DetectedMode): number {
+  return mode === "assertion" ? PROMPT_ASSERTION_BUDGET_MS : HOOK_TIMEOUT_MS;
+}
 const HOOK_VERSION = "0.3.0"; // 0.3.0 = daemon-side lane (#343)
 const SCORE_FLOOR = 50; // higher than PreToolUse: prompts rarely match recall_when exactly
 export const MUST_LOAD_SCORE = 100;
@@ -388,7 +394,7 @@ export async function runPromptLane(
   const project = projectForLane(cwd);
   // §20.5: geratenes Projekt filtert nicht — siehe projectForFilter.
   const filterProject = projectForFilter(cwd);
-  const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
+  const remainingMs = Math.max(50, laneBudgetMs(detectedMode) - (Date.now() - startedAt));
 
   // #217 Reflex-Lane: feuert unabhängig vom Retrieval-Gate — auch bei
   // detectedMode "none". Parallel zum bedingten Recall, sonst sprengt die

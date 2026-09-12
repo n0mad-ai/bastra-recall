@@ -8,10 +8,43 @@ as `additionalContext` and can `load_memory(id)` the hits before proceeding.
 All hooks are **non-blocking**: they never set `block: true`. Worst case they
 emit `{}` and Claude continues unaffected. They share three discipline rules:
 
-- Hard wall-clock budget (`BASTRA_HOOK_TIMEOUT_MS`, default 250 ms for
-  PreToolUse / 500 ms for SessionStart / 1000 ms for Stop).
+- Hard wall-clock budget, **per lane** (#305 — see the table below).
 - Any failure path emits `{}` and exits 0.
 - Telemetry is best-effort, never breaks the hook.
+
+### Budgets and the release threshold (#305)
+
+One budget across lanes that do different amounts of work was the wrong shape:
+the fast lanes never came near it, and the assertion lane — which sits at the
+start of a turn, after exactly the pause that evicts the embedding model — was
+cut off on 23.4 % of its calls. A timed-out hook returns nothing and the turn
+continues as if there had been nothing to say, so that is a silent drop, not a
+slow answer.
+
+| lane | budget | p90 target | failure ceiling |
+| --- | --- | --- | --- |
+| `PreToolUse` Write/Edit | 600 ms | 200 ms | 2 % |
+| `UserPromptSubmit` — retrieval / generic / none | 600 ms | 300 ms | 2 % |
+| `UserPromptSubmit` — assertion | **1000 ms** | 900 ms | 5 % |
+| `PreToolUse` plan, Bash pre/post, SessionStart | 600 / 500 ms | — | — |
+| `Stop` | 1000 ms | — | — |
+
+`#305`'s original framing was "cut the ceiling to 200 ms" for everything. That
+target now applies to the fast lanes, which hold it (measured p90 87 ms), and
+not to the assertion lane, which never could.
+
+The `UserPromptSubmit` **clients** (thin client and compiled stub) use the
+1000 ms budget regardless of class: the trigger class is decided daemon-side,
+after the payload has been posted, so the client cannot know which class it is
+serving and must outlast the slowest. The daemon still cuts each class at its
+own budget, so the extra room is a backstop against a hung daemon, not added
+waiting.
+
+`bastra logs --stats` checks each lane against this table and prints a
+per-lane PASS/FAIL plus an overall `gate: MET / NOT MET`. Lanes with fewer
+than 30 calls in the window get no verdict — and no free pass either.
+Constants live in `packages/daemon/src/hook-budgets.ts`, thresholds in
+`packages/daemon/src/cli/log-stats-thresholds.ts`.
 
 Recalled-content blocks (`<recall-hints>`, `<session-context>`,
 `<pinned-memories>`) are framed
@@ -381,7 +414,7 @@ new MCP tool):
 | ----------------------------- | ---------------- | ------------------------------------------------------------- |
 | `BASTRA_HTTP_URL`             | _none_           | Full daemon base URL (overrides host+port)                    |
 | `BASTRA_HTTP_PORT`            | `6723`           | Daemon port on `127.0.0.1`                                    |
-| `BASTRA_HOOK_TIMEOUT_MS`      | `250` / `500` / `1000` | Wall-clock budget for the hook (incl. network round-trip) |
+| `BASTRA_HOOK_TIMEOUT_MS`      | per lane, see above | Overrides the lane budget (incl. network round-trip). The assertion budget is fixed at 1000 ms and is not read from this var. |
 | `BASTRA_HOOK_QUERY`           | `neutral`        | `english` restores the old action-verb recall query (#231)    |
 | `BASTRA_HOOK_CONTENT_RECALL`  | `off`            | `1` runs the opt-in edit-content recall arm (#282)             |
 | `BASTRA_PROMPT_HOOK_MODE`     | `retrieval-only` | `retrieval-only` or `all` — only the prompt-hook reads this   |

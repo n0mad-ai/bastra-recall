@@ -17,6 +17,10 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { defaultLogDir } from "../learned-recall/harvest.js";
 import { foldClientDuplicates, restartWindows, tsOf } from "./log-stats-phases.js";
+import { releaseVerdicts, renderReleaseGate } from "./log-stats-thresholds.js";
+import { RECALL_BUDGET_MS } from "../hook-budgets.js";
+
+export { releaseVerdicts, releaseGateMet, laneVerdict, RELEASE_THRESHOLDS, MIN_CALLS_FOR_VERDICT } from "./log-stats-thresholds.js";
 
 export { foldClientDuplicates, restartWindows, DUPLICATE_WINDOW_MS } from "./log-stats-phases.js";
 
@@ -293,13 +297,19 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
   }
   out.push("");
 
-  // The budget is what turns a latency number into a verdict: p90 far under it
-  // means the lane has room, p90 near it means the next slow day drops hints.
-  const allLat = stats.lanes.flatMap((l) => (l.latency ? [l.latency.p90] : []));
-  if (allLat.length > 0) {
-    const worst = Math.max(...allLat);
-    const headroom = budgetMs > 0 ? Math.round((1 - worst / budgetMs) * 100) : 0;
-    out.push(`  hook budget ${budgetMs}ms — worst lane p90 ${worst}ms (${headroom}% headroom)`);
+  // #305: one budget across lanes that do different amounts of work reported
+  // the worst lane's p90 against a ceiling most lanes never approach, and said
+  // nothing about whether the thing was shippable. The verdict is per lane now,
+  // against the budget that lane actually enforces and the failure ceiling the
+  // release gate is written down as.
+  const verdicts = releaseVerdicts(stats.lanes);
+  out.push(...renderReleaseGate(verdicts));
+  // Lanes nobody set a threshold for still get their headroom line — a new
+  // lane must not slip in unmeasured just because it has no entry yet.
+  const unjudged = verdicts.filter((v) => v.verdict === "no-threshold" && v.p90 !== null);
+  for (const v of unjudged) {
+    const headroom = budgetMs > 0 ? Math.round((1 - v.p90! / budgetMs) * 100) : 0;
+    out.push(`  ${v.mode}: no release threshold set — p90 ${v.p90}ms against ${budgetMs}ms (${headroom}% headroom)`);
   }
   if (stats.totals.timeouts > 0 || stats.totals.errors > 0) {
     out.push(
@@ -376,12 +386,11 @@ export async function readEvents(
   return out;
 }
 
-/** The same budget the recalling hooks enforce — read here rather than
- *  imported, because importing a hook module for one constant drags its entry
- *  point in. Keep the default in step with hook.ts / prompt-hook.ts /
- *  todo-hook.ts: a readout that names the wrong ceiling reports the wrong
- *  headroom, which is worse than naming none. */
-export const DEFAULT_HOOK_BUDGET_MS = 600;
+/** Fallback budget for a lane that has no release threshold of its own yet —
+ *  the recall lanes' wall clock. Budgets are per lane since #305, so this is no
+ *  longer "the" hook budget; RELEASE_THRESHOLDS is where a lane's real ceiling
+ *  lives, and hook-budgets.ts is where both come from. */
+export const DEFAULT_HOOK_BUDGET_MS = RECALL_BUDGET_MS;
 
 function hookBudgetMs(): number {
   const raw = process.env.BASTRA_HOOK_TIMEOUT_MS ?? process.env.NEXUS_HOOK_TIMEOUT_MS;

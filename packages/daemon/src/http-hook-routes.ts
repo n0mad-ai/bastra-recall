@@ -48,7 +48,8 @@ const CONTENT_RECALL_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdi
 
 /**
  * #342: deadline for the dense arm on the HOOK path only — the surface with a
- * hard client-side budget (HOOK_TIMEOUT_MS, 600ms). Offline callers (bridge
+ * hard client-side budget (per lane since #305: 600ms for the recall lanes,
+ * 1000ms for the assertion class — see hook-budgets.ts). Offline callers (bridge
  * harvest, doc2query self-test, the WebUI) keep waiting indefinitely; they have
  * no budget and want the better result.
  *
@@ -60,7 +61,8 @@ const CONTENT_RECALL_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdi
  *
  * So 150ms clears every warm dense arm with ~55ms to spare, and caps the cold
  * one at 150 + ~25ms of BM25 ≈ 180ms. That keeps BOTH cases under the 200ms
- * ceiling #305 set — the warm path untouched at ~110ms, the cold path degraded
+ * p90 target #305 sets for the FAST lanes (it is no longer a single ceiling
+ * across all of them) — the warm path untouched at ~110ms, the cold path degraded
  * to BM25-only but arriving, instead of the whole call expiring silently and
  * the turn continuing as if there had been nothing to say.
  *

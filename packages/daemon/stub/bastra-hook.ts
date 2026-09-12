@@ -20,14 +20,15 @@
  * the client-side telemetry for calls the daemon cannot see. A logic change
  * never needs a stub rebuild; only a change to THIS contract does.
  *
- * Why the start matters: the hook budget is 200ms (#305). Measured on the
- * reference host, the node thin client pays 86–89ms of interpreter start
- * before its first syscall; the compiled stub pays ~15–25ms. That difference
- * is the whole point of #344.
+ * Why the start matters: the fast lanes are held to a 200ms p90 (#305 —
+ * budgets are per lane now, see hook-budgets.ts). Measured on the reference
+ * host, the node thin client pays 86–89ms of interpreter start before its
+ * first syscall; the compiled stub pays ~15–25ms. That difference is the whole
+ * point of #344.
  *
  * Built with `deno compile` (deno task in package.json — the toolchain that
  * is actually present on the dev host; bun would do equally). The stub uses
- * node:-specifier stdlib + the two dependency-free daemon modules only, so
+ * node:-specifier stdlib + a handful of dependency-free daemon modules only, so
  * both runtimes and plain node can run this file unchanged — which is also
  * the fallback: `node stub/bastra-hook.ts` behaves identically, just slower.
  */
@@ -38,11 +39,12 @@ import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { envFirst, envInt } from "../src/env.js";
 import { resolveDaemonEndpoint } from "../src/daemon-endpoint.js";
+import { FAST_BUDGET_MS, PROMPT_ASSERTION_BUDGET_MS, RECALL_BUDGET_MS, STOP_BUDGET_MS } from "../src/hook-budgets.js";
 import { shouldSkipPath } from "../src/hook-skip.js";
 import { decorateHookPayload } from "../src/hook-surface.js";
 import { normalizeWritePayload } from "../src/hook-write-input.js";
 
-const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 600, "NEXUS_HOOK_TIMEOUT_MS");
+const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", RECALL_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 const STUB_VERSION = "0.6.0-stub"; // 0.6.0 = Codex payload adaptation (#15)
 
 type Lane = "prompt" | "write" | "bash-pre" | "bash-fail" | "stop" | "session" | "todo";
@@ -58,17 +60,26 @@ const SUPPORTED_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit", "
 const CLIENT_TELEMETRY_LANES = new Set<Lane>(["prompt", "write", "bash-pre", "bash-fail"]);
 
 /**
- * Per-lane wall-clock budget. Two lanes do not fit the 600ms recall budget:
+ * Per-lane wall-clock budget. Three lanes do not fit the 600ms recall budget:
  *
  *  · `stop` scans a transcript, and its node client has always used its own
  *    1000ms (BASTRA_STOP_HOOK_TIMEOUT_MS). Its answer is `{}` either way, so
  *    an early client timeout would only orphan work the daemon then finishes.
  *  · `session` mirrors what the fat session hook allowed itself: the lane
  *    budget plus 100ms, which is where its kill switch used to fire.
+ *  · `prompt` (#305): its trigger class is decided daemon-side, after this
+ *    POST, so the client cannot know whether it is serving the 600ms quiet
+ *    path or the 1000ms assertion path. It must outlast the slowest one it can
+ *    be handed — the daemon still cuts each class at its own budget, so the
+ *    extra room is a backstop against a hung daemon, not added waiting. At
+ *    600ms this client was cutting off assertion calls the daemon went on to
+ *    finish: 73 of 74 client rows in the measured week had a daemon row for
+ *    the very same call.
  */
 function laneBudgetMs(lane: string): number {
-  if (lane === "stop") return envInt("BASTRA_STOP_HOOK_TIMEOUT_MS", 1000);
-  if (lane === "session") return envInt("BASTRA_HOOK_TIMEOUT_MS", 500, "NEXUS_HOOK_TIMEOUT_MS") + 100;
+  if (lane === "stop") return envInt("BASTRA_STOP_HOOK_TIMEOUT_MS", STOP_BUDGET_MS);
+  if (lane === "session") return envInt("BASTRA_HOOK_TIMEOUT_MS", FAST_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS") + 100;
+  if (lane === "prompt") return envInt("BASTRA_HOOK_TIMEOUT_MS", PROMPT_ASSERTION_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
   return HOOK_TIMEOUT_MS;
 }
 
@@ -157,7 +168,13 @@ async function writeClientTelemetry(
     const ts = new Date().toISOString();
     const base =
       lane === "prompt"
-        ? { kind: "prompt_hook_call", detected_mode: "none", prompt_chars: 0, hint_count: 0, top_score: null }
+        // #305: "unknown", not "none". The trigger class is decided daemon-side
+        // and this row exists precisely because no answer came back, so the
+        // client cannot know it. Claiming "none" filed every client-side prompt
+        // failure under the silent lane — which is how the readout came to show
+        // `none` timing out at 15% behind a 69ms median, an impossible shape,
+        // with the assertion lane's failures wearing another lane's name.
+        ? { kind: "prompt_hook_call", detected_mode: "unknown", prompt_chars: 0, hint_count: 0, top_score: null }
         : {
             kind: "hook_call",
             topics: [],

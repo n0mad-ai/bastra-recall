@@ -38,9 +38,17 @@ import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { envFirst, envInt } from "./env.js";
 import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
+import { PROMPT_ASSERTION_BUDGET_MS } from "./hook-budgets.js";
 import { decorateHookPayload } from "./hook-surface.js";
 
-const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 600, "NEXUS_HOOK_TIMEOUT_MS");
+// #305: the trigger class is decided daemon-side, AFTER this POST, so the
+// client cannot know whether it is serving the 600ms quiet path or the 1000ms
+// assertion path — it has to outlast the slowest one it can be handed. This is
+// not added waiting: the daemon cuts each class at its own budget, so the extra
+// room only matters when the daemon itself hangs. Before this, a client socket
+// at 600ms cut off assertion calls the daemon would have finished — 73 of 74
+// such client rows in the measured week had a daemon row for the same call.
+const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", PROMPT_ASSERTION_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.3.0-thin";
 
 function readStdin(): Promise<string> {

@@ -17,7 +17,17 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { aggregate, percentiles, renderStats, restartWindows, DEFAULT_HOOK_BUDGET_MS } from "../src/cli/log-stats.js";
+import {
+  aggregate,
+  percentiles,
+  renderStats,
+  restartWindows,
+  laneVerdict,
+  releaseGateMet,
+  RELEASE_THRESHOLDS,
+  DEFAULT_HOOK_BUDGET_MS,
+} from "../src/cli/log-stats.js";
+import { PROMPT_ASSERTION_BUDGET_MS, RECALL_BUDGET_MS } from "../src/hook-budgets.js";
 
 function promptCall(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -172,15 +182,26 @@ test("#484 shadow: der Bericht sagt nicht 'removed', wenn nichts entfernt wurde"
   assert.match(rendered, /mode: shadow×1/);
 });
 
-test("the render names the budget and the headroom against it", () => {
+test("the render names each lane's budget and what it is judged against", () => {
+  // Was: one "hook budget Xms — worst lane p90" line. Since #305 budgets are
+  // per lane, so the readout names the lane's own ceiling and its verdict.
   const stats = aggregate([
     promptCall({ detected_mode: "assertion", latency_ms_total: 259, status: "timeout" }),
   ]);
   const out = renderStats(stats, 250);
   assert.match(out, /assertion/);
-  assert.match(out, /hook budget 250ms/);
-  assert.match(out, /-4% headroom/); // p90 259 against a 250 ceiling
+  assert.match(out, /assertion\s+1000ms budget · p90 ≤ 900ms · fail ≤ 5%/);
   assert.match(out, /1 timeout\(s\)/);
+});
+
+test("a lane with no release threshold still gets a headroom line", () => {
+  // A trigger class nobody has written a threshold for must not vanish from
+  // the readout — that is how a lane goes unmeasured.
+  const stats = aggregate([
+    promptCall({ detected_mode: "brand-new-lane", latency_ms_total: 120, status: "ok", hint_count: 1 }),
+  ]);
+  const out = renderStats(stats, 600);
+  assert.match(out, /brand-new-lane: no release threshold set — p90 120ms against 600ms \(80% headroom\)/);
 });
 
 test("an empty window says so instead of rendering an empty table", () => {
@@ -190,9 +211,11 @@ test("an empty window says so instead of rendering an empty table", () => {
 test("the readout's budget default matches what the hooks actually enforce", async () => {
   // A readout that names a ceiling the hooks do not use reports the wrong
   // headroom — and it did exactly that once, claiming 250ms after the hooks
-  // moved to 600ms.
+  // moved to 600ms. Since #305 the budget is per lane, so the pin is per lane:
+  // these two clients serve the recall lanes and must hold the fallback the
+  // readout uses for any lane with no threshold of its own.
   const src = dirname(fileURLToPath(import.meta.url));
-  for (const hook of ["hook.ts", "prompt-hook.ts", "todo-hook.ts"]) {
+  for (const hook of ["hook.ts", "todo-hook.ts"]) {
     const body = await readFile(join(src, "..", "src", hook), "utf8");
     const m = /envInt\("BASTRA_HOOK_TIMEOUT_MS",\s*(\d+)/.exec(body);
     assert.ok(m, `${hook}: no BASTRA_HOOK_TIMEOUT_MS default found — did the constant move?`);
@@ -202,6 +225,93 @@ test("the readout's budget default matches what the hooks actually enforce", asy
       `${hook} enforces ${m[1]}ms but the stats readout assumes ${DEFAULT_HOOK_BUDGET_MS}ms`,
     );
   }
+});
+
+test("#305: every release threshold names the budget its lane really enforces", () => {
+  // The threshold table is what the gate is read off. If it drifts from
+  // hook-budgets.ts, the readout judges lanes against a ceiling nobody
+  // enforces — the same class of defect as the 250ms-vs-600ms one above, one
+  // layer up.
+  assert.equal(RELEASE_THRESHOLDS.assertion.budgetMs, PROMPT_ASSERTION_BUDGET_MS);
+  for (const mode of ["pretooluse", "none", "retrieval", "generic"]) {
+    assert.equal(RELEASE_THRESHOLDS[mode].budgetMs, RECALL_BUDGET_MS, `${mode} budget drifted`);
+  }
+  // The assertion lane must be the slow one, or the split has no point.
+  assert.ok(RELEASE_THRESHOLDS.assertion.budgetMs > RELEASE_THRESHOLDS.pretooluse.budgetMs);
+  // #305's 200ms target survives on the fast lane and nowhere else.
+  assert.equal(RELEASE_THRESHOLDS.pretooluse.p90TargetMs, 200);
+});
+
+test("#305: the prompt CLIENTS outlast the slowest class the daemon can hand them", async () => {
+  // The client posts before the trigger class exists, so a client budget below
+  // the assertion budget cuts off calls the daemon goes on to finish — which is
+  // exactly what produced 73 of the 74 duplicate client rows in the measured
+  // week. Read the real constants, not a copy of them.
+  const src = dirname(fileURLToPath(import.meta.url));
+  for (const rel of ["src/prompt-hook.ts", "stub/bastra-hook.ts"]) {
+    const body = await readFile(join(src, "..", rel), "utf8");
+    assert.match(
+      body,
+      /PROMPT_ASSERTION_BUDGET_MS/,
+      `${rel} must take its prompt budget from hook-budgets.ts, not a literal`,
+    );
+  }
+});
+
+test("#305: a lane over its failure ceiling fails the gate, and says which number did it", () => {
+  // The assertion lane as it was measured: inside its latency target, far
+  // outside its failure ceiling. That combination is the whole finding of #305
+  // — the lane was not slow so much as cut off — so the verdict has to name the
+  // failure rate, not the latency.
+  const v = laneVerdict({
+    mode: "assertion", calls: 273, withHits: 215, suppressed: 19, gated: 0,
+    timeouts: 64, errors: 0, latency: { n: 273, median: 423, p90: 731, max: 1017 },
+  });
+  assert.equal(v.verdict, "fail");
+  assert.equal(v.reasons.length, 1);
+  assert.match(v.reasons[0], /64\/273 calls returned nothing \(23\.4% > 5%\)/);
+  assert.equal(releaseGateMet([v]), false);
+});
+
+test("#305: the same lane inside both ceilings passes", () => {
+  // What the 1000ms budget is expected to produce: the 64 cut calls
+  // reconstruct to <= 975ms, so they land instead of expiring.
+  const v = laneVerdict({
+    mode: "assertion", calls: 273, withHits: 270, suppressed: 0, gated: 0,
+    timeouts: 2, errors: 0, latency: { n: 273, median: 440, p90: 836, max: 975 },
+  });
+  assert.equal(v.verdict, "pass");
+  assert.deepEqual(v.reasons, []);
+  assert.equal(releaseGateMet([v]), true);
+});
+
+test("#305: a lane too small to judge gets no verdict, and no free pass either", () => {
+  // The `retrieval` lane had n=1 in the measured week. A gate that swings on
+  // one call is worse than no gate — but "we did not measure" must not read as
+  // "it works".
+  const v = laneVerdict({
+    mode: "retrieval", calls: 1, withHits: 1, suppressed: 0, gated: 0,
+    timeouts: 0, errors: 0, latency: { n: 1, median: 114, p90: 114, max: 114 },
+  });
+  assert.equal(v.verdict, "insufficient-data");
+  assert.equal(releaseGateMet([v]), false);
+  assert.match(renderStats(aggregate([]), 600), /no prompt-hook events/);
+});
+
+test("#305: the readout prints the gate, per lane, with its verdict", () => {
+  const events = [
+    ...Array.from({ length: 60 }, (_, i) =>
+      promptCall({ ts: `2026-09-06T05:${String(i % 60).padStart(2, "0")}:00.000Z`, detected_mode: "assertion", status: "timeout", latency_ms_total: 610 }),
+    ),
+    ...Array.from({ length: 60 }, (_, i) =>
+      ({ kind: "hook_call", ts: `2026-09-06T07:${String(i % 60).padStart(2, "0")}:00.000Z`, status: "ok", latency_ms: 60, hint_count: 1 }),
+    ),
+  ];
+  const rendered = renderStats(aggregate(events), 600);
+  assert.match(rendered, /release gate \(#305\)/);
+  assert.match(rendered, /assertion\s+1000ms budget · p90 ≤ 900ms · fail ≤ 5% — FAIL/);
+  assert.match(rendered, /pretooluse\s+600ms budget · p90 ≤ 200ms · fail ≤ 2% — PASS/);
+  assert.match(rendered, /gate: NOT MET/);
 });
 
 // ─── #305: the readout has to be decidable, not just printable ───────────
