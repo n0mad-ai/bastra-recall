@@ -222,8 +222,11 @@ test("isLoopbackHost: loopback hosts pass, rebound domains do not", () => {
   assert.equal(isLoopbackHost("localhost:6723", []), true);
   assert.equal(isLoopbackHost("LOCALHOST", []), true);
   assert.equal(isLoopbackHost("[::1]:6723", []), true);
-  // HTTP/1.0-CLIs ohne Host-Header — Rebinding trägt immer einen.
-  assert.equal(isLoopbackHost(undefined, []), true);
+  // #526: KEIN Host-Header ist kein Loopback-Beweis. Browser-Rebinding trägt
+  // zwar immer einen, ein roher Port-Forwarder (socat, `ssh -L`) ergänzt aber
+  // keinen — ein Angreifer am Tunnel lässt ihn einfach weg.
+  assert.equal(isLoopbackHost(undefined, []), false);
+  assert.equal(isLoopbackHost("", []), false);
   assert.equal(isLoopbackHost("attacker.example:6723", []), false);
   assert.equal(isLoopbackHost("attacker.example", []), false);
 });

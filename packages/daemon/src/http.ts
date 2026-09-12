@@ -44,8 +44,9 @@
  *   - Wenn BASTRA_API_TOKEN gesetzt: Authorization: Bearer <token>
  *     erforderlich.
  *   - Token-frei per Default nur, wenn BEIDES loopback ist: der Peer-Socket
- *     (127.0.0.1) UND der Host-Header (#526 — sonst erben DNS-Rebinding und
- *     lokale Tunnel die Ausnahme vom Socket). BASTRA_AUTH_LOOPBACK_SKIP=0
+ *     (127.0.0.1) UND ein vorhandener Host-Header (#526 — sonst erben DNS-
+ *     Rebinding und lokale Tunnel die Ausnahme vom Socket; ein roher Port-
+ *     Forwarder ergänzt gar keinen Host). BASTRA_AUTH_LOOPBACK_SKIP=0
  *     erzwingt das Token auch lokal.
  *   - Ohne gesetzten Token läuft alles offen — dev/local mode.
  *

@@ -20,7 +20,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { request } from "node:http";
-import { connect } from "node:net";
+import { connect, createServer as createTcpServer, type AddressInfo } from "node:net";
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
@@ -175,7 +175,7 @@ test("#526: tunnel/reverse-proxy — foreign Host + correct bearer token still w
   });
 });
 
-test("#526: direct loopback stays tokenless — 127.0.0.1, localhost, [::1], no Host header", async () => {
+test("#526: direct loopback stays tokenless — 127.0.0.1, localhost, [::1]", async () => {
   await withServer({}, async (port) => {
     for (const host of [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`, "127.0.0.1", "LocalHost"]) {
       const node = await call(port, "GET", "/api/v1/graph/node?id=a1", { host });
@@ -192,18 +192,6 @@ test("#526: direct loopback stays tokenless — 127.0.0.1, localhost, [::1], no 
     );
     assert.equal(recall.status, 200, "the CLI/forwarder POST path must stay tokenless");
 
-    // HTTP/1.0-Clients schicken keinen Host-Header (unter HTTP/1.1 lehnt Node
-    // das selbst mit 400 ab); Rebinding trägt dagegen immer einen.
-    const raw = await new Promise<string>((resolve, reject) => {
-      const sock = connect(port, "127.0.0.1", () => {
-        sock.write("GET /api/v1/graph/node?id=a1 HTTP/1.0\r\n\r\n");
-      });
-      let out = "";
-      sock.on("data", (c) => (out += c));
-      sock.on("end", () => resolve(out));
-      sock.on("error", reject);
-    });
-    assert.match(raw, /^HTTP\/1\.1 200 /, "a missing Host header stays on the local path");
   });
 });
 
@@ -243,5 +231,70 @@ test("#526: the pre-existing gates are untouched — /health and a foreign Origi
       JSON.stringify({ query: "a1" }),
     );
     assert.equal(browser.status, 403, "a foreign Origin is still an origin rejection");
+  });
+});
+
+/** A hand-written request over a bare socket — no client library adds a Host. */
+function rawRequest(port: number, wire: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const sock = connect(port, "127.0.0.1", () => sock.write(wire));
+    let out = "";
+    sock.on("data", (c) => (out += c));
+    sock.on("end", () => resolve(out));
+    sock.on("error", reject);
+  });
+}
+
+/**
+ * A raw TCP port-forwarder — socat / `ssh -L` / a plain proxy. Unlike nginx or
+ * cloudflared it rewrites nothing, so it adds no Host header of its own.
+ */
+async function withRawForwarder(target: number, fn: (port: number) => Promise<void>): Promise<void> {
+  const fwd = createTcpServer((client) => {
+    const upstream = connect(target, "127.0.0.1", () => {
+      client.pipe(upstream).pipe(client);
+    });
+    upstream.on("error", () => client.destroy());
+    client.on("error", () => upstream.destroy());
+  });
+  await new Promise<void>((r) => fwd.listen(0, "127.0.0.1", r));
+  try {
+    await fn((fwd.address() as AddressInfo).port);
+  } finally {
+    fwd.close();
+  }
+}
+
+test("#526: a MISSING Host header is no loopback proof — raw tunnel and direct socket both need the token", async () => {
+  await withServer({}, async (port) => {
+    await withRawForwarder(port, async (fwdPort) => {
+      // Der Angriff: roher Port-Forwarder davor, Request von Hand ohne Host.
+      const tunneled = await rawRequest(fwdPort, "GET /api/v1/graph/node?id=a1 HTTP/1.0\r\n\r\n");
+      assert.match(tunneled, /^HTTP\/1\.1 401 /, "a Host-less request through a raw tunnel must not be tokenless");
+      assert.doesNotMatch(tunneled, /Body of a1/, "no memory body may leak");
+
+      // Mit Token bleibt derselbe Weg für legitime Tunnel-Clients offen.
+      const withToken = await rawRequest(
+        fwdPort,
+        `GET /api/v1/graph/node?id=a1 HTTP/1.0\r\nAuthorization: Bearer ${TOKEN}\r\n\r\n`,
+      );
+      assert.match(withToken, /^HTTP\/1\.1 200 /);
+      assert.match(withToken, /Body of a1/);
+    });
+
+    // Dieselbe Regel direkt am Daemon — der Forwarder ist nicht die Ursache.
+    const direct = await rawRequest(port, "GET /api/v1/graph/node?id=a1 HTTP/1.0\r\n\r\n");
+    assert.match(direct, /^HTTP\/1\.1 401 /);
+  });
+});
+
+test("#526: a MISSING Host header is rejected on the tokenless loopback routes too", async () => {
+  await withServer({}, async (port) => {
+    // /health und /hook/* kennen gar kein Token — dort bleibt nur das Host-Gate.
+    const health = await rawRequest(port, "GET /health HTTP/1.0\r\n\r\n");
+    assert.match(health, /^HTTP\/1\.1 403 /);
+    // Mit loopback-Host ist derselbe Endpoint unverändert offen.
+    const ok = await rawRequest(port, `GET /health HTTP/1.0\r\nHost: 127.0.0.1:${port}\r\n\r\n`);
+    assert.match(ok, /^HTTP\/1\.1 200 /);
   });
 });

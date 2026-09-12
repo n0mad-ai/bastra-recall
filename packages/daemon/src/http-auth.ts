@@ -38,15 +38,22 @@ export function safeEqual(a: string, b: string): boolean {
  * 127.0.0.1 umbiegt, schickt deren Hostname im Host-Header — aus Browser-
  * Sicht ist der Request dann same-origin, CORS greift nicht. Nur loopback-
  * Hosts werden bedient; BASTRA_ALLOWED_HOSTS (Komma-Liste) ist der Escape-
- * Hatch für Tunnel-Setups, die mehr als /api/v1/* exposen wollen. Fehlender
- * Host-Header (HTTP/1.0-CLIs) passiert — Rebinding trägt immer einen.
- * Exported for unit tests.
+ * Hatch für Tunnel-Setups, die mehr als /api/v1/* exposen wollen.
+ *
+ * #526: ein FEHLENDER Host-Header zählt NICHT als loopback. Browser-Rebinding
+ * trägt zwar immer einen, ein roher Port-Forwarder (socat, `ssh -L`, ein
+ * simpler TCP-Proxy) reicht den Request aber byte-genau weiter und ergänzt
+ * nichts — ein Angreifer, der den Tunnel erreicht, lässt den Header einfach
+ * weg und sah damit wie ein direkter lokaler Client aus. Kein Host heißt
+ * "nicht nachweislich direkt lokal". Jeder Client im Repo (undici-fetch im
+ * MCP-Forwarder, node:http im thin-client) setzt den Header selbst; HTTP/1.1
+ * verlangt ihn ohnehin. Exported for unit tests.
  */
 export function isLoopbackHost(
   hostHeader: string | undefined,
   extraHosts: readonly string[],
 ): boolean {
-  if (!hostHeader) return true;
+  if (!hostHeader) return false;
   const lower = hostHeader.toLowerCase();
   const host = lower.replace(/:\d+$/, "");
   if (host === "localhost" || host === "127.0.0.1" || host === "[::1]") {
