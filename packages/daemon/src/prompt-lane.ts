@@ -544,12 +544,20 @@ export async function runPromptLane(
   const reflexKept: PromptReflexHit[] = rawReflexHits.filter((h) => reflexKeptIds.has(h.id));
   const reflexIds = new Set(reflexKept.map((h) => h.id));
   let recallHits = filtered.filter((h) => !reflexIds.has(h.id));
-  // Semantic-reflex hits share the reflex lane's per-memory session dedup
-  // (zzalli's context-contamination report, 19.08.): the same wired
-  // convention must not re-inject on every drafting prompt of a session.
-  // 1× per 4h window, and an already-loaded memory never re-injects. The
-  // ordinary hint modes stay backoff-governed as before.
-  if (detectedMode === "none") {
+  // Per-memory session dedup for ordinary recall hits, in EVERY detected mode
+  // (#541). It started as the semantic-reflex guard of mode "none" (zzalli's
+  // context-contamination report, 19.08.): the same wired convention must not
+  // re-inject on every drafting prompt of a session. The other hint modes were
+  // left "backoff-governed as before" — but the backoff governs the source's
+  // cadence, not the repetition of one memory, and REQUIRED-band hits bypass it
+  // entirely. Measured over 2026-09-04→09-12: in `assertion` mode 811 first
+  // injections against 832 re-injections of text still standing in the same
+  // transcript, ~86k est. tokens, 10.4% of the whole context tax. Write lane
+  // and bash-pre lane apply this pair unconditionally and show 8.5% / 1.6%.
+  // #354's principle: a hint already in the transcript buys nothing by being
+  // repeated. Reset stays by signal — the load marker, and `clearShown` on
+  // compact/clear/resume — never by timer.
+  {
     const governed = governContext(
       await Promise.all(
         recallHits.map(async (h, i) => ({
@@ -656,10 +664,11 @@ export async function runPromptLane(
         recordSourceEmit(s, BACKOFF_SOURCE, recallIds, consumedForEmit);
       }
       for (const h of reflexKept) bumpShown(s, h.id);
-      // Semantic-reflex injections book the same shown-state — without this
-      // the dedup above has nothing to count and the block repeats every
-      // prompt.
-      if (detectedMode === "none" && recallBlock) {
+      // Every injected recall hit books the shown-state, in every mode (#541)
+      // — without this the dedup above has nothing to count and the block
+      // repeats on every qualifying prompt. Only what actually reached the
+      // transcript is booked: a suppressed emit leaves `recallBlock` null.
+      if (recallBlock) {
         for (const h of recallHits) bumpShown(s, h.id);
       }
     });

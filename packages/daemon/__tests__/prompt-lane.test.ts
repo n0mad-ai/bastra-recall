@@ -28,7 +28,12 @@ import {
   type PromptReflexHit,
   type RecallHit,
 } from "../src/prompt-lane.ts";
-import { decideBackoff, type SourceBackoff } from "../src/session-state.ts";
+import {
+  clearShown,
+  decideBackoff,
+  touchLoadedMarker,
+  type SourceBackoff,
+} from "../src/session-state.ts";
 
 // ─── Pure unit tests ─────────────────────────────────────────────────────
 
@@ -1179,6 +1184,105 @@ test("integration — P0: an unfused recall gets no REQUIRED bypass out of the b
       assert.doesNotMatch(ctx, /REQUIRED/, "a raw score must not be presented as a REQUIRED band");
       assert.doesNotMatch(ctx, /405584|405585/, "the raw number must not be shown as a comparable score");
     }
+  } finally {
+    await daemon.close();
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * #541: the per-session dedup used to be gated on `detectedMode === "none"`.
+ * Ordinary recall hits in every other mode were neither checked (`shouldDropHit`)
+ * nor booked (`bumpShown`), and the #161 backoff governs the SOURCE's cadence,
+ * not the repetition of one memory — a REQUIRED-band hit bypasses it entirely.
+ * Measured 2026-09-04→09-12: 811 first injections against 832 re-injections in
+ * `assertion` mode. The gate now runs in every mode, exactly as the write and
+ * bash-pre lanes have always run it.
+ */
+test("#541 — an assertion-mode hit injects once per session, and the reset signals still release it", async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), "bastra-541-"));
+  const daemon = await startMockDaemon((req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    if (req.url === "/hook/reflex") {
+      res.end('{"hits":[],"recall_id":null}');
+      return;
+    }
+    if (req.url === "/hook/hinted") {
+      res.end('{"ok":true}');
+      return;
+    }
+    res.end(
+      JSON.stringify({
+        hits: [
+          {
+            id: "milestone-status",
+            title: "v0.9 Milestone",
+            type: "project-fact",
+            scope: "bastra-recall",
+            summary: "Der Gate-Review läuft, 12 offene Issues.",
+            // REQUIRED band: bypasses the backoff, so ONLY the dedup can stop it.
+            score: 150,
+          },
+        ],
+        vault_size: 1,
+        latency_ms: 1,
+        recall_id: "x",
+      }),
+    );
+  });
+  try {
+    const sessionId = "s541-assertion";
+    const payload = {
+      hook_event_name: "UserPromptSubmit",
+      session_id: sessionId,
+      prompt: "wie ist der Stand beim v0.9 Milestone",
+      cwd: process.cwd(),
+    };
+    const env = {
+      BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
+      BASTRA_HOOK_STATE_DIR: stateDir,
+    };
+
+    const first = await runHook(payload, env);
+    assert.match(first.stdout, /milestone-status/, "the first assertion prompt injects");
+
+    for (let i = 0; i < 4; i++) {
+      const again = await runHook(payload, env);
+      assert.equal(
+        again.stdout.trim(),
+        "{}",
+        `re-injection ${i + 1}: the text still stands in the transcript`,
+      );
+    }
+
+    // The load marker still resets the counter — an agent that consumed the
+    // memory may see it again.
+    const prevDir = process.env.BASTRA_HOOK_STATE_DIR;
+    process.env.BASTRA_HOOK_STATE_DIR = stateDir;
+    try {
+      await touchLoadedMarker("milestone-status");
+    } finally {
+      if (prevDir === undefined) delete process.env.BASTRA_HOOK_STATE_DIR;
+      else process.env.BASTRA_HOOK_STATE_DIR = prevDir;
+    }
+    // The marker's mtime is a float ms; the re-show stamps an integer ms. Let
+    // the clock pass the marker so the follow-up assertion is about the dedup,
+    // not about a sub-millisecond tie.
+    await new Promise((r) => setTimeout(r, 5));
+    const afterMarker = await runHook(payload, env);
+    assert.match(afterMarker.stdout, /milestone-status/, "the load marker releases the hit");
+    assert.equal((await runHook(payload, env)).stdout.trim(), "{}", "…and only once");
+
+    // compact/clear/resume empties the transcript, so clearShown releases it.
+    process.env.BASTRA_HOOK_STATE_DIR = stateDir;
+    try {
+      await clearShown(sessionId);
+    } finally {
+      if (prevDir === undefined) delete process.env.BASTRA_HOOK_STATE_DIR;
+      else process.env.BASTRA_HOOK_STATE_DIR = prevDir;
+    }
+    const afterClear = await runHook(payload, env);
+    assert.match(afterClear.stdout, /milestone-status/, "clearShown releases the hit again");
   } finally {
     await daemon.close();
     await rm(stateDir, { recursive: true, force: true });
