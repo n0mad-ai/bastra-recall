@@ -43,8 +43,10 @@
  * loopback-only):
  *   - Wenn BASTRA_API_TOKEN gesetzt: Authorization: Bearer <token>
  *     erforderlich.
- *   - Loopback-Aufrufe (127.0.0.1) werden per Default ohne Token
- *     akzeptiert (BASTRA_AUTH_LOOPBACK_SKIP=0 erzwingt Token auch lokal).
+ *   - Token-frei per Default nur, wenn BEIDES loopback ist: der Peer-Socket
+ *     (127.0.0.1) UND der Host-Header (#526 — sonst erben DNS-Rebinding und
+ *     lokale Tunnel die Ausnahme vom Socket). BASTRA_AUTH_LOOPBACK_SKIP=0
+ *     erzwingt das Token auch lokal.
  *   - Ohne gesetzten Token läuft alles offen — dev/local mode.
  *
  * CORS (für /api/v1/*):
@@ -248,8 +250,8 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     );
   }
   // Zusätzliche Hosts für das Rebinding-Gate (Tunnel-Setups, die auch die
-  // loopback-only Endpoints exposen wollen). /api/v1/* braucht das nicht —
-  // dort schützt das Token.
+  // loopback-only Endpoints exposen wollen). Für /api/v1/* gilt die Liste
+  // NICHT (#526): dort darf ein fremder Host nur mit Token durch.
   const allowedHosts = (process.env.BASTRA_ALLOWED_HOSTS ?? "")
     .split(",")
     .map((s) => s.trim().toLowerCase())
@@ -632,6 +634,10 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
         reqOrigin,
         allowedOrigin,
         isLoopback: isLoopback(req),
+        // #526: no `allowedHosts` escape hatch here — a host that a tunnel
+        // operator exposes must still carry the token. Only a genuinely
+        // loopback Host proves this is a direct local client.
+        isLoopbackHost: isLoopbackHost(req.headers.host, []),
         authHeader: req.headers.authorization ?? "",
         apiToken,
         loopbackSkip,

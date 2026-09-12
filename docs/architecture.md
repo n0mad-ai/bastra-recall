@@ -226,7 +226,7 @@ The HTTP server binds to loopback only. Main endpoints:
 | `/api/v1/recategorize_document` | `POST` | gated document write |
 | `/api/v1/move_document` | `POST` | gated document write |
 
-If `BASTRA_API_TOKEN` is set, `/api/v1/*` requires `Authorization: Bearer <token>`. Loopback callers bypass auth by default; set `BASTRA_AUTH_LOOPBACK_SKIP=0` to require the token even locally.
+If `BASTRA_API_TOKEN` is set, `/api/v1/*` requires `Authorization: Bearer <token>`. Direct local callers bypass auth by default — the exemption needs a loopback peer socket **and** a loopback `Host` header, so DNS-rebound pages and local tunnels do not inherit it from the socket (#526). Set `BASTRA_AUTH_LOOPBACK_SKIP=0` to require the token even locally.
 
 CORS is deny-by-default: no browser origin is allowed until `BASTRA_CORS_ORIGIN` lists it (comma-separated). `BASTRA_CORS_ORIGIN=*` is an explicit permissive opt-in for tunnel/dev setups. When the calling site is served over HTTPS (public origin → localhost daemon), Chrome's Private Network Access preflight is answered automatically with `Access-Control-Allow-Private-Network: true` for allowed origins.
 

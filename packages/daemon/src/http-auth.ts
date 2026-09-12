@@ -102,13 +102,20 @@ export function resolveCorsOrigin(
  * token — even over loopback, because the user's browser runs on 127.0.0.1 and
  * is indistinguishable from the CLI by TCP source; only the Origin header tells
  * them apart. Local tools (CLI, MCP-forwarder) send no Origin and may stay
- * tokenless via loopback-skip. Returns the HTTP status to apply. Exported for
- * unit tests.
+ * tokenless via loopback-skip.
+ *
+ * #526: the tokenless skip needs BOTH a loopback peer AND a loopback Host. A
+ * same-origin GET carries no Origin header, so a DNS-rebound page on
+ * `attacker.example` — or a tunnel/reverse proxy fronting a public hostname —
+ * would otherwise inherit the exemption from the loopback socket underneath.
+ * A foreign Host stays usable for tunnels, but must carry the bearer token.
+ * Returns the HTTP status to apply. Exported for unit tests.
  */
 export function gateApiRequest(p: {
   reqOrigin: string | undefined;
   allowedOrigin: string | null;
   isLoopback: boolean;
+  isLoopbackHost: boolean;
   authHeader: string;
   apiToken: string;
   loopbackSkip: boolean;
@@ -119,7 +126,8 @@ export function gateApiRequest(p: {
     if (!p.apiToken || !safeEqual(p.authHeader, `Bearer ${p.apiToken}`)) return 401;
     return 200;
   }
-  if (p.apiToken && !(p.loopbackSkip && p.isLoopback)) {
+  const directLocal = p.isLoopback && p.isLoopbackHost;
+  if (p.apiToken && !(p.loopbackSkip && directLocal)) {
     if (!safeEqual(p.authHeader, `Bearer ${p.apiToken}`)) return 401;
   }
   return 200;
