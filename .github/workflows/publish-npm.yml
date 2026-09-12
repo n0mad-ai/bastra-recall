@@ -147,21 +147,15 @@ jobs:
       - run: npm run smoke
       - run: npm run pack:check
 
-      - name: Publish core
+      # #524: one resumable step instead of four independent `npm publish`
+      # calls. npm versions are immutable, so a failure in the old third step
+      # left core+statusline on the registry and the rerun died on core before
+      # it ever reached the daemon. The script preflights every target version,
+      # skips a package only after verifying the published artifact IS this
+      # release, and keeps the unscoped wrapper last.
+      - name: Publish the release set (resumable)
         if: ${{ github.event_name == 'release' || inputs.dry_run == 'false' }}
-        run: npm publish --workspace=@bastra-recall/core --access public --provenance --tag latest
-
-      - name: Publish statusline
-        if: ${{ github.event_name == 'release' || inputs.dry_run == 'false' }}
-        run: npm publish --workspace=@bastra-recall/statusline --access public --provenance --tag latest
-
-      - name: Publish daemon
-        if: ${{ github.event_name == 'release' || inputs.dry_run == 'false' }}
-        run: npm publish --workspace=@bastra-recall/daemon --access public --provenance --tag latest
-
-      - name: Publish bastra-recall (unscoped wrapper)
-        if: ${{ github.event_name == 'release' || inputs.dry_run == 'false' }}
-        run: npm publish --workspace=bastra-recall --access public --provenance --tag latest
+        run: node scripts/publish-release-set.mjs
 
   desktop-extension:
     # Claude Desktop Extension (.mcpb): built from the SAME checkout the npm
@@ -225,4 +219,64 @@ jobs:
             "distribution/Install Bastra.command" \
             "distribution/Uninstall Bastra.command" \
             --clobber
+
+  promote:
+    # #524: the atomic gate. A release used to be fully public the moment it was
+    # created — `/releases/latest` moved immediately, while npm and the three
+    # independent asset jobs were still running. The Homebrew tap updater and
+    # both one-click installers read `/releases/latest`, and the installers pull
+    # `bastra-recall@latest` from npm, so a user opening a brand-new 1.0 page
+    # could be handed the OLD npm packages.
+    #
+    # `scripts/bump.mjs` now stages a stable release with `--latest=false`. The
+    # tag and page exist so every job above has something to build and attach
+    # to, but the source the tap and the installers consume does not move until
+    # this job has verified the complete set: four npm versions on the registry
+    # AND tagged `latest`, plus every required release asset. Only then does the
+    # release become Latest.
+    if: ${{ github.event_name == 'release' }}
+    needs: [stub, publish, desktop-extension, installer-scripts]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22.14"
+      - name: Verify every npm package of the set is published and on `latest`
+        run: node scripts/publish-release-set.mjs --verify
+      - name: Verify every required release asset is attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          names="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+          printf '%s\n' "$names"
+          missing=0
+          # GitHub normalizes the spaces in the .command names to dots.
+          for want in \
+            bastra-hook-x86_64-unknown-linux-gnu \
+            bastra-hook-aarch64-unknown-linux-gnu \
+            bastra-hook-x86_64-apple-darwin \
+            bastra-hook-aarch64-apple-darwin \
+            bastra-hook-x86_64-unknown-linux-gnu.sha256 \
+            bastra-hook-aarch64-unknown-linux-gnu.sha256 \
+            bastra-hook-x86_64-apple-darwin.sha256 \
+            bastra-hook-aarch64-apple-darwin.sha256 \
+            Install.Bastra.command \
+            Uninstall.Bastra.command
+          do
+            printf '%s\n' "$names" | grep -qxF "$want" || { echo "missing asset: $want"; missing=1; }
+          done
+          printf '%s\n' "$names" | grep -q '\.mcpb$' || { echo "missing asset: *.mcpb"; missing=1; }
+          printf '%s\n' "$names" | grep -q '\.mcpb\.sha256$' || { echo "missing asset: *.mcpb.sha256"; missing=1; }
+          test "$missing" -eq 0
+      - name: Promote — move /releases/latest onto this release
+        # A prerelease deliberately never becomes Latest; nothing to promote.
+        if: ${{ !github.event.release.prerelease }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release edit "$TAG" --latest
 

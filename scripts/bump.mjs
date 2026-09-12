@@ -124,15 +124,47 @@ for (const relPath of GUARDED_SOURCES) {
   }
 }
 
-// 4) Report.
+// 4) The release handoff (#524).
+//
+// This used to end in `gh release create … --prerelease` for every version,
+// stable ones included. That is the one release kind that keeps the primary
+// non-developer install path stale: the publish workflow publishes npm under
+// `latest` on any release, while the Homebrew tap updater and the one-click
+// installers read GitHub `/releases/latest`, which excludes prereleases.
+// Following the printed command for 1.0.0 would have shipped npm 1.0.0 while
+// Homebrew and the Finder installer stayed on 0.9.2.
+//
+// So the flag now follows the semver: `--prerelease` only when the version
+// itself has a prerelease component. A stable release is instead STAGED with
+// `--latest=false`: the page and its tag exist so the workflow can build,
+// publish and attach the whole set, but `/releases/latest` — the source the tap
+// updater consumes — only moves in the workflow's `promote` job, after every
+// npm version and every required asset has been verified. Until then a user
+// opening the tap or the installer still gets the previous, coherent release
+// rather than a 1.0 page whose npm packages are half-published.
+const isPrerelease = version.includes("-");
+const releaseCmd = isPrerelease
+  ? `gh release create v${version} --prerelease --generate-notes`
+  : `gh release create v${version} --generate-notes --latest=false`;
+const stagingNote = isPrerelease
+  ? "  # a prerelease never becomes /releases/latest, so the tap stays where it is"
+  : "  # staged: `promote` moves /releases/latest once the whole set is verified";
+
+function printHandoff() {
+  console.log(
+    `\nNext:\n  npm install            # refresh package-lock\n` +
+      `  git commit -am "release: v${version}"\n` +
+      `  ${releaseCmd}\n${stagingNote}`,
+  );
+}
+
+// 5) Report.
 if (changes.length === 0) {
   console.log(`Nothing to change — everything is already at ${version}.`);
 } else {
   console.log(`${dryRun ? "[dry-run] would apply" : "applied"} ${changes.length} change(s):`);
   for (const c of changes) console.log("  " + c);
-  if (!dryRun) {
-    console.log(
-      `\nNext:\n  npm install            # refresh package-lock\n  git commit -am "release: v${version}"\n  gh release create v${version} --prerelease --generate-notes`,
-    );
-  }
 }
+// Printed in dry-run too: the handoff is the part that was wrong, and a
+// rehearsal that hides it cannot catch it again.
+printHandoff();
