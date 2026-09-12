@@ -41,6 +41,21 @@ registered_surfaces() {
     || true
 }
 
+# The version of the CLI that is actually installed right now (#535). Empty when
+# no bastra is on PATH — the caller decides what that means.
+installed_cli_version() {
+  bastra --version </dev/null 2>/dev/null | tr -d '[:space:]' || true
+}
+
+# The version Homebrew would install, per the tap (#535): `brew outdated
+# --verbose` prints `bastra-recall (0.9.2) < 1.0.0` and nothing at all when the
+# installed keg is already current. Empty means "could not be determined" —
+# best effort, never a reason to fail on its own.
+expected_release_version() {
+  brew outdated --verbose bastra-recall </dev/null 2>/dev/null \
+    | sed -n 's/.*< *//p' | head -1 | tr -d '[:space:]'
+}
+
 main() {
   echo
   echo "════════════════════════════════════════════════════════════"
@@ -98,19 +113,52 @@ main() {
   brew trust n0mad-ai/tap </dev/null 2>/dev/null || true
 
   # 3/4 Install / upgrade
+  upgrade_incomplete=0
+  version_after=""
   if brew list bastra-recall >/dev/null 2>&1 </dev/null; then
     echo "→ [3/4] bastra-recall already installed — checking for updates…"
+    version_before="$(installed_cli_version)"
+    expected_version="$(expected_release_version)"
     # Non-fatal under `set -e`: a transient upgrade failure (network/tap) must not
-    # abort before the friendly error block below — registration can still proceed
-    # on the already-installed version.
+    # abort before the friendly error block below — the old install keeps working
+    # and stays registered exactly as it was.
     upgrade_rc=0
     brew upgrade bastra-recall </dev/null || upgrade_rc=$?
+    version_after="$(installed_cli_version)"
+    # #535: a failed upgrade used to fall through into setup/doctor and then
+    # print the normal ✓ Done banner, so a user arriving from the 1.0 page could
+    # be told the install succeeded while still running 0.9.x. The old
+    # installation is still worth keeping — but this run did not do what it said,
+    # so it ends in its own incomplete state below instead of re-registering
+    # anything as if the new release had landed.
     if [ "$upgrade_rc" -ne 0 ]; then
-      echo "  ⚠ upgrade failed (rc=$upgrade_rc) — continuing with the installed version."
+      echo "  ⚠ upgrade failed (rc=$upgrade_rc) — keeping the working ${version_before:-installed} version."
+      upgrade_incomplete=1
+    elif [ -n "$expected_version" ] && [ -n "$version_after" ] && [ "$version_after" != "$expected_version" ]; then
+      echo "  ⚠ upgrade reported success but the installed version is ${version_after}, not ${expected_version}."
+      upgrade_incomplete=1
     fi
   else
     echo "→ [3/4] Installing bastra-recall…"
     brew install n0mad-ai/tap/bastra-recall </dev/null
+  fi
+
+  # #535: stop before step 4. Re-running the guided setup here would re-point
+  # registrations and restart services as if the requested version were
+  # installed — it is not.
+  if [ "$upgrade_incomplete" -ne 0 ]; then
+    echo
+    echo "════════════════════════════════════════════════════════════"
+    echo "  ✗ Update incomplete — still on ${version_after:-the previously installed version}."
+    echo
+    echo "  Your working installation was left untouched and setup was"
+    echo "  NOT re-run, so nothing points at a version that never landed."
+    echo
+    echo "  Try again with:"
+    echo "    brew update && brew upgrade bastra-recall"
+    echo "    bastra install"
+    echo "════════════════════════════════════════════════════════════"
+    exit 1
   fi
 
   # 4/4 Guided setup — the wizard refuses to run on a non-TTY, and under
