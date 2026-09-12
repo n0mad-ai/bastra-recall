@@ -27,7 +27,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsdown",
+    "build": "tsdown && node ../../scripts/write-build-revision.mjs dist",
     "check:types": "tsc --noEmit"
   },
   "devDependencies": {

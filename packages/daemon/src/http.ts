@@ -78,6 +78,7 @@ import { runBashFailLane, type BashFailPayload } from "./bash-fail-lane.js";
 import { dispatchLaneRoutes } from "./http-lane-routes.js";
 import { computeHeat, computeReach, readUsage } from "./usage-sidecar.js";
 import { buildHealthPayload } from "./http-health.js";
+import { ownBuildStamp } from "./build-stamp.js";
 import { createStalenessMonitor, defaultStalenessIo } from "./code-staleness.js";
 import { distinctiveTokensForActedOn, type ToolDeps } from "./tool-handlers.js";
 import { getUpdateState } from "./update-check.js";
@@ -269,6 +270,10 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
   // throttle window old on the door where it is actually read.
   const staleness = createStalenessMonitor(version, defaultStalenessIo());
 
+  // #528 — read once: the build this process runs from cannot change while it
+  // runs, and /health is polled about once a second by the statusline.
+  const buildRevision = ownBuildStamp()?.revision ?? null;
+
   /** Reachability + vault size, shared by /health and /api/v1/health. */
   const healthPayload = (): Record<string, unknown> =>
     buildHealthPayload({
@@ -280,6 +285,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
       updateState: getUpdateState,
       startedAtMs,
       codeStale: () => staleness.check(),
+      buildRevision,
     });
 
   /** Liveness probes, on both doors — they must not count as activity. */

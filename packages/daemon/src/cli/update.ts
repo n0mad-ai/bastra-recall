@@ -14,8 +14,10 @@ import {
   describeSourceBuild,
   gitRootFor,
   inspectSourceBuild,
+  provenRevision,
   type SourceBuildState,
 } from "./source-build.js";
+import { describeLiveRevision, liveRevisionOfDaemon } from "./live-revision.js";
 import { clearBlockedUpdate, recordBlockedUpdate } from "../update-blocked.js";
 import type { ParsedArgs } from "./types.js";
 
@@ -197,7 +199,9 @@ function packageVersion(root: string): string | null {
 /** #528 — build state of the checkout this CLI is running from. */
 export function sourceBuildState(cliPath: string): SourceBuildState {
   const root = gitRootFor(cliPath);
-  if (!root) return decideSourceBuild({ newestSourceMs: null, newestBuildMs: null, revision: null });
+  if (!root) {
+    return decideSourceBuild({ newestSourceMs: null, newestBuildMs: null, head: null, built: null });
+  }
   return inspectSourceBuild(root, findExecutable("git"));
 }
 
@@ -206,23 +210,23 @@ export function sourceBuildState(cliPath: string): SourceBuildState {
  *
  * `rc` 1 means the caller returns immediately — nothing is re-registered and
  * the daemon is not restarted, so a checkout that was pulled but never built
- * cannot end up pinned across every surface. `revision` is what the closing
- * line names as live.
+ * cannot end up pinned across every surface. `state` carries what may be
+ * claimed afterwards — see provenRevision() in source-build.ts.
  */
 export function verifySourceCheckout(
   cliPath: string,
   rebuild: string,
   write: (s: string) => void,
-): { rc: number; revision: string | null } {
+): { rc: number; state: SourceBuildState } {
   write("→ source checkout — verifying the build (nothing is pulled, installed or built here)\n");
   const state = sourceBuildState(cliPath);
   write(describeSourceBuild(state, rebuild));
   if (!state.ok) {
     write("\n  Nothing was re-registered and the daemon was left alone.\n");
-    return { rc: 1, revision: state.revision };
+    return { rc: 1, state };
   }
   write("\n");
-  return { rc: 0, revision: state.revision };
+  return { rc: 0, state };
 }
 
 function installedVersion(root: string): string {
@@ -383,9 +387,9 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
     process.stdout.write("  and gone from the next version's point of view. Keep local patches outside the keg.\n\n");
   }
 
-  // #528 — set by the source branch below; named in the closing line so the
-  // success message says which revision actually went live.
-  let sourceRevision: string | null = null;
+  // #528 — set by the source branch below. The closing line may only name a
+  // revision this state PROVED, and only once the daemon confirms it serves it.
+  let sourceState: SourceBuildState | null = null;
 
   // 1. Update the binary itself
   // Resolved absolute paths + hard timeouts (#91): the staged path runs
@@ -434,7 +438,7 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
     // stale tree ends here: no re-registration, no restart, exit 1.
     const verdict = verifySourceCheckout(mode.cliPath, mode.updateCommand, (s) => process.stdout.write(s));
     if (verdict.rc !== 0) return verdict.rc;
-    sourceRevision = verdict.revision;
+    sourceState = verdict.state;
   } else {
     process.stdout.write("⚠ install mode unknown — install manually from:\n");
     process.stdout.write(`    ${mode.updateCommand}\n\n`);
@@ -619,17 +623,28 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
       else process.stdout.write("  ✗ kickstart failed — restart the daemon manually\n\n");
     }
   } else {
-    process.stdout.write("  no LaunchAgent registered — running daemon (if any) still holds the old code in memory\n");
-    process.stdout.write("  Restart it manually:\n");
+    // #528 — no claim about what is in memory here: this branch cannot restart
+    // anything, so what a running daemon holds is asked below, not guessed.
+    process.stdout.write("  no LaunchAgent registered — nothing here can restart a running daemon\n");
+    process.stdout.write("  Restart it manually if the check below says it is needed:\n");
     process.stdout.write("    lsof -i :6723             # find the daemon pid\n");
     process.stdout.write("    kill <pid>                 # forwarder respawns it with new code on next call\n\n");
   }
 
+  // #528 — the closing line and the restart report have to tell one story. In
+  // source mode the daemon itself is asked which build it serves; in every
+  // other mode there is no local revision to compare against and the line stays
+  // the plain one.
+  if (sourceState !== null) {
+    const { verdict, daemonRevision } = await liveRevisionOfDaemon(provenRevision(sourceState));
+    const said = describeLiveRevision(verdict, { state: sourceState, daemonRevision });
+    process.stdout.write(said.report);
+    process.stdout.write(said.closing);
+    return 0;
+  }
+
   process.stdout.write(
-    sourceRevision
-      ? `→ done — live from this checkout's verified build (HEAD ${sourceRevision}). ` +
-        "Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\n"
-      : "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\n",
+    "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\n",
   );
   return 0;
 }

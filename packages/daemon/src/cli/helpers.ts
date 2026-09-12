@@ -338,6 +338,14 @@ export interface DaemonProbe {
   embeddingSource?: string;
   /** Last provider error when semanticRecall === "degraded" (#92). */
   embeddingError?: string;
+  /**
+   * Full commit sha the RUNNING daemon's build was produced from (#528). This
+   * is the only proof of which revision is live: `version` is shared by every
+   * build of a release, and the disk can have moved on since this process
+   * started. Absent from a daemon older than the field, and from one started
+   * from source via tsx — "not proven" rather than "mismatch".
+   */
+  buildRevision?: string;
 }
 
 export function probeDaemon(): Promise<DaemonProbe> {
@@ -358,6 +366,7 @@ export function probeDaemon(): Promise<DaemonProbe> {
               embeddingMode: data.embedding_mode,
               embeddingSource: data.embedding_source,
               embeddingError: data.embedding_error,
+              buildRevision: typeof data.build_revision === "string" ? data.build_revision : undefined,
             });
             return;
           }
