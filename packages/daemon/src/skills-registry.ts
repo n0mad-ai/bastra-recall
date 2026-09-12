@@ -17,6 +17,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SkillRef } from "@bastra-recall/core";
+import { withPathLock } from "./path-lock.js";
 import { sendJsonPlain } from "./webui.js";
 import { getUiEnabled } from "./settings.js";
 
@@ -72,7 +73,26 @@ async function writeRegistry(entries: SkillEntry[], path: string): Promise<void>
   await rename(tmp, path);
 }
 
-/** Adds (or updates, upsert by id) a declared skill. */
+/**
+ * Adds (or updates, upsert by id) a declared skill.
+ *
+ * #533: this repeated the read-modify-write race #240/A9 fixed for floors.
+ * Concurrent calls all read the same snapshot, all returned their entry as a
+ * success, and the last rename left one arbitrary winner — measured, 40 unique
+ * adds reported 40 successes and persisted 1. `MAX_SKILLS` was defeated the
+ * same way, because every read saw the same stale registry.
+ *
+ * Serialised on the shared per-path lock (path-lock.ts), so the snapshot, the
+ * cap check and the rename are one step: the cap is enforced against the
+ * DURABLE state, and the returned entry is in the persisted union by the time
+ * the promise resolves.
+ *
+ * CROSS-PROCESS, not just in-process: this file really does have a second
+ * writer. `bastra skills add|remove` (cli/skills-cmd.ts) writes
+ * ~/.bastra/skills.json from the CLI process, while the daemon writes it from
+ * `POST /ui/skills` — the map's "mark as skill" button. A promise chain inside
+ * one process cannot see the other, so both mutations take the lock file too.
+ */
 export async function addSkill(
   input: { id: string; label?: string; note?: string },
   path: string = skillsFilePath(),
@@ -86,21 +106,27 @@ export async function addSkill(
   }
   const label = input.label?.trim();
   const note = input.note?.trim();
-  const entries = await readRegistry(path);
-  const existing = entries.findIndex((e) => e.id === id);
-  if (existing === -1 && entries.length >= MAX_SKILLS) {
-    throw new Error(`skills cap reached (${MAX_SKILLS}) — remove one first: bastra skills remove <id>`);
-  }
-  const entry: SkillEntry = {
-    id,
-    ...(label ? { label } : {}),
-    ...(note ? { note } : {}),
-    added_at: existing >= 0 ? entries[existing].added_at : new Date().toISOString(),
-  };
-  if (existing >= 0) entries[existing] = entry;
-  else entries.push(entry);
-  await writeRegistry(entries, path);
-  return entry;
+  return withPathLock(
+    path,
+    async () => {
+      const entries = await readRegistry(path);
+      const existing = entries.findIndex((e) => e.id === id);
+      if (existing === -1 && entries.length >= MAX_SKILLS) {
+        throw new Error(`skills cap reached (${MAX_SKILLS}) — remove one first: bastra skills remove <id>`);
+      }
+      const entry: SkillEntry = {
+        id,
+        ...(label ? { label } : {}),
+        ...(note ? { note } : {}),
+        added_at: existing >= 0 ? entries[existing].added_at : new Date().toISOString(),
+      };
+      if (existing >= 0) entries[existing] = entry;
+      else entries.push(entry);
+      await writeRegistry(entries, path);
+      return entry;
+    },
+    { crossProcess: true },
+  );
 }
 
 /** Removes a declared skill; returns whether it existed. The node drops back
@@ -108,11 +134,17 @@ export async function addSkill(
 export async function removeSkill(id: string, path: string = skillsFilePath()): Promise<boolean> {
   const target = id?.trim() ?? "";
   if (!target) throw new Error("id is required");
-  const entries = await readRegistry(path);
-  const next = entries.filter((e) => e.id !== target);
-  if (next.length === entries.length) return false;
-  await writeRegistry(next, path);
-  return true;
+  return withPathLock(
+    path,
+    async () => {
+      const entries = await readRegistry(path);
+      const next = entries.filter((e) => e.id !== target);
+      if (next.length === entries.length) return false;
+      await writeRegistry(next, path);
+      return true;
+    },
+    { crossProcess: true },
+  );
 }
 
 export async function listSkills(path: string = skillsFilePath()): Promise<SkillEntry[]> {
