@@ -9,6 +9,13 @@ import { VERSION } from "./helpers.js";
 import { buildManifest, formatPreflight, preflight, writeManifest } from "./update-preflight.js";
 import { activePatches, applySeries, formatApplyOutcome, writeLastRun } from "../patch-registry.js";
 import { isEphemeralInstallPath } from "./stable-runtime.js";
+import {
+  decideSourceBuild,
+  describeSourceBuild,
+  gitRootFor,
+  inspectSourceBuild,
+  type SourceBuildState,
+} from "./source-build.js";
 import { clearBlockedUpdate, recordBlockedUpdate } from "../update-blocked.js";
 import type { ParsedArgs } from "./types.js";
 
@@ -185,6 +192,37 @@ function installedVersion(root: string): string {
   }
 }
 
+/** #528 — build state of the checkout this CLI is running from. */
+export function sourceBuildState(cliPath: string): SourceBuildState {
+  const root = gitRootFor(cliPath);
+  if (!root) return decideSourceBuild({ newestSourceMs: null, newestBuildMs: null, revision: null });
+  return inspectSourceBuild(root, findExecutable("git"));
+}
+
+/**
+ * #528 — the whole source-mode "install" step: verify, and refuse to go on.
+ *
+ * `rc` 1 means the caller returns immediately — nothing is re-registered and
+ * the daemon is not restarted, so a checkout that was pulled but never built
+ * cannot end up pinned across every surface. `revision` is what the closing
+ * line names as live.
+ */
+export function verifySourceCheckout(
+  cliPath: string,
+  rebuild: string,
+  write: (s: string) => void,
+): { rc: number; revision: string | null } {
+  write("→ source checkout — verifying the build (nothing is pulled, installed or built here)\n");
+  const state = sourceBuildState(cliPath);
+  write(describeSourceBuild(state, rebuild));
+  if (!state.ok) {
+    write("\n  Nothing was re-registered and the daemon was left alone.\n");
+    return { rc: 1, revision: state.revision };
+  }
+  write("\n");
+  return { rc: 0, revision: state.revision };
+}
+
 function launchAgentPresent(uid: string): boolean {
   const r = spawnSync("/bin/launchctl", ["print", `gui/${uid}/${LAUNCH_AGENT_LABEL}`], { stdio: "pipe", timeout: 15_000 });
   return r.status === 0;
@@ -211,7 +249,11 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
   if (args.dryRun) {
     process.stdout.write("(dry-run — describing what would happen, writing nothing)\n\n");
     process.stdout.write(`→ install source: ${mode.mode}\n`);
-    process.stdout.write(`  update command: ${mode.updateCommand}\n\n`);
+    process.stdout.write(
+      mode.mode === "source"
+        ? `  rebuild command (yours to run, never run by 'bastra update'): ${mode.updateCommand}\n\n`
+        : `  update command: ${mode.updateCommand}\n\n`,
+    );
     if (preflightSupported) {
       process.stdout.write("  would: 0) preflight: back up locally modified files, then refuse or proceed\n");
       const pending = activePatches();
@@ -227,7 +269,17 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
         "            Cellar directory, so there is no in-place file to modify or back up\n",
       );
     }
-    process.stdout.write("  would: 1) run the update command above\n");
+    // #528 — the plan has to be the action. Only brew/npm-global actually run
+    // an update command here; source and unknown never did, however confidently
+    // the old text said "would: run the update command above".
+    if (runsInstaller) {
+      process.stdout.write("  would: 1) run the update command above\n");
+    } else if (mode.mode === "source") {
+      process.stdout.write("  would: 1) verify this checkout's build is current, and stop here if it is not\n");
+      process.stdout.write("            (no pull, no install, no build — 'bastra update' never runs those)\n");
+    } else {
+      process.stdout.write("  would: 1) install nothing — the install mode is unknown\n");
+    }
     process.stdout.write("         2) re-register every surface (idempotent)\n");
     process.stdout.write(
       args.staged
@@ -277,6 +329,10 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
     process.stdout.write("  and gone from the next version's point of view. Keep local patches outside the keg.\n\n");
   }
 
+  // #528 — set by the source branch below; named in the closing line so the
+  // success message says which revision actually went live.
+  let sourceRevision: string | null = null;
+
   // 1. Update the binary itself
   // Resolved absolute paths + hard timeouts (#91): the staged path runs
   // unattended from the SessionStart hook (detached, stdio:"ignore"), so a
@@ -318,9 +374,13 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
     }
     process.stdout.write("\n");
   } else if (mode.mode === "source") {
-    process.stdout.write("→ source install — rebuild yourself first if you haven't:\n");
-    process.stdout.write(`    cd <bastra-recall> && ${mode.updateCommand}\n`);
-    process.stdout.write("  Then re-run 'bastra update' to refresh configs + restart the daemon.\n\n");
+    // #528 — this branch installs nothing (see source-build.ts for why), so the
+    // one thing it owes the user is certainty that what gets re-registered and
+    // restarted is the code that is actually in this checkout. An unbuilt or
+    // stale tree ends here: no re-registration, no restart, exit 1.
+    const verdict = verifySourceCheckout(mode.cliPath, mode.updateCommand, (s) => process.stdout.write(s));
+    if (verdict.rc !== 0) return verdict.rc;
+    sourceRevision = verdict.revision;
   } else {
     process.stdout.write("⚠ install mode unknown — install manually from:\n");
     process.stdout.write(`    ${mode.updateCommand}\n\n`);
@@ -494,6 +554,11 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
     process.stdout.write("    kill <pid>                 # forwarder respawns it with new code on next call\n\n");
   }
 
-  process.stdout.write("→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\n");
+  process.stdout.write(
+    sourceRevision
+      ? `→ done — live from this checkout's verified build (HEAD ${sourceRevision}). ` +
+        "Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\n"
+      : "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\n",
+  );
   return 0;
 }
