@@ -10,8 +10,10 @@
  * konsumiert die Datei.
  */
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { withPathLock } from "./path-lock.js";
 
 export interface PendingSuggestion {
   ts: number;
@@ -19,32 +21,91 @@ export interface PendingSuggestion {
 }
 
 const MAX_ENTRIES = 5;
+
+/**
+ * Bound on the lost-write diagnostics (#532). A relay that swallows losses is
+ * the actual bug: 40 overlapping writes persisted ONE entry and nothing said
+ * so. Losing an entry must be visible somewhere, but a Stop hook must never
+ * turn a bad day into a wall of stderr — so only the first few of a relay
+ * cycle are reported. The budget resets on consume: one write-many →
+ * consume-once cycle gets its own notices, a later cycle is not muted by an
+ * earlier bad one.
+ */
+const MAX_LOSS_DIAGNOSTICS = 5;
+let lossDiagnostics = 0;
+
+function reportLoss(detail: string): void {
+  if (lossDiagnostics >= MAX_LOSS_DIAGNOSTICS) return;
+  lossDiagnostics++;
+  const tail = lossDiagnostics === MAX_LOSS_DIAGNOSTICS ? " (further notices suppressed)" : "";
+  process.stderr.write(`[bastra-recall] pending suggestions: ${detail}${tail}\n`);
+}
+
 export const PENDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function pendingSuggestionsPath(): string {
   return process.env.BASTRA_PENDING_SUGGESTIONS_PATH ?? join(homedir(), ".bastra", "pending-suggestions.json");
 }
 
-/** Append (capped, atomic). Best-effort — never throws. */
+/**
+ * Append (capped, atomic). Best-effort — never throws.
+ *
+ * #532: this was an UNLOCKED read-modify-write on one shared file, the same
+ * bug #240/A9 fixed for the floor registry. Overlapping Stop-hook and curator
+ * writes all read the same snapshot and the last rename won; measured, 40
+ * concurrent unique writes left exactly ONE entry, well inside the documented
+ * five-entry cap, and every call returned normally. The temp name was only
+ * PID-scoped on top of that, so two writes in the same daemon shared it.
+ *
+ * Fix: the shared per-path lock (path-lock.ts) plus an operation-unique temp
+ * name. Serialising costs nothing the hook can feel — the file holds at most
+ * five short entries and one write is a read plus a rename — and the hook
+ * stays non-blocking because the Stop lane already awaits this off the
+ * session's critical path.
+ *
+ * In-process only, deliberately: every writer and the consumer live in the
+ * daemon. `writePendingSuggestion` is called from stop-lane.ts and
+ * curator-run.ts, `consumePendingSuggestions` from session-lane.ts, and all
+ * three lanes are reached exclusively through the daemon's HTTP routes
+ * (http-lane-routes.ts, daemon-jobs.ts) — the hook CLI (hook.ts) is a thin
+ * client that POSTs and never imports a lane. So there is no second process to
+ * lock against, and the relay does not pay for a lock file it has no writer
+ * for. If a lane ever runs in the hook process (the local fallback #346
+ * sketches), this call gains `{ crossProcess: true }` and nothing else.
+ */
 export async function writePendingSuggestion(blocks: string): Promise<void> {
+  const path = pendingSuggestionsPath();
   try {
-    const path = pendingSuggestionsPath();
-    await mkdir(dirname(path), { recursive: true });
-    let entries: PendingSuggestion[] = [];
-    try {
-      const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
-      if (Array.isArray(parsed)) entries = parsed as PendingSuggestion[];
-    } catch {
-      /* missing/corrupt → start fresh */
-    }
-    const dup = entries.find((e) => e.blocks === blocks);
-    if (dup) dup.ts = Date.now();
-    else entries.push({ ts: Date.now(), blocks });
-    const tmp = `${path}.${process.pid}.tmp`;
-    await writeFile(tmp, JSON.stringify(entries.slice(-MAX_ENTRIES)), "utf8");
-    await rename(tmp, path);
-  } catch {
-    /* relay is best-effort — never break the Stop hook */
+    await withPathLock(path, async () => {
+      await mkdir(dirname(path), { recursive: true });
+      let entries: PendingSuggestion[] = [];
+      try {
+        const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+        if (Array.isArray(parsed)) entries = parsed as PendingSuggestion[];
+      } catch {
+        /* missing/corrupt → start fresh */
+      }
+      const dup = entries.find((e) => e.blocks === blocks);
+      if (dup) dup.ts = Date.now();
+      else entries.push({ ts: Date.now(), blocks });
+      const kept = entries.slice(-MAX_ENTRIES);
+      // Dropping the oldest is the documented contract, not a bug — but it IS
+      // a durable loss, so it gets a line instead of happening in silence.
+      const droppedAtCap = entries.length - kept.length;
+      if (droppedAtCap > 0) {
+        reportLoss(
+          `${droppedAtCap} oldest ${droppedAtCap === 1 ? "entry" : "entries"} dropped ` +
+            `at the ${MAX_ENTRIES}-entry cap`,
+        );
+      }
+      const tmp = `${path}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
+      await writeFile(tmp, JSON.stringify(kept), "utf8");
+      await rename(tmp, path);
+    });
+  } catch (e) {
+    // The relay stays best-effort — never break the Stop hook — but a write
+    // that failed outright is a lost suggestion and must not be invisible.
+    reportLoss(`write failed (${(e as Error).message}) — one suggestion lost`);
   }
 }
 
@@ -129,16 +190,26 @@ export function formatPendingBlock(entries: PendingSuggestion[]): string {
   return lines.join("\n") + "\n" + foot;
 }
 
-/** Read fresh entries and delete the file (consume-once). Never throws. */
+/**
+ * Read fresh entries and delete the file (consume-once). Never throws.
+ *
+ * #532: read and unlink run under the SAME per-path lock as the writers, so a
+ * session start can no longer unlink a set that a writer published between its
+ * own read and its unlink — that suggestion would have been destroyed without
+ * ever being shown.
+ */
 export async function consumePendingSuggestions(now: number = Date.now()): Promise<PendingSuggestion[]> {
   const path = pendingSuggestionsPath();
   try {
-    const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
-    await unlink(path).catch(() => {});
-    if (!Array.isArray(parsed)) return [];
-    return (parsed as PendingSuggestion[]).filter(
-      (e) => typeof e?.blocks === "string" && typeof e?.ts === "number" && now - e.ts <= PENDING_MAX_AGE_MS,
-    );
+    return await withPathLock(path, async () => {
+      const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+      await unlink(path).catch(() => {});
+      lossDiagnostics = 0;
+      if (!Array.isArray(parsed)) return [];
+      return (parsed as PendingSuggestion[]).filter(
+        (e) => typeof e?.blocks === "string" && typeof e?.ts === "number" && now - e.ts <= PENDING_MAX_AGE_MS,
+      );
+    });
   } catch {
     return [];
   }
