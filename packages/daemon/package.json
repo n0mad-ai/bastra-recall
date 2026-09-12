@@ -46,6 +46,7 @@
     "test": "node --import tsx --import ../../scripts/test-env.mjs --test __tests__/*.test.ts",
     "smoke": "tsx scripts/smoke.ts",
     "smoke:telemetry": "tsx scripts/telemetry-smoke.ts",
+    "stress:save62": "node --import tsx scripts/stress-save-62.mjs",
     "backfill:related": "tsx scripts/backfill-related.ts",
     "cues:batch": "tsx scripts/cue-batch.ts",
     "eval:robust": "tsx scripts/eval-stress.ts --slice all",

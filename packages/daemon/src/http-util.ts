@@ -66,23 +66,51 @@ export function sendJson(res: ServerResponse, status: number, body: unknown): vo
   res.end(payload);
 }
 
+/**
+ * #62: an oversized body used to `req.destroy()` the socket the instant the
+ * cap was crossed. The route's own `.catch(…)` then wrote a 400 into a socket
+ * that no longer existed, so the caller never saw ANY response — only a
+ * transport-level "other side closed". On the forwarder path that surfaces as
+ * `daemon unreachable at http://127.0.0.1:6723: fetch failed`, and
+ * `callDaemon` even retries the identical oversized payload once before
+ * giving up. A long `save_memory` therefore died with a message blaming a
+ * daemon that was demonstrably healthy — measured: `/health` answered 200 the
+ * same second.
+ *
+ * So the socket stays open. Everything already buffered is dropped, the
+ * promise rejects with a message that names the real cause, and the rest of
+ * the upload is drained into nothing (`chunks` is never appended to again), so
+ * refusing a large body still costs bounded memory. The route writes its
+ * normal JSON error, and the caller learns that the body was too long instead
+ * of that the daemon was gone.
+ */
 export function readJsonBody(
   req: IncomingMessage,
   maxBytes: number,
 ): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     let total = 0;
+    let refused = false;
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => {
+      if (refused) return; // draining — the verdict is already out
       total += chunk.length;
       if (total > maxBytes) {
-        reject(new Error(`body too large (>${maxBytes} bytes)`));
-        req.destroy();
+        refused = true;
+        chunks.length = 0;
+        reject(
+          new Error(
+            `body too large: over ${maxBytes} bytes. Nothing was saved or changed. ` +
+              `This is a size limit, not a transport or daemon failure — shorten the payload ` +
+              `(a shorter body, fewer array entries, or several smaller saves) and try once more.`,
+          ),
+        );
         return;
       }
       chunks.push(chunk);
     });
     req.on("end", () => {
+      if (refused) return; // already rejected above; `end` only means the drain finished
       const raw = Buffer.concat(chunks).toString("utf8");
       if (!raw) return resolve({});
       try {
