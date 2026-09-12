@@ -172,7 +172,10 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "Step 2 of the recall flow — call this only for the candidates " +
       "recall() surfaced that you actually need. Returns essential " +
       "frontmatter + body by default; pass verbosity:'full' for the raw " +
-      "frontmatter (related_via cosines, source, …).",
+      "frontmatter (related_via cosines, source, …). " +
+      "The result carries a `revision` — hand it to " +
+      "edit_memory({ expected_revision }) to have your change refused if the " +
+      "memory moved on meanwhile (#519).",
     inputSchema: {
       type: "object",
       properties: {
@@ -583,9 +586,11 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "and write_origin are rejected here and belong to save_memory or a " +
       "dedicated tool.\n" +
       "\n" +
-      "expected_updated is optional optimistic concurrency: pass the " +
-      "`updated` value you saw when you loaded the memory, and the edit is " +
-      "refused if someone changed it meanwhile.",
+      "expected_revision is optional optimistic concurrency: pass the " +
+      "`revision` load_memory gave you, and the edit is refused if the file " +
+      "changed meanwhile — by another edit or by a hand edit in Obsidian. " +
+      "Do NOT pass the `updated` stamp: it has day precision, so two edits on " +
+      "the same day share it and the later one would silently win (#519).",
     inputSchema: {
       type: "object",
       properties: {
@@ -633,12 +638,12 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
             valid_until: { type: "string" },
           },
         },
-        expected_updated: {
+        expected_revision: {
           type: "string",
           description:
-            "The `updated` value you saw when you loaded the memory " +
-            "(YYYY-MM-DD). The edit is refused if the file carries a " +
-            "different one. Omit to edit the current state.",
+            "The `revision` load_memory returned for this memory — an opaque " +
+            "digest of the file, new after every write. The edit is refused " +
+            "if the file no longer carries it. Omit to edit the current state.",
         },
       },
       required: ["id"],

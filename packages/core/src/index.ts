@@ -86,7 +86,7 @@ export { detectTopics, detectProject, detectProjectDetailed, extractContentExcer
 export type { ToolIntent, TopicResult, DetectedProject, HookQueryVocabulary } from "./topics.js";
 
 export { isMarkdownFile } from "./markdown-file.js";
-export { mutateMemoryFile } from "./memory-mutate.js";
+export { mutateMemoryFile, memoryRevision } from "./memory-mutate.js";
 export type { MutateOutcome, MemoryMutation } from "./memory-mutate.js";
 export { readOccupant, occupantOfRaw, scanVaultForId, scanVaultForIdAsync, snapshotLocator, vaultRelative } from "./memory-locator.js";
 export { withIdClaim, diskAuthority, onIdScan } from "./id-transaction.js";

@@ -28,6 +28,7 @@ import {
 } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { editMemoryHandler, type EditMemoryResult } from "../src/edit-memory-handler.js";
+import { loadMemoryHandler } from "../src/tool-handlers.js";
 import { resetAuditLogCache } from "../src/audit-trail.js";
 import { TRUSTED_LOCAL_APP } from "../src/private-access.js";
 import type { ToolDeps } from "../src/tool-deps.js";
@@ -223,16 +224,96 @@ test("#519: str_replace tauscht genau die eine eindeutige Stelle", async (t) => 
   assert.equal(body.includes("\nZweite Zeile.\n"), false);
 });
 
-test("#519: expected_updated hält eine Änderung, die auf einem veralteten Stand rechnet", async (t) => {
+test("#519: expected_revision hält eine Änderung, die auf einem veralteten Stand rechnet", async (t) => {
   const { deps, seed } = await fixture(t);
   const path = await seed();
   const before = await bytes(path);
 
   await assert.rejects(
-    () => editMemoryHandler(deps, { id: "hooks-lesson", append: "zu spät", expected_updated: "2020-01-01" }),
-    /expected_updated.*NOTHING was written/s,
+    () => editMemoryHandler(deps, { id: "hooks-lesson", append: "zu spät", expected_revision: "sha256:deadbeef" }),
+    /expected_revision.*NOTHING was written/s,
   );
 
+  assert.equal(await bytes(path), before);
+});
+
+/**
+ * Der Gegenreview-Nachbefund zu #519: Die Vorbedingung verglich den
+ * `updated`-Stempel, und der hat TAGESGENAUIGKEIT. Zwei Edits am selben Tag
+ * teilen ihn sich, also hielt der Guard genau den Fall nicht, für den es ihn
+ * gibt.
+ *
+ * Nachgestellt wird die gemeldete Folge exakt: Wert geladen, ein Tags-Patch
+ * damit angewandt, dann ein zweiter VERALTETER Tags-Patch mit demselben
+ * beobachteten Wert. Vor dem Fix: beide Aufrufe erfolgreich, `["first"]` wurde
+ * still `["second"]`.
+ */
+test("#519: zwei taggleiche Edits auf demselben beobachteten Stand — der zweite wird gehalten", async (t) => {
+  const { deps, seed } = await fixture(t);
+  const path = await seed();
+
+  // Was der Caller beim Laden sieht. Beide Caller sehen dasselbe.
+  const observed = (await loadMemoryHandler(deps, { id: "hooks-lesson" }, TRUSTED_LOCAL_APP)).revision;
+  assert.ok(observed, "load_memory muss ein Vergleichstoken liefern");
+  assert.equal(deps.vault.get("hooks-lesson")?.fm.updated, TODAY, "beide Edits fallen auf denselben Tag");
+
+  const first = (await editMemoryHandler(deps, {
+    id: "hooks-lesson",
+    frontmatter: { tags: ["first"] },
+    expected_revision: observed,
+  })) as EditMemoryResult;
+  assert.notEqual(first.revision, observed, "jeder Schreibvorgang muss das Token bewegen");
+
+  // Derselbe beobachtete Stand, aber die Datei ist weiter — das ist der
+  // verlorene Schreibvorgang, den der Stempel durchgelassen hat.
+  await assert.rejects(
+    () =>
+      editMemoryHandler(deps, {
+        id: "hooks-lesson",
+        frontmatter: { tags: ["second"] },
+        expected_revision: observed,
+      }),
+    /expected_revision.*NOTHING was written/s,
+  );
+
+  const raw = await bytes(path);
+  assert.match(raw, /- first/, "die erste Änderung darf nicht still ersetzt werden");
+  assert.equal(raw.includes("- second"), false);
+
+  // Und die Wiederholung auf dem AKTUELLEN Token kommt durch: aufgeschoben,
+  // nicht verloren.
+  await editMemoryHandler(deps, {
+    id: "hooks-lesson",
+    frontmatter: { tags: ["second"] },
+    expected_revision: first.revision,
+  });
+  assert.match(await bytes(path), /- second/);
+});
+
+test("#519: eine Handbearbeitung im Vault bewegt das Token ebenfalls", async (t) => {
+  const { deps, seed } = await fixture(t);
+  const path = await seed();
+  const observed = (await loadMemoryHandler(deps, { id: "hooks-lesson" }, TRUSTED_LOCAL_APP)).revision;
+
+  // Genau der Fall, den kein Zähler und kein Stempel erwischt: jemand editiert
+  // die Datei in Obsidian, ohne `updated` anzufassen.
+  await writeFile(path, (await bytes(path)).replace("Zweite Zeile.", "Zweite Zeile, von Hand."), "utf8");
+
+  await assert.rejects(
+    () => editMemoryHandler(deps, { id: "hooks-lesson", append: "auf altem Stand", expected_revision: observed }),
+    /expected_revision.*NOTHING was written/s,
+  );
+});
+
+test("#519: der alte Feldname expected_updated wird laut abgelehnt, nicht still verworfen", async (t) => {
+  const { deps, seed } = await fixture(t);
+  const path = await seed();
+  const before = await bytes(path);
+
+  await assert.rejects(
+    () => editMemoryHandler(deps, { id: "hooks-lesson", append: "zu spät", expected_updated: TODAY }),
+    /expected_updated is gone.*expected_revision/s,
+  );
   assert.equal(await bytes(path), before);
 });
 

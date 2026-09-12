@@ -9,9 +9,11 @@
  * Damit teilen sich beide Pfade dieselbe Validierung, Telemetry und
  * Vault-Mutation — kein doppelter Code, kein Drift.
  */
+import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import {
   saveMemory,
+  memoryRevision,
   mutateMemoryFile,
   withIdClaim,
   resolveMemoryTarget,
@@ -78,6 +80,11 @@ export interface LoadMemoryResult {
   frontmatter: Record<string, unknown>;
   body: string;
   file_path: string;
+  /** #519: das Token für `edit_memory({ expected_revision })` — ein Digest
+   *  über die Bytes der Datei, neu nach JEDEM Schreibvorgang. Fehlt nur, wenn
+   *  die Datei gerade nicht lesbar ist; dann hat der Caller nichts zu
+   *  vergleichen und lässt die Vorbedingung weg. */
+  revision?: string;
   /** Nur bei Commons-Rezepten: Evidenz-Zähler + verify-Aufforderung. */
   commons?: { works: number; fails: number; verify_hint: string };
   /** #235: present only when the memory carries an anchor command. The daemon
@@ -243,11 +250,18 @@ export async function loadMemoryHandler(
         },
       }
     : {};
+  // #519: die Revision kommt von der PLATTE, nicht aus dem Index — verglichen
+  // wird beim Edit gegen die Bytes, und ein Token aus einer anderen Quelle
+  // wäre kein Vergleich, sondern eine Vermutung.
+  const revision = await readFile(m.filePath, "utf8")
+    .then(memoryRevision)
+    .catch(() => undefined);
   const result = {
     id: m.fm.id,
     frontmatter: full ? fm : leanFrontmatter(fm),
     body: full ? m.body : bodyForTelemetry,
     file_path: m.filePath,
+    ...(revision ? { revision } : {}),
     ...verifyBlock,
     ...verifyAnchor,
   };

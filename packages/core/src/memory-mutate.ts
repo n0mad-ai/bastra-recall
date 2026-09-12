@@ -26,11 +26,30 @@
  * machte der Rename hier still rückgängig. Der Vergleich vor dem Commit
  * schließt das Fenster nicht, er erkennt nur, dass es zugeschlagen hat.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import matter from "gray-matter";
 import { occupantOfRaw } from "./memory-locator.js";
 import { withIdClaim } from "./id-transaction.js";
+
+/**
+ * Die Revision eines Memory-Files: ein Digest ÜBER DIE BYTES.
+ *
+ * #519: Als optimistische Vorbedingung diente zuerst der `updated`-Stempel —
+ * der hat aber Tagesgenauigkeit, und zwei Änderungen am selben Tag teilen ihn
+ * sich. Nachgestellt: `updated: 2026-09-12` geladen, ein Tags-Patch mit diesem
+ * Wert angewandt, dann ein zweiter VERALTETER Tags-Patch mit demselben Wert —
+ * beide erfolgreich, `["first"]` wurde still `["second"]`. Eine Vorbedingung
+ * muss sich bei JEDEM Schreibvorgang ändern, sonst prüft sie nichts.
+ *
+ * Die Bytes sind dafür die einzige Quelle, die auch fremde Writer erfasst: Wer
+ * die Datei in Obsidian editiert, setzt keinen Zähler hoch und stempelt nichts
+ * — aber er ändert den Inhalt. Und Inhaltsgleichheit ist genau der Fall, in
+ * dem die Änderung eines anderen nichts kostet.
+ */
+export function memoryRevision(raw: string): string {
+  return `sha256:${createHash("sha256").update(raw, "utf8").digest("hex").slice(0, 16)}`;
+}
 
 export type MutateOutcome =
   /** Geschrieben — mit dem Frontmatter VOR und NACH diesem Schreibvorgang.
@@ -41,7 +60,14 @@ export type MutateOutcome =
    *  meldete als Vorbild `cache-summary`. Wer schreibt, weiß als Einziger, was
    *  vorher dastand — also gibt er es zurück. Beide Abbilder sind tief
    *  kopiert, damit sie kein gray-matter-Cache-Objekt teilen. */
-  | { kind: "written"; before: Record<string, unknown>; after: Record<string, unknown> }
+  | {
+      kind: "written";
+      before: Record<string, unknown>;
+      after: Record<string, unknown>;
+      /** Die Revision NACH diesem Schreibvorgang (#519) — das Token, mit dem
+       *  der nächste Edit seine Vorbedingung stellt, ohne neu zu laden. */
+      revision: string;
+    }
   /** Der Patch hatte nichts zu tun (`frontmatter` gab `null` zurück). Kein
    *  Fehlschlag — die Datei steht schon so da, wie sie soll.
    *
@@ -57,6 +83,16 @@ export type MutateOutcome =
   | { kind: "identity-mismatch"; found: string | null };
 
 export interface MemoryMutation {
+  /**
+   * Vorbedingung auf den Bytes, aus denen diese Mutation gerechnet wird
+   * (#519). Läuft unter dem id-Claim, direkt nach dem einen Read und vor jeder
+   * Transformation; wer hier wirft, hat garantiert nichts geschrieben.
+   *
+   * Die Bytes selbst, nicht ein Feld daraus: Nur sie ändern sich bei JEDEM
+   * Schreibvorgang und auch bei einem fremden Editor. {@link memoryRevision}
+   * macht daraus das Token, das ein Caller vergleichen kann.
+   */
+  precondition?: (raw: string) => void;
   /** Frontmatter-Patch. Rückgabe `null` heißt „nichts zu tun" und liefert
    *  {@link MutateOutcome} `noop` — ausdrücklich kein Fehlschlag. */
   frontmatter?: (fm: Record<string, unknown>) => Record<string, unknown> | null;
@@ -156,6 +192,10 @@ async function mutateUnderClaim(
     }
   }
 
+  // Vor jeder Transformation: Die Vorbedingung gehört auf die Bytes, die diese
+  // Mutation gleich lesen wird, und nicht auf eine frühere Fassung.
+  mutation.precondition?.(raw);
+
   const parsed = matter(raw);
   // Copy statt in-place: gray-matter cached `matter(content)` per Input-String,
   // eine Mutation von `parsed.data` vergiftet den Cache-Eintrag für jeden
@@ -182,6 +222,7 @@ async function mutateUnderClaim(
       kind: "written",
       before: JSON.parse(JSON.stringify(fmBefore)) as Record<string, unknown>,
       after: JSON.parse(JSON.stringify(fmAfter)) as Record<string, unknown>,
+      revision: memoryRevision(next),
     };
   } catch (err) {
     await unlink(tmp).catch(() => {});

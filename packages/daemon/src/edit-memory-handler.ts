@@ -51,6 +51,7 @@
 import { z } from "zod";
 import {
   AUTO_RELATED_START,
+  memoryRevision,
   mutateMemoryFile,
   type Memory,
   type SaveMemoryInput,
@@ -93,11 +94,20 @@ export const EditMemoryArgs = z
     append: z.string().min(1).optional(),
     frontmatter: FrontmatterPatch.optional(),
     /**
-     * Optimistische Nebenläufigkeit: der `updated`-Wert, den der Caller beim
-     * Laden gesehen hat. Steht auf der Platte etwas anderes, wird nichts
+     * Optimistische Nebenläufigkeit: die `revision`, die `load_memory` beim
+     * Laden geliefert hat. Steht auf der Platte etwas anderes, wird nichts
      * geschrieben. Weglassen heißt „ich nehme den aktuellen Stand".
+     *
+     * #519: Hier stand der `updated`-Stempel, und der hat Tagesgenauigkeit —
+     * zwei Änderungen am selben Tag teilen ihn sich, also hielt die
+     * Vorbedingung genau den Fall NICHT, für den es sie gibt. Nachgestellt:
+     * `updated: 2026-09-12` geladen, ein Tags-Patch damit angewandt, dann ein
+     * zweiter veralteter Tags-Patch mit demselben Wert — beide erfolgreich,
+     * `["first"]` wurde still `["second"]`. Die Revision ist ein Digest über
+     * die Bytes der Datei: sie ändert sich bei jedem Schreibvorgang und auch
+     * dann, wenn jemand die Datei in Obsidian von Hand editiert.
      */
-    expected_updated: z.string().min(1).optional(),
+    expected_revision: z.string().min(1).optional(),
   })
   .refine(
     (a) => a.str_replace !== undefined || a.append !== undefined || a.frontmatter !== undefined,
@@ -112,6 +122,9 @@ export interface EditMemoryResult {
   created: false;
   /** Der neu gestempelte `updated`-Wert. */
   updated: string;
+  /** #519: die Revision NACH diesem Edit — als `expected_revision` des
+   *  nächsten Edits verwendbar, ohne neu zu laden. */
+  revision: string;
   /** Welche Operationen gelaufen sind — `["str_replace", "frontmatter"]`. */
   operations: string[];
   save_quality: SaveQualityResult;
@@ -194,18 +207,6 @@ export function applyBodyOps(body: string, args: EditMemoryArgs): string {
   return tail === "" ? next : `${next.replace(/\s*$/, "")}\n\n${tail}`;
 }
 
-/** YAML 1.1 gibt ein blankes `updated: 2026-09-12` als `Date` zurück — genau
- *  die Form, die Obsidian Properties und eine Handbearbeitung schreiben. Der
- *  Vergleich mit `expected_updated` muss das sehen, sonst schlägt der Guard auf
- *  jedem von Hand berührten File fehl. */
-function asDateString(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
-  if (value instanceof Date && Number.isFinite(value.getTime())) {
-    return value.toISOString().slice(0, 10);
-  }
-  return undefined;
-}
-
 /**
  * Die Eingabe, die ein gleichwertiges `save_memory` gehabt HÄTTE.
  *
@@ -240,6 +241,17 @@ export async function editMemoryHandler(
    *  NICHTS, und das Fehlen ist die sichere Antwort. */
   access?: PrivateAccess,
 ): Promise<EditMemoryResult | ClaimGateResult> {
+  // #519: Der alte Feldname wird LAUT abgelehnt statt still verworfen. Wer ihn
+  // schickt, will genau die Absicherung, die Zod ihm sonst kommentarlos
+  // wegnähme — und bekäme dann die verlorene Änderung, gegen die er sich
+  // absichern wollte.
+  if (typeof rawArgs === "object" && rawArgs !== null && "expected_updated" in rawArgs) {
+    throw new Error(
+      `invalid edit_memory args: expected_updated is gone — it compared the day-precision ` +
+        `\`updated\` stamp, so two edits on the same day shared it and the later one silently won. ` +
+        `Pass expected_revision with the \`revision\` load_memory returned instead.`,
+    );
+  }
   const parsed = EditMemoryArgs.safeParse(rawArgs);
   if (!parsed.success) {
     throw new Error(`invalid edit_memory args: ${parsed.error.issues.map((i) => i.message).join(", ")}`);
@@ -296,17 +308,22 @@ export async function editMemoryHandler(
     mem.filePath,
     mem.fm.id,
     {
-      frontmatter: (fm) => {
-        if (args.expected_updated !== undefined) {
-          const onDisk = asDateString(fm.updated);
-          if (onDisk !== args.expected_updated) {
-            throw new EditPreconditionError(
-              `expected_updated: '${mem.fm.id}' was last updated ${onDisk ?? "(no stamp)"}, ` +
-                `you expected ${args.expected_updated} — NOTHING was written. ` +
-                `Load the memory again and re-apply your change to the current text.`,
-            );
-          }
+      // #519: auf den BYTES, nicht auf einem Feld. Der `updated`-Stempel, der
+      // hier stand, hat Tagesgenauigkeit — zwei Edits am selben Tag teilen ihn
+      // sich, und der zweite ersetzte den ersten still. Die Revision ändert
+      // sich bei jedem Schreibvorgang, auch bei einem fremden.
+      precondition: (raw) => {
+        if (args.expected_revision === undefined) return;
+        const onDisk = memoryRevision(raw);
+        if (onDisk !== args.expected_revision) {
+          throw new EditPreconditionError(
+            `expected_revision: '${mem.fm.id}' is at revision ${onDisk}, ` +
+              `you expected ${args.expected_revision} — NOTHING was written. ` +
+              `Load the memory again and re-apply your change to the current text.`,
+          );
         }
+      },
+      frontmatter: (fm) => {
         // `write_origin`, `sensitivity`, Valenz, `created` und alles andere
         // bleiben unangetastet: gepatcht wird über den Bestand, nicht neu
         // gebaut. Das ist der ganze Unterschied zum vollen Save.
@@ -375,6 +392,7 @@ export async function editMemoryHandler(
     file_path: mem.filePath,
     created: false,
     updated: today,
+    revision: outcome.revision,
     operations,
     save_quality: saveQuality,
     note: "Edit complete — do not repeat this edit_memory call.",
