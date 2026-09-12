@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 
@@ -20,7 +20,14 @@ import {
   isOptedOut,
 } from "../src/update-check.js";
 import { detectInstallMode, resolveInstalledRuntime } from "../src/cli/update.js";
-import { autostartEnv, refreshManagedAutostart, renderPlist } from "../src/cli/autostart.js";
+import {
+  autostartEnv,
+  isRunnableNode,
+  readState,
+  refreshManagedAutostart,
+  renderPlist,
+  stableNodeBin,
+} from "../src/cli/autostart.js";
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-update-check-"));
@@ -296,7 +303,7 @@ function oldKegCliPath(old: Keg): string {
   return join(old.root, "libexec", "packages", "daemon", "dist", "cli", "update.js");
 }
 
-test("#435: after a Homebrew update the managed autostart names the NEW keg, not the superseded one", { skip: !onMac }, async () => {
+test("#435: after a Homebrew update the managed autostart names the NEW keg, not the superseded one", { skip: onMac ? false : "macOS-only: drives a LaunchAgent plist through plutil" }, async () => {
   await withKegFixture(async ({ old, fresh, plist, launchctl }) => {
     const mode = detectInstallMode(oldKegCliPath(old));
     assert.equal(mode.mode, "brew");
@@ -322,7 +329,7 @@ test("#435: after a Homebrew update the managed autostart names the NEW keg, not
   });
 });
 
-test("#435: an unresolvable install leaves the managed autostart alone instead of reporting success", { skip: !onMac }, async () => {
+test("#435: an unresolvable install leaves the managed autostart alone instead of reporting success", { skip: onMac ? false : "macOS-only: drives a LaunchAgent plist through plutil" }, async () => {
   await withKegFixture(async ({ old, plist, launchctl }) => {
     let out = "";
     const outcome = await refreshManagedAutostart((s) => { out += s; }, {
@@ -337,7 +344,7 @@ test("#435: an unresolvable install leaves the managed autostart alone instead o
   });
 });
 
-test("#441: a staged update repoints the managed LaunchAgent without restarting it", { skip: !onMac }, async () => {
+test("#441: a staged update repoints the managed LaunchAgent without restarting it", { skip: onMac ? false : "macOS-only: drives a LaunchAgent plist through plutil" }, async () => {
   await withKegFixture(async ({ old, fresh, plist, launchctl, log }) => {
     const target = resolveInstalledRuntime(detectInstallMode(oldKegCliPath(old)));
     assert.ok(target);
@@ -371,4 +378,106 @@ test("#441: the staged path is wired to the same refresh as the interactive one"
     refreshAt < stagedReturnAt,
     "the managed-service refresh must run BEFORE --staged reports success (#441)",
   );
+});
+
+// ─── #435, zweiter Teil: das node-Binary im plist ────────────────────────────
+//
+// Dieselbe Fehlerform wie beim Daemon-Skript, eine Ebene tiefer. Ein
+// versionsgebundener node-Keg-Pfad stirbt beim nächsten `brew upgrade node`
+// plus `brew cleanup`, und dann startet der verwaltete LaunchAgent nicht mehr —
+// ohne dass jemand bastra angefasst hätte.
+//
+// Die Auflösung selbst ist reine Pfad- und Prozessarbeit: kein plutil, kein
+// launchd, keine macOS-Annahme. Diese Tests laufen deshalb AUCH auf dem
+// Linux-Runner, gegen einen echten Keg-Baum im Temp-Verzeichnis, dessen „node"
+// ein Shell-Skript ist, das sich wie node meldet. Nur die zwei Tests, die
+// wirklich einen plist lesen, sind macOS-only — und sagen das.
+
+/** Ein node-Keg wie Homebrew ihn anlegt, wahlweise mit stabilem opt-Symlink. */
+async function makeNodeKeg(prefix: string, version: string, opts: { stable: boolean }): Promise<string> {
+  const kegBin = join(prefix, "Cellar", "node", version, "bin");
+  await mkdir(kegBin, { recursive: true });
+  const exec = join(kegBin, "node");
+  await writeFile(exec, `#!/bin/sh\n[ "$1" = "--version" ] && { echo "v${version}"; exit 0; }\nexit 1\n`, {
+    encoding: "utf8",
+    mode: 0o755,
+  });
+  if (opts.stable) {
+    await mkdir(join(prefix, "opt"), { recursive: true });
+    await symlink(join(prefix, "Cellar", "node", version), join(prefix, "opt", "node"));
+  }
+  return exec;
+}
+
+test("#435: a version-pinned node keg gives way to the stable symlink the package manager maintains", async () => {
+  await withTempDir(async (dir) => {
+    const prefix = join(dir, "homebrew");
+    const pinned = await makeNodeKeg(prefix, "24.1.0", { stable: true });
+    assert.equal(
+      stableNodeBin(pinned),
+      join(prefix, "opt", "node", "bin", "node"),
+      "the plist must name the path that survives the next node upgrade",
+    );
+  });
+});
+
+test("#435: without a stable symlink the running node stays — the choice is made, not assumed", async () => {
+  await withTempDir(async (dir) => {
+    // Derselbe Keg ohne opt-Symlink, und ein Pfad, der gar nicht nach einem Keg
+    // aussieht: npm-global mit eigenem node, ein Quell-Checkout, nvm. Dort IST
+    // process.execPath die richtige Antwort.
+    const prefix = join(dir, "homebrew");
+    const pinned = await makeNodeKeg(prefix, "24.1.0", { stable: false });
+    assert.equal(stableNodeBin(pinned), pinned, "no stable sibling — keep what is running");
+    const nvmStyle = join(dir, "nvm", "versions", "node", "v24.1.0", "bin", "node");
+    assert.equal(stableNodeBin(nvmStyle), nvmStyle, "nvm pins versions on purpose — leave it alone");
+  });
+});
+
+test("#435: a stable path that is not a working node is refused rather than written", async () => {
+  await withTempDir(async (dir) => {
+    const prefix = join(dir, "homebrew");
+    const pinned = await makeNodeKeg(prefix, "24.1.0", { stable: false });
+    // Ein opt/node, das auf ein aufgeräumtes Keg zeigt — genau der Rest, den
+    // `brew cleanup` hinterlässt.
+    await mkdir(join(prefix, "opt"), { recursive: true });
+    await symlink(join(prefix, "Cellar", "node", "23.0.0"), join(prefix, "opt", "node"));
+    assert.equal(isRunnableNode(join(prefix, "opt", "node", "bin", "node")), false);
+    assert.equal(stableNodeBin(pinned), pinned, "a dangling stable link must not win over a working node");
+  });
+});
+
+test("#435: a plist naming a node binary that is gone fails the update instead of reporting success", {
+  skip: onMac ? false : "macOS-only: writes and reads a LaunchAgent plist through plutil",
+}, async () => {
+  await withKegFixture(async ({ dir, fresh, plist, launchctl }) => {
+    const deadNode = join(dir, "homebrew", "Cellar", "node", "23.0.0", "bin", "node");
+    let out = "";
+    const outcome = await refreshManagedAutostart((s) => { out += s; }, {
+      target: { node: deadNode, script: fresh.script, version: "0.9.2" },
+      reload: true,
+      plistFile: plist,
+      launchctl,
+    });
+    assert.equal(outcome.ok, false, "an update may not report a service whose runtime does not exist");
+    assert.match(out, /is not on disk|does not run as node/);
+  });
+});
+
+test("#435: doctor names a dead node binary, not only a dead script", {
+  skip: onMac ? false : "macOS-only: reads a LaunchAgent plist through plutil",
+}, async () => {
+  await withTempDir(async (dir) => {
+    const p = join(dir, "own.plist");
+    const script = join(dir, "dist", "index.js");
+    await mkdir(join(dir, "dist"), { recursive: true });
+    await writeFile(script, "// here\n", "utf8");
+    const goneNode = join(dir, "Cellar", "node", "23.0.0", "bin", "node");
+    // Das Skript liegt, das Binary nicht — genau der Fall, der vorher unsichtbar
+    // war, weil nur ProgramArguments[1] geprüft wurde.
+    await writeFile(p, renderPlist(autostartEnv(join(dir, "vault"), goneNode), [goneNode, script]), "utf8");
+    const state = await readState(p, join(dir, "no-launchctl"));
+    assert.equal(state.danglingProgram, true, "a missing node binary is a dangling program too");
+    assert.equal(state.missingProgramPath, goneNode, "and doctor has to be able to name it");
+  });
 });

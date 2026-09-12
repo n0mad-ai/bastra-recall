@@ -37,7 +37,7 @@
  * ab und nennt `--force`.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync } from "node:fs";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -83,6 +83,9 @@ export interface AutostartState {
   program: string[];
   /** Ist der Agent bei launchd geladen? */
   loaded: boolean;
+  /** Der erste Pfad aus `program`, den es nicht mehr gibt — das node-Binary
+   *  ODER das Skript. `null`, wenn beide liegen, wo sie sollen. */
+  missingProgramPath: string | null;
   /** Der plist ist da, aber sein Programm liegt nicht mehr auf der Platte —
    *  der klassische Zustand nach einem Update, das den Pfad verschoben hat. */
   danglingProgram: boolean;
@@ -111,6 +114,7 @@ export async function readState(path = plistPath(), launchctl = LAUNCHCTL): Prom
     managed: false,
     program: [],
     loaded: launchAgentLoaded(launchctl),
+    missingProgramPath: null,
     danglingProgram: false,
     endpoint: null,
   };
@@ -137,10 +141,15 @@ export async function readState(path = plistPath(), launchctl = LAUNCHCTL): Prom
     // Überschreiben führen.
     return state;
   }
-  // Das Skript ist das zweite Argument (`node <script>`); ohne es ist der
-  // Agent kaputt, mit einem nicht mehr existierenden Pfad ist er veraltet.
-  const script = state.program[1];
-  state.danglingProgram = script !== undefined && !existsSync(script);
+  // `node <script>` — BEIDE Pfade sind absolut, und beide können nach einem
+  // Update ins Leere zeigen. Das Skript zieht mit der bastra-Installation um
+  // (#435); das Binary zieht mit node um, sobald Homebrew node aktualisiert und
+  // das alte Keg aufräumt. Für launchd ist der Unterschied keiner: der Agent
+  // startet nicht, und niemand sagt es. Also beide prüfen, und den ersten
+  // fehlenden benennen.
+  state.missingProgramPath =
+    state.program.slice(0, 2).find((p) => p !== undefined && !existsSync(p)) ?? null;
+  state.danglingProgram = state.missingProgramPath !== null;
   return state;
 }
 
@@ -193,6 +202,53 @@ ${entries}
 </dict>
 </plist>
 `;
+}
+
+/**
+ * Das node-Binary, das in den plist gehört — #435, zweiter Teil.
+ *
+ * Dieselbe Fehlerform wie beim Daemon-Skript, nur eine Ebene tiefer.
+ * `process.execPath` ist unter Homebrew typischerweise ein versionsgebundener
+ * Keg-Pfad (`/opt/homebrew/Cellar/node/<version>/bin/node`). Wird node
+ * aktualisiert und das alte Keg aufgeräumt, nennt der verwaltete LaunchAgent
+ * ein Binary, das es nicht mehr gibt — der Autostart ist tot, ohne dass jemand
+ * bastra angefasst hat.
+ *
+ * Homebrew pflegt für genau diesen Zweck einen stabilen Symlink neben dem Keg
+ * (`<prefix>/opt/<formel>/bin/node`, plus den Shim in `<prefix>/bin`). Der
+ * Prefix wird aus dem Keg-Pfad selbst abgeleitet — der Paketmanager hat ihn
+ * gebaut, er ist die verlässlichste Quelle, und es kostet keinen Unterprozess.
+ *
+ * BEWUSST NICHT PAUSCHAL: Wo es keinen stabilen Pfad gibt, ist
+ * `process.execPath` die richtige Antwort und bleibt stehen — ein npm-global
+ * mit eigenem node, ein Quell-Checkout, nvm (das versionsgebundene Pfade als
+ * Prinzip hat). Und ein Kandidat wird erst genommen, wenn er sich als node
+ * ausweist: existieren reicht nicht, er muss laufen.
+ */
+export function stableNodeBin(execPath: string = process.execPath): string {
+  for (const candidate of stableNodeCandidates(execPath)) {
+    if (candidate !== execPath && isRunnableNode(candidate)) return candidate;
+  }
+  return execPath;
+}
+
+/** `<prefix>/Cellar/<formel>/<version>/bin/node` → die stabilen Geschwister. */
+function stableNodeCandidates(execPath: string): string[] {
+  const keg = /^(.*)\/Cellar\/([^/]+)\/[^/]+\/bin\/node$/.exec(execPath);
+  if (!keg) return [];
+  const [, prefix, formula] = keg;
+  return [join(prefix, "opt", formula, "bin", "node"), join(prefix, "bin", "node")];
+}
+
+/** Existiert, ist ausführbar, und meldet sich als node. Alle drei, oder nichts. */
+export function isRunnableNode(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK);
+  } catch {
+    return false;
+  }
+  const r = spawnSync(path, ["--version"], { encoding: "utf8", timeout: 15_000 });
+  return r.status === 0 && /^v\d+\.\d+\.\d+/.test((r.stdout ?? "").trim());
 }
 
 /**
@@ -303,11 +359,14 @@ async function autostartOn(args: ParsedArgs): Promise<number> {
     return 2;
   }
 
-  const program = [process.execPath, DAEMON_SCRIPT_PATH];
+  // #435 — the stable node symlink, not the version-pinned keg path a node
+  // upgrade would leave dangling.
+  const nodeBin = stableNodeBin();
+  const program = [nodeBin, DAEMON_SCRIPT_PATH];
   // #531 — the endpoint this process was told about, or the one the existing
   // managed plist already froze.
   const endpoint = endpointToPersist(state.endpoint);
-  const content = renderPlist(autostartEnv(vault.path, process.execPath, endpoint), program);
+  const content = renderPlist(autostartEnv(vault.path, nodeBin, endpoint), program);
 
   if (args.dryRun) {
     write(`(dry-run — writing nothing)\n\n  would write ${state.path}\n`);
@@ -392,6 +451,7 @@ async function autostartStatus(args: ParsedArgs): Promise<number> {
           loaded: state.loaded,
           program: state.program,
           dangling_program: state.danglingProgram,
+          missing_program_path: state.missingProgramPath,
           daemon_running: probe.ok,
           daemon_version: probe.version ?? null,
           // #531 — which instance the two lines above describe, and what the
@@ -422,8 +482,8 @@ async function autostartStatus(args: ParsedArgs): Promise<number> {
   if (state.program.length > 0) write(`  starts: ${state.program.join(" ")}\n`);
   if (state.danglingProgram) {
     write(
-      `  ⚠ that path does not exist any more — the autostart points at an installation\n` +
-        `    that was moved or removed. Fix it with: bastra autostart on\n`,
+      `  ⚠ ${state.missingProgramPath} does not exist any more — the autostart points at a\n` +
+        `    runtime that was moved or removed. Fix it with: bastra autostart on\n`,
     );
   }
   const endpoint = probe.endpoint ?? resolveDaemonEndpoint();
@@ -556,11 +616,23 @@ export async function refreshManagedAutostart(
   // Der Beweis: erneut lesen. Erst wenn die Datei die installierte Laufzeit
   // nennt und die auch auf der Platte liegt, darf das hier Erfolg melden.
   const after = await readState(path, launchctl);
-  if (after.program[1] !== opts.target.script || after.danglingProgram) {
+  if (after.program[0] !== opts.target.node || after.program[1] !== opts.target.script) {
     write(
-      `  ✗ the autostart still names ${after.program[1] ?? "nothing"} — expected ${opts.target.script}\n`,
+      `  ✗ the autostart still names ${after.program.join(" ") || "nothing"} — expected ` +
+        `${opts.target.node} ${opts.target.script}\n`,
     );
     return { ok: false, detail: "verification failed" };
+  }
+  if (after.danglingProgram) {
+    write(`  ✗ the autostart names ${after.missingProgramPath}, which is not on disk\n`);
+    return { ok: false, detail: "verification failed" };
+  }
+  // Existieren reicht beim Binary nicht: launchd exec()t es, ein kaputter
+  // Symlink oder ein nicht ausführbarer Rest eines aufgeräumten Kegs ist genau
+  // so tot wie ein fehlender Pfad.
+  if (!isRunnableNode(after.program[0])) {
+    write(`  ✗ ${after.program[0]} does not run as node — the autostart would not come up\n`);
+    return { ok: false, detail: "node binary not runnable" };
   }
   const version = opts.target.version ? ` (${opts.target.version})` : "";
   write(
@@ -578,7 +650,7 @@ export async function autostartWarning(): Promise<string | null> {
   if (!state.exists) return null;
   if (state.danglingProgram) {
     return (
-      `autostart points at ${state.program[1]}, which does not exist any more — ` +
+      `autostart names ${state.missingProgramPath}, which does not exist any more — ` +
       (state.managed
         ? `run 'bastra autostart on' to repoint it.`
         : `it is hand-written, so fix it yourself or replace it with 'bastra autostart on --force'.`)

@@ -21,7 +21,7 @@ import { describeLiveRevision, liveRevisionOfDaemon } from "./live-revision.js";
 import { clearBlockedUpdate, recordBlockedUpdate } from "../update-blocked.js";
 import type { ParsedArgs } from "./types.js";
 
-import { refreshManagedAutostart } from "./autostart.js";
+import { refreshManagedAutostart, stableNodeBin } from "./autostart.js";
 import type { InstalledRuntime } from "./autostart.js";
 import { DAEMON_SCRIPT_PATH } from "./paths.js";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
@@ -250,12 +250,16 @@ function installedVersion(root: string): string {
  * own path for brew/npm: a silent fallback is precisely the stale pin, and the
  * caller can say so out loud instead. Where the installer never moves anything
  * (source checkout, unknown), this process's entry point IS the installation.
+ *
+ * The node binary gets the same treatment for the same reason — see
+ * `stableNodeBin()`: under Homebrew `process.execPath` is a version-pinned node
+ * keg, and a plist naming it dies the next time node is upgraded and cleaned up.
  */
 export function resolveInstalledRuntime(mode: InstallMode): InstalledRuntime | null {
   const script = installedDaemonScript(mode);
   if (!script) return null;
   // dist/index.js → the daemon package root that carries the version.
-  return { node: process.execPath, script, version: packageVersion(resolve(dirname(script), "..")) };
+  return { node: stableNodeBin(), script, version: packageVersion(resolve(dirname(script), "..")) };
 }
 
 function installedDaemonScript(mode: InstallMode): string | null {
