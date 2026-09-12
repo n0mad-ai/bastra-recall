@@ -9,7 +9,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   SESSION_BUDGET_SHADOW_TOKENS,
   SessionBudgetLedger,
@@ -120,5 +121,54 @@ test("#458: recordBudgetShadow writes a budget_shadow event that reconciles with
     if (prev === undefined) delete process.env.BASTRA_LOG_PATH;
     else process.env.BASTRA_LOG_PATH = prev;
     await rm(logDir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * #522 — Vertragswahrheit: Der Code läuft im Shadow, also dürfen die vier
+ * versionierten Dokumente kein live erzwungenes Sitzungsbudget versprechen.
+ *
+ * Der Test hält beide Seiten gegeneinander. Solange jede automatische Lane über
+ * `recordBudgetShadow` verbucht — also nichts kürzt —, muss jede Vertragsstelle
+ * die Shadow-Einschränkung ausdrücklich nennen. Wird der Governor scharf
+ * geschaltet, verschwindet der Aufruf aus den Lanes, der Test schlägt fehl und
+ * verlangt genau das, was #522 gefordert hat: erst den Vertrag ändern, dann die
+ * abgeleiteten Texte.
+ */
+test("#522: while the lanes only charge in shadow, no versioned document promises a live-enforced session budget", async () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const repoRoot = join(here, "..", "..", "..");
+  const LANES = [
+    "session-lane.ts",
+    "prompt-lane.ts",
+    "write-lane.ts",
+    "bash-pre-lane.ts",
+    "bash-fail-lane.ts",
+    "todo-lane.ts",
+  ];
+  const laneSources = await Promise.all(LANES.map((f) => readFile(join(here, "..", "src", f), "utf8")));
+  assert.equal(
+    laneSources.every((src) => src.includes("recordBudgetShadow(")),
+    true,
+    "Jede automatische Lane verbucht über recordBudgetShadow. Fällt das weg, ist der Governor live — dann zuerst docs/Evolutionsarchitektur V1 zu V2.md ändern (0.1, 16.3, 21.1, 25, 26.1/26.2), danach EN-Architektur, README (EN+DE), PLAN.md und die v1.0-Milestone-Beschreibung.",
+  );
+
+  // Die Stellen, die #522 als Vertragsversprechen benannt hat. Jede muss die
+  // Shadow-Einschränkung tragen, solange oben nichts gekürzt wird.
+  const PROMISES: Array<[string, string[]]> = [
+    ["docs/Evolutionsarchitektur V1 zu V2.md", ["Cross-Lane-Sitzungsledger im Shadow", "im Shadow mitschreibt"]],
+    ["docs/Evolution Architecture V1 to V2.md", ["session ledger running in shadow", "records in shadow what a budget would"]],
+    ["README.md", ["session ledger runs in shadow", "Cross-Lane-Sitzungsledger im Shadow"]],
+    ["PLAN.md", ["cumulative cross-lane shadow ledger"]],
+  ];
+  for (const [rel, needles] of PROMISES) {
+    const text = await readFile(join(repoRoot, rel), "utf8");
+    for (const needle of needles) {
+      assert.equal(
+        text.includes(needle),
+        true,
+        `${rel} verspricht das Sitzungsbudget ohne Shadow-Einschränkung: "${needle}" fehlt.`,
+      );
+    }
   }
 });
