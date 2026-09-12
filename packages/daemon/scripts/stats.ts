@@ -8,12 +8,20 @@
  */
 import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { readUsage, type UsageAggregate } from "../src/usage-sidecar.js";
 import { governorWhatIf } from "../src/stats-governor.js";
 import { summarizeEvidenceGate } from "./stats-evidence.js";
 import { buildContextLedger, HOOK_LANE_KINDS, TOOL_PAYLOAD_KINDS } from "../src/context-ledger.js";
+import {
+  armIdentities,
+  evaluateArms,
+  loadMinNRule,
+  UNASSIGNED_ARM,
+  type ArmEvaluation,
+} from "../src/stats-arms.js";
 
 function defaultLogDir(): string {
   const next = join(homedir(), ".bastra", "logs");
@@ -349,8 +357,28 @@ function summarizeUseRate(events: AnyEvent[]): void {
   // `recall_id` an dem hook_recall, der sie ausgelöst hat, und DER trägt sie.
   // Derselbe Join, den `recallTool` oben schon benutzt.
   for (const dim of ["client", "hook_source", "arm"] as const) {
-    printDimensionSplit(dim, hookRecalls, surfacedEpisodes);
+    printDimensionSplit(dim, hookRecalls, surfacedEpisodes, dim === "arm" ? armVerdict(hookRecalls) : undefined);
   }
+}
+
+/**
+ * #437: Das Mindest-N-Urteil für die Armzeilen.
+ *
+ * Die Registrierung wird über den Verweis geholt, den die Zeilen seit #439
+ * selbst tragen — repo-relativ, deshalb erst gegen das Arbeitsverzeichnis und
+ * dann gegen die Repo-Wurzel aufgelöst. Steht kein Verweis auf den Zeilen, ist
+ * die Registrierung nicht lesbar oder trägt sie kein `min_n_per_arm`, bleibt
+ * jeder Arm NICHT AUSWERTBAR; die Begründung steht dann in der Ausgabe.
+ */
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+
+function armVerdict(hookRecalls: AnyEvent[]): Map<string, ArmEvaluation> {
+  const ids = armIdentities(hookRecalls);
+  const loaded =
+    ids.length === 1
+      ? loadMinNRule(ids[0].registration, [process.cwd(), REPO_ROOT])
+      : { rule: null, error: null };
+  return evaluateArms(hookRecalls, loaded.rule, loaded.error);
 }
 
 /** Vor #263 geschriebene Ereignisse haben die Spalte nicht. Das ist etwas
@@ -377,6 +405,8 @@ function printDimensionSplit(
   field: "client" | "hook_source" | "arm",
   hookRecalls: AnyEvent[],
   surfacedEpisodes: AnyEvent[],
+  /** #437: das Mindest-N-Urteil je Arm. Nur für `field === "arm"` gesetzt. */
+  armEval?: Map<string, ArmEvaluation>,
 ): void {
   const byRecallId = new Map<string, AnyEvent>();
   for (const r of hookRecalls) byRecallId.set(String(r.recall_id), r);
@@ -400,19 +430,38 @@ function printDimensionSplit(
   const keys = [...new Set([...surfaced.keys(), ...loaded.keys()])].sort();
   if (keys.length === 0) return;
   console.log(`  by ${field}:`);
-  if (field === "arm" && keys.every((k) => k === "unassigned" || k === PRE_DIMENSIONS)) {
+  if (field === "arm" && keys.some((k) => k === UNASSIGNED_ARM)) {
     // §17.4/#267: `unassigned` ist kein Arm, sondern die Abwesenheit eines
     // Experiments. Ohne diesen Satz liest jemand die Zeile als Armvergleich mit
     // einem Arm — und das wäre eine Aussage, die niemand gemacht hat.
-    console.log(`    (no experiment configured — \`unassigned\` is the absence of an arm, not an arm)`);
+    console.log(`    (\`unassigned\` is the absence of an arm, not an arm)`);
   }
   for (const key of keys) {
     const s = surfaced.get(key) ?? 0;
     const l = loaded.get(key) ?? 0;
     const a = acted.get(key) ?? 0;
+    // #437/§18.1: Ein Arm unterhalb seines Mindest-N wird als NICHT AUSWERTBAR
+    // berichtet, niemals als Nullbefund. Für ihn erscheinen deshalb die ROHEN
+    // ZÄHLUNGEN, aber keine Quote — eine Quote ist die Form, in der ein
+    // Ergebnis auftritt, und hier gibt es keines.
+    const verdict = armEval?.get(key);
+    if (verdict && !verdict.evaluable) {
+      console.log(
+        `    ${key.padEnd(14)} NOT EVALUABLE — ${verdict.why}` +
+          `  [counts only: sessions ${verdict.sessions}  surfaced ${s}  loaded ${l}  acted_on ${a}]`,
+      );
+      continue;
+    }
+    const units = verdict ? `  sessions ${verdict.sessions.toString().padStart(4)} ≥ min-N ${verdict.minN}` : "";
     console.log(
-      `    ${key.padEnd(14)} surfaced ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)} lower bound)  acted_on ${a.toString().padStart(4)}  (${pct(a, l)} of loaded)`,
+      `    ${key.padEnd(14)} surfaced ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)} lower bound)  acted_on ${a.toString().padStart(4)}  (${pct(a, l)} of loaded)${units}`,
     );
+  }
+  if (armEval && [...armEval.values()].some((v) => !v.evaluable)) {
+    console.log(
+      `    (§18.1: an arm below its registered min-N is reported as NOT EVALUABLE, never as a null result —`,
+    );
+    console.log(`     no rate is printed for it, because a rate is what a result looks like)`);
   }
 }
 
