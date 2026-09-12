@@ -80,6 +80,18 @@ exit 0
 `;
 
 /**
+ * A stub `uname`. `install.sh` refuses to run anywhere but macOS, because the
+ * Homebrew tap and formula are macOS-only — so on the Linux CI runner it exits
+ * before reaching a single line this file is about. Stubbing the check keeps
+ * these tests testing the upgrade logic on every platform, rather than silently
+ * covering nothing off macOS.
+ */
+const UNAME_STUB = `#!/usr/bin/env bash
+if [ "\${1:-}" = "-s" ]; then echo "Darwin"; exit 0; fi
+exec /usr/bin/uname "$@"
+`;
+
+/**
  * A stub `curl`: the GitHub release the installer belongs to. RELEASE_TAG="" is
  * the unreachable case — the installer cannot learn what it should install.
  */
@@ -102,6 +114,7 @@ async function runInstaller(
     await writeFile(join(bin, "brew"), BREW_STUB, { mode: 0o755 });
     await writeFile(join(bin, "bastra"), BASTRA_STUB, { mode: 0o755 });
     await writeFile(join(bin, "curl"), CURL_STUB, { mode: 0o755 });
+    await writeFile(join(bin, "uname"), UNAME_STUB, { mode: 0o755 });
     await writeFile(log, "");
 
     const child = spawn("bash", [SCRIPTS[script]], {
