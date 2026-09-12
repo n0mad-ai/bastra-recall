@@ -34,6 +34,8 @@ import {
   clearSharedRecallLanguage,
   getPrimaryLanguage,
   setPrimaryLanguage,
+  getExperimentConfig,
+  type CliSettings,
 } from "../src/settings.js";
 
 async function withTempFile<T>(fn: (path: string) => Promise<T>): Promise<T> {
@@ -329,6 +331,72 @@ test("language.primary: invalid stored code is dropped on read, valid 2-letter s
     assert.equal((await readSettings(path)).update.mode, "notify", "sibling preserved");
     await writeFile(path, JSON.stringify({ language: { primary: "DE" } }), "utf8");
     assert.equal(await getPrimaryLanguage(path), "de", "valid 2-letter code survives, lowercased");
+  });
+});
+
+// ─── #425: the persisted experiment block must survive a read ─────────────
+//
+// Gemessen auf a4c0896: eine gültige Settings-Datei mit `experiment`-Block kam
+// als {"update":{"mode":"auto"}} zurück, `getExperimentConfig` lieferte `null`,
+// also blieb jedes Telemetrie-Ereignis `unassigned`. `experiment` war der
+// EINZIGE unterstützte Block, den readSettings verschluckte — der Round-Trip
+// unten prüft alle fünfzehn, damit der nächste nicht wieder durchrutscht.
+
+/** Die echte Registrierungsidentität aus packages/eval/registrations/presentation-experiment.json. */
+const REGISTERED_EXPERIMENT = {
+  name: "presentation-vs-retrieval",
+  arms: ["wording_current", "wording_variant"],
+  registration: "packages/eval/registrations/presentation-experiment.json",
+  registration_version: 1,
+};
+
+test("#425: a full settings file round-trips without losing a single supported block", async () => {
+  await withTempFile(async (path) => {
+    const full: CliSettings = {
+      update: { mode: "auto" },
+      embedding: { provider: "ollama" },
+      ollama: { autostart: false },
+      api: { token: "tok-123" },
+      cors: { origins: ["https://bastra.io"] },
+      commons: { enabled: true },
+      sharedRecall: { enabled: true, language: "de" },
+      evidenceGate: { enabled: false },
+      experiment: REGISTERED_EXPERIMENT,
+      docs: { mode: "suggest", language: "de" },
+      generation: { model: "gemma3:4b" },
+      ui: { enabled: true },
+      reflex: { enabled: true, maxPerTurn: 3 },
+      size: { guide: 500, critical: 800, exemptPaths: ["sandbox/"] },
+      language: { primary: "de" },
+    };
+    await writeFile(path, JSON.stringify(full, null, 2), "utf8");
+    assert.deepEqual(await readSettings(path), full, "readSettings dropped a supported block");
+
+    // Und nach einem Setter, der einen ANDEREN Block schreibt, steht noch alles da.
+    await setUpdateMode("off", path);
+    assert.deepEqual(await readSettings(path), { ...full, update: { mode: "off" } });
+  });
+});
+
+test("#425: getExperimentConfig returns the persisted arms for the registered experiment", async () => {
+  await withTempFile(async (path) => {
+    await writeFile(path, JSON.stringify({ experiment: REGISTERED_EXPERIMENT }), "utf8");
+    assert.deepEqual(await getExperimentConfig(path), {
+      experiment: REGISTERED_EXPERIMENT.name,
+      arms: REGISTERED_EXPERIMENT.arms,
+    });
+  });
+});
+
+test("#425: an experiment block without its registration reference is refused, siblings survive", async () => {
+  await withTempFile(async (path) => {
+    await writeFile(
+      path,
+      JSON.stringify({ update: { mode: "auto" }, experiment: { name: "floating", arms: ["a", "b"] } }),
+      "utf8",
+    );
+    assert.equal(await getExperimentConfig(path), null, "no registration reference → no arm assignment");
+    assert.equal((await readSettings(path)).update.mode, "auto", "sibling preserved");
   });
 });
 

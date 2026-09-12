@@ -364,6 +364,40 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
   if (typeof data?.evidenceGate?.enabled === "boolean") {
     settings.evidenceGate = { enabled: data.evidenceGate.enabled };
   }
+  // #425: derselbe Befund eine Stufe weiter — `setEvidenceGateEnabled` hatte
+  // ihn für den Evidenzentscheid, der Experimentblock hat ihn bis hierher
+  // behalten. Er wurde nie zurückgelesen, also lieferte `getExperimentConfig`
+  // auch bei gültiger Datei `null` und jedes Ereignis blieb `unassigned`.
+  // Geprüft wird hier genau das, was der Typ verlangt; die fachliche Regel
+  // "mindestens zwei Arme" bleibt in getExperimentConfig, wo sie ihre
+  // Begründung hat.
+  const expData = (data as { experiment?: { name?: unknown; arms?: unknown; registration?: unknown; registration_version?: unknown } }).experiment;
+  if (expData !== undefined) {
+    const arms = Array.isArray(expData.arms)
+      ? expData.arms.filter((a): a is string => typeof a === "string" && a.trim().length > 0).map((a) => a.trim())
+      : undefined;
+    if (
+      typeof expData.name === "string" &&
+      expData.name.trim().length > 0 &&
+      arms !== undefined &&
+      arms.length > 0 &&
+      typeof expData.registration === "string" &&
+      expData.registration.trim().length > 0 &&
+      typeof expData.registration_version === "number" &&
+      Number.isFinite(expData.registration_version)
+    ) {
+      settings.experiment = {
+        name: expData.name.trim(),
+        arms,
+        registration: expData.registration.trim(),
+        registration_version: expData.registration_version,
+      };
+    } else {
+      process.stderr.write(
+        `[bastra-recall] cli-settings.json: ignoring invalid experiment block (needs name, arms, registration, registration_version) ${JSON.stringify(expData)}\n`,
+      );
+    }
+  }
   if (data?.reflex !== undefined) {
     // Invalid values drop to undefined (= defaults), same policy as docs.
     const reflex: { enabled?: boolean; maxPerTurn?: number } = {};
@@ -661,15 +695,10 @@ export async function getExperimentConfig(
 ): Promise<{ experiment: string; arms: string[] } | null> {
   const cfg = (await readSettings(path)).experiment;
   if (!cfg) return null;
-  const complete =
-    typeof cfg.name === "string" &&
-    cfg.name.length > 0 &&
-    Array.isArray(cfg.arms) &&
-    cfg.arms.length >= 2 &&
-    typeof cfg.registration === "string" &&
-    cfg.registration.length > 0 &&
-    typeof cfg.registration_version === "number";
-  if (!complete) {
+  // Name, Registrierung und Registrierungsversion sind seit #425 schon von
+  // readSettings geprüft — hier bleibt die fachliche Regel: unter zwei Armen
+  // gibt es nichts zu vergleichen.
+  if (cfg.arms.length < 2) {
     console.error(
       "[bastra-recall] experiment config incomplete (needs name, >=2 arms, registration + registration_version) — no arm assignment (#267)",
     );
