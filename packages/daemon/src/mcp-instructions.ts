@@ -23,4 +23,6 @@ export const SERVER_INSTRUCTIONS =
   "'when did I…', 'how much was…'), search `recall` + `find_document` BEFORE any other lookup tool. " +
   "(3) When the user states a durable rule or preference, finalizes a decision, or a hard-won fix " +
   "lands, save it via `save_memory` immediately and acknowledge in one short line. recall returns lean " +
-  "candidates — call `load_memory` only for the hits you actually need.";
+  "candidates — call `load_memory` only for the hits you actually need. (4) To CHANGE an existing " +
+  "memory use `edit_memory` (str_replace / append / frontmatter patch) — never edit a vault file " +
+  "directly, and do not re-send a whole body just to add a line.";

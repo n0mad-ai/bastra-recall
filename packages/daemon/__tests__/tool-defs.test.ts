@@ -90,6 +90,7 @@ test("the write surface adds the save tools and keeps lifecycle out", () => {
   assert.deepEqual(
     [...names].sort(),
     [
+      "edit_memory",
       "find_document",
       "load_memory",
       "read_document",
@@ -98,7 +99,11 @@ test("the write surface adds the save tools and keeps lifecycle out", () => {
       "save_memory",
       "save_product_doc",
     ],
-    "write is search + the three save tools",
+    // #519: edit_memory joined the save tools. It changes one memory in place
+    // and moves nothing, so it is not lifecycle — and leaving it out of the
+    // surface a fresh install gets would push agents back to editing vault
+    // files by hand, which is the hole it closes.
+    "write is search + the save tools",
   );
   for (const t of LIFECYCLE_TOOLS) {
     assert.equal(isToolAllowed(t, "write"), false, `${t} is full-only — it reshapes the vault`);

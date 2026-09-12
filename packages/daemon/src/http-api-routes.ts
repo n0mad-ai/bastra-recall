@@ -27,6 +27,7 @@ import {
   recategorizeDocument,
   moveDocument,
 } from "./documents-write-handler.js";
+import { editMemoryHandler } from "./edit-memory-handler.js";
 import { addFloor, affirm, release } from "./floors.js";
 import { saveProductDocHandler } from "./product-doc-handler.js";
 import { recoverCallArguments } from "./call-corruption.js";
@@ -65,6 +66,11 @@ export async function dispatchApi(
       return await loadMemoryHandler(toolDeps, body, { sessionId: ctx.ccSessionId ?? null });
     case "save_memory":
       return await saveMemoryHandler(toolDeps, body);
+    // #519/#464: zwei Argumente, absichtlich. Die Private-Capability ist
+    // transportgebunden, und dieser Transport ist ein öffentlicher — er
+    // übergibt sie NIE.
+    case "edit_memory":
+      return await editMemoryHandler(toolDeps, body);
     case "archive_memory":
       return await archiveMemoryHandler(toolDeps, body);
     case "save_product_doc":

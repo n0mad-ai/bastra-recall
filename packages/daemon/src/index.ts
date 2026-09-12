@@ -58,6 +58,7 @@ import {
   MEMORY_TOOL_DEFS,
   type ToolDeps,
 } from "./tool-handlers.js";
+import { editMemoryHandler } from "./edit-memory-handler.js";
 import {
   documentTools,
   FindDocumentArgs,
@@ -762,6 +763,19 @@ async function main(): Promise<void> {
     if (name === "save_memory") {
       try {
         const result = await saveMemoryHandler(toolDeps, args);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (err) {
+        return errorResult((err as Error).message);
+      }
+    }
+
+    if (name === "edit_memory") {
+      try {
+        // #519/#464: ohne Capability — der stdio-Server ist ein öffentlicher
+        // Transport (siehe private-access.ts).
+        const result = await editMemoryHandler(toolDeps, args ?? {});
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };

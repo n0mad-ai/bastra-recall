@@ -32,7 +32,7 @@ export const ALL_TOOL_DEFS = [
  * and overridable there by hand.
  *
  * - `search` — read only: recall, load_memory, find_document, read_document
- * - `write`  — search + save_memory, save_document, save_product_doc
+ * - `write`  — search + save_memory, edit_memory, save_document, save_product_doc
  * - `full`   — everything, including the lifecycle operations
  *
  * Lifecycle operations (archive_memory, move_document, recategorize_document)
@@ -56,6 +56,12 @@ const SEARCH_SURFACE_TOOLS = ["recall", "load_memory", "find_document", "read_do
 const WRITE_SURFACE_TOOLS = [
   ...SEARCH_SURFACE_TOOLS,
   "save_memory",
+  // #519: `edit_memory` is a SAVE tool, not a lifecycle one — it changes one
+  // memory in place and moves nothing. Keeping it out of `write` (the surface
+  // a fresh install gets) would leave exactly the hole it closes: an agent
+  // that cannot afford a full overwrite goes back to editing the vault file by
+  // hand, past the audit log, the id lock and the index.
+  "edit_memory",
   "save_document",
   "save_product_doc",
 ] as const;

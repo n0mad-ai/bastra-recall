@@ -555,6 +555,96 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
     },
   },
   {
+    name: "edit_memory",
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    description:
+      "#519 — change PART of an existing memory without re-sending it. " +
+      "Use this for every ordinary update: a one-line addendum, a corrected " +
+      "sentence, a sharpened summary or an extra trigger. " +
+      "\n\n" +
+      "NEVER edit a vault .md file directly. A direct file edit skips the " +
+      "audit log, the `updated` stamp, the id lock, the atomic write and the " +
+      "index refresh — the change becomes unreconstructable and can be " +
+      "silently undone by a parallel writer or the cloud sync. This tool is " +
+      "the cheap, correct way; there is no longer a reason to take the other " +
+      "one.\n" +
+      "Use save_memory(overwrite: true) only when the memory is rewritten as " +
+      "a whole, or when you need a field this tool does not cover.\n" +
+      "\n" +
+      "OPERATIONS (combine freely, they apply as ONE atomic change):\n" +
+      "- str_replace: old_str -> new_str in the body. old_str must occur " +
+      "EXACTLY ONCE; if it is missing or ambiguous NOTHING is written and the " +
+      "error says which of the two it was. Copy the text verbatim from " +
+      "load_memory, whitespace included.\n" +
+      "- append: add text at the end of the body (it lands before the " +
+      "auto-related block, never inside it).\n" +
+      "- frontmatter: patch summary, recall_when, tags, issues, related, " +
+      "confidence or valid_until. Nothing else — id, scope, type, sensitivity " +
+      "and write_origin are rejected here and belong to save_memory or a " +
+      "dedicated tool.\n" +
+      "\n" +
+      "expected_updated is optional optimistic concurrency: pass the " +
+      "`updated` value you saw when you loaded the memory, and the edit is " +
+      "refused if someone changed it meanwhile.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "Id of the memory to change. It must already exist.",
+        },
+        str_replace: {
+          type: "object",
+          description:
+            "Replace one unique passage in the body. Nothing is written when " +
+            "old_str is missing or occurs more than once.",
+          properties: {
+            old_str: {
+              type: "string",
+              description:
+                "The exact existing text, copied verbatim (including line " +
+                "breaks). Must occur exactly once in the body.",
+            },
+            new_str: {
+              type: "string",
+              description: "What replaces it. Empty string deletes the passage.",
+            },
+          },
+          required: ["old_str", "new_str"],
+        },
+        append: {
+          type: "string",
+          description:
+            "Text appended to the end of the body — the cheap way to add an " +
+            "addendum to a long memory without re-sending it.",
+        },
+        frontmatter: {
+          type: "object",
+          description:
+            "Patch for a small whitelist of fields. Any other key is " +
+            "REJECTED (not silently ignored).",
+          properties: {
+            summary: { type: "string" },
+            recall_when: { type: "array", items: { type: "string" } },
+            tags: { type: "array", items: { type: "string" } },
+            issues: { type: "array", items: { type: "string" } },
+            related: { type: "array", items: { type: "string" } },
+            confidence: { type: "number" },
+            valid_until: { type: "string" },
+          },
+        },
+        expected_updated: {
+          type: "string",
+          description:
+            "The `updated` value you saw when you loaded the memory " +
+            "(YYYY-MM-DD). The edit is refused if the file carries a " +
+            "different one. Omit to edit the current state.",
+        },
+      },
+      required: ["id"],
+    },
+  },
+  {
     name: "archive_memory",
     annotations: { readOnlyHint: false, destructiveHint: true },
     description:

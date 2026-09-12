@@ -1,6 +1,6 @@
 ---
 name: bastra-recall
-description: Persistent external brain for ChatGPT, Codex, Claude, and other MCP clients — documents (PDFs, contracts, scans with OCR), personal facts (appointments, decisions, items, amounts), AND code lessons / preferences / project topology. USE PROACTIVELY in three modes. (1) RECALL — whenever the user asks about anything from their past, vault, projects, or personal life, INCLUDING direct retrieval phrasings like "find...", "where is...", "when was...", "how much was...", "do I have a ...", "such mal meinen ...". Call bastra-recall (recall + find_document) BEFORE conversation_search, before web_search, before any other lookup tool. (2) CAPTURE — when the user expresses frustration about a recurring issue (in any language: "again", "wieder", "снова", "how often", emphatic caps in any script), states an explicit durable rule ("always X", "never Y", "on this project we …"), corrects a recurring tendency in your behavior, finalizes an architectural decision after weighing options, confirms a workflow ("let's always do it this way"), or completes a coherent feature / multi-file refactor / sub-system milestone (save the file map as project-fact). (3) APPLY — at session start, before writing/editing code, before a new coding block in an area you haven't touched this session (recall the topology map first), and before giving multi-step plans. Tools: recall, load_memory, save_memory, find_document, read_document.
+description: Persistent external brain for ChatGPT, Codex, Claude, and other MCP clients — documents (PDFs, contracts, scans with OCR), personal facts (appointments, decisions, items, amounts), AND code lessons / preferences / project topology. USE PROACTIVELY in three modes. (1) RECALL — whenever the user asks about anything from their past, vault, projects, or personal life, INCLUDING direct retrieval phrasings like "find...", "where is...", "when was...", "how much was...", "do I have a ...", "such mal meinen ...". Call bastra-recall (recall + find_document) BEFORE conversation_search, before web_search, before any other lookup tool. (2) CAPTURE — when the user expresses frustration about a recurring issue (in any language: "again", "wieder", "снова", "how often", emphatic caps in any script), states an explicit durable rule ("always X", "never Y", "on this project we …"), corrects a recurring tendency in your behavior, finalizes an architectural decision after weighing options, confirms a workflow ("let's always do it this way"), or completes a coherent feature / multi-file refactor / sub-system milestone (save the file map as project-fact). (3) APPLY — at session start, before writing/editing code, before a new coding block in an area you haven't touched this session (recall the topology map first), and before giving multi-step plans. Tools: recall, load_memory, save_memory, edit_memory, find_document, read_document.
 ---
 
 # bastra-recall — autonomous teammate memory
@@ -85,7 +85,19 @@ Two failure modes that outlive their cause, both spelled out in the `save_memory
 
 ### Before saving
 
-Always `recall()` the title/topic first. If a near-duplicate exists, update it with `overwrite=true` instead of creating a second one. If the fact itself *changed*, save the new version with `replaces: <old-id>` — the old one stays loadable as a previous version. Merely related? That's a `[[wikilink]]`, not a supersede.
+Always `recall()` the title/topic first. If a near-duplicate exists, update it instead of creating a second one — `edit_memory` for a partial change, `overwrite=true` when the memory is rewritten as a whole. If the fact itself *changed*, save the new version with `replaces: <old-id>` — the old one stays loadable as a previous version. Merely related? That's a `[[wikilink]]`, not a supersede.
+
+### Changing an existing memory — `edit_memory`, never the file
+
+**Never edit a vault `.md` file with a file-edit tool.** A direct write skips the audit log, the `updated` stamp, the id lock, the atomic write and the index refresh — the change becomes unreconstructable and a parallel writer or the cloud sync can silently undo it.
+
+`edit_memory` is the cheap, correct way and needs neither the body nor the required fields again:
+
+- `str_replace` — swap one passage. `old_str` must occur exactly once; missing or ambiguous writes NOTHING and says which.
+- `append` — add a line at the end of the body (it lands before the auto-related block).
+- `frontmatter` — patch `summary`, `recall_when`, `tags`, `issues`, `related`, `confidence`, `valid_until`. Any other field is rejected.
+
+`save_memory(overwrite=true)` stays for a full rewrite or for a field `edit_memory` does not cover.
 
 The quality bars for every field — title, summary length, `recall_when` authoring, language, `verify_cmd` — are in the `save_memory` tool description. Follow them there.
 
