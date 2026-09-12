@@ -34,7 +34,7 @@ import {
   bumpShown,
   getLoadedMarkerMtime,
   loadSessionState,
-  saveSessionState,
+  mutateSessionState,
   shouldDropHit,
 } from "./session-state.js";
 
@@ -363,8 +363,11 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
     emitted = kept;
     if (kept.length > 0) {
       const now = Date.now();
-      for (const h of kept) bumpShown(state, h.id, now);
-      await saveSessionState(sessionId, state);
+      // #539: bump against the state on disk, not against this snapshot —
+      // four other lanes write the same file while the recall above runs.
+      await mutateSessionState(sessionId, (s) => {
+        for (const h of kept) bumpShown(s, h.id, now);
+      });
     }
   }
 

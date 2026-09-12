@@ -34,7 +34,7 @@ import {
   loadSessionState,
   recordSourceEmit,
   recordSourceSuppressed,
-  saveSessionState,
+  mutateSessionState,
   wasEmitConsumed,
 } from "./session-state.js";
 
@@ -216,8 +216,9 @@ export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: str
       // Suppressed emits {} like the no-hits path; the throttle stays
       // unmarked (nothing was emitted), the saved tokens go to telemetry.
       suppressedTokensEst = Math.ceil(block.length / 4);
-      recordSourceSuppressed(state, BACKOFF_SOURCE);
-      await saveSessionState(sessionId, state);
+      // #539: apply the delta to the state on disk, not to this snapshot —
+      // four other lanes write the same file.
+      await mutateSessionState(sessionId, (s) => recordSourceSuppressed(s, BACKOFF_SOURCE));
     } else {
       // Mark throttle only when we actually emit — otherwise quiet calls
       // would burn the budget.
@@ -225,8 +226,8 @@ export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: str
       hintTokensEst = Math.ceil(block.length / 4);
       // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
       await reportHinted(selfBaseUrl, hits.map((h) => h.id), typeof payload.session_id === "string" ? payload.session_id : null);
-      recordSourceEmit(state, BACKOFF_SOURCE, hits.map((h) => h.id), consumed);
-      await saveSessionState(sessionId, state);
+      const emitted = hits.map((h) => h.id);
+      await mutateSessionState(sessionId, (s) => recordSourceEmit(s, BACKOFF_SOURCE, emitted, consumed));
       stdout = JSON.stringify({
         hookSpecificOutput: {
           hookEventName,

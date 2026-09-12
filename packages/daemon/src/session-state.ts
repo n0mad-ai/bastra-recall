@@ -19,14 +19,22 @@
  * reset (the agent has now consumed that memory, so the dedup-clock starts
  * over).
  *
- * Race conditions: tmpfile + rename gives atomic writes. Two hooks racing
- * on the same session can off-by-one the counter — acceptable per the
- * acceptance criteria.
+ * Race conditions (#539): tmpfile + rename gives an atomic FILE; it does not
+ * give an atomic TRANSACTION. Five lanes (write, todo, bash-pre, bash-fail,
+ * prompt) run load → own work → save against the same session id, so without
+ * serialisation they all read the same old file and the last save wins —
+ * measured at 5 concurrent lanes reporting success and 1 surviving. Every
+ * mutation therefore goes through `mutateSessionState`, which re-reads inside
+ * a per-session lock and applies only that lane's delta. The lock wraps the
+ * mutation, NEVER the lane's own work: a hook lane must not queue behind
+ * another lane's recall. Measured cost of the extra re-read: ~0.2ms on top of
+ * the ~0.5ms the save already cost.
  */
 import { mkdir, readFile, rename, stat, writeFile, readdir, unlink } from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import { envInt } from "./env.js";
+import { withPathLock } from "./path-lock.js";
 
 export interface ShownEntry {
   count: number;
@@ -113,11 +121,44 @@ export async function loadSessionState(sessionId: string): Promise<SessionState>
 }
 
 /**
- * Atomically persist the session state. Best-effort: failures are
- * swallowed so the hook never breaks the user's tool call.
+ * Atomically persist a WHOLE state. Best-effort: failures are swallowed so
+ * the hook never breaks the user's tool call.
+ *
+ * #539: this overwrites everything, so it is no longer how a lane writes —
+ * lanes use {@link mutateSessionState}. It stays for the callers that own the
+ * whole file (tests seeding a fixture). Never call it from inside a
+ * `mutateSessionState` callback: taking the same path lock twice deadlocks.
  */
 export async function saveSessionState(sessionId: string, state: SessionState): Promise<void> {
   if (!sessionId) return;
+  await withPathLock(sessionFile(sessionId), () => writeSessionState(sessionId, state));
+}
+
+/**
+ * #539: the one read-modify-write path, the shape #534 established for the
+ * settings file. `mutate` gets the state as it is on disk RIGHT NOW and
+ * mutates it in place; read, mutate and write all happen inside the
+ * per-session lock, so two lanes firing in the same moment apply BOTH deltas
+ * instead of overwriting each other.
+ *
+ * A lane still reads the state early — its filtering decisions need it — and
+ * only the write-back moves in here, expressed as a delta. In-process
+ * locking is enough: every lane is served by the same daemon process.
+ */
+export async function mutateSessionState(
+  sessionId: string,
+  mutate: (state: SessionState) => void,
+): Promise<void> {
+  if (!sessionId) return;
+  await withPathLock(sessionFile(sessionId), async () => {
+    const state = await loadSessionState(sessionId);
+    mutate(state);
+    await writeSessionState(sessionId, state);
+  });
+}
+
+/** The bare atomic write. Only ever called with the session lock held. */
+async function writeSessionState(sessionId: string, state: SessionState): Promise<void> {
   try {
     const dir = sessionStateDir();
     // mode 0700/0600: on Linux os.tmpdir() is world-writable (/tmp), so a
@@ -244,10 +285,12 @@ export function bumpShown(state: SessionState, memId: string, now: number = Date
  */
 export async function clearShown(sessionId: string): Promise<void> {
   if (!sessionId) return;
-  const state = await loadSessionState(sessionId);
-  if (Object.keys(state.shown).length === 0) return;
-  state.shown = {};
-  await saveSessionState(sessionId, state);
+  // Cheap early-out kept from #354: nothing shown, nothing to write (and no
+  // state file conjured for a session that never had one).
+  if (Object.keys((await loadSessionState(sessionId)).shown).length === 0) return;
+  await mutateSessionState(sessionId, (state) => {
+    state.shown = {};
+  });
 }
 
 /* ── #161: per hook-source empty-streak backoff ────────────────────────────

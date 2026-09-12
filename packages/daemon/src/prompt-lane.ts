@@ -51,7 +51,7 @@ import {
   loadSessionState,
   recordSourceEmit,
   recordSourceSuppressed,
-  saveSessionState,
+  mutateSessionState,
   shouldDropHit,
   wasEmitConsumed,
 } from "./session-state.js";
@@ -639,17 +639,24 @@ export async function runPromptLane(
 
   // State-Bookkeeping in einem Save: Backoff-Streak nur für die
   // prompt-lookup-Lane, Reflex bucht nur die Session-Dedup.
-  if (recallBlock) {
-    recordSourceEmit(state, BACKOFF_SOURCE, recallHits.map((h) => h.id), consumedForEmit);
-  }
-  for (const h of reflexKept) bumpShown(state, h.id);
-  // Semantic-reflex injections book the same shown-state — without this the
-  // dedup above has nothing to count and the block repeats every prompt.
-  if (detectedMode === "none" && recallBlock) {
-    for (const h of recallHits) bumpShown(state, h.id);
-  }
+  //
+  // #539: the deltas run against the state as it is on disk when the lock is
+  // taken, not against the snapshot read before the recall — the other four
+  // lanes write the same file in the meantime.
   if (recallHits.length > 0 || reflexKept.length > 0) {
-    await saveSessionState(sessionId, state);
+    const recallIds = recallHits.map((h) => h.id);
+    await mutateSessionState(sessionId, (s) => {
+      if (recallBlock) {
+        recordSourceEmit(s, BACKOFF_SOURCE, recallIds, consumedForEmit);
+      }
+      for (const h of reflexKept) bumpShown(s, h.id);
+      // Semantic-reflex injections book the same shown-state — without this
+      // the dedup above has nothing to count and the block repeats every
+      // prompt.
+      if (detectedMode === "none" && recallBlock) {
+        for (const h of recallHits) bumpShown(s, h.id);
+      }
+    });
   }
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
   const injectedIds = [

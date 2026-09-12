@@ -41,7 +41,7 @@ import {
   loadSessionState,
   recordSourceEmit,
   recordSourceSuppressed,
-  saveSessionState,
+  mutateSessionState,
   shouldDropHit,
   wasEmitConsumed,
   type SessionState,
@@ -229,6 +229,9 @@ export async function runWriteLane(
   const sessionId = payload.session_id ?? "";
   let sessionState: SessionState = { shown: {} };
   let dedupActive = false;
+  // #539: this lane's own bookkeeping, queued as deltas instead of written
+  // back from the snapshot — replayed under the session lock at the end.
+  const stateDeltas: Array<(s: SessionState) => void> = [];
   if (sessionId) {
     sessionState = await loadSessionState(sessionId);
     dedupActive = true;
@@ -319,7 +322,7 @@ export async function runWriteLane(
     }
     const block = formatHintBlock(requiredHits, optionalHits, project, resp?.weak_result === true, resp?.no_home === true, resp?.unfused === true, client);
     suppressedTokensEst = Math.ceil(block.length / 4);
-    recordSourceSuppressed(sessionState, BACKOFF_SOURCE);
+    stateDeltas.push((s) => recordSourceSuppressed(s, BACKOFF_SOURCE));
   } else {
     const hintsBlock = formatHintBlock(requiredHits, optionalHits, project, resp?.weak_result === true, resp?.no_home === true, resp?.unfused === true, client);
     const block = detNote ? `${detNote}\n${hintsBlock}` : hintsBlock;
@@ -327,7 +330,8 @@ export async function runWriteLane(
     hintedIds = [...requiredHits, ...optionalHits].map((h) => h.id);
     hintedTypes = [...requiredHits, ...optionalHits].map((h) => h.type);
     stdout = envelope(block);
-    recordSourceEmit(sessionState, BACKOFF_SOURCE, hintedIds, backoffConsumed);
+    const emitted = hintedIds;
+    stateDeltas.push((s) => recordSourceEmit(s, BACKOFF_SOURCE, emitted, backoffConsumed));
   }
 
   // Bump shown-counts for everything we surfaced, then persist. When
@@ -335,9 +339,14 @@ export async function runWriteLane(
   if (dedupActive && survivingHits.length > 0) {
     if (!suppressed) {
       const now = Date.now();
-      for (const h of survivingHits) bumpShown(sessionState, h.id, now);
+      for (const h of survivingHits) stateDeltas.push((s) => bumpShown(s, h.id, now));
     }
-    await saveSessionState(sessionId, sessionState);
+    // #539: replay the deltas against the state as it is on disk now — the
+    // snapshot above is minutes of recall old and four other lanes may have
+    // written since.
+    await mutateSessionState(sessionId, (s) => {
+      for (const d of stateDeltas) d(s);
+    });
   }
 
   // Opportunistic cleanup of stale session files — fire-and-forget.

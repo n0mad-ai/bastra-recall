@@ -35,7 +35,7 @@ import {
   loadSessionState,
   recordSourceEmit,
   recordSourceSuppressed,
-  saveSessionState,
+  mutateSessionState,
   wasEmitConsumed,
 } from "./session-state.js";
 
@@ -324,8 +324,9 @@ export async function runTodoLane(
     if (suppressed) {
       // Suppressed emits {} exactly like the empty path (#161).
       suppressedTokensEst = Math.ceil(block.length / 4);
-      recordSourceSuppressed(state, BACKOFF_SOURCE);
-      await saveSessionState(sessionId, state);
+      // #539: apply the delta to the state on disk, not to this snapshot —
+      // four other lanes write the same file.
+      await mutateSessionState(sessionId, (s) => recordSourceSuppressed(s, BACKOFF_SOURCE));
     } else {
       hintTokensEst = Math.ceil(block.length / 4);
       out = JSON.stringify({
@@ -334,8 +335,8 @@ export async function runTodoLane(
           additionalContext: block,
         },
       });
-      recordSourceEmit(state, BACKOFF_SOURCE, filtered.map((h) => h.id), consumed);
-      await saveSessionState(sessionId, state);
+      const emitted = filtered.map((h) => h.id);
+      await mutateSessionState(sessionId, (s) => recordSourceEmit(s, BACKOFF_SOURCE, emitted, consumed));
       // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
       await reportHinted(url, filtered.map((h) => h.id), payload.session_id ?? null);
     }
