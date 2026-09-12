@@ -47,13 +47,31 @@ installed_cli_version() {
   bastra --version </dev/null 2>/dev/null | tr -d '[:space:]' || true
 }
 
-# The version Homebrew would install, per the tap (#535): `brew outdated
-# --verbose` prints `bastra-recall (0.9.2) < 1.0.0` and nothing at all when the
-# installed keg is already current. Empty means "could not be determined" —
-# best effort, never a reason to fail on its own.
-expected_release_version() {
-  brew outdated --verbose bastra-recall </dev/null 2>/dev/null \
-    | sed -n 's/.*< *//p' | head -1 | tr -d '[:space:]'
+# The version this installer is supposed to leave the machine on (#535).
+#
+# `brew outdated --verbose` was the first answer and is the wrong one: it prints
+# nothing at all for a stale tap and nothing for an up-to-date keg, and an empty
+# expectation meant the version check was simply skipped — `brew upgrade` could
+# exit 0 with the CLI still on the old version and the run ended in the normal
+# success banner. The authority is the release this installer comes from:
+# /releases/latest, the same source the Homebrew tap updater and the CLI's own
+# update check read, and (since #524) one that only moves once a release's whole
+# set is published. $BASTRA_VERSION overrides it for testing and for pinning.
+#
+# Empty means the requested version could not be established — which is a reason
+# to stop, not to continue unchecked.
+requested_cli_version() {
+  if [ -n "${BASTRA_VERSION:-}" ]; then
+    printf '%s' "$BASTRA_VERSION"
+    return 0
+  fi
+  # An unreachable API must return empty, not abort the script under `set -e`.
+  local json=""
+  json="$(curl -fsSL https://api.github.com/repos/n0mad-ai/bastra-recall/releases/latest </dev/null 2>/dev/null)" \
+    || return 0
+  printf '%s' "$json" \
+    | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v\{0,1\}\([^"]*\)".*/\1/p' \
+    | tr -d '[:space:]'
 }
 
 main() {
@@ -114,12 +132,14 @@ main() {
   brew trust n0mad-ai/tap </dev/null 2>/dev/null || true
 
   # 3/4 Install / upgrade
-  upgrade_incomplete=0
+  step_incomplete=0
+  step_label="Install"
   version_after=""
+  requested_version="$(requested_cli_version)"
   if brew list bastra-recall >/dev/null 2>&1 </dev/null; then
+    step_label="Update"
     echo "→ [3/4] bastra-recall already installed — checking for updates…"
     version_before="$(installed_cli_version)"
-    expected_version="$(expected_release_version)"
     # Non-fatal under `set -e`: a transient upgrade failure (network/tap) must not
     # abort before the friendly error block below — the old install keeps working
     # and stays registered exactly as it was.
@@ -134,23 +154,40 @@ main() {
     # anything as if the new release had landed.
     if [ "$upgrade_rc" -ne 0 ]; then
       echo "  ⚠ upgrade failed (rc=$upgrade_rc) — keeping the working ${version_before:-installed} version."
-      upgrade_incomplete=1
-    elif [ -n "$expected_version" ] && [ -n "$version_after" ] && [ "$version_after" != "$expected_version" ]; then
-      echo "  ⚠ upgrade reported success but the installed version is ${version_after}, not ${expected_version}."
-      upgrade_incomplete=1
+      step_incomplete=1
     fi
   else
     echo "→ [3/4] Installing bastra-recall…"
     brew install n0mad-ai/tap/bastra-recall </dev/null
+    version_after="$(installed_cli_version)"
+  fi
+
+  # #535: the same check after BOTH paths. A successful `brew upgrade` proves
+  # nothing on its own — a stale tap or a no-op upgrade exits 0 while the CLI
+  # stays where it was — and a fresh `brew install` from a stale tap lands on an
+  # old version just as quietly. The requested version is the release this
+  # installer came from, and it is not optional: not knowing it means this run
+  # cannot say it did what it promised.
+  if [ "$step_incomplete" -eq 0 ]; then
+    if [ -z "$requested_version" ]; then
+      echo "  ⚠ could not determine which version this installer should install."
+      step_incomplete=1
+    elif [ "$version_after" != "$requested_version" ]; then
+      echo "  ⚠ expected bastra-recall ${requested_version}, but the installed CLI reports ${version_after:-none}."
+      step_incomplete=1
+    fi
   fi
 
   # #535: stop before step 4. Re-running the guided setup here would re-point
   # registrations and restart services as if the requested version were
   # installed — it is not.
-  if [ "$upgrade_incomplete" -ne 0 ]; then
+  if [ "$step_incomplete" -ne 0 ]; then
     echo
     echo "════════════════════════════════════════════════════════════"
-    echo "  ✗ Update incomplete — still on ${version_after:-the previously installed version}."
+    echo "  ✗ ${step_label} incomplete — still on ${version_after:-the previously installed version}."
+    if [ -n "$requested_version" ]; then
+      echo "    This installer is for ${requested_version}."
+    fi
     echo
     echo "  Your working installation was left untouched and setup was"
     echo "  NOT re-run, so nothing points at a version that never landed."
