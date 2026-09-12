@@ -37,6 +37,16 @@
 
 Anything else that speaks MCP can attach through the forwarder today — untested surfaces are exactly that, and field reports are welcome. Non-MCP clients can use the REST API (`docs/USAGE.md`).
 
+### Supported platforms
+
+This table and the one above are **the** support matrix: the Homebrew caveat, the npm package README and the package descriptions state the same set, and a test holds them to it (#525).
+
+| Platform | Status | What you get, what you don't |
+|---|---|---|
+| **macOS** (Apple Silicon and Intel) | ✅ supported | Everything: the Homebrew install path, `bastra autostart` (LaunchAgent), the `.mcpb` Claude Desktop extension, `open_document`, and the compiled hook client. |
+| **Linux** (x86_64 and arm64) | 🟡 daemon, CLI, MCP and hooks | Install with npm (`npm i -g bastra-recall`); the compiled hook client ships for both architectures. Not available there: `bastra autostart` (the LaunchAgent is macOS-only — the MCP forwarder starts the daemon on demand instead), the `.mcpb` extension install, `open_document`, and the Homebrew path. |
+| **Windows** | 🗺️ not covered | No compiled hook client is built for it, and nothing here is tested on it. |
+
 ### Why
 
 Working with an AI assistant over months means re-explaining the same things. Pitfalls it already learned in one project recur in the next. Stable preferences (*"give me a recommendation, not a 5-option menu"*) get forgotten between sessions. Project-specific facts get re-discovered every time.
@@ -223,6 +233,16 @@ Built by [@n0mad-ai](https://github.com/n0mad-ai).
 | **ChatGPT** (Custom GPT Actions) | 🗺️ geplant | REST-Gateway und OpenAPI-Starter-Spec sind da; die verpackte Custom-GPT-Action ist als Nächstes dran — verfolgt in [#13](https://github.com/n0mad-ai/bastra-recall/issues/13) |
 
 Alles andere, was MCP spricht, kann sich heute über den Forwarder verbinden — ungetestete Oberflächen sind genau das, und Erfahrungsberichte sind willkommen. Nicht-MCP-Clients nutzen die REST-API (`docs/USAGE.md`).
+
+### Unterstützte Plattformen
+
+Diese Tabelle und die darüber sind **die** Support-Matrix: Homebrew-Caveat, npm-README und Paketbeschreibungen nennen dieselbe Menge, und ein Test hält sie darauf fest (#525).
+
+| Plattform | Status | Was drin ist, was nicht |
+|---|---|---|
+| **macOS** (Apple Silicon und Intel) | ✅ unterstützt | Alles: Homebrew-Installationsweg, `bastra autostart` (LaunchAgent), die `.mcpb`-Extension für Claude Desktop, `open_document` und der kompilierte Hook-Client. |
+| **Linux** (x86_64 und arm64) | 🟡 Daemon, CLI, MCP und Hooks | Installation über npm (`npm i -g bastra-recall`); den kompilierten Hook-Client gibt es für beide Architekturen. Nicht dabei: `bastra autostart` (der LaunchAgent ist macOS-only — stattdessen startet der MCP-Forwarder den Daemon bei Bedarf), die `.mcpb`-Extension, `open_document` und der Homebrew-Weg. |
+| **Windows** | 🗺️ nicht abgedeckt | Dafür wird kein kompilierter Hook-Client gebaut, und nichts davon ist dort getestet. |
 
 ### Warum
 

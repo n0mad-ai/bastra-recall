@@ -1,0 +1,37 @@
+# #525 — the live Homebrew formula must match the one in this repository.
+#
+# distribution/homebrew/bastra-recall.rb is the source of truth for everything
+# except `url` and `sha256`; every other change is copied into
+# n0mad-ai/homebrew-tap by hand. It had drifted: the live caveat named three
+# clients where this repo names four. Nothing noticed, because nothing looked.
+#
+# This job looks. It cannot fix the tap — that is a different repository — so a
+# failure here means: copy the repository formula over, minus the two
+# tap-owned lines.
+name: formula drift
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "distribution/homebrew/bastra-recall.rb"
+      - "tools/check-tap-drift.mjs"
+      - "tools/support-matrix.mjs"
+      - ".github/workflows/formula-drift.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Compare the live tap formula with this repository's
+        run: node tools/check-tap-drift.mjs

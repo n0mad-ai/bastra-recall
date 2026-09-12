@@ -47,7 +47,7 @@ See the [top-level README](../../README.md). Paths, in order of friction:
 3. **`bastra install all`** — single CLI call that registers MCP + Skill + the default quiet Hooks across Claude Code, Claude Desktop, Codex/ChatGPT Desktop, and Cursor. On a first run with no vault configured, an interactive install offers to create `~/BastraVault` for you (non-interactive/`--yes`/`--dry-run` runs keep the deterministic error).
 4. **Fully manual JSON snippets** — fallback.
 
-All paths end with the daemon reachable on `http://127.0.0.1:6723` and the client configs patched.
+All paths end with the client configs patched. Whether the daemon is already **running** differs: the interactive Map wizard starts it, and the MCP forwarder starts it on the first tool call — `bastra install all` only registers, it neither starts nor health-checks the daemon. `bastra doctor` is what probes the endpoint (#525).
 Use `bastra doctor --fix` to repair stale paths, missing required hooks, or a
 stale Skill copy after an update. The Stop save-eval hook is optional; disabling
 it intentionally does not make Doctor fail. Enable it explicitly with

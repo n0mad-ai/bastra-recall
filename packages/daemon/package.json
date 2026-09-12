@@ -1,7 +1,7 @@
 {
   "name": "@bastra-recall/daemon",
   "version": "0.9.2",
-  "description": "MCP server exposing recall + load_memory over a markdown vault.",
+  "description": "MCP server over a markdown vault: recall, load_memory, save_memory, edit_memory, archive_memory and document tools — plus the REST gateway, the quiet hook lanes and the bastra CLI.",
   "type": "module",
   "license": "MIT",
   "repository": {
