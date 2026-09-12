@@ -344,9 +344,9 @@ choice, so recall runs the hybrid path (BM25 + vectors, multilingual).
 'off' returns to BM25 keyword-only. 'status' shows the effective provider and
 how it was resolved (env, setting, or detection).
 
-Options:
-  --ollama      Install Ollama without asking
-  --no-ollama   Never install it — fail instead
+'bastra embeddings' takes no options of its own. To decide the Ollama install
+non-interactively, pass --ollama / --no-ollama to 'bastra install' or
+'bastra update'; on this command they are rejected as a usage error (#536).
 `,
 
   models: `bastra models — the local text model for memory rewriting

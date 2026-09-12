@@ -198,7 +198,9 @@ prompt is POSTed to `/hook/reflex` (parallel to the recall call, same
 `BASTRA_REFLEX_MAX_PER_TURN` (default 2) and returns lean hits. The hook
 renders them as a `<recall-hints … trigger="reflex">` block ahead of the
 lookup block. Reflex hits bypass the #161 backoff (user-wired = never
-noise) but respect the per-session dedup (max 1×/4h per memory).
+noise) but respect the per-session dedup (`BASTRA_HOOK_MAX_SHOW`, default 1×
+per memory per session). #354 removed the former 4h expiry: a `load_memory` of
+that id, or a compact/clear/resume signal, is what releases it again.
 Kill switch: `BASTRA_REFLEX=off` or `reflex.enabled: false` in
 `cli-settings.json`. Every firing is traced as a `hook_reflex` event.
 
@@ -382,7 +384,9 @@ rendered (id-only) so a stale floor stays visible. One audit line per entry:
 framed like the other recalled-content blocks (#152: reference-only note +
 anti-spoof strip), capped at ~1200 chars with an explicit truncation note, and
 **never subject to any dedup**: the session-state dedup (`shouldDropHit`)
-applies only in the PreToolUse hook, and the only dedup here runs the other
+governs ordinary recall hits — in the PreToolUse and bash-pre lanes, and since
+#541 in every mode of the UserPromptSubmit lane — but not this block, and the
+only dedup here runs the other
 way — a pinned id is dropped from the *ranked* hint list so context isn't
 spent twice on an already-guaranteed entry. Telemetry gains `pinned_count`.
 
