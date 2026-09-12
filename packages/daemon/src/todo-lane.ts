@@ -155,8 +155,14 @@ export function extractTopicsFromTodos(todosRaw: unknown): TopicExtraction {
     }
   }
 
+  // "appears in >= 2 todos" needs >= 2 todos. Claude Code ≥ 2.1.268 sends one
+  // task per call (#506), so under the old threshold this lane would never
+  // produce a topic word again on a current client — and `topics` is what the
+  // recall filters and the hint block labels itself with. With a single item
+  // there is no chatty-todo to dominate, so its own top words are the topics.
+  const minDocFreq = contents.length === 1 ? 1 : 2;
   const topics = [...docFreq.entries()]
-    .filter(([, count]) => count >= 2)
+    .filter(([, count]) => count >= minDocFreq)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, TOPIC_WORD_CAP)
     .map(([w]) => w);
@@ -168,6 +174,52 @@ export function extractTopicsFromTodos(todosRaw: unknown): TopicExtraction {
   const query = queryParts.join("  ").trim();
 
   return { query, topics, todoCount: todos.length };
+}
+
+/**
+ * #506 — every plan event this lane can be bound to, across the clients the
+ * product promises recall-before-plans for.
+ *
+ * `TodoWrite` was the ONLY name here until the seven-day dogfood window
+ * produced zero `todo_hook_call` events: Claude Code 2.1.268 replaced the
+ * batched todo tool with per-task `TaskCreate` / `TaskUpdate`, leaving the
+ * matcher bound to a retired event. Verified on 2.1.269 with an isolated
+ * settings file — a three-step plan emitted three `TaskCreate` calls and no
+ * `TodoWrite`. The old name stays supported: it is still what a client emits
+ * with `CLAUDE_CODE_ENABLE_TASKS=0`, and what older clients emit always.
+ *
+ * `TaskUpdate` is accepted but NOT registered by the installer (see
+ * adapters/claude-code.ts): a status transition is not a new plan.
+ */
+const PLAN_TOOLS = new Set(["TodoWrite", "update_plan", "TaskCreate", "TaskUpdate"]);
+
+/**
+ * The plan items to extract topics from, in whatever shape the client sent.
+ *
+ *  · Claude Code ≤ 2.1.267 / `CLAUDE_CODE_ENABLE_TASKS=0`: `{ todos: [...] }`
+ *  · Codex `update_plan`: `{ plan: [{ step, status }] }`
+ *  · Claude Code ≥ 2.1.268: ONE task per call, `{ subject, description?,
+ *    activeForm? }` — no array at all. `description` is absent from the
+ *    documented shape but present in every live payload observed, and it is
+ *    the richer half; both are kept, subject first.
+ */
+function planItemsOf(payload: ClaudeHookPayload): unknown {
+  const input = payload.tool_input ?? {};
+  if (payload.tool_name === "update_plan" && Array.isArray(input.plan)) {
+    return input.plan.map((item) => {
+      if (!item || typeof item !== "object") return item;
+      const step = (item as Record<string, unknown>).step;
+      return { ...(item as Record<string, unknown>), content: step };
+    });
+  }
+  if (payload.tool_name === "TaskCreate" || payload.tool_name === "TaskUpdate") {
+    const text = [input.subject, input.description, input.activeForm ?? input.active_form]
+      .filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+    // One tool call is one plan step, however many fields carried its text —
+    // `todo_count` must keep meaning "steps", not "strings found".
+    return text.length > 0 ? [{ content: text.join(". "), status: input.status }] : [];
+  }
+  return input.todos;
 }
 
 /** Min-confidence gate — reject extractions that are too thin to be useful. */
@@ -193,16 +245,10 @@ export async function runTodoLane(
   const client = hookClient(payload);
 
   if (payload.hook_event_name !== "PreToolUse") return "{}";
-  if (payload.tool_name !== "TodoWrite" && payload.tool_name !== "update_plan") return "{}";
+  const toolName = payload.tool_name ?? "";
+  if (!PLAN_TOOLS.has(toolName)) return "{}";
 
-  const planItems = payload.tool_name === "update_plan" && Array.isArray(payload.tool_input?.plan)
-    ? payload.tool_input.plan.map((item) => {
-        if (!item || typeof item !== "object") return item;
-        const step = (item as Record<string, unknown>).step;
-        return { ...(item as Record<string, unknown>), content: step };
-      })
-    : payload.tool_input?.todos;
-  const extraction = extractTopicsFromTodos(planItems);
+  const extraction = extractTopicsFromTodos(planItemsOf(payload));
   if (isLowConfidence(extraction)) {
     await writeTelemetry({
       session_id: payload.session_id ?? null,
@@ -245,7 +291,7 @@ export async function runTodoLane(
         query: extraction.query,
         topics: extraction.topics,
         project,
-        tool_name: payload.tool_name,
+        tool_name: toolName,
         k: 5,
         type: "project-fact",
         // #445: die drei Identitätsfelder, die diese Lane als einzige gar
@@ -320,7 +366,7 @@ export async function runTodoLane(
     const decision = decideBackoff(entry, consumed, hasRequired);
     backoffStreak = decision.streak;
     suppressed = decision.suppress;
-    const block = formatHintBlock(filtered, project, extraction.topics, unfused, client, payload.tool_name);
+    const block = formatHintBlock(filtered, project, extraction.topics, unfused, client, toolName);
     if (suppressed) {
       // Suppressed emits {} exactly like the empty path (#161).
       suppressedTokensEst = Math.ceil(block.length / 4);

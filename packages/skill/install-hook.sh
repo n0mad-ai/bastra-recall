@@ -5,7 +5,7 @@
 #   - SessionStart    → preload preferences + active-project facts
 #   - UserPromptSubmit → lookup-mode recall on retrieval prompts (#33)
 #   - PreToolUse Write/Edit/MultiEdit/NotebookEdit → topic recall (#20 #28 #32)
-#   - PreToolUse TodoWrite → topology recall before plans (#36)
+#   - PreToolUse TodoWrite|TaskCreate → topology recall before plans (#36 #506)
 #   - PreToolUse Bash → safety recall before destructive ops (#34)
 #   - PostToolUse Bash → lesson recall when a command fails (#37)
 #   - Stop            → optional autonomous save-eval (#35), off by default
@@ -77,7 +77,7 @@ const DEFS = [
   { event: "SessionStart", matcher: "startup|resume|clear|compact", file: "session-hook.js", timeout: 3, note: "bastra-recall SessionStart hook" },
   { event: "UserPromptSubmit", file: "prompt-hook.js", timeout: 2, note: "bastra-recall UserPromptSubmit hook (lookup-mode, #33)" },
   { event: "PreToolUse", matcher: "Write|Edit|MultiEdit|NotebookEdit", file: "hook.js", timeout: 2, note: "bastra-recall PreToolUse hook" },
-  { event: "PreToolUse", matcher: "TodoWrite", file: "todo-hook.js", timeout: 2, note: "bastra-recall TodoWrite hook (topology-recall, #36)" },
+  { event: "PreToolUse", matcher: "TodoWrite|TaskCreate", file: "todo-hook.js", timeout: 2, note: "bastra-recall plan hook (topology-recall, #36/#506)" },
   { event: "PreToolUse", matcher: "Bash", file: "bash-pre-hook.js", timeout: 2, note: "bastra-recall Bash-pre hook (safety, #34)" },
   { event: "PostToolUse", matcher: "Bash", file: "bash-fail-hook.js", timeout: 2, note: "bastra-recall Bash-fail hook (lesson recall on fail, #37)" },
 ];
@@ -146,9 +146,9 @@ case "$ACTION" in
   install)
     echo "✓ bastra-recall reflex layer registered in ${SETTINGS_FILE}"
     if [[ "${WITH_STOP}" == "1" ]]; then
-      echo "  7 hooks: SessionStart · UserPromptSubmit · PreToolUse(Write/Edit, TodoWrite, Bash) · PostToolUse(Bash) · Stop"
+      echo "  7 hooks: SessionStart · UserPromptSubmit · PreToolUse(Write/Edit, TodoWrite|TaskCreate, Bash) · PostToolUse(Bash) · Stop"
     else
-      echo "  6 hooks: SessionStart · UserPromptSubmit · PreToolUse(Write/Edit, TodoWrite, Bash) · PostToolUse(Bash)"
+      echo "  6 hooks: SessionStart · UserPromptSubmit · PreToolUse(Write/Edit, TodoWrite|TaskCreate, Bash) · PostToolUse(Bash)"
       echo "  Stop hook is optional/off. Re-run with --with-stop-hook to enable save-eval."
     fi
     echo "  Binaries: ${DAEMON_DIST}/{${HOOK_FILES[*]}}"

@@ -75,7 +75,19 @@ function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[] {
     { event: "SessionStart", matcher: "startup|resume|clear|compact", bin: SESSION_HOOK_BIN, timeout: 3, note: "bastra-recall SessionStart hook", stubSubcommand: "session" },
     { event: "UserPromptSubmit", bin: PROMPT_HOOK_BIN, timeout: 2, note: "bastra-recall UserPromptSubmit hook (lookup-mode, #33)", stubSubcommand: "prompt" },
     { event: "PreToolUse", matcher: "Write|Edit|MultiEdit|NotebookEdit", bin: PRE_TOOL_HOOK_BIN, timeout: 2, note: "bastra-recall PreToolUse hook", stubSubcommand: "write" },
-    { event: "PreToolUse", matcher: "TodoWrite", bin: TODO_HOOK_BIN, timeout: 2, note: "bastra-recall TodoWrite hook (topology-recall, #36)", stubSubcommand: "todo" },
+    // #506: `TodoWrite` alone was a dead matcher. Claude Code 2.1.268 replaced
+    // the batched todo tool with per-task `TaskCreate` / `TaskUpdate` /
+    // `TaskGet` / `TaskList`; `TodoWrite` is emitted only when a session sets
+    // `CLAUDE_CODE_ENABLE_TASKS=0`. Verified on 2.1.269 against an isolated
+    // settings file: a three-step plan produced three `TaskCreate` calls and
+    // no `TodoWrite`. The old name stays in the alternation — it is still the
+    // real event on older clients and under that env var.
+    //
+    // `TaskCreate` only, deliberately: it is the call that WRITES a plan step.
+    // `TaskUpdate` carries a status transition and an `activeForm` label, so
+    // binding it would fire the lane on every pending→in_progress→completed
+    // move for text the plan already said.
+    { event: "PreToolUse", matcher: "TodoWrite|TaskCreate", bin: TODO_HOOK_BIN, timeout: 2, note: "bastra-recall plan hook (topology-recall, #36/#506)", stubSubcommand: "todo" },
     { event: "PreToolUse", matcher: "Bash", bin: BASH_PRE_HOOK_BIN, timeout: 2, note: "bastra-recall Bash-pre hook (safety, #34)", stubSubcommand: "bash-pre" },
     { event: "PostToolUse", matcher: "Bash", bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall Bash post hook (act-signal #144 + lesson recall on fail #37)", stubSubcommand: "bash-fail" },
     { event: "PostToolUseFailure", matcher: "Bash", bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall Bash failure hook (act-signal #144 + lesson recall on fail #37)", stubSubcommand: "bash-fail" },

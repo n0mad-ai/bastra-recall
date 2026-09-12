@@ -34,7 +34,7 @@ After `npm run build` the daemon package exposes these bin entries:
 | `bastra-recall-session-hook`      | `SessionStart`     | — (every session)                         | Preload user-preferences + active project context         |
 | `bastra-recall-hook`              | `PreToolUse`       | `Write`/`Edit`/`MultiEdit`/`NotebookEdit` | Topic-aware recall before file mutations (#20 #28 #32)    |
 | `bastra-recall-prompt-hook`       | `UserPromptSubmit` | — (every user message)                    | Lookup-mode reflex (#33)                                  |
-| `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`                               | Topology recall before multi-step plans (#36)             |
+| `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`/`TaskCreate`                  | Topology recall before multi-step plans (#36 #506)        |
 | `bastra-recall-bash-pre-hook`     | `PreToolUse`       | `Bash` (destructive/risky)                | Safety recall before destructive shell ops (#34)          |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse` / `PostToolUseFailure` | `Bash` (every completed or failed command) | Act-signal for acted_on (#144); lesson recall on failure (#37) |
 | `bastra-recall-stop-hook`         | `Stop`             | —                                         | Optional autonomous save-eval at end of session (#35)      |
@@ -63,7 +63,7 @@ Default shape written by `bastra install claude-code`:
         "hooks": [{ "type": "command", "command": "bastra-recall-hook", "timeout": 2 }]
       },
       {
-        "matcher": "TodoWrite",
+        "matcher": "TodoWrite|TaskCreate",
         "hooks": [{ "type": "command", "command": "bastra-recall-todo-hook", "timeout": 2 }]
       },
       {
@@ -204,10 +204,23 @@ Telemetry event: `prompt_hook_call` (`detected_mode`, `prompt_chars`, `hint_coun
 
 ### `bastra-recall-todo-hook` (#36)
 
-Fires only on `PreToolUse` + `tool_name === "TodoWrite"`. Pulls the first 1–2
-todo `content` strings as the query spine, plus the top-3 lowercased tokens
-that appear in ≥ 2 todos as topic words. Stopwords (DE + EN) and short tokens
-(< 3 chars) are filtered.
+Fires on `PreToolUse` for a plan-writing tool. Which tool that is depends on
+the client, and it has changed (#506):
+
+| client | event | payload |
+| --- | --- | --- |
+| Claude Code ≥ 2.1.268 | `TaskCreate` — one call per plan step | `{ subject, description?, activeForm? }` |
+| Claude Code ≤ 2.1.267, or `CLAUDE_CODE_ENABLE_TASKS=0` | `TodoWrite` — one call per plan | `{ todos: [{ content, status }] }` |
+| Codex / ChatGPT desktop | `update_plan` — one call per plan | `{ plan: [{ step, status }] }` |
+
+`TaskUpdate` is accepted by the lane but deliberately **not** registered by
+`bastra install`: it carries a status transition, not a new plan, so binding it
+would re-fire the lane on every pending → in_progress → completed move.
+
+Pulls the first 1–2 plan `content` strings as the query spine, plus the top-3
+lowercased tokens that appear in ≥ 2 steps as topic words — or the top-3 tokens
+of the single step, when the client sends one step per call. Stopwords (DE +
+EN) and short tokens (< 3 chars) are filtered.
 
 - POSTs to `/hook/recall` with `type=project-fact`, `k=5`, score-floor `50`.
 - Skips silently (`{}`) when confidence is low (< 2 topic words AND query
