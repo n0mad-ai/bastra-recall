@@ -87,4 +87,10 @@ export interface ParsedArgs {
   // All positional tokens, in order — for sub-commands like
   // `config set update.mode auto` that need more than command+surface.
   positional: string[];
+  // Usage problems found by validateArgs (#536): an unknown option, one used on
+  // a command that does not take it, or a value-taking option without a value.
+  // `main()` reports them and exits 2 BEFORE dispatch — a typo in --dry-run
+  // must never reach the mutation it was meant to rehearse. Optional so the
+  // synthetic ParsedArgs `cmdUpdate` builds for its install run stays valid.
+  errors?: string[];
 }

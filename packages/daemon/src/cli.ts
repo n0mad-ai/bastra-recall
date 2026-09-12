@@ -109,6 +109,20 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
 
 async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2));
+
+  // #536 — a usage error ends the run here, before dispatch() can mutate
+  // anything. The parser used to warn about an unknown flag and carry on, so
+  // `bastra uninstall cursor --dryrun` removed the real registration and exited
+  // 0. Validation deliberately wins over --help (see flag-spec.ts).
+  const errors = args.errors ?? [];
+  if (errors.length > 0) {
+    for (const e of errors) process.stderr.write(`error: ${e}\n`);
+    process.stderr.write(
+      `run 'bastra ${args.command ? `${args.command} --help` : "help"}' for the options this command takes\n`,
+    );
+    return 2;
+  }
+
   const code = await dispatch(args);
 
   // After every subcommand: optionally emit a dim update hint to stderr.

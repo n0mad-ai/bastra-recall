@@ -24,6 +24,7 @@ import { ensureHookStub } from "./stub-install.js";
 import { confirm, isInteractive } from "./prompt.js";
 import { getEmbeddingProvider } from "../settings.js";
 import { showHelp } from "./help-text.js";
+import { validateArgs } from "./flag-spec.js";
 import { describeStale } from "../code-staleness.js";
 import { autostartWarning } from "./autostart.js";
 import type { InstallOpts, ParsedArgs } from "./types.js";
@@ -60,6 +61,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     lines: null,
     stats: false,
     positional: [],
+    errors: [],
   };
 
   const positional: string[] = [];
@@ -112,7 +114,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
     } else if (a.startsWith("--origin=")) {
       result.origin = a.slice("--origin=".length);
     } else if (a.startsWith("--")) {
-      process.stderr.write(`warning: unknown flag '${a}' ignored\n`);
+      // Not a warning anymore — validateArgs below turns it into a usage error
+      // that never reaches dispatch (#536).
     } else {
       positional.push(a);
     }
@@ -121,6 +124,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   result.command = positional[0] ?? null;
   result.surface = positional[1] ?? null;
   result.positional = positional;
+  result.errors = validateArgs(argv);
   return result;
 }
 
