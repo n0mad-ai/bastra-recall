@@ -199,6 +199,10 @@ export interface SaveMemoryResult {
   refiled_from?: string;
   /** Present only when the summary was auto-truncated to fit SUMMARY_MAX. */
   summary_note?: string;
+  /** #530: `true`, wenn `commit.skipUnchanged` gesetzt war und der Save nichts
+   *  zu schreiben hatte — die Datei steht unverändert da, inklusive mtime, und
+   *  es ist kein Audit-Ereignis entstanden. Ohne die Option nie gesetzt. */
+  unchanged?: boolean;
 }
 
 /**
@@ -209,6 +213,24 @@ export interface SaveMemoryResult {
  */
 export interface SaveMemoryCommitOptions {
   expectedTarget?: string | null;
+  /**
+   * #530: wenn der Save exakt das schreiben würde, was schon dasteht, gar
+   * nichts schreiben. Ein wiederholter Import derselben Quelle erzeugte sonst
+   * für jede unveränderte Datei einen echten Write — neue mtime (und damit
+   * Cloud-Sync-Churn), ein `update`-Audit-Ereignis mit identischem Vor- und
+   * Nachbild, und eine CLI-Meldung, die jede Datei erneut als importiert
+   * zählte.
+   *
+   * Verglichen wird der fertig gerenderte Dateiinhalt mit den Bytes des Ziels
+   * unter dem id-Claim, `updated:` ausgenommen — dieses Feld stempelt jeder
+   * Save auf HEUTE, sonst wäre derselbe Import einen Tag später nie ein
+   * No-Op. Ein übersprungener Save meldet `unchanged: true` und lässt die
+   * Datei samt ihrer mtime unangetastet.
+   *
+   * Opt-in, nicht Default: Aufrufer, die „schreib das jetzt“ meinen (eine
+   * Restaurierung, ein erzwungener Rewrite), sollen weiter schreiben.
+   */
+  skipUnchanged?: boolean;
   /**
    * ROUTING-Auskunft: In welchem Regal und in welcher Schreibweise liegt ein
    * Bestands-Memory dieser id? Der Daemon reicht eine Fassung durch, die den

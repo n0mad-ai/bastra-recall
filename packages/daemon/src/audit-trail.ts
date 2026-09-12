@@ -174,6 +174,11 @@ export async function saveMemoryWithAuditTrail(
   // eine Änderung ohne Vorzustand. Vor- und Nachbild kommen deshalb aus der
   // Mutation selbst, die beide unter ihrem Claim gelesen bzw. geschrieben hat.
   const result = await saveMemory(args.vaultRoot, args.input, args.commit);
+  // #530: Ein Save, der nichts geschrieben hat, hat auch nichts zu belegen.
+  // Ein wiederholter Import hängte sonst je unveränderter Datei ein
+  // `update`-Ereignis mit identischem `diff_before`/`diff_after` an das
+  // append-only Log — ein Beleg für eine Änderung, die es nicht gab.
+  if (result.unchanged) return result;
   await recordAudit({
     vaultRoot: args.vaultRoot,
     memoryId: result.id,

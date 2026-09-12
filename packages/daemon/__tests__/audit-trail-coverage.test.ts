@@ -219,13 +219,25 @@ test("#287: one folder import is reconstructable as one audit run", async () => 
     const firstRun = firstEntries[0].session_id;
     assert.ok(firstRun);
 
+    // #530: der identische zweite Lauf schreibt nichts — also belegt er auch
+    // nichts. Vorher stand hier die umgekehrte Erwartung (ein `update`-Eintrag
+    // je Datei, mit identischem Vor- und Nachbild): ein Beleg für eine
+    // Änderung, die nicht stattgefunden hat.
+    await importVault(vaultPath, sourcePath, { label: "audit-batch" });
+    assert.deepEqual(
+      await auditEntries(vaultPath),
+      firstEntries,
+      "an identical re-import must append no audit entry",
+    );
+
+    // Eine echte Änderung belegt der Lauf weiterhin — und nur sie.
+    await writeFile(join(sourcePath, "two.md"), "# Two\n\nSecond imported note, corrected.\n", "utf8");
     await importVault(vaultPath, sourcePath, { label: "audit-batch" });
     const allEntries = await auditEntries(vaultPath);
     const secondEntries = allEntries.slice(firstEntries.length);
-    assert.equal(secondEntries.length, firstEntries.length);
-    assert.ok(secondEntries.every((e) => e.operation === "update"));
-    assert.ok(secondEntries.every((e) => e.diff_before !== null));
-    assert.equal(new Set(secondEntries.map((e) => e.session_id)).size, 1);
+    assert.equal(secondEntries.length, 1, "one changed file, one entry");
+    assert.equal(secondEntries[0].operation, "update");
+    assert.ok(secondEntries[0].diff_before !== null);
     assert.notEqual(secondEntries[0].session_id, firstRun, "a later import is a different run");
   } finally {
     resetAuditLogCache();

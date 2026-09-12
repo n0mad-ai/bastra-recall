@@ -105,6 +105,12 @@ export interface ImportVaultResult {
    *  fails; a failed write shows up in `skipped` and in no counter — deliberate,
    *  because the breakdown must keep summing to `imported`. */
   byAdapter: { claudeCode: number; generic: number; index: number };
+  /** #530: Wie viel von `imported` wirklich geschrieben wurde. Ein identischer
+   *  Re-Import meldete vorher erneut jede Datei als importiert, obwohl er
+   *  nichts änderte. `created + updated + unchanged === imported`; im Dry-Run
+   *  steht alles in `created`, weil ohne Write niemand sagen kann, was ein
+   *  echter Lauf vorgefunden hätte. */
+  written: { created: number; updated: number; unchanged: number };
   skipped: ImportVaultSkip[];
   ids: string[];
   /** #217: id of the synthetic curated-index node minted from the source
@@ -204,6 +210,9 @@ export async function importVault(
   const skipped: ImportVaultSkip[] = [];
   const ids: string[] = [];
   const byAdapter = { claudeCode: 0, generic: 0, index: 0 };
+  // #530: created / updated / unchanged, gezählt aus dem, was der Save
+  // gemeldet hat — nicht aus dem, was der Import vorhatte.
+  const written = { created: 0, updated: 0, unchanged: 0 };
 
   // Pass 0: read every file once — the inbound-veto and the index harvest both
   // need a view of the WHOLE set before any single file is mapped.
@@ -442,14 +451,20 @@ export async function importVault(
     }
     if (!dryRun) {
       try {
-        await saveMemoryWithAuditTrail({
+        // #530: `skipUnchanged` — eine Datei, die schon genau so dasteht, wird
+        // nicht neu geschrieben. Sie zählt trotzdem als importiert: sie liegt
+        // im Vault, und der Index-Knoten unten darf auf sie verlinken.
+        const saved = await saveMemoryWithAuditTrail({
           vaultRoot,
           input: mapped.input,
           actor: "import",
           actorDetail: "import:vault",
           sessionId: runId,
-          commit: { expectedTarget, locator: vaultIds },
+          commit: { expectedTarget, locator: vaultIds, skipUnchanged: true },
         });
+        if (saved.unchanged) written.unchanged++;
+        else if (saved.created) written.created++;
+        else written.updated++;
       } catch (err) {
         // `recordAudit` absorbs audit-only failures. Reaching this catch means
         // target resolution or the memory write itself failed, so `skipped`
@@ -466,6 +481,7 @@ export async function importVault(
     // Ownership-Check darüber ist per `if (!dryRun)` ohnehin übersprungen — eine
     // gemappte Datei erreicht diese Zeile im Dry-Run wie zuvor. Pass D unten
     // zählt bereits nach demselben Muster.
+    if (dryRun) written.created++;
     if (mapped.input.source?.startsWith("claude-code-memory")) byAdapter.claudeCode++;
     else byAdapter.generic++;
     ids.push(mapped.input.id as string);
@@ -526,7 +542,7 @@ export async function importVault(
         let landed = dryRun;
         if (!dryRun) {
           try {
-            await saveMemoryWithAuditTrail({
+            const savedIndex = await saveMemoryWithAuditTrail({
               vaultRoot,
               input: {
                 id,
@@ -546,8 +562,11 @@ export async function importVault(
               actor: "import",
               actorDetail: "import:vault",
               sessionId: runId,
-              commit: { expectedTarget: indexCheck.target, locator: vaultIds },
+              commit: { expectedTarget: indexCheck.target, locator: vaultIds, skipUnchanged: true },
             });
+            if (savedIndex.unchanged) written.unchanged++;
+            else if (savedIndex.created) written.created++;
+            else written.updated++;
             landed = true;
           } catch {
             // Audit-only failures were already absorbed by `recordAudit`.
@@ -556,6 +575,7 @@ export async function importVault(
           }
         }
         if (landed) {
+          if (dryRun) written.created++;
           ids.push(id);
           indexNode = id;
           // #312: it goes into `ids`, so it must go into the breakdown in the
@@ -567,7 +587,12 @@ export async function importVault(
     }
   }
 
-  if (!dryRun && ids.length > 0) {
+  // #530: Der Marker beschreibt das importierte Set. Ändert ein Lauf nichts
+  // daran, hat er auch nichts Neues zu beschreiben — ein neuer `at`-Stempel
+  // wäre eine Veränderungsmeldung ohne Veränderung, und auf einem
+  // synchronisierten Vault eine Dateiänderung für jeden Client.
+  const setChanged = written.created > 0 || written.updated > 0;
+  if (!dryRun && ids.length > 0 && setChanged) {
     // Fix-Leiter Stufe 3 (zzallirog): ein Marker im Import-Subtree, damit
     // FREMDE Tools auf dem geteilten Ordner (Atlas, Indexer, grep) das Set
     // als maschinell erzeugte Kopie erkennen und überspringen können. Kein
@@ -604,6 +629,7 @@ export async function importVault(
     scanned: files.length,
     imported: ids.length,
     byAdapter,
+    written,
     skipped,
     ids,
     indexNode,
@@ -729,6 +755,9 @@ export async function handleUiImportVault(
   }
   sendJsonPlain(res, 200, {
     imported: result.imported,
+    // #530: dieselbe Trennung wie in der CLI — die Map soll nicht „importiert"
+    // melden, wo nichts geschrieben wurde.
+    written: result.written,
     scanned: result.scanned,
     folder: result.folder,
     scope: result.scope,

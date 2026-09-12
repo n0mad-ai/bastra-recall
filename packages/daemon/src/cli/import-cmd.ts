@@ -239,9 +239,20 @@ async function cmdImportVault(args: ParsedArgs): Promise<number> {
     return 1;
   }
   const verb = result.dryRun ? "would import" : "imported";
+  // #530: Ein zweiter, identischer Lauf meldete früher erneut „imported 7/7“,
+  // obwohl er keine einzige Datei anfasste. Die Zeile trennt jetzt, was wirklich
+  // passiert ist — im Dry-Run bleibt sie weg, weil ohne Write niemand weiß, was
+  // ein echter Lauf vorgefunden hätte.
+  const changeBreakdown = result.dryRun
+    ? ""
+    : `  ${result.written.created} created · ${result.written.updated} updated · ` +
+      `${result.written.unchanged} unchanged` +
+      (result.skipped.length > 0 ? ` · ${result.skipped.length} failed` : "") +
+      `\n`;
   process.stdout.write(
     `✓ ${verb} ${result.imported}/${result.scanned} file(s) → ${result.folder}/ ` +
       `(scope: ${result.scope})\n` +
+      changeBreakdown +
       `  ${result.byAdapter.claudeCode} via Claude-Code adapter · ${result.byAdapter.generic} generic markdown` +
       // #312: the synthetic index (#217) is part of the reported total, so it
       // has to appear here as well — otherwise the breakdown reads one short
