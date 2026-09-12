@@ -28,6 +28,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
+import { withSettingsLock } from "./settings-lock.js";
 import { isSupportedLanguage } from "./learned-recall/language.js";
 import type { EmbeddingSource } from "./embedding-status.js";
 
@@ -203,6 +204,44 @@ export function normalizeCorsOrigin(v: unknown): string | null {
 }
 
 /**
+ * Jeder Block, den `readSettings` kennt. Alles andere überlebt ein Schreiben
+ * NICHT: `readSettings` baut das Objekt neu auf, und `writeSettings`
+ * veröffentlicht genau dieses Objekt.
+ *
+ * #534 verlangt, dass diese Entscheidung ausgesprochen wird statt als
+ * Nebenwirkung zu passieren. Sie lautet: unbekannte Schlüssel werden
+ * abgelehnt, nicht durchgereicht — eine Einstellung, die dieser Build nicht
+ * versteht, kann er auch nicht korrekt fortschreiben. Damit das niemanden
+ * still erwischt (etwa nach einem Downgrade), sagt der Leser es auf stderr.
+ */
+const KNOWN_SETTINGS_KEYS: readonly string[] = [
+  "update",
+  "embedding",
+  "ollama",
+  "api",
+  "cors",
+  "commons",
+  "sharedRecall",
+  "evidenceGate",
+  "experiment",
+  "docs",
+  "generation",
+  "ui",
+  "reflex",
+  "size",
+  "language",
+];
+
+function warnAboutUnknownKeys(data: unknown, path: string): void {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return;
+  const unknown = Object.keys(data).filter((k) => !KNOWN_SETTINGS_KEYS.includes(k));
+  if (unknown.length === 0) return;
+  process.stderr.write(
+    `[bastra-recall] cli-settings.json: unknown key(s) ${unknown.join(", ")} — this build does not understand them and the next write will drop them (${path})\n`,
+  );
+}
+
+/**
  * Reads stored settings. A missing file → silent defaults (normal: not created
  * yet). A *corrupt* file → loud warning + defaults, and we do NOT silently
  * revert (callers that write will repair it). Never throws.
@@ -227,6 +266,8 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
     );
     return { update: { mode: DEFAULT_UPDATE_MODE } };
   }
+
+  warnAboutUnknownKeys(data, path);
 
   const settings: CliSettings = {
     update: { mode: isUpdateMode(data?.update?.mode) ? data.update.mode : DEFAULT_UPDATE_MODE },
@@ -376,6 +417,28 @@ async function writeSettings(next: CliSettings, path: string): Promise<void> {
   await rename(tmp, path);
 }
 
+/**
+ * #534: die EINE Settings-Transaktion. Lesen, ändern und Schreiben laufen
+ * unter demselben Lock (settings-lock.ts), damit zwei Mutationen
+ * unterschiedlicher Felder nicht mehr denselben Ausgangsstand lesen und sich
+ * gegenseitig überschreiben. JEDER Setter geht hier durch — ein Setter, der an
+ * `readSettings` + `writeSettings` vorbei direkt schreibt, bringt das Rennen
+ * zurück.
+ *
+ * `mutate` bekommt den frisch gelesenen Stand und gibt den zu schreibenden
+ * zurück, oder `null` für "nichts zu tun" (z.B. ein CORS-Origin, das schon
+ * erlaubt ist). Rückgabewerte für den Aufrufer laufen über den Closure.
+ */
+async function mutateSettings(
+  path: string,
+  mutate: (current: CliSettings) => CliSettings | null,
+): Promise<void> {
+  await withSettingsLock(path, async () => {
+    const next = mutate(await readSettings(path));
+    if (next !== null) await writeSettings(next, path);
+  });
+}
+
 /** The stored update mode (env-agnostic). */
 export async function getUpdateMode(path?: string): Promise<UpdateMode> {
   return (await readSettings(path)).update.mode;
@@ -393,8 +456,7 @@ export async function effectiveUpdateMode(path?: string): Promise<UpdateMode> {
 
 /** Persists a new update mode atomically, merging into existing settings. */
 export async function setUpdateMode(mode: UpdateMode, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, update: { ...current.update, mode } }, path);
+  await mutateSettings(path, (current) => ({ ...current, update: { ...current.update, mode } }));
 }
 
 /** The stored embedding provider, or undefined when unset (no opinion). */
@@ -404,8 +466,7 @@ export async function getEmbeddingProvider(path?: string): Promise<EmbeddingProv
 
 /** Persists the generation (doc2query + rerank) model, merging into existing settings. */
 export async function setGenerationModel(model: string, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, generation: { model: model.trim() } }, path);
+  await mutateSettings(path, (current) => ({ ...current, generation: { model: model.trim() } }));
 }
 
 /**
@@ -492,8 +553,7 @@ export async function resolveEmbeddingChoice(
 
 /** Persists the embedding provider atomically, merging into existing settings. */
 export async function setEmbeddingProvider(provider: EmbeddingProviderName, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, embedding: { provider } }, path);
+  await mutateSettings(path, (current) => ({ ...current, embedding: { provider } }));
 }
 
 /** Whether Ollama should be kept running at login. Default true (if you use ollama, you want it up). */
@@ -503,8 +563,7 @@ export async function getOllamaAutostart(path?: string): Promise<boolean> {
 
 /** Persists the Ollama autostart preference atomically. */
 export async function setOllamaAutostart(on: boolean, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, ollama: { autostart: on } }, path);
+  await mutateSettings(path, (current) => ({ ...current, ollama: { autostart: on } }));
 }
 
 /** The stored REST API token, or undefined when none has been issued. */
@@ -535,10 +594,11 @@ export async function addCorsOrigin(url: string, path: string = settingsFilePath
     );
     return;
   }
-  const current = await readSettings(path);
-  const existing = current.cors?.origins ?? [];
-  if (existing.includes(origin)) return; // already allowed — nothing to write
-  await writeSettings({ ...current, cors: { origins: [...existing, origin] } }, path);
+  await mutateSettings(path, (current) => {
+    const existing = current.cors?.origins ?? [];
+    if (existing.includes(origin)) return null; // already allowed — nothing to write
+    return { ...current, cors: { origins: [...existing, origin] } };
+  });
 }
 
 /** Persists an explicit API token atomically (merging into existing settings). */
@@ -548,8 +608,7 @@ export async function getCommonsEnabled(path?: string): Promise<boolean> {
 }
 
 export async function setCommonsEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, commons: { enabled: on } }, path);
+  await mutateSettings(path, (current) => ({ ...current, commons: { enabled: on } }));
 }
 
 /** Vault map web UI (#207) enabled? Default false (opt-in). */
@@ -558,8 +617,7 @@ export async function getUiEnabled(path?: string): Promise<boolean> {
 }
 
 export async function setUiEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, ui: { enabled: on } }, path);
+  await mutateSettings(path, (current) => ({ ...current, ui: { enabled: on } }));
 }
 
 /** Shared learned-recall bridges enabled? Default false (opt-in, privacy-respecting). */
@@ -624,13 +682,11 @@ export async function setEvidenceGateEnabled(
   on: boolean,
   path: string = settingsFilePath(),
 ): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, evidenceGate: { enabled: on } }, path);
+  await mutateSettings(path, (current) => ({ ...current, evidenceGate: { enabled: on } }));
 }
 
 export async function setSharedRecallEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, sharedRecall: { ...current.sharedRecall, enabled: on } }, path);
+  await mutateSettings(path, (current) => ({ ...current, sharedRecall: { ...current.sharedRecall, enabled: on } }));
 }
 
 /** Optional override for the auto-detected query language (e.g. "de"). undefined = auto-detect per query. */
@@ -639,17 +695,19 @@ export async function getSharedRecallLanguage(path?: string): Promise<string | u
 }
 
 export async function setSharedRecallLanguage(language: string, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  const enabled = current.sharedRecall?.enabled ?? false;
-  await writeSettings({ ...current, sharedRecall: { enabled, language: language.trim().toLowerCase() } }, path);
+  await mutateSettings(path, (current) => ({
+    ...current,
+    sharedRecall: { enabled: current.sharedRecall?.enabled ?? false, language: language.trim().toLowerCase() },
+  }));
 }
 
 /** Clears the query-language override, restoring per-query auto-detection. Writes
  *  the sharedRecall block WITHOUT a `language` key (a plain spread would preserve it). */
 export async function clearSharedRecallLanguage(path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  const enabled = current.sharedRecall?.enabled ?? false;
-  await writeSettings({ ...current, sharedRecall: { enabled } }, path);
+  await mutateSettings(path, (current) => ({
+    ...current,
+    sharedRecall: { enabled: current.sharedRecall?.enabled ?? false },
+  }));
 }
 
 /** Product-docs capture mode. Default "off" (opt-in). */
@@ -658,8 +716,7 @@ export async function getDocsMode(path?: string): Promise<DocsMode> {
 }
 
 export async function setDocsMode(mode: DocsMode, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, docs: { ...current.docs, mode } }, path);
+  await mutateSettings(path, (current) => ({ ...current, docs: { ...current.docs, mode } }));
 }
 
 /** Language product docs are written in. Default "en". */
@@ -668,8 +725,7 @@ export async function getDocsLanguage(path?: string): Promise<string> {
 }
 
 export async function setDocsLanguage(language: string, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, docs: { ...current.docs, language: language.trim().toLowerCase() } }, path);
+  await mutateSettings(path, (current) => ({ ...current, docs: { ...current.docs, language: language.trim().toLowerCase() } }));
 }
 
 /** Datei-Größen-Richtwert (Zeilen) für Quellcode; undefined = Default 500. */
@@ -680,13 +736,11 @@ export async function getSizeGuide(path?: string): Promise<number | undefined> {
 
 export async function setSizeGuide(guide: number, path: string = settingsFilePath()): Promise<void> {
   const n = Math.min(5000, Math.max(100, Math.round(guide)));
-  const current = await readSettings(path);
-  await writeSettings({ ...current, size: { ...current.size, guide: n } }, path);
+  await mutateSettings(path, (current) => ({ ...current, size: { ...current.size, guide: n } }));
 }
 
 export async function setApiToken(token: string, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, api: { token } }, path);
+  await mutateSettings(path, (current) => ({ ...current, api: { token } }));
 }
 
 /** The stored primary authoring language (2-letter ISO code), or undefined when unset. */
@@ -696,8 +750,7 @@ export async function getPrimaryLanguage(path?: string): Promise<string | undefi
 
 /** Persists the primary authoring language, normalized to a lowercase 2-letter code. */
 export async function setPrimaryLanguage(code: string, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, language: { ...current.language, primary: code.trim().toLowerCase() } }, path);
+  await mutateSettings(path, (current) => ({ ...current, language: { ...current.language, primary: code.trim().toLowerCase() } }));
 }
 
 /**
@@ -709,10 +762,15 @@ export async function ensureApiToken(
   opts: { rotate?: boolean } = {},
   path: string = settingsFilePath(),
 ): Promise<string> {
-  const current = await readSettings(path);
-  if (!opts.rotate && current.api?.token) return current.api.token;
-  const token = randomBytes(32).toString("base64url");
-  await writeSettings({ ...current, api: { token } }, path);
+  let token = "";
+  await mutateSettings(path, (current) => {
+    if (!opts.rotate && current.api?.token) {
+      token = current.api.token;
+      return null;
+    }
+    token = randomBytes(32).toString("base64url");
+    return { ...current, api: { token } };
+  });
   return token;
 }
 
@@ -722,10 +780,13 @@ export async function ensureApiToken(
  * Returns true if a token was actually removed, false if none was set.
  */
 export async function clearApiToken(path: string = settingsFilePath()): Promise<boolean> {
-  const current = await readSettings(path);
-  if (!current.api?.token) return false;
-  const next = { ...current };
-  delete next.api;
-  await writeSettings(next, path);
-  return true;
+  let removed = false;
+  await mutateSettings(path, (current) => {
+    if (!current.api?.token) return null;
+    const next = { ...current };
+    delete next.api;
+    removed = true;
+    return next;
+  });
+  return removed;
 }

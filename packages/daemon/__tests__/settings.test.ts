@@ -11,6 +11,7 @@ import { strict as assert } from "node:assert";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawn } from "node:child_process";
 
 import {
   DEFAULT_UPDATE_MODE,
@@ -329,4 +330,61 @@ test("language.primary: invalid stored code is dropped on read, valid 2-letter s
     await writeFile(path, JSON.stringify({ language: { primary: "DE" } }), "utf8");
     assert.equal(await getPrimaryLanguage(path), "de", "valid 2-letter code survives, lowercased");
   });
+});
+
+// ─── #534: concurrent mutations must not discard unrelated configuration ───
+//
+// Gemessen auf a4c0896 (ohne den Fix): gleicher Prozess 20 von 20 Läufen mit
+// verlorenem Feld, zwei Prozesse 10 von 10 Runden — und beide Setter meldeten
+// jedes Mal Erfolg. Ohne die Serialisierung in settings-lock.ts sind beide
+// Tests hier rot.
+
+test("#534: concurrent setters for different fields keep both values (same process)", async () => {
+  const rounds = 20;
+  for (let i = 0; i < rounds; i++) {
+    await withTempFile(async (path) => {
+      await Promise.all([setUpdateMode("off", path), setDocsMode("auto", path)]);
+      const settings = await readSettings(path);
+      assert.equal(settings.update.mode, "off", `round ${i}: update.mode lost`);
+      assert.equal(settings.docs?.mode, "auto", `round ${i}: docs.mode lost`);
+    });
+  }
+});
+
+test("#534: concurrent setters for different fields keep both values (separate processes)", async () => {
+  const settingsModule = new URL("../src/settings.ts", import.meta.url).href;
+  const worker = [
+    `import { setUpdateMode, setDocsMode } from ${JSON.stringify(settingsModule)};`,
+    `const [which, path, gate] = process.argv.slice(2);`,
+    // Busy-wait to a shared start instant so both processes really collide.
+    `while (Date.now() < Number(gate)) {}`,
+    `if (which === "update") await setUpdateMode("off", path);`,
+    `else await setDocsMode("auto", path);`,
+  ].join("\n");
+
+  const dir = await mkdtemp(join(tmpdir(), "bastra-settings-xproc-"));
+  try {
+    const workerPath = join(dir, "worker.mts");
+    await writeFile(workerPath, worker, "utf8");
+    const run = (which: string, path: string, gate: number) =>
+      new Promise<void>((resolve, reject) => {
+        const child = spawn(process.execPath, ["--import", "tsx", workerPath, which, path, String(gate)], {
+          stdio: ["ignore", "ignore", "inherit"],
+        });
+        child.on("error", reject);
+        child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`worker ${which} exited ${code}`))));
+      });
+
+    const rounds = 5;
+    for (let i = 0; i < rounds; i++) {
+      const path = join(dir, `round-${i}.json`);
+      const gate = Date.now() + 700;
+      await Promise.all([run("update", path, gate), run("docs", path, gate)]);
+      const settings = await readSettings(path);
+      assert.equal(settings.update.mode, "off", `round ${i}: update.mode lost across processes`);
+      assert.equal(settings.docs?.mode, "auto", `round ${i}: docs.mode lost across processes`);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
 });
