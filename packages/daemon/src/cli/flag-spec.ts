@@ -12,6 +12,12 @@
  * check runs in `parseArgs`, its findings ride along in `ParsedArgs.errors`,
  * and `main()` reports them and exits 2 before `dispatch()` is ever entered.
  *
+ * The `=` form is part of the same check. `--vault=/x` is a value the parser
+ * reads; `--dry-run=false` is not, and used to be dropped without a word —
+ * the rehearsal flag the user tried to switch OFF stayed ON and the command
+ * ran. Options that take no value reject an attached one, so no invocation is
+ * ever understood differently from how it reads.
+ *
  * Precedence decision (one, documented): validation wins over `--help`.
  * `bastra uninstall --dryrun --help` prints the error and exits 2 rather than
  * the help text — help is still side-effect free either way, and the stricter
@@ -123,6 +129,24 @@ export function validateArgs(argv: string[]): string[] {
     if (!KNOWN_FLAGS.has(name)) {
       errors.push(`unknown option '${name}'`);
       continue;
+    }
+    // The `=` form is only meaningful for an option that takes a value. The
+    // parser matches `--dry-run` as an exact token and silently dropped
+    // `--dry-run=false` — measured: `bastra uninstall cursor --dry-run=false`
+    // exited 0, removed the registration and wrote a backup, having understood
+    // neither the flag nor the value. A valueless option therefore REJECTS an
+    // attached value rather than guessing which half the user meant; and an
+    // empty one (`--vault=`) is the missing value it looks like, not a silent
+    // fallback to the default vault.
+    if (token !== name) {
+      if (!VALUE_FLAGS.has(name)) {
+        errors.push(`option '${name}' takes no value — write '${name}'`);
+        continue;
+      }
+      if (token.slice(name.length + 1) === "") {
+        errors.push(`option '${name}' needs a value`);
+        continue;
+      }
     }
     if ((GLOBAL_FLAGS as readonly string[]).includes(name)) continue;
     // An unknown COMMAND is the dispatcher's error message, not ours — say

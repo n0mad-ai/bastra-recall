@@ -28,7 +28,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import { COMMAND_FLAGS, validateArgs } from "../src/cli/flag-spec.js";
+import { COMMAND_FLAGS, VALUE_FLAGS, validateArgs } from "../src/cli/flag-spec.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = resolve(here, "..", "src", "cli.ts");
@@ -91,6 +91,14 @@ const REJECTED: Array<{ argv: string[]; why: string }> = [
   { argv: ["logs", "--stats", "--days", "1"], why: "the review's second observation, on a read-only command" },
   { argv: ["status", "--jsonn"], why: "a read-only command rejects unknown options too" },
   { argv: ["uninstall", "cursor", "--dryrun", "--help"], why: "validation wins over --help (documented precedence)" },
+  // The counter-review's finding: the equals form of a valueless option was
+  // normalised to a known name by the validator and then dropped by the
+  // parser — the rehearsal flag read as OFF and the removal happened.
+  { argv: ["uninstall", "cursor", "--dry-run=false"], why: "a valueless option with a value attached" },
+  { argv: ["uninstall", "cursor", "--dry-run=true"], why: "even a value that agrees is not understood" },
+  { argv: ["install", "cursor", "--yes=no"], why: "the same shape on the registering command" },
+  { argv: ["status", "--json=0"], why: "and on a read-only command" },
+  { argv: ["install", "cursor", "--vault="], why: "an equals form with nothing after it is a missing value" },
 ];
 
 for (const { argv, why } of REJECTED) {
@@ -118,6 +126,15 @@ test("#536 — the correctly spelled --dry-run still rehearses and still changes
   assert.equal(await sha256(cursorConfig), before);
 });
 
+test("#536 — the equals form of a value-taking option still works", async () => {
+  const { home, cursorConfig } = await isolatedHome();
+  const before = await sha256(cursorConfig);
+  const run = await runCli(["install", "cursor", `--vault=${join(home, "vault")}`, "--dry-run"], home);
+  assert.equal(run.code, 0, `${run.stdout}${run.stderr}`);
+  assert.match(run.stdout, new RegExp(`vault=${join(home, "vault")}`), run.stdout);
+  assert.equal(await sha256(cursorConfig), before);
+});
+
 test("#536 — without the typo the removal still happens", async () => {
   const { home, cursorConfig } = await isolatedHome();
   const before = await sha256(cursorConfig);
@@ -139,6 +156,16 @@ test("#536 — validateArgs separates unknown, misplaced and value-less options"
   // A value may look like anything as long as it is not an option.
   assert.deepEqual(validateArgs(["install", "all", "--vault", "install"]), []);
   assert.deepEqual(validateArgs(["install", "all", "--vault=/tmp/v"]), []);
+  // …and the equals form belongs to value-taking options only (#536).
+  assert.deepEqual(validateArgs(["uninstall", "cursor", "--dry-run=false"]), [
+    "option '--dry-run' takes no value — write '--dry-run'",
+  ]);
+  assert.deepEqual(validateArgs(["status", "--json=0"]), ["option '--json' takes no value — write '--json'"]);
+  assert.deepEqual(validateArgs(["install", "all", "-y=yes"]), ["option '-y' takes no value — write '-y'"]);
+  assert.deepEqual(validateArgs(["update", "--help=me"]), ["option '--help' takes no value — write '--help'"]);
+  assert.deepEqual(validateArgs(["install", "all", "--vault="]), ["option '--vault' needs a value"]);
+  // A misspelling is still reported as unknown, not as a value problem.
+  assert.deepEqual(validateArgs(["uninstall", "cursor", "--dryrun=false"]), ["unknown option '--dryrun'"]);
   // Global flags are accepted everywhere, on every command and on none.
   assert.deepEqual(validateArgs(["--help"]), []);
   assert.deepEqual(validateArgs(["update", "--help"]), []);
@@ -150,6 +177,34 @@ test("#536 — validateArgs separates unknown, misplaced and value-less options"
   // Short options are options, not positionals.
   assert.deepEqual(validateArgs(["status", "-x"]), ["unknown option '-x'"]);
   assert.deepEqual(validateArgs(["status", "-q"]), []);
+});
+
+test("#536 — every valueless option rejects an attached value, on every command", () => {
+  // Systematic, not spot-checked: --dry-run was only the one that got measured.
+  for (const [command, flags] of Object.entries(COMMAND_FLAGS)) {
+    for (const flag of flags) {
+      if (VALUE_FLAGS.has(flag)) continue;
+      assert.deepEqual(
+        validateArgs([command, `${flag}=x`]),
+        [`option '${flag}' takes no value — write '${flag}'`],
+        `'bastra ${command} ${flag}=x' was not rejected`,
+      );
+    }
+  }
+});
+
+test("#536 — every value-taking option reads its equals form and rejects an empty one", () => {
+  for (const [command, flags] of Object.entries(COMMAND_FLAGS)) {
+    for (const flag of flags) {
+      if (!VALUE_FLAGS.has(flag)) continue;
+      assert.deepEqual(validateArgs([command, `${flag}=value`]), [], `'${command} ${flag}=value' was rejected`);
+      assert.deepEqual(
+        validateArgs([command, `${flag}=`]),
+        [`option '${flag}' needs a value`],
+        `'bastra ${command} ${flag}=' was accepted as a value`,
+      );
+    }
+  }
 });
 
 test("#536 — every dispatched command has a flag list (drift gate)", async () => {
