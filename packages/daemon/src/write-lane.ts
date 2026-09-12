@@ -44,6 +44,7 @@ import {
   mutateSessionState,
   shouldDropHit,
   wasEmitConsumed,
+  type ReadonlySessionState,
   type SessionState,
 } from "./session-state.js";
 
@@ -227,7 +228,8 @@ export async function runWriteLane(
   // Per-session dedup (#32). Best-effort throughout — no error in this
   // section ever blocks the response.
   const sessionId = payload.session_id ?? "";
-  let sessionState: SessionState = { shown: {} };
+  // #539: read-only on purpose — a lane's snapshot decides, it never books.
+  let sessionState: ReadonlySessionState = { shown: {} };
   let dedupActive = false;
   // #539: this lane's own bookkeeping, queued as deltas instead of written
   // back from the snapshot — replayed under the session lock at the end.
@@ -336,14 +338,20 @@ export async function runWriteLane(
 
   // Bump shown-counts for everything we surfaced, then persist. When
   // suppressed nothing was shown — only the backoff counter changed.
-  if (dedupActive && survivingHits.length > 0) {
-    if (!suppressed) {
-      const now = Date.now();
-      for (const h of survivingHits) stateDeltas.push((s) => bumpShown(s, h.id, now));
-    }
-    // #539: replay the deltas against the state as it is on disk now — the
-    // snapshot above is minutes of recall old and four other lanes may have
-    // written since.
+  if (dedupActive && !suppressed && survivingHits.length > 0) {
+    const now = Date.now();
+    for (const h of survivingHits) stateDeltas.push((s) => bumpShown(s, h.id, now));
+  }
+  // #539: replay the deltas against the state as it is on disk now — the
+  // snapshot above is minutes of recall old and four other lanes may have
+  // written since.
+  //
+  // The replay hangs on "are there deltas", not on `survivingHits`. Those two
+  // agreed only because requiredHits/optionalHits are derived from
+  // survivingHits above, so `totalHints > 0` implied `survivingHits > 0` — an
+  // unwritten coupling, and unwritten couplings are exactly what #539 broke.
+  // The suppressed-counter delta now survives a change to that derivation.
+  if (dedupActive && stateDeltas.length > 0) {
     await mutateSessionState(sessionId, (s) => {
       for (const d of stateDeltas) d(s);
     });

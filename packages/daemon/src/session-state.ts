@@ -60,6 +60,31 @@ export interface SessionState {
   sources?: Record<string, SourceBackoff>;
 }
 
+/**
+ * #539 follow-up: what a lane gets back from {@link loadSessionState}.
+ *
+ * The snapshot a lane reads early is for DECISIONS only. Since #539 the
+ * write-back re-reads the file inside the lock and applies just the callback's
+ * delta, so anything mutated on the snapshot is dropped without a word — which
+ * is exactly how the backoff's `skipped` counter stopped being saved.
+ *
+ * The read type therefore has to be one the mutators REFUSE. Plain `readonly`
+ * properties would not do it: TypeScript ignores readonly modifiers when it
+ * checks assignability, so a `Readonly<SessionState>` still slides into a
+ * `SessionState` parameter. `readonly string[]` is the one readonly the
+ * compiler does enforce — so `ids` carries the guard, and it makes the whole
+ * state un-assignable to `SessionState`. `bumpShown(snapshot, …)` and
+ * `recordSourceSuppressed(snapshot, …)` are now compile errors; the same call
+ * with the callback's `state` is unchanged.
+ */
+export type ReadonlySourceBackoff = Readonly<Omit<SourceBackoff, "ids">> & {
+  readonly ids: readonly string[];
+};
+export interface ReadonlySessionState {
+  readonly shown: Readonly<Record<string, Readonly<ShownEntry>>>;
+  readonly sources?: Readonly<Record<string, ReadonlySourceBackoff>>;
+}
+
 /** Threshold above which a memory is dropped from hints. #32 startete mit 3;
  *  #106 senkt den Default auf 1 — jeder Hint erscheint pro Session (innerhalb
  *  des 4h-Fensters) genau EINMAL. Wiederholte Injektionen desselben Blocks
@@ -100,7 +125,13 @@ function loadedMarkerFile(memId: string, dir = sessionStateDir()): string {
  * malformed JSON, EACCES, …) we return an empty state and let the hook
  * proceed without dedup.
  */
-export async function loadSessionState(sessionId: string): Promise<SessionState> {
+export async function loadSessionState(sessionId: string): Promise<ReadonlySessionState> {
+  return readSessionState(sessionId);
+}
+
+/** The same read, typed mutable. Only `mutateSessionState` may have it — a
+ *  lane's early snapshot must not be mutable (see ReadonlySessionState). */
+async function readSessionState(sessionId: string): Promise<SessionState> {
   if (!sessionId) return { shown: {} };
   try {
     const raw = await readFile(sessionFile(sessionId), "utf8");
@@ -151,7 +182,7 @@ export async function mutateSessionState(
 ): Promise<void> {
   if (!sessionId) return;
   await withPathLock(sessionFile(sessionId), async () => {
-    const state = await loadSessionState(sessionId);
+    const state = await readSessionState(sessionId);
     mutate(state);
     await writeSessionState(sessionId, state);
   });
@@ -339,7 +370,7 @@ export interface BackoffDecision {
  * the streak. One rule here, shared by every backoff-consulting emitter.
  */
 export function decideBackoff(
-  entry: SourceBackoff | undefined,
+  entry: ReadonlySourceBackoff | undefined,
   consumed: boolean,
   hasRequired: boolean,
 ): BackoffDecision {
@@ -365,7 +396,7 @@ export function decideBackoff(
  * a load-marker newer than the emit timestamp. Best-effort fs stats via
  * getLoadedMarkerMtime — never throws.
  */
-export async function wasEmitConsumed(entry: SourceBackoff | undefined): Promise<boolean> {
+export async function wasEmitConsumed(entry: ReadonlySourceBackoff | undefined): Promise<boolean> {
   if (!entry || typeof entry.at !== "number" || entry.at <= 0 || !Array.isArray(entry.ids)) {
     return false;
   }
