@@ -17,17 +17,28 @@
  * independently working second person as an origin, and a file is what you can
  * hand to one.
  *
+ * #447: `--check --gold G` additionally revalidates an ALREADY MERGED gold file
+ * against the current labels. Without it, the two files drift apart in silence:
+ * a label edited after the merge leaves the gold file on the old content, every
+ * tool reports success, and the divergence surfaces only when someone re-merges
+ * — at which point the re-merge quietly carries the change into the measurement
+ * path. A gold file is release evidence, so a stale pairing must make a command
+ * red, not merely go unnoticed.
+ *
  * Usage:
  *   npx tsx src/goldset-label.ts --template --staged staged.json --out labels.json
- *   npx tsx src/goldset-label.ts --check    --staged staged.json --labels labels.json
+ *   npx tsx src/goldset-label.ts --check    --staged staged.json --labels labels.json [--gold gold.json]
  *   npx tsx src/goldset-label.ts --merge    --staged staged.json --labels labels.json --out gold.json
  */
+import { createHash } from "node:crypto";
+import { basename } from "node:path";
 import { readFileSync, writeFileSync } from "node:fs";
 import {
   checkLabels,
   checkStaged,
   coverage,
   type GoldCase,
+  type GoldIssue,
   type GoldLabel,
   type StagedQuery,
 } from "./goldset.js";
@@ -37,10 +48,12 @@ interface Args {
   staged: string;
   labels: string;
   out: string;
+  /** #447: the merged gold file to revalidate against these labels. */
+  gold: string;
 }
 
 function parseArgs(argv: string[]): Args {
-  const a: Args = { mode: "check", staged: "", labels: "", out: "" };
+  const a: Args = { mode: "check", staged: "", labels: "", out: "", gold: "" };
   let mode: Args["mode"] | undefined;
   for (let i = 0; i < argv.length; i++) {
     const f = argv[i];
@@ -48,8 +61,11 @@ function parseArgs(argv: string[]): Args {
     else if (f === "--staged") a.staged = argv[++i] ?? "";
     else if (f === "--labels") a.labels = argv[++i] ?? "";
     else if (f === "--out") a.out = argv[++i] ?? "";
+    else if (f === "--gold") a.gold = argv[++i] ?? "";
     else if (f === "-h" || f === "--help") {
-      console.log("goldset-label --template|--check|--merge --staged S [--labels L] [--out O]");
+      console.log(
+        "goldset-label --template|--check|--merge --staged S [--labels L] [--out O] [--gold G]",
+      );
       process.exit(0);
     } else throw new Error(`unknown flag: ${f}`);
   }
@@ -58,7 +74,105 @@ function parseArgs(argv: string[]): Args {
   if (!a.staged) throw new Error("--staged is required");
   if (mode !== "template" && !a.labels) throw new Error("--labels is required");
   if (mode !== "check" && !a.out) throw new Error("--out is required");
+  if (a.gold && mode !== "check") throw new Error("--gold belongs to --check");
   return a;
+}
+
+/**
+ * #447: Woraus eine Gold-Datei gemergt wurde.
+ *
+ * Die Hashes stehen daneben, weil der Fallvergleich allein nicht alles fängt:
+ * Ein Label-Feld, das gar nicht in den Fall wandert, kann sich ändern, ohne
+ * dass ein einziger Fall abweicht — und dann behauptet die Gold-Datei
+ * weiterhin, aus einem Label-Stand zu stammen, den es nicht mehr gibt.
+ */
+export interface MergedFrom {
+  staged: string;
+  labels: string;
+  staged_sha256: string;
+  labels_sha256: string;
+}
+
+function sha256(path: string): string {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
+function mergedFrom(stagedPath: string, labelsPath: string): MergedFrom {
+  // Nur die Dateinamen: Ein absoluter Pfad aus einem privaten Vault-Verzeichnis
+  // gehört nicht in ein Artefakt, das die Messung begleitet (§19/§23).
+  return {
+    staged: basename(stagedPath),
+    labels: basename(labelsPath),
+    staged_sha256: sha256(stagedPath),
+    labels_sha256: sha256(labelsPath),
+  };
+}
+
+/** Die Felder, in denen sich zwei Fassungen desselben Falls unterscheiden. */
+function differingFields(a: GoldCase, b: GoldCase): string[] {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  const out: string[] = [];
+  for (const k of keys) {
+    const x = (a as unknown as Record<string, unknown>)[k];
+    const y = (b as unknown as Record<string, unknown>)[k];
+    if (JSON.stringify(x) !== JSON.stringify(y)) out.push(k);
+  }
+  return out.sort();
+}
+
+/**
+ * #447: Das gemergte Gold gegen den Stand prüfen, aus dem es stammen soll.
+ *
+ * Verglichen wird gegen ein FRISCHES Merge derselben Dateien — also gegen das,
+ * was `--merge` heute schriebe. Was hier abweicht, ist genau der Drift, den
+ * bisher niemand gemeldet hat.
+ */
+export function checkGoldAgainstLabels(
+  goldDoc: unknown,
+  expected: GoldCase[],
+  provenance: MergedFrom,
+): GoldIssue[] {
+  const issues: GoldIssue[] = [];
+  const doc = (goldDoc ?? {}) as { cases?: GoldCase[]; merged_from?: Partial<MergedFrom> };
+  const have = new Map((doc.cases ?? []).map((c) => [c.id, c]));
+  const want = new Map(expected.map((c) => [c.id, c]));
+
+  for (const id of want.keys()) {
+    if (!have.has(id)) issues.push({ where: `case ${id}`, problem: "labelled, but missing from the merged gold" });
+  }
+  for (const id of have.keys()) {
+    if (!want.has(id)) issues.push({ where: `case ${id}`, problem: "in the merged gold, but no longer labelled" });
+  }
+  for (const [id, w] of want) {
+    const h = have.get(id);
+    if (!h) continue;
+    const diff = differingFields(w, h);
+    if (diff.length) {
+      issues.push({
+        where: `case ${id}`,
+        problem: `gold and labels disagree on ${diff.join(", ")} — the gold file was merged from a different label state`,
+      });
+    }
+  }
+
+  // Der Herkunftsvermerk ist erst seit #447 da; eine ältere Gold-Datei hat ihn
+  // nicht, und das ist kein Fehler — der Fallvergleich oben gilt trotzdem.
+  const from = doc.merged_from;
+  if (from) {
+    if (from.labels_sha256 && from.labels_sha256 !== provenance.labels_sha256) {
+      issues.push({
+        where: "merged_from.labels_sha256",
+        problem: `the label file changed since the merge (gold recorded ${from.labels_sha256.slice(0, 12)}…, file is ${provenance.labels_sha256.slice(0, 12)}…)`,
+      });
+    }
+    if (from.staged_sha256 && from.staged_sha256 !== provenance.staged_sha256) {
+      issues.push({
+        where: "merged_from.staged_sha256",
+        problem: `the staged file changed since the merge (gold recorded ${from.staged_sha256.slice(0, 12)}…, file is ${provenance.staged_sha256.slice(0, 12)}…)`,
+      });
+    }
+  }
+  return issues;
 }
 
 function readStaged(path: string): StagedQuery[] {
@@ -125,12 +239,51 @@ function main(): void {
   }
   console.error(`[goldset] ${labels.length} labels check out against ${staged.length} staged queries.`);
 
-  if (args.mode === "merge") {
+  if (args.mode === "check") {
+    // #447: Ohne die gemergte Gold-Datei prüft `--check` NUR Labels gegen
+    // Staged. Das ist ein gültiger Schritt (vor dem ersten Merge gibt es keine
+    // Gold-Datei), aber ein grüner Lauf darf nicht als „Gold und Labels passen
+    // zusammen" gelesen werden — das hat er nie geprüft.
+    if (!args.gold) {
+      console.error(
+        `[goldset] NOT CHECKED: no --gold given, so no merged gold was revalidated against these labels (#447).`,
+      );
+      return;
+    }
+    const goldDoc = JSON.parse(readFileSync(args.gold, "utf8")) as unknown;
+    const drift = checkGoldAgainstLabels(
+      goldDoc,
+      mergeCases(staged, labels),
+      mergedFrom(args.staged, args.labels),
+    );
+    if (drift.length) {
+      for (const d of drift) console.error(`[goldset] gold ${d.where}: ${d.problem}`);
+      throw new Error(
+        `${args.gold} has drifted from ${args.labels} in ${drift.length} place(s) — re-merge before using it as measurement evidence`,
+      );
+    }
+    console.error(`[goldset] ${args.gold} still matches these labels exactly.`);
+    return;
+  }
+
+  {
     const cases = mergeCases(staged, labels);
     const cov = coverage(cases);
     writeFileSync(
       args.out,
-      JSON.stringify({ schema_version: 1, coverage: cov, cases }, null, 2) + "\n",
+      JSON.stringify(
+        {
+          schema_version: 1,
+          // #447: Der Gold-Datei ansehen, aus welchem Stand sie gemergt wurde.
+          // Ohne diesen Vermerk kann `--check` nur die Fälle vergleichen und
+          // eine Label-Änderung, die keinen Fall berührt, nicht bemerken.
+          merged_from: mergedFrom(args.staged, args.labels),
+          coverage: cov,
+          cases,
+        },
+        null,
+        2,
+      ) + "\n",
       { mode: 0o600 },
     );
     console.error(`[goldset] wrote ${cases.length} gold cases to ${args.out}`);
