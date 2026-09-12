@@ -120,6 +120,101 @@ const RISKY_PATTERNS: Array<{ label: string; re: RegExp }> = [
 const SEARCH_ONLY_HEAD = /^(?:sudo\s+)?(?:grep|egrep|fgrep|rg|ag|ack|git\s+grep)\b/;
 
 /**
+ * Consumers that swallow a heredoc as DATA (#521).
+ *
+ * #415 deliberately kept heredoc bodies in scope, because `bash <<EOF`
+ * executes them. That holds for a shell; it does not hold for `cat > file`.
+ * Drafting a Discord reply, an issue body or a commit message through a
+ * heredoc is routine work, and any of them can MENTION a destructive command
+ * in prose — observed: `cat > dm5.txt <<'EOF' … On rm -rf: … EOF` produced a
+ * STOP warning while nothing destructive ran.
+ *
+ * An allowlist and not a blocklist on purpose: an unknown consumer keeps
+ * today's behaviour, so a miss here can only fall on the safe side. Each
+ * entry is tested against the SEGMENT that carries the `<<`, so a data sink
+ * next to a real command (`cat > f <<EOF … ; rm -rf x`) loses only its body.
+ */
+const DATA_SINK_HEREDOC: RegExp[] = [
+  // `cat > file` / `cat >> file` — not `2>`, not `>&`, not `>|`.
+  /^(?:sudo\s+)?cat\s[^|]*(?<![0-9&])>>?\s*(?![&|])\S/,
+  /^(?:sudo\s+)?tee\b(?:\s+-a)?\s+\S/,
+  // Issue/PR/release bodies and commit messages read from stdin.
+  /^gh\s[^|]*\s(?:--body-file|-F)[=\s]+-(?:\s|$)/,
+  /^git\s+commit\b[^|]*\s(?:-F|--file)[=\s]+-(?:\s|$)/,
+];
+
+/** `<<WORD`, `<<-WORD`, `<<'WORD'`, `<<"WORD"`, `<<\WORD` — never `<<<`. */
+const HEREDOC_OP = /<<(?!<)(-?)[ \t]*(?:'([^']*)'|"([^"]*)"|(\\?[A-Za-z_][A-Za-z0-9_.-]*))/g;
+
+interface HeredocSpec {
+  delim: string;
+  /** A quoted delimiter suppresses every expansion inside the body. */
+  quoted: boolean;
+  /** `<<-` strips leading tabs, including on the terminator line. */
+  stripTabs: boolean;
+  /** The consumer of this body is on the data-sink allowlist. */
+  sink: boolean;
+}
+
+/** The heredocs opened by one physical line, in the order bash reads them. */
+function headerHeredocs(line: string): HeredocSpec[] {
+  if (!line.includes("<<")) return [];
+  // A heredoc whose output feeds a pipeline can still land in a shell
+  // (`cat <<'EOF' | bash`), so nothing on such a line counts as a sink.
+  const piped = line.includes("|");
+  const specs: HeredocSpec[] = [];
+  for (const segment of line.split(/&&|;/)) {
+    const sink = !piped && DATA_SINK_HEREDOC.some((re) => re.test(segment.trim()));
+    HEREDOC_OP.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = HEREDOC_OP.exec(segment)) !== null) {
+      const word = m[2] ?? m[3] ?? m[4] ?? "";
+      specs.push({
+        delim: word.startsWith("\\") ? word.slice(1) : word,
+        quoted: m[2] !== undefined || m[3] !== undefined || word.startsWith("\\"),
+        stripTabs: m[1] === "-",
+        sink,
+      });
+    }
+  }
+  return specs;
+}
+
+/**
+ * Drop the heredoc bodies that are pure data (#521).
+ *
+ * Only the BODY goes; the header line stays in scope, so a command after the
+ * heredoc on that line (`cat > f <<'EOF' … ; rm -rf x`) and every line after
+ * the terminator are still matched. Nested heredocs need no recursion: a
+ * `bash <<'OUTER'` is no sink, so its whole body — inner heredoc included —
+ * stays in scope, and a sink's body is dropped wholesale.
+ */
+function stripDataSinkHeredocBodies(cmd: string): string {
+  if (!cmd.includes("<<")) return cmd;
+  const lines = cmd.split("\n");
+  const kept: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i++];
+    kept.push(line);
+    for (const spec of headerHeredocs(line)) {
+      const body: string[] = [];
+      while (i < lines.length) {
+        const raw = lines[i++];
+        const candidate = spec.stripTabs ? raw.replace(/^\t+/, "") : raw;
+        if (candidate.trim() === spec.delim) break;
+        body.push(raw);
+      }
+      // An unquoted delimiter expands the body: `$(…)` and backticks in it are
+      // executed by the sink's own shell, so that body is a command, not data.
+      const executable = !spec.sink || (!spec.quoted && /\$\(|`/.test(body.join("\n")));
+      if (executable) kept.push(...body);
+    }
+  }
+  return kept.join("\n");
+}
+
+/**
  * The parts of a command line that actually run something (#415).
  *
  * Split on pipeline and sequence separators, then drop the segments that only
@@ -129,7 +224,7 @@ const SEARCH_ONLY_HEAD = /^(?:sudo\s+)?(?:grep|egrep|fgrep|rg|ag|ack|git\s+grep)
  * common case costs a split of a short string.
  */
 function executableSegments(cmd: string): string[] {
-  return cmd
+  return stripDataSinkHeredocBodies(cmd)
     .split(/\|\||&&|[|;\n]/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0 && !SEARCH_ONLY_HEAD.test(s));

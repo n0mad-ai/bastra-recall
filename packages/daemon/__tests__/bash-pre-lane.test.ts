@@ -503,3 +503,135 @@ describe("#415 — the tripwire reads context, not just words", () => {
     assert.deepEqual(matchPattern("chmod -R 777 ."), { label: "chmod -R", severity: "risky" });
   });
 });
+
+describe("#521 — a heredoc body fed to a data sink is prose, not a command", () => {
+  it("#521 does not fire on prose written to a file that merely MENTIONS a destructive command", () => {
+    // Observed 2026-09-11 while drafting a Discord reply into a scratch file:
+    // a STOP warning with three unrelated memories, and nothing destructive ran.
+    assert.equal(
+      matchPattern("cat > dm5.txt <<'EOF'\nHi,\nOn rm -rf: I think the plumbing already exists.\nEOF"),
+      null,
+    );
+    assert.equal(matchPattern("cat >> notes.md <<'EOF'\nwe ran git reset --hard once\nEOF"), null);
+    assert.equal(matchPattern("tee notes.md <<'EOF'\nnever kubectl delete pod without asking\nEOF"), null);
+    // `<<-` strips leading tabs from the body AND the terminator.
+    assert.equal(matchPattern("cat > f <<-'EOF'\n\tprose about rm -rf here\n\tEOF"), null);
+    // Unquoted delimiter, but nothing in the body executes.
+    assert.equal(matchPattern("cat > f <<EOF\nprose about rm -rf in $HOME\nEOF"), null);
+  });
+
+  it("#521 does not fire on issue bodies and commit messages read from stdin", () => {
+    assert.equal(
+      matchPattern("gh issue create --title x --body-file - <<'EOF'\nWe should warn before git push --force.\nEOF"),
+      null,
+    );
+    assert.equal(matchPattern("git commit -F - <<'EOF'\nfix: DROP TABLE in prose must not fire\nEOF"), null);
+  });
+
+  it("#521 a data heredoc nested inside a data heredoc is still only data", () => {
+    assert.equal(matchPattern("cat > f <<'OUTER'\nbash <<'INNER'\nrm -rf /tmp/x\nINNER\nOUTER"), null);
+  });
+
+  it("#521 keeps firing for interpreters — the allowlist can only miss on the safe side", () => {
+    // #415's reason to keep heredoc bodies in scope; it holds for a shell.
+    for (const cmd of [
+      "bash <<'EOF'\nrm -rf /tmp/x\nEOF",
+      "sh <<EOF\nrm -rf /tmp/x\nEOF",
+      "ssh host <<'EOF'\nrm -rf /tmp/x\nEOF",
+      "python3 - <<'PY'\nos.system('rm -rf /tmp/x')\nPY",
+      // Unknown consumer: today's behaviour, unchanged.
+      "weirdtool <<'EOF'\nrm -rf /tmp/x\nEOF",
+      // A sink nested inside an interpreter's body executes with it.
+      "bash <<'OUTER'\ncat > f <<'INNER'\nrm -rf /tmp/x\nINNER\nOUTER",
+    ]) {
+      assert.deepEqual(matchPattern(cmd), { label: "rm -rf", severity: "destructive" }, `must fire for: ${cmd}`);
+    }
+  });
+
+  it("#521 keeps firing when the heredoc output reaches a shell through a pipe", () => {
+    assert.deepEqual(matchPattern("cat <<'EOF' | bash\nrm -rf /tmp/x\nEOF"), {
+      label: "rm -rf",
+      severity: "destructive",
+    });
+    assert.deepEqual(matchPattern("cat <<'EOF' > f | sh\nrm -rf /tmp/x\nEOF"), {
+      label: "rm -rf",
+      severity: "destructive",
+    });
+  });
+
+  it("#521 keeps firing on command substitution inside an UNQUOTED heredoc", () => {
+    // `<<EOF` expands the body — `$(…)` and backticks run in the sink's shell.
+    assert.deepEqual(matchPattern("cat > f.txt <<EOF\n$(rm -rf /tmp/x)\nEOF"), {
+      label: "rm -rf",
+      severity: "destructive",
+    });
+    assert.deepEqual(matchPattern("cat > f.txt <<EOF\n`rm -rf /tmp/x`\nEOF"), {
+      label: "rm -rf",
+      severity: "destructive",
+    });
+    // A quoted delimiter suppresses the expansion, so the same text is data.
+    assert.equal(matchPattern("cat > f.txt <<'EOF'\n$(rm -rf /tmp/x)\nEOF"), null);
+  });
+
+  it("#521 only the BODY is out of scope — the rest of the line and everything after it is not", () => {
+    assert.deepEqual(matchPattern("cat > f <<'EOF' ; rm -rf /tmp/x\nprose only\nEOF"), {
+      label: "rm -rf",
+      severity: "destructive",
+    });
+    assert.deepEqual(matchPattern("cat > f <<'EOF'\nprose only\nEOF\nrm -rf /tmp/x"), {
+      label: "rm -rf",
+      severity: "destructive",
+    });
+    // Two heredocs, the second one fed to a shell.
+    assert.deepEqual(matchPattern("cat > f <<'A'\nprose rm -rf\nA\nbash <<'B'\nrm -rf /tmp/x\nB"), {
+      label: "rm -rf",
+      severity: "destructive",
+    });
+    // Both heredocs of one line belong to the same sink — both are data.
+    assert.equal(matchPattern("cat > f <<'A' <<'B'\nprose rm -rf\nA\nmore rm -rf prose\nB"), null);
+  });
+
+  it("#521 a here-STRING is not a heredoc", () => {
+    assert.deepEqual(matchPattern('cat <<<"rm -rf /tmp/x" > f'), {
+      label: "rm -rf",
+      severity: "destructive",
+    });
+  });
+
+  it("#521 the STOP warning still reaches the agent for a real heredoc-fed shell", async () => {
+    // End to end through the lane, not just the matcher: a data sink stays
+    // silent, `bash <<EOF` with the same body still emits the warning.
+    const daemon = await startMockDaemon((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ hits: [], vault_size: 10, latency_ms: 1, recall_id: "t" }));
+    });
+    const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-521-"));
+    const env = { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir };
+    try {
+      const prose = (await runHook(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          session_id: "sess-521",
+          tool_input: { command: "cat > dm5.txt <<'EOF'\nOn rm -rf: the plumbing exists.\nEOF" },
+        },
+        env,
+      )).stdout;
+      assert.equal(prose.trim(), "{}", "prose written to a file must not warn");
+
+      const real = (await runHook(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          session_id: "sess-521",
+          tool_input: { command: "bash <<'EOF'\nrm -rf /tmp/x\nEOF" },
+        },
+        env,
+      )).stdout;
+      assert.match(real, /STOP — destructive Bash command detected \(pattern: `rm -rf`\)/);
+    } finally {
+      await daemon.close();
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+});
