@@ -284,6 +284,8 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
     dryRun: true,
     includeStop: opts.withStopHook === true,
     mapBin,
+    // #537 — the client the install step selected, not a disk probe.
+    stubPresent: opts.useStub,
   });
   if (skillPlan.status === "error") return { status: "error", message: `skill: ${skillPlan.detail}`, configPath };
   if (hookPlan.status === "error") return { status: "error", message: `hooks: ${hookPlan.detail}`, configPath };
@@ -309,6 +311,7 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
     dryRun: false,
     includeStop: opts.withStopHook === true,
     mapBin,
+    stubPresent: opts.useStub,
   });
   if (skill.status === "error") return { status: "error", message: `skill: ${skill.detail}`, configPath, backupPath: mcpBackup };
   if (hooks.status === "error") return { status: "error", message: `hooks: ${hooks.detail}`, configPath, backupPath: mcpBackup };

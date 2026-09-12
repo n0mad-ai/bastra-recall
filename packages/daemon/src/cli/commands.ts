@@ -230,12 +230,17 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
   if (firstRun.exit !== null) return firstRun.exit;
   if (firstRun.vaultPath) opts.vaultPath = firstRun.vaultPath;
 
-  // #350/#15: the compiled hook client for Claude Code and Codex. Runs before the adapters
-  // plan their hook entries, because registration prefers the stub only when
-  // the binary already exists on disk (buildHookEntry). Nothing here fails the
+  // #350/#15: the compiled hook client for Claude Code and Codex. Runs before the
+  // adapters plan their hook entries, and since #537 it is the single place that
+  // decides WHICH client they register (opts.useStub). Nothing here fails the
   // install — the node client serves the same daemon lanes, just slower.
   if (targets.some((a) => a.surface === "claude-code" || a.surface === "codex")) {
     const stub = await ensureHookStub({ dryRun: args.dryRun, mode: args.stub ?? "ask", interactive: isInteractive() });
+    // #537: the ADAPTERS must not re-derive this from the disk. `--no-stub`
+    // against an already downloaded binary used to register every Claude and
+    // Codex hook on that binary anyway, because each adapter asked existsSync
+    // instead of asking what was decided here.
+    opts.useStub = stub.useStub;
     process.stdout.write(`${stub.status === "failed" ? "⚠" : "·"} hook client: ${stub.detail}\n\n`);
   }
 

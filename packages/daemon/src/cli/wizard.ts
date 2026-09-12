@@ -531,6 +531,9 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   // #350: the compiled hook client — asked here, before the spinner, because
   // registration prefers the stub only when the binary is already on disk.
   // A cancel at this question cancels the wizard like at every other one.
+  // #537 — the selection the stub step made, handed to every adapter instead of
+  // each one probing the disk. Undefined when no hook surface was chosen.
+  let useStub: boolean | undefined;
   if (surfaces.includes("claude-code") || surfaces.includes("codex")) {
     const CANCELLED = Symbol("cancelled");
     try {
@@ -545,6 +548,7 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
           log: (line) => p.log.info(line.trim()),
         },
       );
+      useStub = stub.useStub;
       if (stub.status === "failed") p.log.warn(`hook client: ${stub.detail}`);
       else p.log.info(`hook client: ${stub.detail}`);
     } catch (err) {
@@ -567,6 +571,7 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
         vaultPath,
         force: false,
         withStopHook: stopHook,
+        useStub,
       });
       results.push({ surface, r });
       if (r.status === "error") hadError = true;

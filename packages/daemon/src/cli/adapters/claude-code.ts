@@ -370,7 +370,13 @@ export function planHookEntries(
 
 async function patchClaudeCodeHooks(
   action: "install" | "uninstall",
-  opts: { dryRun: boolean; includeStop?: boolean; mapBin?: (bin: string) => string },
+  opts: {
+    dryRun: boolean;
+    includeStop?: boolean;
+    mapBin?: (bin: string) => string;
+    /** #537 — the client the install step selected; undefined probes the disk. */
+    stubPresent?: boolean;
+  },
 ): Promise<{ status: HookStepStatus; detail: string; backupPath?: string }> {
   const sourceDefs = hookDefinitions({ includeStop: opts.includeStop });
   const includeStop = opts.includeStop === true;
@@ -396,6 +402,7 @@ async function patchClaudeCodeHooks(
   const { before, after, stopPreserved } = planHookEntries(action, hooks, {
     includeStop,
     mapBin: opts.mapBin,
+    stubPresent: opts.stubPresent,
   });
   const installNote = includeStop
     ? ""
@@ -446,8 +453,11 @@ async function patchClaudeCodeHooks(
 // #347 stage 2: same stub policy as the hook lanes (#344) — when the compiled
 // stub exists on this host, register `bastra-hook statusline` for the fast
 // start; plain npm installs keep the node client.
-function statuslineCommand(bin: string): string {
-  return existsSync(HOOK_STUB_BIN)
+// #537: `stubPresent` is the selection made by the install step, not a disk
+// probe — `--no-stub` has to move the statusLine back to the node client too,
+// or the opt-out would be half taken.
+export function statuslineCommand(bin: string, stubPresent: boolean = existsSync(HOOK_STUB_BIN)): string {
+  return stubPresent
     ? `${HOOK_STUB_BIN} statusline --style=powerline`
     : `node ${bin} --style=powerline`;
 }
@@ -492,12 +502,12 @@ type StatuslineStepStatus =
 
 async function patchClaudeCodeStatusline(
   action: "install" | "uninstall",
-  opts: { dryRun: boolean; force: boolean; bin?: string },
+  opts: { dryRun: boolean; force: boolean; bin?: string; stubPresent?: boolean },
 ): Promise<{ status: StatuslineStepStatus; detail: string; backupPath?: string }> {
   // opts.bin: the path to REGISTER (stable-runtime copy when active, #180).
   // Build/existence is still checked against the source STATUSLINE_BIN — the
   // copy mirrors it and may not exist yet under dry-run.
-  const command = statuslineCommand(opts.bin ?? STATUSLINE_BIN);
+  const command = statuslineCommand(opts.bin ?? STATUSLINE_BIN, opts.stubPresent);
   if (action === "install" && !(await fileExists(STATUSLINE_BIN))) {
     return { status: "error", detail: `statusline not built: ${STATUSLINE_BIN} — run 'npm run build'` };
   }
@@ -569,11 +579,13 @@ async function claudeCodeInstall(opts: InstallOpts): Promise<InstallResult> {
     dryRun: opts.dryRun,
     includeStop: opts.withStopHook === true,
     mapBin,
+    stubPresent: opts.useStub,
   });
   const statuslineResult = await patchClaudeCodeStatusline("install", {
     dryRun: opts.dryRun,
     force: opts.force === true,
     bin: mapBin(STATUSLINE_BIN),
+    stubPresent: opts.useStub,
   });
 
   if (skillResult.status === "error") return { status: "error", message: `skill: ${skillResult.detail}`, configPath };

@@ -5,6 +5,15 @@ export interface InstallOpts {
   force?: boolean;
   // Stop hook can emit multi-line save-eval suggestions, so it is opt-in.
   withStopHook?: boolean;
+  /**
+   * Which hook client this run registers (#537): true = the compiled stub,
+   * false = the node thin client. Set once by the install step from
+   * `ensureHookStub`, so `--no-stub` reaches every adapter instead of each one
+   * probing the disk and preferring a binary the user just opted out of.
+   * Undefined = no stub step ran (doctor --fix, direct adapter calls) — the
+   * adapters then probe HOOK_STUB_BIN exactly as before.
+   */
+  useStub?: boolean;
 }
 
 export interface InstallResult {

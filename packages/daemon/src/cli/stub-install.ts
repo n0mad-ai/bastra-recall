@@ -156,9 +156,20 @@ export type StubDecision =
   | "non-interactive"
   | "ask";
 
-/** Pure — exported for tests. Order: what is already there, then the explicit
- *  opt-out, then everything that cannot be offered at all, then the answer
- *  (given now, remembered, or not obtainable). */
+/**
+ * Pure — exported for tests.
+ *
+ * Precedence (#537): the explicit flag beats the remembered choice, which beats
+ * mere artifact presence. `present` used to be checked first, so `--no-stub`
+ * against an already downloaded binary reported "compiled hook client present"
+ * and every adapter went on registering that binary — the documented opt-out
+ * could not be taken once the download had happened, and neither could the
+ * remembered no be honoured. Presence now decides only what an unforced run
+ * does, and only after both explicit answers are out of the way.
+ *
+ * Retaining the file and selecting it are different concerns: nothing here
+ * deletes a downloaded binary, `--stub` simply selects it again.
+ */
 export function decideStubAction(i: {
   present: boolean;
   mode: StubMode;
@@ -169,14 +180,16 @@ export function decideStubAction(i: {
   remembered: boolean | null;
   interactive: boolean;
 }): StubDecision {
-  if (i.present) return "present";
   if (i.mode === "skip") return "skip";
+  // An earlier no is never asked again — and, since #537, never overruled by a
+  // binary that is merely lying there. Only `--stub` reverses it.
+  if (i.mode !== "yes" && i.remembered === false) return "declined";
+  if (i.present) return "present";
   if (i.ephemeral) return "ephemeral";
   if (!i.manifest) return "no-manifest";
   if (!i.target) return "unsupported";
   if (i.dryRun) return "dry-run";
   if (i.mode === "yes" || i.remembered === true) return "download";
-  if (i.remembered === false) return "declined";
   if (!i.interactive) return "non-interactive";
   return "ask";
 }
@@ -228,6 +241,14 @@ export async function downloadVerified(
 export interface StubStepResult {
   status: "present" | "installed" | "skipped" | "failed";
   detail: string;
+  /**
+   * Which hook client this registration run must use (#537). The adapters used
+   * to probe the disk for themselves, which is why `--no-stub` still produced
+   * stub hook commands. Now the decision is made once, here, and handed down
+   * through InstallOpts.useStub — true only when a verified binary is both
+   * present and selected.
+   */
+  useStub: boolean;
 }
 
 /**
@@ -272,40 +293,54 @@ export async function ensureHookStub(
 
   switch (decision) {
     case "present":
-      return { status: "present", detail: `compiled hook client present (${stubBin})` };
+      // `--stub` on an installation that had opted out is a reversal, not a
+      // no-op: persist it, or the next unattended `bastra update` would read
+      // the stale no and put the hooks back on the node client (#537).
+      if (i.mode === "yes" && !i.dryRun) {
+        await writeStubMarker(markerPath, { optIn: true, decidedAt: new Date().toISOString(), target: target ?? undefined, version });
+      }
+      return { status: "present", detail: `compiled hook client present (${stubBin})`, useStub: true };
     case "skip":
       if (!i.dryRun) await writeStubMarker(markerPath, { optIn: false, decidedAt: new Date().toISOString() });
-      return { status: "skipped", detail: `--no-stub: ${onNode} (remembered; pass --stub to change)` };
+      return {
+        status: "skipped",
+        useStub: false,
+        detail: existsSync(stubBin)
+          ? `--no-stub: ${onNode} (remembered; the downloaded binary is kept — pass --stub to use it again)`
+          : `--no-stub: ${onNode} (remembered; pass --stub to change)`,
+      };
     case "ephemeral":
       return {
         status: "skipped",
+        useStub: false,
         detail: `npx runtime — the compiled hook client needs a permanent install (npm install -g bastra-recall); ${onNode}`,
       };
     case "no-manifest":
       return {
         status: "skipped",
+        useStub: false,
         detail: `no stub manifest in this package (source checkout? build it with \`npm run build:stub\`); ${onNode}`,
       };
     case "unsupported":
-      return { status: "skipped", detail: `no compiled hook client for ${process.platform}/${process.arch}; ${onNode}` };
+      return { status: "skipped", useStub: false, detail: `no compiled hook client for ${process.platform}/${process.arch}; ${onNode}` };
     case "dry-run":
-      return { status: "skipped", detail: `~ would offer the compiled hook client for ${target} (${STUB_SIZE_HINT}) (dry-run)` };
+      return { status: "skipped", useStub: false, detail: `~ would offer the compiled hook client for ${target} (${STUB_SIZE_HINT}) (dry-run)` };
     case "declined":
-      return { status: "skipped", detail: `compiled hook client declined earlier; ${onNode} (pass --stub to download)` };
+      return { status: "skipped", useStub: false, detail: `compiled hook client declined earlier; ${onNode} (pass --stub to download)` };
     case "non-interactive":
-      return { status: "skipped", detail: `non-interactive: pass --stub to download the compiled hook client; ${onNode}` };
+      return { status: "skipped", useStub: false, detail: `non-interactive: pass --stub to download the compiled hook client; ${onNode}` };
     case "ask": {
       const accepted = await (io.ask ?? confirm)(STUB_QUESTION, { defaultYes: true });
       if (!accepted) {
         await writeStubMarker(markerPath, { optIn: false, decidedAt: new Date().toISOString() });
-        return { status: "skipped", detail: `declined; ${onNode} (re-run with --stub to download later)` };
+        return { status: "skipped", useStub: false, detail: `declined; ${onNode} (re-run with --stub to download later)` };
       }
       break;
     }
     case "download":
       break;
   }
-  if (!target || !asset) return { status: "skipped", detail: `no compiled hook client for this host; ${onNode}` };
+  if (!target || !asset) return { status: "skipped", useStub: false, detail: `no compiled hook client for this host; ${onNode}` };
 
   // The decision is the user's, not the download's: remembered before the
   // fetch, so a transient failure retries on the next install instead of
@@ -314,9 +349,10 @@ export async function ensureHookStub(
   const log = io.log ?? ((line: string) => process.stdout.write(line));
   log(`  · hook client: downloading ${asset.file} (${STUB_SIZE_HINT}) from GitHub releases…\n`);
   const r = await downloadVerified(stubAssetUrl(version, asset.file), asset.sha256, stubBin, { fetch: io.fetch });
-  if (!r.ok) return { status: "failed", detail: `could not fetch the compiled hook client (${r.reason}); ${onNode}` };
+  if (!r.ok) return { status: "failed", useStub: false, detail: `could not fetch the compiled hook client (${r.reason}); ${onNode}` };
   return {
     status: "installed",
+    useStub: true,
     detail: `compiled hook client installed (${(r.bytes / 1_048_576).toFixed(0)} MB, sha256 verified against the package manifest)`,
   };
 }
