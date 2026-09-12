@@ -19,7 +19,7 @@ Both expose the `bastra` CLI. After installing, restart your AI client.
 - `bastra install all` — register the MCP server, Skill, and hooks across ChatGPT Desktop/Codex, Claude Code, Claude Desktop, and Cursor (script-friendly).
 - `bastra install codex` — install the shared Codex/ChatGPT Desktop MCP entry, native hooks, and `~/.agents/skills/bastra-recall`.
 - `bastra doctor` — check / repair registrations.
-- `bastra uninstall all` — remove everything again.
+- `bastra uninstall all` — unregister every client again. The installed package, your vault, logs and settings stay; removing the package is a separate `brew uninstall` / `npm uninstall -g`.
 
 The CLI itself ships in [`@bastra-recall/daemon`](https://www.npmjs.com/package/@bastra-recall/daemon); this package just re-exports its `bastra` entry point under the unscoped name.
 

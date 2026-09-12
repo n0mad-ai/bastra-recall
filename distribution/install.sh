@@ -66,7 +66,8 @@ main() {
   # Homebrew's tap and formula are macOS-only; fail loudly rather than half-way.
   if [ "$(uname -s)" != "Darwin" ]; then
     echo "✗ This installer is macOS-only." >&2
-    echo "  On Linux/Windows install via npm:  npm install -g bastra-recall" >&2
+    echo "  On Linux install via npm:  npm install -g bastra-recall" >&2
+    echo "  Windows is not supported yet." >&2
     exit 1
   fi
 
