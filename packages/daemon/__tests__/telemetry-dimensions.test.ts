@@ -90,7 +90,12 @@ test("keine Session heißt kein Pseudonym — nicht ein erfundenes", () => {
 
 // ── §17.4: die Armzuweisung ─────────────────────────────────────
 
-const experiment = { experiment: "hook-wording", arms: ["a", "b"] };
+const experiment = {
+  experiment: "hook-wording",
+  arms: ["a", "b"],
+  registration: "packages/eval/registrations/presentation-experiment.json",
+  registration_version: 1,
+};
 
 test("ohne registrierte Konfiguration trägt jedes Ereignis unassigned", () => {
   const d = dimensionsFrom({ client: "claude-code", session_id: "s-1" });
@@ -122,7 +127,7 @@ test("die Zuweisung verteilt über die Arme, statt alle in einen zu kippen", () 
 });
 
 test("mehr Arme werden alle bedient", () => {
-  const drei = { experiment: "x", arms: ["a", "b", "c"] };
+  const drei = { ...experiment, experiment: "x", arms: ["a", "b", "c"] };
   const seen = new Set<string>();
   for (let i = 0; i < 200; i++) seen.add(assignArm(pseudonymousSession(`s${i}`), drei));
   assert.equal(seen.size, 3);
@@ -139,7 +144,40 @@ test("dimensionsFrom füllt alle vier Spalten", () => {
   assert.equal(d.hook_source, "bash-pre");
   assert.equal(d.experiment_session, pseudonymousSession("s-1"));
   assert.ok(experiment.arms.includes(d.arm));
-  assert.deepEqual(Object.keys(d).sort(), ["arm", "client", "experiment_session", "hook_source"]);
+  assert.deepEqual(Object.keys(d).sort(), [
+    "arm",
+    "client",
+    "experiment",
+    "experiment_session",
+    "hook_source",
+    "registration",
+    "registration_version",
+  ]);
+});
+
+test("#439: eine zugewiesene Zeile trägt die Identität ihrer Registrierung", () => {
+  // Der Armname allein ist keine Identität: Er wird wiederverwendet, und eine
+  // Registrierung wird revidiert. Ohne Name, Registrierungspfad und -version
+  // auf der Zeile lässt sich ein historisches Ergebnis nach einer
+  // Konfigurationsänderung nicht mehr der Konfiguration zuordnen, die es
+  // erzeugt hat (§17.4: versioniert abgelegt).
+  const d = dimensionsFrom({ client: "claude-code", session_id: "s-1" }, experiment);
+  assert.notEqual(d.arm, UNASSIGNED_ARM, "die Vorbedingung: es ist überhaupt ein Arm zugewiesen");
+  assert.equal(d.experiment, "hook-wording");
+  assert.equal(d.registration, "packages/eval/registrations/presentation-experiment.json");
+  assert.equal(d.registration_version, 1);
+});
+
+test("#439: auch eine Zeile ohne Session weist ihre Registrierung aus", () => {
+  // `unassigned` aus einem Vault OHNE Experiment und `unassigned` aus einer
+  // Zeile ohne Session sind zwei verschiedene Beobachtungen. Nur die zweite
+  // trägt eine Registrierung.
+  const ohne = dimensionsFrom({ client: "cli" }, experiment);
+  assert.equal(ohne.arm, UNASSIGNED_ARM);
+  assert.equal(ohne.registration_version, 1);
+  const keins = dimensionsFrom({ client: "cli" }, null);
+  assert.equal(keins.arm, UNASSIGNED_ARM);
+  assert.equal(keins.registration_version, undefined, "ohne Konfiguration gibt es nichts zu verweisen");
 });
 
 test("ein Aufruf ohne jede Angabe ergibt vier gültige Werte, keine Lücken", () => {
@@ -197,7 +235,7 @@ async function readEventRow(logDir: string, kind: string): Promise<Record<string
   return null;
 }
 
-async function makeDaemon() {
+async function makeDaemon(config: Parameters<Telemetry["setExperiment"]>[0] = null) {
   const dir = await mkdtemp(join(tmpdir(), "bastra-dim-vault-"));
   const logDir = await mkdtemp(join(tmpdir(), "bastra-dim-logs-"));
   await writeFile(join(dir, "alpha.md"), memoryMarkdown("alpha", "alpha bravo charlie"), "utf8");
@@ -208,6 +246,7 @@ async function makeDaemon() {
   const prevLog = process.env.BASTRA_LOG_PATH;
   process.env.BASTRA_LOG_PATH = logDir;
   const telemetry = new Telemetry();
+  telemetry.setExperiment(config);
   if (prevLog === undefined) delete process.env.BASTRA_LOG_PATH;
   else process.env.BASTRA_LOG_PATH = prevLog;
   const handle = await startHttpServer({
@@ -249,6 +288,33 @@ test("/hook/recall schreibt die vier Spalten ans Ereignis", async () => {
     assert.equal(dims.experiment_session, pseudonymousSession("claude-session-263"));
     assert.notEqual(dims.experiment_session, "claude-session-263", "§23: nie die rohe id");
     assert.equal(dims.arm, UNASSIGNED_ARM, "ohne registrierte Konfiguration kein Arm");
+  } finally {
+    await d.close();
+  }
+});
+
+test("#439: das geschriebene Ereignis trägt Experiment, Registrierung und Version", async () => {
+  // Die reine Funktion oben beweist nur, dass die Felder entstehen. Hier geht
+  // es um die Leitung bis ins JSONL: Ohne sie ließe sich eine archivierte
+  // Zeile nach einer Revision der Registrierung nicht mehr eindeutig der
+  // Konfiguration zuordnen, die ihren Arm gewählt hat.
+  const d = await makeDaemon(experiment);
+  try {
+    assert.equal(
+      await httpPost(d.port, "/hook/recall", {
+        query: "alpha bravo charlie",
+        session_id: "claude-session-439",
+        client: "claude-code",
+        hook_source: "pre-tool",
+      }),
+      200,
+    );
+    const row = await readEventRow(d.logDir, "hook_recall");
+    const dims = row!.dimensions as Record<string, unknown>;
+    assert.ok(experiment.arms.includes(String(dims.arm)), "die Vorbedingung: ein echter Arm");
+    assert.equal(dims.experiment, experiment.experiment);
+    assert.equal(dims.registration, experiment.registration);
+    assert.equal(dims.registration_version, experiment.registration_version);
   } finally {
     await d.close();
   }

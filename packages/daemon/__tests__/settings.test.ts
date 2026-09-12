@@ -384,7 +384,21 @@ test("#425: getExperimentConfig returns the persisted arms for the registered ex
     assert.deepEqual(await getExperimentConfig(path), {
       experiment: REGISTERED_EXPERIMENT.name,
       arms: REGISTERED_EXPERIMENT.arms,
+      registration: REGISTERED_EXPERIMENT.registration,
+      registration_version: REGISTERED_EXPERIMENT.registration_version,
     });
+  });
+});
+
+test("#439: getExperimentConfig hands on the registration reference, not just the arms", async () => {
+  // Der Verweis ist der einzige Weg, eine historische Zeile nach einer
+  // Revision noch der Konfiguration zuzuordnen, die sie erzeugt hat. Wird er
+  // hier verworfen, kann ihn kein Produzent mehr ans Ereignis hängen.
+  await withTempFile(async (path) => {
+    await writeFile(path, JSON.stringify({ experiment: REGISTERED_EXPERIMENT }), "utf8");
+    const cfg = await getExperimentConfig(path);
+    assert.equal(cfg?.registration, REGISTERED_EXPERIMENT.registration);
+    assert.equal(cfg?.registration_version, REGISTERED_EXPERIMENT.registration_version);
   });
 });
 

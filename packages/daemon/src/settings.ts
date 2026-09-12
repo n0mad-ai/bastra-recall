@@ -709,7 +709,12 @@ export async function getEvidenceGateEnabled(path?: string): Promise<boolean> {
  */
 export async function getExperimentConfig(
   path?: string,
-): Promise<{ experiment: string; arms: string[] } | null> {
+): Promise<{
+  experiment: string;
+  arms: string[];
+  registration: string;
+  registration_version: number;
+} | null> {
   const cfg = (await readSettings(path)).experiment;
   if (!cfg) return null;
   // Name, Registrierung und Registrierungsversion sind seit #425 schon von
@@ -721,7 +726,16 @@ export async function getExperimentConfig(
     );
     return null;
   }
-  return { experiment: cfg.name, arms: cfg.arms };
+  // #439: Der Verweis auf die Registrierung wird MITGEGEBEN, nicht hier
+  // verworfen. Er ist die einzige Identität, über die sich eine historische
+  // Zeile nach einer Revision noch der Konfiguration zuordnen lässt, die sie
+  // zugewiesen hat — ein Armname allein wird wiederverwendet.
+  return {
+    experiment: cfg.name,
+    arms: cfg.arms,
+    registration: cfg.registration,
+    registration_version: cfg.registration_version,
+  };
 }
 
 export async function setEvidenceGateEnabled(

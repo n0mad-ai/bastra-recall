@@ -276,7 +276,8 @@ async function main(): Promise<void> {
   telemetry.setExperiment(experimentConfig);
   if (experimentConfig) {
     console.error(
-      `[bastra-recall] experiment ACTIVE: ${experimentConfig.experiment} — arms ${experimentConfig.arms.join(", ")} (#267)`,
+      `[bastra-recall] experiment ACTIVE: ${experimentConfig.experiment} — arms ${experimentConfig.arms.join(", ")}` +
+        ` — registration ${experimentConfig.registration} v${experimentConfig.registration_version} (#267/#439)`,
     );
   }
 
