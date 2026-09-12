@@ -169,7 +169,7 @@ It starts:
 - HTTP REST server on `127.0.0.1:6723` by default
 - stdio MCP server in the same process
 
-HTTP can be disabled with `BASTRA_HTTP=off`. The port defaults to `6723` and can be changed with `BASTRA_HTTP_PORT` (legacy `NEXUS_HTTP_PORT` is accepted).
+HTTP can be disabled with `BASTRA_HTTP=off`. The endpoint is resolved in exactly one place since #531 (`packages/daemon/src/daemon-endpoint.ts`), and every surface that binds, probes, names or persists it reads that resolver: `BASTRA_DAEMON_URL` → `BASTRA_HTTP_URL` → `BASTRA_HTTP_PORT` → loopback on `6723` (legacy `NEXUS_*` names are accepted alongside each).
 
 ### MCP Forwarder
 
@@ -191,6 +191,7 @@ Core memory tools:
 | `recall` | Search memories by action context or natural-language query |
 | `load_memory` | Load full frontmatter and body by id |
 | `save_memory` | Write a new or overwritten memory markdown file and force reindex |
+| `edit_memory` | Patch one existing memory — `str_replace`, `append` and/or a frontmatter patch, through the same save path; `expected_revision` is the optimistic-concurrency precondition (#519) |
 
 Document read tools:
 
@@ -221,6 +222,7 @@ The HTTP server binds to loopback only. Main endpoints:
 | `/api/v1/recall` | `POST` | REST wrapper for `recall` |
 | `/api/v1/load_memory` | `POST` | REST wrapper for `load_memory` |
 | `/api/v1/save_memory` | `POST` | REST wrapper for `save_memory` |
+| `/api/v1/edit_memory` | `POST` | REST wrapper for `edit_memory` |
 | `/api/v1/find_document` | `POST` | REST wrapper for `find_document` |
 | `/api/v1/read_document` | `POST` | REST wrapper for `read_document` |
 | `/api/v1/open_document` | `POST` | REST wrapper for `open_document` |

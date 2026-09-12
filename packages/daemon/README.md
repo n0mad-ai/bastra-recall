@@ -12,7 +12,7 @@ For project-level docs (vision, install, REST API, roadmap), see the [top-level 
 - **Save path**: writes `.md` files, validates frontmatter (zod), force-reindexes so save+recall in the same turn are consistent.
 - **Auto-related enricher**: for each new save, fills `related_via` with cosine ≥0.7 neighbors.
 - **Memory graph**: multi-hop recall (`expand_hops: 1`) returns 1-hop neighbors via `related_via`.
-- **Sensitivity filter**: `private` memories aren't visible to external MCP callers.
+- **Sensitivity filter**: `private` memories aren't visible to external MCP/REST callers — and since #464 not writable by them either. The permission is bound to the transport, not passed as a tool argument, and a refused read and a refused write answer alike, so neither is an existence oracle.
 - **Staleness re-ranking**: memories with `valid_until` / `expires_after_days` / `last_reviewed_at` get demoted (or excluded if expired) at recall time.
 
 ## Surfaces
@@ -32,6 +32,7 @@ For project-level docs (vision, install, REST API, roadmap), see the [top-level 
 | `recall(query, k?, scope?, type?, expand_hops?)` | Search the vault; hybrid BM25 + embeddings when enabled |
 | `load_memory(id)` | Fetch full frontmatter + body |
 | `save_memory({title, type, body, …})` | Write a new memory with schema validation + force-reindex |
+| `edit_memory({id, str_replace?, append?, frontmatter?, expected_revision?})` | Patch one existing memory through the same save path (#519) |
 | `find_document(query, k?)` | Search documents (PDFs, photos, contracts) |
 | `read_document(id)` | Load extracted text + metadata for a document |
 | `open_document(id)` | macOS-only: open in the system handler |
@@ -88,8 +89,8 @@ npm run backfill:related   # populate related_via on legacy memories
 | env var | required | default | meaning |
 |---|---|---|---|
 | `BASTRA_VAULT_PATH` | yes | — | absolute path to the vault root (memories are auto-discovered) |
-| `BASTRA_HTTP_PORT` | no | `6723` | loopback HTTP port for REST + hooks |
-| `BASTRA_HTTP_URL` | no | derived | full URL override (for non-loopback testing) |
+| `BASTRA_HTTP_PORT` | no | `6723` | loopback HTTP port for REST + hooks; read only when neither URL var below is set |
+| `BASTRA_HTTP_URL` | no | derived | full URL override (for non-loopback testing); read only when `BASTRA_DAEMON_URL` is unset |
 | `BASTRA_API_TOKEN` | no | unset | when set, REST `/api/v1/*` requires `Authorization: Bearer <token>` |
 | `BASTRA_AUTH_LOOPBACK_SKIP` | no | `1` | the token-free path needs a loopback peer **and** a present, loopback `Host` header — a missing header counts as foreign (#526); set to `0` to require the bearer even for direct 127.0.0.1 callers |
 | `BASTRA_CORS_ORIGIN` | no | unset (deny all) | comma-separated browser-origin allowlist; unset = no browser origin allowed; `*` = explicit permissive opt-in (tunnel/dev) |
@@ -101,8 +102,8 @@ npm run backfill:related   # populate related_via on legacy memories
 | `BASTRA_OLLAMA_IDLE_UNLOAD_MS` | no | `600000` (10 min) | unload the embedding model from Ollama RAM after this long without an embed (battery saver); `0` disables |
 | `OPENAI_API_KEY` | no | unset | required when `BASTRA_EMBEDDING_PROVIDER=openai` |
 | `BASTRA_FORWARDER_SPAWN` | no | `1` | when `0`, the MCP forwarder will not auto-spawn the daemon. Set this when a service manager (launchd, systemd) owns the daemon, together with `BASTRA_DAEMON_URL` naming that owner — a spawned second process exits as soon as it sees the port taken (#483), but not starting it at all is cheaper |
-| `BASTRA_DAEMON_URL` | no | `http://127.0.0.1:6723` | which daemon the MCP forwarder talks to |
-| `BASTRA_HOOK_TIMEOUT_MS` | no | `500` | per-hook wall-clock budget before fail-silent |
+| `BASTRA_DAEMON_URL` | no | `http://127.0.0.1:6723` | which daemon this machine means — highest-precedence input to the single endpoint resolver every surface uses since #531 (CLI, doctor, map, hooks, forwarder, bridge, and the daemon's own bind), and what `bastra install` writes into a client registration |
+| `BASTRA_HOOK_TIMEOUT_MS` | no | per lane | overrides the lane's wall-clock budget before fail-silent — the per-lane defaults are in [docs/hooks.md](../../docs/hooks.md#budgets-and-the-release-threshold-305) (#305) |
 | `BASTRA_VECTOR_DEADLINE_MS` | no | `150` | hook path only: how long a recall waits for the dense arm before serving BM25-only. Bounds that stage, not the call — measured warm the arm costs 87–96ms (total 106–113ms), cold 668ms (total 694ms), so 150ms passes every warm call and caps a cold one near 180ms. The embed is abandoned, not cancelled, so the model still finishes loading and the next call is warm. Degradations are visible as `degraded: "vector-arm-timeout"`; `0` disables (kill switch) |
 | `BASTRA_HOOK_MAX_SHOW` | no | `1` | how often the same memory may appear in `<recall-hints>` per session (4h window); a `load_memory` of that id resets the counter |
 | `BASTRA_HOOK_CONTENT_RECALL` | no | `off` | set to `1` to run the opt-in edit-content recall arm (#282) |

@@ -412,8 +412,9 @@ new MCP tool):
 
 | Env var                       | Default          | What it does                                                  |
 | ----------------------------- | ---------------- | ------------------------------------------------------------- |
-| `BASTRA_HTTP_URL`             | _none_           | Full daemon base URL (overrides host+port)                    |
-| `BASTRA_HTTP_PORT`            | `6723`           | Daemon port on `127.0.0.1`                                    |
+| `BASTRA_DAEMON_URL`           | _none_           | Full daemon base URL — highest precedence, and what `bastra install` writes into a client registration (#531) |
+| `BASTRA_HTTP_URL`             | _none_           | Full daemon base URL (overrides host+port); read only when `BASTRA_DAEMON_URL` is unset |
+| `BASTRA_HTTP_PORT`            | `6723`           | Daemon port on `127.0.0.1`, read only when neither URL var is set |
 | `BASTRA_HOOK_TIMEOUT_MS`      | per lane, see above | Overrides the lane budget (incl. network round-trip). The assertion budget is fixed at 1000 ms and is not read from this var. |
 | `BASTRA_HOOK_QUERY`           | `neutral`        | `english` restores the old action-verb recall query (#231)    |
 | `BASTRA_HOOK_CONTENT_RECALL`  | `off`            | `1` runs the opt-in edit-content recall arm (#282)             |
