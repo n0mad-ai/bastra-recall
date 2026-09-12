@@ -1288,3 +1288,145 @@ test("#541 — an assertion-mode hit injects once per session, and the reset sig
     await rm(stateDir, { recursive: true, force: true });
   }
 });
+
+/* ── #539: lane bookkeeping must be a DELTA, never a snapshot mutation ──────
+ *
+ * #539 moved every write behind `mutateSessionState`, which re-reads the file
+ * inside the lock and applies only the callback's delta. That silently voids
+ * any mutation made to the state this lane read EARLIER: the snapshot is never
+ * written back. The backoff's `skipped` counter was mutated that way, so a
+ * suppressed emission booked nothing and the cadence never re-opened — the
+ * lane suppressed forever instead of probing again after `streak` skips.
+ */
+test("#539 — a suppressed prompt-lane emission books `skipped` into the saved state", async () => {
+  const { mkdtemp, rm, writeFile, readFile: rf } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join: j } = await import("node:path");
+  const stateDir = await mkdtemp(j(tmpdir(), "bastra-539-prompt-"));
+  const sessionId = "prompt-539-skipped";
+  const emitAt = Date.now() - 1000;
+  await writeFile(
+    j(stateDir, `${sessionId}.json`),
+    JSON.stringify({
+      shown: {},
+      // streak 3, window wide open → decideBackoff suppresses the next
+      // injection-worthy event and expects `skipped` to climb 1 → 2 → 3.
+      sources: { "prompt-lookup": { streak: 3, at: emitAt, ids: ["old-hit"], skipped: 0 } },
+    }),
+    "utf8",
+  );
+
+  const daemon = await startMockDaemon((req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    if (req.url === "/hook/recall") {
+      // Score 84 < MUST_LOAD_SCORE (100): no REQUIRED bypass, and assertion
+      // mode is not the retrieval exemption — so this event is suppressed.
+      res.end(
+        JSON.stringify({
+          hits: [
+            {
+              id: "m-84",
+              title: "Release-Prozess",
+              type: "lesson",
+              scope: "project",
+              summary: "Release erst nach gruener CI.",
+              score: 84,
+            },
+          ],
+          vault_size: 50,
+          latency_ms: 5,
+          recall_id: "t539",
+        }),
+      );
+    } else {
+      res.end("{}");
+    }
+  });
+
+  try {
+    const { stdout } = await runHook(
+      {
+        hook_event_name: "UserPromptSubmit",
+        prompt: "schreib mir bitte die Release Notes",
+        session_id: sessionId,
+        cwd: process.cwd(),
+      },
+      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir },
+    );
+    assert.equal(stdout, "{}", "precondition: this emission must be suppressed");
+
+    const saved = JSON.parse(await rf(j(stateDir, `${sessionId}.json`), "utf8")) as {
+      sources?: Record<string, SourceBackoff>;
+    };
+    const entry = saved.sources?.["prompt-lookup"];
+    assert.equal(entry?.skipped, 1, "the suppression must survive the save (#539)");
+    // The emit itself is untouched — only consumption or a real emit move these.
+    assert.equal(entry?.streak, 3);
+    assert.equal(entry?.at, emitAt);
+  } finally {
+    await daemon.close();
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+test("#539 — the suppression window re-opens: three skips, then a probe emit", async () => {
+  const { mkdtemp, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join: j } = await import("node:path");
+  const stateDir = await mkdtemp(j(tmpdir(), "bastra-539-cadence-"));
+  const sessionId = "prompt-539-cadence";
+  await writeFile(
+    j(stateDir, `${sessionId}.json`),
+    JSON.stringify({
+      shown: {},
+      sources: { "prompt-lookup": { streak: 3, at: Date.now() - 1000, ids: ["old-hit"], skipped: 0 } },
+    }),
+    "utf8",
+  );
+
+  const daemon = await startMockDaemon((req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    if (req.url === "/hook/recall") {
+      res.end(
+        JSON.stringify({
+          hits: [
+            {
+              id: "m-84",
+              title: "Release-Prozess",
+              type: "lesson",
+              scope: "project",
+              summary: "Release erst nach gruener CI.",
+              score: 84,
+            },
+          ],
+          vault_size: 50,
+          latency_ms: 5,
+          recall_id: "t539c",
+        }),
+      );
+    } else {
+      res.end("{}");
+    }
+  });
+
+  try {
+    const emitted: boolean[] = [];
+    for (let i = 0; i < 4; i++) {
+      const { stdout } = await runHook(
+        {
+          hook_event_name: "UserPromptSubmit",
+          prompt: "schreib mir bitte die Release Notes",
+          session_id: sessionId,
+          cwd: process.cwd(),
+        },
+        { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir },
+      );
+      emitted.push(stdout !== "{}");
+    }
+    // Without the delta the counter never climbs and every event is dropped.
+    assert.deepEqual(emitted, [false, false, false, true]);
+  } finally {
+    await daemon.close();
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});

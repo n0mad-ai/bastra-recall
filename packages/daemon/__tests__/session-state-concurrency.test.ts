@@ -121,3 +121,26 @@ test("#539: the mutation stays cheap enough for the hook path", async () => {
   // lock file, or the lock accidentally wrapping the lane's own work).
   assert.ok(perCall < 10, `mutateSessionState took ${perCall.toFixed(3)}ms per call`);
 });
+
+/**
+ * The other half of #539, found while measuring: the lock does not just have
+ * to serialise the writes, the lane's delta has to BE in the callback. A
+ * mutation made to the snapshot the lane read earlier is dropped silently —
+ * `mutateSessionState` re-reads inside the lock and never sees it. This pins
+ * both halves at once: a suppression booked as a delta survives even while
+ * another lane writes the same file in the same moment.
+ */
+test("#539: a backoff suppression survives a concurrent write from another lane", async () => {
+  const sid = "sess-suppressed";
+  await ss.mutateSessionState(sid, (state) =>
+    ss.recordSourceEmit(state, "prompt-lookup", ["mem-q"], false, 5_000),
+  );
+  await Promise.all([
+    ss.mutateSessionState(sid, (state) => ss.recordSourceSuppressed(state, "prompt-lookup")),
+    ss.mutateSessionState(sid, (state) => ss.bumpShown(state, "mem-other", 1_000)),
+  ]);
+  const state = await persisted(sid);
+  assert.equal(state.sources?.["prompt-lookup"]?.skipped, 1, "suppression must be persisted");
+  assert.equal(state.sources?.["prompt-lookup"]?.at, 5_000, "the emit stamp is untouched");
+  assert.equal(state.shown["mem-other"]?.count, 1, "the other lane's write survives too");
+});

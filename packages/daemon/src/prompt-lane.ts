@@ -633,7 +633,9 @@ export async function runPromptLane(
     if (suppressed) {
       // Suppressed drops only the recall block (#161); reflex still emits.
       suppressedTokensEst = Math.ceil(block.length / 4);
-      recordSourceSuppressed(state, BACKOFF_SOURCE);
+      // The `skipped` delta is booked below, inside mutateSessionState —
+      // mutating `state` here would write into the early snapshot, which
+      // #539 no longer saves.
     } else {
       recallBlock = block;
     }
@@ -662,6 +664,10 @@ export async function runPromptLane(
     await mutateSessionState(sessionId, (s) => {
       if (recallBlock) {
         recordSourceEmit(s, BACKOFF_SOURCE, recallIds, consumedForEmit);
+      } else if (suppressed) {
+        // #539: without this the backoff window never fills, so the lane
+        // suppresses forever instead of probing again after `streak` skips.
+        recordSourceSuppressed(s, BACKOFF_SOURCE);
       }
       for (const h of reflexKept) bumpShown(s, h.id);
       // Every injected recall hit books the shown-state, in every mode (#541)
