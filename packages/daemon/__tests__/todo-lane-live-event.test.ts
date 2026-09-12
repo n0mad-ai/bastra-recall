@@ -38,6 +38,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { extractTopicsFromTodos, isLowConfidence, runTodoLane } from "../src/todo-lane.js";
 import { planHookEntries } from "../src/cli/adapters/claude-code.js";
+import { planCodexHooks } from "../src/cli/adapters/codex.js";
 
 /** Verbatim stdin of the first probe hit — Claude Code 2.1.269, 2026-09-12. */
 const LIVE_TASK_CREATE = {
@@ -124,6 +125,28 @@ test("#506: TaskUpdate is accepted by the lane but deliberately NOT registered",
   assert.equal(matcherMatches(todoLaneMatcher(), "TaskUpdate"), false);
 });
 
+test("#506: the Codex matcher and the lane agree on the plan tool's name", () => {
+  // The Claude Code half of #506 was a matcher naming an event the client had
+  // renamed, unnoticed for seven days. The Codex half is the same shape of
+  // risk: `^update_plan$` is written by the installer and accepted by the lane
+  // in two different files. If one is renamed without the other, the lane goes
+  // quiet again — and quiet is exactly the failure this issue is about.
+  //
+  // NOT proven here, and deliberately not claimed: that a live Codex session
+  // emits `update_plan` at all. See tools/probes/codex-plan-event/.
+  const plan = planCodexHooks("install", {}, { includeStop: false, stubPresent: false });
+  const entry = (plan.after.PreToolUse ?? []).find((e) =>
+    (((e as Record<string, unknown>).hooks ?? []) as Array<{ command?: string }>).some((h) =>
+      (h.command ?? "").includes("todo-hook.js"),
+    ),
+  ) as Record<string, unknown> | undefined;
+  assert.ok(entry, "the Codex installer registers no plan lane at all");
+  const matcher = String(entry.matcher ?? "");
+  assert.equal(new RegExp(matcher).test("update_plan"), true, `${matcher} no longer matches update_plan`);
+  // Anchored, so it cannot start matching a longer tool name by accident.
+  assert.equal(new RegExp(matcher).test("update_plan_v2"), false);
+});
+
 // ─── the lane, against the captured payload ────────────────────────────────
 
 const RECALL = JSON.stringify({
@@ -166,6 +189,16 @@ async function withEnv<T>(env: Record<string, string>, fn: () => Promise<T>): Pr
   }
 }
 
+/** Run `fn` with a throwaway log directory, whatever the ambient one is. */
+async function withIsolatedLogs(fn: (logDir: string) => Promise<void>): Promise<void> {
+  const logDir = await mkdtemp(join(tmpdir(), "bastra-506-"));
+  try {
+    await withEnv({ BASTRA_LOG_PATH: logDir }, () => fn(logDir));
+  } finally {
+    await rm(logDir, { recursive: true, force: true });
+  }
+}
+
 async function readEvents(logDir: string): Promise<Record<string, unknown>[]> {
   const files = (await readdir(logDir)).filter((n) => n.startsWith("events-") && n.endsWith(".jsonl"));
   const out: Record<string, unknown>[] = [];
@@ -178,28 +211,31 @@ async function readEvents(logDir: string): Promise<Record<string, unknown>[]> {
 }
 
 test("#506: the captured TaskCreate payload produces hints and a todo_hook_call row", async () => {
-  const logDir = await mkdtemp(join(tmpdir(), "bastra-506-"));
-  try {
-    await withEnv({ BASTRA_LOG_PATH: logDir }, async () => {
-      await withDaemon(async (url) => {
-        const out = await runTodoLane(LIVE_TASK_CREATE, url);
-        assert.match(out, /recall-hints/, "the live payload must reach the hint block");
-        const ev = (await readEvents(logDir)).find((e) => e.kind === "todo_hook_call");
-        assert.ok(ev, "the lane that fired must leave its own telemetry row");
-        // One tool call is one plan step, however many text fields carried it.
-        assert.equal(ev.todo_count, 1);
-        assert.equal(ev.status, "ok");
-        assert.ok(typeof ev.topic === "string" && ev.topic.length > 0, "a single-step plan must still yield topic words");
-      });
+  await withIsolatedLogs(async (logDir) => {
+    await withDaemon(async (url) => {
+      const out = await runTodoLane(LIVE_TASK_CREATE, url);
+      assert.match(out, /recall-hints/, "the live payload must reach the hint block");
+      const ev = (await readEvents(logDir)).find((e) => e.kind === "todo_hook_call");
+      assert.ok(ev, "the lane that fired must leave its own telemetry row");
+      // One tool call is one plan step, however many text fields carried it.
+      assert.equal(ev.todo_count, 1);
+      assert.equal(ev.status, "ok");
+      assert.ok(typeof ev.topic === "string" && ev.topic.length > 0, "a single-step plan must still yield topic words");
     });
-  } finally {
-    await rm(logDir, { recursive: true, force: true });
-  }
+  });
 });
 
 test("#506: the legacy TodoWrite payload still produces hints", async () => {
-  await withDaemon(async (url) => {
-    assert.match(await runTodoLane(LEGACY_TODO_WRITE, url), /recall-hints/);
+  // `runTodoLane` writes a telemetry row, and BASTRA_LOG_PATH is only filled in
+  // by scripts/test-env.mjs, which the root `npm test` wires via --import. Run
+  // this file directly (`npx tsx --test …`) and that import is absent, so the
+  // row lands in the developer's REAL ~/.bastra/logs — which `bastra logs
+  // --stats` reports from and `bastra bridges mint` mines. Isolating here costs
+  // one wrapper and does not depend on how the file was invoked.
+  await withIsolatedLogs(async () => {
+    await withDaemon(async (url) => {
+      assert.match(await runTodoLane(LEGACY_TODO_WRITE, url), /recall-hints/);
+    });
   });
 });
 
