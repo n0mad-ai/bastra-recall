@@ -24,8 +24,13 @@
  * payload that run produced — including `description`, a field the published
  * documentation does not list but every observed payload carried.
  *
- * These tests deliberately assert against the captured payload rather than a
- * hand-written one: a test that feeds the shape the fix expects proves nothing
+ * `LIVE_UPDATE_PLAN` is the Codex half, captured the same way from Codex CLI
+ * 0.153.4. Its seven-day zero had a different cause: the wiring was right, but
+ * Codex 0.152.0 turned the planning tool off by default and this host never
+ * turned it back on.
+ *
+ * These tests deliberately assert against the captured payloads rather than
+ * hand-written ones: a test that feeds the shape the fix expects proves nothing
  * about the shape the client sends.
  *
  * Runner: node --import tsx --test packages/daemon/__tests__/todo-lane-live-event.test.ts
@@ -69,6 +74,39 @@ const LEGACY_TODO_WRITE = {
       { content: "Write regression tests for the session store migration", status: "pending" },
     ],
   },
+};
+
+/**
+ * Verbatim stdin of a real Codex `PreToolUse` hook — Codex CLI 0.153.4 on this
+ * host, 2026-09-12, captured the same way as the Claude Code payload above:
+ * the real binary run headless (`codex exec`) with one hook that recorded its
+ * stdin, asked for a plan. The probe that produces it lives in
+ * `tools/probes/codex-plan-event/`.
+ *
+ * The reason it took a deliberate run to capture: Codex 0.152.0 turned the
+ * planning tool OFF by default ("enable it with `tools.update_plan.enabled =
+ * true`", release rust-v0.152.0), and this host's `~/.codex/config.toml` has no
+ * `[tools]` section at all. So `^update_plan$` was correctly registered and
+ * correctly trusted and still could not fire — which is the Codex half of
+ * #506's seven-day zero, and not a wiring bug.
+ */
+const LIVE_UPDATE_PLAN = {
+  session_id: "01a09555-a6aa-7170-8673-d6a854dc536b",
+  turn_id: "01a09555-a6e9-7261-8215-1fcbf7904c76",
+  transcript_path: null,
+  cwd: "/private/tmp/probe/work",
+  hook_event_name: "PreToolUse",
+  model: "gpt-6-astra",
+  permission_mode: "bypassPermissions",
+  tool_name: "update_plan",
+  tool_input: {
+    plan: [
+      { step: "think", status: "pending" },
+      { step: "draft", status: "pending" },
+      { step: "polish", status: "pending" },
+    ],
+  },
+  tool_use_id: "exec-f9983b58-1e5b-4821-99a9-7ebbdaffcad5",
 };
 
 // ─── the matcher, evaluated the way Claude Code evaluates it ────────────────
@@ -125,15 +163,11 @@ test("#506: TaskUpdate is accepted by the lane but deliberately NOT registered",
   assert.equal(matcherMatches(todoLaneMatcher(), "TaskUpdate"), false);
 });
 
-test("#506: the Codex matcher and the lane agree on the plan tool's name", () => {
-  // The Claude Code half of #506 was a matcher naming an event the client had
-  // renamed, unnoticed for seven days. The Codex half is the same shape of
-  // risk: `^update_plan$` is written by the installer and accepted by the lane
-  // in two different files. If one is renamed without the other, the lane goes
-  // quiet again — and quiet is exactly the failure this issue is about.
-  //
-  // NOT proven here, and deliberately not claimed: that a live Codex session
-  // emits `update_plan` at all. See tools/probes/codex-plan-event/.
+test("#506: the Codex matcher fires on the tool a live Codex session sends", () => {
+  // Same assertion as the Claude Code one, against a payload captured the same
+  // way. `^update_plan$` is written by the installer and accepted by the lane
+  // in two different files; if one is renamed without the other, the lane goes
+  // quiet — and quiet is exactly the failure this issue is about.
   const plan = planCodexHooks("install", {}, { includeStop: false, stubPresent: false });
   const entry = (plan.after.PreToolUse ?? []).find((e) =>
     (((e as Record<string, unknown>).hooks ?? []) as Array<{ command?: string }>).some((h) =>
@@ -142,9 +176,32 @@ test("#506: the Codex matcher and the lane agree on the plan tool's name", () =>
   ) as Record<string, unknown> | undefined;
   assert.ok(entry, "the Codex installer registers no plan lane at all");
   const matcher = String(entry.matcher ?? "");
-  assert.equal(new RegExp(matcher).test("update_plan"), true, `${matcher} no longer matches update_plan`);
+  // Codex matchers are regexes and PreToolUse matches them against `tool_name`.
+  assert.equal(
+    new RegExp(matcher).test(LIVE_UPDATE_PLAN.tool_name),
+    true,
+    `${matcher} does not match ${LIVE_UPDATE_PLAN.tool_name}`,
+  );
   // Anchored, so it cannot start matching a longer tool name by accident.
   assert.equal(new RegExp(matcher).test("update_plan_v2"), false);
+});
+
+test("#506: the captured update_plan payload produces hints and a todo_hook_call row", async () => {
+  // The lane has normalised `{ plan: [{ step, status }] }` since #15, but never
+  // against a payload a real Codex session produced — the shape was taken from
+  // documentation. This is that payload.
+  await withIsolatedLogs(async (logDir) => {
+    await withDaemon(async (url) => {
+      const out = await runTodoLane(LIVE_UPDATE_PLAN, url);
+      assert.match(out, /recall-hints/, "the live Codex payload must reach the hint block");
+      // JSON-escaped inside the hook document, hence the backslash.
+      assert.match(out, /surface=\\"codex\\"/, "a Codex plan must be framed as Codex");
+      const ev = (await readEvents(logDir)).find((e) => e.kind === "todo_hook_call");
+      assert.ok(ev, "the lane that fired must leave its own telemetry row");
+      assert.equal(ev.todo_count, 3, "three plan steps, three todos");
+      assert.equal(ev.status, "ok");
+    });
+  });
 });
 
 // ─── the lane, against the captured payload ────────────────────────────────

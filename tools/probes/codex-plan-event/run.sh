@@ -108,21 +108,53 @@ run_probe() {
 
 echo
 echo "── run 1: plan tool explicitly enabled ─────────────────────────────"
-# `tools.update_plan.enabled` is the key reported for recent Codex versions, but
-# it is NOT verified against a primary source — Codex's public docs do not
-# document the plan tool's config surface (checked 2026-09-12). An unknown key
-# is simply ignored here (no --strict-config), so run 1 degrades into a second
-# default run rather than failing, and run 2 below covers the default case
-# explicitly. If you know the real key, put it here.
+# REQUIRED, not optional. Codex 0.152.0 turned the planning tool off by default:
+#   "The planning tool is disabled by default; enable it with
+#    `tools.update_plan.enabled = true`. (#41744)"
+#   — openai/codex, release rust-v0.152.0, "Chores"
+# Without this override the tool does not exist for the model at all, and the
+# matcher has nothing to match. The key is not in the published config
+# reference; the release notes are the only documentation of it.
 if ! run_probe -c tools.update_plan.enabled=true; then
   echo "(that run failed — see the output above)"
 fi
 
-if [ ! -s "$CAPTURE" ]; then
-  echo
-  echo "── run 2: default configuration ────────────────────────────────────"
-  run_probe || true
-fi
+# The control arm: same prompt, default configuration. Expected to produce NO
+# plan tool call — that is what makes "off by default" visible rather than
+# inferred, and it is the explanation for the seven-day zero in #506.
+echo
+echo "── run 2 (control): default configuration, plan tool off ───────────"
+CONTROL="${HOME_DIR}/capture-control.jsonl"
+: > "$CONTROL"
+CAPTURE_BEFORE="$CAPTURE"
+CAPTURE="$CONTROL"
+cat > "${HOME_DIR}/hooks.json" <<JSON
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": ".",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PROBE_LOG='${CONTROL}' sh '${HERE}/probe.sh'",
+            "timeout": 5,
+            "statusMessage": "bastra plan probe (control)"
+          }
+        ]
+      }
+    ]
+  }
+}
+JSON
+run_probe || true
+CAPTURE="$CAPTURE_BEFORE"
+echo
+echo "control arm captured:"
+grep -o '"tool_name":"[^"]*"' "$CONTROL" 2>/dev/null | sed 's/.*://' | sort | uniq -c | sed 's/^/  /' || true
+grep -q '"update_plan"' "$CONTROL" 2>/dev/null \
+  && echo "  ⚠ update_plan fired WITHOUT the override — the default may have changed." \
+  || echo "  (no update_plan — as expected when the tool is off by default)"
 
 echo
 echo "════════════════════════════════════════════════════════════════════"
