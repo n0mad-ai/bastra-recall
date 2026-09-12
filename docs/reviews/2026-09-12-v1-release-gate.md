@@ -306,3 +306,68 @@ Then repeat these independent checks, not only the new unit tests:
 20. `--no-stub` and `--stub` deterministically select the registered hook client on every supported adapter, regardless of an already-downloaded binary or remembered choice.
 
 Release is **GO** only when every P0/P1 issue is closed with evidence, the full suite above is green on the final revision, the independent checks pass from packaged artifacts, and the current GitHub v1 milestone contains no unexplained open item.
+
+## Independent Codex counter-review — pass 1
+
+Counter-reviewed revision: `ac0190dfafa3ced0b24a2522e3f747eb81be30de` (22 local commits after the discovery baseline; not yet on `origin/main` at the time of this pass).
+Counter-review verdict: **NO-GO remains**. The mechanical suite is green, but seven independently verified fixes are incomplete and nine original P1 gates have no corresponding fix commit yet.
+
+### Mechanical suite on `ac0190d`
+
+- `npm ci`: clean install, 0 vulnerabilities
+- `npm run check:types`: pass
+- `npm test`: 2,611 tests; 2,609 passed, 0 failed, 1 skipped, 1 todo
+- `npm run pack:check`: pass for all four published packages
+- `npm audit --audit-level=low`: 0 vulnerabilities
+- `npm run smoke`: 7/7
+- `npm run smoke:telemetry`: pass, 3 correlated events
+- `npm run test:update`: 15/15
+
+### New counter-review findings
+
+#### #529 remains open — the import lock is process-local
+
+Both import stores use `withPathLock(...)` without `{ crossProcess: true }`. That protects overlapping calls inside one daemon or CLI process, but not the real CLI-versus-daemon/UI boundary and not two CLI invocations.
+
+Fresh isolated multi-process reproductions on `ac0190d`:
+
+- 20 concurrent `stageImport()` processes all exited 0; only 6 unique candidates survived in `import-review.md`.
+- 20 concurrent `buildQueue()` processes all exited 0; only 1 conversation survived in `import-queue.jsonl`.
+
+The same-process tests are green but do not exercise this boundary. Evidence was added to GitHub issue #529.
+
+#### #524 remains open — staging is still public and resumable identity is too weak
+
+The new stable bump creates a published GitHub release with `--latest=false`. That prevents `/releases/latest` and Homebrew from moving early, but the release page and tag are already public while release-triggered jobs attach assets and npm publication can still fail. This does not meet the gate that the public release remain invisible/incomplete until the coherent set is verified; the staging object must remain a draft or otherwise private until final promotion.
+
+The resumable npm script also treats an existing package as “this release” after comparing only name, version and internal dependency pins. Different package bytes from another commit with identical metadata would be skipped as verified. Candidate-versus-registry artifact identity still needs a digest/integrity check. Evidence was added to GitHub issue #524.
+
+#### #528 remains open — mtime does not prove a source build belongs to HEAD
+
+Dry-run now accurately says that source mode will not pull/install/build, and stale/unbuilt fixtures are refused. However, `inspectSourceBuild()` accepts any `dist/*.js` newer than `src/*.ts` and then reports the current Git revision as live. Output copied from another revision, a checkout to older sources, or merely touched build files passes without proving a source/HEAD match. In the no-LaunchAgent branch the command also says a running daemon still holds old code and then prints that the verified HEAD is live. The acceptance requirement to prove the active CLI/daemon revision therefore remains unmet. Evidence was added to GitHub issue #528.
+
+#### #519 remains open — `expected_updated` cannot detect same-day stale edits
+
+`edit_memory` advertises `expected_updated` as an optimistic-concurrency precondition, but the compared `updated` field has day precision. An isolated sequential reproduction loaded `updated: 2026-09-12`, applied one tags patch with that value, then applied a second stale tags patch with the same observed value. Both calls succeeded and the second silently replaced the first (`["first"]` became `["second"]`). The parallel append test does not cover this lost-update shape. Use an exact revision/content precondition or another monotonic per-write token. Evidence was added to GitHub issue #519.
+
+#### #535 remains open — an empty Homebrew expectation still permits a false success
+
+The installers compare the post-upgrade CLI version only when `brew outdated --verbose` produced an expected version. A stale tap or a no-output/no-op upgrade leaves that expectation empty; `brew upgrade` may exit 0 while `bastra --version` remains 0.9.2, after which setup runs and the normal success banner is printed. The new “successful upgrade” test stubs exactly that shape (empty `outdated`, successful `upgrade`, CLI permanently at 0.9.2) and expects success, so it cements rather than catches this case. The release-page installer needs an authoritative requested version and must verify it after both install and upgrade. Evidence was added to GitHub issue #535.
+
+#### #527 remains open — an argv substring is not positive daemon identity
+
+The Finder uninstaller now treats any listener whose full `ps` command line contains `daemon/dist/index.js` as Bastra. An isolated end-to-end reproduction started an unrelated Node TCP listener with the inert argument `note:/some/daemon/dist/index.js`, pointed the uninstaller at its ephemeral port and stubbed every other external action. The real script exited 0, printed that it was stopping the Bastra daemon and terminated the unrelated process. Identity must be bound structurally to the configured Bastra executable/runtime rather than to a substring anywhere in argv. Evidence was added to GitHub issue #527.
+
+#### #536 remains open — equals syntax bypasses boolean-option validation
+
+The validator normalizes `--dry-run=false` to the known option name `--dry-run`, but the parser recognizes only the exact valueless token and silently ignores the equals form. In an isolated real-CLI reproduction, `uninstall cursor --dry-run=false` exited 0, changed `.cursor/mcp.json` and created a backup without reporting an error. Valueless options must reject attached values (or implement explicitly documented semantics) before dispatch. Evidence was added to GitHub issue #536.
+
+### Fixes present but still awaiting the remaining artifact-level checks
+
+Commits and green targeted tests are present for #425, #435, #441, #464, #519, #520, #521, #524, #526, #527, #528, #529, #532, #533, #534, #535, #536 and #537. #519, #524, #527, #528, #529, #535 and #536 have the counter-findings above and remain open. The others are not marked closed by this pass merely because their unit tests pass; packaged-install, transport and cross-surface acceptance checks from the 20-point gate still apply.
+
+### Original v1 gates with no fix commit in this revision
+
+`#62, #305, #308, #437, #439, #447, #506, #522, #531`.
+
+The live GitHub milestone still contained all 27 original open issues during this pass. Local commits had not yet been pushed to `origin/main`, so issue state alone is not used to reject an otherwise verified fix; it does mean the final zero-open-item release condition is not yet met.
