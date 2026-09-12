@@ -386,7 +386,13 @@ export interface SaveMemoryEvent extends BaseEvent {
 export interface SaveHoldEvent extends BaseEvent {
   kind: "save_hold";
   /** Which exit fired. `claim_gate` is the only one that is not an error. */
-  reason: "claim_gate" | "conflict_redirect" | "unresolved_replaces" | "id_exists";
+  reason:
+    | "claim_gate"
+    | "conflict_redirect"
+    | "unresolved_replaces"
+    | "id_exists"
+    /** #464: the target is a private memory this caller may not even read. */
+    | "private_refused";
   id: string;
   type: string;
   scope: string;

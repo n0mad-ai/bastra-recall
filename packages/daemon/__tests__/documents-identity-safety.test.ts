@@ -19,6 +19,14 @@
  *  6. Der Sidecar-Tempname trug nur die PID: zwei gleichzeitige Writes auf
  *     dasselbe Sidecar benutzten dieselbe Tempdatei, der zweite `rename` lief
  *     ins Leere (ENOENT).
+ *
+ * #464: Drei dieser Fälle markierten das Sidecar als `sensitivity: private`
+ * und prüften danach nur, dass das Label den Write überlebt. Damit hielten sie
+ * genau das falsche Verhalten fest — sie bewiesen, dass ein externer Caller
+ * ein Dokument ändern konnte, das er nicht einmal lesen darf. Sie messen
+ * dasselbe jetzt an `sensitivity: team` (der Punkt war immer „ein Feld
+ * außerhalb der Rebuild-Liste überlebt"); dass PRIVATE diese Writes gar nicht
+ * erst erreicht, steht in `private-write-authorization.test.ts`.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -193,7 +201,7 @@ test("recategorize erhält Felder, die nicht in seiner Feldliste stehen", async 
     related_via: [
       { id: "doc-alt-anderes-pdf", reason: "gleiche Police", score: 0.8 },
     ],
-    sensitivity: "private",
+    sensitivity: "team",
     source: "scan:brother-mfc",
     confidence: 0.6,
   };
@@ -219,7 +227,7 @@ test("recategorize erhält Felder, die nicht in seiner Feldliste stehen", async 
   assert.deepEqual(after.related_via, [
     { id: "doc-alt-anderes-pdf", reason: "gleiche Police", score: 0.8 },
   ]);
-  assert.equal(after.sensitivity, "private");
+  assert.equal(after.sensitivity, "team");
   assert.equal(after.source, "scan:brother-mfc");
   assert.equal(after.confidence, 0.6);
 });
@@ -363,7 +371,7 @@ test("auch ein Move erhält die Felder außerhalb der Rebuild-Liste", async (t) 
     matter.stringify(parsed.content, {
       ...parsed.data,
       related: ["doc-alt-akte-pdf"],
-      sensitivity: "private",
+      sensitivity: "team",
       confidence: 0.5,
     }),
     "utf8",
@@ -376,7 +384,7 @@ test("auch ein Move erhält die Felder außerhalb der Rebuild-Liste", async (t) 
     .data as Record<string, unknown>;
   assert.equal(after.folder_path, "neu", "der Move greift");
   assert.deepEqual(after.related, ["doc-alt-akte-pdf"]);
-  assert.equal(after.sensitivity, "private");
+  assert.equal(after.sensitivity, "team");
   assert.equal(after.confidence, 0.5);
 });
 
@@ -409,7 +417,7 @@ test("save_document(overwrite) patcht das Sidecar, statt es neu zu bauen", async
       related_via: [
         { id: "doc-versicherung-antrag-pdf", reason: "same-folder", score: 0.8 },
       ],
-      sensitivity: "private",
+      sensitivity: "team",
       source: "scan",
       confidence: 0.4,
     }),
@@ -439,7 +447,7 @@ test("save_document(overwrite) patcht das Sidecar, statt es neu zu bauen", async
   assert.deepEqual(after.related_via, [
     { id: "doc-versicherung-antrag-pdf", reason: "same-folder", score: 0.8 },
   ]);
-  assert.equal(after.sensitivity, "private");
+  assert.equal(after.sensitivity, "team");
   assert.equal(after.source, "scan");
   assert.equal(after.confidence, 0.4);
   assert.ok(

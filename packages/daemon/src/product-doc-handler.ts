@@ -29,6 +29,7 @@ import {
 import type { ToolDeps } from "./tool-handlers.js";
 import { recordAudit } from "./audit-trail.js";
 import { vaultLocator } from "./vault-locator.js";
+import { hiddenFromCaller, type PrivateAccess } from "./private-access.js";
 
 export const SaveProductDocArgs = z.object({
   project: z.string().min(1).refine(isPathSafeComponent, {
@@ -104,6 +105,8 @@ function findDocFor(
 export async function saveProductDocHandler(
   deps: ToolDeps,
   rawArgs: unknown,
+  /** #464: transportgebunden — siehe private-access.ts. */
+  access?: PrivateAccess,
 ): Promise<SaveProductDocResult> {
   const parsed = SaveProductDocArgs.safeParse(rawArgs);
   if (!parsed.success) throw new Error(parsed.error.message);
@@ -129,6 +132,13 @@ export async function saveProductDocHandler(
   const id = existing?.fm.id ?? `doku-${projectKey}-${areaSlug}`;
 
   const before = deps.vault.get(id);
+  // #464: `overwrite: true` steht hier fest verdrahtet — dieser Pfad ersetzt
+  // IMMER, was unter der id liegt. Trägt das ein `sensitivity: private`,
+  // ersetzt er etwas, das dieser Caller nicht einmal lesen darf. Gleiche
+  // Antwort wie im Lesepfad, gleiche Grenze wie in `save_memory`.
+  if (hiddenFromCaller(access, before?.fm)) {
+    throw new Error(`memory not found: ${id}`);
+  }
   const existed = before !== undefined;
   const result = await saveMemory(
     deps.vaultPath,

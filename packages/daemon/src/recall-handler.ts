@@ -21,6 +21,7 @@ import { expandQuery } from "./learned-recall/bridges.js";
 import { mergeBatchResults, dedupeQueries, batchDuplicateNote } from "./recall-batch.js";
 import { fitRecallToBudget } from "./recall-budget.js";
 import type { ToolDeps } from "./tool-deps.js";
+import type { PrivateAccess } from "./private-access.js";
 
 export const RecallArgs = z.object({
   query: z.string().min(1).optional(),
@@ -40,12 +41,6 @@ export const RecallArgs = z.object({
   k: z.number().int().min(1).max(20).optional(),
   scope: z.string().optional(),
   type: z.string().optional(),
-  /**
-   * Sensitivity-Filter (#58). Default `false` — externe MCP-Caller (Claude
-   * Code, Cursor, …) sehen nie `sensitivity: private` Memories. Die Bastra-
-   * Mac-App ruft mit `allow_private: true` und sieht den vollen Vault.
-   */
-  allow_private: z.boolean().optional(),
   /**
    * Multi-Hop-Recall (#30 / #51). Default `0`. Bei `1` liefert der Server
    * zusätzlich zu den direkten Treffern deren 1-Hop-Nachbarn (Memories,
@@ -272,7 +267,7 @@ export async function recallHandler(
     client?: unknown;
     hook_source?: unknown;
     session_id?: string | null;
-  } = {},
+  } & PrivateAccess = {},
 ): Promise<RecallResult & { stages?: RecallStageTimings }> {
   const parsed = RecallArgs.safeParse(rawArgs);
   if (!parsed.success) throw new Error(parsed.error.message);
@@ -290,6 +285,10 @@ export async function recallHandler(
     // remixes instead of paraphrases. Near-duplicates are collapsed BEFORE
     // searching (they pay latency and buy no fusion gain); the note teaches.
     const { kept, collapsed, max_overlap } = dedupeQueries(queries);
+    // #464: Nur die Capability reist in die Sub-Recalls mit — Stage-Listener
+    // und Telemetrie-Hinweise gehören zum gemergten Aufruf, nicht zu jedem
+    // Teil-Recall.
+    const subOptions = { trustedPrivate: options.trustedPrivate };
     const subs = await Promise.all(
       kept.map((q) =>
         recallHandler(deps, {
@@ -298,7 +297,7 @@ export async function recallHandler(
           batch_of: queries.length,
           batch_overlap: max_overlap,
           batch_collapsed: collapsed.length,
-        }),
+        }, subOptions),
       ),
     );
     const merged = mergeBatchResults(
@@ -339,7 +338,11 @@ export async function recallHandler(
     k: parsed.data.k,
     scope: parsed.data.scope,
     type: parsed.data.type,
-    allow_private: parsed.data.allow_private ?? false,
+    // Sensitivity-Filter (#58/#464): Default `false` — externe MCP-Caller
+    // (Claude Code, Cursor, …) sehen nie `sensitivity: private` Memories.
+    // Die Erlaubnis kommt vom Transport (private-access.ts), nie aus den
+    // Argumenten: als Schema-Feld hätte der Request-Body sie selbst vergeben.
+    allow_private: options.trustedPrivate ?? false,
     expand_hops: parsed.data.expand_hops as 0 | 1 | undefined,
     onStage: collector.listener,
     onCandidatePool: (pool: RecallHit[]) => {

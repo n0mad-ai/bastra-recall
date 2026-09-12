@@ -117,7 +117,7 @@ The current index is in-memory MiniSearch BM25, not SQLite/FTS5. The searched fi
 - `obsolete !== true`
 - optional exact `scope`
 - optional exact `type`
-- `sensitivity !== private` unless `allow_private: true`
+- `sensitivity !== private` unless the call arrives over a trusted local transport (#464)
 
 It then applies staleness reranking based on lifecycle fields such as `valid_until`, `expires_after_days`, and `last_reviewed_at`.
 
@@ -251,8 +251,9 @@ Topic detection is deterministic and based on file extension, path segments, and
 
 - The daemon binds to `127.0.0.1`.
 - The vault is plain local markdown.
-- `sensitivity: private` memories are hidden from external MCP/REST callers unless an internal caller explicitly uses `allow_private: true`.
+- `sensitivity: private` memories are hidden from external MCP/REST callers. Since #464 the permission is transport-bound (`private-access.ts`): it is not a tool argument, so no request body can grant it to itself. The local app's bridge (`bridge.ts`) is the trusted transport.
 - `load_memory` also enforces the sensitivity filter, so direct id enumeration cannot load private memories.
+- The same gate covers every mutation of a hidden record — `save_memory(overwrite)`, `archive_memory`, `save_document(overwrite)`, `recategorize_document`, `move_document`. All of them answer exactly like an unknown id, so a refused write is not an existence oracle either.
 - Telemetry is local JSONL and can be disabled with `BASTRA_TELEMETRY=off`.
 - Save/delete/restore operations used by the Mac-app bridge can be recorded in `<vault>/.bastra/audit-log.ndjson`.
 - Soft deletes move files to `<vault>/.bastra/trash/`.

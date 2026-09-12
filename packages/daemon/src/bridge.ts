@@ -7,6 +7,14 @@
  * is for the app's UI. Same vault, same in-memory index, different
  * transport.
  *
+ * #464: this is the TRUSTED transport. Being it is the capability — the app
+ * spawns this process itself, so nothing here has to (or can) be requested by
+ * an argument. The bridge therefore reads and writes `sensitivity: private`
+ * records without asking, while the two public transports (REST dispatcher,
+ * stdio MCP) can never reach them. `private-access.ts` holds that rule and
+ * `TRUSTED_LOCAL_APP` is the single marker a future in-process app transport
+ * passes into the shared tool handlers.
+ *
  * Protocol (one JSON object per line, both directions):
  *   request:  {"id": <number>, "method": <string>, "params"?: <object>}
  *   response: {"id": <number>, "result": <any>}  OR
@@ -269,7 +277,8 @@ async function main(): Promise<void> {
           // sonst plain BM25 (sync). Mac-App sieht IMMER den vollen Vault
           // inkl. private-Memories → allow_private: true hardgecoded; der
           // MCP-Server (index.ts) ist die richtige Stelle für externen
-          // Filter. expand_hops/scope/type sind optional vom Caller.
+          // Filter. #464: hardgecodet, nicht aus `params` — ein Wert aus der
+          // Nachricht wäre wieder eine selbst ausgestellte Erlaubnis. expand_hops/scope/type sind optional vom Caller.
           const opts = {
             k: params?.k as number | undefined,
             scope: params?.scope as string | undefined,

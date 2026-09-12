@@ -320,7 +320,7 @@ Capture rules: frustration signals ("schon wieder", emphatic caps) → `emotion:
 
 | Value | Meaning |
 |---|---|
-| `private` | Hidden from external MCP/REST callers unless `allow_private: true` |
+| `private` | Hidden from external MCP/REST callers, and unwritable by them (#464). Only a trusted local transport reads or changes it |
 | `team` | Default; visible to local AI tools |
 | `public` | Safe for broader cross-surface exposure |
 

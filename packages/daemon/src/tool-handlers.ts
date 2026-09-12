@@ -28,6 +28,7 @@ import { touchLoadedMarker } from "./session-state.js";
 import { tokens as words } from "./save-similarity.js";
 
 import type { ToolDeps } from "./tool-deps.js";
+import { hiddenFromCaller, type PrivateAccess } from "./private-access.js";
 import { vaultLocator } from "./vault-locator.js";
 import { scoreSaveQuality, GENERIC_TRIGGER_WORDS, type SaveQualityResult } from "./save-quality.js";
 import { MEMORY_TOOL_DEFS } from "./tool-defs-memory.js";
@@ -57,9 +58,6 @@ export type { RecallResult, RecallStageTimings } from "./recall-handler.js";
 
 export const LoadMemoryArgs = z.object({
   id: z.string().min(1),
-  /** Spiegelt `RecallArgs.allow_private` — verhindert dass externe Clients
-   *  Private-Memories per ID-Enumeration laden. Default `false`. */
-  allow_private: z.boolean().optional(),
   /**
    * Payload-Verbosity (#50). Default `"lean"` — essenzielle Frontmatter
    * (id, title, type, scope, summary, topic_path, tags, recall_when,
@@ -136,7 +134,8 @@ export async function loadMemoryHandler(
   rawArgs: unknown,
   // #74: echte CC-Session aus den Forwarder-Headern (HTTP-Pfad). Ohne sie
   // fällt recordLoadedMemory auf den zuletzt rotierten Turn zurück (inferred).
-  ctx?: { sessionId?: string | null },
+  // #464: `trustedPrivate` kommt vom TRANSPORT, nie aus `rawArgs`.
+  ctx?: { sessionId?: string | null } & PrivateAccess,
 ): Promise<LoadMemoryResult> {
   const parsed = LoadMemoryArgs.safeParse(rawArgs);
   if (!parsed.success) throw new Error(parsed.error.message);
@@ -181,13 +180,9 @@ export async function loadMemoryHandler(
   }
 
   // Sensitivity-Filter (#58): externe Caller sehen Private-Memories
-  // nicht — auch nicht über direkte ID-Lookups. Mac-App overridet mit
-  // `allow_private: true`.
-  const allowPrivate = parsed.data.allow_private ?? false;
-  if (
-    !allowPrivate &&
-    (m.fm as { sensitivity?: string }).sensitivity === "private"
-  ) {
+  // nicht — auch nicht über direkte ID-Lookups. #464: die Entscheidung kommt
+  // vom Transport (siehe private-access.ts), nicht mehr aus den Argumenten.
+  if (hiddenFromCaller(ctx, m.fm)) {
     logLoad();
     throw new Error(`memory not found: ${parsed.data.id}`);
   }
@@ -352,6 +347,8 @@ export function resetSaveFailures(): void {
 export async function saveMemoryHandler(
   deps: ToolDeps,
   rawArgs: unknown,
+  /** #464: transportgebunden — siehe private-access.ts. */
+  access?: PrivateAccess,
 ): Promise<SaveMemoryResult | ClaimGateResult> {
   // Claude/Opus can switch from native JSON arguments into legacy XML inside
   // the first multiline value. Retrying the generated call cannot help — it
@@ -375,7 +372,7 @@ export async function saveMemoryHandler(
   }
   let result: SaveMemoryResult | ClaimGateResult;
   try {
-    result = await saveMemoryInner(deps, rawArgs);
+    result = await saveMemoryInner(deps, rawArgs, access);
   } catch (err) {
     const failures = noteSaveFailure();
     if (failures >= SAVE_FAILURE_CAP) {
@@ -424,6 +421,7 @@ function noteSaveHold(
 async function saveMemoryInner(
   deps: ToolDeps,
   rawArgs: unknown,
+  access?: PrivateAccess,
 ): Promise<SaveMemoryResult | ClaimGateResult> {
   const parsed = SaveMemoryInput.safeParse(rawArgs);
   if (!parsed.success) throw new Error(parsed.error.message);
@@ -439,6 +437,18 @@ async function saveMemoryInner(
   // für Memories, die in memorys/ oder einem folder-Regal liegen); sie fasst
   // nichts an und ist deshalb auch vor dem Schreiben die richtige Auskunft.
   const finalId = resolveMemoryTarget(deps.vaultPath, parsed.data, vaultLocator(deps.vault)).id;
+
+  // #464: Das Ziel steht fest — und wenn dort ein Memory liegt, das dieser
+  // Caller nicht LESEN darf, darf er es auch nicht ersetzen. Vor jeder
+  // Quality-Prüfung, jedem Conflict-Umweg (der schreibt in den Bestand) und
+  // jedem File-I/O; die Antwort ist wortgleich die des Lesepfads, damit ein
+  // Overwrite-Versuch nicht zum Existenz-Orakel für geratene Ids wird. Der
+  // Fall trifft beide Wege: explizite `id` UND die implizite Slug-Kollision,
+  // weil `resolveMemoryTarget` bereits beide auf dieselbe Ziel-Id faltet.
+  if (hiddenFromCaller(access, deps.vault.get(finalId)?.fm)) {
+    noteSaveHold(deps, "private_refused", finalId, parsed.data);
+    throw new Error(`memory not found: ${finalId}`);
+  }
 
   // #205: a save declaring a contradiction is a conflict report, not a write —
   // diverted before any quality scoring or file I/O touches the vault.
@@ -506,7 +516,12 @@ async function saveMemoryInner(
       noteSaveHold(deps, "unresolved_replaces", finalId, parsed.data);
       throw new Error(`replaces: a memory cannot supersede itself (${finalId}).`);
     }
-    if (!deps.vault.get(supersedes)) {
+    // #464: Ein privater Vorgänger ist für diesen Caller nicht vorhanden —
+    // sonst stempelte der Save gleich unten `superseded_by` in ein Frontmatter,
+    // das er nicht lesen darf, und der Unterschied zwischen „existiert nicht"
+    // und „darfst du nicht sehen" wäre am Ausgang ablesbar.
+    const predecessor = deps.vault.get(supersedes);
+    if (!predecessor || hiddenFromCaller(access, predecessor.fm)) {
       noteSaveHold(deps, "unresolved_replaces", finalId, parsed.data);
       throw new Error(
         `replaces: unknown memory '${supersedes}' — it must exist in the vault. ` +
@@ -649,9 +664,6 @@ async function saveMemoryInner(
 export const ArchiveMemoryArgs = z.object({
   id: z.string().min(1),
   superseded_by: z.string().optional(),
-  /** #464: spiegelt `LoadMemoryArgs.allow_private`. Nur die Mac-App setzt
-   *  es; ein MCP-Caller kann Private-Memories weder lesen noch archivieren. */
-  allow_private: z.boolean().optional(),
 });
 
 /**
@@ -666,6 +678,8 @@ export const ArchiveMemoryArgs = z.object({
 export async function archiveMemoryHandler(
   deps: ToolDeps,
   args: Record<string, unknown>,
+  /** #464: transportgebunden — siehe private-access.ts. */
+  access?: PrivateAccess,
 ): Promise<{ id: string; archived_to: string; superseded_by: string | null }> {
   const parsed = ArchiveMemoryArgs.safeParse(args);
   if (!parsed.success) {
@@ -680,9 +694,8 @@ export async function archiveMemoryHandler(
   // externen Callern, der Archivpfad tat es nicht — ein Caller konnte
   // entfernen, was er nicht sehen durfte, und lernte aus dem Erfolg sogar,
   // dass die Id existiert. Dieselbe Antwort wie beim Lesen: als gäbe es
-  // die Id nicht.
-  const allowPrivate = parsed.data.allow_private ?? false;
-  if (!allowPrivate && (mem.fm as { sensitivity?: string }).sensitivity === "private") {
+  // die Id nicht. Die Erlaubnis kommt vom Transport, nicht aus `args`.
+  if (hiddenFromCaller(access, mem.fm)) {
     throw new Error(`unknown memory: ${id} — archive_memory only archives memories that exist in the vault.`);
   }
   // Codex-Gegenreview (P0): Verschoben wurde der Pfad aus dem CACHE, ohne ihn

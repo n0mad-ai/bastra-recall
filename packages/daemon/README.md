@@ -29,8 +29,8 @@ For project-level docs (vision, install, REST API, roadmap), see the [top-level 
 
 | Tool | Purpose |
 |---|---|
-| `recall(query, k?, scope?, type?, expand_hops?, allow_private?)` | Search the vault; hybrid BM25 + embeddings when enabled |
-| `load_memory(id, allow_private?)` | Fetch full frontmatter + body |
+| `recall(query, k?, scope?, type?, expand_hops?)` | Search the vault; hybrid BM25 + embeddings when enabled |
+| `load_memory(id)` | Fetch full frontmatter + body |
 | `save_memory({title, type, body, …})` | Write a new memory with schema validation + force-reindex |
 | `find_document(query, k?)` | Search documents (PDFs, photos, contracts) |
 | `read_document(id)` | Load extracted text + metadata for a document |
