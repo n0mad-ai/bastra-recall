@@ -27,11 +27,13 @@
  *   2. ACROSS PROCESSES (`{ crossProcess: true }`): a lock file next to the
  *      state file, created with O_EXCL ("wx") — the same pattern as the commit
  *      claim in core/save-commit.ts. Needed wherever a SECOND process writes
- *      the same file, which for settings (CLI, onboarding wizard, daemon) and
- *      for the skills registry (`bastra skills add|remove` next to the
- *      daemon's POST /ui/skills) is demonstrably the case. Off by default so
- *      the in-process-only call sites (floors, the import stores, the pending
- *      relay) do not pay a filesystem round trip they have no writer for.
+ *      the same file, which is demonstrably the case for settings (CLI,
+ *      onboarding wizard, daemon), for the skills registry (`bastra skills
+ *      add|remove` next to the daemon's POST /ui/skills) and for both import
+ *      stores (#529: `bastra import` next to the daemon's POST /ui/import,
+ *      and every `bastra import mine` step its own process). Off by default
+ *      so the in-process-only call sites (floors, the pending relay) do not
+ *      pay a filesystem round trip they have no writer for.
  *
  * PROMISE: mutations of the same path are fully serialised — guaranteed within
  * this process, and across processes as long as every writer sees the same

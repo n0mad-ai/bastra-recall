@@ -169,46 +169,57 @@ export interface StageResult {
  *  unguarded, so concurrent CLI/UI imports all read the same content and the
  *  last write replaced the others — 80 parallel calls reported 80 staged
  *  candidates with 1 on disk. The counts are the durable ones now: they are
- *  taken inside the lock from the content that was just renamed into place. */
+ *  taken inside the lock from the content that was just renamed into place.
+ *
+ *  The lock is `crossProcess` because the second writer is real and in another
+ *  process: `bastra import` (cli/import-cmd.ts) stages from the CLI while the
+ *  daemon stages the same file from `POST /ui/import` — the map's import
+ *  dialog — and two `bastra import` invocations are two processes as well. A
+ *  promise chain cannot see either of them: 20 concurrent stageImport()
+ *  PROCESSES all exited 0 and left 10 of 20 candidates on disk. */
 export async function stageImport(
   vaultPath: string,
   source: ImportSource,
   candidates: string[],
 ): Promise<StageResult> {
   const filePath = join(vaultPath, IMPORT_FILE);
-  return withPathLock(filePath, async () => {
-    let content: string;
-    try {
-      content = await readFile(filePath, "utf8");
-    } catch {
-      content = IMPORT_HEADER;
-    }
-    const existing = new Set(parseImportFile(content).map((e) => e.text.toLowerCase()));
-    const today = new Date().toISOString().slice(0, 10);
-    let staged = 0;
-    let skipped = 0;
-    const lines: string[] = [];
-    for (const c of candidates) {
-      if (existing.has(c.toLowerCase())) {
-        skipped++;
-        continue;
+  return withPathLock(
+    filePath,
+    async () => {
+      let content: string;
+      try {
+        content = await readFile(filePath, "utf8");
+      } catch {
+        content = IMPORT_HEADER;
       }
-      existing.add(c.toLowerCase());
-      lines.push(`- [ ] ${today} · ${source} · ${c}`);
-      staged++;
-    }
-    if (staged > 0) {
-      if (!content.endsWith("\n")) content += "\n";
-      content += lines.join("\n") + "\n";
-      // Atomic: a crash mid-write leaves the previous review file intact
-      // instead of a truncated one (same hardening as floors.ts).
-      const tmp = `${filePath}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
-      await writeFile(tmp, content, "utf8");
-      await rename(tmp, filePath);
-    }
-    const openTotal = parseImportFile(content).filter((e) => !e.done).length;
-    return { staged, skippedDuplicates: skipped, openTotal, filePath };
-  });
+      const existing = new Set(parseImportFile(content).map((e) => e.text.toLowerCase()));
+      const today = new Date().toISOString().slice(0, 10);
+      let staged = 0;
+      let skipped = 0;
+      const lines: string[] = [];
+      for (const c of candidates) {
+        if (existing.has(c.toLowerCase())) {
+          skipped++;
+          continue;
+        }
+        existing.add(c.toLowerCase());
+        lines.push(`- [ ] ${today} · ${source} · ${c}`);
+        staged++;
+      }
+      if (staged > 0) {
+        if (!content.endsWith("\n")) content += "\n";
+        content += lines.join("\n") + "\n";
+        // Atomic: a crash mid-write leaves the previous review file intact
+        // instead of a truncated one (same hardening as floors.ts).
+        const tmp = `${filePath}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
+        await writeFile(tmp, content, "utf8");
+        await rename(tmp, filePath);
+      }
+      const openTotal = parseImportFile(content).filter((e) => !e.done).length;
+      return { staged, skippedDuplicates: skipped, openTotal, filePath };
+    },
+    { crossProcess: true },
+  );
 }
 
 export async function countOpenImports(vaultPath: string): Promise<number> {

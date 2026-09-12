@@ -29,6 +29,15 @@ export function defaultQueueDir(): string {
   return join(homedir(), ".bastra");
 }
 
+/** The path the queue lock is taken on. It is the queue FILE, not the
+ *  directory: with `{ crossProcess: true }` the lock materialises as
+ *  `<path>.lock`, and a lock next to the queue beats one dropped beside
+ *  `~/.bastra`. Queue file and cursor move together, so one key serialises
+ *  both. */
+function queueLockPath(dir: string): string {
+  return join(dir, QUEUE_FILE);
+}
+
 export interface ConversationRecord {
   source: "chatgpt" | "claude";
   title: string;
@@ -196,25 +205,36 @@ async function readCursor(dir: string): Promise<number> {
  *  every concurrent caller took the initial-empty branch and `writeFile()` over
  *  the others — 80 parallel calls reported 80 queued conversations with 1 on
  *  disk. `queued` is the durable count now: those lines are part of the file
- *  that was renamed into place before the result is returned. */
+ *  that was renamed into place before the result is returned.
+ *
+ *  The lock is `crossProcess` because every writer of this queue IS a separate
+ *  process: `bastra import <export>` queues, `bastra import mine` advances the
+ *  cursor and `bastra import mine --done` clears — each one its own CLI run,
+ *  and the daemon reads the same directory for the session hint. A promise
+ *  chain cannot see another process: 20 concurrent buildQueue() PROCESSES all
+ *  exited 0 and left 14 of 20 conversations on disk. */
 export async function buildQueue(
   conversations: ConversationRecord[],
   dir: string = defaultQueueDir(),
 ): Promise<{ queued: number; messages: number; queueFile: string }> {
   const queueFile = join(dir, QUEUE_FILE);
-  return withPathLock(dir, async () => {
-    await mkdir(dir, { recursive: true });
-    const existing = await readQueueRaw(dir);
-    const lines = conversations.map((c) => JSON.stringify(c)).join("\n") + "\n";
-    const head = existing.length > 0 && !existing.endsWith("\n") ? `${existing}\n` : existing;
-    await writeAtomic(queueFile, head + lines);
-    if (existing.trim().length === 0) await writeAtomic(join(dir, CURSOR_FILE), "0");
-    return {
-      queued: conversations.length,
-      messages: conversations.reduce((n, c) => n + c.messages.length, 0),
-      queueFile,
-    };
-  });
+  return withPathLock(
+    queueLockPath(dir),
+    async () => {
+      await mkdir(dir, { recursive: true });
+      const existing = await readQueueRaw(dir);
+      const lines = conversations.map((c) => JSON.stringify(c)).join("\n") + "\n";
+      const head = existing.length > 0 && !existing.endsWith("\n") ? `${existing}\n` : existing;
+      await writeAtomic(queueFile, head + lines);
+      if (existing.trim().length === 0) await writeAtomic(join(dir, CURSOR_FILE), "0");
+      return {
+        queued: conversations.length,
+        messages: conversations.reduce((n, c) => n + c.messages.length, 0),
+        queueFile,
+      };
+    },
+    { crossProcess: true },
+  );
 }
 
 export async function queueStatus(dir: string = defaultQueueDir()): Promise<QueueStatus> {
@@ -236,7 +256,7 @@ async function clearQueueLocked(dir: string): Promise<void> {
 }
 
 export async function clearQueue(dir: string = defaultQueueDir()): Promise<void> {
-  return withPathLock(dir, () => clearQueueLocked(dir));
+  return withPathLock(queueLockPath(dir), () => clearQueueLocked(dir), { crossProcess: true });
 }
 
 export interface MiningChunk {
@@ -255,47 +275,53 @@ export interface MiningChunk {
  * first). Advances the cursor immediately — mining is best-effort, a chunk
  * lost to a crash is re-importable. Deletes the queue when drained.
  *
- * #529: the cursor transition runs under the same per-directory lock as
- * `buildQueue()`, so two overlapping readers never hand out one chunk twice
- * and no queue write lands between the read and the cursor bump.
+ * #529: the cursor transition runs under the same queue lock as `buildQueue()`
+ * — cross-process, since every mining step is its own `bastra import mine`
+ * run — so two overlapping readers never hand out one chunk twice and no
+ * queue write lands between the read and the cursor bump.
  */
 export async function readNextChunk(dir: string = defaultQueueDir()): Promise<MiningChunk | null> {
-  return withPathLock(dir, async () => {
-    const lines = await readQueueLines(dir);
-    const cursor = await readCursor(dir);
-    if (lines.length === 0 || cursor >= lines.length) {
-      await clearQueueLocked(dir);
-      return null;
-    }
-
-    const sections: string[] = [];
-    const sources = new Map<string, number>();
-    let used = 0;
-    let taken = 0;
-    for (let i = cursor; i < lines.length; i++) {
-      let rec: ConversationRecord;
-      try {
-        rec = JSON.parse(lines[i]) as ConversationRecord;
-      } catch {
-        taken++; // corrupt line — skip, never stall the cursor
-        continue;
+  return withPathLock(
+    queueLockPath(dir),
+    async () => {
+      const lines = await readQueueLines(dir);
+      const cursor = await readCursor(dir);
+      if (lines.length === 0 || cursor >= lines.length) {
+        await clearQueueLocked(dir);
+        return null;
       }
-      const section = `### ${rec.date} · ${rec.title} (${rec.source})\n` + rec.messages.map((m) => `- ${m}`).join("\n");
-      if (taken > 0 && used + section.length > CHUNK_CHAR_BUDGET) break;
-      sections.push(section);
-      sources.set(rec.source, (sources.get(rec.source) ?? 0) + 1);
-      used += section.length;
-      taken++;
-    }
 
-    const nextCursor = cursor + taken;
-    const remaining = Math.max(0, lines.length - nextCursor);
-    if (remaining === 0) {
-      await clearQueueLocked(dir);
-    } else {
-      await writeAtomic(join(dir, CURSOR_FILE), String(nextCursor));
-    }
-    const source = [...sources.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "text";
-    return { body: sections.join("\n\n"), conversations: sections.length, remaining, source };
-  });
+      const sections: string[] = [];
+      const sources = new Map<string, number>();
+      let used = 0;
+      let taken = 0;
+      for (let i = cursor; i < lines.length; i++) {
+        let rec: ConversationRecord;
+        try {
+          rec = JSON.parse(lines[i]) as ConversationRecord;
+        } catch {
+          taken++; // corrupt line — skip, never stall the cursor
+          continue;
+        }
+        const section =
+          `### ${rec.date} · ${rec.title} (${rec.source})\n` + rec.messages.map((m) => `- ${m}`).join("\n");
+        if (taken > 0 && used + section.length > CHUNK_CHAR_BUDGET) break;
+        sections.push(section);
+        sources.set(rec.source, (sources.get(rec.source) ?? 0) + 1);
+        used += section.length;
+        taken++;
+      }
+
+      const nextCursor = cursor + taken;
+      const remaining = Math.max(0, lines.length - nextCursor);
+      if (remaining === 0) {
+        await clearQueueLocked(dir);
+      } else {
+        await writeAtomic(join(dir, CURSOR_FILE), String(nextCursor));
+      }
+      const source = [...sources.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "text";
+      return { body: sections.join("\n\n"), conversations: sections.length, remaining, source };
+    },
+    { crossProcess: true },
+  );
 }
