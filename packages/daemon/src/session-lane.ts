@@ -44,6 +44,7 @@ import { randomUUID } from "node:crypto";
 import { envFirst, envInt } from "./env.js";
 import { effectiveUpdateMode, getDocsLanguage, getDocsMode, getPrimaryLanguage } from "./settings.js";
 import { formatDokuBlock, isDokuProject } from "./doku-block.js";
+import { buildOnboardingBlock } from "./session-onboarding-block.js";
 import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow, resetBudgetOnSource } from "./session-budget.js";
 import { spawnStagedUpdate, stagedToday, markStagedToday } from "./update-check.js";
@@ -439,36 +440,11 @@ export async function runSessionLane(
     }
   }
 
-  // Onboarding interview: a fresh vault (few memories, no marker) gets a
-  // standing offer to seed itself — the session model interviews adaptively,
-  // which no form can. Offered, never pushed.
-  let onboardingBlock = "";
-  {
-    if (onboardingNeeded) {
-      onboardingBlock =
-        `\n<vault-onboarding>\n` +
-        `This vault is fresh and the onboarding interview hasn't run. Offer it ONCE at a natural ` +
-        `moment (e.g. after the first task, or right away if the user seems to be exploring): a ` +
-        `~5-minute interview that seeds the vault with who the user is. If they agree, interview ` +
-        `adaptively — one question at a time, follow up where an answer is thin, let them skip ` +
-        `anything: (1) what the memory will mainly hold — code & projects / company & decisions / ` +
-        `personal life & knowledge / a mix; (2) how to address them — name, language, tone; ` +
-        `(3) hard always/never rules; (4-6) persona follow-ups (developer: stack, active projects, ` +
-        `workflow, coding conventions — file-size guide value in lines + which folder holds what · ` +
-        `business: company & role, key people, what to prepare or watch · personal: ` +
-        `day-to-day world, never-forget items, current goals · mixed: stack, role, world); ` +
-        `(7) anything else, freeform. Save each answer immediately via save_memory — the user ` +
-        `answered in person, so write_origin: "user-directed", concrete recall_when triggers ` +
-        `including an ask-trigger in the user's own words. If they name a file-size guide value, ` +
-        `ALSO run \`bastra config set size.guide <N>\` — the PreToolUse hook then enforces it ` +
-        `deterministically. If you can tell the user's primary language (from how they answer, or ` +
-        `an explicit "in <language>"), ALSO run \`bastra config set language.primary <code>\` ` +
-        `(2-letter ISO code) so future memories get authored in it. When finished run \`bastra onboard done\`; ` +
-        `if the user declines run \`bastra onboard skip\` and never bring it up again. Also mention ` +
-        `\`bastra import\` if they have memories in other AI tools.\n` +
-        `</vault-onboarding>`;
-    }
-  }
+  // Onboarding interview: a fresh vault (few memories, no marker) gets to seed
+  // itself — the session model interviews adaptively, which no form can.
+  // #308: the instruction text, and why it is an instruction rather than an
+  // offer, lives in session-onboarding-block.ts.
+  const onboardingBlock = buildOnboardingBlock(onboardingNeeded);
 
   // Best-effort update probe — only when we already have a daemon reachable.
   // Strict budget: 200 ms; if nothing back, we just skip the block.
