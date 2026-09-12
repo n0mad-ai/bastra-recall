@@ -27,6 +27,13 @@ import { Telemetry } from "../src/telemetry.js";
 import { startHttpServer } from "../src/http.js";
 
 const DEADLINE_MS = 50;
+/**
+ * Node's timer may fire a tick EARLY: a 50 ms deadline was observed settling at
+ * 49 ms under load, which failed this assertion without anything being wrong.
+ * The claim is "the caller waited for the deadline, not for the arm" — one
+ * millisecond of scheduler granularity does not change that.
+ */
+const SCHEDULER_SLACK_MS = 2;
 /** Deutlich hinter der Frist — der Arm wird aufgegeben und läuft weiter. */
 const ANTWORT_NACH_MS = 300;
 
@@ -136,7 +143,7 @@ test("#489: ein aufgegebener Arm schreibt die Wartezeit und, später, sein echte
   const stages = recalls[0].recall_stages as Record<string, number>;
   assert.equal(typeof stages.vector_wait_ms, "number", "`vector_wait_ms` muss in `recall_stages` ankommen");
   assert.ok(
-    stages.vector_wait_ms >= DEADLINE_MS && stages.vector_wait_ms < ANTWORT_NACH_MS,
+    stages.vector_wait_ms >= DEADLINE_MS - SCHEDULER_SLACK_MS && stages.vector_wait_ms < ANTWORT_NACH_MS,
     `die Wartezeit liegt auf der Deadline, war ${stages.vector_wait_ms} ms`,
   );
   // Die alte Serie behält ihre Bedeutung: Spanne ab dem Abfeuern, überlappend.
