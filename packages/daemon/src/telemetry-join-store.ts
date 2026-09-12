@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { dirname } from "node:path";
 
 /**
@@ -25,10 +26,19 @@ export function readJoinStateSync(path: string): unknown | null {
   }
 }
 
-/** Atomarer Write: tmp (pid-eindeutig) + rename auf demselben Dateisystem. */
+/**
+ * Atomarer Write: tmp + rename auf demselben Dateisystem.
+ *
+ * Der tmp-Name trägt einen Zufallsanteil, nicht nur die PID (#532-Scan): der
+ * debounced Flush läuft als nicht-awaited fire-and-forget, also können sich
+ * zwei Writes DESSELBEN Prozesses überlappen. Bei einem festen Namen pro
+ * Prozess schrieben beide in dieselbe tmp-Datei und das rename veröffentlichte
+ * ineinander verschachtelte Bytes — ein korrupter Join-State, der beim
+ * nächsten Boot still als „kein Zustand" gelesen wird.
+ */
 export async function writeJoinState(path: string, state: unknown): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.${process.pid}.tmp`;
+  const tmp = `${path}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
   await writeFile(tmp, JSON.stringify(state), "utf8");
   await rename(tmp, path);
 }

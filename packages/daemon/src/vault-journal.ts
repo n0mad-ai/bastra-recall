@@ -13,6 +13,7 @@
  * recall index.
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { AuditLog, type AuditEntry } from "@bastra-recall/core";
 
@@ -84,7 +85,9 @@ export async function writeVaultJournal(vaultRoot: string): Promise<string[]> {
       }
       if (existing !== null && !existing.includes("<!-- bastra-journal:start")) continue;
       if (existing === next) continue;
-      const tmp = `${target}.tmp-${process.pid}`;
+      // Zufallsanteil statt nur der PID (#532-Scan): derselbe Grund wie in
+      // vault-report.ts — zwei überlappende Curator-Pässe im selben Prozess.
+      const tmp = `${target}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
       await writeFile(tmp, next, "utf8");
       await rename(tmp, target);
       written.push(month);

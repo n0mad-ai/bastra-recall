@@ -14,6 +14,7 @@
  * after the demotion clears it on the next pass (reactivation).
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import type { UsageAggregate } from "./usage-sidecar.js";
 
@@ -64,7 +65,10 @@ export async function loadCuratorState(vaultRoot: string): Promise<CuratorState>
 export async function saveCuratorState(vaultRoot: string, state: CuratorState): Promise<void> {
   const dir = join(vaultRoot, CURATOR_DIR);
   await mkdir(dir, { recursive: true });
-  const tmp = join(dir, `${STATE_FILE}.tmp-${process.pid}`);
+  // Zufallsanteil, nicht nur die PID (#532-Scan): ein Curator-Pass kann vom
+  // 15-Minuten-Job und von POST /curator/run gleichzeitig laufen, und zwei
+  // Pässe DESSELBEN Prozesses teilten sich sonst diese tmp-Datei.
+  const tmp = join(dir, `${STATE_FILE}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`);
   await writeFile(tmp, JSON.stringify(state, null, 2) + "\n", "utf8");
   await rename(tmp, statePath(vaultRoot));
 }
