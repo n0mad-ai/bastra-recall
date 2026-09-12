@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cmdInstall } from "./commands.js";
-import { findExecutable, run } from "./exec.js";
+import { findExecutable, run, runCaptured } from "./exec.js";
 import { VERSION } from "./helpers.js";
 import { buildManifest, formatPreflight, preflight, writeManifest } from "./update-preflight.js";
 import { activePatches, applySeries, formatApplyOutcome, writeLastRun } from "../patch-registry.js";
@@ -20,6 +20,8 @@ import { clearBlockedUpdate, recordBlockedUpdate } from "../update-blocked.js";
 import type { ParsedArgs } from "./types.js";
 
 import { refreshManagedAutostart } from "./autostart.js";
+import type { InstalledRuntime } from "./autostart.js";
+import { DAEMON_SCRIPT_PATH } from "./paths.js";
 
 const LAUNCH_AGENT_LABEL = "ai.n0mad.bastra-recall";
 
@@ -183,12 +185,12 @@ export function hasInPlacePreflight(mode: InstallSource): boolean {
  * version it just replaced would send the NEXT update's backups into the wrong
  * directory. Falls back to VERSION when package.json is unreadable.
  */
-function installedVersion(root: string): string {
+function packageVersion(root: string): string | null {
   try {
     const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as { version?: unknown };
-    return typeof pkg.version === "string" && pkg.version ? pkg.version : VERSION;
+    return typeof pkg.version === "string" && pkg.version ? pkg.version : null;
   } catch {
-    return VERSION;
+    return null;
   }
 }
 
@@ -221,6 +223,58 @@ export function verifySourceCheckout(
   }
   write("\n");
   return { rc: 0, revision: state.revision };
+}
+
+function installedVersion(root: string): string {
+  return packageVersion(root) ?? VERSION;
+}
+
+/**
+ * #435 — the daemon entry point of the installation that is on disk NOW.
+ *
+ * The managed LaunchAgent names an ABSOLUTE path, and after `brew upgrade` the
+ * absolute path this process runs from is the keg the installer just
+ * superseded: Homebrew builds every version into its own
+ * Cellar/bastra-recall/<version>/ and re-points the symlinks, while this
+ * process keeps executing the old modules it was started with. Writing a plist
+ * from `DAEMON_SCRIPT_PATH` therefore pins the autostart back onto the old keg
+ * — which either runs the replaced code or, after `brew cleanup`, is gone.
+ *
+ * So ASK the installer where it put things, exactly as the npx hand-off above
+ * asks `npm prefix -g` instead of trusting PATH. No fallback to this process's
+ * own path for brew/npm: a silent fallback is precisely the stale pin, and the
+ * caller can say so out loud instead. Where the installer never moves anything
+ * (source checkout, unknown), this process's entry point IS the installation.
+ */
+export function resolveInstalledRuntime(mode: InstallMode): InstalledRuntime | null {
+  const script = installedDaemonScript(mode);
+  if (!script) return null;
+  // dist/index.js → the daemon package root that carries the version.
+  return { node: process.execPath, script, version: packageVersion(resolve(dirname(script), "..")) };
+}
+
+function installedDaemonScript(mode: InstallMode): string | null {
+  if (mode.mode === "brew") {
+    const brewBin = findExecutable("brew");
+    if (!brewBin) return null;
+    const r = runCaptured(brewBin, ["--prefix", "bastra-recall"], { timeoutMs: 60_000 });
+    const prefix = r.stdout.trim();
+    if (!r.ok || !prefix) return null;
+    return existsFile(resolve(prefix, "libexec", "packages", "daemon", "dist", "index.js"));
+  }
+  if (mode.mode === "npm-global") {
+    const npmBin = findExecutable("npm");
+    if (!npmBin) return null;
+    const r = runCaptured(npmBin, ["prefix", "-g"], { timeoutMs: 60_000 });
+    const root = r.stdout.trim();
+    if (!r.ok || !root) return null;
+    return existsFile(resolve(root, "lib", "node_modules", "@bastra-recall", "daemon", "dist", "index.js"));
+  }
+  return existsFile(DAEMON_SCRIPT_PATH);
+}
+
+function existsFile(path: string): string | null {
+  return existsSync(path) ? path : null;
 }
 
 function launchAgentPresent(uid: string): boolean {
@@ -530,8 +584,17 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
   // (Homebrew legt jede Version in ein eigenes Verzeichnis), und ein
   // LaunchAgent zeigt auf einen ABSOLUTEN Pfad. Zeigt er noch auf die alte,
   // startet er danach entweder nichts mehr oder weiter den alten Code — genau
-  // der gemeldete Fall. Fremde plists bleiben unangetastet.
-  await refreshManagedAutostart((s) => process.stdout.write(s));
+  // der gemeldete Fall. Die neue Laufzeit kommt vom Installer, nicht von diesem
+  // Prozess (#435). Fremde plists bleiben unangetastet.
+  if (!args.dryRun) {
+    const autostart = await refreshManagedAutostart((s) => process.stdout.write(s), {
+      target: resolveInstalledRuntime(mode),
+    });
+    if (!autostart.ok) {
+      process.stdout.write("\n✗ the managed autostart could not be pointed at the new install — fix it before relying on it\n");
+      return 1;
+    }
+  }
 
   process.stdout.write("→ restarting daemon\n");
   const uid = String(process.getuid?.() ?? 0);

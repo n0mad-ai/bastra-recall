@@ -60,6 +60,11 @@ export const LAUNCH_AGENT_LABEL = "ai.n0mad.bastra-recall";
  */
 const MANAGED_MARKER = "BASTRA_AUTOSTART_MANAGED";
 
+/** launchd's CLI. Absolute on purpose — never resolved through PATH. The
+ *  parameter that carries it exists so the #435 regression can run against a
+ *  stub instead of the machine's own launchd. */
+const LAUNCHCTL = "/bin/launchctl";
+
 export function plistPath(home: string = homedir()): string {
   return join(home, "Library", "LaunchAgents", `${LAUNCH_AGENT_LABEL}.plist`);
 }
@@ -87,13 +92,13 @@ export interface AutostartState {
  * gelesener fremder plist ist genau der, den dieser Code nicht überschreiben
  * soll. `plutil` liegt auf jedem Mac.
  */
-export async function readState(path = plistPath()): Promise<AutostartState> {
+export async function readState(path = plistPath(), launchctl = LAUNCHCTL): Promise<AutostartState> {
   const state: AutostartState = {
     path,
     exists: existsSync(path),
     managed: false,
     program: [],
-    loaded: launchAgentLoaded(),
+    loaded: launchAgentLoaded(launchctl),
     danglingProgram: false,
   };
   if (!state.exists) return state;
@@ -124,9 +129,9 @@ export async function readState(path = plistPath()): Promise<AutostartState> {
   return state;
 }
 
-function launchAgentLoaded(): boolean {
+function launchAgentLoaded(launchctl = LAUNCHCTL): boolean {
   const uid = String(process.getuid?.() ?? 0);
-  const r = spawnSync("/bin/launchctl", ["print", `gui/${uid}/${LAUNCH_AGENT_LABEL}`], {
+  const r = spawnSync(launchctl, ["print", `gui/${uid}/${LAUNCH_AGENT_LABEL}`], {
     stdio: "pipe",
     timeout: 15_000,
   });
@@ -206,15 +211,15 @@ async function writePlistAtomically(path: string, content: string): Promise<void
   }
 }
 
-function bootout(uid: string): void {
-  spawnSync("/bin/launchctl", ["bootout", `gui/${uid}/${LAUNCH_AGENT_LABEL}`], {
+function bootout(uid: string, launchctl = LAUNCHCTL): void {
+  spawnSync(launchctl, ["bootout", `gui/${uid}/${LAUNCH_AGENT_LABEL}`], {
     stdio: "pipe",
     timeout: 15_000,
   });
 }
 
-function bootstrap(uid: string, path: string): { ok: boolean; detail: string } {
-  const r = spawnSync("/bin/launchctl", ["bootstrap", `gui/${uid}`, path], {
+function bootstrap(uid: string, path: string, launchctl = LAUNCHCTL): { ok: boolean; detail: string } {
+  const r = spawnSync(launchctl, ["bootstrap", `gui/${uid}`, path], {
     stdio: "pipe",
     encoding: "utf8",
     timeout: 15_000,
@@ -387,6 +392,34 @@ async function autostartStatus(args: ParsedArgs): Promise<number> {
 }
 
 /**
+ * Die Laufzeit, auf die der verwaltete Dienst nach einem Update zeigen MUSS.
+ *
+ * #435: Nicht die des laufenden Prozesses. Nach `brew upgrade` führt dieser
+ * Prozess weiterhin Module aus dem abgelösten Keg aus — `process.execPath` und
+ * `DAEMON_SCRIPT_PATH` beschreiben also die ALTE Installation. Wer den plist
+ * daraus baut, biegt den Autostart auf genau das Verzeichnis zurück, das der
+ * Installer gerade ersetzt hat. Der Aufrufer löst diese Angabe deshalb gegen
+ * die tatsächlich installierte Ablage auf (`update.ts`) und reicht sie hier
+ * herein.
+ */
+export interface InstalledRuntime {
+  /** Das node-Binary, das der LaunchAgent ausführt. */
+  node: string;
+  /** Der Daemon-Einstiegspunkt der INSTALLIERTEN Version. */
+  script: string;
+  /** Die Version, zu der dieser Einstiegspunkt gehört — der Beleg in der
+   *  Erfolgsmeldung. `null`, wenn sie nicht gelesen werden konnte. */
+  version: string | null;
+}
+
+export interface RefreshOutcome {
+  /** Zeigt der verwaltete Dienst jetzt nachweislich auf die installierte
+   *  Laufzeit? Auch `true`, wenn es gar keinen verwalteten Dienst gibt. */
+  ok: boolean;
+  detail: string;
+}
+
+/**
  * Nach einem Update den EIGENEN Autostart auf die neue Installation ziehen.
  *
  * Genau der Schritt, der bisher fehlte: Ein `brew upgrade` legt die neue
@@ -394,35 +427,73 @@ async function autostartStatus(args: ParsedArgs): Promise<number> {
  * startet danach entweder nichts mehr oder weiter den alten Code. Fremde plists
  * bleiben unangetastet — sie zeigen absichtlich woandershin.
  *
- * Still im Erfolgsfall, laut im Fehlerfall: Der Aufrufer ist `bastra update`,
- * und dort ist das ein Nebenschritt, kein Ergebnis.
+ * Belegt wird das Ergebnis, nicht behauptet: der plist wird nach dem Schreiben
+ * erneut gelesen und muss die installierte Laufzeit nennen, sonst ist das
+ * Ergebnis `ok: false`.
  */
 export async function refreshManagedAutostart(
   write: (s: string) => void,
-): Promise<void> {
-  if (process.platform !== "darwin") return;
-  const state = await readState();
-  if (!state.exists || !state.managed) return;
-  const current = [process.execPath, DAEMON_SCRIPT_PATH];
-  if (state.program.length === current.length && state.program.every((p, i) => p === current[i])) {
-    return; // zeigt schon auf diese Installation
+  opts: {
+    /** `null` = die installierte Laufzeit war nicht auflösbar. Dann wird der
+     *  plist NICHT angefasst — lieber veraltet als auf ein Nichts gebogen. */
+    target: InstalledRuntime | null;
+    /** Nur für die Regressionen: plist-Datei und launchd-CLI. */
+    plistFile?: string;
+    launchctl?: string;
+  },
+): Promise<RefreshOutcome> {
+  if (process.platform !== "darwin") return { ok: true, detail: "not macOS" };
+  const launchctl = opts.launchctl ?? LAUNCHCTL;
+  const path = opts.plistFile ?? plistPath();
+  const state = await readState(path, launchctl);
+  if (!state.exists || !state.managed) return { ok: true, detail: "no managed autostart" };
+
+  if (!opts.target) {
+    write(
+      `  ✗ could not resolve where the installer put the daemon — leaving the autostart at\n` +
+        `    ${state.program[1] ?? "an unknown path"}. Run 'bastra autostart on' from the new install.\n`,
+    );
+    return { ok: false, detail: "installed runtime not resolved" };
   }
-  write(`→ autostart points at ${state.program[1] ?? "an unknown path"} — updating it\n`);
-  const vault = await resolveVault({ dryRun: false, vaultPath: null });
-  if ("error" in vault) {
-    write(`  ✗ cannot update the autostart: ${vault.error}\n`);
-    return;
+
+  const program = [opts.target.node, opts.target.script];
+  const pointsAtInstall =
+    state.program.length === program.length && state.program.every((p, i) => p === program[i]);
+  if (!pointsAtInstall) {
+    write(`→ autostart points at ${state.program[1] ?? "an unknown path"} — repointing it at the installed runtime\n`);
+    const vault = await resolveVault({ dryRun: false, vaultPath: null });
+    if ("error" in vault) {
+      write(`  ✗ cannot update the autostart: ${vault.error}\n`);
+      return { ok: false, detail: vault.error };
+    }
+    try {
+      await writePlistAtomically(path, renderPlist(autostartEnv(vault.path, opts.target.node), program));
+    } catch (err) {
+      write(`  ✗ could not rewrite ${path}: ${(err as Error).message}\n`);
+      return { ok: false, detail: (err as Error).message };
+    }
   }
-  try {
-    await writePlistAtomically(state.path, renderPlist(autostartEnv(vault.path, process.execPath), current));
-  } catch (err) {
-    write(`  ✗ could not rewrite ${state.path}: ${(err as Error).message}\n`);
-    return;
-  }
+
   const uid = String(process.getuid?.() ?? 0);
-  if (state.loaded) bootout(uid);
-  const started = bootstrap(uid, state.path);
-  write(started.ok ? `  ✓ autostart now runs ${current[1]}\n` : `  ✗ reload failed: ${started.detail}\n`);
+  if (state.loaded) bootout(uid, launchctl);
+  const started = bootstrap(uid, path, launchctl);
+  if (!started.ok) {
+    write(`  ✗ reload failed: ${started.detail}\n`);
+    return { ok: false, detail: started.detail };
+  }
+
+  // Der Beweis: erneut lesen. Erst wenn die Datei die installierte Laufzeit
+  // nennt und die auch auf der Platte liegt, darf das hier Erfolg melden.
+  const after = await readState(path, launchctl);
+  if (after.program[1] !== opts.target.script || after.danglingProgram) {
+    write(
+      `  ✗ the autostart still names ${after.program[1] ?? "nothing"} — expected ${opts.target.script}\n`,
+    );
+    return { ok: false, detail: "verification failed" };
+  }
+  const version = opts.target.version ? ` (${opts.target.version})` : "";
+  write(`  ✓ autostart now runs ${opts.target.script}${version}\n`);
+  return { ok: true, detail: opts.target.script };
 }
 
 /** Was `bastra doctor` über den Autostart zu sagen hat — `null`, wenn nichts. */
