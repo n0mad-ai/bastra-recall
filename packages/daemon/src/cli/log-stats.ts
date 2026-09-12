@@ -16,6 +16,9 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { defaultLogDir } from "../learned-recall/harvest.js";
+import { foldClientDuplicates, restartWindows, tsOf } from "./log-stats-phases.js";
+
+export { foldClientDuplicates, restartWindows, DUPLICATE_WINDOW_MS } from "./log-stats-phases.js";
 
 const EVENT_FILE = /^events-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 
@@ -46,6 +49,13 @@ export interface LogStats {
   to: string | null;
   lanes: LaneStats[];
   totals: { calls: number; timeouts: number; errors: number };
+  /** #305: the same table for the calls that fell inside a daemon restart.
+   *  A hook cannot reach a daemon that is not running; counting those calls
+   *  with the rest reports a deliberate restart as a delivery failure. */
+  restart: { windows: number; lanes: LaneStats[]; calls: number; timeouts: number; errors: number };
+  /** #305: client-written rows folded into the daemon row for the same call.
+   *  Reported so the readout cannot silently shrink a number it once printed. */
+  foldedDuplicates: number;
   /** Non-prompt event kinds seen in the window, for orientation. */
   otherKinds: Array<{ kind: string; count: number }>;
   /** #477: attempted vs. written saves. Until save_hold existed, only the
@@ -87,8 +97,12 @@ export function percentiles(values: number[]): Percentiles | null {
  * an injection. Counting only the ones that made it through would report a
  * suppression-heavy lane as a healthy one.
  */
-export function aggregate(events: Array<Record<string, unknown>>): LogStats {
+export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
+  const { events, folded } = foldClientDuplicates(rawEvents);
+  const windows = restartWindows(events);
+  const inRestart = (t: number): boolean => windows.some((w) => t >= w.start && t <= w.end);
   const byMode = new Map<string, LaneStats & { latencies: number[] }>();
+  const byModeRestart = new Map<string, LaneStats & { latencies: number[] }>();
   const otherKinds = new Map<string, number>();
   const holdReasons = new Map<string, number>();
   const suppressedTypes = new Map<string, number>();
@@ -134,13 +148,14 @@ export function aggregate(events: Array<Record<string, unknown>>): LogStats {
       continue;
     }
     const mode = kindName === "hook_call" ? "pretooluse" : String(e.detected_mode ?? "unknown");
-    let lane = byMode.get(mode);
+    const table = inRestart(tsOf(e)) ? byModeRestart : byMode;
+    let lane = table.get(mode);
     if (!lane) {
       lane = {
         mode, calls: 0, withHits: 0, suppressed: 0, gated: 0,
         timeouts: 0, errors: 0, latency: null, latencies: [],
       };
-      byMode.set(mode, lane);
+      table.set(mode, lane);
     }
     lane.calls++;
     const status = String(e.status ?? "");
@@ -153,9 +168,12 @@ export function aggregate(events: Array<Record<string, unknown>>): LogStats {
     if (typeof lat === "number") lane.latencies.push(lat);
   }
 
-  const lanes = [...byMode.values()]
-    .map(({ latencies, ...rest }) => ({ ...rest, latency: percentiles(latencies) }))
-    .sort((a, b) => b.calls - a.calls);
+  const finish = (table: Map<string, LaneStats & { latencies: number[] }>): LaneStats[] =>
+    [...table.values()]
+      .map(({ latencies, ...rest }) => ({ ...rest, latency: percentiles(latencies) }))
+      .sort((a, b) => b.calls - a.calls);
+  const lanes = finish(byMode);
+  const restartLanes = finish(byModeRestart);
 
   return {
     from,
@@ -166,6 +184,14 @@ export function aggregate(events: Array<Record<string, unknown>>): LogStats {
       timeouts: lanes.reduce((n, l) => n + l.timeouts, 0),
       errors: lanes.reduce((n, l) => n + l.errors, 0),
     },
+    restart: {
+      windows: windows.length,
+      lanes: restartLanes,
+      calls: restartLanes.reduce((n, l) => n + l.calls, 0),
+      timeouts: restartLanes.reduce((n, l) => n + l.timeouts, 0),
+      errors: restartLanes.reduce((n, l) => n + l.errors, 0),
+    },
+    foldedDuplicates: folded,
     otherKinds: [...otherKinds.entries()]
       .map(([kind, count]) => ({ kind, count }))
       .sort((a, b) => b.count - a.count)
@@ -230,6 +256,13 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
   const out: string[] = [];
   if (stats.totals.calls === 0) {
     out.push("(no prompt-hook events in this window — try --since 7d)");
+    // #305: "nothing happened" and "everything happened during a restart" are
+    // different answers, and only one of them means the window was too short.
+    if (stats.restart.calls > 0) {
+      out.push(
+        `  ${stats.restart.calls} call(s) fell inside ${stats.restart.windows} daemon restart window(s) and are not counted`,
+      );
+    }
     if (stats.otherKinds.length > 0) {
       out.push(`  other events present: ${stats.otherKinds.map((k) => `${k.kind}×${k.count}`).join(", ")}`);
     }
@@ -272,6 +305,23 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
     out.push(
       `  ${stats.totals.timeouts} timeout(s), ${stats.totals.errors} error(s) ` +
         `= ${pct(stats.totals.timeouts + stats.totals.errors, stats.totals.calls)} of all calls`,
+    );
+  }
+  // #305: the two lines that keep the number above honest — what was excluded
+  // as a restart, and what was folded as one call logged twice. Both are
+  // stated rather than applied silently: a rate that quietly got better is not
+  // a measurement either.
+  if (stats.restart.windows > 0) {
+    out.push(
+      `  excluded: ${stats.restart.calls} call(s) inside ${stats.restart.windows} daemon restart window(s) — ` +
+        `${stats.restart.timeouts} timeout(s), ${stats.restart.errors} error(s) there ` +
+        `(${pct(stats.restart.timeouts + stats.restart.errors, stats.restart.calls)})`,
+    );
+  }
+  if (stats.foldedDuplicates > 0) {
+    out.push(
+      `  folded: ${stats.foldedDuplicates} client-side row(s) belonged to a call the daemon also logged ` +
+        `(counted once, client verdict kept)`,
     );
   }
   const saveLines = renderSaves(stats.saves);

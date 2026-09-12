@@ -17,7 +17,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { aggregate, percentiles, renderStats, DEFAULT_HOOK_BUDGET_MS } from "../src/cli/log-stats.js";
+import { aggregate, percentiles, renderStats, restartWindows, DEFAULT_HOOK_BUDGET_MS } from "../src/cli/log-stats.js";
 
 function promptCall(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -202,4 +202,155 @@ test("the readout's budget default matches what the hooks actually enforce", asy
       `${hook} enforces ${m[1]}ms but the stats readout assumes ${DEFAULT_HOOK_BUDGET_MS}ms`,
     );
   }
+});
+
+// ─── #305: the readout has to be decidable, not just printable ───────────
+
+function clientRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+  // What a thin client / the compiled stub writes when its socket budget
+  // expires: no trigger classification (it never got an answer), so it writes
+  // the literal "none".
+  return {
+    kind: "prompt_hook_call",
+    ts: "2026-09-06T05:00:00.000Z",
+    hook_version: "0.6.0-stub",
+    detected_mode: "none",
+    daemon_reachable: false,
+    status: "timeout",
+    hint_count: 0,
+    latency_ms_total: 608,
+    ...over,
+  };
+}
+
+test("#305: a client timeout and the daemon row for the same call are ONE call", () => {
+  // Measured on the reference host: 73 of 74 client rows in the prompt lane
+  // had a daemon row within 500ms. Counting both doubled the denominator and
+  // tripled the timeout rate the release gate was being read off — and put
+  // the assertion lane's failures under the silent lane's name.
+  const stats = aggregate([
+    promptCall({ ts: "2026-09-06T05:00:00.000Z", detected_mode: "assertion", status: "ok", latency_ms_total: 880, hint_count: 3 }),
+    clientRow({ ts: "2026-09-06T05:00:00.200Z" }),
+  ]);
+  assert.equal(stats.totals.calls, 1);
+  assert.equal(stats.foldedDuplicates, 1);
+  // The daemon's lane wins, the client's verdict wins: the daemon finished,
+  // but the turn had already moved on with nothing.
+  const byMode = Object.fromEntries(stats.lanes.map((l) => [l.mode, l]));
+  assert.equal(byMode.assertion?.calls, 1);
+  assert.equal(byMode.assertion?.timeouts, 1);
+  assert.equal(byMode.none, undefined, "the client row must not invent a `none` call");
+  assert.equal(byMode.assertion?.latency?.median, 880);
+});
+
+test("#305: a client row with no daemon partner stays its own call", () => {
+  // `daemon-unreachable` describes a call the daemon really never saw — on the
+  // reference host only 1 of 38 such rows had a partner. Folding those away
+  // would hide the one band that is a genuine delivery failure.
+  const stats = aggregate([
+    promptCall({ ts: "2026-09-06T05:00:00.000Z", status: "ok", hint_count: 1 }),
+    clientRow({ ts: "2026-09-06T05:30:00.000Z", status: "daemon-unreachable", latency_ms_total: 8 }),
+  ]);
+  assert.equal(stats.totals.calls, 2);
+  assert.equal(stats.foldedDuplicates, 0);
+  assert.equal(stats.totals.errors, 1);
+});
+
+test("#305: aggregate does not mutate the events it was handed", () => {
+  const daemonRow = promptCall({ ts: "2026-09-06T05:00:00.000Z", detected_mode: "assertion", status: "ok", latency_ms_total: 880 });
+  aggregate([daemonRow, clientRow({ ts: "2026-09-06T05:00:00.100Z" })]);
+  assert.equal(daemonRow.status, "ok");
+});
+
+test("#305: calls inside a daemon restart are reported apart from the normal case", () => {
+  // A hook cannot reach a daemon that is not running. Counting a deliberate
+  // restart with the rest reports the restart as a delivery failure — on the
+  // reference host every single `daemon-unreachable` call sat in one.
+  const stats = aggregate([
+    { kind: "warmup_settle", ts: "2026-09-06T05:00:00.000Z", trigger: "boot" },
+    { kind: "hook_call", ts: "2026-09-06T05:00:05.000Z", status: "daemon-unreachable", latency_ms: 7 },
+    { kind: "hook_call", ts: "2026-09-06T05:00:06.000Z", status: "daemon-unreachable", latency_ms: 6 },
+    // well clear of the +120s window
+    { kind: "hook_call", ts: "2026-09-06T06:00:00.000Z", status: "ok", latency_ms: 60, hint_count: 2 },
+  ]);
+  assert.equal(stats.restart.windows, 1);
+  assert.equal(stats.restart.calls, 2);
+  assert.equal(stats.restart.errors, 2);
+  assert.equal(stats.totals.calls, 1);
+  assert.equal(stats.totals.errors, 0, "a restart must not count against the live delivery rate");
+  assert.match(renderStats(stats, 600), /excluded: 2 call\(s\) inside 1 daemon restart window\(s\)/);
+});
+
+test("#305: the first prewarm of a fresh daemon process marks a restart too", () => {
+  // Not every boot produces a `warmup_settle trigger=boot` row; the prewarm
+  // with `embed_calls_since_boot: 0` is the second marker of the same event.
+  const windows = restartWindows([
+    { kind: "ollama_lifecycle", ts: "2026-09-06T05:00:00.000Z", action: "prewarm", embed_calls_since_boot: 0 },
+    { kind: "ollama_lifecycle", ts: "2026-09-06T05:40:00.000Z", action: "prewarm", embed_calls_since_boot: 12 },
+  ]);
+  assert.equal(windows.length, 1, "a prewarm mid-life is not a boot");
+});
+
+test("#305: restarts that overlap collapse into one window, not many", () => {
+  const windows = restartWindows([
+    { kind: "warmup_settle", ts: "2026-09-06T05:00:00.000Z", trigger: "boot" },
+    { kind: "warmup_settle", ts: "2026-09-06T05:00:30.000Z", trigger: "boot" },
+    { kind: "warmup_settle", ts: "2026-09-06T06:00:00.000Z", trigger: "boot" },
+  ]);
+  assert.equal(windows.length, 2);
+});
+
+test("#305: the report states what it excluded and what it folded", () => {
+  // A rate that quietly got better is not a measurement either.
+  const rendered = renderStats(
+    aggregate([
+      { kind: "warmup_settle", ts: "2026-09-06T05:00:00.000Z", trigger: "boot" },
+      { kind: "hook_call", ts: "2026-09-06T05:00:05.000Z", status: "daemon-unreachable", latency_ms: 7 },
+      promptCall({ ts: "2026-09-06T06:00:00.000Z", detected_mode: "assertion", status: "ok", latency_ms_total: 700 }),
+      clientRow({ ts: "2026-09-06T06:00:00.100Z" }),
+    ]),
+    600,
+  );
+  assert.match(rendered, /excluded: 1 call\(s\)/);
+  assert.match(rendered, /folded: 1 client-side row\(s\)/);
+});
+
+test("#305: the fold's client/daemon split matches what the sources actually stamp", async () => {
+  // The fold decides "client row or daemon row" from the `-thin` / `-stub`
+  // suffix of `hook_version`. That is a convention, and a convention nothing
+  // checks is how #506 happened: a matcher kept naming an event that had been
+  // renamed, and no test noticed for seven days. Read the real constants.
+  const src = dirname(fileURLToPath(import.meta.url));
+  const versionOf = async (rel: string): Promise<string> => {
+    const body = await readFile(join(src, "..", rel), "utf8");
+    const m = /(?:HOOK_VERSION|STUB_VERSION) = "([^"]+)"/.exec(body);
+    assert.ok(m, `${rel}: no HOOK_VERSION/STUB_VERSION found — did the constant move?`);
+    return m[1];
+  };
+  for (const rel of ["src/hook.ts", "src/prompt-hook.ts", "stub/bastra-hook.ts"]) {
+    assert.match(
+      await versionOf(rel),
+      /-(thin|stub)$/,
+      `${rel} writes telemetry from the hook process; its version must say so, or its rows count twice`,
+    );
+  }
+  for (const rel of ["src/prompt-lane.ts", "src/write-lane.ts", "src/todo-lane.ts", "src/session-lane.ts"]) {
+    assert.doesNotMatch(
+      await versionOf(rel),
+      /-(thin|stub)$/,
+      `${rel} runs in the daemon; a client suffix would make its rows foldable into each other`,
+    );
+  }
+});
+
+test("#305: a window that is nothing but a restart says so", () => {
+  const rendered = renderStats(
+    aggregate([
+      { kind: "warmup_settle", ts: "2026-09-06T05:00:00.000Z", trigger: "boot" },
+      { kind: "hook_call", ts: "2026-09-06T05:00:05.000Z", status: "daemon-unreachable", latency_ms: 7 },
+    ]),
+    600,
+  );
+  assert.match(rendered, /no prompt-hook events/);
+  assert.match(rendered, /1 call\(s\) fell inside 1 daemon restart window\(s\)/);
 });
