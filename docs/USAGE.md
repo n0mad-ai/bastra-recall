@@ -104,7 +104,7 @@ After the series, the patched CLI is actually started. If it does not boot, ever
 
 ### Onboarding — five minutes to a warm start
 
-A fresh vault offers to seed itself. Pick what your memory will mainly hold — code & projects, company & decisions, life & knowledge, or a mix — and answer a handful of persona-aware questions; every answer becomes a profile memory your AI recalls from day one. Three surfaces, one interview: the vault map auto-opens it on a fresh vault, `bastra onboard` runs it in the terminal, and your AI session offers it conversationally — the most adaptive of the three, it follows up where an answer is thin. Skippable everywhere, never asked twice.
+A fresh vault offers to seed itself. Pick what your memory will mainly hold — code & projects, company & decisions, life & knowledge, or a mix — and answer a handful of persona-aware questions; every answer becomes a profile memory your AI recalls from day one. Two surfaces run it for certain: the vault map auto-opens it on a fresh vault, and `bastra onboard` runs it in the terminal. On top of that, an AI session with hooks (Claude Code, Codex) is handed the interview at session start and usually opens it for you — the most adaptive of the three, it follows up where an answer is thin. Skippable everywhere, never asked twice.
 
 ### Importing memories — skip the cold start
 
@@ -292,7 +292,7 @@ Nach der Serie wird die gepatchte CLI tatsächlich gestartet. Bootet sie nicht, 
 
 ### Onboarding — in fünf Minuten zum Warmstart
 
-Ein frischer Vault bietet an, sich selbst zu befüllen. Du wählst, was dein Gedächtnis hauptsächlich halten soll — Code & Projekte, Firma & Entscheidungen, Leben & Wissen oder ein Mix — und beantwortest eine Handvoll persona-bewusster Fragen; jede Antwort wird ein Profil-Memory, das deine KI vom ersten Tag an abruft. Drei Oberflächen, ein Interview: Die Vault-Map öffnet es bei frischem Vault automatisch, `bastra onboard` führt es im Terminal, und deine AI-Session bietet es im Gespräch an — die adaptivste der drei, sie hakt nach, wo eine Antwort dünn ist. Überall überspringbar, nie doppelt gefragt.
+Ein frischer Vault bietet an, sich selbst zu befüllen. Du wählst, was dein Gedächtnis hauptsächlich halten soll — Code & Projekte, Firma & Entscheidungen, Leben & Wissen oder ein Mix — und beantwortest eine Handvoll persona-bewusster Fragen; jede Antwort wird ein Profil-Memory, das deine KI vom ersten Tag an abruft. Zwei Oberflächen führen es verlässlich: Die Vault-Map öffnet es bei frischem Vault automatisch, `bastra onboard` führt es im Terminal. Darüber hinaus bekommt eine AI-Sitzung mit Hooks (Claude Code, Codex) das Interview beim Sitzungsstart übergeben und beginnt es in aller Regel von selbst — die adaptivste der drei, sie hakt nach, wo eine Antwort dünn ist. Überall überspringbar, nie doppelt gefragt.
 
 ### Memories importieren — den Kaltstart überspringen
 
