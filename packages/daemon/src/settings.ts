@@ -30,7 +30,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
-import { withSettingsLock } from "./settings-lock.js";
+import { withPathLock } from "./path-lock.js";
 import { isSupportedLanguage } from "./learned-recall/language.js";
 import type { EmbeddingSource } from "./embedding-status.js";
 
@@ -455,7 +455,8 @@ async function writeSettings(next: CliSettings, path: string): Promise<void> {
 
 /**
  * #534: die EINE Settings-Transaktion. Lesen, ändern und Schreiben laufen
- * unter demselben Lock (settings-lock.ts), damit zwei Mutationen
+ * unter demselben Lock (path-lock.ts, prozessübergreifend — CLI,
+ * Onboarding-Assistent und Daemon sind eigene Prozesse), damit zwei Mutationen
  * unterschiedlicher Felder nicht mehr denselben Ausgangsstand lesen und sich
  * gegenseitig überschreiben. JEDER Setter geht hier durch — ein Setter, der an
  * `readSettings` + `writeSettings` vorbei direkt schreibt, bringt das Rennen
@@ -469,10 +470,14 @@ async function mutateSettings(
   path: string,
   mutate: (current: CliSettings) => CliSettings | null,
 ): Promise<void> {
-  await withSettingsLock(path, async () => {
-    const next = mutate(await readSettings(path));
-    if (next !== null) await writeSettings(next, path);
-  });
+  await withPathLock(
+    path,
+    async () => {
+      const next = mutate(await readSettings(path));
+      if (next !== null) await writeSettings(next, path);
+    },
+    { crossProcess: true },
+  );
 }
 
 /** The stored update mode (env-agnostic). */

@@ -404,7 +404,7 @@ test("#425: an experiment block without its registration reference is refused, s
 //
 // Gemessen auf a4c0896 (ohne den Fix): gleicher Prozess 20 von 20 Läufen mit
 // verlorenem Feld, zwei Prozesse 10 von 10 Runden — und beide Setter meldeten
-// jedes Mal Erfolg. Ohne die Serialisierung in settings-lock.ts sind beide
+// jedes Mal Erfolg. Ohne die Serialisierung in path-lock.ts sind beide
 // Tests hier rot.
 
 test("#534: concurrent setters for different fields keep both values (same process)", async () => {
