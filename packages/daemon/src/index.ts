@@ -90,19 +90,18 @@ import { countingProvider, createLatencyProfile, type DeadlineShadow } from "./l
 import { hostProfileId } from "./host-profile.js";
 import { ensureOllamaServerForDaemon } from "./cli/ollama.js";
 import { spawnSync } from "node:child_process";
+import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 
 // Triage Issue #24: Write-Tools sind Pro-Feature. Aktuelles Gate ist ein
 // env-Flag — wenn ein Pro-License-Service kommt, ersetzt der das hier.
 const DOCUMENT_WRITE_ENABLED = envFirst("BASTRA_DOCUMENT_WRITE", "NEXUS_DOCUMENT_WRITE") === "1";
 
-const DEFAULT_HTTP_PORT = 6723;
 // One truth for the port, read twice: once by the #483 bind probe at the very
-// top of main(), once by the real listen() further down.
+// top of main(), once by the real listen() further down — and since #531 the
+// SAME resolver the CLI probes with, so the daemon cannot bind one port while
+// every diagnostic describes another.
 const HTTP_DISABLED = envFirst("BASTRA_HTTP", "NEXUS_HTTP") === "off";
-const HTTP_PORT = (() => {
-  const p = envInt("BASTRA_HTTP_PORT", DEFAULT_HTTP_PORT, "NEXUS_HTTP_PORT");
-  return Number.isFinite(p) ? p : DEFAULT_HTTP_PORT;
-})();
+const HTTP_PORT = resolveDaemonEndpoint().port;
 
 /** #483 review find (Vera): fd 0 says whether a stdio MCP client is attached —
  *  see `mayExitOnBusyPort`. A pipe or socket means it is, /dev/null means this

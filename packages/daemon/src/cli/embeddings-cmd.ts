@@ -73,7 +73,7 @@ function write(line: string): void {
 export async function cmdEmbeddings(opts: {
   sub: string | null;
   settingsPath?: string;
-  /** Injectable for tests — the real probe hits the live daemon on 6723. */
+  /** Injectable for tests — the real probe hits the configured endpoint (#531). */
   probe?: typeof probeDaemon;
 }): Promise<number> {
   switch (opts.sub) {
@@ -137,7 +137,9 @@ async function cmdStatus(settingsPath?: string, probe: typeof probeDaemon = prob
     const p = await probe();
     if (p.ok && p.semanticRecall) {
       daemonOn = p.semanticRecall === "on";
-      write(`  running daemon: semantic recall ${p.semanticRecall}` +
+      // #531 — name the instance this came from; "the running daemon" used to
+      // mean "whatever answered 6723", which need not be the configured one.
+      write(`  running daemon at ${p.endpoint?.label ?? "the configured endpoint"}: semantic recall ${p.semanticRecall}` +
         (p.embeddingMode ? ` (${p.embeddingMode}, source: ${p.embeddingSource ?? "?"})` : ""));
       if (choice.provider === "none" && daemonOn) {
         write("  note: the daemon runs with its own environment (e.g. LaunchAgent plist) — this shell's view only governs newly spawned daemons.");

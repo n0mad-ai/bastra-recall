@@ -46,6 +46,7 @@ import {
   scopeEquals,
 } from "@bastra-recall/core";
 import { envFirst, envInt, envFloat, envBool } from "./env.js";
+import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 import { embeddingStatusLine, cloudConsentNotice, type EmbeddingStatus, type EmbeddingSource } from "./embedding-status.js";
 import { cloudEmbeddingProvider } from "./embedding-cloud.js";
 import {
@@ -120,8 +121,8 @@ async function attachEmbeddings(search: SearchIndex, vault: Vault): Promise<void
 }
 
 // ─── Single-Writer-Probe ─────────────────────────────────────────
-// Cached health-Probe auf den Daemon (Port BASTRA_HTTP_PORT, Default 6723 —
-// gleiche Auflösung wie die Hooks). TTL 30s: der Gate wird pro Enrich-Write
+// Cached health-Probe auf den Daemon — THE Endpunkt (#531), dieselbe
+// Auflösung wie CLI, Daemon, Forwarder und Hooks. TTL 30s: der Gate wird pro Enrich-Write
 // gefragt; ohne Cache würde jeder Embed-Batch eine HTTP-Probe kosten.
 const DAEMON_PROBE_TTL_MS = 30_000;
 let daemonProbeAt = 0;
@@ -137,11 +138,10 @@ async function daemonAbsent(): Promise<boolean> {
 }
 
 async function probeDaemonHealth(): Promise<boolean> {
-  const port = envInt("BASTRA_HTTP_PORT", 6723, "NEXUS_HTTP_PORT");
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), 1000);
   try {
-    const resp = await fetch(`http://127.0.0.1:${port}/health`, {
+    const resp = await fetch(resolveDaemonEndpoint().healthUrl, {
       signal: ctrl.signal,
     });
     if (!resp.ok) return false;

@@ -14,10 +14,10 @@
  * helper is a follow-up cleanup, not worth churning a shipped client for.
  */
 import { request } from "node:http";
-import { envFirst } from "./env.js";
 import { decorateHookPayload } from "./hook-surface.js";
+import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 
-export const DEFAULT_PORT = 6723;
+export { DEFAULT_DAEMON_PORT as DEFAULT_PORT } from "./daemon-endpoint.js";
 
 export function readStdin(): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -30,9 +30,10 @@ export function readStdin(): Promise<string> {
 }
 
 export function daemonBaseUrl(): string {
-  const httpURL = envFirst("BASTRA_HTTP_URL", "NEXUS_HTTP_URL");
-  const httpPort = envFirst("BASTRA_HTTP_PORT", "NEXUS_HTTP_PORT") ?? String(DEFAULT_PORT);
-  return httpURL ?? `http://127.0.0.1:${httpPort}`;
+  // #531 — THE endpoint. BASTRA_DAEMON_URL, which the installer writes into
+  // client registrations, was invisible here until this call replaced a local
+  // copy of the resolution.
+  return resolveDaemonEndpoint().baseUrl;
 }
 
 /** POST `body`; resolve with the response body VERBATIM (the daemon returns

@@ -7,6 +7,7 @@ import { Vault } from "@bastra-recall/core";
 import { FORWARDER_SCRIPT_PATH, CLAUDE_DESKTOP_CONFIG, CLAUDE_CODE_CONFIG } from "./paths.js";
 import { codexMcpGet, findCodexExecutable } from "./codex-cli.js";
 import { INSTALL_TOOL_SURFACE, type ToolSurface } from "../tool-defs.js";
+import { endpointToPersist, resolveDaemonEndpoint, type DaemonEndpoint } from "../daemon-endpoint.js";
 import type { CodeStale } from "../code-staleness.js";
 import type { InstallOpts } from "./types.js";
 
@@ -25,7 +26,6 @@ export const SERVER_KEY = "bastra-recall";
  * rather than being written twice.
  */
 export const VERSION_DRIFT_HINT = "restart your AI client to reload the daemon";
-const DAEMON_HEALTH_URL = "http://127.0.0.1:6723/health";
 
 /**
  * A `code_stale` block from /health (#329). Validated rather than cast: an
@@ -61,12 +61,36 @@ export function buildServerBlock(
   vaultPath: string,
   forwarderPath: string = FORWARDER_SCRIPT_PATH,
   surface: ToolSurface = INSTALL_TOOL_SURFACE,
+  daemonUrl: string | null = null,
 ): McpServerBlock {
-  return {
-    command: "node",
-    args: [forwarderPath],
-    env: { BASTRA_VAULT_PATH: vaultPath, BASTRA_TOOL_SURFACE: surface },
+  const env: Record<string, string> = {
+    BASTRA_VAULT_PATH: vaultPath,
+    BASTRA_TOOL_SURFACE: surface,
   };
+  // #531: a GUI client does not inherit the terminal's `export
+  // BASTRA_HTTP_PORT=…`, so without this line its forwarder dialled 6723 and
+  // could attach to a completely different vault than the one the user
+  // configured. Written only when there IS a configured endpoint, so the
+  // ordinary single-daemon registration stays as short as it was.
+  if (daemonUrl !== null) env.BASTRA_DAEMON_URL = daemonUrl;
+  return { command: "node", args: [forwarderPath], env };
+}
+
+/**
+ * The endpoint a registration should carry (#531) — the configured one, or the
+ * one this registration already names so a hand-set port survives a reinstall.
+ */
+export function serverBlockEndpoint(existing: unknown): string | null {
+  return endpointToPersist(existingDaemonUrl(existing));
+}
+
+/** `BASTRA_DAEMON_URL` as an existing registration spells it, or null. */
+export function existingDaemonUrl(existing: unknown): string | null {
+  if (typeof existing !== "object" || existing === null) return null;
+  const env = (existing as { env?: unknown }).env;
+  if (typeof env !== "object" || env === null) return null;
+  const raw = (env as Record<string, unknown>).BASTRA_DAEMON_URL;
+  return typeof raw === "string" && raw.trim() !== "" ? raw.trim() : null;
 }
 
 /**
@@ -317,6 +341,12 @@ export interface DaemonProbe {
   ok: boolean;
   detail: string;
   /**
+   * The endpoint this probe actually talked to (#531). Optional only because
+   * tests hand in hand-built probes; every real probe carries it, and a
+   * surface that prints a health number prints this address next to it.
+   */
+  endpoint?: DaemonEndpoint;
+  /**
    * The RUNNING daemon's build (#225). /health has always carried it; nothing
    * read it, so a stale daemon could answer for a newer CLI unnoticed. Stays
    * optional: a daemon predating the field is indistinguishable from one that
@@ -348,9 +378,16 @@ export interface DaemonProbe {
   buildRevision?: string;
 }
 
-export function probeDaemon(): Promise<DaemonProbe> {
+/**
+ * Probe THE configured endpoint — never a literal address (#531).
+ *
+ * The endpoint rides back in the result, so every caller can print the address
+ * the number came from instead of assuming one. That is the whole guard: a
+ * vault size and a URL in the same report are now provably the same instance.
+ */
+export function probeDaemon(endpoint: DaemonEndpoint = resolveDaemonEndpoint()): Promise<DaemonProbe> {
   return new Promise((resolve_) => {
-    const req = httpRequest(DAEMON_HEALTH_URL, { method: "GET", timeout: 1500 }, (res) => {
+    const req = httpRequest(endpoint.healthUrl, { method: "GET", timeout: 1500 }, (res) => {
       let body = "";
       res.on("data", (c) => (body += c));
       res.on("end", () => {
@@ -359,7 +396,8 @@ export function probeDaemon(): Promise<DaemonProbe> {
           if (res.statusCode === 200 && data?.ok) {
             resolve_({
               ok: true,
-              detail: `vault_size=${data.vault_size}`,
+              endpoint,
+              detail: `vault_size=${data.vault_size} at ${endpoint.label}`,
               version: typeof data.version === "string" ? data.version : undefined,
               codeStale: isCodeStale(data.code_stale) ? data.code_stale : undefined,
               semanticRecall: data.semantic_recall,
@@ -371,11 +409,11 @@ export function probeDaemon(): Promise<DaemonProbe> {
             return;
           }
         } catch { /* fallthrough */ }
-        resolve_({ ok: false, detail: `daemon answered but health unexpected (status=${res.statusCode})` });
+        resolve_({ ok: false, endpoint, detail: `daemon at ${endpoint.label} answered but health unexpected (status=${res.statusCode})` });
       });
     });
-    req.on("timeout", () => { req.destroy(); resolve_({ ok: false, detail: "timeout (no daemon listening — forwarder will auto-spawn on first MCP call)" }); });
-    req.on("error", (e) => resolve_({ ok: false, detail: `not reachable: ${(e as NodeJS.ErrnoException).code ?? e.message} (forwarder will auto-spawn on first MCP call)` }));
+    req.on("timeout", () => { req.destroy(); resolve_({ ok: false, endpoint, detail: `timeout (no daemon listening on ${endpoint.label} — forwarder will auto-spawn on first MCP call)` }); });
+    req.on("error", (e) => resolve_({ ok: false, endpoint, detail: `not reachable at ${endpoint.label}: ${(e as NodeJS.ErrnoException).code ?? e.message} (forwarder will auto-spawn on first MCP call)` }));
     req.end();
   });
 }

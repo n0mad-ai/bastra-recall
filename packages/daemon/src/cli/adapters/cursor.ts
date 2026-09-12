@@ -9,6 +9,7 @@ import {
   blocksMatch,
   buildServerBlock,
   existingToolSurface,
+  serverBlockEndpoint,
   fileExists,
   getServersBlock,
   probeDaemon,
@@ -32,7 +33,14 @@ async function cursorInstall(opts: InstallOpts): Promise<InstallResult> {
   const servers = getServersBlock(data) ?? {};
   // #481: keep a surface the user set by hand instead of resetting it to the
   // install default on every reinstall.
-  const block = buildServerBlock(vault.path, fwd.path, existingToolSurface(servers[SERVER_KEY]) ?? undefined);
+  const block = buildServerBlock(
+    vault.path,
+    fwd.path,
+    existingToolSurface(servers[SERVER_KEY]) ?? undefined,
+    // #531: the configured endpoint, or the one this registration already
+    // carries — a GUI client inherits no shell export.
+    serverBlockEndpoint(servers[SERVER_KEY]),
+  );
 
   if (blocksMatch(servers[SERVER_KEY], block)) {
     return {
@@ -126,7 +134,9 @@ async function cursorDoctor(): Promise<DoctorResult> {
   }
 
   const probe = await probeDaemon();
-  details["daemon-on-6723"] = probe.ok ? `reachable (${probe.detail})` : probe.detail;
+  // #531: the key names the endpoint that was actually probed. It used to say
+  // 6723 unconditionally while the probe went wherever the env pointed.
+  details[`daemon-at-${probe.endpoint?.label ?? "?"}`] = probe.ok ? `reachable (${probe.detail})` : probe.detail;
 
   // #456: the project rule is a generated projection of the skill. Reported
   // for the CURRENT project only — rules live in the repo, not in HOME.

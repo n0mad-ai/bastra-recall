@@ -37,10 +37,10 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { envFirst, envInt } from "./env.js";
+import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 import { decorateHookPayload } from "./hook-surface.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 600, "NEXUS_HOOK_TIMEOUT_MS");
-const DEFAULT_PORT = 6723;
 const HOOK_VERSION = "0.3.0-thin";
 
 function readStdin(): Promise<string> {
@@ -158,9 +158,10 @@ async function main(): Promise<void> {
     return emitOnce("{}");
   }
 
-  const httpURL = envFirst("BASTRA_HTTP_URL", "NEXUS_HTTP_URL");
-  const httpPort = envFirst("BASTRA_HTTP_PORT", "NEXUS_HTTP_PORT") ?? String(DEFAULT_PORT);
-  const url = httpURL ?? `http://127.0.0.1:${httpPort}`;
+  // #531 — one resolver for the endpoint, shared with the CLI, the daemon and
+  // the forwarder. This block used to ignore BASTRA_DAEMON_URL, which is the
+  // variable the installer writes into a client registration.
+  const url = resolveDaemonEndpoint().baseUrl;
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
 
   try {

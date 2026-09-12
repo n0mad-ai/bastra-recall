@@ -13,6 +13,7 @@
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 
 const run = promisify(execFile);
 
@@ -67,11 +68,9 @@ async function listenerPid(port: number): Promise<number | null> {
   }
 }
 
-/** The port this machine's daemon is configured to use (default 6723). */
+/** The port this machine's daemon is configured to use — THE endpoint (#531). */
 export function daemonPort(): number {
-  const raw = process.env.BASTRA_HTTP_PORT ?? process.env.NEXUS_HTTP_PORT;
-  const n = raw === undefined ? NaN : Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : 6723;
+  return resolveDaemonEndpoint().port;
 }
 
 export async function listDaemonProcesses(port: number = daemonPort()): Promise<DaemonProcess[]> {

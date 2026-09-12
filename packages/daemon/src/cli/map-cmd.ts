@@ -9,11 +9,11 @@ import { spawn } from "node:child_process";
 import { getUiEnabled, setUiEnabled } from "../settings.js";
 import { ensureDaemonRunning, type DaemonStartOutcome } from "./daemon-start.js";
 import { confirm, isInteractive } from "./prompt.js";
+import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 
-/** The map's URL on this machine — same port resolution as the daemon. */
+/** The map's URL on this machine — THE endpoint, resolved once (#531). */
 export function mapUrl(): string {
-  const port = Number(process.env.BASTRA_HTTP_PORT ?? process.env.NEXUS_HTTP_PORT ?? "") || 6723;
-  return `http://127.0.0.1:${port}/ui`;
+  return resolveDaemonEndpoint().mapUrl;
 }
 
 export function openInBrowser(url: string): void {

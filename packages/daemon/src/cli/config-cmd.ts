@@ -184,9 +184,10 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
       }
       await setUiEnabled(on);
       process.stdout.write(`✓ ui.enabled = ${on}\n  stored in ${settingsFilePath()}\n`);
-      if (on) process.stdout.write(`  vault map: ${mapUrl()} (or just: bastra map)\n`);
+      // #531 — one line, naming THE configured endpoint. The second line here
+      // printed the default port unconditionally and contradicted the first.
       if (on) {
-        process.stdout.write("  vault map: http://127.0.0.1:6723/ui (no daemon restart needed)\n");
+        process.stdout.write(`  vault map: ${mapUrl()} (or just: bastra map — no daemon restart needed)\n`);
       }
       return 0;
     }

@@ -469,7 +469,7 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
   let uiOn = false;
   {
     const ans = await p.select({
-      message: "Enable the vault map? (interactive graph of your memory at http://127.0.0.1:6723/ui — local only)",
+      message: `Enable the vault map? (interactive graph of your memory at ${mapUrl()} — local only)`,
       options: [
         { value: "on", label: "On — serve the map on /ui" },
         { value: "off", label: "Off", hint: "enable later: bastra config set ui.enabled true" },

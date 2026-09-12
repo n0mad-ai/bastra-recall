@@ -37,12 +37,12 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { envFirst, envInt } from "../src/env.js";
+import { resolveDaemonEndpoint } from "../src/daemon-endpoint.js";
 import { shouldSkipPath } from "../src/hook-skip.js";
 import { decorateHookPayload } from "../src/hook-surface.js";
 import { normalizeWritePayload } from "../src/hook-write-input.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 600, "NEXUS_HOOK_TIMEOUT_MS");
-const DEFAULT_PORT = 6723;
 const STUB_VERSION = "0.6.0-stub"; // 0.6.0 = Codex payload adaptation (#15)
 
 type Lane = "prompt" | "write" | "bash-pre" | "bash-fail" | "stop" | "session" | "todo";
@@ -216,9 +216,10 @@ async function main(): Promise<void> {
   }
   payload = decorateHookPayload(payload);
 
-  const httpURL = envFirst("BASTRA_HTTP_URL", "NEXUS_HTTP_URL");
-  const httpPort = envFirst("BASTRA_HTTP_PORT", "NEXUS_HTTP_PORT") ?? String(DEFAULT_PORT);
-  const url = httpURL ?? `http://127.0.0.1:${httpPort}`;
+  // #531 — one resolver for the endpoint, shared with the CLI, the daemon and
+  // the forwarder. This block used to ignore BASTRA_DAEMON_URL, which is the
+  // variable the installer writes into a client registration.
+  const url = resolveDaemonEndpoint().baseUrl;
 
   // Lane-specific client-side gates — everything that must not cost a round trip.
   let path: string;

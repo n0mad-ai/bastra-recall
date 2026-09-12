@@ -32,12 +32,12 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { envFirst, envInt } from "./env.js";
+import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 import { shouldSkipPath } from "./hook-skip.js";
 import { decorateHookPayload } from "./hook-surface.js";
 import { normalizeWritePayload } from "./hook-write-input.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 600, "NEXUS_HOOK_TIMEOUT_MS");
-const DEFAULT_PORT = 6723;
 const HOOK_VERSION = "0.4.0-thin";
 
 const SUPPORTED_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"]);
@@ -192,9 +192,10 @@ async function main(): Promise<void> {
   const filePath = typeof toolInput.file_path === "string" ? toolInput.file_path : null;
   if (!filePath) return emitEmpty();
 
-  const httpURL = envFirst("BASTRA_HTTP_URL", "NEXUS_HTTP_URL");
-  const httpPort = envFirst("BASTRA_HTTP_PORT", "NEXUS_HTTP_PORT") ?? String(DEFAULT_PORT);
-  const url = httpURL ?? `http://127.0.0.1:${httpPort}`;
+  // #531 — one resolver for the endpoint, shared with the CLI, the daemon and
+  // the forwarder. This block used to ignore BASTRA_DAEMON_URL, which is the
+  // variable the installer writes into a client registration.
+  const url = resolveDaemonEndpoint().baseUrl;
 
   // SKIP-GATE (#20/#28): the cheap path ends here, without any HTTP.
   // toolInput feeds the #297 memory-shape exception (lazy, .md branch only).

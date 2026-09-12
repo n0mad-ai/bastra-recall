@@ -7,8 +7,12 @@
 import { spawn } from "node:child_process";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 
-export const DAEMON_URL = (process.env.BASTRA_DAEMON_URL ?? "http://127.0.0.1:6723").replace(/\/+$/, "");
+// #531 — the same resolver the CLI, the daemon and the LaunchAgent use, so a
+// registration that carries only BASTRA_HTTP_PORT reaches the same instance a
+// registration carrying BASTRA_DAEMON_URL does.
+export const DAEMON_URL = resolveDaemonEndpoint().baseUrl;
 export const API_TOKEN = process.env.BASTRA_API_TOKEN ?? "";
 export const SPAWN_ENABLED = (process.env.BASTRA_FORWARDER_SPAWN ?? "1") !== "0";
 

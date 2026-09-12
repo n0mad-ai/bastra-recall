@@ -19,6 +19,7 @@
  */
 import { probeDaemon, type DaemonProbe } from "./helpers.js";
 import { shortRevision, type SourceBuildState } from "./source-build.js";
+import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 
 export type LiveRevision = "live" | "other-build" | "unknown-build" | "no-daemon" | "unprovable";
 
@@ -64,7 +65,7 @@ export function describeLiveRevision(
         closing:
           `→ registered, NOT live — the daemon in memory is ${running}, HEAD is ${head}.\n` +
           "  Restart it, then re-check with 'bastra status':\n" +
-          "    lsof -i :6723             # find the daemon pid\n" +
+          `    lsof -i :${resolveDaemonEndpoint().port}             # find the daemon pid\n` +
           "    kill <pid>                 # forwarder respawns it with the new code\n",
       };
     case "unknown-build":

@@ -24,6 +24,7 @@ import type { ParsedArgs } from "./types.js";
 import { refreshManagedAutostart } from "./autostart.js";
 import type { InstalledRuntime } from "./autostart.js";
 import { DAEMON_SCRIPT_PATH } from "./paths.js";
+import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 
 const LAUNCH_AGENT_LABEL = "ai.n0mad.bastra-recall";
 
@@ -627,7 +628,7 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
     // anything, so what a running daemon holds is asked below, not guessed.
     process.stdout.write("  no LaunchAgent registered — nothing here can restart a running daemon\n");
     process.stdout.write("  Restart it manually if the check below says it is needed:\n");
-    process.stdout.write("    lsof -i :6723             # find the daemon pid\n");
+    process.stdout.write(`    lsof -i :${resolveDaemonEndpoint().port}             # find the daemon pid\n`);
     process.stdout.write("    kill <pid>                 # forwarder respawns it with new code on next call\n\n");
   }
 

@@ -290,7 +290,8 @@ test("embeddings status: running daemon with semantic recall ON shows both views
     });
     const { rc, out } = await withEnvAndStdout(null, () => cmdEmbeddings({ sub: "status", settingsPath: path, probe: daemonOn }));
     assert.equal(rc, 0);
-    assert.match(out, /running daemon: semantic recall on \(ollama-embeddinggemma, source: env\)/);
+    // #531 — the line now names the endpoint the answer came from.
+    assert.match(out, /running daemon at .+ semantic recall on \(ollama-embeddinggemma, source: env\)/);
     assert.match(out, /daemon runs with its own environment/);
     assert.ok(!/Enable: bastra embeddings on/.test(out), "OFF note must be suppressed when the daemon is semantic");
   });

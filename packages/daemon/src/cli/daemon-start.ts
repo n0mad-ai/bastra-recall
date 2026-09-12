@@ -18,6 +18,7 @@
 import { spawn } from "node:child_process";
 import { probeDaemon, resolveVault } from "./helpers.js";
 import { DAEMON_SCRIPT_PATH } from "./paths.js";
+import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 
 /**
  * A cold start is a vault load plus an index build; the forwarder allows 60 s
@@ -44,10 +45,15 @@ export interface DaemonStartIO {
 function spawnDetached(vaultPath: string): void {
   // detached + unref: the daemon has to outlive the CLI process that started
   // it, and must not hold the terminal open once `bastra map` returns.
+  // #531: the daemon binds BASTRA_HTTP_PORT, the CLI probes THE endpoint. If
+  // the endpoint was configured through BASTRA_DAEMON_URL alone, a spawn
+  // without this line would bind the default port and then never be found by
+  // the very probe that is waiting for it.
+  const endpoint = resolveDaemonEndpoint();
   const child = spawn(process.execPath, [DAEMON_SCRIPT_PATH], {
     detached: true,
     stdio: "ignore",
-    env: { ...process.env, BASTRA_VAULT_PATH: vaultPath },
+    env: { ...process.env, BASTRA_VAULT_PATH: vaultPath, BASTRA_HTTP_PORT: String(endpoint.port) },
   });
   child.unref();
 }
@@ -80,7 +86,8 @@ export async function ensureDaemonRunning(
   const timeoutMs = opts.timeoutMs ?? DAEMON_START_TIMEOUT_MS;
 
   // A daemon from the LaunchAgent, a forwarder auto-spawn or a parallel CLI is
-  // already the one instance there can be — 6723 is the singleton, and a second
+  // already the one instance there can be — the endpoint's port is the
+  // singleton, and a second
   // start would only lose the EADDRINUSE race.
   if (await io.probe()) return { ok: true, state: "already-running", detail: "daemon already running" };
 

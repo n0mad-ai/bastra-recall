@@ -29,6 +29,7 @@ import {
   backupConfig,
   buildServerBlock,
   existingToolSurface,
+  serverBlockEndpoint,
   fileExists,
   probeDaemon,
   readJsonConfig,
@@ -272,6 +273,8 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
     vault.path,
     runtime.path,
     existingToolSurface(current.server?.transport) ?? undefined,
+    // #531 — same endpoint contract as the file-backed adapters.
+    serverBlockEndpoint(current.server?.transport),
   );
   const mcpMatches = codexServerMatches(current.server, target);
 
@@ -467,7 +470,8 @@ async function codexDoctor(): Promise<DoctorResult> {
     if (!hooksBroken) details["hook-trust"] = "Codex-owned; use '/hooks' to confirm registered hooks are active";
   }
   const probe = await probeDaemon();
-  details["daemon-on-6723"] = probe.ok ? `reachable (${probe.detail})` : probe.detail;
+  // #531 — the key names the endpoint that was actually probed.
+  details[`daemon-at-${probe.endpoint?.label ?? "?"}`] = probe.ok ? `reachable (${probe.detail})` : probe.detail;
   if (!registered) return { status: "missing", message: "MCP not registered with Codex/ChatGPT desktop", details };
   const broken = forwarderBroken || hooksBroken || (details.skill === "missing" || details.skill.startsWith("STALE")) ||
     details["vault-path"]?.includes("MISSING") === true || details["vault-path"]?.startsWith("not ") === true;

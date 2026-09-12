@@ -44,6 +44,11 @@ import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DAEMON_SCRIPT_PATH } from "./paths.js";
 import { probeDaemon, resolveVault } from "./helpers.js";
+import {
+  endpointToPersist,
+  portOfEndpoint,
+  resolveDaemonEndpoint,
+} from "../daemon-endpoint.js";
 import type { ParsedArgs } from "./types.js";
 
 /** Dasselbe Label, das `index.ts` und `update.ts` kennen. Ein zweites wäre ein
@@ -81,6 +86,13 @@ export interface AutostartState {
   /** Der plist ist da, aber sein Programm liegt nicht mehr auf der Platte —
    *  der klassische Zustand nach einem Update, das den Pfad verschoben hat. */
   danglingProgram: boolean;
+  /**
+   * Der Endpunkt, den DIESER plist festschreibt (#531) — `null`, wenn keiner
+   * darinsteht. Er ist der Grund, warum ein gewählter Port ein Update
+   * überlebt: `bastra update` läuft in einer Shell ohne den Export, und ohne
+   * diesen Wert würde jedes Neuschreiben den Daemon auf 6723 zurückwerfen.
+   */
+  endpoint: string | null;
 }
 
 /**
@@ -100,6 +112,7 @@ export async function readState(path = plistPath(), launchctl = LAUNCHCTL): Prom
     program: [],
     loaded: launchAgentLoaded(launchctl),
     danglingProgram: false,
+    endpoint: null,
   };
   if (!state.exists) return state;
   const conv = spawnSync("/usr/bin/plutil", ["-convert", "json", "-o", "-", path], {
@@ -116,6 +129,8 @@ export async function readState(path = plistPath(), launchctl = LAUNCHCTL): Prom
       ? parsed.ProgramArguments.filter((a): a is string => typeof a === "string")
       : [];
     state.managed = parsed.EnvironmentVariables?.[MANAGED_MARKER] === "1";
+    const url = parsed.EnvironmentVariables?.BASTRA_DAEMON_URL;
+    state.endpoint = typeof url === "string" && url.trim() !== "" ? url.trim() : null;
   } catch {
     // Unparsebar heißt FREMD, nicht „gehört uns" — dieselbe fail-closed-Regel
     // wie im Vault-Schreibpfad. Ein Fehler beim Lesen darf nie zu einem
@@ -185,18 +200,37 @@ ${entries}
  *
  * Bewusst schmal: der Vault-Pfad, der abgeschaltete Idle-Shutdown (wer
  * Autostart einschaltet, will genau den Dauerbetrieb) und ein PATH, der Node
- * findet. Alles Weitere — Embedding-Provider, Modelle, Port — bleibt bei den
+ * findet. Alles Weitere — Embedding-Provider, Modelle — bleibt bei den
  * Einstellungen, die der Daemon ohnehin selbst liest. Ein plist, der jede
  * Option einfriert, wäre bei der nächsten Änderung sofort falsch, und niemand
  * würde es merken.
+ *
+ * DER PORT IST DIE AUSNAHME (#531). Der alte Kommentar hier behauptete, der
+ * Daemon lese ihn aus den Einstellungen — das tut er nicht: `BASTRA_HTTP_PORT`
+ * gibt es nur als Umgebungsvariable. Ein `bastra autostart on` aus einer Shell
+ * mit `export BASTRA_HTTP_PORT=26723` schrieb also einen LaunchAgent, der auf
+ * 6723 startete, während die Diagnose weiter 26723 nannte. Steht ein Endpunkt
+ * fest, wird er deshalb HIER eingefroren — als `BASTRA_HTTP_PORT` (das liest
+ * der Daemon beim Binden) und als `BASTRA_DAEMON_URL` (daran erkennt ihn der
+ * nächste Lauf im plist wieder).
  */
-export function autostartEnv(vaultPath: string, nodeBin: string): Record<string, string> {
-  return {
+export function autostartEnv(
+  vaultPath: string,
+  nodeBin: string,
+  daemonUrl: string | null = endpointToPersist(null),
+): Record<string, string> {
+  const env: Record<string, string> = {
     [MANAGED_MARKER]: "1",
     BASTRA_VAULT_PATH: vaultPath,
     BASTRA_DAEMON_IDLE_SHUTDOWN_MS: "0",
     PATH: `${dirname(nodeBin)}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`,
   };
+  const port = portOfEndpoint(daemonUrl);
+  if (daemonUrl !== null && port !== null) {
+    env.BASTRA_DAEMON_URL = daemonUrl;
+    env.BASTRA_HTTP_PORT = String(port);
+  }
+  return env;
 }
 
 async function writePlistAtomically(path: string, content: string): Promise<void> {
@@ -270,11 +304,15 @@ async function autostartOn(args: ParsedArgs): Promise<number> {
   }
 
   const program = [process.execPath, DAEMON_SCRIPT_PATH];
-  const content = renderPlist(autostartEnv(vault.path, process.execPath), program);
+  // #531 — the endpoint this process was told about, or the one the existing
+  // managed plist already froze.
+  const endpoint = endpointToPersist(state.endpoint);
+  const content = renderPlist(autostartEnv(vault.path, process.execPath, endpoint), program);
 
   if (args.dryRun) {
     write(`(dry-run — writing nothing)\n\n  would write ${state.path}\n`);
     write(`  would start: ${program.join(" ")}\n  vault: ${vault.path}\n`);
+    if (endpoint !== null) write(`  endpoint: ${endpoint}\n`);
     return 0;
   }
 
@@ -290,6 +328,7 @@ async function autostartOn(args: ParsedArgs): Promise<number> {
   write(`  plist:  ${state.path}\n`);
   write(`  starts: ${program.join(" ")}\n`);
   write(`  vault:  ${vault.path}\n`);
+  if (endpoint !== null) write(`  endpoint: ${endpoint} (frozen into the LaunchAgent)\n`);
   if (started.ok) {
     write(`  ✓ loaded — the daemon stays up from now on (idle shutdown disabled)\n`);
   } else {
@@ -355,6 +394,10 @@ async function autostartStatus(args: ParsedArgs): Promise<number> {
           dangling_program: state.danglingProgram,
           daemon_running: probe.ok,
           daemon_version: probe.version ?? null,
+          // #531 — which instance the two lines above describe, and what the
+          // LaunchAgent itself starts. Two fields, never merged into one.
+          daemon_endpoint: probe.endpoint?.baseUrl ?? resolveDaemonEndpoint().baseUrl,
+          plist_endpoint: state.endpoint,
         },
         null,
         2,
@@ -383,11 +426,23 @@ async function autostartStatus(args: ParsedArgs): Promise<number> {
         `    that was moved or removed. Fix it with: bastra autostart on\n`,
     );
   }
+  const endpoint = probe.endpoint ?? resolveDaemonEndpoint();
   write(
     probe.ok
-      ? `  daemon: running${probe.version ? ` (${probe.version})` : ""}\n\n`
-      : `  daemon: not reachable\n\n`,
+      ? `  daemon: running at ${endpoint.label}${probe.version ? ` (${probe.version})` : ""}\n`
+      : `  daemon: not reachable at ${endpoint.label}\n`,
   );
+  // #531: a LaunchAgent that starts a daemon on one port while this CLI probes
+  // another is exactly the split that made status describe two machines as one.
+  const plistPort = portOfEndpoint(state.endpoint);
+  if (state.managed && plistPort !== null && plistPort !== endpoint.port) {
+    write(
+      `  ⚠ the LaunchAgent starts the daemon on port ${plistPort}, but this shell is\n` +
+        `    configured for ${endpoint.label} — the line above describes ${endpoint.label}, not the\n` +
+        `    autostarted daemon. Re-run 'bastra autostart on' to agree on one endpoint.\n`,
+    );
+  }
+  write("\n");
   return 0;
 }
 
@@ -475,7 +530,13 @@ export async function refreshManagedAutostart(
       return { ok: false, detail: vault.error };
     }
     try {
-      await writePlistAtomically(path, renderPlist(autostartEnv(vault.path, opts.target.node), program));
+      // #531: `bastra update` usually runs without the user's export, so the
+      // endpoint comes from the plist being rewritten — otherwise the repoint
+      // would quietly move the daemon back to the default port.
+      await writePlistAtomically(
+        path,
+        renderPlist(autostartEnv(vault.path, opts.target.node, endpointToPersist(state.endpoint)), program),
+      );
     } catch (err) {
       write(`  ✗ could not rewrite ${path}: ${(err as Error).message}\n`);
       return { ok: false, detail: (err as Error).message };

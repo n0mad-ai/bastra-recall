@@ -2,7 +2,7 @@ import { probeDaemon, formatStatus, type DaemonProbe } from "./helpers.js";
 import { ADAPTERS } from "./registry.js";
 import { probeOllama } from "./ollama.js";
 import { getEmbeddingProvider, getApiToken, getUiEnabled, type EmbeddingProviderName } from "../settings.js";
-import { mapUrl } from "./map-cmd.js";
+import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 import { listDaemonProcesses, formatExtraDaemons } from "./daemon-processes.js";
 import { patchesSummaryLine } from "./patches-cmd.js";
 
@@ -12,6 +12,15 @@ interface StatusOptions {
 }
 
 interface StatusResult {
+  /**
+   * #531 — the endpoint EVERY line below was measured against, named once.
+   * `status --json` used to print the vault size of the daemon on the default
+   * port next to the map URL of the configured one and call that map
+   * reachable: two instances merged into one report. Now the health, the map
+   * URL and this field all come from a single resolution, so a reader can see
+   * which machine was measured.
+   */
+  endpoint: { url: string; source: string };
   daemon: { status: string; message: string };
   semanticRecall: { configured: string; active: string; detail: string };
   apiToken: { set: boolean };
@@ -41,15 +50,20 @@ export function formatVaultMapLine(uiOn: boolean, daemonOk: boolean, url: string
 export async function cmdStatus(options: StatusOptions): Promise<number> {
   let hasError = false;
 
+  // Resolved ONCE and handed to everything below — the probe, the map URL and
+  // process discovery all describe this one instance (#531).
+  const endpoint = resolveDaemonEndpoint();
+
   const statusResult: StatusResult = {
+    endpoint: { url: endpoint.baseUrl, source: endpoint.source },
     daemon: { status: "unknown", message: "" },
     semanticRecall: { configured: "unset", active: "unknown", detail: "" },
     apiToken: { set: false },
-    vaultMap: { enabled: false, url: mapUrl(), reachable: false },
+    vaultMap: { enabled: false, url: endpoint.mapUrl, reachable: false },
     surfaces: {},
   };
 
-  const daemonInfo = await probeDaemon();
+  const daemonInfo = await probeDaemon(endpoint);
   if (daemonInfo.ok) {
     statusResult.daemon = { status: "ok", message: daemonInfo.detail };
     if (!options.quiet && !options.json) {
@@ -66,7 +80,7 @@ export async function cmdStatus(options: StatusOptions): Promise<number> {
   // A daemon on another port is invisible to /health — it answers on an
   // address nobody probes. Only reported, never stopped: a second one is
   // sometimes deliberate (a measurement harness, a second vault).
-  const extra = formatExtraDaemons(await listDaemonProcesses());
+  const extra = formatExtraDaemons(await listDaemonProcesses(endpoint.port));
   if (extra !== null && !options.quiet && !options.json) {
     printLine(`${"daemons".padEnd(15)} ${formatStatus("warn")}: ${extra}`);
   }
@@ -115,9 +129,12 @@ export async function cmdStatus(options: StatusOptions): Promise<number> {
   // the command that starts a daemon, and the line points at it. daemonInfo is
   // the probe from the top of this function, so this costs nothing extra.
   const uiOn = await getUiEnabled();
-  statusResult.vaultMap = { enabled: uiOn, url: mapUrl(), reachable: uiOn && daemonInfo.ok };
+  // The URL and the reachability verdict come from the SAME endpoint object
+  // the probe used, so "reachable" can no longer mean "some other daemon
+  // answered" (#531).
+  statusResult.vaultMap = { enabled: uiOn, url: endpoint.mapUrl, reachable: uiOn && daemonInfo.ok };
   if (!options.quiet && !options.json) {
-    printLine(`${"vault map".padEnd(15)} ${formatVaultMapLine(uiOn, daemonInfo.ok, mapUrl())}`);
+    printLine(`${"vault map".padEnd(15)} ${formatVaultMapLine(uiOn, daemonInfo.ok, endpoint.mapUrl)}`);
   }
 
   for (const [name, adapter] of Object.entries(ADAPTERS)) {
