@@ -21,7 +21,6 @@ import {
   Vault,
   SearchIndex,
   EmbeddingIndex,
-  OpenAIEmbeddingProvider,
   OllamaEmbeddingProvider,
   RelatedEnricher,
   TriggerExpander,
@@ -42,7 +41,8 @@ import { mayExitOnBusyPort, probeDaemonPort, startHttpServer } from "./http.js";
 import { loadCuratorState } from "./curator.js";
 import { wireBootObservers } from "./boot-observers.js";
 import { startBackgroundJobs } from "./daemon-jobs.js";
-import { embeddingStatusLine, type EmbeddingStatus, type EmbeddingSource } from "./embedding-status.js";
+import { embeddingStatusLine, cloudConsentNotice, type EmbeddingStatus, type EmbeddingSource } from "./embedding-status.js";
+import { cloudEmbeddingProvider } from "./embedding-cloud.js";
 import { resolveEmbeddingChoice, getCommonsEnabled, getSharedRecallEnabled, getSharedRecallLanguage, getPrimaryLanguage, resolveGenerationModel, getEvidenceGateEnabled, getExperimentConfig } from "./settings.js";
 import { commonsPath, loadVerificationCounts } from "./cli/commons.js";
 import { bridgesPath } from "./cli/bridges.js";
@@ -258,7 +258,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // Hybrid-Recall: provider precedence env → cli-settings.json → API-key → none.
+  // Hybrid-Recall: provider precedence env → cli-settings.json → none.
   // embeddingStatusLine logs the resolved mode on EVERY path including success —
   // the silent-success path was the root of #79.
   // Vor dem Embedding-Block konstruiert, weil Prewarm/Unload (#109) ihre
@@ -312,6 +312,10 @@ async function main(): Promise<void> {
   await latencyProfile.load().catch(() => {});
   const { provider: rawProvider, status: embeddingStatus, ollama } = await resolveEmbedding();
   console.error(embeddingStatusLine(embeddingStatus));
+  // #520: an installation that used to ride the OPENAI_API_KEY fallback must
+  // see WHY it is on BM25 now, instead of degrading silently.
+  const consentNotice = cloudConsentNotice(embeddingStatus);
+  if (consentNotice) console.error(consentNotice);
   // Für /health (#92): Runtime-Health des Index, nicht nur die Boot-Config.
   let embIdxForHealth: EmbeddingIndex | null = null;
   // Circuit breaker (#165) am Provider-Boundary: nach 3 konsekutiven
@@ -959,10 +963,11 @@ interface OllamaInfo {
 }
 
 /**
- * Resolve the embedding provider. The PRECEDENCE (env > cli-settings >
- * API-key > none) lives in ONE shared place — resolveEmbeddingChoice in
- * settings.ts, also used by bridge.ts and the CLI (#79) — this function only
- * turns the resolved name into a provider instance + /health status.
+ * Resolve the embedding provider. The PRECEDENCE (env > cli-settings > none)
+ * lives in ONE shared place — resolveEmbeddingChoice in settings.ts, also used
+ * by bridge.ts and the CLI (#79) — this function only turns the resolved name
+ * into a provider instance + /health status. The cloud provider is built by
+ * the one shared gate in embedding-cloud.ts (#520).
  */
 async function resolveEmbedding(): Promise<{
   provider: EmbeddingProvider | null;
@@ -972,15 +977,12 @@ async function resolveEmbedding(): Promise<{
   const choice = await resolveEmbeddingChoice({
     onInvalidEnv: (raw) =>
       console.error(
-        `[bastra-recall] ignoring invalid BASTRA_EMBEDDING_PROVIDER ${JSON.stringify(raw)} — falling through to cli-settings / API-key`,
+        `[bastra-recall] ignoring invalid BASTRA_EMBEDDING_PROVIDER ${JSON.stringify(raw)} — falling through to cli-settings`,
       ),
   });
   if (choice.provider === "ollama") return ollamaEmbedding(choice.source);
-  if (choice.provider === "openai") {
-    // provider "openai" implies the resolver saw a key — re-read it for the ctor.
-    const apiKey = process.env.OPENAI_API_KEY ?? process.env.BASTRA_EMBEDDING_KEY;
-    if (apiKey) return openaiEmbedding(choice.source, apiKey);
-  }
+  const cloud = cloudEmbeddingProvider(choice);
+  if (cloud) return { provider: cloud, status: { on: true, providerId: cloud.id, source: choice.source } };
   return offEmbedding(choice.source);
 }
 
@@ -1001,11 +1003,6 @@ function ollamaEmbedding(source: EmbeddingSource): {
   const keepAlive = process.env.BASTRA_OLLAMA_KEEP_ALIVE ?? "10m";
   const provider = new OllamaEmbeddingProvider({ baseURL, model, dim, keepAlive });
   return { provider, status: { on: true, providerId: provider.id, source }, ollama: { baseURL, model, keepAlive } };
-}
-
-function openaiEmbedding(source: EmbeddingSource, apiKey: string): { provider: EmbeddingProvider; status: EmbeddingStatus } {
-  const provider = new OpenAIEmbeddingProvider({ apiKey });
-  return { provider, status: { on: true, providerId: provider.id, source } };
 }
 
 function offEmbedding(source: EmbeddingSource): { provider: null; status: EmbeddingStatus } {

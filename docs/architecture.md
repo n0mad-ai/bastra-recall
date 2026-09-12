@@ -123,16 +123,18 @@ It then applies staleness reranking based on lifecycle fields such as `valid_unt
 
 ### Hybrid Recall
 
-Embeddings are an optional, configurable second pass; BM25 keyword search is the default. The provider is resolved in one shared place (`resolveEmbeddingChoice` in `packages/daemon/src/settings.ts`, used by the daemon, the bridge, and the CLI) with the precedence env > cli-settings > API-key > none:
+Embeddings are an optional, configurable second pass; BM25 keyword search is the default. The provider is resolved in one shared place (`resolveEmbeddingChoice` in `packages/daemon/src/settings.ts`, used by the daemon, the bridge, and the CLI) with the precedence env > cli-settings > none:
 
 | Source | Value | Behavior |
 |---|---|---|
 | env `BASTRA_EMBEDDING_PROVIDER` | `none` / `ollama` / `openai` | always wins over the settings file |
 | `~/.bastra/cli-settings.json` `embedding.provider` | `none` / `ollama` / `openai` | written by `bastra embeddings on\|off` (or the `bastra install` end prompt); used when no env is set |
-| unset + API key (`OPENAI_API_KEY` / `BASTRA_EMBEDDING_KEY`) | — | use OpenAI for backwards compatibility |
+| unset + API key (`OPENAI_API_KEY` / `BASTRA_EMBEDDING_KEY`) | — | **BM25 only** — a generic credential is not consent (#520) |
 | unset + no API key | — | BM25 only |
 
-`ollama` uses local Ollama `/v1/embeddings`; `openai` requires an API key. `bastra embeddings status` shows the effective provider and which source decided it.
+`ollama` uses local Ollama `/v1/embeddings` and keeps every text on the machine. `openai` is the one mode that sends data off-device: recall queries and the memory text being indexed are POSTed to `api.openai.com`. It therefore requires an **explicit** Bastra decision — `BASTRA_EMBEDDING_PROVIDER=openai` or `bastra config set embedding.provider openai` — plus an API key. Until #520 a bare `OPENAI_API_KEY` in the environment selected it on its own, which meant a key exported for an unrelated tool could ship the whole backfill corpus to OpenAI without any Bastra-specific opt-in; the resolver now stops at `none` in that case and the daemon, `bastra embeddings status` and `bastra doctor` print a migration line explaining how to opt in on purpose. The OpenAI provider is built in exactly one place (`cloudEmbeddingProvider`, `packages/daemon/src/embedding-cloud.ts`), so that gate cannot be bypassed by a second call site.
+
+`bastra embeddings status` shows the effective provider, which source decided it, and whether that provider keeps text on-device.
 
 The Ollama endpoint (`BASTRA_OLLAMA_URL`, default `http://localhost:11434`) is egress-guarded: a non-loopback host is refused unless `BASTRA_ALLOW_REMOTE_OLLAMA=1` is set explicitly, so a mistyped or injected URL can never send memory text off-box. The guard (`assertLocalOrOptIn`, `packages/core/src/ollama-egress.ts`) covers **both** callers — the embedding provider (query + memory text) and the reranker (candidate text) — so the "no cloud, no egress, stays on the machine" property holds outbound as well as for the loopback-only inbound server.
 
@@ -245,6 +247,8 @@ Topic detection is deterministic and based on file extension, path segments, and
 
 ## Privacy And Safety
 
+**Vault content — memories, documents and recall queries — never leaves the machine unless you explicitly choose a remote provider or expose the REST gateway yourself.** The two ways to choose that are `embedding.provider=openai` (see Hybrid Recall) and a tunnel/reverse proxy in front of `127.0.0.1:6723`. Separately, a few **optional, off-by-default or metadata-only** features do make outbound requests without carrying vault content: the update/version check (`BASTRA_UPDATE_CHECK=off` disables it), the statusline pricing refresh, weather/geocoding lookups (they send a coarse, user-chosen or browser-supplied location, nothing from the vault), and Bastra Commons sync, which is opt-in and only publishes what you submit in a reviewed PR.
+
 - The daemon binds to `127.0.0.1`.
 - The vault is plain local markdown.
 - `sensitivity: private` memories are hidden from external MCP/REST callers unless an internal caller explicitly uses `allow_private: true`.
@@ -260,7 +264,7 @@ Topic detection is deterministic and based on file extension, path segments, and
 | Runtime | Node 22+, TypeScript, ESM |
 | MCP | `@modelcontextprotocol/sdk` |
 | Search | MiniSearch BM25 in memory |
-| Embeddings | Optional OpenAI or Ollama provider, in-memory vectors with JSON persistence |
+| Embeddings | Optional local Ollama provider, or OpenAI after an explicit opt-in; in-memory vectors with JSON persistence |
 | Vault parsing | `gray-matter` + Zod frontmatter schema |
 | File watching | `chokidar` with polling on cloud mounts |
 | HTTP | Node `http` server |

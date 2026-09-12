@@ -27,3 +27,24 @@ export function embeddingStatusLine(s: EmbeddingStatus, prefix = "[bastra-recall
   }
   return `${prefix} semantic recall: OFF — BM25 keyword search only. Enable it: bastra embeddings on`;
 }
+
+/**
+ * #520: the migration line for an installation that used to ride the old
+ * "OPENAI_API_KEY present → cloud embeddings" fallback.
+ *
+ * That fallback is gone: a generic credential another tool exported is not a
+ * decision to send this vault's queries and memory text to OpenAI. Someone who
+ * WANTED the cloud provider must not just silently degrade to BM25, so every
+ * boot in this state says what changed and how to opt in on purpose.
+ *
+ * `null` = nothing to report (no key, or an explicit choice is in effect).
+ */
+export function cloudConsentNotice(s: EmbeddingStatus, prefix = "[bastra-recall]"): string | null {
+  if (s.source !== "api-key") return null;
+  return (
+    `${prefix} OPENAI_API_KEY is set but no Bastra embedding provider was chosen — ` +
+    `cloud embeddings stay OFF (#520: a generic key is not consent to send vault text to OpenAI). ` +
+    `Local semantic recall: bastra embeddings on — OpenAI on purpose (query + memory text leaves your machine): ` +
+    `bastra config set embedding.provider openai`
+  );
+}

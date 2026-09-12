@@ -4,7 +4,7 @@
   "display_name": "Bastra Recall",
   "version": "__VERSION__",
   "description": "Persistent local memory for Claude — recalls before acting, saves what matters.",
-  "long_description": "Bastra Recall gives Claude a durable, local-first memory: a folder of plain Markdown files (Obsidian-compatible) served by one local daemon that every AI tool on your machine shares. Claude recalls your preferences, lessons and project facts before acting, and saves durable rules, decisions and facts as they come up — nothing leaves your machine. This extension bundles the MCP forwarder; the shared daemon is started automatically on first use. Fresh vault? Claude offers a 5-minute onboarding interview, and `bastra import` brings memories over from ChatGPT, Claude or Gemini exports.",
+  "long_description": "Bastra Recall gives Claude a durable, local-first memory: a folder of plain Markdown files (Obsidian-compatible) served by one local daemon that every AI tool on your machine shares. Claude recalls your preferences, lessons and project facts before acting, and saves durable rules, decisions and facts as they come up — your vault content stays on your machine unless you explicitly switch recall to a remote embedding provider. This extension bundles the MCP forwarder; the shared daemon is started automatically on first use. Fresh vault? Claude offers a 5-minute onboarding interview, and `bastra import` brings memories over from ChatGPT, Claude or Gemini exports.",
   "author": {
     "name": "n0mad",
     "url": "https://github.com/n0mad-ai"

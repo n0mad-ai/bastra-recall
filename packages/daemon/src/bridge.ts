@@ -26,7 +26,6 @@ import {
   Vault,
   SearchIndex,
   EmbeddingIndex,
-  OpenAIEmbeddingProvider,
   OllamaEmbeddingProvider,
   RelatedEnricher,
   type EmbeddingProvider,
@@ -39,7 +38,8 @@ import {
   scopeEquals,
 } from "@bastra-recall/core";
 import { envFirst, envInt, envFloat, envBool } from "./env.js";
-import { embeddingStatusLine, type EmbeddingStatus, type EmbeddingSource } from "./embedding-status.js";
+import { embeddingStatusLine, cloudConsentNotice, type EmbeddingStatus, type EmbeddingSource } from "./embedding-status.js";
+import { cloudEmbeddingProvider } from "./embedding-cloud.js";
 import {
   getDocsMode,
   setDocsMode,
@@ -62,7 +62,8 @@ import * as path from "node:path";
  * Aktiviert Embeddings über die EINE geteilte Auflösung (settings.ts,
  * resolveEmbeddingChoice — dieselbe wie index.ts und die CLI, #79):
  *   env BASTRA_EMBEDDING_PROVIDER > cli-settings.json embedding.provider >
- *   API-Key (Backwards-Compat) > none (Recall fällt auf reines BM25).
+ *   none (Recall fällt auf reines BM25). Ein bloßer OPENAI_API_KEY schaltet
+ *   die Cloud NIE frei (#520).
  *
  * Env gewinnt immer — die Pro-App gibt ihre Wahl im Spawn-Env mit und wird
  * von der Datei nie überstimmt. Setzt die App KEIN Env, greift die per
@@ -74,6 +75,9 @@ async function attachEmbeddings(search: SearchIndex, vault: Vault): Promise<void
   // Same wording as the daemon (index.ts) via the shared helper; bridge keeps
   // its own tag. Logged on every path including success (the silence was #79).
   process.stderr.write(embeddingStatusLine(status, "[bastra-recall.bridge]") + "\n");
+  // #520: same migration notice as the daemon, same wording, bridge tag.
+  const consentNotice = cloudConsentNotice(status, "[bastra-recall.bridge]");
+  if (consentNotice) process.stderr.write(consentNotice + "\n");
   if (!provider) return;
   const persistPath = path.join(VAULT_PATH!, ".bastra", "embeddings.json");
   const idx = new EmbeddingIndex(vault, provider, persistPath);
@@ -145,7 +149,7 @@ async function probeDaemonHealth(): Promise<boolean> {
 /**
  * Provider resolution via the shared resolveEmbeddingChoice (settings.ts) —
  * identical precedence to index.ts and the CLI: env > cli-settings.json >
- * API-key > none. Env always wins, so the Pro app's spawn-env choice is never
+ * none. Env always wins, so the Pro app's spawn-env choice is never
  * overridden by the file; the file only fills the gap when no env is set
  * (owner decision on #79: the persisted setting reaches the daemon regardless
  * of which client spawned it).
@@ -154,14 +158,12 @@ async function resolveEmbedding(): Promise<{ provider: EmbeddingProvider | null;
   const choice = await resolveEmbeddingChoice({
     onInvalidEnv: (raw) =>
       process.stderr.write(
-        `[bastra-recall.bridge] ignoring invalid BASTRA_EMBEDDING_PROVIDER ${JSON.stringify(raw)} — falling through to cli-settings / API-key\n`,
+        `[bastra-recall.bridge] ignoring invalid BASTRA_EMBEDDING_PROVIDER ${JSON.stringify(raw)} — falling through to cli-settings\n`,
       ),
   });
   if (choice.provider === "ollama") return ollamaE(choice.source);
-  if (choice.provider === "openai") {
-    const apiKey = process.env.OPENAI_API_KEY ?? process.env.BASTRA_EMBEDDING_KEY;
-    if (apiKey) return openaiE(choice.source, apiKey);
-  }
+  const cloud = cloudEmbeddingProvider(choice);
+  if (cloud) return { provider: cloud, status: { on: true, providerId: cloud.id, source: choice.source } };
   return offE(choice.source);
 }
 
@@ -174,11 +176,6 @@ function ollamaE(source: EmbeddingSource): { provider: EmbeddingProvider; status
   const parsed = dimEnv ? Number.parseInt(dimEnv, 10) : undefined;
   const dim = parsed !== undefined && Number.isFinite(parsed) ? parsed : undefined;
   const provider = new OllamaEmbeddingProvider({ baseURL, model, dim });
-  return { provider, status: { on: true, providerId: provider.id, source } };
-}
-
-function openaiE(source: EmbeddingSource, apiKey: string): { provider: EmbeddingProvider; status: EmbeddingStatus } {
-  const provider = new OpenAIEmbeddingProvider({ apiKey });
   return { provider, status: { on: true, providerId: provider.id, source } };
 }
 

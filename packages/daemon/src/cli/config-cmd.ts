@@ -73,7 +73,7 @@ async function cmdConfigGet(key: KnownKey): Promise<number> {
       return 0;
     case "embedding.provider": {
       const p = await getEmbeddingProvider();
-      process.stdout.write(`${p ?? "(unset — falls through to env / API-key, else BM25)"}\n`);
+      process.stdout.write(`${p ?? "(unset — falls through to env, else BM25)"}\n`);
       const env = process.env.BASTRA_EMBEDDING_PROVIDER;
       if (env) process.stdout.write(`  note: BASTRA_EMBEDDING_PROVIDER=${env} (env) overrides this file at runtime\n`);
       return 0;

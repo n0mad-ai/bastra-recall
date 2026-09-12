@@ -10,7 +10,9 @@
  *   - embedding.provider (optional): "ollama" | "openai" | "none"
  *       Written by `bastra embeddings on|off`, by the `bastra install` end
  *       prompt, or by `bastra config set`. Absent = "no opinion" → the daemon
- *       falls through to env / API-key. This is the file half of the #79 fix;
+ *       stays on BM25 unless BASTRA_EMBEDDING_PROVIDER says otherwise; an
+ *       OPENAI_API_KEY alone never enables the cloud provider (#520). This is
+ *       the file half of the #79 fix;
  *       resolveEmbeddingChoice below is the ONE resolution everyone shares.
  *   - ollama.autostart (optional): boolean (default true)
  *       Whether `bastra install` keeps a local `ollama serve` running at login.
@@ -48,7 +50,7 @@ export const DEFAULT_DOCS_LANGUAGE = "en";
 
 export interface CliSettings {
   update: { mode: UpdateMode };
-  // undefined = "no opinion" → daemon falls through to env / API-key.
+  // undefined = "no opinion" → daemon falls through to env, else BM25.
   embedding?: { provider: EmbeddingProviderName };
   // undefined = unset → treated as default (true) by getOllamaAutostart.
   ollama?: { autostart: boolean };
@@ -529,13 +531,16 @@ export async function resolveGenerationModel(path?: string): Promise<string> {
  *
  *   1. env BASTRA_EMBEDDING_PROVIDER — always wins (none | ollama | openai)
  *   2. cli-settings.json embedding.provider — when env is unset/invalid
- *   3. backwards-compat — an API key present with no explicit choice → openai
- *   4. none → BM25 keyword search only
+ *   3. none → BM25 keyword search only
+ *
+ * Cloud embeddings need an EXPLICIT Bastra decision (1 or 2). A generic
+ * OPENAI_API_KEY in the environment is a credential, not consent (#520).
  *
  * `provider` is the EFFECTIVE choice (what the daemon will run); `requested`
- * keeps what env/file asked for when it could not be honoured (today: openai
- * without an API key → provider "none", requested "openai") so status/doctor
- * can explain the gap instead of reporting a silent "none".
+ * keeps what env/file asked for when it could not be honoured (openai without
+ * an API key, or a bare key without an explicit choice → provider "none",
+ * requested "openai") so status/doctor can explain the gap instead of
+ * reporting a silent "none".
  */
 export interface EmbeddingChoice {
   provider: EmbeddingProviderName;
@@ -578,8 +583,15 @@ export async function resolveEmbeddingChoice(
       : { provider: "none", source: "cli-settings", requested: "openai" };
   }
 
-  // Tier 3: backwards-compat — key present, no explicit choice anywhere.
-  if (hasApiKey) return { provider: "openai", source: "api-key" };
+  // Tier 3 (#520): a bare API key is NOT consent. It used to resolve to
+  // "openai", which meant any machine that exported OPENAI_API_KEY for some
+  // other tool started POSTing recall queries and the whole backfill corpus to
+  // api.openai.com without a single Bastra-specific decision. The effective
+  // provider is therefore "none" (BM25 only) — but `source: "api-key"` plus
+  // `requested: "openai"` keeps WHY visible, so the daemon, status and doctor
+  // can tell an existing user that the old fallback stopped and how to opt in
+  // on purpose (`bastra config set embedding.provider openai`).
+  if (hasApiKey) return { provider: "none", source: "api-key", requested: "openai" };
 
   // Tier 4: nothing requested.
   return { provider: "none", source: "none" };

@@ -10,7 +10,8 @@
  *          "configured but model missing" instead of a silent none.
  *   off    persist embedding.provider=none (recall = BM25 keyword search only).
  *   status effective provider + WHERE it came from (env / cli-settings /
- *          API-key / default) + Ollama server & model presence.
+ *          default) + Ollama server & model presence, plus whether the
+ *          effective provider keeps text on-device or sends it to OpenAI.
  *
  * Also home of the install-end prompt (installSemanticRecallStep) and the
  * doctor note (printEmbeddingDoctorNote) so every surface points at the same
@@ -29,6 +30,17 @@ import { probeDaemon } from "./helpers.js";
 import { confirm, isInteractive } from "./prompt.js";
 
 const ENABLE_HINT = "bastra embeddings on";
+
+/** #520: what the EXPLICIT cloud choice actually does with your data — stated
+ *  plainly wherever the effective provider is reported. */
+const CLOUD_EGRESS_NOTE =
+  "your recall queries and the memory text being indexed are sent to api.openai.com";
+/** #520: why a bare OPENAI_API_KEY no longer turns cloud embeddings on, and
+ *  the two ways out (local by default, cloud only on purpose). */
+const CLOUD_CONSENT_NOTE =
+  "OPENAI_API_KEY is set, but a generic key is not consent to send vault text to OpenAI — " +
+  "cloud embeddings stay OFF. Local semantic recall: `bastra embeddings on`. " +
+  "OpenAI on purpose: `bastra config set embedding.provider openai`";
 
 /** What the user gives up by leaving it off, in one clause.
  *
@@ -135,8 +147,15 @@ async function cmdStatus(settingsPath?: string, probe: typeof probeDaemon = prob
     /* no running daemon = nothing to add */
   }
 
-  if (choice.requested === "openai" && choice.provider === "none") {
+  if (choice.source === "api-key") {
+    write(`  ⚠ ${CLOUD_CONSENT_NOTE}`);
+  } else if (choice.requested === "openai" && choice.provider === "none") {
     write("  ⚠ openai is requested but no API key is set (OPENAI_API_KEY / BASTRA_EMBEDDING_KEY) — falling back to none");
+  }
+  if (choice.provider === "openai") {
+    write(`  egress: ${CLOUD_EGRESS_NOTE}`);
+  } else if (choice.provider === "ollama") {
+    write("  egress: none — embeddings run on your machine via Ollama (loopback only)");
   }
   if (choice.source === "env" && fileProvider && envRaw && envRaw.toLowerCase() !== fileProvider) {
     write(`  note: BASTRA_EMBEDDING_PROVIDER=${envRaw} (env) overrides embedding.provider=${fileProvider} (cli-settings)`);
@@ -170,7 +189,7 @@ function sourceLabel(
     case "cli-settings":
       return `embedding.provider=${fileProvider} (${settingsPath ?? settingsFilePath()})`;
     case "api-key":
-      return "OPENAI_API_KEY present, no explicit provider (backwards-compat)";
+      return "default (OPENAI_API_KEY present, but no explicit provider chosen — #520)";
     case "none":
       return "default (nothing configured)";
   }
@@ -302,7 +321,9 @@ export function formatEmbeddingDoctorLines(i: {
     } else {
       lines.push(`  note: ${RECALL_OFF_NOTE}`);
     }
-    if (choice.requested === "openai") {
+    if (choice.source === "api-key") {
+      lines.push(`  note: ${CLOUD_CONSENT_NOTE}`);
+    } else if (choice.requested === "openai") {
       lines.push(`  note: openai is requested (source: ${choice.source}) but no API key is set (OPENAI_API_KEY / BASTRA_EMBEDDING_KEY)`);
     }
   } else if (choice.provider === "ollama") {
@@ -314,7 +335,7 @@ export function formatEmbeddingDoctorLines(i: {
       lines.push(`  ✓ ok: ollama ${i.probe?.detail ?? "configured"}, model embeddinggemma present (source: ${choice.source})`);
     }
   } else {
-    lines.push(`  ✓ ok: openai (source: ${choice.source})`);
+    lines.push(`  ✓ ok: openai (source: ${choice.source}) — ${CLOUD_EGRESS_NOTE}`);
   }
 
   if (
