@@ -371,3 +371,68 @@ Commits and green targeted tests are present for #425, #435, #441, #464, #519, #
 `#62, #305, #308, #437, #439, #447, #506, #522, #531`.
 
 The live GitHub milestone still contained all 27 original open issues during this pass. Local commits had not yet been pushed to `origin/main`, so issue state alone is not used to reject an otherwise verified fix; it does mean the final zero-open-item release condition is not yet met.
+
+## Independent Codex counter-review — pass 2
+
+Counter-reviewed revision: `76798d50523171a063139e8829ed745b04a1e0ea` (18 commits after pass 1; `origin/main` was `82451a75a9c502fbfc2627820ae509dd23a0a684` during this pass).
+Counter-review verdict: **NO-GO remains**. Seven pass-1 counter-findings are now corrected, but #62, #305, #308 and #506 still fail their original acceptance boundary, while #522 and #531 have no implementation commit.
+
+### Mechanical suite on `76798d5`
+
+- `npm ci`: clean install, 0 vulnerabilities
+- `npm run check:types`: pass
+- `npm test`: 2,727 tests; 2,725 passed, 0 failed, 1 skipped, 1 todo
+- `npm run pack:check`: pass for all four published packages
+- `npm audit --audit-level=low`: 0 vulnerabilities
+- `npm run smoke`: 7/7
+- `npm run smoke:telemetry`: pass, 3 correlated events
+- `npm run test:update`: 15/15
+
+### Pass-1 counter-findings now independently cleared
+
+- **#529:** a fresh 20-process reproduction retained 20/20 staged import candidates and 20/20 queued conversations. The import stores now take the cross-process lock across their complete read-modify-write transaction.
+- **#536:** the real CLI now rejects `uninstall cursor --dry-run=false` before dispatch with exit 2. The exact formerly mutating attached-value shape no longer reaches uninstall.
+- **#527:** the real Finder-uninstaller integration leaves an unrelated listener carrying the inert argument `note:/some/daemon/dist/index.js` alive and reports that it is not the Bastra daemon.
+- **#519:** a second same-day edit using the first caller's stale `expected_revision` is refused, the first tags change remains present, and a retry with the returned new revision succeeds. `load_memory` and `edit_memory` now expose the same byte-revision contract.
+- **#528:** builds copied from another revision and touched stale builds are refused as mismatches; a daemon reporting a different build is reported as not live. Build and daemon revision claims no longer derive from mtimes.
+- **#535:** both installers fail closed when a no-op upgrade or fresh install leaves the old CLI version, and also when the requested version cannot be established. Setup is not re-run against the version that failed to land.
+- **#524:** the 1.0.0 dry run now stages a draft stable release, explicitly dispatches the publish workflow, verifies candidate-versus-registry tarball integrity before resuming, and promotes only after all npm packages and required assets pass. The targeted release-set suite passes 16/16.
+
+### Additional fixes that pass their targeted counter-checks
+
+- **#437:** every reporting path tested emits `NOT EVALUABLE` and no numeric arm rate below the registration's session-level minimum N.
+- **#439:** dimensioned events carry experiment name, registration path and registration version, including the unassigned/no-session case under an active registration.
+- **#447:** `--check` detects content, case-set, source-batch and recorded-label-hash drift between staged labels and merged gold.
+- **#538:** concurrent background/manual curator passes on one vault are single-flight; one runs and the other returns `skipped: in-progress` without duplicating state/report work.
+- **#539:** concurrent mutations from the five daemon hook lanes retain the durable session-state union through a per-session read-modify-write transaction.
+
+Issues #538 and #539 were created during Claude's durability audit and fixed in this revision, but remained open and outside the v1 milestone during this pass. They must be triaged and closed with their landed commits before the final issue-state gate.
+
+### Remaining release blockers after pass 2
+
+#### #305 — measurement fold is still ambiguous, and the live rate still misses the gate
+
+The corrected readout excludes restart windows and folds duplicate client/daemon observations, but `foldClientDuplicates()` matches only event kind and a ±500 ms timestamp window. Both rows already carry `session_id`; nevertheless, an independent two-row reproduction with `session-A` and `session-B`, 100 ms apart, returned `folded: 1` and changed session A's successful daemon row into session B's timeout. Simultaneous clients can therefore corrupt both denominator and verdict. Evidence was added to GitHub issue #305.
+
+Even before that ambiguity is repaired, the corrected seven-day source readout still fails the product target: 1,412 steady-state calls, 69 timeouts (4.9%), assertion median 424 ms and p90 731 ms. The p90 exceeds the current 600 ms hook budget and is far above the issue's explicit 200 ms ceiling. The commit itself changes accounting, not lane cost.
+
+#### #62 — the new stress test does not run through Claude Code
+
+The 70-call harness passed: 70 accepted, 70 byte-identical on disk, 280 progress notifications, no duplicates and no truncated-frame write. However, it instantiates the generic MCP SDK `Client` and `StdioClientTransport`; it never launches Claude Code. The issue's prior evidence already established that this generic SDK/forwarder path succeeds and that the intermittent defect existed only in Claude Code's progress-notification handling. The HTTP oversize-response fix addresses a separate body-cap failure. The original supported-client boundary therefore remains unverified; evidence was added to #62.
+
+#### #506 — Claude's new task event is wired, but Codex/ChatGPT remains an unsupported claim
+
+The Claude Code adapter now registers `TaskCreate` and the lane correctly normalizes its one-task payload. The Codex adapter still relies exclusively on `PreToolUse: update_plan`, while this current Codex Desktop task exposes no `update_plan` tool/event. Synthetic payload tests prove normalization, not automatic client emission. The product docs still promise before-plan recall on Codex/ChatGPT Desktop. Evidence was added to #506; either a real automatic event per advertised client or narrower launch copy is still required.
+
+#### #308 — stronger wording is still not end-to-end onboarding evidence
+
+The injected block now commands the model to run onboarding immediately. Its own implementation notes correctly admit that acting on injected context remains nondeterministic and that hookless clients may never receive the block. Tests assert wording and token accounting only; they do not show a fresh advertised client actually starting the interview. `docs/USAGE.md` still promises that the AI session offers the adaptive third onboarding surface. The original defect was delivered-but-ignored context, so a wording-only change cannot close it without a real-session observation or narrowed copy. Evidence was added to #308.
+
+#### #522 and #531 — still not implemented
+
+- **#522:** README, PLAN and both governing architecture documents still say v1 introduces a global context budget. The milestone description has been corrected to a cumulative shadow ledger, but the four versioned sources still contradict that decision.
+- **#531:** runtime code still contains independent fixed-default probes and labels (`cli/helpers.ts`, `cli/update-hint.ts`, adapter `daemon-on-6723` details, embeddings/update output), and install/autostart endpoint propagation remains absent. The fabricated cross-instance status boundary is unchanged.
+
+### GitHub state at pass 2
+
+All 27 original v1 milestone issues remained open. Most fix commits were now on `origin/main`, but the #62 and #308 commits were still local only. This does not invalidate a code fix, but it independently fails the final release condition: every P0/P1 must be closed with evidence and the current v1 milestone must contain no unexplained open item.
