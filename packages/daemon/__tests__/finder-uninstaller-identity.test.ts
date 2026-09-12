@@ -5,6 +5,12 @@
  * service owns that port — and a double-clicked uninstaller then stopped it
  * while reporting it as the Bastra daemon.
  *
+ * The first fix asked whether `daemon/dist/index.js` appeared anywhere in the
+ * `ps` line — which an inert argument satisfies just as well as the script
+ * being executed. Identity is now the entry point of the installation on this
+ * disk (the `bastra` shim's own package, the Homebrew keg, the npm global
+ * root, this checkout), so the tests below build that layout too.
+ *
  * These tests run the real script end to end in a sealed environment:
  *   · HOME points at a temp dir (log file, LaunchAgents plist)
  *   · PATH is prefixed with stub `bastra` / `launchctl`, so nothing on this
@@ -17,7 +23,7 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,8 +47,8 @@ interface Listener {
 }
 
 /** Starts the listener from `file` and waits for the port it bound. */
-async function startListener(file: string): Promise<Listener> {
-  const child = spawn(process.execPath, [file], { stdio: ["ignore", "pipe", "ignore"] });
+async function startListener(file: string, ...args: string[]): Promise<Listener> {
+  const child = spawn(process.execPath, [file, ...args], { stdio: ["ignore", "pipe", "ignore"] });
   const port = await new Promise<number>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("listener did not report a port")), 10_000);
     child.stdout!.on("data", (b: Buffer) => {
@@ -69,6 +75,16 @@ async function startListener(file: string): Promise<Listener> {
   };
 }
 
+/**
+ * The install layout the identity check reads (#527): `bastra` on PATH is a
+ * symlink to `<install>/daemon/dist/cli.js`, exactly as the Homebrew formula
+ * links it — so `index.js` next to it is the entry point this machine expects.
+ * `<dir>/pkg/daemon/dist/index.js` is therefore the ONLY process the
+ * uninstaller may stop in these tests.
+ */
+const installedDaemonScript = (dir: string): string =>
+  join(dir, "pkg", "daemon", "dist", "index.js");
+
 /** Sealed HOME + stub PATH; returns what the script printed. */
 async function runUninstaller(dir: string, port: number): Promise<string> {
   const home = join(dir, "home");
@@ -76,8 +92,14 @@ async function runUninstaller(dir: string, port: number): Promise<string> {
   await mkdir(join(home, "Library", "Logs"), { recursive: true });
   await mkdir(join(home, "Library", "LaunchAgents"), { recursive: true });
   await mkdir(bin, { recursive: true });
-  await writeFile(join(bin, "bastra"), '#!/bin/sh\necho "  [stub bastra] $*"\nexit 0\n', { mode: 0o755 });
+  const cli = join(dir, "pkg", "daemon", "dist", "cli.js");
+  await mkdir(dirname(cli), { recursive: true });
+  await writeFile(cli, '#!/bin/sh\necho "  [stub bastra] $*"\nexit 0\n', { mode: 0o755 });
+  await symlink(cli, join(bin, "bastra"));
   await writeFile(join(bin, "launchctl"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+  // No real installer is ever asked where it put things.
+  await writeFile(join(bin, "brew"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+  await writeFile(join(bin, "npm"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
 
   const r = spawnSync("/bin/bash", [SCRIPT], {
     // "y" confirms, "x" satisfies the final "press any key".
@@ -138,11 +160,54 @@ test("#527 — an unrelated listener on the daemon port survives the Finder unin
   });
 });
 
+test("#527 — an inert argv substring is not identity: the listener survives", async () => {
+  await withTempDir(async (dir) => {
+    // The counter-review's reproduction: an unrelated service whose command
+    // line merely MENTIONS the entry point, in an argument that does nothing.
+    // The substring test said "Bastra" and the process was killed.
+    const file = join(dir, "unrelated-service.mjs");
+    await writeFile(file, LISTENER_SRC, "utf8");
+    const listener = await startListener(file, "note:/some/daemon/dist/index.js");
+    try {
+      const out = await runUninstaller(dir, listener.port);
+      await settle();
+      assert.equal(
+        listener.alive(),
+        true,
+        `an inert argument was accepted as daemon identity:\n${out}`,
+      );
+      assert.match(out, /NOT the Bastra daemon/);
+      assert.match(out, /daemon was NOT stopped/);
+    } finally {
+      listener.child.kill("SIGKILL");
+    }
+  });
+});
+
+test("#527 — a daemon entry point from another installation is not stopped either", async () => {
+  await withTempDir(async (dir) => {
+    // Right shape, wrong install: identity is the file THIS machine installed,
+    // not any path that happens to end in daemon/dist/index.js.
+    const file = join(dir, "elsewhere", "daemon", "dist", "index.js");
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, LISTENER_SRC, "utf8");
+    const listener = await startListener(file);
+    try {
+      const out = await runUninstaller(dir, listener.port);
+      await settle();
+      assert.equal(listener.alive(), true, `a foreign install's entry point was stopped:\n${out}`);
+      assert.match(out, /NOT the Bastra daemon/);
+    } finally {
+      listener.child.kill("SIGKILL");
+    }
+  });
+});
+
 test("#527 — a positively identified daemon on the configured port is still stopped", async () => {
   await withTempDir(async (dir) => {
-    // The identity criterion is the daemon entry point on the command line —
-    // the same one packages/daemon/src/cli/daemon-processes.ts matches on.
-    const file = join(dir, "pkg", "daemon", "dist", "index.js");
+    // The identity criterion is the entry point of the installation `bastra`
+    // on PATH belongs to — resolved the way resolveInstalledRuntime() does it.
+    const file = installedDaemonScript(dir);
     await mkdir(dirname(file), { recursive: true });
     await writeFile(file, LISTENER_SRC, "utf8");
     const listener = await startListener(file);

@@ -95,37 +95,137 @@ fi
 # start, another local service legitimately owns that port, and a double-clicked
 # uninstaller that kills it is a destructive side effect nobody asked for.
 #
-# So the port only narrows the search, and the command line decides. The entry
-# point `daemon/dist/index.js` is what every install route execs (Homebrew, npm,
-# source checkout) — the same criterion the CLI uses to find daemons
-# (packages/daemon/src/cli/daemon-processes.ts). Anything else keeps running and
-# is reported with the manual command, rather than being stopped on a guess.
+# So the port only narrows the search, and the INSTALLATION decides. A
+# substring of the `ps` line is not identity: a process started with the inert
+# argument `note:/some/daemon/dist/index.js` passed that test and was killed
+# (#527, counter-review). What proves identity is the file the process actually
+# executes — it has to BE the daemon entry point of an installation that is on
+# this disk right now.
+#
+# The expected entry points are resolved the way `resolveInstalledRuntime()`
+# does it in packages/daemon/src/cli/update.ts (#435): ask each install route
+# where it put things — Homebrew keg, npm global root, this checkout — plus the
+# `bastra` shim on PATH, whose target sits next to `index.js` in every route.
+# Resolves nothing? Then nothing is stopped, and the manual command is printed.
 #
 # The port itself comes from the same place the daemon reads it from, so a
 # configured non-default port is respected instead of assuming 6723.
+
+# An existing file as its absolute, symlink-free path — or nothing.
+canonical_file() {
+  [ -f "$1" ] || return 1
+  _d="$(cd "$(dirname "$1")" 2>/dev/null && pwd -P)" || return 1
+  printf '%s/%s\n' "$_d" "$(basename "$1")"
+}
+
+# Follow a chain of symlinks (macOS readlink has no portable -f) and canonicalise.
+resolve_link() {
+  _p="$1"
+  _n=0
+  while [ -L "$_p" ] && [ "$_n" -lt 20 ]; do
+    _t="$(readlink "$_p")"
+    case "$_t" in
+      /*) _p="$_t" ;;
+      *) _p="$(dirname "$_p")/$_t" ;;
+    esac
+    _n=$((_n + 1))
+  done
+  canonical_file "$_p"
+}
+
+EXPECTED_SCRIPTS=""
+add_expected() {
+  _e="$(canonical_file "$1" 2>/dev/null || true)"
+  [ -n "$_e" ] || return 0
+  case "$EXPECTED_SCRIPTS" in
+    *"|$_e|"*) return 0 ;;
+  esac
+  EXPECTED_SCRIPTS="$EXPECTED_SCRIPTS|$_e|"
+}
+
+is_expected_script() {
+  [ -n "$1" ] || return 1
+  case "$EXPECTED_SCRIPTS" in
+    *"|$1|"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# 1) The `bastra` shim on PATH. Homebrew links it to
+#    libexec/packages/daemon/dist/cli.js (index.js is its sibling); the npm
+#    package ships bin/bastra.mjs next to the @bastra-recall/daemon dependency.
+if [ -n "$BASTRA" ]; then
+  CLI_REAL="$(resolve_link "$BASTRA" 2>/dev/null || true)"
+  if [ -n "$CLI_REAL" ]; then
+    CLI_DIR="$(dirname "$CLI_REAL")"
+    add_expected "$CLI_DIR/index.js"
+    add_expected "$CLI_DIR/../../@bastra-recall/daemon/dist/index.js"
+    add_expected "$CLI_DIR/../../../@bastra-recall/daemon/dist/index.js"
+  fi
+fi
+# 2) Homebrew keg and 3) npm global root — asked, never guessed.
+if command -v brew >/dev/null 2>&1; then
+  BREW_PREFIX="$(brew --prefix bastra-recall 2>/dev/null || true)"
+  [ -n "$BREW_PREFIX" ] && add_expected "$BREW_PREFIX/libexec/packages/daemon/dist/index.js"
+fi
+if command -v npm >/dev/null 2>&1; then
+  NPM_ROOT="$(npm prefix -g 2>/dev/null || true)"
+  [ -n "$NPM_ROOT" ] && add_expected "$NPM_ROOT/lib/node_modules/@bastra-recall/daemon/dist/index.js"
+fi
+# 4) A source checkout — this script lives in its distribution/ directory.
+HERE="$(cd "$(dirname "$0")" && pwd -P)"
+add_expected "$HERE/../packages/daemon/dist/index.js"
+
+# The file a process executes: argv[0] (a bin shim) or the runtime's script
+# argument (the first token that is not an option). Nothing else in argv counts.
+executed_script() {
+  _cmd="$(ps -p "$1" -o command= 2>/dev/null || true)"
+  [ -n "$_cmd" ] || return 1
+  set -f
+  # shellcheck disable=SC2086 # `ps` gives one string; splitting it IS the parse.
+  set -- $_cmd
+  set +f
+  [ "$#" -gt 0 ] || return 1
+  _argv0="$1"
+  shift
+  for _tok in "$@"; do
+    case "$_tok" in
+      -*) continue ;;
+    esac
+    canonical_file "$_tok" 2>/dev/null || true
+    return 0
+  done
+  canonical_file "$_argv0" 2>/dev/null || true
+  return 0
+}
+
 echo
 echo "→ [3/4] Stopping the daemon…"
 PORT="${BASTRA_HTTP_PORT:-${NEXUS_HTTP_PORT:-6723}}"
 daemon_stopped=0
 foreign_listener=0
+if [ -z "$EXPECTED_SCRIPTS" ]; then
+  echo "  no installed Bastra daemon found on this disk (Homebrew, npm or checkout)."
+  echo "  Nothing on the port will be stopped — identity cannot be proven without it."
+fi
 DAEMON_PIDS="$(lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null || true)"
 if [ -n "$DAEMON_PIDS" ]; then
   for pid in $DAEMON_PIDS; do
     cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
-    case "$cmd" in
-      *daemon/dist/index.js*)
-        echo "  stopping the Bastra daemon: pid $pid (port $PORT)"
-        kill "$pid" 2>/dev/null || true
-        daemon_stopped=1
-        ;;
-      *)
-        foreign_listener=1
-        echo "  ⚠ pid $pid owns port $PORT, but it is NOT the Bastra daemon — left running."
-        echo "    process: ${cmd:-<command line unreadable>}"
-        echo "    Nothing was stopped here. If you are certain this is Bastra, stop it yourself:"
-        echo "      kill $pid"
-        ;;
-    esac
+    script="$(executed_script "$pid" || true)"
+    if is_expected_script "$script"; then
+      echo "  stopping the Bastra daemon: pid $pid (port $PORT)"
+      echo "    entry point: $script"
+      kill "$pid" 2>/dev/null || true
+      daemon_stopped=1
+    else
+      foreign_listener=1
+      echo "  ⚠ pid $pid owns port $PORT, but it is NOT the Bastra daemon — left running."
+      echo "    process: ${cmd:-<command line unreadable>}"
+      echo "    It does not run an installed Bastra daemon entry point."
+      echo "    Nothing was stopped here. If you are certain this is Bastra, stop it yourself:"
+      echo "      kill $pid"
+    fi
   done
 else
   echo "  nothing is listening on port $PORT — no running daemon found."

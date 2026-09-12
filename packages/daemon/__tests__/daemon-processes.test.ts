@@ -38,6 +38,25 @@ test("elapsed time is carried through — six days is the tell", () => {
   assert.equal(procs.find((p) => p.pid === 86207)?.elapsed, "06-14:02:02");
 });
 
+test("#527 — an inert argument that merely mentions the entry point is not a daemon", () => {
+  // The same weak criterion the Finder uninstaller used: a substring anywhere
+  // in argv. What counts is the script the process executes, not what it was
+  // handed as data.
+  const withDecoy =
+    `${PS}\n77777       00:05 node /Users/x/tool/worker.js note:/some/daemon/dist/index.js`;
+  assert.deepEqual(parseDaemonProcesses(withDecoy, 15445).map((p) => p.pid), [15445, 86207]);
+});
+
+test("#527 — the entry point as argv[0] (a bin shim) still counts", () => {
+  const shim = "  PID ELAPSED COMMAND\n31000 00:10 /opt/homebrew/Cellar/bastra-recall/1.0.0/libexec/packages/daemon/dist/index.js";
+  assert.deepEqual(parseDaemonProcesses(shim, null).map((p) => p.pid), [31000]);
+});
+
+test("#527 — node options before the script do not hide it", () => {
+  const opts = "  PID ELAPSED COMMAND\n31001 00:10 node --enable-source-maps /x/packages/daemon/dist/index.js";
+  assert.deepEqual(parseDaemonProcesses(opts, null).map((p) => p.pid), [31001]);
+});
+
 test("a grep line for the same pattern is not a process", () => {
   const withGrep = `${PS}\n99999       00:01 grep daemon/dist/index.js`;
   assert.equal(parseDaemonProcesses(withGrep, 15445).length, 2);
