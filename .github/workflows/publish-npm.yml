@@ -1,12 +1,19 @@
 name: Publish npm
 
 on:
-  # Auto-publish: creating a GitHub Release (gh release create vX.Y.Z) fires this.
-  release:
-    types: [published]
-  # Manual fallback / dry-run rehearsal.
+  # #524: this used to run on `release: published`, which meant a release had to
+  # be public — page and tag — before a single package was published or a single
+  # asset attached. The staging object is now a DRAFT (scripts/bump.mjs), which
+  # is invisible and creates no tag, and a draft fires no release event. So the
+  # run is started explicitly with the draft's tag, and `promote` publishes that
+  # draft at the end, once the whole set is verified.
   workflow_dispatch:
     inputs:
+      tag:
+        description: "Tag of the DRAFT release to publish, e.g. v1.0.0 (required unless dry_run)"
+        required: false
+        default: ""
+        type: string
       dry_run:
         description: "Run all release checks but do not publish"
         required: true
@@ -17,7 +24,7 @@ on:
           - "false"
 
 concurrency:
-  group: publish-npm-${{ github.ref }}
+  group: publish-npm-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -25,6 +32,46 @@ permissions:
   id-token: write
 
 jobs:
+  gate:
+    # The one place that decides whether this run publishes anything, and the
+    # one place that proves the staging release is still private. Everything
+    # downstream reads `needs.gate.outputs`, so a rehearsal cannot attach,
+    # publish or promote by taking a different branch somewhere.
+    name: gate
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.check.outputs.publish }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" != "false" ]; then
+            echo "Rehearsal — building and testing only, nothing is published."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$TAG" ]; then
+            echo "error: dry_run=false needs the tag of the staged draft release" >&2
+            exit 1
+          fi
+          # A published release here would mean the page and the tag are already
+          # public while the set is still being built — exactly the gate #524 is
+          # about. Refuse to run against anything but a draft.
+          is_draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)"
+          if [ "$is_draft" != "true" ]; then
+            echo "error: $TAG is not a draft — the staging release must stay private until promote" >&2
+            exit 1
+          fi
+          echo "Publishing the staged draft $TAG."
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
   stub:
     # #350: the compiled hook client (#344), one binary per platform, attached
     # to the release. The npm package never carries the binary — only
@@ -38,6 +85,7 @@ jobs:
     # the Windows milestone owns. Runs on dry-run dispatches too, so the build
     # can be rehearsed without a release.
     name: stub (${{ matrix.os }})
+    needs: gate
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -98,15 +146,17 @@ jobs:
           path: packages/daemon/stub/checksums/*.sha256
           if-no-files-found: error
       - name: Attest build provenance
-        if: ${{ github.event_name == 'release' }}
+        if: ${{ needs.gate.outputs.publish == 'true' }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: packages/daemon/stub/bastra-hook-*
+      # `gh release upload` addresses a draft by its tag just like a published
+      # release — which is what lets the whole set be assembled in private.
       - name: Attach to release
-        if: ${{ github.event_name == 'release' }}
+        if: ${{ needs.gate.outputs.publish == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ needs.gate.outputs.tag }}
         working-directory: packages/daemon/stub
         run: gh release upload "$TAG" bastra-hook-* checksums/*.sha256 --clobber
 
@@ -115,7 +165,7 @@ jobs:
     # The manifest below needs every platform's checksum: a release whose
     # fast path silently failed to build is the failure shape this project is
     # named against, so a broken stub build blocks the publish.
-    needs: stub
+    needs: [gate, stub]
     environment: npm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -154,7 +204,7 @@ jobs:
       # skips a package only after verifying the published artifact IS this
       # release, and keeps the unscoped wrapper last.
       - name: Publish the release set (resumable)
-        if: ${{ github.event_name == 'release' || inputs.dry_run == 'false' }}
+        if: ${{ needs.gate.outputs.publish == 'true' }}
         run: node scripts/publish-release-set.mjs
 
   desktop-extension:
@@ -165,8 +215,8 @@ jobs:
     # download) and a Sigstore attestation (`gh attestation verify <file>
     # --repo n0mad-ai/bastra-recall`) — the npm packages already carry
     # --provenance, this closes the same gap for the release asset.
-    if: ${{ github.event_name == 'release' }}
-    needs: publish
+    if: ${{ needs.gate.outputs.publish == 'true' }}
+    needs: [gate, publish]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -194,7 +244,7 @@ jobs:
       - name: Attach extension to release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ needs.gate.outputs.tag }}
         run: gh release upload "$TAG" packages/daemon/mcpb/*.mcpb packages/daemon/mcpb/*.mcpb.sha256 --clobber
 
   installer-scripts:
@@ -204,7 +254,8 @@ jobs:
     # build, no `needs`) so the documented entry point is published even if the
     # npm or .mcpb step fails. NOTE: GitHub normalizes spaces in asset names to
     # dots, so they appear as `Install.Bastra.command` / `Uninstall.Bastra.command`.
-    if: ${{ github.event_name == 'release' }}
+    if: ${{ needs.gate.outputs.publish == 'true' }}
+    needs: gate
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -213,7 +264,7 @@ jobs:
       - name: Attach installer scripts to release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ needs.gate.outputs.tag }}
         run: |
           gh release upload "$TAG" \
             "distribution/Install Bastra.command" \
@@ -228,14 +279,17 @@ jobs:
     # `bastra-recall@latest` from npm, so a user opening a brand-new 1.0 page
     # could be handed the OLD npm packages.
     #
-    # `scripts/bump.mjs` now stages a stable release with `--latest=false`. The
-    # tag and page exist so every job above has something to build and attach
-    # to, but the source the tap and the installers consume does not move until
-    # this job has verified the complete set: four npm versions on the registry
-    # AND tagged `latest`, plus every required release asset. Only then does the
-    # release become Latest.
-    if: ${{ github.event_name == 'release' }}
-    needs: [stub, publish, desktop-extension, installer-scripts]
+    # `--latest=false` was the first attempt and was not enough: it held
+    # `/releases/latest` back, but the release page and the tag were public from
+    # creation, so the half-built set was visible and linkable the whole time.
+    # `scripts/bump.mjs` now stages a DRAFT — no public page, no tag at all —
+    # and every job above attaches to that draft by tag. This job is where the
+    # release comes into existence: only after the complete set is verified
+    # (four npm versions on the registry AND tagged `latest`, plus every
+    # required asset) is the draft published, which creates the tag, the public
+    # page and — for a stable version — `/releases/latest` in one step.
+    if: ${{ needs.gate.outputs.publish == 'true' }}
+    needs: [gate, stub, publish, desktop-extension, installer-scripts]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -249,7 +303,7 @@ jobs:
       - name: Verify every required release asset is attached
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ needs.gate.outputs.tag }}
         run: |
           names="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
           printf '%s\n' "$names"
@@ -272,11 +326,17 @@ jobs:
           printf '%s\n' "$names" | grep -q '\.mcpb$' || { echo "missing asset: *.mcpb"; missing=1; }
           printf '%s\n' "$names" | grep -q '\.mcpb\.sha256$' || { echo "missing asset: *.mcpb.sha256"; missing=1; }
           test "$missing" -eq 0
-      - name: Promote — move /releases/latest onto this release
-        # A prerelease deliberately never becomes Latest; nothing to promote.
-        if: ${{ !github.event.release.prerelease }}
+      - name: Promote — publish the draft, and make it Latest
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
-        run: gh release edit "$TAG" --latest
+          TAG: ${{ needs.gate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # A prerelease deliberately never becomes Latest; it still gets
+          # published here, because until now it did not exist publicly at all.
+          if [ "$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease)" = "true" ]; then
+            gh release edit "$TAG" --draft=false --latest=false
+          else
+            gh release edit "$TAG" --draft=false --latest
+          fi
 

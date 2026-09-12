@@ -135,26 +135,36 @@ for (const relPath of GUARDED_SOURCES) {
 // Homebrew and the Finder installer stayed on 0.9.2.
 //
 // So the flag now follows the semver: `--prerelease` only when the version
-// itself has a prerelease component. A stable release is instead STAGED with
-// `--latest=false`: the page and its tag exist so the workflow can build,
-// publish and attach the whole set, but `/releases/latest` — the source the tap
-// updater consumes — only moves in the workflow's `promote` job, after every
-// npm version and every required asset has been verified. Until then a user
-// opening the tap or the installer still gets the previous, coherent release
-// rather than a 1.0 page whose npm packages are half-published.
+// itself has a prerelease component.
+//
+// The staging object is a DRAFT. `--latest=false` was not enough: it keeps
+// `/releases/latest` (and with it the tap and both installers) from moving
+// early, but the release page and its tag are public from the moment the
+// release is created — while the asset jobs are still running and the npm
+// publication can still fail. A draft has no public page and creates no tag at
+// all; both come into existence in the workflow's `promote` job, after the
+// complete set has been verified.
+//
+// A draft fires no `release: published`, so the workflow is no longer hung off
+// the release event: it is started explicitly with the tag of the draft
+// (`workflow_dispatch`), which is also the only way the jobs can attach assets
+// to something that is not public yet.
 const isPrerelease = version.includes("-");
 const releaseCmd = isPrerelease
-  ? `gh release create v${version} --prerelease --generate-notes`
-  : `gh release create v${version} --generate-notes --latest=false`;
+  ? `gh release create v${version} --draft --prerelease --generate-notes --target "$(git rev-parse HEAD)"`
+  : `gh release create v${version} --draft --generate-notes --target "$(git rev-parse HEAD)"`;
 const stagingNote = isPrerelease
-  ? "  # a prerelease never becomes /releases/latest, so the tap stays where it is"
-  : "  # staged: `promote` moves /releases/latest once the whole set is verified";
+  ? "  # draft: `promote` publishes it; a prerelease never becomes /releases/latest"
+  : "  # draft: invisible and untagged until `promote` has verified the whole set";
 
 function printHandoff() {
   console.log(
     `\nNext:\n  npm install            # refresh package-lock\n` +
       `  git commit -am "release: v${version}"\n` +
-      `  ${releaseCmd}\n${stagingNote}`,
+      `  git push\n` +
+      `  ${releaseCmd}\n${stagingNote}\n` +
+      `  gh workflow run publish-npm.yml -f tag=v${version} -f dry_run=false\n` +
+      "  # builds, publishes, attaches — and only then publishes the draft",
   );
 }
 

@@ -18,8 +18,9 @@
  *
  *   - not on the registry  → publish it
  *   - already on the registry → verify it is the artifact this checkout would
- *     have published (same name, same version, same internal dependency pins)
- *     and skip it; a mismatch is a hard failure, never a silent skip
+ *     have published (same name, same version, same internal dependency pins,
+ *     and the same tarball digest) and skip it; a mismatch is a hard failure,
+ *     never a silent skip
  *
  * `--verify` publishes nothing. It asserts that every package of the set is on
  * the registry at this version AND carries the `latest` dist-tag — the gate the
@@ -85,12 +86,35 @@ function fetchLatestTag(name) {
 }
 
 /**
- * Is an already-published artifact the one this checkout would have published?
- * The tarball's bytes are not reproducible here, but the thing that actually
- * breaks users is a published package whose internal pins differ from this
- * release's — so that is what gets compared.
+ * The digest of the tarball this checkout would publish for `pkg`. `npm pack`
+ * normalizes entry metadata, so the same sources packed by the same npm give
+ * the same bytes — which is what makes this comparable to the registry's.
  */
-function mismatchReason(pkg, published) {
+function packDigest(name) {
+  const res = npm(["pack", "--dry-run", "--json", `--workspace=${name}`]);
+  if (res.status !== 0) {
+    throw new Error(
+      `npm pack --dry-run ${name} failed (${res.status}):\n${`${res.stdout ?? ""}${res.stderr ?? ""}`.trim()}`,
+    );
+  }
+  // npm prints the JSON array on stdout; lifecycle output may precede it.
+  const text = (res.stdout ?? "").trim();
+  const start = text.indexOf("[");
+  const parsed = JSON.parse(start >= 0 ? text.slice(start) : text);
+  const entry = Array.isArray(parsed) ? parsed[0] : parsed;
+  return { integrity: entry?.integrity ?? null, shasum: entry?.shasum ?? null };
+}
+
+/**
+ * Is an already-published artifact the one this checkout would have published?
+ *
+ * Metadata alone does not answer that (#524): another commit built with the
+ * same version and the same internal pins produces a package that compares
+ * equal on every field here while shipping entirely different code. So the
+ * candidate is packed and its tarball digest compared against the registry's
+ * `dist` — different bytes are a different artifact, whatever the manifest says.
+ */
+function mismatchReason(pkg, published, digest) {
   if (published.name !== pkg.name) return `name is ${published.name}`;
   if (published.version !== pkg.version) return `version is ${published.version}`;
   const theirs = published.dependencies ?? {};
@@ -100,7 +124,20 @@ function mismatchReason(pkg, published) {
       return `dependency ${dep} is ${theirs[dep] ?? "absent"}, expected ${want}`;
     }
   }
-  return null;
+  if (!digest) return null;
+  const dist = published.dist ?? {};
+  // Fail closed: an artifact whose bytes cannot be compared is not verified.
+  if (digest.integrity && dist.integrity) {
+    return digest.integrity === dist.integrity
+      ? null
+      : `tarball integrity is ${dist.integrity}, this checkout packs ${digest.integrity}`;
+  }
+  if (digest.shasum && dist.shasum) {
+    return digest.shasum === dist.shasum
+      ? null
+      : `tarball shasum is ${dist.shasum}, this checkout packs ${digest.shasum}`;
+  }
+  return `the registry artifact carries no comparable tarball digest`;
 }
 
 const pkgs = WORKSPACE_DIRS.map(readPkg);
@@ -125,7 +162,10 @@ const state = [];
 for (const pkg of pkgs) {
   const published = fetchPublished(pkg.name, pkg.version);
   if (published) {
-    const reason = mismatchReason(pkg, published);
+    // Only the publishing run decides whether to SKIP a package, and only it
+    // has the built workspace `npm pack` needs; `--verify` runs from a plain
+    // checkout in the promote job and stays on the manifest comparison.
+    const reason = mismatchReason(pkg, published, verifyOnly ? null : packDigest(pkg.name));
     if (reason) {
       console.error(
         `error: ${pkg.name}@${pkg.version} is already published but is NOT this release: ${reason}.\n` +
@@ -158,7 +198,7 @@ if (verifyOnly) {
 
 for (const { pkg, published } of state) {
   if (published) {
-    console.log(`↷ ${pkg.name}@${pkg.version} already published — skipping (verified as this release)`);
+    console.log(`↷ ${pkg.name}@${pkg.version} already published — skipping (same manifest, same tarball digest)`);
     continue;
   }
   console.log(`→ publishing ${pkg.name}@${pkg.version}`);
