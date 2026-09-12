@@ -9,6 +9,7 @@
  */
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -258,13 +259,13 @@ function programFromPlist(xml: string): string[] {
 }
 
 async function withKegFixture<T>(
-  fn: (ctx: { dir: string; old: Keg; fresh: Keg; plist: string; launchctl: string }) => Promise<T>,
+  fn: (ctx: { dir: string; old: Keg; fresh: Keg; plist: string; launchctl: string; log: string }) => Promise<T>,
 ): Promise<T> {
   return withTempDir(async (dir) => {
     const cellar = join(dir, "Cellar", "bastra-recall");
     const old = await makeKeg(cellar, "0.9.1");
     const fresh = await makeKeg(cellar, "0.9.2");
-    const { bin, launchctl } = await makeStubs(dir, fresh.root);
+    const { bin, log, launchctl } = await makeStubs(dir, fresh.root);
     const plist = join(dir, "LaunchAgents", "ai.n0mad.bastra-recall.plist");
     await mkdir(join(dir, "LaunchAgents"), { recursive: true });
     // Der plist, den `bastra autostart on` vor dem Update geschrieben hat:
@@ -279,7 +280,7 @@ async function withKegFixture<T>(
     process.env.PATH = `${bin}${delimiter}${prevPath ?? ""}`;
     process.env.BASTRA_VAULT_PATH = join(dir, "vault");
     try {
-      return await fn({ dir, old, fresh, plist, launchctl });
+      return await fn({ dir, old, fresh, plist, launchctl, log });
     } finally {
       if (prevPath === undefined) delete process.env.PATH;
       else process.env.PATH = prevPath;
@@ -308,6 +309,7 @@ test("#435: after a Homebrew update the managed autostart names the NEW keg, not
     let out = "";
     const outcome = await refreshManagedAutostart((s) => { out += s; }, {
       target,
+      reload: true,
       plistFile: plist,
       launchctl,
     });
@@ -325,6 +327,7 @@ test("#435: an unresolvable install leaves the managed autostart alone instead o
     let out = "";
     const outcome = await refreshManagedAutostart((s) => { out += s; }, {
       target: null,
+      reload: true,
       plistFile: plist,
       launchctl,
     });
@@ -332,4 +335,40 @@ test("#435: an unresolvable install leaves the managed autostart alone instead o
     const program = programFromPlist(await readFile(plist, "utf8"));
     assert.equal(program[1], old.script, "nothing was rewritten");
   });
+});
+
+test("#441: a staged update repoints the managed LaunchAgent without restarting it", { skip: !onMac }, async () => {
+  await withKegFixture(async ({ old, fresh, plist, launchctl, log }) => {
+    const target = resolveInstalledRuntime(detectInstallMode(oldKegCliPath(old)));
+    assert.ok(target);
+
+    let out = "";
+    // reload: false ist genau das, was `bastra update --staged` setzt.
+    const outcome = await refreshManagedAutostart((s) => { out += s; }, {
+      target,
+      reload: false,
+      plistFile: plist,
+      launchctl,
+    });
+    assert.equal(outcome.ok, true, out);
+
+    const program = programFromPlist(await readFile(plist, "utf8"));
+    assert.equal(program[1], fresh.script, "staged must still hand the owned plist to the new runtime");
+
+    // Und der laufende Agent bleibt unangetastet: kein bootout, kein bootstrap,
+    // kein kickstart — nur das lesende `print` aus readState.
+    const calls = existsSync(log) ? await readFile(log, "utf8") : "";
+    assert.doesNotMatch(calls, /bootout|bootstrap|kickstart/, `launchctl was used to restart: ${calls}`);
+  });
+});
+
+test("#441: the staged path is wired to the same refresh as the interactive one", async () => {
+  const src = await readFile(new URL("../src/cli/update.ts", import.meta.url), "utf8");
+  const refreshAt = src.indexOf("refreshManagedAutostart((s)");
+  const stagedReturnAt = src.indexOf("→ staged — daemon left running on old code");
+  assert.ok(refreshAt > 0 && stagedReturnAt > 0, "both anchors must exist");
+  assert.ok(
+    refreshAt < stagedReturnAt,
+    "the managed-service refresh must run BEFORE --staged reports success (#441)",
+  );
 });

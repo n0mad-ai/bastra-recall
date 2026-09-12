@@ -61,8 +61,8 @@ export const LAUNCH_AGENT_LABEL = "ai.n0mad.bastra-recall";
 const MANAGED_MARKER = "BASTRA_AUTOSTART_MANAGED";
 
 /** launchd's CLI. Absolute on purpose — never resolved through PATH. The
- *  parameter that carries it exists so the #435 regression can run against a
- *  stub instead of the machine's own launchd. */
+ *  parameter that carries it exists so the #435/#441 regressions can run
+ *  against a stub instead of the machine's own launchd. */
 const LAUNCHCTL = "/bin/launchctl";
 
 export function plistPath(home: string = homedir()): string {
@@ -427,6 +427,12 @@ export interface RefreshOutcome {
  * startet danach entweder nichts mehr oder weiter den alten Code. Fremde plists
  * bleiben unangetastet — sie zeigen absichtlich woandershin.
  *
+ * `reload` trennt die zwei Entscheidungen, die vorher eine waren (#441):
+ * „jetzt neu starten" und „den plist umbiegen". Ein staged Update setzt
+ * `reload: false` — die Datei wird atomar auf die neue Laufzeit gezogen, der
+ * laufende Agent bleibt unangetastet, und nach dem nächsten Login startet
+ * launchd den neuen Code statt eines Pfades, den es dann nicht mehr gibt.
+ *
  * Belegt wird das Ergebnis, nicht behauptet: der plist wird nach dem Schreiben
  * erneut gelesen und muss die installierte Laufzeit nennen, sonst ist das
  * Ergebnis `ok: false`.
@@ -437,6 +443,8 @@ export async function refreshManagedAutostart(
     /** `null` = die installierte Laufzeit war nicht auflösbar. Dann wird der
      *  plist NICHT angefasst — lieber veraltet als auf ein Nichts gebogen. */
     target: InstalledRuntime | null;
+    /** #441 — staged: umbiegen ja, kickstarten nein. */
+    reload: boolean;
     /** Nur für die Regressionen: plist-Datei und launchd-CLI. */
     plistFile?: string;
     launchctl?: string;
@@ -474,12 +482,14 @@ export async function refreshManagedAutostart(
     }
   }
 
-  const uid = String(process.getuid?.() ?? 0);
-  if (state.loaded) bootout(uid, launchctl);
-  const started = bootstrap(uid, path, launchctl);
-  if (!started.ok) {
-    write(`  ✗ reload failed: ${started.detail}\n`);
-    return { ok: false, detail: started.detail };
+  if (opts.reload) {
+    const uid = String(process.getuid?.() ?? 0);
+    if (state.loaded) bootout(uid, launchctl);
+    const started = bootstrap(uid, path, launchctl);
+    if (!started.ok) {
+      write(`  ✗ reload failed: ${started.detail}\n`);
+      return { ok: false, detail: started.detail };
+    }
   }
 
   // Der Beweis: erneut lesen. Erst wenn die Datei die installierte Laufzeit
@@ -492,7 +502,11 @@ export async function refreshManagedAutostart(
     return { ok: false, detail: "verification failed" };
   }
   const version = opts.target.version ? ` (${opts.target.version})` : "";
-  write(`  ✓ autostart now runs ${opts.target.script}${version}\n`);
+  write(
+    opts.reload
+      ? `  ✓ autostart now runs ${opts.target.script}${version}\n`
+      : `  ✓ autostart now names ${opts.target.script}${version} — staged, so the running agent was left alone\n`,
+  );
   return { ok: true, detail: opts.target.script };
 }
 

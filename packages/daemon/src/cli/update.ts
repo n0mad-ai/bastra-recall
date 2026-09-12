@@ -567,33 +567,41 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
     return installRC;
   }
 
-  // 3. Daemon restart.
+  // 3. Der verwaltete Dienst, BEVOR irgendetwas Erfolg meldet.
+  //
+  //    Ein Update verschiebt die Installation (Homebrew legt jede Version in ein
+  //    eigenes Verzeichnis), und ein LaunchAgent zeigt auf einen ABSOLUTEN Pfad.
+  //    Zeigt er noch auf die alte, startet er danach entweder nichts mehr oder
+  //    weiter den alten Code. Fremde plists bleiben unangetastet.
+  //
+  //    Beide Update-Wege laufen hier durch — das ist der Kern von #441: „jetzt
+  //    nicht neu starten" ist eine andere Entscheidung als „den plist nicht
+  //    umbiegen". Staged biegt um (`reload: false`), kickstartet aber nicht.
+  //    Und die Laufzeit, auf die umgebogen wird, kommt vom Installer, nicht von
+  //    diesem Prozess (#435) — siehe resolveInstalledRuntime.
+  if (!args.dryRun) {
+    const autostart = await refreshManagedAutostart((s) => process.stdout.write(s), {
+      target: resolveInstalledRuntime(mode),
+      reload: !args.staged,
+    });
+    if (!autostart.ok) {
+      process.stdout.write("\n✗ the managed autostart could not be pointed at the new install — fix it before relying on it\n");
+      return 1;
+    }
+  }
+
+  // 4. Daemon restart.
   //    --staged deliberately skips the kickstart: the running daemon keeps the
   //    old code in memory and a current session stays intact. The new code goes
   //    live on the next daemon boot (idle-shutdown after 30 min → forwarder
   //    respawns with the new code), or immediately when the user restarts.
   if (args.staged) {
     process.stdout.write("→ staged — daemon left running on old code (no restart mid-session)\n");
+    process.stdout.write("  The managed autostart already names the new runtime, so a logout/reboot starts it (#441).\n");
     process.stdout.write("  New code goes live on the next daemon restart:\n");
     process.stdout.write("    · automatically after 30 min idle (forwarder mode — a LaunchAgent daemon stays warm, #78), or\n");
     process.stdout.write("    · now — run 'bastra update' without --staged (kickstarts a LaunchAgent daemon), or restart your AI clients\n");
     return 0;
-  }
-
-  // Der Schritt, der bisher fehlte: Ein Update verschiebt die Installation
-  // (Homebrew legt jede Version in ein eigenes Verzeichnis), und ein
-  // LaunchAgent zeigt auf einen ABSOLUTEN Pfad. Zeigt er noch auf die alte,
-  // startet er danach entweder nichts mehr oder weiter den alten Code — genau
-  // der gemeldete Fall. Die neue Laufzeit kommt vom Installer, nicht von diesem
-  // Prozess (#435). Fremde plists bleiben unangetastet.
-  if (!args.dryRun) {
-    const autostart = await refreshManagedAutostart((s) => process.stdout.write(s), {
-      target: resolveInstalledRuntime(mode),
-    });
-    if (!autostart.ok) {
-      process.stdout.write("\n✗ the managed autostart could not be pointed at the new install — fix it before relying on it\n");
-      return 1;
-    }
   }
 
   process.stdout.write("→ restarting daemon\n");
