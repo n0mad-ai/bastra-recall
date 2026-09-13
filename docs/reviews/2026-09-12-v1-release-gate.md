@@ -589,3 +589,102 @@ standard suite) pins down that this verdict can fail: accepted-but-absent,
 truncated-in-flight, duplicate write, client-visible transport error and a
 session that never called the tool each have to come out red, while a refused
 save with nothing on disk and a lazy model each have to come out green.
+
+## Independent Codex counter-review — pass 5
+
+Counter-reviewed revision: `5e10ffc75750e747fce95437a093cf799d80b8b6`
+(also `origin/main`).
+Counter-review verdict: **NO-GO remains**. The real Claude Code evidence clears
+the original #62 boundary on the measured client version, and the #506 install
+half now works on a real temporary Codex home. Two new end-to-end counterexamples
+remain release-blocking: Codex uninstall falsely reports that it removed the
+plan-tool opt-in while leaving it in the user's config, and the all-lane #305
+gate still cannot observe client-side failures for plan, session and stop.
+The fresh #305 packaged-client measurement window is also still running.
+
+### Mechanical suite on `5e10ffc`
+
+- `npm run build`: pass
+- `npm run check:types`: pass
+- `npm test`: 2,792 tests; 2,790 passed, 0 failed, 1 skipped, 1 todo
+- `npm run pack:check`: pass for all four published packages
+- `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities
+- `npm run smoke`: 7/7
+- `npm run smoke:telemetry`: pass, 3 correlated events
+- `npm run test:update`: 20/20
+- `npm run check:tap-drift`: pass; live tap and repository formula match
+- GitHub CI and CodeQL for `5e10ffc`: pass
+
+### #62 clears its original boundary; two P2 probe-contract gaps remain
+
+The probe launches the real `claude -p` client against an isolated forwarder,
+daemon and vault. Its recorded run covers 12 emitted saves at 2,990, 9,131 and
+22,991 characters, with 12 bodies present and equal after body extraction, no
+absent saves, duplicates or client-visible transport failures, and a
+`progressToken` on all 24 recall/save calls. The nine verifier regression cases
+pass independently. Together with the already green 200,000-character generic
+transport stress, this is sufficient to clear the original client-specific
+#62 release blocker for Claude Code 2.1.270. #544 correctly retains the
+cross-version structural follow-up outside v1.
+
+The probe's claim is slightly stronger than its code and should be corrected as
+P2 follow-up. `verify.mjs` compares `call.body.trim()` with
+`stored.body.trim()`, so leading/trailing whitespace changes are accepted; this
+is content equality modulo outer whitespace, not a byte-for-byte comparison.
+Also, a run with zero progress tokens can still exit 0: token presence is
+reported but is not included in `deviations`, although the README says such a
+run did not exercise the boundary. Neither gap invalidates the recorded run,
+whose bodies have no intentional outer whitespace and whose measured token
+count is 24/24, but both should be pinned before calling the probe a general
+proof harness.
+
+### P1 — #506 install works, but uninstall leaves the managed opt-in behind
+
+A real packaged-CLI lifecycle was run with a temporary `HOME`, temporary vault
+and the built `dist/cli.js`. Install registered the MCP server, seven hooks and
+the skill, appended `[tools.update_plan] enabled = true`, and the real
+`codex mcp list` parsed the resulting config successfully. This clears the
+default-install reachability defect.
+
+`bastra uninstall codex` then printed
+`plan tool: removed the bastra-managed tools.update_plan.enabled block`, but
+the complete managed block remained in `.codex/config.toml`. The isolated
+helper reproduces the same false success. `planPlanToolRemoval()` correctly
+returns `next: ""` when the managed block is the only remaining config, but
+`ensureCodexPlanTool()` tests `if (!plan.next)` and mistakes that valid empty
+replacement for "no change". It therefore returns `removed` without writing.
+Use an explicit `plan.next === undefined` test and add an adapter-level real
+install/uninstall lifecycle whose final config is asserted, including the
+managed-block-only case. #506 must remain open until that path is green.
+
+### P1 — #543 is broader than Bash: plan/session/stop failures remain invisible
+
+The #305 gate now renders and judges every automatic lane, but its client-side
+failure coverage is still asymmetric. A six-client reproduction ran the built
+node prompt, todo/plan, session, stop, bash-pre and bash-post hooks against an
+unreachable loopback endpoint with telemetry enabled. All six failed open to
+`{}`; only `prompt_hook_call` wrote a telemetry row. The Bash omission is the
+existing #543. The same omission also exists for plan, session and stop in both
+the node clients and the compiled stub: `CLIENT_TELEMETRY_LANES` contains only
+prompt, write, bash-pre and bash-fail.
+
+Consequently, partial client-side losses in plan/session/stop do not enter the
+lane denominator or the 2% error ceiling. A fully dead lane eventually becomes
+`NOT EVALUABLE`, but intermittent losses can coexist with a green lane. Expand
+#543 acceptance to every required gate lane, using the lane's own event kind
+and the payload session id so the existing client/daemon fold can join the two
+observations. Until then the all-lane gate does not measure the reliability it
+claims to gate.
+
+### Remaining release path after pass 5
+
+1. Fix and regression-test the #506 uninstall false success.
+2. Expand #543 to client-side failure telemetry for every required lane, not
+   only the two node Bash clients, and re-run the unreachable-client matrix.
+3. Let the fresh packaged-client #305 window started at
+   `2026-09-13T06:23:43Z` reach its agreed sample/window requirement and require
+   the gate to read `MET` without historical rows.
+
+#530, #542, #544 and the two #62 probe-contract tightenings above are P2 and do
+not block 1.0. #525 is cleared: the live tap matches and the drift check is
+green. #62, #523, #525, #538, #539 and #541 are closed with evidence.
