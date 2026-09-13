@@ -32,15 +32,34 @@ async function main(): Promise<void> {
   } catch {
     return emitOnce("{}");
   }
+  const url = daemonBaseUrl();
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
   try {
-    emitOnce(await postLane(daemonBaseUrl(), "/hook/bash-pre", { payload }, remainingMs));
+    emitOnce(await postLane(url, "/hook/bash-pre", { payload }, remainingMs));
   } catch (err) {
-    // Connection failures are not separately logged here: unlike the
-    // write/prompt lanes this one has no skip telemetry to keep consistent,
-    // and a down daemon already shows up in every other lane's client events.
-    void classifyTransportError(err as NodeJS.ErrnoException);
     emitOnce("{}");
+    // #543: the row this lane's gate needs. Until now a transport failure
+    // here left NO row at all, so the lane's denominator shrank by exactly
+    // the calls that were lost and its failure rate stayed 0% — a gate green
+    // for lack of data. The row carries this lane's OWN event kind
+    // (hook-client-telemetry.ts), so it folds into this lane's series and no
+    // other. Imported lazily: it is only ever needed on a failure, and a
+    // static import would be process-start cost on every call (#305).
+    const status = classifyTransportError(err as NodeJS.ErrnoException);
+    const { writeClientTelemetry, sessionIdOf, THIN_CLIENT_VERSION } = await import(
+      "./hook-client-telemetry.js"
+    );
+    await writeClientTelemetry(
+      "bash-pre",
+      {
+        daemon_url: url,
+        status,
+        error: status === "error" ? ((err as Error).message ?? String(err)) : null,
+      },
+      startedAt,
+      sessionIdOf(payload),
+      THIN_CLIENT_VERSION,
+    );
   }
 }
 

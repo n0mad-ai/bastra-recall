@@ -440,13 +440,29 @@ test("#305: every hook client stamps the payload's session, or the fold has noth
   // left pairing on timestamps. The binary is built by `deno compile` and is
   // not executable from this suite, so the constraint is read off the source.
   const src = dirname(fileURLToPath(import.meta.url));
-  for (const rel of ["stub/bastra-hook.ts", "src/hook.ts", "src/prompt-hook.ts"]) {
+  // Since #543 the row itself is written in ONE place for every lane and both
+  // client shapes; prompt-hook.ts predates it and still writes its own.
+  for (const rel of ["src/hook-client-telemetry.ts", "src/prompt-hook.ts"]) {
     const body = await readFile(join(src, "..", rel), "utf8");
     assert.match(
       body,
       /session_id:[^,\n]*\?\?\s*randomUUID\(\)/,
       `${rel}: the client row must carry the payload's session (#356)`,
     );
+  }
+  // …and every client hands that writer the payload's session instead of
+  // stamping an id of its own.
+  for (const rel of [
+    "stub/bastra-hook.ts",
+    "src/hook.ts",
+    "src/bash-pre-hook.ts",
+    "src/bash-fail-hook.ts",
+    "src/stop-hook.ts",
+    "src/session-hook.ts",
+    "src/todo-hook.ts",
+  ]) {
+    const body = await readFile(join(src, "..", rel), "utf8");
+    assert.match(body, /writeClientTelemetry\(/, `${rel}: writes no client row at all (#543)`);
     assert.doesNotMatch(
       body,
       /session_id:\s*randomUUID\(\)/,

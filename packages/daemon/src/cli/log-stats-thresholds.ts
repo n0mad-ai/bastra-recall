@@ -68,6 +68,18 @@ import type { LaneStats } from "./log-stats.js";
  * bottom of the readout — so the release gate could not turn red for five of
  * the seven lanes that fire on their own. A gate that structurally cannot fail
  * for most of what it gates is not a gate.
+ *
+ * #543 — where these rows come from, stated here because this is where the
+ * gate reads them: every lane below is written from BOTH ends. The daemon logs
+ * the calls it served; the hook client (compiled stub or node thin client)
+ * logs the calls that never reached it, with the lane's own event kind
+ * (`hook-client-telemetry.ts`). Both halves matter for the same reason: a
+ * client that stays silent on a transport failure removes those calls from the
+ * numerator AND the denominator, so the lane reports the delivery rate of the
+ * calls that were delivered. Five of the twelve lane/client combinations were
+ * silent until #543, and every one of them could report PASS while calls were
+ * being lost. If a future lane joins this map without a client row, its number
+ * here is the healthy subset of itself, not the lane.
  */
 export const GATE_LANE_BY_KIND: Record<string, string> = {
   hook_call: "pretooluse",

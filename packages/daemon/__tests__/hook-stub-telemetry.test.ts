@@ -29,6 +29,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { aggregate, renderStats, GATE_LANE_BY_KIND } from "../src/cli/log-stats.js";
+import { CLIENT_ROW_BASE } from "../src/hook-client-telemetry.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STUB_PATH = resolve(HERE, "..", "stub", "bastra-hook.ts");
@@ -109,16 +110,17 @@ test("#305: a client-side Bash failure is written into the Bash lane, not the wr
   assert.match(rendered, /gate: NOT MET/);
 });
 
-test("#305: no two stub lanes write the same event kind", async () => {
+test("#305: no two client lanes write the same event kind", async () => {
   // Drift guard over the whole table, not just the two lanes that were wrong.
   // Sharing one kind is precisely how a Bash failure came to be counted as a
-  // Write/Edit one, and the next lane added to the stub would inherit it from
-  // whatever branch it fell into.
-  const src = await readFile(STUB_PATH, "utf8");
-  const table = /const CLIENT_ROW_BASE: Record<string, Record<string, unknown>> = \{([\s\S]*?)\n\};/.exec(src);
-  assert.ok(table, "could not find CLIENT_ROW_BASE in stub/bastra-hook.ts");
-  const entries = [...table[1].matchAll(/^ {2}"?([a-z-]+)"?:[\s\S]*?kind: "([a-z_]+)"/gm)].map((m) => [m[1], m[2]]);
-  assert.equal(entries.length, 4, `expected one row shape per client-logging lane, got ${JSON.stringify(entries)}`);
+  // Write/Edit one, and the next lane added would inherit it from whatever
+  // branch it fell into.
+  //
+  // The table moved out of the stub in #543: the node clients write the same
+  // rows now, so there is one table for both client shapes instead of a copy
+  // per file — see hook-client-telemetry.ts.
+  const entries = Object.entries(CLIENT_ROW_BASE).map(([lane, base]) => [lane, String(base.kind)]);
+  assert.equal(entries.length, 7, `expected one row shape per client lane, got ${JSON.stringify(entries)}`);
   const kinds = entries.map(([, kind]) => kind);
   assert.equal(new Set(kinds).size, kinds.length, `two lanes share one event kind: ${JSON.stringify(entries)}`);
   for (const [lane, kind] of entries) {

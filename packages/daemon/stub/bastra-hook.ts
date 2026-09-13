@@ -33,11 +33,8 @@
  * the fallback: `node stub/bastra-hook.ts` behaves identically, just slower.
  */
 import { request } from "node:http";
-import { appendFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
-import { homedir } from "node:os";
-import { randomUUID } from "node:crypto";
-import { envFirst, envInt } from "../src/env.js";
+import { envInt } from "../src/env.js";
+import { writeClientTelemetry, type ClientLane } from "../src/hook-client-telemetry.js";
 import { resolveDaemonEndpoint } from "../src/daemon-endpoint.js";
 import { FAST_BUDGET_MS, PROMPT_ASSERTION_BUDGET_MS, RECALL_BUDGET_MS, STOP_BUDGET_MS } from "../src/hook-budgets.js";
 import { shouldSkipPath } from "../src/hook-skip.js";
@@ -47,17 +44,19 @@ import { normalizeWritePayload } from "../src/hook-write-input.js";
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", RECALL_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 const STUB_VERSION = "0.6.0-stub"; // 0.6.0 = Codex payload adaptation (#15)
 
-type Lane = "prompt" | "write" | "bash-pre" | "bash-fail" | "stop" | "session" | "todo";
+type Lane = ClientLane;
 const LANES = new Set<Lane>([
   "prompt", "write", "bash-pre", "bash-fail", "stop", "session", "todo",
 ]);
 const SUPPORTED_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"]);
-/** The lanes whose failure the CLIENT logs. The three lanes added in #369 have
- *  their own event kinds (save_eval_call / session_hook_call / todo_hook_call)
- *  that describe a pipeline which did not run at all when the daemon is
- *  unreachable — writing a `hook_call` row for them would pollute a series
- *  that measures something else. Their node clients stay silent too. */
-const CLIENT_TELEMETRY_LANES = new Set<Lane>(["prompt", "write", "bash-pre", "bash-fail"]);
+/** EVERY lane logs its own failure (#543). The three lanes added in #369 were
+ *  silent here, with a reason that was right when it was written: their event
+ *  kinds describe a pipeline that did not run, and a generic `hook_call` row
+ *  would have polluted a series measuring something else. The row they write
+ *  now is not generic — each lane writes its OWN kind (hook-client-telemetry.ts),
+ *  which is what makes the silence unnecessary. It had become harmful: since
+ *  #305 all six automatic lanes carry a threshold, and a lane that writes
+ *  nothing on a transport failure passes its gate for lack of data. */
 
 /**
  * Per-lane wall-clock budget. Three lanes do not fit the 600ms recall budget:
@@ -154,108 +153,6 @@ function postLane(baseUrl: string, path: string, body: unknown, timeoutMs: numbe
   });
 }
 
-/**
- * The row shape each lane's CLIENT writes — same event kind and fields as that
- * lane's daemon-side row, so the two form one series.
- *
- * One table instead of a `lane === "prompt" ? … : …`, because that conditional
- * was wrong for two of the four lanes (#305): `bash-pre` and `bash-fail` fell
- * into the write lane's branch and wrote `kind: "hook_call"`. Every
- * client-side failure of the two Bash lanes was therefore filed under the
- * Write/Edit lane — the same fault the prompt branch above already documents,
- * and it left both Bash gates unable to turn red for anything the client sees.
- *
- * A kind may appear at most once here: two lanes sharing one kind is exactly
- * how this happened, and log-stats.test.ts reads this table to check it.
- */
-const CLIENT_ROW_BASE: Record<string, Record<string, unknown>> = {
-  // #305: "unknown", not "none". The trigger class is decided daemon-side
-  // and this row exists precisely because no answer came back, so the
-  // client cannot know it. Claiming "none" filed every client-side prompt
-  // failure under the silent lane — which is how the readout came to show
-  // `none` timing out at 15% behind a 69ms median, an impossible shape,
-  // with the assertion lane's failures wearing another lane's name.
-  prompt: { kind: "prompt_hook_call", detected_mode: "unknown", prompt_chars: 0, hint_count: 0, top_score: null },
-  write: {
-    kind: "hook_call",
-    topics: [],
-    query_chars: 0,
-    hint_count: 0,
-    required_count: 0,
-    top_score: null,
-    dropped_dedup_count: 0,
-    dropped_scope_count: 0,
-    hint_tokens_est: 0,
-    hinted_ids: [],
-    backoff_streak: 0,
-    suppressed: false,
-    suppressed_tokens_est: 0,
-  },
-  // The two Bash lanes: `matched_pattern` / `exit_code` are what the daemon
-  // row carries and the client cannot know — it never got an answer.
-  "bash-pre": {
-    kind: "bash_hook_call",
-    matched_pattern: null,
-    severity: null,
-    hint_count: 0,
-    dropped_dedup_count: 0,
-    top_score: null,
-    hint_tokens_est: 0,
-    backoff_streak: 0,
-    suppressed: false,
-    suppressed_tokens_est: 0,
-  },
-  "bash-fail": {
-    kind: "bash_fail_hook_call",
-    exit_code: null,
-    command_head: null,
-    hit_count: 0,
-    top_score: null,
-    hint_tokens_est: 0,
-    backoff_streak: 0,
-    suppressed: false,
-    suppressed_tokens_est: 0,
-  },
-};
-
-/** Same event kinds and field shapes as the daemon-side lanes — one series. */
-async function writeClientTelemetry(
-  lane: Lane,
-  fields: Record<string, unknown>,
-  startedAt: number,
-  sessionId: string | null,
-): Promise<void> {
-  if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
-  try {
-    const logDir =
-      envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? join(homedir(), ".bastra", "logs");
-    await mkdir(logDir, { recursive: true });
-    const ts = new Date().toISOString();
-    const base = CLIENT_ROW_BASE[lane];
-    const event = {
-      ts,
-      // #356/#305: the payload's session_id is real session state, and it is
-      // the ONLY thing that ties this row to the daemon row for the same call
-      // — `bastra logs --stats` folds the two on it. Stamping a fresh UUID
-      // here (as this file did until #305) made every client row unmatchable
-      // and left the readout pairing rows by timestamp alone, across sessions.
-      // The synthetic id stays the fallback for a payload that carried none.
-      session_id: sessionId ?? randomUUID(),
-      hook_version: STUB_VERSION,
-      // #352: null = never asked (skip-gate) — false is reserved for a path
-      // that actually POSTed and got no response.
-      daemon_reachable: fields.status === "skipped" ? null : false,
-      latency_ms_total: Date.now() - startedAt,
-      error: null,
-      ...base,
-      ...fields,
-    };
-    await appendFile(join(logDir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify(event) + "\n", "utf8");
-  } catch {
-    // Telemetry must never break the hook.
-  }
-}
-
 function classifyError(e: NodeJS.ErrnoException): "daemon-unreachable" | "timeout" | "error" {
   if (e.code === "ECONNREFUSED" || e.code === "ENOTFOUND" || e.code === "EHOSTUNREACH")
     return "daemon-unreachable";
@@ -307,6 +204,7 @@ async function main(): Promise<void> {
         { tool_name: toolName, file_path: filePath, daemon_url: "", status: "skipped" },
         startedAt,
         payload.session_id ?? null,
+        STUB_VERSION,
       );
       return;
     }
@@ -333,7 +231,6 @@ async function main(): Promise<void> {
   } catch (err) {
     const e = err as NodeJS.ErrnoException;
     emitOnce("{}");
-    if (!CLIENT_TELEMETRY_LANES.has(lane)) return;
     const status = classifyError(e);
     await writeClientTelemetry(
       lane,
@@ -347,6 +244,7 @@ async function main(): Promise<void> {
       },
       startedAt,
       payload.session_id ?? null,
+      STUB_VERSION,
     );
   }
 }
