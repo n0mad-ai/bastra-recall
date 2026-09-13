@@ -767,3 +767,111 @@ test to the drift guard.
 At review time the live six-hour window has 68 judged calls and every lane is
 still below min-N (pretooluse is closest at 29; plan is 0), so `gate: NOT MET`
 is the only valid current release decision.
+
+## Independent Codex counter-review — pass 7
+
+Counter-reviewed revision: `8a33595f01cf190e43bde92d4d4b2fbba1ff7410`
+(also `origin/main`; includes `7e9f6c4` for #545 and `ba37682` / `8a33595`
+for #546).
+Counter-review verdict: **NO-GO remains only on #305's live acceptance data.**
+#545 and #546 clear independently. No new P0 or P1 defect was found in their
+implementation, and #305 is now the only open issue in the v1.0 milestone.
+
+### Mechanical, package and live-artifact checks on `8a33595`
+
+- `npm run build`: pass
+- `npm run check:types`: pass
+- `npm test`: 2,807 tests; 2,805 passed, 0 failed, 1 skipped, 1 todo
+- `npm run test:stub`: 5/5
+- `npm run pack:check`: pass for all four published packages
+- `npm audit --audit-level=low`: 0 vulnerabilities
+- `npm run smoke`: 7/7
+- `npm run smoke:telemetry`: pass, 3 correlated events
+- `npm run test:update`: 20/20
+- live Homebrew tap drift check: pass
+- GitHub CI and CodeQL for `8a33595`: pass
+
+The installed stub reports source digest
+`0402e0b5c0ffe62125412e902be3a5082027d8bdfa85ae82a22d65b38d4a9615`,
+revision `8a33595`, `dirty: false`. After the final local build and restart the
+daemon reports the same revision, `code_stale: null`, and
+`started_at: 2026-09-13T14:22:55.822Z`.
+
+### #545 clears — an unclassified prompt loss can no longer disappear
+
+Both client shapes now stamp a transport failure as `detected_mode: unknown`.
+The aggregator additionally judges every `prompt_hook_call` once in a shared
+`prompt-total` delivery series, where `unknown` is a failure, minimum N is 30
+and the failure ceiling is 5%. The six-healthy-lanes plus 40 lost unknown
+prompt calls from pass 6 now renders `prompt-total: FAIL` and ends in
+`gate: NOT MET`. The aggregate is kept separate from the class lanes and from
+the lane totals, so it does not numerically double-count calls in the normal
+readout. #545 is closed and independently cleared.
+
+The 5% aggregate ceiling is a product-level delivery SLA, not a proof that an
+unclassified loss came from a particular prompt class with that class's 2% or
+5% ceiling. That is an unavoidable attribution limit once the daemon never
+classified the call; it is acceptable for v1 because the loss is no longer
+invisible or able to pass without a verdict. A stricter allocation-aware
+unknown-loss policy would be P2 hardening, not a release blocker.
+
+### #546 clears — the guard now exercises the artifact that actually runs
+
+`npm run test:stub` compiles a fresh binary into a temporary directory and
+executes it for all seven client lanes against a genuinely unreachable daemon.
+It compares the complete stable row shape with the node client and separately
+requires the installed binary's embedded source digest to equal today's
+transitive stub-source closure. The dirty bit is scoped to that closure, so
+unrelated scratch files neither condemn a clean binary nor hide an edited stub
+source. All five binary tests pass, including the intentional-drift cases.
+
+The committed parity test invokes the node TypeScript sources. To ensure the
+package build did not introduce a second gap, this pass also ran the freshly
+built `dist` node clients and the installed compiled stub as real processes,
+lane by lane, against the same closed endpoint. Prompt, Write, plan, session,
+Bash-pre, Bash-post and Stop each emitted exactly one row, and all seven pairs
+were semantically equal after excluding only timestamp, measured latency and
+the deliberately different client-version suffix. This closes the actual
+packaged-client boundary as well as the source boundary.
+
+Two named P2 limits remain in the provenance stamp. Its digest deliberately
+excludes `stub/build-info.ts` to avoid self-reference and the separately built
+statusline bundle because that artifact is outside the hook-lane contract.
+That is sufficient for #546 and for the release-gate clients, but a future
+whole-binary provenance contract should cover the static stamp schema and the
+embedded statusline artifact without creating a recursive hash.
+
+### Sole remaining release path: #305
+
+The final local build changed the on-disk build stamp and `/health` correctly
+reported the still-running daemon as `code_stale: rebuilt`. The daemon was
+therefore restarted and read back on the same revision. This makes
+**2026-09-13T14:22:55.822Z** the final acceptance-window start; the earlier
+14:16:58Z window must not be mixed into the release decision even though both
+builds came from the same commit.
+
+The first readout after that restart is necessarily `gate: NOT MET`: every
+required lane and `prompt-total` must independently reach minimum N 30, and
+the normal traffic has not done so. Do not close #305, tag v1.0 or advertise
+release readiness until a readout beginning at this verified start has every
+lane evaluable and passing. If the plan lane remains too sparse under ordinary
+use, revisit the advertised automatic behavior; do not lower N or fill it with
+synthetic calls merely to make the gate pass.
+
+## Release decision — 1.0 ships with the measurement still running
+
+Decided by the product owner on 2026-09-13, after counter-review pass 6.
+
+**The decision:** release 1.0 now and keep the hook-telemetry measurement running, folding anything it turns up into a follow-up release. A `v1.0.1 — post-release measurement and follow-ups` milestone carries #305 together with the P2 items deferred at this gate (#530, #542, #544). The v1.0 milestone has no open issues.
+
+**Why this is not a quiet deferral.** Every defect #305 uncovered is fixed and merged — cross-session folding, five lanes that were not gate lanes, Bash rows under the Write lane's name, five lanes writing no client row on transport failure, unclassified prompt losses landing in no verdict, and a compiled hook binary that sat outside the test suite for two weeks. What remains is evidence, and that evidence measures a single machine. As a release condition for a public 1.0 it is weaker than it looks.
+
+The specific blocker was never the fixes but one thin lane: `plan` logged 7 calls in seven days, and those were residue of a lane that was not firing at all (#506). It is now bound to a real event on both clients, but its rate has never been observed, so waiting for minimum N there means waiting an unpredictable number of weeks.
+
+**Point 19 of the counter-review gate is amended accordingly**, rather than left standing and unmet. It previously demanded that seven-day packaged-client telemetry meet an explicit threshold for *every* advertised automatic lane. It now reads:
+
+> 19. Every advertised automatic lane that reached its minimum sample in the measured window meets its threshold, and every lane that did not is named explicitly as unproven rather than counted as passing. The measurement continues after release; a lane that turns out not to fire in real use is a product finding to be answered by examining the promise, not by lowering the minimum sample.
+
+This is the same correction #522 made to the global context budget: a contract that promises what the system does not do is the defect, and amending the text is part of the fix rather than an excuse for skipping it.
+
+**What does not change.** A smaller minimum N for a thin lane is the number chosen so that it passes — rejected for underpowered experiment arms in #437 and rejected here. Synthetic calls to fill a window are out for the same reason. The measurement window runs from 2026-09-13T14:16:58Z with daemon and stub both verified on `8a33595`.
