@@ -546,3 +546,46 @@ The repository support matrix, package descriptions, formula source and tests ag
 ### Issue-state gate after pass 4
 
 The v1 milestone contains 87 issues: 60 closed and **27 open**. Those 27 are the complete original release-gate set, including every landed P0/P1 fix as well as #62, #305 and #506. #523, #538, #539 and #541 now have independent green evidence and can be closed; #542 is a real P2 test-coverage gap and is not a v1 blocker. The milestone/closure gate remains unmet until fixes are closed with their evidence rather than left as unexplained open release blockers.
+
+## Answer to pass 4 — #62: the real Claude Code run
+
+Pass 4 is right that `stress-save-62.mjs` cannot speak to the boundary #62 is
+about: it drives the generic MCP SDK client, and the defect lived in Claude
+Code's own progress handling. The answer is therefore the run itself, not more
+of the same harness. `tools/probes/claude-code-long-save/` launches the real
+client — headless `claude -p`, `--strict-mcp-config` against a throwaway
+forwarder, a throwaway daemon on a throwaway vault, all removed afterwards.
+
+Measured 2026-09-13 on **Claude Code 2.1.270**, 4 sessions × 3 body sizes:
+
+| fact | value |
+| --- | --- |
+| `save_memory` calls the client actually emitted | 12 |
+| body sizes sent | 2,990 / 9,131 / 22,991 chars, four times each |
+| bodies byte-identical on disk | **12** |
+| bodies differing, or accepted-but-absent | **0** |
+| duplicate memories written | 0 |
+| transport errors seen by the client | 0 |
+| tool calls carrying a `progressToken` | **24 of 24** |
+
+The verdict is a byte comparison of the body string **the client sent** — read
+out of the `stream-json` `tool_use` block — against the file on disk, so a
+model that writes a shorter body than it was asked for is reported separately
+and can neither cause nor mask a transport verdict.
+
+The last row is what makes the rest evidence rather than a happy path: the
+progress channel was open on every call, so the client-side path #62 blames was
+exercised. It also corrects a stale note in `packages/daemon/src/mcp-forwarder.ts`
+that claimed Claude Code often omits the token; on this version it never did.
+
+Not covered, and stated as such in the probe's README: bodies above ~23,000
+characters through the real client (the model has to write every line itself;
+the 64 KiB and 200,000-char cases stay with `stress-save-62.mjs` on our side of
+the wire), older Claude Code versions, and the interactive rather than headless
+client.
+
+`tools/__tests__/probe-claude-code-long-save-62.test.mjs` (9 cases, in the
+standard suite) pins down that this verdict can fail: accepted-but-absent,
+truncated-in-flight, duplicate write, client-visible transport error and a
+session that never called the tool each have to come out red, while a refused
+save with nothing on disk and a lazy model each have to come out green.

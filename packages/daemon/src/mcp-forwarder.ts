@@ -311,8 +311,12 @@ async function main(): Promise<void> {
     if (name === "recall") {
       const recallStartedAt = Date.now();
       // Statusline state-tracking runs for EVERY recall — independent of
-      // whether the client sent a progressToken. (Claude Code often omits
-      // it; the streaming SSE path against /hook/recall does not need it.)
+      // whether the client sent a progressToken — the streaming SSE path
+      // against /hook/recall does not need one. (An earlier note here said
+      // Claude Code often omits the token. Measured, that is not true of
+      // 2.1.270: `tools/probes/claude-code-long-save` logged a token on
+      // 24 of 24 tool calls, recall and save_memory alike. Other clients
+      // still may omit it, which is why this path does not depend on it.)
       // Adopt a fresh turn if the prompt-hook reset to idle, then mark this
       // recall started. All mutations on in-memory liveStatusline — serial,
       // no race across parallel recalls.

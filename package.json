@@ -26,7 +26,8 @@
     "smoke:telemetry": "npm run smoke:telemetry --workspace=@bastra-recall/daemon",
     "pack:check": "npm pack --dry-run --workspace=@bastra-recall/core && npm pack --dry-run --workspace=@bastra-recall/statusline && npm pack --dry-run --workspace=@bastra-recall/daemon && npm pack --dry-run --workspace=bastra-recall",
     "release:version": "node scripts/bump.mjs",
-    "check:tap-drift": "node tools/check-tap-drift.mjs"
+    "check:tap-drift": "node tools/check-tap-drift.mjs",
+    "probe:save62-claude": "bash tools/probes/claude-code-long-save/run.sh"
   },
   "devDependencies": {
     "typescript": "^6.0.3"
