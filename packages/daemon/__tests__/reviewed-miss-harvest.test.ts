@@ -5,7 +5,7 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { harvestReviewedMisses } from "../src/learned-recall/reviewed-miss-harvest.js";
+import { extractReviewedMissChains, harvestReviewedMisses, toCandidate } from "../src/learned-recall/reviewed-miss-harvest.js";
 
 function line(value: unknown): string { return JSON.stringify(value); }
 
@@ -70,7 +70,7 @@ test("an unrelated empty tool result cannot taint a nonempty Recall", () => {
   assert.equal(harvestReviewedMisses(session, "session.jsonl")[0].status, "needs-relevance-label");
 });
 
-test("explicit miss accepts structured and text-only results", () => {
+test("a miss is what the envelope states, never a sentence inside a hit", () => {
   const run = (content: string): string => {
     const session = [
       line({ type: "user", message: { content: "where is the deployment rail" } }),
@@ -80,8 +80,49 @@ test("explicit miss accepts structured and text-only results", () => {
     ].join("\n");
     return harvestReviewedMisses(session, "session.jsonl")[0]?.status ?? "missing";
   };
+  // envelope-level signals
   assert.equal(run('{"weak_result":true,"hits":[{"id":"memory-1"}]}'), "candidate");
-  assert.equal(run("no relevant memory found"), "candidate");
+  assert.equal(run('{"no_home":true,"hits":[{"id":"memory-1"}]}'), "candidate");
+  assert.equal(run('{"hits":[]}'), "candidate");
+  // the reported defect: a nonempty recall whose hit text names a miss
+  assert.equal(run('{"hits":[{"id":"lesson-about-recall","summary":"no relevant memory was found — lesson"}]}'), "needs-relevance-label");
+  // a nested empty hits array is payload, not envelope
+  assert.equal(run('{"hits":[{"id":"memory-1","hits":[]}]}'), "needs-relevance-label");
+  // text that is not an envelope carries no miss signal
+  assert.equal(run("no relevant memory found"), "needs-relevance-label");
+  assert.equal(run("Error: query is required"), "needs-relevance-label");
+});
+
+test("the served envelope may arrive as text parts, and its recall_id is read", () => {
+  const envelope = JSON.stringify({ query: "rail", hits: [], recall_id: "11111111-2222-3333-4444-555555555555" }, null, 2);
+  const session = [
+    line({ type: "user", message: { content: "where is the deployment rail" } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] } }),
+    line({ type: "user", timestamp: "2026-09-13T20:00:00.000Z", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: [{ type: "text", text: envelope }] }] } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "mcp__bastra-recall__load_memory", input: { id: "memory-1" } }] } }),
+  ].join("\n");
+  const [chain] = extractReviewedMissChains(session, "session.jsonl");
+  assert.equal(chain.explicitMiss, true);
+  assert.equal(chain.recallId, "11111111-2222-3333-4444-555555555555");
+  assert.equal(chain.resultTs, "2026-09-13T20:00:00.000Z");
+  assert.deepEqual(chain.evidence, { kind: "load-memory", memoryId: "memory-1" });
+  assert.doesNotMatch(JSON.stringify(toCandidate(chain)), /memory-1|1111/);
+});
+
+test("a session-context block after the envelope does not hide the envelope", () => {
+  const text = JSON.stringify({ query: "rail", hits: [], recall_id: "11111111-2222-3333-4444-555555555555" }, null, 2) +
+    "<bastra-session-context>\nRecalled context — {\"hits\":[{\"id\":\"x\"}]} not the envelope\n</bastra-session-context>";
+  const session = [
+    line({ type: "user", message: { content: "where is the deployment rail" } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] } }),
+    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: [{ type: "text", text }] }] } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] } }),
+  ].join("\n");
+  const stats = { recalls: 0, withRecallId: 0 };
+  const [chain] = extractReviewedMissChains(session, "session.jsonl", stats);
+  assert.equal(chain.explicitMiss, true);
+  assert.equal(chain.recallId, "11111111-2222-3333-4444-555555555555");
+  assert.deepEqual(stats, { recalls: 1, withRecallId: 1 });
 });
 
 test("transcript control envelopes cannot become a Recall intent", () => {

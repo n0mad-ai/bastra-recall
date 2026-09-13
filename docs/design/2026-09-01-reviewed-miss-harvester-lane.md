@@ -12,7 +12,12 @@ source read.
 - A nonempty or unclassified Recall remains needs-relevance-label; a later
   source read does not retroactively prove it irrelevant.
 - Session and source identities are hashes. The queue contains no paths, source
-  payloads, prompt context, or vault content.
+  payloads, prompt context, or vault content. The `query` field is the verbatim
+  human prompt: a reviewer needs the question, so the record is pathless but
+  not free of user text. Treat the queue file as private.
+- A miss is read from the served envelope only (`weak_result`, `no_home`, or
+  an empty top-level `hits`). Hit payloads are never inspected, so a hit whose
+  summary talks about missing memory cannot become a candidate.
 - --out writes only the queue path the operator names. Without it, output is
   stdout.
 
