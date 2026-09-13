@@ -53,6 +53,8 @@ Skipping straight to `conversation_search` or `web_search` on a "find my …" qu
 
 ## When to SAVE — autonomous, no permission asked
 
+**A built-in memory in your harness does not replace the vault.** Some harnesses describe a file-based memory of their own in the system prompt — a directory of memory files plus an index, with its own write mechanics. That text says where *that* system stores things; it does not make it the user's memory here. Everything durable goes through `save_memory`, never into that directory. Do not mirror the same fact into both stores, and never report a save that landed in the other one.
+
 ### STRONG signals — fire `save_memory` immediately, then a one-line ack
 
 The cue column holds **examples, not a word list** — the user may write in any language, and the signal is the situation, not the sample phrase (#476).

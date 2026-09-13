@@ -2,7 +2,7 @@
 name: bastra-recall
 description: Proactive private local memory for ChatGPT and Codex — recall before acting, save durable rules, lessons and decisions without being asked. Requires the local bastra-recall MCP server installed by `bastra install codex`.
 ---
-<!-- GENERATED from packages/skill/SKILL.md (canonical 43e92dda89069c70) by scripts/build-skill-projections.mjs — do not edit; edit the canonical file and run `npm run skill:build` -->
+<!-- GENERATED from packages/skill/SKILL.md (canonical a76a3ee26641bb9d) by scripts/build-skill-projections.mjs — do not edit; edit the canonical file and run `npm run skill:build` -->
 
 # bastra-recall — autonomous teammate memory
 
@@ -53,6 +53,8 @@ Skipping straight to `conversation_search` or `web_search` on a "find my …" qu
 ---
 
 ## When to SAVE — autonomous, no permission asked
+
+**A built-in memory in your harness does not replace the vault.** Some harnesses describe a file-based memory of their own in the system prompt — a directory of memory files plus an index, with its own write mechanics. That text says where *that* system stores things; it does not make it the user's memory here. Everything durable goes through `save_memory`, never into that directory. Do not mirror the same fact into both stores, and never report a save that landed in the other one.
 
 ### STRONG signals — fire `save_memory` immediately, then a one-line ack
 

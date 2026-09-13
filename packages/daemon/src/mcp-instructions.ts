@@ -25,4 +25,6 @@ export const SERVER_INSTRUCTIONS =
   "lands, save it via `save_memory` immediately and acknowledge in one short line. recall returns lean " +
   "candidates — call `load_memory` only for the hits you actually need. (4) To CHANGE an existing " +
   "memory use `edit_memory` (str_replace / append / frontmatter patch) — never edit a vault file " +
-  "directly, and do not re-send a whole body just to add a line.";
+  "directly, and do not re-send a whole body just to add a line. (5) If your harness also carries a " +
+  "built-in file-based memory of its own, the vault is still the store: durable facts go through " +
+  "`save_memory` here, never into that directory, and a save counts as done only once it landed here.";
