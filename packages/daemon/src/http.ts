@@ -48,7 +48,11 @@
  *     Rebinding und lokale Tunnel die Ausnahme vom Socket; ein roher Port-
  *     Forwarder ergänzt gar keinen Host). BASTRA_AUTH_LOOPBACK_SKIP=0
  *     erzwingt das Token auch lokal.
- *   - Ohne gesetzten Token läuft alles offen — dev/local mode.
+ *   - Ohne gesetzten Token läuft NUR dieser direkte lokale Weg offen —
+ *     dev/local mode. Alles andere (fremder Host, fehlender Host, Browser-
+ *     Origin) bekommt 401: ohne konfiguriertes Token kann niemand sonst
+ *     hinein (#526 reopened — vorher hat ein leeres Token die Prüfung
+ *     komplett übersprungen und ein fremder Host kam durch).
  *
  * CORS (für /api/v1/*):
  *   - BASTRA_CORS_ORIGIN (default LEER = deny-all, #95) — Komma-Liste erlaubter

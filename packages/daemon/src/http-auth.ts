@@ -116,6 +116,15 @@ export function resolveCorsOrigin(
  * `attacker.example` — or a tunnel/reverse proxy fronting a public hostname —
  * would otherwise inherit the exemption from the loopback socket underneath.
  * A foreign Host stays usable for tunnels, but must carry the bearer token.
+ *
+ * #526 (reopened): the host rule does NOT hang on a configured token. The
+ * tokenless dev mode is the DIRECT-LOCAL exemption, not a global open door —
+ * an empty token previously skipped the check entirely, so a foreign Host got
+ * 200 with the full vault body. Everything that is not a direct local caller
+ * needs the bearer, and without a configured token no bearer can match: 401,
+ * the same answer a browser already got against a tokenless daemon. That is
+ * "authenticate, and for that a token must exist", not "forbidden forever",
+ * so 401 rather than the 403 the loopback-only routes use for their host gate.
  * Returns the HTTP status to apply. Exported for unit tests.
  */
 export function gateApiRequest(p: {
@@ -134,8 +143,7 @@ export function gateApiRequest(p: {
     return 200;
   }
   const directLocal = p.isLoopback && p.isLoopbackHost;
-  if (p.apiToken && !(p.loopbackSkip && directLocal)) {
-    if (!safeEqual(p.authHeader, `Bearer ${p.apiToken}`)) return 401;
-  }
+  if (p.loopbackSkip && directLocal) return 200;
+  if (!p.apiToken || !safeEqual(p.authHeader, `Bearer ${p.apiToken}`)) return 401;
   return 200;
 }

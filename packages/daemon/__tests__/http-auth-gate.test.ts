@@ -87,6 +87,42 @@ test("#526 gate: no Origin, loopback peer but FOREIGN Host → token required", 
   assert.equal(gateApiRequest({ ...base, authHeader: `Bearer ${TOKEN}` }), 200, "tunnels stay usable with the token");
 });
 
+test("#526 gate: NO token configured — a foreign Host is still refused, direct local stays open", () => {
+  const base = {
+    reqOrigin: undefined,
+    allowedOrigin: null,
+    authHeader: "",
+    apiToken: "", // dev/local mode: nothing minted, BASTRA_API_TOKEN unset or empty
+    loopbackSkip: true,
+  };
+  // Der Befund: das leere Token übersprang die Prüfung komplett.
+  assert.equal(gateApiRequest({ ...base, isLoopback: true, isLoopbackHost: false }), 401, "foreign Host");
+  assert.equal(gateApiRequest({ ...base, isLoopback: false, isLoopbackHost: true }), 401, "foreign peer");
+  assert.equal(gateApiRequest({ ...base, isLoopback: false, isLoopbackHost: false }), 401);
+  // Kein Bearer kann ein nicht existierendes Token treffen.
+  assert.equal(
+    gateApiRequest({ ...base, isLoopback: true, isLoopbackHost: false, authHeader: `Bearer ${TOKEN}` }),
+    401,
+  );
+  // Der dev/local-Weg bleibt genau so offen wie vorher.
+  assert.equal(gateApiRequest({ ...base, isLoopback: true, isLoopbackHost: true }), 200);
+});
+
+test("#526 gate: no token + loopback-skip OFF → nothing gets in (contradictory config, honest answer)", () => {
+  assert.equal(
+    gateApiRequest({
+      reqOrigin: undefined,
+      allowedOrigin: null,
+      isLoopback: true,
+      isLoopbackHost: true,
+      authHeader: "",
+      apiToken: "",
+      loopbackSkip: false,
+    }),
+    401,
+  );
+});
+
 // ── gateApiRequest: browser requests (Origin present) ────────────────
 test("gate: browser, allowed origin + correct token → 200 (even over loopback)", () => {
   assert.equal(

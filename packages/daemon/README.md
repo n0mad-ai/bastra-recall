@@ -91,7 +91,7 @@ npm run backfill:related   # populate related_via on legacy memories
 | `BASTRA_VAULT_PATH` | yes | — | absolute path to the vault root (memories are auto-discovered) |
 | `BASTRA_HTTP_PORT` | no | `6723` | loopback HTTP port for REST + hooks; read only when neither URL var below is set |
 | `BASTRA_HTTP_URL` | no | derived | full URL override (for non-loopback testing); read only when `BASTRA_DAEMON_URL` is unset |
-| `BASTRA_API_TOKEN` | no | unset | when set, REST `/api/v1/*` requires `Authorization: Bearer <token>` |
+| `BASTRA_API_TOKEN` | no | unset | the bearer REST `/api/v1/*` requires from every caller that is not a direct local one; unset/empty does not open the API — such callers then get a `401` nothing can satisfy until a token is minted (#526) |
 | `BASTRA_AUTH_LOOPBACK_SKIP` | no | `1` | the token-free path needs a loopback peer **and** a present, loopback `Host` header — a missing header counts as foreign (#526); set to `0` to require the bearer even for direct 127.0.0.1 callers |
 | `BASTRA_CORS_ORIGIN` | no | unset (deny all) | comma-separated browser-origin allowlist; unset = no browser origin allowed; `*` = explicit permissive opt-in (tunnel/dev) |
 | `BASTRA_EMBEDDING_PROVIDER` | no | unset | `ollama` or `openai`; without it the daemon stays BM25-only |
