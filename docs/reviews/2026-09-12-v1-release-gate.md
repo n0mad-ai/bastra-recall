@@ -688,3 +688,82 @@ claims to gate.
 #530, #542, #544 and the two #62 probe-contract tightenings above are P2 and do
 not block 1.0. #525 is cleared: the live tap matches and the drift check is
 green. #62, #523, #525, #538, #539 and #541 are closed with evidence.
+
+## Independent Codex counter-review — pass 6
+
+Counter-reviewed revision: `e1cab8a806210fa19a678f7ce1be0e65ebda3976`
+(also `origin/main`; includes `d735b54` for #506 and `e1cab8a` for #543).
+Counter-review verdict: **NO-GO remains**, now on #545 and the fresh #305
+measurement only. #506 and #543 clear their pass-5 counterexamples. No new
+failure was found in either fix, but the expanded telemetry exposed one prompt
+classification asymmetry that can still produce a false-green gate.
+
+### Mechanical and artifact checks on `e1cab8a`
+
+- `npm run build`: pass
+- `npm run check:types`: pass
+- `npm test`: 2,802 tests; 2,800 passed, 0 failed, 1 skipped, 1 todo
+- Focused #305/#506/#543 suite: 59/59
+- `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities
+- GitHub CI and CodeQL for `e1cab8a`: pass
+- Fresh native arm64 stub compiled directly from `bastra-hook.ts` with the
+  release permission flags: pass
+
+### #506 clears — real packaged install/uninstall now round-trips
+
+The exact pass-5 temporary-home lifecycle was repeated through the built CLI.
+Install registered MCP, skill and seven hooks, enabled
+`tools.update_plan.enabled`, and the real `codex mcp list` parsed the result.
+Uninstall removed every managed component and left `config.toml` at exactly
+zero bytes. The former false-success branch now distinguishes `next: ""` from
+`undefined`; its focused tests also cover dry-run, user content on either side
+of the managed block and a second uninstall. #506 is closed and independently
+cleared.
+
+### #543 clears — every required kind is emitted by both real client shapes
+
+A newly compiled native stub binary and the built node clients were each run
+against an unreachable loopback endpoint. Prompt, Write, plan, session, stop,
+Bash-pre and Bash-post all failed open and each emitted one client-side row.
+Every row carried its own gate event kind, a client-version suffix, the payload
+session id and a failure status. A synthetic aggregate of client-side failures
+also turns each corresponding lane red. #543 is closed and independently
+cleared.
+
+The currently installed reference stub is not that binary yet: its mtime is
+`2026-09-13T08:23:33+0200`, before the #543 source at
+`2026-09-13T13:53:33+0200`, and `/health` still reports daemon
+`build_revision: 2b7d285`. Therefore the #305 window opened at 06:23Z cannot
+serve as the final post-#543 window. Deploy the new daemon and rebuilt stub,
+then start the acceptance window from that verified revision.
+
+### P1 — #545: stub prompt failures can still coexist with `gate: MET`
+
+The native stub emits an unreachable prompt call as
+`detected_mode: "unknown"`; the built node prompt client emits the same failure
+as `"none"`. The aggregator uses `detected_mode` as the prompt lane name, but
+only the known prompt modes carry thresholds. `unknown` is neither rendered as
+a judged lane nor included among the fixed required kinds.
+
+The false-green shape reproduces directly: 40 healthy calls in each of the six
+kind-based lanes plus 40 stub prompt rows with `status: daemon-unreachable` and
+`detected_mode: unknown` renders all six visible lanes as PASS and ends with
+`gate: MET`; the 40 failed prompt calls are absent from the verdict. #545 is
+therefore a release blocker, not merely reporting polish. Normalize both
+clients to one honest contract or give `unknown` an explicit failing/not-
+evaluable gate rule, and add the real compiled-stub versus built-node parity
+test to the drift guard.
+
+### Remaining release path after pass 6
+
+1. Fix #545 and prove that the former 40-failed-prompt synthetic window cannot
+   render `MET`.
+2. Deploy `e1cab8a` plus the #545 fix, rebuild the installed stub, and verify
+   daemon/stub revision rather than relying on source checkout state.
+3. Restart the #305 packaged-client acceptance window from that deployment and
+   wait until every required lane reaches min-N 30 and the complete gate reads
+   `MET`.
+
+At review time the live six-hour window has 68 judged calls and every lane is
+still below min-N (pretooluse is closest at 29; plan is 0), so `gate: NOT MET`
+is the only valid current release decision.
