@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   PLAN_TOOL_KEY,
+  PLAN_TOOL_MARKER,
   ensureCodexPlanTool,
   inspectPlanTool,
   planPlanToolEnable,
@@ -106,7 +107,7 @@ test("#506 an existing [tools.update_plan] section gets the key inserted, not a 
   const source = "[tools.update_plan]\n# a comment of mine\n";
   const plan = planPlanToolEnable(source);
   assert.equal(plan.status, "enabled");
-  assert.ok(plan.next);
+  assert.ok(plan.next !== undefined);
   assert.equal(headerCount(plan.next), 1);
   assert.match(plan.next, /# a comment of mine/);
   assert.equal(inspectPlanTool(plan.next).state, "enabled");
@@ -133,7 +134,7 @@ test("#506 uninstall keeps a plan tool setting the user made themselves", async 
 
 test("#506 a hand-edited managed block is reported and left alone on uninstall", () => {
   const enabled = planPlanToolEnable("");
-  assert.ok(enabled.next);
+  assert.ok(enabled.next !== undefined);
   const edited = enabled.next.replace("enabled = true", "enabled = true # mine now");
   const removal = planPlanToolRemoval(edited);
   assert.equal(removal.status, "kept");
@@ -174,4 +175,92 @@ test("#506 the Codex adapter wires the plan-tool opt-in into install, uninstall 
   // The trust gate: a changed hook command stops firing until re-approved.
   assert.match(source, /re-approve them in Codex with '\/hooks'/);
   assert.ok(PLAN_TOOL_KEY === "tools.update_plan.enabled");
+});
+
+/**
+ * #506 — the uninstall path, driven through the adapter entry point the CLI
+ * calls (`ensureCodexPlanTool`) against real TOML files, not through the pure
+ * planner. The planner always got `next: ""` right when our block was the whole
+ * file; the adapter treated that empty-but-valid content as "nothing to do" and
+ * still reported `removed`. Only a test that reads the file back catches that.
+ */
+function managedOnlyConfig(): string {
+  const plan = planPlanToolEnable("");
+  assert.ok(plan.next !== undefined, "the planner must produce content for an empty config");
+  return plan.next;
+}
+
+test("#506 uninstall empties a config that was nothing but our block", async () => {
+  const block = managedOnlyConfig();
+  await withConfig(block, async (configPath) => {
+    const removed = await ensureCodexPlanTool("uninstall", { dryRun: false, configPath });
+    assert.equal(removed.status, "removed");
+    const after = await readFile(configPath, "utf8");
+    assert.equal(after, "", "the managed block must actually be gone from disk");
+    assert.equal(after.includes(PLAN_TOOL_MARKER), false);
+    assert.equal(inspectPlanTool(after).state, "absent");
+  });
+});
+
+test("#506 a dry-run uninstall of a block-only config says would-remove and writes nothing", async () => {
+  const block = managedOnlyConfig();
+  await withConfig(block, async (configPath) => {
+    const planned = await ensureCodexPlanTool("uninstall", { dryRun: true, configPath });
+    assert.equal(planned.status, "would-remove");
+    assert.equal(await readFile(configPath, "utf8"), block);
+  });
+});
+
+test("#506 uninstall removes our block and keeps the user's lines in front of it", async () => {
+  const mine = '# mine\nmodel = "gpt-5-codex"\n';
+  await withConfig(mine, async (configPath) => {
+    const installed = await ensureCodexPlanTool("install", { dryRun: false, configPath });
+    assert.equal(installed.status, "enabled");
+    const removed = await ensureCodexPlanTool("uninstall", { dryRun: false, configPath });
+    assert.equal(removed.status, "removed");
+    assert.equal(await readFile(configPath, "utf8"), mine);
+  });
+});
+
+test("#506 uninstall removes our block and keeps the user's lines behind it", async () => {
+  const mine = '[mcp_servers.other]\ncommand = "foreign"\n';
+  await withConfig(`${managedOnlyConfig()}${mine}`, async (configPath) => {
+    const removed = await ensureCodexPlanTool("uninstall", { dryRun: false, configPath });
+    assert.equal(removed.status, "removed");
+    assert.equal(await readFile(configPath, "utf8"), mine);
+  });
+});
+
+test("#506 uninstall removes our block from between the user's own lines", async () => {
+  const head = '# mine\nmodel = "gpt-5-codex"\n';
+  const tail = '[mcp_servers.other]\ncommand = "foreign"\n';
+  await withConfig(head, async (configPath) => {
+    await ensureCodexPlanTool("install", { dryRun: false, configPath });
+    await writeFile(configPath, `${await readFile(configPath, "utf8")}${tail}`, "utf8");
+    const removed = await ensureCodexPlanTool("uninstall", { dryRun: false, configPath });
+    assert.equal(removed.status, "removed");
+    assert.equal(await readFile(configPath, "utf8"), `${head}${tail}`);
+  });
+});
+
+test("#506 a second uninstall of a block-only config reports nothing to do and writes nothing", async () => {
+  await withConfig(managedOnlyConfig(), async (configPath) => {
+    const first = await ensureCodexPlanTool("uninstall", { dryRun: false, configPath });
+    assert.equal(first.status, "removed");
+    const second = await ensureCodexPlanTool("uninstall", { dryRun: false, configPath });
+    assert.equal(second.status, "not-present");
+    assert.equal(second.backupPath, undefined, "nothing was written, so nothing was backed up");
+    assert.equal(await readFile(configPath, "utf8"), "");
+  });
+});
+
+test("#506 install then uninstall on an empty config is a full round trip", async () => {
+  await withConfig("", async (configPath) => {
+    const installed = await ensureCodexPlanTool("install", { dryRun: false, configPath });
+    assert.equal(installed.status, "enabled");
+    assert.equal(inspectPlanTool(await readFile(configPath, "utf8")).state, "enabled");
+    const removed = await ensureCodexPlanTool("uninstall", { dryRun: false, configPath });
+    assert.equal(removed.status, "removed");
+    assert.equal(await readFile(configPath, "utf8"), "");
+  });
 });

@@ -211,13 +211,19 @@ export async function ensureCodexPlanTool(
   const source = await readConfigText(opts.configPath);
   if (typeof source !== "string") return { status: "error", detail: source.error };
   const plan = action === "install" ? planPlanToolEnable(source) : planPlanToolRemoval(source);
-  if (!plan.next) return { status: plan.status, detail: plan.detail };
+  // `next` is the planned file content, and the empty string is a valid one:
+  // uninstalling a config whose only content was our block leaves nothing
+  // behind. Only `undefined` means "no change planned" — a truthiness test
+  // here reported `removed` while writing nothing (#506).
+  const next = plan.next;
+  if (next === undefined) return { status: plan.status, detail: plan.detail };
   if (opts.dryRun) {
     return action === "install"
       ? { status: "would-enable", detail: `would ${plan.detail}` }
       : { status: "would-remove", detail: `would ${plan.detail}` };
   }
   const backupPath = await backupConfig(opts.configPath);
-  await atomicWriteText(opts.configPath, plan.next);
+  await atomicWriteText(opts.configPath, next);
+  // Reported only now, after the write that earned it.
   return { status: plan.status, detail: plan.detail, backupPath: backupPath ?? undefined };
 }
