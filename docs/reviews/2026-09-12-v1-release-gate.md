@@ -874,4 +874,95 @@ The specific blocker was never the fixes but one thin lane: `plan` logged 7 call
 
 This is the same correction #522 made to the global context budget: a contract that promises what the system does not do is the defect, and amending the text is part of the fix rather than an excuse for skipping it.
 
-**What does not change.** A smaller minimum N for a thin lane is the number chosen so that it passes — rejected for underpowered experiment arms in #437 and rejected here. Synthetic calls to fill a window are out for the same reason. The measurement window runs from 2026-09-13T14:16:58Z with daemon and stub both verified on `8a33595`.
+**What does not change.** A smaller minimum N for a thin lane is the number chosen so that it passes — rejected for underpowered experiment arms in #437 and rejected here. Synthetic calls to fill a window are out for the same reason. The former 2026-09-13T14:16:58Z window was later invalidated by additional builds; the post-release measurement needs a new fully deployed starting point, recorded below.
+
+## Independent Codex counter-review — pass 8
+
+Counter-reviewed revision: `5672bf9c5e56cb3e3bbd13b0c4ea2b1790743509`
+(also `origin/main`). Security verification remains closed by owner instruction;
+this pass reviews the release-decision follow-up, #546's everyday guard and the
+publish-path fixes #548/#549 only.
+
+Counter-review verdict: **the repository is releaseable under the amended owner
+contract, but v1.0 has not been released yet and the reference host is not a
+fully deployed acceptance environment.** The publish fixes clear. One deployment
+finding must be resolved before any post-release #305 evidence from this host is
+treated as valid.
+
+### Mechanical and live distribution checks on `5672bf9`
+
+- `npm run check:types`: pass
+- `npm test`: 2,864 tests; 2,862 passed, 0 failed, 1 skipped, 1 todo
+- focused #524/#548/#549/action-pinning suite: 33/33
+- `npm run test:stub`: 5/5 after a fresh build
+- `npm audit --audit-level=low`: 0 vulnerabilities
+- GitHub CI and CodeQL for `5672bf9`: pass
+- daemon and installed stub rebuilt and read back on `5672bf9`; `/health`
+  reports `code_stale: null`
+
+The public distribution is still **v0.9.2**: GitHub Latest and the newest git
+tag are v0.9.2, all four npm `latest` tags are 0.9.2, and the live Homebrew
+formula downloads v0.9.2. There is no v1.0 draft and no v1.0 publish-workflow
+run. The repository therefore records a release decision, not a completed
+release.
+
+### #548 clears — every job is bound to one release commit
+
+The gate resolves the draft target to a full commit, refuses a dispatch whose
+`GITHUB_SHA` differs, checks all five package versions against the requested tag
+and hands the resolved SHA to every downstream checkout. The refusal paths run
+against a stubbed real `gh` process, and all publishing/asset/promote jobs depend
+on the gate output. The former branch-drift counterexample is closed.
+
+### #549 clears — required assets precede the documented npm entry point
+
+The workflow now makes the npm job depend on both stub builders, the desktop
+extension and both Finder installers. Before the first npm publish, the script
+reads the draft's asset names and refuses if any platform binary, checksum,
+extension, extension checksum or installer is absent. The unscoped
+`bastra-recall` wrapper remains last, so a partial scoped-package publish does
+not move the documented `npm install -g bastra-recall` path to a release whose
+dependencies are missing. Reruns remain digest-verified and resumable.
+
+This is sequential publication rather than registry-level atomicity: a failure
+inside the four-package loop can expose a newer directly consumed scoped
+package before the wrapper moves. Given npm OIDC's stated promotion constraint,
+the workflow makes the supported entry point coherent and keeps GitHub private;
+whole-registry atomicity remains a named P2 limitation, not a v1 blocker.
+
+### #546 everyday guard clears in code; the real host exposes a deployment gap
+
+`bastra doctor` now asks every registered compiled stub for its embedded stamp,
+distinguishes current, stale, unstamped, missing, unreadable, foreign-tree and
+source-unavailable states, and gives a rebuild command only where the source
+checkout exists. After rebuilding, the real registered binary reports the same
+digest and revision as the checkout, so the guard detects and clears the exact
+two-week-old-binary failure.
+
+The same real `doctor` run found both hook-capable installations stale at the
+configuration layer:
+
+- Claude Code reports seven lane categories but its plan matcher is missing the
+  required `TodoWrite|TaskCreate` registration introduced by the fix.
+- Codex's installed skill differs from the current bundle and
+  `tools.update_plan.enabled` is still absent, so its plan hook cannot fire.
+
+The current installer dry-run names exactly those repairs. Consequently, the
+reference host's plan count of zero is not evidence that the corrected plan lane
+is naturally rare: the corrected registrations were never deployed here. This
+does not invalidate the owner's decision to move the measurement to v1.0.1,
+but it does invalidate the report's rate rationale until both clients are
+reinstalled and `bastra doctor` is green. A new #305 window may begin only after
+that configuration deploy; rebuilding daemon and stub alone is insufficient.
+
+### Remaining path to an actual v1.0 release
+
+1. Refresh the real Claude Code and Codex registrations and require
+   `bastra doctor` to report both surfaces healthy.
+2. Bump all packages to 1.0.0, commit and push that exact tree.
+3. Stage the v1.0.0 draft on that commit and dispatch the publish workflow on
+   the same ref.
+4. Require the workflow to publish all four npm packages, verify every asset
+   and promote the draft; then independently read back GitHub Latest, npm
+   `latest` for all four packages and the updated Homebrew formula before
+   advertising the release.
