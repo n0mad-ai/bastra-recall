@@ -108,3 +108,41 @@ re-runs the production retriever against a rebuilt snapshot is the right way
 to measure rank beyond the recorded depth; it depends on the daemon and is
 left as a named future engine). Workstream B (access clusters) is not in
 this change.
+
+## 7. Measured on real sessions (2026-09-13)
+
+Eight days of raw sessions on two developer machines, the daemon's telemetry
+directory and the live vault, one run each. Counts only; the queue and the
+proposals stay local.
+
+| | machine A | machine B |
+| --- | --- | --- |
+| sessions scanned | 76 | 125 |
+| recall calls with a result | 16 | 17 |
+| envelopes carrying `recall_id` | 16 | 10 |
+| chains (result followed by an evidence step) | 11 | 5 |
+| chains joined to a telemetry pool | 11 | 4 |
+| `served-hit` | 10 | 2 |
+| `external-source` | 1 | 3 |
+| `unknown` | 0 | 0 |
+| miss classes (`in-pool`, `out-of-pool`, `unindexed`, `vault-gap`) | 0 | 0 |
+| telemetry pools available | 2727 | 1211 |
+| recorded pool depth seen | 20, 32 | 24, 32, 40 |
+
+Reading: on these machines the MCP recall lane is a hit lane in this window.
+Every chain that loaded a vault object loaded one the same call had served.
+The four proposal classes therefore have no live specimen yet; they are
+exercised by the adversarial fixtures only, and this document does not claim
+a miss rate. The seven envelopes on machine B without a `recall_id` were
+error results and batch calls whose envelope shape differs; they are counted
+so that the join ceiling is visible.
+
+Two observations for the next engine, not built here:
+
+- Most recall traffic is the hook lane (thousands of `hook_recall` pools
+  against tens of MCP calls). The daemon's own `load_memory` events already
+  carry `from_hook_recall` and `hook_hint_rank`, so a telemetry-only join
+  (no transcript) can classify hook-lane loads against their pool. That is a
+  second pool-join engine with the same classifier.
+- A `served-hit` followed by a correction in the same turn is the case #388's
+  outcome vocabulary is for; this harvester does not read outcomes.
