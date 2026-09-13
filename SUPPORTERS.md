@@ -1,40 +1,15 @@
-# Supporters
+# Support Bastra Recall
 
-Bastra is built solo. Every sponsor, every star, every issue makes the project
-sustainable. Thank you. 💖
+Bastra Recall is maintained by Daniel. Sponsorship helps fund development,
+testing and documentation while keeping the open-source memory service useful
+on its own.
 
-If you want to be on this page, [become a sponsor](https://github.com/sponsors/n0mad-ai)
-or [send a one-time tip](https://github.com/sponsors/n0mad-ai).
+[Become a sponsor or send a one-time contribution](https://github.com/sponsors/n0mad-ai).
+Current options are listed on GitHub Sponsors.
 
----
+You can also help by sharing a useful example, reporting a reproducible bug,
+improving the docs or [contributing code](./CONTRIBUTING.md). Thank you for
+helping the project grow.
 
-## 🏛 Patrons ($1000/mo)
-
-*Be the first.*
-
-## 💎 Sponsors ($250/mo)
-
-*Be the first.*
-
-## 🌱 Sustainers ($50/mo)
-
-*Be the first.*
-
-## 🛟 Backers ($15/mo)
-
-*Be the first.*
-
-## ☕ Coffee ($5/mo)
-
-*Be the first.*
-
----
-
-## 🎁 One-time tips
-
-*Be the first.*
-
----
-
-Sponsors are credited within 7 days of their first contribution. If you
-sponsored and don't see your name yet, please [open an issue](https://github.com/n0mad-ai/bastra-recall/issues/new?labels=sponsor-credit&title=Missing+sponsor+credit) — that's on me.
+Sponsors can be credited here. If you would like a credit added or corrected,
+[open an issue](https://github.com/n0mad-ai/bastra-recall/issues/new?labels=sponsor-credit&title=Sponsor+credit).

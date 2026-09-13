@@ -5,9 +5,9 @@ workflow is light — but a few conventions keep things smooth.
 
 ## Before you start
 
-- **Pre-alpha.** Things still change fast. Open an issue before a large PR
-  so we can align on direction.
-- **One maintainer.** Best-effort response times — sponsors get priority.
+- **v1.0 is in preparation.** Open an issue before a large PR so we can
+  agree on scope and avoid duplicate work.
+- **One maintainer.** Response times vary; a clear example or reproduction helps.
 - **Scope rule:** the OSS core must stay fully functional **without** the
   paid Mac app. Don't propose changes that move OSS features behind a tier.
 
@@ -104,11 +104,11 @@ runtime assets such as the packaged Skill or statusline bundle.
 packages/
   core/       Vault parsing, search index, save logic — no I/O surface
   daemon/     MCP server, HTTP REST, hooks, `bastra` CLI
-  skill/      SKILL.md + its reference files, installed into ~/.claude/skills/
+  skill/      SKILL.md + its reference files, shared across supported clients
 distribution/
-  homebrew/   Brew formula (head-only)
+  homebrew/   Homebrew formula
   install.sh               curl installer, mirrored to bastra.io/install
-  Install Bastra.command   Double-click installer
+  Install Bastra.command   macOS installer (right-click → Open)
   Uninstall Bastra.command Double-click uninstaller (never touches the vault)
 scripts/      One-off telemetry / eval / backfill scripts
 ```
@@ -164,7 +164,7 @@ Body explains **why**, not what — the diff already shows what.
 - WIP / draft PRs are welcome; open them as **Draft** PRs (the GitHub
   button) rather than `[WIP]` in the title.
 
-## License + DCO
+## License
 
 Bastra Recall is MIT-licensed. By contributing, you agree that your
 contribution is released under the same MIT license. No CLA, no extra

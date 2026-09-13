@@ -2,7 +2,7 @@
 
 ## Goal
 
-Bastra.Recall is a local-first memory layer for AI assistants. It gives Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor, ChatGPT Actions, and other MCP/HTTP clients one shared vault of durable lessons, preferences, project facts, decisions, workflows, bookmarks, and document sidecars.
+Bastra.Recall is a local-first memory layer for AI assistants. It gives Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor and other MCP/HTTP clients (see the [support matrix](../README.md#supported-surfaces); packaged ChatGPT Actions remain planned) one shared vault of durable lessons, preferences, project facts, decisions, workflows, bookmarks, and document sidecars.
 
 The operating goal is simple: the user should not have to re-explain stable context. The assistant saves durable memories when a lesson or rule is learned, and recalls relevant memories before acting.
 
@@ -249,7 +249,7 @@ Topic detection is deterministic and based on file extension, path segments, and
 
 ## Privacy And Safety
 
-**Vault content — memories, documents and recall queries — never leaves the machine unless you explicitly choose a remote provider or expose the REST gateway yourself.** The two ways to choose that are `embedding.provider=openai` (see Hybrid Recall) and a tunnel/reverse proxy in front of `127.0.0.1:6723`. Separately, a few **optional, off-by-default or metadata-only** features do make outbound requests without carrying vault content: the update/version check (`BASTRA_UPDATE_CHECK=off` disables it), the statusline pricing refresh, weather/geocoding lookups (they send a coarse, user-chosen or browser-supplied location, nothing from the vault), and Bastra Commons sync, which is opt-in and only publishes what you submit in a reviewed PR.
+Storage and keyword search run locally. MCP results and hook context are handed to the connected AI client; a cloud-backed client may send that context to its provider. Explicitly configured remote embeddings, REST exposure and vault-folder synchronization add separate data paths. The [privacy overview](./PRIVACY.md) covers these boundaries and metadata-only network features; the transport-level controls below apply to Bastra's own API.
 
 - The daemon binds to `127.0.0.1`.
 - The vault is plain local markdown.

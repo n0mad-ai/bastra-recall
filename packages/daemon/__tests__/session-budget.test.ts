@@ -158,8 +158,8 @@ test("#522: while the lanes only charge in shadow, no versioned document promise
   const PROMISES: Array<[string, string[]]> = [
     ["docs/Evolutionsarchitektur V1 zu V2.md", ["Cross-Lane-Sitzungsledger im Shadow", "im Shadow mitschreibt"]],
     ["docs/Evolution Architecture V1 to V2.md", ["session ledger running in shadow", "records in shadow what a budget would"]],
-    ["README.md", ["session ledger runs in shadow", "Cross-Lane-Sitzungsledger im Shadow"]],
-    ["PLAN.md", ["cumulative cross-lane shadow ledger"]],
+    ["README.md", ["it does not yet enforce a live session-wide limit", "es erzwingt noch keine globale Obergrenze"]],
+    ["PLAN.md", ["runs in shadow", "does not yet\nenforce that limit live"]],
   ];
   for (const [rel, needles] of PROMISES) {
     const text = await readFile(join(repoRoot, rel), "utf8");

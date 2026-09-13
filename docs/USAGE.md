@@ -1,8 +1,8 @@
 # Usage guide / Nutzungshandbuch
 
-Everything that used to live in the README in full length: day-to-day scenarios, manual install, feature guides, the REST API reference and troubleshooting. The README keeps the short version; this file keeps the depth.
+Set up your clients, bring in existing memories and use Bastra Recall in everyday work. Start with the [README](../README.md#install) for guided installation; this guide covers examples, manual configuration, the REST API and troubleshooting.
 
-Alles, was früher in voller Länge in der README stand: Alltags-Szenarien, manuelle Installation, Feature-Guides, die REST-API-Referenz und Fehlerbehebung. Die README behält die Kurzfassung; diese Datei die Tiefe.
+Verbinde deine Clients, übernimm vorhandene Erinnerungen und nutze Bastra Recall im Alltag. Das geführte Setup steht in der [README](../README.md#installation); hier findest du Beispiele, manuelle Konfiguration, REST-API und Fehlerbehebung.
 
 ---
 
@@ -108,7 +108,7 @@ A fresh vault offers to seed itself. Pick what your memory will mainly hold — 
 
 ### Importing memories — skip the cold start
 
-Your other AI tools already know you — `bastra import` brings that head start along instead of starting cold. Three paths, one gate: candidates land as checkbox lines in `import-review.md` at the vault root, and your **next AI session distills accepted ones with you** — proper type, concrete triggers, deduped against what the vault already holds. Nothing is saved without your accept.
+Bring useful context from other tools with `bastra import`. Lists, chat extracts and rules are staged in `import-review.md` for you and your assistant to review. Whole memory folders are the exception: `bastra import vault` imports them directly into a separate intake area, without reviewing each item first.
 
 ```bash
 bastra import memories.txt         # a memory list: ChatGPT / Claude / Gemini export, free text — or paste via `bastra import -`
@@ -117,7 +117,7 @@ bastra import rules                # local rules files: CLAUDE.md, AGENTS.md, .c
 bastra import vault <dir>          # a whole folder of memory files (e.g. a Claude Code memory dir) — no review needed
 ```
 
-A `conversations.json` never stages raw chat history: only **your own messages** are kept (assistant turns dropped), queued locally under `~/.bastra/` — it never leaves the machine, is deleted when mining completes, and `bastra import clear` discards it anytime. Your AI session combs the queue chunk-wise (`bastra import mine`) and stages candidate lessons, decisions and preferences for your review. The vault map carries a visual import dialog (topbar ↓) for the paste path and the folder path.
+A `conversations.json` never stages raw chat history: only **your own messages** are kept (assistant turns dropped), queued locally under `~/.bastra/` — the queue is deleted when mining completes, and `bastra import clear` discards it anytime. Text read by your assistant becomes its context and may be processed by its cloud provider; see [privacy](./PRIVACY.md). Your AI session combs the queue chunk-wise (`bastra import mine`) and stages candidate lessons, decisions and preferences for your review. The vault map carries a visual import dialog (topbar ↓) for the paste path and the folder path.
 
 `import vault` is the fourth path and skips the gate on purpose: a folder of already-structured memory files (Claude Code's `name`/`description`/`type` frontmatter — both its variants — or plain markdown notes) carries every field a memory needs, so it maps deterministically. The set lands isolated under `memories/imported/<label>/` with its own scope and namespaced ids — nothing existing is read or modified, and deleting that one folder removes the whole set. An identical re-import is a true no-op (#530): unchanged memories are not rewritten, no audit event is appended and the `.bastra-imported` marker stays put — the run reports `created · updated · unchanged` so you can see which it was.
 
@@ -298,7 +298,7 @@ Ein frischer Vault bietet an, sich selbst zu befüllen. Du wählst, was dein Ged
 
 ### Memories importieren — den Kaltstart überspringen
 
-Deine anderen AI-Tools kennen dich schon — `bastra import` nimmt diesen Vorsprung mit, statt bei null anzufangen. Drei Wege, ein Gate: Kandidaten landen als Checkbox-Zeilen in `import-review.md` im Vault-Root, und deine **nächste AI-Session destilliert akzeptierte gemeinsam mit dir** — richtiger Typ, konkrete Trigger, dedupliziert gegen den Bestand. Nichts wird ohne dein Okay gespeichert.
+Übernimm nützlichen Kontext aus anderen Tools mit `bastra import`. Listen, Chat-Auszüge und Regeln werden in `import-review.md` zur gemeinsamen Prüfung mit deinem Assistenten vorbereitet. Ganze Memory-Ordner sind die Ausnahme: `bastra import vault` importiert sie direkt in einen getrennten Bereich, ohne vorherige Einzelprüfung.
 
 ```bash
 bastra import memories.txt         # eine Memory-Liste: ChatGPT- / Claude- / Gemini-Export, Freitext — oder Paste via `bastra import -`
@@ -307,7 +307,7 @@ bastra import rules                # lokale Rules-Dateien: CLAUDE.md, AGENTS.md,
 bastra import vault <dir>          # ein ganzer Ordner Memory-Dateien (z.B. ein Claude-Code-Memory-Dir) — ohne Review
 ```
 
-Eine `conversations.json` staged nie rohe Chat-History: Nur **deine eigenen Messages** bleiben (Assistant-Antworten fliegen raus), lokal gequeued unter `~/.bastra/` — verlässt nie die Maschine, wird nach dem Mining gelöscht, `bastra import clear` verwirft jederzeit. Deine AI-Session kämmt die Queue Chunk-weise durch (`bastra import mine`) und staged Kandidaten-Lessons, -Entscheidungen und -Präferenzen für deine Review. Die Vault-Map hat einen visuellen Import-Dialog (Topbar ↓) für den Paste-Weg und den Ordner-Weg.
+Eine `conversations.json` staged nie rohe Chat-History: Nur **deine eigenen Messages** bleiben (Assistant-Antworten fliegen raus), lokal gequeued unter `~/.bastra/` — wird nach dem Mining gelöscht, `bastra import clear` verwirft jederzeit. Vom Assistenten gelesene Abschnitte werden zu seinem Kontext und können bei seinem Cloud-Anbieter verarbeitet werden; siehe [Datenschutz](./PRIVACY.md#deutsch). Deine AI-Session kämmt die Queue Chunk-weise durch (`bastra import mine`) und staged Kandidaten-Lessons, -Entscheidungen und -Präferenzen für deine Review. Die Vault-Map hat einen visuellen Import-Dialog (Topbar ↓) für den Paste-Weg und den Ordner-Weg.
 
 `import vault` ist der vierte Weg und überspringt das Gate bewusst: Ein Ordner bereits strukturierter Memory-Dateien (Claude Codes `name`/`description`/`type`-Frontmatter — beide Varianten — oder schlichte Markdown-Notizen) trägt jedes Feld, das ein Memory braucht, und mappt deshalb deterministisch. Der Satz landet isoliert unter `memories/imported/<label>/` mit eigenem Scope und namespaced ids — nichts Bestehendes wird gelesen oder verändert, und das Löschen dieses einen Ordners entfernt den ganzen Satz. Ein identischer Re-Import ist ein echtes No-Op (#530): Unveränderte Memories werden nicht neu geschrieben, es entsteht kein Audit-Eintrag und der Marker `.bastra-imported` bleibt stehen — der Lauf meldet `created · updated · unchanged`, damit sichtbar ist, was davon zutraf.
 

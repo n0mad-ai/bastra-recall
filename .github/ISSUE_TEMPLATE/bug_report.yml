@@ -47,6 +47,9 @@ body:
       options:
         - claude-code
         - claude-desktop
+        - Codex CLI
+        - Codex IDE
+        - ChatGPT Desktop
         - cursor
         - ChatGPT (Custom GPT via REST)
         - other / multiple
@@ -59,7 +62,7 @@ body:
     attributes:
       label: bastra-recall version
       description: Output of `bastra --version` (or commit hash if from source)
-      placeholder: "0.1.0"
+      placeholder: "Your installed version"
     validations:
       required: true
 
@@ -87,7 +90,8 @@ body:
       description: |
         Daemon logs live at `/tmp/bastra-daemon.{out,err}`.
         Hook events live at `~/.bastra/logs/events-YYYY-MM-DD.jsonl`.
-        Paste only the relevant chunk, please.
+        Paste only the relevant chunk. Remove tokens, personal information,
+        private paths and memory contents before posting.
       render: shell
     validations:
       required: false

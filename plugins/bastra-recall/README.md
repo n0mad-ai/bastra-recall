@@ -2,7 +2,7 @@
 
 ## Deutsch
 
-Dieses Plugin verteilt den proaktiven Bastra-Recall-Skill an ChatGPT und Codex. Der lokale MCP-Server und die nativen Hooks werden absichtlich vom transaktionalen CLI-Adapter verwaltet, damit Vault-Pfad, Runtime-Pinning, Backups und Deinstallation zuverlässig bleiben und keine doppelten Hooks entstehen.
+Dieses Plugin ergänzt ChatGPT und Codex um die Bastra-Recall-Anleitung zum Speichern und Abrufen von Erinnerungen. Es benötigt den lokalen Bastra-Dienst. Richte Dienst und Hooks mit dem folgenden Befehl ein. Den aktuellen Prüfstatus findest du in der [Support-Matrix](../../README.md#unterstützte-oberflächen).
 
 ```sh
 npx bastra-recall install codex --vault ~/BastraVault
@@ -12,7 +12,7 @@ Beim ersten Codex-Start die sieben Bastra-Hooks prüfen und vertrauen (`/hooks`)
 
 ## English
 
-This plugin distributes the proactive Bastra Recall skill to ChatGPT and Codex. The local MCP server and native hooks are deliberately managed by the transactional CLI adapter so vault selection, runtime pinning, backups, and uninstall remain reliable and hooks are not registered twice.
+This plugin adds Bastra Recall guidance for saving and retrieving memories in ChatGPT and Codex. It requires the local Bastra service. Set up the service and hooks with the command below. Check the [support matrix](../../README.md#supported-surfaces) for the current verification status.
 
 ```sh
 npx bastra-recall install codex --vault ~/BastraVault
