@@ -32,6 +32,7 @@ import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { appendAct } from "./floor-acts.js";
+import { withPathLock } from "./path-lock.js";
 import { scopeEquals } from "@bastra-recall/core/scope";
 
 export interface FloorEntry {
@@ -102,38 +103,6 @@ async function readRegistry(path: string): Promise<FloorEntry[]> {
   return parsed.filter(isFloorEntry);
 }
 
-/**
- * #240/A9: every mutation is a read-modify-write, and nothing serialised
- * them. Node serves overlapping HTTP requests concurrently, so a batch of
- * floors added in one `Promise.all` — the natural shape when a surface pins
- * several memories for ONE decision — all read the same empty registry and
- * the last write won. Measured: 12 parallel adds → 1 persisted, deterministic
- * over 10 runs, every call returning HTTP 200 so the caller could not notice.
- * The cap was equally defeated (every read saw an empty registry, so 30 adds
- * produced 0 rejections), and a parallel release left the released floors
- * pinned.
- *
- * A per-path promise chain is enough: this is a single local daemon, the
- * registry is tiny, and the writes are already atomic per file. It does NOT
- * guard against a second process — that would need real file locking, which
- * this feature does not warrant.
- */
-const registryLocks = new Map<string, Promise<unknown>>();
-
-function withRegistryLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
-  const prev = registryLocks.get(path) ?? Promise.resolve();
-  const next = prev.then(fn, fn);
-  // Keep the chain alive but never let a rejection poison the next waiter.
-  registryLocks.set(
-    path,
-    next.then(
-      () => undefined,
-      () => undefined,
-    ),
-  );
-  return next;
-}
-
 /** Atomic tmp+rename, owner-only perms (same hardening as settings.ts). */
 async function writeRegistry(entries: FloorEntry[], path: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
@@ -176,7 +145,7 @@ export async function addFloor(input: AddFloorInput, path: string = floorsFilePa
   }
   const scope = typeof input.scope === "string" && input.scope.trim().length > 0 ? input.scope.trim() : undefined;
 
-  return withRegistryLock(path, async () => {
+  return withPathLock(path, async () => {
     const entries = await readRegistry(path);
     const existing = entries.findIndex((e) => e.memory_id === memoryId);
     if (existing === -1 && entries.length >= MAX_FLOORS) {
@@ -232,7 +201,7 @@ export async function addFloor(input: AddFloorInput, path: string = floorsFilePa
 export async function release(condition: string, path: string = floorsFilePath()): Promise<string[]> {
   const token = condition?.trim() ?? "";
   if (!token) throw new Error("condition is required");
-  return withRegistryLock(path, async () => {
+  return withPathLock(path, async () => {
     const entries = await readRegistry(path);
     const removed = entries.filter((e) => e.condition === token).map((e) => e.memory_id);
     if (removed.length === 0) return [];
@@ -285,7 +254,7 @@ export async function affirm(
     );
   }
   const path = opts.path ?? floorsFilePath();
-  return withRegistryLock(path, async () => {
+  return withPathLock(path, async () => {
     const entries = await readRegistry(path);
     const idx = entries.findIndex((e) => e.memory_id === id);
     if (idx === -1) throw new Error(`memory is not floored: ${id}`);

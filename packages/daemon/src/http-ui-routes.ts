@@ -21,6 +21,7 @@ import { handleHookImport, handleUiImport } from "./import-review.js";
 import { handleUiImportVault, handleUiFsBrowse } from "./import-vault.js";
 import { handleUiSkills } from "./skills-registry.js";
 import { handleUiAreas } from "./webui-areas.js";
+import { handleUiTelemetry } from "./webui-telemetry.js";
 import type { createLiveUpdates } from "./live-updates.js";
 import { handleHookOnboarding, handleUiOnboarding } from "./onboarding.js";
 import { handleSessionContext, handleSessionContextPost } from "./session-context.js";
@@ -130,6 +131,12 @@ export function dispatchUiRoutes(
     handleSessionContextPost(req, res, toolDeps, vault).catch(() =>
       sendJson(res, 500, { error: "session-context error" }),
     );
+    return true;
+  }
+  // Telemetry tab (#463): the stats.ts series as JSON over the user's own
+  // event logs. Read-only, loopback-only, gated on ui.enabled inside.
+  if (method === "GET" && url.startsWith("/ui/telemetry")) {
+    handleUiTelemetry(req, res, url).catch(() => sendJson(res, 500, { error: "telemetry error" }));
     return true;
   }
   // Semantic search for the map's search box (#207) — hybrid recall, lean.

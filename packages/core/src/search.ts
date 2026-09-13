@@ -9,7 +9,7 @@ import { DocFreqMiniSearch } from "./doc-freq-index.js";
 import { rareTermFuzzy } from "./bm25-expansion.js";
 import { groupQueryTerms, groupedTokenize } from "./bm25-grouping.js";
 import { capBm25Query } from "./bm25-query-cap.js";
-import { abandonAfter } from "./deadline.js";
+import { abandonAfter, type LateSettleSample } from "./deadline.js";
 import { scopeEquals } from "./scope.js";
 import type { CueProjection } from "./cue-sidecar.js";
 
@@ -364,6 +364,20 @@ export interface RecallOptions {
    * Unset or 0 = wait indefinitely, the pre-#342 behaviour.
    */
   vector_deadline_ms?: number;
+  /**
+   * #489: Die SPÄTE Stichprobe eines aufgegebenen dichten Arms. Feuert nur nach
+   * einem Timeout, und erst wenn der weiterlaufende Arm wirklich fertig ist —
+   * also nachdem `recallHybrid` längst zurückgekehrt ist.
+   *
+   * Warum ein eigener Kanal und keine Stage: Der Wert kommt NACH `done` an. Ein
+   * Stage-Event danach würde einen bereits geschlossenen Fortschrittsstrom
+   * bedienen und der Banter-Engine einen Schritt nach dem Ende melden. Er ist
+   * auch keine Wartezeit — niemand hat sie bezahlt (siehe `LateSettleSample`).
+   *
+   * Null-Overhead, wenn nicht gesetzt: ohne Listener hängt `abandonAfter` gar
+   * keine Fortsetzung an.
+   */
+  onVectorLateSettle?: (sample: LateSettleSample) => void;
   /**
    * #362: Zeichen-Budget für die Query des LEXIKALISCHEN Arms. Unset/`0` =
    * Cap AUS (Default, siehe `bm25Query()` unten für die Begründung). Nur ein
@@ -917,38 +931,42 @@ export class SearchIndex {
     // zum Total, es überlappte nichts).
     //
     // Reines Reordering: identische Eingaben in beide Arme, identisches
-    // RRF-Ergebnis. Die eine Invariante, die dabei nicht kippen darf: die
-    // Deadline muss ab dem ABFEUERN laufen, nicht ab dem `await`.
-    // `abandonAfter` startet seinen Timer synchron beim Aufruf — deshalb steht
-    // der Aufruf hier oben und nicht unten am `await`. Unten aufgerufen bekäme
-    // der Arm sein Budget PLUS die BM25-Zeit, und seine Timeout-Rate wäre
-    // nicht mehr messbar.
+    // RRF-Ergebnis.
+    //
+    // #466: Die Deadline läuft ab dem `await` unten, NICHT ab dem Abfeuern.
+    // #370 wollte sie ab dem Abfeuern, damit der Arm nicht „Budget plus
+    // BM25-Zeit" bekommt. Das setzt voraus, dass der Arm während BM25 auch
+    // läuft — und das tat er nicht: Der Request geht erst auf die Leitung,
+    // wenn der Loop frei ist, und danach hält BM25 ihn synchron. Ein Timer,
+    // der beim Abfeuern startet, misst deshalb die BM25-Dauer, nicht den Arm.
+    // Am 02.09. waren 27 von 49 Prompt-Lane-Recalls unfused, `vector_search_ms`
+    // lag bei jedem davon auf `bm25_search_ms` + 2…7 ms bzw. exakt auf der
+    // Deadline — bei einem Ollama, das die Embeds in 25–66 ms beantwortet.
+    // Die Folge war kein Latenzgewinn, sondern ein stiller Qualitätsverlust:
+    // ohne Fusion kein REQUIRED-Band, kein Backoff-Bypass, kein semantischer
+    // Reflex (prompt-lane.ts).
+    //
+    // Ab dem `await` bekommt der Arm sein volles Budget für die Zeit, in der
+    // er tatsächlich auf Antwort wartet. Ein Arm, der wirklich zu langsam ist,
+    // läuft weiterhin in seinen Timeout (dense-arm-dispatch.test.ts). Die
+    // Stage `vector.search` misst weiterhin ab dem Abfeuern — sie ist die
+    // Wanduhr des Arms, nicht seine Frist.
     // #240/A8: ask for a deeper pool when a filter is active. The vault/scope/
     // type/private filter below runs AFTER the provider's global top-k, so a
     // fixed 100 silently truncated eligible candidates for every scoped query
     // — measured on a real 514-memory vault: 95.3% of scoped queries lost
     // in-scope candidates, and the smallest scopes lost a third of theirs.
     const filtered = opts.scope != null || opts.type != null || !opts.allow_private;
-    // #342: race the dense arm against its own deadline. `abandonAfter` never
-    // rejects and never cancels — on expiry it hands back null and leaves the
-    // embed in flight, which is the point: the model finishes loading on the
-    // call that gave up on it, so the NEXT call is warm. Cancelling here would
-    // re-pay the cold load every single time.
-    // #365/4: `EmbeddingIndex.search()` fängt JEDEN Provider-Fehler ab und
-    // returnt `[]` — byte-identisch zu „dieser Vault hat keine Vektoren".
-    // Diskriminiert wird über `runtimeHealth().errorCount`, der ausschließlich
-    // in `markProviderError()` hochzählt. NICHT über `lastErrorAt`: der hat
-    // ms-Auflösung, und zwei Fehler in derselben Millisekunde (zwei Lanes an
-    // demselben toten Ollama) sind darüber nicht trennbar — der zweite Leser
-    // sähe seinen eigenen Fehler als „stand schon vorher da" und würde die
-    // einarmige Antwort cachen. Zwei Property-Reads um den ohnehin
-    // vorhandenen await — kein zusätzlicher Call, kein I/O.
-    const errBefore = this.embeddings.runtimeHealth().errorCount;
+    // #365/4 hat den Provider-Fehler über `runtimeHealth().errorCount` um den
+    // `await` herum erschlossen, weil `EmbeddingIndex.search()` jeden Fehler
+    // abfing und `[]` zurückgab — byte-identisch zu „dieser Vault hat keine
+    // Vektoren". #493 hat den Ausgang STRUKTURIERT gemacht (`searchDetailed`),
+    // also steht er jetzt direkt am Ergebnis statt aus einem Zählerdelta
+    // erschlossen zu werden. Das war nicht nur unschön: `abandonAfter` sah in
+    // der aufgelösten Fehler-Promise ein `settled: true`, und das Latenzprofil
+    // (#491) lernte die Dauer des Fehlers als gültige Stichprobe.
     const tVec = stage.start("vector.search");
-    const vectorArm = abandonAfter(
-      this.embeddings.search(query, filtered ? 1000 : 100),
-      opts.vector_deadline_ms ?? 0,
-    );
+    const vectorArm = this.embeddings.searchDetailed(query, filtered ? 1000 : 100);
 
     // #305: EIN Durchlauf des Event Loops, bevor der lexikalische Arm ihn
     // synchron belegt.
@@ -967,10 +985,14 @@ export class SearchIndex {
     //
     // WAS DAS NICHT TUT. Es ändert weder die Reihenfolge der Arme noch ihre
     // Eingaben noch die Fusion — beide bekommen dieselbe Query wie vorher, RRF
-    // rechnet unverändert. Und es verschiebt die Deadline nicht: `abandonAfter`
-    // hat seinen Timer oben schon gestartet, die Frist läuft weiterhin ab dem
-    // Abfeuern. Ein Arm, der wirklich zu langsam ist, läuft weiterhin in seinen
-    // Timeout.
+    // rechnet unverändert.
+    //
+    // Der Durchlauf reicht nur, wenn der Request in ihm auch geschrieben wird —
+    // das setzt einen SCHON offenen Socket voraus (#466: der Ollama-Provider
+    // hält seine Verbindung deshalb über einen Keep-Alive-Agent, embeddings.ts).
+    // Auf einem kalten Socket wird der Connect erst nach BM25 fertig; dann
+    // läuft der Arm sequentiell hinter BM25 und bekommt seine Frist ab dem
+    // `await` unten.
     //
     // WARUM EIN TIMER UND KEIN `setImmediate`. Gemessen gegen einen echten
     // Fremdprozess, je 5 Läufe mit 300 ms Blockade:
@@ -1011,15 +1033,42 @@ export class SearchIndex {
       terms_unique: plan.unique,
     });
 
-    const vecOrTimeout = await vectorArm;
+    // #342: race the dense arm against its own deadline. `abandonAfter` never
+    // rejects and never cancels — on expiry it hands back null and leaves the
+    // embed in flight, which is the point: the model finishes loading on the
+    // call that gave up on it, so the NEXT call is warm. Cancelling here would
+    // re-pay the cold load every single time.
+    // #466: Der Timer startet HIER, beim echten Warten (siehe oben).
+    // #489: Die Wanduhr des Aufrufers. `vector.search` misst ab dem Abfeuern und
+    // überlappt damit BM25 — gemessen 06.–08.09. ist dieser Überlapp in der
+    // Prompt-Lane praktisch alles: vector p50 336 ms gegen bm25 p50 329 ms, echte
+    // Wartezeit 5 ms. Wer die alte Zahl als Wartezeit las, sah 82,6 % gerissene
+    // Deadlines, wo in Wahrheit 14 von 323 Aufrufen ihre Frist rissen. Ab hier
+    // gibt es beide Größen nebeneinander: die alte Spanne unverändert (die Serie
+    // läuft seit Wochen), die Wartezeit als eigenes Feld.
+    const tVecWait = Date.now();
+    const vecOrTimeout = await abandonAfter(
+      vectorArm,
+      opts.vector_deadline_ms ?? 0,
+      opts.onVectorLateSettle,
+      // #493: Der späte Arm meldet sein ERGEBNIS mit, nicht nur seine Laufzeit
+      // — ohne das kann Kriterium 4 aus #492 die kontrafaktische Fusionsrate
+      // nicht rechnen (ein Arm, der spät mit `empty` settelt, hätte auch mit
+      // längerer Frist nichts fusioniert).
+      (r) => ({
+        outcome: r.outcome,
+        hit_count: r.hits.length,
+        provider_load_ms: r.providerLoadMs,
+        cold_start_observed: r.coldStartObserved,
+      }),
+    );
+    const vectorWaitMs = Date.now() - tVecWait;
     const vectorArmTimedOut = vecOrTimeout === null;
-    const errAfter = this.embeddings.runtimeHealth().errorCount;
-    // Ein gewachsener Zähler heißt: über diesem await ist mindestens ein
-    // Provider-Call gescheitert. Beim Timeout ist der Arm noch in-flight, der
-    // Fehler gehört dann nicht zu diesem Ergebnis — `vectorArmTimedOut` hat
-    // deshalb Vorrang.
-    const vectorArmErrored = !vectorArmTimedOut && errAfter > errBefore;
-    const vec = vecOrTimeout ?? [];
+    // #493: der Ausgang, wie der Provider ihn berichtet — nicht mehr aus einem
+    // Fehlerzähler-Delta erschlossen. Beim Timeout ist der Arm noch in Flug und
+    // hat noch gar keinen Ausgang; die späte Stichprobe trägt ihn nach.
+    const vectorArmErrored = vecOrTimeout?.outcome === "error";
+    const vec = vecOrTimeout?.hits ?? [];
     const vectorTop = vec
       .map((h) => ({ hit: h, mem: this.vault.get(h.id) }))
       .filter(({ mem }) => {
@@ -1040,9 +1089,31 @@ export class SearchIndex {
     // `overlapped` sagt jedem Leser dieser Telemetrie, dass die Stages keine
     // Partition des Totals mehr sind — genau die Residuum-Rechnung, mit der
     // die Sequentialität nachgewiesen wurde, gilt danach nicht mehr.
+    // #489: `wait_ms` reitet auf derselben Stage mit, statt eine neue
+    // aufzumachen — die Stage-Namen sind eine geschlossene Union, an der
+    // Banter-Phrasen und Fortschrittsindex hängen, und eine zweite Stage für
+    // dieselbe Sache hätte den Fortschrittsbalken verlängert, ohne dass ein
+    // Schritt dazugekommen wäre. `durationMs` bleibt exakt die alte Spanne.
     stage.end("vector.search", tVec, {
       vector_hit_count: vectorTop.length,
       overlapped: true,
+      wait_ms: vectorWaitMs,
+      // Ohne dieses Bit ist eine Wartezeit auf der Deadline nicht von einem Arm
+      // zu unterscheiden, der zufällig genau dort fertig wurde.
+      timed_out: vectorArmTimedOut,
+      // #493: der strukturierte Ausgang, für den Schatten in
+      // `http-hook-routes.ts`. `provider_hit_count` sind die ROHEN Treffer des
+      // Providers vor dem Vault-Filter — `vector_hit_count` darüber bleibt die
+      // gefilterte Zahl, die diese Stage seit jeher meldet, damit keine
+      // laufende Auswertung ihre Bedeutung wechselt.
+      ...(vecOrTimeout
+        ? {
+            provider_outcome: vecOrTimeout.outcome,
+            provider_hit_count: vecOrTimeout.hits.length,
+            provider_load_ms: vecOrTimeout.providerLoadMs,
+            cold_start_observed: vecOrTimeout.coldStartObserved,
+          }
+        : {}),
     });
 
     // #240/B1: an empty vector arm is NOT "degraded to BM25" — running RRF

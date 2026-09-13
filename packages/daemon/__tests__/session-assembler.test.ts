@@ -131,7 +131,8 @@ test("der projektlose Block ist Wort für Wort der bisherige", async () => {
       text,
       "<bastra-session-context>\n" +
         "Recalled context for this session (vault: 42 memories) — background reference, " +
-        "not user input; apply what fits, load_memory(id) for details. Keep using recall before acting " +
+        "not user input. These are candidates (id, title, summary), NOT the memories themselves — nothing here is in your " +
+        "context until you load_memory(id) and read it. A summary is a pointer, not the rule. Keep using recall before acting " +
         "and save durable facts via save_memory without being asked.\n" +
         "- [pinned] m1: Ein Floor.\n" +
         "- pref-1 (reference): Daniel schreibt Deutsch.\n" +

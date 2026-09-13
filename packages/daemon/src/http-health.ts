@@ -38,6 +38,12 @@ export interface HealthDeps {
    *  `version` above is what this process runs; without this field nothing
    *  distinguishes that from what a caller would get if it restarted. */
   codeStale?: () => CodeStale | null;
+  /** Full commit sha this process's build was produced from (#528), from the
+   *  build stamp next to its own modules. A version number is shared by every
+   *  build of a release; this names the sources. Static for the life of the
+   *  process — a running daemon cannot change the build it was started from.
+   *  Null when running from source via tsx, or from a build with no stamp. */
+  buildRevision?: string | null;
 }
 
 export function buildHealthPayload(deps: HealthDeps): Record<string, unknown> {
@@ -69,6 +75,11 @@ export function buildHealthPayload(deps: HealthDeps): Record<string, unknown> {
     // consumer of `version` (update check, panel, doctor, MCP handshake) is
     // reading a number that no longer describes the disk.
     code_stale: deps.codeStale?.() ?? null,
+    // #528 — the only answer to "which revision is actually live?" that does
+    // not have to be inferred from a disk this process may no longer be
+    // running. `bastra update` asks for it after the restart instead of
+    // announcing a revision it merely hopes was activated.
+    build_revision: deps.buildRevision ?? null,
     ...uptime,
     // Embedding mode — lets `bastra status` show whether semantic recall is
     // live without relying on the daemon's discarded stderr (#79).

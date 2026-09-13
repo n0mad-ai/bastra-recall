@@ -73,7 +73,7 @@ async function cmdConfigGet(key: KnownKey): Promise<number> {
       return 0;
     case "embedding.provider": {
       const p = await getEmbeddingProvider();
-      process.stdout.write(`${p ?? "(unset — falls through to env / API-key, else BM25)"}\n`);
+      process.stdout.write(`${p ?? "(unset — falls through to env, else BM25)"}\n`);
       const env = process.env.BASTRA_EMBEDDING_PROVIDER;
       if (env) process.stdout.write(`  note: BASTRA_EMBEDDING_PROVIDER=${env} (env) overrides this file at runtime\n`);
       return 0;
@@ -184,9 +184,10 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
       }
       await setUiEnabled(on);
       process.stdout.write(`✓ ui.enabled = ${on}\n  stored in ${settingsFilePath()}\n`);
-      if (on) process.stdout.write(`  vault map: ${mapUrl()} (or just: bastra map)\n`);
+      // #531 — one line, naming THE configured endpoint. The second line here
+      // printed the default port unconditionally and contradicted the first.
       if (on) {
-        process.stdout.write("  vault map: http://127.0.0.1:6723/ui (no daemon restart needed)\n");
+        process.stdout.write(`  vault map: ${mapUrl()} (or just: bastra map — no daemon restart needed)\n`);
       }
       return 0;
     }

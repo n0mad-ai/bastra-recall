@@ -4,7 +4,9 @@
  * WARUM EIGENES MODUL. `stats.ts` ruft sein `main()` auf Modulebene — wer es
  * importiert, startet den Report. Testbar wird die Rechnung nur, wenn sie
  * daneben liegt. Deshalb hier: Zahlen rein, Zahlen raus, kein `console.log`.
- * Gedruckt wird in `stats.ts`.
+ * Gedruckt wird in `stats.ts`; seit #463 rechnet auch der Telemetry-Tab der
+ * UI (`telemetry-report.ts`) mit denselben Funktionen — deshalb liegt das
+ * Modul in `src/` und nicht mehr in `scripts/`.
  */
 
 /** Ein geladenes Log-Ereignis. Strukturgleich mit `AnyEvent` in `stats.ts` —
@@ -285,6 +287,80 @@ const signatureKey = (s: DivergenceSignature): string =>
  * rohem BM25 bandet Legacy nicht, und gegen ein Band zu vergleichen, das es
  * nicht gab, wäre keine Abweichung, sondern ein Kategorienfehler.
  */
+/**
+ * Die `required`-Abweichungen (§18.2), nach Signatur gruppiert — das Gegenstück
+ * zur `no_answer`-Sicht darunter. `summarizeGateDivergence` zählte sie bisher
+ * nur (430 / 991 am 03.09.), ohne zu sagen, WORAN sie liegen; erklärt werden
+ * kann aber nur eine Klasse mit Merkmalen. Dieselben Regeln: nur fusionierte
+ * Läufe, gruppiert nach Signatur, distinkte Memories daneben.
+ */
+export interface RequiredDivergence {
+  /** Legacy hätte `required` ausgespielt, der Entscheid sagt weniger. */
+  legacyRequiredGateNot: DivergenceGroup[];
+  /** Der Entscheid sagt `required`, Legacy hätte weniger gesagt. */
+  gateRequiredLegacyNot: DivergenceGroup[];
+  unknownSpace: number;
+}
+
+export function requiredDivergence(
+  events: AnyEventLike[],
+  shadow: AnyEventLike[],
+  decisionsOf: (e: AnyEventLike) => DecisionLike[],
+  mustLoadScore: number,
+  scoreFloor: number,
+): RequiredDivergence {
+  const fused = new Map<string, boolean>();
+  for (const r of events) {
+    if (r.kind !== "hook_recall") continue;
+    fused.set(String(r.recall_id), r.score_kind === "rrf");
+  }
+  const withholds = new Map<string, DivergenceGroup & { ids: Set<string> }>();
+  const promotes = new Map<string, DivergenceGroup & { ids: Set<string> }>();
+  let unknownSpace = 0;
+
+  for (const e of shadow) {
+    const space = fused.get(String(e.recall_id));
+    if (space === undefined) {
+      unknownSpace += decisionsOf(e).length;
+      continue;
+    }
+    if (!space) continue;
+    for (const d of decisionsOf(e)) {
+      const score =
+        typeof d.evidence?.lexical_score === "number" ? (d.evidence.lexical_score as number) : null;
+      if (score === null) continue;
+      const legacyRequired = score >= mustLoadScore;
+      const gateRequired = d.decision === "required";
+      if (legacyRequired === gateRequired) continue;
+      const ev = d.evidence ?? {};
+      const signature: DivergenceSignature = {
+        legacyBand: legacyRequired ? "required" : score >= scoreFloor ? "optional" : "below_floor",
+        decision: d.decision,
+        abstainReason: d.abstain_reason ?? "-",
+        exactIdentifier: ev.exact_identifier === true,
+        coverage: typeof ev.recall_when_coverage === "number" ? ev.recall_when_coverage : 0,
+        armAgreement: ev.arm_agreement === true,
+        scopeMatch: ev.scope_match === true,
+        temporalStatus: typeof ev.temporal_status === "string" ? ev.temporal_status : "unknown",
+      };
+      const bucket = legacyRequired ? withholds : promotes;
+      const key = signatureKey(signature);
+      const row = bucket.get(key);
+      if (row) {
+        row.events++;
+        row.ids.add(d.memory_id);
+      } else {
+        bucket.set(key, { signature, events: 1, memories: 0, ids: new Set([d.memory_id]) });
+      }
+    }
+  }
+  const finish = (m: Map<string, DivergenceGroup & { ids: Set<string> }>): DivergenceGroup[] =>
+    [...m.values()]
+      .map(({ signature, events, ids }) => ({ signature, events, memories: ids.size }))
+      .sort((a, b) => b.events - a.events);
+  return { legacyRequiredGateNot: finish(withholds), gateRequiredLegacyNot: finish(promotes), unknownSpace };
+}
+
 export function noAnswerDivergence(
   events: AnyEventLike[],
   shadow: AnyEventLike[],

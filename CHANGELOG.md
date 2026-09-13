@@ -4,6 +4,313 @@ All notable changes to bastra-recall are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **`recall` takes a context budget, not just a count** (#487). `k` counts
+  results; what costs context is text, and the same `k=5` answer varies by
+  more than 2× in size depending on summary length. `recall` now accepts an
+  optional `max_tokens` on MCP and REST (and on `/hook/recall`, the route the
+  MCP forwarder actually uses): after ranking, the score floor and the
+  evidence gate, hits are emitted in rank order until the serialized payload
+  would exceed the budget; the rest are dropped whole — never truncated — and
+  the response says so with `truncated_by_budget: true` and
+  `dropped_by_budget: <n>`, so an agent can re-query with more room or
+  `load_memory` what it needs. `k` stays the hard upper bound, the estimate is
+  the context governor's own (chars/4, #266/#458) so the per-call and the
+  session budget mean the same number, and the telemetry records the requested
+  budget beside the delivered payload so #457 can attribute the saving.
+  Without the parameter nothing changes — measured on the gold set (699
+  queries × four budgets, 2,796 calls): no payload over budget, no call that
+  dropped more than it had to, mean slack 66.5 tokens, and 52.5 % less recall
+  payload at those budgets. `scripts/measure-recall-budget.ts` re-runs the
+  measurement.
+
+- **One cumulative context budget per session, across all six lanes — in
+  shadow mode** (#458, first slice). The governor decided per lane call and
+  no lane knew what the others had already spent in the same session, so a
+  "global context budget" was a reusable trimming function, not a bound.
+  The daemon now keeps a bounded, pseudonymous per-session ledger: every
+  automatic lane (SessionStart, Prompt, Write/PreTool, Bash-pre, Bash-fail,
+  Todo) charges the estimated tokens of the block it actually emitted — the
+  same number it logs as `hint_tokens_est`, so the shadow reconciles with the
+  #457 ledger by construction — and records the governor's decision against
+  the remaining session allowance as a `budget_shadow` event: would this block
+  still have fit, or would it have fallen? **Nothing is trimmed.** `clear`
+  resets a session's ledger; `compact` and `resume` do not, because the
+  injected text survives compaction. The provisional shadow budget is 7,500
+  tokens per session — the p75 of hook-lane tokens per evaluable session in
+  the 7- and 30-day ledger on 4 September — overridable via
+  `BASTRA_SESSION_BUDGET_SHADOW` (`0` = count only); the live value is a
+  separate, measured decision. The Telemetry tab gains a "Context budget —
+  shadow" section: sessions touched, tokens that would not have been
+  injected per lane and per day, the emission at which sessions first
+  crossed, and a flag when the budget changed inside the window. The
+  decision is per emission, like the stats.ts what-if, and reads as an upper
+  bound on what a per-entry live governor would touch.
+
+- **A Telemetry tab in the vault map — the measurements are visible in the
+  product** (#463). Everything recall measures was readable only by running
+  `packages/daemon/scripts/stats.ts` and reading a wall of monospace text. The
+  map's view switch now carries a fifth entry, Telemetry, that renders the
+  same series over the user's own event logs: recall quality (hit bands,
+  surfaced → loaded → acted on, follow-through and rank of loaded hints, hint
+  source split), the complete context tax (#457 ledger by lane / tool payload
+  / presentation, tokens per day, top sessions, and the archival-candidate
+  list with the #354 directive/fact split so a working rule never reads as
+  waste), latency per lane and per day (median and p95), the evidence gate
+  (§18.2 / C-085 acceptance criteria as progress, decision mix, divergence vs
+  legacy on fused runs only) and the session-start block per part (#462).
+  Every section names its gaps instead of drawing through them: unknown-size
+  rows are a lower bound, starts without `hint_tokens_by_part` are counted
+  separately, memories whose type predates `hinted_types` stay unverified.
+  Served by a new loopback-only, `ui.enabled`-gated `GET /ui/telemetry?days=N`
+  that opens only the day files inside the window and clamps the window to
+  the log retention. Local only — nothing is uploaded or aggregated. No new
+  instrumentation; `stats-governor.ts` moved from `scripts/` to `src/` so the
+  daemon and the CLI report share one acceptance rule.
+
+- **The context tax is now measured end to end — one ledger for hook
+  injections and tool payloads** (#457). Two official views answered "how much
+  context does Recall add" with different numerators: `Net-context-ROI` counted
+  three hook lanes, the governor what-if six, and neither counted what
+  `recall`, `load_memory` and `read_document` return — the bodies the model
+  actually reads. `recall` events now carry the serialized payload size,
+  `load_memory` the delivered size AFTER the lean/full projection (plus
+  presentation and origin: hook hint, own recall, or cold), and a new
+  `read_document` event records document reads. The Bash-fail and Todo lanes,
+  which emitted text but never a token count, now record `hint_tokens_est`
+  like every other lane. `context-ledger.ts` folds all of it per session with
+  one rule for old rows: no size field means `unknown`, never zero — the total
+  is a lower bound and says by how many emissions. `bastra logs --stats` prints
+  the complete total with its lane / tool / presentation breakdown next to the
+  historical ROI view; the estimator is chars/4 everywhere and labelled as
+  such. No retrieval, presentation or loading behavior changes.
+
+### Added
+
+- **Regression tests for the SessionStart and TodoWrite lanes** (#373). Both
+  lanes had no test of their own, which is how #372 — both stamping a fresh
+  UUID instead of the hook payload's session — went unnoticed through the
+  whole #356 series. The new tests pin the telemetry row of each lane: session
+  id from the payload, synthetic UUID only as the fallback, `hook_version`
+  present, the right event kind, the daemon-unreachable and gate branches, and
+  for SessionStart the per-part token split.
+
+### Added
+
+- **The session-start block is measured per part** (#462, measurement only).
+  152 session starts — 0.8 % of all hook emissions — carried 14.5 % of the
+  entire context tax, and telemetry recorded one number for a block assembled
+  from ten parts, so nobody could say which part spends the ~2,300 tokens a
+  start costs. `session_hook_call` now carries `hint_tokens_by_part` (pinned,
+  recalls, taxonomy, language, care, import, onboarding, update, patch,
+  pending, doku; same chars/4 estimator, each part rounded on its own) and
+  `bastra logs --stats` prints total, share, average per start and how many
+  starts contained each part, plus the top parts per start source (startup /
+  clear / compact / resume). No cadence or content changes — that decision
+  follows the measurement.
+
+### Added
+
+- **Cross-surface instruction parity is enforced — in CI, in the package and
+  in `bastra doctor`** (#456). Building on #455's generated projections: CI
+  regenerates them and fails on any diff; a test compares the daemon
+  package's shipped `skill/` and the plugin payload against the canonical
+  source and checks the `npm pack` file list, so a release cannot carry a
+  Cursor rule or plugin skill that disagrees with the skill. Every installed
+  skill now carries one bundle revision (sha256 over the payload), and
+  `bastra doctor` compares the installed copy for Claude Code, Claude Desktop
+  and Codex/ChatGPT file by file against the shipped bundle instead of
+  reporting "present" for any SKILL.md at the path — a stale or partial
+  install is `broken`, and `--fix` refreshes exactly the differing files
+  (the same comparison `install` already used). The Cursor adapter reports the
+  current project's `.cursor/rules/bastra-recall.mdc` as up to date, stale or
+  not installed.
+
+### Changed
+
+- **One canonical instruction source — the Cursor rule and the Codex/ChatGPT
+  plugin skill are generated from `packages/skill/SKILL.md`** (#455). Two
+  hand-authored copies of the Recall/Save policy existed beside the canonical
+  skill and had already drifted from it: the Cursor rule carried fixed score
+  guidance ("~100+ … below ~30 is noise") and its own "recall first" policy,
+  the plugin a separately shortened one — so a policy change could land on
+  Claude and leave Cursor with the opposite behavior (#7's "skill ≠ rules
+  drift"). Generated projections rather than thin wrappers, because neither
+  client can read a file it does not own: Cursor rules are self-contained
+  `.mdc` files in the project, a Codex plugin ships its own SKILL.md. Each
+  projection is the canonical body verbatim under client-specific metadata
+  (display description, `alwaysApply`, install pointer) with a generated header
+  carrying the canonical hash; the plugin dir now also carries the four
+  reference files so every pointer resolves. `npm run skill:build` regenerates,
+  every daemon build runs it, and a test fails on a stale or hand-edited copy.
+
+### Changed
+
+- **The assertion lane's hint is a statement about the environment, not three
+  commands** (#384). It read "Do NOT assert numbers … Check the candidates
+  below … write that you do not know instead of guessing" — an instruction in
+  context has to be noticed, accepted and turned into output, and a
+  prohibition names the very move it forbids. The block now states the facts:
+  for a claim like this, model memory is not a source; the numbers come from
+  the vault; a claim the vault does not answer is unknown and goes out as
+  unknown; the candidates follow. Same trigger, same candidates, same floor.
+  Re-measured on the #252 harness (one-memory vault, opus, trigger-form
+  prompt): the previous wording stood at 7/7 with no invented figure, so the
+  comparison can only rule out a regression, not show a gain.
+
+### Changed
+
+- **The evidence gate is ON by default** (#422, §18.2). The deterministic
+  `required` / `optional` / `no_answer` decision from #264 ran in shadow since
+  28.08.; it is now enforced: a hit the predicate marks `no_answer` is not
+  injected. All three activation conditions were met on 03.09.: shadow
+  acceptance via the decisions route (6,544 decisions, 40 sessions, largest
+  24.3 %), every `required` / `no_answer` divergence explained by feature
+  signature, and the §18.2 component gates within their thresholds on the full
+  gold set (anti-query injection 1/28 = 3.6 %, false abstention 0/584,
+  recall@3 delta −0.0034, identifier queries unchanged, invariants 0/0).
+  Expected effect from the shadow stream: about 27 % of the decisions legacy
+  served in the optional band fall silent (one signature: no evidence at all).
+  `BASTRA_EVIDENCE_GATE=0` is the instant off-switch; `evidenceGate.enabled:
+  false` in the CLI settings the durable one — that settings block was written
+  but never read back before, so the file could not switch the gate; it can
+  now. The daemon prints the gate state at startup either way.
+
+### Added
+
+- **The evidence-gate readout groups the `required` divergences by feature
+  signature** (#422). §18.2 makes explaining every `required` / `no_answer`
+  divergence a condition for switching the gate on; the readout counted the
+  `required` ones (430 withheld, 995 promoted on 03.09.) without saying what
+  they had in common. Both directions are now grouped like the `no_answer`
+  view already was — on 03.09. every withheld case is arm agreement alone
+  (coverage below one half, no identifier, no scope), every promoted case a
+  second signal beside it or a full trigger match: the two-of-three rule,
+  visible instead of argued.
+
+### Fixed
+
+- **`bastra install codex` switches Codex's planning tool on, instead of
+  registering a hook that can never fire** (#506). Codex has shipped its
+  `update_plan` tool disabled by default since `rust-v0.152.0`
+  (`tools.update_plan.enabled`), so the `PreToolUse: ^update_plan$` hook the
+  installer registers was dead by construction on a default installation — the
+  seven days of zero plan events the issue opened with. Install now sets the
+  key in `~/.codex/config.toml` itself and says so in its output; it appends a
+  commented, bastra-marked block rather than re-serializing a file Codex owns,
+  leaves every other line byte-for-byte intact, and a second run reports
+  `already true` and writes nothing. A value the user deliberately set to
+  `false` is a decision: it is reported, never overwritten. `bastra uninstall
+  codex` removes exactly the block bastra wrote — a setting the user made
+  themselves, or a managed block they edited, stays. `bastra doctor codex`
+  reports the key as MISSING (repairable by re-running install) when it is
+  absent, and names an explicit `false` as the reason the plan lane is silent.
+  Install also spells out the Codex trust gate when it changed hook
+  definitions: Codex trusts a hook by the hash of its exact command, so changed
+  hooks stay silent until they are re-approved in `/hooks`.
+
+- **Ollama autostart is a named `systemd --user` unit on Linux, not an unref'd
+  orphan** (#496, contributed by @zzallirog in #497). `ensureServing()` only had
+  a persistent-agent path for macOS (`brew services`); on Linux,
+  `ollama.autostart` unconditionally fell through to a one-shot
+  `spawn(..., {detached: true}); child.unref()` — invisible to `systemctl` and
+  not tied to the daemon's lifecycle. It now starts ollama via
+  `systemd-run --user --unit=bastra-ollama --collect -- ollama serve`: a named,
+  visible, stoppable unit that `systemctl --user status/stop bastra-ollama` can
+  see and manage. As on the brew path, the server is re-probed after the systemd attempt before the
+  detached fallback runs, so a unit that binds slowly (or one that already
+  exists) does not get a second, competing ollama on 11434. Falls back to the
+  previous detached spawn only when `systemd-run` isn't available. macOS is
+  untouched: the whole branch sits behind a `process.platform === "linux"` gate
+  and the darwin log line still names brew services as the missing supervisor.
+  **Still open in #496:** the unit carries no `Restart=` and no idle teardown, so
+  it is named, visible and stoppable — not supervised. The idle-unload half (the
+  Linux equivalent of the macOS story in #78, which unloads the *model*, not the
+  server) remains unsolved. So does the environment: `systemd-run` starts the
+  unit in the user manager's environment, so `OLLAMA_*` variables a plain spawn
+  would have inherited do not reach it. That costs a slow start rather than a
+  wrong one — with a non-default `OLLAMA_HOST` the unit binds 11434, the poll
+  runs out its 15 s and the detached fallback then serves correctly — and
+  choosing what to forward wants a machine with systemd to verify it on.
+
+- **The context governor decides per entry, not per id** (#438). Kept
+  candidates were tracked in a set keyed by id and the output filtered by that
+  set, so with duplicate ids one accepted occurrence marked all of them as kept:
+  a duplicate the report had dropped for the token budget was emitted anyway,
+  and the item count (unique ids) did not match the output (entries). Each
+  candidate now carries its index, and a second mention of the same id in one
+  block is dropped as `duplicate_id` before it costs budget — the occurrence
+  with the better priority is the one that stays. This was the prerequisite for
+  a live cumulative budget (#458).
+
+- **Hint blocks now say what they are: candidates, not the memories** (#465).
+  The session-context header read "apply what fits, load_memory(id) for
+  details" — an invitation to treat a one-line summary as the content and the
+  body as optional depth. On 1–2 September an explicit override memory ranked
+  top with score 163, was never loaded, and the session followed the opposite
+  rule. Every surface now carries the same sentence, defined once in
+  `band-wording.ts`: these are candidates (id, title, summary), NOT the
+  memories themselves — nothing is in context until `load_memory(id)` is
+  called and read; a summary is a pointer, not the rule. Session context,
+  session-start block, prompt lane and write lane carry it on their REQUIRED
+  and unfused headlines. A user should not have to counteract Recall's own
+  wording in their agent instructions.
+
+- **`acted_on` no longer weighs in heat and trust, and a load without a hint
+  is `not_hinted`, not `below_floor`** (#469). `acted_on` fires when a loaded
+  memory shares two tokens with the next tool input. On 1 September one Bash
+  call closed three thematically unrelated memories as acted on at once, and
+  across 84 episodes the match strength showed no gradient (median 4 for the
+  non-surfaced cases, 3 for the surfaced ones). That signal counted double in
+  the usage heat the map paints on nodes and was the up-step of the #160 trust
+  shadow, so the 21.08. shadow reading (11 higher / 4 lower) rested on it.
+  Heat and reach weight are now `loaded` alone; trust only demotes on
+  shown-and-never-opened, which opening neutralises. The counter itself stays
+  in the aggregate. And a direct `load_memory` with no hook hint carried
+  `band: below_floor` with no score — ten such episodes in the window read as
+  ten ranking failures. They are now `not_hinted`; the band quotas already
+  excluded them, the label just stops lying. The curator's engagement
+  timestamps and the reflex/adoption candidate counts are unchanged.
+
+- **`archive_memory` now respects `sensitivity: private`** (#464). The read
+  path hid private memories from external callers; the archive path did not,
+  so an MCP caller could move a memory to the trash that it could neither load
+  nor find — and learn from the success that the id existed. Archiving now
+  answers exactly as loading does: as if the id were unknown. The Mac app keeps
+  its `allow_private: true` override, mirroring `load_memory`.
+
+- **Long prompts no longer lose the dense arm — the prompt lane fuses again
+  where conventions matter most** (#466). On 02.09. 27 of 49 prompt-lane
+  recalls came back `bm25`, every one of them on a prompt over ~1,000
+  characters, with `vector_search_ms` sitting on `bm25_search_ms` + 2–7 ms or
+  exactly on the 150 ms deadline — while Ollama answered the same embeds in
+  25–66 ms. The arm was not slow; it was never asked in time. The dense request
+  only leaves the process once the event loop is free, and #305's one-tick
+  yield sends it only over a socket that is ALREADY open. `fetch` closes its
+  connection after 4 s idle and prompt-lane calls are minutes apart, so the
+  connect completed after BM25 had blocked the loop, the request went out
+  behind the lexical pass, and a deadline armed at dispatch (#370) had by then
+  charged the arm for the whole BM25 run. Without fusion the lane drops the
+  REQUIRED band, the backoff bypass and the semantic reflex layer — a weaker
+  signal on exactly the long, spoken prompts that carry the conventions.
+
+  Two changes, no ranking effect (identical inputs to both arms, RRF
+  unchanged). The Ollama provider now speaks over a keep-alive agent, so the
+  turn-start prewarm (#361) warms the socket as well as the model and the
+  request is on the wire during the yield — measured on a 1,500-character
+  prompt with a 140 ms lexical block: warm socket 0 ms after the block, cold
+  88–111 ms. And the deadline is armed when the arm is actually awaited, not
+  when it is dispatched: work between the two is not the arm's time. A dense
+  arm that is still slower than its budget after the wait keeps timing out.
+
+  Before/after against the live daemon, six real prompts of ~1,500 and ~3,000
+  characters, socket cold between calls: 0/6 fused before, 6/6 after (table in
+  the commit). `dense-arm-dispatch.test.ts` gains a cold-socket case,
+  the #370 deadline test is inverted.
+
 ## [0.9.2] — 2026-08-27
 
 ### Added
@@ -1922,6 +2229,9 @@ edges. Dogfooded daily against a real vault.
 - CI (GitHub Actions): `npm ci` → build → type-check → test on a Node 20/22
   matrix, on every push and PR.
 
+[Unreleased]: https://github.com/n0mad-ai/bastra-recall/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.9.2
+[0.9.1]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.9.1
 [0.9.0]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.9.0
 [0.8.9]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.8.9
 [0.8.8]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.8.8
@@ -1940,4 +2250,6 @@ edges. Dogfooded daily against a real vault.
 [0.7.0-beta.5]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.7.0-beta.5
 [0.7.0-beta.4]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.7.0-beta.4
 [0.7.0-beta.3]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.7.0-beta.3
+[0.7.0-beta.2]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.7.0-beta.2
+[0.6.5-beta.1]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.6.5-beta.1
 [0.6.0-beta.1]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.6.0-beta.1

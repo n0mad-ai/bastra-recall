@@ -211,3 +211,40 @@ test("und die Streichgründe machen sichtbar, was die Schleife nur mitzählte", 
     { id: "c", reason: "already_shown" },
   ]);
 });
+
+// ── #438: Entscheidungen je Eintrag, nicht je id ────────────────
+
+test("#438: ein als token_budget verworfenes Duplikat erscheint nicht trotzdem in kept", () => {
+  // Zwei Einträge mit derselben id; der erste passt, der zweite sprengt das Budget.
+  const d = governContext([item("x", 1, 40), item("x", 2, 400)], { tokens: 20 });
+  assert.equal(d.kept.length, 1, "genau ein Vorkommen wird ausgegeben");
+  assert.equal(d.kept[0].text.length, 40, "und zwar das angenommene, nicht das verworfene");
+  assert.equal(d.tokens_spent, 10);
+  assert.deepEqual(d.dropped, [{ id: "x", reason: "duplicate_id" }]);
+});
+
+test("#438: die zweite Erwähnung derselben id fällt vor jedem Budget — auch wenn Platz wäre", () => {
+  const d = governContext([item("a", 1), item("a", 2), item("b", 3)], { tokens: 1000, items: 10 });
+  assert.deepEqual(d.kept.map((k) => k.id), ["a", "b"]);
+  assert.deepEqual(d.dropped, [{ id: "a", reason: "duplicate_id" }]);
+  assert.equal(d.tokens_spent, 20, "das Duplikat kostet nichts");
+});
+
+test("#438: die Item-Zählung und die Ausgabe zählen dieselbe Sache — Einträge", () => {
+  // Vorher: item_budget gegen eindeutige ids geprüft, Ausgabe nach Einträgen
+  // gefiltert — zwei Einträge einer id belegten einen Platz und wurden zweimal ausgegeben.
+  const d = governContext([item("a", 1), item("a", 1), item("b", 2), item("c", 3)], { items: 2 });
+  assert.equal(d.kept.length, 2);
+  assert.deepEqual(d.kept.map((k) => k.id), ["a", "b"]);
+  assert.deepEqual(
+    d.dropped.map((x) => `${x.id}:${x.reason}`).sort(),
+    ["a:duplicate_id", "c:item_budget"],
+  );
+});
+
+test("#438: das Duplikat mit der besseren Priorität ist das behaltene", () => {
+  // Priorität entscheidet, WELCHES Vorkommen bleibt; die Ausgabe steht in Eingabereihenfolge.
+  const d = governContext([item("x", 5, 40, { text: "late" }), item("x", 1, 40, { text: "early" })], {});
+  assert.equal(d.kept.length, 1);
+  assert.equal(d.kept[0].text, "early");
+});

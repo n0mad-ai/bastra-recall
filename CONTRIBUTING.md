@@ -39,7 +39,7 @@ branch in your fork.
 
 ### Requirements
 
-- Node ≥ 20 (`node --version`)
+- Node ≥ 22 (`node --version`) — the workspace `engines` field
 - macOS for the full experience (Linux works for daemon + CLI; some
   adapters are macOS-only)
 - npm (comes with Node)

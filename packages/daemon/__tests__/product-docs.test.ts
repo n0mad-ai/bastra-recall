@@ -20,7 +20,7 @@ import { Telemetry } from "../src/telemetry.js";
 import type { ToolDeps } from "../src/tool-handlers.js";
 import { saveProductDocHandler } from "../src/product-doc-handler.js";
 import { renameArea } from "../src/webui-areas.js";
-import { formatDokuBlock } from "../src/doku-block.js";
+import { formatDokuBlock, isDokuProject } from "../src/doku-block.js";
 import { appendProductDocHint, type SaveSuggestion } from "../src/stop-lane.js";
 
 async function makeDeps(): Promise<{ deps: ToolDeps; dir: string; close: () => Promise<void> }> {
@@ -308,4 +308,15 @@ test("save_product_doc: ein fremdes Dokument im selben Scope wird NICHT übersch
   } finally {
     await close();
   }
+});
+
+test("isDokuProject (#511): only git-root earns a doku block", () => {
+  // git-root is the one confidence that names a real repository.
+  assert.equal(isDokuProject("git-root"), true);
+  // root-match is the container heuristic (~/Projekte) — not a project.
+  assert.equal(isDokuProject("root-match"), false);
+  // fallback is the last path segment of any directory — not a project.
+  assert.equal(isDokuProject("fallback"), false);
+  // none is no detection at all.
+  assert.equal(isDokuProject("none"), false);
 });

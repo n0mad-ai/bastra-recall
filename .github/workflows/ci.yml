@@ -51,11 +51,33 @@ jobs:
       - name: Type-check
         run: npm run check:types
 
+      # #456: the Cursor rule and the Codex/ChatGPT plugin skill are generated
+      # from packages/skill/SKILL.md (#455). A PR that edits the canonical file
+      # without regenerating — or edits a projection by hand — fails here.
+      - name: Skill projections in sync
+        run: |
+          npm run skill:build
+          git diff --exit-code --stat -- packages/skill plugins
+
       - name: Test
         run: npm test
 
       - name: Update-check tests
         run: npm run test:update
+
+      # #546: the hook parity tests above run the stub's SOURCES through tsx.
+      # What ships and what every hook call executes is the `deno compile`
+      # binary, and nothing looked at it — a binary two weeks behind its
+      # sources passed the whole suite. This step builds it and checks it lane
+      # by lane against the node clients, so deno has to be here: without it
+      # the guard fails rather than skipping, because a guard that silently
+      # checks nothing on the runner is worse than no guard.
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+
+      - name: Stub parity (compiled binary)
+        run: npm run test:stub
 
       - name: Smoke test
         run: npm run smoke

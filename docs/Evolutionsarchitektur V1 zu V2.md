@@ -3,23 +3,24 @@
 > Status: Release- und Zielarchitektur; V1.0 ist der nächste verbindliche
 > Releasevertrag, V2.0 das langfristige, messungsabhängige Zielbild
 >
-> Stand: 29. August 2026 (Vertragsänderung C-083, Vertragsergänzungen C-084
-> und C-085, Präzisierung C-086; abgenommene Basis vom 26. Juli 2026 im
-> Übrigen unverändert)
+> Stand: 12. September 2026 (Vertragsänderungen C-083 und C-087,
+> Vertragsergänzungen C-084 und C-085, Präzisierung C-086; abgenommene Basis
+> vom 26. Juli 2026 im Übrigen unverändert)
 >
 > Ausgangsstand: Bastra Recall 0.8.6, aktueller Vault, reale
 > 30-Tage-Telemetrie und bestehende Eval-Geometrie
 >
 > **Diese Datei ist die maßgebliche Fassung.** Verbindlicher Ledgerstand:
-> C-001–C-086, elf Reviewrunden, eine Vertragsänderung, zwei
+> C-001–C-087, elf Reviewrunden, zwei Vertragsänderungen, zwei
 > Vertragsergänzungen und eine Präzisierung; C-001–C-082 am 26. Juli 2026
-> abgenommen, C-083 bis C-086 am 29. August 2026 entschieden.
+> abgenommen, C-083 bis C-086 am 29. August 2026 und C-087 am
+> 12. September 2026 entschieden.
 >
 > Entstehung: abgenommener Ausgangsstand C-001–C-028, fortgeschrieben durch die
 > Revisionen C-029–C-039, C-040–C-048, C-049–C-054, C-055–C-059, C-060–C-062,
 > C-063–C-067, C-068–C-073, C-074–C-077, C-078–C-079, C-080–C-081 und C-082
-> sowie durch die Vertragsänderung C-083, die Vertragsergänzungen C-084 und
-> C-085 und die Präzisierung C-086.
+> sowie durch die Vertragsänderungen C-083 und C-087, die Vertragsergänzungen
+> C-084 und C-085 und die Präzisierung C-086.
 > Alle zwölf Zwischenfassungen und der Ausgangsstand liegen unverändert unter
 > `docs/architecture-history/`; sie sind Belegmaterial, keine geltenden
 > Verträge.
@@ -39,7 +40,7 @@
 > Die Product-Owner-Entscheidungen in Abschnitt 31 sind getroffen und binden
 > die Umsetzung.
 >
-> Nächste freie ID: C-087. Ein neues Delta wird in dieser Datei fortgeschrieben
+> Nächste freie ID: C-088. Ein neues Delta wird in dieser Datei fortgeschrieben
 > und nicht mehr als eigene Revisionsdatei geführt.
 
 ## 0. Entscheidungs- und Reviewstatus
@@ -68,8 +69,10 @@ wenn ausschließlich folgende Grundlagen umgesetzt und nachgewiesen sind:
    bereits vorhandenen Signalen bauen;
 3. den vorhandenen Session-Context-Pfad zu einem gemeinsamen, projektfähigen
    und parallelen Server-Assembler weiterentwickeln;
-4. ein globales Kontextbudget einführen und Retrievalqualität getrennt von
-   Hook-Formulierung beziehungsweise Consumer-Verhalten messen.
+4. ein globales Kontextbudget einführen — in V1.0 als kumulatives
+   Cross-Lane-Sitzungsledger im Shadow; die Live-Erzwingung fällt nach 26.2
+   (C-087) — und Retrievalqualität getrennt von Hook-Formulierung
+   beziehungsweise Consumer-Verhalten messen.
 
 V1.0 enthält keine neuen Memory-Typen, Claims, Graph-Kantentypen,
 Dual-Vektoren, Chunking-, HNSW- oder Learned-Ranking-Live-Schicht.
@@ -198,6 +201,7 @@ neuer Evidenz erneut geöffnet.
 | C-084 | Vertragsergänzung | Ab V1.0 steht das Frontmatter-Format unter einer ausdrücklichen Zusicherung (26.1): Pflichtfelder, Memory-Typen, Bedeutung der dokumentierten optionalen Felder und die Ladetoleranz ändern sich nur mit einem Major-Bump. Ein 1.x-Reader verlangt kein Formatversionsfeld. Unbekannte Schlüssel werden beim Laden toleriert, überleben einen `overwrite` aber nicht garantiert. Nicht gedeckt sind Ranking, interne `.bastra/`-Ablagen und Projektionsinhalte; die `recall`-Ausgabeform fällt unter den eigenen API-Vertrag. Eine Loader-Verschärfung ist nur unter der eng gefassten Sicherheitsausnahme ohne Major-Bump zulässig. |
 | C-085 | Vertragsergänzung | Die 500-Entscheidungen-Route der Shadow-Abnahme (18.2) gilt nur bei Streuung: mindestens 20 verschiedene Sessions tragen die zählenden Entscheidungen, und keine einzelne Session stellt mehr als 25 % von ihnen. Die 14-Tage-Route bleibt unberührt. Klarstellung im selben Eintrag: Gezählt wird pro Memory-Entscheidung, nicht pro Hook-Aufruf — so ist die Schwelle implementiert und so ist sie gemeint. |
 | C-086 | Präzisierung | Beide Wege zu `required` werden enger gefasst (10.3): Das Teilabdeckungs-Signal der Zwei-von-drei-Zählung zählt erst ab 50 % Trigger-Abdeckung statt ab dem ersten gemeinsamen Term, und der harte Identifier-Anker liest Titel, `recall_when` und Frontmatter statt zusätzlich den Body. Beziffert vor der Änderung: Anti-Query-Gate von 50 % auf 12,5 %, Recall@3 gegated, Identifier-Queries und Falsch-Abstention unverändert, längenneutral. Offen bleiben die zu kleine Anti-Probenmenge und die Kosten des Pflichtverlusts, die erst die Shadow-Telemetrie zeigt. |
+| C-087 | Vertragsänderung | V1.0 schuldet vom globalen Kontextbudget aus 16.3 das Latenzbudget live und das kumulative Cross-Lane-Tokenbudget je Sitzung als **Shadow-Ledger** (26.1): verbuchen und protokollieren, nicht kürzen. Die **Live-Erzwingung** — aus Shadow-Daten festgelegte Budgethöhe, Canary-Profil mit sofortigem Rollback auf unbegrenzt, Siebentage-Canary-Bericht — ist nach 26.2 verschoben. Begründung ist gemessen: Sechs Tage Shadow (742 Entscheidungen, 135 Sessions, 80 auswertbar) hätten gegen das vorläufige 7.500-Token-Profil 8 Sessions berührt und 36.976 Tokens zurückgehalten, rund 5 % von 719.322 Tokens Wochenbetrieb. Der Nutzen liegt im Tail, und ein Tail trägt keine Live-Schaltung auf Shadow-Daten allein. |
 
 **Abnahmestand 24.07.2026:** Vollabgleich Ledger C-001–C-027,
 Gate-Messbarkeit, Ist-Behauptungs-Sweep (58 Aussagen, alle gedeckt),
@@ -359,7 +363,23 @@ und Falsch-Abstention bleiben unverändert. Zwei Vorbehalte stehen ausdrücklich
 im Eintrag — acht Anti-Proben können die 5-%-Schwelle nicht darstellen, und die
 Kosten des Pflichtverlusts sieht erst die Shadow-Telemetrie.
 
-**Nächste freie ID: C-087.** Neue Delta-Reviews beginnen dort. Ein Urteil
+**Vertragsänderung, 12.09.2026 (diese Fassung):** C-087 ändert zum zweiten Mal
+den Umfang des V1.0-Releasevertrags. Der Vertrag forderte in 26.1 ein globales
+Token- und Latenzbudget, das „die gesamte Session-Antwort begrenzt". Das
+Latenzbudget tut das; das kumulative Cross-Lane-Tokenbudget tut es nicht — es
+läuft im Shadow, verbucht je Sitzung, was die automatischen Lanes tatsächlich
+emittiert haben, und protokolliert je Emission die Entscheidung, ohne zu
+kürzen. Der Eintrag stellt den Vertrag auf diesen Stand und verschiebt die
+Live-Erzwingung nach 26.2. Anlass ist die abgeschlossene Shadow-Messung: 8 von
+80 auswertbaren Sessions hätten das vorläufige Profil überschritten, die
+zurückgehaltene Menge liegt bei rund 5 % des Wochenbetriebs. Der Nutzen liegt
+im Tail, die Budgethöhe steht gemessen noch nicht fest, und ein Canary startet
+sein eigenes Siebentage-Fenster. Was V1.0 schuldet, bleibt vollständig prüfbar
+— Ledger, Shadow-Entscheid je Emission und der Ausweis im Telemetry-Tab. Die
+ersetzte Fassung bleibt in 26.1 als solche kenntlich; kein Urteil aus
+C-001–C-086 wird umgedeutet.
+
+**Nächste freie ID: C-088.** Neue Delta-Reviews beginnen dort. Ein Urteil
 ändert sich nur mit neuer Code-, Telemetrie- oder Run-Evidenz; Geschmacksfragen
 werden als Architekturentscheidung statt als Faktenfehler markiert.
 
@@ -2867,6 +2887,13 @@ Ein globaler Context Governor entscheidet:
 - ob ein bereits geladenes Memory erneut erwähnt werden darf;
 - welche Zonen automatisch ausgeschlossen sind.
 
+**Releasezuordnung, C-087.** Das Vorstehende ist das Zielbild. In V1.0 greift
+davon das Latenzbudget live; das kumulative Tokenbudget über alle sechs
+automatischen Lanes läuft ausschließlich im Shadow — es verbucht und
+protokolliert, kürzt aber nichts. Die Live-Erzwingung ist nach 26.2 verschoben
+und setzt eine aus Shadow-Daten festgelegte Budgethöhe, ein Canary-Profil mit
+sofortigem Rollback auf unbegrenzt und einen Siebentage-Canary-Bericht voraus.
+
 ## 17. Lernen aus Nutzung
 
 ### 17.1 Positive Signale
@@ -3839,7 +3866,9 @@ Produkttelemetrie ausgegeben werden.
 - den bestehenden Session-Context zu einem gemeinsamen, projektfähigen
   Assembler erweitern;
 - unabhängige Serveranteile innerhalb dieses Assemblers parallelisieren;
-- ein globales Kontext- und Latenzbudget einführen;
+- ein globales Kontext- und Latenzbudget einführen; das Latenzbudget greift in
+  V1.0 live, das kumulative Cross-Lane-Tokenbudget je Sitzung im Shadow
+  (C-087);
 - Retrievalqualität und Wirkung der Hook-Formulierung in getrennten
   Experimentarmen messen.
 
@@ -4102,7 +4131,8 @@ V1.0:
 1. Messwahrheit und reproduzierbare Baselines.
 2. Deterministische Relevanzevidenz und echte Abstention.
 3. Gemeinsamer projektfähiger Session-Assembler mit interner Parallelisierung.
-4. Globales Kontextbudget und getrenntes Retrieval-/Präsentationsexperiment.
+4. Globales Kontextbudget — Shadow-Ledger in V1.0, Live-Erzwingung nach 26.2
+   (C-087) — und getrenntes Retrieval-/Präsentationsexperiment.
 
 Bis einschließlich Punkt 4 ist die Umsetzung als V1.0 freigegeben. Alle
 folgenden Nummern ordnen Schema-/Vertragsänderungen und Live-Aktivierungen.
@@ -4159,7 +4189,9 @@ V1.0 ist fertig, wenn:
 - der gemeinsame Session-Assembler Projektpfad und Scope korrekt übernimmt,
   seine unabhängigen Serveranteile parallel ausführt und für vorhandene Clients
   kompatibel bleibt;
-- ein globales Token- und Latenzbudget die gesamte Session-Antwort begrenzt;
+- ein globales Latenzbudget die gesamte Session-Antwort begrenzt und ein
+  kumulatives Cross-Lane-Tokenledger je Sitzung im Shadow mitschreibt, was ein
+  Budget zurückgehalten hätte, ohne zu kürzen (C-087);
 - Retrievalqualität, Hook-Formulierung und Consumer-Verhalten getrennt
   ausgewertet werden;
 - `client`, `hook_source` und pseudonyme Session-Zuordnung die dafür
@@ -4189,6 +4221,28 @@ tragfähige Fallzahl. Ein Releasevertrag, der eine Zahl fordert, die die
 Population nicht hergibt, ist entweder unerfüllbar oder lädt dazu ein, einen
 unterbesetzten Lauf als Befund auszugeben. Die Berichtsregel aus 18.1 bleibt
 davon unberührt und wird durch diesen Eintrag ausdrücklich Teil des
+V1.0-Vertrags.
+
+**Vertragsänderung C-087, 12.09.2026 — Anforderung ersetzt.** Der vorstehende
+Budgetpunkt trug bis zu diesem Datum die Fassung:
+
+> ~~ein globales Token- und Latenzbudget die gesamte Session-Antwort
+> begrenzt;~~
+
+Diese Fassung gilt nicht mehr. V1.0 schuldet das **Latenzbudget** live und das
+kumulative Cross-Lane-**Tokenbudget** als **Shadow-Ledger**: je Sitzung wird
+verbucht, was die sechs automatischen Lanes tatsächlich emittiert haben, und je
+Emission protokolliert, ob der Block in ein Budget noch gepasst hätte —
+gekürzt wird nichts. Die **Live-Erzwingung** samt festgelegter Budgethöhe,
+Canary und Siebentage-Bericht wandert nach 26.2. Der Grund ist gemessen und
+nicht abgewogen: Sechs Tage Shadow (742 Entscheidungen, 135 Sessions, 80 davon
+auswertbar) hätten gegen das vorläufige 7.500-Token-Profil 8 Sessions berührt
+und 36.976 Tokens zurückgehalten — rund 5 % von 719.322 Tokens realem
+Wochenbetrieb. Der Wert dieses Budgets liegt im Ausreißer-Tail, nicht in der
+Einsparung, und ein Tail rechtfertigt keine Live-Schaltung auf Shadow-Daten
+allein. Ein Releasevertrag, der eine Erzwingung fordert, deren Höhe noch nicht
+gemessen feststeht, lädt dazu ein, eine vorläufige Zahl als Vertrag auszugeben.
+Messung, Shadow-Betrieb und Berichtspflicht bleiben unverändert Teil des
 V1.0-Vertrags.
 
 **Frontmatter- und Schemazusicherung ab V1.0 (C-084).** Mit V1.0 entfällt das
@@ -4285,6 +4339,11 @@ Promotion erfolgt erst, wenn:
   versioniertem Mindest-N je Arm, mit erhobener Query-Klassen-Dimension und mit
   unabhängigen Relevanzlabels für ausgespielte und zurückgehaltene Kandidaten
   (C-083, aus 26.1 hierher verschoben);
+- das kumulative Cross-Lane-Sitzungsbudget aus 16.3 **live erzwungen** ist:
+  Budgethöhe aus den Shadow-Daten festgelegt, Canary-Profil mit sofortigem
+  Rollback auf unbegrenzt, ein Siebentage-Canary-Bericht mit berührten
+  Sessions, vermiedenen Tokens, Drops nach Lane/Grund und ausgewiesenen
+  Required-Drops (C-087, aus 26.1 hierher verschoben);
 - HNSW nur dann automatisch aktiviert wird, wenn es auf der aktuellen Hardware
   messbar sinnvoll und qualitativ sicher ist;
 - jede adaptive Entscheidung shadow-getestet, erklärbar und zurückrollbar ist.
@@ -6817,4 +6876,4 @@ Qualitätsgrößen bewegt sich um eine einzige Stelle.
    ist heute aus der Längenaufschlüsselung begründet, nicht aus einer
    Kalibrierung.
 
-**Nächste freie ID: C-087.**
+**Nächste freie ID: C-088.**

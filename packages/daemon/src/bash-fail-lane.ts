@@ -23,6 +23,7 @@ import { randomUUID } from "node:crypto";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { envFirst, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
+import { recordBudgetShadow } from "./session-budget.js";
 import { reportHinted } from "./hook-hinted.js";
 import { postLane } from "./thin-client.js";
 import { isUnfused, type HookRecallHit, type HookRecallResponse } from "./hook-recall-response.js";
@@ -33,7 +34,7 @@ import {
   loadSessionState,
   recordSourceEmit,
   recordSourceSuppressed,
-  saveSessionState,
+  mutateSessionState,
   wasEmitConsumed,
 } from "./session-state.js";
 
@@ -192,6 +193,9 @@ export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: str
   let backoffStreak = 0;
   let suppressed = false;
   let suppressedTokensEst = 0;
+  // #457: Tokens des TATSÄCHLICH injizierten Blocks — die Lane stand bisher
+  // in keiner Kontextrechnung.
+  let hintTokensEst = 0;
   let stdout = "{}";
   if (hits.length > 0) {
     // #161 empty-streak backoff: unconsumed injection streaks widen the
@@ -212,16 +216,18 @@ export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: str
       // Suppressed emits {} like the no-hits path; the throttle stays
       // unmarked (nothing was emitted), the saved tokens go to telemetry.
       suppressedTokensEst = Math.ceil(block.length / 4);
-      recordSourceSuppressed(state, BACKOFF_SOURCE);
-      await saveSessionState(sessionId, state);
+      // #539: apply the delta to the state on disk, not to this snapshot —
+      // four other lanes write the same file.
+      await mutateSessionState(sessionId, (s) => recordSourceSuppressed(s, BACKOFF_SOURCE));
     } else {
       // Mark throttle only when we actually emit — otherwise quiet calls
       // would burn the budget.
       await markThrottle(sessionId);
+      hintTokensEst = Math.ceil(block.length / 4);
       // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
-      await reportHinted(selfBaseUrl, hits.map((h) => h.id));
-      recordSourceEmit(state, BACKOFF_SOURCE, hits.map((h) => h.id), consumed);
-      await saveSessionState(sessionId, state);
+      await reportHinted(selfBaseUrl, hits.map((h) => h.id), typeof payload.session_id === "string" ? payload.session_id : null);
+      const emitted = hits.map((h) => h.id);
+      await mutateSessionState(sessionId, (s) => recordSourceEmit(s, BACKOFF_SOURCE, emitted, consumed));
       stdout = JSON.stringify({
         hookSpecificOutput: {
           hookEventName,
@@ -231,6 +237,9 @@ export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: str
     }
   }
 
+  // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den
+  // Governor-Entscheid loggen — nichts wird gekürzt.
+  recordBudgetShadow(typeof payload.session_id === "string" ? payload.session_id : null, "bash_fail_hook_call", hintTokensEst);
   await writeTelemetry({
     session_id: typeof payload.session_id === "string" ? payload.session_id : null,
     exit_code: exitCode,
@@ -243,6 +252,7 @@ export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: str
     backoff_streak: backoffStreak,
     suppressed,
     suppressed_tokens_est: suppressedTokensEst,
+    hint_tokens_est: hintTokensEst,
     status: suppressed ? "suppressed" : status,
     error: errMsg,
   });
@@ -441,6 +451,8 @@ interface BashFailHookTelemetry {
   suppressed: boolean;
   /** #161: Tokens des NICHT injizierten Blocks — die Sparseite der ROI. */
   suppressed_tokens_est: number;
+  /** #457: est. tokens of the injected block; 0 when nothing was emitted. */
+  hint_tokens_est: number;
   status: "ok" | "no-hits" | "suppressed" | "daemon-unreachable" | "timeout" | "error";
   error: string | null;
 }

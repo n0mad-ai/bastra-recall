@@ -67,12 +67,39 @@ export function requiredHeadline(subject: string, cut: number, rrf: RrfConstants
  * raw BM25 scale is unbounded — #302 measured top hits into six digits — so no
  * band claim can be made at all.
  */
-export function unfusedHeadline(subject: string): string {
+/**
+ * #465: what a hint block IS. Every block delivers candidates — id, title,
+ * summary, score — never the memory body. Read as-is, a model concludes the
+ * content is already in context and acts on a one-line summary while believing
+ * it has read the lesson (01./02.09.: an override memory ranked top with score
+ * 163, never loaded, the session followed the opposite rule). The sentence is
+ * the same on every surface so no lane can be misread differently.
+ */
+export const CANDIDATES_ONLY_NOTICE =
+  "These are candidates (id, title, summary), NOT the memories themselves — nothing here is in your " +
+  "context until you load_memory(id) and read it. A summary is a pointer, not the rule.";
+
+/**
+ * WARUM nur ein Arm lief. `off` = es gibt keinen zweiten (keine Embeddings,
+ * Breaker offen) — die Aussage seit jeher. `cold-model` = es gibt ihn, er war
+ * nur nicht im Speicher, und die Lane hat ihn bewusst nicht abgewartet (#490).
+ * Die zwei Sätze dürfen nicht derselbe sein: „semantic search is off" wäre im
+ * kalten Fall schlicht unwahr, und der Nutzer würde eine dauerhafte
+ * Einschränkung lesen, wo eine Sekunde Ladezeit stand.
+ */
+export type UnfusedReason = "off" | "cold-model";
+
+export function unfusedHeadline(subject: string, reason: UnfusedReason = "off"): string {
+  const why =
+    reason === "cold-model"
+      ? `the embedding model was not in memory, so this lookup answered from the ` +
+        `lexical path alone rather than wait for the load — it is running in the ` +
+        `background and the next recall in this session is fused again`
+      : `semantic search is off`;
   return (
-    `Lexical matches for ${subject}, ranked by term overlap alone — semantic ` +
-    `search is off, so no second path confirmed any of them and the scores are ` +
-    `on an open-ended scale (not the fused bands). Judge these by title and ` +
-    `summary, not by the number.`
+    `Lexical matches for ${subject}, ranked by term overlap alone — ${why}, so no ` +
+    `second path confirmed any of them and the scores are on an open-ended scale ` +
+    `(not the fused bands). Judge these by title and summary, not by the number.`
   );
 }
 

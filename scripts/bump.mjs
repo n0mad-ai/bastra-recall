@@ -124,15 +124,60 @@ for (const relPath of GUARDED_SOURCES) {
   }
 }
 
-// 4) Report.
+// 4) The release handoff (#524).
+//
+// This used to end in `gh release create … --prerelease` for every version,
+// stable ones included. That is the one release kind that keeps the primary
+// non-developer install path stale: the publish workflow publishes npm under
+// `latest` on any release, while the Homebrew tap updater and the one-click
+// installers read GitHub `/releases/latest`, which excludes prereleases.
+// Following the printed command for 1.0.0 would have shipped npm 1.0.0 while
+// Homebrew and the Finder installer stayed on 0.9.2.
+//
+// So the flag now follows the semver: `--prerelease` only when the version
+// itself has a prerelease component.
+//
+// The staging object is a DRAFT. `--latest=false` was not enough: it keeps
+// `/releases/latest` (and with it the tap and both installers) from moving
+// early, but the release page and its tag are public from the moment the
+// release is created — while the asset jobs are still running and the npm
+// publication can still fail. A draft has no public page and creates no tag at
+// all; both come into existence in the workflow's `promote` job, after the
+// complete set has been verified.
+//
+// A draft fires no `release: published`, so the workflow is no longer hung off
+// the release event: it is started explicitly with the tag of the draft
+// (`workflow_dispatch`), which is also the only way the jobs can attach assets
+// to something that is not public yet.
+const isPrerelease = version.includes("-");
+const releaseCmd = isPrerelease
+  ? `gh release create v${version} --draft --prerelease --generate-notes --target "$(git rev-parse HEAD)"`
+  : `gh release create v${version} --draft --generate-notes --target "$(git rev-parse HEAD)"`;
+const stagingNote = isPrerelease
+  ? "  # draft: `promote` publishes it; a prerelease never becomes /releases/latest"
+  : "  # draft: invisible and untagged until `promote` has verified the whole set";
+
+function printHandoff() {
+  console.log(
+    `\nNext:\n  npm install            # refresh package-lock\n` +
+      `  git commit -am "release: v${version}"\n` +
+      `  git push\n` +
+      `  ${releaseCmd}\n${stagingNote}\n` +
+      `  gh workflow run publish-npm.yml -f tag=v${version} -f dry_run=false\n` +
+      "  # builds, attaches, publishes npm LAST — and only then publishes the draft\n" +
+      "  # #548: dispatch BEFORE the branch moves on. The gate refuses a run whose\n" +
+      "  # commit is not the one the draft points at, rather than building something\n" +
+      "  # else and attaching it to this release.",
+  );
+}
+
+// 5) Report.
 if (changes.length === 0) {
   console.log(`Nothing to change — everything is already at ${version}.`);
 } else {
   console.log(`${dryRun ? "[dry-run] would apply" : "applied"} ${changes.length} change(s):`);
   for (const c of changes) console.log("  " + c);
-  if (!dryRun) {
-    console.log(
-      `\nNext:\n  npm install            # refresh package-lock\n  git commit -am "release: v${version}"\n  gh release create v${version} --prerelease --generate-notes`,
-    );
-  }
 }
+// Printed in dry-run too: the handoff is the part that was wrong, and a
+// rehearsal that hides it cannot catch it again.
+printHandoff();

@@ -256,6 +256,6 @@ test("recall_episode (#77): direct load without a hint is marked surfaced=false"
 
   assert.equal(episodes.length, 1);
   assert.equal(episodes[0].surfaced, false, "no hint → must not count into any band quota");
-  assert.equal(episodes[0].band, "below_floor");
+  assert.equal(episodes[0].band, "not_hinted", "#469: no score, so no floor to be below");
   assert.equal(episodes[0].acted_on, true, "acted_on stays measurable for direct loads");
 });

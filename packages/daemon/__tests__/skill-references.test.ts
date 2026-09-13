@@ -80,9 +80,18 @@ test("the core stayed a trigger file — save signals in, mechanics out", async 
   // Save triggers must NOT migrate into the tool description: an agent sees
   // that only once it already reached for the tool, which is too late for
   // proactive capture (#232, explicit risk note).
-  for (const cue of ["schon wieder", "immer X", "merk dir das gut"]) {
-    assert.ok(body.includes(cue), `save trigger cue "${cue}" left the core`);
+  // The SIGNALS must stay here; the sample wording is deliberately not pinned
+  // to one language (#476 — the cue column holds examples, not a word list).
+  for (const signal of [
+    "User-frustration about a recurring issue",
+    "Explicit durable rule",
+    "User marks something as important",
+  ]) {
+    assert.ok(body.includes(signal), `save trigger "${signal}" left the core`);
   }
+  // The cue column must not be declared as belonging to one language again:
+  // that is what made the save side German-only in the first place (#476).
+  assert.doesNotMatch(body, /German cue/, "the cue column is language-neutral (#476)");
   // Mechanics that the tool descriptions already carry must not come back.
   assert.doesNotMatch(body, /Hard cap 400/, "summary length mechanics belong in the tool description");
   assert.doesNotMatch(body, /weight 5 while the summary/, "recall_when weighting belongs in the tool description");

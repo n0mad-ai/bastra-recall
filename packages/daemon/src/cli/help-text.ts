@@ -36,7 +36,9 @@ Commands:
   uninstall <surface|all>    Remove the registration (the shared skill is
                              removed once no surface references it anymore)
   update                     brew upgrade (if brew-installed) + re-register +
-                             daemon restart. Use this after pulling new code.
+                             daemon restart. From a source checkout: run it
+                             after pulling AND building (it verifies the build,
+                             it never runs one).
   autostart <on|off|status>  Keep the daemon running permanently (off by
                              default — it otherwise starts on demand and shuts
                              down after 30 min idle). 'on' writes a LaunchAgent;
@@ -297,7 +299,12 @@ Usage:
 
 Upgrades the installed package (brew upgrade when brew-installed, npm for a
 global install, nothing for a source checkout), re-registers every surface and
-restarts the daemon. Run it after pulling new code.
+restarts the daemon.
+
+A source checkout is never pulled, installed or built by this command: it only
+verifies that the checkout's build is not older than its sources, and stops
+without re-registering or restarting when it is. So there, run
+'git pull && npm ci && npm run build' yourself first, then 'bastra update'.
 
 Before replacing an in-place installation it runs a preflight: locally modified
 files are backed up to ~/.bastra/update-backups/<version>/ and reported. A
@@ -337,9 +344,9 @@ choice, so recall runs the hybrid path (BM25 + vectors, multilingual).
 'off' returns to BM25 keyword-only. 'status' shows the effective provider and
 how it was resolved (env, setting, or detection).
 
-Options:
-  --ollama      Install Ollama without asking
-  --no-ollama   Never install it — fail instead
+'bastra embeddings' takes no options of its own. To decide the Ollama install
+non-interactively, pass --ollama / --no-ollama to 'bastra install' or
+'bastra update'; on this command they are rejected as a usage error (#536).
 `,
 
   models: `bastra models — the local text model for memory rewriting

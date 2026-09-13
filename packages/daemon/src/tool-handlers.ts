@@ -9,9 +9,11 @@
  * Damit teilen sich beide Pfade dieselbe Validierung, Telemetry und
  * Vault-Mutation — kein doppelter Code, kein Drift.
  */
+import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import {
   saveMemory,
+  memoryRevision,
   mutateMemoryFile,
   withIdClaim,
   resolveMemoryTarget,
@@ -20,6 +22,7 @@ import {
   stripAutoRelatedSection,
 } from "@bastra-recall/core";
 import { fireAndForget } from "./telemetry.js";
+import type { SaveHoldEvent } from "./telemetry-events.js";
 import { recordAudit } from "./audit-trail.js";
 import { markConflict } from "./conflict-marking.js";
 import { claimGateResult, unansweredClaims, GENERATED_TRIGGER_TYPES, type ClaimGateResult } from "./claim-gate.js";
@@ -27,9 +30,16 @@ import { touchLoadedMarker } from "./session-state.js";
 import { tokens as words } from "./save-similarity.js";
 
 import type { ToolDeps } from "./tool-deps.js";
+import { hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
 import { vaultLocator } from "./vault-locator.js";
 import { scoreSaveQuality, GENERIC_TRIGGER_WORDS, type SaveQualityResult } from "./save-quality.js";
 import { MEMORY_TOOL_DEFS } from "./tool-defs-memory.js";
+import {
+  callCorruptionMessage,
+  detectCallCorruption,
+  repairCallCorruption,
+  requiredFieldsOf,
+} from "./call-corruption.js";
 
 // Re-exported so the 18 existing importers keep their import path.
 export type { ToolDeps };
@@ -50,9 +60,6 @@ export type { RecallResult, RecallStageTimings } from "./recall-handler.js";
 
 export const LoadMemoryArgs = z.object({
   id: z.string().min(1),
-  /** Spiegelt `RecallArgs.allow_private` — verhindert dass externe Clients
-   *  Private-Memories per ID-Enumeration laden. Default `false`. */
-  allow_private: z.boolean().optional(),
   /**
    * Payload-Verbosity (#50). Default `"lean"` — essenzielle Frontmatter
    * (id, title, type, scope, summary, topic_path, tags, recall_when,
@@ -73,6 +80,11 @@ export interface LoadMemoryResult {
   frontmatter: Record<string, unknown>;
   body: string;
   file_path: string;
+  /** #519: das Token für `edit_memory({ expected_revision })` — ein Digest
+   *  über die Bytes der Datei, neu nach JEDEM Schreibvorgang. Fehlt nur, wenn
+   *  die Datei gerade nicht lesbar ist; dann hat der Caller nichts zu
+   *  vergleichen und lässt die Vorbedingung weg. */
+  revision?: string;
   /** Nur bei Commons-Rezepten: Evidenz-Zähler + verify-Aufforderung. */
   commons?: { works: number; fails: number; verify_hint: string };
   /** #235: present only when the memory carries an anchor command. The daemon
@@ -129,7 +141,8 @@ export async function loadMemoryHandler(
   rawArgs: unknown,
   // #74: echte CC-Session aus den Forwarder-Headern (HTTP-Pfad). Ohne sie
   // fällt recordLoadedMemory auf den zuletzt rotierten Turn zurück (inferred).
-  ctx?: { sessionId?: string | null },
+  // #464: `trustedPrivate` kommt vom TRANSPORT, nie aus `rawArgs`.
+  ctx?: { sessionId?: string | null } & PrivateAccess,
 ): Promise<LoadMemoryResult> {
   const parsed = LoadMemoryArgs.safeParse(rawArgs);
   if (!parsed.success) throw new Error(parsed.error.message);
@@ -140,26 +153,44 @@ export async function loadMemoryHandler(
   const m = own ?? deps.commonsSearch?.loadFull(parsed.data.id);
   const fromCommons = !own && m !== undefined;
   const hookHint = deps.telemetry.findHookHintFor(parsed.data.id);
-  fireAndForget(
-    deps.telemetry.logLoadMemory({
-      id: parsed.data.id,
-      found: !!m,
-      follows_recall: deps.telemetry.recentRecallId(),
-      from_hook_recall: hookHint?.recall_id ?? null,
-      hook_hint_rank: hookHint?.rank ?? null,
-    }),
-  );
+  const followsRecall = deps.telemetry.recentRecallId();
+  // #457: das Ereignis trägt die GELIEFERTE Größe, also erst nach der
+  // Projektion — ein Load, der nichts liefert, trägt keine.
+  const logLoad = (delivered?: {
+    delivered_chars: number;
+    body_chars: number;
+    presentation: "lean" | "full";
+  }): void =>
+    fireAndForget(
+      deps.telemetry.logLoadMemory({
+        id: parsed.data.id,
+        found: !!m,
+        follows_recall: followsRecall,
+        from_hook_recall: hookHint?.recall_id ?? null,
+        hook_hint_rank: hookHint?.rank ?? null,
+        ...(delivered
+          ? {
+              delivered_chars: delivered.delivered_chars,
+              delivered_tokens_est: Math.ceil(delivered.delivered_chars / 4),
+              body_chars: delivered.body_chars,
+              presentation: delivered.presentation,
+              origin: hookHint ? "hook" : followsRecall ? "recall" : "direct",
+            }
+          : {}),
+        caller_session: ctx?.sessionId ?? null,
+      }),
+    );
 
-  if (!m) throw new Error(`memory not found: ${parsed.data.id}`);
+  if (!m) {
+    logLoad();
+    throw new Error(`memory not found: ${parsed.data.id}`);
+  }
 
   // Sensitivity-Filter (#58): externe Caller sehen Private-Memories
-  // nicht — auch nicht über direkte ID-Lookups. Mac-App overridet mit
-  // `allow_private: true`.
-  const allowPrivate = parsed.data.allow_private ?? false;
-  if (
-    !allowPrivate &&
-    (m.fm as { sensitivity?: string }).sensitivity === "private"
-  ) {
+  // nicht — auch nicht über direkte ID-Lookups. #464: die Entscheidung kommt
+  // vom Transport (siehe private-access.ts), nicht mehr aus den Argumenten.
+  if (hiddenFromCaller(ctx, m.fm)) {
+    logLoad();
     throw new Error(`memory not found: ${parsed.data.id}`);
   }
 
@@ -219,14 +250,27 @@ export async function loadMemoryHandler(
         },
       }
     : {};
-  return {
+  // #519: die Revision kommt von der PLATTE, nicht aus dem Index — verglichen
+  // wird beim Edit gegen die Bytes, und ein Token aus einer anderen Quelle
+  // wäre kein Vergleich, sondern eine Vermutung.
+  const revision = await readFile(m.filePath, "utf8")
+    .then(memoryRevision)
+    .catch(() => undefined);
+  const result = {
     id: m.fm.id,
     frontmatter: full ? fm : leanFrontmatter(fm),
     body: full ? m.body : bodyForTelemetry,
     file_path: m.filePath,
+    ...(revision ? { revision } : {}),
     ...verifyBlock,
     ...verifyAnchor,
   };
+  logLoad({
+    delivered_chars: JSON.stringify(result, null, 2).length,
+    body_chars: result.body.length,
+    presentation: full ? "full" : "lean",
+  });
+  return result;
 }
 
 // ─── Save Memory ─────────────────────────────────────────────────
@@ -317,10 +361,32 @@ export function resetSaveFailures(): void {
 export async function saveMemoryHandler(
   deps: ToolDeps,
   rawArgs: unknown,
+  /** #464: transportgebunden — siehe private-access.ts. */
+  access?: PrivateAccess,
 ): Promise<SaveMemoryResult | ClaimGateResult> {
+  // Claude/Opus can switch from native JSON arguments into legacy XML inside
+  // the first multiline value. Retrying the generated call cannot help — it
+  // reproduces the same framing — so this must never poison the ordinary
+  // save-failure counter. 08.09.: where the swallowed content is still in the
+  // container, the framing is undone and the save goes through.
+  // #482: the shared detector, fed from save_memory's own schema rather than a
+  // hand-kept constant. The boundary (dispatchApi / the stdio CallTool handler)
+  // runs the same check for every tool; this one stays so a direct handler call
+  // gets the same answer.
+  const corruption = detectCallCorruption(
+    rawArgs,
+    requiredFieldsOf(MEMORY_TOOL_DEFS.find((def) => def.name === "save_memory")),
+  );
+  if (corruption) {
+    // 08.09.: the framing is recoverable more often than not — see
+    // `repairCallCorruption`. Only a body that did NOT survive is terminal.
+    const repaired = repairCallCorruption(rawArgs, corruption);
+    if (!repaired) throw new Error(callCorruptionMessage("save_memory", corruption));
+    rawArgs = repaired;
+  }
   let result: SaveMemoryResult | ClaimGateResult;
   try {
-    result = await saveMemoryInner(deps, rawArgs);
+    result = await saveMemoryInner(deps, rawArgs, access);
   } catch (err) {
     const failures = noteSaveFailure();
     if (failures >= SAVE_FAILURE_CAP) {
@@ -341,9 +407,35 @@ export async function saveMemoryHandler(
   return { ...result, note: result.note ?? "Save complete — do not repeat this save_memory call." };
 }
 
+/**
+ * #477 — record a save that never became a write. Every exit above the write
+ * goes through here, so "attempted" and "written" become comparable numbers
+ * instead of the write alone being visible.
+ */
+function noteSaveHold(
+  deps: ToolDeps,
+  reason: SaveHoldEvent["reason"],
+  id: string,
+  data: { type: string; scope: string; overwrite?: boolean },
+  claimedCount = 0,
+): void {
+  fireAndForget(
+    deps.telemetry.logSaveHold({
+      reason,
+      id,
+      type: data.type,
+      scope: data.scope,
+      claimed_count: claimedCount,
+      overwrite: data.overwrite ?? false,
+      follows_recall: deps.telemetry.recentRecallId(),
+    }),
+  );
+}
+
 async function saveMemoryInner(
   deps: ToolDeps,
   rawArgs: unknown,
+  access?: PrivateAccess,
 ): Promise<SaveMemoryResult | ClaimGateResult> {
   const parsed = SaveMemoryInput.safeParse(rawArgs);
   if (!parsed.success) throw new Error(parsed.error.message);
@@ -360,11 +452,48 @@ async function saveMemoryInner(
   // nichts an und ist deshalb auch vor dem Schreiben die richtige Auskunft.
   const finalId = resolveMemoryTarget(deps.vaultPath, parsed.data, vaultLocator(deps.vault)).id;
 
+  // #464: Das Ziel steht fest — und wenn dort ein Memory liegt, das dieser
+  // Caller nicht LESEN darf, darf er es auch nicht ersetzen. Vor jeder
+  // Quality-Prüfung, jedem Conflict-Umweg (der schreibt in den Bestand) und
+  // jedem File-I/O; die Antwort ist wortgleich die des Lesepfads, damit ein
+  // Overwrite-Versuch nicht zum Existenz-Orakel für geratene Ids wird. Der
+  // Fall trifft beide Wege: explizite `id` UND die implizite Slug-Kollision,
+  // weil `resolveMemoryTarget` bereits beide auf dieselbe Ziel-Id faltet.
+  if (hiddenFromCaller(access, deps.vault.get(finalId)?.fm)) {
+    noteSaveHold(deps, "private_refused", finalId, parsed.data);
+    throw new Error(`memory not found: ${finalId}`);
+  }
+
   // #205: a save declaring a contradiction is a conflict report, not a write —
   // diverted before any quality scoring or file I/O touches the vault.
-  if (parsed.data.conflict_with) return markConflict(deps, parsed.data, finalId);
+  if (parsed.data.conflict_with) {
+    noteSaveHold(deps, "conflict_redirect", finalId, parsed.data);
+    return markConflict(deps, parsed.data, finalId);
+  }
 
-  const saveQuality = scoreSaveQuality(deps, parsed.data, finalId);
+  const asString = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+
+  // Die Versionskette, die dieser Save ablöst: der `replaces`-Vorgänger und
+  // alles, was DIESER schon ersetzt hatte. `out` guards a hand-written cycle.
+  const supersededChain = (start: string | undefined): Set<string> => {
+    const out = new Set<string>();
+    let cursor: string | undefined = start;
+    while (cursor !== undefined && !out.has(cursor)) {
+      out.add(cursor);
+      const predecessor: unknown = deps.vault.get(cursor)?.fm.replaces;
+      cursor = typeof predecessor === "string" ? predecessor : undefined;
+    }
+    return out;
+  };
+
+  // Beim Overwrite trägt der Payload die Supersession meist nicht erneut — sie
+  // steht längst im Frontmatter des Memories, das hier neu geschrieben wird.
+  // Ohne diesen Rückgriff meldete ausgerechnet die Aktualisierung eines
+  // Nachfolgers wieder die Kollision mit dem Vorgänger, den sie abgelöst hat.
+  const declaredReplaces = parsed.data.replaces
+    ?? (parsed.data.overwrite ? asString(deps.vault.get(finalId)?.fm.replaces) : undefined);
+
+  const saveQuality = scoreSaveQuality(deps, parsed.data, finalId, supersededChain(declaredReplaces));
 
   // #360: the claim gate. A save whose recall_when fully contains an existing
   // memory's trigger declares a situation that memory already owns — that is a
@@ -384,19 +513,12 @@ async function saveMemoryInner(
         const m = deps.vault.get(id);
         return m ? { summary: m.fm.summary, body: m.body } : undefined;
       },
-      (id) => {
-        // Walk down the version chain. `seen` guards a hand-written cycle.
-        const out = new Set<string>();
-        let cursor: string | undefined = id;
-        while (cursor !== undefined && !out.has(cursor)) {
-          out.add(cursor);
-          const predecessor: unknown = deps.vault.get(cursor)?.fm.replaces;
-          cursor = typeof predecessor === "string" ? predecessor : undefined;
-        }
-        return out;
-      },
+      supersededChain,
     );
-    if (claimed.length > 0) return claimGateResult(finalId, claimed, saveQuality);
+    if (claimed.length > 0) {
+      noteSaveHold(deps, "claim_gate", finalId, parsed.data, claimed.length);
+      return claimGateResult(finalId, claimed, saveQuality);
+    }
   }
 
   // #164: validate the supersession target BEFORE writing anything. A
@@ -405,9 +527,16 @@ async function saveMemoryInner(
   const supersedes = parsed.data.replaces;
   if (supersedes !== undefined) {
     if (supersedes === finalId) {
+      noteSaveHold(deps, "unresolved_replaces", finalId, parsed.data);
       throw new Error(`replaces: a memory cannot supersede itself (${finalId}).`);
     }
-    if (!deps.vault.get(supersedes)) {
+    // #464: Ein privater Vorgänger ist für diesen Caller nicht vorhanden —
+    // sonst stempelte der Save gleich unten `superseded_by` in ein Frontmatter,
+    // das er nicht lesen darf, und der Unterschied zwischen „existiert nicht"
+    // und „darfst du nicht sehen" wäre am Ausgang ablesbar.
+    const predecessor = deps.vault.get(supersedes);
+    if (!predecessor || hiddenFromCaller(access, predecessor.fm)) {
+      noteSaveHold(deps, "unresolved_replaces", finalId, parsed.data);
       throw new Error(
         `replaces: unknown memory '${supersedes}' — it must exist in the vault. ` +
           `Note that an archived memory is no longer in the living vault and cannot be superseded.`,
@@ -422,6 +551,7 @@ async function saveMemoryInner(
   // die alte Datei in den Trash verschieben (recoverbar, kein Hard-Delete).
   const previous = deps.vault.get(finalId);
   if (previous && !parsed.data.overwrite) {
+    noteSaveHold(deps, "id_exists", finalId, parsed.data);
     throw new Error(
       `memory already exists: ${finalId} (at ${previous.filePath}). ` +
         `Pass overwrite=true to replace it — a changed folder/scope moves the file.`,
@@ -442,6 +572,18 @@ async function saveMemoryInner(
   // die Patch-Basis ist seither die Quelldatei, nicht der Index.
   const result = await saveMemory(deps.vaultPath, parsed.data, {
     locator: vaultLocator(deps.vault),
+    // #464 (wiedereröffnet): Die Prüfung oben fragte den INDEX — und zwischen
+    // Index und Schreibvorgang liegt ein Fenster, in dem die Datei auf der
+    // Platte längst `sensitivity: private` tragen kann (Cloud-Sync, fremder
+    // Editor, unzuverlässiger Watcher). Dieselbe Frage noch einmal, an die
+    // BYTES, die dieser Save ersetzt, und unter demselben Claim, der ihn
+    // schützt. Wortgleiche Antwort wie der Lesepfad.
+    precondition: (prevFm) => {
+      if (hiddenFromCaller(access, prevFm)) {
+        noteSaveHold(deps, "private_refused", finalId, parsed.data);
+        throw new Error(`memory not found: ${finalId}`);
+      }
+    },
   });
   // Das Trashen der alten Datei erledigt `saveMemory` unter der Transaktion;
   // hier bleibt nur der Index.
@@ -469,7 +611,21 @@ async function saveMemoryInner(
         const stamped = await mutateMemoryFile(
           target.filePath,
           supersedes,
-          { frontmatter: (fm) => ({ ...fm, superseded_by: result.id }) },
+          {
+            // #464 (wiedereröffnet): Auch dieser Stempel mutiert ein fremdes
+            // Frontmatter. Die Prüfung oben fragte den Index; war der Vorgänger
+            // auf der Platte inzwischen privat, stempelte der Save in eine
+            // Datei, die dieser Caller nicht lesen darf. Wortlaut ohne
+            // „private": Der Caller hat den Vorgänger legitim als öffentlich
+            // gesehen, und die Warnung soll nicht zum Sensitivitäts-Orakel
+            // werden.
+            precondition: (raw) => {
+              if (hiddenOnDisk(access, raw)) {
+                throw new Error(`'${supersedes}' is no longer the memory the index described`);
+              }
+            },
+            frontmatter: (fm) => ({ ...fm, superseded_by: result.id }),
+          },
           { vaultRoot: deps.vaultPath },
         );
         if (stamped.kind !== "written") {
@@ -562,6 +718,8 @@ export const ArchiveMemoryArgs = z.object({
 export async function archiveMemoryHandler(
   deps: ToolDeps,
   args: Record<string, unknown>,
+  /** #464: transportgebunden — siehe private-access.ts. */
+  access?: PrivateAccess,
 ): Promise<{ id: string; archived_to: string; superseded_by: string | null }> {
   const parsed = ArchiveMemoryArgs.safeParse(args);
   if (!parsed.success) {
@@ -570,6 +728,14 @@ export async function archiveMemoryHandler(
   const { id, superseded_by } = parsed.data;
   const mem = deps.vault.get(id);
   if (!mem) {
+    throw new Error(`unknown memory: ${id} — archive_memory only archives memories that exist in the vault.`);
+  }
+  // #464: Der Lesepfad (`loadMemoryHandler`) verbirgt Private-Memories vor
+  // externen Callern, der Archivpfad tat es nicht — ein Caller konnte
+  // entfernen, was er nicht sehen durfte, und lernte aus dem Erfolg sogar,
+  // dass die Id existiert. Dieselbe Antwort wie beim Lesen: als gäbe es
+  // die Id nicht. Die Erlaubnis kommt vom Transport, nicht aus `args`.
+  if (hiddenFromCaller(access, mem.fm)) {
     throw new Error(`unknown memory: ${id} — archive_memory only archives memories that exist in the vault.`);
   }
   // Codex-Gegenreview (P0): Verschoben wurde der Pfad aus dem CACHE, ohne ihn
@@ -590,6 +756,21 @@ export async function archiveMemoryHandler(
               `fix that first, archiving now would move the wrong file.`,
         );
       }
+      // #464 (wiedereröffnet): Die Sensitivitätsprüfung oben fragte den INDEX.
+      // Trägt die Datei auf der PLATTE `sensitivity: private` — extern gesetzt,
+      // vom Watcher auf einem Cloud-Mount nie gemeldet —, verschob das Archiv
+      // sie samt Inhalt in den Trash (5 von 5 Läufen im Gegenreview). Also
+      // dieselbe Frage an die Bytes, unter demselben Claim, VOR jeder Bewegung.
+      //
+      // Der Read hier ist kein zweiter Read neben der Bewegung: `preimage`
+      // bindet ihn an die Fassung, die `moveToTrashUnderClaim` gleich liest —
+      // weicht sie ab, wird gar nichts verschoben.
+      const preimage = await readFile(located.filePath, "utf8");
+      if (hiddenOnDisk(access, preimage)) {
+        throw new Error(
+          `unknown memory: ${id} — archive_memory only archives memories that exist in the vault.`,
+        );
+      }
       // Codex-Gegenreview Runde 10 (P1-4): Hier stand ein eigener Read, dessen
       // Ergebnis als `diff_before` ins Ledger ging — ohne Bindung an die
       // Fassung, die gleich danach wegwanderte. Beweis und Bewegung kommen
@@ -598,6 +779,7 @@ export async function archiveMemoryHandler(
         deps.vaultPath,
         located.filePath,
         claim,
+        preimage,
       );
       deps.vault.forgetFile(located.filePath);
       if (superseded_by) {
@@ -646,4 +828,3 @@ export async function archiveMemoryHandler(
 // save_memory). Sowohl der embedded MCP-Server in index.ts als auch
 // der HTTP-Forwarder mcp-forwarder.ts importieren das hier, damit Schema
 // und Description nicht aus dem Sync geraten.
-

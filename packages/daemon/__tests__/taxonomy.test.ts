@@ -21,6 +21,9 @@ import { Telemetry } from "../src/telemetry.js";
 import { saveMemoryHandler, type ToolDeps } from "../src/tool-handlers.js";
 import { listConventions, detectTaxonomyDrift } from "../src/taxonomy.js";
 
+// Die Fixtures unten bauen Dreiergruppen; der Produktions-Default liegt bei 8.
+process.env.BASTRA_DRIFT_MIN_CLUSTER = "3";
+
 function memoryFile(opts: {
   id: string;
   title: string;
@@ -147,6 +150,29 @@ test("drift: a covering convention silences the cluster", async () => {
   }
 });
 
+test("drift: a person memory covers its own handle as cluster key", async () => {
+  const { vault, close } = await makeVault([
+    // Das Personen-Memory selbst: Tag person, topic_path [people, <handle>].
+    {
+      rel: "memories/people/zzallirog.md",
+      content: memoryFile({ id: "zzallirog", title: "zzallirog peer", scope: "proj", tags: ["person"], topicPath: ["people", "zzallirog"] }),
+    },
+    // Drei Memories, die per topic_path auf die Person verweisen.
+    { rel: "a.md", content: memoryFile({ id: "a", title: "thread a", scope: "proj", tags: ["thread"], topicPath: ["proj", "zzallirog"] }) },
+    { rel: "b.md", content: memoryFile({ id: "b", title: "thread b", scope: "proj", tags: ["thread"], topicPath: ["proj", "zzallirog"] }) },
+    { rel: "c.md", content: memoryFile({ id: "c", title: "thread c", scope: "proj", tags: ["thread", "zzallirog"], topicPath: ["proj", "zzallirog"] }) },
+  ]);
+  try {
+    const keys = detectTaxonomyDrift(vault).map((c) => c.key);
+    assert.ok(!keys.includes("zzallirog"), `person handle must be covered, got ${keys.join(",")}`);
+    // Der Tag `person` selbst bleibt ohne Konvention ein Kandidat — aber hier
+    // trägt ihn nur ein Memory, also kein Cluster. `thread` (3x) feuert.
+    assert.deepEqual(keys, ["thread"]);
+  } finally {
+    await close();
+  }
+});
+
 test("drift: stale memories and structural keys never cluster", async () => {
   const { vault, close } = await makeVault([
     // Alt: außerhalb des Fensters — zählt nicht.
@@ -160,6 +186,26 @@ test("drift: stale memories and structural keys never cluster", async () => {
   ]);
   try {
     assert.deepEqual(detectTaxonomyDrift(vault), [], "stale + structural keys must not fire");
+  } finally {
+    await close();
+  }
+});
+
+test("drift: version tags and system-assigned product-doc never cluster", async () => {
+  const { vault, close } = await makeVault([
+    { rel: "v1.md", content: memoryFile({ id: "v1", title: "v1", scope: "proj", tags: ["v1.0", "product-doc"] }) },
+    { rel: "v2.md", content: memoryFile({ id: "v2", title: "v2", scope: "proj", tags: ["v1.0", "product-doc"] }) },
+    { rel: "v3.md", content: memoryFile({ id: "v3", title: "v3", scope: "proj", tags: ["v1.0", "product-doc"] }) },
+    { rel: "w1.md", content: memoryFile({ id: "w1", title: "w1", scope: "proj", tags: ["v0.8.6", "V0.9"] }) },
+    { rel: "w2.md", content: memoryFile({ id: "w2", title: "w2", scope: "proj", tags: ["v0.8.6", "V0.9"] }) },
+    { rel: "w3.md", content: memoryFile({ id: "w3", title: "w3", scope: "proj", tags: ["v0.8.6", "V0.9"] }) },
+    // Kein Versions-Tag: "v1" (kein Punkt) und "vault" bleiben Kandidaten.
+    { rel: "n1.md", content: memoryFile({ id: "n1", title: "n1", scope: "proj", tags: ["vault"] }) },
+    { rel: "n2.md", content: memoryFile({ id: "n2", title: "n2", scope: "proj", tags: ["vault"] }) },
+    { rel: "n3.md", content: memoryFile({ id: "n3", title: "n3", scope: "proj", tags: ["vault"] }) },
+  ]);
+  try {
+    assert.deepEqual(detectTaxonomyDrift(vault).map((c) => c.key), ["vault"]);
   } finally {
     await close();
   }

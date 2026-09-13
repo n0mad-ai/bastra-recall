@@ -41,6 +41,39 @@ registered_surfaces() {
     || true
 }
 
+# The version of the CLI that is actually installed right now (#535). Empty when
+# no bastra is on PATH — the caller decides what that means.
+installed_cli_version() {
+  bastra --version </dev/null 2>/dev/null | tr -d '[:space:]' || true
+}
+
+# The version this installer is supposed to leave the machine on (#535).
+#
+# `brew outdated --verbose` was the first answer and is the wrong one: it prints
+# nothing at all for a stale tap and nothing for an up-to-date keg, and an empty
+# expectation meant the version check was simply skipped — `brew upgrade` could
+# exit 0 with the CLI still on the old version and the run ended in the normal
+# success banner. The authority is the release this installer comes from:
+# /releases/latest, the same source the Homebrew tap updater and the CLI's own
+# update check read, and (since #524) one that only moves once a release's whole
+# set is published. $BASTRA_VERSION overrides it for testing and for pinning.
+#
+# Empty means the requested version could not be established — which is a reason
+# to stop, not to continue unchecked.
+requested_cli_version() {
+  if [ -n "${BASTRA_VERSION:-}" ]; then
+    printf '%s' "$BASTRA_VERSION"
+    return 0
+  fi
+  # An unreachable API must return empty, not abort the script under `set -e`.
+  local json=""
+  json="$(curl -fsSL https://api.github.com/repos/n0mad-ai/bastra-recall/releases/latest </dev/null 2>/dev/null)" \
+    || return 0
+  printf '%s' "$json" \
+    | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v\{0,1\}\([^"]*\)".*/\1/p' \
+    | tr -d '[:space:]'
+}
+
 main() {
   echo
   echo "════════════════════════════════════════════════════════════"
@@ -51,7 +84,8 @@ main() {
   # Homebrew's tap and formula are macOS-only; fail loudly rather than half-way.
   if [ "$(uname -s)" != "Darwin" ]; then
     echo "✗ This installer is macOS-only." >&2
-    echo "  On Linux/Windows install via npm:  npm install -g bastra-recall" >&2
+    echo "  On Linux install via npm:  npm install -g bastra-recall" >&2
+    echo "  Windows is not supported yet." >&2
     exit 1
   fi
 
@@ -98,19 +132,71 @@ main() {
   brew trust n0mad-ai/tap </dev/null 2>/dev/null || true
 
   # 3/4 Install / upgrade
+  step_incomplete=0
+  step_label="Install"
+  version_after=""
+  requested_version="$(requested_cli_version)"
   if brew list bastra-recall >/dev/null 2>&1 </dev/null; then
+    step_label="Update"
     echo "→ [3/4] bastra-recall already installed — checking for updates…"
+    version_before="$(installed_cli_version)"
     # Non-fatal under `set -e`: a transient upgrade failure (network/tap) must not
-    # abort before the friendly error block below — registration can still proceed
-    # on the already-installed version.
+    # abort before the friendly error block below — the old install keeps working
+    # and stays registered exactly as it was.
     upgrade_rc=0
     brew upgrade bastra-recall </dev/null || upgrade_rc=$?
+    version_after="$(installed_cli_version)"
+    # #535: a failed upgrade used to fall through into setup/doctor and then
+    # print the normal ✓ Done banner, so a user arriving from the 1.0 page could
+    # be told the install succeeded while still running 0.9.x. The old
+    # installation is still worth keeping — but this run did not do what it said,
+    # so it ends in its own incomplete state below instead of re-registering
+    # anything as if the new release had landed.
     if [ "$upgrade_rc" -ne 0 ]; then
-      echo "  ⚠ upgrade failed (rc=$upgrade_rc) — continuing with the installed version."
+      echo "  ⚠ upgrade failed (rc=$upgrade_rc) — keeping the working ${version_before:-installed} version."
+      step_incomplete=1
     fi
   else
     echo "→ [3/4] Installing bastra-recall…"
     brew install n0mad-ai/tap/bastra-recall </dev/null
+    version_after="$(installed_cli_version)"
+  fi
+
+  # #535: the same check after BOTH paths. A successful `brew upgrade` proves
+  # nothing on its own — a stale tap or a no-op upgrade exits 0 while the CLI
+  # stays where it was — and a fresh `brew install` from a stale tap lands on an
+  # old version just as quietly. The requested version is the release this
+  # installer came from, and it is not optional: not knowing it means this run
+  # cannot say it did what it promised.
+  if [ "$step_incomplete" -eq 0 ]; then
+    if [ -z "$requested_version" ]; then
+      echo "  ⚠ could not determine which version this installer should install."
+      step_incomplete=1
+    elif [ "$version_after" != "$requested_version" ]; then
+      echo "  ⚠ expected bastra-recall ${requested_version}, but the installed CLI reports ${version_after:-none}."
+      step_incomplete=1
+    fi
+  fi
+
+  # #535: stop before step 4. Re-running the guided setup here would re-point
+  # registrations and restart services as if the requested version were
+  # installed — it is not.
+  if [ "$step_incomplete" -ne 0 ]; then
+    echo
+    echo "════════════════════════════════════════════════════════════"
+    echo "  ✗ ${step_label} incomplete — still on ${version_after:-the previously installed version}."
+    if [ -n "$requested_version" ]; then
+      echo "    This installer is for ${requested_version}."
+    fi
+    echo
+    echo "  Your working installation was left untouched and setup was"
+    echo "  NOT re-run, so nothing points at a version that never landed."
+    echo
+    echo "  Try again with:"
+    echo "    brew update && brew upgrade bastra-recall"
+    echo "    bastra install"
+    echo "════════════════════════════════════════════════════════════"
+    exit 1
   fi
 
   # 4/4 Guided setup — the wizard refuses to run on a non-TTY, and under

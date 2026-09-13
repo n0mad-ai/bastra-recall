@@ -38,15 +38,22 @@ export function safeEqual(a: string, b: string): boolean {
  * 127.0.0.1 umbiegt, schickt deren Hostname im Host-Header — aus Browser-
  * Sicht ist der Request dann same-origin, CORS greift nicht. Nur loopback-
  * Hosts werden bedient; BASTRA_ALLOWED_HOSTS (Komma-Liste) ist der Escape-
- * Hatch für Tunnel-Setups, die mehr als /api/v1/* exposen wollen. Fehlender
- * Host-Header (HTTP/1.0-CLIs) passiert — Rebinding trägt immer einen.
- * Exported for unit tests.
+ * Hatch für Tunnel-Setups, die mehr als /api/v1/* exposen wollen.
+ *
+ * #526: ein FEHLENDER Host-Header zählt NICHT als loopback. Browser-Rebinding
+ * trägt zwar immer einen, ein roher Port-Forwarder (socat, `ssh -L`, ein
+ * simpler TCP-Proxy) reicht den Request aber byte-genau weiter und ergänzt
+ * nichts — ein Angreifer, der den Tunnel erreicht, lässt den Header einfach
+ * weg und sah damit wie ein direkter lokaler Client aus. Kein Host heißt
+ * "nicht nachweislich direkt lokal". Jeder Client im Repo (undici-fetch im
+ * MCP-Forwarder, node:http im thin-client) setzt den Header selbst; HTTP/1.1
+ * verlangt ihn ohnehin. Exported for unit tests.
  */
 export function isLoopbackHost(
   hostHeader: string | undefined,
   extraHosts: readonly string[],
 ): boolean {
-  if (!hostHeader) return true;
+  if (!hostHeader) return false;
   const lower = hostHeader.toLowerCase();
   const host = lower.replace(/:\d+$/, "");
   if (host === "localhost" || host === "127.0.0.1" || host === "[::1]") {
@@ -102,13 +109,29 @@ export function resolveCorsOrigin(
  * token — even over loopback, because the user's browser runs on 127.0.0.1 and
  * is indistinguishable from the CLI by TCP source; only the Origin header tells
  * them apart. Local tools (CLI, MCP-forwarder) send no Origin and may stay
- * tokenless via loopback-skip. Returns the HTTP status to apply. Exported for
- * unit tests.
+ * tokenless via loopback-skip.
+ *
+ * #526: the tokenless skip needs BOTH a loopback peer AND a loopback Host. A
+ * same-origin GET carries no Origin header, so a DNS-rebound page on
+ * `attacker.example` — or a tunnel/reverse proxy fronting a public hostname —
+ * would otherwise inherit the exemption from the loopback socket underneath.
+ * A foreign Host stays usable for tunnels, but must carry the bearer token.
+ *
+ * #526 (reopened): the host rule does NOT hang on a configured token. The
+ * tokenless dev mode is the DIRECT-LOCAL exemption, not a global open door —
+ * an empty token previously skipped the check entirely, so a foreign Host got
+ * 200 with the full vault body. Everything that is not a direct local caller
+ * needs the bearer, and without a configured token no bearer can match: 401,
+ * the same answer a browser already got against a tokenless daemon. That is
+ * "authenticate, and for that a token must exist", not "forbidden forever",
+ * so 401 rather than the 403 the loopback-only routes use for their host gate.
+ * Returns the HTTP status to apply. Exported for unit tests.
  */
 export function gateApiRequest(p: {
   reqOrigin: string | undefined;
   allowedOrigin: string | null;
   isLoopback: boolean;
+  isLoopbackHost: boolean;
   authHeader: string;
   apiToken: string;
   loopbackSkip: boolean;
@@ -119,8 +142,8 @@ export function gateApiRequest(p: {
     if (!p.apiToken || !safeEqual(p.authHeader, `Bearer ${p.apiToken}`)) return 401;
     return 200;
   }
-  if (p.apiToken && !(p.loopbackSkip && p.isLoopback)) {
-    if (!safeEqual(p.authHeader, `Bearer ${p.apiToken}`)) return 401;
-  }
+  const directLocal = p.isLoopback && p.isLoopbackHost;
+  if (p.loopbackSkip && directLocal) return 200;
+  if (!p.apiToken || !safeEqual(p.authHeader, `Bearer ${p.apiToken}`)) return 401;
   return 200;
 }

@@ -15,19 +15,30 @@
  * x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu. The statusline bundle
  * (packages/statusline/dist) must be built first — the stub embeds it.
  */
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { STUB_BUILD_INFO, stubSourceDigest, stubSourcesDirty } from "./stub-source-digest.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
 const ti = args.indexOf("--target");
 const target = ti >= 0 ? args[ti + 1] : null;
 if (ti >= 0 && !target) {
-  console.error("usage: node scripts/build-stub.mjs [--target <triple>]");
+  console.error("usage: node scripts/build-stub.mjs [--target <triple>] [--output <path>]");
   process.exit(2);
 }
-const output = target ? `stub/bastra-hook-${target}` : "stub/bastra-hook";
+const oi = args.indexOf("--output");
+const explicitOutput = oi >= 0 ? args[oi + 1] : null;
+if (oi >= 0 && !explicitOutput) {
+  console.error("usage: node scripts/build-stub.mjs [--target <triple>] [--output <path>]");
+  process.exit(2);
+}
+// `--output` exists for the parity guard (#546): it builds a binary of its own
+// in a temp dir rather than overwriting the one the developer's hooks are
+// currently running. Without it, `npm test` would replace a live binary.
+const output = explicitOutput ?? (target ? `stub/bastra-hook-${target}` : "stub/bastra-hook");
 
 const denoArgs = [
   "compile",
@@ -50,7 +61,58 @@ const denoArgs = [
   "stub/bastra-hook.ts",
 ];
 
-const r = spawnSync("deno", denoArgs, { cwd: packageRoot, stdio: "inherit" });
+/**
+ * Stamp the build into the binary (#546).
+ *
+ * A compiled stub has no sources next to it, so "was this built from the
+ * sources that are here now?" is only answerable if the binary carries the
+ * answer. The digest goes in through a generated module the stub imports —
+ * `deno compile` embeds it like any other — and the placeholder is put back
+ * afterwards, so a build never leaves the working tree dirty and running the
+ * stub from source keeps reporting "no build" (stub/build-info.ts).
+ */
+function git(...a) {
+  try {
+    return execFileSync("git", ["-C", packageRoot, ...a], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 15_000,
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+// Everything the stamp says is read BEFORE the stamp is written, so the build
+// can never describe a tree its own output has already changed. Since #546 the
+// dirty flag is scoped to the stub's source closure, which excludes this file,
+// that ordering is belt and braces rather than the load-bearing part — but a
+// stamp that reads the world after changing it is the kind of detail that goes
+// wrong later.
+const info = {
+  source_digest: stubSourceDigest(),
+  revision: git("rev-parse", "HEAD"),
+  dirty: stubSourcesDirty(),
+  built_at: new Date().toISOString(),
+};
+
+const placeholder = readFileSync(STUB_BUILD_INFO, "utf8");
+const stamped = placeholder.replace(
+  /export const STUB_BUILD_INFO: StubBuildInfo = \{[\s\S]*?\n\};/,
+  "export const STUB_BUILD_INFO: StubBuildInfo = " + JSON.stringify(info, null, 2) + ";",
+);
+if (stamped === placeholder) {
+  console.error("error: could not stamp stub/build-info.ts — its STUB_BUILD_INFO declaration moved");
+  process.exit(1);
+}
+
+let r;
+try {
+  writeFileSync(STUB_BUILD_INFO, stamped, "utf8");
+  r = spawnSync("deno", denoArgs, { cwd: packageRoot, stdio: "inherit" });
+} finally {
+  writeFileSync(STUB_BUILD_INFO, placeholder, "utf8");
+}
 if (r.error) {
   console.error(`error: could not run deno (${r.error.message}) — install it from https://deno.com`);
   process.exit(1);

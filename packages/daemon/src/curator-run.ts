@@ -87,7 +87,9 @@ export interface CuratorRunDeps {
 
 export interface CuratorRunResult {
   ran: boolean;
-  skipped?: "interval" | "busy";
+  /** #538: "in-progress" — another pass on this vault was already running and
+   *  this call was refused rather than run alongside it. */
+  skipped?: "interval" | "busy" | "in-progress";
   /** "acting" persisted demotions; "review-first" wrote only report +
    *  last_run_at (the very first pass never demotes — a human gets a full
    *  interval to read REPORT.md before anything acts); "dry-run" persisted
@@ -304,6 +306,42 @@ async function collectEmptyFiles(vaultRoot: string): Promise<string[]> {
 // ─── the pass ────────────────────────────────────────────────────────────────
 
 /**
+ * #538: one pass at a time per vault root.
+ *
+ * A pass can start from two places: the 15-minute background tick
+ * (daemon-jobs.ts, fire-and-forget) and POST /curator/run. Both live in the
+ * daemon process — no CLI command and no second process runs a pass, so an
+ * in-process flight register is the whole boundary. The pass itself is a
+ * read-modify-write on `state.json`: it reads the state, spends the length of
+ * a full vault scan deciding, and writes back. Serialising only the write
+ * would leave that window wide open — measured, two overlapping passes each
+ * did the whole scan, each called `setDemotions`, and the later write decided
+ * the file. It is also where the tmp-file collisions in vault-report.ts and
+ * vault-journal.ts come from.
+ *
+ * A second concurrent call is REFUSED, explicitly, as `skipped: "in-progress"`
+ * — never silently dropped. It deliberately does not join the running pass:
+ * the two entry points disagree on `force` and `dryRun` by design, so a joined
+ * result would answer a question the caller did not ask (worst case: a review
+ * request answered with an acting pass that demoted memories).
+ */
+const inFlight = new Set<string>();
+
+function refusedResult(dryRun: boolean, staleTotal: number): CuratorRunResult {
+  return {
+    ran: false,
+    skipped: "in-progress",
+    mode: dryRun ? "dry-run" : "acting",
+    dryRun,
+    demoted: [],
+    reactivated: [],
+    pendingObservation: [],
+    staleTotal,
+    reportWritten: false,
+  };
+}
+
+/**
  * One curator pass. `force` skips the interval/idle gate (manual trigger),
  * `dryRun` decides + reports but persists nothing and demotes nothing —
  * REPORT.md then shows what WOULD happen (the #156 review-first default for
@@ -313,6 +351,13 @@ export async function runCuratorPass(
   deps: CuratorRunDeps,
   opts: { force?: boolean; dryRun?: boolean; lastActivityMs?: number; nowMs?: number } = {},
 ): Promise<CuratorRunResult> {
+  // #538 single-flight. The check and the claim are both synchronous — no
+  // await may sit between them, or two callers would slip through together.
+  if (inFlight.has(deps.vaultRoot)) {
+    const staleTotal = Object.keys((await loadCuratorState(deps.vaultRoot)).stale).length;
+    return refusedResult(opts.dryRun ?? false, staleTotal);
+  }
+  inFlight.add(deps.vaultRoot);
   // Never-throws contract: a broken curator must never take the daemon down
   // (the 15-min tick has no business crashing MCP service).
   try {
@@ -329,6 +374,9 @@ export async function runCuratorPass(
       reportWritten: false,
       error: (err as Error)?.message ?? String(err),
     };
+  } finally {
+    // A pass that failed must not wedge the flight — the next tick retries.
+    inFlight.delete(deps.vaultRoot);
   }
 }
 

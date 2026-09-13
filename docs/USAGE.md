@@ -30,7 +30,7 @@ Seven quiet hooks ship by default, all speaking to the daemon's loopback HTTP en
 
 - **`PreToolUse`** (`bastra-recall-hook`) — fires before every `Write`/`Edit`/`MultiEdit`/`NotebookEdit`. Topic-detects from the tool intent and injects `<recall-hints>` as `additionalContext`.
 - **`SessionStart`** (`bastra-recall-session-hook`) — fires on `startup`/`resume`/`clear`/`compact`. Preloads top user-prefs + cross-project rules + project-scoped memories as `<session-context>` so the AI knows who, what, and what-not from the first prompt.
-- **`UserPromptSubmit`**, **`TodoWrite`**, **Bash safety**, and **Bash failure** hooks cover lookup prompts, topology recall before plans, destructive-command safety, and command-failure lesson recall.
+- **`UserPromptSubmit`**, **`TaskCreate`/`TodoWrite`**, **Bash safety**, and **Bash failure** hooks cover lookup prompts, topology recall before plans, destructive-command safety, and command-failure lesson recall.
 
 The **`Stop`** save-eval hook is on by default: since the #48 redesign it is silent — suggestions go to a file the next session reads, with no chat noise. Opt out with `bastra install claude-code --no-stop-hook`. Telemetry (`scripts/stats.ts`) tracks per-hook latency, hint-quality, and follow-through (did the AI actually `load_memory` after a hint).
 
@@ -104,7 +104,7 @@ After the series, the patched CLI is actually started. If it does not boot, ever
 
 ### Onboarding — five minutes to a warm start
 
-A fresh vault offers to seed itself. Pick what your memory will mainly hold — code & projects, company & decisions, life & knowledge, or a mix — and answer a handful of persona-aware questions; every answer becomes a profile memory your AI recalls from day one. Three surfaces, one interview: the vault map auto-opens it on a fresh vault, `bastra onboard` runs it in the terminal, and your AI session offers it conversationally — the most adaptive of the three, it follows up where an answer is thin. Skippable everywhere, never asked twice.
+A fresh vault offers to seed itself. Pick what your memory will mainly hold — code & projects, company & decisions, life & knowledge, or a mix — and answer a handful of persona-aware questions; every answer becomes a profile memory your AI recalls from day one. Two surfaces run it for certain: the vault map auto-opens it on a fresh vault, and `bastra onboard` runs it in the terminal. On top of that, an AI session with hooks (Claude Code, Codex) is handed the interview at session start and usually opens it for you — the most adaptive of the three, it follows up where an answer is thin. Skippable everywhere, never asked twice.
 
 ### Importing memories — skip the cold start
 
@@ -119,7 +119,7 @@ bastra import vault <dir>          # a whole folder of memory files (e.g. a Clau
 
 A `conversations.json` never stages raw chat history: only **your own messages** are kept (assistant turns dropped), queued locally under `~/.bastra/` — it never leaves the machine, is deleted when mining completes, and `bastra import clear` discards it anytime. Your AI session combs the queue chunk-wise (`bastra import mine`) and stages candidate lessons, decisions and preferences for your review. The vault map carries a visual import dialog (topbar ↓) for the paste path and the folder path.
 
-`import vault` is the fourth path and skips the gate on purpose: a folder of already-structured memory files (Claude Code's `name`/`description`/`type` frontmatter — both its variants — or plain markdown notes) carries every field a memory needs, so it maps deterministically. The set lands isolated under `memories/imported/<label>/` with its own scope and namespaced ids — nothing existing is read or modified, re-import is idempotent, and deleting that one folder removes the whole set.
+`import vault` is the fourth path and skips the gate on purpose: a folder of already-structured memory files (Claude Code's `name`/`description`/`type` frontmatter — both its variants — or plain markdown notes) carries every field a memory needs, so it maps deterministically. The set lands isolated under `memories/imported/<label>/` with its own scope and namespaced ids — nothing existing is read or modified, and deleting that one folder removes the whole set. An identical re-import is a true no-op (#530): unchanged memories are not rewritten, no audit event is appended and the `.bastra-imported` marker stays put — the run reports `created · updated · unchanged` so you can see which it was.
 
 Link targets that live on another surface (say, your Claude Code skills) can be declared once with `bastra skills add <id>` — declared ids render as solid nodes in the map's own **skills ring** instead of "unwritten" ghosts, and the curator stops reporting them as dangling links. No path, no folder scan, no sync: the id is the whole declaration (also available on any ghost node in the map — "Mark as skill").
 
@@ -161,6 +161,7 @@ Endpoints (all `POST`, JSON body):
 | `/api/v1/recall` | recall |
 | `/api/v1/load_memory` | load_memory |
 | `/api/v1/save_memory` | save_memory |
+| `/api/v1/edit_memory` | edit_memory |
 | `/api/v1/find_document` / `read_document` / `open_document` | document search |
 | `/api/v1/save_document` / `recategorize_document` / `move_document` | document write (Pro) |
 | `/api/v1/save_product_doc` | product docs |
@@ -172,10 +173,11 @@ In addition, `GET`/`POST /settings/docs` reads/writes the product-docs settings 
 Auth and CORS:
 
 - **Token:** `bastra token` prints the daemon's API token, minting one on first use (`bastra token rotate` issues a fresh one; `bastra token clear` removes it, locking out browser/REST clients). It's stored in `cli-settings.json`; the daemon reads it at startup, so restart after issuing, rotating, or clearing. `bastra` (the status panel) and `bastra status` show whether a token is set, without printing it. `BASTRA_API_TOKEN` overrides it.
-- **Local tools** (CLI, MCP-forwarder — no `Origin` header) reach `/api/v1/*` over loopback without a token. Set `BASTRA_AUTH_LOOPBACK_SKIP=0` to require the token even for them.
+- **Local tools** (CLI, MCP-forwarder — no `Origin` header) reach `/api/v1/*` without a token only when **both** are loopback: the peer socket *and* the `Host` header (`127.0.0.1` / `localhost` / `[::1]`). A foreign `Host` over a loopback socket — DNS rebinding, or a local tunnel/reverse proxy — always needs the token, and so does a request with **no** `Host` header at all: a raw port-forwarder (`socat`, `ssh -L`) adds none, so a missing header is no proof of a direct local client (#526). Set `BASTRA_AUTH_LOOPBACK_SKIP=0` to require the token even for direct local callers.
+- **No token configured** (nothing minted, `BASTRA_API_TOKEN` unset or empty) does **not** mean an open daemon. The tokenless direct-local path is the only way in; everything else — a foreign `Host`, a missing `Host`, any browser `Origin` — gets `401`, and no bearer can satisfy it until you run `bastra token` and restart the daemon (#526). So a tunnel is usable only with a token: mint one first, the "it worked without one" setup is gone by design.
 - **Browser clients** (any request *with* an `Origin` header) must always present the token **and** be on the CORS allowlist — even over loopback, since the user's browser shares `127.0.0.1` with the daemon and only the `Origin` header tells a real site from a stray one.
 - **CORS** is deny-by-default: with `BASTRA_CORS_ORIGIN` unset, **no** browser origin is allowed. For a hosted web app, set an allowlist: `BASTRA_CORS_ORIGIN=https://your.host` (comma-separated for several) — the daemon then reflects only listed origins and a browser blocks the rest. `BASTRA_CORS_ORIGIN=*` remains available as an explicit tunnel/dev opt-in (the daemon logs a warning when combined with a minted token).
-- **DNS rebinding** is blocked: the token-less loopback endpoints (`/health`, `/hook/*`, `/vault/count`) only answer requests whose `Host` header is loopback (`127.0.0.1` / `localhost` / `[::1]`). `/api/v1/*` is unaffected (the token protects it). Tunnel setups that need more than `/api/v1/*` can allowlist hosts via `BASTRA_ALLOWED_HOSTS` (comma-separated).
+- **DNS rebinding** is blocked on both surfaces: the token-less loopback endpoints (`/health`, `/hook/*`, `/vault/count`) answer only requests whose `Host` header is present **and** loopback, and `/api/v1/*` drops its token exemption for any non-loopback `Host` — a rebound page or a tunnel gets a `401`, not data. `BASTRA_ALLOWED_HOSTS` (comma-separated) opens the loopback-only endpoints for tunnel setups; it does **not** make `/api/v1/*` token-free for those hosts.
 
 To reach this daemon from a hosted web app (e.g. a site's admin talking to the user's *local* vault from the browser), set `BASTRA_CORS_ORIGIN` to the site origin, run `bastra token`, and paste the token into the site. When that site is served over **HTTPS** (e.g. `https://bastra.io`), Chrome sends a **Private Network Access** preflight for the public-origin → localhost call; the daemon answers it automatically with `Access-Control-Allow-Private-Network: true` for allowed origins — no extra config. For a server-side client, point a tunnel (Cloudflare Tunnel / ngrok / your own reverse proxy) at `127.0.0.1:6723` and configure it with the tunnel URL + your token. An OpenAPI 3.0 starter spec lives in [openapi.yaml](./openapi.yaml).
 
@@ -218,7 +220,7 @@ Sieben ruhige Hooks werden standardmäßig installiert, alle über den lokalen H
 
 - **`PreToolUse`** (`bastra-recall-hook`) — feuert vor jedem `Write`/`Edit`/`MultiEdit`/`NotebookEdit`. Erkennt das Thema aus dem Tool-Aufruf und injiziert `<recall-hints>` als `additionalContext`.
 - **`SessionStart`** (`bastra-recall-session-hook`) — feuert bei `startup`/`resume`/`clear`/`compact`. Lädt Top-User-Präferenzen + projektübergreifende Regeln + projekt-spezifische Memories als `<session-context>` vor, damit die AI ab dem ersten Prompt weiß: wer, was, und was-nicht.
-- **`UserPromptSubmit`**, **`TodoWrite`**, **Bash-Safety** und **Bash-Failure** decken Lookup-Prompts, Topology-Recall vor Plänen, Safety bei riskanten Shell-Befehlen und Lesson-Recall bei fehlgeschlagenen Commands ab.
+- **`UserPromptSubmit`**, **`TaskCreate`/`TodoWrite`**, **Bash-Safety** und **Bash-Failure** decken Lookup-Prompts, Topology-Recall vor Plänen, Safety bei riskanten Shell-Befehlen und Lesson-Recall bei fehlgeschlagenen Commands ab.
 
 Der **`Stop`** Save-Eval-Hook ist standardmäßig an: seit dem #48-Redesign ist er still — Vorschläge landen in einer Datei, die die nächste Session liest, ohne Chat-Rauschen. Abwählen mit `bastra install claude-code --no-stop-hook`. Die Telemetrie (`scripts/stats.ts`) misst pro Hook Latenz, Hint-Qualität und Follow-Through (hat die AI nach einem Hint wirklich `load_memory` gemacht).
 
@@ -292,7 +294,7 @@ Nach der Serie wird die gepatchte CLI tatsächlich gestartet. Bootet sie nicht, 
 
 ### Onboarding — in fünf Minuten zum Warmstart
 
-Ein frischer Vault bietet an, sich selbst zu befüllen. Du wählst, was dein Gedächtnis hauptsächlich halten soll — Code & Projekte, Firma & Entscheidungen, Leben & Wissen oder ein Mix — und beantwortest eine Handvoll persona-bewusster Fragen; jede Antwort wird ein Profil-Memory, das deine KI vom ersten Tag an abruft. Drei Oberflächen, ein Interview: Die Vault-Map öffnet es bei frischem Vault automatisch, `bastra onboard` führt es im Terminal, und deine AI-Session bietet es im Gespräch an — die adaptivste der drei, sie hakt nach, wo eine Antwort dünn ist. Überall überspringbar, nie doppelt gefragt.
+Ein frischer Vault bietet an, sich selbst zu befüllen. Du wählst, was dein Gedächtnis hauptsächlich halten soll — Code & Projekte, Firma & Entscheidungen, Leben & Wissen oder ein Mix — und beantwortest eine Handvoll persona-bewusster Fragen; jede Antwort wird ein Profil-Memory, das deine KI vom ersten Tag an abruft. Zwei Oberflächen führen es verlässlich: Die Vault-Map öffnet es bei frischem Vault automatisch, `bastra onboard` führt es im Terminal. Darüber hinaus bekommt eine AI-Sitzung mit Hooks (Claude Code, Codex) das Interview beim Sitzungsstart übergeben und beginnt es in aller Regel von selbst — die adaptivste der drei, sie hakt nach, wo eine Antwort dünn ist. Überall überspringbar, nie doppelt gefragt.
 
 ### Memories importieren — den Kaltstart überspringen
 
@@ -307,7 +309,7 @@ bastra import vault <dir>          # ein ganzer Ordner Memory-Dateien (z.B. ein 
 
 Eine `conversations.json` staged nie rohe Chat-History: Nur **deine eigenen Messages** bleiben (Assistant-Antworten fliegen raus), lokal gequeued unter `~/.bastra/` — verlässt nie die Maschine, wird nach dem Mining gelöscht, `bastra import clear` verwirft jederzeit. Deine AI-Session kämmt die Queue Chunk-weise durch (`bastra import mine`) und staged Kandidaten-Lessons, -Entscheidungen und -Präferenzen für deine Review. Die Vault-Map hat einen visuellen Import-Dialog (Topbar ↓) für den Paste-Weg und den Ordner-Weg.
 
-`import vault` ist der vierte Weg und überspringt das Gate bewusst: Ein Ordner bereits strukturierter Memory-Dateien (Claude Codes `name`/`description`/`type`-Frontmatter — beide Varianten — oder schlichte Markdown-Notizen) trägt jedes Feld, das ein Memory braucht, und mappt deshalb deterministisch. Der Satz landet isoliert unter `memories/imported/<label>/` mit eigenem Scope und namespaced ids — nichts Bestehendes wird gelesen oder verändert, Re-Import ist idempotent, und das Löschen dieses einen Ordners entfernt den ganzen Satz.
+`import vault` ist der vierte Weg und überspringt das Gate bewusst: Ein Ordner bereits strukturierter Memory-Dateien (Claude Codes `name`/`description`/`type`-Frontmatter — beide Varianten — oder schlichte Markdown-Notizen) trägt jedes Feld, das ein Memory braucht, und mappt deshalb deterministisch. Der Satz landet isoliert unter `memories/imported/<label>/` mit eigenem Scope und namespaced ids — nichts Bestehendes wird gelesen oder verändert, und das Löschen dieses einen Ordners entfernt den ganzen Satz. Ein identischer Re-Import ist ein echtes No-Op (#530): Unveränderte Memories werden nicht neu geschrieben, es entsteht kein Audit-Eintrag und der Marker `.bastra-imported` bleibt stehen — der Lauf meldet `created · updated · unchanged`, damit sichtbar ist, was davon zutraf.
 
 Link-Ziele, die auf einer anderen Surface leben (etwa deine Claude-Code-Skills), deklarierst du einmal mit `bastra skills add <id>` — deklarierte ids erscheinen als solide Knoten im eigenen **Skills-Ring** der Map statt als „unwritten"-Ghosts, und der Curator meldet sie nicht mehr als dangling links. Kein Pfad, kein Ordner-Scan, kein Sync: Die id ist die ganze Deklaration (auch auf jedem Ghost-Knoten in der Map — „Mark as skill").
 
@@ -349,6 +351,7 @@ Endpoints (alle `POST`, JSON-Body):
 | `/api/v1/recall` | recall |
 | `/api/v1/load_memory` | load_memory |
 | `/api/v1/save_memory` | save_memory |
+| `/api/v1/edit_memory` | edit_memory |
 | `/api/v1/find_document` / `read_document` / `open_document` | Document-Suche |
 | `/api/v1/save_document` / `recategorize_document` / `move_document` | Document-Schreiben (Pro) |
 | `/api/v1/save_product_doc` | Produkt-Doku |
@@ -360,10 +363,11 @@ Zusätzlich liest/schreibt `GET`/`POST /settings/docs` die Produkt-Doku-Settings
 Auth und CORS:
 
 - **Token:** `bastra token` zeigt das API-Token des Daemons und erzeugt beim ersten Aufruf eines (`bastra token rotate` erneuert es; `bastra token clear` entfernt es und sperrt Browser-/REST-Clients aus). Es liegt in `cli-settings.json`; der Daemon liest es beim Start, also nach Erzeugen, Erneuern oder Entfernen neu starten. `bastra` (das Status-Panel) und `bastra status` zeigen, ob ein Token gesetzt ist, ohne es anzuzeigen. `BASTRA_API_TOKEN` hat Vorrang.
-- **Lokale Tools** (CLI, MCP-Forwarder — kein `Origin`-Header) erreichen `/api/v1/*` über Loopback ohne Token. Mit `BASTRA_AUTH_LOOPBACK_SKIP=0` wird das Token auch von ihnen verlangt.
+- **Lokale Tools** (CLI, MCP-Forwarder — kein `Origin`-Header) erreichen `/api/v1/*` nur dann ohne Token, wenn **beides** loopback ist: der Peer-Socket *und* der `Host`-Header (`127.0.0.1` / `localhost` / `[::1]`). Ein fremder `Host` über einen Loopback-Socket — DNS-Rebinding oder ein lokaler Tunnel/Reverse-Proxy — braucht immer das Token, und ein Request **ganz ohne** `Host`-Header ebenfalls: ein roher Port-Forwarder (`socat`, `ssh -L`) ergänzt keinen, ein fehlender Header ist also kein Beweis für einen direkten lokalen Client (#526). Mit `BASTRA_AUTH_LOOPBACK_SKIP=0` wird das Token auch von direkten lokalen Aufrufern verlangt.
+- **Kein Token konfiguriert** (keins gemintet, `BASTRA_API_TOKEN` nicht oder leer gesetzt) heißt **nicht** offener Daemon. Dann ist der token-lose direkte lokale Weg der einzige Weg hinein; alles andere — fremder `Host`, fehlender `Host`, jede Browser-`Origin` — bekommt `401`, und kein Bearer kann das erfüllen, solange kein Token existiert: erst `bastra token`, dann Daemon neu starten (#526). Ein Tunnel ist damit nur mit Token nutzbar; das frühere "ging auch ohne" ist bewusst weg.
 - **Browser-Clients** (jeder Request *mit* `Origin`-Header) müssen immer das Token tragen **und** auf der CORS-Allowlist stehen — auch über Loopback, denn der Browser des Users teilt sich `127.0.0.1` mit dem Daemon und nur der `Origin`-Header trennt eine echte Seite von einer fremden.
 - **CORS** ist deny-by-default: ohne gesetztes `BASTRA_CORS_ORIGIN` ist **keine** Browser-Origin erlaubt. Für eine gehostete Web-App eine Allowlist setzen: `BASTRA_CORS_ORIGIN=https://dein.host` (kommagetrennt für mehrere) — der Daemon spiegelt dann nur gelistete Origins zurück, den Rest blockt der Browser. `BASTRA_CORS_ORIGIN=*` bleibt als explizites Tunnel/Dev-Opt-in (der Daemon warnt, wenn dabei ein Token gemintet ist).
-- **DNS-Rebinding** wird geblockt: Die token-losen Loopback-Endpoints (`/health`, `/hook/*`, `/vault/count`) antworten nur auf Requests, deren `Host`-Header loopback ist (`127.0.0.1` / `localhost` / `[::1]`). `/api/v1/*` ist nicht betroffen (dort schützt das Token). Tunnel-Setups, die mehr als `/api/v1/*` brauchen, können Hosts via `BASTRA_ALLOWED_HOSTS` (kommagetrennt) freischalten.
+- **DNS-Rebinding** wird auf beiden Flächen geblockt: Die token-losen Loopback-Endpoints (`/health`, `/hook/*`, `/vault/count`) antworten nur auf Requests mit vorhandenem loopback-`Host`, und `/api/v1/*` verliert seine Token-Ausnahme bei jedem nicht-loopback `Host` — eine umgebogene Seite oder ein Tunnel bekommt ein `401`, keine Daten. `BASTRA_ALLOWED_HOSTS` (kommagetrennt) öffnet die loopback-only Endpoints für Tunnel-Setups; `/api/v1/*` wird für diese Hosts dadurch **nicht** token-frei.
 
 Um diesen Daemon aus einer gehosteten Web-App zu erreichen (z.B. das Admin einer Seite, das aus dem Browser auf den *lokalen* Vault des Users zugreift): `BASTRA_CORS_ORIGIN` auf die Seiten-Origin setzen, `bastra token` ausführen und das Token in der Seite hinterlegen. Läuft die Seite über **HTTPS** (z.B. `https://bastra.io`), schickt Chrome für den Public-Origin-→-localhost-Call einen **Private-Network-Access**-Preflight; der Daemon beantwortet ihn für erlaubte Origins automatisch mit `Access-Control-Allow-Private-Network: true` — ohne Zusatzkonfiguration. Für einen serverseitigen Client: einen Tunnel (Cloudflare Tunnel / ngrok / eigener Reverse-Proxy) auf `127.0.0.1:6723` legen und mit Tunnel-URL + Token konfigurieren. Eine OpenAPI-3.0-Starter-Spec liegt in [openapi.yaml](./openapi.yaml).
 

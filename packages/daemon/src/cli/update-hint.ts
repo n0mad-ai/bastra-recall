@@ -3,7 +3,7 @@
  *
  * After any `bastra <subcommand>` returns, optionally emits a dim 2-line
  * hint to stderr if a new release is available. Cheap: probes /health on
- * 127.0.0.1:6723 with a tight timeout (700 ms). Throttled to once per day
+ * the configured daemon endpoint with a tight timeout (700 ms). Throttled to once per day
  * via ~/.bastra/update-hint-shown.txt (one ISO date per line, plain).
  *
  * Opt-out via env BASTRA_UPDATE_CHECK=off.
@@ -15,8 +15,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { isOptedOut } from "../update-check.js";
+import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 
-const HEALTH_URL = "http://127.0.0.1:6723/health";
 const PROBE_TIMEOUT_MS = 700;
 
 interface HealthUpdate {
@@ -70,7 +70,8 @@ async function markShownToday(path: string): Promise<void> {
 
 function probeHealth(): Promise<HealthResponse | null> {
   return new Promise((resolve_) => {
-    const req = httpRequest(HEALTH_URL, { method: "GET", timeout: PROBE_TIMEOUT_MS }, (res) => {
+    // #531 — THE configured endpoint, not a literal 6723.
+    const req = httpRequest(resolveDaemonEndpoint().healthUrl, { method: "GET", timeout: PROBE_TIMEOUT_MS }, (res) => {
       const chunks: Buffer[] = [];
       res.on("data", (c: Buffer) => chunks.push(c));
       res.on("end", () => {

@@ -8,6 +8,12 @@ import { existsSync } from "node:fs";
 // DAEMON_DIST is one level up (dist/), PACKAGE_ROOT one more (packages/daemon/).
 const DAEMON_DIST = dirname(dirname(fileURLToPath(import.meta.url)));
 const PACKAGE_ROOT = dirname(DAEMON_DIST);
+/** The daemon package root. Exported for #546: the stub freshness check has to
+ *  ask whether `stub/*.ts` and `scripts/stub-source-digest.mjs` are present at
+ *  all — an npm or Homebrew install ships neither, and there "stale" is not a
+ *  question that can be answered. Resolves identically from `src/cli/` under
+ *  tsx and from `dist/cli/` after a build. */
+export const DAEMON_PACKAGE_ROOT = PACKAGE_ROOT;
 
 function firstExisting(candidates: string[]): string {
   for (const candidate of candidates) {

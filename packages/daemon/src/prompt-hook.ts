@@ -37,10 +37,18 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { envFirst, envInt } from "./env.js";
+import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
+import { PROMPT_ASSERTION_BUDGET_MS } from "./hook-budgets.js";
 import { decorateHookPayload } from "./hook-surface.js";
 
-const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 600, "NEXUS_HOOK_TIMEOUT_MS");
-const DEFAULT_PORT = 6723;
+// #305: the trigger class is decided daemon-side, AFTER this POST, so the
+// client cannot know whether it is serving the 600ms quiet path or the 1000ms
+// assertion path — it has to outlast the slowest one it can be handed. This is
+// not added waiting: the daemon cuts each class at its own budget, so the extra
+// room only matters when the daemon itself hangs. Before this, a client socket
+// at 600ms cut off assertion calls the daemon would have finished — 73 of 74
+// such client rows in the measured week had a daemon row for the same call.
+const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", PROMPT_ASSERTION_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.3.0-thin";
 
 function readStdin(): Promise<string> {
@@ -131,7 +139,16 @@ async function writeClientTelemetry(
       // back to a synthetic UUID only if no payload session was given (#356).
       session_id: sessionId ?? randomUUID(),
       hook_version: HOOK_VERSION,
-      detected_mode: "none",
+      // #545: "unknown", not "none" — the same word the stub writes
+      // (`hook-client-telemetry.ts`). The trigger class is decided daemon-side
+      // and this row exists precisely because no answer came back, so this
+      // process never learned it. Stamping "none" filed every client-side
+      // prompt failure under the silent lane, where an assertion or retrieval
+      // loss wears another lane's name and is judged against another lane's
+      // ceiling. `unknown` has no trigger-class threshold on purpose; it is
+      // judged by the prompt-total reliability lane, where it counts as a
+      // failure (`log-stats-thresholds.ts`).
+      detected_mode: "unknown",
       prompt_chars: 0,
       daemon_url: daemonUrl,
       daemon_reachable: false,
@@ -158,9 +175,10 @@ async function main(): Promise<void> {
     return emitOnce("{}");
   }
 
-  const httpURL = envFirst("BASTRA_HTTP_URL", "NEXUS_HTTP_URL");
-  const httpPort = envFirst("BASTRA_HTTP_PORT", "NEXUS_HTTP_PORT") ?? String(DEFAULT_PORT);
-  const url = httpURL ?? `http://127.0.0.1:${httpPort}`;
+  // #531 — one resolver for the endpoint, shared with the CLI, the daemon and
+  // the forwarder. This block used to ignore BASTRA_DAEMON_URL, which is the
+  // variable the installer writes into a client registration.
+  const url = resolveDaemonEndpoint().baseUrl;
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
 
   try {

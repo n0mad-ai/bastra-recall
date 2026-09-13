@@ -24,7 +24,8 @@ import {
   ACCEPT_MIN_SESSIONS,
   ACCEPT_MAX_SESSION_SHARE,
   type AnyEventLike,
-} from "./stats-governor.js";
+  requiredDivergence,
+} from "../src/stats-governor.js";
 
 /** Ein geladenes Log-Ereignis, wie `stats.ts` es reicht. */
 type AnyEvent = AnyEventLike;
@@ -202,6 +203,34 @@ export function summarizeGateDivergence(
   console.log(`    every one of the ${legacyRequiredGateNot + gateRequiredLegacyNot} divergence(s) needs an explanation before activation (§18.2)`);
   if (unknownSpace > 0) {
     console.log(`    (${unknownSpace} decision(s) skipped: no hook_recall in this window, so the score space is unknown)`);
+  }
+
+  // #422: die `required`-Abweichungen nach Signatur — die Zählung oben sagt
+  // nur, dass es sie gibt; erklären lässt sich nur eine Klasse mit Merkmalen.
+  // Die Top-Signaturen decken erfahrungsgemäß fast alles ab (03.09.: eine
+  // Signatur trug 1475 von 1475 no_answer-Abweichungen).
+  const rd = requiredDivergence(events, shadow, decisionsOf, MUST_LOAD_SCORE, SCORE_FLOOR);
+  const requiredRichtungen: Array<[string, typeof rd.legacyRequiredGateNot]> = [
+    ["the gate withholds (legacy required, gate not)", rd.legacyRequiredGateNot],
+    ["the gate promotes (gate required, legacy not)", rd.gateRequiredLegacyNot],
+  ];
+  for (const [label, groups] of requiredRichtungen) {
+    if (groups.length === 0) continue;
+    const events_ = groups.reduce((s, g) => s + g.events, 0);
+    const memories = groups.reduce((s, g) => s + g.memories, 0);
+    console.log(
+      `  required divergence — ${label}:  ${events_} decision(s) across ${memories} memory/-ies, ${groups.length} signature(s)`,
+    );
+    for (const g of groups.slice(0, 8)) {
+      const s = g.signature;
+      console.log(
+        `    ${String(g.events).padStart(5)} dec / ${String(g.memories).padStart(3)} mem  legacy=${s.legacyBand.padEnd(11)} gate=${s.decision.padEnd(9)} reason=${s.abstainReason.padEnd(11)}`,
+      );
+      console.log(
+        `                              identifier=${String(s.exactIdentifier).padEnd(5)} coverage=${String(s.coverage).padEnd(4)} arms=${String(s.armAgreement).padEnd(5)} scope=${String(s.scopeMatch).padEnd(5)} temporal=${s.temporalStatus}`,
+      );
+    }
+    if (groups.length > 8) console.log(`    … ${groups.length - 8} further signature(s)`);
   }
 
   // §18.2 verlangt JEDE beobachtete `required`/`no_answer`-Abweichung. Die

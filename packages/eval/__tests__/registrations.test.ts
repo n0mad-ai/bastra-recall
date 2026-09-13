@@ -22,6 +22,8 @@ import {
   type ForeignFigure,
   checkPresentationRegistration,
   loadPresentationRegistration,
+  checkRerankDecisionRegistration,
+  loadRerankDecisionRegistration,
 } from "../src/registrations.js";
 
 const base: ForeignFigure = {
@@ -492,4 +494,63 @@ test("und eine Registrierung, die die Zahlenstufe BEHAUPTET, scheitert an den of
   assert.equal(offen.length, 4, JSON.stringify(issues, null, 2));
   assert.ok(offen.some((i) => i.where.includes("min_n_reachable")));
   assert.ok(offen.some((i) => i.where.includes("arm_b_per_session_gate")));
+});
+
+// ── #501: the rerank decision registration has to BIND ─────────────────────
+
+test("the shipped rerank-decision registration passes its own checks", () => {
+  assert.deepEqual(checkRerankDecisionRegistration(), []);
+});
+
+test("a registration without a primary endpoint is refused", () => {
+  // Version 1 of the real file was exactly this: five recommendation shapes and
+  // no designated test, so with several hundred intervals per run whichever
+  // cell looked best would have been "the finding".
+  const reg = { ...loadRerankDecisionRegistration() };
+  delete (reg as Record<string, unknown>).primary_endpoint;
+  const issues = checkRerankDecisionRegistration(reg);
+  assert.ok(issues.some((i) => i.problem.includes("no primary_endpoint")), JSON.stringify(issues));
+});
+
+test("a partly specified primary endpoint is refused — it leaves the choice open", () => {
+  const reg = loadRerankDecisionRegistration();
+  const primary = { ...(reg.primary_endpoint as Record<string, unknown>) };
+  delete primary.n;
+  const issues = checkRerankDecisionRegistration({ ...reg, primary_endpoint: primary });
+  assert.ok(issues.some((i) => i.problem.includes("primary_endpoint.n")), JSON.stringify(issues));
+});
+
+test("'close first' without excluding the conditional shapes is refused", () => {
+  // The trap in the first draft of the precedence rule: put `close` first and
+  // hang its condition on the primary alone, and shapes 3-5 can never fire.
+  const reg = loadRerankDecisionRegistration();
+  const bars = { ...(reg.decision_bars as Record<string, unknown>) };
+  bars.close_501 = { all_of: ["primary: delta < 2.0 pp OR CI95 includes 0"] };
+  const issues = checkRerankDecisionRegistration({ ...reg, decision_bars: bars });
+  assert.ok(
+    issues.some((i) => i.problem.includes("structurally unreachable")),
+    JSON.stringify(issues),
+  );
+});
+
+test("a hedging word left in a decision bar is refused", () => {
+  const reg = loadRerankDecisionRegistration();
+  const bars = { ...(reg.decision_bars as Record<string, unknown>) };
+  bars.always_on = { all_of: ["the lift is essentially already there at N=10"] };
+  const issues = checkRerankDecisionRegistration({ ...reg, decision_bars: bars });
+  assert.ok(issues.some((i) => i.problem.includes("hedging word")), JSON.stringify(issues));
+});
+
+test("a shape in the precedence order with no bar behind it is refused", () => {
+  const reg = loadRerankDecisionRegistration();
+  const order = [...(reg.precedence as { order: string[] }).order, "invented_shape"];
+  const issues = checkRerankDecisionRegistration({ ...reg, precedence: { order } });
+  assert.ok(issues.some((i) => i.problem.includes("invented_shape")), JSON.stringify(issues));
+});
+
+test("an amended registration must say that no run preceded the amendment", () => {
+  const reg = { ...loadRerankDecisionRegistration() };
+  delete (reg as Record<string, unknown>).$comment_amendment;
+  const issues = checkRerankDecisionRegistration(reg);
+  assert.ok(issues.some((i) => i.problem.includes("$comment_amendment")), JSON.stringify(issues));
 });

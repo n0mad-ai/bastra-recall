@@ -8,11 +8,20 @@
  */
 import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { readUsage, type UsageAggregate } from "../src/usage-sidecar.js";
-import { governorWhatIf } from "./stats-governor.js";
+import { governorWhatIf } from "../src/stats-governor.js";
 import { summarizeEvidenceGate } from "./stats-evidence.js";
+import { buildContextLedger, HOOK_LANE_KINDS, TOOL_PAYLOAD_KINDS } from "../src/context-ledger.js";
+import {
+  armIdentities,
+  evaluateArms,
+  loadMinNRule,
+  UNASSIGNED_ARM,
+  type ArmEvaluation,
+} from "../src/stats-arms.js";
 
 function defaultLogDir(): string {
   const next = join(homedir(), ".bastra", "logs");
@@ -157,6 +166,47 @@ function summarizeSessionHook(events: AnyEvent[]): void {
   for (const [s, n] of [...sources.entries()].sort((a, b) => b[1] - a[1])) {
     console.log(`     ${n.toString().padStart(4)}  ${s}`);
   }
+
+  // #462: welcher der zehn Teile gibt die Tokens aus? Nur Zeilen mit dem
+  // Feld (ab #462); ältere Starts tragen eine Summe und keine Teile.
+  const withParts = calls.filter((c) => c.hint_tokens_by_part && typeof c.hint_tokens_by_part === "object");
+  if (withParts.length === 0) return;
+  const partTotals = new Map<string, number>();
+  const partHits = new Map<string, number>();
+  let allParts = 0;
+  for (const c of withParts) {
+    for (const [part, v] of Object.entries(c.hint_tokens_by_part as Record<string, unknown>)) {
+      const n = typeof v === "number" ? v : 0;
+      partTotals.set(part, (partTotals.get(part) ?? 0) + n);
+      if (n > 0) partHits.set(part, (partHits.get(part) ?? 0) + 1);
+      allParts += n;
+    }
+  }
+  console.log(`  tokens by part (${withParts.length} starts with per-part data, ${allParts} tokens):`);
+  console.log(`     part          total   share   avg/start  present-in`);
+  for (const [part, total] of [...partTotals.entries()].sort((a, b) => b[1] - a[1])) {
+    if (total === 0 && (partHits.get(part) ?? 0) === 0) continue;
+    console.log(
+      `     ${part.padEnd(12)} ${total.toString().padStart(6)}  ${pct(total, allParts).padStart(6)}  ${(total / withParts.length).toFixed(0).padStart(9)}  ${(partHits.get(part) ?? 0).toString().padStart(4)}/${withParts.length}`,
+    );
+  }
+  // Derselbe Schnitt nach Startquelle — `clear` war der teuerste Start.
+  const bySource = new Map<string, { n: number; parts: Map<string, number> }>();
+  for (const c of withParts) {
+    const s = String(c.source ?? "unknown");
+    const row = bySource.get(s) ?? { n: 0, parts: new Map<string, number>() };
+    row.n++;
+    for (const [part, v] of Object.entries(c.hint_tokens_by_part as Record<string, unknown>)) {
+      row.parts.set(part, (row.parts.get(part) ?? 0) + (typeof v === "number" ? v : 0));
+    }
+    bySource.set(s, row);
+  }
+  console.log(`  avg tokens per part by source:`);
+  for (const [s, row] of [...bySource.entries()].sort((a, b) => b[1].n - a[1].n)) {
+    const top = [...row.parts.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 4)
+      .map(([p, v]) => `${p} ${(v / row.n).toFixed(0)}`).join(", ");
+    console.log(`     ${s.padEnd(8)} n=${row.n.toString().padStart(3)}  ${top}`);
+  }
 }
 
 function summarizeMcp(events: AnyEvent[]): void {
@@ -197,7 +247,8 @@ function summarizeFollowThrough(events: AnyEvent[]): void {
     if (r > 0) rankCounts.set(r, (rankCounts.get(r) ?? 0) + 1);
   }
 
-  console.log(`\n## Follow-through  (did hook hints actually get loaded?)`);
+  console.log(`\n## Follow-through  (explicit load_memory only — lower bound)`);
+  console.log(`  A hint can be applied without load_memory; that path is not observable here.`);
   console.log(`  load_memory total:                ${loads.length}`);
   console.log(`  load_memory triggered by a hint:  ${fromHook.length}  (${pct(fromHook.length, loads.length)})`);
   console.log(`  hook_recalls that produced ≥1 load: ${distinctHookRecallsConsumed.size} of ${hookRecalls.length}  (${pct(distinctHookRecallsConsumed.size, hookRecalls.length)})`);
@@ -260,6 +311,7 @@ function summarizeUseRate(events: AnyEvent[]): void {
   }
 
   console.log(`\n## USE-rate  (did loaded hints affect the next tool input?)`);
+  console.log(`  loaded/surfaced is a LOWER BOUND on follow-through: applied hints without load_memory are invisible.`);
   for (const band of bands) {
     const s = surfaced.get(band) ?? 0;
     const l = loaded.get(band) ?? 0;
@@ -268,7 +320,7 @@ function summarizeUseRate(events: AnyEvent[]): void {
     // verwässert); acted_on/loaded ist die EHRLICHE USE-rate, die die
     // Header-Frage „haben geladene Hints den nächsten Input beeinflusst?"
     // beantwortet — sonst liest man pct(a,s)≈0 als „wirkt nicht".
-    console.log(`  ${band.padEnd(11)} surfaced ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)})  acted_on ${a.toString().padStart(4)}  (${pct(a, l)} of loaded · ${pct(a, s)} of surfaced)`);
+    console.log(`  ${band.padEnd(11)} surfaced ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)} lower bound)  acted_on ${a.toString().padStart(4)}  (${pct(a, l)} of loaded · ${pct(a, s)} of surfaced)`);
   }
   if (directLoads > 0) {
     console.log(`  (excluded: ${directLoads} direct load(s) with no preceding hint — not part of any band quota)`);
@@ -297,7 +349,7 @@ function summarizeUseRate(events: AnyEvent[]): void {
   for (const src of ["bash-tripwire", "write-edit"] as const) {
     const s = hintsBySource[src];
     const [l, a] = epBySource[src];
-    console.log(`    ${src.padEnd(14)} surfaced ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)})  acted_on ${a.toString().padStart(4)} (${pct(a, s)})`);
+    console.log(`    ${src.padEnd(14)} surfaced ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)} lower bound)  acted_on ${a.toString().padStart(4)} (${pct(a, s)})`);
   }
 
   // #263/§17.4 Punkt 5: „Auswertung getrennt nach Client, Hook-Quelle und
@@ -305,8 +357,28 @@ function summarizeUseRate(events: AnyEvent[]): void {
   // `recall_id` an dem hook_recall, der sie ausgelöst hat, und DER trägt sie.
   // Derselbe Join, den `recallTool` oben schon benutzt.
   for (const dim of ["client", "hook_source", "arm"] as const) {
-    printDimensionSplit(dim, hookRecalls, surfacedEpisodes);
+    printDimensionSplit(dim, hookRecalls, surfacedEpisodes, dim === "arm" ? armVerdict(hookRecalls) : undefined);
   }
+}
+
+/**
+ * #437: Das Mindest-N-Urteil für die Armzeilen.
+ *
+ * Die Registrierung wird über den Verweis geholt, den die Zeilen seit #439
+ * selbst tragen — repo-relativ, deshalb erst gegen das Arbeitsverzeichnis und
+ * dann gegen die Repo-Wurzel aufgelöst. Steht kein Verweis auf den Zeilen, ist
+ * die Registrierung nicht lesbar oder trägt sie kein `min_n_per_arm`, bleibt
+ * jeder Arm NICHT AUSWERTBAR; die Begründung steht dann in der Ausgabe.
+ */
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+
+function armVerdict(hookRecalls: AnyEvent[]): Map<string, ArmEvaluation> {
+  const ids = armIdentities(hookRecalls);
+  const loaded =
+    ids.length === 1
+      ? loadMinNRule(ids[0].registration, [process.cwd(), REPO_ROOT])
+      : { rule: null, error: null };
+  return evaluateArms(hookRecalls, loaded.rule, loaded.error);
 }
 
 /** Vor #263 geschriebene Ereignisse haben die Spalte nicht. Das ist etwas
@@ -333,6 +405,8 @@ function printDimensionSplit(
   field: "client" | "hook_source" | "arm",
   hookRecalls: AnyEvent[],
   surfacedEpisodes: AnyEvent[],
+  /** #437: das Mindest-N-Urteil je Arm. Nur für `field === "arm"` gesetzt. */
+  armEval?: Map<string, ArmEvaluation>,
 ): void {
   const byRecallId = new Map<string, AnyEvent>();
   for (const r of hookRecalls) byRecallId.set(String(r.recall_id), r);
@@ -356,19 +430,38 @@ function printDimensionSplit(
   const keys = [...new Set([...surfaced.keys(), ...loaded.keys()])].sort();
   if (keys.length === 0) return;
   console.log(`  by ${field}:`);
-  if (field === "arm" && keys.every((k) => k === "unassigned" || k === PRE_DIMENSIONS)) {
+  if (field === "arm" && keys.some((k) => k === UNASSIGNED_ARM)) {
     // §17.4/#267: `unassigned` ist kein Arm, sondern die Abwesenheit eines
     // Experiments. Ohne diesen Satz liest jemand die Zeile als Armvergleich mit
     // einem Arm — und das wäre eine Aussage, die niemand gemacht hat.
-    console.log(`    (no experiment configured — \`unassigned\` is the absence of an arm, not an arm)`);
+    console.log(`    (\`unassigned\` is the absence of an arm, not an arm)`);
   }
   for (const key of keys) {
     const s = surfaced.get(key) ?? 0;
     const l = loaded.get(key) ?? 0;
     const a = acted.get(key) ?? 0;
+    // #437/§18.1: Ein Arm unterhalb seines Mindest-N wird als NICHT AUSWERTBAR
+    // berichtet, niemals als Nullbefund. Für ihn erscheinen deshalb die ROHEN
+    // ZÄHLUNGEN, aber keine Quote — eine Quote ist die Form, in der ein
+    // Ergebnis auftritt, und hier gibt es keines.
+    const verdict = armEval?.get(key);
+    if (verdict && !verdict.evaluable) {
+      console.log(
+        `    ${key.padEnd(14)} NOT EVALUABLE — ${verdict.why}` +
+          `  [counts only: sessions ${verdict.sessions}  surfaced ${s}  loaded ${l}  acted_on ${a}]`,
+      );
+      continue;
+    }
+    const units = verdict ? `  sessions ${verdict.sessions.toString().padStart(4)} ≥ min-N ${verdict.minN}` : "";
     console.log(
-      `    ${key.padEnd(14)} surfaced ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)})  acted_on ${a.toString().padStart(4)}  (${pct(a, l)} of loaded)`,
+      `    ${key.padEnd(14)} surfaced ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)} lower bound)  acted_on ${a.toString().padStart(4)}  (${pct(a, l)} of loaded)${units}`,
     );
+  }
+  if (armEval && [...armEval.values()].some((v) => !v.evaluable)) {
+    console.log(
+      `    (§18.1: an arm below its registered min-N is reported as NOT EVALUABLE, never as a null result —`,
+    );
+    console.log(`     no rate is printed for it, because a rate is what a result looks like)`);
   }
 }
 
@@ -402,6 +495,56 @@ function topProjects(events: AnyEvent[]): void {
   for (const [p, n] of [...projCount.entries()].sort((a, b) => b[1] - a[1])) {
     console.log(`  ${n.toString().padStart(4)}  ${p}`);
   }
+}
+
+/**
+ * #457: die VOLLSTÄNDIGE Kontextrechnung — alle sechs Hook-Lanes plus die
+ * Tool-Payloads (`recall`, `load_memory`, `read_document`). Der historische
+ * `Net-context-ROI`-Block darunter zählt bewusst nur drei Lanes; er bleibt als
+ * Vergleichsgröße stehen, beschreibt aber nicht „den Kontext".
+ */
+function summarizeContextTax(events: AnyEvent[]): void {
+  const ledger = buildContextLedger(events);
+  const t = ledger.total;
+  const emissions = [...Object.values(t.lanes), ...Object.values(t.tools)].reduce((s, p) => s + p.emissions, 0);
+  if (emissions === 0) return;
+  console.log(`\n## Context tax — complete  (ledger v${ledger.version}, estimator ${ledger.estimator})`);
+  console.log(`  total (known parts):          ${t.totalTokens} tokens across ${emissions} emissions`);
+  if (t.totalUnknown > 0) {
+    console.log(
+      `  unknown residual:             ${t.totalUnknown} emissions carry no size field (pre-#457/#72 rows) — the total is a lower bound`,
+    );
+  }
+  const row = (label: string, p: { emissions: number; tokens: number; unknown: number }): void => {
+    if (p.emissions === 0) return;
+    console.log(
+      `    ${label.padEnd(22)} ${p.tokens.toString().padStart(8)}  ${p.emissions.toString().padStart(5)} emissions` +
+        (p.unknown > 0 ? `  (${p.unknown} unknown)` : ""),
+    );
+  };
+  console.log(`  by lane:`);
+  for (const k of HOOK_LANE_KINDS) row(k, t.lanes[k]);
+  console.log(`  by tool payload:`);
+  for (const k of TOOL_PAYLOAD_KINDS) row(k, t.tools[k]);
+  if (t.loadByPresentation.lean.emissions + t.loadByPresentation.full.emissions > 0) {
+    console.log(`  load_memory by presentation:`);
+    row("lean", t.loadByPresentation.lean);
+    row("full", t.loadByPresentation.full);
+  }
+  const laneSum = Object.values(t.lanes).reduce((s, p) => s + p.tokens, 0);
+  const toolSum = Object.values(t.tools).reduce((s, p) => s + p.tokens, 0);
+  console.log(`  parts: lanes ${laneSum} + tool payloads ${toolSum} = ${laneSum + toolSum}`);
+  const top = [...ledger.sessions.values()]
+    .filter((s) => s.session !== "(none)")
+    .sort((a, b) => b.totalTokens - a.totalTokens)
+    .slice(0, 5);
+  if (top.length > 0) {
+    console.log(`  top sessions by total context:`);
+    for (const s of top) console.log(`    ${s.totalTokens.toString().padStart(7)}  ${s.session.slice(0, 8)}…`);
+  }
+  console.log(
+    `  (tool payloads are attributed to the caller session where the forwarder sent one; hook lanes to their own session_id)`,
+  );
 }
 
 function summarizeContextROI(events: AnyEvent[]): void {
@@ -487,30 +630,67 @@ function summarizeContextROI(events: AnyEvent[]): void {
     console.log(`    ${n.toString().padStart(6)}  ${sid.slice(0, 8)}…`);
   }
 
-  // Context-Tax: Memories, die oft emittiert werden, aber (fast) nie eine
-  // acted-on-Episode verursachen — Archiv-Kandidaten.
+  // Context-Tax: Memories, die oft emittiert werden, aber nie eine acted-on-
+  // Episode verursachen.
+  //
+  // #354 — WARUM DIESE LISTE ZWEIGETEILT IST, und warum die eine Hälfte KEINE
+  // Archiv-Kandidaten sind: `acted_on` misst, ob ein geladener Hint den
+  // nächsten Tool-Input verändert hat. Für eine Direktive („niemals X ohne
+  // Auftrag", „erst fragen, dann löschen") kann dieses Signal per Konstruktion
+  // nicht entstehen — sie wirkt, indem NICHTS passiert. In der ungeteilten
+  // Liste standen genau solche Regeln ganz oben und sahen aus wie der größte
+  // Ballast im Vault. Nach `acted_on = 0` auszumisten hätte zielsicher die
+  // wirksamen Regeln gelöscht und die geschwätzigen behalten.
+  //
+  // Die Zuordnung ist eine Heuristik über den Memory-Typ, keine Messung: Typen,
+  // die Verhalten vorschreiben, gegen Typen, die etwas behaupten. `lesson` zählt
+  // bewusst zu den bewertbaren — eine Lesson trägt meist einen Fix, den man
+  // anwendet, und schlägt sich dann in `acted_on` nieder.
+  const DIRECTIVE_TYPES = new Set(["preference", "user-preference", "meta-working", "workflow"]);
   const emitted = new Map<string, number>();
+  const typeById = new Map<string, string>();
   for (const e of hookEvents) {
     if (!Array.isArray(e.hinted_ids)) continue;
-    for (const id of e.hinted_ids as string[]) {
+    const ids = e.hinted_ids as string[];
+    const types = Array.isArray(e.hinted_types) ? (e.hinted_types as string[]) : [];
+    ids.forEach((id, i) => {
       emitted.set(id, (emitted.get(id) ?? 0) + 1);
-    }
+      // Gleiche Reihenfolge und Länge per Lane-Vertrag; ältere Events tragen
+      // das Feld nicht, die bleiben "unknown" statt geraten zu werden.
+      if (types[i]) typeById.set(id, types[i]);
+    });
   }
   const actedByMemory = new Map<string, number>();
   for (const e of actedSurfaced) {
     const id = String(e.memory_id);
     actedByMemory.set(id, (actedByMemory.get(id) ?? 0) + 1);
   }
-  const tax = [...emitted.entries()]
-    .map(([id, n]) => ({ id, emitted: n, acted: actedByMemory.get(id) ?? 0 }))
-    .filter((t) => t.acted === 0 && t.emitted >= 3)
-    .sort((a, b) => b.emitted - a.emitted)
-    .slice(0, 10);
-  if (tax.length > 0) {
+  const unused = [...emitted.entries()]
+    .map(([id, n]) => ({ id, emitted: n, type: typeById.get(id) ?? "unknown" }))
+    .filter((t) => (actedByMemory.get(t.id) ?? 0) === 0 && t.emitted >= 3)
+    .sort((a, b) => b.emitted - a.emitted);
+  const archival = unused.filter((t) => !DIRECTIVE_TYPES.has(t.type));
+  const directives = unused.filter((t) => DIRECTIVE_TYPES.has(t.type));
+  if (archival.length > 0) {
     console.log(`  top context-tax memories (emitted ≥3×, acted_on 0 — archival candidates):`);
-    for (const t of tax) {
-      console.log(`    ${t.emitted.toString().padStart(4)}×  ${t.id}`);
+    for (const t of archival.slice(0, 10)) {
+      console.log(`    ${t.emitted.toString().padStart(4)}×  [${t.type}] ${t.id}`);
     }
+  }
+  if (directives.length > 0) {
+    console.log(
+      `  directive-type memories with acted_on 0 (${directives.length}) — NOT archival candidates:`,
+    );
+    console.log(`    a rule that works produces no acted_on signal; this list is not evidence of waste`);
+    for (const t of directives.slice(0, 10)) {
+      console.log(`    ${t.emitted.toString().padStart(4)}×  [${t.type}] ${t.id}`);
+    }
+  }
+  const unknownTyped = unused.filter((t) => t.type === "unknown").length;
+  if (unknownTyped > 0) {
+    console.log(
+      `  (${unknownTyped} of them from events before hinted_types existed — counted as archival, unverified)`,
+    );
   }
 }
 
@@ -730,6 +910,7 @@ async function main(): Promise<void> {
   summarizeFollowThrough(events);
   summarizeUseRate(events);
   summarizeActSignals(events);
+  summarizeContextTax(events);
   summarizeContextROI(events);
   summarizeContextGovernor(events);
   await summarizeExposureNormalised(events);

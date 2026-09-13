@@ -13,7 +13,17 @@
  */
 import { request } from "node:http";
 
-export function reportHinted(baseUrl: string, ids: string[], timeoutMs = 120): Promise<void> {
+export function reportHinted(
+  baseUrl: string,
+  ids: string[],
+  /** #478 Part 2: the hook is the only place that knows which session saw
+   *  these ids. Without it the act-detection window opens on an `inferred`
+   *  turn, where a command from a PARALLEL session can close it — the count
+   *  would then be about the wrong session. Lanes that have no session id
+   *  report the ids for the usage sidecar as before, but open no window. */
+  sessionId: string | null = null,
+  timeoutMs = 120,
+): Promise<void> {
   return new Promise((resolve) => {
     if (!Array.isArray(ids) || ids.length === 0) {
       resolve();
@@ -26,7 +36,7 @@ export function reportHinted(baseUrl: string, ids: string[], timeoutMs = 120): P
       resolve();
       return;
     }
-    const payload = Buffer.from(JSON.stringify({ ids }), "utf8");
+    const payload = Buffer.from(JSON.stringify({ ids, session_id: sessionId }), "utf8");
     const req = request(
       {
         method: "POST",

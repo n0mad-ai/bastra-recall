@@ -20,8 +20,17 @@ import * as path from "node:path";
 import type { Memory } from "./schema.js";
 import type { Vault, VaultEvent } from "./vault.js";
 import { EmbedCache, hashEmbedContent } from "./embed-cache.js";
-import { assertLocalOrOptIn } from "./ollama-egress.js";
 import { RRF_K, RRF_SCALE } from "./rrf.js";
+// #493: Die Provider stehen seit dem 800-Zeilen-Schnitt daneben. Re-exportiert,
+// damit jeder bestehende Import aus `embeddings.js` unverändert weiterläuft.
+import type { EmbeddingProvider } from "./embedding-providers.js";
+import { PROVIDER_COLD_LOAD_MS } from "./embedding-providers.js";
+export {
+  OpenAIEmbeddingProvider,
+  OllamaEmbeddingProvider,
+  PROVIDER_COLD_LOAD_MS,
+} from "./embedding-providers.js";
+export type { EmbeddingProvider, EmbedWithMeta } from "./embedding-providers.js";
 
 // ─── Tunables (env-overridable für load-tests / large-vault-bursts) ──
 
@@ -46,143 +55,6 @@ function backpressureStallMs(): number {
   return Math.max(0, Number(process.env.BASTRA_EMBED_BACKPRESSURE_STALL_MS ?? "100"));
 }
 
-// ─── Provider Interface ──────────────────────────────────────────
-
-export interface EmbeddingProvider {
-  /** Stable ID für Persistenz-Header — bei Provider-Wechsel wird der
-   *  Index invalidiert, weil Cosine zwischen Modellen sinnlos ist. */
-  readonly id: string;
-  readonly dim: number;
-  embed(texts: string[]): Promise<Float32Array[]>;
-}
-
-// ─── OpenAI Provider ─────────────────────────────────────────────
-
-export class OpenAIEmbeddingProvider implements EmbeddingProvider {
-  readonly id: string;
-  readonly dim: number;
-  private apiKey: string;
-  private model: string;
-
-  constructor(opts: {
-    apiKey: string;
-    model?: string;
-    dim?: number;
-  }) {
-    this.apiKey = opts.apiKey;
-    this.model = opts.model ?? "text-embedding-3-small";
-    this.dim = opts.dim ?? 1536;
-    this.id = `openai-${this.model}`;
-  }
-
-  async embed(texts: string[]): Promise<Float32Array[]> {
-    if (texts.length === 0) return [];
-    const resp = await fetch("https://api.openai.com/v1/embeddings", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: this.model,
-        input: texts,
-        encoding_format: "float",
-      }),
-    });
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => "<binary>");
-      throw new Error(`OpenAI embed HTTP ${resp.status}: ${body.slice(0, 200)}`);
-    }
-    const json = (await resp.json()) as {
-      data: Array<{ embedding: number[]; index: number }>;
-    };
-    const sorted = [...json.data].sort((a, b) => a.index - b.index);
-    return sorted.map((d) => new Float32Array(d.embedding));
-  }
-}
-
-// ─── Ollama Provider ─────────────────────────────────────────────
-
-/**
- * Lokales Embedding-Provider via Ollama (https://ollama.com).
- *
- * Vorteile ggü. OpenAI:
- * - Keine Token-Kosten / kein Quota
- * - Daten bleiben on-device (privatsphäre, GDPR)
- * - Kein Network-Roundtrip → schneller bei vielen kleinen Batches
- *
- * Setup:
- *   brew install ollama
- *   ollama pull embeddinggemma   # ~200 MB, multilingual, 768 dim
- *
- * Spricht das NATIVE `/api/embed`-Endpoint (nicht den OpenAI-compat-Layer
- * `/v1/embeddings`): nur das native API versteht `keep_alive`, womit der
- * Daemon das Lade-Fenster des Modells pro Request steuert — Kern des
- * Energie-Designs (#78): Modell bleibt während aktiver Arbeit warm, wird
- * bei Idle entladen statt dauerhaft RAM zu belegen (Laptop-Akku).
- * Cosine ist skalierungsinvariant, daher bleiben persistierte Vektoren
- * aus dem alten /v1-Pfad kompatibel (gleiches Modell, gleiche dim).
- *
- * Default-Modell: `embeddinggemma` (Google, 308M Params, multilingual,
- * MTEB-Best <500M). Daniels deutscher Vault profitiert vom multilingual-
- * Training. Alternativen: `nomic-embed-text` (288M, EN-fokussiert),
- * `bge-m3` (~2.3GB, 100+ Sprachen, schwerer aber robuster).
- */
-export class OllamaEmbeddingProvider implements EmbeddingProvider {
-  readonly id: string;
-  readonly dim: number;
-  private baseURL: string;
-  private model: string;
-  private keepAlive?: string | number;
-
-  constructor(opts: {
-    baseURL?: string;
-    model?: string;
-    dim?: number;
-    /** Ollama keep_alive pro Embed-Request, z.B. "10m" oder Sekunden.
-     *  undefined = Feld weglassen → Server-Default (OLLAMA_KEEP_ALIVE, 5m). */
-    keepAlive?: string | number;
-  }) {
-    this.baseURL = opts.baseURL ?? "http://localhost:11434";
-    // Embedding text (query + memory) is POSTed to this endpoint. Enforce the
-    // same "no egress" contract the reranker does (#124/#125): loopback by
-    // default, remote only with BASTRA_ALLOW_REMOTE_OLLAMA=1. Fail fast at
-    // construction rather than silently shipping text off-box on first embed.
-    assertLocalOrOptIn(this.baseURL);
-    this.model = opts.model ?? "embeddinggemma";
-    // EmbeddingGemma default 768, andere Modelle abweichend — via opts
-    // override-bar. Bei Mismatch wird der Index automatisch invalidiert
-    // (siehe load(): dim/provider-Check).
-    this.dim = opts.dim ?? 768;
-    this.id = `ollama-${this.model}`;
-    this.keepAlive = opts.keepAlive;
-  }
-
-  async embed(texts: string[]): Promise<Float32Array[]> {
-    if (texts.length === 0) return [];
-    const url = this.baseURL.replace(/\/+$/, "") + "/api/embed";
-    const body: Record<string, unknown> = { model: this.model, input: texts };
-    if (this.keepAlive !== undefined) body.keep_alive = this.keepAlive;
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!resp.ok) {
-      const respBody = await resp.text().catch(() => "<binary>");
-      throw new Error(
-        `Ollama embed HTTP ${resp.status} (${url}): ${respBody.slice(0, 200)}`,
-      );
-    }
-    const json = (await resp.json()) as { embeddings: number[][] };
-    if (!Array.isArray(json.embeddings) || json.embeddings.length !== texts.length) {
-      throw new Error(
-        `Ollama embed: expected ${texts.length} embeddings, got ${Array.isArray(json.embeddings) ? json.embeddings.length : "none"}`,
-      );
-    }
-    return json.embeddings.map((e) => new Float32Array(e));
-  }
-}
 
 // ─── Embedding Hit ───────────────────────────────────────────────
 
@@ -190,6 +62,27 @@ export interface EmbeddingHit {
   id: string;
   /** Cosine similarity, [-1, 1]. Higher = more relevant. */
   score: number;
+}
+
+/**
+ * #493: Wie der dichte Arm ausgegangen ist — die Unterscheidung, die
+ * `search()` bis hierher verschluckt hat. Siehe
+ * {@link EmbeddingIndex.searchDetailed}.
+ */
+export type ProviderOutcome = "hits" | "empty" | "error";
+
+export interface VectorSearchOutcome {
+  outcome: ProviderOutcome;
+  /** Leer bei `empty` und bei `error`. */
+  hits: EmbeddingHit[];
+  /** Die vom Provider gemeldete Modell-Ladezeit dieses Calls (Ollama:
+   *  `load_duration`), `null` wenn er keine meldet. ROH — die Kaltstart-
+   *  Schwelle lässt sich daraus jederzeit neu ziehen. */
+  providerLoadMs: number | null;
+  /** GRUNDWAHRHEIT statt Schätzung: Der Provider hat für diesen Call ein
+   *  Modell geladen (`providerLoadMs >= PROVIDER_COLD_LOAD_MS`). Genau die
+   *  Größe, die Tor 3 aus #492 zählen will. */
+  coldStartObserved: boolean;
 }
 
 /** Runtime-Gesundheit des Provider-Pfads (#92). `ok=false` heißt: der letzte
@@ -334,26 +227,74 @@ export class EmbeddingIndex {
   }
 
   /** Liefert Top-k via Cosine-Similarity. Brute-force über alle Vectors —
-   *  für Single-User-Vaults (≤10k Memories) schnell genug (<10ms). */
+   *  für Single-User-Vaults (≤10k Memories) schnell genug (<10ms).
+   *
+   *  Die BC-Fassade über {@link searchDetailed}: ein Provider-Fehler kommt hier
+   *  weiterhin als `[]` zurück. Wer den Unterschied braucht, ruft die
+   *  ausführliche Variante — siehe deren Kommentar. */
   async search(query: string, k: number = 10): Promise<EmbeddingHit[]> {
-    if (!query.trim() || this.vectors.size === 0) return [];
+    return (await this.searchDetailed(query, k)).hits;
+  }
+
+  /**
+   * #493: dieselbe Suche, aber mit einem STRUKTURIERTEN Ausgang.
+   *
+   * DER DEFEKT, den das behebt. `search()` fing jeden Provider-Fehler ab und
+   * gab `[]` zurück — byte-identisch zu „dieser Vault hat keine Vektoren".
+   * Für `abandonAfter` (deadline.ts) ist eine aufgelöste Promise ein `settled:
+   * true`, also lernte das Latenzprofil (#491) die Dauer des FEHLERS als
+   * gültige Latenzstichprobe: Ein Ollama, das nach 600 ms mit HTTP 500
+   * antwortet, brachte dem Profil bei „600 ms sind ein normaler dichter Arm",
+   * und Tor 3 aus #492 hätte die Zeile womöglich als echten Kaltstart gezählt.
+   *
+   * Drei Ausgänge, weil es drei verschiedene Ereignisse sind:
+   *
+   *   `hits`  — der Provider hat geantwortet und es gab Vektoren zu ranken.
+   *             NUR das ist eine Latenzstichprobe.
+   *   `empty` — kein Fehler, aber nichts zu ranken (leerer Vault, leere
+   *             Query, Provider ohne Vektor in der Antwort). Der teuerste
+   *             Unterfall davon macht gar keinen Provider-Call, weshalb die
+   *             Dauer hier keine Providerdauer sein muss.
+   *   `error` — der Provider ist gescheitert. Keine Latenz, keine Residenz,
+   *             kein Kaltstart.
+   */
+  async searchDetailed(query: string, k: number = 10): Promise<VectorSearchOutcome> {
+    const empty = (): VectorSearchOutcome => ({
+      outcome: "empty",
+      hits: [],
+      providerLoadMs: null,
+      coldStartObserved: false,
+    });
+    if (!query.trim() || this.vectors.size === 0) return empty();
     let q: Float32Array;
+    let loadMs: number | null = null;
     try {
-      const result = await this.provider.embed([query]);
+      // `embedWithMeta` wo der Provider es kann (Ollama meldet `load_duration`),
+      // sonst der alte Weg — eine gehostete API hat kein Modell von uns im
+      // Speicher und damit nichts zu melden.
+      const result = this.provider.embedWithMeta
+        ? await this.provider.embedWithMeta([query])
+        : { vectors: await this.provider.embed([query]), loadMs: null };
       this.markProviderOk();
-      if (result.length === 0) return [];
-      q = result[0];
+      loadMs = result.loadMs;
+      if (result.vectors.length === 0) return { ...empty(), providerLoadMs: loadMs };
+      q = result.vectors[0];
     } catch (err) {
       this.markProviderError(err);
       console.error("[bastra.embeddings] query embed error:", err);
-      return [];
+      return { outcome: "error", hits: [], providerLoadMs: null, coldStartObserved: false };
     }
     const hits: EmbeddingHit[] = [];
     for (const [id, v] of this.vectors) {
       hits.push({ id, score: cosine(q, v) });
     }
     hits.sort((a, b) => b.score - a.score);
-    return hits.slice(0, k);
+    return {
+      outcome: "hits",
+      hits: hits.slice(0, k),
+      providerLoadMs: loadMs,
+      coldStartObserved: loadMs !== null && loadMs >= PROVIDER_COLD_LOAD_MS,
+    };
   }
 
   size(): number {
@@ -580,6 +521,15 @@ export class EmbeddingIndex {
         if (toEmbed.length === 0) continue;
 
         const texts = toEmbed.map(({ m }) => buildEmbedText(m));
+        // #495: Dieser Call läuft BEWUSST nicht durch den Warmup-Singleflight
+        // aus #494. Der ist ein Warmup-Singleflight, kein Provider-
+        // Singleflight: Der Backfill ist echte Arbeit mit eigenem Ergebnis und
+        // eigenem Limit (`this.inFlight` gegen EMBED_MAX_INFLIGHT), und ihn in
+        // jene Grenze zu ziehen hieße, Batches zu verwerfen, weil gerade ein
+        // Wärmeembed fliegt. Seine Last bleibt sichtbar: Der
+        // Nebenläufigkeitszähler aus #493 sitzt am Providerrand im Daemon und
+        // zählt ihn mit. Die Entscheidung steht bei `ensureWarm`
+        // (daemon/embedding-warmup.ts).
         this.inFlight++;
         const batchPromise = (async () => {
           try {

@@ -87,6 +87,27 @@ export interface TelemetryDimensions {
   experiment_session: string | null;
   /** `unassigned`, solange keine Experimentkonfiguration registriert ist. */
   arm: string;
+  /**
+   * #439: Die Identität der Registrierung, unter der dieser Arm zugewiesen
+   * wurde. Ein Armname allein ist keine Identität — Armnamen werden
+   * wiederverwendet und Registrierungen revidiert, und danach ließe sich eine
+   * historische Zeile der Konfiguration, die sie zugewiesen hat, nicht mehr
+   * zuordnen. §17.4 verlangt genau deshalb, Zuweisungsfunktion und
+   * Experimentkonfiguration VERSIONIERT abzulegen; die drei Felder tragen den
+   * Verweis darauf an die Zeile, damit ein Report nach einer
+   * Konfigurationsänderung reproduzierbar bleibt.
+   *
+   * Sie fehlen, wenn keine Konfiguration registriert ist. Das ist kein
+   * Datenverlust, sondern dieselbe Aussage wie `arm: "unassigned"`: Es gibt
+   * keine Registrierung, auf die sich verweisen ließe — und eine Zeile mit
+   * lauter `null` würde jedes Ereignis eines Vaults ohne Experiment um eine
+   * leere Behauptung verlängern.
+   */
+  experiment?: string;
+  /** Pfad der Registrierung, wie in der Konfiguration hinterlegt. */
+  registration?: string;
+  /** Version derselben Registrierung — eine Revision ist ein anderes Experiment. */
+  registration_version?: number;
 }
 
 /** Kein laufendes Experiment. */
@@ -130,6 +151,11 @@ export interface ExperimentConfig {
   /** Name des Experiments — steht in der Registrierung, nicht im Code. */
   experiment: string;
   arms: string[];
+  /** #439: Pfad der versionierten Registrierung (§17.4). Pflicht, weil eine
+   *  Konfiguration ohne ihren Verweis frei schwebt. */
+  registration: string;
+  /** Version derselben Registrierung. */
+  registration_version: number;
 }
 
 /**
@@ -176,5 +202,17 @@ export function dimensionsFrom(
     hook_source: normalizeHookSource(input.hook_source),
     experiment_session: experimentSession,
     arm: assignArm(experimentSession, config),
+    // #439: Die Registrierungsidentität hängt an der KONFIGURATION, nicht am
+    // zugewiesenen Arm. Sie steht deshalb auch auf Zeilen, die (mangels
+    // Session) `unassigned` tragen: Dass ein Experiment lief, als diese Zeile
+    // entstand, ist selbst eine Beobachtung — und ohne sie wäre `unassigned`
+    // aus einem Vault ohne Experiment nicht davon zu unterscheiden.
+    ...(config
+      ? {
+          experiment: config.experiment,
+          registration: config.registration,
+          registration_version: config.registration_version,
+        }
+      : {}),
   };
 }

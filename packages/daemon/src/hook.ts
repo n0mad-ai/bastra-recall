@@ -24,20 +24,19 @@
  * The client writes its own telemetry for what the daemon cannot see: skipped
  * calls (they never leave this process) and connection failures (they never
  * arrive). That unreachable-rate is what #346's local fallback will be judged
- * against.
+ * against. The row shape itself lives in `hook-client-telemetry.ts` (#543) —
+ * one table for every lane and both client shapes, because a per-file copy is
+ * how two lanes once came to write a third lane's event kind.
  */
 import { request } from "node:http";
-import { appendFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
-import { homedir } from "node:os";
-import { randomUUID } from "node:crypto";
-import { envFirst, envInt } from "./env.js";
+import { envInt } from "./env.js";
+import { writeClientTelemetry } from "./hook-client-telemetry.js";
+import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 import { shouldSkipPath } from "./hook-skip.js";
 import { decorateHookPayload } from "./hook-surface.js";
 import { normalizeWritePayload } from "./hook-write-input.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 600, "NEXUS_HOOK_TIMEOUT_MS");
-const DEFAULT_PORT = 6723;
 const HOOK_VERSION = "0.4.0-thin";
 
 const SUPPORTED_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"]);
@@ -117,57 +116,6 @@ function postWriteLane(baseUrl: string, body: unknown, timeoutMs: number): Promi
   });
 }
 
-/** Client-side telemetry for the calls the daemon cannot log: skips (never
- *  leave this process) and connection failures (never arrive). Same event
- *  kind and field shape as the daemon-side lane — one series. */
-async function writeClientTelemetry(fields: {
-  session_id: string | null;
-  tool_name: string;
-  file_path: string | null;
-  daemon_url: string;
-  status: "skipped" | "daemon-unreachable" | "timeout" | "error";
-  error: string | null;
-  startedAt: number;
-}): Promise<void> {
-  if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
-  try {
-    const logDir =
-      envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? join(homedir(), ".bastra", "logs");
-    await mkdir(logDir, { recursive: true });
-    const ts = new Date().toISOString();
-    const event = {
-      kind: "hook_call",
-      ts,
-      session_id: fields.session_id ?? randomUUID(),
-      hook_version: HOOK_VERSION,
-      tool_name: fields.tool_name,
-      file_path: fields.file_path,
-      topics: [],
-      query_chars: 0,
-      daemon_url: fields.daemon_url,
-      // #352: null = never asked (skip-gate) — false is reserved for a path
-      // that actually POSTed and got no response.
-      daemon_reachable: fields.status === "skipped" ? null : false,
-      hint_count: 0,
-      required_count: 0,
-      top_score: null,
-      latency_ms_total: Date.now() - fields.startedAt,
-      dropped_dedup_count: 0,
-      dropped_scope_count: 0,
-      hint_tokens_est: 0,
-      hinted_ids: [],
-      backoff_streak: 0,
-      suppressed: false,
-      suppressed_tokens_est: 0,
-      status: fields.status,
-      error: fields.error,
-    };
-    await appendFile(join(logDir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify(event) + "\n", "utf8");
-  } catch {
-    // Telemetry must never break the hook.
-  }
-}
-
 async function main(): Promise<void> {
   const startedAt = Date.now();
 
@@ -191,23 +139,22 @@ async function main(): Promise<void> {
   const filePath = typeof toolInput.file_path === "string" ? toolInput.file_path : null;
   if (!filePath) return emitEmpty();
 
-  const httpURL = envFirst("BASTRA_HTTP_URL", "NEXUS_HTTP_URL");
-  const httpPort = envFirst("BASTRA_HTTP_PORT", "NEXUS_HTTP_PORT") ?? String(DEFAULT_PORT);
-  const url = httpURL ?? `http://127.0.0.1:${httpPort}`;
+  // #531 — one resolver for the endpoint, shared with the CLI, the daemon and
+  // the forwarder. This block used to ignore BASTRA_DAEMON_URL, which is the
+  // variable the installer writes into a client registration.
+  const url = resolveDaemonEndpoint().baseUrl;
 
   // SKIP-GATE (#20/#28): the cheap path ends here, without any HTTP.
   // toolInput feeds the #297 memory-shape exception (lazy, .md branch only).
   if (shouldSkipPath(filePath, payload.cwd, toolInput)) {
     emitEmpty();
-    await writeClientTelemetry({
-      session_id: payload.session_id ?? null,
-      tool_name: toolName,
-      file_path: filePath,
-      daemon_url: "",
-      status: "skipped",
-      error: null,
+    await writeClientTelemetry(
+      "write",
+      { tool_name: toolName, file_path: filePath, daemon_url: "", status: "skipped" },
       startedAt,
-    });
+      payload.session_id ?? null,
+      HOOK_VERSION,
+    );
     return;
   }
 
@@ -224,15 +171,19 @@ async function main(): Promise<void> {
         : e.message === "timeout"
           ? "timeout"
           : "error";
-    await writeClientTelemetry({
-      session_id: payload.session_id ?? null,
-      tool_name: toolName,
-      file_path: filePath,
-      daemon_url: url,
-      status,
-      error: status === "error" ? (e.message ?? String(err)) : null,
+    await writeClientTelemetry(
+      "write",
+      {
+        tool_name: toolName,
+        file_path: filePath,
+        daemon_url: url,
+        status,
+        error: status === "error" ? (e.message ?? String(err)) : null,
+      },
       startedAt,
-    });
+      payload.session_id ?? null,
+      HOOK_VERSION,
+    );
   }
 }
 

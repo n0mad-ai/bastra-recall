@@ -19,8 +19,8 @@ import {
   resolveEmbeddingChoice,
   type EmbeddingProviderName,
 } from "../settings.js";
-import { envFirst } from "../env.js";
 import type { ParsedArgs } from "./types.js";
+import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 
 interface HealthUpdate {
   current: string;
@@ -40,9 +40,7 @@ interface HealthResponse {
 /** A rendered box row: label column, value column. */
 export type PanelRow = [label: string, value: string];
 
-function daemonPort(): string {
-  return envFirst("BASTRA_HTTP_PORT", "NEXUS_HTTP_PORT") ?? "6723";
-}
+
 
 function getJson<T>(url: string, timeoutMs: number): Promise<T | null> {
   return new Promise((resolve_) => {
@@ -65,8 +63,8 @@ function getJson<T>(url: string, timeoutMs: number): Promise<T | null> {
   });
 }
 
-function probeHealth(port: string): Promise<HealthResponse | null> {
-  return getJson<HealthResponse>(`http://127.0.0.1:${port}/health`, 1200).then(
+function probeHealth(baseUrl: string): Promise<HealthResponse | null> {
+  return getJson<HealthResponse>(`${baseUrl}/health`, 1200).then(
     (d) => (d && d.ok ? d : null),
   );
 }
@@ -77,8 +75,8 @@ function probeHealth(port: string): Promise<HealthResponse | null> {
  * /health's vault_size can be stale). Bigger timeout — reconcile walks the
  * tree. Null on any failure; the panel then falls back to /health's size.
  */
-function probeCount(port: string): Promise<number | null> {
-  return getJson<{ count: number }>(`http://127.0.0.1:${port}/vault/count`, 4000).then(
+function probeCount(baseUrl: string): Promise<number | null> {
+  return getJson<{ count: number }>(`${baseUrl}/vault/count`, 4000).then(
     (d) => (d && typeof d.count === "number" ? d.count : null),
   );
 }
@@ -169,7 +167,8 @@ function renderBox(title: string, rows: Array<[string, string]>): string {
 }
 
 export async function cmdPanel(_args: ParsedArgs): Promise<number> {
-  const port = daemonPort();
+  // #531 — one endpoint for both probes; the panel used to derive its own.
+  const endpoint = resolveDaemonEndpoint();
   // Fresh count (reconciles index vs. disk) + health + modes, in parallel.
   // The Ollama probe rides along unconditionally instead of waiting for the
   // provider lookup: sequencing the two would add its latency to the panel,
@@ -177,8 +176,8 @@ export async function cmdPanel(_args: ParsedArgs): Promise<number> {
   // no ollama binary on PATH it returns without touching the network at all.
   const [health, freshCount, mode, docsMode, docsLanguage, apiToken, embedding, ollama] =
     await Promise.all([
-      probeHealth(port),
-      probeCount(port),
+      probeHealth(endpoint.baseUrl),
+      probeCount(endpoint.baseUrl),
       getUpdateMode(),
       getDocsMode(),
       getDocsLanguage(),
@@ -200,7 +199,7 @@ export async function cmdPanel(_args: ParsedArgs): Promise<number> {
   });
 
   const daemonRow = health
-    ? `✓ running (port ${port})`
+    ? `✓ running (${endpoint.label})`
     : "✗ not running (auto-spawns on next MCP call)";
   // Prefer the reconciled count; fall back to /health's (possibly stale) size.
   const count = freshCount ?? health?.vault_size ?? null;

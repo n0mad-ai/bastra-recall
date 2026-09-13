@@ -15,9 +15,11 @@
  *      — der Beweis läuft über eine synchrone Flagge im Provider, nicht über
  *      eine Stoppuhr, damit er nicht unter Last kippt
  *   2. die Wanduhr ist `max(bm25, dense)`, nicht die Summe
- *   3. die Dense-Deadline ist ab dem ABFEUERN armiert, nicht ab dem `await` —
- *      sonst bekäme der Arm sein Budget plus die BM25-Zeit, und genau das
- *      Budget, das #305 senken will, würde sich lautlos weiten
+ *   3. die Dense-Deadline ist ab dem `await` armiert, nicht ab dem Abfeuern
+ *      (#466, kehrt #370 um): Der Request geht erst auf die Leitung, wenn der
+ *      Loop frei ist — ein Timer ab Abfeuern misst deshalb die BM25-Dauer,
+ *      nicht den Arm, und schnitt ihn bei jeder langen Query ab. Ein Arm, der
+ *      nach dem Warten wirklich zu langsam ist, läuft weiterhin in den Timeout
  *   4. die Stop-Events kommen weiter in kanonischer Reihenfolge, damit der
  *      MCP-Progress nicht zurückspringt, und `vector.search` markiert die
  *      Überlappung, weil die Stages jetzt keine Partition des Totals mehr sind
@@ -70,6 +72,8 @@ class TracingProvider implements EmbeddingProvider {
   readonly id = "tracing-mock";
   readonly dim = 3;
   public delayMs = 0;
+  /** `Infinity`: antwortet nie — der einzige „zu langsame" Arm, der nicht von
+   *  der Geschwindigkeit des Runners abhängt (#466, CI-Flake 03.09.). */
   /** Wurde `embed` betreten? Wird gesetzt, bevor irgendein `await` läuft. */
   public dispatched = false;
   public dispatchedAt = 0;
@@ -77,6 +81,7 @@ class TracingProvider implements EmbeddingProvider {
   async embed(texts: string[]): Promise<Float32Array[]> {
     this.dispatched = true;
     this.dispatchedAt = Date.now();
+    if (this.delayMs === Infinity) await new Promise<never>(() => {});
     if (this.delayMs > 0) await sleep(this.delayMs);
     return texts.map(() => new Float32Array([1, 0, 0]));
   }
@@ -159,16 +164,42 @@ test("#370: the wall clock pays max(bm25, dense), not their sum", async (t) => {
   );
 });
 
-// ─── 3. Deadline ab Abfeuern ────────────────────────────────────────────────
+// ─── 3. Deadline ab dem Warten ─────────────────────────────────────────────
 
-test("#370: the dense deadline is armed at dispatch, not at the await", async (t) => {
+test("#466: work between dispatch and await does not consume the dense arm's budget", async (t) => {
   const { search, provider } = await hybridFixture(t);
   // Dense-Arm 200 ms, Deadline 100 ms, 150 ms Arbeit zwischen Dispatch und
-  // `await`. Ab Abfeuern armiert läuft die Deadline während dieser Arbeit ab
-  // ⇒ Degradation. Erst am `await` armiert hätte der Arm 250 ms und würde mit
-  // 200 ms durchkommen — dieselbe Zeile, ein stillschweigend geweitetes
-  // Budget und eine nicht mehr messbare Timeout-Rate.
+  // `await`. Ab Abfeuern armiert (#370) lief die Deadline während dieser
+  // Arbeit ab — in Produktion bei jeder langen Query, weil der Request auf
+  // einem kalten Socket ohnehin erst nach der Arbeit rausging (02.09.: 27 von
+  // 49 Prompt-Lane-Recalls unfused). Ab dem `await` armiert kommt der Arm
+  // ~50 ms nach Beginn des Wartens an und fusioniert.
   provider.delayMs = 200;
+
+  let degraded: unknown;
+  const started = Date.now();
+  const hits = await search.recallHybrid("ANCHORWORD", {
+    k: 5,
+    vector_deadline_ms: 100,
+    onStage: (s: RecallStage) => {
+      if (s.name === "bm25.search" && s.durationMs !== undefined) burnCpu(150);
+      if (s.name === "done") degraded = s.meta?.degraded;
+    },
+  });
+  const elapsed = Date.now() - started;
+
+  assert.equal(degraded, undefined, "the arm arrived inside its budget measured from the await — no degradation");
+  assert.ok(hits.length > 0);
+  assert.ok(elapsed < 300, `≈ max(200, 150) ms expected — took ${elapsed} ms`);
+});
+
+test("#466: an arm still slower than its budget after the await keeps timing out", async (t) => {
+  const { search, provider } = await hybridFixture(t);
+  // 150 ms Arbeit, dann 100 ms Frist: ein Arm, der nie antwortet, ist auch
+  // ab dem `await` gemessen zu langsam — die Frist ist verschoben, nicht weg.
+  // „Nie" statt einer festen Verzögerung, damit ein langsamer Runner die
+  // Antwort nicht doch noch vor die Frist schiebt.
+  provider.delayMs = Infinity;
 
   let degraded: unknown = "no done event";
   const started = Date.now();
@@ -182,13 +213,9 @@ test("#370: the dense deadline is armed at dispatch, not at the await", async (t
   });
   const elapsed = Date.now() - started;
 
-  assert.equal(
-    degraded,
-    "vector-arm-timeout",
-    "a 100 ms deadline armed at dispatch must have expired during the 150 ms of work",
-  );
+  assert.equal(degraded, "vector-arm-timeout");
   assert.ok(hits.length > 0, "the cheap arm's answer is still served");
-  assert.ok(elapsed < 200, `must not wait for the 200 ms arm — took ${elapsed} ms`);
+  assert.ok(elapsed < 1000, `≈ 150 + 100 ms expected, must not wait for an arm that never answers — took ${elapsed} ms`);
 });
 
 // ─── 4. Telemetrie und Progress ─────────────────────────────────────────────

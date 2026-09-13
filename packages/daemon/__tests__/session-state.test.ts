@@ -82,9 +82,13 @@ test("shouldDropHit: count above threshold within window → drop", () => {
   assert.equal(ss.shouldDropHit(entry, null), true);
 });
 
-test("shouldDropHit: count threshold but window expired → keep", () => {
+test("#354 shouldDropHit: an old entry still drops — no time window any more", () => {
+  // Was the inverse assertion until #354: after RESET_WINDOW_MS the hit came
+  // back. That expiry re-injected the same memory into a session that was
+  // merely long-running, where its text still stood in the transcript — 17.9 %
+  // of the measured context tax. Only a load marker or clearShown releases it.
   const entry = { count: ss.MAX_SHOW, at: Date.now() - ss.RESET_WINDOW_MS - 1000 };
-  assert.equal(ss.shouldDropHit(entry, null), false);
+  assert.equal(ss.shouldDropHit(entry, null), true);
 });
 
 test("shouldDropHit: loaded marker newer than entry.at → keep (reset clock)", () => {
@@ -116,14 +120,31 @@ test("bumpShown: within window increments", () => {
   assert.equal(state.shown["mem-x"].at, now);
 });
 
-test("bumpShown: outside window resets to 1", () => {
+test("#354 bumpShown: an old entry keeps counting — the window no longer resets it", () => {
   const now = 1_000_000;
   const state: ss.SessionState = {
     shown: { "mem-x": { count: 5, at: now - ss.RESET_WINDOW_MS - 1 } },
   };
   ss.bumpShown(state, "mem-x", now);
-  assert.equal(state.shown["mem-x"].count, 1);
+  assert.equal(state.shown["mem-x"].count, 6);
   assert.equal(state.shown["mem-x"].at, now);
+});
+
+test("#354 clearShown: releases the counters, keeps the backoff state", async () => {
+  const sid = `test-clear-${Date.now()}`;
+  await ss.saveSessionState(sid, {
+    shown: { "mem-a": { count: 3, at: Date.now() } },
+    sources: { "write-edit": { streak: 4, at: Date.now(), ids: ["mem-a"], skipped: 2 } },
+  });
+  await ss.clearShown(sid);
+  const after = await ss.loadSessionState(sid);
+  assert.deepEqual(after.shown, {}, "compact/clear/resume rebuilt the transcript — every hint is eligible again");
+  assert.equal(after.sources?.["write-edit"]?.streak, 4, "an empty streak describes retrieval, not the transcript");
+});
+
+test("#354 clearShown: unknown session and empty id are no-ops", async () => {
+  await ss.clearShown("");
+  await ss.clearShown(`test-absent-${Date.now()}`);
 });
 
 test("touchLoadedMarker + getLoadedMarkerMtime: roundtrip", async () => {

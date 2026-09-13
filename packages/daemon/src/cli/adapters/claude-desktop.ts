@@ -1,17 +1,19 @@
-import { CLAUDE_DESKTOP_CONFIG, CLAUDE_DESKTOP_DIR, SKILL_TARGET_FILE } from "../paths.js";
+import { CLAUDE_DESKTOP_CONFIG, CLAUDE_DESKTOP_DIR, SKILL_SOURCE_DIR, SKILL_TARGET_DIR } from "../paths.js";
 import {
   SERVER_KEY,
   atomicWriteJson,
   backupConfig,
   blocksMatch,
   buildServerBlock,
+  existingToolSurface,
+  serverBlockEndpoint,
   fileExists,
   getServersBlock,
   probeDaemon,
   readJsonConfig,
   resolveVault,
 } from "../helpers.js";
-import { copySkill } from "../skill.js";
+import { copySkill, describeSkillInstall, inspectSkillInstall } from "../skill.js";
 import { checkForwarderRegistration, ensureStableForwarder } from "../stable-runtime.js";
 import type { Adapter, DoctorResult, InstallOpts, InstallResult, UninstallResult } from "../types.js";
 
@@ -46,12 +48,21 @@ async function claudeDesktopInstall(opts: InstallOpts): Promise<InstallResult> {
   if ("error" in vault) return { status: "error", message: vault.error, configPath };
 
   const fwd = await ensureStableForwarder({ dryRun: opts.dryRun });
-  const block = buildServerBlock(vault.path, fwd.path);
   const read = await readJsonConfig(configPath);
   if ("error" in read) return { status: "error", message: read.error, configPath };
 
   const data = read.data;
   const servers = getServersBlock(data) ?? {};
+  // #481: keep a surface the user set by hand instead of resetting it to the
+  // install default on every reinstall.
+  const block = buildServerBlock(
+    vault.path,
+    fwd.path,
+    existingToolSurface(servers[SERVER_KEY]) ?? undefined,
+    // #531: the configured endpoint, or the one this registration already
+    // carries — a GUI client inherits no shell export.
+    serverBlockEndpoint(servers[SERVER_KEY]),
+  );
   const mcpMatches = blocksMatch(servers[SERVER_KEY], block);
 
   // Claude Desktop reads skills from the same ~/.claude/skills/ path as
@@ -171,18 +182,23 @@ async function claudeDesktopDoctor(): Promise<DoctorResult> {
   }
 
   // 3. Skill (shared with Claude Code under ~/.claude/skills/)
-  details["skill"] = (await fileExists(SKILL_TARGET_FILE)) ? `present (${SKILL_TARGET_FILE})` : "missing";
+  // #456: compared against the shipped bundle, not merely present.
+  const skillState = await inspectSkillInstall(SKILL_SOURCE_DIR, SKILL_TARGET_DIR);
+  details["skill"] = describeSkillInstall(skillState, SKILL_TARGET_DIR);
 
   // 4. Daemon reachable
   const probe = await probeDaemon();
-  details["daemon-on-6723"] = probe.ok ? `reachable (${probe.detail})` : probe.detail;
+  // #531: the key names the endpoint that was actually probed. It used to say
+  // 6723 unconditionally while the probe went wherever the env pointed.
+  details[`daemon-at-${probe.endpoint?.label ?? "?"}`] = probe.ok ? `reachable (${probe.detail})` : probe.detail;
 
   if (!registered) return { status: "missing", message: "not registered with Claude Desktop", details };
   const broken =
     forwarderBroken ||
     details["vault-path"]?.includes("MISSING") === true ||
     details["vault-path"]?.startsWith("not ") === true ||
-    details["skill"] === "missing";
+    details["skill"] === "missing" ||
+    details["skill"].startsWith("STALE");
   if (broken) return { status: "broken", message: "registered but skill or referenced paths need repair — re-run 'bastra install claude-desktop'", details };
   return { status: "ok", message: "registered with skill, looks healthy", details };
 }

@@ -353,6 +353,12 @@ async function commitMemory(
   // rekonstruieren zu lassen. Das spart nebenbei den zweiten Vaultscan.
   const auditBefore = baseRaw === null ? null : cloneForAudit(prev);
 
+  // #464 (wiedereröffnet): Die Vorbedingung auf dem Bestand — hier, weil `prev`
+  // genau das Frontmatter der Datei ist, die dieser Save gleich ersetzt (beim
+  // Re-Filing das der QUELLE, die getrasht wird), unter dem Claim gelesen. Vor
+  // jedem Rename und jedem Trashen: Wer hier wirft, hat nichts geschrieben.
+  commit.precondition?.(prev);
+
   // Aus Eingabe und Bestand wird das Frontmatter — welches Feld die Eingabe
   // gewinnt, welches der Bestand und welches wegfällt, steht in
   // `save-frontmatter.ts` jeweils am Feld.
@@ -360,6 +366,32 @@ async function commitMemory(
 
   const body = input.body.startsWith("\n") ? input.body : `\n${input.body}`;
   const content = matter.stringify(body, fm);
+
+  // #530: Ein Save, der exakt das schreiben würde, was schon dasteht, ist
+  // kein Save. Ohne diese Abzweigung schrieb ein wiederholter Import jede
+  // unveränderte Datei neu — neue mtime (Cloud-Sync-Churn) und ein
+  // `update`-Audit-Ereignis, dessen Vor- und Nachbild identisch waren.
+  //
+  // Erneut gelesen statt `observedTarget` geglaubt: zwischen dem ersten Read
+  // und hier kann ein Writer OHNE Claim (Obsidian, Cloud-Sync) das Ziel
+  // verändert haben. Stimmen die Bytes nicht mehr mit dem überein, was dieser
+  // Save als Vorlage hatte, wird NICHT übersprungen — dann läuft der normale
+  // Pfad weiter und sein CAS-Vergleich meldet den Konflikt.
+  //
+  // Ein Re-File ist nie unverändert: dort ist der Umzug selbst die Änderung.
+  if (commit?.skipUnchanged && refiledFrom === null && exists) {
+    const current = await readTarget(filePath);
+    if (current !== null && current === observedTarget && sameExceptUpdatedStamp(content, current)) {
+      return {
+        id,
+        file_path: filePath,
+        created: false,
+        unchanged: true,
+        audit_before: auditBefore,
+        audit_after: cloneForAudit(fm),
+      };
+    }
+  }
 
   await mkdir(dirname(filePath), { recursive: true });
   // Atomar via temp+rename — dieselbe Begründung wie in related-enrich.ts:241
@@ -508,6 +540,21 @@ async function commitMemory(
         }
       : {}),
   };
+}
+
+/**
+ * #530: Sind zwei Dateifassungen bis auf den `updated:`-Stempel gleich?
+ *
+ * `buildFrontmatter` stempelt `updated` bei JEDEM Schreibvorgang auf heute.
+ * Ohne diese Ausnahme wäre derselbe Import einen Tag später nie ein No-Op,
+ * obwohl sich inhaltlich nichts geändert hätte. Ersetzt wird nur das ERSTE
+ * Vorkommen am Zeilenanfang — das ist das Frontmatter-Feld; der Body steht
+ * dahinter und bleibt Wort für Wort im Vergleich.
+ */
+function sameExceptUpdatedStamp(a: string, b: string): boolean {
+  if (a === b) return true;
+  const strip = (s: string) => s.replace(/^updated: .*$/m, "updated: <stamp>");
+  return strip(a) === strip(b);
 }
 
 /**

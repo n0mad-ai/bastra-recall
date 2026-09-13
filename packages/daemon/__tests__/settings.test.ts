@@ -11,6 +11,7 @@ import { strict as assert } from "node:assert";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawn } from "node:child_process";
 
 import {
   DEFAULT_UPDATE_MODE,
@@ -33,6 +34,8 @@ import {
   clearSharedRecallLanguage,
   getPrimaryLanguage,
   setPrimaryLanguage,
+  getExperimentConfig,
+  type CliSettings,
 } from "../src/settings.js";
 
 async function withTempFile<T>(fn: (path: string) => Promise<T>): Promise<T> {
@@ -329,4 +332,141 @@ test("language.primary: invalid stored code is dropped on read, valid 2-letter s
     await writeFile(path, JSON.stringify({ language: { primary: "DE" } }), "utf8");
     assert.equal(await getPrimaryLanguage(path), "de", "valid 2-letter code survives, lowercased");
   });
+});
+
+// ─── #425: the persisted experiment block must survive a read ─────────────
+//
+// Gemessen auf a4c0896: eine gültige Settings-Datei mit `experiment`-Block kam
+// als {"update":{"mode":"auto"}} zurück, `getExperimentConfig` lieferte `null`,
+// also blieb jedes Telemetrie-Ereignis `unassigned`. `experiment` war der
+// EINZIGE unterstützte Block, den readSettings verschluckte — der Round-Trip
+// unten prüft alle fünfzehn, damit der nächste nicht wieder durchrutscht.
+
+/** Die echte Registrierungsidentität aus packages/eval/registrations/presentation-experiment.json. */
+const REGISTERED_EXPERIMENT = {
+  name: "presentation-vs-retrieval",
+  arms: ["wording_current", "wording_variant"],
+  registration: "packages/eval/registrations/presentation-experiment.json",
+  registration_version: 1,
+};
+
+test("#425: a full settings file round-trips without losing a single supported block", async () => {
+  await withTempFile(async (path) => {
+    const full: CliSettings = {
+      update: { mode: "auto" },
+      embedding: { provider: "ollama" },
+      ollama: { autostart: false },
+      api: { token: "tok-123" },
+      cors: { origins: ["https://bastra.io"] },
+      commons: { enabled: true },
+      sharedRecall: { enabled: true, language: "de" },
+      evidenceGate: { enabled: false },
+      experiment: REGISTERED_EXPERIMENT,
+      docs: { mode: "suggest", language: "de" },
+      generation: { model: "gemma3:4b" },
+      ui: { enabled: true },
+      reflex: { enabled: true, maxPerTurn: 3 },
+      size: { guide: 500, critical: 800, exemptPaths: ["sandbox/"] },
+      language: { primary: "de" },
+    };
+    await writeFile(path, JSON.stringify(full, null, 2), "utf8");
+    assert.deepEqual(await readSettings(path), full, "readSettings dropped a supported block");
+
+    // Und nach einem Setter, der einen ANDEREN Block schreibt, steht noch alles da.
+    await setUpdateMode("off", path);
+    assert.deepEqual(await readSettings(path), { ...full, update: { mode: "off" } });
+  });
+});
+
+test("#425: getExperimentConfig returns the persisted arms for the registered experiment", async () => {
+  await withTempFile(async (path) => {
+    await writeFile(path, JSON.stringify({ experiment: REGISTERED_EXPERIMENT }), "utf8");
+    assert.deepEqual(await getExperimentConfig(path), {
+      experiment: REGISTERED_EXPERIMENT.name,
+      arms: REGISTERED_EXPERIMENT.arms,
+      registration: REGISTERED_EXPERIMENT.registration,
+      registration_version: REGISTERED_EXPERIMENT.registration_version,
+    });
+  });
+});
+
+test("#439: getExperimentConfig hands on the registration reference, not just the arms", async () => {
+  // Der Verweis ist der einzige Weg, eine historische Zeile nach einer
+  // Revision noch der Konfiguration zuzuordnen, die sie erzeugt hat. Wird er
+  // hier verworfen, kann ihn kein Produzent mehr ans Ereignis hängen.
+  await withTempFile(async (path) => {
+    await writeFile(path, JSON.stringify({ experiment: REGISTERED_EXPERIMENT }), "utf8");
+    const cfg = await getExperimentConfig(path);
+    assert.equal(cfg?.registration, REGISTERED_EXPERIMENT.registration);
+    assert.equal(cfg?.registration_version, REGISTERED_EXPERIMENT.registration_version);
+  });
+});
+
+test("#425: an experiment block without its registration reference is refused, siblings survive", async () => {
+  await withTempFile(async (path) => {
+    await writeFile(
+      path,
+      JSON.stringify({ update: { mode: "auto" }, experiment: { name: "floating", arms: ["a", "b"] } }),
+      "utf8",
+    );
+    assert.equal(await getExperimentConfig(path), null, "no registration reference → no arm assignment");
+    assert.equal((await readSettings(path)).update.mode, "auto", "sibling preserved");
+  });
+});
+
+// ─── #534: concurrent mutations must not discard unrelated configuration ───
+//
+// Gemessen auf a4c0896 (ohne den Fix): gleicher Prozess 20 von 20 Läufen mit
+// verlorenem Feld, zwei Prozesse 10 von 10 Runden — und beide Setter meldeten
+// jedes Mal Erfolg. Ohne die Serialisierung in path-lock.ts sind beide
+// Tests hier rot.
+
+test("#534: concurrent setters for different fields keep both values (same process)", async () => {
+  const rounds = 20;
+  for (let i = 0; i < rounds; i++) {
+    await withTempFile(async (path) => {
+      await Promise.all([setUpdateMode("off", path), setDocsMode("auto", path)]);
+      const settings = await readSettings(path);
+      assert.equal(settings.update.mode, "off", `round ${i}: update.mode lost`);
+      assert.equal(settings.docs?.mode, "auto", `round ${i}: docs.mode lost`);
+    });
+  }
+});
+
+test("#534: concurrent setters for different fields keep both values (separate processes)", async () => {
+  const settingsModule = new URL("../src/settings.ts", import.meta.url).href;
+  const worker = [
+    `import { setUpdateMode, setDocsMode } from ${JSON.stringify(settingsModule)};`,
+    `const [which, path, gate] = process.argv.slice(2);`,
+    // Busy-wait to a shared start instant so both processes really collide.
+    `while (Date.now() < Number(gate)) {}`,
+    `if (which === "update") await setUpdateMode("off", path);`,
+    `else await setDocsMode("auto", path);`,
+  ].join("\n");
+
+  const dir = await mkdtemp(join(tmpdir(), "bastra-settings-xproc-"));
+  try {
+    const workerPath = join(dir, "worker.mts");
+    await writeFile(workerPath, worker, "utf8");
+    const run = (which: string, path: string, gate: number) =>
+      new Promise<void>((resolve, reject) => {
+        const child = spawn(process.execPath, ["--import", "tsx", workerPath, which, path, String(gate)], {
+          stdio: ["ignore", "ignore", "inherit"],
+        });
+        child.on("error", reject);
+        child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`worker ${which} exited ${code}`))));
+      });
+
+    const rounds = 5;
+    for (let i = 0; i < rounds; i++) {
+      const path = join(dir, `round-${i}.json`);
+      const gate = Date.now() + 700;
+      await Promise.all([run("update", path, gate), run("docs", path, gate)]);
+      const settings = await readSettings(path);
+      assert.equal(settings.update.mode, "off", `round ${i}: update.mode lost across processes`);
+      assert.equal(settings.docs?.mode, "auto", `round ${i}: docs.mode lost across processes`);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
 });

@@ -19,3 +19,7 @@ npx bastra-recall install codex --vault ~/BastraVault
 ```
 
 On the first Codex start, review and trust the seven Bastra hooks (`/hooks`), then restart ChatGPT desktop, active Codex sessions, and the IDE extension. On the same machine they share `~/.codex/config.toml`; the skill lives at `~/.agents/skills/bastra-recall`.
+
+---
+
+`skills/bastra-recall/SKILL.md` and the reference files next to it are **generated** from `packages/skill/SKILL.md` by `npm run skill:build` (#455). Edit the canonical file, not this copy; `skill-projections.test.ts` fails on a hand edit.

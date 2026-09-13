@@ -120,6 +120,13 @@ export async function postAnnotation(id, kind, note) {
   return (await res.json()).entry;
 }
 
+/** Telemetry tab (#463): the stats series over the user's own event logs. */
+export async function fetchTelemetry(days) {
+  const res = await fetch(`/ui/telemetry?days=${encodeURIComponent(days)}`);
+  if (!res.ok) throw new Error(`telemetry fetch failed: ${res.status}`);
+  return res.json();
+}
+
 export async function fetchHealth() {
   try {
     const res = await fetch("/health");

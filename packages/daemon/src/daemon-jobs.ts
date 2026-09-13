@@ -32,6 +32,18 @@ export interface BackgroundJobDeps {
   clearStagedRestartPending: () => void;
   ollama: { baseURL: string; model: string } | null;
   embIdx: () => EmbeddingIndex | null;
+  /**
+   * #493: Das Modell hat den Speicher verlassen — an den Warmup-Koordinator,
+   * der den gemeinsamen Lifecycle-Zustand hält.
+   *
+   * Ohne diese Meldung schätzte die Residenz aus einem fest verdrahteten
+   * 8-Minuten-Fenster (`embedding-warmup.ts`), während die Frist HIER
+   * konfigurierbar ist (`BASTRA_OLLAMA_IDLE_UNLOAD_MS`, Default 10 min) — ein
+   * gerade entladenes Modell konnte minutenlang `warm` lesen. Tor 3 aus #492
+   * zählt „echte Kaltstarts" und stand damit auf einer Schätzung, die ihrem
+   * eigenen Auslöser widersprechen konnte.
+   */
+  onModelUnloaded?: () => void;
 }
 
 export function startBackgroundJobs(deps: BackgroundJobDeps): void {
@@ -163,15 +175,22 @@ function startOllamaUnload(deps: BackgroundJobDeps): void {
     const lastUse = deps.embIdx()?.runtimeHealth().lastOkAt ?? bootAt;
     if (lastUse > lastUnloadAt && Date.now() - lastUse >= ollamaUnloadMs) {
       lastUnloadAt = Date.now();
-      void unloadOllamaModel(ollama.baseURL, ollama.model).then((ok) =>
-        deps.telemetry.logOllamaLifecycle({
+      void unloadOllamaModel(ollama.baseURL, ollama.model).then((ok) => {
+        // #493: Grundwahrheit vor Schätzung — nur ein geglückter Unload sagt,
+        // dass das Modell wirklich draußen ist.
+        if (ok) deps.onModelUnloaded?.();
+        return deps.telemetry.logOllamaLifecycle({
           action: "unload",
           model: ollama.model,
           ok,
+          // #495: Beim Unload gibt es nur zwei Ausgänge — er lief oder er
+          // scheiterte. Das Feld steht trotzdem, damit ein Leser nicht je
+          // nach `action` die Semantik wechseln muss.
+          outcome: ok ? "fired" : "failed",
           last_embed_age_ms: Date.now() - lastUse,
           embed_calls_since_boot: deps.embIdx()?.providerCallCount() ?? null,
-        }),
-      );
+        });
+      });
     }
   }, 60_000).unref();
 }

@@ -31,11 +31,21 @@
 |---|---|---|
 | **Claude Code** | ✅ tested — in daily use | MCP + Skill + seven quiet hooks + statusline |
 | **Claude Desktop** | ✅ tested | MCP + Skill, autonomous session context without hooks; `.mcpb` double-click extension |
-| **Codex + ChatGPT Desktop** | ✅ implemented for v1.0 | one shared local MCP config + Skill + seven Codex-native quiet hooks; `bastra install codex` |
+| **Codex + ChatGPT Desktop** | ✅ implemented for v1.0 — Codex CLI verified, desktop/IDE not yet field-tested | one shared local MCP config + Skill + seven Codex-native quiet hooks; `bastra install codex`, which also switches on Codex's `tools.update_plan.enabled` — off by default since Codex `rust-v0.152.0`, and the plan hook cannot fire without it ([#506](https://github.com/n0mad-ai/bastra-recall/issues/506)) |
 | **Cursor** | 🟡 implemented | installs and registers cleanly; implemented, but not yet field-tested |
 | **ChatGPT** (Custom GPT Actions) | 🗺️ planned | the REST gateway and an OpenAPI starter spec ship today; the packaged Custom-GPT action is next in line — tracked in [#13](https://github.com/n0mad-ai/bastra-recall/issues/13) |
 
 Anything else that speaks MCP can attach through the forwarder today — untested surfaces are exactly that, and field reports are welcome. Non-MCP clients can use the REST API (`docs/USAGE.md`).
+
+### Supported platforms
+
+This table and the one above are **the** support matrix: the Homebrew caveat, the npm package README and the package descriptions state the same set, and a test holds them to it (#525).
+
+| Platform | Status | What you get, what you don't |
+|---|---|---|
+| **macOS** (Apple Silicon and Intel) | ✅ supported | Everything: the Homebrew install path, `bastra autostart` (LaunchAgent), the `.mcpb` Claude Desktop extension, `open_document`, and the compiled hook client. |
+| **Linux** (x86_64 and arm64) | 🟡 daemon, CLI, MCP and hooks | Install with npm (`npm i -g bastra-recall`); the compiled hook client ships for both architectures. Not available there: `bastra autostart` (the LaunchAgent is macOS-only — the MCP forwarder starts the daemon on demand instead), the `.mcpb` extension install, `open_document`, and the Homebrew path. |
+| **Windows** | 🗺️ not covered | No compiled hook client is built for it, and nothing here is tested on it. |
 
 ### Why
 
@@ -91,7 +101,7 @@ flowchart TB
     D -.->|"save_memory writes a file,<br/>then re-indexes it"| V
 ```
 
-Everything above runs on your machine. Nothing leaves it unless you point a tunnel at the REST gateway yourself. Recall is hybrid — an in-memory BM25 index (with `recall_when` weighted highest) plus an optional local embedding pass, fused via RRF. In Claude Code and Codex/ChatGPT desktop, seven quiet hooks recall before edits or patches, at session start, before plans, before a claim about measured project state goes into text someone else reads, and after failed commands.
+Everything above runs on your machine. Your vault content — memories, documents and the recall queries themselves — never leaves it unless you deliberately opt in: either by choosing the OpenAI embedding provider (`bastra config set embedding.provider openai`, which POSTs your queries and the indexed memory text to `api.openai.com`) or by pointing a tunnel at the REST gateway yourself. A generic `OPENAI_API_KEY` sitting in your environment for some other tool does **not** count as that choice — recall stays keyword-only until you say so ([#520](https://github.com/n0mad-ai/bastra-recall/issues/520)). A few optional features do talk to the network without sending vault content: the update check (`BASTRA_UPDATE_CHECK=off`), the statusline pricing refresh, the vault map's weather/geocoding lookup (coarse location only) and opt-in Bastra Commons sync. Recall is hybrid — an in-memory BM25 index (with `recall_when` weighted highest) plus an optional local embedding pass, fused via RRF. In Claude Code and Codex/ChatGPT desktop, seven quiet hooks recall before edits or patches, at session start, before plans, before a claim about measured project state goes into text someone else reads, and after failed commands.
 
 Details: [docs/architecture.md](./docs/architecture.md) · [docs/hooks.md](./docs/hooks.md) · [docs/triggers.md](./docs/triggers.md) · [docs/USAGE.md](./docs/USAGE.md).
 
@@ -182,7 +192,7 @@ Details and system requirements: **[System Requirements](https://github.com/n0ma
 
 - **Shipped:** daemon + hybrid read path, autonomous save path, the seven-hook Claude Code reflex layer, npm + Homebrew + `.command` distribution, Claude Desktop autonomy.
 - **Shipped — v0.9 "Honest numbers, nothing silently lost":** 45 issues of hardening from contributor field reports and a manual end-to-end release gate on a clean VM, all of one shape — an update that installed itself and left every client on the old version, a doctor reporting 7/7 healthy over a hook pointing at a deleted runtime, an installer that exited 0 having registered nothing. Plus update safety: local patches survive `bastra update`, and are set aside rather than forced when they no longer apply.
-- **Next — V1.0 release contract:** a reproducibly measured, selective, controllable recall base — honest eval baselines, deterministic relevance evidence with real abstention, a project-aware session assembler, a global context budget. The long-term V2 target (adaptive, multi-layer memory) is specified and strictly measurement-gated.
+- **Next — V1.0 release contract:** a reproducibly measured, selective, controllable recall base — honest eval baselines, deterministic relevance evidence with real abstention, a project-aware session assembler, and a global context budget whose cumulative cross-lane session ledger runs in shadow — V1.0 measures what a budget would have withheld; enforcing it live is a measured post-1.0 gate ([#458](https://github.com/n0mad-ai/bastra-recall/issues/458)). The long-term V2 target (adaptive, multi-layer memory) is specified and strictly measurement-gated.
 
 Full picture: [PLAN.md](./PLAN.md). Out of v0: multi-device sync — today the vault folder syncs at OS level (iCloud / Google Drive / Dropbox / Git); the file watcher's polling mode handles the latency.
 
@@ -218,11 +228,21 @@ Built by [@n0mad-ai](https://github.com/n0mad-ai).
 |---|---|---|
 | **Claude Code** | ✅ getestet — im täglichen Einsatz | MCP + Skill + sieben ruhige Hooks + Statusline |
 | **Claude Desktop** | ✅ getestet | MCP + Skill, autonomer Session-Kontext ohne Hooks; `.mcpb`-Doppelklick-Extension |
-| **Codex + ChatGPT Desktop** | ✅ für v1.0 implementiert | eine gemeinsame lokale MCP-Config + Skill + sieben ruhige Codex-native Hooks; `bastra install codex` |
+| **Codex + ChatGPT Desktop** | ✅ für v1.0 implementiert — Codex CLI verifiziert, Desktop/IDE noch nicht im Feld geprüft | eine gemeinsame lokale MCP-Config + Skill + sieben ruhige Codex-native Hooks; `bastra install codex` schaltet dabei auch Codex' `tools.update_plan.enabled` ein — seit Codex `rust-v0.152.0` per Default aus, und ohne den Schlüssel kann der Plan-Hook nicht feuern ([#506](https://github.com/n0mad-ai/bastra-recall/issues/506)) |
 | **Cursor** | 🟡 implementiert | installiert und registriert sauber; implementiert, aber noch nicht im Feld getestet |
 | **ChatGPT** (Custom GPT Actions) | 🗺️ geplant | REST-Gateway und OpenAPI-Starter-Spec sind da; die verpackte Custom-GPT-Action ist als Nächstes dran — verfolgt in [#13](https://github.com/n0mad-ai/bastra-recall/issues/13) |
 
 Alles andere, was MCP spricht, kann sich heute über den Forwarder verbinden — ungetestete Oberflächen sind genau das, und Erfahrungsberichte sind willkommen. Nicht-MCP-Clients nutzen die REST-API (`docs/USAGE.md`).
+
+### Unterstützte Plattformen
+
+Diese Tabelle und die darüber sind **die** Support-Matrix: Homebrew-Caveat, npm-README und Paketbeschreibungen nennen dieselbe Menge, und ein Test hält sie darauf fest (#525).
+
+| Plattform | Status | Was drin ist, was nicht |
+|---|---|---|
+| **macOS** (Apple Silicon und Intel) | ✅ unterstützt | Alles: Homebrew-Installationsweg, `bastra autostart` (LaunchAgent), die `.mcpb`-Extension für Claude Desktop, `open_document` und der kompilierte Hook-Client. |
+| **Linux** (x86_64 und arm64) | 🟡 Daemon, CLI, MCP und Hooks | Installation über npm (`npm i -g bastra-recall`); den kompilierten Hook-Client gibt es für beide Architekturen. Nicht dabei: `bastra autostart` (der LaunchAgent ist macOS-only — stattdessen startet der MCP-Forwarder den Daemon bei Bedarf), die `.mcpb`-Extension, `open_document` und der Homebrew-Weg. |
+| **Windows** | 🗺️ nicht abgedeckt | Dafür wird kein kompilierter Hook-Client gebaut, und nichts davon ist dort getestet. |
 
 ### Warum
 
@@ -278,7 +298,7 @@ flowchart TB
     D -.->|"save_memory schreibt eine Datei<br/>und indiziert sie neu"| V
 ```
 
-Alles davon läuft auf deiner Maschine. Nichts verlässt sie, solange du nicht selbst einen Tunnel auf das REST-Gateway legst. Recall ist hybrid — ein In-Memory-BM25-Index (mit `recall_when` als höchstgewichtetem Feld) plus ein optionaler lokaler Embedding-Pass, fusioniert via RRF. In Claude Code und Codex/ChatGPT Desktop erinnern sieben ruhige Hooks vor Edits oder Patches, beim Session-Start, vor Plänen, bevor eine Aussage über gemessenen Projektzustand in Text geht, den jemand anderes liest, und nach fehlgeschlagenen Commands.
+Alles davon läuft auf deiner Maschine. Deine Vault-Inhalte — Memories, Dokumente und die Recall-Anfragen selbst — verlassen sie nur, wenn du das bewusst wählst: entweder über den OpenAI-Embedding-Provider (`bastra config set embedding.provider openai`, der deine Anfragen und den indizierten Memory-Text an `api.openai.com` schickt) oder indem du selbst einen Tunnel auf das REST-Gateway legst. Ein generischer `OPENAI_API_KEY`, den ein anderes Tool in deine Umgebung gelegt hat, gilt **nicht** als diese Wahl — Recall bleibt keyword-only, bis du es sagst ([#520](https://github.com/n0mad-ai/bastra-recall/issues/520)). Ein paar optionale Funktionen sprechen mit dem Netz, ohne Vault-Inhalte zu senden: der Update-Check (`BASTRA_UPDATE_CHECK=off`), das Preis-Update der Statusline, die Wetter-/Geocoding-Abfrage der Vault-Map (nur grober Ort) und die opt-in Bastra-Commons-Synchronisation. Recall ist hybrid — ein In-Memory-BM25-Index (mit `recall_when` als höchstgewichtetem Feld) plus ein optionaler lokaler Embedding-Pass, fusioniert via RRF. In Claude Code und Codex/ChatGPT Desktop erinnern sieben ruhige Hooks vor Edits oder Patches, beim Session-Start, vor Plänen, bevor eine Aussage über gemessenen Projektzustand in Text geht, den jemand anderes liest, und nach fehlgeschlagenen Commands.
 
 Details: [docs/architecture.md](./docs/architecture.md) · [docs/hooks.md](./docs/hooks.md) · [docs/triggers.md](./docs/triggers.md) · [docs/USAGE.md](./docs/USAGE.md).
 
@@ -368,7 +388,7 @@ Details und Systemvoraussetzungen: **[System Requirements](https://github.com/n0
 
 - **Ausgeliefert:** Daemon + hybrider Read-Path, autonomer Save-Path, der Sieben-Hook-Reflex-Layer für Claude Code, npm- + Homebrew- + `.command`-Distribution, Claude-Desktop-Autonomie.
 - **Ausgeliefert — v0.9 „Honest numbers, nothing silently lost":** 45 Issues Härtung aus Contributor-Field-Reports und einem manuellen End-to-End-Release-Gate auf einer frischen VM, alle von derselben Form — ein Update, das sich installiert und jeden Client auf der alten Version lässt; ein Doctor, der 7/7 gesund meldet, während ein Hook auf eine gelöschte Runtime zeigt; ein Installer, der mit Exit 0 endet, ohne irgendetwas registriert zu haben. Dazu Update-Sicherheit: lokale Patches überleben `bastra update` und werden beiseitegelegt statt erzwungen, wenn sie nicht mehr passen.
-- **Als Nächstes — V1.0-Releasevertrag:** eine reproduzierbar gemessene, selektive, kontrollierbare Recall-Basis — ehrliche Eval-Baselines, deterministische Relevanzevidenz mit echter Abstention, ein projektfähiger Session-Assembler, ein globales Kontextbudget. Das langfristige V2-Ziel (adaptives, mehrschichtiges Gedächtnis) ist spezifiziert und strikt messungs-gegated.
+- **Als Nächstes — V1.0-Releasevertrag:** eine reproduzierbar gemessene, selektive, kontrollierbare Recall-Basis — ehrliche Eval-Baselines, deterministische Relevanzevidenz mit echter Abstention, ein projektfähiger Session-Assembler und ein globales Kontextbudget, dessen kumulatives Cross-Lane-Sitzungsledger im Shadow läuft — V1.0 misst, was ein Budget zurückgehalten hätte; die Live-Erzwingung ist ein gemessenes Gate nach 1.0 ([#458](https://github.com/n0mad-ai/bastra-recall/issues/458)). Das langfristige V2-Ziel (adaptives, mehrschichtiges Gedächtnis) ist spezifiziert und strikt messungs-gegated.
 
 Das ganze Bild: [PLAN.md](./PLAN.md). Außerhalb von v0: Multi-Device-Sync — heute synchronisiert der Vault-Ordner auf OS-Ebene (iCloud / Google Drive / Dropbox / Git); der Polling-Modus des File-Watchers gleicht die Latenz aus.
 

@@ -10,7 +10,9 @@
  *   - embedding.provider (optional): "ollama" | "openai" | "none"
  *       Written by `bastra embeddings on|off`, by the `bastra install` end
  *       prompt, or by `bastra config set`. Absent = "no opinion" → the daemon
- *       falls through to env / API-key. This is the file half of the #79 fix;
+ *       stays on BM25 unless BASTRA_EMBEDDING_PROVIDER says otherwise; an
+ *       OPENAI_API_KEY alone never enables the cloud provider (#520). This is
+ *       the file half of the #79 fix;
  *       resolveEmbeddingChoice below is the ONE resolution everyone shares.
  *   - ollama.autostart (optional): boolean (default true)
  *       Whether `bastra install` keeps a local `ollama serve` running at login.
@@ -28,6 +30,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
+import { withPathLock } from "./path-lock.js";
 import { isSupportedLanguage } from "./learned-recall/language.js";
 import type { EmbeddingSource } from "./embedding-status.js";
 
@@ -47,7 +50,7 @@ export const DEFAULT_DOCS_LANGUAGE = "en";
 
 export interface CliSettings {
   update: { mode: UpdateMode };
-  // undefined = "no opinion" → daemon falls through to env / API-key.
+  // undefined = "no opinion" → daemon falls through to env, else BM25.
   embedding?: { provider: EmbeddingProviderName };
   // undefined = unset → treated as default (true) by getOllamaAutostart.
   ollama?: { autostart: boolean };
@@ -203,6 +206,44 @@ export function normalizeCorsOrigin(v: unknown): string | null {
 }
 
 /**
+ * Jeder Block, den `readSettings` kennt. Alles andere überlebt ein Schreiben
+ * NICHT: `readSettings` baut das Objekt neu auf, und `writeSettings`
+ * veröffentlicht genau dieses Objekt.
+ *
+ * #534 verlangt, dass diese Entscheidung ausgesprochen wird statt als
+ * Nebenwirkung zu passieren. Sie lautet: unbekannte Schlüssel werden
+ * abgelehnt, nicht durchgereicht — eine Einstellung, die dieser Build nicht
+ * versteht, kann er auch nicht korrekt fortschreiben. Damit das niemanden
+ * still erwischt (etwa nach einem Downgrade), sagt der Leser es auf stderr.
+ */
+const KNOWN_SETTINGS_KEYS: readonly string[] = [
+  "update",
+  "embedding",
+  "ollama",
+  "api",
+  "cors",
+  "commons",
+  "sharedRecall",
+  "evidenceGate",
+  "experiment",
+  "docs",
+  "generation",
+  "ui",
+  "reflex",
+  "size",
+  "language",
+];
+
+function warnAboutUnknownKeys(data: unknown, path: string): void {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return;
+  const unknown = Object.keys(data).filter((k) => !KNOWN_SETTINGS_KEYS.includes(k));
+  if (unknown.length === 0) return;
+  process.stderr.write(
+    `[bastra-recall] cli-settings.json: unknown key(s) ${unknown.join(", ")} — this build does not understand them and the next write will drop them (${path})\n`,
+  );
+}
+
+/**
  * Reads stored settings. A missing file → silent defaults (normal: not created
  * yet). A *corrupt* file → loud warning + defaults, and we do NOT silently
  * revert (callers that write will repair it). Never throws.
@@ -216,7 +257,7 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
   }
   if (raw.trim() === "") return { update: { mode: DEFAULT_UPDATE_MODE } };
 
-  let data: { update?: { mode?: unknown }; embedding?: { provider?: unknown }; ollama?: { autostart?: unknown }; api?: { token?: unknown }; cors?: { origins?: unknown }; commons?: { enabled?: unknown }; sharedRecall?: { enabled?: unknown; language?: unknown }; docs?: { mode?: unknown; language?: unknown }; generation?: { model?: unknown }; ui?: { enabled?: unknown }; reflex?: { enabled?: unknown; maxPerTurn?: unknown } };
+  let data: { update?: { mode?: unknown }; embedding?: { provider?: unknown }; ollama?: { autostart?: unknown }; api?: { token?: unknown }; cors?: { origins?: unknown }; commons?: { enabled?: unknown }; sharedRecall?: { enabled?: unknown; language?: unknown }; docs?: { mode?: unknown; language?: unknown }; generation?: { model?: unknown }; ui?: { enabled?: unknown }; reflex?: { enabled?: unknown; maxPerTurn?: unknown }; evidenceGate?: { enabled?: unknown } };
   try {
     data = JSON.parse(raw);
   } catch (e) {
@@ -227,6 +268,8 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
     );
     return { update: { mode: DEFAULT_UPDATE_MODE } };
   }
+
+  warnAboutUnknownKeys(data, path);
 
   const settings: CliSettings = {
     update: { mode: isUpdateMode(data?.update?.mode) ? data.update.mode : DEFAULT_UPDATE_MODE },
@@ -316,6 +359,47 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
   if (typeof data?.ui?.enabled === "boolean") {
     settings.ui = { enabled: data.ui.enabled };
   }
+  // #422: der Block wurde von `setEvidenceGateEnabled` geschrieben, aber hier
+  // nie zurückgelesen — die Datei konnte den Entscheid nicht schalten, nur der
+  // Env-Schalter. Seit dem Default `true` ist das dauerhafte Aus genau dieser
+  // Block, also muss er ankommen.
+  if (typeof data?.evidenceGate?.enabled === "boolean") {
+    settings.evidenceGate = { enabled: data.evidenceGate.enabled };
+  }
+  // #425: derselbe Befund eine Stufe weiter — `setEvidenceGateEnabled` hatte
+  // ihn für den Evidenzentscheid, der Experimentblock hat ihn bis hierher
+  // behalten. Er wurde nie zurückgelesen, also lieferte `getExperimentConfig`
+  // auch bei gültiger Datei `null` und jedes Ereignis blieb `unassigned`.
+  // Geprüft wird hier genau das, was der Typ verlangt; die fachliche Regel
+  // "mindestens zwei Arme" bleibt in getExperimentConfig, wo sie ihre
+  // Begründung hat.
+  const expData = (data as { experiment?: { name?: unknown; arms?: unknown; registration?: unknown; registration_version?: unknown } }).experiment;
+  if (expData !== undefined) {
+    const arms = Array.isArray(expData.arms)
+      ? expData.arms.filter((a): a is string => typeof a === "string" && a.trim().length > 0).map((a) => a.trim())
+      : undefined;
+    if (
+      typeof expData.name === "string" &&
+      expData.name.trim().length > 0 &&
+      arms !== undefined &&
+      arms.length > 0 &&
+      typeof expData.registration === "string" &&
+      expData.registration.trim().length > 0 &&
+      typeof expData.registration_version === "number" &&
+      Number.isFinite(expData.registration_version)
+    ) {
+      settings.experiment = {
+        name: expData.name.trim(),
+        arms,
+        registration: expData.registration.trim(),
+        registration_version: expData.registration_version,
+      };
+    } else {
+      process.stderr.write(
+        `[bastra-recall] cli-settings.json: ignoring invalid experiment block (needs name, arms, registration, registration_version) ${JSON.stringify(expData)}\n`,
+      );
+    }
+  }
   if (data?.reflex !== undefined) {
     // Invalid values drop to undefined (= defaults), same policy as docs.
     const reflex: { enabled?: boolean; maxPerTurn?: number } = {};
@@ -369,6 +453,33 @@ async function writeSettings(next: CliSettings, path: string): Promise<void> {
   await rename(tmp, path);
 }
 
+/**
+ * #534: die EINE Settings-Transaktion. Lesen, ändern und Schreiben laufen
+ * unter demselben Lock (path-lock.ts, prozessübergreifend — CLI,
+ * Onboarding-Assistent und Daemon sind eigene Prozesse), damit zwei Mutationen
+ * unterschiedlicher Felder nicht mehr denselben Ausgangsstand lesen und sich
+ * gegenseitig überschreiben. JEDER Setter geht hier durch — ein Setter, der an
+ * `readSettings` + `writeSettings` vorbei direkt schreibt, bringt das Rennen
+ * zurück.
+ *
+ * `mutate` bekommt den frisch gelesenen Stand und gibt den zu schreibenden
+ * zurück, oder `null` für "nichts zu tun" (z.B. ein CORS-Origin, das schon
+ * erlaubt ist). Rückgabewerte für den Aufrufer laufen über den Closure.
+ */
+async function mutateSettings(
+  path: string,
+  mutate: (current: CliSettings) => CliSettings | null,
+): Promise<void> {
+  await withPathLock(
+    path,
+    async () => {
+      const next = mutate(await readSettings(path));
+      if (next !== null) await writeSettings(next, path);
+    },
+    { crossProcess: true },
+  );
+}
+
 /** The stored update mode (env-agnostic). */
 export async function getUpdateMode(path?: string): Promise<UpdateMode> {
   return (await readSettings(path)).update.mode;
@@ -386,8 +497,7 @@ export async function effectiveUpdateMode(path?: string): Promise<UpdateMode> {
 
 /** Persists a new update mode atomically, merging into existing settings. */
 export async function setUpdateMode(mode: UpdateMode, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, update: { ...current.update, mode } }, path);
+  await mutateSettings(path, (current) => ({ ...current, update: { ...current.update, mode } }));
 }
 
 /** The stored embedding provider, or undefined when unset (no opinion). */
@@ -397,8 +507,7 @@ export async function getEmbeddingProvider(path?: string): Promise<EmbeddingProv
 
 /** Persists the generation (doc2query + rerank) model, merging into existing settings. */
 export async function setGenerationModel(model: string, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, generation: { model: model.trim() } }, path);
+  await mutateSettings(path, (current) => ({ ...current, generation: { model: model.trim() } }));
 }
 
 /**
@@ -427,13 +536,16 @@ export async function resolveGenerationModel(path?: string): Promise<string> {
  *
  *   1. env BASTRA_EMBEDDING_PROVIDER — always wins (none | ollama | openai)
  *   2. cli-settings.json embedding.provider — when env is unset/invalid
- *   3. backwards-compat — an API key present with no explicit choice → openai
- *   4. none → BM25 keyword search only
+ *   3. none → BM25 keyword search only
+ *
+ * Cloud embeddings need an EXPLICIT Bastra decision (1 or 2). A generic
+ * OPENAI_API_KEY in the environment is a credential, not consent (#520).
  *
  * `provider` is the EFFECTIVE choice (what the daemon will run); `requested`
- * keeps what env/file asked for when it could not be honoured (today: openai
- * without an API key → provider "none", requested "openai") so status/doctor
- * can explain the gap instead of reporting a silent "none".
+ * keeps what env/file asked for when it could not be honoured (openai without
+ * an API key, or a bare key without an explicit choice → provider "none",
+ * requested "openai") so status/doctor can explain the gap instead of
+ * reporting a silent "none".
  */
 export interface EmbeddingChoice {
   provider: EmbeddingProviderName;
@@ -476,8 +588,15 @@ export async function resolveEmbeddingChoice(
       : { provider: "none", source: "cli-settings", requested: "openai" };
   }
 
-  // Tier 3: backwards-compat — key present, no explicit choice anywhere.
-  if (hasApiKey) return { provider: "openai", source: "api-key" };
+  // Tier 3 (#520): a bare API key is NOT consent. It used to resolve to
+  // "openai", which meant any machine that exported OPENAI_API_KEY for some
+  // other tool started POSTing recall queries and the whole backfill corpus to
+  // api.openai.com without a single Bastra-specific decision. The effective
+  // provider is therefore "none" (BM25 only) — but `source: "api-key"` plus
+  // `requested: "openai"` keeps WHY visible, so the daemon, status and doctor
+  // can tell an existing user that the old fallback stopped and how to opt in
+  // on purpose (`bastra config set embedding.provider openai`).
+  if (hasApiKey) return { provider: "none", source: "api-key", requested: "openai" };
 
   // Tier 4: nothing requested.
   return { provider: "none", source: "none" };
@@ -485,8 +604,7 @@ export async function resolveEmbeddingChoice(
 
 /** Persists the embedding provider atomically, merging into existing settings. */
 export async function setEmbeddingProvider(provider: EmbeddingProviderName, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, embedding: { provider } }, path);
+  await mutateSettings(path, (current) => ({ ...current, embedding: { provider } }));
 }
 
 /** Whether Ollama should be kept running at login. Default true (if you use ollama, you want it up). */
@@ -496,8 +614,7 @@ export async function getOllamaAutostart(path?: string): Promise<boolean> {
 
 /** Persists the Ollama autostart preference atomically. */
 export async function setOllamaAutostart(on: boolean, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, ollama: { autostart: on } }, path);
+  await mutateSettings(path, (current) => ({ ...current, ollama: { autostart: on } }));
 }
 
 /** The stored REST API token, or undefined when none has been issued. */
@@ -528,10 +645,11 @@ export async function addCorsOrigin(url: string, path: string = settingsFilePath
     );
     return;
   }
-  const current = await readSettings(path);
-  const existing = current.cors?.origins ?? [];
-  if (existing.includes(origin)) return; // already allowed — nothing to write
-  await writeSettings({ ...current, cors: { origins: [...existing, origin] } }, path);
+  await mutateSettings(path, (current) => {
+    const existing = current.cors?.origins ?? [];
+    if (existing.includes(origin)) return null; // already allowed — nothing to write
+    return { ...current, cors: { origins: [...existing, origin] } };
+  });
 }
 
 /** Persists an explicit API token atomically (merging into existing settings). */
@@ -541,8 +659,7 @@ export async function getCommonsEnabled(path?: string): Promise<boolean> {
 }
 
 export async function setCommonsEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, commons: { enabled: on } }, path);
+  await mutateSettings(path, (current) => ({ ...current, commons: { enabled: on } }));
 }
 
 /** Vault map web UI (#207) enabled? Default false (opt-in). */
@@ -551,8 +668,7 @@ export async function getUiEnabled(path?: string): Promise<boolean> {
 }
 
 export async function setUiEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, ui: { enabled: on } }, path);
+  await mutateSettings(path, (current) => ({ ...current, ui: { enabled: on } }));
 }
 
 /** Shared learned-recall bridges enabled? Default false (opt-in, privacy-respecting). */
@@ -561,19 +677,27 @@ export async function getSharedRecallEnabled(path?: string): Promise<boolean> {
 }
 
 /**
- * Ist der Evidenzentscheid scharf? Default `false`.
+ * Ist der Evidenzentscheid scharf? Default `true` seit #422 (03.09.2026).
+ *
+ * Aktiviert nach §18.2: Shadow-Abnahme erreicht (6.544 Entscheidungen, 40
+ * Sessions), jede required-/no_answer-Abweichung per Merkmalssignatur
+ * erklärt, Komponenten-Gates auf dem vollen Goldsatz innerhalb der Schwellen
+ * (Anti-Query 1/28, Falsch-Abstention 0/584, Recall@3-Delta −0,0034).
  *
  * Der Env-Schalter steht daneben, weil ein Betreiber ihn im Zweifel SOFORT
  * ausmachen können muss, ohne eine Datei zu bearbeiten — der Rückfall aufs
  * Legacy-Verhalten ist die wichtigere Richtung. `BASTRA_EVIDENCE_GATE=0`
- * überstimmt deshalb die Einstellung, nicht umgekehrt.
+ * überstimmt deshalb die Einstellung, nicht umgekehrt; `evidenceGate.enabled:
+ * false` in den Settings schaltet dauerhaft ab.
  */
+export const EVIDENCE_GATE_DEFAULT = true;
+
 export async function getEvidenceGateEnabled(path?: string): Promise<boolean> {
   const env = process.env.BASTRA_EVIDENCE_GATE;
   if (env !== undefined && env !== "") {
     return !["0", "false", "off", "no"].includes(env.toLowerCase());
   }
-  return (await readSettings(path)).evidenceGate?.enabled ?? false;
+  return (await readSettings(path)).evidenceGate?.enabled ?? EVIDENCE_GATE_DEFAULT;
 }
 
 /**
@@ -585,37 +709,44 @@ export async function getEvidenceGateEnabled(path?: string): Promise<boolean> {
  */
 export async function getExperimentConfig(
   path?: string,
-): Promise<{ experiment: string; arms: string[] } | null> {
+): Promise<{
+  experiment: string;
+  arms: string[];
+  registration: string;
+  registration_version: number;
+} | null> {
   const cfg = (await readSettings(path)).experiment;
   if (!cfg) return null;
-  const complete =
-    typeof cfg.name === "string" &&
-    cfg.name.length > 0 &&
-    Array.isArray(cfg.arms) &&
-    cfg.arms.length >= 2 &&
-    typeof cfg.registration === "string" &&
-    cfg.registration.length > 0 &&
-    typeof cfg.registration_version === "number";
-  if (!complete) {
+  // Name, Registrierung und Registrierungsversion sind seit #425 schon von
+  // readSettings geprüft — hier bleibt die fachliche Regel: unter zwei Armen
+  // gibt es nichts zu vergleichen.
+  if (cfg.arms.length < 2) {
     console.error(
       "[bastra-recall] experiment config incomplete (needs name, >=2 arms, registration + registration_version) — no arm assignment (#267)",
     );
     return null;
   }
-  return { experiment: cfg.name, arms: cfg.arms };
+  // #439: Der Verweis auf die Registrierung wird MITGEGEBEN, nicht hier
+  // verworfen. Er ist die einzige Identität, über die sich eine historische
+  // Zeile nach einer Revision noch der Konfiguration zuordnen lässt, die sie
+  // zugewiesen hat — ein Armname allein wird wiederverwendet.
+  return {
+    experiment: cfg.name,
+    arms: cfg.arms,
+    registration: cfg.registration,
+    registration_version: cfg.registration_version,
+  };
 }
 
 export async function setEvidenceGateEnabled(
   on: boolean,
   path: string = settingsFilePath(),
 ): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, evidenceGate: { enabled: on } }, path);
+  await mutateSettings(path, (current) => ({ ...current, evidenceGate: { enabled: on } }));
 }
 
 export async function setSharedRecallEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, sharedRecall: { ...current.sharedRecall, enabled: on } }, path);
+  await mutateSettings(path, (current) => ({ ...current, sharedRecall: { ...current.sharedRecall, enabled: on } }));
 }
 
 /** Optional override for the auto-detected query language (e.g. "de"). undefined = auto-detect per query. */
@@ -624,17 +755,19 @@ export async function getSharedRecallLanguage(path?: string): Promise<string | u
 }
 
 export async function setSharedRecallLanguage(language: string, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  const enabled = current.sharedRecall?.enabled ?? false;
-  await writeSettings({ ...current, sharedRecall: { enabled, language: language.trim().toLowerCase() } }, path);
+  await mutateSettings(path, (current) => ({
+    ...current,
+    sharedRecall: { enabled: current.sharedRecall?.enabled ?? false, language: language.trim().toLowerCase() },
+  }));
 }
 
 /** Clears the query-language override, restoring per-query auto-detection. Writes
  *  the sharedRecall block WITHOUT a `language` key (a plain spread would preserve it). */
 export async function clearSharedRecallLanguage(path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  const enabled = current.sharedRecall?.enabled ?? false;
-  await writeSettings({ ...current, sharedRecall: { enabled } }, path);
+  await mutateSettings(path, (current) => ({
+    ...current,
+    sharedRecall: { enabled: current.sharedRecall?.enabled ?? false },
+  }));
 }
 
 /** Product-docs capture mode. Default "off" (opt-in). */
@@ -643,8 +776,7 @@ export async function getDocsMode(path?: string): Promise<DocsMode> {
 }
 
 export async function setDocsMode(mode: DocsMode, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, docs: { ...current.docs, mode } }, path);
+  await mutateSettings(path, (current) => ({ ...current, docs: { ...current.docs, mode } }));
 }
 
 /** Language product docs are written in. Default "en". */
@@ -653,8 +785,7 @@ export async function getDocsLanguage(path?: string): Promise<string> {
 }
 
 export async function setDocsLanguage(language: string, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, docs: { ...current.docs, language: language.trim().toLowerCase() } }, path);
+  await mutateSettings(path, (current) => ({ ...current, docs: { ...current.docs, language: language.trim().toLowerCase() } }));
 }
 
 /** Datei-Größen-Richtwert (Zeilen) für Quellcode; undefined = Default 500. */
@@ -665,13 +796,11 @@ export async function getSizeGuide(path?: string): Promise<number | undefined> {
 
 export async function setSizeGuide(guide: number, path: string = settingsFilePath()): Promise<void> {
   const n = Math.min(5000, Math.max(100, Math.round(guide)));
-  const current = await readSettings(path);
-  await writeSettings({ ...current, size: { ...current.size, guide: n } }, path);
+  await mutateSettings(path, (current) => ({ ...current, size: { ...current.size, guide: n } }));
 }
 
 export async function setApiToken(token: string, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, api: { token } }, path);
+  await mutateSettings(path, (current) => ({ ...current, api: { token } }));
 }
 
 /** The stored primary authoring language (2-letter ISO code), or undefined when unset. */
@@ -681,8 +810,7 @@ export async function getPrimaryLanguage(path?: string): Promise<string | undefi
 
 /** Persists the primary authoring language, normalized to a lowercase 2-letter code. */
 export async function setPrimaryLanguage(code: string, path: string = settingsFilePath()): Promise<void> {
-  const current = await readSettings(path);
-  await writeSettings({ ...current, language: { ...current.language, primary: code.trim().toLowerCase() } }, path);
+  await mutateSettings(path, (current) => ({ ...current, language: { ...current.language, primary: code.trim().toLowerCase() } }));
 }
 
 /**
@@ -694,10 +822,15 @@ export async function ensureApiToken(
   opts: { rotate?: boolean } = {},
   path: string = settingsFilePath(),
 ): Promise<string> {
-  const current = await readSettings(path);
-  if (!opts.rotate && current.api?.token) return current.api.token;
-  const token = randomBytes(32).toString("base64url");
-  await writeSettings({ ...current, api: { token } }, path);
+  let token = "";
+  await mutateSettings(path, (current) => {
+    if (!opts.rotate && current.api?.token) {
+      token = current.api.token;
+      return null;
+    }
+    token = randomBytes(32).toString("base64url");
+    return { ...current, api: { token } };
+  });
   return token;
 }
 
@@ -707,10 +840,13 @@ export async function ensureApiToken(
  * Returns true if a token was actually removed, false if none was set.
  */
 export async function clearApiToken(path: string = settingsFilePath()): Promise<boolean> {
-  const current = await readSettings(path);
-  if (!current.api?.token) return false;
-  const next = { ...current };
-  delete next.api;
-  await writeSettings(next, path);
-  return true;
+  let removed = false;
+  await mutateSettings(path, (current) => {
+    if (!current.api?.token) return null;
+    const next = { ...current };
+    delete next.api;
+    removed = true;
+    return next;
+  });
+  return removed;
 }

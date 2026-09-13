@@ -24,8 +24,10 @@ import { ensureHookStub } from "./stub-install.js";
 import { confirm, isInteractive } from "./prompt.js";
 import { getEmbeddingProvider } from "../settings.js";
 import { showHelp } from "./help-text.js";
+import { validateArgs } from "./flag-spec.js";
 import { describeStale } from "../code-staleness.js";
 import { autostartWarning } from "./autostart.js";
+import { stubFreshness, stubFreshnessLines } from "./stub-freshness.js";
 import type { InstallOpts, ParsedArgs } from "./types.js";
 
 export function showVersion(): void {
@@ -60,6 +62,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     lines: null,
     stats: false,
     positional: [],
+    errors: [],
   };
 
   const positional: string[] = [];
@@ -112,7 +115,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
     } else if (a.startsWith("--origin=")) {
       result.origin = a.slice("--origin=".length);
     } else if (a.startsWith("--")) {
-      process.stderr.write(`warning: unknown flag '${a}' ignored\n`);
+      // Not a warning anymore — validateArgs below turns it into a usage error
+      // that never reaches dispatch (#536).
     } else {
       positional.push(a);
     }
@@ -121,6 +125,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   result.command = positional[0] ?? null;
   result.surface = positional[1] ?? null;
   result.positional = positional;
+  result.errors = validateArgs(argv);
   return result;
 }
 
@@ -226,12 +231,17 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
   if (firstRun.exit !== null) return firstRun.exit;
   if (firstRun.vaultPath) opts.vaultPath = firstRun.vaultPath;
 
-  // #350/#15: the compiled hook client for Claude Code and Codex. Runs before the adapters
-  // plan their hook entries, because registration prefers the stub only when
-  // the binary already exists on disk (buildHookEntry). Nothing here fails the
+  // #350/#15: the compiled hook client for Claude Code and Codex. Runs before the
+  // adapters plan their hook entries, and since #537 it is the single place that
+  // decides WHICH client they register (opts.useStub). Nothing here fails the
   // install — the node client serves the same daemon lanes, just slower.
   if (targets.some((a) => a.surface === "claude-code" || a.surface === "codex")) {
     const stub = await ensureHookStub({ dryRun: args.dryRun, mode: args.stub ?? "ask", interactive: isInteractive() });
+    // #537: the ADAPTERS must not re-derive this from the disk. `--no-stub`
+    // against an already downloaded binary used to register every Claude and
+    // Codex hook on that binary anyway, because each adapter asked existsSync
+    // instead of asking what was decided here.
+    opts.useStub = stub.useStub;
     process.stdout.write(`${stub.status === "failed" ? "⚠" : "·"} hook client: ${stub.detail}\n\n`);
   }
 
@@ -382,8 +392,39 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   await printEmbeddingDoctorNote();
   await printVersionPairNote();
   await printAutostartNote();
+  await printStubBinaryNote();
 
   return hadBroken ? 1 : 0;
+}
+
+/**
+ * The compiled hook binary (#546) — the fourth global check, and the only one
+ * that looks at an artifact rather than at a registration.
+ *
+ * A registered hook points at an absolute path to a `deno compile` binary. The
+ * registration being correct says nothing about the binary being current: the
+ * one on the dev host was from 29.08. and ran for two weeks against sources
+ * that had moved on, writing telemetry rows that could not be folded, and
+ * nothing asked. `npm run test:stub` catches it in CI since #546; this asks it
+ * in everyday use, before somebody spends days on numbers an old build made.
+ *
+ * A NOTE like the three above, never a failure: an out-of-date binary still
+ * answers every hook call, it just is not the code that is here. And nothing
+ * is built — the binary is asked for its stamp (~25 ms), it is not recompiled.
+ */
+async function printStubBinaryNote(): Promise<void> {
+  try {
+    const report = await stubFreshness();
+    const lines = stubFreshnessLines(report);
+    // Silent when no registration runs a compiled stub at all: this host is on
+    // the node thin client, which ships inside `dist` and cannot drift from it.
+    if (lines.length === 0) return;
+    process.stdout.write("\u2192 hook binary\n");
+    for (const line of lines) process.stdout.write(`  ${line}\n`);
+    process.stdout.write("\n");
+  } catch {
+    /* a diagnostics NOTE must never break doctor */
+  }
 }
 
 /**

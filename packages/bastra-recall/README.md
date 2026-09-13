@@ -19,13 +19,19 @@ Both expose the `bastra` CLI. After installing, restart your AI client.
 - `bastra install all` — register the MCP server, Skill, and hooks across ChatGPT Desktop/Codex, Claude Code, Claude Desktop, and Cursor (script-friendly).
 - `bastra install codex` — install the shared Codex/ChatGPT Desktop MCP entry, native hooks, and `~/.agents/skills/bastra-recall`.
 - `bastra doctor` — check / repair registrations.
-- `bastra uninstall all` — remove everything again.
+- `bastra uninstall all` — unregister every client again. The installed package, your vault, logs and settings stay; removing the package is a separate `brew uninstall` / `npm uninstall -g`.
 
 The CLI itself ships in [`@bastra-recall/daemon`](https://www.npmjs.com/package/@bastra-recall/daemon); this package just re-exports its `bastra` entry point under the unscoped name.
 
 ## Requirements
 
-macOS (Apple Silicon) today. Node 22+. Semantic recall is opt-in (BM25 is the default); set `BASTRA_EMBEDDING_PROVIDER=ollama` to enable embeddings.
+Node 22+. Semantic recall is opt-in (BM25 is the default); set `BASTRA_EMBEDDING_PROVIDER=ollama` to enable embeddings.
+
+Platforms — the full matrix is in the [main README](https://github.com/n0mad-ai/bastra-recall#supported-platforms):
+
+- **macOS** (Apple Silicon and Intel) — supported, everything included.
+- **Linux** (x86_64 and arm64) — daemon, CLI, MCP and hooks, compiled hook client included. Without `bastra autostart` (LaunchAgent, macOS-only — the forwarder starts the daemon on demand), without the `.mcpb` extension install and without `open_document`.
+- **Windows** — not covered: no compiled hook client is built for it, and nothing here is tested on it.
 
 Full docs & source: <https://github.com/n0mad-ai/bastra-recall>
 

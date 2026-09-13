@@ -23,6 +23,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 import { envInt } from "./env.js";
+import { foldUsageEvent } from "./usage-fold.js";
 
 /** Engagement kinds: someone did something with the memory. These count. */
 export type UsageKind = "surfaced" | "loaded" | "acted_on";
@@ -45,6 +46,8 @@ export interface UsageEvent {
   kind: UsageEventKind;
   /** ISO timestamp. */
   ts: string;
+  /** Opaque hash of the hint-bearing memory version (#479). */
+  revision?: string;
 }
 
 export interface UsageEntry {
@@ -66,15 +69,30 @@ export interface UsageEntry {
    * measured, which is a due state, not a fresh one (see `isSampleDue`).
    */
   last_sampled_at?: string;
+  /** Current hint-bearing content hash plus counters for exactly that version.
+   * Lifetime counters above stay intact for heat/history; these reset when the
+   * memory text or triggers change so an edited hint gets a clean trial. */
+  revision?: string;
+  revision_seen_at?: string;
+  revision_surfaced?: number;
+  revision_loaded?: number;
+  revision_acted_on?: number;
 }
 
 export type UsageAggregate = Record<string, UsageEntry>;
 
 /**
  * #217 Phase 3: Usage-Heat 0..1 pro Memory — log-skaliert (log1p) relativ
- * zum heißesten Memory; loaded zählt einfach, acted_on doppelt. Die zweite
- * Demand-Uhr neben der Valenz: der Daemon stampt sie beim Graph-Serve auf
- * die Nodes (core/graph.ts bleibt reine Vault-Projektion).
+ * zum heißesten Memory. Die zweite Demand-Uhr neben der Valenz: der Daemon
+ * stampt sie beim Graph-Serve auf die Nodes (core/graph.ts bleibt reine
+ * Vault-Projektion).
+ *
+ * #469: Nur `loaded` zählt. `acted_on` zählte doppelt, ist aber ein Token-
+ * Overlap-Proxy, der ab ZWEI gemeinsamen Wörtern feuert — am 01.09. schloss
+ * ein einzelner Bash-Aufruf drei thematisch fremde Memories als acted_on,
+ * und über 84 Episoden trennte die Stärke nichts (Median 4 gegen 3). Ein
+ * Signal ohne Gradient darf keine abgeleitete Größe doppelt wiegen. Der
+ * Zähler bleibt im Aggregat erhalten; er ist nur kein Gewicht mehr.
  */
 /**
  * Half-life of a memory's heat, in days (#227).
@@ -109,7 +127,7 @@ export function computeHeat(usage: UsageAggregate, now: number = Date.now()): Re
   const raw = new Map<string, number>();
   let max = 0;
   for (const [id, e] of Object.entries(usage)) {
-    const w = (e.loaded ?? 0) + 2 * (e.acted_on ?? 0);
+    const w = e.loaded ?? 0;
     if (w <= 0) continue;
     // No stamp means "we don't know when", not "long ago" — an entry written
     // before the timestamps existed must not be demoted for our bookkeeping.
@@ -130,7 +148,8 @@ export function computeHeat(usage: UsageAggregate, now: number = Date.now()): Re
 export interface UsageReach {
   loaded: number;
   acted_on: number;
-  /** The weight heat is computed from: loaded + 2 × acted_on. */
+  /** The weight heat is computed from: `loaded` alone (#469 — `acted_on`
+   *  is reported next to it but no longer weighs). */
   weight: number;
   /** Newest of the three last_*_at stamps, ISO, or null if never reached. */
   last_at: string | null;
@@ -162,7 +181,7 @@ export function computeReach(usage: UsageAggregate): Record<string, UsageReach> 
     out[id] = {
       loaded,
       acted_on: acted,
-      weight: loaded + 2 * acted,
+      weight: loaded,
       last_at: stamps.length > 0 ? stamps[stamps.length - 1] : null,
     };
   }
@@ -299,25 +318,8 @@ export async function recordUsage(vaultRoot: string, events: UsageEvent[]): Prom
   }
 }
 
-function emptyEntry(): UsageEntry {
-  return { surfaced: 0, loaded: 0, acted_on: 0 };
-}
-
 function foldEvent(agg: UsageAggregate, e: UsageEvent): void {
-  if (!e || typeof e.id !== "string" || e.id.length === 0) return;
-  const kind = e.kind;
-  if (kind !== "surfaced" && kind !== "loaded" && kind !== "acted_on" && kind !== MEASUREMENT_KIND) return;
-  const entry = (agg[e.id] ??= emptyEntry());
-  // The measurement kind stamps its clock and stops there. Counting our own
-  // probes would let the sample floor manufacture the very engagement signal
-  // it exists to audit — every forced re-measurement would read as demand.
-  if (kind !== MEASUREMENT_KIND) entry[kind] += 1;
-  const tsField = `last_${kind}_at` as const;
-  // Events arrive roughly ordered, but a merge after compaction rotation may
-  // replay older lines — keep the max, not the last seen.
-  if (typeof e.ts === "string" && (!entry[tsField] || e.ts > entry[tsField]!)) {
-    entry[tsField] = e.ts;
-  }
+  foldUsageEvent(agg, e, MEASUREMENT_KIND);
 }
 
 async function readJsonlEvents(path: string): Promise<UsageEvent[]> {

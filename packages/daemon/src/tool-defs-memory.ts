@@ -112,6 +112,20 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
           type: "number",
           description: "Max results (default 5, range 1-20).",
         },
+        max_tokens: {
+          type: "number",
+          description:
+            "Optional context budget for THIS call, in estimated tokens " +
+            "(~4 characters each). Hits are emitted in rank order until the " +
+            "payload would exceed it; the rest are dropped and the response " +
+            "says so with `truncated_by_budget: true` and " +
+            "`dropped_by_budget: <n>`. Use it when you know how much window " +
+            "you can spend — `k` counts results, not context, and a k=5 " +
+            "answer varies by more than 2x in size. `k` stays the hard upper " +
+            "bound: this can only drop hits, never add them. Leave unset for " +
+            "no budget. If the response comes back truncated, re-query with " +
+            "a larger budget or load_memory the ids you need.",
+        },
         scope: {
           type: "string",
           description:
@@ -158,7 +172,10 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "Step 2 of the recall flow — call this only for the candidates " +
       "recall() surfaced that you actually need. Returns essential " +
       "frontmatter + body by default; pass verbosity:'full' for the raw " +
-      "frontmatter (related_via cosines, source, …).",
+      "frontmatter (related_via cosines, source, …). " +
+      "The result carries a `revision` — hand it to " +
+      "edit_memory({ expected_revision }) to have your change refused if the " +
+      "memory moved on meanwhile (#519).",
     inputSchema: {
       type: "object",
       properties: {
@@ -185,23 +202,25 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "frontmatter. This is YOUR long-term memory — save autonomously " +
       "when a memory-worthy moment occurs, do not wait to be asked.\n" +
       "\n" +
-      "STRONG SIGNALS — save without confirmation, then 1-line ack:\n" +
+      "STRONG SIGNALS — save without confirmation, then 1-line ack. " +
+      "The cues below are EXAMPLES in whatever language the user writes: " +
+      "match the situation, not the sample words (#476).\n" +
       "- User expresses repetition/frustration about a recurring issue " +
-      "  ('wieder', 'schon wieder', 'wie oft', emphatic caps) → lesson, " +
-      "  emotion:'frustration', salience:0.8\n" +
-      "- User states an explicit durable rule ('immer X', 'nie Y', 'bei " +
-      "  diesem Projekt nutzen wir Z') → preference / workflow\n" +
+      "  ('again', 'wieder', 'снова', 'how often', emphatic caps in any " +
+      "  script) → lesson, emotion:'frustration', salience:0.8\n" +
+      "- User states an explicit durable rule ('always X', 'never Y', " +
+      "  'on this project we use Z') → preference / workflow\n" +
       "- User corrects a recurring tendency in your behavior → " +
       "  meta-working\n" +
       "- An architectural decision is finalized after weighing options " +
       "  → decision\n" +
-      "- User confirms a workflow ('lass uns das immer so machen') → " +
+      "- User confirms a workflow ('let's always do it this way') → " +
       "  workflow\n" +
       "- A bug got fixed after >2 iterations with non-obvious root " +
       "  cause → lesson (capture the FAILED PATH too, not just the fix), " +
       "  emotion:'success', salience:0.7\n" +
-      "- User marks something as important ('das ist wichtig', 'merk dir " +
-      "  das gut') → salience:0.9 on the memory you save\n" +
+      "- User marks something as important ('this is important', " +
+      "  'remember that') → salience:0.9 on the memory you save\n" +
       "\n" +
       "VALENCE (#217): salience/emotion mark how emotionally charged the " +
       "capture moment was — high salience ages slower and may rank higher. " +
@@ -209,7 +228,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "importance; never invent them. Omit both for routine saves.\n" +
       "\n" +
       "ANTI-SIGNALS — do NOT save:\n" +
-      "- One-off task descriptions ('baue mir bitte X') — that's a " +
+      "- One-off task descriptions ('please build me X') — that's a " +
       "  task, not a memory\n" +
       "- Speculation, 'maybe' statements, tentative ideas\n" +
       "- Anything derivable from code/git/CLAUDE.md\n" +
@@ -289,9 +308,12 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "  existing memories under a new convention.\n" +
       "\n" +
       "AFTER SAVING: surface a single-line ack to the user, prefixed " +
-      "with `→`: `→ saved: <title> (id: <id>)`. Nothing more.",
+      "with `→`: `→ saved: <title> (id: <id>)`. Nothing more.\n\n" +
+      "CALL FORMAT: send every argument as its own native JSON property. " +
+      "Never embed XML tags such as <body> or <topic_path> inside summary.",
     inputSchema: {
       type: "object",
+      additionalProperties: false,
       properties: {
         title: {
           type: "string",
@@ -533,6 +555,98 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         "scope",
         "recall_when",
       ],
+    },
+  },
+  {
+    name: "edit_memory",
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    description:
+      "#519 — change PART of an existing memory without re-sending it. " +
+      "Use this for every ordinary update: a one-line addendum, a corrected " +
+      "sentence, a sharpened summary or an extra trigger. " +
+      "\n\n" +
+      "NEVER edit a vault .md file directly. A direct file edit skips the " +
+      "audit log, the `updated` stamp, the id lock, the atomic write and the " +
+      "index refresh — the change becomes unreconstructable and can be " +
+      "silently undone by a parallel writer or the cloud sync. This tool is " +
+      "the cheap, correct way; there is no longer a reason to take the other " +
+      "one.\n" +
+      "Use save_memory(overwrite: true) only when the memory is rewritten as " +
+      "a whole, or when you need a field this tool does not cover.\n" +
+      "\n" +
+      "OPERATIONS (combine freely, they apply as ONE atomic change):\n" +
+      "- str_replace: old_str -> new_str in the body. old_str must occur " +
+      "EXACTLY ONCE; if it is missing or ambiguous NOTHING is written and the " +
+      "error says which of the two it was. Copy the text verbatim from " +
+      "load_memory, whitespace included.\n" +
+      "- append: add text at the end of the body (it lands before the " +
+      "auto-related block, never inside it).\n" +
+      "- frontmatter: patch summary, recall_when, tags, issues, related, " +
+      "confidence or valid_until. Nothing else — id, scope, type, sensitivity " +
+      "and write_origin are rejected here and belong to save_memory or a " +
+      "dedicated tool.\n" +
+      "\n" +
+      "expected_revision is optional optimistic concurrency: pass the " +
+      "`revision` load_memory gave you, and the edit is refused if the file " +
+      "changed meanwhile — by another edit or by a hand edit in Obsidian. " +
+      "Do NOT pass the `updated` stamp: it has day precision, so two edits on " +
+      "the same day share it and the later one would silently win (#519).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "Id of the memory to change. It must already exist.",
+        },
+        str_replace: {
+          type: "object",
+          description:
+            "Replace one unique passage in the body. Nothing is written when " +
+            "old_str is missing or occurs more than once.",
+          properties: {
+            old_str: {
+              type: "string",
+              description:
+                "The exact existing text, copied verbatim (including line " +
+                "breaks). Must occur exactly once in the body.",
+            },
+            new_str: {
+              type: "string",
+              description: "What replaces it. Empty string deletes the passage.",
+            },
+          },
+          required: ["old_str", "new_str"],
+        },
+        append: {
+          type: "string",
+          description:
+            "Text appended to the end of the body — the cheap way to add an " +
+            "addendum to a long memory without re-sending it.",
+        },
+        frontmatter: {
+          type: "object",
+          description:
+            "Patch for a small whitelist of fields. Any other key is " +
+            "REJECTED (not silently ignored).",
+          properties: {
+            summary: { type: "string" },
+            recall_when: { type: "array", items: { type: "string" } },
+            tags: { type: "array", items: { type: "string" } },
+            issues: { type: "array", items: { type: "string" } },
+            related: { type: "array", items: { type: "string" } },
+            confidence: { type: "number" },
+            valid_until: { type: "string" },
+          },
+        },
+        expected_revision: {
+          type: "string",
+          description:
+            "The `revision` load_memory returned for this memory — an opaque " +
+            "digest of the file, new after every write. The edit is refused " +
+            "if the file no longer carries it. Omit to edit the current state.",
+        },
+      },
+      required: ["id"],
     },
   },
   {

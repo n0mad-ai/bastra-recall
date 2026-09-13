@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
+import { MEMORY_TOOL_DEFS } from "../src/tool-defs-memory.js";
 import {
   saveMemoryHandler,
   noteSaveFailure,
@@ -109,6 +110,66 @@ describe("#150: saveMemoryHandler failure cap", () => {
         (err: Error) => !err.message.includes("STOP retrying"),
         "failure after success must be a plain error again",
       );
+    } finally {
+      await close();
+    }
+  });
+});
+
+describe("malformed MCP save arguments", () => {
+  beforeEach(() => resetSaveFailures());
+
+  const CORRUPTED = {
+    title: "MCP save diagnostic",
+    type: "lesson",
+    scope: "bastra-recall",
+    summary:
+      "The call changed grammar here.</summary><body>Full body</body>" +
+      "<topic_path><item>mcp</item></topic_path><tags><item>mcp</item></tags>" +
+      "<recall_when><item>saving from Claude</item></recall_when>",
+  };
+
+  it("stops XML-swallowed sibling fields immediately with an actionable error", async () => {
+    await assert.rejects(
+      saveMemoryHandler(DUMMY_DEPS, CORRUPTED),
+      (err: Error) =>
+        err.message.includes("corrupted before validation")
+        && err.message.includes("body, topic_path, tags, recall_when")
+        && err.message.includes("NOTHING WAS SAVED")
+        && err.message.includes("STOP retrying"),
+    );
+  });
+
+  it("advertises a closed JSON object schema to MCP clients", () => {
+    const save = MEMORY_TOOL_DEFS.find((tool) => tool.name === "save_memory");
+    assert.equal(save?.inputSchema.additionalProperties, false);
+  });
+
+  it("does not spend the ordinary three-strike save failure budget", async () => {
+    await assert.rejects(saveMemoryHandler(DUMMY_DEPS, CORRUPTED));
+    await assert.rejects(saveMemoryHandler(DUMMY_DEPS, CORRUPTED));
+    for (let i = 1; i < SAVE_FAILURE_CAP; i++) {
+      await assert.rejects(
+        saveMemoryHandler(DUMMY_DEPS, { not: "valid" }),
+        (err: Error) => !err.message.includes("STOP retrying"),
+        `ordinary failure ${i} must still be below the cap`,
+      );
+    }
+    await assert.rejects(
+      saveMemoryHandler(DUMMY_DEPS, { not: "valid" }),
+      (err: Error) => err.message.includes("STOP retrying"),
+    );
+  });
+
+  it("allows valid memories that merely discuss XML", async () => {
+    const { deps, close } = await makeDeps();
+    try {
+      const result = await saveMemoryHandler(deps, {
+        ...VALID_SAVE,
+        title: "XML tool format",
+        summary: "A valid memory discussing <body> and <topic_path> tags.",
+      });
+      assert.equal(result.created, true);
     } finally {
       await close();
     }

@@ -6,6 +6,32 @@
  * "suggest" lässt den Agent erst fragen, "auto" schreibt ohne Rückfrage.
  */
 import type { DocsMode } from "./settings.js";
+import type { DetectedProject } from "@bastra-recall/core/topics";
+
+/**
+ * Verdient diese Projekterkennung einen Doku-Block? (#511)
+ *
+ * `detectProject()` liefert für JEDEN nichtleeren Pfad einen Namen: ein
+ * Container-Root wie `~/Projekte` matcht ein bekanntes Wurzelsegment
+ * (`root-match`), ein beliebiges Verzeichnis fällt auf sein letztes Segment
+ * zurück (`fallback`). Der Doku-Block gatete früher auf `if (project)` und
+ * zahlte damit 239 Tokens/Start „wie dokumentiere ich dieses Projekt" für
+ * Verzeichnisse, die gar keins sind. Getroffen werden davon tatsächlich die
+ * `root-match`-Verzeichnisse ohne `.git` — unter `~/Projekte` auf dieser
+ * Maschine 15 von 29 (nachgezählt 2026-09-11). `fallback` war hier schon
+ * vorher aus — `projectForLane` setzt ihn seit §20.5 auf null, und `~/Projekte`
+ * selbst ist `fallback`, nicht `root-match`.
+ *
+ * Doku ist per-Projekt-Doku; sie wird aus dem Repo heraus geschrieben.
+ * `git-root` ist die einzige Confidence, die wirklich ein Repository benennt
+ * — dieselbe Auskunft, der `projectForFilter` für die Gegenrichtung traut.
+ * `root-match` und `fallback` sind kein Beleg für ein Projekt und bekommen
+ * keinen Block. (Der geratene Name bleibt für Query und Recall-Scope
+ * brauchbar — nur zum Bezahlen von Doku-Tokens taugt er nicht.)
+ */
+export function isDokuProject(confidence: DetectedProject["confidence"]): boolean {
+  return confidence === "git-root";
+}
 
 export function formatDokuBlock(
   mode: Exclude<DocsMode, "off">,

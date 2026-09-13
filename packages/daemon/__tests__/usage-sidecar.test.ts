@@ -54,6 +54,39 @@ test("record → read: counters and last_*_at aggregate per id", async () => {
   });
 });
 
+test("#479 revision-local counters reset on content change without losing lifetime history", async () => {
+  await withVault(async (root) => {
+    await recordUsage(root, [
+      { ...ev("a", "surfaced", "2026-09-01T10:00:00Z"), revision: "rev-a" },
+      { ...ev("a", "surfaced", "2026-09-02T10:00:00Z"), revision: "rev-a" },
+      { ...ev("a", "loaded", "2026-09-02T10:01:00Z"), revision: "rev-a" },
+      { ...ev("a", "surfaced", "2026-09-03T10:00:00Z"), revision: "rev-b" },
+      // Crash replay from the older revision: lifetime history counts it, but
+      // it must not roll the active revision back.
+      { ...ev("a", "surfaced", "2026-09-01T09:00:00Z"), revision: "rev-a" },
+    ]);
+    const entry = (await readUsage(root)).a;
+    assert.deepEqual(
+      {
+        surfaced: entry.surfaced,
+        loaded: entry.loaded,
+        revision: entry.revision,
+        revision_surfaced: entry.revision_surfaced,
+        revision_loaded: entry.revision_loaded,
+        revision_seen_at: entry.revision_seen_at,
+      },
+      {
+        surfaced: 4,
+        loaded: 1,
+        revision: "rev-b",
+        revision_surfaced: 1,
+        revision_loaded: 0,
+        revision_seen_at: "2026-09-03T10:00:00Z",
+      },
+    );
+  });
+});
+
 test("compact: events fold into aggregate.json; readUsage identical before/after", async () => {
   await withVault(async (root) => {
     await recordUsage(root, [ev("a", "surfaced", "2026-07-01T10:00:00Z"), ev("a", "acted_on", "2026-07-01T11:00:00Z")]);

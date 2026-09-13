@@ -19,6 +19,11 @@
  * Query-Terme, gemessen ~290 ms. Kein künstliches `while`, sondern derselbe
  * MiniSearch-Lauf, um den es geht.
  *
+ * #466: Der Durchlauf sendet den Request nur auf einem SCHON OFFENEN Socket.
+ * Die ersten Tests wärmen deshalb vor (warmer Socket, Arme laufen parallel);
+ * der Kalt-Test darunter prüft den Produktionsfall der Prompt-Lane, in dem
+ * der Arm erst nach BM25 gesendet wird und seine Frist ab dem `await` läuft.
+ *
  * Runner: node --import tsx --test packages/core/__tests__/dense-arm-dispatch.test.ts
  */
 import test from "node:test";
@@ -27,9 +32,10 @@ import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
-import { get } from "node:http";
+import { Agent, get } from "node:http";
 import { Vault } from "../src/vault.js";
 import { SearchIndex } from "../src/search.js";
+import type { LateSettleSample } from "../src/deadline.js";
 
 const DEADLINE_MS = 150;
 /** Antwortet klar VOR der Deadline — wird sie trotzdem gerissen, lag es nicht
@@ -59,7 +65,12 @@ async function providerProzess(t: {
   const quelle = `
     const http = require("node:http");
     const s = http.createServer((req, res) => {
-      const ms = Number(new URL(req.url, "http://x").searchParams.get("ms") || "0");
+      const raw = new URL(req.url, "http://x").searchParams.get("ms") || "0";
+      // "never": die Antwort kommt nie — der Socket bleibt offen, bis der
+      // Prozess stirbt. Ein Arm, der WIRKLICH zu langsam ist, unabhängig davon,
+      // wie lange der Testprozess vorher blockiert war.
+      if (raw === "never") return;
+      const ms = Number(raw);
       setTimeout(() => {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify([{ id: "m0", score: 0.9 }]));
@@ -79,17 +90,28 @@ async function providerProzess(t: {
   return { port };
 }
 
-/** Ein Embedding-Index-Doppel, das seine Treffer über echtes Netz-I/O holt. */
-function embeddingsUeberNetz(port: number, antwortNachMs: number) {
+/** Ein Embedding-Index-Doppel, das seine Treffer über echtes Netz-I/O holt.
+ *  Ohne `agent` läuft es über Nodes globalen Agent, der seit Node 19 Keep-
+ *  Alive hält — nach dem ersten Lauf ist der Socket also WARM. */
+function embeddingsUeberNetz(port: number, antwortNachMs: number | "never", agent?: Agent) {
   return {
     size: () => 1,
     runtimeHealth: () => ({ errorCount: 0 }),
-    search: () =>
+    // #493: Der Recall fragt den strukturierten Ausgang ab — ein Provider-
+    // fehler ist seither kein leeres Ergebnis mehr, sondern ein eigener Fall.
+    searchDetailed: () =>
       new Promise((resolve, reject) => {
-        get({ host: "127.0.0.1", port, path: `/?ms=${antwortNachMs}` }, (res) => {
+        get({ host: "127.0.0.1", port, path: `/?ms=${antwortNachMs}`, ...(agent ? { agent } : {}) }, (res) => {
           let roh = "";
           res.on("data", (c) => (roh += c));
-          res.on("end", () => resolve(JSON.parse(roh)));
+          res.on("end", () =>
+            resolve({
+              outcome: "hits",
+              hits: JSON.parse(roh),
+              providerLoadMs: null,
+              coldStartObserved: false,
+            }),
+          );
         }).on("error", reject);
       }),
   } as never;
@@ -122,22 +144,51 @@ const teureQuery = (versatz = 0): string =>
 
 async function laufMitTimeoutMarke(
   search: SearchIndex,
-  antwortNachMs: number,
+  antwortNachMs: number | "never",
   port: number,
   versatz = 0,
-): Promise<{ timeout: boolean; bm25Ms: number }> {
-  search.useEmbeddings(embeddingsUeberNetz(port, antwortNachMs));
+  agent?: Agent,
+  query?: string,
+): Promise<Lauf> {
+  search.useEmbeddings(embeddingsUeberNetz(port, antwortNachMs, agent));
   let timeout = false;
   let bm25Ms = 0;
-  await search.recallHybrid(teureQuery(versatz), {
+  // #489: die beiden Zahlen, um die es in diesem Issue geht — die überlappende
+  // Spanne des Arms und die Wartezeit, die der Aufrufer wirklich zahlt.
+  let vectorMs = 0;
+  let waitMs = -1;
+  let spaet: LateSettleSample | null = null;
+  let spaetGemeldet: (s: LateSettleSample) => void = () => {};
+  const spaeteStichprobe = new Promise<LateSettleSample>((ok) => (spaetGemeldet = ok));
+  await search.recallHybrid(query ?? teureQuery(versatz), {
     k: 5,
     vector_deadline_ms: DEADLINE_MS,
+    onVectorLateSettle: (s: LateSettleSample) => {
+      spaet = s;
+      spaetGemeldet(s);
+    },
     onStage: ((s: { name: string; durationMs?: number; meta?: Record<string, unknown> }) => {
       if (s.name === "done" && s.meta?.degraded === "vector-arm-timeout") timeout = true;
       if (s.name === "bm25.search" && typeof s.durationMs === "number") bm25Ms = s.durationMs;
+      if (s.name === "vector.search" && typeof s.durationMs === "number") {
+        vectorMs = s.durationMs;
+        if (typeof s.meta?.wait_ms === "number") waitMs = s.meta.wait_ms;
+      }
     }) as never,
   });
-  return { timeout, bm25Ms };
+  return { timeout, bm25Ms, vectorMs, waitMs, spaet: () => spaet, spaeteStichprobe };
+}
+
+interface Lauf {
+  timeout: boolean;
+  bm25Ms: number;
+  vectorMs: number;
+  /** #489: `wait_ms` aus der `vector.search`-Stage. `-1` = Feld fehlte. */
+  waitMs: number;
+  /** Die späte Stichprobe, falls sie bis jetzt schon eintraf. */
+  spaet: () => LateSettleSample | null;
+  /** Wartet auf die späte Stichprobe eines aufgegebenen Arms. */
+  spaeteStichprobe: Promise<LateSettleSample>;
 }
 
 test("der dichte Arm überlebt eine lange lexikalische Suche", async (t) => {
@@ -154,7 +205,11 @@ test("der dichte Arm überlebt eine lange lexikalische Suche", async (t) => {
   // aussperrt.
   for (let i = 0; i < 3; i++) await laufMitTimeoutMarke(search, ANTWORT_NACH_MS, port, 100 + i);
 
-  const ergebnisse: Array<{ timeout: boolean; bm25Ms: number }> = [];
+  const ergebnisse: Array<{
+    timeout: boolean;
+    bm25Ms: number;
+    spaeteStichprobe: Promise<{ settle_ms: number }>;
+  }> = [];
   for (let i = 0; i < 5; i++) ergebnisse.push(await laufMitTimeoutMarke(search, ANTWORT_NACH_MS, port, i));
 
   // Die Voraussetzung des Tests: Der lexikalische Arm muss den Loop wirklich
@@ -165,12 +220,84 @@ test("der dichte Arm überlebt eine lange lexikalische Suche", async (t) => {
     `der lexikalische Arm muss länger als die Deadline blockieren, war ${median} ms`,
   );
 
-  const timeouts = ergebnisse.filter((e) => e.timeout).length;
+  // Dieselbe Diagnose wie im KALTEN Zwilling unten, aus demselben Grund: Ein
+  // Timeout ohne seine Zahl zwingt den nächsten Leser zum Raten. Hier ist die
+  // Ursache sogar noch schwerer zu erraten, weil der warme Pfad drei
+  // Aufwärmläufe hinter sich hat — wer ihn rot sieht, muss unterscheiden
+  // können, ob der Dispatch gebrochen ist (Arm settelt weit jenseits der
+  // Frist) oder ob nur die Maschine überbucht war (knapp darüber).
+  const timeouts = ergebnisse.filter((e) => e.timeout);
+  const settles = await Promise.all(
+    timeouts.map((e) =>
+      Promise.race([
+        e.spaeteStichprobe.then((s) => `${Math.round(s.settle_ms)} ms`),
+        new Promise<string>((ok) => void setTimeout(() => ok("nie gesettelt"), 1000).unref?.()),
+      ]),
+    ),
+  );
   assert.equal(
-    timeouts,
+    timeouts.length,
     0,
     `kein Lauf darf in den Timeout gehen — der Provider antwortet nach ${ANTWORT_NACH_MS} ms, ` +
-      `also lange vor der ${DEADLINE_MS}-ms-Frist. ${timeouts} von 5 taten es trotzdem.`,
+      `also lange vor der ${DEADLINE_MS}-ms-Frist. ${timeouts.length} von 5 taten es trotzdem ` +
+      `(settle_ms je Timeout: ${settles.join(", ") || "—"}; BM25-Median ${Math.round(median)} ms).`,
+  );
+});
+
+test("#466: auf einem KALTEN Socket überlebt der dichte Arm die lexikalische Suche ebenfalls", async (t) => {
+  const search = await vaultMitVielenMemories(t);
+  const { port } = await providerProzess(t);
+
+  // Der Produktionsfall der Prompt-Lane: Die Aufrufe liegen Minuten
+  // auseinander, die Verbindung ist zu. Ein frischer TCP-Connect wird erst in
+  // der Poll-Phase fertig — NACH der Blockade —, der Request geht also erst
+  // dann raus, und der Arm läuft sequentiell hinter BM25. Mit einer Frist ab
+  // dem Abfeuern war das 02.09. bei jeder langen Query ein Timeout (27 von 49).
+  // Die Frist ab dem `await` gibt ihm sein Budget für die Zeit, in der er
+  // wirklich wartet. `keepAlive: false` je Lauf erzwingt den kalten Socket.
+  for (let i = 0; i < 3; i++) {
+    await laufMitTimeoutMarke(search, ANTWORT_NACH_MS, port, 200 + i, new Agent({ keepAlive: false }));
+  }
+
+  const ergebnisse: Lauf[] = [];
+  for (let i = 0; i < 5; i++) {
+    ergebnisse.push(
+      await laufMitTimeoutMarke(search, ANTWORT_NACH_MS, port, 300 + i, new Agent({ keepAlive: false })),
+    );
+  }
+
+  const median = ergebnisse.map((e) => e.bm25Ms).sort((a, b) => a - b)[2];
+  assert.ok(
+    median > DEADLINE_MS,
+    `der lexikalische Arm muss länger als die Deadline blockieren, war ${median} ms`,
+  );
+
+  // Ein Timeout OHNE seine Zahl ist eine Ratesitzung — genau das kostete am
+  // 10.09.2026 einen halben Review: EIN roter Lauf unter voller Suite, und die
+  // Meldung sagte „1 von 5" und sonst nichts. `settle_ms` ist ab dem `await`
+  // gemessen und trennt die beiden möglichen Ursachen:
+  //   - bricht der Dispatch, war die Frist schon während BM25 verbraucht, und
+  //     der Arm settelt ein Vielfaches jenseits von ihr (gemessen 268–276 ms);
+  //   - war bloß die Maschine überbucht, settelt er knapp über der Frist.
+  // Connect + Antwort liegen hier bei 42 ms (p90, auch unter CPU-Last), die
+  // Frist ist 150 — wer den Test rot sieht, muss wissen, welcher Fall vorlag.
+  // Die Nachmessung läuft nur im Fehlerfall und hat eine eigene Frist, weil ein
+  // nie settelnder Arm sie sonst hängen ließe.
+  const timeouts = ergebnisse.filter((e) => e.timeout);
+  const settles = await Promise.all(
+    timeouts.map((e) =>
+      Promise.race([
+        e.spaeteStichprobe.then((s) => `${Math.round(s.settle_ms)} ms`),
+        new Promise<string>((ok) => void setTimeout(() => ok("nie gesettelt"), 1000).unref?.()),
+      ]),
+    ),
+  );
+  assert.equal(
+    timeouts.length,
+    0,
+    `kein Lauf darf in den Timeout gehen — der Provider antwortet ${ANTWORT_NACH_MS} ms nach dem Connect, ` +
+      `also innerhalb der ${DEADLINE_MS}-ms-Frist ab dem Warten. ${timeouts.length} von 5 taten es trotzdem ` +
+      `(settle_ms je Timeout: ${settles.join(", ") || "—"}; BM25-Median ${Math.round(median)} ms).`,
   );
 });
 
@@ -178,10 +305,13 @@ test("ein wirklich zu langsamer Arm läuft weiterhin in seinen Timeout", async (
   const search = await vaultMitVielenMemories(t);
   const { port } = await providerProzess(t);
 
-  // Die Invariante aus #342: Die Frist läuft ab dem Abfeuern. Ein Provider, der
-  // länger braucht als sie, muss weiterhin abgeschnitten werden — sonst hätte
-  // der Durchlauf oben die Deadline stillschweigend verlängert.
-  const { timeout } = await laufMitTimeoutMarke(search, DEADLINE_MS * 4, port, 7);
+  // Die Frist läuft seit #466 ab dem Warten (nach BM25). Ein Provider mit
+  // FESTER Verzögerung taugt hier nicht mehr als „zu langsam": Auf einem
+  // langsamen CI-Runner dauert BM25 länger als die Verzögerung, die Antwort
+  // liegt beim Blockende schon gepuffert und der Arm kommt durch — genau so
+  // fiel der Test am 03.09. auf Node 22 und 24. Ein Provider, der NIE
+  // antwortet, ist die einzige Verzögerung, die von der Maschine unabhängig ist.
+  const { timeout } = await laufMitTimeoutMarke(search, "never", port, 7);
   assert.ok(timeout, "die Deadline muss weiterhin greifen, wenn der Arm sie wirklich reißt");
 });
 
@@ -199,4 +329,87 @@ test("kurze Läufe zahlen keinen spürbaren Aufpreis", async (t) => {
   }
   const proAufruf = (Date.now() - t0) / 20;
   assert.ok(proAufruf < 50, `ein billiger Recall darf nicht spürbar teurer werden, war ${proAufruf.toFixed(1)} ms`);
+});
+
+/**
+ * #489 — die Wartezeit ist NICHT die Spanne des Arms.
+ *
+ * DIE PROMPT-LANE-FORM. Ein langer Prompt macht den lexikalischen Arm teuer
+ * (gemessen 06.–08.09.2026: p50 3671 Query-Zeichen → 329 ms BM25), während der
+ * Embed konstant billig bleibt. `vector.search` misst ab dem Abfeuern und läuft
+ * damit über den ganzen BM25-Lauf: 336 ms gegen 329 ms, Residuum 5 ms. Wer die
+ * Zahl als Wartezeit las, sah 82,6 % gerissene Deadlines — tatsächlich rissen
+ * 14 von 323 Aufrufen ihre Frist.
+ *
+ * Genau diese Form baut der Test nach: 400 Terme lexikalisch, ein Provider, der
+ * nach 40 ms antwortet. Die Wartezeit muss um Größenordnungen unter BM25 liegen,
+ * die alte Spanne unverändert darüber.
+ */
+test("#489: die Wartezeit des dichten Arms schließt den lexikalischen Arm aus", async (t) => {
+  const search = await vaultMitVielenMemories(t);
+  const { port } = await providerProzess(t);
+
+  // Aufwärmen aus demselben Grund wie oben: TCP-Erstverbindung und JIT gehören
+  // nicht zu der Frage, die dieser Test stellt.
+  for (let i = 0; i < 3; i++) await laufMitTimeoutMarke(search, ANTWORT_NACH_MS, port, 400 + i);
+
+  const ergebnisse: Lauf[] = [];
+  for (let i = 0; i < 5; i++) ergebnisse.push(await laufMitTimeoutMarke(search, ANTWORT_NACH_MS, port, 500 + i));
+  const median = (xs: number[]): number => xs.slice().sort((a, b) => a - b)[2]!;
+
+  const bm25 = median(ergebnisse.map((e) => e.bm25Ms));
+  const warten = median(ergebnisse.map((e) => e.waitMs));
+  const spanne = median(ergebnisse.map((e) => e.vectorMs));
+
+  // Vorbedingung: Ohne einen wirklich teuren lexikalischen Arm prüft der Test
+  // nichts — dann sind Wartezeit und Spanne trivialerweise gleich.
+  assert.ok(bm25 > DEADLINE_MS, `der lexikalische Arm muss dominieren, war ${bm25} ms`);
+
+  assert.ok(warten >= 0, "die Stage muss `wait_ms` tragen");
+  assert.ok(
+    warten * 4 < bm25,
+    `die Wartezeit darf den lexikalischen Arm nicht enthalten — Warten ${warten} ms, BM25 ${bm25} ms`,
+  );
+  // Und die alte Serie bleibt, was sie war: die überlappende Spanne ab dem
+  // Abfeuern. Sie MUSS BM25 mit abdecken, sonst wurde hier etwas umdefiniert.
+  assert.ok(
+    spanne >= bm25,
+    `\`vector.search\` muss die überlappende Spanne bleiben — Spanne ${spanne} ms, BM25 ${bm25} ms`,
+  );
+});
+
+/**
+ * #489 — ein Timeout liefert BEIDE Zahlen: die bezahlte Wartezeit an der
+ * Deadline und, später, das echte Settle des weiterlaufenden Arms.
+ *
+ * Ohne die zweite Zahl endet die Messung an der Frist, und eine Auswertung, die
+ * daraus eine Deadline lernen soll (#491), lernt die Frist, die schon gilt —
+ * `session-context` las p95 312 ms gegen eine 350-ms-Deadline: keine Verteilung,
+ * eine Wand.
+ *
+ * Kurze Query, damit der lexikalische Arm hier nichts verdeckt: Was gemessen
+ * wird, ist allein der Arm gegen seine Frist.
+ */
+test("#489: ein Timeout liefert die Wartezeit UND das echte Settle", async (t) => {
+  const search = await vaultMitVielenMemories(t);
+  const { port } = await providerProzess(t);
+
+  const ANTWORT_NACH_TIMEOUT_MS = DEADLINE_MS + 250;
+  const lauf = await laufMitTimeoutMarke(search, ANTWORT_NACH_TIMEOUT_MS, port, 0, undefined, "term7xyz");
+
+  assert.ok(lauf.timeout, "der Arm muss in seine Frist laufen");
+  assert.ok(
+    lauf.waitMs >= DEADLINE_MS && lauf.waitMs < ANTWORT_NACH_TIMEOUT_MS,
+    `die Wartezeit muss auf der Deadline liegen, war ${lauf.waitMs} ms`,
+  );
+  // Zum Zeitpunkt der Antwort darf es die späte Stichprobe noch NICHT geben —
+  // sie ist per Definition das, was nach dem Aufgeben passiert.
+  assert.equal(lauf.spaet(), null, "die späte Stichprobe darf den Aufruf nicht aufhalten");
+
+  const spaet = await lauf.spaeteStichprobe;
+  assert.equal(spaet.settled, true, "der aufgegebene Arm lieferte am Ende doch");
+  assert.ok(
+    spaet.settle_ms >= ANTWORT_NACH_TIMEOUT_MS - 40,
+    `das echte Settle muss die volle Dauer melden, nicht die Deadline — war ${spaet.settle_ms} ms`,
+  );
 });

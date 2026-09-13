@@ -45,6 +45,7 @@ import {
 } from "@bastra-recall/core";
 import { truncateSummaryTo, SUMMARY_MAX } from "@bastra-recall/core";
 import { scopeEquals } from "@bastra-recall/core/scope";
+import { hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
 import {
   openRecoveryJournal,
   type RecoveryJournalHandle,
@@ -722,6 +723,8 @@ export interface SaveDocumentResult {
 export async function saveDocument(
   vault: Vault,
   args: z.infer<typeof SaveDocumentArgs>,
+  /** #464: transportgebunden — siehe private-access.ts. */
+  caller?: PrivateAccess,
 ): Promise<SaveDocumentResult> {
   if (!isAbsolute(args.original_path)) {
     throw new Error(`original_path must be absolute: ${args.original_path}`);
@@ -758,7 +761,7 @@ export async function saveDocument(
   // und der Vault lud beim nächsten Start still nur eines davon. Ab hier gilt
   // dieselbe Sperre und dieselbe autoritative Auskunft wie im Save-Pfad.
   return withIdClaim({ vaultRoot: root, id: docID, filePath: sidecarPath, op: "save_document" }, (claim) =>
-    commitDocument(claim, vault, args, { root, filename, docID, sidecarPath, originalDest }),
+    commitDocument(claim, vault, args, { root, filename, docID, sidecarPath, originalDest }, caller),
   );
 }
 
@@ -776,6 +779,7 @@ async function commitDocument(
     sidecarPath: string;
     originalDest: string;
   },
+  caller?: PrivateAccess,
 ): Promise<SaveDocumentResult> {
   const { root, filename, docID, sidecarPath, originalDest } = ctx;
   // #240/A5: PREFLIGHT — jede Kollision prüfen, BEVOR irgendetwas mutiert
@@ -815,6 +819,13 @@ async function commitDocument(
       throw new Error(
         `refusing to overwrite ${sidecarPath}: not a document sidecar for ${docID}`,
       );
+    }
+    // #464: Es IST das eigene Sidecar — aber wenn es `sensitivity: private`
+    // trägt, darf dieser Caller es nicht einmal lesen. Der Check steht im
+    // Preflight, vor jedem Copy und jedem Sidecar-Write: die refusete
+    // Mutation lässt Bytes und Pfade, wie sie waren.
+    if (hiddenFromCaller(caller, existing?.data)) {
+      throw new Error(`document not found: ${docID}`);
     }
   }
   // `a+b.pdf` und `a-b.pdf` slugifizieren auf DIESELBE id. Entstünden zwei
@@ -1073,9 +1084,15 @@ async function commitDocument(
 export async function recategorizeDocument(
   vault: Vault,
   args: z.infer<typeof RecategorizeDocumentArgs> & { force?: boolean },
+  /** #464: transportgebunden — siehe private-access.ts. */
+  caller?: PrivateAccess,
 ): Promise<{ id: string; sidecar_path: string; reindexed: boolean }> {
   const m = vault.get(args.id);
-  if (!m) {
+  // #464: Wortgleiche Antwort für „gibt es nicht" und „darfst du nicht sehen".
+  // Ein Sidecar mit `sensitivity: private` ist für externe Caller schon im
+  // Lesepfad unsichtbar; dass es hier änderbar war, machte die Verbergung
+  // wertlos — und der Erfolg verriet die Id gleich mit.
+  if (!m || hiddenFromCaller(caller, m.fm)) {
     throw new Error(`document not found: ${args.id}`);
   }
   // `type === "doc"` allein reichte, und damit fiel eine PRODUKTDOKU in
@@ -1109,7 +1126,7 @@ export async function recategorizeDocument(
   // gewinnt einer, und der andere erfährt es.
   return withIdClaim(
     { vaultRoot: vaultRoot(vault), id: args.id, filePath: m.filePath, op: "recategorize_document" },
-    (claim) => commitRecategorize(claim, vault, args, m),
+    (claim) => commitRecategorize(claim, vault, args, m, caller),
   );
 }
 
@@ -1118,6 +1135,7 @@ async function commitRecategorize(
   vault: Vault,
   args: z.infer<typeof RecategorizeDocumentArgs> & { force?: boolean },
   m: { fm: Record<string, unknown> & { id: string; title: string; tags: string[]; summary: string; recall_when: string[]; created: string }; filePath: string },
+  caller?: PrivateAccess,
 ): Promise<{ id: string; sidecar_path: string; reindexed: boolean }> {
   const fm = m.fm as typeof m.fm & {
     original_path?: string;
@@ -1138,6 +1156,14 @@ async function commitRecategorize(
         ? `document not found on disk: ${args.id}`
         : `cannot recategorize ${args.id}: the vault scan is not conclusive (${located.kind}).`,
     );
+  }
+  // #464 (wiedereröffnet): Die Prüfung in `recategorizeDocument` fragte den
+  // INDEX. Trug das Sidecar auf der PLATTE `sensitivity: private` — extern
+  // gesetzt, vom Watcher auf einem Cloud-Mount nie gemeldet —, ließ es sich
+  // trotzdem umbenennen und umhängen (5 von 5 Läufen). Dieselbe Frage an die
+  // Bytes, unter dem Claim, VOR dem Move und vor jedem Frontmatter-Patch.
+  if (hiddenOnDisk(caller, (await readSidecarRaw(located.filePath)).raw)) {
+    throw new Error(`document not found: ${args.id}`);
   }
 
   // Wenn Folder geändert: erst move (verschiebt Files + Sidecar). Sonst nur
@@ -1264,6 +1290,8 @@ async function abortMove(
 export async function moveDocument(
   vault: Vault,
   args: z.infer<typeof MoveDocumentArgs>,
+  /** #464: transportgebunden — siehe private-access.ts. */
+  caller?: PrivateAccess,
 ): Promise<{
   id: string;
   sidecar_path: string;
@@ -1271,7 +1299,9 @@ export async function moveDocument(
   reindexed: boolean;
 }> {
   const m = vault.get(args.id);
-  if (!m) {
+  // #464: wie im Recategorize — ein Move verschiebt Sidecar UND Originaldatei
+  // und ist damit die sichtbarste Mutation von allen.
+  if (!m || hiddenFromCaller(caller, m.fm)) {
     throw new Error(`document not found: ${args.id}`);
   }
   // Wie im Recategorize: eine Produktdoku ist kein Sidecar und wird hier
@@ -1284,7 +1314,7 @@ export async function moveDocument(
   // desselben Dokuments auf die Füße, und beide meldeten Erfolg.
   return withIdClaim(
     { vaultRoot: vaultRoot(vault), id: args.id, filePath: m.filePath, op: "move_document" },
-    (claim) => commitMoveDocument(claim, vault, args, m),
+    (claim) => commitMoveDocument(claim, vault, args, m, caller),
   );
 }
 
@@ -1293,6 +1323,7 @@ async function commitMoveDocument(
   vault: Vault,
   args: z.infer<typeof MoveDocumentArgs>,
   m: { fm: Record<string, unknown> & { id: string; title: string; tags: string[]; summary: string; recall_when: string[]; created: string }; filePath: string },
+  caller?: PrivateAccess,
 ): Promise<{
   id: string;
   sidecar_path: string;
@@ -1313,6 +1344,12 @@ async function commitMoveDocument(
         ? `document not found on disk: ${args.id}`
         : `cannot move ${args.id}: the vault scan is not conclusive (${located.kind}).`,
     );
+  }
+  // #464 (wiedereröffnet): wie im Recategorize — die Prüfung oben fragte den
+  // INDEX, und ein Move verschiebt Sidecar UND Originaldatei. Dieselbe Frage
+  // an die Bytes, unter dem Claim, bevor irgendetwas bewegt wird.
+  if (hiddenOnDisk(caller, (await readSidecarRaw(located.filePath)).raw)) {
+    throw new Error(`document not found: ${args.id}`);
   }
 
   const moved = await moveDocumentFiles(vault, {

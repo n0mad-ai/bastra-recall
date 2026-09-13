@@ -39,6 +39,7 @@ test("gate: no Origin + loopback-skip → 200 without token (CLI/forwarder path)
       reqOrigin: undefined,
       allowedOrigin: null,
       isLoopback: true,
+      isLoopbackHost: true,
       authHeader: "",
       apiToken: TOKEN,
       loopbackSkip: true,
@@ -52,6 +53,7 @@ test("gate: no Origin, non-loopback, token set → 401 without correct Bearer", 
     reqOrigin: undefined,
     allowedOrigin: null,
     isLoopback: false,
+    isLoopbackHost: false,
     apiToken: TOKEN,
     loopbackSkip: true,
   };
@@ -64,11 +66,61 @@ test("gate: no Origin, loopback-skip OFF, token set → token enforced even on l
     reqOrigin: undefined,
     allowedOrigin: null,
     isLoopback: true,
+    isLoopbackHost: true,
     apiToken: TOKEN,
     loopbackSkip: false,
   };
   assert.equal(gateApiRequest({ ...base, authHeader: "" }), 401);
   assert.equal(gateApiRequest({ ...base, authHeader: `Bearer ${TOKEN}` }), 200);
+});
+
+test("#526 gate: no Origin, loopback peer but FOREIGN Host → token required", () => {
+  const base = {
+    reqOrigin: undefined,
+    allowedOrigin: null,
+    isLoopback: true, // DNS-rebound browser / local tunnel: the socket looks local
+    isLoopbackHost: false, // … but the Host header does not
+    apiToken: TOKEN,
+    loopbackSkip: true,
+  };
+  assert.equal(gateApiRequest({ ...base, authHeader: "" }), 401);
+  assert.equal(gateApiRequest({ ...base, authHeader: `Bearer ${TOKEN}` }), 200, "tunnels stay usable with the token");
+});
+
+test("#526 gate: NO token configured — a foreign Host is still refused, direct local stays open", () => {
+  const base = {
+    reqOrigin: undefined,
+    allowedOrigin: null,
+    authHeader: "",
+    apiToken: "", // dev/local mode: nothing minted, BASTRA_API_TOKEN unset or empty
+    loopbackSkip: true,
+  };
+  // Der Befund: das leere Token übersprang die Prüfung komplett.
+  assert.equal(gateApiRequest({ ...base, isLoopback: true, isLoopbackHost: false }), 401, "foreign Host");
+  assert.equal(gateApiRequest({ ...base, isLoopback: false, isLoopbackHost: true }), 401, "foreign peer");
+  assert.equal(gateApiRequest({ ...base, isLoopback: false, isLoopbackHost: false }), 401);
+  // Kein Bearer kann ein nicht existierendes Token treffen.
+  assert.equal(
+    gateApiRequest({ ...base, isLoopback: true, isLoopbackHost: false, authHeader: `Bearer ${TOKEN}` }),
+    401,
+  );
+  // Der dev/local-Weg bleibt genau so offen wie vorher.
+  assert.equal(gateApiRequest({ ...base, isLoopback: true, isLoopbackHost: true }), 200);
+});
+
+test("#526 gate: no token + loopback-skip OFF → nothing gets in (contradictory config, honest answer)", () => {
+  assert.equal(
+    gateApiRequest({
+      reqOrigin: undefined,
+      allowedOrigin: null,
+      isLoopback: true,
+      isLoopbackHost: true,
+      authHeader: "",
+      apiToken: "",
+      loopbackSkip: false,
+    }),
+    401,
+  );
 });
 
 // ── gateApiRequest: browser requests (Origin present) ────────────────
@@ -78,6 +130,7 @@ test("gate: browser, allowed origin + correct token → 200 (even over loopback)
       reqOrigin: SITE,
       allowedOrigin: SITE,
       isLoopback: true,
+      isLoopbackHost: true,
       authHeader: `Bearer ${TOKEN}`,
       apiToken: TOKEN,
       loopbackSkip: true, // must NOT exempt a browser request
@@ -91,6 +144,7 @@ test("gate: browser, allowed origin, wrong/missing token → 401", () => {
     reqOrigin: SITE,
     allowedOrigin: SITE,
     isLoopback: true,
+    isLoopbackHost: true,
     apiToken: TOKEN,
     loopbackSkip: true,
   };
@@ -104,6 +158,7 @@ test("gate: browser, origin NOT on allowlist → 403 regardless of token", () =>
       reqOrigin: "https://evil.com",
       allowedOrigin: null, // resolveCorsOrigin rejected it
       isLoopback: true,
+      isLoopbackHost: true,
       authHeader: `Bearer ${TOKEN}`,
       apiToken: TOKEN,
       loopbackSkip: true,
@@ -118,6 +173,7 @@ test("gate: browser, allowed origin but NO token issued → 401 (secure by defau
       reqOrigin: SITE,
       allowedOrigin: SITE,
       isLoopback: true,
+      isLoopbackHost: true,
       authHeader: "",
       apiToken: "", // daemon has no token → browser clients can't get in
       loopbackSkip: true,
@@ -145,6 +201,7 @@ test("corsAllowlist (#95): milestone test D — evil.com + valid token → 403 o
       reqOrigin: "https://evil.com",
       allowedOrigin,
       isLoopback: true,
+      isLoopbackHost: true,
       authHeader: `Bearer ${TOKEN}`,
       apiToken: TOKEN,
       loopbackSkip: true,
@@ -201,8 +258,11 @@ test("isLoopbackHost: loopback hosts pass, rebound domains do not", () => {
   assert.equal(isLoopbackHost("localhost:6723", []), true);
   assert.equal(isLoopbackHost("LOCALHOST", []), true);
   assert.equal(isLoopbackHost("[::1]:6723", []), true);
-  // HTTP/1.0-CLIs ohne Host-Header — Rebinding trägt immer einen.
-  assert.equal(isLoopbackHost(undefined, []), true);
+  // #526: KEIN Host-Header ist kein Loopback-Beweis. Browser-Rebinding trägt
+  // zwar immer einen, ein roher Port-Forwarder (socat, `ssh -L`) ergänzt aber
+  // keinen — ein Angreifer am Tunnel lässt ihn einfach weg.
+  assert.equal(isLoopbackHost(undefined, []), false);
+  assert.equal(isLoopbackHost("", []), false);
   assert.equal(isLoopbackHost("attacker.example:6723", []), false);
   assert.equal(isLoopbackHost("attacker.example", []), false);
 });

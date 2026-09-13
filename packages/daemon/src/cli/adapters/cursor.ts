@@ -1,12 +1,15 @@
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { CURSOR_CONFIG } from "../paths.js";
+import { CURSOR_CONFIG, CURSOR_RULES_RELATIVE, CURSOR_RULES_SOURCE_PATH } from "../paths.js";
 import {
   SERVER_KEY,
   atomicWriteJson,
   backupConfig,
   blocksMatch,
   buildServerBlock,
+  existingToolSurface,
+  serverBlockEndpoint,
   fileExists,
   getServersBlock,
   probeDaemon,
@@ -23,12 +26,21 @@ async function cursorInstall(opts: InstallOpts): Promise<InstallResult> {
 
   const fwd = await ensureStableForwarder({ dryRun: opts.dryRun });
   const runtimeNote = fwd.note ? `\n  · runtime: ${fwd.note}` : "";
-  const block = buildServerBlock(vault.path, fwd.path);
   const read = await readJsonConfig(configPath);
   if ("error" in read) return { status: "error", message: read.error, configPath };
 
   const data = read.data;
   const servers = getServersBlock(data) ?? {};
+  // #481: keep a surface the user set by hand instead of resetting it to the
+  // install default on every reinstall.
+  const block = buildServerBlock(
+    vault.path,
+    fwd.path,
+    existingToolSurface(servers[SERVER_KEY]) ?? undefined,
+    // #531: the configured endpoint, or the one this registration already
+    // carries — a GUI client inherits no shell export.
+    serverBlockEndpoint(servers[SERVER_KEY]),
+  );
 
   if (blocksMatch(servers[SERVER_KEY], block)) {
     return {
@@ -122,14 +134,31 @@ async function cursorDoctor(): Promise<DoctorResult> {
   }
 
   const probe = await probeDaemon();
-  details["daemon-on-6723"] = probe.ok ? `reachable (${probe.detail})` : probe.detail;
+  // #531: the key names the endpoint that was actually probed. It used to say
+  // 6723 unconditionally while the probe went wherever the env pointed.
+  details[`daemon-at-${probe.endpoint?.label ?? "?"}`] = probe.ok ? `reachable (${probe.detail})` : probe.detail;
+
+  // #456: the project rule is a generated projection of the skill. Reported
+  // for the CURRENT project only — rules live in the repo, not in HOME.
+  details["cursor-rule"] = await cursorRuleState(process.cwd());
 
   if (!registered) return { status: "missing", message: "not registered with Cursor", details };
   const broken =
     forwarderBroken ||
     details["vault-path"]?.includes("MISSING") === true;
   if (broken) return { status: "broken", message: "registered but referenced paths need repair — re-run 'bastra install cursor'", details };
-  return { status: "ok", message: "registered (no Cursor Rules layer yet — roadmap)", details };
+  return { status: "ok", message: "registered (project rule: see cursor-rule below — 'bastra rules cursor' installs or refreshes it)", details };
+}
+
+/** `.cursor/rules/bastra-recall.mdc` of one project against the shipped rule. */
+export async function cursorRuleState(projectDir: string, sourcePath: string | null = CURSOR_RULES_SOURCE_PATH): Promise<string> {
+  const target = resolve(projectDir, CURSOR_RULES_RELATIVE);
+  if (!(await fileExists(target))) return `not in this project (${CURSOR_RULES_RELATIVE}) — 'bastra rules cursor' installs it`;
+  if (!sourcePath) return "present (shipped rule not found, cannot compare)";
+  const [installed, shipped] = await Promise.all([readFile(target, "utf8"), readFile(sourcePath, "utf8")]);
+  return installed === shipped
+    ? `present, up to date (${CURSOR_RULES_RELATIVE})`
+    : `STALE — ${CURSOR_RULES_RELATIVE} differs from the shipped rule; re-run 'bastra rules cursor'`;
 }
 
 export const cursorAdapter: Adapter = {

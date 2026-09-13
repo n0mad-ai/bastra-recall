@@ -199,6 +199,10 @@ export interface SaveMemoryResult {
   refiled_from?: string;
   /** Present only when the summary was auto-truncated to fit SUMMARY_MAX. */
   summary_note?: string;
+  /** #530: `true`, wenn `commit.skipUnchanged` gesetzt war und der Save nichts
+   *  zu schreiben hatte — die Datei steht unverändert da, inklusive mtime, und
+   *  es ist kein Audit-Ereignis entstanden. Ohne die Option nie gesetzt. */
+  unchanged?: boolean;
 }
 
 /**
@@ -209,6 +213,24 @@ export interface SaveMemoryResult {
  */
 export interface SaveMemoryCommitOptions {
   expectedTarget?: string | null;
+  /**
+   * #530: wenn der Save exakt das schreiben würde, was schon dasteht, gar
+   * nichts schreiben. Ein wiederholter Import derselben Quelle erzeugte sonst
+   * für jede unveränderte Datei einen echten Write — neue mtime (und damit
+   * Cloud-Sync-Churn), ein `update`-Audit-Ereignis mit identischem Vor- und
+   * Nachbild, und eine CLI-Meldung, die jede Datei erneut als importiert
+   * zählte.
+   *
+   * Verglichen wird der fertig gerenderte Dateiinhalt mit den Bytes des Ziels
+   * unter dem id-Claim, `updated:` ausgenommen — dieses Feld stempelt jeder
+   * Save auf HEUTE, sonst wäre derselbe Import einen Tag später nie ein
+   * No-Op. Ein übersprungener Save meldet `unchanged: true` und lässt die
+   * Datei samt ihrer mtime unangetastet.
+   *
+   * Opt-in, nicht Default: Aufrufer, die „schreib das jetzt“ meinen (eine
+   * Restaurierung, ein erzwungener Rewrite), sollen weiter schreiben.
+   */
+  skipUnchanged?: boolean;
   /**
    * ROUTING-Auskunft: In welchem Regal und in welcher Schreibweise liegt ein
    * Bestands-Memory dieser id? Der Daemon reicht eine Fassung durch, die den
@@ -222,6 +244,25 @@ export interface SaveMemoryCommitOptions {
    * Antwort.
    */
   locator?: MemoryLocator;
+  /**
+   * #464 (wiedereröffnet): Vorbedingung auf dem Frontmatter, das dieser Save
+   * ERSETZT — gelesen unter dem id-Claim, aus derselben Vorlage, aus der der
+   * Patch gebaut wird.
+   *
+   * Dasselbe Muster wie `MemoryMutation.precondition` (#519, `memory-mutate.ts`):
+   * die Frage an die Bytes, nicht an einen Cache, und unter demselben Claim,
+   * der den Schreibvorgang schützt. Der Daemon hängt hier seine
+   * Sensitivitätsprüfung ein — vorher stand sie vor dem Claim und fragte den
+   * Vault-INDEX, und zwischen Index und Schreibvorgang lag ein Fenster, in dem
+   * die Datei auf der Platte längst `sensitivity: private` tragen konnte.
+   * Auf einem Cloud-Sync-Mount ist das kein konstruierter Fall.
+   *
+   * Wer hier wirft, hat garantiert nichts geschrieben: Der Aufruf steht vor
+   * jedem Rename, jedem Trashen der Quelle und jedem Audit-Eintrag. Beim
+   * Anlegen eines neuen Memories bekommt die Vorbedingung `{}` — es gibt
+   * keinen Bestand, über den zu entscheiden wäre.
+   */
+  precondition?: (previousFrontmatter: Record<string, unknown>) => void;
   /**
    * KEIN `authority`-Feld mehr. Codex-Gegenreview (P0): Solange die öffentliche
    * Core-API erlaubte, die Auskunft „wo lebt diese id" selbst mitzubringen, war
