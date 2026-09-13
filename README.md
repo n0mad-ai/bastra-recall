@@ -31,7 +31,7 @@
 |---|---|---|
 | **Claude Code** | ✅ tested — in daily use | MCP + Skill + seven quiet hooks + statusline |
 | **Claude Desktop** | ✅ tested | MCP + Skill, autonomous session context without hooks; `.mcpb` double-click extension |
-| **Codex + ChatGPT Desktop** | ✅ implemented for v1.0 | one shared local MCP config + Skill + seven Codex-native quiet hooks; `bastra install codex` |
+| **Codex + ChatGPT Desktop** | ✅ implemented for v1.0 — Codex CLI verified, desktop/IDE not yet field-tested | one shared local MCP config + Skill + seven Codex-native quiet hooks; `bastra install codex`, which also switches on Codex's `tools.update_plan.enabled` — off by default since Codex `rust-v0.152.0`, and the plan hook cannot fire without it ([#506](https://github.com/n0mad-ai/bastra-recall/issues/506)) |
 | **Cursor** | 🟡 implemented | installs and registers cleanly; implemented, but not yet field-tested |
 | **ChatGPT** (Custom GPT Actions) | 🗺️ planned | the REST gateway and an OpenAPI starter spec ship today; the packaged Custom-GPT action is next in line — tracked in [#13](https://github.com/n0mad-ai/bastra-recall/issues/13) |
 
@@ -228,7 +228,7 @@ Built by [@n0mad-ai](https://github.com/n0mad-ai).
 |---|---|---|
 | **Claude Code** | ✅ getestet — im täglichen Einsatz | MCP + Skill + sieben ruhige Hooks + Statusline |
 | **Claude Desktop** | ✅ getestet | MCP + Skill, autonomer Session-Kontext ohne Hooks; `.mcpb`-Doppelklick-Extension |
-| **Codex + ChatGPT Desktop** | ✅ für v1.0 implementiert | eine gemeinsame lokale MCP-Config + Skill + sieben ruhige Codex-native Hooks; `bastra install codex` |
+| **Codex + ChatGPT Desktop** | ✅ für v1.0 implementiert — Codex CLI verifiziert, Desktop/IDE noch nicht im Feld geprüft | eine gemeinsame lokale MCP-Config + Skill + sieben ruhige Codex-native Hooks; `bastra install codex` schaltet dabei auch Codex' `tools.update_plan.enabled` ein — seit Codex `rust-v0.152.0` per Default aus, und ohne den Schlüssel kann der Plan-Hook nicht feuern ([#506](https://github.com/n0mad-ai/bastra-recall/issues/506)) |
 | **Cursor** | 🟡 implementiert | installiert und registriert sauber; implementiert, aber noch nicht im Feld getestet |
 | **ChatGPT** (Custom GPT Actions) | 🗺️ geplant | REST-Gateway und OpenAPI-Starter-Spec sind da; die verpackte Custom-GPT-Action ist als Nächstes dran — verfolgt in [#13](https://github.com/n0mad-ai/bastra-recall/issues/13) |
 

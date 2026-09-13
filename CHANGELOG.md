@@ -193,6 +193,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **`bastra install codex` switches Codex's planning tool on, instead of
+  registering a hook that can never fire** (#506). Codex has shipped its
+  `update_plan` tool disabled by default since `rust-v0.152.0`
+  (`tools.update_plan.enabled`), so the `PreToolUse: ^update_plan$` hook the
+  installer registers was dead by construction on a default installation — the
+  seven days of zero plan events the issue opened with. Install now sets the
+  key in `~/.codex/config.toml` itself and says so in its output; it appends a
+  commented, bastra-marked block rather than re-serializing a file Codex owns,
+  leaves every other line byte-for-byte intact, and a second run reports
+  `already true` and writes nothing. A value the user deliberately set to
+  `false` is a decision: it is reported, never overwritten. `bastra uninstall
+  codex` removes exactly the block bastra wrote — a setting the user made
+  themselves, or a managed block they edited, stays. `bastra doctor codex`
+  reports the key as MISSING (repairable by re-running install) when it is
+  absent, and names an explicit `false` as the reason the plan lane is silent.
+  Install also spells out the Codex trust gate when it changed hook
+  definitions: Codex trusts a hook by the hash of its exact command, so changed
+  hooks stay silent until they are re-approved in `/hooks`.
+
 - **Ollama autostart is a named `systemd --user` unit on Linux, not an unref'd
   orphan** (#496, contributed by @zzallirog in #497). `ensureServing()` only had
   a persistent-agent path for macOS (`brew services`); on Linux,

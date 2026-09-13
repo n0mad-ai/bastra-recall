@@ -7,7 +7,7 @@
  * use their documented JSON/directory surfaces. All writes are idempotent,
  * preserve foreign entries and back up user configuration before mutation.
  */
-import { copyFile, rm } from "node:fs/promises";
+import { copyFile, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import {
   BASH_FAIL_HOOK_BIN,
@@ -36,6 +36,7 @@ import {
   resolveVault,
 } from "../helpers.js";
 import { copySkill, describeSkillInstall, inspectSkillInstall } from "../skill.js";
+import { PLAN_TOOL_KEY, ensureCodexPlanTool, inspectPlanTool } from "./codex-plan-tool.js";
 import { findCodexExecutable, codexMcpGet, codexServerMatches } from "../codex-cli.js";
 import { runCaptured } from "../exec.js";
 import { checkForwarderRegistration, ensureStableForwarder, mapBinToStableRuntime } from "../stable-runtime.js";
@@ -293,12 +294,18 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
   if (skillPlan.status === "error") return { status: "error", message: `skill: ${skillPlan.detail}`, configPath };
   if (hookPlan.status === "error") return { status: "error", message: `hooks: ${hookPlan.detail}`, configPath };
 
+  // #506 — the `^update_plan$` hook above is dead unless Codex's planning tool
+  // is switched on; it ships off by default since Codex rust-v0.152.0.
+  const planToolPlan = await ensureCodexPlanTool("install", { dryRun: true, configPath });
+  if (planToolPlan.status === "error") return { status: "error", message: `plan tool: ${planToolPlan.detail}`, configPath };
+
   if (opts.dryRun) {
     const lines = [
       runtime.note ? `runtime: ${runtime.note}` : "",
       mcpMatches ? "mcp: already matches" : `mcp: would register '${SERVER_KEY}' through codex mcp`,
       `skill: ${skillPlan.detail}`,
       `hooks: ${hookPlan.detail}`,
+      `plan tool: ${planToolPlan.detail}`,
     ].filter(Boolean);
     return { status: "would-install", message: lines.join("\n  · "), configPath };
   }
@@ -318,12 +325,20 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
   });
   if (skill.status === "error") return { status: "error", message: `skill: ${skill.detail}`, configPath, backupPath: mcpBackup };
   if (hooks.status === "error") return { status: "error", message: `hooks: ${hooks.detail}`, configPath, backupPath: mcpBackup };
+  // Written last: `codex mcp add` above re-serializes the same file, so our
+  // block goes in after Codex is done with it.
+  const planTool = await ensureCodexPlanTool("install", { dryRun: false, configPath });
+  if (planTool.status === "error") return { status: "error", message: `plan tool: ${planTool.detail}`, configPath, backupPath: mcpBackup };
 
-  const unchanged = mcpMatches && skill.status === "already-installed" && hooks.status === "already-installed";
+  const planToolUnchanged = planTool.status !== "enabled";
+  const unchanged = mcpMatches && skill.status === "already-installed" && hooks.status === "already-installed" && planToolUnchanged;
   if (unchanged) {
     return {
       status: "already-installed",
-      message: "MCP, Codex/ChatGPT skill and required hooks already match",
+      message: [
+        "MCP, Codex/ChatGPT skill and required hooks already match",
+        `plan tool: ${planTool.detail}`,
+      ].join("\n  · "),
       configPath,
     };
   }
@@ -332,13 +347,17 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
     mcpMatches ? "mcp: already matches" : `mcp: registered '${SERVER_KEY}' through Codex`,
     `skill: ${skill.detail}`,
     `hooks: ${hooks.detail}`,
-    "review changed hooks in Codex '/hooks', then restart ChatGPT desktop, Codex sessions and the IDE extension",
+    `plan tool: ${planTool.detail}`,
+    hooks.status === "installed"
+      ? `hook definitions changed — Codex trusts a hook by the hash of its exact command, so re-approve them in Codex with '/hooks' or they stay silent`
+      : "review changed hooks in Codex '/hooks'",
+    "restart ChatGPT desktop, Codex sessions and the IDE extension",
   ].filter(Boolean);
   return {
     status: "installed",
     message: lines.join("\n  · "),
     configPath,
-    backupPath: mcpBackup ?? hooks.backupPath,
+    backupPath: mcpBackup ?? hooks.backupPath ?? planTool.backupPath,
   };
 }
 
@@ -357,7 +376,11 @@ async function codexUninstall(opts: { dryRun: boolean }): Promise<UninstallResul
   const hookPlan = await patchCodexHooks("uninstall", { dryRun: true });
   const skillPresent = await fileExists(CODEX_SKILL_TARGET_DIR);
   if (hookPlan.status === "error") return { status: "error", message: `hooks: ${hookPlan.detail}`, configPath };
-  if (!mcpPresent && !skillPresent && hookPlan.status === "not-present") {
+  // #506 — only a plan-tool block we wrote ourselves is rolled back; a value
+  // the user set stays.
+  const planToolPlan = await ensureCodexPlanTool("uninstall", { dryRun: true, configPath });
+  if (planToolPlan.status === "error") return { status: "error", message: `plan tool: ${planToolPlan.detail}`, configPath };
+  if (!mcpPresent && !skillPresent && hookPlan.status === "not-present" && planToolPlan.status !== "would-remove") {
     return { status: "not-present", message: "no bastra-recall Codex integration present", configPath };
   }
   if (opts.dryRun) {
@@ -367,6 +390,7 @@ async function codexUninstall(opts: { dryRun: boolean }): Promise<UninstallResul
         mcpPresent ? `mcp: would remove '${SERVER_KEY}'` : "mcp: not present",
         `hooks: ${hookPlan.detail}`,
         skillPresent ? `skill: would remove ${CODEX_SKILL_TARGET_DIR}` : "skill: not present",
+        `plan tool: ${planToolPlan.detail}`,
       ].join("\n  · "),
       configPath,
     };
@@ -381,16 +405,19 @@ async function codexUninstall(opts: { dryRun: boolean }): Promise<UninstallResul
   if (skillPresent) await rm(CODEX_SKILL_TARGET_DIR, { recursive: true, force: true });
   const hooks = await patchCodexHooks("uninstall", { dryRun: false });
   if (hooks.status === "error") return { status: "error", message: `hooks: ${hooks.detail}`, configPath, backupPath };
+  const planTool = await ensureCodexPlanTool("uninstall", { dryRun: false, configPath });
+  if (planTool.status === "error") return { status: "error", message: `plan tool: ${planTool.detail}`, configPath, backupPath };
   return {
     status: "removed",
     message: [
       mcpPresent ? `mcp: removed '${SERVER_KEY}'` : "mcp: not present",
       `hooks: ${hooks.detail}`,
       skillPresent ? `skill: removed ${CODEX_SKILL_TARGET_DIR}` : "skill: not present",
+      `plan tool: ${planTool.detail}`,
       "restart ChatGPT desktop, Codex CLI sessions and the IDE extension",
     ].join("\n  · "),
     configPath,
-    backupPath: backupPath ?? hooks.backupPath,
+    backupPath: backupPath ?? hooks.backupPath ?? planTool.backupPath,
   };
 }
 
@@ -416,6 +443,42 @@ function registeredCodexHookFiles(hooks: Record<string, unknown>): Set<string> {
     }
   }
   return found;
+}
+
+/**
+ * #506 — read-only view of `tools.update_plan.enabled` for doctor. Absent is
+ * repairable by re-running the installer; an explicit `false` is the user's own
+ * decision, so it is reported but never counted as broken.
+ */
+async function describePlanTool(): Promise<{ detail: string; broken: boolean }> {
+  let source = "";
+  if (await fileExists(CODEX_CONFIG)) {
+    try {
+      source = await readFile(CODEX_CONFIG, "utf8");
+    } catch (e) {
+      return { detail: `cannot read ${CODEX_CONFIG}: ${(e as Error).message}`, broken: false };
+    }
+  }
+  const { state, managed } = inspectPlanTool(source);
+  switch (state) {
+    case "enabled":
+      return { detail: `${PLAN_TOOL_KEY} = true${managed ? " (set by bastra)" : ""}`, broken: false };
+    case "disabled":
+      return {
+        detail: `${PLAN_TOOL_KEY} = false — your setting; the plan hook lane (^update_plan$) stays silent until you set it to true`,
+        broken: false,
+      };
+    case "unsupported":
+      return {
+        detail: `${PLAN_TOOL_KEY} has a shape bastra will not edit — set it to true by hand or the plan hook lane stays silent`,
+        broken: false,
+      };
+    default:
+      return {
+        detail: `MISSING — Codex ships its planning tool off by default, so the plan hook lane (^update_plan$) never fires; re-run 'bastra install codex'`,
+        broken: true,
+      };
+  }
 }
 
 async function codexDoctor(): Promise<DoctorResult> {
@@ -469,11 +532,14 @@ async function codexDoctor(): Promise<DoctorResult> {
         : `${REQUIRED_HOOK_FILES.length}/${OUR_HOOK_FILES.length} registered (optional Stop disabled)`;
     if (!hooksBroken) details["hook-trust"] = "Codex-owned; use '/hooks' to confirm registered hooks are active";
   }
+  // #506 — the plan hook lane is silent unless Codex's planning tool is on.
+  const planTool = await describePlanTool();
+  details["plan-tool"] = planTool.detail;
   const probe = await probeDaemon();
   // #531 — the key names the endpoint that was actually probed.
   details[`daemon-at-${probe.endpoint?.label ?? "?"}`] = probe.ok ? `reachable (${probe.detail})` : probe.detail;
   if (!registered) return { status: "missing", message: "MCP not registered with Codex/ChatGPT desktop", details };
-  const broken = forwarderBroken || hooksBroken || (details.skill === "missing" || details.skill.startsWith("STALE")) ||
+  const broken = forwarderBroken || hooksBroken || planTool.broken || (details.skill === "missing" || details.skill.startsWith("STALE")) ||
     details["vault-path"]?.includes("MISSING") === true || details["vault-path"]?.startsWith("not ") === true;
   if (broken) return { status: "broken", message: "registered but some pieces need repair — re-run 'bastra install codex'", details };
   return { status: "ok", message: "MCP + Codex/ChatGPT skill + required hooks registered and healthy", details };

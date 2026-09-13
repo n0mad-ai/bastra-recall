@@ -29,7 +29,7 @@ Beim ersten Codex-Start die sieben angezeigten Bastra-Hooks prüfen und vertraue
 | `SessionStart` | projektbewusster Startkontext, Konventionen und offene Hinweise |
 | `UserPromptSubmit` | Recall bei Lookup-, Claim- und Reflex-Signalen |
 | `PreToolUse: apply_patch` | Patch-Ziele und Inhalt in die vorhandene Write/Edit-Lane normalisieren |
-| `PreToolUse: update_plan` | Plan-Schritte in die vorhandene Topologie-/Todo-Lane normalisieren — setzt `tools.update_plan.enabled = true` in `~/.codex/config.toml` voraus, seit Codex 0.152.0 ist das Planungs-Tool per Default aus (#506) |
+| `PreToolUse: update_plan` | Plan-Schritte in die vorhandene Topologie-/Todo-Lane normalisieren — braucht `tools.update_plan.enabled = true` in `~/.codex/config.toml`; seit Codex 0.152.0 ist das Planungs-Tool per Default aus, deshalb setzt `bastra install codex` den Schlüssel selbst (kommentierter Block, `bastra uninstall codex` nimmt ihn zurück; ein von dir auf `false` gesetzter Wert bleibt unangetastet) (#506) |
 | `PreToolUse: Bash` | riskante oder destruktive Befehle vor Ausführung prüfen |
 | `PostToolUse: Bash` | Fehlschläge und Act-Signale erfassen; beliebige Codex-JSON-Antwortwerte unterstützen |
 | `Stop` | stille Save-Evaluation; bei `--no-stop-hook` deaktiviert |
@@ -85,7 +85,7 @@ On the first Codex start, review and trust the seven displayed Bastra hooks; the
 | `SessionStart` | project-aware startup context, conventions, and pending guidance |
 | `UserPromptSubmit` | recall for lookup, claim, and reflex signals |
 | `PreToolUse: apply_patch` | normalize patch targets and content into the existing Write/Edit lane |
-| `PreToolUse: update_plan` | normalize plan steps into the existing topology/Todo lane — needs `tools.update_plan.enabled = true` in `~/.codex/config.toml`; Codex has shipped the planning tool off by default since 0.152.0 (#506) |
+| `PreToolUse: update_plan` | normalize plan steps into the existing topology/Todo lane — needs `tools.update_plan.enabled = true` in `~/.codex/config.toml`; Codex has shipped the planning tool off by default since 0.152.0, so `bastra install codex` sets the key itself (a commented block that `bastra uninstall codex` removes again; a value you set to `false` is left alone) (#506) |
 | `PreToolUse: Bash` | check risky or destructive commands before execution |
 | `PostToolUse: Bash` | capture failures and act signals; accept any Codex JSON response value |
 | `Stop` | quiet save evaluation; disabled by `--no-stop-hook` |
