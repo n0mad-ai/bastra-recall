@@ -27,6 +27,7 @@ import { showHelp } from "./help-text.js";
 import { validateArgs } from "./flag-spec.js";
 import { describeStale } from "../code-staleness.js";
 import { autostartWarning } from "./autostart.js";
+import { stubFreshness, stubFreshnessLines } from "./stub-freshness.js";
 import type { InstallOpts, ParsedArgs } from "./types.js";
 
 export function showVersion(): void {
@@ -391,8 +392,39 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   await printEmbeddingDoctorNote();
   await printVersionPairNote();
   await printAutostartNote();
+  await printStubBinaryNote();
 
   return hadBroken ? 1 : 0;
+}
+
+/**
+ * The compiled hook binary (#546) — the fourth global check, and the only one
+ * that looks at an artifact rather than at a registration.
+ *
+ * A registered hook points at an absolute path to a `deno compile` binary. The
+ * registration being correct says nothing about the binary being current: the
+ * one on the dev host was from 29.08. and ran for two weeks against sources
+ * that had moved on, writing telemetry rows that could not be folded, and
+ * nothing asked. `npm run test:stub` catches it in CI since #546; this asks it
+ * in everyday use, before somebody spends days on numbers an old build made.
+ *
+ * A NOTE like the three above, never a failure: an out-of-date binary still
+ * answers every hook call, it just is not the code that is here. And nothing
+ * is built — the binary is asked for its stamp (~25 ms), it is not recompiled.
+ */
+async function printStubBinaryNote(): Promise<void> {
+  try {
+    const report = await stubFreshness();
+    const lines = stubFreshnessLines(report);
+    // Silent when no registration runs a compiled stub at all: this host is on
+    // the node thin client, which ships inside `dist` and cannot drift from it.
+    if (lines.length === 0) return;
+    process.stdout.write("\u2192 hook binary\n");
+    for (const line of lines) process.stdout.write(`  ${line}\n`);
+    process.stdout.write("\n");
+  } catch {
+    /* a diagnostics NOTE must never break doctor */
+  }
 }
 
 /**
