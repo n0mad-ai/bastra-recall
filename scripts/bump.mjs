@@ -164,7 +164,7 @@ function printHandoff() {
       `  git push\n` +
       `  ${releaseCmd}\n${stagingNote}\n` +
       `  gh workflow run publish-npm.yml -f tag=v${version} -f dry_run=false\n` +
-      "  # builds, publishes, attaches — and only then publishes the draft\n" +
+      "  # builds, attaches, publishes npm LAST — and only then publishes the draft\n" +
       "  # #548: dispatch BEFORE the branch moves on. The gate refuses a run whose\n" +
       "  # commit is not the one the draft points at, rather than building something\n" +
       "  # else and attaching it to this release.",

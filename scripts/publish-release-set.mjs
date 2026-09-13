@@ -3,8 +3,8 @@
  * publish-release-set.mjs — publish the four npm packages of one release as a
  * set, resumably (#524).
  *
- *   node scripts/publish-release-set.mjs            # publish what is missing
- *   node scripts/publish-release-set.mjs --verify   # assert the set is complete
+ *   node scripts/publish-release-set.mjs --tag v1.0.0   # publish what is missing
+ *   node scripts/publish-release-set.mjs --verify       # assert the set is complete
  *
  * Why: the publish workflow used to run four independent `npm publish` steps.
  * npm versions are immutable, so a failure in a later step left a release whose
@@ -27,13 +27,39 @@
  * workflow's `promote` job runs before it moves GitHub `/releases/latest`, which
  * is what the Homebrew tap updater and the one-click installers consume.
  *
- * The `npm` binary is taken from PATH, so the whole thing is exercisable
- * against a stub registry in tests.
+ * #549 — the publish is the LAST irreversible step of a release, not the first.
+ *
+ * Each package went straight to `--tag latest` while the desktop extension, the
+ * installers and the completeness of the set were still unverified. A later
+ * failure left GitHub hidden as a draft and npm users already holding the new,
+ * incomplete set: `npm install -g bastra-recall` handed them a version whose
+ * assets did not exist. That contradicts the whole point of staging in private.
+ *
+ * npm's OIDC trusted publishing issues publish-scoped credentials — `npm
+ * dist-tag add` is rejected with them and `npm stage approve` needs 2FA — so a
+ * staging dist-tag promoted afterwards would mean putting a long-lived npm token
+ * back into the release path. Instead the irreversible step is moved to the end
+ * and given a precondition: publishing requires the release tag, and refuses to
+ * publish a single package while that release is still missing any required
+ * asset. The stub binaries, the checksums, the .mcpb bundle and the Finder
+ * installers therefore all exist before `latest` moves anywhere.
+ *
+ * A partial failure inside the publish itself keeps the #524 behaviour, which is
+ * why the order matters: packages go out in dependency order with the unscoped
+ * `bastra-recall` wrapper LAST, so a run that dies part-way has not moved the
+ * documented install path at all — `npm install -g bastra-recall` still resolves
+ * to the previous release, whose exact pins point at packages that are still
+ * there. A rerun skips what is genuinely published (digest-verified) and
+ * finishes the rest, and GitHub stays a draft until `promote`.
+ *
+ * The `npm` and `gh` binaries are taken from PATH, so the whole thing is
+ * exercisable against stubs in tests.
  */
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { assertCompleteAssets } from "./release-assets.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -48,6 +74,15 @@ const WORKSPACE_DIRS = [
 ];
 
 const verifyOnly = process.argv.includes("--verify");
+
+/** The tag of the staged release this publish belongs to (#549). */
+function readTag() {
+  const flag = process.argv.indexOf("--tag");
+  if (flag >= 0 && process.argv[flag + 1]) return process.argv[flag + 1].trim();
+  const inline = process.argv.find((a) => a.startsWith("--tag="));
+  if (inline) return inline.slice("--tag=".length).trim();
+  return (process.env.RELEASE_TAG ?? "").trim();
+}
 
 function readPkg(dir) {
   const path = resolve(repoRoot, dir, "package.json");
@@ -155,6 +190,33 @@ if (versions.size !== 1) {
 }
 const version = pkgs[0].version;
 console.log(`Release set v${version} — ${verifyOnly ? "verifying" : "publishing"} ${pkgs.length} package(s).`);
+
+// #549: npm is the one side of a release that cannot be taken back, and it used
+// to go first. Nothing is published until the release it belongs to already
+// carries every other part of the set. Fail closed: without a tag there is
+// nothing to check the set against, so there is nothing to publish either.
+if (!verifyOnly) {
+  const tag = readTag();
+  if (!tag) {
+    console.error(
+      "error: refusing to publish without --tag <release tag>.\n" +
+        "       npm `latest` must not move before the release it belongs to is complete,\n" +
+        "       and without the tag that completeness cannot be checked.",
+    );
+    process.exit(1);
+  }
+  try {
+    assertCompleteAssets(tag, process.env.GITHUB_REPOSITORY);
+  } catch (err) {
+    console.error(
+      `error: ${err.message}\n` +
+        `       Publishing now would move npm \`latest\` to a release whose downloads do\n` +
+        `       not exist. Let the asset jobs finish and rerun — nothing has been published.`,
+    );
+    process.exit(1);
+  }
+  console.log(`Release ${tag} carries every required asset — safe to move npm latest.`);
+}
 
 // Preflight every target before the first publish, so a set that is already
 // inconsistent fails without adding another immutable version to the mess.

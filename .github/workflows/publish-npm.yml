@@ -157,10 +157,16 @@ jobs:
 
   publish:
     runs-on: ubuntu-latest
+    # #549: npm is the only irreversible half of a release — a version cannot be
+    # taken back — and it used to be the FIRST thing that became public. Every
+    # other job now runs before it, and `publish-release-set.mjs` additionally
+    # refuses to publish while the draft is missing any required asset, so npm
+    # `latest` is the last thing in the whole release that moves.
+    #
     # The manifest below needs every platform's checksum: a release whose
     # fast path silently failed to build is the failure shape this project is
     # named against, so a broken stub build blocks the publish.
-    needs: [gate, stub]
+    needs: [gate, stub, desktop-extension, installer-scripts]
     environment: npm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -202,20 +208,28 @@ jobs:
       # it ever reached the daemon. The script preflights every target version,
       # skips a package only after verifying the published artifact IS this
       # release, and keeps the unscoped wrapper last.
-      - name: Publish the release set (resumable)
+      - name: Publish the release set (resumable, last irreversible step)
         if: ${{ needs.gate.outputs.publish == 'true' }}
-        run: node scripts/publish-release-set.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.gate.outputs.tag }}
+        run: node scripts/publish-release-set.mjs --tag "$TAG"
 
   desktop-extension:
-    # Claude Desktop Extension (.mcpb): built from the SAME checkout the npm
-    # packages were published from (workspace tarballs — no registry
-    # propagation race) and attached to the GitHub release as an asset.
+    # Claude Desktop Extension (.mcpb): built from the SAME commit the npm
+    # packages are published from — since #548 that is no longer a matter of
+    # job order but of `ref: needs.gate.outputs.sha` — using workspace tarballs,
+    # so there is no registry propagation race either.
     # #281: each bundle ships with a .sha256 file (the CLI verifies it after
     # download) and a Sigstore attestation (`gh attestation verify <file>
     # --repo n0mad-ai/bastra-recall`) — the npm packages already carry
     # --provenance, this closes the same gap for the release asset.
-    if: ${{ needs.gate.outputs.publish == 'true' }}
-    needs: [gate, publish]
+    #
+    # #549: this used to wait on `publish`; now `publish` waits on this, because
+    # the extension has to exist before npm `latest` moves. The job itself runs
+    # on rehearsals too (a skipped job would skip `publish` with it) — only the
+    # two steps that leave something behind are gated.
+    needs: [gate, stub]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -241,10 +255,12 @@ jobs:
             sha256sum "$f" > "$f.sha256"
           done
       - name: Attest build provenance
+        if: ${{ needs.gate.outputs.publish == 'true' }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: packages/daemon/mcpb/*.mcpb
       - name: Attach extension to release
+        if: ${{ needs.gate.outputs.publish == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.gate.outputs.tag }}
@@ -257,7 +273,10 @@ jobs:
     # build, no `needs`) so the documented entry point is published even if the
     # npm or .mcpb step fails. NOTE: GitHub normalizes spaces in asset names to
     # dots, so they appear as `Install.Bastra.command` / `Uninstall.Bastra.command`.
-    if: ${{ needs.gate.outputs.publish == 'true' }}
+    #
+    # #549: `publish` now waits on this job, so the documented Finder entry
+    # points exist before npm `latest` moves. The job runs on rehearsals too —
+    # a skipped job would skip `publish` with it — only the upload is gated.
     needs: gate
     runs-on: ubuntu-latest
     permissions:
@@ -269,6 +288,7 @@ jobs:
           # dispatch ref points at by now.
           ref: ${{ needs.gate.outputs.sha }}
       - name: Attach installer scripts to release
+        if: ${{ needs.gate.outputs.publish == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.gate.outputs.tag }}
@@ -311,32 +331,15 @@ jobs:
           node-version: "22.14"
       - name: Verify every npm package of the set is published and on `latest`
         run: node scripts/publish-release-set.mjs --verify
+      # #549/#548: the list of what a complete release carries is a decision,
+      # not formatting — it lives in scripts/release-assets.mjs, where a test can
+      # drive it, and `publish-release-set.mjs` asks the same question before it
+      # moves npm `latest`.
       - name: Verify every required release asset is attached
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.gate.outputs.tag }}
-        run: |
-          names="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
-          printf '%s\n' "$names"
-          missing=0
-          # GitHub normalizes the spaces in the .command names to dots.
-          for want in \
-            bastra-hook-x86_64-unknown-linux-gnu \
-            bastra-hook-aarch64-unknown-linux-gnu \
-            bastra-hook-x86_64-apple-darwin \
-            bastra-hook-aarch64-apple-darwin \
-            bastra-hook-x86_64-unknown-linux-gnu.sha256 \
-            bastra-hook-aarch64-unknown-linux-gnu.sha256 \
-            bastra-hook-x86_64-apple-darwin.sha256 \
-            bastra-hook-aarch64-apple-darwin.sha256 \
-            Install.Bastra.command \
-            Uninstall.Bastra.command
-          do
-            printf '%s\n' "$names" | grep -qxF "$want" || { echo "missing asset: $want"; missing=1; }
-          done
-          printf '%s\n' "$names" | grep -q '\.mcpb$' || { echo "missing asset: *.mcpb"; missing=1; }
-          printf '%s\n' "$names" | grep -q '\.mcpb\.sha256$' || { echo "missing asset: *.mcpb.sha256"; missing=1; }
-          test "$missing" -eq 0
+        run: node scripts/release-assets.mjs "$TAG"
       - name: Promote — publish the draft, and make it Latest
         env:
           GH_TOKEN: ${{ github.token }}

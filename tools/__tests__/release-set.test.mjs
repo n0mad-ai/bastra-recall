@@ -42,12 +42,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { REQUIRED_ASSETS } from "../../scripts/release-assets.mjs";
+
 const execFileAsync = promisify(execFile);
 const REPO = fileURLToPath(new URL("../..", import.meta.url));
 const BUMP = join(REPO, "scripts", "bump.mjs");
 const PUBLISH = join(REPO, "scripts", "publish-release-set.mjs");
 const WORKFLOW = join(REPO, ".github", "workflows", "publish-npm.yml");
 const VERSION = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")).version;
+
+/** A release that carries everything — the precondition #549 added to publishing. */
+const COMPLETE_ASSETS = [
+  ...REQUIRED_ASSETS,
+  `bastra-recall-${VERSION}.mcpb`,
+  `bastra-recall-${VERSION}.mcpb.sha256`,
+];
 
 /* ------------------------------------------------------------------ bump.mjs */
 
@@ -136,6 +145,15 @@ if [ "$1" = "publish" ]; then exit 0; fi
 exit 0
 `;
 
+/**
+ * A stub `gh` for the #549 asset gate: publishing now refuses while the release
+ * is missing an asset, so the resumability cases below need a complete one.
+ * $ASSETS carries the names; the #549 tests are the ones that take it apart.
+ */
+const GH_STUB = `#!/usr/bin/env bash
+printf '%s\\n' "\${ASSETS:-}"
+`;
+
 async function runPublish(args, env = {}) {
   const dir = await mkdtemp(join(tmpdir(), "bastra-release-524-"));
   try {
@@ -143,6 +161,7 @@ async function runPublish(args, env = {}) {
     await mkdir(bin, { recursive: true });
     const log = join(dir, "npm.log");
     await writeFile(join(bin, "npm"), NPM_STUB, { mode: 0o755 });
+    await writeFile(join(bin, "gh"), GH_STUB, { mode: 0o755 });
     await writeFile(log, "");
     const child = spawn(process.execPath, [PUBLISH, ...args], {
       cwd: REPO,
@@ -151,6 +170,8 @@ async function runPublish(args, env = {}) {
         HOME: dir,
         NPM_LOG: log,
         SET_VERSION: VERSION,
+        RELEASE_TAG: `v${VERSION}`,
+        ASSETS: COMPLETE_ASSETS.join("\n"),
         ...env,
       },
       stdio: ["ignore", "pipe", "pipe"],
