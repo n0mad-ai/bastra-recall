@@ -17,6 +17,24 @@
  * MCP/REST argument can produce it, the boundary decides, and a refused
  * private mutation leaves the bytes, the file paths and the index untouched.
  *
+ * REOPENED (counter-review pass 7) — and the reason this harness has a second
+ * dimension now. Every check above asked `deps.vault.get(id)`, the INDEX, and
+ * the suite started from a cache that was already privately indexed, so the
+ * window between cache and disk was never exercised. It is a wide window: this
+ * vault lives on a cloud-sync mount where the file watcher is explicitly
+ * unreliable. Index a public memory, set `sensitivity: private` on disk, and
+ * an external caller could overwrite it, edit it, recategorize it, move it, or
+ * archive it into the trash — 5 of 5 runs per path.
+ *
+ * So `harness()` takes `indexed` and `onDisk` separately, and the two must be
+ * allowed to disagree in BOTH directions:
+ *
+ *   - index public / disk private → refused. The bytes decide, because the
+ *     bytes are what the write replaces.
+ *   - index private / disk public → ALSO refused. Fail-closed: hidden is what
+ *     EITHER source calls private. A wrongly refused write is repeatable after
+ *     a reindex; a wrongly allowed one destroys a record nobody could read.
+ *
  * Runner: `node --import tsx --test packages/daemon/__tests__/private-write-authorization.test.ts`
  */
 import { test } from "node:test";
@@ -33,6 +51,7 @@ import {
   recallHandler,
   type ToolDeps,
 } from "../src/tool-handlers.js";
+import { editMemoryHandler } from "../src/edit-memory-handler.js";
 import {
   saveDocument,
   recategorizeDocument,
@@ -69,23 +88,53 @@ function memoryFile(id: string, sensitivity: string | null, body: string, title 
   ].join("\n");
 }
 
-async function harness(t: { after: (fn: () => unknown) => void }): Promise<{
+/**
+ * `null` is "no sensitivity field at all" — a plain, public memory.
+ */
+type Sensitivity = "private" | null;
+
+interface HarnessOptions {
+  /** What the INDEX was told about `secret-id` / `note-secret-id`. */
+  indexed?: Sensitivity;
+  /**
+   * What stands on DISK afterwards — written without a reindex, so the cache
+   * keeps `indexed`. Defaults to `indexed`, which is the state every test
+   * from before the reopening assumed.
+   */
+  onDisk?: Sensitivity;
+}
+
+async function harness(
+  t: { after: (fn: () => unknown) => void },
+  { indexed = "private", onDisk = indexed }: HarnessOptions = {},
+): Promise<{
   dir: string;
   deps: ToolDeps;
   vault: Vault;
 }> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-464-"));
-  await writeFile(join(dir, "secret-id.md"), memoryFile("secret-id", "private", PRIVATE_BODY), "utf8");
+  await writeFile(join(dir, "secret-id.md"), memoryFile("secret-id", indexed, PRIVATE_BODY), "utf8");
   await writeFile(join(dir, "open-id.md"), memoryFile("open-id", null, "A public body."), "utf8");
   // The implicit collision case: a save that carries no `id` folds its title
   // onto exactly this memory.
   await writeFile(
     join(dir, "note-secret-id.md"),
-    memoryFile("note-secret-id", "private", PRIVATE_BODY, "Note secret-id"),
+    memoryFile("note-secret-id", indexed, PRIVATE_BODY, "Note secret-id"),
     "utf8",
   );
   const vault = new Vault(dir);
   await vault.init();
+  // The window itself: the disk moves on, the index does not. `Vault.init()`
+  // does not start the watcher, so the cache stays exactly as loaded — which
+  // is what a cloud-sync mount looks like in practice.
+  if (onDisk !== indexed) {
+    await writeFile(join(dir, "secret-id.md"), memoryFile("secret-id", onDisk, PRIVATE_BODY), "utf8");
+    await writeFile(
+      join(dir, "note-secret-id.md"),
+      memoryFile("note-secret-id", onDisk, PRIVATE_BODY, "Note secret-id"),
+      "utf8",
+    );
+  }
   const search = new SearchIndex(vault);
   search.start();
   const deps: ToolDeps = { vault, search, telemetry: new Telemetry(), vaultPath: dir };
@@ -317,8 +366,27 @@ const DOC_BASE = {
   overwrite: false,
 } as const;
 
-/** A document sidecar the user marked private, plus its copied original. */
-async function privateDocument(dir: string, vault: Vault): Promise<{
+/** Write `sensitivity` into an existing sidecar — `null` removes the field. */
+async function stampSensitivity(path: string, sensitivity: Sensitivity): Promise<void> {
+  const parsed = matter(await readFile(path, "utf8"));
+  const { sensitivity: _drop, ...rest } = parsed.data as Record<string, unknown>;
+  void _drop;
+  await writeFile(
+    path,
+    matter.stringify(parsed.content, sensitivity ? { ...rest, sensitivity } : rest),
+    "utf8",
+  );
+}
+
+/**
+ * A document sidecar plus its copied original — with the same two dimensions
+ * as {@link harness}: what the index believes, and what stands on disk.
+ */
+async function privateDocument(
+  dir: string,
+  vault: Vault,
+  { indexed = "private", onDisk = indexed }: HarnessOptions = {},
+): Promise<{
   id: string;
   sidecarPath: string;
   originalPath: string;
@@ -330,13 +398,10 @@ async function privateDocument(dir: string, vault: Vault): Promise<{
     original_path: src,
     body: "Der vertrauliche Vertragstext.",
   } as Parameters<typeof saveDocument>[1]);
-  const parsed = matter(await readFile(doc.sidecar_path, "utf8"));
-  await writeFile(
-    doc.sidecar_path,
-    matter.stringify(parsed.content, { ...parsed.data, sensitivity: "private" }),
-    "utf8",
-  );
+  await stampSensitivity(doc.sidecar_path, indexed);
   await vault.reindexFile(doc.sidecar_path);
+  // …and then the disk moves on alone.
+  if (onDisk !== indexed) await stampSensitivity(doc.sidecar_path, onDisk);
   return { id: doc.id, sidecarPath: doc.sidecar_path, originalPath: doc.original_path };
 }
 
@@ -438,4 +503,228 @@ test("#464: refused private mutations leave the vault index entry intact", async
   assert.equal(vault.get("secret-id")?.filePath, beforeMemory.filePath);
   assert.equal(vault.get(doc.id)?.filePath, beforeDoc.filePath);
   await mkdir(join(dir, ".keep"), { recursive: true });
+});
+
+// ─── the window between index and disk (reopened #464) ──────────
+//
+// Everything above starts from a cache that already knows the record is
+// private. These start from a cache that does NOT — the disk moved on alone,
+// which is the normal state of a vault on a cloud-sync mount. Each of them
+// fails without the fix: the counter-review measured 5 of 5 successful
+// overwrites and 5 of 5 archived-into-the-trash runs.
+
+const STALE = { indexed: null, onDisk: "private" } as const;
+
+test("#464: save_memory(overwrite) asks the bytes, not the stale index", async (t) => {
+  const { dir, deps } = await harness(t, STALE);
+  assert.notEqual(deps.vault.get("secret-id")?.fm.sensitivity, "private", "the index believes it is public");
+  const before = await snapshot(dir);
+
+  await assert.rejects(
+    dispatchApi("save_memory", { ...OVERWRITE_PAYLOAD }, restCtx(deps)),
+    /memory not found: secret-id/,
+  );
+  assertUnchanged(before, await snapshot(dir), "refused save_memory over a stale public index");
+  const still = await readFile(join(dir, "secret-id.md"), "utf8");
+  assert.ok(!still.includes("REPLACED BODY"), "the private body on disk survives");
+});
+
+test("#464: an implicit slug collision is refused on the bytes too", async (t) => {
+  const { dir, deps } = await harness(t, STALE);
+  const before = await snapshot(dir);
+  const { id: _id, ...withoutId } = OVERWRITE_PAYLOAD;
+  void _id;
+  await assert.rejects(
+    dispatchApi("save_memory", { ...withoutId }, restCtx(deps)),
+    /memory not found: note-secret-id/,
+  );
+  assertUnchanged(before, await snapshot(dir), "refused implicit collision over a stale index");
+});
+
+test("#464: archive_memory does not trash a file the index only believes is public", async (t) => {
+  const { dir, deps } = await harness(t, STALE);
+  const before = await snapshot(dir);
+
+  await assert.rejects(
+    dispatchApi("archive_memory", { id: "secret-id" }, restCtx(deps)),
+    /unknown memory: secret-id/,
+  );
+  // The sharpest assertion of the suite: the review's run moved the private
+  // file AND its content into the trash, so "nothing appeared, nothing
+  // vanished, nothing moved" is exactly the claim under test.
+  assertUnchanged(before, await snapshot(dir), "refused archive over a stale public index");
+  await stat(join(dir, "secret-id.md"));
+});
+
+test("#464: edit_memory patches nothing when the bytes on disk are private", async (t) => {
+  const { dir, deps } = await harness(t, STALE);
+  const before = await snapshot(dir);
+
+  await assert.rejects(
+    dispatchApi("edit_memory", { id: "secret-id", append: "APPENDED BY AN OUTSIDER" }, restCtx(deps)),
+    /memory not found: secret-id/,
+  );
+  assertUnchanged(before, await snapshot(dir), "refused edit_memory over a stale public index");
+});
+
+test("#464: save_product_doc asks the bytes under its hard-wired overwrite", async (t) => {
+  const { dir, deps } = await harness(t);
+  const docFile = join(dir, "doku-testlabel-hints.md");
+  // Indexed public …
+  await writeFile(docFile, memoryFile("doku-testlabel-hints", null, PRIVATE_BODY, "Testlabel — Hints"), "utf8");
+  await deps.vault.reindexFile(docFile);
+  // … private on disk, with no reindex.
+  await writeFile(docFile, memoryFile("doku-testlabel-hints", "private", PRIVATE_BODY, "Testlabel — Hints"), "utf8");
+  const before = await snapshot(dir);
+
+  await assert.rejects(
+    dispatchApi(
+      "save_product_doc",
+      { project: "testlabel", area: "hints", title: "T", summary: "S", body: "B" },
+      restCtx(deps),
+    ),
+    /memory not found: doku-testlabel-hints/,
+  );
+  assertUnchanged(before, await snapshot(dir), "refused save_product_doc over a stale public index");
+});
+
+test("#464: a stale-public predecessor is not stamped with superseded_by", async (t) => {
+  const { dir, deps } = await harness(t, STALE);
+  const before = await snapshot(dir);
+  // The index says `secret-id` is public, so the pre-check lets the save
+  // through — and the stamp then runs against bytes that are private. The
+  // successor is a legitimate new memory and IS written; what must not happen
+  // is a frontmatter patch on the hidden predecessor.
+  await dispatchApi(
+    "save_memory",
+    {
+      ...OVERWRITE_PAYLOAD,
+      id: "successor",
+      recall_when: ["successor of the hidden record"],
+      summary: "A successor nobody asked for.",
+      body: "A body that would take over from the private one.",
+      overwrite: false,
+      replaces: "secret-id",
+    },
+    restCtx(deps),
+  );
+  const after = await snapshot(dir);
+  assert.equal(
+    after.get("secret-id.md"),
+    before.get("secret-id.md"),
+    "the private predecessor is byte-identical — no superseded_by was stamped",
+  );
+});
+
+test("#464: recategorize_document and move_document ask the bytes", async (t) => {
+  const { dir, deps, vault } = await harness(t);
+  const doc = await privateDocument(dir, vault, STALE);
+  assert.notEqual(vault.get(doc.id)?.fm.sensitivity, "private", "the index believes it is public");
+  const before = await snapshot(dir);
+
+  await assert.rejects(
+    dispatchApi("recategorize_document", { id: doc.id, title: "Umbenannt", force: true }, restCtx(deps)),
+    new RegExp(`document not found: ${doc.id}`),
+  );
+  await assert.rejects(
+    dispatchApi("move_document", { id: doc.id, folder_path: "woanders" }, restCtx(deps)),
+    new RegExp(`document not found: ${doc.id}`),
+  );
+  assertUnchanged(before, await snapshot(dir), "refused document writes over a stale public index");
+  await stat(doc.sidecarPath);
+  await stat(doc.originalPath);
+});
+
+test("#464: save_document(overwrite) already read the sidecar from disk — and still does", async (t) => {
+  const { dir, deps, vault } = await harness(t);
+  const doc = await privateDocument(dir, vault, STALE);
+  const before = await snapshot(dir);
+
+  await assert.rejects(
+    dispatchApi(
+      "save_document",
+      {
+        ...DOC_BASE,
+        title: "Fremder Titel",
+        tags: ["fremd"],
+        original_path: doc.originalPath,
+        overwrite: true,
+      },
+      restCtx(deps),
+    ),
+    /document not found|refusing to overwrite/,
+  );
+  assertUnchanged(before, await snapshot(dir), "refused save_document over a stale public index");
+});
+
+// ─── the other direction: index private, disk public ────────────
+//
+// Which source wins when they disagree the other way round? Neither alone:
+// hidden is what EITHER of them calls private.
+//
+// The argument is asymmetric cost. A refusal the caller did not deserve is a
+// reindex away from being repeatable and destroys nothing. An allowed write
+// the caller did not deserve replaces a record it could never read, and on a
+// cloud-sync mount "the disk read raced the sync" is not a thought experiment.
+// So the index keeps its veto even when the bytes look harmless — and the
+// trusted local app, the only party that ever needs to get through, is not
+// affected either way.
+
+const REVERSED = { indexed: "private", onDisk: null } as const;
+
+test("#464: index private and disk public still refuses — the gate is fail-closed", async (t) => {
+  const { dir, deps } = await harness(t, REVERSED);
+  const onDisk = await readFile(join(dir, "secret-id.md"), "utf8");
+  assert.ok(!onDisk.includes("sensitivity:"), "the bytes really are public now");
+  const before = await snapshot(dir);
+
+  await assert.rejects(
+    dispatchApi("save_memory", { ...OVERWRITE_PAYLOAD }, restCtx(deps)),
+    /memory not found: secret-id/,
+  );
+  await assert.rejects(
+    dispatchApi("archive_memory", { id: "secret-id" }, restCtx(deps)),
+    /unknown memory: secret-id/,
+  );
+  await assert.rejects(
+    dispatchApi("edit_memory", { id: "secret-id", append: "X" }, restCtx(deps)),
+    /memory not found: secret-id/,
+  );
+  assertUnchanged(before, await snapshot(dir), "refused writes while the index still says private");
+});
+
+test("#464: a reindex, not a retry, is what clears a stale-private refusal", async (t) => {
+  const { dir, deps } = await harness(t, REVERSED);
+  await deps.vault.reindexFile(join(dir, "secret-id.md"));
+  const result = (await dispatchApi("save_memory", { ...OVERWRITE_PAYLOAD }, restCtx(deps))) as {
+    created: boolean;
+  };
+  assert.equal(result.created, false);
+  assert.match(await readFile(join(dir, "secret-id.md"), "utf8"), /REPLACED BODY/);
+});
+
+// ─── the trusted transport is not caught by any of this ─────────
+
+test("#464: the local app still writes through, whatever the index and the disk say", async (t) => {
+  const { dir, deps, vault } = await harness(t, STALE);
+  const overwritten = (await saveMemoryHandler(deps, { ...OVERWRITE_PAYLOAD }, TRUSTED_LOCAL_APP)) as {
+    created: boolean;
+  };
+  assert.equal(overwritten.created, false);
+  assert.match(await readFile(join(dir, "secret-id.md"), "utf8"), /REPLACED BODY/);
+
+  const edited = (await editMemoryHandler(
+    deps,
+    { id: "secret-id", append: "APPENDED BY THE APP" },
+    TRUSTED_LOCAL_APP,
+  )) as { created: false };
+  assert.equal(edited.created, false);
+  assert.match(await readFile(join(dir, "secret-id.md"), "utf8"), /APPENDED BY THE APP/);
+
+  const doc = await privateDocument(dir, vault, STALE);
+  const moved = await moveDocument(vault, { id: doc.id, folder_path: "woanders" }, TRUSTED_LOCAL_APP);
+  assert.match(moved.sidecar_path, /woanders/);
+
+  const archived = await archiveMemoryHandler(deps, { id: "secret-id" }, TRUSTED_LOCAL_APP);
+  assert.equal(archived.id, "secret-id");
 });

@@ -30,7 +30,7 @@ import { touchLoadedMarker } from "./session-state.js";
 import { tokens as words } from "./save-similarity.js";
 
 import type { ToolDeps } from "./tool-deps.js";
-import { hiddenFromCaller, type PrivateAccess } from "./private-access.js";
+import { hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
 import { vaultLocator } from "./vault-locator.js";
 import { scoreSaveQuality, GENERIC_TRIGGER_WORDS, type SaveQualityResult } from "./save-quality.js";
 import { MEMORY_TOOL_DEFS } from "./tool-defs-memory.js";
@@ -572,6 +572,18 @@ async function saveMemoryInner(
   // die Patch-Basis ist seither die Quelldatei, nicht der Index.
   const result = await saveMemory(deps.vaultPath, parsed.data, {
     locator: vaultLocator(deps.vault),
+    // #464 (wiedereröffnet): Die Prüfung oben fragte den INDEX — und zwischen
+    // Index und Schreibvorgang liegt ein Fenster, in dem die Datei auf der
+    // Platte längst `sensitivity: private` tragen kann (Cloud-Sync, fremder
+    // Editor, unzuverlässiger Watcher). Dieselbe Frage noch einmal, an die
+    // BYTES, die dieser Save ersetzt, und unter demselben Claim, der ihn
+    // schützt. Wortgleiche Antwort wie der Lesepfad.
+    precondition: (prevFm) => {
+      if (hiddenFromCaller(access, prevFm)) {
+        noteSaveHold(deps, "private_refused", finalId, parsed.data);
+        throw new Error(`memory not found: ${finalId}`);
+      }
+    },
   });
   // Das Trashen der alten Datei erledigt `saveMemory` unter der Transaktion;
   // hier bleibt nur der Index.
@@ -599,7 +611,21 @@ async function saveMemoryInner(
         const stamped = await mutateMemoryFile(
           target.filePath,
           supersedes,
-          { frontmatter: (fm) => ({ ...fm, superseded_by: result.id }) },
+          {
+            // #464 (wiedereröffnet): Auch dieser Stempel mutiert ein fremdes
+            // Frontmatter. Die Prüfung oben fragte den Index; war der Vorgänger
+            // auf der Platte inzwischen privat, stempelte der Save in eine
+            // Datei, die dieser Caller nicht lesen darf. Wortlaut ohne
+            // „private": Der Caller hat den Vorgänger legitim als öffentlich
+            // gesehen, und die Warnung soll nicht zum Sensitivitäts-Orakel
+            // werden.
+            precondition: (raw) => {
+              if (hiddenOnDisk(access, raw)) {
+                throw new Error(`'${supersedes}' is no longer the memory the index described`);
+              }
+            },
+            frontmatter: (fm) => ({ ...fm, superseded_by: result.id }),
+          },
           { vaultRoot: deps.vaultPath },
         );
         if (stamped.kind !== "written") {
@@ -730,6 +756,21 @@ export async function archiveMemoryHandler(
               `fix that first, archiving now would move the wrong file.`,
         );
       }
+      // #464 (wiedereröffnet): Die Sensitivitätsprüfung oben fragte den INDEX.
+      // Trägt die Datei auf der PLATTE `sensitivity: private` — extern gesetzt,
+      // vom Watcher auf einem Cloud-Mount nie gemeldet —, verschob das Archiv
+      // sie samt Inhalt in den Trash (5 von 5 Läufen im Gegenreview). Also
+      // dieselbe Frage an die Bytes, unter demselben Claim, VOR jeder Bewegung.
+      //
+      // Der Read hier ist kein zweiter Read neben der Bewegung: `preimage`
+      // bindet ihn an die Fassung, die `moveToTrashUnderClaim` gleich liest —
+      // weicht sie ab, wird gar nichts verschoben.
+      const preimage = await readFile(located.filePath, "utf8");
+      if (hiddenOnDisk(access, preimage)) {
+        throw new Error(
+          `unknown memory: ${id} — archive_memory only archives memories that exist in the vault.`,
+        );
+      }
       // Codex-Gegenreview Runde 10 (P1-4): Hier stand ein eigener Read, dessen
       // Ergebnis als `diff_before` ins Ledger ging — ohne Bindung an die
       // Fassung, die gleich danach wegwanderte. Beweis und Bewegung kommen
@@ -738,6 +779,7 @@ export async function archiveMemoryHandler(
         deps.vaultPath,
         located.filePath,
         claim,
+        preimage,
       );
       deps.vault.forgetFile(located.filePath);
       if (superseded_by) {

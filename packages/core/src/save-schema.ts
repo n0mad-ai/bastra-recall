@@ -245,6 +245,25 @@ export interface SaveMemoryCommitOptions {
    */
   locator?: MemoryLocator;
   /**
+   * #464 (wiedereröffnet): Vorbedingung auf dem Frontmatter, das dieser Save
+   * ERSETZT — gelesen unter dem id-Claim, aus derselben Vorlage, aus der der
+   * Patch gebaut wird.
+   *
+   * Dasselbe Muster wie `MemoryMutation.precondition` (#519, `memory-mutate.ts`):
+   * die Frage an die Bytes, nicht an einen Cache, und unter demselben Claim,
+   * der den Schreibvorgang schützt. Der Daemon hängt hier seine
+   * Sensitivitätsprüfung ein — vorher stand sie vor dem Claim und fragte den
+   * Vault-INDEX, und zwischen Index und Schreibvorgang lag ein Fenster, in dem
+   * die Datei auf der Platte längst `sensitivity: private` tragen konnte.
+   * Auf einem Cloud-Sync-Mount ist das kein konstruierter Fall.
+   *
+   * Wer hier wirft, hat garantiert nichts geschrieben: Der Aufruf steht vor
+   * jedem Rename, jedem Trashen der Quelle und jedem Audit-Eintrag. Beim
+   * Anlegen eines neuen Memories bekommt die Vorbedingung `{}` — es gibt
+   * keinen Bestand, über den zu entscheiden wäre.
+   */
+  precondition?: (previousFrontmatter: Record<string, unknown>) => void;
+  /**
    * KEIN `authority`-Feld mehr. Codex-Gegenreview (P0): Solange die öffentliche
    * Core-API erlaubte, die Auskunft „wo lebt diese id" selbst mitzubringen, war
    * der autoritative Plattenscan optional — und damit die Invariante „eine ID,

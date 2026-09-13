@@ -157,7 +157,16 @@ export async function saveProductDocHandler(
       ],
       overwrite: true,
     },
-    { locator: vaultLocator(deps.vault) },
+    {
+      locator: vaultLocator(deps.vault),
+      // #464 (wiedereröffnet): Die Prüfung oben fragte den INDEX; dieser Pfad
+      // schreibt mit fest verdrahtetem `overwrite: true`. War die Datei auf der
+      // Platte inzwischen privat, ersetzte er sie trotzdem (5 von 5 Läufen).
+      // Dieselbe Frage an die Bytes, unter dem Claim des Saves.
+      precondition: (prevFm) => {
+        if (hiddenFromCaller(access, prevFm)) throw new Error(`memory not found: ${id}`);
+      },
+    },
   );
   // Watcher is unreliable on cloud mounts — index now so find_document sees it.
   await deps.vault.reindexFile(result.file_path);

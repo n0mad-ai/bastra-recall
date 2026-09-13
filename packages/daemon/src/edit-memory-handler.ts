@@ -58,7 +58,7 @@ import {
 } from "@bastra-recall/core";
 import { recordAudit } from "./audit-trail.js";
 import { claimGateResult, unansweredClaims, GENERATED_TRIGGER_TYPES, type ClaimGateResult } from "./claim-gate.js";
-import { hiddenFromCaller, type PrivateAccess } from "./private-access.js";
+import { hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
 import { scoreSaveQuality, type SaveQualityResult } from "./save-quality.js";
 import type { ToolDeps } from "./tool-deps.js";
 
@@ -313,6 +313,15 @@ export async function editMemoryHandler(
       // sich, und der zweite ersetzte den ersten still. Die Revision ändert
       // sich bei jedem Schreibvorgang, auch bei einem fremden.
       precondition: (raw) => {
+        // #464 (wiedereröffnet): Die Prüfung oben fragte den INDEX. Ein
+        // extern auf `private` gesetztes Memory war für einen externen Caller
+        // trotzdem teiländerbar, solange der Index es noch als öffentlich
+        // führte (5 von 5 Läufen). Dieselbe Frage an die Bytes, in derselben
+        // Vorbedingung, die #519 für die Revision gebaut hat — wer hier wirft,
+        // hat garantiert nichts geschrieben. Wortgleich mit dem Lesepfad.
+        if (hiddenOnDisk(access, raw)) {
+          throw new Error(`memory not found: ${args.id}`);
+        }
         if (args.expected_revision === undefined) return;
         const onDisk = memoryRevision(raw);
         if (onDisk !== args.expected_revision) {

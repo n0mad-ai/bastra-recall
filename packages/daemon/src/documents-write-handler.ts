@@ -45,7 +45,7 @@ import {
 } from "@bastra-recall/core";
 import { truncateSummaryTo, SUMMARY_MAX } from "@bastra-recall/core";
 import { scopeEquals } from "@bastra-recall/core/scope";
-import { hiddenFromCaller, type PrivateAccess } from "./private-access.js";
+import { hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
 import {
   openRecoveryJournal,
   type RecoveryJournalHandle,
@@ -1126,7 +1126,7 @@ export async function recategorizeDocument(
   // gewinnt einer, und der andere erfährt es.
   return withIdClaim(
     { vaultRoot: vaultRoot(vault), id: args.id, filePath: m.filePath, op: "recategorize_document" },
-    (claim) => commitRecategorize(claim, vault, args, m),
+    (claim) => commitRecategorize(claim, vault, args, m, caller),
   );
 }
 
@@ -1135,6 +1135,7 @@ async function commitRecategorize(
   vault: Vault,
   args: z.infer<typeof RecategorizeDocumentArgs> & { force?: boolean },
   m: { fm: Record<string, unknown> & { id: string; title: string; tags: string[]; summary: string; recall_when: string[]; created: string }; filePath: string },
+  caller?: PrivateAccess,
 ): Promise<{ id: string; sidecar_path: string; reindexed: boolean }> {
   const fm = m.fm as typeof m.fm & {
     original_path?: string;
@@ -1155,6 +1156,14 @@ async function commitRecategorize(
         ? `document not found on disk: ${args.id}`
         : `cannot recategorize ${args.id}: the vault scan is not conclusive (${located.kind}).`,
     );
+  }
+  // #464 (wiedereröffnet): Die Prüfung in `recategorizeDocument` fragte den
+  // INDEX. Trug das Sidecar auf der PLATTE `sensitivity: private` — extern
+  // gesetzt, vom Watcher auf einem Cloud-Mount nie gemeldet —, ließ es sich
+  // trotzdem umbenennen und umhängen (5 von 5 Läufen). Dieselbe Frage an die
+  // Bytes, unter dem Claim, VOR dem Move und vor jedem Frontmatter-Patch.
+  if (hiddenOnDisk(caller, (await readSidecarRaw(located.filePath)).raw)) {
+    throw new Error(`document not found: ${args.id}`);
   }
 
   // Wenn Folder geändert: erst move (verschiebt Files + Sidecar). Sonst nur
@@ -1305,7 +1314,7 @@ export async function moveDocument(
   // desselben Dokuments auf die Füße, und beide meldeten Erfolg.
   return withIdClaim(
     { vaultRoot: vaultRoot(vault), id: args.id, filePath: m.filePath, op: "move_document" },
-    (claim) => commitMoveDocument(claim, vault, args, m),
+    (claim) => commitMoveDocument(claim, vault, args, m, caller),
   );
 }
 
@@ -1314,6 +1323,7 @@ async function commitMoveDocument(
   vault: Vault,
   args: z.infer<typeof MoveDocumentArgs>,
   m: { fm: Record<string, unknown> & { id: string; title: string; tags: string[]; summary: string; recall_when: string[]; created: string }; filePath: string },
+  caller?: PrivateAccess,
 ): Promise<{
   id: string;
   sidecar_path: string;
@@ -1334,6 +1344,12 @@ async function commitMoveDocument(
         ? `document not found on disk: ${args.id}`
         : `cannot move ${args.id}: the vault scan is not conclusive (${located.kind}).`,
     );
+  }
+  // #464 (wiedereröffnet): wie im Recategorize — die Prüfung oben fragte den
+  // INDEX, und ein Move verschiebt Sidecar UND Originaldatei. Dieselbe Frage
+  // an die Bytes, unter dem Claim, bevor irgendetwas bewegt wird.
+  if (hiddenOnDisk(caller, (await readSidecarRaw(located.filePath)).raw)) {
+    throw new Error(`document not found: ${args.id}`);
   }
 
   const moved = await moveDocumentFiles(vault, {

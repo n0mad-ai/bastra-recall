@@ -353,6 +353,12 @@ async function commitMemory(
   // rekonstruieren zu lassen. Das spart nebenbei den zweiten Vaultscan.
   const auditBefore = baseRaw === null ? null : cloneForAudit(prev);
 
+  // #464 (wiedereröffnet): Die Vorbedingung auf dem Bestand — hier, weil `prev`
+  // genau das Frontmatter der Datei ist, die dieser Save gleich ersetzt (beim
+  // Re-Filing das der QUELLE, die getrasht wird), unter dem Claim gelesen. Vor
+  // jedem Rename und jedem Trashen: Wer hier wirft, hat nichts geschrieben.
+  commit.precondition?.(prev);
+
   // Aus Eingabe und Bestand wird das Frontmatter — welches Feld die Eingabe
   // gewinnt, welches der Bestand und welches wegfällt, steht in
   // `save-frontmatter.ts` jeweils am Feld.

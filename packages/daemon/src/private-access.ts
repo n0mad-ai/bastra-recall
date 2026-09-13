@@ -28,6 +28,8 @@
  * Problem, sondern ihr Weg in ein öffentliches Schema.
  */
 
+import matter from "gray-matter";
+
 /** Die Capability. Nur ein Transport kann sie übergeben, kein Argument. */
 export interface PrivateAccess {
   readonly trustedPrivate?: boolean;
@@ -44,4 +46,38 @@ export const TRUSTED_LOCAL_APP: PrivateAccess = Object.freeze({ trustedPrivate: 
 export function hiddenFromCaller(access: PrivateAccess | undefined, fm: unknown): boolean {
   if (access?.trustedPrivate) return false;
   return (fm as { sensitivity?: string } | null | undefined)?.sensitivity === "private";
+}
+
+/**
+ * #464 (wiedereröffnet) — DIESELBE Frage, an die BYTES gestellt.
+ *
+ * Der Gegenreview fand die Prüfung an der falschen Quelle: `deps.vault.get(id)`
+ * ist der INDEX, und der darf veraltet sein. Ein öffentlich indexiertes Memory,
+ * auf der Platte auf `private` gesetzt und dann von außen überschrieben oder
+ * archiviert, kam durch — in 5 von 5 Läufen, beim Archivieren samt Inhalt in
+ * den Trash. Der Vault liegt bei realen Nutzern auf einem Cloud-Sync-Laufwerk,
+ * wo der Datei-Watcher ausdrücklich als unzuverlässig gilt: die Abweichung
+ * zwischen Index und Platte ist dort kein konstruierter Fall, sondern Alltag.
+ *
+ * Deshalb steht diese Frage UNTER demselben Claim wie der Schreibvorgang, auf
+ * den Bytes, die er gleich ersetzt oder wegbewegt — dasselbe Muster wie
+ * `MemoryMutation.precondition` (#519, `packages/core/src/memory-mutate.ts`).
+ *
+ * Sie ERSETZT die Index-Prüfung nicht, sie ergänzt sie: verborgen ist, was
+ * EINE der beiden Quellen als privat ausweist. Die Gegenrichtung (Index sagt
+ * privat, Platte sagt öffentlich) bleibt damit refused — fail-closed, weil ein
+ * fälschlich verweigerter Schreibvorgang nach einem Reindex wiederholbar ist
+ * und ein fälschlich erlaubter nicht.
+ *
+ * Unlesbares Frontmatter zählt als verborgen: Wer die Datei nicht beurteilen
+ * kann, darf sie nicht ersetzen — dieselbe Regel, mit der der Save-Pfad
+ * `Occupant.unreadable` behandelt.
+ */
+export function hiddenOnDisk(access: PrivateAccess | undefined, raw: string): boolean {
+  if (access?.trustedPrivate) return false;
+  try {
+    return hiddenFromCaller(access, matter(raw).data);
+  } catch {
+    return true;
+  }
 }
