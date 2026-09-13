@@ -31,6 +31,7 @@
  *    the hook-lane contract this guard measures, and it is not committed, so
  *    a fresh checkout could not compute a digest that included it.
  */
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
@@ -103,4 +104,42 @@ export function stubSourceDigest({ read } = {}) {
     hash.update("\n");
   }
   return hash.digest("hex");
+}
+
+/**
+ * Did the stub's own sources differ from HEAD at build time? (#546)
+ *
+ * Scoped to the closure, not to the repo. The first version asked
+ * `git status --porcelain` about the whole tree, and on the dev host that
+ * answered `true` for a binary built from a clean, pushed checkout — two
+ * untracked scratch files (`.codex-handover*.md`) were lying around, and a
+ * markdown note cannot reach a compiled hook stub. A flag that reads `true`
+ * for every developer who ever leaves a scratch file behind says the same
+ * thing always, and a field that always says the same thing is evidence of
+ * nothing: nobody could then spot a binary that really was built from
+ * uncommitted code.
+ *
+ * Untracked still counts, for the reason `write-build-revision.mjs` gives —
+ * but only inside the closure: a file is in this list because the stub
+ * actually imports it, and an uncommitted import is exactly the build whose
+ * provenance nobody can reconstruct later.
+ *
+ * Scoping it this way also removes a self-reference by construction:
+ * `stub/build-info.ts` is not in the closure, so the stamp can never be the
+ * thing that marks its own build dirty — whatever order the build runs in.
+ *
+ * No git at all (a published tarball, a copied tree) is not dirty, it is
+ * unknown: `revision` is null there, and that pair is the honest answer.
+ */
+export function stubSourcesDirty() {
+  try {
+    const out = execFileSync(
+      "git",
+      ["-C", PACKAGE_ROOT, "status", "--porcelain", "--", ...stubSourceFiles()],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 15_000 },
+    );
+    return out.trim() !== "";
+  } catch {
+    return false;
+  }
 }

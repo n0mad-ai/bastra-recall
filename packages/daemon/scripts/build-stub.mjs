@@ -19,7 +19,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { STUB_BUILD_INFO, stubSourceDigest } from "./stub-source-digest.mjs";
+import { STUB_BUILD_INFO, stubSourceDigest, stubSourcesDirty } from "./stub-source-digest.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -83,21 +83,23 @@ function git(...a) {
   }
 }
 
+// Everything the stamp says is read BEFORE the stamp is written, so the build
+// can never describe a tree its own output has already changed. Since #546 the
+// dirty flag is scoped to the stub's source closure, which excludes this file,
+// that ordering is belt and braces rather than the load-bearing part — but a
+// stamp that reads the world after changing it is the kind of detail that goes
+// wrong later.
+const info = {
+  source_digest: stubSourceDigest(),
+  revision: git("rev-parse", "HEAD"),
+  dirty: stubSourcesDirty(),
+  built_at: new Date().toISOString(),
+};
+
 const placeholder = readFileSync(STUB_BUILD_INFO, "utf8");
 const stamped = placeholder.replace(
   /export const STUB_BUILD_INFO: StubBuildInfo = \{[\s\S]*?\n\};/,
-  "export const STUB_BUILD_INFO: StubBuildInfo = " +
-    JSON.stringify(
-      {
-        source_digest: stubSourceDigest(),
-        revision: git("rev-parse", "HEAD"),
-        dirty: (git("status", "--porcelain") ?? "") !== "",
-        built_at: new Date().toISOString(),
-      },
-      null,
-      2,
-    ) +
-    ";",
+  "export const STUB_BUILD_INFO: StubBuildInfo = " + JSON.stringify(info, null, 2) + ";",
 );
 if (stamped === placeholder) {
   console.error("error: could not stamp stub/build-info.ts — its STUB_BUILD_INFO declaration moved");

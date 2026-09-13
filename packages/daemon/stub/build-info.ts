@@ -20,7 +20,11 @@ export interface StubBuildInfo {
   source_digest: string;
   /** Commit the binary was built from, or null when there was no git. */
   revision: string | null;
-  /** Did the tree carry uncommitted or untracked changes at build time? */
+  /** Did the stub's OWN sources differ from HEAD at build time? Scoped to the
+   *  files that go into the binary, not to the repo: an unrelated scratch file
+   *  in the checkout made every clean build report `true`, and a flag that is
+   *  always `true` cannot show anyone a build that really was dirty (#546).
+   *  See `stubSourcesDirty()` in scripts/stub-source-digest.mjs. */
   dirty: boolean;
   /** ISO timestamp of the build, or null when running from source. */
   built_at: string | null;

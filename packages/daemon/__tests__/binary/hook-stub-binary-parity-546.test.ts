@@ -37,7 +37,7 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, readdir } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,7 +46,7 @@ import { GATE_LANE_BY_KIND } from "../../src/cli/log-stats.js";
 import { CLIENT_ROW_BASE, type ClientLane } from "../../src/hook-client-telemetry.js";
 // The digest rule lives with the build script that stamps it, so the guard and
 // the build can never disagree about what "the stub's sources" means.
-import { stubSourceDigest, stubSourceFiles } from "../../scripts/stub-source-digest.mjs";
+import { stubSourceDigest, stubSourceFiles, stubSourcesDirty } from "../../scripts/stub-source-digest.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = resolve(HERE, "..", "..");
@@ -154,6 +154,13 @@ async function runClient(
   return rows;
 }
 
+/** The commit this checkout is on — what a stamp's `revision` must name. */
+function headRevision(): string {
+  const r = spawnSync("git", ["-C", PACKAGE_ROOT, "rev-parse", "HEAD"], { encoding: "utf8" });
+  assert.equal(r.status, 0, "this test needs a git checkout");
+  return r.stdout.trim();
+}
+
 /** Ask a compiled binary which sources it was built from. */
 function binaryBuildInfo(binary: string): Record<string, unknown> {
   const r = spawnSync(binary, ["version"], { encoding: "utf8" });
@@ -178,16 +185,20 @@ before(async () => {
     );
     return;
   }
-  builtBinary = join(await mkdtemp(join(tmpdir(), "bastra-546-bin-")), "bastra-hook");
-  const r = spawnSync("node", [join(PACKAGE_ROOT, "scripts", "build-stub.mjs"), "--output", builtBinary], {
+  builtBinary = await buildStub();
+});
+
+/** Build a stub into a fresh temp dir and return its path. Never the installed
+ *  one: `--output` exists so a test run cannot replace a live binary. */
+async function buildStub(): Promise<string> {
+  const output = join(await mkdtemp(join(tmpdir(), "bastra-546-bin-")), "bastra-hook");
+  const r = spawnSync("node", [join(PACKAGE_ROOT, "scripts", "build-stub.mjs"), "--output", output], {
     cwd: PACKAGE_ROOT,
     encoding: "utf8",
   });
-  assert.ok(
-    !r.error && r.status === 0,
-    `building the stub failed: ${r.error?.message ?? r.stderr}`,
-  );
-});
+  assert.ok(!r.error && r.status === 0, `building the stub failed: ${r.error?.message ?? r.stderr}`);
+  return output;
+}
 
 test("#546: the built binary writes the same row as the node client, lane for lane", { skip: !denoAvailable && !process.env.CI ? "deno not installed" : false }, async () => {
   // Drift guard: a lane the release gate reads but this table does not cover
@@ -313,3 +324,61 @@ test("#546: the installed binary is the one today's sources describe", { skip: !
       " Rebuild it with `npm run build:stub -w @bastra-recall/daemon`.",
   );
 });
+
+test(
+  "#546: `dirty` is about the stub's own sources, not about whatever else lies in the checkout",
+  {
+    skip: !denoAvailable && !process.env.CI
+      ? "deno not installed"
+      : stubSourcesDirty()
+        ? "the stub's sources are edited right now — this test needs a clean closure to prove that a clean build reports clean"
+        : false,
+  },
+  async () => {
+    // The fault this replaces: `dirty` was taken from the porcelain status of
+    // the WHOLE repo. On the dev host a binary built from a clean, pushed
+    // checkout reported `dirty: true`, because two untracked notes
+    // (`.codex-handover*.md`) were lying next to it. A markdown file cannot
+    // reach a compiled hook stub, and a flag that reads `true` for every
+    // developer who leaves a scratch file behind can never show anyone a build
+    // that really was made from uncommitted code — a field in the evidence
+    // chain that always says the same thing.
+    const unrelated = join(PACKAGE_ROOT, "..", "..", ".bastra-546-unrelated-scratch.md");
+    try {
+      await writeFile(unrelated, "a note nobody compiles\n", "utf8");
+      const info = binaryBuildInfo(await buildStub());
+      assert.equal(
+        info.dirty,
+        false,
+        "an untracked file elsewhere in the checkout made the stub call its own build dirty",
+      );
+      // ...and the revision is the commit, not something the build's own output
+      // moved: everything the stamp says is read before the stamp is written.
+      assert.equal(info.revision, headRevision(), "the stamp must name the commit that is checked out");
+      assert.equal(info.source_digest, stubSourceDigest(), "an unrelated file must not move the digest either");
+    } finally {
+      await rm(unrelated, { force: true });
+    }
+
+    // The other half: a real uncommitted change to a file that IS compiled into
+    // the binary must still be reported, or the flag is merely quiet instead of
+    // wrong. Restored in `finally` — this file runs alone under
+    // `npm run test:stub`, so nothing else reads the stub sources meanwhile.
+    const entry = join(PACKAGE_ROOT, "stub", "bastra-hook.ts");
+    const original = await readFile(entry, "utf8");
+    try {
+      await writeFile(entry, original + "\n// uncommitted, and compiled in\n", "utf8");
+      const info = binaryBuildInfo(await buildStub());
+      assert.equal(
+        info.dirty,
+        true,
+        "a binary built from an uncommitted change to its own sources must say so",
+      );
+      assert.equal(info.revision, headRevision(), "an uncommitted change does not move HEAD");
+    } finally {
+      await writeFile(entry, original, "utf8");
+    }
+    assert.equal(await readFile(entry, "utf8"), original, "the stub entry must be left exactly as it was found");
+    assert.equal(stubSourcesDirty(), false, "the checkout must be left clean");
+  },
+);
