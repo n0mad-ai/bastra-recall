@@ -45,6 +45,8 @@ echo "· throwaway world: ${WORK}"
 PORT="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1]+"/state.json","utf8")).port)' "$WORK")"
 VAULT="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1]+"/state.json","utf8")).vault)' "$WORK")"
 
+# `${MODEL_ARGS[@]+…}` rather than a bare `"${MODEL_ARGS[@]}"`: under `set -u`,
+# bash 3.2 — the one macOS ships — treats an empty array as unbound.
 MODEL_ARGS=()
 [ -n "${PROBE_MODEL:-}" ] && MODEL_ARGS=(--model "$PROBE_MODEL")
 
@@ -64,8 +66,9 @@ while [ "$i" -lt "$SESSIONS" ]; do
       --allowedTools "mcp__bastra62__save_memory,mcp__bastra62__recall" \
       --output-format stream-json \
       --verbose \
-      "${MODEL_ARGS[@]}" \
-      -p "$(cat "${WORK}/prompt-${i}.txt")" \
+      ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
+      -p \
+      < "${WORK}/prompt-${i}.txt" \
       > "${WORK}/transcripts/session-${i}.jsonl" 2>"${WORK}/transcripts/session-${i}.err" \
     || echo "  (that session exited non-zero — verify.mjs will say what it managed)"
   i=$((i + 1))
