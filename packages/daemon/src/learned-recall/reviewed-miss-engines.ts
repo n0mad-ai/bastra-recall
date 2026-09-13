@@ -33,11 +33,34 @@ import {
 export interface TelemetryPool {
   recallId: string;
   ts: string;
+  /** "recall" (MCP/HTTP call) or "hook_recall" (automatic hook injection). */
+  lane: "recall" | "hook_recall";
+  sessionId: string | null;
+  /** The daemon's own query text for this call (hook lane: derived from the tool input). */
+  query: string | null;
   orderedIds: string[];
   servedIds: string[];
   scoreSpace: CandidatePoolScoreSpace;
   vaultSize: number;
   k: number | null;
+}
+
+/** A `load_memory` telemetry event, the hook lane's evidence step. */
+export interface TelemetryLoad {
+  ts: string;
+  sessionId: string | null;
+  memoryId: string;
+  found: boolean;
+  /** recall_id of the hook recall whose hint this load followed, if the daemon joined it. */
+  fromHookRecall: string | null;
+  /** recall_id of the most recent recall before this load, if the daemon joined it. */
+  followsRecall: string | null;
+  hookHintRank: number | null;
+}
+
+export interface Telemetry {
+  pools: Map<string, TelemetryPool>;
+  loads: TelemetryLoad[];
 }
 
 function scoreSpaceOf(event: Record<string, unknown>): CandidatePoolScoreSpace | null {
@@ -64,14 +87,16 @@ function idsOf(value: unknown): string[] {
   return out;
 }
 
-/** Read every recall-class event with a `recall_id` and a candidate pool. */
-export async function loadTelemetryPools(dir: string): Promise<Map<string, TelemetryPool>> {
+/** Read every recall-class event with a `recall_id` and a candidate pool, and every `load_memory` event. */
+export async function loadTelemetry(dir: string, options: { sinceMs?: number } = {}): Promise<Telemetry> {
   const pools = new Map<string, TelemetryPool>();
+  const loads: TelemetryLoad[] = [];
+  const since = options.sinceMs ?? 0;
   let files: string[];
   try {
     files = (await readdir(dir)).filter((f) => f.startsWith("events-") && f.endsWith(".jsonl")).sort();
   } catch {
-    return pools;
+    return { pools, loads };
   }
   for (const file of files) {
     const raw = await readFile(join(dir, file), "utf8");
@@ -83,8 +108,22 @@ export async function loadTelemetryPools(dir: string): Promise<Map<string, Telem
       } catch {
         continue;
       }
+      if (typeof event.ts !== "string" || (since > 0 && Date.parse(event.ts) < since)) continue;
+      if (event.kind === "load_memory") {
+        if (typeof event.id !== "string" || !event.id) continue;
+        loads.push({
+          ts: event.ts,
+          sessionId: typeof event.session_id === "string" ? event.session_id : null,
+          memoryId: event.id,
+          found: event.found !== false,
+          fromHookRecall: typeof event.from_hook_recall === "string" && event.from_hook_recall ? event.from_hook_recall : null,
+          followsRecall: typeof event.follows_recall === "string" && event.follows_recall ? event.follows_recall : null,
+          hookHintRank: typeof event.hook_hint_rank === "number" ? event.hook_hint_rank : null,
+        });
+        continue;
+      }
       if (event.kind !== "recall" && event.kind !== "hook_recall") continue;
-      if (typeof event.recall_id !== "string" || !event.recall_id || typeof event.ts !== "string") continue;
+      if (typeof event.recall_id !== "string" || !event.recall_id) continue;
       const scoreSpace = scoreSpaceOf(event);
       const orderedIds = idsOf(event.candidate_pool);
       if (!scoreSpace || orderedIds.length === 0) continue;
@@ -93,6 +132,9 @@ export async function loadTelemetryPools(dir: string): Promise<Map<string, Telem
       pools.set(event.recall_id, {
         recallId: event.recall_id,
         ts: event.ts,
+        lane: event.kind,
+        sessionId: typeof event.session_id === "string" ? event.session_id : null,
+        query: typeof event.query === "string" && event.query ? event.query : null,
         orderedIds,
         servedIds: idsOf(event.hits),
         scoreSpace,
@@ -101,7 +143,12 @@ export async function loadTelemetryPools(dir: string): Promise<Map<string, Telem
       });
     }
   }
-  return pools;
+  return { pools, loads };
+}
+
+/** Pools only — the transcript lane's join input. */
+export async function loadTelemetryPools(dir: string): Promise<Map<string, TelemetryPool>> {
+  return (await loadTelemetry(dir)).pools;
 }
 
 // ─── vault-snapshot ──────────────────────────────────────────────

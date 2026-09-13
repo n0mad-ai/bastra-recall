@@ -239,8 +239,8 @@ test("cli: the accounting line names absent engines, and proposals are written o
     await writeFile(sessionFile, session("r-inpool", ["served-one"], { name: "mcp__bastra-recall__load_memory", input: { id: "deep-two" } }) + "\n");
     const bare = spawnSync(process.execPath, ["--import", "tsx", script, sessionFile], { encoding: "utf8" });
     assert.equal(bare.status, 0, bare.stderr);
-    const bareReport = JSON.parse(bare.stderr.trim().split("\n").pop() ?? "{}") as { by_class: Record<string, number>; engines: Record<string, string> };
-    assert.equal(bareReport.by_class.unknown, 1);
+    const bareReport = JSON.parse(bare.stderr.trim().split("\n").pop() ?? "{}") as { observed: { by_class: { transcript: Record<string, number> } }; engines: Record<string, string> };
+    assert.equal(bareReport.observed.by_class.transcript.unknown, 1);
     assert.equal(bareReport.engines.pool_join, "absent");
     assert.equal(bareReport.engines.vault_snapshot, "absent");
 
@@ -249,13 +249,129 @@ test("cli: the accounting line names absent engines, and proposals are written o
     const full = spawnSync(process.execPath, ["--import", "tsx", script, "--events", events, "--vault", vault, "--out", queue, "--proposals", proposals, sessionFile], { encoding: "utf8" });
     assert.equal(full.status, 0, full.stderr);
     assert.equal(full.stdout, "");
-    const report = JSON.parse(full.stderr.trim().split("\n").pop() ?? "{}") as { by_class: Record<string, number>; proposals: { targets: number } };
-    assert.equal(report.by_class["in-pool-not-selected"], 1);
-    assert.equal(report.proposals.targets, 1);
+    const report = JSON.parse(full.stderr.trim().split("\n").pop() ?? "{}") as { observed: { by_class: { transcript: Record<string, number> }; proposals: { targets: number } } };
+    assert.equal(report.observed.by_class.transcript["in-pool-not-selected"], 1);
+    assert.equal(report.observed.proposals.targets, 1);
     const written = JSON.parse(await readFile(queue, "utf8")) as Array<{ classification: string }>;
     assert.equal(written[0].classification, "in-pool-not-selected");
     assert.doesNotMatch(await readFile(queue, "utf8"), /deep-two/);
     assert.match(await readFile(proposals, "utf8"), /"targetId": "deep-two"/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── evidence provision: hook lane, heatmap, hot paths, dens ─────
+
+import { loadTelemetry } from "../src/learned-recall/reviewed-miss-engines.js";
+import { dens, heatmap, hotPaths, observeHookLane } from "../src/learned-recall/reviewed-miss-evidence.js";
+
+function loadEvent(id: string, ts: string, session: string, link: { from_hook_recall?: string; follows_recall?: string; hook_hint_rank?: number } = {}, found = true): string {
+  return line({ kind: "load_memory", ts, session_id: session, id, found, ...link });
+}
+
+function eventIn(recallId: string, ts: string, session: string, poolIds: string[], hits: string[]): string {
+  return JSON.stringify({ ...JSON.parse(event(recallId, ts, poolIds, hits)), session_id: session });
+}
+
+async function hookFixture(): Promise<{ dir: string; engines: ObservationEngines; telemetry: Awaited<ReturnType<typeof loadTelemetry>> }> {
+  const { dir, vault, events } = await fixture();
+  const later = new Date(Date.now() + 3_600_000).toISOString();
+  const t = (min: number) => new Date(Date.now() + 3_600_000 + min * 60_000).toISOString();
+  await writeFile(join(events, "events-2026-09-14.jsonl"), [
+    eventIn("h-1", later, "s1", ["served-one", "deep-two"], ["served-one"]),
+    eventIn("h-2", later, "s2", ["served-one", "deep-two"], ["served-one"]),
+    eventIn("h-3", later, "s3", ["served-one", "deep-two", "far-three"], ["served-one"]),
+    loadEvent("served-one", t(1), "s1", { from_hook_recall: "h-1", hook_hint_rank: 1 }),
+    loadEvent("deep-two", t(2), "s1", { follows_recall: "h-1" }),
+    loadEvent("far-three", t(1), "s2", { from_hook_recall: "h-2" }),
+    loadEvent("served-one", t(1), "s3", { from_hook_recall: "h-3", hook_hint_rank: 1 }),
+    loadEvent("deep-two", t(2), "s3", { follows_recall: "h-3" }),
+    loadEvent("deep-two", t(5), "s4"),
+    loadEvent("deep-two", t(5), "s5", { from_hook_recall: "h-nope" }),
+    loadEvent("gone", t(6), "s5", { from_hook_recall: "h-1" }, false),
+  ].join("\n") + "\n");
+  const telemetry = await loadTelemetry(events);
+  const engines: ObservationEngines = { pools: telemetry.pools, vaultRoot: vault, snapshot: await snapshotVault(vault), labels: new Map() };
+  return { dir, engines, telemetry };
+}
+
+test("hook lane: telemetry alone classifies daemon-joined loads with the same classifier", async () => {
+  const { dir, engines, telemetry } = await hookFixture();
+  try {
+    const { records, gaps } = observeHookLane(telemetry, engines);
+    const byClass = records.map((r) => r.classification).sort();
+    assert.deepEqual(byClass, ["genuine-out-of-pool", "in-pool-not-selected", "in-pool-not-selected", "served-hit", "served-hit"]);
+    assert.ok(records.every((r) => r.lane === "hook" && r.intentSource === "hook-query"));
+    assert.doesNotMatch(JSON.stringify(records), /deep-two|far-three|served-one|h-1|"s1"/);
+    // the join ceiling is visible: every gap kind is counted, none classified
+    assert.deepEqual(gaps.map((g) => g.kind).sort(), ["link-without-pool", "load-not-found", "load-without-recall-link"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("hook lane bite: a renamed join field turns classified loads into a den, not into zero misses", async () => {
+  const { dir, engines, telemetry } = await hookFixture();
+  try {
+    const broken = { ...telemetry, loads: telemetry.loads.map((l) => ({ ...l, fromHookRecall: null, followsRecall: null })) };
+    const { records, gaps } = observeHookLane(broken, engines);
+    assert.equal(records.length, 0);
+    const den = dens(gaps).find((d) => d.kind === "load-without-recall-link");
+    assert.equal(den?.verdict, "den");
+    assert.ok(den && den.sessions >= 2 && den.exit.length > 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("heatmap and hot paths: hubs and never-loaded are densities, edges need distinct-session support", async () => {
+  const { dir, telemetry } = await hookFixture();
+  try {
+    const rows = heatmap(telemetry, { hubSessions: 3 });
+    const served = rows.find((r) => r.memoryId === "served-one");
+    assert.ok(served && served.hub && served.surfacedSessions === 3 && served.servedHit === 2 && !served.surfacedNeverLoaded);
+    assert.deepEqual(served?.loadedAtRank, [1, 1]);
+    const deep = rows.find((r) => r.memoryId === "deep-two");
+    assert.ok(deep && !deep.hub && deep.inPoolBelowServed >= 2 && deep.loaded === 4, JSON.stringify(deep));
+    const paths = hotPaths(telemetry.loads, { maxGapMs: 30 * 60_000, establishSessions: 2 });
+    const edge = paths.find((p) => p.fromId === "served-one" && p.toId === "deep-two");
+    assert.ok(edge && edge.support === 2 && edge.established);
+    assert.doesNotMatch(JSON.stringify(edge?.sessionRefs), /"s1"|"s3"/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("dens: one occurrence is noise, two sessions is a den, absence is none", () => {
+  const rows = dens([
+    { kind: "envelope-without-recall-id", sessionRef: hash("a") },
+    { kind: "link-without-pool", sessionRef: hash("a") },
+    { kind: "link-without-pool", sessionRef: hash("b") },
+  ]);
+  const by = Object.fromEntries(rows.map((r) => [r.kind, r.verdict]));
+  assert.equal(by["envelope-without-recall-id"], "noise");
+  assert.equal(by["link-without-pool"], "den");
+  assert.equal(by["no-vault-snapshot"], "none");
+});
+
+test("cli: --hook-lane needs no sessions and the report keeps coverage, observed and gaps apart", async () => {
+  const { dir, engines } = await hookFixture();
+  const script = resolve(import.meta.dirname, "..", "scripts", "harvest-reviewed-misses.ts");
+  try {
+    const evidence = join(dir, "evidence.json");
+    const run = spawnSync(process.execPath, ["--import", "tsx", script, "--hook-lane", "--events", join(dir, "events"), "--vault", engines.vaultRoot ?? "", "--out", join(dir, "q.json"), "--evidence", evidence], { encoding: "utf8" });
+    assert.equal(run.status, 0, run.stderr);
+    const report = JSON.parse(run.stderr.trim().split("\n").pop() ?? "{}") as { coverage: Record<string, number>; observed: { by_class: { hook: Record<string, number> }; live_classes: string[]; hubs: number }; gaps: Array<{ kind: string; verdict: string }>; engines: Record<string, string> };
+    assert.equal(report.coverage.sessions_scanned, 0);
+    assert.equal(report.coverage.telemetry_loads, 8);
+    assert.equal(report.observed.by_class.hook["in-pool-not-selected"], 2);
+    assert.ok(report.observed.live_classes.includes("genuine-out-of-pool"));
+    assert.equal(report.observed.hubs, 1);
+    assert.ok(report.gaps.some((g) => g.kind === "load-without-recall-link" && g.verdict === "noise"));
+    assert.match(report.engines.hook_lane, /telemetry-only/);
+    assert.match(await readFile(evidence, "utf8"), /"memoryId": "served-one"/);
+    assert.doesNotMatch(await readFile(join(dir, "q.json"), "utf8"), /served-one/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

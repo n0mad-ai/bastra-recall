@@ -38,6 +38,8 @@ export interface CueProposal {
   kind: "recall-when-proposal/v1";
   /** Clear memory id: this file is for the vault's own reviewer, never the queue. */
   targetId: string;
+  /** The target is a high-degree node in the heatmap; a cue toward a hub connects everything. */
+  hub: boolean;
   support: number;
   episodes: CueEpisode[];
   generator: typeof CUE_GENERATOR;
@@ -71,7 +73,12 @@ export interface ObservedPair {
   record: ReviewedMissObservedCandidate;
 }
 
-export function deriveCueProposals(pairs: ObservedPair[], engines: ObservationEngines, now: Date = new Date()): CueProposal[] {
+export function deriveCueProposals(
+  pairs: ObservedPair[],
+  engines: ObservationEngines,
+  now: Date = new Date(),
+  hubs: ReadonlySet<string> = new Set(),
+): CueProposal[] {
   const byTarget = new Map<string, CueProposal>();
   for (const { chain, record } of pairs) {
     if (!PROPOSAL_CLASSES.has(record.classification)) continue;
@@ -88,6 +95,7 @@ export function deriveCueProposals(pairs: ObservedPair[], engines: ObservationEn
     const proposal = byTarget.get(targetId) ?? {
       kind: "recall-when-proposal/v1",
       targetId,
+      hub: hubs.has(targetId),
       support: 0,
       episodes: [],
       generator: CUE_GENERATOR,
@@ -99,19 +107,4 @@ export function deriveCueProposals(pairs: ObservedPair[], engines: ObservationEn
     byTarget.set(targetId, proposal);
   }
   return [...byTarget.values()].sort((a, b) => b.support - a.support || a.targetId.localeCompare(b.targetId));
-}
-
-export interface HarvestAccounting {
-  kind: "reviewed-miss-harvest-report/v1";
-  sessions: number;
-  /** Recall calls whose result arrived, and how many envelopes carried a recall_id. */
-  recalls: number;
-  recalls_with_recall_id: number;
-  /** Chains with an evidence step after the result — the harvester's unit. */
-  chains: number;
-  joined_to_telemetry: number;
-  explicit_misses: number;
-  by_class: Record<ReviewedMissClassification, number>;
-  proposals: { targets: number; episodes: number; max_support: number };
-  engines: { pool_join: string; vault_snapshot: string; reviewer_labels: string };
 }
