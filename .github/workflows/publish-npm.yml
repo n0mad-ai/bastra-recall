@@ -34,43 +34,34 @@ permissions:
 jobs:
   gate:
     # The one place that decides whether this run publishes anything, and the
-    # one place that proves the staging release is still private. Everything
-    # downstream reads `needs.gate.outputs`, so a rehearsal cannot attach,
-    # publish or promote by taking a different branch somewhere.
+    # one place that proves the staging release is still private AND that this
+    # run is actually the release it claims to be (#548). Everything downstream
+    # reads `needs.gate.outputs`, so a rehearsal cannot attach, publish or
+    # promote by taking a different branch somewhere — and every job checks out
+    # `outputs.sha`, the commit resolved from the draft itself, so no job can
+    # build a different tree than the one the tag will come to rest on.
     name: gate
     runs-on: ubuntu-latest
     outputs:
       publish: ${{ steps.check.outputs.publish }}
       tag: ${{ steps.check.outputs.tag }}
+      sha: ${{ steps.check.outputs.sha }}
     steps:
+      # The dispatch ref, deliberately: the script compares THIS commit against
+      # the one the draft points at and refuses the run when they differ.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22.14"
+      # The decision lives in a script, not in this YAML: a diverged dispatch
+      # has to be refusable in a test, and a shell block in a workflow file can
+      # only ever be asserted as text.
       - id: check
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
           DRY_RUN: ${{ inputs.dry_run }}
-        run: |
-          set -euo pipefail
-          if [ "$DRY_RUN" != "false" ]; then
-            echo "Rehearsal — building and testing only, nothing is published."
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "tag=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ -z "$TAG" ]; then
-            echo "error: dry_run=false needs the tag of the staged draft release" >&2
-            exit 1
-          fi
-          # A published release here would mean the page and the tag are already
-          # public while the set is still being built — exactly the gate #524 is
-          # about. Refuse to run against anything but a draft.
-          is_draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)"
-          if [ "$is_draft" != "true" ]; then
-            echo "error: $TAG is not a draft — the staging release must stay private until promote" >&2
-            exit 1
-          fi
-          echo "Publishing the staged draft $TAG."
-          echo "publish=true" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+        run: node scripts/verify-release-binding.mjs
 
   stub:
     # #350: the compiled hook client (#344), one binary per platform, attached
@@ -103,6 +94,10 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # #548: the commit the gate resolved from the draft, not whatever the
+          # dispatch ref points at by now.
+          ref: ${{ needs.gate.outputs.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22.14"
@@ -169,6 +164,10 @@ jobs:
     environment: npm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # #548: the commit the gate resolved from the draft, not whatever the
+          # dispatch ref points at by now.
+          ref: ${{ needs.gate.outputs.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           # OIDC trusted publishing needs npm >= 11.5.1. Node 22 bundles only
@@ -224,6 +223,10 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # #548: the commit the gate resolved from the draft, not whatever the
+          # dispatch ref points at by now.
+          ref: ${{ needs.gate.outputs.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22.14"
@@ -261,6 +264,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # #548: the commit the gate resolved from the draft, not whatever the
+          # dispatch ref points at by now.
+          ref: ${{ needs.gate.outputs.sha }}
       - name: Attach installer scripts to release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -295,6 +302,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # #548: the commit the gate resolved from the draft, not whatever the
+          # dispatch ref points at by now.
+          ref: ${{ needs.gate.outputs.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22.14"

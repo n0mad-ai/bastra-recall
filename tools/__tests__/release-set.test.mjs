@@ -308,8 +308,13 @@ test("#524 workflow: the gate refuses to run against a staging release that is n
   const yml = await readFile(WORKFLOW, "utf8");
   const gate = yml.slice(yml.indexOf("\n  gate:"), yml.indexOf("\n  stub:"));
   assert.ok(gate.length > 0, "no gate job in the publish workflow");
-  assert.match(gate, /--json isDraft/);
-  assert.match(gate, /is not a draft/);
+  // #548: the draft check moved out of this YAML into a script, so that the
+  // refusal itself can be driven in a test instead of being read as text. What
+  // this file still has to show is that the gate runs it.
+  assert.match(gate, /node scripts\/verify-release-binding\.mjs/);
+  const binding = await readFile(join(REPO, "scripts", "verify-release-binding.mjs"), "utf8");
+  assert.match(binding, /--json[\s\S]{0,40}isDraft/);
+  assert.match(binding, /is not a draft/);
   // Every job that attaches, publishes or promotes hangs off this decision.
   for (const job of ["stub", "publish", "desktop-extension", "installer-scripts", "promote"]) {
     assert.ok(
