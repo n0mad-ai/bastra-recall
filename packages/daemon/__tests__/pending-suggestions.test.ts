@@ -13,6 +13,7 @@ import {
   consumePendingSuggestions,
   formatPendingBlock,
   PENDING_BLOCK_CHAR_BUDGET,
+  PENDING_ENTRY_CHAR_CAP,
   PENDING_MAX_AGE_MS,
 } from "../src/pending-suggestions.js";
 import { normalizeTurns, evaluateHeuristics } from "../src/stop-lane.js";
@@ -166,4 +167,48 @@ test("stop-hook (#48): injected skill body in role=user does not feed the heuris
   );
   const suggestions = evaluateHeuristics(turns, { cwd: "/tmp" });
   assert.deepEqual(suggestions, [], "no heuristic may fire on injected system content");
+});
+
+test("pending-suggestions (#551): a stored entry is capped, and the outlier stays visibly clipped", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-pending-cap-"));
+  const prev = process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
+  process.env.BASTRA_PENDING_SUGGESTIONS_PATH = join(dir, "pending.json");
+  try {
+    // Nothing bounded the SIZE of one entry before, so a single hook turn could
+    // write an unbounded string to disk (CodeQL js/http-to-file-access).
+    const huge = "x".repeat(PENDING_ENTRY_CHAR_CAP * 3);
+    await writePendingSuggestion(huge);
+
+    const consumed = await consumePendingSuggestions();
+    assert.equal(consumed.length, 1);
+    assert.equal(consumed[0].blocks.length, PENDING_ENTRY_CHAR_CAP, "stored entry is capped");
+    assert.ok(consumed[0].blocks.endsWith("…"), "the cut is marked, not silent");
+
+    // The cap must stay ABOVE the render budget: an entry that exceeds what a
+    // session may see is still announced as clipped. Capping at the budget
+    // would make every outlier fit exactly and kill that line.
+    assert.ok(PENDING_ENTRY_CHAR_CAP > PENDING_BLOCK_CHAR_BUDGET);
+    assert.match(formatPendingBlock(consumed), /one suggestion was clipped to fit/);
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
+    else process.env.BASTRA_PENDING_SUGGESTIONS_PATH = prev;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("pending-suggestions (#551): an entry inside the cap is stored byte-for-byte", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-pending-cap2-"));
+  const prev = process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
+  process.env.BASTRA_PENDING_SUGGESTIONS_PATH = join(dir, "pending.json");
+  try {
+    const ordinary = "<save-eval>" + "y".repeat(PENDING_ENTRY_CHAR_CAP - 25) + "</save-eval>";
+    assert.ok(ordinary.length <= PENDING_ENTRY_CHAR_CAP);
+    await writePendingSuggestion(ordinary);
+    const consumed = await consumePendingSuggestions();
+    assert.equal(consumed[0].blocks, ordinary, "the cap never touches an entry that fits");
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_PENDING_SUGGESTIONS_PATH;
+    else process.env.BASTRA_PENDING_SUGGESTIONS_PATH = prev;
+    await rm(dir, { recursive: true, force: true });
+  }
 });

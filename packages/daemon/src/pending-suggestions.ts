@@ -21,7 +21,6 @@ export interface PendingSuggestion {
 }
 
 const MAX_ENTRIES = 5;
-
 /**
  * Bound on the lost-write diagnostics (#532). A relay that swallows losses is
  * the actual bug: 40 overlapping writes persisted ONE entry and nothing said
@@ -75,6 +74,16 @@ export function pendingSuggestionsPath(): string {
  */
 export async function writePendingSuggestion(blocks: string): Promise<void> {
   const path = pendingSuggestionsPath();
+  const capped =
+    blocks.length > PENDING_ENTRY_CHAR_CAP
+      ? blocks.slice(0, PENDING_ENTRY_CHAR_CAP - 1) + "…"
+      : blocks;
+  if (capped !== blocks) {
+    reportLoss(
+      `one suggestion of ${blocks.length} chars clipped to the ` +
+        `${PENDING_ENTRY_CHAR_CAP}-char per-entry cap before it was stored`,
+    );
+  }
   try {
     await withPathLock(path, async () => {
       await mkdir(dirname(path), { recursive: true });
@@ -85,9 +94,9 @@ export async function writePendingSuggestion(blocks: string): Promise<void> {
       } catch {
         /* missing/corrupt → start fresh */
       }
-      const dup = entries.find((e) => e.blocks === blocks);
+      const dup = entries.find((e) => e.blocks === capped);
       if (dup) dup.ts = Date.now();
-      else entries.push({ ts: Date.now(), blocks });
+      else entries.push({ ts: Date.now(), blocks: capped });
       const kept = entries.slice(-MAX_ENTRIES);
       // Dropping the oldest is the documented contract, not a bug — but it IS
       // a durable loss, so it gets a line instead of happening in silence.
@@ -121,6 +130,28 @@ export async function writePendingSuggestion(blocks: string): Promise<void> {
  * ein unterdrückter Vorschlag ist sichtbar statt still weg.
  */
 export const PENDING_BLOCK_CHAR_BUDGET = 3000;
+
+/**
+ * Per-entry size cap on the WRITE side (#551).
+ *
+ * `MAX_ENTRIES` capped how MANY entries are stored and nothing capped how LARGE
+ * one may be, so a single Stop-hook turn could put an unbounded string on disk.
+ * CodeQL reads that as `js/http-to-file-access`, because the text is derived
+ * from a transcript that reaches this lane over the daemon's HTTP routes. The
+ * rule's arbitrary-upload shape does not apply — the destination path is a
+ * constant (or an operator's own env var) and was never request-controlled —
+ * but the unbounded size was real, and this is the half worth fixing.
+ *
+ * Deliberately well ABOVE {@link PENDING_BLOCK_CHAR_BUDGET} rather than equal to
+ * it. The render budget is what a session may SEE; an entry that exceeds it is
+ * clipped by `formatPendingBlock` and announced with a visible truncation line.
+ * Capping the stored entry AT the render budget would make every outlier fit
+ * exactly, and that honest line would silently stop appearing — the ehrlichkeit
+ * #510 built would be the thing this fix broke. Four times the budget leaves
+ * every path that was ever visible untouched and still bounds the file at
+ * MAX_ENTRIES × this.
+ */
+export const PENDING_ENTRY_CHAR_CAP = 4 * PENDING_BLOCK_CHAR_BUDGET;
 
 /**
  * Formatiert die Pending-Einträge als <pending-save-suggestions>-Block —
