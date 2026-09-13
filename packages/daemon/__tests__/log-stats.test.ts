@@ -33,6 +33,10 @@ function promptCall(over: Record<string, unknown> = {}): Record<string, unknown>
   return {
     kind: "prompt_hook_call",
     ts: "2026-07-28T05:00:00.000Z",
+    // Every writer stamps the payload's session (#356), and since #305 the
+    // fold pairs rows on it — a fixture without one is not a row the log can
+    // contain.
+    session_id: "session-a",
     detected_mode: "none",
     status: "ok",
     hint_count: 0,
@@ -323,6 +327,7 @@ function clientRow(over: Record<string, unknown> = {}): Record<string, unknown> 
   return {
     kind: "prompt_hook_call",
     ts: "2026-09-06T05:00:00.000Z",
+    session_id: "session-a",
     hook_version: "0.6.0-stub",
     detected_mode: "none",
     daemon_reachable: false,
@@ -364,6 +369,83 @@ test("#305: a client row with no daemon partner stays its own call", () => {
   assert.equal(stats.totals.calls, 2);
   assert.equal(stats.foldedDuplicates, 0);
   assert.equal(stats.totals.errors, 1);
+});
+
+// ─── #305: nearness is not call identity ─────────────────────────────────
+
+test("#305: a success in one session is not folded with a timeout in another", () => {
+  // The reproduction from the counter-review, and the fault class #305 was
+  // opened for one level down. A machine that runs two sessions logs two hook
+  // calls 100ms apart all the time; the first fold paired on kind and time
+  // alone, so session A's DELIVERED assertion call was folded with session B's
+  // client timeout and rewritten to that other session's verdict. On the
+  // reference host's seven-day log this hit 82 of 139 client rows — every
+  // fold crossed a session, 31 of them overwrote a call the daemon delivered.
+  const delivered = promptCall({
+    session_id: "session-a",
+    ts: "2026-09-06T05:00:00.000Z",
+    detected_mode: "assertion",
+    status: "ok",
+    latency_ms_total: 880,
+    hint_count: 3,
+  });
+  const stats = aggregate([delivered, clientRow({ session_id: "session-b", ts: "2026-09-06T05:00:00.100Z" })]);
+  assert.equal(stats.foldedDuplicates, 0, "two sessions are two calls, however close they sit");
+  assert.equal(stats.totals.calls, 2);
+  const byMode = Object.fromEntries(stats.lanes.map((l) => [l.mode, l]));
+  assert.equal(byMode.assertion?.calls, 1);
+  assert.equal(byMode.assertion?.timeouts, 0, "session A delivered — its row must not wear session B's timeout");
+  assert.equal(byMode.assertion?.withHits, 1);
+});
+
+test("#305: two calls of one session close together stay two calls", () => {
+  // The other direction: with the session now part of the identity, the window
+  // is the only thing left keeping two calls of the SAME session apart. One
+  // client row may consume one daemon row, never both.
+  const stats = aggregate([
+    promptCall({ ts: "2026-09-06T05:00:00.000Z", detected_mode: "assertion", status: "ok", latency_ms_total: 700, hint_count: 2 }),
+    promptCall({ ts: "2026-09-06T05:00:00.100Z", detected_mode: "assertion", status: "ok", latency_ms_total: 720, hint_count: 1 }),
+    clientRow({ ts: "2026-09-06T05:00:00.150Z" }),
+  ]);
+  assert.equal(stats.foldedDuplicates, 1);
+  assert.equal(stats.totals.calls, 2, "three rows, two of them one call — not one call");
+  const assertionLane = stats.lanes.find((l) => l.mode === "assertion");
+  assert.equal(assertionLane?.timeouts, 1, "exactly one of the two calls was lost to the turn");
+  assert.equal(assertionLane?.latency?.n, 2, "both calls keep the latency the daemon measured");
+});
+
+test("#305: a client row without a session is its own call, not the nearest one", () => {
+  // Unidentifiable is not the same as unmatched. A row with no session (the
+  // payload carried none) cannot be shown to belong to any daemon row, and a
+  // fold is a claim that it does.
+  const stats = aggregate([
+    promptCall({ ts: "2026-09-06T05:00:00.000Z", detected_mode: "assertion", status: "ok", latency_ms_total: 880 }),
+    { ...clientRow({ ts: "2026-09-06T05:00:00.100Z" }), session_id: undefined },
+  ]);
+  assert.equal(stats.foldedDuplicates, 0);
+  assert.equal(stats.totals.calls, 2);
+});
+
+test("#305: every hook client stamps the payload's session, or the fold has nothing to pair on", async () => {
+  // Source-level drift guard, like the client/daemon split test below. The
+  // compiled stub wrote an unconditional `randomUUID()` here: its rows carried
+  // an id that appeared in no other row of the log, which is why the fold was
+  // left pairing on timestamps. The binary is built by `deno compile` and is
+  // not executable from this suite, so the constraint is read off the source.
+  const src = dirname(fileURLToPath(import.meta.url));
+  for (const rel of ["stub/bastra-hook.ts", "src/hook.ts", "src/prompt-hook.ts"]) {
+    const body = await readFile(join(src, "..", rel), "utf8");
+    assert.match(
+      body,
+      /session_id:[^,\n]*\?\?\s*randomUUID\(\)/,
+      `${rel}: the client row must carry the payload's session (#356)`,
+    );
+    assert.doesNotMatch(
+      body,
+      /session_id:\s*randomUUID\(\)/,
+      `${rel}: a bare randomUUID() gives the row an id no other row shares — the fold then has nothing to pair on but time (#305)`,
+    );
+  }
 });
 
 test("#305: aggregate does not mutate the events it was handed", () => {

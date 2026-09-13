@@ -34,12 +34,35 @@
  * daemon row of the same kind, keep ONE call with the daemon's lane and
  * latency, and let the client's verdict win — because whatever the daemon
  * managed afterwards, the turn got nothing.
+ *
+ * **3. Nearness is not identity (#305).** The first version paired on kind and
+ * time alone, and two hook calls 100ms apart are the normal case on a machine
+ * that runs several sessions: a session-A daemon SUCCESS was folded with a
+ * session-B client TIMEOUT and rewritten to that other session's verdict.
+ * Measured on the reference host's seven-day log: 82 of 139 client rows were
+ * folded, and every single one of them crossed a session — 31 of those
+ * rewrote a call the daemon had actually delivered. That is exactly the fault
+ * class #305 was opened for, one level down: not the wrong lane this time,
+ * but the wrong CALL.
+ *
+ * There is no call id on these rows — none of the seven lanes stamps one that
+ * both the client and the daemon would write — so `session_id` is the identity
+ * we have, and every writer already stamps it from the client payload (#356).
+ * A pair must now agree on it; the window only bounds how far apart the two
+ * rows of one call may sit. A client row with no session is left as its own
+ * call: unidentifiable is not the same as unmatched, and guessing is what this
+ * paragraph is about.
  */
 const CLIENT_ROW_VERSION = /-(stub|thin)$/;
 export const DUPLICATE_WINDOW_MS = 500;
 
 function isClientRow(e: Record<string, unknown>): boolean {
   return CLIENT_ROW_VERSION.test(String(e.hook_version ?? ""));
+}
+
+/** The call identity a row carries, or `null` when it carries none. */
+function sessionOf(e: Record<string, unknown>): string | null {
+  return typeof e.session_id === "string" && e.session_id.length > 0 ? e.session_id : null;
 }
 
 export function tsOf(e: Record<string, unknown>): number {
@@ -59,10 +82,13 @@ export function foldClientDuplicates(
   const copies = new Map<Record<string, unknown>, Record<string, unknown>>();
   for (const client of clients.sort((a, b) => tsOf(a) - tsOf(b))) {
     const at = tsOf(client);
+    const session = sessionOf(client);
+    if (session === null) continue;
     let best: Record<string, unknown> | null = null;
     let bestGap = Infinity;
     for (const e of events) {
       if (e === client || taken.has(e) || isClientRow(e) || e.kind !== client.kind) continue;
+      if (sessionOf(e) !== session) continue;
       const gap = Math.abs(tsOf(e) - at);
       if (gap <= DUPLICATE_WINDOW_MS && gap < bestGap) {
         best = e;

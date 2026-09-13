@@ -159,6 +159,7 @@ async function writeClientTelemetry(
   lane: Lane,
   fields: Record<string, unknown>,
   startedAt: number,
+  sessionId: string | null,
 ): Promise<void> {
   if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
   try {
@@ -192,7 +193,13 @@ async function writeClientTelemetry(
           };
     const event = {
       ts,
-      session_id: randomUUID(),
+      // #356/#305: the payload's session_id is real session state, and it is
+      // the ONLY thing that ties this row to the daemon row for the same call
+      // — `bastra logs --stats` folds the two on it. Stamping a fresh UUID
+      // here (as this file did until #305) made every client row unmatchable
+      // and left the readout pairing rows by timestamp alone, across sessions.
+      // The synthetic id stays the fallback for a payload that carried none.
+      session_id: sessionId ?? randomUUID(),
       hook_version: STUB_VERSION,
       // #352: null = never asked (skip-gate) — false is reserved for a path
       // that actually POSTed and got no response.
@@ -258,6 +265,7 @@ async function main(): Promise<void> {
         "write",
         { tool_name: toolName, file_path: filePath, daemon_url: "", status: "skipped" },
         startedAt,
+        payload.session_id ?? null,
       );
       return;
     }
@@ -297,6 +305,7 @@ async function main(): Promise<void> {
           : {}),
       },
       startedAt,
+      payload.session_id ?? null,
     );
   }
 }
