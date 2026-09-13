@@ -40,6 +40,7 @@ import { FAST_BUDGET_MS, PROMPT_ASSERTION_BUDGET_MS, RECALL_BUDGET_MS, STOP_BUDG
 import { shouldSkipPath } from "../src/hook-skip.js";
 import { decorateHookPayload } from "../src/hook-surface.js";
 import { normalizeWritePayload } from "../src/hook-write-input.js";
+import { STUB_BUILD_INFO } from "./build-info.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", RECALL_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 const STUB_VERSION = "0.6.0-stub"; // 0.6.0 = Codex payload adaptation (#15)
@@ -249,7 +250,15 @@ async function main(): Promise<void> {
   }
 }
 
-if (process.argv[2] === "statusline") {
+if (process.argv[2] === "version") {
+  // #546: the only way to ask a COMPILED binary which sources it came from.
+  // Not a lane — no kill switch, no "{}" fail-open; it is answered and the
+  // process is done. The parity guard reads `source_digest` to decide whether
+  // an installed binary is still the one its sources describe; a human reads
+  // `revision`/`built_at`, which is how a two-week-old binary would have been
+  // spotted at a glance instead of by its effect on the telemetry.
+  process.stdout.write(JSON.stringify({ stub_version: STUB_VERSION, ...STUB_BUILD_INFO }) + "\n");
+} else if (process.argv[2] === "statusline") {
   // #347 stage 2: the statusline joins the stub for the compiled start. Not a
   // lane — no kill switch, no "{}" fail-open: its stdout is a rendered line
   // for the status bar, not hook JSON, so a failure must print nothing. The
