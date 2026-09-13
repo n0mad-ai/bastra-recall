@@ -20,11 +20,13 @@ import {
   liveClasses,
   observeHookLane,
   poolsByLane,
+  specimensOf,
+  thinClasses,
   type EvidenceReport,
   type GapEvent,
 } from "../src/learned-recall/reviewed-miss-evidence.js";
 
-const FLAGS_WITH_VALUE = new Set(["--out", "--events", "--vault", "--labels", "--proposals", "--evidence", "--hub-sessions", "--since"]);
+const FLAGS_WITH_VALUE = new Set(["--out", "--events", "--vault", "--labels", "--proposals", "--evidence", "--hub-sessions", "--since", "--specimens"]);
 const FLAGS_BARE = new Set(["--hook-lane"]);
 
 function usage(): never {
@@ -41,6 +43,7 @@ function usage(): never {
     "  --evidence FILE   write heatmap and hot paths here; carries CLEAR memory ids, keep it local",
     "  --hub-sessions N  distinct sessions above which a memory counts as a hub (default 3)",
     "  --since DAYS      only telemetry events younger than DAYS (default: all files in the dir)",
+    "  --specimens FILE  write one hashed, query-free specimen per (lane, class) with provenance — live fixtures",
     "",
     "Sessions are optional when --hook-lane is given. The evidence report is one JSON line on stderr:",
     "coverage · observed · gaps (dens) · engines — kept apart so 0 misses and no telemetry never look alike.",
@@ -48,7 +51,7 @@ function usage(): never {
   process.exit(2);
 }
 
-type ValueFlag = "out" | "events" | "vault" | "labels" | "proposals" | "evidence" | "hub-sessions" | "since";
+type ValueFlag = "out" | "events" | "vault" | "labels" | "proposals" | "evidence" | "hub-sessions" | "since" | "specimens";
 
 interface Args extends Record<ValueFlag, string | null> {
   hookLane: boolean;
@@ -56,7 +59,7 @@ interface Args extends Record<ValueFlag, string | null> {
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { out: null, events: null, vault: null, labels: null, proposals: null, evidence: null, "hub-sessions": null, since: null, hookLane: false, inputs: [] };
+  const args: Args = { out: null, events: null, vault: null, labels: null, proposals: null, evidence: null, "hub-sessions": null, since: null, specimens: null, hookLane: false, inputs: [] };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (FLAGS_WITH_VALUE.has(arg)) {
@@ -113,12 +116,14 @@ async function main(): Promise<void> {
   const transcriptRecords = pairs.map((pair) => pair.record);
 
   // Hook lane (telemetry only) and the evidence layers.
-  const hook = args.hookLane && telemetry ? observeHookLane(telemetry, engines) : { records: [], gaps: [] };
+  const hook = args.hookLane && telemetry ? observeHookLane(telemetry, engines) : { records: [], chains: [], gaps: [] };
   gaps.push(...hook.gaps);
   const heat = telemetry ? heatmap(telemetry, { hubSessions }) : [];
   const hubs = new Set(heat.filter((row) => row.hub).map((row) => row.memoryId));
   const paths = telemetry ? hotPaths(telemetry.loads) : [];
-  const proposals = deriveCueProposals(pairs, engines, new Date(), hubs);
+  // Both lanes feed proposals: a hook-lane miss is as much an episode as a transcript one.
+  const hookPairs: ObservedPair[] = hook.records.map((record, index) => ({ chain: hook.chains[index], record }));
+  const proposals = deriveCueProposals([...pairs, ...hookPairs], engines, new Date(), hubs);
 
   const byTranscript = countClasses(transcriptRecords);
   const byHook = args.hookLane ? countClasses(hook.records) : emptyClassCounts();
@@ -140,6 +145,7 @@ async function main(): Promise<void> {
     observed: {
       by_class: { transcript: byTranscript, hook: byHook },
       live_classes: liveClasses(byTranscript, byHook),
+      observed_thin: thinClasses(byTranscript, byHook),
       heatmap_top: heat.slice(0, 8).map(({ memoryId, surfaced, surfacedSessions, loaded, hub, surfacedNeverLoaded }) =>
         ({ memoryId: hash("id:" + memoryId), surfaced, surfacedSessions, loaded, hub, surfacedNeverLoaded })),
       hubs: hubs.size,
@@ -151,7 +157,7 @@ async function main(): Promise<void> {
         max_support: proposals.reduce((n, p) => Math.max(n, p.support), 0),
       },
     },
-    gaps: dens(gaps),
+    gaps: dens(gaps, args.events ?? "<events>"),
     engines: {
       pool_join: args.events ? `telemetry-dir (${telemetry?.pools.size ?? 0} pools)` : "absent",
       vault_snapshot: args.vault ? `snapshot (${engines.snapshot?.idCount ?? 0} ids)` : "absent",
@@ -166,6 +172,10 @@ async function main(): Promise<void> {
     await writeFile(args.evidence, JSON.stringify({ kind: "reviewed-miss-evidence/v1", hub_sessions: hubSessions, heatmap: heat, hot_paths: paths }, null, 2) + "\n", "utf8");
   }
   const queue = [...transcriptRecords.map((record) => ({ lane: "transcript" as const, ...record })), ...hook.records];
+  if (args.specimens) {
+    const specimens = specimensOf(queue, { harvested_at: new Date().toISOString(), window_days: sinceDays > 0 ? sinceDays : null });
+    await writeFile(args.specimens, specimens.map((s) => JSON.stringify(s)).join("\n") + "\n", "utf8");
+  }
   const rendered = JSON.stringify(queue, null, 2) + "\n";
   if (args.out) await writeFile(args.out, rendered, "utf8");
   else process.stdout.write(rendered);

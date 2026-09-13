@@ -362,11 +362,13 @@ test("cli: --hook-lane needs no sessions and the report keeps coverage, observed
     const evidence = join(dir, "evidence.json");
     const run = spawnSync(process.execPath, ["--import", "tsx", script, "--hook-lane", "--events", join(dir, "events"), "--vault", engines.vaultRoot ?? "", "--out", join(dir, "q.json"), "--evidence", evidence], { encoding: "utf8" });
     assert.equal(run.status, 0, run.stderr);
-    const report = JSON.parse(run.stderr.trim().split("\n").pop() ?? "{}") as { coverage: Record<string, number>; observed: { by_class: { hook: Record<string, number> }; live_classes: string[]; hubs: number }; gaps: Array<{ kind: string; verdict: string }>; engines: Record<string, string> };
+    const report = JSON.parse(run.stderr.trim().split("\n").pop() ?? "{}") as { coverage: Record<string, number>; observed: { by_class: { hook: Record<string, number> }; live_classes: string[]; observed_thin: string[]; hubs: number }; gaps: Array<{ kind: string; verdict: string }>; engines: Record<string, string> };
     assert.equal(report.coverage.sessions_scanned, 0);
     assert.equal(report.coverage.telemetry_loads, 8);
     assert.equal(report.observed.by_class.hook["in-pool-not-selected"], 2);
-    assert.ok(report.observed.live_classes.includes("genuine-out-of-pool"));
+    // one or two specimens are observed thin, never live: n < 3 is not a verdict
+    assert.ok(report.observed.observed_thin.includes("genuine-out-of-pool"));
+    assert.ok(!report.observed.live_classes.includes("genuine-out-of-pool"));
     assert.equal(report.observed.hubs, 1);
     assert.ok(report.gaps.some((g) => g.kind === "load-without-recall-link" && g.verdict === "noise"));
     assert.match(report.engines.hook_lane, /telemetry-only/);
@@ -375,4 +377,75 @@ test("cli: --hook-lane needs no sessions and the report keeps coverage, observed
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+// ─── invariants ──────────────────────────────────────────────────
+
+import { fileURLToPath } from "node:url";
+import { specimensOf, type Specimen } from "../src/learned-recall/reviewed-miss-evidence.js";
+import { REVIEWED_MISS_CLASSES } from "../src/learned-recall/reviewed-miss-observation.js";
+
+test("invariant: hook-lane accounting closes — every load is one record or exactly one gap", async () => {
+  const { dir, engines, telemetry } = await hookFixture();
+  try {
+    const { records, chains, gaps } = observeHookLane(telemetry, engines);
+    assert.equal(records.length + gaps.length, telemetry.loads.length);
+    assert.equal(chains.length, records.length);
+    // dropping the snapshot moves every would-be record into one named gap, never into silence
+    const bare = observeHookLane(telemetry, { ...engines, snapshot: null });
+    assert.equal(bare.records.length, 0);
+    assert.equal(bare.gaps.length, telemetry.loads.length);
+    assert.equal(bare.gaps.filter((g) => g.kind === "no-vault-snapshot").length, records.length);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("invariant: hook-lane misses feed proposals, hubs are flagged, hashes leak nothing", async () => {
+  const { dir, engines, telemetry } = await hookFixture();
+  try {
+    const { records, chains } = observeHookLane(telemetry, engines);
+    const pairs = records.map((record, index) => ({ chain: chains[index], record }));
+    const hubs = new Set(heatmap(telemetry, { hubSessions: 3 }).filter((r) => r.hub).map((r) => r.memoryId));
+    const proposals = deriveCueProposals(pairs, engines, new Date("2026-09-14T00:00:00.000Z"), hubs);
+    assert.deepEqual(proposals.map((p) => [p.targetId, p.support, p.hub]).sort(), [["deep-two", 2, false], ["far-three", 1, false]]);
+    const queue = JSON.stringify(records);
+    for (const clear of ["served-one", "deep-two", "far-three", "h-1", "h-2", "h-3", '"s1"']) assert.doesNotMatch(queue, new RegExp(clear));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("live specimens: real hashed observations replay to their recorded class, and a tampered pool moves them", async () => {
+  const path = fileURLToPath(new URL("../__fixtures__/reviewed-miss-harvest/live-specimens.jsonl", import.meta.url));
+  const specimens = (await readFile(path, "utf8")).split("\n").filter(Boolean).map((l) => JSON.parse(l) as Specimen);
+  assert.ok(specimens.length >= 4, "the fixture holds at least four live specimens");
+  const text = await readFile(path, "utf8");
+  assert.doesNotMatch(text, /"query"|\/Users\/|\/home\//);
+  const seen = new Set<string>();
+  for (const specimen of specimens) {
+    assert.equal(classifyReviewedMissObservation(specimen.observation), specimen.classification, specimen.lane + ":" + specimen.classification);
+    assert.equal(classifyReviewedMissObservation(specimen.observation), classifyReviewedMissObservation(structuredClone(specimen.observation)));
+    seen.add(specimen.classification);
+    if (specimen.observation.target.kind === "vault-object" && specimen.observation.pool) {
+      // revert-check on the real shape: flip the one proof the class rests on and the class must move
+      const target = specimen.observation.target.candidateId;
+      const flipped = structuredClone(specimen.observation);
+      if (specimen.classification === "served-hit") {
+        flipped.pool!.servedCandidateIds = flipped.pool!.servedCandidateIds.filter((id) => id !== target);
+        assert.ok(["in-pool-not-selected", "genuine-out-of-pool"].includes(classifyReviewedMissObservation(flipped)), "unserved hit becomes a miss");
+      } else {
+        flipped.pool!.servedCandidateIds = [...flipped.pool!.servedCandidateIds, target];
+        assert.equal(classifyReviewedMissObservation(flipped), "served-hit", "served miss becomes a hit");
+      }
+      const erased = structuredClone(specimen.observation);
+      erased.pool = null;
+      assert.equal(classifyReviewedMissObservation(erased), "unknown");
+    }
+  }
+  // fixture-only classes are named, not assumed: this list is the current live coverage
+  const fixtureOnly = REVIEWED_MISS_CLASSES.filter((cls) => !seen.has(cls));
+  assert.deepEqual(fixtureOnly, ["unindexed-vault-object", "vault-gap", "unknown"]);
+  // specimensOf keeps one per (lane, class) and drops nothing else
+  assert.equal(specimensOf(specimens.map((s) => ({ lane: s.lane, classification: s.classification, observation: s.observation, sessionRef: s.provenance.sessionRef, recallRef: s.provenance.recallRef })), { harvested_at: "x", window_days: 8 }).length, specimens.length);
 });

@@ -15,7 +15,7 @@
  * is noise. Non-use is censored feedback, never a negative label: a memory
  * surfaced many times and never loaded is reported as a density, not a verdict.
  */
-import { hash, type ReviewedMissCandidate } from "./reviewed-miss-harvest.js";
+import { hash, type ReviewedMissCandidate, type ReviewedMissChain } from "./reviewed-miss-harvest.js";
 import {
   frozenIdsOf,
   frozenPoolOf,
@@ -56,6 +56,8 @@ export interface GapEvent {
 
 export interface HookLaneResult {
   records: HookLaneRecord[];
+  /** The chain behind each record, for cue proposals (same index as `records`). */
+  chains: ReviewedMissChain[];
   gaps: GapEvent[];
 }
 
@@ -66,6 +68,7 @@ export interface HookLaneResult {
  */
 export function observeHookLane(telemetry: Telemetry, engines: ObservationEngines): HookLaneResult {
   const records: HookLaneRecord[] = [];
+  const chains: ReviewedMissChain[] = [];
   const gaps: GapEvent[] = [];
   for (const load of telemetry.loads) {
     const sessionRef = load.sessionId ? hash("session:" + load.sessionId) : null;
@@ -89,7 +92,7 @@ export function observeHookLane(telemetry: Telemetry, engines: ObservationEngine
     }
     const frozen = frozenIdsOf(pool, engines.snapshot);
     const frozenPool = frozenPoolOf(pool);
-    const chain = {
+    const chain: ReviewedMissChain = {
       query: pool.query ?? "",
       sessionIdentity: load.sessionId ?? "unknown-session",
       recallId,
@@ -118,8 +121,9 @@ export function observeHookLane(telemetry: Telemetry, engines: ObservationEngine
       classification: classifyReviewedMissObservation(observation),
       observation,
     });
+    chains.push(chain);
   }
-  return { records, gaps };
+  return { records, chains, gaps };
 }
 
 // ─── heatmap ─────────────────────────────────────────────────────
@@ -250,6 +254,8 @@ export interface DenRow {
   /** den = silent · repeated in ≥ 2 sessions · has a named exit; otherwise noise. */
   verdict: "den" | "noise" | "none";
   exit: string;
+  /** Command that reproduces `count` from the raw source, or why only the harvester can. */
+  recount: string;
 }
 
 const GAP_EXITS: Record<GapKind, string> = {
@@ -261,13 +267,30 @@ const GAP_EXITS: Record<GapKind, string> = {
   "no-vault-snapshot": "no --vault given: vault membership cannot be proven, hook-lane loads stay unclassified",
 };
 
-export function dens(gaps: GapEvent[]): DenRow[] {
+/** Distinct sessions from which a repeated silent gap counts as a den (ported from the owner's classpulse rule, DENS_MIN_SIDS = 2). */
+export const DEN_MIN_SESSIONS = 2;
+
+/**
+ * A command that recounts the gap from the raw source, printed next to the
+ * number. `{events}` is the telemetry dir. Gaps that need the join itself
+ * name the harvester as the only recount.
+ */
+const GAP_RECOUNT: Record<GapKind, string> = {
+  "envelope-without-recall-id": "harvester only: transcript_recalls - transcript_recalls_with_recall_id",
+  "load-without-recall-link": "grep -h '\"kind\":\"load_memory\"' {events}/events-*.jsonl | grep -vc 'from_hook_recall\\|follows_recall'",
+  "link-without-pool": "harvester only: linked recall_id with no candidate_pool event in the window",
+  "load-not-found": "grep -h '\"kind\":\"load_memory\"' {events}/events-*.jsonl | grep -c '\"found\":false'",
+  "unresolved-evidence": "harvester only: chains whose evidence step had no file_path or memory id",
+  "no-vault-snapshot": "harvester only: --vault not given",
+};
+
+export function dens(gaps: GapEvent[], eventsDir = "<events>"): DenRow[] {
   const kinds = Object.keys(GAP_EXITS) as GapKind[];
   return kinds.map((kind) => {
     const hits = gaps.filter((gap) => gap.kind === kind);
     const sessions = new Set(hits.map((gap) => gap.sessionRef).filter((ref): ref is string => ref !== null)).size;
-    const verdict: DenRow["verdict"] = hits.length === 0 ? "none" : sessions >= 2 ? "den" : "noise";
-    return { kind, count: hits.length, sessions, verdict, exit: GAP_EXITS[kind] };
+    const verdict: DenRow["verdict"] = hits.length === 0 ? "none" : sessions >= DEN_MIN_SESSIONS ? "den" : "noise";
+    return { kind, count: hits.length, sessions, verdict, exit: GAP_EXITS[kind], recount: GAP_RECOUNT[kind].replace("{events}", eventsDir) };
   });
 }
 
@@ -291,8 +314,10 @@ export interface EvidenceReport {
   };
   observed: {
     by_class: { transcript: Record<ReviewedMissClassification, number>; hook: Record<ReviewedMissClassification, number> };
-    /** Classes with at least one live specimen in this run — the rest are fixture-only. */
+    /** Classes with ≥ OBSERVED_MIN specimens in this run. */
     live_classes: ReviewedMissClassification[];
+    /** Classes seen 1..OBSERVED_MIN-1 times: observed thin, never a verdict. */
+    observed_thin: ReviewedMissClassification[];
     heatmap_top: Array<Pick<HeatmapRow, "memoryId" | "surfaced" | "surfacedSessions" | "loaded" | "hub" | "surfacedNeverLoaded">>;
     hubs: number;
     surfaced_never_loaded: number;
@@ -313,8 +338,55 @@ export function countClasses(records: Array<{ classification: ReviewedMissClassi
   return counts;
 }
 
+/** Specimens a class needs before it is "live"; below that it is observed thin (ported from the owner's bench rule: < 3 bites = not observed, never a verdict). */
+export const OBSERVED_MIN = 3;
+
 export function liveClasses(...counts: Array<Record<ReviewedMissClassification, number>>): ReviewedMissClassification[] {
-  return REVIEWED_MISS_CLASSES.filter((cls) => counts.some((c) => c[cls] > 0));
+  return REVIEWED_MISS_CLASSES.filter((cls) => counts.reduce((n, c) => n + c[cls], 0) >= OBSERVED_MIN);
+}
+
+export function thinClasses(...counts: Array<Record<ReviewedMissClassification, number>>): ReviewedMissClassification[] {
+  return REVIEWED_MISS_CLASSES.filter((cls) => {
+    const n = counts.reduce((sum, c) => sum + c[cls], 0);
+    return n > 0 && n < OBSERVED_MIN;
+  });
+}
+
+// ─── specimens ───────────────────────────────────────────────────
+
+/**
+ * A live-harvested specimen: one hashed observation per (lane, class) with
+ * its recorded class and provenance, query removed. Specimens are the
+ * positive fixtures the classifier is replayed against, so a change in the
+ * classifier that moves a real shape to another class goes red.
+ */
+export interface Specimen {
+  kind: "reviewed-miss-specimen/v1";
+  lane: "transcript" | "hook";
+  classification: ReviewedMissClassification;
+  observation: ReviewedMissObservation;
+  provenance: { harvested_at: string; window_days: number | null; sessionRef: string; recallRef: string | null };
+}
+
+export function specimensOf(
+  records: Array<{ lane: "transcript" | "hook"; classification: ReviewedMissClassification; observation: ReviewedMissObservation; sessionRef: string; recallRef: string | null }>,
+  provenance: { harvested_at: string; window_days: number | null },
+): Specimen[] {
+  const seen = new Set<string>();
+  const out: Specimen[] = [];
+  for (const record of records) {
+    const key = record.lane + ":" + record.classification;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      kind: "reviewed-miss-specimen/v1",
+      lane: record.lane,
+      classification: record.classification,
+      observation: record.observation,
+      provenance: { ...provenance, sessionRef: record.sessionRef, recallRef: record.recallRef },
+    });
+  }
+  return out;
 }
 
 export function poolsByLane(pools: Map<string, TelemetryPool>): { recall: number; hook_recall: number } {
