@@ -98,10 +98,59 @@ export const REQUIRED_LANES: string[] = Object.values(GATE_LANE_BY_KIND);
 
 export interface LaneThreshold {
   budgetMs: number;
-  p90TargetMs: number;
+  /** `null` = this lane is judged on reliability only; see PROMPT_TOTAL_LANE. */
+  p90TargetMs: number | null;
   /** Share of calls (0–1) allowed to end as timeout or error. */
   maxFailureRate: number;
 }
+
+/**
+ * #545 — the prompt hook as ONE lane, across every trigger class.
+ *
+ * The prompt lane is the only hook registration whose rows split into several
+ * gate lanes: the daemon stamps the trigger class it detected, and each class
+ * carries its own latency threshold. A client that never reached the daemon
+ * cannot stamp a class — it writes `unknown` — and `unknown` has no threshold,
+ * so those rows were rendered as an unjudged orientation line and the gate
+ * stepped over them. Reproduced: six kind-based lanes at 40 healthy calls each
+ * plus 40 prompt rows with `status: daemon-unreachable` and
+ * `detected_mode: unknown` rendered every visible lane PASS and ended with
+ * `gate: MET`, with the 40 lost calls in no verdict at all.
+ *
+ * The fix is not to file those rows under `none`. A failure whose class was
+ * never determined is not a quiet prompt; booking it there would charge
+ * assertion and retrieval losses to the silent lane — the exact fault #305
+ * produced twice already (`2b7d285` wrote client Bash failures into the Write
+ * lane, `ea95691` made client rows unfoldable). Both clients now say `unknown`
+ * honestly, and this lane is what judges them.
+ *
+ * It is a RELIABILITY lane, not a latency lane:
+ *
+ *  · **No p90 target.** A p90 over a mix of a 4ms gated call, a 600ms quiet
+ *    recall and a 1000ms assertion recall is a number about the week's prompt
+ *    mix, not about the software; the class lanes below already hold latency
+ *    against the budget each class actually enforces. `p90TargetMs: null`.
+ *  · **Failure ceiling 5%, not 2%.** It counts the same calls as the class
+ *    lanes, and the assertion class is deliberately allowed 5% (it pays a cold
+ *    dense arm by construction). A 2% ceiling here would turn a window red
+ *    that every class lane passes — a gate contradicting itself is a gate
+ *    nobody can act on. 5% is the most permissive class ceiling, so this lane
+ *    can only ever fail on losses no class lane was granted.
+ *  · **Min-N 30**, the same number as every other lane (see
+ *    MIN_CALLS_FOR_VERDICT). Below it the lane is NOT EVALUABLE, which does
+ *    not pass the gate either.
+ *
+ * A row with `detected_mode: unknown` counts as a failure here even if it
+ * carries no failure status: an unclassified prompt call is a call the lane
+ * did not serve. That rule lives in `aggregate()`, where the rows are read.
+ */
+export const PROMPT_TOTAL_LANE = "prompt-total";
+
+export const PROMPT_TOTAL_THRESHOLD: LaneThreshold = {
+  budgetMs: PROMPT_ASSERTION_BUDGET_MS,
+  p90TargetMs: null,
+  maxFailureRate: 0.05,
+};
 
 /**
  * Below this, a lane's rate is noise and no verdict is reported.
@@ -175,6 +224,9 @@ export const RELEASE_THRESHOLDS: Record<string, LaneThreshold> = {
   // The Stop lane is allowed a full second because it scans a transcript; it
   // spends a twentieth of it, so its target is the fast one it actually holds.
   stop: { budgetMs: STOP_BUDGET_MS, p90TargetMs: FAST_LANE_P90_TARGET_MS, maxFailureRate: 0.02 },
+  // #545 — every prompt_hook_call row, whatever class it carries. Reliability
+  // only; the class lanes above keep their own latency targets.
+  [PROMPT_TOTAL_LANE]: PROMPT_TOTAL_THRESHOLD,
 };
 
 /**
@@ -212,7 +264,7 @@ export function laneVerdict(lane: LaneStats): LaneVerdict {
       `${failures}/${lane.calls} calls returned nothing (${(failureRate * 100).toFixed(1)}% > ${(threshold.maxFailureRate * 100).toFixed(0)}%)`,
     );
   }
-  if (p90 !== null && p90 > threshold.p90TargetMs) {
+  if (p90 !== null && threshold.p90TargetMs !== null && p90 > threshold.p90TargetMs) {
     reasons.push(`p90 ${p90}ms > ${threshold.p90TargetMs}ms`);
   }
   return { ...base, verdict: reasons.length === 0 ? "pass" : "fail", reasons };
@@ -231,10 +283,15 @@ function absentLane(mode: string): LaneStats {
  * "nothing here" as "nothing wrong". Five of the seven automatic lanes were in
  * that position permanently, because nothing even counted their events.
  */
-export function releaseVerdicts(lanes: LaneStats[]): LaneVerdict[] {
+export function releaseVerdicts(lanes: LaneStats[], promptTotal?: LaneStats | null): LaneVerdict[] {
   const seen = new Set(lanes.map((l) => l.mode));
   const absent = REQUIRED_LANES.filter((mode) => !seen.has(mode)).map((mode) => laneVerdict(absentLane(mode)));
-  return [...lanes.map(laneVerdict), ...absent];
+  // #545 — the prompt hook's own verdict, always present. It is passed in
+  // rather than read out of `lanes` because it is not one of them: it spans
+  // every prompt row, so keeping it in the lane table would count the same
+  // call twice in the totals line above the gate.
+  const prompt = laneVerdict(promptTotal ?? absentLane(PROMPT_TOTAL_LANE));
+  return [...lanes.map(laneVerdict), ...absent, prompt];
 }
 
 /** The gate itself: no lane may fail. Lanes without enough calls do not pass
@@ -250,7 +307,13 @@ export function renderReleaseGate(verdicts: LaneVerdict[]): string[] {
   const out: string[] = ["  release gate (#305) — per-lane budget, p90 target, failure ceiling"];
   for (const v of judged) {
     const t = v.threshold!;
-    const head = `    ${v.mode.padEnd(11)} ${t.budgetMs}ms budget · p90 ≤ ${t.p90TargetMs}ms · fail ≤ ${(t.maxFailureRate * 100).toFixed(0)}%`;
+    // #545 — the reliability lane is printed under its own heading, below the
+    // per-lane block, so nobody reads it as a seventh hook lane or adds its
+    // calls to theirs. It re-counts the prompt rows on purpose: it is the same
+    // calls seen as one delivery series instead of per trigger class.
+    if (v.mode === PROMPT_TOTAL_LANE) continue;
+    const p90 = t.p90TargetMs === null ? "p90 not judged" : `p90 ≤ ${t.p90TargetMs}ms`;
+    const head = `    ${v.mode.padEnd(11)} ${t.budgetMs}ms budget · ${p90} · fail ≤ ${(t.maxFailureRate * 100).toFixed(0)}%`;
     if (v.verdict === "not_evaluable") {
       // #437's wording: under the min-N a lane is NOT EVALUABLE — never a
       // null result, and never absent from the list.
@@ -258,6 +321,20 @@ export function renderReleaseGate(verdicts: LaneVerdict[]): string[] {
       continue;
     }
     out.push(`${head} — ${v.verdict.toUpperCase()}${v.reasons.length > 0 ? `: ${v.reasons.join("; ")}` : ""}`);
+  }
+  const prompt = judged.find((v) => v.mode === PROMPT_TOTAL_LANE);
+  if (prompt) {
+    out.push("  prompt delivery (#545) — every prompt call, all trigger classes together");
+    out.push("    the same calls as the prompt lanes above, counted once more as one delivery series");
+    const t = prompt.threshold!;
+    const head = `    ${PROMPT_TOTAL_LANE} reliability only · fail ≤ ${(t.maxFailureRate * 100).toFixed(0)}% · unclassified (\`unknown\`) counts as a failure`;
+    if (prompt.verdict === "not_evaluable") {
+      out.push(`${head} — NOT EVALUABLE (${prompt.calls} call(s) of the min-N ${MIN_CALLS_FOR_VERDICT})`);
+    } else {
+      out.push(
+        `${head} — ${prompt.verdict.toUpperCase()}${prompt.reasons.length > 0 ? `: ${prompt.reasons.join("; ")}` : ""}`,
+      );
+    }
   }
   out.push(`    gate: ${releaseGateMet(verdicts) ? "MET" : "NOT MET"}`);
   return out;

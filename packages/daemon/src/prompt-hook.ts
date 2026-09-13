@@ -139,7 +139,16 @@ async function writeClientTelemetry(
       // back to a synthetic UUID only if no payload session was given (#356).
       session_id: sessionId ?? randomUUID(),
       hook_version: HOOK_VERSION,
-      detected_mode: "none",
+      // #545: "unknown", not "none" — the same word the stub writes
+      // (`hook-client-telemetry.ts`). The trigger class is decided daemon-side
+      // and this row exists precisely because no answer came back, so this
+      // process never learned it. Stamping "none" filed every client-side
+      // prompt failure under the silent lane, where an assertion or retrieval
+      // loss wears another lane's name and is judged against another lane's
+      // ceiling. `unknown` has no trigger-class threshold on purpose; it is
+      // judged by the prompt-total reliability lane, where it counts as a
+      // failure (`log-stats-thresholds.ts`).
+      detected_mode: "unknown",
       prompt_chars: 0,
       daemon_url: daemonUrl,
       daemon_reachable: false,

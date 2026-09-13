@@ -43,6 +43,15 @@ waiting.
 `bastra logs --stats` checks each lane against this table and prints a
 per-lane PASS/FAIL plus an overall `gate: MET / NOT MET`. Lanes with fewer
 than 30 calls in the window get no verdict — and no free pass either.
+
+Below the per-lane block comes one more verdict, `prompt-total` (#545): every
+`prompt_hook_call` row of the window, whatever trigger class it carries,
+judged on delivery alone — no p90 target, failure ceiling 5%, same min-N 30. A
+client whose POST never arrived cannot know the trigger class and writes
+`detected_mode: "unknown"` (both client shapes do, since #545); such a call
+counts as a failure there. It re-counts the same rows as the trigger-class
+lanes on purpose — those keep their own latency bars — and is therefore kept
+out of the lane table and the call totals so no call is added twice.
 Constants live in `packages/daemon/src/hook-budgets.ts`, thresholds in
 `packages/daemon/src/cli/log-stats-thresholds.ts`.
 

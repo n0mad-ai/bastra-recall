@@ -24,11 +24,14 @@
  * which describe calls the daemon really never saw, had 1 of 38.
  *
  * **2. The client does not know the lane.** A client row has no trigger
- * classification — it never got an answer — and writes the literal
- * `detected_mode: "none"`. Every client-side prompt failure therefore lands
+ * classification — it never got an answer — and used to write the literal
+ * `detected_mode: "none"`. Every client-side prompt failure therefore landed
  * in the silent lane, which is how the readout came to show `none` timing out
  * at 15% behind a 69ms median: an impossible shape, and the assertion lane's
- * failures wearing another lane's name.
+ * failures wearing another lane's name. Since #545 both clients write
+ * `unknown` instead — a row the fold still pairs with its daemon row when
+ * there is one, and which the prompt-total reliability lane judges when there
+ * is not.
  *
  * The fold fixes both at once: pair each client row with the nearest unused
  * daemon row of the same kind, keep ONE call with the daemon's lane and

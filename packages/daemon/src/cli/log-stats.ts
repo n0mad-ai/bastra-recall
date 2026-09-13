@@ -17,12 +17,18 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { defaultLogDir } from "../learned-recall/harvest.js";
 import { foldClientDuplicates, restartWindows, tsOf } from "./log-stats-phases.js";
-import { GATE_LANE_BY_KIND, releaseVerdicts, renderReleaseGate } from "./log-stats-thresholds.js";
+import {
+  GATE_LANE_BY_KIND,
+  PROMPT_TOTAL_LANE,
+  releaseVerdicts,
+  renderReleaseGate,
+} from "./log-stats-thresholds.js";
 import { RECALL_BUDGET_MS } from "../hook-budgets.js";
 
 export {
   releaseVerdicts, releaseGateMet, laneVerdict,
   RELEASE_THRESHOLDS, MIN_CALLS_FOR_VERDICT, GATE_LANE_BY_KIND, REQUIRED_LANES,
+  PROMPT_TOTAL_LANE, PROMPT_TOTAL_THRESHOLD,
 } from "./log-stats-thresholds.js";
 
 export { foldClientDuplicates, restartWindows, DUPLICATE_WINDOW_MS } from "./log-stats-phases.js";
@@ -60,6 +66,13 @@ export interface LogStats {
    *  A hook cannot reach a daemon that is not running; counting those calls
    *  with the rest reports a deliberate restart as a delivery failure. */
   restart: { windows: number; lanes: LaneStats[]; calls: number; timeouts: number; errors: number };
+  /** #545: every `prompt_hook_call` row of the window as one reliability lane,
+   *  whatever trigger class it carries — including the `unknown` rows a client
+   *  writes when it never reached the daemon and therefore never learned the
+   *  class. Deliberately NOT part of `lanes`/`totals`: these are the same calls
+   *  the trigger-class lanes count, seen once more as one delivery series, and
+   *  adding them to the table would double the prompt calls in every total. */
+  promptTotal: LaneStats;
   /** #305: client-written rows folded into the daemon row for the same call.
    *  Reported so the readout cannot silently shrink a number it once printed. */
   foldedDuplicates: number;
@@ -114,12 +127,58 @@ export function percentiles(values: number[]): Percentiles | null {
  * an injection. Counting only the ones that made it through would report a
  * suppression-heavy lane as a healthy one.
  */
+type MutableLane = LaneStats & { latencies: number[] };
+
+function emptyLane(mode: string): MutableLane {
+  return {
+    mode, calls: 0, withHits: 0, suppressed: 0, gated: 0,
+    timeouts: 0, errors: 0, latency: null, latencies: [],
+  };
+}
+
+function laneOf(table: Map<string, MutableLane>, mode: string): MutableLane {
+  let lane = table.get(mode);
+  if (!lane) {
+    lane = emptyLane(mode);
+    table.set(mode, lane);
+  }
+  return lane;
+}
+
+/**
+ * Count one event into one lane.
+ *
+ * `unclassified` is #545's rule and only the prompt-total lane passes it: a
+ * prompt row whose trigger class is `unknown` is a call nobody classified, and
+ * therefore a call the lane did not serve — a failure even when it carries no
+ * failure status. In the class lanes it stays exactly what its status says,
+ * because there it is its own lane and mislabelling it would move a failure
+ * into a lane it did not happen in.
+ */
+function countInto(lane: MutableLane, e: Record<string, unknown>, unclassified = false): void {
+  lane.calls++;
+  const status = String(e.status ?? "");
+  if (status === "timeout") lane.timeouts++;
+  else if (status === "error" || status === "daemon-unreachable") lane.errors++;
+  // The Stop lane answers `{}` either way and stamps no status at all; its
+  // one failure shape is the fail-open backstop, which stamps `error`.
+  // Without this the lane's failure rate was 0% by construction.
+  else if (status === "" && typeof e.error === "string" && e.error.length > 0) lane.errors++;
+  else if (unclassified) lane.errors++;
+  if (status === "gated" || status === "skipped" || e.gated === true) lane.gated++;
+  if (e.suppressed === true || status === "suppressed") lane.suppressed++;
+  if (hitCountOf(e) > 0) lane.withHits++;
+  const lat = e.latency_ms_total ?? e.latency_ms;
+  if (typeof lat === "number") lane.latencies.push(lat);
+}
+
 export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
   const { events, folded } = foldClientDuplicates(rawEvents);
   const windows = restartWindows(events);
   const inRestart = (t: number): boolean => windows.some((w) => t >= w.start && t <= w.end);
-  const byMode = new Map<string, LaneStats & { latencies: number[] }>();
-  const byModeRestart = new Map<string, LaneStats & { latencies: number[] }>();
+  const byMode = new Map<string, MutableLane>();
+  const byModeRestart = new Map<string, MutableLane>();
+  const promptTotal = emptyLane(PROMPT_TOTAL_LANE);
   const otherKinds = new Map<string, number>();
   const holdReasons = new Map<string, number>();
   const suppressedTypes = new Map<string, number>();
@@ -164,32 +223,17 @@ export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
       otherKinds.set(kindName, (otherKinds.get(kindName) ?? 0) + 1);
       continue;
     }
-    const mode = kindName === "prompt_hook_call" ? String(e.detected_mode ?? "unknown") : GATE_LANE_BY_KIND[kindName];
-    const table = inRestart(tsOf(e)) ? byModeRestart : byMode;
-    let lane = table.get(mode);
-    if (!lane) {
-      lane = {
-        mode, calls: 0, withHits: 0, suppressed: 0, gated: 0,
-        timeouts: 0, errors: 0, latency: null, latencies: [],
-      };
-      table.set(mode, lane);
-    }
-    lane.calls++;
-    const status = String(e.status ?? "");
-    if (status === "timeout") lane.timeouts++;
-    else if (status === "error" || status === "daemon-unreachable") lane.errors++;
-    // The Stop lane answers `{}` either way and stamps no status at all; its
-    // one failure shape is the fail-open backstop, which stamps `error`.
-    // Without this the lane's failure rate was 0% by construction.
-    else if (status === "" && typeof e.error === "string" && e.error.length > 0) lane.errors++;
-    if (status === "gated" || status === "skipped" || e.gated === true) lane.gated++;
-    if (e.suppressed === true || status === "suppressed") lane.suppressed++;
-    if (hitCountOf(e) > 0) lane.withHits++;
-    const lat = e.latency_ms_total ?? e.latency_ms;
-    if (typeof lat === "number") lane.latencies.push(lat);
+    const isPrompt = kindName === "prompt_hook_call";
+    const mode = isPrompt ? String(e.detected_mode ?? "unknown") : GATE_LANE_BY_KIND[kindName];
+    const restarting = inRestart(tsOf(e));
+    countInto(laneOf(restarting ? byModeRestart : byMode, mode), e);
+    // #545: the prompt hook as one lane. Same rows, same restart exclusion —
+    // a call that fell inside a daemon restart is not a delivery failure here
+    // either, for exactly the reason it is not one in the class lanes.
+    if (isPrompt && !restarting) countInto(promptTotal, e, mode === "unknown");
   }
 
-  const finish = (table: Map<string, LaneStats & { latencies: number[] }>): LaneStats[] =>
+  const finish = (table: Map<string, MutableLane>): LaneStats[] =>
     [...table.values()]
       .map(({ latencies, ...rest }) => ({ ...rest, latency: percentiles(latencies) }))
       .sort((a, b) => b.calls - a.calls);
@@ -212,6 +256,7 @@ export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
       timeouts: restartLanes.reduce((n, l) => n + l.timeouts, 0),
       errors: restartLanes.reduce((n, l) => n + l.errors, 0),
     },
+    promptTotal: (({ latencies, ...rest }) => ({ ...rest, latency: percentiles(latencies) }))(promptTotal),
     foldedDuplicates: folded,
     otherKinds: [...otherKinds.entries()]
       .map(([kind, count]) => ({ kind, count }))
@@ -319,7 +364,7 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
   // nothing about whether the thing was shippable. The verdict is per lane now,
   // against the budget that lane actually enforces and the failure ceiling the
   // release gate is written down as.
-  const verdicts = releaseVerdicts(stats.lanes);
+  const verdicts = releaseVerdicts(stats.lanes, stats.promptTotal);
   out.push(...renderReleaseGate(verdicts));
   // Lanes nobody set a threshold for still get their headroom line — a new
   // lane must not slip in unmeasured just because it has no entry yet.
