@@ -17,10 +17,13 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { defaultLogDir } from "../learned-recall/harvest.js";
 import { foldClientDuplicates, restartWindows, tsOf } from "./log-stats-phases.js";
-import { releaseVerdicts, renderReleaseGate } from "./log-stats-thresholds.js";
+import { GATE_LANE_BY_KIND, releaseVerdicts, renderReleaseGate } from "./log-stats-thresholds.js";
 import { RECALL_BUDGET_MS } from "../hook-budgets.js";
 
-export { releaseVerdicts, releaseGateMet, laneVerdict, RELEASE_THRESHOLDS, MIN_CALLS_FOR_VERDICT } from "./log-stats-thresholds.js";
+export {
+  releaseVerdicts, releaseGateMet, laneVerdict,
+  RELEASE_THRESHOLDS, MIN_CALLS_FOR_VERDICT, GATE_LANE_BY_KIND, REQUIRED_LANES,
+} from "./log-stats-thresholds.js";
 
 export { foldClientDuplicates, restartWindows, DUPLICATE_WINDOW_MS } from "./log-stats-phases.js";
 
@@ -86,6 +89,16 @@ export interface HintSuppressionStats {
   modes: Array<{ mode: string; calls: number }>;
 }
 
+/** What the lane surfaced. The field is not called the same thing in every
+ *  lane — reading only `hint_count` reported the three lanes that stamp
+ *  `hit_count`/`suggested_count` as delivering nothing, ever. */
+function hitCountOf(e: Record<string, unknown>): number {
+  for (const key of ["hint_count", "hit_count", "suggested_count"]) {
+    if (typeof e[key] === "number") return e[key];
+  }
+  return 0;
+}
+
 export function percentiles(values: number[]): Percentiles | null {
   if (values.length === 0) return null;
   const s = [...values].sort((a, b) => a - b);
@@ -147,11 +160,11 @@ export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
       const reason = String(e.reason ?? "unknown");
       holdReasons.set(reason, (holdReasons.get(reason) ?? 0) + 1);
     }
-    if (kindName !== "prompt_hook_call" && kindName !== "hook_call") {
+    if (kindName !== "prompt_hook_call" && GATE_LANE_BY_KIND[kindName] === undefined) {
       otherKinds.set(kindName, (otherKinds.get(kindName) ?? 0) + 1);
       continue;
     }
-    const mode = kindName === "hook_call" ? "pretooluse" : String(e.detected_mode ?? "unknown");
+    const mode = kindName === "prompt_hook_call" ? String(e.detected_mode ?? "unknown") : GATE_LANE_BY_KIND[kindName];
     const table = inRestart(tsOf(e)) ? byModeRestart : byMode;
     let lane = table.get(mode);
     if (!lane) {
@@ -165,9 +178,13 @@ export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
     const status = String(e.status ?? "");
     if (status === "timeout") lane.timeouts++;
     else if (status === "error" || status === "daemon-unreachable") lane.errors++;
+    // The Stop lane answers `{}` either way and stamps no status at all; its
+    // one failure shape is the fail-open backstop, which stamps `error`.
+    // Without this the lane's failure rate was 0% by construction.
+    else if (status === "" && typeof e.error === "string" && e.error.length > 0) lane.errors++;
     if (status === "gated" || status === "skipped" || e.gated === true) lane.gated++;
     if (e.suppressed === true || status === "suppressed") lane.suppressed++;
-    if (typeof e.hint_count === "number" && e.hint_count > 0) lane.withHits++;
+    if (hitCountOf(e) > 0) lane.withHits++;
     const lat = e.latency_ms_total ?? e.latency_ms;
     if (typeof lat === "number") lane.latencies.push(lat);
   }
@@ -259,7 +276,7 @@ function pct(part: number, whole: number): string {
 export function renderStats(stats: LogStats, budgetMs: number): string {
   const out: string[] = [];
   if (stats.totals.calls === 0) {
-    out.push("(no prompt-hook events in this window — try --since 7d)");
+    out.push("(no hook-lane events in this window — try --since 7d)");
     // #305: "nothing happened" and "everything happened during a restart" are
     // different answers, and only one of them means the window was too short.
     if (stats.restart.calls > 0) {
@@ -276,7 +293,7 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
   }
 
   const window = stats.from && stats.to ? `${stats.from.slice(0, 16)} → ${stats.to.slice(0, 16)}` : "—";
-  out.push(`prompt-hook lanes — ${stats.totals.calls} call(s), ${window}`);
+  out.push(`hook lanes — ${stats.totals.calls} call(s), ${window}`);
   out.push("");
   out.push("  lane        calls   with hits   suppressed   gated   timeout   median   p90    max");
   out.push("  " + "─".repeat(78));

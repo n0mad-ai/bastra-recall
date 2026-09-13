@@ -25,9 +25,16 @@ import {
   laneVerdict,
   releaseGateMet,
   RELEASE_THRESHOLDS,
+  REQUIRED_LANES,
+  GATE_LANE_BY_KIND,
   DEFAULT_HOOK_BUDGET_MS,
 } from "../src/cli/log-stats.js";
-import { PROMPT_ASSERTION_BUDGET_MS, RECALL_BUDGET_MS } from "../src/hook-budgets.js";
+import {
+  FAST_BUDGET_MS,
+  PROMPT_ASSERTION_BUDGET_MS,
+  RECALL_BUDGET_MS,
+  STOP_BUDGET_MS,
+} from "../src/hook-budgets.js";
 
 function promptCall(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -209,7 +216,7 @@ test("a lane with no release threshold still gets a headroom line", () => {
 });
 
 test("an empty window says so instead of rendering an empty table", () => {
-  assert.match(renderStats(aggregate([]), 600), /no prompt-hook events/);
+  assert.match(renderStats(aggregate([]), 600), /no hook-lane events/);
 });
 
 test("the readout's budget default matches what the hooks actually enforce", async () => {
@@ -297,9 +304,9 @@ test("#305: a lane too small to judge gets no verdict, and no free pass either",
     mode: "retrieval", calls: 1, withHits: 1, suppressed: 0, gated: 0,
     timeouts: 0, errors: 0, latency: { n: 1, median: 114, p90: 114, max: 114 },
   });
-  assert.equal(v.verdict, "insufficient-data");
+  assert.equal(v.verdict, "not_evaluable");
   assert.equal(releaseGateMet([v]), false);
-  assert.match(renderStats(aggregate([]), 600), /no prompt-hook events/);
+  assert.match(renderStats(aggregate([]), 600), /no hook-lane events/);
 });
 
 test("#305: the readout prints the gate, per lane, with its verdict", () => {
@@ -543,6 +550,92 @@ test("#305: a window that is nothing but a restart says so", () => {
     ]),
     600,
   );
-  assert.match(rendered, /no prompt-hook events/);
+  assert.match(rendered, /no hook-lane events/);
   assert.match(rendered, /1 call\(s\) fell inside 1 daemon restart window\(s\)/);
+});
+
+// ─── #305: every advertised automatic lane is a gate lane ────────────────
+
+/** `n` rows of one kind, a minute apart, well clear of any restart window. */
+function lane(kind: string, n: number, over: Record<string, unknown> = {}): Array<Record<string, unknown>> {
+  return Array.from({ length: n }, (_, i) => ({
+    kind,
+    ts: `2026-09-06T0${5 + Math.floor(i / 60)}:${String(i % 60).padStart(2, "0")}:00.000Z`,
+    session_id: `session-${i}`,
+    status: "ok",
+    hint_count: 1,
+    latency_ms_total: 60,
+    ...over,
+  }));
+}
+
+test("#305: plan, session, Bash pre/post and Stop are lanes, not `other events`", () => {
+  // They were counted under `otherKinds` — the orientation line at the bottom
+  // of the readout — so five of the seven automatic lanes could not appear in
+  // the verdict table at all, let alone fail it.
+  const stats = aggregate([
+    ...lane("todo_hook_call", 1, { hit_count: 4 }),
+    ...lane("session_hook_call", 1),
+    ...lane("bash_hook_call", 1),
+    ...lane("bash_fail_hook_call", 1, { hit_count: 2 }),
+    ...lane("save_eval_call", 1, { status: undefined, suggested_count: 1, latency_ms_total: 30 }),
+  ]);
+  const modes = stats.lanes.map((l) => l.mode).sort();
+  assert.deepEqual(modes, ["bash-post", "bash-pre", "plan", "session", "stop"]);
+  assert.deepEqual(stats.otherKinds, [], "a gate lane must not also be filed as a foreign event kind");
+  assert.equal(stats.totals.calls, 5);
+  // Each of these lanes names its hit count differently; reading only
+  // `hint_count` reported three of them as delivering nothing, ever.
+  assert.equal(stats.lanes.every((l) => l.withHits === 1), true, JSON.stringify(stats.lanes));
+});
+
+test("#305: a Stop lane over its failure ceiling turns the gate red", () => {
+  // The structural half of the defect: before the lane existed in the table,
+  // 40 broken Stop calls next to one healthy write lane printed `gate: MET`.
+  // The Stop lane stamps no status — its failure shape is the fail-open
+  // backstop's `error` field.
+  const stats = aggregate([
+    ...lane("hook_call", 40, { latency_ms: 60 }),
+    ...lane("save_eval_call", 40, { status: undefined, error: "transcript unreadable", latency_ms_total: 30 }),
+  ]);
+  const rendered = renderStats(stats, 600);
+  assert.match(rendered, /stop\s+1000ms budget · p90 ≤ 200ms · fail ≤ 2% — FAIL: 40\/40 calls returned nothing/);
+  assert.match(rendered, /gate: NOT MET/);
+});
+
+test("#305: an automatic lane the window never saw is NOT EVALUABLE, not absent", () => {
+  // "We did not measure it" is a verdict of its own — #437's word for the
+  // same situation in the experiment arms (stats-arms.ts). A lane that simply
+  // leaves the list is what let this gate call a release green while five
+  // lanes went unmeasured.
+  const rendered = renderStats(aggregate(lane("hook_call", 40, { latency_ms: 60 })), 600);
+  for (const mode of ["plan", "session", "bash-pre", "bash-post", "stop"]) {
+    assert.match(
+      rendered,
+      new RegExp(`${mode}\\s+\\d+ms budget · [^\\n]*— NOT EVALUABLE \\(0 call\\(s\\) of the min-N 30\\)`),
+      `${mode} must state that it was not measured`,
+    );
+  }
+  assert.match(rendered, /pretooluse\s+600ms budget[^\n]*— PASS/);
+  assert.match(rendered, /gate: NOT MET/, "one healthy lane out of seven is not a release");
+});
+
+test("#305: every gate lane has a threshold, and every threshold names a real budget", () => {
+  // Drift guard: a lane counted into the table without a threshold silently
+  // falls back to the `no-threshold` branch, which the gate accepts — the
+  // exact hole this pass closed.
+  for (const mode of REQUIRED_LANES) {
+    const t = RELEASE_THRESHOLDS[mode];
+    assert.ok(t, `${mode} is counted as a lane but has no release threshold`);
+    assert.ok(
+      [RECALL_BUDGET_MS, FAST_BUDGET_MS, STOP_BUDGET_MS, PROMPT_ASSERTION_BUDGET_MS].includes(t.budgetMs),
+      `${mode}: ${t.budgetMs}ms is not one of the budgets hook-budgets.ts enforces`,
+    );
+    assert.ok(t.p90TargetMs <= t.budgetMs, `${mode}: a p90 target above the lane's own budget cannot be missed`);
+  }
+  assert.deepEqual(
+    Object.values(GATE_LANE_BY_KIND).sort(),
+    ["bash-post", "bash-pre", "plan", "pretooluse", "session", "stop"],
+    "all six kind-based automatic lanes, or the gate covers fewer lanes than the product advertises",
+  );
 });
