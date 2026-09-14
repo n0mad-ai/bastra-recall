@@ -8,10 +8,52 @@ as `additionalContext` and can `load_memory(id)` the hits before proceeding.
 All hooks are **non-blocking**: they never set `block: true`. Worst case they
 emit `{}` and Claude continues unaffected. They share three discipline rules:
 
-- Hard wall-clock budget (`BASTRA_HOOK_TIMEOUT_MS`, default 250 ms for
-  PreToolUse / 500 ms for SessionStart / 1000 ms for Stop).
+- Hard wall-clock budget, **per lane** (#305 — see the table below).
 - Any failure path emits `{}` and exits 0.
 - Telemetry is best-effort, never breaks the hook.
+
+### Budgets and the release threshold (#305)
+
+One budget across lanes that do different amounts of work was the wrong shape:
+the fast lanes never came near it, and the assertion lane — which sits at the
+start of a turn, after exactly the pause that evicts the embedding model — was
+cut off on 23.4 % of its calls. A timed-out hook returns nothing and the turn
+continues as if there had been nothing to say, so that is a silent drop, not a
+slow answer.
+
+| lane | budget | p90 target | failure ceiling |
+| --- | --- | --- | --- |
+| `PreToolUse` Write/Edit | 600 ms | 200 ms | 2 % |
+| `UserPromptSubmit` — retrieval / generic / none | 600 ms | 300 ms | 2 % |
+| `UserPromptSubmit` — assertion | **1000 ms** | 900 ms | 5 % |
+| `PreToolUse` plan, Bash pre/post, SessionStart | 600 / 500 ms | — | — |
+| `Stop` | 1000 ms | — | — |
+
+`#305`'s original framing was "cut the ceiling to 200 ms" for everything. That
+target now applies to the fast lanes, which hold it (measured p90 87 ms), and
+not to the assertion lane, which never could.
+
+The `UserPromptSubmit` **clients** (thin client and compiled stub) use the
+1000 ms budget regardless of class: the trigger class is decided daemon-side,
+after the payload has been posted, so the client cannot know which class it is
+serving and must outlast the slowest. The daemon still cuts each class at its
+own budget, so the extra room is a backstop against a hung daemon, not added
+waiting.
+
+`bastra logs --stats` checks each lane against this table and prints a
+per-lane PASS/FAIL plus an overall `gate: MET / NOT MET`. Lanes with fewer
+than 30 calls in the window get no verdict — and no free pass either.
+
+Below the per-lane block comes one more verdict, `prompt-total` (#545): every
+`prompt_hook_call` row of the window, whatever trigger class it carries,
+judged on delivery alone — no p90 target, failure ceiling 5%, same min-N 30. A
+client whose POST never arrived cannot know the trigger class and writes
+`detected_mode: "unknown"` (both client shapes do, since #545); such a call
+counts as a failure there. It re-counts the same rows as the trigger-class
+lanes on purpose — those keep their own latency bars — and is therefore kept
+out of the lane table and the call totals so no call is added twice.
+Constants live in `packages/daemon/src/hook-budgets.ts`, thresholds in
+`packages/daemon/src/cli/log-stats-thresholds.ts`.
 
 Recalled-content blocks (`<recall-hints>`, `<session-context>`,
 `<pinned-memories>`) are framed
@@ -34,7 +76,7 @@ After `npm run build` the daemon package exposes these bin entries:
 | `bastra-recall-session-hook`      | `SessionStart`     | — (every session)                         | Preload user-preferences + active project context         |
 | `bastra-recall-hook`              | `PreToolUse`       | `Write`/`Edit`/`MultiEdit`/`NotebookEdit` | Topic-aware recall before file mutations (#20 #28 #32)    |
 | `bastra-recall-prompt-hook`       | `UserPromptSubmit` | — (every user message)                    | Lookup-mode reflex (#33)                                  |
-| `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`                               | Topology recall before multi-step plans (#36)             |
+| `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`/`TaskCreate`                  | Topology recall before multi-step plans (#36 #506)        |
 | `bastra-recall-bash-pre-hook`     | `PreToolUse`       | `Bash` (destructive/risky)                | Safety recall before destructive shell ops (#34)          |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse` / `PostToolUseFailure` | `Bash` (every completed or failed command) | Act-signal for acted_on (#144); lesson recall on failure (#37) |
 | `bastra-recall-stop-hook`         | `Stop`             | —                                         | Optional autonomous save-eval at end of session (#35)      |
@@ -63,7 +105,7 @@ Default shape written by `bastra install claude-code`:
         "hooks": [{ "type": "command", "command": "bastra-recall-hook", "timeout": 2 }]
       },
       {
-        "matcher": "TodoWrite",
+        "matcher": "TodoWrite|TaskCreate",
         "hooks": [{ "type": "command", "command": "bastra-recall-todo-hook", "timeout": 2 }]
       },
       {
@@ -165,7 +207,9 @@ prompt is POSTed to `/hook/reflex` (parallel to the recall call, same
 `BASTRA_REFLEX_MAX_PER_TURN` (default 2) and returns lean hits. The hook
 renders them as a `<recall-hints … trigger="reflex">` block ahead of the
 lookup block. Reflex hits bypass the #161 backoff (user-wired = never
-noise) but respect the per-session dedup (max 1×/4h per memory).
+noise) but respect the per-session dedup (`BASTRA_HOOK_MAX_SHOW`, default 1×
+per memory per session). #354 removed the former 4h expiry: a `load_memory` of
+that id, or a compact/clear/resume signal, is what releases it again.
 Kill switch: `BASTRA_REFLEX=off` or `reflex.enabled: false` in
 `cli-settings.json`. Every firing is traced as a `hook_reflex` event.
 
@@ -204,10 +248,23 @@ Telemetry event: `prompt_hook_call` (`detected_mode`, `prompt_chars`, `hint_coun
 
 ### `bastra-recall-todo-hook` (#36)
 
-Fires only on `PreToolUse` + `tool_name === "TodoWrite"`. Pulls the first 1–2
-todo `content` strings as the query spine, plus the top-3 lowercased tokens
-that appear in ≥ 2 todos as topic words. Stopwords (DE + EN) and short tokens
-(< 3 chars) are filtered.
+Fires on `PreToolUse` for a plan-writing tool. Which tool that is depends on
+the client, and it has changed (#506):
+
+| client | event | payload |
+| --- | --- | --- |
+| Claude Code ≥ 2.1.268 | `TaskCreate` — one call per plan step | `{ subject, description?, activeForm? }` |
+| Claude Code ≤ 2.1.267, or `CLAUDE_CODE_ENABLE_TASKS=0` | `TodoWrite` — one call per plan | `{ todos: [{ content, status }] }` |
+| Codex / ChatGPT desktop | `update_plan` — one call per plan | `{ plan: [{ step, status }] }` |
+
+`TaskUpdate` is accepted by the lane but deliberately **not** registered by
+`bastra install`: it carries a status transition, not a new plan, so binding it
+would re-fire the lane on every pending → in_progress → completed move.
+
+Pulls the first 1–2 plan `content` strings as the query spine, plus the top-3
+lowercased tokens that appear in ≥ 2 steps as topic words — or the top-3 tokens
+of the single step, when the client sends one step per call. Stopwords (DE +
+EN) and short tokens (< 3 chars) are filtered.
 
 - POSTs to `/hook/recall` with `type=project-fact`, `k=5`, score-floor `50`.
 - Skips silently (`{}`) when confidence is low (< 2 topic words AND query
@@ -268,9 +325,10 @@ top_score, status` (hook side) and dimensioned `hook_act` with `tool_name,
 excerpt_chars, matched_episodes, exit_code`, plus `client`, `hook_source` and
 the pseudonymous experiment session (daemon side).
 
-### `bastra-recall-stop-hook` (#35, opt-in)
+### `bastra-recall-stop-hook` (#35, default on)
 
-Fires on `Stop` when explicitly installed via `--with-stop-hook`. Reads the last ~30 transcript turns (from
+Fires on `Stop` by default; opt out during installation with `--no-stop-hook`
+(`--with-stop-hook` remains as a compatibility alias). Reads the last ~30 transcript turns (from
 `payload.transcript_path` or inline `payload.transcript`) and evaluates
 three heuristics:
 
@@ -280,9 +338,12 @@ three heuristics:
    only when ≥ 5 chars or repeated in a turn and not a technical acronym
    (`SKILL`, `JSON`, `CLAUDE`, …); CAPS alone never triggers → suggests a
    `lesson` save.
-2. **feature-completion** — `git commit` mentioned in a **user** turn + ≥ 5
-   distinct repo-relative source-file tokens, at least one of which exists
-   under the session cwd → suggests a `project-fact` save. Home/URL paths and
+2. **feature-completion** — a commit signal + ≥ 5 distinct repo-relative
+   source-file tokens, at least one of which exists under the session cwd →
+   suggests a `project-fact` save. The signal is any of: `git commit` in a
+   **user** turn, `git commit` in a shell command the **agent ran** (Claude
+   tool_use or Codex function_call/custom_tool_call — never assistant prose), or git's own
+   `[branch sha] subject` line in a tool result. Home/URL paths and
    non-source files (`.json`, `.yaml`, …) are filtered out.
 3. **architecture-decision** — `ok dann | lass uns | entschieden | final |
    gehen wir mit` in last 5 user turns → suggests a `decision` save.
@@ -298,7 +359,7 @@ with no taxonomy convention covering it, and surfaces at most two clusters as a
 suggestion only, the agent decides.
 
 Budget 1000 ms. Telemetry: `save_eval_call` with `heuristic, suggested_count,
-drift_clusters, turn_count, latency_ms_total`.
+drift_clusters, drift_keys, turn_count, latency_ms_total`.
 
 ### Taxonomy injection (session hook, #66)
 
@@ -332,7 +393,9 @@ rendered (id-only) so a stale floor stays visible. One audit line per entry:
 framed like the other recalled-content blocks (#152: reference-only note +
 anti-spoof strip), capped at ~1200 chars with an explicit truncation note, and
 **never subject to any dedup**: the session-state dedup (`shouldDropHit`)
-applies only in the PreToolUse hook, and the only dedup here runs the other
+governs ordinary recall hits — in the PreToolUse and bash-pre lanes, and since
+#541 in every mode of the UserPromptSubmit lane — but not this block, and the
+only dedup here runs the other
 way — a pinned id is dropped from the *ranked* hint list so context isn't
 spent twice on an already-guaranteed entry. Telemetry gains `pinned_count`.
 
@@ -362,16 +425,17 @@ new MCP tool):
 
 | Env var                       | Default          | What it does                                                  |
 | ----------------------------- | ---------------- | ------------------------------------------------------------- |
-| `BASTRA_HTTP_URL`             | _none_           | Full daemon base URL (overrides host+port)                    |
-| `BASTRA_HTTP_PORT`            | `6723`           | Daemon port on `127.0.0.1`                                    |
-| `BASTRA_HOOK_TIMEOUT_MS`      | `250` / `500` / `1000` | Wall-clock budget for the hook (incl. network round-trip) |
+| `BASTRA_DAEMON_URL`           | _none_           | Full daemon base URL — highest precedence, and what `bastra install` writes into a client registration (#531) |
+| `BASTRA_HTTP_URL`             | _none_           | Full daemon base URL (overrides host+port); read only when `BASTRA_DAEMON_URL` is unset |
+| `BASTRA_HTTP_PORT`            | `6723`           | Daemon port on `127.0.0.1`, read only when neither URL var is set |
+| `BASTRA_HOOK_TIMEOUT_MS`      | per lane, see above | Overrides the lane budget (incl. network round-trip). The assertion budget is fixed at 1000 ms and is not read from this var. |
 | `BASTRA_HOOK_QUERY`           | `neutral`        | `english` restores the old action-verb recall query (#231)    |
 | `BASTRA_HOOK_CONTENT_RECALL`  | `off`            | `1` runs the opt-in edit-content recall arm (#282)             |
 | `BASTRA_PROMPT_HOOK_MODE`     | `retrieval-only` | `retrieval-only` or `all` — only the prompt-hook reads this   |
 | `BASTRA_TELEMETRY`            | `on`             | `off` to disable JSONL telemetry writes                       |
 | `BASTRA_LOG_PATH`             | `~/.bastra/logs` | Telemetry log directory                                       |
 | `BASTRA_DRIFT_WINDOW_DAYS`    | `14`             | Drift detector: how far back "recent memories" reaches        |
-| `BASTRA_DRIFT_MIN_CLUSTER`    | `3`              | Drift detector: distinct memories before a cluster is flagged |
+| `BASTRA_DRIFT_MIN_CLUSTER`    | `8`              | Drift detector: distinct memories before a cluster is flagged |
 | `BASTRA_REFLEX`               | `on`             | `off` disables the reflex lane (#217)                         |
 | `BASTRA_REFLEX_MAX_PER_TURN`  | `2`              | Reflex injection budget per prompt (clamp 1–5)                |
 | `BASTRA_REFLEX_PROMOTION_MIN` | `3`              | Acted-on recalls (30d) before the curator proposes a reflex promotion |

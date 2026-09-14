@@ -67,7 +67,7 @@ test("stubAssetUrl is version-locked to the GitHub release", () => {
   );
 });
 
-test("decideStubAction — present, then the opt-out, then what cannot be offered, then the answer", () => {
+test("decideStubAction — the explicit flag, then the remembered answer, then what is present", () => {
   const base = {
     present: false,
     mode: "ask" as const,
@@ -78,8 +78,16 @@ test("decideStubAction — present, then the opt-out, then what cannot be offere
     remembered: null,
     interactive: true,
   };
-  assert.equal(decideStubAction({ ...base, present: true, mode: "skip" }), "present");
+  // #537: the explicit opt-out is read BEFORE the binary on disk. This line
+  // used to assert "present" — that is the defect: `--no-stub` could not be
+  // taken once a download had happened.
+  assert.equal(decideStubAction({ ...base, present: true, mode: "skip" }), "skip");
   assert.equal(decideStubAction({ ...base, mode: "skip" }), "skip");
+  assert.equal(
+    decideStubAction({ ...base, present: true, remembered: false }),
+    "declined",
+    "#537: a remembered no also outranks a binary that is merely lying there",
+  );
   assert.equal(decideStubAction({ ...base, ephemeral: true, mode: "yes" }), "ephemeral");
   assert.equal(decideStubAction({ ...base, manifest: false, mode: "yes" }), "no-manifest");
   assert.equal(decideStubAction({ ...base, target: false, mode: "yes" }), "unsupported");
@@ -202,9 +210,19 @@ test("ensureHookStub: a declined offer is remembered, --no-stub records the opt-
   assert.match(optOut.detail, /--no-stub/);
   assert.equal(await readStubOptIn(g.markerPath), false);
 
+  // #537: the binary now exists, but the remembered no still decides — the
+  // artifact is kept, it is simply not registered.
   await writeFile(g.stubBin, BODY);
-  const present = await ensureHookStub(inputs(g, "ask", true));
+  const stillDeclined = await ensureHookStub(inputs(g, "ask", true));
+  assert.equal(stillDeclined.status, "skipped");
+  assert.equal(stillDeclined.useStub, false);
+  assert.equal(existsSync(g.stubBin), true, "the downloaded binary must not be deleted");
+
+  const h = await fixture(manifestFor(HEX));
+  await writeFile(h.stubBin, BODY);
+  const present = await ensureHookStub(inputs(h, "ask", true));
   assert.equal(present.status, "present");
+  assert.equal(present.useStub, true);
 });
 
 test("ensureHookStub: dry-run describes the offer and writes nothing", async () => {

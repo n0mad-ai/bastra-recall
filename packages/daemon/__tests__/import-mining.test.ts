@@ -9,7 +9,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -19,6 +19,7 @@ import {
   readNextChunk,
   clearQueue,
   QUEUE_FILE,
+  CURSOR_FILE,
   type ConversationRecord,
 } from "../src/import-mining.js";
 
@@ -180,6 +181,70 @@ test("buildQueue appends to an existing queue without resetting the cursor; clea
 
     await clearQueue(dir);
     assert.deepEqual(await queueStatus(dir), { total: 0, remaining: 0 });
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("#529: overlapping buildQueue writers keep every conversation and report durable counts", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-mine-race-"));
+  try {
+    const writers = 40;
+    const results = await Promise.all(
+      Array.from({ length: writers }, (_, i) => buildQueue([rec(`conv ${i}`, "2026-03-01", 40, 1)], dir)),
+    );
+    assert.equal(
+      results.reduce((n, r) => n + r.queued, 0),
+      writers,
+    );
+    assert.deepEqual(await queueStatus(dir), { total: writers, remaining: writers });
+
+    // The union is on disk, not just in the counts: every title is there once.
+    const titles = new Set(
+      (await readFile(join(dir, QUEUE_FILE), "utf8"))
+        .split("\n")
+        .filter((l) => l.trim())
+        .map((l) => (JSON.parse(l) as ConversationRecord).title),
+    );
+    assert.equal(titles.size, writers);
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("#529: overlapping readNextChunk callers never get the same conversation twice", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-mine-cursor-"));
+  try {
+    // ~9.5k chars each → one conversation per chunk.
+    await buildQueue([rec("c1", "2026-03-03", 1900, 5), rec("c2", "2026-03-02", 1900, 5)], dir);
+    const [a, b] = await Promise.all([readNextChunk(dir), readNextChunk(dir)]);
+    assert.ok(a);
+    assert.ok(b);
+    assert.notEqual(a.body, b.body, "the cursor transition is serialised, so each chunk is handed out once");
+    assert.deepEqual([a.remaining, b.remaining].sort(), [0, 1]);
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("#529: an aborted queue write leaves the queue and its cursor intact", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-mine-crash-"));
+  try {
+    await buildQueue([rec("c1", "2026-03-03", 100, 2)], dir);
+    const before = await readFile(join(dir, QUEUE_FILE), "utf8");
+
+    // What a crash mid-write leaves behind: a half-written tmp file next to an
+    // untouched queue — the live files are only ever replaced by rename.
+    await writeFile(join(dir, `${QUEUE_FILE}.tmp-${process.pid}-deadbeef`), '{"source":"chat', "utf8");
+    assert.equal(await readFile(join(dir, QUEUE_FILE), "utf8"), before);
+    assert.deepEqual(await queueStatus(dir), { total: 1, remaining: 1 });
+
+    // Write-protected queue + cursor: the fix renames fresh files over them.
+    await chmod(join(dir, QUEUE_FILE), 0o444);
+    await chmod(join(dir, CURSOR_FILE), 0o444);
+    const appended = await buildQueue([rec("c2", "2026-03-02", 100, 2)], dir);
+    assert.equal(appended.queued, 1);
+    assert.deepEqual(await queueStatus(dir), { total: 2, remaining: 2 });
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }

@@ -13,6 +13,7 @@ import { createServer, type Server } from "node:http";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { buildContextLedger, type LedgerEvent } from "../src/context-ledger.js";
 import { runSessionLane } from "../src/session-lane.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -92,11 +93,14 @@ async function withDaemon(fn: (baseUrl: string) => Promise<void>): Promise<void>
 test("#373: session_hook_call carries the payload session_id, hook_version and the per-part tokens", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "bastra-session-telemetry-"));
   try {
+    let rendered = "";
     await withDaemon(async (base) => {
       const out = await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir }, () =>
         runSessionLane({ hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-373" }, base),
       );
-      assert.doesNotThrow(() => JSON.parse(out));
+      const parsed = JSON.parse(out) as { hookSpecificOutput?: { additionalContext?: unknown } };
+      rendered = String(parsed.hookSpecificOutput?.additionalContext ?? "");
+      assert.match(rendered, /m1/, "the recalled note reaches the hook output");
     });
     const ev = (await readEvents(logDir)).find((e) => e.kind === "session_hook_call");
     assert.ok(ev, "a session_hook_call event must be written");
@@ -107,6 +111,8 @@ test("#373: session_hook_call carries the payload session_id, hook_version and t
     assert.equal(ev.hint_count, 1);
     assert.equal(typeof ev.hint_tokens_est, "number");
     assert.ok((ev.hint_tokens_est as number) > 0);
+    assert.equal(ev.hint_tokens_est, Math.ceil(rendered.length / 4), "#457 measures the text actually returned to the hook");
+    assert.equal(buildContextLedger([ev as LedgerEvent]).total.totalTokens, ev.hint_tokens_est, "#457: the ledger folds this lane row at exactly its own hint_tokens_est");
     const parts = ev.hint_tokens_by_part as Record<string, number>;
     assert.ok(parts && typeof parts === "object", "#462: per-part tokens ride on the row");
     assert.ok(parts.recalls > 0, "the hint list is the measured part here");

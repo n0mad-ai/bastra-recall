@@ -96,6 +96,10 @@ export interface BatchSubResult {
   score_arms?: string[];
   /** Version der Score-Formel. */
   score_version?: string;
+  /** #342: WARUM der dichte Arm fehlte, wenn er fehlte — „Deadline verloren"
+   *  ist etwas anderes als „keine Embeddings". Reiner Diagnosewert, er geht in
+   *  keine Signatur ein. */
+  degraded?: string;
 }
 
 export interface BatchMerged {
@@ -280,4 +284,46 @@ function fuseByQueryRank(subs: BatchSubResult[], k: number): BatchHit[] {
     .sort((a, b) => b.rrf - a.rrf)
     .slice(0, k)
     .map((e) => e.hit);
+}
+
+/**
+ * Die Projektion, mit der der Forwarder ein `/hook/recall`-Ergebnis in das
+ * Tool-Resultat übersetzt (08.09.2026).
+ *
+ * Sie steht HIER, weil {@link mergeBatchResults} ihr Konsument ist und die
+ * Zusicherung dieser Datei ohne sie nicht haltbar war: Der Forwarder gab nur
+ * `hits/vault_size/recall_id/latency_ms` zurück und ließ die Skalenangaben des
+ * Daemons — `score_kind`, `score_arms`, `score_version`, `unfused` — samt
+ * `weak_result`/`no_home`/`degraded` fallen. Die Folge war ein Doppelfehler:
+ *
+ *   - Batch: jedes Sub-Ergebnis kam ohne `score_kind` an, `spaceOf` griff
+ *     fail-closed zu `"bm25"`, jede Signatur war eine andere → JEDER Batch war
+ *     „gemischt", meldete `unfused`/`merged_by: "query-rank-fusion"` und ließ
+ *     die Lanes „semantic search is off" schreiben, obwohl beide Arme liefen.
+ *   - Einzelquery: umgekehrt fail-OPEN — ein echter BM25-Fallback kam ohne
+ *     `unfused` an und wurde als fusioniertes Band gelesen.
+ *
+ * Beides ist derselbe fehlende Durchstich. Der Daemon sendet die Felder im
+ * `done`-Event bereits; sie werden hier nur noch weitergereicht, und zwar nur,
+ * wenn sie belegt sind — ein abwesendes Feld bleibt abwesend, statt als `null`
+ * eine Zusicherung zu erfinden.
+ */
+export function projectRecallResult(
+  query: string,
+  payload: Omit<BatchSubResult, "hits"> & { hits?: unknown[]; latency_ms?: number },
+): Record<string, unknown> {
+  return {
+    query,
+    vault_size: payload.vault_size,
+    hits: payload.hits,
+    recall_id: payload.recall_id,
+    latency_ms: payload.latency_ms,
+    ...(payload.weak_result === true ? { weak_result: true as const } : {}),
+    ...(payload.no_home === true ? { no_home: true as const } : {}),
+    ...(payload.score_kind ? { score_kind: payload.score_kind } : {}),
+    ...(payload.score_arms ? { score_arms: payload.score_arms } : {}),
+    ...(payload.score_version ? { score_version: payload.score_version } : {}),
+    ...(payload.unfused === true ? { unfused: true as const } : {}),
+    ...(typeof payload.degraded === "string" ? { degraded: payload.degraded } : {}),
+  };
 }

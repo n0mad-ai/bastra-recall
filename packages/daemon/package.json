@@ -1,7 +1,7 @@
 {
   "name": "@bastra-recall/daemon",
-  "version": "0.9.2",
-  "description": "MCP server exposing recall + load_memory over a markdown vault.",
+  "version": "1.0.0",
+  "description": "MCP server over a markdown vault: recall, load_memory, save_memory, edit_memory, archive_memory and document tools — plus the REST gateway, the quiet hook lanes and the bastra CLI.",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -38,7 +38,7 @@
   ],
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "npm run prepare:package-assets && tsc && chmod +x dist/index.js dist/mcp-forwarder.js dist/bridge.js dist/hook.js dist/session-hook.js dist/prompt-hook.js dist/todo-hook.js dist/bash-pre-hook.js dist/bash-fail-hook.js dist/stop-hook.js dist/cli.js",
+    "build": "npm run prepare:package-assets && tsc && chmod +x dist/index.js dist/mcp-forwarder.js dist/bridge.js dist/hook.js dist/session-hook.js dist/prompt-hook.js dist/todo-hook.js dist/bash-pre-hook.js dist/bash-fail-hook.js dist/stop-hook.js dist/cli.js && node ../../scripts/write-build-revision.mjs dist",
     "prepare:package-assets": "node scripts/prepare-package-assets.mjs",
     "prepack": "npm run prepare:package-assets",
     "start": "node dist/index.js",
@@ -46,18 +46,20 @@
     "test": "node --import tsx --import ../../scripts/test-env.mjs --test __tests__/*.test.ts",
     "smoke": "tsx scripts/smoke.ts",
     "smoke:telemetry": "tsx scripts/telemetry-smoke.ts",
+    "stress:save62": "node --import tsx scripts/stress-save-62.mjs",
     "backfill:related": "tsx scripts/backfill-related.ts",
     "harvest:reviewed-misses": "tsx scripts/harvest-reviewed-misses.ts",
     "cues:batch": "tsx scripts/cue-batch.ts",
     "eval:robust": "tsx scripts/eval-stress.ts --slice all",
     "test:update": "tsx --test scripts/update-check.test.ts",
+    "test:stub": "node --import tsx --import ../../scripts/test-env.mjs --test __tests__/binary/*.test.ts",
     "build:mcpb": "node scripts/build-mcpb.mjs",
     "build:mcpb:local": "node scripts/build-mcpb.mjs --local",
     "build:stub": "node scripts/build-stub.mjs"
   },
   "dependencies": {
-    "@bastra-recall/core": "0.9.2",
-    "@bastra-recall/statusline": "0.9.2",
+    "@bastra-recall/core": "1.0.0",
+    "@bastra-recall/statusline": "1.0.0",
     "@clack/prompts": "^1.7.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "zod": "^4.5.4"

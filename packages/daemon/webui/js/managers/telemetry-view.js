@@ -157,7 +157,7 @@ function renderOverview(r) {
     fig("events", fmt(r.window.events), `${r.window.files} day file${r.window.files === 1 ? "" : "s"}`),
     fig("context tokens", fmt(r.contextTax.totalTokens), r.contextTax.totalUnknown > 0 ? `lower bound · ${fmt(r.contextTax.totalUnknown)} unknown` : `${fmt(r.contextTax.emissions)} emissions · ${r.contextTax.estimator}`),
     fig("hook calls", fmt(q.hookCalls.calls), `${pct(q.hookCalls.withHints, q.hookCalls.calls)} with hints`),
-    fig("loads from a hint", pct(q.followThrough.fromHint, q.followThrough.loads), `${fmt(q.followThrough.fromHint)} of ${fmt(q.followThrough.loads)} loads`),
+    fig("explicit hint loads", pct(q.followThrough.fromHint, q.followThrough.loads), `${fmt(q.followThrough.fromHint)} of ${fmt(q.followThrough.loads)} load_memory calls`),
     fig("use-rate", pct(acted, loaded), `acted on / loaded (${fmt(loaded)} loaded)`, acted > 0),
     fig("evidence gate", gate, ev ? `${fmt(ev.shadow.decisions + ev.live.decisions)} decisions` : "—", gate === "live"),
   );
@@ -185,7 +185,7 @@ function renderQuality(q, t) {
 
   return section(
     "Recall quality",
-    "Do the hints the hooks surface get loaded, and do loaded hints change the next tool input?",
+    "Which surfaced hints caused an explicit load_memory call, and did those loaded hints change the next tool input?",
     h(
       "div",
       { class: "tv-cols" },
@@ -194,12 +194,12 @@ function renderQuality(q, t) {
         null,
         h3("Hit bands — surfaced → loaded → acted on"),
         bands.some((b) => b.surfaced + b.loaded > 0)
-          ? table(["band", "", "surfaced", "loaded", "loaded/surf.", "acted", "use-rate"], bandRows)
+          ? table(["band", "", "surfaced", "loaded", "load lower bound", "acted", "use-rate"], bandRows)
           : empty("no hook recalls with hits in this window"),
-        note("Use-rate is acted on / loaded — the honest rate. Acted on / surfaced is diluted by repeat surfacing of the same hint."),
+        note("Loaded / surfaced is only a lower bound on follow-through: a client can apply an injected hint without calling load_memory, and that path is not observable. Use-rate describes the explicit-load population only (acted on / loaded)."),
         q.directLoads > 0 ? note(`${fmt(q.directLoads)} direct load(s) without a preceding hint are excluded from every band quota (#77).`) : null,
         h3("By hint source"),
-        table(["source", "surfaced", "loaded", "loaded/surf.", "acted", "use-rate"], srcRows),
+        table(["source", "surfaced", "loaded", "load lower bound", "acted", "use-rate"], srcRows),
       ),
       h(
         "div",
@@ -281,6 +281,54 @@ function renderContextTax(c) {
           : null,
       ),
     ),
+  );
+}
+
+/** #484: in shadow the same candidate list is produced but nothing leaves the
+ *  payload — saying "removed"/"avoided" there reports a cut that never happened.
+ *  Wording mirrors the CLI report (src/cli/log-stats.ts). Events without the
+ *  field already count as live in the read model. */
+export function hintSuppressionLabels(modes) {
+  const list = modes ?? [];
+  const live = list.some((m) => m.mode === "live");
+  const shadow = list.some((m) => m.mode !== "live");
+  return {
+    verb: live && shadow ? "removed or would have been removed" : shadow ? "would have been removed" : "removed",
+    tokensLabel: shadow ? "hook payload" : "hook payload avoided",
+    heading: shadow ? "Most often matched" : "Most often suppressed",
+    tokensNote: shadow
+      ? "Token figures estimate the serialized lean hit at chars/4 and exclude wrapper markup; shadow calls removed nothing, so that part is not a saving."
+      : "Token savings estimate the serialized lean hit at chars/4 and exclude wrapper markup.",
+    modeLine: shadow ? `mode: ${list.map((m) => `${m.mode}×${m.calls}`).join(", ")}` : null,
+  };
+}
+
+function renderHintSuppression(hs) {
+  if (!hs) {
+    return section(
+      "Cross-session hint suppression",
+      "Which repeatedly ignored fact hints were removed from automatic hook responses?",
+      empty("no memory version reached the suppression threshold in this window"),
+      note("Only automatic hook injection is filtered. Manual recall and load_memory remain available; directive memories and explicit reflex wiring are exempt."),
+    );
+  }
+  const max = Math.max(1, ...hs.byType.map((r) => r.count));
+  const l = hintSuppressionLabels(hs.modes);
+  return section(
+    "Cross-session hint suppression",
+    `Which repeatedly ignored fact hints were ${l.verb} from automatic hook responses?`,
+    h(
+      "div",
+      { class: "tv-figs" },
+      h("div", null, h("div", { class: "tv-fig-k" }, `hints ${l.verb}`), h("div", { class: "tv-fig-v ok" }, fmt(hs.hints)), h("div", { class: "tv-fig-sub" }, `${fmt(hs.calls)} hook recall(s)`)),
+      h("div", null, h("div", { class: "tv-fig-k" }, l.tokensLabel), h("div", { class: "tv-fig-v" }, `~${fmt(hs.tokensAvoided)}`), h("div", { class: "tv-fig-sub" }, `tokens · ${fmt(hs.unknownTokenCalls)} unknown call(s)`)),
+      h("div", null, h("div", { class: "tv-fig-k" }, "memory versions"), h("div", { class: "tv-fig-v" }, fmt(hs.uniqueMemories))),
+    ),
+    l.modeLine ? note(l.modeLine) : null,
+    table(["type", "", l.verb], hs.byType.map((r) => h("tr", null, td(r.type), barCell(r.count, max), td(fmt(r.count))))),
+    h3(l.heading),
+    table(["memory", "type", l.verb, "prior surfaces"], hs.topMemories.map((r) => h("tr", null, td(r.id, "id"), td(r.type, "dim"), td(fmt(r.count)), td(fmt(r.surfaced), "dim")))),
+    note(`Suppression is version-local: changing the memory text or recall_when gives it a clean trial. ${l.tokensNote}`),
   );
 }
 
@@ -418,6 +466,49 @@ function renderEvidence(ev) {
   );
 }
 
+/**
+ * #477 — the save path in both halves. Until save_hold existed only the left
+ * column had a number: a save the claim gate held, a conflict redirect and the
+ * two throwing exits left no event at all, so "recall never saves" could not be
+ * answered with a measurement in either direction.
+ */
+function renderSaves(sv) {
+  if (!sv) {
+    return section("Saves", "How many saves became a file, and how many never got there?", empty("no save_memory or save_hold events in this window"));
+  }
+  const attempted = sv.written + sv.held;
+  const REASONS = {
+    claim_gate: "claim gate — the triggers were already owned",
+    conflict_redirect: "conflict_with — diverted into the target's body",
+    unresolved_replaces: "replaces pointed at nothing",
+    id_exists: "id exists and overwrite was not set",
+  };
+  const maxR = Math.max(1, ...sv.byReason.map((r) => r.count));
+  const rows = sv.byReason.map((r) =>
+    h("tr", null, td(REASONS[r.reason] ?? r.reason), barCell(r.count, maxR, true), td(fmt(r.count)), td(pct(r.count, sv.held), "dim")),
+  );
+  return section(
+    "Saves",
+    "How many saves became a file, and how many never got there?",
+    h(
+      "div",
+      { class: "tv-figs" },
+      h("div", null, h("div", { class: "tv-fig-k" }, "attempted"), h("div", { class: "tv-fig-v" }, fmt(attempted))),
+      h("div", null, h("div", { class: "tv-fig-k" }, "written"), h("div", { class: "tv-fig-v ok" }, fmt(sv.written)),
+        h("div", { class: "tv-fig-sub" }, `${fmt(sv.created)} created · ${fmt(sv.overwritten)} overwritten`)),
+      h("div", null, h("div", { class: "tv-fig-k" }, "held"), h("div", { class: "tv-fig-v" }, fmt(sv.held)),
+        h("div", { class: "tv-fig-sub" }, `${pct(sv.held, attempted)} of attempts`)),
+    ),
+    sv.byReason.length > 0
+      ? table(["exit", "", "holds", "share"], rows)
+      : empty("nothing was held in this window"),
+    sv.claimedTotal > 0
+      ? note(`The claim gate named ${fmt(sv.claimedTotal)} already-owned memories across ${fmt(sv.byReason.find((r) => r.reason === "claim_gate")?.count ?? 0)} hold(s) — each one is a successor, a contradiction or a deliberate pair that nobody answered yet.`)
+      : null,
+    note("A held save carries no title, body or trigger text into the log: what a save wanted to say is yours, and a rejected one says it just as much as an accepted one."),
+  );
+}
+
 function renderSessionStart(ss) {
   const rows = ss.parts.map((p) =>
     h("tr", null, td(p.part), barCell(p.tokens, Math.max(1, ss.totalTokens)), td(fmt(p.tokens)), td(pct(p.tokens, ss.totalTokens), "dim"), td(fmt(p.avgPerStart)), td(`${p.presentIn}/${ss.withParts}`, "dim")),
@@ -478,9 +569,11 @@ export function createTelemetryView() {
           renderOverview(r),
           renderQuality(r.quality, r.thresholds),
           renderContextTax(r.contextTax),
+          renderHintSuppression(r.hintSuppression),
           renderBudgetShadow(r.budgetShadow),
           renderLatency(r.latency),
           renderEvidence(r.evidence),
+          renderSaves(r.saves),
           renderSessionStart(r.sessionStart),
         );
         const span = r.window.from && r.window.to ? `${r.window.from.slice(0, 10)} → ${r.window.to.slice(0, 10)}` : "no events";

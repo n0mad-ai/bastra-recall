@@ -238,6 +238,136 @@ Small effect, honestly. What makes it worth the constant is that it is free and
 that the arithmetic behind it says the shipped value was doing something nobody
 intended — see `core/__tests__/rrf-damping.test.ts`.
 
+## LongMemEval, the external arm (`src/longmemeval-run.ts`)
+
+`rrf-k-beir.ts` settles a constant on a public corpus, but BEIR is generic IR —
+passages and topical relevance. It says nothing about long-horizon *memory*
+retrieval, which is what this product is. Every other number here is measured
+against our own vault: the gold sets are harvested from it and the persona
+queries are generated out of our own `title` + `summary`. Those answer "did this
+change help?"; none of them can answer "are we good?".
+
+LongMemEval (ICLR 2025, arXiv:2410.10813, MIT) is the yardstick the field
+settled on. Two recent systems publish headline retrieval numbers on it, and
+this arm exists to be placed next to them — see
+`registrations/foreign-figures.json` for the citations and
+`registrations/longmemeval-run.json` for the registered protocol and the
+measured results.
+
+```bash
+packages/eval/scripts/fetch-longmemeval.sh          # MIT, ~265 MB, no auth
+npm run longmemeval --workspace=@bastra-recall/eval -- \
+  --corpus ~/.cache/longmemeval/longmemeval_s_cleaned.json \
+  --arms bm25,hybrid --k 20 --out /tmp/longmemeval.json
+```
+
+### The comparison
+
+The two reference harnesses do not share a protocol with each other, so one
+configuration cannot be comparable to both. Rather than publish one number and a
+caveat, the arm runs a configuration per comparator. Every row below is
+LongMemEval-**S (cleaned)**, 500 questions, a fresh index per question over that
+question's own ~48 sessions, **session** granularity, `recall_any@k`, all 500
+questions scored with the abstention items kept, no reranker and no LLM at
+either end.
+
+| our configuration | turns | `top_k` | **hybrid R@5** | R@1 | R@3 | bm25 R@5 |
+|---|---|---:|---:|---:|---:|---:|
+| default | all | 20 | **98.2%** | 79.6% | 95.2% | 84.6% |
+| mempalace-matched | user | 50 | **97.2%** | 83.2% | 94.4% | 82.8% |
+| robustness: uncleaned S | all | 20 | 97.8% | 79.8% | 94.6% | 85.4% |
+
+**Which published number each of those actually stands against — and this is the
+part that decides how to read them:**
+
+| published figure | their retriever | R@5 | ours, same class | verdict |
+|---|---|---:|---:|---|
+| agentmemory, BM25+Vector | lexical+dense fused, no reranker | 95.2% | **98.2%** | **ahead** |
+| agentmemory, BM25-only | lexical only | 86.2% | **84.6%** | **behind** |
+| MemPalace, "Raw (semantic search…)" | **dense only**, no lexical arm | 96.6% | — | *not our class* |
+| MemPalace, "Hybrid v4, held-out 450q" | lexical+dense fused, no reranker | **98.4%** | **97.2%** | **behind** |
+| MemPalace, "Hybrid v4 + LLM rerank" | fused + LLM reranker | ≥99% | — | out of scope |
+
+So: **ahead of one published system, behind the comparable configuration of the
+other.** MemPalace's widely quoted 96.6% is their **dense-only baseline** — their
+own README lists it as "Raw (semantic search, no heuristics, no LLM)", and
+agentmemory's report independently calls it "MemPalace raw (vector-only)".
+Putting our fused 97.2% beside it compares a hybrid against a non-hybrid and
+reads as a win that was never earned. The row in their table built the way we
+build stands at 98.4%, above us. An earlier version of this section quoted only
+the 96.6% and got exactly that wrong.
+
+Two things that stop this recurring rather than being remembered.
+`longMemEvalComparability()` now reports `retriever_match` beside the protocol
+blocker, and the registration must name a `same_retriever_class` figure for
+every configuration — a `blocker: null` says the four C-029 quantities match, it
+never said the two systems retrieve alike, and that gap is what went wrong here.
+Read their caveats too: the 98.4% is on a 450-question held-out split tuned on
+the other 50, so it is not a clean head-to-head in their favour either.
+
+**The line to read first is still the bm25 control.** At 84.6% it lands **1.6 pp
+below** agentmemory's BM25-only 86.2%. A smaller or less confusable haystack
+would inflate the lexical arm too; it does not. The lift sits entirely in the
+dense leg, where the difference is capability rather than task: agentmemory
+embeds the **first 512 characters** of a session with all-MiniLM-L6-v2 (384d,
+256-token window), against a median session of ~10 400 characters, while the
+production `buildEmbedText` takes 4 000 with embeddinggemma (768d, 2048-token
+window).
+
+**The missing arm.** A like-for-like answer to MemPalace's dense-only 96.6% would
+be our dense arm alone, and `--arms` offers `bm25` and `hybrid` only. That
+measurement does not exist here; it is named rather than approximated.
+
+Two checks that the pool is the intended one. The official README defines
+LongMemEval_S as "roughly 115k tokens (~40 history sessions)" per question; ours
+measures 38-62 sessions (median 48) and ~122k tokens — the ~500-sessions-per-
+question variant is LongMemEval_**M**, which neither we nor either reference ran.
+And "cleaned" is the **upstream release**, not a filter of ours: against the
+original file it drops 0 of 500 questions and changes 0 gold sets, removing
+1 243 distractor sessions, none of which was ever a gold session. The robustness
+row puts them back and the number moves by 0.4 pp.
+
+The abstention items are reported separately rather than hidden — 30 question ids
+end in `_abs`, and on the default configuration they score bm25 66.7% / hybrid
+96.7% R@5. Neither reference harness drops them either.
+
+The default configuration was run twice across a cosmetic edit to the harness.
+Every value in both artifacts is identical — not to four decimals but to the last
+one, `survival_dense` to its 16th, and all 500 per-question ranking lists in the
+same order. The only field that differs is the `code_hash` itself.
+
+Full artifacts and the committed excerpt: see `registrations/longmemeval-run.json`
+(`measurement.run_out`) and `registrations/longmemeval-results.json`.
+
+### survival is not the #103 survival here
+
+The corpus has no authored `recall_when` — nobody writes a trigger for a chat
+log — so the lever that metric ablates does not exist and that number is **not
+computable** on this data. The harness keeps the formula and states the
+substituted lever: control is the lexical arm, treatment is the hybrid arm.
+
+| configuration | arm | near R@5 | far R@5 | far_retention | survival(dense) |
+|---|---|---:|---:|---:|---:|
+| default | bm25 | 91.0% | 76.7% | 0.84 | — |
+| default | hybrid | 98.9% | 97.3% | 0.98 | **2.60** |
+| mempalace-matched | hybrid | — | — | 0.95 | **3.73** |
+
+Dense lift on the default configuration is **+7.9 pp near, +20.6 pp far**, so the
+dense arm helps *more* where the question shares little vocabulary with its gold
+session — what a dense arm is for, and the opposite of the `recall_when` result
+in #103. near/far is a median split of the question's token coverage of its gold
+session, because persona-lift's 0.30 cut was calibrated against short trigger
+phrases and puts nearly every question on the near side of a whole transcript.
+
+### What this number is not
+
+It is retrieval recall, not LongMemEval QA accuracy — the official metric
+retrieves, generates and judges, and the systems on that leaderboard score 60-95%
+depending on the reader. Both reference reports say the same about their own
+figures. Nothing here was tuned: the arms are the unmodified production calls,
+the protocol was registered before the run, and the run does **not** enter
+`~/.bastra/eval-runs` (#446) — its only artifact is the `--out` file.
+
 ## Band occupancy (`src/band-occupancy.ts`)
 
 `rrf-k-beir.ts` asks whether the fusion constant is right. This asks what the

@@ -231,17 +231,44 @@ function passesLaneScope(hit: LaneScopeHit, project: string | null, opts: LaneSc
  * Deshalb: filtern nur bei `root-match` (ein bekanntes Repo-Wurzelsegment wie
  * `Projekte/` wurde getroffen). Beim Fallback liefert diese Funktion `null` —
  * `isScopeCompatible(scope, null)` ist true, der Filter ist also offen statt
- * falsch streng. Der geratene Name bleibt für Query, Anzeige und Telemetrie
- * brauchbar; nur zum Wegwerfen taugt er nicht.
+ * falsch streng. Für Telemetrie bleibt der geratene Name über
+ * `projectConfidence` sichtbar; zum Wegwerfen taugt er nicht.
  *
  * Rückgabe ist `key`, nie `raw`: Filter vergleichen kanonisch (topics.ts).
  */
 export function projectForFilter(cwd: string): string | null {
   const d = detectProjectDetailed(cwd);
-  // `git-root` und `root-match` dürfen filtern, `fallback` nicht. Ein
-  // git-root ist die einzige Auskunft, die wirklich ein Repo benennt; die
-  // Container-Heuristik bleibt als Rückfall für Verzeichnisse ohne `.git`.
-  return d.confidence === "git-root" || d.confidence === "root-match" ? d.key : null;
+  return isTrustedDetection(d) ? d.key : null;
+}
+
+/**
+ * Der Projektname, den eine Lane für QUERY und ANZEIGE benutzen darf — oder
+ * `null`.
+ *
+ * Ursprünglich stand hier `detectProject()`: jeder Pfad ergab irgendeinen
+ * Namen, und die Lanes bauten daraus eine Recall-Query `scope: <geraten>` und
+ * ein `project="<geraten>"` im ausgelieferten Block. Für ein cwd ohne `.git`
+ * und ohne Container-Segment — eine Agenten-Session in `~/.buzz` — hieß das
+ * Projekt dann ".buzz": die Lane lud Kandidaten für ein Projekt, das es nicht
+ * gibt, und behauptete im Kontextblock, das sei das Projekt der Sitzung. Eine
+ * geratene Erkennung ist kein Projekt, also gibt es dann auch keine
+ * projektbezogene Query und kein `project`-Attribut.
+ *
+ * Dieselbe Konfidenz-Regel wie {@link projectForFilter} — nur die Projektion
+ * ist eine andere: `raw` statt `key`, weil Query und Anzeige seit jeher den
+ * Namen in echter Schreibweise tragen und `isScopeCompatible` die Groß-/
+ * Kleinschreibung ohnehin faltet.
+ */
+export function projectForLane(cwd: string): string | null {
+  const d = detectProjectDetailed(cwd);
+  return isTrustedDetection(d) ? d.raw : null;
+}
+
+/** `git-root` und `root-match` sind Erkennungen, `fallback` ist ein Rat. Ein
+ *  git-root ist die einzige Auskunft, die wirklich ein Repo benennt; die
+ *  Container-Heuristik bleibt als Rückfall für Verzeichnisse ohne `.git`. */
+function isTrustedDetection(d: DetectedProject): boolean {
+  return d.confidence === "git-root" || d.confidence === "root-match";
 }
 
 /** Die Erkennungsgüte für die Telemetrie — ohne sie ist `dropped_scope_count`

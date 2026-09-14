@@ -23,6 +23,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 import { envInt } from "./env.js";
+import { foldUsageEvent } from "./usage-fold.js";
 
 /** Engagement kinds: someone did something with the memory. These count. */
 export type UsageKind = "surfaced" | "loaded" | "acted_on";
@@ -45,6 +46,8 @@ export interface UsageEvent {
   kind: UsageEventKind;
   /** ISO timestamp. */
   ts: string;
+  /** Opaque hash of the hint-bearing memory version (#479). */
+  revision?: string;
 }
 
 export interface UsageEntry {
@@ -66,6 +69,14 @@ export interface UsageEntry {
    * measured, which is a due state, not a fresh one (see `isSampleDue`).
    */
   last_sampled_at?: string;
+  /** Current hint-bearing content hash plus counters for exactly that version.
+   * Lifetime counters above stay intact for heat/history; these reset when the
+   * memory text or triggers change so an edited hint gets a clean trial. */
+  revision?: string;
+  revision_seen_at?: string;
+  revision_surfaced?: number;
+  revision_loaded?: number;
+  revision_acted_on?: number;
 }
 
 export type UsageAggregate = Record<string, UsageEntry>;
@@ -307,25 +318,8 @@ export async function recordUsage(vaultRoot: string, events: UsageEvent[]): Prom
   }
 }
 
-function emptyEntry(): UsageEntry {
-  return { surfaced: 0, loaded: 0, acted_on: 0 };
-}
-
 function foldEvent(agg: UsageAggregate, e: UsageEvent): void {
-  if (!e || typeof e.id !== "string" || e.id.length === 0) return;
-  const kind = e.kind;
-  if (kind !== "surfaced" && kind !== "loaded" && kind !== "acted_on" && kind !== MEASUREMENT_KIND) return;
-  const entry = (agg[e.id] ??= emptyEntry());
-  // The measurement kind stamps its clock and stops there. Counting our own
-  // probes would let the sample floor manufacture the very engagement signal
-  // it exists to audit — every forced re-measurement would read as demand.
-  if (kind !== MEASUREMENT_KIND) entry[kind] += 1;
-  const tsField = `last_${kind}_at` as const;
-  // Events arrive roughly ordered, but a merge after compaction rotation may
-  // replay older lines — keep the max, not the last seen.
-  if (typeof e.ts === "string" && (!entry[tsField] || e.ts > entry[tsField]!)) {
-    entry[tsField] = e.ts;
-  }
+  foldUsageEvent(agg, e, MEASUREMENT_KIND);
 }
 
 async function readJsonlEvents(path: string): Promise<UsageEvent[]> {

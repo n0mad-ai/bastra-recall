@@ -3,8 +3,11 @@
  * embedding-provider resolution used by index.ts, bridge.ts and the CLI (#79).
  *
  * Precedence under test: env BASTRA_EMBEDDING_PROVIDER > cli-settings.json
- * embedding.provider > API-key backwards-compat > none. Env + file are both
- * injectable, so this never reads the real environment or ~/.bastra.
+ * embedding.provider > none. Env + file are both injectable, so this never
+ * reads the real environment or ~/.bastra.
+ *
+ * #520: a bare OPENAI_API_KEY is NOT a fourth tier. It never selects a cloud
+ * provider on its own; it only colours the source so the CLI can explain why.
  *
  * Run: npx tsx --test packages/daemon/__tests__/embedding-resolve.test.ts
  */
@@ -96,16 +99,18 @@ test("openai via cli-settings without a key → none, requested preserved", asyn
   });
 });
 
-test("backwards-compat: bare API key with no explicit choice → openai via 'api-key'", async () => {
+test("#520: a bare API key with no explicit choice stays local (none), with the reason kept", async () => {
   await withTempFile(async (path) => {
     for (const env of [{ OPENAI_API_KEY: "sk-test" }, { BASTRA_EMBEDDING_KEY: "sk-test" }]) {
       const c = await resolveEmbeddingChoice({ path, env });
-      assert.deepEqual(c, { provider: "openai", source: "api-key" });
+      // Was { provider: "openai", source: "api-key" } until #520: a credential
+      // another tool exported is not consent to ship vault text to OpenAI.
+      assert.deepEqual(c, { provider: "none", source: "api-key", requested: "openai" });
     }
   });
 });
 
-test("explicit file 'none' beats the API-key backwards-compat", async () => {
+test("explicit file 'none' is reported as the file's own choice, not the key's", async () => {
   await withTempFile(async (path) => {
     await setEmbeddingProvider("none", path);
     const c = await resolveEmbeddingChoice({ path, env: { OPENAI_API_KEY: "sk-test" } });

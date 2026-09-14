@@ -6,7 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-09-14
+
 ### Added
+
+- **`recall` takes a context budget, not just a count** (#487). `k` counts
+  results; what costs context is text, and the same `k=5` answer varies by
+  more than 2× in size depending on summary length. `recall` now accepts an
+  optional `max_tokens` on MCP and REST (and on `/hook/recall`, the route the
+  MCP forwarder actually uses): after ranking, the score floor and the
+  evidence gate, hits are emitted in rank order until the serialized payload
+  would exceed the budget; the rest are dropped whole — never truncated — and
+  the response says so with `truncated_by_budget: true` and
+  `dropped_by_budget: <n>`, so an agent can re-query with more room or
+  `load_memory` what it needs. `k` stays the hard upper bound, the estimate is
+  the context governor's own (chars/4, #266/#458) so the per-call and the
+  session budget mean the same number, and the telemetry records the requested
+  budget beside the delivered payload so #457 can attribute the saving.
+  Without the parameter nothing changes — measured on the gold set (699
+  queries × four budgets, 2,796 calls): no payload over budget, no call that
+  dropped more than it had to, mean slack 66.5 tokens, and 52.5 % less recall
+  payload at those budgets. `scripts/measure-recall-budget.ts` re-runs the
+  measurement.
 
 - **One cumulative context budget per session, across all six lanes — in
   shadow mode** (#458, first slice). The governor decided per lane call and
@@ -173,6 +194,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   visible instead of argued.
 
 ### Fixed
+
+- **`bastra install codex` switches Codex's planning tool on, instead of
+  registering a hook that can never fire** (#506). Codex has shipped its
+  `update_plan` tool disabled by default since `rust-v0.152.0`
+  (`tools.update_plan.enabled`), so the `PreToolUse: ^update_plan$` hook the
+  installer registers was dead by construction on a default installation — the
+  seven days of zero plan events the issue opened with. Install now sets the
+  key in `~/.codex/config.toml` itself and says so in its output; it appends a
+  commented, bastra-marked block rather than re-serializing a file Codex owns,
+  leaves every other line byte-for-byte intact, and a second run reports
+  `already true` and writes nothing. A value the user deliberately set to
+  `false` is a decision: it is reported, never overwritten. `bastra uninstall
+  codex` removes exactly the block bastra wrote — a setting the user made
+  themselves, or a managed block they edited, stays. `bastra doctor codex`
+  reports the key as MISSING (repairable by re-running install) when it is
+  absent, and names an explicit `false` as the reason the plan lane is silent.
+  Install also spells out the Codex trust gate when it changed hook
+  definitions: Codex trusts a hook by the hash of its exact command, so changed
+  hooks stay silent until they are re-approved in `/hooks`.
+
+- **Ollama autostart is a named `systemd --user` unit on Linux, not an unref'd
+  orphan** (#496, contributed by @zzallirog in #497). `ensureServing()` only had
+  a persistent-agent path for macOS (`brew services`); on Linux,
+  `ollama.autostart` unconditionally fell through to a one-shot
+  `spawn(..., {detached: true}); child.unref()` — invisible to `systemctl` and
+  not tied to the daemon's lifecycle. It now starts ollama via
+  `systemd-run --user --unit=bastra-ollama --collect -- ollama serve`: a named,
+  visible, stoppable unit that `systemctl --user status/stop bastra-ollama` can
+  see and manage. As on the brew path, the server is re-probed after the systemd attempt before the
+  detached fallback runs, so a unit that binds slowly (or one that already
+  exists) does not get a second, competing ollama on 11434. Falls back to the
+  previous detached spawn only when `systemd-run` isn't available. macOS is
+  untouched: the whole branch sits behind a `process.platform === "linux"` gate
+  and the darwin log line still names brew services as the missing supervisor.
+  **Still open in #496:** the unit carries no `Restart=` and no idle teardown, so
+  it is named, visible and stoppable — not supervised. The idle-unload half (the
+  Linux equivalent of the macOS story in #78, which unloads the *model*, not the
+  server) remains unsolved. So does the environment: `systemd-run` starts the
+  unit in the user manager's environment, so `OLLAMA_*` variables a plain spawn
+  would have inherited do not reach it. That costs a slow start rather than a
+  wrong one — with a non-default `OLLAMA_HOST` the unit binds 11434, the poll
+  runs out its 15 s and the detached fallback then serves correctly — and
+  choosing what to forward wants a machine with systemd to verify it on.
 
 - **The context governor decides per entry, not per id** (#438). Kept
   candidates were tracked in a set keyed by id and the output filtered by that
@@ -2167,6 +2231,10 @@ edges. Dogfooded daily against a real vault.
 - CI (GitHub Actions): `npm ci` → build → type-check → test on a Node 20/22
   matrix, on every push and PR.
 
+[Unreleased]: https://github.com/n0mad-ai/bastra-recall/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v1.0.0
+[0.9.2]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.9.2
+[0.9.1]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.9.1
 [0.9.0]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.9.0
 [0.8.9]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.8.9
 [0.8.8]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.8.8
@@ -2185,4 +2253,6 @@ edges. Dogfooded daily against a real vault.
 [0.7.0-beta.5]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.7.0-beta.5
 [0.7.0-beta.4]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.7.0-beta.4
 [0.7.0-beta.3]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.7.0-beta.3
+[0.7.0-beta.2]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.7.0-beta.2
+[0.6.5-beta.1]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.6.5-beta.1
 [0.6.0-beta.1]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.6.0-beta.1

@@ -20,55 +20,66 @@
  * the client-side telemetry for calls the daemon cannot see. A logic change
  * never needs a stub rebuild; only a change to THIS contract does.
  *
- * Why the start matters: the hook budget is 200ms (#305). Measured on the
- * reference host, the node thin client pays 86–89ms of interpreter start
- * before its first syscall; the compiled stub pays ~15–25ms. That difference
- * is the whole point of #344.
+ * Why the start matters: the fast lanes are held to a 200ms p90 (#305 —
+ * budgets are per lane now, see hook-budgets.ts). Measured on the reference
+ * host, the node thin client pays 86–89ms of interpreter start before its
+ * first syscall; the compiled stub pays ~15–25ms. That difference is the whole
+ * point of #344.
  *
  * Built with `deno compile` (deno task in package.json — the toolchain that
  * is actually present on the dev host; bun would do equally). The stub uses
- * node:-specifier stdlib + the two dependency-free daemon modules only, so
+ * node:-specifier stdlib + a handful of dependency-free daemon modules only, so
  * both runtimes and plain node can run this file unchanged — which is also
  * the fallback: `node stub/bastra-hook.ts` behaves identically, just slower.
  */
 import { request } from "node:http";
-import { appendFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
-import { homedir } from "node:os";
-import { randomUUID } from "node:crypto";
-import { envFirst, envInt } from "../src/env.js";
+import { envInt } from "../src/env.js";
+import { writeClientTelemetry, type ClientLane } from "../src/hook-client-telemetry.js";
+import { resolveDaemonEndpoint } from "../src/daemon-endpoint.js";
+import { FAST_BUDGET_MS, PROMPT_ASSERTION_BUDGET_MS, RECALL_BUDGET_MS, STOP_BUDGET_MS } from "../src/hook-budgets.js";
 import { shouldSkipPath } from "../src/hook-skip.js";
 import { decorateHookPayload } from "../src/hook-surface.js";
 import { normalizeWritePayload } from "../src/hook-write-input.js";
+import { STUB_BUILD_INFO } from "./build-info.js";
 
-const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 600, "NEXUS_HOOK_TIMEOUT_MS");
-const DEFAULT_PORT = 6723;
+const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", RECALL_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
 const STUB_VERSION = "0.6.0-stub"; // 0.6.0 = Codex payload adaptation (#15)
 
-type Lane = "prompt" | "write" | "bash-pre" | "bash-fail" | "stop" | "session" | "todo";
+type Lane = ClientLane;
 const LANES = new Set<Lane>([
   "prompt", "write", "bash-pre", "bash-fail", "stop", "session", "todo",
 ]);
 const SUPPORTED_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"]);
-/** The lanes whose failure the CLIENT logs. The three lanes added in #369 have
- *  their own event kinds (save_eval_call / session_hook_call / todo_hook_call)
- *  that describe a pipeline which did not run at all when the daemon is
- *  unreachable — writing a `hook_call` row for them would pollute a series
- *  that measures something else. Their node clients stay silent too. */
-const CLIENT_TELEMETRY_LANES = new Set<Lane>(["prompt", "write", "bash-pre", "bash-fail"]);
+/** EVERY lane logs its own failure (#543). The three lanes added in #369 were
+ *  silent here, with a reason that was right when it was written: their event
+ *  kinds describe a pipeline that did not run, and a generic `hook_call` row
+ *  would have polluted a series measuring something else. The row they write
+ *  now is not generic — each lane writes its OWN kind (hook-client-telemetry.ts),
+ *  which is what makes the silence unnecessary. It had become harmful: since
+ *  #305 all six automatic lanes carry a threshold, and a lane that writes
+ *  nothing on a transport failure passes its gate for lack of data. */
 
 /**
- * Per-lane wall-clock budget. Two lanes do not fit the 600ms recall budget:
+ * Per-lane wall-clock budget. Three lanes do not fit the 600ms recall budget:
  *
  *  · `stop` scans a transcript, and its node client has always used its own
  *    1000ms (BASTRA_STOP_HOOK_TIMEOUT_MS). Its answer is `{}` either way, so
  *    an early client timeout would only orphan work the daemon then finishes.
  *  · `session` mirrors what the fat session hook allowed itself: the lane
  *    budget plus 100ms, which is where its kill switch used to fire.
+ *  · `prompt` (#305): its trigger class is decided daemon-side, after this
+ *    POST, so the client cannot know whether it is serving the 600ms quiet
+ *    path or the 1000ms assertion path. It must outlast the slowest one it can
+ *    be handed — the daemon still cuts each class at its own budget, so the
+ *    extra room is a backstop against a hung daemon, not added waiting. At
+ *    600ms this client was cutting off assertion calls the daemon went on to
+ *    finish: 73 of 74 client rows in the measured week had a daemon row for
+ *    the very same call.
  */
 function laneBudgetMs(lane: string): number {
-  if (lane === "stop") return envInt("BASTRA_STOP_HOOK_TIMEOUT_MS", 1000);
-  if (lane === "session") return envInt("BASTRA_HOOK_TIMEOUT_MS", 500, "NEXUS_HOOK_TIMEOUT_MS") + 100;
+  if (lane === "stop") return envInt("BASTRA_STOP_HOOK_TIMEOUT_MS", STOP_BUDGET_MS);
+  if (lane === "session") return envInt("BASTRA_HOOK_TIMEOUT_MS", FAST_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS") + 100;
+  if (lane === "prompt") return envInt("BASTRA_HOOK_TIMEOUT_MS", PROMPT_ASSERTION_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
   return HOOK_TIMEOUT_MS;
 }
 
@@ -143,54 +154,6 @@ function postLane(baseUrl: string, path: string, body: unknown, timeoutMs: numbe
   });
 }
 
-/** Same event kinds and field shapes as the daemon-side lanes — one series. */
-async function writeClientTelemetry(
-  lane: Lane,
-  fields: Record<string, unknown>,
-  startedAt: number,
-): Promise<void> {
-  if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
-  try {
-    const logDir =
-      envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? join(homedir(), ".bastra", "logs");
-    await mkdir(logDir, { recursive: true });
-    const ts = new Date().toISOString();
-    const base =
-      lane === "prompt"
-        ? { kind: "prompt_hook_call", detected_mode: "none", prompt_chars: 0, hint_count: 0, top_score: null }
-        : {
-            kind: "hook_call",
-            topics: [],
-            query_chars: 0,
-            hint_count: 0,
-            required_count: 0,
-            top_score: null,
-            dropped_dedup_count: 0,
-            dropped_scope_count: 0,
-            hint_tokens_est: 0,
-            hinted_ids: [],
-            backoff_streak: 0,
-            suppressed: false,
-            suppressed_tokens_est: 0,
-          };
-    const event = {
-      ts,
-      session_id: randomUUID(),
-      hook_version: STUB_VERSION,
-      // #352: null = never asked (skip-gate) — false is reserved for a path
-      // that actually POSTed and got no response.
-      daemon_reachable: fields.status === "skipped" ? null : false,
-      latency_ms_total: Date.now() - startedAt,
-      error: null,
-      ...base,
-      ...fields,
-    };
-    await appendFile(join(logDir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify(event) + "\n", "utf8");
-  } catch {
-    // Telemetry must never break the hook.
-  }
-}
-
 function classifyError(e: NodeJS.ErrnoException): "daemon-unreachable" | "timeout" | "error" {
   if (e.code === "ECONNREFUSED" || e.code === "ENOTFOUND" || e.code === "EHOSTUNREACH")
     return "daemon-unreachable";
@@ -216,9 +179,10 @@ async function main(): Promise<void> {
   }
   payload = decorateHookPayload(payload);
 
-  const httpURL = envFirst("BASTRA_HTTP_URL", "NEXUS_HTTP_URL");
-  const httpPort = envFirst("BASTRA_HTTP_PORT", "NEXUS_HTTP_PORT") ?? String(DEFAULT_PORT);
-  const url = httpURL ?? `http://127.0.0.1:${httpPort}`;
+  // #531 — one resolver for the endpoint, shared with the CLI, the daemon and
+  // the forwarder. This block used to ignore BASTRA_DAEMON_URL, which is the
+  // variable the installer writes into a client registration.
+  const url = resolveDaemonEndpoint().baseUrl;
 
   // Lane-specific client-side gates — everything that must not cost a round trip.
   let path: string;
@@ -240,6 +204,8 @@ async function main(): Promise<void> {
         "write",
         { tool_name: toolName, file_path: filePath, daemon_url: "", status: "skipped" },
         startedAt,
+        payload.session_id ?? null,
+        STUB_VERSION,
       );
       return;
     }
@@ -266,7 +232,6 @@ async function main(): Promise<void> {
   } catch (err) {
     const e = err as NodeJS.ErrnoException;
     emitOnce("{}");
-    if (!CLIENT_TELEMETRY_LANES.has(lane)) return;
     const status = classifyError(e);
     await writeClientTelemetry(
       lane,
@@ -279,11 +244,21 @@ async function main(): Promise<void> {
           : {}),
       },
       startedAt,
+      payload.session_id ?? null,
+      STUB_VERSION,
     );
   }
 }
 
-if (process.argv[2] === "statusline") {
+if (process.argv[2] === "version") {
+  // #546: the only way to ask a COMPILED binary which sources it came from.
+  // Not a lane — no kill switch, no "{}" fail-open; it is answered and the
+  // process is done. The parity guard reads `source_digest` to decide whether
+  // an installed binary is still the one its sources describe; a human reads
+  // `revision`/`built_at`, which is how a two-week-old binary would have been
+  // spotted at a glance instead of by its effect on the telemetry.
+  process.stdout.write(JSON.stringify({ stub_version: STUB_VERSION, ...STUB_BUILD_INFO }) + "\n");
+} else if (process.argv[2] === "statusline") {
   // #347 stage 2: the statusline joins the stub for the compiled start. Not a
   // lane — no kill switch, no "{}" fail-open: its stdout is a rendered line
   // for the status bar, not hook JSON, so a failure must print nothing. The

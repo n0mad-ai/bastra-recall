@@ -22,6 +22,8 @@ import { request } from "node:http";
 import { Vault, SearchIndex, type RecallHit } from "@bastra-recall/core";
 import { mergeHookRecallHits, startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
+import { hintRevision, primeHintSuppressionMode, resetHintSuppressionMode } from "../src/hint-suppression.js";
+import { primeUsageShadowCache, resetUsageShadowCache } from "../src/trust-shadow.js";
 
 function memoryMarkdown(id: string, title: string): string {
   const ts = new Date().toISOString();
@@ -96,6 +98,7 @@ async function makeDaemon(): Promise<{
   close: () => Promise<void>;
   dir: string;
   search: SearchIndex;
+  vault: Vault;
 }> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-sse-test-"));
   await writeFile(join(dir, "alpha.md"), memoryMarkdown("alpha", "alpha bravo"), "utf8");
@@ -126,6 +129,7 @@ async function makeDaemon(): Promise<{
     },
     dir,
     search,
+    vault,
   };
 }
 
@@ -141,6 +145,36 @@ test("hook/recall: without Accept header returns JSON", async () => {
     assert.equal(typeof parsed.recall_id, "string");
     assert.equal(typeof parsed.latency_ms, "number");
   } finally {
+    await d.close();
+  }
+});
+
+test("#479/#484: in the live mode a repeatedly unused version is removed", async () => {
+  const d = await makeDaemon();
+  // #484 moved the breaker to shadow by default and then took `live` out of
+  // the environment altogether — the removal path stays under test through the
+  // seam in `hint-suppression.ts`, which nothing but a case can arm.
+  primeHintSuppressionMode("live");
+  try {
+    const revision = hintRevision(d.vault.get("alpha"));
+    assert.ok(revision);
+    primeUsageShadowCache(d.dir, {
+      alpha: {
+        surfaced: 8,
+        loaded: 0,
+        acted_on: 0,
+        revision,
+        revision_surfaced: 8,
+        revision_loaded: 0,
+        revision_acted_on: 0,
+      },
+    });
+    const response = await httpPost(d.port, "/hook/recall", { query: "alpha", k: 1 });
+    assert.equal(response.status, 200);
+    assert.deepEqual(JSON.parse(response.body).hits, []);
+  } finally {
+    resetHintSuppressionMode();
+    resetUsageShadowCache();
     await d.close();
   }
 });

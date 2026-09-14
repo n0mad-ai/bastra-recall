@@ -5,6 +5,8 @@ import {
   backupConfig,
   blocksMatch,
   buildServerBlock,
+  existingToolSurface,
+  serverBlockEndpoint,
   fileExists,
   getServersBlock,
   probeDaemon,
@@ -46,12 +48,21 @@ async function claudeDesktopInstall(opts: InstallOpts): Promise<InstallResult> {
   if ("error" in vault) return { status: "error", message: vault.error, configPath };
 
   const fwd = await ensureStableForwarder({ dryRun: opts.dryRun });
-  const block = buildServerBlock(vault.path, fwd.path);
   const read = await readJsonConfig(configPath);
   if ("error" in read) return { status: "error", message: read.error, configPath };
 
   const data = read.data;
   const servers = getServersBlock(data) ?? {};
+  // #481: keep a surface the user set by hand instead of resetting it to the
+  // install default on every reinstall.
+  const block = buildServerBlock(
+    vault.path,
+    fwd.path,
+    existingToolSurface(servers[SERVER_KEY]) ?? undefined,
+    // #531: the configured endpoint, or the one this registration already
+    // carries — a GUI client inherits no shell export.
+    serverBlockEndpoint(servers[SERVER_KEY]),
+  );
   const mcpMatches = blocksMatch(servers[SERVER_KEY], block);
 
   // Claude Desktop reads skills from the same ~/.claude/skills/ path as
@@ -177,7 +188,9 @@ async function claudeDesktopDoctor(): Promise<DoctorResult> {
 
   // 4. Daemon reachable
   const probe = await probeDaemon();
-  details["daemon-on-6723"] = probe.ok ? `reachable (${probe.detail})` : probe.detail;
+  // #531: the key names the endpoint that was actually probed. It used to say
+  // 6723 unconditionally while the probe went wherever the env pointed.
+  details[`daemon-at-${probe.endpoint?.label ?? "?"}`] = probe.ok ? `reachable (${probe.detail})` : probe.detail;
 
   if (!registered) return { status: "missing", message: "not registered with Claude Desktop", details };
   const broken =

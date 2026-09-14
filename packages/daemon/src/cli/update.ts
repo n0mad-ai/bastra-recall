@@ -4,15 +4,27 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cmdInstall } from "./commands.js";
-import { findExecutable, run } from "./exec.js";
+import { findExecutable, run, runCaptured } from "./exec.js";
 import { VERSION } from "./helpers.js";
 import { buildManifest, formatPreflight, preflight, writeManifest } from "./update-preflight.js";
 import { activePatches, applySeries, formatApplyOutcome, writeLastRun } from "../patch-registry.js";
 import { isEphemeralInstallPath } from "./stable-runtime.js";
+import {
+  decideSourceBuild,
+  describeSourceBuild,
+  gitRootFor,
+  inspectSourceBuild,
+  provenRevision,
+  type SourceBuildState,
+} from "./source-build.js";
+import { describeLiveRevision, liveRevisionOfDaemon } from "./live-revision.js";
 import { clearBlockedUpdate, recordBlockedUpdate } from "../update-blocked.js";
 import type { ParsedArgs } from "./types.js";
 
-import { refreshManagedAutostart } from "./autostart.js";
+import { refreshManagedAutostart, stableNodeBin } from "./autostart.js";
+import type { InstalledRuntime } from "./autostart.js";
+import { DAEMON_SCRIPT_PATH } from "./paths.js";
+import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 
 const LAUNCH_AGENT_LABEL = "ai.n0mad.bastra-recall";
 
@@ -176,13 +188,102 @@ export function hasInPlacePreflight(mode: InstallSource): boolean {
  * version it just replaced would send the NEXT update's backups into the wrong
  * directory. Falls back to VERSION when package.json is unreadable.
  */
-function installedVersion(root: string): string {
+function packageVersion(root: string): string | null {
   try {
     const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as { version?: unknown };
-    return typeof pkg.version === "string" && pkg.version ? pkg.version : VERSION;
+    return typeof pkg.version === "string" && pkg.version ? pkg.version : null;
   } catch {
-    return VERSION;
+    return null;
   }
+}
+
+/** #528 — build state of the checkout this CLI is running from. */
+export function sourceBuildState(cliPath: string): SourceBuildState {
+  const root = gitRootFor(cliPath);
+  if (!root) {
+    return decideSourceBuild({ newestSourceMs: null, newestBuildMs: null, head: null, built: null });
+  }
+  return inspectSourceBuild(root, findExecutable("git"));
+}
+
+/**
+ * #528 — the whole source-mode "install" step: verify, and refuse to go on.
+ *
+ * `rc` 1 means the caller returns immediately — nothing is re-registered and
+ * the daemon is not restarted, so a checkout that was pulled but never built
+ * cannot end up pinned across every surface. `state` carries what may be
+ * claimed afterwards — see provenRevision() in source-build.ts.
+ */
+export function verifySourceCheckout(
+  cliPath: string,
+  rebuild: string,
+  write: (s: string) => void,
+): { rc: number; state: SourceBuildState } {
+  write("→ source checkout — verifying the build (nothing is pulled, installed or built here)\n");
+  const state = sourceBuildState(cliPath);
+  write(describeSourceBuild(state, rebuild));
+  if (!state.ok) {
+    write("\n  Nothing was re-registered and the daemon was left alone.\n");
+    return { rc: 1, state };
+  }
+  write("\n");
+  return { rc: 0, state };
+}
+
+function installedVersion(root: string): string {
+  return packageVersion(root) ?? VERSION;
+}
+
+/**
+ * #435 — the daemon entry point of the installation that is on disk NOW.
+ *
+ * The managed LaunchAgent names an ABSOLUTE path, and after `brew upgrade` the
+ * absolute path this process runs from is the keg the installer just
+ * superseded: Homebrew builds every version into its own
+ * Cellar/bastra-recall/<version>/ and re-points the symlinks, while this
+ * process keeps executing the old modules it was started with. Writing a plist
+ * from `DAEMON_SCRIPT_PATH` therefore pins the autostart back onto the old keg
+ * — which either runs the replaced code or, after `brew cleanup`, is gone.
+ *
+ * So ASK the installer where it put things, exactly as the npx hand-off above
+ * asks `npm prefix -g` instead of trusting PATH. No fallback to this process's
+ * own path for brew/npm: a silent fallback is precisely the stale pin, and the
+ * caller can say so out loud instead. Where the installer never moves anything
+ * (source checkout, unknown), this process's entry point IS the installation.
+ *
+ * The node binary gets the same treatment for the same reason — see
+ * `stableNodeBin()`: under Homebrew `process.execPath` is a version-pinned node
+ * keg, and a plist naming it dies the next time node is upgraded and cleaned up.
+ */
+export function resolveInstalledRuntime(mode: InstallMode): InstalledRuntime | null {
+  const script = installedDaemonScript(mode);
+  if (!script) return null;
+  // dist/index.js → the daemon package root that carries the version.
+  return { node: stableNodeBin(), script, version: packageVersion(resolve(dirname(script), "..")) };
+}
+
+function installedDaemonScript(mode: InstallMode): string | null {
+  if (mode.mode === "brew") {
+    const brewBin = findExecutable("brew");
+    if (!brewBin) return null;
+    const r = runCaptured(brewBin, ["--prefix", "bastra-recall"], { timeoutMs: 60_000 });
+    const prefix = r.stdout.trim();
+    if (!r.ok || !prefix) return null;
+    return existsFile(resolve(prefix, "libexec", "packages", "daemon", "dist", "index.js"));
+  }
+  if (mode.mode === "npm-global") {
+    const npmBin = findExecutable("npm");
+    if (!npmBin) return null;
+    const r = runCaptured(npmBin, ["prefix", "-g"], { timeoutMs: 60_000 });
+    const root = r.stdout.trim();
+    if (!r.ok || !root) return null;
+    return existsFile(resolve(root, "lib", "node_modules", "@bastra-recall", "daemon", "dist", "index.js"));
+  }
+  return existsFile(DAEMON_SCRIPT_PATH);
+}
+
+function existsFile(path: string): string | null {
+  return existsSync(path) ? path : null;
 }
 
 function launchAgentPresent(uid: string): boolean {
@@ -211,7 +312,11 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
   if (args.dryRun) {
     process.stdout.write("(dry-run — describing what would happen, writing nothing)\n\n");
     process.stdout.write(`→ install source: ${mode.mode}\n`);
-    process.stdout.write(`  update command: ${mode.updateCommand}\n\n`);
+    process.stdout.write(
+      mode.mode === "source"
+        ? `  rebuild command (yours to run, never run by 'bastra update'): ${mode.updateCommand}\n\n`
+        : `  update command: ${mode.updateCommand}\n\n`,
+    );
     if (preflightSupported) {
       process.stdout.write("  would: 0) preflight: back up locally modified files, then refuse or proceed\n");
       const pending = activePatches();
@@ -227,7 +332,17 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
         "            Cellar directory, so there is no in-place file to modify or back up\n",
       );
     }
-    process.stdout.write("  would: 1) run the update command above\n");
+    // #528 — the plan has to be the action. Only brew/npm-global actually run
+    // an update command here; source and unknown never did, however confidently
+    // the old text said "would: run the update command above".
+    if (runsInstaller) {
+      process.stdout.write("  would: 1) run the update command above\n");
+    } else if (mode.mode === "source") {
+      process.stdout.write("  would: 1) verify this checkout's build is current, and stop here if it is not\n");
+      process.stdout.write("            (no pull, no install, no build — 'bastra update' never runs those)\n");
+    } else {
+      process.stdout.write("  would: 1) install nothing — the install mode is unknown\n");
+    }
     process.stdout.write("         2) re-register every surface (idempotent)\n");
     process.stdout.write(
       args.staged
@@ -277,6 +392,10 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
     process.stdout.write("  and gone from the next version's point of view. Keep local patches outside the keg.\n\n");
   }
 
+  // #528 — set by the source branch below. The closing line may only name a
+  // revision this state PROVED, and only once the daemon confirms it serves it.
+  let sourceState: SourceBuildState | null = null;
+
   // 1. Update the binary itself
   // Resolved absolute paths + hard timeouts (#91): the staged path runs
   // unattended from the SessionStart hook (detached, stdio:"ignore"), so a
@@ -318,9 +437,13 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
     }
     process.stdout.write("\n");
   } else if (mode.mode === "source") {
-    process.stdout.write("→ source install — rebuild yourself first if you haven't:\n");
-    process.stdout.write(`    cd <bastra-recall> && ${mode.updateCommand}\n`);
-    process.stdout.write("  Then re-run 'bastra update' to refresh configs + restart the daemon.\n\n");
+    // #528 — this branch installs nothing (see source-build.ts for why), so the
+    // one thing it owes the user is certainty that what gets re-registered and
+    // restarted is the code that is actually in this checkout. An unbuilt or
+    // stale tree ends here: no re-registration, no restart, exit 1.
+    const verdict = verifySourceCheckout(mode.cliPath, mode.updateCommand, (s) => process.stdout.write(s));
+    if (verdict.rc !== 0) return verdict.rc;
+    sourceState = verdict.state;
   } else {
     process.stdout.write("⚠ install mode unknown — install manually from:\n");
     process.stdout.write(`    ${mode.updateCommand}\n\n`);
@@ -453,25 +576,42 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
     return installRC;
   }
 
-  // 3. Daemon restart.
+  // 3. Der verwaltete Dienst, BEVOR irgendetwas Erfolg meldet.
+  //
+  //    Ein Update verschiebt die Installation (Homebrew legt jede Version in ein
+  //    eigenes Verzeichnis), und ein LaunchAgent zeigt auf einen ABSOLUTEN Pfad.
+  //    Zeigt er noch auf die alte, startet er danach entweder nichts mehr oder
+  //    weiter den alten Code. Fremde plists bleiben unangetastet.
+  //
+  //    Beide Update-Wege laufen hier durch — das ist der Kern von #441: „jetzt
+  //    nicht neu starten" ist eine andere Entscheidung als „den plist nicht
+  //    umbiegen". Staged biegt um (`reload: false`), kickstartet aber nicht.
+  //    Und die Laufzeit, auf die umgebogen wird, kommt vom Installer, nicht von
+  //    diesem Prozess (#435) — siehe resolveInstalledRuntime.
+  if (!args.dryRun) {
+    const autostart = await refreshManagedAutostart((s) => process.stdout.write(s), {
+      target: resolveInstalledRuntime(mode),
+      reload: !args.staged,
+    });
+    if (!autostart.ok) {
+      process.stdout.write("\n✗ the managed autostart could not be pointed at the new install — fix it before relying on it\n");
+      return 1;
+    }
+  }
+
+  // 4. Daemon restart.
   //    --staged deliberately skips the kickstart: the running daemon keeps the
   //    old code in memory and a current session stays intact. The new code goes
   //    live on the next daemon boot (idle-shutdown after 30 min → forwarder
   //    respawns with the new code), or immediately when the user restarts.
   if (args.staged) {
     process.stdout.write("→ staged — daemon left running on old code (no restart mid-session)\n");
+    process.stdout.write("  The managed autostart already names the new runtime, so a logout/reboot starts it (#441).\n");
     process.stdout.write("  New code goes live on the next daemon restart:\n");
     process.stdout.write("    · automatically after 30 min idle (forwarder mode — a LaunchAgent daemon stays warm, #78), or\n");
     process.stdout.write("    · now — run 'bastra update' without --staged (kickstarts a LaunchAgent daemon), or restart your AI clients\n");
     return 0;
   }
-
-  // Der Schritt, der bisher fehlte: Ein Update verschiebt die Installation
-  // (Homebrew legt jede Version in ein eigenes Verzeichnis), und ein
-  // LaunchAgent zeigt auf einen ABSOLUTEN Pfad. Zeigt er noch auf die alte,
-  // startet er danach entweder nichts mehr oder weiter den alten Code — genau
-  // der gemeldete Fall. Fremde plists bleiben unangetastet.
-  await refreshManagedAutostart((s) => process.stdout.write(s));
 
   process.stdout.write("→ restarting daemon\n");
   const uid = String(process.getuid?.() ?? 0);
@@ -488,12 +628,28 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
       else process.stdout.write("  ✗ kickstart failed — restart the daemon manually\n\n");
     }
   } else {
-    process.stdout.write("  no LaunchAgent registered — running daemon (if any) still holds the old code in memory\n");
-    process.stdout.write("  Restart it manually:\n");
-    process.stdout.write("    lsof -i :6723             # find the daemon pid\n");
+    // #528 — no claim about what is in memory here: this branch cannot restart
+    // anything, so what a running daemon holds is asked below, not guessed.
+    process.stdout.write("  no LaunchAgent registered — nothing here can restart a running daemon\n");
+    process.stdout.write("  Restart it manually if the check below says it is needed:\n");
+    process.stdout.write(`    lsof -i :${resolveDaemonEndpoint().port}             # find the daemon pid\n`);
     process.stdout.write("    kill <pid>                 # forwarder respawns it with new code on next call\n\n");
   }
 
-  process.stdout.write("→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\n");
+  // #528 — the closing line and the restart report have to tell one story. In
+  // source mode the daemon itself is asked which build it serves; in every
+  // other mode there is no local revision to compare against and the line stays
+  // the plain one.
+  if (sourceState !== null) {
+    const { verdict, daemonRevision } = await liveRevisionOfDaemon(provenRevision(sourceState));
+    const said = describeLiveRevision(verdict, { state: sourceState, daemonRevision });
+    process.stdout.write(said.report);
+    process.stdout.write(said.closing);
+    return 0;
+  }
+
+  process.stdout.write(
+    "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\n",
+  );
   return 0;
 }

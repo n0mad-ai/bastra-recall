@@ -13,15 +13,22 @@
  *
  * Heuristics:
  *   1. Frustration-Density   — >=4 cues AND >=2 explicit frustration words
- *      (`wieder/schon wieder/wie oft/fuck/verdammt/scheisse`) in the last 10
- *      user turns. CAPS words count as cues only when they are >=5 chars or
+ *      (German, English and Russian cue lists, #476) in the last 10 user
+ *      turns. CAPS words count as cues only when they are >=5 chars or
  *      repeated in a turn AND not a technical acronym (SKILL/JSON/…); CAPS
- *      alone never triggers.
- *   2. Feature-Completion    — `git commit` mentioned in a USER turn + >=5
- *      distinct repo-relative source-file tokens, at least one of which exists
- *      under the session cwd.
- *   3. Architecture-Decision — `ok dann | lass uns | entschieden | final |
- *      gehen wir mit` in the last 5 user turns.
+ *      alone never triggers. Case and word boundaries are Unicode-aware, so
+ *      Cyrillic counts the same way Latin does.
+ *   2. Feature-Completion    — a commit signal + >=5 distinct repo-relative
+ *      source-file tokens, at least one of which exists under the session
+ *      cwd. Three things count as the signal, whoever typed the commit:
+ *      `git commit` in a USER turn, `git commit` in a shell command the
+ *      agent ran (Claude tool_use / Codex function_call or custom_tool_call), or git's own
+ *      "[branch sha] subject" line in a TOOL turn. Until 05.09.2026 only the
+ *      first counted — for every user whose agent commits, the heuristic
+ *      could structurally never fire (the #476 pattern, scope-bound instead
+ *      of language-bound).
+ *   3. Architecture-Decision — a decision cue from the German, English or
+ *      Russian list in the last 5 user turns.
  *
  * Output: ALWAYS `{}` (#48 — suggestions go to the pending file, which the
  * next SessionStart injects silently). The lane still returns that document
@@ -49,7 +56,13 @@ import { scrubInjectedBlocks } from "@bastra-recall/core/scrub";
 import { envFirst } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { writePendingSuggestion } from "./pending-suggestions.js";
+import { frustrationCues, decisionCues } from "./lexicon.js";
 import { getDocsMode, type DocsMode } from "./settings.js";
+import {
+  claudeToolUseCommands,
+  codexCustomExecCommands,
+  codexFunctionCallCommands,
+} from "./stop-lane-command-input.js";
 
 // 0.1.0 = unchanged event contract; the lane moved, the shape did not (#369).
 const HOOK_VERSION = "0.1.0";
@@ -71,6 +84,10 @@ export interface ClaudeStopPayload {
 interface TranscriptTurn {
   role: "user" | "assistant" | "system" | string;
   content: string;
+  /** Shell commands the agent ran from this turn (tool_use input.command /
+   *  Codex function_call arguments). Kept apart from `content` so prose that
+   *  merely TALKS about a command never counts as running it. */
+  commands?: string[];
 }
 
 type Heuristic = "frustration-density" | "feature-completion" | "architecture-decision";
@@ -96,6 +113,39 @@ export async function runStopLane(
   if (payload.hook_event_name !== "Stop") return "{}";
   if (payload.stop_hook_active === true) return "{}";
 
+  // Fail-open backstop for the "Never throws" contract. No known input reaches
+  // this catch today — loadTranscript swallows its own IO errors and cues are
+  // validated in lexicon.ts — but per-cue validation cannot see a join-time
+  // RegExp compile error, and a future detector may throw. A broken Stop
+  // evaluation must degrade to `{}`, never take the hook down.
+  try {
+    return await evaluateStop(payload, selfBaseUrl, startedAt);
+  } catch (err) {
+    try {
+      await writeTelemetry({
+        session_id: payload.session_id ?? null,
+        heuristic: null,
+        suggested_count: 0,
+        drift_clusters: 0,
+        drift_keys: [],
+        turn_count: 0,
+        latency_ms_total: Date.now() - startedAt,
+        // A RegExp compile error quotes the whole joined pattern (up to the
+        // 64 KiB cue file) — keep the telemetry line bounded.
+        error: String((err as { message?: unknown })?.message ?? err).slice(0, 200),
+      });
+    } catch {
+      /* telemetry must never break the hook */
+    }
+    return "{}";
+  }
+}
+
+async function evaluateStop(
+  payload: ClaudeStopPayload,
+  selfBaseUrl: string,
+  startedAt: number,
+): Promise<string> {
   const turns = await loadTranscript(payload);
   if (turns.length === 0) return "{}";
 
@@ -136,6 +186,7 @@ export async function runStopLane(
     heuristic: suggestions.map((s) => s.heuristic).join(",") || null,
     suggested_count: suggestions.length,
     drift_clusters: drift.length,
+    drift_keys: drift.map((c) => `${c.key}:${c.count}`),
     turn_count: turns.length,
     latency_ms_total: totalMs,
   });
@@ -169,6 +220,8 @@ function formatDriftBlock(clusters: DriftCluster[]): string {
     `save_memory with scope='taxonomy', tag 'convention', body = the rule ` +
     `(folder, topic_path shape, tags, body shape, one example) — then re-file ` +
     `the members (overwrite=true + the convention's folder). ` +
+    `Put every key the convention covers into its tags — the detector reads ` +
+    `tags, topic_path and title, never the body. ` +
     `Suggestion only: weigh it, ask the user if unsure, never bulk-move silently.\n` +
     `</taxonomy-drift>`
   );
@@ -330,6 +383,22 @@ function normalizeTurns(items: unknown[]): TranscriptTurn[] {
         });
         continue;
       }
+      // Codex: `{type:"function_call", name:"shell", arguments:"{\"command\":[…]}"}`.
+      // A separate item, not part of an assistant message — attach it to the
+      // preceding assistant turn so it neither inflates the turn window nor
+      // feeds file-token scanning.
+      if (p.type === "function_call") {
+        attachCommands(out, codexFunctionCallCommands(p));
+        continue;
+      }
+      // Current Codex desktop rollouts use a free-form `custom_tool_call`
+      // named `exec`; the input is JavaScript which calls tools.exec_command
+      // with a `cmd` property. Keep this additive because the rollout format
+      // is explicitly unstable and older function_call rows still exist.
+      if (p.type === "custom_tool_call") {
+        attachCommands(out, codexCustomExecCommands(p));
+        continue;
+      }
     }
     const directRole = obj.role;
     const directContent = obj.content;
@@ -341,7 +410,10 @@ function normalizeTurns(items: unknown[]): TranscriptTurn[] {
     if (msg && typeof msg === "object") {
       const m = msg as Record<string, unknown>;
       const role = typeof m.role === "string" ? m.role : "unknown";
-      out.push({ role: effectiveRole(role, m.content), content: scrubTurnContent(stringifyContent(m.content)) });
+      const turn: TranscriptTurn = { role: effectiveRole(role, m.content), content: scrubTurnContent(stringifyContent(m.content)) };
+      const commands = claudeToolUseCommands(m.content);
+      if (commands.length > 0) turn.commands = commands;
+      out.push(turn);
       continue;
     }
     if (typeof obj.text === "string") {
@@ -349,6 +421,16 @@ function normalizeTurns(items: unknown[]): TranscriptTurn[] {
     }
   }
   return out;
+}
+
+function attachCommands(out: TranscriptTurn[], commands: string[]): void {
+  if (commands.length === 0) return;
+  const last = out[out.length - 1];
+  if (last && last.role === "assistant") {
+    last.commands = [...(last.commands ?? []), ...commands];
+  } else {
+    out.push({ role: "assistant", content: "", commands });
+  }
 }
 
 // #149: our own hook injections (<recall-hints>, <session-context>, …) quote
@@ -402,14 +484,21 @@ function evaluateHeuristics(turns: TranscriptTurn[], deps: HeuristicDeps = {}): 
   return suggestions;
 }
 
-// Explicit frustration words. "schon wieder" is matched before plain "wieder"
-// so the same span is not double-counted; the global flag counts occurrences.
-const FRUST_WORD_RE = /\b(?:schon\s+wieder|wieder|wie\s+oft|verdammt|fuck|schei(?:ss|ß)e)\b/gi;
-// Letter runs incl. German Umlauts/ß. We intentionally do NOT use `\b` here:
-// JS word boundaries treat Ä/Ö/Ü as non-word chars, so `\b[A-ZÄÖÜ]+\b` would
-// mangle CAPS words that start with an Umlaut (ÄRGER → "RGER", ÜBER → no match).
-const WORD_TOKEN_RE = /[A-Za-zÄÖÜäöüß]+/g;
-const ALL_CAPS_RE = /^[A-ZÄÖÜ]{4,}$/;
+// Explicit frustration words, per language (#476) — the list is DATA now, in
+// lexicon.ts (shipped defaults + a user-editable file), not a `const` here.
+// The regex is rebuilt per detection so an edit to the lexicon file takes
+// effect on the next session without a restart; the list is tiny.
+//
+// `\b` is unusable here: JS word boundaries are defined over [A-Za-z0-9_], so
+// `\bснова\b` never matches and `\bÄRGER\b` matches in the wrong places. The
+// Unicode letter lookarounds below are the same idea, correct for every script.
+function frustWordRe(): RegExp {
+  return new RegExp(`(?<!\\p{L})(?:${frustrationCues().join("|")})(?!\\p{L})`, "giu");
+}
+// Letter runs in any script (Latin incl. Umlauts, Cyrillic, …) and all-caps
+// tokens by Unicode case, not by Latin alphabet.
+const WORD_TOKEN_RE = /\p{L}+/gu;
+const ALL_CAPS_RE = /^\p{Lu}{4,}$/u;
 
 // Technical all-caps acronyms that routinely appear in tool output, file paths
 // and doc discussions — never a frustration signal on their own.
@@ -419,8 +508,8 @@ const CAPS_STOPLIST = new Set([
   "SVG", "PNG", "PDF", "JPG", "TODO", "FIXME",
 ]);
 
-function countFrustWords(content: string): number {
-  const m = content.match(FRUST_WORD_RE);
+function countFrustWords(content: string, re: RegExp): number {
+  const m = content.match(re);
   return m ? m.length : 0;
 }
 
@@ -447,11 +536,12 @@ function countQualifyingCaps(content: string): number {
 
 function detectFrustration(turns: TranscriptTurn[]): SaveSuggestion | null {
   const userTurns = turns.filter((t) => t.role === "user").slice(-FRUSTRATION_WINDOW_TURNS);
+  const re = frustWordRe();
   let frustWordCount = 0;
   let capsCueCount = 0;
   const exemplars: string[] = [];
   for (const t of userTurns) {
-    const fw = countFrustWords(t.content);
+    const fw = countFrustWords(t.content, re);
     if (fw > 0) {
       frustWordCount += fw;
       if (exemplars.length < 3) exemplars.push(t.content.slice(0, 120));
@@ -500,11 +590,24 @@ function isRepoRelativeSourceToken(token: string): boolean {
   return false;
 }
 
+// Git's own success line: "[main abc1234] subject", "[feat/x (root-commit) 0f1e2d3] …".
+const COMMIT_OUTPUT_RE = /^\[[^\]\n]+? (?:\(root-commit\) )?[0-9a-f]{7,40}\] /m;
+const GIT_COMMIT_RE = /\bgit\s+commit\b/i;
+
+/** The commit signal, whoever typed it: the user says so, the agent RAN it
+ *  (a command, never prose — assistant text talking about a commit does not
+ *  count), or git reported one in a tool turn. */
+function commitSignal(turns: TranscriptTurn[]): boolean {
+  for (const t of turns) {
+    if (t.role === "user" && GIT_COMMIT_RE.test(t.content)) return true;
+    if (t.commands?.some((c) => GIT_COMMIT_RE.test(c))) return true;
+    if (t.role === "tool" && COMMIT_OUTPUT_RE.test(t.content)) return true;
+  }
+  return false;
+}
+
 function detectFeatureCompletion(turns: TranscriptTurn[], deps: HeuristicDeps = {}): SaveSuggestion | null {
-  // "git commit" must come from a USER turn — not assistant text, tool output,
-  // shell output or quoted code. A user confirming the commit is the signal.
-  const userText = turns.filter((t) => t.role === "user").map((t) => t.content).join("\n");
-  if (!/\bgit\s+commit\b/i.test(userText)) return null;
+  if (!commitSignal(turns)) return null;
 
   // File tokens may appear anywhere (the assistant's edits carry the real
   // paths) but are filtered down to repo-relative source files.
@@ -541,19 +644,18 @@ function detectFeatureCompletion(turns: TranscriptTurn[], deps: HeuristicDeps = 
   };
 }
 
-const DECISION_PATTERNS: RegExp[] = [
-  /\bok dann\b/i,
-  /\blass uns\b/i,
-  /\bentschieden\b/i,
-  /\bfinal\b/i,
-  /\bgehen wir mit\b/i,
-];
+// Decision cues (#476) are DATA in lexicon.ts (defaults + a user file), not a
+// `const` here — same story as frustration. Patterns rebuilt per detection.
+function decisionPatterns(): RegExp[] {
+  return decisionCues().map((w) => new RegExp(`(?<!\\p{L})(?:${w})(?!\\p{L})`, "iu"));
+}
 
 function detectArchitectureDecision(turns: TranscriptTurn[]): SaveSuggestion | null {
   const userTurns = turns.filter((t) => t.role === "user").slice(-DECISION_WINDOW_TURNS);
+  const patterns = decisionPatterns();
   const exemplars: string[] = [];
   for (const t of userTurns) {
-    for (const p of DECISION_PATTERNS) {
+    for (const p of patterns) {
       if (p.test(t.content)) {
         if (exemplars.length < 2) exemplars.push(t.content.slice(0, 160));
         break;
@@ -610,8 +712,13 @@ interface StopHookTelemetry {
   heuristic: string | null;
   suggested_count: number;
   drift_clusters: number;
+  /** "<key>:<count>" per flagged cluster — lets the threshold be judged from the log. */
+  drift_keys: string[];
   turn_count: number;
   latency_ms_total: number;
+  /** Set only on the fail-open backstop path: the error that made the Stop
+   *  evaluation degrade to `{}`. Absent on every normal event. */
+  error?: string;
 }
 
 async function writeTelemetry(payload: StopHookTelemetry): Promise<void> {

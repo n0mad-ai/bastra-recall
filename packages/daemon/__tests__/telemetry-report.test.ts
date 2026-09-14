@@ -15,8 +15,10 @@ import {
   readEventWindow,
   summarizeContextTax,
   summarizeEvidence,
+  summarizeHintSuppression,
   summarizeLatency,
   summarizeQuality,
+  summarizeSaves,
   summarizeSessionStart,
   type ReportEvent,
 } from "../src/telemetry-report.js";
@@ -148,6 +150,77 @@ test("#463 evidence: acceptance over shadow only, mix over usable, divergence on
   // u: unfused → skipped. x: no hook_recall → unknown space.
   assert.deepEqual(ev.divergence, { agree: 1, withholds: 1, promotes: 1, unknownSpace: 1, unfused: 1 });
   assert.equal(summarizeEvidence([], T), null);
+});
+
+test("#477 saves: written and held paths stay comparable without recording content", () => {
+  const saves = summarizeSaves([
+    { kind: "save_memory", ts: ts("2026-09-01"), created: true, overwrite: false },
+    { kind: "save_memory", ts: ts("2026-09-01"), created: false, overwrite: true },
+    { kind: "save_hold", ts: ts("2026-09-01"), reason: "claim_gate", claimed_count: 2 },
+    { kind: "save_hold", ts: ts("2026-09-01"), reason: "claim_gate", claimed_count: 1 },
+    { kind: "save_hold", ts: ts("2026-09-01"), reason: "id_exists", claimed_count: 0 },
+  ]);
+  assert.deepEqual(saves, {
+    written: 2,
+    held: 3,
+    byReason: [
+      { reason: "claim_gate", count: 2 },
+      { reason: "id_exists", count: 1 },
+    ],
+    claimedTotal: 3,
+    created: 1,
+    overwritten: 1,
+  });
+  assert.equal(summarizeSaves([]), null);
+});
+
+test("#479 suppression: report measures removed hints and estimated context", () => {
+  const section = summarizeHintSuppression([
+    {
+      kind: "hook_recall",
+      ts: ts("2026-09-05"),
+      usage_suppressed: [
+        { id: "fact-a", type: "project-fact", surfaced: 8 },
+        { id: "lesson-b", type: "lesson", surfaced: 12 },
+      ],
+      usage_suppressed_tokens_est: 70,
+    },
+    {
+      kind: "hook_recall",
+      ts: ts("2026-09-05"),
+      usage_suppressed: [{ id: "fact-a", type: "project-fact", surfaced: 9 }],
+      usage_suppressed_mode: "shadow",
+    },
+  ])!;
+  assert.deepEqual(
+    {
+      calls: section.calls,
+      hints: section.hints,
+      tokensAvoided: section.tokensAvoided,
+      unknownTokenCalls: section.unknownTokenCalls,
+      uniqueMemories: section.uniqueMemories,
+      byType: section.byType,
+    },
+    {
+      calls: 2,
+      hints: 3,
+      tokensAvoided: 70,
+      unknownTokenCalls: 1,
+      uniqueMemories: 2,
+      byType: [
+        { type: "project-fact", count: 2 },
+        { type: "lesson", count: 1 },
+      ],
+    },
+  );
+  assert.deepEqual(section.topMemories[0], { id: "fact-a", type: "project-fact", count: 2, surfaced: 9 });
+  // #484: der Modus trennt die Live-Historie von den Schattenzahlen danach.
+  // Ein Event ohne das Feld ist älter als der Modus und war damit live.
+  assert.deepEqual(section.modes, [
+    { mode: "live", calls: 1 },
+    { mode: "shadow", calls: 1 },
+  ]);
+  assert.equal(summarizeHintSuppression([]), null);
 });
 
 test("#463 session start: shares only over starts that carry per-part data, the rest is counted as a gap", () => {

@@ -67,7 +67,7 @@ silent in the drift detector either way.
 The daemon's drift detector (`GET /hook/drift`, implemented in
 `packages/daemon/src/taxonomy.ts`) looks at memories updated in the last
 `BASTRA_DRIFT_WINDOW_DAYS` (default 14) and flags clusters of at least
-`BASTRA_DRIFT_MIN_CLUSTER` (default 3) distinct memories sharing a tag or a
+`BASTRA_DRIFT_MIN_CLUSTER` (default 8) distinct memories sharing a tag or a
 sub-project `topic_path` segment — **unless** a convention already covers that
 key (mentioned in a convention's tags, topic_path or title). Scope names and
 memory types never count (structural, not drift).

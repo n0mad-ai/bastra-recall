@@ -8,7 +8,7 @@ If triggers fire reliably, the system feels built-in. If they don't, the system 
 
 ## Save triggers — autonomous memorization
 
-The goal: Daniel never has to say *"merk dir das"*. Claude detects memory-worthy moments and saves.
+The goal is to reduce repeated explanations. The assistant is guided to recognize durable lessons, preferences and decisions and save them when appropriate.
 
 ### Signals that a moment is memory-worthy
 

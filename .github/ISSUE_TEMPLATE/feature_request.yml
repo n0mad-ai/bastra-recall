@@ -5,8 +5,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Feature requests that describe a **problem** convert better than ones that
-        prescribe a **solution**. Tell us the friction; we'll figure out the shape.
+        Tell us what gets in your way and show an example if you can.
+        You do not need to design the solution to suggest an improvement.
 
   - type: textarea
     id: problem

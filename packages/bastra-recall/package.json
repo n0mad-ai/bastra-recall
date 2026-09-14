@@ -1,7 +1,7 @@
 {
   "name": "bastra-recall",
-  "version": "0.9.2",
-  "description": "One-command installer for bastra-recall — persistent recall memory for Claude Code, Claude Desktop, and Cursor. Thin launcher for the bastra CLI.",
+  "version": "1.0.0",
+  "description": "Shared memory for Claude Code, Claude Desktop, Codex/ChatGPT Desktop, and Cursor. Keep preferences, decisions and lessons in local Markdown files; includes the bastra installer.",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -24,7 +24,7 @@
     "README.md"
   ],
   "dependencies": {
-    "@bastra-recall/daemon": "0.9.2"
+    "@bastra-recall/daemon": "1.0.0"
   },
   "keywords": [
     "bastra",

@@ -18,10 +18,12 @@ test("detectProjectDetailed: root-match when a known repo-root segment precedes 
 });
 
 test("detectProjectDetailed: ein echtes .git schlägt die Container-Heuristik", () => {
-  // Dieses Repo liegt unter ~/Projekte/bastra-recall UND hat ein .git.
-  // Beide Wege ergeben denselben Namen, aber die Auskunft ist die bessere.
+  // Dieses Repo hat ein `.git` — geprüft wird die Auskunft, nicht der Name:
+  // in einem git-worktree heißt das Checkout-Verzeichnis anders als das Repo,
+  // und ein fest verdrahtetes "bastra-recall" ließ den Test dort scheitern.
+  const root = new URL("../../..", import.meta.url).pathname.replace(/\/$/, "");
   const d = detectProjectDetailed(new URL("..", import.meta.url).pathname);
-  assert.equal(d.key, "bastra-recall");
+  assert.equal(d.key, root.slice(root.lastIndexOf("/") + 1));
   assert.equal(d.confidence, "git-root");
 });
 

@@ -21,14 +21,14 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { request } from "node:http";
 import { randomUUID } from "node:crypto";
-import { detectTopics, detectProject, extractContentExcerpt } from "@bastra-recall/core";
+import { detectTopics, extractContentExcerpt } from "@bastra-recall/core";
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { requiredHeadline, unfusedHeadline, CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
 import { envFirst, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
-import { applyLaneScopeFilter, projectConfidence, projectForFilter } from "./scope-filter.js";
+import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane } from "./scope-filter.js";
 import { fileSizeNote } from "./file-size-check.js";
 import { memoryLocationNote } from "./memory-location.js";
 import { reportHinted } from "./hook-hinted.js";
@@ -41,9 +41,10 @@ import {
   loadSessionState,
   recordSourceEmit,
   recordSourceSuppressed,
-  saveSessionState,
+  mutateSessionState,
   shouldDropHit,
   wasEmitConsumed,
+  type ReadonlySessionState,
   type SessionState,
 } from "./session-state.js";
 
@@ -153,11 +154,13 @@ export async function runWriteLane(
   };
   const topics = detectTopics(intent);
   const cwd = payload.cwd ?? process.cwd();
-  const project = detectProject(cwd);
-  // §20.5: Der Name, den der Filter benutzen darf, ist NICHT immer der Name,
-  // den Query und Anzeige benutzen. `projectForFilter` liefert null, sobald
-  // die Erkennung nur geraten war — dann filtert diese Lane nicht, statt auf
-  // einem Fallback-Namen eigene Treffer wegzuwerfen.
+  // §20.5: geratene Erkennung = kein Projekt. Der Filter hatte diese Regel als
+  // erste Lane (`projectForFilter`), Query und Anzeige nicht — die schickten
+  // den geratenen Namen weiter als `project` an /hook/recall und druckten ihn
+  // als `project=` in den Hint-Block.
+  const project = projectForLane(cwd);
+  // Beide Namen kommen aus derselben Konfidenz-Regel, unterscheiden sich aber
+  // in der Projektion: `key` (kanonisch) zum Vergleichen, `raw` zum Anzeigen.
   const filterProject = projectForFilter(cwd);
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
 
@@ -225,8 +228,12 @@ export async function runWriteLane(
   // Per-session dedup (#32). Best-effort throughout — no error in this
   // section ever blocks the response.
   const sessionId = payload.session_id ?? "";
-  let sessionState: SessionState = { shown: {} };
+  // #539: read-only on purpose — a lane's snapshot decides, it never books.
+  let sessionState: ReadonlySessionState = { shown: {} };
   let dedupActive = false;
+  // #539: this lane's own bookkeeping, queued as deltas instead of written
+  // back from the snapshot — replayed under the session lock at the end.
+  const stateDeltas: Array<(s: SessionState) => void> = [];
   if (sessionId) {
     sessionState = await loadSessionState(sessionId);
     dedupActive = true;
@@ -317,7 +324,7 @@ export async function runWriteLane(
     }
     const block = formatHintBlock(requiredHits, optionalHits, project, resp?.weak_result === true, resp?.no_home === true, resp?.unfused === true, client);
     suppressedTokensEst = Math.ceil(block.length / 4);
-    recordSourceSuppressed(sessionState, BACKOFF_SOURCE);
+    stateDeltas.push((s) => recordSourceSuppressed(s, BACKOFF_SOURCE));
   } else {
     const hintsBlock = formatHintBlock(requiredHits, optionalHits, project, resp?.weak_result === true, resp?.no_home === true, resp?.unfused === true, client);
     const block = detNote ? `${detNote}\n${hintsBlock}` : hintsBlock;
@@ -325,17 +332,29 @@ export async function runWriteLane(
     hintedIds = [...requiredHits, ...optionalHits].map((h) => h.id);
     hintedTypes = [...requiredHits, ...optionalHits].map((h) => h.type);
     stdout = envelope(block);
-    recordSourceEmit(sessionState, BACKOFF_SOURCE, hintedIds, backoffConsumed);
+    const emitted = hintedIds;
+    stateDeltas.push((s) => recordSourceEmit(s, BACKOFF_SOURCE, emitted, backoffConsumed));
   }
 
   // Bump shown-counts for everything we surfaced, then persist. When
   // suppressed nothing was shown — only the backoff counter changed.
-  if (dedupActive && survivingHits.length > 0) {
-    if (!suppressed) {
-      const now = Date.now();
-      for (const h of survivingHits) bumpShown(sessionState, h.id, now);
-    }
-    await saveSessionState(sessionId, sessionState);
+  if (dedupActive && !suppressed && survivingHits.length > 0) {
+    const now = Date.now();
+    for (const h of survivingHits) stateDeltas.push((s) => bumpShown(s, h.id, now));
+  }
+  // #539: replay the deltas against the state as it is on disk now — the
+  // snapshot above is minutes of recall old and four other lanes may have
+  // written since.
+  //
+  // The replay hangs on "are there deltas", not on `survivingHits`. Those two
+  // agreed only because requiredHits/optionalHits are derived from
+  // survivingHits above, so `totalHints > 0` implied `survivingHits > 0` — an
+  // unwritten coupling, and unwritten couplings are exactly what #539 broke.
+  // The suppressed-counter delta now survives a change to that derivation.
+  if (dedupActive && stateDeltas.length > 0) {
+    await mutateSessionState(sessionId, (s) => {
+      for (const d of stateDeltas) d(s);
+    });
   }
 
   // Opportunistic cleanup of stale session files — fire-and-forget.
@@ -374,7 +393,7 @@ export async function runWriteLane(
     error: errMsg,
   });
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
-  await reportHinted(selfBaseUrl, hintedIds);
+  await reportHinted(selfBaseUrl, hintedIds, payload.session_id ?? null);
 
   return stdout;
 }

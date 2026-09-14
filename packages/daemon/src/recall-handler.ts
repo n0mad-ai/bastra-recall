@@ -19,7 +19,9 @@ import { commonsRankFactor } from "./cli/commons.js";
 import { fuseCommonsHits } from "./commons-fusion.js";
 import { expandQuery } from "./learned-recall/bridges.js";
 import { mergeBatchResults, dedupeQueries, batchDuplicateNote } from "./recall-batch.js";
+import { fitRecallToBudget } from "./recall-budget.js";
 import type { ToolDeps } from "./tool-deps.js";
+import type { PrivateAccess } from "./private-access.js";
 
 export const RecallArgs = z.object({
   query: z.string().min(1).optional(),
@@ -39,12 +41,6 @@ export const RecallArgs = z.object({
   k: z.number().int().min(1).max(20).optional(),
   scope: z.string().optional(),
   type: z.string().optional(),
-  /**
-   * Sensitivity-Filter (#58). Default `false` — externe MCP-Caller (Claude
-   * Code, Cursor, …) sehen nie `sensitivity: private` Memories. Die Bastra-
-   * Mac-App ruft mit `allow_private: true` und sieht den vollen Vault.
-   */
-  allow_private: z.boolean().optional(),
   /**
    * Multi-Hop-Recall (#30 / #51). Default `0`. Bei `1` liefert der Server
    * zusätzlich zu den direkten Treffern deren 1-Hop-Nachbarn (Memories,
@@ -68,6 +64,18 @@ export const RecallArgs = z.object({
    * Caller können enger ziehen.
    */
   min_score: z.number().min(0).optional(),
+  /**
+   * Kontextbudget dieses Aufrufs in geschätzten Token (#487). Ohne Angabe
+   * unbegrenzt — die Antwort ist dann byte-gleich zu der vor #487.
+   *
+   * Gesetzt werden die Treffer nach Ranking und Score-Floor in RANGFOLGE
+   * ausgegeben, bis das geschätzte Payload das Budget überschritte; der Rest
+   * fällt weg und die Antwort sagt es (`truncated_by_budget`,
+   * `dropped_by_budget`). `k` bleibt die harte Obergrenze: Das Budget kann nur
+   * zusätzlich streichen. Geschätzt wird mit dem Schätzer des Governors
+   * (#266/#458), damit Aufruf- und Sitzungsbudget dieselbe Zahl meinen.
+   */
+  max_tokens: z.number().int().min(1).optional(),
 });
 
 // ─── Recall ──────────────────────────────────────────────────────
@@ -135,6 +143,13 @@ export interface RecallResult {
   queries_collapsed?: number;
   /** #351 guard: corrective note when queries were collapsed. */
   note?: string;
+  /** #487: `max_tokens` hat Treffer weggelassen. Nur gesetzt wenn true — eine
+   *  Antwort ohne das Feld ist vollständig. Der Aufrufer kann mit größerem
+   *  Budget nachfragen oder gezielt `load_memory` rufen. */
+  truncated_by_budget?: boolean;
+  /** #487: wie viele gerankte Treffer das Budget weggelassen hat. Steht nur
+   *  neben `truncated_by_budget`. */
+  dropped_by_budget?: number;
 }
 
 /**
@@ -193,6 +208,12 @@ function makeStageCollector(forward?: StageListener): {
       if (typeof emitted === "number") timings.terms_emitted = emitted;
       if (typeof unique === "number") timings.terms_unique = unique;
     }
+    if (stage.name === "vector.search" && typeof stage.meta?.wait_ms === "number") {
+      // #489: dieselbe Wartezeit wie auf dem Hook-Pfad. `durationMs` bleibt die
+      // überlappende Spanne ab dem Abfeuern; erst beide Zahlen zusammen sagen,
+      // ob ein langsamer Recall am dichten Arm lag oder am lexikalischen.
+      timings.vector_wait_ms = stage.meta.wait_ms;
+    }
     if (stage.durationMs === undefined) return;
     const key = STAGE_TO_TIMING_KEY[stage.name];
     if (!key) return;
@@ -246,7 +267,7 @@ export async function recallHandler(
     client?: unknown;
     hook_source?: unknown;
     session_id?: string | null;
-  } = {},
+  } & PrivateAccess = {},
 ): Promise<RecallResult & { stages?: RecallStageTimings }> {
   const parsed = RecallArgs.safeParse(rawArgs);
   if (!parsed.success) throw new Error(parsed.error.message);
@@ -256,11 +277,18 @@ export async function recallHandler(
   // per-query events), then merge by best original score (recall-batch.ts).
   if (parsed.data.queries) {
     if (parsed.data.query) throw new Error("pass query OR queries, not both");
-    const { queries, ...rest } = parsed.data;
+    // #487: Das Budget gilt für die GEMERGTE Antwort, nicht je Phrasierung —
+    // deshalb reist `max_tokens` nicht in die Sub-Recalls mit. Drei Sub-Calls,
+    // jeder für sich im Budget, ergeben zusammen das Dreifache.
+    const { queries, max_tokens, ...rest } = parsed.data;
     // zzalli's #351 field report: on convoluted prompts models send concept
     // remixes instead of paraphrases. Near-duplicates are collapsed BEFORE
     // searching (they pay latency and buy no fusion gain); the note teaches.
     const { kept, collapsed, max_overlap } = dedupeQueries(queries);
+    // #464: Nur die Capability reist in die Sub-Recalls mit — Stage-Listener
+    // und Telemetrie-Hinweise gehören zum gemergten Aufruf, nicht zu jedem
+    // Teil-Recall.
+    const subOptions = { trustedPrivate: options.trustedPrivate };
     const subs = await Promise.all(
       kept.map((q) =>
         recallHandler(deps, {
@@ -269,7 +297,7 @@ export async function recallHandler(
           batch_of: queries.length,
           batch_overlap: max_overlap,
           batch_collapsed: collapsed.length,
-        }),
+        }, subOptions),
       ),
     );
     const merged = mergeBatchResults(
@@ -277,8 +305,11 @@ export async function recallHandler(
       subs as Parameters<typeof mergeBatchResults>[1],
       parsed.data.k ?? 5,
     );
-    return {
+    // #487: dieselbe Regel wie einarmig, angewandt auf die gemergte Liste —
+    // die Hits sind hier bereits projiziert, die Rangfolge steht.
+    return fitRecallToBudget(merged.hits, max_tokens, (emitted, dropped) => ({
       ...merged,
+      hits: emitted,
       query_count: queries.length,
       recall_id: merged.recall_id ?? "",
       vault_size: merged.vault_size ?? deps.vault.size(),
@@ -286,7 +317,8 @@ export async function recallHandler(
       ...(collapsed.length > 0
         ? { queries_collapsed: collapsed.length, note: batchDuplicateNote(collapsed.length, queries.length) }
         : {}),
-    };
+      ...(dropped > 0 ? { truncated_by_budget: true, dropped_by_budget: dropped } : {}),
+    })).payload;
   }
   const query = parsed.data.query;
   if (!query) throw new Error("query or queries required");
@@ -306,7 +338,11 @@ export async function recallHandler(
     k: parsed.data.k,
     scope: parsed.data.scope,
     type: parsed.data.type,
-    allow_private: parsed.data.allow_private ?? false,
+    // Sensitivity-Filter (#58/#464): Default `false` — externe MCP-Caller
+    // (Claude Code, Cursor, …) sehen nie `sensitivity: private` Memories.
+    // Die Erlaubnis kommt vom Transport (private-access.ts), nie aus den
+    // Argumenten: als Schema-Feld hätte der Request-Body sie selbst vergeben.
+    allow_private: options.trustedPrivate ?? false,
     expand_hops: parsed.data.expand_hops as 0 | 1 | undefined,
     onStage: collector.listener,
     onCandidatePool: (pool: RecallHit[]) => {
@@ -443,10 +479,13 @@ export async function recallHandler(
   // selbstbewusst eine Seite zu servieren. Nur gesetzt wenn true (lean).
   const flagConflict = (h: { id: string }): unknown =>
     hasUnresolvedConflict(deps.vault.get(h.id)?.body) ? { ...h, conflict: true } : h;
-  const result = {
+  // #487: die projizierten Treffer in Rangfolge — was das Budget gleich
+  // beschneidet, ist genau das, was der Aufrufer sonst bekäme.
+  const projected = (full ? hits : hits.map(toLeanHit)).map(flagConflict);
+  const budgeted = fitRecallToBudget(projected, parsed.data.max_tokens, (emitted, dropped) => ({
     query: query,
     vault_size: deps.vault.size(),
-    hits: (full ? hits : hits.map(toLeanHit)).map(flagConflict),
+    hits: emitted,
     recall_id: recallId,
     latency_ms: latencyMs,
     // #230: nur setzen wenn true — Abwesenheit = nicht weak, hält lean schlank.
@@ -463,7 +502,11 @@ export async function recallHandler(
     ...(scoreKind === "rrf" ? { score_version: SCORE_VERSION } : { unfused: true }),
     ...(degradedDuringCall ? { degraded: degradedDuringCall } : {}),
     ...(full ? { stages: collector.timings } : {}),
-  };
+    // #487: nur gesetzt, wenn das Budget wirklich gestrichen hat — ohne
+    // `max_tokens` ist `dropped` immer 0 und die Antwort unverändert.
+    ...(dropped > 0 ? { truncated_by_budget: true, dropped_by_budget: dropped } : {}),
+  }));
+  const result = budgeted.payload;
   // #457: Größe erst NACH dem Bau des Ergebnisses — das Ereignis beschreibt
   // den gelieferten Payload, nicht die interne Trefferliste.
   const payloadChars = JSON.stringify(result, null, 2).length;
@@ -535,6 +578,10 @@ export async function recallHandler(
         payload_chars: payloadChars,
         payload_tokens_est: Math.ceil(payloadChars / 4),
         presentation: full ? "full" : "lean",
+        // #487: das ANGEFORDERTE Budget neben dem AUSGELIEFERTEN Payload —
+        // ohne beide Zahlen kann #457 die Ersparnis niemandem zuordnen.
+        max_tokens: parsed.data.max_tokens,
+        dropped_by_budget: budgeted.dropped > 0 ? budgeted.dropped : undefined,
     }),
   );
 

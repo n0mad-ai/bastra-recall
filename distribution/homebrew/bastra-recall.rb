@@ -9,7 +9,10 @@
 # the two lines from here, this file's version deliberately lags behind.
 # Everything else (build steps, bin shims, caveats) is authored HERE and has to
 # be copied over by hand. The two drifted apart once (the tap sat on v0.7.6 and
-# was missing six of the seven hook shims); keep them in lockstep.
+# was missing six of the seven hook shims), and again in the caveat's client
+# list (#525); keep them in lockstep. `npm run check:tap-drift` compares the two
+# and the `formula drift` workflow runs it daily — a failure there is fixed in
+# the tap, never here.
 #
 # Install via:
 #   brew tap n0mad-ai/tap
@@ -68,7 +71,7 @@ class BastraRecall < Formula
 
       The MCP forwarder auto-starts the daemon on first use, and it shuts
       down again after 30 minutes idle. That is all Claude Code, Claude
-      Desktop and Cursor need.
+      Desktop, Codex/ChatGPT Desktop and Cursor need.
 
       To keep it running permanently (REST clients, warm embedding model):
         bastra autostart on

@@ -37,13 +37,18 @@
  * ab und nennt `--force`.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync } from "node:fs";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DAEMON_SCRIPT_PATH } from "./paths.js";
 import { probeDaemon, resolveVault } from "./helpers.js";
+import {
+  endpointToPersist,
+  portOfEndpoint,
+  resolveDaemonEndpoint,
+} from "../daemon-endpoint.js";
 import type { ParsedArgs } from "./types.js";
 
 /** Dasselbe Label, das `index.ts` und `update.ts` kennen. Ein zweites wäre ein
@@ -60,6 +65,11 @@ export const LAUNCH_AGENT_LABEL = "ai.n0mad.bastra-recall";
  */
 const MANAGED_MARKER = "BASTRA_AUTOSTART_MANAGED";
 
+/** launchd's CLI. Absolute on purpose — never resolved through PATH. The
+ *  parameter that carries it exists so the #435/#441 regressions can run
+ *  against a stub instead of the machine's own launchd. */
+const LAUNCHCTL = "/bin/launchctl";
+
 export function plistPath(home: string = homedir()): string {
   return join(home, "Library", "LaunchAgents", `${LAUNCH_AGENT_LABEL}.plist`);
 }
@@ -73,9 +83,19 @@ export interface AutostartState {
   program: string[];
   /** Ist der Agent bei launchd geladen? */
   loaded: boolean;
+  /** Der erste Pfad aus `program`, den es nicht mehr gibt — das node-Binary
+   *  ODER das Skript. `null`, wenn beide liegen, wo sie sollen. */
+  missingProgramPath: string | null;
   /** Der plist ist da, aber sein Programm liegt nicht mehr auf der Platte —
    *  der klassische Zustand nach einem Update, das den Pfad verschoben hat. */
   danglingProgram: boolean;
+  /**
+   * Der Endpunkt, den DIESER plist festschreibt (#531) — `null`, wenn keiner
+   * darinsteht. Er ist der Grund, warum ein gewählter Port ein Update
+   * überlebt: `bastra update` läuft in einer Shell ohne den Export, und ohne
+   * diesen Wert würde jedes Neuschreiben den Daemon auf 6723 zurückwerfen.
+   */
+  endpoint: string | null;
 }
 
 /**
@@ -87,14 +107,16 @@ export interface AutostartState {
  * gelesener fremder plist ist genau der, den dieser Code nicht überschreiben
  * soll. `plutil` liegt auf jedem Mac.
  */
-export async function readState(path = plistPath()): Promise<AutostartState> {
+export async function readState(path = plistPath(), launchctl = LAUNCHCTL): Promise<AutostartState> {
   const state: AutostartState = {
     path,
     exists: existsSync(path),
     managed: false,
     program: [],
-    loaded: launchAgentLoaded(),
+    loaded: launchAgentLoaded(launchctl),
+    missingProgramPath: null,
     danglingProgram: false,
+    endpoint: null,
   };
   if (!state.exists) return state;
   const conv = spawnSync("/usr/bin/plutil", ["-convert", "json", "-o", "-", path], {
@@ -111,22 +133,29 @@ export async function readState(path = plistPath()): Promise<AutostartState> {
       ? parsed.ProgramArguments.filter((a): a is string => typeof a === "string")
       : [];
     state.managed = parsed.EnvironmentVariables?.[MANAGED_MARKER] === "1";
+    const url = parsed.EnvironmentVariables?.BASTRA_DAEMON_URL;
+    state.endpoint = typeof url === "string" && url.trim() !== "" ? url.trim() : null;
   } catch {
     // Unparsebar heißt FREMD, nicht „gehört uns" — dieselbe fail-closed-Regel
     // wie im Vault-Schreibpfad. Ein Fehler beim Lesen darf nie zu einem
     // Überschreiben führen.
     return state;
   }
-  // Das Skript ist das zweite Argument (`node <script>`); ohne es ist der
-  // Agent kaputt, mit einem nicht mehr existierenden Pfad ist er veraltet.
-  const script = state.program[1];
-  state.danglingProgram = script !== undefined && !existsSync(script);
+  // `node <script>` — BEIDE Pfade sind absolut, und beide können nach einem
+  // Update ins Leere zeigen. Das Skript zieht mit der bastra-Installation um
+  // (#435); das Binary zieht mit node um, sobald Homebrew node aktualisiert und
+  // das alte Keg aufräumt. Für launchd ist der Unterschied keiner: der Agent
+  // startet nicht, und niemand sagt es. Also beide prüfen, und den ersten
+  // fehlenden benennen.
+  state.missingProgramPath =
+    state.program.slice(0, 2).find((p) => p !== undefined && !existsSync(p)) ?? null;
+  state.danglingProgram = state.missingProgramPath !== null;
   return state;
 }
 
-function launchAgentLoaded(): boolean {
+function launchAgentLoaded(launchctl = LAUNCHCTL): boolean {
   const uid = String(process.getuid?.() ?? 0);
-  const r = spawnSync("/bin/launchctl", ["print", `gui/${uid}/${LAUNCH_AGENT_LABEL}`], {
+  const r = spawnSync(launchctl, ["print", `gui/${uid}/${LAUNCH_AGENT_LABEL}`], {
     stdio: "pipe",
     timeout: 15_000,
   });
@@ -176,22 +205,88 @@ ${entries}
 }
 
 /**
+ * Das node-Binary, das in den plist gehört — #435, zweiter Teil.
+ *
+ * Dieselbe Fehlerform wie beim Daemon-Skript, nur eine Ebene tiefer.
+ * `process.execPath` ist unter Homebrew typischerweise ein versionsgebundener
+ * Keg-Pfad (`/opt/homebrew/Cellar/node/<version>/bin/node`). Wird node
+ * aktualisiert und das alte Keg aufgeräumt, nennt der verwaltete LaunchAgent
+ * ein Binary, das es nicht mehr gibt — der Autostart ist tot, ohne dass jemand
+ * bastra angefasst hat.
+ *
+ * Homebrew pflegt für genau diesen Zweck einen stabilen Symlink neben dem Keg
+ * (`<prefix>/opt/<formel>/bin/node`, plus den Shim in `<prefix>/bin`). Der
+ * Prefix wird aus dem Keg-Pfad selbst abgeleitet — der Paketmanager hat ihn
+ * gebaut, er ist die verlässlichste Quelle, und es kostet keinen Unterprozess.
+ *
+ * BEWUSST NICHT PAUSCHAL: Wo es keinen stabilen Pfad gibt, ist
+ * `process.execPath` die richtige Antwort und bleibt stehen — ein npm-global
+ * mit eigenem node, ein Quell-Checkout, nvm (das versionsgebundene Pfade als
+ * Prinzip hat). Und ein Kandidat wird erst genommen, wenn er sich als node
+ * ausweist: existieren reicht nicht, er muss laufen.
+ */
+export function stableNodeBin(execPath: string = process.execPath): string {
+  for (const candidate of stableNodeCandidates(execPath)) {
+    if (candidate !== execPath && isRunnableNode(candidate)) return candidate;
+  }
+  return execPath;
+}
+
+/** `<prefix>/Cellar/<formel>/<version>/bin/node` → die stabilen Geschwister. */
+function stableNodeCandidates(execPath: string): string[] {
+  const keg = /^(.*)\/Cellar\/([^/]+)\/[^/]+\/bin\/node$/.exec(execPath);
+  if (!keg) return [];
+  const [, prefix, formula] = keg;
+  return [join(prefix, "opt", formula, "bin", "node"), join(prefix, "bin", "node")];
+}
+
+/** Existiert, ist ausführbar, und meldet sich als node. Alle drei, oder nichts. */
+export function isRunnableNode(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK);
+  } catch {
+    return false;
+  }
+  const r = spawnSync(path, ["--version"], { encoding: "utf8", timeout: 15_000 });
+  return r.status === 0 && /^v\d+\.\d+\.\d+/.test((r.stdout ?? "").trim());
+}
+
+/**
  * Die Umgebung, die der Autostart-Daemon bekommt.
  *
  * Bewusst schmal: der Vault-Pfad, der abgeschaltete Idle-Shutdown (wer
  * Autostart einschaltet, will genau den Dauerbetrieb) und ein PATH, der Node
- * findet. Alles Weitere — Embedding-Provider, Modelle, Port — bleibt bei den
+ * findet. Alles Weitere — Embedding-Provider, Modelle — bleibt bei den
  * Einstellungen, die der Daemon ohnehin selbst liest. Ein plist, der jede
  * Option einfriert, wäre bei der nächsten Änderung sofort falsch, und niemand
  * würde es merken.
+ *
+ * DER PORT IST DIE AUSNAHME (#531). Der alte Kommentar hier behauptete, der
+ * Daemon lese ihn aus den Einstellungen — das tut er nicht: `BASTRA_HTTP_PORT`
+ * gibt es nur als Umgebungsvariable. Ein `bastra autostart on` aus einer Shell
+ * mit `export BASTRA_HTTP_PORT=26723` schrieb also einen LaunchAgent, der auf
+ * 6723 startete, während die Diagnose weiter 26723 nannte. Steht ein Endpunkt
+ * fest, wird er deshalb HIER eingefroren — als `BASTRA_HTTP_PORT` (das liest
+ * der Daemon beim Binden) und als `BASTRA_DAEMON_URL` (daran erkennt ihn der
+ * nächste Lauf im plist wieder).
  */
-export function autostartEnv(vaultPath: string, nodeBin: string): Record<string, string> {
-  return {
+export function autostartEnv(
+  vaultPath: string,
+  nodeBin: string,
+  daemonUrl: string | null = endpointToPersist(null),
+): Record<string, string> {
+  const env: Record<string, string> = {
     [MANAGED_MARKER]: "1",
     BASTRA_VAULT_PATH: vaultPath,
     BASTRA_DAEMON_IDLE_SHUTDOWN_MS: "0",
     PATH: `${dirname(nodeBin)}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`,
   };
+  const port = portOfEndpoint(daemonUrl);
+  if (daemonUrl !== null && port !== null) {
+    env.BASTRA_DAEMON_URL = daemonUrl;
+    env.BASTRA_HTTP_PORT = String(port);
+  }
+  return env;
 }
 
 async function writePlistAtomically(path: string, content: string): Promise<void> {
@@ -206,15 +301,15 @@ async function writePlistAtomically(path: string, content: string): Promise<void
   }
 }
 
-function bootout(uid: string): void {
-  spawnSync("/bin/launchctl", ["bootout", `gui/${uid}/${LAUNCH_AGENT_LABEL}`], {
+function bootout(uid: string, launchctl = LAUNCHCTL): void {
+  spawnSync(launchctl, ["bootout", `gui/${uid}/${LAUNCH_AGENT_LABEL}`], {
     stdio: "pipe",
     timeout: 15_000,
   });
 }
 
-function bootstrap(uid: string, path: string): { ok: boolean; detail: string } {
-  const r = spawnSync("/bin/launchctl", ["bootstrap", `gui/${uid}`, path], {
+function bootstrap(uid: string, path: string, launchctl = LAUNCHCTL): { ok: boolean; detail: string } {
+  const r = spawnSync(launchctl, ["bootstrap", `gui/${uid}`, path], {
     stdio: "pipe",
     encoding: "utf8",
     timeout: 15_000,
@@ -264,12 +359,19 @@ async function autostartOn(args: ParsedArgs): Promise<number> {
     return 2;
   }
 
-  const program = [process.execPath, DAEMON_SCRIPT_PATH];
-  const content = renderPlist(autostartEnv(vault.path, process.execPath), program);
+  // #435 — the stable node symlink, not the version-pinned keg path a node
+  // upgrade would leave dangling.
+  const nodeBin = stableNodeBin();
+  const program = [nodeBin, DAEMON_SCRIPT_PATH];
+  // #531 — the endpoint this process was told about, or the one the existing
+  // managed plist already froze.
+  const endpoint = endpointToPersist(state.endpoint);
+  const content = renderPlist(autostartEnv(vault.path, nodeBin, endpoint), program);
 
   if (args.dryRun) {
     write(`(dry-run — writing nothing)\n\n  would write ${state.path}\n`);
     write(`  would start: ${program.join(" ")}\n  vault: ${vault.path}\n`);
+    if (endpoint !== null) write(`  endpoint: ${endpoint}\n`);
     return 0;
   }
 
@@ -285,6 +387,7 @@ async function autostartOn(args: ParsedArgs): Promise<number> {
   write(`  plist:  ${state.path}\n`);
   write(`  starts: ${program.join(" ")}\n`);
   write(`  vault:  ${vault.path}\n`);
+  if (endpoint !== null) write(`  endpoint: ${endpoint} (frozen into the LaunchAgent)\n`);
   if (started.ok) {
     write(`  ✓ loaded — the daemon stays up from now on (idle shutdown disabled)\n`);
   } else {
@@ -348,8 +451,13 @@ async function autostartStatus(args: ParsedArgs): Promise<number> {
           loaded: state.loaded,
           program: state.program,
           dangling_program: state.danglingProgram,
+          missing_program_path: state.missingProgramPath,
           daemon_running: probe.ok,
           daemon_version: probe.version ?? null,
+          // #531 — which instance the two lines above describe, and what the
+          // LaunchAgent itself starts. Two fields, never merged into one.
+          daemon_endpoint: probe.endpoint?.baseUrl ?? resolveDaemonEndpoint().baseUrl,
+          plist_endpoint: state.endpoint,
         },
         null,
         2,
@@ -374,16 +482,56 @@ async function autostartStatus(args: ParsedArgs): Promise<number> {
   if (state.program.length > 0) write(`  starts: ${state.program.join(" ")}\n`);
   if (state.danglingProgram) {
     write(
-      `  ⚠ that path does not exist any more — the autostart points at an installation\n` +
-        `    that was moved or removed. Fix it with: bastra autostart on\n`,
+      `  ⚠ ${state.missingProgramPath} does not exist any more — the autostart points at a\n` +
+        `    runtime that was moved or removed. Fix it with: bastra autostart on\n`,
     );
   }
+  const endpoint = probe.endpoint ?? resolveDaemonEndpoint();
   write(
     probe.ok
-      ? `  daemon: running${probe.version ? ` (${probe.version})` : ""}\n\n`
-      : `  daemon: not reachable\n\n`,
+      ? `  daemon: running at ${endpoint.label}${probe.version ? ` (${probe.version})` : ""}\n`
+      : `  daemon: not reachable at ${endpoint.label}\n`,
   );
+  // #531: a LaunchAgent that starts a daemon on one port while this CLI probes
+  // another is exactly the split that made status describe two machines as one.
+  const plistPort = portOfEndpoint(state.endpoint);
+  if (state.managed && plistPort !== null && plistPort !== endpoint.port) {
+    write(
+      `  ⚠ the LaunchAgent starts the daemon on port ${plistPort}, but this shell is\n` +
+        `    configured for ${endpoint.label} — the line above describes ${endpoint.label}, not the\n` +
+        `    autostarted daemon. Re-run 'bastra autostart on' to agree on one endpoint.\n`,
+    );
+  }
+  write("\n");
   return 0;
+}
+
+/**
+ * Die Laufzeit, auf die der verwaltete Dienst nach einem Update zeigen MUSS.
+ *
+ * #435: Nicht die des laufenden Prozesses. Nach `brew upgrade` führt dieser
+ * Prozess weiterhin Module aus dem abgelösten Keg aus — `process.execPath` und
+ * `DAEMON_SCRIPT_PATH` beschreiben also die ALTE Installation. Wer den plist
+ * daraus baut, biegt den Autostart auf genau das Verzeichnis zurück, das der
+ * Installer gerade ersetzt hat. Der Aufrufer löst diese Angabe deshalb gegen
+ * die tatsächlich installierte Ablage auf (`update.ts`) und reicht sie hier
+ * herein.
+ */
+export interface InstalledRuntime {
+  /** Das node-Binary, das der LaunchAgent ausführt. */
+  node: string;
+  /** Der Daemon-Einstiegspunkt der INSTALLIERTEN Version. */
+  script: string;
+  /** Die Version, zu der dieser Einstiegspunkt gehört — der Beleg in der
+   *  Erfolgsmeldung. `null`, wenn sie nicht gelesen werden konnte. */
+  version: string | null;
+}
+
+export interface RefreshOutcome {
+  /** Zeigt der verwaltete Dienst jetzt nachweislich auf die installierte
+   *  Laufzeit? Auch `true`, wenn es gar keinen verwalteten Dienst gibt. */
+  ok: boolean;
+  detail: string;
 }
 
 /**
@@ -394,35 +542,105 @@ async function autostartStatus(args: ParsedArgs): Promise<number> {
  * startet danach entweder nichts mehr oder weiter den alten Code. Fremde plists
  * bleiben unangetastet — sie zeigen absichtlich woandershin.
  *
- * Still im Erfolgsfall, laut im Fehlerfall: Der Aufrufer ist `bastra update`,
- * und dort ist das ein Nebenschritt, kein Ergebnis.
+ * `reload` trennt die zwei Entscheidungen, die vorher eine waren (#441):
+ * „jetzt neu starten" und „den plist umbiegen". Ein staged Update setzt
+ * `reload: false` — die Datei wird atomar auf die neue Laufzeit gezogen, der
+ * laufende Agent bleibt unangetastet, und nach dem nächsten Login startet
+ * launchd den neuen Code statt eines Pfades, den es dann nicht mehr gibt.
+ *
+ * Belegt wird das Ergebnis, nicht behauptet: der plist wird nach dem Schreiben
+ * erneut gelesen und muss die installierte Laufzeit nennen, sonst ist das
+ * Ergebnis `ok: false`.
  */
 export async function refreshManagedAutostart(
   write: (s: string) => void,
-): Promise<void> {
-  if (process.platform !== "darwin") return;
-  const state = await readState();
-  if (!state.exists || !state.managed) return;
-  const current = [process.execPath, DAEMON_SCRIPT_PATH];
-  if (state.program.length === current.length && state.program.every((p, i) => p === current[i])) {
-    return; // zeigt schon auf diese Installation
+  opts: {
+    /** `null` = die installierte Laufzeit war nicht auflösbar. Dann wird der
+     *  plist NICHT angefasst — lieber veraltet als auf ein Nichts gebogen. */
+    target: InstalledRuntime | null;
+    /** #441 — staged: umbiegen ja, kickstarten nein. */
+    reload: boolean;
+    /** Nur für die Regressionen: plist-Datei und launchd-CLI. */
+    plistFile?: string;
+    launchctl?: string;
+  },
+): Promise<RefreshOutcome> {
+  if (process.platform !== "darwin") return { ok: true, detail: "not macOS" };
+  const launchctl = opts.launchctl ?? LAUNCHCTL;
+  const path = opts.plistFile ?? plistPath();
+  const state = await readState(path, launchctl);
+  if (!state.exists || !state.managed) return { ok: true, detail: "no managed autostart" };
+
+  if (!opts.target) {
+    write(
+      `  ✗ could not resolve where the installer put the daemon — leaving the autostart at\n` +
+        `    ${state.program[1] ?? "an unknown path"}. Run 'bastra autostart on' from the new install.\n`,
+    );
+    return { ok: false, detail: "installed runtime not resolved" };
   }
-  write(`→ autostart points at ${state.program[1] ?? "an unknown path"} — updating it\n`);
-  const vault = await resolveVault({ dryRun: false, vaultPath: null });
-  if ("error" in vault) {
-    write(`  ✗ cannot update the autostart: ${vault.error}\n`);
-    return;
+
+  const program = [opts.target.node, opts.target.script];
+  const pointsAtInstall =
+    state.program.length === program.length && state.program.every((p, i) => p === program[i]);
+  if (!pointsAtInstall) {
+    write(`→ autostart points at ${state.program[1] ?? "an unknown path"} — repointing it at the installed runtime\n`);
+    const vault = await resolveVault({ dryRun: false, vaultPath: null });
+    if ("error" in vault) {
+      write(`  ✗ cannot update the autostart: ${vault.error}\n`);
+      return { ok: false, detail: vault.error };
+    }
+    try {
+      // #531: `bastra update` usually runs without the user's export, so the
+      // endpoint comes from the plist being rewritten — otherwise the repoint
+      // would quietly move the daemon back to the default port.
+      await writePlistAtomically(
+        path,
+        renderPlist(autostartEnv(vault.path, opts.target.node, endpointToPersist(state.endpoint)), program),
+      );
+    } catch (err) {
+      write(`  ✗ could not rewrite ${path}: ${(err as Error).message}\n`);
+      return { ok: false, detail: (err as Error).message };
+    }
   }
-  try {
-    await writePlistAtomically(state.path, renderPlist(autostartEnv(vault.path, process.execPath), current));
-  } catch (err) {
-    write(`  ✗ could not rewrite ${state.path}: ${(err as Error).message}\n`);
-    return;
+
+  if (opts.reload) {
+    const uid = String(process.getuid?.() ?? 0);
+    if (state.loaded) bootout(uid, launchctl);
+    const started = bootstrap(uid, path, launchctl);
+    if (!started.ok) {
+      write(`  ✗ reload failed: ${started.detail}\n`);
+      return { ok: false, detail: started.detail };
+    }
   }
-  const uid = String(process.getuid?.() ?? 0);
-  if (state.loaded) bootout(uid);
-  const started = bootstrap(uid, state.path);
-  write(started.ok ? `  ✓ autostart now runs ${current[1]}\n` : `  ✗ reload failed: ${started.detail}\n`);
+
+  // Der Beweis: erneut lesen. Erst wenn die Datei die installierte Laufzeit
+  // nennt und die auch auf der Platte liegt, darf das hier Erfolg melden.
+  const after = await readState(path, launchctl);
+  if (after.program[0] !== opts.target.node || after.program[1] !== opts.target.script) {
+    write(
+      `  ✗ the autostart still names ${after.program.join(" ") || "nothing"} — expected ` +
+        `${opts.target.node} ${opts.target.script}\n`,
+    );
+    return { ok: false, detail: "verification failed" };
+  }
+  if (after.danglingProgram) {
+    write(`  ✗ the autostart names ${after.missingProgramPath}, which is not on disk\n`);
+    return { ok: false, detail: "verification failed" };
+  }
+  // Existieren reicht beim Binary nicht: launchd exec()t es, ein kaputter
+  // Symlink oder ein nicht ausführbarer Rest eines aufgeräumten Kegs ist genau
+  // so tot wie ein fehlender Pfad.
+  if (!isRunnableNode(after.program[0])) {
+    write(`  ✗ ${after.program[0]} does not run as node — the autostart would not come up\n`);
+    return { ok: false, detail: "node binary not runnable" };
+  }
+  const version = opts.target.version ? ` (${opts.target.version})` : "";
+  write(
+    opts.reload
+      ? `  ✓ autostart now runs ${opts.target.script}${version}\n`
+      : `  ✓ autostart now names ${opts.target.script}${version} — staged, so the running agent was left alone\n`,
+  );
+  return { ok: true, detail: opts.target.script };
 }
 
 /** Was `bastra doctor` über den Autostart zu sagen hat — `null`, wenn nichts. */
@@ -432,7 +650,7 @@ export async function autostartWarning(): Promise<string | null> {
   if (!state.exists) return null;
   if (state.danglingProgram) {
     return (
-      `autostart points at ${state.program[1]}, which does not exist any more — ` +
+      `autostart names ${state.missingProgramPath}, which does not exist any more — ` +
       (state.managed
         ? `run 'bastra autostart on' to repoint it.`
         : `it is hand-written, so fix it yourself or replace it with 'bastra autostart on --force'.`)

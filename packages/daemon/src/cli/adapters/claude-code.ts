@@ -22,6 +22,8 @@ import {
   backupConfig,
   blocksMatch,
   buildServerBlock,
+  existingToolSurface,
+  serverBlockEndpoint,
   fileExists,
   getServersBlock,
   probeDaemon,
@@ -74,7 +76,19 @@ function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[] {
     { event: "SessionStart", matcher: "startup|resume|clear|compact", bin: SESSION_HOOK_BIN, timeout: 3, note: "bastra-recall SessionStart hook", stubSubcommand: "session" },
     { event: "UserPromptSubmit", bin: PROMPT_HOOK_BIN, timeout: 2, note: "bastra-recall UserPromptSubmit hook (lookup-mode, #33)", stubSubcommand: "prompt" },
     { event: "PreToolUse", matcher: "Write|Edit|MultiEdit|NotebookEdit", bin: PRE_TOOL_HOOK_BIN, timeout: 2, note: "bastra-recall PreToolUse hook", stubSubcommand: "write" },
-    { event: "PreToolUse", matcher: "TodoWrite", bin: TODO_HOOK_BIN, timeout: 2, note: "bastra-recall TodoWrite hook (topology-recall, #36)", stubSubcommand: "todo" },
+    // #506: `TodoWrite` alone was a dead matcher. Claude Code 2.1.268 replaced
+    // the batched todo tool with per-task `TaskCreate` / `TaskUpdate` /
+    // `TaskGet` / `TaskList`; `TodoWrite` is emitted only when a session sets
+    // `CLAUDE_CODE_ENABLE_TASKS=0`. Verified on 2.1.269 against an isolated
+    // settings file: a three-step plan produced three `TaskCreate` calls and
+    // no `TodoWrite`. The old name stays in the alternation — it is still the
+    // real event on older clients and under that env var.
+    //
+    // `TaskCreate` only, deliberately: it is the call that WRITES a plan step.
+    // `TaskUpdate` carries a status transition and an `activeForm` label, so
+    // binding it would fire the lane on every pending→in_progress→completed
+    // move for text the plan already said.
+    { event: "PreToolUse", matcher: "TodoWrite|TaskCreate", bin: TODO_HOOK_BIN, timeout: 2, note: "bastra-recall plan hook (topology-recall, #36/#506)", stubSubcommand: "todo" },
     { event: "PreToolUse", matcher: "Bash", bin: BASH_PRE_HOOK_BIN, timeout: 2, note: "bastra-recall Bash-pre hook (safety, #34)", stubSubcommand: "bash-pre" },
     { event: "PostToolUse", matcher: "Bash", bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall Bash post hook (act-signal #144 + lesson recall on fail #37)", stubSubcommand: "bash-fail" },
     { event: "PostToolUseFailure", matcher: "Bash", bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall Bash failure hook (act-signal #144 + lesson recall on fail #37)", stubSubcommand: "bash-fail" },
@@ -369,7 +383,13 @@ export function planHookEntries(
 
 async function patchClaudeCodeHooks(
   action: "install" | "uninstall",
-  opts: { dryRun: boolean; includeStop?: boolean; mapBin?: (bin: string) => string },
+  opts: {
+    dryRun: boolean;
+    includeStop?: boolean;
+    mapBin?: (bin: string) => string;
+    /** #537 — the client the install step selected; undefined probes the disk. */
+    stubPresent?: boolean;
+  },
 ): Promise<{ status: HookStepStatus; detail: string; backupPath?: string }> {
   const sourceDefs = hookDefinitions({ includeStop: opts.includeStop });
   const includeStop = opts.includeStop === true;
@@ -395,6 +415,7 @@ async function patchClaudeCodeHooks(
   const { before, after, stopPreserved } = planHookEntries(action, hooks, {
     includeStop,
     mapBin: opts.mapBin,
+    stubPresent: opts.stubPresent,
   });
   const installNote = includeStop
     ? ""
@@ -445,8 +466,11 @@ async function patchClaudeCodeHooks(
 // #347 stage 2: same stub policy as the hook lanes (#344) — when the compiled
 // stub exists on this host, register `bastra-hook statusline` for the fast
 // start; plain npm installs keep the node client.
-function statuslineCommand(bin: string): string {
-  return existsSync(HOOK_STUB_BIN)
+// #537: `stubPresent` is the selection made by the install step, not a disk
+// probe — `--no-stub` has to move the statusLine back to the node client too,
+// or the opt-out would be half taken.
+export function statuslineCommand(bin: string, stubPresent: boolean = existsSync(HOOK_STUB_BIN)): string {
+  return stubPresent
     ? `${HOOK_STUB_BIN} statusline --style=powerline`
     : `node ${bin} --style=powerline`;
 }
@@ -491,12 +515,12 @@ type StatuslineStepStatus =
 
 async function patchClaudeCodeStatusline(
   action: "install" | "uninstall",
-  opts: { dryRun: boolean; force: boolean; bin?: string },
+  opts: { dryRun: boolean; force: boolean; bin?: string; stubPresent?: boolean },
 ): Promise<{ status: StatuslineStepStatus; detail: string; backupPath?: string }> {
   // opts.bin: the path to REGISTER (stable-runtime copy when active, #180).
   // Build/existence is still checked against the source STATUSLINE_BIN — the
   // copy mirrors it and may not exist yet under dry-run.
-  const command = statuslineCommand(opts.bin ?? STATUSLINE_BIN);
+  const command = statuslineCommand(opts.bin ?? STATUSLINE_BIN, opts.stubPresent);
   if (action === "install" && !(await fileExists(STATUSLINE_BIN))) {
     return { status: "error", detail: `statusline not built: ${STATUSLINE_BIN} — run 'npm run build'` };
   }
@@ -553,12 +577,21 @@ async function claudeCodeInstall(opts: InstallOpts): Promise<InstallResult> {
   // forwarder — register the stable-runtime copy of every bin when active.
   // On non-npx installs mapBin is the identity (byte-identical no-op).
   const mapBin = (bin: string) => mapBinToStableRuntime(bin, fwd);
-  const block = buildServerBlock(vault.path, fwd.path);
   const read = await readJsonConfig(configPath);
   if ("error" in read) return { status: "error", message: read.error, configPath };
 
   const data = read.data;
   const servers = getServersBlock(data) ?? {};
+  // #481: keep a surface the user set by hand instead of resetting it to the
+  // install default on every reinstall.
+  const block = buildServerBlock(
+    vault.path,
+    fwd.path,
+    existingToolSurface(servers[SERVER_KEY]) ?? undefined,
+    // #531: the configured endpoint, or the one this registration already
+    // carries — a GUI client inherits no shell export.
+    serverBlockEndpoint(servers[SERVER_KEY]),
+  );
 
   const mcpMatches = blocksMatch(servers[SERVER_KEY], block);
   const skillResult = await copySkill({ dryRun: opts.dryRun });
@@ -566,11 +599,13 @@ async function claudeCodeInstall(opts: InstallOpts): Promise<InstallResult> {
     dryRun: opts.dryRun,
     includeStop: opts.withStopHook === true,
     mapBin,
+    stubPresent: opts.useStub,
   });
   const statuslineResult = await patchClaudeCodeStatusline("install", {
     dryRun: opts.dryRun,
     force: opts.force === true,
     bin: mapBin(STATUSLINE_BIN),
+    stubPresent: opts.useStub,
   });
 
   if (skillResult.status === "error") return { status: "error", message: `skill: ${skillResult.detail}`, configPath };
@@ -759,7 +794,9 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
 
   // Daemon
   const probe = await probeDaemon();
-  details["daemon-on-6723"] = probe.ok ? `reachable (${probe.detail})` : probe.detail;
+  // #531: the key names the endpoint that was actually probed. It used to say
+  // 6723 unconditionally while the probe went wherever the env pointed.
+  details[`daemon-at-${probe.endpoint?.label ?? "?"}`] = probe.ok ? `reachable (${probe.detail})` : probe.detail;
 
   if (!registered) return { status: "missing", message: "MCP not registered with Claude Code", details };
   const broken =

@@ -1,12 +1,19 @@
 name: Publish npm
 
 on:
-  # Auto-publish: creating a GitHub Release (gh release create vX.Y.Z) fires this.
-  release:
-    types: [published]
-  # Manual fallback / dry-run rehearsal.
+  # #524: this used to run on `release: published`, which meant a release had to
+  # be public — page and tag — before a single package was published or a single
+  # asset attached. The staging object is now a DRAFT (scripts/bump.mjs), which
+  # is invisible and creates no tag, and a draft fires no release event. So the
+  # run is started explicitly with the draft's tag, and `promote` publishes that
+  # draft at the end, once the whole set is verified.
   workflow_dispatch:
     inputs:
+      tag:
+        description: "Tag of the DRAFT release to publish, e.g. v1.0.0 (required unless dry_run)"
+        required: false
+        default: ""
+        type: string
       dry_run:
         description: "Run all release checks but do not publish"
         required: true
@@ -17,7 +24,7 @@ on:
           - "false"
 
 concurrency:
-  group: publish-npm-${{ github.ref }}
+  group: publish-npm-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -25,6 +32,47 @@ permissions:
   id-token: write
 
 jobs:
+  gate:
+    # The one place that decides whether this run publishes anything, and the
+    # one place that proves the staging release is still private AND that this
+    # run is actually the release it claims to be (#548). Everything downstream
+    # reads `needs.gate.outputs`, so a rehearsal cannot attach, publish or
+    # promote by taking a different branch somewhere — and every job checks out
+    # `outputs.sha`, the commit resolved from the draft itself, so no job can
+    # build a different tree than the one the tag will come to rest on.
+    name: gate
+    runs-on: ubuntu-latest
+    # A DRAFT release is invisible to the REST API unless the caller has push
+    # access, and for GITHUB_TOKEN that means `contents: write` — the workflow's
+    # own default of `contents: read` makes `gh release view` answer "release
+    # not found" for a draft that plainly exists. The gate only ever READS, but
+    # the staging object it has to read is exactly the kind that needs this.
+    # The rehearsal path never touched it: a dry run stops before the release
+    # lookup, so the whole matrix could be green while the one publishing path
+    # was unreachable. Found on the first real v1.0.0 dispatch.
+    permissions:
+      contents: write
+    outputs:
+      publish: ${{ steps.check.outputs.publish }}
+      tag: ${{ steps.check.outputs.tag }}
+      sha: ${{ steps.check.outputs.sha }}
+    steps:
+      # The dispatch ref, deliberately: the script compares THIS commit against
+      # the one the draft points at and refuses the run when they differ.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22.14"
+      # The decision lives in a script, not in this YAML: a diverged dispatch
+      # has to be refusable in a test, and a shell block in a workflow file can
+      # only ever be asserted as text.
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: node scripts/verify-release-binding.mjs
+
   stub:
     # #350: the compiled hook client (#344), one binary per platform, attached
     # to the release. The npm package never carries the binary — only
@@ -38,6 +86,7 @@ jobs:
     # the Windows milestone owns. Runs on dry-run dispatches too, so the build
     # can be rehearsed without a release.
     name: stub (${{ matrix.os }})
+    needs: gate
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -55,6 +104,10 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # #548: the commit the gate resolved from the draft, not whatever the
+          # dispatch ref points at by now.
+          ref: ${{ needs.gate.outputs.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22.14"
@@ -98,27 +151,47 @@ jobs:
           path: packages/daemon/stub/checksums/*.sha256
           if-no-files-found: error
       - name: Attest build provenance
-        if: ${{ github.event_name == 'release' }}
+        if: ${{ needs.gate.outputs.publish == 'true' }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: packages/daemon/stub/bastra-hook-*
+      # `gh release upload` addresses a draft by its tag just like a published
+      # release — which is what lets the whole set be assembled in private.
       - name: Attach to release
-        if: ${{ github.event_name == 'release' }}
+        if: ${{ needs.gate.outputs.publish == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ needs.gate.outputs.tag }}
         working-directory: packages/daemon/stub
         run: gh release upload "$TAG" bastra-hook-* checksums/*.sha256 --clobber
 
   publish:
     runs-on: ubuntu-latest
+    # #549: npm is the only irreversible half of a release — a version cannot be
+    # taken back — and it used to be the FIRST thing that became public. Every
+    # other job now runs before it, and `publish-release-set.mjs` additionally
+    # refuses to publish while the draft is missing any required asset, so npm
+    # `latest` is the last thing in the whole release that moves.
+    #
     # The manifest below needs every platform's checksum: a release whose
     # fast path silently failed to build is the failure shape this project is
     # named against, so a broken stub build blocks the publish.
-    needs: stub
+    needs: [gate, stub, desktop-extension, installer-scripts]
     environment: npm
+    # #552: `contents: write` because publish-release-set.mjs reads the DRAFT to
+    # verify the set is complete before it moves npm `latest`, and a draft is
+    # invisible to a token without push access. `id-token: write` has to be
+    # repeated: a job-level block replaces the workflow default outright, so
+    # omitting it here would break OIDC trusted publishing instead.
+    permissions:
+      contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # #548: the commit the gate resolved from the draft, not whatever the
+          # dispatch ref points at by now.
+          ref: ${{ needs.gate.outputs.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           # OIDC trusted publishing needs npm >= 11.5.1. Node 22 bundles only
@@ -147,32 +220,34 @@ jobs:
       - run: npm run smoke
       - run: npm run pack:check
 
-      - name: Publish core
-        if: ${{ github.event_name == 'release' || inputs.dry_run == 'false' }}
-        run: npm publish --workspace=@bastra-recall/core --access public --provenance --tag latest
-
-      - name: Publish statusline
-        if: ${{ github.event_name == 'release' || inputs.dry_run == 'false' }}
-        run: npm publish --workspace=@bastra-recall/statusline --access public --provenance --tag latest
-
-      - name: Publish daemon
-        if: ${{ github.event_name == 'release' || inputs.dry_run == 'false' }}
-        run: npm publish --workspace=@bastra-recall/daemon --access public --provenance --tag latest
-
-      - name: Publish bastra-recall (unscoped wrapper)
-        if: ${{ github.event_name == 'release' || inputs.dry_run == 'false' }}
-        run: npm publish --workspace=bastra-recall --access public --provenance --tag latest
+      # #524: one resumable step instead of four independent `npm publish`
+      # calls. npm versions are immutable, so a failure in the old third step
+      # left core+statusline on the registry and the rerun died on core before
+      # it ever reached the daemon. The script preflights every target version,
+      # skips a package only after verifying the published artifact IS this
+      # release, and keeps the unscoped wrapper last.
+      - name: Publish the release set (resumable, last irreversible step)
+        if: ${{ needs.gate.outputs.publish == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.gate.outputs.tag }}
+        run: node scripts/publish-release-set.mjs --tag "$TAG"
 
   desktop-extension:
-    # Claude Desktop Extension (.mcpb): built from the SAME checkout the npm
-    # packages were published from (workspace tarballs — no registry
-    # propagation race) and attached to the GitHub release as an asset.
+    # Claude Desktop Extension (.mcpb): built from the SAME commit the npm
+    # packages are published from — since #548 that is no longer a matter of
+    # job order but of `ref: needs.gate.outputs.sha` — using workspace tarballs,
+    # so there is no registry propagation race either.
     # #281: each bundle ships with a .sha256 file (the CLI verifies it after
     # download) and a Sigstore attestation (`gh attestation verify <file>
     # --repo n0mad-ai/bastra-recall`) — the npm packages already carry
     # --provenance, this closes the same gap for the release asset.
-    if: ${{ github.event_name == 'release' }}
-    needs: publish
+    #
+    # #549: this used to wait on `publish`; now `publish` waits on this, because
+    # the extension has to exist before npm `latest` moves. The job itself runs
+    # on rehearsals too (a skipped job would skip `publish` with it) — only the
+    # two steps that leave something behind are gated.
+    needs: [gate, stub]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -180,6 +255,10 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # #548: the commit the gate resolved from the draft, not whatever the
+          # dispatch ref points at by now.
+          ref: ${{ needs.gate.outputs.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22.14"
@@ -194,13 +273,15 @@ jobs:
             sha256sum "$f" > "$f.sha256"
           done
       - name: Attest build provenance
+        if: ${{ needs.gate.outputs.publish == 'true' }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: packages/daemon/mcpb/*.mcpb
       - name: Attach extension to release
+        if: ${{ needs.gate.outputs.publish == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ needs.gate.outputs.tag }}
         run: gh release upload "$TAG" packages/daemon/mcpb/*.mcpb packages/daemon/mcpb/*.mcpb.sha256 --clobber
 
   installer-scripts:
@@ -210,19 +291,84 @@ jobs:
     # build, no `needs`) so the documented entry point is published even if the
     # npm or .mcpb step fails. NOTE: GitHub normalizes spaces in asset names to
     # dots, so they appear as `Install.Bastra.command` / `Uninstall.Bastra.command`.
-    if: ${{ github.event_name == 'release' }}
+    #
+    # #549: `publish` now waits on this job, so the documented Finder entry
+    # points exist before npm `latest` moves. The job runs on rehearsals too —
+    # a skipped job would skip `publish` with it — only the upload is gated.
+    needs: gate
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # #548: the commit the gate resolved from the draft, not whatever the
+          # dispatch ref points at by now.
+          ref: ${{ needs.gate.outputs.sha }}
       - name: Attach installer scripts to release
+        if: ${{ needs.gate.outputs.publish == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ needs.gate.outputs.tag }}
         run: |
           gh release upload "$TAG" \
             "distribution/Install Bastra.command" \
             "distribution/Uninstall Bastra.command" \
             --clobber
+
+  promote:
+    # #524: the atomic gate. A release used to be fully public the moment it was
+    # created — `/releases/latest` moved immediately, while npm and the three
+    # independent asset jobs were still running. The Homebrew tap updater and
+    # both one-click installers read `/releases/latest`, and the installers pull
+    # `bastra-recall@latest` from npm, so a user opening a brand-new 1.0 page
+    # could be handed the OLD npm packages.
+    #
+    # `--latest=false` was the first attempt and was not enough: it held
+    # `/releases/latest` back, but the release page and the tag were public from
+    # creation, so the half-built set was visible and linkable the whole time.
+    # `scripts/bump.mjs` now stages a DRAFT — no public page, no tag at all —
+    # and every job above attaches to that draft by tag. This job is where the
+    # release comes into existence: only after the complete set is verified
+    # (four npm versions on the registry AND tagged `latest`, plus every
+    # required asset) is the draft published, which creates the tag, the public
+    # page and — for a stable version — `/releases/latest` in one step.
+    if: ${{ needs.gate.outputs.publish == 'true' }}
+    needs: [gate, stub, publish, desktop-extension, installer-scripts]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # #548: the commit the gate resolved from the draft, not whatever the
+          # dispatch ref points at by now.
+          ref: ${{ needs.gate.outputs.sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22.14"
+      - name: Verify every npm package of the set is published and on `latest`
+        run: node scripts/publish-release-set.mjs --verify
+      # #549/#548: the list of what a complete release carries is a decision,
+      # not formatting — it lives in scripts/release-assets.mjs, where a test can
+      # drive it, and `publish-release-set.mjs` asks the same question before it
+      # moves npm `latest`.
+      - name: Verify every required release asset is attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.gate.outputs.tag }}
+        run: node scripts/release-assets.mjs "$TAG"
+      - name: Promote — publish the draft, and make it Latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.gate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # A prerelease deliberately never becomes Latest; it still gets
+          # published here, because until now it did not exist publicly at all.
+          if [ "$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease)" = "true" ]; then
+            gh release edit "$TAG" --draft=false --latest=false
+          else
+            gh release edit "$TAG" --draft=false --latest
+          fi
 

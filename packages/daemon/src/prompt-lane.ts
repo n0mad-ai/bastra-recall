@@ -6,7 +6,8 @@
  * self-calls, session dedup/backoff, formatting, telemetry. The hook file is
  * now a thin client — stdin → POST /hook/prompt → stdout — so the per-prompt
  * cost on the client side is process start alone (#305 measured ~120ms of
- * node spawn against a 200ms budget; the logic itself was never the problem).
+ * node spawn against the fast lanes' 200ms p90 target; the logic itself was
+ * never the problem). Budgets are per lane since #305 — see hook-budgets.ts.
  *
  * Two deliberate non-changes, so stage A stays "require-path rewiring, not a
  * rewrite":
@@ -30,13 +31,13 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { request } from "node:http";
 import { randomUUID } from "node:crypto";
-import { detectProject } from "@bastra-recall/core/topics";
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { requiredHeadline, unfusedHeadline, CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
-import { applyLaneScopeFilter, projectConfidence, projectForFilter, type ScopeFilterMode } from "./scope-filter.js";
+import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane, type ScopeFilterMode } from "./scope-filter.js";
 
 import { envFirst, envInt } from "./env.js";
+import { PROMPT_ASSERTION_BUDGET_MS, RECALL_BUDGET_MS } from "./hook-budgets.js";
 import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { claudeSessionPidFrom, sessionFeedPath, STATUSLINE_DIR } from "./statusline-session.js";
@@ -52,16 +53,20 @@ import {
   loadSessionState,
   recordSourceEmit,
   recordSourceSuppressed,
-  saveSessionState,
+  mutateSessionState,
   shouldDropHit,
   wasEmitConsumed,
 } from "./session-state.js";
 
-// 600ms — same reasoning as hook.ts. The lanes that actually recall sat at
-// the old 250ms ceiling: retrieval median 222ms, the first assertion call
-// 259ms and thus a timeout. The `none` lane's 4ms median hid this in any
-// average, because it never recalls at all.
-const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 600, "NEXUS_HOOK_TIMEOUT_MS");
+// Per trigger class since #305 — see hook-budgets.ts for the measurement.
+// 600ms for the quiet classes, 1000ms for assertion: that lane sits at the
+// start of a turn, pays a cold embedding model by construction, and was being
+// cut off on 23.4% of its calls against the flat 600ms. `BASTRA_HOOK_TIMEOUT_MS`
+// still overrides, for the classes that had it.
+const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", RECALL_BUDGET_MS, "NEXUS_HOOK_TIMEOUT_MS");
+function laneBudgetMs(mode: DetectedMode): number {
+  return mode === "assertion" ? PROMPT_ASSERTION_BUDGET_MS : HOOK_TIMEOUT_MS;
+}
 const HOOK_VERSION = "0.3.0"; // 0.3.0 = daemon-side lane (#343)
 const SCORE_FLOOR = 50; // higher than PreToolUse: prompts rarely match recall_when exactly
 export const MUST_LOAD_SCORE = 100;
@@ -383,10 +388,13 @@ export async function runPromptLane(
   }
 
   const cwd = payload.cwd ?? process.cwd();
-  const project = detectProject(cwd);
+  // §20.5: geratene Erkennung = kein Projekt (projectForLane) — sonst fragt
+  // die Lane Kandidaten für ein erfundenes Projekt ab und schreibt dessen
+  // Namen als `project=` in den Block.
+  const project = projectForLane(cwd);
   // §20.5: geratenes Projekt filtert nicht — siehe projectForFilter.
   const filterProject = projectForFilter(cwd);
-  const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
+  const remainingMs = Math.max(50, laneBudgetMs(detectedMode) - (Date.now() - startedAt));
 
   // #217 Reflex-Lane: feuert unabhängig vom Retrieval-Gate — auch bei
   // detectedMode "none". Parallel zum bedingten Recall, sonst sprengt die
@@ -536,12 +544,20 @@ export async function runPromptLane(
   const reflexKept: PromptReflexHit[] = rawReflexHits.filter((h) => reflexKeptIds.has(h.id));
   const reflexIds = new Set(reflexKept.map((h) => h.id));
   let recallHits = filtered.filter((h) => !reflexIds.has(h.id));
-  // Semantic-reflex hits share the reflex lane's per-memory session dedup
-  // (zzalli's context-contamination report, 19.08.): the same wired
-  // convention must not re-inject on every drafting prompt of a session.
-  // 1× per 4h window, and an already-loaded memory never re-injects. The
-  // ordinary hint modes stay backoff-governed as before.
-  if (detectedMode === "none") {
+  // Per-memory session dedup for ordinary recall hits, in EVERY detected mode
+  // (#541). It started as the semantic-reflex guard of mode "none" (zzalli's
+  // context-contamination report, 19.08.): the same wired convention must not
+  // re-inject on every drafting prompt of a session. The other hint modes were
+  // left "backoff-governed as before" — but the backoff governs the source's
+  // cadence, not the repetition of one memory, and REQUIRED-band hits bypass it
+  // entirely. Measured over 2026-09-04→09-12: in `assertion` mode 811 first
+  // injections against 832 re-injections of text still standing in the same
+  // transcript, ~86k est. tokens, 10.4% of the whole context tax. Write lane
+  // and bash-pre lane apply this pair unconditionally and show 8.5% / 1.6%.
+  // #354's principle: a hint already in the transcript buys nothing by being
+  // repeated. Reset stays by signal — the load marker, and `clearShown` on
+  // compact/clear/resume — never by timer.
+  {
     const governed = governContext(
       await Promise.all(
         recallHits.map(async (h, i) => ({
@@ -617,7 +633,9 @@ export async function runPromptLane(
     if (suppressed) {
       // Suppressed drops only the recall block (#161); reflex still emits.
       suppressedTokensEst = Math.ceil(block.length / 4);
-      recordSourceSuppressed(state, BACKOFF_SOURCE);
+      // The `skipped` delta is booked below, inside mutateSessionState —
+      // mutating `state` here would write into the early snapshot, which
+      // #539 no longer saves.
     } else {
       recallBlock = block;
     }
@@ -637,17 +655,29 @@ export async function runPromptLane(
 
   // State-Bookkeeping in einem Save: Backoff-Streak nur für die
   // prompt-lookup-Lane, Reflex bucht nur die Session-Dedup.
-  if (recallBlock) {
-    recordSourceEmit(state, BACKOFF_SOURCE, recallHits.map((h) => h.id), consumedForEmit);
-  }
-  for (const h of reflexKept) bumpShown(state, h.id);
-  // Semantic-reflex injections book the same shown-state — without this the
-  // dedup above has nothing to count and the block repeats every prompt.
-  if (detectedMode === "none" && recallBlock) {
-    for (const h of recallHits) bumpShown(state, h.id);
-  }
+  //
+  // #539: the deltas run against the state as it is on disk when the lock is
+  // taken, not against the snapshot read before the recall — the other four
+  // lanes write the same file in the meantime.
   if (recallHits.length > 0 || reflexKept.length > 0) {
-    await saveSessionState(sessionId, state);
+    const recallIds = recallHits.map((h) => h.id);
+    await mutateSessionState(sessionId, (s) => {
+      if (recallBlock) {
+        recordSourceEmit(s, BACKOFF_SOURCE, recallIds, consumedForEmit);
+      } else if (suppressed) {
+        // #539: without this the backoff window never fills, so the lane
+        // suppresses forever instead of probing again after `streak` skips.
+        recordSourceSuppressed(s, BACKOFF_SOURCE);
+      }
+      for (const h of reflexKept) bumpShown(s, h.id);
+      // Every injected recall hit books the shown-state, in every mode (#541)
+      // — without this the dedup above has nothing to count and the block
+      // repeats on every qualifying prompt. Only what actually reached the
+      // transcript is booked: a suppressed emit leaves `recallBlock` null.
+      if (recallBlock) {
+        for (const h of recallHits) bumpShown(s, h.id);
+      }
+    });
   }
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
   const injectedIds = [
@@ -655,7 +685,7 @@ export async function runPromptLane(
     ...(recallBlock ? recallHits.map((h) => h.id) : []),
   ];
   if (injectedIds.length > 0) {
-    await reportHinted(selfBaseUrl, injectedIds);
+    await reportHinted(selfBaseUrl, injectedIds, payload.session_id ?? null);
   }
 
   // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den

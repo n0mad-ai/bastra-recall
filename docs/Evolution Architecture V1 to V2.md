@@ -3,9 +3,9 @@
 > Status: release and target architecture; V1.0 is the next binding
 > release contract, V2.0 the measurement-dependent long-term target
 >
-> As of: 29 August 2026 (contract change C-083, contract additions C-084 and
-> C-085, refinement C-086; the signed-off basis of 26 July 2026 otherwise
-> unchanged)
+> As of: 12 September 2026 (contract changes C-083 and C-087, contract
+> additions C-084 and C-085, refinement C-086; the signed-off basis of
+> 26 July 2026 otherwise unchanged)
 >
 > Starting state: Bastra Recall 0.8.6, the current vault, real
 > 30-day telemetry, and the existing eval geometry
@@ -16,15 +16,16 @@
 > Where the two diverge, the German version prevails. Every change is made
 > there first and translated afterwards, never the other way round.
 >
-> Binding ledger state: C-001–C-086, eleven review rounds, one contract change,
-> two contract additions and one refinement; C-001–C-082 signed off on 26 July
-> 2026, C-083 to C-086 decided on 29 August 2026.
+> Binding ledger state: C-001–C-087, eleven review rounds, two contract
+> changes, two contract additions and one refinement; C-001–C-082 signed off on
+> 26 July 2026, C-083 to C-086 decided on 29 August 2026, and C-087 on
+> 12 September 2026.
 >
 > Genesis: signed-off starting state C-001–C-028, carried forward by the
 > revisions C-029–C-039, C-040–C-048, C-049–C-054, C-055–C-059, C-060–C-062,
 > C-063–C-067, C-068–C-073, C-074–C-077, C-078–C-079, C-080–C-081, and C-082,
-> and by the contract change C-083, the contract additions C-084 and C-085,
-> and the refinement C-086.
+> and by the contract changes C-083 and C-087, the contract additions C-084 and
+> C-085, and the refinement C-086.
 > All twelve interim versions and the starting state are held unchanged under
 > `docs/architecture-history/`; they are supporting material, not governing
 > contracts. An earlier English version at state C-001–C-028 is held there as
@@ -38,7 +39,7 @@
 > The product-owner decisions in Section 31 have been taken and bind
 > the implementation.
 >
-> Next available ID: C-087. A new delta is carried forward in this file and is
+> Next available ID: C-088. A new delta is carried forward in this file and is
 > no longer kept as a separate revision file.
 
 ## 0. Decision and Review Status
@@ -66,8 +67,10 @@ solely the following foundations have been implemented and proven:
    signals that already exist;
 3. evolve the existing session-context path into one shared, project-capable,
    parallel server-side assembler;
-4. introduce a global context budget and measure retrieval quality separately
-   from hook wording or consumer behavior.
+4. introduce a global context budget — in V1.0 as a cumulative cross-lane
+   session ledger running in shadow; live enforcement falls under 26.2
+   (C-087) — and measure retrieval quality separately from hook wording or
+   consumer behavior.
 
 V1.0 contains no new memory types, claims, graph edge types, dual vectors,
 chunking, HNSW, or learned-ranking live layer.
@@ -196,6 +199,7 @@ reopened only with new evidence.
 | C-084 | contract addition | From V1.0 on, the frontmatter format is under an explicit promise (26.1): required fields, memory types, the meaning of the documented optional fields and the loader leniency change only with a major bump. No 1.x reader requires a format-version field. Unknown keys are tolerated on load but are not guaranteed to survive an `overwrite`. Not covered are ranking, the internal `.bastra/` storage and projection content; the shape of `recall` output falls under the separate API contract. Tightening the loader without a major bump is admissible only under the narrowly drawn security exception. |
 | C-085 | contract addition | The 500-decision route of the shadow sign-off (18.2) applies only with spread: at least 20 different sessions carry the counting decisions, and no single session supplies more than 25 % of them. The 14-day route is untouched. Clarification in the same entry: counting is per memory decision, not per hook call — that is how the threshold is implemented and how it is meant. |
 | C-086 | refinement | Both routes to `required` are drawn more narrowly (10.3): the partial-coverage signal of the two-of-three count applies only from 50 % trigger coverage instead of from the first shared term, and the hard identifier anchor reads title, `recall_when` and frontmatter instead of the body as well. Quantified before the change: anti-query gate from 50 % to 12.5 %, Recall@3 gated, identifier queries and false abstention unchanged, length-neutral. Open: the anti-probe set is too small, and the cost of the lost obligations is visible only to the shadow telemetry. |
+| C-087 | contract change | Of the global context budget from 16.3, V1.0 owes the latency budget live and the cumulative cross-lane token budget per session as a **shadow ledger** (26.1): charge and log, do not trim. **Live enforcement** — budget size fixed from the shadow data, a canary profile with instant rollback to unlimited, a seven-day canary report — is moved to 26.2. The reason is measured: six days of shadow (742 decisions, 135 sessions, 80 evaluable) would have touched 8 sessions against the provisional 7,500-token profile and withheld 36,976 tokens, roughly 5 % of 719,322 tokens of weekly use. The value lies in the tail, and a tail does not carry a live activation on shadow data alone. |
 
 **Sign-off status 24 July 2026:** full reconciliation of ledger C-001–C-027,
 gate measurability, current-state claim sweep (58 claims, all covered),
@@ -355,7 +359,22 @@ false abstention stay unchanged. Two reservations are stated explicitly in the
 entry — eight anti-probes cannot represent the 5 % threshold, and the cost of
 the lost obligations is visible only to the shadow telemetry.
 
-**Next available ID: C-087.** New delta reviews begin there. A verdict
+**Contract change, 12 September 2026 (this version):** C-087 changes the scope
+of the V1.0 release contract for the second time. The contract demanded in 26.1
+a global token and latency budget that "bounds the entire session response".
+The latency budget does that; the cumulative cross-lane token budget does not —
+it runs in shadow, charging per session what the automatic lanes actually
+emitted and logging the decision per emission without trimming. The entry puts
+the contract on that footing and moves live enforcement to 26.2. The occasion
+is the completed shadow measurement: 8 of 80 evaluable sessions would have
+exceeded the provisional profile, and the withheld volume is around 5 % of
+weekly use. The value lies in the tail, the budget size is not yet measured,
+and a canary starts its own seven-day window. What V1.0 owes stays fully
+checkable — the ledger, the shadow decision per emission, and the readout in
+the Telemetry tab. The replaced version stays marked as such in 26.1; no
+verdict from C-001–C-086 is reinterpreted.
+
+**Next available ID: C-088.** New delta reviews begin there. A verdict
 changes only with new code, telemetry, or run evidence; matters of taste
 are marked as an architectural decision instead of a factual error.
 
@@ -2817,6 +2836,13 @@ A global Context Governor decides:
 - whether an already loaded memory may be mentioned again;
 - which zones are automatically excluded.
 
+**Release assignment, C-087.** The above is the target picture. Of it, V1.0
+enforces the latency budget live; the cumulative token budget across all six
+automatic lanes runs in shadow only — it charges and logs, but trims nothing.
+Live enforcement is moved to 26.2 and presupposes a budget size fixed from the
+shadow data, a canary profile with instant rollback to unlimited, and a
+seven-day canary report.
+
 ## 17. Learning from usage
 
 ### 17.1 Positive signals
@@ -3761,7 +3787,9 @@ as existing product telemetry.
 - extend the existing session context into a shared, project-capable
   assembler;
 - parallelize independent server parts within this assembler;
-- introduce a global context and latency budget;
+- introduce a global context and latency budget; in V1.0 the latency budget
+  is enforced live, the cumulative cross-lane token budget per session runs in
+  shadow (C-087);
 - measure retrieval quality and the effect of the hook wording in separate
   experiment arms.
 
@@ -4010,7 +4038,8 @@ V1.0:
 1. Measurement truth and reproducible baselines.
 2. Deterministic relevance evidence and genuine abstention.
 3. Shared, project-capable session assembler with internal parallelization.
-4. Global context budget and a separate retrieval/presentation experiment.
+4. Global context budget — shadow ledger in V1.0, live enforcement under 26.2
+   (C-087) — and a separate retrieval/presentation experiment.
 
 Up to and including item 4, the implementation is approved as V1.0. All
 following numbers order schema/contract changes and live activations.
@@ -4066,7 +4095,9 @@ V1.0 is finished when:
 - the shared session assembler takes over project path and scope correctly,
   executes its independent server parts in parallel and stays compatible for
   existing clients;
-- a global token and latency budget bounds the entire session response;
+- a global latency budget bounds the entire session response, and a cumulative
+  cross-lane token ledger per session records in shadow what a budget would
+  have withheld, without trimming (C-087);
 - retrieval quality, hook wording and consumer behaviour are evaluated
   separately;
 - `client`, `hook_source` and the pseudonymous session assignment deliver the
@@ -4096,6 +4127,26 @@ number the population cannot supply is either unfulfillable or an invitation to
 present an underpopulated run as a finding. The reporting rule from 18.1 is
 untouched by this and is made an explicit part of the V1.0 contract by this
 entry.
+
+**Contract change C-087, 12 September 2026 — requirement replaced.** Until
+that date the budget item above read:
+
+> ~~a global token and latency budget bounds the entire session response;~~
+
+That version no longer applies. V1.0 owes the **latency budget** live and the
+cumulative cross-lane **token budget** as a **shadow ledger**: per session it
+charges what the six automatic lanes actually emitted, and per emission it logs
+whether the block would still have fitted a budget — nothing is trimmed. **Live
+enforcement**, together with a fixed budget size, canary and seven-day report,
+moves to 26.2. The reason is measured, not weighed: six days of shadow (742
+decisions across 135 sessions, 80 of them evaluable) would have touched 8
+sessions against the provisional 7,500-token profile and withheld 36,976
+tokens — roughly 5 % of 719,322 tokens of real weekly use. The value of this
+budget lies in the outlier tail, not in the saving, and a tail does not justify
+going live on shadow data alone. A release contract that demands enforcement
+whose size is not yet measured invites a provisional number to be published as
+a contract. Measurement, shadow operation and the reporting duty remain part of
+the V1.0 contract unchanged.
 
 **Frontmatter and schema promise from V1.0 on (C-084).** With V1.0 the beta
 signal of the leading `0.` falls away, and from that version the vault format
@@ -4184,6 +4235,11 @@ promotion follows only when:
   M0 reached, with the query-class dimension collected and with independent
   relevance labels for surfaced and withheld candidates (C-083, moved here from
   26.1);
+- the cumulative cross-lane session budget from 16.3 is **enforced live**:
+  budget size fixed from the shadow data, a canary profile with instant
+  rollback to unlimited, and a seven-day canary report giving sessions touched,
+  tokens avoided, drops by lane/reason and explicitly reported required drops
+  (C-087, moved here from 26.1);
 - HNSW is activated automatically only when it is measurably worthwhile on the
   current hardware and qualitatively safe;
 - every adaptive decision is shadow-tested, explainable and reversible.
@@ -6666,4 +6722,4 @@ by a single digit.
    baseline run. Today it is justified from the length breakdown, not from a
    calibration.
 
-**Next free ID: C-087.**
+**Next free ID: C-088.**

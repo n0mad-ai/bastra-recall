@@ -1,0 +1,315 @@
+{
+  "$comment": "Committed EXCERPT of the #500 run artifacts. The full files (3.4 MB, a 500-row per-question array each) live outside the repo at the path in `archive.directory`; this file carries what a number has to be checkable by — the identity of each run, its summary metrics and the sha256 of the file it was taken from — so the published figures stay verifiable when the large files are gone. Regenerating any row means re-running the command in `configurations[].measurement.command` of longmemeval-run.json.",
+  "schema_version": 1,
+  "archive": {
+    "directory": "~/.bastra/longmemeval-runs/2026-09-09",
+    "$comment_not_eval_runs": "Deliberately NOT ~/.bastra/eval-runs (#446): that directory holds the registered M0/M1 baselines cited by path from m1-tolerances.json, and it stands at 500 entries, untouched by this work. A sibling directory keeps the artifacts durable without putting an external retrieval measurement among the internal baselines. The harness itself still writes nowhere but its --out path; the copy was made by hand, which is why no code in packages/eval/src resolves a home-directory path at all."
+  },
+  "runs": [
+    {
+      "id": "default",
+      "file": "longmemeval-final.json",
+      "file_sha256": "12060ae6456d82cd9e7729e80774641f46af5c254c7637a1b3b6cfa9f48bf297",
+      "corpus": "longmemeval_s_cleaned.json",
+      "turns": "all",
+      "k": 20,
+      "n_questions": 500,
+      "n_documents_indexed": 23854,
+      "embedding_model": "embeddinggemma",
+      "dataset_hash": "7e0305dd37722ff4718467d7ec176b72bcdb1e32251eb09e01c8177d3351ae8f",
+      "code_hash": "36bb59514190b3f35f6a2d51bca3c949d76546175d67234e6a5c5b609bdf44e8",
+      "summary": {
+        "bm25": {
+          "r@1": 0.614,
+          "r@3": 0.776,
+          "r@5": 0.846,
+          "r@10": 0.92,
+          "r@20": 0.972,
+          "ndcg@10": 0.7089807860110351,
+          "mrr": 0.7164404859416464
+        },
+        "hybrid": {
+          "r@1": 0.796,
+          "r@3": 0.952,
+          "r@5": 0.982,
+          "r@10": 0.986,
+          "r@20": 0.996,
+          "ndcg@10": 0.8807549522356543,
+          "mrr": 0.8746903540903537
+        }
+      },
+      "by_type": {
+        "knowledge-update": {
+          "n": 78,
+          "bm25": 0.8589743589743589,
+          "hybrid": 0.9871794871794872
+        },
+        "multi-session": {
+          "n": 133,
+          "bm25": 0.8646616541353384,
+          "hybrid": 1
+        },
+        "single-session-assistant": {
+          "n": 56,
+          "bm25": 0.8571428571428571,
+          "hybrid": 1
+        },
+        "single-session-preference": {
+          "n": 30,
+          "bm25": 0.7666666666666667,
+          "hybrid": 0.9666666666666667
+        },
+        "single-session-user": {
+          "n": 70,
+          "bm25": 0.7857142857142857,
+          "hybrid": 0.9571428571428572
+        },
+        "temporal-reasoning": {
+          "n": 133,
+          "bm25": 0.8646616541353384,
+          "hybrid": 0.9699248120300752
+        }
+      },
+      "near_far": {
+        "cut": 0.6666666666666666,
+        "mode": "median",
+        "near": 277,
+        "far": 223
+      },
+      "survival_dense": 2.5972278842234036,
+      "far_retention": {
+        "bm25": 0.8428891736066624,
+        "hybrid": 0.9837484861379334
+      }
+    },
+    {
+      "id": "mempalace-matched",
+      "file": "longmemeval-mempalace-matched.json",
+      "file_sha256": "0d7e26f1514644cc848d890d287b835bcfbba6dc2d0693181b972eb130dabf2f",
+      "corpus": "longmemeval_s_cleaned.json",
+      "turns": "user",
+      "k": 50,
+      "n_questions": 500,
+      "n_documents_indexed": 23854,
+      "embedding_model": "embeddinggemma",
+      "dataset_hash": "475b5423e2d1ab62226bf182a1e2b525cde80b5af5e3f9cd9a71e936d6742ceb",
+      "code_hash": "36bb59514190b3f35f6a2d51bca3c949d76546175d67234e6a5c5b609bdf44e8",
+      "summary": {
+        "bm25": {
+          "r@1": 0.602,
+          "r@3": 0.778,
+          "r@5": 0.828,
+          "r@10": 0.896,
+          "r@20": 0.956,
+          "ndcg@10": 0.6904880020254998,
+          "mrr": 0.7087988392351219
+        },
+        "hybrid": {
+          "r@1": 0.832,
+          "r@3": 0.944,
+          "r@5": 0.972,
+          "r@10": 0.982,
+          "r@20": 0.996,
+          "ndcg@10": 0.8918683714668539,
+          "mrr": 0.8919381740121098
+        }
+      },
+      "by_type": {
+        "knowledge-update": {
+          "n": 78,
+          "bm25": 0.9102564102564102,
+          "hybrid": 0.9871794871794872
+        },
+        "multi-session": {
+          "n": 133,
+          "bm25": 0.8721804511278195,
+          "hybrid": 0.9849624060150376
+        },
+        "single-session-assistant": {
+          "n": 56,
+          "bm25": 0.7321428571428571,
+          "hybrid": 0.9464285714285714
+        },
+        "single-session-preference": {
+          "n": 30,
+          "bm25": 0.6,
+          "hybrid": 0.9333333333333333
+        },
+        "single-session-user": {
+          "n": 70,
+          "bm25": 0.7857142857142857,
+          "hybrid": 0.9857142857142858
+        },
+        "temporal-reasoning": {
+          "n": 133,
+          "bm25": 0.849624060150376,
+          "hybrid": 0.9624060150375939
+        }
+      },
+      "near_far": {
+        "cut": 0.5,
+        "mode": "median",
+        "near": 277,
+        "far": 223
+      },
+      "survival_dense": 3.726457399103136,
+      "far_retention": {
+        "bm25": 0.7588246584425329,
+        "hybrid": 0.9530697105584998
+      }
+    },
+    {
+      "id": "robustness-uncleaned",
+      "file": "longmemeval-s-uncleaned.json",
+      "file_sha256": "e37d13e14fa08f63e814c8345b293b997297c7cace8989a84c8027d539784493",
+      "corpus": "longmemeval_s.json",
+      "turns": "all",
+      "k": 20,
+      "n_questions": 500,
+      "n_documents_indexed": 25097,
+      "embedding_model": "embeddinggemma",
+      "dataset_hash": "7073524683926882c9bb20101dd3715448750757004bd90e20a1a0c82f7a81f4",
+      "code_hash": "36bb59514190b3f35f6a2d51bca3c949d76546175d67234e6a5c5b609bdf44e8",
+      "summary": {
+        "bm25": {
+          "r@1": 0.614,
+          "r@3": 0.776,
+          "r@5": 0.854,
+          "r@10": 0.92,
+          "r@20": 0.972,
+          "ndcg@10": 0.7100215205229583,
+          "mrr": 0.7168028198066119
+        },
+        "hybrid": {
+          "r@1": 0.798,
+          "r@3": 0.946,
+          "r@5": 0.978,
+          "r@10": 0.986,
+          "r@20": 0.994,
+          "ndcg@10": 0.8806327790358804,
+          "mrr": 0.8744983950260263
+        }
+      },
+      "by_type": {
+        "knowledge-update": {
+          "n": 78,
+          "bm25": 0.8589743589743589,
+          "hybrid": 0.9871794871794872
+        },
+        "multi-session": {
+          "n": 133,
+          "bm25": 0.8872180451127819,
+          "hybrid": 0.9924812030075187
+        },
+        "single-session-assistant": {
+          "n": 56,
+          "bm25": 0.8571428571428571,
+          "hybrid": 1
+        },
+        "single-session-preference": {
+          "n": 30,
+          "bm25": 0.7666666666666667,
+          "hybrid": 0.9666666666666667
+        },
+        "single-session-user": {
+          "n": 70,
+          "bm25": 0.7714285714285715,
+          "hybrid": 0.9428571428571428
+        },
+        "temporal-reasoning": {
+          "n": 133,
+          "bm25": 0.8796992481203008,
+          "hybrid": 0.9699248120300752
+        }
+      },
+      "near_far": {
+        "cut": 0.6666666666666666,
+        "mode": "median",
+        "near": 277,
+        "far": 223
+      },
+      "survival_dense": 2.8111871607269303,
+      "far_retention": {
+        "bm25": 0.8542866764742374,
+        "hybrid": 0.9909819308889476
+      }
+    },
+    {
+      "id": "default-first-run",
+      "file": "longmemeval-s-cleaned.json",
+      "file_sha256": "82af729a653c85e46f412371e43a3fd88ba332c6c6183358fc157ed5e542f180",
+      "corpus": "longmemeval_s_cleaned.json",
+      "turns": "all",
+      "k": 20,
+      "n_questions": 500,
+      "n_documents_indexed": 23854,
+      "embedding_model": "embeddinggemma",
+      "dataset_hash": "7e0305dd37722ff4718467d7ec176b72bcdb1e32251eb09e01c8177d3351ae8f",
+      "code_hash": "cefd790e6d625be4e1718d1c2815dce578769b521e3b6a1898db01aa2c680743",
+      "summary": {
+        "bm25": {
+          "r@1": 0.614,
+          "r@3": 0.776,
+          "r@5": 0.846,
+          "r@10": 0.92,
+          "r@20": 0.972,
+          "ndcg@10": 0.7089807860110351,
+          "mrr": 0.7164404859416464
+        },
+        "hybrid": {
+          "r@1": 0.796,
+          "r@3": 0.952,
+          "r@5": 0.982,
+          "r@10": 0.986,
+          "r@20": 0.996,
+          "ndcg@10": 0.8807549522356543,
+          "mrr": 0.8746903540903537
+        }
+      },
+      "by_type": {
+        "knowledge-update": {
+          "n": 78,
+          "bm25": 0.8589743589743589,
+          "hybrid": 0.9871794871794872
+        },
+        "multi-session": {
+          "n": 133,
+          "bm25": 0.8646616541353384,
+          "hybrid": 1
+        },
+        "single-session-assistant": {
+          "n": 56,
+          "bm25": 0.8571428571428571,
+          "hybrid": 1
+        },
+        "single-session-preference": {
+          "n": 30,
+          "bm25": 0.7666666666666667,
+          "hybrid": 0.9666666666666667
+        },
+        "single-session-user": {
+          "n": 70,
+          "bm25": 0.7857142857142857,
+          "hybrid": 0.9571428571428572
+        },
+        "temporal-reasoning": {
+          "n": 133,
+          "bm25": 0.8646616541353384,
+          "hybrid": 0.9699248120300752
+        }
+      },
+      "near_far": {
+        "cut": 0.6666666666666666,
+        "mode": "median",
+        "near": 277,
+        "far": 223
+      },
+      "survival_dense": 2.5972278842234036,
+      "far_retention": {
+        "bm25": 0.8428891736066624,
+        "hybrid": 0.9837484861379334
+      }
+    }
+  ],
+  "$comment_determinism": "`default` and `default-first-run` are the SAME configuration run twice across a cosmetic edit to the harness. Every value above is identical between them and so is every one of the 500 per-question ranking lists in the full files; the only field that differs anywhere is code_hash. The dense arm is deterministic here, so these are not one sample of a spread."
+}

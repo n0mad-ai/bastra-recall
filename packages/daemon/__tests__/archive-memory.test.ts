@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { archiveMemoryHandler, type ToolDeps } from "../src/tool-handlers.js";
+import { TRUSTED_LOCAL_APP } from "../src/private-access.js";
 import { Telemetry } from "../src/telemetry.js";
 
 function intakeMemory(id: string, sensitivity?: string): string {
@@ -105,14 +106,23 @@ test("archive_memory without superseded_by keeps the file byte-comparable and er
 test("#464: archive_memory hides a private memory from an external caller exactly as load_memory does", async () => {
   const { deps, dir, close } = await makeDeps();
   try {
-    // Ohne allow_private: dieselbe Antwort wie für eine Id, die es nicht gibt —
+    // Ohne die Capability: dieselbe Antwort wie für eine Id, die es nicht gibt —
     // ein Caller, der nicht lesen darf, erfährt auch nicht, dass sie existiert.
     await assert.rejects(archiveMemoryHandler(deps, { id: "priv-1" }), /unknown memory: priv-1/);
     await stat(join(dir, "priv-1.md"));
     assert.ok(deps.vault.get("priv-1"), "the private memory is still in the vault");
 
-    // Die Mac-App (allow_private: true) darf weiterhin archivieren.
-    const result = await archiveMemoryHandler(deps, { id: "priv-1", allow_private: true });
+    // #464: Auch ein Caller, der sich die Erlaubnis in die ARGUMENTE schreibt,
+    // bekommt sie nicht — sie ist kein Feld mehr, sondern eine Eigenschaft des
+    // Transports.
+    await assert.rejects(
+      archiveMemoryHandler(deps, { id: "priv-1", allow_private: true }),
+      /unknown memory: priv-1/,
+    );
+    await stat(join(dir, "priv-1.md"));
+
+    // Der vertrauenswürdige lokale Transport (Mac-App) darf weiterhin archivieren.
+    const result = await archiveMemoryHandler(deps, { id: "priv-1" }, TRUSTED_LOCAL_APP);
     assert.equal(result.id, "priv-1");
     await assert.rejects(stat(join(dir, "priv-1.md")));
   } finally {

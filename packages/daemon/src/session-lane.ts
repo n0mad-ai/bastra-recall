@@ -10,7 +10,7 @@
  *
  * Pipeline:
  *   payload (Claude-Code SessionStart)
- *     → detectProject(cwd)
+ *     → projectForLane(cwd)  (geraten = kein Projekt, §20.5)
  *     → 3 scope-filtered self-calls to /hook/recall
  *         · scope=user-preference  k=3   query="session-start preferences"
  *         · scope=<project>        k=3   query="<project> active context"
@@ -32,9 +32,10 @@
  */
 // #305: subpath leafs, never the core barrel — measured +40ms of process
 // start against +0.8ms for the three leafs, on a fresh spawn per event.
-import { detectProject } from "@bastra-recall/core/topics";
+import { detectProjectDetailed } from "@bastra-recall/core/topics";
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
-import { bandHits, requiredHeadline, unfusedHeadline, CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
+import { projectForLane } from "./scope-filter.js";
+import { bandHits, requiredHeadline, unfusedHeadline, CANDIDATES_ONLY_NOTICE, type UnfusedReason } from "./band-wording.js";
 import { isUnfused } from "./hook-recall-response.js";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { appendFile, mkdir } from "node:fs/promises";
@@ -42,17 +43,21 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { envFirst, envInt } from "./env.js";
 import { effectiveUpdateMode, getDocsLanguage, getDocsMode, getPrimaryLanguage } from "./settings.js";
-import { formatDokuBlock } from "./doku-block.js";
+import { formatDokuBlock, isDokuProject } from "./doku-block.js";
+import { buildOnboardingBlock } from "./session-onboarding-block.js";
 import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow, resetBudgetOnSource } from "./session-budget.js";
 import { spawnStagedUpdate, stagedToday, markStagedToday } from "./update-check.js";
 import { formatBlockedUpdate, readBlockedUpdate } from "./update-blocked.js";
 import { pendingPatchNotice } from "./patch-registry.js";
-import { consumePendingSuggestions } from "./pending-suggestions.js";
+import { consumePendingSuggestions, formatPendingBlock } from "./pending-suggestions.js";
 import { clearShown } from "./session-state.js";
 import { formatPinnedBlock, dropPinnedFromRanked, type PinnedFloorLean } from "./pinned-block.js";
 import { reportHinted } from "./hook-hinted.js";
 import { hookClient } from "./hook-surface.js";
+import type { Residency, ResidencySource, WarmupCoordinator } from "./embedding-warmup.js";
+// #493: die datensparsame Kennung dieses Hosts — Tor 5 aus #492.
+import { hostProfileId } from "./host-profile.js";
 import {
   postSessionContext, probeHealth,
   type ConventionLean, type RecallHit, type RecallResponse, type SessionContextResponse,
@@ -61,6 +66,80 @@ import {
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 500, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.3.0";
 const SCORE_FLOOR = 30;
+
+/**
+ * Deadline des dichten Arms für DIESE Lane, in ms (Daniel, 07.09.2026).
+ *
+ * Der hookweite Default liegt bei 150 ms (`http-hook-routes.ts`,
+ * `BASTRA_VECTOR_DEADLINE_MS`) und ist auf die Prompt-Lane zugeschnitten, die
+ * einen Prewarmer vor sich hat. Der SessionStart hat keinen: der erste Embed
+ * läuft auf kaltem Modell und braucht gemessene ~160-180 ms, weshalb 46 % der
+ * Session-Recalls (55 von 119, Logs 06.-07.09.2026) einarmig als rohes BM25
+ * zurückkamen.
+ *
+ * Die Zahl ist 350 und nicht 300, weil 300 den schlimmsten gemessenen Fall
+ * noch verfehlt: Nach einem vollständigen `ollama stop embeddinggemma` — das
+ * Modell also nicht bloß unbenutzt, sondern aus dem Speicher geworfen —
+ * brauchte der erste Embed am 07.09.2026 gemessene 313 und 327 ms
+ * (`vector_search_ms` zweier Recalls desselben SessionStarts). 350 deckt auch
+ * diesen Fall und bleibt im Lane-Timeout von 500 ms (`HOOK_TIMEOUT_MS`), das
+ * hier die tatsächliche Wanduhr ist.
+ *
+ * Ausdrücklich nur hier gesetzt und nicht am Endpunkt-Default: die
+ * Prompt-Lane, der Bash-Pfad und der hooklose GET-Weg behalten ihre 150 ms.
+ *
+ * Und ausdrücklich OHNE Env-Schalter (Veras Gegenreview): Die Zahl ist eine
+ * getroffene Entscheidung, kein Vorschlag. Als `envInt(...)` hätte eine
+ * geerbte Dienstkonfiguration sie still auf 150 zurückgedreht — jeder
+ * SessionStart hätte wieder die alte Deadline geschickt, und keine Zeile in
+ * der Telemetrie hätte gesagt, dass die Entscheidung gar nicht wirkt. Wer sie
+ * ändern will, ändert diese Zahl.
+ */
+const SESSION_VECTOR_DEADLINE_MS = 350;
+
+/**
+ * Das Budget, gegen das der Schatten-Router für DIESE Lane rechnet, in ms
+ * (Daniel, 07.09.2026, unter der Auflage „macht nichts langsamer").
+ *
+ * `BASTRA_HOOK_BUDGET_MS` (200, `http-hook-routes.ts`) ist die Wanduhr der
+ * Prompt-Lane. Diese Lane hat eine andere: `HOOK_TIMEOUT_MS` = 500. Mit 350 ms
+ * Reserve für den dichten Arm rechnet `lexicalFitsBudget` gegen die 200 immer
+ * falsch (`max(lexikalisch, 350) + 7 > 200`) — die Schattenspalte stünde ab
+ * sofort konstant auf `dense-primary` und würde für diese Lane nichts mehr
+ * messen. Gegen 500 misst sie wieder die Termkosten, die sie messen soll.
+ *
+ * Der Wert ist rein diagnostisch: Er erreicht `routeRetrieval` und von dort
+ * ausschließlich das `shadow_route`-Feld der Telemetrie. Kein Timeout, kein
+ * Abbruch, keine Trefferauswahl hängt daran (#362 Phase 2 ist Schatten,
+ * gegengeprüft von Vera am 07.09.2026).
+ *
+ * Fest verdrahtet wie die 350 darüber, aus demselben Grund.
+ */
+const SESSION_HOOK_BUDGET_MS = 500;
+
+/**
+ * Was diese Lane tut, wenn das Modell NICHT im Speicher liegt: GAR KEINEN
+ * dichten Arm starten (#494).
+ *
+ * Die 350 ms oben sind für ein WARMES Modell bemessen (33-54 ms gemessen am
+ * 08.09.2026). Ein kaltes braucht 585 ms und reißt sie sicher; sie warm-blind
+ * trotzdem zu verwarten hieße, 350 ms der 500-ms-Wanduhr zu verbrennen und am
+ * Ende dasselbe einarmige Ergebnis zu liefern.
+ *
+ * #490 zog daraus die halbe Konsequenz — 50 ms statt 350 — und konnte nicht
+ * mehr: `search.ts` lag damals bei #489, also gab es keinen Weg, den Arm
+ * abzuwählen. Als EINZIGER aufgegebener Embed wäre das sogar nützlich gewesen,
+ * denn `abandonAfter` bricht nicht ab (deadline.ts): Der aufgegebene Call lädt
+ * das Modell zu Ende. Nur ist er hier nicht einzeln — dieser Sitzungsstart
+ * feuert bis zu DREI Recalls parallel, und der Koordinator startet daneben
+ * ohnehin den Warmup, der genau dasselbe Modell lädt. Vier Embeds für einen
+ * Ladevorgang.
+ *
+ * Also: `lexical_only`. Der Warmup lädt (einmal, singleflight, #494), die Lane
+ * antwortet sofort lexikalisch und sagt im Block ehrlich, warum
+ * (`unfusedHeadline(..., "cold-model")`). Ab dem zweiten Recall derselben
+ * Sitzung ist fusioniert — unverändert die Zusage aus #490.
+ */
 const MUST_LOAD_SCORE = 100;
 const TOTAL_HINTS_CAP = 7;
 
@@ -79,11 +158,41 @@ export interface SessionPayload {
 export async function runSessionLane(
   payload: SessionPayload,
   selfBaseUrl: string,
+  /** #490: der gemeinsame Warmup. Fehlt er (keine Embeddings, Tests), verhält
+   *  sich die Lane exakt wie vor #490 — volle 350 ms für den dichten Arm. */
+  warmup?: WarmupCoordinator,
 ): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
 
   if (payload.hook_event_name !== "SessionStart") return "{}";
+
+  // #493: Die Klammer um die (bis zu drei) Recalls DIESES Sitzungsstarts. Ein
+  // Start feuert mehrere korrelierte Recalls; ohne die Klammer ist „20
+  // Kaltstarts" nicht von „7 Kaltstarts × 3 Recalls" zu unterscheiden. Die
+  // `session_id` leistet das nicht: Sie überlebt compact/clear/resume und
+  // damit beliebig viele Starts.
+  //
+  // #495: Steht VOR dem Sitzungskontakt, weil der Warmup sie mitbekommt —
+  // seit #494 verschluckt genau er den Kaltstart, den der dichte Arm nicht
+  // mehr bezahlt, und sein Settle muss dem Start zuzuordnen sein, der ihn
+  // ausgelöst hat.
+  const sessionStartCallId = randomUUID();
+
+  // #490: DER erste Sitzungskontakt. Ein Aufruf, zwei Wirkungen: Er sagt, ob
+  // das Modell im Speicher liegt, und startet — wenn nicht — den gemeinsamen
+  // Ladevorgang NEBEN diesem Recall statt darin. Mehrere gleichzeitig
+  // startende Sitzungen teilen sich dabei EINEN Warmup (Koordinator hält das
+  // In-Flight-Flag), sonst bekäme eine kalte Maschine einen Embed-Sturm genau
+  // dann, wenn sie am langsamsten ist. Kein Await: Die Lane wartet nie auf ein
+  // Modell-Laden (#490, ausdrücklich abgelehnt).
+  const residency: Residency | null = warmup?.onSessionContact(sessionStartCallId) ?? null;
+  // #493: Woher diese Antwort stammt und ob sie geschätzt ist. Tor 3 aus #492
+  // zählt echte Kaltstarts und darf auf geschätzten Zeilen nicht zählen.
+  const residencyReading = warmup?.residencyDetail() ?? null;
+  // „Unbekannt" zählt wie kalt: Ohne einen einzigen erfolgreichen Embed in
+  // diesem Prozess ist die einzige sichere Annahme die teure.
+  const denseCold = residency === "cold" || residency === "unknown";
 
   // #354: compact/clear/resume keep the session id but rebuild the transcript,
   // so every hint the per-session dedup was holding back is gone from the
@@ -104,7 +213,16 @@ export async function runSessionLane(
     }
   }
 
-  const project = detectProject(payload.cwd ?? process.cwd());
+  // §20.5: Eine geratene Erkennung ist kein Projekt. `detectProject()` machte
+  // aus einem cwd ohne `.git` und ohne Container-Segment — `~/.buzz` — das
+  // Projekt ".buzz" und die Lane fragte Kandidaten dafür ab und schrieb es als
+  // `project=` in den Block. `projectForLane` liefert dort null: keine
+  // Projekt-Query, kein Projekt-Attribut.
+  const project = projectForLane(payload.cwd ?? process.cwd());
+  // #511: doku is per-project docs — inject only for a REAL repo (git-root),
+  // not the `root-match` container dirs (`~/Projekte`) that projectForLane
+  // still admits for scoping. Confidence is read here for the doku gate below.
+  const projectConfidence = detectProjectDetailed(payload.cwd ?? process.cwd()).confidence;
   // The self-call target is passed in by the route (this server's own
   // address), not read from the environment: the lane IS the daemon.
   const url = selfBaseUrl;
@@ -155,6 +273,18 @@ export async function runSessionLane(
           // eigene Vorgaben (4 Konventionen, 5 Floors), und ein Umzug ohne
           // diese Zeilen wäre eine stille Produktänderung. `0` = ungekappt.
           caps: { conventions: 6, pinned: 0 },
+          // Siehe SESSION_VECTOR_DEADLINE_MS: die Lane kauft ihrem dichten Arm
+          // mehr Zeit als der Hook-Default, und zwar nur für sich. #494: aber
+          // nur, wenn das Modell im Speicher liegt — sonst läuft gar kein
+          // dichter Arm und es gibt keine Frist zu setzen (`lexical_only`).
+          ...(denseCold
+            ? { lexical_only: true }
+            : { vector_deadline_ms: SESSION_VECTOR_DEADLINE_MS }),
+          // Siehe SESSION_HOOK_BUDGET_MS: der Schatten-Router soll gegen die
+          // Wanduhr DIESER Lane rechnen, nicht gegen die der Prompt-Lane.
+          hook_budget_ms: SESSION_HOOK_BUDGET_MS,
+          // #493: siehe `sessionStartCallId` oben.
+          session_start_call_id: sessionStartCallId,
           budget: { time_ms: remainingMs },
         },
         remainingMs,
@@ -187,6 +317,22 @@ export async function runSessionLane(
   // score ≥100", obwohl genau ein Pfad lief.
   const unfused = responses.some((r) => r.resp !== null && isUnfused(r.resp));
   const merged = mergeSessionHits(responses, unfused, SCORE_FLOOR);
+
+  // Deep-Dive 07.09.2026: Ein einarmiger SessionStart stand in der Telemetrie
+  // als schlichtes `ok`. Das war nicht falsch, es beschrieb nur etwas anderes:
+  // `status` sagt, ob die ANTWORT ankam, nicht ob sie vollständig war. Deshalb
+  // bleibt `status` unverändert — jede bestehende Auswertung zählt weiter
+  // dasselbe — und daneben stehen die zwei Felder, die die Antwort selbst
+  // beschreiben: WARUM ein Arm fehlte und OB die Zahlen auf der fusionierten
+  // Skala liegen. Die zweite Frage ist nicht aus der ersten ableitbar: ohne
+  // Embeddings läuft die Suche einarmig, ohne dass ein Arm ausgefallen wäre,
+  // und dann gibt es keinen `degraded`-Grund zu melden.
+  //
+  // Bis zu drei Recalls stehen hier nebeneinander; gemeldet wird der erste
+  // Grund, den einer von ihnen nennt. Der Block wird als Ganzes injiziert und
+  // `unfused` gilt ohnehin fail-closed für den ganzen Block.
+  const degradedReason =
+    responses.find((r) => typeof r.resp?.degraded === "string")?.resp?.degraded ?? null;
 
   // #265: Die sechs Seitenabrufe hängen an keiner Recall-AUSGABE — nur daran,
   // DASS der Daemon antwortet. Sequenziell summierten sich ihre Budgets auf bis
@@ -294,36 +440,11 @@ export async function runSessionLane(
     }
   }
 
-  // Onboarding interview: a fresh vault (few memories, no marker) gets a
-  // standing offer to seed itself — the session model interviews adaptively,
-  // which no form can. Offered, never pushed.
-  let onboardingBlock = "";
-  {
-    if (onboardingNeeded) {
-      onboardingBlock =
-        `\n<vault-onboarding>\n` +
-        `This vault is fresh and the onboarding interview hasn't run. Offer it ONCE at a natural ` +
-        `moment (e.g. after the first task, or right away if the user seems to be exploring): a ` +
-        `~5-minute interview that seeds the vault with who the user is. If they agree, interview ` +
-        `adaptively — one question at a time, follow up where an answer is thin, let them skip ` +
-        `anything: (1) what the memory will mainly hold — code & projects / company & decisions / ` +
-        `personal life & knowledge / a mix; (2) how to address them — name, language, tone; ` +
-        `(3) hard always/never rules; (4-6) persona follow-ups (developer: stack, active projects, ` +
-        `workflow, coding conventions — file-size guide value in lines + which folder holds what · ` +
-        `business: company & role, key people, what to prepare or watch · personal: ` +
-        `day-to-day world, never-forget items, current goals · mixed: stack, role, world); ` +
-        `(7) anything else, freeform. Save each answer immediately via save_memory — the user ` +
-        `answered in person, so write_origin: "user-directed", concrete recall_when triggers ` +
-        `including an ask-trigger in the user's own words. If they name a file-size guide value, ` +
-        `ALSO run \`bastra config set size.guide <N>\` — the PreToolUse hook then enforces it ` +
-        `deterministically. If you can tell the user's primary language (from how they answer, or ` +
-        `an explicit "in <language>"), ALSO run \`bastra config set language.primary <code>\` ` +
-        `(2-letter ISO code) so future memories get authored in it. When finished run \`bastra onboard done\`; ` +
-        `if the user declines run \`bastra onboard skip\` and never bring it up again. Also mention ` +
-        `\`bastra import\` if they have memories in other AI tools.\n` +
-        `</vault-onboarding>`;
-    }
-  }
+  // Onboarding interview: a fresh vault (few memories, no marker) gets to seed
+  // itself — the session model interviews adaptively, which no form can.
+  // #308: the instruction text, and why it is an instruction rather than an
+  // offer, lives in session-onboarding-block.ts.
+  const onboardingBlock = buildOnboardingBlock(onboardingNeeded);
 
   // Best-effort update probe — only when we already have a daemon reachable.
   // Strict budget: 200 ms; if nothing back, we just skip the block.
@@ -425,22 +546,22 @@ export async function runSessionLane(
   let pendingBlock = "";
   try {
     const pending = await consumePendingSuggestions();
-    if (pending.length > 0) {
-      pendingBlock =
-        `\n<pending-save-suggestions source="stop-hook">\n` +
-        `From earlier session(s) — evaluate silently, save via bastra-recall:save_memory only what genuinely qualifies:\n` +
-        pending.map((p) => p.blocks).join("\n") +
-        `\n</pending-save-suggestions>`;
-    }
+    // #510: der Block wird auf ein Zeichen-Budget rationiert (größter Einzel-
+    // Part im #462-Baseline). Formatierung + Truncation liegen im Modul, damit
+    // sie ohne CLI-Seiteneffekte testbar sind — dieselbe Trennung wie pinned.
+    const block = formatPendingBlock(pending);
+    if (block) pendingBlock = `\n${block}`;
   } catch {
     /* relay is best-effort */
   }
 
   // Produkt-Doku (docs.mode): Anweisung nur injizieren, wenn das Feature
-  // eingeschaltet ist UND ein Projekt erkannt wurde (Doku ist per-project).
-  // Settings-Read ist ein lokaler File-Read — kein Daemon-Roundtrip nötig.
+  // eingeschaltet ist UND ein echtes Repo erkannt wurde. #511: `git-root`, nicht
+  // `if (project)` — sonst zahlt ein Container-Root (`~/Projekte`, root-match)
+  // oder ein Fallback-Verzeichnis Doku-Tokens für ein Projekt, das nicht
+  // existiert (isDokuProject). Settings-Read ist ein lokaler File-Read.
   let dokuBlock = "";
-  if (project) {
+  if (project && isDokuProject(projectConfidence)) {
     try {
       const docsMode = await getDocsMode();
       if (docsMode !== "off") {
@@ -498,7 +619,12 @@ export async function runSessionLane(
     // real signal here, and framing the whole block as noise would hide it.
     const answered = responses.filter((r) => r.resp !== null);
     const allWeak = answered.length > 0 && answered.every((r) => r.resp!.weak_result === true);
-    recallBlock = formatBlock(top, project, payload.source ?? null, allWeak, unfused, client);
+    recallBlock = formatBlock(
+      top, project, payload.source ?? null, allWeak, unfused, client,
+      // #490: Ehrlichkeit im Block. Einarmig UND das Modell war kalt → sag
+      // genau das, statt „semantic search is off" zu behaupten.
+      denseCold ? "cold-model" : "off",
+    );
     injected = pinnedHead + recallBlock + extras;
     out = JSON.stringify({
       hookSpecificOutput: {
@@ -523,6 +649,13 @@ export async function runSessionLane(
     pinned_count: pinned.length,
     top_score: top[0]?.score ?? null,
     latency_ms_total: Date.now() - startedAt,
+    degraded_reason: degradedReason,
+    score_unfused: unfused,
+    embedding_residency: residency,
+    embedding_residency_source: residencyReading?.source ?? null,
+    embedding_residency_estimated: residencyReading?.estimated ?? null,
+    session_start_call_id: sessionStartCallId,
+    host_profile_id: hostProfileId(),
     hint_tokens_est: Math.ceil(injected.length / 4),
     // #462: dieselbe Schätzung je Teil. Nichts injiziert = alle Teile 0.
     hint_tokens_by_part: tokensByPart(
@@ -548,7 +681,7 @@ export async function runSessionLane(
     error: errMsg,
   });
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
-  await reportHinted(url, top.map((h) => h.id));
+  await reportHinted(url, top.map((h) => h.id), payload.session_id ?? null);
   return out;
 }
 
@@ -604,6 +737,9 @@ export function formatBlock(
   weak = false,
   unfused = false,
   surface = "claude-code",
+  /** #490: WARUM einarmig. `cold-model` nur, wenn der Koordinator das Modell
+   *  als nicht resident gemeldet hat — sonst bleibt es bei der alten Aussage. */
+  unfusedReason: UnfusedReason = "off",
 ): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
   const srcAttr = source ? ` source="${escapeAttr(source)}"` : "";
@@ -618,7 +754,7 @@ export function formatBlock(
 
   if (unbanded.length > 0) {
     sections.push(
-      `${unfusedHeadline(`the ${project ?? "current"} session`)} ${CANDIDATES_ONLY_NOTICE} ` +
+      `${unfusedHeadline(`the ${project ?? "current"} session`, unfusedReason)} ${CANDIDATES_ONLY_NOTICE} ` +
         `load_memory(id) the ones relevant to what the user actually asks for. ` +
         `These are hints, not obligations.`,
     );
@@ -723,6 +859,29 @@ interface SessionHookTelemetry {
   hinted_types: string[];
   status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error";
   error: string | null;
+  /** #342/Deep-Dive 07.09.2026: welcher Arm ausgefallen ist — `vector-arm-timeout`
+   *  oder `vector-arm-empty`. `null` heißt „keiner ist ausgefallen", NICHT
+   *  „fusioniert": dafür ist `score_unfused` da. Fehlt auf Zeilen davor. */
+  degraded_reason: string | null;
+  /** Lagen die servierten Scores auf der rohen BM25-Skala statt auf der
+   *  fusionierten? Derselbe fail-closed berechnete Wert, mit dem die Lane den
+   *  Block bandet — die Telemetrie soll denselben Satz erzählen wie der Text,
+   *  den der Nutzer sieht. */
+  score_unfused: boolean;
+  /** #490: Lag das Embedding-Modell beim Sitzungsstart im Speicher? `cold`
+   *  und `unknown` heißen: Der dichte Arm bekam nur COLD_VECTOR_DEADLINE_MS
+   *  und der Warmup lief daneben an. `null` = kein Koordinator (keine
+   *  Embeddings). Fehlt auf Zeilen vor #490. */
+  embedding_residency: Residency | null;
+  /** #493: Woher die Residenz stammt und ob sie geschätzt ist — siehe
+   *  `ResidencyReading`. `null` = kein Koordinator. Fehlt auf Zeilen davor. */
+  embedding_residency_source: ResidencySource | null;
+  embedding_residency_estimated: boolean | null;
+  /** #493: Die Klammer, unter der die `hook_recall`-Events DIESES Starts
+   *  stehen. Verbindet dieses Ereignis mit seinen Teil-Recalls. */
+  session_start_call_id: string;
+  /** #493: die datensparsame Kennung dieses Hosts — Tor 5 aus #492. */
+  host_profile_id: string;
 }
 
 export const SESSION_CONTEXT_PARTS = [

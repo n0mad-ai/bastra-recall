@@ -2,7 +2,7 @@
 
 ## Goal
 
-Bastra.Recall is a local-first memory layer for AI assistants. It gives Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor, ChatGPT Actions, and other MCP/HTTP clients one shared vault of durable lessons, preferences, project facts, decisions, workflows, bookmarks, and document sidecars.
+Bastra.Recall is a local-first memory layer for AI assistants. It gives Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor and other MCP/HTTP clients (see the [support matrix](../README.md#supported-surfaces); packaged ChatGPT Actions remain planned) one shared vault of durable lessons, preferences, project facts, decisions, workflows, bookmarks, and document sidecars.
 
 The operating goal is simple: the user should not have to re-explain stable context. The assistant saves durable memories when a lesson or rule is learned, and recalls relevant memories before acting.
 
@@ -53,12 +53,12 @@ The scanner is recursive, so older flat vaults and hand-organized Obsidian folde
 
 ### Write commit contract
 
-`saveMemory` builds a complete temporary file and commits per destination path. The destination path—not only the memory id—is the concurrency boundary, so the same id in two explicitly different folders does not block.
+`saveMemory` builds a complete temporary file and commits under a vault-wide claim on the memory **id**. The id—not the destination path—is the concurrency boundary, so two writers that want the same id in two explicitly different folders are two contenders for one place, not two independent writes. The invariant the claim carries is **one ID, one file, one transactional writer** (`packages/core/src/id-transaction.ts`).
 
 Every commit has these invariants:
 
 1. The target is read before the candidate is built. Only `ENOENT` means free; permission, device, and cloud-mount read failures abort the save.
-2. The writer acquires `<target>.bastra-write.lock` with exclusive-create semantics. A second `saveMemory` writer, including one in another process, receives `MemoryWriteConflictError` with code `BASTRA_WRITE_CONFLICT`.
+2. The writer acquires `<vault>/.bastra/locks/<sha256(id)>.bastra-write.lock` with exclusive-create semantics — one lock per id for the whole vault, not one per destination path. A second `saveMemory` writer for that id, including one in another process, receives `MemoryWriteConflictError` with code `BASTRA_WRITE_CONFLICT`.
 3. Under that claim, the writer re-reads the target and compares the exact bytes with the first read. A change aborts the commit.
 4. A create hard-links the completed temporary inode into the free destination, so it cannot replace a target that appeared late. An overwrite renames the complete temporary file atomically.
 5. Normal success and handled conflicts remove the writer's temporary and lock files. A process killed while it owns the claim can leave the lock behind; the destination is still either the complete old file or the complete committed file, never a partial write. Verify that no writer is active before removing such a stale lock.
@@ -75,7 +75,7 @@ await saveMemory(vaultRoot, input, {
 
 Omitting `expectedTarget` preserves the ordinary save API. Passing it makes the call compare-and-swap: if the destination no longer matches, the writer reports a conflict before publishing. `importVault` passes the raw target returned by its final provenance check, closing the previous ownership-check → rename window (#245, #285).
 
-The per-path claim is the cooperation boundary: every project write path that calls `saveMemory` participates, across Node processes. A program that edits the markdown file directly does not acquire this claim. Creates still cannot clobber such an external late writer because their final publication is no-replace; portable Node filesystem APIs do not provide an atomic content-CAS replacement for the overwrite case.
+The id claim is the cooperation boundary: every project write path that goes through the id transaction participates, across Node processes. A program that edits the markdown file directly does not acquire this claim. Creates still cannot clobber such an external late writer because their final publication is no-replace; portable Node filesystem APIs do not provide an atomic content-CAS replacement for the overwrite case.
 
 The regression matrix covers:
 
@@ -90,16 +90,16 @@ The regression matrix covers:
 | writers in separate Node processes | exactly one commit for one preimage |
 | sequential overwrites | both succeed; ordinary update behavior unchanged |
 | different ids in one folder | both commit independently |
-| same id in different folders | both commit independently |
+| same id in different folders | exactly one commit; the loser conflicts and leaves no file behind |
 | target inspection fails with non-`ENOENT` | fail closed before temp/lock creation |
 | success or handled conflict | no owned temp/lock artifact remains |
 | winning overwrite is a patch | omitted frontmatter, including sensitivity, survives |
 
 The watcher uses `chokidar`. On paths that look like cloud-storage mounts (`CloudStorage`, `Dropbox`, `iCloud`), it switches to polling because native file events are unreliable there. Write paths call `vault.reindexFile(...)` after known writes so a save and a recall in the same turn stay consistent.
 
-A memory's **id survives** the engine's lifecycle operations: demote changes score only, soft-delete moves the file to append-only `.bastra/trash/` (recoverable), and only a hard delete removes a cell. This is the substrate guarantee the pin/floor lifecycle and any citation layer build on — pinned by a CI regression test. Details: [docs/survival.md](./docs/survival.md).
+A memory's **id survives** the engine's lifecycle operations: demote changes score only, soft-delete moves the file to append-only `.bastra/trash/` (recoverable), and only a hard delete removes a cell. This is the substrate guarantee the pin/floor lifecycle and any citation layer build on — pinned by a CI regression test. Details: [survival.md](./survival.md).
 
-Every vault write through the daemon appends to `<vault>/.bastra/audit-log.ndjson` (#206) — `save_memory`, `save_product_doc` and `archive_memory`, alongside the Mac-app bridge that already used it. Each entry carries the memory id, the operation, the actor and the surface (`mcp:save_memory`, `mcp:archive_memory`, …), the frontmatter before and after, the file path, and the daemon run id, so an entry can be correlated with the telemetry of the same run. Telemetry is not a substitute: it can be switched off and is pruned after 90 days, while this log is append-only and permanent. Recording is best-effort by design (`packages/daemon/src/audit-trail.ts`) — a write that already landed is never failed because its trail could not be written. The MCP path records directly rather than through `auditedSave`, because that wrapper requires a `reason` for assistant mutations and the tool schema has no reason field; a missing reason is honest, a generated one would be noise dressed as provenance.
+The audited daemon write paths append to `<vault>/.bastra/audit-log.ndjson` (#206): `save_memory`, `edit_memory` (#519), `save_product_doc` and `archive_memory`, alongside the Mac-app bridge that already used it. The opt-in document mutation tools (`save_document`, `recategorize_document`, `move_document`) are **not** audited yet — tracked in [#452](https://github.com/n0mad-ai/bastra-recall/issues/452). Each entry carries the memory id, the operation, the actor and the surface (`mcp:save_memory`, `mcp:edit_memory`, `mcp:archive_memory`, …), the frontmatter before and after, the file path, and the daemon run id, so an entry can be correlated with the telemetry of the same run. Telemetry is not a substitute: it can be switched off and is pruned after 90 days, while this log is append-only and permanent. Recording is best-effort by design (`packages/daemon/src/audit-trail.ts`) — a write that already landed is never failed because its trail could not be written. The MCP path records directly rather than through `auditedSave`, because that wrapper requires a `reason` for assistant mutations and the tool schema has no reason field; a missing reason is honest, a generated one would be noise dressed as provenance.
 
 ## Search And Recall
 
@@ -117,22 +117,24 @@ The current index is in-memory MiniSearch BM25, not SQLite/FTS5. The searched fi
 - `obsolete !== true`
 - optional exact `scope`
 - optional exact `type`
-- `sensitivity !== private` unless `allow_private: true`
+- `sensitivity !== private` unless the call arrives over a trusted local transport (#464)
 
 It then applies staleness reranking based on lifecycle fields such as `valid_until`, `expires_after_days`, and `last_reviewed_at`.
 
 ### Hybrid Recall
 
-Embeddings are an optional, configurable second pass; BM25 keyword search is the default. The provider is resolved in one shared place (`resolveEmbeddingChoice` in `packages/daemon/src/settings.ts`, used by the daemon, the bridge, and the CLI) with the precedence env > cli-settings > API-key > none:
+Embeddings are an optional, configurable second pass; BM25 keyword search is the default. The provider is resolved in one shared place (`resolveEmbeddingChoice` in `packages/daemon/src/settings.ts`, used by the daemon, the bridge, and the CLI) with the precedence env > cli-settings > none:
 
 | Source | Value | Behavior |
 |---|---|---|
 | env `BASTRA_EMBEDDING_PROVIDER` | `none` / `ollama` / `openai` | always wins over the settings file |
 | `~/.bastra/cli-settings.json` `embedding.provider` | `none` / `ollama` / `openai` | written by `bastra embeddings on\|off` (or the `bastra install` end prompt); used when no env is set |
-| unset + API key (`OPENAI_API_KEY` / `BASTRA_EMBEDDING_KEY`) | — | use OpenAI for backwards compatibility |
+| unset + API key (`OPENAI_API_KEY` / `BASTRA_EMBEDDING_KEY`) | — | **BM25 only** — a generic credential is not consent (#520) |
 | unset + no API key | — | BM25 only |
 
-`ollama` uses local Ollama `/v1/embeddings`; `openai` requires an API key. `bastra embeddings status` shows the effective provider and which source decided it.
+`ollama` uses local Ollama `/v1/embeddings` and keeps every text on the machine. `openai` is the one mode that sends data off-device: recall queries and the memory text being indexed are POSTed to `api.openai.com`. It therefore requires an **explicit** Bastra decision — `BASTRA_EMBEDDING_PROVIDER=openai` or `bastra config set embedding.provider openai` — plus an API key. Until #520 a bare `OPENAI_API_KEY` in the environment selected it on its own, which meant a key exported for an unrelated tool could ship the whole backfill corpus to OpenAI without any Bastra-specific opt-in; the resolver now stops at `none` in that case and the daemon, `bastra embeddings status` and `bastra doctor` print a migration line explaining how to opt in on purpose. The OpenAI provider is built in exactly one place (`cloudEmbeddingProvider`, `packages/daemon/src/embedding-cloud.ts`), so that gate cannot be bypassed by a second call site.
+
+`bastra embeddings status` shows the effective provider, which source decided it, and whether that provider keeps text on-device.
 
 The Ollama endpoint (`BASTRA_OLLAMA_URL`, default `http://localhost:11434`) is egress-guarded: a non-loopback host is refused unless `BASTRA_ALLOW_REMOTE_OLLAMA=1` is set explicitly, so a mistyped or injected URL can never send memory text off-box. The guard (`assertLocalOrOptIn`, `packages/core/src/ollama-egress.ts`) covers **both** callers — the embedding provider (query + memory text) and the reranker (candidate text) — so the "no cloud, no egress, stays on the machine" property holds outbound as well as for the loopback-only inbound server.
 
@@ -167,7 +169,7 @@ It starts:
 - HTTP REST server on `127.0.0.1:6723` by default
 - stdio MCP server in the same process
 
-HTTP can be disabled with `BASTRA_HTTP=off`. The port defaults to `6723` and can be changed with `BASTRA_HTTP_PORT` (legacy `NEXUS_HTTP_PORT` is accepted).
+HTTP can be disabled with `BASTRA_HTTP=off`. The endpoint is resolved in exactly one place since #531 (`packages/daemon/src/daemon-endpoint.ts`), and every surface that binds, probes, names or persists it reads that resolver: `BASTRA_DAEMON_URL` → `BASTRA_HTTP_URL` → `BASTRA_HTTP_PORT` → loopback on `6723` (legacy `NEXUS_*` names are accepted alongside each).
 
 ### MCP Forwarder
 
@@ -189,6 +191,7 @@ Core memory tools:
 | `recall` | Search memories by action context or natural-language query |
 | `load_memory` | Load full frontmatter and body by id |
 | `save_memory` | Write a new or overwritten memory markdown file and force reindex |
+| `edit_memory` | Patch one existing memory — `str_replace`, `append` and/or a frontmatter patch, through the same save path; `expected_revision` is the optimistic-concurrency precondition (#519) |
 
 Document read tools:
 
@@ -219,6 +222,7 @@ The HTTP server binds to loopback only. Main endpoints:
 | `/api/v1/recall` | `POST` | REST wrapper for `recall` |
 | `/api/v1/load_memory` | `POST` | REST wrapper for `load_memory` |
 | `/api/v1/save_memory` | `POST` | REST wrapper for `save_memory` |
+| `/api/v1/edit_memory` | `POST` | REST wrapper for `edit_memory` |
 | `/api/v1/find_document` | `POST` | REST wrapper for `find_document` |
 | `/api/v1/read_document` | `POST` | REST wrapper for `read_document` |
 | `/api/v1/open_document` | `POST` | REST wrapper for `open_document` |
@@ -226,7 +230,7 @@ The HTTP server binds to loopback only. Main endpoints:
 | `/api/v1/recategorize_document` | `POST` | gated document write |
 | `/api/v1/move_document` | `POST` | gated document write |
 
-If `BASTRA_API_TOKEN` is set, `/api/v1/*` requires `Authorization: Bearer <token>`. Loopback callers bypass auth by default; set `BASTRA_AUTH_LOOPBACK_SKIP=0` to require the token even locally.
+`/api/v1/*` requires `Authorization: Bearer <token>` for everything that is not a direct local caller — including when no token is configured at all, where the answer is a `401` that no bearer can satisfy until one is minted (#526; the tokenless dev mode is the direct-local exemption, never a global open door). Direct local callers bypass auth by default — the exemption needs a loopback peer socket **and** a present, loopback `Host` header, so neither a DNS-rebound page nor a local tunnel — including a raw port-forwarder whose caller simply omits the header — inherits it from the socket (#526). Set `BASTRA_AUTH_LOOPBACK_SKIP=0` to require the token even locally.
 
 CORS is deny-by-default: no browser origin is allowed until `BASTRA_CORS_ORIGIN` lists it (comma-separated). `BASTRA_CORS_ORIGIN=*` is an explicit permissive opt-in for tunnel/dev setups. When the calling site is served over HTTPS (public origin → localhost daemon), Chrome's Private Network Access preflight is answered automatically with `Access-Control-Allow-Private-Network: true` for allowed origins.
 
@@ -245,10 +249,13 @@ Topic detection is deterministic and based on file extension, path segments, and
 
 ## Privacy And Safety
 
+Storage and keyword search run locally. MCP results and hook context are handed to the connected AI client; a cloud-backed client may send that context to its provider. Explicitly configured remote embeddings, REST exposure and vault-folder synchronization add separate data paths. The [privacy overview](./PRIVACY.md) covers these boundaries and metadata-only network features; the transport-level controls below apply to Bastra's own API.
+
 - The daemon binds to `127.0.0.1`.
 - The vault is plain local markdown.
-- `sensitivity: private` memories are hidden from external MCP/REST callers unless an internal caller explicitly uses `allow_private: true`.
+- `sensitivity: private` memories are hidden from external MCP/REST callers. Since #464 the permission is transport-bound (`private-access.ts`): it is not a tool argument, so no request body can grant it to itself. The local app's bridge (`bridge.ts`) is the trusted transport.
 - `load_memory` also enforces the sensitivity filter, so direct id enumeration cannot load private memories.
+- The same gate covers every mutation of a hidden record — `save_memory(overwrite)`, `edit_memory`, `archive_memory`, `save_document(overwrite)`, `recategorize_document`, `move_document`. All of them answer exactly like an unknown id, so a refused write is not an existence oracle either.
 - Telemetry is local JSONL and can be disabled with `BASTRA_TELEMETRY=off`.
 - Save/delete/restore operations used by the Mac-app bridge can be recorded in `<vault>/.bastra/audit-log.ndjson`.
 - Soft deletes move files to `<vault>/.bastra/trash/`.
@@ -260,7 +267,7 @@ Topic detection is deterministic and based on file extension, path segments, and
 | Runtime | Node 22+, TypeScript, ESM |
 | MCP | `@modelcontextprotocol/sdk` |
 | Search | MiniSearch BM25 in memory |
-| Embeddings | Optional OpenAI or Ollama provider, in-memory vectors with JSON persistence |
+| Embeddings | Optional local Ollama provider, or OpenAI after an explicit opt-in; in-memory vectors with JSON persistence |
 | Vault parsing | `gray-matter` + Zod frontmatter schema |
 | File watching | `chokidar` with polling on cloud mounts |
 | HTTP | Node `http` server |

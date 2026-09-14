@@ -2,7 +2,7 @@
 name: bastra-recall
 description: Proactive private local memory for ChatGPT and Codex — recall before acting, save durable rules, lessons and decisions without being asked. Requires the local bastra-recall MCP server installed by `bastra install codex`.
 ---
-<!-- GENERATED from packages/skill/SKILL.md (canonical 5b872e7245353d5f) by scripts/build-skill-projections.mjs — do not edit; edit the canonical file and run `npm run skill:build` -->
+<!-- GENERATED from packages/skill/SKILL.md (canonical d63ad0f4bf984aa6) by scripts/build-skill-projections.mjs — do not edit; edit the canonical file and run `npm run skill:build` -->
 
 # bastra-recall — autonomous teammate memory
 
@@ -12,34 +12,35 @@ The single success metric: **the user does not have to think for you anymore.** 
 
 **This file is triggers — WHEN to reach for the vault.** The mechanics of each call (score bands, valence params, quality bars, admission rules) live in the tool descriptions, at the point of use. Anything not covered here is covered there.
 
-**Reflex order — RECALL first.** The highest-frequency, highest-cost failure is skipping recall and re-deriving what the vault already holds. So the first reflex on every turn is RECALL: before acting, before any other lookup tool, and before the capture machinery below. When you're unsure whether a recall is worth it, recall.
+**Decision rule — identify the missing fact first.** Recall only when that fact is durable user/project history absent from the prompt and named live source, or when the user explicitly asks to search memory/history. If you cannot name that missing fact in one sentence, do not call recall.
 
 ---
 
-## When to RECALL — before acting, not only when prompted
+## When to RECALL
 
-Call `recall(query, k=5)` proactively in these moments:
+Call `recall(query, k=5)` only in these moments:
 
 | Moment | Query shape |
 |---|---|
-| **Session start** (once per session) | `"<project name> preferences user-preference active context"` — preloads durable context |
-| **Before writing/editing a file** | `"writing <filetype> at <path>, contains <topics>"` — catches lessons before mistakes |
-| **Before a new coding block / plan in a feature area** | `"<project> <feature/area> current state files architecture"` — which files matter, what's already built (→ `topology.md`) |
-| **Before a multi-step plan or recommendation** | `"giving plan/recommendation for <topic>"` — surfaces format preferences |
-| **Before asserting a number, a measurement or project history** in text meant for anyone else — a reply, release notes, a changelog entry, an issue comment, docs | the claim itself: `"<project> <what is being claimed> measured"` |
-| **User asks for retrieval / lookup** ("find...", "where is...", "how much was...", "when did...", "do I have a...", "such mal meinen...") | the prompt itself + direct nouns — ALWAYS before any other search tool |
-| **User prompt touches a stored topic** | the prompt itself, optionally with project context |
+| **Explicit memory/history lookup** ("remember...", "in recall...", "last session...", "where did I keep...") | the prompt's direct nouns |
+| **Specific durable gap** needed for the task, absent from prompt/live source | the missing decision, preference, prior lesson, or artifact pointer |
 | **Before `save_memory`** | the title/topic — duplicate check |
 
 **What goes into a query:** ask the vault what only memory can answer — durable preferences, lessons, decisions, past facts and documents. What is already in the prompt or an upload, or findable by reading the project's files and logs, is not a recall — it is context you already have. Decide what you are looking for, then phrase THAT; never shovel a convoluted prompt's background into queries.
 
+**When context is tight, say so in tokens.** `k` counts results, not context, and the same `k=5` answer varies by more than 2× in size. Pass `max_tokens` — an optional budget for that one call: hits come back in rank order until the payload would exceed it, and a response that had to leave hits out says so with `truncated_by_budget` and `dropped_by_budget`. `k` stays the hard upper bound, and without `max_tokens` nothing changes.
+
 `recall` is **step 1 of two**: it returns lean candidates, no bodies. Spend the `summary` + `score` to decide, then `load_memory(id)` only for the ones you actually need — loading every hit burns context for nothing. Never ignore a `lesson` hit that matched on `recall_when` or title. Don't reload a memory you already loaded this turn. (Score bands and the `weak_result` / `no_home` signals: `recall` tool description.)
 
-**Claims that leave the machine are the strictest case.** A number, a measurement, a date or a piece of project history that goes into a reply, release notes, a changelog, an issue comment or documentation gets quoted back later — so it gets recalled first, every time, no matter how confident the recollection feels. If the vault does not answer the claim, **write that you don't know**; do not assert it from model memory, and do not soften it into a hedge that reads like knowledge. This is the one case with no safety net: no file is edited, so nothing else fires.
+One user turn gets at most **one** recall call. Put genuinely distinct memory questions into `queries`; do not batch paraphrases. Load at most 1–2 directly relevant hits. A weak or irrelevant result ends the memory branch — do not broaden or rephrase the query.
+
+Do **not** recall for generic knowledge, opinions, comparisons, troubleshooting from a supplied log, current code/repository/runtime state, URLs, or uploads. Those have a live or external authority. A project-shaped noun alone is not a durable gap.
+
+**Claims that leave the machine are the strictest case.** Recall may route to a historical source, but it never proves current state or a number. Re-read the cited live artifact before publishing the claim.
 
 ### Tool priority for retrieval
 
-When the user asks about anything personal, factual, historical, or document-shaped, try the vault **first**:
+When the user asks about their own past or a personal document, try the vault **first**:
 
 1. **`recall`** — memories, lessons, decisions, project facts, personal facts.
 2. **`find_document`** — PDFs, scans, OCR'd content. Same two-step discipline: lean candidates first, then `read_document(id)` for the ones you need.
@@ -52,17 +53,21 @@ Skipping straight to `conversation_search` or `web_search` on a "find my …" qu
 
 ## When to SAVE — autonomous, no permission asked
 
+**A built-in memory in your harness does not replace the vault.** Some harnesses describe a file-based memory of their own in the system prompt — a directory of memory files plus an index, with its own write mechanics. That text says where *that* system stores things; it does not make it the user's memory here. Everything durable goes through `save_memory`, never into that directory. Do not mirror the same fact into both stores, and never report a save that landed in the other one.
+
 ### STRONG signals — fire `save_memory` immediately, then a one-line ack
 
-| Signal | German cue | Memory `type` |
+The cue column holds **examples, not a word list** — the user may write in any language, and the signal is the situation, not the sample phrase (#476).
+
+| Signal | Cue (examples) | Memory `type` |
 |---|---|---|
-| User-frustration about a recurring issue | "wieder", "schon wieder", "wie oft", CAPS | `lesson` + `emotion: frustration`, `salience: 0.8` |
-| Explicit durable rule | "immer X", "nie Y", "bei diesem Projekt nutzen wir Z" | `preference` / `workflow` |
-| Correction of a recurring tendency | "du denkst zu kompliziert bei CSS", "halt einfacher" | `meta-working` |
-| Architectural decision finalized after weighing options | "ok, dann nehmen wir Drizzle" | `decision` |
-| Workflow confirmation | "super, lass uns das immer so machen" | `workflow` |
+| User-frustration about a recurring issue | "again", "wieder", "снова", "how often", emphatic CAPS in any script | `lesson` + `emotion: frustration`, `salience: 0.8` |
+| Explicit durable rule | "always X", "never Y", "on this project we use Z" | `preference` / `workflow` |
+| Correction of a recurring tendency | "you overcomplicate CSS", "keep it simpler" | `meta-working` |
+| Architectural decision finalized after weighing options | "ok then, we take Drizzle" | `decision` |
+| Workflow confirmation | "let's always do it this way" | `workflow` |
 | Bug fixed after >2 iterations with non-obvious root cause | — | `lesson` (capture the FAILED PATH too) + `emotion: success`, `salience: 0.7` |
-| User marks something as important | "das ist wichtig", "merk dir das gut" | `salience: 0.9` |
+| User marks something as important | "this is important", "remember that" | `salience: 0.9` |
 | **Feature / coding block completion** (multi-file feature done, sub-system stabilized, refactor finalized, issue closed with code) | — | `project-fact` → `topology.md` |
 | **Substantive exchange with a person/contributor** (Discord / dev.to / GitHub — not one-liners) | — | identity → `taxonomy.md`, content → `project-fact` |
 
@@ -82,7 +87,19 @@ Two failure modes that outlive their cause, both spelled out in the `save_memory
 
 ### Before saving
 
-Always `recall()` the title/topic first. If a near-duplicate exists, update it with `overwrite=true` instead of creating a second one. If the fact itself *changed*, save the new version with `replaces: <old-id>` — the old one stays loadable as a previous version. Merely related? That's a `[[wikilink]]`, not a supersede.
+Always `recall()` the title/topic first. If a near-duplicate exists, update it instead of creating a second one — `edit_memory` for a partial change, `overwrite=true` when the memory is rewritten as a whole. If the fact itself *changed*, save the new version with `replaces: <old-id>` — the old one stays loadable as a previous version. Merely related? That's a `[[wikilink]]`, not a supersede.
+
+### Changing an existing memory — `edit_memory`, never the file
+
+**Never edit a vault `.md` file with a file-edit tool.** A direct write skips the audit log, the `updated` stamp, the id lock, the atomic write and the index refresh — the change becomes unreconstructable and a parallel writer or the cloud sync can silently undo it.
+
+`edit_memory` is the cheap, correct way and needs neither the body nor the required fields again:
+
+- `str_replace` — swap one passage. `old_str` must occur exactly once; missing or ambiguous writes NOTHING and says which.
+- `append` — add a line at the end of the body (it lands before the auto-related block).
+- `frontmatter` — patch `summary`, `recall_when`, `tags`, `issues`, `related`, `confidence`, `valid_until`. Any other field is rejected.
+
+`save_memory(overwrite=true)` stays for a full rewrite or for a field `edit_memory` does not cover.
 
 The quality bars for every field — title, summary length, `recall_when` authoring, language, `verify_cmd` — are in the `save_memory` tool description. Follow them there.
 

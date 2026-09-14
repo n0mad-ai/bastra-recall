@@ -9,6 +9,7 @@
  * has no I/O dependencies beyond writing the file.
  */
 import { readFile, rename, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import type { StaleEntry } from "./curator.js";
 import type { UsageEntry } from "./usage-sidecar.js";
@@ -295,7 +296,10 @@ export async function writeVaultHealthReport(vaultRoot: string, data: VaultHealt
     } catch {
       /* no existing file — free to create */
     }
-    const tmp = `${target}.tmp-${process.pid}`;
+    // Zufallsanteil statt nur der PID (#532-Scan): geschrieben wird das aus
+    // dem Curator-Pass, und zwei Pässe desselben Prozesses können sich
+    // überlappen (15-Minuten-Job und POST /curator/run).
+    const tmp = `${target}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
     await writeFile(tmp, renderVaultHealthReport(data), "utf8");
     await rename(tmp, target);
     return true;
