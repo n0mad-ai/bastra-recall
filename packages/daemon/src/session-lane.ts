@@ -49,7 +49,7 @@ import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow, resetBudgetOnSource } from "./session-budget.js";
 import { spawnStagedUpdate, stagedToday, markStagedToday } from "./update-check.js";
 import { formatBlockedUpdate, readBlockedUpdate } from "./update-blocked.js";
-import { pendingPatchNotice } from "./patch-registry.js";
+import { pendingPatchNotice } from "./patch-report.js";
 import { consumePendingSuggestions, formatPendingBlock } from "./pending-suggestions.js";
 import { clearShown } from "./session-state.js";
 import { formatPinnedBlock, dropPinnedFromRanked, type PinnedFloorLean } from "./pinned-block.js";

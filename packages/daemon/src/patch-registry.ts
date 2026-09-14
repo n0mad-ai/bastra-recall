@@ -98,6 +98,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -130,6 +131,7 @@ export interface PatchIndex {
 export type PatchState =
   | "clean" // applies as-is
   | "already-upstream" // reverse-applies, so the change is already in the tree
+  | "applied-here" // reverse-applies because the last run on THIS tree put it there
   | "conflict" // neither direction is clean
   | "unknown"; // git missing, patch unreadable — never treated as either
 
@@ -142,6 +144,9 @@ export interface PatchStatus {
 
 export interface ApplyOutcome {
   applied: PatchEntry[];
+  /** Already in the tree because the previous run on this same install applied
+   *  them — kept in the series, not retired, not applied twice. */
+  kept: PatchEntry[];
   retired: PatchEntry[];
   setAside: Array<{ entry: PatchEntry; detail: string }>;
   /** False when the smoke check failed and the series was reversed. */
@@ -156,6 +161,9 @@ export interface ApplyOutcome {
   smokeError?: string;
   /** Set when nothing could run at all (no git, no patches). Not a failure. */
   skipped?: string;
+  /** The tree this run addressed — recorded so the next run can tell its own
+   *  earlier work from an upstream merge. */
+  tree?: { root: string; version?: string };
 }
 
 function baseDir(home = homedir()): string {
@@ -299,26 +307,15 @@ function git(root: string, args: string[], env?: NodeJS.ProcessEnv): GitRun {
 }
 
 /**
- * git, confined to `root`: repository discovery may not climb above it.
- *
- * An installation can sit inside a git work tree it has nothing to do with. On
- * Apple Silicon Homebrew the prefix IS one — `/opt/homebrew` is the Homebrew/brew
- * checkout, and the keg `/opt/homebrew/Cellar/bastra-recall/<v>/libexec/…` lies
- * inside it. Run from there, `git apply` treats the patch as addressed from
- * `/opt/homebrew`, finds none of its paths below the cwd, prints "Skipped patch"
- * for every file and exits 0. `noSkips` turns that into a conflict, so nothing
- * is silently retired — but no local patch ever applies on that platform, and
- * the 3-way fallback would have run against Homebrew's own index.
- *
- * A root that carries its own repository — a source checkout's top level, which
- * is what `resolveRoots().apply` is for one — keeps it. Any other root gets
- * `GIT_DIR` pointed at a `.git` that is not there, which switches discovery off
- * entirely: `git apply` then works on plain files relative to the cwd, and
- * `rev-parse` finds no repository to hand the 3-way path. Not
- * `GIT_CEILING_DIRECTORIES`: git compares ceilings against the REALPATH of the
- * cwd, so a symlinked root slips past it, and on POSIX the list is split on
- * `:`, which a path may contain. Discovery in `sourceRepoRoot` deliberately
- * keeps plain `git`, because there climbing to the repo root is the point.
+ * git, confined to `root`. An install can sit inside a git work tree it has
+ * nothing to do with: on Apple Silicon Homebrew `/opt/homebrew` IS the brew
+ * checkout and the keg lies inside it, so `git apply` from the keg read every
+ * patch as addressed from `/opt/homebrew` and printed "Skipped patch" for each
+ * file — no patch could ever apply there, and the 3-way path would have probed
+ * Homebrew's own index. A root with its own `.git` (a source checkout's top
+ * level) keeps it; any other root gets `GIT_DIR` at a `.git` that is not there,
+ * which turns discovery off. Not `GIT_CEILING_DIRECTORIES`: git compares it to
+ * the cwd's realpath (a symlinked root slips past) and splits it on `:`.
  */
 function gitAt(root: string, args: string[], env?: NodeJS.ProcessEnv): GitRun {
   if (existsSync(join(root, ".git"))) return git(root, args, env);
@@ -421,11 +418,15 @@ export function probePatch(
   return { state: "conflict", detail: forward.output || reverse.output };
 }
 
-export function statusAll(root: string, home = homedir()): PatchStatus[] {
+export function statusAll(root: string, home = homedir(), version?: string): PatchStatus[] {
   const dir = patchesDir(home);
   const applyRoot = resolveRoots(root).apply;
+  const last = readLastRun(home);
   return activePatches(home).map((entry) => {
     const { state, detail } = probePatch(root, join(dir, entry.file), applyRoot);
+    if (state === "already-upstream" && appliedByLastRun(last, entry.id, applyRoot, version)) {
+      return { entry, state: "applied-here" as const, detail };
+    }
     return { entry, state, detail };
   });
 }
@@ -619,6 +620,36 @@ export interface ApplyOptions {
   dryRun?: boolean;
   /** Skip the boot check. Only for tests; the update path always runs it. */
   skipSmoke?: boolean;
+  /** Version of the tree being patched. With it, a patch this install already
+   *  carries from the last run is told apart from one upstream absorbed. */
+  version?: string;
+}
+
+function canonical(p: string): string {
+  try {
+    return realpathSync(p);
+  } catch {
+    return resolve(p);
+  }
+}
+
+/**
+ * "Reverse-applies" has two causes, and only one means upstream merged the
+ * patch. When the series runs over a tree that was not replaced (`bastra
+ * update` with nothing newer to install), the user's own patch is still there
+ * from the last run — read as "merged upstream" it was auto-retired, and the
+ * next real update came up without it. It is ours when the last run applied or
+ * kept this id on the same tree at the same version; with a root or version
+ * missing from the record it is kept, because a kept patch costs nothing and a
+ * wrong retire costs the patch (there is no un-retire).
+ */
+function appliedByLastRun(last: LastRun | null, id: string, applyRoot: string, version?: string): boolean {
+  if (!last || !last.applied.includes(id)) return false;
+  // A record written before root/version existed — the very update that installs
+  // this code writes one — cannot rule the tree out, so it keeps.
+  if (last.root && canonical(last.root) !== canonical(applyRoot)) return false;
+  if (version !== undefined && last.version !== undefined) return version === last.version;
+  return true;
 }
 
 /**
@@ -630,13 +661,15 @@ export interface ApplyOptions {
  */
 export function applySeries(root: string, opts: ApplyOptions = {}): ApplyOutcome {
   const home = opts.home ?? homedir();
-  const out: ApplyOutcome = { applied: [], retired: [], setAside: [], ok: true, rolledBack: false };
+  const out: ApplyOutcome = { applied: [], kept: [], retired: [], setAside: [], ok: true, rolledBack: false };
   const series = activePatches(home);
   if (series.length === 0) return { ...out, skipped: "no patches registered" };
   if (!findExecutable("git")) return { ...out, skipped: "git not found on a trusted PATH" };
 
   const dir = patchesDir(home);
   const roots = resolveRoots(root);
+  out.tree = { root: canonical(roots.apply), ...(opts.version ? { version: opts.version } : {}) };
+  const last = readLastRun(home);
   // The 3-way second chance is for a source checkout and nowhere else: it needs
   // an object database holding the pre-image blobs, and pointing it at whatever
   // repository an install root happens to sit inside would merge against a tree
@@ -660,6 +693,11 @@ export function applySeries(root: string, opts: ApplyOptions = {}): ApplyOutcome
   for (const entry of series) {
     const file = join(dir, entry.file);
     const { state, detail } = probePatch(root, file, roots.apply);
+
+    if (state === "already-upstream" && appliedByLastRun(last, entry.id, roots.apply, opts.version)) {
+      out.kept.push(entry);
+      continue;
+    }
 
     if (state === "already-upstream") {
       if (!opts.dryRun) retirePatch(entry, "merged-upstream", home);
@@ -740,28 +778,14 @@ export interface LastRun {
    *  parses, it simply has nothing to say about what did not go back. */
   unrestored?: string[];
   smokeError?: string;
+  /** The tree the run addressed (canonical) and its version. Optional for the
+   *  same reason; without them a reverse-applying patch is never read as ours. */
+  root?: string;
+  version?: string;
 }
 
 export function lastRunPath(home = homedir()): string {
   return join(patchesDir(home), "last-run.json");
-}
-
-export function writeLastRun(o: ApplyOutcome, home = homedir()): void {
-  try {
-    mkdirSync(patchesDir(home), { recursive: true, mode: 0o700 });
-    const rec: LastRun = {
-      at: new Date().toISOString(),
-      applied: o.applied.map((e) => e.id),
-      retired: o.retired.map((e) => e.id),
-      setAside: o.setAside.map((s) => ({ id: s.entry.id, subject: s.entry.subject, detail: s.detail })),
-      rolledBack: o.rolledBack,
-      ...(o.unrestored?.length ? { unrestored: o.unrestored } : {}),
-      ...(o.smokeError ? { smokeError: o.smokeError } : {}),
-    };
-    writeFileSync(lastRunPath(home), JSON.stringify(rec, null, 2) + "\n", "utf8");
-  } catch {
-    // A record that cannot be written costs a notice, never an update.
-  }
 }
 
 export function readLastRun(home = homedir()): LastRun | null {
@@ -771,80 +795,4 @@ export function readLastRun(home = homedir()): LastRun | null {
   } catch {
     return null;
   }
-}
-
-/**
- * The part of the last run that still stands, as one block of text — or null.
- *
- * Filtered against the CURRENT series on purpose: a patch the user removed or
- * fixed since the update must stop being reported, and the record itself has no
- * way to know that happened. Reporting a resolved problem forever is how a
- * notice surface teaches people to ignore it.
- */
-export function pendingPatchNotice(home = homedir()): string | null {
-  const rec = readLastRun(home);
-  if (!rec) return null;
-  const stillActive = new Set(activePatches(home).map((p) => p.id));
-  const aside = rec.setAside.filter((s) => stillActive.has(s.id));
-  const unrestored = rec.unrestored ?? [];
-  if (aside.length === 0 && !rec.rolledBack && unrestored.length === 0) return null;
-
-  const lines: string[] = [];
-  if (rec.rolledBack) {
-    lines.push(
-      `The last update reapplied local patches, the patched install failed its boot check, ` +
-        `and every patch from that run was reversed. bastra is running unpatched.`,
-    );
-    if (rec.smokeError) lines.push(`Boot error: ${rec.smokeError.split("\n")[0]}`);
-  } else if (unrestored.length > 0) {
-    // The one notice that must not read like the line above it: "running
-    // unpatched" would send the operator looking in the wrong place entirely.
-    lines.push(
-      `The last update reapplied local patches, the patched install failed its boot check, and ` +
-        `reversing that run did not put everything back. This install is now neither patched nor the ` +
-        `one the updater produced — what did not go back:`,
-    );
-    for (const u of unrestored) lines.push(`  · ${u}`);
-    lines.push(
-      `A 3-way merge cannot be undone by reversing the patch, which is why the reversal stopped short. ` +
-        `The pre-update backup under ~/.bastra/update-backups still holds these files as they were — ` +
-        `put them back by hand before trusting this install.`,
-    );
-    if (rec.smokeError) lines.push(`Boot error: ${rec.smokeError.split("\n")[0]}`);
-  }
-  if (aside.length > 0) {
-    lines.push(
-      `${aside.length} local patch${aside.length === 1 ? "" : "es"} could not be reapplied after the last update ` +
-        `(${rec.at.slice(0, 10)}) and ${aside.length === 1 ? "was" : "were"} set aside, never forced:`,
-    );
-    for (const s of aside) lines.push(`  · ${s.id} — ${s.subject}`);
-    lines.push(
-      `Upstream most likely moved the code they touch. 'bastra patches status' shows the conflicting hunks; ` +
-        `the pre-update backup under ~/.bastra/update-backups still holds the files as they were.`,
-    );
-  }
-  return lines.join("\n");
-}
-
-/** One-line-per-fact rendering, shared by `bastra patches status` and the
- *  update path so both report a series the same way. */
-export function formatApplyOutcome(o: ApplyOutcome): string {
-  if (o.skipped) return `  ${o.skipped}\n`;
-  const lines: string[] = [];
-  for (const e of o.applied) lines.push(`  ✓ applied   ${e.id} — ${e.subject}`);
-  for (const e of o.retired) lines.push(`  ↩ retired   ${e.id} — merged upstream, dropped from the series`);
-  for (const s of o.setAside) {
-    lines.push(`  ⚠ set aside ${s.entry.id} — ${s.entry.subject}`);
-    const first = s.detail.split("\n")[0]?.trim();
-    if (first) lines.push(`              ${first}`);
-  }
-  if (o.rolledBack) {
-    lines.push(`  ✗ the patched install did not boot — every patch from this run was reversed`);
-    if (o.smokeError) lines.push(`    ${o.smokeError.split("\n")[0]}`);
-  } else if (o.unrestored?.length) {
-    lines.push(`  ✗ the patched install did not boot, and the reversal did not put everything back:`);
-    for (const u of o.unrestored) lines.push(`    · ${u}`);
-    if (o.smokeError) lines.push(`    ${o.smokeError.split("\n")[0]}`);
-  }
-  return lines.length ? lines.join("\n") + "\n" : "";
 }
