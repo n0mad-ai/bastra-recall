@@ -20,6 +20,7 @@
  * spawned from an old dir keeps running via its open fds; the next spawn
  * uses the new path.
  */
+import { realpathSync } from "node:fs";
 import { cp, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { homedir } from "node:os";
@@ -33,6 +34,50 @@ import { VERSION, fileExists } from "./helpers.js";
  */
 export function isEphemeralInstallPath(p: string): boolean {
   return p.split(/[\\/]+/).includes("_npx");
+}
+
+/**
+ * A path inside a Homebrew keg of this formula —
+ * `<prefix>/Cellar/bastra-recall/<version>/<rest>` — split into its parts, or
+ * null. Matched on path segments, either separator.
+ */
+export function homebrewKeg(p: string): { prefix: string; keg: string; version: string; rest: string } | null {
+  const parts = p.split(/[\\/]+/);
+  for (let i = 0; i + 2 < parts.length; i++) {
+    if (parts[i] === "Cellar" && parts[i + 1] === "bastra-recall" && parts[i + 2]) {
+      // `1.0.0_1` is a formula revision of 1.0.0 — the same package version.
+      const keg = parts[i + 2];
+      return { prefix: parts.slice(0, i).join("/"), keg, version: keg.replace(/_\d+$/, ""), rest: parts.slice(i + 3).join("/") };
+    }
+  }
+  return null;
+}
+
+/**
+ * The version-independent spelling of a Homebrew keg path, for anything that is
+ * WRITTEN INTO A CLIENT CONFIG.
+ *
+ * Node resolves the `bastra` symlink to its real file, so every path this CLI
+ * derives from `import.meta.url` names the keg: `/opt/homebrew/Cellar/
+ * bastra-recall/1.0.0/…`. Registered that way, a surface keeps running the
+ * superseded keg after `brew upgrade` (doctor said "ok" — the file exists) and
+ * loses the MCP server, hooks and statusline at `brew cleanup`. Homebrew's own
+ * answer is `<prefix>/opt/<formula>`, a symlink it re-points on every upgrade.
+ *
+ * Only rewritten when `opt/bastra-recall` currently resolves to that very keg:
+ * pointing a registration at different code than the installer just checked is
+ * not this function's call. Anything that is not a keg path passes through.
+ */
+export function homebrewStablePath(p: string, realpath: (path: string) => string = realpathSync): string {
+  const keg = homebrewKeg(p);
+  if (!keg) return p;
+  const opt = `${keg.prefix}/opt/bastra-recall`;
+  try {
+    if (realpath(opt) !== realpath(`${keg.prefix}/Cellar/bastra-recall/${keg.keg}`)) return p;
+  } catch {
+    return p;
+  }
+  return keg.rest ? `${opt}/${keg.rest}` : opt;
 }
 
 export interface RuntimeTarget {
@@ -114,7 +159,7 @@ export function mapBinToStableRuntime(
   bin: string,
   res: Pick<ForwarderResolution, "rootDir" | "sourceNodeModules">,
 ): string {
-  if (!res.rootDir || !res.sourceNodeModules) return bin;
+  if (!res.rootDir || !res.sourceNodeModules) return homebrewStablePath(bin);
   const rel = relative(res.sourceNodeModules, bin);
   if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return bin;
   return join(res.rootDir, "node_modules", rel);
@@ -167,10 +212,10 @@ export async function removeRuntimeBase(home: string = homedir()): Promise<boole
  */
 export async function ensureStableForwarder(
   opts: { dryRun: boolean },
-  io: { forwarderPath?: string; version?: string; home?: string } = {},
+  io: { forwarderPath?: string; version?: string; home?: string; stablePath?: (p: string) => string } = {},
 ): Promise<ForwarderResolution> {
   const fwd = io.forwarderPath ?? FORWARDER_SCRIPT_PATH;
-  if (!isEphemeralInstallPath(fwd)) return { path: fwd, action: "native" };
+  if (!isEphemeralInstallPath(fwd)) return { path: (io.stablePath ?? homebrewStablePath)(fwd), action: "native" };
 
   const version = io.version ?? VERSION;
   const target = stableRuntimeTarget(version, io.home);
@@ -217,6 +262,9 @@ export interface ForwarderPathCheck {
  * path wins, because the path is what runs.
  */
 export function pinnedRuntimeVersion(fwd: string, home: string = homedir()): string | null {
+  // A Homebrew keg pins its version in the path exactly the same way.
+  const keg = homebrewKeg(fwd);
+  if (keg) return keg.version;
   const base = join(home, ".bastra", "runtime") + sep;
   const norm = fwd.split(/[\\/]+/).join(sep);
   if (!norm.startsWith(base)) return null;
@@ -246,6 +294,7 @@ export function checkForwarderRegistration(
   surface: string,
   runningVersion: string = VERSION,
   home: string = homedir(),
+  stablePath: (p: string) => string = homebrewStablePath,
 ): ForwarderPathCheck {
   if (!exists) {
     return { detail: `${fwd} (MISSING — re-run 'bastra install ${surface}')`, broken: true };
@@ -262,6 +311,17 @@ export function checkForwarderRegistration(
       detail:
         `${fwd} (STALE PIN — this surface runs ${pinned}, but ${runningVersion} is installed; ` +
         `the update is on disk and not in effect. Fix: 'bastra install ${surface}')`,
+      broken: true,
+    };
+  }
+  // "It exists" is not "it will keep existing". A registration at the CURRENT
+  // keg passes every check above today and dies at the next `brew upgrade` +
+  // `brew cleanup` — the same shape as the npx cache, one package manager over.
+  if (stablePath(fwd) !== fwd) {
+    return {
+      detail:
+        `${fwd} (VERSION-PINNED Homebrew keg — runs now, breaks after the next brew upgrade + cleanup; ` +
+        `re-run 'bastra install ${surface}' to register ${stablePath(fwd)})`,
       broken: true,
     };
   }

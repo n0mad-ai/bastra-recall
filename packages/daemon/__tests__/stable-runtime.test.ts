@@ -11,7 +11,7 @@
  */
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -24,6 +24,8 @@ import {
   removeRuntimeBase,
   resolveNodeModulesRoot,
   stableRuntimeTarget,
+  homebrewKeg,
+  homebrewStablePath,
 } from "../src/cli/stable-runtime.js";
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
@@ -388,4 +390,98 @@ test("checkForwarderRegistration: missing beats ephemeral in the wording", () =>
   const c = checkForwarderRegistration("/Users/x/.npm/_npx/ab12/node_modules/@bastra-recall/daemon/dist/mcp-forwarder.js", false, "claude-code");
   assert.equal(c.broken, true);
   assert.match(c.detail, /MISSING/);
+});
+
+// ─── Homebrew keg pins ───────────────────────────────────────────────────────
+// Found on a Mac after `brew upgrade bastra-recall` 0.9.2 → 1.0.0: Claude Code,
+// Cursor and Claude Desktop all still ran `/opt/homebrew/Cellar/bastra-recall/
+// 0.9.2/…/mcp-forwarder.js`, and doctor printed "✓ ok … (exists)" beside
+// "cli and daemon both 1.0.0". `brew cleanup` would have removed the MCP server
+// from all three without a word.
+
+/** A fake Homebrew prefix: two kegs and the opt symlink Homebrew re-points. */
+async function brewPrefix(dir: string, optTo: string | null): Promise<{ prefix: string; keg: (v: string) => string }> {
+  const prefix = join(dir, "homebrew");
+  const keg = (v: string) => join(prefix, "Cellar", "bastra-recall", v);
+  for (const v of ["0.9.2", "1.0.0"]) {
+    const d = join(keg(v), "libexec", "packages", "daemon", "dist");
+    await mkdir(d, { recursive: true });
+    await writeFile(join(d, "mcp-forwarder.js"), "", "utf8");
+  }
+  await mkdir(join(prefix, "opt"), { recursive: true });
+  if (optTo) await symlink(join("..", "Cellar", "bastra-recall", optTo), join(prefix, "opt", "bastra-recall"));
+  return { prefix, keg };
+}
+const FWD_REST = "libexec/packages/daemon/dist/mcp-forwarder.js";
+const onWindows = process.platform === "win32";
+
+test("homebrewKeg splits a keg path on either separator and ignores everything else", () => {
+  assert.deepEqual(homebrewKeg("/opt/homebrew/Cellar/bastra-recall/1.0.0/libexec/x.js"), {
+    prefix: "/opt/homebrew",
+    keg: "1.0.0",
+    version: "1.0.0",
+    rest: "libexec/x.js",
+  });
+  assert.equal(homebrewKeg("/opt/homebrew/Cellar/node/26.8.2/bin/node"), null, "another formula's keg is not ours");
+  assert.equal(homebrewKeg("C:\\x\\Cellar\\bastra-recall\\1.0.0\\a.js")?.version, "1.0.0");
+  assert.equal(homebrewKeg("/opt/homebrew/opt/bastra-recall/libexec/x.js"), null);
+  assert.equal(homebrewKeg("/usr/local/lib/node_modules/@bastra-recall/daemon/dist/mcp-forwarder.js"), null);
+});
+
+test("a keg path is registered through opt/ when opt/ points at that keg", { skip: onWindows }, async () => {
+  await withTempDir(async (dir) => {
+    const { prefix, keg } = await brewPrefix(dir, "1.0.0");
+    const fwd = join(keg("1.0.0"), FWD_REST);
+    assert.equal(homebrewStablePath(fwd), `${prefix}/opt/bastra-recall/${FWD_REST}`);
+
+    const r = await ensureStableForwarder({ dryRun: false }, { forwarderPath: fwd, version: "1.0.0", home: join(dir, "home") });
+    assert.equal(r.action, "native");
+    assert.equal(r.path, `${prefix}/opt/bastra-recall/${FWD_REST}`, "the MCP registration must survive the next upgrade");
+
+    const hook = join(keg("1.0.0"), "libexec/packages/daemon/dist/stop-hook.js");
+    assert.equal(mapBinToStableRuntime(hook, r), `${prefix}/opt/bastra-recall/libexec/packages/daemon/dist/stop-hook.js`, "hooks and statusline too");
+  });
+});
+
+test("opt/ pointing at another keg, or missing, leaves the path alone", { skip: onWindows }, async () => {
+  await withTempDir(async (dir) => {
+    const other = await brewPrefix(join(dir, "a"), "0.9.2");
+    const fwd = join(other.keg("1.0.0"), FWD_REST);
+    assert.equal(homebrewStablePath(fwd), fwd, "never redirect a registration to different code");
+    const none = await brewPrefix(join(dir, "b"), null);
+    assert.equal(homebrewStablePath(join(none.keg("1.0.0"), FWD_REST)), join(none.keg("1.0.0"), FWD_REST));
+  });
+});
+
+test("doctor: a registration on the current keg is not 'ok' — it dies at the next brew cleanup", { skip: onWindows }, async () => {
+  await withTempDir(async (dir) => {
+    const { prefix, keg } = await brewPrefix(dir, "1.0.0");
+    const pinned = checkForwarderRegistration(join(keg("1.0.0"), FWD_REST), true, "claude-desktop", "1.0.0");
+    assert.equal(pinned.broken, true);
+    assert.match(pinned.detail, /VERSION-PINNED Homebrew keg/);
+    assert.match(pinned.detail, /re-run 'bastra install claude-desktop'/);
+
+    const stale = checkForwarderRegistration(join(keg("0.9.2"), FWD_REST), true, "cursor", "1.0.0");
+    assert.equal(stale.broken, true);
+    assert.match(stale.detail, /STALE PIN — this surface runs 0\.9\.2, but 1\.0\.0 is installed/);
+
+    const stable = checkForwarderRegistration(`${prefix}/opt/bastra-recall/${FWD_REST}`, true, "claude-code", "1.0.0");
+    assert.deepEqual(stable.broken, false);
+  });
+});
+
+test("doctor: a formula revision keg (1.0.0_1) of the running version is pinned, not a stale older version", { skip: onWindows }, async () => {
+  await withTempDir(async (dir) => {
+    const prefix = join(dir, "homebrew");
+    const d = join(prefix, "Cellar", "bastra-recall", "1.0.0_1", "libexec", "packages", "daemon", "dist");
+    await mkdir(d, { recursive: true });
+    await writeFile(join(d, "mcp-forwarder.js"), "", "utf8");
+    await mkdir(join(prefix, "opt"), { recursive: true });
+    await symlink(join("..", "Cellar", "bastra-recall", "1.0.0_1"), join(prefix, "opt", "bastra-recall"));
+    const c = checkForwarderRegistration(join(prefix, "Cellar", "bastra-recall", "1.0.0_1", FWD_REST), true, "cursor", "1.0.0");
+    assert.equal(c.broken, true);
+    assert.doesNotMatch(c.detail, /STALE PIN/, "1.0.0_1 IS 1.0.0 — 'the update is not in effect' would be false");
+    assert.match(c.detail, /VERSION-PINNED/);
+    assert.equal(homebrewStablePath(join(prefix, "Cellar", "bastra-recall", "1.0.0_1", FWD_REST)), `${prefix}/opt/bastra-recall/${FWD_REST}`);
+  });
 });
