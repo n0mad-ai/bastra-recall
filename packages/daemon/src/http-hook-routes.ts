@@ -3,6 +3,7 @@
  * Routing stays in http.ts; the handler logic lives here.
  * Split out of http.ts (file-size convention).
  */
+import { missingVaultReason } from "./vault-presence.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type {
   LateSettleSample,
@@ -873,10 +874,13 @@ export async function runHookRecall(
       // Ausnahme ist kein Budget. Gemessen wird wie überall das ganze Payload.
       // Ohne `max_tokens` (0) baut die Funktion einmal und die Antwort ist
       // byte-gleich zu der vor #487.
+      const vaultMissing = missingVaultReason(vault.root);
       const budgeted = fitRecallWithReflexToBudget(leanHits, reflexHits, maxTokens, (emittedHits, emittedReflex, droppedByBudget) => ({
         hits: emittedHits,
         ...(emittedReflex.length > 0 ? { reflex_hits: emittedReflex } : {}),
         vault_size: vault.size(),
+        // The MCP forwarder's recall path is this stream, not recallHandler.
+        ...(vaultMissing ? { vault_missing: vaultMissing } : {}),
         latency_ms: totalLatencyMs,
         recall_id: recallId,
         ...(weakResult ? { weak_result: true } : {}),

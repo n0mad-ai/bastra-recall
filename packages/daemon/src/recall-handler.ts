@@ -3,6 +3,7 @@
  * Split out of tool-handlers.ts (file-size convention); tool-handlers
  * re-exports everything, so the existing import paths keep working.
  */
+import { missingVaultReason } from "./vault-presence.js";
 import { z } from "zod";
 import { scopeEquals } from "@bastra-recall/core/scope";
 import { truncateSummaryTo, hasUnresolvedConflict, type StageListener, type RecallStage, type RecallHit } from "@bastra-recall/core";
@@ -97,6 +98,9 @@ export interface RecallResult {
    *  die höhere Konfidenz-Stufe ist; zusammengelegt ginge genau die
    *  Unterscheidung verloren, die den Wert ausmacht. */
   no_home?: boolean;
+  /** Set when the vault directory does not exist: an empty hit list then says
+   *  nothing about memory — see vault-presence.ts. Absent otherwise. */
+  vault_missing?: string;
   /**
    * P0: In welchem Score-Raum `hits[].score` liegt.
    *
@@ -255,6 +259,16 @@ export function toLeanHit(hit: RecallHit): Pick<RecallHit, "id" | "title" | "typ
 
 
 export async function recallHandler(
+  deps: ToolDeps,
+  rawArgs: unknown,
+  options: Parameters<typeof recallAgainstVault>[2] = {},
+): Promise<RecallResult & { stages?: RecallStageTimings }> {
+  const result = await recallAgainstVault(deps, rawArgs, options);
+  const missing = missingVaultReason(deps.vault.root);
+  return missing ? { ...result, vault_missing: missing } : result;
+}
+
+async function recallAgainstVault(
   deps: ToolDeps,
   rawArgs: unknown,
   options: {

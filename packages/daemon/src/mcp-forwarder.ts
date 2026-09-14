@@ -556,6 +556,7 @@ interface HookRecallDonePayload {
   score_version?: string;
   unfused?: boolean;
   degraded?: string;
+  vault_missing?: string;
 }
 
 /** Dense-arm deadline for model-triggered recalls (see body.vector_deadline_ms). */

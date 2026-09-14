@@ -64,6 +64,7 @@
  *     `Access-Control-Allow-Private-Network: true` beantwortet (nur wenn die
  *     Origin erlaubt ist).
  */
+import { missingVaultReason } from "./vault-presence.js";
 import { createServer, type Server } from "node:http";
 import { createServer as createNetServer, type AddressInfo } from "node:net";
 import { buildGraph, buildSemanticLayout, truncateSummaryTo, type SemanticLayout } from "@bastra-recall/core";
@@ -282,6 +283,7 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
   const healthPayload = (): Record<string, unknown> =>
     buildHealthPayload({
       vaultSize: () => vault.size(),
+      vaultMissing: () => missingVaultReason(vault.root),
       version,
       embedding: opts.embedding,
       embeddingHealth: opts.embeddingHealth,
