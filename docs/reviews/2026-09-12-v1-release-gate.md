@@ -966,3 +966,103 @@ that configuration deploy; rebuilding daemon and stub alone is insufficient.
    and promote the draft; then independently read back GitHub Latest, npm
    `latest` for all four packages and the updated Homebrew formula before
    advertising the release.
+
+## Independent Codex counter-review — pass 9 (published v1.0.0)
+
+Counter-reviewed revisions: release tag
+`09ecb8c7b41f6c0d70334888879e0e37d5e0503f` and current `main`
+`57be1298545b0e0907fada31456c9240f3040f92`. Security verification remains
+closed by owner instruction. This pass verifies the public distribution and
+the post-release fixes #552/#553; it does not reopen that review surface.
+
+Counter-review verdict: **the v1.0.0 distribution is complete and internally
+consistent. There is no P0 runtime or distribution blocker. Public launch copy
+is not yet ready for advertising because the README, CONTRIBUTING and PLAN
+still say that v1.0 is in preparation.** Fix that P1 copy contradiction before
+sending traffic to the repository. #554 is a v1.0.1 release-engineering defect,
+not a defect in the already published v1.0.0 artifacts.
+
+### Independent public-distribution readback
+
+- GitHub release `v1.0.0` is public, non-prerelease and returned by the Latest
+  endpoint; it targets `09ecb8c` and was published at
+  `2026-09-14T00:30:44Z`.
+- All four npm packages exist at `1.0.0` and carry `latest = 1.0.0`:
+  `bastra-recall`, `@bastra-recall/core`, `@bastra-recall/daemon` and
+  `@bastra-recall/statusline`. A clean temporary install returned CLI version
+  `1.0.0`, rendered help, installed the four exact package versions and
+  imported the public core entry point successfully.
+- The release exposes exactly the required 12 assets: four native hooks and
+  their four checksum files, the MCPB and its checksum, and both Finder
+  installer scripts. All five checksum sidecars validate against the
+  downloaded bytes. GitHub build provenance verifies for all four native hooks
+  and the MCPB. The installer scripts are release inputs, not attested build
+  outputs, and have no provenance attestations.
+- On Apple arm64, the downloaded native hook is a valid Mach-O binary with a
+  valid ad-hoc signature. After restoring the executable bit on the downloaded
+  temporary copy, the workflow's real unknown-lane smoke returned exactly
+  `{}`. The MCPB is an intact ZIP, has manifest version `0.3`, product version
+  `1.0.0`, Node `>=22` and the expected daemon forwarder entry point.
+- The live Homebrew formula points to the v1.0.0 tag. Its source archive hashes
+  to `59d188bce1d905bab55c6ae7f5afaeb062827260ba31428ecae9e3e655f86e09`,
+  exactly the live formula value, and the formula drift check passes.
+- CI and CodeQL pass both on the release commit and on current `main`.
+
+### #552 and #553 clear; the red publish run is historical, not a broken set
+
+The first real publish exposed two workflow assumptions that repository-only
+tests could not prove. #552 granted the jobs that inspect and mutate the draft
+the required `contents: write` permission. The final run then built, tested,
+packed and published every package and asset, but its `promote` job sampled npm
+before two packages were visible on the registry read side. #553 changes
+`--verify` from one sample to a bounded convergence check. The current verifier
+passes against all four live packages.
+
+Run `34792060719` therefore remains red in GitHub history, but its failed step
+does not describe the current release state: the set was independently
+verified and the draft was promoted manually. Latest, npm, assets and Homebrew
+now agree on v1.0.0.
+
+### P1 before advertising — public copy says the release has not happened
+
+The English README says `v1.0 is in preparation`, the German README says
+`v1.0 ist in Vorbereitung`, CONTRIBUTING repeats the English statement, and
+PLAN still has a `v1.0 — in preparation` section. Those files are what a
+prospective user sees after following the public release or repository link.
+They now contradict GitHub Latest, npm and Homebrew and make the launch look
+unfinished. Replace the four preparation statements with the actual v1.0.0
+status before marketing. This is not a binary-release P0, but it is a launch
+P1.
+
+### Follow-up on `d4175f7` — status copy clears, contribution branch does not
+
+Commit `d4175f7` removes all four stale preparation statements and the public
+GitHub README, CONTRIBUTING and PLAN now describe v1.0 as available. CI and
+CodeQL pass on that commit. The original launch-copy P1 therefore clears.
+
+The same commit changes the contribution instructions from `main` to `dev` and
+states that development continues there. The live `dev` branch is not a current
+development baseline: it is an ancestor of `main` at `9e78358`, 97 commits and
+22,550 added lines behind `d4175f7`. A contributor following the new public
+instructions would branch from a tree that predates the final v1 fixes and
+target that same stale branch. Either fast-forward/synchronize `dev` to the
+released baseline and actually use it for development, or keep `main` as the
+contribution target until that branch policy is real. This is the remaining
+launch P1; the product distribution itself remains clear.
+
+**Resolved 2026-09-14.** `dev` was fast-forwarded to `d4175f7`, the released
+baseline — a clean fast-forward, since `9e78358` was an ancestor of `main`, so
+no history was rewritten and no force push was needed. `origin/dev` and
+`origin/main` now name the same commit, and the contribution instructions point
+at a branch that is actually current.
+
+### v1.0.1 — #554, reproducible release archives
+
+The v1.0.0 recovery also exposed that a workflow rerun cannot currently resume
+after a partial npm publish. The packed `.build-revision` contains a fresh
+`built_at` timestamp, so rebuilding the same commit changes the tarball digest;
+the integrity guard then rejects the already-published package as a different
+release. That guard correctly prevented a blind rerun and v1.0.0 was completed
+manually. Fix #554 before the next release, with a test that packs the same tree
+twice and proves identical resume identity. It does not change or invalidate
+the bytes already published as v1.0.0.
