@@ -42,6 +42,16 @@ jobs:
     # build a different tree than the one the tag will come to rest on.
     name: gate
     runs-on: ubuntu-latest
+    # A DRAFT release is invisible to the REST API unless the caller has push
+    # access, and for GITHUB_TOKEN that means `contents: write` — the workflow's
+    # own default of `contents: read` makes `gh release view` answer "release
+    # not found" for a draft that plainly exists. The gate only ever READS, but
+    # the staging object it has to read is exactly the kind that needs this.
+    # The rehearsal path never touched it: a dry run stops before the release
+    # lookup, so the whole matrix could be green while the one publishing path
+    # was unreachable. Found on the first real v1.0.0 dispatch.
+    permissions:
+      contents: write
     outputs:
       publish: ${{ steps.check.outputs.publish }}
       tag: ${{ steps.check.outputs.tag }}

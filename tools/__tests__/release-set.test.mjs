@@ -308,6 +308,20 @@ test("#524 workflow: the release set is published only after the whole set is ve
   );
 });
 
+test("#552 workflow: the gate can actually read a draft release", async () => {
+  const yml = await readFile(WORKFLOW, "utf8");
+  const gate = yml.slice(yml.indexOf("\n  gate:"), yml.indexOf("\n  stub:"));
+  // A draft is only visible to a caller with push access, so `contents: read`
+  // — the workflow default — makes the gate's own lookup fail with "release not
+  // found". Every job that touches the draft downstream already raises this at
+  // job level; the gate was the one that reads it FIRST and did not.
+  assert.match(gate, /permissions:\s*\n\s+contents: write/);
+  // The rehearsal path is why this went unnoticed: it returns before the
+  // lookup, so a green dry run proves nothing about the publishing path.
+  const binding = await readFile(join(REPO, "scripts", "verify-release-binding.mjs"), "utf8");
+  assert.match(binding, /if \(dryRun\)/);
+});
+
 test("#524 workflow: nothing is driven by a public release event", async () => {
   const yml = await readFile(WORKFLOW, "utf8");
   // A `release:` trigger can only fire for a release that is already public —
