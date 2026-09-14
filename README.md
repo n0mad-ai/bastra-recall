@@ -17,6 +17,8 @@
 
 **Less repeating yourself. One shared memory for your AI tools.**
 
+We’re building with the ambition to create the best personal memory for everyday work with AI—open, transparent, and under your control.
+
 Keep your preferences, decisions and hard-won fixes available beyond a single chat. Bastra Recall stores them as readable Markdown files on your computer and makes them available to your connected AI assistants.
 
 Supported integrations help assistants save useful lessons and retrieve relevant memories before starting work. You can inspect and edit the files yourself, with Obsidian or any text editor. Automatic recall depends on the client integration and the assistant; it does not guarantee that every instruction will be followed.
@@ -123,6 +125,8 @@ Built by [Daniel / @n0mad-ai](https://github.com/n0mad-ai).
 ## 🇩🇪 Deutsch
 
 **Weniger wiederholen. Ein gemeinsames Gedächtnis für deine KI-Tools.**
+
+Wir bauen mit dem Anspruch, das beste persönliche Gedächtnis für die tägliche Arbeit mit KI zu schaffen – offen, nachvollziehbar und unter deiner Kontrolle.
 
 Bewahre deine Vorlieben, Entscheidungen und erarbeiteten Lösungen über einzelne Chats hinweg. Bastra Recall speichert sie als lesbare Markdown-Dateien auf deinem Rechner und macht sie deinen verbundenen KI-Assistenten zugänglich.
 
