@@ -20,6 +20,7 @@ import {
   realpathSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -689,6 +690,75 @@ test("a rollback recreates a directory the rename emptied", () => {
     assert.equal(readFileSync(from, "utf8"), before, "with the file byte-identical inside it");
     assert.ok(!existsSync(join(s.repo, "packages", "core", "src", "renamed.txt")), "and the destination gone");
     assert.equal(gitIn(s.repo, "status", "--porcelain").stdout, statusBefore, "the index must be untouched");
+  } finally {
+    s.cleanup();
+  }
+});
+
+/**
+ * An installation inside a git work tree it does not belong to — the Apple
+ * Silicon Homebrew layout, where `/opt/homebrew` is the Homebrew/brew checkout
+ * and the keg lives at `/opt/homebrew/Cellar/bastra-recall/<v>/libexec/…`.
+ * Before the ceiling, every file of every patch came back "Skipped patch" and
+ * the series never applied on that platform.
+ */
+function kegInsideForeignRepo(opts: { prefixName?: string } = {}): { home: string; prefix: string; installRoot: string; cleanup: () => void } {
+  const base = mkdtempSync(join(tmpdir(), "bastra-patch-keg-"));
+  const home = join(base, "home");
+  const prefix = join(base, opts.prefixName ?? "homebrew");
+  const installRoot = join(prefix, "Cellar", "bastra-recall", "1.0.0", "libexec", "packages", "daemon");
+  mkdirSync(home, { recursive: true });
+  mkdirSync(join(installRoot, "dist"), { recursive: true });
+  writeFileSync(join(prefix, "brew.rb"), "# Homebrew's own file\n", "utf8");
+  writeFileSync(join(installRoot, "package.json"), '{ "name": "@bastra-recall/daemon" }\n', "utf8");
+  writeFileSync(join(installRoot, "dist", "a.js"), "old\n", "utf8");
+  // No .gitignore for Cellar: the keg's files are untracked, so any write git makes
+  // to Homebrew's index or tree shows up in `status` and in the index bytes.
+  for (const args of [["init", "-q", "-b", "main"], ["config", "user.email", "t@example.invalid"], ["config", "user.name", "t"], ["add", "brew.rb"], ["commit", "-qm", "brew"]]) {
+    const r = spawnSync("git", args, { cwd: prefix, encoding: "utf8" });
+    assert.equal(r.status, 0, `git ${args.join(" ")}: ${r.stderr}`);
+  }
+  return { home, prefix, installRoot, cleanup: () => rmSync(base, { recursive: true, force: true }) };
+}
+
+function assertKegPatched(s: { home: string; prefix: string }, root: string, target: string): void {
+  const indexBefore = readFileSync(join(s.prefix, ".git", "index"));
+  const statusBefore = gitIn(s.prefix, "status", "--porcelain").stdout;
+  addPatch(writePatchFile(s.home, "p.patch", diffFor("dist/a.js", ["old"], ["new"])), s.home);
+  assert.equal(statusAll(root, s.home)[0].state, "clean", "the probe must address the keg, not the prefix repo");
+
+  const out = applySeries(root, { home: s.home, skipSmoke: true });
+  assert.equal(out.applied.length, 1);
+  assert.equal(out.setAside.length, 0);
+  assert.equal(readFileSync(target, "utf8"), "new\n");
+  assert.deepEqual(readFileSync(join(s.prefix, ".git", "index")), indexBefore, "the foreign repo's index is untouched");
+  assert.equal(gitIn(s.prefix, "status", "--porcelain").stdout, statusBefore, "and so is its view of the tree");
+}
+
+test("a keg inside a foreign git work tree still gets its patches (Apple Silicon Homebrew)", () => {
+  const s = kegInsideForeignRepo();
+  try {
+    assertKegPatched(s, s.installRoot, join(s.installRoot, "dist", "a.js"));
+  } finally {
+    s.cleanup();
+  }
+});
+
+test("…also when the install root is reached through a symlink", { skip: process.platform === "win32" }, () => {
+  const s = kegInsideForeignRepo();
+  try {
+    const link = join(s.home, "daemon-link");
+    symlinkSync(s.installRoot, link);
+    assertKegPatched(s, link, join(s.installRoot, "dist", "a.js"));
+  } finally {
+    s.cleanup();
+  }
+});
+
+test("…also when the path contains a colon (a git ceiling list delimiter)", { skip: process.platform === "win32" }, () => {
+  const s = kegInsideForeignRepo({ prefixName: "home:brew" });
+  try {
+    assertKegPatched(s, s.installRoot, join(s.installRoot, "dist", "a.js"));
   } finally {
     s.cleanup();
   }

@@ -299,6 +299,33 @@ function git(root: string, args: string[], env?: NodeJS.ProcessEnv): GitRun {
 }
 
 /**
+ * git, confined to `root`: repository discovery may not climb above it.
+ *
+ * An installation can sit inside a git work tree it has nothing to do with. On
+ * Apple Silicon Homebrew the prefix IS one — `/opt/homebrew` is the Homebrew/brew
+ * checkout, and the keg `/opt/homebrew/Cellar/bastra-recall/<v>/libexec/…` lies
+ * inside it. Run from there, `git apply` treats the patch as addressed from
+ * `/opt/homebrew`, finds none of its paths below the cwd, prints "Skipped patch"
+ * for every file and exits 0. `noSkips` turns that into a conflict, so nothing
+ * is silently retired — but no local patch ever applies on that platform, and
+ * the 3-way fallback would have run against Homebrew's own index.
+ *
+ * A root that carries its own repository — a source checkout's top level, which
+ * is what `resolveRoots().apply` is for one — keeps it. Any other root gets
+ * `GIT_DIR` pointed at a `.git` that is not there, which switches discovery off
+ * entirely: `git apply` then works on plain files relative to the cwd, and
+ * `rev-parse` finds no repository to hand the 3-way path. Not
+ * `GIT_CEILING_DIRECTORIES`: git compares ceilings against the REALPATH of the
+ * cwd, so a symlinked root slips past it, and on POSIX the list is split on
+ * `:`, which a path may contain. Discovery in `sourceRepoRoot` deliberately
+ * keeps plain `git`, because there climbing to the repo root is the point.
+ */
+function gitAt(root: string, args: string[], env?: NodeJS.ProcessEnv): GitRun {
+  if (existsSync(join(root, ".git"))) return git(root, args, env);
+  return git(root, args, { ...(env ?? process.env), GIT_DIR: join(root, ".git") });
+}
+
+/**
  * `git apply --check`, but "exit 0" alone is not taken as a yes.
  *
  * git skips a patch it cannot make sense of — a malformed hunk header, a file
@@ -314,7 +341,7 @@ function git(root: string, args: string[], env?: NodeJS.ProcessEnv): GitRun {
  */
 function checkApplies(root: string, patchFile: string, reverse: boolean): GitRun {
   const args = ["apply", "--check", "-v", ...(reverse ? ["--reverse"] : []), patchFile];
-  return noSkips(git(root, args), "it could not be parsed or applied");
+  return noSkips(gitAt(root, args), "it could not be parsed or applied");
 }
 
 /**
@@ -334,7 +361,7 @@ function noSkips(r: GitRun, what: string): GitRun {
 }
 
 function applyPatch(root: string, patchFile: string, extra: string[] = [], env?: NodeJS.ProcessEnv): GitRun {
-  return noSkips(git(root, ["apply", "-v", ...extra, patchFile], env), "nothing was applied");
+  return noSkips(gitAt(root, ["apply", "-v", ...extra, patchFile], env), "nothing was applied");
 }
 
 /**
@@ -457,7 +484,7 @@ function unquotePath(raw: string): string | null {
  * than never having tried.
  */
 function patchPaths(root: string, patchFile: string): { paths: string[]; complete: boolean } {
-  const r = git(root, ["apply", "--numstat", "-z", patchFile]);
+  const r = gitAt(root, ["apply", "--numstat", "-z", patchFile]);
   if (!r.ok) return { paths: [], complete: false };
   // One NUL-terminated record per file: "<adds>\t<dels>\t<path>".
   const paths = r.stdout
@@ -537,7 +564,7 @@ function restore(snap: FileSnapshot[]): string[] {
  * against a copy of the index so a conflict cannot stage anything real.
  */
 function tryThreeWay(applyRoot: string, patchFile: string): boolean {
-  const gitDir = git(applyRoot, ["rev-parse", "--absolute-git-dir"]).stdout.trim();
+  const gitDir = gitAt(applyRoot, ["rev-parse", "--absolute-git-dir"]).stdout.trim();
   if (!gitDir) return false;
 
   // No trustworthy list of what the attempt would touch means no attempt. The
