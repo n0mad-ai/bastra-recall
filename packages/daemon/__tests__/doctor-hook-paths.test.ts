@@ -17,6 +17,8 @@ import { join } from "node:path";
 import {
   checkHookPaths,
   hookCommandPath,
+  hookDefinitions,
+  missingRequiredHookRegistrations,
   registeredHookBins,
   registeredHookCommands,
 } from "../src/cli/adapters/claude-code.js";
@@ -151,4 +153,42 @@ test("a command with no resolvable path is a problem, not a silent pass", async 
   const problems = await checkHookPaths(found, { exists: allExist, running: "0.9.0", home: HOME });
   assert.equal(problems.length, 1);
   assert.match(problems[0], /no path in/);
+});
+
+// ─── Windows paths ───────────────────────────────────────────────────────────
+// Found on a Windows 11 stand (npm i -g, node 24): `bastra install claude-code`
+// reported 8 hooks registered and the next `bastra doctor` said
+// `broken — 0/7 lanes registered`. Every matcher compared against `/${file}`
+// while the installer had written `C:\…\dist\session-hook.js`.
+
+const WIN_DIST = "C:\\Users\\tester\\AppData\\Roaming\\npm\\node_modules\\bastra-recall\\node_modules\\@bastra-recall\\daemon\\dist";
+
+/** settings.json exactly as the installer writes it on Windows: every definition, backslash paths. */
+function windowsSettings(): Record<string, unknown> {
+  const settings: Record<string, unknown[]> = {};
+  for (const def of hookDefinitions({ includeStop: true })) {
+    const file = def.bin.split(/[\\/]/).pop();
+    const entry = { ...(def.matcher ? { matcher: def.matcher } : {}), hooks: [{ type: "command", command: `node ${WIN_DIST}\\${file}`, __bastraRecall: true }] };
+    (settings[def.event] ??= []).push(entry);
+  }
+  return settings;
+}
+
+test("a Windows install registers every lane — doctor does not call it broken", () => {
+  const settings = windowsSettings();
+  assert.deepEqual(missingRequiredHookRegistrations(settings), []);
+  assert.equal(registeredHookBins(settings).size, 7);
+});
+
+test("the executed path of a Windows command comes back native, so the #321 check runs there too", async () => {
+  const cmd = `node ${WIN_DIST}\\stop-hook.js`;
+  assert.equal(hookCommandPath(cmd, "stop-hook.js"), `${WIN_DIST}\\stop-hook.js`);
+  assert.equal(hookCommandPath(`node "${WIN_DIST}\\stop-hook.js"`, "stop-hook.js"), `${WIN_DIST}\\stop-hook.js`);
+  const problems = await checkHookPaths(registeredHookCommands(windowsSettings()), { exists: allExist, running: "1.0.0", home: "C:\\Users\\tester" });
+  assert.deepEqual(problems, []);
+});
+
+test("a Windows hook whose file is gone is reported, not skipped", async () => {
+  const problems = await checkHookPaths(registeredHookCommands(windowsSettings()), { exists: async () => false, running: "1.0.0", home: "C:\\Users\\tester" });
+  assert.ok(problems.length >= 7 && problems.every((p) => /MISSING/.test(p)), problems.join(" | "));
 });

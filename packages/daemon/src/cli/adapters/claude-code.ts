@@ -32,6 +32,7 @@ import {
 } from "../helpers.js";
 import { copySkill, describeSkillInstall, inspectSkillInstall } from "../skill.js";
 import { checkForwarderRegistration, ensureStableForwarder, mapBinToStableRuntime } from "../stable-runtime.js";
+import { fileOf, slashes } from "./command-paths.js";
 import type { Adapter, DoctorResult, InstallOpts, InstallResult, UninstallResult } from "../types.js";
 
 // ─── Hook helpers (claude-code-only surface) ─────────────────────
@@ -44,7 +45,7 @@ type HookEventName =
   | "PostToolUseFailure"
   | "Stop";
 
-interface HookDef {
+export interface HookDef {
   event: HookEventName;
   matcher?: string;
   bin: string;
@@ -71,7 +72,7 @@ const STOP_HOOK_DEF: HookDef = {
 // ~/.bastra/pending-suggestions.json (read by the next SessionStart as
 // additionalContext) instead of systemMessage, which Claude Code rendered 1:1
 // into the chat. Live-validated → default on; opt out with --no-stop-hook.
-function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[] {
+export function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[] {
   const defs: HookDef[] = [
     { event: "SessionStart", matcher: "startup|resume|clear|compact", bin: SESSION_HOOK_BIN, timeout: 3, note: "bastra-recall SessionStart hook", stubSubcommand: "session" },
     { event: "UserPromptSubmit", bin: PROMPT_HOOK_BIN, timeout: 2, note: "bastra-recall UserPromptSubmit hook (lookup-mode, #33)", stubSubcommand: "prompt" },
@@ -140,9 +141,9 @@ const REQUIRED_HOOK_FILES = OUR_HOOK_FILES.filter((f) => f !== "stop-hook.js");
  * table: a lane's file and its subcommand drifting apart is exactly how the
  * detection below would go quietly blind again.
  */
-export function stubSubcommandForFile(file: string): string | null {
-  for (const def of hookDefinitions({ includeStop: true })) {
-    if (def.bin.endsWith(`/${file}`) && def.stubSubcommand) return def.stubSubcommand;
+export function stubSubcommandForFile(file: string, defs: HookDef[] = hookDefinitions({ includeStop: true })): string | null {
+  for (const def of defs) {
+    if (fileOf(def.bin) === file && def.stubSubcommand) return def.stubSubcommand;
   }
   return null;
 }
@@ -162,7 +163,7 @@ export function stubLaneCommandPath(cmd: string, sub: string, home: string = hom
   const m = /^\s*(?:"([^"]+)"|'([^']+)'|(\S+))\s*(.*)$/.exec(cmd);
   if (!m) return null;
   const prog = m[1] ?? m[2] ?? m[3] ?? "";
-  const base = prog.split("/").pop() ?? "";
+  const base = fileOf(prog);
   if (base !== "bastra-hook" && base !== "bastra-hook.exe") return null;
   const args = (m[4] ?? "").trim().split(/\s+/);
   if (args[0] !== sub) return null;
@@ -177,7 +178,7 @@ function isOurHookEntry(matcher: unknown): boolean {
     if (typeof h !== "object" || h === null) return false;
     const hh = h as Record<string, unknown>;
     if (hh.__bastraRecall === true || hh.__nexusRecall === true) return true;
-    const cmd = typeof hh.command === "string" ? hh.command : "";
+    const cmd = typeof hh.command === "string" ? slashes(hh.command) : "";
     if (cmd.includes("/daemon/dist/") && OUR_HOOK_FILES.some((f) => cmd.includes(`/${f}`))) return true;
     // Fallback (mirrors install-hook.sh): bare-bin / legacy command form, e.g.
     // `bastra-recall-session-hook` or `nexus-recall-*-hook` from the docs snippet.
@@ -208,11 +209,11 @@ export function hookCommandPath(
   // Quoted first — a path containing spaces can only appear that way.
   for (const m of cmd.matchAll(/"([^"]+)"|'([^']+)'/g)) {
     const v = m[1] ?? m[2];
-    if (v.endsWith(suffix)) return expand(v);
+    if (slashes(v).endsWith(suffix)) return expand(v);
   }
   for (const tok of cmd.split(/\s+/)) {
     const t = tok.replace(/^["']+|["']+$/g, "");
-    if (t.endsWith(suffix)) return expand(t);
+    if (slashes(t).endsWith(suffix)) return expand(t);
   }
   return null;
 }
@@ -278,7 +279,7 @@ export function registeredHookCommands(hooks: Record<string, unknown>): Array<[s
           ? ((h as Record<string, unknown>).command as string)
           : "";
         for (const f of OUR_HOOK_FILES) {
-          if (cmd.includes(`/${f}`)) {
+          if (slashes(cmd).includes(`/${f}`)) {
             found.push([f, cmd]);
             continue;
           }
@@ -298,11 +299,11 @@ export function registeredHookCommands(hooks: Record<string, unknown>): Array<[s
  * binary must be registered on both PostToolUse and PostToolUseFailure: an old
  * seven-entry install otherwise still looks like 7/7 healthy to doctor.
  */
-export function missingRequiredHookRegistrations(hooks: Record<string, unknown>): string[] {
+export function missingRequiredHookRegistrations(hooks: Record<string, unknown>, defs: HookDef[] = hookDefinitions()): string[] {
   const missing: string[] = [];
-  for (const def of hookDefinitions()) {
+  for (const def of defs) {
     const entries = Array.isArray(hooks[def.event]) ? hooks[def.event] as unknown[] : [];
-    const file = def.bin.split("/").pop() ?? "";
+    const file = fileOf(def.bin);
     const found = entries.some((entry) => {
       if (!entry || typeof entry !== "object") return false;
       const record = entry as Record<string, unknown>;
@@ -312,7 +313,7 @@ export function missingRequiredHookRegistrations(hooks: Record<string, unknown>)
         if (!handler || typeof handler !== "object") return false;
         const command = (handler as Record<string, unknown>).command;
         if (typeof command !== "string") return false;
-        return command.includes(`/${file}`) ||
+        return slashes(command).includes(`/${file}`) ||
           (def.stubSubcommand ? stubLaneCommandPath(command, def.stubSubcommand) !== null : false);
       });
     });
