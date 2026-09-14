@@ -547,11 +547,11 @@ function formatBastraText(data: TuiData): string | null {
       info.currentRecallStartedAt !== null
         ? info.totalMs + Math.max(0, Date.now() - info.currentRecallStartedAt)
         : info.totalMs;
-    return `bastra · ${info.recallCount} calls · ${info.totalHits} hits · ${live}ms · ${info.currentStage}`;
+    return `bastra · ${info.recallCount} ${info.recallCount === 1 ? "call" : "calls"} · ${info.totalHits} ${info.totalHits === 1 ? "hit" : "hits"} · ${live}ms · ${info.currentStage}`;
   }
-  const hits = info.totalHits > 0 ? ` · ${info.totalHits} hits` : "";
+  const hits = info.totalHits > 0 ? ` · ${info.totalHits} ${info.totalHits === 1 ? "hit" : "hits"}` : "";
   const ms = info.totalMs > 0 ? ` · ${info.totalMs}ms` : "";
-  return `✓ bastra · ${info.recallCount} calls${hits}${ms}`;
+  return `✓ bastra · ${info.recallCount} ${info.recallCount === 1 ? "call" : "calls"}${hits}${ms}`;
 }
 
 export function formatBlockParts(

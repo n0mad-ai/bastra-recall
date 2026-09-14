@@ -31,6 +31,13 @@ import {
 } from "../utils/formatters";
 import { resolveBudgetDisplay } from "../utils/budget";
 import type { BudgetItemConfig } from "../config/loader";
+
+/** "1 call" / "2 calls" — the counter is visible in every session, so the
+ *  singular case must not read as a typo. Same for hits. */
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 import { shouldShowIcon } from "../utils/icon-visibility";
 
 export interface SegmentConfig {
@@ -973,7 +980,7 @@ export class SegmentRenderer {
       // Prefer the human-readable banter phrase; fall back to the raw stage
       // name (banter off, or older feed without current_message).
       const label = info.currentMessage ?? info.currentStage;
-      text = `${icon}bastra · ${info.recallCount} calls · ${info.totalHits} hits · ${live}ms · ${label}`;
+      text = `${icon}bastra · ${plural(info.recallCount, "call", "calls")} · ${plural(info.totalHits, "hit", "hits")} · ${live}ms · ${label}`;
     } else {
       // Between/after recalls in this turn — done snapshot. The running-state
       // phrase is too brief (~120ms) for the ≥1s statusline refresh to catch,
@@ -987,9 +994,9 @@ export class SegmentRenderer {
       const tail = showPhrase ? ` · ${info.lastPhrase}` : "";
       // hits come from recalls only; ms from any tool call. Show each only
       // when present, so load_memory-only turns read "N calls · Xms" (no hits).
-      const hits = info.totalHits > 0 ? ` · ${info.totalHits} hits` : "";
+      const hits = info.totalHits > 0 ? ` · ${plural(info.totalHits, "hit", "hits")}` : "";
       const ms = info.totalMs > 0 ? ` · ${info.totalMs}ms` : "";
-      text = `${icon}✓ bastra · ${info.recallCount} calls${hits}${ms}${tail}`;
+      text = `${icon}✓ bastra · ${plural(info.recallCount, "call", "calls")}${hits}${ms}${tail}`;
     }
 
     return {
