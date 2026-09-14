@@ -33,7 +33,7 @@ Inspect and edit the Markdown files directly, or use the memory tools through yo
 
 The `sensitivity` field filters access through specific Bastra interfaces. It is not file encryption or a substitute for operating-system permissions. See the [memory schema](./memory-schema.md#privacy-field). Report suspected vulnerabilities through [SECURITY.md](../SECURITY.md).
 
-This page describes the current branch. Check the [changelog](../CHANGELOG.md) for changes not yet included in the latest release.
+This page describes the 1.0 release line. Check the [changelog](../CHANGELOG.md) for version-specific changes.
 
 <a id="deutsch"></a>
 
@@ -66,4 +66,4 @@ Prüfe und bearbeite Markdown-Dateien direkt oder nutze die Memory-Tools über d
 
 Das Feld `sensitivity` filtert den Zugriff über bestimmte Bastra-Schnittstellen. Es verschlüsselt keine Dateien und ersetzt keine Betriebssystemrechte. Siehe [Memory-Schema](./memory-schema.md#privacy-field). Vermutete Sicherheitslücken melde über [SECURITY.md](../SECURITY.md).
 
-Diese Seite beschreibt den aktuellen Branch. Noch nicht veröffentlichte Änderungen stehen im [Changelog](../CHANGELOG.md).
+Diese Seite beschreibt die Release-Linie 1.0. Versionsspezifische Änderungen stehen im [Changelog](../CHANGELOG.md).

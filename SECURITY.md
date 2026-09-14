@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Bastra.Recall is pre-1.0. Security fixes target the latest public release and
+Bastra Recall security fixes target the latest public release and
 `main`. Older beta releases may receive fixes only when the patch is small and
 low-risk.
 

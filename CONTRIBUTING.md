@@ -5,7 +5,7 @@ workflow is light — but a few conventions keep things smooth.
 
 ## Before you start
 
-- **v1.0 is in preparation.** Open an issue before a large PR so we can
+- **Version 1.0.** Open an issue before a large PR so we can
   agree on scope and avoid duplicate work.
 - **One maintainer.** Response times vary; a clear example or reproduction helps.
 - **Scope rule:** the OSS core must stay fully functional **without** the
@@ -153,8 +153,8 @@ Body explains **why**, not what — the diff already shows what.
 
 ## Pull requests
 
-- **From a fork:** fork the repo, branch from `main` in your fork, then
-  open the PR against `n0mad-ai/bastra-recall:main`. (You don't need
+- **From a fork:** fork the repo, branch from `dev` in your fork, then
+  open the PR against `n0mad-ai/bastra-recall:dev`. `main` carries releases. (You don't need
   write access — the standard GitHub fork-PR flow works.)
 - Reference the issue: `Fixes #N` or `Refs #N` in the PR body.
 - Include a short **test plan** — what you ran, what you saw. A

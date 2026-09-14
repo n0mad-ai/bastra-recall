@@ -21,7 +21,7 @@ Keep your preferences, decisions and hard-won fixes available beyond a single ch
 
 Supported integrations help assistants save useful lessons and retrieve relevant memories before starting work. You can inspect and edit the files yourself, with Obsidian or any text editor. Automatic recall depends on the client integration and the assistant; it does not guarantee that every instruction will be followed.
 
-**Status:** v1.0 is in preparation. Use the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest) for the published version. This branch also documents work for the next release; see the [support matrix](#supported-surfaces) and [changelog](./CHANGELOG.md).
+**Version 1.0 is available.** Find published downloads in the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), changes in the [changelog](./CHANGELOG.md), and tested integrations in the [support matrix](#supported-surfaces).
 
 ### Install
 
@@ -104,7 +104,7 @@ A vault in iCloud, Google Drive or Dropbox uses that service's synchronization. 
 
 ### Roadmap
 
-The v1.0 work focuses on measured recall quality, relevant session context and clearer control over memory use. The cumulative session context budget is being measured in shadow mode; it does not yet enforce a live session-wide limit. [Roadmap and release boundaries](./PLAN.md).
+Version 1.0 focuses on measured recall quality, relevant session context and clearer control over memory use. The cumulative session context budget is being measured in shadow mode; it does not yet enforce a live session-wide limit. [Roadmap and release boundaries](./PLAN.md).
 
 A native Bastra Mac app is in development. The open-source package already includes the local browser-based vault map and works independently of that app.
 
@@ -128,7 +128,7 @@ Bewahre deine Vorlieben, Entscheidungen und erarbeiteten Lösungen über einzeln
 
 Unterstützte Integrationen helfen Assistenten, wichtige Erkenntnisse zu speichern und relevante Erinnerungen vor neuen Aufgaben abzurufen. Du kannst die Dateien selbst prüfen und bearbeiten – mit Obsidian oder jedem Texteditor. Automatischer Abruf hängt von der Integration und dem Assistenten ab; er garantiert nicht, dass jede Anweisung befolgt wird.
 
-**Status:** v1.0 ist in Vorbereitung. Die veröffentlichte Version findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest). Dieser Branch beschreibt auch Arbeit für die nächste Version; siehe [Support-Matrix](#unterstützte-oberflächen) und [Changelog](./CHANGELOG.md).
+**Version 1.0 ist verfügbar.** Veröffentlichte Downloads findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), Änderungen im [Changelog](./CHANGELOG.md) und getestete Integrationen in der [Support-Matrix](#unterstützte-oberflächen).
 
 ### Installation
 
@@ -211,7 +211,7 @@ Ein Vault in iCloud, Google Drive oder Dropbox nutzt die Synchronisierung dieses
 
 ### Roadmap
 
-Die Arbeit an v1.0 konzentriert sich auf gemessene Abrufqualität, passenden Sitzungskontext und klarere Kontrolle über die Gedächtnisnutzung. Das kumulative Kontextbudget einer Sitzung wird im Shadow-Modus gemessen; es erzwingt noch keine globale Obergrenze. [Roadmap und Release-Grenzen](./PLAN.md).
+Version 1.0 konzentriert sich auf gemessene Abrufqualität, passenden Sitzungskontext und klarere Kontrolle über die Gedächtnisnutzung. Das kumulative Kontextbudget einer Sitzung wird im Shadow-Modus gemessen; es erzwingt noch keine globale Obergrenze. [Roadmap und Release-Grenzen](./PLAN.md).
 
 Eine native Bastra-Mac-App ist in Entwicklung. Das Open-Source-Paket enthält bereits die lokale browserbasierte Vault-Map und funktioniert unabhängig von dieser App.
 
