@@ -308,16 +308,34 @@ test("#524 workflow: the release set is published only after the whole set is ve
   );
 });
 
-test("#552 workflow: the gate can actually read a draft release", async () => {
+test("#552 workflow: every job that touches the draft may actually read it", async () => {
   const yml = await readFile(WORKFLOW, "utf8");
-  const gate = yml.slice(yml.indexOf("\n  gate:"), yml.indexOf("\n  stub:"));
-  // A draft is only visible to a caller with push access, so `contents: read`
-  // — the workflow default — makes the gate's own lookup fail with "release not
-  // found". Every job that touches the draft downstream already raises this at
-  // job level; the gate was the one that reads it FIRST and did not.
-  assert.match(gate, /permissions:\s*\n\s+contents: write/);
-  // The rehearsal path is why this went unnoticed: it returns before the
-  // lookup, so a green dry run proves nothing about the publishing path.
+  // A draft release is invisible to a token without push access, so any job
+  // that reads or writes it needs `contents: write`. The workflow default is
+  // `contents: read`, and this was found the expensive way: the gate was fixed
+  // alone, the dispatch then got one job further and `publish` failed on the
+  // same cause. So the assertion is over ALL jobs, not the two that failed.
+  const heads = [...yml.matchAll(/^ {2}([a-z][a-z0-9-]*):\s*$/gm)].filter(
+    (m) => m.index > yml.indexOf("\njobs:"),
+  );
+  const offenders = [];
+  for (let i = 0; i < heads.length; i++) {
+    const body = yml.slice(heads[i].index, heads[i + 1]?.index ?? yml.length);
+    const touchesDraft = /gh release|publish-release-set|verify-release-binding/.test(body);
+    if (touchesDraft && !/permissions:\s*\n(?:\s+[a-z-]+: \w+\n)*\s+contents: write/.test(body)) {
+      offenders.push(heads[i][1]);
+    }
+  }
+  assert.deepEqual(offenders, [], `jobs read the draft without contents: write: ${offenders.join(", ")}`);
+
+  // A job-level permissions block REPLACES the workflow default, so the job
+  // that publishes to npm has to restate id-token or OIDC breaks — a failure
+  // that would only appear at the irreversible step.
+  const publish = yml.slice(yml.indexOf("\n  publish:"), yml.indexOf("\n  desktop-extension:"));
+  assert.match(publish, /id-token: write/);
+
+  // The rehearsal path is why none of this showed up earlier: it returns before
+  // the release lookup, so a green dry run proves nothing about publishing.
   const binding = await readFile(join(REPO, "scripts", "verify-release-binding.mjs"), "utf8");
   assert.match(binding, /if \(dryRun\)/);
 });

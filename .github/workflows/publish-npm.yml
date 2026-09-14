@@ -178,6 +178,14 @@ jobs:
     # named against, so a broken stub build blocks the publish.
     needs: [gate, stub, desktop-extension, installer-scripts]
     environment: npm
+    # #552: `contents: write` because publish-release-set.mjs reads the DRAFT to
+    # verify the set is complete before it moves npm `latest`, and a draft is
+    # invisible to a token without push access. `id-token: write` has to be
+    # repeated: a job-level block replaces the workflow default outright, so
+    # omitting it here would break OIDC trusted publishing instead.
+    permissions:
+      contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
