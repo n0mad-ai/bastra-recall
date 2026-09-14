@@ -117,6 +117,12 @@ const NPM_STUB = `#!/usr/bin/env bash
 echo "npm $*" >> "$NPM_LOG"
 is_published() {
   case " \${PUBLISHED:-} " in *" $1 "*) return 0 ;; esac
+  # $LATE_PACKAGE is invisible until the registry has been asked $LATE_AFTER
+  # times about it — the propagation delay that failed the real v1.0.0 verify.
+  if [ -n "\${LATE_PACKAGE:-}" ] && [ "$1" = "\${LATE_PACKAGE}" ]; then
+    n=$(grep -c "npm view \${LATE_PACKAGE}" "$NPM_LOG" 2>/dev/null || echo 0)
+    if [ "$n" -ge "\${LATE_AFTER:-3}" ]; then return 0; fi
+  fi
   return 1
 }
 if [ "$1" = "view" ]; then
@@ -171,6 +177,11 @@ async function runPublish(args, env = {}) {
         NPM_LOG: log,
         SET_VERSION: VERSION,
         RELEASE_TAG: `v${VERSION}`,
+        // #553: the verify waits out registry propagation. A test must never
+        // pay that wall-clock, so the default here is "ask a few times, never
+        // sleep"; the cases that are ABOUT the waiting set their own.
+        BASTRA_VERIFY_ATTEMPTS: "3",
+        BASTRA_VERIFY_INTERVAL_MS: "0",
         ASSETS: COMPLETE_ASSETS.join("\n"),
         ...env,
       },
@@ -260,6 +271,33 @@ test("#524 publish set: a registry artifact without a comparable digest is not v
   });
   assert.notEqual(code, 0, `an unverifiable artifact was skipped as verified:\n${out}`);
   assert.match(out, /no comparable tarball digest/);
+});
+
+test("#553 publish set: --verify waits out registry propagation instead of failing the release", async () => {
+  // The registry accepts a publish before its read side serves it. On the real
+  // v1.0.0 run the publish job wrote all four packages and the verify, seconds
+  // later, reported two as absent — a release that had in fact succeeded.
+  const { code, out } = await runPublish(["--verify"], {
+    PUBLISHED: "@bastra-recall/core @bastra-recall/statusline @bastra-recall/daemon",
+    LATE_PACKAGE: "bastra-recall",
+    LATE_AFTER: "3",
+    BASTRA_VERIFY_ATTEMPTS: "8",
+    BASTRA_VERIFY_INTERVAL_MS: "0",
+  });
+  assert.equal(code, 0, `a set that converged was still reported as incomplete:\n${out}`);
+  assert.match(out, /✓ bastra-recall@/);
+});
+
+test("#553 publish set: --verify still fails a package that never appears", async () => {
+  // The wait must only ever convert "not visible yet" into success. A package
+  // that is genuinely absent has to survive every attempt and still fail.
+  const { code, out } = await runPublish(["--verify"], {
+    PUBLISHED: "@bastra-recall/core @bastra-recall/statusline @bastra-recall/daemon",
+    BASTRA_VERIFY_ATTEMPTS: "3",
+    BASTRA_VERIFY_INTERVAL_MS: "0",
+  });
+  assert.notEqual(code, 0, `a missing package verified as present:\n${out}`);
+  assert.match(out, /bastra-recall@.*is not on the registry/);
 });
 
 test("#524 publish set: --verify fails while any package of the set is missing", async () => {

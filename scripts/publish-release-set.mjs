@@ -189,6 +189,49 @@ if (versions.size !== 1) {
   process.exit(1);
 }
 const version = pkgs[0].version;
+/**
+ * How long `--verify` waits for the registry to show what was just published,
+ * and how often it asks. The registry accepts a publish before its read side
+ * serves it: on the real v1.0.0 run, `publish` reported all four packages
+ * written and `--verify`, seconds later in the next job, still saw two of them
+ * as absent — while a direct fetch a few minutes on showed all four at
+ * `latest`. A single question therefore does not distinguish "not published"
+ * from "not visible yet", and treating the second as the first fails a release
+ * that actually succeeded.
+ *
+ * Overridable so the tests can drive the same convergence without sleeping.
+ */
+const VERIFY_ATTEMPTS = Number(process.env.BASTRA_VERIFY_ATTEMPTS ?? 12);
+const VERIFY_INTERVAL_MS = Number(process.env.BASTRA_VERIFY_INTERVAL_MS ?? 5000);
+
+/** Block this process without a timer — the script is synchronous throughout. */
+function sleepSync(ms) {
+  if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Wait until the registry shows `pkg` at this version AND serves it as
+ * `latest`. Only ever converges toward success: it re-asks while the answer is
+ * "not there", and the last answer is what gets reported. `published` is the
+ * preflight's reading, so a set that is already visible costs no extra call.
+ */
+function awaitVisible(pkg, published) {
+  let seen = published;
+  for (let attempt = 1; ; attempt++) {
+    if (seen) {
+      const latest = fetchLatestTag(pkg.name);
+      if (latest === pkg.version) return { ok: true };
+      if (attempt >= VERIFY_ATTEMPTS) {
+        return { ok: false, reason: `dist-tag latest is ${latest ?? "unset"}, expected ${pkg.version}` };
+      }
+    } else if (attempt >= VERIFY_ATTEMPTS) {
+      return { ok: false, reason: "is not on the registry" };
+    }
+    sleepSync(VERIFY_INTERVAL_MS);
+    seen = fetchPublished(pkg.name, pkg.version);
+  }
+}
+
 console.log(`Release set v${version} — ${verifyOnly ? "verifying" : "publishing"} ${pkgs.length} package(s).`);
 
 // #549: npm is the one side of a release that cannot be taken back, and it used
@@ -242,18 +285,13 @@ for (const pkg of pkgs) {
 if (verifyOnly) {
   let failed = false;
   for (const { pkg, published } of state) {
-    if (!published) {
-      console.error(`✗ ${pkg.name}@${pkg.version} is not on the registry`);
-      failed = true;
+    const seen = awaitVisible(pkg, published);
+    if (seen.ok) {
+      console.log(`✓ ${pkg.name}@${pkg.version} published and tagged latest`);
       continue;
     }
-    const latest = fetchLatestTag(pkg.name);
-    if (latest !== pkg.version) {
-      console.error(`✗ ${pkg.name} dist-tag latest is ${latest ?? "unset"}, expected ${pkg.version}`);
-      failed = true;
-      continue;
-    }
-    console.log(`✓ ${pkg.name}@${pkg.version} published and tagged latest`);
+    console.error(`✗ ${pkg.name}@${pkg.version} ${seen.reason}`);
+    failed = true;
   }
   process.exit(failed ? 1 : 0);
 }
