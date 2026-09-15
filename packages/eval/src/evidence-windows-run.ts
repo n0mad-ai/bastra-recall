@@ -9,6 +9,8 @@ export interface EvidenceCase {
   id: string;
   query: string;
   sources: EvidenceSource[];
+  /** Annotation-only canonical sources. Never passed to packing or the reader. */
+  reference_sources?: EvidenceSource[];
   expected_ids: string[];
   no_answer?: boolean;
   /** Missing means unlabelled, never a successful empty conjunction. */
@@ -27,13 +29,21 @@ export function validateEvidenceCases(cases: EvidenceCase[]): void {
       || !Array.isArray(c.expected_ids) || c.expected_ids.some(id => typeof id !== "string" || !id)) throw new Error("invalid/duplicate case");
     ids.add(c.id);
     if (c.sources.some(s => typeof s.id !== "string" || !s.id || typeof s.text !== "string")) throw new Error("invalid source");
+    if (c.reference_sources !== undefined && !Array.isArray(c.reference_sources)) throw new Error("invalid reference sources");
+    const references = new Map<string, EvidenceSource>();
+    for (const source of [...c.sources, ...(c.reference_sources ?? [])]) {
+      if (typeof source.id !== "string" || !source.id || typeof source.text !== "string") throw new Error("invalid reference source");
+      const previous = references.get(source.id);
+      if (previous && previous.text !== source.text) throw new Error("reference/source revision mismatch");
+      references.set(source.id, source);
+    }
     if (c.no_answer !== undefined && typeof c.no_answer !== "boolean") throw new Error("invalid no-answer flag");
     if (c.required_spans !== undefined && !Array.isArray(c.required_spans)) throw new Error("invalid span labels");
     if (c.no_answer && (c.expected_ids.length || c.required_spans?.length)) throw new Error("contradictory no-answer labels");
     if (!c.no_answer && !c.expected_ids.length) throw new Error("answerable case requires expected sources");
     if (c.required_spans && !c.required_spans.length) throw new Error("empty span labels: omit for unlabelled cases");
     for (const span of c.required_spans ?? []) {
-      const source = c.sources.find(s => s.id === span.id);
+      const source = references.get(span.id);
       if (!source || !c.expected_ids.includes(span.id) || !Number.isSafeInteger(span.start)
         || !Number.isSafeInteger(span.end) || span.start < 0 || span.end <= span.start
         || span.end > source.text.length || source.text.slice(span.start, span.end) !== span.text) throw new Error("invalid required span");
