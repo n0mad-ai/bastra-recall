@@ -1,0 +1,240 @@
+{
+  "input_sha256": "c53fbe774f444d568f05795c5ec913df6b8f648acd22d293bbb5e208882841ad",
+  "registration_sha256": "ac40a24f8d27b4cdf584fb63e53661164541d261cf81471806693d3f095fc0ab",
+  "implementation_sha256": "4840c1738c54f0bf514b5db2679e5ca984904b654f340658dc049d8a7b8e36ab",
+  "runtime": "v24.16.0",
+  "version": "evidence-windows-563-v2",
+  "promotion": "not_evaluable",
+  "reason": "Diagnostic replay only; independent span labels, transfer and answer-quality gates remain mandatory.",
+  "summary": [
+    {
+      "arm": "whole-prefix",
+      "budget": 1024,
+      "answerable": 9,
+      "span_labelled": 9,
+      "any_source_hits": 9,
+      "all_source_hits": 9,
+      "all_span_hits": 8,
+      "no_answer_returned_evidence": 1,
+      "no_answer_cases": 1,
+      "selection_p50_ms": 0.6465840000000185,
+      "selection_p95_ms": 5.41900000000004,
+      "maximum_tokens": 1024
+    },
+    {
+      "arm": "fixed-prefix",
+      "budget": 1024,
+      "answerable": 9,
+      "span_labelled": 9,
+      "any_source_hits": 9,
+      "all_source_hits": 9,
+      "all_span_hits": 0,
+      "no_answer_returned_evidence": 1,
+      "no_answer_cases": 1,
+      "selection_p50_ms": 0.24158299999999144,
+      "selection_p95_ms": 0.49720800000000054,
+      "maximum_tokens": 490
+    },
+    {
+      "arm": "query-window",
+      "budget": 1024,
+      "answerable": 9,
+      "span_labelled": 9,
+      "any_source_hits": 9,
+      "all_source_hits": 9,
+      "all_span_hits": 7,
+      "no_answer_returned_evidence": 1,
+      "no_answer_cases": 1,
+      "selection_p50_ms": 0.1930409999999938,
+      "selection_p95_ms": 0.6918750000000387,
+      "maximum_tokens": 213
+    },
+    {
+      "arm": "query-expand",
+      "budget": 1024,
+      "answerable": 9,
+      "span_labelled": 9,
+      "any_source_hits": 9,
+      "all_source_hits": 9,
+      "all_span_hits": 9,
+      "no_answer_returned_evidence": 1,
+      "no_answer_cases": 1,
+      "selection_p50_ms": 0.6987920000000258,
+      "selection_p95_ms": 7.28895799999998,
+      "maximum_tokens": 755
+    },
+    {
+      "arm": "whole-prefix",
+      "budget": 4096,
+      "answerable": 9,
+      "span_labelled": 9,
+      "any_source_hits": 9,
+      "all_source_hits": 9,
+      "all_span_hits": 9,
+      "no_answer_returned_evidence": 1,
+      "no_answer_cases": 1,
+      "selection_p50_ms": 0.590582999999981,
+      "selection_p95_ms": 6.324667000000034,
+      "maximum_tokens": 1297
+    },
+    {
+      "arm": "fixed-prefix",
+      "budget": 4096,
+      "answerable": 9,
+      "span_labelled": 9,
+      "any_source_hits": 9,
+      "all_source_hits": 9,
+      "all_span_hits": 0,
+      "no_answer_returned_evidence": 1,
+      "no_answer_cases": 1,
+      "selection_p50_ms": 0.26724999999999,
+      "selection_p95_ms": 0.7842910000000529,
+      "maximum_tokens": 490
+    },
+    {
+      "arm": "query-window",
+      "budget": 4096,
+      "answerable": 9,
+      "span_labelled": 9,
+      "any_source_hits": 9,
+      "all_source_hits": 9,
+      "all_span_hits": 7,
+      "no_answer_returned_evidence": 1,
+      "no_answer_cases": 1,
+      "selection_p50_ms": 0.18233300000002828,
+      "selection_p95_ms": 0.4524170000000254,
+      "maximum_tokens": 213
+    },
+    {
+      "arm": "query-expand",
+      "budget": 4096,
+      "answerable": 9,
+      "span_labelled": 9,
+      "any_source_hits": 9,
+      "all_source_hits": 9,
+      "all_span_hits": 9,
+      "no_answer_returned_evidence": 1,
+      "no_answer_cases": 1,
+      "selection_p50_ms": 0.6514999999999986,
+      "selection_p95_ms": 2.0576659999999833,
+      "maximum_tokens": 1297
+    }
+  ],
+  "span_failures": [
+    {
+      "id": "retention",
+      "arm": "fixed-prefix",
+      "budget": 1024
+    },
+    {
+      "id": "aufbewahrung",
+      "arm": "fixed-prefix",
+      "budget": 1024
+    },
+    {
+      "id": "version",
+      "arm": "fixed-prefix",
+      "budget": 1024
+    },
+    {
+      "id": "negation",
+      "arm": "fixed-prefix",
+      "budget": 1024
+    },
+    {
+      "id": "cross-language",
+      "arm": "fixed-prefix",
+      "budget": 1024
+    },
+    {
+      "id": "cross-language",
+      "arm": "query-window",
+      "budget": 1024
+    },
+    {
+      "id": "remote-qualifier",
+      "arm": "fixed-prefix",
+      "budget": 1024
+    },
+    {
+      "id": "remote-qualifier",
+      "arm": "query-window",
+      "budget": 1024
+    },
+    {
+      "id": "identifier",
+      "arm": "fixed-prefix",
+      "budget": 1024
+    },
+    {
+      "id": "table",
+      "arm": "fixed-prefix",
+      "budget": 1024
+    },
+    {
+      "id": "multi-source",
+      "arm": "whole-prefix",
+      "budget": 1024
+    },
+    {
+      "id": "multi-source",
+      "arm": "fixed-prefix",
+      "budget": 1024
+    },
+    {
+      "id": "retention",
+      "arm": "fixed-prefix",
+      "budget": 4096
+    },
+    {
+      "id": "aufbewahrung",
+      "arm": "fixed-prefix",
+      "budget": 4096
+    },
+    {
+      "id": "version",
+      "arm": "fixed-prefix",
+      "budget": 4096
+    },
+    {
+      "id": "negation",
+      "arm": "fixed-prefix",
+      "budget": 4096
+    },
+    {
+      "id": "cross-language",
+      "arm": "fixed-prefix",
+      "budget": 4096
+    },
+    {
+      "id": "cross-language",
+      "arm": "query-window",
+      "budget": 4096
+    },
+    {
+      "id": "remote-qualifier",
+      "arm": "fixed-prefix",
+      "budget": 4096
+    },
+    {
+      "id": "remote-qualifier",
+      "arm": "query-window",
+      "budget": 4096
+    },
+    {
+      "id": "identifier",
+      "arm": "fixed-prefix",
+      "budget": 4096
+    },
+    {
+      "id": "table",
+      "arm": "fixed-prefix",
+      "budget": 4096
+    },
+    {
+      "id": "multi-source",
+      "arm": "fixed-prefix",
+      "budget": 4096
+    }
+  ]
+}
