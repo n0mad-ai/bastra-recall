@@ -1,0 +1,193 @@
+{
+  "model": "gemma4:12b",
+  "scope": "Synthetic judge calibration; not product answer accuracy.",
+  "controls": [
+    {
+      "name": "good",
+      "reference": {
+        "reason": "The candidate answer correctly identifies both the retention duration and the specific exception mentioned in the reference facts.",
+        "passed": true
+      },
+      "support": {
+        "reason": "All claims in the candidate answer are directly supported by the provided evidence.",
+        "passed": true
+      },
+      "expected": [
+        true,
+        true
+      ],
+      "passed": true,
+      "input": {
+        "question": "What is the retention duration and exception?",
+        "candidate_answer": "Retention is 19 days; never delete legal holds.",
+        "reference_facts": [
+          "Retention is 19 days.",
+          "Never delete legal holds."
+        ],
+        "provided_evidence": "Retention is 19 days. Never delete legal holds."
+      }
+    },
+    {
+      "name": "missing_exception",
+      "reference": {
+        "reason": "The candidate answer fails to mention the exception regarding legal holds.",
+        "passed": false
+      },
+      "support": {
+        "reason": "The candidate answer mentions the retention duration but fails to include the exception (legal holds) mentioned in the evidence.",
+        "passed": true
+      },
+      "expected": [
+        false,
+        true
+      ],
+      "passed": true,
+      "input": {
+        "question": "What is the retention duration and exception?",
+        "candidate_answer": "Retention is 19 days.",
+        "reference_facts": [
+          "Retention is 19 days.",
+          "Never delete legal holds."
+        ],
+        "provided_evidence": "Retention is 19 days. Never delete legal holds."
+      }
+    },
+    {
+      "name": "cue_not_fact",
+      "reference": {
+        "reason": "The candidate answer correctly identifies both the retention duration and the specific exception mentioned in the reference facts.",
+        "passed": true
+      },
+      "support": {
+        "reason": "The evidence provided is only a title and a recall_when cue; it does not contain the specific information regarding the 19-day duration or the legal hold exception.",
+        "passed": false
+      },
+      "expected": [
+        true,
+        false
+      ],
+      "passed": true,
+      "input": {
+        "question": "What is the retention duration and exception?",
+        "candidate_answer": "Retention is 19 days; never delete legal holds.",
+        "reference_facts": [
+          "Retention is 19 days.",
+          "Never delete legal holds."
+        ],
+        "provided_evidence": "title: Retention policy; recall_when: retention duration legal holds"
+      }
+    },
+    {
+      "name": "wrong_value",
+      "reference": {
+        "reason": "The candidate answer states 29 days, while the reference facts state 19 days.",
+        "passed": false
+      },
+      "support": {
+        "reason": "The candidate answer claims a retention of 29 days, but the evidence states the retention is 19 days.",
+        "passed": false
+      },
+      "expected": [
+        false,
+        false
+      ],
+      "passed": true,
+      "input": {
+        "question": "What is the retention duration?",
+        "candidate_answer": "Retention is 29 days.",
+        "reference_facts": [
+          "Retention is 19 days."
+        ],
+        "provided_evidence": "Retention is 19 days."
+      }
+    },
+    {
+      "name": "timing_not_asked",
+      "reference": {
+        "reason": "The candidate answer correctly identifies both conditions (daemon stopping due to idleness and the startup deadline being exceeded during cold loading) that cause the first call to",
+        "passed": true
+      },
+      "support": {
+        "reason": "The candidate answer accurately reflects the evidence provided: the daemon stops during idle periods and cold loading can exceed the startup deadline.",
+        "passed": true
+      },
+      "expected": [
+        true,
+        true
+      ],
+      "passed": true,
+      "input": {
+        "question": "Why can the first call after idle fail?",
+        "candidate_answer": "The daemon stops while idle, and cold loading the model can exceed its startup deadline.",
+        "reference_facts": [
+          "Daemon stops after 30 minutes idle.",
+          "Cold model loading can exceed the 10 second startup deadline."
+        ],
+        "provided_evidence": "Daemon stops after 30 minutes idle. Cold model loading can exceed the 10 second startup deadline."
+      }
+    },
+    {
+      "name": "obsolete",
+      "reference": {
+        "reason": "The candidate answer states a duration of 19 days, while the reference fact states 29 days starting from September 1. There is no information provided to support the '19 days'_",
+        "passed": false
+      },
+      "support": {
+        "reason": "The evidence states that from September 1, the retention is 29 days. Since today is September 15, the current duration is 29 days, not 19 days.",
+        "passed": false
+      },
+      "expected": [
+        false,
+        null
+      ],
+      "passed": true,
+      "input": {
+        "question": "What duration applies now?",
+        "candidate_answer": "Retention is 19 days.",
+        "reference_facts": [
+          "From September 1 retention is 29 days."
+        ],
+        "provided_evidence": "Before September 1 retention was 19 days. From September 1 retention is 29 days. Today is September 15."
+      }
+    }
+  ],
+  "additional_controls": [
+    {
+      "name": "denies_available_answer_en",
+      "question": "How does a new save become searchable immediately?",
+      "candidate_answer": "The evidence does not address how a new save becomes searchable immediately. No record of such a mechanism exists in the provided texts.",
+      "reference_facts": [
+        [
+          "After writing a memory, the save handler immediately calls the index update function."
+        ]
+      ],
+      "expected": false,
+      "observed": {
+        "reason": "The candidate answer claims the information is not present, but the reference facts explicitly state that the save handler immediately calls the index update function after writing",
+        "passed": false
+      },
+      "passed": true
+    },
+    {
+      "name": "denies_available_answer_de",
+      "question": "Was passiert beim Entpinnen einer Erinnerung?",
+      "candidate_answer": "Die Belege enthalten keine Informationen über den Zustand einer gepinnten Erinnerung nach dem Entpinnen.",
+      "reference_facts": [
+        [
+          "Entpinnen entfernt nur die Priorisierung; die Erinnerung wird nicht gelöscht."
+        ]
+      ],
+      "expected": false,
+      "observed": {
+        "reason": "The candidate answer claims the reference facts contain no information about the state of a pinned reminder after unpinning, but the reference facts explicitly state that unpinning",
+        "passed": false
+      },
+      "passed": true
+    }
+  ],
+  "content_audit": {
+    "status": "failed",
+    "conclusion": "Do not use this model/run as a validated answer-quality metric despite passing synthetic controls. Actual replay accepted denial of an answer explicitly present in the reference, and an unrelated explanation. No private examples are included."
+  },
+  "request_contract": "Use REFERENCE_CHECK_PROMPT with question/candidate_answer/reference_facts only; use GROUNDING_CHECK_PROMPT with question/candidate_answer/provided_evidence only. Constants are in src/evidence-answer-checks.ts. Do not send this combined fixture object to either judge."
+}

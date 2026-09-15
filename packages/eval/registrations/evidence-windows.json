@@ -51,5 +51,15 @@
     "additional_arm": "query-expand",
     "rule": "Select query windows, then replace each selected window with its complete source in original rank order whenever the full serialized payload still fits. Never remove another selected source to expand one.",
     "promotion": "unchanged: diagnostic only"
+  },
+  "decision": {
+    "date": "2026-09-15",
+    "current_lexical_arm": "reject_for_production",
+    "basis": "Required-span losses and a synthetic cue-only perturbation that removes an otherwise available answer. Full reader/judge run completed; semantic score invalidated by content audit. Synthetic controls passed but did not generalize.",
+    "follow_up_issues": [
+      568,
+      569
+    ],
+    "promotion_requirements": "Unchanged. Rejection evidence does not satisfy positive promotion requirements."
   }
 }

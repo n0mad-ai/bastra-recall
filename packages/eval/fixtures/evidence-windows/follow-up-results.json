@@ -1,0 +1,231 @@
+{
+  "decision": "reject_current_selector",
+  "answer_quality_status": "invalidated_by_content_audit",
+  "models": [
+    {
+      "name": "bastra-bench-qwen:16k",
+      "digest": "fc8c48cc67bf1526c65276c2ee320f11228069e66ec81d8ffc456f961214253e"
+    },
+    {
+      "name": "gemma4:12b",
+      "digest": "4eb23ef187e2c5462566d6a1d3bbbc2f1346d0b4327cbb66d58fffbcc9b2b05c"
+    }
+  ],
+  "private_artifact_hashes": {
+    "labels-reviewed.jsonl": "cbdaf06b69bbb22c5e4e9437455285f0baf8a369edcdc733c4d8a43f009c49ed",
+    "payloads.jsonl": "11a0c9317f1dde40b2e5e19b2817b053d180c323d99044ea8b0b3324e0d2395b",
+    "answers.jsonl": "91b9b60887d21a8ec87d83a5699b707f583c3115b376ce919aed733eec5c4780",
+    "judgments-split.jsonl": "8c19f6fb30213d8958145ce5ccf03734c1838b1e11dafe304fe4a7f8b0519aa6",
+    "paraphrases.jsonl": "7f261ad61993bb9476335e8f5d33c4db47c4ef487e8283626ae2417784b0eb25",
+    "paraphrase-review.json": "40419138f3bc1396bdb811bd4a81c1abed067967df4fcb30af868cc99055e44c",
+    "full-eval.py": "b9c80f3be4b192e38ef409717bca3ace850c7a5226d77edb06d12aac2a8a9265"
+  },
+  "span_summary": [
+    {
+      "budget": 1024,
+      "arm": "whole-prefix",
+      "n": 115,
+      "source_hits": 49,
+      "all_span_hits": 42,
+      "covered_facts": 91,
+      "required_facts": 232
+    },
+    {
+      "budget": 1024,
+      "arm": "fixed-prefix",
+      "n": 115,
+      "source_hits": 57,
+      "all_span_hits": 20,
+      "covered_facts": 47,
+      "required_facts": 232
+    },
+    {
+      "budget": 1024,
+      "arm": "query-window",
+      "n": 115,
+      "source_hits": 60,
+      "all_span_hits": 22,
+      "covered_facts": 52,
+      "required_facts": 232
+    },
+    {
+      "budget": 1024,
+      "arm": "query-expand",
+      "n": 115,
+      "source_hits": 60,
+      "all_span_hits": 22,
+      "covered_facts": 52,
+      "required_facts": 232
+    },
+    {
+      "budget": 4096,
+      "arm": "whole-prefix",
+      "n": 115,
+      "source_hits": 71,
+      "all_span_hits": 68,
+      "covered_facts": 143,
+      "required_facts": 232
+    },
+    {
+      "budget": 4096,
+      "arm": "fixed-prefix",
+      "n": 115,
+      "source_hits": 84,
+      "all_span_hits": 24,
+      "covered_facts": 67,
+      "required_facts": 232
+    },
+    {
+      "budget": 4096,
+      "arm": "query-window",
+      "n": 115,
+      "source_hits": 83,
+      "all_span_hits": 27,
+      "covered_facts": 72,
+      "required_facts": 232
+    },
+    {
+      "budget": 4096,
+      "arm": "query-expand",
+      "n": 115,
+      "source_hits": 83,
+      "all_span_hits": 32,
+      "covered_facts": 79,
+      "required_facts": 232
+    }
+  ],
+  "paraphrase_span_summary": [
+    {
+      "slice": "same_language",
+      "budget": 1024,
+      "arm": "fixed-prefix",
+      "n": 49,
+      "span_hits": 4
+    },
+    {
+      "slice": "same_language",
+      "budget": 1024,
+      "arm": "query-expand",
+      "n": 49,
+      "span_hits": 5
+    },
+    {
+      "slice": "same_language",
+      "budget": 1024,
+      "arm": "query-window",
+      "n": 49,
+      "span_hits": 5
+    },
+    {
+      "slice": "same_language",
+      "budget": 1024,
+      "arm": "whole-prefix",
+      "n": 49,
+      "span_hits": 9
+    },
+    {
+      "slice": "same_language",
+      "budget": 4096,
+      "arm": "fixed-prefix",
+      "n": 49,
+      "span_hits": 6
+    },
+    {
+      "slice": "same_language",
+      "budget": 4096,
+      "arm": "query-expand",
+      "n": 49,
+      "span_hits": 8
+    },
+    {
+      "slice": "same_language",
+      "budget": 4096,
+      "arm": "query-window",
+      "n": 49,
+      "span_hits": 6
+    },
+    {
+      "slice": "same_language",
+      "budget": 4096,
+      "arm": "whole-prefix",
+      "n": 49,
+      "span_hits": 19
+    },
+    {
+      "slice": "translation",
+      "budget": 1024,
+      "arm": "fixed-prefix",
+      "n": 14,
+      "span_hits": 3
+    },
+    {
+      "slice": "translation",
+      "budget": 1024,
+      "arm": "query-expand",
+      "n": 14,
+      "span_hits": 3
+    },
+    {
+      "slice": "translation",
+      "budget": 1024,
+      "arm": "query-window",
+      "n": 14,
+      "span_hits": 3
+    },
+    {
+      "slice": "translation",
+      "budget": 1024,
+      "arm": "whole-prefix",
+      "n": 14,
+      "span_hits": 3
+    },
+    {
+      "slice": "translation",
+      "budget": 4096,
+      "arm": "fixed-prefix",
+      "n": 14,
+      "span_hits": 3
+    },
+    {
+      "slice": "translation",
+      "budget": 4096,
+      "arm": "query-expand",
+      "n": 14,
+      "span_hits": 5
+    },
+    {
+      "slice": "translation",
+      "budget": 4096,
+      "arm": "query-window",
+      "n": 14,
+      "span_hits": 5
+    },
+    {
+      "slice": "translation",
+      "budget": 4096,
+      "arm": "whole-prefix",
+      "n": 14,
+      "span_hits": 8
+    }
+  ],
+  "latency": {
+    "scope": "Warm in-memory packing only, 180 cases, alternating paired order, no other benchmark jobs. Excludes source loading, model latency, tokenizer import and production integration.",
+    "node": "v24.16.0",
+    "cpu": "Apple M4 Pro",
+    "budget": 4096,
+    "summary": [
+      {
+        "arm": "whole-prefix",
+        "n": 180,
+        "p50_ms": 72.65812500000175,
+        "p95_ms": 87.96991699999853
+      },
+      {
+        "arm": "query-expand",
+        "n": 180,
+        "p50_ms": 78.63016600000014,
+        "p95_ms": 95.47900000000118
+      }
+    ]
+  }
+}

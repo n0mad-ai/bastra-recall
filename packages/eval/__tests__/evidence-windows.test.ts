@@ -91,3 +91,29 @@ test("public adversarial fixtures validate and retain nontrivial span denominato
   for (const row of report.summary) assert.ok(row.span_labelled >= 8);
   assert.equal(report.promotion, "not_evaluable");
 });
+
+test("unretrieved labelled sources remain span failures and cannot leak into evidence", () => {
+  const reference = { id: "secret-gold", text: "The archive duration is 19 days." };
+  const c: EvidenceCase = { id: "missing-target", query: "Archive duration?",
+    sources: [{ id: "unrelated", text: "A separate maintenance note." }], expected_ids: [reference.id],
+    reference_sources: [reference], required_spans: [{ ...reference, start: 0, end: reference.text.length }] };
+  const report = runEvidenceExperiment([c], [1024]);
+  for (const row of report.rows) { assert.equal(row.all_spans, false); assert.equal(row.any_source, false); }
+  assert.equal(report.summary[0].span_labelled, 1);
+  assert.throws(() => validateEvidenceCases([{ ...c, sources: [{ ...reference, text: "A different revision." }] }]), /revision mismatch/);
+});
+
+test("rejected lexical arm: adding a retrieval cue can displace the actual answer", () => {
+  const fact = "The retention duration is 19 days. Legal holds must never be deleted.";
+  const body = `\n\nOperational overview.\n\n${fact}\n\n` +
+    Array.from({ length: 200 }, () => "Routine inventory housekeeping is recorded separately from this policy.").join("\n\n");
+  const plain = { id: "policy", text: "title: Archive note" + body };
+  const cued = { id: "policy", text: "title: Archive note\nrecall_when: retention duration exception" + body };
+  const query = "What retention duration and exception apply?";
+  const hasFact = (source: typeof plain, arm: "whole-prefix" | "query-expand") =>
+    packEvidence([source], query, arm, 1024).payload.evidence.some(e => e.text.includes(fact));
+  assert.equal(hasFact(plain, "query-expand"), true);
+  assert.equal(hasFact(cued, "whole-prefix"), true);
+  assert.equal(hasFact(cued, "query-expand"), false);
+  // A reproducible rejection witness, not permission to promote this frozen arm.
+});
