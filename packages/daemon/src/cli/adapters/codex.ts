@@ -40,6 +40,7 @@ import { PLAN_TOOL_KEY, ensureCodexPlanTool, inspectPlanTool } from "./codex-pla
 import { findCodexExecutable, codexMcpGet, codexServerMatches } from "../codex-cli.js";
 import { runCaptured } from "../exec.js";
 import { checkForwarderRegistration, ensureStableForwarder, mapBinToStableRuntime } from "../stable-runtime.js";
+import { fileOf, slashes } from "./command-paths.js";
 import type { Adapter, DoctorResult, InstallOpts, InstallResult, UninstallResult } from "../types.js";
 
 type HookEvent = "SessionStart" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "Stop";
@@ -116,7 +117,7 @@ function isOurHookEntry(value: unknown): boolean {
         (record.statusMessage.startsWith("bastra-recall:") || record.statusMessage.startsWith("Bastra Recall ·"))) return true;
     const command = typeof record.command === "string" ? record.command : "";
     return command.includes("BASTRA_HOOK_CLIENT=codex") &&
-      (command.includes("bastra-hook") || OUR_HOOK_FILES.some((file) => command.includes(`/${file}`)));
+      (command.includes("bastra-hook") || OUR_HOOK_FILES.some((file) => slashes(command).includes(`/${file}`)));
   });
 }
 
@@ -421,7 +422,7 @@ async function codexUninstall(opts: { dryRun: boolean }): Promise<UninstallResul
   };
 }
 
-function registeredCodexHookFiles(hooks: Record<string, unknown>): Set<string> {
+export function registeredCodexHookFiles(hooks: Record<string, unknown>): Set<string> {
   const found = new Set<string>();
   for (const event of HOOK_EVENTS) {
     const entries = Array.isArray(hooks[event]) ? hooks[event] as unknown[] : [];
@@ -434,9 +435,9 @@ function registeredCodexHookFiles(hooks: Record<string, unknown>): Set<string> {
           ? String((handler as Record<string, unknown>).command)
           : "";
         for (const def of codexHookDefinitions(true)) {
-          if (command.includes(`/${def.bin.split("/").pop()}`) ||
+          if (slashes(command).includes(`/${fileOf(def.bin)}`) ||
               (command.includes("bastra-hook") && command.includes(` ${def.stubSubcommand}`))) {
-            found.add(def.bin.split("/").pop() ?? def.bin);
+            found.add(fileOf(def.bin));
           }
         }
       }
