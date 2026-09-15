@@ -29,12 +29,71 @@
  * test files guard against it by hand. Guarding the 27th is a convention nobody
  * can enforce; the pipe itself can be.
  */
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+/**
+ * One temp root per test run, and the developer's own bastra settings kept out.
+ *
+ * Only the FIRST process that imports this file does the setup — the runner, or
+ * a lone `node --import … -e`. It exports BASTRA_TEST_RUN_ROOT, so every test
+ * child it spawns (and whatever those spawn) sees the setup as already done:
+ * a variable a child has at that point was put there by a test on purpose.
+ *
+ * The temp root. TMPDIR/TEMP/TMP point into a directory this process removes
+ * when it exits, on a signal as well, so every `mkdtemp(tmpdir())` anywhere in
+ * the run is cleaned up with it. One run used to leave its directories behind
+ * for good — measured: 953 `bastra-test-eval-runs-*` + 951 `bastra-test-logs-*`
+ * in a Linux /tmp, 767 `bastra-*` in a Windows %TEMP% (no reboot sweep there),
+ * and a further 76 from individual test files after those two were fixed.
+ *
+ * The settings. CI exports none of them, so the suite is green there and was
+ * red on any machine where bastra is in use: BASTRA_VAULT_PATH from a shell
+ * profile sent `arm-plumbing`'s spawned CLI into the real vault (`0 !== 100`),
+ * and BASTRA_OLLAMA_URL, BASTRA_EMBEDDING_*, BASTRA_HOOK_STATE_DIR, … select a
+ * model or point at real state the same way. Every BASTRA_* / NEXUS_* input is
+ * dropped. Two OUTPUT locations are the exception, with their old contract
+ * (#420): a caller who chose BASTRA_LOG_PATH or BASTRA_EVAL_RUNS_DIR keeps it.
+ * `BASTRA_TEST_KEEP_ENV=1` keeps everything, for a deliberate run against a
+ * chosen vault.
+ */
+const CALLER_CHOSEN_OUTPUTS = new Set(["BASTRA_LOG_PATH", "BASTRA_EVAL_RUNS_DIR"]);
+
+if (!process.env.BASTRA_TEST_RUN_ROOT) {
+  if (process.env.BASTRA_TEST_KEEP_ENV !== "1") {
+    for (const key of Object.keys(process.env)) {
+      if (/^(BASTRA|NEXUS)_/.test(key) && !CALLER_CHOSEN_OUTPUTS.has(key)) delete process.env[key];
+    }
+  }
+  const root = mkdtempSync(join(tmpdir(), "bastra-test-run-"));
+  process.env.BASTRA_TEST_RUN_ROOT = root;
+  process.env.TMPDIR = root;
+  process.env.TEMP = root;
+  process.env.TMP = root;
+  const removeRoot = () => {
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 3 });
+    } catch {
+      // A handle still open on Windows — leftover disk, never a failed run.
+    }
+  };
+  process.on("exit", removeRoot);
+  for (const signal of ["SIGINT", "SIGTERM"]) {
+    process.once(signal, () => {
+      removeRoot();
+      process.kill(process.pid, signal);
+    });
+  }
+}
+
+/** Throwaway directories live under the run root, so they go with it. */
+function throwawayDir(prefix) {
+  return mkdtempSync(join(tmpdir(), prefix));
+}
+
 if (!process.env.BASTRA_LOG_PATH) {
-  process.env.BASTRA_LOG_PATH = mkdtempSync(join(tmpdir(), "bastra-test-logs-"));
+  process.env.BASTRA_LOG_PATH = throwawayDir("bastra-test-logs-");
 }
 
 /**
@@ -56,7 +115,7 @@ if (!process.env.BASTRA_LOG_PATH) {
  * nobody can enforce, one default here closes the class.
  */
 if (!process.env.BASTRA_EVAL_RUNS_DIR) {
-  process.env.BASTRA_EVAL_RUNS_DIR = mkdtempSync(join(tmpdir(), "bastra-test-eval-runs-"));
+  process.env.BASTRA_EVAL_RUNS_DIR = throwawayDir("bastra-test-eval-runs-");
 }
 
 /**
