@@ -1,4 +1,5 @@
 /** CLI command orchestration, including Codex/ChatGPT installation (#15). */
+import { missingVaultReason } from "../vault-presence.js";
 import { resolveTargets } from "./registry.js";
 import {
   VERSION,
@@ -177,6 +178,42 @@ export async function installVaultFirstRunStep(
   return { vaultPath: created.path, exit: null };
 }
 
+/**
+ * A vault path that does not exist, caught at install time.
+ *
+ * `--vault <path>` is the user naming the folder, so a missing one is created —
+ * the same createVaultAt the first-run offer uses. A path that came from the
+ * environment or an existing registration is NOT created: when it is missing the
+ * likeliest cause is a drive that is not mounted, and an empty directory on the
+ * mountpoint is exactly what would make the daemon serve nothing. That case is
+ * named, and install goes on — the daemon refuses to boot on it anyway.
+ * Returns an exit code when install must stop, else null.
+ */
+export async function installVaultPresenceStep(
+  i: { flagPath: string | null; resolvedPath: string | null; dryRun: boolean },
+  io: { create?: (path: string) => Promise<{ path: string } | { error: string }>; out?: (s: string) => void } = {},
+): Promise<number | null> {
+  const out = io.out ?? ((t: string) => process.stdout.write(t));
+  const path = i.resolvedPath;
+  const reason = missingVaultReason(path);
+  if (!path || !reason) return null;
+  if (i.flagPath && i.flagPath === path) {
+    if (i.dryRun) {
+      out(`~ would create the vault at ${path} (dry-run): it does not exist yet\n\n`);
+      return null;
+    }
+    const created = await (io.create ?? createVaultAt)(path);
+    if ("error" in created) {
+      process.stderr.write(`✗ could not create the vault at ${path}: ${created.error}\n`);
+      return 1;
+    }
+    out(`✓ created ${created.path} — your memories live here as plain markdown files\n\n`);
+    return null;
+  }
+  out(`⚠ ${reason}.\n  Not creating it: a path from the environment or an earlier registration that is missing is usually an unmounted drive.\n\n`);
+  return null;
+}
+
 export async function cmdInstall(args: ParsedArgs): Promise<number> {
   // `bastra install --help` must document, never act — without this it would
   // fall through to the wizard (TTY) or the missing-surface error (script).
@@ -230,6 +267,10 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
   });
   if (firstRun.exit !== null) return firstRun.exit;
   if (firstRun.vaultPath) opts.vaultPath = firstRun.vaultPath;
+  const vaultStep = await installVaultPresenceStep(
+    { flagPath: args.vaultPath, resolvedPath: opts.vaultPath ?? ("path" in preResolve ? preResolve.path : null), dryRun: args.dryRun },
+  );
+  if (vaultStep !== null) return vaultStep;
 
   // #350/#15: the compiled hook client for Claude Code and Codex. Runs before the
   // adapters plan their hook entries, and since #537 it is the single place that

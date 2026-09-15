@@ -25,6 +25,8 @@ import type { CodeStale } from "./code-staleness.js";
 
 export interface HealthDeps {
   vaultSize: () => number;
+  /** Why the vault directory is absent, or null — see vault-presence.ts. */
+  vaultMissing?: () => string | null;
   version: string;
   embedding: EmbeddingStatus;
   embeddingHealth?: () => EmbeddingRuntimeHealth | null;
@@ -69,6 +71,8 @@ export function buildHealthPayload(deps: HealthDeps): Record<string, unknown> {
   return {
     ok: true,
     vault_size: deps.vaultSize(),
+    // `vault_size: 0` from a directory that is not there is not an empty vault.
+    vault_missing: deps.vaultMissing?.() ?? null,
     version: deps.version,
     // #329 — null means "the version above is current". Anything else means
     // this process is answering for code that has been replaced, and every

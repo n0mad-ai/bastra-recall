@@ -100,6 +100,8 @@ export interface BatchSubResult {
    *  ist etwas anderes als „keine Embeddings". Reiner Diagnosewert, er geht in
    *  keine Signatur ein. */
   degraded?: string;
+  /** The vault directory is absent — see vault-presence.ts. */
+  vault_missing?: string;
 }
 
 export interface BatchMerged {
@@ -111,6 +113,7 @@ export interface BatchMerged {
   recall_ids: string[];
   weak_result?: true;
   no_home?: true;
+  vault_missing?: string;
   /** Der Score-Raum, in dem die zurückgegebenen Zahlen zu lesen sind. Nie
    *  optional: eine fehlende Angabe war genau der Weg, auf dem rohe BM25-Werte
    *  als Rang-Summen gelesen wurden. */
@@ -223,6 +226,7 @@ export function mergeBatchResults(queries: string[], subs: BatchSubResult[], k: 
     recall_ids: recallIds,
     ...(weakAll && subs.length > 0 ? { weak_result: true as const } : {}),
     ...(noHomeAll && subs.length > 0 ? { no_home: true as const } : {}),
+    ...(subs.find((x) => x.vault_missing)?.vault_missing ? { vault_missing: subs.find((x) => x.vault_missing)!.vault_missing } : {}),
     score_kind: scoreKind,
     ...(mixed ? {} : { score_arms: subs[0]?.score_arms, score_version: subs[0]?.score_version }),
     ...(scoreKind === "bm25" ? { unfused: true as const } : {}),
@@ -325,5 +329,6 @@ export function projectRecallResult(
     ...(payload.score_version ? { score_version: payload.score_version } : {}),
     ...(payload.unfused === true ? { unfused: true as const } : {}),
     ...(typeof payload.degraded === "string" ? { degraded: payload.degraded } : {}),
+    ...(typeof payload.vault_missing === "string" ? { vault_missing: payload.vault_missing } : {}),
   };
 }
