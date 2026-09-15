@@ -1,0 +1,55 @@
+{
+  "version": "evidence-windows-563-v1",
+  "status": "diagnostic_only",
+  "registered": "2026-09-15",
+  "issue": 563,
+  "arms": [
+    "whole-prefix",
+    "fixed-prefix",
+    "query-window"
+  ],
+  "tokenizer": "o200k_base",
+  "budgets": [
+    1024,
+    4096
+  ],
+  "fixed_prefix_codepoints": 1200,
+  "query_window": "highest lexical-overlap paragraph plus one complete adjacent paragraph on either side; rank order of sources unchanged",
+  "primary_endpoint": "fraction of answerable questions with ALL independently annotated required spans surviving the serialized evidence budget",
+  "secondary_endpoints": [
+    "any expected source present",
+    "all expected sources present",
+    "selection latency p50/p95",
+    "serialized evidence tokens"
+  ],
+  "promotion": {
+    "minimum_independent_answerable_cases": 150,
+    "minimum_cases_per_guardrail_slice": 30,
+    "minimum_primary_lift_pp": 5,
+    "paired_95_percent_ci_lower_bound_pp": 0,
+    "maximum_guardrail_regression_pp": 0,
+    "maximum_added_selection_p95_ms": 50,
+    "requires": [
+      "independent span labels",
+      "fresh held-out query formulations",
+      "source-disjoint split where feasible",
+      "no-answer, temporal, multilingual, multi-source guardrails",
+      "separate grounded-answer evaluation",
+      "separate runtime integration review"
+    ]
+  },
+  "limitations": [
+    "Private historical source IDs are not answer-span annotations.",
+    "Author-created synthetic fixtures validate mechanics, never independent quality or transfer.",
+    "No-answer retrieval is reported as returned evidence, never hallucination or answer accuracy.",
+    "This runner cannot authorize production promotion."
+  ],
+  "follow_up": {
+    "version": "evidence-windows-563-v2",
+    "registered": "2026-09-15",
+    "basis": "The v1 synthetic development fixtures exposed a remote qualifier and a cross-language miss. They are now tuning evidence, never holdout proof.",
+    "additional_arm": "query-expand",
+    "rule": "Select query windows, then replace each selected window with its complete source in original rank order whenever the full serialized payload still fits. Never remove another selected source to expand one.",
+    "promotion": "unchanged: diagnostic only"
+  }
+}
