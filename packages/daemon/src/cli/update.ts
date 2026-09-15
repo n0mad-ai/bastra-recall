@@ -7,7 +7,8 @@ import { cmdInstall } from "./commands.js";
 import { findExecutable, run, runCaptured } from "./exec.js";
 import { VERSION } from "./helpers.js";
 import { buildManifest, formatPreflight, preflight, writeManifest } from "./update-preflight.js";
-import { activePatches, applySeries, formatApplyOutcome, writeLastRun } from "../patch-registry.js";
+import { activePatches, applySeries } from "../patch-registry.js";
+import { formatApplyOutcome, writeLastRun } from "../patch-report.js";
 import { isEphemeralInstallPath } from "./stable-runtime.js";
 import {
   decideSourceBuild,
@@ -230,7 +231,7 @@ export function verifySourceCheckout(
   return { rc: 0, state };
 }
 
-function installedVersion(root: string): string {
+export function installedVersion(root: string): string {
   return packageVersion(root) ?? VERSION;
 }
 
@@ -282,6 +283,71 @@ function installedDaemonScript(mode: InstallMode): string | null {
   return existsFile(DAEMON_SCRIPT_PATH);
 }
 
+/**
+ * Step 1a of `bastra update`: put the registered local patches back onto the
+ * tree the installer just produced. `patchReapplyRoot` is only asked once there
+ * is a series, because on Homebrew answering it spawns `brew --prefix`.
+ */
+export function reapplyPatchSeries(
+  mode: InstallMode,
+  packageRoot: string,
+  io: {
+    series?: () => readonly unknown[];
+    root?: (m: InstallMode, p: string) => string | null;
+    apply?: typeof applySeries;
+    record?: typeof writeLastRun;
+    version?: (root: string) => string;
+    out?: (s: string) => void;
+  } = {},
+): void {
+  const out = io.out ?? ((t: string) => process.stdout.write(t));
+  const series = (io.series ?? activePatches)();
+  if (series.length === 0) return;
+  const root = (io.root ?? patchReapplyRoot)(mode, packageRoot);
+  if (!root) {
+    if (mode.mode === "brew") {
+      out(`⚠ ${series.length} local patch${series.length === 1 ? "" : "es"} not reapplied: the installed keg could not be located ('brew --prefix bastra-recall' failed)\n\n`);
+    }
+    return;
+  }
+  out(`→ reapplying ${series.length} local patch${series.length === 1 ? "" : "es"} (#269)\n`);
+  try {
+    const outcome = (io.apply ?? applySeries)(root, { version: (io.version ?? installedVersion)(root) });
+    (io.record ?? writeLastRun)(outcome);
+    out(formatApplyOutcome(outcome));
+    if (outcome.setAside.length > 0) {
+      out(
+        `  Patches set aside stay registered — 'bastra patches status' shows them,\n` +
+          `  and the pre-update backup above still holds your files.\n`,
+      );
+    }
+    out("\n");
+  } catch (e) {
+    // A patch step that throws must never fail an update whose install
+    // already succeeded — the new version is on disk and working, only the
+    // local additions are missing. Say so and continue.
+    out(`  ⚠ patch reapply failed (${(e as Error).message}) — the update itself stands\n\n`);
+  }
+}
+
+/**
+ * The daemon package root the patch series goes onto after an update, or null
+ * where there is none to patch: a source checkout is the user's own git tree,
+ * and "unknown" installed nothing.
+ */
+export function patchReapplyRoot(
+  mode: InstallMode,
+  packageRoot: string,
+  installedScript: (m: InstallMode) => string | null = installedDaemonScript,
+): string | null {
+  if (mode.mode === "npm-global") return packageRoot;
+  if (mode.mode === "brew") {
+    const script = installedScript(mode);
+    return script ? resolve(dirname(script), "..") : null;
+  }
+  return null;
+}
+
 function existsFile(path: string): string | null {
   return existsSync(path) ? path : null;
 }
@@ -319,17 +385,18 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
     );
     if (preflightSupported) {
       process.stdout.write("  would: 0) preflight: back up locally modified files, then refuse or proceed\n");
-      const pending = activePatches();
-      if (pending.length > 0) {
-        process.stdout.write(
-          `  would: 1a) reapply ${pending.length} registered local patch${pending.length === 1 ? "" : "es"} ` +
-            `(#269) — 'bastra patches status' shows what each would do\n`,
-        );
-      }
     } else if (mode.mode === "brew") {
       process.stdout.write(
         "  would: 0) skip the preflight — Homebrew installs each version into its own\n" +
         "            Cellar directory, so there is no in-place file to modify or back up\n",
+      );
+    }
+    // The plan names the reapply wherever the real run performs it (#528).
+    const pending = mode.mode === "npm-global" || mode.mode === "brew" ? activePatches() : [];
+    if (pending.length > 0) {
+      process.stdout.write(
+        `  would: 1a) reapply ${pending.length} registered local patch${pending.length === 1 ? "" : "es"} ` +
+          `(#269) — 'bastra patches status' shows what each would do\n`,
       );
     }
     // #528 — the plan has to be the action. Only brew/npm-global actually run
@@ -461,32 +528,15 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
   //     exactly the noise #268 exists to avoid. The patched tree is the tree
   //     bastra produced; what the user changes after that is what is dirty.
   //
-  //     Scoped to the same install modes as the preflight, for the same reason:
-  //     a Homebrew upgrade builds a new keg and abandons the old one, so there
-  //     is no in-place tree whose patches would have been lost.
-  if (preflightSupported && !args.dryRun) {
-    const series = activePatches();
-    if (series.length > 0) {
-      process.stdout.write(`→ reapplying ${series.length} local patch${series.length === 1 ? "" : "es"} (#269)\n`);
-      try {
-        const outcome = applySeries(packageRoot);
-        writeLastRun(outcome);
-        process.stdout.write(formatApplyOutcome(outcome));
-        if (outcome.setAside.length > 0) {
-          process.stdout.write(
-            `  Patches set aside stay registered — 'bastra patches status' shows them,\n` +
-              `  and the pre-update backup above still holds your files.\n`,
-          );
-        }
-        process.stdout.write("\n");
-      } catch (e) {
-        // A patch step that throws must never fail an update whose install
-        // already succeeded — the new version is on disk and working, only the
-        // local additions are missing. Say so and continue.
-        process.stdout.write(`  ⚠ patch reapply failed (${(e as Error).message}) — the update itself stands\n\n`);
-      }
-    }
-  }
+  //     Not scoped to the preflight's modes. The preflight guards a tree that is
+  //     replaced in place, which a Homebrew upgrade never does — but the reapply
+  //     is about the tree the user runs NEXT, and a fresh keg carries none of
+  //     their patches. Scoping this to npm-global made `bastra patches` a no-op
+  //     on every Homebrew install while `bastra help` promised the series is
+  //     "reapplied onto the fresh install after every update". The keg to patch
+  //     is the one the installer just linked, asked from brew, never this
+  //     process's own (superseded) path.
+  reapplyPatchSeries(mode, packageRoot);
 
   // 1b. Baseline for the NEXT update (#268). Without this write the dirty check
   //     above can never say more than "unknown" — this is the step that starts

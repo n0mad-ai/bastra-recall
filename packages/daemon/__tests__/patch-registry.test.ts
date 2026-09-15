@@ -30,17 +30,15 @@ import {
   addPatch,
   activePatches,
   applySeries,
-  formatApplyOutcome,
   patchSubject,
-  pendingPatchNotice,
   probePatch,
   readIndex,
   readLastRun,
   removePatch,
   smokeCheck,
   statusAll,
-  writeLastRun,
 } from "../src/patch-registry.js";
+import { formatApplyOutcome, pendingPatchNotice, writeLastRun } from "../src/patch-report.js";
 
 /** A scratch HOME + a scratch install root, torn down by the caller. */
 function scratch(): { home: string; root: string; cleanup: () => void } {
@@ -759,6 +757,159 @@ test("…also when the path contains a colon (a git ceiling list delimiter)", { 
   const s = kegInsideForeignRepo({ prefixName: "home:brew" });
   try {
     assertKegPatched(s, s.installRoot, join(s.installRoot, "dist", "a.js"));
+  } finally {
+    s.cleanup();
+  }
+});
+
+// ─── the series running over a tree it already patched ───────────────────────
+// `bastra update` with nothing newer to install, or a source checkout after a
+// pull that left the patched files alone: the tree still carries the patch, it
+// reverse-applies, and it used to be retired as "merged upstream".
+
+test("a patch the last run applied is kept on the same tree, not retired as merged upstream", () => {
+  const s = scratch();
+  try {
+    writeFileSync(join(s.root, "src", "a.txt"), "old\n", "utf8");
+    addPatch(writePatchFile(s.home, "p.patch", diffFor("src/a.txt", ["old"], ["mine"])), s.home);
+
+    const first = applySeries(s.root, { home: s.home, skipSmoke: true, version: "1.0.0" });
+    assert.equal(first.applied.length, 1);
+    writeLastRun(first, s.home);
+
+    const again = applySeries(s.root, { home: s.home, skipSmoke: true, version: "1.0.0" });
+    assert.equal(again.retired.length, 0, "our own earlier apply is not an upstream merge");
+    assert.equal(again.kept.length, 1);
+    assert.equal(activePatches(s.home).length, 1, "the patch stays in the series for the next real update");
+    assert.equal(readFileSync(join(s.root, "src", "a.txt"), "utf8"), "mine\n", "and it is not applied twice");
+    writeLastRun(again, s.home);
+    assert.equal(statusAll(s.root, s.home)[0].state, "applied-here");
+
+    // A third no-op run still knows: kept counts as applied in the record.
+    const third = applySeries(s.root, { home: s.home, skipSmoke: true, version: "1.0.0" });
+    assert.equal(third.kept.length, 1);
+    assert.equal(third.retired.length, 0);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test("a new version that already contains the change still retires the patch", () => {
+  const s = scratch();
+  try {
+    writeFileSync(join(s.root, "src", "a.txt"), "old\n", "utf8");
+    addPatch(writePatchFile(s.home, "p.patch", diffFor("src/a.txt", ["old"], ["mine"])), s.home);
+    writeLastRun(applySeries(s.root, { home: s.home, skipSmoke: true, version: "1.0.0" }), s.home);
+
+    // Upstream shipped the same change in 1.0.1; the updater replaced the tree in place.
+    writeFileSync(join(s.root, "src", "a.txt"), "mine\n", "utf8");
+    const out = applySeries(s.root, { home: s.home, skipSmoke: true, version: "1.0.1" });
+    assert.equal(out.retired.length, 1);
+    assert.equal(out.kept.length, 0);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test("a last run on a different tree says nothing about this one", () => {
+  const a = scratch();
+  const b = scratch();
+  try {
+    writeFileSync(join(a.root, "src", "a.txt"), "old\n", "utf8");
+    writeFileSync(join(b.root, "src", "a.txt"), "mine\n", "utf8");
+    addPatch(writePatchFile(a.home, "p.patch", diffFor("src/a.txt", ["old"], ["mine"])), a.home);
+    writeLastRun(applySeries(a.root, { home: a.home, skipSmoke: true, version: "1.0.0" }), a.home);
+
+    // A new keg at the same version number (a rebuild) that already has the change.
+    const out = applySeries(b.root, { home: a.home, skipSmoke: true, version: "1.0.0" });
+    assert.equal(out.kept.length, 0, "another tree's record cannot vouch for this tree");
+    assert.equal(out.retired.length, 1);
+  } finally {
+    a.cleanup();
+    b.cleanup();
+  }
+});
+
+test("the same tree reached through a symlink is still the same tree", { skip: process.platform === "win32" }, () => {
+  const s = scratch();
+  try {
+    writeFileSync(join(s.root, "src", "a.txt"), "old\n", "utf8");
+    addPatch(writePatchFile(s.home, "p.patch", diffFor("src/a.txt", ["old"], ["mine"])), s.home);
+    const link = join(s.home, "install-link");
+    symlinkSync(s.root, link);
+    // Recorded through the link (Homebrew's opt/, macOS /var → /private/var) …
+    writeLastRun(applySeries(link, { home: s.home, skipSmoke: true, version: "1.0.0" }), s.home);
+    // … and run again through the real path.
+    const again = applySeries(s.root, { home: s.home, skipSmoke: true, version: "1.0.0" });
+    assert.equal(again.kept.length, 1);
+    assert.equal(again.retired.length, 0);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test("status after an in-place upgrade that absorbed the patch says upstream, not applied-here", () => {
+  const s = scratch();
+  try {
+    writeFileSync(join(s.root, "src", "a.txt"), "old\n", "utf8");
+    addPatch(writePatchFile(s.home, "p.patch", diffFor("src/a.txt", ["old"], ["mine"])), s.home);
+    writeLastRun(applySeries(s.root, { home: s.home, skipSmoke: true, version: "1.0.0" }), s.home);
+    // npm i -g replaced the tree in place with 1.0.1, which ships the same change.
+    assert.equal(statusAll(s.root, s.home, "1.0.1")[0].state, "already-upstream");
+    assert.equal(statusAll(s.root, s.home, "1.0.0")[0].state, "applied-here");
+  } finally {
+    s.cleanup();
+  }
+});
+
+test("a last-run record written before root/version existed keeps the patch it applied", () => {
+  // The update that installs this code runs the OLD writeLastRun, so its record
+  // has neither field. The next no-op update must not read the patch as merged.
+  const s = scratch();
+  try {
+    writeFileSync(join(s.root, "src", "a.txt"), "mine\n", "utf8");
+    const id = addPatch(writePatchFile(s.home, "p.patch", diffFor("src/a.txt", ["old"], ["mine"])), s.home).entry.id;
+    mkdirSync(join(s.home, ".bastra", "patches"), { recursive: true });
+    writeFileSync(join(s.home, ".bastra", "patches", "last-run.json"), JSON.stringify({ at: "2026-09-01T00:00:00Z", applied: [id], retired: [], setAside: [], rolledBack: false }));
+    const out = applySeries(s.root, { home: s.home, skipSmoke: true, version: "1.0.0" });
+    assert.equal(out.retired.length, 0);
+    assert.equal(out.kept.length, 1);
+    assert.equal(activePatches(s.home).length, 1);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test("a rollback inside a foreign work tree puts the keg back and leaves the foreign repo alone", () => {
+  // The snapshot's file list (`git apply --numstat`) and the reverse-apply
+  // fallback run through the same confinement as the apply itself.
+  const s = kegInsideForeignRepo();
+  try {
+    const indexBefore = readFileSync(join(s.prefix, ".git", "index"));
+    mkdirSync(join(s.installRoot, "dist", "cli"), { recursive: true });
+    writeFileSync(join(s.installRoot, "dist", "cli.js"), "process.exit(3)\n", "utf8");
+    addPatch(writePatchFile(s.home, "p.patch", diffFor("dist/a.js", ["old"], ["new"])), s.home);
+    const out = applySeries(s.installRoot, { home: s.home });
+    assert.equal(out.rolledBack, true, `expected a clean rollback, got ${JSON.stringify({ ok: out.ok, unrestored: out.unrestored, smoke: out.smokeError })}`);
+    assert.equal(readFileSync(join(s.installRoot, "dist", "a.js"), "utf8"), "old\n");
+    assert.deepEqual(readFileSync(join(s.prefix, ".git", "index")), indexBefore);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test("the rollback notice does not claim 'running unpatched' while earlier patches are still on", () => {
+  const s = scratch();
+  try {
+    const id = addPatch(writePatchFile(s.home, "p.patch", diffFor("src/a.txt", ["old"], ["mine"])), s.home).entry.id;
+    mkdirSync(join(s.home, ".bastra", "patches"), { recursive: true });
+    const rec = (applied: string[]) =>
+      writeFileSync(join(s.home, ".bastra", "patches", "last-run.json"), JSON.stringify({ at: "2026-09-14T00:00:00Z", applied, retired: [], setAside: [], rolledBack: true, smokeError: "boom" }));
+    rec([id]);
+    assert.match(pendingPatchNotice(s.home)!, /1 patch from an earlier run is still on this install/);
+    assert.doesNotMatch(pendingPatchNotice(s.home)!, /running unpatched/);
+    rec([]);
+    assert.match(pendingPatchNotice(s.home)!, /running unpatched/);
   } finally {
     s.cleanup();
   }

@@ -9,12 +9,11 @@
  */
 import { homedir } from "node:os";
 import type { ParsedArgs } from "./types.js";
-import { detectInstallMode, packageRootFromCliPath } from "./update.js";
+import { detectInstallMode, installedVersion, packageRootFromCliPath } from "./update.js";
 import {
   activePatches,
   addPatch,
   applySeries,
-  formatApplyOutcome,
   patchesDir,
   readIndex,
   removePatch,
@@ -22,6 +21,7 @@ import {
   statusAll,
   type PatchState,
 } from "../patch-registry.js";
+import { formatApplyOutcome } from "../patch-report.js";
 
 const out = (s: string) => process.stdout.write(s);
 
@@ -41,6 +41,7 @@ function usage(): void {
 const STATE_LABEL: Record<PatchState, string> = {
   clean: "✓ applies cleanly",
   "already-upstream": "↩ already upstream",
+  "applied-here": "✓ applied (by the last update on this install)",
   conflict: "⚠ conflicts",
   unknown: "? cannot tell",
 };
@@ -94,7 +95,8 @@ export async function cmdPatches(args: ParsedArgs): Promise<number> {
       // Registering a patch that does not apply is not an error — it may be
       // meant for a version that is not installed yet — but it is the single
       // most useful thing to know at this moment, so it is not left for later.
-      const [status] = statusAll(installRoot()).filter((s) => s.entry.id === entry.id);
+      const root = installRoot();
+      const [status] = statusAll(root, undefined, installedVersion(root)).filter((s) => s.entry.id === entry.id);
       if (status) {
         out(`Against the current installation: ${STATE_LABEL[status.state]}\n`);
         if (status.detail) out(`  ${status.detail.split("\n")[0]}\n`);
@@ -134,14 +136,14 @@ export async function cmdPatches(args: ParsedArgs): Promise<number> {
     if (roots.apply !== roots.boot) out(`Patches apply from: ${roots.apply}\n`);
     out(`\n`);
     let conflicts = 0;
-    for (const s of statusAll(root)) {
+    for (const s of statusAll(root, undefined, installedVersion(root))) {
       out(`  ${STATE_LABEL[s.state]}  ${s.entry.id}\n      ${s.entry.subject}\n`);
       if (s.detail) out(`      ${s.detail.split("\n")[0]}\n`);
       if (s.state === "conflict") conflicts++;
     }
     // A dry run over the whole series says something the per-patch probes cannot:
     // which ones would be retired, in the order they would actually run.
-    const plan = applySeries(root, { dryRun: true });
+    const plan = applySeries(root, { dryRun: true, version: installedVersion(root) });
     if (plan.retired.length || plan.applied.length || plan.setAside.length) {
       out(`\nOn the next update:\n${formatApplyOutcome(plan)}`);
     }

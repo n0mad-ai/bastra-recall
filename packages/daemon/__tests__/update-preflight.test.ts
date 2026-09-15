@@ -33,7 +33,7 @@ import {
   writeManifest,
 } from "../src/cli/update-preflight.js";
 import { findExecutable } from "../src/cli/exec.js";
-import { detectInstallMode, hasInPlacePreflight, packageRootFromCliPath } from "../src/cli/update.js";
+import { detectInstallMode, hasInPlacePreflight, packageRootFromCliPath, patchReapplyRoot, reapplyPatchSeries } from "../src/cli/update.js";
 import { parseArgs } from "../src/cli/commands.js";
 import {
   blockedUpdatePath,
@@ -647,4 +647,56 @@ test("why brew gets no baseline: a keg manifest can never match the next version
     // print "a baseline is written after this update" every single time.
     assert.equal(hasInPlacePreflight("brew"), false);
   });
+});
+
+test("the patch series is reapplied onto the keg brew just linked — not skipped on Homebrew", () => {
+  const brew = detectInstallMode("/opt/homebrew/Cellar/bastra-recall/1.0.0/libexec/packages/daemon/dist/cli/update.js");
+  const oldRoot = packageRootFromCliPath(brew.cliPath);
+  const newKegScript = "/opt/homebrew/opt/bastra-recall/libexec/packages/daemon/dist/index.js";
+  assert.equal(
+    patchReapplyRoot(brew, oldRoot, () => newKegScript),
+    "/opt/homebrew/opt/bastra-recall/libexec/packages/daemon",
+    "the fresh keg is the tree the user runs next — the running process's keg is superseded",
+  );
+  assert.equal(patchReapplyRoot(brew, oldRoot, () => null), null, "no installed keg found → nothing to patch, never the old one");
+
+  const npm = detectInstallMode("/usr/local/lib/node_modules/@bastra-recall/daemon/dist/cli/update.js");
+  assert.equal(patchReapplyRoot(npm, "/usr/local/lib/node_modules/@bastra-recall/daemon"), "/usr/local/lib/node_modules/@bastra-recall/daemon");
+  assert.equal(patchReapplyRoot({ ...npm, mode: "source" }, "/repo/packages/daemon"), null);
+  assert.equal(patchReapplyRoot({ ...npm, mode: "unknown" }, "/x"), null);
+});
+
+test("the update step reapplies onto the fresh keg, and asks brew nothing when there is no series", () => {
+  const brew = detectInstallMode("/opt/homebrew/Cellar/bastra-recall/1.0.0/libexec/packages/daemon/dist/cli/update.js");
+  const oldRoot = packageRootFromCliPath(brew.cliPath);
+  const calls: Array<{ root: string; version?: string }> = [];
+  let rootAsked = 0;
+  let recorded = 0;
+  const outcome = { applied: [], kept: [], retired: [], setAside: [], ok: true, rolledBack: false };
+  const io = {
+    root: (m: typeof brew, p: string) => (rootAsked++, patchReapplyRoot(m, p, () => "/opt/homebrew/opt/bastra-recall/libexec/packages/daemon/dist/index.js")),
+    apply: ((root: string, opts?: { version?: string }) => (calls.push({ root, version: opts?.version }), outcome)) as never,
+    record: (() => void recorded++) as never,
+    version: () => "1.0.1",
+    out: () => {},
+  };
+
+  reapplyPatchSeries(brew, oldRoot, { ...io, series: () => [] });
+  assert.equal(rootAsked, 0, "no series → no `brew --prefix` spawn");
+  assert.equal(calls.length, 0);
+
+  reapplyPatchSeries(brew, oldRoot, { ...io, series: () => [{}] });
+  assert.deepEqual(calls, [{ root: "/opt/homebrew/opt/bastra-recall/libexec/packages/daemon", version: "1.0.1" }]);
+  assert.equal(recorded, 1, "the run is recorded so the next one can tell its own work from upstream's");
+
+  calls.length = 0;
+  reapplyPatchSeries({ ...brew, mode: "source" }, "/repo/packages/daemon", { ...io, series: () => [{}] });
+  assert.equal(calls.length, 0, "a source checkout is the user's own tree");
+});
+
+test("a Homebrew update that cannot locate its keg says the patches were not reapplied", () => {
+  const brew = detectInstallMode("/opt/homebrew/Cellar/bastra-recall/1.0.0/libexec/packages/daemon/dist/cli/update.js");
+  let said = "";
+  reapplyPatchSeries(brew, "/x", { series: () => [{}, {}], root: () => null, out: (t) => (said += t) });
+  assert.match(said, /2 local patches not reapplied/);
 });
