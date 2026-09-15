@@ -38,6 +38,15 @@ import { SearchIndex } from "../src/search.js";
 import type { LateSettleSample } from "../src/deadline.js";
 
 const DEADLINE_MS = 150;
+/**
+ * Timer-Schlupf nach unten. `wait_ms` ist eine `Date.now()`-Differenz gegen
+ * einen Timer, der auf derselben Millisekunde feuert: beide runden auf ganze
+ * Millisekunden, und unter CI-Last kam 149 statt 150 heraus — der Lauf, der
+ * diese Toleranz nötig gemacht hat. Die Aussage bleibt trotzdem scharf: der
+ * Gegenwert ist die späte Antwort 250 ms weiter, die Lücke ist also 50-mal so
+ * groß wie diese Toleranz.
+ */
+const TIMER_SCHLUPF_MS = 5;
 /** Antwortet klar VOR der Deadline — wird sie trotzdem gerissen, lag es nicht
  *  am Provider, sondern daran, dass er nie gefragt wurde. */
 const ANTWORT_NACH_MS = 40;
@@ -399,7 +408,7 @@ test("#489: ein Timeout liefert die Wartezeit UND das echte Settle", async (t) =
 
   assert.ok(lauf.timeout, "der Arm muss in seine Frist laufen");
   assert.ok(
-    lauf.waitMs >= DEADLINE_MS && lauf.waitMs < ANTWORT_NACH_TIMEOUT_MS,
+    lauf.waitMs >= DEADLINE_MS - TIMER_SCHLUPF_MS && lauf.waitMs < ANTWORT_NACH_TIMEOUT_MS,
     `die Wartezeit muss auf der Deadline liegen, war ${lauf.waitMs} ms`,
   );
   // Zum Zeitpunkt der Antwort darf es die späte Stichprobe noch NICHT geben —
