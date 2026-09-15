@@ -25,7 +25,8 @@
     "longmemeval": "tsx src/longmemeval-run.ts",
     "rerank-replay": "tsx src/rerank-replay.ts",
     "rerank-pool-coverage": "tsx src/rerank-pool-coverage.ts",
-    "rerank-longmemeval": "tsx src/rerank-longmemeval.ts"
+    "rerank-longmemeval": "tsx src/rerank-longmemeval.ts",
+    "evidence-windows": "tsx src/evidence-windows-run.ts"
   },
   "dependencies": {
     "@bastra-recall/core": "1.0.0",
@@ -33,6 +34,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
+    "js-tiktoken": "^1.0.21",
     "tsx": "^4.23.13",
     "typescript": "^6.0.3"
   },
