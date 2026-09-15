@@ -1,0 +1,250 @@
+[
+  {
+    "id": "retention",
+    "query": "What is the current retention duration and its exception?",
+    "sources": [
+      {
+        "id": "retention",
+        "text": "Historical draft: earlier values are superseded by the current policy below.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nCurrent retention duration: 19 days.\n\nException: legal holds must never be deleted.\n\nFinal administrative notes."
+      }
+    ],
+    "expected_ids": [
+      "retention"
+    ],
+    "required_spans": [
+      {
+        "id": "retention",
+        "start": 3822,
+        "end": 3858,
+        "text": "Current retention duration: 19 days."
+      },
+      {
+        "id": "retention",
+        "start": 3860,
+        "end": 3905,
+        "text": "Exception: legal holds must never be deleted."
+      }
+    ]
+  },
+  {
+    "id": "aufbewahrung",
+    "query": "Welche Aufbewahrungsfrist gilt aktuell und welche Ausnahme gibt es?",
+    "sources": [
+      {
+        "id": "aufbewahrung",
+        "text": "Historical draft: earlier values are superseded by the current policy below.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nDie aktuelle Aufbewahrungsfrist beträgt 23 Tage.\n\nAusnahme: gesperrte Akten dürfen nicht gelöscht werden.\n\nFinal administrative notes."
+      }
+    ],
+    "expected_ids": [
+      "aufbewahrung"
+    ],
+    "required_spans": [
+      {
+        "id": "aufbewahrung",
+        "start": 3822,
+        "end": 3870,
+        "text": "Die aktuelle Aufbewahrungsfrist beträgt 23 Tage."
+      },
+      {
+        "id": "aufbewahrung",
+        "start": 3872,
+        "end": 3927,
+        "text": "Ausnahme: gesperrte Akten dürfen nicht gelöscht werden."
+      }
+    ]
+  },
+  {
+    "id": "version",
+    "query": "Which rollout version is active now?",
+    "sources": [
+      {
+        "id": "version",
+        "text": "Historical draft: earlier values are superseded by the current policy below.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nPrevious rollout version: amber.\n\nCurrent rollout version: cobalt, effective 2026-08-12.\n\nFinal administrative notes."
+      }
+    ],
+    "expected_ids": [
+      "version"
+    ],
+    "required_spans": [
+      {
+        "id": "version",
+        "start": 3856,
+        "end": 3910,
+        "text": "Current rollout version: cobalt, effective 2026-08-12."
+      }
+    ]
+  },
+  {
+    "id": "negation",
+    "query": "Can the backup be removed?",
+    "sources": [
+      {
+        "id": "negation",
+        "text": "Historical draft: earlier values are superseded by the current policy below.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nThe backup must NOT be removed until validation finishes.\n\nAfter validation, removal still requires an owner approval.\n\nFinal administrative notes."
+      }
+    ],
+    "expected_ids": [
+      "negation"
+    ],
+    "required_spans": [
+      {
+        "id": "negation",
+        "start": 3822,
+        "end": 3879,
+        "text": "The backup must NOT be removed until validation finishes."
+      },
+      {
+        "id": "negation",
+        "start": 3881,
+        "end": 3940,
+        "text": "After validation, removal still requires an owner approval."
+      }
+    ]
+  },
+  {
+    "id": "cross-language",
+    "query": "Who approves archive deletion?",
+    "sources": [
+      {
+        "id": "cross-language",
+        "text": "Historical draft: earlier values are superseded by the current policy below.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nArchiv-Löschungen genehmigt die Archivleitung. Stellvertretung nur bei dokumentierter Abwesenheit.\n\nFinal administrative notes."
+      }
+    ],
+    "expected_ids": [
+      "cross-language"
+    ],
+    "required_spans": [
+      {
+        "id": "cross-language",
+        "start": 3822,
+        "end": 3920,
+        "text": "Archiv-Löschungen genehmigt die Archivleitung. Stellvertretung nur bei dokumentierter Abwesenheit."
+      }
+    ]
+  },
+  {
+    "id": "remote-qualifier",
+    "query": "What is the export deadline?",
+    "sources": [
+      {
+        "id": "remote-qualifier",
+        "text": "Historical draft: earlier values are superseded by the current policy below.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nExport deadline: Friday at noon.\n\nCalendar note.\n\nOperational note.\n\nException to the deadline: emergency exports are paused until the audit finishes.\n\nFinal administrative notes."
+      }
+    ],
+    "expected_ids": [
+      "remote-qualifier"
+    ],
+    "required_spans": [
+      {
+        "id": "remote-qualifier",
+        "start": 3822,
+        "end": 3854,
+        "text": "Export deadline: Friday at noon."
+      },
+      {
+        "id": "remote-qualifier",
+        "start": 3891,
+        "end": 3972,
+        "text": "Exception to the deadline: emergency exports are paused until the audit finishes."
+      }
+    ]
+  },
+  {
+    "id": "identifier",
+    "query": "What does E_ARCHIVE_17 mean?",
+    "sources": [
+      {
+        "id": "identifier",
+        "text": "Historical draft: earlier values are superseded by the current policy below.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nE_ARCHIVE_17 means the manifest revision does not match the stored object.\n\nRetry only after refreshing the manifest.\n\nFinal administrative notes."
+      }
+    ],
+    "expected_ids": [
+      "identifier"
+    ],
+    "required_spans": [
+      {
+        "id": "identifier",
+        "start": 3822,
+        "end": 3896,
+        "text": "E_ARCHIVE_17 means the manifest revision does not match the stored object."
+      },
+      {
+        "id": "identifier",
+        "start": 3898,
+        "end": 3939,
+        "text": "Retry only after refreshing the manifest."
+      }
+    ]
+  },
+  {
+    "id": "table",
+    "query": "What is the Glacier quota and rollover rule?",
+    "sources": [
+      {
+        "id": "table",
+        "text": "Historical draft: earlier values are superseded by the current policy below.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\n| Tier | Quota |\n| --- | --- |\n| Glacier | 17 GB |\n\nUnused quota does not roll over.\n\nFinal administrative notes."
+      }
+    ],
+    "expected_ids": [
+      "table"
+    ],
+    "required_spans": [
+      {
+        "id": "table",
+        "start": 3853,
+        "end": 3872,
+        "text": "| Glacier | 17 GB |"
+      },
+      {
+        "id": "table",
+        "start": 3874,
+        "end": 3906,
+        "text": "Unused quota does not roll over."
+      }
+    ]
+  },
+  {
+    "id": "multi-source",
+    "query": "What is the retention duration and who approves it?",
+    "sources": [
+      {
+        "id": "multi-duration",
+        "text": "Historical draft: earlier values are superseded by the current policy below.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nRetention duration: 29 days.\n\nFinal administrative notes."
+      },
+      {
+        "id": "multi-owner",
+        "text": "Historical draft: earlier values are superseded by the current policy below.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nOperational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy.\n\nThe archive board approves the retention duration.\n\nFinal administrative notes."
+      }
+    ],
+    "expected_ids": [
+      "multi-duration",
+      "multi-owner"
+    ],
+    "required_spans": [
+      {
+        "id": "multi-duration",
+        "start": 3822,
+        "end": 3850,
+        "text": "Retention duration: 29 days."
+      },
+      {
+        "id": "multi-owner",
+        "start": 3822,
+        "end": 3872,
+        "text": "The archive board approves the retention duration."
+      }
+    ]
+  },
+  {
+    "id": "no-answer",
+    "query": "Which lunar station stores the archive?",
+    "sources": [
+      {
+        "id": "irrelevant",
+        "text": "Operational background: the archive stores activity logs. Index maintenance is performed separately from access management. This paragraph documents routine housekeeping and establishes no retention policy."
+      }
+    ],
+    "expected_ids": [],
+    "no_answer": true
+  }
+]
