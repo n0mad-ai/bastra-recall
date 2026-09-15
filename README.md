@@ -25,6 +25,12 @@ Supported integrations help assistants save useful lessons and retrieve relevant
 
 **Version 1.0 is available.** Find published downloads in the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), changes in the [changelog](./CHANGELOG.md), and tested integrations in the [support matrix](#supported-surfaces).
 
+<p align="center">
+  <img src="./assets/recall-demo.gif" alt="A terminal session: two questions, and Bastra Recall surfaces the matching decisions on its own. The status line at the bottom counts the calls, hits and milliseconds." width="100%" />
+</p>
+
+<p align="center"><sub>Two questions, answered from a vault the assistant was never told to search. The bar at the bottom is Claude Code's status line.</sub></p>
+
 ### Install
 
 **macOS — guided setup:**
@@ -133,6 +139,12 @@ Bewahre deine Vorlieben, Entscheidungen und erarbeiteten Lösungen über einzeln
 Unterstützte Integrationen helfen Assistenten, wichtige Erkenntnisse zu speichern und relevante Erinnerungen vor neuen Aufgaben abzurufen. Du kannst die Dateien selbst prüfen und bearbeiten – mit Obsidian oder jedem Texteditor. Automatischer Abruf hängt von der Integration und dem Assistenten ab; er garantiert nicht, dass jede Anweisung befolgt wird.
 
 **Version 1.0 ist verfügbar.** Veröffentlichte Downloads findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), Änderungen im [Changelog](./CHANGELOG.md) und getestete Integrationen in der [Support-Matrix](#unterstützte-oberflächen).
+
+<p align="center">
+  <img src="./assets/recall-demo.gif" alt="Eine Terminal-Sitzung: zwei Fragen, und Bastra Recall legt die passenden Entscheidungen von selbst vor. Die Statusleiste unten zählt Aufrufe, Treffer und Millisekunden." width="100%" />
+</p>
+
+<p align="center"><sub>Zwei Fragen, beantwortet aus einem Vault, das der Assistent nicht durchsuchen sollte. Die Leiste unten ist die Statusleiste von Claude Code.</sub></p>
 
 ### Installation
 
