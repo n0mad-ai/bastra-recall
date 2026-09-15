@@ -186,7 +186,9 @@ export async function installVaultFirstRunStep(
  * environment or an existing registration is NOT created: when it is missing the
  * likeliest cause is a drive that is not mounted, and an empty directory on the
  * mountpoint is exactly what would make the daemon serve nothing. That case is
- * named, and install goes on — the daemon refuses to boot on it anyway.
+ * named, and install goes on — the daemon does boot on a missing vault path and
+ * answers with vault_missing (vault-presence.ts), which is the whole point of
+ * saying it out loud here rather than leaving it to a silent empty result.
  * Returns an exit code when install must stop, else null.
  */
 export async function installVaultPresenceStep(
