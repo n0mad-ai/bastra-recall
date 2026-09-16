@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { buildHotFileTemplate, harvestReviewedMisses } from "../src/learned-recall/reviewed-miss-harvest.js";
+import { extractReviewedMissChains, harvestReviewedMisses, toCandidate } from "../src/learned-recall/reviewed-miss-harvest.js";
 
 function line(value: unknown): string { return JSON.stringify(value); }
 
@@ -41,6 +44,18 @@ test("evidence before the matching Recall result cannot form a candidate", () =>
   assert.deepEqual(harvestReviewedMisses(session, "session.jsonl"), []);
 });
 
+test("a source read without an inspectable identity still records the review boundary", () => {
+  const session = [
+    line({ type: "user", message: { content: "where is the deployment rail" } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] } }),
+    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"hits":[]}' }] } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: {} }] } }),
+  ].join("\n");
+  const [candidate] = harvestReviewedMisses(session, "session.jsonl");
+  assert.equal(candidate.status, "candidate");
+  assert.equal(candidate.sourceRef, null);
+});
+
 test("an unrelated empty tool result cannot taint a nonempty Recall", () => {
   const session = [
     line({ type: "user", message: { content: "where is the deployment rail" } }),
@@ -53,6 +68,61 @@ test("an unrelated empty tool result cannot taint a nonempty Recall", () => {
     line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] } }),
   ].join("\n");
   assert.equal(harvestReviewedMisses(session, "session.jsonl")[0].status, "needs-relevance-label");
+});
+
+test("a miss is what the envelope states, never a sentence inside a hit", () => {
+  const run = (content: string): string => {
+    const session = [
+      line({ type: "user", message: { content: "where is the deployment rail" } }),
+      line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] } }),
+      line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content }] } }),
+      line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] } }),
+    ].join("\n");
+    return harvestReviewedMisses(session, "session.jsonl")[0]?.status ?? "missing";
+  };
+  // envelope-level signals
+  assert.equal(run('{"weak_result":true,"hits":[{"id":"memory-1"}]}'), "candidate");
+  assert.equal(run('{"no_home":true,"hits":[{"id":"memory-1"}]}'), "candidate");
+  assert.equal(run('{"hits":[]}'), "candidate");
+  // the reported defect: a nonempty recall whose hit text names a miss
+  assert.equal(run('{"hits":[{"id":"lesson-about-recall","summary":"no relevant memory was found — lesson"}]}'), "needs-relevance-label");
+  // a nested empty hits array is payload, not envelope
+  assert.equal(run('{"hits":[{"id":"memory-1","hits":[]}]}'), "needs-relevance-label");
+  // text that is not an envelope carries no miss signal
+  assert.equal(run("no relevant memory found"), "needs-relevance-label");
+  assert.equal(run("Error: query is required"), "needs-relevance-label");
+});
+
+test("the served envelope may arrive as text parts, and its recall_id is read", () => {
+  const envelope = JSON.stringify({ query: "rail", hits: [], recall_id: "11111111-2222-3333-4444-555555555555" }, null, 2);
+  const session = [
+    line({ type: "user", message: { content: "where is the deployment rail" } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] } }),
+    line({ type: "user", timestamp: "2026-09-13T20:00:00.000Z", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: [{ type: "text", text: envelope }] }] } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "mcp__bastra-recall__load_memory", input: { id: "memory-1" } }] } }),
+  ].join("\n");
+  const [chain] = extractReviewedMissChains(session, "session.jsonl");
+  assert.equal(chain.explicitMiss, true);
+  assert.equal(chain.recallId, "11111111-2222-3333-4444-555555555555");
+  assert.equal(chain.resultTs, "2026-09-13T20:00:00.000Z");
+  assert.deepEqual(chain.evidence, { kind: "load-memory", memoryId: "memory-1" });
+  assert.doesNotMatch(JSON.stringify(toCandidate(chain)), /memory-1|1111/);
+});
+
+test("a session-context block after the envelope does not hide the envelope", () => {
+  const text = JSON.stringify({ query: "rail", hits: [], recall_id: "11111111-2222-3333-4444-555555555555" }, null, 2) +
+    "<bastra-session-context>\nRecalled context — {\"hits\":[{\"id\":\"x\"}]} not the envelope\n</bastra-session-context>";
+  const session = [
+    line({ type: "user", message: { content: "where is the deployment rail" } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] } }),
+    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: [{ type: "text", text }] }] } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] } }),
+  ].join("\n");
+  const stats = { recalls: 0, withRecallId: 0 };
+  const [chain] = extractReviewedMissChains(session, "session.jsonl", stats);
+  assert.equal(chain.explicitMiss, true);
+  assert.equal(chain.recallId, "11111111-2222-3333-4444-555555555555");
+  assert.deepEqual(stats, { recalls: 1, withRecallId: 1 });
 });
 
 test("transcript control envelopes cannot become a Recall intent", () => {
@@ -88,51 +158,27 @@ test("seeded raw transcript preserves the expected candidate ledger", async () =
   }]);
 });
 
-test("a hot-file template counts only private file evidence relative to its live zone", () => {
-  const session = [
-    line({ type: "user", message: { content: "where is the deployment rail" } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] } }),
-    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"hits":[]}' }] } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/zone/docs/rail.md" } }] } }),
-  ].join("\n");
-  const records = harvestReviewedMisses(session, "session.jsonl", { includePrivateEvidence: true });
-  assert.deepEqual(buildHotFileTemplate(records, "/zone", "deployment"), {
-    kind: "recall-hot-files-template/v1",
-    zone: "deployment",
-    validation: "resolve relative to the live zone root; ignore missing paths",
-    excludedEphemeralObservations: 0,
-    files: [{ path: "docs/rail.md", observations: 1, explicitMisses: 1, needsRelevanceLabel: 0 }],
-  });
+test("harvest CLI retains its first positional session file when no flags are supplied", () => {
+  const fixture = fileURLToPath(new URL("../__fixtures__/reviewed-miss-harvest/explicit-miss.jsonl", import.meta.url));
+  const script = resolve(import.meta.dirname, "..", "scripts", "harvest-reviewed-misses.ts");
+  const result = spawnSync(process.execPath, ["--import", "tsx", script, fixture], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  const records = JSON.parse(result.stdout) as Array<{ status: string }>;
+  assert.deepEqual(records.map((record) => record.status), ["candidate"]);
 });
 
-test("a hot-file template excludes session artifacts even when they are frequent", () => {
-  const records = [{
-    kind: "reviewed-recall-miss-candidate/v1" as const,
-    status: "candidate" as const,
-    query: "rail",
-    sessionRef: "sha256:session",
-    sourceRef: "sha256:source",
-    sourcePath: "/tmp/claude-1000/session/scratchpad/rail.md",
-    evidence: { recall: "explicit-miss" as const, sourceReadAfterRecall: true as const },
-  }];
-  assert.deepEqual(buildHotFileTemplate(records, "/tmp/claude-1000", "scratch"), {
-    kind: "recall-hot-files-template/v1",
-    zone: "scratch",
-    validation: "resolve relative to the live zone root; ignore missing paths",
-    excludedEphemeralObservations: 1,
-    files: [],
-  });
-});
-
-test("a hot-file template excludes nested Claude tool results", () => {
-  const records = [{
-    kind: "reviewed-recall-miss-candidate/v1" as const,
-    status: "candidate" as const,
-    query: "rail",
-    sessionRef: "sha256:session",
-    sourceRef: "sha256:source",
-    sourcePath: "/home/zzalli/.claude/projects/-home-zzalli/session/tool-results/result.txt",
-    evidence: { recall: "explicit-miss" as const, sourceReadAfterRecall: true as const },
-  }];
-  assert.equal(buildHotFileTemplate(records, "/home/zzalli", "arch-home").excludedEphemeralObservations, 1);
+test("harvest CLI writes only the explicitly requested queue", async () => {
+  const fixture = fileURLToPath(new URL("../__fixtures__/reviewed-miss-harvest/explicit-miss.jsonl", import.meta.url));
+  const script = resolve(import.meta.dirname, "..", "scripts", "harvest-reviewed-misses.ts");
+  const dir = await mkdtemp(join(tmpdir(), "bastra-reviewed-miss-"));
+  const output = join(dir, "queue.json");
+  try {
+    const result = spawnSync(process.execPath, ["--import", "tsx", script, "--out", output, fixture], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(await readdir(dir), ["queue.json"]);
+    const records = JSON.parse(await readFile(output, "utf8")) as Array<{ sourceRef: string | null }>;
+    assert.match(records[0]?.sourceRef ?? "", /^sha256:/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
