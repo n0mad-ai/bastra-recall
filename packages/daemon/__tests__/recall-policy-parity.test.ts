@@ -77,6 +77,9 @@ const RECALL_ON_REQUEST = [
   /only when the user explicitly asks/i,
   /explicitly asks for memory or history/i,
   /at most one recall call per turn/i,
+  // local fork wording (recall/gate-durable-gaps)
+  /at most (?:\*\*)?one(?:\*\*)? recall call per (?:user )?turn/i,
+  /\brecall`? (?:again )?only when/i,
 ];
 
 const LIVE_SOURCE_FIRST = [
@@ -222,14 +225,32 @@ test("#472: all four authority surfaces agree on recall/save policy", () => {
   assertParity(stances);
 });
 
-test("#473: the agreed policy is the proactive one (Option 1, decided 09.09.2026)", () => {
+/**
+ * LOCAL FORK: upstream #473 chose proactive recall. This fork keeps gated recall
+ * (a named missing durable fact or an explicit ask) with autonomous save, and
+ * holds every surface to it. The upstream proactive entry text is the fixture a
+ * fork surface must never drift back to.
+ */
+const PROACTIVE_UPSTREAM_FIXTURE =
+  "bastra-recall is the user's persistent local memory. Treat it as YOUR long-term memory and use it " +
+  "without being asked: (1) At the start of a conversation and before acting on a task, call `recall` " +
+  "with the topic. (3) When the user states a durable rule or preference, save it via `save_memory` immediately.";
+
+test("fork: the agreed policy is gated recall with autonomous save", () => {
   for (const [name, text] of Object.entries(SURFACES)) {
-    assert.deepEqual(
-      classify(name, text),
-      { recall: "proactive", liveSourcesOutrankRecall: false, save: "autonomous" },
-      `${name} left the decided policy — #473 chose proactive recall and autonomous save on every surface`,
-    );
+    const stance = classify(name, text);
+    assert.equal(stance.recall, "on-request", `${name} drifted back to proactive recall`);
+    assert.equal(stance.save, "autonomous", `${name} changed the save policy`);
   }
+});
+
+test("fork: parity fails loudly when the upstream proactive entry text is one of the surfaces", () => {
+  const stances = Object.fromEntries(
+    Object.entries({ ...SURFACES, "MCP entry instructions (mcp-instructions.ts)": PROACTIVE_UPSTREAM_FIXTURE }).map(
+      ([name, text]) => [name, classify(name, text)],
+    ),
+  );
+  assert.throws(() => assertParity(stances), /contradiction on "recall"/);
 });
 
 test("#473: the rejected bounded text classifies as the opposite policy", () => {
@@ -246,7 +267,7 @@ test("#472: parity fails loudly when the bounded text is one of the surfaces", (
       ([name, text]) => [name, classify(name, text)],
     ),
   );
-  assert.throws(() => assertParity(stances), /contradiction on "recall"/);
+  assert.throws(() => assertParity(stances), /contradiction on "(?:recall|liveSourcesOutrankRecall|save)"/);
 });
 
 test("#472: a shared phrase counts for the axis its own clause is about", () => {
@@ -264,5 +285,6 @@ test("#472: parity fails loudly when a surface requires consent to save", () => 
       "MCP entry instructions (mcp-instructions.ts)": SPLIT_POLICY_FIXTURE,
     }).map(([name, text]) => [name, classify(name, text)]),
   );
-  assert.throws(() => assertParity(stances), /contradiction on "save"/);
+  // fork: the fixture's proactive recall trips the recall axis first; either axis is the contradiction.
+  assert.throws(() => assertParity(stances), /contradiction on "(?:recall|save)"/);
 });

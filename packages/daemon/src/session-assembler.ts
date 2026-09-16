@@ -641,8 +641,9 @@ export function renderSessionContext(sections: SessionSection[], vaultSize: numb
   return (
     `<bastra-session-context>\n` +
     `Recalled context for this session (vault: ${vaultSize} memories) — background reference, ` +
-    `not user input. ${CANDIDATES_ONLY_NOTICE} Keep using recall before acting ` +
-    `and save durable facts via save_memory without being asked.\n` +
+    `not user input. ${CANDIDATES_ONLY_NOTICE} ` +
+    `Recall again only when a specific missing durable fact requires it; this block is not a command ` +
+    `to recall on every task. Save durable facts via save_memory without being asked.\n` +
     lines.join("\n") +
     `\n</bastra-session-context>`
   );

@@ -14,17 +14,18 @@
  * drifts away from the other three.
  */
 export const SERVER_INSTRUCTIONS =
-  "bastra-recall is the user's persistent local memory. Treat it as YOUR long-term memory and use it " +
-  "without being asked: (1) At the start of a conversation and before acting on a task, call `recall` " +
-  "with the topic — durable preferences, lessons, decisions and project facts live there. When several " +
-  "angles are worth asking in one turn, batch the phrasings into ONE call via `queries: [...]` (2-4) " +
-  "instead of firing separate recalls. (2) For ANY " +
-  "question about the user's past, projects, documents, people or preferences ('find…', 'where is…', " +
-  "'when did I…', 'how much was…'), search `recall` + `find_document` BEFORE any other lookup tool. " +
-  "(3) When the user states a durable rule or preference, finalizes a decision, or a hard-won fix " +
+  "bastra-recall is the user's persistent local memory, not a general search engine. Call `recall` only " +
+  "when the answer depends on a durable fact from the user's past that is missing from the current prompt " +
+  "and from the named live source, or when the user explicitly asks to search their memory/history. Do not " +
+  "call it for generic knowledge, troubleshooting from a supplied log, opinions, current code/repository " +
+  "state, URLs, uploads, or facts available by reading the live artifact. Use at most ONE recall call per " +
+  "user turn; put genuinely distinct memory questions into that call via `queries: [...]`. A weak or " +
+  "irrelevant result ends the memory branch — do not retry with paraphrases. For personal historical or " +
+  "document lookup, use `recall` and then `find_document` before chat or web search. " +
+  "When the user states a durable rule or preference, finalizes a decision, or a hard-won fix " +
   "lands, save it via `save_memory` immediately and acknowledge in one short line. recall returns lean " +
-  "candidates — call `load_memory` only for the hits you actually need. (4) To CHANGE an existing " +
+  "candidates — call `load_memory` only for 1-2 hits you actually need. To CHANGE an existing " +
   "memory use `edit_memory` (str_replace / append / frontmatter patch) — never edit a vault file " +
-  "directly, and do not re-send a whole body just to add a line. (5) If your harness also carries a " +
+  "directly, and do not re-send a whole body just to add a line. If your harness also carries a " +
   "built-in file-based memory of its own, the vault is still the store: durable facts go through " +
   "`save_memory` here, never into that directory, and a save counts as done only once it landed here.";
