@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/github-banner.jpg" alt="Bastra Recall — open-source memory for AI assistants" width="100%" />
+  <img src="./assets/github-banner.jpg" alt="Bastra Recall — persistent memory for AI coding agents: works with Claude Code, Cursor and MCP, stores memories as readable Markdown, open source" width="100%" />
 </p>
 
 # Bastra Recall
