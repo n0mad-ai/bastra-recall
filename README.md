@@ -23,6 +23,18 @@ Keep your preferences, decisions and hard-won fixes available beyond a single ch
 
 Supported integrations help assistants save useful lessons and retrieve relevant memories before starting work. You can inspect and edit the files yourself, with Obsidian or any text editor. Automatic recall depends on the client integration and the assistant; it does not guarantee that every instruction will be followed.
 
+### Why not just CLAUDE.md?
+
+A CLAUDE.md or AGENTS.md works well while it is small. Every month of project work makes it longer, and the assistant gets all of it in every session, needed or not. Eventually nobody maintains it, and conventions start drifting again.
+
+Bastra Recall picks up there:
+
+- **Targeted, not everything:** Each decision and lesson is stored as its own file. Supported integrations surface the relevant entries before work instead of sending everything every time.
+- **Grows as you work:** The assistant can record new decisions and solved problems while it works. You review and correct them as needed instead of adding everything by hand.
+- **One memory for several tools:** Claude Code, Codex and other MCP-capable tools share the same vault, so you don't have to keep separate rule files in sync.
+
+Keep your CLAUDE.md. Recall adds the knowledge that doesn't belong in every session.
+
 **Version 1.0 is available.** Find published downloads in the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), changes in the [changelog](./CHANGELOG.md), and tested integrations in the [support matrix](#supported-surfaces).
 
 <p align="center">
@@ -137,6 +149,18 @@ Wir bauen mit dem Anspruch, das beste persönliche Gedächtnis für die täglich
 Bewahre deine Vorlieben, Entscheidungen und erarbeiteten Lösungen über einzelne Chats hinweg. Bastra Recall speichert sie als lesbare Markdown-Dateien auf deinem Rechner und macht sie deinen verbundenen KI-Assistenten zugänglich.
 
 Unterstützte Integrationen helfen Assistenten, wichtige Erkenntnisse zu speichern und relevante Erinnerungen vor neuen Aufgaben abzurufen. Du kannst die Dateien selbst prüfen und bearbeiten – mit Obsidian oder jedem Texteditor. Automatischer Abruf hängt von der Integration und dem Assistenten ab; er garantiert nicht, dass jede Anweisung befolgt wird.
+
+### Warum nicht einfach CLAUDE.md?
+
+Eine CLAUDE.md oder AGENTS.md funktioniert gut, solange sie klein ist. Mit jedem Monat Projektarbeit wird sie länger, und der Assistent bekommt in jeder Sitzung alles vorgelegt, ob er es braucht oder nicht. Irgendwann pflegt sie niemand mehr, und die Konventionen driften wieder auseinander.
+
+Bastra Recall setzt dort an:
+
+- **Gezielt statt alles:** Jede Entscheidung und jede Lektion liegt als eigene Datei. Unterstützte Integrationen blenden vor der Arbeit die passenden Einträge ein, statt jedes Mal alles mitzuschicken.
+- **Wächst mit:** Der Assistent kann neue Entscheidungen und gelöste Probleme während der Arbeit selbst festhalten. Du prüfst und korrigierst sie bei Bedarf, statt alles von Hand nachzutragen.
+- **Ein Gedächtnis für mehrere Tools:** Claude Code, Codex und andere MCP-fähige Tools greifen auf denselben Vault zu, ohne dass du getrennte Regeldateien abgleichen musst.
+
+Deine CLAUDE.md kann bleiben. Recall ergänzt sie um das Wissen, das nicht in jede Sitzung gehört.
 
 **Version 1.0 ist verfügbar.** Veröffentlichte Downloads findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), Änderungen im [Changelog](./CHANGELOG.md) und getestete Integrationen in der [Support-Matrix](#unterstützte-oberflächen).
 
