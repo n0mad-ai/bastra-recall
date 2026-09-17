@@ -123,32 +123,50 @@ export async function appliesToNote(opts: AppliesToNoteOptions): Promise<Applies
  * Every line says which memory and why it is here; none of them says what to
  * do about it.
  */
+/**
+ * Build the block, SHRINKING it to fit rather than dropping it.
+ *
+ * This used to return null whenever the finished text passed
+ * MAX_BLOCK_CHARS. Measured against the real vault (1243 memories, 259 with
+ * `affects_files`): that discarded the block entirely for 134 of the 315
+ * files that had matching memories — 43 %, and precisely the files with the
+ * MOST attached memories, which are the ones where it is worth most. A cap is
+ * a reason to say less, not a reason to say nothing.
+ *
+ * So the list shrinks until it fits, and the count of what was left out stays
+ * visible. Only if even a single entry cannot fit does this give up.
+ */
 function format(rel: string, candidates: readonly AppliesToCandidate[]): string | null {
   const direct = candidates.filter((c) => c.hop === "direct");
   const hop = candidates.filter((c) => c.hop === "1-hop");
 
-  const lines: string[] = [
-    `Memories declared for ${rel} via affects_files. Context for this edit, not an instruction.`,
-  ];
-  if (direct.length > 0) {
-    lines.push(`Names this file: ${describe(direct)}`);
-  }
-  if (hop.length > 0) {
-    lines.push(
-      `Attached to a file that depends on it (one hop, never a duty): ${describe(hop, true)}`,
-    );
-  }
-  // Every line is `optional` by construction on this path — said once, plainly,
-  // rather than repeated per entry.
-  lines.push(`All of these are ${bandOf(candidates[0]!)} — load one only if it looks relevant.`);
+  for (let limit = MAX_LISTED; limit >= 1; limit--) {
+    const lines: string[] = [
+      `Memories declared for ${rel} via affects_files. Context for this edit, not an instruction.`,
+    ];
+    if (direct.length > 0) lines.push(`Names this file: ${describe(direct, false, limit)}`);
+    if (hop.length > 0) {
+      lines.push(
+        `Attached to a file that depends on it (one hop, never a duty): ${describe(hop, true, limit)}`,
+      );
+    }
+    // Every line is `optional` by construction on this path — said once,
+    // plainly, rather than repeated per entry.
+    lines.push(`All of these are ${bandOf(candidates[0]!)} — load one only if it looks relevant.`);
 
-  const note = lines.join("\n");
-  return note.length > MAX_BLOCK_CHARS ? null : note;
+    const note = lines.join("\n");
+    if (note.length <= MAX_BLOCK_CHARS) return note;
+  }
+  return null;
 }
 
-function describe(candidates: readonly AppliesToCandidate[], withVia = false): string {
+function describe(
+  candidates: readonly AppliesToCandidate[],
+  withVia = false,
+  limit: number = MAX_LISTED,
+): string {
   const shown = candidates
-    .slice(0, MAX_LISTED)
+    .slice(0, limit)
     .map((c) => {
       const name = c.title !== undefined && c.title.length > 0 ? `${c.title} (${c.memoryId})` : c.memoryId;
       const where = c.symbol !== null ? ` #${c.symbol}` : "";
@@ -156,6 +174,6 @@ function describe(candidates: readonly AppliesToCandidate[], withVia = false): s
       return `${name}${where}${via}`;
     })
     .join("; ");
-  const rest = candidates.length - MAX_LISTED;
+  const rest = candidates.length - Math.min(limit, candidates.length);
   return rest > 0 ? `${shown}; and ${rest} more` : shown;
 }
