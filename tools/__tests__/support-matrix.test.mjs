@@ -34,10 +34,11 @@ test("the CLI's surface list is the four clients the matrix names", () => {
 });
 
 test("README names every installable client in both language matrices", () => {
-  const en = README.slice(README.indexOf("### Supported surfaces"), README.indexOf("### Why"));
+  // Match whole heading lines: "### Why not just CLAUDE.md?" also starts with "### Why".
+  const en = README.slice(README.indexOf("### Supported surfaces"), README.indexOf("\n### Why\n"));
   const de = README.slice(
     README.indexOf("### Unterstützte Oberflächen"),
-    README.indexOf("### Warum"),
+    README.indexOf("\n### Warum\n"),
   );
   assert.ok(en.length > 0 && de.length > 0, "both matrix sections must exist");
   for (const surface of installableSurfaces()) {
