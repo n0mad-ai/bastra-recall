@@ -5,8 +5,9 @@
 > langfristige, messungsabhängige Zielbild
 >
 > Stand: 17. September 2026 (Statusnachtrag C-088 zur Auslieferung von 1.0.0,
-> Architekturentscheidung C-089 zur Code-Awareness; Vertragsänderungen C-083
-> und C-087, Vertragsergänzungen C-084 und C-085, Präzisierung C-086;
+> Architekturentscheidung C-089 zur Code-Awareness, Vertragsänderung C-090 zur
+> Code-Awareness als V2.0-Pflicht; Vertragsänderungen C-083 und C-087,
+> Vertragsergänzungen C-084 und C-085, Präzisierung C-086;
 > abgenommene Basis vom 26. Juli 2026 im Übrigen unverändert)
 >
 > Ausgangsstand: Bastra Recall 0.8.6, der damalige Vault, reale
@@ -15,18 +16,18 @@
 > folgten 0.8.7 bis 0.9.2 und am 14. September 2026 die Version 1.0.0.
 >
 > **Diese Datei ist die maßgebliche Fassung.** Verbindlicher Ledgerstand:
-> C-001–C-089, elf Reviewrunden, zwei Vertragsänderungen, zwei
+> C-001–C-090, elf Reviewrunden, drei Vertragsänderungen, zwei
 > Vertragsergänzungen, eine Präzisierung, ein Statusnachtrag und eine
 > Architekturentscheidung; C-001–C-082 am 26. Juli 2026 abgenommen, C-083 bis
-> C-086 am 29. August 2026, C-087 am 12. September 2026 sowie C-088 und C-089
+> C-086 am 29. August 2026, C-087 am 12. September 2026 sowie C-088 bis C-090
 > am 17. September 2026 entschieden.
 >
 > Entstehung: abgenommener Ausgangsstand C-001–C-028, fortgeschrieben durch die
 > Revisionen C-029–C-039, C-040–C-048, C-049–C-054, C-055–C-059, C-060–C-062,
 > C-063–C-067, C-068–C-073, C-074–C-077, C-078–C-079, C-080–C-081 und C-082
-> sowie durch die Vertragsänderungen C-083 und C-087, die Vertragsergänzungen
-> C-084 und C-085, die Präzisierung C-086, den Statusnachtrag C-088 und die
-> Architekturentscheidung C-089.
+> sowie durch die Vertragsänderungen C-083, C-087 und C-090, die
+> Vertragsergänzungen C-084 und C-085, die Präzisierung C-086, den
+> Statusnachtrag C-088 und die Architekturentscheidung C-089.
 > Alle zwölf Zwischenfassungen und der Ausgangsstand sind unverändert
 > archiviert; sie sind Belegmaterial, keine geltenden Verträge, und seit dem
 > 17.09.2026 nicht mehr Teil des öffentlichen Repositorys.
@@ -46,7 +47,7 @@
 > Die Product-Owner-Entscheidungen in Abschnitt 31 sind getroffen und binden
 > die Umsetzung.
 >
-> Nächste freie ID: C-090. Ein neues Delta wird in dieser Datei fortgeschrieben
+> Nächste freie ID: C-091. Ein neues Delta wird in dieser Datei fortgeschrieben
 > und nicht mehr als eigene Revisionsdatei geführt.
 
 ## 0. Entscheidungs- und Reviewstatus
@@ -216,7 +217,8 @@ neuer Evidenz erneut geöffnet.
 | C-086 | Präzisierung | **Wortlaut berichtigt durch C-088** (vorher „Titel, `recall_when` und Frontmatter“). Beide Wege zu `required` werden enger gefasst (10.3): Das Teilabdeckungs-Signal der Zwei-von-drei-Zählung zählt erst ab 50 % Trigger-Abdeckung statt ab dem ersten gemeinsamen Term, und der harte Identifier-Anker liest Titel und `recall_when` statt zusätzlich den Body; weitere Frontmatter-Felder liest er nicht. Beziffert vor der Änderung: Anti-Query-Gate von 50 % auf 12,5 %, Recall@3 gegated, Identifier-Queries und Falsch-Abstention unverändert, längenneutral. Offen bleiben die zu kleine Anti-Probenmenge und die Kosten des Pflichtverlusts, die erst die Shadow-Telemetrie zeigt. |
 | C-087 | Vertragsänderung | V1.0 schuldet vom globalen Kontextbudget aus 16.3 das Latenzbudget live und das kumulative Cross-Lane-Tokenbudget je Sitzung als **Shadow-Ledger** (26.1): verbuchen und protokollieren, nicht kürzen. Die **Live-Erzwingung** — aus Shadow-Daten festgelegte Budgethöhe, Canary-Profil mit sofortigem Rollback auf unbegrenzt, Siebentage-Canary-Bericht — ist nach 26.2 verschoben. Begründung ist gemessen: Sechs Tage Shadow (742 Entscheidungen, 135 Sessions, 80 auswertbar) hätten gegen das vorläufige 7.500-Token-Profil 8 Sessions berührt und 36.976 Tokens zurückgehalten, rund 5 % von 719.322 Tokens Wochenbetrieb. Der Nutzen liegt im Tail, und ein Tail trägt keine Live-Schaltung auf Shadow-Daten allein. |
 | C-088 | Ist-Korrektur | Statusnachtrag ohne Vertragsänderung: V1.0 ist erfüllt und als 1.0.0 am 14.09.2026 ausgeliefert (Tag `v1.0.0`); Kopf, 0.1, 0.2, 18.0, 21.1, 25, 26.1 und 27 tragen das, historische Aussagen bleiben als solche stehen. Sechs Ist-Aussagen sind überholt und werden mit heutiger Fundstelle berichtigt: Mutation-Audit auch im MCP-/REST-Save (C-008), Evidenzentscheid standardmäßig aktiv und hop-sicher (13.1, C-046), gemeinsamer paralleler Session-Assembler mit POST-Pfad (16.1, C-004), Hybrid-Stresspfad baut den Vektorarm (2.2), Pinned-Block außerhalb von `session-hook.ts` (6.3), Identifier-Anker liest nur Titel und `recall_when` (C-086). Verschobene Zeilenangaben sind nachgezogen, die Lane-Budgets vom 12.09.2026 in 9.4 und 16.3 als Statusnotiz ergänzt, C-087 in 28 und 37 nachgetragen. Kein Urteil wird umgedeutet. |
-| C-089 | Architekturentscheidung | Code-Awareness in V2 entsteht nicht über einen eigenen Symbolindexer, sondern über Graphify als externe Code-Graph-Quelle (Epic #572, #573–#580; Product-Owner-Entscheidung vom 17.09.2026). Recall nutzt nur die Graphify-CLI im Code-only-Modus und das erzeugte `graph.json`, nie dessen Installer oder Hooks. Der Code-Graph ist eine eigene logische Sicht neben 13.1 (Hop-Budget eins, nur direkt extrahierte Kanten im Normal Recall, No-Graph-Kontrollarm), liegt git-ignoriert im Projekt, wird nicht in den Vault projiziert und läuft im Hook-Pfad ohne Python innerhalb der bestehenden Budgets. `applies_to` wird über das vorhandene Feld `affects_files` umgesetzt; ein Code-Hop erzeugt nie allein `required`. |
+| C-089 | Architekturentscheidung | **Verschärft durch C-090:** Die ausgelieferte Code-Awareness ist verpflichtendes Kriterium der V2.0-Promotion. Code-Awareness in V2 entsteht nicht über einen eigenen Symbolindexer, sondern über Graphify als externe Code-Graph-Quelle (Epic #572, #573–#580; Product-Owner-Entscheidung vom 17.09.2026). Recall nutzt nur die Graphify-CLI im Code-only-Modus und das erzeugte `graph.json`, nie dessen Installer oder Hooks. Der Code-Graph ist eine eigene logische Sicht neben 13.1 (Hop-Budget eins, nur direkt extrahierte Kanten im Normal Recall, No-Graph-Kontrollarm), liegt git-ignoriert im Projekt, wird nicht in den Vault projiziert und läuft im Hook-Pfad ohne Python innerhalb der bestehenden Budgets. `applies_to` wird über das vorhandene Feld `affects_files` umgesetzt; ein Code-Hop erzeugt nie allein `required`. |
+| C-090 | Vertragsänderung | Die Code-Awareness über Graphify (C-089, #572–#580) ist ein **verpflichtendes Kriterium der V2.0-Promotion** (26.2): Sie ist ausgeliefert, hält die Grenzen aus 13.1, 16.2, 22, 23 und 24 ein, und ihre Kontextersparnis ist gegen den No-Graph-Kontrollarm belegt (#579). Das ist eine Lieferpflicht des Releases, keine Laufzeitpflicht: Für den Nutzer bleibt Graphify ein optionaler Begleiter, und Recall funktioniert ohne ihn unverändert (22). Begründung: Code-Indexing war bereits beschlossen, offen war nur der Zeitpunkt; diese Abhängigkeit besteht nicht mehr (Product-Owner-Entscheidung vom 17.09.2026). |
 
 **Abnahmestand 24.07.2026:** Vollabgleich Ledger C-001–C-027,
 Gate-Messbarkeit, Ist-Behauptungs-Sweep (58 Aussagen, alle gedeckt),
@@ -412,7 +414,17 @@ was davon wann und in welchem Umfang beim Agenten ankommt. Die Detailspezifikati
 steht in Epic #572 und den Issues #573–#580; dieses Dokument hält nur die
 Grenzen fest (2.3, 9.2, 9.3, 13, 13.1, 16.2, 16.3, 22, 23, 24, 26.2, 31).
 
-**Nächste freie ID: C-090.** Neue Delta-Reviews beginnen dort. Ein Urteil
+**Vertragsänderung, 17.09.2026 (diese Fassung):** C-090 macht die
+Code-Awareness aus C-089 zum verpflichtenden Kriterium der V2.0-Promotion. Bis
+dahin stand sie in 26.2 nur als Hinweis. Die Pflicht betrifft die
+Auslieferung: V2.0 wird nicht vergeben, solange die Code-Awareness fehlt, ihre
+Grenzen verletzt oder ihre Kontextersparnis gegen den No-Graph-Kontrollarm
+nicht belegt ist. Zur Laufzeit bleibt Graphify für den Nutzer optional; 22
+bleibt unverändert. Anlass ist eine Product-Owner-Entscheidung vom selben Tag:
+Code-Indexing war bereits beschlossen, offen war nur der
+Zeitpunkt; diese Abhängigkeit besteht nicht mehr.
+
+**Nächste freie ID: C-091.** Neue Delta-Reviews beginnen dort. Ein Urteil
 ändert sich nur mit neuer Code-, Telemetrie- oder Run-Evidenz; Geschmacksfragen
 werden als Architekturentscheidung statt als Faktenfehler markiert.
 
@@ -4325,7 +4337,7 @@ zulässig; Qualitätsaussagen mit Referenzwirkung setzen M0 voraus:
 12. Flat-/HNSW-Strategie live erst, wenn kontrolliertes Profiling einen
     Flat-Search-Engpass und M5 den Qualitäts- und Latenzvorteil belegen.
 13. Learned Ranking shadow nach M0/M1, live erst nach bestandenem M6.
-14. Code-Awareness über Graphify (C-089) in der Reihenfolge #573 → #574 →
+14. Code-Awareness über Graphify (C-089), verpflichtend für V2.0 (C-090), in der Reihenfolge #573 → #574 →
     #575 → #576/#577 → #578 → #579, Dokumentation (#580) begleitend; der
     Nutzen gilt erst nach dem Vergleich mit dem No-Graph-Kontrollarm (#579)
     als belegt.
@@ -4527,13 +4539,14 @@ Promotion erfolgt erst, wenn:
   Required-Drops (C-087, aus 26.1 hierher verschoben);
 - HNSW nur dann automatisch aktiviert wird, wenn es auf der aktuellen Hardware
   messbar sinnvoll und qualitativ sicher ist;
-- jede adaptive Entscheidung shadow-getestet, erklärbar und zurückrollbar ist.
+- jede adaptive Entscheidung shadow-getestet, erklärbar und zurückrollbar ist;
+- die Code-Awareness über Graphify (C-089, #572–#580) ausgeliefert ist, die
+  Grenzen aus 13.1, 16.2, 22, 23 und 24 einhält und ihre Kontextersparnis
+  gegen den No-Graph-Kontrollarm belegt ist (#579) (C-090).
 
-**Code-Awareness (C-089).** Die Product-Owner-Entscheidung vom 17.09.2026
-ordnet die Code-Awareness über Graphify (Epic #572, #573–#580) V2.0 zu. Sie
-wird als optionaler Begleiter gebaut, hält die Grenzen aus 13.1, 16.2, 22, 23
-und 24 ein und gilt erst dann als nützlich, wenn ihre Kontextersparnis gegen
-den No-Graph-Kontrollarm belegt ist (#579).
+Der letzte Punkt ist eine Lieferpflicht des Releases, keine Laufzeitpflicht:
+Für den Nutzer bleibt Graphify ein optionaler Begleiter, und Recall
+funktioniert ohne ihn unverändert (22).
 
 ## 27. Kurzfassung
 
@@ -4565,10 +4578,10 @@ Das Ziel ist nicht maximaler Recall. Das Ziel ist:
 
 > Zur richtigen Zeit die richtige Erinnerung – und ansonsten Ruhe.
 
-## 28. Delta-Ledger (C-029–C-089)
+## 28. Delta-Ledger (C-029–C-090)
 
 Dieser Abschnitt dokumentiert elf aufeinanderfolgende Runden von Deltas
-gegenüber dem abgenommenen Stand C-001–C-028 sowie sieben spätere Einträge zu
+gegenüber dem abgenommenen Stand C-001–C-028 sowie acht spätere Einträge zu
 Vertrag, Prädikat, Releasestatus und Architektur. Jeder Eintrag nennt die betroffene
 Passage, die Art des Deltas, die tragende Evidenz, das Gate, die Datenquelle,
 das Abnahmekriterium und den Rollback. Kein Eintrag deutet ein früheres Urteil
@@ -4755,6 +4768,13 @@ Code-Awareness für V2 fest:
 | Bisherige Lücke | wird geschlossen durch | Art |
 |---|---|---|
 | 9, 13, 16, 22–24 ohne Code-Sicht | C-089 | Architekturentscheidung: Graphify als externe Code-Graph-Quelle, Grenzen für Recall |
+
+**Vertragsänderung — C-090**, 17.09.2026, macht die Code-Awareness zur
+Promotionspflicht:
+
+| Bisheriger Vertrag | wird geändert durch | Art |
+|---|---|---|
+| C-089, 26.2 Hinweisabsatz | C-090 | Vertragsänderung: ausgelieferte Code-Awareness wird verpflichtendes V2.0-Kriterium |
 
 ### C-029 – Evidenzklassen für Fremdsystemzahlen
 
@@ -6655,6 +6675,34 @@ Urteil wird umgedeutet, geändert wird der Umfang des Releasevertrags.*
   arbeitet Recall unverändert; ein ungültiger oder fehlender Graph führt zu
   „Code-Awareness nicht verfügbar“, nicht zu einem Recall-Fehler.
 
+---
+
+*Ab hier die Vertragsänderung C-090 vom 17.09.2026.*
+
+### C-090 – Code-Awareness wird verpflichtendes Kriterium der V2.0-Promotion
+
+- **Passage:** Präambel; Ledgerzeile C-089 mit Verschärfungsverweis, neue
+  Ledgerzeile C-090; 0.4 Abnahmeblock und nächste freie ID; 25 Punkt 14; 26.2
+  Hinweisabsatz durch Promotionspunkt ersetzt; 31 Entscheidung 6; 28
+  Überschrift, Vorspann, Zuordnung und dieser Eintrag; 39 Vermerk zur ID; 40.
+- **Art:** Vertragsänderung.
+- **Evidenz:** Product-Owner-Entscheidung vom 17.09.2026, später am selben Tag
+  wie C-089: Code-Indexing war bereits beschlossen, offen war nur der
+  Zeitpunkt; diese Abhängigkeit besteht nicht mehr. In C-089 stand die Code-Awareness in 26.2 nur als Hinweis und war
+  damit keine Bedingung der Promotion.
+- **Gate:** V2.0 nach 26.2. Der Nutzen zählt erst mit dem
+  No-Graph-Kontrollarm (#579) als belegt; ohne diesen Beleg wird V2.0 nicht
+  vergeben.
+- **Datenquelle:** Epic #572 und die Issues #573–#580; der Bericht aus #579.
+- **Abnahmekriterium:** V2.0 gilt in diesem Punkt als erfüllt, wenn die
+  Code-Awareness ausgeliefert ist, die Grenzen aus 13.1, 16.2, 22, 23 und 24
+  einhält und ihre Kontextersparnis gegen den No-Graph-Kontrollarm belegt ist.
+  Zur Laufzeit bleibt Graphify für den Nutzer optional; Recall funktioniert
+  ohne ihn unverändert (22).
+- **Rollback:** rein vertraglich; durch einen neuen Eintrag, der den
+  Promotionspunkt aus 26.2 wieder entfernt. Produktverhalten ist nicht
+  betroffen.
+
 ## 29. Quellen- und Behauptungsmatrix
 
 Alle Angaben wurden am **25. Juli 2026** durch Abruf der jeweiligen Primärquelle
@@ -6932,8 +6980,8 @@ Memory mit geklärter oder ausdrücklich bestätigt unklarer Herkunft.
 
 ### Entscheidung 6 – Code-Awareness über Graphify
 
-**Entschieden am 17. September 2026 (C-089): Graphify statt eigenem
-Symbolindexer, als V2.0-Arbeit.** Graphify baut die Code-Karte, Recall
+**Entschieden am 17. September 2026 (C-089, verschärft durch C-090): Graphify
+statt eigenem Symbolindexer, als verpflichtender Bestandteil von V2.0.** Graphify baut die Code-Karte, Recall
 entscheidet, was davon beim Agenten ankommt. Der Graph liegt im jeweiligen
 Projekt und wird nie eingecheckt; Recall aktualisiert ihn selbst, ohne
 Git-Hooks im Nutzer-Repo.
@@ -6943,9 +6991,16 @@ präzise strukturelle Daten für rund 40 Sprachen, während der eigene Plan nur
 TS/JS abdeckte. Graphifys Installer und Hooks kollidieren dagegen mit Recall
 und werden nicht übernommen (23).
 
-**Auswirkung:** keine auf V1.0, das Vault-Schema oder die Messgates. Die
-Grenzen stehen in 9.2, 9.3, 13, 13.1, 16.2, 16.3, 22, 23, 24 und 26.2; die
-Umsetzung ist in Epic #572 mit #573–#580 beschrieben.
+**Nachtrag, am selben Tag (C-090):** Die ausgelieferte Code-Awareness ist
+verpflichtendes Kriterium der V2.0-Promotion (26.2). Code-Indexing war
+bereits beschlossen, offen war nur der Zeitpunkt; diese Abhängigkeit besteht
+nicht mehr. Für den Nutzer bleibt Graphify zur
+Laufzeit optional.
+
+**Auswirkung:** keine auf V1.0, das Vault-Schema oder die Messgates; V2.0 wird
+ohne ausgelieferte Code-Awareness nicht vergeben. Die Grenzen stehen in 9.2,
+9.3, 13, 13.1, 16.2, 16.3, 22, 23, 24 und 26.2; die Umsetzung ist in Epic #572
+mit #573–#580 beschrieben.
 
 ### Was weiterhin offen ist
 
@@ -7030,7 +7085,7 @@ beschreibt abgelaufene Memories als „(or excluded if expired)"; der Code dämp
 sie nur auf 20 %.
 
 **Nächste freie ID: C-083.** *(Historischer Stand vom 26.07.2026. Die aktuell
-gültige nächste freie ID steht am Ende von Abschnitt 39.)*
+gültige nächste freie ID steht am Ende von Abschnitt 40.)*
 
 ## 33. Übergabe nach der Vertragsänderung C-083
 
@@ -7088,7 +7143,7 @@ zusätzlich der zweite Hook-Wortlaut für Arm A als Produkt- und Textentscheidun
 und die Aktivierungsentscheidung, von der Arm B abhängt.
 
 **Nächste freie ID: C-084.** *(Stand dieses Abschnitts. Die aktuell gültige
-nächste freie ID steht am Ende von Abschnitt 39.)*
+nächste freie ID steht am Ende von Abschnitt 40.)*
 
 ## 34. Übergabe nach der Vertragsergänzung C-084
 
@@ -7139,7 +7194,7 @@ Fehler statt stillem Verwerfen.
    verweisen soll, damit die beiden Fassungen nicht auseinanderlaufen.
 
 **Nächste freie ID: C-085.** *(Stand dieses Abschnitts. Die aktuell gültige
-nächste freie ID steht am Ende von Abschnitt 39.)*
+nächste freie ID steht am Ende von Abschnitt 40.)*
 
 ## 35. Übergabe nach der Vertragsergänzung C-085
 
@@ -7188,7 +7243,7 @@ bezeichnet dieselbe Größe.
    die Frage sich anders stellt — aber sie stellt sich.
 
 **Nächste freie ID: C-086.** *(Stand dieses Abschnitts. Die aktuell gültige
-nächste freie ID steht am Ende von Abschnitt 39.)*
+nächste freie ID steht am Ende von Abschnitt 40.)*
 
 ## 36. Übergabe nach der Präzisierung C-086
 
@@ -7240,7 +7295,7 @@ Qualitätsgrößen bewegt sich um eine einzige Stelle.
    Kalibrierung.
 
 **Nächste freie ID: C-087.** *(Stand dieses Abschnitts. Die aktuell gültige
-nächste freie ID steht am Ende von Abschnitt 39.)*
+nächste freie ID steht am Ende von Abschnitt 40.)*
 
 ## 37. Übergabe nach der Vertragsänderung C-087
 
@@ -7284,7 +7339,7 @@ Ausreißer-Tail, und die Budgethöhe stand noch nicht fest.
    PLAN und Milestone-Beschreibungen geändert werden.
 
 **Nächste freie ID: C-088.** *(Stand dieses Abschnitts. Die aktuell gültige
-nächste freie ID steht am Ende von Abschnitt 39.)*
+nächste freie ID steht am Ende von Abschnitt 40.)*
 
 ## 38. Übergabe nach dem Statusnachtrag C-088
 
@@ -7323,7 +7378,7 @@ Stand ruht, bleibt dieser als damaliger Stand stehen; kein Urteil ändert sich.
    1.0.0 am 14.09.2026.
 
 **Nächste freie ID: C-089.** *(Stand dieses Abschnitts. Die aktuell gültige
-nächste freie ID steht am Ende von Abschnitt 39.)*
+nächste freie ID steht am Ende von Abschnitt 40.)*
 
 ## 39. Übergabe nach der Architekturentscheidung C-089
 
@@ -7360,4 +7415,39 @@ bleibt in Epic #572 und #573–#580; dieses Dokument hält die Grenzen fest.
 3. Ob der gepinnte Graphify-Stand und das unversionierte `graph.json` auf Dauer
    tragen; der Leser aus #575 prüft das Format bei jedem Laden.
 
-**Nächste freie ID: C-090.**
+**Nächste freie ID: C-090.** *(Stand dieses Abschnitts. Die aktuell gültige
+nächste freie ID steht am Ende von Abschnitt 40.)*
+
+## 40. Übergabe nach der Vertragsänderung C-090
+
+**Was geändert wurde.** Diese Fassung fügt die Vertragsänderung C-090 hinzu.
+Geändert wurden ausschließlich die folgenden Passagen:
+
+| Passage | Delta |
+|---|---|
+| Präambel: Stand-Datum, Ledgerstand, Entstehung, nächste freie ID | C-090 |
+| 0.4 Verschärfungsverweis an C-089, neue Ledgerzeile C-090 | C-090 |
+| 0.4 Abnahmeblock und nächste freie ID | C-090 |
+| 25 Punkt 14 | C-090 |
+| 26.2 Hinweisabsatz durch Promotionspunkt ersetzt | C-090 |
+| 31 Entscheidung 6 | C-090 |
+| 28 Überschrift, Vorspann, Zuordnungstabelle, Delta-Eintrag C-090 | C-090 |
+| 32–39 Verweis auf die aktuell gültige ID, 39 Vermerk zur ID | C-090 |
+| 40 dieser Abschnitt | — |
+
+Alle übrigen Passagen sind unangetastet. Produktcode wurde nicht verändert.
+
+**Was die Änderung bewirkt.** V2.0 wird erst vergeben, wenn die Code-Awareness
+über Graphify ausgeliefert und gegen den No-Graph-Kontrollarm belegt ist. Die
+Pflicht gilt dem Release, nicht dem Nutzer: Graphify bleibt zur Laufzeit
+optional, und ohne Code-Graph arbeitet Recall wie bisher.
+
+**Was besonders zu prüfen ist.**
+
+1. Was gilt, wenn der Kontrollarm keine Kontextersparnis zeigt. Dann ist das
+   Kriterium nicht erfüllt; ob die Code-Awareness dann nachgebessert oder der
+   Vertrag erneut geändert wird, ist eine eigene Entscheidung.
+2. Ob die Issues #572–#580 im Milestone V2.0 als Promotionsbedingung
+   gekennzeichnet werden sollen.
+
+**Nächste freie ID: C-091.**

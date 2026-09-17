@@ -5,9 +5,10 @@
 > measurement-dependent long-term target
 >
 > As of: 17 September 2026 (status update C-088 on the release of 1.0.0,
-> architectural decision C-089 on code awareness; contract changes C-083 and
-> C-087, contract additions C-084 and C-085, refinement C-086; the signed-off
-> basis of 26 July 2026 otherwise unchanged)
+> architectural decision C-089 on code awareness, contract change C-090 on code
+> awareness as a V2.0 obligation; contract changes C-083 and C-087, contract
+> additions C-084 and C-085, refinement C-086; the signed-off basis of
+> 26 July 2026 otherwise unchanged)
 >
 > Starting state: Bastra Recall 0.8.6, the vault at the time, real
 > 30-day telemetry, and the eval geometry at the time. 0.8.6 is the historical
@@ -20,18 +21,18 @@
 > Where the two diverge, the German version prevails. Every change is made
 > there first and translated afterwards, never the other way round.
 >
-> Binding ledger state: C-001–C-089, eleven review rounds, two contract
+> Binding ledger state: C-001–C-090, eleven review rounds, three contract
 > changes, two contract additions, one refinement, one status update and one
 > architectural decision; C-001–C-082 signed off on 26 July 2026, C-083 to
-> C-086 decided on 29 August 2026, C-087 on 12 September 2026, and C-088 and
-> C-089 on 17 September 2026.
+> C-086 decided on 29 August 2026, C-087 on 12 September 2026, and C-088 to
+> C-090 on 17 September 2026.
 >
 > Genesis: signed-off starting state C-001–C-028, carried forward by the
 > revisions C-029–C-039, C-040–C-048, C-049–C-054, C-055–C-059, C-060–C-062,
 > C-063–C-067, C-068–C-073, C-074–C-077, C-078–C-079, C-080–C-081, and C-082,
-> and by the contract changes C-083 and C-087, the contract additions C-084 and
-> C-085, the refinement C-086, the status update C-088, and the architectural
-> decision C-089.
+> and by the contract changes C-083, C-087 and C-090, the contract additions
+> C-084 and C-085, the refinement C-086, the status update C-088, and the
+> architectural decision C-089.
 > All twelve interim versions and the starting state are archived unchanged;
 > they are supporting material, not governing contracts, and have not been part
 > of the public repository since 2026-09-17. An earlier English version at state
@@ -45,7 +46,7 @@
 > The product-owner decisions in Section 31 have been taken and bind
 > the implementation.
 >
-> Next available ID: C-090. A new delta is carried forward in this file and is
+> Next available ID: C-091. A new delta is carried forward in this file and is
 > no longer kept as a separate revision file.
 
 ## 0. Decision and Review Status
@@ -214,7 +215,8 @@ reopened only with new evidence.
 | C-086 | refinement | **Wording corrected by C-088** (previously "title, `recall_when` and frontmatter"). Both routes to `required` are drawn more narrowly (10.3): the partial-coverage signal of the two-of-three count applies only from 50 % trigger coverage instead of from the first shared term, and the hard identifier anchor reads title and `recall_when` instead of the body as well; it reads no further frontmatter fields. Quantified before the change: anti-query gate from 50 % to 12.5 %, Recall@3 gated, identifier queries and false abstention unchanged, length-neutral. Open: the anti-probe set is too small, and the cost of the lost obligations is visible only to the shadow telemetry. |
 | C-087 | contract change | Of the global context budget from 16.3, V1.0 owes the latency budget live and the cumulative cross-lane token budget per session as a **shadow ledger** (26.1): charge and log, do not trim. **Live enforcement** — budget size fixed from the shadow data, a canary profile with instant rollback to unlimited, a seven-day canary report — is moved to 26.2. The reason is measured: six days of shadow (742 decisions, 135 sessions, 80 evaluable) would have touched 8 sessions against the provisional 7,500-token profile and withheld 36,976 tokens, roughly 5 % of 719,322 tokens of weekly use. The value lies in the tail, and a tail does not carry a live activation on shadow data alone. |
 | C-088 | current-state correction | Status update without a contract change: V1.0 is met and shipped as 1.0.0 on 2026-09-14 (tag `v1.0.0`); header, 0.1, 0.2, 18.0, 21.1, 25, 26.1 and 27 carry this, historical statements stay as such. Six current-state statements are outdated and are corrected with today's location: mutation audit also in the MCP/REST save (C-008), evidence decision active by default and hop-safe (13.1, C-046), shared parallel session assembler with a POST path (16.1, C-004), hybrid stress path builds the vector arm (2.2), pinned block outside `session-hook.ts` (6.3), identifier anchor reads only title and `recall_when` (C-086). Shifted line references are updated, the per-lane budgets of 2026-09-12 are added to 9.4 and 16.3 as a status note, C-087 is added to 28 and 37. No verdict is reinterpreted. |
-| C-089 | architectural decision | Code awareness in V2 does not come from an in-house symbol indexer but from Graphify as an external code-graph source (epic #572, #573–#580; product-owner decision of 2026-09-17). Recall uses only the Graphify CLI in code-only mode and the `graph.json` it writes, never its installers or hooks. The code graph is a logical view of its own next to 13.1 (hop budget one, only directly extracted edges in Normal Recall, no-graph control arm), lives git-ignored inside the project, is not projected into the vault, and runs in the hook path without Python within the existing budgets. `applies_to` is implemented via the existing field `affects_files`; a code hop never produces `required` on its own. |
+| C-089 | architectural decision | **Tightened by C-090:** shipped code awareness is a mandatory criterion of the V2.0 promotion. Code awareness in V2 does not come from an in-house symbol indexer but from Graphify as an external code-graph source (epic #572, #573–#580; product-owner decision of 2026-09-17). Recall uses only the Graphify CLI in code-only mode and the `graph.json` it writes, never its installers or hooks. The code graph is a logical view of its own next to 13.1 (hop budget one, only directly extracted edges in Normal Recall, no-graph control arm), lives git-ignored inside the project, is not projected into the vault, and runs in the hook path without Python within the existing budgets. `applies_to` is implemented via the existing field `affects_files`; a code hop never produces `required` on its own. |
+| C-090 | contract change | Code awareness via Graphify (C-089, #572–#580) is a **mandatory criterion of the V2.0 promotion** (26.2): it has shipped, keeps the boundaries from 13.1, 16.2, 22, 23 and 24, and its context savings are substantiated against the no-graph control arm (#579). This is a release obligation, not a runtime obligation: for the user Graphify remains an optional companion, and Recall works unchanged without it (22). Reason: code indexing was decided earlier; only its timing was open, and that dependency no longer exists (product-owner decision of 2026-09-17). |
 
 **Sign-off status 24 July 2026:** full reconciliation of ledger C-001–C-027,
 gate measurability, current-state claim sweep (58 claims, all covered),
@@ -407,7 +409,16 @@ of it reaches the agent, when, and how much. The detailed specification lives
 in epic #572 and issues #573–#580; this document records only the boundaries
 (2.3, 9.2, 9.3, 13, 13.1, 16.2, 16.3, 22, 23, 24, 26.2, 31).
 
-**Next available ID: C-090.** New delta reviews begin there. A verdict
+**Contract change, 17 September 2026 (this version):** C-090 makes the code
+awareness from C-089 a mandatory criterion of the V2.0 promotion. Until then it
+appeared in 26.2 only as a note. The obligation concerns the release: V2.0 is
+not awarded while code awareness is missing, violates its boundaries, or has
+not substantiated its context savings against the no-graph control arm. At
+runtime Graphify remains optional for the user; 22 stays unchanged. The
+occasion is a product-owner decision of the same day: code indexing was decided
+earlier; only its timing was open, and that dependency no longer exists.
+
+**Next available ID: C-091.** New delta reviews begin there. A verdict
 changes only with new code, telemetry, or run evidence; matters of taste
 are marked as an architectural decision instead of a factual error.
 
@@ -4232,7 +4243,7 @@ independently of that; quality claims with reference effect presuppose M0:
 12. Flat/HNSW strategy live only once controlled profiling substantiates a Flat
     search bottleneck and M5 substantiates the quality and latency advantage.
 13. Learned ranking in shadow after M0/M1, live only after M6 has been passed.
-14. Code awareness via Graphify (C-089) in the order #573 → #574 → #575 →
+14. Code awareness via Graphify (C-089), mandatory for V2.0 (C-090), in the order #573 → #574 → #575 →
     #576/#577 → #578 → #579, with documentation (#580) alongside; its benefit
     counts as substantiated only after the comparison with the no-graph control
     arm (#579).
@@ -4422,13 +4433,14 @@ promotion follows only when:
   (C-087, moved here from 26.1);
 - HNSW is activated automatically only when it is measurably worthwhile on the
   current hardware and qualitatively safe;
-- every adaptive decision is shadow-tested, explainable and reversible.
+- every adaptive decision is shadow-tested, explainable and reversible;
+- code awareness via Graphify (C-089, #572–#580) has shipped, keeps the
+  boundaries from 13.1, 16.2, 22, 23 and 24, and its context savings are
+  substantiated against the no-graph control arm (#579) (C-090).
 
-**Code awareness (C-089).** The product-owner decision of 2026-09-17 assigns
-code awareness via Graphify (epic #572, #573–#580) to V2.0. It is built as an
-optional companion, keeps the boundaries from 13.1, 16.2, 22, 23 and 24, and
-counts as useful only once its context savings are substantiated against the
-no-graph control arm (#579).
+The last item is a release obligation, not a runtime obligation: for the user
+Graphify remains an optional companion, and Recall works unchanged without it
+(22).
 
 ## 27. Short version
 
@@ -4458,10 +4470,10 @@ The goal is not maximum recall. The goal is:
 
 > The right memory at the right time – and otherwise silence.
 
-## 28. Delta ledger (C-029–C-089)
+## 28. Delta ledger (C-029–C-090)
 
 This section documents eleven consecutive rounds of deltas against the
-signed-off state C-001–C-028 as well as seven later entries on contract,
+signed-off state C-001–C-028 as well as eight later entries on contract,
 predicate, release status and architecture. Every entry
 names the affected passage, the type
 of the delta, the supporting evidence, the gate, the data source, the
@@ -4648,6 +4660,13 @@ code awareness for V2:
 | Previous gap | is closed by | Type |
 |---|---|---|
 | 9, 13, 16, 22–24 without a code view | C-089 | Architectural decision: Graphify as an external code-graph source, boundaries for Recall |
+
+**Contract change — C-090**, 17 September 2026, makes code awareness a
+promotion obligation:
+
+| Previous contract | is changed by | Type |
+|---|---|---|
+| C-089, 26.2 note paragraph | C-090 | Contract change: shipped code awareness becomes a mandatory V2.0 criterion |
 
 ### C-029 – Evidence classes for third-party system numbers
 
@@ -6508,6 +6527,33 @@ verdict is reinterpreted; what changes is the scope of the release contract.*
   Recall works unchanged; an invalid or missing graph leads to "code awareness
   unavailable", not to a recall error.
 
+---
+
+*From here the contract change C-090 of 17 September 2026.*
+
+### C-090 – Code awareness becomes a mandatory criterion of the V2.0 promotion
+
+- **Passage:** preamble; ledger row C-089 with a tightening reference, new
+  ledger row C-090; 0.4 sign-off block and next free ID; 25 item 14; 26.2 note
+  paragraph replaced by a promotion item; 31 decision 6; 28 heading, preamble,
+  assignment and this entry; 39 note on the ID; 40.
+- **Type:** contract change.
+- **Evidence:** product-owner decision of 2026-09-17, later on the same day as
+  C-089: code indexing was decided earlier; only its timing was open, and that
+  dependency no longer exists. Under C-089 code
+  awareness appeared in 26.2 only as a note and was therefore no condition of
+  the promotion.
+- **Gate:** V2.0 under 26.2. The benefit counts as substantiated only with the
+  no-graph control arm (#579); without that substantiation V2.0 is not awarded.
+- **Data source:** epic #572 and issues #573–#580; the report from #579.
+- **Acceptance criterion:** V2.0 counts as met on this point when code
+  awareness has shipped, keeps the boundaries from 13.1, 16.2, 22, 23 and 24,
+  and its context savings are substantiated against the no-graph control arm.
+  At runtime Graphify remains optional for the user; Recall works unchanged
+  without it (22).
+- **Rollback:** purely contractual; through a new entry that removes the
+  promotion item from 26.2 again. Product behaviour is not affected.
+
 ## 29. Source and claim matrix
 
 All data were collected on **25 July 2026** by retrieving the respective primary
@@ -6779,8 +6825,8 @@ and ends, per memory, with origin clarified or explicitly confirmed as unclear.
 
 ### Decision 6 – Code awareness via Graphify
 
-**Decided on 17 September 2026 (C-089): Graphify instead of an in-house symbol
-indexer, as V2.0 work.** Graphify builds the code map, Recall decides what of
+**Decided on 17 September 2026 (C-089, tightened by C-090): Graphify instead of
+an in-house symbol indexer, as a mandatory part of V2.0.** Graphify builds the code map, Recall decides what of
 it reaches the agent. The graph lives inside the respective project and is
 never committed; Recall keeps it current itself, without git hooks in the
 user's repository.
@@ -6790,9 +6836,14 @@ structural data for about 40 languages, whereas the in-house plan covered only
 TS/JS. Graphify's installers and hooks, by contrast, collide with Recall and are
 not adopted (23).
 
-**Effect:** none on V1.0, the vault schema or the measurement gates. The
-boundaries are in 9.2, 9.3, 13, 13.1, 16.2, 16.3, 22, 23, 24 and 26.2; the
-implementation is described in epic #572 with #573–#580.
+**Addendum, the same day (C-090):** Shipped code awareness is a mandatory
+criterion of the V2.0 promotion (26.2). Code indexing was decided earlier;
+only its timing was open, and that dependency no longer exists. For the user Graphify remains optional at runtime.
+
+**Effect:** none on V1.0, the vault schema or the measurement gates; V2.0 is
+not awarded without shipped code awareness. The boundaries are in 9.2, 9.3,
+13, 13.1, 16.2, 16.3, 22, 23, 24 and 26.2; the implementation is described in
+epic #572 with #573–#580.
 
 ### What remains open
 
@@ -6878,7 +6929,7 @@ the daemon README describes expired memories as "(or excluded if expired)"; the
 code merely damps them to 20%.
 
 **Next free ID: C-083.** *(Historical state of 26 July 2026. The currently
-valid next free ID is at the end of Section 39.)*
+valid next free ID is at the end of Section 40.)*
 
 ## 33. Handover after the contract change C-083
 
@@ -6934,7 +6985,7 @@ second hook wording for arm A as a product and text decision, and the
 activation decision that arm B depends on.
 
 **Next free ID: C-084.** *(State of this section. The currently valid next free
-ID is at the end of Section 39.)*
+ID is at the end of Section 40.)*
 
 ## 34. Handover after the contract addition C-084
 
@@ -6984,7 +7035,7 @@ carries four conditions, among them a visible error instead of a silent drop.
    reference 26.1 so that the two versions do not drift apart.
 
 **Next free ID: C-085.** *(State of this section. The currently valid next free
-ID is at the end of Section 39.)*
+ID is at the end of Section 40.)*
 
 ## 35. Handover after the contract addition C-085
 
@@ -7033,7 +7084,7 @@ it, and the phrase "logged hook decisions" in C-022 denotes the same quantity.
    itself.
 
 **Next free ID: C-086.** *(State of this section. The currently valid next free
-ID is at the end of Section 39.)*
+ID is at the end of Section 40.)*
 
 ## 36. Handover after the refinement C-086
 
@@ -7085,7 +7136,7 @@ by a single digit.
    calibration.
 
 **Next free ID: C-087.** *(State of this section. The currently valid next free
-ID is at the end of Section 39.)*
+ID is at the end of Section 40.)*
 
 ## 37. Handover after the contract change C-087
 
@@ -7127,7 +7178,7 @@ tail, and the budget size was not yet fixed.
    milestone descriptions only afterwards.
 
 **Next free ID: C-088.** *(State of this section. The currently valid next free
-ID is at the end of Section 39.)*
+ID is at the end of Section 40.)*
 
 ## 38. Handover after the status update C-088
 
@@ -7166,7 +7217,7 @@ state at the time; no verdict changes.
    2026-09-14.
 
 **Next free ID: C-089.** *(State of this section. The currently valid next free
-ID is at the end of Section 39.)*
+ID is at the end of Section 40.)*
 
 ## 39. Handover after the architectural decision C-089
 
@@ -7204,4 +7255,39 @@ and #573–#580; this document records the boundaries.
 3. Whether the pinned Graphify version and the unversioned `graph.json` hold up
    in the long run; the reader from #575 checks the format on every load.
 
-**Next free ID: C-090.**
+**Next free ID: C-090.** *(State of this section. The currently valid next free
+ID is at the end of Section 40.)*
+
+## 40. Handover after the contract change C-090
+
+**What was changed.** This version adds the contract change C-090. Solely the
+following passages were changed:
+
+| Passage | Delta |
+|---|---|
+| Preamble: as-of date, ledger state, genesis, next free ID | C-090 |
+| 0.4 tightening reference on C-089, new ledger row C-090 | C-090 |
+| 0.4 sign-off block and next free ID | C-090 |
+| 25 item 14 | C-090 |
+| 26.2 note paragraph replaced by a promotion item | C-090 |
+| 31 decision 6 | C-090 |
+| 28 heading, preamble, assignment table, delta entry C-090 | C-090 |
+| 32–39 reference to the currently valid ID, 39 note on the ID | C-090 |
+| 40 this section | — |
+
+All other passages are untouched. Product code was not changed.
+
+**What the change effects.** V2.0 is awarded only once code awareness via
+Graphify has shipped and is substantiated against the no-graph control arm. The
+obligation applies to the release, not to the user: Graphify remains optional
+at runtime, and without a code graph Recall works as before.
+
+**What to check in particular.**
+
+1. What applies if the control arm shows no context savings. Then the
+   criterion is not met; whether code awareness is then improved or the
+   contract is changed again is a decision of its own.
+2. Whether issues #572–#580 in the V2.0 milestone should be marked as a
+   promotion condition.
+
+**Next free ID: C-091.**
