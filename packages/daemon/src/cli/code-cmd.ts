@@ -31,8 +31,9 @@ import { gitPath, isGitRepo } from "../code-graph/git-paths.js";
 import { graphDirOf, graphFileOf, GRAPH_DIR_NAME } from "../code-graph/reader.js";
 import { isStale, readManifest } from "../code-graph/manifest.js";
 import { enabledRepos, isRepoEnabled, setRepoEnabled } from "../code-graph/enabled-repos.js";
-import { GRAPHIFY_PIN, probeTool } from "../code-graph/graphify-tool.js";
-import { confirm } from "./prompt.js";
+import { confirm, isInteractive } from "./prompt.js";
+import { findExecutable, run } from "./exec.js";
+import { GRAPHIFY_PIN, installArgv, probeTool } from "../code-graph/graphify-tool.js";
 
 const out = (s: string): void => void process.stdout.write(s);
 
@@ -230,4 +231,70 @@ function reasonWording(reason: string): string {
     default:
       return reason;
   }
+}
+
+/**
+ * The one-time question during `bastra install` (#573).
+ *
+ * Three rules, and all three exist because Graphify is a COMPANION, not a
+ * component:
+ *
+ *   - It never blocks the Recall install. No uv, a declined question, a failed
+ *     download — every one of them continues, and Recall works unchanged
+ *     without a code graph (§22, C-090 is a release obligation, not a runtime
+ *     one).
+ *   - It installs the exact pin into Recall's own tool directory, and never
+ *     calls a Graphify installer subcommand.
+ *   - Silence is not consent. A non-interactive install asks nothing and does
+ *     nothing, matching `confirm()`'s own posture on downloads.
+ */
+export async function installCodeAwarenessStep(args: {
+  dryRun: boolean;
+  yes: boolean;
+}): Promise<void> {
+  if (args.dryRun) return;
+
+  const tool = await probeTool();
+  if (tool.reason === "unsupported-platform") return; // nothing to offer here yet
+  if (tool.usable !== null) {
+    out(`→ code awareness: already installed (graphify ${tool.usable.version})\n`);
+    return;
+  }
+
+  // `--yes` means "do not ask me", not "install everything optional". An
+  // opt-in feature that arrives because someone passed --yes is not opt-in.
+  if (!isInteractive() || args.yes) return;
+
+  const accepted = await confirm(
+    "Enable code awareness? Recall can show an agent what depends on a file before it edits one. " +
+      `This installs graphifyy==${GRAPHIFY_PIN} (Apache-2.0) into Recall's own tool directory. ` +
+      "Nothing is indexed until you enable a repository, and no code is sent anywhere.",
+    { defaultYes: false },
+  );
+  if (!accepted) {
+    out("→ code awareness: skipped — enable it later with 'bastra code enable'\n");
+    return;
+  }
+
+  const uv = findExecutable("uv");
+  if (uv === null) {
+    // Explained, not failed: the user may not want another toolchain.
+    out("→ code awareness: needs `uv` (https://docs.astral.sh/uv/) — install it, then run 'bastra code enable'\n");
+    return;
+  }
+
+  const { args: installArgs, env } = installArgv();
+  // `run` wants a fully defined environment; process.env carries optional
+  // values, so the undefined ones are dropped rather than cast away.
+  const merged: Record<string, string> = {};
+  for (const [k, v] of Object.entries({ ...process.env, ...env })) {
+    if (typeof v === "string") merged[k] = v;
+  }
+  out(`→ code awareness: installing graphifyy==${GRAPHIFY_PIN}…\n`);
+  const result = await run(uv, installArgs, { timeoutMs: 5 * 60_000, env: merged });
+  if (!result.ok) {
+    out(`  could not install it (${result.detail ?? "failed"}) — Recall works without it\n`);
+    return;
+  }
+  out("  ✓ installed — run 'bastra code enable' inside a repository to switch it on\n");
 }

@@ -30,6 +30,7 @@ import { describeStale } from "../code-staleness.js";
 import { autostartWarning } from "./autostart.js";
 import { stubFreshness, stubFreshnessLines } from "./stub-freshness.js";
 import { affectsFilesLines, defaultAffectsFilesIo } from "./affects-files-note.js";
+import { installCodeAwarenessStep } from "./code-cmd.js";
 import { enabledRepos } from "../code-graph/enabled-repos.js";
 import { GRAPHIFY_PIN, probeTool } from "../code-graph/graphify-tool.js";
 import { graphDirOf } from "../code-graph/reader.js";
@@ -316,6 +317,8 @@ export async function cmdInstall(args: ParsedArgs): Promise<number> {
   // Prompts only on a TTY without --yes and only when no provider is effective;
   // an Ollama failure never fails the install: surface registration is the job.
   await installSemanticRecallStep({ dryRun: args.dryRun, yes: args.yes, ollama: args.ollama });
+  // Code awareness (#573): an optional companion, asked once, never blocking.
+  await installCodeAwarenessStep({ dryRun: args.dryRun, yes: args.yes });
 
   // #317 — `npx bastra-recall install all` registers everything correctly and
   // still leaves no `bastra` on PATH, because npx installs nothing. This path
