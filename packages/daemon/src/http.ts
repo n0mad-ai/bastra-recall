@@ -24,6 +24,7 @@
  *   POST /api/v1/recall                  → wie MCP-Tool recall
  *   POST /api/v1/load_memory             → wie MCP-Tool load_memory
  *   POST /api/v1/save_memory             → wie MCP-Tool save_memory
+ *   POST /api/v1/find_code               → wie MCP-Tool find_code
  *   POST /api/v1/find_document           → wie MCP-Tool find_document
  *   POST /api/v1/read_document           → wie MCP-Tool read_document
  *   POST /api/v1/open_document           → wie MCP-Tool open_document
@@ -78,6 +79,7 @@ import { type Telemetry } from "./telemetry.js";
 import { handleHookReflex, reflexPoolIds } from "./reflex.js";
 import { runPromptLane, type ClaudeHookPayload } from "./prompt-lane.js";
 import { runWriteLane, type WriteHookPayload } from "./write-lane.js";
+import { bindAppliesToVault, unbindAppliesToVault } from "./code-graph/applies-to.js";
 import { runBashPreLane, type BashHookPayload } from "./bash-pre-lane.js";
 import { runBashFailLane, type BashFailPayload } from "./bash-fail-lane.js";
 import { dispatchLaneRoutes } from "./http-lane-routes.js";
@@ -226,6 +228,10 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
   let semanticCache: { at: number; body: SemanticLayout } | null = null;
   // #216: fresh-memory buffer for the map's live mode (supernova + card)
   const liveUpdates = createLiveUpdates(vault);
+  // #578: the applies_to index reads THIS vault and is invalidated by its own
+  // add/change/remove events. Without this binding the Write/Edit lane simply
+  // emits no applies_to block — feature-less, never stale (applies-to.ts).
+  bindAppliesToVault(vault);
   // "read"-Notices (#216): jeder load_memory landet als Live-Ereignis in der Map
   telemetry.onMemoryLoaded = (id) => liveUpdates.notifyRead(id);
   // "surfaced"-Notices (#221): recall/hook_recall lassen ihre servierten
@@ -857,6 +863,9 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
 // ─── helpers ─────────────────────────────────────────────────────
 
 function closeServer(server: Server): Promise<void> {
+  // #578: let go of the vault listener with the server that took it, so a
+  // restarted daemon does not leave an index bound to a dead vault.
+  unbindAppliesToVault();
   return new Promise((resolve) => {
     server.close(() => resolve());
   });

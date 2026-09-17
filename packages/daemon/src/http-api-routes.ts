@@ -28,6 +28,7 @@ import {
   moveDocument,
 } from "./documents-write-handler.js";
 import { editMemoryHandler } from "./edit-memory-handler.js";
+import { FindCodeArgs, findCode, sharedCodeGraphCache } from "./code-graph/find-code.js";
 import { addFloor, affirm, release } from "./floors.js";
 import { saveProductDocHandler } from "./product-doc-handler.js";
 import { recoverCallArguments } from "./call-corruption.js";
@@ -119,6 +120,13 @@ export async function dispatchApi(
       return { ok: true, entry };
     }
 
+    // #576: same handler, same cache instance as the MCP path — the forwarder
+    // reaches find_code through here, so the two must not diverge.
+    case "find_code": {
+      const parsed = FindCodeArgs.safeParse(body);
+      if (!parsed.success) throw new Error(parsed.error.message);
+      return findCode(sharedCodeGraphCache(), parsed.data);
+    }
     case "find_document": {
       const parsed = FindDocumentArgs.safeParse(body);
       if (!parsed.success) throw new Error(parsed.error.message);

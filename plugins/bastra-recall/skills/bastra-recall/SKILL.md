@@ -2,7 +2,7 @@
 name: bastra-recall
 description: Proactive private local memory for ChatGPT and Codex — recall before acting, save durable rules, lessons and decisions without being asked. Requires the local bastra-recall MCP server installed by `bastra install codex`.
 ---
-<!-- GENERATED from packages/skill/SKILL.md (canonical a76a3ee26641bb9d) by scripts/build-skill-projections.mjs — do not edit; edit the canonical file and run `npm run skill:build` -->
+<!-- GENERATED from packages/skill/SKILL.md (canonical 64484f7b30464df4) by scripts/build-skill-projections.mjs — do not edit; edit the canonical file and run `npm run skill:build` -->
 
 # bastra-recall — autonomous teammate memory
 
@@ -45,10 +45,13 @@ When the user asks about anything personal, factual, historical, or document-sha
 
 1. **`recall`** — memories, lessons, decisions, project facts, personal facts.
 2. **`find_document`** — PDFs, scans, OCR'd content. Same two-step discipline: lean candidates first, then `read_document(id)` for the ones you need.
+   **`find_code`** — where a symbol lives and what depends on it, for code questions.
 3. **`conversation_search`** — chat history. Fallback only.
 4. **`web_search`** — external info. Last resort for personal queries.
 
 Skipping straight to `conversation_search` or `web_search` on a "find my …" query is the #1 failure mode this skill exists to prevent. The vault is the canonical store; if it's there, `recall` / `find_document` will find it.
+
+**Code questions have their own entry point.** `find_code` locates a declared symbol or file in the repository's code graph and names what depends on it, one hop — the shorter route for questions about *relations* ("where is this defined", "who calls this", "what breaks if I change it"), including callers that reach a symbol through a re-export. Grep stays right for what the graph does not index: string literals, comments, config values, and any question about a file's *content*. Using both on a hard question is normal. (Lanes, the honest-miss answer and the "graph not loaded" state: `find_code` tool description.)
 
 ---
 

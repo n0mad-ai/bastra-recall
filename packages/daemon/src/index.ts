@@ -68,6 +68,7 @@ import {
   readDocument,
   openDocument,
 } from "./documents-handler.js";
+import { codeTools, FindCodeArgs, findCode, sharedCodeGraphCache } from "./code-graph/find-code.js";
 import {
   documentWriteTools,
   SaveDocumentArgs,
@@ -686,6 +687,10 @@ async function main(): Promise<void> {
       ...documentTools,
       ...(DOCUMENT_WRITE_ENABLED ? documentWriteTools : []),
       ...productDocTools,
+      // #576: the stdio surface lists its tools here, separately from
+      // ALL_TOOL_DEFS — a tool added only there works through the forwarder
+      // and does not exist over stdio.
+      ...codeTools,
     ],
   }));
 
@@ -804,6 +809,17 @@ async function main(): Promise<void> {
       } catch (err) {
         return errorResult((err as Error).message);
       }
+    }
+
+    // #576: code awareness. Synchronous by construction — a cold graph
+    // answers "unavailable" rather than blocking on a 20-26 ms load.
+    if (name === "find_code") {
+      const parsed = FindCodeArgs.safeParse(args);
+      if (!parsed.success) return errorResult(parsed.error.message);
+      const result = findCode(sharedCodeGraphCache(), parsed.data);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      };
     }
 
     if (name === "find_document") {

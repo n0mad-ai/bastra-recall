@@ -207,6 +207,12 @@ Document read tools:
 | `read_document` | Load document sidecar metadata and extracted body |
 | `open_document` | macOS-only open of the original file or sidecar |
 
+Code-awareness read tool (#576):
+
+| Tool | Purpose |
+|---|---|
+| `find_code` | Locate a symbol or file in the repository's code graph and list what depends on it, one hop |
+
 Document write tools are gated by `BASTRA_DOCUMENT_WRITE=1`:
 
 | Tool | Purpose |
@@ -229,6 +235,7 @@ The HTTP server binds to loopback only. Main endpoints:
 | `/api/v1/load_memory` | `POST` | REST wrapper for `load_memory` |
 | `/api/v1/save_memory` | `POST` | REST wrapper for `save_memory` |
 | `/api/v1/edit_memory` | `POST` | REST wrapper for `edit_memory` |
+| `/api/v1/find_code` | `POST` | REST wrapper for `find_code` |
 | `/api/v1/find_document` | `POST` | REST wrapper for `find_document` |
 | `/api/v1/read_document` | `POST` | REST wrapper for `read_document` |
 | `/api/v1/open_document` | `POST` | REST wrapper for `open_document` |
@@ -488,6 +495,12 @@ Werkzeuge zum Lesen von Dokumenten:
 | `read_document` | Metadaten und extrahierten Body eines Dokument-Sidecars laden |
 | `open_document` | Nur macOS: Originaldatei oder Sidecar öffnen |
 
+Werkzeug für Code-Awareness (#576):
+
+| Werkzeug | Zweck |
+|---|---|
+| `find_code` | Symbol oder Datei im Code-Graphen des Repositories finden und einen Hop Abhängige auflisten |
+
 Werkzeuge zum Schreiben von Dokumenten sind durch `BASTRA_DOCUMENT_WRITE=1` gesperrt:
 
 | Werkzeug | Zweck |
@@ -510,6 +523,7 @@ Der HTTP-Server bindet nur an Loopback. Wichtigste Endpunkte:
 | `/api/v1/load_memory` | `POST` | REST-Wrapper für `load_memory` |
 | `/api/v1/save_memory` | `POST` | REST-Wrapper für `save_memory` |
 | `/api/v1/edit_memory` | `POST` | REST-Wrapper für `edit_memory` |
+| `/api/v1/find_code` | `POST` | REST-Wrapper für `find_code` |
 | `/api/v1/find_document` | `POST` | REST-Wrapper für `find_document` |
 | `/api/v1/read_document` | `POST` | REST-Wrapper für `read_document` |
 | `/api/v1/open_document` | `POST` | REST-Wrapper für `open_document` |
