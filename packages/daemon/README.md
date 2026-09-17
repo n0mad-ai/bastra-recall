@@ -63,7 +63,7 @@ lsof -i :6723 -P -n      # who owns the daemon port
 curl -sS http://127.0.0.1:6723/health
 ```
 
-Exactly one PID should be listed. Two means a stale daemon is running in parallel — the HTTP port goes to whichever bound first, and the loser exits silently (see http.ts EADDRINUSE handler).
+Exactly one PID should be listed. Two means a stale daemon is running in parallel — the HTTP port goes to whichever bound first, and the loser exits silently (see the EADDRINUSE handler in http-listen.ts).
 
 ## Daemon startup
 
