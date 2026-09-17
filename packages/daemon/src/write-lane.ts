@@ -32,6 +32,7 @@ import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLa
 import { fileSizeNote } from "./file-size-check.js";
 import { dependentsNote } from "./code-graph/dependents-block.js";
 import { appliesToNote } from "./code-graph/applies-to-note.js";
+import { laneRepoRoot } from "./code-graph/git-paths.js";
 import { memoryLocationNote } from "./memory-location.js";
 import { reportHinted } from "./hook-hinted.js";
 import { hookClient } from "./hook-surface.js";
@@ -246,7 +247,11 @@ export async function runWriteLane(
   // so the same file is not repeated on every edit. Silent on a cold or
   // missing graph (see dependents-block.ts), and it never marks a memory
   // required (§13.1).
-  const codeNote = await dependentsNote({ filePath, repoRoot: cwd, session: sessionState }).catch(
+  // The FILE decides the repository, not the working directory: an edit from
+  // a subdirectory would otherwise miss the graph entirely (#577). Falls back
+  // to `cwd`, so nothing that worked before stops working.
+  const codeRepoRoot = laneRepoRoot(filePath, cwd);
+  const codeNote = await dependentsNote({ filePath, repoRoot: codeRepoRoot, session: sessionState }).catch(
     () => null,
   );
   if (codeNote !== null) {
@@ -261,7 +266,7 @@ export async function runWriteLane(
   // Same dedupe rule, same silence on anything missing.
   const memoryCodeNote = await appliesToNote({
     filePath,
-    repoRoot: cwd,
+    repoRoot: codeRepoRoot,
     session: sessionState,
   }).catch(() => null);
   if (memoryCodeNote !== null) {

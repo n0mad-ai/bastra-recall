@@ -210,3 +210,29 @@ function findRepoRoot(startDir: string): string | null {
   }
   return null;
 }
+
+/**
+ * The repository a Write/Edit lane call is about (#577, #578).
+ *
+ * The lane knows two things: the file being written, and the session's `cwd`.
+ * Until now it used `cwd` directly as the graph's anchor, which is right only
+ * when the agent happens to be sitting at the repository root. Edit
+ * `packages/core/src/save.ts` from inside `packages/core/` and the anchor is
+ * wrong, `repoRelative` refuses the path, and the whole feature silently does
+ * nothing — the failure mode a user would read as "it just doesn't work".
+ *
+ * So the FILE decides, not the working directory: walk up from the file to its
+ * checkout root. `repoRootSync` does that without spawning git (the lane's p90
+ * budget rules out a process start) and caches hits and misses.
+ *
+ * `cwd` remains the fallback, for the case the walk cannot answer — a file that
+ * does not exist yet, or a tree with no repository marker at all. Returning
+ * `cwd` there preserves exactly the previous behaviour instead of turning a
+ * working case into a null.
+ *
+ * Both anchors are only ever a LOOKUP KEY: whether the repository is enabled
+ * is decided separately, and a root that nobody enabled finds no graph.
+ */
+export function laneRepoRoot(filePath: string, cwd: string): string {
+  return repoRootOfFileSync(filePath) ?? cwd;
+}
