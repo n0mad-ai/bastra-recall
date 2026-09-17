@@ -1,14 +1,18 @@
 # Bastra Recall – Evolution Architecture V1 → V2
 
-> Status: release and target architecture; V1.0 is the next binding
-> release contract, V2.0 the measurement-dependent long-term target
+> Status: release and target architecture; the V1.0 release contract is met
+> and shipped with Bastra Recall 1.0.0 on 14 September 2026, V2.0 is the
+> measurement-dependent long-term target
 >
-> As of: 12 September 2026 (contract changes C-083 and C-087, contract
-> additions C-084 and C-085, refinement C-086; the signed-off basis of
-> 26 July 2026 otherwise unchanged)
+> As of: 17 September 2026 (status update C-088 on the release of 1.0.0,
+> architectural decision C-089 on code awareness; contract changes C-083 and
+> C-087, contract additions C-084 and C-085, refinement C-086; the signed-off
+> basis of 26 July 2026 otherwise unchanged)
 >
-> Starting state: Bastra Recall 0.8.6, the current vault, real
-> 30-day telemetry, and the existing eval geometry
+> Starting state: Bastra Recall 0.8.6, the vault at the time, real
+> 30-day telemetry, and the eval geometry at the time. 0.8.6 is the historical
+> starting point of this document, not the current state; it was followed by
+> 0.8.7 to 0.9.2 and, on 14 September 2026, by version 1.0.0.
 >
 > **This is a translation.** The German version at
 > `docs/Evolutionsarchitektur V1 zu V2.md` is the reviewed original and the
@@ -16,16 +20,18 @@
 > Where the two diverge, the German version prevails. Every change is made
 > there first and translated afterwards, never the other way round.
 >
-> Binding ledger state: C-001–C-087, eleven review rounds, two contract
-> changes, two contract additions and one refinement; C-001–C-082 signed off on
-> 26 July 2026, C-083 to C-086 decided on 29 August 2026, and C-087 on
-> 12 September 2026.
+> Binding ledger state: C-001–C-089, eleven review rounds, two contract
+> changes, two contract additions, one refinement, one status update and one
+> architectural decision; C-001–C-082 signed off on 26 July 2026, C-083 to
+> C-086 decided on 29 August 2026, C-087 on 12 September 2026, and C-088 and
+> C-089 on 17 September 2026.
 >
 > Genesis: signed-off starting state C-001–C-028, carried forward by the
 > revisions C-029–C-039, C-040–C-048, C-049–C-054, C-055–C-059, C-060–C-062,
 > C-063–C-067, C-068–C-073, C-074–C-077, C-078–C-079, C-080–C-081, and C-082,
 > and by the contract changes C-083 and C-087, the contract additions C-084 and
-> C-085, and the refinement C-086.
+> C-085, the refinement C-086, the status update C-088, and the architectural
+> decision C-089.
 > All twelve interim versions and the starting state are archived unchanged;
 > they are supporting material, not governing contracts, and have not been part
 > of the public repository since 2026-09-17. An earlier English version at state
@@ -39,7 +45,7 @@
 > The product-owner decisions in Section 31 have been taken and bind
 > the implementation.
 >
-> Next available ID: C-088. A new delta is carried forward in this file and is
+> Next available ID: C-090. A new delta is carried forward in this file and is
 > no longer kept as a separate revision file.
 
 ## 0. Decision and Review Status
@@ -59,8 +65,13 @@ This document separates five levels:
 
 ### 0.1 V1.0 – Measurement and Control Foundation
 
-The current state 0.8.6 does not yet fully satisfy V1. V1.0 is reached when
-solely the following foundations have been implemented and proven:
+**Status 17 September 2026 (C-088):** V1.0 has been reached and shipped as
+Bastra Recall 1.0.0 on 14 September 2026. The text below describes the
+contract as it stood before the release; the starting state 0.8.6 did not yet
+fully satisfy it at the time.
+
+V1.0 is reached when solely the following foundations have been implemented
+and proven:
 
 1. establish measurement truth and reproducible baselines;
 2. build a deterministic, explainable abstention and relevance decision from
@@ -79,10 +90,12 @@ chunking, HNSW, or learned-ranking live layer.
 
 | Release | Function | Approval logic |
 |---|---|---|
-| 0.8.6 | today's pre-V1 current state | diagnostic foundation, not a completed V1 contract |
-| V1.0 | observable and selective measurement/control foundation | Section 0.1 and Definition of Done 26.1 fully satisfied |
+| 0.8.6 | historical starting point: the pre-V1 state at the time | diagnostic foundation, not a completed V1 contract |
+| V1.0 | observable and selective measurement/control foundation | Section 0.1 and Definition of Done 26.1 fully satisfied — **shipped as 1.0.0 on 2026-09-14** |
+| v1.0.1 | post-release measurement and follow-ups | work that is built but whose evidence or rate only arises in real use after 1.0, plus the P2 items deliberately deferred at the 1.0 approval; open |
 | V1.x | incremental evolution | each component approved individually through its named measurement gate and delivered backward-compatibly |
-| V2.0 | complete adaptive memory system | all mandatory V2 properties from 26.2 proven together |
+| V2.0 | complete adaptive memory system | all mandatory V2 properties from 26.2 proven together; open |
+| V3.0 | anticipatory, causal and shared memory | in planning, builds on the V2 contracts; separate document: [Evolution Architecture V2 to V3](./Evolution%20Architecture%20V2%20to%20V3.md) |
 
 Measurement, shadow operation, and read-only projections are permitted at any
 time. Measurement gates gate solely schema/contract changes and
@@ -116,11 +129,11 @@ reopened only with new evidence.
 | C-001 | confirmed | The raw BM25 score and scaled RRF may no longer use shared absolute 30/100 bands as a relevance promise. |
 | C-002 | confirmed | **Refined by C-086:** the required conditions of the evidence decision are drawn more narrowly — partial coverage counts only from 50 %, and the hard identifier anchor no longer reads the body. The current `weak_result` is only an informational MCP signal and not a hook gate; V1.0 introduces a real evidence decision with abstention. |
 | C-003 | corrected | The production candidate pool is `max(k × 4, 20)`, not 20 everywhere; for out-of-pool evals it is explicitly expanded to 100/200. |
-| C-004 | corrected | `GET /hook/session-context` exists, but is projectless and internally serial; it is extended, not used unchanged as a replacement for SessionStart. |
+| C-004 | corrected | **Current state carried forward by C-088:** with V1.0 the GET is only the project-less projection of the shared, parallel assembler; the project-capable `POST /hook/session-context` exists and is used by the Claude Code hook. Finding at the time: `GET /hook/session-context` exists, but is projectless and internally serial; it is extended, not used unchanged as a replacement for SessionStart. |
 | C-005 | corrected | Bridges are opt-in and a no-op without a pool; on this instance two bridges were active and expanded 853 queries during the measurement period. This firing rate substantiates activity, not usefulness or quality lift. |
 | C-006 | confirmed | `acted_on` is a token-overlap proxy and not a gold label; V1.0 therefore does not claim a `relevance_probability`. |
 | C-007 | qualified | HNSW is not justified for the current vault, but remains specified as an explicitly gated later automatic-switch strategy. |
-| C-008 | confirmed | A complete mutation audit exists today only on the Mac app bridge path; regular MCP/HTTP saves are not covered by it. |
+| C-008 | confirmed | **Current state carried forward by C-088:** since #206 (2026-07-27) the regular MCP/REST save writes an audit entry as well; the conclusion "an audit is not an attestation" (C-060) is unaffected. Finding at the time: A complete mutation audit exists today only on the Mac app bridge path; regular MCP/HTTP saves are not covered by it. |
 | C-009 | confirmed | Load/use rates mix retrieval, hook wording, consumer behavior, and telemetry attribution; V1.0 separates these effects experimentally. |
 | C-010 | confirmed | The ad hoc baseline does not yet have a versioned run artifact and becomes the official baseline only after M0. |
 | C-011 | confirmed | Salience acts live on the staleness lifetime; direct ranking influence remains shadow-only by default. |
@@ -198,8 +211,10 @@ reopened only with new evidence.
 | C-083 | contract change | Of the retrieval/presentation experiment from 17.4, V1.0 now owes only the pre-registered design, the deterministic arm assignment and the honest status report (`underpowered` or `not_evaluable` per 18.1). The adequately populated run — minimum N per arm reached, second hook wording, per-session switchable gate, query class collected, independent relevance labels — moves to 26.2. The justification is measured: the unit of randomisation is the session, and the single-user population does not carry a minimum N in reasonable time. |
 | C-084 | contract addition | From V1.0 on, the frontmatter format is under an explicit promise (26.1): required fields, memory types, the meaning of the documented optional fields and the loader leniency change only with a major bump. No 1.x reader requires a format-version field. Unknown keys are tolerated on load but are not guaranteed to survive an `overwrite`. Not covered are ranking, the internal `.bastra/` storage and projection content; the shape of `recall` output falls under the separate API contract. Tightening the loader without a major bump is admissible only under the narrowly drawn security exception. |
 | C-085 | contract addition | The 500-decision route of the shadow sign-off (18.2) applies only with spread: at least 20 different sessions carry the counting decisions, and no single session supplies more than 25 % of them. The 14-day route is untouched. Clarification in the same entry: counting is per memory decision, not per hook call — that is how the threshold is implemented and how it is meant. |
-| C-086 | refinement | Both routes to `required` are drawn more narrowly (10.3): the partial-coverage signal of the two-of-three count applies only from 50 % trigger coverage instead of from the first shared term, and the hard identifier anchor reads title, `recall_when` and frontmatter instead of the body as well. Quantified before the change: anti-query gate from 50 % to 12.5 %, Recall@3 gated, identifier queries and false abstention unchanged, length-neutral. Open: the anti-probe set is too small, and the cost of the lost obligations is visible only to the shadow telemetry. |
+| C-086 | refinement | **Wording corrected by C-088** (previously "title, `recall_when` and frontmatter"). Both routes to `required` are drawn more narrowly (10.3): the partial-coverage signal of the two-of-three count applies only from 50 % trigger coverage instead of from the first shared term, and the hard identifier anchor reads title and `recall_when` instead of the body as well; it reads no further frontmatter fields. Quantified before the change: anti-query gate from 50 % to 12.5 %, Recall@3 gated, identifier queries and false abstention unchanged, length-neutral. Open: the anti-probe set is too small, and the cost of the lost obligations is visible only to the shadow telemetry. |
 | C-087 | contract change | Of the global context budget from 16.3, V1.0 owes the latency budget live and the cumulative cross-lane token budget per session as a **shadow ledger** (26.1): charge and log, do not trim. **Live enforcement** — budget size fixed from the shadow data, a canary profile with instant rollback to unlimited, a seven-day canary report — is moved to 26.2. The reason is measured: six days of shadow (742 decisions, 135 sessions, 80 evaluable) would have touched 8 sessions against the provisional 7,500-token profile and withheld 36,976 tokens, roughly 5 % of 719,322 tokens of weekly use. The value lies in the tail, and a tail does not carry a live activation on shadow data alone. |
+| C-088 | current-state correction | Status update without a contract change: V1.0 is met and shipped as 1.0.0 on 2026-09-14 (tag `v1.0.0`); header, 0.1, 0.2, 18.0, 21.1, 25, 26.1 and 27 carry this, historical statements stay as such. Six current-state statements are outdated and are corrected with today's location: mutation audit also in the MCP/REST save (C-008), evidence decision active by default and hop-safe (13.1, C-046), shared parallel session assembler with a POST path (16.1, C-004), hybrid stress path builds the vector arm (2.2), pinned block outside `session-hook.ts` (6.3), identifier anchor reads only title and `recall_when` (C-086). Shifted line references are updated, the per-lane budgets of 2026-09-12 are added to 9.4 and 16.3 as a status note, C-087 is added to 28 and 37. No verdict is reinterpreted. |
+| C-089 | architectural decision | Code awareness in V2 does not come from an in-house symbol indexer but from Graphify as an external code-graph source (epic #572, #573–#580; product-owner decision of 2026-09-17). Recall uses only the Graphify CLI in code-only mode and the `graph.json` it writes, never its installers or hooks. The code graph is a logical view of its own next to 13.1 (hop budget one, only directly extracted edges in Normal Recall, no-graph control arm), lives git-ignored inside the project, is not projected into the vault, and runs in the hook path without Python within the existing budgets. `applies_to` is implemented via the existing field `affects_files`; a code hop never produces `required` on its own. |
 
 **Sign-off status 24 July 2026:** full reconciliation of ledger C-001–C-027,
 gate measurability, current-state claim sweep (58 claims, all covered),
@@ -352,8 +367,9 @@ call.
 above zero as an independent signal, so a single coincidentally shared term
 helped carry an obligation; it now counts only from 50 % coverage. The hard
 identifier anchor additionally searched the body and thereby turned a mention
-in prose into responsibility; it now reads only title, `recall_when` and
-frontmatter. Both narrowings were quantified before the change: the anti-query
+in prose into responsibility; it now reads only title and `recall_when`
+(wording "and frontmatter" corrected by C-088: the code reads no further
+frontmatter fields). Both narrowings were quantified before the change: the anti-query
 gate falls from 50 % to 12.5 %, while Recall@3 gated, identifier queries and
 false abstention stay unchanged. Two reservations are stated explicitly in the
 entry — eight anti-probes cannot represent the 5 % threshold, and the cost of
@@ -374,7 +390,24 @@ checkable — the ledger, the shadow decision per emission, and the readout in
 the Telemetry tab. The replaced version stays marked as such in 26.1; no
 verdict from C-001–C-086 is reinterpreted.
 
-**Next available ID: C-088.** New delta reviews begin there. A verdict
+**Status update, 17 September 2026 (this version):** C-088 records that the
+V1.0 release contract is met: Bastra Recall 1.0.0 was released on 2026-09-14.
+An internal release review of 2026-09-12 had first returned NO-GO; after the
+findings had been fixed, the product owner decided on 2026-09-13 to ship 1.0
+and to keep measuring the hook telemetry after the release — lanes that have
+not reached their minimum sample explicitly count as unproven, not as passing.
+v1.0.1 carries this follow-up measurement and the deferred P2 items. The same
+entry corrects six outdated current-state statements and shifted line
+references; where the reasoning rests on them, the statements stay
+recognisable as the state at the time.
+
+**Architectural decision, 17 September 2026 (this version):** C-089 fixes how
+V2 gains code awareness: Graphify supplies the code graph, Recall decides what
+of it reaches the agent, when, and how much. The detailed specification lives
+in epic #572 and issues #573–#580; this document records only the boundaries
+(2.3, 9.2, 9.3, 13, 13.1, 16.2, 16.3, 22, 23, 24, 26.2, 31).
+
+**Next available ID: C-090.** New delta reviews begin there. A verdict
 changes only with new code, telemetry, or run evidence; matters of taste
 are marked as an architectural decision instead of a factual error.
 
@@ -417,8 +450,15 @@ Today's architecture already has strong individual components:
 - Reflex memories with explicit user approval;
 - local telemetry for `surfaced`, `loaded`, and `acted_on`;
 - recoverable deletion and stable memory IDs; a complete
-  mutation audit currently exists only on the Mac app bridge path, not for
+  mutation audit existed at the time only on the Mac app bridge path, not for
   regular MCP/HTTP saves.
+
+**Current-state correction 17 September 2026 (C-088):** Since #206
+(2026-07-27), `saveMemoryHandler` also writes an audit entry for MCP and REST
+with `actor: "assistant"` (`packages/daemon/src/tool-handlers.ts:681`); REST
+calls the same handler (`packages/daemon/src/http-api-routes.ts:68`). The
+`auditedSave` wrapper is deliberately not used there. That an audit is not an
+attestation (6.3, C-060) is unaffected.
 
 These components, however, do not yet add up to a closed model of attention,
 forgetting, remembering, and consolidation. Today's score
@@ -501,7 +541,8 @@ recall lift.
    Accessibility.
 
 6. **The hot path is unnecessarily serial.** SessionStart executes several
-   recall and metadata queries one after another.
+   recall and metadata queries one after another. *(State before V1.0; with
+   #265 the shared session assembler works in parallel, see 16.1.)*
 
 7. **The eval sets are in part too small or not close to production.** Small
    synthetic sets reach ceiling values, while real paraphrases perform
@@ -512,6 +553,11 @@ recall lift.
    BM25-only in the current stress harness, because no `EmbeddingIndex` is
    created there. Other specialized eval arms can already use real
    embeddings; the statement explicitly concerns the stress harness.
+   *Current-state correction 17 September 2026 (C-088):* with #261,
+   `attachHybrid` builds the vector arm before the recaller is created and
+   aborts instead of silently falling back to BM25
+   (`packages/daemon/scripts/eval-stress.ts:524`–`:531`). The finding
+   describes the state before V1.0.
 
 9. **Retrieval and consumer behavior are conflated in the ROI measurement.**
    Low load rates can arise from irrelevant hits, hook language,
@@ -578,6 +624,16 @@ without demonstrable acceptance; for T-Mem no code was published as of the
 review date. Peer-reviewed substantiation exists, by contrast, for Hindsight
 as an ACL demo, MAGMA, Mem2ActBench, and the graph counter-position from the
 same conference.
+
+**Graphify as a code-graph source (C-089).** On 2026-09-17 Graphify
+(Apache-2.0) was tested in isolation against this repository
+(`graphify extract . --code-only`, version 0.9.63): 802 files in 12 s, with no
+LLM and no data leaving the machine; structural lookups such as the callers of
+a function returned correct `file:line` locations, while the free-text search
+was noisy. This is an in-house measurement on a single repository. It
+justifies the choice of source, not a gate; under this rule Graphify's own
+benchmark figures do not count as a Bastra target (24). Recall adopts only the
+structural data, not the project's free-text search, installers or hooks.
 
 ## 3. Scientific Guardrails
 
@@ -1003,8 +1059,9 @@ authorship, never substantiate it.
 
 `write_origin` is an input field, not a proof. The regular MCP save exposes it
 in the public tool schema and passes the caller's value through to the storage
-function unchanged, without audit proof — a complete mutation audit exists to
-this day, per C-008, only in the Mac bridge path. An agent that sets
+function unchanged. Since #206 an audit entry is written here as well
+(current-state correction in Section 2, C-088), but it substantiates only the
+mutation, not the origin of the statement. An agent that sets
 `user-directed` therefore merely asserts that it is writing on the user's
 behalf. Precisely this assertion must not trigger the highest trust class.
 
@@ -1258,7 +1315,7 @@ manifest. The only permitted components are:
 the existing field suggests more than the code delivers, and this document
 explicitly does not rely on the obvious reading. `buildGraph` sets `bridge` when
 a node has neighbours in at least two different foreign clusters
-(`packages/core/src/graph.ts:302`–`:305`). What is **not** checked is whether
+(`packages/core/src/graph.ts:319`–`:323`). What is **not** checked is whether
 these clusters would actually be unconnected without the node. The field
 therefore substantiates neither a graph-theoretic bridge — an edge whose removal
 breaks a component apart — nor an articulation node whose removal separates the
@@ -1351,8 +1408,9 @@ would no longer be comparable.
 Floor and pin status are explicitly **not** used as a criterion. Floored
 memories are already covered by review stage 1 — carrying them in review stage 2
 again would be a double assignment. And a pin source independent of the floor
-does not exist at HEAD: the Curator input sets the field hard to `false`, and in
-the session hook “pinned” is merely the display name of the floor block. A
+does not exist at HEAD: the Curator input sets the field hard to `false`, and
+“pinned” is merely the display name of the floor block — at the time in the
+session hook, since V1.0 in the shared session assembler (C-088). A
 criterion that reads a permanently empty field is not a criterion.
 
 Review stage 2 thus has two membership routes — substantiated high usage where a
@@ -1895,13 +1953,21 @@ Large vector set
 
 Explicit deep-memory intent
   -> full Deep Recall including Asteroid Belt
+
+Exact symbol / code path (V2, C-089)
+  -> code-graph lookup, one hop of dependents
 ```
+
+The last line is the V2 target (C-089, #576): exact symbol and path lookups
+against the code graph belong to the exact lane and run before BM25.
+Graphify's free-text search is not used for this.
 
 ### 9.3 Normal Recall cascade
 
 1. Normalize the query.
 2. Determine the Working Memory context and the hard filters.
-3. Check exact IDs, symbols, paths and reflex triggers.
+3. Check exact IDs, symbols, paths and reflex triggers; in V2 this includes
+   the exact symbol and path lookup against the code graph (C-089).
 4. Run BM25.
 5. Assess the lexical evidence.
 6. Skip the semantic arm on an unambiguous result.
@@ -1931,6 +1997,19 @@ independent, versioned gold inventory and enough calibration cases.
   demonstrably free remaining latency. Comparable third-party systems rerank
   every recall with a cross-encoder; but they also do not have to meet a hook
   budget of 150 ms.
+
+**Status note 17 September 2026 (C-088): per-lane budgets.** On 2026-09-12 the
+single 600 ms wall clock for all hook lanes was replaced by budgets per lane
+(#305, `packages/daemon/src/hook-budgets.ts:23`): assertion class of the prompt
+hook 1000 ms, other prompt classes as well as the write and plan lanes 600 ms,
+Bash pre/post and the session lane 500 ms, Stop lane 1000 ms
+(`hook-budgets.ts:51`–`:61`). The p90 targets are 200 ms for the fast lanes,
+300 ms for the silent prompt classes and 900 ms for the assertion lane
+(`:68`–`:74`). The reason given in the file: under a single budget the
+assertion lane would silently have lost about one call in four. The 150 ms
+above are the vector deadline in the hook
+(`packages/daemon/src/http-hook-routes.ts:79`), not a lane budget. The
+measurement gates from 18 remain unchanged.
 
 ## 10. Relevance evidence, abstention and later calibration
 
@@ -2032,8 +2111,11 @@ remains a hard anchor unchanged.
 *Hard anchor.* The exact identifier, path and symbol match previously searched
 the memory **body** as well. An identifier occurring anywhere in the prose — in
 a code block, a quotation, a list of files — thereby justified an obligation on
-its own. The anchor now reads **title, `recall_when` and frontmatter**; the
-body no longer counts.
+its own. The anchor now reads **title and `recall_when`**; the body no longer
+counts, and it does not read further frontmatter fields such as tags, scope or
+`topic_path` either (`packages/core/src/evidence-decision.ts:156`–`:159`).
+*The earlier wording "title, `recall_when` and frontmatter" was broader than
+the code and is corrected by C-088.*
 
 > Replaced reading: ~~the identifier haystack comprises title, `recall_when`
 > and the memory body~~.
@@ -2309,7 +2391,7 @@ V2 relations:
 | `derived_from` | was consolidated from an episode or source |
 | `caused_by` | cause and effect |
 | `resolved_by` | the problem was solved by this |
-| `applies_to` | applies to an entity, project, file or symbol |
+| `applies_to` | applies to an entity, project, file or symbol; for file and symbol via the existing field `affects_files` (C-089) |
 | `example_of` | concrete episode of a semantic pattern |
 
 Rules:
@@ -2320,6 +2402,14 @@ Rules:
 - Deep Recall may traverse more broadly;
 - contradicting or historical edges are explained visibly;
 - graph hops do not receive a blanket score-multiplier model.
+
+**Edge to code (C-089).** `applies_to` for files and symbols is implemented via
+the already documented optional field `affects_files`
+(`packages/core/src/schema.ts:197`), without a schema change; entries of the
+form `path#symbol` are allowed and are validated against the code graph where
+one exists (#578). Memories attached to the touched file are exact-lane
+candidates, memories attached to dependent files are one-hop candidates that
+must pass the evidence decision on their own.
 
 ### 13.1 Logical views instead of separate graphs
 
@@ -2338,6 +2428,14 @@ are active at all and with which hop budget:
   arm;
 - an improvement in the overall result without a passed control arm does not
   count as substantiation that the graph was the cause.
+
+**Code view (V2, C-089).** The code graph from Graphify is a logical view of
+its own next to the memory views and is not merged into the memory graph.
+Normal Recall uses it with a hard hop budget of one and only via edges
+extracted directly from source (`EXTRACTED`), not inferred ones. A code hop
+never produces `required` on its own. The context savings are measured against
+a no-graph control arm (#579); a gain without that arm does not count as
+substantiation.
 
 #### Today's hop baseline is preserved
 
@@ -2368,7 +2466,8 @@ A hit that was reached only via an edge is a candidate and not a
 substantiation. The target memory must pass the regular evidence decision from
 Section 10 under its own power in order to become `required`.
 
-This rule closes a gap that exists today. The current state:
+This rule closed a gap that existed at the time. The current state before
+V1.0:
 
 - A hop neighbour receives at most half of the raw seed score.
 - The origin marker `hop` is projected out of the response on the way to the
@@ -2386,6 +2485,22 @@ The separation today therefore hangs on an accidental property of the score
 scaling — and of all paths it is the degraded one without embeddings, the one
 that takes effect on a provider outage, that lacks this safeguard. V1.0
 therefore makes the rule explicit instead of relying on the cap.
+
+**Current-state correction 17 September 2026 (C-088).** The list above
+describes the state before V1.0. Today the evidence decision is active by
+default (`packages/daemon/src/settings.ts:693`,
+`EVIDENCE_GATE_DEFAULT = true`, can be switched off via
+`BASTRA_EVIDENCE_GATE=0`) and never makes a pure hop hit `required`
+(`packages/core/src/evidence-decision.ts:254` and `:263`, reason `hop_only`).
+The legacy banding also excludes hops from `required`
+(`packages/daemon/src/band-wording.ts:148`). The upper bound of about 164
+applies only to the two personal arms; with Commons as a third arm the rank sum
+reaches about 242 (`packages/daemon/src/score-space.ts:6`–`:7`), so a hop
+could arithmetically exceed 100 — the hop block catches that. New compared with
+the baseline description above: the shared session assembler also sets
+`expand_hops` to 1 by default
+(`packages/daemon/src/session-assembler.ts:351`), its project-less GET
+projection explicitly to 0 (`packages/daemon/src/session-context.ts:43`).
 
 This presupposes that the hop origin is available to the decision point. The
 evidence decision is taken **server-side**, before the response is projected —
@@ -2780,11 +2895,19 @@ Rules:
 
 ### 16.1 SessionStart
 
-A `GET /hook/session-context` already exists. Today it serves the MCP forwarder
-for hookless clients, is deliberately project-less, excludes project-related
-and `all-projects` hints, and likewise assembles its sources largely
-sequentially. It is therefore not a drop-in replacement for the Claude Code
-SessionStart hook.
+A `GET /hook/session-context` already existed. At the time it served the MCP
+forwarder for hookless clients, was deliberately project-less, excluded
+project-related and `all-projects` hints, and likewise assembled its sources
+largely sequentially. It was therefore not a drop-in replacement for the Claude
+Code SessionStart hook.
+
+**Current-state correction 17 September 2026 (C-088):** With #265 the
+following is implemented. The GET is now only the project-less projection of
+the shared assembler (`packages/daemon/src/session-context.ts:8`–`:12`,
+`:41`–`:46`), `POST /hook/session-context` exists
+(`packages/daemon/src/http-ui-routes.ts:130`), the Claude Code hook calls it
+(`packages/daemon/src/session-hook-http.ts:86`), and the assembler runs its
+collectors in parallel (`packages/daemon/src/session-assembler.ts:541`).
 
 V1.0 does not build a second, competing session-context path. The existing
 server assembler is extended into the shared implementation:
@@ -2824,7 +2947,14 @@ The response has:
   probability only comes into consideration after M1 label evidence;
 - backoff also applies to apparently strong hits when their relevance is not
   independently substantiated;
-- identical routing logic is shared centrally.
+- identical routing logic is shared centrally;
+- in V2 (C-089, #577) the Write/Edit lane shows, before a change, a small
+  block with the symbols of the file and its direct dependents (one hop,
+  `EXTRACTED` edges only), separate from the memory hints, with a hard token
+  cap, the same session deduplication and neutral wording; it may lengthen the
+  lane by at most about 10 ms. No Python process starts in the hook path;
+  `graph.json` is read inside the daemon (#575). No new hooks on Read, Grep or
+  Glob are created for this.
 
 ### 16.3 Context budget
 
@@ -2842,6 +2972,13 @@ automatic lanes runs in shadow only — it charges and logs, but trims nothing.
 Live enforcement is moved to 26.2 and presupposes a budget size fixed from the
 shadow data, a canary profile with instant rollback to unlimited, and a
 seven-day canary report.
+
+**Status note 17 September 2026 (C-088): latency budget per lane.** Since
+2026-09-12 the latency budget has been split by lane (values and reasoning in
+9.4, `packages/daemon/src/hook-budgets.ts`). The measurement gates from 18 and
+the shadow restriction of the token budget are unaffected. The code dependents
+block from 16.2 (C-089) runs within these budgets and is charged through the
+same token ledger.
 
 ## 17. Learning from usage
 
@@ -2960,6 +3097,11 @@ claim a reference effect are interpreted only against a robust M0 baseline. A
 pure M6 shadow model presupposes M0 and M1, but not M3 through M5. Schema and
 contract changes and live activations remain blocked until the gate named in
 each case and an explicit approval.
+
+**Status 17 September 2026 (C-088):** This scope shipped with Bastra Recall
+1.0.0 on 2026-09-14: M0, the deterministic part of M1, the shared session
+assembler, and the registered design of the experiment under 26.1 (C-083). For
+M2 through M6 the approval status above applies unchanged.
 
 The label `M` stands for measurement gate. It is deliberately kept separate from
 the product versions V1/V2.
@@ -3777,7 +3919,9 @@ as existing product telemetry.
 
 ## 21. Migration
 
-### 21.1 V1.0 – approved release contract, no schema change
+### 21.1 V1.0 – shipped release contract (1.0.0, 2026-09-14), no schema change
+
+Implemented and shipped with 1.0.0 (C-088):
 
 - repair the M0 eval harness and produce reproducible run artifacts;
 - extend score, evidence, abstention and no-answer telemetry with `client`,
@@ -3889,6 +4033,11 @@ measurement gates.
 - Without HNSW, Flat search works fully.
 - Without the accessibility sidecar, conservative default zones apply.
 - Without Mindspace, Deep Recall remains reachable via API/CLI.
+- Code awareness (C-089) is an optional companion: without Graphify and
+  without a code graph, Recall works unchanged. The graph lives inside the
+  respective project under `graphify-out/` and is never committed (in the own
+  repository via `.gitignore`, in user repositories via `.git/info/exclude`);
+  Recall writes no git hooks into user repositories (#574).
 - `valid_until` retains its present lifecycle semantics and is not migrated;
   new time fields are added additively alongside it.
 - Inventory memories without `provenance_class` count as `unknown_legacy`,
@@ -3945,8 +4094,18 @@ measurement gates.
 - Deep Recall extends reach, not permissions.
 - Soft delete and survival-by-ID are retained.
 - The existing audit of the Mac bridge mutation path is retained. A uniform
-  audit for regular MCP/HTTP mutations is separate later work and is not
-  presupposed here as an already existing property.
+  audit for regular MCP/HTTP mutations was separate later work at the time and
+  was not presupposed as an existing property. *Current-state correction
+  17 September 2026 (C-088):* since #206 the regular MCP/REST save writes an
+  audit entry as well (Section 2); the audit substantiates the mutation, not an
+  attestation.
+- Code awareness (C-089): Recall calls Graphify only in code-only mode, so no
+  code reaches an LLM, and sets `GRAPHIFY_QUERY_LOG_DISABLE=1` when doing so.
+  Graphify's own installers and hooks (`graphify install`,
+  `graphify claude install` and related ones) are never called, because they
+  write globally to `~/.claude/CLAUDE.md` and register mandatory hooks on Read
+  and Grep. The code graph is subject to the same scope and egress rules as
+  vault content; nothing is sent anywhere.
 - Derived cues, manifests and graph projections are subject to the same scope,
   sensitivity and egress rules as the underlying content. A manifest must not
   bypass a filter by aggregating.
@@ -4029,7 +4188,13 @@ measurement gates.
 - no resubmission on the basis of a reason code that the applicable vocabulary
   version does not know;
 - no memory that remains permanently exempt from the provenance review;
-- no resubmission of a rejected proposal that is substantively the same.
+- no resubmission of a rejected proposal that is substantively the same;
+- no in-house symbol indexer — code awareness uses Graphify as an external
+  source (C-089);
+- no projection of code maps into the vault — a single repository would yield
+  about 6,900 notes, more than five times the vault at the time (C-089);
+- no hooks on Read, Grep or Glob and no mandatory wording ("MANDATORY",
+  "You MUST") for code hints (C-089).
 
 ## 25. Implementation order
 
@@ -4041,7 +4206,8 @@ V1.0:
 4. Global context budget — shadow ledger in V1.0, live enforcement under 26.2
    (C-087) — and a separate retrieval/presentation experiment.
 
-Up to and including item 4, the implementation is approved as V1.0. All
+Up to and including item 4, the implementation is done and shipped as V1.0
+with 1.0.0 on 2026-09-14 (C-088); before that it was approved as V1.0. All
 following numbers order schema/contract changes and live activations.
 Measurement, shadow operation and read-only projections remain permitted
 independently of that; quality claims with reference effect presuppose M0:
@@ -4066,10 +4232,24 @@ independently of that; quality claims with reference effect presuppose M0:
 12. Flat/HNSW strategy live only once controlled profiling substantiates a Flat
     search bottleneck and M5 substantiates the quality and latency advantage.
 13. Learned ranking in shadow after M0/M1, live only after M6 has been passed.
+14. Code awareness via Graphify (C-089) in the order #573 → #574 → #575 →
+    #576/#577 → #578 → #579, with documentation (#580) alongside; its benefit
+    counts as substantiated only after the comparison with the no-graph control
+    arm (#579).
 
 ## 26. Definition of Done
 
 ### 26.1 Release contract V1.0
+
+**Status 17 September 2026 (C-088): met, 1.0.0 shipped on 2026-09-14.** An
+internal release review of 2026-09-12 initially returned NO-GO. After the
+findings had been fixed and only the live acceptance data of the hook lanes
+(#305) was still missing, the product owner decided on 2026-09-13 to ship 1.0
+and to continue the measurement after the release. The corresponding gate
+condition was worded so that every lane that reached its minimum sample must
+meet its threshold and every lane that did not counts explicitly as unproven;
+the minimum sample was not lowered. #305 and the deferred P2 items are in the
+v1.0.1 milestone. The list below is the contract that was checked against.
 
 V1.0 is finished when:
 
@@ -4244,10 +4424,16 @@ promotion follows only when:
   current hardware and qualitatively safe;
 - every adaptive decision is shadow-tested, explainable and reversible.
 
+**Code awareness (C-089).** The product-owner decision of 2026-09-17 assigns
+code awareness via Graphify (epic #572, #573–#580) to V2.0. It is built as an
+optional companion, keeps the boundaries from 13.1, 16.2, 22, 23 and 24, and
+counts as useful only once its context savings are substantiated against the
+no-graph control arm (#579).
+
 ## 27. Short version
 
-Bastra Recall 0.8.6 becomes V1.0 first: a reproducibly measurable, selective
-and controllable recall system. During V1.x, further memory functions are added
+Bastra Recall 0.8.6 first became V1.0: a reproducibly measurable, selective
+and controllable recall system, shipped as 1.0.0 on 2026-09-14 (C-088). During V1.x, further memory functions are added
 only after passed measurement gates. V2.0 finally denotes the jointly proven,
 adaptive and multi-layered memory system:
 
@@ -4265,16 +4451,18 @@ adaptive and multi-layered memory system:
   independent labels.
 - Consolidation and reconsolidation develop knowledge further without erasing
   its history.
+- An external code graph (Graphify) gives agents code awareness; Recall
+  decides what of it arrives, when, and how much (C-089).
 
 The goal is not maximum recall. The goal is:
 
 > The right memory at the right time – and otherwise silence.
 
-## 28. Delta ledger (C-029–C-086)
+## 28. Delta ledger (C-029–C-089)
 
 This section documents eleven consecutive rounds of deltas against the
-signed-off state C-001–C-028 as well as four later entries on contract and
-predicate. Every entry
+signed-off state C-001–C-028 as well as seven later entries on contract,
+predicate, release status and architecture. Every entry
 names the affected passage, the type
 of the delta, the supporting evidence, the gate, the data source, the
 acceptance criterion and the rollback. No entry reinterprets an earlier verdict.
@@ -4435,6 +4623,32 @@ both narrowings had been quantified on the same pool:
 |---|---|---|
 | C-002, 10.3 required conditions | C-086 | Refinement: partial coverage only from 50 %, identifier anchor without the body |
 
+**Contract change — C-087**, 12 September 2026, changes the scope of the V1.0
+release contract for the second time, after the shadow measurement of the
+session budget had been completed (entered in 0.4 on the same day, added here
+on 2026-09-17 by C-088):
+
+| Previous contract | is changed by | Type |
+|---|---|---|
+| 26.1 budget item, 16.3 context budget | C-087 | Contract change: token budget in V1.0 as a shadow ledger, live enforcement moves to 26.2 |
+
+**Status update — C-088**, 17 September 2026, changes no contract. It records
+the release of V1.0 and corrects outdated current-state statements:
+
+| Previous state | is carried forward by | Type |
+|---|---|---|
+| Header, 0.1, 0.2, 18.0, 21.1, 25, 26.1, 27 in future tense | C-088 | Status update: 1.0.0 shipped on 2026-09-14 |
+| C-004, C-008, C-046, C-086 and 2.2 item 8, 6.3 pin source | C-088 | Current-state correction: six outdated statements with today's location |
+| Line references in C-049, C-055, C-059, C-060, C-076, C-080 and others | C-088 | Current-state correction: shifted locations updated |
+| 9.4, 16.3 without per-lane budgets | C-088 | Status note: budgets per lane of 2026-09-12 |
+
+**Architectural decision — C-089**, 17 September 2026, fixes the source of
+code awareness for V2:
+
+| Previous gap | is closed by | Type |
+|---|---|---|
+| 9, 13, 16, 22–24 without a code view | C-089 | Architectural decision: Graphify as an external code-graph source, boundaries for Recall |
+
 ### C-029 – Evidence classes for third-party system numbers
 
 - **Passage:** 2.3 (new), 18.1 M0 under work and gate.
@@ -4461,7 +4675,7 @@ both narrowings had been quantified on the same pool:
 - **Evidence:** T-Mem (preprint) substantiates the distinction by granularity and
   orientation as well as the deliberate decoupling of trigger and evidence path.
   Bastra's `recall_when` already carries the highest BM25 field weight today
-  (`packages/core/src/search.ts:179`), the machine-expanded field a markedly
+  (`packages/core/src/search.ts:604`), the machine-expanded field a markedly
   lower one — the trust classes are therefore already implemented
   and are only carried forward consistently here.
 - **Gate:** M2 ablation and subsequently the same separate
@@ -4647,7 +4861,7 @@ both narrowings had been quantified on the same pool:
 - **Evidence:** Ori Mnemos documents both mechanisms as a post-fusion step.
   Bastra today damps solely via lifecycle, Curator, doc, and
   salience multipliers on the full candidate pool before the k cut
-  (`packages/core/src/search.ts:311`); the proposed mechanisms act
+  (`packages/core/src/search.ts:816`); the proposed mechanisms act
   at a different point and do not replace the existing damping.
 - **Gate:** M2.
 - **Data source:** M2 ablation arms on the versioned gold set.
@@ -4857,6 +5071,10 @@ preceding entries.*
   edge alone; the hop origin is available to the evidence decision.
 - **Rollback:** Disable views; `related_via` with a hop budget of one is
   today's state and remains the fallback point.
+- **Addendum 17 September 2026 (C-088):** The evidence describes the state
+  before V1.0. The hop rule is implemented: the evidence decision, active by
+  default, and the legacy banding never make a pure hop hit `required`
+  (locations in 13.1).
 
 ### C-047 – Executable Deep Recall termination conditions
 
@@ -4933,15 +5151,16 @@ pure delta fix — passages without findings were not touched.*
   `write_origin: "user-directed"` — substantiated in
   `packages/daemon/src/import/adapters.ts:153`, there together with
   `source: "<adapter>:<label>:<relKey>"`. The same applies in
-  `packages/daemon/src/import-vault.ts:369` for a **fully machine-generated
+  `packages/daemon/src/import-vault.ts:558` for a **fully machine-generated
   navigation index**, there with `source: "index:<label>"`,
   `topic_path: ["imported", <label>]` and the tag `imported`. The single-step
   mapping introduced in C-042 would thereby have declared a foreign vault,
   including generated helper nodes, wholesale to be user assertions — precisely
   the error C-042 was meant to fix, only through a different door. On the second
   correction: `confidence` is in fact read, namely during indexing
-  (`packages/core/src/search.ts:724`), and is held as a `storeField` in the
-  search index (`search.ts:106` and `search.ts:175`). The statement “is read
+  (`packages/core/src/search.ts:1494`), and is held as a `storeField` in the
+  search index (`search.ts:590`–`:598`; locations updated on 2026-09-17,
+  C-088). The statement “is read
   nowhere during retrieval” was wrong; what is correct is that the field
   influences neither ranking nor filtering nor the evidence decision.
 - **Gate:** M4 and schema decision; the precedence rule applies immediately to
@@ -5116,11 +5335,16 @@ pure delta fix — passages without findings were not touched.*
   24; 26.2.
 - **Type:** current-state correction.
 - **Evidence:** `write_origin` is exposed in the public MCP tool schema
-  (`packages/daemon/src/tool-handlers.ts:1338`), and the save handler passes the
-  input through unchanged to `saveMemory`
-  (`packages/daemon/src/tool-handlers.ts:857`) — without an audit wrapper. Under
-  C-008 a complete mutation audit exists to this day only in the Mac bridge
-  path. A `user-directed` set via MCP is therefore an assertion of the caller
+  (at the time `packages/daemon/src/tool-handlers.ts:1338`, today
+  `packages/daemon/src/tool-defs-memory.ts:539`), and the save handler passes
+  the input through unchanged to `saveMemory` (at the time
+  `packages/daemon/src/tool-handlers.ts:857`, today `:583`) — without an audit
+  wrapper. Under C-008 a complete mutation audit existed at the time only in
+  the Mac bridge path. *Current-state correction 17 September 2026 (C-088):*
+  since #206 the save handler writes an audit entry with `actor: "assistant"`
+  (`packages/daemon/src/tool-handlers.ts:681`), still without the
+  `auditedSave` wrapper. The conclusion of this entry remains valid, because an
+  audit is not an attestation (C-060). A `user-directed` set via MCP is therefore an assertion of the caller
   and not proof of a user action. C-049 had secured the import origin but left
   this second gap open: a non-imported save can also set the field freely.
 - **Gate:** M4 and schema decision; the attestation rule applies immediately to
@@ -5249,11 +5473,13 @@ pure delta fix — passages without findings were not touched.*
   rule and a five-part rollback; 18.5; 21.4; 22; 24.
 - **Type:** architectural decision with current-state correction.
 - **Evidence:** Today's archiving primitive does far more than a marking:
-  `archiveMemoryHandler` moves the file with `moveToTrash` into the vault trash
-  (`packages/daemon/src/tool-handlers.ts:928`), removes it from the living index
-  via `forgetFile` (`:929`) and stamps the trash copy best-effort with
-  `obsolete: true` and `superseded_by` (`:934`). Normal Recall filters
-  `obsolete` out completely anyway (`packages/core/src/search.ts:746`). A
+  `archiveMemoryHandler` moves the file into the vault trash (at the time with
+  `moveToTrash`, today under a claim with `moveToTrashUnderClaim`,
+  `packages/daemon/src/tool-handlers.ts:788`), removes it from the living index
+  via `forgetFile` (`:793`) and stamps the trash copy best-effort with
+  `obsolete: true` and `superseded_by` (`:801`). Normal Recall filters
+  `obsolete` out completely anyway (`packages/core/src/search.ts:1518`).
+  Locations updated on 2026-09-17 (C-088). A
   `SUPERSEDE` that reused this primitive would not make the predecessor
   historical, but unfindable — and would break the citability of old versions
   promised in 15 and 26.2.
@@ -5270,7 +5496,7 @@ pure delta fix — passages without findings were not touched.*
 - **Rollback:** Without a Historical index, `SUPERSEDE` does not go live; the
   existing archiving primitive remains unchanged and retains its present
   meaning — according to its documentation in the code, the closing primitive of
-  intake adoption (`packages/daemon/src/tool-handlers.ts:899`).
+  intake adoption (`packages/daemon/src/tool-handlers.ts:721`).
 
 ---
 
@@ -5284,10 +5510,11 @@ pure delta fix — passages without findings were not touched.*
 - **Evidence:** C-055 had classified the audited Mac bridge path as attested.
   The code does not support that: the audit context is read there from the
   call parameters and, if the caller does not supply one, defaults to
-  `{ actor: "user" }` — `packages/daemon/src/bridge.ts:322` and
-  `:325`, identically at two further places (`:350`, `:379`). The only
-  substantive check applies to the value `assistant`, which forces a
-  justification (`packages/core/src/audit-save.ts:49`); the assertion
+  `{ actor: "user" }` — at the time in four places
+  (`packages/daemon/src/bridge.ts:322`, `:325`, `:350`, `:379`), today
+  identically in three (`:336`, `:376`, `:406`; updated on 2026-09-17,
+  C-088). The only substantive check applies to the value `assistant`, which
+  forces a justification (`packages/core/src/audit-save.ts:50`); the assertion
   `actor: "user"` demands nothing at all. An audit therefore substantiates the
   mutation, not the user action.
 - **Gate:** M4 and schema decision; the rule applies immediately to every
@@ -5748,9 +5975,11 @@ on 25 July 2026.*
   Floors are already covered by stage 1; reusing them in stage 2
   would be a double assignment. And a pin source independent of the floor
   does not exist at HEAD: the Curator input sets `pinned` hard to `false`
-  (`packages/daemon/src/curator-run.ts:108`), and in the session hook “pinned” is
-  only the display name of the floor block
-  (`packages/daemon/src/session-hook.ts:36` and `:174`).
+  (`packages/daemon/src/curator-run.ts:126`), and “pinned” is only the display
+  name of the floor block — at the time in the session hook
+  (`packages/daemon/src/session-hook.ts:36` and `:174`), today in the shared
+  assembler (`packages/daemon/src/session-assembler.ts:431`, block built in
+  `packages/daemon/src/pinned-block.ts`; updated on 2026-09-17, C-088).
 - **Gate:** none — the assignment is read-only sidecar work.
 - **Data source:** usage sidecar for the substantiated usage; graph structure for the
   structural impact.
@@ -5884,7 +6113,7 @@ on 25 July 2026.*
   code does not bear this out: `bridgeFor` collects the clusters of a node's neighbours,
   removes its own and returns the remaining list as soon as two
   different foreign clusters are left
-  (`packages/core/src/graph.ts:302`–`:305`). Whether these clusters **without** the
+  (`packages/core/src/graph.ts:319`–`:323`). Whether these clusters **without** the
   node would be unconnected is never checked — for that the connectedness
   of the graph without it would have to be computed. A node whose foreign clusters are connected via
   a dozen other paths thus carries the same field as a
@@ -6156,7 +6385,8 @@ verdict is reinterpreted; what changes is the scope of the release contract.*
   `packages/core/src/evidence-decision.ts`.
 - **Acceptance criterion:** The partial-coverage signal counts only from a
   coverage of 0.5; full coverage remains a hard anchor. The identifier anchor
-  reads title, `recall_when` and frontmatter and not the body. Both are to be
+  reads title and `recall_when` and not the body (wording "and frontmatter"
+  corrected by C-088). Both are to be
   reported in the component-gate report per 18.2. Implemented in `b30486e`
   (`MIN_TRIGGER_COVERAGE = 0.5`, body removed from the identifier haystack) and
   checked against the prediction: the run `2026-08-29-50163fb9a0d0` reproduces
@@ -6171,6 +6401,112 @@ verdict is reinterpreted; what changes is the scope of the release contract.*
   the shadow telemetry after the deploy. Should it show that removed
   obligations were missed in sittings, the coverage threshold is the first
   quantity to be turned back.
+
+---
+
+*From here the contract change C-087 of 12 September 2026, added on 17 September 2026.*
+
+### C-087 – V1.0 owes the session budget as a shadow ledger, not as enforcement
+
+- **Passage:** preamble; 0.1 item 4; ledger row C-087; 0.4 sign-off block and
+  next free ID; 16.3 release assignment; 21.1 budget item; 25 item 4; 26.1
+  budget item reworded, replaced version marked; 26.2 live enforcement added;
+  36 note on the ID. The assignment in 28, this entry and 37 were added on
+  2026-09-17 by C-088.
+- **Type:** contract change.
+- **Evidence:** 26.1 demanded a global token and latency budget that bounds the
+  entire session response. The latency budget does that. The cumulative
+  cross-lane token budget does not: each of the six automatic lanes
+  (`packages/daemon/src/context-ledger.ts:33`–`:40`) charges its emitted block
+  per session and logs whether it would still have fit into the budget, without
+  trimming; the provisional shadow profile is 7,500 tokens
+  (`packages/daemon/src/session-budget.ts:56`). Six days of shadow (742
+  decisions, 135 sessions, 80 evaluable) would have touched 8 sessions and
+  withheld 36,976 tokens, roughly 5 % of 719,322 tokens of weekly use.
+- **Gate:** none. The change removes a requirement from the V1.0 contract and
+  adds no live effect.
+- **Data source:** the `budget_shadow` events of the shadow measurement; the
+  Telemetry tab with its section on the session budget in shadow; the test
+  `packages/daemon/__tests__/session-budget.test.ts`, which checks that the
+  versioned documents state the shadow restriction as long as the lanes only
+  charge.
+- **Acceptance criterion:** V1.0 counts as met on this point when the latency
+  budget is enforced live and the cross-lane token ledger records in shadow,
+  per session, what a budget would have withheld, without trimming, and this is
+  shown in the Telemetry tab. For V2.0 the item from 26.2 applies.
+- **Rollback:** purely contractual. If the budget is switched live, this
+  contract must be changed first under 26.2, then the derived texts; the named
+  test enforces that order.
+
+---
+
+*From here the status update C-088 of 17 September 2026.*
+
+### C-088 – V1.0 has shipped, outdated current-state statements are corrected
+
+- **Passage:** preamble; 0.1; 0.2; 0.4 references on C-004, C-008 and C-086,
+  new ledger rows C-088 and C-089, sign-off block and next free ID; 2 list and
+  current-state correction; 2.2 items 6 and 8; 6.3 subsections on
+  `write_origin` and the pin source; 9.4 and 16.3 status notes; 10.3
+  identifier anchor; 13.1 current-state correction; 16.1; 18.0; 21.1; 23; 25;
+  26.1; 27; 28 heading, preamble, assignments and entries C-046, C-049, C-055,
+  C-059, C-060, C-076, C-080, C-086 and C-087; 32 and 33 archive references; 36
+  note on the ID; 37; 38.
+- **Type:** current-state correction (status update without a contract change).
+- **Evidence:** `package.json` carries 1.0.0, the tag `v1.0.0` exists, and the
+  CHANGELOG lists "[1.0.0] — 2026-09-14". The v1.0 milestone is closed with no
+  open issue, v1.0.1 is open. The six current-state corrections rest on
+  `packages/daemon/src/tool-handlers.ts:681`,
+  `packages/daemon/src/settings.ts:693`,
+  `packages/core/src/evidence-decision.ts:156`–`:159` and `:254`/`:263`,
+  `packages/daemon/src/session-context.ts:8`–`:12`,
+  `packages/daemon/src/session-assembler.ts:431` and `:541`,
+  `packages/daemon/scripts/eval-stress.ts:524`–`:531`; the per-lane budgets on
+  `packages/daemon/src/hook-budgets.ts`.
+- **Gate:** none. The entry changes neither contract nor product behaviour.
+- **Data source:** git tags, CHANGELOG, GitHub milestones and the code as of
+  2026-09-17.
+- **Acceptance criterion:** No section presents V1.0 as upcoming any more;
+  every corrected current-state statement names a location checked on
+  2026-09-17; where the reasoning rests on the old state, it stays recognisable
+  as the state at the time.
+- **Rollback:** purely editorial; can be undone by reverting these passages.
+  The verdicts of the affected entries remain unchanged.
+
+---
+
+*From here the architectural decision C-089 of 17 September 2026.*
+
+### C-089 – Code awareness via Graphify as an external code-graph source
+
+- **Passage:** preamble; 0.4 ledger row and sign-off block; 2.3; 9.2; 9.3; 13
+  edge table and code edge; 13.1 code view; 16.2; 16.3; 22; 23; 24; 25 item
+  14; 26.2; 27; 29.2; 30; 31 decision 6; 28 assignment and this entry; 39.
+- **Type:** architectural decision.
+- **Evidence:** Until then the document did not mention code indexing, although
+  9.1 lists files and symbols as inputs and 13 provides the `applies_to` edge
+  for file and symbol. The test of 2026-09-17 (2.3) showed that Graphify
+  supplies the structural data quickly and locally. Graphify's checked setup
+  collides with Recall: it writes to the global `~/.claude/CLAUDE.md` and
+  registers PreToolUse hooks on Bash, Grep, Read and Glob that print a
+  mandatory block on every call without deduplication — the same pattern Recall
+  had to fix in its own reflex layer. A CLI call costs 140–220 ms of Python
+  start-up, reading `graph.json` inside the daemon 17 ms and a dependents
+  lookup 3 ms (#575). `affects_files` already exists as an optional field
+  (`packages/core/src/schema.ts:197`).
+- **Gate:** V2.0 under 26.2; the benefit counts as substantiated only with the
+  no-graph control arm (#579). Not part of V1.0.
+- **Data source:** epic #572 and issues #573–#580; the code search ROI
+  telemetry and the scenario set from #579.
+- **Acceptance criterion:** Recall calls only the Graphify CLI in code-only mode
+  and reads `graph.json`; no Graphify installers, no hooks on Read, Grep or
+  Glob, no Python in the hook path; the code graph remains a view of its own
+  with a hop budget of one, lives git-ignored inside the project and is not
+  projected into the vault; a code hop never produces `required` on its own;
+  the Write/Edit lane holds its p90 target.
+- **Rollback:** Code awareness is optional. Without Graphify or without a graph
+  Recall works unchanged; an invalid or missing graph leads to "code awareness
+  unavailable", not to a recall error.
 
 ## 29. Source and claim matrix
 
@@ -6222,6 +6558,11 @@ gaps in 29.3 is part of the substantiation, not a defect in it.
 | LongMemEval-V2 (paper) | `arxiv.org/abs/2605.12493` | v1, 2026-05-12; no DOI |
 | LongMemEval-V2 (code) | `github.com/xiaowu0162/LongMemEval-V2` | `6f020ac`, 2026-07-19 |
 | Ori Mnemos | `github.com/aayoawoyemi/Ori-Mnemos` | `8afc915`, 2026-07-22, v0.6.0, Apache 2.0 |
+| Graphify (code) | `github.com/Graphify-Labs/graphify`, PyPI package `graphifyy` | 0.9.63, checked 2026-09-17, Apache 2.0 (C-089) |
+
+The Graphify row is an addendum of 2026-09-17 and does not come from the survey
+of 2026-07-25. It records an in-house measurement on this repository (2.3), not
+a third-party figure; Graphify's own benchmark value is not adopted as a gate.
 
 Not reachable as of the retrieval date: the code and data repository promised in
 the Mem2ActBench paper (`github.com/Cantaloupe-M/Mem2ActBench`, HTTP 404). The
@@ -6325,7 +6666,10 @@ Rejected because it contradicts Bastra's principles:
 - cross-encoder reranking on every hook call;
 - live learning from Q-values or co-occurrence without exposure and hub control;
 - automatic execution of consolidation operators without approval;
-- adopting a third-party system's score as a Bastra gate or target value.
+- adopting a third-party system's score as a Bastra gate or target value;
+- an in-house symbol indexer for code awareness (former milestone 13,
+  #111–#116, closed as superseded on 2026-09-17); Graphify as an external
+  source takes its place (C-089).
 
 Deferred because the benefit for today's scope is not substantiated:
 
@@ -6344,7 +6688,8 @@ Deferred because the benefit for today's scope is not substantiated:
 
 ## 31. Product-owner decisions taken
 
-**Status: decided on 25 July 2026.** The five decisions bind implementation; the
+**Status: decisions 1 to 5 decided on 25 July 2026, decision 6 on
+17 September 2026 (C-089).** The decisions bind implementation; the
 affected passages have been brought in line in this version. Two items that were
 previously prepared as decisions are not product-owner questions but quality
 requirements: binding a confirmation to exactly one memory (C-064, elaborated in
@@ -6432,6 +6777,23 @@ denotes queue position only; the earlier exemption for `agent-session` and
 missing `write_origin` does not apply. The review runs in four priority stages
 and ends, per memory, with origin clarified or explicitly confirmed as unclear.
 
+### Decision 6 – Code awareness via Graphify
+
+**Decided on 17 September 2026 (C-089): Graphify instead of an in-house symbol
+indexer, as V2.0 work.** Graphify builds the code map, Recall decides what of
+it reaches the agent. The graph lives inside the respective project and is
+never committed; Recall keeps it current itself, without git hooks in the
+user's repository.
+
+**Rationale:** The test of 2026-09-17 (2.3) showed fast, local and precise
+structural data for about 40 languages, whereas the in-house plan covered only
+TS/JS. Graphify's installers and hooks, by contrast, collide with Recall and are
+not adopted (23).
+
+**Effect:** none on V1.0, the vault schema or the measurement gates. The
+boundaries are in 9.2, 9.3, 13, 13.1, 16.2, 16.3, 22, 23, 24 and 26.2; the
+implementation is described in epic #572 with #573–#580.
+
 ### What remains open
 
 These decisions fix the product behaviour, not its implementation. What remains
@@ -6459,8 +6821,8 @@ is where the change was made; they do not map onto this translation.
 | 28 correction reference on C-081 and delta block C-082 | 5742–5782 | C-082 |
 | 32 this section | from 6058 | — |
 
-All other passages are untouched. Product code and the twelve versions under
-`docs/architecture-history/` were not changed. Title and preamble additionally
+All other passages are untouched. Product code and the twelve archived
+versions were not changed. Title and preamble additionally
 carry the promotion of the German original to the canonical path: it no longer
 bears a revision number and names itself as the governing version.
 
@@ -6516,7 +6878,7 @@ the daemon README describes expired memories as "(or excluded if expired)"; the
 code merely damps them to 20%.
 
 **Next free ID: C-083.** *(Historical state of 26 July 2026. The currently
-valid next free ID is at the end of Section 36.)*
+valid next free ID is at the end of Section 39.)*
 
 ## 33. Handover after the contract change C-083
 
@@ -6536,7 +6898,7 @@ following passages were changed:
 | 33 this section | — |
 
 All other passages are untouched. Product code, the experiment's registration
-and the versions under `docs/architecture-history/` were not changed.
+and the archived versions were not changed.
 
 **What the change effects.** The V1.0 release contract required the experiment
 arms to have "reached their minimum N versioned after M0". That requirement is
@@ -6572,7 +6934,7 @@ second hook wording for arm A as a product and text decision, and the
 activation decision that arm B depends on.
 
 **Next free ID: C-084.** *(State of this section. The currently valid next free
-ID is at the end of Section 36.)*
+ID is at the end of Section 39.)*
 
 ## 34. Handover after the contract addition C-084
 
@@ -6622,7 +6984,7 @@ carries four conditions, among them a visible error instead of a silent drop.
    reference 26.1 so that the two versions do not drift apart.
 
 **Next free ID: C-085.** *(State of this section. The currently valid next free
-ID is at the end of Section 36.)*
+ID is at the end of Section 39.)*
 
 ## 35. Handover after the contract addition C-085
 
@@ -6671,7 +7033,7 @@ it, and the phrase "logged hook decisions" in C-022 denotes the same quantity.
    itself.
 
 **Next free ID: C-086.** *(State of this section. The currently valid next free
-ID is at the end of Section 36.)*
+ID is at the end of Section 39.)*
 
 ## 36. Handover after the refinement C-086
 
@@ -6722,4 +7084,124 @@ by a single digit.
    baseline run. Today it is justified from the length breakdown, not from a
    calibration.
 
-**Next free ID: C-088.**
+**Next free ID: C-087.** *(State of this section. The currently valid next free
+ID is at the end of Section 39.)*
+
+## 37. Handover after the contract change C-087
+
+**What was changed.** The version of 12 September 2026 added the contract
+change C-087. Solely the following passages were changed:
+
+| Passage | Delta |
+|---|---|
+| Preamble: ledger state, genesis, as-of date, next free ID | C-087 |
+| 0.1 item 4 with the shadow restriction | C-087 |
+| 0.4 new ledger row C-087 | C-087 |
+| 0.4 sign-off block and next free ID | C-087 |
+| 16.3 release assignment | C-087 |
+| 21.1 budget item | C-087 |
+| 25 item 4 | C-087 |
+| 26.1 budget item reworded, replaced version marked | C-087 |
+| 26.2 live enforcement added | C-087 |
+| 36 note on the ID | C-087 |
+
+The assignment in 28, the delta entry C-087 and this section were missing from
+that version and were added on 2026-09-17 by C-088. C-087 did not change
+product code; the test `packages/daemon/__tests__/session-budget.test.ts` holds
+the contract text and the lanes against each other.
+
+**What the change effects.** V1.0 now promises only what the system does: the
+latency budget is enforced live, the cumulative token budget per session is
+charged in shadow and logged per emission, nothing is trimmed. Live enforcement
+with a measured budget size, a canary and a seven-day report is V2.0 work under
+26.2. The occasion is measured: the value of the budget lies in the outlier
+tail, and the budget size was not yet fixed.
+
+**What to check in particular.**
+
+1. Which budget size the shadow data carries. 7,500 tokens is a measurement
+   proposal, not a live default.
+2. Whether a canary sees enough sessions to say something about required drops
+   within seven days.
+3. That on switching live, this contract is changed first and README, PLAN and
+   milestone descriptions only afterwards.
+
+**Next free ID: C-088.** *(State of this section. The currently valid next free
+ID is at the end of Section 39.)*
+
+## 38. Handover after the status update C-088
+
+**What was changed.** This version adds the status update C-088. Solely the
+following passages were changed:
+
+| Passage | Delta |
+|---|---|
+| Preamble: status, as-of date, starting state, ledger state, genesis, next free ID | C-088 |
+| 0.1 status note, 0.2 release ladder with 1.0.0, v1.0.1 and V3.0 | C-088 |
+| 0.4 references on C-004, C-008 and C-086, new ledger row C-088, sign-off block | C-088 |
+| 2 audit list item and current-state correction, 2.2 items 6 and 8 | C-088 |
+| 6.3 `write_origin` and pin source | C-088 |
+| 9.4 and 16.3 status notes on the per-lane budgets | C-088 |
+| 10.3 wording of the identifier anchor | C-088 |
+| 13.1 and 16.1 current-state corrections | C-088 |
+| 18.0, 21.1, 23, 25, 26.1, 27 status | C-088 |
+| 28 heading, preamble, assignments, entries C-087 and C-088, addenda and locations in C-046, C-049, C-055, C-059, C-060, C-076, C-080, C-086 | C-088 |
+| 32 and 33 archive references without a path | C-088 |
+| 36 note on the ID, 37 and this section | — |
+
+All other passages are untouched. Product code was not changed.
+
+**What the update effects.** Until then the document described V1.0 throughout
+as an upcoming contract. It now records that 1.0.0 was released on 2026-09-14
+and corrects six current-state statements that the code has since overtaken.
+Where the reasoning of an entry rests on the old state, that state stays as the
+state at the time; no verdict changes.
+
+**What to check in particular.**
+
+1. Whether the per-lane budgets of 2026-09-12 need a C-ID of their own. They
+   appear here as a status note because they change no measurement gate.
+2. Done on 2026-09-17: the description of the v1.0 milestone now names, next
+   to C-001–C-082, the extension to C-087 and the release as 1.0.0 on
+   2026-09-14.
+
+**Next free ID: C-089.** *(State of this section. The currently valid next free
+ID is at the end of Section 39.)*
+
+## 39. Handover after the architectural decision C-089
+
+**What was changed.** This version adds the architectural decision C-089.
+Solely the following passages were changed:
+
+| Passage | Delta |
+|---|---|
+| Preamble: as-of date, ledger state, genesis | C-089 |
+| 0.4 new ledger row C-089, sign-off block | C-089 |
+| 2.3 Graphify test | C-089 |
+| 9.2 routing line, 9.3 step 3 | C-089 |
+| 13 `applies_to` via `affects_files`, 13.1 code view | C-089 |
+| 16.2 dependents block, 16.3 budget note | C-089 |
+| 22, 23, 24 boundaries | C-089 |
+| 25 item 14, 26.2 assignment, 27 | C-089 |
+| 29.2 source row, 30, 31 decision 6 | C-089 |
+| 28 assignment and delta entry C-089 | C-089 |
+| 39 this section | — |
+
+All other passages are untouched. Product code was not changed; in the own
+repository `graphify-out/` is already git-ignored.
+
+**What the decision effects.** V2 gains code awareness without building an
+in-house symbol indexer. Graphify supplies the code map, Recall decides what of
+it arrives, when, and how much. The detailed specification stays in epic #572
+and #573–#580; this document records the boundaries.
+
+**What to check in particular.**
+
+1. Whether code hits count as an evidence signal under 10.2 or only as
+   candidates. So far it is only fixed that a code hop never produces
+   `required` on its own.
+2. Which measurement gate the context savings from #579 are assigned to.
+3. Whether the pinned Graphify version and the unversioned `graph.json` hold up
+   in the long run; the reader from #575 checks the format on every load.
+
+**Next free ID: C-090.**

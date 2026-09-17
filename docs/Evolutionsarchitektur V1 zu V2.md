@@ -1,26 +1,32 @@
 # Bastra Recall – Evolutionsarchitektur V1 → V2
 
-> Status: Release- und Zielarchitektur; V1.0 ist der nächste verbindliche
-> Releasevertrag, V2.0 das langfristige, messungsabhängige Zielbild
+> Status: Release- und Zielarchitektur; der V1.0-Releasevertrag ist erfüllt und
+> mit Bastra Recall 1.0.0 am 14. September 2026 ausgeliefert, V2.0 ist das
+> langfristige, messungsabhängige Zielbild
 >
-> Stand: 12. September 2026 (Vertragsänderungen C-083 und C-087,
-> Vertragsergänzungen C-084 und C-085, Präzisierung C-086; abgenommene Basis
-> vom 26. Juli 2026 im Übrigen unverändert)
+> Stand: 17. September 2026 (Statusnachtrag C-088 zur Auslieferung von 1.0.0,
+> Architekturentscheidung C-089 zur Code-Awareness; Vertragsänderungen C-083
+> und C-087, Vertragsergänzungen C-084 und C-085, Präzisierung C-086;
+> abgenommene Basis vom 26. Juli 2026 im Übrigen unverändert)
 >
-> Ausgangsstand: Bastra Recall 0.8.6, aktueller Vault, reale
-> 30-Tage-Telemetrie und bestehende Eval-Geometrie
+> Ausgangsstand: Bastra Recall 0.8.6, der damalige Vault, reale
+> 30-Tage-Telemetrie und die damalige Eval-Geometrie. 0.8.6 ist der
+> historische Ausgangspunkt dieses Dokuments, nicht der aktuelle Stand; danach
+> folgten 0.8.7 bis 0.9.2 und am 14. September 2026 die Version 1.0.0.
 >
 > **Diese Datei ist die maßgebliche Fassung.** Verbindlicher Ledgerstand:
-> C-001–C-087, elf Reviewrunden, zwei Vertragsänderungen, zwei
-> Vertragsergänzungen und eine Präzisierung; C-001–C-082 am 26. Juli 2026
-> abgenommen, C-083 bis C-086 am 29. August 2026 und C-087 am
-> 12. September 2026 entschieden.
+> C-001–C-089, elf Reviewrunden, zwei Vertragsänderungen, zwei
+> Vertragsergänzungen, eine Präzisierung, ein Statusnachtrag und eine
+> Architekturentscheidung; C-001–C-082 am 26. Juli 2026 abgenommen, C-083 bis
+> C-086 am 29. August 2026, C-087 am 12. September 2026 sowie C-088 und C-089
+> am 17. September 2026 entschieden.
 >
 > Entstehung: abgenommener Ausgangsstand C-001–C-028, fortgeschrieben durch die
 > Revisionen C-029–C-039, C-040–C-048, C-049–C-054, C-055–C-059, C-060–C-062,
 > C-063–C-067, C-068–C-073, C-074–C-077, C-078–C-079, C-080–C-081 und C-082
 > sowie durch die Vertragsänderungen C-083 und C-087, die Vertragsergänzungen
-> C-084 und C-085 und die Präzisierung C-086.
+> C-084 und C-085, die Präzisierung C-086, den Statusnachtrag C-088 und die
+> Architekturentscheidung C-089.
 > Alle zwölf Zwischenfassungen und der Ausgangsstand sind unverändert
 > archiviert; sie sind Belegmaterial, keine geltenden Verträge, und seit dem
 > 17.09.2026 nicht mehr Teil des öffentlichen Repositorys.
@@ -40,7 +46,7 @@
 > Die Product-Owner-Entscheidungen in Abschnitt 31 sind getroffen und binden
 > die Umsetzung.
 >
-> Nächste freie ID: C-088. Ein neues Delta wird in dieser Datei fortgeschrieben
+> Nächste freie ID: C-090. Ein neues Delta wird in dieser Datei fortgeschrieben
 > und nicht mehr als eigene Revisionsdatei geführt.
 
 ## 0. Entscheidungs- und Reviewstatus
@@ -61,8 +67,13 @@ Dieses Dokument trennt fünf Ebenen:
 
 ### 0.1 V1.0 – Mess- und Kontrollbasis
 
-Der aktuelle Stand 0.8.6 erfüllt V1 noch nicht vollständig. V1.0 ist erreicht,
-wenn ausschließlich folgende Grundlagen umgesetzt und nachgewiesen sind:
+**Status 17.09.2026 (C-088):** V1.0 ist erreicht und als Bastra Recall 1.0.0
+am 14. September 2026 ausgeliefert. Der folgende Text beschreibt den Vertrag,
+wie er vor der Auslieferung galt; der Ausgangsstand 0.8.6 erfüllte ihn damals
+noch nicht vollständig.
+
+V1.0 ist erreicht, wenn ausschließlich folgende Grundlagen umgesetzt und
+nachgewiesen sind:
 
 1. Messwahrheit und reproduzierbare Baselines herstellen;
 2. einen deterministischen, erklärbaren Abstention- und Relevanzentscheid aus
@@ -81,10 +92,12 @@ Dual-Vektoren, Chunking-, HNSW- oder Learned-Ranking-Live-Schicht.
 
 | Release | Funktion | Freigabelogik |
 |---|---|---|
-| 0.8.6 | heutiger Vor-V1-Ist-Stand | Diagnosegrundlage, kein abgeschlossener V1-Vertrag |
-| V1.0 | beobachtbare und selektive Mess-/Kontrollbasis | Abschnitt 0.1 und Definition of Done 26.1 vollständig erfüllt |
+| 0.8.6 | historischer Ausgangspunkt: damaliger Vor-V1-Ist-Stand | Diagnosegrundlage, kein abgeschlossener V1-Vertrag |
+| V1.0 | beobachtbare und selektive Mess-/Kontrollbasis | Abschnitt 0.1 und Definition of Done 26.1 vollständig erfüllt — **ausgeliefert als 1.0.0 am 14.09.2026** |
+| v1.0.1 | Nachmessung nach dem Release und Folgearbeiten | Arbeit, die gebaut ist, deren Evidenz oder Rate aber erst im realen Betrieb nach 1.0 entsteht, sowie die bei der 1.0-Freigabe bewusst zurückgestellten P2-Punkte; offen |
 | V1.x | schrittweise Evolution | jeder Baustein einzeln durch das jeweils benannte Messgate freigegeben und rückwärtskompatibel ausgeliefert |
-| V2.0 | vollständiges adaptives Gedächtnissystem | alle verpflichtenden V2-Eigenschaften aus 26.2 gemeinsam nachgewiesen |
+| V2.0 | vollständiges adaptives Gedächtnissystem | alle verpflichtenden V2-Eigenschaften aus 26.2 gemeinsam nachgewiesen; offen |
+| V3.0 | vorausschauendes, kausales und geteiltes Gedächtnis | in Planung, baut auf den V2-Verträgen auf; eigenes Dokument: [Evolution Architecture V2 to V3](./Evolution%20Architecture%20V2%20to%20V3.md) |
 
 Messung, Shadow-Betrieb und read-only Projektionen sind jederzeit zulässig.
 Messgates gaten ausschließlich Schema-/Vertragsänderungen und
@@ -118,11 +131,11 @@ neuer Evidenz erneut geöffnet.
 | C-001 | bestätigt | BM25-Rohscore und skalierter RRF dürfen keine gemeinsamen absoluten 30/100-Bänder mehr als Relevanzversprechen verwenden. |
 | C-002 | bestätigt | **Präzisiert durch C-086:** Die Required-Bedingungen des Evidenzentscheids sind enger gefasst — Teilabdeckung zählt erst ab 50 %, der harte Identifier-Anker liest den Body nicht mehr. Das heutige `weak_result` ist nur ein informatives MCP-Signal und kein Hook-Gate; V1.0 führt einen echten Evidenzentscheid mit Abstention ein. |
 | C-003 | korrigiert | Der produktive Candidate Pool ist `max(k × 4, 20)`, nicht überall 20; für Out-of-pool-Evals wird er explizit auf 100/200 erweitert. |
-| C-004 | korrigiert | `GET /hook/session-context` existiert, ist aber projektlos und intern seriell; er wird erweitert, nicht unverändert als Ersatz für SessionStart eingesetzt. |
+| C-004 | korrigiert | **Ist-Stand fortgeschrieben durch C-088:** Mit V1.0 ist der GET nur noch die projektlose Projektion des gemeinsamen, parallelen Assemblers; der projektfähige `POST /hook/session-context` existiert und wird vom Claude-Code-Hook genutzt. Damaliger Befund: `GET /hook/session-context` existiert, ist aber projektlos und intern seriell; er wird erweitert, nicht unverändert als Ersatz für SessionStart eingesetzt. |
 | C-005 | korrigiert | Bridges sind opt-in und ohne Pool ein No-op; auf dieser Instanz waren zwei Bridges aktiv und erweiterten in der Messperiode 853 Queries. Diese Feuerrate belegt Aktivität, nicht Nutzen oder Qualitätslift. |
 | C-006 | bestätigt | `acted_on` ist ein Token-Overlap-Proxy und kein Goldlabel; V1.0 behauptet deshalb keine `relevance_probability`. |
 | C-007 | qualifiziert | HNSW ist beim heutigen Vault nicht begründet, bleibt aber als ausdrücklich gegatete spätere Auto-Switch-Strategie spezifiziert. |
-| C-008 | bestätigt | Vollständiges Mutation-Audit besteht heute nur im Mac-App-Bridge-Pfad; reguläre MCP-/HTTP-Saves sind davon nicht umfasst. |
+| C-008 | bestätigt | **Ist-Stand fortgeschrieben durch C-088:** Seit #206 (27.07.2026) schreibt auch der reguläre MCP-/REST-Save einen Audit-Eintrag; die Folgerung „Audit ist keine Attestierung“ (C-060) bleibt unberührt. Damaliger Befund: Vollständiges Mutation-Audit besteht heute nur im Mac-App-Bridge-Pfad; reguläre MCP-/HTTP-Saves sind davon nicht umfasst. |
 | C-009 | bestätigt | Load-/Use-Quoten vermischen Retrieval, Hook-Formulierung, Consumer-Verhalten und Telemetrie-Zuordnung; V1.0 trennt diese Effekte experimentell. |
 | C-010 | bestätigt | Die Ad-hoc-Baseline besitzt noch kein versioniertes Run-Artefakt und wird erst nach M0 zur offiziellen Baseline. |
 | C-011 | bestätigt | Salience wirkt live auf die Staleness-Lebensdauer; direkter Rankingeinfluss bleibt standardmäßig Shadow-only. |
@@ -200,8 +213,10 @@ neuer Evidenz erneut geöffnet.
 | C-083 | Vertragsänderung | V1.0 schuldet vom Retrieval-/Präsentationsexperiment aus 17.4 nur noch die vorab registrierte Anlage, die deterministische Armzuweisung und den ehrlichen Statusbericht (`underpowered` beziehungsweise `not_evaluable` nach 18.1). Der hinreichend besetzte Lauf — erreichtes Mindest-N je Arm, zweiter Hook-Wortlaut, je Session schaltbares Gate, erhobene Query-Klasse, unabhängige Relevanzlabels — ist nach 26.2 verschoben. Begründung ist gemessen: Die Versuchseinheit ist die Session, und die Ein-Nutzer-Population trägt in vertretbarer Zeit kein Mindest-N. |
 | C-084 | Vertragsergänzung | Ab V1.0 steht das Frontmatter-Format unter einer ausdrücklichen Zusicherung (26.1): Pflichtfelder, Memory-Typen, Bedeutung der dokumentierten optionalen Felder und die Ladetoleranz ändern sich nur mit einem Major-Bump. Ein 1.x-Reader verlangt kein Formatversionsfeld. Unbekannte Schlüssel werden beim Laden toleriert, überleben einen `overwrite` aber nicht garantiert. Nicht gedeckt sind Ranking, interne `.bastra/`-Ablagen und Projektionsinhalte; die `recall`-Ausgabeform fällt unter den eigenen API-Vertrag. Eine Loader-Verschärfung ist nur unter der eng gefassten Sicherheitsausnahme ohne Major-Bump zulässig. |
 | C-085 | Vertragsergänzung | Die 500-Entscheidungen-Route der Shadow-Abnahme (18.2) gilt nur bei Streuung: mindestens 20 verschiedene Sessions tragen die zählenden Entscheidungen, und keine einzelne Session stellt mehr als 25 % von ihnen. Die 14-Tage-Route bleibt unberührt. Klarstellung im selben Eintrag: Gezählt wird pro Memory-Entscheidung, nicht pro Hook-Aufruf — so ist die Schwelle implementiert und so ist sie gemeint. |
-| C-086 | Präzisierung | Beide Wege zu `required` werden enger gefasst (10.3): Das Teilabdeckungs-Signal der Zwei-von-drei-Zählung zählt erst ab 50 % Trigger-Abdeckung statt ab dem ersten gemeinsamen Term, und der harte Identifier-Anker liest Titel, `recall_when` und Frontmatter statt zusätzlich den Body. Beziffert vor der Änderung: Anti-Query-Gate von 50 % auf 12,5 %, Recall@3 gegated, Identifier-Queries und Falsch-Abstention unverändert, längenneutral. Offen bleiben die zu kleine Anti-Probenmenge und die Kosten des Pflichtverlusts, die erst die Shadow-Telemetrie zeigt. |
+| C-086 | Präzisierung | **Wortlaut berichtigt durch C-088** (vorher „Titel, `recall_when` und Frontmatter“). Beide Wege zu `required` werden enger gefasst (10.3): Das Teilabdeckungs-Signal der Zwei-von-drei-Zählung zählt erst ab 50 % Trigger-Abdeckung statt ab dem ersten gemeinsamen Term, und der harte Identifier-Anker liest Titel und `recall_when` statt zusätzlich den Body; weitere Frontmatter-Felder liest er nicht. Beziffert vor der Änderung: Anti-Query-Gate von 50 % auf 12,5 %, Recall@3 gegated, Identifier-Queries und Falsch-Abstention unverändert, längenneutral. Offen bleiben die zu kleine Anti-Probenmenge und die Kosten des Pflichtverlusts, die erst die Shadow-Telemetrie zeigt. |
 | C-087 | Vertragsänderung | V1.0 schuldet vom globalen Kontextbudget aus 16.3 das Latenzbudget live und das kumulative Cross-Lane-Tokenbudget je Sitzung als **Shadow-Ledger** (26.1): verbuchen und protokollieren, nicht kürzen. Die **Live-Erzwingung** — aus Shadow-Daten festgelegte Budgethöhe, Canary-Profil mit sofortigem Rollback auf unbegrenzt, Siebentage-Canary-Bericht — ist nach 26.2 verschoben. Begründung ist gemessen: Sechs Tage Shadow (742 Entscheidungen, 135 Sessions, 80 auswertbar) hätten gegen das vorläufige 7.500-Token-Profil 8 Sessions berührt und 36.976 Tokens zurückgehalten, rund 5 % von 719.322 Tokens Wochenbetrieb. Der Nutzen liegt im Tail, und ein Tail trägt keine Live-Schaltung auf Shadow-Daten allein. |
+| C-088 | Ist-Korrektur | Statusnachtrag ohne Vertragsänderung: V1.0 ist erfüllt und als 1.0.0 am 14.09.2026 ausgeliefert (Tag `v1.0.0`); Kopf, 0.1, 0.2, 18.0, 21.1, 25, 26.1 und 27 tragen das, historische Aussagen bleiben als solche stehen. Sechs Ist-Aussagen sind überholt und werden mit heutiger Fundstelle berichtigt: Mutation-Audit auch im MCP-/REST-Save (C-008), Evidenzentscheid standardmäßig aktiv und hop-sicher (13.1, C-046), gemeinsamer paralleler Session-Assembler mit POST-Pfad (16.1, C-004), Hybrid-Stresspfad baut den Vektorarm (2.2), Pinned-Block außerhalb von `session-hook.ts` (6.3), Identifier-Anker liest nur Titel und `recall_when` (C-086). Verschobene Zeilenangaben sind nachgezogen, die Lane-Budgets vom 12.09.2026 in 9.4 und 16.3 als Statusnotiz ergänzt, C-087 in 28 und 37 nachgetragen. Kein Urteil wird umgedeutet. |
+| C-089 | Architekturentscheidung | Code-Awareness in V2 entsteht nicht über einen eigenen Symbolindexer, sondern über Graphify als externe Code-Graph-Quelle (Epic #572, #573–#580; Product-Owner-Entscheidung vom 17.09.2026). Recall nutzt nur die Graphify-CLI im Code-only-Modus und das erzeugte `graph.json`, nie dessen Installer oder Hooks. Der Code-Graph ist eine eigene logische Sicht neben 13.1 (Hop-Budget eins, nur direkt extrahierte Kanten im Normal Recall, No-Graph-Kontrollarm), liegt git-ignoriert im Projekt, wird nicht in den Vault projiziert und läuft im Hook-Pfad ohne Python innerhalb der bestehenden Budgets. `applies_to` wird über das vorhandene Feld `affects_files` umgesetzt; ein Code-Hop erzeugt nie allein `required`. |
 
 **Abnahmestand 24.07.2026:** Vollabgleich Ledger C-001–C-027,
 Gate-Messbarkeit, Ist-Behauptungs-Sweep (58 Aussagen, alle gedeckt),
@@ -356,8 +371,9 @@ Zähl-Lesart fest: pro Memory-Entscheidung, nicht pro Hook-Aufruf.
 null als unabhängiges Signal, sodass ein einziger zufällig geteilter Term eine
 Pflicht mittrug; künftig zählt sie erst ab 50 % Abdeckung. Der harte
 Identifier-Anker suchte zusätzlich im Body und machte damit eine Erwähnung im
-Fließtext zur Zuständigkeit; er liest künftig nur Titel, `recall_when` und
-Frontmatter. Beide Verengungen wurden vor der Änderung beziffert: Das
+Fließtext zur Zuständigkeit; er liest künftig nur Titel und `recall_when`
+(Wortlaut „und Frontmatter“ durch C-088 berichtigt: weitere
+Frontmatter-Felder liest der Code nicht). Beide Verengungen wurden vor der Änderung beziffert: Das
 Anti-Query-Gate fällt von 50 % auf 12,5 %, Recall@3 gegated, Identifier-Queries
 und Falsch-Abstention bleiben unverändert. Zwei Vorbehalte stehen ausdrücklich
 im Eintrag — acht Anti-Proben können die 5-%-Schwelle nicht darstellen, und die
@@ -379,7 +395,24 @@ sein eigenes Siebentage-Fenster. Was V1.0 schuldet, bleibt vollständig prüfbar
 ersetzte Fassung bleibt in 26.1 als solche kenntlich; kein Urteil aus
 C-001–C-086 wird umgedeutet.
 
-**Nächste freie ID: C-088.** Neue Delta-Reviews beginnen dort. Ein Urteil
+**Statusnachtrag, 17.09.2026 (diese Fassung):** C-088 hält fest, dass der
+V1.0-Releasevertrag erfüllt ist: Bastra Recall 1.0.0 ist am 14.09.2026
+erschienen. Eine interne Freigabeprüfung vom 12.09.2026 hatte zunächst NO-GO
+ergeben; nach Behebung der Befunde entschied der Product Owner am 13.09.2026,
+1.0 auszuliefern und die Hook-Telemetrie nach dem Release weiterzumessen —
+Lanes ohne erreichte Mindestfallzahl gelten dabei ausdrücklich als unbelegt,
+nicht als bestanden. Diese Nachmessung und zurückgestellte P2-Punkte trägt
+v1.0.1. Derselbe Eintrag berichtigt sechs überholte Ist-Aussagen und
+verschobene Zeilenangaben; die Aussagen bleiben, wo die Argumentation auf
+ihnen ruht, als damaliger Stand erkennbar.
+
+**Architekturentscheidung, 17.09.2026 (diese Fassung):** C-089 legt fest, wie
+V2 Code-Awareness erhält: Graphify liefert den Code-Graphen, Recall entscheidet,
+was davon wann und in welchem Umfang beim Agenten ankommt. Die Detailspezifikation
+steht in Epic #572 und den Issues #573–#580; dieses Dokument hält nur die
+Grenzen fest (2.3, 9.2, 9.3, 13, 13.1, 16.2, 16.3, 22, 23, 24, 26.2, 31).
+
+**Nächste freie ID: C-090.** Neue Delta-Reviews beginnen dort. Ein Urteil
 ändert sich nur mit neuer Code-, Telemetrie- oder Run-Evidenz; Geschmacksfragen
 werden als Architekturentscheidung statt als Faktenfehler markiert.
 
@@ -422,8 +455,15 @@ Die heutige Architektur besitzt bereits starke Einzelbausteine:
 - Reflex-Memories mit expliziter Nutzerfreigabe;
 - lokale Telemetrie für `surfaced`, `loaded` und `acted_on`;
 - wiederherstellbares Löschen und stabile Memory-IDs; ein vollständiger
-  Mutation-Audit existiert derzeit nur im Mac-App-Bridge-Pfad, nicht bei
+  Mutation-Audit existierte damals nur im Mac-App-Bridge-Pfad, nicht bei
   regulären MCP-/HTTP-Saves.
+
+**Ist-Korrektur 17.09.2026 (C-088):** Seit #206 (27.07.2026) schreibt auch
+`saveMemoryHandler` für MCP und REST einen Audit-Eintrag mit
+`actor: "assistant"` (`packages/daemon/src/tool-handlers.ts:681`); REST ruft
+denselben Handler auf (`packages/daemon/src/http-api-routes.ts:68`). Der
+Wrapper `auditedSave` wird dabei bewusst nicht genutzt. Dass ein Audit keine
+Attestierung ist (6.3, C-060), bleibt davon unberührt.
 
 Diese Komponenten ergeben aber noch kein geschlossenes Modell für Aufmerksamkeit,
 Vergessen, Wiedererinnern und Konsolidierung. Besonders die heutige
@@ -506,7 +546,8 @@ Recall-Lift.
    Accessibility.
 
 6. **Der heiße Pfad ist unnötig seriell.** SessionStart führt mehrere Recall- und
-   Metadatenanfragen nacheinander aus.
+   Metadatenanfragen nacheinander aus. *(Stand vor V1.0; mit #265 arbeitet der
+   gemeinsame Session-Assembler parallel, siehe 16.1.)*
 
 7. **Die Eval-Sets sind teilweise zu klein oder nicht produktionsnah.** Kleine
    synthetische Sets erreichen Deckenwerte, während reale Paraphrasen deutlich
@@ -517,6 +558,10 @@ Recall-Lift.
    Stress-Harness strukturell BM25-only, weil dort kein `EmbeddingIndex`
    angelegt wird. Andere spezialisierte Eval-Arme können bereits echte
    Embeddings verwenden; die Aussage gilt ausdrücklich dem Stress-Harness.
+   *Ist-Korrektur 17.09.2026 (C-088):* Mit #261 baut `attachHybrid` den
+   Vektorarm, bevor der Recaller entsteht, und bricht ab, statt still auf
+   BM25 zurückzufallen (`packages/daemon/scripts/eval-stress.ts:524`–`:531`).
+   Der Befund beschreibt den Stand vor V1.0.
 
 9. **Retrieval und Consumer-Verhalten sind in der ROI-Messung vermischt.**
    Niedrige Load-Raten können durch irrelevante Treffer, Hook-Sprache,
@@ -583,6 +628,17 @@ T-Mem, All-Mem und LongMemEval-V2 beziehungsweise AgentRunbook sind Preprints
 ohne nachweisbare Annahme; für T-Mem ist zum Prüfzeitpunkt kein Code
 veröffentlicht. Peer-reviewed belegt sind dagegen Hindsight als ACL-Demo,
 MAGMA, Mem2ActBench und die Graph-Gegenposition aus derselben Konferenz.
+
+**Graphify als Code-Graph-Quelle (C-089).** Am 17.09.2026 wurde Graphify
+(Apache-2.0) isoliert gegen dieses Repository getestet
+(`graphify extract . --code-only`, Version 0.9.63): 802 Dateien in 12 s, ohne
+LLM und ohne dass Daten die Maschine verlassen; strukturelle Abfragen wie die
+Aufrufer einer Funktion lieferten korrekte `datei:zeile`-Angaben, die
+Freitextsuche war dagegen verrauscht. Es handelt sich um eine Eigenmessung auf
+einem einzigen Repository. Sie begründet die Wahl der Quelle, nicht ein Gate;
+Graphifys eigene Benchmarkzahlen gelten nach dieser Regel nicht als
+Bastra-Ziel (24). Recall übernimmt nur die strukturellen Daten, nicht die
+Freitextsuche, die Installer oder die Hooks des Projekts.
 
 ## 3. Wissenschaftliche Leitplanken
 
@@ -1013,8 +1069,9 @@ Nutzerurheberschaft nur *vermuten*, nie belegen.
 
 `write_origin` ist ein Eingabefeld, kein Nachweis. Der reguläre MCP-Save
 exponiert es im öffentlichen Tool-Schema und reicht den Wert des Aufrufers
-unverändert an die Speicherfunktion durch, ohne Auditnachweis — ein vollständiges
-Mutation-Audit besteht nach C-008 bis heute nur im Mac-Bridge-Pfad. Ein Agent,
+unverändert an die Speicherfunktion durch. Ein Audit-Eintrag entsteht dabei
+seit #206 zwar auch hier (Ist-Korrektur in Abschnitt 2, C-088), er belegt aber nur die
+Mutation, nicht die Herkunft der Aussage. Ein Agent,
 der `user-directed` setzt, behauptet also lediglich, im Auftrag des Nutzers zu
 schreiben. Genau diese Behauptung darf nicht die höchste Vertrauensklasse
 auslösen.
@@ -1277,7 +1334,7 @@ ausschließlich:
 Feldes legt mehr nahe, als der Code leistet, und das Dokument stützt sich
 ausdrücklich nicht auf die naheliegende Lesart. `buildGraph` setzt `bridge`,
 wenn ein Knoten Nachbarn in mindestens zwei unterschiedlichen fremden Clustern
-besitzt (`packages/core/src/graph.ts:302`–`:305`). Geprüft wird dabei **nicht**,
+besitzt (`packages/core/src/graph.ts:319`–`:323`). Geprüft wird dabei **nicht**,
 ob diese Cluster ohne den Knoten tatsächlich unverbunden wären. Das Feld belegt
 damit weder eine graphentheoretische Brücke — eine Kante, deren Entfernung eine
 Komponente zerlegt — noch einen Artikulationsknoten, dessen Entfernung den
@@ -1374,7 +1431,8 @@ Ausdrücklich **nicht** als Kriterium verwendet werden Floor- und Pin-Status.
 Gefloorte Memories sind bereits über Stufe 1 erfasst — sie erneut in Stufe 2 zu
 führen wäre eine Doppelzuordnung. Und eine vom Floor unabhängige Pin-Quelle
 existiert am HEAD nicht: Der Curator-Eingang setzt das Feld hart auf `false`,
-und im Session-Hook ist „pinned" lediglich der Anzeigename des Floor-Blocks.
+und „pinned" ist lediglich der Anzeigename des Floor-Blocks — damals im
+Session-Hook, seit V1.0 im gemeinsamen Session-Assembler (C-088).
 Ein Kriterium, das auf ein konstant leeres Feld zugreift, ist keines.
 
 Stufe 2 hat damit zwei Mitgliedschaftswege — belegte hohe Nutzung, wo eine
@@ -1932,13 +1990,21 @@ Large vector set
 
 Explicit deep-memory intent
   -> full Deep Recall including Asteroidengürtel
+
+Exact symbol / code path (V2, C-089)
+  -> code-graph lookup, one hop of dependents
 ```
+
+Die letzte Zeile ist V2-Zielbild (C-089, #576): Exakte Symbol- und
+Pfadabfragen gegen den Code-Graphen gehören in die exakte Lane und laufen vor
+BM25. Graphifys Freitextsuche wird dafür nicht verwendet.
 
 ### 9.3 Normal-Recall-Kaskade
 
 1. Query normalisieren.
 2. Working-Memory-Kontext und harte Filter bestimmen.
-3. Exakte IDs, Symbole, Pfade und Reflex-Trigger prüfen.
+3. Exakte IDs, Symbole, Pfade und Reflex-Trigger prüfen; in V2 zählt dazu
+   die exakte Symbol- und Pfadabfrage gegen den Code-Graphen (C-089).
 4. BM25 ausführen.
 5. Lexikalische Evidenz bewerten.
 6. Bei eindeutigem Ergebnis semantischen Arm überspringen.
@@ -1969,6 +2035,19 @@ Kalibrierungsfälle bereitstellen.
   nachweislich freier Restlatenz beschränkt. Vergleichbare Fremdsysteme
   reranken jeden Recall mit einem Cross-Encoder; sie haben aber auch kein
   Hook-Budget von 150 ms einzuhalten.
+
+**Statusnotiz 17.09.2026 (C-088): Lane-Budgets.** Am 12.09.2026 wurde die eine
+Wanduhr von 600 ms für alle Hook-Lanes durch Budgets je Lane ersetzt (#305,
+`packages/daemon/src/hook-budgets.ts:23`): Assertion-Klasse des Prompt-Hooks
+1000 ms, übrige Prompt-Klassen sowie die Write- und Plan-Lane 600 ms, Bash
+vor/nach und Session-Lane 500 ms, Stop-Lane 1000 ms
+(`hook-budgets.ts:51`–`:61`). Als p90-Ziel gelten 200 ms für die schnellen
+Lanes, 300 ms für die stillen Prompt-Klassen und 900 ms für die
+Assertion-Lane (`:68`–`:74`). Begründung laut Datei: Die Assertion-Lane hätte
+bei einem einheitlichen Budget rund jeden vierten Aufruf still verloren. Die
+150 ms oben sind die Vektor-Deadline im Hook
+(`packages/daemon/src/http-hook-routes.ts:79`), kein Lane-Budget. Die
+Messgates aus 18 bleiben unverändert.
 
 ## 10. Relevanzevidenz, Abstention und spätere Kalibrierung
 
@@ -2071,8 +2150,12 @@ Trigger**. Die vollständige Abdeckung bleibt unverändert harter Anker.
 *Harter Anker.* Der exakte Identifier-, Pfad- und Symboltreffer suchte bisher
 auch im **Body** des Memorys. Ein Bezeichner, der irgendwo im Fließtext
 vorkommt — in einem Codeblock, einem Zitat, einer Aufzählung von Dateien —,
-begründete damit allein eine Pflicht. Der Anker liest künftig **Titel,
-`recall_when` und Frontmatter**; der Body zählt nicht mehr.
+begründete damit allein eine Pflicht. Der Anker liest künftig **Titel und
+`recall_when`**; der Body zählt nicht mehr, und weitere Frontmatter-Felder wie
+Tags, Scope oder `topic_path` liest er ebenfalls nicht
+(`packages/core/src/evidence-decision.ts:156`–`:159`). *Die frühere
+Formulierung „Titel, `recall_when` und Frontmatter“ war weiter gefasst als der
+Code und ist durch C-088 berichtigt.*
 
 > Ersetzte Lesart: ~~der Identifier-Heuhaufen umfasst Titel, `recall_when` und
 > den Memory-Body~~.
@@ -2345,7 +2428,7 @@ V2-Beziehungen:
 | `derived_from` | wurde aus Episode oder Quelle konsolidiert |
 | `caused_by` | Ursache-Wirkung |
 | `resolved_by` | Problem wurde dadurch gelöst |
-| `applies_to` | gilt für Entity, Projekt, Datei oder Symbol |
+| `applies_to` | gilt für Entity, Projekt, Datei oder Symbol; für Datei und Symbol über das vorhandene Feld `affects_files` (C-089) |
 | `example_of` | konkrete Episode eines semantischen Musters |
 
 Regeln:
@@ -2356,6 +2439,14 @@ Regeln:
 - Deep Recall darf breiter traversieren;
 - widersprechende oder historische Kanten werden sichtbar erklärt;
 - Graph-Hops erhalten kein pauschales Score-Multiplikator-Modell.
+
+**Kante zum Code (C-089).** `applies_to` für Dateien und Symbole wird über das
+bereits dokumentierte optionale Feld `affects_files` umgesetzt
+(`packages/core/src/schema.ts:197`), ohne Schemaänderung; Einträge der Form
+`pfad#symbol` sind zulässig und werden gegen den Code-Graphen geprüft, wo einer
+existiert (#578). Memories an der berührten Datei sind Kandidaten der exakten
+Lane, Memories an abhängigen Dateien Ein-Hop-Kandidaten, die den
+Evidenzentscheid eigenständig bestehen müssen.
 
 ### 13.1 Logische Sichten statt getrennter Graphen
 
@@ -2374,6 +2465,14 @@ bestimmt, welche Sichten mit welchem Hop-Budget überhaupt aktiv sind:
   gemessen;
 - eine Verbesserung des Gesamtergebnisses ohne bestandenen Kontrollarm gilt
   nicht als Beleg dafür, dass der Graph die Ursache war.
+
+**Code-Sicht (V2, C-089).** Der Code-Graph aus Graphify ist eine eigene
+logische Sicht neben den Memory-Sichten und wird nicht in den Memory-Graphen
+eingemischt. Normal Recall nutzt ihn mit hartem Hop-Budget eins und nur über
+direkt aus dem Quelltext extrahierte Kanten (`EXTRACTED`), nicht über
+erschlossene. Ein Code-Hop erzeugt nie allein `required`. Die Kontextersparnis
+wird gegen einen No-Graph-Kontrollarm gemessen (#579); ein Gewinn ohne diesen
+Arm gilt nicht als Beleg.
 
 #### Die heutige Hop-Baseline bleibt erhalten
 
@@ -2405,7 +2504,7 @@ Ein Treffer, der nur über eine Kante erreicht wurde, ist ein Kandidat und kein
 Beleg. Das Ziel-Memory muss den regulären Evidenzentscheid aus Abschnitt 10 aus
 eigener Kraft bestehen, um `required` zu werden.
 
-Diese Regel schließt eine heute bestehende Lücke. Der Ist-Stand:
+Diese Regel schloss eine damals bestehende Lücke. Der Ist-Stand vor V1.0:
 
 - Ein Hop-Nachbar erhält höchstens die Hälfte des rohen Seed-Scores.
 - Die Herkunftskennzeichnung `hop` wird auf dem Weg zum Hook aus der Antwort
@@ -2424,6 +2523,21 @@ Die Trennung hängt heute also an einer zufälligen Eigenschaft der
 Score-Skalierung — und ausgerechnet der degradierte Pfad ohne Embeddings, der
 bei Providerausfall greift, besitzt diese Sicherung nicht. V1.0 macht die Regel
 deshalb explizit, statt sich auf die Deckelung zu verlassen.
+
+**Ist-Korrektur 17.09.2026 (C-088).** Die vorstehende Liste beschreibt den
+Stand vor V1.0. Heute ist der Evidenzentscheid standardmäßig aktiv
+(`packages/daemon/src/settings.ts:693`, `EVIDENCE_GATE_DEFAULT = true`,
+abschaltbar über `BASTRA_EVIDENCE_GATE=0`) und macht einen reinen Hop-Treffer
+nie zu `required` (`packages/core/src/evidence-decision.ts:254` und `:263`,
+Grund `hop_only`). Auch das Legacy-Banding schließt Hops von `required` aus
+(`packages/daemon/src/band-wording.ts:148`). Die genannte Obergrenze von etwa
+164 gilt nur für die beiden persönlichen Arme; mit Commons als drittem Arm
+reicht die Rangsumme bis etwa 242 (`packages/daemon/src/score-space.ts:6`–`:7`),
+sodass ein Hop rechnerisch über 100 kommen könnte — die Hop-Sperre fängt das
+ab. Neu gegenüber der Baseline-Beschreibung oben: Der gemeinsame
+Session-Assembler setzt `expand_hops` ebenfalls standardmäßig auf 1
+(`packages/daemon/src/session-assembler.ts:351`), seine projektlose
+GET-Projektion ausdrücklich auf 0 (`packages/daemon/src/session-context.ts:43`).
 
 Voraussetzung dafür ist, dass die Hop-Herkunft dem Entscheidungspunkt zur
 Verfügung steht. Der Evidenzentscheid fällt **serverseitig**, vor der
@@ -2831,11 +2945,19 @@ Regeln:
 
 ### 16.1 SessionStart
 
-Ein `GET /hook/session-context` existiert bereits. Er dient heute dem
-MCP-Forwarder für hooklose Clients, ist bewusst projektlos, schließt
-projektbezogene und `all-projects`-Hints aus und assembliert seine Quellen
-ebenfalls weitgehend sequenziell. Er ist deshalb kein Drop-in-Ersatz für den
+Ein `GET /hook/session-context` existierte bereits. Er diente damals dem
+MCP-Forwarder für hooklose Clients, war bewusst projektlos, schloss
+projektbezogene und `all-projects`-Hints aus und assemblierte seine Quellen
+ebenfalls weitgehend sequenziell. Er war deshalb kein Drop-in-Ersatz für den
 Claude-Code-SessionStart-Hook.
+
+**Ist-Korrektur 17.09.2026 (C-088):** Mit #265 ist das Folgende umgesetzt.
+Der GET ist nur noch die projektlose Projektion des gemeinsamen Assemblers
+(`packages/daemon/src/session-context.ts:8`–`:12`, `:41`–`:46`),
+`POST /hook/session-context` existiert
+(`packages/daemon/src/http-ui-routes.ts:130`), der Claude-Code-Hook ruft ihn
+auf (`packages/daemon/src/session-hook-http.ts:86`), und der Assembler führt
+seine Erheber parallel aus (`packages/daemon/src/session-assembler.ts:541`).
 
 V1.0 baut keinen zweiten konkurrierenden Session-Context-Pfad. Der vorhandene
 Server-Assembler wird zur gemeinsamen Implementierung erweitert:
@@ -2875,7 +2997,14 @@ Schritte parallel. Die Response besitzt:
   Wahrscheinlichkeit kommt erst nach M1-Labelevidenz infrage;
 - Backoff gilt auch für scheinbar starke Treffer, wenn deren Relevanz nicht
   unabhängig belegt ist;
-- identische Routinglogik wird zentral geteilt.
+- identische Routinglogik wird zentral geteilt;
+- in V2 (C-089, #577) zeigt die Write/Edit-Lane vor einer Änderung einen
+  kleinen Block mit den Symbolen der Datei und ihren direkten Abhängigen (ein
+  Hop, nur `EXTRACTED`-Kanten), getrennt von den Memory-Hinweisen, mit hartem
+  Token-Deckel, derselben Session-Deduplizierung und neutralem Wortlaut; er
+  darf die Lane um höchstens etwa 10 ms verlängern. Im Hook-Pfad startet kein
+  Python-Prozess; gelesen wird `graph.json` im Daemon (#575). Neue Hooks auf
+  Read, Grep oder Glob entstehen dafür nicht.
 
 ### 16.3 Kontextbudget
 
@@ -2893,6 +3022,13 @@ automatischen Lanes läuft ausschließlich im Shadow — es verbucht und
 protokolliert, kürzt aber nichts. Die Live-Erzwingung ist nach 26.2 verschoben
 und setzt eine aus Shadow-Daten festgelegte Budgethöhe, ein Canary-Profil mit
 sofortigem Rollback auf unbegrenzt und einen Siebentage-Canary-Bericht voraus.
+
+**Statusnotiz 17.09.2026 (C-088): Latenzbudget je Lane.** Das Latenzbudget ist
+seit dem 12.09.2026 nach Lanes getrennt (Werte und Begründung in 9.4,
+`packages/daemon/src/hook-budgets.ts`). Die Messgates aus 18 und die
+Shadow-Einschränkung des Tokenbudgets bleiben davon unberührt. Der
+Code-Abhängigenblock aus 16.2 (C-089) läuft innerhalb dieser Budgets und wird
+über dasselbe Token-Ledger verbucht.
 
 ## 17. Lernen aus Nutzung
 
@@ -3014,6 +3150,11 @@ gegen eine belastbare M0-Baseline interpretiert. Ein reines M6-Shadow-Modell
 setzt M0 und M1 voraus, nicht aber M3 bis M5. Schema-/Vertragsänderungen und
 Live-Aktivierungen bleiben bis zum jeweils benannten Gate und einer expliziten
 Freigabe gesperrt.
+
+**Status 17.09.2026 (C-088):** Dieser Umfang ist mit Bastra Recall 1.0.0 am
+14.09.2026 ausgeliefert: M0, der deterministische Teil von M1, der gemeinsame
+Session-Assembler und die registrierte Anlage des Experiments nach 26.1
+(C-083). Für M2 bis M6 gilt der vorstehende Freigabestatus unverändert.
 
 Die Bezeichnung `M` steht für Messgate. Sie ist bewusst von den
 Produktversionen V1/V2 getrennt.
@@ -3856,7 +3997,9 @@ Produkttelemetrie ausgegeben werden.
 
 ## 21. Migration
 
-### 21.1 V1.0 – Freigegebener Releasevertrag, keine Schemaänderung
+### 21.1 V1.0 – Ausgelieferter Releasevertrag (1.0.0, 14.09.2026), keine Schemaänderung
+
+Umgesetzt und mit 1.0.0 ausgeliefert wurde (C-088):
 
 - M0-Eval-Harness reparieren und reproduzierbare Run-Artefakte erzeugen;
 - Score-, Evidenz-, Abstention- und No-answer-Telemetrie um `client`,
@@ -3968,6 +4111,11 @@ bestandenen Messgates.
 - Ohne HNSW funktioniert Flat Search vollständig.
 - Ohne Accessibility-Sidecar gelten konservative Default-Zonen.
 - Ohne Mindspace bleibt Deep Recall über API/CLI erreichbar.
+- Code-Awareness (C-089) ist ein optionaler Begleiter: Ohne Graphify und ohne
+  Code-Graph funktioniert Recall unverändert. Der Graph liegt im jeweiligen
+  Projekt unter `graphify-out/` und wird nie eingecheckt (im eigenen Repo über
+  `.gitignore`, in Nutzer-Repos über `.git/info/exclude`); Recall schreibt
+  keine Git-Hooks in Nutzer-Repos (#574).
 - `valid_until` behält seine heutige Lifecycle-Semantik und wird nicht
   migriert; neue Zeitfelder kommen additiv daneben.
 - Bestandsmemories ohne `provenance_class` gelten als `unknown_legacy`,
@@ -4029,8 +4177,18 @@ bestandenen Messgates.
 - Deep Recall erweitert Reichweite, nicht Berechtigungen.
 - Soft Delete und Survival-by-ID bleiben erhalten.
 - Das bestehende Audit des Mac-Bridge-Mutationspfads bleibt erhalten. Ein
-  einheitliches Audit für reguläre MCP-/HTTP-Mutationen ist gesonderte spätere
-  Arbeit und wird hier nicht als bereits vorhandene Eigenschaft vorausgesetzt.
+  einheitliches Audit für reguläre MCP-/HTTP-Mutationen war damals gesonderte
+  spätere Arbeit und wurde nicht als vorhandene Eigenschaft vorausgesetzt.
+  *Ist-Korrektur 17.09.2026 (C-088):* Seit #206 schreibt auch der reguläre
+  MCP-/REST-Save einen Audit-Eintrag (Abschnitt 2); das Audit belegt die
+  Mutation, keine Attestierung.
+- Code-Awareness (C-089): Recall ruft Graphify nur im Code-only-Modus auf,
+  sodass kein Code an ein LLM geht, und setzt dabei
+  `GRAPHIFY_QUERY_LOG_DISABLE=1`. Graphifys eigene Installer und Hooks
+  (`graphify install`, `graphify claude install` und verwandte) werden nie
+  aufgerufen, weil sie global in `~/.claude/CLAUDE.md` schreiben und
+  Pflicht-Hooks auf Read und Grep registrieren. Der Code-Graph unterliegt
+  denselben Scope- und Egress-Regeln wie Vault-Inhalt; nichts wird versandt.
 - Abgeleitete Cues, Manifeste und Graph-Projektionen unterliegen denselben
   Scope-, Sensitivity- und Egress-Regeln wie der zugrunde liegende Inhalt. Ein
   Manifest darf einen Filter nicht dadurch umgehen, dass es aggregiert.
@@ -4122,7 +4280,14 @@ bestandenen Messgates.
   Vokabularversion nicht kennt;
 - kein Memory, das dauerhaft von der Provenienzprüfung ausgenommen bleibt;
 - keine Wiedervorlage eines abgelehnten Vorschlags, der inhaltlich derselbe
-  ist.
+  ist;
+- kein eigener Symbolindexer — Code-Awareness nutzt Graphify als externe
+  Quelle (C-089);
+- keine Projektion von Code-Karten in den Vault — ein einziges Repository
+  ergäbe rund 6.900 Notizen, mehr als das Fünffache des damaligen Vaults
+  (C-089);
+- keine Hooks auf Read, Grep oder Glob und kein Pflicht-Wortlaut („MANDATORY“,
+  „You MUST“) für Code-Hinweise (C-089).
 
 ## 25. Umsetzungsreihenfolge
 
@@ -4134,7 +4299,8 @@ V1.0:
 4. Globales Kontextbudget — Shadow-Ledger in V1.0, Live-Erzwingung nach 26.2
    (C-087) — und getrenntes Retrieval-/Präsentationsexperiment.
 
-Bis einschließlich Punkt 4 ist die Umsetzung als V1.0 freigegeben. Alle
+Bis einschließlich Punkt 4 ist die Umsetzung als V1.0 umgesetzt und mit 1.0.0
+am 14.09.2026 ausgeliefert (C-088); zuvor war sie als V1.0 freigegeben. Alle
 folgenden Nummern ordnen Schema-/Vertragsänderungen und Live-Aktivierungen.
 Messung, Shadow-Betrieb und read-only Projektionen bleiben unabhängig davon
 zulässig; Qualitätsaussagen mit Referenzwirkung setzen M0 voraus:
@@ -4159,10 +4325,25 @@ zulässig; Qualitätsaussagen mit Referenzwirkung setzen M0 voraus:
 12. Flat-/HNSW-Strategie live erst, wenn kontrolliertes Profiling einen
     Flat-Search-Engpass und M5 den Qualitäts- und Latenzvorteil belegen.
 13. Learned Ranking shadow nach M0/M1, live erst nach bestandenem M6.
+14. Code-Awareness über Graphify (C-089) in der Reihenfolge #573 → #574 →
+    #575 → #576/#577 → #578 → #579, Dokumentation (#580) begleitend; der
+    Nutzen gilt erst nach dem Vergleich mit dem No-Graph-Kontrollarm (#579)
+    als belegt.
 
 ## 26. Definition of Done
 
 ### 26.1 Releasevertrag V1.0
+
+**Status 17.09.2026 (C-088): erfüllt, 1.0.0 am 14.09.2026 ausgeliefert.** Eine
+interne Freigabeprüfung vom 12.09.2026 lautete zunächst NO-GO. Nachdem die
+Befunde behoben waren und nur noch die Live-Abnahmedaten der Hook-Lanes (#305)
+fehlten, entschied der Product Owner am 13.09.2026, 1.0 auszuliefern und die
+Messung nach dem Release fortzuführen. Die zugehörige Gate-Bedingung wurde
+dabei so gefasst, dass jede Lane mit erreichter Mindestfallzahl ihre Schwelle
+einhalten muss und jede Lane ohne sie ausdrücklich als unbelegt gilt; die
+Mindestfallzahl wurde nicht gesenkt. #305 und die zurückgestellten P2-Punkte
+liegen im Milestone v1.0.1. Die folgende Liste ist der Vertrag, gegen den
+geprüft wurde.
 
 V1.0 ist fertig, wenn:
 
@@ -4348,10 +4529,17 @@ Promotion erfolgt erst, wenn:
   messbar sinnvoll und qualitativ sicher ist;
 - jede adaptive Entscheidung shadow-getestet, erklärbar und zurückrollbar ist.
 
+**Code-Awareness (C-089).** Die Product-Owner-Entscheidung vom 17.09.2026
+ordnet die Code-Awareness über Graphify (Epic #572, #573–#580) V2.0 zu. Sie
+wird als optionaler Begleiter gebaut, hält die Grenzen aus 13.1, 16.2, 22, 23
+und 24 ein und gilt erst dann als nützlich, wenn ihre Kontextersparnis gegen
+den No-Graph-Kontrollarm belegt ist (#579).
+
 ## 27. Kurzfassung
 
-Bastra Recall 0.8.6 wird zuerst zu V1.0: einem reproduzierbar messbaren,
-selektiven und kontrollierbaren Recall-System. Während V1.x werden weitere
+Bastra Recall 0.8.6 wurde zuerst zu V1.0: einem reproduzierbar messbaren,
+selektiven und kontrollierbaren Recall-System, ausgeliefert als 1.0.0 am
+14.09.2026 (C-088). Während V1.x werden weitere
 Gedächtnisfunktionen nur nach bestandenen Messgates ergänzt. V2.0 bezeichnet
 schließlich das gemeinsam bewiesene, adaptive und mehrschichtige
 Gedächtnissystem:
@@ -4370,16 +4558,18 @@ Gedächtnissystem:
   später nur auf unabhängigen Labels aufsetzen.
 - Konsolidierung und Rekonsolidierung entwickeln Wissen weiter, ohne seine
   Geschichte zu löschen.
+- Ein externer Code-Graph (Graphify) gibt Agenten Code-Awareness; Recall
+  entscheidet, was davon wann und wie viel ankommt (C-089).
 
 Das Ziel ist nicht maximaler Recall. Das Ziel ist:
 
 > Zur richtigen Zeit die richtige Erinnerung – und ansonsten Ruhe.
 
-## 28. Delta-Ledger (C-029–C-086)
+## 28. Delta-Ledger (C-029–C-089)
 
 Dieser Abschnitt dokumentiert elf aufeinanderfolgende Runden von Deltas
-gegenüber dem abgenommenen Stand C-001–C-028 sowie vier spätere Einträge zu
-Vertrag und Prädikat. Jeder Eintrag nennt die betroffene
+gegenüber dem abgenommenen Stand C-001–C-028 sowie sieben spätere Einträge zu
+Vertrag, Prädikat, Releasestatus und Architektur. Jeder Eintrag nennt die betroffene
 Passage, die Art des Deltas, die tragende Evidenz, das Gate, die Datenquelle,
 das Abnahmekriterium und den Rollback. Kein Eintrag deutet ein früheres Urteil
 um.
@@ -4540,6 +4730,32 @@ beide Verengungen auf demselben Pool beziffert waren:
 |---|---|---|
 | C-002, 10.3 Required-Bedingungen | C-086 | Präzisierung: Teilabdeckung erst ab 50 %, Identifier-Anker ohne Body |
 
+**Vertragsänderung — C-087**, 12.09.2026, ändert zum zweiten Mal den Umfang
+des V1.0-Releasevertrags, nachdem die Shadow-Messung des Sitzungsbudgets
+abgeschlossen war (in 0.4 am selben Tag eingetragen, hier am 17.09.2026 durch
+C-088 nachgetragen):
+
+| Bisheriger Vertrag | wird geändert durch | Art |
+|---|---|---|
+| 26.1 Budgetpunkt, 16.3 Kontextbudget | C-087 | Vertragsänderung: Tokenbudget in V1.0 als Shadow-Ledger, Live-Erzwingung wandert nach 26.2 |
+
+**Statusnachtrag — C-088**, 17.09.2026, ändert keinen Vertrag. Er hält die
+Auslieferung von V1.0 fest und berichtigt überholte Ist-Aussagen:
+
+| Bisheriger Stand | wird fortgeschrieben durch | Art |
+|---|---|---|
+| Kopf, 0.1, 0.2, 18.0, 21.1, 25, 26.1, 27 in Zukunftsform | C-088 | Statusnachtrag: 1.0.0 am 14.09.2026 ausgeliefert |
+| C-004, C-008, C-046, C-086 und 2.2 Punkt 8, 6.3 Pin-Quelle | C-088 | Ist-Korrektur: sechs überholte Aussagen mit heutiger Fundstelle |
+| Zeilenangaben in C-049, C-055, C-059, C-060, C-076, C-080 und weiteren | C-088 | Ist-Korrektur: verschobene Fundstellen nachgezogen |
+| 9.4, 16.3 ohne Lane-Budgets | C-088 | Statusnotiz: Budgets je Lane vom 12.09.2026 |
+
+**Architekturentscheidung — C-089**, 17.09.2026, legt die Quelle der
+Code-Awareness für V2 fest:
+
+| Bisherige Lücke | wird geschlossen durch | Art |
+|---|---|---|
+| 9, 13, 16, 22–24 ohne Code-Sicht | C-089 | Architekturentscheidung: Graphify als externe Code-Graph-Quelle, Grenzen für Recall |
+
 ### C-029 – Evidenzklassen für Fremdsystemzahlen
 
 - **Passage:** 2.3 (neu), 18.1 M0 unter Arbeit und Gate.
@@ -4566,7 +4782,7 @@ beide Verengungen auf demselben Pool beziffert waren:
 - **Evidenz:** T-Mem (Preprint) belegt die Unterscheidung nach Granularität und
   Orientierung sowie die bewusste Entkopplung von Trigger und Evidenzpfad.
   Bastras `recall_when` trägt bereits heute das höchste BM25-Feldgewicht
-  (`packages/core/src/search.ts:179`), das maschinell expandierte Feld ein
+  (`packages/core/src/search.ts:604`), das maschinell expandierte Feld ein
   deutlich niedrigeres — die Vertrauensklassen sind also schon implementiert
   und werden hier nur konsequent fortgeschrieben.
 - **Gate:** M2-Ablation und anschließend derselbe gesonderte
@@ -4751,7 +4967,7 @@ beide Verengungen auf demselben Pool beziffert waren:
 - **Evidenz:** Ori Mnemos dokumentiert beide Mechanismen als Post-Fusion-Schritt.
   Bastra dämpft heute ausschließlich über Lifecycle-, Curator-, Doc- und
   Salience-Multiplikatoren auf dem vollen Kandidatenpool vor dem k-Schnitt
-  (`packages/core/src/search.ts:311`); die vorgeschlagenen Mechanismen greifen
+  (`packages/core/src/search.ts:816`); die vorgeschlagenen Mechanismen greifen
   an anderer Stelle und ersetzen die bestehende Dämpfung nicht.
 - **Gate:** M2.
 - **Datenquelle:** M2-Ablationsarme auf dem versionierten Goldset.
@@ -4960,6 +5176,10 @@ Einträge.*
   Hop-Herkunft steht dem Evidenzentscheid zur Verfügung.
 - **Rollback:** Sichten deaktivieren; `related_via` mit Hop-Budget eins ist der
   heutige Zustand und bleibt der Rückfallpunkt.
+- **Nachtrag 17.09.2026 (C-088):** Die Evidenz beschreibt den Stand vor V1.0.
+  Die Hop-Regel ist umgesetzt: Der standardmäßig aktive Evidenzentscheid und
+  das Legacy-Banding machen einen reinen Hop-Treffer nie zu `required`
+  (Fundstellen in 13.1).
 
 ### C-047 – Ausführbare Deep-Recall-Abbruchbedingungen
 
@@ -5038,15 +5258,16 @@ Delta-Fix — Passagen ohne Befund wurden nicht angefasst.*
   `write_origin: "user-directed"` — belegt in
   `packages/daemon/src/import/adapters.ts:153`, dort zusammen mit
   `source: "<adapter>:<label>:<relKey>"`. Dasselbe gilt in
-  `packages/daemon/src/import-vault.ts:369` für einen **vollständig maschinell
+  `packages/daemon/src/import-vault.ts:558` für einen **vollständig maschinell
   erzeugten Navigations-Index**, dort mit `source: "index:<label>"`,
   `topic_path: ["imported", <label>]` und dem Tag `imported`. Das in C-042
   eingeführte einstufige Mapping hätte damit einen fremden Vault samt
   generierter Hilfsknoten geschlossen zu Nutzeraussagen erklärt — genau der
   Fehler, den C-042 beheben sollte, nur durch eine andere Tür. Zur zweiten
   Korrektur: `confidence` wird sehr wohl gelesen, nämlich beim Indexieren
-  (`packages/core/src/search.ts:724`), und als `storeField` im Suchindex
-  gehalten (`search.ts:106` und `search.ts:175`). Die Aussage „wird beim
+  (`packages/core/src/search.ts:1494`), und als `storeField` im Suchindex
+  gehalten (`search.ts:590`–`:598`; Fundstellen am 17.09.2026 nachgezogen,
+  C-088). Die Aussage „wird beim
   Retrieval nirgends gelesen“ war falsch; richtig ist, dass das Feld weder
   Ranking noch Filterung noch den Evidenzentscheid beeinflusst.
 - **Gate:** M4 und Schemaentscheid; die Vorrangregel gilt sofort für jede
@@ -5231,11 +5452,16 @@ Delta-Fix — Passagen ohne Befund wurden nicht angefasst.*
   `not_required` in `not_scheduled` umbenannt; 22; 24; 26.2.
 - **Art:** Ist-Korrektur.
 - **Evidenz:** `write_origin` ist im öffentlichen MCP-Tool-Schema exponiert
-  (`packages/daemon/src/tool-handlers.ts:1338`), und der Save-Handler reicht die
-  Eingabe unverändert an `saveMemory` durch
-  (`packages/daemon/src/tool-handlers.ts:857`) — ohne Audit-Wrapper. Nach C-008
-  existiert ein vollständiges Mutation-Audit bis heute nur im
-  Mac-Bridge-Pfad. Ein über MCP gesetztes `user-directed` ist damit eine
+  (damals `packages/daemon/src/tool-handlers.ts:1338`, heute
+  `packages/daemon/src/tool-defs-memory.ts:539`), und der Save-Handler reicht
+  die Eingabe unverändert an `saveMemory` durch (damals
+  `packages/daemon/src/tool-handlers.ts:857`, heute `:583`) — ohne
+  Audit-Wrapper. Nach C-008 existierte ein vollständiges Mutation-Audit damals
+  nur im Mac-Bridge-Pfad. *Ist-Korrektur 17.09.2026 (C-088):* Seit #206
+  schreibt der Save-Handler einen Audit-Eintrag mit `actor: "assistant"`
+  (`packages/daemon/src/tool-handlers.ts:681`), weiterhin ohne den Wrapper
+  `auditedSave`. Die Folgerung dieses Eintrags bleibt gültig, denn ein Audit
+  ist keine Attestierung (C-060). Ein über MCP gesetztes `user-directed` ist damit eine
   Behauptung des Aufrufers und kein Nachweis eines Nutzerakts. C-049 hatte die
   Importherkunft abgesichert, aber diese zweite Lücke offen gelassen: Auch ein
   nicht importierter Save kann das Feld frei setzen.
@@ -5374,12 +5600,13 @@ Delta-Fix — Passagen ohne Befund wurden nicht angefasst.*
   fünfteiligen Rollback erweitert; 18.5; 21.4; 22; 24.
 - **Art:** Architekturentscheidung mit Ist-Korrektur.
 - **Evidenz:** Das heutige Archivierungsprimitiv tut weit mehr als eine
-  Markierung: `archiveMemoryHandler` verschiebt die Datei mit `moveToTrash` in
-  den Vault-Trash (`packages/daemon/src/tool-handlers.ts:928`), entfernt sie
-  über `forgetFile` aus dem lebenden Index (`:929`) und stempelt die
-  Trash-Kopie best-effort mit `obsolete: true` und `superseded_by` (`:934`).
-  Der Normal Recall filtert `obsolete` ohnehin vollständig aus
-  (`packages/core/src/search.ts:746`). Ein `SUPERSEDE`, das dieses Primitiv
+  Markierung: `archiveMemoryHandler` verschiebt die Datei in den Vault-Trash
+  (damals mit `moveToTrash`, heute unter Claim mit `moveToTrashUnderClaim`,
+  `packages/daemon/src/tool-handlers.ts:788`), entfernt sie über `forgetFile`
+  aus dem lebenden Index (`:793`) und stempelt die Trash-Kopie best-effort mit
+  `obsolete: true` und `superseded_by` (`:801`). Der Normal Recall filtert
+  `obsolete` ohnehin vollständig aus (`packages/core/src/search.ts:1518`).
+  Fundstellen am 17.09.2026 nachgezogen (C-088). Ein `SUPERSEDE`, das dieses Primitiv
   wiederverwendete, machte den Vorgänger nicht historisch, sondern
   unauffindbar — und bräche die in 15 und 26.2 zugesagte Zitierbarkeit alter
   Versionen.
@@ -5397,7 +5624,7 @@ Delta-Fix — Passagen ohne Befund wurden nicht angefasst.*
 - **Rollback:** Ohne Historical-Index geht `SUPERSEDE` nicht live; das
   bestehende Archivierungsprimitiv bleibt unverändert und behält seine heutige
   Bedeutung — laut seiner Dokumentation im Code das Abschluss-Primitiv der
-  Intake-Adoption (`packages/daemon/src/tool-handlers.ts:899`).
+  Intake-Adoption (`packages/daemon/src/tool-handlers.ts:721`).
 
 ---
 
@@ -5412,10 +5639,11 @@ Delta-Fix — Passagen ohne Befund wurden nicht angefasst.*
 - **Evidenz:** C-055 hatte den auditierten Mac-Bridge-Pfad als attestiert
   eingestuft. Der Code trägt das nicht: Der Audit-Kontext wird dort aus den
   Aufrufparametern gelesen und, wenn der Caller keinen mitschickt, auf
-  `{ actor: "user" }` defaultet — `packages/daemon/src/bridge.ts:322` und
-  `:325`, gleichlautend an zwei weiteren Stellen (`:350`, `:379`). Die einzige
-  inhaltliche Prüfung greift beim Wert `assistant`, der eine Begründung
-  erzwingt (`packages/core/src/audit-save.ts:49`); die Behauptung
+  `{ actor: "user" }` defaultet — damals an vier Stellen
+  (`packages/daemon/src/bridge.ts:322`, `:325`, `:350`, `:379`), heute
+  gleichlautend an drei (`:336`, `:376`, `:406`; nachgezogen am 17.09.2026,
+  C-088). Die einzige inhaltliche Prüfung greift beim Wert `assistant`, der
+  eine Begründung erzwingt (`packages/core/src/audit-save.ts:50`); die Behauptung
   `actor: "user"` verlangt gar nichts. Ein Audit belegt damit die Mutation,
   nicht den Nutzerakt.
 - **Gate:** M4 und Schemaentscheid; die Regel gilt sofort für jede Ableitung.
@@ -5885,9 +6113,11 @@ Product-Owner-Entscheidungen.*
   Floors sind bereits über Stufe 1 erfasst, ihre Wiederverwendung in Stufe 2
   wäre eine Doppelzuordnung. Und eine vom Floor unabhängige Pin-Quelle
   existiert am HEAD nicht: Der Curator-Eingang setzt `pinned` hart auf `false`
-  (`packages/daemon/src/curator-run.ts:108`), und im Session-Hook ist „pinned“
-  nur der Anzeigename des Floor-Blocks
-  (`packages/daemon/src/session-hook.ts:36` und `:174`).
+  (`packages/daemon/src/curator-run.ts:126`), und „pinned“ ist nur der
+  Anzeigename des Floor-Blocks — damals im Session-Hook
+  (`packages/daemon/src/session-hook.ts:36` und `:174`), heute im gemeinsamen
+  Assembler (`packages/daemon/src/session-assembler.ts:431`, Blockaufbau in
+  `packages/daemon/src/pinned-block.ts`; nachgezogen am 17.09.2026, C-088).
 - **Gate:** keines — die Zuordnung ist read-only Sidecar-Arbeit.
 - **Datenquelle:** Usage-Sidecar für die belegte Nutzung; Graphstruktur für die
   Strukturwirkung.
@@ -6022,7 +6252,7 @@ Product-Owner-Entscheidungen.*
   Code trägt das nicht: `bridgeFor` sammelt die Cluster der Nachbarn eines
   Knotens, entfernt den eigenen und liefert die Restliste, sobald zwei
   verschiedene fremde Cluster übrig bleiben
-  (`packages/core/src/graph.ts:302`–`:305`). Ob diese Cluster **ohne** den
+  (`packages/core/src/graph.ts:319`–`:323`). Ob diese Cluster **ohne** den
   Knoten unverbunden wären, wird nie geprüft — dafür müsste der Zusammenhang
   des Graphen ohne ihn berechnet werden. Ein Knoten, dessen fremde Cluster über
   ein Dutzend andere Wege verbunden sind, trägt damit dasselbe Feld wie ein
@@ -6301,7 +6531,8 @@ Urteil wird umgedeutet, geändert wird der Umfang des Releasevertrags.*
   `packages/core/src/evidence-decision.ts`.
 - **Abnahmekriterium:** Das Teilabdeckungs-Signal zählt erst ab einer Abdeckung
   von 0,5; die vollständige Abdeckung bleibt harter Anker. Der Identifier-Anker
-  liest Titel, `recall_when` und Frontmatter und nicht den Body. Beides ist im
+  liest Titel und `recall_when` und nicht den Body (Wortlaut „und
+  Frontmatter“ durch C-088 berichtigt). Beides ist im
   Report der Komponentengates nach 18.2 auszuweisen. Umgesetzt in `b30486e`
   (`MIN_TRIGGER_COVERAGE = 0.5`, Body aus dem Identifier-Heuhaufen entfernt) und
   gegengerechnet: Der Lauf `2026-08-29-50163fb9a0d0` reproduziert die
@@ -6316,6 +6547,113 @@ Urteil wird umgedeutet, geändert wird der Umfang des Releasevertrags.*
   Shadow-Telemetrie nach dem Deploy. Zeigt sie, dass gestrichene Pflichten in
   Sitzungen gefehlt haben, ist die Abdeckungsschwelle die erste Größe, die
   zurückgedreht wird.
+
+---
+
+*Ab hier die Vertragsänderung C-087 vom 12.09.2026, nachgetragen am 17.09.2026.*
+
+### C-087 – V1.0 schuldet das Sitzungsbudget als Shadow-Ledger, nicht als Erzwingung
+
+- **Passage:** Präambel; 0.1 Punkt 4; Ledgerzeile C-087; 0.4 Abnahmeblock und
+  nächste freie ID; 16.3 Releasezuordnung; 21.1 Budgetpunkt; 25 Punkt 4; 26.1
+  Budgetpunkt neu gefasst, ersetzte Fassung kenntlich; 26.2 Live-Erzwingung
+  ergänzt; 36 Vermerk zur ID. Die Zuordnung in 28, dieser Eintrag und 37 sind
+  am 17.09.2026 durch C-088 nachgetragen.
+- **Art:** Vertragsänderung.
+- **Evidenz:** 26.1 verlangte ein globales Token- und Latenzbudget, das die
+  gesamte Session-Antwort begrenzt. Das Latenzbudget tut das. Das kumulative
+  Cross-Lane-Tokenbudget tut es nicht: Jede der sechs automatischen Lanes
+  (`packages/daemon/src/context-ledger.ts:33`–`:40`) verbucht ihren emittierten
+  Block je Sitzung und protokolliert, ob er in das Budget noch gepasst hätte,
+  ohne zu kürzen; das vorläufige Shadow-Profil liegt bei 7.500 Tokens
+  (`packages/daemon/src/session-budget.ts:56`). Sechs Tage Shadow (742
+  Entscheidungen, 135 Sessions, 80 auswertbar) hätten 8 Sessions berührt und
+  36.976 Tokens zurückgehalten, rund 5 % von 719.322 Tokens Wochenbetrieb.
+- **Gate:** keines. Die Änderung entfernt eine Anforderung aus dem
+  V1.0-Vertrag und fügt keine Live-Wirkung hinzu.
+- **Datenquelle:** die `budget_shadow`-Ereignisse der Shadow-Messung; der
+  Telemetry-Tab mit dem Abschnitt zum Sitzungsbudget im Shadow; der Test
+  `packages/daemon/__tests__/session-budget.test.ts`, der prüft, dass die
+  versionierten Dokumente die Shadow-Einschränkung nennen, solange die Lanes
+  nur verbuchen.
+- **Abnahmekriterium:** V1.0 gilt in diesem Punkt als erfüllt, wenn das
+  Latenzbudget live greift und das Cross-Lane-Tokenledger je Sitzung im Shadow
+  mitschreibt, was ein Budget zurückgehalten hätte, ohne zu kürzen, und das im
+  Telemetry-Tab ausgewiesen ist. Für V2.0 gilt der Punkt aus 26.2.
+- **Rollback:** rein vertraglich. Wird das Budget live geschaltet, ist zuerst
+  dieser Vertrag nach 26.2 zu ändern, danach die abgeleiteten Texte; der
+  genannte Test erzwingt diese Reihenfolge.
+
+---
+
+*Ab hier der Statusnachtrag C-088 vom 17.09.2026.*
+
+### C-088 – V1.0 ist ausgeliefert, überholte Ist-Aussagen werden berichtigt
+
+- **Passage:** Präambel; 0.1; 0.2; 0.4 Verweise an C-004, C-008 und C-086, neue
+  Ledgerzeilen C-088 und C-089, Abnahmeblock und nächste freie ID; 2 Aufzählung
+  und Ist-Korrektur; 2.2 Punkte 6 und 8; 6.3 Unterabschnitte zu `write_origin`
+  und zur Pin-Quelle; 9.4 und 16.3 Statusnotizen; 10.3 Identifier-Anker; 13.1
+  Ist-Korrektur; 16.1; 18.0; 21.1; 23; 25; 26.1; 27; 28 Überschrift, Vorspann,
+  Zuordnungen und Einträge C-046, C-049, C-055, C-059, C-060, C-076, C-080,
+  C-086 und C-087; 32 und 33 Archivverweise; 36 Vermerk zur ID; 37; 38.
+- **Art:** Ist-Korrektur (Statusnachtrag ohne Vertragsänderung).
+- **Evidenz:** `package.json` trägt 1.0.0, der Tag `v1.0.0` existiert, und der
+  CHANGELOG führt „[1.0.0] — 2026-09-14“. Der Milestone v1.0 ist ohne offenes
+  Issue geschlossen, v1.0.1 ist offen. Die sechs Ist-Korrekturen stützen sich
+  auf `packages/daemon/src/tool-handlers.ts:681`,
+  `packages/daemon/src/settings.ts:693`,
+  `packages/core/src/evidence-decision.ts:156`–`:159` und `:254`/`:263`,
+  `packages/daemon/src/session-context.ts:8`–`:12`,
+  `packages/daemon/src/session-assembler.ts:431` und `:541`,
+  `packages/daemon/scripts/eval-stress.ts:524`–`:531`; die Lane-Budgets auf
+  `packages/daemon/src/hook-budgets.ts`.
+- **Gate:** keines. Der Eintrag ändert weder Vertrag noch Produktverhalten.
+- **Datenquelle:** Git-Tags, CHANGELOG, GitHub-Milestones und der Code am
+  17.09.2026.
+- **Abnahmekriterium:** Kein Abschnitt stellt V1.0 mehr als kommend dar; jede
+  berichtigte Ist-Aussage nennt eine Fundstelle, die am 17.09.2026 geprüft
+  wurde; wo die Argumentation auf dem alten Stand ruht, bleibt er als damaliger
+  Stand erkennbar.
+- **Rollback:** rein redaktionell; durch Rückgängigmachen dieser Passagen
+  aufhebbar. Die Urteile der betroffenen Einträge bleiben unverändert.
+
+---
+
+*Ab hier die Architekturentscheidung C-089 vom 17.09.2026.*
+
+### C-089 – Code-Awareness über Graphify als externe Code-Graph-Quelle
+
+- **Passage:** Präambel; 0.4 Ledgerzeile und Abnahmeblock; 2.3; 9.2; 9.3; 13
+  Kantentabelle und Code-Kante; 13.1 Code-Sicht; 16.2; 16.3; 22; 23; 24; 25
+  Punkt 14; 26.2; 27; 29.2; 30; 31 Entscheidung 6; 28 Zuordnung und dieser
+  Eintrag; 39.
+- **Art:** Architekturentscheidung.
+- **Evidenz:** Das Dokument erwähnte Code-Indizierung bis dahin nicht, obwohl
+  9.1 Dateien und Symbole als Eingaben führt und 13 die Kante `applies_to` für
+  Datei und Symbol vorsieht. Der Test vom 17.09.2026 (2.3) zeigte, dass
+  Graphify die strukturellen Daten schnell und lokal liefert. Die geprüfte
+  Einrichtung von Graphify kollidiert mit Recall: Sie schreibt in die globale
+  `~/.claude/CLAUDE.md` und registriert PreToolUse-Hooks auf Bash, Grep, Read
+  und Glob, die bei jedem Aufruf einen Pflichtblock ohne Deduplizierung
+  ausgeben — dasselbe Muster, das Recall in der eigenen Reflexschicht beheben
+  musste. Ein CLI-Aufruf kostet 140–220 ms Python-Start, das Einlesen von
+  `graph.json` im Daemon 17 ms und eine Abhängigenabfrage 3 ms (#575).
+  `affects_files` existiert bereits als optionales Feld
+  (`packages/core/src/schema.ts:197`).
+- **Gate:** V2.0 nach 26.2; der Nutzen gilt erst mit dem No-Graph-Kontrollarm
+  (#579) als belegt. Kein V1.0-Bestandteil.
+- **Datenquelle:** Epic #572 und die Issues #573–#580; die
+  Code-Search-ROI-Telemetrie und der Szenariosatz aus #579.
+- **Abnahmekriterium:** Recall ruft nur die Graphify-CLI im Code-only-Modus
+  und liest `graph.json`; keine Graphify-Installer, keine Hooks auf Read, Grep
+  oder Glob, kein Python im Hook-Pfad; der Code-Graph bleibt eine eigene Sicht
+  mit Hop-Budget eins, liegt git-ignoriert im Projekt und wird nicht in den
+  Vault projiziert; ein Code-Hop erzeugt nie allein `required`; die
+  Write/Edit-Lane hält ihr p90-Ziel.
+- **Rollback:** Code-Awareness ist optional. Ohne Graphify oder ohne Graph
+  arbeitet Recall unverändert; ein ungültiger oder fehlender Graph führt zu
+  „Code-Awareness nicht verfügbar“, nicht zu einem Recall-Fehler.
 
 ## 29. Quellen- und Behauptungsmatrix
 
@@ -6367,6 +6705,12 @@ Lückenliste in 29.3 ist Teil des Belegs, nicht ein Mangel daran.
 | LongMemEval-V2 (Paper) | `arxiv.org/abs/2605.12493` | v1, 2026-05-12; kein DOI |
 | LongMemEval-V2 (Code) | `github.com/xiaowu0162/LongMemEval-V2` | `6f020ac`, 2026-07-19 |
 | Ori Mnemos | `github.com/aayoawoyemi/Ori-Mnemos` | `8afc915`, 2026-07-22, v0.6.0, Apache 2.0 |
+| Graphify (Code) | `github.com/Graphify-Labs/graphify`, PyPI-Paket `graphifyy` | 0.9.63, geprüft 2026-09-17, Apache 2.0 (C-089) |
+
+Die Graphify-Zeile ist ein Nachtrag vom 17.09.2026 und stammt nicht aus der
+Erhebung vom 25.07.2026. Sie belegt eine Eigenmessung auf diesem Repository
+(2.3), keine Fremdzahl; Graphifys eigener Benchmarkwert wird nicht als Gate
+übernommen.
 
 Nicht erreichbar zum Abrufdatum: das im Mem2ActBench-Paper zugesagte Code- und
 Datenrepository (`github.com/Cantaloupe-M/Mem2ActBench`, HTTP 404). Die im
@@ -6471,7 +6815,10 @@ Verworfen, weil es Bastras Grundsätzen widerspricht:
 - Cross-Encoder-Reranking in jedem Hook-Aufruf;
 - Live-Lernen aus Q-Werten oder Co-Occurrence ohne Exposure- und Hub-Kontrolle;
 - automatische Ausführung von Konsolidierungs-Operatoren ohne Freigabe;
-- Übernahme eines Fremdsystem-Scores als Bastra-Gate oder -Zielwert.
+- Übernahme eines Fremdsystem-Scores als Bastra-Gate oder -Zielwert;
+- ein eigener Symbolindexer für Code-Awareness (früherer Milestone 13, #111–#116,
+  am 17.09.2026 als überholt geschlossen); an seine Stelle tritt Graphify als
+  externe Quelle (C-089).
 
 Zurückgestellt, weil der Nutzen für den heutigen Scope nicht belegt ist:
 
@@ -6491,8 +6838,8 @@ Zurückgestellt, weil der Nutzen für den heutigen Scope nicht belegt ist:
 
 ## 31. Getroffene Product-Owner-Entscheidungen
 
-**Status: am 25. Juli 2026 entschieden.** Die fünf Entscheidungen binden die
-Umsetzung; die betroffenen Passagen sind in dieser Fassung nachgezogen. Zwei
+**Status: Entscheidungen 1 bis 5 am 25. Juli 2026 entschieden, Entscheidung 6
+am 17. September 2026 (C-089).** Die Entscheidungen binden die Umsetzung; die betroffenen Passagen sind in dieser Fassung nachgezogen. Zwei
 Punkte, die zuvor als Entscheidungen aufbereitet waren, sind keine
 Product-Owner-Fragen, sondern Qualitätsanforderungen: die Bindung einer
 Bestätigung an genau ein Memory (C-064, ausgeführt in 6.3) und die Rückkehrregel
@@ -6583,6 +6930,23 @@ Warteschlangenposition; die frühere Aussetzung für `agent-session` und fehlend
 `write_origin` entfällt. Die Prüfung läuft in vier Prioritätsstufen und endet je
 Memory mit geklärter oder ausdrücklich bestätigt unklarer Herkunft.
 
+### Entscheidung 6 – Code-Awareness über Graphify
+
+**Entschieden am 17. September 2026 (C-089): Graphify statt eigenem
+Symbolindexer, als V2.0-Arbeit.** Graphify baut die Code-Karte, Recall
+entscheidet, was davon beim Agenten ankommt. Der Graph liegt im jeweiligen
+Projekt und wird nie eingecheckt; Recall aktualisiert ihn selbst, ohne
+Git-Hooks im Nutzer-Repo.
+
+**Begründung:** Der Test vom 17.09.2026 (2.3) zeigte schnelle, lokale und
+präzise strukturelle Daten für rund 40 Sprachen, während der eigene Plan nur
+TS/JS abdeckte. Graphifys Installer und Hooks kollidieren dagegen mit Recall
+und werden nicht übernommen (23).
+
+**Auswirkung:** keine auf V1.0, das Vault-Schema oder die Messgates. Die
+Grenzen stehen in 9.2, 9.3, 13, 13.1, 16.2, 16.3, 22, 23, 24 und 26.2; die
+Umsetzung ist in Epic #572 mit #573–#580 beschrieben.
+
 ### Was weiterhin offen ist
 
 Diese Entscheidungen legen das Produktverhalten fest, nicht seine Umsetzung.
@@ -6609,8 +6973,8 @@ wurden ausschließlich die folgenden Zeilenbereiche:
 | 28 Korrekturverweis an C-081 und Delta-Block C-082 | 5742–5782 | C-082 |
 | 32 dieser Abschnitt | ab 6058 | — |
 
-Alle übrigen Passagen sind unangetastet. Produktcode und die zwölf Fassungen
-unter `docs/architecture-history/` wurden nicht verändert. Titel und Präambel
+Alle übrigen Passagen sind unangetastet. Produktcode und die zwölf archivierten
+Fassungen wurden nicht verändert. Titel und Präambel
 tragen zusätzlich die Promotion dieser Datei auf den kanonischen Pfad: Sie
 führen keine Revisionsnummer mehr und benennen die Datei als maßgeblich.
 
@@ -6666,7 +7030,7 @@ beschreibt abgelaufene Memories als „(or excluded if expired)"; der Code dämp
 sie nur auf 20 %.
 
 **Nächste freie ID: C-083.** *(Historischer Stand vom 26.07.2026. Die aktuell
-gültige nächste freie ID steht am Ende von Abschnitt 36.)*
+gültige nächste freie ID steht am Ende von Abschnitt 39.)*
 
 ## 33. Übergabe nach der Vertragsänderung C-083
 
@@ -6686,8 +7050,7 @@ Geändert wurden ausschließlich die folgenden Passagen:
 | 33 dieser Abschnitt | — |
 
 Alle übrigen Passagen sind unangetastet. Produktcode, die Registrierung des
-Experiments und die Fassungen unter `docs/architecture-history/` wurden nicht
-verändert.
+Experiments und die archivierten Fassungen wurden nicht verändert.
 
 **Was die Änderung bewirkt.** Der V1.0-Releasevertrag verlangte, dass die
 Experimentarme „ihr nach M0 versioniertes Mindest-N erreicht haben“. Diese
@@ -6725,7 +7088,7 @@ zusätzlich der zweite Hook-Wortlaut für Arm A als Produkt- und Textentscheidun
 und die Aktivierungsentscheidung, von der Arm B abhängt.
 
 **Nächste freie ID: C-084.** *(Stand dieses Abschnitts. Die aktuell gültige
-nächste freie ID steht am Ende von Abschnitt 36.)*
+nächste freie ID steht am Ende von Abschnitt 39.)*
 
 ## 34. Übergabe nach der Vertragsergänzung C-084
 
@@ -6776,7 +7139,7 @@ Fehler statt stillem Verwerfen.
    verweisen soll, damit die beiden Fassungen nicht auseinanderlaufen.
 
 **Nächste freie ID: C-085.** *(Stand dieses Abschnitts. Die aktuell gültige
-nächste freie ID steht am Ende von Abschnitt 36.)*
+nächste freie ID steht am Ende von Abschnitt 39.)*
 
 ## 35. Übergabe nach der Vertragsergänzung C-085
 
@@ -6825,7 +7188,7 @@ bezeichnet dieselbe Größe.
    die Frage sich anders stellt — aber sie stellt sich.
 
 **Nächste freie ID: C-086.** *(Stand dieses Abschnitts. Die aktuell gültige
-nächste freie ID steht am Ende von Abschnitt 36.)*
+nächste freie ID steht am Ende von Abschnitt 39.)*
 
 ## 36. Übergabe nach der Präzisierung C-086
 
@@ -6876,4 +7239,125 @@ Qualitätsgrößen bewegt sich um eine einzige Stelle.
    ist heute aus der Längenaufschlüsselung begründet, nicht aus einer
    Kalibrierung.
 
-**Nächste freie ID: C-088.**
+**Nächste freie ID: C-087.** *(Stand dieses Abschnitts. Die aktuell gültige
+nächste freie ID steht am Ende von Abschnitt 39.)*
+
+## 37. Übergabe nach der Vertragsänderung C-087
+
+**Was geändert wurde.** Die Fassung vom 12.09.2026 fügte die
+Vertragsänderung C-087 hinzu. Geändert wurden ausschließlich die folgenden
+Passagen:
+
+| Passage | Delta |
+|---|---|
+| Präambel: Ledgerstand, Entstehung, Stand-Datum, nächste freie ID | C-087 |
+| 0.1 Punkt 4 mit Shadow-Einschränkung | C-087 |
+| 0.4 neue Ledgerzeile C-087 | C-087 |
+| 0.4 Abnahmeblock und nächste freie ID | C-087 |
+| 16.3 Releasezuordnung | C-087 |
+| 21.1 Budgetpunkt | C-087 |
+| 25 Punkt 4 | C-087 |
+| 26.1 Budgetpunkt neu gefasst, ersetzte Fassung kenntlich | C-087 |
+| 26.2 Live-Erzwingung ergänzt | C-087 |
+| 36 Vermerk zur ID | C-087 |
+
+Die Zuordnung in 28, der Delta-Eintrag C-087 und dieser Abschnitt fehlten in
+jener Fassung und sind am 17.09.2026 durch C-088 nachgetragen. Produktcode
+wurde durch C-087 nicht verändert; der Test
+`packages/daemon/__tests__/session-budget.test.ts` hält den Vertragstext und
+die Lanes gegeneinander.
+
+**Was die Änderung bewirkt.** V1.0 verspricht nur noch, was das System tut:
+Das Latenzbudget greift live, das kumulative Tokenbudget je Sitzung wird im
+Shadow verbucht und je Emission protokolliert, gekürzt wird nichts. Die
+Live-Erzwingung mit gemessener Budgethöhe, Canary und Siebentage-Bericht ist
+V2.0-Arbeit nach 26.2. Der Anlass ist gemessen: Der Nutzen des Budgets liegt im
+Ausreißer-Tail, und die Budgethöhe stand noch nicht fest.
+
+**Was besonders zu prüfen ist.**
+
+1. Welche Budgethöhe die Shadow-Daten tragen. 7.500 Tokens sind ein
+   Messvorschlag, kein Live-Default.
+2. Ob ein Canary genügend Sessions sieht, um in sieben Tagen etwas über
+   Required-Drops zu sagen.
+3. Dass beim Scharfschalten zuerst dieser Vertrag und erst danach README,
+   PLAN und Milestone-Beschreibungen geändert werden.
+
+**Nächste freie ID: C-088.** *(Stand dieses Abschnitts. Die aktuell gültige
+nächste freie ID steht am Ende von Abschnitt 39.)*
+
+## 38. Übergabe nach dem Statusnachtrag C-088
+
+**Was geändert wurde.** Diese Fassung fügt den Statusnachtrag C-088 hinzu.
+Geändert wurden ausschließlich die folgenden Passagen:
+
+| Passage | Delta |
+|---|---|
+| Präambel: Status, Stand-Datum, Ausgangsstand, Ledgerstand, Entstehung, nächste freie ID | C-088 |
+| 0.1 Statusvermerk, 0.2 Releaseleiter mit 1.0.0, v1.0.1 und V3.0 | C-088 |
+| 0.4 Verweise an C-004, C-008 und C-086, neue Ledgerzeile C-088, Abnahmeblock | C-088 |
+| 2 Audit-Aufzählung und Ist-Korrektur, 2.2 Punkte 6 und 8 | C-088 |
+| 6.3 `write_origin` und Pin-Quelle | C-088 |
+| 9.4 und 16.3 Statusnotizen zu den Lane-Budgets | C-088 |
+| 10.3 Wortlaut des Identifier-Ankers | C-088 |
+| 13.1 und 16.1 Ist-Korrekturen | C-088 |
+| 18.0, 21.1, 23, 25, 26.1, 27 Status | C-088 |
+| 28 Überschrift, Vorspann, Zuordnungen, Einträge C-087 und C-088, Nachträge und Fundstellen in C-046, C-049, C-055, C-059, C-060, C-076, C-080, C-086 | C-088 |
+| 32 und 33 Archivverweise ohne Pfad | C-088 |
+| 36 Vermerk zur ID, 37 und dieser Abschnitt | — |
+
+Alle übrigen Passagen sind unangetastet. Produktcode wurde nicht verändert.
+
+**Was der Nachtrag bewirkt.** Das Dokument beschrieb V1.0 bis dahin
+durchgehend als kommenden Vertrag. Es hält jetzt fest, dass 1.0.0 am
+14.09.2026 erschienen ist, und berichtigt sechs Ist-Aussagen, die der Code
+inzwischen überholt hat. Wo die Argumentation eines Eintrags auf dem alten
+Stand ruht, bleibt dieser als damaliger Stand stehen; kein Urteil ändert sich.
+
+**Was besonders zu prüfen ist.**
+
+1. Ob die Lane-Budgets vom 12.09.2026 eine eigene C-ID brauchen. Sie stehen
+   hier als Statusnotiz, weil sie kein Messgate ändern.
+2. Erledigt am 17.09.2026: Die Beschreibung des Milestones v1.0 nennt jetzt
+   neben C-001–C-082 die Fortschreibung bis C-087 und die Auslieferung als
+   1.0.0 am 14.09.2026.
+
+**Nächste freie ID: C-089.** *(Stand dieses Abschnitts. Die aktuell gültige
+nächste freie ID steht am Ende von Abschnitt 39.)*
+
+## 39. Übergabe nach der Architekturentscheidung C-089
+
+**Was geändert wurde.** Diese Fassung fügt die Architekturentscheidung C-089
+hinzu. Geändert wurden ausschließlich die folgenden Passagen:
+
+| Passage | Delta |
+|---|---|
+| Präambel: Stand-Datum, Ledgerstand, Entstehung | C-089 |
+| 0.4 neue Ledgerzeile C-089, Abnahmeblock | C-089 |
+| 2.3 Graphify-Test | C-089 |
+| 9.2 Routingzeile, 9.3 Schritt 3 | C-089 |
+| 13 `applies_to` über `affects_files`, 13.1 Code-Sicht | C-089 |
+| 16.2 Abhängigenblock, 16.3 Budgetvermerk | C-089 |
+| 22, 23, 24 Grenzen | C-089 |
+| 25 Punkt 14, 26.2 Zuordnung, 27 | C-089 |
+| 29.2 Quellenzeile, 30, 31 Entscheidung 6 | C-089 |
+| 28 Zuordnung und Delta-Eintrag C-089 | C-089 |
+| 39 dieser Abschnitt | — |
+
+Alle übrigen Passagen sind unangetastet. Produktcode wurde nicht verändert; im
+eigenen Repository ist `graphify-out/` bereits git-ignoriert.
+
+**Was die Entscheidung bewirkt.** V2 bekommt Code-Awareness, ohne einen
+eigenen Symbolindexer zu bauen. Graphify liefert die Code-Karte, Recall
+entscheidet, was davon wann und wie viel ankommt. Die Detailspezifikation
+bleibt in Epic #572 und #573–#580; dieses Dokument hält die Grenzen fest.
+
+**Was besonders zu prüfen ist.**
+
+1. Ob Code-Treffer als Evidenzsignal nach 10.2 zählen oder nur als Kandidaten.
+   Heute ist nur festgelegt, dass ein Code-Hop nie allein `required` erzeugt.
+2. Welchem Messgate die Kontextersparnis aus #579 zugeordnet wird.
+3. Ob der gepinnte Graphify-Stand und das unversionierte `graph.json` auf Dauer
+   tragen; der Leser aus #575 prüft das Format bei jedem Laden.
+
+**Nächste freie ID: C-090.**
