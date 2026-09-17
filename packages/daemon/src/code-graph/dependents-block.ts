@@ -100,6 +100,15 @@ export interface DependentsNoteOptions {
   session?: ReadonlySessionState;
   /** Injectable for tests; defaults to the shared cache. */
   cache?: CodeGraphCache;
+  /**
+   * Wall-clock ceiling for the whole call, in ms. Injectable because a test
+   * that asserts the block's CONTENT must not also be racing this budget: on
+   * a loaded machine the two staleness `stat` calls can outlast 10 ms, the
+   * block is correctly dropped, and the content assertion fails for a reason
+   * that has nothing to do with what it is testing. That flake was measured
+   * at two runs in four under parallel load. Production never passes this.
+   */
+  budgetMs?: number;
 }
 
 export interface DependentsNote {
@@ -148,7 +157,7 @@ export async function dependentsNote(opts: DependentsNoteOptions): Promise<Depen
   const stale = await isGraphStale(opts.repoRoot, opts.filePath);
 
   const note = format(rel, symbols, dependents, stale);
-  if (Date.now() - startedAt > BUDGET_MS) return null;
+  if (Date.now() - startedAt > (opts.budgetMs ?? BUDGET_MS)) return null;
   return { note, dedupeKey };
 }
 
