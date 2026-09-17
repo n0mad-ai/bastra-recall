@@ -1,0 +1,119 @@
+{
+  "$comment": "Pre-registration of the code-awareness context-ROI measurement (#579, epic #572; C-089, C-090, C-091..C-094). Registered BEFORE the first measured run, which is the whole point: the pre-build counter-review of 2026-09-17 found that #579 asked for a no-graph control arm but named neither a minimum sample nor a success threshold, and a control arm without a threshold fixed in advance is not evidence — it is a number to argue about afterwards. Amending anything after a run has started invalidates that run: bump registration_version and say which version a report belongs to.",
+  "schema_version": 1,
+  "registration_version": 1,
+  "registered_at": "2026-09-17",
+  "registered_by": "Claude Opus 5, for review by Daniel Nevoigt",
+  "status": "structure_registered",
+  "$comment_status": "structure_registered -> numbers_registered. The STRUCTURE below (metric, arms, guards, reporting duties) is fixed. The NUMBERS in `thresholds` are proposals from the counter-review and are NOT yet product-owner decisions: threshold height is Daniel's call, not the implementer's. No measured run may be reported as passing or failing until this file reaches numbers_registered.",
+  "issue": 579,
+  "epic": 572,
+  "contract_refs": ["13.1", "16.2", "16.3", "24", "26.2", "C-089", "C-090", "C-091"],
+
+  "question": "Does code awareness reduce the context an agent spends before it reaches the right location, without costing latency?",
+  "$comment_question": "Deliberately one question. #579 also lists secondary observations, and those are reported, but a measurement with several co-equal primary metrics has no honest pass/fail.",
+
+  "primary_metric": {
+    "name": "search_tokens_to_location",
+    "definition": "Tokens spent on Grep/Glob/Read rounds from the start of a scenario until the agent opens the file:line the scenario names as correct.",
+    "direction": "lower_is_better",
+    "$comment": "Counted from the same context-ROI telemetry that already charges memory hints (16.3), extended to code. Tokens, not rounds: a single Read of a 2000-line file and five greps cost very different amounts of context and the rounds count hides that. Rounds are reported as a secondary."
+  },
+
+  "secondary_metrics": [
+    {
+      "name": "rounds_to_location",
+      "reported": true,
+      "gating": false
+    },
+    {
+      "name": "find_code_hit_rate",
+      "reported": true,
+      "gating": false
+    },
+    {
+      "name": "find_code_empty_rate",
+      "reported": true,
+      "gating": false,
+      "$comment": "An honest empty result (4.4 no_answer) is a feature, not a failure — but a tool that is empty most of the time is not earning its place either. Reported so the ratio is visible rather than argued."
+    },
+    {
+      "name": "dependents_block_followed_by_edit",
+      "reported": true,
+      "gating": false,
+      "$comment": "How often the Write/Edit block was followed by an edit to a file it listed. This is the only signal that the block was USED rather than merely tolerated."
+    }
+  ],
+
+  "arms": {
+    "treatment": {
+      "name": "code awareness on",
+      "description": "find_code available and the PreToolUse Write/Edit dependents block active, against a graph built by the pinned Graphify version."
+    },
+    "control": {
+      "name": "no-graph control arm",
+      "description": "The same scenarios with code awareness off: no find_code, no dependents block, no graph.",
+      "$comment": "Required by 13.1 and by C-090. A gain measured without the control arm does not count as evidence that the graph caused it — agents get better at a repository simply by working in it, and a single-arm number cannot tell that apart from the feature."
+    }
+  },
+
+  "design": {
+    "paired": true,
+    "paired_on": "the same scenario run through both arms",
+    "$comment_paired": "Pairing lowers the required N substantially, and scenario difficulty varies far more than the effect being looked for.",
+    "arm_assignment": "deterministic",
+    "$comment_assignment": "Which arm runs first per scenario is fixed by the scenario seed before the run, not chosen at run time."
+  },
+
+  "sample": {
+    "min_scenarios_per_arm": 30,
+    "$comment_min": "Proposed by the counter-review. Below numbers_registered this is a floor for planning, not a satisfied power calculation: the spread of the primary metric is unknown until a first baseline exists, exactly as the cue experiment registered its structure first and its numbers after the M0 baseline. If the observed spread makes 30 underpowered, the run reports `underpowered` (18.1) rather than a pass."
+  },
+
+  "thresholds": {
+    "$comment": "PROPOSALS, pending product-owner sign-off. Nothing here may be used to declare a pass until status is numbers_registered.",
+    "primary_reduction_min": 0.25,
+    "$comment_primary": "A >= 25 % reduction in search tokens against the control arm, and the difference must hold across scenarios rather than rest on a few outliers — reported with the per-scenario distribution, not as a single mean.",
+    "latency_non_regression": {
+      "gating": true,
+      "lane": "PreToolUse Write/Edit",
+      "max_p90_increase_ratio": 0.10,
+      "absolute_p90_ceiling_ms": 200,
+      "$comment": "Gating on purpose: a context win bought with latency is not a win. The lane runs at p50 49 ms / p90 87 ms today against a 200 ms target (packages/daemon/src/hook-budgets.ts). The cold-start rule from C-092 means the block is skipped rather than waited for, so a p90 regression here would indicate the warm path is doing more than it claims."
+    }
+  },
+
+  "failure_is_a_result": true,
+  "$comment_failure": "If the threshold is missed, that is the finding and it is recorded as such. The threshold is not moved after seeing results, and the feature is not quietly re-scoped to match the number it happened to produce. C-090 makes shipped code awareness a mandatory V2.0 criterion WITH substantiated savings — so a miss is a release question, not a reporting question.",
+
+  "run_conditions": {
+    "repository": "bastra-recall",
+    "frozen_commit": null,
+    "$comment_commit": "Filled in when the scenario set is checked in. Both arms run against the same frozen commit; a moving tree makes the arms incomparable.",
+    "graphify_version": "0.9.63",
+    "$comment_graphify": "The pin from #573. Ten releases went out in twelve days, so an unpinned run measures a moving target.",
+    "graph_build_command": "graphify extract <repo> --code-only",
+    "$comment_build": "Per C-091. `graphify update` is inadmissible: it has no --code-only flag and pulls documents into the graph, which would put document content into a measurement about code."
+  },
+
+  "external_figures": {
+    "graphify_benchmark_7_3x": {
+      "used_as_gate": false,
+      "$comment": "Graphify reports 7.3x fewer tokens in its own benchmark. Per 24 and C-029, no external target value is a Bastra gate. It is not a comparison either: different harness, different reader, different budget."
+    }
+  },
+
+  "reporting_duties": [
+    "The primary metric with its per-scenario distribution, both arms.",
+    "The latency comparison against the control arm, with p50 and p90.",
+    "Every secondary metric listed above, marked as non-gating.",
+    "The registration_version this report belongs to.",
+    "An honest status (`underpowered` / `not_evaluable` per 18.1) where the sample does not support a verdict."
+  ],
+
+  "deliverables": {
+    "scenario_file": "packages/eval/fixtures/code-awareness-scenarios.json",
+    "$comment_scenarios": "Not yet written. N >= 30 per arm, each naming the file:line that counts as the correct location.",
+    "stats_section": "code search ROI"
+  }
+}
