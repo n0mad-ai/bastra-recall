@@ -188,10 +188,14 @@ async function isGraphStale(repoRoot: string, filePath: string): Promise<boolean
  * radius, but it is the part the agent can rediscover by running the suite;
  * the production caller is the part that decides whether the edit is safe.
  */
+/** One rule for what counts as a test, shared by the ordering and the count. */
+function isTestFile(f: string): boolean {
+  return f.includes("__tests__") || /\.(test|spec)\./.test(f);
+}
+
 function productionFirst(files: string[]): string[] {
-  const isTest = (f: string): boolean => f.includes("__tests__") || /\.(test|spec)\./.test(f);
   return [...files].sort((a, b) => {
-    const t = Number(isTest(a)) - Number(isTest(b));
+    const t = Number(isTestFile(a)) - Number(isTestFile(b));
     return t !== 0 ? t : a.localeCompare(b);
   });
 }
@@ -232,9 +236,21 @@ function format(rel: string, symbols: CodeSymbol[], dependents: string[], stale:
     lines.push(`Defined here: ${shown.join(", ")}${more > 0 ? `, and ${more} more` : ""}.`);
   }
   lines.push(`Imported or called from ${dependents.length} file${dependents.length === 1 ? "" : "s"}:`);
-  for (const d of dependents.slice(0, MAX_DEPENDENTS)) lines.push(`- ${d}`);
-  const restFiles = dependents.length - Math.min(dependents.length, MAX_DEPENDENTS);
+  // Test files are COUNTED, not listed. Measured against the no-graph control
+  // arm (#579, packages/eval/code-roi): 40.7 % of the dependent edges in this
+  // repository point at test files, and naming them one by one made the median
+  // block 156 tokens against 112 for the grep an agent would otherwise run —
+  // i.e. the block cost more than the search it was meant to save. That a
+  // file's tests exercise that file is the part an agent can already assume;
+  // spending a third of the budget on it crowds out the part it cannot.
+  const prod = dependents.filter((d) => !isTestFile(d));
+  const tests = dependents.length - prod.length;
+  for (const d of prod.slice(0, MAX_DEPENDENTS)) lines.push(`- ${d}`);
+  const restFiles = prod.length - Math.min(prod.length, MAX_DEPENDENTS);
   if (restFiles > 0) lines.push(`- … and ${restFiles} more`);
+  if (tests > 0) {
+    lines.push(`- plus ${tests} test file${tests === 1 ? "" : "s"}`);
+  }
   if (stale) {
     lines.push(
       "This graph was built before the current state of this file, or its build did not finish; " +
