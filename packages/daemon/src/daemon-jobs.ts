@@ -16,6 +16,7 @@ import { bridgesPath } from "./cli/bridges.js";
 import { unloadOllamaModel } from "./ollama-lifecycle.js";
 import { runCuratorPass } from "./curator-run.js";
 import { pruneEventLogs } from "./log-retention.js";
+import { startCodeAwareness } from "./code-graph/service.js";
 
 export interface BackgroundJobDeps {
   vault: Vault;
@@ -55,6 +56,29 @@ export function startBackgroundJobs(deps: BackgroundJobDeps): void {
   startOllamaUnload(deps);
   startCuratorTick(deps);
   startLogRetention();
+  startCodeGraph();
+}
+
+// Code awareness (#574, #581): preload the graphs of enabled repositories,
+// reconcile anything a killed daemon left half-built, and watch the trees and
+// git refs. Does nothing at all when no repository is enabled, which is the
+// default — Recall never indexes a directory nobody asked about.
+//
+// Deliberately not awaited and never fatal: a moved checkout or a corrupt
+// graph must not keep the daemon from booting, and the feature is optional by
+// contract (C-090 is a release obligation, not a runtime one).
+function startCodeGraph(): void {
+  void startCodeAwareness((line) => console.error(`[bastra-recall] ${line}`))
+    .then(({ repos }) => {
+      if (repos.length > 0) {
+        console.error(`[bastra-recall] code awareness: watching ${repos.length} repo(s)`);
+      }
+    })
+    .catch((err) => {
+      console.error(
+        `[bastra-recall] code awareness failed to start (non-fatal): ${(err as Error)?.message ?? err}`,
+      );
+    });
 }
 
 // Periodic disk reconcile: the fs watcher misses external writes/deletes on
