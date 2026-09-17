@@ -18,12 +18,14 @@ import { MEMORY_TOOL_DEFS } from "./tool-handlers.js";
 import { documentTools } from "./documents-handler.js";
 import { documentWriteTools } from "./documents-write-handler.js";
 import { productDocTools } from "./product-doc-handler.js";
+import { codeTools } from "./code-graph/find-code.js";
 
 export const ALL_TOOL_DEFS = [
   ...MEMORY_TOOL_DEFS,
   ...documentTools,
   ...documentWriteTools,
   ...productDocTools,
+  ...codeTools,
 ];
 
 /**
@@ -31,7 +33,8 @@ export const ALL_TOOL_DEFS = [
  * (the installer writes `BASTRA_TOOL_SURFACE` into the client's server block)
  * and overridable there by hand.
  *
- * - `search` — read only: recall, load_memory, find_document, read_document
+ * - `search` — read only: recall, load_memory, find_document, read_document,
+ *   find_code
  * - `write`  — search + save_memory, edit_memory, save_document, save_product_doc
  * - `full`   — everything, including the lifecycle operations
  *
@@ -51,7 +54,18 @@ export const DEFAULT_TOOL_SURFACE: ToolSurface = "full";
 /** What a fresh MCP-client install gets: agents save, they do not reorganise. */
 export const INSTALL_TOOL_SURFACE: ToolSurface = "write";
 
-const SEARCH_SURFACE_TOOLS = ["recall", "load_memory", "find_document", "read_document"] as const;
+const SEARCH_SURFACE_TOOLS = [
+  "recall",
+  "load_memory",
+  "find_document",
+  "read_document",
+  // #576: find_code reads an index of a repository the user already has
+  // checked out. It writes nothing, and it is exactly the tool an agent on the
+  // read-only surface needs before it reasons about code — keeping it `full`-
+  // only would leave the surface able to recall a lesson about a file but not
+  // to find the file.
+  "find_code",
+] as const;
 
 const WRITE_SURFACE_TOOLS = [
   ...SEARCH_SURFACE_TOOLS,

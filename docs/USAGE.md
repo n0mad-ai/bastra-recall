@@ -163,6 +163,7 @@ Endpoints (all `POST`, JSON body):
 | `/api/v1/save_memory` | save_memory |
 | `/api/v1/edit_memory` | edit_memory |
 | `/api/v1/find_document` / `read_document` / `open_document` | document search |
+| `/api/v1/find_code` | code graph lookup |
 | `/api/v1/save_document` / `recategorize_document` / `move_document` | document write (Pro) |
 | `/api/v1/save_product_doc` | product docs |
 
@@ -355,6 +356,7 @@ Endpoints (alle `POST`, JSON-Body):
 | `/api/v1/save_memory` | save_memory |
 | `/api/v1/edit_memory` | edit_memory |
 | `/api/v1/find_document` / `read_document` / `open_document` | Document-Suche |
+| `/api/v1/find_code` | Code-Graph-Abfrage |
 | `/api/v1/save_document` / `recategorize_document` / `move_document` | Document-Schreiben (Pro) |
 | `/api/v1/save_product_doc` | Produkt-Doku |
 
