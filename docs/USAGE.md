@@ -150,6 +150,40 @@ bastra completion fish > ~/.config/fish/completions/bastra.fish
 
 Completes subcommands, surfaces (`install <TAB>` → `claude-code`, `cursor`, …) and flags. Start a new shell afterwards.
 
+### Code awareness — what depends on the file you are editing
+
+Off until you turn it on, per repository:
+
+```bash
+bastra code enable          # in the repository you want it for
+bastra code                 # what is enabled, and how current it is
+bastra code disable         # turn it off again
+```
+
+With it on, Recall reads a map of your code and tells the agent, before it
+edits a file, which other files import or call into it. It also adds a
+`find_code` tool for looking up a symbol by name instead of grepping for it.
+
+The map is built by [Graphify](https://github.com/Graphify-Labs/graphify), a
+separate open-source tool Recall installs on request (see
+[INSTALL.md](./INSTALL.md)). It runs locally, reads only code, and sends
+nothing anywhere — no LLM ever sees your source.
+
+Details worth knowing:
+
+- The map lives in `graphify-out/` inside the repository and is excluded from
+  git automatically. It is never committed.
+- It refreshes itself after edits, commits and branch switches, usually within
+  a few seconds. While it is behind, anything Recall shows from it is marked
+  as possibly outdated rather than presented as current.
+- Nothing is indexed for a repository you have not enabled.
+- `BASTRA_CODE_AWARENESS=off` turns the whole feature off without changing
+  what you enabled.
+- macOS and Linux for now.
+
+If something looks wrong, `bastra doctor` reports the state of every enabled
+repository, and `bastra code rebuild` repairs a broken map after asking.
+
 ### REST API (for non-MCP clients)
 
 The daemon exposes a REST API on `http://127.0.0.1:6723/api/v1/` covering every tool the MCP server offers. This is the integration point for clients that can't speak stdio-MCP.
@@ -342,6 +376,43 @@ bastra completion fish > ~/.config/fish/completions/bastra.fish
 ```
 
 Vervollständigt Subcommands, Surfaces (`install <TAB>` → `claude-code`, `cursor`, …) und Flags. Danach eine neue Shell starten.
+
+### Code-Awareness — was von der Datei abhängt, die du gerade bearbeitest
+
+Standardmäßig aus, und pro Repository einzuschalten:
+
+```bash
+bastra code enable          # im gewünschten Repository
+bastra code                 # was aktiv ist und wie aktuell es ist
+bastra code disable         # wieder ausschalten
+```
+
+Ist es an, liest Recall eine Karte deines Codes und sagt dem Agenten vor einer
+Änderung, welche anderen Dateien die bearbeitete importieren oder aufrufen.
+Dazu kommt ein Werkzeug `find_code`, das ein Symbol beim Namen findet, statt
+danach zu suchen.
+
+Die Karte baut [Graphify](https://github.com/Graphify-Labs/graphify), ein
+eigenständiges Open-Source-Werkzeug, das Recall auf Wunsch mitinstalliert
+(siehe [INSTALL.md](./INSTALL.md)). Es läuft lokal, liest ausschließlich Code
+und schickt nichts irgendwohin — kein Sprachmodell sieht deinen Quelltext.
+
+Was du wissen solltest:
+
+- Die Karte liegt in `graphify-out/` im Repository und wird automatisch von Git
+  ausgenommen. Sie wird nie committet.
+- Sie aktualisiert sich nach Änderungen, Commits und Branch-Wechseln, meist
+  binnen weniger Sekunden. Solange sie hinterherhinkt, wird alles, was Recall
+  daraus zeigt, als möglicherweise veraltet gekennzeichnet statt als aktuell
+  ausgegeben.
+- Für ein Repository, das du nicht aktiviert hast, wird nichts indiziert.
+- `BASTRA_CODE_AWARENESS=off` schaltet die ganze Funktion ab, ohne deine
+  Aktivierungen zu verändern.
+- Vorerst macOS und Linux.
+
+Wenn etwas nicht stimmt: `bastra doctor` nennt den Zustand jedes aktivierten
+Repositories, und `bastra code rebuild` repariert eine kaputte Karte nach
+Rückfrage.
 
 ### REST API (für Nicht-MCP-Clients)
 
