@@ -1,5 +1,5 @@
 /**
- * P0 (docs/recall-performance-handoff.md §8): Der Handler bestimmte
+ * P0 (interne Performance-Übergabe §8): Der Handler bestimmte
  * `hybridActive` aus dem Breaker-Zustand VOR dem Recall. Fällt der Vector-Arm
  * WÄHREND des Calls aus — Deadline gerissen, Provider-Fehler —, dann degradiert
  * `recallHybrid` still auf rohes BM25, der Breaker bleibt aber zu. Der Handler

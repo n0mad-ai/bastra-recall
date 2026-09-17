@@ -1,6 +1,6 @@
 /**
  * `matched_recall_when` ist eine Aussage über AUTOR-ABSICHT, nicht über
- * lexikalische Nähe (P0 aus docs/recall-performance-handoff.md).
+ * lexikalische Nähe (P0 aus der internen Performance-Übergabe, nicht veröffentlicht).
  *
  * Daran hängen zwei Freigaben: der Cross-Scope-Bypass (`hook-skip.ts`) und die
  * Unterdrückung von `weak_result` (`weak-result.ts`). Vor dem Fix reichte ein

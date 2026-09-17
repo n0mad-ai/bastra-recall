@@ -21,9 +21,9 @@
 > C-063–C-067, C-068–C-073, C-074–C-077, C-078–C-079, C-080–C-081 und C-082
 > sowie durch die Vertragsänderungen C-083 und C-087, die Vertragsergänzungen
 > C-084 und C-085 und die Präzisierung C-086.
-> Alle zwölf Zwischenfassungen und der Ausgangsstand liegen unverändert unter
-> `docs/architecture-history/`; sie sind Belegmaterial, keine geltenden
-> Verträge.
+> Alle zwölf Zwischenfassungen und der Ausgangsstand sind unverändert
+> archiviert; sie sind Belegmaterial, keine geltenden Verträge, und seit dem
+> 17.09.2026 nicht mehr Teil des öffentlichen Repositorys.
 >
 > **Sprachfassungen.** Diese deutsche Fassung ist der geprüfte Original- und
 > Vertragstext. `docs/Evolution Architecture V1 to V2.md` ist eine Übersetzung

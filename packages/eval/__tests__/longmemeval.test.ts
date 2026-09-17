@@ -373,7 +373,7 @@ test("the arm writes nothing into the private eval-run archive (#446)", () => {
   for (const f of ["longmemeval-run.ts", "longmemeval-dataset.ts"]) {
     const src = readFileSync(join(import.meta.dirname, "..", "src", f), "utf8");
     // The doc comments say the words; what must not appear is a path being
-    // BUILT from them, the way `cue-ob-tmp.ts` builds one.
+    // BUILT from them, the way the retired cue pre-question script did.
     assert.ok(
       !/join\([^)]*homedir\(\)[^)]*bastra/.test(src) && !/BASTRA_EVAL_RUNS_DIR/.test(src),
       `${f} must not resolve the archive directory`,

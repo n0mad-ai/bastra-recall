@@ -39,7 +39,7 @@
  * result that read like "reranking does not help" and meant "this model does
  * not speak the language". `MODELS` below therefore carries the language each
  * entry may be measured in, and the runner refuses the combinations that would
- * produce such a number. See `docs/design/2026-09-09-501-cross-encoder-rerank-messplan.md`.
+ * produce such a number (spike documented in the internal #501 measurement plan).
  */
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -142,7 +142,7 @@ export function assertLanguagesAllowed(spec: ModelSpec, langs: Iterable<string>)
       `${spec.repo} was measured in [${spec.languages.join(", ")}] and this set carries ` +
         `[${forbidden.join(", ")}]. Scoring it would produce a number that reads as ` +
         `"reranking does not help" and means "this model does not speak the language". ` +
-        `See the spike in docs/design/2026-09-09-501-cross-encoder-rerank-messplan.md.`,
+        `See the model spike in issue #501.`,
     );
   }
 }

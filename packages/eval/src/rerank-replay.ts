@@ -13,8 +13,8 @@
  * `core` or `daemon`, no ranking changes, and the deliverable is a table plus a
  * recommendation. The pre-registration — primary endpoint, free parameters,
  * slices and the bar each recommendation shape has to clear — is
- * `docs/design/2026-09-09-501-cross-encoder-rerank-messplan.md` and
- * `registrations/rerank-decision.json`, both fixed before the first number.
+ * `registrations/rerank-decision.json` (the prose version is an internal
+ * measurement plan), both fixed before the first number.
  *
  * ── Nothing is reimplemented ───────────────────────────────────────────────
  * Retrieval is the production `SearchIndex.recallHybrid` behind

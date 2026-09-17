@@ -1,5 +1,5 @@
 {
-  "$comment": "Pre-registration of the #501 query-time cross-encoder rerank DECISION (§18.3). Registered before a single quality number exists. #501 is a decision issue: the deliverable is a table plus a recommendation to Daniel, not a shipped reranker. The prose version, with the model spike that produced the numbers below, is docs/design/2026-09-09-501-cross-encoder-rerank-messplan.md. Amending anything after a run has started invalidates that run: bump registration_version and say which version a report belongs to.",
+  "$comment": "Pre-registration of the #501 query-time cross-encoder rerank DECISION (§18.3). Registered before a single quality number exists. #501 is a decision issue: the deliverable is a table plus a recommendation to Daniel, not a shipped reranker. The prose version, with the model spike that produced the numbers below, is an internal measurement plan (not published). Amending anything after a run has started invalidates that run: bump registration_version and say which version a report belongs to.",
   "schema_version": 1,
   "registration_version": 2,
   "registered_at": "2026-09-09",

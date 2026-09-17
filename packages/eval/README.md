@@ -435,10 +435,11 @@ its "absent" queries are less absent than a foreign corpus's.
 `--queries <file>` takes one query per line, chosen to be outside the corpus.
 A band that only ever sees answerable queries cannot be judged: a noise floor
 exists for the empty case, so the empty case is where it has to be measured.
-The set has to be written per corpus — `offvault-queries.txt` (cooking,
-sailing, veterinary) is absent from a developer's vault and *present* in
-NFCorpus, which is nutrition and medicine; `offvault-queries-nfcorpus.txt` is
-the mirror.
+The set has to be written per corpus: cooking, sailing and veterinary queries
+are absent from a developer's vault and *present* in NFCorpus, which is
+nutrition and medicine, so NFCorpus needs a mirror set from software and ops
+topics. The project's own query sets are kept locally and are not part of the
+repository; write your own for your corpus.
 
 Keep topical queries and bare operational strings (`ls -la`, `chmod 755`)
 separate when reporting. They are not one population — at `--hops 0` they gave

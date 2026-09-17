@@ -35,6 +35,8 @@ const SKIP_DIRS = new Set([
   "dist",
   "coverage",
   ".venv",
+  // Local, git-ignored working material; never published.
+  "private",
 ]);
 
 /** Collect every `*.md` file under `root`, depth-first and in a stable order. */

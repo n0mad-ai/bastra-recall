@@ -26,10 +26,10 @@
 > C-063–C-067, C-068–C-073, C-074–C-077, C-078–C-079, C-080–C-081, and C-082,
 > and by the contract changes C-083 and C-087, the contract additions C-084 and
 > C-085, and the refinement C-086.
-> All twelve interim versions and the starting state are held unchanged under
-> `docs/architecture-history/`; they are supporting material, not governing
-> contracts. An earlier English version at state C-001–C-028 is held there as
-> well and is superseded by this file.
+> All twelve interim versions and the starting state are archived unchanged;
+> they are supporting material, not governing contracts, and have not been part
+> of the public repository since 2026-09-17. An earlier English version at state
+> C-001–C-028 is archived as well and is superseded by this file.
 >
 > Every passage is traceable to exactly one C-ID through the ledger in 0.4 and
 > the delta ledger in Section 28. No entry reinterprets an earlier verdict;

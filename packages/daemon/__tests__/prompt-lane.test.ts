@@ -1073,7 +1073,7 @@ test("#371 — once every wired memory is session-suppressed, the recall stops r
 });
 
 /**
- * P0 (docs/recall-performance-handoff.md §4.6): Fällt der Vector-Arm aus, liefert
+ * P0 (interne Performance-Übergabe §4.6): Fällt der Vector-Arm aus, liefert
  * `recallHybrid` rohe MiniSearch-Scores statt fusionierter. Die sind nach oben
  * offen — im belegten Incident stand 405.584 dort, wo fusioniert höchstens
  * 163,934 möglich sind. Die Lane las den `unfused`-Marker nicht und maß die
