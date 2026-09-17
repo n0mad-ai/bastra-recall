@@ -148,6 +148,18 @@ export interface CliSettings {
   // (Titel, Summary, recall_when) in dieser Sprache zu verfassen — nur echte
   // englische Fachbegriffe (daemon, deploy, hook, …) bleiben als Anker.
   language?: { primary?: string };
+  // Code-Awareness (#572-#581): die Repositories, für die ein Graphify-
+  // Codegraph gebaut und gelesen wird. undefined/leer = niemand aktiviert,
+  // und dann passiert nichts — Recall baut NIE für ein Verzeichnis, das es
+  // nur zufällig sieht. Einträge sind absolute, normalisierte Pfade, gesetzt
+  // über `bastra code enable/disable`. Env-Notaus: BASTRA_CODE_AWARENESS=off
+  // schaltet die Funktion ganz ab, ohne die Liste anzufassen.
+  //
+  // Bewusst eine Liste in den globalen Settings und keine projektlokale
+  // Datei: eine Konfigurationsdatei IM Repo wäre ein Artefakt, das in fremden
+  // Checkouts auftaucht und committet werden könnte. Die Aktivierung ist eine
+  // Entscheidung dieses Rechners, nicht des Projekts.
+  code?: { repos?: string[] };
 }
 
 /**
@@ -232,6 +244,7 @@ const KNOWN_SETTINGS_KEYS: readonly string[] = [
   "reflex",
   "size",
   "language",
+  "code",
 ];
 
 function warnAboutUnknownKeys(data: unknown, path: string): void {
@@ -430,6 +443,17 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
     }
     if (size.guide !== undefined || size.critical !== undefined || size.exemptPaths !== undefined) settings.size = size;
   }
+  const codeData = (data as { code?: { repos?: unknown } }).code;
+  if (codeData !== undefined && Array.isArray(codeData.repos)) {
+    // Parsed here, or the list would not survive the next write of any other
+    // field — parseSettings rebuilds the object and unknown keys are dropped.
+    // Blanks and non-strings are filtered rather than rejected: one broken
+    // entry must not take the other enabled repositories down with it.
+    const repos = codeData.repos
+      .filter((r): r is string => typeof r === "string" && r.trim().length > 0)
+      .map((r) => r.trim());
+    if (repos.length > 0) settings.code = { repos };
+  }
   const langData = (data as { language?: { primary?: unknown } }).language;
   if (langData !== undefined) {
     const primary = typeof langData.primary === "string" ? langData.primary.trim().toLowerCase() : langData.primary;
@@ -465,8 +489,15 @@ async function writeSettings(next: CliSettings, path: string): Promise<void> {
  * `mutate` bekommt den frisch gelesenen Stand und gibt den zu schreibenden
  * zurück, oder `null` für "nichts zu tun" (z.B. ein CORS-Origin, das schon
  * erlaubt ist). Rückgabewerte für den Aufrufer laufen über den Closure.
+ *
+ * Exportiert (17.09.2026), damit ein Setter auch in seinem Fachmodul stehen
+ * kann statt in dieser Datei — sie liegt über dem 800-Zeilen-Deckel der
+ * Größenkonvention, und "alle Setter hier" wäre der Grund, aus dem sie weiter
+ * wächst. Die Invariante von #534 ändert sich dadurch NICHT: ein Setter
+ * außerhalb muss ebenfalls hier durch, nicht an `readSettings` +
+ * `writeSettings` vorbei.
  */
-async function mutateSettings(
+export async function mutateSettings(
   path: string,
   mutate: (current: CliSettings) => CliSettings | null,
 ): Promise<void> {
