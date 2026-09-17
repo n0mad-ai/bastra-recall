@@ -655,6 +655,14 @@ export interface SessionStartSection {
   totalTokens: number;
   parts: Array<{ part: string; tokens: number; avgPerStart: number; presentIn: number }>;
   bySource: Array<{ source: string; n: number; parts: Array<{ part: string; avg: number }> }>;
+  /** #513: Relay-Spuren je Start. Nur Starts mit `pending_lanes` zählen;
+   *  ältere Zeilen stehen in `withoutLanes`, nie als 0. */
+  pendingLanes: {
+    withLanes: number;
+    withoutLanes: number;
+    recency: { entries: number; presentIn: number; avgChars: number };
+    trends: { entries: number; presentIn: number; avgChars: number };
+  };
 }
 
 export function summarizeSessionStart(events: ReportEvent[]): SessionStartSection {
@@ -678,6 +686,21 @@ export function summarizeSessionStart(events: ReportEvent[]): SessionStartSectio
     }
     bySource.set(s, row);
   }
+  const withLanes = calls.filter((c) => c.pending_lanes && typeof c.pending_lanes === "object");
+  const lane = (key: "recency" | "trends") => {
+    let entries = 0;
+    let presentIn = 0;
+    let chars = 0;
+    for (const c of withLanes) {
+      const l = c.pending_lanes as Record<string, unknown>;
+      const n = typeof l[key] === "number" ? (l[key] as number) : 0;
+      const ch = typeof l[`${key}_chars`] === "number" ? (l[`${key}_chars`] as number) : 0;
+      entries += n;
+      chars += ch;
+      if (n > 0) presentIn++;
+    }
+    return { entries, presentIn, avgChars: withLanes.length ? Math.round(chars / withLanes.length) : 0 };
+  };
   return {
     starts: calls.length,
     withParts: withParts.length,
@@ -702,6 +725,12 @@ export function summarizeSessionStart(events: ReportEvent[]): SessionStartSectio
           .map(([part, v]) => ({ part, avg: Math.round(v / row.n) }))
           .sort((a, b) => b.avg - a.avg),
       })),
+    pendingLanes: {
+      withLanes: withLanes.length,
+      withoutLanes: calls.length - withLanes.length,
+      recency: lane("recency"),
+      trends: lane("trends"),
+    },
   };
 }
 

@@ -173,11 +173,14 @@ async function evaluateStop(
     // Vorschläge in die Pending-Datei schreiben; der SessionStart-Hook der
     // nächsten Session injiziert sie still als additionalContext. stdout
     // bleibt IMMER leer.
-    const blocks = [
-      ...suggestions.map(formatSuggestion),
-      ...(drift.length > 0 ? [formatDriftBlock(drift)] : []),
-    ].join("\n");
-    await writePendingSuggestion(blocks);
+    // #513: was diese Session ausgelöst hat, ist heiß (recency, einmal
+    // zeigen). Der Taxonomie-Drift beschreibt dagegen, was im Vault immer
+    // wieder auftaucht — er gehört in die Trends-Spur, unter einem festen
+    // Schlüssel, damit neue Zählungen die Zeile ersetzen statt sie zu stapeln.
+    if (suggestions.length > 0) await writePendingSuggestion(suggestions.map(formatSuggestion).join("\n"));
+    if (drift.length > 0) {
+      await writePendingSuggestion(formatDriftBlock(drift), { lane: "trends", key: "taxonomy-drift" });
+    }
   }
 
   const totalMs = Date.now() - startedAt;

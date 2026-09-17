@@ -50,7 +50,7 @@ import { recordBudgetShadow, resetBudgetOnSource } from "./session-budget.js";
 import { spawnStagedUpdate, stagedToday, markStagedToday } from "./update-check.js";
 import { formatBlockedUpdate, readBlockedUpdate } from "./update-blocked.js";
 import { pendingPatchNotice } from "./patch-report.js";
-import { consumePendingSuggestions, formatPendingBlock } from "./pending-suggestions.js";
+import { formatPendingRelay, isCountableSessionStart, takePendingRelay } from "./pending-suggestions.js";
 import { clearShown } from "./session-state.js";
 import { formatPinnedBlock, dropPinnedFromRanked, type PinnedFloorLean } from "./pinned-block.js";
 import { reportHinted } from "./hook-hinted.js";
@@ -544,13 +544,25 @@ export async function runSessionLane(
   // einsammeln (consume-once, max 7 Tage alt) — der Agent sieht sie als
   // additionalContext, der Chat bleibt sauber.
   let pendingBlock = "";
+  let pendingLanes: SessionHookTelemetry["pending_lanes"] = { recency: 0, trends: 0, recency_chars: 0, trends_chars: 0 };
   try {
-    const pending = await consumePendingSuggestions();
+    // #513: Recency wird konsumiert, Trends bleiben liegen; nur ein echter
+    // Start zählt die Lebensdauer der Trends weiter.
+    const relay = await takePendingRelay({
+      sessionId: payload.session_id ?? null,
+      countable: isCountableSessionStart(payload.session_id, payload.source),
+    });
     // #510: der Block wird auf ein Zeichen-Budget rationiert (größter Einzel-
     // Part im #462-Baseline). Formatierung + Truncation liegen im Modul, damit
     // sie ohne CLI-Seiteneffekte testbar sind — dieselbe Trennung wie pinned.
-    const block = formatPendingBlock(pending);
-    if (block) pendingBlock = `\n${block}`;
+    const rendered = formatPendingRelay(relay);
+    if (rendered.text) pendingBlock = `\n${rendered.text}`;
+    pendingLanes = {
+      recency: relay.recency.length,
+      trends: relay.trends.length,
+      recency_chars: rendered.recencyChars,
+      trends_chars: rendered.trendsChars,
+    };
   } catch {
     /* relay is best-effort */
   }
@@ -677,6 +689,7 @@ export async function runSessionLane(
     ),
     hinted_ids: top.map((h) => h.id),
     hinted_types: top.map((h) => h.type),
+    pending_lanes: pendingLanes,
     status,
     error: errMsg,
   });
@@ -857,6 +870,9 @@ interface SessionHookTelemetry {
   hinted_ids: string[];
   /** #354: Memory-Typ je `hinted_ids`-Eintrag, gleiche Reihenfolge. */
   hinted_types: string[];
+  /** #513: Einträge je Relay-Spur und die Größe ihres gerenderten Blocks in
+   *  Zeichen. Fehlt auf Zeilen vor #513. */
+  pending_lanes: { recency: number; trends: number; recency_chars: number; trends_chars: number };
   status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error";
   error: string | null;
   /** #342/Deep-Dive 07.09.2026: welcher Arm ausgefallen ist — `vector-arm-timeout`

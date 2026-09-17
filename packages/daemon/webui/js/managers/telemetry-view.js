@@ -509,6 +509,18 @@ function renderSaves(sv) {
   );
 }
 
+function renderPendingLanes(pl) {
+  if (!pl || pl.withLanes === 0) return empty("no start carries pending_lanes yet (#513)");
+  const row = (name, l) => h("tr", null, td(name), td(fmt(l.entries)), td(`${l.presentIn}/${pl.withLanes}`, "dim"), td(fmt(l.avgChars)));
+  return h(
+    "div",
+    null,
+    h3("Pending relay by lane"),
+    table(["lane", "entries shown", "present in", "avg chars / start"], [row("recency", pl.recency), row("trends", pl.trends)]),
+    pl.withoutLanes > 0 ? note(`${fmt(pl.withoutLanes)} start(s) predate pending_lanes (#513) and are not counted here.`, true) : null,
+  );
+}
+
 function renderSessionStart(ss) {
   const rows = ss.parts.map((p) =>
     h("tr", null, td(p.part), barCell(p.tokens, Math.max(1, ss.totalTokens)), td(fmt(p.tokens)), td(pct(p.tokens, ss.totalTokens), "dim"), td(fmt(p.avgPerStart)), td(`${p.presentIn}/${ss.withParts}`, "dim")),
@@ -537,6 +549,7 @@ function renderSessionStart(ss) {
             h3("Average tokens per part, by start source"),
             srcRows.length ? table(["source", "starts", "top parts (avg tokens)"], srcRows) : empty("—"),
             note("The same block is assembled on startup, clear, compact and resume — a part that repeats identically across sources is a cadence question, not a content one."),
+            renderPendingLanes(ss.pendingLanes),
           ),
         ),
   );
