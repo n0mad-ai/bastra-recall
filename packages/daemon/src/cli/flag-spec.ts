@@ -59,6 +59,7 @@ export const COMMAND_FLAGS: Record<string, readonly string[]> = {
   autostart: ["--dry-run", "--force", "--json", "--vault"],
   status: ["--json", "--quiet", "-q"],
   config: [],
+  code: ["--yes", "-y"],
   embeddings: [],
   models: [],
   token: ["--json", "--origin"],

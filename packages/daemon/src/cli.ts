@@ -24,6 +24,7 @@ import { cmdEmbeddings } from "./cli/embeddings-cmd.js";
 import { cmdModels } from "./cli/models-cmd.js";
 import { cmdToken } from "./cli/token.js";
 import { cmdCommons } from "./cli/commons.js";
+import { cmdCode } from "./cli/code-cmd.js";
 import { cmdBridges } from "./cli/bridges.js";
 import { cmdMap } from "./cli/map-cmd.js";
 import { cmdImport } from "./cli/import-cmd.js";
@@ -66,6 +67,7 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
     case "models": return cmdModels({ sub: args.surface, positional: args.positional });
     case "token": return cmdToken({ sub: args.surface, json: args.json, origin: args.origin });
     case "commons": return cmdCommons({ sub: args.surface, positional: args.positional });
+    case "code": return cmdCode({ sub: args.surface, positional: args.positional, yes: args.yes });
     case "bridges": return cmdBridges({ sub: args.surface, positional: args.positional });
     case "map":
     case "ui":
