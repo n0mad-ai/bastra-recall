@@ -94,6 +94,36 @@ test("#235: the hint says the command comes from the VAULT, not from bastra", as
   }
 });
 
+test("#467: a summary that states a count gets the count reminder", async () => {
+  const { deps, cleanup } = await makeDeps();
+  try {
+    const counted = await saveMemoryHandler(
+      deps,
+      fact({
+        title: "Fehlerkatalog",
+        summary: "Der Katalog listet 27 recurring failure modes.",
+        verify_cmd: "grep -c '^1' catalog.md",
+      }),
+    );
+    const hint = (await loadMemoryHandler(deps, { id: counted.id })).verify!.hint;
+    assert.match(hint, /states a count/);
+    assert.match(hint, /only checks that one item exists/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("#467: an address in the summary is not a count", async () => {
+  const { deps, cleanup } = await makeDeps();
+  try {
+    // The #235 fixture: "127.0.0.1:6723." is an address, not a count.
+    const port = await saveMemoryHandler(deps, fact({ verify_cmd: ANCHOR }));
+    assert.doesNotMatch((await loadMemoryHandler(deps, { id: port.id })).verify!.hint, /states a count/);
+  } finally {
+    await cleanup();
+  }
+});
+
 test("#235: a memory without an anchor carries no verify block at all", async () => {
   const { deps, cleanup } = await makeDeps();
   try {

@@ -180,6 +180,12 @@ those age silently into false statements that keep being recalled as true.
 Calendar staleness and the curator's usage windows are both blind to content
 truth; an anchor is not.
 
+An anchor has to check the claim the memory actually makes (#467). When the
+summary states a **count** — "27 recurring failure modes" — the anchor must print
+a number comparable to it (`grep -cE '<pattern>' <file>`), not test that one item
+exists: a presence check stays green while the count goes stale. `load_memory`
+adds that reminder to its hint whenever the summary states a number followed by a word.
+
 **Nothing executes it.** Not the daemon, not the curator, not a hook. It is
 stored, and `load_memory` shows it alongside a hint. Whoever loads the memory
 decides, under their own permission rules. That is what keeps this stage free of

@@ -400,6 +400,9 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
             "'test -f packages/daemon/src/reflex.ts', 'curl -s localhost:6723/health'. " +
             "Worth adding on a project-fact that asserts a state of the world, because " +
             "those age silently into false statements that keep being recalled as true. " +
+            "If the claim is a COUNT ('27 items'), the anchor must print that count " +
+            "('grep -cE <pattern> <file>'), not check that one item exists — a presence " +
+            "check stays green while the number goes stale. " +
             "Nothing ever runs it automatically: it is stored and shown to whoever loads " +
             "the memory, who decides under their own permission rules. Leave it out unless " +
             "the claim is genuinely checkable by one short command.",

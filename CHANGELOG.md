@@ -6,6 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The pending relay has two lanes** (#513). What the last session raised is
+  still shown once at the next start and then gone (`recency`). What keeps
+  coming up — today the taxonomy-drift block — now sits in a `trends` lane: it
+  is shown at every session start in its own `<pending-trends>` block, is not
+  consumed on read, and ages out after a number of real session starts
+  (default 6, `BASTRA_PENDING_TRENDS_SESSIONS`) instead of after days. A
+  refreshed trend replaces its row and restarts its counter. Resumed,
+  compacted and cleared sessions, a repeated session id and ids with an
+  eval/test prefix never advance the counter. Both blocks share the existing
+  3,000-char budget; a trend that does not fit is announced and comes back at
+  the next start. Session-start telemetry records entries and size per lane,
+  and the telemetry dashboard shows them.
+- **`verify_cmd` guidance for counts** (#467). The `save_memory` description
+  now says that a memory claiming a count needs an anchor that prints the
+  count, not one that checks that a single item exists. `load_memory` adds the
+  same reminder to its anchor hint when the summary states a count.
+
 ## [1.0.0] — 2026-09-14
 
 ### Added
