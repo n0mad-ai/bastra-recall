@@ -68,6 +68,11 @@ Commands:
     [--origin <url>]         With 'token': also allowlist this browser Origin
                              (e.g. https://bastra.io) so the web app can reach
                              the daemon — no plist/env editing needed
+  code <enable|disable|index|rebuild|status>
+                             Code awareness per repository: shows an agent what
+                             depends on a file before it edits one, and adds
+                             find_code. Off until enabled; builds a local code
+                             map, sends nothing anywhere (macOS/Linux)
   commons <enable|update|disable|status>
                              Bastra Commons: community-proven recipes as a
                              read-only second recall index (git-synced)
