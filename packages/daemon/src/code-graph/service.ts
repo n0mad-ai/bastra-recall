@@ -68,8 +68,17 @@ export interface CodeAwarenessHandle {
  */
 export async function startCodeAwareness(
   onEvent?: (line: string) => void,
+  /**
+   * Which repositories to start for. Injectable so a test states its own
+   * world instead of reading the machine's: this used to call `enabledRepos()`
+   * unconditionally, so the test asserting "does nothing when none is enabled"
+   * passed in CI and failed on any machine where someone had actually switched
+   * the feature on. A test that depends on the developer's configuration tests
+   * the configuration.
+   */
+  repoList: () => Promise<string[]> = enabledRepos,
 ): Promise<CodeAwarenessHandle> {
-  const repos = await enabledRepos();
+  const repos = await repoList();
   if (repos.length === 0) return { repos: [], stop: () => {} };
 
   const refresh = codeGraphRefresher();
