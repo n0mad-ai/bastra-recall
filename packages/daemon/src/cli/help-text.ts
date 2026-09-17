@@ -178,6 +178,24 @@ const SURFACE_ARG = `Surfaces:
  * whichever spelling the user typed is the one echoed back.
  */
 export const COMMAND_HELP: Record<string, string> = {
+  code: `bastra code — code awareness for a repository
+
+Usage:
+  bastra code                        What is enabled, which Graphify, how fresh
+  bastra code enable [<dir>]         Turn it on here and build the graph once
+  bastra code disable [<dir>]        Turn it off; the graph files stay
+  bastra code index [<dir>]          Refresh the graph (incremental, ~2s)
+  bastra code rebuild [<dir>] [--yes]
+                                     Repair: rebuild with --force, which
+                                     overrides Graphify's refusal to replace a
+                                     larger graph with a smaller one
+
+Recall reads the graph Graphify writes and shows an agent what depends on a
+file before it edits one. Nothing is indexed until you enable a repository,
+the graph never leaves your machine, and no code is sent to an LLM.
+
+The graph lives in <dir>/graphify-out/ and is excluded from git locally.
+macOS and Linux for now.`,
   install: `bastra install — register bastra-recall with an AI client
 
 Usage:
