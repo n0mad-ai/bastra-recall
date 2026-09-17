@@ -30,6 +30,8 @@ import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane } from "./scope-filter.js";
 import { fileSizeNote } from "./file-size-check.js";
+import { dependentsNote } from "./code-graph/dependents-block.js";
+import { appliesToNote } from "./code-graph/applies-to-note.js";
 import { memoryLocationNote } from "./memory-location.js";
 import { reportHinted } from "./hook-hinted.js";
 import { hookClient } from "./hook-surface.js";
@@ -145,7 +147,6 @@ export async function runWriteLane(
   // size note: deterministic, rides through suppression, fail-open. The two
   // combine into one deterministic block for every emit path.
   const locationNote = await memoryLocationNote(filePath, toolInput, vaultRoot).catch(() => null);
-  const detNote = [sizeNote, locationNote].filter((n): n is string => n !== null).join("\n") || null;
 
   const intent = {
     tool_name: toolName,
@@ -238,6 +239,40 @@ export async function runWriteLane(
     sessionState = await loadSessionState(sessionId);
     dedupActive = true;
   }
+
+  // #577: the code-graph dependents block. It joins the other two
+  // deterministic notes but is computed here, because it needs the session
+  // snapshot for its own dedupe — the same rule as the memory hints (§16.2),
+  // so the same file is not repeated on every edit. Silent on a cold or
+  // missing graph (see dependents-block.ts), and it never marks a memory
+  // required (§13.1).
+  const codeNote = await dependentsNote({ filePath, repoRoot: cwd, session: sessionState }).catch(
+    () => null,
+  );
+  if (codeNote !== null) {
+    const key = codeNote.dedupeKey;
+    stateDeltas.push((s) => bumpShown(s, key, Date.now()));
+  }
+
+  // #578: memories that declare this file via `affects_files`, plus memories
+  // on files that depend on it. A deterministic block of its own rather than
+  // recall hits, because these candidates carry no score — the reasoning, and
+  // the fact that it is a reversible assumption, is in applies-to-note.ts.
+  // Same dedupe rule, same silence on anything missing.
+  const memoryCodeNote = await appliesToNote({
+    filePath,
+    repoRoot: cwd,
+    session: sessionState,
+  }).catch(() => null);
+  if (memoryCodeNote !== null) {
+    const key = memoryCodeNote.dedupeKey;
+    stateDeltas.push((s) => bumpShown(s, key, Date.now()));
+  }
+
+  const detNote =
+    [sizeNote, locationNote, codeNote?.note ?? null, memoryCodeNote?.note ?? null]
+      .filter((n): n is string => n !== null)
+      .join("\n") || null;
 
   const survivingHits: RecallHit[] = [];
   let droppedDedupCount = 0;
