@@ -215,9 +215,30 @@ export class CodeGraphRefresher {
   }
 
   /** Resolves once nothing is running, waiting or pending. For tests and shutdown. */
+  /**
+   * Resolves once nothing is queued or running.
+   *
+   * Holds the event loop open while it waits, and that is the whole subtlety:
+   * the debounce timers are `unref`'d on purpose, so that a pending refresh
+   * never keeps the daemon from exiting. A caller that explicitly asks to wait
+   * for idle wants the opposite — without a ref'd handle the loop can drain
+   * while the debounce is still pending, and this promise then never settles.
+   * Node 22 reports exactly that ("Promise resolution is still pending but the
+   * event loop has already resolved"); it surfaced in CI on 22 and not on 24.
+   *
+   * The keep-alive belongs to the wait, not to the refresh: it is cleared as
+   * soon as the promise settles, so the `unref` discipline of the timers is
+   * untouched and nothing about the daemon's shutdown behaviour changes.
+   */
   whenIdle(): Promise<void> {
     if (this.isIdle()) return Promise.resolve();
-    return new Promise((resolve) => this.idleWaiters.push(resolve));
+    return new Promise((resolve) => {
+      const keepAlive = setInterval(() => {}, 1000);
+      this.idleWaiters.push(() => {
+        clearInterval(keepAlive);
+        resolve();
+      });
+    });
   }
 
   /** Drop every scheduled refresh. A build already running is left to finish. */

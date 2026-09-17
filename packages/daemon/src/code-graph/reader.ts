@@ -20,7 +20,7 @@
  * Everything the graph says is treated as untrusted (see validate.ts).
  */
 
-import { readFile, stat } from "node:fs/promises";
+import { open, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
 import {
   CODE_FILE_TYPE,
@@ -107,22 +107,40 @@ export type LoadResult =
 export async function loadGraph(repoRoot: string): Promise<LoadResult> {
   const file = graphFileOf(repoRoot);
 
+  // Open ONCE and fstat the handle, then read from that same handle. A
+  // `stat` followed by a separate `readFile` leaves a window in which the
+  // file can be swapped between the check and the read (CodeQL
+  // js/file-system-race, flagged high on this very function) — and the size
+  // limit is one of the hard promises this module makes about untrusted
+  // input, so a limit that can be stepped around by replacing the file is not
+  // a limit at all. Same discipline as the transcript read in stop-lane.ts.
   let sizeBytes: number;
   let mtimeMs: number;
+  let raw: string;
+  let handle: FileHandle;
   try {
-    const st = await stat(file);
-    sizeBytes = st.size;
-    mtimeMs = st.mtimeMs;
+    handle = await open(file, "r");
   } catch {
     return { ok: false, reason: "unreadable" };
   }
-  if (sizeBytes > MAX_GRAPH_BYTES) {
-    return { ok: false, reason: "too-large", detail: `${sizeBytes} bytes` };
+  try {
+    const st = await handle.stat();
+    if (!st.isFile()) return { ok: false, reason: "unreadable" };
+    sizeBytes = st.size;
+    mtimeMs = st.mtimeMs;
+    if (sizeBytes > MAX_GRAPH_BYTES) {
+      return { ok: false, reason: "too-large", detail: `${sizeBytes} bytes` };
+    }
+    raw = await handle.readFile({ encoding: "utf8" });
+  } catch {
+    return { ok: false, reason: "unreadable" };
+  } finally {
+    await handle.close().catch(() => {});
   }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(await readFile(file, "utf8"));
+    parsed = JSON.parse(raw);
   } catch {
     return { ok: false, reason: "not-json" };
   }
