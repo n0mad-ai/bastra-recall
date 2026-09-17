@@ -1,12 +1,12 @@
 # Usage guide / Nutzungshandbuch
 
+[English](#english) · [Deutsch](#deutsch)
+
+<a id="english"></a>
+
+## English
+
 Set up your clients, bring in existing memories and use Bastra Recall in everyday work. Start with the [README](../README.md#install) for guided installation; this guide covers examples, manual configuration, the REST API and troubleshooting.
-
-Verbinde deine Clients, übernimm vorhandene Erinnerungen und nutze Bastra Recall im Alltag. Das geführte Setup steht in der [README](../README.md#installation); hier findest du Beispiele, manuelle Konfiguration, REST-API und Fehlerbehebung.
-
----
-
-## 🇬🇧 English
 
 ### Cookbook
 
@@ -194,9 +194,11 @@ To reach this daemon from a hosted web app (e.g. a site's admin talking to the u
 - **Where logs live** — `bastra logs` renders them readably (`-f` to follow, `--since 1h`, `--source hook|daemon`); one line per event instead of raw JSONL. The files themselves sit outside the vault at `~/.bastra/logs/events-YYYY-MM-DD.jsonl` (override: `BASTRA_LOG_PATH`). The daemon deletes event logs older than **90 days** (`BASTRA_LOG_RETENTION_DAYS`); the floor is 30 days, because the curator mines that window for reflex promotions and a shorter setting would quietly degrade recall.
 - **Reset derived state without losing memories** — stop the daemon, then delete only derived files inside `<vault>/.bastra/`: `embeddings.json` and `embed-cache.json` rebuild themselves on the next start. Never delete your `.md` files, `audit-log.ndjson`, or `trash/` unless you intend to remove user data.
 
----
+<a id="deutsch"></a>
 
-## 🇩🇪 Deutsch
+## Deutsch
+
+Verbinde deine Clients, übernimm vorhandene Erinnerungen und nutze Bastra Recall im Alltag. Das geführte Setup steht in der [README](../README.md#installation); hier findest du Beispiele, manuelle Konfiguration, REST-API und Fehlerbehebung.
 
 ### Kochbuch
 

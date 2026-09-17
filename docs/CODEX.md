@@ -1,62 +1,8 @@
 # Codex + ChatGPT Desktop
 
-## Deutsch
+[English](#english) · [Deutsch](#deutsch)
 
-Bastra Recall verwendet auf demselben Rechner die von Codex und der ChatGPT-Desktop-App gemeinsam gelesene Datei `~/.codex/config.toml`. Die Anmeldung bleibt vollständig bei OpenAI: ChatGPT-Login oder OpenAI-API-Key werden von Codex verwaltet; Bastra Recall benötigt dafür keinen eigenen OpenAI-Schlüssel. Speicherung und Stichwortsuche laufen lokal. Abgerufene Erinnerungen werden dem verbundenen KI-Client als Kontext übergeben; siehe [Datenschutz](./PRIVACY.md#deutsch).
-
-**Prüfstand:** Codex CLI ist für die v1.0-Integration verifiziert. Desktop und IDE sind implementiert, aber noch nicht im Feld getestet.
-
-### Installation
-
-```bash
-npx bastra-recall install codex --vault ~/BastraVault
-# nach einer globalen Installation alternativ:
-bastra install codex --vault ~/BastraVault
-```
-
-Der Adapter:
-
-1. registriert `bastra-recall` über den offiziellen Befehl `codex mcp add`;
-2. installiert den Skill nach `~/.agents/skills/bastra-recall` einschließlich `agents/openai.yaml`;
-3. führt Bastra-eigene Einträge in `~/.codex/hooks.json` zusammen und bewahrt fremde Einträge;
-4. sichert vorhandene Konfigurationen vor Änderungen und pinnt flüchtige `npx`-Runtimes;
-5. aktiviert dieselbe Integration für Codex CLI, Codex IDE und ChatGPT Desktop auf diesem Host.
-
-Beim ersten Codex-Start die sieben angezeigten Bastra-Hooks prüfen und vertrauen; später ist derselbe Dialog über `/hooks` erreichbar. Codex bindet Vertrauen an den exakten Hook-Hash und fordert nach inhaltlichen Änderungen erneut zur Prüfung auf. Danach ChatGPT Desktop, bestehende Codex-Sitzungen und die IDE-Erweiterung neu starten.
-
-### Reflex-Layer
-
-| Codex-Ereignis | Bastra-Verhalten |
-|---|---|
-| `SessionStart` | projektbewusster Startkontext, Konventionen und offene Hinweise |
-| `UserPromptSubmit` | Recall bei Lookup-, Claim- und Reflex-Signalen |
-| `PreToolUse: apply_patch` | Patch-Ziele und Inhalt in die vorhandene Write/Edit-Lane normalisieren |
-| `PreToolUse: update_plan` | Plan-Schritte in die vorhandene Topologie-/Todo-Lane normalisieren — braucht `tools.update_plan.enabled = true` in `~/.codex/config.toml`; seit Codex 0.152.0 ist das Planungs-Tool per Default aus, deshalb setzt `bastra install codex` den Schlüssel selbst (kommentierter Block, `bastra uninstall codex` nimmt ihn zurück; ein von dir auf `false` gesetzter Wert bleibt unangetastet) (#506) |
-| `PreToolUse: Bash` | riskante oder destruktive Befehle vor Ausführung prüfen |
-| `PostToolUse: Bash` | Fehlschläge und Act-Signale erfassen; beliebige Codex-JSON-Antwortwerte unterstützen |
-| `Stop` | stille Save-Evaluation; bei `--no-stop-hook` deaktiviert |
-
-Alle Hook-Pfade sind fail-open: Ein nicht erreichbarer Daemon darf keinen Codex-Turn blockieren. Injizierte Blöcke tragen `surface="codex"`, Telemetrie verwendet den getrennten Client-Wert `codex`. Das aktuelle Codex-JSONL-Transkriptformat wird additiv unterstützt; weil OpenAI es als instabil kennzeichnet, bleiben ältere Formate und leere Fallbacks erhalten.
-
-### Statusanzeige
-
-Während ein Hook läuft, verwendet der Adapter Codex' native, blinkende Statuszeile über `statusMessage`, zum Beispiel `Bastra Recall · loading context`, `Bastra Recall · recalling for patch` oder `Bastra Recall · evaluating memory save`. Die Meldung ist bewusst kurz und verschwindet nach dem Hook.
-
-Eine dauerhafte zweite Zeile in der ChatGPT-Desktop-App ist derzeit keine dokumentierte Erweiterungsfläche. `tui.status_line` gehört ausschließlich zur Codex-Terminaloberfläche und unterstützt eingebaute Segment-IDs, aber keinen externen Bastra-Renderer. Der Installer verändert diese persönliche TUI-Einstellung deshalb nicht. Dauerzustand und Diagnose bleiben über `bastra status` und `bastra doctor codex` abrufbar; eine spätere offizielle Plugin-/Command-Schnittstelle kann an den vorhandenen Bastra-Statusline-Renderer angebunden werden.
-
-### Prüfung und Entfernung
-
-```bash
-bastra doctor codex
-bastra doctor codex --fix
-bastra uninstall codex
-```
-
-`doctor` prüft Codex-/ChatGPT-Erkennung, MCP-Registrierung, Forwarder, Vault, Skill, Pflicht-Hooks und Daemon. Den von Codex verwalteten Vertrauensstatus zeigt `/hooks`; der Adapter umgeht diese Sicherheitsprüfung nicht. `uninstall` entfernt nur Bastra-eigene MCP-, Hook- und Skill-Einträge; der Vault und fremde Hooks bleiben unangetastet.
-
-Das optionale Paket unter `plugins/bastra-recall/` verteilt denselben proaktiven Skill über OpenAIs Plugin-Format. MCP, Hooks und Vault-Pfad bleiben bewusst beim CLI-Adapter, damit Plugin und Installer keine doppelten Hooks registrieren.
-
-Offizielle Grundlagen: [MCP in ChatGPT und Codex](https://learn.chatgpt.com/docs/extend/mcp), [Codex Hooks](https://learn.chatgpt.com/docs/hooks), [Codex Skills](https://learn.chatgpt.com/docs/build-skills), [Plugin-Architektur](https://developers.openai.com/plugins/concepts/plugins).
+<a id="english"></a>
 
 ## English
 
@@ -115,3 +61,63 @@ bastra uninstall codex
 The optional package at `plugins/bastra-recall/` distributes the same proactive skill through OpenAI's plugin format. MCP, hooks, and vault selection deliberately remain with the CLI adapter so plugin and installer cannot register duplicate hooks.
 
 Official foundations: [MCP in ChatGPT and Codex](https://learn.chatgpt.com/docs/extend/mcp), [Codex hooks](https://learn.chatgpt.com/docs/hooks), [Codex skills](https://learn.chatgpt.com/docs/build-skills), [plugin architecture](https://developers.openai.com/plugins/concepts/plugins).
+
+<a id="deutsch"></a>
+
+## Deutsch
+
+Bastra Recall verwendet auf demselben Rechner die von Codex und der ChatGPT-Desktop-App gemeinsam gelesene Datei `~/.codex/config.toml`. Die Anmeldung bleibt vollständig bei OpenAI: ChatGPT-Login oder OpenAI-API-Key werden von Codex verwaltet; Bastra Recall benötigt dafür keinen eigenen OpenAI-Schlüssel. Speicherung und Stichwortsuche laufen lokal. Abgerufene Erinnerungen werden dem verbundenen KI-Client als Kontext übergeben; siehe [Datenschutz](./PRIVACY.md#deutsch).
+
+**Prüfstand:** Codex CLI ist für die v1.0-Integration verifiziert. Desktop und IDE sind implementiert, aber noch nicht im Feld getestet.
+
+### Installation
+
+```bash
+npx bastra-recall install codex --vault ~/BastraVault
+# nach einer globalen Installation alternativ:
+bastra install codex --vault ~/BastraVault
+```
+
+Der Adapter:
+
+1. registriert `bastra-recall` über den offiziellen Befehl `codex mcp add`;
+2. installiert den Skill nach `~/.agents/skills/bastra-recall` einschließlich `agents/openai.yaml`;
+3. führt Bastra-eigene Einträge in `~/.codex/hooks.json` zusammen und bewahrt fremde Einträge;
+4. sichert vorhandene Konfigurationen vor Änderungen und pinnt flüchtige `npx`-Runtimes;
+5. aktiviert dieselbe Integration für Codex CLI, Codex IDE und ChatGPT Desktop auf diesem Host.
+
+Beim ersten Codex-Start die sieben angezeigten Bastra-Hooks prüfen und vertrauen; später ist derselbe Dialog über `/hooks` erreichbar. Codex bindet Vertrauen an den exakten Hook-Hash und fordert nach inhaltlichen Änderungen erneut zur Prüfung auf. Danach ChatGPT Desktop, bestehende Codex-Sitzungen und die IDE-Erweiterung neu starten.
+
+### Reflex-Layer
+
+| Codex-Ereignis | Bastra-Verhalten |
+|---|---|
+| `SessionStart` | projektbewusster Startkontext, Konventionen und offene Hinweise |
+| `UserPromptSubmit` | Recall bei Lookup-, Claim- und Reflex-Signalen |
+| `PreToolUse: apply_patch` | Patch-Ziele und Inhalt in die vorhandene Write/Edit-Lane normalisieren |
+| `PreToolUse: update_plan` | Plan-Schritte in die vorhandene Topologie-/Todo-Lane normalisieren — braucht `tools.update_plan.enabled = true` in `~/.codex/config.toml`; seit Codex 0.152.0 ist das Planungs-Tool per Default aus, deshalb setzt `bastra install codex` den Schlüssel selbst (kommentierter Block, `bastra uninstall codex` nimmt ihn zurück; ein von dir auf `false` gesetzter Wert bleibt unangetastet) (#506) |
+| `PreToolUse: Bash` | riskante oder destruktive Befehle vor Ausführung prüfen |
+| `PostToolUse: Bash` | Fehlschläge und Act-Signale erfassen; beliebige Codex-JSON-Antwortwerte unterstützen |
+| `Stop` | stille Save-Evaluation; bei `--no-stop-hook` deaktiviert |
+
+Alle Hook-Pfade sind fail-open: Ein nicht erreichbarer Daemon darf keinen Codex-Turn blockieren. Injizierte Blöcke tragen `surface="codex"`, Telemetrie verwendet den getrennten Client-Wert `codex`. Das aktuelle Codex-JSONL-Transkriptformat wird additiv unterstützt; weil OpenAI es als instabil kennzeichnet, bleiben ältere Formate und leere Fallbacks erhalten.
+
+### Statusanzeige
+
+Während ein Hook läuft, verwendet der Adapter Codex' native, blinkende Statuszeile über `statusMessage`, zum Beispiel `Bastra Recall · loading context`, `Bastra Recall · recalling for patch` oder `Bastra Recall · evaluating memory save`. Die Meldung ist bewusst kurz und verschwindet nach dem Hook.
+
+Eine dauerhafte zweite Zeile in der ChatGPT-Desktop-App ist derzeit keine dokumentierte Erweiterungsfläche. `tui.status_line` gehört ausschließlich zur Codex-Terminaloberfläche und unterstützt eingebaute Segment-IDs, aber keinen externen Bastra-Renderer. Der Installer verändert diese persönliche TUI-Einstellung deshalb nicht. Dauerzustand und Diagnose bleiben über `bastra status` und `bastra doctor codex` abrufbar; eine spätere offizielle Plugin-/Command-Schnittstelle kann an den vorhandenen Bastra-Statusline-Renderer angebunden werden.
+
+### Prüfung und Entfernung
+
+```bash
+bastra doctor codex
+bastra doctor codex --fix
+bastra uninstall codex
+```
+
+`doctor` prüft Codex-/ChatGPT-Erkennung, MCP-Registrierung, Forwarder, Vault, Skill, Pflicht-Hooks und Daemon. Den von Codex verwalteten Vertrauensstatus zeigt `/hooks`; der Adapter umgeht diese Sicherheitsprüfung nicht. `uninstall` entfernt nur Bastra-eigene MCP-, Hook- und Skill-Einträge; der Vault und fremde Hooks bleiben unangetastet.
+
+Das optionale Paket unter `plugins/bastra-recall/` verteilt denselben proaktiven Skill über OpenAIs Plugin-Format. MCP, Hooks und Vault-Pfad bleiben bewusst beim CLI-Adapter, damit Plugin und Installer keine doppelten Hooks registrieren.
+
+Offizielle Grundlagen: [MCP in ChatGPT und Codex](https://learn.chatgpt.com/docs/extend/mcp), [Codex Hooks](https://learn.chatgpt.com/docs/hooks), [Codex Skills](https://learn.chatgpt.com/docs/build-skills), [Plugin-Architektur](https://developers.openai.com/plugins/concepts/plugins).

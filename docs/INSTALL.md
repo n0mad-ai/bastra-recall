@@ -1,8 +1,12 @@
 # More installation options / Weitere Installationswege
 
-For the guided setup, start with the [README](../README.md#install). The [support matrix](../README.md#supported-platforms) lists platform limitations. / Für das geführte Setup beginne mit der [README](../README.md#installation). Die [Support-Matrix](../README.md#unterstützte-plattformen) nennt Plattformgrenzen.
+[English](#english) · [Deutsch](#deutsch)
+
+<a id="english"></a>
 
 ## English
+
+For the guided setup, start with the [README](../README.md#install). The [support matrix](../README.md#supported-platforms) lists platform limitations.
 
 ### macOS download
 
@@ -30,7 +34,11 @@ node packages/daemon/dist/cli.js install all --vault /absolute/path/to/your/vaul
 
 Use the [manual setup guide](./USAGE.md#fully-manual-install--fallback). Codex uses a separate [TOML-based setup](./CODEX.md). Restart the client after changing registrations, then run `bastra doctor` to check them.
 
+<a id="deutsch"></a>
+
 ## Deutsch
+
+Für das geführte Setup beginne mit der [README](../README.md#installation). Die [Support-Matrix](../README.md#unterstützte-plattformen) nennt Plattformgrenzen.
 
 ### macOS-Download
 
