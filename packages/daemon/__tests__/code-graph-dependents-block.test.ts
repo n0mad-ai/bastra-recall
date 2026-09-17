@@ -94,7 +94,6 @@ async function writeSource(repoRoot: string, rel: string, mtimeMs: number): Prom
   return abs;
 }
 
-/** Wait for the cache's background load to land, without blocking the hook. */
 /**
  * Wait for the background load the cold call started.
  *
@@ -112,6 +111,18 @@ async function waitWarm(cache: CodeGraphCache, repo: string): Promise<void> {
   await cache.ensureLoaded(repo);
   assert.ok(cache.get(repo) !== null, "the background load did not produce a usable graph");
 }
+
+/**
+ * Budget for the tests that assert what the block SAYS.
+ *
+ * The production ceiling is 10 ms and is enforced by dropping the block. A
+ * content test racing that ceiling fails whenever a loaded machine makes the
+ * two staleness `stat` calls slow — measured at two runs in four under
+ * parallel load, with nothing wrong in the code under test. The budget is
+ * therefore injected here, and the ceiling itself is asserted by the tests
+ * that are actually about latency.
+ */
+const CONTENT_TEST_BUDGET_MS = 5_000;
 
 const EMPTY_SESSION: ReadonlySessionState = { shown: {} };
 
@@ -150,6 +161,7 @@ describe("dependents block: what the agent sees", () => {
       repoRoot: repo,
       session: EMPTY_SESSION,
       cache,
+      budgetMs: CONTENT_TEST_BUDGET_MS,
     });
 
     assert.ok(out, "expected a block for a file with dependents");
@@ -177,6 +189,7 @@ describe("dependents block: what the agent sees", () => {
       repoRoot: repo,
       session: EMPTY_SESSION,
       cache,
+      budgetMs: CONTENT_TEST_BUDGET_MS,
     });
     assert.ok(out);
     // The Graphify `hook-guard` pattern this deliberately does not copy.
@@ -209,6 +222,7 @@ describe("dependents block: what the agent sees", () => {
       repoRoot: repo,
       session: EMPTY_SESSION,
       cache,
+      budgetMs: CONTENT_TEST_BUDGET_MS,
     });
     assert.ok(out);
     const listed = out.note.split("\n").filter((l) => l.startsWith("- packages/"));
@@ -236,6 +250,7 @@ describe("dependents block: what the agent sees", () => {
       repoRoot: repo,
       session: EMPTY_SESSION,
       cache,
+      budgetMs: CONTENT_TEST_BUDGET_MS,
     });
     assert.ok(out);
     assert.match(out.note, /Defined here: saveMemory \(L40\), validateMemory \(L88\)\./);
@@ -252,6 +267,7 @@ describe("dependents block: what the agent sees", () => {
       repoRoot: repo,
       session: EMPTY_SESSION,
       cache,
+      budgetMs: CONTENT_TEST_BUDGET_MS,
     });
     assert.equal(out, null);
   });
@@ -266,6 +282,7 @@ describe("dependents block: what the agent sees", () => {
       repoRoot: repo,
       session: EMPTY_SESSION,
       cache,
+      budgetMs: CONTENT_TEST_BUDGET_MS,
     });
     assert.ok(out);
     assert.match(out.note, /dependents="200"/);
@@ -289,6 +306,7 @@ describe("dependents block: the cold-start rule", () => {
       repoRoot: repo,
       session: EMPTY_SESSION,
       cache,
+      budgetMs: CONTENT_TEST_BUDGET_MS,
     });
     const elapsed = Date.now() - startedAt;
     assert.equal(first, null, "a cold graph emits no block at all");
@@ -307,6 +325,7 @@ describe("dependents block: the cold-start rule", () => {
       repoRoot: repo,
       session: EMPTY_SESSION,
       cache,
+      budgetMs: CONTENT_TEST_BUDGET_MS,
     });
     assert.ok(second, "the next edit in the same session sees the block");
     assert.match(second.note, /audit-save\.ts/);
@@ -335,6 +354,7 @@ describe("dependents block: the cold-start rule", () => {
       repoRoot: repo,
       session: EMPTY_SESSION,
       cache,
+      budgetMs: CONTENT_TEST_BUDGET_MS,
     });
     const elapsed = Date.now() - startedAt;
     assert.equal(second, null);
@@ -351,6 +371,7 @@ describe("dependents block: the cold-start rule", () => {
       repoRoot: repo,
       session: EMPTY_SESSION,
       cache,
+      budgetMs: CONTENT_TEST_BUDGET_MS,
     });
     assert.equal(out, null);
     assert.equal(repoRelative(repo, join(root, "elsewhere", "save.ts")), null);
@@ -368,6 +389,7 @@ describe("dependents block: session dedupe (§16.2)", () => {
       repoRoot: repo,
       session: EMPTY_SESSION,
       cache,
+      budgetMs: CONTENT_TEST_BUDGET_MS,
     });
     assert.ok(first);
 
@@ -407,6 +429,7 @@ describe("dependents block: staleness wording (#574)", () => {
       repoRoot: repo,
       session: EMPTY_SESSION,
       cache,
+      budgetMs: CONTENT_TEST_BUDGET_MS,
     });
     assert.ok(out);
     assert.match(out.note, /stale="true"/);
@@ -430,6 +453,7 @@ describe("dependents block: staleness wording (#574)", () => {
       repoRoot: repo,
       session: EMPTY_SESSION,
       cache,
+      budgetMs: CONTENT_TEST_BUDGET_MS,
     });
     assert.ok(out);
     assert.match(out.note, /stale="true"/);
@@ -447,6 +471,7 @@ describe("dependents block: staleness wording (#574)", () => {
       repoRoot: repo,
       session: EMPTY_SESSION,
       cache,
+      budgetMs: CONTENT_TEST_BUDGET_MS,
     });
     assert.ok(out);
     assert.match(out.note, /stale="true"/);
@@ -462,6 +487,7 @@ describe("dependents block: staleness wording (#574)", () => {
       repoRoot: repo,
       session: EMPTY_SESSION,
       cache,
+      budgetMs: CONTENT_TEST_BUDGET_MS,
     });
     assert.ok(out);
     assert.doesNotMatch(out.note, /stale=/);
