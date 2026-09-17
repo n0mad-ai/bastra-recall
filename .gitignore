@@ -103,3 +103,6 @@ packages/daemon/stub/bastra-hook-*
 packages/daemon/stub/bastra-hook.partial
 packages/daemon/stub/checksums/
 packages/daemon/stub/manifest.json
+
+# Graphify code graph (local only, see #574)
+graphify-out/
