@@ -1,0 +1,385 @@
+{
+  "generated_at": "2026-09-17T21:46:58.603Z",
+  "repo": "/Users/n0mad/Projekte/bastra-recall",
+  "scenarios_total": 40,
+  "both_arms_found": 40,
+  "control_only_found": 0,
+  "graph_only_found": 0,
+  "neither_found": 0,
+  "totals": {
+    "control_targeted_tokens": 48160,
+    "graph_tokens": 5311,
+    "reduction_vs_targeted": "89%",
+    "control_naive_tokens": 68250,
+    "reduction_vs_naive": "92.2%"
+  },
+  "medians": {
+    "control_targeted": 34,
+    "control_naive": 188,
+    "graph": 105
+  },
+  "per_scenario_graph_cheaper": 1,
+  "per_scenario_control_cheaper": 39,
+  "rows": [
+    {
+      "symbol": "fileWith",
+      "control_naive_tokens": 137,
+      "control_targeted_tokens": 33,
+      "control_tokens": 33,
+      "control_found": true,
+      "graph_tokens": 95,
+      "graph_found": true
+    },
+    {
+      "symbol": "twoArmsWithADeepPair",
+      "control_naive_tokens": 79,
+      "control_targeted_tokens": 30,
+      "control_tokens": 30,
+      "control_found": true,
+      "graph_tokens": 100,
+      "graph_found": true
+    },
+    {
+      "symbol": "minimalRefresh",
+      "control_naive_tokens": 231,
+      "control_targeted_tokens": 35,
+      "control_tokens": 35,
+      "control_found": true,
+      "graph_tokens": 103,
+      "graph_found": true
+    },
+    {
+      "symbol": "vaultWithSealedShelf",
+      "control_naive_tokens": 136,
+      "control_targeted_tokens": 38,
+      "control_tokens": 38,
+      "control_found": true,
+      "graph_tokens": 102,
+      "graph_found": true
+    },
+    {
+      "symbol": "setupVault",
+      "control_naive_tokens": 68,
+      "control_targeted_tokens": 27,
+      "control_tokens": 27,
+      "control_found": true,
+      "graph_tokens": 94,
+      "graph_found": true
+    },
+    {
+      "symbol": "emptyOllama",
+      "control_naive_tokens": 61,
+      "control_targeted_tokens": 36,
+      "control_tokens": 36,
+      "control_found": true,
+      "graph_tokens": 155,
+      "graph_found": true
+    },
+    {
+      "symbol": "seedPool",
+      "control_naive_tokens": 51,
+      "control_targeted_tokens": 29,
+      "control_tokens": 29,
+      "control_found": true,
+      "graph_tokens": 154,
+      "graph_found": true
+    },
+    {
+      "symbol": "withHarvestEnv",
+      "control_naive_tokens": 115,
+      "control_targeted_tokens": 23,
+      "control_tokens": 23,
+      "control_found": true,
+      "graph_tokens": 103,
+      "graph_found": true
+    },
+    {
+      "symbol": "newestSource",
+      "control_naive_tokens": 819,
+      "control_targeted_tokens": 26,
+      "control_tokens": 26,
+      "control_found": true,
+      "graph_tokens": 101,
+      "graph_found": true
+    },
+    {
+      "symbol": "runStress",
+      "control_naive_tokens": 129,
+      "control_targeted_tokens": 40,
+      "control_tokens": 40,
+      "control_found": true,
+      "graph_tokens": 97,
+      "graph_found": true
+    },
+    {
+      "symbol": "runUninstaller",
+      "control_naive_tokens": 193,
+      "control_targeted_tokens": 36,
+      "control_tokens": 36,
+      "control_found": true,
+      "graph_tokens": 106,
+      "graph_found": true
+    },
+    {
+      "symbol": "settle",
+      "control_naive_tokens": 5089,
+      "control_targeted_tokens": 27,
+      "control_tokens": 27,
+      "control_found": true,
+      "graph_tokens": 102,
+      "graph_found": true
+    },
+    {
+      "symbol": "startListener",
+      "control_naive_tokens": 189,
+      "control_targeted_tokens": 37,
+      "control_tokens": 37,
+      "control_found": true,
+      "graph_tokens": 105,
+      "graph_found": true
+    },
+    {
+      "symbol": "driveEvent",
+      "control_naive_tokens": 218,
+      "control_targeted_tokens": 18,
+      "control_tokens": 18,
+      "control_found": true,
+      "graph_tokens": 97,
+      "graph_found": true
+    },
+    {
+      "symbol": "auditLines",
+      "control_naive_tokens": 131,
+      "control_targeted_tokens": 31,
+      "control_tokens": 31,
+      "control_found": true,
+      "graph_tokens": 101,
+      "graph_found": true
+    },
+    {
+      "symbol": "outcome",
+      "control_naive_tokens": 5846,
+      "control_targeted_tokens": 42,
+      "control_tokens": 42,
+      "control_found": true,
+      "graph_tokens": 97,
+      "graph_found": true
+    },
+    {
+      "symbol": "eventLogLines",
+      "control_naive_tokens": 89,
+      "control_targeted_tokens": 23,
+      "control_tokens": 23,
+      "control_found": true,
+      "graph_tokens": 96,
+      "graph_found": true
+    },
+    {
+      "symbol": "content",
+      "control_naive_tokens": 46673,
+      "control_targeted_tokens": 0,
+      "control_tokens": 46673,
+      "control_found": true,
+      "graph_tokens": 102,
+      "graph_found": true
+    },
+    {
+      "symbol": "persisted",
+      "control_naive_tokens": 2923,
+      "control_targeted_tokens": 34,
+      "control_tokens": 34,
+      "control_found": true,
+      "graph_tokens": 102,
+      "graph_found": true
+    },
+    {
+      "symbol": "seedSource",
+      "control_naive_tokens": 188,
+      "control_targeted_tokens": 28,
+      "control_tokens": 28,
+      "control_found": true,
+      "graph_tokens": 99,
+      "graph_found": true
+    },
+    {
+      "symbol": "withDirs",
+      "control_naive_tokens": 198,
+      "control_targeted_tokens": 21,
+      "control_tokens": 21,
+      "control_found": true,
+      "graph_tokens": 98,
+      "graph_found": true
+    },
+    {
+      "symbol": "probeEventsSince",
+      "control_naive_tokens": 231,
+      "control_targeted_tokens": 40,
+      "control_tokens": 40,
+      "control_found": true,
+      "graph_tokens": 105,
+      "graph_found": true
+    },
+    {
+      "symbol": "outsideRun",
+      "control_naive_tokens": 196,
+      "control_targeted_tokens": 31,
+      "control_tokens": 31,
+      "control_found": true,
+      "graph_tokens": 99,
+      "graph_found": true
+    },
+    {
+      "symbol": "startBackgroundCheckSource",
+      "control_naive_tokens": 94,
+      "control_targeted_tokens": 37,
+      "control_tokens": 37,
+      "control_found": true,
+      "graph_tokens": 109,
+      "graph_found": true
+    },
+    {
+      "symbol": "envUnderTestHarness",
+      "control_naive_tokens": 95,
+      "control_targeted_tokens": 32,
+      "control_tokens": 32,
+      "control_found": true,
+      "graph_tokens": 105,
+      "graph_found": true
+    },
+    {
+      "symbol": "isForbidden",
+      "control_naive_tokens": 75,
+      "control_targeted_tokens": 0,
+      "control_tokens": 75,
+      "control_found": true,
+      "graph_tokens": 97,
+      "graph_found": true
+    },
+    {
+      "symbol": "areaExclusivelyHeld",
+      "control_naive_tokens": 108,
+      "control_targeted_tokens": 67,
+      "control_tokens": 67,
+      "control_found": true,
+      "graph_tokens": 169,
+      "graph_found": true
+    },
+    {
+      "symbol": "areaKeyForPath",
+      "control_naive_tokens": 471,
+      "control_targeted_tokens": 63,
+      "control_tokens": 63,
+      "control_found": true,
+      "graph_tokens": 244,
+      "graph_found": true
+    },
+    {
+      "symbol": "areaLockPaths",
+      "control_naive_tokens": 143,
+      "control_targeted_tokens": 33,
+      "control_tokens": 33,
+      "control_found": true,
+      "graph_tokens": 221,
+      "graph_found": true
+    },
+    {
+      "symbol": "assertAreaWritable",
+      "control_naive_tokens": 580,
+      "control_targeted_tokens": 65,
+      "control_tokens": 65,
+      "control_found": true,
+      "graph_tokens": 207,
+      "graph_found": true
+    },
+    {
+      "symbol": "claimBody",
+      "control_naive_tokens": 34,
+      "control_targeted_tokens": 17,
+      "control_tokens": 17,
+      "control_found": true,
+      "graph_tokens": 131,
+      "graph_found": true
+    },
+    {
+      "symbol": "clearAreaMark",
+      "control_naive_tokens": 309,
+      "control_targeted_tokens": 62,
+      "control_tokens": 62,
+      "control_found": true,
+      "graph_tokens": 130,
+      "graph_found": true
+    },
+    {
+      "symbol": "exclusiveHeld",
+      "control_naive_tokens": 62,
+      "control_targeted_tokens": 26,
+      "control_tokens": 26,
+      "control_found": true,
+      "graph_tokens": 177,
+      "graph_found": true
+    },
+    {
+      "symbol": "liveReaders",
+      "control_naive_tokens": 49,
+      "control_targeted_tokens": 26,
+      "control_tokens": 26,
+      "control_found": true,
+      "graph_tokens": 133,
+      "graph_found": true
+    },
+    {
+      "symbol": "markAreaDeleted",
+      "control_naive_tokens": 262,
+      "control_targeted_tokens": 63,
+      "control_tokens": 63,
+      "control_found": true,
+      "graph_tokens": 182,
+      "graph_found": true
+    },
+    {
+      "symbol": "markAreaRenamed",
+      "control_naive_tokens": 318,
+      "control_targeted_tokens": 56,
+      "control_tokens": 56,
+      "control_found": true,
+      "graph_tokens": 182,
+      "graph_found": true
+    },
+    {
+      "symbol": "markPathFor",
+      "control_naive_tokens": 91,
+      "control_targeted_tokens": 25,
+      "control_tokens": 25,
+      "control_found": true,
+      "graph_tokens": 214,
+      "graph_found": true
+    },
+    {
+      "symbol": "readAreaMark",
+      "control_naive_tokens": 671,
+      "control_targeted_tokens": 67,
+      "control_tokens": 67,
+      "control_found": true,
+      "graph_tokens": 172,
+      "graph_found": true
+    },
+    {
+      "symbol": "releaseReaderMarker",
+      "control_naive_tokens": 87,
+      "control_targeted_tokens": 29,
+      "control_tokens": 29,
+      "control_found": true,
+      "graph_tokens": 136,
+      "graph_found": true
+    },
+    {
+      "symbol": "withAreaExclusive",
+      "control_naive_tokens": 811,
+      "control_targeted_tokens": 59,
+      "control_tokens": 59,
+      "control_found": true,
+      "graph_tokens": 289,
+      "graph_found": true
+    }
+  ]
+}

@@ -197,9 +197,13 @@ describe("dependents block: what the agent sees", () => {
     assert.match(out.note, /not an instruction/);
   });
 
-  it("lists production dependents before test files", async () => {
-    // On the real graph, plain alphabetical order filled every listed slot
-    // with `packages/core/__tests__/…` and pushed audit-save.ts out of sight.
+  it("lists production dependents and only COUNTS the test files", async () => {
+    // Two findings, one rule. Alphabetical order used to fill every listed
+    // slot with `packages/core/__tests__/…` and push audit-save.ts out of
+    // sight — hence production first. And the control-arm measurement (#579)
+    // showed 40.7 % of dependent edges point at tests, which made the median
+    // block cost MORE than the grep it was meant to save — hence counted,
+    // not named. That a file's tests exercise it is the assumable part.
     const graph = {
       ...FIXTURE,
       nodes: [
@@ -229,9 +233,11 @@ describe("dependents block: what the agent sees", () => {
     assert.deepEqual(listed, [
       "- packages/core/src/audit-save.ts",
       "- packages/core/src/index.ts",
-      "- packages/core/__tests__/aaa-save.test.ts",
-      "- packages/core/__tests__/bbb-audit.test.ts",
     ]);
+    // The tests are still accounted for — summarised, not dropped.
+    assert.match(out.note, /- plus 2 test files/);
+    // …and the total in the attribute still counts every dependent.
+    assert.match(out.note, /dependents="4"/);
   });
 
   it("does not list the file's own graph node as one of its symbols", async () => {
