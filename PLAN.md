@@ -43,8 +43,10 @@ has been field-tested; the support matrix retains those distinctions.
 - Continue the native Mac app as a separate interface over the same memory service.
 
 The technical [evolution design](./docs/Evolutionsarchitektur%20V1%20zu%20V2.md)
-defines the research stages and their measurement gates. It is a design reference,
-not a list of features already shipped.
+defines the research stages and their measurement gates. The
+[V2 → V3 plan](./docs/Evolution%20Architecture%20V2%20to%20V3.md) describes the
+following stage: commitments, permissioned actions, causal learning and shared
+memory. Both are design references, not lists of features already shipped.
 
 ## Boundaries
 
