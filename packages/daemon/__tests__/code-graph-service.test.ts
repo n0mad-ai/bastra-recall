@@ -49,13 +49,13 @@ describe("code awareness service: starting", () => {
   it("does nothing when no repository is enabled", async () => {
     // The default state. Recall never indexes a directory nobody asked about,
     // so with an empty list there is no watcher, no preload and no refresh.
-    const handle = await startCodeAwareness();
+    const handle = await startCodeAwareness(undefined, async () => []);
     assert.deepEqual(handle.repos, []);
     assert.doesNotThrow(() => handle.stop());
   });
 
   it("stop() is idempotent", async () => {
-    const handle = await startCodeAwareness();
+    const handle = await startCodeAwareness(undefined, async () => []);
     handle.stop();
     assert.doesNotThrow(() => handle.stop());
   });
@@ -67,7 +67,7 @@ describe("code awareness service: starting", () => {
     try {
       await mkdir(join(dir, GRAPH_DIR_NAME), { recursive: true });
       await writeFile(join(dir, GRAPH_DIR_NAME, "graph.json"), "{not json", "utf8");
-      const handle = await startCodeAwareness();
+      const handle = await startCodeAwareness(undefined, async () => [dir]);
       handle.stop();
     } finally {
       await rm(dir, { recursive: true, force: true });
