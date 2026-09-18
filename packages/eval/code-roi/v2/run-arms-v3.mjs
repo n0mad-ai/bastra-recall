@@ -6,16 +6,21 @@
  * the comparison was two runs of the same grep behaviour. Two things were
  * confounded there and this runner separates them:
  *
- *   A  grep      no MCP server at all — text search and reads only (control)
- *   B  offered   `find_code` + `find_affected_files` offered, nothing else
- *                changed. Whether the agent CALLS it is the observation.
- *   C  forced    the same tools, plus the `find_affected_files` answer for the
- *                planned change already in the prompt. The agent cannot fail
- *                to use it, so this measures whether the ANSWER helps.
+ *   A          grep      no MCP server at all — text search and reads only
+ *   B          offered   `find_code` + `find_affected_files` offered, nothing
+ *                        else changed. Whether the agent CALLS them is the
+ *                        observation.
+ *   prefilled            the same tools, plus the `find_affected_files` answer
+ *                        for the planned change already in the prompt.
  *
- * ADOPTION is read off B alone (tool calls per scenario). EFFECT is C against
- * A. B against A measures the two together and is not the effect question —
- * reporting it as one is what made v3 unreadable.
+ * The third arm is called `prefilled`, not `forced`: the information is
+ * guaranteed to have been SHOWN, and nothing makes the agent use it. Whether
+ * it does is part of what the arm measures, and a name that claims otherwise
+ * would be read into the result.
+ *
+ * ADOPTION is read off B alone (tool calls per scenario). EFFECT is prefilled
+ * against A. B against A measures the two together and is not the effect
+ * question — reporting it as one is what made v3 unreadable.
  *
  * Everything else is v2's setup, deliberately unchanged: the scenario tree is
  * a `git archive` of the commit's parent (no `.git`, so no arm can read the
@@ -31,7 +36,12 @@
  *   CODE_ROI_OUT=~/.bastra/eval/code-roi-v4 node select.mjs
  *   # adjudicate by hand, THEN register thresholds, THEN run this
  *
- * Usage: CODE_ROI_OUT=… node run-arms-v3.mjs [--only S01,S02] [--arms A,B,C]
+ * A COST CEILING IS ENFORCED, not documented: the registration caps the main
+ * run, and every finished arm's `total_cost_usd` is added up. The next arm
+ * only starts while the ceiling is still out of reach at the running average
+ * cost per arm; otherwise the run stops and says how far it got.
+ *
+ * Usage: CODE_ROI_OUT=… node run-arms-v3.mjs [--only S01,S02] [--arms A,B,prefilled]
  */
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
@@ -40,8 +50,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { buildGraph, prepareTree, promptFor } from "./run-arms.mjs";
 import { scenarioRoot } from "./scenario-root.mjs";
+import { writableOut } from "./archive.mjs";
+import { ARM_IDS } from "./select.mjs";
 
-const OUT = process.env.CODE_ROI_OUT ?? join(homedir(), ".bastra", "eval", "code-roi-v4");
+const OUT = writableOut();
 const RUNS = join(OUT, "runs");
 const MCP_SERVER = new URL("./code-tools-mcp.mjs", import.meta.url).pathname;
 const DIST = new URL("../../../daemon/dist/code-graph/", import.meta.url).pathname;
@@ -64,23 +76,57 @@ const ALLOWED_TOOLS = [
   "Bash(tail:*)",
   "Bash(wc:*)",
 ];
-const GRAPH_TOOLS = ["mcp__code__find_code", "mcp__code__find_affected_files"];
+export const GRAPH_TOOLS = ["mcp__code__find_code", "mcp__code__find_affected_files"];
 const DISALLOWED_TOOLS = ["Edit", "Write", "NotebookEdit", "Agent", "Workflow", "Skill", "WebFetch", "WebSearch"];
 
 /** The arms, and what each one changes. `graph` = the MCP server is attached. */
 export const ARMS = {
   A: { id: "A", name: "grep", graph: false, prefill: false },
   B: { id: "B", name: "offered", graph: true, prefill: false },
-  C: { id: "C", name: "forced", graph: true, prefill: true },
+  prefilled: { id: "prefilled", name: "prefilled", graph: true, prefill: true },
 };
 
+/** The registered ceiling for one run, in US dollars. */
+export const COST_CEILING_USD = Number(process.env.CODE_ROI_COST_CEILING ?? 20);
+
 /**
- * Arm C's prefill: the product's own `find_affected_files` answer for exactly
- * the planned change, rendered as the agent would have received it.
+ * What one finished arm cost, from its transcript's `result` event.
+ * A transcript without one (a timeout, a killed process) counts as 0 — the
+ * ceiling must not be raised by a run that produced nothing.
+ */
+export function armCostUsd(transcript) {
+  let cost = 0;
+  for (const line of transcript.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const ev = JSON.parse(line);
+      if (ev.type === "result" && typeof ev.total_cost_usd === "number") cost = ev.total_cost_usd;
+    } catch {
+      /* a half-written line is not a cost */
+    }
+  }
+  return cost;
+}
+
+/**
+ * May another arm start? Only while the ceiling is still out of reach at what
+ * the arms so far have cost on average — a ceiling checked only AFTER the
+ * spend is not a ceiling.
+ */
+export function withinCeiling(spentUsd, armsRun, ceilingUsd = COST_CEILING_USD) {
+  if (spentUsd >= ceilingUsd) return false;
+  if (armsRun === 0) return true;
+  return spentUsd + spentUsd / armsRun <= ceilingUsd;
+}
+
+/**
+ * The prefilled arm's block: the product's own `find_affected_files` answer for
+ * exactly the planned change, rendered as the agent would have received it.
  *
  * The symbols come from the scenario's diff through the product's
  * `changedSymbolsOf`, not from a hand-written list — the agent in arm B has
- * the same diff in its prompt, so both arms start from the same information.
+ * the same diff in its prompt, so both graph arms start from the same
+ * information.
  */
 async function prefillFor(s, tree, graphRoot) {
   const { loadGraph } = await import(`${DIST}reader.js`);
@@ -175,10 +221,16 @@ async function main() {
     return i > 0 ? process.argv[i + 1] : null;
   };
   const only = arg("--only") ? new Set(arg("--only").split(",")) : null;
-  const wanted = (arg("--arms") ?? "A,B,C").split(",").map((a) => ARMS[a.trim()]);
-  if (wanted.some((a) => a === undefined)) throw new Error("--arms takes A, B and/or C");
+  const wantedIds = (arg("--arms") ?? ARM_IDS.join(",")).split(",").map((a) => a.trim());
+  for (const id of wantedIds) {
+    if (ARMS[id] === undefined) {
+      throw new Error(`unknown arm "${id}" — the arms are ${ARM_IDS.join(", ")}`);
+    }
+  }
 
   const { scenarios } = JSON.parse(readFileSync(join(OUT, "scenarios.json"), "utf8"));
+  let spentUsd = 0;
+  let armsRun = 0;
   for (const s of scenarios) {
     if (s.excluded) continue;
     if (only && !only.has(s.id)) continue;
@@ -192,21 +244,47 @@ async function main() {
     );
 
     let prefill = null;
-    for (const arm of s.armOrder ?? wanted.map((a) => a.id)) {
+    // A scenario file written before the arms were renamed would silently run
+    // nothing at all — the failure #582 was built to make impossible.
+    const order = s.armOrder ?? wantedIds;
+    for (const arm of order) {
       const spec = ARMS[arm];
-      if (spec === undefined || !wanted.includes(spec)) continue;
-      if (existsSync(join(dir, `${spec.id}.jsonl`))) continue;
+      if (spec === undefined) {
+        throw new Error(
+          `${s.id}: armOrder contains "${arm}", which is not an arm. ` +
+            `The arms are ${ARM_IDS.join(", ")} — re-run select.mjs for this sample.`,
+        );
+      }
+      if (!wantedIds.includes(spec.id)) continue;
+      const transcript = join(dir, `${spec.id}.jsonl`);
+      if (existsSync(transcript)) {
+        spentUsd += armCostUsd(readFileSync(transcript, "utf8"));
+        armsRun++;
+        continue;
+      }
+      if (!withinCeiling(spentUsd, armsRun)) {
+        process.stdout.write(
+          `\nstopping before ${s.id} ${spec.id}: $${spentUsd.toFixed(2)} spent of the ` +
+            `$${COST_CEILING_USD.toFixed(2)} ceiling over ${armsRun} arms — the next arm ` +
+            `would risk crossing it. Raise CODE_ROI_COST_CEILING only by decision.\n`,
+        );
+        return;
+      }
       let prompt = promptFor(s);
       if (spec.prefill) {
         prefill ??= await prefillFor(s, tree, graphRoot);
         writeFileSync(join(dir, "prefill.json"), JSON.stringify(prefill, null, 2));
         prompt = promptWithPrefill(s, prefill);
       }
-      process.stdout.write(`${s.id} ${spec.id} (${spec.name})… `);
+      process.stdout.write(`${s.id} ${spec.id} (${spec.name})\u2026 `);
       const code = await runArm(spec, prompt, tree, graphRoot, dir);
-      process.stdout.write(`exit ${code}\n`);
+      const cost = existsSync(transcript) ? armCostUsd(readFileSync(transcript, "utf8")) : 0;
+      spentUsd += cost;
+      armsRun++;
+      process.stdout.write(`exit ${code}  $${cost.toFixed(2)}  (total $${spentUsd.toFixed(2)})\n`);
     }
   }
+  process.stdout.write(`\n${armsRun} arms, $${spentUsd.toFixed(2)} of $${COST_CEILING_USD.toFixed(2)}\n`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) await main();

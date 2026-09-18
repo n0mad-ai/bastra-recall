@@ -33,7 +33,8 @@ import { affectsFilesLines, defaultAffectsFilesIo } from "./affects-files-note.j
 import { installCodeAwarenessStep } from "./code-cmd.js";
 import { enabledRepos } from "../code-graph/enabled-repos.js";
 import { GRAPHIFY_PIN, probeTool } from "../code-graph/graphify-tool.js";
-import { graphDirOf } from "../code-graph/reader.js";
+import { graphDirOf, loadGraph } from "../code-graph/reader.js";
+import { externalRefLines } from "../code-graph/external-refs.js";
 import { isStale, readManifest } from "../code-graph/manifest.js";
 import { scanFileState } from "../code-graph/build.js";
 import type { InstallOpts, ParsedArgs } from "./types.js";
@@ -527,6 +528,15 @@ async function printCodeGraphNote(): Promise<void> {
       process.stdout.write(stale ? " (may be outdated)\n" : "\n");
       if (manifest.lastError !== null) {
         process.stdout.write(`    last error: ${manifest.lastError}\n`);
+      }
+      // #582: the package boundary is the half of the graph Graphify does not
+      // carry, and it fails SILENTLY — a changed id format costs every
+      // cross-package answer while the graph still loads and looks fine.
+      const loaded = await loadGraph(repo);
+      if (loaded.ok) {
+        for (const line of externalRefLines(loaded.graph.externalStats)) {
+          process.stdout.write(`    ${line}\n`);
+        }
       }
     }
     process.stdout.write("\n");
