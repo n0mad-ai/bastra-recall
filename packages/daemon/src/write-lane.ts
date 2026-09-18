@@ -424,6 +424,22 @@ export async function runWriteLane(
     ...(scopeFilter.skipped ? { scope_filter_skipped: scopeFilter.skipped } : {}),
     ...(scopeFilter.droppedScopes.length > 0 ? { dropped_scopes: scopeFilter.droppedScopes } : {}),
     hint_tokens_est: hintTokensEst,
+    // #579: die Kostenseite der Code-Awareness, getrennt von den Memory-Hints.
+    // Ohne diese Felder ist in der Telemetrie nicht unterscheidbar, ob ein
+    // teurer Hook-Aufruf Memories oder Code-Kontext geliefert hat.
+    ...(codeNote !== null
+      ? {
+          code_block_tokens_est: Math.ceil(codeNote.note.length / 4),
+          code_dependents: codeNote.dependents,
+          code_stale: codeNote.stale,
+        }
+      : {}),
+    ...(memoryCodeNote !== null
+      ? {
+          applies_to_tokens_est: Math.ceil(memoryCodeNote.note.length / 4),
+          applies_to_count: memoryCodeNote.candidates.length,
+        }
+      : {}),
     hinted_ids: hintedIds,
     hinted_types: hintedTypes,
     backoff_streak: backoffStreak,
@@ -611,6 +627,18 @@ interface HookCallTelemetry {
   dropped_scopes?: string[];
   /** Geschätzte Tokens des injizierten <recall-hints>-Blocks (#72). */
   hint_tokens_est: number;
+  /** #579, Code-Awareness — fehlt, wenn kein Codeblock ausgegeben wurde.
+   *  Getrennt von `hint_tokens_est` geführt, weil die ROI-Frage lautet, was
+   *  der CODE-Kontext kostet und was er dafür an Abhängigen nennt. */
+  code_block_tokens_est?: number;
+  /** Anzahl der genannten abhängigen Dateien — die Nutzenseite. */
+  code_dependents?: number;
+  /** Der Graph lag hinter der Datei zurück, als der Block gebaut wurde. */
+  code_stale?: boolean;
+  /** #579: Tokens des `affects_files`-Blocks, falls einer ausging. */
+  applies_to_tokens_est?: number;
+  /** Anzahl der zugeordneten Memories. */
+  applies_to_count?: number;
   /** IDs, die tatsächlich emittiert wurden (#72 context-tax per memory). */
   hinted_ids: string[];
   /** #354: Memory-Typ je Eintrag von `hinted_ids`, gleiche Reihenfolge und

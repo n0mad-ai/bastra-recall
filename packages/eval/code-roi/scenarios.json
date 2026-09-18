@@ -1,0 +1,402 @@
+[
+  {
+    "id": "find-goldQueries",
+    "kind": "definition",
+    "symbol": "goldQueries",
+    "question": "In welcher Datei und Zeile ist die Funktion `goldQueries` definiert?",
+    "truth": {
+      "file": "packages/daemon/scripts/measure-recall-budget.ts",
+      "line": 41
+    }
+  },
+  {
+    "id": "find-approxTokens",
+    "kind": "definition",
+    "symbol": "approxTokens",
+    "question": "In welcher Datei und Zeile ist die Funktion `approxTokens` definiert?",
+    "truth": {
+      "file": "packages/daemon/scripts/measure-recall-payload.ts",
+      "line": 31
+    }
+  },
+  {
+    "id": "find-payloadBytes",
+    "kind": "definition",
+    "symbol": "payloadBytes",
+    "question": "In welcher Datei und Zeile ist die Funktion `payloadBytes` definiert?",
+    "truth": {
+      "file": "packages/daemon/scripts/measure-recall-payload.ts",
+      "line": 35
+    }
+  },
+  {
+    "id": "find-projectRecallResult",
+    "kind": "definition",
+    "symbol": "projectRecallResult",
+    "question": "In welcher Datei und Zeile ist die Funktion `projectRecallResult` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/recall-batch.ts",
+      "line": 315
+    }
+  },
+  {
+    "id": "find-measurePayload",
+    "kind": "definition",
+    "symbol": "measurePayload",
+    "question": "In welcher Datei und Zeile ist die Funktion `measurePayload` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/recall-budget.ts",
+      "line": 35
+    }
+  },
+  {
+    "id": "find-recallHandler",
+    "kind": "definition",
+    "symbol": "recallHandler",
+    "question": "In welcher Datei und Zeile ist die Funktion `recallHandler` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/recall-handler.ts",
+      "line": 261
+    }
+  },
+  {
+    "id": "find-readJoinStateSync",
+    "kind": "definition",
+    "symbol": "readJoinStateSync",
+    "question": "In welcher Datei und Zeile ist die Funktion `readJoinStateSync` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/telemetry-join-store.ts",
+      "line": 21
+    }
+  },
+  {
+    "id": "find-noteSaveFailure",
+    "kind": "definition",
+    "symbol": "noteSaveFailure",
+    "question": "In welcher Datei und Zeile ist die Funktion `noteSaveFailure` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/tool-handlers.ts",
+      "line": 359
+    }
+  },
+  {
+    "id": "find-resetSaveFailures",
+    "kind": "definition",
+    "symbol": "resetSaveFailures",
+    "question": "In welcher Datei und Zeile ist die Funktion `resetSaveFailures` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/tool-handlers.ts",
+      "line": 366
+    }
+  },
+  {
+    "id": "find-saveMemoryHandler",
+    "kind": "definition",
+    "symbol": "saveMemoryHandler",
+    "question": "In welcher Datei und Zeile ist die Funktion `saveMemoryHandler` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/tool-handlers.ts",
+      "line": 371
+    }
+  },
+  {
+    "id": "find-buildAnswerPrompt",
+    "kind": "definition",
+    "symbol": "buildAnswerPrompt",
+    "question": "In welcher Datei und Zeile ist die Funktion `buildAnswerPrompt` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/webui-chat.ts",
+      "line": 57
+    }
+  },
+  {
+    "id": "find-buildQueryPrompt",
+    "kind": "definition",
+    "symbol": "buildQueryPrompt",
+    "question": "In welcher Datei und Zeile ist die Funktion `buildQueryPrompt` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/webui-chat.ts",
+      "line": 40
+    }
+  },
+  {
+    "id": "find-parseAnswer",
+    "kind": "definition",
+    "symbol": "parseAnswer",
+    "question": "In welcher Datei und Zeile ist die Funktion `parseAnswer` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/webui-chat.ts",
+      "line": 100
+    }
+  },
+  {
+    "id": "find-parseQueries",
+    "kind": "definition",
+    "symbol": "parseQueries",
+    "question": "In welcher Datei und Zeile ist die Funktion `parseQueries` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/webui-chat.ts",
+      "line": 87
+    }
+  },
+  {
+    "id": "find-runSearchCopilot",
+    "kind": "definition",
+    "symbol": "runSearchCopilot",
+    "question": "In welcher Datei und Zeile ist die Funktion `runSearchCopilot` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/webui-chat.ts",
+      "line": 130
+    }
+  },
+  {
+    "id": "find-recorder",
+    "kind": "definition",
+    "symbol": "recorder",
+    "question": "In welcher Datei und Zeile ist die Funktion `recorder` definiert?",
+    "truth": {
+      "file": "packages/daemon/scripts/verify-impact.mjs",
+      "line": 33
+    }
+  },
+  {
+    "id": "find-boltRnd",
+    "kind": "definition",
+    "symbol": "boltRnd",
+    "question": "In welcher Datei und Zeile ist die Funktion `boltRnd` definiert?",
+    "truth": {
+      "file": "packages/daemon/webui/js/bolt-styles.js",
+      "line": 67
+    }
+  },
+  {
+    "id": "find-drawRail",
+    "kind": "definition",
+    "symbol": "drawRail",
+    "question": "In welcher Datei und Zeile ist die Funktion `drawRail` definiert?",
+    "truth": {
+      "file": "packages/daemon/webui/js/bolt-styles.js",
+      "line": 111
+    }
+  },
+  {
+    "id": "find-legDurationFor",
+    "kind": "definition",
+    "symbol": "legDurationFor",
+    "question": "In welcher Datei und Zeile ist die Funktion `legDurationFor` definiert?",
+    "truth": {
+      "file": "packages/daemon/webui/js/bolt-styles.js",
+      "line": 45
+    }
+  },
+  {
+    "id": "find-levelStartOffset",
+    "kind": "definition",
+    "symbol": "levelStartOffset",
+    "question": "In welcher Datei und Zeile ist die Funktion `levelStartOffset` definiert?",
+    "truth": {
+      "file": "packages/daemon/webui/js/bolt-styles.js",
+      "line": 58
+    }
+  },
+  {
+    "id": "find-storedBoltMs",
+    "kind": "definition",
+    "symbol": "storedBoltMs",
+    "question": "In welcher Datei und Zeile ist die Funktion `storedBoltMs` definiert?",
+    "truth": {
+      "file": "packages/daemon/webui/js/bolt-styles.js",
+      "line": 214
+    }
+  },
+  {
+    "id": "find-storedBoltSpread",
+    "kind": "definition",
+    "symbol": "storedBoltSpread",
+    "question": "In welcher Datei und Zeile ist die Funktion `storedBoltSpread` definiert?",
+    "truth": {
+      "file": "packages/daemon/webui/js/bolt-styles.js",
+      "line": 203
+    }
+  },
+  {
+    "id": "find-storedBoltStyle",
+    "kind": "definition",
+    "symbol": "storedBoltStyle",
+    "question": "In welcher Datei und Zeile ist die Funktion `storedBoltStyle` definiert?",
+    "truth": {
+      "file": "packages/daemon/webui/js/bolt-styles.js",
+      "line": 193
+    }
+  },
+  {
+    "id": "find-tracePath",
+    "kind": "definition",
+    "symbol": "tracePath",
+    "question": "In welcher Datei und Zeile ist die Funktion `tracePath` definiert?",
+    "truth": {
+      "file": "packages/daemon/webui/js/bolt-styles.js",
+      "line": 96
+    }
+  },
+  {
+    "id": "find-drawImpact",
+    "kind": "definition",
+    "symbol": "drawImpact",
+    "question": "In welcher Datei und Zeile ist die Funktion `drawImpact` definiert?",
+    "truth": {
+      "file": "packages/daemon/webui/js/impact.js",
+      "line": 105
+    }
+  },
+  {
+    "id": "find-drawSpill",
+    "kind": "definition",
+    "symbol": "drawSpill",
+    "question": "In welcher Datei und Zeile ist die Funktion `drawSpill` definiert?",
+    "truth": {
+      "file": "packages/daemon/webui/js/impact.js",
+      "line": 160
+    }
+  },
+  {
+    "id": "find-impactPhase",
+    "kind": "definition",
+    "symbol": "impactPhase",
+    "question": "In welcher Datei und Zeile ist die Funktion `impactPhase` definiert?",
+    "truth": {
+      "file": "packages/daemon/webui/js/impact.js",
+      "line": 74
+    }
+  },
+  {
+    "id": "find-impactProgress",
+    "kind": "definition",
+    "symbol": "impactProgress",
+    "question": "In welcher Datei und Zeile ist die Funktion `impactProgress` definiert?",
+    "truth": {
+      "file": "packages/daemon/webui/js/impact.js",
+      "line": 81
+    }
+  },
+  {
+    "id": "find-sinceArrival",
+    "kind": "definition",
+    "symbol": "sinceArrival",
+    "question": "In welcher Datei und Zeile ist die Funktion `sinceArrival` definiert?",
+    "truth": {
+      "file": "packages/daemon/webui/js/impact.js",
+      "line": 69
+    }
+  },
+  {
+    "id": "find-spillEdgesFor",
+    "kind": "definition",
+    "symbol": "spillEdgesFor",
+    "question": "In welcher Datei und Zeile ist die Funktion `spillEdgesFor` definiert?",
+    "truth": {
+      "file": "packages/daemon/webui/js/impact.js",
+      "line": 141
+    }
+  },
+  {
+    "id": "find-spillPhase",
+    "kind": "definition",
+    "symbol": "spillPhase",
+    "question": "In welcher Datei und Zeile ist die Funktion `spillPhase` definiert?",
+    "truth": {
+      "file": "packages/daemon/webui/js/impact.js",
+      "line": 88
+    }
+  },
+  {
+    "id": "find-createRenderer",
+    "kind": "definition",
+    "symbol": "createRenderer",
+    "question": "In welcher Datei und Zeile ist die Funktion `createRenderer` definiert?",
+    "truth": {
+      "file": "packages/daemon/webui/js/renderer.js",
+      "line": 72
+    }
+  },
+  {
+    "id": "find-attachEmbeddings",
+    "kind": "definition",
+    "symbol": "attachEmbeddings",
+    "question": "In welcher Datei und Zeile ist die Funktion `attachEmbeddings` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/bridge.ts",
+      "line": 82
+    }
+  },
+  {
+    "id": "find-daemonAbsent",
+    "kind": "definition",
+    "symbol": "daemonAbsent",
+    "question": "In welcher Datei und Zeile ist die Funktion `daemonAbsent` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/bridge.ts",
+      "line": 131
+    }
+  },
+  {
+    "id": "find-ollamaE",
+    "kind": "definition",
+    "symbol": "ollamaE",
+    "question": "In welcher Datei und Zeile ist die Funktion `ollamaE` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/bridge.ts",
+      "line": 178
+    }
+  },
+  {
+    "id": "find-probeDaemonHealth",
+    "kind": "definition",
+    "symbol": "probeDaemonHealth",
+    "question": "In welcher Datei und Zeile ist die Funktion `probeDaemonHealth` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/bridge.ts",
+      "line": 140
+    }
+  },
+  {
+    "id": "find-resolveEmbedding",
+    "kind": "definition",
+    "symbol": "resolveEmbedding",
+    "question": "In welcher Datei und Zeile ist die Funktion `resolveEmbedding` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/bridge.ts",
+      "line": 165
+    }
+  },
+  {
+    "id": "find-cloudEmbeddingProvider",
+    "kind": "definition",
+    "symbol": "cloudEmbeddingProvider",
+    "question": "In welcher Datei und Zeile ist die Funktion `cloudEmbeddingProvider` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/embedding-cloud.ts",
+      "line": 28
+    }
+  },
+  {
+    "id": "find-cloudConsentNotice",
+    "kind": "definition",
+    "symbol": "cloudConsentNotice",
+    "question": "In welcher Datei und Zeile ist die Funktion `cloudConsentNotice` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/embedding-status.ts",
+      "line": 42
+    }
+  },
+  {
+    "id": "find-embeddingStatusLine",
+    "kind": "definition",
+    "symbol": "embeddingStatusLine",
+    "question": "In welcher Datei und Zeile ist die Funktion `embeddingStatusLine` definiert?",
+    "truth": {
+      "file": "packages/daemon/src/embedding-status.ts",
+      "line": 24
+    }
+  }
+]

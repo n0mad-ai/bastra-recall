@@ -32,6 +32,8 @@ export {
 } from "./log-stats-thresholds.js";
 
 export { foldClientDuplicates, restartWindows, DUPLICATE_WINDOW_MS } from "./log-stats-phases.js";
+import { aggregateCodeRoi, renderCodeRoi, type CodeRoiStats } from "./log-stats-code.js";
+export { aggregateCodeRoi, renderCodeRoi, type CodeRoiStats } from "./log-stats-code.js";
 
 const EVENT_FILE = /^events-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 
@@ -83,6 +85,10 @@ export interface LogStats {
   saves: SaveStats;
   /** #479: automatic hints removed after repeated version-local non-use. */
   hintSuppression: HintSuppressionStats;
+  /** #579: was die Code-Awareness in diesem Fenster gekostet und genannt hat.
+   *  Getrennt geführt, weil `hint_tokens_est` das ganze injizierte Dokument
+   *  zählt und Code- von Memory-Kontext nicht unterscheidbar wäre. */
+  codeRoi: CodeRoiStats;
 }
 
 export interface SaveStats {
@@ -241,6 +247,9 @@ export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
   const restartLanes = finish(byModeRestart);
 
   return {
+    codeRoi: aggregateCodeRoi(
+      events.filter((e) => e.kind === "hook_call") as Array<Record<string, unknown>>,
+    ),
     from,
     to,
     lanes,
@@ -406,6 +415,7 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
     out.push("");
     out.push(...suppressionLines);
   }
+  out.push(...renderCodeRoi(stats.codeRoi));
   if (stats.otherKinds.length > 0) {
     out.push("");
     out.push(`  also in window: ${stats.otherKinds.map((k) => `${k.kind}×${k.count}`).join(", ")}`);
