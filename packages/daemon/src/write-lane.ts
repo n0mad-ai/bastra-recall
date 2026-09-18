@@ -18,7 +18,7 @@
  * thing mid-migration), session state stays on the file bus.
  */
 import { appendFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { request } from "node:http";
 import { randomUUID } from "node:crypto";
 import { detectTopics, extractContentExcerpt } from "@bastra-recall/core";
@@ -30,8 +30,8 @@ import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane } from "./scope-filter.js";
 import { fileSizeNote } from "./file-size-check.js";
-import { dependentsNote } from "./code-graph/dependents-block.js";
-import { appliesToNote } from "./code-graph/applies-to-note.js";
+import { dependentsNote, type DependentsNote } from "./code-graph/dependents-block.js";
+import { appliesToNote, type AppliesToNote } from "./code-graph/applies-to-note.js";
 import { laneRepoRoot } from "./code-graph/git-paths.js";
 import { memoryLocationNote } from "./memory-location.js";
 import { reportHinted } from "./hook-hinted.js";
@@ -250,32 +250,34 @@ export async function runWriteLane(
   // The FILE decides the repository, not the working directory: an edit from
   // a subdirectory would otherwise miss the graph entirely (#577). Falls back
   // to `cwd`, so nothing that worked before stops working.
-  const codeRepoRoot = laneRepoRoot(filePath, cwd);
-  const codeNote = await dependentsNote({ filePath, repoRoot: codeRepoRoot, session: sessionState }).catch(
-    () => null,
-  );
-  if (codeNote !== null) {
-    const key = codeNote.dedupeKey;
-    stateDeltas.push((s) => bumpShown(s, key, Date.now()));
-  }
-
   // #578: memories that declare this file via `affects_files`, plus memories
   // on files that depend on it. A deterministic block of its own rather than
   // recall hits, because these candidates carry no score — the reasoning, and
   // the fact that it is a reversible assumption, is in applies-to-note.ts.
   // Same dedupe rule, same silence on anything missing.
-  const memoryCodeNote = await appliesToNote({
-    filePath,
-    repoRoot: codeRepoRoot,
-    session: sessionState,
-  }).catch(() => null);
-  if (memoryCodeNote !== null) {
-    const key = memoryCodeNote.dedupeKey;
+  // #584: every target of the call, as an absolute path. Codex' apply_patch
+  // names repo-relative paths, often several; both blocks need an absolute
+  // one, so before this they were silent on every Codex patch.
+  // In target order, whichever finishes first: the blocks read top-down.
+  const targets = codeTargets(toolInput, filePath, cwd);
+  const perTarget = await Promise.all(
+    targets.map((target) => {
+      const repoRoot = laneRepoRoot(target, cwd);
+      return Promise.all([
+        dependentsNote({ filePath: target, repoRoot, session: sessionState }).catch(() => null),
+        appliesToNote({ filePath: target, repoRoot, session: sessionState }).catch(() => null),
+      ]);
+    }),
+  );
+  const codeNotes = perTarget.map(([d]) => d).filter((n): n is DependentsNote => n !== null);
+  const memoryCodeNotes = perTarget.map(([, m]) => m).filter((n): n is AppliesToNote => n !== null);
+  for (const n of [...codeNotes, ...memoryCodeNotes]) {
+    const key = n.dedupeKey;
     stateDeltas.push((s) => bumpShown(s, key, Date.now()));
   }
 
   const detNote =
-    [sizeNote, locationNote, codeNote?.note ?? null, memoryCodeNote?.note ?? null]
+    [sizeNote, locationNote, ...codeNotes.map((n) => n.note), ...memoryCodeNotes.map((n) => n.note)]
       .filter((n): n is string => n !== null)
       .join("\n") || null;
 
@@ -427,17 +429,19 @@ export async function runWriteLane(
     // #579: die Kostenseite der Code-Awareness, getrennt von den Memory-Hints.
     // Ohne diese Felder ist in der Telemetrie nicht unterscheidbar, ob ein
     // teurer Hook-Aufruf Memories oder Code-Kontext geliefert hat.
-    ...(codeNote !== null
+    ...(codeNotes.length > 0
       ? {
-          code_block_tokens_est: Math.ceil(codeNote.note.length / 4),
-          code_dependents: codeNote.dependents,
-          code_stale: codeNote.stale,
+          code_block_tokens_est: codeNotes.reduce((n, c) => n + Math.ceil(c.note.length / 4), 0),
+          code_dependents: codeNotes.reduce((n, c) => n + c.dependents, 0),
+          code_stale: codeNotes.some((c) => c.stale),
+          code_listed: codeNotes.flatMap((c) => c.listed),
         }
       : {}),
-    ...(memoryCodeNote !== null
+    code_targets: targets,
+    ...(memoryCodeNotes.length > 0
       ? {
-          applies_to_tokens_est: Math.ceil(memoryCodeNote.note.length / 4),
-          applies_to_count: memoryCodeNote.candidates.length,
+          applies_to_tokens_est: memoryCodeNotes.reduce((n, c) => n + Math.ceil(c.note.length / 4), 0),
+          applies_to_count: memoryCodeNotes.reduce((n, c) => n + c.candidates.length, 0),
         }
       : {}),
     hinted_ids: hintedIds,
@@ -635,6 +639,11 @@ interface HookCallTelemetry {
   code_dependents?: number;
   /** Der Graph lag hinter der Datei zurück, als der Block gebaut wurde. */
   code_stale?: boolean;
+  /** #588: die im Block namentlich genannten Abhängigen, absolut — für
+   *  `dependents_block_followed_by_edit`. */
+  code_listed?: string[];
+  /** #588: die Zieldateien dieses Aufrufs, absolut, die Gegenseite des Joins. */
+  code_targets?: string[];
   /** #579: Tokens des `affects_files`-Blocks, falls einer ausging. */
   applies_to_tokens_est?: number;
   /** Anzahl der zugeordneten Memories. */
@@ -678,4 +687,29 @@ async function writeTelemetry(payload: HookCallTelemetry): Promise<void> {
   } catch {
     // Telemetry must never break the lane.
   }
+}
+
+/**
+ * Most targets of one call that get code blocks. A Codex patch can touch a
+ * dozen files; two blocks each for all of them would bury the edit under
+ * context nobody asked for, so the first few are covered and the rest are not.
+ */
+export const MAX_CODE_TARGETS = 4;
+
+/**
+ * The files a Write/Edit/apply_patch call targets, absolute and de-duplicated
+ * (#584). Relative paths — Codex' apply_patch writes them — are resolved
+ * against the session's `cwd`, which is what they are relative to.
+ */
+export function codeTargets(toolInput: Record<string, unknown>, filePath: string, cwd: string): string[] {
+  const listed = Array.isArray(toolInput.file_paths)
+    ? toolInput.file_paths.filter((p): p is string => typeof p === "string" && p.length > 0)
+    : [];
+  const all = listed.length > 0 ? listed : [filePath];
+  const seen = new Set<string>();
+  for (const p of all) {
+    seen.add(isAbsolute(p) ? p : resolve(cwd, p));
+    if (seen.size >= MAX_CODE_TARGETS) break;
+  }
+  return [...seen];
 }

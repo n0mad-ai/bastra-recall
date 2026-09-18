@@ -238,6 +238,11 @@ describe("dependents block: what the agent sees", () => {
     assert.match(out.note, /- plus 2 test files/);
     // …and the total in the attribute still counts every dependent.
     assert.match(out.note, /dependents="4"/);
+    // Telemetry sees exactly the named files, absolute (#588).
+    assert.deepEqual(out.listed, [
+      join(repo, "packages/core/src/audit-save.ts"),
+      join(repo, "packages/core/src/index.ts"),
+    ]);
   });
 
   it("does not list the file's own graph node as one of its symbols", async () => {

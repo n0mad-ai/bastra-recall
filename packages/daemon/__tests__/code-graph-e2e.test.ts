@@ -106,7 +106,16 @@ describe("code awareness end to end, with the real Graphify", { skip: !HAVE_BIN,
   });
 
   it("picks up a new dependency after an edit, through the refresher", async () => {
-    const refresher = new CodeGraphRefresher({ debounceMs: 50 });
+    // The cache that was serving BEFORE the edit is the one asserted on
+    // (#583): building a fresh cache after the refresh hid that the running
+    // one never reloaded. Wired the way the daemon wires it (service.ts).
+    const cache = new CodeGraphCache();
+    await cache.ensureLoaded(repo);
+    assert.ok(cache.get(repo), "warm before the edit");
+    const refresher = new CodeGraphRefresher({
+      debounceMs: 50,
+      onBuilt: (repoRoot) => cache.reloadIfChanged(repoRoot),
+    });
     try {
       // A third file starts depending on core.ts.
       await writeFiles(repo, {
@@ -117,8 +126,6 @@ describe("code awareness end to end, with the real Graphify", { skip: !HAVE_BIN,
       refresher.enqueue(repo, "watcher");
       await refresher.whenIdle();
 
-      const cache = new CodeGraphCache();
-      await cache.ensureLoaded(repo);
       const graph = cache.get(repo);
       assert.ok(graph);
       const deps = dependentFilesOf(graph!, "src/core.ts");

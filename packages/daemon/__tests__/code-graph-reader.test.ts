@@ -338,17 +338,47 @@ describe("code graph cache: the cold-start rule", () => {
     assert.equal(cache.stats().repos, 0);
   });
 
-  it("invalidates a cached graph when the file changed", async () => {
-    const repo = join(root, "invalidate");
+  it("swaps in a changed graph without a cold gap (#583)", async () => {
+    const repo = join(root, "reload");
     await writeGraph(repo, FIXTURE);
     const cache = new CodeGraphCache();
     await cache.ensureLoaded(repo);
-    assert.ok(cache.get(repo));
+    const before = cache.get(repo);
+    assert.ok(before);
+
+    // Unchanged file: nothing to do.
+    assert.equal(await cache.reloadIfChanged(repo), false);
 
     await new Promise((r) => setTimeout(r, 10));
     await writeGraph(repo, { ...FIXTURE, nodes: FIXTURE.nodes.slice(0, 2) });
-    assert.equal(await cache.invalidateIfChanged(repo), true);
-    assert.equal(cache.get(repo), null, "an invalidated graph is cold again, not stale");
+    const reloading = cache.reloadIfChanged(repo);
+    // While the new graph parses, readers keep the old one — never null.
+    assert.equal(cache.get(repo), before);
+    assert.equal(await reloading, true);
+    const after = cache.get(repo);
+    assert.ok(after && after !== before, "the new graph is served");
+    assert.equal(after.nodes.size, 2);
+  });
+
+  it("leaves a repository nobody asked about alone", async () => {
+    const repo = join(root, "reload-untouched");
+    await writeGraph(repo, FIXTURE);
+    const cache = new CodeGraphCache();
+    assert.equal(await cache.reloadIfChanged(repo), false);
+    assert.equal(cache.stats().repos, 0);
+  });
+
+  it("serves nothing for a repository it is not allowed to (#585)", async () => {
+    const repo = join(root, "gated");
+    await writeGraph(repo, FIXTURE);
+    let enabled = true;
+    const cache = new CodeGraphCache(undefined, () => enabled);
+    await cache.ensureLoaded(repo);
+    assert.ok(cache.get(repo));
+    enabled = false;
+    assert.equal(cache.get(repo), null, "disabled means off on the next call");
+    assert.equal(cache.stats().repos, 0, "and the graph leaves the heap");
+    assert.equal(cache.allows(repo), false);
   });
 });
 

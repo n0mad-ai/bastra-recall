@@ -18,6 +18,7 @@
  * `code` field in `CliSettings`, because that is where the schema lives.
  */
 
+import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { mutateSettings, readSettings, settingsFilePath } from "../settings.js";
 import { platformSupported } from "./graphify-tool.js";
@@ -63,6 +64,60 @@ export async function enabledRepos(
     seen.add(canonicalRepoPath(entry));
   }
   return [...seen];
+}
+
+/**
+ * The enabled list for the hot paths, synchronously (#585).
+ *
+ * Every reader of a graph — the cache behind `find_code`, both Write/Edit
+ * blocks, the refresher — asks this before it serves or builds anything.
+ * Before, only the daemon's START read the list: `bastra code disable` and
+ * `BASTRA_CODE_AWARENESS=off` changed nothing in a running daemon, and after a
+ * restart any caller could still load the graph left on disk. A switch that
+ * does not switch is worse than none, because the user believes it.
+ *
+ * Synchronous because `CodeGraphCache.get()` is, by the cold-start rule. The
+ * cost is one `stat` per call; the file is re-read only when its mtime or size
+ * moved. Unreadable or corrupt settings mean "nothing enabled" — the feature
+ * fails closed, never open.
+ */
+export function isRepoEnabledSync(
+  repoRoot: string,
+  path: string = settingsFilePath(),
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  if (codeAwarenessDisabledByEnv(env) || !platformSupported(platform)) return false;
+  return enabledSnapshot(path).has(canonicalRepoPath(repoRoot));
+}
+
+let snapshot: { path: string; mtimeMs: number; size: number; repos: Set<string> } | null = null;
+
+function enabledSnapshot(path: string): Set<string> {
+  let st: { mtimeMs: number; size: number };
+  try {
+    st = statSync(path);
+  } catch {
+    snapshot = null;
+    return new Set();
+  }
+  if (snapshot?.path === path && snapshot.mtimeMs === st.mtimeMs && snapshot.size === st.size) {
+    return snapshot.repos;
+  }
+  const repos = new Set<string>();
+  try {
+    const raw = (JSON.parse(readFileSync(path, "utf8")) as { code?: { repos?: unknown } }).code?.repos;
+    if (Array.isArray(raw)) {
+      for (const entry of raw) {
+        if (typeof entry === "string" && entry.trim().length > 0) repos.add(canonicalRepoPath(entry.trim()));
+      }
+    }
+  } catch {
+    // Corrupt settings: nothing is enabled. `readSettings` reports the
+    // corruption loudly; this path only has to not act on it.
+  }
+  snapshot = { path, mtimeMs: st.mtimeMs, size: st.size, repos };
+  return repos;
 }
 
 /** Is this repository enabled? */

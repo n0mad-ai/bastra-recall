@@ -247,6 +247,19 @@ describe("the bastra doctor note", () => {
     assert.match(lines[0] ?? "", /m-old: packages\/core\/src\/gone\.ts — no such file/);
   });
 
+  it("checks file#symbol against the graph it loads, not a cold cache (#587)", async () => {
+    const withSymbol = io({
+      memories: async () => [{ id: "m-sym", scope: "bastra-recall", affects_files: [`${SAVE}#noSuchSymbol`] }],
+      exists: () => true,
+      graph: async () => graph,
+    });
+    const lines = await affectsFilesLines(withSymbol);
+    assert.equal(lines.length, 1, `got ${JSON.stringify(lines)}`);
+    assert.match(lines[0] ?? "", /m-sym/);
+    // Without a graph only the file is checked, and the file exists.
+    assert.deepEqual(await affectsFilesLines(io({ ...withSymbol, graph: undefined })), []);
+  });
+
   it("stays silent when every entry resolves", async () => {
     assert.deepEqual(await affectsFilesLines(io({ exists: () => true })), []);
   });

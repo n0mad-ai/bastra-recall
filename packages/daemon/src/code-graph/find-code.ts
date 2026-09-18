@@ -13,8 +13,8 @@
  * match rather than an identity.
  *
  * WHY THE OUTPUT IS THIS SMALL. The tool answers "where is it and what
- * touches it", never "what does it say". It emits `symbol, kind, file:line,
- * community` and at most ONE hop of dependents (the hard hop budget of
+ * touches it", never "what does it say". It emits `symbol, kind, file:line`
+ * and at most ONE hop of dependents (the hard hop budget of
  * §13.1) — no code bodies, no file contents. The agent follows `file:line`
  * with a targeted read, which costs it one Read of the lines it actually
  * needs instead of a graph-shaped wall of text in every turn.
@@ -51,6 +51,8 @@ import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
 import { codeGraphCache } from "./dependents-block.js";
 import { CodeGraphCache } from "./cache.js";
+import { codeAwarenessDisabledByEnv } from "./enabled-repos.js";
+import { repoRootSync } from "./git-paths.js";
 import {
   dependentFilesOf,
   dependentSymbolsOf,
@@ -161,8 +163,8 @@ export const codeTools = [
     annotations: { readOnlyHint: true, destructiveHint: false },
     description:
       "Locate a symbol or file in the indexed code graph of a repository and " +
-      "list what depends on it, one hop. Returns symbol, kind, file:line and " +
-      "community — never code bodies; follow file:line with a targeted read.\n" +
+      "list what depends on it, one hop. Returns symbol, kind and file:line " +
+      "— never code bodies; follow file:line with a targeted read.\n" +
       "\n" +
       "WHEN IT HELPS more than Grep: 'who calls this', 'what breaks if I " +
       "change this', 'where is this defined' — questions about relations " +
@@ -177,7 +179,8 @@ export const codeTools = [
       "near-misses.\n" +
       "\n" +
       "`status: \"unavailable\"` means the graph for this repository is not " +
-      "in memory (loading, not indexed, or degraded). It is not an error and " +
+      "in memory (loading, not indexed, degraded, or code awareness is off " +
+      "for it). It is not an error and " +
       "says nothing about whether the symbol exists — use Grep for this turn.",
     inputSchema: {
       type: "object",
@@ -258,7 +261,10 @@ export function setSharedCodeGraphCache(cache: CodeGraphCache): void {
 export function findCode(cache: CodeGraphCache, args: FindCodeInput): FindCodeResult {
   const startedAt = performance.now();
   const mode = args.mode ?? "find";
-  const repo = isAbsolute(args.repo ?? "") ? (args.repo as string) : resolve(args.repo ?? process.cwd());
+  const given = isAbsolute(args.repo ?? "") ? (args.repo as string) : resolve(args.repo ?? process.cwd());
+  // A caller sitting in a subdirectory passes that directory; the graph is
+  // keyed by the checkout root (#586). Same walk the Write/Edit lane uses.
+  const repo = repoRootSync(given) ?? given;
   const query = args.query.trim();
 
   // `query` and `repo` are NOT echoed back: the caller passed them and pays
@@ -268,6 +274,19 @@ export function findCode(cache: CodeGraphCache, args: FindCodeInput): FindCodeRe
     ...r,
     took_ms: Number((performance.now() - startedAt).toFixed(3)),
   });
+
+  // Off is off (#585): the kill switch and a repository that is not enabled
+  // answer here, before any graph on disk could be loaded and served. A
+  // distinct note, because "loading, try later" would be a false promise.
+  if (codeAwarenessDisabledByEnv() || !cache.allows(repo)) {
+    return done({
+      ...base,
+      status: "unavailable",
+      note:
+        `Code awareness is switched off for ${shortRepo(repo)}. ` +
+        `This says nothing about whether the symbol exists — use Grep.`,
+    });
+  }
 
   const graph = cache.get(repo);
   if (graph === null) {
