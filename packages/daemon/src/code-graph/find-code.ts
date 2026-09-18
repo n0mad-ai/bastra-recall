@@ -53,6 +53,7 @@ import { codeGraphCache } from "./dependents-block.js";
 import { CodeGraphCache } from "./cache.js";
 import { codeAwarenessDisabledByEnv } from "./enabled-repos.js";
 import { repoRootSync } from "./git-paths.js";
+import { notReadyNote, offNote, shortRepo } from "./unavailable-note.js";
 import {
   dependentFilesOf,
   dependentSymbolsOf,
@@ -282,9 +283,7 @@ export function findCode(cache: CodeGraphCache, args: FindCodeInput): FindCodeRe
     return done({
       ...base,
       status: "unavailable",
-      note:
-        `Code awareness is switched off for ${shortRepo(repo)}. ` +
-        `This says nothing about whether the symbol exists — use Grep.`,
+      note: offNote(repo, codeAwarenessDisabledByEnv()),
     });
   }
 
@@ -293,7 +292,7 @@ export function findCode(cache: CodeGraphCache, args: FindCodeInput): FindCodeRe
     return done({
       ...base,
       status: "unavailable",
-      note: unavailableNote(cache, repo),
+      note: notReadyNote(cache, repo),
     });
   }
 
@@ -495,29 +494,3 @@ function normalizePath(query: string): string | null {
   return norm;
 }
 
-/**
- * Why code awareness is not answering. The distinction matters to the agent:
- * a graph that is loading will be there next call, one that was refused will
- * not be there until someone rebuilds it.
- */
-function unavailableNote(cache: CodeGraphCache, repo: string): string {
-  const degraded = cache.stats().degraded.find((d) => d.repoRoot === repo);
-  if (degraded !== undefined) {
-    return (
-      `Code awareness is unavailable for ${shortRepo(repo)}: the code graph was ` +
-      `refused (${degraded.reason}). Run \`bastra doctor\` for the detail. ` +
-      `This says nothing about whether the symbol exists — use Grep for now.`
-    );
-  }
-  return (
-    `Code awareness is not ready for ${shortRepo(repo)} — the graph is not in ` +
-    `memory yet and is loading in the background (this call did not wait for ` +
-    `it). Use Grep for this turn; a later call may have it.`
-  );
-}
-
-/** The last two path segments: enough to recognise the repo, short in context. */
-function shortRepo(repo: string): string {
-  const parts = repo.split("/").filter((p) => p.length > 0);
-  return parts.slice(-2).join("/") || repo;
-}

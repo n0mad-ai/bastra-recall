@@ -382,7 +382,11 @@ describe("find_code: off is off (#585)", () => {
     await gated.ensureLoaded(repo);
     const r = findCode(gated, { query: "saveMemory", repo });
     assert.equal(r.status, "unavailable");
-    assert.ok(r.note?.includes("switched off"));
+    // #582: the kill switch and a repository nobody enabled are different
+    // situations and now say so — and neither may claim something is loading.
+    assert.ok(r.note?.includes("not enabled"), `got: ${r.note}`);
+    assert.ok(r.note?.includes("bastra code enable"), "it names how to switch it on");
+    assert.ok(!/loading|being read/i.test(r.note ?? ""), "nothing is loading here");
   });
 });
 
