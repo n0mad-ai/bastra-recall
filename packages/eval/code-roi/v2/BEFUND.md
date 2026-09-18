@@ -58,3 +58,20 @@ Rohdaten (Szenarien, Wahrheit mit Prüfprotokoll, alle 88 Transkripte,
 Graph-Hashes, `report.json`) liegen in `~/.bastra/eval/code-roi-v2/`.
 Werkzeug: `mine.mjs`, `evidence.mjs`, `select.mjs`, `run-arms.mjs`,
 `evaluate.mjs` in diesem Ordner. Kosten des Laufs: 13,15 $.
+
+## Nachtrag: Enthält der Graph die Antwort überhaupt?
+
+Diagnose ohne Agent (`graph-ceiling.mjs`): die Abhängigen der geänderten
+Datei, eine Stufe, direkt aus dem Graphen jedes Szenarios, gegen die Wahrheit.
+
+| | Graph allein | Agent ohne Graph |
+|---|---|---|
+| Recall | 87,4 % | 89,4 % |
+| Präzision | 43,5 % | 91,6 % |
+
+Sechs der acht Lücken sind Änderungen in `packages/core`, die in
+`packages/daemon` brechen: Der Graph löst Importe über das Workspace-Paket
+(`@bastra-recall/core`) nicht auf. Die niedrige Präzision kommt daher, dass
+jede importierende Datei zählt, auch ohne Nutzung des geänderten Symbols.
+Ein Werkzeug auf dieser Datenbasis kann einen Agenten mit grep für diese
+Aufgabe kaum schlagen, unabhängig von Name und Beschreibung.
