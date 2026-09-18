@@ -17,7 +17,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { rng } from "./select.mjs";
 
 // CODE_ROI_OUT: a pilot directory, so a plumbing check never touches the real archive.
@@ -98,11 +98,15 @@ const median = (xs) => {
   return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
 };
 
-/** Paired bootstrap over DIRECTORIES (clusters), as registered. */
+/**
+ * Paired bootstrap, resampling by changed FILE (registration v3). With one
+ * scenario per file that is resampling scenarios; grouping by file keeps it
+ * honest should a file ever appear twice.
+ */
 export function clusterBootstrap(rows, key, seed = REG.statistics.seed) {
   const clusters = new Map();
   for (const r of rows) {
-    const c = dirname(r.file);
+    const c = r.file;
     if (!clusters.has(c)) clusters.set(c, []);
     clusters.get(c).push(r[key]);
   }
