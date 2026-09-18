@@ -49,6 +49,7 @@
 
 import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
+import { codeGraphCache } from "./dependents-block.js";
 import { CodeGraphCache } from "./cache.js";
 import {
   dependentFilesOf,
@@ -219,7 +220,15 @@ let shared: CodeGraphCache | null = null;
  * to `findCode` directly and never touch this.
  */
 export function sharedCodeGraphCache(): CodeGraphCache {
-  if (shared === null) shared = new CodeGraphCache();
+  // Default to the DAEMON's cache, not a private one. Measured 18.09.2026:
+  // with a private default, `find_code` answered "unavailable" on every first
+  // call for a repository — the daemon's preload and every Write/Edit hook
+  // had been warming a different instance, so the tool was effectively never
+  // ready, and an agent asking once per symbol never saw it work. A
+  // measurement run fell back to grep on 40 of 40 symbols because of this.
+  // Two instances would also mean two copies of every graph on the heap and
+  // an LRU budget counting half of what is actually held.
+  if (shared === null) shared = codeGraphCache();
   return shared;
 }
 
