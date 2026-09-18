@@ -154,6 +154,32 @@ describe("workspace packages", () => {
   it("is empty rather than throwing outside a workspace", () => {
     assert.equal(workspaceModules(join(root, "packages", "core", "src")).size, 0);
   });
+
+  it("reads a PNPM workspace, where package.json declares nothing", async () => {
+    // Measured on a real pnpm monorepo: reading only package.json resolved
+    // zero specifiers, so the whole package boundary was silently missing.
+    const pnpm = await mkdtemp(join(tmpdir(), "bastra-pnpm-"));
+    try {
+      await mkdir(join(pnpm, "packages", "db", "src"), { recursive: true });
+      await writeFile(join(pnpm, "package.json"), JSON.stringify({ name: "root" }), "utf8");
+      await writeFile(
+        join(pnpm, "pnpm-workspace.yaml"),
+        'packages:\n  - "apps/*"\n  - "packages/*"\n',
+        "utf8",
+      );
+      await writeFile(
+        join(pnpm, "packages", "db", "package.json"),
+        // Consumed as raw source: `main` points at the .ts, not at a build dir.
+        JSON.stringify({ name: "@acme/db", main: "./src/index.ts" }),
+        "utf8",
+      );
+      await writeFile(join(pnpm, "packages", "db", "src", "index.ts"), "export {};\n", "utf8");
+      const modules = workspaceModules(pnpm);
+      assert.equal(modules.get("@acme/db"), "packages/db/src/index.ts");
+    } finally {
+      await rm(pnpm, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("external references", () => {
