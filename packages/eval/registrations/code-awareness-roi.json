@@ -22,14 +22,17 @@
 
   "ground_truth": {
     "method": "mutation_type_errors",
-    "definition": "On a worktree at C's parent, typecheck every workspace package (src and __tests__) before and after applying ONLY F's diff from C. A file is affected when it carries at least one type error after the mutation that it did not carry before. F itself is excluded.",
+    "definition": "On a worktree at C's parent, typecheck every workspace package (src and __tests__) before and after applying ONLY F's diff from C. A file is affected when, after the mutation, it carries a type error that it did not carry before — errors compared as (file, TS code, message text) with line and column ignored, counted as a multiset. F itself is excluded.",
+    "$comment_definition": "Amended 2026-09-18 before any scenario was accepted or run: at the range end 51 of 217 daemon test files already carry type errors, and a file-level before/after comparison is blind to any new error in exactly those files.",
     "adjudication": "Each truth set is reviewed by hand before any arm runs; a file is removed only with a written reason (e.g. the error is an artefact of applying one file of a multi-file commit in isolation), and additions are not made by hand.",
     "stored_outside_repository": "~/.bastra/eval/code-roi-v2/",
     "$comment": "The graph is never used as truth, and co-change alone is not truth: files changed together are not necessarily files that break. Limitation, stated up front: this truth is type-level. Behavioural breakage that only a test run would show is not in it."
   },
 
   "scenario_inclusion": {
-    "commit_range": "main, non-merge commits, oldest first up to the frozen range end recorded in the scenario file",
+    "commit_range": "non-merge commits reachable from main at 5483f56 (the pre-code-awareness baseline), walked NEWEST first; within a commit, files in path order",
+    "stop_rule": "stop once 45 scenarios qualify after the independence caps; 45 leaves room for adjudication removals above the 30 minimum. The walk order and the stop rule are fixed here so the selection cannot follow the results.",
+    "$comment_range": "Amended 2026-09-18 before any scenario was mined or run: oldest-first would have filled the sample with changes to a repository a fraction of today's size.",
     "file_filter": "F is a .ts file under packages/*/src/, not a test",
     "must_break_something": "the truth set has at least one file",
     "max_truth_files": 40,
