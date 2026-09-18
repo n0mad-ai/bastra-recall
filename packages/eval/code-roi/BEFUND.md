@@ -1,64 +1,83 @@
-# Code-Awareness gegen den No-Graph-Kontrollarm — Messung 17.09.2026
+# Code-Awareness gegen den No-Graph-Kontrollarm — Messung 17./18.09.2026
 
-Gemessen am Recall-Repo (822 Dateien im Graphen, graphifyy 0.9.63), gegen die
-Primärmetrik aus der Preregistrierung: **Suchtokens bis zur richtigen Stelle**.
+Primärmetrik der Preregistrierung: **Suchtokens bis zur richtigen Stelle**.
+Zwei Durchgänge: eine skriptgestützte Messung über 40 Szenarien, und ein Lauf
+mit zwei echten Agenten über dieselben 40.
 
-Reproduzieren: `node packages/eval/code-roi/measure.mjs` und
-`measure-deps.mjs`. Rohdaten in `report.json` / `report-deps.json`.
+Reproduzieren: `packages/eval/code-roi/measure.mjs`, `measure-deps.mjs`,
+`objective.mjs`, Auswertung mit `evaluate.mjs`.
 
-## Ergebnis in einem Satz
+## Urteil: **nicht entscheidbar** (`underpowered`)
 
-**Gegen einen gezielten `grep` spart die Code-Karte in dieser Messung keinen
-Kontext — sie kostet im typischen Fall mehr.**
+Die Preregistrierung verlangt, `underpowered` zu melden statt ein Urteil zu
+fällen, das die Stichprobe nicht trägt. Das ist hier der Fall — Begründung
+unten. Was belegt ist und was nicht, steht getrennt.
 
-## Szenario 1: "Wo ist Symbol X?" (40 Fälle)
+## Agentenlauf, 40 Symbole, je ein Arm
 
-| | Tokens (Median) |
-|---|---|
-| `find_code` | 105 |
-| gezielter `grep` | 34 |
-| naiver `grep` | 188 |
+| | Kontrollarm (grep) | Graph-Arm (find_code) |
+|---|---|---|
+| richtig | 40/40 | 39/40 |
+| Tool-Aufrufe | 16 | 39 |
+| Zeichen gesamt | 24.221 | 36.235 |
 
-- Beide Arme fanden in **40 von 40** Fällen die richtige Stelle.
-- Über die Summe spart der Graph 89 % — aber **in 39 von 40 Einzelfällen ist
-  der gezielte grep billiger**. Die Ersparnis kommt aus wenigen Ausreißern, in
-  denen grep explodiert.
-- Genau davor schützt die preregistrierte Bedingung, dass die Differenz über
-  Szenarien halten muss und nicht auf Ausreißern ruhen darf. **Sie hält nicht.**
+So gelesen verliert der Graph deutlich. **Der Vergleich ist aber unfair**, und
+zwar zugunsten des Kontrollarms: Er durfte **bündeln**. 30 der 40 Symbole hat
+er in 6 Aufrufen mit zusammen 3.512 Zeichen erledigt, weil er alle 40 Fragen
+auf einmal kannte. Ein Agent in einer echten Sitzung kennt eine Frage.
 
-## Szenario 2: "Was hängt von Datei Y ab?" (35 Fälle)
+## Derselbe Lauf, nur die einzeln gesuchten Symbole (N = 10)
 
-| | Tokens (Median) |
-|---|---|
-| Abhängigen-Block | 144 |
-| `grep` auf Importe | 113 |
+Gepaart auf denselben Symbolen, beide Arme eine Frage zur Zeit:
 
-- **13 von 35** Fällen: Block billiger. **22 von 35**: grep billiger.
-- Der grep findet im Median **100 %** dessen, was der Graph findet.
+| | grep | find_code |
+|---|---|---|
+| Median | 802 Zeichen | 959 Zeichen |
+| Mittelwert | **2.070** | **1.141** |
+| billiger in | 5 von 10 | 5 von 10 |
 
-## Was diese Messung NICHT zeigt
+Median und Mittelwert zeigen in verschiedene Richtungen, und genau darin liegt
+die Erkenntnis: **grep ist meistens etwas billiger und gelegentlich
+katastrophal teuer.** `recallHandler` kostete per grep 12.367 Zeichen, per
+`find_code` 2.064 — Faktor sechs. Der Graph ist gleichmäßig, grep ist eine
+Wette auf die Verbreitung des Namens.
 
-Drei Einschränkungen, ohne die die Zahlen falsch gelesen werden:
+## Skriptmessung, 40 Szenarien
 
-1. **Der Kontrollarm ist optimal informiert.** Er kennt den exakten Symbol-
-   beziehungsweise Dateinamen. Ein realer Agent tastet sich oft heran — erst
-   ein zu weiter grep, dann ein engerer. Jede zusätzliche Runde verschiebt die
-   Bilanz zugunsten des Graphen, und genau diese Runden misst das hier nicht.
-2. **Gemessen wird ein Lookup, nicht eine Aufgabe.** Die Preregistrierung
-   verlangt die Tokens über alle Runden *bis die richtige Stelle erreicht ist*.
-   Das braucht echte Sessions, nicht einen Repo-Durchlauf.
-3. **Der Block ist ungefragt.** Er kostet bei jedem Edit einer Datei mit
-   Abhängigen — auch wenn der Agent die Frage nie gestellt hätte. Diesen
-   Nachteil unterschätzt die Messung sogar, weil sie ihn nur dort verbucht, wo
-   der Agent ohnehin gesucht hätte.
+| | find_code | gezielter grep | breiter grep |
+|---|---|---|---|
+| gefunden | **40/40** | **23/40** | 40/40 |
+| Median | 770 Zeichen | 79 | 202 |
 
-## Konsequenz
+Der gezielte grep ist zehnmal billiger, findet aber nur 58 %. Die fehlenden
+17 Fälle kosten eine zweite Runde, die diese Messung nicht mitzählt.
 
-Der Mechanismus, über den die Karte gewinnen *könnte*, ist das Einsparen von
-Such-RUNDEN. Ob sie das tut, ist offen und mit dieser Methode nicht
-beantwortbar. Bis eine Messung über echte Sessions vorliegt, ist
-"spart Kontext" eine **unbelegte Behauptung** und darf so nicht auftreten.
+## Warum das Urteil `underpowered` lautet
 
-Belegbar sind dagegen: die Latenz (p90 7 ms der gesamten Lane gegen ein
-200-ms-Ziel), die Korrektheit der Kanten, und dass die Karte Abhängige nennt,
-die ein grep auf Importe nur findet, wenn man den richtigen Namen schon kennt.
+1. **N = 10 im einzigen fairen Vergleich.** Die Preregistrierung verlangt
+   N ≥ 30. Dass der Kontrollarm bündeln durfte, hat 30 Szenarien für den
+   gepaarten Vergleich unbrauchbar gemacht — ein Fehler im Aufbau, nicht im
+   Ergebnis.
+2. **Runden und Zeichen sind selbstberichtet.** Die Korrektheit ist objektiv
+   gegen die Ground Truth geprüft, der Aufwand nicht.
+3. **Ein Arm war kontaminiert.** Der erste Graph-Arm stieß bei der Arbeit auf
+   `scenarios.json` und hat die Antworten gesehen. Er hat das von sich aus
+   gemeldet; sein Lauf ist deshalb nicht in der Wertung.
+4. **Die Ground Truth hat eine Lücke.** `resolveEmbedding` existiert zweimal
+   als lokale Funktion (`bridge.ts:165`, `index.ts:1002`). Mein Filter prüfte
+   nur auf mehrfache `export function`, nicht auf lokale Doppelung. Beide Arme
+   stolperten darüber; der Graph-Arm zählt es als einzigen Fehler.
+
+## Was unabhängig davon belegt ist
+
+- `find_code` findet **40/40**, der gezielte grep **23/40**.
+- Der Graph vermeidet Ausreißer: schlechtester Fall 2.064 gegen 12.367 Zeichen.
+- Lane-Latenz mit beiden Blöcken p90 9,6 ms gegen ein 200-ms-Ziel.
+- Watcher: neue oder gelöschte Datei nach 10 s im Graphen (zugesagt: 30 s).
+- Stop-Hook 24 ms, Daemon-RSS 191 MB, Platz für rund 24 Repos.
+
+## Was zu tun wäre, um zu entscheiden
+
+Ein zweiter Agentenlauf, in dem **beide** Arme strikt ein Symbol pro Aufruf
+bearbeiten, mit N ≥ 30 und ohne lesbare Ground Truth im Repo. Erst dann trägt
+die Stichprobe ein Urteil.
