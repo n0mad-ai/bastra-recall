@@ -74,7 +74,7 @@ export function promptFor(s) {
   ].join("\n");
 }
 
-function prepareTree(s, dir) {
+export function prepareTree(s, dir) {
   const tree = join(dir, "tree");
   const graphRoot = join(dir, "graph");
   if (existsSync(join(graphRoot, "graphify-out", "graph.json")) && existsSync(tree)) return { tree, graphRoot };
@@ -89,7 +89,7 @@ function prepareTree(s, dir) {
   return { tree, graphRoot };
 }
 
-async function buildGraph(tree, graphRoot) {
+export async function buildGraph(tree, graphRoot) {
   if (existsSync(join(graphRoot, "graphify-out", "graph.json"))) return;
   // Imported here, not at the top: the daemon's build output only has to
   // exist when a graph is actually built, not when the prompt is imported.

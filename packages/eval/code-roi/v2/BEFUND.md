@@ -75,3 +75,27 @@ Sechs der acht Lücken sind Änderungen in `packages/core`, die in
 jede importierende Datei zählt, auch ohne Nutzung des geänderten Symbols.
 Ein Werkzeug auf dieser Datenbasis kann einen Agenten mit grep für diese
 Aufgabe kaum schlagen, unabhängig von Name und Beschreibung.
+
+## Nachtrag 2: symbolbasierte Abfrage (#582, 18.09.2026)
+
+Beide Ursachen sind behoben (`affected.ts`, `external-refs.ts`,
+`workspace-packages.ts`): gefragt wird nach den Symbolen, die der Diff
+anfasst, und die Paketgrenze wird über die `package.json` der
+Workspace-Pakete aufgelöst. Diagnose wieder ohne Agent
+(`affected-ceiling.mjs`), gleiche Wahrheit, dieselben 44 Szenarien:
+
+| | Recall | Präzision | vollständig |
+|---|---|---|---|
+| Dateiabfrage (Stand v3) | 87,4 % | 43,5 % | 36/44 |
+| Symbolabfrage, 1 Stufe | **91,3 %** | **52,4 %** | 39/44 |
+| Symbolabfrage, 2 Stufen | 95,8 % | 33,0 % | 41/44 |
+| Symbolabfrage 1 Stufe ∪ grep-Arm | 95,5 % | 53,1 % | 42/44 |
+| Symbolabfrage 2 Stufen ∪ grep-Arm | 100,0 % | 33,5 % | 44/44 |
+
+**Diese Zahlen sind kein Wirksamkeitsnachweis.** Die 44 Szenarien sind mit
+dem Bau dieser Abfrage zu Entwicklungsdaten geworden — Entwurfsentscheidungen
+(Vorrang des spezifischen Export-Eintrags, die Schwelle für die
+Namensprüfung, Deckel auf Dateien statt Treffern) wurden an genau diesen
+Lücken getroffen. Eine Aussage über die Wirkung braucht frische Szenarien und
+eine eigene Registrierung; Entwurf:
+`packages/eval/registrations/code-awareness-change-impact.draft.json`.

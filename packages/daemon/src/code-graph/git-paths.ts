@@ -124,6 +124,39 @@ export async function headCommit(repoRoot: string): Promise<string | null> {
   return c !== null && /^[0-9a-f]{40}$/.test(c) ? c : null;
 }
 
+/**
+ * Largest diff read back from git. A change bigger than this is not a change
+ * one symbol analysis is about, and the output ends up in an agent's context.
+ */
+const MAX_DIFF_BYTES = 2 * 1024 * 1024;
+
+/**
+ * The working-tree diff of ONE file against HEAD, staged changes included, or
+ * null when git says nothing (no repository, no change, git missing, timeout).
+ *
+ * `-U0`: the line numbers are what `find_affected_files` reads, and context
+ * lines only make the payload bigger. `--no-color` and `--no-ext-diff` keep a
+ * user's `diff.external` or pager configuration out of the parse.
+ */
+export async function workingDiff(repoRoot: string, file: string): Promise<string | null> {
+  try {
+    const { stdout } = await run(
+      "git",
+      ["diff", "--no-color", "--no-ext-diff", "-U0", "HEAD", "--", file],
+      {
+        cwd: repoRoot,
+        timeout: GIT_TIMEOUT_MS,
+        windowsHide: true,
+        encoding: "utf8",
+        maxBuffer: MAX_DIFF_BYTES,
+      },
+    );
+    return stdout.trim() === "" ? null : stdout;
+  } catch {
+    return null;
+  }
+}
+
 /** The repository root git itself reports for a directory, or null. */
 export async function repoRootOf(dir: string): Promise<string | null> {
   return git(dir, ["rev-parse", "--show-toplevel"]);
