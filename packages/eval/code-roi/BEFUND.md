@@ -81,3 +81,59 @@ Der gezielte grep ist zehnmal billiger, findet aber nur 58 %. Die fehlenden
 Ein zweiter Agentenlauf, in dem **beide** Arme strikt ein Symbol pro Aufruf
 bearbeiten, mit N ≥ 30 und ohne lesbare Ground Truth im Repo. Erst dann trägt
 die Stichprobe ein Urteil.
+
+---
+
+# Nachtrag 18.09.2026: sauberer Lauf, und eine Korrektur
+
+Nach zwei behobenen Fehlern im Aufbau (Lösungen lagen im Repo; "eindeutig"
+zählte nur Exporte) wurde auf **34 wirklich eindeutigen** Symbolen neu
+gemessen.
+
+## Korrektur an einem früheren Befund
+
+Oben stand: *"der gezielte grep findet nur 23 von 40"*. **Das war ein
+Artefakt der mehrdeutigen Szenarien**, nicht eine Eigenschaft von grep. Auf
+den bereinigten 34 Symbolen findet der gezielte grep **34/34** — genau wie
+`find_code`. Die Aussage ist zurückgezogen.
+
+## Objektive Messung, 34 eindeutige Symbole
+
+| | Median | Summe | schlimmster Fall |
+|---|---|---|---|
+| gezielter `grep` | **128** | 5.438 | — |
+| breiter `grep` | 978 | 33.497 | 3.297 |
+| `find_code` | 602 | 23.678 | **1.173** |
+
+Treffer: gezielter grep 34/34, `find_code` 34/34.
+
+**Das ist das differenzierte Bild:**
+
+- Gegen einen **perfekt gezielten** grep verliert die Karte klar — Faktor 4,7
+  im Median. Wer die Deklarationsform und die genaue Schreibweise kennt,
+  braucht sie nicht.
+- Gegen einen **breiten** grep — den man schreibt, wenn man das nicht schon
+  weiß — gewinnt sie: 602 gegen 978 im Median.
+- Sie ist **vorhersagbar**: schlimmster Fall 1.173 Zeichen gegen 3.297. Der
+  Graph kennt keinen Ausreißer, grep schon.
+
+## Agentenlauf (find_code-Arm)
+
+34/34 gefunden, ein Aufruf je Symbol, **kein einziges `unavailable`**, keine
+Ausweichung auf grep, 23.679 Zeichen — deckungsgleich mit der objektiven
+Messung, was den Selbstbericht dieses Arms bestätigt.
+
+Der Kontrollarm-Lauf stand bei Abfassung noch aus.
+
+## Was damit belegt ist
+
+Die Frage "spart es Kontext" hat keine Ja/Nein-Antwort, sondern hängt davon
+ab, was der Vergleich ist:
+
+- Gegen einen Agenten, der die exakte Deklarationsform schon kennt: **nein**.
+- Gegen einen, der sie nicht kennt: **ja**, und zusätzlich ohne Ausreißer.
+
+Welcher Fall häufiger ist, entscheidet über den Nutzen — und das lässt sich
+nur an echten Sitzungen ablesen, nicht an einem Repo-Durchlauf. Die
+Telemetrie dafür steht jetzt (`bastra logs --stats`, Abschnitt
+`code search ROI`).
