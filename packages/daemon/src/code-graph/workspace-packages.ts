@@ -54,13 +54,8 @@ export type WorkspaceModules = ReadonlyMap<string, string>;
  */
 export function workspaceModules(repoRoot: string): WorkspaceModules {
   const out = new Map<string, string>();
-  const root = readManifest(join(repoRoot, "package.json"));
-  if (root === null) return out;
-  const patterns = Array.isArray(root.workspaces)
-    ? root.workspaces
-    : isRecord(root.workspaces) && Array.isArray(root.workspaces.packages)
-      ? root.workspaces.packages
-      : [];
+  const patterns = workspacePatterns(repoRoot);
+  if (patterns.length === 0) return out;
 
   for (const dir of workspaceDirs(repoRoot, patterns)) {
     const pkg = readManifest(join(repoRoot, dir, "package.json"));
@@ -83,6 +78,54 @@ export function workspaceModules(repoRoot: string): WorkspaceModules {
     }
   }
   return out;
+}
+
+/**
+ * Where a repository declares its workspace packages.
+ *
+ * npm and yarn put it in package.json; PNPM puts it in `pnpm-workspace.yaml`
+ * and package.json then says nothing at all. Measured on a real pnpm monorepo
+ * (17 packages, scope `@bastra`, 237 cross-package imports): reading only
+ * package.json resolved ZERO specifiers, so every cross-package import stayed
+ * unresolved and the package boundary was silently missing — the exact failure
+ * `bastra doctor` now counts.
+ *
+ * The YAML is read with a line matcher rather than a parser: the file is a
+ * list of globs under one key, and taking on a YAML dependency inside the
+ * graph-load path would be the larger commitment. A file that does not match
+ * this shape yields no patterns, which is the same as having none.
+ */
+function workspacePatterns(repoRoot: string): unknown[] {
+  const root = readManifest(join(repoRoot, "package.json"));
+  const fromManifest = Array.isArray(root?.workspaces)
+    ? root.workspaces
+    : isRecord(root?.workspaces) && Array.isArray(root.workspaces.packages)
+      ? root.workspaces.packages
+      : [];
+  if (fromManifest.length > 0) return fromManifest;
+
+  let yaml: string;
+  try {
+    yaml = readFileSync(join(repoRoot, "pnpm-workspace.yaml"), "utf8");
+  } catch {
+    return [];
+  }
+  if (Buffer.byteLength(yaml, "utf8") > MAX_MANIFEST_BYTES) return [];
+
+  const patterns: string[] = [];
+  let inPackages = false;
+  for (const raw of yaml.split("\n")) {
+    const line = raw.replace(/#.*$/, "").trimEnd();
+    if (/^packages:\s*$/.test(line)) {
+      inPackages = true;
+      continue;
+    }
+    if (!inPackages) continue;
+    const item = /^\s*-\s*["']?([^"'\s]+)["']?\s*$/.exec(line);
+    if (item !== null) patterns.push(item[1]);
+    else if (line.trim().length > 0 && !line.startsWith(" ")) break;
+  }
+  return patterns;
 }
 
 /**

@@ -45,15 +45,18 @@
  */
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { buildGraph, prepareTree, promptFor } from "./run-arms.mjs";
+import { execFileSync } from "node:child_process";
 import { scenarioRoot } from "./scenario-root.mjs";
 import { writableOut } from "./archive.mjs";
 import { ARM_IDS } from "./select.mjs";
 
 const OUT = writableOut();
+/** This repository — the one `prepareTree` from the v2 runner knows. */
+const REPO_SELF = new URL("../../../../", import.meta.url).pathname.replace(/\/$/, "");
 const RUNS = join(OUT, "runs");
 const MCP_SERVER = new URL("./code-tools-mcp.mjs", import.meta.url).pathname;
 const DIST = new URL("../../../daemon/dist/code-graph/", import.meta.url).pathname;
@@ -215,6 +218,33 @@ function runArm(arm, prompt, tree, graphRoot, dir) {
   });
 }
 
+/**
+ * The scenario's tree, from the repository the scenario names.
+ *
+ * `prepareTree` from the v2 runner archives from bastra-recall, full stop. A
+ * sample mined out of another repository (registration 5) needs the archive
+ * taken there — read-only, `git archive` only, and never a git worktree in a
+ * repository this measurement does not own.
+ */
+export function prepareTreeOf(s, dir) {
+  if (!s.repo || s.repo === REPO_SELF) return prepareTree(s, dir);
+  const tree = join(dir, "tree");
+  const graphRoot = join(dir, "graph");
+  if (existsSync(join(graphRoot, "graphify-out", "graph.json")) && existsSync(tree)) {
+    return { tree, graphRoot };
+  }
+  mkdirSync(tree, { recursive: true });
+  mkdirSync(graphRoot, { recursive: true });
+  const tar = execFileSync("git", ["archive", "--format=tar", s.parent], {
+    cwd: s.repo,
+    maxBuffer: 1024 * 1024 * 1024,
+  });
+  execFileSync("tar", ["-x", "-C", tree], { input: tar, maxBuffer: 1024 * 1024 * 1024 });
+  // No project settings may reach the agent — the registration says so.
+  rmSync(join(tree, ".claude"), { recursive: true, force: true });
+  return { tree, graphRoot };
+}
+
 async function main() {
   const arg = (flag) => {
     const i = process.argv.indexOf(flag);
@@ -236,7 +266,7 @@ async function main() {
     if (only && !only.has(s.id)) continue;
     const dir = join(RUNS, s.id);
     mkdirSync(dir, { recursive: true });
-    const { tree, graphRoot } = prepareTree(s, dir);
+    const { tree, graphRoot } = prepareTreeOf(s, dir);
     await buildGraph(tree, graphRoot);
     writeFileSync(
       join(dir, "graph.sha256"),

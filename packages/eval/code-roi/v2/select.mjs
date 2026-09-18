@@ -81,6 +81,10 @@ function main() {
   const next = rng(SEED);
   const scenarios = kept.map((c, i) => ({
     id: `S${String(i + 1).padStart(2, "0")}`,
+    // The repository each scenario belongs to. Carried per scenario, not per
+    // file: a sample may one day pool two repositories, and a scenario that
+    // does not know its own repo cannot be re-run or re-scored.
+    repo: c.repo ?? null,
     commit: c.commit,
     parent: c.parent,
     file: c.file,
