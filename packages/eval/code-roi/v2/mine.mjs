@@ -28,7 +28,14 @@
  * same rule a sequential walk applies, so parallelism changes the wall clock
  * and nothing else.
  *
- * Usage: node packages/eval/code-roi/v2/mine.mjs
+ * Usage: CODE_ROI_OUT=<dir> node packages/eval/code-roi/v2/mine.mjs [--since <rev>] [--stop-at <n>]
+ *
+ * `CODE_ROI_OUT` and `--since` are NOT optional for a new sample. Both were
+ * hard-coded to the v3 archive and its range end, so a v4 mining run wrote its
+ * candidates over the frozen archive and walked the very commits v3 had used
+ * (#582). `archive.mjs` now refuses the first mistake outright, and `--since`
+ * is what keeps the new sample disjoint from v3's.
+ *
  * Resumable: truth sets are cached in truth-cache.jsonl; candidates.jsonl is
  * rewritten from the cache on every pass.
  */
@@ -37,18 +44,28 @@ import { promisify } from "node:util";
 import { existsSync, mkdirSync, readdirSync, readFileSync, appendFileSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { writableOut } from "./archive.mjs";
+
+/** One `--flag value` from argv, or null. */
+function argOf(flag) {
+  const i = process.argv.indexOf(flag);
+  return i > 0 && process.argv[i + 1] !== undefined ? process.argv[i + 1] : null;
+}
 
 const run = promisify(execFile);
 const REPO = new URL("../../../../", import.meta.url).pathname.replace(/\/$/, "");
-const RANGE_END = "5483f56";
-export const OUT = join(homedir(), ".bastra", "eval", "code-roi-v2");
+/** The v3 range end, kept as the default so `graph-ceiling.mjs` and the v3
+ *  archive stay reproducible; a v4 run passes `--since` and never uses it. */
+export const V3_RANGE_END = "5483f56";
+export const RANGE_END = argOf("--since") ?? V3_RANGE_END;
+export const OUT = writableOut();
 const CANDIDATES = join(OUT, "candidates.jsonl");
 const CACHE = join(OUT, "truth-cache.jsonl");
 const TSC = join(REPO, "node_modules", ".bin", "tsc");
 const WORKERS = 5;
 
-// From the registration — not tunable here.
-const STOP_AT = 45;
+// From the registration — not tunable beyond what the registration fixes.
+const STOP_AT = Number(argOf("--stop-at") ?? 45);
 const MAX_TRUTH = 40;
 
 mkdirSync(OUT, { recursive: true });

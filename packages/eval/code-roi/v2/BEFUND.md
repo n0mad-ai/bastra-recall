@@ -97,5 +97,6 @@ dem Bau dieser Abfrage zu Entwicklungsdaten geworden — Entwurfsentscheidungen
 (Vorrang des spezifischen Export-Eintrags, die Schwelle für die
 Namensprüfung, Deckel auf Dateien statt Treffern) wurden an genau diesen
 Lücken getroffen. Eine Aussage über die Wirkung braucht frische Szenarien und
-eine eigene Registrierung; Entwurf:
-`packages/eval/registrations/code-awareness-change-impact.draft.json`.
+eine eigene Registrierung:
+`packages/eval/registrations/code-awareness-change-impact.json` (v4,
+drei Arme: `A` nur grep, `B` Tools angeboten, `prefilled` Antwort im Prompt).

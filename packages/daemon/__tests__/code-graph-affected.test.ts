@@ -16,6 +16,7 @@ import {
   PACKAGE_IMPORT,
 } from "../src/code-graph/affected.js";
 import { workspaceModules } from "../src/code-graph/workspace-packages.js";
+import { externalRefLines } from "../src/code-graph/external-refs.js";
 
 /**
  * A node in Graphify's real shape — the same helper the reader test uses,
@@ -171,6 +172,34 @@ describe("external references", () => {
       dependents.some((d) => d.id === "daemon_bridge_run" && d.relation === "imports"),
       "the import through packages_core_dist_index_savememory reaches saveMemory",
     );
+  });
+});
+
+describe("the doctor counter", () => {
+  it("counts the external nodes and how many of them resolved", () => {
+    // Three external nodes in the fixture, all three resolve; two specifiers
+    // (`@acme/core` and its `/topics` subpath — `@acme/daemon` has no entry).
+    assert.deepEqual(graph.externalStats, { total: 3, resolved: 3, workspaceModules: 2 });
+  });
+
+  it("reports the count as one line", () => {
+    assert.deepEqual(externalRefLines(graph.externalStats), ["3 external nodes, 3 resolved"]);
+  });
+
+  it("warns when a workspace resolves NOTHING — the silent break", () => {
+    const lines = externalRefLines({ total: 120, resolved: 0, workspaceModules: 4 });
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /^\u26a0 120 external nodes, 0 resolved/);
+    assert.match(lines[0], /Graphify id-format change/);
+  });
+
+  it("says nothing where there is nothing to break", () => {
+    assert.deepEqual(externalRefLines({ total: 0, resolved: 0, workspaceModules: 0 }), []);
+  });
+
+  it("does not warn for a repository that is not a workspace", () => {
+    const lines = externalRefLines({ total: 40, resolved: 0, workspaceModules: 0 });
+    assert.deepEqual(lines, ["40 external nodes, 0 resolved"]);
   });
 });
 

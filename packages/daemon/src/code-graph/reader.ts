@@ -31,7 +31,7 @@ import {
   MAX_NODES,
   STRUCTURE_RELATIONS,
 } from "./limits.js";
-import { resolveExternals } from "./external-refs.js";
+import { resolveExternals, type ExternalStats } from "./external-refs.js";
 import { safeEdge, safeNode, safeString, type RejectReason, type SafeNode } from "./validate.js";
 import { workspaceModules } from "./workspace-packages.js";
 
@@ -103,6 +103,8 @@ export interface LoadedGraph {
   importersByEntry: Map<string, string[]>;
   /** File -> the files it re-exports from, one hop (index barrels). */
   reExportedFrom: Map<string, string[]>;
+  /** How much of the package boundary resolved — reported by `bastra doctor`. */
+  externalStats: ExternalStats;
   /** Relations seen in the file that are on neither allowlist, with counts.
    *  Surfaced in `bastra doctor` so the lists stay honest as Graphify moves. */
   unknownRelations: Map<string, number>;
@@ -203,7 +205,13 @@ export async function loadGraph(repoRoot: string): Promise<LoadResult> {
     if (bare !== label) push(idsByLabel, bare, n.id);
   }
 
-  const resolved = resolveExternals(externals, nodes, idsByLabel, workspaceModules(repoRoot));
+  const modules = workspaceModules(repoRoot);
+  const resolved = resolveExternals(externals, nodes, idsByLabel, modules);
+  const externalStats: ExternalStats = {
+    total: externals.length,
+    resolved: resolved.symbols.size + resolved.modules.size,
+    workspaceModules: modules.size,
+  };
 
   const dependentsBySymbol = new Map<string, DependentEdge[]>();
   const importers = new Map<string, Set<string>>();
@@ -246,6 +254,7 @@ export async function loadGraph(repoRoot: string): Promise<LoadResult> {
       dependentsBySymbol,
       importersByEntry: sorted(importers),
       reExportedFrom: sorted(reExported),
+      externalStats,
       unknownRelations,
       sizeBytes,
       mtimeMs,

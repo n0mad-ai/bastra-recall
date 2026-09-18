@@ -44,6 +44,44 @@ export interface ResolvedExternals {
   modules: Map<string, string>;
 }
 
+/**
+ * How much of the package boundary survived the read, for `bastra doctor`.
+ *
+ * This is the number that goes quiet when Graphify changes its id spelling:
+ * nothing errors, the graph still loads, and cross-package impact simply stops
+ * being found. So it is reported rather than inferred from a working day.
+ */
+export interface ExternalStats {
+  /** External nodes in the graph (`external: true`, no source file). */
+  total: number;
+  /** How many of them resolved to a real symbol or a workspace entry file. */
+  resolved: number;
+  /** Workspace packages whose specifier could be mapped to a source file. */
+  workspaceModules: number;
+}
+
+/**
+ * The `bastra doctor` lines for one repository's external references.
+ *
+ * A repository that is not a workspace and has no external nodes gets no line
+ * at all — there is nothing to be silently broken. The warning fires on the
+ * one combination that means "this used to work": the repository IS a
+ * workspace, the graph DOES carry external nodes, and not one of them
+ * resolved.
+ */
+export function externalRefLines(stats: ExternalStats): string[] {
+  if (stats.total === 0 && stats.workspaceModules === 0) return [];
+  const line = `${stats.total} external nodes, ${stats.resolved} resolved`;
+  if (stats.workspaceModules > 0 && stats.total > 0 && stats.resolved === 0) {
+    return [
+      `⚠ ${line} — this repository is a workspace, so cross-package ` +
+        `impact is not being found. Likely a Graphify id-format change: ` +
+        `rebuild with 'bastra code index', and if it stays 0 report it (#582).`,
+    ];
+  }
+  return [line];
+}
+
 /** An external node as it survives the read: id only, everything else dropped. */
 export interface ExternalRef {
   id: string;
