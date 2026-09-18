@@ -161,6 +161,27 @@ Repos, nur eindeutige Symbole. **Beide 34/34 richtig.**
 
 **Die Schwelle wird nicht erreicht. Das Kriterium ist nicht erfüllt.**
 
+### Robustheitsprüfung: es ist noch deutlicher
+
+Der Kontrollarm meldete von sich aus eine Unsicherheit bei `readAll` — es gibt
+dort zwei Definitionen (eine freistehende Funktion und eine Klassenmethode
+`AuditLog.readAll()`), und mein Eindeutigkeitsfilter erkennt Methoden nicht.
+Betroffen ist **1 von 34** Szenarien; beide Arme haben dieselbe, mit der
+Ground Truth übereinstimmende Antwort gegeben, die Wertung ist also nicht
+verzerrt.
+
+Rechnet man es trotzdem heraus:
+
+| | N | Reduktion | Median | Graph billiger in |
+|---|---|---|---|---|
+| mit `readAll` | 34 | 6,7 % | 477 / 598 | 13 von 34 |
+| **ohne `readAll`** | **33** | **0,4 %** | 447 / 594 | 12 von 33 |
+
+**Die gesamte gemessene Ersparnis von 6,7 % stammt praktisch aus diesem einen
+Szenario.** Bereinigt bleibt **0,4 %** — also nichts. N = 33 liegt weiter über
+dem preregistrierten Minimum, das Urteil steht damit robuster da als vorher,
+nicht wackliger.
+
 Diesmal ist das ein Urteil und kein `underpowered`: N = 34 über dem Minimum,
 Ground Truth unabhängig verifiziert, keine Kontamination, kein Bündeln, und
 der Selbstbericht des Graph-Arms deckt sich auf das Zeichen mit der
