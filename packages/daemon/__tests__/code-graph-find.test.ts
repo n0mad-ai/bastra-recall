@@ -109,11 +109,12 @@ describe("find_code: the exact lane", () => {
     assert.equal(r.hits[0]?.location, `${SAVE}:40`);
     assert.equal(r.hits[0]?.symbol, "saveMemory");
     assert.equal(r.hits[0]?.kind, "function");
-    assert.equal(r.hits[0]?.community, 1);
   });
 
   it("returns the direct callers, one hop, with their own file:line", () => {
-    const r = find("saveMemory");
+    // `affected` is the mode that asks for dependents; `find` answers where
+    // something IS and no longer ships the list (#579).
+    const r = findCode(cache, { query: "saveMemory", mode: "affected", repo });
     const callers = r.hits[0]?.dependents ?? [];
     assert.ok(
       callers.some((d) => d.location === `${AUDIT}:41` && d.symbol === "auditedSave"),
@@ -123,7 +124,7 @@ describe("find_code: the exact lane", () => {
   });
 
   it("does not hop twice unless asked", () => {
-    const r = find("saveMemory");
+    const r = findCode(cache, { query: "saveMemory", mode: "affected", repo });
     const callers = r.hits[0]?.dependents ?? [];
     assert.ok(
       !callers.some((d) => d.symbol === "saveMemoryHandler"),
@@ -151,7 +152,8 @@ describe("find_code: the exact lane", () => {
     assert.deepEqual(r.files, [AUDIT], "the blast radius of the file, one hop");
     // The hop is spent on `files`; repeating it per symbol would say the same
     // thing once per symbol of the file.
-    for (const h of r.hits) assert.deepEqual(h.dependents, []);
+    // `find` no longer ships a dependents list at all (#579) — absent, not empty.
+    for (const h of r.hits) assert.equal(h.dependents, undefined);
   });
 
   it("never emits a non-code node", () => {
@@ -184,13 +186,13 @@ describe("find_code: the lexical fallback", () => {
     assert.equal(r.status, "ok");
     assert.equal(r.lane, "lexical");
     assert.ok(r.note?.includes("substring"), "the agent is told it is a substring match");
-    assert.ok(r.hits.some((h) => h.file === AUDIT));
+    assert.ok(r.hits.some((h) => h.location.startsWith(AUDIT)));
   });
 
   it("matches on paths as well as on symbol names", () => {
     const r = find("daemon/src/tool-hand");
     assert.equal(r.lane, "lexical");
-    assert.ok(r.hits.some((h) => h.file === HANDLER));
+    assert.ok(r.hits.some((h) => h.location.startsWith(HANDLER)));
   });
 });
 
@@ -239,8 +241,8 @@ describe("find_code: budgets", () => {
   });
 
   it("caps the hop and says that it did", () => {
-    const r = findCode(wideCache, { query: "hub", repo: wideRepo });
-    assert.equal(r.hits[0]?.dependents.length, MAX_DEPENDENTS);
+    const r = findCode(wideCache, { query: "hub", mode: "affected", repo: wideRepo });
+    assert.equal(r.hits[0]?.dependents?.length, MAX_DEPENDENTS);
     assert.equal(r.hits[0]?.dependents_truncated, true);
   });
 
