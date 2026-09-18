@@ -72,7 +72,8 @@ import {
   defaultStatuslineState,
   type StatuslineState,
 } from "./statusline-feed.js";
-import { SERVER_INSTRUCTIONS } from "./mcp-instructions.js";
+import { serverInstructions } from "./mcp-instructions.js";
+import { codeAwarenessDisabledByEnv, enabledRepos } from "./code-graph/enabled-repos.js";
 
 import {
   DAEMON_URL,
@@ -218,7 +219,15 @@ async function main(): Promise<void> {
         },
       ],
     },
-    { capabilities: { tools: {} }, instructions: SERVER_INSTRUCTIONS },
+    {
+      capabilities: { tools: {} },
+      // #582: the code paragraph only for a user who has a code graph. Read
+      // once at start-up, like the tool surface below — a client restart is
+      // what applies a change to either.
+      instructions: serverInstructions(
+        !codeAwarenessDisabledByEnv() && (await enabledRepos().catch(() => [])).length > 0,
+      ),
+    },
   );
 
   // #481: the surface THIS client runs on. Read once — it comes from the

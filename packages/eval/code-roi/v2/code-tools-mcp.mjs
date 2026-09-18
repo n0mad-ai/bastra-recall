@@ -29,6 +29,12 @@ const { affectedTools, findAffectedFiles, FindAffectedFilesArgs } = await import
   `${DIST}find-affected-files.js`
 );
 const { CodeGraphCache } = await import(`${DIST}cache.js`);
+// The PRODUCT's server instructions, not a stand-in. Claude Code loads these
+// into the model's context at session start, so an arm served without them
+// measures a weaker surface than any real user is given (#582).
+const { serverInstructions } = await import(
+  new URL("../../../daemon/dist/mcp-instructions.js", import.meta.url).pathname
+);
 
 const [tree, graphRoot] = process.argv.slice(2);
 if (!tree || !graphRoot) {
@@ -45,7 +51,12 @@ if (cache.get(repo) === null) {
 }
 
 const TOOLS = [...codeTools, ...affectedTools];
-const server = new Server({ name: "code", version: "1.0.0" }, { capabilities: { tools: {} } });
+const server = new Server(
+  { name: "code", version: "1.0.0" },
+  // Code awareness IS on for an arm that is served a graph, so the arm gets
+  // exactly the instructions such a user gets — including the code paragraph.
+  { capabilities: { tools: {} }, instructions: serverInstructions(true) },
+);
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const fail = (text) => ({ isError: true, content: [{ type: "text", text }] });

@@ -52,6 +52,46 @@ export function rng(seed) {
   };
 }
 
+/**
+ * The pooled sample: candidates from several repositories, drawn in the
+ * REGISTERED repository order, each repository capped (#582, registration 5).
+ *
+ * No single local repository supplies 40 scenarios with a usable share of
+ * cross-package breaks, so the sample is pooled — and the two things that
+ * could turn pooling into a way of choosing a result are fixed in the
+ * registration rather than here: the order the repositories are drawn in, and
+ * the cap that stops one of them from carrying the whole sample. Within a
+ * repository, candidates keep their mining (walk) order, so a cap cuts the
+ * tail and never picks among scenarios.
+ *
+ * @param byRepo  Map of repo path -> accepted candidates, in walk order
+ * @param order   the registered repository order
+ * @param cap     the registered per-repository maximum
+ * @param target  min_scenarios; drawing stops once it is reached
+ */
+export function pooledCandidates(byRepo, order, cap, target) {
+  const pooled = [];
+  const takenPerRepo = new Map();
+  // Repositories not named in the registration are never drawn from: an
+  // unlisted repository in the archive is a mistake, not a silent addition.
+  for (const repo of order) {
+    if (pooled.length >= target) break;
+    const room = Math.min(cap, target - pooled.length);
+    const take = (byRepo.get(repo) ?? []).slice(0, room);
+    takenPerRepo.set(repo, take.length);
+    pooled.push(...take);
+  }
+  return { pooled, takenPerRepo };
+}
+
+/**
+ * One scenario per FILE, and a file is identified by repo AND path: the same
+ * path in two repositories is two different files.
+ */
+export function fileKey(candidate) {
+  return `${candidate.repo ?? ""}\u0000${candidate.file}`;
+}
+
 /** Fisher-Yates on a copy, from the registered seed. */
 export function shuffled(items, next) {
   const out = [...items];
@@ -76,8 +116,41 @@ function main() {
     .filter((c) => c.accepted);
   // Pilot scenarios never enter a registered sample.
   const excluded = excludedPilotCommits();
-  const kept = accepted.filter((c) => !excluded.has(c.commit));
-  const dropped = accepted.length - kept.length;
+  const afterPilot = accepted.filter((c) => !excluded.has(c.commit));
+  const dropped = accepted.length - afterPilot.length;
+
+  // One scenario per file, across the pool.
+  const seenFiles = new Set();
+  const unique = afterPilot.filter((c) => {
+    const key = fileKey(c);
+    if (seenFiles.has(key)) return false;
+    seenFiles.add(key);
+    return true;
+  });
+
+  const pooling = REGISTRATION?.sample?.pooling ?? {};
+  const byRepo = new Map();
+  for (const c of unique) {
+    const repo = c.repo ?? REGISTRATION?.population?.repository_path ?? "";
+    if (!byRepo.has(repo)) byRepo.set(repo, []);
+    byRepo.get(repo).push(c);
+  }
+  const order = pooling.allowed === true ? (pooling.repo_order ?? [...byRepo.keys()]) : [...byRepo.keys()].slice(0, 1);
+  const target = REGISTRATION?.sample?.min_scenarios ?? unique.length;
+  // The cap bounds one repository's share OF A POOL. When the first repository
+  // alone reaches the minimum there is no pool, so there is nothing to bound —
+  // capping there would shrink a sufficient sample into an underpowered one.
+  const firstRepoAlone = (byRepo.get(order[0]) ?? []).length;
+  const pooled = pooling.allowed === true && firstRepoAlone < target;
+  const cap = pooled ? (pooling.per_repo_cap ?? Infinity) : Infinity;
+  // Draw a little past the minimum so hand adjudication has room to remove.
+  const { pooled: drawn, takenPerRepo } = pooledCandidates(
+    byRepo,
+    pooled ? order : order.slice(0, 1),
+    cap,
+    Math.ceil(target * 1.125),
+  );
+  const kept = drawn;
   const next = rng(SEED);
   const scenarios = kept.map((c, i) => ({
     id: `S${String(i + 1).padStart(2, "0")}`,
@@ -98,10 +171,11 @@ function main() {
     join(OUT, "scenarios.json"),
     JSON.stringify(
       {
-        registration_version: 4,
+        registration_version: REGISTRATION?.registration_version ?? 5,
         seed: SEED,
         range_end: process.env.CODE_ROI_RANGE_END ?? null,
         arms: ARM_IDS,
+        repos: Object.fromEntries(takenPerRepo),
         scenarios,
       },
       null,
@@ -113,6 +187,9 @@ function main() {
       (dropped > 0 ? ` (${dropped} dropped: pilot commits, excluded by the registration)` : "") +
       "\n",
   );
+  for (const [repo, n] of takenPerRepo) {
+    process.stdout.write(`  ${n} from ${repo}\n`);
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();

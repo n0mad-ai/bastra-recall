@@ -89,8 +89,17 @@ export const ARMS = {
   prefilled: { id: "prefilled", name: "prefilled", graph: true, prefill: true },
 };
 
-/** The registered ceiling for one run, in US dollars. */
-export const COST_CEILING_USD = Number(process.env.CODE_ROI_COST_CEILING ?? 20);
+/**
+ * The registered ceiling for one run, in US dollars — read FROM the
+ * registration, not repeated here. A number in two places is a number that
+ * ends up different in one of them, and this one decides when a paid run stops.
+ */
+const REGISTRATION = JSON.parse(
+  readFileSync(new URL("../../registrations/code-awareness-change-impact.json", import.meta.url), "utf8"),
+);
+export const COST_CEILING_USD = Number(
+  process.env.CODE_ROI_COST_CEILING ?? REGISTRATION.run_conditions.cost_ceiling_usd,
+);
 
 /**
  * What one finished arm cost, from its transcript's `result` event.
