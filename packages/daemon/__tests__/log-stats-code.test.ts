@@ -66,6 +66,56 @@ describe("code search ROI: aggregation", () => {
   });
 });
 
+describe("code search ROI: dependents_block_followed_by_edit (#588)", () => {
+  const block = (ts: string, session: string, listed: string[]) => ({
+    ts,
+    session_id: session,
+    code_block_tokens_est: 50,
+    code_dependents: listed.length,
+    code_listed: listed,
+    code_targets: ["/r/src/core.ts"],
+  });
+  const edit = (ts: string, session: string, target: string) => ({ ts, session_id: session, code_targets: [target] });
+
+  it("counts a block once when a later write in the same session targets a named file", () => {
+    const s = aggregateCodeRoi([
+      block("2026-09-18T10:00:00Z", "s1", ["/r/src/a.ts", "/r/src/b.ts"]),
+      edit("2026-09-18T10:01:00Z", "s1", "/r/src/a.ts"),
+      edit("2026-09-18T10:02:00Z", "s1", "/r/src/b.ts"),
+    ]);
+    assert.equal(s.blocksWithListed, 1);
+    assert.equal(s.blocksFollowed, 1);
+  });
+
+  it("does not count an edit from another session, or one that came first", () => {
+    const s = aggregateCodeRoi([
+      edit("2026-09-18T09:59:00Z", "s1", "/r/src/a.ts"),
+      block("2026-09-18T10:00:00Z", "s1", ["/r/src/a.ts"]),
+      edit("2026-09-18T10:01:00Z", "s2", "/r/src/a.ts"),
+    ]);
+    assert.equal(s.blocksWithListed, 1);
+    assert.equal(s.blocksFollowed, 0);
+  });
+
+  it("orders by time, not by the order rows were read in", () => {
+    const s = aggregateCodeRoi([
+      edit("2026-09-18T10:01:00Z", "s1", "/r/src/a.ts"),
+      block("2026-09-18T10:00:00Z", "s1", ["/r/src/a.ts"]),
+    ]);
+    assert.equal(s.blocksFollowed, 1);
+  });
+
+  it("renders the share next to the cost", () => {
+    const lines = renderCodeRoi(
+      aggregateCodeRoi([
+        block("2026-09-18T10:00:00Z", "s1", ["/r/src/a.ts"]),
+        edit("2026-09-18T10:01:00Z", "s1", "/r/src/a.ts"),
+      ]),
+    );
+    assert.ok(lines.some((l) => l.includes("followed: 1 of 1 blocks")), lines.join("\n"));
+  });
+});
+
 describe("code search ROI: rendering", () => {
   it("says nothing at all when the feature never fired", () => {
     // A section of zeroes reads like a measurement. There is none here.

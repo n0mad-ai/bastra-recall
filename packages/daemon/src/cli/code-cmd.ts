@@ -25,9 +25,9 @@
 
 import { appendFile, mkdir, readFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { relative } from "node:path";
+import { relative, resolve } from "node:path";
 import { buildCodeGraph, scanFileState } from "../code-graph/build.js";
-import { gitPath, isGitRepo } from "../code-graph/git-paths.js";
+import { gitPath, isGitRepo, repoRootSync } from "../code-graph/git-paths.js";
 import { graphDirOf, graphFileOf, GRAPH_DIR_NAME } from "../code-graph/reader.js";
 import { isStale, readManifest } from "../code-graph/manifest.js";
 import { enabledRepos, isRepoEnabled, setRepoEnabled } from "../code-graph/enabled-repos.js";
@@ -45,7 +45,12 @@ export async function cmdCode(opts: {
   const sub = opts.sub ?? "status";
   // `bastra code enable <dir>` — positional[2] is the first argument after
   // the command and subcommand.
-  const dir = opts.positional?.[2] ?? process.cwd();
+  const given = resolve(opts.positional?.[2] ?? process.cwd());
+  // The checkout root, not the directory the command was typed in (#586):
+  // the Write/Edit lane and `find_code` look a repository up by its root, so
+  // enabling `packages/daemon/` stored a key nothing ever asked for. A linked
+  // worktree is its own root on purpose — its own checkout, its own graph.
+  const dir = repoRootSync(given) ?? given;
 
   switch (sub) {
     case "status":
@@ -53,7 +58,7 @@ export async function cmdCode(opts: {
     case "enable":
       return await cmdEnable(dir);
     case "disable":
-      return await cmdDisable(dir);
+      return await cmdDisable(dir, given);
     case "index":
       return await cmdIndex(dir, false, opts.yes === true);
     case "rebuild":
@@ -121,8 +126,10 @@ async function cmdEnable(dir: string): Promise<number> {
   return await cmdIndex(dir, false, true);
 }
 
-async function cmdDisable(dir: string): Promise<number> {
-  const changed = await setRepoEnabled(dir, false);
+async function cmdDisable(dir: string, given: string): Promise<number> {
+  // Also the literal directory: before #586, enabling from a subdirectory
+  // stored that subdirectory, and it must stay possible to switch it off.
+  const changed = (await setRepoEnabled(dir, false)) || (given !== dir && (await setRepoEnabled(given, false)));
   if (!changed) {
     out(`code awareness was not enabled for ${dir}\n`);
     return 0;

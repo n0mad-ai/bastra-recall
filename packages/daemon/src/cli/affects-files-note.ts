@@ -51,7 +51,8 @@ import {
 } from "../code-graph/applies-to.js";
 import { repoRootOf } from "../code-graph/git-paths.js";
 import { commitBefore, formatOffers, renameOffers, renamesSince } from "../code-graph/rename-evidence.js";
-import { CodeGraphCache } from "../code-graph/cache.js";
+import { loadGraph, type LoadedGraph } from "../code-graph/reader.js";
+import { isRepoEnabledSync } from "../code-graph/enabled-repos.js";
 import { projectForFilter } from "../scope-filter.js";
 
 /** Findings listed by name before the rest becomes a count. */
@@ -69,6 +70,11 @@ export interface AffectsFilesIo {
    *  established with confidence — then nothing is checked, because every path
    *  would be measured against the wrong repository. */
   project: (repoRoot: string) => string | null;
+  /**
+   * The code graph to check `file.ts#symbol` entries against, loaded and
+   * awaited. Omitted → symbols are not checked, only files.
+   */
+  graph?: (repoRoot: string) => Promise<LoadedGraph | null>;
 }
 
 /**
@@ -94,7 +100,10 @@ export async function affectsFilesLines(io: AffectsFilesIo): Promise<string[]> {
   const declared = withEntries.filter((m) => belongsToProject(m.scope, project));
   if (declared.length === 0) return [];
 
-  const graph = new CodeGraphCache().get(repoRoot); // cold returns null, never blocks
+  // Awaited, unlike a hook (#587): the cache's non-blocking `get()` answers
+  // null on its first call, and a short-lived CLI never gets a second one —
+  // so every symbol anchor used to be checked for its file only.
+  const graph = io.graph !== undefined ? await io.graph(repoRoot).catch(() => null) : null;
   const unresolved = unresolvedEntries(declared, {
     exists: (file) => io.exists(repoRoot, file),
     graph,
@@ -174,5 +183,12 @@ export function defaultAffectsFilesIo(vaultPath: string): AffectsFilesIo {
     repoRoot: () => repoRootOf(process.cwd()),
     exists: (repoRoot, file) => existsSync(isAbsolute(file) ? file : join(repoRoot, file)),
     project: (repoRoot) => projectForFilter(repoRoot),
+    // Only for an enabled repository: a disabled one has switched code
+    // awareness off, graph on disk or not (#585).
+    graph: async (repoRoot) => {
+      if (!isRepoEnabledSync(repoRoot)) return null;
+      const result = await loadGraph(repoRoot);
+      return result.ok ? result.graph : null;
+    },
   };
 }

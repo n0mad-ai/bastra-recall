@@ -56,7 +56,16 @@ export class CodeGraphCache {
   private readonly repos = new Map<string, RepoState>();
   private tick = 0;
 
-  constructor(private readonly budgetBytes: number = MAX_TOTAL_HEAP_BYTES) {}
+  constructor(
+    private readonly budgetBytes: number = MAX_TOTAL_HEAP_BYTES,
+    /**
+     * Whether a repository may be served at all (#585). The daemon's shared
+     * cache passes the enabled list plus the kill switch; a cache a test builds
+     * for itself serves whatever it is pointed at. Checked on every `get()`, so
+     * `bastra code disable` takes effect on the next call, not the next restart.
+     */
+    private readonly allow: (repoRoot: string) => boolean = () => true,
+  ) {}
 
   /**
    * The graph for a repository IF it is already in memory, else null plus a
@@ -67,6 +76,12 @@ export class CodeGraphCache {
    * anything: the next call will have it.
    */
   get(repoRoot: string): LoadedGraph | null {
+    if (!this.allow(repoRoot)) {
+      // Disabled: drop the graph too, so a disabled repository does not keep
+      // ~20 MB of heap for a feature that is switched off.
+      if (this.repos.has(repoRoot)) this.forget(repoRoot);
+      return null;
+    }
     const state = this.repos.get(repoRoot);
     if (state?.graph != null) {
       state.lastUsed = ++this.tick;
@@ -75,6 +90,11 @@ export class CodeGraphCache {
     if (state?.degraded != null) return null;
     void this.ensureLoaded(repoRoot);
     return null;
+  }
+
+  /** Whether this cache serves the repository at all — see `allow`. */
+  allows(repoRoot: string): boolean {
+    return this.allow(repoRoot);
   }
 
   /**
@@ -114,22 +134,42 @@ export class CodeGraphCache {
   }
 
   /**
-   * Drop a repository's graph if the file changed since it was read, so the
-   * next `get()` reloads it. Cheap enough (one `stat`) to call from the
-   * refresh coordinator (#581) rather than watching from in here.
+   * Swap in the graph on disk if it is not the one in memory (#583).
+   *
+   * Called after every successful build and on the daemon's periodic check.
+   * Before, nothing called it: a refresh rewrote `graph.json` and every reader
+   * went on answering from the graph loaded at start, until the daemon was
+   * restarted — the refresh was real, and invisible.
+   *
+   * The old graph keeps serving while the new one parses; the swap is one
+   * assignment. Dropping first and loading lazily would make every hook and
+   * `find_code` call in those ~25 ms answer "unavailable" after each build.
+   * A repository nobody has asked about yet is left alone — its first `get()`
+   * loads the current file anyway.
    */
-  async invalidateIfChanged(repoRoot: string): Promise<boolean> {
+  async reloadIfChanged(repoRoot: string): Promise<boolean> {
     const state = this.repos.get(repoRoot);
-    if (state?.graph == null) return false;
-    try {
-      const st = await stat(graphFileOf(repoRoot));
-      if (st.mtimeMs === state.graph.mtimeMs && st.size === state.graph.sizeBytes) return false;
-    } catch {
-      // The graph went away: forget it rather than serving a graph for a file
-      // that no longer exists.
+    if (state === undefined) return false;
+    if (state.loading !== null) await state.loading;
+    if (state.graph !== null) {
+      try {
+        const st = await stat(graphFileOf(repoRoot));
+        if (st.mtimeMs === state.graph.mtimeMs && st.size === state.graph.sizeBytes) return false;
+      } catch {
+        // Gone: fall through, the load below marks it degraded.
+      }
     }
-    state.graph = null;
-    state.degraded = null;
+    const result = await loadGraph(repoRoot);
+    if (this.repos.get(repoRoot) !== state) return false; // forgotten meanwhile
+    if (result.ok) {
+      state.graph = result.graph;
+      state.degraded = null;
+      state.lastUsed = ++this.tick;
+      this.evictIfOverBudget();
+    } else {
+      state.graph = null;
+      state.degraded = result.reason;
+    }
     return true;
   }
 

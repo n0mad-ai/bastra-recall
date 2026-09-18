@@ -99,6 +99,20 @@ export interface RefresherOptions {
   lockRetryMs?: number;
   /** Where a refresh reports what happened. Defaults to silence. */
   onEvent?: (event: RefreshEvent) => void;
+  /**
+   * Called after every successful build, and awaited before the repository
+   * counts as idle (#583). The daemon hands the cache's reload in here: a
+   * build that rewrites `graph.json` without the running readers noticing is
+   * a refresh nobody sees until the next restart. Failures are swallowed —
+   * the build itself succeeded, and the next build or check retries.
+   */
+  onBuilt?: (repoRoot: string) => Promise<unknown> | void;
+  /**
+   * Whether a repository may still be built (#585). Checked when a run is
+   * about to start, so a repository disabled while a refresh was queued is
+   * skipped instead of built. Defaults to always.
+   */
+  allow?: (repoRoot: string) => boolean;
 }
 
 export interface RefreshEvent {
@@ -129,6 +143,8 @@ export class CodeGraphRefresher {
   private readonly maxFailures: number;
   private readonly lockRetryMs: number;
   private readonly onEvent: (event: RefreshEvent) => void;
+  private readonly onBuilt: (repoRoot: string) => Promise<unknown> | void;
+  private readonly allow: (repoRoot: string) => boolean;
   private stopped = false;
 
   constructor(opts: RefresherOptions = {}) {
@@ -138,6 +154,8 @@ export class CodeGraphRefresher {
     this.maxFailures = opts.maxFailures ?? DEFAULT_MAX_FAILURES;
     this.lockRetryMs = opts.lockRetryMs ?? DEFAULT_LOCK_RETRY_MS;
     this.onEvent = opts.onEvent ?? (() => {});
+    this.onBuilt = opts.onBuilt ?? (() => {});
+    this.allow = opts.allow ?? (() => true);
   }
 
   /**
@@ -254,6 +272,11 @@ export class CodeGraphRefresher {
 
   private async run(repoRoot: string, entry: RepoEntry): Promise<void> {
     if (this.stopped) return this.settle();
+    if (!this.allow(repoRoot)) {
+      entry.pending = false;
+      this.emit({ repoRoot, reason: entry.reason, outcome: "skipped", detail: "not enabled" });
+      return this.settle();
+    }
     entry.running = true;
     const reason = entry.reason;
     this.emit({ repoRoot, reason, outcome: "started" });
@@ -265,6 +288,15 @@ export class CodeGraphRefresher {
       // The build path is written not to throw; if it ever does, a rejected
       // promise here would leave `running` set and wedge the repo for good.
       result = { ok: false, reason: "failed", detail: err instanceof Error ? err.message : String(err) };
+    }
+    if (result.ok) {
+      // Still `running` while the readers reload, so `whenIdle()` means the
+      // new graph is also the one being served.
+      try {
+        await this.onBuilt(repoRoot);
+      } catch {
+        // See `onBuilt`: the build stands; a failed reload is retried later.
+      }
     }
     entry.running = false;
 

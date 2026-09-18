@@ -177,6 +177,9 @@ Details worth knowing:
   a few seconds. While it is behind, anything Recall shows from it is marked
   as possibly outdated rather than presented as current.
 - Nothing is indexed for a repository you have not enabled.
+- `enable` and `disable` work from anywhere inside the repository and take
+  effect within a few seconds, without restarting anything. A linked git
+  worktree is its own repository and is enabled on its own.
 - `BASTRA_CODE_AWARENESS=off` turns the whole feature off without changing
   what you enabled.
 - macOS and Linux for now.
@@ -406,6 +409,9 @@ Was du wissen solltest:
   daraus zeigt, als möglicherweise veraltet gekennzeichnet statt als aktuell
   ausgegeben.
 - Für ein Repository, das du nicht aktiviert hast, wird nichts indiziert.
+- `enable` und `disable` funktionieren von überall im Repository und wirken
+  binnen weniger Sekunden, ohne Neustart. Ein verknüpfter Git-Worktree ist ein
+  eigenes Repository und wird für sich aktiviert.
 - `BASTRA_CODE_AWARENESS=off` schaltet die ganze Funktion ab, ohne deine
   Aktivierungen zu verändern.
 - Vorerst macOS und Linux.

@@ -32,7 +32,7 @@ import { watch, type FSWatcher } from "node:fs";
 import { relative, sep } from "node:path";
 import { CodeGraphRefresher, needsReconcile } from "./refresh.js";
 import { gitWatchPaths } from "./git-paths.js";
-import { enabledRepos } from "./enabled-repos.js";
+import { enabledRepos, isRepoEnabledSync } from "./enabled-repos.js";
 import { codeGraphCache } from "./dependents-block.js";
 import { GRAPH_DIR_NAME } from "./reader.js";
 
@@ -43,24 +43,45 @@ const IGNORED_SEGMENTS = new Set([GRAPH_DIR_NAME, ".git", "node_modules", "dist"
  * The process-wide refresher. One per daemon, like the graph cache — two would
  * each think they hold single flight, which is the same failure as no single
  * flight at all.
+ *
+ * Wired to the shared cache (#583): a successful build swaps the new graph in
+ * for every reader, and a repository that is no longer enabled is not built
+ * (#585).
  */
 let refresher: CodeGraphRefresher | null = null;
 export function codeGraphRefresher(): CodeGraphRefresher {
-  refresher ??= new CodeGraphRefresher();
+  refresher ??= new CodeGraphRefresher({
+    onBuilt: (repoRoot) => codeGraphCache().reloadIfChanged(repoRoot),
+    allow: (repoRoot) => isRepoEnabledSync(repoRoot),
+  });
   return refresher;
 }
 
-const watchers: FSWatcher[] = [];
+/**
+ * How often the running daemon re-reads the enabled list and checks each
+ * graph file for a rebuild it did not run itself (#583, #585).
+ *
+ * Before, the list was read once at boot: `bastra code enable` started nothing
+ * and `bastra code disable` stopped nothing until a restart, and a graph built
+ * by `bastra code index` in a terminal was never picked up. A few seconds is
+ * the same order as the refresh debounce; each tick costs one settings read
+ * and one `stat` per enabled repository.
+ */
+export const SYNC_INTERVAL_MS = 5_000;
+
+/** Watchers per repository, so one repository can be stopped on its own. */
+const watchers = new Map<string, FSWatcher[]>();
 
 export interface CodeAwarenessHandle {
-  /** Repositories the service actually took on. */
+  /** Repositories the service took on at start. */
   repos: string[];
   /** Stop every watcher and timer. Idempotent. */
   stop: () => void;
 }
 
 /**
- * Start code awareness for every enabled repository.
+ * Start code awareness for every enabled repository, and keep following the
+ * enabled list while the daemon runs.
  *
  * Never throws and never blocks the caller: a daemon must boot even if a
  * repository moved, a graph is corrupt or a watcher cannot be installed. Each
@@ -77,46 +98,91 @@ export async function startCodeAwareness(
    * the configuration.
    */
   repoList: () => Promise<string[]> = enabledRepos,
+  syncIntervalMs: number = SYNC_INTERVAL_MS,
 ): Promise<CodeAwarenessHandle> {
-  const repos = await repoList();
-  if (repos.length === 0) return { repos: [], stop: () => {} };
+  let stopped = false;
+  const sync = async (): Promise<void> => {
+    let wanted: Set<string>;
+    try {
+      wanted = new Set(await repoList());
+    } catch {
+      return; // an unreadable list changes nothing this tick
+    }
+    if (stopped) return;
+    for (const repoRoot of wanted) {
+      if (!watchers.has(repoRoot)) startRepo(repoRoot, onEvent);
+      // Picks up a graph built by another process (`bastra code index`).
+      void codeGraphCache()
+        .reloadIfChanged(repoRoot)
+        .catch(() => {});
+    }
+    for (const repoRoot of [...watchers.keys()]) {
+      if (!wanted.has(repoRoot)) stopRepo(repoRoot);
+    }
+  };
 
-  const refresh = codeGraphRefresher();
-
-  for (const repoRoot of repos) {
-    // Preload, so the first Write/Edit in this repository is warm rather than
-    // paying the 20-26 ms cold start inside the hook (C-092). Not awaited:
-    // boot does not wait for ~20 MB of parsing per repository.
-    void codeGraphCache()
-      .ensureLoaded(repoRoot)
-      .catch(() => {});
-
-    // Startup reconciliation: the on-disk `dirty` flag, or a file newer than
-    // the build, means the daemon died mid-build or the tree moved while it
-    // was down. Exactly one refresh either way.
-    void needsReconcile(repoRoot)
-      .then((needed) => {
-        if (needed) refresh.enqueue(repoRoot, "startup");
-      })
-      .catch(() => {});
-
-    watchRepo(repoRoot, refresh, onEvent);
-    void watchGit(repoRoot, refresh, onEvent);
-  }
+  await sync();
+  const repos = [...watchers.keys()];
+  const timer = setInterval(() => void sync(), syncIntervalMs);
+  timer.unref?.();
 
   return {
     repos,
     stop: () => {
-      for (const w of watchers.splice(0)) {
-        try {
-          w.close();
-        } catch {
-          /* a watcher that is already gone needs no closing */
-        }
-      }
-      refresh.stop();
+      stopped = true;
+      clearInterval(timer);
+      for (const repoRoot of [...watchers.keys()]) closeWatchers(repoRoot);
+      codeGraphRefresher().stop();
     },
   };
+}
+
+function startRepo(repoRoot: string, onEvent?: (line: string) => void): void {
+  watchers.set(repoRoot, []);
+  const refresh = codeGraphRefresher();
+
+  // Preload, so the first Write/Edit in this repository is warm rather than
+  // paying the 20-26 ms cold start inside the hook (C-092). Not awaited:
+  // boot does not wait for ~20 MB of parsing per repository.
+  void codeGraphCache()
+    .ensureLoaded(repoRoot)
+    .catch(() => {});
+
+  // Startup reconciliation: the on-disk `dirty` flag, or a file newer than
+  // the build, means the daemon died mid-build or the tree moved while it
+  // was down. Exactly one refresh either way.
+  void needsReconcile(repoRoot)
+    .then((needed) => {
+      if (needed) refresh.enqueue(repoRoot, "startup");
+    })
+    .catch(() => {});
+
+  watchRepo(repoRoot, refresh, onEvent);
+  void watchGit(repoRoot, refresh, onEvent);
+}
+
+/** Disabled while running: no watcher, no graph in memory (#585). */
+function stopRepo(repoRoot: string): void {
+  closeWatchers(repoRoot);
+  codeGraphCache().forget(repoRoot);
+}
+
+function closeWatchers(repoRoot: string): void {
+  for (const w of watchers.get(repoRoot) ?? []) {
+    try {
+      w.close();
+    } catch {
+      /* a watcher that is already gone needs no closing */
+    }
+  }
+  watchers.delete(repoRoot);
+}
+
+function track(repoRoot: string, w: FSWatcher): void {
+  const list = watchers.get(repoRoot);
+  // Stopped while an async watch was being set up: close it right away.
+  if (list === undefined) w.close();
+  else list.push(w);
 }
 
 /**
@@ -138,7 +204,7 @@ function watchRepo(
       // other three triggers still fire and a stale graph still says so.
       onEvent?.(`code-graph: file watcher stopped for ${repoRoot}`);
     });
-    watchers.push(w);
+    track(repoRoot, w);
   } catch {
     onEvent?.(`code-graph: could not watch ${repoRoot}`);
   }
@@ -177,7 +243,7 @@ async function watchGit(
         refresh.enqueue(repoRoot, "git");
       });
       w.on("error", () => onEvent?.(`code-graph: git watcher stopped for ${repoRoot}`));
-      watchers.push(w);
+      track(repoRoot, w);
     } catch {
       /* a ref path that cannot be watched is not worth failing the boot for */
     }

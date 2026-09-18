@@ -8,6 +8,7 @@ import {
   codeAwarenessDisabledByEnv,
   enabledRepos,
   isRepoEnabled,
+  isRepoEnabledSync,
   setRepoEnabled,
 } from "../src/code-graph/enabled-repos.js";
 
@@ -123,6 +124,33 @@ describe("code awareness: the off switches", () => {
       await setRepoEnabled("/repos/alpha", true, path);
       assert.deepEqual(await enabledRepos(path, {}, "win32"), []);
       assert.equal(await isRepoEnabled("/repos/alpha", path, {}, "win32"), false);
+    });
+  });
+});
+
+describe("code awareness: the synchronous gate the readers use (#585)", () => {
+  it("follows enable and disable without a restart", async () => {
+    await withSettings({ update: { mode: "notify" } }, async (path) => {
+      assert.equal(isRepoEnabledSync("/repos/alpha", path, {}, "darwin"), false);
+      await setRepoEnabled("/repos/alpha", true, path);
+      assert.equal(isRepoEnabledSync("/repos/alpha/", path, {}, "darwin"), true);
+      await setRepoEnabled("/repos/alpha", false, path);
+      assert.equal(isRepoEnabledSync("/repos/alpha", path, {}, "darwin"), false);
+    });
+  });
+
+  it("is off under the kill switch and off-platform", async () => {
+    await withSettings({ update: { mode: "notify" }, code: { repos: ["/repos/alpha"] } }, async (path) => {
+      assert.equal(isRepoEnabledSync("/repos/alpha", path, { BASTRA_CODE_AWARENESS: "off" }, "darwin"), false);
+      assert.equal(isRepoEnabledSync("/repos/alpha", path, {}, "win32"), false);
+    });
+  });
+
+  it("fails closed on a missing or corrupt settings file", async () => {
+    await withSettings(undefined, async (path) => {
+      assert.equal(isRepoEnabledSync("/repos/alpha", path, {}, "darwin"), false);
+      await writeFile(path, "{ not json", "utf8");
+      assert.equal(isRepoEnabledSync("/repos/alpha", path, {}, "darwin"), false);
     });
   });
 });

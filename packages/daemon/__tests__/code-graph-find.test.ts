@@ -361,3 +361,40 @@ describe("find_code: the REST door answers like the in-process one", () => {
     }
   });
 });
+
+describe("find_code: off is off (#585)", () => {
+  it("answers unavailable under the kill switch, even with a warm graph", () => {
+    const prev = process.env.BASTRA_CODE_AWARENESS;
+    process.env.BASTRA_CODE_AWARENESS = "off";
+    try {
+      const r = find("saveMemory");
+      assert.equal(r.status, "unavailable");
+      assert.deepEqual(r.hits, []);
+      assert.ok(r.note?.includes("switched off"), `got: ${r.note}`);
+    } finally {
+      if (prev === undefined) delete process.env.BASTRA_CODE_AWARENESS;
+      else process.env.BASTRA_CODE_AWARENESS = prev;
+    }
+  });
+
+  it("answers unavailable for a repository that is not enabled, graph on disk or not", async () => {
+    const gated = new CodeGraphCache(undefined, () => false);
+    await gated.ensureLoaded(repo);
+    const r = findCode(gated, { query: "saveMemory", repo });
+    assert.equal(r.status, "unavailable");
+    assert.ok(r.note?.includes("switched off"));
+  });
+});
+
+describe("find_code: repo given as a subdirectory (#586)", () => {
+  it("resolves to the checkout root the graph is keyed by", async () => {
+    const checkout = join(root, "checkout");
+    await writeGraph(checkout, FIXTURE);
+    await mkdir(join(checkout, ".git"), { recursive: true });
+    await mkdir(join(checkout, "packages", "core"), { recursive: true });
+    const c = new CodeGraphCache();
+    await c.ensureLoaded(checkout);
+    const r = findCode(c, { query: "saveMemory", repo: join(checkout, "packages", "core") });
+    assert.equal(r.status, "ok");
+  });
+});

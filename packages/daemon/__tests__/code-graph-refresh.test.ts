@@ -318,3 +318,69 @@ describe("status and shutdown", () => {
     await r.whenIdle();
   });
 });
+
+describe("the readers see a finished build (#583)", () => {
+  it("runs onBuilt after a successful build, before the repo counts as idle", async () => {
+    const order: string[] = [];
+    const r = new CodeGraphRefresher({
+      debounceMs: 1,
+      build: async () => {
+        order.push("build");
+        return OK;
+      },
+      onBuilt: async (repoRoot) => {
+        await tick(20);
+        order.push(`reload:${repoRoot}`);
+      },
+    });
+    r.enqueue("/a", "manual");
+    await r.whenIdle();
+    assert.deepEqual(order, ["build", "reload:/a"]);
+  });
+
+  it("does not call onBuilt for a failed build, and survives a throwing one", async () => {
+    let reloads = 0;
+    const failing = new CodeGraphRefresher({
+      debounceMs: 1,
+      maxFailures: 1,
+      build: async () => fail(),
+      onBuilt: () => void reloads++,
+    });
+    failing.enqueue("/a", "manual");
+    await failing.whenIdle();
+    assert.equal(reloads, 0);
+
+    const throwing = new CodeGraphRefresher({
+      debounceMs: 1,
+      build: async () => OK,
+      onBuilt: async () => {
+        throw new Error("reload broke");
+      },
+    });
+    throwing.enqueue("/a", "manual");
+    await throwing.whenIdle();
+    assert.equal(throwing.statusOf("/a")?.builds, 1, "the build still counts");
+  });
+});
+
+describe("a disabled repository is not built (#585)", () => {
+  it("skips a queued refresh once the repository is no longer allowed", async () => {
+    let builds = 0;
+    let enabled = true;
+    const events: RefreshEvent[] = [];
+    const r = new CodeGraphRefresher({
+      debounceMs: 20,
+      build: async () => {
+        builds++;
+        return OK;
+      },
+      allow: () => enabled,
+      onEvent: (e) => events.push(e),
+    });
+    r.enqueue("/a", "watcher");
+    enabled = false; // `bastra code disable` while the debounce runs
+    await r.whenIdle();
+    assert.equal(builds, 0);
+    assert.ok(events.some((e) => e.outcome === "skipped" && e.detail === "not enabled"));
+  });
+});

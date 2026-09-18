@@ -11,16 +11,26 @@
  * WHAT IT DOES NOT CLAIM. It reports what the feature COST and what it
  * OFFERED: tokens spent, dependants named, how often the graph was behind.
  * It cannot report what it SAVED, because the daemon cannot see the searches
- * an agent did not run. The measured comparison against a no-graph control
- * arm lives in `packages/eval/code-roi/` and says, as of 2026-09-18, that a
- * targeted grep is cheaper per lookup — while also finding only 23 of 40
- * symbols. Treat this section as the cost ledger, not as the verdict.
+ * an agent did not run. The comparison against a no-graph control arm lives
+ * in `packages/eval/code-roi/`; as of 2026-09-18 it holds no verdict for the
+ * current code (#588). Treat this section as the cost ledger, not as the
+ * verdict.
+ *
+ * The one USE signal it can see is `followed`: a block named a file, and a
+ * later write in the same session targeted that file — the registered
+ * secondary `dependents_block_followed_by_edit`. A follow-up edit is evidence
+ * the list mattered, not proof the block caused it; the agent may have gone
+ * there anyway.
  *
  * Split out of log-stats.ts, which is already at the file-size ceiling.
  */
 
 /** One hook_call row, reduced to the fields this section reads. */
 export interface CodeRoiRow {
+  ts?: unknown;
+  session_id?: unknown;
+  code_listed?: unknown;
+  code_targets?: unknown;
   code_block_tokens_est?: unknown;
   code_dependents?: unknown;
   code_stale?: unknown;
@@ -45,6 +55,10 @@ export interface CodeRoiStats {
   appliesToCount: number;
   /** Tokens of everything injected, so the code share is readable. */
   hintTokensTotal: number;
+  /** Blocks that logged the files they named (rows from before #588 did not). */
+  blocksWithListed: number;
+  /** …of which a later write in the same session targeted a named file. */
+  blocksFollowed: number;
 }
 
 const num = (v: unknown): number | null =>
@@ -93,7 +107,10 @@ export function aggregateCodeRoi(rows: readonly CodeRoiRow[]): CodeRoiStats {
     }
   }
 
+  const follow = followedByEdit(rows);
+
   return {
+    ...follow,
     calls: rows.length,
     withCodeBlock,
     withAppliesTo,
@@ -106,6 +123,41 @@ export function aggregateCodeRoi(rows: readonly CodeRoiRow[]): CodeRoiStats {
     appliesToCount,
     hintTokensTotal,
   };
+}
+
+const strings = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+
+/**
+ * `dependents_block_followed_by_edit` (#588): per session, in time order, did
+ * a later write target a file an earlier block named? Each block counts once,
+ * however many of its files were edited afterwards.
+ */
+function followedByEdit(rows: readonly CodeRoiRow[]): { blocksWithListed: number; blocksFollowed: number } {
+  const ordered = rows
+    .filter((r) => typeof r.session_id === "string" && typeof r.ts === "string")
+    .sort((a, b) => (a.ts as string).localeCompare(b.ts as string));
+  const open = new Map<string, Array<{ listed: Set<string>; followed: boolean }>>();
+  let blocksWithListed = 0;
+  let blocksFollowed = 0;
+  for (const r of ordered) {
+    const blocks = open.get(r.session_id as string) ?? [];
+    for (const target of strings(r.code_targets)) {
+      for (const b of blocks) {
+        if (!b.followed && b.listed.has(target)) {
+          b.followed = true;
+          blocksFollowed++;
+        }
+      }
+    }
+    const listed = strings(r.code_listed);
+    if (listed.length > 0) {
+      blocksWithListed++;
+      blocks.push({ listed: new Set(listed), followed: false });
+      open.set(r.session_id as string, blocks);
+    }
+  }
+  return { blocksWithListed, blocksFollowed };
 }
 
 function pct(part: number, whole: number): string {
@@ -135,6 +187,12 @@ export function renderCodeRoi(s: CodeRoiStats): string[] {
     lines.push(
       `    reach: ${s.dependentsTotal} dependants named, ${s.dependentsMedian} median per block`,
     );
+    if (s.blocksWithListed > 0) {
+      lines.push(
+        `    followed: ${s.blocksFollowed} of ${s.blocksWithListed} blocks (${pct(s.blocksFollowed, s.blocksWithListed)}) ` +
+          "were followed by an edit to a file they named, same session",
+      );
+    }
     if (s.staleBlocks > 0) {
       lines.push(
         `    ${s.staleBlocks} of them (${pct(s.staleBlocks, s.withCodeBlock)}) were marked possibly out of date`,

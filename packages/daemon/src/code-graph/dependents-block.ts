@@ -51,9 +51,10 @@
  */
 
 import { stat } from "node:fs/promises";
-import { relative, isAbsolute, sep } from "node:path";
+import { join, relative, isAbsolute, sep } from "node:path";
 import { stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { CodeGraphCache } from "./cache.js";
+import { codeAwarenessDisabledByEnv, isRepoEnabledSync } from "./enabled-repos.js";
 import { dependentFilesOf, symbolsOfFile, graphDirOf, type CodeSymbol } from "./reader.js";
 import { isStale, readManifest } from "./manifest.js";
 import { MAX_SHOW, type ReadonlySessionState } from "../session-state.js";
@@ -87,7 +88,9 @@ const DEDUPE_PREFIX = "code:";
  */
 let shared: CodeGraphCache | null = null;
 export function codeGraphCache(): CodeGraphCache {
-  shared ??= new CodeGraphCache();
+  // Gated by the enabled list and the kill switch (#585): this is the cache
+  // every production reader goes through, so the switch lives here once.
+  shared ??= new CodeGraphCache(undefined, (repoRoot) => isRepoEnabledSync(repoRoot));
   return shared;
 }
 
@@ -121,6 +124,13 @@ export interface DependentsNote {
   dependents: number;
   /** Whether the graph was behind the file when this was built. */
   stale: boolean;
+  /**
+   * The dependent files the block names, absolute (#588). Telemetry joins
+   * them with later edits of the same session: the registered secondary
+   * `dependents_block_followed_by_edit`, the one sign that the block was
+   * used rather than merely tolerated.
+   */
+  listed: string[];
 }
 
 /** The session key for one file's block. Exported for the lane's delta. */
@@ -138,7 +148,7 @@ export function codeDedupeKey(repoRelFile: string): string {
  * Never throws — code awareness must not be able to degrade the lane (§23).
  */
 export async function dependentsNote(opts: DependentsNoteOptions): Promise<DependentsNote | null> {
-  if ((process.env.BASTRA_CODE_AWARENESS ?? "").toLowerCase() === "off") return null;
+  if (codeAwarenessDisabledByEnv()) return null;
   const startedAt = Date.now();
 
   const rel = repoRelative(opts.repoRoot, opts.filePath);
@@ -163,7 +173,8 @@ export async function dependentsNote(opts: DependentsNoteOptions): Promise<Depen
 
   const note = format(rel, symbols, dependents, stale);
   if (Date.now() - startedAt > (opts.budgetMs ?? BUDGET_MS)) return null;
-  return { note, dedupeKey, dependents: dependents.length, stale };
+  const listed = listedDependents(dependents).map((d) => join(opts.repoRoot, d));
+  return { note, dedupeKey, dependents: dependents.length, stale, listed };
 }
 
 /**
@@ -196,6 +207,11 @@ async function isGraphStale(repoRoot: string, filePath: string): Promise<boolean
 /** One rule for what counts as a test, shared by the ordering and the count. */
 function isTestFile(f: string): boolean {
   return f.includes("__tests__") || /\.(test|spec)\./.test(f);
+}
+
+/** The dependents the block names one by one — one rule for text and telemetry. */
+function listedDependents(dependents: string[]): string[] {
+  return dependents.filter((d) => !isTestFile(d)).slice(0, MAX_DEPENDENTS);
 }
 
 function productionFirst(files: string[]): string[] {
@@ -250,7 +266,7 @@ function format(rel: string, symbols: CodeSymbol[], dependents: string[], stale:
   // spending a third of the budget on it crowds out the part it cannot.
   const prod = dependents.filter((d) => !isTestFile(d));
   const tests = dependents.length - prod.length;
-  for (const d of prod.slice(0, MAX_DEPENDENTS)) lines.push(`- ${d}`);
+  for (const d of listedDependents(dependents)) lines.push(`- ${d}`);
   const restFiles = prod.length - Math.min(prod.length, MAX_DEPENDENTS);
   if (restFiles > 0) lines.push(`- … and ${restFiles} more`);
   if (tests > 0) {
