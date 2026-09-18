@@ -269,6 +269,26 @@ export function judge(rows, thresholds = REG.thresholds, minScenarios = REG.samp
   };
 }
 
+/** Per-repository figures for a pooled sample. Never gated. */
+export function perRepo(rows) {
+  const out = {};
+  for (const row of rows) {
+    const key = row.repo ?? "(unknown)";
+    (out[key] ??= []).push(row);
+  }
+  return Object.fromEntries(
+    Object.entries(out).map(([repo, rs]) => [
+      repo,
+      {
+        n: rs.length,
+        recall: Object.fromEntries(ARMS.map((a) => [a, mean(rs.map((r) => r[a].recall))])),
+        precision: Object.fromEntries(ARMS.map((a) => [a, mean(rs.map((r) => r[a].precision))])),
+        adoptionShare: rs.filter((r) => r[ADOPTION_ARM].affectedCalls > 0).length / rs.length,
+      },
+    ]),
+  );
+}
+
 export function buildReport(scenarios, readArm) {
   const rows = [];
   const missing = [];
@@ -285,7 +305,7 @@ export function buildReport(scenarios, readArm) {
       arms[arm] = { ...parsed, ...score(parsed.named, s.truth, s.file) };
     }
     if (ARMS.some((a) => arms[a] === undefined)) continue;
-    rows.push({ id: s.id, file: s.file, truth: s.truth.length, ...arms });
+    rows.push({ id: s.id, repo: s.repo ?? null, file: s.file, truth: s.truth.length, ...arms });
   }
 
   const verdict = judge(rows);
@@ -345,6 +365,10 @@ export function buildReport(scenarios, readArm) {
       ceiling_usd: REG.run_conditions.cost_ceiling_usd,
       withinCeiling: costUsd <= REG.run_conditions.cost_ceiling_usd,
     },
+    // A pooled sample describes no single repository, so the breakdown is
+    // reported next to the pooled verdicts. It is DESCRIPTIVE: no threshold
+    // reads it, and a repository that looks worse here has not failed anything.
+    byRepo: perRepo(rows),
     usageFallbackRows: rows.filter((r) => ARMS.some((a) => r[a].usageFallback)).map((r) => r.id),
     rows,
   };

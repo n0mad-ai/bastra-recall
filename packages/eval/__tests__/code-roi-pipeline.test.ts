@@ -16,13 +16,16 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const V2 = join(process.env.HOME ?? "", ".bastra", "eval", "code-roi-v2");
 
 const { isFrozen, writableOut } = await import("../code-roi/v2/archive.mjs");
-const { ARM_IDS, shuffled, rng, excludedPilotCommits } = await import("../code-roi/v2/select.mjs");
+const { ARM_IDS, shuffled, rng, excludedPilotCommits, pooledCandidates, fileKey } = await import(
+  "../code-roi/v2/select.mjs"
+);
 const { ARMS, withinCeiling, armCostUsd, COST_CEILING_USD } = await import(
   "../code-roi/v2/run-arms-v3.mjs"
 );
@@ -194,6 +197,70 @@ describe("select hands the runner arm names it knows", () => {
     const prefilling = Object.values(ARMS).filter((a) => (a as { prefill: boolean }).prefill);
     assert.equal(prefilling.length, 1);
     assert.equal((prefilling[0] as { id: string }).id, "prefilled");
+  });
+});
+
+// ─── Pooling several repositories ────────────────────────────────
+
+describe("a pooled sample follows the registration, not the results", () => {
+  const cands = (repo: string, n: number) =>
+    Array.from({ length: n }, (_, i) => ({ repo, file: `src/f${i}.ts` }));
+
+  test("repositories are drawn in the REGISTERED order", () => {
+    const byRepo = new Map([
+      ["/r/second", cands("/r/second", 10)],
+      ["/r/first", cands("/r/first", 10)],
+    ]);
+    const { pooled } = pooledCandidates(byRepo, ["/r/first", "/r/second"], 30, 15);
+    assert.equal(pooled[0].repo, "/r/first", "insertion order must not decide the sample");
+    assert.equal(pooled.filter((c) => c.repo === "/r/first").length, 10);
+    assert.equal(pooled.filter((c) => c.repo === "/r/second").length, 5);
+  });
+
+  test("no repository may carry more than the cap", () => {
+    const byRepo = new Map([["/r/big", cands("/r/big", 200)]]);
+    const { pooled, takenPerRepo } = pooledCandidates(byRepo, ["/r/big"], 30, 40);
+    assert.equal(pooled.length, 30);
+    assert.equal(takenPerRepo.get("/r/big"), 30);
+  });
+
+  test("a repository the registration does not name is never drawn from", () => {
+    const byRepo = new Map([
+      ["/r/listed", cands("/r/listed", 5)],
+      ["/r/stranger", cands("/r/stranger", 50)],
+    ]);
+    const { pooled } = pooledCandidates(byRepo, ["/r/listed"], 30, 40);
+    assert.equal(pooled.length, 5);
+    assert.ok(pooled.every((c) => c.repo === "/r/listed"));
+  });
+
+  test("the cap cuts the TAIL, it does not choose among scenarios", () => {
+    const byRepo = new Map([["/r/a", cands("/r/a", 10)]]);
+    const { pooled } = pooledCandidates(byRepo, ["/r/a"], 4, 40);
+    assert.deepEqual(pooled.map((c) => c.file), ["src/f0.ts", "src/f1.ts", "src/f2.ts", "src/f3.ts"]);
+  });
+
+  test("the same path in two repositories is two different files", () => {
+    assert.notEqual(fileKey({ repo: "/r/a", file: "src/index.ts" }), fileKey({ repo: "/r/b", file: "src/index.ts" }));
+    assert.equal(fileKey({ repo: "/r/a", file: "src/index.ts" }), fileKey({ repo: "/r/a", file: "src/index.ts" }));
+  });
+
+  test("the cap does not shrink a sufficient single-repository sample", () => {
+    // The amendment of 2026-09-19: bastra-io alone mined 40, and an
+    // unconditional cap of 30 would have turned that into `underpowered`.
+    const byRepo = new Map([["/r/a", cands("/r/a", 40)], ["/r/b", cands("/r/b", 7)]]);
+    const enough = (byRepo.get("/r/a") ?? []).length >= 40;
+    const { pooled } = pooledCandidates(byRepo, enough ? ["/r/a"] : ["/r/a", "/r/b"], enough ? Infinity : 30, 40);
+    assert.equal(pooled.length, 40);
+    assert.ok(pooled.every((c) => c.repo === "/r/a"), "no pooling where none is needed");
+  });
+
+  test("drawing stops once the target is reached", () => {
+    const byRepo = new Map([["/r/a", cands("/r/a", 100)], ["/r/b", cands("/r/b", 100)]]);
+    const { pooled, takenPerRepo } = pooledCandidates(byRepo, ["/r/a", "/r/b"], 30, 40);
+    assert.equal(pooled.length, 40);
+    assert.equal(takenPerRepo.get("/r/a"), 30);
+    assert.equal(takenPerRepo.get("/r/b"), 10);
   });
 });
 
@@ -388,8 +455,12 @@ describe("the registration's thresholds decide", () => {
 // ─── The cost ceiling ────────────────────────────────────────────
 
 describe("the cost ceiling is enforced, not documented", () => {
-  test("the registered ceiling is what the runner uses", () => {
-    assert.equal(COST_CEILING_USD, 20);
+  test("the runner's ceiling IS the registered one, not a copy of it", async () => {
+    const reg = JSON.parse(
+      await readFile(new URL("../registrations/code-awareness-change-impact.json", import.meta.url), "utf8"),
+    );
+    assert.equal(COST_CEILING_USD, reg.run_conditions.cost_ceiling_usd);
+    assert.equal(COST_CEILING_USD, 40, "raised from 20 by decision on 18.09.2026, before the run");
   });
 
   test("an arm may start while the ceiling is out of reach", () => {
@@ -414,7 +485,7 @@ describe("the cost ceiling is enforced, not documented", () => {
     const { scenarios, read } = sample(2, () => ({ files: [], costUsd: 1 }));
     const report = buildReport(scenarios, read);
     assert.equal(report.cost.usd, 6, "2 scenarios x 3 arms x $1");
-    assert.equal(report.cost.ceiling_usd, 20);
+    assert.equal(report.cost.ceiling_usd, 40);
     assert.equal(report.cost.withinCeiling, true);
   });
 });
@@ -443,6 +514,22 @@ describe("the report covers three arms", () => {
       false,
       "B vs A must never become a gate",
     );
+  });
+
+  test("a pooled sample is broken down per repository, and that is not gated", () => {
+    const scenarios = Array.from({ length: 6 }, (_, i) => ({
+      id: `S${i}`,
+      repo: i < 4 ? "/r/io" : "/r/rec",
+      file: `packages/x/src/f${i}.ts`,
+      truth: [`packages/y/src/a${i}.ts`],
+    }));
+    const report = buildReport(scenarios, (s, arm) =>
+      transcript({ files: [`packages/y/src/a${s.id.slice(1)}.ts`], affectedCalls: arm === "B" ? 1 : 0 }),
+    );
+    assert.equal(report.byRepo["/r/io"].n, 4);
+    assert.equal(report.byRepo["/r/rec"].n, 2);
+    assert.equal(report.byRepo["/r/io"].adoptionShare, 1);
+    assert.equal(Object.keys(report.checks).some((k) => k.includes("repo")), false, "no per-repo gate");
   });
 
   test("an answer without a FILES: line scores zero recall rather than crashing", () => {
