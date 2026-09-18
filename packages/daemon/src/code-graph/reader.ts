@@ -31,7 +31,9 @@ import {
   MAX_NODES,
   STRUCTURE_RELATIONS,
 } from "./limits.js";
-import { safeEdge, safeNode, type RejectReason, type SafeNode } from "./validate.js";
+import { resolveExternals } from "./external-refs.js";
+import { safeEdge, safeNode, safeString, type RejectReason, type SafeNode } from "./validate.js";
+import { workspaceModules } from "./workspace-packages.js";
 
 export const GRAPH_DIR_NAME = "graphify-out";
 export const GRAPH_FILE_NAME = "graph.json";
@@ -69,6 +71,14 @@ export interface CodeSymbol {
   line: number | null;
 }
 
+/** One dependency edge, seen from the symbol that is depended ON. */
+export interface DependentEdge {
+  /** Node id of the symbol that depends on it. */
+  id: string;
+  /** Graphify's relation, e.g. `calls`, `imports_from`. */
+  relation: string;
+}
+
 /** One loaded graph plus its indexes. Immutable once built. */
 export interface LoadedGraph {
   repoRoot: string;
@@ -82,8 +92,17 @@ export interface LoadedGraph {
    * parenthesized form is indexed alongside it so both hit.
    */
   idsByLabel: Map<string, string[]>;
-  /** Symbol id -> ids that depend on it (reverse dependency edges). */
-  dependentsBySymbol: Map<string, string[]>;
+  /** Symbol id -> the symbols that depend on it (reverse dependency edges). */
+  dependentsBySymbol: Map<string, DependentEdge[]>;
+  /**
+   * Entry file of a workspace package -> the files that import that package by
+   * its bare specifier (`@bastra-recall/core`). The graph carries no symbol
+   * for such an import, so this is deliberately a FILE-level relation and is
+   * reported as one (#582, `external-refs.ts`).
+   */
+  importersByEntry: Map<string, string[]>;
+  /** File -> the files it re-exports from, one hop (index barrels). */
+  reExportedFrom: Map<string, string[]>;
   /** Relations seen in the file that are on neither allowlist, with counts.
    *  Surfaced in `bastra doctor` so the lists stay honest as Graphify moves. */
   unknownRelations: Map<string, number>;
@@ -162,9 +181,17 @@ export async function loadGraph(repoRoot: string): Promise<LoadResult> {
   const nodes = new Map<string, SafeNode>();
   const symbolsByFile = new Map<string, string[]>();
   const idsByLabel = new Map<string, string[]>();
+  const externals: string[] = [];
   for (const raw of rawNodes) {
     const n = safeNode(raw, CODE_FILE_TYPE);
-    if (n === null) continue;
+    if (n === null) {
+      // Not a place anyone can navigate to, so it never becomes a node — but
+      // its ID is the only record of where a cross-package import went, and
+      // dropping that loses every core→daemon edge (#582).
+      const external = externalId(raw);
+      if (external !== null) externals.push(external);
+      continue;
+    }
     nodes.set(n.id, n);
     push(symbolsByFile, n.file, n.id);
     // Indexed under both spellings: `savememory()` as written, and
@@ -176,7 +203,11 @@ export async function loadGraph(repoRoot: string): Promise<LoadResult> {
     if (bare !== label) push(idsByLabel, bare, n.id);
   }
 
-  const dependentsBySymbol = new Map<string, string[]>();
+  const resolved = resolveExternals(externals, nodes, idsByLabel, workspaceModules(repoRoot));
+
+  const dependentsBySymbol = new Map<string, DependentEdge[]>();
+  const importers = new Map<string, Set<string>>();
+  const reExported = new Map<string, Set<string>>();
   const unknownRelations = new Map<string, number>();
   for (const raw of rawLinks) {
     const relation = relationOf(raw);
@@ -185,10 +216,23 @@ export async function loadGraph(repoRoot: string): Promise<LoadResult> {
     }
     const e = safeEdge(raw, EXTRACTED);
     if (e === null || !DEPENDENCY_RELATIONS.has(e.relation)) continue;
-    // Both ends must be known code nodes: an edge into a `concept` or
-    // `rationale` node is not a place anyone can navigate to.
-    if (!nodes.has(e.source) || !nodes.has(e.target)) continue;
-    push(dependentsBySymbol, e.target, e.source);
+    // The DEPENDING end must be a known code node — that is the file someone
+    // would have to open. The target may be an external node, as long as it
+    // resolved to something real (#582): an edge into a `concept` node that
+    // resolves to nothing is still dropped.
+    const from = nodes.get(e.source);
+    if (from === undefined) continue;
+    const to = nodes.get(e.target);
+    if (to !== undefined) {
+      push(dependentsBySymbol, e.target, { id: e.source, relation: e.relation });
+      if (e.relation === "re_exports") addTo(reExported, from.file, to.file);
+      continue;
+    }
+    for (const target of resolved.symbols.get(e.target) ?? []) {
+      push(dependentsBySymbol, target, { id: e.source, relation: e.relation });
+    }
+    const entry = resolved.modules.get(e.target);
+    if (entry !== undefined && entry !== from.file) addTo(importers, entry, from.file);
   }
 
   const builtAtCommit = typeof root.built_at_commit === "string" ? root.built_at_commit : null;
@@ -200,6 +244,8 @@ export async function loadGraph(repoRoot: string): Promise<LoadResult> {
       symbolsByFile,
       idsByLabel,
       dependentsBySymbol,
+      importersByEntry: sorted(importers),
+      reExportedFrom: sorted(reExported),
       unknownRelations,
       sizeBytes,
       mtimeMs,
@@ -223,7 +269,7 @@ export function dependentFilesOf(g: LoadedGraph, file: string): string[] {
   const out = new Set<string>();
   for (const id of g.symbolsByFile.get(file) ?? []) {
     for (const dep of g.dependentsBySymbol.get(id) ?? []) {
-      const n = g.nodes.get(dep);
+      const n = g.nodes.get(dep.id);
       if (n !== undefined && n.file !== file) out.add(n.file);
     }
   }
@@ -232,7 +278,18 @@ export function dependentFilesOf(g: LoadedGraph, file: string): string[] {
 
 /** Symbols that depend on one symbol id, one hop. */
 export function dependentSymbolsOf(g: LoadedGraph, symbolId: string): CodeSymbol[] {
-  return (g.dependentsBySymbol.get(symbolId) ?? []).map((id) => toSymbol(g.nodes.get(id)!));
+  return (g.dependentsBySymbol.get(symbolId) ?? []).map((dep) => toSymbol(g.nodes.get(dep.id)!));
+}
+
+/** Symbols that depend on one symbol id, with the relation that connects them. */
+export function dependentEdgesOf(
+  g: LoadedGraph,
+  symbolId: string,
+): Array<{ symbol: CodeSymbol; relation: string }> {
+  return (g.dependentsBySymbol.get(symbolId) ?? []).map((dep) => ({
+    symbol: toSymbol(g.nodes.get(dep.id)!),
+    relation: dep.relation,
+  }));
 }
 
 /**
@@ -284,4 +341,28 @@ function push<K, V>(m: Map<K, V[]>, k: K, v: V): void {
   const a = m.get(k);
   if (a === undefined) m.set(k, [v]);
   else a.push(v);
+}
+
+function addTo<K>(m: Map<K, Set<string>>, k: K, v: string): void {
+  const s = m.get(k);
+  if (s === undefined) m.set(k, new Set([v]));
+  else s.add(v);
+}
+
+/** Sets to sorted arrays, so the graph hands out a stable order. */
+function sorted<K>(m: Map<K, Set<string>>): Map<K, string[]> {
+  return new Map([...m].map(([k, v]) => [k, [...v].sort()]));
+}
+
+/**
+ * The id of a node that was refused, when it is an EXTERNAL reference rather
+ * than a malformed record. Graphify marks these `"external": true` and leaves
+ * `source_file` empty; the id is all that survives, and it is the only trace
+ * of where a cross-package import went (`external-refs.ts`).
+ */
+function externalId(raw: unknown): string | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const n = raw as Record<string, unknown>;
+  if (n.external !== true && n.source_file !== "") return null;
+  return safeString(n.id);
 }

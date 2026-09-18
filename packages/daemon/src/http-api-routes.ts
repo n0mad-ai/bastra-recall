@@ -29,6 +29,10 @@ import {
 } from "./documents-write-handler.js";
 import { editMemoryHandler } from "./edit-memory-handler.js";
 import { FindCodeArgs, findCode, sharedCodeGraphCache } from "./code-graph/find-code.js";
+import {
+  FindAffectedFilesArgs,
+  findAffectedFiles,
+} from "./code-graph/find-affected-files.js";
 import { addFloor, affirm, release } from "./floors.js";
 import { saveProductDocHandler } from "./product-doc-handler.js";
 import { recoverCallArguments } from "./call-corruption.js";
@@ -126,6 +130,12 @@ export async function dispatchApi(
       const parsed = FindCodeArgs.safeParse(body);
       if (!parsed.success) throw new Error(parsed.error.message);
       return findCode(sharedCodeGraphCache(), parsed.data);
+    }
+    // #582: the change-impact tool reaches stdio clients through here too.
+    case "find_affected_files": {
+      const parsed = FindAffectedFilesArgs.safeParse(body);
+      if (!parsed.success) throw new Error(parsed.error.message);
+      return await findAffectedFiles(sharedCodeGraphCache(), parsed.data);
     }
     case "find_document": {
       const parsed = FindDocumentArgs.safeParse(body);

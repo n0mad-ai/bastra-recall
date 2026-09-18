@@ -77,10 +77,18 @@ test("the search surface lists exactly the read tools", () => {
   const names = filterToolDefsForSurface(ALL_TOOL_DEFS as ToolDef[], "search").map((d) => d.name);
   assert.deepEqual(
     [...names].sort(),
-    ["find_code", "find_document", "load_memory", "read_document", "recall"],
+    [
+      "find_affected_files",
+      "find_code",
+      "find_document",
+      "load_memory",
+      "read_document",
+      "recall",
+    ],
     // #576: find_code reads a code index and writes nothing — it belongs with
     // the read tools, not behind the full surface.
-    "search is read-only: recall, load_memory, find_document, read_document, find_code",
+    "search is read-only: recall, load_memory, find_document, read_document, " +
+      "find_code, find_affected_files",
   );
   for (const t of [...LIFECYCLE_TOOLS, "save_memory"]) {
     assert.equal(isToolAllowed(t, "search"), false, `${t} must not be reachable on search`);
@@ -93,6 +101,7 @@ test("the write surface adds the save tools and keeps lifecycle out", () => {
     [...names].sort(),
     [
       "edit_memory",
+      "find_affected_files",
       "find_code",
       "find_document",
       "load_memory",

@@ -19,6 +19,7 @@ import { documentTools } from "./documents-handler.js";
 import { documentWriteTools } from "./documents-write-handler.js";
 import { productDocTools } from "./product-doc-handler.js";
 import { codeTools } from "./code-graph/find-code.js";
+import { affectedTools } from "./code-graph/find-affected-files.js";
 
 export const ALL_TOOL_DEFS = [
   ...MEMORY_TOOL_DEFS,
@@ -26,6 +27,7 @@ export const ALL_TOOL_DEFS = [
   ...documentWriteTools,
   ...productDocTools,
   ...codeTools,
+  ...affectedTools,
 ];
 
 /**
@@ -65,6 +67,10 @@ const SEARCH_SURFACE_TOOLS = [
   // only would leave the surface able to recall a lesson about a file but not
   // to find the file.
   "find_code",
+  // #582: same argument, same lane. `find_affected_files` reads the same
+  // index and writes nothing; an agent on the read-only surface that can find
+  // a symbol but not ask what breaks when it changes has half the tool.
+  "find_affected_files",
 ] as const;
 
 const WRITE_SURFACE_TOOLS = [

@@ -1,0 +1,83 @@
+{
+  "$comment": "DRAFT — NOT A REGISTRATION. Every field marked TO_BE_DECIDED is a product-owner decision (Daniel) and is deliberately left open here; a run against this file is not a registered run. When the numbers are set, this becomes registration_version 4 of code-awareness-roi.json (or its own registered file) and is frozen BEFORE the first arm runs. Drafted 2026-09-18 by Claude Opus 5 alongside #582 (find_affected_files).",
+  "schema_version": 1,
+  "registration_version": "TO_BE_DECIDED (4 if it supersedes code-awareness-roi.json v3)",
+  "status": "draft_no_numbers",
+  "issue": 582,
+  "epic": 572,
+  "supersedes": "code-awareness-roi.json registration_version 3",
+
+  "why_a_new_registration": "v3 answered its question and the answer invalidated the comparison: `find_code` was offered in 44 of 44 runs and called in 0, so both arms ran the same grep behaviour and the measured difference (+0.8 Pp recall) is noise between two runs of one procedure. Two things were confounded — whether an agent REACHES for the graph, and whether the graph's answer HELPS. This design separates them.",
+
+  "question": "(a) Adoption: offered a change-impact tool described graph-first, how often does an agent call it? (b) Effect: when the change-impact answer is in front of the agent, does it name more of the files the change really breaks, without naming more wrong ones?",
+
+  "arms": {
+    "A": { "name": "grep", "description": "No MCP server at all — text search and file reads only. The control, identical to v3's control arm." },
+    "B": { "name": "offered", "description": "`find_code` and `find_affected_files` offered over stdio MCP, nothing else changed. Whether the agent calls them is the observation, not a nuisance." },
+    "C": { "name": "forced", "description": "Same tools, plus the `find_affected_files` answer for exactly the planned change already in the prompt. The agent cannot fail to use it." },
+    "runner": "packages/eval/code-roi/v2/run-arms-v3.mjs (arms A, B, C); server packages/eval/code-roi/v2/code-tools-mcp.mjs",
+    "isolation": "unchanged from v3: `--setting-sources project --strict-mcp-config --no-session-persistence`, fresh process per scenario and arm, cwd a throwaway worktree with no `.git`, graph moved out of the tree",
+    "model": "claude-sonnet-5",
+    "max_turns": 30
+  },
+
+  "readouts": {
+    "adoption": {
+      "from": "arm B alone",
+      "definition": "share of scenarios in which find_affected_files (and separately find_code) is called at least once; calls per scenario as a secondary figure",
+      "threshold": "TO_BE_DECIDED",
+      "$comment": "v3 measured 0 % for find_code. Any threshold here is a statement about the description and the name, not about the graph."
+    },
+    "effect": {
+      "from": "arm C against arm A, paired per scenario",
+      "primary_metric": "affected_file_recall, as in v3",
+      "recall_gain_min": "TO_BE_DECIDED",
+      "recall_ci_lower_above": "TO_BE_DECIDED (v3 required > 0)",
+      "precision_loss_max": "TO_BE_DECIDED (v3 allowed -0.05)",
+      "context_increase_max_ratio": "TO_BE_DECIDED (v3 allowed 1.25 x median on scenarios solved in both arms)"
+    },
+    "combined": {
+      "from": "arm B against arm A",
+      "gating": false,
+      "$comment": "Adoption and effect multiplied. Reported for completeness; reporting it AS the effect is what made v3 unreadable."
+    }
+  },
+
+  "unit_and_truth": {
+    "unchanged_from": "code-awareness-roi.json registration_version 3",
+    "unit": "one historical change to one file, at most one scenario per file",
+    "ground_truth": "new type errors after applying exactly that file's diff, compared as (file, TS code, message) multisets, adjudicated by hand before any arm runs",
+    "$comment": "The truth definition is not touched: changing the ruler and the tool in the same step would leave nothing comparable."
+  },
+
+  "sample": {
+    "must_be_fresh": true,
+    "$comment_fresh": "MANDATORY. The 44 scenarios in ~/.bastra/eval/code-roi-v2/ were used to develop the symbol query this measures (offline tuning: entry specificity, the package-import narrowing threshold, the file-count cap). A number from them is a training number and must not appear as an effect estimate.",
+    "how_to_mine": [
+      "CODE_ROI_OUT=~/.bastra/eval/code-roi-v4 node packages/eval/code-roi/v2/mine.mjs   — walks commits NEWEST first from a range end that must not overlap v3's range (v3's `range_end` is recorded in ~/.bastra/eval/code-roi-v2/scenarios.json); one scenario per file",
+      "CODE_ROI_OUT=~/.bastra/eval/code-roi-v4 node packages/eval/code-roi/v2/evidence.mjs   — builds the truth sets by typechecking before/after",
+      "CODE_ROI_OUT=~/.bastra/eval/code-roi-v4 node packages/eval/code-roi/v2/select.mjs   — applies the inclusion rules and freezes the scenario file with its seed",
+      "adjudicate the truth sets by hand and record a written reason for every removal",
+      "fill in the numbers above, freeze this file, THEN run run-arms-v3.mjs"
+    ],
+    "min_scenarios": "TO_BE_DECIDED (v3 used 30)",
+    "commit_range": "TO_BE_DECIDED — must not overlap v3's range",
+    "cost_note": "v3 cost 13.15 $ for 2 arms x 44 scenarios. Three arms at the same size is roughly 1.5 x that; a smaller sample is a power decision, not a budget one."
+  },
+
+  "statistics": {
+    "method": "paired bootstrap, 10 000 resamples, resampling scenarios with replacement",
+    "seed": "TO_BE_DECIDED"
+  },
+
+  "reporting_duties": [
+    "Adoption from arm B, with its N, separately for each tool.",
+    "Effect from C vs A, paired mean with its 95 % interval, per-scenario rows.",
+    "Precision and context as in v3.",
+    "B vs A, labelled as adoption and effect combined, never as the effect.",
+    "That the offline figures on the v3 sample (recall 91.3 %, precision 52.4 %) are development data and carry no weight here.",
+    "An honest `underpowered` / `not_evaluable` where the sample does not support a verdict."
+  ],
+
+  "failure_is_a_result": true
+}

@@ -70,6 +70,11 @@ import {
 } from "./documents-handler.js";
 import { codeTools, FindCodeArgs, findCode, sharedCodeGraphCache } from "./code-graph/find-code.js";
 import {
+  affectedTools,
+  FindAffectedFilesArgs,
+  findAffectedFiles,
+} from "./code-graph/find-affected-files.js";
+import {
   documentWriteTools,
   SaveDocumentArgs,
   RecategorizeDocumentArgs,
@@ -691,6 +696,7 @@ async function main(): Promise<void> {
       // ALL_TOOL_DEFS — a tool added only there works through the forwarder
       // and does not exist over stdio.
       ...codeTools,
+      ...affectedTools,
     ],
   }));
 
@@ -817,6 +823,16 @@ async function main(): Promise<void> {
       const parsed = FindCodeArgs.safeParse(args);
       if (!parsed.success) return errorResult(parsed.error.message);
       const result = findCode(sharedCodeGraphCache(), parsed.data);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      };
+    }
+
+    // #582: change impact from the changed SYMBOLS, across package boundaries.
+    if (name === "find_affected_files") {
+      const parsed = FindAffectedFilesArgs.safeParse(args);
+      if (!parsed.success) return errorResult(parsed.error.message);
+      const result = await findAffectedFiles(sharedCodeGraphCache(), parsed.data);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
