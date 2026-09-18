@@ -123,7 +123,7 @@ Treffer: gezielter grep 34/34, `find_code` 34/34.
 Ausweichung auf grep, 23.679 Zeichen — deckungsgleich mit der objektiven
 Messung, was den Selbstbericht dieses Arms bestätigt.
 
-Der Kontrollarm-Lauf stand bei Abfassung noch aus.
+Der Kontrollarm-Lauf ist inzwischen ebenfalls durch — Ergebnis unten.
 
 ## Was damit belegt ist
 
@@ -137,3 +137,59 @@ Welcher Fall häufiger ist, entscheidet über den Nutzen — und das lässt sich
 nur an echten Sitzungen ablesen, nicht an einem Repo-Durchlauf. Die
 Telemetrie dafür steht jetzt (`bastra logs --stats`, Abschnitt
 `code search ROI`).
+
+---
+
+# Ergebnis des sauberen Laufs (N = 34) — entscheidbar
+
+Beide Arme, je ein Aufruf pro Symbol, kein Bündeln, Lösungen außerhalb des
+Repos, nur eindeutige Symbole. **Beide 34/34 richtig.**
+
+| | Kontrollarm (grep) | Graph-Arm (find_code) |
+|---|---|---|
+| Runden | 35 | 34 |
+| Zeichen gesamt | 25.374 | **23.679** |
+| Median | **508** | 602 |
+| schlimmster Fall | 2.358 | **1.173** |
+| billiger in | **21 von 34** | 13 von 34 |
+
+## Gegen die preregistrierte Schwelle
+
+- Verlangt: **≥ 25 % Reduktion**. Gemessen: **6,7 %**.
+- Verlangt: die Differenz **hält über Szenarien**. Gemessen: der Kontrollarm
+  ist in **21 von 34** Fällen billiger.
+
+**Die Schwelle wird nicht erreicht. Das Kriterium ist nicht erfüllt.**
+
+Diesmal ist das ein Urteil und kein `underpowered`: N = 34 über dem Minimum,
+Ground Truth unabhängig verifiziert, keine Kontamination, kein Bündeln, und
+der Selbstbericht des Graph-Arms deckt sich auf das Zeichen mit der
+objektiven Messung.
+
+## Der Befund dahinter
+
+**Der erhoffte Mechanismus existiert bei dieser Aufgabe nicht.** Der Graph
+sollte gewinnen, indem er Such-RUNDEN spart. Gemessen: 34 gegen 35 Runden —
+praktisch gleich. Ein gezielter grep braucht für "wo ist X definiert" ebenso
+einen Versuch wie eine Graphabfrage. Wo nichts zu sparen ist, spart auch ein
+Index nichts.
+
+**Was der Graph dafür kann:** Er hat keine teuren Ausreißer. Schlimmster Fall
+1.173 gegen 2.358 Zeichen, und in der früheren Messung 2.064 gegen 12.367 bei
+einem stark verbreiteten Namen. Der Graph ist gleichmäßig; grep ist eine
+Wette auf die Verbreitung des gesuchten Namens.
+
+Das ist ein realer, aber schmaler Vorteil: Vorhersagbarkeit statt Ersparnis.
+
+## Konsequenz
+
+Für die Aufgabenklasse "finde die Definition eines Symbols" ist der Nutzen
+**nicht belegt** — nach der Regel, die wir uns vorher gegeben haben.
+
+Nicht gemessen und offen bleibt die Aufgabenklasse, für die es eigentlich
+gebaut ist: "was bricht, wenn ich diese Datei ändere". Ein grep auf Importe
+beantwortet das nur, wenn man die richtigen Namen schon kennt, und die frühere
+Messung zeigte dort einen grep-Recall von 100 % — allerdings auf Szenarien mit
+demselben Mehrdeutigkeitsproblem, das den ersten Lauf entwertet hat. Diese
+Klasse müsste sauber nachgemessen werden, bevor irgendjemand über die
+Abschaltung entscheidet.
