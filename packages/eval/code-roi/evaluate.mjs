@@ -1,60 +1,67 @@
 /**
  * Evaluate the two arms (#579).
  *
- * Correctness is checked OBJECTIVELY against the scenario ground truth, which
- * was verified from the source rather than from the graph. Rounds and output
- * size are SELF-REPORTED by the agents — that is the weak part of this
- * measurement and it is labelled as such rather than presented as fact.
+ * Correctness is checked OBJECTIVELY against ground truth that lives OUTSIDE
+ * the repository — an earlier run had an arm stumble over the answers while
+ * working, which is why they are no longer checked in.
  *
- * An arm only scores on a scenario it actually got right. An arm that is cheap
- * because it answered wrongly is not cheap.
+ * Rounds and output size are self-reported by the agents and labelled as such.
+ * The pairing is what makes the comparison meaningful: only scenarios BOTH
+ * arms answered correctly are counted, and per-scenario differences are
+ * reported next to the totals, because a total can hide that one arm wins
+ * rarely and hugely while the other wins often and slightly.
  */
 import { readFile } from "node:fs/promises";
-const REPO = "/Users/n0mad/Projekte/bastra-recall";
-const S = "/private/tmp/claude-501/-Users-n0mad-Projekte-bastra-recall/67a004fc-6810-4485-84ec-943621854cf9/scratchpad";
+const S = process.argv[2] ?? ".";
+const truth = new Map(
+  JSON.parse(await readFile(`${S}/truth.json`, "utf8")).map((s) => [s.symbol, s.truth]),
+);
 
-const scen = JSON.parse(await readFile(`${REPO}/packages/eval/code-roi/scenarios.json`, "utf8"));
-const truth = new Map(scen.map((s) => [s.symbol, s.truth]));
-
-async function load(name) {
-  try { return JSON.parse(await readFile(`${S}/${name}.json`, "utf8")); }
-  catch { return null; }
+async function load(n) {
+  try { return JSON.parse(await readFile(`${S}/${n}.json`, "utf8")); } catch { return null; }
 }
+const median = (v) => { const s = [...v].sort((a, b) => a - b); return s[Math.floor(s.length / 2)] ?? 0; };
 
-function score(rows, label) {
-  if (rows === null) return { arm: label, status: "kein Protokoll" };
-  const judged = rows.map((r) => {
+function judge(rows) {
+  return (rows ?? []).map((r) => {
     const t = truth.get(r.symbol);
-    // Correct = right file. The line must be within 2 of the declaration,
-    // because a reasonable reader may name the signature or the line above it.
     const ok = t !== undefined && r.answer_file === t.file &&
       (typeof r.answer_line !== "number" || Math.abs(r.answer_line - t.line) <= 2);
     return { ...r, correct: ok };
   });
-  const right = judged.filter((r) => r.correct);
-  const med = (k, a) => { const v = a.map((r) => r[k] ?? 0).sort((x, y) => x - y); return v[Math.floor(v.length / 2)] ?? 0; };
-  return {
-    arm: label,
-    scenarios: rows.length,
-    correct: right.length,
-    accuracy: rows.length ? +(right.length / rows.length * 100).toFixed(1) : 0,
-    rounds_total: right.reduce((a, r) => a + (r.rounds ?? 0), 0),
-    rounds_median: med("rounds", right),
-    chars_total: right.reduce((a, r) => a + (r.output_chars ?? 0), 0),
-    chars_median: med("output_chars", right),
-    fell_back: right.filter((r) => r.fell_back_to_grep).length,
-    wrong: judged.filter((r) => !r.correct).map((r) => r.symbol),
-  };
 }
 
-const a = score(await load("arm-control"), "Kontrollarm (nur grep/read)");
-const b = score(await load("arm-graph"), "Graph-Arm (find_code)");
-console.log(JSON.stringify({ arms: [a, b] }, null, 2));
+const c = judge(await load("clean-control"));
+const g = judge(await load("clean-graph"));
+if (c.length === 0 || g.length === 0) { console.log("Protokolle fehlen noch."); process.exit(0); }
 
-if (a.correct && b.correct) {
-  const rr = +((1 - b.rounds_total / a.rounds_total) * 100).toFixed(1);
-  const cr = +((1 - b.chars_total / a.chars_total) * 100).toFixed(1);
-  console.log(`\nRunden:  ${a.rounds_total} -> ${b.rounds_total}  (${rr}% weniger)`);
-  console.log(`Zeichen: ${a.chars_total} -> ${b.chars_total}  (${cr}% weniger)`);
-  console.log(`\nHinWEIS: Runden und Zeichen sind SELBSTBERICHTET. Die Korrektheit ist objektiv geprueft.`);
-}
+const gm = new Map(g.map((r) => [r.symbol, r]));
+const pairs = c.filter((r) => r.correct && gm.get(r.symbol)?.correct)
+  .map((r) => ({ symbol: r.symbol, ctrl: r, graph: gm.get(r.symbol) }));
+
+const sum = (a, k) => a.reduce((n, r) => n + (r[k] ?? 0), 0);
+const cChars = pairs.map((p) => p.ctrl.output_chars ?? 0);
+const gChars = pairs.map((p) => p.graph.output_chars ?? 0);
+const graphCheaper = pairs.filter((p) => (p.graph.output_chars ?? 0) < (p.ctrl.output_chars ?? 0));
+
+console.log(JSON.stringify({
+  scenarios: { control: c.length, graph: g.length, both_correct: pairs.length },
+  accuracy: {
+    control: `${c.filter((r) => r.correct).length}/${c.length}`,
+    graph: `${g.filter((r) => r.correct).length}/${g.length}`,
+  },
+  rounds: { control: sum(pairs.map((p) => p.ctrl), "rounds"), graph: sum(pairs.map((p) => p.graph), "rounds") },
+  chars: {
+    control_total: sum(pairs.map((p) => p.ctrl), "output_chars"),
+    graph_total: sum(pairs.map((p) => p.graph), "output_chars"),
+    control_median: median(cChars), graph_median: median(gChars),
+  },
+  per_scenario: {
+    graph_cheaper: graphCheaper.length,
+    control_cheaper: pairs.length - graphCheaper.length,
+    worst_control: Math.max(...cChars, 0),
+    worst_graph: Math.max(...gChars, 0),
+  },
+  graph_fell_back: g.filter((r) => r.fell_back_to_grep).length,
+  wrong: { control: c.filter((r) => !r.correct).map((r) => r.symbol), graph: g.filter((r) => !r.correct).map((r) => r.symbol) },
+}, null, 2));
