@@ -18,7 +18,7 @@
  * `code` field in `CliSettings`, because that is where the schema lives.
  */
 
-import { readFileSync, statSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { mutateSettings, readSettings, settingsFilePath } from "../settings.js";
 import { platformSupported } from "./graphify-tool.js";
@@ -94,30 +94,38 @@ export function isRepoEnabledSync(
 let snapshot: { path: string; mtimeMs: number; size: number; repos: Set<string> } | null = null;
 
 function enabledSnapshot(path: string): Set<string> {
-  let st: { mtimeMs: number; size: number };
+  // One open handle for the check AND the read: a `stat` of the path followed
+  // by a read of the path can see two different files (CodeQL
+  // js/file-system-race), the same trap reader.ts closes for the graph.
+  let fd: number;
   try {
-    st = statSync(path);
+    fd = openSync(path, "r");
   } catch {
     snapshot = null;
     return new Set();
   }
-  if (snapshot?.path === path && snapshot.mtimeMs === st.mtimeMs && snapshot.size === st.size) {
-    return snapshot.repos;
-  }
-  const repos = new Set<string>();
   try {
-    const raw = (JSON.parse(readFileSync(path, "utf8")) as { code?: { repos?: unknown } }).code?.repos;
-    if (Array.isArray(raw)) {
-      for (const entry of raw) {
-        if (typeof entry === "string" && entry.trim().length > 0) repos.add(canonicalRepoPath(entry.trim()));
-      }
+    const st = fstatSync(fd);
+    if (snapshot?.path === path && snapshot.mtimeMs === st.mtimeMs && snapshot.size === st.size) {
+      return snapshot.repos;
     }
-  } catch {
-    // Corrupt settings: nothing is enabled. `readSettings` reports the
-    // corruption loudly; this path only has to not act on it.
+    const repos = new Set<string>();
+    try {
+      const raw = (JSON.parse(readFileSync(fd, "utf8")) as { code?: { repos?: unknown } }).code?.repos;
+      if (Array.isArray(raw)) {
+        for (const entry of raw) {
+          if (typeof entry === "string" && entry.trim().length > 0) repos.add(canonicalRepoPath(entry.trim()));
+        }
+      }
+    } catch {
+      // Corrupt settings: nothing is enabled. `readSettings` reports the
+      // corruption loudly; this path only has to not act on it.
+    }
+    snapshot = { path, mtimeMs: st.mtimeMs, size: st.size, repos };
+    return repos;
+  } finally {
+    closeSync(fd);
   }
-  snapshot = { path, mtimeMs: st.mtimeMs, size: st.size, repos };
-  return repos;
 }
 
 /** Is this repository enabled? */
