@@ -1,0 +1,32 @@
+{
+  "scenarios": {
+    "control": 34,
+    "graph": 34,
+    "both_correct": 34
+  },
+  "accuracy": {
+    "control": "34/34",
+    "graph": "34/34"
+  },
+  "rounds": {
+    "control": 35,
+    "graph": 34
+  },
+  "chars": {
+    "control_total": 25374,
+    "graph_total": 23679,
+    "control_median": 508,
+    "graph_median": 602
+  },
+  "per_scenario": {
+    "graph_cheaper": 13,
+    "control_cheaper": 21,
+    "worst_control": 2358,
+    "worst_graph": 1173
+  },
+  "graph_fell_back": 0,
+  "wrong": {
+    "control": [],
+    "graph": []
+  }
+}
