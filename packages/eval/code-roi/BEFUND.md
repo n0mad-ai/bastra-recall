@@ -140,7 +140,25 @@ Telemetrie dafür steht jetzt (`bastra logs --stats`, Abschnitt
 
 ---
 
-# Ergebnis des sauberen Laufs (N = 34) — entscheidbar
+# Ergebnis des sauberen Laufs (N = 34)
+
+> **Korrektur 18.09.2026 (Codex-Gegenprüfung zu PR #582): das Urteil unten
+> ist zurückgenommen.** Zwei Gründe:
+>
+> 1. Der Graph-Arm lief mit dem `find_code` **vor** der Verschlankung
+>    (fb43797, Median 602 → 193 Zeichen). Für den aktuellen Code ist dieser
+>    Lauf nicht gültig. Codex hat die heutigen Antworten auf denselben 34
+>    Symbolen ausgerechnet (34/34 Treffer, 6.511 Zeichen gesamt) — das ist
+>    eine Rechnung über Antwortgrößen, kein wiederholter Agentenlauf, und
+>    ersetzt ihn nicht.
+> 2. Die Registrierung steht auf `status: structure_registered`; die
+>    25-%-Schwelle ist ein Vorschlag, und die Datei verbietet ausdrücklich,
+>    vor `numbers_registered` ein Bestanden/Nicht-bestanden zu melden.
+>
+> Stand damit: **kein Urteil.** Die Tabellen bleiben als Rohbefund des
+> damaligen Codes stehen. Offene Punkte zur Aussagekraft der Messung
+> (N überschätzt, Rohprotokolle fehlen, `frozen_commit` leer) sind als Issue
+> erfasst.
 
 Beide Arme, je ein Aufruf pro Symbol, kein Bündeln, Lösungen außerhalb des
 Repos, nur eindeutige Symbole. **Beide 34/34 richtig.**
@@ -159,7 +177,7 @@ Repos, nur eindeutige Symbole. **Beide 34/34 richtig.**
 - Verlangt: die Differenz **hält über Szenarien**. Gemessen: der Kontrollarm
   ist in **21 von 34** Fällen billiger.
 
-**Die Schwelle wird nicht erreicht. Das Kriterium ist nicht erfüllt.**
+~~Die Schwelle wird nicht erreicht. Das Kriterium ist nicht erfüllt.~~ (zurückgenommen, siehe Korrektur oben)
 
 ### Robustheitsprüfung: es ist noch deutlicher
 
@@ -182,7 +200,7 @@ Szenario.** Bereinigt bleibt **0,4 %** — also nichts. N = 33 liegt weiter übe
 dem preregistrierten Minimum, das Urteil steht damit robuster da als vorher,
 nicht wackliger.
 
-Diesmal ist das ein Urteil und kein `underpowered`: N = 34 über dem Minimum,
+~~Diesmal ist das ein Urteil und kein `underpowered`~~ (zurückgenommen, siehe Korrektur oben): N = 34 über dem Minimum,
 Ground Truth unabhängig verifiziert, keine Kontamination, kein Bündeln, und
 der Selbstbericht des Graph-Arms deckt sich auf das Zeichen mit der
 objektiven Messung.
@@ -205,7 +223,8 @@ Das ist ein realer, aber schmaler Vorteil: Vorhersagbarkeit statt Ersparnis.
 ## Konsequenz
 
 Für die Aufgabenklasse "finde die Definition eines Symbols" ist der Nutzen
-**nicht belegt** — nach der Regel, die wir uns vorher gegeben haben.
+**für den aktuellen Code ungemessen** — der Lauf oben gilt nur für das
+`find_code` vor der Verschlankung (siehe Korrektur).
 
 Nicht gemessen und offen bleibt die Aufgabenklasse, für die es eigentlich
 gebaut ist: "was bricht, wenn ich diese Datei ändere". Ein grep auf Importe
