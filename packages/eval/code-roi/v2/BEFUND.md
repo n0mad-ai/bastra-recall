@@ -100,3 +100,11 @@ Lücken getroffen. Eine Aussage über die Wirkung braucht frische Szenarien und
 eine eigene Registrierung:
 `packages/eval/registrations/code-awareness-change-impact.json` (v4,
 drei Arme: `A` nur grep, `B` Tools angeboten, `prefilled` Antwort im Prompt).
+
+v4 fällt **zwei getrennte Urteile** statt eines gemeinsamen: `adoption`
+(ruft ein Agent das Tool überhaupt? — Arm B, ≥ 70 % der Szenarien) und
+`effect` (hilft die Antwort? — `prefilled` gegen `A`: Recall ≥ +5 Pp mit
+KI-Untergrenze > 0, Präzision ≥ −5 Pp, Kontext ≤ 1,25×). Es gibt bewusst
+kein zusammengefasstes Urteil: ein Werkzeug, das niemand aufruft, dessen
+Antwort aber hilft, und eines, das alle aufrufen und das nichts bringt,
+sind entgegengesetzte Befunde und verlangen entgegengesetzte Arbeit.

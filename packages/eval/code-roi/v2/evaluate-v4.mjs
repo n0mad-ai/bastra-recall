@@ -199,27 +199,50 @@ export function bootstrapCI(rows, values, seed = REG.statistics.seed) {
   };
 }
 
-/** Every threshold of the registration, applied to the scored rows. */
+/**
+ * The two verdicts, kept apart (#582).
+ *
+ * ADOPTION and EFFECT are different questions with different failure modes,
+ * and a single "all must hold" status hides which one failed behind one word.
+ * A tool nobody calls whose answer would have helped, and a tool everyone
+ * calls whose answer does not, are opposite findings that need opposite work
+ * — so each gets its own pass / fail / underpowered and there is deliberately
+ * NO combined status to quote.
+ */
 export function judge(rows, thresholds = REG.thresholds, minScenarios = REG.sample.min_scenarios) {
   const n = rows.length;
+  const verdict = (checks) => {
+    if (n === 0) return "not_evaluable";
+    if (n < minScenarios) return "underpowered";
+    return Object.values(checks).every((c) => c.pass) ? "pass" : "fail";
+  };
+
+  const adopted = rows.filter((r) => r[ADOPTION_ARM].affectedCalls > 0).length;
+  const adoptionRate = n === 0 ? 0 : adopted / n;
+  const adoptionChecks = {
+    adoption: {
+      value: adoptionRate,
+      required: `>= ${thresholds.adoption_min_share} of B scenarios call find_affected_files (find_code does not count)`,
+      pass: adoptionRate >= thresholds.adoption_min_share,
+    },
+  };
+
   const dRecall = rows.map((r) => r[EFFECT_ARM].recall - r[CONTROL_ARM].recall);
   const dPrecision = rows.map((r) => r[EFFECT_ARM].precision - r[CONTROL_ARM].precision);
   const ci = bootstrapCI(rows, dRecall);
   const bothSolved = rows.filter(
     (r) => r[CONTROL_ARM].recall >= SOLVED && r[EFFECT_ARM].recall >= SOLVED,
   );
-  const ctxControl = median(bothSolved.map((r) => r[CONTROL_ARM].inputTokens));
-  const ctxEffect = median(bothSolved.map((r) => r[EFFECT_ARM].inputTokens));
-  const ctxRatio = ctxEffect / ctxControl;
-  const adopted = rows.filter((r) => r[ADOPTION_ARM].affectedCalls > 0).length;
-  const adoptionRate = n === 0 ? 0 : adopted / n;
-
-  const checks = {
-    adoption: {
-      value: adoptionRate,
-      required: `>= ${thresholds.adoption_min_share} of B scenarios call find_affected_files (find_code does not count)`,
-      pass: adoptionRate >= thresholds.adoption_min_share,
-    },
+  const ctxRatio =
+    median(bothSolved.map((r) => r[EFFECT_ARM].inputTokens)) /
+    median(bothSolved.map((r) => r[CONTROL_ARM].inputTokens));
+  // The same ratio over EVERY scenario, gated by nothing. The registered
+  // figure is restricted to scenarios both arms solved so that a cheap wrong
+  // answer cannot win on cost; this one says what the run cost in total.
+  const ctxRatioAll =
+    median(rows.map((r) => r[EFFECT_ARM].inputTokens)) /
+    median(rows.map((r) => r[CONTROL_ARM].inputTokens));
+  const effectChecks = {
     recall_gain: {
       value: mean(dRecall),
       required: `>= ${thresholds.recall_gain_min}`,
@@ -237,15 +260,13 @@ export function judge(rows, thresholds = REG.thresholds, minScenarios = REG.samp
       pass: bothSolved.length > 0 && ctxRatio <= 1 + thresholds.context_increase_max_ratio,
     },
   };
-  const status =
-    n === 0
-      ? "not_evaluable"
-      : n < minScenarios
-        ? "underpowered"
-        : Object.values(checks).every((c) => c.pass)
-          ? "pass"
-          : "fail";
-  return { status, n, checks, ci, bothSolved: bothSolved.length, adopted };
+
+  return {
+    n,
+    adoption: { status: verdict(adoptionChecks), checks: adoptionChecks, adopted },
+    effect: { status: verdict(effectChecks), checks: effectChecks, ci, bothSolved: bothSolved.length },
+    contextRatioAllScenarios: ctxRatioAll,
+  };
 }
 
 export function buildReport(scenarios, readArm) {
@@ -272,7 +293,16 @@ export function buildReport(scenarios, readArm) {
   const costUsd = rows.reduce((a, r) => a + ARMS.reduce((b, arm) => b + r[arm].costUsd, 0), 0);
   return {
     registration_version: REG.registration_version,
-    status: verdict.status,
+    // TWO verdicts, no third one. There is deliberately no combined `status`:
+    // it would be the single word everyone quotes, and it would hide which of
+    // the two questions failed.
+    verdicts: {
+      adoption: verdict.adoption.status,
+      effect: verdict.effect.status,
+      $comment:
+        "Separate on purpose. A tool nobody calls whose answer would help, and " +
+        "a tool everyone calls whose answer does not, need opposite work.",
+    },
     n: verdict.n,
     missing,
     means: Object.fromEntries(
@@ -287,16 +317,26 @@ export function buildReport(scenarios, readArm) {
     ),
     adoption: {
       arm: ADOPTION_ARM,
-      scenariosCallingFindAffectedFiles: verdict.adopted,
+      status: verdict.adoption.status,
+      scenariosCallingFindAffectedFiles: verdict.adoption.adopted,
       scenariosCallingFindCode: rows.filter((r) => r[ADOPTION_ARM].findCodeCalls > 0).length,
       affectedCalls: rows.reduce((a, r) => a + r[ADOPTION_ARM].affectedCalls, 0),
       affectedEmpty: rows.reduce((a, r) => a + r[ADOPTION_ARM].affectedEmpty, 0),
       $comment: "find_code calls are reported but do not count towards the adoption threshold.",
     },
-    ciRecall: verdict.ci,
-    checks: verdict.checks,
+    effect: {
+      status: verdict.effect.status,
+      ciRecall: verdict.effect.ci,
+      scenariosSolvedInBothArms: verdict.effect.bothSolved,
+    },
+    checks: { ...verdict.adoption.checks, ...verdict.effect.checks },
     notGated: {
       b_vs_a_recall: per("B", (a) => a.recall) - per("A", (a) => a.recall),
+      context_ratio_all_scenarios: verdict.contextRatioAllScenarios,
+      $comment_context:
+        "The gated context ratio covers only scenarios BOTH arms solved (recall >= 0.8), " +
+        "so that a cheap wrong answer cannot win on cost — the rule registration 3 used. " +
+        "This one covers every scenario and is reported for completeness.",
       $comment:
         "B against A mixes adoption and effect: an agent that never calls the tool makes B equal to A. Reported, never gated.",
     },
