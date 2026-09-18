@@ -54,7 +54,7 @@ function main() {
   }));
   writeFileSync(
     join(OUT, "scenarios.json"),
-    JSON.stringify({ registration_version: 2, seed: SEED, range_end: "5483f56", scenarios }, null, 2),
+    JSON.stringify({ registration_version: 3, seed: SEED, range_end: "5483f56", scenarios }, null, 2),
   );
   process.stdout.write(`${scenarios.length} scenarios written\n`);
 }

@@ -77,7 +77,7 @@ describe("code-roi v2: the clustered bootstrap", () => {
     const a = clusterBootstrap(rows, "d");
     const b = clusterBootstrap(rows, "d");
     assert.deepEqual(a, b);
-    assert.equal(a.clusters, 3, "resamples directories, not scenarios");
+    assert.equal(a.clusters, 4, "one group per changed file (registration v3)");
     assert.ok(a.lo <= a.hi);
   });
 

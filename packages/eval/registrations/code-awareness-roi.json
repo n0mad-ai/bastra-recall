@@ -1,7 +1,7 @@
 {
   "$comment": "Pre-registration of the code-awareness measurement (#579, #588, epic #572; C-089..C-094). Version 2 replaces version 1 (git history, commit before this one): v1 asked 'where is symbol X' and measured search tokens; its only clean run used a find_code payload that no longer exists and was withdrawn (BEFUND.md, 69da488). v2 asks the question the feature is built for — 'what breaks if I change this' — with the design from the Codex counter-review of PR #582 and thresholds decided by the product owner. Fixed BEFORE any v2 scenario has been run. Amending anything after a run has started invalidates that run: bump registration_version and say which version a report belongs to.",
   "schema_version": 1,
-  "registration_version": 2,
+  "registration_version": 3,
   "registered_at": "2026-09-18",
   "registered_by": "Claude Opus 5; thresholds decided by Daniel Nevoigt on 2026-09-18",
   "status": "numbers_registered",
@@ -16,8 +16,8 @@
   "unit": {
     "name": "historical_change",
     "definition": "One file F changed in one historical commit C of this repository on main. The scenario is set on C's parent: the agent is shown F's diff from C as the planned change and asked which OTHER files would stop compiling because of it.",
-    "independence": "At most one scenario per file, at most three per directory. The bootstrap resamples directories, not scenarios, so scenarios sharing a directory are not counted as independent evidence.",
-    "$comment_independence": "Strictly one per directory would leave too few candidates in flat directories like packages/daemon/src; the cap plus the clustered bootstrap is the honest middle."
+    "independence": "At most one scenario per file. Each scenario is a different changed file, so the bootstrap resamples scenarios.",
+    "$comment_independence": "v3, amended 2026-09-18 by decision of Daniel Nevoigt, BEFORE any arm ran: v2 also capped scenarios at three per directory and resampled directories. Walking the whole commit range under that cap yielded only 15 qualifying changes against a minimum of 30 — 1,335 candidates were never examined because packages/daemon/src is one flat directory. One-per-file is the independence rule the Codex counter-review asked for; the directory cap was an addition of this registration. The 15 truth sets already mined are unchanged by the amendment; no arm result existed at the time."
   },
 
   "ground_truth": {
@@ -31,7 +31,7 @@
 
   "scenario_inclusion": {
     "commit_range": "non-merge commits reachable from main at 5483f56 (the pre-code-awareness baseline), walked NEWEST first; within a commit, files in path order",
-    "stop_rule": "stop once 45 scenarios qualify after the independence caps; 45 leaves room for adjudication removals above the 30 minimum. The walk order and the stop rule are fixed here so the selection cannot follow the results.",
+    "stop_rule": "stop once 45 scenarios qualify after the independence rule; 45 leaves room for adjudication removals above the 30 minimum. The walk order and the stop rule are fixed here so the selection cannot follow the results.",
     "$comment_range": "Amended 2026-09-18 before any scenario was mined or run: oldest-first would have filled the sample with changes to a repository a fraction of today's size.",
     "file_filter": "F is a .ts file under packages/*/src/, not a test",
     "must_break_something": "the truth set has at least one file",
@@ -111,7 +111,7 @@
   },
 
   "statistics": {
-    "method": "paired bootstrap, 10 000 resamples, resampling directories (clusters) with replacement",
+    "method": "paired bootstrap, 10 000 resamples, resampling scenarios with replacement (v3; v2 resampled directories)",
     "seed": 20260918
   },
 
