@@ -99,23 +99,37 @@ export type FindCodeInput = z.infer<typeof FindCodeArgs>;
 
 // ─── Result shape ────────────────────────────────────────────────
 
+/**
+ * One place in the code.
+ *
+ * DELIBERATELY NARROW, and it did not start that way. Measured 18.09.2026
+ * against the no-graph control arm: a `find` answer averaged 602 characters
+ * of which 51 were the answer — the rest was `file` and `line` repeating what
+ * `location` already says, a `community` number that means nothing without an
+ * LLM to name the clusters, and a dependents list nobody asked for. At that
+ * size the tool cost more than the grep it was meant to replace, which is
+ * what the measurement showed. Trimmed to what was asked, the same answer is
+ * ~123 characters and undercuts the grep.
+ *
+ * So: `location` is the whole location (`file:line`), and anything a caller
+ * did not ask for is not in the answer.
+ */
 export interface CodeLocation {
   symbol: string;
   kind: SymbolKind;
-  file: string;
-  line: number | null;
   /** `file:line`, or just `file` when the graph carried no usable line. */
   location: string;
-  community: number | null;
   /** Hops from the anchor. Only set on dependents; 1 unless depth 2 was asked. */
   depth?: number;
 }
 
 export interface FindCodeHit extends CodeLocation {
-  /** One hop of callers/dependents, capped. */
-  dependents: CodeLocation[];
-  /** True when the hop had more than the cap allows. */
-  dependents_truncated: boolean;
+  /** One hop of callers/dependents — only on `mode: "affected"`, because a
+   *  `find` caller asked where something IS, not what leans on it, and the
+   *  list was 36 % of the answer's size. */
+  dependents?: CodeLocation[];
+  /** True when the hop had more than the cap allows. Omitted with the list. */
+  dependents_truncated?: boolean;
 }
 
 /** Which lane produced the hits — the agent's signal for how much to trust them. */
@@ -124,9 +138,7 @@ export type FindCodeLane = "symbol" | "path" | "lexical";
 export type FindCodeStatus = "ok" | "no_answer" | "unavailable";
 
 export interface FindCodeResult {
-  query: string;
   mode: "find" | "affected";
-  repo: string;
   status: FindCodeStatus;
   /** Absent on `no_answer` and `unavailable` — no lane produced anything. */
   lane?: FindCodeLane;
@@ -249,7 +261,9 @@ export function findCode(cache: CodeGraphCache, args: FindCodeInput): FindCodeRe
   const repo = isAbsolute(args.repo ?? "") ? (args.repo as string) : resolve(args.repo ?? process.cwd());
   const query = args.query.trim();
 
-  const base = { query, mode, repo, hits: [] as FindCodeHit[], truncated: false };
+  // `query` and `repo` are NOT echoed back: the caller passed them and pays
+  // for every character of an answer. Kept in telemetry, not in the payload.
+  const base = { mode, hits: [] as FindCodeHit[], truncated: false };
   const done = (r: Omit<FindCodeResult, "took_ms">): FindCodeResult => ({
     ...r,
     took_ms: Number((performance.now() - startedAt).toFixed(3)),
@@ -289,7 +303,11 @@ export function findCode(cache: CodeGraphCache, args: FindCodeInput): FindCodeRe
   // and blow the output budget on it. So a path anchor lists where its
   // symbols are, and the blast radius once, in `files`.
   const files = anchors.file !== null ? dependentFilesOf(graph, anchors.file) : null;
-  const hits = capped.map((s) => (files === null ? hitFor(graph, s, depth) : anchorOnly(graph, s)));
+  // `find` asks where something is; `affected` asks what leans on it. Only
+  // the second one gets the dependents list (#579: it was 36 % of the answer).
+  const hits = capped.map((s) =>
+    files === null ? hitFor(graph, s, depth, mode === "affected") : anchorOnly(graph, s),
+  );
 
   return done({
     ...base,
@@ -364,11 +382,23 @@ function allAnchors(graph: LoadedGraph, query: string): Anchors | null {
 
 /** One anchor with no hop — used where the hop is answered in `files`. */
 function anchorOnly(graph: LoadedGraph, symbol: CodeSymbol): FindCodeHit {
-  return { ...location(graph, symbol), dependents: [], dependents_truncated: false };
+  // No empty `dependents: []` — an absent field says the same thing for free.
+  return location(graph, symbol);
 }
 
-/** One anchor plus its dependents, one hop (two only when asked for). */
-function hitFor(graph: LoadedGraph, symbol: CodeSymbol, depth: number): FindCodeHit {
+/**
+ * One anchor plus its dependents, one hop (two only when asked for).
+ *
+ * `withDependents` is false for `mode: "find"`: that caller asked where a
+ * symbol IS. Measured, the list it did not ask for was 36 % of the answer.
+ */
+function hitFor(
+  graph: LoadedGraph,
+  symbol: CodeSymbol,
+  depth: number,
+  withDependents = true,
+): FindCodeHit {
+  if (!withDependents) return location(graph, symbol);
   const first = ranked(dependentSymbolsOf(graph, symbol.id));
   const dependents = first.slice(0, MAX_DEPENDENTS).map((d) => location(graph, d, 1));
 
@@ -416,10 +446,7 @@ function location(graph: LoadedGraph, s: CodeSymbol, depth?: number): CodeLocati
     // the agent will type back into the next call or into a Grep.
     symbol: s.name,
     kind: s.kind,
-    file: s.file,
-    line: s.line,
     location: s.line === null ? s.file : `${s.file}:${s.line}`,
-    community: graph.nodes.get(s.id)?.community ?? null,
     ...(depth === undefined ? {} : { depth }),
   };
 }
