@@ -234,6 +234,8 @@ describe("tool calls are counted per tool", () => {
     assert.equal(report.adoption.scenariosCallingFindCode, 10);
     assert.equal(report.checks.adoption.value, 0.4);
     assert.equal(report.checks.adoption.pass, false);
+    assert.equal(report.verdicts.effect !== undefined, true);
+    assert.equal(report.status, undefined, "no combined status in the report either");
   });
 });
 
@@ -312,31 +314,32 @@ describe("the registration's thresholds decide", () => {
       ),
     );
 
-  test("a run that clears every threshold passes", () => {
+  test("a run that clears every threshold passes BOTH verdicts", () => {
     const v = judge(rowsWhere(40, 0.1), thresholds, 40);
-    assert.equal(v.status, "pass", JSON.stringify(v.checks));
-    for (const [name, c] of Object.entries(v.checks)) assert.equal(c.pass, true, name);
+    assert.equal(v.adoption.status, "pass");
+    assert.equal(v.effect.status, "pass", JSON.stringify(v.effect.checks));
+    assert.equal(v.status, undefined, "there is no combined status to quote");
   });
 
-  test("too small a recall gain fails on that criterion alone", () => {
+  test("too small a recall gain fails EFFECT and leaves adoption alone", () => {
     const v = judge(rowsWhere(40, 0.02), thresholds, 40);
-    assert.equal(v.status, "fail");
-    assert.equal(v.checks.recall_gain.pass, false);
-    assert.equal(v.checks.precision_loss.pass, true);
-    assert.equal(v.checks.adoption.pass, true);
+    assert.equal(v.effect.status, "fail");
+    assert.equal(v.adoption.status, "pass");
+    assert.equal(v.effect.checks.recall_gain.pass, false);
+    assert.equal(v.effect.checks.precision_loss.pass, true);
   });
 
   test("a gain bought with wrong files fails on precision", () => {
     const v = judge(rowsWhere(40, 0.1, -0.2), thresholds, 40);
-    assert.equal(v.checks.recall_gain.pass, true);
-    assert.equal(v.checks.precision_loss.pass, false);
-    assert.equal(v.status, "fail");
+    assert.equal(v.effect.checks.recall_gain.pass, true);
+    assert.equal(v.effect.checks.precision_loss.pass, false);
+    assert.equal(v.effect.status, "fail");
   });
 
   test("a gain bought with context fails on context", () => {
     const v = judge(rowsWhere(40, 0.1, 0, 1.5), thresholds, 40);
-    assert.equal(v.checks.context.pass, false);
-    assert.equal(v.status, "fail");
+    assert.equal(v.effect.checks.context.pass, false);
+    assert.equal(v.effect.status, "fail");
   });
 
   test("an interval that touches zero fails even with a mean gain", () => {
@@ -351,22 +354,34 @@ describe("the registration's thresholds decide", () => {
       ),
     );
     const v = judge(rows, thresholds, 40);
-    assert.equal(v.checks.recall_ci_lower.pass, false);
-    assert.equal(v.status, "fail");
+    assert.equal(v.effect.checks.recall_ci_lower.pass, false);
+    assert.equal(v.effect.status, "fail");
   });
 
-  test("too few scenarios is underpowered, not a verdict", () => {
+  test("too few scenarios makes BOTH verdicts underpowered, not a judgement", () => {
     const v = judge(rowsWhere(12, 0.3), thresholds, 40);
-    assert.equal(v.status, "underpowered");
+    assert.equal(v.adoption.status, "underpowered");
+    assert.equal(v.effect.status, "underpowered");
   });
 
-  test("adoption below the share fails even when the effect is there", () => {
+  test("adoption can fail while the effect passes — the whole point of splitting", () => {
     const rows = rowsWhere(40, 0.2).map((r, i) => ({ ...r, B: { ...r.B, affectedCalls: i < 10 ? 1 : 0 } }));
     const v = judge(rows, thresholds, 40);
-    assert.equal(v.checks.adoption.value, 0.25);
-    assert.equal(v.checks.adoption.pass, false);
-    assert.equal(v.checks.recall_gain.pass, true);
-    assert.equal(v.status, "fail");
+    assert.equal(v.adoption.checks.adoption.value, 0.25);
+    assert.equal(v.adoption.status, "fail");
+    assert.equal(v.effect.status, "pass", "a tool nobody calls can still have a good answer");
+  });
+
+  test("the effect can fail while adoption passes", () => {
+    const v = judge(rowsWhere(40, 0), thresholds, 40);
+    assert.equal(v.adoption.status, "pass");
+    assert.equal(v.effect.status, "fail");
+  });
+
+  test("the unfiltered context ratio is reported next to the gated one", () => {
+    const v = judge(rowsWhere(40, 0.1, 0, 2), thresholds, 40);
+    assert.equal(v.contextRatioAllScenarios, 2);
+    assert.equal(v.effect.checks.context.value, 2);
   });
 });
 

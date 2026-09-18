@@ -1,0 +1,151 @@
+{
+  "$comment": "Pre-registration of the change-impact measurement (#582, epic #572). Supersedes code-awareness-roi.json registration_version 3, which is kept as the record of the completed v3 run and stays reproducible from ~/.bastra/eval/code-roi-v2 with evaluate.mjs. Thresholds decided by Daniel Nevoigt on 2026-09-18. Fixed BEFORE any v4 scenario has been run; the two pilot commits named under sample.excluded_pilot were run against the plumbing only and are excluded from the sample. Amending anything after the main run has started invalidates that run: bump registration_version and say which version a report belongs to.",
+  "schema_version": 1,
+  "registration_version": 4,
+  "registered_at": "2026-09-18",
+  "registered_by": "Claude Opus 5; thresholds decided by Daniel Nevoigt on 2026-09-18",
+  "status": "numbers_registered",
+  "issue": 582,
+  "epic": 572,
+  "supersedes": "code-awareness-roi.json registration_version 3",
+  "contract_refs": ["13.1", "16.2", "16.3", "18.1", "24", "26.2", "C-089", "C-090", "C-091"],
+
+  "why_a_new_registration": "v3 answered its question and the answer invalidated its own comparison: `find_code` was offered in 44 of 44 runs and called in 0, so both arms ran the same grep behaviour and the measured difference (+0.8 Pp recall) is noise between two runs of one procedure. Two things were confounded — whether an agent REACHES for the graph, and whether the graph's answer HELPS. This design separates them into three arms.",
+
+  "question": "(a) Adoption: offered a change-impact tool described graph-first, how often does an agent call it? (b) Effect: when the change-impact answer is in front of the agent, does it name more of the files the change really breaks, without naming more wrong ones and without costing disproportionate context?",
+
+  "arms": {
+    "A": {
+      "name": "grep",
+      "description": "No MCP server at all — text search and file reads only. Identical to v3's control arm."
+    },
+    "B": {
+      "name": "offered",
+      "description": "`find_code` and `find_affected_files` offered over stdio MCP, nothing else changed. Whether the agent calls them is the observation."
+    },
+    "prefilled": {
+      "name": "prefilled",
+      "description": "The same tools, plus the `find_affected_files` answer for exactly the planned change already in the prompt. The information is guaranteed to have been SHOWN; nothing forces the agent to use it, which is why the arm is not called `forced`.",
+      "symbols_from": "the product's own `changedSymbolsOf` applied to the scenario diff — not a hand-written list, so both graph arms start from the information the prompt already carries"
+    },
+    "runner": "packages/eval/code-roi/v2/run-arms-v3.mjs",
+    "mcp_server": "packages/eval/code-roi/v2/code-tools-mcp.mjs (the product's own tool definitions and handlers)",
+    "isolation": "unchanged from v3: `--setting-sources project --strict-mcp-config --no-session-persistence`, a fresh process per scenario and arm, cwd a throwaway worktree with no `.git`, the graph moved out of the tree so no arm can read it as a file",
+    "tools": "Read and read-only shell search; no edits, no subagents, no web",
+    "model": "claude-sonnet-5",
+    "max_turns": 30,
+    "arm_order": "randomized per scenario by the registered seed, written into the scenario file before the first run"
+  },
+
+  "unit_and_truth": {
+    "unchanged_from": "code-awareness-roi.json registration_version 3",
+    "unit": "one historical change to one file, at most one scenario per file",
+    "ground_truth": "a file is affected when it carries a type error after applying exactly that file's diff that it did not carry before; errors compared as (file, TS code, message) multisets with line and column ignored; adjudicated by hand before any arm runs, removals only with a written reason",
+    "$comment": "The truth definition is not touched. Changing the ruler and the tool in the same step would leave nothing comparable."
+  },
+
+  "primary_metric": {
+    "name": "affected_file_recall",
+    "definition": "Per scenario: |named ∩ truth| / |truth|, `named` being the JSON array on the last FILES: line of the final answer, normalized to repo-relative POSIX paths.",
+    "direction": "higher_is_better",
+    "compared": "prefilled against A, paired per scenario"
+  },
+
+  "context_metric": {
+    "name": "input_tokens",
+    "definition": "Per arm, from the run's own `result` event: modelUsage[claude-sonnet-5].inputTokens + cacheReadInputTokens + cacheCreationInputTokens. All three are summed because a cached token is a token the model read. Side models the client calls on its own (haiku for titles and the like) are excluded — they are not the agent's context and differ between arms at random. Fallback when modelUsage is absent: the run-level `usage` block summed the same way, and the row is marked `usageFallback`.",
+    "$comment": "v3 counted characters of TOOL RESULTS. That rule is blind to the prompt, and the prefilled arm's block arrives in the prompt — under it the arm that spends the most context would have scored as free. This is the correction the v4 design needs to be honest about its own cost."
+  },
+
+  "verdicts": {
+    "$comment": "TWO verdicts, decided separately, with no combined status. Decided by Daniel Nevoigt on 2026-09-18. A tool nobody calls whose answer would have helped, and a tool everyone calls whose answer does not, are opposite findings needing opposite work — one word covering both would hide which it was. Each verdict is pass, fail, underpowered (fewer than min_scenarios) or not_evaluable.",
+    "adoption": {
+      "criteria": ["adoption_min_share"],
+      "question": "Does an agent offered the tool call it?"
+    },
+    "effect": {
+      "criteria": ["recall_gain_min", "recall_ci_lower", "precision_loss_max", "context_increase_max_ratio"],
+      "question": "Does the answer, once shown, make the agent name more of the breaking files without more wrong ones and without disproportionate context?",
+      "$comment": "All four of these must hold for the effect verdict to pass; none of them touches the adoption verdict."
+    }
+  },
+
+  "thresholds": {
+    "$comment": "Decided by Daniel Nevoigt, 2026-09-18. Grouped into the two verdicts above; the numbers are unchanged from the first registration of this design.",
+    "adoption_min_share": 0.7,
+    "$comment_adoption": "In arm B, at least 70 % of scenarios must call `find_affected_files` at least once. `find_code` calls are reported but do NOT count towards this: an agent that locates a symbol has not asked what breaks.",
+    "recall_gain_min": 0.05,
+    "$comment_recall": "Mean paired difference prefilled − A of at least 5 percentage points, AND the lower bound of its 95 % bootstrap interval above 0.",
+    "precision_loss_max": 0.05,
+    "$comment_precision": "Mean paired difference in precision (prefilled − A) not below −0.05.",
+    "context_increase_max_ratio": 0.25,
+    "$comment_context": "On scenarios solved in BOTH arms (recall ≥ 0.8), median prefilled input tokens at most 1.25 × median A. The restriction to scenarios both arms solved is INHERITED from registration 3, where its reason is recorded: cost is compared only where both got the answer, so a cheap wrong answer cannot win on cost. The unfiltered ratio over every scenario is reported alongside it as `notGated.context_ratio_all_scenarios`."
+  },
+
+  "not_gated": {
+    "context_ratio_all_scenarios": "The context ratio over every scenario, not just the ones both arms solved. Reported, never gated.",
+    "b_vs_a": "Arm B against arm A is reported and never gated: it multiplies adoption and effect, and an agent that never calls the tool makes B identical to A. Reporting it as the effect is what made the v3 report unreadable.",
+    "find_code_adoption": "Reported per scenario, no threshold.",
+    "latency_and_hook_block": "Both stay with registration 3 and come from lane telemetry (`bastra logs --stats`), not from these runs."
+  },
+
+  "sample": {
+    "min_scenarios": 40,
+    "must_be_fresh": true,
+    "$comment_fresh": "MANDATORY. The 44 scenarios in ~/.bastra/eval/code-roi-v2 were used to develop the symbol query this measures (entry specificity, the package-import narrowing threshold, the file-count cap were all decided against those gaps). A number from them is a training number and must not appear as an effect estimate.",
+    "commit_range": "non-merge commits reachable from 61652b6 (the parent of the OLDEST commit v3 used), walked NEWEST first — `mine.mjs --since 61652b6`. main's tip IS v3's range end 5483f56, so there is no newer history to take: a disjoint sample has to come from before v3's oldest scenario, and that boundary is what makes it disjoint.",
+    "excluded_pilot": {
+      "$comment": "Run against the plumbing before the registration was frozen. Excluded from the main sample; if the miner selects either file again from either commit, the scenario is dropped.",
+      "commits": [
+        "197f9b10f05ca24fa72a09daf98fcdb8d7ffef6c",
+        "c6cf3e21a7150f798fe0c8104735f4db83d0232d"
+      ],
+      "files": ["packages/daemon/src/cli/types.ts", "packages/daemon/src/tool-handlers.ts"],
+      "enforced_by": "select.mjs drops any candidate from these commits before writing the scenario file — the rule is mechanical, not a note someone has to remember.",
+      "$comment_commits": "The two pilot scenarios, run on 2026-09-18 against the plumbing only (archive ~/.bastra/eval/code-roi-v4-pilot, $0.99, six arms, all evaluable). Their result is not evidence: n = 2, and the run existed to prove the pipeline, not to measure."
+    },
+    "$comment_size": "40 independent changes, above v3's 30: the effect threshold is half of v3's, so the sample carries more of the burden. Fewer than 40 qualifying scenarios → the report says `underpowered` (18.1), not a verdict."
+  },
+
+  "statistics": {
+    "method": "paired bootstrap, 10 000 resamples, resampling by changed file with replacement",
+    "seed": 20260918
+  },
+
+  "run_conditions": {
+    "repository": "bastra-recall",
+    "graphify_version": "0.9.63",
+    "graph_build_command": "graphify extract <worktree> --code-only",
+    "per_scenario_base": "the commit's parent SHA, recorded in the scenario file with the graph's sha256",
+    "cost_ceiling_usd": 20,
+    "$comment_cost": "Enforced by the runner, not documented at it: every finished arm's `total_cost_usd` is summed and the next arm only starts while the ceiling is still out of reach at the running average cost per arm. Raising it is a decision, not a flag someone reaches for at 2 a.m. (CODE_ROI_COST_CEILING).",
+    "frozen_archive": "~/.bastra/eval/code-roi-v2 is never written by a v4 script — `archive.mjs` refuses it, because the v3 report is only reproducible while that archive is untouched."
+  },
+
+  "archive": {
+    "location": "the directory named by CODE_ROI_OUT for the run",
+    "contents": [
+      "scenario file with base SHAs, arm order and seed",
+      "truth sets with adjudication notes",
+      "raw stream-json transcript of every arm run",
+      "the prefilled block handed to the third arm, per scenario",
+      "graph hash per scenario",
+      "report.json"
+    ]
+  },
+
+  "reporting_duties": [
+    "Adoption from arm B, with its N, separately for find_affected_files and find_code.",
+    "Effect from prefilled against A: paired mean with its 95 % interval, and the per-scenario rows.",
+    "Precision and context (input tokens) as defined above.",
+    "B against A, labelled as adoption and effect combined, never as the effect.",
+    "The cost of the run against the ceiling.",
+    "That the offline figures on the v3 sample (recall 91.3 %, precision 52.4 %) are development data and carry no weight here.",
+    "Both verdicts separately — adoption and effect — and never a combined status.",
+    "An honest `underpowered` / `not_evaluable` per 18.1 where the sample does not support a verdict.",
+    "The registration_version the report belongs to."
+  ],
+
+  "failure_is_a_result": true,
+  "$comment_failure": "A missed threshold is recorded as the finding; thresholds are not moved afterwards."
+}
