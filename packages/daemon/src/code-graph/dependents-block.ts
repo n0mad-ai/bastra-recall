@@ -116,6 +116,11 @@ export interface DependentsNote {
   note: string;
   /** Key to book under `shown` once the block has actually gone out. */
   dedupeKey: string;
+  /** How many files depend on this one — the ROI telemetry's unit of value
+   *  (#579). Reported here rather than parsed back out of the rendered text. */
+  dependents: number;
+  /** Whether the graph was behind the file when this was built. */
+  stale: boolean;
 }
 
 /** The session key for one file's block. Exported for the lane's delta. */
@@ -158,7 +163,7 @@ export async function dependentsNote(opts: DependentsNoteOptions): Promise<Depen
 
   const note = format(rel, symbols, dependents, stale);
   if (Date.now() - startedAt > (opts.budgetMs ?? BUDGET_MS)) return null;
-  return { note, dedupeKey };
+  return { note, dedupeKey, dependents: dependents.length, stale };
 }
 
 /**
