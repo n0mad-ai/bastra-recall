@@ -13,7 +13,13 @@ geprüft (ein Szenario als Artefakt ausgeschlossen).
 | gefundene betroffene Dateien (Recall) | 89,4 % | 90,2 % | +10 Pp — gemessen **+0,8 Pp** |
 | 95-%-Intervall des Unterschieds | | | Untergrenze > 0 — gemessen **0,0** |
 | Präzision | 91,6 % | 89,3 % | ≥ −5 Pp — **eingehalten** (−2,3) |
-| Kontext (Median, 39 in beiden gelöst) | | 0,77 × | ≤ 1,25 × — **eingehalten** |
+| Suchergebnis-Kontext (Zeichen aus Tool-Ergebnissen, Median, 39 in beiden gelöst) | | 0,77 × | ≤ 1,25 × — **eingehalten** |
+
+Der Kontext-Gate misst, wie registriert, nur die Zeichen der Tool-Ergebnisse.
+Auf denselben 39 Paaren liegen die tatsächlichen Input-Tokens des Modells bei
+0,90 × und die medianen Laufkosten bei 1,11 × — der Graph-Arm war also nicht
+billiger, obwohl er das Tool nie benutzt hat. Beides ist nicht gegated und
+hier nur zur Einordnung genannt.
 
 ## Der eigentliche Befund
 
@@ -22,7 +28,10 @@ allen 44 Läufen verbunden und angeboten (geprüft im Init-Protokoll jedes
 Laufs). Der Agent hat es nie gewählt, sondern mit grep und Lesen gearbeitet.
 
 Damit misst der Vergleich zwei praktisch gleiche Arme, und die Unterschiede
-oben sind Rauschen zwischen zwei Durchläufen desselben Vorgehens. Die Messung
+oben sind Rauschen zwischen zwei Durchläufen desselben Vorgehens: 43 von 44
+Paaren haben exakt denselben Recall, der gesamte Unterschied stammt aus einem
+Szenario (S36, 0,33 → 0,67), in dem der Graph-Arm ohne Graph-Nutzung eine
+richtige Datei mehr nannte. Die Messung
 beantwortet nicht, ob der Graph hilft, WENN er benutzt wird — sondern dass ein
 Agent ihn so, wie das Tool heute angeboten wird, nicht benutzt. Außerdem
 lösen beide Arme die Aufgabe schon zu knapp 90 %: Viel Luft nach oben gab es
@@ -32,9 +41,16 @@ für diese Aufgabenklasse in diesem Repository nicht.
 
 - Ob `find_code` hilft, wenn der Agent es benutzt (erzwungen oder per
   Hinweis im Prompt) — das wäre eine neue, eigens zu registrierende Frage.
-- Latenz-Gate und Hook-Block-Regel kommen aus der Alltags-Telemetrie
-  (`bastra logs --stats`), nicht aus diesem Lauf; der Hook-Block hat noch
-  keine 50 Blöcke.
+- **Latenz (Gate, nicht auswertbar):** Write/Edit-Lane ohne Code-Awareness
+  (10.–16.09., n = 735) p50 56 ms / p90 86 ms; mit Code-Awareness auf dem
+  aktuellen Stand (ab 18.09. 06:42, n = 11) p50 75 ms / p90 87 ms. Das ist
+  ein Vorher/Nachher-Vergleich, kein gepaarter Kontrollarm, und n = 11 trägt
+  kein Urteil. Beide p90 liegen unter 200 ms.
+- **Hook-Block (Regel ≥ 15 % befolgt nach ≥ 50 Blöcken, nicht auswertbar):**
+  6 Blöcke bei 822 Write/Edit-Aufrufen im Log. Drei davon stammen aus der
+  Zeit vor der Befolgungs-Telemetrie, die anderen drei aus Testaufrufen am
+  18.09. (Sessions `probe-584-*`), nicht aus echter Arbeit. Auswertbare Blöcke
+  aus echten Sessions: **0 von 50**.
 
 ## Nachvollziehen
 
