@@ -17,6 +17,10 @@ import {
 } from "../src/code-graph/affected.js";
 import { workspaceModules } from "../src/code-graph/workspace-packages.js";
 import { externalRefLines } from "../src/code-graph/external-refs.js";
+import { createHash } from "node:crypto";
+import { CodeGraphCache } from "../src/code-graph/cache.js";
+import { affectedTools, findAffectedFiles } from "../src/code-graph/find-affected-files.js";
+import { serverInstructions } from "../src/mcp-instructions.js";
 
 /**
  * A node in Graphify's real shape — the same helper the reader test uses,
@@ -197,6 +201,45 @@ describe("external references", () => {
     assert.ok(
       dependents.some((d) => d.id === "daemon_bridge_run" && d.relation === "imports"),
       "the import through packages_core_dist_index_savememory reaches saveMemory",
+    );
+  });
+});
+
+describe("an unavailable answer is honest about why", () => {
+  it("a repository nobody enabled is told so, with the command that changes it", async () => {
+    const off = new CodeGraphCache(undefined, () => false);
+    const r = await findAffectedFiles(off, { file: "x.ts", repo: root });
+    assert.equal(r.status, "unavailable");
+    assert.match(r.note, /not enabled/);
+    assert.match(r.note, /bastra code enable/);
+    assert.doesNotMatch(r.note, /loading|being read/i, "nothing is loading — saying so sends the agent back for nothing");
+  });
+
+  it("an enabled repository without a graph is told to index, not to wait", async () => {
+    const empty = await mkdtemp(join(tmpdir(), "bastra-nograph-"));
+    try {
+      const r = await findAffectedFiles(new CodeGraphCache(), { file: "x.ts", repo: empty });
+      assert.match(r.note, /no code graph yet/);
+      assert.match(r.note, /bastra code index/);
+      assert.match(r.note, /will not have it either/);
+    } finally {
+      await rm(empty, { recursive: true, force: true });
+    }
+  });
+
+  it("the frozen measurement surface is untouched by any of this (#582)", async () => {
+    // The registration pins these two hashes; changing a note must not move
+    // them, or the run measures something other than what was registered.
+    const sha = (v: string) => createHash("sha256").update(v).digest("hex");
+    assert.equal(
+      sha(JSON.stringify(affectedTools[0])),
+      "e8e51b5e0c80e6d7e18e009d18624265de9a515c26b95c728ec3b0507ed48b96",
+      "find_affected_files tool definition changed — arms.frozen_surface in the registration no longer matches",
+    );
+    assert.equal(
+      sha(serverInstructions(true)),
+      "1f28f8e422b71d4f92330df003d256af8b66d64057a3074b018324e015d9c706",
+      "server instructions changed — arms.frozen_surface in the registration no longer matches",
     );
   });
 });

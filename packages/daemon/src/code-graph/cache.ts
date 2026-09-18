@@ -179,6 +179,15 @@ export class CodeGraphCache {
   }
 
   /** What `bastra doctor` reports. */
+  /**
+   * Is a load for this repository actually in flight? The honest answer to
+   * "why is there nothing yet" depends on it: a graph that is being read WILL
+   * be there next call, and one that was never built never will (#582).
+   */
+  isLoading(repoRoot: string): boolean {
+    return this.repos.get(repoRoot)?.loading != null;
+  }
+
   stats(): CacheStats {
     const degraded: Array<{ repoRoot: string; reason: RejectReason }> = [];
     let bytes = 0;

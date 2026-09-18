@@ -44,6 +44,7 @@ import {
 import type { CodeGraphCache } from "./cache.js";
 import { codeAwarenessDisabledByEnv } from "./enabled-repos.js";
 import { repoRootSync, workingDiff } from "./git-paths.js";
+import { notReadyNote, offNote, shortRepo } from "./unavailable-note.js";
 import type { CodeSymbol } from "./reader.js";
 
 // ─── Arguments ───────────────────────────────────────────────────
@@ -177,9 +178,7 @@ export async function findAffectedFiles(
     return done({
       ...empty,
       status: "unavailable",
-      note:
-        `Code awareness is switched off for ${shortRepo(repo)}. ` +
-        `This says nothing about what depends on the file — use Grep.`,
+      note: offNote(repo, codeAwarenessDisabledByEnv()),
     });
   }
   const graph = cache.get(repo);
@@ -187,9 +186,7 @@ export async function findAffectedFiles(
     return done({
       ...empty,
       status: "unavailable",
-      note:
-        `The code graph for ${shortRepo(repo)} is not in memory yet (it loads in ` +
-        `the background; this call did not wait for it). Use Grep for this turn.`,
+      note: notReadyNote(cache, repo),
     });
   }
 
@@ -291,8 +288,3 @@ function repoRelative(repo: string, given: string): string | null {
   return rel;
 }
 
-/** The last two path segments: enough to recognise the repo, short in context. */
-function shortRepo(repo: string): string {
-  const parts = repo.split("/").filter((p) => p.length > 0);
-  return parts.slice(-2).join("/") || repo;
-}
