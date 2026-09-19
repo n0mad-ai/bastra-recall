@@ -10,8 +10,11 @@
  *   B          offered   `find_code` + `find_affected_files` offered, nothing
  *                        else changed. Whether the agent CALLS them is the
  *                        observation.
- *   prefilled            the same tools, plus the `find_affected_files` answer
- *                        for the planned change already in the prompt.
+ *   prefilled            arm A's setup — NO MCP server either — plus the
+ *                        `find_affected_files` answer for the planned change
+ *                        already in the prompt. It carries the answer, not the
+ *                        tools: with the server attached as well, a gain could
+ *                        not be told apart from arm B's (#582 review).
  *
  * The third arm is called `prefilled`, not `forced`: the information is
  * guaranteed to have been SHOWN, and nothing makes the agent use it. Whether
@@ -37,9 +40,11 @@
  *   # adjudicate by hand, THEN register thresholds, THEN run this
  *
  * A COST CEILING IS ENFORCED, not documented: the registration caps the main
- * run, and every finished arm's `total_cost_usd` is added up. The next arm
- * only starts while the ceiling is still out of reach at the running average
- * cost per arm; otherwise the run stops and says how far it got.
+ * run, and every arm's cost is added up — the aborted ones too, from their own
+ * `result` event where there is one and from an estimate where there is not.
+ * The next arm only starts while the ceiling is still out of reach at the mean
+ * cost of the arms that FINISHED; otherwise the run stops and says how far it
+ * got. The accounting lives in `arm-cost.mjs`.
  *
  * Usage: CODE_ROI_OUT=… node run-arms-v3.mjs [--only S01,S02] [--arms A,B,prefilled]
  */
@@ -62,6 +67,17 @@ import { execFileSync } from "node:child_process";
 import { scenarioRoot } from "./scenario-root.mjs";
 import { writableOut } from "./archive.mjs";
 import { ARM_IDS } from "./select.mjs";
+import {
+  abortedArmCharge,
+  armCostUsd,
+  COST_CEILING_USD,
+  finalisable,
+  nextArmEstimateUsd,
+  resultEventOf,
+  spendOnDisk,
+  successfulResult,
+  withinCeiling,
+} from "./arm-cost.mjs";
 import { ALL_TOOL_DEFS } from "../../../daemon/dist/tool-defs.js";
 
 const OUT = writableOut();
@@ -106,108 +122,6 @@ export const ARMS = {
 };
 
 /**
- * The registered ceiling for one run, in US dollars — read FROM the
- * registration, not repeated here. A number in two places is a number that
- * ends up different in one of them, and this one decides when a paid run stops.
- */
-const REGISTRATION = JSON.parse(
-  readFileSync(new URL("../../registrations/code-awareness-change-impact.json", import.meta.url), "utf8"),
-);
-const REGISTERED_CEILING_USD = Number(REGISTRATION.run_conditions.cost_ceiling_usd);
-
-/**
- * The ceiling this run honours. The environment may only LOWER it: a variable
- * that can raise a registered spending limit is not a limit, it is a default.
- */
-export const COST_CEILING_USD = (() => {
-  const raw = Number(process.env.CODE_ROI_COST_CEILING);
-  return Number.isFinite(raw) && raw > 0 ? Math.min(raw, REGISTERED_CEILING_USD) : REGISTERED_CEILING_USD;
-})();
-
-/**
- * What one arm cost, from its transcript's `result` event.
- *
- * An aborted arm has no `result` event and reports 0 here, which is NOT the
- * same as free: `spentUsd` of an aborted arm is taken from `usageCostUsd`
- * below, so a run that burned money and produced nothing still pushes the
- * ceiling. The two are separate because only a `result` is a finished arm.
- */
-export function armCostUsd(transcript) {
-  let cost = 0;
-  for (const line of transcript.split("\n")) {
-    if (!line.trim()) continue;
-    try {
-      const ev = JSON.parse(line);
-      if (ev.type === "result" && typeof ev.total_cost_usd === "number") cost = ev.total_cost_usd;
-    } catch {
-      /* a half-written line is not a cost */
-    }
-  }
-  return cost;
-}
-
-/**
- * Does this transcript carry the terminal `result` event?
- *
- * That event is what says the CLI finished its own turn. Without it the file is
- * whatever had been flushed when the process died — a timeout, a budget stop,
- * a crash — and its `FILES:` line, if there even is one, is a partial answer,
- * not an answer.
- */
-/**
- * May this transcript be finalised as a finished arm?
- *
- * BOTH halves are required. Exit 0 alone is not enough — a CLI that stops at
- * `--max-budget-usd` can still exit cleanly — and a `result` event alone is not
- * enough either, because a non-zero exit says something went wrong after it.
- */
-export function finalisable(exitCode, transcript) {
-  return exitCode === 0 && hasResultEvent(transcript);
-}
-
-export function hasResultEvent(transcript) {
-  for (const line of transcript.split("\n")) {
-    if (!line.trim()) continue;
-    try {
-      if (JSON.parse(line).type === "result") return true;
-    } catch {
-      /* a half-written line is not a result */
-    }
-  }
-  return false;
-}
-
-/**
- * What an ABORTED arm is charged against the ceiling.
- *
- * An arm killed at the timeout, stopped by `--max-budget-usd` or crashed spent
- * real money on every turn it took, and counting it as free is how a run of
- * failures spends without limit. Its transcript carries no `total_cost_usd` —
- * `result` is the only event that has one (checked on the archived v3
- * transcripts) — so the charge is the mean of the arms that DID finish in this
- * run, and nothing at all before the first one finished.
- *
- * That is an estimate, and it is deliberately taken from this run's own
- * measurements rather than from a price list: a per-token price written into
- * this file is a number nobody re-checks when it changes, and it would decide
- * when a paid run stops.
- */
-export function abortedArmCharge(spentUsd, finishedArms) {
-  return finishedArms > 0 ? spentUsd / finishedArms : 0;
-}
-
-/**
- * May another arm start? Only while the ceiling is still out of reach at what
- * the arms so far have cost on average — a ceiling checked only AFTER the
- * spend is not a ceiling.
- */
-export function withinCeiling(spentUsd, armsRun, ceilingUsd = COST_CEILING_USD) {
-  if (spentUsd >= ceilingUsd) return false;
-  if (armsRun === 0) return true;
-  return spentUsd + spentUsd / armsRun <= ceilingUsd;
-}
-
-/**
  * The prefilled arm's block: the product's own `find_affected_files` answer for
  * exactly the planned change, rendered as the agent would have received it.
  *
@@ -246,7 +160,16 @@ function promptWithPrefill(s, prefill) {
   ].join("\n");
 }
 
-function runArm(arm, prompt, tree, graphRoot, dir, budgetUsd) {
+/**
+ * Run one arm and put what it cost on disk, finished or not.
+ *
+ * `spend` is what the run has measured SO FAR on arms that finished — the basis
+ * for charging an abort that reported nothing. It is read here rather than
+ * afterwards because an abort's cost has to be written down at the moment it
+ * happens: its transcript is renamed out of the way and never read again, so
+ * the `.failed…meta.json` beside it is the only record a later helping has.
+ */
+function runArm(arm, prompt, tree, graphRoot, dir, budgetUsd, spend) {
   const transcript = join(dir, `${arm.id}.jsonl`);
   const mcpConfig = join(dir, `${arm.id}-mcp.json`);
   const servers = arm.graph
@@ -312,18 +235,43 @@ function runArm(arm, prompt, tree, graphRoot, dir, budgetUsd) {
         // and recorded recall 0, and `armCostUsd` found no `result` and
         // recorded $0. An aborted arm that scores as a cheap failure is the
         // worst possible shape for a measurement to fail in.
-        const finished = finalisable(code, readFileSync(`${transcript}.partial`, "utf8"));
-        const kept = finished ? transcript : `${transcript}.failed-${Date.now()}`;
+        const body = readFileSync(`${transcript}.partial`, "utf8");
+        const finished = finalisable(code, body);
+        const stamp = Date.now();
+        const kept = finished ? transcript : `${transcript}.failed-${stamp}`;
         renameSync(`${transcript}.partial`, kept);
+        const result = resultEventOf(body);
+        const charge = finished
+          ? { usd: armCostUsd(body), source: "result_event" }
+          : abortedArmCharge(body, spend.finishedCostUsd, spend.finishedArms);
         writeFileSync(
-          join(dir, `${arm.id}${finished ? "" : ".failed"}.meta.json`),
+          // The meta of an abort carries the same stamp as its transcript. A
+          // fixed `<arm>.failed.meta.json` was overwritten by the next attempt,
+          // and with it the only record of what the first one burned.
+          join(dir, finished ? `${arm.id}.meta.json` : `${arm.id}.failed-${stamp}.meta.json`),
           JSON.stringify(
             {
               arm: arm.id,
               name: arm.name,
               exitCode: code,
               finished,
-              ...(finished ? {} : { reason: timedOut ? "timeout" : code === 0 ? "no_result_event" : `exit_${code}` }),
+              ...(finished
+                ? {}
+                : {
+                    reason: timedOut
+                      ? "timeout"
+                      : result !== null
+                        ? `result_${result.subtype ?? "unknown"}`
+                        : code === 0
+                          ? "no_result_event"
+                          : `exit_${code}`,
+                  }),
+              // What this attempt is charged against the ceiling, and where the
+              // number came from. `registered_estimate` and
+              // `mean_of_finished_arms` are estimates and say so; only
+              // `result_event` is measured.
+              chargedUsd: charge.usd,
+              chargedFrom: charge.source,
               transcript: kept.split("/").slice(-1)[0],
               wallMs: Date.now() - startedAt,
               stderr: stderr.slice(-4000),
@@ -332,7 +280,7 @@ function runArm(arm, prompt, tree, graphRoot, dir, budgetUsd) {
             2,
           ),
         );
-        resolve({ code, finished });
+        resolve({ code, finished, charge });
       });
     });
   });
@@ -369,14 +317,15 @@ export function scenarioComplete(dir, armIds = ARM_IDS) {
  * Is this arm's transcript a FINISHED arm?
  *
  * The file's existence is not enough: a transcript written by an older runner,
- * or copied in, may be an abort that was renamed anyway. So the terminal
- * `result` event is checked on disk — the same rule the runner applies when it
- * decides whether to finalise at all, so a resumed run and a fresh one agree.
+ * or copied in, may be an abort that was renamed anyway. So the SUCCESSFUL
+ * terminal `result` event is checked on disk — the same rule the runner applies
+ * when it decides whether to finalise at all, so a resumed run and a fresh one
+ * agree, and a budget-stopped arm is re-run instead of scored.
  */
 export function armFinished(dir, armId) {
   const path = join(dir, `${armId}.jsonl`);
   if (!existsSync(path)) return false;
-  return hasResultEvent(readFileSync(path, "utf8"));
+  return successfulResult(readFileSync(path, "utf8"));
 }
 
 /**
@@ -471,8 +420,26 @@ async function main() {
   const { scenarios } = JSON.parse(readFileSync(join(OUT, "scenarios.json"), "utf8"));
   const live = scenarios.filter((s) => !s.excluded && (!only || only.has(s.id)));
   const maxScenarios = helpingSize();
-  let spentUsd = 0;
-  let armsRun = 0;
+  // WHAT THIS ARCHIVE HAS ALREADY BEEN CHARGED, off disk — finished arms and
+  // the aborts of every earlier helping. The old version rebuilt only the
+  // finished arms it happened to walk past, so a resumed run forgot every abort
+  // and, under `--only`, most of the finished arms too. The ceiling then bound
+  // on a fraction of the real spend.
+  const spend = spendOnDisk(RUNS, ARM_IDS);
+  let finishedCostUsd = spend.finishedCostUsd;
+  let finishedArms = spend.finishedArms;
+  // The whole burden: what finished plus what the aborts were charged. The
+  // ceiling is checked against THIS, while the per-arm projection comes from
+  // the finished arms alone — an estimate that included its own estimates
+  // would climb with every failure.
+  let chargedUsd = finishedCostUsd + spend.abortedCostUsd;
+  if (chargedUsd > 0) {
+    process.stdout.write(
+      `resuming: $${chargedUsd.toFixed(2)} already charged — ${finishedArms} finished arms ` +
+        `($${finishedCostUsd.toFixed(2)}) and ${spend.abortedArms} aborted ` +
+        `($${spend.abortedCostUsd.toFixed(2)})\n`,
+    );
+  }
   let started = 0;
   for (const s of live) {
     const dir = join(RUNS, s.id);
@@ -502,16 +469,16 @@ async function main() {
         );
       }
       if (!wantedIds.includes(spec.id)) continue;
-      const transcript = join(dir, `${spec.id}.jsonl`);
-      if (armFinished(dir, spec.id)) {
-        spentUsd += armCostUsd(readFileSync(transcript, "utf8"));
-        armsRun++;
-        continue;
-      }
-      if (!withinCeiling(spentUsd, armsRun)) {
+      // Already on disk and already counted by `spendOnDisk` — adding it again
+      // here is what the old version did, and it double-charged every arm of a
+      // resumed helping.
+      if (armFinished(dir, spec.id)) continue;
+      const estimateUsd = nextArmEstimateUsd(finishedCostUsd, finishedArms);
+      if (!withinCeiling(chargedUsd, estimateUsd)) {
         process.stdout.write(
-          `\nstopping before ${s.id} ${spec.id}: $${spentUsd.toFixed(2)} spent of the ` +
-            `$${COST_CEILING_USD.toFixed(2)} ceiling over ${armsRun} arms — the next arm ` +
+          `\nstopping before ${s.id} ${spec.id}: $${chargedUsd.toFixed(2)} charged of the ` +
+            `$${COST_CEILING_USD.toFixed(2)} ceiling (${finishedArms} finished arms at ` +
+            `$${finishedCostUsd.toFixed(2)}) — the next arm at $${estimateUsd.toFixed(2)} ` +
             `would risk crossing it. Raise CODE_ROI_COST_CEILING only by decision.\n`,
         );
         return;
@@ -523,36 +490,37 @@ async function main() {
         prompt = promptWithPrefill(s, prefill);
       }
       process.stdout.write(`${s.id} ${spec.id} (${spec.name})\u2026 `);
-      const { code, finished } = await runArm(
+      const { code, finished, charge } = await runArm(
         spec,
         prompt,
         tree,
         graphRoot,
         dir,
-        Math.max(0.01, COST_CEILING_USD - spentUsd),
+        Math.max(0.01, COST_CEILING_USD - chargedUsd),
+        { finishedCostUsd, finishedArms },
       );
+      chargedUsd += charge.usd;
       if (finished) {
-        const cost = armCostUsd(readFileSync(transcript, "utf8"));
-        spentUsd += cost;
-        armsRun++;
-        process.stdout.write(`exit ${code}  $${cost.toFixed(2)}  (total $${spentUsd.toFixed(2)})\n`);
+        finishedCostUsd += charge.usd;
+        finishedArms++;
+        process.stdout.write(`exit ${code}  $${charge.usd.toFixed(2)}  (charged $${chargedUsd.toFixed(2)})\n`);
       } else {
         // The arm stays unfinished and the next helping re-runs it \u2014 but what
         // it burned still counts, or a scenario that keeps failing would run
-        // for ever at no recorded cost.
-        const charged = abortedArmCharge(spentUsd, armsRun);
-        spentUsd += charged;
+        // for ever at no recorded cost. It does NOT count towards the per-arm
+        // projection: nothing was measured here.
         process.stdout.write(
-          `exit ${code}  ABORTED, not finalised; charged the running mean ` +
-            `$${charged.toFixed(2)} (total $${spentUsd.toFixed(2)})\n`,
+          `exit ${code}  ABORTED, not finalised; charged $${charge.usd.toFixed(2)} ` +
+            `(${charge.source}, total $${chargedUsd.toFixed(2)})\n`,
         );
       }
     }
   }
   const complete = live.filter((s) => scenarioComplete(join(RUNS, s.id), wantedIds)).length;
   process.stdout.write(
-    `\n${complete} of ${live.length} scenarios complete, ${armsRun} arms done, ` +
-      `ceiling $${spentUsd.toFixed(2)} of $${COST_CEILING_USD.toFixed(2)}\n`,
+    `\n${complete} of ${live.length} scenarios complete, ${finishedArms} arms done ` +
+      `at $${finishedCostUsd.toFixed(2)}, $${chargedUsd.toFixed(2)} charged of the ` +
+      `$${COST_CEILING_USD.toFixed(2)} ceiling\n`,
   );
 }
 

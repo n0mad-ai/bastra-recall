@@ -26,21 +26,9 @@ const { isFrozen, writableOut } = await import("../code-roi/v2/archive.mjs");
 const { ARM_IDS, shuffled, rng, excludedPilotCommits, pooledCandidates, fileKey } = await import(
   "../code-roi/v2/select.mjs"
 );
-const {
-  ARMS,
-  withinCeiling,
-  armCostUsd,
-  abortedArmCharge,
-  armFinished,
-  finalisable,
-  firstSymlink,
-  hasResultEvent,
-  COST_CEILING_USD,
-  scenarioComplete,
-  helpingSize,
-  treeDirOf,
-  GRAPH_TOOLS,
-} = await import("../code-roi/v2/run-arms-v3.mjs");
+const { ARMS, firstSymlink, scenarioComplete, helpingSize, treeDirOf, GRAPH_TOOLS } = await import(
+  "../code-roi/v2/run-arms-v3.mjs"
+);
 // `mutation-gate.mjs` resolves its archive and its repository at module load,
 // so the test states both rather than inheriting whatever the shell had. The
 // directory is a throwaway: nothing in this file writes to it.
@@ -105,6 +93,10 @@ function transcript(shape: ArmShape): string {
   }
   lines.push({
     type: "result",
+    // The CLI's own success marker. Its failure results carry the same shape
+    // with `is_error: true` and an `error_*` subtype, so the pair is what says
+    // "finished", not the event's presence.
+    subtype: "success",
     is_error: false,
     num_turns: 4,
     total_cost_usd: shape.costUsd ?? 0.25,
@@ -570,34 +562,12 @@ describe("the registration's thresholds decide", () => {
 });
 
 // ─── The cost ceiling ────────────────────────────────────────────
+//
+// The ceiling arithmetic, what counts as a finished arm and what an abort is
+// charged live in `arm-cost.mjs` and are covered by `code-roi-arm-cost.test.ts`.
+// What stays here is the part the SCORER does with the same numbers.
 
 describe("the cost ceiling is enforced, not documented", () => {
-  test("the runner's ceiling IS the registered one, not a copy of it", async () => {
-    const reg = JSON.parse(
-      await readFile(new URL("../registrations/code-awareness-change-impact.json", import.meta.url), "utf8"),
-    );
-    assert.equal(COST_CEILING_USD, reg.run_conditions.cost_ceiling_usd);
-    assert.equal(COST_CEILING_USD, 40, "raised from 20 by decision on 18.09.2026, before the run");
-  });
-
-  test("an arm may start while the ceiling is out of reach", () => {
-    assert.equal(withinCeiling(0, 0, 20), true);
-    assert.equal(withinCeiling(10, 10, 20), true);
-  });
-
-  test("it stops BEFORE the arm that would cross it", () => {
-    // Nine arms at $2.11 each: the tenth would land at $21.
-    assert.equal(withinCeiling(19, 9, 20), false);
-    assert.equal(withinCeiling(20, 10, 20), false);
-    assert.equal(withinCeiling(25, 10, 20), false);
-  });
-
-  test("cost comes from the transcript's result event, and a dead run costs nothing", () => {
-    assert.equal(armCostUsd(transcript({ files: [], costUsd: 1.5 })), 1.5);
-    assert.equal(armCostUsd('{"type":"assistant","message":{"content":[]}}\n'), 0);
-    assert.equal(armCostUsd("not json at all\n"), 0);
-  });
-
   test("the report sums the cost of all three arms against the ceiling", () => {
     const { scenarios, read } = sample(2, () => ({ files: [], costUsd: 1 }));
     const report = buildReport(scenarios, read);
@@ -646,23 +616,6 @@ describe("each arm is the thing it claims to be", () => {
       "the instructions ask for a recall first — an arm denied it is not the product",
     );
     assert.ok(GRAPH_TOOLS.length >= 10, `expected the full tool list, got ${GRAPH_TOOLS.length}`);
-  });
-});
-
-describe("the cost ceiling cannot be raised from the environment", () => {
-  test("the registered value is the maximum, whatever the env says", async () => {
-    const reg = JSON.parse(
-      await readFile(new URL("../registrations/code-awareness-change-impact.json", import.meta.url), "utf8"),
-    );
-    // COST_CEILING_USD was resolved at import time with no env set.
-    assert.equal(COST_CEILING_USD, reg.run_conditions.cost_ceiling_usd);
-    const lower = Math.min(5, reg.run_conditions.cost_ceiling_usd);
-    assert.equal(Math.min(lower, reg.run_conditions.cost_ceiling_usd), lower, "lowering is allowed");
-    assert.equal(
-      Math.min(999, reg.run_conditions.cost_ceiling_usd),
-      reg.run_conditions.cost_ceiling_usd,
-      "raising is not",
-    );
   });
 });
 
@@ -802,59 +755,6 @@ describe("the report covers three arms", () => {
     const report = buildReport(scenarios, () => transcript({ files: [], noFilesLine: true }));
     assert.equal(report.rows[0].A.noAnswer, true);
     assert.equal(report.rows[0].A.recall, 0);
-  });
-});
-
-// ─── An aborted arm is not a finished one (#582 review) ──────────
-
-describe("an arm counts as run only when it finished", () => {
-  const finished = transcript({ files: ["a.ts"], costUsd: 0.2 });
-  /** What the CLI leaves behind when it is killed mid-turn: no `result` row. */
-  const aborted = finished
-    .split("\n")
-    .filter((l) => l.trim() !== "" && (JSON.parse(l) as { type: string }).type !== "result")
-    .join("\n");
-
-  test("finalising needs exit 0 AND the terminal result event", () => {
-    assert.equal(finalisable(0, finished), true);
-    assert.equal(finalisable(1, finished), false, "a non-zero exit is not a finished arm");
-    assert.equal(finalisable(0, aborted), false, "a clean exit without a result is a budget stop");
-    assert.equal(finalisable(143, aborted), false, "SIGTERM at the timeout");
-    assert.equal(finalisable(0, ""), false, "an empty transcript finishes nothing");
-  });
-
-  test("hasResultEvent survives the half-written last line of a killed process", () => {
-    assert.equal(hasResultEvent(aborted + '\n{"type":"assis'), false);
-    assert.equal(hasResultEvent(finished + '\n{"type":"assis'), true);
-  });
-
-  test("an aborted transcript on disk does not make a scenario complete", () => {
-    const dir = mkdtempSync(join(tmpdir(), "code-roi-aborted-"));
-    try {
-      mkdirSync(join(dir, "S01"), { recursive: true });
-      writeFileSync(join(dir, "S01", "A.jsonl"), finished);
-      writeFileSync(join(dir, "S01", "B.jsonl"), finished);
-      // The shape the old runner produced: renamed although it never finished.
-      writeFileSync(join(dir, "S01", "prefilled.jsonl"), aborted);
-      assert.equal(armFinished(join(dir, "S01"), "A"), true);
-      assert.equal(armFinished(join(dir, "S01"), "prefilled"), false);
-      assert.equal(
-        scenarioComplete(join(dir, "S01")),
-        false,
-        "the old runner's rename must not pass for a finished triple",
-      );
-      assert.equal(armCostUsd(aborted), 0, "no result event, no reported cost");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("an aborted arm is charged the mean of the arms that did finish", () => {
-    // Not free: a scenario that keeps failing would otherwise run for ever at
-    // no recorded cost. Before the first finished arm there is nothing to
-    // estimate from, and nothing is charged.
-    assert.equal(abortedArmCharge(0, 0), 0);
-    assert.equal(abortedArmCharge(1.5, 3), 0.5);
   });
 });
 

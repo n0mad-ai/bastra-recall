@@ -172,9 +172,25 @@ async function main() {
   const minFiles = REG.mechanism_gate?.min_cross_package_truth_files;
   const gatedRows = rows.filter((r) => gatedOps.includes(r.operator));
 
-  const part = (key) => ({
+  // ONLY THE PRODUCT WAY DECIDES (#582 review). Both ways were reported with a
+  // `gated` block carrying a pass/fail status, so the report showed two
+  // verdicts where the registration knows one. `explicit` hands the tool a
+  // symbol list no user can produce; it is a diagnostic ceiling for the graph
+  // query, and reading a pass off it would pass the gate on a path nobody
+  // takes. Its numbers stay — the gap between the two IS the finding — but they
+  // are labelled for what they are.
+  const part = (key, decides) => ({
     overall: { ...score(rows, key, undefined, undefined), $comment: "reported, never a pass criterion on its own" },
-    gated: score(gatedRows, key, gatedThreshold, minFiles),
+    gated: decides
+      ? score(gatedRows, key, gatedThreshold, minFiles)
+      : {
+          ...score(gatedRows, key, gatedThreshold, minFiles),
+          status: "diagnostic_only",
+          $comment:
+            "NOT a gate. The share and the registered threshold are shown so the gap to " +
+            "`product.gated` can be read, but this way hands the tool a perfect symbol list " +
+            "and no user takes it. The gate is decided on `product` alone.",
+        },
     byOperator: byOperator(rows, key),
     bySourcePackage: bySourcePackage(rows, key),
     misses: rows
@@ -194,11 +210,13 @@ async function main() {
     mutations: rows.length,
     gated_operators: gatedOps,
     reported_only_operators: GATE.min_share_found?.reported_only_operators ?? [],
-    explicit: part("explicit"),
-    product: part("product"),
+    decided_by: "product.gated",
+    explicit: part("explicit", false),
+    product: part("product", true),
     $comment:
       "Two ways, never merged: `explicit` hands the tool the symbol name (the query's ceiling), " +
-      "`product` gives it only the file and the diff (what a user gets). Offline, no agent. " +
+      "`product` gives it only the file and the diff (what a user gets). The gate is decided on " +
+      "`product.gated`; `explicit.gated` is `diagnostic_only`. Offline, no agent. " +
       "Synthetic breakage: a fair test of the mechanism, no evidence about what people change.",
     rows,
   };
