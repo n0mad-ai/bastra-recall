@@ -116,6 +116,82 @@ describe("symbol spans and the constructs that used to break them", () => {
     );
   });
 
+  it("reads a regex after a control-flow `)`, where a division would be read after a call", async () => {
+    // THE REPRODUCTION (#582 counter-review). `if (x) /{/` was lexed as a
+    // division because the `)` before it looks like the end of a value, so the
+    // brace opened a block. A later `/}/` at top level closed it again, the
+    // file BALANCED, no guard fired — and `f`'s span ran to line 5, swallowing
+    // the top-level code below it.
+    const source = [
+      "export function f(x: boolean, s: string) {", // 1
+      "  if (x) /{/.test(s);", // 2
+      "}", // 3
+      "const top = 1;", // 4
+      "if (top) /}/.test(String(top));", // 5
+      "", // 6
+    ].join("\n");
+    const spans = await spansOf(source, [sym("f", 1)]);
+    assert.notEqual(spans, null);
+    assert.deepEqual(spans!.map((s) => [s.start, s.end]), [[1, 3]]);
+    assert.deepEqual(
+      spansCovering(spans!, 5),
+      [],
+      "the top-level line stays unattributed, so the whole-file fallback fires",
+    );
+  });
+
+  it("still divides after a call's `)` and after an index's `]`", async () => {
+    const source = [
+      "export function rate(n: number, xs: number[]): number {", // 1
+      "  return Math.abs(n) / 2 + xs[0] / 3;", // 2
+      "}", // 3
+      "", // 4
+      "export function later(): number {", // 5
+      "  return 5;", // 6
+      "}", // 7
+      "", // 8
+    ].join("\n");
+    const spans = await spansOf(source, [sym("rate", 1), sym("later", 5)]);
+    assert.notEqual(spans, null, "read as regexes, those slashes would swallow `later`");
+    assert.deepEqual(
+      spans!.map((s) => [s.start, s.end]),
+      [
+        [1, 3],
+        [5, 7],
+      ],
+    );
+  });
+
+  it("drops the whole file when a top-level block's own body steps back to column zero", async () => {
+    // The other half of the runaway: the span overruns code the GRAPH has no
+    // symbol for, so `topLevelOverrun` has no neighbour to compare against.
+    // A body line at the declaration's own column says the block already ended.
+    const source = [
+      "export function f(): void {", // 1
+      "  run();", // 2
+      "}", // 3
+      "const after = 1;", // 4
+      "call(after);", // 5
+      "}", // 6 — a stray brace the count needs, and the span runs to here
+      "", // 7
+    ].join("\n");
+    assert.equal(await spansOf(source, [sym("f", 1)]), null);
+  });
+
+  it("does not fault a template literal whose text sits at column zero", async () => {
+    const source = [
+      "export function help(): string {", // 1
+      "  return render(`", // 2
+      "usage: bastra code", // 3
+      "`);", // 4
+      "}", // 5
+      "", // 6
+    ].join("\n");
+    const spans = await spansOf(source, [sym("help", 1)]);
+    assert.notEqual(spans, null, "the column of text is not structure");
+    assert.deepEqual(spans!.map((s) => [s.start, s.end]), [[1, 5]]);
+  });
+
   it("drops the whole file when the brackets do not balance", async () => {
     // Whatever the cause — a construct this lexer does not know — every span
     // below the mistake is guesswork, so none of them may be used.

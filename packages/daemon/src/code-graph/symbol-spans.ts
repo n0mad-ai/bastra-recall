@@ -19,10 +19,12 @@
  * earlier version of this file claimed it did (#582 review). An over-long span
  * swallows a later top-level change, attributes it to the wrong symbol and
  * hands back a confident non-empty selection — precisely what suppresses the
- * fallback. So the long direction is guarded twice: the lexer handles the
- * construct that caused it (regex literals), and whatever it still gets wrong
- * surfaces as an unbalanced file or as a top-level span overrunning its
- * neighbour, and then the whole file is taken. Precision is the cheaper loss.
+ * fallback. So the long direction is guarded three times: the lexer handles the
+ * construct that caused it (regex literals, including the `)` that decides
+ * whether a slash is one), and whatever it still gets wrong surfaces as an
+ * unbalanced file, as a top-level span overrunning its neighbour, or as a
+ * top-level block whose own body steps back to column zero before its end —
+ * and then the whole file is taken. Precision is the cheaper loss.
  */
 
 import { readFileSync } from "node:fs";
@@ -70,9 +72,59 @@ export function symbolSpans(
   for (const s of starts) {
     const start = s.line as number;
     if (start > lines.length) return null;
-    spans.push({ id: s.id, start, end: spanEnd(scan, start) });
+    const { end, opened, openedAt } = spanEnd(scan, start);
+    if (opened && scan.indent[start - 1] === 0 && runsPastItsOwnEnd(scan, openedAt, end, start)) {
+      return null;
+    }
+    spans.push({ id: s.id, start, end });
   }
   return topLevelOverrun(scan, spans) ? null : spans;
+}
+
+/**
+ * Does a top-level block that runs to the END OF THE FILE contain a line that
+ * says it ended earlier?
+ *
+ * `topLevelOverrun` catches a runaway span by the neighbour it swallows, and
+ * has one blind spot: the LAST symbol of a file has no neighbour below it. A
+ * span that ran away there simply reaches the last line, and the top-level code
+ * it swallowed on the way — an import, a constant, a call the graph has no
+ * symbol for — is silently attributed to it (#582 counter-review).
+ *
+ * What the balance got wrong shows in the layout: a block written at column
+ * zero indents its body, so a line inside the span that STARTS A STATEMENT at
+ * that same column — `const x = 1;`, `import …`, `call(x);` — is code the
+ * block never contained.
+ *
+ * "Starts a statement" is read narrowly, as a line beginning with a word
+ * character. Everything a declaration can legitimately put at column zero is a
+ * continuation of its own head and begins with a bracket instead: `): string {`
+ * for a signature broken over several lines, `} = {}): Promise<T> {` for an
+ * options object, `} {` for a multi-line return type. Reading those as
+ * statements faulted 102 of this repository's own 737 indexed files.
+ *
+ * ONLY for a span that reaches the end of the file, because that is the blind
+ * spot. Applying the same test everywhere was measured on the 44-scenario
+ * sample at 3.6 points of precision for no recall and no completeness, which
+ * is the wrong side of this file's trade: those spans have a neighbour, and the
+ * neighbour check already covers them.
+ *
+ * Blank lines and lines that BEGIN inside a template literal or a block
+ * comment are exempt: their column is text, not structure.
+ */
+function runsPastItsOwnEnd(scan: Scan, openedAt: number, end: number, start: number): boolean {
+  for (let i = end; i < scan.delta.length; i++) {
+    if (!scan.blank[i]) return false; // something follows: the neighbour check owns this
+  }
+  // From the line the block OPENS on, not from the symbol's own start: the
+  // graph points a symbol at its doc comment often enough, and the declaration
+  // line below that comment is a statement at column zero like any other.
+  for (let line = openedAt + 1; line < end; line++) {
+    const i = line - 1;
+    if (scan.blank[i] || scan.inText[i] || !scan.statement[i]) continue;
+    if (scan.indent[i] <= scan.indent[start - 1]) return true;
+  }
+  return false;
 }
 
 /**
@@ -118,6 +170,10 @@ interface Scan {
   delta: number[];
   blank: boolean[];
   indent: number[];
+  /** Whether the line BEGINS inside a template literal or a block comment. */
+  inText: boolean[];
+  /** Whether the line's first character starts a word — a statement, not a closer. */
+  statement: boolean[];
 }
 
 /**
@@ -135,21 +191,25 @@ interface Scan {
  *     following line that is non-blank and indented deeper than the
  *     declaration itself.
  */
-function spanEnd(scan: Scan, start: number): number {
+function spanEnd(scan: Scan, start: number): { end: number; opened: boolean; openedAt: number } {
   const n = scan.delta.length;
   const first = start - 1;
   let depth = 0;
   let opened = false;
+  let openedAt = start;
   for (let i = first; i < n; i++) {
     depth += scan.delta[i];
     if (depth > 0) {
+      if (!opened) openedAt = i + 1;
       opened = true;
       continue;
     }
-    if (opened) return i + 1;
-    if (i > first && (scan.blank[i] || scan.indent[i] <= scan.indent[first])) return i;
+    if (opened) return { end: i + 1, opened, openedAt };
+    if (i > first && (scan.blank[i] || scan.indent[i] <= scan.indent[first])) {
+      return { end: i, opened, openedAt };
+    }
   }
-  return n;
+  return { end: n, opened, openedAt };
 }
 
 /**
@@ -175,7 +235,18 @@ function spanEnd(scan: Scan, start: number): number {
  * an operator, a comma, an opening bracket or one of the keywords below, it
  * opens a regex. What is left over is caught by the balance check in
  * `symbolSpans`, which drops the whole file rather than trust a bad count.
+ *
+ * `)` IS TWO DIFFERENT TOKENS, and reading them as one was the same bug over
+ * again (#582 counter-review): `a(b) / c` divides, `if (x) /{/.test(s)` does
+ * not. So every open bracket is pushed on a stack that remembers whether its
+ * `(` closed a CONTROL-FLOW head, and only that kind of `)` lets a regex
+ * follow. Without it `if (x) /{/…` opened a brace that never closed, and the
+ * miscount could be cancelled out by a later `/}/` — leaving a balanced file,
+ * a span running past the end of its function, and a top-level change
+ * attributed to it. That is the silent-loss direction, not the safe one.
  */
+const CONTROL_FLOW_HEAD = new Set(["if", "while", "for", "with", "switch", "catch"]);
+
 const REGEX_AFTER_KEYWORD = new Set([
   "return",
   "typeof",
@@ -192,13 +263,6 @@ const REGEX_AFTER_KEYWORD = new Set([
   "yield",
   "await",
 ]);
-
-/** May a `/` here open a regex literal? `prevWord` is set when the last token was one. */
-function regexAllowed(prevSig: string, prevWord: string): boolean {
-  if (prevSig === "") return true;
-  if (prevWord !== "") return REGEX_AFTER_KEYWORD.has(prevWord);
-  return !")]}".includes(prevSig) && !/[A-Za-z0-9_$]/.test(prevSig);
-}
 
 /**
  * Index just past a regex literal starting at `from`, or null when the line
@@ -226,16 +290,25 @@ function scanSource(lines: readonly string[]): Scan {
   const delta: number[] = [];
   const blank: boolean[] = [];
   const indent: number[] = [];
+  const inText: boolean[] = [];
+  const statement: boolean[] = [];
   let inBlockComment = false;
   let inTemplate = false;
-  // The last significant token, carried ACROSS lines: `a\n  / b` divides.
-  let prevSig = "";
+  // May the NEXT `/` open a regex? Carried across lines: `a\n  / b` divides.
+  // True at the start of a file, where no value can precede the slash.
+  let regexOk = true;
+  // The last identifier, cleared by every other token — so it is only set when
+  // the token immediately before the current one was a word. `if` before `(`.
   let prevWord = "";
+  // One entry per open bracket; true marks the `(` of a control-flow head, the
+  // only `)` a regex may follow.
+  const brackets: boolean[] = [];
 
   for (const raw of lines) {
     let d = 0;
     let sawCode = false;
     let i = 0;
+    inText.push(inBlockComment || inTemplate);
     while (i < raw.length) {
       const c = raw[i];
       if (inBlockComment) {
@@ -249,7 +322,7 @@ function scanSource(lines: readonly string[]): Scan {
         if (c === "\\") i += 2;
         else if (c === "`") {
           inTemplate = false;
-          prevSig = "`";
+          regexOk = false;
           prevWord = "";
           i++;
         } else i++;
@@ -262,12 +335,12 @@ function scanSource(lines: readonly string[]): Scan {
         continue;
       }
       if (c === "/" && raw[i + 1] === "/") break;
-      if (c === "/" && regexAllowed(prevSig, prevWord)) {
+      if (c === "/" && regexOk) {
         const end = endOfRegex(raw, i);
         if (end !== null) {
           i = end;
           sawCode = true;
-          prevSig = "/";
+          regexOk = false;
           prevWord = "";
           continue;
         }
@@ -283,7 +356,7 @@ function scanSource(lines: readonly string[]): Scan {
       if (c === '"' || c === "'") {
         i = endOfString(raw, i, c);
         sawCode = true;
-        prevSig = c;
+        regexOk = false;
         prevWord = "";
         continue;
       }
@@ -291,25 +364,37 @@ function scanSource(lines: readonly string[]): Scan {
         let j = i;
         while (j < raw.length && /[A-Za-z0-9_$]/.test(raw[j])) j++;
         prevWord = raw.slice(i, j);
-        prevSig = raw[j - 1];
+        regexOk = REGEX_AFTER_KEYWORD.has(prevWord);
         sawCode = true;
         i = j;
         continue;
       }
-      if (c === "(" || c === "[" || c === "{") d++;
-      else if (c === ")" || c === "]" || c === "}") d--;
+      if (c === "(" || c === "[" || c === "{") {
+        d++;
+        brackets.push(c === "(" && CONTROL_FLOW_HEAD.has(prevWord));
+        regexOk = true;
+      } else if (c === ")" || c === "]" || c === "}") {
+        d--;
+        const controlFlow = brackets.pop();
+        // `if (x) /re/` opens a regex; `f(x) / 2` and `xs[i] / 2` divide. An
+        // unmatched `)` leaves the file unbalanced and no span survives anyway.
+        regexOk = c === ")" && controlFlow === true;
+      } else if (c.trim().length > 0) {
+        // Operators, punctuation and the like take a regex; a digit is a value.
+        regexOk = !/[0-9]/.test(c);
+      }
       if (c.trim().length > 0) {
         sawCode = true;
-        prevSig = c;
         prevWord = "";
       }
       i++;
     }
     delta.push(d);
+    statement.push(/^[A-Za-z_$@#]/.test(raw.trimStart()));
     blank.push(!sawCode);
     indent.push(raw.length - raw.trimStart().length);
   }
-  return { delta, blank, indent };
+  return { delta, blank, indent, inText, statement };
 }
 
 /** Index just past a quoted string. An unterminated one ends at the line end. */

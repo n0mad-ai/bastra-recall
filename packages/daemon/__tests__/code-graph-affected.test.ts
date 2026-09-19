@@ -72,6 +72,9 @@ const NODES = [
   node("daemon_bridge_file", "bridge.ts", "packages/daemon/src/bridge.ts", 1),
   node("daemon_bridge_run", "run()", "packages/daemon/src/bridge.ts", 20),
   node("daemon_lane_file", "write-lane.ts", "packages/daemon/src/write-lane.ts", 1),
+  // Two adjacent functions in one file, for the diff-to-line mapping below.
+  node("core_pair_first", "first()", "packages/core/src/pair.ts", 1),
+  node("core_pair_second", "second()", "packages/core/src/pair.ts", 7),
   external("ref_acme_core"),
   external("ref_acme_core_topics"),
   external("packages_core_dist_index_savememory"),
@@ -100,6 +103,39 @@ const GRAPH = {
 };
 
 const SAVE_TS = "packages/core/src/save.ts";
+const PAIR_TS = "packages/core/src/pair.ts";
+
+/**
+ * Two functions, the second one below three lines the change inserted into the
+ * first. This is the shape that made the OLD-side reading of a diff pick the
+ * wrong symbol: on the old side `second`'s changed line still had the number a
+ * line inside `first` has in the working tree.
+ */
+const PAIR_SOURCE = [
+  "export function first() {", // 1
+  "  return 1;", // 2
+  "  // inserted x", // 3
+  "  // inserted y", // 4
+  "  // inserted z", // 5
+  "}", // 6
+  "export function second() {", // 7
+  "  return 22;", // 8
+  "}", // 9
+  "", // 10
+].join("\n");
+
+const PAIR_DIFF = [
+  `diff --git a/${PAIR_TS} b/${PAIR_TS}`,
+  `--- a/${PAIR_TS}`,
+  `+++ b/${PAIR_TS}`,
+  "@@ -2,0 +3,3 @@",
+  "+  // inserted x",
+  "+  // inserted y",
+  "+  // inserted z",
+  "@@ -5,1 +8,1 @@",
+  "-  return 2;",
+  "+  return 22;",
+].join("\n");
 
 /**
  * `save.ts` with the LINES the graph claims: `SaveMemoryInput` at 12,
@@ -149,6 +185,7 @@ async function writeTree(): Promise<void> {
     ],
     ["packages/core/src/index.ts", "export {};\n"],
     ["packages/core/src/save.ts", SAVE_SOURCE],
+    [PAIR_TS, PAIR_SOURCE],
     ["packages/core/src/topics.ts", "export function detectProject() {}\n"],
     ["packages/core/src/audit-save.ts", "export function auditSave() {}\n"],
     ["packages/daemon/package.json", JSON.stringify({ name: "@acme/daemon" })],
@@ -444,6 +481,48 @@ describe("changed symbols from a diff", () => {
     ].join("\n");
     const answer = diffSymbols(graph, gone, diff);
     assert.equal(answer.wholeFile, true, "line 900 is past the end of the file on disk");
+  });
+
+  it("reads the diff on its NEW side, so inserted lines do not shift the answer", () => {
+    // THE REPRODUCTION (#582 counter-review). The spans come from the working
+    // tree; the line numbers came from the diff's OLD side. Three lines
+    // inserted into `first` shifted everything below by three, so `second`'s
+    // changed line (new 8) was looked up as line 5 — inside `first`. The
+    // answer came back non-empty and wrong, which is exactly what suppresses
+    // the whole-file fallback.
+    const answer = diffSymbols(graph, PAIR_TS, PAIR_DIFF);
+    assert.equal(answer.wholeFile, false);
+    assert.deepEqual(answer.symbols.map((s) => s.name).sort(), ["first", "second"]);
+  });
+
+  it("maps a pure deletion onto the working-tree lines it now sits between", () => {
+    // A deleted line has no new-side number of its own. `+6,0` says the text
+    // was between new lines 6 and 7 — the boundary between the two functions —
+    // so both are named rather than neither.
+    const diff = [
+      `diff --git a/${PAIR_TS} b/${PAIR_TS}`,
+      `--- a/${PAIR_TS}`,
+      `+++ b/${PAIR_TS}`,
+      "@@ -7,1 +6,0 @@",
+      "-const between = 1;",
+    ].join("\n");
+    const answer = diffSymbols(graph, PAIR_TS, diff);
+    assert.equal(answer.wholeFile, false);
+    assert.deepEqual(answer.symbols.map((s) => s.name).sort(), ["first", "second"]);
+  });
+
+  it("takes the whole file when the new side is /dev/null", () => {
+    // The file was deleted in the working tree: there is no line to place, and
+    // "no line changed" must not read as a confident narrow answer.
+    const diff = [
+      `diff --git a/${PAIR_TS} b/${PAIR_TS}`,
+      "deleted file mode 100644",
+      `--- a/${PAIR_TS}`,
+      "+++ /dev/null",
+      "@@ -1,10 +0,0 @@",
+      "-export function first() {",
+    ].join("\n");
+    assert.equal(diffSymbols(graph, PAIR_TS, diff).wholeFile, true);
   });
 
   it("finds nothing in a diff that belongs to another file", () => {

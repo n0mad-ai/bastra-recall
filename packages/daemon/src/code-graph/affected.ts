@@ -109,8 +109,9 @@ export interface DiffSymbols {
  * export list of a barrel; the second alone misses a change to a function
  * body that never names the function.
  *
- * The OLD side of the diff is used (`@@ -from,count`), because the graph was
- * built from the checked-out tree — the same tree the diff's `a/` side is.
+ * The NEW side of the diff is used (`@@ +from,count`), because the spans a
+ * line is looked up in are read off the WORKING TREE — the diff's `b/` side.
+ * A hunk that cannot be placed there at all takes the whole file.
  *
  * A LINE OUTSIDE EVERY SYMBOL TAKES THE WHOLE FILE. The graph carries no end
  * line, so the spans are read off the source (`symbol-spans.ts`), and a
@@ -133,12 +134,13 @@ export function diffSymbols(graph: LoadedGraph, file: string, diff: string): Dif
   if (own.length === 0) return { symbols: reExported, wholeFile: false };
 
   const hit = new Set<string>();
-  const lines = changedLines(diff, file);
-  if (lines.length > 0) {
+  const changed = changedLines(diff, file);
+  if (!changed.mappable) return whole();
+  if (changed.lines.length > 0) {
     const spans = symbolSpans(graph.repoRoot, file, own);
     if (spans === null) return whole();
     if (spans.length > 0) {
-      for (const line of lines) {
+      for (const line of changed.lines) {
         const covering = spansCovering(spans, line);
         if (covering.length === 0) return whole();
         for (const id of covering) hit.add(id);
@@ -454,40 +456,98 @@ async function verdictFor(
 
 // ─── Diff reading ────────────────────────────────────────────────
 
+/** What a diff says about the working tree, and whether it could say it. */
+export interface ChangedLines {
+  /** NEW-side (working-tree) line numbers the diff touches. */
+  lines: number[];
+  /**
+   * False when a hunk could not be placed in the working tree at all — the new
+   * side is `/dev/null`, or a body line arrived before any hunk header. The
+   * caller takes the whole file then: an unplaceable hunk must not silently
+   * become "no line changed", which reads as a confident narrow answer.
+   */
+  mappable: boolean;
+}
+
 /**
- * The OLD-side line numbers a unified diff touches in `file`.
+ * The NEW-side line numbers a unified diff touches in `file`.
  *
- * A pure insertion has no old line of its own; it is attributed to the line it
- * is inserted after, which is the line the surrounding symbol owns anyway.
+ * THE NEW SIDE, NOT THE OLD ONE (#582 counter-review). The spans these numbers
+ * are looked up in are read off the WORKING TREE (`symbol-spans.ts`), which is
+ * the diff's `b/` side. Reading `@@ -from` instead shifted every line by
+ * whatever the earlier hunks inserted, so a change to a second function landed
+ * inside the first, the selection came back non-empty and wrong, and the
+ * whole-file fallback — which would have found the file — never fired. The
+ * graph's own line numbers are old in the same way whenever the index lags the
+ * checkout, and that is what the span guards are for; mixing the two
+ * coordinate systems on purpose is not.
+ *
+ * A PURE DELETION has no new line of its own, so it is mapped to the two lines
+ * it now sits between. Both, because the deleted text belonged to whatever
+ * surrounded it, and one of the two neighbours is the symbol that lost it.
+ * A deletion that is immediately replaced by added lines needs no such
+ * treatment: those lines carry the change and are attributed directly.
+ *
  * A diff that names no file at all (someone pasted a single hunk) is read as
  * belonging to `file`.
  */
-export function changedLines(diff: string, file: string): number[] {
+export function changedLines(diff: string, file: string): ChangedLines {
   const out = new Set<number>();
+  let mappable = true;
   let inFile = !diff.includes("diff --git") && !diff.includes("--- ");
-  let old = 0;
-  for (const line of diff.split("\n")) {
+  // The next new-side line to be consumed. 0 means "no hunk header yet".
+  let next = 0;
+  const body = diff.split("\n");
+
+  for (let i = 0; i < body.length; i++) {
+    const line = body[i];
     if (line.startsWith("diff --git ")) {
       inFile = line.includes(` a/${file}`) || line.includes(` b/${file}`);
+      next = 0;
       continue;
     }
     if (line.startsWith("--- ")) {
       if (!diff.includes("diff --git")) inFile = line.endsWith(file) || line.endsWith("/dev/null");
       continue;
     }
-    if (line.startsWith("+++ ")) continue;
-    if (!inFile) continue;
-    const hunk = /^@@ -(\d+)(?:,\d+)? \+/.exec(line);
-    if (hunk !== null) {
-      old = Number(hunk[1]);
+    // The file is gone on the new side: nothing in the working tree to place a
+    // line in. The whole file is the only honest answer.
+    if (line.startsWith("+++ ")) {
+      if (inFile && line.slice(4).trim() === "/dev/null") mappable = false;
       continue;
     }
-    if (old === 0) continue;
-    if (line.startsWith("-")) out.add(old++);
-    else if (line.startsWith("+")) out.add(old);
-    else if (line.startsWith(" ")) old++;
+    if (!inFile) continue;
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (hunk !== null) {
+      const start = Number(hunk[1]);
+      const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
+      // `+c,0` is git's way of saying "between new lines c and c+1", so the
+      // next line to be consumed is c+1 — unlike every other hunk, where the
+      // header names the first line the hunk covers.
+      next = count === 0 ? start + 1 : start;
+      continue;
+    }
+    if (line.startsWith("\\")) continue; // "\ No newline at end of file"
+    if (line.startsWith("+")) {
+      if (next === 0) {
+        mappable = false;
+        continue;
+      }
+      out.add(next++);
+    } else if (line.startsWith("-")) {
+      if (next === 0) {
+        mappable = false;
+        continue;
+      }
+      // Replaced, not deleted: the `+` lines below carry this change.
+      if (body[i + 1]?.startsWith("+") === true) continue;
+      if (next > 1) out.add(next - 1);
+      out.add(next);
+    } else if (line.startsWith(" ") && next > 0) {
+      next++;
+    }
   }
-  return [...out];
+  return { lines: [...out], mappable };
 }
 
 /** The added and removed lines, without the file headers. */
