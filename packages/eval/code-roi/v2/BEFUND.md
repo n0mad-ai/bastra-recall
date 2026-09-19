@@ -109,7 +109,7 @@ kein zusammengefasstes Urteil: ein Werkzeug, das niemand aufruft, dessen
 Antwort aber hilft, und eines, das alle aufrufen und das nichts bringt,
 sind entgegengesetzte Befunde und verlangen entgegengesetzte Arbeit.
 
-## Mechanismus-Gate (#582, offline ausgewertet 19.09.2026, Stand 2f9dc47)
+## Mechanismus-Gate (#582, offline neu ausgewertet 19.09.2026)
 
 Frage, absichtlich eng: Von den Wahrheitsdateien, die in einem **anderen**
 Workspace-Paket liegen als die geänderte Datei — wie viele nennt
@@ -117,18 +117,30 @@ Workspace-Paket liegen als die geänderte Datei — wie viele nennt
 Boden unter der Wirksamkeitsmessung: findet die Paketbrücke diese Dateien
 offline nicht, wird sie keine Beschreibung einem Agenten finden lassen.
 
-| Teil | Szenarien | übergreifende Wahrheitsdateien | gefunden | Anteil |
-|---|---|---|---|---|
-| historisch (bastra-io) | 2 | 2 | 2 | **1,00** |
-| synthetisch (Mutationen) | 14 | 21 | 18 | **0,857** |
+Ausgewertet werden **zwei Wege getrennt**: `explicit` gibt dem Werkzeug den
+Symbolnamen direkt (die Obergrenze der Graph-Abfrage), `product` nur Datei und
+Diff — der Weg, den ein Nutzeraufruf nimmt, einschließlich `diffSymbols` und
+`symbol-spans.ts`. Die erste Auswertung kannte nur `explicit` und maß damit
+nicht das Produkt.
+
+| Teil | Szenarien | übergreifende Wahrheitsdateien | gefunden | Anteil | Urteil |
+|---|---|---|---|---|---|
+| historisch (bastra-io) | 2 | 2 | 2 | **1,00** | `not_evaluable` (n < 8) |
+| synthetisch, gegated | 9 | 15 | 15 | **1,00** | **`pass`** (verlangt 1,00) |
+| synthetisch, gesamt | 14 | 21 | 18 | 0,857 | berichtet, nicht gegated |
+
+**Beide Wege liefern identische Zahlen, Zeile für Zeile.** Das ist selbst ein
+Befund: der Schritt vom Diff zu den Symbolen verliert auf dieser Stichprobe
+nichts, die drei Fehlschläge gehören also dem Graphen, nicht dem Diff-Leser.
 
 Der historische Teil hat n = 2 — die gesamte Historie von bastra-io gibt in
 111 `packages/`-Kandidaten nicht mehr her. Das ist ein Klempner-Ergebnis, kein
-Messwert; der vorgeschlagene Mindest-n ist 8.
+Messwert; der entschiedene Mindest-n ist 8, also `not_evaluable`.
 
-**Synthetisch, nach Operator:** `rename-export` 10/10, `require-param` 5/5,
-`require-field` **3/6**. Nach Quellpaket: `packages/db` 5/5, `packages/ai` 3/3,
-`packages/payments` 3/3, `packages/social` 7/10.
+**Synthetisch, nach Operator:** `rename-export` 10/10, `require-param` 5/5 —
+beide gegated und erfüllt; `require-field` **3/6**, nur berichtet. Nach
+Quellpaket: `packages/db` 5/5, `packages/ai` 3/3, `packages/payments` 3/3,
+`packages/social` 7/10.
 
 **Die drei Fehlschläge, eine Ursache.** Alle stammen aus derselben Mutation:
 ein Pflichtfeld in `PublishInput` (`packages/social/src/adapter.ts`).
@@ -142,5 +154,21 @@ extrahierte Import-/Aufrufkanten können ihn grundsätzlich nicht sehen. Das ist
 die bekannte Grenze aus `affected.ts` („candidates, not proof"), gemessen statt
 behauptet. Nicht behoben, wie beauftragt.
 
-Schwellen bleiben `TO_BE_DECIDED` (Vorschlag 0,80) — die Zahlen stehen vor der
-Entscheidung, nicht danach.
+## Schwellen der Gates (entschieden 19.09.2026 von Daniel Nevoigt)
+
+Die Zahlen standen vor der Entscheidung, die Entscheidung fiel danach — in
+dieser Reihenfolge, und nur so ist sie etwas wert.
+
+- **Historisches Gate:** `min_share_found` 0,80, Mindest-n 8
+  übergreifende Wahrheitsdateien. Heute 2 vorhanden → `not_evaluable`.
+- **Synthetisches Gate, geteilt:** `rename-export` und `require-param` brechen
+  einen Namen bzw. einen Aufruf — Kanten, die der Graph extrahiert. Sie werden
+  mit **1,00** verlangt. `require-field` bricht über den **Typfluss**: der
+  Verbraucher baut ein Objektliteral, das den Typ erst über eine
+  Funktionssignatur erreicht und ihn nirgends nennt. Es gibt keine Import- und
+  keine Aufrufkante, der Graph modelliert das bewusst nicht — dieser Operator
+  wird nur **berichtet**, nicht gegated. Der Gesamtwert (18/21) wird berichtet
+  und ist kein alleiniges Pass-Kriterium.
+- Jedes Gate meldet **pass / fail / not_evaluable je Teil**; es gibt kein
+  zusammengefasstes Gate-Urteil, aus demselben Grund, aus dem `adoption` und
+  `effect` nie zusammengefasst werden.

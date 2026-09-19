@@ -18,6 +18,7 @@
  *
  * Usage: node code-tools-mcp.mjs <treeDir> <graphRoot>
  */
+import { randomUUID } from "node:crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -36,7 +37,7 @@ const { CodeGraphCache } = await import(`${DIST}cache.js`);
 // document tools are served as STUBS over an empty vault: same names, same
 // schemas, an honest "nothing here" — the scenarios carry no memories, so an
 // empty vault is the truthful answer, not a crippled one.
-const { ALL_TOOL_DEFS } = await import(
+const { ALL_TOOL_DEFS, toolSurfaceDenial } = await import(
   new URL("../../../daemon/dist/tool-defs.js", import.meta.url).pathname
 );
 // The PRODUCT's server instructions, not a stand-in. Claude Code loads these
@@ -63,21 +64,61 @@ if (cache.get(repo) === null) {
 const CODE_TOOLS = new Set([...codeTools, ...affectedTools].map((t) => t.name));
 const TOOLS = ALL_TOOL_DEFS;
 
-/** What an empty vault answers, per tool. Shape-compatible, deliberately dull. */
-function emptyVaultAnswer(name) {
+/**
+ * What the memory and document half answers — the PRODUCT's own shapes, taken
+ * field for field from the handlers, not invented here (#582 review).
+ *
+ * The first version of these stubs answered `{ status: "ok", hits: [], note:
+ * "No memories in this vault yet." }`. No product response carries `status` or
+ * `note` at all, so an agent that had ever seen bastra-recall could tell it was
+ * not talking to it — and the first thing an agent does with a surface it
+ * distrusts is stop using the rest of it, which is exactly the observation arm
+ * B exists to make.
+ *
+ * READ tools answer as a real, empty vault does: `recall` with the four fields
+ * `/hook/recall` emits (`weak_result` needs hits, so an empty vault never sets
+ * it), `find_document` with `docs_indexed: 0` — the field the tool description
+ * tells the agent to read — and a lookup by id with the handler's own
+ * `memory not found: <id>` / `document not found: <id>`.
+ *
+ * WRITE tools answer with the product's own `toolSurfaceDenial` for the
+ * `search` surface. Three candidates were weighed, on one criterion: which one
+ * makes an agent behave least differently?
+ *   - A faked success would have to invent an id, a file_path and an audit_id
+ *     for a memory no vault holds; a follow-up `load_memory` would then
+ *     contradict it, which is a worse surface than any refusal.
+ *   - A "not available in this measurement" note is honest but tells the agent
+ *     it is being measured, and that is the one thing an arm must not learn.
+ *   - The surface denial is an ORDINARY product condition: `search` is a real
+ *     tool surface on which every write tool is denied in exactly these words
+ *     and on which `find_affected_files` is explicitly allowed (tool-defs.ts).
+ *     It names its own cause, says not to retry, and casts no doubt on the
+ *     code tools. That is the one chosen.
+ *
+ * The tool LIST is unchanged — arm B is still offered `ALL_TOOL_DEFS`, as the
+ * frozen surface requires; only what a write call answers changed.
+ */
+const EMPTY_VAULT_SURFACE = "search";
+
+function emptyVaultAnswer(name, args) {
+  const id = typeof args?.id === "string" ? args.id : "";
   switch (name) {
     case "recall":
-      return { status: "ok", hits: [], note: "No memories in this vault yet." };
+      return {
+        hits: [],
+        vault_size: 0,
+        latency_ms: 0,
+        recall_id: randomUUID(),
+      };
+    case "find_document":
+      return { query: String(args?.query ?? ""), docs_indexed: 0, hits: [] };
     case "load_memory":
+      return { error: `memory not found: ${id}` };
     case "read_document":
     case "open_document":
-      return { status: "not_found", note: "No memories in this vault yet." };
-    case "find_document":
-      return { status: "ok", hits: [], docs_indexed: 0, note: "No documents in this vault yet." };
+      return { error: `document not found: ${id}` };
     default:
-      // Every write tool. The arms may not change anything, and saying so is
-      // more honest than pretending a save happened.
-      return { status: "refused", note: "This session is read-only; nothing was written." };
+      return { error: toolSurfaceDenial(name, EMPTY_VAULT_SURFACE) };
   }
 }
 const server = new Server(
@@ -102,7 +143,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       : fail(parsed.error.message);
   }
   if (TOOLS.some((t) => t.name === req.params.name) && !CODE_TOOLS.has(req.params.name)) {
-    return ok(emptyVaultAnswer(req.params.name));
+    const answer = emptyVaultAnswer(req.params.name, args);
+    // An error travels as an error, the way the product's own would: a
+    // "not found" delivered as a successful result reads as a different
+    // outcome than the tool really has.
+    return answer.error !== undefined ? fail(answer.error) : ok(answer);
   }
   return fail(`unknown tool ${req.params.name}`);
 });
