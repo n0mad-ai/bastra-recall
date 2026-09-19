@@ -210,27 +210,62 @@ A failed anchor as a *staleness signal*, three-verdict discipline
 (confirmed / refuted / unverifiable) and drift-binding to a source block are
 stage 2 and need their own security round.
 
-#### Derived claims (#467)
+#### Derived claims (#467, #609)
 
-Some facts read better as a formula than as a stored number: the source sits in
-the vault and is cheap to read while a memory is loaded. `derived_claims`
-records the formula:
+A memory often states something it took from a file: a count, a setting, a
+version, a sentence. When the file moves on, the note keeps the old wording.
+`derived_claims` binds the claim itself — not the note, and not the whole file:
 
 ```yaml
 derived_claims:
-  - id: failure-modes.total
+  - id: modes
+    source: catalog/failure-modes.md
     resolver: count.markdown-numbered-list.v1
-    source: sources/failure-modes.md
+    expect: 27                    # what the note says
+  - id: timeout
+    source: ops/deploy.md
+    resolver: quote.v1
+    exact: "timeout: 30s"
 ```
 
-`load_memory` returns the observed value in a separate `derived.claims` block
-and leaves the note exactly as it is, so a count stays a single source of truth
-rather than a second cache. The first resolver is deliberately narrow: it counts
-numbered Markdown list items in one regular file below the vault root, up to
-1 MB. A source behind a symlink that leaves the vault, a missing file, a
-directory and an oversized file are each reported `unverifiable`, and the read
-stays inside the vault. The optional `case_ref` is an opaque link to an
-independent case; Bastra stores it and leaves it alone.
+At `load_memory` the daemon resolves each claim read-only and returns the result
+next to the note under `derived.claims`, on the lean path as well as under
+`verbosity: "full"`. The note and its source keep their own bytes; the value
+lives in the source, so a count stays a single source of truth rather than a
+second cache.
+
+| verdict | meaning |
+|---|---|
+| `matches` | the source still says what the note says |
+| `differs` | the note says 27, the source says 29 |
+| `gone` | the quoted string is out of the source |
+| `ambiguous` | the quoted string stands there more than once, so nothing is picked |
+| `unverifiable` | the source sits outside the vault, behind a symlink that leaves it, over 1 MB, is a directory, or is missing |
+| `observed` | a count claim without `expect`: the value on its own, the #467 shape |
+
+| resolver | what it does |
+|---|---|
+| `count.markdown-numbered-list.v1` | counts numbered Markdown list items and compares them with `expect` |
+| `quote.v1` | `exact` stands in the source once; it survives unrelated edits and line moves, where a hash or a line number would not |
+| `sha256.v1` | the digest of the whole source against the `expect` the note recorded |
+
+This follows the verdict discipline of #235: a discrepancy is shown to the
+reader, `unverifiable` stays neutral, and the decision belongs to whoever loads
+the memory. Nothing here edits, expires or demotes a note.
+
+**Scope of the read.** A claim's source is read through one door: inside the
+vault, a regular file, up to 1 MB, resolved through `realpath` first so a
+vault-relative spelling that walks out through a symlink is reported
+`unverifiable`. A source with `..` or a leading `/` is refused at save time. A
+note without `derived_claims` reads no file at all. This is the trust boundary
+of #235 and of the #467 branch.
+
+**Writing the declaration.** The `save_memory` description carries the field and
+the claim shape, so a model that has just read a file declares the claim in the
+same call, with the value copied from what it read. Values that come out of a
+file go stale when the file changes; decisions, reasons and preferences stay as
+prose. The optional `case_ref` is an opaque link to an independent case; Bastra
+stores it and leaves it alone.
 
 #### Supersession (#164)
 
