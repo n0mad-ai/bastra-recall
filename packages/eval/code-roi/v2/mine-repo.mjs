@@ -52,10 +52,18 @@ function argOf(flag) {
   return i > 0 && process.argv[i + 1] !== undefined ? process.argv[i + 1] : null;
 }
 
+export const PROFILE_OF = repoProfile;
 export const REPO = argOf("--repo") ?? process.env.CODE_ROI_REPO ?? process.cwd();
 export const OUT = writableOut();
 const TSC = new URL("../../../../node_modules/.bin/tsc", import.meta.url).pathname;
+/**
+ * Candidates are written PER REPOSITORY and merged, so mining a second
+ * repository into the same archive adds to the pool instead of replacing it —
+ * the pooling rule in the registration is only real if the file survives.
+ */
 const CANDIDATES = join(OUT, "candidates.jsonl");
+const repoSlug = REPO.split("/").filter(Boolean).slice(-1)[0] ?? "repo";
+const CANDIDATES_REPO = join(OUT, `candidates.${repoSlug}.jsonl`);
 const CACHE = join(OUT, "truth-cache.jsonl");
 const WORKERS = Number(process.env.CODE_ROI_WORKERS ?? 4);
 const STOP_AT = Number(argOf("--stop-at") ?? 45);
@@ -71,7 +79,7 @@ const git = async (args, cwd = REPO) => (await run("git", args, { cwd, ...BUF })
  * object store and writes nothing, so the source repository is untouched even
  * while several of these run at once.
  */
-async function extract(sha, dir) {
+export async function extract(sha, dir) {
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   // Streamed, not buffered: `execFile`'s options have no `input` (that is
@@ -165,7 +173,7 @@ function linkNodeModules(dir) {
  * tsconfigs. Positions are left out: a mutation shifts lines, and the same
  * error one line lower is not a new error.
  */
-async function errorSignatures(dir) {
+export async function errorSignatures(dir) {
   const sigs = new Map();
   for (const pkgDir of profile.buildFirst) {
     // Emits even with errors; the errors are collected from the pass below.
@@ -207,7 +215,7 @@ function normalizeReported(prefix, reported) {
   return parts.join("/");
 }
 
-function newErrorFiles(before, after) {
+export function newErrorFiles(before, after) {
   const files = new Set();
   for (const [sig, n] of after) {
     if (n > (before.get(sig) ?? 0)) files.add(sig.split("\t")[0]);
@@ -215,12 +223,26 @@ function newErrorFiles(before, after) {
   return files;
 }
 
+/**
+ * Restrict candidates to one path prefix. Used ONLY for the cross-package
+ * mechanism gate (registration 6), which is a different question from the
+ * main sample and therefore has its own, separately registered selection: a
+ * change inside a workspace package, where the package boundary can be
+ * crossed at all. The main run never passes this.
+ */
+const FILE_PREFIX = argOf("--file-prefix") ?? process.env.CODE_ROI_FILE_PREFIX ?? "";
+
 async function candidatesOf(sha) {
   const out = await git(["diff-tree", "--no-commit-id", "--name-status", "-r", sha]);
   return out
     .split("\n")
     .map((l) => l.split("\t"))
-    .filter(([status, path]) => status === "M" && isScenarioFile(profile, path ?? ""))
+    .filter(
+      ([status, path]) =>
+        status === "M" &&
+        isScenarioFile(profile, path ?? "") &&
+        (FILE_PREFIX === "" || (path ?? "").startsWith(FILE_PREFIX)),
+    )
     .map(([, path]) => path)
     .sort();
 }
@@ -272,12 +294,21 @@ export async function analyze(commit, files, dir, { evidence = false } = {}) {
   return results;
 }
 
+/** Every repository's candidate file, concatenated into the pooled one. */
+function mergeCandidates() {
+  const parts = readdirSync(OUT)
+    .filter((f) => f.startsWith("candidates.") && f.endsWith(".jsonl"))
+    .sort();
+  const lines = parts.flatMap((f) => readFileSync(join(OUT, f), "utf8").split("\n").filter(Boolean));
+  writeFileSync(CANDIDATES, lines.join("\n") + "\n");
+}
+
 function loadCache() {
   const cache = new Map();
   if (!existsSync(CACHE)) return cache;
   for (const line of readFileSync(CACHE, "utf8").split("\n").filter(Boolean)) {
     const r = JSON.parse(line);
-    cache.set(`${r.commit}:${r.file}`, r);
+    cache.set(`${r.repo ?? REPO}:${r.commit}:${r.file}`, r);
   }
   return cache;
 }
@@ -294,7 +325,7 @@ function decide(commits, filesByCommit, cache) {
   let accepted = 0;
   for (const commit of commits) {
     for (const file of filesByCommit.get(commit) ?? []) {
-      const r = cache.get(`${commit}:${file}`);
+      const r = cache.get(`${REPO}:${commit}:${file}`);
       if (r === undefined) return { decisions, accepted, blockedAt: commit };
       if (r.reason !== undefined) {
         decisions.push({ ...r, accepted: false });
@@ -341,14 +372,15 @@ async function main() {
   const cache = loadCache();
   for (;;) {
     const { decisions, accepted, blockedAt } = decide(commits, filesByCommit, cache);
-    writeFileSync(CANDIDATES, decisions.map((d) => JSON.stringify(d)).join("\n") + "\n");
+    writeFileSync(CANDIDATES_REPO, decisions.map((d) => JSON.stringify(d)).join("\n") + "\n");
+    mergeCandidates();
     process.stdout.write(`pass: ${accepted}/${STOP_AT} accepted, ${decisions.length} decided\n`);
     if (blockedAt === null) break;
 
     const start = commits.indexOf(blockedAt);
     const batch = commits
       .slice(start)
-      .filter((c) => filesByCommit.has(c) && filesByCommit.get(c).some((f) => !cache.has(`${c}:${f}`)))
+      .filter((c) => filesByCommit.has(c) && filesByCommit.get(c).some((f) => !cache.has(`${REPO}:${c}:${f}`)))
       .slice(0, WORKERS * 2);
     let next = 0;
     await Promise.all(
@@ -365,7 +397,7 @@ async function main() {
             })),
           );
           for (const r of results) {
-            cache.set(`${r.commit}:${r.file}`, r);
+            cache.set(`${r.repo ?? REPO}:${r.commit}:${r.file}`, r);
             appendFileSync(CACHE, JSON.stringify(r) + "\n");
           }
         }

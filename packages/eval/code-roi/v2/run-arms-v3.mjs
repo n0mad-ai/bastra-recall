@@ -46,13 +46,14 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildGraph, prepareTree, promptFor } from "./run-arms.mjs";
+import { buildGraph, promptFor } from "./run-arms.mjs";
 import { execFileSync } from "node:child_process";
 import { scenarioRoot } from "./scenario-root.mjs";
 import { writableOut } from "./archive.mjs";
 import { ARM_IDS } from "./select.mjs";
+import { ALL_TOOL_DEFS } from "../../../daemon/dist/tool-defs.js";
 
 const OUT = writableOut();
 /** This repository — the one `prepareTree` from the v2 runner knows. */
@@ -65,28 +66,34 @@ const DIST = new URL("../../../daemon/dist/code-graph/", import.meta.url).pathna
 const MODEL = "claude-sonnet-5";
 const MAX_TURNS = 30;
 const ARM_TIMEOUT_MS = 20 * 60_000;
-const ALLOWED_TOOLS = [
-  "Read",
-  "Grep",
-  "Glob",
-  "Bash(grep:*)",
-  "Bash(rg:*)",
-  "Bash(find:*)",
-  "Bash(ls:*)",
-  "Bash(cat:*)",
-  "Bash(sed -n:*)",
-  "Bash(head:*)",
-  "Bash(tail:*)",
-  "Bash(wc:*)",
-];
-export const GRAPH_TOOLS = ["mcp__code__find_code", "mcp__code__find_affected_files"];
+/**
+ * The built-in tools every arm gets — Read, Grep, Glob and nothing that runs a
+ * command.
+ *
+ * Bash used to be allow-listed for grep/find/cat/sed. That was the leak the
+ * review found: `--allowedTools "Bash(cat:*)"` bounds the COMMAND, not the
+ * path, so `cat ../../scenarios.json` was one call away from the truth file,
+ * the prefilled block and every earlier transcript. Grep and Glob still answer
+ * the text-search half of the task, and `--restricted` confines them to the
+ * working directory.
+ */
+const ALLOWED_TOOLS = ["Read", "Grep", "Glob"];
+/**
+ * The MCP tools arm B may call: the product's whole surface, not just the two
+ * code ones. The instructions the arm is given ask for `recall` first, so an
+ * allow-list without it would deny the very call the product asks for.
+ */
+export const GRAPH_TOOLS = ALL_TOOL_DEFS.map((d) => `mcp__code__${d.name}`);
 const DISALLOWED_TOOLS = ["Edit", "Write", "NotebookEdit", "Agent", "Workflow", "Skill", "WebFetch", "WebSearch"];
 
 /** The arms, and what each one changes. `graph` = the MCP server is attached. */
 export const ARMS = {
   A: { id: "A", name: "grep", graph: false, prefill: false },
   B: { id: "B", name: "offered", graph: true, prefill: false },
-  prefilled: { id: "prefilled", name: "prefilled", graph: true, prefill: true },
+  // NO MCP server, no instructions: the prefilled arm is the ANSWER handed
+  // over, nothing else. With the server attached it also carried the product
+  // surface, and a gain could not be told apart from arm B's (#582 review).
+  prefilled: { id: "prefilled", name: "prefilled", graph: false, prefill: true },
 };
 
 /**
@@ -97,9 +104,16 @@ export const ARMS = {
 const REGISTRATION = JSON.parse(
   readFileSync(new URL("../../registrations/code-awareness-change-impact.json", import.meta.url), "utf8"),
 );
-export const COST_CEILING_USD = Number(
-  process.env.CODE_ROI_COST_CEILING ?? REGISTRATION.run_conditions.cost_ceiling_usd,
-);
+const REGISTERED_CEILING_USD = Number(REGISTRATION.run_conditions.cost_ceiling_usd);
+
+/**
+ * The ceiling this run honours. The environment may only LOWER it: a variable
+ * that can raise a registered spending limit is not a limit, it is a default.
+ */
+export const COST_CEILING_USD = (() => {
+  const raw = Number(process.env.CODE_ROI_COST_CEILING);
+  return Number.isFinite(raw) && raw > 0 ? Math.min(raw, REGISTERED_CEILING_USD) : REGISTERED_CEILING_USD;
+})();
 
 /**
  * What one finished arm cost, from its transcript's `result` event.
@@ -170,7 +184,7 @@ function promptWithPrefill(s, prefill) {
   ].join("\n");
 }
 
-function runArm(arm, prompt, tree, graphRoot, dir) {
+function runArm(arm, prompt, tree, graphRoot, dir, budgetUsd) {
   const transcript = join(dir, `${arm.id}.jsonl`);
   const mcpConfig = join(dir, `${arm.id}-mcp.json`);
   const servers = arm.graph
@@ -188,6 +202,19 @@ function runArm(arm, prompt, tree, graphRoot, dir) {
     MODEL,
     "--max-turns",
     String(MAX_TURNS),
+    // The isolation, in four flags that were verified against `claude --help`:
+    // `--restricted` drops every command-running tool and CONFINES the file
+    // tools to the working directory, `--tools` names the three that remain,
+    // `--permission-prompts none` denies anything that would ask instead of
+    // waiting, and `--max-budget-usd` stops a runaway arm at what is left of
+    // the ceiling.
+    "--restricted",
+    "--tools",
+    ALLOWED_TOOLS.join(","),
+    "--permission-prompts",
+    "none",
+    "--max-budget-usd",
+    budgetUsd.toFixed(2),
     "--setting-sources",
     "project",
     "--strict-mcp-config",
@@ -228,6 +255,24 @@ function runArm(arm, prompt, tree, graphRoot, dir) {
 }
 
 /**
+ * Where a scenario's working tree lives — OUTSIDE the archive (#582 review).
+ *
+ * It used to sit at `runs/<id>/tree`, three levels under `scenarios.json`
+ * (the truth), `prefill.json` (the graph's answer) and every earlier
+ * transcript. Even confined to its working directory, an agent that walked up
+ * from there would find the answer sheet. So the tree gets its own root under
+ * the system temp directory, whose parents hold nothing but other trees, and
+ * the archive keeps the graph and the results where no arm can reach them.
+ *
+ * The path is derived, not random, so a helping that resumes finds the tree a
+ * previous helping extracted instead of rebuilding it.
+ */
+export function treeDirOf(s, outDir = OUT) {
+  const archive = outDir.split("/").filter(Boolean).slice(-1)[0] ?? "code-roi";
+  return join(tmpdir(), "code-roi-trees", archive, s.id, "tree");
+}
+
+/**
  * Is every arm of this scenario already on disk? A scenario is only "done"
  * when the whole triple is: the effect is measured PAIRED, so half a scenario
  * carries no result (#582).
@@ -258,14 +303,13 @@ export function helpingSize() {
 /**
  * The scenario's tree, from the repository the scenario names.
  *
- * `prepareTree` from the v2 runner archives from bastra-recall, full stop. A
- * sample mined out of another repository (registration 5) needs the archive
- * taken there — read-only, `git archive` only, and never a git worktree in a
- * repository this measurement does not own.
+ * Read-only, `git archive` only, and never a git worktree in a repository this
+ * measurement does not own. The v2 runner's `prepareTree` is not used any
+ * more: it archived from bastra-recall only, and it put the tree inside the
+ * archive.
  */
 export function prepareTreeOf(s, dir) {
-  if (!s.repo || s.repo === REPO_SELF) return prepareTree(s, dir);
-  const tree = join(dir, "tree");
+  const tree = treeDirOf(s);
   const graphRoot = join(dir, "graph");
   if (existsSync(join(graphRoot, "graphify-out", "graph.json")) && existsSync(tree)) {
     return { tree, graphRoot };
@@ -273,7 +317,7 @@ export function prepareTreeOf(s, dir) {
   mkdirSync(tree, { recursive: true });
   mkdirSync(graphRoot, { recursive: true });
   const tar = execFileSync("git", ["archive", "--format=tar", s.parent], {
-    cwd: s.repo,
+    cwd: s.repo ?? REPO_SELF,
     maxBuffer: 1024 * 1024 * 1024,
   });
   execFileSync("tar", ["-x", "-C", tree], { input: tar, maxBuffer: 1024 * 1024 * 1024 });
@@ -350,7 +394,7 @@ async function main() {
         prompt = promptWithPrefill(s, prefill);
       }
       process.stdout.write(`${s.id} ${spec.id} (${spec.name})\u2026 `);
-      const code = await runArm(spec, prompt, tree, graphRoot, dir);
+      const code = await runArm(spec, prompt, tree, graphRoot, dir, Math.max(0.01, COST_CEILING_USD - spentUsd));
       const cost = existsSync(transcript) ? armCostUsd(readFileSync(transcript, "utf8")) : 0;
       spentUsd += cost;
       armsRun++;
