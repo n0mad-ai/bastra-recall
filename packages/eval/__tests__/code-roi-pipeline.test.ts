@@ -385,6 +385,134 @@ describe("the cross-package mechanism gate", () => {
   });
 });
 
+// ─── The historical gate needs the tree behind its graph (#582) ──
+//
+// `mechanism-gate.mjs` used to hand `symbolSpans` the graph directory alone as
+// its root. That directory holds `graphify-out`, never the source, so every
+// source read failed, `symbolSpans` returned null and `diffSymbols` fell back
+// to `whole_file` on EVERY row — the symbol-narrowing this gate exists to
+// measure never ran. Fixed by joining the tree and the graph through the same
+// symlink root `scenario-root.mjs` already gives the arms and the ceiling.
+
+describe("the historical gate reads real source through its root", () => {
+  const FILE_A = "packages/a/src/thing.ts";
+  const FILE_B = "packages/b/src/user.ts";
+  const FILE_C = "packages/c/src/consumer.ts";
+
+  // Three functions in one file; only `touched()`'s body is in the diff.
+  const THING_SOURCE = [
+    "export function keep() {", // 1
+    "  return 1;", // 2
+    "}", // 3
+    "export function touched() {", // 4
+    "  return 2;", // 5
+    "}", // 6
+    "export function unrelated() {", // 7
+    "  return 3;", // 8
+    "}", // 9
+    "",
+  ].join("\n");
+  const USER_SOURCE = "export function useTouched() {\n  return 1;\n}\n";
+  const CONSUMER_SOURCE = "export function useUnrelated() {\n  return 1;\n}\n";
+
+  // A parent -> commit diff, the shape a scenario's `diff` field carries.
+  // `affectedFor` reverses it itself (`diffForTree(diff, "old")`).
+  const FORWARD_DIFF = [
+    `diff --git a/${FILE_A} b/${FILE_A}`,
+    "index 1111111..2222222 100644",
+    `--- a/${FILE_A}`,
+    `+++ b/${FILE_A}`,
+    "@@ -5,1 +5,1 @@ export function touched() {",
+    "-  return 2;",
+    "+  return 99;",
+  ].join("\n");
+
+  const node = (id: string, label: string, file: string, line: number) => ({
+    id,
+    label,
+    file_type: "code",
+    source_file: file,
+    source_location: `L${line}`,
+    community: 0,
+    _origin: "ast",
+  });
+  const edge = (source: string, target: string, relation: string) => ({
+    source,
+    target,
+    relation,
+    confidence: "EXTRACTED",
+    confidence_score: 0.85,
+    _origin: "ast",
+  });
+
+  // `unrelated()` has its own dependent (consumer.ts) that the diff never
+  // touches — the file that must drop out once narrowing actually runs.
+  const GRAPH = {
+    directed: true,
+    multigraph: false,
+    graph: {},
+    built_at_commit: "0".repeat(40),
+    nodes: [
+      node("a_keep", "keep()", FILE_A, 1),
+      node("a_touched", "touched()", FILE_A, 4),
+      node("a_unrelated", "unrelated()", FILE_A, 7),
+      node("b_use", "useTouched()", FILE_B, 1),
+      node("c_use", "useUnrelated()", FILE_C, 1),
+    ],
+    links: [edge("b_use", "a_touched", "calls"), edge("c_use", "a_unrelated", "calls")],
+    hyperedges: [],
+  };
+
+  test("a graph-only root falls back to whole_file; the joined root narrows to what the diff touched", async () => {
+    const { loadGraph, graphDirOf, GRAPH_FILE_NAME } = await import(
+      "../../daemon/src/code-graph/reader.js"
+    );
+    const { scenarioRoot } = await import("../code-roi/v2/scenario-root.mjs");
+    const { affectedFor } = await import("../code-roi/v2/mechanism-gate.mjs");
+
+    const tree = mkdtempSync(join(tmpdir(), "code-roi-gate-tree-"));
+    const graphOnly = mkdtempSync(join(tmpdir(), "code-roi-gate-graph-"));
+    try {
+      for (const [path, body] of [
+        [FILE_A, THING_SOURCE],
+        [FILE_B, USER_SOURCE],
+        [FILE_C, CONSUMER_SOURCE],
+      ]) {
+        mkdirSync(join(tree, path, ".."), { recursive: true });
+        writeFileSync(join(tree, path), body);
+      }
+      mkdirSync(graphDirOf(graphOnly), { recursive: true });
+      writeFileSync(join(graphDirOf(graphOnly), GRAPH_FILE_NAME), JSON.stringify(GRAPH));
+
+      // OLD (broken): exactly what `mechanism-gate.mjs` used to pass — the
+      // graph directory alone, no source behind it.
+      const broken = await loadGraph(graphOnly);
+      assert.equal(broken.ok, true);
+      const brokenFiles = await affectedFor(broken.graph, graphOnly, FILE_A, FORWARD_DIFF);
+      assert.deepEqual(
+        brokenFiles,
+        [FILE_B, FILE_C],
+        "symbolSpans finds no source -> null -> whole_file, so the untouched unrelated() drags consumer.ts in too",
+      );
+
+      // NEW (fixed): tree and graph joined through the same symlink root the
+      // arms and the ceiling already use.
+      const root = scenarioRoot(tree, graphOnly);
+      const fixed = await loadGraph(root);
+      assert.equal(fixed.ok, true);
+      const fixedFiles = await affectedFor(fixed.graph, root, FILE_A, FORWARD_DIFF);
+      assert.deepEqual(
+        fixedFiles,
+        [FILE_B],
+        "symbolSpans reads the real source, the diff narrows to touched() alone, and consumer.ts drops out",
+      );
+    } finally {
+      rmSync(tree, { recursive: true, force: true });
+      rmSync(graphOnly, { recursive: true, force: true });
+    }
+  });
+});
+
 // ─── The synthetic mutation gate ─────────────────────────────────
 
 describe("the mutation gate makes breakage mechanically", () => {

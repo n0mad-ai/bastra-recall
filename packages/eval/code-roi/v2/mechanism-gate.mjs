@@ -25,6 +25,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { writableOut } from "./archive.mjs";
 import { diffForTree } from "./diff-side.mjs";
+import { prepareTreeOf } from "./run-arms-v3.mjs";
+import { scenarioRoot } from "./scenario-root.mjs";
 
 const DIST = new URL("../../../daemon/dist/code-graph/", import.meta.url).pathname;
 const { loadGraph } = await import(`${DIST}reader.js`);
@@ -44,7 +46,7 @@ function packageOf(file) {
 }
 
 /** Exactly the chain `find_affected_files` runs, minus the cache and the diff. */
-async function affectedFor(graph, root, file, diff) {
+export async function affectedFor(graph, root, file, diff) {
   // The scenario's tree is the PARENT commit and its diff runs parent ->
   // commit, so the tree is the diff's old side while `changedLines` reads the
   // new one (`diff-side.mjs`).
@@ -74,13 +76,25 @@ async function main() {
   const { scenarios } = JSON.parse(readFileSync(join(OUT, "scenarios.json"), "utf8"));
   const rows = gateRows(scenarios);
   for (const row of rows) {
-    const graphRoot = join(OUT, "runs", row.id, "graph");
+    const dir = join(OUT, "runs", row.id);
+    const graphRoot = join(dir, "graph");
     if (!existsSync(join(graphRoot, "graphify-out", "graph.json"))) {
       throw new Error(`${row.id}: no graph — build the scenario trees first`);
     }
-    const loaded = await loadGraph(graphRoot);
+    // The graph alone is not enough: `symbolSpans` reads the changed symbol's
+    // source text off `graph.repoRoot`, and `graphRoot` holds only
+    // `graphify-out` (the runner moves the graph out of the tree on purpose,
+    // `scenario-root.mjs`). Without the tree behind it, `symbolSpans` finds no
+    // file, `changedSymbolsOf` returns null and every row falls back to
+    // whole-file — the narrowing this gate exists to test never ran. The tree
+    // is `git archive`d fresh when the temp copy is gone (free, read-only,
+    // same call `run-arms-v3.mjs` used to build it), then joined with the
+    // graph through the same symlink root the arms and the ceiling use.
+    const { tree } = prepareTreeOf(row, dir);
+    const root = scenarioRoot(tree, graphRoot);
+    const loaded = await loadGraph(root);
     if (!loaded.ok) throw new Error(`${row.id}: graph ${loaded.reason}`);
-    row.named = await affectedFor(loaded.graph, graphRoot, row.file, row.diff);
+    row.named = await affectedFor(loaded.graph, root, row.file, row.diff);
   }
 
   const score = gateScore(rows);

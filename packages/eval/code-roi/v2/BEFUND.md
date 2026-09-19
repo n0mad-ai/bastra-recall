@@ -137,6 +137,22 @@ Der historische Teil hat n = 2 — die gesamte Historie von bastra-io gibt in
 111 `packages/`-Kandidaten nicht mehr her. Das ist ein Klempner-Ergebnis, kein
 Messwert; der entschiedene Mindest-n ist 8, also `not_evaluable`.
 
+**Root-Fehler behoben, neu ausgewertet 19.09.2026 (HEAD `3493508`).**
+`mechanism-gate.mjs` übergab `symbolSpans` bisher nur `runs/<id>/graph` als
+Root — ohne die Quelldateien. `symbolSpans` fand dadurch keine Datei, gab
+`null` zurück, und `diffSymbols` fiel **für jedes Szenario** auf `whole_file`
+zurück; die Symbol-Verengung, die dieses Gate eigentlich prüfen soll, lief nie.
+Root jetzt wie in `scenario-root.mjs` / `mutation-gate-score.mjs` aus Tree +
+Graph zusammengesetzt (Symlink-Root), Diff weiterhin über `diffForTree(diff,
+"old")` gewendet. Belegt per Diagnose: S02 engt jetzt von 16 Symbolen
+(voller Datei-Fallback) auf 1 Symbol (`NormalizedEvent`) ein; S01 bleibt bei
+`whole_file`, aber jetzt aus einem echten Grund — der Diff ändert einen
+Top-Level-Template-String (`ACTIONS_SYSTEM`), den der Indexer nicht als Symbol
+führt, also greift die dokumentierte „sichere Seite" aus `affected.ts`, nicht
+mehr ein fehlender Root. **Endergebnis unverändert:** 2/2 gefunden, Anteil
+1,00, weiterhin `not_evaluable` (n < 8) — jetzt aber über den echten
+Produktpfad erzielt statt über den Fallback.
+
 **Synthetisch, nach Operator:** `rename-export` 10/10, `require-param` 5/5 —
 beide gegated und erfüllt; `require-field` **3/6**, nur berichtet. Nach
 Quellpaket: `packages/db` 5/5, `packages/ai` 3/3, `packages/payments` 3/3,
