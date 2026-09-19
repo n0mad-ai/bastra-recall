@@ -6,6 +6,11 @@
  * and reads one regular file below the vault root.  Vault content reaches a
  * plain file read and stops there — no shell, no regex from content, no
  * network, no write path.
+ *
+ * #609 adds the verdict half: a claim that carries `expect` is compared with
+ * what the source holds now, and the reader is told whether the note still
+ * agrees with it.  The comparison is display-only, exactly like #235's anchor:
+ * a difference is shown, and the reader decides.
  */
 import { readFile, realpath, stat } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -13,13 +18,31 @@ import { assertInsideVault, type DerivedClaim } from "@bastra-recall/core";
 
 const MAX_SOURCE_BYTES = 1_000_000;
 
+/** Every file touch a claim makes, in one object so a test can watch them. */
+export const claimSourceIo = { readFile, realpath, stat };
+
+/**
+ * `observed` is the pre-#609 shape: a value with nothing to compare it to.
+ * The other four are verdicts on a claim that says what it expects.
+ */
+export type DerivedClaimStatus =
+  | "observed"
+  | "matches"
+  | "differs"
+  | "gone"
+  | "ambiguous"
+  | "unverifiable";
+
 export interface DerivedClaimResult {
   id: string;
   resolver: DerivedClaim["resolver"];
   source: string;
-  case_ref: string;
-  status: "observed" | "unverifiable";
+  case_ref?: string;
+  status: DerivedClaimStatus;
+  /** What the source holds now: a count for the count resolver. */
   value?: number;
+  /** Echoed back so a reader sees both halves of a `differs` next to each other. */
+  expect?: number;
   reason?: "outside_vault" | "unavailable" | "not_a_file" | "too_large";
 }
 
@@ -35,31 +58,50 @@ async function resolveClaim(vaultRoot: string, claim: DerivedClaim): Promise<Der
     id: claim.id,
     resolver: claim.resolver,
     source: claim.source,
-    case_ref: claim.case_ref,
+    ...(claim.case_ref === undefined ? {} : { case_ref: claim.case_ref }),
+    ...(claim.expect === undefined ? {} : { expect: claim.expect }),
   };
-  const target = resolve(vaultRoot, claim.source);
+  let text: string;
   try {
-    // Resolve once before reading: a vault-relative spelling may still walk
-    // through a symlink.  The real target must remain inside the real vault.
-    assertInsideVault(vaultRoot, target, "read derived claim");
-    const realTarget = await realpath(target);
-    assertInsideVault(vaultRoot, realTarget, "read derived claim");
-    const info = await stat(realTarget);
-    if (!info.isFile()) return { ...base, status: "unverifiable", reason: "not_a_file" };
-    if (info.size > MAX_SOURCE_BYTES) return { ...base, status: "unverifiable", reason: "too_large" };
-
-    const text = await readFile(realTarget, "utf8");
-    return {
-      ...base,
-      status: "observed",
-      value: countMarkdownNumberedList(text),
-    };
+    text = await readSource(vaultRoot, claim.source);
   } catch (error) {
-    const reason = error instanceof Error && error.message.includes("outside")
-      ? "outside_vault"
-      : "unavailable";
-    return { ...base, status: "unverifiable", reason };
+    return { ...base, status: "unverifiable", reason: reasonFor(error) };
   }
+  const value = countMarkdownNumberedList(text);
+  return {
+    ...base,
+    value,
+    status: claim.expect === undefined ? "observed" : value === claim.expect ? "matches" : "differs",
+  };
+}
+
+/** Thrown when the source is inside the vault yet unfit to read as text. */
+class SourceOutOfBounds extends Error {
+  constructor(readonly reason: DerivedClaimResult["reason"]) {
+    super(`derived claim source is ${reason}`);
+  }
+}
+
+/**
+ * The one door to a claim's source, shared by every resolver: inside the vault,
+ * a regular file, up to 1 MB, read as UTF-8.
+ */
+async function readSource(vaultRoot: string, source: string): Promise<string> {
+  const target = resolve(vaultRoot, source);
+  // Resolve once before reading: a vault-relative spelling may still walk
+  // through a symlink.  The real target stays inside the real vault.
+  assertInsideVault(vaultRoot, target, "read derived claim");
+  const realTarget = await claimSourceIo.realpath(target);
+  assertInsideVault(vaultRoot, realTarget, "read derived claim");
+  const info = await claimSourceIo.stat(realTarget);
+  if (!info.isFile()) throw new SourceOutOfBounds("not_a_file");
+  if (info.size > MAX_SOURCE_BYTES) throw new SourceOutOfBounds("too_large");
+  return claimSourceIo.readFile(realTarget, "utf8");
+}
+
+function reasonFor(error: unknown): DerivedClaimResult["reason"] {
+  if (error instanceof SourceOutOfBounds) return error.reason;
+  return error instanceof Error && error.message.includes("outside") ? "outside_vault" : "unavailable";
 }
 
 function countMarkdownNumberedList(text: string): number {

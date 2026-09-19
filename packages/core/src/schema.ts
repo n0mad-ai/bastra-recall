@@ -62,6 +62,12 @@ export const DerivedClaimSchema = z.object({
   source: z.string().min(1).refine(isVaultRelativePath, {
     message: "source must be a vault-relative path without dot segments",
   }),
+  /**
+   * What the note says the source holds.  With it, load_memory reports
+   * `matches` or `differs`; without it, the observed value is reported on its
+   * own, which is how the first resolver shipped.
+   */
+  expect: z.number().optional(),
   /** Stable reference to an independent case; Bastra stores it and leaves it alone. */
   case_ref: z.string().min(1).optional(),
 });
