@@ -30,7 +30,9 @@ const {
   COST_CEILING_USD,
   REGISTERED_ARM_ESTIMATE_USD,
   abortedArmCharge,
+  armEstimateUsdOf,
   armCostUsd,
+  costCeilingUsdOf,
   finalisable,
   hasResultEvent,
   nextArmEstimateUsd,
@@ -162,6 +164,17 @@ describe("an abort is never free", () => {
     assert.equal(nextArmEstimateUsd(0, 0), REGISTERED_ARM_ESTIMATE_USD);
     assert.equal(chargedUsd, 3 * REGISTERED_ARM_ESTIMATE_USD, "but all three are charged");
   });
+
+  test("a second registration supplies its own estimate instead of inheriting v6", async () => {
+    const reg = JSON.parse(
+      await readFile(new URL("../registrations/code-awareness-delivered.json", import.meta.url), "utf8"),
+    );
+    assert.equal(armEstimateUsdOf(reg), 0.046);
+    assert.deepEqual(abortedArmCharge(killed, 0, 0, armEstimateUsdOf(reg)), {
+      usd: 0.046,
+      source: "registered_estimate",
+    });
+  });
 });
 
 describe("the cost ceiling is enforced, not documented", () => {
@@ -171,6 +184,13 @@ describe("the cost ceiling is enforced, not documented", () => {
     );
     assert.equal(COST_CEILING_USD, reg.run_conditions.cost_ceiling_usd);
     assert.equal(COST_CEILING_USD, 40, "raised from 20 by decision on 18.09.2026, before the run");
+  });
+
+  test("the environment may lower but never raise the active registration's ceiling", () => {
+    const reg = { run_conditions: { cost_ceiling_usd: 7 } };
+    assert.equal(costCeilingUsdOf(reg, {}), 7);
+    assert.equal(costCeilingUsdOf(reg, { CODE_ROI_COST_CEILING: "3" }), 3);
+    assert.equal(costCeilingUsdOf(reg, { CODE_ROI_COST_CEILING: "30" }), 7);
   });
 
   test("the environment may only LOWER it", async () => {

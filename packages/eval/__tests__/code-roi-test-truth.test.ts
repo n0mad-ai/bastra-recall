@@ -31,11 +31,14 @@ import {
   selectTests,
   specifiersOf,
   truthFromBrokenTests,
+  truthPopulationHash,
   // @ts-expect-error — plain .mjs measurement scripts, no declarations
 } from "../code-roi/v2/test-truth.mjs";
 // @ts-expect-error — plain .mjs measurement scripts, no declarations
 import {
   brokenCases,
+  confirmCases,
+  confirmedOnBoth,
   detectRunner,
   parseTap,
   runSuite,
@@ -190,7 +193,7 @@ describe("test-based truth: attribution", () => {
     assert.deepEqual(linked.blindSpots, []);
     const blind = truthFromBrokenTests(dir, ["tests/report.test.js"], "src/labels.json");
     assert.deepEqual(blind.blindSpots, ["tests/report.test.js"]);
-    assert.deepEqual(blind.truth, ["src/report.js"]);
+    assert.deepEqual(blind.truth, ["tests/report.test.js"]);
   });
 
   it("classifies test files by every convention the runners use", () => {
@@ -240,6 +243,23 @@ describe("test-based truth: reading TAP", () => {
     assert.deepEqual(brokenCases(before, after, new Set(["works"])), ["clear"]);
     assert.deepEqual(brokenCases(before, after), ["clear", "works"]);
   });
+
+  it("confirmation requires the same case to fail mutated and pass clean", () => {
+    const mutated = {
+      confirmed: new Set(["tests/a.test.js"]),
+      casesByFile: new Map([["tests/a.test.js", new Set(["case A"])]]),
+    };
+    const wrongCleanCase = {
+      confirmed: new Set(["tests/a.test.js"]),
+      casesByFile: new Map([["tests/a.test.js", new Set(["case B"])]]),
+    };
+    assert.deepEqual([...confirmedOnBoth(mutated, wrongCleanCase)], []);
+    const sameCleanCase = {
+      confirmed: new Set(["tests/a.test.js"]),
+      casesByFile: new Map([["tests/a.test.js", new Set(["case A"])]]),
+    };
+    assert.deepEqual([...confirmedOnBoth(mutated, sameCleanCase)], ["tests/a.test.js"]);
+  });
 });
 
 // ─── End to end on the fixture ───────────────────────────────────
@@ -258,7 +278,6 @@ describe("test-based truth: the whole rule on the fixture", () => {
     const base = await runSuite(dir, runner, { timeoutMs: 60_000 });
     writeFileSync(join(dir, "src/tax.js"), FILES["src/tax.js"].replace("0.19", "0.07"));
     const after = await runSuite(dir, runner, { timeoutMs: 60_000 });
-    reset();
 
     assert.equal(after.status, "ok", after.detail ?? "");
     const broke = brokenCases(base.cases, after.cases, after.ambiguous);
@@ -269,10 +288,21 @@ describe("test-based truth: the whole rule on the fixture", () => {
     ].sort();
     assert.deepEqual(brokenFiles, ["tests/report.test.js", "tests/tax.test.js"]);
 
+    const fileOf = (id: string) => testFileOfCase(id, dir, after.files);
+    const mutated = await confirmCases(dir, runner, brokenFiles, broke, fileOf, "fail", {
+      timeoutMs: 60_000,
+    });
+    assert.deepEqual([...mutated.confirmed].sort(), brokenFiles);
+    reset();
+    const clean = await confirmCases(dir, runner, brokenFiles, broke, fileOf, "pass", {
+      timeoutMs: 60_000,
+    });
+    assert.deepEqual([...clean.confirmed].sort(), brokenFiles);
+
     const { truth, rules, blindSpots } = truthFromBrokenTests(dir, brokenFiles, "src/tax.js");
-    // The changed file itself is never in its own truth set; the file that
-    // broke because it imports it is.
-    assert.deepEqual(truth, ["src/report.js"]);
+    // The files whose tests demonstrably changed from passing to failing are
+    // the test truth. Imports remain diagnostic metadata, not inferred truth.
+    assert.deepEqual(truth, ["tests/report.test.js", "tests/tax.test.js"]);
     assert.equal(rules["tests/report.test.js"], "sibling-name");
     assert.deepEqual(blindSpots, []);
   });
@@ -310,7 +340,15 @@ describe("test-based truth: the whole rule on the fixture", () => {
   });
 
   it("stamps the rule version every population is frozen against", () => {
-    assert.equal(TRUTH_RULE, "tests/v1");
+    assert.equal(TRUTH_RULE, "tests/v2");
+  });
+
+  it("the population hash changes when truth changes under the same commit and file", () => {
+    const base = { commit: "a", file: "src/a.ts", truthRule: TRUTH_RULE, brokenTests: [], blindSpots: [] };
+    assert.notEqual(
+      truthPopulationHash([{ ...base, truth: ["tests/a.test.ts"] }]),
+      truthPopulationHash([{ ...base, truth: ["tests/b.test.ts"] }]),
+    );
   });
 });
 

@@ -60,13 +60,13 @@ export function promptFor(s) {
     "",
     `Planned change: the diff below will be applied to \`${s.file}\` (commit message: "${s.subject}").`,
     "",
+    "Question: what breaks if exactly this change is applied? Which OTHER files in this repository — " +
+      "production code and tests — would then have failing tests or fail to type-check unless they " +
+      "were adapted too? Investigate as you see fit, but do not modify any file.",
+    "",
     "```diff",
     s.diff.trimEnd(),
     "```",
-    "",
-    "Question: which OTHER files in this repository — production code and tests — would fail to " +
-      "type-check after exactly this change, unless they were adapted too? Investigate as you see fit, " +
-      "but do not modify any file.",
     "",
     "End your reply with exactly one line of the form",
     'FILES: ["packages/x/src/a.ts", "packages/x/__tests__/b.test.ts"]',

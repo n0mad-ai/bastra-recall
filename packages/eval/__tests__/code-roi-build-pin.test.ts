@@ -559,7 +559,7 @@ describe("evaluate-v4's mixed_builds report", () => {
 // ─── frozenSurfaceHashesFromDist — the dynamic import path itself ─────────
 
 describe("frozenSurfaceHashesFromDist reads the BUILT module, not source", () => {
-  test("the four hashes match what the registration's own formula computes", async () => {
+  test("the frozen hashes match what the registration's own formula computes", async () => {
     await withTempDir(async (dir) => {
       const root = await syntheticCheckout(dir);
       const distDir = await buildFakeDist(root);

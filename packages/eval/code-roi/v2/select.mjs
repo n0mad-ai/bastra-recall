@@ -107,6 +107,25 @@ export function fileKey(candidate) {
   return `${candidate.repo ?? ""}\u0000${candidate.file}`;
 }
 
+/**
+ * A registered frozen population must be the population actually on disk.
+ * Without this gate, changing the truth rule and forgetting to re-mine leaves
+ * `select.mjs` happily turning the old candidate cache into a new-version run.
+ */
+export function populationFreezeMismatches(registration, population) {
+  const frozen = registration?.population?.freeze;
+  if (frozen === undefined) return [];
+  const fields = [
+    ["population_sha256", frozen.population_sha256, population?.population_sha256],
+    ["repository_head", frozen.repository_head, population?.repository_head],
+    ["truth_rule", frozen.truth_rule, population?.truth_rule],
+    ["exclusions_sha256", frozen.exclusions_sha256, population?.exclusions?.sha256],
+  ];
+  return fields
+    .filter(([, expected, actual]) => expected !== actual)
+    .map(([field, expected, actual]) => ({ field, expected: expected ?? null, actual: actual ?? null }));
+}
+
 /** Fisher-Yates on a copy, from the registered seed. */
 export function shuffled(items, next) {
   const out = [...items];
@@ -125,6 +144,24 @@ function main() {
   const registrationId = argOf("--registration") ?? DEFAULT_REGISTRATION_ID;
   const registration = registrationId === DEFAULT_REGISTRATION_ID ? REGISTRATION : loadRegistrationById(registrationId);
   const armIds = armIdsOf(registration, registrationId);
+
+  if (registration.status === "numbers_registered_population_pending") {
+    throw new Error(`${registrationId}: population is pending re-mining; no scenario file may be written`);
+  }
+  const populationPath = join(OUT, "population.json");
+  if (registration?.population?.freeze !== undefined) {
+    if (!existsSync(populationPath)) throw new Error(`${registrationId}: frozen population.json is missing`);
+    const mismatches = populationFreezeMismatches(
+      registration,
+      JSON.parse(readFileSync(populationPath, "utf8")),
+    );
+    if (mismatches.length > 0) {
+      throw new Error(
+        `${registrationId}: population does not match the registration:\n` +
+          mismatches.map((m) => `  ${m.field}: registered ${m.expected}, mined ${m.actual}`).join("\n"),
+      );
+    }
+  }
 
   const runs = join(OUT, "runs");
   const ranAlready = (d) =>
