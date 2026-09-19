@@ -5,7 +5,8 @@
   "registered_at": "2026-09-19",
   "$comment_v6": "Version 6 answers four start blockers raised in review before the first arm ran: the arms were not isolated from the archive, the prefilled arm also carried the product surface, arm B was told to `recall` but offered no such tool, and the sample cannot reach the effect threshold through the cross-package mechanism at all. Arms, thresholds and both verdicts are unchanged; what changed is how the arms are run, what the prefilled arm is, and a separate offline gate for the mechanism.",
   "registered_by": "Claude Opus 5; thresholds decided by Daniel Nevoigt on 2026-09-18",
-  "status": "numbers_registered",
+  "status": "run_completed",
+  "$comment_status_update": "AMENDED 2026-09-19, after the v6 main run finished: 40/40 scenarios, 120/120 arms, no aborts, no mixed builds (see result.build_pin below). The project's existing status values (`structure_registered`, `numbers_registered`, used elsewhere in this file's history and in sibling registrations) only track PRE-run stages — none of them means 'the run happened', including in the superseded v3 registration, whose status was never bumped after its run completed either. `run_completed` is therefore a new terminal value, not a forced fit onto an old one. From here on nothing in this registration changes except the `result` block below; a later measurement is a new registration_version or a new file, never an edit to what is recorded here.",
   "issue": 582,
   "epic": 572,
   "supersedes": "code-awareness-roi.json registration_version 3; and registration_version 4 of this file, which named bastra-recall as the population",
@@ -288,5 +289,49 @@
   ],
 
   "failure_is_a_result": true,
-  "$comment_failure": "A missed threshold is recorded as the finding; thresholds are not moved afterwards."
+  "$comment_failure": "A missed threshold is recorded as the finding; thresholds are not moved afterwards.",
+
+  "result": {
+    "$comment": "Written 2026-09-19 after the v6 main run finished. Every number below is read from `~/.bastra/eval/code-roi-v4-bastra-io/report.json`, produced by `evaluate-v4.mjs`; nothing here is derived independently. Full narrative and the per-scenario table: packages/eval/code-roi/v2/BEFUND.md, section \"v6 Endergebnis (19.09.2026, Build 389c0ff)\". Gate figures are unchanged from the offline re-scoring already recorded above under `mechanism_gate` and were not re-run for this result.",
+    "date": "2026-09-19",
+    "report_path": "~/.bastra/eval/code-roi-v4-bastra-io/report.json",
+    "build_pin": {
+      "head_sha": "389c0ff56f92fa04cfc10d27897d08e912175382",
+      "signature": "3165f0780d6423e6c616d261f5d08fb702c86169605303d48c05e4cf8367d7f0",
+      "mixed_builds": false
+    },
+    "n": 40,
+    "progress": "complete: 40/40 scenarios, 120/120 arms, no aborts",
+    "verdicts": {
+      "adoption": "pass",
+      "effect": "fail",
+      "$comment": "No combined status, as registered above."
+    },
+    "key_numbers": {
+      "recall": { "A": 1.0, "B": 1.0, "prefilled": 1.0, "gain_prefilled_minus_A": 0.0, "ci95_of_gain": [0, 0] },
+      "precision": { "A": 0.8475, "B": 0.8567, "prefilled": 0.8454, "delta_prefilled_minus_A": -0.0021 },
+      "input_tokens_median": { "A": 24616.5, "B": 58308.5, "prefilled": 23564 },
+      "context_ratio_gated": 0.9572,
+      "context_ratio_all_scenarios": 0.9572,
+      "$comment_context": "Identical because all 40 scenarios were solved (recall >= 0.8) in both arms, so the gated and ungated sets coincide.",
+      "adoption": { "find_affected_files": "32/40 = 0.80", "find_code": "0/40" },
+      "cost_usd": { "A": 1.6324, "B": 2.1219, "prefilled": 1.7481, "total": 5.5024, "ceiling": 40 }
+    },
+    "by_repo": {
+      "bastra-io": { "n": 40 },
+      "$comment": "Pooling did not trigger: one repository reached min_scenarios (40) on its own, so bastra-recall's fresh 7-scenario reserve was not drawn (population.pooling.used_only_when_short)."
+    },
+    "mechanism_gate": {
+      "historical": "not_evaluable (n=2 cross-package truth files, below the registered minimum of 8)",
+      "synthetic_gated": "pass (15/15: rename-export 10/10, require-param 5/5)",
+      "synthetic_reported_only": "require-field 3/6, not gated"
+    },
+    "honest_reading": [
+      "Adoption holds (0.80 >= 0.70) in the measured setup only — a fresh, isolated session with the tool loaded and the server instructions read at connect time. It does not describe real operation: on 2026-09-19 no agent in live work called the tool voluntarily (lane telemetry, gathered outside this registration). A measurement rig where instructions are read once at connect and tools are loaded immediately is not the same thing as a long-running session where an MCP tool is typically deferred and those instructions have long since left the context (see arms.frozen_surface.known_harness_deviation above).",
+      "Effect is not measurable on this sample, and that is a finding about the POPULATION, not about the tool: grep alone reaches 100% recall in all 40 scenarios across all three arms, so the paired gain is mechanically 0.0 with a zero-width bootstrap interval — there is no variance for an effect to show up in. This registration committed to a recall-gain threshold (>= 0.05, CI lower bound > 0) before the run; the verdict is correctly `fail` and is not reinterpreted because the population turned out to have no headroom.",
+      "Context: the hoped-for saving is not confirmed. `prefilled` sits 4.3% below grep (ratio 0.9572) — a real but small margin, not the cost win the design hoped to show. The tool as actually OFFERED (arm B) costs 2.37x grep's median input tokens for a precision gain of well under one point (+0.92 Pp) and no recall gain.",
+      "Consequence: the v6 population (bastra-io, these 40 scenarios) is spent for this question — grep's ceiling on it is now known and re-running would only confirm it. The next measurement (delivery via hook, PR #607) needs either a freshly pre-registered population with real control-arm headroom (cases grep demonstrably does not solve at 100%), or its own registered target of 'delivery + context cost' rather than 'recall gain', because (a) and (c) above are where the open questions actually are."
+    ],
+    "no_further_changes": "Nothing in this registration changes after this point except this `result` block."
+  }
 }
