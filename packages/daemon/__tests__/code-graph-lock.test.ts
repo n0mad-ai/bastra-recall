@@ -11,8 +11,8 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdtemp, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { hostname, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -145,18 +145,54 @@ describe("the build lock against adversarial interleavings", () => {
   it("keeps the successor's lock even when the takeover reuses the same token", async (t) => {
     // The token check alone cannot see this one: a successor that happens to
     // carry the holder's token — a duplicated record, a restarted daemon
-    // re-reading its own state — would pass it. The lock the holder created is
-    // a different FILE, and that is what the release compares.
+    // re-reading its own state — would pass it. What the release compares is
+    // the GENERATION: the successor owns the next one's marker, so the
+    // replaced holder cannot claim it and its release does nothing at all.
     const dir = await tempDir("bastra-lock-inode-");
     t.after(() => rm(dir, { recursive: true, force: true }));
     const mine = await acquireRepoLock(dir, { heartbeat: false });
     assert.ok(mine !== null);
 
-    await rm(lockPath(dir), { force: true }); // the takeover's own removal
-    await writeFile(lockPath(dir), JSON.stringify(mine.record), "utf8"); // a new file, same record
+    const successor = await acquireRepoLock(dir, { staleMs: -1, heartbeat: false });
+    assert.ok(successor !== null, "the takeover must succeed for this test to prove anything");
+    t.after(() => successor.release());
+    // Give the successor the holder's own token, which is what defeats a check
+    // made on tokens; its generation is still one past the holder's.
+    await writeFile(
+      lockPath(dir),
+      JSON.stringify({ ...successor.record, token: mine.record.token }),
+      "utf8",
+    );
 
     await mine.release();
-    assert.notEqual(await readLock(dir), null, "a different file must not be unlinked");
+    const still = await readLock(dir);
+    assert.notEqual(still, null, "a successor's lock must not be freed by the holder it replaced");
+    assert.equal(still?.gen, successor.record.gen);
+  });
+
+  it("stops beating when suspended, and can still be released afterwards", async (t) => {
+    // THE REPRODUCTION (#582 counter-review 4). A build whose child survived
+    // SIGKILL must keep the lock FILE and lose the LEASE. Before this, keeping
+    // the lock kept the heartbeat too: the record was renewed for as long as
+    // the daemon lived, so it never went stale and the repository stayed
+    // blocked until a restart.
+    const dir = await tempDir("bastra-lock-suspend-");
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    const mine = await acquireRepoLock(dir, { renewMs: 5 });
+    assert.ok(mine !== null);
+    await sleep(40); // many beats
+    const beating = (await readLock(dir))?.renewedAt;
+    assert.notEqual(beating, undefined);
+
+    mine.suspend();
+    await sleep(60); // many more beats, had it kept beating
+    assert.equal((await readLock(dir))?.renewedAt, beating, "a suspended lock must not renew");
+    assert.notEqual(await readLock(dir), null, "and the lock file must stay behind");
+
+    // The descriptor is gone, but the release still works: it publishes the
+    // next generation, which is what a late `close` from the child triggers.
+    await mine.release();
+    assert.equal(await readLock(dir), null, "a late release must free the lock at once");
   });
 
   it("lets exactly one of two REAL processes build, over many rounds", async (t) => {
@@ -182,7 +218,189 @@ describe("the build lock against adversarial interleavings", () => {
     assert.ok(a.held > 0 && b.held > 0, "one process never got in: the race did not happen");
     assert.equal(await readLock(dir), null, "and the lock is free again afterwards");
   });
+
+  it("lets exactly one of ten REAL processes TAKE OVER the same stale lock", async (t) => {
+    // THE REPRODUCTION (#582 counter-review 4). Taking a stale lock over was
+    // "read the token, then remove the path" — two separate steps. Ten
+    // contenders reading the SAME stale record all passed the token check; the
+    // first removed the file and published its successor, and a loser whose
+    // read had landed a moment earlier removed THAT one and published its own.
+    // Two processes then believed they held the repository.
+    //
+    // Each round is started by a byte down every contender's stdin, so all ten
+    // reach the takeover path against one record in the same event-loop tick —
+    // the interleaving is far too narrow to hit by polling. The seeded record
+    // is an hour past its heartbeat while the stale window is ten seconds, so
+    // a lock published by a winner is NEVER stale: a second acquisition in a
+    // round is a real double build, not a legitimate takeover.
+    const dir = await tempDir("bastra-lock-takeover-");
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    const script = join(dir, "taker.mjs");
+    await writeFile(script, TAKEOVER_CONTENDER, "utf8");
+
+    const contenders = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(() => startTaker(script, dir));
+    t.after(() => contenders.forEach((c) => c.kill()));
+    await Promise.all(contenders.map((c) => c.ready));
+
+    // Two phases per round, so that every acquisition happens before any
+    // release: a contender the machine got round to late would otherwise find
+    // the round's winner already finished and inherit the lock legitimately,
+    // which is not a double build but would look like one to the count below.
+    for (let round = 0; round < TAKEOVER_ROUNDS; round++) {
+      await publishStaleLock(dir);
+      const acquired = contenders.map((c) => c.round());
+      for (const c of contenders) c.go("acquire");
+      await Promise.all(acquired);
+      const done = contenders.map((c) => c.round());
+      for (const c of contenders) c.go("release");
+      await Promise.all(done);
+    }
+    const results = await Promise.all(contenders.map((c) => c.finish()));
+
+    const held = results.reduce((n, r) => n + r.held, 0);
+    const violations = results.reduce((n, r) => n + r.violations, 0);
+    const tookOver = results.reduce((n, r) => n + r.tookOver, 0);
+    const shown = JSON.stringify(results);
+    assert.ok(tookOver > TAKEOVER_ROUNDS / 2, `only ${tookOver} takeovers — the race did not happen`);
+    // Exactly one holder per round. A second winner shows up as an extra
+    // acquisition whether or not it collides inside the critical section, so
+    // this counts double builds the marker on its own can miss.
+    assert.equal(held, TAKEOVER_ROUNDS, `more holders than rounds: ${shown}`);
+    assert.equal(violations, 0, `two holders inside the critical section: ${shown}`);
+  });
 });
+
+/**
+ * A holder whose heartbeat stopped an hour ago: stale for everyone, at once.
+ * Seeded from whatever record is there, so it continues the lock's own history
+ * the way a SIGKILLed daemon does rather than arriving from nowhere.
+ */
+async function publishStaleLock(dir: string): Promise<void> {
+  const old = new Date(Date.now() - 3_600_000).toISOString();
+  const previous = JSON.parse(
+    await readFile(lockPath(dir), "utf8").catch(() => "{}"),
+  ) as Record<string, unknown>;
+  const tmp = `${lockPath(dir)}.seed`;
+  await writeFile(
+    tmp,
+    JSON.stringify({
+      ...previous,
+      pid: process.pid,
+      host: hostname(),
+      token: `stale-${Math.random().toString(36).slice(2)}`,
+      startedAt: old,
+      renewedAt: old,
+      state: "held",
+    }),
+    "utf8",
+  );
+  await rename(tmp, lockPath(dir)); // atomic: readers never see half a record
+}
+
+/** How many rounds the ten contenders fight over a freshly stale lock. */
+const TAKEOVER_ROUNDS = 600;
+
+interface Taker {
+  ready: Promise<void>;
+  /** Resolves when this contender reports the current round done. */
+  round(): Promise<void>;
+  go(phase: "acquire" | "release"): void;
+  finish(): Promise<{ held: number; violations: number; tookOver: number }>;
+  kill(): void;
+}
+
+/**
+ * A contender driven down its stdin. The byte is the barrier: ten processes
+ * blocked on a pipe all wake in the same tick, which polling cannot match.
+ */
+function startTaker(script: string, dir: string): Taker {
+  const child = spawn(process.execPath, ["--import", "tsx", script, LOCK_MODULE, dir], {
+    cwd: REPO_ROOT,
+    stdio: ["pipe", "pipe", "inherit"],
+  });
+  const lines: string[] = [];
+  const waiters: (() => void)[] = [];
+  let buffer = "";
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk: string) => {
+    buffer += chunk;
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) >= 0) {
+      lines.push(buffer.slice(0, nl));
+      buffer = buffer.slice(nl + 1);
+      waiters.shift()?.();
+    }
+  });
+  const nextLine = async (): Promise<string> => {
+    if (lines.length === 0) await new Promise<void>((r) => waiters.push(r));
+    return lines.shift() as string;
+  };
+  return {
+    ready: nextLine().then(() => undefined),
+    round: () => nextLine().then(() => undefined),
+    go: (phase) => child.stdin.write(`${phase}\n`),
+    async finish() {
+      child.stdin.end();
+      const last = await nextLine();
+      return JSON.parse(last) as { held: number; violations: number; tookOver: number };
+    },
+    kill: () => child.kill("SIGKILL"),
+  };
+}
+
+/**
+ * One takeover contender. Blocks on stdin between rounds, so the ten of them
+ * hit `acquireRepoLock` together rather than discovering the stale record at
+ * ten different moments.
+ */
+const TAKEOVER_CONTENDER = `
+import { createInterface } from "node:readline";
+import { open, rm } from "node:fs/promises";
+import { join } from "node:path";
+
+const [, , modulePath, dir] = process.argv;
+const { acquireRepoLock, readLock } = await import(modulePath);
+const marker = join(dir, "building.marker");
+
+let held = 0;
+let violations = 0;
+let tookOver = 0;
+let mine = null;
+process.stdout.write("ready\\n");
+
+for await (const phase of createInterface({ input: process.stdin })) {
+  if (phase === "acquire") {
+    mine = await acquireRepoLock(dir, { heartbeat: false, staleMs: 10000 });
+    if (mine !== null) {
+      held++;
+      if (mine.tookOver) tookOver++;
+      // The marker stays until the release phase, so two holders in one round
+      // collide on it however far apart the machine schedules them.
+      try {
+        const handle = await open(marker, "wx");
+        await handle.close();
+      } catch {
+        violations++;
+      }
+    }
+  } else {
+    if (mine !== null) {
+      // THE LOCK A HOLDER STILL HOLDS MUST STILL BE THERE. This is the damage
+      // the old takeover did: a contender that had read the stale record
+      // removed the file its successor had just published, so the successor
+      // held a lock that no longer locked anything out.
+      const onDisk = await readLock(dir);
+      if (onDisk === null || onDisk.token !== mine.record.token) violations++;
+      await rm(marker, { force: true });
+      await mine.release();
+      mine = null;
+    }
+  }
+  process.stdout.write("done\\n");
+}
+process.stdout.write(JSON.stringify({ held, violations, tookOver }) + "\\n");
+
+`;
 
 /**
  * One competitor: take the lock, mark the critical section exclusively, let
@@ -194,7 +412,7 @@ import { open, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 const [, , modulePath, dir] = process.argv;
-const { acquireRepoLock } = await import(modulePath);
+const { acquireRepoLock, readLock } = await import(modulePath);
 const marker = join(dir, "building.marker");
 
 let held = 0;
