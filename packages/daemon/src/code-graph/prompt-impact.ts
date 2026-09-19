@@ -42,7 +42,7 @@ import { codeAwarenessDisabledByEnv } from "./enabled-repos.js";
 import type { AffectedBasis } from "./find-affected-files.js";
 import { repoRootSync } from "./git-paths.js";
 import { changeImpactIntent } from "./impact-intent.js";
-import { displayOrder, renderImpactBlock } from "./impact-block.js";
+import { displayOrder, isGraphStale, renderImpactBlock } from "./impact-block.js";
 import { bareLabel, type CodeSymbol, type LoadedGraph } from "./reader.js";
 import { logDeliveredBlock } from "../code-delivered-telemetry.js";
 import { MAX_SHOW, type ReadonlySessionState } from "../session-state.js";
@@ -117,7 +117,7 @@ export async function promptImpactNote(
   if (target === null) return SILENT;
 
   const names = [...new Set(target.symbols.filter((s) => s.kind !== "file").map((s) => s.name))];
-  const dedupeKey = `${DEDUPE_PREFIX}${target.file}#${target.basis}:${names.sort().join(",")}`;
+  const dedupeKey = `${DEDUPE_PREFIX}${target.file}#${graph.mtimeMs}:${target.basis}:${names.sort().join(",")}`;
   if ((opts.session?.shown?.[dedupeKey]?.count ?? 0) >= MAX_SHOW) {
     return { note: null, dedupeHit: true };
   }
@@ -132,16 +132,17 @@ export async function promptImpactNote(
   if (result.files.length === 0) return SILENT;
 
   const shown = displayOrder(result.hits);
+  const stale = await isGraphStale(repo, join(repo, target.file));
   const note = renderImpactBlock({
     file: target.file,
     basis: target.basis,
     changed: result.changedSymbols,
     hits: shown,
     total: result.hits.length,
-    // Freshness is not checked here: the block is about a file the user asked
-    // about, not one being written, so there is no pending mtime to compare the
-    // build against and the two `stat`s would say nothing this lane can use.
-    stale: false,
+    // The target's current mtime is enough to detect that the loaded graph
+    // predates the code the user is asking about. It cannot predict the future
+    // edit, but it must not present an already-stale answer as current.
+    stale,
     lead:
       target.basis === "symbols"
         ? "You asked what a change here would affect. Code graph, one hop from the " +
@@ -277,6 +278,8 @@ function resolveTarget(
       : { file, basis: "whole_file", symbols: allSymbolsOf(graph, file) };
   }
   if (named.length === 0) return null;
+  const homes = new Set(named.map((s) => s.file));
+  if (homes.size !== 1) return null;
   const home = named[0].file;
   const together = named.filter((s) => s.file === home);
   return { file: home, basis: "symbols", symbols: together };

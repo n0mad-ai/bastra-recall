@@ -360,7 +360,7 @@ function signatureOf(graph: LoadedGraph, selection: Selection): string {
  * Whether the graph predates the file about to be edited, or never finished
  * building. `isStale` treats "unknown" as stale on purpose (#574).
  */
-async function isGraphStale(repoRoot: string, filePath: string): Promise<boolean> {
+export async function isGraphStale(repoRoot: string, filePath: string): Promise<boolean> {
   const manifest = await readManifest(graphDirOf(repoRoot));
   let newestMtimeMs = 0;
   try {
