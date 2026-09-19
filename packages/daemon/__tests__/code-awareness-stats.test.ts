@@ -135,6 +135,31 @@ describe("code awareness: graph refresh", () => {
     ]);
     assert.deepEqual(s.repos.map((r) => r.repo).sort(), ["a/one", "b/two"]);
   });
+
+  it("folds a throwaway tree under /tmp into one labeled row, not a repo named \"tmp\"", () => {
+    const s = aggregateCodeAwareness([
+      toolCall({ repo: "tmp" }),
+      refresh({ repo: "tmp", external_total: 5, external_resolved: 0 }),
+      toolCall({ repo: "Projekte/bastra-recall" }),
+    ]);
+    const temp = s.repos.find((r) => r.repo === "(temporary tree)");
+    assert.deepEqual(temp, { repo: "(temporary tree)", toolCalls: 1, refreshes: 1, externalTotal: null, externalResolved: null });
+    assert.ok(s.repos.some((r) => r.repo === "Projekte/bastra-recall"));
+    assert.equal(s.repos.length, 2);
+  });
+
+  it("folds macOS's $TMPDIR shape (T/<random>) into the same temp-tree row", () => {
+    const s = aggregateCodeAwareness([
+      toolCall({ repo: "T/code-roi-arm-ab12cd" }),
+      toolCall({ repo: "tmp" }),
+    ]);
+    assert.deepEqual(s.repos, [{ repo: "(temporary tree)", toolCalls: 2, refreshes: 0, externalTotal: null, externalResolved: null }]);
+  });
+
+  it("does not treat a real repo merely starting with those letters as a temp tree", () => {
+    const s = aggregateCodeAwareness([toolCall({ repo: "tmproject/api" }), toolCall({ repo: "Team/api" })]);
+    assert.deepEqual(s.repos.map((r) => r.repo).sort(), ["Team/api", "tmproject/api"]);
+  });
 });
 
 describe("code awareness: the two readouts", () => {

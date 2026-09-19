@@ -100,6 +100,47 @@ export interface CodeAwarenessStats {
   repos: RepoRow[];
 }
 
+/**
+ * A throwaway tree from the measurement harness (packages/eval/code-roi) is
+ * built under the OS temp directory, but by the time its `repo` field lands
+ * in an event, `shortRepo` (code-graph/unavailable-note.ts) has already
+ * collapsed the full path to its last one or two segments — whether it once
+ * lived under a temp root is otherwise lost by here. What survives the
+ * collapse is still unambiguous: a plain `/tmp` root shortens to "tmp", and
+ * macOS's $TMPDIR convention (.../T/<random>) shortens to "T/…". No real
+ * project is ever named "tmp" or nested directly under a bare "T" directory,
+ * so folding both into one row is safe, and reads better than leaving a
+ * throwaway sandbox sitting in the repository list next to real projects.
+ */
+export const TEMPORARY_TREE_LABEL = "(temporary tree)";
+
+function isTemporaryTreeLabel(repo: string): boolean {
+  const first = repo.split("/")[0] ?? repo;
+  return first.toLowerCase() === "tmp" || first === "T";
+}
+
+/** Merge every temp-tree repo into one row; real repos pass through untouched. */
+function foldTemporaryTrees(rows: readonly RepoRow[]): RepoRow[] {
+  const real: RepoRow[] = [];
+  let sawTemp = false;
+  let toolCalls = 0;
+  let refreshes = 0;
+  for (const r of rows) {
+    if (!isTemporaryTreeLabel(r.repo)) {
+      real.push(r);
+      continue;
+    }
+    sawTemp = true;
+    toolCalls += r.toolCalls;
+    refreshes += r.refreshes;
+  }
+  // No external total/resolved on the merged row — those describe one
+  // repository's current state, and summing them across unrelated throwaway
+  // trees would not mean anything.
+  if (sawTemp) real.push({ repo: TEMPORARY_TREE_LABEL, toolCalls, refreshes, externalTotal: null, externalResolved: null });
+  return real;
+}
+
 const num = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) ? v : null;
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
@@ -250,14 +291,14 @@ export function aggregateCodeAwareness(rows: readonly CodeEventRow[]): CodeAware
       p90: quantile(durations, 0.9),
       failures: counted(refreshFailures).slice(0, 5),
     },
-    repos: [...repos]
-      .map(([repo, r]) => ({
+    repos: foldTemporaryTrees(
+      [...repos].map(([repo, r]) => ({
         repo,
         toolCalls: r.toolCalls,
         refreshes: r.refreshes,
         externalTotal: r.total,
         externalResolved: r.resolved,
-      }))
-      .sort((a, b) => b.toolCalls + b.refreshes - (a.toolCalls + a.refreshes)),
+      })),
+    ).sort((a, b) => b.toolCalls + b.refreshes - (a.toolCalls + a.refreshes)),
   };
 }

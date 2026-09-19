@@ -15,7 +15,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 // @ts-expect-error — plain browser module, no types.
-import { UNAVAILABLE_REASONS } from "../webui/js/managers/telemetry-view.js";
+import { UNAVAILABLE_REASONS } from "../webui/js/managers/telemetry-view-code.js";
 import type { CodeUnavailableReason } from "../src/code-graph/unavailable-reason.js";
 
 /** Every value `unavailableReason()` can return, listed by hand on purpose:
