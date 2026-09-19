@@ -169,6 +169,7 @@
     "sample": {
       "selection": "scenarios whose CHANGED file lies inside a workspace package and whose truth contains at least one file in another package. Mined separately with `mine-repo.mjs --file-prefix packages/`, same unit, same truth definition, same caps.",
       "archive": "~/.bastra/eval/code-roi-gate-bastra-io",
+      "evaluated_at": "2f9dc47, scored 2026-09-19 offline: 2 of 2 cross-package truth files found (share 1.0) over 2 scenarios. With only 2 truth files this is a plumbing result, not a measurement — the proposed minimum n is 8.",
       "found_so_far": "bastra-io yields 2 such scenarios with 2 cross-package truth files out of 111 candidates inside packages/ — the whole repository's history. bastra-recall's 7 fresh scenarios contain none. This is a finding about the histories available, not about the tool.",
       "measurement_data": "These scenarios are MEASUREMENT data: they were mined and counted, and their contents were not read to tune anything."
     },
@@ -190,7 +191,7 @@
       "target_cross_package_truth_files": 20,
       "metric": "identical to the historical gate: the share of CROSS-PACKAGE truth files that `find_affected_files` names at depth 1",
       "min_share_found": "TO_BE_DECIDED — proposal: 0.80, the same number and the same reasoning as the historical gate",
-      "not_yet_evaluated": "The mutations are generated; the gate is NOT scored until the product work in affected.ts / workspace-packages.ts is finished. Scoring it earlier would turn a measurement into development data.",
+      "evaluated_at": "2f9dc47 (product surface frozen; scored 2026-09-19, offline). Result: 18 of 21 cross-package truth files found, share 0.857. The threshold stays TO_BE_DECIDED — the number is recorded before anyone decides what it has to beat, which is the only order in which that decision means anything.",
       "failure_is_a_result": true
     },
     "min_cross_package_truth_files": "TO_BE_DECIDED — proposal: 8. Below that a single missed file moves the share by more than 12 points, which is not a threshold anyone can act on. At 2 available today the gate reports `not_evaluable`, which is the honest answer until a repository with more cross-package churn is added.",
