@@ -20,14 +20,23 @@
  * package boundary, which is the one thing #582 built. A measurement of
  * cross-package impact needs a repository that has cross-package impact.
  *
- * The truth definition is unchanged from registration 3: a file is affected
- * when it carries a type error after applying exactly one file's diff that it
- * did not carry before, compared as (file, code, message) multisets.
+ * TWO TRUTH DEFINITIONS, chosen with `--truth`:
+ *
+ *   `types` (default, unchanged from registration 3) — a file is affected when
+ *     it carries a type error after applying exactly one file's diff that it
+ *     did not carry before, compared as (file, code, message) multisets. Needs
+ *     a tsconfig, so it only exists in a TypeScript repository.
+ *   `tests` — a file is affected when a test that used to pass now fails and
+ *     that test reaches the file. The whole rule, including the confirmation
+ *     run and the blind-spot flag, lives in `test-truth.mjs`; nothing about
+ *     the type-based path changes.
  *
  * Usage:
  *   CODE_ROI_REPO=/path/to/repo CODE_ROI_OUT=<dir> node mine-repo.mjs [--stop-at 45]
+ *   CODE_ROI_REPO=/path/to/js-repo CODE_ROI_OUT=<dir> node mine-repo.mjs --truth tests
  */
-import { execFile, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import {
   appendFileSync,
@@ -43,6 +52,14 @@ import {
 import { join } from "node:path";
 import { writableOut } from "./archive.mjs";
 import { isScenarioFile, repoProfile } from "./repo-profile.mjs";
+import {
+  DEFAULT_TIMEOUT_MS,
+  TRUTH_RULE,
+  attribute,
+  brokenCases,
+  runSuite,
+  testFileOfCase,
+} from "./test-truth.mjs";
 
 const run = promisify(execFile);
 const BUF = { maxBuffer: 512 * 1024 * 1024, encoding: "utf8" };
@@ -69,8 +86,34 @@ const WORKERS = Number(process.env.CODE_ROI_WORKERS ?? 4);
 const STOP_AT = Number(argOf("--stop-at") ?? 45);
 const MAX_TRUTH = 40;
 
-const profile = repoProfile(REPO);
+export const TRUTH = argOf("--truth") ?? process.env.CODE_ROI_TRUTH ?? "types";
+if (TRUTH !== "types" && TRUTH !== "tests") {
+  throw new Error(`--truth must be "types" or "tests", not ${JSON.stringify(TRUTH)}`);
+}
+const profile = repoProfile(REPO, { truth: TRUTH });
 mkdirSync(OUT, { recursive: true });
+
+/**
+ * Commits a pilot already looked at, excluded MECHANICALLY like in v6.
+ *
+ * They are passed in rather than read from a registration, because the
+ * registration this population belongs to is not the one `select.mjs` reads:
+ * pointing at the wrong document would exclude the wrong commits, and an
+ * exclusion nobody notices is worse than no exclusion at all.
+ */
+const PILOT_COMMITS = (process.env.CODE_ROI_PILOT_COMMITS ?? "")
+  .split(",")
+  .map((c) => c.trim())
+  .filter(Boolean);
+
+/** The repository state this population was mined from, pinned in population.json. */
+const REPO_HEAD = (() => {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: REPO, encoding: "utf8" }).trim();
+  } catch {
+    return null;
+  }
+})();
 
 const git = async (args, cwd = REPO) => (await run("git", args, { cwd, ...BUF })).stdout;
 
@@ -247,8 +290,169 @@ async function candidatesOf(sha) {
     .sort();
 }
 
+/**
+ * Baselines are keyed by the PARENT TREE, not by the commit: a suite run is the
+ * expensive step here, and two commits with the same parent tree have the same
+ * baseline by definition. The cache survives a restart, so a mining run that
+ * was interrupted does not pay for its baselines twice.
+ */
+const TEST_BASELINE_CACHE = join(OUT, "test-baseline-cache.jsonl");
+const TEST_TIMEOUT_MS = DEFAULT_TIMEOUT_MS;
+const testBaselines = new Map();
+
+function loadTestBaselines() {
+  if (!existsSync(TEST_BASELINE_CACHE)) return;
+  for (const line of readFileSync(TEST_BASELINE_CACHE, "utf8").split("\n").filter(Boolean)) {
+    const r = JSON.parse(line);
+    testBaselines.set(r.tree, r);
+  }
+}
+
+/**
+ * The passing cases of the parent tree, from cache or from a run. Only the
+ * PASSING ids are kept: they are the only thing step 3 needs, and keeping the
+ * failures too would double a cache file that is already the largest artefact
+ * of a mining run.
+ */
+async function testBaseline(tree, dir) {
+  const hit = testBaselines.get(tree);
+  if (hit !== undefined) return hit;
+  const run = await runSuite(dir, profile.testRunner, { timeoutMs: TEST_TIMEOUT_MS });
+  const record =
+    run.status === "ok"
+      ? { tree, status: "ok", passing: [...run.cases].filter(([, s]) => s === "pass").map(([id]) => id) }
+      : { tree, status: run.status, detail: run.detail ?? "", passing: [] };
+  testBaselines.set(tree, record);
+  appendFileSync(TEST_BASELINE_CACHE, JSON.stringify(record) + "\n");
+  return record;
+}
+
+/**
+ * Test-based truth for every candidate file of one commit — the rule written
+ * out in `test-truth.mjs`. The order of the steps is load-bearing:
+ *
+ *   apply diff -> run suite -> ATTRIBUTE ON THE MUTATED TREE -> revert ->
+ *   confirmation run on the clean tree -> keep only confirmed test files.
+ *
+ * Attribution has to happen before the revert because the change itself can
+ * add or remove an import, and the closure that matters is the one that exists
+ * where the break exists. Confirmation has to happen after, because it is
+ * exactly the question "does this test fail without the change too".
+ */
+export async function analyzeTests(commit, files, dir, { evidence = false } = {}) {
+  const parent = (await git(["rev-parse", `${commit}^`])).trim();
+  const tree = (await git(["rev-parse", `${commit}^^{tree}`])).trim();
+  const subject = (await git(["log", "-1", "--format=%s", commit])).trim();
+  await extract(parent, dir);
+
+  const base = await testBaseline(tree, dir);
+  const record = { repo: profile.root, commit, parent, subject, truthRule: TRUTH_RULE };
+  if (base.status !== "ok") {
+    return files.map((file) => ({
+      ...record,
+      file,
+      reason: `not evaluable: baseline ${base.status}${base.detail ? ` (${base.detail})` : ""}`,
+    }));
+  }
+  const passing = new Map(base.passing.map((id) => [id, "pass"]));
+
+  const results = [];
+  for (const file of files) {
+    const diff = await git(["diff", parent, commit, "--", file]);
+    const patch = join(dir, ".eval-mutation.diff");
+    writeFileSync(patch, diff);
+    const applied = await run("git", ["apply", patch], { cwd: dir, ...BUF }).then(
+      () => true,
+      () => false,
+    );
+    if (!applied) {
+      rmSync(patch, { force: true });
+      results.push({ ...record, file, reason: "diff does not apply alone" });
+      continue;
+    }
+
+    const after = await runSuite(dir, profile.testRunner, { timeoutMs: TEST_TIMEOUT_MS });
+    // Everything that needs the MUTATED tree is read here, before the revert:
+    // the change itself can add or remove an import, and the closure that
+    // decides attribution and the blind-spot flag is the one that exists where
+    // the break exists.
+    const broke = after.status === "ok" ? brokenCases(passing, after.cases, after.ambiguous) : [];
+    const brokenFiles = [
+      ...new Set(broke.map((id) => testFileOfCase(id, dir, after.files)).filter((f) => f !== null)),
+    ].sort();
+    const attributions = new Map(
+      brokenFiles.map((t) => [t, attribute(dir, t, file, { packageNames: profile.packageNames })]),
+    );
+
+    const reverted = await run("git", ["apply", "-R", patch], { cwd: dir, ...BUF }).then(
+      () => true,
+      () => false,
+    );
+    rmSync(patch, { force: true });
+    if (!reverted) await extract(parent, dir);
+
+    if (after.status !== "ok") {
+      // A suite that hangs or cannot start under the change is a candidate we
+      // could not judge. Calling it "breaks nothing" would silently push a
+      // hard case into the population as an easy one.
+      results.push({ ...record, file, reason: `not evaluable: mutated run ${after.status}` });
+      continue;
+    }
+
+    const confirmed = await confirmBreaks(dir, brokenFiles, broke, (id) => testFileOfCase(id, dir, after.files));
+    const truth = new Set();
+    const rules = {};
+    const blindSpots = [];
+    for (const t of brokenFiles) {
+      if (!confirmed.has(t)) continue;
+      const a = attributions.get(t);
+      rules[t] = a.rule;
+      for (const f of a.files) truth.add(f);
+      if (!a.closure.has(file)) blindSpots.push(t);
+    }
+    const entry = {
+      ...record,
+      file,
+      diff,
+      truth: [...truth].sort(),
+      brokenTests: [...confirmed].sort(),
+      truthRules: rules,
+      blindSpots,
+      baselinePassing: base.passing.length,
+    };
+    if (evidence) entry.brokenCases = broke.slice(0, 50);
+    results.push(entry);
+  }
+  return results;
+}
+
+/**
+ * Step 4, on a tree that is already back at the parent. Re-runs only the broken
+ * test files and keeps those that had at least one of their broken cases
+ * PASSING there. A file that fails on the parent too is flaky, order-dependent
+ * or already red — none of which is evidence about the change.
+ *
+ * A confirmation run that itself cannot be judged keeps the evidence rather
+ * than dropping it: the break was observed, and discarding it on a failed
+ * check would quietly shrink the truth set.
+ */
+async function confirmBreaks(dir, brokenFiles, broke, fileOf) {
+  if (brokenFiles.length === 0) return new Set();
+  const clean = await runSuite(dir, profile.testRunner, { files: brokenFiles, timeoutMs: TEST_TIMEOUT_MS });
+  if (clean.status !== "ok") return new Set(brokenFiles);
+  const confirmed = new Set();
+  for (const t of brokenFiles) {
+    // `fileOf` reads the MUTATED run's file map, because that is the run the
+    // broken ids came from; the clean run only has to answer pass or fail.
+    const own = broke.filter((id) => fileOf(id) === t);
+    if (own.some((id) => clean.cases.get(id) === "pass")) confirmed.add(t);
+  }
+  return confirmed;
+}
+
 /** Truth sets for every candidate file of one commit: one baseline, one mutation per file. */
 export async function analyze(commit, files, dir, { evidence = false } = {}) {
+  if (TRUTH === "tests") return analyzeTests(commit, files, dir, { evidence });
   const parent = (await git(["rev-parse", `${commit}^`])).trim();
   const subject = (await git(["log", "-1", "--format=%s", commit])).trim();
   await extract(parent, dir);
@@ -292,6 +496,48 @@ export async function analyze(commit, files, dir, { evidence = false } = {}) {
     results.push(entry);
   }
   return results;
+}
+
+/**
+ * The frozen description of the population, rewritten after every pass so an
+ * interrupted mining run always leaves a readable intermediate state.
+ *
+ * It exists for the same reason `mutation-gate.mjs` pins its population: a
+ * sample drawn later under a registered seed is only reproducible against a
+ * FIXED set of scenarios. The hash is over the accepted (commit, file) pairs
+ * in acceptance order, so adding one scenario changes it and nobody can
+ * quietly re-mine a different population under the same registration.
+ */
+export function populationFreeze(decisions, accepted) {
+  const kept = decisions.filter((d) => d.accepted === true);
+  const dirOf = (f) => (f.includes("/") ? f.slice(0, f.indexOf("/")) : ".");
+  const tally = (pairs) => {
+    const counts = {};
+    for (const key of pairs) counts[key] = (counts[key] ?? 0) + 1;
+    return Object.fromEntries(Object.entries(counts).sort((a, b) => b[1] - a[1]));
+  };
+  return {
+    repository: profile.root,
+    repository_head: REPO_HEAD,
+    truth: TRUTH,
+    truth_rule: TRUTH_RULE,
+    seed: Number(process.env.CODE_ROI_SEED ?? 20260918),
+    stop_at: STOP_AT,
+    max_truth: MAX_TRUTH,
+    accepted,
+    decided: decisions.length,
+    excluded_pilot: PILOT_COMMITS,
+    population_sha256: createHash("sha256")
+      .update(kept.map((d) => `${d.commit}:${d.file}`).join("\n"))
+      .digest("hex"),
+    distribution: {
+      by_top_dir: tally(kept.map((d) => dirOf(d.file))),
+      truth_size: tally(kept.map((d) => String(d.truth?.length ?? 0))),
+      attribution_rule: tally(kept.flatMap((d) => Object.values(d.truthRules ?? {}))),
+      with_blind_spots: kept.filter((d) => (d.blindSpots?.length ?? 0) > 0).length,
+    },
+    rejected: tally(decisions.filter((d) => d.accepted !== true).map((d) => d.reason ?? "unknown")),
+  };
 }
 
 /** Every repository's candidate file, concatenated into the pooled one. */
@@ -352,18 +598,29 @@ function decide(commits, filesByCommit, cache) {
 }
 
 async function main() {
-  if (profile.tsconfigs.length === 0) {
+  if (TRUTH === "types" && profile.tsconfigs.length === 0) {
     throw new Error(`${REPO}: no tsconfig found — nothing to typecheck, so no truth can be built`);
   }
+  if (TRUTH === "tests" && profile.testRunner === null) {
+    throw new Error(
+      `${REPO}: no test runner found in package.json — a repository without a suite cannot carry test-based truth`,
+    );
+  }
+  if (TRUTH === "tests") loadTestBaselines();
   process.stdout.write(
-    `repo ${REPO}\n  packages ${profile.packageDirs.length}, scopes ${profile.scopes.join(",") || "none"}\n` +
-      `  tsconfigs ${profile.tsconfigs.join(", ")}\n  build first: ${profile.buildFirst.join(", ") || "nothing"}\n`,
+    `repo ${REPO}\n  truth ${TRUTH} (${TRUTH_RULE})\n` +
+      `  packages ${profile.packageDirs.length}, scopes ${profile.scopes.join(",") || "none"}\n` +
+      (TRUTH === "tests"
+        ? `  runner ${profile.testRunner.kind} via ${JSON.stringify(profile.testRunner.script)}\n` +
+          `  time budget ${TEST_TIMEOUT_MS} ms per suite run\n`
+        : `  tsconfigs ${profile.tsconfigs.join(", ")}\n  build first: ${profile.buildFirst.join(", ") || "nothing"}\n`),
   );
 
   const since = argOf("--since") ?? process.env.CODE_ROI_RANGE_END ?? "HEAD";
   const commits = (await git(["rev-list", "--no-merges", since])).split("\n").filter(Boolean);
   const filesByCommit = new Map();
   for (const commit of commits) {
+    if (PILOT_COMMITS.includes(commit)) continue;
     const files = await candidatesOf(commit);
     if (files.length > 0) filesByCommit.set(commit, files);
   }
@@ -374,7 +631,12 @@ async function main() {
     const { decisions, accepted, blockedAt } = decide(commits, filesByCommit, cache);
     writeFileSync(CANDIDATES_REPO, decisions.map((d) => JSON.stringify(d)).join("\n") + "\n");
     mergeCandidates();
-    process.stdout.write(`pass: ${accepted}/${STOP_AT} accepted, ${decisions.length} decided\n`);
+    writeFileSync(join(OUT, "population.json"), JSON.stringify(populationFreeze(decisions, accepted), null, 2) + "\n");
+    process.stdout.write(
+      `pass: ${accepted}/${STOP_AT} accepted, ${decisions.length} decided` +
+        (TRUTH === "tests" ? `, ${decisions.filter((d) => d.blindSpots?.length > 0).length} with blind spots` : "") +
+        `\n`,
+    );
     if (blockedAt === null) break;
 
     const start = commits.indexOf(blockedAt);
@@ -387,7 +649,10 @@ async function main() {
       dirs.map(async (dir) => {
         while (next < batch.length) {
           const commit = batch[next++];
-          const files = filesByCommit.get(commit).filter((f) => !cache.has(`${commit}:${f}`));
+          // The repository prefix belongs in the key: without it nothing ever
+          // looked cached here and every batch re-analysed files it had
+          // already decided, which on the test-based path is a whole suite run.
+          const files = filesByCommit.get(commit).filter((f) => !cache.has(`${REPO}:${commit}:${f}`));
           const results = await analyze(commit, files, dir).catch((e) =>
             files.map((file) => ({
               repo: profile.root,
