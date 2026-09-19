@@ -171,6 +171,47 @@ describe("buildCodeGraph against a stand-in binary", () => {
     assert.equal(result.ok === false && result.reason, "graphify-missing");
   });
 
+  it("holds the lock until the killed child is actually gone", async (t) => {
+    // THE REPRODUCTION (#582 counter-review). On a timeout the build resolved
+    // immediately and `buildCodeGraph`'s `finally` released the lock — while
+    // Graphify still had its whole SIGTERM grace period to keep writing into
+    // the graph directory. The next daemon took the free lock and started a
+    // second Graphify on the same files.
+    const repo = await tempRepo();
+    t.after(() => rm(repo, { recursive: true, force: true }));
+    const bin = join(repo, "slow-graphify");
+    await writeFile(
+      bin,
+      [
+        "#!/bin/sh",
+        `if [ "$1" = "--version" ]; then echo "graphify, version 0.9.63"; exit 0; fi`,
+        // Keeps writing for a while after SIGTERM, the way a real Graphify
+        // finishes its build cache. `wait` is what makes the trap arrive.
+        "trap 'sleep 0.6; exit 143' TERM",
+        "sleep 30 2>/dev/null &",
+        "wait",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await chmod(bin, 0o755);
+
+    const build = buildCodeGraph({ repoRoot: repo, bin, lowPriority: false, timeoutMs: 120 });
+    await new Promise((r) => setTimeout(r, 350)); // past the timeout, inside the grace
+    assert.equal(
+      await acquireRepoLock(graphDirOf(repo), { heartbeat: false }),
+      null,
+      "the lock must not be free while the child may still be writing",
+    );
+
+    const result = await build;
+    assert.equal(result.ok, false);
+    assert.equal(result.ok === false && result.reason, "timeout");
+    const after = await acquireRepoLock(graphDirOf(repo), { heartbeat: false });
+    assert.ok(after !== null, "and it is free once the child has exited");
+    await after.release();
+  });
+
   it("reports `locked` when another holder is building the same repo", async (t) => {
     const repo = await tempRepo();
     t.after(() => rm(repo, { recursive: true, force: true }));

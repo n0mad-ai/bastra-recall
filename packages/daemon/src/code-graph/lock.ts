@@ -32,23 +32,42 @@
  *      {@link LOCK_RENEW_MS}, so a lock only looks stale after several
  *      missed beats — a build that takes a minute is never stolen from.
  *
- *   3. Two daemons race for the same free lock. `open(..., "wx")` is O_EXCL:
- *      exactly one of them creates the file, and the loser gets `null`
- *      rather than a queue position. That is deliberate — a refresh that
- *      cannot run now is re-enqueued by the coordinator, and a queue of
- *      builds waiting on each other would be strictly worse than one build
- *      and one follow-up.
+ *   3. Two daemons race for the same free lock. The lock file is created
+ *      ALREADY CARRYING ITS RECORD: the record is written to a private
+ *      temporary file and `link()`ed onto the lock path, which fails with
+ *      EEXIST when someone else got there first. Exactly one of them creates
+ *      the file, and the loser gets `null` rather than a queue position. That
+ *      is deliberate — a refresh that cannot run now is re-enqueued by the
+ *      coordinator, and a queue of builds waiting on each other would be
+ *      strictly worse than one build and one follow-up.
+ *
+ *      WHY NOT `open(path, "wx")` AND THEN WRITE, which is what this did
+ *      before (#582 counter-review): between the two calls the lock file
+ *      exists and is EMPTY. A competitor reading it in that window parses
+ *      nothing, judges the lock unreadable, removes it — and both processes
+ *      then believe they hold the lock and build at once, which is the one
+ *      thing this module exists to prevent. `link()` publishes the name and
+ *      the content in a single step, so that window does not exist. The same
+ *      race is covered a second way, for a lock file written by an older
+ *      Recall or by an interrupted write: an unreadable lock is only removed
+ *      once it is older than {@link UNREADABLE_GRACE_MS}.
  *
  * A stolen lock is stolen safely: every holder writes a random `token` and
  * only removes a lock file that still carries its own token, so the daemon
- * whose lock was taken over cannot delete its successor's.
+ * whose lock was taken over cannot delete its successor's. The token is read
+ * immediately before the removal and the replacement, which narrows that check
+ * to as close to atomic as a plain file allows — POSIX has no
+ * compare-and-delete, so what is left is a window of microseconds in which a
+ * lock that was ALREADY judged stale can be removed by its former holder. A
+ * lock is only judged stale after {@link LOCK_STALE_MS} without a heartbeat,
+ * so reaching that window means the former holder was not running anyway.
  *
  * NOT covered: a checkout on a network share where O_EXCL is not atomic —
  * the same limit `path-lock.ts` documents, and the same judgement: a lease
  * with a quorum is not what a code-graph rebuild is worth.
  */
 
-import { open, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { link, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
@@ -66,6 +85,18 @@ export const LOCK_STALE_MS = 30_000;
 
 /** Heartbeat interval. */
 export const LOCK_RENEW_MS = 5_000;
+
+/**
+ * How long an UNREADABLE lock file is left alone before it counts as stale.
+ *
+ * A lock file that cannot be parsed is normally junk — an interrupted write,
+ * an older format — and blocking a repository on it forever would be worse
+ * than taking it over. But "cannot be parsed yet" is also what a competitor
+ * created a moment ago looks like on a filesystem that reorders the name and
+ * the content, so it gets a grace period first. Two seconds is far longer than
+ * any such window and far shorter than a user notices.
+ */
+export const UNREADABLE_GRACE_MS = 2_000;
 
 export interface LockRecord {
   pid: number;
@@ -114,20 +145,36 @@ export async function acquireRepoLock(
 
   await mkdir(graphDir, { recursive: true });
 
-  // Two attempts, not a loop: create, and — if a stale lock was in the way and
-  // was removed — create once more. A third attempt could only mean another
-  // process won the freed lock, which is a legitimate "busy", not a retry.
+  // Two attempts, not a loop: create, and — if the lock was freed or a stale
+  // one was removed — create once more. A third attempt could only mean
+  // another process won the freed lock, which is a legitimate "busy".
+  let tookOver = false;
   for (let attempt = 0; attempt < 2; attempt++) {
     const record = newRecord();
     if (await tryCreate(path, record)) {
-      return makeLock(path, record, attempt > 0, renewMs, opts.heartbeat !== false);
+      return makeLock(path, record, tookOver, renewMs, opts.heartbeat !== false);
     }
-    const existing = await readRecord(path);
-    if (existing !== null && !isStaleLock(existing, staleMs)) return null;
+    const state = await readState(path);
+    // ABSENT IS NOT UNREADABLE, and conflating the two handed the repository
+    // to two builders (#582 counter-review): the holder had released between
+    // our create and our read, so we saw nothing, decided to clear the lock
+    // and removed the file the NEXT holder had published in between. Nothing
+    // is removed here any more — there is nothing to remove, and the second
+    // create attempt is the whole answer.
+    if (state.kind === "free") continue;
+    if (state.kind === "held") {
+      if (!isStaleLock(state.record, staleMs)) return null;
+      await removeIfUnchanged(path, state.record);
+      tookOver = true;
+      continue;
+    }
     // Unreadable (truncated, or written by an older format) counts as stale:
     // a lock file nobody can prove is alive would otherwise block the repo
-    // for good, and its holder — if any — will find its token gone.
-    await removeIfUnchanged(path, existing);
+    // for good. Only once it has had its grace period, though: a lock file
+    // that just appeared may be a competitor still publishing it.
+    if (await isYoungerThan(path, UNREADABLE_GRACE_MS)) return null;
+    await removeIfStillUnreadable(path);
+    tookOver = true;
   }
   return null;
 }
@@ -173,8 +220,12 @@ function makeLock(
       if (released) return;
       released = true;
       if (timer !== null) clearInterval(timer);
+      // Read and compare IMMEDIATELY before the removal, with nothing awaited
+      // in between: a successor's lock must not be deleted by the holder it
+      // replaced. On any doubt the file is left where it is — it then expires
+      // as a stale lock, which costs one build a wait and loses nothing.
       const current = await readRecord(path);
-      if (current !== null && current.token !== record.token) return; // taken over
+      if (current === null || current.token !== record.token) return;
       try {
         await rm(path, { force: true });
       } catch {
@@ -185,15 +236,39 @@ function makeLock(
   };
 }
 
+/**
+ * Publish the lock file with its record already in it, or report that someone
+ * else holds it. `link()` is the atomic step: it either creates the name or
+ * fails with EEXIST, and it never leaves an empty file behind for a competitor
+ * to mistake for junk.
+ */
 async function tryCreate(path: string, record: LockRecord): Promise<boolean> {
+  const tmp = `${path}.new-${process.pid}-${record.token}`;
   try {
-    const handle = await open(path, "wx");
-    try {
-      await handle.writeFile(`${JSON.stringify(record, null, 2)}\n`, "utf8");
-    } finally {
-      await handle.close();
-    }
+    await writeFile(tmp, serialize(record), { encoding: "utf8", flag: "wx" });
+    await link(tmp, path);
     return true;
+  } catch {
+    return false;
+  } finally {
+    // The lock path is a second name for the same inode, so dropping this one
+    // leaves the lock intact. On the failure path it removes the leftover.
+    try {
+      await rm(tmp, { force: true });
+    } catch {
+      /* a stray temp file is harmless; the next acquisition writes its own */
+    }
+  }
+}
+
+function serialize(record: LockRecord): string {
+  return `${JSON.stringify(record, null, 2)}\n`;
+}
+
+/** True when the file exists and was last written less than `ms` ago. */
+async function isYoungerThan(path: string, ms: number): Promise<boolean> {
+  try {
+    return Date.now() - (await stat(path)).mtimeMs < ms;
   } catch {
     return false;
   }
@@ -203,27 +278,62 @@ async function tryCreate(path: string, record: LockRecord): Promise<boolean> {
  * Rewrite the heartbeat. Atomically, because a reader deciding staleness must
  * never see a half-written record — it would read as unparseable and be taken
  * over while its holder is mid-build.
+ *
+ * The new record is written to the temporary file FIRST and the ownership
+ * check comes last, so that nothing is awaited between "the lock still carries
+ * my token" and the `rename` that replaces it. Checking first and writing
+ * afterwards — what this did before (#582 counter-review) — left a whole file
+ * write in that window, long enough for a successor's lock to be overwritten
+ * by the heartbeat of the holder it replaced.
  */
 async function renew(path: string, record: LockRecord): Promise<void> {
-  const current = await readRecord(path);
-  if (current === null || current.token !== record.token) return;
-  record.renewedAt = new Date().toISOString();
-  const tmp = `${path}.tmp-${process.pid}`;
+  const beat = { ...record, renewedAt: new Date().toISOString() };
+  const tmp = `${path}.beat-${process.pid}-${record.token}`;
   try {
-    await writeFile(tmp, `${JSON.stringify(record, null, 2)}\n`, "utf8");
-    await rename(tmp, path);
-  } catch {
-    try {
-      await rm(tmp, { force: true });
-    } catch {
-      /* nothing left to do */
+    await writeFile(tmp, serialize(beat), "utf8");
+    const current = await readRecord(path);
+    if (current !== null && current.token === record.token) {
+      await rename(tmp, path);
+      record.renewedAt = beat.renewedAt;
+      return;
     }
+  } catch {
+    /* fall through to the cleanup: a missed beat is not worth failing over */
+  }
+  try {
+    await rm(tmp, { force: true });
+  } catch {
+    /* nothing left to do */
   }
 }
 
-async function readRecord(path: string): Promise<LockRecord | null> {
+/**
+ * What is at the lock path. "Nobody holds it" and "somebody wrote something
+ * we cannot read" are different answers and must stay different: the first is
+ * a free lock to be created, the second a file to be judged and maybe removed.
+ * Reading both as `null` is what let one acquisition delete another's lock.
+ */
+type LockState =
+  | { kind: "free" }
+  | { kind: "unreadable" }
+  | { kind: "held"; record: LockRecord };
+
+async function readState(path: string): Promise<LockState> {
+  let text: string;
   try {
-    const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
+    text = await readFile(path, "utf8");
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "ENOENT"
+      ? { kind: "free" }
+      : { kind: "unreadable" };
+  }
+  const record = parseRecord(text);
+  return record === null ? { kind: "unreadable" } : { kind: "held", record };
+}
+
+function parseRecord(text: string): LockRecord | null {
+  try {
+    const parsed: unknown = JSON.parse(text);
     if (typeof parsed !== "object" || parsed === null) return null;
     const r = parsed as Record<string, unknown>;
     if (
@@ -241,16 +351,35 @@ async function readRecord(path: string): Promise<LockRecord | null> {
   }
 }
 
+async function readRecord(path: string): Promise<LockRecord | null> {
+  const state = await readState(path);
+  return state.kind === "held" ? state.record : null;
+}
+
 /**
  * Remove a lock we judged stale — but only if it is still the same one.
  * Between the read and the removal another daemon may have taken it over and
  * started a build; deleting its fresh lock would produce exactly the double
  * build this module exists to prevent.
  */
-async function removeIfUnchanged(path: string, seen: LockRecord | null): Promise<void> {
+async function removeIfUnchanged(path: string, seen: LockRecord): Promise<void> {
   try {
     const current = await readRecord(path);
-    if (seen !== null && current !== null && current.token !== seen.token) return;
+    if (current === null || current.token !== seen.token) return;
+    await rm(path, { force: true });
+  } catch {
+    /* the next acquire attempt will simply fail and report busy */
+  }
+}
+
+/**
+ * Remove a lock file nobody could parse — but only while it is STILL
+ * unparseable. A valid record appearing between the judgement and the removal
+ * is a new holder, and deleting it would be the same double build.
+ */
+async function removeIfStillUnreadable(path: string): Promise<void> {
+  try {
+    if ((await readState(path)).kind !== "unreadable") return;
     await rm(path, { force: true });
   } catch {
     /* the next acquire attempt will simply fail and report busy */

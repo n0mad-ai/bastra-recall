@@ -85,6 +85,9 @@ export const BUILD_TIMEOUT_MS = 10 * 60_000;
 /** How long a killed build gets to exit before SIGKILL. */
 const KILL_GRACE_MS = 5_000;
 
+/** How long after the SIGKILL the build stops waiting for the child to be gone. */
+const KILL_BACKSTOP_MS = 2_000;
+
 /** Stderr kept for `lastError`. Enough for a Python traceback, not a log dump. */
 const STDERR_KEEP_BYTES = 8 * 1024;
 
@@ -275,31 +278,49 @@ function spawnGraphify(ctx: RunContext): Promise<SpawnOutcome> {
     });
 
     let settled = false;
+    /** The outcome a stop() is waiting to report, once the child is gone. */
+    let pending: SpawnOutcome | null = null;
+    const timers: NodeJS.Timeout[] = [];
     const finish = (outcome: SpawnOutcome) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      for (const t of timers) clearTimeout(t);
       ctx.signal?.removeEventListener("abort", onAbort);
       resolve(outcome);
     };
 
-    // SIGTERM first, SIGKILL after a grace period: Graphify writes its own
-    // build cache, and a hard kill on the first signal is how that cache ends
-    // up half-written and every later run rebuilds from scratch.
-    const stop = () => {
+    /**
+     * Stop the child and settle only once it has EXITED (#582 counter-review).
+     *
+     * SIGTERM first, SIGKILL after a grace period: Graphify writes its own
+     * build cache, and a hard kill on the first signal is how that cache ends
+     * up half-written and every later run rebuilds from scratch. But that
+     * grace is also up to five seconds in which the child keeps writing into
+     * the graph directory — and resolving straight away released the build
+     * lock right into that window, so the next daemon started a second
+     * Graphify on the same files. So the outcome is held until `close`.
+     *
+     * A backstop bounds the wait: a child that survives SIGKILL is stuck in
+     * the kernel, and hanging the daemon on it would be worse than a lock
+     * released early — the lock's own staleness rules cover that case.
+     */
+    const stop = (outcome: SpawnOutcome) => {
+      if (settled || pending !== null) return;
+      pending = outcome;
       child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), KILL_GRACE_MS).unref?.();
+      timers.push(setTimeout(() => child.kill("SIGKILL"), KILL_GRACE_MS));
+      timers.push(setTimeout(() => finish(outcome), KILL_GRACE_MS + KILL_BACKSTOP_MS));
+      for (const t of timers) t.unref?.();
     };
 
     const timer = setTimeout(() => {
-      stop();
-      finish({ ok: false, reason: "timeout", detail: `no result after ${timeoutMs} ms` });
+      stop({ ok: false, reason: "timeout", detail: `no result after ${timeoutMs} ms` });
     }, timeoutMs);
     timer.unref?.();
+    timers.push(timer);
 
     const onAbort = () => {
-      stop();
-      finish({ ok: false, reason: "failed", detail: "aborted" });
+      stop({ ok: false, reason: "failed", detail: "aborted" });
     };
     ctx.signal?.addEventListener("abort", onAbort, { once: true });
 
@@ -307,6 +328,7 @@ function spawnGraphify(ctx: RunContext): Promise<SpawnOutcome> {
       finish({ ok: false, reason: "failed", detail: err.message });
     });
     child.on("close", (code, signal) => {
+      if (pending !== null) return finish(pending);
       if (code === 0) return finish({ ok: true });
       const why = signal !== null ? `killed by ${signal}` : `exit code ${String(code)}`;
       finish({ ok: false, reason: "failed", detail: `${why}${stderr === "" ? "" : `: ${stderr.trim()}`}` });
