@@ -130,7 +130,8 @@
       "value": "TO_BE_DECIDED",
       "proposal": "median input tokens of `delivered` at most 0.90x `grep`, over scenarios both arms solved, with the upper bound of a 95 % bootstrap CI on the ratio below 1.0",
       "rationale": "Under option 2 cost is the claim, so it has to be a real effect and not merely 'not worse'. v6's prefilled arm measured 0.9572x — a 4.3 % saving. Registering 0.90x asks for roughly twice that. For arithmetic clarity: a 0.95x ceiling would NOT have been met by v6's 0.9572x point estimate; a 0.97x ceiling would. The useful minimum is a product decision, while the CI upper bound below 1.0 is what distinguishes a repeatable saving from sampling noise.",
-      "cost_of_being_wrong": "Too generous and 'the block is free' ships on noise; too strict and a real but modest saving — which is all a 286-token block can ever produce against a 24 000-token transcript — is rejected, and with it the only claim this option can make."
+      "cost_of_being_wrong": "Too generous and 'the block is free' ships on noise; too strict and a real but modest saving — which is all a 286-token block can ever produce against a 24 000-token transcript — is rejected, and with it the only claim this option can make.",
+      "alternative_proposal_0_97x": "PROPOSAL, NOT A DECISION — the counter-proposal to the 0.90x line above: median input tokens of `delivered` at most 0.97x `grep` AND the upper bound of a 95 % bootstrap CI on the ratio below 1.0. It accepts a saving of the size v6 actually measured (0.9572x clears 0.97x, and clears it by only 1.3 Pp) and leans the whole burden of proof on the CI bound, i.e. on repeatability rather than on size. It is the more permissive of the two and the more honest about what a 286-token block can do; it is also the one that risks registering a saving too small for anyone to notice in a real session. The two numbers differ in what they claim — 0.90x claims a saving worth having, 0.97x claims a saving that is real — and only Daniel decides which claim this arm is for."
     },
     "block_use_floor": {
       "applies_to": "option 2",
@@ -144,7 +145,16 @@
       "value": "TO_BE_DECIDED",
       "proposal": "recall of `delivered` must be >= recall of `grep` (no tolerance)",
       "rationale": "Option 2 does not claim a recall gain, so it must not be allowed to hide a recall loss. A zero tolerance is affordable here precisely because v6 showed both arms at 100 % on ordinary code: any drop below the control is a signal, not noise.",
-      "cost_of_being_wrong": "Too strict on a hard population (a single lost file fails the arm); reconsider the tolerance if option 2 is ever run on option 1's population rather than an ordinary one."
+      "cost_of_being_wrong": "Too strict on a hard population (a single lost file fails the arm); reconsider the tolerance if option 2 is ever run on option 1's population rather than an ordinary one.",
+      "alternative_proposal_ci_lower": "PROPOSAL, NOT A DECISION: state the guard as a bootstrap bound rather than as a point comparison — the LOWER bound of a 95 % CI on (recall of `delivered` − recall of `grep`) must be >= 0. Same intent, but it does not fail the arm on one scenario's worth of sampling noise, and it is the same statistical form the context threshold uses on the other side. Weaker than the no-tolerance rule whenever n is small, since a wide CI then covers 0 by default."
+    },
+    "$option_2_threshold_set_proposal": {
+      "$comment": "PROPOSAL, NOT A DECISION — one internally consistent option-2 set, collected in one place so it can be accepted or rejected as a whole rather than threshold by threshold. It is the permissive reading of the four thresholds above; the stricter readings stay where they are.",
+      "context_cost_option_2": "<= 0.97x median input tokens against `grep`, AND the upper bound of a 95 % bootstrap CI on the ratio below 1.0",
+      "block_use_floor": ">= 50 % of delivered scenarios",
+      "precision_floor": "at most 5 Pp below `grep`",
+      "recall_guard": "no recall loss — lower bound of a 95 % bootstrap CI on the recall difference >= 0",
+      "why_as_a_set": "The four only make sense together: 0.97x is defensible ONLY because the CI bound, the use floor and the precision floor are carrying the rest of the burden. Adopting the 0.97x line while dropping the CI bound would register 'not measurably worse' as a success."
     },
     "verdict_rule": "PROPOSAL: the arm succeeds only if every threshold of the chosen option holds. One-out-of-three is not a partial success; a recall gain bought with precision or with context is the failure this design is shaped around, and under option 2 a cost saving without block use is the same failure wearing different clothes."
   },
@@ -183,6 +193,25 @@
       "may_reuse_v6": "NO for the scenarios themselves — they have been run and their transcripts are in the archive, so an arm measured on them is measured on data whose behaviour is already known. YES for the DRAWING RULE: same repositories, same pooling, same adjudication, a fresh draw that excludes every file the v6 population used.",
       "minimum_n": "TO_BE_DECIDED. A cost ratio needs more scenarios than a recall difference, because median input tokens vary with transcript length for reasons that have nothing to do with the arm."
     }
+  },
+
+  "population_candidates": {
+    "$comment": "CANDIDATES, NOT A DRAW. Repositories that could carry option 1's headroom population, with what each one costs in adjudication. Nothing here is selected, and no scenario has been looked at. The selection rule of `sample.option_1_population` still applies in full: it may see the control arm and the ground truth, never the graph.",
+    "carnexus": {
+      "path": "/Users/n0mad/Projekte/CarNexus",
+      "language": "JavaScript",
+      "indexed": "YES — graphify 0.9.63 built the graph on 2026-09-19 at commit c4dece999cd787811bc7147b40fede0878179aa6, `--code-only`, fileState.count = 792 files, dirty = false. 777 of the 1 077 tracked files are .js; there is no .ts and no tsconfig.json anywhere in the tree.",
+      "why_it_is_interesting": "It is the first indexed repository that is NOT this monorepo and NOT TypeScript. Every result so far — v3 on ~/.bastra/eval/code-roi-v2, v6 on bastra-io — was measured on TypeScript, so the graph's value has only ever been shown where a compiler also exists. A JavaScript repository is where a symbol graph should be worth the most, precisely because the cheap oracle is missing.",
+      "truth_must_be_adjudicated_by_hand": "BLOCKING CONSTRAINT, and the reason this is a candidate rather than a draw. The v3/v6 ground truth is mechanical — apply the diff, run `tsc`, diff the (file, code, message) multiset. On CarNexus there is no `tsc` and therefore no oracle: a file is affected or not by MANUAL adjudication, or by a test that fails after the diff and passed before it where the repository's own tests cover the path. Both are per-scenario human work, and the adjudication cost, not the run cost, is what sets the sample size here. `unit_and_truth` above must gain a JavaScript clause BEFORE any draw, and that clause is a decision, not a detail: hand adjudication is a different ruler from `tsc`, and a run on it is not directly comparable with v3 or v6.",
+      "graph_blind_spots_report_separately": "HTTP routes, event names and string-keyed lookups are edges the graph does not have and cannot have: a fetch of '/api/vehicles/:id' against an Express route, an emit/on pair, a handler resolved out of a table by string. They are real breakages and they will appear in a hand-adjudicated truth set. They must be REPORTED AS THEIR OWN CATEGORY and never pooled with import and call dependencies — pooling them makes the graph look worse on a class of edge it never claimed, and pooling them out makes the population easier than the repository really is. Proposal: one truth set, two reported recalls (graph-reachable edges, contract edges), and the headline number is the pooled one with the split beside it.",
+      "status": "CANDIDATE. Not drawn, not frozen, no scenario inspected. The index exists; nothing else about it is decided."
+    },
+    "also_available": "bastra-io carried the v6 population; a fresh draw on it is permitted for option 2 (`sample.option_2_population.may_reuse_v6`) and is the cheapest option-2 population, since its `tsc` oracle already exists. It is NOT a candidate for option 1: grep reached 100 % recall there.",
+    "open_decisions": [
+      "whether option 1 runs on a non-TypeScript repository at all, given that it changes the ground-truth procedure",
+      "the sample size, which on a hand-adjudicated repository is bounded by adjudication time rather than by the USD ceiling",
+      "whether contract edges (HTTP / event / string) are inside the truth set with a split report, or excluded with the exclusion stated"
+    ]
   },
 
   "cost_ceiling": {
