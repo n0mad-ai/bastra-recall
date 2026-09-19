@@ -212,6 +212,53 @@ describe("buildCodeGraph against a stand-in binary", () => {
     await after.release();
   });
 
+  it("keeps the lock and reports `stuck` when the child never reports gone", async (t) => {
+    // THE REPRODUCTION (#582 counter-review 3). The backstop resolved the build
+    // seven seconds after the kill whether or not the child was gone, and the
+    // `finally` then released the lock — handing the graph directory to the
+    // next daemon while a process that may still write to it was alive.
+    //
+    // A child that survives SIGKILL cannot be staged, but the observable the
+    // code keys on — `close` never arriving — can: the script ignores SIGTERM
+    // and leaves a grandchild holding the stderr pipe open, so the pipe (and
+    // with it `close`) outlives the SIGKILLed shell. That is the real shape of
+    // it too: Graphify runs under `nice` and spawns children of its own.
+    const repo = await tempRepo();
+    t.after(() => rm(repo, { recursive: true, force: true }));
+    const bin = join(repo, "stuck-graphify");
+    const pidFile = join(repo, "grandchild.pid");
+    await writeFile(
+      bin,
+      [
+        "#!/bin/sh",
+        `if [ "$1" = "--version" ]; then echo "graphify, version 0.9.63"; exit 0; fi`,
+        "trap '' TERM",
+        "sleep 30 & echo $! > " + JSON.stringify(pidFile),
+        "sleep 30",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await chmod(bin, 0o755);
+    t.after(async () => {
+      try {
+        process.kill(Number((await readFile(pidFile, "utf8")).trim()), "SIGKILL");
+      } catch {
+        /* already gone */
+      }
+    });
+
+    const result = await buildCodeGraph({ repoRoot: repo, bin, lowPriority: false, timeoutMs: 120 });
+    assert.equal(result.ok, false);
+    assert.equal(result.ok === false && result.reason, "stuck");
+    assert.match(result.ok === false ? result.detail : "", /SIGKILL/);
+    assert.equal(
+      await acquireRepoLock(graphDirOf(repo), { heartbeat: false }),
+      null,
+      "the lock must be LEFT BEHIND: it expires as stale, it is never handed over early",
+    );
+  });
+
   it("reports `locked` when another holder is building the same repo", async (t) => {
     const repo = await tempRepo();
     t.after(() => rm(repo, { recursive: true, force: true }));

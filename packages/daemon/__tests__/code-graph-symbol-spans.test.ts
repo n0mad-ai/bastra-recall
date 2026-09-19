@@ -140,6 +140,84 @@ describe("symbol spans and the constructs that used to break them", () => {
     );
   });
 
+  it("reads a regex after the `}` that ENDS A BLOCK, where a division follows an object literal", async () => {
+    // THE REPRODUCTION (#582 counter-review 3). After any `}` the lexer left
+    // `regexOk` false, so `/{/` at the start of the next statement was read as
+    // a division and its brace counted. A second such regex carrying `/}/`
+    // cancelled it out: the file BALANCED, no guard fired, and `f`'s span ran
+    // to line 7 — swallowing `const top = 1;`, which is the silent loss.
+    const source = [
+      "export function f() {", // 1
+      "  if (x) {}", // 2
+      "  /{/.test(s);", // 3
+      "}", // 4
+      "const top = 1;", // 5
+      "if (top) {}", // 6
+      "/}/.test(s);", // 7
+      "export function g() {}", // 8
+      "", // 9
+    ].join("\n");
+    const spans = await spansOf(source, [sym("f", 1), sym("g", 8)]);
+    assert.notEqual(spans, null);
+    assert.deepEqual(
+      spans!.map((s) => [s.start, s.end]),
+      [
+        [1, 4],
+        [8, 8],
+      ],
+    );
+    assert.deepEqual(spansCovering(spans!, 5), [], "the top-level line is nobody's, as it must be");
+  });
+
+  it("reads a regex after `else` and a block's `}`, and an object literal's `}` as a value", async () => {
+    const source = [
+      "export function pick(x: boolean, s: string): unknown {", // 1
+      "  if (x) { return 1; } else /{}/.test(s);", // 2
+      "  const o = { a: 1 };", // 3
+      "  return o.a / 2 / 1;", // 4
+      "}", // 5
+      "", // 6
+      "export function tail(): number {", // 7
+      "  return 7;", // 8
+      "}", // 9
+      "", // 10
+    ].join("\n");
+    const spans = await spansOf(source, [sym("pick", 1), sym("tail", 7)]);
+    assert.notEqual(spans, null);
+    assert.deepEqual(
+      spans!.map((s) => [s.start, s.end]),
+      [
+        [1, 5],
+        [7, 9],
+      ],
+    );
+  });
+
+  it("does not miscount a class body or a nested template substitution", async () => {
+    const source = [
+      "export class Box {", // 1
+      "  read(s: string): string {", // 2
+      "    return `${ {a: 1}.a } ${s}`;", // 3
+      "  }", // 4
+      "}", // 5
+      "", // 6
+      "export function below(): number {", // 7
+      "  return 7;", // 8
+      "}", // 9
+      "", // 10
+    ].join("\n");
+    const spans = await spansOf(source, [sym("Box", 1), sym("read", 2), sym("below", 7)]);
+    assert.notEqual(spans, null);
+    assert.deepEqual(
+      spans!.map((s) => [s.start, s.end]),
+      [
+        [1, 5],
+        [2, 4],
+        [7, 9],
+      ],
+    );
+  });
+
   it("still divides after a call's `)` and after an index's `]`", async () => {
     const source = [
       "export function rate(n: number, xs: number[]): number {", // 1

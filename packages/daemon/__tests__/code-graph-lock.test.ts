@@ -74,35 +74,89 @@ describe("the build lock against adversarial interleavings", () => {
     await assert.rejects(stat(`${lockPath(dir)}.new-${process.pid}-${lock.record.token}`));
   });
 
-  it("never lets a heartbeat overwrite a successor's lock", async (t) => {
-    // The renew path checked the token, then wrote a whole file, then renamed
-    // over the lock. A takeover landing inside that window was overwritten by
-    // the heartbeat of the holder it had just replaced.
+  it("never lets a heartbeat overwrite the lock of a REAL stale-takeover", async (t) => {
+    // THE REPRODUCTION (#582 counter-review 3). The renew path read the token
+    // and then replaced the file at the PATH; a takeover landing between the
+    // two got its fresh lock overwritten by the heartbeat of the holder it had
+    // just replaced. The takeover is staged for real here — `staleMs: -1` makes
+    // the successor judge the live lock stale, so it goes through the same
+    // remove-and-publish a takeover after a dead daemon does — because an
+    // in-place overwrite of the same file is not a takeover and would not have
+    // shown the bug.
     const dir = await tempDir("bastra-lock-beat-");
     t.after(() => rm(dir, { recursive: true, force: true }));
-    const mine = await acquireRepoLock(dir, { renewMs: 10 });
+    const mine = await acquireRepoLock(dir, { renewMs: 5 });
     assert.ok(mine !== null);
     t.after(() => mine.release());
 
-    const successor = { ...mine.record, token: "successor-token" };
-    await writeFile(lockPath(dir), JSON.stringify(successor), "utf8");
-    await sleep(80); // several heartbeat intervals
+    const successor = await acquireRepoLock(dir, { staleMs: -1, heartbeat: false });
+    assert.ok(successor !== null, "the takeover must succeed for this test to prove anything");
+    assert.equal(successor.tookOver, true);
+    t.after(() => successor.release());
+    await sleep(60); // many heartbeat intervals of the holder that was replaced
 
     assert.equal(
       (await readLock(dir))?.token,
-      "successor-token",
+      successor.record.token,
       "the successor's lock must survive every beat of the holder it replaced",
     );
   });
 
-  it("never lets a release delete a successor's lock", async (t) => {
+  it("never lets a release delete the lock of a REAL stale-takeover", async (t) => {
     const dir = await tempDir("bastra-lock-release-");
     t.after(() => rm(dir, { recursive: true, force: true }));
     const mine = await acquireRepoLock(dir, { heartbeat: false });
     assert.ok(mine !== null);
-    await writeFile(lockPath(dir), JSON.stringify({ ...mine.record, token: "next" }), "utf8");
+    const successor = await acquireRepoLock(dir, { staleMs: -1, heartbeat: false });
+    assert.ok(successor !== null);
+    t.after(() => successor.release());
+
     await mine.release();
-    assert.equal((await readLock(dir))?.token, "next");
+    assert.equal(
+      (await readLock(dir))?.token,
+      successor.record.token,
+      "the replaced holder must not unlink the file its successor created",
+    );
+  });
+
+  it("beats into its own descriptor, not into the file the path names", async (t) => {
+    // The TOCTOU the token check cannot see, staged so that it needs no timing:
+    // a successor's lock that carries the SAME token is exactly what the old
+    // renew saw when a takeover landed between its token read and its rename —
+    // the check passed and it wrote over a file it did not own. The holder's
+    // beats must leave that file's inode AND its bytes untouched.
+    const dir = await tempDir("bastra-lock-beat-fd-");
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    const mine = await acquireRepoLock(dir, { renewMs: 5 });
+    assert.ok(mine !== null);
+    t.after(() => mine.release());
+
+    await rm(lockPath(dir), { force: true }); // what a takeover does first
+    const theirs = JSON.stringify({ ...mine.record, startedAt: "2020-01-01T00:00:00.000Z" });
+    await writeFile(lockPath(dir), theirs, "utf8");
+    const before = await stat(lockPath(dir));
+    await sleep(60); // many heartbeat intervals
+
+    const after = await stat(lockPath(dir));
+    assert.equal(after.ino, before.ino, "the beat must not replace the successor's file");
+    assert.equal(await readFile(lockPath(dir), "utf8"), theirs, "nor rewrite its contents");
+  });
+
+  it("keeps the successor's lock even when the takeover reuses the same token", async (t) => {
+    // The token check alone cannot see this one: a successor that happens to
+    // carry the holder's token — a duplicated record, a restarted daemon
+    // re-reading its own state — would pass it. The lock the holder created is
+    // a different FILE, and that is what the release compares.
+    const dir = await tempDir("bastra-lock-inode-");
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    const mine = await acquireRepoLock(dir, { heartbeat: false });
+    assert.ok(mine !== null);
+
+    await rm(lockPath(dir), { force: true }); // the takeover's own removal
+    await writeFile(lockPath(dir), JSON.stringify(mine.record), "utf8"); // a new file, same record
+
+    await mine.release();
+    assert.notEqual(await readLock(dir), null, "a different file must not be unlinked");
   });
 
   it("lets exactly one of two REAL processes build, over many rounds", async (t) => {

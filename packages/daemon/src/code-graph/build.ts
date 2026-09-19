@@ -96,7 +96,13 @@ export type BuildFailureReason =
   | "graphify-missing"
   | "locked"
   | "timeout"
-  | "failed";
+  | "failed"
+  /**
+   * The child did not die, not even on SIGKILL. The build lock is deliberately
+   * LEFT BEHIND in this case — see `stop()` below — so this reason is also the
+   * signal that the repository is blocked until the lock goes stale.
+   */
+  | "stuck";
 
 export interface BuildSuccess {
   ok: true;
@@ -188,10 +194,16 @@ export async function buildCodeGraph(opts: BuildOptions): Promise<BuildResult> {
     return { ok: false, reason: "locked", detail: graphDir };
   }
 
+  // A build whose child outlived SIGKILL keeps the lock: releasing it would
+  // invite a second Graphify into a directory the first one can still write to,
+  // which is the one thing this lock exists to prevent (#582 counter-review 3).
+  let keepLock = false;
   try {
-    return await runBuild({ ...opts, bin, args, graphDir, lock });
+    const run = await runBuild({ ...opts, bin, args, graphDir, lock });
+    keepLock = run.keepLock;
+    return run.result;
   } finally {
-    await lock.release();
+    if (!keepLock) await lock.release();
   }
 }
 
@@ -202,7 +214,13 @@ interface RunContext extends BuildOptions {
   lock: RepoLock;
 }
 
-async function runBuild(ctx: RunContext): Promise<BuildResult> {
+/** A build's answer, plus whether the caller must hold on to the lock. */
+interface RunOutcome {
+  result: BuildResult;
+  keepLock: boolean;
+}
+
+async function runBuild(ctx: RunContext): Promise<RunOutcome> {
   const { repoRoot, bin, args, graphDir, lock } = ctx;
   const command = commandString(bin, args);
   const version = await graphifyVersion(bin);
@@ -233,7 +251,10 @@ async function runBuild(ctx: RunContext): Promise<BuildResult> {
       dirty: true,
     };
     await writeManifest(graphDir, failed);
-    return { ok: false, reason: run.reason, detail: run.detail };
+    return {
+      result: { ok: false, reason: run.reason, detail: run.detail },
+      keepLock: run.childAlive === true,
+    };
   }
 
   // Everything below describes a build that COMPLETED, so `builtAt` is taken
@@ -251,10 +272,21 @@ async function runBuild(ctx: RunContext): Promise<BuildResult> {
     dirty: false,
   };
   await writeManifest(graphDir, manifest);
-  return { ok: true, manifest, durationMs, tookOverLock: lock.tookOver };
+  return {
+    result: { ok: true, manifest, durationMs, tookOverLock: lock.tookOver },
+    keepLock: false,
+  };
 }
 
-type SpawnOutcome = { ok: true } | { ok: false; reason: BuildFailureReason; detail: string };
+type SpawnOutcome =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: BuildFailureReason;
+      detail: string;
+      /** Set when the child is still running: the lock must NOT be released. */
+      childAlive?: boolean;
+    };
 
 function spawnGraphify(ctx: RunContext): Promise<SpawnOutcome> {
   const { bin, args, repoRoot } = ctx;
@@ -300,16 +332,32 @@ function spawnGraphify(ctx: RunContext): Promise<SpawnOutcome> {
      * lock right into that window, so the next daemon started a second
      * Graphify on the same files. So the outcome is held until `close`.
      *
-     * A backstop bounds the wait: a child that survives SIGKILL is stuck in
-     * the kernel, and hanging the daemon on it would be worse than a lock
-     * released early — the lock's own staleness rules cover that case.
+     * A backstop bounds the WAIT, not the lock (#582 counter-review 3). A child
+     * that survives SIGKILL is stuck in the kernel and may still be writing
+     * into the graph directory, so the earlier backstop — resolve anyway, and
+     * let the `finally` release the lock — handed that directory to the next
+     * builder while the first one was still in it. It now reports `stuck`, and
+     * `buildCodeGraph` reads that as "keep the lock": the repository stays
+     * blocked until the missing heartbeat makes the lock stale, which is a
+     * bounded wait for one build rather than two Graphifys on one tree.
      */
     const stop = (outcome: SpawnOutcome) => {
       if (settled || pending !== null) return;
       pending = outcome;
       child.kill("SIGTERM");
       timers.push(setTimeout(() => child.kill("SIGKILL"), KILL_GRACE_MS));
-      timers.push(setTimeout(() => finish(outcome), KILL_GRACE_MS + KILL_BACKSTOP_MS));
+      timers.push(
+        setTimeout(() => {
+          finish({
+            ok: false,
+            reason: "stuck",
+            detail: `${outcome.ok ? "build" : outcome.detail}: child still running ${
+              KILL_BACKSTOP_MS
+            } ms after SIGKILL — build lock left in place until it goes stale`,
+            childAlive: true,
+          });
+        }, KILL_GRACE_MS + KILL_BACKSTOP_MS),
+      );
       for (const t of timers) t.unref?.();
     };
 

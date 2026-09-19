@@ -52,22 +52,36 @@
  *      Recall or by an interrupted write: an unreadable lock is only removed
  *      once it is older than {@link UNREADABLE_GRACE_MS}.
  *
- * A stolen lock is stolen safely: every holder writes a random `token` and
- * only removes a lock file that still carries its own token, so the daemon
- * whose lock was taken over cannot delete its successor's. The token is read
- * immediately before the removal and the replacement, which narrows that check
- * to as close to atomic as a plain file allows — POSIX has no
- * compare-and-delete, so what is left is a window of microseconds in which a
- * lock that was ALREADY judged stale can be removed by its former holder. A
- * lock is only judged stale after {@link LOCK_STALE_MS} without a heartbeat,
- * so reaching that window means the former holder was not running anyway.
+ * A STOLEN LOCK IS STOLEN SAFELY, and "safely" means the former holder can
+ * neither write to nor delete its successor's lock (#582 counter-review 3).
+ * Checking a token and then acting on the PATH is not enough for that: between
+ * the check and the act a stale-takeover can replace the file, and the loser
+ * then `rename`s its heartbeat over — or `rm`s — a lock somebody else is
+ * building under. So the holder keeps the OPEN FILE DESCRIPTOR of the lock it
+ * created and works through that, not through the name:
+ *
+ *   RENEW writes through the holder's own descriptor. A takeover unlinks the
+ *   name, so the descriptor then refers to an inode no name points at any
+ *   more: the heartbeat lands nowhere and the successor's lock is untouched.
+ *   There is no window at all here, because the name is never used.
+ *
+ *   RELEASE unlinks only when the file at the path is STILL the holder's own
+ *   inode (`fstat` against `stat`), checked with nothing awaited before the
+ *   `unlink`. Node has no `flock` and POSIX has no compare-and-delete, so the
+ *   inode comparison is the closest available, and what is left is a window of
+ *   microseconds in which a lock that was ALREADY judged stale could be
+ *   removed by its former holder. A lock is only judged stale after
+ *   {@link LOCK_STALE_MS} without a heartbeat, so reaching that window means
+ *   the former holder had not been running for half a minute. (On a filesystem
+ *   that reports no inode numbers the comparison degrades to the token check
+ *   that guarded this before, which is no worse than the previous behaviour.)
  *
  * NOT covered: a checkout on a network share where O_EXCL is not atomic —
  * the same limit `path-lock.ts` documents, and the same judgement: a lease
  * with a quorum is not what a code-graph rebuild is worth.
  */
 
-import { link, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { link, mkdir, open, readFile, rm, stat, type FileHandle } from "node:fs/promises";
 import { hostname } from "node:os";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
@@ -151,8 +165,9 @@ export async function acquireRepoLock(
   let tookOver = false;
   for (let attempt = 0; attempt < 2; attempt++) {
     const record = newRecord();
-    if (await tryCreate(path, record)) {
-      return makeLock(path, record, tookOver, renewMs, opts.heartbeat !== false);
+    const handle = await tryCreate(path, record);
+    if (handle !== null) {
+      return makeLock(path, handle, record, tookOver, renewMs, opts.heartbeat !== false);
     }
     const state = await readState(path);
     // ABSENT IS NOT UNREADABLE, and conflating the two handed the repository
@@ -196,6 +211,7 @@ export async function readLock(graphDir: string): Promise<LockRecord | null> {
 
 function makeLock(
   path: string,
+  handle: FileHandle,
   record: LockRecord,
   tookOver: boolean,
   renewMs: number,
@@ -207,7 +223,7 @@ function makeLock(
   const timer = heartbeat
     ? setInterval(() => {
         if (released) return;
-        void renew(path, record);
+        void renew(handle, record);
       }, renewMs)
     : null;
   timer?.unref?.();
@@ -220,36 +236,37 @@ function makeLock(
       if (released) return;
       released = true;
       if (timer !== null) clearInterval(timer);
-      // Read and compare IMMEDIATELY before the removal, with nothing awaited
-      // in between: a successor's lock must not be deleted by the holder it
-      // replaced. On any doubt the file is left where it is — it then expires
-      // as a stale lock, which costs one build a wait and loses nothing.
-      const current = await readRecord(path);
-      if (current === null || current.token !== record.token) return;
       try {
-        await rm(path, { force: true });
-      } catch {
-        // A lock file we cannot remove becomes a stale lock someone else takes
-        // over in LOCK_STALE_MS. Failing the build over it would be worse.
+        await removeIfStillMine(path, handle, record);
+      } finally {
+        await closeQuietly(handle);
       }
     },
   };
 }
 
 /**
- * Publish the lock file with its record already in it, or report that someone
- * else holds it. `link()` is the atomic step: it either creates the name or
- * fails with EEXIST, and it never leaves an empty file behind for a competitor
- * to mistake for junk.
+ * Publish the lock file with its record already in it and keep the descriptor,
+ * or report that someone else holds it. `link()` is the atomic step: it either
+ * creates the name or fails with EEXIST, and it never leaves an empty file
+ * behind for a competitor to mistake for junk.
+ *
+ * The descriptor returned is the one the holder writes its heartbeat through.
+ * It is opened on the TEMPORARY name and survives the link, because a hard
+ * link is a second name for the same inode — so the descriptor and the lock
+ * path refer to the same file, and the temporary name can go.
  */
-async function tryCreate(path: string, record: LockRecord): Promise<boolean> {
+async function tryCreate(path: string, record: LockRecord): Promise<FileHandle | null> {
   const tmp = `${path}.new-${process.pid}-${record.token}`;
+  let handle: FileHandle | null = null;
   try {
-    await writeFile(tmp, serialize(record), { encoding: "utf8", flag: "wx" });
+    handle = await open(tmp, "wx");
+    await handle.write(serialize(record), 0, "utf8");
     await link(tmp, path);
-    return true;
+    return handle;
   } catch {
-    return false;
+    await closeQuietly(handle);
+    return null;
   } finally {
     // The lock path is a second name for the same inode, so dropping this one
     // leaves the lock intact. On the failure path it removes the leftover.
@@ -258,6 +275,14 @@ async function tryCreate(path: string, record: LockRecord): Promise<boolean> {
     } catch {
       /* a stray temp file is harmless; the next acquisition writes its own */
     }
+  }
+}
+
+async function closeQuietly(handle: FileHandle | null): Promise<void> {
+  try {
+    await handle?.close();
+  } catch {
+    /* an already-closed descriptor is the state we wanted */
   }
 }
 
@@ -275,35 +300,57 @@ async function isYoungerThan(path: string, ms: number): Promise<boolean> {
 }
 
 /**
- * Rewrite the heartbeat. Atomically, because a reader deciding staleness must
- * never see a half-written record — it would read as unparseable and be taken
- * over while its holder is mid-build.
+ * Rewrite the heartbeat THROUGH THE HOLDER'S OWN DESCRIPTOR, never through the
+ * lock path (#582 counter-review 3).
  *
- * The new record is written to the temporary file FIRST and the ownership
- * check comes last, so that nothing is awaited between "the lock still carries
- * my token" and the `rename` that replaces it. Checking first and writing
- * afterwards — what this did before (#582 counter-review) — left a whole file
- * write in that window, long enough for a successor's lock to be overwritten
- * by the heartbeat of the holder it replaced.
+ * Every path-based version of this had the same hole: the token was checked
+ * and the file was then replaced, and a stale-takeover landing between the two
+ * got its fresh lock overwritten by the heartbeat of the holder it had just
+ * replaced. Writing through the descriptor closes it by construction — after a
+ * takeover the descriptor points at an unlinked inode, so the beat goes
+ * nowhere and the successor's lock is never touched. No check, no window.
+ *
+ * The record is written in one `write` at offset 0 and the file is trimmed to
+ * its length AFTERWARDS, so a reader never finds the file shorter than a whole
+ * record. Should it nonetheless catch a partial line, the mtime it just saw is
+ * fresh, and {@link UNREADABLE_GRACE_MS} makes that "busy", not "junk".
  */
-async function renew(path: string, record: LockRecord): Promise<void> {
+async function renew(handle: FileHandle, record: LockRecord): Promise<void> {
   const beat = { ...record, renewedAt: new Date().toISOString() };
-  const tmp = `${path}.beat-${process.pid}-${record.token}`;
+  const text = serialize(beat);
   try {
-    await writeFile(tmp, serialize(beat), "utf8");
-    const current = await readRecord(path);
-    if (current !== null && current.token === record.token) {
-      await rename(tmp, path);
-      record.renewedAt = beat.renewedAt;
-      return;
-    }
+    await handle.write(text, 0, "utf8");
+    await handle.truncate(Buffer.byteLength(text, "utf8"));
+    record.renewedAt = beat.renewedAt;
   } catch {
-    /* fall through to the cleanup: a missed beat is not worth failing over */
+    /* a missed beat is not worth failing over: the next one renews the lease */
   }
+}
+
+/**
+ * Unlink the lock only while the path still names THIS holder's file.
+ *
+ * The token is read first and the inode comparison comes last, so that nothing
+ * is awaited between "the path is still my file" and the `unlink`. A successor
+ * that took the lock over created a NEW file, so its inode differs and this
+ * returns without touching anything; the holder's own lock then simply expires
+ * as stale, which costs one build a wait and loses nothing.
+ */
+async function removeIfStillMine(
+  path: string,
+  handle: FileHandle,
+  record: LockRecord,
+): Promise<void> {
   try {
-    await rm(tmp, { force: true });
+    const current = await readRecord(path);
+    if (current === null || current.token !== record.token) return;
+    const mine = await handle.stat();
+    const there = await stat(path);
+    if (there.ino !== mine.ino || there.dev !== mine.dev) return;
+    await rm(path, { force: true });
   } catch {
-    /* nothing left to do */
+    // A lock file we cannot remove becomes a stale lock someone else takes
+    // over in LOCK_STALE_MS. Failing the build over it would be worse.
   }
 }
 
