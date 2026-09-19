@@ -38,6 +38,8 @@ import {
 import { resolveRetentionDays } from "./log-retention.js";
 import { summarizeHintSuppression, type HintSuppressionSection } from "./telemetry-report-suppression.js";
 export { summarizeHintSuppression } from "./telemetry-report-suppression.js";
+import { summarizeCodeAwareness, type CodeAwarenessSection } from "./telemetry-report-code.js";
+export { summarizeCodeAwareness, type CodeAwarenessSection } from "./telemetry-report-code.js";
 
 export const TELEMETRY_REPORT_VERSION = 1;
 
@@ -758,6 +760,9 @@ export interface TelemetryReport {
   saves: SaveSection | null;
   /** #479: live cross-session noise removed from automatic hook injection. */
   hintSuppression: HintSuppressionSection | null;
+  /** #589: code awareness — the tools that were called and the blocks that
+   *  were injected. Null while the window saw neither. */
+  codeAwareness: CodeAwarenessSection | null;
   sessionStart: SessionStartSection;
 }
 
@@ -779,6 +784,7 @@ export function buildTelemetryReport(
     evidence: summarizeEvidence(events, t),
     saves: summarizeSaves(events),
     hintSuppression: summarizeHintSuppression(events),
+    codeAwareness: summarizeCodeAwareness(events),
     sessionStart: summarizeSessionStart(events),
   };
 }

@@ -509,6 +509,140 @@ function renderSaves(sv) {
   );
 }
 
+/**
+ * #589 — code awareness, both halves.
+ *
+ * The block half is the cost the Write/Edit lane pays without being asked; the
+ * tool half is what an agent asked for on purpose. Wording mirrors the CLI
+ * section (src/cli/log-stats-code.ts) and both read the same folds, so a figure
+ * cannot appear in one readout and not the other.
+ */
+export const UNAVAILABLE_REASONS = {
+  off_env: "switched off for the session",
+  not_enabled: "repository not enabled",
+  degraded: "graph refused — see bastra doctor",
+  not_indexed: "never indexed",
+  loading: "read in flight, call did not wait",
+  cold: "on disk, not in memory yet",
+};
+
+function renderCodeAwareness(ca) {
+  const title = "Code awareness";
+  const question =
+    "How often is the code graph asked, can it answer, and how current does the refresh keep it?";
+  if (!ca) {
+    return section(title, question, empty("no code-awareness events in this window — no tool call, no dependents block, no refresh"));
+  }
+  const a = ca.active;
+  const b = ca.block;
+  const toolRows = a.tools.map((t) =>
+    h("tr", null,
+      td(t.tool),
+      barCell(t.ok, Math.max(1, t.calls)),
+      td(fmt(t.calls)),
+      td(`${fmt(t.ok)} (${pct(t.ok, t.calls)})`, t.ok > 0 ? "ok" : null),
+      td(fmt(t.noAnswer), "dim"),
+      td(fmt(t.unavailable), t.unavailable > 0 ? null : "dim"),
+      td(ms(t.p50)),
+      td(ms(t.p90), "dim"),
+      td(fmt(t.filesNamed), "dim")),
+  );
+  const reasonRows = a.tools.flatMap((t) =>
+    t.byUnavailableReason.map((r) =>
+      h("tr", null, td(t.tool, "dim"), td(UNAVAILABLE_REASONS[r.key] ?? r.key), td(fmt(r.count))),
+    ),
+  );
+  const kindRows = a.tools.flatMap((t) =>
+    t.byKind.map((r) => h("tr", null, td(t.tool, "dim"), td(r.key), td(fmt(r.count)))),
+  );
+  const rf = a.refresh;
+  const repoRows = a.repos.map((r) =>
+    h("tr", null,
+      td(r.repo, "id"),
+      td(fmt(r.toolCalls)),
+      td(fmt(r.refreshes), "dim"),
+      td(r.externalTotal === null ? "—" : `${fmt(r.externalResolved)} / ${fmt(r.externalTotal)}`,
+        r.externalTotal !== null && r.externalTotal > 0 && r.externalResolved === 0 ? "warn" : "dim")),
+  );
+  const brokenWorkspace = a.repos.some((r) => r.externalTotal > 0 && r.externalResolved === 0);
+
+  return section(
+    title,
+    question,
+    h(
+      "div",
+      { class: "tv-figs" },
+      h("div", null, h("div", { class: "tv-fig-k" }, "tool calls"),
+        h("div", { class: "tv-fig-v" }, fmt(a.tools.reduce((n, t) => n + t.calls, 0))),
+        h("div", { class: "tv-fig-sub" }, `${a.repos.length} repository/ies active`)),
+      h("div", null, h("div", { class: "tv-fig-k" }, "answered"),
+        h("div", { class: "tv-fig-v ok" }, pct(a.tools.reduce((n, t) => n + t.ok, 0), a.tools.reduce((n, t) => n + t.calls, 0))),
+        h("div", { class: "tv-fig-sub" }, `${fmt(a.tools.reduce((n, t) => n + t.unavailable, 0))} unavailable`)),
+      h("div", null, h("div", { class: "tv-fig-k" }, "dependents blocks"),
+        h("div", { class: "tv-fig-v" }, fmt(b.withCodeBlock)),
+        h("div", { class: "tv-fig-sub" }, `${fmt(b.codeTokensTotal)} tokens · ${pct(b.codeTokensTotal, b.hintTokensTotal)} of everything injected`)),
+      h("div", null, h("div", { class: "tv-fig-k" }, "followed by an edit"),
+        h("div", { class: `tv-fig-v${b.blocksFollowed > 0 ? " ok" : ""}` }, pct(b.blocksFollowed, b.blocksWithListed)),
+        h("div", { class: "tv-fig-sub" }, `${fmt(b.blocksFollowed)} of ${fmt(b.blocksWithListed)} blocks`)),
+    ),
+    h(
+      "div",
+      { class: "tv-cols" },
+      h(
+        "div",
+        null,
+        h3("Tools — find_code / find_affected_files"),
+        toolRows.length
+          ? table(["tool", "", "calls", "answered", "nothing found", "unavailable", "p50", "p90", "files named"], toolRows)
+          : empty("no tool call in this window"),
+        kindRows.length ? h3("By lane (find_code) / basis (find_affected_files)") : null,
+        kindRows.length ? table(["tool", "lane / basis", "calls"], kindRows) : null,
+        reasonRows.length ? h3("Why the graph could not answer") : null,
+        reasonRows.length ? table(["tool", "reason", "calls"], reasonRows) : null,
+        note("`unavailable` is not an error and says nothing about whether the symbol exists — off, not indexed, still loading and refused are four different worlds and only `degraded` is a defect."),
+      ),
+      h(
+        "div",
+        null,
+        h3("Graph refresh"),
+        rf.started > 0 || rf.ok > 0
+          ? table(
+              ["", "runs"],
+              [
+                h("tr", null, td("started"), td(fmt(rf.started))),
+                h("tr", null, td("ok"), td(fmt(rf.ok), rf.ok > 0 ? "ok" : null)),
+                h("tr", null, td("failed"), td(fmt(rf.failed), rf.failed > 0 ? "warn" : "dim")),
+                h("tr", null, td("locked · skipped · given up"), td(`${fmt(rf.locked)} · ${fmt(rf.skipped)} · ${fmt(rf.givenUp)}`, "dim")),
+                h("tr", null, td("duration p50 / p90"), td(`${ms(rf.p50)} / ${ms(rf.p90)}`)),
+              ],
+            )
+          : empty("no refresh run in this window"),
+        rf.byReason.length ? note(`triggered by: ${rf.byReason.map((r) => `${r.key} ${fmt(r.count)}`).join(" · ")}`) : null,
+        rf.failures.length ? note(`failures: ${rf.failures.map((r) => `${r.key} ${fmt(r.count)}`).join(" · ")}`, true) : null,
+        h3("Repositories"),
+        repoRows.length ? table(["repo", "tool calls", "refreshes", "external resolved / total"], repoRows) : empty("none"),
+        brokenWorkspace
+          ? note("A workspace repository resolved 0 of its external nodes — cross-package impact is not being found. Rebuild with `bastra code index`; if it stays 0, that is #582's id-format regression.", true)
+          : null,
+        h3("Injected blocks — the passive half (#579)"),
+        b.withCodeBlock > 0 || b.withAppliesTo > 0
+          ? table(
+              ["", "value"],
+              [
+                h("tr", null, td("dependents block"), td(`${fmt(b.withCodeBlock)} of ${fmt(b.calls)} write/edit calls (${pct(b.withCodeBlock, b.calls)})`)),
+                h("tr", null, td("cost"), td(`${fmt(b.codeTokensTotal)} tokens · ${fmt(b.codeTokensMedian)} median`)),
+                h("tr", null, td("reach"), td(`${fmt(b.dependentsTotal)} dependants named · ${fmt(b.dependentsMedian)} median`)),
+                h("tr", null, td("marked possibly out of date"), td(fmt(b.staleBlocks), b.staleBlocks > 0 ? "warn" : "dim")),
+                h("tr", null, td("affects_files block"), td(`${fmt(b.withAppliesTo)} calls · ${fmt(b.appliesToTokensTotal)} tokens · ${fmt(b.appliesToCount)} memories`)),
+              ],
+            )
+          : empty("no block was injected in this window"),
+        note("Cost and reach, not value: `followed` means a later write in the same session touched a file the block named — evidence the list mattered, not proof it caused the edit. What code awareness SAVED needs the control arm in packages/eval/code-roi."),
+      ),
+    ),
+  );
+}
+
 function renderPendingLanes(pl) {
   if (!pl || pl.withLanes === 0) return empty("no start carries pending_lanes yet (#513)");
   const row = (name, l) => h("tr", null, td(name), td(fmt(l.entries)), td(`${l.presentIn}/${pl.withLanes}`, "dim"), td(fmt(l.avgChars)));
@@ -587,6 +721,7 @@ export function createTelemetryView() {
           renderLatency(r.latency),
           renderEvidence(r.evidence),
           renderSaves(r.saves),
+          renderCodeAwareness(r.codeAwareness),
           renderSessionStart(r.sessionStart),
         );
         const span = r.window.from && r.window.to ? `${r.window.from.slice(0, 10)} → ${r.window.to.slice(0, 10)}` : "no events";

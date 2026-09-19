@@ -25,6 +25,18 @@
  * Split out of log-stats.ts, which is already at the file-size ceiling.
  */
 
+/**
+ * WHAT #589 ADDED. The block above is the PASSIVE half — what the Write/Edit
+ * lane injected without being asked. The two tools an agent calls ON PURPOSE
+ * (`find_code`, `find_affected_files`) wrote nothing at all until #589, so
+ * "nobody calls code awareness" and "code awareness answers nothing" were the
+ * same empty log, and the `unavailable` cases — off, not indexed, still
+ * loading, refused — were indistinguishable from each other and from silence.
+ * `code_tool_call` and `code_graph_refresh` are the active half.
+ */
+
+import type { CodeAwarenessStats, Counted } from "../code-awareness-stats.js";
+
 /** One hook_call row, reduced to the fields this section reads. */
 export interface CodeRoiRow {
   ts?: unknown;
@@ -211,4 +223,54 @@ export function renderCodeRoi(s: CodeRoiStats): string[] {
     "    (cost and reach — what it SAVED needs the control arm in packages/eval/code-roi)",
   );
   return lines;
+}
+
+/**
+ * The ACTIVE half (#589): the two tools an agent calls, and the refreshes that
+ * keep their answers current.
+ *
+ * Silent when the window holds no code-awareness event, for the same reason
+ * `renderCodeRoi` is: a table of zeroes reads like a measurement.
+ */
+export function renderCodeAwareness(s: CodeAwarenessStats): string[] {
+  if (s.events === 0) return [];
+  const lines = ["", "code awareness — tool calls"];
+  for (const t of s.tools) {
+    lines.push(
+      `  ${t.tool}: ${t.calls} call(s) — ${t.ok} answered (${pct(t.ok, t.calls)}), ` +
+        `${t.noAnswer} nothing found, ${t.unavailable} unavailable`,
+    );
+    if (t.byKind.length > 0) {
+      lines.push(`    by ${t.tool === "find_code" ? "lane" : "basis"}: ${list(t.byKind)}`);
+    }
+    if (t.byUnavailableReason.length > 0) {
+      lines.push(`    unavailable because: ${list(t.byUnavailableReason)}`);
+    }
+    lines.push(`    latency: p50 ${t.p50.toFixed(1)}ms, p90 ${t.p90.toFixed(1)}ms · ${t.filesNamed} file(s) named`);
+  }
+  if (s.refresh.started > 0 || s.refresh.ok > 0) {
+    lines.push(
+      `  graph refresh: ${s.refresh.started} run(s) — ${s.refresh.ok} ok, ${s.refresh.failed} failed, ` +
+        `${s.refresh.locked} locked, ${s.refresh.skipped} skipped, ${s.refresh.givenUp} given up`,
+    );
+    lines.push(`    duration: p50 ${Math.round(s.refresh.p50)}ms, p90 ${Math.round(s.refresh.p90)}ms`);
+    if (s.refresh.byReason.length > 0) lines.push(`    triggered by: ${list(s.refresh.byReason)}`);
+    if (s.refresh.failures.length > 0) lines.push(`    failures: ${list(s.refresh.failures)}`);
+  }
+  if (s.repos.length > 0) {
+    lines.push(`  repositories active: ${s.repos.length}`);
+    for (const r of s.repos.slice(0, 6)) {
+      const ext =
+        r.externalTotal !== null
+          ? ` · ${r.externalTotal} external nodes, ${r.externalResolved ?? 0} resolved`
+          : "";
+      lines.push(`    ${r.repo}: ${r.toolCalls} tool call(s), ${r.refreshes} refresh(es)${ext}`);
+    }
+  }
+  return lines;
+}
+
+/** `a×3, b×1` — the same one-line shape the save and suppression lines use. */
+function list(rows: readonly Counted[]): string {
+  return rows.map((r) => `${r.key}×${r.count}`).join(", ");
 }

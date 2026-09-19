@@ -69,6 +69,7 @@ import {
   openDocument,
 } from "./documents-handler.js";
 import { codeTools, FindCodeArgs, findCode, sharedCodeGraphCache } from "./code-graph/find-code.js";
+import { findAffectedFilesEvent, findCodeEvent } from "./code-graph/tool-telemetry.js";
 import {
   affectedTools,
   FindAffectedFilesArgs,
@@ -822,7 +823,13 @@ async function main(): Promise<void> {
     if (name === "find_code") {
       const parsed = FindCodeArgs.safeParse(args);
       if (!parsed.success) return errorResult(parsed.error.message);
-      const result = findCode(sharedCodeGraphCache(), parsed.data);
+      const cache = sharedCodeGraphCache();
+      const result = findCode(cache, parsed.data);
+      // #589: the call itself, as a countable shape. Never awaited — a
+      // telemetry write must not sit inside a tool the hook budget depends on.
+      void toolDeps.telemetry
+        .logCodeToolCall(findCodeEvent(cache, parsed.data, result, { surface: "mcp" }))
+        .catch(() => {});
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
@@ -832,7 +839,11 @@ async function main(): Promise<void> {
     if (name === "find_affected_files") {
       const parsed = FindAffectedFilesArgs.safeParse(args);
       if (!parsed.success) return errorResult(parsed.error.message);
-      const result = await findAffectedFiles(sharedCodeGraphCache(), parsed.data);
+      const cache = sharedCodeGraphCache();
+      const result = await findAffectedFiles(cache, parsed.data);
+      void toolDeps.telemetry
+        .logCodeToolCall(findAffectedFilesEvent(cache, parsed.data, result, { surface: "mcp" }))
+        .catch(() => {});
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
