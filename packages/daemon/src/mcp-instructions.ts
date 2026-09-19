@@ -35,18 +35,24 @@ export const SERVER_INSTRUCTIONS =
  *
  * Three things it must not do, each learned the hard way:
  *
+ *   It must not displace the recall. The memory policy above asks for a recall
+ *   before acting on a task; this paragraph slots in AFTER that and before
+ *   Grep, so an agent following both does not have to choose.
+ *
  *   It must not lead. bastra-recall is the memory first, and these
  *   instructions reach every client — ChatGPT, Codex, a user who never asked
  *   for code awareness. The memory policy above is the product's standing
  *   promise; this is an addition to it, not a replacement.
  *
- *   It must not forbid looking the tools up. In real Claude Code an MCP tool
- *   is regularly DEFERRED: its schema is not loaded, a direct call fails with
- *   an input-validation error, and the client has to fetch it first. The
- *   measurement harness (few tools, `--strict-mcp-config`) loads them
- *   immediately, so a tool search there returns nothing — which an agent read
- *   as "the tool is missing" and fell back to grep. So: a search that comes
- *   back empty means already loaded, not absent. True in both worlds.
+ *   It must not tell one client's story. In some clients an MCP tool is
+ *   DEFERRED — listed, but its schema fetched on demand, and a direct call
+ *   fails until it is loaded. In others it is there from the start, and a
+ *   lookup for it returns nothing. An earlier version resolved that by
+ *   declaring an empty lookup to mean "already loaded", which is only true in
+ *   the second kind of client: elsewhere empty can equally mean missing, not
+ *   connected, or not permitted. So the text names the two situations and
+ *   leaves the mechanics to the client, with one instruction for the case
+ *   where the tool really is not there: say so once, use Grep, stop retrying.
  *
  *   It must not be shouted. The memory paragraph states its policy plainly and
  *   this one says no more than it needs to.
@@ -56,12 +62,14 @@ export const CODE_AWARENESS_CLAUSE =
   "better than any text search: what a change would break. When that is the question — before or " +
   "after you edit an exported symbol, when you are handed a diff and asked " +
   "what else must be adapted, when you are asked which files would stop compiling, or which call " +
-  "sites you might have missed — call `find_affected_files` with that file as your first step, before " +
-  "any Grep. If a tool search for it returns nothing, it is already loaded: call it. " +
+  "sites you might have missed — call `find_affected_files` with that file after the recall above and " +
+  "before any Grep. If your client lists tools but loads their details on demand, load it the way " +
+  "that client does; if it is already available, just call it. " +
   "It reads the repository's import and call graph and names the files that may break, including the " +
   "ones reached through a workspace package (`@scope/pkg`), which a grep for the symbol name inside " +
   "the changed package cannot find. Its answer is candidates, not proof: grep them to confirm. " +
-  "`find_code` locates a symbol or a file in the same graph, and the same goes for it.";
+  "`find_code` locates a symbol or a file in the same graph, and the same goes for it. Should either " +
+  "be genuinely unavailable in this session, say so once and use Grep — do not keep retrying.";
 
 /**
  * The instructions this client gets. The code paragraph is appended only when

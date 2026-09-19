@@ -42,6 +42,7 @@ import { join } from "node:path";
 import { score } from "./evaluate.mjs";
 import { rng } from "./select.mjs";
 import { writableOut } from "./archive.mjs";
+import { treeDirOf } from "./run-arms-v3.mjs";
 
 const OUT = writableOut();
 const REG = JSON.parse(
@@ -179,8 +180,11 @@ const median = (xs) => {
 export function bootstrapCI(rows, values, seed = REG.statistics.seed) {
   const clusters = new Map();
   rows.forEach((r, i) => {
-    if (!clusters.has(r.file)) clusters.set(r.file, []);
-    clusters.get(r.file).push(values[i]);
+    // repo + file: a pooled sample can hold the same path in two repositories,
+    // and clustering on the path alone would treat them as one unit.
+    const key = `${r.repo ?? ""}|${r.file}`;
+    if (!clusters.has(key)) clusters.set(key, []);
+    clusters.get(key).push(values[i]);
   });
   const groups = [...clusters.values()];
   if (groups.length === 0) return null;
@@ -314,7 +318,9 @@ export function buildReport(scenarios, readArm) {
         missing.push(`${s.id}/${arm}`);
         continue;
       }
-      const parsed = parseArm(text, join(OUT, "runs", s.id, "tree"));
+      // The tree lives outside the archive now, so an absolute path in an
+      // answer is stripped against THAT root, not against runs/<id>/tree.
+      const parsed = parseArm(text, treeDirOf(s, OUT));
       arms[arm] = { ...parsed, ...score(parsed.named, s.truth, s.file) };
     }
     // ADOPTION only needs arm B, so a scenario whose B has run counts for it

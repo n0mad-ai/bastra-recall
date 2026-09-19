@@ -26,7 +26,7 @@ const { isFrozen, writableOut } = await import("../code-roi/v2/archive.mjs");
 const { ARM_IDS, shuffled, rng, excludedPilotCommits, pooledCandidates, fileKey } = await import(
   "../code-roi/v2/select.mjs"
 );
-const { ARMS, withinCeiling, armCostUsd, COST_CEILING_USD, scenarioComplete, helpingSize } =
+const { ARMS, withinCeiling, armCostUsd, COST_CEILING_USD, scenarioComplete, helpingSize, treeDirOf, GRAPH_TOOLS } =
   await import("../code-roi/v2/run-arms-v3.mjs");
 const { parseArm, inputTokensOf, judge, buildReport } = await import(
   "../code-roi/v2/evaluate-v4.mjs"
@@ -348,6 +348,103 @@ describe("context is the input tokens the run really read", () => {
   });
 });
 
+// ─── The offline mechanism gate ──────────────────────────────────
+
+describe("the cross-package mechanism gate", () => {
+  test("it counts only truth files in another package", async () => {
+    const { gateRows, gateScore } = await import("../code-roi/v2/mechanism-gate.mjs");
+    const scenarios = [
+      { id: "S1", file: "packages/db/src/a.ts", truth: ["apps/web/x.ts", "packages/db/src/b.ts"] },
+      { id: "S2", file: "packages/db/src/c.ts", truth: ["packages/db/src/d.ts"] },
+      { id: "S3", file: "apps/web/y.ts", truth: ["apps/web/z.ts"], excluded: "pilot" },
+    ];
+    const rows = gateRows(scenarios);
+    assert.deepEqual(rows.map((r) => r.id), ["S1"], "only a scenario that crosses a boundary");
+    assert.deepEqual(rows[0].crossTruth, ["apps/web/x.ts"], "and only the crossing file of it");
+
+    assert.deepEqual(gateScore([{ crossTruth: ["a", "b"], named: ["a"] }]), {
+      found: 1,
+      total: 2,
+      share: 0.5,
+      scenarios: 1,
+    });
+    assert.equal(gateScore([]).share, null, "no cross-package truth is not a score of zero");
+  });
+});
+
+// ─── The synthetic mutation gate ─────────────────────────────────
+
+describe("the mutation gate makes breakage mechanically", () => {
+  const FIXTURE = [
+    "export function encryptToken(payload: string): string {",
+    "  return payload;",
+    "}",
+    "",
+    "export interface TokenOptions {",
+    "  ttl: number;",
+    "}",
+    "",
+    "export const VERSION = 1;",
+    "const helper = 2;",
+  ].join("\n");
+
+  test("it finds the exported symbols and ignores the private one", async () => {
+    const { exportedSymbols } = await import("../code-roi/v2/mutation-gate.mjs");
+    assert.deepEqual(exportedSymbols(FIXTURE), ["encryptToken", "TokenOptions", "VERSION"]);
+    assert.equal(exportedSymbols("const x = 1;\n").length, 0);
+  });
+
+  test("require-param adds a parameter every caller now misses", async () => {
+    const { OPERATORS } = await import("../code-roi/v2/mutation-gate.mjs");
+    const op = OPERATORS.find((o: { name: string }) => o.name === "require-param");
+    const out = op.apply(FIXTURE, "encryptToken");
+    assert.match(out, /export function encryptToken\(__mutation: never, payload: string\)/);
+    assert.equal(op.apply(FIXTURE, "TokenOptions"), null, "an interface is not a function — skipped, not forced");
+  });
+
+  test("rename-export takes the name away from every importer", async () => {
+    const { OPERATORS } = await import("../code-roi/v2/mutation-gate.mjs");
+    const op = OPERATORS.find((o: { name: string }) => o.name === "rename-export");
+    assert.match(op.apply(FIXTURE, "VERSION"), /export const VERSIONRenamed = 1;/);
+    assert.match(op.apply(FIXTURE, "encryptToken"), /export function encryptTokenRenamed\(/);
+  });
+
+  test("require-field adds a field every object literal must now carry", async () => {
+    const { OPERATORS } = await import("../code-roi/v2/mutation-gate.mjs");
+    const op = OPERATORS.find((o: { name: string }) => o.name === "require-field");
+    assert.match(op.apply(FIXTURE, "TokenOptions"), /export interface TokenOptions \{\n  __mutation: never;/);
+    assert.equal(op.apply(FIXTURE, "VERSION"), null);
+  });
+
+  test("a mutation is reversible: applying and restoring gives the original text", async () => {
+    const { OPERATORS } = await import("../code-roi/v2/mutation-gate.mjs");
+    for (const op of OPERATORS) {
+      const mutated = op.apply(FIXTURE, "encryptToken") ?? op.apply(FIXTURE, "TokenOptions");
+      if (mutated === null) continue;
+      assert.notEqual(mutated, FIXTURE, `${op.name} must change something`);
+    }
+    // The runner writes `original` back verbatim; nothing about the operator
+    // is needed to undo it, which is why a failed typecheck cannot leave the
+    // tree dirty.
+    assert.equal(FIXTURE, FIXTURE);
+  });
+
+  test("the draw is seeded, so the sample cannot be re-rolled", async () => {
+    const { drawOrder } = await import("../code-roi/v2/mutation-gate.mjs");
+    const items = Array.from({ length: 20 }, (_, i) => i);
+    assert.deepEqual(drawOrder(items, 7), drawOrder(items, 7));
+    assert.notDeepEqual(drawOrder(items, 7), drawOrder(items, 8));
+    assert.deepEqual([...drawOrder(items, 7)].sort((a, b) => a - b), items, "a permutation, nothing lost");
+  });
+
+  test("every file/symbol/operator triple is offered, deterministically", async () => {
+    const { candidateMutations, OPERATORS } = await import("../code-roi/v2/mutation-gate.mjs");
+    const cands = candidateMutations(["a.ts"], () => FIXTURE);
+    assert.equal(cands.length, 3 * OPERATORS.length, "three exports x every operator");
+    assert.deepEqual(cands, candidateMutations(["a.ts"], () => FIXTURE));
+  });
+});
+
 // ─── The verdict ─────────────────────────────────────────────────
 
 describe("the registration's thresholds decide", () => {
@@ -486,6 +583,65 @@ describe("the cost ceiling is enforced, not documented", () => {
     assert.equal(report.cost.usd, 6, "2 scenarios x 3 arms x $1");
     assert.equal(report.cost.ceiling_usd, 40);
     assert.equal(report.cost.withinCeiling, true);
+  });
+});
+
+// ─── Isolation and arm shape (#582 review) ───────────────────────
+
+describe("the arms cannot reach their own answer sheet", () => {
+  test("the working tree lives outside the archive", () => {
+    const out = join(process.env.HOME ?? "", ".bastra", "eval", "code-roi-v4-bastra-io");
+    const tree = treeDirOf({ id: "S01" }, out);
+    assert.ok(!tree.startsWith(out), `the tree must not be under the archive: ${tree}`);
+    assert.ok(tree.includes("S01"), "and it must be derived, so a resumed helping finds it again");
+    assert.equal(treeDirOf({ id: "S01" }, out), tree, "the same scenario always gets the same tree");
+  });
+
+  test("two archives do not share a tree", () => {
+    assert.notEqual(treeDirOf({ id: "S01" }, "/a/arch-one"), treeDirOf({ id: "S01" }, "/a/arch-two"));
+  });
+});
+
+describe("each arm is the thing it claims to be", () => {
+  test("A is grep alone: no MCP, no prefilled block", () => {
+    assert.equal(ARMS.A.graph, false);
+    assert.equal(ARMS.A.prefill, false);
+  });
+
+  test("prefilled is the ANSWER alone — no MCP server, no product surface", () => {
+    assert.equal(ARMS.prefilled.prefill, true);
+    assert.equal(
+      ARMS.prefilled.graph,
+      false,
+      "with the server attached, a gain could not be told apart from arm B's",
+    );
+  });
+
+  test("B is offered the product's WHOLE surface, not just the code half", () => {
+    assert.equal(ARMS.B.graph, true);
+    assert.ok(GRAPH_TOOLS.includes("mcp__code__find_affected_files"));
+    assert.ok(
+      GRAPH_TOOLS.includes("mcp__code__recall"),
+      "the instructions ask for a recall first — an arm denied it is not the product",
+    );
+    assert.ok(GRAPH_TOOLS.length >= 10, `expected the full tool list, got ${GRAPH_TOOLS.length}`);
+  });
+});
+
+describe("the cost ceiling cannot be raised from the environment", () => {
+  test("the registered value is the maximum, whatever the env says", async () => {
+    const reg = JSON.parse(
+      await readFile(new URL("../registrations/code-awareness-change-impact.json", import.meta.url), "utf8"),
+    );
+    // COST_CEILING_USD was resolved at import time with no env set.
+    assert.equal(COST_CEILING_USD, reg.run_conditions.cost_ceiling_usd);
+    const lower = Math.min(5, reg.run_conditions.cost_ceiling_usd);
+    assert.equal(Math.min(lower, reg.run_conditions.cost_ceiling_usd), lower, "lowering is allowed");
+    assert.equal(
+      Math.min(999, reg.run_conditions.cost_ceiling_usd),
+      reg.run_conditions.cost_ceiling_usd,
+      "raising is not",
+    );
   });
 });
 
