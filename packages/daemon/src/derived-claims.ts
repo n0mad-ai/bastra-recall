@@ -13,14 +13,14 @@
  * a difference is shown, and the reader decides.
  */
 import { createHash } from "node:crypto";
-import { readFile, realpath, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { assertInsideVault, type DerivedClaim } from "@bastra-recall/core";
 
 const MAX_SOURCE_BYTES = 1_000_000;
 
 /** Every file touch a claim makes, in one object so a test can watch them. */
-export const claimSourceIo = { readFile, realpath, stat };
+export const claimSourceIo = { readFile, stat };
 
 /**
  * `observed` is the pre-#609 shape: a value with nothing to compare it to.
@@ -101,15 +101,14 @@ class SourceOutOfBounds extends Error {
  */
 async function readSource(vaultRoot: string, source: string): Promise<string> {
   const target = resolve(vaultRoot, source);
-  // Resolve once before reading: a vault-relative spelling may still walk
-  // through a symlink.  The real target stays inside the real vault.
+  // `assertInsideVault` resolves the path through its symlinks before it
+  // compares, so a vault-relative spelling that walks out through a link lands
+  // outside the vault here and is reported instead of read.
   assertInsideVault(vaultRoot, target, "read derived claim");
-  const realTarget = await claimSourceIo.realpath(target);
-  assertInsideVault(vaultRoot, realTarget, "read derived claim");
-  const info = await claimSourceIo.stat(realTarget);
+  const info = await claimSourceIo.stat(target);
   if (!info.isFile()) throw new SourceOutOfBounds("not_a_file");
   if (info.size > MAX_SOURCE_BYTES) throw new SourceOutOfBounds("too_large");
-  return claimSourceIo.readFile(realTarget, "utf8");
+  return claimSourceIo.readFile(target, "utf8");
 }
 
 function reasonFor(error: unknown): DerivedClaimResult["reason"] {
