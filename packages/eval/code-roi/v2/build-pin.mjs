@@ -174,6 +174,16 @@ export async function preflightBuild({
         `different product revision and the report would average them as one.`,
     };
   }
+  if (distRevision.dirty) {
+    return {
+      ok: false,
+      reason: "dirty_build",
+      message:
+        `packages/daemon/dist was built from a dirty worktree at ${headSha} — run \`npm run build\` ` +
+        `from the clean registered checkout and retry. A matching revision does not prove that the ` +
+        `emitted JavaScript came from that revision when the build stamp itself says otherwise.`,
+    };
+  }
   const dirty = gitPorcelainStatus(repoRoot, TRACKED_BUILD_INPUTS);
   if (dirty.length > 0) {
     return {

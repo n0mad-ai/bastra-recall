@@ -283,6 +283,25 @@ describe("preflightBuild: the four gates, each on a synthetic checkout", () => {
     });
   });
 
+  test("dist stamped as built from a dirty worktree is refused even when HEAD and the current tree are clean", async () => {
+    await withTempDir(async (dir) => {
+      const root = await syntheticCheckout(dir);
+      const distDir = await buildFakeDist(root);
+      const stamp = join(distDir, ".build-revision");
+      const clean = await readFile(stamp, "utf8");
+      await writeFile(stamp, clean.replace("dirty=false", "dirty=true"), "utf8");
+
+      const verdict = await preflightBuild({
+        repoRoot: root,
+        distDaemonDir: distDir,
+        registration: matchingRegistration(),
+      });
+      assert.equal(verdict.ok, false);
+      assert.equal(verdict.reason, "dirty_build");
+      assert.match(verdict.message, /dirty worktree/);
+    });
+  });
+
   test("a dirty worktree is refused even when dist matches HEAD", async () => {
     await withTempDir(async (dir) => {
       const root = await syntheticCheckout(dir);

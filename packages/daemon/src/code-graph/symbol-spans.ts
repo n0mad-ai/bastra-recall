@@ -370,9 +370,12 @@ function scanSource(lines: readonly string[]): Scan {
   // The token before `lastTok`, which is what tells `outer: {` (a label, after a
   // statement boundary) from `key: {` (a property, after `,` or `(`).
   let prevTok = "";
-  // Inside a `case` head, where the `:` that follows ends a statement rather
-  // than introducing a value. `default:` needs no flag — it is a bare word.
-  let caseHead = false;
+  // Inside a `case` head, where the `:` AT THE SAME BRACKET DEPTH ends the arm
+  // rather than introducing a value. A boolean is not enough: in
+  // `case ({ a: 1 }).a:` the property's colon comes first, but it must neither
+  // end nor clear the case head (#582 counter-review 5).
+  // `default:` needs no flag — it is a bare word and the label rule covers it.
+  let caseHeadDepth: number | null = null;
   // Pending `?` per bracket level: the next `:` at that level closes a ternary
   // or an optional marker, and is therefore never a label.
   const ternary: number[] = [0];
@@ -472,7 +475,7 @@ function scanSource(lines: readonly string[]): Scan {
         const word = raw.slice(i, j);
         regexOk = REGEX_AFTER_KEYWORD.has(word);
         if (BLOCK_DECLARATION.has(word)) declHead = true;
-        if (word === "case") caseHead = true;
+        if (word === "case") caseHeadDepth = brackets.length;
         prevTok = lastTok;
         lastTok = word;
         sawCode = true;
@@ -488,12 +491,12 @@ function scanSource(lines: readonly string[]): Scan {
           brackets[brackets.length - 1],
           lastTok,
           prevTok,
-          caseHead,
+          caseHeadDepth === brackets.length,
         );
         if (label) {
           // A label's or a `case` arm's colon ends a statement, so what follows
           // is a statement start: `{` opens a block, `/` opens a regex.
-          caseHead = false;
+          caseHeadDepth = null;
           prevTok = ";";
           lastTok = ";";
         } else {
@@ -530,7 +533,7 @@ function scanSource(lines: readonly string[]): Scan {
         if (tok !== "=>") prevTok = lastTok;
         lastTok = tok;
         if (c === ";" || c === "=" || c === "(" || c === ",") declHead = false;
-        if (c === ";" || c === "{" || c === "}") caseHead = false;
+        if (c === ";") caseHeadDepth = null;
         sawCode = true;
       }
       i++;

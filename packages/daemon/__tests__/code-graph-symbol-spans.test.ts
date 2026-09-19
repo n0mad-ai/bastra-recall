@@ -377,6 +377,30 @@ describe("symbol spans and the constructs that used to break them", () => {
     );
   });
 
+  it("does not end a case head at an object property's colon", async () => {
+    const source = [
+      "function f(x: unknown) {", // 1
+      "  switch (x) {", // 2
+      "    case { a: 1 }.a: {", // 3
+      "      /{}/.test(String(x));", // 4
+      "      break;", // 5
+      "    }", // 6
+      "  }", // 7
+      "}", // 8
+      "const g = 2;", // 9
+      "", // 10
+    ].join("\n");
+    const spans = await spansOf(source, [sym("f", 1), sym("g", 9)]);
+    assert.notEqual(spans, null);
+    assert.deepEqual(
+      spans!.map((s) => [s.start, s.end]),
+      [
+        [1, 8],
+        [9, 9],
+      ],
+    );
+  });
+
   it("keeps an object literal's property a property, even at a statement boundary", async () => {
     // `key: {` sits right after a `{` too — the difference is that the `{` it
     // sits in opened a VALUE. Reading it as a label would make the inner `}`
