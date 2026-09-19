@@ -188,3 +188,86 @@ dieser Reihenfolge, und nur so ist sie etwas wert.
 - Jedes Gate meldet **pass / fail / not_evaluable je Teil**; es gibt kein
   zusammengefasstes Gate-Urteil, aus demselben Grund, aus dem `adoption` und
   `effect` nie zusammengefasst werden.
+
+## v6 Endergebnis (19.09.2026, Build 389c0ff)
+
+Hauptlauf abgeschlossen: 40 von 40 Szenarien, 120 von 120 Armen, keine
+Abbrüche, kein gemischter Build (`build-pin.json`, Signatur `3165f078…`,
+durchgehend HEAD `389c0ff`). Report erzeugt mit `evaluate-v4.mjs` aus
+`~/.bastra/eval/code-roi-v4-bastra-io/report.json`; alle Zahlen unten
+stammen aus diesem Report. Stichprobe ausschließlich bastra-io (n = 40) —
+die Pooling-Regel griff nicht, weil ein Repo allein bereits 40 Szenarien
+lieferte (`population.pooling.used_only_when_short`), die 7 frischen
+bastra-recall-Szenarien blieben Reserve.
+
+Verlauf in vier Helfungen (Häppchen), erkennbar an den Lücken zwischen den
+Transkript-Zeitstempeln: S01–S08 (15:49–15:54 Uhr), S09–S16 (16:07–16:15,
++13 Min. Pause), S17–S24 (16:19–16:24, +4,6 Min.), S25–S40 (16:28–16:40,
++4 Min.) — also 8 → 16 → 24 → 40 Szenarien, durchgehend derselbe Build.
+
+| | grep (A) | angeboten (B) | prefilled | Schwelle | Ergebnis |
+|---|---|---|---|---|---|
+| Recall | 100,0 % | 100,0 % | 100,0 % | — | — |
+| Recall-Gewinn (prefilled − A) | | | **0,0 Pp** | ≥ +5 Pp, KI-Untergrenze > 0 | KI **[0,0]** → **fail** |
+| Präzision (Δ prefilled − A) | 84,75 % | 85,67 % | 84,54 % (**−0,21 Pp**) | ≥ −5 Pp | eingehalten |
+| Median Input-Tokens | 24.616,5 | 58.308,5 | 23.564 | prefilled ≤ 1,25 × A | **0,9572×** eingehalten |
+| Kontextverhältnis, alle 40 (nicht gegated) | | | 0,9572 | — | identisch zum gegateten Wert — alle 40 Paare in beiden Armen gelöst |
+| Adoption (`find_affected_files`, Arm B) | | **32/40 = 80,0 %** | | ≥ 70 % | **pass** |
+| `find_code`-Aufrufe (nur berichtet) | 0 | 0 | 0 | — | — |
+| Kosten des Laufs | 1,6324 $ | 2,1219 $ | 1,7481 $ | Summe **5,5024 $** von 40 $ Deckel | eingehalten |
+
+**Adoption: `pass`. Effect: `fail`.** Kein zusammengefasstes Urteil, wie
+registriert. Gates unverändert gegenüber oben: historisch `not_evaluable`
+(n = 2 < Mindest-n 8), synthetisch gegated **pass** (15/15), `require-field`
+weiterhin 3/6, nur berichtet.
+
+### Ehrliche Einordnung
+
+**(a) Adoption in Messsitzungen ≠ echter Betrieb.** In frischen, isolierten
+Sessions mit sofort geladenem Werkzeug und beim Connect vorgelesenen
+Server-Instructions ruft der Agent `find_affected_files` in 80 % der Fälle
+auf — die Schwelle von 70 % ist erreicht. Am 19.09. hat aber **kein
+einziger Agent im echten Tagesbetrieb** das Tool freiwillig genutzt
+(Lane-Telemetrie, außerhalb dieser Registrierung erhoben). Der Unterschied
+liegt im Aufbau selbst: Im Messaufbau werden Instructions beim Connect
+vorgelesen und alle Tools sofort geladen (`--strict-mcp-config`); in
+echten, laufenden Sessions ist ein MCP-Tool typischerweise **deferred**
+(siehe `known_harness_deviation` in der Registrierung), und die
+Instructions sind aus dem Kontext längst verschwunden. Der Adoption-`pass`
+gilt für den gemessenen Aufbau, nicht für den Alltag.
+
+**(b) Effect ist in dieser Stichprobe nicht messbar — ein Befund über die
+Population, nicht über das Werkzeug.** Alle drei Arme lösen alle 40
+Szenarien mit 100 % Recall; grep allein reicht in bastra-io für diese
+Aufgabenklasse offenbar durchgehend aus. Der Gewinn ist damit mechanisch
+0,0 Pp bei einem Konfidenzintervall von [0,0] — es gibt schlicht keine
+Varianz, an der sich ein Effekt zeigen könnte. Das sagt nichts darüber, ob
+eine korrekte Antwort einem Agenten helfen würde, wenn er sie bräuchte; es
+sagt, dass diese 40 historischen Änderungen in bastra-io keinen Fall
+enthalten, in dem grep allein scheitert. Die Registrierung hat sich vorab
+auf einen Recall-Gewinn festgelegt (`recall_gain_min: 0,05`, KI-Untergrenze
+> 0) — das Urteil lautet deshalb korrekt **`fail`** und wird hier nicht
+umgedeutet, nur weil die Population keinen Spielraum bot.
+
+**(c) Kontext: die erhoffte Ersparnis bestätigt sich nicht.** `prefilled`
+liegt mit median 23.564 Token 4,3 % **unter** grep (0,9572×) — ein echter,
+aber kleiner Vorsprung, kein nennenswerter Kostenvorteil. Das tatsächlich
+**angebotene** Werkzeug (Arm B) kostet median **2,37×** so viele Token wie
+grep (58.308,5 vs. 24.616,5) für einen Präzisionsgewinn von deutlich unter
+einem Punkt (+0,92 Pp) und keinen Recall-Gewinn.
+
+**(d) Konsequenz.** Die v6-Population (bastra-io, diese 40 Szenarien) ist
+für diese Frage verbraucht: grep erreicht dort nachweislich 100 % Recall,
+eine Wiederholung auf denselben oder ähnlich gezogenen Szenarien würde das
+nur bestätigen. Die nächste Messung (Zustellung per Hook, PR #607) braucht
+entweder (1) eine neue, **vorher eingefrorene** Population mit echtem
+Kontrollarm-Headroom — Fälle, in denen grep nachweislich nicht auf 100 %
+kommt — oder (2) ein eigenes, vorab registriertes Ziel „Zustellung +
+Kontextkosten" statt „Recall-Gewinn", weil (a) und (c) zeigen, dass die
+offenen Fragen genau dort liegen: ob das Tool im echten Betrieb überhaupt
+erreicht wird, und was es kostet, wenn es erreicht wird.
+
+Rohdaten (Szenarien, Wahrheit, 120 Transkripte, `build-pin.json`,
+`report.json`) liegen in `~/.bastra/eval/code-roi-v4-bastra-io/`.
+Ergebnisblock in der Registrierung:
+`packages/eval/registrations/code-awareness-change-impact.json` → `result`.
