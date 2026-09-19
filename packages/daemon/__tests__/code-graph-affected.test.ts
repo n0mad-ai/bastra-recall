@@ -9,6 +9,7 @@ import {
   affectedHits,
   affectedResult,
   changedSymbolsOf,
+  diffSymbols,
   narrowPackageHits,
   symbolsNamed,
   allSymbolsOf,
@@ -91,6 +92,24 @@ const GRAPH = {
 
 const SAVE_TS = "packages/core/src/save.ts";
 
+/**
+ * `save.ts` with the LINES the graph claims: `SaveMemoryInput` at 12,
+ * `saveMemory` at 40. The fixture needs the real line count because a symbol's
+ * end is read off the source (`symbol-spans.ts`) — a one-line stand-in would
+ * put every hunk outside every symbol.
+ */
+const SAVE_SOURCE = [
+  ...Array<string>(11).fill("// header"),
+  "export interface SaveMemoryInput {", // 12
+  "  text: string;",
+  "}",
+  ...Array<string>(25).fill(""),
+  "export function saveMemory(input: SaveMemoryInput) {", // 40
+  "  return write(input);", // 41
+  "}",
+  "",
+].join("\n");
+
 /** The diff a change to `saveMemory` produces, in `git diff` shape. */
 const SAVE_DIFF = [
   `diff --git a/${SAVE_TS} b/${SAVE_TS}`,
@@ -120,12 +139,19 @@ async function writeTree(): Promise<void> {
       }),
     ],
     ["packages/core/src/index.ts", "export {};\n"],
-    ["packages/core/src/save.ts", "export function saveMemory() {}\n"],
+    ["packages/core/src/save.ts", SAVE_SOURCE],
     ["packages/core/src/topics.ts", "export function detectProject() {}\n"],
     ["packages/core/src/audit-save.ts", "export function auditSave() {}\n"],
     ["packages/daemon/package.json", JSON.stringify({ name: "@acme/daemon" })],
     ["packages/daemon/src/bridge.ts", 'import { saveMemory } from "@acme/core";\n'],
     ["packages/daemon/src/write-lane.ts", 'import { detectProject } from "@acme/core/topics";\n'],
+    // A barrel that passes everything on without naming anything, and a file
+    // that names nothing at all — the two sides of the narrowing check.
+    ["packages/daemon/src/barrel.ts", 'export * from "./bridge.js";\n'],
+    ...Array.from({ length: 19 }, (_, i): [string, string] => [
+      `packages/daemon/src/plain${i}.ts`,
+      "export const value = 1;\n",
+    ]),
   ];
   for (const [path, body] of files) {
     await mkdir(join(root, path, ".."), { recursive: true });
@@ -184,6 +210,68 @@ describe("workspace packages", () => {
       await rm(pnpm, { recursive: true, force: true });
     }
   });
+
+  it("expands a WILDCARD subpath export, and finds a package a deep glob names", async () => {
+    // `"./*": "./dist/*.js"` is what a generated `exports` map looks like, and
+    // `packages/**` is pnpm's own default. Neither resolved before: the
+    // package boundary was then missing for the whole package, silently.
+    const wild = await mkdtemp(join(tmpdir(), "bastra-wild-"));
+    try {
+      const pkg = join(wild, "packages", "group", "ui");
+      await mkdir(join(pkg, "src", "forms"), { recursive: true });
+      await writeFile(
+        join(wild, "package.json"),
+        JSON.stringify({ name: "root", workspaces: ["packages/**"] }),
+        "utf8",
+      );
+      await writeFile(
+        join(pkg, "package.json"),
+        JSON.stringify({
+          name: "@acme/ui",
+          exports: { ".": "./dist/index.js", "./*": { import: "./dist/*.js" } },
+        }),
+        "utf8",
+      );
+      for (const file of ["index.ts", "button.ts", "forms/input.ts"]) {
+        await writeFile(join(pkg, "src", file), "export {};\n", "utf8");
+      }
+      const modules = workspaceModules(wild);
+      assert.equal(modules.get("@acme/ui"), "packages/group/ui/src/index.ts");
+      assert.equal(modules.get("@acme/ui/button"), "packages/group/ui/src/button.ts");
+      assert.equal(
+        modules.get("@acme/ui/forms/input"),
+        "packages/group/ui/src/forms/input.ts",
+        "the star spans a slash, the way Node resolves it",
+      );
+    } finally {
+      await rm(wild, { recursive: true, force: true });
+    }
+  });
+
+  it("matches a star in the MIDDLE of a workspace pattern", async () => {
+    const apps = await mkdtemp(join(tmpdir(), "bastra-apps-"));
+    try {
+      await mkdir(join(apps, "apps", "web", "server", "src"), { recursive: true });
+      await mkdir(join(apps, "apps", "web", "docs"), { recursive: true });
+      await writeFile(
+        join(apps, "package.json"),
+        JSON.stringify({ name: "root", workspaces: ["apps/*/server"] }),
+        "utf8",
+      );
+      await writeFile(
+        join(apps, "apps", "web", "server", "package.json"),
+        JSON.stringify({ name: "@acme/server", main: "./src/index.ts" }),
+        "utf8",
+      );
+      await writeFile(join(apps, "apps", "web", "server", "src", "index.ts"), "export {};\n", "utf8");
+      assert.equal(
+        workspaceModules(apps).get("@acme/server"),
+        "apps/web/server/src/index.ts",
+      );
+    } finally {
+      await rm(apps, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("external references", () => {
@@ -238,7 +326,7 @@ describe("an unavailable answer is honest about why", () => {
     );
     assert.equal(
       sha(serverInstructions(true)),
-      "1f28f8e422b71d4f92330df003d256af8b66d64057a3074b018324e015d9c706",
+      "63a1bac0f13ff91069ca72dde2a5a8be859922df0c83e85d89c30594220bd07c",
       "server instructions changed — arms.frozen_surface in the registration no longer matches",
     );
   });
@@ -282,6 +370,39 @@ describe("changed symbols from a diff", () => {
     const diff = SAVE_DIFF.replace("+  return write(input, { audited: true });", "+  const x: SaveMemoryInput = input;");
     const changed = changedSymbolsOf(graph, SAVE_TS, diff).map((s) => s.name).sort();
     assert.deepEqual(changed, ["SaveMemoryInput", "saveMemory"]);
+  });
+
+  it("takes the WHOLE file when a changed line is outside every symbol", () => {
+    // An import line: it belongs to no symbol, and attributing it to the
+    // nearest one above is how a wrong, non-empty selection suppresses the
+    // fallback that would have answered correctly.
+    const diff = [
+      `diff --git a/${SAVE_TS} b/${SAVE_TS}`,
+      `--- a/${SAVE_TS}`,
+      `+++ b/${SAVE_TS}`,
+      "@@ -5,1 +5,1 @@",
+      "-// header",
+      '+import { write } from "./write.js";',
+    ].join("\n");
+    const answer = diffSymbols(graph, SAVE_TS, diff);
+    assert.equal(answer.wholeFile, true);
+    assert.deepEqual(answer.symbols.map((s) => s.name).sort(), ["SaveMemoryInput", "saveMemory"]);
+  });
+
+  it("takes the whole file when the source cannot be read at all", () => {
+    // The graph knows a file the checkout does not: nothing can place the
+    // line, so nothing may be narrowed away.
+    const gone = "packages/core/src/topics.ts";
+    const diff = [
+      `diff --git a/${gone} b/${gone}`,
+      `--- a/${gone}`,
+      `+++ b/${gone}`,
+      "@@ -900,1 +900,1 @@",
+      "-  const a = 1;",
+      "+  const a = 2;",
+    ].join("\n");
+    const answer = diffSymbols(graph, gone, diff);
+    assert.equal(answer.wholeFile, true, "line 900 is past the end of the file on disk");
   });
 
   it("finds nothing in a diff that belongs to another file", () => {
@@ -339,14 +460,14 @@ describe("affected files", () => {
     );
   });
 
-  it("prefers the specific entry over the barrel", () => {
+  it("counts BOTH roads into a file: its own entry and the barrel", () => {
+    // A file exported twice is imported both ways, and the earlier rule — the
+    // specific entry wins, the barrel is dropped — lost every importer that
+    // takes the barrel road. They are narrowed by text further down, not here.
     const topics = symbolsNamed(graph, "packages/core/src/topics.ts", ["detectProject"]).found;
     const files = affectedHits(graph, "packages/core/src/topics.ts", topics).map((h) => h.file);
-    assert.ok(files.includes("packages/daemon/src/write-lane.ts"));
-    assert.ok(
-      !files.includes("packages/daemon/src/bridge.ts"),
-      "topics.ts is its own export entry, so the barrel's importers stay out",
-    );
+    assert.ok(files.includes("packages/daemon/src/write-lane.ts"), "the subpath importer");
+    assert.ok(files.includes("packages/daemon/src/bridge.ts"), "the barrel importer");
   });
 
   it("never lists the changed file itself", () => {
@@ -393,17 +514,38 @@ describe("narrowing package-level hits", () => {
     assert.deepEqual(await narrowPackageHits(root, hits, ["saveMemory"]), hits);
   });
 
-  it("drops long-list candidates whose text never names a changed symbol", async () => {
-    // 21 candidates: past the point where a person reads them all. Only
-    // bridge.ts mentions `saveMemory`; the rest do not exist on disk at all,
-    // which is the stale-graph case and counts as no evidence.
+  it("drops only the candidates it READ and that name nothing", async () => {
+    // 22 candidates: past the point where a person reads them all. bridge.ts
+    // names `saveMemory`; the 19 `plain` files were read and name nothing, so
+    // they go. The other two are kept, because nothing was established about
+    // them: `gone.ts` is not on disk (the stale-graph case) and `barrel.ts`
+    // re-exports onward under names of its own.
     const hits = [
       packageHit("packages/daemon/src/bridge.ts"),
-      packageHit("packages/daemon/src/write-lane.ts"),
-      ...Array.from({ length: 19 }, (_, i) => packageHit(`packages/daemon/src/gone${i}.ts`)),
+      packageHit("packages/daemon/src/gone.ts"),
+      packageHit("packages/daemon/src/barrel.ts"),
+      ...Array.from({ length: 19 }, (_, i) => packageHit(`packages/daemon/src/plain${i}.ts`)),
     ];
     const kept = await narrowPackageHits(root, hits, ["saveMemory"]);
-    assert.deepEqual(kept.map((h) => h.file), ["packages/daemon/src/bridge.ts"]);
+    assert.deepEqual(kept.map((h) => h.file).sort(), [
+      "packages/daemon/src/barrel.ts",
+      "packages/daemon/src/bridge.ts",
+      "packages/daemon/src/gone.ts",
+    ]);
+  });
+
+  it("puts the file that NAMES the symbol before the ones kept in doubt", async () => {
+    // The answer is capped on files. A candidate that only might use the
+    // symbol must not push out one that demonstrably does — measured, that
+    // cost three scenarios of the sample their true dependent.
+    const hits = [
+      packageHit("packages/daemon/src/gone.ts"),
+      packageHit("packages/daemon/src/barrel.ts"),
+      packageHit("packages/daemon/src/bridge.ts"),
+      ...Array.from({ length: 19 }, (_, i) => packageHit(`packages/daemon/src/plain${i}.ts`)),
+    ];
+    const kept = await narrowPackageHits(root, hits, ["saveMemory"]);
+    assert.equal(kept[0].file, "packages/daemon/src/bridge.ts");
   });
 
   it("keeps everything when there is no symbol name to check against", async () => {

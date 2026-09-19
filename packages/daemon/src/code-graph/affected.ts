@@ -16,12 +16,20 @@
  * now — see the report, this is not a proof of effect):
  *
  *   file, one hop        recall 87.4 %   precision 43.5 %   complete 36/44
- *   symbols, one hop     recall 91.3 %   precision 52.4 %   complete 39/44
- *   symbols, two hops    recall 95.8 %   precision 33.0 %   complete 41/44
+ *   symbols, one hop     recall 96.6 %   precision 47.4 %   complete 42/44
+ *   symbols, two hops    recall 98.9 %   precision 32.5 %   complete 43/44
  *
  * The one-hop symbol answer is better on BOTH axes than the file answer it
  * replaces, and it gets there through two changes: the narrowing above, and
  * the package boundary (`external-refs.ts`) that the file answer never saw.
+ *
+ * WHERE IT DOES NOT NARROW, IT SAYS SO. Attributing a changed line to the
+ * nearest symbol above it was worth 91.3 % recall at 52.4 % precision; reading
+ * the real spans off the source and taking the WHOLE file whenever a line
+ * falls outside every symbol buys the five points of recall above and costs
+ * five of precision. That trade is deliberate: a missing dependent is a
+ * mistake the agent cannot see, one candidate too many is a file it opens and
+ * closes.
  *
  * THE ANSWER IS A CANDIDATE LIST, NOT A PROOF. The graph carries extracted
  * import and call edges, no type information: it cannot know whether a caller
@@ -39,6 +47,7 @@ import {
   type CodeSymbol,
   type LoadedGraph,
 } from "./reader.js";
+import { spansCovering, symbolSpans } from "./symbol-spans.js";
 
 /** Deepest hop followed. Two fans out multiplicatively and is opt-in. */
 export const MAX_AFFECTED_DEPTH = 2;
@@ -80,6 +89,17 @@ export interface AffectedResult {
   truncated: boolean;
 }
 
+/** What a diff selects, and whether it selected anything at all. */
+export interface DiffSymbols {
+  symbols: CodeSymbol[];
+  /**
+   * True when the diff could NOT be narrowed and `symbols` is the whole file:
+   * a changed line fell outside every symbol, or the source could not be read
+   * to place it. The caller reports this as the whole-file answer it is.
+   */
+  wholeFile: boolean;
+}
+
 /**
  * The symbols of `file` that a unified diff touches.
  *
@@ -91,28 +111,43 @@ export interface AffectedResult {
  *
  * The OLD side of the diff is used (`@@ -from,count`), because the graph was
  * built from the checked-out tree — the same tree the diff's `a/` side is.
- * Symbols carry a start line and no end, so a changed line belongs to the last
- * symbol that starts at or before it. That is a heuristic, and it is the same
- * one an editor's breadcrumb uses.
+ *
+ * A LINE OUTSIDE EVERY SYMBOL TAKES THE WHOLE FILE. The graph carries no end
+ * line, so the spans are read off the source (`symbol-spans.ts`), and a
+ * changed import, a top-level constant the indexer does not carry, a doc
+ * comment between two symbols or a line the source cannot place at all is not
+ * attributed to the nearest symbol — it selects the whole file. That is the
+ * safe side: the alternative is a confident, wrong, non-empty selection, and a
+ * non-empty selection is exactly what suppresses the fallback (measured: two
+ * of the five incomplete scenarios of the v3 sample were that, and both are
+ * found by the whole file).
+ *
+ * A file with no symbols of its own — an index barrel — has no line lane at
+ * all and never falls back: its answer is the re-export rule below.
  */
-export function changedSymbolsOf(graph: LoadedGraph, file: string, diff: string): CodeSymbol[] {
-  const symbols = symbolsWithLine(graph, file);
-  if (symbols.length === 0) return [];
+export function diffSymbols(graph: LoadedGraph, file: string, diff: string): DiffSymbols {
+  const own = allSymbolsOf(graph, file);
+  const body = diffBody(diff);
+  const reExported = reExportedSymbolsIn(graph, file, body);
+  const whole = (): DiffSymbols => ({ symbols: [...own, ...reExported], wholeFile: true });
+  if (own.length === 0) return { symbols: reExported, wholeFile: false };
 
   const hit = new Set<string>();
   const lines = changedLines(diff, file);
-  for (const line of lines) {
-    let owner: CodeSymbol | null = null;
-    for (const s of symbols) {
-      if ((s.line ?? 0) > line) break;
-      owner = s;
+  if (lines.length > 0) {
+    const spans = symbolSpans(graph.repoRoot, file, own);
+    if (spans === null) return whole();
+    if (spans.length > 0) {
+      for (const line of lines) {
+        const covering = spansCovering(spans, line);
+        if (covering.length === 0) return whole();
+        for (const id of covering) hit.add(id);
+      }
     }
-    if (owner !== null) hit.add(owner.id);
   }
 
-  const body = diffBody(diff);
   if (body.length > 0) {
-    for (const s of allSymbolsOf(graph, file)) {
+    for (const s of own) {
       // Two characters match half a repository; a file node's label is its
       // basename and would match the diff header of every hunk.
       if (s.name.length <= 2 || s.kind === "file") continue;
@@ -120,8 +155,12 @@ export function changedSymbolsOf(graph: LoadedGraph, file: string, diff: string)
     }
   }
 
-  const own = allSymbolsOf(graph, file).filter((s) => hit.has(s.id));
-  return [...own, ...reExportedSymbolsIn(graph, file, body)];
+  return { symbols: [...own.filter((s) => hit.has(s.id)), ...reExported], wholeFile: false };
+}
+
+/** The same answer as a plain list — the shape the offline diagnostics read. */
+export function changedSymbolsOf(graph: LoadedGraph, file: string, diff: string): CodeSymbol[] {
+  return diffSymbols(graph, file, diff).symbols;
 }
 
 /**
@@ -269,17 +308,21 @@ export function affectedResult(
  * itself when it is an entry, otherwise every entry that re-exports it,
  * directly or through another barrel.
  *
- * The specific entry is preferred over the general one and they are not
- * combined: `packages/core/src/topics.ts` is exported both as
- * `@bastra-recall/core/topics` and through the `.` barrel, and taking the
- * barrel as well turns four importers into a hundred and twenty. Measured on
- * the scenario sample, the specific-entry rule costs 0.7 points of recall and
- * buys 0.6 points of precision — but the hundred-and-twenty answer is the one
- * that makes an agent stop reading.
+ * BOTH WAYS IN COUNT. `packages/core/src/topics.ts` is exported as
+ * `@bastra-recall/core/topics` AND through the `.` barrel, and files really do
+ * import it both ways — the one scenario the symbol query kept missing was a
+ * daemon file that takes the barrel road. Preferring the specific entry and
+ * dropping the barrel was the earlier rule, because the barrel alone turns
+ * four importers into a hundred and twenty and that answer makes an agent stop
+ * reading. What changed is that the hundred and twenty no longer reach the
+ * answer: `narrowPackageHits` reads them and keeps the ones that name a
+ * changed symbol first. Measured on the sample, taking both entries moves
+ * recall 95.8 → 96.6 % and complete 41 → 42 of 44, for 0.5 points of
+ * precision.
  */
 function exportEntriesOf(graph: LoadedGraph, file: string): string[] {
-  if (graph.importersByEntry.has(file)) return [file];
   const entries: string[] = [];
+  if (graph.importersByEntry.has(file)) entries.push(file);
   for (const entry of graph.importersByEntry.keys()) {
     if (reExports(graph, entry, file)) entries.push(entry);
   }
@@ -315,16 +358,46 @@ function reExports(graph: LoadedGraph, entry: string, target: string): boolean {
  * candidate list is already narrow. Symbol-level hits are never touched: they
  * came from a real edge and need no confirmation.
  *
- * Measured on the 44-scenario sample: the package hits unfiltered give 91.3 %
- * recall at 48.3 % precision, this rule 91.3 % at 52.4 %. Filtering ALWAYS —
- * including the short candidate lists — costs recall (87.5 %), because a type
- * used only as a type (`DetectedProject`) is not always named in the file that
- * breaks.
+ * THE CHECK RANKS, IT DOES NOT PROVE. A file that names nothing may still use
+ * the symbol — through a barrel, a renamed default import, a structural type —
+ * so only a file that was read in full and shows none of those marks is
+ * dropped. The rest stay, behind the ones with real evidence (`verdictFor`).
+ *
+ * Measured on the 44-scenario sample, filtering ALWAYS — including the short
+ * candidate lists — costs recall (87.5 % against 91.3 % at the time), because
+ * a type used only as a type (`DetectedProject`) is not always named in the
+ * file that breaks. Hence the threshold.
  */
 const PACKAGE_HITS_WORTH_READING = 20;
 
 /** Largest candidate file read for the check. Bigger is not a module. */
 const MAX_CANDIDATE_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Ways a file uses a symbol WITHOUT writing its name, so the grep says nothing
+ * and the file has to stay:
+ *
+ *   `export * from` — a barrel passing the symbol through under its own name.
+ *   `import X from`, `import * as X` — a default or namespace import; the
+ *     local name is the importer's choice and need not be the original.
+ *
+ * Structural use — a value that happens to satisfy the changed type without
+ * ever naming it — has no textual mark at all and is the one case this check
+ * still loses. That is the known price of the check and the reason it only
+ * runs when the candidate list is already too long to read.
+ */
+const INDIRECT_USE =
+  /^\s*(?:export\s+\*|import\s+(?:type\s+)?(?:\*\s+as\s+)?[A-Za-z_$][\w$]*\s*(?:,|from)\s)/m;
+
+/**
+ * What reading one candidate file settled.
+ *
+ *   `names`     — the file writes one of the changed names. Real evidence.
+ *   `unclear`   — it could use the symbol without naming it (a barrel passing
+ *                 it on, a default import), or it could not be read at all.
+ *   `unrelated` — read in full, names nothing, re-exports nothing.
+ */
+type Verdict = "names" | "unclear" | "unrelated";
 
 export async function narrowPackageHits(
   repo: string,
@@ -334,24 +407,49 @@ export async function narrowPackageHits(
   const packageHits = hits.filter((h) => h.relation === PACKAGE_IMPORT);
   if (names.length === 0 || packageHits.length <= PACKAGE_HITS_WORTH_READING) return [...hits];
 
-  const keep = new Set<string>();
+  const verdicts = new Map<string, Verdict>();
   await Promise.all(
     packageHits.map(async (hit) => {
-      let text: string;
-      try {
-        const buf = await readFile(resolve(repo, hit.file));
-        if (buf.byteLength > MAX_CANDIDATE_BYTES) return;
-        text = buf.toString("utf8");
-      } catch {
-        // Unreadable is not evidence either way, and a file the graph knows
-        // but the checkout does not is exactly the stale-graph case. Dropping
-        // it keeps the promise the answer makes: everything listed was seen.
-        return;
-      }
-      if (names.some((name) => mentions(text, name))) keep.add(hit.file);
+      verdicts.set(hit.file, await verdictFor(repo, hit.file, names));
     }),
   );
-  return hits.filter((h) => h.relation !== PACKAGE_IMPORT || keep.has(h.file));
+  const kept = hits.filter(
+    (h) => h.relation !== PACKAGE_IMPORT || verdicts.get(h.file) !== "unrelated",
+  );
+  // `unclear` is kept, but LAST. The answer is capped on files, and a file
+  // that only might use the symbol must not push out one that demonstrably
+  // does — measured: without this ordering three scenarios of the sample lost
+  // their true dependent to the cap while gaining nothing.
+  const doubtful = (h: AffectedHit): boolean =>
+    h.relation === PACKAGE_IMPORT && verdicts.get(h.file) === "unclear";
+  return [...kept.filter((h) => !doubtful(h)), ...kept.filter(doubtful)];
+}
+
+/**
+ * One candidate file, read. Only a file that was READ IN FULL and names none
+ * of `names`, directly or through one of the indirect forms above, is
+ * `unrelated`.
+ *
+ * Everything else is `unclear` and stays in the answer. A file the checkout
+ * does not have (the stale-graph case), one too large to read, one that
+ * re-exports onward: none of those is evidence of absence, and dropping on no
+ * evidence is how a real dependent disappears from a list of candidates.
+ */
+async function verdictFor(
+  repo: string,
+  file: string,
+  names: readonly string[],
+): Promise<Verdict> {
+  let text: string;
+  try {
+    const buf = await readFile(resolve(repo, file));
+    if (buf.byteLength > MAX_CANDIDATE_BYTES) return "unclear";
+    text = buf.toString("utf8");
+  } catch {
+    return "unclear";
+  }
+  if (names.some((name) => mentions(text, name))) return "names";
+  return INDIRECT_USE.test(text) ? "unclear" : "unrelated";
 }
 
 // ─── Diff reading ────────────────────────────────────────────────
@@ -436,13 +534,6 @@ export function allSymbolsOf(graph: LoadedGraph, file: string): CodeSymbol[] {
       line: n.line,
     } satisfies CodeSymbol;
   });
-}
-
-/** The symbols of `file` that carry a line, in line order. */
-function symbolsWithLine(graph: LoadedGraph, file: string): CodeSymbol[] {
-  return allSymbolsOf(graph, file)
-    .filter((s) => s.line !== null)
-    .sort((a, b) => (a.line ?? 0) - (b.line ?? 0));
 }
 
 /**

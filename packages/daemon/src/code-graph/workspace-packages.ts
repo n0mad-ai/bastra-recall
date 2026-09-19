@@ -67,7 +67,15 @@ export function workspaceModules(repoRoot: string): WorkspaceModules {
     if (isRecord(pkg.exports)) {
       for (const [subpath, value] of Object.entries(pkg.exports)) {
         if (!subpath.startsWith(".")) continue; // conditions at the top level
-        const file = resolve(typeof value === "string" ? value : conditionTarget(value));
+        const target = typeof value === "string" ? value : conditionTarget(value);
+        if (target === null) continue;
+        if (subpath.includes("*")) {
+          for (const [suffix, file] of wildcardTargets(repoRoot, dir, target)) {
+            out.set(name + subpath.slice(1).replace("*", suffix), file);
+          }
+          continue;
+        }
+        const file = resolve(target);
         if (file === null) continue;
         out.set(subpath === "." ? name : name + subpath.slice(1), file);
       }
@@ -129,34 +137,88 @@ function workspacePatterns(repoRoot: string): unknown[] {
 }
 
 /**
- * The directories the `workspaces` patterns name. Only the two forms npm
- * actually sees here are handled: a literal path, and one trailing `/*`.
- * Anything else is skipped rather than half-matched.
+ * The directories the `workspaces` patterns name.
+ *
+ * A pattern is matched segment by segment, so all the shapes a real monorepo
+ * writes resolve: one trailing star as before, a star in the MIDDLE of a
+ * pattern (`apps`, star, `frontend`), a partial segment (`pkg-` star), and a
+ * double star standing for any number of segments — pnpm's own default, and
+ * the one shape that silently resolved NOTHING before. Negations
+ * (`!packages/legacy`) are not patterns of their own and are skipped: a
+ * workspace dir too many costs one manifest read, an excluded one that is
+ * still read costs a specifier nobody imports.
  */
 function workspaceDirs(repoRoot: string, patterns: readonly unknown[]): string[] {
-  const dirs: string[] = [];
+  const dirs = new Set<string>();
   for (const pattern of patterns) {
     if (typeof pattern !== "string" || pattern.length === 0) continue;
-    if (dirs.length >= MAX_WORKSPACE_PACKAGES) break;
-    if (!pattern.includes("*")) {
-      dirs.push(trimSlashes(pattern));
-      continue;
-    }
-    if (!pattern.endsWith("/*") || pattern.slice(0, -2).includes("*")) continue;
-    const parent = trimSlashes(pattern.slice(0, -2));
-    let entries: string[];
-    try {
-      entries = readdirSync(join(repoRoot, parent));
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (entry.startsWith(".")) continue;
-      if (dirs.length >= MAX_WORKSPACE_PACKAGES) break;
-      dirs.push(`${parent}/${entry}`);
+    if (pattern.startsWith("!")) continue;
+    if (dirs.size >= MAX_WORKSPACE_PACKAGES) break;
+    const segments = trimSlashes(pattern).split("/").filter((s) => s.length > 0);
+    for (const dir of matchDirs(repoRoot, "", segments, MAX_WORKSPACE_PACKAGES - dirs.size)) {
+      dirs.add(dir);
     }
   }
-  return dirs;
+  return [...dirs];
+}
+
+/** How deep a `**` may descend. A workspace is not nested twelve levels. */
+const MAX_GLOB_DEPTH = 12;
+
+/** Directories under `base` matching the remaining glob `segments`. */
+function matchDirs(
+  repoRoot: string,
+  base: string,
+  segments: readonly string[],
+  budget: number,
+  depth = 0,
+): string[] {
+  if (budget <= 0 || depth > MAX_GLOB_DEPTH) return [];
+  if (segments.length === 0) return base.length > 0 ? [base] : [];
+  const [head, ...rest] = segments;
+  const out: string[] = [];
+  const under = (entry: string): string => (base.length > 0 ? `${base}/${entry}` : entry);
+
+  if (!head.includes("*")) {
+    const next = under(head);
+    if (!existsSync(join(repoRoot, next))) return [];
+    return matchDirs(repoRoot, next, rest, budget, depth + 1);
+  }
+
+  // `**` matches zero segments too, so the rest is tried right here first and
+  // the pattern stays in play one level down.
+  const re = head === "**" ? null : globSegment(head);
+  if (re === null) out.push(...matchDirs(repoRoot, base, rest, budget, depth + 1));
+  for (const entry of childDirs(repoRoot, base)) {
+    if (out.length >= budget) break;
+    if (re !== null && !re.test(entry)) continue;
+    out.push(
+      ...matchDirs(repoRoot, under(entry), re === null ? segments : rest, budget - out.length, depth + 1),
+    );
+  }
+  return out;
+}
+
+/** The immediate subdirectories of `base`, skipping what is never a package. */
+function childDirs(repoRoot: string, base: string): string[] {
+  let entries: Array<{ name: string; isDirectory: () => boolean }>;
+  try {
+    entries = readdirSync(join(repoRoot, base), { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((e) => e.isDirectory() && !e.name.startsWith(".") && e.name !== "node_modules")
+    .map((e) => e.name);
+}
+
+/** One path segment of a glob as a regex. `*` matches within the segment. */
+function globSegment(segment: string): RegExp {
+  return new RegExp(`^${segment.split("*").map(escapeRe).join("[^/]*")}$`);
+}
+
+function escapeRe(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -203,6 +265,75 @@ function sourceFileOf(repoRoot: string, dir: string, target: string): string | n
     if (existsSync(join(repoRoot, repoRelative))) return repoRelative;
   }
   return null;
+}
+
+/** Files a single wildcard export may expand to. A package is not a file tree. */
+const MAX_WILDCARD_TARGETS = 200;
+
+/**
+ * A WILDCARD subpath export, expanded against the files on disk.
+ *
+ * `"./*": "./dist/*.js"` is how a package says "every module of mine is
+ * importable by its name", and it is the shape of every `exports` map written
+ * by a generator. Without it `@acme/core/scope` resolved to nothing, the
+ * package boundary was missing for the whole package, and the change-impact
+ * answer silently lost every cross-package dependent of it — the same failure
+ * `pnpm-workspace.yaml` caused before it was read.
+ *
+ * Returns the `*` capture and the repo-relative SOURCE file for each match,
+ * so the caller can put the capture back into the specifier. `*` matches
+ * across `/`, the way Node resolves it. The source rewrite is the one from
+ * `sourceFileOf`: a build path is tried under `src/` first, because the graph
+ * indexes source and never the build output.
+ */
+function wildcardTargets(repoRoot: string, dir: string, target: string): Array<[string, string]> {
+  const rel = target.replace(/\\/g, "/").replace(/^\.\//, "");
+  if (!rel.includes("*") || rel.startsWith("/") || rel.split("/").includes("..")) return [];
+
+  for (const pattern of sourcePatternsOf(rel)) {
+    const star = pattern.indexOf("*");
+    if (star < 0 || pattern.indexOf("*", star + 1) >= 0) continue;
+    const re = new RegExp(`^${escapeRe(pattern.slice(0, star))}(.+)${escapeRe(pattern.slice(star + 1))}$`);
+    const head = pattern.split("/")[0];
+    const out: Array<[string, string]> = [];
+    for (const file of filesUnder(repoRoot, dir, head.includes("*") ? "" : head)) {
+      const m = re.exec(file);
+      if (m !== null) out.push([m[1], `${dir}/${file}`]);
+      if (out.length >= MAX_WILDCARD_TARGETS) break;
+    }
+    if (out.length > 0) return out;
+  }
+  return [];
+}
+
+/** The source spellings of an export target, build output rewritten to `src/`. */
+function sourcePatternsOf(rel: string): string[] {
+  const build = /^(?:dist|build|lib|out)\/(.+)\.(?:js|mjs|cjs|d\.ts)$/.exec(rel);
+  if (build === null) return [rel];
+  return [`src/${build[1]}.ts`, `src/${build[1]}.tsx`, `src/${build[1]}/index.ts`, rel];
+}
+
+/** Every file under `dir/top`, package-relative, bounded. */
+function filesUnder(repoRoot: string, dir: string, top: string): string[] {
+  const out: string[] = [];
+  const walk = (prefix: string, depth: number): void => {
+    if (out.length >= MAX_WILDCARD_TARGETS || depth > MAX_GLOB_DEPTH) return;
+    let entries: Array<{ name: string; isDirectory: () => boolean; isFile: () => boolean }>;
+    try {
+      entries = readdirSync(join(repoRoot, dir, prefix), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+      const path = prefix.length > 0 ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isFile()) out.push(path);
+      else if (entry.isDirectory()) walk(path, depth + 1);
+      if (out.length >= MAX_WILDCARD_TARGETS) return;
+    }
+  };
+  walk(top, 0);
+  return out;
 }
 
 function readManifest(path: string): Record<string, unknown> | null {

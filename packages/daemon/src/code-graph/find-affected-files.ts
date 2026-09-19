@@ -19,7 +19,7 @@
  * the type errors the real historical changes produced, that is 87.4 % recall
  * at 43.5 % precision. This tool narrows to the symbols the DIFF touches
  * first, and crosses the workspace package boundary the graph itself does not
- * carry (`external-refs.ts`): 91.3 % recall at 52.4 % precision on the same
+ * carry (`external-refs.ts`): 96.6 % recall at 47.4 % precision on the same
  * sample. `find_code` is unchanged and stays the locator.
  *
  * CANDIDATES, NOT PROOF, and the answer says so. Extracted import and call
@@ -34,7 +34,7 @@ import { z } from "zod";
 import {
   affectedHits,
   affectedResult,
-  changedSymbolsOf,
+  diffSymbols,
   narrowPackageHits,
   symbolsNamed,
   allSymbolsOf,
@@ -212,13 +212,17 @@ export async function findAffectedFiles(
     unknown = named.unknown;
   } else {
     const diff = await workingDiff(repo, file);
-    const fromDiff = diff === null ? [] : changedSymbolsOf(graph, file, diff);
-    if (fromDiff.length > 0) {
+    // A diff that touches a line outside every symbol (an import, a top-level
+    // constant) narrows to nothing trustworthy, and `diffSymbols` says so
+    // rather than guessing: that is the whole-file answer, and it is reported
+    // as one.
+    const fromDiff = diff === null ? null : diffSymbols(graph, file, diff);
+    if (fromDiff !== null && !fromDiff.wholeFile && fromDiff.symbols.length > 0) {
       basis = "diff";
-      symbols = fromDiff;
+      symbols = fromDiff.symbols;
     } else {
       basis = "whole_file";
-      symbols = allSymbolsOf(graph, file);
+      symbols = fromDiff?.wholeFile === true ? fromDiff.symbols : allSymbolsOf(graph, file);
     }
   }
 
@@ -266,8 +270,10 @@ function noteFor(basis: AffectedBasis, files: number, truncated: boolean): strin
       ? `Candidates for the symbols you named`
       : basis === "diff"
         ? `Candidates for the symbols your working-tree diff touches`
-        : `No diff for this file, so this is the whole file's blast radius — ` +
-          `pass \`symbols\` for a sharper answer. Candidates`;
+        : `This is the whole file's blast radius — either there is no diff for ` +
+          `it, or the diff changes something outside every symbol (an import, ` +
+          `top-level code), which narrows to nothing trustworthy. Pass ` +
+          `\`symbols\` for a sharper answer. Candidates`;
   return (
     `${scope}: ${files} file${files === 1 ? "" : "s"}${truncated ? " (truncated)" : ""}. ` +
     `The graph has no type information, so grep the symbol names in these files ` +
