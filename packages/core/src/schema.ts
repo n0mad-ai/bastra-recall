@@ -56,21 +56,28 @@ export function isVaultRelativePath(value: string): boolean {
  * vault content stays data that load_memory reads.  Results are derived on load
  * and the note keeps its own bytes.
  */
-export const DerivedClaimSchema = z.object({
-  id: z.string().regex(/^[a-z0-9][a-z0-9.-]*$/, "claim id must be lowercase kebab/dot form"),
-  resolver: z.literal("count.markdown-numbered-list.v1"),
-  source: z.string().min(1).refine(isVaultRelativePath, {
-    message: "source must be a vault-relative path without dot segments",
-  }),
-  /**
-   * What the note says the source holds.  With it, load_memory reports
-   * `matches` or `differs`; without it, the observed value is reported on its
-   * own, which is how the first resolver shipped.
-   */
-  expect: z.number().optional(),
-  /** Stable reference to an independent case; Bastra stores it and leaves it alone. */
-  case_ref: z.string().min(1).optional(),
-});
+export const DerivedClaimSchema = z
+  .object({
+    id: z.string().regex(/^[a-z0-9][a-z0-9.-]*$/, "claim id must be lowercase kebab/dot form"),
+    resolver: z.enum(["count.markdown-numbered-list.v1", "quote.v1"]),
+    source: z.string().min(1).refine(isVaultRelativePath, {
+      message: "source must be a vault-relative path without dot segments",
+    }),
+    /**
+     * What the note says the source holds.  With it, load_memory reports
+     * `matches` or `differs`; without it, the observed value is reported on its
+     * own, which is how the first resolver shipped.
+     */
+    expect: z.number().optional(),
+    /** `quote.v1`: the string as it stands in the source, character for character. */
+    exact: z.string().min(1).optional(),
+    /** Stable reference to an independent case; Bastra stores it and leaves it alone. */
+    case_ref: z.string().min(1).optional(),
+  })
+  .refine((claim) => claim.resolver !== "quote.v1" || claim.exact !== undefined, {
+    message: "quote.v1 needs `exact`, the string as it appears in the source",
+    path: ["exact"],
+  });
 export type DerivedClaim = z.infer<typeof DerivedClaimSchema>;
 export type MemoryType = z.infer<typeof MemoryTypeEnum>;
 
