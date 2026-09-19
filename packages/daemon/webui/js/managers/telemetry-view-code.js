@@ -83,27 +83,33 @@ export function renderCodeAwareness(ca) {
   // toward "N repositories active".
   const realRepoCount = a.repos.filter((r) => r.repo !== "(temporary tree)").length;
 
+  // #601 follow-up: the figure row reuses the exact "tv-cols wide" grid the
+  // table zone below uses — same two columns, same divider — so its middle
+  // rule IS the table zone's column rule, not a pixel-matched copy of it.
+  // Each half then holds its own two-tile "tv-figs" pair for the divider
+  // between tiles 1/2 and 3/4. Below the shared stacking width both halves
+  // simply drop to one full-width column, tile pairs still side by side.
+  const fig = (k, v, sub, ok = false) =>
+    h("div", null, h("div", { class: "tv-fig-k" }, k), h("div", { class: `tv-fig-v${ok ? " ok" : ""}` }, v), h("div", { class: "tv-fig-sub" }, sub));
+
   return section(
     title,
     question,
     h(
       "div",
-      // "center": with exactly four tiles the row's own box already spans
-      // the full section width, but left-aligned content left it looking
-      // narrower than the table zone below (#601 follow-up).
-      { class: "tv-figs center" },
-      h("div", null, h("div", { class: "tv-fig-k" }, "tool calls"),
-        h("div", { class: "tv-fig-v" }, fmt(a.tools.reduce((n, t) => n + t.calls, 0))),
-        h("div", { class: "tv-fig-sub" }, `${realRepoCount} repositor${realRepoCount === 1 ? "y" : "ies"} active`)),
-      h("div", null, h("div", { class: "tv-fig-k" }, "answered"),
-        h("div", { class: "tv-fig-v ok" }, pct(a.tools.reduce((n, t) => n + t.ok, 0), a.tools.reduce((n, t) => n + t.calls, 0))),
-        h("div", { class: "tv-fig-sub" }, `${fmt(a.tools.reduce((n, t) => n + t.unavailable, 0))} unavailable`)),
-      h("div", null, h("div", { class: "tv-fig-k" }, "dependents blocks"),
-        h("div", { class: "tv-fig-v" }, fmt(b.withCodeBlock)),
-        h("div", { class: "tv-fig-sub" }, `${fmt(b.codeTokensTotal)} tokens · ${pct(b.codeTokensTotal, b.hintTokensTotal)} of everything injected`)),
-      h("div", null, h("div", { class: "tv-fig-k" }, "followed by an edit"),
-        h("div", { class: `tv-fig-v${b.blocksFollowed > 0 ? " ok" : ""}` }, pct(b.blocksFollowed, b.blocksWithListed)),
-        h("div", { class: "tv-fig-sub" }, `${fmt(b.blocksFollowed)} of ${fmt(b.blocksWithListed)} blocks`)),
+      { class: "tv-cols wide" },
+      h(
+        "div",
+        { class: "tv-figs center" },
+        fig("tool calls", fmt(a.tools.reduce((n, t) => n + t.calls, 0)), `${realRepoCount} repositor${realRepoCount === 1 ? "y" : "ies"} active`),
+        fig("answered", pct(a.tools.reduce((n, t) => n + t.ok, 0), a.tools.reduce((n, t) => n + t.calls, 0)), `${fmt(a.tools.reduce((n, t) => n + t.unavailable, 0))} unavailable`, true),
+      ),
+      h(
+        "div",
+        { class: "tv-figs center" },
+        fig("dependents blocks", fmt(b.withCodeBlock), `${fmt(b.codeTokensTotal)} tokens · ${pct(b.codeTokensTotal, b.hintTokensTotal)} of everything injected`),
+        fig("followed by an edit", pct(b.blocksFollowed, b.blocksWithListed), `${fmt(b.blocksFollowed)} of ${fmt(b.blocksWithListed)} blocks`, b.blocksFollowed > 0),
+      ),
     ),
     h(
       // #601: this section's left column alone needs more room than the
