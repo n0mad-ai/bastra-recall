@@ -223,6 +223,36 @@ describe("change-impact block on a prompt: the resolution half", () => {
     assert.equal(out.dedupeHit, false);
   });
 
+  it("injects nothing when a symbol name is ambiguous across files", async () => {
+    const ambiguousRepo = join(root, "ambiguous");
+    const dir = graphDirOf(ambiguousRepo);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, GRAPH_FILE_NAME), JSON.stringify({
+      ...FIXTURE,
+      nodes: [
+        ...FIXTURE.nodes,
+        node("other_savememory", "saveMemory()", "packages/other/src/save.ts", 3),
+        node("other_caller", "otherCaller()", "packages/other/src/caller.ts", 8),
+      ],
+      links: [
+        ...FIXTURE.links,
+        edge("other_caller", "other_savememory", "calls"),
+      ],
+    }), "utf8");
+    await writeManifest(dir, { ...MANIFEST, repoRoot: ambiguousRepo });
+    const ambiguousCache = new CodeGraphCache();
+    await ambiguousCache.ensureLoaded(ambiguousRepo);
+
+    const out = await promptImpactNote({
+      prompt: "Was bricht, wenn ich saveMemory umbenenne?",
+      cwd: ambiguousRepo,
+      session: EMPTY_SESSION,
+      cache: ambiguousCache,
+      budgetMs: CONTENT_BUDGET_MS,
+    });
+    assert.equal(out.note, null, "an automatic block must not guess which saveMemory was meant");
+  });
+
   it("injects nothing on an ordinary prompt that names an indexed file", async () => {
     const out = await ask("Formatiere packages/core/src/save.ts neu.");
     assert.equal(out.note, null);
@@ -248,6 +278,48 @@ describe("change-impact block on a prompt: the resolution half", () => {
     });
     assert.equal(second.note, null);
     assert.equal(second.dedupeHit, true);
+  });
+
+  it("delivers a rebuilt graph's answer again in the same session", async () => {
+    const first = await ask("Wer ruft saveMemory auf?");
+    assert.ok(first.note);
+    const graphFile = join(graphDirOf(repo), GRAPH_FILE_NAME);
+    await writeFile(graphFile, `${JSON.stringify(FIXTURE)}\n`, "utf8");
+    assert.equal(await cache.reloadIfChanged(repo), true);
+
+    const second = await ask("Wer ruft saveMemory auf?", {
+      shown: { [first.note.dedupeKey]: { count: 1, lastShownAt: Date.now() } },
+    });
+    assert.ok(second.note, "a new graph generation can carry a different blast radius");
+    assert.notEqual(second.note.dedupeKey, first.note.dedupeKey);
+  });
+
+  it("marks a prompt answer stale when the target changed after the graph build", async () => {
+    const staleRepo = join(root, "stale");
+    const dir = graphDirOf(staleRepo);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, GRAPH_FILE_NAME), JSON.stringify(FIXTURE), "utf8");
+    await writeManifest(dir, {
+      ...MANIFEST,
+      repoRoot: staleRepo,
+      builtAt: "2000-01-01T00:00:00.000Z",
+    });
+    const source = join(staleRepo, SAVE);
+    await mkdir(join(staleRepo, "packages/core/src"), { recursive: true });
+    await writeFile(source, "export function saveMemory() {}\n", "utf8");
+    const staleCache = new CodeGraphCache();
+    await staleCache.ensureLoaded(staleRepo);
+
+    const out = await promptImpactNote({
+      prompt: "Was bricht, wenn ich saveMemory umbenenne?",
+      cwd: staleRepo,
+      session: EMPTY_SESSION,
+      cache: staleCache,
+      budgetMs: CONTENT_BUDGET_MS,
+    });
+    assert.ok(out.note);
+    assert.match(out.note.note, /stale="true"/);
+    assert.match(out.note.note, /list can be out of date/);
   });
 
   it("stays inside the prompt lane's share of the budget", async () => {
