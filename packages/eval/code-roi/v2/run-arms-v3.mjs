@@ -67,6 +67,7 @@ import { execFileSync } from "node:child_process";
 import { scenarioRoot } from "./scenario-root.mjs";
 import { writableOut } from "./archive.mjs";
 import { ARM_IDS } from "./select.mjs";
+import { diffForTree } from "./diff-side.mjs";
 import {
   abortedArmCharge,
   armCostUsd,
@@ -129,6 +130,11 @@ export const ARMS = {
  * `changedSymbolsOf`, not from a hand-written list — the agent in arm B has
  * the same diff in its prompt, so both graph arms start from the same
  * information.
+ *
+ * THE DIFF IS TURNED AROUND FIRST (`diff-side.mjs`). The tree is the PARENT
+ * commit and `s.diff` runs parent → commit, so the tree is the diff's old side
+ * while `changedLines` reads the new one. Reversing it makes the parent the new
+ * side, which is the tree that is actually there.
  */
 async function prefillFor(s, tree, graphRoot) {
   const { loadGraph } = await import(`${DIST}reader.js`);
@@ -138,7 +144,7 @@ async function prefillFor(s, tree, graphRoot) {
   const repo = scenarioRoot(tree, graphRoot);
   const loaded = await loadGraph(repo);
   if (!loaded.ok) throw new Error(`prefill: graph ${loaded.reason}`);
-  const symbols = changedSymbolsOf(loaded.graph, s.file, s.diff).map((c) => c.name);
+  const symbols = changedSymbolsOf(loaded.graph, s.file, diffForTree(s.diff, "old")).map((c) => c.name);
   const cache = new CodeGraphCache();
   await cache.ensureLoaded(repo);
   const result = await findAffectedFiles(cache, { file: s.file, symbols, repo });
