@@ -29,6 +29,12 @@ export function renderCodeAwareness(ca) {
   }
   const a = ca.active;
   const b = ca.block;
+  // #606. Older report objects have no `delivered` fold; an empty one keeps
+  // every figure below readable as "nothing delivered" instead of throwing.
+  const dl = a.delivered ?? {
+    blocks: 0, dedupeHits: 0, byLane: [], byBasis: [],
+    filesNamed: 0, tokensTotal: 0, tokensMedian: 0, p50: 0, p90: 0,
+  };
   // Split from one 9-column table into two (#601): calls/answered/nothing
   // found/unavailable on one side, latency/reach on the other — the combined
   // table did not fit a tv-cols half at any width and overflowed into the
@@ -107,7 +113,12 @@ export function renderCodeAwareness(ca) {
       h(
         "div",
         { class: "tv-figs center" },
-        fig("dependents blocks", fmt(b.withCodeBlock), `${fmt(b.codeTokensTotal)} tokens · ${pct(b.codeTokensTotal, b.hintTokensTotal)} of everything injected`),
+        // #606: the headline figure is what Recall DELIVERED, because that is
+        // the channel the change made; the injected-block cost below it is the
+        // price. `active.delivered` and the hook_call fold count the same write
+        // -lane blocks from two different rows, so they are shown as cost and
+        // channel rather than added up.
+        fig("delivered blocks", fmt(dl.blocks), `${fmt(b.codeTokensTotal)} tokens · ${pct(b.codeTokensTotal, b.hintTokensTotal)} of everything injected`),
         fig("followed by an edit", pct(b.blocksFollowed, b.blocksWithListed), `${fmt(b.blocksFollowed)} of ${fmt(b.blocksWithListed)} blocks`, b.blocksFollowed > 0),
       ),
     ),
@@ -156,6 +167,22 @@ export function renderCodeAwareness(ca) {
         brokenWorkspace
           ? note("A workspace repository resolved 0 of its external nodes — cross-package impact is not being found. Rebuild with `bastra code index`; if it stays 0, that is #582's id-format regression.", true)
           : null,
+        h3("Delivered — the graph answer nobody asked for (#606)"),
+        dl.blocks > 0 || dl.dedupeHits > 0
+          ? table(
+              ["", "value"],
+              [
+                h("tr", null, td("blocks injected"), td(fmt(dl.blocks), dl.blocks > 0 ? "ok" : null)),
+                h("tr", null, td("already delivered this session"), td(fmt(dl.dedupeHits), "dim")),
+                h("tr", null, td("by lane"), td(dl.byLane.length ? dl.byLane.map((r) => `${r.key} ${fmt(r.count)}`).join(" · ") : "—", "left")),
+                h("tr", null, td("by basis"), td(dl.byBasis.length ? dl.byBasis.map((r) => `${r.key} ${fmt(r.count)}`).join(" · ") : "—", "left")),
+                h("tr", null, td("cost"), td(`${fmt(dl.tokensTotal)} tokens · ${fmt(dl.tokensMedian)} median`)),
+                h("tr", null, td("reach"), td(`${fmt(dl.filesNamed)} candidate file(s) named`)),
+                h("tr", null, td("latency p50 / p90"), td(`${ms(dl.p50)} / ${ms(dl.p90)}`)),
+              ],
+            )
+          : empty("no block was delivered in this window"),
+        note("`whole_file` as a basis is not a failure — it is the honest answer when the change touches something outside every symbol (an import, top-level code). A run of them does mean the narrowing is not earning its keep."),
         h3("Injected blocks — the passive half (#579)"),
         b.withCodeBlock > 0 || b.withAppliesTo > 0
           ? table(

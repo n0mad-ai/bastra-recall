@@ -30,9 +30,10 @@ import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane } from "./scope-filter.js";
 import { fileSizeNote } from "./file-size-check.js";
-import { dependentsNote, type DependentsNote } from "./code-graph/dependents-block.js";
+import { impactNote, type ImpactNote } from "./code-graph/impact-block.js";
 import { appliesToNote, type AppliesToNote } from "./code-graph/applies-to-note.js";
 import { laneRepoRoot } from "./code-graph/git-paths.js";
+import { logDeliveredBlock } from "./code-delivered-telemetry.js";
 import { memoryLocationNote } from "./memory-location.js";
 import { reportHinted } from "./hook-hinted.js";
 import { hookClient } from "./hook-surface.js";
@@ -241,12 +242,17 @@ export async function runWriteLane(
     dedupActive = true;
   }
 
-  // #577: the code-graph dependents block. It joins the other two
+  // #577/#606: the code-graph change-impact block. It joins the other two
   // deterministic notes but is computed here, because it needs the session
   // snapshot for its own dedupe — the same rule as the memory hints (§16.2),
-  // so the same file is not repeated on every edit. Silent on a cold or
-  // missing graph (see dependents-block.ts), and it never marks a memory
+  // so the same answer is not repeated on every edit. Silent on a cold or
+  // missing graph (see impact-block.ts), and it never marks a memory
   // required (§13.1).
+  // #606: the query is no longer the FILE's dependents but the dependents of
+  // the SYMBOLS this very call changes, derived from the tool input. Same
+  // lane, same silence rules, a measurably sharper answer — and it is the
+  // answer `find_affected_files` gives, delivered rather than offered, because
+  // v3 measured the tool being called 0 times in 44 of 44 runs.
   // The FILE decides the repository, not the working directory: an edit from
   // a subdirectory would otherwise miss the graph entirely (#577). Falls back
   // to `cwd`, so nothing that worked before stops working.
@@ -261,16 +267,46 @@ export async function runWriteLane(
   // In target order, whichever finishes first: the blocks read top-down.
   const targets = codeTargets(toolInput, filePath, cwd);
   const perTarget = await Promise.all(
-    targets.map((target) => {
+    targets.map(async (target) => {
       const repoRoot = laneRepoRoot(target, cwd);
-      return Promise.all([
-        dependentsNote({ filePath: target, repoRoot, session: sessionState }).catch(() => null),
+      const [impact, applies] = await Promise.all([
+        impactNote({
+          filePath: target,
+          repoRoot,
+          toolName,
+          toolInput,
+          session: sessionState,
+        }).catch(() => ({ note: null, dedupeHit: false })),
         appliesToNote({ filePath: target, repoRoot, session: sessionState }).catch(() => null),
       ]);
+      return { repoRoot, impact, applies };
     }),
   );
-  const codeNotes = perTarget.map(([d]) => d).filter((n): n is DependentsNote => n !== null);
-  const memoryCodeNotes = perTarget.map(([, m]) => m).filter((n): n is AppliesToNote => n !== null);
+  const codeNotes = perTarget
+    .map((t) => t.impact.note)
+    .filter((n): n is ImpactNote => n !== null);
+  const memoryCodeNotes = perTarget.map((t) => t.applies).filter((n): n is AppliesToNote => n !== null);
+  // #606: one `code_tool_call` row per delivered block, and one per dedupe hit
+  // — the two silences that are worth telling apart. Fire-and-forget: the row
+  // is the measurement, not part of the answer.
+  for (const t of perTarget) {
+    if (t.impact.note === null && !t.impact.dedupeHit) continue;
+    void logDeliveredBlock({
+      sessionId: payload.session_id ?? null,
+      lane: "write",
+      repo: t.repoRoot,
+      dedupeHit: t.impact.dedupeHit,
+      ...(t.impact.note !== null
+        ? {
+            basis: t.impact.note.basis,
+            files: t.impact.note.files,
+            truncated: t.impact.note.truncated,
+            tokensEst: t.impact.note.tokensEst,
+            tookMs: t.impact.note.tookMs,
+          }
+        : {}),
+    });
+  }
   for (const n of [...codeNotes, ...memoryCodeNotes]) {
     const key = n.dedupeKey;
     stateDeltas.push((s) => bumpShown(s, key, Date.now()));
@@ -431,10 +467,17 @@ export async function runWriteLane(
     // teurer Hook-Aufruf Memories oder Code-Kontext geliefert hat.
     ...(codeNotes.length > 0
       ? {
-          code_block_tokens_est: codeNotes.reduce((n, c) => n + Math.ceil(c.note.length / 4), 0),
-          code_dependents: codeNotes.reduce((n, c) => n + c.dependents, 0),
+          code_block_tokens_est: codeNotes.reduce((n, c) => n + c.tokensEst, 0),
+          // #606: candidate FILES of the symbol-level answer, where this used
+          // to be the dependents of the whole file. The field keeps its name
+          // so the ROI series stays one series across the change — what it
+          // counts is still "files this block named as possibly breaking".
+          code_dependents: codeNotes.reduce((n, c) => n + c.files, 0),
           code_stale: codeNotes.some((c) => c.stale),
           code_listed: codeNotes.flatMap((c) => c.listed),
+          // #606: how sharp each block was. Without it a drop in reach cannot
+          // be told from a repository whose edits all land outside every symbol.
+          code_basis: codeNotes.map((c) => c.basis),
         }
       : {}),
     code_targets: targets,
@@ -642,6 +685,8 @@ interface HookCallTelemetry {
   /** #588: die im Block namentlich genannten Abhängigen, absolut — für
    *  `dependents_block_followed_by_edit`. */
   code_listed?: string[];
+  /** #606: `basis` je ausgegebenem Block — symbols | diff | whole_file. */
+  code_basis?: string[];
   /** #588: die Zieldateien dieses Aufrufs, absolut, die Gegenseite des Joins. */
   code_targets?: string[];
   /** #579: Tokens des `affects_files`-Blocks, falls einer ausging. */

@@ -248,6 +248,20 @@ export function renderCodeAwareness(s: CodeAwarenessStats): string[] {
     }
     lines.push(`    latency: p50 ${t.p50.toFixed(1)}ms, p90 ${t.p90.toFixed(1)}ms · ${t.filesNamed} file(s) named`);
   }
+  // #606: the delivered half. Its own lines, not a row in the tool table — a
+  // block Recall injected is not evidence that anyone calls the tool.
+  const d = s.delivered;
+  if (d.blocks > 0 || d.dedupeHits > 0) {
+    lines.push(
+      `  delivered blocks: ${d.blocks} injected, ${d.dedupeHits} suppressed as already delivered this session`,
+    );
+    if (d.byLane.length > 0) lines.push(`    by lane: ${list(d.byLane)}`);
+    if (d.byBasis.length > 0) lines.push(`    by basis: ${list(d.byBasis)}`);
+    lines.push(
+      `    cost: ${d.tokensTotal} tokens total, ${d.tokensMedian} median · ${d.filesNamed} file(s) named`,
+    );
+    lines.push(`    latency: p50 ${d.p50.toFixed(1)}ms, p90 ${d.p90.toFixed(1)}ms`);
+  }
   if (s.refresh.started > 0 || s.refresh.ok > 0) {
     lines.push(
       `  graph refresh: ${s.refresh.started} run(s) — ${s.refresh.ok} ok, ${s.refresh.failed} failed, ` +

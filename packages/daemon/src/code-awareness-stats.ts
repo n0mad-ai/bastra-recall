@@ -40,6 +40,10 @@ export interface CodeEventRow {
   detail?: unknown;
   external_total?: unknown;
   external_resolved?: unknown;
+  /** #606 — `delivered` rows only. */
+  delivered_lane?: unknown;
+  tokens_est?: unknown;
+  dedupe_hit?: unknown;
 }
 
 export interface Counted {
@@ -92,10 +96,41 @@ export interface RepoRow {
   externalResolved: number | null;
 }
 
+/**
+ * The blocks Recall DELIVERED without being asked (#606) — the same
+ * `find_affected_files` answer, arriving through a hook lane instead of a tool
+ * call.
+ *
+ * Counted apart from `tools` on purpose. The question the tool row answers is
+ * "does anyone call this?", and folding deliveries into it would answer that
+ * question with Recall's own injections — the one number that cannot be
+ * evidence for it.
+ */
+export interface DeliveredStats {
+  /** Blocks that actually reached a transcript. */
+  blocks: number;
+  /** Answers suppressed because the same one had already gone out this session. */
+  dedupeHits: number;
+  /** prompt | write. */
+  byLane: Counted[];
+  /** symbols | diff | whole_file — how sharp the delivered answers were. */
+  byBasis: Counted[];
+  /** Candidate files named across all delivered blocks. */
+  filesNamed: number;
+  /** Estimated tokens spent on them — the cost side. */
+  tokensTotal: number;
+  tokensMedian: number;
+  /** Wall clock inside the block builder, milliseconds. */
+  p50: number;
+  p90: number;
+}
+
 export interface CodeAwarenessStats {
   /** Rows seen at all — 0 means the window has no code-awareness events. */
   events: number;
   tools: ToolStats[];
+  /** #606: the delivered half, never mixed into `tools`. */
+  delivered: DeliveredStats;
   refresh: RefreshStats;
   repos: RepoRow[];
 }
@@ -206,9 +241,38 @@ export function aggregateCodeAwareness(rows: readonly CodeEventRow[]): CodeAware
     return r;
   };
 
+  const delivered = {
+    blocks: 0,
+    dedupeHits: 0,
+    lanes: new Map<string, number>(),
+    bases: new Map<string, number>(),
+    filesNamed: 0,
+    tokens: [] as number[],
+    took: [] as number[],
+  };
+
   for (const e of rows) {
     if (e.kind === "code_tool_call") {
       events++;
+      // #606: a delivered block is the same answer, not a call. It gets its own
+      // fold; letting it into `tools` would make "does anyone call this tool?"
+      // answer itself with Recall's own injections.
+      if (str(e.surface) === "delivered") {
+        bump(delivered.lanes, str(e.delivered_lane) ?? "unknown");
+        if (e.dedupe_hit === true) {
+          delivered.dedupeHits++;
+          continue;
+        }
+        delivered.blocks++;
+        const basis = str(e.basis);
+        if (basis !== null) bump(delivered.bases, basis);
+        delivered.filesNamed += num(e.files) ?? 0;
+        const tokens = num(e.tokens_est);
+        if (tokens !== null) delivered.tokens.push(tokens);
+        const deliveredTook = num(e.took_ms);
+        if (deliveredTook !== null) delivered.took.push(deliveredTook);
+        continue;
+      }
       const name = str(e.tool) ?? "(unknown)";
       let t = tools.get(name);
       if (t === undefined) {
@@ -279,6 +343,17 @@ export function aggregateCodeAwareness(rows: readonly CodeEventRow[]): CodeAware
           p90: quantile(t.took, 0.9),
         };
       }),
+    delivered: {
+      blocks: delivered.blocks,
+      dedupeHits: delivered.dedupeHits,
+      byLane: counted(delivered.lanes),
+      byBasis: counted(delivered.bases),
+      filesNamed: delivered.filesNamed,
+      tokensTotal: delivered.tokens.reduce((a, b) => a + b, 0),
+      tokensMedian: quantile(delivered.tokens, 0.5),
+      p50: quantile(delivered.took, 0.5),
+      p90: quantile(delivered.took, 0.9),
+    },
     refresh: {
       started,
       ok,

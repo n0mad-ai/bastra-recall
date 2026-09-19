@@ -45,6 +45,7 @@ import { idleStatuslineState } from "./statusline-feed.js";
 import { reportHinted } from "./hook-hinted.js";
 import { hookClient } from "./hook-surface.js";
 import { governContext } from "./context-governor.js";
+import { deliverPromptImpact } from "./code-graph/prompt-impact.js";
 import type { Prewarmer, PrewarmOutcome } from "./embedding-prewarm.js";
 import {
   bumpShown,
@@ -413,6 +414,17 @@ export async function runPromptLane(
   const sessionId = payload.session_id ?? "";
   const state = await loadSessionState(sessionId);
 
+  // #606: a change-impact question gets the graph's answer delivered before
+  // the first search runs. Started here so it overlaps the recall; gated twice
+  // (phrasing, then resolution against the graph) inside, so an ordinary
+  // prompt costs one regex pass and nothing else.
+  const impactPromise = deliverPromptImpact({
+    prompt,
+    cwd,
+    sessionId: payload.session_id ?? null,
+    session: state,
+  });
+
   // #371: in mode "none" the recall can only ever contribute a memory that
   // the user wired as `recall_mode: reflex` (the filter below) and that this
   // session has not already shown inside the 4h window (the dedup further
@@ -642,7 +654,13 @@ export async function runPromptLane(
   }
 
   const reflexBlock = reflexKept.length > 0 ? formatReflexBlock(reflexKept, project, client) : null;
-  const blocks = [reflexBlock, recallBlock].filter((b): b is string => b !== null);
+  const impact = await impactPromise;
+  // The impact block goes FIRST: it is the answer to what the user just asked,
+  // and it is there to be read before the first search, not after the memory
+  // hints. It never rides the recall backoff — it is not recall noise, it is a
+  // deterministic answer to an explicit question (same reasoning as the size
+  // note in the write lane).
+  const blocks = [impact.block, reflexBlock, recallBlock].filter((b): b is string => b !== null);
   const stdout =
     blocks.length === 0
       ? "{}"
@@ -659,9 +677,13 @@ export async function runPromptLane(
   // #539: the deltas run against the state as it is on disk when the lock is
   // taken, not against the snapshot read before the recall — the other four
   // lanes write the same file in the meantime.
-  if (recallHits.length > 0 || reflexKept.length > 0) {
+  if (recallHits.length > 0 || reflexKept.length > 0 || impact.dedupeKey !== null) {
     const recallIds = recallHits.map((h) => h.id);
+    const impactKey = impact.dedupeKey;
     await mutateSessionState(sessionId, (s) => {
+      // #606: booked only when the block actually reached the transcript, so a
+      // suppressed turn does not silence the next one.
+      if (impactKey !== null) bumpShown(s, impactKey);
       if (recallBlock) {
         recordSourceEmit(s, BACKOFF_SOURCE, recallIds, consumedForEmit);
       } else if (suppressed) {
@@ -708,6 +730,15 @@ export async function runPromptLane(
     hinted_ids: suppressed ? [] : [...recallHits, ...reflexKept].map((h) => h.id),
     hinted_types: suppressed ? [] : [...recallHits, ...reflexKept].map((h) => h.type),
     hint_tokens_est: blocks.length === 0 ? 0 : Math.ceil(blocks.join("\n").length / 4),
+    // #606: the code block's own cost and reach, separate from the memory
+    // hints — the ROI question is what the CODE context costs, and
+    // `hint_tokens_est` counts the whole injected document.
+    ...(impact.block !== null
+      ? {
+          code_block_tokens_est: impact.tokensEst,
+          code_basis: impact.basis === null ? [] : [impact.basis],
+        }
+      : {}),
     top_score: resp?.hits?.[0]?.score ?? null,
     latency_ms_total: Date.now() - startedAt,
     backoff_streak: backoffStreak,
@@ -936,6 +967,10 @@ interface PromptHookTelemetry {
    *  blocks, ~4 chars/token) — the cost side of the context tax (#354).
    *  0 when nothing reached stdout. */
   hint_tokens_est?: number;
+  /** #606: Tokens des zugestellten Change-Impact-Blocks, falls einer ausging. */
+  code_block_tokens_est?: number;
+  /** #606: `basis` des Blocks — symbols | whole_file. */
+  code_basis?: string[];
   top_score: number | null;
   latency_ms_total: number;
   /** #161: resolved streak of this event's backoff decision. NOT a

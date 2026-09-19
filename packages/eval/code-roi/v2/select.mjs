@@ -16,11 +16,24 @@
  * no run at all and no error (#582). The names now come from `ARM_IDS`, and
  * the runner refuses an unknown one loudly.
  *
- * Usage: CODE_ROI_OUT=<dir> node select.mjs [--arms A,B,prefilled]
+ * WHICH REGISTRATION (#606). There are two now, with different arms, and the
+ * one a sample belongs to is named on the command line (`--registration`) and
+ * written into the scenario file, so every later step — runner, preflight,
+ * scorer — reads it off the archive instead of assuming. The pilot exclusion
+ * comes from THAT registration: #606's sample is mined from bastra-recall,
+ * whose pilot commits are not the ones registration 6 names for bastra-io.
+ *
+ * Usage: CODE_ROI_OUT=<dir> node select.mjs [--registration <id>] [--arms A,B,prefilled]
  */
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { writableOut } from "./archive.mjs";
+import {
+  DEFAULT_REGISTRATION_ID,
+  armIdsOf,
+  excludedPilotCommitsOf,
+  loadRegistrationById,
+} from "./registration.mjs";
 
 /**
  * The pilot commits the registration excludes. Read from the registration
@@ -28,17 +41,19 @@ import { writableOut } from "./archive.mjs";
  * them would be a scenario the tooling was already tuned against.
  */
 export function excludedPilotCommits(reg = REGISTRATION) {
-  return new Set(reg?.sample?.excluded_pilot?.commits ?? []);
+  return excludedPilotCommitsOf(reg);
 }
 
-const REGISTRATION = JSON.parse(
-  readFileSync(new URL("../../registrations/code-awareness-change-impact.json", import.meta.url), "utf8"),
-);
+const REGISTRATION = loadRegistrationById();
 const OUT = writableOut();
 const SEED = Number(process.env.CODE_ROI_SEED ?? 20260918); // registration: statistics.seed
 
-/** The arms a scenario is run through, in the order the runner understands. */
-export const ARM_IDS = ["A", "B", "prefilled"];
+/**
+ * The arms of the change-impact registration, in the order the runner
+ * understands — the frozen v6 list, kept as the default every caller that does
+ * not name a registration still gets.
+ */
+export const ARM_IDS = armIdsOf(REGISTRATION);
 
 /** mulberry32 — small, seedable, and stable across Node versions. */
 export function rng(seed) {
@@ -103,9 +118,17 @@ export function shuffled(items, next) {
 }
 
 function main() {
+  const argOf = (flag) => {
+    const i = process.argv.indexOf(flag);
+    return i > 0 ? process.argv[i + 1] : null;
+  };
+  const registrationId = argOf("--registration") ?? DEFAULT_REGISTRATION_ID;
+  const registration = registrationId === DEFAULT_REGISTRATION_ID ? REGISTRATION : loadRegistrationById(registrationId);
+  const armIds = armIdsOf(registration, registrationId);
+
   const runs = join(OUT, "runs");
   const ranAlready = (d) =>
-    [...ARM_IDS, "control", "treatment"].some((arm) => existsSync(join(runs, d, `${arm}.jsonl`)));
+    [...armIds, "control", "treatment"].some((arm) => existsSync(join(runs, d, `${arm}.jsonl`)));
   if (existsSync(runs) && readdirSync(runs).some(ranAlready)) {
     throw new Error("arms have already run — the scenario file is frozen");
   }
@@ -114,8 +137,9 @@ function main() {
     .filter(Boolean)
     .map((l) => JSON.parse(l))
     .filter((c) => c.accepted);
-  // Pilot scenarios never enter a registered sample.
-  const excluded = excludedPilotCommits();
+  // Pilot scenarios never enter a registered sample — the ones THIS
+  // registration names, not the ones another one excluded from another repo.
+  const excluded = excludedPilotCommitsOf(registration);
   const afterPilot = accepted.filter((c) => !excluded.has(c.commit));
   const dropped = accepted.length - afterPilot.length;
 
@@ -128,15 +152,15 @@ function main() {
     return true;
   });
 
-  const pooling = REGISTRATION?.sample?.pooling ?? {};
+  const pooling = registration?.sample?.pooling ?? {};
   const byRepo = new Map();
   for (const c of unique) {
-    const repo = c.repo ?? REGISTRATION?.population?.repository_path ?? "";
+    const repo = c.repo ?? registration?.population?.repository_path ?? "";
     if (!byRepo.has(repo)) byRepo.set(repo, []);
     byRepo.get(repo).push(c);
   }
   const order = pooling.allowed === true ? (pooling.repo_order ?? [...byRepo.keys()]) : [...byRepo.keys()].slice(0, 1);
-  const target = REGISTRATION?.sample?.min_scenarios ?? unique.length;
+  const target = registration?.sample?.min_scenarios ?? unique.length;
   // The cap bounds one repository's share OF A POOL. When the first repository
   // alone reaches the minimum there is no pool, so there is nothing to bound —
   // capping there would shrink a sufficient sample into an underpowered one.
@@ -164,17 +188,34 @@ function main() {
     subject: c.subject,
     diff: c.diff,
     truth: c.truth,
+    // Carried only when the miner produced them (#606's test-based truth).
+    // A scenario file of the v3/v6 shape keeps exactly the fields it had:
+    // `undefined` values are dropped by JSON.stringify, so the written file is
+    // unchanged for a sample whose candidates carry none of this.
+    truthSource: c.truthSource,
+    truthRule: c.truthRule,
+    brokenTests: c.brokenTests,
+    // The BROKEN TEST FILES — not truth files — whose break ran over something
+    // an import graph cannot see: the changed file is not in the test's static
+    // import closure, so the coupling was a route, an event name, a template
+    // string or a config key. Reported apart from import and call coupling and
+    // never gated (#606). Named for what it holds, because the miner's own
+    // field name (`blindSpots`) reads as if it listed truth files.
+    blindSpotTests: c.blindSpots,
     adjudication: [],
-    armOrder: shuffled(ARM_IDS, next),
+    armOrder: shuffled(armIds, next),
   }));
   writeFileSync(
     join(OUT, "scenarios.json"),
     JSON.stringify(
       {
-        registration_version: REGISTRATION?.registration_version ?? 5,
+        // WHICH registration this archive belongs to. Everything downstream
+        // reads it from here rather than assuming the change-impact one.
+        registration: registrationId,
+        registration_version: registration?.registration_version ?? 5,
         seed: SEED,
         range_end: process.env.CODE_ROI_RANGE_END ?? null,
-        arms: ARM_IDS,
+        arms: armIds,
         repos: Object.fromEntries(takenPerRepo),
         scenarios,
       },

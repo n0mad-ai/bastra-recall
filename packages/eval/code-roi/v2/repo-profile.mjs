@@ -28,6 +28,8 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { isTestFile } from "./test-truth.mjs";
+import { detectRunner } from "./test-runner.mjs";
 
 /** Upper bound on workspace packages examined. */
 const MAX_PACKAGES = 200;
@@ -41,6 +43,9 @@ const MAX_PACKAGES = 200;
  * @property {string[]} tsconfigs     repo-relative tsconfig paths to typecheck
  * @property {string[]} buildFirst    repo-relative dirs that must be built before typechecking
  * @property {string[]} sourceGlobs   where a CHANGED file must live to be a scenario
+ * @property {string} truth           "types" (tsc) or "tests" (the repo's own suite)
+ * @property {RegExp} sourceExt       extensions a changed file may carry
+ * @property {{kind: string, reporter: string, script: string}|null} testRunner
  */
 
 /** Read one JSON manifest, or null. */
@@ -111,7 +116,7 @@ function dirsOf(root, glob) {
  * package whose `main` points at `src/` is consumed as source and needs
  * nothing. That single rule is the difference between the two repositories.
  */
-export function repoProfile(root) {
+export function repoProfile(root, { truth = "types" } = {}) {
   const packageDirs = [];
   for (const glob of workspaceGlobs(root)) {
     for (const dir of dirsOf(root, glob)) {
@@ -149,15 +154,54 @@ export function repoProfile(root) {
     tsconfigs,
     buildFirst,
     // A scenario's changed file must be production source inside a workspace
-    // package — never a test, never a config, never generated output.
-    sourceGlobs: packageDirs.map((d) => `${d}/`),
+    // package — never a test, never a config, never generated output. A
+    // repository without workspaces (the common shape outside a monorepo) has
+    // no package dirs to name, so its source roots are derived instead.
+    sourceGlobs: packageDirs.length > 0 ? packageDirs.map((d) => `${d}/`) : sourceRoots(root),
+    truth,
+    // JavaScript only becomes a scenario file where JavaScript is what the
+    // truth is built from. `tsc+tests` still typechecks, so it keeps the
+    // TypeScript-only predicate the v3 and v4 archives were mined with.
+    sourceExt: truth === "tests" ? /\.[cm]?[jt]sx?$/ : /\.tsx?$/,
+    testRunner: usesTests(truth) ? detectRunner(root) : null,
   };
+}
+
+/** True for the truth modes that run the repository's own suite. */
+export function usesTests(truth) {
+  return truth === "tests" || truth === "tsc+tests";
+}
+
+/** True for the truth modes that ask tsc. */
+export function usesTypes(truth) {
+  return truth === "types" || truth === "tsc+tests";
+}
+
+/** Top-level directories that hold source, for a repository without workspaces. */
+function sourceRoots(root) {
+  const skip = new Set(["node_modules", "docs", "doc", "dist", "build", "out", "coverage", "public", "assets"]);
+  try {
+    return readdirSync(root, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith(".") && !skip.has(e.name) && !isTestFile(`${e.name}/`))
+      .map((e) => `${e.name}/`)
+      .sort();
+  } catch {
+    return [];
+  }
 }
 
 /** True when `file` is a changed file a scenario may be built on. */
 export function isScenarioFile(profile, file) {
-  if (!/\.tsx?$/.test(file) || /\.d\.ts$/.test(file)) return false;
-  if (/(^|\/)__tests__\//.test(file) || /\.(test|spec)\.tsx?$/.test(file)) return false;
+  const ext = profile.sourceExt ?? /\.tsx?$/;
+  if (!ext.test(file) || /\.d\.ts$/.test(file)) return false;
+  // The type-based path keeps the exact predicate the v3 and v4 archives were
+  // mined with. The wider one (a `tests/` directory anywhere) belongs to the
+  // test-based path, where a file under `tests/` is the evidence, not the
+  // subject, and must never become a scenario's changed file.
+  const isTest = usesTests(profile.truth)
+    ? isTestFile(file)
+    : /(^|\/)__tests__\//.test(file) || /\.(test|spec)\.tsx?$/.test(file);
+  if (isTest) return false;
   if (/(^|\/)(dist|build|out|node_modules)\//.test(file)) return false;
   return profile.sourceGlobs.some((g) => file.startsWith(g));
 }
