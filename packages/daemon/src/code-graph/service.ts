@@ -91,6 +91,39 @@ export function observeCodeGraphRefresh(fn: RefreshObserver | null): void {
   refreshObserver = fn;
 }
 
+/**
+ * The bounded set of reasons a refresh row may carry, and nothing else (#582
+ * review).
+ *
+ * `RefreshEvent.detail` is free text assembled upstream: `graphify-missing:
+ * /Users/<name>/.bastra/bin/graphify`, `locked: /Users/<name>/Projekte/<repo>/
+ * .bastra-code`, and — the one that decided this — `failed: exit code 1:` plus
+ * Graphify's whole stderr. The event type had said "never a path or a command
+ * line" since it was written; the observer passed it through anyway, so home
+ * directory, repository layout and whatever a third-party binary chose to
+ * print all landed in telemetry. The repository name is already carried by
+ * `repo`, deliberately as its last two segments.
+ *
+ * So the text is mapped to a code and never forwarded. An unrecognised detail
+ * becomes `other` rather than itself: a classifier that falls back to the raw
+ * string is a classifier that leaks exactly the cases nobody anticipated.
+ */
+export function detailCode(detail: string | undefined): string | undefined {
+  if (detail === undefined) return undefined;
+  if (/^not enabled$/.test(detail)) return "not_enabled";
+  if (/^given up$/.test(detail)) return "given_up";
+  if (/unsupported-platform/.test(detail)) return "unsupported_platform";
+  if (/graphify-missing/.test(detail)) return "binary_missing";
+  if (/timeout|no result after/.test(detail)) return "timeout";
+  if (/^locked|failed: locked/.test(detail)) return "locked";
+  if (/\baborted\b/.test(detail)) return "aborted";
+  const killed = /killed by (SIG[A-Z]+)/.exec(detail);
+  if (killed !== null) return `graphify_killed_${killed[1].toLowerCase()}`;
+  const exit = /exit code (-?\d+)/.exec(detail);
+  if (exit !== null) return `graphify_exit_${exit[1]}`;
+  return "other";
+}
+
 function reportRefresh(event: RefreshEvent): void {
   if (event.outcome === "started") {
     startedAt.set(event.repoRoot, Date.now());
@@ -106,12 +139,13 @@ function reportRefresh(event: RefreshEvent): void {
   // (#582). Carried on a successful build, where it has just been re-derived.
   const stats =
     event.outcome === "ok" ? (codeGraphCache().get(event.repoRoot)?.externalStats ?? null) : null;
+  const detail = detailCode(event.detail);
   try {
     refreshObserver({
       repo: shortRepo(event.repoRoot),
       reason: event.reason,
       outcome: event.outcome,
-      ...(event.detail !== undefined ? { detail: event.detail } : {}),
+      ...(detail !== undefined ? { detail } : {}),
       ...(event.outcome !== "started" && began !== undefined
         ? { duration_ms: Date.now() - began }
         : {}),

@@ -1,10 +1,15 @@
 import { describe, it, before, after } from "node:test";
 import { strict as assert } from "node:assert";
 import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadGraph, graphDirOf, GRAPH_FILE_NAME, type LoadedGraph } from "../src/code-graph/reader.js";
+import {
+  loadGraph,
+  graphDirOf,
+  GRAPH_FILE_NAME,
+  type LoadedGraph,
+} from "../src/code-graph/reader.js";
 import {
   affectedHits,
   affectedResult,
@@ -21,7 +26,11 @@ import { externalRefLines } from "../src/code-graph/external-refs.js";
 import { createHash } from "node:crypto";
 import { CodeGraphCache } from "../src/code-graph/cache.js";
 import { affectedTools, findAffectedFiles } from "../src/code-graph/find-affected-files.js";
-import { serverInstructions } from "../src/mcp-instructions.js";
+import {
+  CODE_AWARENESS_CLAUSE,
+  SERVER_INSTRUCTIONS,
+  serverInstructions,
+} from "../src/mcp-instructions.js";
 
 /**
  * A node in Graphify's real shape — the same helper the reader test uses,
@@ -329,6 +338,38 @@ describe("an unavailable answer is honest about why", () => {
       "63a1bac0f13ff91069ca72dde2a5a8be859922df0c83e85d89c30594220bd07c",
       "server instructions changed — arms.frozen_surface in the registration no longer matches",
     );
+    // THE PARTS, SEPARATELY. The combined hash alone let the two come apart:
+    // 2f9dc47 rewrote the code clause, updated the combined hash and left
+    // `code_clause_sha256` at version 5's value, and nothing said so for a day
+    // (#582 review). A hash that is only ever checked as a sum hides which half
+    // moved, which is the one thing these fields exist to say.
+    assert.equal(
+      sha(SERVER_INSTRUCTIONS),
+      "0b92d332e295c9ce32d925bfc53d5186afb1c6f2073d8611bacfaea5496ce78b",
+      "the memory policy changed — memory_part_sha256 in the registration no longer matches",
+    );
+    assert.equal(
+      sha(CODE_AWARENESS_CLAUSE),
+      "df5bea2ca78a20343767657b0165983d8f23b4f9e1b1a34be86a663b7e041348",
+      "the code clause changed — code_clause_sha256 in the registration no longer matches",
+    );
+  });
+
+  it("the registration carries the very hashes this test pins (#582 review)", async () => {
+    // The drift above was between the FILE and the code, not inside either, so
+    // a test that only pins the code would not have caught it either.
+    const reg = JSON.parse(
+      await readFile(
+        new URL("../../eval/registrations/code-awareness-change-impact.json", import.meta.url),
+        "utf8",
+      ),
+    ) as { arms: { frozen_surface: Record<string, string> } };
+    const sha = (v: string) => createHash("sha256").update(v).digest("hex");
+    const frozen = reg.arms.frozen_surface;
+    assert.equal(frozen.server_instructions_sha256, sha(serverInstructions(true)));
+    assert.equal(frozen.memory_part_sha256, sha(SERVER_INSTRUCTIONS));
+    assert.equal(frozen.code_clause_sha256, sha(CODE_AWARENESS_CLAUSE));
+    assert.equal(frozen.tool_definition_sha256, sha(JSON.stringify(affectedTools[0])));
   });
 });
 
