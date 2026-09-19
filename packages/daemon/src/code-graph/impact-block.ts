@@ -96,6 +96,24 @@ const BUDGET_MS = 120;
 /** Prefix that keeps the block's dedupe key out of the memory-id namespace. */
 const DEDUPE_PREFIX = "code:";
 
+/**
+ * The write lane's two lead lines.
+ *
+ * EXPORTED, not inlined, because the #606 measurement renders this very block
+ * offline (`packages/eval/code-roi/v2/delivered-block.mjs`) and a lead line
+ * copied into the harness would be a lead line that can drift from the
+ * product's. The arm has to be served the block the lane would serve, down to
+ * its first sentence.
+ */
+export const WRITE_LEAD_SYMBOLS =
+  "Code graph, one hop from the symbols this change touches. " +
+  "Candidates, not proof — the graph carries no type information.";
+
+export const WRITE_LEAD_WHOLE_FILE =
+  "Code graph, one hop from EVERY symbol in this file — the pending change " +
+  "touches something outside them all (an import, top-level code), which " +
+  "narrows to nothing trustworthy. Candidates, not proof.";
+
 export interface ImpactNoteOptions {
   /** The file the tool call is about to write, absolute. */
   filePath: string;
@@ -211,13 +229,7 @@ export async function impactNote(opts: ImpactNoteOptions): Promise<ImpactResult>
     hits: shown,
     total: result.hits.length,
     stale,
-    lead:
-      selection.basis === "whole_file"
-        ? "Code graph, one hop from EVERY symbol in this file — the pending change " +
-          "touches something outside them all (an import, top-level code), which " +
-          "narrows to nothing trustworthy. Candidates, not proof."
-        : "Code graph, one hop from the symbols this change touches. " +
-          "Candidates, not proof — the graph carries no type information.",
+    lead: selection.basis === "whole_file" ? WRITE_LEAD_WHOLE_FILE : WRITE_LEAD_SYMBOLS,
   });
   if (Date.now() - startedAt > budgetMs) return SILENT;
   return {
