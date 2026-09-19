@@ -100,28 +100,27 @@ export async function frozenSurfaceHashesFromDist(distDaemonDir = DIST_DAEMON_DI
 }
 
 /**
- * The DELIVERED surface: the block text a lane would emit, and the compiled
- * modules that produce it (#606).
+ * The DELIVERED surface: the prompt-lane block and every compiled code-graph
+ * module that can influence whether it fires or what it says (#606).
  *
  * `block_template_sha256` is the rendering function itself, so a reworded lead
  * or a changed attribute list is caught even when the rest of the module moves
- * around it; the three file hashes bind the whole path — `impact-block.js`
- * renders, `pending-diff.js` is how the lane turns a tool call into the diff
- * that reaches it, and `affected.js` is the query underneath both. Arm D's
- * block is the product's or it is nothing.
+ * around it. The bundle hash binds ALL `code-graph/*.js` files in sorted order:
+ * intent resolution, cache/reader indexes, affected traversal, narrowing and
+ * rendering are one observed surface. Pinning only the three top-level files
+ * misses changes in `diff-lines`, `symbol-spans`, `reader` and their peers.
  */
 export async function deliveredSurfaceHashesFromDist(distDaemonDir = DIST_DAEMON_DIR) {
   const { renderImpactBlock } = await import(`${distDaemonDir}/code-graph/impact-block.js`);
   const sha = (v) => createHash("sha256").update(v).digest("hex");
-  const files = ["code-graph/impact-block.js", "code-graph/pending-diff.js", "code-graph/affected.js"];
+  const files = readdirSync(join(distDaemonDir, "code-graph"))
+    .filter((f) => f.endsWith(".js"))
+    .sort()
+    .map((f) => `code-graph/${f}`);
+  const bundle = files.map((rel) => `${rel}\0${readFileSync(join(distDaemonDir, rel))}`).join("\0");
   return {
     block_template_sha256: sha(renderImpactBlock.toString()),
-    ...Object.fromEntries(
-      files.map((rel) => [
-        `${rel}.sha256`,
-        sha(readFileSync(join(distDaemonDir, rel))),
-      ]),
-    ),
+    code_graph_bundle_sha256: sha(bundle),
   };
 }
 
@@ -191,6 +190,13 @@ export async function preflightBuild({
   registrationId = DEFAULT_REGISTRATION_ID,
   registration = loadRegistration(registrationId),
 } = {}) {
+  if (registration.status === "numbers_registered_population_pending") {
+    return {
+      ok: false,
+      reason: "population_pending",
+      message: `${registrationId}: the amended truth rule has not been re-mined and frozen; no arm may start`,
+    };
+  }
   const headSha = gitHeadSha(repoRoot);
   const distRevision = readBuildRevision(distDaemonDir);
   if (distRevision === null) {

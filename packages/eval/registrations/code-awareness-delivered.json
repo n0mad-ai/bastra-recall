@@ -1,10 +1,11 @@
 {
-  "$comment": "Pre-registration of the DELIVERED change-impact measurement (#606, epic #572). Supersedes nothing: registration_version 6 of code-awareness-change-impact.json measured the OFFERED surface and is complete (adoption pass 32/40, effect fail, recall gain 0 because grep already reached 100 % on that population). This one asks the question that result left open, on a population where it can be asked. Question, arms, thresholds, verdicts, truth rule and population were fixed BEFORE the first arm ran; the population was mined, frozen and hashed first (see `population`), and the thresholds were decided by Daniel Nevoigt on 2026-09-19 after a review with Codex, with the v6 aggregate in view and NO scenario of this population looked at. Amending anything after the first arm invalidates the run: bump registration_version and say which version a report belongs to. Derived from code-awareness-delivered.draft.json, which is deleted with this file's creation — the draft's job was to make the two options arguable, and it is done.",
+  "$comment": "Pre-registration of the DELIVERED change-impact measurement (#606, epic #572). Supersedes nothing: registration_version 6 of code-awareness-change-impact.json measured the OFFERED surface and is complete. Version 2 fixes question, real prompt-lane treatment, thresholds, verdicts and truth rule BEFORE the first arm; its population is deliberately marked pending until it has been re-mined, adjudicated and hashed under tests/v2. Both select and runner refuse the pending state. Once that freeze is recorded, any later amendment invalidates the run and requires registration_version 3.",
   "schema_version": 1,
-  "registration_version": 1,
+  "registration_version": 2,
   "registered_at": "2026-09-19",
   "registered_by": "Claude Opus 5; option and thresholds decided by Daniel Nevoigt on 2026-09-19",
-  "status": "numbers_registered",
+  "status": "numbers_registered_population_pending",
+  "$comment_v2": "AMENDED BEFORE THE FIRST ARM after Codex counter-review: v1 combined the Write lane's diff-sharp content with the Prompt lane's pre-search timing, inferred unrelated production imports as test truth, and implemented block use as a fraction of candidate lines rather than the registered share of scenarios. No arm ran under v1. Version 2 calls the real prompt-lane content path, asks the test-aware question, scores broken test files directly, confirms failures mutated AND clean, and requires the population to be re-mined and frozen before status may return to numbers_registered.",
   "issue": 606,
   "epic": 572,
   "relates_to": "code-awareness-change-impact.json registration_version 6 — same unit, same isolation, same cost discipline, same build pin, a different channel and a different population. The two share arm A (grep) by construction, so their control arms are comparable; nothing else is.",
@@ -24,10 +25,10 @@
     },
     "D": {
       "name": "delivered",
-      "description": "The product's OWN Write/Edit block, rendered offline from `packages/daemon/dist` and placed in the prompt ahead of the question, unannounced — where the lane puts it. No MCP server, no server instructions, no tool to call: the whole claim of this arm is that nothing had to be asked for the answer to arrive. The block is produced by the product's `diffSymbols` → `affectedHits` → `narrowPackageHits` → `affectedResult` → `displayOrder` → `renderImpactBlock`, with the product's own lead lines and the product's display cap of MAX_IMPACT_FILES = 10. Nothing about the text is written by the harness.",
+      "description": "The product's OWN UserPromptSubmit block, produced by `promptImpactNote()` from `packages/daemon/dist` against the exact prompt arm A and D receive, with a warm graph cache and an empty session. It is placed before the question, unannounced, where that lane puts it. No MCP server, no server instructions and no harness-derived symbol list: the product's own intent gate, path/symbol resolver, ambiguity rule, query, wording and display cap decide whether and what is delivered.",
       "renderer": "packages/eval/code-roi/v2/delivered-block.mjs",
       "gated": true,
-      "$deviation_not_impactnote": "`impactNote()` itself is NOT called, and the three reasons are recorded here rather than left to the reader. (1) It reads the pending change out of a Write/Edit `tool_input` through `pending-diff.ts`; a scenario has a git diff, not a tool call, and rebuilding one as a whole-file Write would run through `unifiedDiff`'s single trimmed hunk, which is deliberately WIDER than the change — a change to two distant functions would arrive as one hunk spanning everything between them. The scenario diff read straight through `diffSymbols` is the narrow case, i.e. the block an agent gets when it edits with Edit rather than rewriting the file, and it is the same entry point `impactNote` reaches one line later. (2) The scenario tree is the commit's PARENT while the diff runs parent → commit, so the diff is handed through `diffForTree(diff, \"old\")` first, exactly as registration 6's prefilled arm does; `impactNote` has no way to be told this and should not, because in real use the working tree IS the old side. (3) Dedupe, the cold-cache path and the 120 ms lane budget are lane behaviour rather than block content, and an arm runs once per scenario in a fresh process, so a dedupe hit is impossible and a budget overrun would drop a block for a reason unrelated to the measurement. What this arm therefore does NOT measure is the lane's delivery RATE; that is the daemon's own decision and counting it would let the measurement answer itself.",
+      "$deviation_live_lane": "The graph cache is warmed before `promptImpactNote()` because cold-start availability is a daemon lifecycle property, not block usefulness. Everything after warm-up is the product path: the intent gate may stay silent, ambiguity may stay silent and the 120 ms budget may drop a late result. Dedupe cannot fire because every arm is a fresh session.",
       "$silence_is_a_result": "Where the product would be silent — a file the graph does not index, a change nothing depends on — no block is rendered and the arm runs on the bare prompt. Those scenarios are counted in the run, excluded from the block-use denominator, and listed by id in the report (`use.scenariosWithoutBlock`). A silence scored as 0 use would read as 'the block was ignored', which is a different finding."
     },
     "P": {
@@ -46,12 +47,10 @@
     "arm_order": "randomized per scenario by the registered seed, written into the scenario file before the first run",
     "frozen_surface": {
       "kind": "delivered_block",
-      "$comment": "What arm D is served, pinned so a later edit cannot quietly change what was measured. Hashes are of the BUILT artefacts in packages/daemon/dist, recomputed by the runner's preflight on every invocation and aborting the helping on any drift. `block_template_sha256` is `renderImpactBlock.toString()` — the block's own text template, so a reworded lead or a changed attribute is caught even when the rest of the module moves around it. The three file hashes bind the whole path: impact-block.js renders, pending-diff.ts is how the lane turns a real tool call into the diff that reaches it (not on the offline rendering path, and pinned anyway, because a change there changes what the product would deliver), affected.js is the query underneath both.",
+      "$comment": "What arm D is served, pinned so a later edit cannot quietly change what was measured. `block_template_sha256` pins the final renderer; `code_graph_bundle_sha256` hashes every built `code-graph/*.js` artefact in sorted order, covering the prompt intent/resolver, cache/reader, symbol spans, diff parser, affected traversal, narrowing and rendering. The earlier three-file list missed transitive modules whose changes alter the answer.",
       "block_template": "packages/daemon/src/code-graph/impact-block.ts -> renderImpactBlock",
       "block_template_sha256": "f5c3b0e967adfdf3ec816f4bc4f5a840612c65f94bf216f83f719e26f623f9d4",
-      "code-graph/impact-block.js.sha256": "80d1f621297f63426d5866e693eb0be89749a14919ee7baf0daaadd3bb398fb1",
-      "code-graph/pending-diff.js.sha256": "9dd8109aef1dec91525bf2fc3345e8e67c52243b07d962c7e5faa1facbc6f00d",
-      "code-graph/affected.js.sha256": "e1cf29f75cda06d7af1bea73f346934cf2fc392cf6bb0605a87e5ca9c8c7e043",
+      "code_graph_bundle_sha256": "79bf0493670494a5386b0dc15a4471dde992427944d5c94cb7bb3886930f327e",
       "not_tuned_on_this_population": "The block's wording, its caps and its narrowing rules were arrived at on the BURNED v3 scenarios (~/.bastra/eval/code-roi-v2), whose 45 files are excluded from this population at file level. No scenario of this population informed a word of it.",
       "display_cap": 10,
       "$comment_cap": "MAX_IMPACT_FILES in impact-block.ts. The candidate SET is capped at 40 by MAX_AFFECTED_FILES in affected.ts and that cap is silent in the text — a known wording bug recorded in `product_todos` and deliberately NOT fixed before the run, so the measurement is of the block as it ships."
@@ -60,10 +59,10 @@
 
   "unit_and_truth": {
     "unit": "one historical change to one file, at most one scenario per file",
-    "truth_rule": "tests/v1",
+    "truth_rule": "tests/v2",
     "truth_mode": "tsc+tests",
-    "ground_truth": "A file is affected when EITHER (a) it carries a type error after applying exactly that file's diff that it did not carry before — errors compared as (file, TS code, message) multisets with line and column ignored, the v3/v6 rule unchanged — OR (b) it is attributed to a test case that passed on the parent tree and fails after the diff, confirmed by re-running that test file alone on the clean parent tree so flaky and order-dependent cases fall out. The changed file never counts towards its own truth, and no test file is ever a truth file.",
-    "attribution": "Per surviving test file, the FIRST matching rule, recorded per test file in `truthRules`: R1 `sibling-name` (a file in the test's import closure whose base name matches the test's), R2 `direct-import` (the repo-internal sources the test imports directly), R3 `closure` (the whole transitive internal import closure — only where nothing direct resolves, e.g. a barrel or a CLI).",
+    "ground_truth": "A file is affected when EITHER (a) it carries a new type error after applying exactly the changed file's diff, under the v3/v6 signature rule, OR (b) it is a TEST FILE containing a case that passed before, fails after the diff, fails again when that mutated test file runs alone, and passes again when the clean-parent test file runs alone. The changed file never counts towards its own truth. This A-B-B-A confirmation rejects already-red, flaky and suite-order-only evidence.",
+    "attribution": "R1 sibling-name / R2 direct-import / R3 closure remain recorded as diagnostic metadata and for the blind-spot classification only. They never create truth files: a test importing seven production modules proves that the test failed, not that all seven modules need adaptation.",
     "implementation": "packages/eval/code-roi/v2/test-truth.mjs; the import closure comes from its own source parser and NEVER from the code graph, so the population is blind to the tool being measured.",
     "$changed_from_v6": "This IS a change of ruler and it is stated rather than implied. v3 and v6 used the type oracle alone. On this population the type oracle produces nothing: over all 441 evaluable candidates `truthFromTypes` is empty, because the changes in bastra-recall's history that break types across packages are exactly the ones v3 and v4 already used as scenarios, and their 52 files are excluded here at file level. The type pass still runs and is still checked (it reproduces the adjudicated v3 truth of scenario S01 exactly), so what the run has is a TEST-truth population with a type branch that fires nowhere. A recall or precision figure from this run is therefore NOT directly comparable with v3's or v6's, and the report says so."
   },
@@ -71,14 +70,14 @@
   "metrics": {
     "primary": {
       "context": "Per arm, from the run's own `result` event: modelUsage[claude-sonnet-5].inputTokens + cacheReadInputTokens + cacheCreationInputTokens, all three summed because a cached token is a token the model read. Side models the client calls for itself are excluded. Fallback when modelUsage is absent: the run-level `usage` block summed the same way, with the row marked `usageFallback`. Compared as the MEDIAN of D against the median of A, over the scenarios both arms solved — the v6 rule, unchanged.",
-      "block_use": "Per scenario with a block: |files the block LISTED ∩ files on the final FILES: line| / |files the block listed|, averaged over those scenarios. The denominator is what the block printed, not every candidate it found: a file the display cap kept off the page cannot have been used, and counting it would measure the cap. Computed inside the isolated harness from its own rendered block and its own transcript — never from product telemetry and never from a self-report."
+      "block_use": "Binary per scenario with a block: 1 when the final FILES line names at least one file printed by the block, otherwise 0. The mean is therefore the registered share of delivered scenarios with evidence of use. False-positive block lines are handled by the precision guard, not counted a second time as non-use."
     },
     "guards": {
-      "precision": "share of the files an arm names that are in the truth set, micro-averaged; compared as the mean paired difference D − A",
-      "recall": "share of the truth files an arm's final answer names, micro-averaged; compared as the mean paired difference D − A with a bootstrap interval"
+      "precision": "per scenario, share of the files an arm names that are in the truth set; guarded as the mean paired difference D − A (macro over scenarios)",
+      "recall": "per scenario, share of the truth files an arm's final answer names; guarded as the mean paired difference D − A with a bootstrap interval (macro over scenarios)"
     },
     "secondary": [
-      "basis distribution (diff / whole_file) of the delivered blocks — a run of `whole_file` means the narrowing is not earning its keep on this sample",
+      "basis distribution (symbols / whole_file) of the delivered prompt blocks — a run of `whole_file` means prompt-level symbol resolution is not earning its keep on this sample",
       "block size in tokens (`tokensEst`), median and range",
       "scenarios where the product would have been SILENT, by id",
       "P against A on recall, and P against D on context — reported, gated by nothing",
@@ -105,7 +104,7 @@
     "context_ci_upper_max": 1.0,
     "$comment_context_ci": "The upper bound of a 95 % bootstrap interval on that ratio must be strictly below 1.0. This is what separates a repeatable saving from sampling noise, and it is the half of the context verdict that a 286-token block against a 24 000-token transcript can actually fail.",
     "block_use_min": 0.5,
-    "$comment_use": "Mean block use of at least 0.50 over the scenarios that received a block. It is the check that stops the context verdict from passing on a saving while the block is uniformly ignored — an ignored block that makes the run cheaper is a cheaper run, not a working feature. It stays weak evidence: grep may independently reach the same file, which is why precision, recall and the randomized arm order all remain part of the verdict. `followed by an edit` is deliberately not used — these scenarios ask for an impact ANSWER and perform no edit.",
+    "$comment_use": "At least 50 % of scenarios that received a block must name at least one of its files in the final answer. The use verdict also requires at least sample.min_scenarios scenarios WITH a block; one perfect use among many silent deliveries is underpowered, not a pass. This stops the context verdict from passing on a saving while the block is uniformly ignored. It stays weak evidence: grep may independently reach the same file, which is why precision, recall and randomized arm order remain part of the verdict.",
     "precision_loss_max": 0.05,
     "$comment_precision": "Mean paired difference in precision (D − A) not below −0.05. The failure mode is concrete and was measured offline: the block is a candidate list at ~47 % precision, and an agent that pastes it through inflates recall and hands the user a list half of which is noise. A floor, not a target — precision may drop a little, because following up a real candidate the agent would otherwise have missed is worth one file opened and closed.",
     "recall_guard_ci_lower": 0,
@@ -116,21 +115,22 @@
   "population": {
     "repository": "bastra-recall",
     "repository_path": "/Users/n0mad/Projekte/bastra-recall-hook (a worktree of the same repository; read-only — the miner works on `git archive` copies and creates no worktree in it)",
-    "archive": "~/.bastra/eval/code-roi-delivered-recall",
+    "archive": "~/.bastra/eval/code-roi-delivered-recall-v2",
     "why_this_repository": "CarNexus, the other candidate, has ZERO tracked test files (`.gitignore:8` = `tests/`), so a test-based truth is not expensive there but undefinable. bastra-io carried the v6 population and its `tsc` oracle is the one this population deliberately leaves behind. bastra-recall has 887 non-merge commits, 180 distinct candidate files after every exclusion, and a suite that runs green on an archived copy.",
     "why_not_headroom": "This is an ORDINARY population and that is the design, not a compromise: under option 2 'grep also gets there' is the control condition of the question, not a defect of the sample. No scenario was admitted or rejected on how the control arm did — the control arm has not run.",
     "tool_blindness": "The selection rule never consults the code graph, `find_affected_files`, the block, or anything derived from them. The import closure that drives test selection and attribution comes from `test-truth.mjs`'s own source parser.",
     "freeze": {
-      "$comment": "Mined, decided and hashed BEFORE the first arm. A population that can still move is not a population.",
-      "population_sha256": "53c4f6bc6262bca8cff1fe9b8e11b679f834ea48a098ee6d2023f391ee6965e9",
+      "$comment": "Mined, decided and hashed BEFORE the first arm. The hash covers ordered scenario identity plus truth files, broken tests, blind spots and truth-rule version — not merely commit/file. A population whose scoring targets can move under the same hash is not frozen.",
+      "population_sha256": "TO_BE_REMINED_UNDER_TESTS_V2",
       "exclusions_sha256": "df87de2c3566d64b890620a4c4f8eb52fdc2bf1f15077b998b38c1b0d3ad8318",
-      "repository_head": "0842d2760a33f6fbd59a8855ac1a328b3149717f",
+      "repository_head": "TO_BE_RECORDED_AFTER_REMINING",
       "seed": 20260918,
-      "truth_rule": "tests/v1",
+      "truth_rule": "tests/v2",
       "truth_mode": "tsc+tests",
-      "recorded_in": "~/.bastra/eval/code-roi-delivered-recall/population.json, which is authoritative; the figures below are quoted from it so nobody has to open the archive to read them."
+      "recorded_in": "PENDING: re-mine into the fresh archive ~/.bastra/eval/code-roi-delivered-recall-v2 under tests/v2, then record and hash population.json before select.mjs or any arm runs. The tests/v1 archive is invalidated development data and must not be resumed."
     },
-    "mined": {
+    "mined_v1_invalidated": {
+      "$comment": "Historical audit only. These figures came from tests/v1, whose inferred-production-file truth was rejected before the first arm. They MUST NOT populate a v2 scenario file.",
       "accepted": 45,
       "decided": 432,
       "rejected": {
@@ -155,7 +155,8 @@
         "packages/eval/": "the measurement apparatus itself, which is being worked on; its truth set would depend on the half-finished state on disk"
       }
     },
-    "blind_spots": {
+    "blind_spots_v1_invalidated": {
+      "$invalidated": "Historical audit only; recompute under tests/v2. Because each broken test is now its own truth file, the v2 scorer can partition blind and graph-reachable truth exactly even within a mixed scenario.",
       "$comment": "13 of the 45 scenarios (29 %) carry at least one truth file whose breakage ran over something no import graph holds — an HTTP route, an event name, a template string, a config key. They are REAL breakage and they stay in the truth set; they are also outside anything a symbol graph claims. The miner records a blind spot against the BROKEN TEST whose break ran outside the import closure, not against a truth file, and it does not store which truth files that test attributed — so the split is made PER SCENARIO (`blindSpotTests` in scenarios.json). That is exact here: in all 13 blind-spot scenarios EVERY broken test is a blind spot, so the whole truth set is blind-spot truth. The scorer reports `partialBlindSpotScenarios` — empty on this population — for the case where that stops holding, rather than dividing a truth set it cannot divide. NEITHER split is gated: the headline recall is the pooled one.",
       "scenarios": 13,
       "affected_test_files": 19,
@@ -166,7 +167,7 @@
 
   "sample": {
     "min_scenarios": 40,
-    "$comment_size": "45 mined, 40 the minimum for a verdict. Below 40 the report says `underpowered` for both verdicts rather than reaching one. A cost RATIO needs more scenarios than a recall difference, because median input tokens vary with transcript length for reasons that have nothing to do with the arm; 45 is what the history supplies after the exclusions and it is what is run.",
+    "$comment_size": "40 remains the minimum for a verdict; the v2 mined N is pending. Below 40 solved pairs the context verdict is underpowered, and below 40 delivered blocks the use verdict is underpowered. A cost ratio needs a real paired sample, while a use claim needs a real delivered sample — total scenario count cannot stand in for either.",
     "must_be_fresh": true,
     "excluded_pilot": {
       "$comment": "The two bastra-recall pilot commits of registration 4. Enforced mechanically by select.mjs, from THIS registration rather than from the change-impact one — same repository, so unlike in registration 6 the exclusion actually binds here.",
@@ -177,8 +178,8 @@
     },
     "adjudication": {
       "rule": "Unchanged from v3: a truth entry is removed only with a written reason recorded in the scenario's `adjudication` array, and a whole scenario only with `excluded: \"<reason>\"`. Both stay visible in the archive; nothing is ever dropped silently.",
-      "additional_check": "Because the truth is attributed from broken TESTS rather than read off a compiler, the test → source-file attribution is itself adjudicated: a sample of 10 scenarios was checked by hand before the first arm, with the reason for each recorded in code-awareness-delivered.population.md §12.",
-      "removals": "none — see population.md §12"
+      "additional_check": "Under tests/v2 the truth is the broken test file itself, confirmed mutated and clean. Re-adjudicate a frozen sample after re-mining; the v1 production-import attribution sample is not evidence for v2.",
+      "removals": "TO_BE_RECORDED after the v2 population is frozen"
     },
     "pooling": { "allowed": false, "$comment": "One repository supplies the sample, so there is nothing to pool and no cap to apply." }
   },
@@ -197,28 +198,23 @@
     "per_scenario_base": "the commit's parent SHA, recorded in the scenario file with the graph's sha256",
     "cost_ceiling_usd": 40,
     "$comment_ceiling": "Carried over from registration 6 unchanged, enforced by the runner and not merely documented at it: every arm's cost is summed — aborted attempts too, from their own `result` event where there is one and from the mean of the finished arms where there is not — and the next arm only starts while the ceiling is still out of reach. CODE_ROI_COST_CEILING may only LOWER it. A subscription plan pays for these runs; the ceiling is the computed value, not an invoice.",
-    "cost_estimate": "v6 spent 5.50 USD on 40 scenarios across three arms (~0.046 USD per arm). Three arms over 45 scenarios is the same shape: roughly 6 to 7 USD, well inside the ceiling.",
-    "stretched_run": "Taken in helpings across subscription-quota windows (`run-arms-v3.mjs --max-scenarios N`). Sample, scenario order, arm order and thresholds are unchanged by it. An arm counts as finished only on exit 0 AND is_error === false AND subtype === \"success\"; anything else is kept as `<arm>.jsonl.failed-<ts>` with a meta naming the reason, counts as not run, is charged against the ceiling anyway, and is re-run by the next helping. A report from a partially finished archive is labelled `incomplete (x/45)` and reaches no verdict below min_scenarios.",
+    "arm_estimate_usd": 0.046,
+    "cost_estimate": "v6 spent 5.5024 USD on 120 arms = 0.04585 USD per arm, rounded upward to the registered 0.046 USD abort estimate. Recompute the total estimate from the v2 mined N before changing status to numbers_registered; the enforced ceiling remains 40 USD.",
+    "stretched_run": "Taken in helpings across subscription-quota windows (`run-arms-v3.mjs --max-scenarios N`). Sample, scenario order, arm order and thresholds are unchanged by it. An arm counts as finished only on exit 0 AND is_error === false AND subtype === \"success\"; anything else is kept as `<arm>.jsonl.failed-<ts>` with a meta naming the reason, counts as not run, is charged against the ceiling anyway, and is re-run by the next helping. A partial report is labelled `incomplete (x/N)` and reaches no verdict below the relevant paired/delivered minimum.",
     "build_pin": {
       "$comment": "Carried over from registration 6 unchanged in mechanism, with this registration's own frozen surface. The runner imports packages/daemon/dist directly, so a helping that does not build first can serve a revision nobody reviewed — and a run taken in helpings across days can serve TWO of them under one report unless the pin forbids it.",
       "preflight": "Before touching an arm, every invocation checks in order: (1) dist/.build-revision exists, names `git rev-parse HEAD` exactly, and says dirty=false; (2) the worktree is clean over packages/daemon/src and packages/eval; (3) this registration's `arms.frozen_surface` hashes, recomputed from the BUILT dist artefacts, still match. Any failure aborts before an arm starts and names which check failed and why. `--preflight-only` runs the checks and exits.",
       "pin": "What passes is written to build-pin.json in the archive on the first helping — the HEAD sha, the dist revision stamp, the frozen-surface hashes, a sha256 of every dist artefact the arms are served from, and the REGISTRATION ID — and every later helping is checked against it field by field, aborting on any mismatch and never re-pinning. Each arm's meta carries the pin's signature, and the scorer reports `mixed_builds` if any transcript was not served by the pinned build.",
-      "start_command": "npm run build && CODE_ROI_OUT=~/.bastra/eval/code-roi-delivered-recall node packages/eval/code-roi/v2/run-arms-v3.mjs --max-scenarios 8"
+      "start_command": "npm run build && CODE_ROI_OUT=~/.bastra/eval/code-roi-delivered-recall-v2 node packages/eval/code-roi/v2/run-arms-v3.mjs --max-scenarios 8"
     },
     "frozen_archives": "~/.bastra/eval/code-roi-v2 (v3) and the v6 archives are never written by a script of this registration; archive.mjs refuses the frozen one outright."
   },
 
   "known_deviations": [
     {
-      "what": "The scenario prompt is UNCHANGED from registration 6 and asks which files 'would fail to type-check', while this population's truth is attributed from broken TESTS.",
-      "why_kept": "Changing the ruler and the prompt in one step would leave nothing comparable to v6, and the control arm reads the same sentence as the treatment arm, so the DIFFERENCE the thresholds gate is unaffected. What it can move is the LEVEL: an agent answering a type-check question may leave out a file whose only breakage is a failing assertion.",
-      "consequence": "Absolute recall and precision from this run are not comparable with v3 or v6, and the report must not present them as if they were. This is recorded before the run rather than discovered in it.",
-      "$open_for_daniel": "If the level matters more than the comparability, the prompt is the one thing to change — but only before the first arm, and only as registration_version 2."
-    },
-    {
       "what": "Arm D's block is rendered offline rather than emitted by the live lane.",
-      "why_kept": "See arms.D.$deviation_not_impactnote. The rendering path is the product's own compiled code and is hash-pinned; what is not exercised is the lane's trigger, its dedupe and its budget.",
-      "consequence": "This run says nothing about how OFTEN the lane delivers in a real session. That needs lane telemetry, which is a different measurement."
+      "why_kept": "The harness calls the product's compiled `promptImpactNote()` with the exact prompt, warm graph cache and empty session. Intent, ambiguity, budget, query and text are live product code; HTTP hook transport, telemetry append and daemon cold start are not.",
+      "consequence": "This run measures usefulness when the graph is warm. It does not estimate cold-start availability or hook transport failures; those remain lane telemetry and integration-test questions."
     }
   ],
 
@@ -241,7 +237,7 @@
     "Arm P against A and against D, labelled as reported-not-gated.",
     "The basis distribution of the delivered blocks and their token sizes.",
     "The cost of the run against the ceiling, and `mixed_builds` from the build pin.",
-    "That the truth rule is `tests/v1` and that absolute recall and precision are NOT comparable with v3 or v6.",
+    "That the truth rule is `tests/v2` and that absolute recall and precision are NOT comparable with v3 or v6.",
     "An honest `underpowered` / `not_evaluable` per 18.1 where the sample does not support a verdict.",
     "The registration_version the report belongs to."
   ],

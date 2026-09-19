@@ -343,6 +343,47 @@ export function brokenCases(before, after, ambiguous = new Set()) {
 }
 
 /**
+ * Re-run broken test files on one tree side and keep files with at least one
+ * originally broken case in `expected` state. The miner calls this once while
+ * mutated (`fail`) and once clean (`pass`); a failed run is not evidence.
+ */
+export async function confirmCases(
+  dir,
+  runner,
+  brokenFiles,
+  broke,
+  fileOf,
+  expected,
+  { timeoutMs = DEFAULT_TIMEOUT_MS } = {},
+) {
+  if (brokenFiles.length === 0) return { status: "ok", confirmed: new Set(), casesByFile: new Map() };
+  const run = await runSuite(dir, runner, { files: brokenFiles, timeoutMs });
+  if (run.status !== "ok") return { status: run.status, confirmed: new Set(), casesByFile: new Map() };
+  const confirmed = new Set();
+  const casesByFile = new Map();
+  for (const file of brokenFiles) {
+    const own = broke.filter((id) => fileOf(id) === file);
+    const matching = own.filter((id) => run.cases.get(id) === expected);
+    if (matching.length > 0) {
+      confirmed.add(file);
+      casesByFile.set(file, new Set(matching));
+    }
+  }
+  return { status: "ok", confirmed, casesByFile };
+}
+
+/** Files for which the SAME case failed mutated and passed clean. */
+export function confirmedOnBoth(mutated, clean) {
+  const confirmed = new Set();
+  for (const file of mutated.confirmed ?? []) {
+    const mutatedCases = mutated.casesByFile?.get(file) ?? new Set();
+    const cleanCases = clean.casesByFile?.get(file) ?? new Set();
+    if ([...mutatedCases].some((id) => cleanCases.has(id))) confirmed.add(file);
+  }
+  return confirmed;
+}
+
+/**
  * The test file a case id belongs to, as a repo-relative path: from the run's
  * own file map where the runner reported one (jest, vitest, mocha always; TAP
  * for failures), otherwise from the id's head for the runners that put the
@@ -368,4 +409,3 @@ function realPath(path) {
     return path;
   }
 }
-

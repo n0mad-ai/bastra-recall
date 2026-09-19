@@ -8,7 +8,7 @@
  * affected when a test that USED TO PASS now fails, and that test reaches the
  * file.
  *
- * THE RULE (`truth_rule: "tests/v1"` — quoted verbatim in the population file):
+ * THE RULE (`truth_rule: "tests/v2"` — quoted verbatim in the population file):
  *
  *   Given a commit C, its parent P, and exactly one file `d` changed in C:
  *
@@ -21,11 +21,14 @@
  *   3. BROKEN. `broke = F ∩ B`. A case that already failed on P is not
  *      evidence; a case that did not exist on P is not evidence either.
  *   4. CONFIRMATION. For every test FILE with a broken case, run that file
- *      alone on a clean P tree. Cases that fail there too are dropped as
- *      flaky or order-dependent. This is why "breaks nothing" can be trusted.
- *   5. ATTRIBUTION. Each surviving test file T is mapped to source files by
- *      the first rule that yields anything, and which one fired is recorded
- *      per test file:
+ *      alone once on the mutated tree and once on the clean P tree. The same
+ *      case must fail mutated and pass clean. This drops flaky, already-red
+ *      and suite-order-only failures rather than treating one red run as
+ *      causal evidence.
+ *   5. TRUTH. Each surviving test FILE is itself a truth file. It is the file
+ *      that demonstrably changes from passing to failing, exactly as a source
+ *      file carrying a new type error is itself the type truth. The import
+ *      attribution below remains diagnostic metadata only:
  *        R1 `sibling-name` — a file in T's import closure whose basename
  *           matches T's, with `.test`/`.spec` or a `test_`/`spec_` prefix
  *           stripped. The test names its subject; believe it.
@@ -33,8 +36,8 @@
  *           DIRECTLY. The subject is what the test reaches for.
  *        R3 `closure` — T's whole transitive internal import closure. Only
  *           when T imports nothing resolvable directly (a barrel, a CLI).
- *      The truth set is the union over all surviving T, minus `d` itself and
- *      minus every test file.
+ *      R1/R2/R3 MUST NOT become truth: a test importing seven sources proves
+ *      that the test failed, not that all seven sources need adaptation.
  *   6. BLIND SPOT. If `d` is NOT in T's static import closure, the break
  *      travelled over something an import graph cannot see — an HTTP route, an
  *      event name, a template string, a config key. Such a break is REAL and
@@ -51,10 +54,28 @@
  * `test-runner.mjs`; this file holds the rule.
  */
 import { readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join, relative, resolve } from "node:path";
 
 /** The version string stamped into every population built with these rules. */
-export const TRUTH_RULE = "tests/v1";
+export const TRUTH_RULE = "tests/v2";
+
+/**
+ * Freeze scenario identity AND its adjudicated truth. Hashing only
+ * `(commit,file)` lets a changed truth rule silently keep the same population
+ * hash even though every score target moved.
+ */
+export function truthPopulationHash(entries) {
+  const canonical = entries.map((e) => ({
+    commit: e.commit,
+    file: e.file,
+    truthRule: e.truthRule ?? TRUTH_RULE,
+    truth: [...(e.truth ?? [])].sort(),
+    brokenTests: [...(e.brokenTests ?? [])].sort(),
+    blindSpots: [...(e.blindSpots ?? [])].sort(),
+  }));
+  return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
+}
 
 const SOURCE_EXTS = [".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".mts", ".cts"];
 
@@ -273,13 +294,12 @@ export function attribute(dir, testFile, changed, { packageNames = new Map() } =
  * bookkeeping. `brokenFiles` are the test files that survived confirmation.
  */
 export function truthFromBrokenTests(dir, brokenFiles, changed, { packageNames = new Map() } = {}) {
-  const truth = new Set();
+  const truth = new Set(brokenFiles.filter((f) => f !== changed));
   const rules = {};
   const blindSpots = [];
   for (const testFile of brokenFiles) {
-    const { rule, files, closure } = attribute(dir, testFile, changed, { packageNames });
+    const { rule, closure } = attribute(dir, testFile, changed, { packageNames });
     rules[testFile] = rule;
-    for (const f of files) truth.add(f);
     if (!closure.has(changed)) blindSpots.push(testFile);
   }
   return { truth: [...truth].sort(), rules, blindSpots: blindSpots.sort() };

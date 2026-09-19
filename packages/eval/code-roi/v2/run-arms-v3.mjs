@@ -77,7 +77,7 @@ import { execFileSync } from "node:child_process";
 import { scenarioRoot } from "./scenario-root.mjs";
 import { writableOut } from "./archive.mjs";
 import { ARM_IDS } from "./select.mjs";
-import { armIdsOf, resolveRegistration } from "./registration.mjs";
+import { DEFAULT_REGISTRATION_ID, armIdsOf, resolveRegistration } from "./registration.mjs";
 import { deliveredBlockFor, promptWithDeliveredBlock } from "./delivered-block.mjs";
 import { diffForTree } from "./diff-side.mjs";
 import {
@@ -91,7 +91,8 @@ import {
 import {
   abortedArmCharge,
   armCostUsd,
-  COST_CEILING_USD,
+  armEstimateUsdOf,
+  costCeilingUsdOf,
   finalisable,
   nextArmEstimateUsd,
   resultEventOf,
@@ -109,8 +110,6 @@ const MCP_SERVER = new URL("./code-tools-mcp.mjs", import.meta.url).pathname;
 const DIST = new URL("../../../daemon/dist/code-graph/", import.meta.url).pathname;
 
 // From the registration — not tunable here.
-const MODEL = "claude-sonnet-5";
-const MAX_TURNS = 30;
 const ARM_TIMEOUT_MS = 20 * 60_000;
 /**
  * The built-in tools every arm gets — Read, Grep, Glob and nothing that runs a
@@ -149,9 +148,9 @@ export const ARMS = {
   // over, nothing else. With the server attached it also carried the product
   // surface, and a gain could not be told apart from arm B's (#582 review).
   prefilled: { id: "prefilled", name: "prefilled", graph: false, prefill: true, delivered: false },
-  // #606. The product's own Write/Edit block, rendered from `dist` and put
-  // where the lane would put it: before the question, unannounced, capped at
-  // `MAX_IMPACT_FILES`. No MCP server — the whole point of this arm is that
+  // #606. The product's own UserPromptSubmit block, rendered from `dist` and
+  // put where that lane puts it: before the first search, unannounced, capped
+  // at `MAX_IMPACT_FILES`. No MCP server — the whole point of this arm is that
   // nothing had to be called for the answer to arrive.
   D: { id: "D", name: "delivered", graph: false, prefill: false, delivered: true },
   // #606, reported and never gated: the FULL `find_affected_files` answer in
@@ -219,7 +218,19 @@ function promptWithPrefill(s, prefill) {
  * meta in the archive to report `mixed_builds` when a stretched run's
  * helpings were not all served by the pinned build.
  */
-function runArm(arm, prompt, tree, graphRoot, dir, budgetUsd, spend, buildPinSignature) {
+function runArm(
+  arm,
+  prompt,
+  tree,
+  graphRoot,
+  dir,
+  budgetUsd,
+  spend,
+  buildPinSignature,
+  model,
+  maxTurns,
+  registeredEstimateUsd,
+) {
   const transcript = join(dir, `${arm.id}.jsonl`);
   const mcpConfig = join(dir, `${arm.id}-mcp.json`);
   const servers = arm.graph
@@ -234,9 +245,9 @@ function runArm(arm, prompt, tree, graphRoot, dir, budgetUsd, spend, buildPinSig
     "stream-json",
     "--verbose",
     "--model",
-    MODEL,
+    model,
     "--max-turns",
-    String(MAX_TURNS),
+    String(maxTurns),
     // The isolation, in four flags that were verified against `claude --help`:
     // `--restricted` drops every command-running tool and CONFINES the file
     // tools to the working directory, `--tools` names the three that remain,
@@ -293,7 +304,7 @@ function runArm(arm, prompt, tree, graphRoot, dir, budgetUsd, spend, buildPinSig
         const result = resultEventOf(body);
         const charge = finished
           ? { usd: armCostUsd(body), source: "result_event" }
-          : abortedArmCharge(body, spend.finishedCostUsd, spend.finishedArms);
+          : abortedArmCharge(body, spend.finishedCostUsd, spend.finishedArms, registeredEstimateUsd);
         writeFileSync(
           // The meta of an abort carries the same stamp as its transcript. A
           // fixed `<arm>.failed.meta.json` was overwritten by the next attempt,
@@ -469,6 +480,13 @@ async function main() {
   // preflight checks as the frozen surface.
   const { id: registrationId, registration } = resolveRegistration(OUT);
   const registeredArms = armIdsOf(registration, registrationId);
+  const model = registration?.arms?.model;
+  const maxTurns = Number(registration?.arms?.max_turns);
+  if (typeof model !== "string" || model.length === 0 || !Number.isInteger(maxTurns) || maxTurns <= 0) {
+    throw new Error(`${registrationId}: arms.model and a positive integer arms.max_turns are required`);
+  }
+  const costCeilingUsd = costCeilingUsdOf(registration);
+  const registeredEstimateUsd = armEstimateUsdOf(registration);
   const wantedIds = (arg("--arms") ?? registeredArms.join(",")).split(",").map((a) => a.trim());
   for (const id of wantedIds) {
     if (ARMS[id] === undefined) {
@@ -495,6 +513,37 @@ async function main() {
     process.exitCode = 1;
     return;
   }
+  const preflightOnly = process.argv.includes("--preflight-only");
+  let scenarioFile = null;
+  if (!preflightOnly) {
+    scenarioFile = JSON.parse(readFileSync(join(OUT, "scenarios.json"), "utf8"));
+    if (
+      registrationId !== DEFAULT_REGISTRATION_ID &&
+      scenarioFile.registration_version !== registration.registration_version
+    ) {
+      process.stdout.write(
+        `preflight failed (scenario_registration_drift): scenarios.json is registration version ` +
+          `${scenarioFile.registration_version ?? "missing"}, but ${registrationId} is version ` +
+          `${registration.registration_version} — re-mine/select; never relabel an old population.\n`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    const wrongTruth =
+      registrationId === DEFAULT_REGISTRATION_ID
+        ? []
+        : (scenarioFile.scenarios ?? []).filter(
+            (s) => s.truthRule !== undefined && s.truthRule !== registration.unit_and_truth?.truth_rule,
+          );
+    if (wrongTruth.length > 0) {
+      process.stdout.write(
+        `preflight failed (scenario_truth_drift): ${wrongTruth.length} scenarios carry a truth rule ` +
+          `other than ${registration.unit_and_truth?.truth_rule} — re-mine/select.\n`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+  }
   const pinVerdict = checkBuildPin(readBuildPin(OUT), preflight.pin);
   if (!pinVerdict.ok) {
     process.stdout.write(
@@ -505,7 +554,6 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  const preflightOnly = process.argv.includes("--preflight-only");
   if (pinVerdict.write && !preflightOnly) {
     mkdirSync(OUT, { recursive: true });
     writeFileSync(buildPinPath(OUT), JSON.stringify(preflight.pin, null, 2) + "\n");
@@ -518,7 +566,7 @@ async function main() {
   if (preflightOnly) return;
   const buildPinSignature = pinSignature(preflight.pin);
 
-  const { scenarios } = JSON.parse(readFileSync(join(OUT, "scenarios.json"), "utf8"));
+  const { scenarios } = scenarioFile;
   const live = scenarios.filter((s) => !s.excluded && (!only || only.has(s.id)));
   const maxScenarios = helpingSize();
   // WHAT THIS ARCHIVE HAS ALREADY BEEN CHARGED, off disk — finished arms and
@@ -575,11 +623,11 @@ async function main() {
       // here is what the old version did, and it double-charged every arm of a
       // resumed helping.
       if (armFinished(dir, spec.id)) continue;
-      const estimateUsd = nextArmEstimateUsd(finishedCostUsd, finishedArms);
-      if (!withinCeiling(chargedUsd, estimateUsd)) {
+      const estimateUsd = nextArmEstimateUsd(finishedCostUsd, finishedArms, registeredEstimateUsd);
+      if (!withinCeiling(chargedUsd, estimateUsd, costCeilingUsd)) {
         process.stdout.write(
           `\nstopping before ${s.id} ${spec.id}: $${chargedUsd.toFixed(2)} charged of the ` +
-            `$${COST_CEILING_USD.toFixed(2)} ceiling (${finishedArms} finished arms at ` +
+            `$${costCeilingUsd.toFixed(2)} ceiling (${finishedArms} finished arms at ` +
             `$${finishedCostUsd.toFixed(2)}) — the next arm at $${estimateUsd.toFixed(2)} ` +
             `would risk crossing it. Raise CODE_ROI_COST_CEILING only by decision.\n`,
         );
@@ -595,7 +643,7 @@ async function main() {
         // Kept in the archive whether or not it was emitted: `null` is the
         // product being silent, and the scorer needs to tell that apart from a
         // block that was delivered and ignored.
-        delivered ??= await deliveredBlockFor(s, tree, graphRoot);
+        delivered ??= await deliveredBlockFor(s, tree, graphRoot, prompt);
         writeFileSync(join(dir, "delivered.json"), JSON.stringify(delivered, null, 2));
         prompt = promptWithDeliveredBlock(prompt, delivered);
       }
@@ -606,9 +654,12 @@ async function main() {
         tree,
         graphRoot,
         dir,
-        Math.max(0.01, COST_CEILING_USD - chargedUsd),
+        Math.max(0.01, costCeilingUsd - chargedUsd),
         { finishedCostUsd, finishedArms },
         buildPinSignature,
+        model,
+        maxTurns,
+        registeredEstimateUsd,
       );
       chargedUsd += charge.usd;
       if (finished) {
@@ -631,7 +682,7 @@ async function main() {
   process.stdout.write(
     `\n${complete} of ${live.length} scenarios complete, ${finishedArms} arms done ` +
       `at $${finishedCostUsd.toFixed(2)}, $${chargedUsd.toFixed(2)} charged of the ` +
-      `$${COST_CEILING_USD.toFixed(2)} ceiling\n`,
+      `$${costCeilingUsd.toFixed(2)} ceiling\n`,
   );
 }
 

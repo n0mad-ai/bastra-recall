@@ -110,7 +110,8 @@ describe("the arms and the thresholds come from the registration", () => {
         recall_guard_ci_lower: 0,
       },
     );
-    assert.equal(DELIVERED.status, "numbers_registered");
+    assert.equal(DELIVERED.registration_version, 2);
+    assert.equal(DELIVERED.status, "numbers_registered_population_pending");
     assert.equal(DELIVERED.sample.min_scenarios, 40);
     assert.equal(DELIVERED.statistics.seed, 20260918);
     assert.equal(DELIVERED.statistics.cluster_key, "repo + file");
@@ -166,7 +167,8 @@ describe("the build pin knows which registration it pinned", () => {
     // Every `*_sha256` field of the registration is checked, so a field added
     // to the registration cannot be silently ignored by the comparison.
     assert.ok(Object.keys(built).includes("block_template_sha256"));
-    assert.equal(Object.keys(built).length, 4);
+    assert.ok(Object.keys(built).includes("code_graph_bundle_sha256"));
+    assert.equal(Object.keys(built).length, 2);
   });
 
   test("the v6 frozen surface still matches — a second registration changed nothing", async () => {
@@ -207,7 +209,7 @@ describe("the build pin knows which registration it pinned", () => {
 
 // ─── Arm D's block ───────────────────────────────────────────────
 
-describe("arm D is rendered by the product, from a diff", () => {
+describe("arm D is rendered by the product's prompt lane", () => {
   const FILE_A = "packages/a/src/thing.ts";
   const FILE_B = "packages/b/src/user.ts";
   const FILE_C = "packages/c/src/consumer.ts";
@@ -287,43 +289,54 @@ describe("arm D is rendered by the product, from a diff", () => {
     return { tree, graphRoot };
   }
 
-  test("the block narrows to what the diff touched, and prints the PRODUCT's lead", async () => {
+  test("the registered question reaches the intent gate even when the diff exceeds its 4k scan cap", async () => {
+    const { promptFor } = await import("../code-roi/v2/run-arms.mjs");
+    const { changeImpactIntent } = await import("../../daemon/dist/code-graph/impact-intent.js");
+    const prompt = promptFor({
+      file: FILE_A,
+      subject: "large change",
+      diff: `--- a/${FILE_A}\n+++ b/${FILE_A}\n+${"x".repeat(6_000)}`,
+    });
+    const intent = changeImpactIntent(prompt);
+    assert.equal(intent.asked, true);
+    assert.ok(intent.paths.includes(FILE_A));
+  });
+
+  test("the block narrows to the symbol the prompt names, through the real intent gate", async () => {
     const { deliveredBlockFor, promptWithDeliveredBlock } = await import(
       "../code-roi/v2/delivered-block.mjs"
     );
-    const { WRITE_LEAD_SYMBOLS, MAX_IMPACT_FILES } = await import(
-      "../../daemon/dist/code-graph/impact-block.js"
-    );
+    const { MAX_IMPACT_FILES } = await import("../../daemon/dist/code-graph/impact-block.js");
     const { tree, graphRoot } = await fixture();
     try {
+      const task = `What breaks if I change \`touched\` in ${FILE_A}?`;
       const block = await deliveredBlockFor(
         { file: FILE_A, diff: FORWARD_DIFF },
         tree,
         graphRoot,
+        task,
       );
       assert.ok(block !== null, "the graph indexes the file and something depends on it");
-      assert.equal(block.basis, "diff", "the diff placed its lines inside a symbol");
+      assert.equal(block.basis, "symbols", "the prompt named the symbol inside the named file");
       assert.deepEqual(block.changedSymbols, ["touched"]);
       assert.deepEqual(
         block.listed,
         [FILE_B],
         "consumer.ts depends on unrelated(), which this diff does not touch — the whole point of narrowing",
       );
-      // The lead is imported from the product, not written here: a copy would
-      // pass this test while the arm was served something else.
-      assert.ok(block.note.includes(WRITE_LEAD_SYMBOLS), "the block carries the write lane's own lead");
-      assert.match(block.note, /^<code-impact file="packages\/a\/src\/thing\.ts" basis="diff" files="1">/);
+      assert.match(block.note, /You asked what a change here would affect/);
+      assert.match(block.note, /^<code-impact file="packages\/a\/src\/thing\.ts" basis="symbols" files="1"/);
       assert.equal(block.displayCap, MAX_IMPACT_FILES);
       assert.equal(block.displayCap, DELIVERED.arms.frozen_surface.display_cap);
 
       // Delivered ahead of the question, and unannounced: the lane says nothing
       // about the block and neither may the harness.
-      const prompt = promptWithDeliveredBlock("THE TASK", block);
+      const prompt = promptWithDeliveredBlock(task, block);
       assert.ok(prompt.startsWith(block.note), "the block arrives before the question");
-      assert.ok(prompt.endsWith("THE TASK"));
+      assert.ok(prompt.endsWith(task));
       assert.equal(
         prompt.replace(block.note, "").trim(),
-        "THE TASK",
+        task,
         "nothing is added around the block — an instruction here would measure an instruction the product does not give",
       );
     } finally {
@@ -332,29 +345,19 @@ describe("arm D is rendered by the product, from a diff", () => {
     }
   });
 
-  test("the diff is turned around: the un-reversed diff points at the wrong symbol", async () => {
-    // The scenario tree is the PARENT and the diff runs parent -> commit, so
-    // reading the diff's new side against the tree is what `diff-side.mjs`
-    // exists to stop. A hunk that moves with earlier insertions is the visible
-    // form of that: here the change really touches `touched()` at line 5, and a
-    // new-side reading of a shifted hunk lands in `unrelated()`.
+  test("a file-only impact question gets the prompt lane's honest whole-file answer", async () => {
     const { deliveredBlockFor } = await import("../code-roi/v2/delivered-block.mjs");
-    const SHIFTED = [
-      `--- a/${FILE_A}`,
-      `+++ b/${FILE_A}`,
-      "@@ -5,1 +8,1 @@",
-      "-  return 2;",
-      "+  return 99;",
-    ].join("\n");
     const { tree, graphRoot } = await fixture();
     try {
-      const block = await deliveredBlockFor({ file: FILE_A, diff: SHIFTED }, tree, graphRoot);
-      assert.ok(block !== null);
-      assert.deepEqual(
-        block.changedSymbols,
-        ["touched"],
-        "reversed, the OLD side (-5) is read — the line that is really on disk",
+      const block = await deliveredBlockFor(
+        { file: FILE_A, diff: FORWARD_DIFF },
+        tree,
+        graphRoot,
+        `What breaks if I change ${FILE_A}?`,
       );
+      assert.ok(block !== null);
+      assert.equal(block.basis, "whole_file");
+      assert.deepEqual(block.listed.sort(), [FILE_B, FILE_C]);
     } finally {
       rmSync(tree, { recursive: true, force: true });
       rmSync(graphRoot, { recursive: true, force: true });
@@ -371,6 +374,7 @@ describe("arm D is rendered by the product, from a diff", () => {
         { file: "packages/z/src/unknown.ts", diff: FORWARD_DIFF },
         tree,
         graphRoot,
+        "What breaks if I change packages/z/src/unknown.ts?",
       );
       assert.equal(block, null, "the product is silent here, so the arm gets the bare prompt");
       assert.equal(promptWithDeliveredBlock("THE TASK", null), "THE TASK");
@@ -384,8 +388,8 @@ describe("arm D is rendered by the product, from a diff", () => {
 // ─── The scorer ──────────────────────────────────────────────────
 
 describe("block use is measured against what the block PRINTED", () => {
-  test("the share of listed files the answer named", () => {
-    assert.equal(blockUse(["a.ts", "b.ts", "c.ts", "d.ts"], ["a.ts", "c.ts"]), 0.5);
+  test("one used candidate makes this scenario used", () => {
+    assert.equal(blockUse(["a.ts", "b.ts", "c.ts", "d.ts"], ["a.ts"]), 1);
     assert.equal(blockUse(["a.ts"], ["a.ts"]), 1);
     assert.equal(blockUse(["a.ts", "b.ts"], ["x.ts"]), 0);
   });
@@ -407,37 +411,54 @@ describe("block use is measured against what the block PRINTED", () => {
 describe("the blind-spot split is per scenario, and says when it cannot be", () => {
   test("a scenario all of whose broken tests are blind spots is wholly one", () => {
     const s = {
-      brokenTests: ["t1.test.ts", "t2.test.ts"],
+      truth: ["t1.test.ts", "t2.test.ts"],
       blindSpotTests: ["t1.test.ts", "t2.test.ts"],
     };
-    assert.deepEqual(blindSpotOf(s), { isBlindSpot: true, partial: false, blindTests: 2 });
+    assert.deepEqual(blindSpotOf(s), {
+      isBlindSpot: true,
+      partial: false,
+      blindTests: 2,
+      blindTruth: ["t1.test.ts", "t2.test.ts"],
+      reachableTruth: [],
+    });
   });
 
-  test("a mixed scenario is flagged rather than split wrongly", () => {
-    const s = { brokenTests: ["t1.test.ts", "t2.test.ts"], blindSpotTests: ["t1.test.ts"] };
-    assert.deepEqual(blindSpotOf(s), { isBlindSpot: true, partial: true, blindTests: 1 });
+  test("a mixed scenario is partitioned exactly under tests/v2", () => {
+    const s = { truth: ["t1.test.ts", "t2.test.ts"], blindSpotTests: ["t1.test.ts"] };
+    assert.deepEqual(blindSpotOf(s), {
+      isBlindSpot: true,
+      partial: true,
+      blindTests: 1,
+      blindTruth: ["t1.test.ts"],
+      reachableTruth: ["t2.test.ts"],
+    });
   });
 
   test("no blind spots at all", () => {
-    assert.deepEqual(blindSpotOf({ brokenTests: ["t.test.ts"] }), {
+    assert.deepEqual(blindSpotOf({ truth: ["t.test.ts"] }), {
       isBlindSpot: false,
       partial: false,
       blindTests: 0,
+      blindTruth: [],
+      reachableTruth: ["t.test.ts"],
     });
   });
 
   test("recall is reported for both halves and gated in neither", () => {
-    const row = (id: string, blind: boolean, aRecall: number, dRecall: number) => ({
-      id,
-      repo: null,
-      file: `${id}.ts`,
-      blindSpot: blind,
-      blindSpotPartial: false,
-      A: { recall: aRecall, precision: 1 },
-      D: { recall: dRecall, precision: 1 },
+    const reachable = (id: string) => ({
+      id, repo: null, file: `${id}.ts`, blindSpot: false, blindSpotPartial: false,
+      blindTruthFiles: [], reachableTruthFiles: ["r.test.ts"],
+      A: { named: ["r.test.ts"], recall: 1, precision: 1 },
+      D: { named: ["r.test.ts"], recall: 1, precision: 1 },
     });
+    const blind = {
+      id: "S3", repo: null, file: "S3.ts", blindSpot: true, blindSpotPartial: false,
+      blindTruthFiles: ["b1.test.ts", "b2.test.ts"], reachableTruthFiles: [],
+      A: { named: ["b1.test.ts"], recall: 0.5, precision: 1 },
+      D: { named: [], recall: 0, precision: 1 },
+    };
     const report = blindSpotReport(
-      [row("S1", false, 1, 1), row("S2", false, 1, 1), row("S3", true, 0.5, 0)],
+      [reachable("S1"), reachable("S2"), blind],
       ["A", "D"],
     );
     assert.deepEqual(report.blindSpotScenarios, ["S3"]);
@@ -459,7 +480,7 @@ describe("the two verdicts, decided by the registered numbers", () => {
       dPrecision = 0.8,
       aTokens = 24_000,
       dTokens = 22_000,
-      use = 0.8,
+      use = 1,
     } = over as Record<string, number>;
     return Array.from({ length: n }, (_, i) => ({
       id: `S${i}`,
@@ -499,7 +520,7 @@ describe("the two verdicts, decided by the registered numbers", () => {
   });
 
   test("an ignored block fails USE while the saving stands", () => {
-    const v = judge(rows(45, { use: 0.2 }), DELIVERED);
+    const v = judge(rows(45, { use: 0 }), DELIVERED);
     assert.equal(v.use.status, "fail");
     assert.equal(v.context.status, "pass", "cheap and ignored is a cheaper run, not a working feature");
   });
@@ -545,6 +566,14 @@ describe("the two verdicts, decided by the registered numbers", () => {
     const v = judge(mixed, DELIVERED);
     assert.equal(v.context.bothSolved, 25);
     assert.ok(v.context.checks.context_ratio.value > 0.5, "the cheap wrong answers are excluded");
+    assert.equal(v.context.status, "underpowered", "25 solved pairs cannot satisfy a 40-pair minimum");
+  });
+
+  test("the use verdict needs the registered number of delivered blocks", () => {
+    const sparse = rows(45).map((r, i) => ({ ...r, blockUse: i === 0 ? 1 : null }));
+    const v = judge(sparse, DELIVERED);
+    assert.equal(v.use.scenariosWithBlock, 1);
+    assert.equal(v.use.status, "underpowered", "one used block among 45 scenarios is not a use result");
   });
 });
 
