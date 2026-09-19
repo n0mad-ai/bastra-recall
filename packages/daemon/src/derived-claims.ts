@@ -12,6 +12,7 @@
  * agrees with it.  The comparison is display-only, exactly like #235's anchor:
  * a difference is shown, and the reader decides.
  */
+import { createHash } from "node:crypto";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { assertInsideVault, type DerivedClaim } from "@bastra-recall/core";
@@ -40,10 +41,10 @@ export interface DerivedClaimResult {
   case_ref?: string;
   status: DerivedClaimStatus;
   /** What the source holds now: a count for the count resolver, the number of
-   *  occurrences for `quote.v1`. */
-  value?: number;
+   *  occurrences for `quote.v1`, the digest for `sha256.v1`. */
+  value?: number | string;
   /** Echoed back so a reader sees both halves of a `differs` next to each other. */
-  expect?: number;
+  expect?: number | string;
   /** The string `quote.v1` looked for. */
   exact?: string;
   reason?: "outside_vault" | "unavailable" | "not_a_file" | "too_large";
@@ -70,6 +71,10 @@ async function resolveClaim(vaultRoot: string, claim: DerivedClaim): Promise<Der
     text = await readSource(vaultRoot, claim.source);
   } catch (error) {
     return { ...base, status: "unverifiable", reason: reasonFor(error) };
+  }
+  if (claim.resolver === "sha256.v1") {
+    const value = createHash("sha256").update(text).digest("hex");
+    return { ...base, value, status: value === claim.expect ? "matches" : "differs" };
   }
   if (claim.resolver === "quote.v1") {
     const value = occurrences(text, claim.exact ?? "");
