@@ -47,7 +47,7 @@
       "why": "This is the claim v6 already produced supporting evidence for, without being designed to: the prefilled arm matched grep's recall and precision (-0.21 Pp) at 0.9572x its median input tokens. A delivered answer that is free, correct and actually used is a shipping-grade result even where recall cannot move — and unlike option 1 it can be measured on an ordinary population, because 'grep also gets there' is no longer a problem but the control condition.",
       "primary_metrics": [
         "context: median input tokens of `delivered` against `grep`, over scenarios BOTH arms solved (recall >= 0.8), the v6 gating rule unchanged",
-        "block use: share of delivered blocks FOLLOWED BY AN EDIT of a file the block named — the `listed` join the product already logs in `code_delivered` telemetry, not a self-report",
+        "block use: share of delivered scenarios whose FINAL ANSWER names at least one file from the delivered block that the user prompt did not already name — computed inside the isolated eval from its own block and transcript, not from product telemetry and not from a self-report",
         "precision: precision of `delivered` must not fall below `grep`'s by more than the floor"
       ],
       "guard": "recall of `delivered` must not fall BELOW grep's. This option does not ask recall to rise; it does forbid buying cheapness with correctness.",
@@ -96,7 +96,7 @@
     "secondary": [
       "basis distribution (symbols / diff / whole_file) of the delivered blocks — a run of `whole_file` means the narrowing is not earning its keep on this sample",
       "dedupe hits — answers suppressed because the same one had already gone out this session",
-      "delivered-and-used: the block named a file AND the arm's final answer names that file. Weak evidence under option 1, reported as such; a PRIMARY metric under option 2, where it is defined as followed-by-edit rather than merely named."
+      "delivered-and-used: the block named a file the prompt did not name AND the arm's final answer names that file. Weak evidence under option 1, a PRIMARY metric under option 2; still an overlap signal rather than proof of causation, so precision and the randomized control remain mandatory."
     ]
   },
 
@@ -129,14 +129,14 @@
       "applies_to": "option 2 (primary effect, not a ceiling)",
       "value": "TO_BE_DECIDED",
       "proposal": "median input tokens of `delivered` at most 0.90x `grep`, over scenarios both arms solved, with the upper bound of a 95 % bootstrap CI on the ratio below 1.0",
-      "rationale": "Under option 2 cost is the claim, so it has to be a real effect and not merely 'not worse'. v6's prefilled arm measured 0.9572x — a 4.3 % saving. Registering 0.90x asks for roughly twice that, which is what it takes to be sure the saving is the skipped searches and not the sampling. A threshold at 0.95x would be met by v6's existing number and would therefore decide nothing.",
+      "rationale": "Under option 2 cost is the claim, so it has to be a real effect and not merely 'not worse'. v6's prefilled arm measured 0.9572x — a 4.3 % saving. Registering 0.90x asks for roughly twice that. For arithmetic clarity: a 0.95x ceiling would NOT have been met by v6's 0.9572x point estimate; a 0.97x ceiling would. The useful minimum is a product decision, while the CI upper bound below 1.0 is what distinguishes a repeatable saving from sampling noise.",
       "cost_of_being_wrong": "Too generous and 'the block is free' ships on noise; too strict and a real but modest saving — which is all a 286-token block can ever produce against a 24 000-token transcript — is rejected, and with it the only claim this option can make."
     },
     "block_use_floor": {
       "applies_to": "option 2",
       "value": "TO_BE_DECIDED",
-      "proposal": "in at least 50 % of scenarios where a block was delivered, the session subsequently EDITS a file the block named",
-      "rationale": "This is the metric that stops option 2 from passing on a cost saving that had nothing to do with the block. The join already exists in the product: `code_delivered` logs `listed` (absolute paths) and the followed-by-edit signal is computed against it, so nothing new has to be instrumented. 50 % is a first guess anchored on the block's ~47 % offline precision — asking for much more would be asking the agent to edit files the graph named wrongly.",
+      "proposal": "in at least 50 % of scenarios where a block was delivered, the final answer names at least one file from that block which the user prompt did not already name",
+      "rationale": "This is the metric that stops option 2 from passing on a cost saving while the block is uniformly ignored. The isolated harness owns both the exact product-rendered block and the final answer, so it can compute the overlap without logging repository paths in product telemetry. It remains weak evidence — grep may independently find the same file — which is why the randomized control, the context effect and the precision floor all remain part of the verdict. `followed by edit` is deliberately not used: prompt scenarios ask for an impact answer rather than performing the edit, and prompt deliveries are excluded from the Write/Edit denominator by product design.",
       "cost_of_being_wrong": "Too low and an ignored block passes; too high and the arm is punished for the block's own false positives, which `precision_floor` already guards from the other side."
     },
     "recall_guard": {
@@ -203,7 +203,7 @@
 
   "what_this_cannot_show": [
     "That the block CAUSED the difference in a real session. The arm shows that an agent given the block answers better, or cheaper, than one that is not; a real session has memory hints, a longer history and a user who interrupts.",
-    "Anything about the prompt lane's intent gate on real prompts. The gate is pinned by a 34-prompt negative list in the test suite, which is a unit test, not a measurement — the false-trigger rate on real traffic can only come from `code_tool_call` rows with `surface: \"delivered\"` and `delivered_lane: \"prompt\"` once the feature has been live for a while.",
+    "Anything about the prompt lane's false-trigger rate on real prompts. The gate is pinned by a 34-prompt negative list in the test suite, which is a unit test, not a measurement. The intentionally path- and prompt-free `code_tool_call` rows can report how often the prompt lane delivered, but cannot tell whether a delivery matched the user's intent; that needs a separately labelled prompt audit or a frozen external intent corpus.",
     "Whether the delivered channel is better than the offered one. v6 measured the offered channel at 80 % adoption and 2.37x the control's median input tokens, but on a population with no recall headroom, so the two channels have never been compared on a question either of them could win.",
     "Under option 2 specifically: that the graph knows anything grep does not. A cheaper route to the same answer is worth shipping and is not that claim."
   ],
@@ -214,6 +214,6 @@
     "Daniel decides the chosen option's thresholds, the verdict rule and the minimum sample size",
     "the population for the chosen option is drawn, adjudicated, frozen and hashed into this file BEFORE any delivered arm runs — and for option 1, shown to leave the control arm below 100 % recall",
     "the runner extension exists and has been shown to inject the product's own block, not a reconstruction of it",
-    "the delivered telemetry has run in real sessions long enough to report a false-trigger rate for the prompt gate"
+    "the prompt gate has either passed a frozen external positive/negative intent corpus or a separately authorised labelled live-prompt audit; ordinary path- and prompt-free delivery telemetry is insufficient to report a false-trigger rate"
   ]
 }
