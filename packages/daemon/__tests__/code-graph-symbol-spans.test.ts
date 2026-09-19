@@ -401,6 +401,43 @@ describe("symbol spans and the constructs that used to break them", () => {
     );
   });
 
+  // The arm's colon has to be READ as the arm's colon, and the test above does
+  // not prove that it is: a `case` head misread as a property still balances,
+  // because the only thing the reading changes is what the `{` after it opens.
+  // A block's `}` lets the next `/` open a regex, an object literal's does not
+  // — so a regex AFTER the arm's body is what the misreading loses. Each of
+  // these heads made the file unreadable (→ whole file) before the fix.
+  for (const [what, head] of [
+    ["an object property's colon", "case { a: 1 }.a:"],
+    ["a ternary's colon", "case (true ? { x: 1 } : { y: 2 }).x:"],
+    ["a colon inside a template expression", "case `${ { a: 1 }.a }`:"],
+    ["a colon inside an immediately invoked arrow", "case (() => { return 1 })():"],
+  ] as const) {
+    it(`ends the case head at the arm's own colon, not at ${what}`, async () => {
+      const source = [
+        "function f(x: unknown) {", // 1
+        "  switch (x) {", // 2
+        `    ${head} {`, // 3
+        "      break;", // 4
+        "    }", // 5
+        "    /}/.test(String(x));", // 6
+        "  }", // 7
+        "}", // 8
+        "const g = 2;", // 9
+        "", // 10
+      ].join("\n");
+      const spans = await spansOf(source, [sym("f", 1), sym("g", 9)]);
+      assert.notEqual(spans, null, "the arm's body is a block, so line 6 opens a regex");
+      assert.deepEqual(
+        spans!.map((s) => [s.start, s.end]),
+        [
+          [1, 8],
+          [9, 9],
+        ],
+      );
+    });
+  }
+
   it("keeps an object literal's property a property, even at a statement boundary", async () => {
     // `key: {` sits right after a `{` too — the difference is that the `{` it
     // sits in opened a VALUE. Reading it as a label would make the inner `}`

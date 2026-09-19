@@ -486,17 +486,22 @@ function scanSource(lines: readonly string[]): Scan {
         ternary[ternary.length - 1]++;
       }
       if (c === ":") {
+        const atCaseDepth = caseHeadDepth === brackets.length;
         const label = colonEndsStatement(
           ternary,
           brackets[brackets.length - 1],
           lastTok,
           prevTok,
-          caseHeadDepth === brackets.length,
+          atCaseDepth,
         );
         if (label) {
           // A label's or a `case` arm's colon ends a statement, so what follows
           // is a statement start: `{` opens a block, `/` opens a regex.
-          caseHeadDepth = null;
+          // Only a colon at the case head's OWN depth ends that head: a nested
+          // one read as a label — `case \`${ {a:1}.a }\`:`, where the `${…}`
+          // resets the token history and makes `a:` look like one — would
+          // otherwise clear the head and leave the arm's own colon a property.
+          if (atCaseDepth) caseHeadDepth = null;
           prevTok = ";";
           lastTok = ";";
         } else {
