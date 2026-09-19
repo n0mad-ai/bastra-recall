@@ -47,6 +47,7 @@ import {
   type CodeSymbol,
   type LoadedGraph,
 } from "./reader.js";
+import { diffLines, type DiffLine } from "./diff-lines.js";
 import { spansCovering, symbolSpans } from "./symbol-spans.js";
 
 /** Deepest hop followed. Two fans out multiplicatively and is opt-in. */
@@ -482,11 +483,15 @@ export interface ChangedLines {
  * checkout, and that is what the span guards are for; mixing the two
  * coordinate systems on purpose is not.
  *
- * A PURE DELETION has no new line of its own, so it is mapped to the two lines
- * it now sits between. Both, because the deleted text belonged to whatever
- * surrounded it, and one of the two neighbours is the symbol that lost it.
- * A deletion that is immediately replaced by added lines needs no such
- * treatment: those lines carry the change and are attributed directly.
+ * A REPLACEMENT RUN — one or more `-` lines directly followed by one or more
+ * `+` lines — is attributed to its `+` lines alone; they carry the change. A
+ * PURE DELETION, a `-` run nothing `+` follows, has no new line of its own, so
+ * it is mapped to the two lines it now sits between: both, because the
+ * deleted text belonged to whatever surrounded it, and one of the two
+ * neighbours is the symbol that lost it. `diff-lines.ts` decides where a hunk
+ * really starts and ends, so a `-`/`+` source line that itself reads as
+ * `--- `/`+++ ` once diff-prefixed is content here, not a skipped header
+ * (P1.2, Codex counter-review 3).
  *
  * A diff that names no file at all (someone pasted a single hunk) is read as
  * belonging to `file`.
@@ -494,71 +499,71 @@ export interface ChangedLines {
 export function changedLines(diff: string, file: string): ChangedLines {
   const out = new Set<number>();
   let mappable = true;
-  let inFile = !diff.includes("diff --git") && !diff.includes("--- ");
+  let inFile = true;
+  const hasGitHeader = diff.includes("diff --git ");
   // The next new-side line to be consumed. 0 means "no hunk header yet".
   let next = 0;
-  const body = diff.split("\n");
 
-  for (let i = 0; i < body.length; i++) {
-    const line = body[i];
-    if (line.startsWith("diff --git ")) {
-      inFile = line.includes(` a/${file}`) || line.includes(` b/${file}`);
+  const lines = [...diffLines(diff)];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.kind === "file-boundary") {
+      inFile = line.raw.includes(` a/${file}`) || line.raw.includes(` b/${file}`);
       next = 0;
+    } else if (line.kind === "old-header") {
+      if (!hasGitHeader) inFile = line.raw.endsWith(file) || line.raw.endsWith("/dev/null");
+    } else if (line.kind === "new-header") {
+      // The file is gone on the new side: nothing in the working tree to
+      // place a line in. The whole file is the only honest answer.
+      if (inFile && line.raw.slice(4).trim() === "/dev/null") mappable = false;
+    } else if (!inFile) {
       continue;
-    }
-    if (line.startsWith("--- ")) {
-      if (!diff.includes("diff --git")) inFile = line.endsWith(file) || line.endsWith("/dev/null");
-      continue;
-    }
-    // The file is gone on the new side: nothing in the working tree to place a
-    // line in. The whole file is the only honest answer.
-    if (line.startsWith("+++ ")) {
-      if (inFile && line.slice(4).trim() === "/dev/null") mappable = false;
-      continue;
-    }
-    if (!inFile) continue;
-    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
-    if (hunk !== null) {
-      const start = Number(hunk[1]);
-      const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
+    } else if (line.kind === "hunk-header") {
       // `+c,0` is git's way of saying "between new lines c and c+1", so the
       // next line to be consumed is c+1 — unlike every other hunk, where the
       // header names the first line the hunk covers.
-      next = count === 0 ? start + 1 : start;
-      continue;
-    }
-    if (line.startsWith("\\")) continue; // "\ No newline at end of file"
-    if (line.startsWith("+")) {
+      next = line.header.new.count === 0 ? line.header.new.start + 1 : line.header.new.start;
+    } else if (line.kind === "added") {
+      if (next === 0) mappable = false;
+      else out.add(next++);
+    } else if (line.kind === "removed") {
       if (next === 0) {
         mappable = false;
-        continue;
+      } else if (!partOfReplacementRun(lines, i)) {
+        if (next > 1) out.add(next - 1);
+        out.add(next);
       }
-      out.add(next++);
-    } else if (line.startsWith("-")) {
-      if (next === 0) {
-        mappable = false;
-        continue;
-      }
-      // Replaced, not deleted: the `+` lines below carry this change.
-      if (body[i + 1]?.startsWith("+") === true) continue;
-      if (next > 1) out.add(next - 1);
-      out.add(next);
-    } else if (line.startsWith(" ") && next > 0) {
+    } else if (line.kind === "context" && next > 0) {
       next++;
     }
   }
   return { lines: [...out], mappable };
 }
 
+/**
+ * Does the `removed` line at `lines[i]` belong to a replacement — a `+` line
+ * follows it, once any further `-` lines and `\ No newline` markers of the
+ * same run are skipped over? Checked per line, not just for the line right
+ * before the first `+`, so EVERY `-` of a multi-line replacement reads as
+ * replaced rather than only the last one, which used to let the earlier
+ * removed lines widen the selection as if they were deletions.
+ */
+function partOfReplacementRun(lines: readonly DiffLine[], i: number): boolean {
+  for (let j = i + 1; j < lines.length; j++) {
+    const kind = lines[j].kind;
+    if (kind === "removed" || kind === "no-newline") continue;
+    return kind === "added";
+  }
+  return false;
+}
+
 /** The added and removed lines, without the file headers. */
 function diffBody(diff: string): string {
-  return diff
-    .split("\n")
-    .filter(
-      (l) =>
-        (l.startsWith("+") || l.startsWith("-")) && !l.startsWith("+++") && !l.startsWith("---"),
-    )
-    .join("\n");
+  const parts: string[] = [];
+  for (const line of diffLines(diff)) {
+    if (line.kind === "added" || line.kind === "removed") parts.push(line.raw);
+  }
+  return parts.join("\n");
 }
 
 /** `name` as a whole word in `text`, without building a regex per call site. */

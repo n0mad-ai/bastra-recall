@@ -31,7 +31,17 @@
  * if I change this" means. The name lane is untouched either way — `diffBody`
  * collects added and removed lines together, so swapping their signs cannot
  * change which names it sees.
+ *
+ * THE HUNK STATE MACHINE IS SHARED WITH THE PRODUCT. `---`/`+++` mark a file
+ * header only OUTSIDE a hunk; inside one, a source line that itself starts
+ * `-- `/`++ ` reads, diff-prefixed, as `--- x`/`+++ x` and must stay a body
+ * line, not be mistaken for the next file's header (P1.2, Codex counter-review
+ * 3). `affected.ts` decides this once for the product; `diffLines` here is the
+ * same decision, imported from the built daemon package the way every other
+ * eval script here reads the product's compiled output (`mutation-gate-score.mjs`).
  */
+const DIST = new URL("../../../daemon/dist/code-graph/", import.meta.url).pathname;
+const { diffLines } = await import(`${DIST}diff-lines.js`);
 
 /**
  * The same diff, turned around: what was added is removed and the old and new
@@ -55,38 +65,52 @@ export function reverseUnifiedDiff(diff) {
   /** The current run of changed lines, already flipped, removals and additions apart. */
   let removed = [];
   let added = [];
+  // Which accumulator the immediately preceding removed/added line's flip
+  // landed in — where a `\ No newline` marker for THAT line must land too, so
+  // it keeps pointing at the same line through the flip. `added.length > 0`
+  // only asked whether the run had EVER pushed to `added`, not which line was
+  // last: once a run held one of each sign, that check kept pointing at
+  // whichever came first and missed a marker that followed the second.
+  // Double-reversing such a run then came back different from the original.
+  let lastRun = null;
   const flush = () => {
     out.push(...removed, ...added);
     removed = [];
     added = [];
+    lastRun = null;
   };
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("+") && !line.startsWith("+++ ")) {
-      removed.push(`-${line.slice(1)}`);
+  for (const line of diffLines(diff)) {
+    if (line.kind === "added") {
+      removed.push(`-${line.raw.slice(1)}`);
+      lastRun = "removed";
       continue;
     }
-    if (line.startsWith("-") && !line.startsWith("--- ")) {
-      added.push(`+${line.slice(1)}`);
+    if (line.kind === "removed") {
+      added.push(`+${line.raw.slice(1)}`);
+      lastRun = "added";
       continue;
     }
     // `\ No newline at end of file` belongs to the line before it. It stays
-    // inside the run rather than ending it, so the run's order is unaffected
-    // and nothing the product reads looks at the marker anyway.
-    if (line.startsWith("\\")) {
-      (added.length > 0 ? added : removed).push(line);
+    // inside the run rather than ending it, so the run's order is unaffected.
+    if (line.kind === "no-newline" && lastRun !== null) {
+      (lastRun === "added" ? added : removed).push(line.raw);
       continue;
     }
     flush();
-    if (line.startsWith("--- ")) {
-      out.push(`+++ ${line.slice(4)}`);
+    if (line.kind === "old-header") {
+      out.push(`+++ ${line.raw.slice(4)}`);
       continue;
     }
-    if (line.startsWith("+++ ")) {
-      out.push(`--- ${line.slice(4)}`);
+    if (line.kind === "new-header") {
+      out.push(`--- ${line.raw.slice(4)}`);
       continue;
     }
-    const hunk = /^@@ -(\d+(?:,\d+)?) \+(\d+(?:,\d+)?) @@(.*)$/.exec(line);
-    out.push(hunk !== null ? `@@ -${hunk[2]} +${hunk[1]} @@${hunk[3]}` : line);
+    if (line.kind === "hunk-header") {
+      const h = line.header;
+      out.push(`@@ -${h.new.text} +${h.old.text} @@${h.trailer}`);
+      continue;
+    }
+    out.push(line.raw);
   }
   flush();
   return out.join("\n");
