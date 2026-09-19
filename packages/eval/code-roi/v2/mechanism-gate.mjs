@@ -24,6 +24,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { writableOut } from "./archive.mjs";
+import { diffForTree } from "./diff-side.mjs";
 
 const DIST = new URL("../../../daemon/dist/code-graph/", import.meta.url).pathname;
 const { loadGraph } = await import(`${DIST}reader.js`);
@@ -44,7 +45,10 @@ function packageOf(file) {
 
 /** Exactly the chain `find_affected_files` runs, minus the cache and the diff. */
 async function affectedFor(graph, root, file, diff) {
-  const symbols = changedSymbolsOf(graph, file, diff);
+  // The scenario's tree is the PARENT commit and its diff runs parent ->
+  // commit, so the tree is the diff's old side while `changedLines` reads the
+  // new one (`diff-side.mjs`).
+  const symbols = changedSymbolsOf(graph, file, diffForTree(diff, "old"));
   const names = symbols.filter((s) => s.kind !== "file").map((s) => s.name);
   const hits = await narrowPackageHits(root, affectedHits(graph, file, symbols, 1), names);
   return affectedResult(symbols, hits).files;

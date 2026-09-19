@@ -32,6 +32,8 @@ import { mkdtempSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { diffForTree } from "./diff-side.mjs";
+
 const DIST = new URL("../../../daemon/dist/code-graph/", import.meta.url).pathname;
 const { loadGraph, dependentFilesOf } = await import(DIST + "reader.js");
 const { affectedHits, affectedResult, changedSymbolsOf, narrowPackageHits } = await import(
@@ -68,7 +70,9 @@ for (const s of scenarios) {
     console.log(s.id, "graph", r.reason);
     continue;
   }
-  const changed = changedSymbolsOf(r.graph, s.file, s.diff);
+  // The tree is the PARENT commit and the diff runs parent -> commit, so the
+  // tree is the diff's old side; `changedLines` reads the new one (`diff-side.mjs`).
+  const changed = changedSymbolsOf(r.graph, s.file, diffForTree(s.diff, "old"));
   const d1 = await affectedVia(r.graph, root, s.file, changed, 1);
   const d2 = await affectedVia(r.graph, root, s.file, changed, 2);
   rows.push({

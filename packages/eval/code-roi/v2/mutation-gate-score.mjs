@@ -32,6 +32,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { writableOut } from "./archive.mjs";
+import { diffForTree } from "./diff-side.mjs";
 import { OPERATORS, mutationDiff } from "./mutation-gate.mjs";
 
 const DIST = new URL("../../../daemon/dist/code-graph/", import.meta.url).pathname;
@@ -142,7 +143,12 @@ async function main() {
   for (const m of kept) {
     const named = symbolsNamed(graph, m.file, [m.symbol]);
     const explicitFiles = await namedFor(graph, m.file, named.found);
-    const diff = diffOf(m);
+    // The stored diff runs CLEAN -> MUTATED, and the tree was left clean, so
+    // the tree is the diff's old side while `changedLines` reads the new one.
+    // Turned around, the clean tree becomes the new side — which is also the
+    // case this gate means to ask about: the symbol as it stands, before the
+    // change (`diff-side.mjs`).
+    const diff = diffForTree(diffOf(m), "old");
     const fromDiff = changedSymbolsOf(graph, m.file, diff);
     const productFiles = await namedFor(graph, m.file, fromDiff);
     const split = (files) => ({
