@@ -197,6 +197,11 @@ describe("change-impact block on a prompt: the resolution half", () => {
   it("answers a symbol question with that symbol's callers", async () => {
     const out = await ask("Was bricht, wenn ich saveMemory umbenenne?");
     assert.ok(out.note);
+    assert.equal(
+      "listed" in out.note,
+      false,
+      "the prompt lane must not carry absolute candidate paths into hook telemetry",
+    );
     assert.equal(out.note.basis, "symbols");
     assert.equal(out.note.file, SAVE);
     assert.match(out.note.note, /audit-save\.ts:69 — calls saveMemory/);
