@@ -77,6 +77,8 @@ import { execFileSync } from "node:child_process";
 import { scenarioRoot } from "./scenario-root.mjs";
 import { writableOut } from "./archive.mjs";
 import { ARM_IDS } from "./select.mjs";
+import { armIdsOf, resolveRegistration } from "./registration.mjs";
+import { deliveredBlockFor, promptWithDeliveredBlock } from "./delivered-block.mjs";
 import { diffForTree } from "./diff-side.mjs";
 import {
   buildPinPath,
@@ -130,14 +132,33 @@ const ALLOWED_TOOLS = ["Read", "Grep", "Glob"];
 export const GRAPH_TOOLS = ALL_TOOL_DEFS.map((d) => `mcp__code__${d.name}`);
 const DISALLOWED_TOOLS = ["Edit", "Write", "NotebookEdit", "Agent", "Workflow", "Skill", "WebFetch", "WebSearch"];
 
-/** The arms, and what each one changes. `graph` = the MCP server is attached. */
+/**
+ * The CATALOGUE of arms this runner can serve, and what each one changes.
+ * `graph` = the MCP server is attached.
+ *
+ * WHICH of them a run uses is the registration's decision, not this file's:
+ * `armIdsOf()` reads `arms.ids` off the archive's registration and the runner
+ * refuses an id that is not in here. An arm defined and never registered runs
+ * never; an arm registered and not defined aborts loudly, which is the failure
+ * #582 made impossible in one direction and #606 closes in the other.
+ */
 export const ARMS = {
-  A: { id: "A", name: "grep", graph: false, prefill: false },
-  B: { id: "B", name: "offered", graph: true, prefill: false },
+  A: { id: "A", name: "grep", graph: false, prefill: false, delivered: false },
+  B: { id: "B", name: "offered", graph: true, prefill: false, delivered: false },
   // NO MCP server, no instructions: the prefilled arm is the ANSWER handed
   // over, nothing else. With the server attached it also carried the product
   // surface, and a gain could not be told apart from arm B's (#582 review).
-  prefilled: { id: "prefilled", name: "prefilled", graph: false, prefill: true },
+  prefilled: { id: "prefilled", name: "prefilled", graph: false, prefill: true, delivered: false },
+  // #606. The product's own Write/Edit block, rendered from `dist` and put
+  // where the lane would put it: before the question, unannounced, capped at
+  // `MAX_IMPACT_FILES`. No MCP server — the whole point of this arm is that
+  // nothing had to be called for the answer to arrive.
+  D: { id: "D", name: "delivered", graph: false, prefill: false, delivered: true },
+  // #606, reported and never gated: the FULL `find_affected_files` answer in
+  // the prompt, byte-identically the `prefilled` arm of registration 6. It is
+  // what separates "the block is too small" from "the answer does not help" —
+  // without it a failing D says only that D failed.
+  P: { id: "P", name: "prefilled_full", graph: false, prefill: true, delivered: false },
 };
 
 /**
@@ -443,10 +464,24 @@ async function main() {
     return i > 0 ? process.argv[i + 1] : null;
   };
   const only = arg("--only") ? new Set(arg("--only").split(",")) : null;
-  const wantedIds = (arg("--arms") ?? ARM_IDS.join(",")).split(",").map((a) => a.trim());
+  // WHICH REGISTRATION THIS ARCHIVE IS (#606) — off the archive's own scenario
+  // file, before anything else, because it decides the arms AND what the
+  // preflight checks as the frozen surface.
+  const { id: registrationId, registration } = resolveRegistration(OUT);
+  const registeredArms = armIdsOf(registration, registrationId);
+  const wantedIds = (arg("--arms") ?? registeredArms.join(",")).split(",").map((a) => a.trim());
   for (const id of wantedIds) {
     if (ARMS[id] === undefined) {
-      throw new Error(`unknown arm "${id}" — the arms are ${ARM_IDS.join(", ")}`);
+      throw new Error(
+        `unknown arm "${id}" — this runner defines ${Object.keys(ARMS).join(", ")} and ` +
+          `${registrationId} registers ${registeredArms.join(", ")}`,
+      );
+    }
+    if (!registeredArms.includes(id)) {
+      throw new Error(
+        `arm "${id}" is not registered by ${registrationId} (${registeredArms.join(", ")}) — ` +
+          `an arm the registration does not name is an arm nobody decided to run`,
+      );
     }
   }
 
@@ -454,7 +489,7 @@ async function main() {
   // dollar (#582, Codex counter-review 4). Checked before `scenarios.json` is
   // even read, so `--preflight-only` works against an archive that has not
   // been started yet.
-  const preflight = await preflightBuild();
+  const preflight = await preflightBuild({ registrationId, registration });
   if (!preflight.ok) {
     process.stdout.write(`preflight failed (${preflight.reason}): ${preflight.message}\n`);
     process.exitCode = 1;
@@ -491,7 +526,7 @@ async function main() {
   // finished arms it happened to walk past, so a resumed run forgot every abort
   // and, under `--only`, most of the finished arms too. The ceiling then bound
   // on a fraction of the real spend.
-  const spend = spendOnDisk(RUNS, ARM_IDS);
+  const spend = spendOnDisk(RUNS, registeredArms);
   let finishedCostUsd = spend.finishedCostUsd;
   let finishedArms = spend.finishedArms;
   // The whole burden: what finished plus what the aborts were charged. The
@@ -523,6 +558,7 @@ async function main() {
     );
 
     let prefill = null;
+    let delivered = null;
     // A scenario file written before the arms were renamed would silently run
     // nothing at all — the failure #582 was built to make impossible.
     const order = s.armOrder ?? wantedIds;
@@ -531,7 +567,7 @@ async function main() {
       if (spec === undefined) {
         throw new Error(
           `${s.id}: armOrder contains "${arm}", which is not an arm. ` +
-            `The arms are ${ARM_IDS.join(", ")} — re-run select.mjs for this sample.`,
+            `${registrationId} registers ${registeredArms.join(", ")} — re-run select.mjs for this sample.`,
         );
       }
       if (!wantedIds.includes(spec.id)) continue;
@@ -554,6 +590,14 @@ async function main() {
         prefill ??= await prefillFor(s, tree, graphRoot);
         writeFileSync(join(dir, "prefill.json"), JSON.stringify(prefill, null, 2));
         prompt = promptWithPrefill(s, prefill);
+      }
+      if (spec.delivered) {
+        // Kept in the archive whether or not it was emitted: `null` is the
+        // product being silent, and the scorer needs to tell that apart from a
+        // block that was delivered and ignored.
+        delivered ??= await deliveredBlockFor(s, tree, graphRoot);
+        writeFileSync(join(dir, "delivered.json"), JSON.stringify(delivered, null, 2));
+        prompt = promptWithDeliveredBlock(prompt, delivered);
       }
       process.stdout.write(`${s.id} ${spec.id} (${spec.name})\u2026 `);
       const { code, finished, charge } = await runArm(

@@ -29,21 +29,18 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { DEFAULT_REGISTRATION_ID, loadRegistrationById } from "./registration.mjs";
 
 /** Repository root — this file lives at `packages/eval/code-roi/v2/`. */
 export const REPO_ROOT = new URL("../../../../", import.meta.url).pathname.replace(/\/$/, "");
 /** Where the runner's own imports come from — never `src` (#582). */
 export const DIST_DAEMON_DIR = new URL("../../../daemon/dist", import.meta.url).pathname.replace(/\/$/, "");
-const REGISTRATION_PATH = new URL(
-  "../../registrations/code-awareness-change-impact.json",
-  import.meta.url,
-).pathname;
 
 /** The tracked sources a built `dist` claims to represent. */
 export const TRACKED_BUILD_INPUTS = ["packages/daemon/src", "packages/eval"];
 
-export function loadRegistration() {
-  return JSON.parse(readFileSync(REGISTRATION_PATH, "utf8"));
+export function loadRegistration(id = DEFAULT_REGISTRATION_ID) {
+  return loadRegistrationById(id);
 }
 
 /**
@@ -102,17 +99,58 @@ export async function frozenSurfaceHashesFromDist(distDaemonDir = DIST_DAEMON_DI
   };
 }
 
-/** Where the built surface differs from what the registration pins, field by field. */
+/**
+ * The DELIVERED surface: the block text a lane would emit, and the compiled
+ * modules that produce it (#606).
+ *
+ * `block_template_sha256` is the rendering function itself, so a reworded lead
+ * or a changed attribute list is caught even when the rest of the module moves
+ * around it; the three file hashes bind the whole path — `impact-block.js`
+ * renders, `pending-diff.js` is how the lane turns a tool call into the diff
+ * that reaches it, and `affected.js` is the query underneath both. Arm D's
+ * block is the product's or it is nothing.
+ */
+export async function deliveredSurfaceHashesFromDist(distDaemonDir = DIST_DAEMON_DIR) {
+  const { renderImpactBlock } = await import(`${distDaemonDir}/code-graph/impact-block.js`);
+  const sha = (v) => createHash("sha256").update(v).digest("hex");
+  const files = ["code-graph/impact-block.js", "code-graph/pending-diff.js", "code-graph/affected.js"];
+  return {
+    block_template_sha256: sha(renderImpactBlock.toString()),
+    ...Object.fromEntries(
+      files.map((rel) => [
+        `${rel}.sha256`,
+        sha(readFileSync(join(distDaemonDir, rel))),
+      ]),
+    ),
+  };
+}
+
+/**
+ * The frozen surface of WHICHEVER registration is being served.
+ *
+ * `kind` is the registration's own word for what its arms are served: the
+ * change-impact registration serves an MCP tool surface, #606 serves a block.
+ * A registration that names no kind is the change-impact one, which predates
+ * the field and may not be amended to carry it.
+ */
+export async function frozenSurfaceOf(registration, distDaemonDir = DIST_DAEMON_DIR) {
+  const kind = registration.arms?.frozen_surface?.kind ?? "mcp_surface";
+  if (kind === "delivered_block") return deliveredSurfaceHashesFromDist(distDaemonDir);
+  if (kind === "mcp_surface") return frozenSurfaceHashesFromDist(distDaemonDir);
+  throw new Error(`unknown frozen surface kind "${kind}" — the runner cannot check what it cannot compute`);
+}
+
+/**
+ * Where the built surface differs from what the registration pins, field by
+ * field. Every `*_sha256` field of the registration's frozen surface is
+ * checked, so a registration that adds one cannot have it silently ignored.
+ */
 export function frozenSurfaceMismatches(hashes, registration) {
   const frozen = registration.arms.frozen_surface;
-  return [
-    "tool_definition_sha256",
-    "server_instructions_sha256",
-    "memory_part_sha256",
-    "code_clause_sha256",
-  ]
+  return Object.keys(frozen)
+    .filter((field) => field.endsWith("sha256"))
     .filter((field) => hashes[field] !== frozen[field])
-    .map((field) => ({ field, registered: frozen[field], built: hashes[field] }));
+    .map((field) => ({ field, registered: frozen[field], built: hashes[field] ?? null }));
 }
 
 /**
@@ -150,7 +188,8 @@ export function distArtifactHashes(distDaemonDir = DIST_DAEMON_DIR) {
 export async function preflightBuild({
   repoRoot = REPO_ROOT,
   distDaemonDir = DIST_DAEMON_DIR,
-  registration = loadRegistration(),
+  registrationId = DEFAULT_REGISTRATION_ID,
+  registration = loadRegistration(registrationId),
 } = {}) {
   const headSha = gitHeadSha(repoRoot);
   const distRevision = readBuildRevision(distDaemonDir);
@@ -194,7 +233,7 @@ export async function preflightBuild({
         `dist matching HEAD proves nothing when HEAD itself is not what is on disk:\n${dirty.join("\n")}`,
     };
   }
-  const frozenSurface = await frozenSurfaceHashesFromDist(distDaemonDir);
+  const frozenSurface = await frozenSurfaceOf(registration, distDaemonDir);
   const mismatches = frozenSurfaceMismatches(frozenSurface, registration);
   if (mismatches.length > 0) {
     return {
@@ -210,6 +249,10 @@ export async function preflightBuild({
     distRevision,
     frozenSurface,
     artifactHashes: distArtifactHashes(distDaemonDir),
+    // WHICH registration, not just which version of it: two registrations now
+    // share this archive layout and a helping started against the wrong one
+    // would otherwise differ in nothing the pin can see (#606).
+    registrationId,
     registrationVersion: registration.registration_version,
     computedAt: new Date().toISOString(),
   };
@@ -223,6 +266,13 @@ export async function preflightBuild({
  */
 export function pinFields(pin) {
   const fields = {
+    // `registrationId` is deliberately NOT here, and neither is it in
+    // `pinSignature` below. Adding a field to the signature would change the
+    // signature of every build — including the one the v6 archive's transcripts
+    // were stamped with — and `mixed_builds` would turn true across a finished
+    // measurement that never changed. It is checked on its own in
+    // `checkBuildPin` instead, where a missing value means the registration
+    // that predates the field (#606).
     headSha: pin.headSha,
     "distRevision.revision": pin.distRevision.revision,
     "distRevision.dirty": String(pin.distRevision.dirty),
@@ -272,6 +322,15 @@ export function diffBuildPin(recorded, current) {
 export function checkBuildPin(recorded, current) {
   if (recorded === null) return { ok: true, write: true, diff: [] };
   const diff = diffBuildPin(recorded, current);
+  // The registration this archive belongs to, checked beside the build. An
+  // archive started under one registration and resumed under another would
+  // otherwise pass every hash check and still be two measurements in one
+  // directory (#606).
+  const recordedId = recorded.registrationId ?? DEFAULT_REGISTRATION_ID;
+  const currentId = current.registrationId ?? DEFAULT_REGISTRATION_ID;
+  if (recordedId !== currentId) {
+    diff.unshift({ field: "registrationId", recorded: recordedId, current: currentId });
+  }
   return diff.length === 0 ? { ok: true, write: false, diff: [] } : { ok: false, write: false, diff };
 }
 
