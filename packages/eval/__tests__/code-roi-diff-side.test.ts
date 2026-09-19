@@ -79,6 +79,71 @@ describe("reversing a unified diff", () => {
     const d = ["--- a/f.ts", "+++ b/f.ts", "@@ -1,1 +1,1 @@", "-a", "\\ No newline at end of file", "+b"].join("\n");
     assert.ok(reverseUnifiedDiff(d).includes("\\ No newline at end of file"));
   });
+
+  test("reversing twice gives back a diff with the marker intact", () => {
+    const d = ["--- a/f.ts", "+++ b/f.ts", "@@ -1,1 +1,1 @@", "-a", "\\ No newline at end of file", "+b"].join("\n");
+    assert.equal(reverseUnifiedDiff(reverseUnifiedDiff(d)), d);
+  });
+});
+
+/**
+ * P1.2 (Codex counter-review 3): `---`/`+++` used to be read as a file header
+ * wherever their text appeared, hunk content included — a source line that
+ * itself starts `-- `/`++ ` reads, diff-prefixed, as `--- x`/`+++ x` and was
+ * carried through unflipped instead of being reversed as the body line it is.
+ * `reverseUnifiedDiff` now reads the same hunk state machine as the product
+ * (`diffLines`, imported from the built daemon package), so the two agree on
+ * what counts as a hunk.
+ */
+describe("reversing a diff whose content looks like a header", () => {
+  test("THE REPRODUCTION: a `-- x` / `++ x` pair inside a hunk is flipped as body text, not carried through as headers", () => {
+    const diff = ["@@ -10 +11 @@", "--- x", "+++ x"].join("\n");
+    const back = reverseUnifiedDiff(diff).split("\n");
+    assert.deepEqual(back, ["@@ -11 +10 @@", "-++ x", "+-- x"]);
+  });
+
+  test("a multi-line replacement run keeps git's removals-before-additions order after reversal", () => {
+    const diff = [
+      "diff --git a/f.ts b/f.ts",
+      "--- a/f.ts",
+      "+++ b/f.ts",
+      "@@ -5,2 +5,2 @@",
+      "-old1",
+      "-old2",
+      "+new1",
+      "+new2",
+    ].join("\n");
+    const back = reverseUnifiedDiff(diff).split("\n");
+    assert.deepEqual(back.slice(3), ["@@ -5,2 +5,2 @@", "-new1", "-new2", "+old1", "+old2"]);
+  });
+
+  test("a pure deletion reverses into a pure insertion with the header swapped", () => {
+    const diff = ["diff --git a/f.ts b/f.ts", "--- a/f.ts", "+++ b/f.ts", "@@ -5,2 +4,0 @@", "-old1", "-old2"].join(
+      "\n",
+    );
+    const back = reverseUnifiedDiff(diff).split("\n");
+    assert.deepEqual(back.slice(3), ["@@ -4,0 +5,2 @@", "+old1", "+old2"]);
+  });
+
+  test("a quoted, spaced header pair is still swapped as a header, not read as hunk content", () => {
+    const diff = [
+      'diff --git "a/weird name.ts" "b/weird name.ts"',
+      '--- "a/weird name.ts"',
+      '+++ "b/weird name.ts"',
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+new",
+    ].join("\n");
+    const back = reverseUnifiedDiff(diff).split("\n");
+    assert.deepEqual(back, [
+      'diff --git "a/weird name.ts" "b/weird name.ts"',
+      '+++ "a/weird name.ts"',
+      '--- "b/weird name.ts"',
+      "@@ -1,1 +1,1 @@",
+      "-new",
+      "+old",
+    ]);
+  });
 });
 
 describe("the product reads the side the tree actually is", () => {

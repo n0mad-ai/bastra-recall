@@ -13,6 +13,7 @@ import {
 import {
   affectedHits,
   affectedResult,
+  changedLines,
   changedSymbolsOf,
   diffSymbols,
   narrowPackageHits,
@@ -21,6 +22,7 @@ import {
   MAX_AFFECTED_FILES,
   PACKAGE_IMPORT,
 } from "../src/code-graph/affected.js";
+import { diffLines } from "../src/code-graph/diff-lines.js";
 import { workspaceModules } from "../src/code-graph/workspace-packages.js";
 import { externalRefLines } from "../src/code-graph/external-refs.js";
 import { createHash } from "node:crypto";
@@ -544,6 +546,141 @@ describe("changed symbols from a diff", () => {
       changed.includes("saveMemory"),
       "the barrel holds no symbols of its own, so the re-exported one is followed",
     );
+  });
+});
+
+/**
+ * P1.2 (Codex counter-review 3): `---`/`+++` used to be read as a file header
+ * on ANY line that started with them, hunk content included. A source line
+ * that itself starts `-- `/`++ ` reads, diff-prefixed, as `--- x`/`+++ x` and
+ * was silently skipped — `changedLines` came back confidently empty instead of
+ * falling back. `diff-lines.ts` now only reads them as headers outside a hunk.
+ */
+describe("changedLines: the unified diff parser (P1.2)", () => {
+  it("reads a source line that itself looks like a header as a REPLACEMENT, not a skipped pair of headers", () => {
+    // THE REPRODUCTION. `-- x` and `++ x`, diff-prefixed, are `--- x` and
+    // `+++ x` — indistinguishable from real headers by text alone. Before the
+    // fix this diff mapped to `{ lines: [], mappable: true }`: confidently
+    // empty, which suppresses the whole-file fallback instead of triggering
+    // it.
+    const diff = ["@@ -10 +10 @@", "--- x", "+++ x"].join("\n");
+    assert.deepEqual(changedLines(diff, "any.ts"), { lines: [10], mappable: true });
+  });
+
+  it("treats a multi-line replacement as ONE block: every `-` of the run defers to the `+` run, not just the last one", () => {
+    // Before the fix, only the LAST removed line of a run checked whether a
+    // `+` followed it; the earlier ones read as bare deletions and widened
+    // the selection with their neighbouring (untouched) lines.
+    const diff = [
+      "diff --git a/f.ts b/f.ts",
+      "--- a/f.ts",
+      "+++ b/f.ts",
+      "@@ -5,2 +5,2 @@",
+      "-old1",
+      "-old2",
+      "+new1",
+      "+new2",
+    ].join("\n");
+    assert.deepEqual(changedLines(diff, "f.ts"), { lines: [5, 6], mappable: true });
+  });
+
+  it("keeps a pure deletion run — nothing `+` follows it — mapped to both neighbours, unchanged", () => {
+    const diff = [
+      "diff --git a/f.ts b/f.ts",
+      "--- a/f.ts",
+      "+++ b/f.ts",
+      "@@ -5,2 +4,0 @@",
+      "-old1",
+      "-old2",
+    ].join("\n");
+    assert.deepEqual(changedLines(diff, "f.ts"), { lines: [4, 5], mappable: true });
+  });
+
+  it("accumulates every hunk of a multi-hunk diff", () => {
+    const diff = [
+      "diff --git a/f.ts b/f.ts",
+      "--- a/f.ts",
+      "+++ b/f.ts",
+      "@@ -1,1 +1,1 @@",
+      "-a",
+      "+b",
+      "@@ -20,1 +20,1 @@",
+      "-c",
+      "+d",
+    ].join("\n");
+    assert.deepEqual(changedLines(diff, "f.ts"), { lines: [1, 20], mappable: true });
+  });
+
+  it("maps a deletion at the very start of the file without inventing line 0", () => {
+    const diff = [
+      "diff --git a/f.ts b/f.ts",
+      "--- a/f.ts",
+      "+++ b/f.ts",
+      "@@ -1,1 +0,0 @@",
+      "-first",
+    ].join("\n");
+    assert.deepEqual(changedLines(diff, "f.ts"), { lines: [1], mappable: true });
+  });
+
+  it("maps a deletion at the very end of the file to the line before it and the (absent) line after", () => {
+    const diff = [
+      "diff --git a/f.ts b/f.ts",
+      "--- a/f.ts",
+      "+++ b/f.ts",
+      "@@ -20,1 +19,0 @@",
+      "-last",
+    ].join("\n");
+    assert.deepEqual(changedLines(diff, "f.ts"), { lines: [19, 20], mappable: true });
+  });
+
+  it("a `\\ No newline at end of file` marker between a removal and its replacement does not break the run", () => {
+    const diff = [
+      "diff --git a/f.ts b/f.ts",
+      "--- a/f.ts",
+      "+++ b/f.ts",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "\\ No newline at end of file",
+      "+new",
+    ].join("\n");
+    assert.deepEqual(changedLines(diff, "f.ts"), { lines: [1], mappable: true });
+  });
+
+  it("a header path with a space in it is still matched, not swallowed into the hunk", () => {
+    const file = "dir/my file.ts";
+    const diff = [
+      `diff --git a/${file} b/${file}`,
+      `--- a/${file}`,
+      `+++ b/${file}`,
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+new",
+    ].join("\n");
+    assert.deepEqual(changedLines(diff, file), { lines: [1], mappable: true });
+    assert.deepEqual(changedLines(diff, "other.ts"), { lines: [], mappable: true });
+  });
+
+  it("a quoted header path is still classified as a header, not read as hunk content", () => {
+    // git wraps an unusual path in double quotes; the header must still be
+    // recognised as a header by POSITION (before the first `@@`), regardless
+    // of what its text looks like.
+    const diff = [
+      'diff --git "a/weird name.ts" "b/weird name.ts"',
+      '--- "a/weird name.ts"',
+      '+++ "b/weird name.ts"',
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+new",
+    ].join("\n");
+    const kinds = [...diffLines(diff)].map((l) => l.kind);
+    assert.deepEqual(kinds, [
+      "file-boundary",
+      "old-header",
+      "new-header",
+      "hunk-header",
+      "removed",
+      "added",
+    ]);
   });
 });
 
