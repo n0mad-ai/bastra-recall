@@ -209,16 +209,23 @@ export function bootstrapCI(rows, values, seed = REG.statistics.seed) {
  * — so each gets its own pass / fail / underpowered and there is deliberately
  * NO combined status to quote.
  */
-export function judge(rows, thresholds = REG.thresholds, minScenarios = REG.sample.min_scenarios) {
+export function judge(
+  rows,
+  thresholds = REG.thresholds,
+  minScenarios = REG.sample.min_scenarios,
+  adoptionRows = rows,
+) {
   const n = rows.length;
-  const verdict = (checks) => {
-    if (n === 0) return "not_evaluable";
-    if (n < minScenarios) return "underpowered";
+  const adoptionN = adoptionRows.length;
+  const verdictFor = (checks, count) => {
+    if (count === 0) return "not_evaluable";
+    if (count < minScenarios) return "underpowered";
     return Object.values(checks).every((c) => c.pass) ? "pass" : "fail";
   };
+  const verdict = (checks) => verdictFor(checks, n);
 
-  const adopted = rows.filter((r) => r[ADOPTION_ARM].affectedCalls > 0).length;
-  const adoptionRate = n === 0 ? 0 : adopted / n;
+  const adopted = adoptionRows.filter((r) => r[ADOPTION_ARM].affectedCalls > 0).length;
+  const adoptionRate = adoptionN === 0 ? 0 : adopted / adoptionN;
   const adoptionChecks = {
     adoption: {
       value: adoptionRate,
@@ -263,7 +270,12 @@ export function judge(rows, thresholds = REG.thresholds, minScenarios = REG.samp
 
   return {
     n,
-    adoption: { status: verdict(adoptionChecks), checks: adoptionChecks, adopted },
+    adoption: {
+      status: verdictFor(adoptionChecks, adoptionN),
+      checks: adoptionChecks,
+      adopted,
+      n: adoptionN,
+    },
     effect: { status: verdict(effectChecks), checks: effectChecks, ci, bothSolved: bothSolved.length },
     contextRatioAllScenarios: ctxRatioAll,
   };
@@ -291,9 +303,10 @@ export function perRepo(rows) {
 
 export function buildReport(scenarios, readArm) {
   const rows = [];
+  const adoptionRows = [];
   const missing = [];
-  for (const s of scenarios) {
-    if (s.excluded) continue;
+  const planned = scenarios.filter((s) => !s.excluded);
+  for (const s of planned) {
     const arms = {};
     for (const arm of ARMS) {
       const text = readArm(s, arm);
@@ -304,11 +317,18 @@ export function buildReport(scenarios, readArm) {
       const parsed = parseArm(text, join(OUT, "runs", s.id, "tree"));
       arms[arm] = { ...parsed, ...score(parsed.named, s.truth, s.file) };
     }
+    // ADOPTION only needs arm B, so a scenario whose B has run counts for it
+    // even while the run is mid-helping. The EFFECT is paired and needs the
+    // whole triple — half a scenario is not a comparison.
+    if (arms[ADOPTION_ARM] !== undefined) {
+      adoptionRows.push({ id: s.id, repo: s.repo ?? null, file: s.file, [ADOPTION_ARM]: arms[ADOPTION_ARM] });
+    }
     if (ARMS.some((a) => arms[a] === undefined)) continue;
     rows.push({ id: s.id, repo: s.repo ?? null, file: s.file, truth: s.truth.length, ...arms });
   }
 
-  const verdict = judge(rows);
+  const verdict = judge(rows, undefined, undefined, adoptionRows);
+  const incomplete = rows.length < planned.length;
   const per = (arm, pick) => mean(rows.map((r) => pick(r[arm])));
   const costUsd = rows.reduce((a, r) => a + ARMS.reduce((b, arm) => b + r[arm].costUsd, 0), 0);
   return {
@@ -324,6 +344,15 @@ export function buildReport(scenarios, readArm) {
         "a tool everyone calls whose answer does not, need opposite work.",
     },
     n: verdict.n,
+    // A run taken in helpings across several subscription windows: the report
+    // says how far it got, so a partial number is never read as the result.
+    progress: {
+      scenariosComplete: rows.length,
+      scenariosPlanned: planned.length,
+      armBComplete: adoptionRows.length,
+      incomplete,
+      label: incomplete ? `incomplete (${rows.length}/${planned.length})` : "complete",
+    },
     missing,
     means: Object.fromEntries(
       ARMS.map((arm) => [
@@ -338,10 +367,11 @@ export function buildReport(scenarios, readArm) {
     adoption: {
       arm: ADOPTION_ARM,
       status: verdict.adoption.status,
+      n: verdict.adoption.n,
       scenariosCallingFindAffectedFiles: verdict.adoption.adopted,
-      scenariosCallingFindCode: rows.filter((r) => r[ADOPTION_ARM].findCodeCalls > 0).length,
-      affectedCalls: rows.reduce((a, r) => a + r[ADOPTION_ARM].affectedCalls, 0),
-      affectedEmpty: rows.reduce((a, r) => a + r[ADOPTION_ARM].affectedEmpty, 0),
+      scenariosCallingFindCode: adoptionRows.filter((r) => r[ADOPTION_ARM].findCodeCalls > 0).length,
+      affectedCalls: adoptionRows.reduce((a, r) => a + r[ADOPTION_ARM].affectedCalls, 0),
+      affectedEmpty: adoptionRows.reduce((a, r) => a + r[ADOPTION_ARM].affectedEmpty, 0),
       $comment: "find_code calls are reported but do not count towards the adoption threshold.",
     },
     effect: {
