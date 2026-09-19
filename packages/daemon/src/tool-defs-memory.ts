@@ -410,21 +410,40 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         derived_claims: {
           type: "array",
           description:
-            "Optional lazy facts for a memory. Each declaration stores a closed resolver and " +
-            "a vault-relative source, so the value stays in the source file. load_memory " +
-            "evaluates the resolver locally and returns the observed value, or an " +
-            "unverifiable result, alongside the note, which keeps its own bytes.",
+            "Optional: claims this note states that were taken from a file. When the note " +
+            "is loaded later, each claim is re-checked read-only against its source and the " +
+            "reader is told whether it still holds; the note and the source keep their own " +
+            "bytes. Worth a line whenever you have just read a file and copied a number, a " +
+            "setting or a sentence out of it into the note — decisions, reasons and " +
+            "preferences stay as prose. A claim has an `id`, a `source` (path relative to " +
+            "the vault directory) and a `resolver`: `count.markdown-numbered-list.v1` (with " +
+            "`expect`, the number the note states) counts the numbered items of the source; " +
+            "`quote.v1` (with `exact`, the string exactly as it appears in the file) " +
+            "requires that string to occur once; `sha256.v1` (with `expect`, the digest of " +
+            "the source) covers the whole file.",
           items: {
             type: "object",
             properties: {
-              id: { type: "string", description: "Stable lowercase claim id." },
+              id: { type: "string", description: "Stable lowercase claim id, e.g. 'failure-modes.total'." },
               resolver: {
                 type: "string",
-                enum: ["count.markdown-numbered-list.v1"],
-                description: "The only supported bounded local resolver.",
+                enum: ["count.markdown-numbered-list.v1", "quote.v1", "sha256.v1"],
+                description: "How the claim is re-checked against its source.",
               },
               source: { type: "string", description: "Path relative to the vault directory." },
-              case_ref: { type: "string", description: "Optional stable reference to an independent case; Bastra stores it and leaves it alone." },
+              expect: {
+                type: ["number", "string"],
+                description:
+                  "What the note says: the number for the count resolver, the recorded digest for sha256.v1.",
+              },
+              exact: {
+                type: "string",
+                description: "quote.v1: the string exactly as it appears in the source file.",
+              },
+              case_ref: {
+                type: "string",
+                description: "Optional stable reference to an independent case; Bastra stores it and leaves it alone.",
+              },
             },
             required: ["id", "resolver", "source"],
           },
