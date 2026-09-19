@@ -40,6 +40,24 @@ const toolCall = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+/** #606: the same answer, delivered through a hook lane instead of called for. */
+const delivered = (over: Record<string, unknown> = {}) => ({
+  kind: "code_tool_call",
+  ts: "2026-09-19T10:00:00.000Z",
+  tool: "find_affected_files",
+  status: "ok",
+  basis: "diff",
+  hits: 4,
+  files: 4,
+  truncated: false,
+  took_ms: 8,
+  repo: "Projekte/bastra-recall",
+  surface: "delivered",
+  delivered_lane: "write",
+  tokens_est: 120,
+  ...over,
+});
+
 const refresh = (over: Record<string, unknown> = {}) => ({
   kind: "code_graph_refresh",
   ts: "2026-09-19T10:00:00.000Z",
@@ -203,6 +221,49 @@ describe("code awareness: the two readouts", () => {
     );
     assert.equal(report.codeAwareness?.active.tools[0]?.tool, "find_code");
     assert.equal(report.codeAwareness?.active.refresh.ok, 1);
+  });
+
+  it("counts a delivered block apart from the tool calls (#606)", () => {
+    // The point of the split: a delivered block must not be able to answer
+    // "does anyone call find_affected_files?" with Recall's own injection.
+    const s = aggregateCodeAwareness([
+      toolCall(),
+      delivered(),
+      delivered({ delivered_lane: "prompt", basis: "symbols", files: 2, tokens_est: 90 }),
+      delivered({ dedupe_hit: true, status: "no_answer", basis: undefined }),
+    ]);
+    assert.equal(s.events, 4);
+    assert.equal(s.tools.length, 1);
+    assert.equal(s.tools[0].tool, "find_code");
+    assert.equal(s.delivered.blocks, 2);
+    assert.equal(s.delivered.dedupeHits, 1);
+    assert.deepEqual(s.delivered.byLane, [
+      { key: "write", count: 2 },
+      { key: "prompt", count: 1 },
+    ]);
+    assert.deepEqual(s.delivered.byBasis, [
+      { key: "diff", count: 1 },
+      { key: "symbols", count: 1 },
+    ]);
+    assert.equal(s.delivered.filesNamed, 6);
+    assert.equal(s.delivered.tokensTotal, 210);
+  });
+
+  it("prints the delivered half in `bastra logs --stats`", () => {
+    const out = renderCodeAwareness(
+      aggregateCodeAwareness([delivered(), delivered({ dedupe_hit: true, status: "no_answer" })]),
+    ).join("\n");
+    assert.match(out, /delivered blocks: 1 injected, 1 suppressed as already delivered/);
+    assert.match(out, /by lane: write×2/);
+    assert.match(out, /by basis: diff×1/);
+    assert.match(out, /cost: 120 tokens total/);
+  });
+
+  it("hands the UI the delivered fold the CLI printed", () => {
+    const events = [delivered()];
+    const section = summarizeCodeAwareness(events as never)!;
+    assert.deepEqual(section.active, aggregateCodeAwareness(events));
+    assert.equal(section.active.delivered.blocks, 1);
   });
 
   it("keeps a window that only ever injected blocks — no tool call, still a section", () => {

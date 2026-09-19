@@ -11,7 +11,20 @@ import type { CodeUnavailableReason } from "./code-graph/unavailable-reason.js";
 export type { CodeUnavailableReason };
 
 /**
- * One `find_code` / `find_affected_files` call.
+ * The lane a DELIVERED block went out on (#606) — the UserPromptSubmit gate or
+ * the PreToolUse Write/Edit lane.
+ *
+ * Its own field rather than `lane`: that one already means "which lane of
+ * `find_code` produced the hits", and the readouts fold `lane ?? basis` into
+ * one column. Reusing it would make a delivered block's basis disappear behind
+ * the name of the hook that sent it.
+ */
+export type CodeDeliveredLane = "prompt" | "write";
+
+/**
+ * One `find_code` / `find_affected_files` call — or, since #606, one DELIVERED
+ * change-impact block, which is the same answer reaching the agent without
+ * being asked for (`surface: "delivered"`).
  *
  * Shapes, never content: no query, no symbol, no file path, and `repo` only as
  * the last two path segments. What the user is looking for is theirs; how often
@@ -35,8 +48,18 @@ export interface CodeToolCallEvent extends BaseEvent {
   took_ms: number;
   /** Last two path segments of the checkout root. */
   repo: string;
-  surface: "mcp" | "http";
+  /** Where the answer came from: a tool call, or a block Recall delivered. */
+  surface: "mcp" | "http" | "delivered";
   caller_session?: string | null;
+  /** `delivered` only — which hook lane sent it. */
+  delivered_lane?: CodeDeliveredLane;
+  /** `delivered` only — ~4 chars per token of the injected block. The cost
+   *  side: a delivered answer is paid for whether or not it was needed. */
+  tokens_est?: number;
+  /** `delivered` only — this answer had already gone out in this session, so
+   *  nothing was injected. Counted, because a dedupe that works and a feature
+   *  that never fires are otherwise the same silence. */
+  dedupe_hit?: boolean;
 }
 
 /** What a refresh run did — `started` first, then exactly one terminal outcome. */
