@@ -45,9 +45,18 @@
  */
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { buildGraph, promptFor } from "./run-arms.mjs";
 import { execFileSync } from "node:child_process";
 import { scenarioRoot } from "./scenario-root.mjs";
@@ -116,9 +125,12 @@ export const COST_CEILING_USD = (() => {
 })();
 
 /**
- * What one finished arm cost, from its transcript's `result` event.
- * A transcript without one (a timeout, a killed process) counts as 0 — the
- * ceiling must not be raised by a run that produced nothing.
+ * What one arm cost, from its transcript's `result` event.
+ *
+ * An aborted arm has no `result` event and reports 0 here, which is NOT the
+ * same as free: `spentUsd` of an aborted arm is taken from `usageCostUsd`
+ * below, so a run that burned money and produced nothing still pushes the
+ * ceiling. The two are separate because only a `result` is a finished arm.
  */
 export function armCostUsd(transcript) {
   let cost = 0;
@@ -132,6 +144,56 @@ export function armCostUsd(transcript) {
     }
   }
   return cost;
+}
+
+/**
+ * Does this transcript carry the terminal `result` event?
+ *
+ * That event is what says the CLI finished its own turn. Without it the file is
+ * whatever had been flushed when the process died — a timeout, a budget stop,
+ * a crash — and its `FILES:` line, if there even is one, is a partial answer,
+ * not an answer.
+ */
+/**
+ * May this transcript be finalised as a finished arm?
+ *
+ * BOTH halves are required. Exit 0 alone is not enough — a CLI that stops at
+ * `--max-budget-usd` can still exit cleanly — and a `result` event alone is not
+ * enough either, because a non-zero exit says something went wrong after it.
+ */
+export function finalisable(exitCode, transcript) {
+  return exitCode === 0 && hasResultEvent(transcript);
+}
+
+export function hasResultEvent(transcript) {
+  for (const line of transcript.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      if (JSON.parse(line).type === "result") return true;
+    } catch {
+      /* a half-written line is not a result */
+    }
+  }
+  return false;
+}
+
+/**
+ * What an ABORTED arm is charged against the ceiling.
+ *
+ * An arm killed at the timeout, stopped by `--max-budget-usd` or crashed spent
+ * real money on every turn it took, and counting it as free is how a run of
+ * failures spends without limit. Its transcript carries no `total_cost_usd` —
+ * `result` is the only event that has one (checked on the archived v3
+ * transcripts) — so the charge is the mean of the arms that DID finish in this
+ * run, and nothing at all before the first one finished.
+ *
+ * That is an estimate, and it is deliberately taken from this run's own
+ * measurements rather than from a price list: a per-token price written into
+ * this file is a number nobody re-checks when it changes, and it would decide
+ * when a paid run stops.
+ */
+export function abortedArmCharge(spentUsd, finishedArms) {
+  return finishedArms > 0 ? spentUsd / finishedArms : 0;
 }
 
 /**
@@ -234,21 +296,43 @@ function runArm(arm, prompt, tree, graphRoot, dir, budgetUsd) {
     const child = spawn("claude", args, { cwd: tree, stdio: ["ignore", "pipe", "pipe"] });
     child.stdout.pipe(out);
     let stderr = "";
+    let timedOut = false;
     child.stderr.on("data", (d) => (stderr += d));
-    const timer = setTimeout(() => child.kill("SIGTERM"), ARM_TIMEOUT_MS);
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+    }, ARM_TIMEOUT_MS);
     child.on("close", (code) => {
       clearTimeout(timer);
       out.end(() => {
-        renameSync(`${transcript}.partial`, transcript);
+        // FINALISATION IS EARNED, NOT AUTOMATIC (#582 review). The rename used
+        // to happen unconditionally, so a timed-out, budget-stopped or crashed
+        // arm became a `.jsonl` like any other: `scenarioComplete` counted it,
+        // the next helping never re-ran it, the scorer read no `FILES:` line
+        // and recorded recall 0, and `armCostUsd` found no `result` and
+        // recorded $0. An aborted arm that scores as a cheap failure is the
+        // worst possible shape for a measurement to fail in.
+        const finished = finalisable(code, readFileSync(`${transcript}.partial`, "utf8"));
+        const kept = finished ? transcript : `${transcript}.failed-${Date.now()}`;
+        renameSync(`${transcript}.partial`, kept);
         writeFileSync(
-          join(dir, `${arm.id}.meta.json`),
+          join(dir, `${arm.id}${finished ? "" : ".failed"}.meta.json`),
           JSON.stringify(
-            { arm: arm.id, name: arm.name, exitCode: code, wallMs: Date.now() - startedAt, stderr: stderr.slice(-4000) },
+            {
+              arm: arm.id,
+              name: arm.name,
+              exitCode: code,
+              finished,
+              ...(finished ? {} : { reason: timedOut ? "timeout" : code === 0 ? "no_result_event" : `exit_${code}` }),
+              transcript: kept.split("/").slice(-1)[0],
+              wallMs: Date.now() - startedAt,
+              stderr: stderr.slice(-4000),
+            },
             null,
             2,
           ),
         );
-        resolve(code);
+        resolve({ code, finished });
       });
     });
   });
@@ -278,7 +362,21 @@ export function treeDirOf(s, outDir = OUT) {
  * carries no result (#582).
  */
 export function scenarioComplete(dir, armIds = ARM_IDS) {
-  return armIds.every((arm) => existsSync(join(dir, `${arm}.jsonl`)));
+  return armIds.every((arm) => armFinished(dir, arm));
+}
+
+/**
+ * Is this arm's transcript a FINISHED arm?
+ *
+ * The file's existence is not enough: a transcript written by an older runner,
+ * or copied in, may be an abort that was renamed anyway. So the terminal
+ * `result` event is checked on disk — the same rule the runner applies when it
+ * decides whether to finalise at all, so a resumed run and a fresh one agree.
+ */
+export function armFinished(dir, armId) {
+  const path = join(dir, `${armId}.jsonl`);
+  if (!existsSync(path)) return false;
+  return hasResultEvent(readFileSync(path, "utf8"));
 }
 
 /**
@@ -323,7 +421,38 @@ export function prepareTreeOf(s, dir) {
   execFileSync("tar", ["-x", "-C", tree], { input: tar, maxBuffer: 1024 * 1024 * 1024 });
   // No project settings may reach the agent — the registration says so.
   rmSync(join(tree, ".claude"), { recursive: true, force: true });
+  const link = firstSymlink(tree);
+  if (link !== null) {
+    throw new Error(
+      `${s.id}: the extracted tree contains a symbolic link (${relative(tree, link)}). ` +
+        `The isolation argument rests on the agent's file tools being confined to this ` +
+        `directory, and a link is a hole in that whose far side nobody checked. Refusing ` +
+        `to run rather than following it silently.`,
+    );
+  }
   return { tree, graphRoot };
+}
+
+/**
+ * The first symbolic link anywhere under `dir`, or null.
+ *
+ * `git archive` reproduces a repository's symlinks, and `--restricted` bounds
+ * the agent's file tools by PATH, not by what a path resolves to. A committed
+ * `node_modules` link, or a fixture pointing at an absolute path, would let an
+ * arm read outside the tree without breaking any rule the runner states. Found
+ * by a review; no scenario in either sample has one, which is why it had never
+ * shown up (#582).
+ */
+export function firstSymlink(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isSymbolicLink()) return full;
+    if (entry.isDirectory()) {
+      const deeper = firstSymlink(full);
+      if (deeper !== null) return deeper;
+    }
+  }
+  return null;
 }
 
 async function main() {
@@ -374,7 +503,7 @@ async function main() {
       }
       if (!wantedIds.includes(spec.id)) continue;
       const transcript = join(dir, `${spec.id}.jsonl`);
-      if (existsSync(transcript)) {
+      if (armFinished(dir, spec.id)) {
         spentUsd += armCostUsd(readFileSync(transcript, "utf8"));
         armsRun++;
         continue;
@@ -394,11 +523,30 @@ async function main() {
         prompt = promptWithPrefill(s, prefill);
       }
       process.stdout.write(`${s.id} ${spec.id} (${spec.name})\u2026 `);
-      const code = await runArm(spec, prompt, tree, graphRoot, dir, Math.max(0.01, COST_CEILING_USD - spentUsd));
-      const cost = existsSync(transcript) ? armCostUsd(readFileSync(transcript, "utf8")) : 0;
-      spentUsd += cost;
-      armsRun++;
-      process.stdout.write(`exit ${code}  $${cost.toFixed(2)}  (total $${spentUsd.toFixed(2)})\n`);
+      const { code, finished } = await runArm(
+        spec,
+        prompt,
+        tree,
+        graphRoot,
+        dir,
+        Math.max(0.01, COST_CEILING_USD - spentUsd),
+      );
+      if (finished) {
+        const cost = armCostUsd(readFileSync(transcript, "utf8"));
+        spentUsd += cost;
+        armsRun++;
+        process.stdout.write(`exit ${code}  $${cost.toFixed(2)}  (total $${spentUsd.toFixed(2)})\n`);
+      } else {
+        // The arm stays unfinished and the next helping re-runs it \u2014 but what
+        // it burned still counts, or a scenario that keeps failing would run
+        // for ever at no recorded cost.
+        const charged = abortedArmCharge(spentUsd, armsRun);
+        spentUsd += charged;
+        process.stdout.write(
+          `exit ${code}  ABORTED, not finalised; charged the running mean ` +
+            `$${charged.toFixed(2)} (total $${spentUsd.toFixed(2)})\n`,
+        );
+      }
     }
   }
   const complete = live.filter((s) => scenarioComplete(join(RUNS, s.id), wantedIds)).length;

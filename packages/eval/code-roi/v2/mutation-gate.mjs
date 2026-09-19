@@ -25,7 +25,20 @@
  *
  * Usage: CODE_ROI_REPO=<repo> CODE_ROI_OUT=<gate archive> node mutation-gate.mjs [--target 20]
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync, readdirSync, statSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  appendFileSync,
+  readdirSync,
+  statSync,
+} from "node:fs";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { writableOut } from "./archive.mjs";
 import { extract, errorSignatures, newErrorFiles, PROFILE_OF, REPO } from "./mine-repo.mjs";
@@ -83,7 +96,7 @@ export const OPERATORS = [
 ];
 
 /** Every `.ts`/`.tsx` file under a workspace package's source, repo-relative. */
-function packageSources(root, profile) {
+export function packageSources(root, profile) {
   const out = [];
   const walk = (dir) => {
     let entries;
@@ -142,11 +155,75 @@ export function drawOrder(items, seed = SEED) {
 
 const packageOf = (f) => f.split("/").slice(0, 2).join("/");
 
+/**
+ * The population, pinned — a hash of the drawn triple list (#582 review).
+ *
+ * The gate used to extract `HEAD` on every invocation. `HEAD` is whatever the
+ * repository points at TODAY, so a run resumed after a commit in bastra-io
+ * would have appended mutations of one tree to mutations of another, under one
+ * seed, and reported the mixture as one sample. A seeded draw is only
+ * reproducible against a fixed population; this is the fixed population, and
+ * the run refuses to continue against a different one.
+ */
+export function populationHash(candidates) {
+  return createHash("sha256")
+    .update(candidates.map((c) => `${c.file}:${c.symbol}:${c.operator}`).join("\n"))
+    .digest("hex");
+}
+
+const POPULATION_FILE = join(OUT, "population.json");
+
+/**
+ * Pin the population on the first run, and on every later one check it.
+ *
+ * A mismatch is an error, never a silent re-pin: the whole point is that a
+ * resumed helping cannot quietly become a different sample.
+ */
+export function checkPopulation(recorded, current) {
+  if (recorded === null) return { ok: true, write: true };
+  for (const key of ["repository", "commit", "population_sha256", "candidates", "seed"]) {
+    if (recorded[key] !== current[key]) {
+      return {
+        ok: false,
+        write: false,
+        why:
+          `the population of this gate archive was pinned at ${key}=${String(recorded[key])} ` +
+          `and is now ${String(current[key])}. A seeded draw is only reproducible against a ` +
+          `fixed population, so this run would mix two samples under one seed. Start a new ` +
+          `archive, or check out the pinned commit.`,
+      };
+    }
+  }
+  return { ok: true, write: false };
+}
+
+/** The unified diff a mutation produces, headed the way `changedLines` reads it. */
+export function mutationDiff(file, original, mutated) {
+  const dir = mkdtempSync(join(tmpdir(), "code-roi-mutdiff-"));
+  try {
+    writeFileSync(join(dir, "a"), original, "utf8");
+    writeFileSync(join(dir, "b"), mutated, "utf8");
+    let body = "";
+    try {
+      body = execFileSync("diff", ["-U3", join(dir, "a"), join(dir, "b")], { encoding: "utf8" });
+    } catch (err) {
+      // `diff` exits 1 when the files differ, which is the expected case.
+      if (err.status !== 1) throw err;
+      body = err.stdout ?? "";
+    }
+    const hunks = body.split("\n").filter((l) => !l.startsWith("--- ") && !l.startsWith("+++ "));
+    return [`diff --git a/${file} b/${file}`, `--- a/${file}`, `+++ b/${file}`, ...hunks].join("\n");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   const profile = PROFILE_OF(REPO);
   mkdirSync(OUT, { recursive: true });
   const dir = join(OUT, "mut-tree");
-  const head = "HEAD";
+  // The pinned commit, resolved ONCE and recorded — not the moving `HEAD`.
+  const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: REPO, encoding: "utf8" }).trim();
   process.stdout.write(`extracting ${REPO} @ ${head}\n`);
   await extract(head, dir);
 
@@ -163,6 +240,21 @@ async function main() {
   };
   const candidates = drawOrder(candidateMutations(files, readText));
   process.stdout.write(`${files.length} package sources, ${candidates.length} candidate mutations\n`);
+
+  const pinned = {
+    repository: REPO,
+    commit: head,
+    population_sha256: populationHash(candidates),
+    candidates: candidates.length,
+    seed: SEED,
+  };
+  const recorded = existsSync(POPULATION_FILE)
+    ? JSON.parse(readFileSync(POPULATION_FILE, "utf8"))
+    : null;
+  const verdict = checkPopulation(recorded, pinned);
+  if (!verdict.ok) throw new Error(`population drift: ${verdict.why}`);
+  if (verdict.write) writeFileSync(POPULATION_FILE, JSON.stringify(pinned, null, 2) + "\n");
+  process.stdout.write(`population ${pinned.population_sha256.slice(0, 12)} @ ${head.slice(0, 7)}\n`);
 
   const done = new Set(
     existsSync(RESULTS)
@@ -200,7 +292,12 @@ async function main() {
       const after = await errorSignatures(dir);
       const truth = [...newErrorFiles(baseline, after)].filter((f) => f !== cand.file).sort();
       const crossTruth = truth.filter((t) => packageOf(t) !== packageOf(cand.file));
-      record = { ...cand, truth, crossTruth, kept: crossTruth.length > 0 };
+      // The diff is KEPT (#582 review). Scoring the gate by handing the tool
+      // the symbol name skips `diffSymbols` and `symbol-spans.ts` entirely, so
+      // it measured the graph query and not the product: a user changes a file
+      // and the product works out which symbols that touched. Storing the diff
+      // is what lets the scorer run BOTH.
+      record = { ...cand, diff: mutationDiff(cand.file, original, mutated), truth, crossTruth, kept: crossTruth.length > 0 };
     } finally {
       writeFileSync(join(dir, cand.file), original, "utf8");
     }

@@ -15,7 +15,7 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,8 +26,29 @@ const { isFrozen, writableOut } = await import("../code-roi/v2/archive.mjs");
 const { ARM_IDS, shuffled, rng, excludedPilotCommits, pooledCandidates, fileKey } = await import(
   "../code-roi/v2/select.mjs"
 );
-const { ARMS, withinCeiling, armCostUsd, COST_CEILING_USD, scenarioComplete, helpingSize, treeDirOf, GRAPH_TOOLS } =
-  await import("../code-roi/v2/run-arms-v3.mjs");
+const {
+  ARMS,
+  withinCeiling,
+  armCostUsd,
+  abortedArmCharge,
+  armFinished,
+  finalisable,
+  firstSymlink,
+  hasResultEvent,
+  COST_CEILING_USD,
+  scenarioComplete,
+  helpingSize,
+  treeDirOf,
+  GRAPH_TOOLS,
+} = await import("../code-roi/v2/run-arms-v3.mjs");
+// `mutation-gate.mjs` resolves its archive and its repository at module load,
+// so the test states both rather than inheriting whatever the shell had. The
+// directory is a throwaway: nothing in this file writes to it.
+process.env.CODE_ROI_OUT ??= mkdtempSync(join(tmpdir(), "code-roi-gate-test-"));
+process.env.CODE_ROI_REPO ??= process.cwd();
+const { checkPopulation, populationHash, mutationDiff } = await import(
+  "../code-roi/v2/mutation-gate.mjs"
+);
 const { parseArm, inputTokensOf, judge, buildReport } = await import(
   "../code-roi/v2/evaluate-v4.mjs"
 );
@@ -781,5 +802,125 @@ describe("the report covers three arms", () => {
     const report = buildReport(scenarios, () => transcript({ files: [], noFilesLine: true }));
     assert.equal(report.rows[0].A.noAnswer, true);
     assert.equal(report.rows[0].A.recall, 0);
+  });
+});
+
+// ─── An aborted arm is not a finished one (#582 review) ──────────
+
+describe("an arm counts as run only when it finished", () => {
+  const finished = transcript({ files: ["a.ts"], costUsd: 0.2 });
+  /** What the CLI leaves behind when it is killed mid-turn: no `result` row. */
+  const aborted = finished
+    .split("\n")
+    .filter((l) => l.trim() !== "" && (JSON.parse(l) as { type: string }).type !== "result")
+    .join("\n");
+
+  test("finalising needs exit 0 AND the terminal result event", () => {
+    assert.equal(finalisable(0, finished), true);
+    assert.equal(finalisable(1, finished), false, "a non-zero exit is not a finished arm");
+    assert.equal(finalisable(0, aborted), false, "a clean exit without a result is a budget stop");
+    assert.equal(finalisable(143, aborted), false, "SIGTERM at the timeout");
+    assert.equal(finalisable(0, ""), false, "an empty transcript finishes nothing");
+  });
+
+  test("hasResultEvent survives the half-written last line of a killed process", () => {
+    assert.equal(hasResultEvent(aborted + '\n{"type":"assis'), false);
+    assert.equal(hasResultEvent(finished + '\n{"type":"assis'), true);
+  });
+
+  test("an aborted transcript on disk does not make a scenario complete", () => {
+    const dir = mkdtempSync(join(tmpdir(), "code-roi-aborted-"));
+    try {
+      mkdirSync(join(dir, "S01"), { recursive: true });
+      writeFileSync(join(dir, "S01", "A.jsonl"), finished);
+      writeFileSync(join(dir, "S01", "B.jsonl"), finished);
+      // The shape the old runner produced: renamed although it never finished.
+      writeFileSync(join(dir, "S01", "prefilled.jsonl"), aborted);
+      assert.equal(armFinished(join(dir, "S01"), "A"), true);
+      assert.equal(armFinished(join(dir, "S01"), "prefilled"), false);
+      assert.equal(
+        scenarioComplete(join(dir, "S01")),
+        false,
+        "the old runner's rename must not pass for a finished triple",
+      );
+      assert.equal(armCostUsd(aborted), 0, "no result event, no reported cost");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("an aborted arm is charged the mean of the arms that did finish", () => {
+    // Not free: a scenario that keeps failing would otherwise run for ever at
+    // no recorded cost. Before the first finished arm there is nothing to
+    // estimate from, and nothing is charged.
+    assert.equal(abortedArmCharge(0, 0), 0);
+    assert.equal(abortedArmCharge(1.5, 3), 0.5);
+  });
+});
+
+describe("the scenario tree may not contain a symbolic link", () => {
+  test("a link anywhere under the tree is found, a plain tree passes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "code-roi-tree-"));
+    try {
+      mkdirSync(join(dir, "packages", "core", "src"), { recursive: true });
+      writeFileSync(join(dir, "packages", "core", "src", "index.ts"), "export {};\n");
+      assert.equal(firstSymlink(dir), null);
+      symlinkSync("/etc", join(dir, "packages", "core", "outside"));
+      assert.equal(firstSymlink(dir), join(dir, "packages", "core", "outside"));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ─── The mutation gate's population is frozen (#582 review) ──────
+
+describe("the mutation gate cannot mix two trees under one seed", () => {
+  const pinned = {
+    repository: "/repo",
+    commit: "44321b0f7da02f7e183cc9eb1aa368fa1241db14",
+    population_sha256: "abc",
+    candidates: 1233,
+    seed: 20260918,
+  };
+
+  test("the first run pins, a matching run passes, a moved HEAD is an error", () => {
+    assert.deepEqual(checkPopulation(null, pinned), { ok: true, write: true });
+    assert.deepEqual(checkPopulation(pinned, pinned), { ok: true, write: false });
+    const moved = { ...pinned, commit: "0000000000000000000000000000000000000000" };
+    const verdict = checkPopulation(pinned, moved);
+    assert.equal(verdict.ok, false);
+    assert.equal(verdict.write, false);
+    assert.match(verdict.why, /commit/);
+  });
+
+  test("every pinned field is checked, not just the commit", () => {
+    for (const key of ["repository", "population_sha256", "candidates", "seed"] as const) {
+      const changed = { ...pinned, [key]: "moved" };
+      assert.equal(checkPopulation(pinned, changed).ok, false, `${key} drifted unnoticed`);
+    }
+  });
+
+  test("the population hash depends on the triples and their order", () => {
+    const a = [{ file: "a.ts", symbol: "x", operator: "rename-export" }];
+    const b = [{ file: "a.ts", symbol: "y", operator: "rename-export" }];
+    assert.equal(populationHash(a), populationHash([...a]));
+    assert.notEqual(populationHash(a), populationHash(b));
+    assert.notEqual(populationHash([...a, ...b]), populationHash([...b, ...a]));
+  });
+
+  test("the stored diff is headed the way the product's diff reader expects", () => {
+    // The gate now scores the PRODUCT path too, and that path takes a diff, not
+    // a symbol name. A diff the reader cannot attribute to the file would score
+    // as "nothing changed" and quietly pass.
+    const diff = mutationDiff(
+      "packages/db/src/index.ts",
+      "export function q(a: string) {\n  return a;\n}\n",
+      "export function q(__mutation: never, a: string) {\n  return a;\n}\n",
+    );
+    assert.match(diff, /^diff --git a\/packages\/db\/src\/index\.ts b\/packages\/db\/src\/index\.ts$/m);
+    assert.match(diff, /^--- a\/packages\/db\/src\/index\.ts$/m);
+    assert.match(diff, /^@@ /m);
+    assert.match(diff, /^\+export function q\(__mutation: never, a: string\) \{$/m);
   });
 });
