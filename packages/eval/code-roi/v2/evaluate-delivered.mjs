@@ -13,8 +13,8 @@
  *             solved, with a bootstrap interval. A block that is cheaper on
  *             average but not repeatably cheaper is noise, and the upper bound
  *             is what says which it was.
- *   use       the share of the block's own listed files that the final answer
- *             names, averaged over the scenarios that GOT a block. This is what
+ *   use       whether the final answer names at least one file from the block,
+ *             averaged over the scenarios that GOT a block. This is what
  *             stops the run passing on a cost saving while the block is
  *             uniformly ignored — a cheaper agent that ignored the block is a
  *             cheaper agent, not a working feature.
@@ -103,10 +103,11 @@ export function bootstrapStat(rows, stat, seed, resamples = RESAMPLES) {
 /**
  * How much of the delivered block the answer used.
  *
- * |block files ∩ files the answer names| / |block files|, per scenario. The
- * denominator is what the block PRINTED, not every candidate it found: a file
- * the cap kept off the page cannot have been used, and counting it would
- * measure the cap.
+ * Binary per scenario: 1 when the answer names at least one file the block
+ * printed, otherwise 0. Averaging it is therefore the registered SHARE OF
+ * SCENARIOS with evidence of use. Dividing by every line in the block instead
+ * would punish a perfect answer whenever the candidate list contained false
+ * positives — the precision guard already measures that failure.
  *
  * `null` where no block was delivered — the product is silent on a file it does
  * not index or a change nothing depends on, and a silence scored as 0 would
@@ -115,7 +116,7 @@ export function bootstrapStat(rows, stat, seed, resamples = RESAMPLES) {
 export function blockUse(listed, named) {
   if (!Array.isArray(listed) || listed.length === 0) return null;
   const answer = new Set(named);
-  return listed.filter((f) => answer.has(f)).length / listed.length;
+  return listed.some((f) => answer.has(f)) ? 1 : 0;
 }
 
 /**
@@ -137,12 +138,15 @@ export function blockUse(listed, named) {
  */
 export function blindSpotOf(scenario) {
   const blind = new Set(scenario.blindSpotTests ?? []);
-  const broken = scenario.brokenTests ?? [];
-  const hit = broken.filter((t) => blind.has(t));
+  const truth = scenario.truth ?? [];
+  const blindTruth = truth.filter((f) => blind.has(f));
+  const reachableTruth = truth.filter((f) => !blind.has(f));
   return {
-    isBlindSpot: blind.size > 0,
-    partial: hit.length > 0 && hit.length < broken.length,
+    isBlindSpot: blindTruth.length > 0,
+    partial: blindTruth.length > 0 && reachableTruth.length > 0,
     blindTests: blind.size,
+    blindTruth,
+    reachableTruth,
   };
 }
 
@@ -217,17 +221,30 @@ export function judge(rows, registration) {
 
   return {
     n,
-    context: { status: verdictFor(contextChecks, n), checks: contextChecks, ci: contextCi, bothSolved: bothSolved.length },
-    use: { status: verdictFor(useChecks, n), checks: useChecks, scenariosWithBlock: uses.length },
+    context: {
+      status: verdictFor(contextChecks, bothSolved.length),
+      checks: contextChecks,
+      ci: contextCi,
+      bothSolved: bothSolved.length,
+    },
+    use: { status: verdictFor(useChecks, uses.length), checks: useChecks, scenariosWithBlock: uses.length },
     recallCi,
   };
 }
 
 /** The blind-spot split, by scenario. Reported, never gated. */
 export function blindSpotReport(rows, arms) {
-  const blind = rows.filter((r) => r.blindSpot);
-  const reachable = rows.filter((r) => !r.blindSpot);
-  const recallOf = (subset, arm) => (subset.length === 0 ? null : mean(subset.map((r) => r[arm].recall)));
+  const blind = rows.filter((r) => r.blindTruthFiles.length > 0);
+  const reachable = rows.filter((r) => r.reachableTruthFiles.length > 0);
+  const recallOf = (subset, arm, key) =>
+    subset.length === 0
+      ? null
+      : mean(
+          subset.map((r) => {
+            const truth = new Set(r[key]);
+            return r[arm].named.filter((f) => truth.has(f)).length / truth.size;
+          }),
+        );
   return {
     blindSpotScenarios: blind.map((r) => r.id),
     graphReachableScenarios: reachable.length,
@@ -235,7 +252,10 @@ export function blindSpotReport(rows, arms) {
     recall: Object.fromEntries(
       arms.map((arm) => [
         arm,
-        { graphReachable: recallOf(reachable, arm), blindSpot: recallOf(blind, arm) },
+        {
+          graphReachable: recallOf(reachable, arm, "reachableTruthFiles"),
+          blindSpot: recallOf(blind, arm, "blindTruthFiles"),
+        },
       ]),
     ),
     precision: Object.fromEntries(
@@ -248,16 +268,34 @@ export function blindSpotReport(rows, arms) {
       ]),
     ),
     $comment:
-      "Split per SCENARIO, because a blind spot is recorded against a broken TEST and the miner " +
-      "does not store which truth files that test attributed. On this population every blind-spot " +
-      "scenario is wholly one, so the split is exact; `partialBlindSpotScenarios` is where that " +
-      "would stop being true and is empty here. Gated by nothing: pooling a route or an event name " +
+      "Under tests/v2 each broken test file is itself a truth file, so blindSpotTests partitions the " +
+      "truth exactly even in partial scenarios. Recall uses those file subsets; precision remains a " +
+      "whole-scenario descriptive split because a false positive belongs to neither subset. Gated by " +
+      "nothing: pooling a route or event name " +
       "into the graph's recall measures the graph on an edge it never claimed, and leaving them out " +
       "measures an easier repository than the real one.",
   };
 }
 
 export function buildReport(scenarioFile, readArm, readDelivered, registration, registrationId) {
+  if (
+    scenarioFile.registration_version !== undefined &&
+    scenarioFile.registration_version !== registration.registration_version
+  ) {
+    throw new Error(
+      `scenario registration version ${scenarioFile.registration_version} does not match ` +
+        `${registrationId} version ${registration.registration_version}`,
+    );
+  }
+  const wrongTruth = (scenarioFile.scenarios ?? []).filter(
+    (s) => s.truthRule !== undefined && s.truthRule !== registration.unit_and_truth?.truth_rule,
+  );
+  if (wrongTruth.length > 0) {
+    throw new Error(
+      `${wrongTruth.length} scenarios do not carry registered truth rule ` +
+        `${registration.unit_and_truth?.truth_rule}`,
+    );
+  }
   const arms = armIdsOf(registration, registrationId);
   const rows = [];
   const missing = [];
@@ -284,6 +322,8 @@ export function buildReport(scenarioFile, readArm, readDelivered, registration, 
       blindSpot: blind.isBlindSpot,
       blindSpotPartial: blind.partial,
       blindSpotTests: blind.blindTests,
+      blindTruthFiles: blind.blindTruth,
+      reachableTruthFiles: blind.reachableTruth,
       blockDelivered: block !== null,
       blockFiles: block?.listed?.length ?? 0,
       blockBasis: block?.basis ?? null,

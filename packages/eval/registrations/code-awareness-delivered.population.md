@@ -1,5 +1,12 @@
 # Grundgesamtheit „delivered“ — Befund
 
+> **UNGÜLTIGER v1-ZWISCHENSTAND — NICHT STARTEN.** Codex' Gegenprüfung vor
+> dem ersten Arm hat die Produktionsdatei-Attribution R1–R3 als unbelegte
+> Wahrheit verworfen. Registrierung 2 verwendet `tests/v2`: die bestätigte
+> brechende Testdatei selbst ist Wahrheit, mit isolierter Bestätigung auf
+> mutiertem und sauberem Tree. Diese Datei wird nach dem Re-Mining vollständig
+> durch den v2-Befund ersetzt; alle Zahlen darunter beschreiben nur v1.
+
 Stand: 19.09.2026. Gehört zu `code-awareness-delivered.json`, Registrierung 1
 (Option 2: Zustellungsnutzen + Kontextkosten, entschieden von Daniel Nevoigt
 am 19.09.2026). Der Entwurf `code-awareness-delivered.draft.json` ist mit der

@@ -31,6 +31,15 @@ const REGISTRATION = JSON.parse(
 );
 const REGISTERED_CEILING_USD = Number(REGISTRATION.run_conditions.cost_ceiling_usd);
 
+export function costCeilingUsdOf(registration, env = process.env) {
+  const registered = Number(registration?.run_conditions?.cost_ceiling_usd);
+  if (!Number.isFinite(registered) || registered <= 0) {
+    throw new Error("run_conditions.cost_ceiling_usd must be a positive number");
+  }
+  const raw = Number(env.CODE_ROI_COST_CEILING);
+  return Number.isFinite(raw) && raw > 0 ? Math.min(raw, registered) : registered;
+}
+
 /**
  * The ceiling this run honours. The environment may only LOWER it: a variable
  * that can raise a registered spending limit is not a limit, it is a default.
@@ -39,6 +48,17 @@ export const COST_CEILING_USD = (() => {
   const raw = Number(process.env.CODE_ROI_COST_CEILING);
   return Number.isFinite(raw) && raw > 0 ? Math.min(raw, REGISTERED_CEILING_USD) : REGISTERED_CEILING_USD;
 })();
+
+export function armEstimateUsdOf(registration) {
+  const explicit = Number(registration?.run_conditions?.arm_estimate_usd);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  const prose = String(registration?.run_conditions?.cost_estimate ?? "");
+  const m = /mean \$([0-9]+(?:\.[0-9]+)?) per arm/.exec(prose);
+  if (m !== null) return Number(m[1]);
+  throw new Error(
+    "run_conditions must provide arm_estimate_usd or state a “mean $X per arm” cost estimate",
+  );
+}
 
 /**
  * What the registration expects ONE arm to cost, in US dollars.
@@ -147,8 +167,8 @@ export function finalisable(exitCode, transcript) {
 }
 
 /** What the next arm is expected to cost: this run's own mean, else the registration's. */
-export function nextArmEstimateUsd(finishedCostUsd, finishedArms) {
-  return finishedArms > 0 ? finishedCostUsd / finishedArms : REGISTERED_ARM_ESTIMATE_USD;
+export function nextArmEstimateUsd(finishedCostUsd, finishedArms, registeredEstimateUsd = REGISTERED_ARM_ESTIMATE_USD) {
+  return finishedArms > 0 ? finishedCostUsd / finishedArms : registeredEstimateUsd;
 }
 
 /**
@@ -170,11 +190,16 @@ export function nextArmEstimateUsd(finishedCostUsd, finishedArms) {
  * back into it would let each further abort re-charge the estimate it was
  * itself given, and a run of failures would talk its own ceiling reading up.
  */
-export function abortedArmCharge(transcript, finishedCostUsd, finishedArms) {
+export function abortedArmCharge(
+  transcript,
+  finishedCostUsd,
+  finishedArms,
+  registeredEstimateUsd = REGISTERED_ARM_ESTIMATE_USD,
+) {
   const measured = armCostUsd(transcript ?? "");
   if (measured > 0) return { usd: measured, source: "result_event" };
   if (finishedArms > 0) return { usd: finishedCostUsd / finishedArms, source: "mean_of_finished_arms" };
-  return { usd: REGISTERED_ARM_ESTIMATE_USD, source: "registered_estimate" };
+  return { usd: registeredEstimateUsd, source: "registered_estimate" };
 }
 
 /**

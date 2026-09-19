@@ -53,10 +53,12 @@ import { join } from "node:path";
 import { writableOut } from "./archive.mjs";
 import { isScenarioFile, repoProfile, usesTests, usesTypes } from "./repo-profile.mjs";
 import { buildExclusions, exclusionsHash, isExcludedFile } from "./exclusions.mjs";
-import { TRUTH_RULE, attribute, closuresOf, selectTests } from "./test-truth.mjs";
+import { TRUTH_RULE, attribute, closuresOf, selectTests, truthPopulationHash } from "./test-truth.mjs";
 import {
   DEFAULT_TIMEOUT_MS,
   brokenCases,
+  confirmCases,
+  confirmedOnBoth,
   runSuite,
   testFileOfCase,
   testFilesOf,
@@ -344,13 +346,15 @@ async function testBaseline(tree, dir, selected) {
  * Test-based truth for every candidate file of one commit — the rule written
  * out in `test-truth.mjs`. The order of the steps is load-bearing:
  *
- *   apply diff -> run suite -> ATTRIBUTE ON THE MUTATED TREE -> revert ->
- *   confirmation run on the clean tree -> keep only confirmed test files.
+ *   apply diff -> run suite -> confirm on the MUTATED tree ->
+ *   ATTRIBUTE ON THE MUTATED TREE -> revert -> confirm on the CLEAN tree ->
+ *   keep only cases that fail mutated and pass clean.
  *
  * Attribution has to happen before the revert because the change itself can
  * add or remove an import, and the closure that matters is the one that exists
- * where the break exists. Confirmation has to happen after, because it is
- * exactly the question "does this test fail without the change too".
+ * where the break exists. The two confirmation sides answer both causal
+ * questions: "does it still fail alone WITH the change" and "does it pass
+ * alone WITHOUT it".
  */
 export async function analyzeTests(commit, files, dir, { evidence = false } = {}) {
   const parent = (await git(["rev-parse", `${commit}^`])).trim();
@@ -414,6 +418,15 @@ export async function analyzeTests(commit, files, dir, { evidence = false } = {}
     const attributions = new Map(
       brokenFiles.map((t) => [t, attribute(dir, t, file, { packageNames: profile.packageNames })]),
     );
+    const mutatedConfirmation = await confirmCases(
+      dir,
+      profile.testRunner,
+      brokenFiles,
+      broke,
+      (id) => testFileOfCase(id, dir, after.files),
+      "fail",
+      { timeoutMs: TEST_TIMEOUT_MS },
+    );
 
     const reverted = await run("git", ["apply", "-R", patch], { cwd: dir, ...BUF }).then(
       () => true,
@@ -430,7 +443,33 @@ export async function analyzeTests(commit, files, dir, { evidence = false } = {}
       continue;
     }
 
-    const confirmed = await confirmBreaks(dir, brokenFiles, broke, (id) => testFileOfCase(id, dir, after.files));
+    if (mutatedConfirmation.status !== "ok") {
+      results.push({
+        ...record,
+        file,
+        reason: `not evaluable: mutated confirmation ${mutatedConfirmation.status}`,
+      });
+      continue;
+    }
+
+    const cleanConfirmation = await confirmCases(
+      dir,
+      profile.testRunner,
+      brokenFiles,
+      broke,
+      (id) => testFileOfCase(id, dir, after.files),
+      "pass",
+      { timeoutMs: TEST_TIMEOUT_MS },
+    );
+    if (cleanConfirmation.status !== "ok") {
+      results.push({
+        ...record,
+        file,
+        reason: `not evaluable: clean confirmation ${cleanConfirmation.status}`,
+      });
+      continue;
+    }
+    const confirmed = confirmedOnBoth(mutatedConfirmation, cleanConfirmation);
     const fromTests = new Set();
     const rules = {};
     const blindSpots = [];
@@ -438,7 +477,10 @@ export async function analyzeTests(commit, files, dir, { evidence = false } = {}
       if (!confirmed.has(t)) continue;
       const a = attributions.get(t);
       rules[t] = a.rule;
-      for (const f of a.files) fromTests.add(f);
+      // The failing TEST FILE is the observed truth. Its imports are useful
+      // diagnostic metadata, but importing a source does not prove that source
+      // itself fails or needs adaptation.
+      fromTests.add(t);
       if (!a.closure.has(file)) blindSpots.push(t);
     }
     // The v3 rule, unchanged: a file that carries a type error it did not
@@ -473,30 +515,6 @@ export async function analyzeTests(commit, files, dir, { evidence = false } = {}
     results.push(entry);
   }
   return results;
-}
-
-/**
- * Step 4, on a tree that is already back at the parent. Re-runs only the broken
- * test files and keeps those that had at least one of their broken cases
- * PASSING there. A file that fails on the parent too is flaky, order-dependent
- * or already red — none of which is evidence about the change.
- *
- * A confirmation run that itself cannot be judged keeps the evidence rather
- * than dropping it: the break was observed, and discarding it on a failed
- * check would quietly shrink the truth set.
- */
-async function confirmBreaks(dir, brokenFiles, broke, fileOf) {
-  if (brokenFiles.length === 0) return new Set();
-  const clean = await runSuite(dir, profile.testRunner, { files: brokenFiles, timeoutMs: TEST_TIMEOUT_MS });
-  if (clean.status !== "ok") return new Set(brokenFiles);
-  const confirmed = new Set();
-  for (const t of brokenFiles) {
-    // `fileOf` reads the MUTATED run's file map, because that is the run the
-    // broken ids came from; the clean run only has to answer pass or fail.
-    const own = broke.filter((id) => fileOf(id) === t);
-    if (own.some((id) => clean.cases.get(id) === "pass")) confirmed.add(t);
-  }
-  return confirmed;
 }
 
 /** Truth sets for every candidate file of one commit: one baseline, one mutation per file. */
@@ -584,9 +602,7 @@ export function populationFreeze(decisions, accepted) {
       prefixes: EXCLUSIONS.reasons,
       sources: EXCLUSIONS.sources,
     },
-    population_sha256: createHash("sha256")
-      .update(kept.map((d) => `${d.commit}:${d.file}`).join("\n"))
-      .digest("hex"),
+    population_sha256: truthPopulationHash(kept),
     distribution: {
       by_package: tally(kept.map((d) => packageOf(d.file))),
       truth_size: tally(kept.map((d) => String(d.truth?.length ?? 0))),
