@@ -30,7 +30,8 @@
 
 import { watch, type FSWatcher } from "node:fs";
 import { relative, sep } from "node:path";
-import { CodeGraphRefresher, needsReconcile } from "./refresh.js";
+import { CodeGraphRefresher, needsReconcile, type RefreshEvent } from "./refresh.js";
+import { shortRepo } from "./unavailable-note.js";
 import { gitWatchPaths } from "./git-paths.js";
 import { enabledRepos, isRepoEnabledSync } from "./enabled-repos.js";
 import { codeGraphCache } from "./dependents-block.js";
@@ -53,8 +54,74 @@ export function codeGraphRefresher(): CodeGraphRefresher {
   refresher ??= new CodeGraphRefresher({
     onBuilt: (repoRoot) => codeGraphCache().reloadIfChanged(repoRoot),
     allow: (repoRoot) => isRepoEnabledSync(repoRoot),
+    onEvent: reportRefresh,
   });
   return refresher;
+}
+
+// ─── Refresh telemetry (#589) ────────────────────────────────────
+
+/**
+ * How long a repository was behind: wall clock from the `started` row to the
+ * terminal one. Measured HERE rather than inside the builder because that is
+ * the span the freshness question asks about — a run that waited on a lock was
+ * behind for that time too, and the build's own duration does not say so.
+ */
+const startedAt = new Map<string, number>();
+
+/**
+ * Where refresh rows go. Set by the daemon (`daemon-jobs.ts`) once telemetry
+ * exists; unset everywhere else, so a test or a CLI that touches the refresher
+ * writes nothing at all.
+ */
+export type RefreshObserver = (event: CodeGraphRefreshRow) => void;
+
+export interface CodeGraphRefreshRow {
+  repo: string;
+  reason: string;
+  outcome: RefreshEvent["outcome"];
+  detail?: string;
+  duration_ms?: number;
+  external_total?: number;
+  external_resolved?: number;
+}
+
+let refreshObserver: RefreshObserver | null = null;
+export function observeCodeGraphRefresh(fn: RefreshObserver | null): void {
+  refreshObserver = fn;
+}
+
+function reportRefresh(event: RefreshEvent): void {
+  if (event.outcome === "started") {
+    startedAt.set(event.repoRoot, Date.now());
+  }
+  if (refreshObserver === null) {
+    if (event.outcome !== "started") startedAt.delete(event.repoRoot);
+    return;
+  }
+  const began = startedAt.get(event.repoRoot);
+  if (event.outcome !== "started") startedAt.delete(event.repoRoot);
+  // `external nodes / resolved` is what `bastra doctor` prints per repository
+  // and the one number that goes quiet when Graphify changes its id spelling
+  // (#582). Carried on a successful build, where it has just been re-derived.
+  const stats =
+    event.outcome === "ok" ? (codeGraphCache().get(event.repoRoot)?.externalStats ?? null) : null;
+  try {
+    refreshObserver({
+      repo: shortRepo(event.repoRoot),
+      reason: event.reason,
+      outcome: event.outcome,
+      ...(event.detail !== undefined ? { detail: event.detail } : {}),
+      ...(event.outcome !== "started" && began !== undefined
+        ? { duration_ms: Date.now() - began }
+        : {}),
+      ...(stats !== null
+        ? { external_total: stats.total, external_resolved: stats.resolved }
+        : {}),
+    });
+  } catch {
+    /* a refresh must never fail because nobody could write it down */
+  }
 }
 
 /**

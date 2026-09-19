@@ -16,7 +16,7 @@ import { bridgesPath } from "./cli/bridges.js";
 import { unloadOllamaModel } from "./ollama-lifecycle.js";
 import { runCuratorPass } from "./curator-run.js";
 import { pruneEventLogs } from "./log-retention.js";
-import { startCodeAwareness } from "./code-graph/service.js";
+import { observeCodeGraphRefresh, startCodeAwareness } from "./code-graph/service.js";
 
 export interface BackgroundJobDeps {
   vault: Vault;
@@ -56,7 +56,7 @@ export function startBackgroundJobs(deps: BackgroundJobDeps): void {
   startOllamaUnload(deps);
   startCuratorTick(deps);
   startLogRetention();
-  startCodeGraph();
+  startCodeGraph(deps);
 }
 
 // Code awareness (#574, #581): preload the graphs of enabled repositories,
@@ -67,7 +67,13 @@ export function startBackgroundJobs(deps: BackgroundJobDeps): void {
 // Deliberately not awaited and never fatal: a moved checkout or a corrupt
 // graph must not keep the daemon from booting, and the feature is optional by
 // contract (C-090 is a release obligation, not a runtime one).
-function startCodeGraph(): void {
+function startCodeGraph(deps: BackgroundJobDeps): void {
+  // #589: every refresh run leaves a row — reason, outcome, how long the
+  // repository was behind. Without it the graph's freshness was visible only
+  // as a stale marker on a block that happened to be injected.
+  observeCodeGraphRefresh((row) => {
+    void deps.telemetry.logCodeGraphRefresh(row).catch(() => {});
+  });
   void startCodeAwareness((line) => console.error(`[bastra-recall] ${line}`))
     .then(({ repos }) => {
       if (repos.length > 0) {

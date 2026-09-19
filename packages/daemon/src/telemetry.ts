@@ -49,6 +49,8 @@ import type {
   RecallBand,
   TurnSource,
   ReadDocumentEvent,
+  CodeToolCallEvent,
+  CodeGraphRefreshEvent,
 } from "./telemetry-events.js";
 
 const RECALL_FOLLOWUP_WINDOW_MS = 5 * 60 * 1000;
@@ -862,6 +864,39 @@ export class Telemetry {
     if (!this.enabled) return;
     await this.write({
       kind: "mutation_incident",
+      ts: new Date().toISOString(),
+      session_id: this.sessionId,
+      ...payload,
+    });
+  }
+
+  /**
+   * #589: one row per `find_code` / `find_affected_files` call.
+   *
+   * The two tools wrote nothing until now, so "nobody calls code awareness" and
+   * "code awareness answers nothing" were the same empty log. Shapes only —
+   * `code-graph/tool-telemetry.ts` builds the payload and decides what is safe
+   * to carry.
+   */
+  async logCodeToolCall(
+    payload: Omit<CodeToolCallEvent, "kind" | "ts" | "session_id">,
+  ): Promise<void> {
+    if (!this.enabled) return;
+    await this.write({
+      kind: "code_tool_call",
+      ts: new Date().toISOString(),
+      session_id: this.sessionId,
+      ...payload,
+    });
+  }
+
+  /** #589: one row per graph refresh run — `started` plus its terminal outcome. */
+  async logCodeGraphRefresh(
+    payload: Omit<CodeGraphRefreshEvent, "kind" | "ts" | "session_id">,
+  ): Promise<void> {
+    if (!this.enabled) return;
+    await this.write({
+      kind: "code_graph_refresh",
       ts: new Date().toISOString(),
       session_id: this.sessionId,
       ...payload,

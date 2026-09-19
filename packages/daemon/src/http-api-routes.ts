@@ -33,6 +33,7 @@ import {
   FindAffectedFilesArgs,
   findAffectedFiles,
 } from "./code-graph/find-affected-files.js";
+import { findAffectedFilesEvent, findCodeEvent } from "./code-graph/tool-telemetry.js";
 import { addFloor, affirm, release } from "./floors.js";
 import { saveProductDocHandler } from "./product-doc-handler.js";
 import { recoverCallArguments } from "./call-corruption.js";
@@ -129,13 +130,35 @@ export async function dispatchApi(
     case "find_code": {
       const parsed = FindCodeArgs.safeParse(body);
       if (!parsed.success) throw new Error(parsed.error.message);
-      return findCode(sharedCodeGraphCache(), parsed.data);
+      const cache = sharedCodeGraphCache();
+      const result = findCode(cache, parsed.data);
+      // #589: same row as the MCP path, with the caller session this surface
+      // knows and the other one does not.
+      void toolDeps.telemetry
+        .logCodeToolCall(
+          findCodeEvent(cache, parsed.data, result, {
+            surface: "http",
+            callerSession: ctx.ccSessionId ?? null,
+          }),
+        )
+        .catch(() => {});
+      return result;
     }
     // #582: the change-impact tool reaches stdio clients through here too.
     case "find_affected_files": {
       const parsed = FindAffectedFilesArgs.safeParse(body);
       if (!parsed.success) throw new Error(parsed.error.message);
-      return await findAffectedFiles(sharedCodeGraphCache(), parsed.data);
+      const cache = sharedCodeGraphCache();
+      const result = await findAffectedFiles(cache, parsed.data);
+      void toolDeps.telemetry
+        .logCodeToolCall(
+          findAffectedFilesEvent(cache, parsed.data, result, {
+            surface: "http",
+            callerSession: ctx.ccSessionId ?? null,
+          }),
+        )
+        .catch(() => {});
+      return result;
     }
     case "find_document": {
       const parsed = FindDocumentArgs.safeParse(body);
