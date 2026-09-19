@@ -48,6 +48,13 @@ body.telemetry-open #live-lane { display: none !important; }
   color: var(--text-dim);
   line-height: 1.5;
 }
+#tv-updated {
+  margin-top: 4px;
+  font: 10.5px var(--font-mono);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+#tv-updated[hidden] { display: none !important; }
 #tv-status {
   padding: 14px 0;
   font: 12px var(--font-mono);

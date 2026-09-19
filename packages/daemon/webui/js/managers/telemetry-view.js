@@ -15,6 +15,28 @@ import { renderCodeAwareness } from "./telemetry-view-code.js";
 
 const $ = (sel) => document.querySelector(sel);
 const DAYS_KEY = "bastra-vault-map-telemetry-days";
+const REFRESH_MS = 30_000; // the tab was otherwise frozen at whatever it looked like on open
+
+/** Background refresh while the tab is open: one guarded interval, rebuilt on
+ *  every state change instead of nested — the same arm()/clearInterval shape
+ *  as the weather chip (managers/weather.js). Paused while the tab is closed
+ *  or the page is hidden: a timer nobody can see shouldn't run, and a hidden
+ *  tab throttles it to uselessness anyway.
+ *
+ *  Free of `document` and real timers at the call site so the scheduling
+ *  decision can be pinned without a DOM, the same way hintSuppressionLabels()
+ *  is pinned in telemetry-view-suppression.test.ts. */
+export function createAutoRefresh({ intervalMs, isOpen, isHidden, tick, setIntervalFn = setInterval, clearIntervalFn = clearInterval }) {
+  let timer = 0;
+  return {
+    arm() {
+      clearIntervalFn(timer);
+      timer = 0;
+      if (!isOpen() || isHidden()) return;
+      timer = setIntervalFn(tick, intervalMs);
+    },
+  };
+}
 
 // ── svg chart helper (only these functions need it) ────────────
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -522,22 +544,45 @@ export function createTelemetryView() {
   const body = $("#tv-body");
   const status = $("#tv-status");
   const windowNote = $("#tv-window-note");
+  const updated = $("#tv-updated");
   const seg = $("#tv-window");
   let days = Number(localStorage.getItem(DAYS_KEY)) || 7;
   let open = false;
   let loading = null;
+  let lastUpdated = null;
 
   function markDays() {
     seg.querySelectorAll("button").forEach((b) => b.classList.toggle("active", Number(b.dataset.days) === days));
   }
 
-  async function load() {
+  function renderUpdated() {
+    if (!lastUpdated) {
+      updated.hidden = true;
+      return;
+    }
+    updated.hidden = false;
+    updated.textContent = `updated ${lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+  }
+
+  /** `silent`: the background refresh ticks quietly — the status line ("reading
+   *  the last N day(s)…") must not pop in and out every 30 s over a report
+   *  that is already on screen, and a background fetch that fails leaves the
+   *  last good report untouched rather than replacing it with an error. */
+  async function load({ silent = false } = {}) {
     if (loading) return loading;
-    status.hidden = false;
-    status.classList.remove("err");
-    status.textContent = `reading the last ${days} day(s) of event logs…`;
+    if (!silent) {
+      status.hidden = false;
+      status.classList.remove("err");
+      status.textContent = `reading the last ${days} day(s) of event logs…`;
+    }
     loading = (async () => {
       try {
+        // the report is only ever swapped in AFTER a successful fetch, so a
+        // failed background tick can't flash the body to empty/error — and the
+        // scroll position survives the swap since root's scrollTop is a
+        // property of the ancestor, not the replaced children, restored here
+        // only as a guard against a shorter report clamping it on the way in
+        const scrollTop = root.scrollTop;
         const r = await fetchTelemetry(days);
         body.replaceChildren(
           renderOverview(r),
@@ -551,22 +596,38 @@ export function createTelemetryView() {
           renderCodeAwareness(r.codeAwareness),
           renderSessionStart(r.sessionStart),
         );
+        root.scrollTop = scrollTop;
         const span = r.window.from && r.window.to ? `${r.window.from.slice(0, 10)} → ${r.window.to.slice(0, 10)}` : "no events";
         windowNote.textContent = `${span} · ${fmt(r.window.events)} events · retention keeps ${r.window.retentionDays} days`;
         if (r.window.days < days) {
           days = r.window.days;
           markDays();
         }
-        status.hidden = true;
+        lastUpdated = new Date();
+        renderUpdated();
+        if (!silent) status.hidden = true;
       } catch (err) {
-        status.classList.add("err");
-        status.textContent = `could not load the telemetry report — ${err.message}`;
+        if (!silent) {
+          status.classList.add("err");
+          status.textContent = `could not load the telemetry report — ${err.message}`;
+        }
+        // a silent background tick just retries in another REFRESH_MS
       } finally {
         loading = null;
       }
     })();
     return loading;
   }
+
+  const autoRefresh = createAutoRefresh({
+    intervalMs: REFRESH_MS,
+    isOpen: () => open,
+    isHidden: () => document.hidden,
+    tick: () => void load({ silent: true }),
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (open) autoRefresh.arm();
+  });
 
   seg.addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-days]");
@@ -586,11 +647,13 @@ export function createTelemetryView() {
       root.hidden = false;
       document.body.classList.add("telemetry-open");
       void load();
+      autoRefresh.arm();
     },
     close() {
       open = false;
       root.hidden = true;
       document.body.classList.remove("telemetry-open");
+      autoRefresh.arm();
     },
     /** For the demo runner / tests: re-fetch the current window. */
     refresh: () => load(),
