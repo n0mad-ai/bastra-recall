@@ -76,8 +76,6 @@ export interface PromptImpactNote {
   changedSymbols: string[];
   files: number;
   truncated: boolean;
-  /** The files the block names, absolute — the `followed by an edit` join. */
-  listed: string[];
   tokensEst: number;
   tookMs: number;
 }
@@ -164,7 +162,6 @@ export async function promptImpactNote(
       changedSymbols: result.changedSymbols,
       files: result.files.length,
       truncated: result.truncated,
-      listed: shown.map((h) => join(repo, h.file)),
       tokensEst: Math.ceil(note.length / 4),
       tookMs: Date.now() - startedAt,
     },
@@ -180,8 +177,6 @@ export interface DeliveredPromptImpact {
   /** Key to book under `shown` once the block has gone out, or null. */
   dedupeKey: string | null;
   tokensEst: number;
-  /** Files the block named, absolute — the `followed by an edit` join. */
-  listed: string[];
   basis: AffectedBasis | null;
 }
 
@@ -189,7 +184,6 @@ const NOTHING: DeliveredPromptImpact = {
   block: null,
   dedupeKey: null,
   tokensEst: 0,
-  listed: [],
   basis: null,
 };
 
@@ -241,7 +235,6 @@ export async function deliverPromptImpact(opts: {
     block: result.note.note,
     dedupeKey: result.note.dedupeKey,
     tokensEst: result.note.tokensEst,
-    listed: result.note.listed,
     basis: result.note.basis,
   };
 }

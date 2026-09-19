@@ -736,7 +736,6 @@ export async function runPromptLane(
     ...(impact.block !== null
       ? {
           code_block_tokens_est: impact.tokensEst,
-          code_listed: impact.listed,
           code_basis: impact.basis === null ? [] : [impact.basis],
         }
       : {}),
@@ -970,8 +969,6 @@ interface PromptHookTelemetry {
   hint_tokens_est?: number;
   /** #606: Tokens des zugestellten Change-Impact-Blocks, falls einer ausging. */
   code_block_tokens_est?: number;
-  /** #606: die im Block genannten Dateien, absolut. */
-  code_listed?: string[];
   /** #606: `basis` des Blocks — symbols | whole_file. */
   code_basis?: string[];
   top_score: number | null;
