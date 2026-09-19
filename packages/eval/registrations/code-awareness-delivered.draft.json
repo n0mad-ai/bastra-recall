@@ -1,0 +1,109 @@
+{
+  "$comment": "DRAFT — NOT A REGISTRATION. Nothing here is registered, no run may cite it, and no number in it is decided. It exists so the measurement arm for #606 can be argued about as a whole before anyone freezes it. `status` stays `draft` until Daniel Nevoigt decides the three `TO_BE_DECIDED` thresholds; at that point this file is renamed to code-awareness-delivered.json, given a registration_version and a registered_at, and pinned by a test the way code-awareness-change-impact.json is. Until then it is a proposal with reasons attached, and the reasons are the point: every threshold below carries what it would cost to be wrong in either direction.",
+  "schema_version": 1,
+  "status": "draft",
+  "drafted_at": "2026-09-19",
+  "drafted_by": "Claude Opus 5 — thresholds NOT decided",
+  "issue": 606,
+  "epic": 572,
+  "relates_to": "code-awareness-change-impact.json registration_version 6, which measures the OFFERED surface and is still open. This draft must not be registered while that run is incomplete: the two would compete for the same scenarios and the same budget.",
+  "contract_refs": ["13.1", "16.2", "16.3", "18.1", "24"],
+
+  "why_this_arm_exists": "The v6 run measures whether an agent REACHES for the change-impact answer when it is offered. Everything measured so far says it does not: v3 offered `find_code` in 44 of 44 runs and recorded 0 calls, the v4 pilot recorded 0 of 2, and a full day of real sessions on 19.09.2026 recorded 0 real calls of either tool. Adoption on burned development data reached 8/10 only after the tool description and the server instructions had been tuned against those very scenarios. So the offered channel is being measured honestly, and separately the product stops relying on it: #606 DELIVERS the same answer through Recall's own hook lanes. This arm asks whether the delivered channel does what the offered one did not — and the honest form of that question is not 'is the block emitted' (the daemon controls that and can always answer yes) but 'did the agent end up with the right files'.",
+
+  "question": "When the change-impact answer is delivered unasked into the transcript, does the agent name more of the files the change really breaks than it does with grep alone — and at what cost in input tokens?",
+
+  "arms": {
+    "grep": {
+      "name": "grep",
+      "description": "No MCP server, no delivered block: text search and file reads only. Byte-identical to arm A of the v6 registration and of v3, so the three runs share one control."
+    },
+    "delivered": {
+      "name": "delivered",
+      "description": "The #606 block, injected exactly as the product injects it. NOT hand-written and NOT the `find_affected_files` tool result pasted in: the harness runs the product's own `impactNote` (write lane) or `deliverPromptImpact` (prompt lane) against the scenario tree and puts the string it returns where the lane would put it. What is measured is the product's block, its cap, its wording and its basis, not an idealisation of them.",
+      "lane": "BOTH lanes are in scope but are separate runs, because their triggers differ. `write` delivers before an edit the agent has already decided on; `prompt` delivers before the first search, on a question the user asked. Pooling them would average a hit rate over two different moments.",
+      "$open": "Which lane goes first is a decision, not a fact. Proposal: `prompt`, because it is the channel with no precedent — the write lane's block has existed since #577 and only its query changed."
+    },
+    "not_an_arm": "The v6 `offered` arm is deliberately NOT re-run here. Its result stands on its own and this arm does not need it as a comparison: the question is delivered-vs-grep, and adding a third arm triples the cost for a contrast the other registration already owns.",
+    "runner": "TO_BE_WRITTEN — an extension of packages/eval/code-roi/v2/run-arms-v3.mjs, not a new pipeline. The tree, the isolation rules, the model, `max_turns`, the arm-order randomisation and the cost ceiling are taken over unchanged from registration_version 6; only the arm definition is new.",
+    "isolation": "Unchanged from v6: the scenario tree lives outside the archive, `--restricted --tools Read,Grep,Glob --permission-prompts none --max-budget-usd <remaining>`, a fresh process per scenario and arm, and the symlink refusal."
+  },
+
+  "unit_and_truth": {
+    "unchanged_from": "code-awareness-change-impact.json registration_version 6",
+    "unit": "one historical change to one file, at most one scenario per file",
+    "ground_truth": "a file is affected when it carries a type error after applying exactly that file's diff that it did not carry before; errors compared as (file, TS code, message) multisets with line and column ignored; adjudicated by hand before any arm runs",
+    "$comment": "Not touched, and not negotiable in this draft. Changing the ruler and the channel in one step would leave nothing comparable to v3 or v6."
+  },
+
+  "metrics": {
+    "primary": {
+      "recall": "share of the truth files the arm's final answer names, micro-averaged over scenarios",
+      "precision": "share of the files the arm names that are in the truth set",
+      "$comment": "Both, together, and neither alone decides. The delivered block is a candidate list whose measured precision is 47.4 % on the v3 development sample: an arm that simply copies the block out verbatim would buy recall with precision, and that is a worse agent, not a better one."
+    },
+    "cost": {
+      "input_tokens": "input tokens of the whole run, from the `result` event only — assistant events double the usage (342 636 against 191 610 measured in v3) and must never be summed",
+      "delivered_block_tokens": "the block's own size, read from the product's `tokens_est`. Measured against this repository's real graph on 2026-09-19: median 286 tokens, range 179–324 over 7 files and 4 prompts.",
+      "$comment": "The cost side is the reason this arm can fail on a positive recall result. A block is paid for on every qualifying turn, including the ones that did not need it."
+    },
+    "secondary": [
+      "basis distribution (symbols / diff / whole_file) of the delivered blocks — a run of `whole_file` means the narrowing is not earning its keep on this sample",
+      "dedupe hits — answers suppressed because the same one had already gone out this session",
+      "delivered-and-used: the block named a file AND the arm's final answer names that file. Weak evidence, reported as such."
+    ]
+  },
+
+  "success_is_use_not_delivery": "The registered success criterion is NOT 'the block was delivered' and NOT 'a tool was called'. The daemon decides whether to inject; counting its own injections would make the measurement answer itself, which is exactly the trap the v3 adoption number fell into from the other side. Success is that the arm's FINAL ANSWER — the files it names as needing attention — is better than grep's on the truth set. A block that was delivered and ignored counts as a failure of this arm, and it is a failure worth seeing: it would mean the channel works and the content does not.",
+
+  "thresholds": {
+    "$comment": "ALL THREE ARE `TO_BE_DECIDED`. Daniel decides; the proposals below exist to be argued with, not to be adopted by default. Writing a number here now would be deciding a threshold with the pilot results already in view, which is the thing a pre-registration exists to prevent.",
+    "effect_recall": {
+      "value": "TO_BE_DECIDED",
+      "proposal": "+8 Pp recall of `delivered` over `grep`, with the lower bound of a 95 % bootstrap CI above 0",
+      "rationale": "v3 measured a +0.8 Pp difference between two arms that turned out to run the same procedure, so anything below a few points is indistinguishable from run-to-run noise on a sample this size. The offline ceiling of the symbol query on the v3 sample is 96.6 % recall against 87.4 % for the file-level answer — 9.2 Pp — and an arm cannot beat the ceiling of the information it is handed, so a threshold at or above ~9 Pp could only be met by an agent that uses the block perfectly. 8 Pp asks for most of the available headroom while staying reachable.",
+      "cost_of_being_wrong": "Too low and a noise result ships as a feature; too high and a real, useful improvement is recorded as a failure and the channel is abandoned for the wrong reason."
+    },
+    "precision_floor": {
+      "value": "TO_BE_DECIDED",
+      "proposal": "precision of `delivered` must not fall more than 5 Pp below `grep`",
+      "rationale": "The failure mode this guards against is concrete and was measured offline: the block is a candidate list at ~47 % precision, and an agent that pastes it through inflates recall and hands the user a list half of which is noise. A floor, not a target — precision is allowed to drop a little, because following up a real candidate the agent would otherwise have missed is worth one file opened and closed.",
+      "cost_of_being_wrong": "Too loose and the arm passes by being indiscriminate; too tight and the arm is punished for the one behaviour the block is meant to cause, namely checking a file it would not have checked."
+    },
+    "context_cost": {
+      "value": "TO_BE_DECIDED",
+      "proposal": "median input tokens of `delivered` at most 1.15× `grep`",
+      "rationale": "The block measures 179–324 tokens (median 286) against a v3-measured median of 112 tokens for the grep an agent would otherwise run, so one block is roughly two-and-a-half searches. A ceiling above ~1.2× would let the arm pass while costing more context than the searches it saves, which is the whole ROI question; a ceiling much below 1.1× cannot be met by any block that says anything.",
+      "cost_of_being_wrong": "Too generous and the feature is shipped on a recall gain the user pays for on every turn; too strict and a genuinely cheaper-than-grep result is rejected over measurement noise in an unrelated part of the transcript."
+    },
+    "verdict_rule": "PROPOSAL: the arm succeeds only if all three hold — recall above the effect threshold, precision above the floor, cost below the ceiling. One-out-of-three is not a partial success; a recall gain bought with precision or with context is the failure this design is shaped around."
+  },
+
+  "sample": {
+    "$comment": "TO_BE_DECIDED together with the thresholds. What is NOT open: the v3 sample (~/.bastra/eval/code-roi-v2, 44 scenarios) is BURNED development data — the block's wording, its caps and its narrowing rules were all tuned on it, and a result measured there would be a result about its own training set.",
+    "proposal": "the v6 population, drawn in the registered repository order, with the same pooling rule and the same hand adjudication; minimum sample size decided with the thresholds, since the detectable effect and n are one decision, not two",
+    "prohibited": [
+      "any scenario of ~/.bastra/eval/code-roi-v2",
+      "reading the contents of ~/.bastra/eval/code-roi-v4-bastra-io or ~/.bastra/eval/code-roi-v4 in order to tune anything"
+    ]
+  },
+
+  "cost_ceiling": {
+    "value": "TO_BE_DECIDED",
+    "proposal": "carry over the v6 rule unchanged — 40 USD enforced by the runner, environment may only lower it",
+    "rationale": "Two arms rather than three at a v3-measured ~0.50 USD per scenario; the same ceiling therefore buys a larger sample here than it does there."
+  },
+
+  "what_this_cannot_show": [
+    "That the block CAUSED the difference in a real session. The arm shows that an agent given the block answers better than one that is not; a real session has memory hints, a longer history and a user who interrupts.",
+    "Anything about the prompt lane's intent gate on real prompts. The gate is pinned by a 34-prompt negative list in the test suite, which is a unit test, not a measurement — the false-trigger rate on real traffic can only come from `code_tool_call` rows with `surface: \"delivered\"` and `delivered_lane: \"prompt\"` once the feature has been live for a while.",
+    "Whether the delivered channel is better than the offered one. That comparison needs both registrations to have completed runs, and this draft deliberately does not re-run the offered arm."
+  ],
+
+  "before_this_may_be_registered": [
+    "the v6 run of code-awareness-change-impact.json is complete and reported",
+    "Daniel decides effect_recall, precision_floor, context_cost, the verdict rule and the minimum sample size",
+    "the runner extension exists and has been shown to inject the product's own block, not a reconstruction of it",
+    "the delivered telemetry has run in real sessions long enough to report a false-trigger rate for the prompt gate"
+  ]
+}
