@@ -37,14 +37,16 @@
  *
  * Usage: CODE_ROI_OUT=<dir> node evaluate-v4.mjs   → prints the report, writes report.json
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { score } from "./evaluate.mjs";
 import { rng } from "./select.mjs";
 import { writableOut } from "./archive.mjs";
 import { treeDirOf } from "./run-arms-v3.mjs";
+import { pinSignature, readBuildPin } from "./build-pin.mjs";
 
 const OUT = writableOut();
+const RUNS = join(OUT, "runs");
 const REG = JSON.parse(
   readFileSync(new URL("../../registrations/code-awareness-change-impact.json", import.meta.url), "utf8"),
 );
@@ -410,14 +412,82 @@ export function buildReport(scenarios, readArm) {
   };
 }
 
+/**
+ * Every `<arm>.meta.json` / `<arm>.failed-<ts>.meta.json` under `runs/`, with
+ * the build-pin signature `run-arms-v3.mjs` wrote beside it — finished and
+ * aborted attempts both, because an abort still spent money under whatever
+ * build was running at the time.
+ */
+export function armMetaRows(runsDir) {
+  const rows = [];
+  if (!existsSync(runsDir)) return rows;
+  for (const scenario of readdirSync(runsDir)) {
+    const dir = join(runsDir, scenario);
+    if (!statSync(dir).isDirectory()) continue;
+    for (const file of readdirSync(dir)) {
+      if (!/\.meta\.json$/.test(file)) continue;
+      try {
+        const meta = JSON.parse(readFileSync(join(dir, file), "utf8"));
+        rows.push({ scenario, file, arm: meta.arm ?? null, buildPin: meta.buildPin ?? null });
+      } catch {
+        // An unreadable meta cannot say what it ran under either — treated as
+        // unpinned below, never silently skipped.
+        rows.push({ scenario, file, arm: null, buildPin: null });
+      }
+    }
+  }
+  return rows;
+}
+
+/**
+ * Does every transcript in this archive carry the SAME build-pin signature as
+ * the archive's own `build-pin.json` (#582, Codex counter-review 4)?
+ *
+ * The run is taken in HELPINGS, days apart (`run_conditions.stretched_run`).
+ * Without this check, a helping run after a rebuild would silently mix a
+ * second product revision into the same report and nothing would say so —
+ * exactly the gap Codex found before the first arm ever ran.
+ */
+export function mixedBuildsReport(rows, pinnedSignature) {
+  if (pinnedSignature === null) {
+    return {
+      mixed_builds: rows.length > 0,
+      pinned_signature: null,
+      offending: rows.map(({ scenario, file, arm }) => ({ scenario, file, arm, buildPin: null })),
+      $comment: rows.length > 0 ? "transcripts exist but this archive has no build-pin.json yet" : null,
+    };
+  }
+  const offending = rows.filter((r) => r.buildPin !== pinnedSignature);
+  return {
+    mixed_builds: offending.length > 0,
+    pinned_signature: pinnedSignature,
+    offending: offending.map(({ scenario, file, arm, buildPin }) => ({ scenario, file, arm, buildPin })),
+  };
+}
+
 function main() {
   const { scenarios } = JSON.parse(readFileSync(join(OUT, "scenarios.json"), "utf8"));
   const report = buildReport(scenarios, (s, arm) => {
     const f = join(OUT, "runs", s.id, `${arm}.jsonl`);
     return existsSync(f) ? readFileSync(f, "utf8") : null;
   });
-  writeFileSync(join(OUT, "report.json"), JSON.stringify(report, null, 2));
-  process.stdout.write(JSON.stringify({ ...report, rows: undefined }, null, 2) + "\n");
+  const recordedPin = readBuildPin(OUT);
+  const buildPin =
+    recordedPin === null
+      ? null
+      : {
+          headSha: recordedPin.headSha,
+          distRevision: recordedPin.distRevision.revision,
+          registrationVersion: recordedPin.registrationVersion,
+          signature: pinSignature(recordedPin),
+        };
+  const full = {
+    ...report,
+    build_pin: buildPin,
+    mixed_builds: mixedBuildsReport(armMetaRows(RUNS), buildPin?.signature ?? null),
+  };
+  writeFileSync(join(OUT, "report.json"), JSON.stringify(full, null, 2));
+  process.stdout.write(JSON.stringify({ ...full, rows: undefined }, null, 2) + "\n");
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();

@@ -46,7 +46,17 @@
  * cost of the arms that FINISHED; otherwise the run stops and says how far it
  * got. The accounting lives in `arm-cost.mjs`.
  *
- * Usage: CODE_ROI_OUT=… node run-arms-v3.mjs [--only S01,S02] [--arms A,B,prefilled]
+ * A BUILD PREFLIGHT RUNS FIRST, every invocation (#582, Codex counter-review
+ * 4): `dist/.build-revision` must name HEAD, the tracked build inputs must be
+ * clean, and the four `arms.frozen_surface` hashes must match the
+ * registration when recomputed from `dist` — a helping that fails any of
+ * these stops before touching an arm. What passes is then pinned into
+ * `build-pin.json` in the archive on the first helping and checked on every
+ * later one; a mismatch aborts with the differing fields, never a silent
+ * re-pin. See `build-pin.mjs`.
+ *
+ * Usage: npm run build && CODE_ROI_OUT=… node run-arms-v3.mjs [--only S01,S02] [--arms A,B,prefilled]
+ *        CODE_ROI_OUT=… node run-arms-v3.mjs --preflight-only   (checks only, starts no arm)
  */
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
@@ -68,6 +78,14 @@ import { scenarioRoot } from "./scenario-root.mjs";
 import { writableOut } from "./archive.mjs";
 import { ARM_IDS } from "./select.mjs";
 import { diffForTree } from "./diff-side.mjs";
+import {
+  buildPinPath,
+  checkBuildPin,
+  formatBuildPinDiff,
+  pinSignature,
+  preflightBuild,
+  readBuildPin,
+} from "./build-pin.mjs";
 import {
   abortedArmCharge,
   armCostUsd,
@@ -174,8 +192,13 @@ function promptWithPrefill(s, prefill) {
  * afterwards because an abort's cost has to be written down at the moment it
  * happens: its transcript is renamed out of the way and never read again, so
  * the `.failed…meta.json` beside it is the only record a later helping has.
+ *
+ * `buildPinSignature` is written into the meta beside it regardless of
+ * outcome, finished or aborted: `evaluate-v4.mjs` reads it back off every
+ * meta in the archive to report `mixed_builds` when a stretched run's
+ * helpings were not all served by the pinned build.
  */
-function runArm(arm, prompt, tree, graphRoot, dir, budgetUsd, spend) {
+function runArm(arm, prompt, tree, graphRoot, dir, budgetUsd, spend, buildPinSignature) {
   const transcript = join(dir, `${arm.id}.jsonl`);
   const mcpConfig = join(dir, `${arm.id}-mcp.json`);
   const servers = arm.graph
@@ -259,6 +282,10 @@ function runArm(arm, prompt, tree, graphRoot, dir, budgetUsd, spend) {
             {
               arm: arm.id,
               name: arm.name,
+              // Which build this attempt ran under, finished or not — read
+              // back by `evaluate-v4.mjs` to report `mixed_builds` (#582
+              // preflight).
+              buildPin: buildPinSignature,
               exitCode: code,
               finished,
               ...(finished
@@ -423,6 +450,39 @@ async function main() {
     }
   }
 
+  // THE PREFLIGHT, before anything else touches the archive or spends a
+  // dollar (#582, Codex counter-review 4). Checked before `scenarios.json` is
+  // even read, so `--preflight-only` works against an archive that has not
+  // been started yet.
+  const preflight = await preflightBuild();
+  if (!preflight.ok) {
+    process.stdout.write(`preflight failed (${preflight.reason}): ${preflight.message}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const pinVerdict = checkBuildPin(readBuildPin(OUT), preflight.pin);
+  if (!pinVerdict.ok) {
+    process.stdout.write(
+      `preflight failed (build_pin_mismatch): this archive was pinned to a different build than ` +
+        `the one on disk now — a resumed helping never re-pins itself, it aborts.\n` +
+        `${formatBuildPinDiff(pinVerdict.diff)}\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+  const preflightOnly = process.argv.includes("--preflight-only");
+  if (pinVerdict.write && !preflightOnly) {
+    mkdirSync(OUT, { recursive: true });
+    writeFileSync(buildPinPath(OUT), JSON.stringify(preflight.pin, null, 2) + "\n");
+  }
+  process.stdout.write(
+    `preflight ok — build ${preflight.pin.headSha.slice(0, 7)} ` +
+      `${pinVerdict.write ? (preflightOnly ? "would be pinned" : "pinned") : "matches the archive's pin"} ` +
+      `at ${buildPinPath(OUT)}\n`,
+  );
+  if (preflightOnly) return;
+  const buildPinSignature = pinSignature(preflight.pin);
+
   const { scenarios } = JSON.parse(readFileSync(join(OUT, "scenarios.json"), "utf8"));
   const live = scenarios.filter((s) => !s.excluded && (!only || only.has(s.id)));
   const maxScenarios = helpingSize();
@@ -504,6 +564,7 @@ async function main() {
         dir,
         Math.max(0.01, COST_CEILING_USD - chargedUsd),
         { finishedCostUsd, finishedArms },
+        buildPinSignature,
       );
       chargedUsd += charge.usd;
       if (finished) {

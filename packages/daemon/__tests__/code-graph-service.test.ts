@@ -92,6 +92,15 @@ describe("what a refresh row is allowed to say (#582 review)", () => {
     ["graphify-missing: /Users/someone/.bastra/bin/graphify", "binary_missing"],
     ["locked: /Users/someone/Projekte/secret-client/.bastra-code", "locked"],
     ["timeout: no result after 300000 ms", "timeout"],
+    // A child that survives SIGKILL: the build lock is left in place on
+    // purpose (build.ts), and that has to stay distinguishable from an
+    // ordinary timeout or "other" — both of which it used to fall into,
+    // because the precursor reason (here, a timeout) is folded into the same
+    // detail string (P2, #582 review).
+    [
+      "stuck: no result after 600000 ms: child still running 2000 ms after SIGKILL — build lock left in place until it goes stale",
+      "stuck",
+    ],
     ["failed: aborted", "aborted"],
     ["failed: killed by SIGKILL", "graphify_killed_sigkill"],
     [

@@ -114,6 +114,12 @@ export function detailCode(detail: string | undefined): string | undefined {
   if (/^given up$/.test(detail)) return "given_up";
   if (/unsupported-platform/.test(detail)) return "unsupported_platform";
   if (/graphify-missing/.test(detail)) return "binary_missing";
+  // Checked BEFORE `timeout`: `build.ts` folds the reason that led to the kill
+  // into a stuck detail's own text (`stuck: no result after 600000 ms: child
+  // still running …`), so a plain substring match on "no result after" would
+  // read a stuck build as a timed-out one and hide that the lock was left in
+  // place on purpose (P2, #582 review).
+  if (/^stuck:/.test(detail)) return "stuck";
   if (/timeout|no result after/.test(detail)) return "timeout";
   if (/^locked|failed: locked/.test(detail)) return "locked";
   if (/\baborted\b/.test(detail)) return "aborted";
