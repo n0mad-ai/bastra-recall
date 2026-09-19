@@ -51,15 +51,16 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { writableOut } from "./archive.mjs";
-import { isScenarioFile, repoProfile } from "./repo-profile.mjs";
+import { isScenarioFile, repoProfile, usesTests, usesTypes } from "./repo-profile.mjs";
+import { buildExclusions, exclusionsHash, isExcludedFile } from "./exclusions.mjs";
+import { TRUTH_RULE, attribute, closuresOf, selectTests } from "./test-truth.mjs";
 import {
   DEFAULT_TIMEOUT_MS,
-  TRUTH_RULE,
-  attribute,
   brokenCases,
   runSuite,
   testFileOfCase,
-} from "./test-truth.mjs";
+  testFilesOf,
+} from "./test-runner.mjs";
 
 const run = promisify(execFile);
 const BUF = { maxBuffer: 512 * 1024 * 1024, encoding: "utf8" };
@@ -87,24 +88,31 @@ const STOP_AT = Number(argOf("--stop-at") ?? 45);
 const MAX_TRUTH = 40;
 
 export const TRUTH = argOf("--truth") ?? process.env.CODE_ROI_TRUTH ?? "types";
-if (TRUTH !== "types" && TRUTH !== "tests") {
-  throw new Error(`--truth must be "types" or "tests", not ${JSON.stringify(TRUTH)}`);
+if (!["types", "tests", "tsc+tests"].includes(TRUTH)) {
+  throw new Error(`--truth must be "types", "tests" or "tsc+tests", not ${JSON.stringify(TRUTH)}`);
 }
 const profile = repoProfile(REPO, { truth: TRUTH });
 mkdirSync(OUT, { recursive: true });
 
 /**
- * Commits a pilot already looked at, excluded MECHANICALLY like in v6.
- *
- * They are passed in rather than read from a registration, because the
- * registration this population belongs to is not the one `select.mjs` reads:
- * pointing at the wrong document would exclude the wrong commits, and an
- * exclusion nobody notices is worse than no exclusion at all.
+ * What may not enter this population — burned scenario files, the pilot
+ * commits, and the two directories being worked on. Built only for the truth
+ * modes that carry it; the type-only path keeps mining exactly as before.
  */
-const PILOT_COMMITS = (process.env.CODE_ROI_PILOT_COMMITS ?? "")
-  .split(",")
-  .map((c) => c.trim())
-  .filter(Boolean);
+const EXCLUSIONS =
+  TRUTH === "tsc+tests"
+    ? buildExclusions({
+        extraFiles: (process.env.CODE_ROI_EXCLUDE_FILES ?? "").split(",").map((f) => f.trim()).filter(Boolean),
+      })
+    : { files: [], commits: [], prefixes: [], reasons: {}, sources: [] };
+
+const PILOT_COMMITS = [
+  ...EXCLUSIONS.commits,
+  ...(process.env.CODE_ROI_PILOT_COMMITS ?? "")
+    .split(",")
+    .map((c) => c.trim())
+    .filter(Boolean),
+];
 
 /** The repository state this population was mined from, pinned in population.json. */
 const REPO_HEAD = (() => {
@@ -284,6 +292,7 @@ async function candidatesOf(sha) {
       ([status, path]) =>
         status === "M" &&
         isScenarioFile(profile, path ?? "") &&
+        !isExcludedFile(EXCLUSIONS, path ?? "") &&
         (FILE_PREFIX === "" || (path ?? "").startsWith(FILE_PREFIX)),
     )
     .map(([, path]) => path)
@@ -304,25 +313,29 @@ function loadTestBaselines() {
   if (!existsSync(TEST_BASELINE_CACHE)) return;
   for (const line of readFileSync(TEST_BASELINE_CACHE, "utf8").split("\n").filter(Boolean)) {
     const r = JSON.parse(line);
-    testBaselines.set(r.tree, r);
+    testBaselines.set(r.key, r);
   }
 }
 
 /**
- * The passing cases of the parent tree, from cache or from a run. Only the
- * PASSING ids are kept: they are the only thing step 3 needs, and keeping the
- * failures too would double a cache file that is already the largest artefact
- * of a mining run.
+ * The passing cases of the parent tree for ONE SELECTION of test files.
+ *
+ * The key is the tree plus the selection, not the tree alone: with targeted
+ * runs two candidates of the same commit run different test files, and a
+ * baseline taken over one selection says nothing about cases the other one
+ * runs. Keyed this way, a repeated selection — which is common, since many
+ * changes reach the same tests — is still paid for once.
  */
-async function testBaseline(tree, dir) {
-  const hit = testBaselines.get(tree);
+async function testBaseline(tree, dir, selected) {
+  const key = `${tree}:${createHash("sha256").update(selected.join("\n")).digest("hex").slice(0, 16)}`;
+  const hit = testBaselines.get(key);
   if (hit !== undefined) return hit;
-  const run = await runSuite(dir, profile.testRunner, { timeoutMs: TEST_TIMEOUT_MS });
+  const run = await runSuite(dir, profile.testRunner, { files: selected, timeoutMs: TEST_TIMEOUT_MS });
   const record =
     run.status === "ok"
-      ? { tree, status: "ok", passing: [...run.cases].filter(([, s]) => s === "pass").map(([id]) => id) }
-      : { tree, status: run.status, detail: run.detail ?? "", passing: [] };
-  testBaselines.set(tree, record);
+      ? { key, tree, tests: selected.length, status: "ok", passing: [...run.cases].filter(([, s]) => s === "pass").map(([id]) => id) }
+      : { key, tree, tests: selected.length, status: run.status, detail: run.detail ?? "", passing: [] };
+  testBaselines.set(key, record);
   appendFileSync(TEST_BASELINE_CACHE, JSON.stringify(record) + "\n");
   return record;
 }
@@ -345,20 +358,34 @@ export async function analyzeTests(commit, files, dir, { evidence = false } = {}
   const subject = (await git(["log", "-1", "--format=%s", commit])).trim();
   await extract(parent, dir);
 
-  const base = await testBaseline(tree, dir);
-  const record = { repo: profile.root, commit, parent, subject, truthRule: TRUTH_RULE };
-  if (base.status !== "ok") {
-    return files.map((file) => ({
-      ...record,
-      file,
-      reason: `not evaluable: baseline ${base.status}${base.detail ? ` (${base.detail})` : ""}`,
-    }));
-  }
-  const passing = new Map(base.passing.map((id) => [id, "pass"]));
+  // The type pass runs FIRST and is not only the type baseline: `buildFirst`
+  // emits the dist directories that the tests import across package
+  // boundaries. Without it every cross-package test fails on the baseline too,
+  // which is not a break — it is a tree that was never built.
+  const typeBaseline = usesTypes(TRUTH) ? await errorSignatures(dir) : null;
 
+  const testFiles = testFilesOf(dir, profile.testRunner);
+  // Closures are computed ONCE per commit, on the parent tree. A candidate's
+  // own diff can add an import, but a candidate is never a test file, so the
+  // set of tests that reach a file is stable across the candidates of one
+  // commit — and computing it per candidate would repeat the same walk.
+  const closures = closuresOf(dir, testFiles, { packageNames: profile.packageNames });
+
+  const record = { repo: profile.root, commit, parent, subject, truthRule: TRUTH_RULE, truthMode: TRUTH };
   const results = [];
   for (const file of files) {
     const diff = await git(["diff", parent, commit, "--", file]);
+    const selection = selectTests(dir, file, { testFiles, closures, diff });
+    const base = await testBaseline(tree, dir, selection.files);
+    if (base.status !== "ok") {
+      results.push({
+        ...record,
+        file,
+        reason: `not evaluable: baseline ${base.status}${base.detail ? ` (${base.detail})` : ""}`,
+      });
+      continue;
+    }
+    const passing = new Map(base.passing.map((id) => [id, "pass"]));
     const patch = join(dir, ".eval-mutation.diff");
     writeFileSync(patch, diff);
     const applied = await run("git", ["apply", patch], { cwd: dir, ...BUF }).then(
@@ -371,7 +398,11 @@ export async function analyzeTests(commit, files, dir, { evidence = false } = {}
       continue;
     }
 
-    const after = await runSuite(dir, profile.testRunner, { timeoutMs: TEST_TIMEOUT_MS });
+    const afterTypes = usesTypes(TRUTH) ? await errorSignatures(dir) : null;
+    const after = await runSuite(dir, profile.testRunner, {
+      files: selection.files,
+      timeoutMs: TEST_TIMEOUT_MS,
+    });
     // Everything that needs the MUTATED tree is read here, before the revert:
     // the change itself can add or remove an import, and the closure that
     // decides attribution and the blind-spot flag is the one that exists where
@@ -400,24 +431,42 @@ export async function analyzeTests(commit, files, dir, { evidence = false } = {}
     }
 
     const confirmed = await confirmBreaks(dir, brokenFiles, broke, (id) => testFileOfCase(id, dir, after.files));
-    const truth = new Set();
+    const fromTests = new Set();
     const rules = {};
     const blindSpots = [];
     for (const t of brokenFiles) {
       if (!confirmed.has(t)) continue;
       const a = attributions.get(t);
       rules[t] = a.rule;
-      for (const f of a.files) truth.add(f);
+      for (const f of a.files) fromTests.add(f);
       if (!a.closure.has(file)) blindSpots.push(t);
     }
+    // The v3 rule, unchanged: a file that carries a type error it did not
+    // carry before. The two truths are a UNION — a change can break a type
+    // without breaking a test, and break a test without breaking a type.
+    const fromTypes = usesTypes(TRUTH)
+      ? [...newErrorFiles(typeBaseline, afterTypes)].filter((f) => f !== file)
+      : [];
+    const truth = [...new Set([...fromTypes, ...fromTests])].sort();
     const entry = {
       ...record,
       file,
       diff,
-      truth: [...truth].sort(),
+      truth,
+      truthFromTypes: [...fromTypes].sort(),
+      truthFromTests: [...fromTests].sort(),
+      truthSource:
+        fromTypes.length > 0 && fromTests.size > 0
+          ? "both"
+          : fromTypes.length > 0
+            ? "tsc"
+            : fromTests.size > 0
+              ? "tests"
+              : "none",
       brokenTests: [...confirmed].sort(),
       truthRules: rules,
       blindSpots,
+      testSelection: { mode: selection.mode, files: selection.files.length, reached: selection.reached },
       baselinePassing: base.passing.length,
     };
     if (evidence) entry.brokenCases = broke.slice(0, 50);
@@ -452,7 +501,7 @@ async function confirmBreaks(dir, brokenFiles, broke, fileOf) {
 
 /** Truth sets for every candidate file of one commit: one baseline, one mutation per file. */
 export async function analyze(commit, files, dir, { evidence = false } = {}) {
-  if (TRUTH === "tests") return analyzeTests(commit, files, dir, { evidence });
+  if (usesTests(TRUTH)) return analyzeTests(commit, files, dir, { evidence });
   const parent = (await git(["rev-parse", `${commit}^`])).trim();
   const subject = (await git(["log", "-1", "--format=%s", commit])).trim();
   await extract(parent, dir);
@@ -510,7 +559,9 @@ export async function analyze(commit, files, dir, { evidence = false } = {}) {
  */
 export function populationFreeze(decisions, accepted) {
   const kept = decisions.filter((d) => d.accepted === true);
-  const dirOf = (f) => (f.includes("/") ? f.slice(0, f.indexOf("/")) : ".");
+  // `packages/daemon`, not `packages` — the first segment is the same for
+  // every file in a monorepo and would report one bucket for the whole sample.
+  const packageOf = (f) => f.split("/").slice(0, 2).join("/") || ".";
   const tally = (pairs) => {
     const counts = {};
     for (const key of pairs) counts[key] = (counts[key] ?? 0) + 1;
@@ -527,13 +578,21 @@ export function populationFreeze(decisions, accepted) {
     accepted,
     decided: decisions.length,
     excluded_pilot: PILOT_COMMITS,
+    exclusions: {
+      sha256: exclusionsHash(EXCLUSIONS),
+      burned_files: EXCLUSIONS.files.length,
+      prefixes: EXCLUSIONS.reasons,
+      sources: EXCLUSIONS.sources,
+    },
     population_sha256: createHash("sha256")
       .update(kept.map((d) => `${d.commit}:${d.file}`).join("\n"))
       .digest("hex"),
     distribution: {
-      by_top_dir: tally(kept.map((d) => dirOf(d.file))),
+      by_package: tally(kept.map((d) => packageOf(d.file))),
       truth_size: tally(kept.map((d) => String(d.truth?.length ?? 0))),
+      truth_source: tally(kept.map((d) => d.truthSource ?? "types")),
       attribution_rule: tally(kept.flatMap((d) => Object.values(d.truthRules ?? {}))),
+      test_selection: tally(kept.map((d) => d.testSelection?.mode ?? "n/a")),
       with_blind_spots: kept.filter((d) => (d.blindSpots?.length ?? 0) > 0).length,
     },
     rejected: tally(decisions.filter((d) => d.accepted !== true).map((d) => d.reason ?? "unknown")),
@@ -542,8 +601,13 @@ export function populationFreeze(decisions, accepted) {
 
 /** Every repository's candidate file, concatenated into the pooled one. */
 function mergeCandidates() {
+  // The pooled file is NOT one of its own inputs. `candidates.jsonl` matches
+  // the same prefix and suffix as the per-repository files, so without this it
+  // was concatenated into itself once per pass: 432 real decisions grew to
+  // 5094 lines and 45 accepted scenarios appeared 682 times, which is what
+  // `select.mjs` would then have drawn its sample from.
   const parts = readdirSync(OUT)
-    .filter((f) => f.startsWith("candidates.") && f.endsWith(".jsonl"))
+    .filter((f) => f.startsWith("candidates.") && f.endsWith(".jsonl") && f !== "candidates.jsonl")
     .sort();
   const lines = parts.flatMap((f) => readFileSync(join(OUT, f), "utf8").split("\n").filter(Boolean));
   writeFileSync(CANDIDATES, lines.join("\n") + "\n");
@@ -598,22 +662,29 @@ function decide(commits, filesByCommit, cache) {
 }
 
 async function main() {
-  if (TRUTH === "types" && profile.tsconfigs.length === 0) {
+  if (usesTypes(TRUTH) && profile.tsconfigs.length === 0) {
     throw new Error(`${REPO}: no tsconfig found — nothing to typecheck, so no truth can be built`);
   }
-  if (TRUTH === "tests" && profile.testRunner === null) {
+  if (usesTests(TRUTH) && profile.testRunner === null) {
     throw new Error(
       `${REPO}: no test runner found in package.json — a repository without a suite cannot carry test-based truth`,
     );
   }
-  if (TRUTH === "tests") loadTestBaselines();
+  if (usesTests(TRUTH)) loadTestBaselines();
   process.stdout.write(
     `repo ${REPO}\n  truth ${TRUTH} (${TRUTH_RULE})\n` +
       `  packages ${profile.packageDirs.length}, scopes ${profile.scopes.join(",") || "none"}\n` +
-      (TRUTH === "tests"
+      (usesTypes(TRUTH)
+        ? `  tsconfigs ${profile.tsconfigs.join(", ")}\n  build first: ${profile.buildFirst.join(", ") || "nothing"}\n`
+        : "") +
+      (usesTests(TRUTH)
         ? `  runner ${profile.testRunner.kind} via ${JSON.stringify(profile.testRunner.script)}\n` +
           `  time budget ${TEST_TIMEOUT_MS} ms per suite run\n`
-        : `  tsconfigs ${profile.tsconfigs.join(", ")}\n  build first: ${profile.buildFirst.join(", ") || "nothing"}\n`),
+        : "") +
+      (EXCLUSIONS.files.length > 0
+        ? `  excluded: ${EXCLUSIONS.files.length} burned files, ${EXCLUSIONS.commits.length} pilot commits, ` +
+          `prefixes ${EXCLUSIONS.prefixes.join(" ")} (${exclusionsHash(EXCLUSIONS).slice(0, 12)})\n`
+        : ""),
   );
 
   const since = argOf("--since") ?? process.env.CODE_ROI_RANGE_END ?? "HEAD";

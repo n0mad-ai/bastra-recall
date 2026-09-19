@@ -23,20 +23,30 @@ import { join } from "node:path";
 import {
   TRUTH_RULE,
   attribute,
-  brokenCases,
-  detectRunner,
+  closuresOf,
+  diffLiterals,
   importClosure,
   isTestFile,
-  parseTap,
   resolveSpecifier,
-  runSuite,
+  selectTests,
   specifiersOf,
-  testFileOfCase,
   truthFromBrokenTests,
   // @ts-expect-error — plain .mjs measurement scripts, no declarations
 } from "../code-roi/v2/test-truth.mjs";
 // @ts-expect-error — plain .mjs measurement scripts, no declarations
-import { isScenarioFile, repoProfile } from "../code-roi/v2/repo-profile.mjs";
+import {
+  brokenCases,
+  detectRunner,
+  parseTap,
+  runSuite,
+  testFileOfCase,
+  testFilesOf,
+  // @ts-expect-error — plain .mjs measurement scripts, no declarations
+} from "../code-roi/v2/test-runner.mjs";
+// @ts-expect-error — plain .mjs measurement scripts, no declarations
+import { isScenarioFile, repoProfile, usesTests, usesTypes } from "../code-roi/v2/repo-profile.mjs";
+// @ts-expect-error — plain .mjs measurement scripts, no declarations
+import { buildExclusions, exclusionsHash, isExcludedFile } from "../code-roi/v2/exclusions.mjs";
 
 // ─── The fixture repository ──────────────────────────────────────
 
@@ -137,6 +147,19 @@ describe("test-based truth: static imports", () => {
     assert.equal(resolveSpecifier(dir, "tests/report.test.js", "../src/report"), "src/report.js");
     assert.equal(resolveSpecifier(dir, "tests/report.test.js", "node:fs"), null);
     assert.equal(resolveSpecifier(dir, "tests/report.test.js", "../../outside"), null);
+  });
+
+  it("follows a TypeScript ESM specifier from the emitted name to the source", () => {
+    // `./x.js` on disk is `./x.ts`. bastra-recall writes 524 of its 530
+    // relative imports this way; missing it collapses reachability silently.
+    mkdirSync(join(dir, "ts"), { recursive: true });
+    writeFileSync(join(dir, "ts/thing.ts"), "export const a = 1;\n");
+    writeFileSync(join(dir, "ts/user.ts"), `import { a } from "./thing.js";\nexport const b = a;\n`);
+    assert.equal(resolveSpecifier(dir, "ts/user.ts", "./thing.js"), "ts/thing.ts");
+    // A real .js next to it still wins over the rewrite.
+    writeFileSync(join(dir, "ts/thing.js"), "module.exports = {};\n");
+    assert.equal(resolveSpecifier(dir, "ts/user.ts", "./thing.js"), "ts/thing.js");
+    rmSync(join(dir, "ts"), { recursive: true, force: true });
   });
 
   it("walks the closure transitively and records the distance", () => {
@@ -288,6 +311,115 @@ describe("test-based truth: the whole rule on the fixture", () => {
 
   it("stamps the rule version every population is frozen against", () => {
     assert.equal(TRUTH_RULE, "tests/v1");
+  });
+});
+
+// ─── Choosing which tests to run ─────────────────────────────────
+
+describe("test-based truth: test selection", () => {
+  it("picks the tests whose import closure reaches the changed file", () => {
+    const testFiles = ["tests/tax.test.js", "tests/report.test.js"];
+    const closures = closuresOf(dir, testFiles);
+    const both = selectTests(dir, "src/tax.js", { testFiles, closures });
+    assert.equal(both.mode, "targeted");
+    assert.deepEqual(both.files, ["tests/report.test.js", "tests/tax.test.js"]);
+
+    const one = selectTests(dir, "src/report.js", { testFiles, closures });
+    assert.deepEqual(one.files, ["tests/report.test.js"]);
+  });
+
+  it("falls back to the whole suite instead of concluding nothing can break", () => {
+    const testFiles = ["tests/tax.test.js", "tests/report.test.js"];
+    const closures = closuresOf(dir, testFiles);
+    // labels.json is reached by no import at all.
+    const all = selectTests(dir, "src/labels.json", { testFiles, closures });
+    assert.equal(all.mode, "full");
+    assert.deepEqual(all.files, testFiles);
+  });
+
+  it("adds a test that merely shares a string literal with the diff", () => {
+    const testFiles = ["tests/tax.test.js", "tests/report.test.js"];
+    const closures = closuresOf(dir, testFiles);
+    // "../src/report" is required by report.test.js and is removed by this diff;
+    // nothing links src/x.js to that test by an import.
+    const diff = [
+      "--- a/src/x.js",
+      "+++ b/src/x.js",
+      '-const p = "../src/report";',
+      '+const p = "../src/renamed";',
+    ].join("\n");
+    const picked = selectTests(dir, "src/x.js", { testFiles, closures, diff });
+    assert.equal(picked.mode, "targeted+literals");
+    assert.deepEqual(picked.files, ["tests/report.test.js"]);
+  });
+
+  it("takes contract-shaped literals from both sides of a diff, not bare words", () => {
+    const lits = diffLiterals(
+      ['+const route = "/api/quote";', '-const evt = "vehicle.updated";', '+const word = "hello";'].join("\n"),
+    );
+    assert.equal(lits.includes("/api/quote"), true);
+    assert.equal(lits.includes("vehicle.updated"), true);
+    assert.equal(lits.includes("hello"), false);
+  });
+
+  it("finds every glob of a multi-package test script, not just the first", () => {
+    const runner = {
+      kind: "node-test",
+      reporter: "tap",
+      script: "node --import tsx --test src/*.test.js tests/*.test.js",
+    };
+    assert.equal(detectRunner !== undefined, true);
+    const found = testFilesOf(dir, runner);
+    assert.deepEqual(found, ["tests/report.test.js", "tests/tax.test.js"]);
+  });
+});
+
+// ─── The exclusion set the population is frozen against ──────────
+
+describe("delivered population: exclusions", () => {
+  it("burns every file that was already a scenario, and the worked-on directories", () => {
+    const ex = buildExclusions();
+    // 45 v3 + 9 v4 scenarios collapse to the distinct files they changed.
+    assert.equal(ex.sources.reduce((n: number, s: { scenarios: number }) => n + s.scenarios, 0), 54);
+    assert.equal(ex.files.length > 40, true);
+    assert.equal(isExcludedFile(ex, ex.files[0]), true);
+    assert.equal(isExcludedFile(ex, "packages/daemon/src/code-graph/affected.ts"), true);
+    assert.equal(isExcludedFile(ex, "packages/eval/code-roi/v2/mine-repo.mjs"), true);
+    assert.equal(isExcludedFile(ex, "packages/daemon/src/floors.ts"), true); // a v4 scenario file
+  });
+
+  it("carries the two pilot commits of registration 3", () => {
+    const ex = buildExclusions();
+    assert.equal(ex.commits.length, 2);
+    assert.equal(ex.files.includes("packages/daemon/src/tool-handlers.ts"), true);
+  });
+
+  it("refuses to mine when an archive it must exclude is missing", () => {
+    assert.throws(() => buildExclusions({ archives: ["/nonexistent/scenarios.json"] }), /exclusion archive missing/);
+  });
+
+  it("hashes the whole set, so a different exclusion is a different population", () => {
+    const a = buildExclusions();
+    const b = buildExclusions({ extraFiles: ["packages/core/src/brand-new.ts"] });
+    assert.notEqual(exclusionsHash(a), exclusionsHash(b));
+    assert.equal(exclusionsHash(a), exclusionsHash(buildExclusions()));
+  });
+});
+
+// ─── The combined truth mode ─────────────────────────────────────
+
+describe("delivered population: tsc+tests mode", () => {
+  it("runs both halves and keeps the type-only path untouched", () => {
+    assert.deepEqual([usesTypes("types"), usesTests("types")], [true, false]);
+    assert.deepEqual([usesTypes("tests"), usesTests("tests")], [false, true]);
+    assert.deepEqual([usesTypes("tsc+tests"), usesTests("tsc+tests")], [true, true]);
+  });
+
+  it("keeps TypeScript-only scenario files in the combined mode", () => {
+    const profile = repoProfile(dir, { truth: "tsc+tests" });
+    assert.equal(profile.testRunner.kind, "node-test");
+    // JS is not a scenario file here: the repository still typechecks.
+    assert.equal(isScenarioFile(profile, "src/tax.js"), false);
   });
 });
 

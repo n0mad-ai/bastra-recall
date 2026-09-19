@@ -28,7 +28,8 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { detectRunner, isTestFile } from "./test-truth.mjs";
+import { isTestFile } from "./test-truth.mjs";
+import { detectRunner } from "./test-runner.mjs";
 
 /** Upper bound on workspace packages examined. */
 const MAX_PACKAGES = 200;
@@ -158,12 +159,22 @@ export function repoProfile(root, { truth = "types" } = {}) {
     // no package dirs to name, so its source roots are derived instead.
     sourceGlobs: packageDirs.length > 0 ? packageDirs.map((d) => `${d}/`) : sourceRoots(root),
     truth,
-    // Test-based truth is what makes a JavaScript repository measurable at
-    // all; the type-based truth stays TS-only, exactly as the v3/v4 archives
-    // were mined, so nothing about those runs moves.
+    // JavaScript only becomes a scenario file where JavaScript is what the
+    // truth is built from. `tsc+tests` still typechecks, so it keeps the
+    // TypeScript-only predicate the v3 and v4 archives were mined with.
     sourceExt: truth === "tests" ? /\.[cm]?[jt]sx?$/ : /\.tsx?$/,
-    testRunner: truth === "tests" ? detectRunner(root) : null,
+    testRunner: usesTests(truth) ? detectRunner(root) : null,
   };
+}
+
+/** True for the truth modes that run the repository's own suite. */
+export function usesTests(truth) {
+  return truth === "tests" || truth === "tsc+tests";
+}
+
+/** True for the truth modes that ask tsc. */
+export function usesTypes(truth) {
+  return truth === "types" || truth === "tsc+tests";
 }
 
 /** Top-level directories that hold source, for a repository without workspaces. */
@@ -187,10 +198,9 @@ export function isScenarioFile(profile, file) {
   // mined with. The wider one (a `tests/` directory anywhere) belongs to the
   // test-based path, where a file under `tests/` is the evidence, not the
   // subject, and must never become a scenario's changed file.
-  const isTest =
-    profile.truth === "tests"
-      ? isTestFile(file)
-      : /(^|\/)__tests__\//.test(file) || /\.(test|spec)\.tsx?$/.test(file);
+  const isTest = usesTests(profile.truth)
+    ? isTestFile(file)
+    : /(^|\/)__tests__\//.test(file) || /\.(test|spec)\.tsx?$/.test(file);
   if (isTest) return false;
   if (/(^|\/)(dist|build|out|node_modules)\//.test(file)) return false;
   return profile.sourceGlobs.some((g) => file.startsWith(g));
