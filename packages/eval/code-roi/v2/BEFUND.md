@@ -108,3 +108,39 @@ KI-Untergrenze > 0, Präzision ≥ −5 Pp, Kontext ≤ 1,25×). Es gibt bewusst
 kein zusammengefasstes Urteil: ein Werkzeug, das niemand aufruft, dessen
 Antwort aber hilft, und eines, das alle aufrufen und das nichts bringt,
 sind entgegengesetzte Befunde und verlangen entgegengesetzte Arbeit.
+
+## Mechanismus-Gate (#582, offline ausgewertet 19.09.2026, Stand 2f9dc47)
+
+Frage, absichtlich eng: Von den Wahrheitsdateien, die in einem **anderen**
+Workspace-Paket liegen als die geänderte Datei — wie viele nennt
+`find_affected_files` bei Tiefe 1? Kein Agent, kein Geld. Das Gate ist der
+Boden unter der Wirksamkeitsmessung: findet die Paketbrücke diese Dateien
+offline nicht, wird sie keine Beschreibung einem Agenten finden lassen.
+
+| Teil | Szenarien | übergreifende Wahrheitsdateien | gefunden | Anteil |
+|---|---|---|---|---|
+| historisch (bastra-io) | 2 | 2 | 2 | **1,00** |
+| synthetisch (Mutationen) | 14 | 21 | 18 | **0,857** |
+
+Der historische Teil hat n = 2 — die gesamte Historie von bastra-io gibt in
+111 `packages/`-Kandidaten nicht mehr her. Das ist ein Klempner-Ergebnis, kein
+Messwert; der vorgeschlagene Mindest-n ist 8.
+
+**Synthetisch, nach Operator:** `rename-export` 10/10, `require-param` 5/5,
+`require-field` **3/6**. Nach Quellpaket: `packages/db` 5/5, `packages/ai` 3/3,
+`packages/payments` 3/3, `packages/social` 7/10.
+
+**Die drei Fehlschläge, eine Ursache.** Alle stammen aus derselben Mutation:
+ein Pflichtfeld in `PublishInput` (`packages/social/src/adapter.ts`).
+Verfehlt: `app/admin/_actions/posts.ts`, `app/admin/_lib/engagement.ts`,
+`app/api/smm/cron/route.ts`. Im Graphen hat `PublishInput` 13 Abhängige —
+**alle innerhalb von `packages/social`**. Die drei App-Dateien nennen den Typ
+nirgends: sie bauen Objektliterale, die erst über eine Funktionssignatur zu
+`PublishInput` fließen. Es gibt also weder eine Import- noch eine Aufrufkante,
+die man verfolgen könnte — der Bruch ist eine Folge des **Typflusses**, und
+extrahierte Import-/Aufrufkanten können ihn grundsätzlich nicht sehen. Das ist
+die bekannte Grenze aus `affected.ts` („candidates, not proof"), gemessen statt
+behauptet. Nicht behoben, wie beauftragt.
+
+Schwellen bleiben `TO_BE_DECIDED` (Vorschlag 0,80) — die Zahlen stehen vor der
+Entscheidung, nicht danach.
