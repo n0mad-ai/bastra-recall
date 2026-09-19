@@ -59,7 +59,7 @@ export function isVaultRelativePath(value: string): boolean {
 export const DerivedClaimSchema = z
   .object({
     id: z.string().regex(/^[a-z0-9][a-z0-9.-]*$/, "claim id must be lowercase kebab/dot form"),
-    resolver: z.enum(["count.markdown-numbered-list.v1", "quote.v1"]),
+    resolver: z.enum(["count.markdown-numbered-list.v1", "quote.v1", "sha256.v1"]),
     source: z.string().min(1).refine(isVaultRelativePath, {
       message: "source must be a vault-relative path without dot segments",
     }),
@@ -68,7 +68,7 @@ export const DerivedClaimSchema = z
      * `matches` or `differs`; without it, the observed value is reported on its
      * own, which is how the first resolver shipped.
      */
-    expect: z.number().optional(),
+    expect: z.union([z.number(), z.string()]).optional(),
     /** `quote.v1`: the string as it stands in the source, character for character. */
     exact: z.string().min(1).optional(),
     /** Stable reference to an independent case; Bastra stores it and leaves it alone. */
@@ -77,6 +77,10 @@ export const DerivedClaimSchema = z
   .refine((claim) => claim.resolver !== "quote.v1" || claim.exact !== undefined, {
     message: "quote.v1 needs `exact`, the string as it appears in the source",
     path: ["exact"],
+  })
+  .refine((claim) => claim.resolver !== "sha256.v1" || typeof claim.expect === "string", {
+    message: "sha256.v1 needs `expect`, the digest recorded for the source",
+    path: ["expect"],
   });
 export type DerivedClaim = z.infer<typeof DerivedClaimSchema>;
 export type MemoryType = z.infer<typeof MemoryTypeEnum>;
