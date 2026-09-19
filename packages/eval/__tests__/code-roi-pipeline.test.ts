@@ -205,10 +205,14 @@ describe("select hands the runner arm names it knows", () => {
     assert.equal(excludedPilotCommits({ sample: {} }).size, 0, "absent list is empty, not a crash");
   });
 
-  test("exactly one arm is the prefilled one", () => {
-    const prefilling = Object.values(ARMS).filter((a) => (a as { prefill: boolean }).prefill);
-    assert.equal(prefilling.length, 1);
-    assert.equal((prefilling[0] as { id: string }).id, "prefilled");
+  test("exactly one arm of THIS registration is the prefilled one", () => {
+    // Scoped to `ARM_IDS` rather than to the whole catalogue: since #606 the
+    // runner also defines the arms of the delivered registration, one of which
+    // (`P`) prefills as well. What must stay true is that a v6 run has exactly
+    // one prefilling arm — two would mean the effect was measured twice under
+    // different names.
+    const prefilling = ARM_IDS.filter((id) => (ARMS[id] as { prefill: boolean }).prefill);
+    assert.deepEqual(prefilling, ["prefilled"]);
   });
 });
 

@@ -1,7 +1,9 @@
 # Grundgesamtheit „delivered“ — Befund
 
-Stand: 19.09.2026. Gehört zu `code-awareness-delivered.draft.json` (Option 2:
-Zustellungsnutzen + Kontextkosten).
+Stand: 19.09.2026. Gehört zu `code-awareness-delivered.json`, Registrierung 1
+(Option 2: Zustellungsnutzen + Kontextkosten, entschieden von Daniel Nevoigt
+am 19.09.2026). Der Entwurf `code-awareness-delivered.draft.json` ist mit der
+Registrierung gelöscht — was von ihm zu entscheiden war, steht dort.
 
 Population = **bastra-recall selbst**. Wahrheit = **Typfehler ODER neu
 brechende Tests** (`--truth tsc+tests`). Das ist eine neue Wahrheitsdefinition
@@ -277,3 +279,80 @@ relativen Importen so). Dort fand die Auswahl für `code-awareness-stats.ts`
 Wahrheitsmengen wären systematisch zu klein geworden, und zwar zugunsten der
 Importkopplung. Der Lauf liegt nur als Beleg herum und geht in keine Auswertung
 ein.
+
+## 12. Adjudikation der 45 Wahrheitsmengen (vor dem ersten Arm)
+
+Stand 19.09.2026, vor dem ersten Arm, gegen die geschriebene
+`scenarios.json` (45 Szenarien, Registrierung `code-awareness-delivered`).
+
+**Regel wie v3, unverändert:** Ein Wahrheitseintrag fällt nur mit
+schriftlichem Grund im Feld `adjudication` des Szenarios, ein ganzes Szenario
+nur mit `excluded: "<Grund>"`. Beides bleibt im Archiv sichtbar.
+
+**Streichungen: keine.** Kein Eintrag entfernt, kein Szenario ausgeschlossen.
+`adjudication` ist in allen 45 Szenarien leer.
+
+### 12a. Stichprobe Test → Datei (10 von 45)
+
+Zusätzlich zur v3-Regel, weil die Wahrheit hier aus gebrochenen **Tests**
+abgeleitet ist statt vom Compiler gelesen. Geprüft wurde, ob die Zuordnung
+reproduzierbar ist und ob die benannte Quelldatei plausibel diejenige ist, die
+mit angepasst werden müsste. Vorgehen: Parent-Tree je Szenario mit
+`git archive` auspacken, `attribute()` aus `test-truth.mjs` mit dem
+Repo-Profil erneut laufen lassen, Ergebnis gegen die gespeicherte
+Wahrheitsmenge halten.
+
+**Ergebnis: 10 von 10 reproduzieren die gespeicherte Menge exakt.**
+
+| # | Szenario | geänderte Datei | gebrochener Test | Regel | zugeordnet | Urteil |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | S01 | `cli/log-stats-code.ts` | `code-awareness-stats.test.ts` | R1 | `code-awareness-stats.ts` | plausibel — der Test trägt den Namen seines Subjekts, die geänderte CLI rendert genau dessen Zahlen |
+| 2 | S05 | `telemetry-report.ts` | `code-graph-find.test.ts` (R2), `session-assembler.test.ts` (R1) | R2+R1 | 7 + 1 Dateien | reproduzierbar, aber **weit** — siehe 12b |
+| 3 | S09 | `session-lane.ts` | `session-assembler.test.ts` | R1 | `session-assembler.ts` | plausibel, mit Vorbehalt 12c |
+| 4 | S13 | `stub/bastra-hook.ts` | 3 Hook-Client-Tests | R2 | `cli/log-stats.ts`, `hook-client-telemetry.ts` | **Blindstelle**, korrekt markiert: geänderte Datei liegt in keinem der drei Importabschlüsse (Größe 10) — die Kopplung läuft über das gebaute Stub-Binary, nicht über einen Import |
+| 5 | S17 | `cli/update-hint.ts` | `cli-flag-validation.test.ts`, `cli-help.test.ts` | R2 | `cli/flag-spec.ts`, `cli/help-text.ts` | **Blindstelle**, korrekt markiert (Abschlüsse 1 bzw. 58, geänderte Datei nicht darin); die benannten Dateien sind die Flag- und Hilfetext-Register, also genau das, was mit angepasst werden müsste |
+| 6 | S21 | `bash-pre-lane.ts` | `session-assembler.test.ts` | R1 | `session-assembler.ts` | plausibel, mit Vorbehalt 12c |
+| 7 | S26 | `cli/config-cmd.ts` | `dense-arm-wait-telemetry.test.ts` | R2 | `core/src/index.ts`, `http.ts`, `telemetry.ts` | **Blindstelle**, korrekt markiert; reproduzierbar, aber weit — siehe 12b |
+| 8 | S31 | `stop-lane.ts` | `session-assembler.test.ts` | R1 | `session-assembler.ts` | plausibel, mit Vorbehalt 12c |
+| 9 | S37 | `http-ui-routes.ts` | `session-assembler.test.ts` | R1 | `session-assembler.ts` | plausibel, mit Vorbehalt 12c |
+| 10 | S43 | `core/src/cue-sidecar.ts` | `core/__tests__/cue-sidecar.test.ts` | R2 | `core/src/schema.ts` | plausibel — der Test importiert genau zwei interne Dateien, das Schema ist die Gegenseite der geänderten Serialisierung |
+
+### 12b. Befund: R2 ist eine Obergrenze, keine Ursachenzuweisung
+
+`direct-import` benennt **alle** repo-internen Dateien, die der gebrochene Test
+direkt importiert — bei einem Integrationstest sind das 6 bis 7 Dateien
+(S05), von denen nur eine oder zwei wirklich angepasst werden müssten. Die
+Wahrheitsmenge ist dort also eine **Obergrenze** dessen, was Aufmerksamkeit
+braucht.
+
+Das senkt die erreichbare **Präzision beider Arme** gleichermaßen und ist
+werkzeugblind: R2 läuft in die Richtung Test → Importe, während ein
+Graphwerkzeug in die Richtung geänderte Datei → Abhängige antwortet. Es
+begünstigt also weder grep noch den Block. Nicht korrigiert, weil jede
+Korrektur eine Ursachenzuweisung von Hand wäre — und damit eine Wahrheit, die
+davon abhinge, wer sie trifft.
+
+### 12c. Vorbehalt: R1 schlägt R2, auch bei Integrationstests
+
+`session-assembler.test.ts` ist in 4 der 10 Stichproben der gebrochene Test
+(S09, S21, S31, S37) und greift jedes Mal über R1: die Wahrheit ist
+`session-assembler.ts`, nicht die geänderte Lane-Datei und nicht deren
+direkte Importe. Das ist die registrierte Regel — R1 benennt das **Subjekt**
+des Tests — und es ist bei einem Zusammenbau-Test auch die Datei, an der sich
+ein geänderter Lane-Vertrag niederschlägt.
+
+Es bedeutet aber: auf diesen Szenarien ist die Wahrheit **eine einzige Datei**,
+und beide Arme gewinnen oder verlieren den ganzen Recall an ihr. Das ist der
+Grund, warum die Wahrheitsgrößen-Verteilung (Median 2, 21 Szenarien mit genau
+einer Datei) im Bericht mitläuft: ein Recall-Unterschied auf dieser Population
+ist grobkörniger als die 53 Wahrheitsdateien von v6.
+
+### 12d. Blindstellen
+
+13 von 45 Szenarien tragen mindestens einen Blindstellen-Test. Nachgeprüft:
+in **allen 13** sind **sämtliche** gebrochenen Tests Blindstellen, d. h. die
+ganze Wahrheitsmenge des Szenarios ist Blindstellen-Wahrheit. Der Bericht
+teilt deshalb **je Szenario** und nicht je Wahrheitsdatei; der Fall „teils,
+teils" wird als `partialBlindSpotScenarios` ausgewiesen und ist hier leer.
+
+Betroffen: S07, S08, S10, S13, S15, S17, S23, S26, S28, S29, S33, S38, S40.
