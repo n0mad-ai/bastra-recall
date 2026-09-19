@@ -48,6 +48,13 @@ body.telemetry-open #live-lane { display: none !important; }
   color: var(--text-dim);
   line-height: 1.5;
 }
+#tv-updated {
+  margin-top: 4px;
+  font: 10.5px var(--font-mono);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+#tv-updated[hidden] { display: none !important; }
 #tv-status {
   padding: 14px 0;
   font: 12px var(--font-mono);
@@ -93,6 +100,14 @@ body.telemetry-open #live-lane { display: none !important; }
   margin-right: 16px;
 }
 .tv-figs > div:last-child { border-right: 0; margin-right: 0; }
+/* code awareness (#601): with exactly four tiles the auto-fit columns run
+   wide (minmax(150px,1fr) stretched across the whole section), so left-
+   aligned content left a lot of visible blank space before the row's real
+   right edge — the box already spans full width, only the content inside
+   it did not. Centering each tile distributes the row evenly across the
+   width it already occupies, scoped here so the other tv-figs rows (fewer,
+   narrower columns) keep their usual left alignment. */
+.tv-figs.center > div { text-align: center; }
 .tv-fig-sub {
   margin-top: 3px;
   font: 10.5px var(--font-mono);
@@ -121,6 +136,11 @@ body.telemetry-open #live-lane { display: none !important; }
 @media (max-width: 760px) {
   .tv-cols > div + div { border-left: 0; padding-left: 0; margin-left: 0; }
 }
+/* code awareness (#601): its left half alone carries two number-heavy tables,
+   not one, so it needs more room per column than the tab-wide default before
+   it is worth splitting into two — below that it stacks to one full-width
+   column instead of squeezing both into columns too narrow for their tables. */
+.tv-cols.wide { grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); }
 .tv-h3 {
   font-size: 10px;
   font-weight: 700;
@@ -170,6 +190,16 @@ body.telemetry-open #live-lane { display: none !important; }
 .tv-table td.ok { color: var(--accent); }
 .tv-table tr:last-child td { border-bottom: 0; }
 .tv-table td.bar { width: 120px; padding-left: 10px; }
+/* a short reference table (few rows, no bar column) hugs its own content
+   instead of stretching to the column width — 100% would hand a wide, mostly
+   empty box to whichever cell is least constrained, and its value drifts far
+   from the row's label. */
+.tv-table.snug { width: auto; }
+/* a table with more columns than a narrow tv-cols half can fit scrolls
+   within its own box — nowrap cells would otherwise overflow into the
+   section next to it, and wrap-permitted cells would break words mid-syllable
+   trying to avoid that. */
+.tv-table-scroll { overflow-x: auto; }
 .tv-bar { display: block; height: 7px; background: var(--chip-bg); position: relative; }
 .tv-bar > i { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
 .tv-bar > i.mute { background: var(--text-dim); opacity: 0.6; }

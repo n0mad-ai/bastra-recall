@@ -58,6 +58,7 @@ import { defaultLogDir } from "./telemetry.js";
 import { writePendingSuggestion } from "./pending-suggestions.js";
 import { frustrationCues, decisionCues } from "./lexicon.js";
 import { getDocsMode, type DocsMode } from "./settings.js";
+import { enqueueForPath } from "./code-graph/service.js";
 import {
   claudeToolUseCommands,
   codexCustomExecCommands,
@@ -112,6 +113,19 @@ export async function runStopLane(
 
   if (payload.hook_event_name !== "Stop") return "{}";
   if (payload.stop_hook_active === true) return "{}";
+
+  // Code awareness (#581): the end of a turn is a good moment to refresh the
+  // graph, so the next turn starts from a current one.
+  //
+  // ENQUEUE ONLY. The build takes seconds; this hook fires at the moment the
+  // user is waiting for the turn to be over, and #369 moved work OUT of this
+  // path for exactly that reason. `enqueueForPath` returns immediately and the
+  // refresher runs the build on its own, so there is no way for a build to end
+  // up awaited here even by accident. A repository that is not enabled is a
+  // silent no-op.
+  if (typeof payload.cwd === "string" && payload.cwd.length > 0) {
+    void enqueueForPath(payload.cwd).catch(() => {});
+  }
 
   // Fail-open backstop for the "Never throws" contract. No known input reaches
   // this catch today — loadTranscript swallows its own IO errors and cues are

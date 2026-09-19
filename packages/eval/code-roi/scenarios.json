@@ -1,0 +1,27 @@
+{
+  "note": "Nur die Symbolliste. Die Loesungen liegen bewusst NICHT im Repo, damit ein Messarm nicht darueber stolpern kann (passiert am 18.09.2026).",
+  "symbols": [
+    "goldQueries",
+    "approxTokens",
+    "payloadBytes",
+    "projectRecallResult",
+    "measurePayload",
+    "recallHandler",
+    "readJoinStateSync",
+    "noteSaveFailure",
+    "resetSaveFailures",
+    "saveMemoryHandler",
+    "buildAnswerPrompt",
+    "buildQueryPrompt",
+    "parseAnswer",
+    "parseQueries",
+    "runSearchCopilot",
+    "attachEmbeddings",
+    "daemonAbsent",
+    "ollamaE",
+    "probeDaemonHealth",
+    "cloudEmbeddingProvider",
+    "cloudConsentNotice",
+    "embeddingStatusLine"
+  ]
+}

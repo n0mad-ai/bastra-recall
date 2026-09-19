@@ -109,4 +109,3 @@ export async function measureLatency(
   }
   return out;
 }
-

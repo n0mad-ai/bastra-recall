@@ -1,0 +1,298 @@
+{
+  "generated_at": "2026-09-17T21:49:59.130Z",
+  "scenarios": 35,
+  "totals": {
+    "grep_tokens": 7648,
+    "block_tokens": 5425,
+    "reduction": "29.1%"
+  },
+  "medians": {
+    "grep": 113,
+    "block": 144
+  },
+  "per_scenario_block_cheaper": 13,
+  "per_scenario_grep_cheaper": 22,
+  "grep_recall_median_pct": 100,
+  "rows": [
+    {
+      "file": "packages/core/src/area-claim.ts",
+      "truth_dependents": 6,
+      "grep_tokens": 207,
+      "grep_found_of_truth": 5,
+      "grep_recall": 83,
+      "block_tokens": 131
+    },
+    {
+      "file": "packages/daemon/src/recall-batch.ts",
+      "truth_dependents": 5,
+      "grep_tokens": 152,
+      "grep_found_of_truth": 5,
+      "grep_recall": 100,
+      "block_tokens": 138
+    },
+    {
+      "file": "packages/daemon/src/call-corruption.ts",
+      "truth_dependents": 5,
+      "grep_tokens": 113,
+      "grep_found_of_truth": 5,
+      "grep_recall": 100,
+      "block_tokens": 160
+    },
+    {
+      "file": "packages/daemon/src/usage-sidecar.ts",
+      "truth_dependents": 18,
+      "grep_tokens": 481,
+      "grep_found_of_truth": 18,
+      "grep_recall": 100,
+      "block_tokens": 203
+    },
+    {
+      "file": "packages/daemon/src/cli/commons.ts",
+      "truth_dependents": 7,
+      "grep_tokens": 196,
+      "grep_found_of_truth": 7,
+      "grep_recall": 100,
+      "block_tokens": 164
+    },
+    {
+      "file": "packages/daemon/src/reflex.ts",
+      "truth_dependents": 2,
+      "grep_tokens": 58,
+      "grep_found_of_truth": 2,
+      "grep_recall": 100,
+      "block_tokens": 127
+    },
+    {
+      "file": "packages/core/src/frontmatter-rescue.ts",
+      "truth_dependents": 2,
+      "grep_tokens": 98,
+      "grep_found_of_truth": 2,
+      "grep_recall": 100,
+      "block_tokens": 128
+    },
+    {
+      "file": "packages/daemon/src/learned-recall/bridges.ts",
+      "truth_dependents": 11,
+      "grep_tokens": 443,
+      "grep_found_of_truth": 11,
+      "grep_recall": 100,
+      "block_tokens": 207
+    },
+    {
+      "file": "packages/daemon/src/pinned-block.ts",
+      "truth_dependents": 4,
+      "grep_tokens": 107,
+      "grep_found_of_truth": 4,
+      "grep_recall": 100,
+      "block_tokens": 136
+    },
+    {
+      "file": "packages/daemon/src/webui.ts",
+      "truth_dependents": 15,
+      "grep_tokens": 345,
+      "grep_found_of_truth": 15,
+      "grep_recall": 100,
+      "block_tokens": 229
+    },
+    {
+      "file": "packages/daemon/src/reap-forwarders.ts",
+      "truth_dependents": 3,
+      "grep_tokens": 85,
+      "grep_found_of_truth": 3,
+      "grep_recall": 100,
+      "block_tokens": 125
+    },
+    {
+      "file": "packages/statusline/src/segments/pricing.ts",
+      "truth_dependents": 2,
+      "grep_tokens": 116,
+      "grep_found_of_truth": 2,
+      "grep_recall": 100,
+      "block_tokens": 144
+    },
+    {
+      "file": "packages/daemon/src/documents-write-handler.ts",
+      "truth_dependents": 11,
+      "grep_tokens": 313,
+      "grep_found_of_truth": 11,
+      "grep_recall": 100,
+      "block_tokens": 152
+    },
+    {
+      "file": "packages/daemon/scripts/stress-fixtures/cross-memory.ts",
+      "truth_dependents": 2,
+      "grep_tokens": 63,
+      "grep_found_of_truth": 2,
+      "grep_recall": 100,
+      "block_tokens": 106
+    },
+    {
+      "file": "packages/daemon/src/cli/cli-on-path.ts",
+      "truth_dependents": 3,
+      "grep_tokens": 65,
+      "grep_found_of_truth": 3,
+      "grep_recall": 100,
+      "block_tokens": 141
+    },
+    {
+      "file": "packages/eval/src/rerank-report.ts",
+      "truth_dependents": 4,
+      "grep_tokens": 101,
+      "grep_found_of_truth": 4,
+      "grep_recall": 100,
+      "block_tokens": 140
+    },
+    {
+      "file": "packages/core/src/graph-semantic.ts",
+      "truth_dependents": 2,
+      "grep_tokens": 263,
+      "grep_found_of_truth": 2,
+      "grep_recall": 100,
+      "block_tokens": 117
+    },
+    {
+      "file": "packages/daemon/src/update-blocked.ts",
+      "truth_dependents": 4,
+      "grep_tokens": 105,
+      "grep_found_of_truth": 4,
+      "grep_recall": 100,
+      "block_tokens": 139
+    },
+    {
+      "file": "packages/daemon/src/edit-memory-handler.ts",
+      "truth_dependents": 4,
+      "grep_tokens": 121,
+      "grep_found_of_truth": 4,
+      "grep_recall": 100,
+      "block_tokens": 144
+    },
+    {
+      "file": "packages/daemon/src/code-graph/rename-evidence.ts",
+      "truth_dependents": 2,
+      "grep_tokens": 65,
+      "grep_found_of_truth": 2,
+      "grep_recall": 100,
+      "block_tokens": 161
+    },
+    {
+      "file": "packages/eval/src/longmemeval-dataset.ts",
+      "truth_dependents": 3,
+      "grep_tokens": 75,
+      "grep_found_of_truth": 3,
+      "grep_recall": 100,
+      "block_tokens": 172
+    },
+    {
+      "file": "packages/daemon/src/telemetry-report-suppression.ts",
+      "truth_dependents": 2,
+      "grep_tokens": 68,
+      "grep_found_of_truth": 1,
+      "grep_recall": 50,
+      "block_tokens": 143
+    },
+    {
+      "file": "packages/daemon/src/cli/map-cmd.ts",
+      "truth_dependents": 6,
+      "grep_tokens": 135,
+      "grep_found_of_truth": 6,
+      "grep_recall": 100,
+      "block_tokens": 166
+    },
+    {
+      "file": "packages/daemon/src/embedding-breaker.ts",
+      "truth_dependents": 4,
+      "grep_tokens": 106,
+      "grep_found_of_truth": 4,
+      "grep_recall": 100,
+      "block_tokens": 184
+    },
+    {
+      "file": "packages/daemon/scripts/stats-evidence.ts",
+      "truth_dependents": 1,
+      "grep_tokens": 25,
+      "grep_found_of_truth": 1,
+      "grep_recall": 100,
+      "block_tokens": 134
+    },
+    {
+      "file": "packages/daemon/src/telemetry.ts",
+      "truth_dependents": 81,
+      "grep_tokens": 2306,
+      "grep_found_of_truth": 79,
+      "grep_recall": 98,
+      "block_tokens": 280
+    },
+    {
+      "file": "packages/core/src/deadline.ts",
+      "truth_dependents": 4,
+      "grep_tokens": 198,
+      "grep_found_of_truth": 4,
+      "grep_recall": 100,
+      "block_tokens": 136
+    },
+    {
+      "file": "packages/core/src/file-identity.ts",
+      "truth_dependents": 8,
+      "grep_tokens": 232,
+      "grep_found_of_truth": 7,
+      "grep_recall": 88,
+      "block_tokens": 193
+    },
+    {
+      "file": "packages/statusline/src/utils/terminal-width.ts",
+      "truth_dependents": 1,
+      "grep_tokens": 74,
+      "grep_found_of_truth": 1,
+      "grep_recall": 100,
+      "block_tokens": 154
+    },
+    {
+      "file": "packages/daemon/src/cli/bridges.ts",
+      "truth_dependents": 6,
+      "grep_tokens": 443,
+      "grep_found_of_truth": 6,
+      "grep_recall": 100,
+      "block_tokens": 146
+    },
+    {
+      "file": "packages/daemon/src/webui-telemetry.ts",
+      "truth_dependents": 2,
+      "grep_tokens": 57,
+      "grep_found_of_truth": 2,
+      "grep_recall": 100,
+      "block_tokens": 140
+    },
+    {
+      "file": "packages/daemon/src/cli/commands.ts",
+      "truth_dependents": 10,
+      "grep_tokens": 260,
+      "grep_found_of_truth": 10,
+      "grep_recall": 100,
+      "block_tokens": 175
+    },
+    {
+      "file": "packages/daemon/src/cli/models-cmd.ts",
+      "truth_dependents": 1,
+      "grep_tokens": 20,
+      "grep_found_of_truth": 1,
+      "grep_recall": 100,
+      "block_tokens": 128
+    },
+    {
+      "file": "packages/daemon/src/hook-hinted.ts",
+      "truth_dependents": 6,
+      "grep_tokens": 132,
+      "grep_found_of_truth": 6,
+      "grep_recall": 100,
+      "block_tokens": 161
+    },
+    {
+      "file": "packages/daemon/src/cli/import-cmd.ts",
+      "truth_dependents": 1,
+      "grep_tokens": 20,
+      "grep_found_of_truth": 1,
+      "grep_recall": 100,
+      "block_tokens": 121
+    }
+  ]
+}

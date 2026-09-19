@@ -1,0 +1,337 @@
+{
+  "$comment": "Pre-registration of the change-impact measurement (#582, epic #572). HONEST ORDER OF EVENTS, because an earlier draft claimed more than it should: the arms, thresholds, verdicts, truth definition and context metric have stood unchanged since version 4 and were fixed before any bastra-io scenario was mined. The POPULATION rules were not: the pooling rule and its cap were written after bastra-io had been mined and were then amended again once it turned out the repository supplies 40 scenarios on its own. Nothing about what is measured moved, but the sampling rules were settled with the sample size already known, and that is recorded here rather than implied away. Supersedes code-awareness-roi.json registration_version 3, which is kept as the record of the completed v3 run and stays reproducible from ~/.bastra/eval/code-roi-v2 with evaluate.mjs. Thresholds decided by Daniel Nevoigt on 2026-09-18. Fixed BEFORE any v4 scenario has been run; the two pilot commits named under sample.excluded_pilot were run against the plumbing only and are excluded from the sample. Amending anything after the main run has started invalidates that run: bump registration_version and say which version a report belongs to.",
+  "schema_version": 1,
+  "registration_version": 6,
+  "registered_at": "2026-09-19",
+  "$comment_v6": "Version 6 answers four start blockers raised in review before the first arm ran: the arms were not isolated from the archive, the prefilled arm also carried the product surface, arm B was told to `recall` but offered no such tool, and the sample cannot reach the effect threshold through the cross-package mechanism at all. Arms, thresholds and both verdicts are unchanged; what changed is how the arms are run, what the prefilled arm is, and a separate offline gate for the mechanism.",
+  "registered_by": "Claude Opus 5; thresholds decided by Daniel Nevoigt on 2026-09-18",
+  "status": "run_completed",
+  "$comment_status_update": "AMENDED 2026-09-19, after the v6 main run finished: 40/40 scenarios, 120/120 arms, no aborts, no mixed builds (see result.build_pin below). The project's existing status values (`structure_registered`, `numbers_registered`, used elsewhere in this file's history and in sibling registrations) only track PRE-run stages — none of them means 'the run happened', including in the superseded v3 registration, whose status was never bumped after its run completed either. `run_completed` is therefore a new terminal value, not a forced fit onto an old one. From here on nothing in this registration changes except the `result` block below; a later measurement is a new registration_version or a new file, never an edit to what is recorded here.",
+  "issue": 582,
+  "epic": 572,
+  "supersedes": "code-awareness-roi.json registration_version 3; and registration_version 4 of this file, which named bastra-recall as the population",
+  "contract_refs": ["13.1", "16.2", "16.3", "18.1", "24", "26.2", "C-089", "C-090", "C-091"],
+
+  "why_a_new_registration": "v3 answered its question and the answer invalidated its own comparison: `find_code` was offered in 44 of 44 runs and called in 0, so both arms ran the same grep behaviour and the measured difference (+0.8 Pp recall) is noise between two runs of one procedure. Two things were confounded — whether an agent REACHES for the graph, and whether the graph's answer HELPS. This design separates them into three arms.",
+
+  "question": "(a) Adoption: offered a change-impact tool described graph-first, how often does an agent call it? (b) Effect: when the change-impact answer is in front of the agent, does it name more of the files the change really breaks, without naming more wrong ones and without costing disproportionate context?",
+
+  "arms": {
+    "A": {
+      "name": "grep",
+      "description": "No MCP server at all — text search and file reads only. Identical to v3's control arm."
+    },
+    "B": {
+      "name": "offered",
+      "description": "The product's WHOLE tool surface over stdio MCP — every tool in `ALL_TOOL_DEFS`, with the product's server instructions. Changed in version 6: the arm used to be offered only the two code tools while the instructions told it to `recall` first, so it was tested against a surface no user has and the missing tool was itself a reason to distrust the rest. Memory and document tools answer as an empty vault; the code tools are real. Whether the agent calls `find_affected_files` is the observation.",
+      "$amendment_stub_shapes": "AMENDED 2026-09-19, before the first arm, after review. The TOOL LIST is unchanged — the frozen surface is untouched — but what the memory and document tools ANSWER was wrong in a way that could have changed behaviour. They replied `{status, hits, note}`; no bastra-recall handler emits `status` or `note` at all, so the shape itself said 'this is not the product', and an agent that distrusts a surface stops using the rest of it — which is the very observation this arm exists to make. Read tools now answer as a real empty vault does, field for field from the handlers: `recall` with `hits/vault_size/latency_ms/recall_id` (`weak_result` needs hits, so an empty vault never sets it), `find_document` with `docs_indexed: 0`, and an id lookup with the handler's own `memory not found: <id>`. Write tools answer with the product's own `toolSurfaceDenial` for the `search` surface — a real, ordinary product condition on which every write tool is denied in exactly those words and on which `find_affected_files` is explicitly allowed. Weighed against two alternatives: a faked success would have to invent an id and a file_path that a follow-up `load_memory` would contradict, and a 'not available in this measurement' note would tell the arm it is being measured, which is the one thing an arm must not learn."
+    },
+    "prefilled": {
+      "name": "prefilled",
+      "description": "The `find_affected_files` answer for exactly the planned change, already in the prompt — and NOTHING ELSE: no MCP server, no tools beyond A's, no server instructions. Changed in version 6: the arm used to carry the product surface as well, so a gain could not be told apart from arm B's. Now it isolates the ANSWER. The information is guaranteed to have been shown; nothing forces the agent to use it, which is why the arm is not called `forced`.",
+      "symbols_from": "the product's own `changedSymbolsOf` applied to the scenario diff, REVERSED — not a hand-written list, so both graph arms start from the information the prompt already carries",
+      "$amendment_diff_side": "AMENDED 2026-09-19, before the first arm of the main run. NO THRESHOLD, ARM, SAMPLE OR VERDICT CHANGES; the agent's prompt, the tree and the tools are untouched. `changedLines` reads the NEW side of a diff because the spans those line numbers are looked up in come off the working tree — true by construction in real use, where the diff is `git diff HEAD` in the checkout. It was NOT true here: the scenario tree is `git archive` of the PARENT commit while the scenario diff runs parent -> commit, so every new-side line was shifted by whatever the earlier hunks inserted and could land inside the wrong symbol or force an unnecessary whole-file answer. The tree is deliberately NOT moved to the new side: applying the change would show the agent the finished edit, while the task is to say what a PLANNED change would break — that is the measurement, not a detail of it. The diff handed to the product is reversed instead (`packages/eval/code-roi/v2/diff-side.mjs`), which puts the parent — the tree that is actually on disk — on the new side, and asks about the symbols as they stand. Applies to every offline path that feeds the product a diff: prefill generation, `affected-ceiling.mjs`, `mechanism-gate.mjs` and the mutation gate's product way. Arm B is unaffected: `find_affected_files` takes `file` and optional `symbols`, never a diff, and derives its own from `git diff HEAD` — the scenario tree carries no `.git`, so that path returns nothing and the arm's own calls never used these coordinates."
+    },
+    "runner": "packages/eval/code-roi/v2/run-arms-v3.mjs",
+    "mcp_server": "packages/eval/code-roi/v2/code-tools-mcp.mjs (the product's own tool definitions, handlers AND server instructions — an arm served without the instructions measures a weaker surface than any real user is given)",
+    "frozen_surface": {
+      "$comment": "What arm B is offered, pinned so a later edit cannot quietly change what was measured. Hashes are of the built artefacts (packages/daemon/dist). TUNED ON DEVELOPMENT DATA: the wording was arrived at over several rounds on the BURNED v3 scenarios of bastra-recall, never on a bastra-io scenario and never on the 7 fresh bastra-recall ones. The adoption threshold therefore tests it on unseen data, which is the only reason a tuned description may be measured at all.",
+      "tool_definition": "packages/daemon/src/code-graph/find-affected-files.ts -> affectedTools[0]",
+      "tool_definition_sha256": "e8e51b5e0c80e6d7e18e009d18624265de9a515c26b95c728ec3b0507ed48b96",
+      "server_instructions": "packages/daemon/src/mcp-instructions.ts -> serverInstructions(true) = SERVER_INSTRUCTIONS + CODE_AWARENESS_CLAUSE",
+      "server_instructions_sha256": "63a1bac0f13ff91069ca72dde2a5a8be859922df0c83e85d89c30594220bd07c",
+      "memory_part_sha256": "0b92d332e295c9ce32d925bfc53d5186afb1c6f2073d8611bacfaea5496ce78b",
+      "code_clause_sha256": "df5bea2ca78a20343767657b0165983d8f23b4f9e1b1a34be86a663b7e041348",
+      "$amendment_clause_hash": "CORRECTED 2026-09-19, before the first arm of the main run. The field read df24b4af… — the hash of version 5's clause. Cause: commit 2f9dc47 rewrote CODE_AWARENESS_CLAUSE (the 'must not tell one client's story' paragraph) and updated server_instructions_sha256 from 1f28f8e4… to 63a1bac0…, but left the per-part hash of the very paragraph it had rewritten at its old value. The memory part did not change, so its hash stayed correct and the drift showed in one field only. Nothing caught it because the test pinned the COMBINED hash alone; it now pins the clause and the memory part separately, so the two cannot come apart again. No measurement is affected: the combined hash, which is what an arm is actually served, was correct throughout and is unchanged.",
+      "conditional": "The code paragraph is appended only when the user has code awareness on (`serverInstructions(enabled)`), because without a graph both tools answer `unavailable` and an instruction pointing at them would spend its trust for nothing. An arm served a graph gets it; a user without one never sees it.",
+      "development_result": {
+        "baseline": "0/44 (v3) and 0/2 (v4 pilot) — the instructions named no code tool at all",
+        "frozen_memory_first": "3/5 on the first burned set, 5/5 on the second — 8/10 overall",
+        "rejected_code_first": "5/5 and 5/5, with the code paragraph LEADING ('CODE FIRST')",
+        "decision": "The memory-first version is the one frozen and measured, although it adopts less on development data. bastra-recall is the memory first, and these instructions reach every client — including users with no code and no graph. Product before measured value; the difference is recorded here so the adoption result can be read with it in view.",
+        "$comment": "Development data throughout: it says the mechanism works on the cases it was built against, not that it generalises."
+      },
+      "known_harness_deviation": "In real Claude Code an MCP tool is regularly DEFERRED — its schema is not loaded and the client fetches it first. This harness (`--strict-mcp-config`, few tools) loads them immediately, so a tool search returns EMPTY, which agents read as 'the tool is missing' before the clause addressed it. Arm B therefore measures a slightly easier surface than a real session on the loading step, and a slightly harder one on nothing. Not corrected: making the harness defer tools is not something the runner can set."
+    },
+    "isolation": "REWRITTEN IN VERSION 6 after review found the arms could read their own answer sheet. The scenario tree now lives OUTSIDE the archive (its own root under the system temp directory), so no parent directory of the agent's cwd holds `scenarios.json`, `prefill.json`, a graph or an earlier transcript. Each arm runs with `--restricted` (drops every command-running tool and confines the file tools to the working directory), `--tools Read,Grep,Glob` (no Bash at all — an allow-list like `Bash(cat:*)` bounds the command, not the path), `--permission-prompts none`, `--max-budget-usd <ceiling remaining>`, plus the unchanged `--setting-sources project --strict-mcp-config --no-session-persistence` and a fresh process per scenario and arm. Verified against the installed CLI's own `--help`, and demonstrated: from the tree, `Read ../../../../../../Users/.../scenarios.json` and a Grep with an absolute path outside both return 'is outside <cwd>; --restricted confines the file tools to the working directory', and `Glob ../../**` returns 'No files found'.",
+    "$amendment_symlinks": "AMENDED 2026-09-19, before the first arm, after review. `--restricted` bounds the agent's file tools by PATH, not by what a path resolves to, and `git archive` reproduces a repository's symbolic links — so a committed link would have been a hole in the isolation argument that nothing checked. The runner now walks the extracted tree and REFUSES the scenario if it finds one, rather than following it silently. Neither sample contains one, which is why it had never shown; the check is what makes that a fact rather than an assumption.",
+    "$amendment_aborted_arms": "AMENDED 2026-09-19, before the first arm, after review. The runner renamed an arm's `.partial` transcript to `.jsonl` on every exit, so a timed-out, budget-stopped or crashed arm became a finished one: `scenarioComplete` counted it, no later helping re-ran it, the scorer found no `FILES:` line and recorded recall 0, and the cost reader found no `result` event and recorded $0. An aborted arm scoring as a cheap failure is the worst shape a measurement can fail in, and the stretched run makes it likely rather than exotic. Anything that is not finalised is now kept as `<arm>.jsonl.failed-<ts>` with a `.failed.meta.json` naming the reason, the arm counts as not run, and the next helping runs it again; what finalised means, and what an aborted attempt is charged against the ceiling, is the rule stated once, in `finalisation_and_ceiling` below — sharpened again the same day, before this rule had been exercised by a single arm. Sample, arms, thresholds and both verdicts are unchanged.",
+    "v3_leak_finding": "The v3 and v4-pilot runs had the weaker setup (tree inside the archive, Bash allow-listed for cat/find/sed). All 88 v3 transcripts were re-read: ZERO tool calls reference the archive outside the tree and zero touch a truth file. The opportunity existed; it was not taken. No v3 result is changed retroactively.",
+    "tools": "Read and read-only shell search; no edits, no subagents, no web",
+    "model": "claude-sonnet-5",
+    "max_turns": 30,
+    "arm_order": "randomized per scenario by the registered seed, written into the scenario file before the first run"
+  },
+
+  "unit_and_truth": {
+    "unchanged_from": "code-awareness-roi.json registration_version 3",
+    "unit": "one historical change to one file, at most one scenario per file",
+    "ground_truth": "a file is affected when it carries a type error after applying exactly that file's diff that it did not carry before; errors compared as (file, TS code, message) multisets with line and column ignored; adjudicated by hand before any arm runs, removals only with a written reason",
+    "$comment": "The truth definition is not touched. Changing the ruler and the tool in the same step would leave nothing comparable."
+  },
+
+  "primary_metric": {
+    "name": "affected_file_recall",
+    "definition": "Per scenario: |named ∩ truth| / |truth|, `named` being the JSON array on the last FILES: line of the final answer, normalized to repo-relative POSIX paths.",
+    "direction": "higher_is_better",
+    "compared": "prefilled against A, paired per scenario"
+  },
+
+  "context_metric": {
+    "name": "input_tokens",
+    "definition": "Per arm, from the run's own `result` event: modelUsage[claude-sonnet-5].inputTokens + cacheReadInputTokens + cacheCreationInputTokens. All three are summed because a cached token is a token the model read. Side models the client calls on its own (haiku for titles and the like) are excluded — they are not the agent's context and differ between arms at random. Fallback when modelUsage is absent: the run-level `usage` block summed the same way, and the row is marked `usageFallback`.",
+    "$comment": "v3 counted characters of TOOL RESULTS. That rule is blind to the prompt, and the prefilled arm's block arrives in the prompt — under it the arm that spends the most context would have scored as free. This is the correction the v4 design needs to be honest about its own cost."
+  },
+
+  "verdicts": {
+    "$comment": "TWO verdicts, decided separately, with no combined status. Decided by Daniel Nevoigt on 2026-09-18. A tool nobody calls whose answer would have helped, and a tool everyone calls whose answer does not, are opposite findings needing opposite work — one word covering both would hide which it was. Each verdict is pass, fail, underpowered (fewer than min_scenarios) or not_evaluable.",
+    "adoption": {
+      "criteria": ["adoption_min_share"],
+      "question": "Does an agent offered the tool call it?"
+    },
+    "effect": {
+      "criteria": ["recall_gain_min", "recall_ci_lower", "precision_loss_max", "context_increase_max_ratio"],
+      "question": "Does the answer, once shown, make the agent name more of the breaking files without more wrong ones and without disproportionate context?",
+      "$comment": "All four of these must hold for the effect verdict to pass; none of them touches the adoption verdict."
+    }
+  },
+
+  "thresholds": {
+    "$comment": "Decided by Daniel Nevoigt, 2026-09-18. Grouped into the two verdicts above; the numbers are unchanged from the first registration of this design.",
+    "adoption_min_share": 0.7,
+    "$comment_adoption": "In arm B, at least 70 % of scenarios must call `find_affected_files` at least once. `find_code` calls are reported but do NOT count towards this: an agent that locates a symbol has not asked what breaks.",
+    "recall_gain_min": 0.05,
+    "$comment_recall": "Mean paired difference prefilled − A of at least 5 percentage points, AND the lower bound of its 95 % bootstrap interval above 0.",
+    "precision_loss_max": 0.05,
+    "$comment_precision": "Mean paired difference in precision (prefilled − A) not below −0.05.",
+    "context_increase_max_ratio": 0.25,
+    "$comment_context": "On scenarios solved in BOTH arms (recall ≥ 0.8), median prefilled input tokens at most 1.25 × median A. The restriction to scenarios both arms solved is INHERITED from registration 3, where its reason is recorded: cost is compared only where both got the answer, so a cheap wrong answer cannot win on cost. The unfiltered ratio over every scenario is reported alongside it as `notGated.context_ratio_all_scenarios`."
+  },
+
+  "not_gated": {
+    "context_ratio_all_scenarios": "The context ratio over every scenario, not just the ones both arms solved. Reported, never gated.",
+    "b_vs_a": "Arm B against arm A is reported and never gated: it multiplies adoption and effect, and an agent that never calls the tool makes B identical to A. Reporting it as the effect is what made the v3 report unreadable.",
+    "find_code_adoption": "Reported per scenario, no threshold.",
+    "latency_and_hook_block": "Both stay with registration 3 and come from lane telemetry (`bastra logs --stats`), not from these runs."
+  },
+
+  "population": {
+    "$comment": "CHANGED IN VERSION 5, and the only thing that changed. bastra-recall cannot supply this sample: its history is exhausted. 369 commits before the v3 range end yield 694 candidate file changes, 11 qualifying, 7 after the freshness exclusions — and ZERO of those 7 break across a package boundary, which is exactly the mechanism #582 added. Measuring cross-package impact on a sample with no cross-package breaks would measure nothing.",
+    "repository": "bastra-io",
+    "repository_path": "/Users/n0mad/Projekte/bastra-io (local clone; never written to — the miner reads with `git archive` and extracts into ~/.bastra/eval, and creates no git worktree in it)",
+    "why_this_repository": "The only other local repository that is a TypeScript monorepo with real cross-package imports: a pnpm workspace of 17 packages under scope @bastra, 237 imports of @bastra/* from the app, 194 non-merge commits, 452 TS/TSX files. Verified before mining: an archived tree typechecks with 0 errors, and a mutation to one exported function in packages/db surfaces 16 new type errors in apps/bastra-io — the cross-package breakage class the bastra-recall sample lacked entirely.",
+    "candidates_considered": [
+      { "repo": "bastra-io", "packages": 17, "commits": 194, "ts_files": 452, "verdict": "chosen" },
+      { "repo": "bastra-recall", "packages": 5, "commits": 856, "ts_files": 724, "verdict": "exhausted — 7 usable scenarios, 0 cross-package" },
+      { "repo": "bastra-yard", "packages": 1, "commits": 141, "ts_files": 478, "verdict": "no workspace packages, so no package boundary to measure" },
+      { "repo": "bastra-io (apps/docs, apps/template-demo, tools/*)", "packages": 3, "verdict": "in the repository but outside the typechecked graph; changes there produce no truth" },
+      { "repo": "sparfux", "packages": 14, "commits": 2, "ts_files": 35, "verdict": "pnpm workspace, but 2 commits — no history" },
+      { "repo": "bastra-keys / companion-house / afd-digital", "packages": 1, "verdict": "single package, little history" },
+      { "repo": "CarNexus / bastra-pro / quoro / homebrew-tap", "packages": 0, "verdict": "no TypeScript sources" }
+    ],
+    "privacy": "Only repository name, commit ids and file paths are recorded outside ~/.bastra/eval. No source content from bastra-io appears in this registration or in BEFUND.md; transcripts and archives stay local. Checked before mining: the tree carries no secrets or customer data (one .env.example, no keys, no customer files).",
+    "truth_mechanics": "bastra-io has ONE tsconfig (apps/bastra-io) and its packages are consumed as raw TS source (`main: ./src/index.ts`), so one typecheck covers the app plus every package source it reaches; bastra-recall needed one per package plus a build of core first. Both are derived from the repository's own manifests by `repo-profile.mjs` — the truth DEFINITION is unchanged, only the command that produces it."
+  },
+
+  "sample": {
+    "min_scenarios": 40,
+    "must_be_fresh": true,
+    "$comment_fresh": "bastra-io has never been used to develop this tooling; the whole repository is unseen data. The one product change made while looking at it (pnpm-workspace.yaml support in workspace-packages.ts) was derived from the repository's LAYOUT, not from any scenario, and no scenario informed a threshold or a query parameter. The frozen parameters — the package-import narrowing threshold of 20, the specific-entry preference, the file-count cap — are unchanged from the bastra-recall work and were not touched here.",
+    "commit_range": "non-merge commits reachable from bastra-io HEAD at mining time, walked NEWEST first, `mine-repo.mjs --stop-at 45`",
+    "miner": "packages/eval/code-roi/v2/mine-repo.mjs (archive-based; `mine.mjs` remains the bastra-recall miner and is untouched)",
+    "excluded_pilot": {
+      "$comment": "The two bastra-recall pilot scenarios of version 4. They are in a different repository and cannot appear in this sample; kept here so the exclusion survives if bastra-recall is ever mined again.",
+      "repository": "bastra-recall",
+      "commits": [
+        "197f9b10f05ca24fa72a09daf98fcdb8d7ffef6c",
+        "c6cf3e21a7150f798fe0c8104735f4db83d0232d"
+      ],
+      "files": ["packages/daemon/src/cli/types.ts", "packages/daemon/src/tool-handlers.ts"],
+      "enforced_by": "select.mjs drops any candidate from these commits before writing the scenario file."
+    },
+    "pooling": {
+      "allowed": true,
+      "$comment": "Released by Daniel Nevoigt on 2026-09-18, before any arm ran: no single local repository supplies 40 scenarios with a usable share of cross-package breaks. The populations differ in package layout, typecheck granularity and size, so the pooled mean is reported WITH a per-repository breakdown — and the breakdown is descriptive, never gated. Every scenario carries its own `repo`, so any row can be re-run and re-scored on its own.",
+      "repo_order": [
+        "/Users/n0mad/Projekte/bastra-io",
+        "/Users/n0mad/Projekte/bastra-recall"
+      ],
+      "$comment_order": "FIXED HERE, before mining, so the pool cannot be assembled to suit the result. Repositories are drawn in this order until min_scenarios is reached; bastra-io first because it is the one with cross-package structure.",
+      "per_repo_rules": "identical for every repository: the same unit, the same truth definition, the same inclusion caps, the same one-scenario-per-file rule. A repository is mined by `mine-repo.mjs` with its own profile; nothing per repository is tuned.",
+      "used_only_when_short": true,
+      "$comment_used_only_when_short": "AMENDED 2026-09-19, before any arm ran and before the registration was committed: pooling and its cap apply only when the FIRST repository alone does not reach min_scenarios. As first written the cap of 30 was unconditional, which would have cut a sufficient single-repository sample (bastra-io mined 40) down to 30 and then declared it underpowered — a rule that fires where there is no pooling and therefore no domination to prevent. The cap's purpose is unchanged: it bounds one repository's share OF A POOLED sample.",
+      "per_repo_cap": 30,
+      "$comment_cap": "In a pooled sample, at most 30 scenarios from any one repository, so none carries more than three quarters of a 40-scenario sample. A repository that could supply more is cut off at the cap in walk order — the cut is the tail, never a choice among its scenarios.",
+      "file_identity": "The one-scenario-per-file rule applies per repository, keyed by repo + path: `packages/db/src/index.ts` in two repositories are two different files.",
+      "reporting": "The report carries the pooled verdicts plus, for each repository, its n, recall, precision and adoption — reported for completeness, gated never."
+    },
+    "$comment_size": "40 independent changes. Fewer qualifying → the report says `underpowered` (18.1) for both verdicts, not a verdict."
+  },
+
+  "mechanism_gate": {
+    "$comment": "A SECOND, separate, OFFLINE gate, added in version 6 — no agent, no money. The main sample cannot answer the question #582 was built for: its 40 scenarios carry 53 truth files of which TWO cross a workspace-package boundary, so the package bridge can contribute at most (1 + 1/3)/40 = 3.3 percentage points of recall against an effect threshold of +5. The mechanism cannot reach its own gate even if it is perfect. This gate asks the narrow question directly and is reported separately; it never enters the adoption or effect verdicts.",
+    "question": "Of the truth files that lie in a DIFFERENT workspace package from the changed file, what share does `find_affected_files` name at depth 1?",
+    "runner": "packages/eval/code-roi/v2/mechanism-gate.mjs (offline; the same chain the tool runs)",
+    "sample": {
+      "selection": "scenarios whose CHANGED file lies inside a workspace package and whose truth contains at least one file in another package. Mined separately with `mine-repo.mjs --file-prefix packages/`, same unit, same truth definition, same caps.",
+      "archive": "~/.bastra/eval/code-roi-gate-bastra-io",
+      "evaluated_at": "RE-SCORED 2026-09-19 offline at the commit that carries the symbol-span fix: 2 of 2 cross-package truth files found (share 1.00) over 2 scenarios, unchanged from the scoring at 2f9dc47. Against the now-decided minimum of 8 truth files the status is `not_evaluable`, which is the verdict this part reports: with 2 files a single miss moves the share by 50 points. $amendment_root (RE-SCORED AGAIN 2026-09-19 at HEAD 3493508, after the value above was found to rest on a second bug): `mechanism-gate.mjs` passed `runs/<id>/graph` alone as the root to `symbolSpans`, which holds no source — every scenario's source read failed, `symbolSpans` returned null, and `diffSymbols` fell back to `whole_file` on every row. The narrowing this gate exists to test never ran; the 2/2 recorded above (and at 2f9dc47) is a whole-file answer, not a symbol-narrowed one. Fixed by joining the tree (re-extracted with `git archive`, read-only, the same call `run-arms-v3.mjs` uses) and the graph through the symlink root from `scenario-root.mjs`, exactly as `mutation-gate-score.mjs` already does. Confirmed by diagnostic: S02 now narrows from 16 symbols (the whole-file set) to 1 (`NormalizedEvent`); S01 still returns whole_file, but now for a real reason — its diff changes a top-level template-string constant (`ACTIONS_SYSTEM`) that the indexer does not carry as a symbol, which is the documented safe-side fallback in `affected.ts`, not a missing root. Result UNCHANGED: 2 of 2 found, share 1.00, status still `not_evaluable` (n < 8) — but now produced by the real product path instead of the fallback that always fires.",
+      "found_so_far": "bastra-io yields 2 such scenarios with 2 cross-package truth files out of 111 candidates inside packages/ — the whole repository's history. bastra-recall's 7 fresh scenarios contain none. This is a finding about the histories available, not about the tool.",
+      "measurement_data": "These scenarios are MEASUREMENT data: they were mined and counted, and their contents were not read to tune anything."
+    },
+    "mutation": {
+      "$comment": "SYNTHETIC — it complements the historical gate above and does not replace it. The histories do not contain enough cross-package breakage (bastra-io: 2 cases in 111 candidates inside packages/; bastra-recall's fresh sample: none), so the breakage is made mechanically instead. A synthetic mutation is a fair test of the MECHANISM — does the bridge name the file that really stopped compiling — and no evidence about what people change in practice. The historical gate keeps its own n and its own threshold; this one is reported beside it, never merged into it.",
+      "runner": "packages/eval/code-roi/v2/mutation-gate.mjs (offline, no agent, no money)",
+      "repository": "bastra-io, read-only: the tree is extracted with `git archive` into the gate archive and every edit happens there",
+      "seed": 20260918,
+      "$comment_seed": "The registered statistics seed. Symbols are drawn in a seeded permutation of every (file, symbol, operator) triple, so the sample is identical on every run and cannot be re-drawn until it flatters the tool.",
+      "population": "every symbol declared by a direct `export function|class|const|let|interface|type|enum <name>` in `packages/*/src/**/*.ts(x)` of the repository, excluding `.d.ts` and test files",
+    "$comment_population": "DESCRIPTION CORRECTED 2026-09-19 (no change to the population itself, no re-draw, hash unchanged). It read “every exported symbol”, which claims more than `exportedSymbols` in mutation-gate.mjs ever drew: it matches the declaration forms listed above and therefore never included `export default`, `export var`, re-exports through `export { a, b }` or `export * from`, or anything declared inside `export namespace`. The drawn 1233 candidates are unaffected — only the sentence describing them was too wide, and a population description that overstates its reach is a claim the sample cannot carry.",
+      "operators": [
+        "require-param — prepend a required `__mutation: never` parameter to an exported function, so every call site is one argument short",
+        "rename-export — rename the exported binding, so every importer loses the name",
+        "require-field — add a required field to an exported interface, so every object literal built from it is incomplete"
+      ],
+      "$comment_operators": "Fixed in the source file and here, before the gate ran. All three break the CONSUMER rather than the definition, which is the point: the file that stops compiling has to be elsewhere. An operator whose precondition does not match a symbol is skipped, never forced.",
+      "truth": "unchanged: files carrying a type error after the mutation that they did not carry before, compared as (file, code, message) multisets, the mutated file itself excluded",
+      "keep_rule": "a mutation is kept only when its truth contains at least one file in a DIFFERENT workspace package. That decision is made from the type errors, never from the graph.",
+      "target_cross_package_truth_files": 20,
+      "metric": "identical to the historical gate: the share of CROSS-PACKAGE truth files that `find_affected_files` names at depth 1, scored on BOTH ways (see `scoring_paths`)",
+      "min_share_found": {
+        "$comment": "DECIDED by Daniel Nevoigt on 2026-09-19, after review with Codex, replacing TO_BE_DECIDED. The synthetic gate is SPLIT rather than given one number, because its three operators do not ask the same question of the graph.",
+        "gated_operators": ["rename-export", "require-param"],
+        "gated_min_share": 1.0,
+        "$comment_gated": "These two break a NAME or a CALL: the importer loses the binding, or the call site is one argument short. Both are edges the graph extracts, so a miss here is the mechanism failing at what it is built to do — offline, without an agent, there is no reason to accept less than all of them.",
+        "reported_only_operators": ["require-field"],
+        "$comment_reported_only": "A required field added to an exported interface breaks through TYPE FLOW: the consumer builds an object literal that reaches the type through a function signature and names the type nowhere. There is no import and no call edge to follow, and `affected.ts` says so in its own comment ('candidates, not proof'). Gating a limitation the design registers as known would turn a documented boundary into a failure; the number is reported instead, and moving it is a product decision with its own registration.",
+        "overall_is_reported_not_gated": true,
+        "$comment_overall": "The figure over all three operators (e.g. 18/21) is reported because it is the honest headline, but it is not a pass criterion on its own: it mixes a gated mechanism with an ungated one."
+      },
+      "scoring_paths": {
+        "$comment": "ADDED 2026-09-19 after review: the first scorer handed `find_affected_files` the symbol name directly (`symbolsNamed`), which skips `diffSymbols` and `symbol-spans.ts` — a path no user takes. Both are now scored and reported separately; a gap between them is a finding about the diff-to-symbol step, so they are never merged.",
+        "explicit": "file + symbol name straight into the graph query — the ceiling the query can reach when the symbol list is perfect",
+        "product": "file + the mutation's stored diff only, through `changedSymbolsOf` — the path a user's call takes",
+        "gated_on": "product",
+        "$comment_gated_on": "The gate is the product path. `explicit` is the diagnostic that says whether a miss came from the query or from the diff-to-symbol step."
+      },
+      "population_pinned": {
+        "$comment": "ADDED 2026-09-19 after review: the generator extracted `HEAD` on every invocation, so a run resumed after a commit in bastra-io would have mixed two trees under one seed and reported the mixture as one sample. The commit and a hash of the drawn (file, symbol, operator) list are now written to `population.json` in the gate archive on the first run and CHECKED on every later one; a mismatch is an error, never a silent re-pin.",
+        "recorded_in": "~/.bastra/eval/code-roi-gate-mutation/population.json",
+        "commit": "44321b0f7da02f7e183cc9eb1aa368fa1241db14",
+        "population_sha256": "ee4f41a62970e54b84c215ec1dbb2aa5800eaac8d238facdc58cc98429c7390b",
+        "candidates": 1233,
+        "$comment_values": "Pinned 2026-09-19 from the extracted tree the 38 generated mutations came from. bastra-io's HEAD has not moved since 2026-08-02, before the gate ran, so the pin names the same tree those rows were measured against; verified by re-running the seeded draw and finding every recorded row in it, in order. population.json in the archive is the authoritative copy."
+      },
+      "evaluated_at": "RE-SCORED 2026-09-19 offline at the commit that carries the symbol-span fix (the first evaluation, at 2f9dc47, reported 18 of 21 by the explicit path only). Result, 14 mutations, 21 cross-package truth files, BOTH ways identical: overall 18 of 21 (0.857, reported, not gated); gated operators 15 of 15 (1.00) → PASS; `require-field` 3 of 6 (0.50), reported only. Per operator: rename-export 10/10, require-param 5/5, require-field 3/6. By source package: packages/db 5/5, packages/ai 3/3, packages/payments 3/3, packages/social 7/10. That `explicit` and `product` agree row for row is itself the finding: on this sample the diff-to-symbol step loses nothing, so the three misses are the graph's, not the diff reader's. All three come from one mutation — a required field on `PublishInput` in packages/social/src/adapter.ts — whose consumers reach the type through a function signature and name it nowhere, so there is no import or call edge to follow. That is the registered type-flow boundary, which is why this operator is reported and not gated. RE-SCORED AGAIN 2026-09-19 after the diff-side correction (the stored diff runs clean -> mutated while the tree is left clean, so the product was reading new-side line numbers against an old-side tree; the diff is now reversed before it reaches `changedSymbolsOf` — see arms.prefilled.$amendment_diff_side). Every figure above is UNCHANGED, explicit and product still agree row for row, and the gate still passes 15 of 15: on this sample the shift never moved a line out of its symbol. Recorded because the run happened, and a re-score nobody writes down is a number that stops being checkable.",
+      "failure_is_a_result": true
+    },
+    "min_cross_package_truth_files": 8,
+    "$comment_min_files": "DECIDED by Daniel Nevoigt on 2026-09-19, replacing TO_BE_DECIDED (proposal 8, accepted unchanged). Below 8 a single missed file moves the share by more than 12 points, which is not a threshold anyone can act on. The historical gate has 2 available today and therefore reports `not_evaluable`, which is the honest answer until a repository with more cross-package churn is added.",
+    "min_share_found": 0.8,
+    "$comment_min_share": "DECIDED by Daniel Nevoigt on 2026-09-19, replacing TO_BE_DECIDED (proposal 0.80, accepted unchanged). Applies to the HISTORICAL gate. Rationale: the bridge is the one thing that cannot be reached by grepping the changed package, so a miss there is the failure mode the feature exists to prevent; and offline, without an agent, there is no reason for it to be lower. The development-data figure on the burned v3 sample was 6 of 6 core→daemon cases. Deliberately NOT 1.0: a barrel-only export whose importers exceed the narrowing threshold can legitimately be dropped by the content check.",
+    "verdict_shape": "Each part — historical and synthetic — reports pass, fail or not_evaluable on its own. There is no combined gate verdict, for the same reason adoption and effect are never combined.",
+    "failure_is_a_result": true
+  },
+
+  "statistics": {
+    "method": "paired bootstrap, 10 000 resamples, resampling by changed file with replacement",
+    "seed": 20260918,
+    "cluster_key": "repo + file — a pooled sample can hold the same path in two repositories, and clustering on the path alone would treat them as one unit."
+  },
+
+  "run_conditions": {
+    "repository": "bastra-io (see population)",
+    "graphify_version": "0.9.63",
+    "graph_build_command": "graphify extract <worktree> --code-only",
+    "per_scenario_base": "the commit's parent SHA, recorded in the scenario file with the graph's sha256",
+    "cost_ceiling_usd": 40,
+    "$comment_ceiling": "Raised by Daniel from 20 to 40 $ on 18.09.2026, before the run.",
+    "cost_estimate": "From the v4 pilot on bastra-recall (6 arms, $0.9919, mean $0.1653 per arm, mean 157 168 input tokens per arm): 3 arms x $0.1653 = $0.496 per scenario, so 40 scenarios = $19.84 and 45 = $22.32. Both sit under the $40 ceiling, which leaves room for the larger prompts a pooled sample may carry. The runner stops BEFORE the arm that would cross the ceiling, not after.",
+    "$comment_cost": "Enforced by the runner, not documented at it: every arm's cost is summed and the next arm only starts while the ceiling is still out of reach at the mean cost of the arms that finished. Raising it is a decision, not a flag someone reaches for at 2 a.m. (CODE_ROI_COST_CEILING).",
+    "finalisation_and_ceiling": {
+      "$comment": "AMENDED 2026-09-19, before the first arm of the main run. NO THRESHOLD, ARM, SAMPLE OR VERDICT CHANGES — this sharpens two rules the runner was already meant to follow, both found by a counter-review of the runner rather than by a result. (1) FINALISATION. An arm was finalised on exit 0 plus the presence of a `result` event. The installed CLI (2.1.278) also emits a `result` when it gives up — `subtype` is one of success / error_during_execution / error_max_turns / error_max_budget_usd / error_max_structured_output_retries — and a `--max-budget-usd` stop exits 0, so a truncated arm could be finalised and its partial `FILES:` line scored as an answer. An arm now counts as finished only on exit 0 AND `is_error === false` AND `subtype === \"success\"`; everything else is re-run by the next helping. All 107 archived result events across code-roi-v2, both pilots and the adoption run are `success` / `is_error:false`, so no existing transcript changes status. (2) THE CEILING RECKONING. Finished cost and total burden are now kept apart: the ceiling is checked against the burden (finished arms plus what aborts were charged), while the per-arm projection is the mean of the FINISHED arms only, so a run of failures cannot inflate its own reading. An abort is charged its own `result` event where it has one, otherwise that mean, otherwise the per-arm figure in `cost_estimate` above ($0.1653) — previously it was charged $0 before the first finished arm, so a sample whose every arm aborted would have walked the whole list without the ceiling binding. Abort costs are written to `<arm>.failed-<stamp>.meta.json` when they happen and read back on resume, together with the finished arms, so a resumed helping starts from the real spend. Implementation: `packages/eval/code-roi/v2/arm-cost.mjs`, split out of `run-arms-v3.mjs`."
+    },
+    "stretched_run": {
+      "$comment": "AMENDED 2026-09-19, before the first arm of the main run: the run is taken in helpings across several subscription-quota windows (`run-arms-v3.mjs --max-scenarios N`). Cause is the quota, nothing about the measurement. Sample, scenario order, arm order, thresholds and both verdicts are unchanged; a scenario that is started is normally finished across all three arms within the same helping. An abort or the cost ceiling can still cut a scenario short mid-arm — that is exactly what `finalisation_and_ceiling` above exists to catch — and when it does, the arm it interrupted is simply not counted as run and the next helping runs it, so a pair can be torn ACROSS helpings but is never silently completed with a partial answer. A report from a partially finished archive is labelled `incomplete (x/40)`: the effect is computed on complete triples only, adoption on every scenario whose B arm has run, and neither reaches a verdict below min_scenarios."
+    },
+    "build_pin": {
+      "$comment": "AMENDED 2026-09-19, before the first arm of the main run, by a Codex counter-review (numbered 4 in this file's own review history) — found on a dry read of the runner, not from a result. NO THRESHOLD, ARM, SAMPLE OR VERDICT CHANGES; this closes a gap in HOW the runner is started, not in what it measures. `run-arms-v3.mjs` imports `packages/daemon/dist` directly, never `src`, and the start command documented until now (`CODE_ROI_OUT=… node run-arms-v3.mjs --max-scenarios 8`) neither built it nor checked it. Codex found `packages/daemon/dist/.build-revision` reading a commit several revisions behind HEAD at the moment this registration's own thresholds were being finalised — an unguarded first arm that morning would have measured a server nobody had reviewed at HEAD and called it this registration. The `stretched_run` amendment above makes it worse than a one-off: a run taken in helpings across days means a REBUILD between two helpings could serve two different product revisions under one archive and one report, with nothing to say so.",
+      "preflight": "Before touching an arm, every invocation of `run-arms-v3.mjs` now checks, in order: (1) `packages/daemon/dist/.build-revision` exists, names `git rev-parse HEAD` exactly, AND says `dirty=false`; a build stamped dirty can contain uncommitted source while still naming the same HEAD, so revision equality alone is not provenance; (2) the current worktree is clean over `packages/daemon/src` and `packages/eval` (`git status --porcelain`); (3) the four `arms.frozen_surface` hashes above, recomputed from the BUILT `dist` artefacts with the identical computation `code-graph-affected.test.ts` pins from `src`, still match this registration. Any failure aborts before an arm starts and names which check failed and why. The dirty-stamp rejection was added by counter-review 5 before the first arm; the sample, arms, thresholds and verdicts are unchanged. `--preflight-only` runs these checks and exits without starting an arm — the dry-run this amendment was verified with.",
+      "pin": "What passes the preflight is written to `build-pin.json` in the archive (`CODE_ROI_OUT`) on the FIRST helping: the HEAD sha, the dist revision stamp, the four frozen-surface hashes, and a sha256 of every dist artefact the arms are actually served from (`code-graph/*.js`, `tool-defs.js`, `mcp-instructions.js`). Every LATER helping of the same archive is checked against this pin, field by field; a mismatch aborts with every differing field named (never just the first) and never re-pins or overwrites — the same discipline `mutation_gate.population_pinned` already uses for the synthetic gate's own population. Every arm's meta (finished or aborted) carries the pin's signature beside it, and `evaluate-v4.mjs` reads it back to report `mixed_builds` in the report — true if any transcript in the archive was not served by the archive's pinned build.",
+      "start_command": "npm run build && CODE_ROI_OUT=~/.bastra/eval/code-roi-v4-bastra-io node packages/eval/code-roi/v2/run-arms-v3.mjs --max-scenarios 8 — the `npm run build &&` is new; the rest is unchanged from the command recorded before this amendment.",
+      "implementation": "packages/eval/code-roi/v2/build-pin.mjs, called from `run-arms-v3.mjs`'s `main()` before `scenarios.json` is even read, and from `evaluate-v4.mjs` when the report is built."
+    },
+    "frozen_archive": "~/.bastra/eval/code-roi-v2 is never written by a v4 script — `archive.mjs` refuses it, because the v3 report is only reproducible while that archive is untouched."
+  },
+
+  "archive": {
+    "location": "the directory named by CODE_ROI_OUT for the run",
+    "contents": [
+      "scenario file with base SHAs, arm order and seed",
+      "truth sets with adjudication notes",
+      "raw stream-json transcript of every arm run",
+      "the prefilled block handed to the third arm, per scenario",
+      "graph hash per scenario",
+      "report.json"
+    ]
+  },
+
+  "reporting_duties": [
+    "Adoption from arm B, with its N, separately for find_affected_files and find_code.",
+    "Effect from prefilled against A: paired mean with its 95 % interval, and the per-scenario rows.",
+    "Precision and context (input tokens) as defined above.",
+    "B against A, labelled as adoption and effect combined, never as the effect.",
+    "The cost of the run against the ceiling.",
+    "That the offline figures on the v3 sample (recall 91.3 %, precision 52.4 %) are development data and carry no weight here.",
+    "Both verdicts separately — adoption and effect — and never a combined status.",
+    "An honest `underpowered` / `not_evaluable` per 18.1 where the sample does not support a verdict.",
+    "The registration_version the report belongs to."
+  ],
+
+  "failure_is_a_result": true,
+  "$comment_failure": "A missed threshold is recorded as the finding; thresholds are not moved afterwards.",
+
+  "result": {
+    "$comment": "Written 2026-09-19 after the v6 main run finished. Every number below is read from `~/.bastra/eval/code-roi-v4-bastra-io/report.json`, produced by `evaluate-v4.mjs`; nothing here is derived independently. Full narrative and the per-scenario table: packages/eval/code-roi/v2/BEFUND.md, section \"v6 Endergebnis (19.09.2026, Build 389c0ff)\". Gate figures are unchanged from the offline re-scoring already recorded above under `mechanism_gate` and were not re-run for this result.",
+    "date": "2026-09-19",
+    "report_path": "~/.bastra/eval/code-roi-v4-bastra-io/report.json",
+    "build_pin": {
+      "head_sha": "389c0ff56f92fa04cfc10d27897d08e912175382",
+      "signature": "3165f0780d6423e6c616d261f5d08fb702c86169605303d48c05e4cf8367d7f0",
+      "mixed_builds": false
+    },
+    "n": 40,
+    "progress": "complete: 40/40 scenarios, 120/120 arms, no aborts",
+    "verdicts": {
+      "adoption": "pass",
+      "effect": "fail",
+      "$comment": "No combined status, as registered above."
+    },
+    "key_numbers": {
+      "recall": { "A": 1.0, "B": 1.0, "prefilled": 1.0, "gain_prefilled_minus_A": 0.0, "ci95_of_gain": [0, 0] },
+      "precision": { "A": 0.8475, "B": 0.8567, "prefilled": 0.8454, "delta_prefilled_minus_A": -0.0021 },
+      "input_tokens_median": { "A": 24616.5, "B": 58308.5, "prefilled": 23564 },
+      "context_ratio_gated": 0.9572,
+      "context_ratio_all_scenarios": 0.9572,
+      "$comment_context": "Identical because all 40 scenarios were solved (recall >= 0.8) in both arms, so the gated and ungated sets coincide.",
+      "adoption": { "find_affected_files": "32/40 = 0.80", "find_code": "0/40" },
+      "cost_usd": { "A": 1.6324, "B": 2.1219, "prefilled": 1.7481, "total": 5.5024, "ceiling": 40 }
+    },
+    "by_repo": {
+      "bastra-io": { "n": 40 },
+      "$comment": "Pooling did not trigger: one repository reached min_scenarios (40) on its own, so bastra-recall's fresh 7-scenario reserve was not drawn (population.pooling.used_only_when_short)."
+    },
+    "mechanism_gate": {
+      "historical": "not_evaluable (n=2 cross-package truth files, below the registered minimum of 8)",
+      "synthetic_gated": "pass (15/15: rename-export 10/10, require-param 5/5)",
+      "synthetic_reported_only": "require-field 3/6, not gated"
+    },
+    "honest_reading": [
+      "Adoption holds (0.80 >= 0.70) in the measured setup only — a fresh, isolated session with the tool loaded and the server instructions read at connect time. It does not describe real operation: on 2026-09-19 no agent in live work called the tool voluntarily (lane telemetry, gathered outside this registration). A measurement rig where instructions are read once at connect and tools are loaded immediately is not the same thing as a long-running session where an MCP tool is typically deferred and those instructions have long since left the context (see arms.frozen_surface.known_harness_deviation above).",
+      "Effect is not measurable on this sample, and that is a finding about the POPULATION, not about the tool: grep alone reaches 100% recall in all 40 scenarios across all three arms, so the paired gain is mechanically 0.0 with a zero-width bootstrap interval — there is no variance for an effect to show up in. This registration committed to a recall-gain threshold (>= 0.05, CI lower bound > 0) before the run; the verdict is correctly `fail` and is not reinterpreted because the population turned out to have no headroom.",
+      "Context: the hoped-for saving is not confirmed. `prefilled` sits 4.3% below grep (ratio 0.9572) — a real but small margin, not the cost win the design hoped to show. The tool as actually OFFERED (arm B) costs 2.37x grep's median input tokens for a precision gain of well under one point (+0.92 Pp) and no recall gain.",
+      "Consequence: the v6 population (bastra-io, these 40 scenarios) is spent for this question — grep's ceiling on it is now known and re-running would only confirm it. The next measurement (delivery via hook, PR #607) needs either a freshly pre-registered population with real control-arm headroom (cases grep demonstrably does not solve at 100%), or its own registered target of 'delivery + context cost' rather than 'recall gain', because (a) and (c) above are where the open questions actually are."
+    ],
+    "no_further_changes": "Nothing in this registration changes after this point except this `result` block."
+  }
+}

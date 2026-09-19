@@ -33,7 +33,8 @@
     { "name": "load_memory", "description": "Load one memory's full content by id" },
     { "name": "save_memory", "description": "Persist a durable fact, rule, lesson or decision" },
     { "name": "find_document", "description": "Search stored documents (PDFs, contracts, scans with OCR)" },
-    { "name": "read_document", "description": "Load a document's extracted text by id" }
+    { "name": "read_document", "description": "Load a document's extracted text by id" },
+    { "name": "find_code", "description": "Locate a symbol or file in the code graph and list what depends on it" }
   ],
   "keywords": ["memory", "recall", "vault", "obsidian", "local-first", "knowledge"],
   "license": "MIT",

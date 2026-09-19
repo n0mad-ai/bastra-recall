@@ -12,6 +12,7 @@ import type {
   WarmupSettleEvent,
   VectorLateSettleEvent,
 } from "./telemetry-events-embedding.js";
+import type { CodeToolCallEvent, CodeGraphRefreshEvent } from "./telemetry-events-code.js";
 
 // Nur die Events, die DIESE Klasse via write() schreibt. Die Hook-CLIs
 // (hook_call, session_hook_call, prompt_hook_call, bash_hook_call,
@@ -35,6 +36,8 @@ export type TelemetryEvent =
   | OllamaLifecycleEvent
   | WarmupSettleEvent
   | VectorLateSettleEvent
+  | CodeToolCallEvent
+  | CodeGraphRefreshEvent
   | ReadDocumentEvent;
 
 /**
@@ -941,3 +944,11 @@ export type {
   WarmupSettleEvent,
   VectorLateSettleEvent,
 } from "./telemetry-events-embedding.js";
+
+// #589: dasselbe für die Code-Awareness-Zeilen.
+export type {
+  CodeToolCallEvent,
+  CodeGraphRefreshEvent,
+  CodeGraphRefreshOutcome,
+  CodeUnavailableReason,
+} from "./telemetry-events-code.js";

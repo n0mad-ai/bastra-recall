@@ -6,7 +6,8 @@
 >
 > Stand: 17. September 2026 (Statusnachtrag C-088 zur Auslieferung von 1.0.0,
 > Architekturentscheidung C-089 zur Code-Awareness, Vertragsänderung C-090 zur
-> Code-Awareness als V2.0-Pflicht; Vertragsänderungen C-083 und C-087,
+> Code-Awareness als V2.0-Pflicht, Gegenprüfung C-091 bis C-094 vor dem Bau der
+> Code-Awareness; Vertragsänderungen C-083 und C-087,
 > Vertragsergänzungen C-084 und C-085, Präzisierung C-086;
 > abgenommene Basis vom 26. Juli 2026 im Übrigen unverändert)
 >
@@ -16,18 +17,19 @@
 > folgten 0.8.7 bis 0.9.2 und am 14. September 2026 die Version 1.0.0.
 >
 > **Diese Datei ist die maßgebliche Fassung.** Verbindlicher Ledgerstand:
-> C-001–C-090, elf Reviewrunden, drei Vertragsänderungen, zwei
-> Vertragsergänzungen, eine Präzisierung, ein Statusnachtrag und eine
-> Architekturentscheidung; C-001–C-082 am 26. Juli 2026 abgenommen, C-083 bis
-> C-086 am 29. August 2026, C-087 am 12. September 2026 sowie C-088 bis C-090
-> am 17. September 2026 entschieden.
+> C-001–C-094, zwölf Reviewrunden, drei Vertragsänderungen, vier
+> Vertragsergänzungen, zwei Präzisierungen, ein Statusnachtrag, zwei
+> Ist-Korrekturen und eine Architekturentscheidung; C-001–C-082 am 26. Juli
+> 2026 abgenommen, C-083 bis C-086 am 29. August 2026, C-087 am 12. September
+> 2026 sowie C-088 bis C-094 am 17. September 2026 entschieden.
 >
 > Entstehung: abgenommener Ausgangsstand C-001–C-028, fortgeschrieben durch die
 > Revisionen C-029–C-039, C-040–C-048, C-049–C-054, C-055–C-059, C-060–C-062,
 > C-063–C-067, C-068–C-073, C-074–C-077, C-078–C-079, C-080–C-081 und C-082
 > sowie durch die Vertragsänderungen C-083, C-087 und C-090, die
-> Vertragsergänzungen C-084 und C-085, die Präzisierung C-086, den
-> Statusnachtrag C-088 und die Architekturentscheidung C-089.
+> Vertragsergänzungen C-084, C-085, C-093 und C-094, die Präzisierungen C-086
+> und C-092, den Statusnachtrag C-088, die Architekturentscheidung C-089 und
+> die Ist-Korrektur C-091 aus der zwölften Reviewrunde.
 > Alle zwölf Zwischenfassungen und der Ausgangsstand sind unverändert
 > archiviert; sie sind Belegmaterial, keine geltenden Verträge, und seit dem
 > 17.09.2026 nicht mehr Teil des öffentlichen Repositorys.
@@ -47,7 +49,7 @@
 > Die Product-Owner-Entscheidungen in Abschnitt 31 sind getroffen und binden
 > die Umsetzung.
 >
-> Nächste freie ID: C-091. Ein neues Delta wird in dieser Datei fortgeschrieben
+> Nächste freie ID: C-095. Ein neues Delta wird in dieser Datei fortgeschrieben
 > und nicht mehr als eigene Revisionsdatei geführt.
 
 ## 0. Entscheidungs- und Reviewstatus
@@ -217,8 +219,12 @@ neuer Evidenz erneut geöffnet.
 | C-086 | Präzisierung | **Wortlaut berichtigt durch C-088** (vorher „Titel, `recall_when` und Frontmatter“). Beide Wege zu `required` werden enger gefasst (10.3): Das Teilabdeckungs-Signal der Zwei-von-drei-Zählung zählt erst ab 50 % Trigger-Abdeckung statt ab dem ersten gemeinsamen Term, und der harte Identifier-Anker liest Titel und `recall_when` statt zusätzlich den Body; weitere Frontmatter-Felder liest er nicht. Beziffert vor der Änderung: Anti-Query-Gate von 50 % auf 12,5 %, Recall@3 gegated, Identifier-Queries und Falsch-Abstention unverändert, längenneutral. Offen bleiben die zu kleine Anti-Probenmenge und die Kosten des Pflichtverlusts, die erst die Shadow-Telemetrie zeigt. |
 | C-087 | Vertragsänderung | V1.0 schuldet vom globalen Kontextbudget aus 16.3 das Latenzbudget live und das kumulative Cross-Lane-Tokenbudget je Sitzung als **Shadow-Ledger** (26.1): verbuchen und protokollieren, nicht kürzen. Die **Live-Erzwingung** — aus Shadow-Daten festgelegte Budgethöhe, Canary-Profil mit sofortigem Rollback auf unbegrenzt, Siebentage-Canary-Bericht — ist nach 26.2 verschoben. Begründung ist gemessen: Sechs Tage Shadow (742 Entscheidungen, 135 Sessions, 80 auswertbar) hätten gegen das vorläufige 7.500-Token-Profil 8 Sessions berührt und 36.976 Tokens zurückgehalten, rund 5 % von 719.322 Tokens Wochenbetrieb. Der Nutzen liegt im Tail, und ein Tail trägt keine Live-Schaltung auf Shadow-Daten allein. |
 | C-088 | Ist-Korrektur | Statusnachtrag ohne Vertragsänderung: V1.0 ist erfüllt und als 1.0.0 am 14.09.2026 ausgeliefert (Tag `v1.0.0`); Kopf, 0.1, 0.2, 18.0, 21.1, 25, 26.1 und 27 tragen das, historische Aussagen bleiben als solche stehen. Sechs Ist-Aussagen sind überholt und werden mit heutiger Fundstelle berichtigt: Mutation-Audit auch im MCP-/REST-Save (C-008), Evidenzentscheid standardmäßig aktiv und hop-sicher (13.1, C-046), gemeinsamer paralleler Session-Assembler mit POST-Pfad (16.1, C-004), Hybrid-Stresspfad baut den Vektorarm (2.2), Pinned-Block außerhalb von `session-hook.ts` (6.3), Identifier-Anker liest nur Titel und `recall_when` (C-086). Verschobene Zeilenangaben sind nachgezogen, die Lane-Budgets vom 12.09.2026 in 9.4 und 16.3 als Statusnotiz ergänzt, C-087 in 28 und 37 nachgetragen. Kein Urteil wird umgedeutet. |
-| C-089 | Architekturentscheidung | **Verschärft durch C-090:** Die ausgelieferte Code-Awareness ist verpflichtendes Kriterium der V2.0-Promotion. Code-Awareness in V2 entsteht nicht über einen eigenen Symbolindexer, sondern über Graphify als externe Code-Graph-Quelle (Epic #572, #573–#580; Product-Owner-Entscheidung vom 17.09.2026). Recall nutzt nur die Graphify-CLI im Code-only-Modus und das erzeugte `graph.json`, nie dessen Installer oder Hooks. Der Code-Graph ist eine eigene logische Sicht neben 13.1 (Hop-Budget eins, nur direkt extrahierte Kanten im Normal Recall, No-Graph-Kontrollarm), liegt git-ignoriert im Projekt, wird nicht in den Vault projiziert und läuft im Hook-Pfad ohne Python innerhalb der bestehenden Budgets. `applies_to` wird über das vorhandene Feld `affects_files` umgesetzt; ein Code-Hop erzeugt nie allein `required`. |
+| C-089 | Architekturentscheidung | **Verschärft durch C-090, präzisiert durch C-092, ergänzt durch C-091, C-093 und C-094:** Die ausgelieferte Code-Awareness ist verpflichtendes Kriterium der V2.0-Promotion. Code-Awareness in V2 entsteht nicht über einen eigenen Symbolindexer, sondern über Graphify als externe Code-Graph-Quelle (Epic #572, #573–#580; Product-Owner-Entscheidung vom 17.09.2026). Recall nutzt nur die Graphify-CLI im Code-only-Modus und das erzeugte `graph.json`, nie dessen Installer oder Hooks. Der Code-Graph ist eine eigene logische Sicht neben 13.1 (Hop-Budget eins, nur direkt extrahierte Kanten im Normal Recall, No-Graph-Kontrollarm), liegt git-ignoriert im Projekt, wird nicht in den Vault projiziert und läuft im Hook-Pfad ohne Python innerhalb der bestehenden Budgets. `applies_to` wird über das vorhandene Feld `affects_files` umgesetzt; ein Code-Hop erzeugt nie allein `required`. |
 | C-090 | Vertragsänderung | Die Code-Awareness über Graphify (C-089, #572–#580) ist ein **verpflichtendes Kriterium der V2.0-Promotion** (26.2): Sie ist ausgeliefert, hält die Grenzen aus 13.1, 16.2, 22, 23 und 24 ein, und ihre Kontextersparnis ist gegen den No-Graph-Kontrollarm belegt (#579). Das ist eine Lieferpflicht des Releases, keine Laufzeitpflicht: Für den Nutzer bleibt Graphify ein optionaler Begleiter, und Recall funktioniert ohne ihn unverändert (22). Begründung: Code-Indexing war bereits beschlossen, offen war nur der Zeitpunkt; diese Abhängigkeit besteht nicht mehr (Product-Owner-Entscheidung vom 17.09.2026). |
+| C-091 | Ist-Korrektur | Der in #574 geplante Aktualisierungsweg `graphify update` verletzt die Code-only-Grenze aus C-089, C-090 und Abschnitt 23. Gemessen am 17.09.2026 an diesem Repository: `graphify extract . --code-only` ergibt 6.677 Knoten und 19.444 Kanten in 11,14 s; `graphify update .` kennt kein `--code-only`, nahm zusätzlich 65 Markdown-Dateien auf und ergab 7.671 Knoten und 20.603 Kanten in 9,32 s. Der einzige zulässige Baubefehl ist deshalb `graphify extract <repo> --code-only`. Er ist selbst inkrementell: unverändert 1,53 s (unabhängig nachgemessen 2,11 s), eine geänderte Datei 2,18 s, eine Löschung 2,68 s und ohne `--force` korrekt erkannt. Daraus folgt: `--force` wird nie automatisch übergeben, sondern nur als ausdrücklich bestätigte Reparatur. Die frühere Annahme, ein Refresh koste auch für eine einzelne Datei 9–12 s — die Begründung für langes Debounce und eine automatische `--force`-Regel —, ist damit hinfällig. |
+| C-092 | Präzisierung | Die Angabe „höchstens etwa 10 ms“ zum Code-Abhängigenblock (16.2, C-089) beschreibt den **warmen** Pfad. Gemessen am 17.09.2026: Kaltstart 26,35 ms bei 11,1 MB (lesen 5,89 ms, parsen 15,24 ms, indizieren 5,23 ms, +21,9 MB Heap) und unabhängig 20,72 ms bei 9,7 MB (3,70 / 13,34 / 3,67 ms, +20,3 MB); warm p50 0,003 ms und p90 0,005 ms über 200 Abfragen. Regel: Der Graph wird beim Aktivieren und nach einem Daemonstart asynchron vorgeladen; ein kalt eintreffender Hook überspringt den Block still und stößt nur das Laden an. Auf das Laden wird nie synchron gewartet. Dazu ein daemonweites LRU-Heapbudget von 256 MB über alle geladenen Graphen. |
+| C-093 | Vertragsergänzung | `graph.json` ist unvertrauenswürdige Eingabe und kein eigenes Artefakt: fremderzeugt, ohne Schemaversion (das Feld `graph` ist `{}`), in einem Repository, das dem Nutzer nicht gehören muss, und sein Inhalt landet wörtlich im Agentenkontext. Vor jeder Nutzung gelten bezifferte Grenzen: 64 MB Dateigröße, 500.000 Knoten, 2.000.000 Kanten, 512 Byte je String; nur normalisierte repo-relative Pfade, keine `..`-Flucht, keine absoluten Pfade, keine Steuer- und Bidi-Zeichen; Ausgabe ausschließlich über eine Feld-Allowlist. Jeder Verstoß führt allein zu „Code-Awareness nicht verfügbar“; Recall selbst wird nie beeinträchtigt. Dazu die bewusst festgelegte Relations-Allowlist: Der gemessene Graph enthält fünfzehn Relationstypen, nicht vier. Als Abhängigkeitskante zählen, und nur mit Herkunft `EXTRACTED`: `calls`, `imports`, `imports_from`, `inherits`, `re_exports`, `dynamic_import`, `implements`. Struktur ohne Abhängigkeit: `contains`, `method`. Ausgeschlossen: `indirect_call` (zu 100 % `INFERRED`), `references`, `rationale_for`, `defines`, `cites` und `extends` — letzteres ist im gemessenen Graphen tsconfig-Vererbung, nicht Klassenvererbung. Der Vertrauensfilter läuft je **Kante**, nicht je Relation: `calls` mischt 4.363 extrahierte mit 153 erschlossenen Kanten. Auch unter `--code-only` enthält der Graph Nicht-Code-Knoten (`concept` 220, `rationale` 24); sie bleiben innerhalb der Code-only-Grenze, sind aber keine navigierbaren Orte und erreichen nie einen Hook-Kontext. |
+| C-094 | Vertragsergänzung | Plattform-Scope dieses Unter-Releases sind macOS und Linux. Windows wird ausdrücklich nicht zugesagt, solange Locking, Git-Pfadauflösung, Worktrees und Prozessabbruch nicht in einer Windows-CI geprüft sind; bis dahin meldet sich die Funktion dort als nicht verfügbar, statt halb zu funktionieren. Begründung: Graphifys Prozess-Lock beruht auf `fcntl` und ist unter Windows ein No-op, `nice` ist nicht portabel, und `.git` ist in Worktrees eine Datei statt eines Verzeichnisses — Git-Pfade werden deshalb über `git rev-parse --git-path` aufgelöst. Recall bringt einen eigenen, plattformübergreifenden Repo-Lock mit. Ebenfalls festgehalten: Der Graph liefert keine `rename`- oder `move`-Relation; Umbenennungen werden ausschließlich über Git-Evidenz (`git diff --name-status -M`) erkannt und nie aus ähnlichen Symbolmengen geschlossen. Ohne Evidenz wird kein Rename behauptet. |
 
 **Abnahmestand 24.07.2026:** Vollabgleich Ledger C-001–C-027,
 Gate-Messbarkeit, Ist-Behauptungs-Sweep (58 Aussagen, alle gedeckt),
@@ -424,7 +430,19 @@ bleibt unverändert. Anlass ist eine Product-Owner-Entscheidung vom selben Tag:
 Code-Indexing war bereits beschlossen, offen war nur der
 Zeitpunkt; diese Abhängigkeit besteht nicht mehr.
 
-**Nächste freie ID: C-091.** Neue Delta-Reviews beginnen dort. Ein Urteil
+**Gegenprüfung vor dem Bau, 17.09.2026 (diese Fassung):** C-091 bis C-094
+gehen aus der Gegenprüfung der Umsetzungsissues #573–#580 hervor und wurden am
+selben Tag entschieden. C-091 berichtigt den Aktualisierungsweg:
+`graphify extract --code-only` ist der einzige zulässige Baubefehl und selbst
+inkrementell, `graphify update` verletzt die Code-only-Grenze, und `--force`
+wird nie automatisch übergeben. C-092 präzisiert die 10-ms-Angabe aus 16.2 auf
+den warmen Pfad und legt asynchrones Vorladen statt synchronen Wartens fest.
+C-093 bindet `graph.json` als unvertrauenswürdige Eingabe an bezifferte Grenzen
+und an eine Relations-Allowlist. C-094 begrenzt den Plattform-Scope dieses
+Unter-Releases auf macOS und Linux und bindet Umbenennungen an Git-Evidenz.
+Kein Urteil aus C-001–C-090 wird umgedeutet.
+
+**Nächste freie ID: C-095.** Neue Delta-Reviews beginnen dort. Ein Urteil
 ändert sich nur mit neuer Code-, Telemetrie- oder Run-Evidenz; Geschmacksfragen
 werden als Architekturentscheidung statt als Faktenfehler markiert.
 
@@ -2486,6 +2504,19 @@ erschlossene. Ein Code-Hop erzeugt nie allein `required`. Die Kontextersparnis
 wird gegen einen No-Graph-Kontrollarm gemessen (#579); ein Gewinn ohne diesen
 Arm gilt nicht als Beleg.
 
+**Ergänzung 17.09.2026 (C-092, C-093).** Welche Kanten als Abhängigkeit
+zählen, ist abschließend aufgezählt: `calls`, `imports`, `imports_from`,
+`inherits`, `re_exports`, `dynamic_import` und `implements`, jeweils nur mit
+Herkunft `EXTRACTED`. `contains` und `method` beschreiben Struktur und sind
+keine Abhängigkeit; alle übrigen der fünfzehn gemessenen Relationstypen bleiben
+ausgeschlossen, darunter `extends`, das im gemessenen Graphen
+tsconfig-Vererbung bezeichnet und nicht Klassenvererbung (C-093). Der
+Vertrauensfilter greift je Kante, nicht je Relationstyp. Die Sicht steht
+zudem nur zur Verfügung, wenn der Graph bereits geladen ist: Er wird beim
+Aktivieren und nach einem Daemonstart asynchron vorgeladen, und ein kalt
+eintreffender Hook überspringt die Code-Sicht still, statt auf das Laden zu
+warten (C-092).
+
 #### Die heutige Hop-Baseline bleibt erhalten
 
 Diese Beschränkung darf nicht dazu führen, dass eine bereits produktive
@@ -3017,6 +3048,15 @@ Schritte parallel. Die Response besitzt:
   darf die Lane um höchstens etwa 10 ms verlängern. Im Hook-Pfad startet kein
   Python-Prozess; gelesen wird `graph.json` im Daemon (#575). Neue Hooks auf
   Read, Grep oder Glob entstehen dafür nicht.
+
+**Präzisierung 17.09.2026 (C-092).** Die Angabe „höchstens etwa 10 ms“ gilt
+für den **warmen** Pfad, also für einen bereits geladenen Graphen; warm
+gemessen wurden p50 0,003 ms und p90 0,005 ms über 200 Abfragen. Der Kaltstart
+liegt bei 20,72 bis 26,35 ms für 9,7 bis 11,1 MB und passt damit nicht in die
+Lane. Der Graph wird deshalb beim Aktivieren und nach einem Daemonstart
+asynchron vorgeladen; ein kalt eintreffender Hook überspringt den Block still
+und stößt nur das Laden an. Synchron gewartet wird nie. Über alle geladenen
+Graphen gilt ein daemonweites LRU-Heapbudget von 256 MB.
 
 ### 16.3 Kontextbudget
 
@@ -4201,6 +4241,21 @@ bestandenen Messgates.
   aufgerufen, weil sie global in `~/.claude/CLAUDE.md` schreiben und
   Pflicht-Hooks auf Read und Grep registrieren. Der Code-Graph unterliegt
   denselben Scope- und Egress-Regeln wie Vault-Inhalt; nichts wird versandt.
+- Code-Graph als Eingabe (C-093): `graph.json` gilt als unvertrauenswürdige
+  Eingabe, nicht als eigenes Artefakt — fremderzeugt, ohne Schemaversion, aus
+  einem Repository, das dem Nutzer nicht gehören muss, und sein Inhalt erreicht
+  wörtlich den Agentenkontext. Vor jeder Nutzung gelten bezifferte Grenzen
+  (64 MB Dateigröße, 500.000 Knoten, 2.000.000 Kanten, 512 Byte je String),
+  nur normalisierte repo-relative Pfade ohne `..`-Flucht und ohne absolute
+  Pfade, keine Steuer- und Bidi-Zeichen und eine Feld-Allowlist für die
+  Ausgabe. Jeder Verstoß führt zu „Code-Awareness nicht verfügbar“ und nie zu
+  einem Recall-Fehler.
+- Plattform-Scope (C-094): Locking, Git-Pfadauflösung, Worktrees und
+  Prozessabbruch sind in diesem Unter-Release nur unter macOS und Linux
+  geprüft; unter Windows meldet sich die Code-Awareness als nicht verfügbar,
+  statt halb zu arbeiten. Recall verlässt sich nicht auf Graphifys
+  `fcntl`-Lock, sondern bringt einen eigenen plattformübergreifenden Repo-Lock
+  mit.
 - Abgeleitete Cues, Manifeste und Graph-Projektionen unterliegen denselben
   Scope-, Sensitivity- und Egress-Regeln wie der zugrunde liegende Inhalt. Ein
   Manifest darf einen Filter nicht dadurch umgehen, dass es aggregiert.
@@ -4299,7 +4354,16 @@ bestandenen Messgates.
   ergäbe rund 6.900 Notizen, mehr als das Fünffache des damaligen Vaults
   (C-089);
 - keine Hooks auf Read, Grep oder Glob und kein Pflicht-Wortlaut („MANDATORY“,
-  „You MUST“) für Code-Hinweise (C-089).
+  „You MUST“) für Code-Hinweise (C-089);
+- kein `graphify update` und kein Baubefehl ohne `--code-only` (C-091);
+- kein automatisch übergebenes `--force` — nur als ausdrücklich bestätigte
+  Reparatur (C-091);
+- kein synchrones Warten auf das Laden des Code-Graphen im Hook-Pfad (C-092);
+- kein Vertrauen in `graph.json` ohne die bezifferten Grenzen, die
+  Pfadnormalisierung und die Relations-Allowlist (C-093);
+- keine Windows-Zusage für dieses Unter-Release (C-094);
+- kein aus ähnlichen Symbolmengen geschlossenes Rename ohne Git-Evidenz
+  (C-094).
 
 ## 25. Umsetzungsreihenfolge
 
@@ -4578,12 +4642,14 @@ Das Ziel ist nicht maximaler Recall. Das Ziel ist:
 
 > Zur richtigen Zeit die richtige Erinnerung – und ansonsten Ruhe.
 
-## 28. Delta-Ledger (C-029–C-090)
+## 28. Delta-Ledger (C-029–C-094)
 
 Dieser Abschnitt dokumentiert elf aufeinanderfolgende Runden von Deltas
-gegenüber dem abgenommenen Stand C-001–C-028 sowie acht spätere Einträge zu
-Vertrag, Prädikat, Releasestatus und Architektur. Jeder Eintrag nennt die betroffene
-Passage, die Art des Deltas, die tragende Evidenz, das Gate, die Datenquelle,
+gegenüber dem abgenommenen Stand C-001–C-028, acht spätere Einzeleinträge zu
+Vertrag, Prädikat, Releasestatus und Architektur sowie eine zwölfte Runde aus
+der Gegenprüfung vor dem Bau der Code-Awareness (C-091 bis C-094). Jeder
+Eintrag nennt die betroffene Passage, die Art des Deltas, die tragende
+Evidenz, das Gate, die Datenquelle,
 das Abnahmekriterium und den Rollback. Kein Eintrag deutet ein früheres Urteil
 um.
 
@@ -4775,6 +4841,18 @@ Promotionspflicht:
 | Bisheriger Vertrag | wird geändert durch | Art |
 |---|---|---|
 | C-089, 26.2 Hinweisabsatz | C-090 | Vertragsänderung: ausgelieferte Code-Awareness wird verpflichtendes V2.0-Kriterium |
+
+**Runde 12 — C-091 bis C-094**, 17.09.2026, entstand aus der Gegenprüfung der
+Umsetzungsissues #573–#580 vor dem Bau. Alle vier Einträge stützen sich auf
+Messungen vom selben Tag an diesem Repository; keiner deutet ein Urteil aus
+C-001–C-090 um:
+
+| Bisheriger Stand | wird fortgeschrieben durch | Art |
+|---|---|---|
+| #574 Aktualisierungsweg `graphify update` | C-091 | Ist-Korrektur: nur `extract --code-only` als Baubefehl, kein automatisches `--force` |
+| 16.2 „höchstens etwa 10 ms“ | C-092 | Präzisierung: warmer Pfad, asynchrones Vorladen, LRU-Heapbudget 256 MB |
+| 23 ohne Regeln für `graph.json` | C-093 | Vertragsergänzung: unvertrauenswürdige Eingabe mit bezifferten Grenzen und Relations-Allowlist |
+| 23 und 26.2 ohne Plattform-Scope | C-094 | Vertragsergänzung: macOS und Linux, Rename nur über Git-Evidenz |
 
 ### C-029 – Evidenzklassen für Fremdsystemzahlen
 
@@ -6703,6 +6781,129 @@ Urteil wird umgedeutet, geändert wird der Umfang des Releasevertrags.*
   Promotionspunkt aus 26.2 wieder entfernt. Produktverhalten ist nicht
   betroffen.
 
+---
+
+*Ab hier die Gegenprüfung C-091 bis C-094 vom 17.09.2026.*
+
+### C-091 – `extract --code-only` ist der einzige Baubefehl, `--force` nie automatisch
+
+- **Passage:** 0.4 Ledgerzeile C-091 und Abnahmeblock; 24; 28 Zuordnung und
+  dieser Eintrag; 41.
+- **Art:** Ist-Korrektur.
+- **Evidenz:** Messung vom 17.09.2026 an diesem Repository mit Graphify
+  0.9.63. `graphify extract . --code-only` ergibt 6.677 Knoten und 19.444
+  Kanten in 11,14 s. `graphify update .` kennt kein `--code-only`, nahm
+  zusätzlich 65 Markdown-Dateien auf und ergab 7.671 Knoten und 20.603 Kanten
+  in 9,32 s; der geplante Aktualisierungsweg aus #574 hätte damit die
+  Code-only-Grenze aus C-089, C-090 und Abschnitt 23 verletzt. `extract
+  --code-only` ist selbst inkrementell: unverändertes Repository 1,53 s,
+  unabhängig nachgemessen 2,11 s; eine geänderte Datei 2,18 s; eine gelöschte
+  Datei 2,68 s, korrekt erkannt ohne `--force`. Die frühere Annahme, ein
+  Refresh koste auch für eine einzelne Datei 9–12 s, trägt damit nicht mehr;
+  sie war die Begründung für ein langes Debounce und für eine automatische
+  `--force`-Regel.
+- **Gate:** keines. Der Eintrag berichtigt eine Ist-Annahme der Umsetzung und
+  ändert keinen Vertrag.
+- **Datenquelle:** die Läufe vom 17.09.2026 an diesem Repository; Epic #572 und
+  Issue #574.
+- **Abnahmekriterium:** Recall baut den Graphen ausschließlich mit
+  `graphify extract <repo> --code-only`; `graphify update` wird nicht
+  aufgerufen; `--force` erscheint in keinem automatisch ausgelösten Lauf,
+  sondern nur in einer vom Nutzer ausdrücklich bestätigten Reparatur; das
+  Debounce ist an den gemessenen inkrementellen Kosten bemessen, nicht an der
+  verworfenen 9–12-s-Annahme.
+- **Rollback:** Umsetzungsregel ohne Vertragswirkung; durch einen neuen Eintrag
+  aufhebbar, falls eine spätere Graphify-Version `update` mit `--code-only`
+  anbietet.
+
+---
+
+### C-092 – Die 10-ms-Angabe gilt warm, der Graph wird asynchron vorgeladen
+
+- **Passage:** 0.4 Ledgerzeile C-092 und Abnahmeblock; 13.1 Code-Sicht,
+  Ergänzung; 16.2 Präzisierung; 24; 28 Zuordnung und dieser Eintrag; 41.
+- **Art:** Präzisierung.
+- **Evidenz:** Messung vom 17.09.2026. Kaltstart 26,35 ms bei 11,1 MB Graph
+  (lesen 5,89 ms, parsen 15,24 ms, indizieren 5,23 ms, +21,9 MB Heap);
+  unabhängig nachgemessen 20,72 ms bei 9,7 MB (3,70 / 13,34 / 3,67 ms,
+  +20,3 MB Heap). Warm liegt die Abhängigenabfrage bei p50 0,003 ms und p90
+  0,005 ms über 200 Abfragen. Die Angabe „höchstens etwa 10 ms“ in 16.2
+  (C-089) beschreibt damit den warmen Pfad; der Kaltstart passt nicht in die
+  Lane.
+- **Gate:** V2.0 nach 26.2, zusammen mit dem Latenzziel der Write/Edit-Lane aus
+  9.4 und 16.3.
+- **Datenquelle:** die Kalt- und Warmläufe vom 17.09.2026; die Lane-Telemetrie
+  aus 9.4.
+- **Abnahmekriterium:** Der Graph wird beim Aktivieren und nach einem
+  Daemonstart asynchron vorgeladen. Ein Hook, der auf einen noch nicht
+  geladenen Graphen trifft, überspringt den Block still und stößt nur das Laden
+  an; auf das Laden wird nie synchron gewartet. Über alle geladenen Graphen
+  gilt ein daemonweites LRU-Heapbudget von 256 MB. Die Write/Edit-Lane hält ihr
+  p90-Ziel auch im ersten Lauf nach einem Daemonstart.
+- **Rollback:** Die Code-Sicht ist abschaltbar; ohne sie fällt der Block weg
+  und die Lane arbeitet wie vor C-089.
+
+---
+
+### C-093 – `graph.json` ist unvertrauenswürdige Eingabe mit bezifferten Grenzen
+
+- **Passage:** 0.4 Ledgerzeile C-093 und Abnahmeblock; 13.1 Code-Sicht,
+  Ergänzung; 23; 24; 28 Zuordnung und dieser Eintrag; 41.
+- **Art:** Vertragsergänzung.
+- **Evidenz:** `graph.json` wird von einem fremden Werkzeug erzeugt, trägt
+  keine Schemaversion — das Feld `graph` ist `{}` — und liegt in einem
+  Repository, das dem Nutzer nicht gehören muss; sein Inhalt erreicht wörtlich
+  den Agentenkontext. Die Auszählung des am 17.09.2026 erzeugten Graphen
+  ergab fünfzehn Relationstypen, nicht vier, und zeigte zwei Fallen: `extends`
+  bezeichnet dort tsconfig-Vererbung und nicht Klassenvererbung, und der
+  Herkunftsvermerk hängt an der einzelnen Kante, nicht am Relationstyp —
+  `calls` mischt 4.363 extrahierte mit 153 erschlossenen Kanten. `indirect_call`
+  ist zu 100 % `INFERRED`. Auch unter `--code-only` enthält der Graph
+  Nicht-Code-Knoten: 220 `concept` und 24 `rationale`.
+- **Gate:** V2.0 nach 26.2, gemeinsam mit den Grenzen aus 23.
+- **Datenquelle:** die Auszählung des Graphen vom 17.09.2026; Issue #575.
+- **Abnahmekriterium:** Vor jeder Nutzung prüft der Leser 64 MB Dateigröße,
+  500.000 Knoten, 2.000.000 Kanten und 512 Byte je String; er akzeptiert nur
+  normalisierte repo-relative Pfade ohne `..`-Flucht und ohne absolute Pfade
+  und weist Steuer- und Bidi-Zeichen zurück; ausgegeben wird ausschließlich
+  über eine Feld-Allowlist. Als Abhängigkeitskante gelten ausschließlich
+  `calls`, `imports`, `imports_from`, `inherits`, `re_exports`,
+  `dynamic_import` und `implements`, jeweils nur mit Herkunft `EXTRACTED`;
+  `contains` und `method` sind Struktur und keine Abhängigkeit; alle übrigen
+  Relationstypen sind ausgeschlossen. Der Vertrauensfilter greift je Kante.
+  Nicht-Code-Knoten erreichen keinen Hook-Kontext. Jeder Verstoß führt allein
+  zu „Code-Awareness nicht verfügbar“; Recall selbst bleibt unbeeinträchtigt.
+- **Rollback:** Die Grenzen sind Leserregeln ohne Wirkung auf den Vault; sie
+  lassen sich einzeln lockern, sobald eine Graphify-Version eine
+  Schemaversion und eine verlässliche Herkunftsangabe je Relation liefert.
+
+---
+
+### C-094 – macOS und Linux als Plattform-Scope, Rename nur über Git-Evidenz
+
+- **Passage:** 0.4 Ledgerzeile C-094 und Abnahmeblock; 23; 24; 28 Zuordnung und
+  dieser Eintrag; 41.
+- **Art:** Vertragsergänzung.
+- **Evidenz:** Graphifys Prozess-Lock beruht auf `fcntl` und ist unter Windows
+  ein No-op; `nice` ist nicht portabel; und `.git` ist in Worktrees eine Datei
+  statt eines Verzeichnisses, weshalb Git-Pfade über
+  `git rev-parse --git-path` aufgelöst werden. Locking, Git-Pfadauflösung,
+  Worktrees und Prozessabbruch sind damit plattformabhängig und für Windows
+  ungeprüft. Der Graph liefert außerdem keine `rename`- oder `move`-Relation.
+- **Gate:** V2.0 nach 26.2; eine Windows-Zusage setzt eine Windows-CI über
+  diese vier Punkte voraus.
+- **Datenquelle:** Graphify 0.9.63 und die Prüfung vom 17.09.2026; Issue #581.
+- **Abnahmekriterium:** Die Code-Awareness ist für macOS und Linux zugesagt und
+  wird dort geprüft; unter Windows meldet sie sich als nicht verfügbar, statt
+  halb zu funktionieren. Recall bringt einen eigenen, plattformübergreifenden
+  Repo-Lock mit und verlässt sich nicht auf Graphifys Lock. Umbenennungen
+  werden ausschließlich über Git-Evidenz (`git diff --name-status -M`) erkannt;
+  ohne diese Evidenz wird kein Rename behauptet und keiner aus ähnlichen
+  Symbolmengen geschlossen.
+- **Rollback:** Der Scope ist erweiterbar, ohne Bestehendes zu ändern: Sobald
+  die vier Punkte in einer Windows-CI grün sind, hebt ein neuer Eintrag die
+  Einschränkung auf.
+
 ## 29. Quellen- und Behauptungsmatrix
 
 Alle Angaben wurden am **25. Juli 2026** durch Abruf der jeweiligen Primärquelle
@@ -7085,7 +7286,7 @@ beschreibt abgelaufene Memories als „(or excluded if expired)"; der Code dämp
 sie nur auf 20 %.
 
 **Nächste freie ID: C-083.** *(Historischer Stand vom 26.07.2026. Die aktuell
-gültige nächste freie ID steht am Ende von Abschnitt 40.)*
+gültige nächste freie ID steht am Ende von Abschnitt 41.)*
 
 ## 33. Übergabe nach der Vertragsänderung C-083
 
@@ -7143,7 +7344,7 @@ zusätzlich der zweite Hook-Wortlaut für Arm A als Produkt- und Textentscheidun
 und die Aktivierungsentscheidung, von der Arm B abhängt.
 
 **Nächste freie ID: C-084.** *(Stand dieses Abschnitts. Die aktuell gültige
-nächste freie ID steht am Ende von Abschnitt 40.)*
+nächste freie ID steht am Ende von Abschnitt 41.)*
 
 ## 34. Übergabe nach der Vertragsergänzung C-084
 
@@ -7194,7 +7395,7 @@ Fehler statt stillem Verwerfen.
    verweisen soll, damit die beiden Fassungen nicht auseinanderlaufen.
 
 **Nächste freie ID: C-085.** *(Stand dieses Abschnitts. Die aktuell gültige
-nächste freie ID steht am Ende von Abschnitt 40.)*
+nächste freie ID steht am Ende von Abschnitt 41.)*
 
 ## 35. Übergabe nach der Vertragsergänzung C-085
 
@@ -7243,7 +7444,7 @@ bezeichnet dieselbe Größe.
    die Frage sich anders stellt — aber sie stellt sich.
 
 **Nächste freie ID: C-086.** *(Stand dieses Abschnitts. Die aktuell gültige
-nächste freie ID steht am Ende von Abschnitt 40.)*
+nächste freie ID steht am Ende von Abschnitt 41.)*
 
 ## 36. Übergabe nach der Präzisierung C-086
 
@@ -7295,7 +7496,7 @@ Qualitätsgrößen bewegt sich um eine einzige Stelle.
    Kalibrierung.
 
 **Nächste freie ID: C-087.** *(Stand dieses Abschnitts. Die aktuell gültige
-nächste freie ID steht am Ende von Abschnitt 40.)*
+nächste freie ID steht am Ende von Abschnitt 41.)*
 
 ## 37. Übergabe nach der Vertragsänderung C-087
 
@@ -7339,7 +7540,7 @@ Ausreißer-Tail, und die Budgethöhe stand noch nicht fest.
    PLAN und Milestone-Beschreibungen geändert werden.
 
 **Nächste freie ID: C-088.** *(Stand dieses Abschnitts. Die aktuell gültige
-nächste freie ID steht am Ende von Abschnitt 40.)*
+nächste freie ID steht am Ende von Abschnitt 41.)*
 
 ## 38. Übergabe nach dem Statusnachtrag C-088
 
@@ -7378,7 +7579,7 @@ Stand ruht, bleibt dieser als damaliger Stand stehen; kein Urteil ändert sich.
    1.0.0 am 14.09.2026.
 
 **Nächste freie ID: C-089.** *(Stand dieses Abschnitts. Die aktuell gültige
-nächste freie ID steht am Ende von Abschnitt 40.)*
+nächste freie ID steht am Ende von Abschnitt 41.)*
 
 ## 39. Übergabe nach der Architekturentscheidung C-089
 
@@ -7416,7 +7617,7 @@ bleibt in Epic #572 und #573–#580; dieses Dokument hält die Grenzen fest.
    tragen; der Leser aus #575 prüft das Format bei jedem Laden.
 
 **Nächste freie ID: C-090.** *(Stand dieses Abschnitts. Die aktuell gültige
-nächste freie ID steht am Ende von Abschnitt 40.)*
+nächste freie ID steht am Ende von Abschnitt 41.)*
 
 ## 40. Übergabe nach der Vertragsänderung C-090
 
@@ -7450,4 +7651,51 @@ optional, und ohne Code-Graph arbeitet Recall wie bisher.
 2. Ob die Issues #572–#580 im Milestone V2.0 als Promotionsbedingung
    gekennzeichnet werden sollen.
 
-**Nächste freie ID: C-091.**
+**Nächste freie ID: C-091.** *(Stand dieses Abschnitts. Die aktuell gültige
+nächste freie ID steht am Ende von Abschnitt 41.)*
+
+## 41. Übergabe nach der Gegenprüfung C-091 bis C-094
+
+**Was geändert wurde.** Diese Fassung fügt die vier Einträge der zwölften
+Reviewrunde hinzu, die aus der Gegenprüfung der Umsetzungsissues #573–#580 vor
+dem Bau hervorgingen. Geändert wurden ausschließlich die folgenden Passagen:
+
+| Passage | Delta |
+|---|---|
+| Präambel: Stand-Datum, Ledgerstand, Entstehung, nächste freie ID | C-091–C-094 |
+| 0.4 Korrekturverweise an C-089, neue Ledgerzeilen C-091 bis C-094 | C-091–C-094 |
+| 0.4 Abnahmeblock und nächste freie ID | C-091–C-094 |
+| 13.1 Code-Sicht, Ergänzung zu Relations-Allowlist und Vorladen | C-092, C-093 |
+| 16.2 Präzisierung der 10-ms-Angabe | C-092 |
+| 23 zwei neue Punkte | C-093, C-094 |
+| 24 sechs neue Punkte | C-091–C-094 |
+| 28 Überschrift, Vorspann, Zuordnungstabelle, Delta-Einträge C-091 bis C-094 | C-091–C-094 |
+| 32–40 Verweis auf die aktuell gültige ID | C-091–C-094 |
+| 41 dieser Abschnitt | — |
+
+Alle übrigen Passagen sind unangetastet. Die historischen Aussagen aus C-089
+und C-090 bleiben stehen; die Korrekturen kommen als eigene Einträge dazu.
+Produktcode wurde nicht verändert.
+
+**Was die Gegenprüfung bewirkt.** Vier Annahmen der Umsetzung sind an
+Messungen geprüft und dabei teils widerlegt worden: Der Aktualisierungsweg
+`graphify update` fällt weg, weil er die Code-only-Grenze verletzt (C-091). Die
+10-ms-Angabe gilt warm, nicht kalt, und der Graph wird deshalb asynchron
+vorgeladen (C-092). `graph.json` ist fremde Eingabe und bekommt bezifferte
+Grenzen sowie eine Relations-Allowlist von sieben statt vier Kantentypen
+(C-093). Der Plattform-Scope ist auf macOS und Linux begrenzt, und
+Umbenennungen werden nur über Git-Evidenz erkannt (C-094).
+
+**Was besonders zu prüfen ist.**
+
+1. Ob das Debounce für den inkrementellen `extract`-Lauf an den gemessenen
+   Kosten (1,53–2,68 s) neu bemessen wird; die alte 9–12-s-Annahme trägt nicht
+   mehr.
+2. Ob das LRU-Heapbudget von 256 MB bei mehreren gleichzeitig geöffneten
+   Repositorys ausreicht oder als Lane-Degradierung sichtbar wird.
+3. Ob die Relations-Allowlist mit einer künftigen Graphify-Version erneut
+   ausgezählt werden muss; sie ist an den Graphen vom 17.09.2026 gebunden.
+4. Wann die Windows-CI über Locking, Git-Pfadauflösung, Worktrees und
+   Prozessabbruch entsteht, die den Scope aus C-094 erweitern würde.
+
+**Nächste freie ID: C-095.**

@@ -14,6 +14,8 @@ import { parseCodexMcpServer, codexServerMatches } from "../src/cli/codex-cli.js
 import { planCodexHooks, patchCodexHooks } from "../src/cli/adapters/codex.js";
 import { applyPatchPaths, normalizeWritePayload } from "../src/hook-write-input.js";
 import { hookClient } from "../src/hook-surface.js";
+import { codeTargets, MAX_CODE_TARGETS } from "../src/write-lane.js";
+import { repoRelative } from "../src/code-graph/dependents-block.js";
 
 test("Codex MCP JSON matches the same stable stdio block ChatGPT desktop reads", () => {
   const raw = JSON.stringify({
@@ -148,6 +150,38 @@ test("apply_patch payloads expose target paths and retain the patch body", () =>
   assert.equal(normalized?.tool_input?.file_path, "packages/daemon/src/a.ts");
   assert.deepEqual(normalized?.tool_input?.file_paths, ["packages/daemon/src/a.ts", "packages/daemon/src/b.ts"]);
   assert.equal(normalized?.tool_input?.command, command);
+});
+
+test("code blocks see every apply_patch target as an absolute path (#584)", () => {
+  const cwd = "/work/repo";
+  const normalized = normalizeWritePayload({
+    tool_name: "apply_patch",
+    tool_input: {
+      command: [
+        "*** Begin Patch",
+        "*** Update File: packages/daemon/src/index.ts",
+        "*** Update File: packages/core/src/save.ts",
+        "*** End Patch",
+      ].join("\n"),
+    },
+  })!;
+  const input = normalized.tool_input as Record<string, unknown>;
+  const targets = codeTargets(input, input.file_path as string, cwd);
+  assert.deepEqual(targets, [
+    join(cwd, "packages/daemon/src/index.ts"),
+    join(cwd, "packages/core/src/save.ts"),
+  ]);
+  // The repro from the review: the raw path was refused, the resolved one is not.
+  assert.equal(repoRelative(cwd, "packages/daemon/src/index.ts"), null);
+  assert.equal(repoRelative(cwd, targets[0]!), "packages/daemon/src/index.ts");
+});
+
+test("code targets: absolute paths pass through, duplicates collapse, the count is capped", () => {
+  assert.deepEqual(codeTargets({}, "/abs/a.ts", "/cwd"), ["/abs/a.ts"]);
+  const many = Array.from({ length: MAX_CODE_TARGETS + 3 }, (_, i) => `f${i}.ts`);
+  const t = codeTargets({ file_paths: ["f0.ts", "f0.ts", ...many] }, "f0.ts", "/cwd");
+  assert.equal(t.length, MAX_CODE_TARGETS);
+  assert.equal(new Set(t).size, t.length);
 });
 
 test("surface detection prefers explicit Codex markers and keeps Claude default", () => {
