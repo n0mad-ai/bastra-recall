@@ -11,7 +11,7 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -193,6 +193,21 @@ describe("the build lock against adversarial interleavings", () => {
     // next generation, which is what a late `close` from the child triggers.
     await mine.release();
     assert.equal(await readLock(dir), null, "a late release must free the lock at once");
+  });
+
+  it("keeps numeric generation markers bounded across normal acquire/release cycles", async (t) => {
+    const dir = await tempDir("bastra-lock-generations-");
+    t.after(() => rm(dir, { recursive: true, force: true }));
+
+    for (let i = 0; i < 20; i++) {
+      const lock = await acquireRepoLock(dir, { heartbeat: false });
+      assert.ok(lock !== null);
+      await lock.release();
+    }
+
+    const markerDir = join(dir, ".bastra-build.lock.gens");
+    const numeric = (await readdir(markerDir)).filter((name) => /^\d+$/.test(name));
+    assert.ok(numeric.length <= 4, `generation markers grew to ${numeric.length}: ${numeric.join(", ")}`);
   });
 
   it("lets exactly one of two REAL processes build, over many rounds", async (t) => {

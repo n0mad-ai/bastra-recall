@@ -250,7 +250,7 @@ export async function acquireRepoLock(
     const record = newRecord(gen);
     const handle = await publish(path, record, "replace");
     if (handle === null) continue;
-    void pruneOldGenerations(gens, gen);
+    await pruneOldGenerations(gens, gen);
     return makeLock(path, gens, handle, record, tookOver, renewMs, opts.heartbeat !== false);
   }
   return null;
@@ -297,11 +297,18 @@ const GENERATION_KEEP = 4;
 async function pruneOldGenerations(gens: string, gen: number): Promise<void> {
   const drop = gen - GENERATION_KEEP;
   if (drop < 1) return;
-  try {
-    await rm(join(gens, String(drop)), { recursive: true, force: true });
-  } catch {
-    /* a stray empty directory costs nothing */
-  }
+  const names = await readdir(gens).catch(() => [] as string[]);
+  await Promise.all(
+    names.map(async (name) => {
+      const n = Number(name);
+      if (!Number.isInteger(n) || n < 1 || n > drop) return;
+      try {
+        await rm(join(gens, name), { recursive: true, force: true });
+      } catch {
+        /* another process may already have swept it */
+      }
+    }),
+  );
 }
 
 /** True when this record's holder is provably or presumably gone. */
@@ -379,6 +386,7 @@ async function freeLock(path: string, gens: string, record: LockRecord): Promise
   if (!(await claimTurn(gens, String(gen)))) return;
   const handle = await publish(path, { ...record, gen, state: "free" }, "replace");
   await closeQuietly(handle);
+  if (handle !== null) await pruneOldGenerations(gens, gen);
 }
 
 /**
