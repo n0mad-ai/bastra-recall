@@ -39,10 +39,13 @@ export interface DerivedClaimResult {
   source: string;
   case_ref?: string;
   status: DerivedClaimStatus;
-  /** What the source holds now: a count for the count resolver. */
+  /** What the source holds now: a count for the count resolver, the number of
+   *  occurrences for `quote.v1`. */
   value?: number;
   /** Echoed back so a reader sees both halves of a `differs` next to each other. */
   expect?: number;
+  /** The string `quote.v1` looked for. */
+  exact?: string;
   reason?: "outside_vault" | "unavailable" | "not_a_file" | "too_large";
 }
 
@@ -60,12 +63,17 @@ async function resolveClaim(vaultRoot: string, claim: DerivedClaim): Promise<Der
     source: claim.source,
     ...(claim.case_ref === undefined ? {} : { case_ref: claim.case_ref }),
     ...(claim.expect === undefined ? {} : { expect: claim.expect }),
+    ...(claim.exact === undefined ? {} : { exact: claim.exact }),
   };
   let text: string;
   try {
     text = await readSource(vaultRoot, claim.source);
   } catch (error) {
     return { ...base, status: "unverifiable", reason: reasonFor(error) };
+  }
+  if (claim.resolver === "quote.v1") {
+    const value = occurrences(text, claim.exact ?? "");
+    return { ...base, value, status: value === 1 ? "matches" : value === 0 ? "gone" : "ambiguous" };
   }
   const value = countMarkdownNumberedList(text);
   return {
@@ -102,6 +110,13 @@ async function readSource(vaultRoot: string, source: string): Promise<string> {
 function reasonFor(error: unknown): DerivedClaimResult["reason"] {
   if (error instanceof SourceOutOfBounds) return error.reason;
   return error instanceof Error && error.message.includes("outside") ? "outside_vault" : "unavailable";
+}
+
+/** How often `needle` stands in `text`, counting overlaps apart. */
+function occurrences(text: string, needle: string): number {
+  let found = 0;
+  for (let at = text.indexOf(needle); at !== -1; at = text.indexOf(needle, at + needle.length)) found += 1;
+  return found;
 }
 
 function countMarkdownNumberedList(text: string): number {
