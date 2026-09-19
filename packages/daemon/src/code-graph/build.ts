@@ -194,9 +194,12 @@ export async function buildCodeGraph(opts: BuildOptions): Promise<BuildResult> {
     return { ok: false, reason: "locked", detail: graphDir };
   }
 
-  // A build whose child outlived SIGKILL keeps the lock: releasing it would
-  // invite a second Graphify into a directory the first one can still write to,
-  // which is the one thing this lock exists to prevent (#582 counter-review 3).
+  // A build whose child outlived SIGKILL keeps the lock FILE: releasing it
+  // would invite a second Graphify into a directory the first one can still
+  // write to, which is the one thing this lock exists to prevent (#582
+  // counter-review 3). What it does not keep is the lease — `spawnGraphify`
+  // suspends the heartbeat in that case, so the record ages out on its own
+  // and the repository unblocks without a daemon restart (counter-review 4).
   let keepLock = false;
   try {
     const run = await runBuild({ ...opts, bin, args, graphDir, lock });
@@ -348,6 +351,21 @@ function spawnGraphify(ctx: RunContext): Promise<SpawnOutcome> {
       timers.push(setTimeout(() => child.kill("SIGKILL"), KILL_GRACE_MS));
       timers.push(
         setTimeout(() => {
+          // THE LOCK IS LEFT, THE LEASE IS NOT (#582 counter-review 4). Keeping
+          // the lock meant keeping the RepoLock object alive, heartbeat and
+          // all — so the lease was renewed every five seconds for as long as
+          // the daemon lived, the lock never went stale, and every refresh of
+          // this repository retried `locked` until the daemon was restarted.
+          // `suspend()` stops the beat and drops the descriptor while leaving
+          // the record on disk: the stuck child is protected for
+          // LOCK_STALE_MS, and then the repository unblocks by itself.
+          ctx.lock.suspend();
+          // And if the child does exit later after all, the lock goes back the
+          // moment it does rather than waiting out the stale window.
+          child.once("close", () => {
+            void ctx.lock.release();
+          });
+          child.unref?.();
           finish({
             ok: false,
             reason: "stuck",

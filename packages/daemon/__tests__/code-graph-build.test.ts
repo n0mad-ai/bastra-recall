@@ -233,8 +233,11 @@ describe("buildCodeGraph against a stand-in binary", () => {
         "#!/bin/sh",
         `if [ "$1" = "--version" ]; then echo "graphify, version 0.9.63"; exit 0; fi`,
         "trap '' TERM",
+        // `wait` is a shell builtin, so the grandchild is the ONLY process
+        // left holding the stderr pipe once the shell is SIGKILLed — which is
+        // what lets the test end the stuck state on purpose below.
         "sleep 30 & echo $! > " + JSON.stringify(pidFile),
-        "sleep 30",
+        "wait",
         "",
       ].join("\n"),
       "utf8",
@@ -257,6 +260,20 @@ describe("buildCodeGraph against a stand-in binary", () => {
       null,
       "the lock must be LEFT BEHIND: it expires as stale, it is never handed over early",
     );
+
+    // AND THE LEASE MUST BE GONE WITH IT (#582 counter-review 4). Keeping the
+    // lock used to mean keeping the heartbeat, so the record never aged and
+    // `refresh` retried `locked` until the daemon was restarted. The record is
+    // left to expire — and when the child does exit after all, the lock goes
+    // back at once rather than waiting out the stale window.
+    process.kill(Number((await readFile(pidFile, "utf8")).trim()), "SIGKILL");
+    for (let i = 0; i < 100; i++) {
+      if ((await readLock(graphDirOf(repo))) === null) break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    const freed = await acquireRepoLock(graphDirOf(repo), { heartbeat: false });
+    assert.ok(freed !== null, "a child that exits late must free the lock immediately");
+    await freed.release();
   });
 
   it("reports `locked` when another holder is building the same repo", async (t) => {
@@ -351,8 +368,12 @@ describe("the repo build lock", () => {
 
     const mine = await acquireRepoLock(dir, { heartbeat: false });
     assert.ok(mine !== null);
-    const successor = { ...mine.record, token: "someone-else" };
-    await writeFile(lockPath(dir), JSON.stringify(successor), "utf8");
+    // A real takeover, so the successor owns the next generation's marker —
+    // which is what makes the replaced holder's release a no-op.
+    const taken = await acquireRepoLock(dir, { staleMs: -1, heartbeat: false });
+    assert.ok(taken !== null);
+    t.after(() => taken.release());
+    await writeFile(lockPath(dir), JSON.stringify({ ...taken.record, token: "someone-else" }), "utf8");
 
     await mine.release();
     const still = await readLock(dir);

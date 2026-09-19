@@ -32,58 +32,71 @@
  *      {@link LOCK_RENEW_MS}, so a lock only looks stale after several
  *      missed beats — a build that takes a minute is never stolen from.
  *
- *   3. Two daemons race for the same free lock. The lock file is created
- *      ALREADY CARRYING ITS RECORD: the record is written to a private
- *      temporary file and `link()`ed onto the lock path, which fails with
- *      EEXIST when someone else got there first. Exactly one of them creates
- *      the file, and the loser gets `null` rather than a queue position. That
- *      is deliberate — a refresh that cannot run now is re-enqueued by the
- *      coordinator, and a queue of builds waiting on each other would be
+ *   3. Two daemons race for the same lock. THE LOCK FILE IS NEVER DELETED,
+ *      and every change to it has to win a turn first (#582 counter-review 4).
+ *
+ *      WHY NOT "CHECK THE TOKEN, THEN REMOVE THE PATH", which is what taking
+ *      over a stale lock did before: those are two steps. Four contenders
+ *      reading the same stale record all passed the token check; the first
+ *      removed the file and published its successor, and a loser whose read
+ *      had landed a moment earlier removed THAT one and published its own.
+ *      Both then believed they held the repository — 386 double holdings in
+ *      875 acquisitions, measured. No ordering of a check and a delete fixes
+ *      it, because POSIX has no compare-and-delete to build one on.
+ *
+ *      SO THE LOCK IS A CHAIN OF GENERATIONS. Every record carries `gen`, and
+ *      writing generation N means first creating the directory `N` under
+ *      `<lock>.gens` — `mkdir` is atomic and fails with EEXIST, so exactly one
+ *      process in the world may ever write generation N. A contender numbers
+ *      its generation one past the record it read, so two contenders reading
+ *      the same record compete for the same marker and exactly one wins; the
+ *      loser reads again and finds the successor. The record itself is then
+ *      `rename`d into place, which is atomic and leaves no window where the
+ *      path is missing or empty. Releasing is the same move: it publishes a
+ *      `free` record as the next generation, so a holder that was taken over
+ *      loses the `mkdir` and its release does nothing — which is right,
+ *      because it has nothing left to release.
+ *
+ *      TWO CASES HAVE NO PREDECESSOR TO NUMBER FROM, and each has its own
+ *      atomic step. A lock path that does not exist is published with
+ *      `link()`, which creates the name and the record in ONE step and fails
+ *      with EEXIST for everyone else — numbering cannot settle it, because
+ *      two contenders reading an empty directory would pick generations of
+ *      their own and both succeed. A lock file nobody can PARSE (an older
+ *      format, an interrupted write from before this scheme) is replaced by
+ *      whoever wins a marker named after those very bytes, so contenders
+ *      seeing the same junk compete for the same turn, and different bytes
+ *      are a different turn — this can never wedge a repository for good. It
+ *      is only done once the file is older than {@link UNREADABLE_GRACE_MS},
+ *      because "cannot be parsed yet" is also what a competitor mid-publish
+ *      looked like before `link` and `rename` closed that window.
+ *
+ *      The loser of any of these gets `null` rather than a queue position.
+ *      That is deliberate — a refresh that cannot run now is re-enqueued by
+ *      the coordinator, and a queue of builds waiting on each other would be
  *      strictly worse than one build and one follow-up.
  *
- *      WHY NOT `open(path, "wx")` AND THEN WRITE, which is what this did
- *      before (#582 counter-review): between the two calls the lock file
- *      exists and is EMPTY. A competitor reading it in that window parses
- *      nothing, judges the lock unreadable, removes it — and both processes
- *      then believe they hold the lock and build at once, which is the one
- *      thing this module exists to prevent. `link()` publishes the name and
- *      the content in a single step, so that window does not exist. The same
- *      race is covered a second way, for a lock file written by an older
- *      Recall or by an interrupted write: an unreadable lock is only removed
- *      once it is older than {@link UNREADABLE_GRACE_MS}.
- *
  * A STOLEN LOCK IS STOLEN SAFELY, and "safely" means the former holder can
- * neither write to nor delete its successor's lock (#582 counter-review 3).
- * Checking a token and then acting on the PATH is not enough for that: between
- * the check and the act a stale-takeover can replace the file, and the loser
- * then `rename`s its heartbeat over — or `rm`s — a lock somebody else is
- * building under. So the holder keeps the OPEN FILE DESCRIPTOR of the lock it
- * created and works through that, not through the name:
+ * neither write to nor free its successor's lock (#582 counter-review 3 and 4).
  *
- *   RENEW writes through the holder's own descriptor. A takeover unlinks the
- *   name, so the descriptor then refers to an inode no name points at any
- *   more: the heartbeat lands nowhere and the successor's lock is untouched.
- *   There is no window at all here, because the name is never used.
+ *   RENEW writes through the holder's OWN DESCRIPTOR, never through the lock
+ *   path. A takeover renames its own file over the name, so the descriptor
+ *   then refers to an inode no name points at any more: the heartbeat lands
+ *   nowhere and the successor's lock is untouched. There is no window at all
+ *   here, because the name is never used.
  *
- *   RELEASE unlinks only when the file at the path is STILL the holder's own
- *   inode (`fstat` against `stat`), checked with nothing awaited before the
- *   `unlink`. Node has no `flock` and POSIX has no compare-and-delete, so the
- *   inode comparison is the closest available, and what is left is a window of
- *   microseconds in which a lock that was ALREADY judged stale could be
- *   removed by its former holder. A lock is only judged stale after
- *   {@link LOCK_STALE_MS} without a heartbeat, so reaching that window means
- *   the former holder had not been running for half a minute. (On a filesystem
- *   that reports no inode numbers the comparison degrades to the token check
- *   that guarded this before, which is no worse than the previous behaviour.)
+ *   RELEASE claims the next generation and publishes a `free` record. A
+ *   successor already owns that marker, so the replaced holder's release is a
+ *   no-op. There is no token comparison and no unlink to race with.
  *
  * NOT covered: a checkout on a network share where O_EXCL is not atomic —
  * the same limit `path-lock.ts` documents, and the same judgement: a lease
  * with a quorum is not what a code-graph rebuild is worth.
  */
 
-import { link, mkdir, open, readFile, rm, stat, type FileHandle } from "node:fs/promises";
+import { link, mkdir, open, readdir, readFile, rename, rm, stat, type FileHandle } from "node:fs/promises";
 import { hostname } from "node:os";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { join } from "node:path";
 
 /** The lock file, inside the graph directory next to the manifest. */
@@ -115,12 +128,20 @@ export const UNREADABLE_GRACE_MS = 2_000;
 export interface LockRecord {
   pid: number;
   host: string;
-  /** Random per acquisition, so a holder only ever removes its OWN lock. */
+  /** Random per acquisition, so a holder only ever writes its OWN record. */
   token: string;
   /** When this holder took the lock, ISO. */
   startedAt: string;
   /** Last heartbeat, ISO. This — not `startedAt` — decides staleness. */
   renewedAt: string;
+  /**
+   * Which generation of the lock this record is. Strictly increasing, and the
+   * thing acquisitions actually compete for: writing generation N requires
+   * winning `mkdir` on that generation's marker, which exactly one process can.
+   */
+  gen: number;
+  /** `free` is a released lock: the record stays, the holder does not. */
+  state: "held" | "free";
 }
 
 export interface RepoLock {
@@ -130,8 +151,19 @@ export interface RepoLock {
   record: LockRecord;
   /** Whether this acquisition took over a lock left behind by someone else. */
   tookOver: boolean;
-  /** Release. Idempotent, never throws, never removes a foreign lock. */
+  /** Release. Idempotent, never throws, never frees a foreign lock. */
   release(): Promise<void>;
+  /**
+   * Stop beating and let go of the descriptor WITHOUT releasing (#582
+   * counter-review 4). For the one case that must not release and must not
+   * hold on either: a build whose child survived SIGKILL and may still be
+   * writing into the graph directory. Releasing would invite a second
+   * Graphify in; keeping the heartbeat running would renew the lease forever,
+   * so the repository would never unblock short of a daemon restart. After
+   * `suspend()` the record simply ages out over {@link LOCK_STALE_MS} — and
+   * `release()` still works, so a child that exits later frees it at once.
+   */
+  suspend(): void;
 }
 
 export interface AcquireOptions {
@@ -145,6 +177,11 @@ export function lockPath(graphDir: string): string {
   return join(graphDir, LOCK_NAME);
 }
 
+/** Where the per-generation claim markers live. One empty directory each. */
+function gensDir(graphDir: string): string {
+  return join(graphDir, `${LOCK_NAME}.gens`);
+}
+
 /**
  * Take the build lock for one repository, or return null when another live
  * holder has it. Never waits: the caller decides what "busy" means.
@@ -156,46 +193,120 @@ export async function acquireRepoLock(
   const staleMs = opts.staleMs ?? LOCK_STALE_MS;
   const renewMs = opts.renewMs ?? LOCK_RENEW_MS;
   const path = lockPath(graphDir);
+  const gens = gensDir(graphDir);
 
-  await mkdir(graphDir, { recursive: true });
+  await mkdir(gens, { recursive: true });
 
-  // Two attempts, not a loop: create, and — if the lock was freed or a stale
-  // one was removed — create once more. A third attempt could only mean
-  // another process won the freed lock, which is a legitimate "busy".
+  // Two attempts, not a loop: claim a turn, and — if another contender claimed
+  // it first — read what it published and claim once more. A third attempt
+  // could only mean a third contender won, which is a legitimate "busy".
   let tookOver = false;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const record = newRecord();
-    const handle = await tryCreate(path, record);
-    if (handle !== null) {
-      return makeLock(path, handle, record, tookOver, renewMs, opts.heartbeat !== false);
-    }
     const state = await readState(path);
-    // ABSENT IS NOT UNREADABLE, and conflating the two handed the repository
-    // to two builders (#582 counter-review): the holder had released between
-    // our create and our read, so we saw nothing, decided to clear the lock
-    // and removed the file the NEXT holder had published in between. Nothing
-    // is removed here any more — there is nothing to remove, and the second
-    // create attempt is the whole answer.
-    if (state.kind === "free") continue;
-    if (state.kind === "held") {
-      if (!isStaleLock(state.record, staleMs)) return null;
-      await removeIfUnchanged(path, state.record);
-      tookOver = true;
-      continue;
+
+    // NO LOCK FILE AT ALL. There is no predecessor to number from, so the
+    // generation cannot decide this one — two contenders reading an empty
+    // directory would pick different generations and BOTH succeed, which is
+    // how the first version of this let two processes build. Creating the
+    // name exclusively is what settles it: `link` either publishes the record
+    // or fails with EEXIST, and it never leaves an empty file behind.
+    if (state.kind === "free") {
+      const record = newRecord(await nextGeneration(gens, null));
+      const handle = await publish(path, record, "create");
+      if (handle === null) continue;
+      return makeLock(path, gens, handle, record, tookOver, renewMs, opts.heartbeat !== false);
     }
-    // Unreadable (truncated, or written by an older format) counts as stale:
-    // a lock file nobody can prove is alive would otherwise block the repo
-    // for good. Only once it has had its grace period, though: a lock file
-    // that just appeared may be a competitor still publishing it.
-    if (await isYoungerThan(path, UNREADABLE_GRACE_MS)) return null;
-    await removeIfStillUnreadable(path);
-    tookOver = true;
+
+    if (state.kind === "unreadable") {
+      // A lock file nobody can parse is normally junk — an interrupted write,
+      // an older format — and blocking the repository on it forever would be
+      // worse than replacing it. Only once it has had its grace period,
+      // though: a file that just appeared may be a competitor mid-publish.
+      if (await isYoungerThan(path, UNREADABLE_GRACE_MS)) return null;
+      // Junk carries no generation, so the turn is claimed against the junk
+      // ITSELF: contenders that read the same bytes compete for the same
+      // marker and exactly one replaces them. Different bytes are a different
+      // marker, so this can never wedge a repository for good.
+      const claim = `reset-${digest(state.text)}`;
+      if (!(await claimTurn(gens, claim))) continue;
+      const record = newRecord(await nextGeneration(gens, null));
+      const handle = await publish(path, record, "replace");
+      if (handle === null) continue;
+      return makeLock(path, gens, handle, record, true, renewMs, opts.heartbeat !== false);
+    }
+
+    if (state.record.state === "held") {
+      if (!isStaleLock(state.record, staleMs)) return null;
+      tookOver = true;
+    }
+    const gen = state.record.gen + 1;
+    // THE ATOMIC STEP, and the whole of the exclusion (#582 counter-review 4).
+    // `mkdir` either creates the marker or fails with EEXIST, so exactly one
+    // process may ever succeed the record it just read. Nothing is deleted and
+    // nothing is checked-then-acted-upon, which is what the previous takeover
+    // did: several contenders read the same stale record, all passed the token
+    // check, and each removed the lock the one before it had just published.
+    if (!(await claimTurn(gens, String(gen)))) continue;
+    const record = newRecord(gen);
+    const handle = await publish(path, record, "replace");
+    if (handle === null) continue;
+    void pruneOldGenerations(gens, gen);
+    return makeLock(path, gens, handle, record, tookOver, renewMs, opts.heartbeat !== false);
   }
   return null;
 }
 
+function digest(text: string): string {
+  return createHash("sha1").update(text).digest("hex").slice(0, 16);
+}
+
+/**
+ * The generation to write when there is no readable predecessor: one past the
+ * furthest marker, so that a lock file removed by hand or written by an older
+ * Recall does not restart the chain at a number already in use. It is a
+ * NUMBER, not the exclusion — `link` and the reset marker are.
+ */
+async function nextGeneration(gens: string, _unused: null): Promise<number> {
+  let max = 0;
+  for (const name of await readdir(gens).catch(() => [] as string[])) {
+    const n = Number(name);
+    if (Number.isInteger(n) && n > max) max = n;
+  }
+  return max + 1;
+}
+
+/** True when this process, and only this process, won this turn's marker. */
+async function claimTurn(gens: string, name: string): Promise<boolean> {
+  try {
+    await mkdir(join(gens, name));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Markers are empty directories and they accumulate, one per acquisition and
+ * one per release. Everything far enough behind the current generation is gone
+ * for good — a contender that won a marker and has still not published after
+ * {@link GENERATION_KEEP} generations is not coming back, and {@link publish}
+ * refuses to write a generation the file has already passed anyway.
+ */
+const GENERATION_KEEP = 4;
+
+async function pruneOldGenerations(gens: string, gen: number): Promise<void> {
+  const drop = gen - GENERATION_KEEP;
+  if (drop < 1) return;
+  try {
+    await rm(join(gens, String(drop)), { recursive: true, force: true });
+  } catch {
+    /* a stray empty directory costs nothing */
+  }
+}
+
 /** True when this record's holder is provably or presumably gone. */
 export function isStaleLock(r: LockRecord, staleMs: number, now = Date.now()): boolean {
+  if (r.state === "free") return true;
   const beat = Date.parse(r.renewedAt);
   if (!Number.isFinite(beat)) return true;
   if (now - beat > staleMs) return true;
@@ -206,11 +317,13 @@ export function isStaleLock(r: LockRecord, staleMs: number, now = Date.now()): b
 
 /** The current holder's record, or null when the lock is free or unreadable. */
 export async function readLock(graphDir: string): Promise<LockRecord | null> {
-  return readRecord(lockPath(graphDir));
+  const record = await readRecord(lockPath(graphDir));
+  return record !== null && record.state === "held" ? record : null;
 }
 
 function makeLock(
   path: string,
+  gens: string,
   handle: FileHandle,
   record: LockRecord,
   tookOver: boolean,
@@ -218,58 +331,99 @@ function makeLock(
   heartbeat: boolean,
 ): RepoLock {
   let released = false;
+  let live: FileHandle | null = handle;
   // `unref()` so a pending heartbeat never keeps the daemon's event loop
   // alive — a CLI build must be able to exit the moment the build is done.
-  const timer = heartbeat
+  let timer = heartbeat
     ? setInterval(() => {
-        if (released) return;
-        void renew(handle, record);
+        if (live !== null) void renew(live, record);
       }, renewMs)
     : null;
   timer?.unref?.();
+
+  const stop = () => {
+    if (timer !== null) clearInterval(timer);
+    timer = null;
+    const open = live;
+    live = null;
+    void closeQuietly(open);
+  };
 
   return {
     path,
     record,
     tookOver,
+    suspend: stop,
     async release() {
       if (released) return;
       released = true;
-      if (timer !== null) clearInterval(timer);
-      try {
-        await removeIfStillMine(path, handle, record);
-      } finally {
-        await closeQuietly(handle);
-      }
+      stop();
+      await freeLock(path, gens, record);
     },
   };
 }
 
 /**
- * Publish the lock file with its record already in it and keep the descriptor,
- * or report that someone else holds it. `link()` is the atomic step: it either
- * creates the name or fails with EEXIST, and it never leaves an empty file
- * behind for a competitor to mistake for junk.
+ * Hand the lock back by publishing a RELEASED record as the next generation —
+ * never by deleting the file (#582 counter-review 4).
  *
- * The descriptor returned is the one the holder writes its heartbeat through.
- * It is opened on the TEMPORARY name and survives the link, because a hard
- * link is a second name for the same inode — so the descriptor and the lock
- * path refer to the same file, and the temporary name can go.
+ * Deleting is what could not be made safe: "the token still matches, so remove
+ * the path" is two steps, and a takeover landing between them lost its fresh
+ * lock to the holder it had replaced. Releasing through the generation chain
+ * needs no check at all. A successor that took this lock over already owns the
+ * next generation's marker, so this `mkdir` fails, and the release does
+ * nothing — which is exactly right, because there is nothing left to release.
  */
-async function tryCreate(path: string, record: LockRecord): Promise<FileHandle | null> {
+async function freeLock(path: string, gens: string, record: LockRecord): Promise<void> {
+  const gen = record.gen + 1;
+  if (!(await claimTurn(gens, String(gen)))) return;
+  const handle = await publish(path, { ...record, gen, state: "free" }, "replace");
+  await closeQuietly(handle);
+}
+
+/**
+ * Write this generation's record and keep the descriptor.
+ *
+ * `create` is for a lock path that does not exist: `link` publishes the name
+ * and the record in ONE step, so the path is never an empty file a competitor
+ * could mistake for junk, and EEXIST means somebody else got there first.
+ *
+ * `replace` is for a path that does: the record goes to a private temporary
+ * file and is RENAMED over it, so a reader sees either the previous generation
+ * or this one, never half of either. The caller has already won this turn's
+ * marker, so it is the only process that may write here; the generation check
+ * catches only the case the marker cannot — a turn won so long ago that the
+ * marker has since been pruned and the chain has moved on without it.
+ *
+ * The descriptor returned is the one the holder beats through: both `link` and
+ * `rename` give the temporary file's inode the lock's name, so the descriptor
+ * and the lock path are the same file until the next generation replaces it.
+ */
+async function publish(
+  path: string,
+  record: LockRecord,
+  mode: "create" | "replace",
+): Promise<FileHandle | null> {
   const tmp = `${path}.new-${process.pid}-${record.token}`;
   let handle: FileHandle | null = null;
   try {
     handle = await open(tmp, "wx");
     await handle.write(serialize(record), 0, "utf8");
-    await link(tmp, path);
+    if (mode === "create") {
+      await link(tmp, path);
+    } else {
+      const current = await readRecord(path);
+      if (current !== null && current.gen >= record.gen) throw new Error("superseded");
+      await rename(tmp, path);
+    }
     return handle;
   } catch {
     await closeQuietly(handle);
     return null;
   } finally {
-    // The lock path is a second name for the same inode, so dropping this one
-    // leaves the lock intact. On the failure path it removes the leftover.
+    // `link` leaves the temporary name behind — the lock path is a second name
+    // for the same inode, so dropping this one leaves the lock intact. After a
+    // `rename` there is nothing there, and after a failure this is the cleanup.
     try {
       await rm(tmp, { force: true });
     } catch {
@@ -327,32 +481,6 @@ async function renew(handle: FileHandle, record: LockRecord): Promise<void> {
   }
 }
 
-/**
- * Unlink the lock only while the path still names THIS holder's file.
- *
- * The token is read first and the inode comparison comes last, so that nothing
- * is awaited between "the path is still my file" and the `unlink`. A successor
- * that took the lock over created a NEW file, so its inode differs and this
- * returns without touching anything; the holder's own lock then simply expires
- * as stale, which costs one build a wait and loses nothing.
- */
-async function removeIfStillMine(
-  path: string,
-  handle: FileHandle,
-  record: LockRecord,
-): Promise<void> {
-  try {
-    const current = await readRecord(path);
-    if (current === null || current.token !== record.token) return;
-    const mine = await handle.stat();
-    const there = await stat(path);
-    if (there.ino !== mine.ino || there.dev !== mine.dev) return;
-    await rm(path, { force: true });
-  } catch {
-    // A lock file we cannot remove becomes a stale lock someone else takes
-    // over in LOCK_STALE_MS. Failing the build over it would be worse.
-  }
-}
 
 /**
  * What is at the lock path. "Nobody holds it" and "somebody wrote something
@@ -362,7 +490,8 @@ async function removeIfStillMine(
  */
 type LockState =
   | { kind: "free" }
-  | { kind: "unreadable" }
+  /** `text` is what could not be parsed — the reset marker is claimed on it. */
+  | { kind: "unreadable"; text: string }
   | { kind: "held"; record: LockRecord };
 
 async function readState(path: string): Promise<LockState> {
@@ -372,10 +501,10 @@ async function readState(path: string): Promise<LockState> {
   } catch (err) {
     return (err as NodeJS.ErrnoException).code === "ENOENT"
       ? { kind: "free" }
-      : { kind: "unreadable" };
+      : { kind: "unreadable", text: String((err as NodeJS.ErrnoException).code ?? "unreadable") };
   }
   const record = parseRecord(text);
-  return record === null ? { kind: "unreadable" } : { kind: "held", record };
+  return record === null ? { kind: "unreadable", text } : { kind: "held", record };
 }
 
 function parseRecord(text: string): LockRecord | null {
@@ -392,7 +521,18 @@ function parseRecord(text: string): LockRecord | null {
     ) {
       return null;
     }
-    return { pid: r.pid, host: r.host, token: r.token, startedAt: r.startedAt, renewedAt: r.renewedAt };
+    // `gen` and `state` are read leniently: a lock written by a Recall from
+    // before the generation chain is a held lock at generation zero, which is
+    // exactly how the next acquisition should treat it.
+    return {
+      pid: r.pid,
+      host: r.host,
+      token: r.token,
+      startedAt: r.startedAt,
+      renewedAt: r.renewedAt,
+      gen: typeof r.gen === "number" && Number.isInteger(r.gen) && r.gen >= 0 ? r.gen : 0,
+      state: r.state === "free" ? "free" : "held",
+    };
   } catch {
     return null;
   }
@@ -403,37 +543,9 @@ async function readRecord(path: string): Promise<LockRecord | null> {
   return state.kind === "held" ? state.record : null;
 }
 
-/**
- * Remove a lock we judged stale — but only if it is still the same one.
- * Between the read and the removal another daemon may have taken it over and
- * started a build; deleting its fresh lock would produce exactly the double
- * build this module exists to prevent.
- */
-async function removeIfUnchanged(path: string, seen: LockRecord): Promise<void> {
-  try {
-    const current = await readRecord(path);
-    if (current === null || current.token !== seen.token) return;
-    await rm(path, { force: true });
-  } catch {
-    /* the next acquire attempt will simply fail and report busy */
-  }
-}
 
-/**
- * Remove a lock file nobody could parse — but only while it is STILL
- * unparseable. A valid record appearing between the judgement and the removal
- * is a new holder, and deleting it would be the same double build.
- */
-async function removeIfStillUnreadable(path: string): Promise<void> {
-  try {
-    if ((await readState(path)).kind !== "unreadable") return;
-    await rm(path, { force: true });
-  } catch {
-    /* the next acquire attempt will simply fail and report busy */
-  }
-}
 
-function newRecord(): LockRecord {
+function newRecord(gen: number): LockRecord {
   const now = new Date().toISOString();
   return {
     pid: process.pid,
@@ -441,6 +553,8 @@ function newRecord(): LockRecord {
     token: randomBytes(12).toString("hex"),
     startedAt: now,
     renewedAt: now,
+    gen,
+    state: "held",
   };
 }
 

@@ -67,6 +67,10 @@ export function symbolSpans(
   // wrong somewhere leaves the file unbalanced. Then every span below the
   // mistake is wrong too, so no span from this file may be trusted (#582).
   if (scan.delta.reduce((a, b) => a + b, 0) !== 0) return null;
+  // A closer with nothing open is a count this lexer cannot explain, even when
+  // a later opener happens to even the total out. Conservative: take the whole
+  // file rather than trust spans built on a stack that underflowed (#582 c-r 4).
+  if (scan.ambiguous) return null;
 
   const spans: SymbolSpan[] = [];
   for (const s of starts) {
@@ -174,6 +178,8 @@ interface Scan {
   inText: boolean[];
   /** Whether the line's first character starts a word — a statement, not a closer. */
   statement: boolean[];
+  /** A closer arrived with nothing open: the count cannot be trusted at all. */
+  ambiguous: boolean;
 }
 
 /**
@@ -259,8 +265,31 @@ function spanEnd(scan: Scan, start: number): { end: number; opened: boolean; ope
  */
 const CONTROL_FLOW_HEAD = new Set(["if", "while", "for", "with", "switch", "catch"]);
 
+/**
+ * `${` OPENS CODE, AND CODE HAS BRACES (#582 counter-review 4). Skipping a
+ * template literal wholesale reads `` `${x ? `{` : `y`}` `` as: template, then
+ * a bare `{`, then template — one brace opened and never closed. A second such
+ * literal carrying `}` cancels it out, so the file stays balanced, no guard
+ * fires, and the span in between quietly runs past its function. So `${` pushes
+ * an expression context with its own place on the bracket stack, the `}` at
+ * that level pops back into the template text, and the nesting is unlimited.
+ *
+ * A LABEL IS NOT A PROPERTY (#582 counter-review 4). `outer: { … }` is a block,
+ * and reading its `}` as an object literal's — a value — made the next `/` a
+ * division, so `/{/` counted a brace that was regex text. The colon is
+ * classified instead of assumed: a pending `?` at the same bracket level makes
+ * it a ternary (and an optional `a?: T` its own well-formed case), a `case`
+ * head makes it a switch arm, and otherwise `identifier :` directly after a
+ * statement boundary, inside a block rather than an object literal, is a label.
+ * Everything else — `const x: {a: 1}`, `{ key: {} }`, `(a: T) => …` — keeps the
+ * property reading it had.
+ */
+
 /** What an open bracket was, so that its closer knows what it produced. */
-type BracketKind = "ctrl-paren" | "expr-paren" | "block" | "value";
+type BracketKind = "ctrl-paren" | "expr-paren" | "block" | "value" | "tmpl-expr";
+
+/** Tokens after which `identifier :` is a label rather than a property. */
+const STATEMENT_BOUNDARY = new Set(["", ";", "{", "}"]);
 
 /** Tokens after which a `{` opens a block rather than an object literal. */
 const BLOCK_BEFORE = new Set(["", ";", "{", "}", ")", "=>", "else", "do", "try", "finally"]);
@@ -327,6 +356,7 @@ function scanSource(lines: readonly string[]): Scan {
   const indent: number[] = [];
   const inText: boolean[] = [];
   const statement: boolean[] = [];
+  let ambiguous = false;
   let inBlockComment = false;
   let inTemplate = false;
   // May the NEXT `/` open a regex? Carried across lines: `a\n  / b` divides.
@@ -337,6 +367,15 @@ function scanSource(lines: readonly string[]): Scan {
   // regex literal. `if` before `(`, `)` before `{`. Empty at the start of the
   // file, which is also a statement start.
   let lastTok = "";
+  // The token before `lastTok`, which is what tells `outer: {` (a label, after a
+  // statement boundary) from `key: {` (a property, after `,` or `(`).
+  let prevTok = "";
+  // Inside a `case` head, where the `:` that follows ends a statement rather
+  // than introducing a value. `default:` needs no flag — it is a bare word.
+  let caseHead = false;
+  // Pending `?` per bracket level: the next `:` at that level closes a ternary
+  // or an optional marker, and is therefore never a label.
+  const ternary: number[] = [0];
   // Inside the head of a `class`/`interface`/`enum`/`namespace`, where the name,
   // the generics and an `extends` clause still sit between the keyword and the
   // block it opens. Cleared by anything that cannot be part of such a head.
@@ -365,8 +404,19 @@ function scanSource(lines: readonly string[]): Scan {
         else if (c === "`") {
           inTemplate = false;
           regexOk = false;
+          prevTok = lastTok;
           lastTok = "lit";
           i++;
+        } else if (c === "$" && raw[i + 1] === "{") {
+          // An expression, with its own bracket stack. Neither this `${` nor
+          // the `}` that closes it counts towards the brace balance.
+          inTemplate = false;
+          brackets.push("tmpl-expr");
+          ternary.push(0);
+          regexOk = true;
+          prevTok = "";
+          lastTok = "";
+          i += 2;
         } else i++;
         sawCode = true;
         continue;
@@ -389,6 +439,18 @@ function scanSource(lines: readonly string[]): Scan {
         // No closing slash on this line: not a literal, so fall through and
         // treat it as the operator it must have been.
       }
+      // The `}` that closes a `${…}` returns to the template text it opened in.
+      if (c === "}" && brackets[brackets.length - 1] === "tmpl-expr") {
+        brackets.pop();
+        ternary.pop();
+        inTemplate = true;
+        regexOk = false;
+        prevTok = lastTok;
+        lastTok = "lit";
+        sawCode = true;
+        i++;
+        continue;
+      }
       if (c === "`") {
         inTemplate = true;
         sawCode = true;
@@ -400,6 +462,7 @@ function scanSource(lines: readonly string[]): Scan {
         sawCode = true;
         regexOk = false;
         // A string in a declaration head is still a head: `declare module "x" {`.
+        prevTok = lastTok;
         lastTok = "lit";
         continue;
       }
@@ -409,19 +472,50 @@ function scanSource(lines: readonly string[]): Scan {
         const word = raw.slice(i, j);
         regexOk = REGEX_AFTER_KEYWORD.has(word);
         if (BLOCK_DECLARATION.has(word)) declHead = true;
+        if (word === "case") caseHead = true;
+        prevTok = lastTok;
         lastTok = word;
         sawCode = true;
         i = j;
         continue;
       }
+      if (c === "?" && raw[i + 1] !== "?" && raw[i + 1] !== "." && lastTok !== "?") {
+        ternary[ternary.length - 1]++;
+      }
+      if (c === ":") {
+        const label = colonEndsStatement(
+          ternary,
+          brackets[brackets.length - 1],
+          lastTok,
+          prevTok,
+          caseHead,
+        );
+        if (label) {
+          // A label's or a `case` arm's colon ends a statement, so what follows
+          // is a statement start: `{` opens a block, `/` opens a regex.
+          caseHead = false;
+          prevTok = ";";
+          lastTok = ";";
+        } else {
+          prevTok = lastTok;
+          lastTok = ":";
+        }
+        regexOk = true;
+        sawCode = true;
+        i++;
+        continue;
+      }
       if (c === "(" || c === "[" || c === "{") {
         d++;
         brackets.push(openedKind(c, lastTok, declHead));
+        ternary.push(0);
         if (c === "{") declHead = false;
         regexOk = true;
       } else if (c === ")" || c === "]" || c === "}") {
         d--;
+        if (brackets.length === 0) ambiguous = true;
         const kind = brackets.pop();
+        if (ternary.length > 1) ternary.pop();
         // `if (x) /re/` and `if (x) {}\n/re/` open a regex; `f(x) / 2`,
         // `xs[i] / 2` and `{a: 1} / 2` divide. An unmatched closer leaves the
         // file unbalanced and no span from it survives anyway.
@@ -432,8 +526,11 @@ function scanSource(lines: readonly string[]): Scan {
       }
       if (c.trim().length > 0) {
         // `=` then `>` is the arrow, whose `{` is a body and never an object.
-        lastTok = c === ">" && lastTok === "=" ? "=>" : c;
+        const tok = c === ">" && lastTok === "=" ? "=>" : c;
+        if (tok !== "=>") prevTok = lastTok;
+        lastTok = tok;
         if (c === ";" || c === "=" || c === "(" || c === ",") declHead = false;
+        if (c === ";" || c === "{" || c === "}") caseHead = false;
         sawCode = true;
       }
       i++;
@@ -443,7 +540,35 @@ function scanSource(lines: readonly string[]): Scan {
     blank.push(!sawCode);
     indent.push(raw.length - raw.trimStart().length);
   }
-  return { delta, blank, indent, inText, statement };
+  return { delta, blank, indent, inText, statement, ambiguous };
+}
+
+/**
+ * Does this `:` end a statement — a label or a `case`/`default` arm — rather
+ * than introduce a value?
+ *
+ * The three readings are decided in order of certainty. A pending `?` at this
+ * bracket level is a ternary or an optional marker and settles it outright. A
+ * `case` head settles it the other way. What is left is a label only when an
+ * identifier sits directly after a statement boundary AND the enclosing
+ * bracket is a block rather than an object literal — which is what keeps
+ * `{ key: {} }` a property and `outer: {}` a label.
+ */
+function colonEndsStatement(
+  ternary: number[],
+  frame: BracketKind | undefined,
+  lastTok: string,
+  prevTok: string,
+  caseHead: boolean,
+): boolean {
+  if (ternary[ternary.length - 1] > 0) {
+    ternary[ternary.length - 1]--;
+    return false;
+  }
+  if (caseHead) return true;
+  const inBlock = frame === undefined || frame === "block";
+  const isName = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(lastTok) && lastTok !== "lit";
+  return inBlock && isName && STATEMENT_BOUNDARY.has(prevTok);
 }
 
 /** Index just past a quoted string. An unterminated one ends at the line end. */

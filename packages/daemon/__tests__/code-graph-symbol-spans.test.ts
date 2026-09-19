@@ -291,4 +291,113 @@ describe("symbol spans and the constructs that used to break them", () => {
     ].join("\n");
     assert.equal(await spansOf(source, [sym("table", 1), sym("entry", 2)]), null);
   });
+
+  it("reads a labelled block as a block, so the regex after it is not a division", async () => {
+    // THE REPRODUCTION (#582 counter-review 4). `outer: {}` was read as an
+    // object literal because of the colon, so its `}` was a value and the next
+    // `/{/` divided — counting a brace that is regex text. A second such regex
+    // carrying `}` cancelled it out, leaving the file balanced, no guard firing
+    // and `f` stretched over two top-level lines it never contained.
+    const source = [
+      "function f() {", // 1
+      "  outer: {}", // 2
+      "  /{/.exec(s);", // 3
+      "}", // 4
+      "inner: {}", // 5
+      "/}/.exec(s);", // 6
+      "const g = 1;", // 7
+      "", // 8
+    ].join("\n");
+    const spans = await spansOf(source, [sym("f", 1), sym("g", 7)]);
+    assert.notEqual(spans, null, "the file is balanced once the labels are blocks");
+    assert.deepEqual(
+      spans!.map((s) => [s.start, s.end]),
+      [
+        [1, 4],
+        [7, 7],
+      ],
+    );
+    assert.deepEqual(spansCovering(spans!, 6), [], "line 6 is top level, not inside f");
+  });
+
+  it("lexes a template substitution, so a brace inside one never opens a block", async () => {
+    // THE SECOND REPRODUCTION (#582 counter-review 4). `${…}` was skipped as
+    // template text, so the inner `` `{` `` was read as a bare `{`. One
+    // literal carrying `{` and one carrying `}` kept the file balanced while
+    // `f` ran a line past its own closing brace.
+    const source = [
+      "function f() {", // 1
+      "  const s = `${true ? `{` : `x`}`;", // 2
+      "}", // 3
+      "const t = `${true ? `}` : `y`}`;", // 4
+      "const g = 1;", // 5
+      "", // 6
+    ].join("\n");
+    const spans = await spansOf(source, [sym("f", 1), sym("g", 5)]);
+    assert.notEqual(spans, null);
+    assert.deepEqual(
+      spans!.map((s) => [s.start, s.end]),
+      [
+        [1, 3],
+        [5, 5],
+      ],
+    );
+    assert.deepEqual(spansCovering(spans!, 4), [], "line 4 is top level, not inside f");
+  });
+
+  it("keeps a switch arm, an arrow's object, a ternary and a type annotation apart", async () => {
+    // The constructs the label rule must NOT claim. `case x: {` opens a block,
+    // `=> ({})` an object, `? {…} : {…}` two objects, and `x: {a: 1}` a type —
+    // all four inside one function, whose span must end on its own brace.
+    const source = [
+      "function f(x: number) {", // 1
+      "  switch (x) {", // 2
+      "    case 1: {", // 3
+      "      break;", // 4
+      "    }", // 5
+      "    default:", // 6
+      "      break;", // 7
+      "  }", // 8
+      "  const make = () => ({});", // 9
+      "  const pick = x > 0 ? { a: 1 } : { b: 2 };", // 10
+      "  const shape: { a: number } = { a: 1 };", // 11
+      "  return [make, pick, shape];", // 12
+      "}", // 13
+      "const g = 2;", // 14
+      "", // 15
+    ].join("\n");
+    const spans = await spansOf(source, [sym("f", 1), sym("g", 14)]);
+    assert.notEqual(spans, null);
+    assert.deepEqual(
+      spans!.map((s) => [s.start, s.end]),
+      [
+        [1, 13],
+        [14, 14],
+      ],
+    );
+  });
+
+  it("keeps an object literal's property a property, even at a statement boundary", async () => {
+    // `key: {` sits right after a `{` too — the difference is that the `{` it
+    // sits in opened a VALUE. Reading it as a label would make the inner `}`
+    // end a statement, and the next `/` a regex.
+    const source = [
+      "const table = {", // 1
+      "  key: {},", // 2
+      "};", // 3
+      "function f() {", // 4
+      "  return 1;", // 5
+      "}", // 6
+      "", // 7
+    ].join("\n");
+    const spans = await spansOf(source, [sym("table", 1), sym("f", 4)]);
+    assert.notEqual(spans, null);
+    assert.deepEqual(
+      spans!.map((s) => [s.start, s.end]),
+      [
+        [1, 3],
+        [4, 6],
+      ],
+    );
+  });
 });
