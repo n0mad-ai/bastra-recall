@@ -244,8 +244,29 @@ function spanEnd(scan: Scan, start: number): { end: number; opened: boolean; ope
  * miscount could be cancelled out by a later `/}/` — leaving a balanced file,
  * a span running past the end of its function, and a top-level change
  * attributed to it. That is the silent-loss direction, not the safe one.
+ *
+ * `}` IS TWO DIFFERENT TOKENS FOR THE SAME REASON (#582 counter-review 3). The
+ * `}` that ends a BLOCK ends a statement, so the next `/` opens a regex; the
+ * `}` that ends an OBJECT LITERAL is a value, so the next `/` divides. Treating
+ * every `}` as a value left `if (x) {}` followed by `/{/…` reading that regex
+ * as a division — and two such regexes, one carrying `{` and one carrying `}`,
+ * cancel out: the file stays balanced, no guard fires, and the span before them
+ * quietly swallows the top-level code that follows. So the stack remembers per
+ * `{` which one it was, decided by the token in front of it: after `)`, `=>`,
+ * `else`/`do`/`try`/`finally`, a `class`/`interface`/`enum`/`namespace` head,
+ * or at the start of a statement it is a block; anywhere else — after `=`, `(`,
+ * `,`, `:`, `[`, `return` — it is a value.
  */
 const CONTROL_FLOW_HEAD = new Set(["if", "while", "for", "with", "switch", "catch"]);
+
+/** What an open bracket was, so that its closer knows what it produced. */
+type BracketKind = "ctrl-paren" | "expr-paren" | "block" | "value";
+
+/** Tokens after which a `{` opens a block rather than an object literal. */
+const BLOCK_BEFORE = new Set(["", ";", "{", "}", ")", "=>", "else", "do", "try", "finally"]);
+
+/** Keywords whose head runs on — over a name, generics, `extends` — to a block. */
+const BLOCK_DECLARATION = new Set(["class", "interface", "enum", "namespace", "module"]);
 
 const REGEX_AFTER_KEYWORD = new Set([
   "return",
@@ -286,6 +307,20 @@ function endOfRegex(raw: string, from: number): number | null {
   return null;
 }
 
+/**
+ * What an opening bracket opens, read off the token in front of it.
+ *
+ * Only `{` is genuinely ambiguous, and only its answer is load-bearing: a
+ * block's `}` ends a statement, an object literal's `}` is a value. `[` always
+ * produces a value, and a `(` is told apart by the control-flow keyword that
+ * may head it.
+ */
+function openedKind(open: string, lastTok: string, declHead: boolean): BracketKind {
+  if (open === "(") return CONTROL_FLOW_HEAD.has(lastTok) ? "ctrl-paren" : "expr-paren";
+  if (open === "[") return "value";
+  return BLOCK_BEFORE.has(lastTok) || declHead ? "block" : "value";
+}
+
 function scanSource(lines: readonly string[]): Scan {
   const delta: number[] = [];
   const blank: boolean[] = [];
@@ -297,12 +332,19 @@ function scanSource(lines: readonly string[]): Scan {
   // May the NEXT `/` open a regex? Carried across lines: `a\n  / b` divides.
   // True at the start of a file, where no value can precede the slash.
   let regexOk = true;
-  // The last identifier, cleared by every other token — so it is only set when
-  // the token immediately before the current one was a word. `if` before `(`.
-  let prevWord = "";
-  // One entry per open bracket; true marks the `(` of a control-flow head, the
-  // only `)` a regex may follow.
-  const brackets: boolean[] = [];
+  // The token immediately before the current one: an identifier's text, a
+  // single punctuation character, `=>`, or "lit" for a string, template or
+  // regex literal. `if` before `(`, `)` before `{`. Empty at the start of the
+  // file, which is also a statement start.
+  let lastTok = "";
+  // Inside the head of a `class`/`interface`/`enum`/`namespace`, where the name,
+  // the generics and an `extends` clause still sit between the keyword and the
+  // block it opens. Cleared by anything that cannot be part of such a head.
+  let declHead = false;
+  // One entry per open bracket, remembering what it opened — its closer needs
+  // to know whether it produced a value (`/` divides) or ended a statement
+  // (`/` opens a regex).
+  const brackets: BracketKind[] = [];
 
   for (const raw of lines) {
     let d = 0;
@@ -323,7 +365,7 @@ function scanSource(lines: readonly string[]): Scan {
         else if (c === "`") {
           inTemplate = false;
           regexOk = false;
-          prevWord = "";
+          lastTok = "lit";
           i++;
         } else i++;
         sawCode = true;
@@ -341,7 +383,7 @@ function scanSource(lines: readonly string[]): Scan {
           i = end;
           sawCode = true;
           regexOk = false;
-          prevWord = "";
+          lastTok = "lit";
           continue;
         }
         // No closing slash on this line: not a literal, so fall through and
@@ -357,35 +399,42 @@ function scanSource(lines: readonly string[]): Scan {
         i = endOfString(raw, i, c);
         sawCode = true;
         regexOk = false;
-        prevWord = "";
+        // A string in a declaration head is still a head: `declare module "x" {`.
+        lastTok = "lit";
         continue;
       }
       if (/[A-Za-z_$]/.test(c)) {
         let j = i;
         while (j < raw.length && /[A-Za-z0-9_$]/.test(raw[j])) j++;
-        prevWord = raw.slice(i, j);
-        regexOk = REGEX_AFTER_KEYWORD.has(prevWord);
+        const word = raw.slice(i, j);
+        regexOk = REGEX_AFTER_KEYWORD.has(word);
+        if (BLOCK_DECLARATION.has(word)) declHead = true;
+        lastTok = word;
         sawCode = true;
         i = j;
         continue;
       }
       if (c === "(" || c === "[" || c === "{") {
         d++;
-        brackets.push(c === "(" && CONTROL_FLOW_HEAD.has(prevWord));
+        brackets.push(openedKind(c, lastTok, declHead));
+        if (c === "{") declHead = false;
         regexOk = true;
       } else if (c === ")" || c === "]" || c === "}") {
         d--;
-        const controlFlow = brackets.pop();
-        // `if (x) /re/` opens a regex; `f(x) / 2` and `xs[i] / 2` divide. An
-        // unmatched `)` leaves the file unbalanced and no span survives anyway.
-        regexOk = c === ")" && controlFlow === true;
+        const kind = brackets.pop();
+        // `if (x) /re/` and `if (x) {}\n/re/` open a regex; `f(x) / 2`,
+        // `xs[i] / 2` and `{a: 1} / 2` divide. An unmatched closer leaves the
+        // file unbalanced and no span from it survives anyway.
+        regexOk = kind === "ctrl-paren" || kind === "block";
       } else if (c.trim().length > 0) {
         // Operators, punctuation and the like take a regex; a digit is a value.
         regexOk = !/[0-9]/.test(c);
       }
       if (c.trim().length > 0) {
+        // `=` then `>` is the arrow, whose `{` is a body and never an object.
+        lastTok = c === ">" && lastTok === "=" ? "=>" : c;
+        if (c === ";" || c === "=" || c === "(" || c === ",") declHead = false;
         sawCode = true;
-        prevWord = "";
       }
       i++;
     }
