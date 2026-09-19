@@ -228,6 +228,34 @@ function runArm(arm, prompt, tree, graphRoot, dir) {
 }
 
 /**
+ * Is every arm of this scenario already on disk? A scenario is only "done"
+ * when the whole triple is: the effect is measured PAIRED, so half a scenario
+ * carries no result (#582).
+ */
+export function scenarioComplete(dir, armIds = ARM_IDS) {
+  return armIds.every((arm) => existsSync(join(dir, `${arm}.jsonl`)));
+}
+
+/**
+ * How many not-yet-complete scenarios this invocation may start.
+ *
+ * The run is stretched over several subscription windows, so it is taken in
+ * helpings. The budget counts SCENARIOS, not arms, and a scenario that gets
+ * started is finished — all three arms — before the helping ends: an
+ * unfinished triple would leave a scenario that the effect cannot use and
+ * that the next helping would have to recognise and complete anyway.
+ */
+export function helpingSize() {
+  const fromArg = (() => {
+    const i = process.argv.indexOf("--max-scenarios");
+    return i > 0 ? process.argv[i + 1] : null;
+  })();
+  const raw = fromArg ?? process.env.CODE_ROI_MAX_SCENARIOS ?? "";
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : Infinity;
+}
+
+/**
  * The scenario's tree, from the repository the scenario names.
  *
  * `prepareTree` from the v2 runner archives from bastra-recall, full stop. A
@@ -268,12 +296,18 @@ async function main() {
   }
 
   const { scenarios } = JSON.parse(readFileSync(join(OUT, "scenarios.json"), "utf8"));
+  const live = scenarios.filter((s) => !s.excluded && (!only || only.has(s.id)));
+  const maxScenarios = helpingSize();
   let spentUsd = 0;
   let armsRun = 0;
-  for (const s of scenarios) {
-    if (s.excluded) continue;
-    if (only && !only.has(s.id)) continue;
+  let started = 0;
+  for (const s of live) {
     const dir = join(RUNS, s.id);
+    // Scenario ORDER is the registered one and is never re-sorted; the helping
+    // simply stops after N scenarios that still had work to do.
+    const alreadyComplete = scenarioComplete(dir, wantedIds);
+    if (!alreadyComplete && started >= maxScenarios) break;
+    if (!alreadyComplete) started++;
     mkdirSync(dir, { recursive: true });
     const { tree, graphRoot } = prepareTreeOf(s, dir);
     await buildGraph(tree, graphRoot);
@@ -323,7 +357,11 @@ async function main() {
       process.stdout.write(`exit ${code}  $${cost.toFixed(2)}  (total $${spentUsd.toFixed(2)})\n`);
     }
   }
-  process.stdout.write(`\n${armsRun} arms, $${spentUsd.toFixed(2)} of $${COST_CEILING_USD.toFixed(2)}\n`);
+  const complete = live.filter((s) => scenarioComplete(join(RUNS, s.id), wantedIds)).length;
+  process.stdout.write(
+    `\n${complete} of ${live.length} scenarios complete, ${armsRun} arms done, ` +
+      `ceiling $${spentUsd.toFixed(2)} of $${COST_CEILING_USD.toFixed(2)}\n`,
+  );
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) await main();

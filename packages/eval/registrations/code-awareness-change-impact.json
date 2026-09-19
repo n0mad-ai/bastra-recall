@@ -174,6 +174,9 @@
     "$comment_ceiling": "Raised by Daniel from 20 to 40 $ on 18.09.2026, before the run.",
     "cost_estimate": "From the v4 pilot on bastra-recall (6 arms, $0.9919, mean $0.1653 per arm, mean 157 168 input tokens per arm): 3 arms x $0.1653 = $0.496 per scenario, so 40 scenarios = $19.84 and 45 = $22.32. Both sit under the $40 ceiling, which leaves room for the larger prompts a pooled sample may carry. The runner stops BEFORE the arm that would cross the ceiling, not after.",
     "$comment_cost": "Enforced by the runner, not documented at it: every finished arm's `total_cost_usd` is summed and the next arm only starts while the ceiling is still out of reach at the running average cost per arm. Raising it is a decision, not a flag someone reaches for at 2 a.m. (CODE_ROI_COST_CEILING).",
+    "stretched_run": {
+      "$comment": "AMENDED 2026-09-19, before the first arm of the main run: the run is taken in helpings across several subscription-quota windows (`run-arms-v3.mjs --max-scenarios N`). Cause is the quota, nothing about the measurement. Sample, scenario order, arm order, thresholds and both verdicts are unchanged; a scenario that is started is finished across all three arms in the same helping, so no pair is ever torn. A report from a partially finished archive is labelled `incomplete (x/40)`: the effect is computed on complete triples only, adoption on every scenario whose B arm has run, and neither reaches a verdict below min_scenarios."
+    },
     "frozen_archive": "~/.bastra/eval/code-roi-v2 is never written by a v4 script — `archive.mjs` refuses it, because the v3 report is only reproducible while that archive is untouched."
   },
 

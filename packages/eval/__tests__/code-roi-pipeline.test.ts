@@ -15,7 +15,7 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,9 +26,8 @@ const { isFrozen, writableOut } = await import("../code-roi/v2/archive.mjs");
 const { ARM_IDS, shuffled, rng, excludedPilotCommits, pooledCandidates, fileKey } = await import(
   "../code-roi/v2/select.mjs"
 );
-const { ARMS, withinCeiling, armCostUsd, COST_CEILING_USD } = await import(
-  "../code-roi/v2/run-arms-v3.mjs"
-);
+const { ARMS, withinCeiling, armCostUsd, COST_CEILING_USD, scenarioComplete, helpingSize } =
+  await import("../code-roi/v2/run-arms-v3.mjs");
 const { parseArm, inputTokensOf, judge, buildReport } = await import(
   "../code-roi/v2/evaluate-v4.mjs"
 );
@@ -487,6 +486,95 @@ describe("the cost ceiling is enforced, not documented", () => {
     assert.equal(report.cost.usd, 6, "2 scenarios x 3 arms x $1");
     assert.equal(report.cost.ceiling_usd, 40);
     assert.equal(report.cost.withinCeiling, true);
+  });
+});
+
+// ─── Helpings across subscription windows ────────────────────────
+
+describe("the run can be taken in helpings", () => {
+  const archive = (done: Record<string, string[]>) => {
+    const dir = mkdtempSync(join(tmpdir(), "code-roi-helping-"));
+    for (const [id, arms] of Object.entries(done)) {
+      mkdirSync(join(dir, id), { recursive: true });
+      for (const arm of arms) writeFileSync(join(dir, id, `${arm}.jsonl`), transcript({ files: [] }));
+    }
+    return dir;
+  };
+
+  test("a scenario counts as done only when ALL THREE arms are there", () => {
+    const dir = archive({ S01: ["A", "B", "prefilled"], S02: ["A", "B"], S03: [] });
+    try {
+      assert.equal(scenarioComplete(join(dir, "S01")), true);
+      assert.equal(scenarioComplete(join(dir, "S02")), false, "a torn pair is not a scenario");
+      assert.equal(scenarioComplete(join(dir, "S03")), false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the helping size comes from the flag, then the env, else unbounded", () => {
+    const before = process.env.CODE_ROI_MAX_SCENARIOS;
+    try {
+      delete process.env.CODE_ROI_MAX_SCENARIOS;
+      assert.equal(helpingSize(), Infinity);
+      process.env.CODE_ROI_MAX_SCENARIOS = "8";
+      assert.equal(helpingSize(), 8);
+      process.env.CODE_ROI_MAX_SCENARIOS = "0";
+      assert.equal(helpingSize(), Infinity, "0 is not a helping, it is no limit at all");
+    } finally {
+      if (before === undefined) delete process.env.CODE_ROI_MAX_SCENARIOS;
+      else process.env.CODE_ROI_MAX_SCENARIOS = before;
+    }
+  });
+
+  test("resuming skips the finished scenarios and takes the next N", () => {
+    // What the runner's loop does: complete scenarios never consume a helping.
+    const done = new Set(["S01", "S02"]);
+    const order = ["S01", "S02", "S03", "S04", "S05", "S06"];
+    const N = 2;
+    const taken: string[] = [];
+    let started = 0;
+    for (const id of order) {
+      const complete = done.has(id);
+      if (!complete && started >= N) break;
+      if (!complete) {
+        started++;
+        taken.push(id);
+      }
+    }
+    assert.deepEqual(taken, ["S03", "S04"], "registered order, no re-sorting");
+  });
+
+  test("an incomplete archive reports how far it got and gates only the paired part", () => {
+    const scenarios = Array.from({ length: 40 }, (_, i) => ({
+      id: `S${i}`,
+      repo: "/r/io",
+      file: `packages/x/src/f${i}.ts`,
+      truth: [`packages/y/src/a${i}.ts`],
+    }));
+    // Twelve scenarios fully run; four more have their B arm only.
+    const report = buildReport(scenarios, (s, arm) => {
+      const i = Number(s.id.slice(1));
+      if (i < 12) return transcript({ files: [`packages/y/src/a${i}.ts`], affectedCalls: arm === "B" ? 1 : 0 });
+      if (i < 16 && arm === "B") return transcript({ files: [], affectedCalls: 1 });
+      return null;
+    });
+    assert.equal(report.progress.incomplete, true);
+    assert.equal(report.progress.label, "incomplete (12/40)");
+    assert.equal(report.progress.scenariosComplete, 12);
+    assert.equal(report.progress.armBComplete, 16, "adoption needs arm B only");
+    assert.equal(report.n, 12, "the effect uses the complete triples only");
+    assert.equal(report.adoption.n, 16);
+    assert.equal(report.adoption.scenariosCallingFindAffectedFiles, 16);
+    assert.equal(report.verdicts.effect, "underpowered", "12 of 40 is not a verdict");
+    assert.equal(report.verdicts.adoption, "underpowered");
+  });
+
+  test("a finished archive is labelled complete", () => {
+    const { scenarios, read } = sample(3, () => ({ files: [] }));
+    const report = buildReport(scenarios, read);
+    assert.equal(report.progress.incomplete, false);
+    assert.equal(report.progress.label, "complete");
   });
 });
 
