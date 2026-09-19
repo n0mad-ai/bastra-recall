@@ -155,6 +155,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   or when no acted-on recall reached the telemetry log — each with a one-line
   hint. Never changes the exit code.
 
+- **A note can bind the claims it took from a file** (#609). `derived_claims`
+  in the frontmatter names, per claim, an `id`, a `source` relative to the
+  vault directory and a `resolver`. `load_memory` resolves each one read-only
+  and returns the result next to the note under `derived.claims`, also on the
+  lean path; the note and the source keep their own bytes. Three resolvers:
+  `count.markdown-numbered-list.v1` counts the numbered items of the source and
+  compares them with `expect`, the number the note states;
+  `quote.v1` looks for `exact`, the string as it stands in the file;
+  `sha256.v1` compares the digest of the source with the one the note recorded.
+  The verdicts are `matches`, `differs`, `gone` (the quoted string is out of
+  the source), `ambiguous` (it stands there more than once, so nothing is
+  picked) and `unverifiable` (the source sits outside the vault, behind a
+  symlink that leaves it, over 1 MB, is a directory or is missing). Like
+  #235's anchor, the check shows a difference and the reader decides. A claim
+  without `expect` keeps reporting the observed value on its own. The
+  `save_memory` description carries the field and the claim shape, so a model
+  that has just read a file declares the claim in the same save call. A note
+  without `derived_claims` reads no source.
+
 ### Changed
 
 - **The local bridges pool moves out of the Commons checkout** (#648).
