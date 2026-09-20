@@ -154,22 +154,20 @@ test("eine extern geänderte QUELLE bricht das Re-File ab, statt sie zu überhol
 
   // Der externe Writer schlägt zu, NACHDEM die Vorlage gelesen ist und BEVOR
   // veröffentlicht wird. Das Fenster ist sonst nicht deterministisch zu
-  // treffen, deshalb hängt der Test am ersten Zugriff auf `body` — der liegt
-  // im Save genau dort, zwischen Vorlage und Commit.
-  const order = input({ overwrite: true, folder: "memories/people" });
+  // treffen, deshalb hängt der Test an `precondition` — the one hook the save
+  // guarantees to call inside exactly that window: after the source template
+  // was read under the claim, before any rename or trash. An earlier draft
+  // hooked the first read of `input.body`, which stopped being that window as
+  // soon as a check above the lock (the #544 tail sentinel) read `body` first.
   let fired = false;
-  const withExternalEdit = new Proxy(order, {
-    get(t2, prop, recv) {
-      if (prop === "body" && !fired) {
-        fired = true;
-        writeFileSync(first.file_path, externalRaw, "utf8");
-      }
-      return Reflect.get(t2, prop, recv);
-    },
-  }) as SaveMemoryInput;
 
   await assert.rejects(
-    saveMemory(root, withExternalEdit),
+    saveMemory(root, input({ overwrite: true, folder: "memories/people" }), {
+      precondition: () => {
+        fired = true;
+        writeFileSync(first.file_path, externalRaw, "utf8");
+      },
+    }),
     (err: unknown) =>
       (err as { code?: string }).code === MEMORY_WRITE_CONFLICT &&
       /source file changed/.test((err as Error).message),
