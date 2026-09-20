@@ -16,6 +16,7 @@ import { applyPatchPaths, normalizeWritePayload } from "../src/hook-write-input.
 import { hookClient } from "../src/hook-surface.js";
 import { codeTargets, MAX_CODE_TARGETS } from "../src/write-lane.js";
 import { repoRelative } from "../src/code-graph/dependents-block.js";
+import { fileSizeNote, thresholdsFor } from "../src/file-size-check.js";
 
 test("Codex MCP JSON matches the same stable stdio block ChatGPT desktop reads", () => {
   const raw = JSON.stringify({
@@ -210,4 +211,16 @@ test("#572 NotebookEdit names its target notebook_path, and the write lane reads
 
   // Nothing to normalize is still nothing: a call with neither key has no target.
   assert.equal(normalizeWritePayload({ tool_name: "NotebookEdit", tool_input: {} }), null);
+});
+
+test("#572 the normalized notebook path does not put a .ipynb under the size convention", async () => {
+  // Normalizing `notebook_path` turns the whole write lane on for NotebookEdit,
+  // which the lane's own SUPPORTED_TOOLS already names. The one part that would
+  // read a notebook wrongly is the size note — it would report the JSON's line
+  // count as the file's length — and it does not, because `.ipynb` is not a
+  // code extension. Revert-check: add ".ipynb" to CODE_EXTS in
+  // file-size-check.ts and both assertions go red.
+  assert.equal(thresholdsFor("/work/repo/notebooks/train.ipynb"), null);
+  assert.notEqual(thresholdsFor("/work/repo/src/train.ts"), null);
+  assert.equal(await fileSizeNote("/work/repo/notebooks/train.ipynb"), null);
 });
