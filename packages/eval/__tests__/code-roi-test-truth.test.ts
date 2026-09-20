@@ -375,6 +375,19 @@ describe("test-based truth: test selection", () => {
     assert.deepEqual(all.files, testFiles);
   });
 
+  it("a tree with no tests at all falls back to an EMPTY suite, which is not a suite", () => {
+    // What 46 candidates of the tests/v2 mining run hit: commits from before
+    // this repository had a test suite in the runner's layout. The fallback
+    // fires and selects "everything", and everything is nothing — so the
+    // baseline ran the runner against no files and reported `1..0`, which was
+    // recorded as a runner error. The selection is not wrong here; it simply
+    // cannot say anything, and `analyzeTests` has to notice that BEFORE it
+    // spends a suite run and before it drops the candidate's type half.
+    const all = selectTests(dir, "src/tax.js", { testFiles: [], closures: new Map() });
+    assert.equal(all.mode, "full");
+    assert.deepEqual(all.files, []);
+  });
+
   it("adds a test that merely shares a string literal with the diff", () => {
     const testFiles = ["tests/tax.test.js", "tests/report.test.js"];
     const closures = closuresOf(dir, testFiles);

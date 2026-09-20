@@ -33,6 +33,7 @@ import {
   armIdsOf,
   excludedPilotCommitsOf,
   loadRegistrationById,
+  resolveRegistrationId,
 } from "./registration.mjs";
 
 /**
@@ -141,7 +142,15 @@ function main() {
     const i = process.argv.indexOf(flag);
     return i > 0 ? process.argv[i + 1] : null;
   };
-  const registrationId = argOf("--registration") ?? DEFAULT_REGISTRATION_ID;
+  // WHICH REGISTRATION THIS ARCHIVE IS — the same question the runner asks,
+  // answered the same way (`CODE_ROI_REGISTRATION`, then the archive's own
+  // scenario file, then the default). Defaulting to the change-impact
+  // registration here instead wrote an EMPTY scenario file labelled
+  // `code-awareness-change-impact` into the tests/v2 archive and exited 0: the
+  // repo order of a different registration matched nothing, and from then on
+  // `resolveRegistrationId` would have read that file and called the archive
+  // registration 6 for every later command.
+  const registrationId = argOf("--registration") ?? resolveRegistrationId(OUT);
   const registration = registrationId === DEFAULT_REGISTRATION_ID ? REGISTRATION : loadRegistrationById(registrationId);
   const armIds = armIdsOf(registration, registrationId);
 
@@ -242,6 +251,16 @@ function main() {
     adjudication: [],
     armOrder: shuffled(armIds, next),
   }));
+  // An empty sample is never a result. It means the candidate file, the repo
+  // order or the registration do not go together, and writing the file anyway
+  // turns that mistake into the archive's permanent identity.
+  if (scenarios.length === 0) {
+    throw new Error(
+      `${registrationId}: no candidate matched — ${accepted.length} accepted candidates in ` +
+        `${join(OUT, "candidates.jsonl")}, repo order ${order.join(", ")}. ` +
+        `Refusing to write an empty scenario file.`,
+    );
+  }
   writeFileSync(
     join(OUT, "scenarios.json"),
     JSON.stringify(

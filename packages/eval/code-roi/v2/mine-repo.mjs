@@ -35,22 +35,13 @@
  *   CODE_ROI_REPO=/path/to/repo CODE_ROI_OUT=<dir> node mine-repo.mjs [--stop-at 45]
  *   CODE_ROI_REPO=/path/to/js-repo CODE_ROI_OUT=<dir> node mine-repo.mjs --truth tests
  */
-import { execFile, execFileSync, spawn } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promisify } from "node:util";
-import {
-  appendFileSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { writableOut } from "./archive.mjs";
+import { extractTree } from "./repo-tree.mjs";
 import { isScenarioFile, repoProfile, usesTests, usesTypes } from "./repo-profile.mjs";
 import { buildExclusions, exclusionsHash, isExcludedFile } from "./exclusions.mjs";
 import { TRUTH_RULE, attribute, closuresOf, selectTests, truthPopulationHash } from "./test-truth.mjs";
@@ -128,98 +119,10 @@ const REPO_HEAD = (() => {
 const git = async (args, cwd = REPO) => (await run("git", args, { cwd, ...BUF })).stdout;
 
 /**
- * One commit's tree, extracted. NEVER a git worktree: `git archive` reads the
- * object store and writes nothing, so the source repository is untouched even
- * while several of these run at once.
+ * One commit's tree on disk. The plumbing lives in `repo-tree.mjs`; this
+ * binds it to the repository and profile this run was started with.
  */
-export async function extract(sha, dir) {
-  rmSync(dir, { recursive: true, force: true });
-  mkdirSync(dir, { recursive: true });
-  // Streamed, not buffered: `execFile`'s options have no `input` (that is
-  // `execFileSync`), so a buffered version leaves tar waiting on a stdin that
-  // never closes — it hangs forever instead of failing.
-  await new Promise((resolve, reject) => {
-    const archive = spawn("git", ["archive", "--format=tar", sha], { cwd: REPO });
-    const untar = spawn("tar", ["-x", "-C", dir]);
-    archive.stdout.pipe(untar.stdin);
-    let err = "";
-    archive.stderr.on("data", (d) => (err += d));
-    untar.stderr.on("data", (d) => (err += d));
-    untar.on("close", (code) =>
-      code === 0 ? resolve() : reject(new Error(`extract ${sha}: ${err.slice(0, 300)}`)),
-    );
-    archive.on("error", reject);
-    untar.on("error", reject);
-  });
-  linkNodeModules(dir);
-}
-
-/**
- * Dependencies without a network and without writing to the source repository:
- * every top-level entry of the original `node_modules` is symlinked in, EXCEPT
- * the workspace scopes — those are pointed at the extracted tree, so a change
- * to a package is seen by everything that imports it.
- *
- * Per-package `node_modules` are linked too. Measured on bastra-io: without
- * them the app's typecheck reports 331 errors on an unmodified tree, because
- * a package's own dependencies cannot resolve from the extracted copy.
- */
-function linkNodeModules(dir) {
-  const link = (from, to) => {
-    if (!existsSync(from)) return;
-    try {
-      if (lstatSync(to)) rmSync(to, { recursive: true, force: true });
-    } catch {
-      /* not there yet */
-    }
-    symlinkSync(from, to);
-  };
-
-  const rootModules = join(REPO, "node_modules");
-  if (existsSync(rootModules)) {
-    const target = join(dir, "node_modules");
-    rmSync(target, { recursive: true, force: true });
-    mkdirSync(target, { recursive: true });
-    for (const entry of readdirSync(rootModules)) {
-      if (profile.scopes.includes(entry)) continue;
-      link(join(rootModules, entry), join(target, entry));
-    }
-    // pnpm keeps the real packages in `.pnpm`; without it every link dangles.
-    for (const hidden of [".pnpm", ".bin", ".modules.yaml"]) {
-      link(join(rootModules, hidden), join(target, hidden));
-    }
-    for (const scope of profile.scopes) {
-      const scopeDir = join(target, scope);
-      mkdirSync(scopeDir, { recursive: true });
-      for (const [pkgDir, name] of profile.packageNames) {
-        if (!name.startsWith(`${scope}/`)) continue;
-        link(join(dir, pkgDir), join(scopeDir, name.slice(scope.length + 1)));
-      }
-    }
-  }
-
-  for (const pkgDir of profile.packageDirs) {
-    const from = join(REPO, pkgDir, "node_modules");
-    const to = join(dir, pkgDir, "node_modules");
-    if (!existsSync(from) || existsSync(to)) continue;
-    // The workspace scope inside a package's own node_modules must point at
-    // the extracted tree as well, or the package resolves its siblings from
-    // the original checkout and no mutation is ever seen.
-    mkdirSync(to, { recursive: true });
-    for (const entry of readdirSync(from)) {
-      if (profile.scopes.includes(entry)) continue;
-      link(join(from, entry), join(to, entry));
-    }
-    for (const scope of profile.scopes) {
-      const scopeDir = join(to, scope);
-      mkdirSync(scopeDir, { recursive: true });
-      for (const [otherDir, name] of profile.packageNames) {
-        if (!name.startsWith(`${scope}/`)) continue;
-        link(join(dir, otherDir), join(scopeDir, name.slice(scope.length + 1)));
-      }
-    }
-  }
-}
+export const extract = (sha, dir) => extractTree(REPO, profile, sha, dir);
 
 /**
  * Every type error as `file\tTScode\tmessage` -> count, over the profile's
@@ -343,6 +246,51 @@ async function testBaseline(tree, dir, selected) {
 }
 
 /**
+ * One candidate decided on the TYPE half of the rule alone, on a tree that has
+ * no tests to run. Same comparison the `types` truth mode makes: signatures
+ * before, signatures after exactly this file's diff, the changed file never
+ * counting towards its own truth.
+ *
+ * `truthSource` is `tsc` or `none`, never `tests`, and `testSelection.mode` is
+ * `no_tests` so the population can be counted without guessing why a scenario
+ * carries no broken test.
+ */
+async function typeOnlyCandidate(record, file, diff, dir, parent, typeBaseline) {
+  const patch = join(dir, ".eval-mutation.diff");
+  writeFileSync(patch, diff);
+  const applied = await run("git", ["apply", patch], { cwd: dir, ...BUF }).then(
+    () => true,
+    () => false,
+  );
+  if (!applied) {
+    rmSync(patch, { force: true });
+    return { ...record, file, reason: "diff does not apply alone" };
+  }
+  const afterTypes = usesTypes(TRUTH) ? await errorSignatures(dir) : null;
+  const reverted = await run("git", ["apply", "-R", patch], { cwd: dir, ...BUF }).then(
+    () => true,
+    () => false,
+  );
+  rmSync(patch, { force: true });
+  if (!reverted) await extract(parent, dir);
+  const truth = afterTypes === null ? [] : [...newErrorFiles(typeBaseline, afterTypes)].filter((f) => f !== file);
+  return {
+    ...record,
+    file,
+    diff,
+    truth: [...truth].sort(),
+    truthFromTypes: [...truth].sort(),
+    truthFromTests: [],
+    truthSource: truth.length > 0 ? "tsc" : "none",
+    brokenTests: [],
+    truthRules: {},
+    blindSpots: [],
+    testSelection: { mode: "no_tests", files: 0, reached: 0 },
+    baselinePassing: 0,
+  };
+}
+
+/**
  * Test-based truth for every candidate file of one commit — the rule written
  * out in `test-truth.mjs`. The order of the steps is load-bearing:
  *
@@ -377,8 +325,29 @@ export async function analyzeTests(commit, files, dir, { evidence = false } = {}
 
   const record = { repo: profile.root, commit, parent, subject, truthRule: TRUTH_RULE, truthMode: TRUTH };
   const results = [];
+  /**
+   * A tree from before this repository had a test suite at all.
+   *
+   * `selectTests` already falls back to "run everything" when nothing is
+   * selected, but everything is the empty set here, so the baseline ran the
+   * runner against no files and reported `1..0`. That was recorded as
+   * `not evaluable: baseline error (no test results parsed …)` — which reads
+   * like the runner malfunctioning, and, worse, ended the candidate BEFORE the
+   * type pass it never needed tests for. The registered truth is a UNION of
+   * type errors and broken tests; dropping a candidate for having no tests
+   * throws away the half of the rule that could still decide it.
+   *
+   * So a testless tree is not a failure: the test half contributes nothing and
+   * the candidate is decided on types alone, which is exactly what `--truth
+   * types` does with the same tree.
+   */
+  const testless = testFiles.length === 0;
   for (const file of files) {
     const diff = await git(["diff", parent, commit, "--", file]);
+    if (testless) {
+      results.push(await typeOnlyCandidate(record, file, diff, dir, parent, typeBaseline));
+      continue;
+    }
     const selection = selectTests(dir, file, { testFiles, closures, diff });
     const base = await testBaseline(tree, dir, selection.files);
     if (base.status !== "ok") {
@@ -611,8 +580,24 @@ export function populationFreeze(decisions, accepted) {
       test_selection: tally(kept.map((d) => d.testSelection?.mode ?? "n/a")),
       with_blind_spots: kept.filter((d) => (d.blindSpots?.length ?? 0) > 0).length,
     },
-    rejected: tally(decisions.filter((d) => d.accepted !== true).map((d) => d.reason ?? "unknown")),
+    rejected: tally(decisions.filter((d) => d.accepted !== true).map((d) => rejectionBucket(d.reason))),
   };
+}
+
+/**
+ * The rejection CATEGORY, without the detail the reason carries after it.
+ *
+ * "not evaluable: baseline error (no test results parsed: …)" ends in a TAP
+ * dump whose `duration_ms` differs every time, so counting raw reasons gave
+ * the tests/v2 run twenty-four buckets of one to eleven candidates where there
+ * was one cause with 46. A histogram nobody can read is a histogram that hides
+ * the thing it was written to show; the full reason stays on every candidate
+ * in `candidates.jsonl`.
+ */
+export function rejectionBucket(reason) {
+  const text = String(reason ?? "unknown");
+  const detail = text.indexOf(" (");
+  return detail > 0 ? text.slice(0, detail) : text;
 }
 
 /** Every repository's candidate file, concatenated into the pooled one. */
@@ -745,7 +730,10 @@ async function main() {
               repo: profile.root,
               commit,
               file,
-              reason: `analysis failed: ${String(e?.message ?? e).slice(0, 200)}`,
+              // The same wording the truth rules use for everything that could
+              // not be judged, so a crashed candidate is counted as what it is
+              // rather than as evidence that the change breaks nothing.
+              reason: `not evaluable: analysis failed: ${String(e?.message ?? e).slice(0, 200)}`,
             })),
           );
           for (const r of results) {
