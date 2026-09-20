@@ -119,6 +119,15 @@ describe("the arms and the thresholds come from the registration", () => {
     assert.equal(DELIVERED.sample.min_scenarios, 37);
     assert.equal(DELIVERED.sample.min_context_pairs, 37);
     assert.equal(DELIVERED.sample.min_use_blocks, 37);
+    // The use minimum is the measured ceiling, not a number beside it: every
+    // block the frozen product emits has to be observed. If the base rate is
+    // ever re-measured, the minimum moves with it or the verdict is impossible
+    // by construction again — the exact thing version 3 was amended to fix.
+    assert.equal(DELIVERED.sample.min_use_blocks, DELIVERED.arms.D.delivered_block_base_rate.delivered);
+    // Guard AND switch: `selectionSize` only keeps all 44 frozen scenarios
+    // while the registration actually asks for it, so the flag belongs here
+    // next to the floor it protects against.
+    assert.equal(DELIVERED.sample.run_all_accepted, true);
     assert.equal(DELIVERED.statistics.seed, 20260918);
     assert.equal(DELIVERED.statistics.cluster_key, "connected component of shared repo + truth file");
     assert.equal(DELIVERED.statistics.population_clusters, 22);
