@@ -181,3 +181,38 @@ test("end-to-end drop logic: write → read → shouldDrop after 3 shows", async
   // Next hook call after the touch: dedup clock reset, should NOT drop
   assert.equal(ss.shouldDropHit(entry, marker, Date.now()), false);
 });
+
+// ─── #572: the parked task-boundary block ────────────────────────
+
+test("takeParkedBoundary hands the block over once and empties the slot", async () => {
+  const id = "boundary-once";
+  await ss.mutateSessionState(id, (s) => {
+    s.boundary = { note: "BLOCK", dedupeKey: "code-boundary:abc" };
+  });
+
+  assert.equal(await ss.takeParkedBoundary(id), "BLOCK");
+  assert.equal(await ss.takeParkedBoundary(id), null);
+  const state = await ss.loadSessionState(id);
+  assert.equal(state.boundary, undefined);
+  assert.equal(state.shown["code-boundary:abc"]?.count, 1);
+});
+
+test("takeParkedBoundary drops a repeat of what the session was already told", async () => {
+  const id = "boundary-repeat";
+  await ss.mutateSessionState(id, (s) => {
+    ss.bumpShown(s, "code-boundary:abc");
+    s.boundary = { note: "BLOCK", dedupeKey: "code-boundary:abc" };
+  });
+
+  assert.equal(await ss.takeParkedBoundary(id), null);
+  // The slot empties either way — a stale repeat must not sit there forever.
+  assert.equal((await ss.loadSessionState(id)).boundary, undefined);
+});
+
+test("the accumulator survives another lane's save of the same file", async () => {
+  const id = "boundary-survives";
+  await ss.mutateSessionState(id, (s) => ss.recordTouched(s, "/r", "a.ts", null));
+  await ss.mutateSessionState(id, (s) => ss.bumpShown(s, "some-memory"));
+
+  assert.equal((await ss.loadSessionState(id)).touched?.["/r"]?.["a.ts"]?.unplaced, true);
+});

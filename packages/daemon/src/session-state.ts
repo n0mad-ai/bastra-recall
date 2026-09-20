@@ -424,6 +424,31 @@ export function recordTouched(
   }
 }
 
+/**
+ * #572: hand over the parked task-boundary block, at most once.
+ *
+ * Read, dedupe-check, book and clear happen in ONE locked mutation. Done from
+ * a lane's early snapshot instead, a Stop that parks between the snapshot and
+ * the write-back would have its fresh block deleted unseen. Returns null when
+ * nothing is parked or this session was already told the same thing; the slot
+ * empties either way.
+ */
+export async function takeParkedBoundary(sessionId: string): Promise<string | null> {
+  if (!sessionId) return null;
+  // Cheap early-out: no slot, no lock, no write — the common prompt.
+  if ((await loadSessionState(sessionId)).boundary === undefined) return null;
+  let note: string | null = null;
+  await mutateSessionState(sessionId, (state) => {
+    const parked = state.boundary;
+    if (parked === undefined) return;
+    delete state.boundary;
+    if ((state.shown[parked.dedupeKey]?.count ?? 0) >= MAX_SHOW) return;
+    bumpShown(state, parked.dedupeKey);
+    note = parked.note;
+  });
+  return note;
+}
+
 /** Files booked across every repository of the session. */
 export function touchedCount(state: ReadonlySessionState | SessionState): number {
   let n = 0;
