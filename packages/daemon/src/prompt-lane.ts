@@ -382,10 +382,12 @@ export async function runPromptLane(
     // and "go on" after a finished task are exactly the turn it was parked
     // for, and handing it over costs one state read when nothing is parked.
     // #607: behind the prompt lane's opt-in, like every other delivery of this
-    // lane — the gate is checked first, so a switched-off lane costs nothing.
-    const parkedForTrivial = (await getPromptImpactEnabled())
-      ? await takeParkedBoundary(payload.session_id ?? "")
-      : null;
+    // lane. The gate is asked only once a block is actually parked, so a
+    // trivial prompt still costs the one state read it always did.
+    const parkedForTrivial = await takeParkedBoundary(
+      payload.session_id ?? "",
+      getPromptImpactEnabled,
+    );
     if (parkedForTrivial !== null) {
       logBoundaryDelivery(payload.session_id ?? null, payload.cwd ?? process.cwd(), parkedForTrivial);
     }

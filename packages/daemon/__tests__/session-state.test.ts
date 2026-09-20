@@ -214,6 +214,31 @@ test("takeParkedBoundary drops a repeat of what the session was already told", a
   assert.equal((await ss.loadSessionState(id)).boundary, undefined);
 });
 
+test("takeParkedBoundary asks the caller's gate only when a block is parked", async () => {
+  // #305: the gate behind this is an uncached settings read, and the trivial
+  // prompt is the lane's cheapest path. Revert-check: ask the gate before the
+  // parked-slot check and the first count goes to 1.
+  const id = "boundary-gate";
+  let asked = 0;
+  const gate = async () => {
+    asked += 1;
+    return false;
+  };
+
+  assert.equal(await ss.takeParkedBoundary(id, gate), null);
+  assert.equal(asked, 0, "nothing parked — the gate is not worth a file read");
+
+  await ss.mutateSessionState(id, (s) => {
+    ss.parkBoundary(s, { note: "BLOCK", dedupeKey: "code-boundary:gate", files: 3 }, 1);
+  });
+
+  assert.equal(await ss.takeParkedBoundary(id, gate), null);
+  assert.equal(asked, 1);
+  // A refused gate takes nothing: the block waits for a session that wants it.
+  assert.notEqual((await ss.loadSessionState(id)).boundary, undefined);
+  assert.equal((await ss.takeParkedBoundary(id, async () => true))?.note, "BLOCK");
+});
+
 test("takeBoundary takes and marks inside one mutation a lane already holds", async () => {
   // #305: the prompt lane folds the take into its own save. Revert-check: take
   // the block BEFORE the mutation and mark it inside, and the second half goes

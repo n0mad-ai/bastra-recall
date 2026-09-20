@@ -568,10 +568,20 @@ export function takeBoundary(state: SessionState): TakenBoundary | null {
  * nothing is parked or this session was already told the same thing; the slot
  * empties either way.
  */
-export async function takeParkedBoundary(sessionId: string): Promise<TakenBoundary | null> {
+export async function takeParkedBoundary(
+  sessionId: string,
+  /**
+   * The caller's own opt-in, asked ONLY once something is parked. The trivial
+   * gate is the cheapest path in the prompt lane, and the switch behind this is
+   * an uncached settings read — paying it per prompt to learn that no block is
+   * waiting is the cost #305 keeps off this path.
+   */
+  gate: () => Promise<boolean> = async () => true,
+): Promise<TakenBoundary | null> {
   if (!sessionId) return null;
   // Cheap early-out: no slot, no lock, no write — the common prompt.
   if ((await loadSessionState(sessionId)).boundary === undefined) return null;
+  if (!(await gate())) return null;
   let taken: TakenBoundary | null = null;
   await mutateSessionState(sessionId, (state) => {
     taken = takeBoundary(state);

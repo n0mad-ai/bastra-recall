@@ -59,8 +59,8 @@ const MTIME_SLACK_MS = 2_000;
  * `unanswered` is deliberately NOT rationed by it: that section says no graph
  * could be asked at all, which — past the `allows()` check in the repo loop —
  * only happens for a code file the task deleted and the reindex already
- * forgot. It is rare,
- * and it is the one case where silence would read as "nothing depends on it".
+ * forgot. It is rare, and it is the one case where silence would read as
+ * "nothing depends on it".
  */
 export const MIN_BOUNDARY_MISSED_FILES = 3;
 
@@ -173,8 +173,10 @@ async function build(opts: BoundaryNoteOptions): Promise<BoundaryNote | null> {
   }
 
   if (sections.length === 0) return null;
-  // The volume gate (MIN_BOUNDARY_MISSED_FILES). A section that only says the
-  // graph could not be asked passes it: it is not the advice being rationed.
+  // The volume gate (MIN_BOUNDARY_MISSED_FILES). An `unanswered` file passes
+  // it: that line is not the advice being rationed. A block that goes out for
+  // one still carries the one or two missed files it already computed — they
+  // are cheaper to read than the paragraph around them.
   if (files < MIN_BOUNDARY_MISSED_FILES && unanswered === 0) return null;
   const dedupeKey = `${DEDUPE_PREFIX}${sha(identity.join("\n"))}`;
   if ((opts.session.shown[dedupeKey]?.count ?? 0) >= MAX_SHOW) return null;
