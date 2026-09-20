@@ -13,6 +13,7 @@
  *
  * None of them ranks, writes, or calls a model. All ids leave as hashes.
  */
+import { realpathSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import { readOccupant } from "@bastra-recall/core";
@@ -223,8 +224,25 @@ export async function snapshotVault(root: string): Promise<VaultSnapshot> {
   };
 }
 
+/**
+ * `resolve` normalizes a path, it does not follow a symlink — and a vault kept
+ * as a symlink to a synced directory is the ordinary setup. Read through one
+ * side while `--vault` names the other and the two spellings share no prefix,
+ * so a file sitting inside the snapshot was classified `external-read`. Both
+ * sides are dereferenced first; a path that does not exist any more (an old
+ * transcript naming a deleted file) keeps the normalized spelling, which is the
+ * best that can be known about it.
+ */
+function realOrResolved(path: string): string {
+  try {
+    return realpathSync(resolve(path));
+  } catch {
+    return resolve(path);
+  }
+}
+
 function insideVault(root: string, path: string): boolean {
-  const rel = relative(resolve(root), resolve(path));
+  const rel = relative(realOrResolved(root), realOrResolved(path));
   return rel !== "" && !rel.startsWith("..") && !rel.startsWith(sep) && !/^[A-Za-z]:/.test(rel);
 }
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { extractReviewedMissChains, hash } from "../src/learned-recall/reviewed-miss-harvest.js";
@@ -13,7 +13,7 @@ import {
   snapshotVault,
   type ObservationEngines,
 } from "../src/learned-recall/reviewed-miss-engines.js";
-import { deriveCueProposals, intentTerms } from "../src/learned-recall/reviewed-miss-cues.js";
+import { deriveCueProposals, intentTerms, resolvedMemoryId } from "../src/learned-recall/reviewed-miss-cues.js";
 import {
   classifyReviewedMissObservation,
   type FrozenCandidatePool,
@@ -481,4 +481,43 @@ test("live specimens: real hashed observations replay to their recorded class, a
   assert.deepEqual(fixtureOnly, ["unindexed-vault-object", "vault-gap"]);
   // specimensOf keeps one per (lane, class) and drops nothing else
   assert.equal(specimensOf(specimens.map((s) => ({ lane: s.lane, classification: s.classification, observation: s.observation, sessionRef: s.provenance.sessionRef, recallRef: s.provenance.recallRef })), { harvested_at: "x", window_days: 8 }).length, specimens.length);
+});
+
+test("a vault reached through a symlink is still the vault", async () => {
+  // `resolve` normalizes, it does not dereference — and a vault kept as a
+  // symlink to a synced directory is the ordinary setup, so a read through the
+  // other spelling was classified `external-read`. Revert-check: put `resolve`
+  // back in `insideVault` and this goes red.
+  const { dir, vault, engines } = await fixture();
+  try {
+    const link = join(dir, "vault-link");
+    await symlink(vault, link);
+    const viaLink: ObservationEngines = { ...engines, vaultRoot: link };
+    const [chain] = extractReviewedMissChains(
+      session("r-inpool", ["served-one"], { name: "Read", input: { file_path: join(vault, "memories", "served-one.md") } }),
+      "s.jsonl",
+    );
+    assert.equal(observeChain(chain, viaLink).classification, "served-hit", "the read lands inside the vault, not outside it");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a cue proposal resolves a Bash read the same way it resolves a Read", async () => {
+  // `resolveTarget` already treats `bash-read` exactly like `file-read`;
+  // `resolvedMemoryId` did not, so the same file through `cat` produced no
+  // proposal at all. Revert-check: drop `bash-read` from that predicate.
+  const { dir, vault, engines } = await fixture();
+  try {
+    const path = join(vault, "memories", "served-one.md");
+    const [viaRead] = extractReviewedMissChains(
+      session("r-inpool", ["served-one"], { name: "Read", input: { file_path: path } }), "s.jsonl");
+    const [viaBash] = extractReviewedMissChains(
+      session("r-inpool", ["served-one"], { name: "Bash", input: { command: `cat ${path}` } }), "s.jsonl");
+    assert.equal(viaBash.evidence.kind, "bash-read", "the fixture really goes through Bash");
+    assert.equal(resolvedMemoryId(viaBash, engines), resolvedMemoryId(viaRead, engines));
+    assert.equal(resolvedMemoryId(viaBash, engines), "served-one");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

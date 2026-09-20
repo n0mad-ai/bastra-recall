@@ -246,3 +246,52 @@ test("harvest CLI writes only the explicitly requested queue", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("an evidence step that resolves to nothing does not shut out the real read after it", () => {
+  // The Bash branch already refused to eat the slot on an unrecognized shape;
+  // Read/load_memory did not, so a `Grep(pattern)` with no path, a
+  // `find_document`, or the undocumented plural `load_memory({ids})` froze the
+  // chain before the read that followed. Revert-check: write `evidenceOf` back
+  // into `evidence` unconditionally and this goes red.
+  const session = [
+    line({ type: "user", message: { content: "where is the deployment rail" } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall", input: { query: "rail" } }] } }),
+    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"weak_result":true,"hits":[]}' }] } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Grep", input: { pattern: "rail" } }] } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/w/rail.md" } }] } }),
+  ].join("\n");
+  const [chain] = extractReviewedMissChains(session, "s.jsonl");
+  assert.deepEqual(chain.evidence, { kind: "file-read", path: "/w/rail.md" });
+});
+
+test("a chain whose only evidence step is opaque still reports itself as opaque", () => {
+  // The fallback, not a silent drop: refusing to freeze the slot must not turn
+  // "I could not look" into "there was no evidence step at all". Revert-check:
+  // drop the `opaque` fallback from `emit()` and this chain disappears.
+  const session = [
+    line({ type: "user", message: { content: "where is the deployment rail" } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall", input: { query: "rail" } }] } }),
+    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"weak_result":true,"hits":[]}' }] } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Grep", input: { pattern: "rail" } }] } }),
+  ].join("\n");
+  const [chain] = extractReviewedMissChains(session, "s.jsonl");
+  assert.equal(chain.evidence.kind, "opaque");
+});
+
+test("a second recall in the same turn does not drop the finished chain before it", () => {
+  // `pending` was replaced without handing the previous chain over, so a
+  // complete explicit-miss chain vanished whole. Revert-check: remove the
+  // `emit()` before `pending = {…}` and only one chain comes back.
+  const session = [
+    line({ type: "user", message: { content: "where is the deployment rail" } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall", input: { query: "rail v1" } }] } }),
+    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"weak_result":true,"hits":[]}' }] } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/w/rail-v1.md" } }] } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-2", name: "mcp__bastra-recall__recall", input: { query: "rail v2" } }] } }),
+    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-2", content: '{"weak_result":true,"hits":[]}' }] } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/w/rail-v2.md" } }] } }),
+  ].join("\n");
+  const chains = extractReviewedMissChains(session, "s.jsonl");
+  assert.equal(chains.length, 2, "both recalls of the turn are reported");
+  assert.deepEqual(chains.map((c) => (c.evidence as { path: string }).path), ["/w/rail-v1.md", "/w/rail-v2.md"]);
+});
