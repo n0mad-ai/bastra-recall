@@ -327,7 +327,7 @@ export async function runWriteLane(
       // change out of (NotebookEdit), or it threw. The write happens anyway,
       // so it is booked unplaced rather than not at all.
       const rel = repoRelative(repoRoot, targets[i]!);
-      if (rel !== null && codeGraphCache().serves(repoRoot)) {
+      if (rel !== null && codeGraphCache().allows(repoRoot)) {
         stateDeltas.push((s) => recordTouched(s, repoRoot, rel, null));
       }
       return;
@@ -346,7 +346,7 @@ export async function runWriteLane(
   for (const target of uncappedTargets(toolInput, filePath, cwd).slice(targets.length)) {
     const repoRoot = laneRepoRoot(target, cwd);
     const rel = repoRelative(repoRoot, target);
-    if (rel === null || !codeGraphCache().serves(repoRoot)) continue;
+    if (rel === null || !codeGraphCache().allows(repoRoot)) continue;
     stateDeltas.push((s) => recordTouched(s, repoRoot, rel, null));
   }
 

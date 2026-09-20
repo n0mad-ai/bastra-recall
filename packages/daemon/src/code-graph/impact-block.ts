@@ -220,7 +220,7 @@ export async function impactNote(opts: ImpactNoteOptions): Promise<ImpactResult>
   // Cold is "could not look"; a repository code awareness is off for is not a
   // question at all, and books nothing — the boundary stays as silent there
   // as every other code-graph block.
-  if (graph === null) return cache.serves(opts.repoRoot) ? unplaced : SILENT;
+  if (graph === null) return cache.allows(opts.repoRoot) ? unplaced : SILENT;
   if (!graph.symbolsByFile.has(rel)) return unplaced;
 
   const selection = await changedSymbols(graph, rel, opts);
