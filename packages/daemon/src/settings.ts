@@ -22,6 +22,8 @@
  *       "suggest" = propose first, "auto" = write without asking, "off" = the
  *       session hook injects no docs instruction at all.
  *   - docs.language (optional): doc language, e.g. "en" | "de" (default "en").
+ *   - promptImpact.enabled (optional): boolean (default false, #607 experimental —
+ *       see code-graph/prompt-impact-settings.ts for the resolution + why)
  *
  * The env var BASTRA_UPDATE_CHECK=off is a hard kill-switch over update.mode.
  * The env var BASTRA_EMBEDDING_PROVIDER wins over embedding.provider (the file).
@@ -160,6 +162,11 @@ export interface CliSettings {
   // Checkouts auftaucht und committet werden könnte. Die Aktivierung ist eine
   // Entscheidung dieses Rechners, nicht des Projekts.
   code?: { repos?: string[] };
+  // Prompt-lane change-impact delivery (#607): undefined = disabled (default).
+  // Resolution + env precedence live in code-graph/prompt-impact-settings.ts,
+  // next to the feature; this file only keeps the schema (same split as `code`
+  // above).
+  promptImpact?: { enabled?: boolean };
 }
 
 /**
@@ -245,6 +252,7 @@ const KNOWN_SETTINGS_KEYS: readonly string[] = [
   "size",
   "language",
   "code",
+  "promptImpact",
 ];
 
 function warnAboutUnknownKeys(data: unknown, path: string): void {
@@ -453,6 +461,10 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
       .filter((r): r is string => typeof r === "string" && r.trim().length > 0)
       .map((r) => r.trim());
     if (repos.length > 0) settings.code = { repos };
+  }
+  const promptImpactEnabled = (data as { promptImpact?: { enabled?: unknown } }).promptImpact?.enabled;
+  if (typeof promptImpactEnabled === "boolean") {
+    settings.promptImpact = { enabled: promptImpactEnabled };
   }
   const langData = (data as { language?: { primary?: unknown } }).language;
   if (langData !== undefined) {

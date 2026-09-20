@@ -181,6 +181,9 @@ describe("prompt lane: delivered change-impact telemetry stays path-free", () =>
           BASTRA_TELEMETRY: "on",
           BASTRA_LOG_PATH: logDir,
           BASTRA_HOOK_STATE_DIR: stateDir,
+          // #607: prompt-lane delivery is off by default — this test exercises
+          // the delivery path itself, so it opts in explicitly.
+          BASTRA_PROMPT_IMPACT: "on",
         },
         async () => {
           await codeGraphCache().ensureLoaded(repo);

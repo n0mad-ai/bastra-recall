@@ -47,7 +47,7 @@ const { ARMS } = await import("../code-roi/v2/run-arms-v3.mjs");
 const { blockUse, blindSpotOf, blindSpotReport, judge } = await import(
   "../code-roi/v2/evaluate-delivered.mjs"
 );
-const { checkBuildPin, frozenSurfaceMismatches, frozenSurfaceOf } = await import(
+const { checkBuildPin, frozenSurfaceMismatches, frozenSurfaceOf, preflightBuild } = await import(
   "../code-roi/v2/build-pin.mjs"
 );
 
@@ -115,7 +115,10 @@ describe("the arms and the thresholds come from the registration", () => {
     // state is gone. What must stay true is that the frozen population is
     // named rather than promised — `code-roi-population-freeze.test.ts` holds
     // both that and the gate the pending state used to trip.
-    assert.equal(DELIVERED.status, "numbers_registered");
+    // #607: the run itself finished 2026-09-20 and `status` moved on again,
+    // to the terminal `run_completed` (see `result` at the end of the
+    // registration and BEFUND.md, "Zustellung v3 Endergebnis").
+    assert.equal(DELIVERED.status, "run_completed");
     assert.equal(DELIVERED.sample.min_scenarios, 37);
     assert.equal(DELIVERED.sample.min_context_pairs, 37);
     assert.equal(DELIVERED.sample.min_use_blocks, 37);
@@ -173,7 +176,20 @@ describe("the arms and the thresholds come from the registration", () => {
 // ─── The frozen surface, and the pin ─────────────────────────────
 
 describe("the build pin knows which registration it pinned", () => {
-  test("the delivered frozen surface matches what dist emits", async () => {
+  test("the delivered frozen surface matches what dist emits", async (t) => {
+    if (DELIVERED.status === "run_completed") {
+      // #607: `no_further_changes` freezes the registration's OWN fields —
+      // the reported numbers and the frozen hashes as a historical record of
+      // what arm D was actually served. It does not freeze
+      // `packages/daemon/src/code-graph` itself: development continues on
+      // this very run's findings (BEFUND.md, "Zustellung v3 Endergebnis"),
+      // starting with the default-off gate #607 asks for, which touches
+      // `prompt-impact.ts` — one of the files this hash covers. The guard
+      // that still has to hold is that no NEW arm can start under this id,
+      // checked below via `preflightBuild`.
+      t.skip("registration_version 3 is run_completed — dist is expected to move on from its pin");
+      return;
+    }
     const built = await frozenSurfaceOf(DELIVERED);
     assert.deepEqual(
       frozenSurfaceMismatches(built, DELIVERED),
@@ -185,6 +201,13 @@ describe("the build pin knows which registration it pinned", () => {
     assert.ok(Object.keys(built).includes("block_template_sha256"));
     assert.ok(Object.keys(built).includes("code_graph_bundle_sha256"));
     assert.equal(Object.keys(built).length, 2);
+  });
+
+  test("#607: preflightBuild refuses a new arm once the registration is run_completed", async () => {
+    assert.equal(DELIVERED.status, "run_completed", "this test only means something once the run is done");
+    const verdict = await preflightBuild({ registrationId: "code-awareness-delivered", registration: DELIVERED });
+    assert.equal(verdict.ok, false);
+    assert.equal(verdict.reason, "run_completed");
   });
 
   test("the v6 frozen surface still matches — a second registration changed nothing", async () => {

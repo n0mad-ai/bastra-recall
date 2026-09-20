@@ -271,3 +271,76 @@ Rohdaten (Szenarien, Wahrheit, 120 Transkripte, `build-pin.json`,
 `report.json`) liegen in `~/.bastra/eval/code-roi-v4-bastra-io/`.
 Ergebnisblock in der Registrierung:
 `packages/eval/registrations/code-awareness-change-impact.json` → `result`.
+
+## Zustellung v3 Endergebnis (20.09.2026)
+
+Registrierung `code-awareness-delivered.json`, Version 3, Issue #606, Status
+`run_completed`. Misst NICHT, ob ein Agent den Graphen benutzt, sondern ob
+der vom Produkt selbst unangefragt vorangestellte `find_affected_files`-Block
+(Arm D, `promptImpactNote()`, UserPromptSubmit-Lane) einem Agenten billiger
+und mindestens gleich gut zur Antwort verhilft wie grep allein (Arm A). Arm P
+(volle Graph-Antwort im Prompt) ist diagnostisch, nie gegated. Wahrheit:
+`tests/v2` (A-B-B-A-bestätigter gebrochener Test oder neuer Typfehler,
+niemals die geänderte Datei selbst). 44 historische Änderungen aus
+bastra-recall, Build `973c6b8`, Graphify 0.9.63, 132/132 Arme, 0 Abbrüche,
+0 gemischte Builds, 14,615435 $ von 40 $ Kostendeckel.
+
+| | A: grep | D: zugestellter Block | P: volle Graph-Antwort (nur berichtet) |
+| --- | ---: | ---: | ---: |
+| Recall | 46,92 % | 45,78 % | 48,05 % |
+| Präzision | 37,18 % | 39,30 % | 39,56 % |
+| Median Input-Tokens | 66.080,5 | 64.861,5 | 77.941,5 |
+
+**Kontext: `underpowered`.** Nur 19 von 37 A/D-Paaren lösten die Aufgabe in
+beiden Armen (Recall ≥ 0,8). Verhältnis D/A auf diesen 19: 0,84058, aber das
+95-%-Cluster-Intervall `[0,72850; 1,47389]` überspannt 1,0 deutlich — keine
+gesicherte Ersparnis. Über alle 44 Szenarien, ungegatet: D/A `0,98155`, also
+ein beobachteter Gesamt-Kontextvorteil von **1,845 %**, der nicht Teil des
+registrierten Vergleichs ist und nicht statistisch gesichert ist.
+
+**Nutzung: `fail`.** Alle registrierten 37 Blockbeobachtungen liegen vor
+(`sample.min_use_blocks` erfüllt). Blocküberlappung D 20/37 = 54,05 %
+(Schwelle 50 % erfüllt), Präzisionsguard bestanden (D − A = +2,12 Pp),
+Recall-Guard verfehlt (D − A = −1,14 Pp, KI `[−6,67 Pp; +2,31 Pp]`,
+Untergrenze < 0). Arm A erreicht **exakt dieselbe** Blocküberlappung wie D
+(ebenfalls 20/37 = 54,05 %) → inkrementelle Überlappung D − A = 0. Die
+Zustellung erzeugt auf dieser Population keinen belegbaren zusätzlichen
+Nutzen; grep findet dieselben blockgenannten Dateien genauso oft von selbst.
+
+### Ehrliche Einordnung
+
+- **Automatische Prompt-Zustellung ist auf dieser Population nicht als
+  nützlich belegt.** Weder ein gesicherter Kontextvorteil noch ein
+  kausaler Nutzungsbeleg liegt vor.
+- Der **kleine Gesamt-Kontextvorteil von 1,845 %** (D/A über alle 44
+  Szenarien) ist real beobachtet, aber nicht statistisch gesichert und nicht
+  Teil des registrierten, gegateten Vergleichs.
+- Der **symbolbasierte Write/Edit-Block** (`impact-block.ts` in der
+  Write-Lane) war **nicht Gegenstand dieses Laufs** und ist durch dieses
+  Ergebnis **nicht widerlegt**. Gemessen wurde ausschließlich die
+  UserPromptSubmit-Zustellungslane.
+- **Gemini-Vorschlag „Test-first"** (Testdateien im Block vor
+  Produktionsdateien ranken statt sie ans Ende zu sortieren) offline
+  nachgemessen, ohne Agentenlauf: Tiefe 1 hebt die Quote „mindestens eine
+  Wahrheitsdatei im Block genannt" von 15 auf 16 der 37 zugestellten Blöcke,
+  Tiefe 2 auf 18 von 37. Die schwache Ausgangsquote liegt also nicht
+  überwiegend an der Sortierung: Bei einem Großteil der verbleibenden Fälle
+  fehlen die Wahrheitsdateien bereits im Graphergebnis selbst, bevor
+  überhaupt sortiert oder auf 10 Dateien gekappt wird.
+- Absolute Recall- und Präzisionswerte sind **nicht vergleichbar** mit v3
+  oder v6: diese Population nutzt die `tests/v2`-Wahrheit, nicht das
+  Typ-Orakel der früheren Läufe.
+
+### Nächster Schritt
+
+Kein weiterer Agentenlauf vor einem Offline-Mechanismusnachweis auf einem
+neuen Forschungsbranch `research/code-impact-evidence` (noch nicht
+angelegt): Ziel ist, die Trefferquote „mindestens eine Wahrheitsdatei im
+Block" von aktuell 15/37 auf **≥ 25/37 ohne Recall-Verlust** zu heben, bevor
+ein weiterer bezahlter Agentenlauf beauftragt wird.
+
+Rohbericht: `~/.bastra/eval/code-roi-delivered-recall-v2/report.json`.
+Registrierung: `packages/eval/registrations/code-awareness-delivered.json`
+(Status `run_completed`, Ergebnisblock `result`). Handoff-Dokumente:
+`packages/eval/code-roi/v2/HANDOVER-CLAUDE-AFTER-DELIVERED-RUN.md`,
+`packages/eval/code-roi/v2/HANDOVER-NEW-AGENT-CODE-AWARENESS.md`.

@@ -197,6 +197,20 @@ export async function preflightBuild({
       message: `${registrationId}: the amended truth rule has not been re-mined and frozen; no arm may start`,
     };
   }
+  // #607: `run_completed` (introduced by registration_version 6 of the
+  // change-impact file, reused by registration_version 3 here) is terminal —
+  // `no_further_changes` in the registration means exactly that. Before this
+  // check, nothing stopped an accidental re-run from starting a new arm under
+  // an id whose numbers are already reported; the frozen-surface check below
+  // would then also start refusing every unrelated later edit to
+  // `packages/daemon/src`, which is not what it is for once the run is done.
+  if (registration.status === "run_completed") {
+    return {
+      ok: false,
+      reason: "run_completed",
+      message: `${registrationId}: registration_version ${registration.registration_version} already completed its run (no_further_changes) — no further arm may start under this id`,
+    };
+  }
   const headSha = gitHeadSha(repoRoot);
   const distRevision = readBuildRevision(distDaemonDir);
   if (distRevision === null) {
