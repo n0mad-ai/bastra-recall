@@ -97,9 +97,11 @@ export interface SessionState {
    * boundary covers everything an earlier one did, because `touched` only
    * grows.
    */
-  boundary?: { note: string; dedupeKey: string };
+  boundary?: { note: string; dedupeKey: string; builtFrom: number };
+  /** #572: characters the accumulator holds, against `MAX_TOUCHED_CHARS`. */
+  touchedChars?: number;
   /**
-   * #572: the accumulator hit `MAX_TOUCHED_FILES` and stopped recording. From
+   * #572: the accumulator hit a bound (files or characters) and stopped recording. From
    * then on the table is a prefix of the task, and the Stop lane stays silent
    * rather than answer from a prefix.
    */
@@ -129,7 +131,8 @@ export type ReadonlySourceBackoff = Readonly<Omit<SourceBackoff, "ids">> & {
 export interface ReadonlySessionState {
   readonly shown: Readonly<Record<string, Readonly<ShownEntry>>>;
   readonly sources?: Readonly<Record<string, ReadonlySourceBackoff>>;
-  readonly boundary?: Readonly<{ note: string; dedupeKey: string }>;
+  readonly boundary?: Readonly<{ note: string; dedupeKey: string; builtFrom: number }>;
+  readonly touchedChars?: number;
   readonly touched?: Readonly<
     Record<string, Readonly<Record<string, Readonly<Omit<TouchedFile, "hits">> & { readonly hits: readonly TouchedHit[] }>>>
   >;
@@ -206,8 +209,13 @@ async function readSessionState(sessionId: string): Promise<SessionState> {
       typeof parsed.boundary.note === "string" &&
       typeof parsed.boundary.dedupeKey === "string"
     ) {
-      state.boundary = { note: parsed.boundary.note, dedupeKey: parsed.boundary.dedupeKey };
+      state.boundary = {
+        note: parsed.boundary.note,
+        dedupeKey: parsed.boundary.dedupeKey,
+        builtFrom: typeof parsed.boundary.builtFrom === "number" ? parsed.boundary.builtFrom : 0,
+      };
     }
+    if (typeof parsed.touchedChars === "number") state.touchedChars = parsed.touchedChars;
     return state;
   } catch {
     return { shown: {} };
@@ -373,6 +381,14 @@ export function bumpShown(state: SessionState, memId: string, now: number = Date
 /** #572: bounds, so a long session cannot grow its state file without limit. */
 export const MAX_TOUCHED_FILES = 128;
 export const MAX_TOUCHED_HITS = 40;
+/**
+ * Budget for the accumulator's own text, in characters. The counts above do
+ * not bound it: a path may be 512 bytes (`limits.ts`), so 128 x 40 hits can
+ * serialise to ~8 MiB — in a file every lane reads, parses and rewrites whole,
+ * and whose largest observed size before #572 was under 1 KiB. Past the budget
+ * the table is a prefix of the task and says so (`touchedOverflow`).
+ */
+export const MAX_TOUCHED_CHARS = 128 * 1024;
 
 /**
  * #572: book one file the session is about to write.
@@ -405,6 +421,7 @@ export function recordTouched(
     }
     entry = { at: now, last: now, hits: [], unplaced: false, truncated: false };
     repo[file] = entry;
+    state.touchedChars = (state.touchedChars ?? 0) + repoRoot.length + file.length + ENTRY_OVERHEAD;
   }
   entry.last = now;
   if (truncated) entry.truncated = true;
@@ -419,9 +436,39 @@ export function recordTouched(
       entry.truncated = true;
       break;
     }
+    const cost = hit.file.length + hit.location.length + hit.via.length + hit.relation.length + ENTRY_OVERHEAD;
+    if ((state.touchedChars ?? 0) + cost > MAX_TOUCHED_CHARS) {
+      state.touchedOverflow = true;
+      break;
+    }
+    state.touchedChars = (state.touchedChars ?? 0) + cost;
     known.add(hit.file);
     entry.hits.push({ file: hit.file, location: hit.location, via: hit.via, relation: hit.relation });
   }
+}
+
+/** JSON keys, quotes and separators around one entry — an estimate, on the high side. */
+const ENTRY_OVERHEAD = 64;
+
+/**
+ * #572: park the block a Stop computed, unless a NEWER Stop already did.
+ *
+ * Two Stops can compute from different snapshots and finish in the opposite
+ * order; `builtFrom` is the moment the snapshot was read, and the older
+ * computation never overwrites the newer one. `null` clears the slot under the
+ * same rule.
+ */
+export function parkBoundary(
+  state: SessionState,
+  built: { note: string; dedupeKey: string } | null,
+  builtFrom: number,
+): void {
+  if (state.boundary !== undefined && state.boundary.builtFrom > builtFrom) return;
+  if (built === null) {
+    delete state.boundary;
+    return;
+  }
+  state.boundary = { note: built.note, dedupeKey: built.dedupeKey, builtFrom };
 }
 
 /**

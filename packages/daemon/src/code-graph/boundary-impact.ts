@@ -36,18 +36,18 @@
  * WHY AN UNPLACED EDIT IS NOT SILENCE. The lane cannot always look: cold
  * graph, unreadable change, overrun budget, a fifth apply_patch target. Such a
  * file is asked about here against the CURRENT graph, whole-file. That answer
- * is late and says so (`basis: "whole_file_now"`); with no graph at all the
- * file is returned in `unanswered`. It is never dropped — "I could not look"
+ * is late and says so (`basis: "whole_file_now"`); with no graph at all, or
+ * for a deleted file the reindexed graph has already dropped, the file is
+ * returned in `unanswered`. It is never dropped — "I could not look"
  * and "nothing depends on it" must not render the same.
  *
  * THE ONE DELIBERATE NARROWING, NAMED. A dependent the transcript proves was
  * read AFTER the change is moved from `missed` to `seen`, and a boundary with
  * only `seen` files renders nothing. A read is not a review — it may have been
- * partial — so this does trade recall for quiet. It is kept because the
- * per-edit block has already named these files to the agent once; the
- * boundary's new information is "and you never went there", which a later
- * read falsifies. `seen` stays in the result, so the caller can show the count
- * and the trade is reversible in one line.
+ * partial — so this does trade recall for quiet. It is kept because what the
+ * block asserts is "never opened since", and a later read falsifies exactly
+ * that; the block never claimed "reviewed". `seen` stays in the result, so the
+ * caller can show the count and the trade is reversible in one line.
  */
 
 import { type LoadedGraph } from "./reader.js";
@@ -71,6 +71,8 @@ export interface BoundaryTouch {
   hits: readonly BookedHit[] | null;
   /** The booked list was capped somewhere on the way. */
   truncated?: boolean;
+  /** The file no longer exists — the task deleted or moved it. */
+  gone?: boolean;
 }
 
 /** Where a missed dependent's evidence comes from. */
@@ -140,8 +142,15 @@ export function boundaryImpact(
         unanswered.push(touch.file);
         continue;
       }
+      const own = allSymbolsOf(graph, touch.file);
+      if (own.length === 0 && touch.gone === true) {
+        // Deleted, and the reindexed graph has already dropped it: "no symbols"
+        // here means the witness is gone, not that nothing depended on it.
+        unanswered.push(touch.file);
+        continue;
+      }
       basis = "whole_file_now";
-      hits = affectedHits(graph, touch.file, allSymbolsOf(graph, touch.file), 1);
+      hits = affectedHits(graph, touch.file, own, 1);
     }
     for (const hit of hits) {
       if (written.has(hit.file)) continue;

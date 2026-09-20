@@ -68,6 +68,15 @@ export class CodeGraphCache {
   ) {}
 
   /**
+   * Whether this repository is served at all — the same rule `get()` applies,
+   * without touching the graph. Lets a caller tell "not loaded yet" from
+   * "code awareness is off here", which `get()` alone reports as one null.
+   */
+  serves(repoRoot: string): boolean {
+    return this.allow(repoRoot);
+  }
+
+  /**
    * The graph for a repository IF it is already in memory, else null plus a
    * background load. Never awaits the load — see the cold-start rule above.
    *

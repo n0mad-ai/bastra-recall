@@ -16,7 +16,9 @@ import {
 } from "../src/code-graph/boundary-impact.js";
 import { boundaryNote } from "../src/code-graph/boundary-block.js";
 import {
+  MAX_TOUCHED_CHARS,
   MAX_TOUCHED_FILES,
+  parkBoundary,
   recordTouched,
   type ReadonlySessionState,
   type SessionState,
@@ -39,7 +41,12 @@ import {
  *     count a read from before the change".
  *   - drop the `touchedOverflow` return → "is silent once the accumulator
  *     overflowed".
+ *   - drop the `gone` branch → "does not read a deleted file the graph already
+ *     dropped as 'nothing depends on it'".
+ *   - `continue` on empty `missed` alone → "renders unanswered alone".
  *   session-state.ts
+ *   - drop the character budget → "overflows on characters, not only on counts".
+ *   - drop the `builtFrom` comparison → "does not let an older Stop overwrite".
  *   - clear `unplaced` on a later sighted edit → "keeps a file unplaced once
  *     any edit of it was blind".
  */
@@ -171,6 +178,13 @@ describe("boundary impact — the pure sum", () => {
     assert.deepEqual(result.unanswered, ["src/save.ts"]);
     // The booked half of the answer does not need a graph at all.
     assert.equal(result.missed.length, 2);
+  });
+
+  it("does not read a deleted file the graph already dropped as 'nothing depends on it'", () => {
+    const result = boundaryImpact(graph, [{ file: "src/removed.ts", hits: null, gone: true }]);
+
+    assert.deepEqual(result.missed, []);
+    assert.deepEqual(result.unanswered, ["src/removed.ts"]);
   });
 
   it("moves a dependent read after the change to seen, and keeps counting it", () => {
@@ -305,6 +319,17 @@ describe("boundary block — what the Stop lane parks", () => {
     assert.equal(again?.files, 3);
   });
 
+  it("renders unanswered alone — could not look is not nothing depends", async () => {
+    const s: SessionState = { shown: {} };
+    recordTouched(s, REPO, "src/save.ts", null, false, T0);
+    const built = await boundaryNote({ session: s, cache, mtimeOf: written });
+
+    assert.notEqual(built, null);
+    assert.equal(built!.files, 0);
+    assert.match(built!.note, /Dependents unknown — no graph could be asked about: src\/save\.ts\./);
+    assert.doesNotMatch(built!.note, /Not opened/);
+  });
+
   it("is silent once the accumulator overflowed", async () => {
     const full = session((s) => {
       for (let i = 0; i <= MAX_TOUCHED_FILES; i++) {
@@ -318,6 +343,34 @@ describe("boundary block — what the Stop lane parks", () => {
 });
 
 describe("recordTouched — the accumulator", () => {
+  it("overflows on characters, not only on counts", () => {
+    const s: SessionState = { shown: {} };
+    const long = "x".repeat(500);
+    for (let f = 0; f < 60 && s.touchedOverflow !== true; f++) {
+      const hits = Array.from({ length: 40 }, (_, i) => ({
+        file: `${long}/${f}/${i}.ts`,
+        location: `${long}/${f}/${i}.ts:1`,
+        via: long,
+        relation: "calls",
+      }));
+      recordTouched(s, "/r", `src/f${f}.ts`, hits, false, 1);
+    }
+
+    assert.equal(s.touchedOverflow, true);
+    assert.ok(JSON.stringify(s.touched).length < 2 * MAX_TOUCHED_CHARS);
+  });
+
+  it("does not let an older Stop overwrite a newer one's block", () => {
+    const s: SessionState = { shown: {} };
+    parkBoundary(s, { note: "NEW", dedupeKey: "k2" }, 200);
+    parkBoundary(s, { note: "OLD", dedupeKey: "k1" }, 100);
+    assert.equal(s.boundary?.note, "NEW");
+    parkBoundary(s, null, 100);
+    assert.equal(s.boundary?.note, "NEW");
+    parkBoundary(s, null, 300);
+    assert.equal(s.boundary, undefined);
+  });
+
   it("unions dependents across edits of one file, one per dependent file", () => {
     const s: SessionState = { shown: {} };
     recordTouched(s, "/r", "a.ts", [BOOKED[0]!], false, 1);

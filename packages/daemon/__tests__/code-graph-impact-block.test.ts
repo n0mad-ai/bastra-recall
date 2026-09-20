@@ -365,6 +365,23 @@ describe("delivered change-impact block: what the agent sees", () => {
     assert.ok(cache.get(repo) !== null, "the cold call did not schedule a load");
   });
 
+  it("books nothing where code awareness is off — cold and off are different nulls", async () => {
+    const repo = await freshRepo(root, "off");
+    const off = new CodeGraphCache(undefined, () => false);
+    const out = await impactNote({
+      filePath: join(repo, SAVE),
+      repoRoot: repo,
+      toolName: "Edit",
+      toolInput: EDIT_SAVE,
+      session: EMPTY_SESSION,
+      cache: off,
+    });
+    assert.equal(out.note, null);
+    // #572: an unplaced booking here would surface "dependents unknown" at the
+    // task boundary of every repository the feature was never enabled for.
+    assert.equal(out.booking, undefined);
+  });
+
   it("is silent for a tool it cannot read a pending change out of", async () => {
     const repo = await freshRepo(root, "unsupported");
     const cache = new CodeGraphCache();

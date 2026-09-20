@@ -102,6 +102,7 @@ async function build(opts: BoundaryNoteOptions): Promise<BoundaryNote | null> {
         file,
         hits: entry.unplaced ? null : entry.hits,
         truncated: entry.truncated,
+        gone: mtime === null,
       });
       for (const hit of entry.hits) {
         changedAt.set(hit.file, Math.max(changedAt.get(hit.file) ?? 0, entry.last));
@@ -123,10 +124,16 @@ async function build(opts: BoundaryNoteOptions): Promise<BoundaryNote | null> {
       readAfter,
       maxMissed: Number.MAX_SAFE_INTEGER,
     });
-    if (impact.missed.length === 0) continue;
+    // `unanswered` alone still renders: "I could not look" must not come out
+    // the same as "nothing depends on it".
+    if (impact.missed.length === 0 && impact.unanswered.length === 0) continue;
 
     files += impact.missed.length;
-    identity.push(repoRoot, ...impact.missed.map((m) => `${m.file}<${m.changedFile}`));
+    identity.push(
+      repoRoot,
+      ...impact.missed.map((m) => `${m.file}<${m.changedFile}`),
+      ...impact.unanswered.map((f) => `?${f}`),
+    );
     sections.push(render(repoRoot, impact.missed, impact.seen.length, impact.unanswered, impact.truncated));
   }
 
@@ -168,8 +175,10 @@ function render(
   const lines: string[] = [
     `Code graph, task boundary (${repoRoot}): files written in this session had ` +
       "dependents that were neither written nor read since. Context, not an instruction.",
-    `Not opened (${missed.length} candidate file${missed.length === 1 ? "" : "s"}):`,
   ];
+  if (missed.length > 0) {
+    lines.push(`Not opened (${missed.length} candidate file${missed.length === 1 ? "" : "s"}):`);
+  }
   for (const m of shown) {
     const late = m.basis === "whole_file_now" ? " [whole file, asked after the edit]" : "";
     lines.push(`- ${m.location} — ${m.relation} ${m.via} (${m.changedFile})${late}`);
@@ -180,7 +189,9 @@ function render(
     lines.push(`${seen} more dependent file${seen === 1 ? " was" : "s were"} read after the change and not written.`);
   }
   if (unanswered.length > 0) {
-    lines.push(`No graph was available for: ${unanswered.slice(0, MAX_IMPACT_FILES).join(", ")}.`);
+    lines.push(
+      `Dependents unknown — no graph could be asked about: ${unanswered.slice(0, MAX_IMPACT_FILES).join(", ")}.`,
+    );
   }
   if (truncated) lines.push("A dependent list was capped on the way; this is not all of them.");
   lines.push(

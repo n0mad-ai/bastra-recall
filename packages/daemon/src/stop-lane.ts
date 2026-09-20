@@ -60,7 +60,7 @@ import { frustrationCues, decisionCues } from "./lexicon.js";
 import { getDocsMode, type DocsMode } from "./settings.js";
 import { enqueueForPath } from "./code-graph/service.js";
 import { boundaryNote, type ProvenRead } from "./code-graph/boundary-block.js";
-import { loadSessionState, mutateSessionState } from "./session-state.js";
+import { loadSessionState, mutateSessionState, parkBoundary } from "./session-state.js";
 import {
   claudeToolUseCommands,
   claudeToolUseReads,
@@ -180,6 +180,7 @@ export async function runStopLane(
 async function parkBoundaryNote(payload: ClaudeStopPayload, turns: TranscriptTurn[]): Promise<void> {
   const sessionId = payload.session_id ?? "";
   if (!sessionId) return;
+  const builtFrom = Date.now();
   const session = await loadSessionState(sessionId);
   if (session.touched === undefined) return;
 
@@ -190,13 +191,9 @@ async function parkBoundaryNote(payload: ClaudeStopPayload, turns: TranscriptTur
   const reads = turns.flatMap((t) => t.reads ?? []);
   const built = await boundaryNote({ session, reads });
   if (built === null && session.boundary === undefined) return;
-  await mutateSessionState(sessionId, (s) => {
-    if (built === null) {
-      delete s.boundary;
-    } else {
-      s.boundary = { note: built.note, dedupeKey: built.dedupeKey };
-    }
-  });
+  await mutateSessionState(sessionId, (s) =>
+    parkBoundary(s, built === null ? null : { note: built.note, dedupeKey: built.dedupeKey }, builtFrom),
+  );
 }
 
 async function evaluateStop(

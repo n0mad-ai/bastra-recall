@@ -215,8 +215,12 @@ export async function impactNote(opts: ImpactNoteOptions): Promise<ImpactResult>
     dedupeHit: false,
     booking: { file: rel, hits: null, truncated: false },
   };
-  const graph = (opts.cache ?? codeGraphCache()).get(opts.repoRoot);
-  if (graph === null) return unplaced;
+  const cache = opts.cache ?? codeGraphCache();
+  const graph = cache.get(opts.repoRoot);
+  // Cold is "could not look"; a repository code awareness is off for is not a
+  // question at all, and books nothing — the boundary stays as silent there
+  // as every other code-graph block.
+  if (graph === null) return cache.serves(opts.repoRoot) ? unplaced : SILENT;
   if (!graph.symbolsByFile.has(rel)) return unplaced;
 
   const selection = await changedSymbols(graph, rel, opts);

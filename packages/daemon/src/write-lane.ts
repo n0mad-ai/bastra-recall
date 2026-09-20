@@ -33,7 +33,7 @@ import { fileSizeNote } from "./file-size-check.js";
 import { impactNote, type ImpactNote, type ImpactResult } from "./code-graph/impact-block.js";
 import { appliesToNote, type AppliesToNote } from "./code-graph/applies-to-note.js";
 import { laneRepoRoot } from "./code-graph/git-paths.js";
-import { repoRelative } from "./code-graph/dependents-block.js";
+import { codeGraphCache, repoRelative } from "./code-graph/dependents-block.js";
 import { logDeliveredBlock } from "./code-delivered-telemetry.js";
 import { memoryLocationNote } from "./memory-location.js";
 import { reportHinted } from "./hook-hinted.js";
@@ -319,21 +319,34 @@ export async function runWriteLane(
   // boundary. Booked WITH the dependents of this moment: the watcher reindexes
   // after the edit, and the next graph no longer knows who called a symbol
   // this edit removed.
-  for (const t of perTarget) {
-    const booking = t.impact.booking;
-    if (booking === undefined) continue;
+  perTarget.forEach((t, i) => {
     const repoRoot = t.repoRoot;
-    stateDeltas.push((s) =>
-      recordTouched(s, repoRoot, booking.file, booking.hits, booking.truncated),
-    );
-  }
+    const booking = t.impact.booking;
+    if (booking === undefined) {
+      // The impact module never reached the file — a tool it cannot read a
+      // change out of (NotebookEdit), or it threw. The write happens anyway,
+      // so it is booked unplaced rather than not at all.
+      const rel = repoRelative(repoRoot, targets[i]!);
+      if (rel !== null && codeGraphCache().serves(repoRoot)) {
+        stateDeltas.push((s) => recordTouched(s, repoRoot, rel, null));
+      }
+      return;
+    }
+    // A dedupe hit books no hits on the claim that the delivery it repeats
+    // already booked them. That holds only if this session HAS such an entry;
+    // a `shown` counter without one (state written before #572) proves
+    // nothing, and the edit is booked as one the lane could not look at.
+    const vouched = sessionState.touched?.[repoRoot]?.[booking.file] !== undefined;
+    const hits = t.impact.dedupeHit && !vouched ? null : booking.hits;
+    stateDeltas.push((s) => recordTouched(s, repoRoot, booking.file, hits, booking.truncated));
+  });
   // Targets past MAX_CODE_TARGETS get no impact block (#584's cap), but they
   // are written all the same. Booked unplaced, so the boundary neither loses
   // them nor counts their dependents as forgotten files.
   for (const target of uncappedTargets(toolInput, filePath, cwd).slice(targets.length)) {
     const repoRoot = laneRepoRoot(target, cwd);
     const rel = repoRelative(repoRoot, target);
-    if (rel === null) continue;
+    if (rel === null || !codeGraphCache().serves(repoRoot)) continue;
     stateDeltas.push((s) => recordTouched(s, repoRoot, rel, null));
   }
 
