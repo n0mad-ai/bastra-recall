@@ -15,7 +15,7 @@
  */
 import { describe, it, before, after } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -49,7 +49,7 @@ import {
 // @ts-expect-error — plain .mjs measurement scripts, no declarations
 import { isScenarioFile, repoProfile, usesTests, usesTypes } from "../code-roi/v2/repo-profile.mjs";
 // @ts-expect-error — plain .mjs measurement scripts, no declarations
-import { buildExclusions, exclusionsHash, isExcludedFile } from "../code-roi/v2/exclusions.mjs";
+import { BURNED_ARCHIVES, buildExclusions, exclusionsHash, isExcludedFile } from "../code-roi/v2/exclusions.mjs";
 
 // ─── The fixture repository ──────────────────────────────────────
 
@@ -428,21 +428,72 @@ describe("test-based truth: test selection", () => {
 // ─── The exclusion set the population is frozen against ──────────
 
 describe("delivered population: exclusions", () => {
-  it("burns every file that was already a scenario, and the worked-on directories", () => {
-    const ex = buildExclusions();
-    // 45 v3 + 9 v4 scenarios collapse to the distinct files they changed.
-    assert.equal(ex.sources.reduce((n: number, s: { scenarios: number }) => n + s.scenarios, 0), 54);
-    assert.equal(ex.files.length > 40, true);
-    assert.equal(isExcludedFile(ex, ex.files[0]), true);
-    assert.equal(isExcludedFile(ex, "packages/daemon/src/code-graph/affected.ts"), true);
-    assert.equal(isExcludedFile(ex, "packages/eval/code-roi/v2/mine-repo.mjs"), true);
-    assert.equal(isExcludedFile(ex, "packages/daemon/src/floors.ts"), true); // a v4 scenario file
+  // The real burned archives (~/.bastra/eval/code-roi-v2 and code-roi-v4) are
+  // local mining output — never committed, because they are exactly the
+  // scenarios this file exists to keep out of a future population (#582). So
+  // the rule itself — collapsing scenarios to files, adopting the pilot,
+  // hashing the set — is checked here against a small fixture archive that
+  // ships with the test, and runs on every machine and every CI runner.
+  let fixtureDir = "";
+  let v2Archive = "";
+  let v4Archive = "";
+  let registration = "";
+
+  before(() => {
+    fixtureDir = mkdtempSync(join(tmpdir(), "code-roi-exclusions-"));
+    v2Archive = join(fixtureDir, "v2-scenarios.json");
+    v4Archive = join(fixtureDir, "v4-scenarios.json");
+    registration = join(fixtureDir, "registration.json");
+    writeFileSync(
+      v2Archive,
+      JSON.stringify({
+        scenarios: [
+          { file: "packages/foo/a.ts" },
+          { file: "packages/foo/b.ts" },
+          { file: "packages/foo/a.ts" }, // a repeat within one archive collapses to one file
+        ],
+      }),
+    );
+    writeFileSync(
+      v4Archive,
+      JSON.stringify({
+        scenarios: [{ file: "packages/foo/b.ts" }, { file: "packages/bar/c.ts" }], // b.ts repeats across archives
+      }),
+    );
+    writeFileSync(
+      registration,
+      JSON.stringify({
+        sample: {
+          excluded_pilot: {
+            commits: ["1111111111111111111111111111111111111a", "2222222222222222222222222222222222222b"],
+            files: ["packages/pilot/x.ts"],
+          },
+        },
+      }),
+    );
   });
 
-  it("carries the two pilot commits of registration 3", () => {
-    const ex = buildExclusions();
+  after(() => rmSync(fixtureDir, { recursive: true, force: true }));
+
+  it("burns every file that was already a scenario, and the worked-on directories", () => {
+    const ex = buildExclusions({ archives: [v2Archive, v4Archive], registration });
+    // 3 + 2 scenarios collapse to 3 distinct files — "b.ts" repeats within and across archives.
+    assert.equal(ex.sources.reduce((n: number, s: { scenarios: number }) => n + s.scenarios, 0), 5);
+    assert.deepEqual(ex.files.filter((f) => f !== "packages/pilot/x.ts").sort(), [
+      "packages/bar/c.ts",
+      "packages/foo/a.ts",
+      "packages/foo/b.ts",
+    ]);
+    assert.equal(isExcludedFile(ex, "packages/foo/a.ts"), true);
+    assert.equal(isExcludedFile(ex, "packages/daemon/src/code-graph/affected.ts"), true);
+    assert.equal(isExcludedFile(ex, "packages/eval/code-roi/v2/mine-repo.mjs"), true);
+    assert.equal(isExcludedFile(ex, "packages/unrelated/z.ts"), false);
+  });
+
+  it("carries the two pilot commits of the registration", () => {
+    const ex = buildExclusions({ archives: [v2Archive, v4Archive], registration });
     assert.equal(ex.commits.length, 2);
-    assert.equal(ex.files.includes("packages/daemon/src/tool-handlers.ts"), true);
+    assert.equal(ex.files.includes("packages/pilot/x.ts"), true);
   });
 
   it("refuses to mine when an archive it must exclude is missing", () => {
@@ -450,10 +501,30 @@ describe("delivered population: exclusions", () => {
   });
 
   it("hashes the whole set, so a different exclusion is a different population", () => {
-    const a = buildExclusions();
-    const b = buildExclusions({ extraFiles: ["packages/core/src/brand-new.ts"] });
+    const a = buildExclusions({ archives: [v2Archive, v4Archive], registration });
+    const b = buildExclusions({
+      archives: [v2Archive, v4Archive],
+      registration,
+      extraFiles: ["packages/core/src/brand-new.ts"],
+    });
     assert.notEqual(exclusionsHash(a), exclusionsHash(b));
-    assert.equal(exclusionsHash(a), exclusionsHash(buildExclusions()));
+    assert.equal(exclusionsHash(a), exclusionsHash(buildExclusions({ archives: [v2Archive, v4Archive], registration })));
+  });
+
+  // Against the real, frozen archives. They hold the actual burned scenarios
+  // and are what the delivered-impact registration's population was mined
+  // against (`registrations/code-awareness-delivered.population.md`), so this
+  // checks the real, frozen hash rather than only the fixture rule above. On
+  // a machine or CI runner without the archives it skips with a named reason
+  // instead of passing on a set it never looked at.
+  it("hashes the real archives to the frozen delivered-impact population hash, when present", (t) => {
+    const missing = BURNED_ARCHIVES.filter((p: string) => !existsSync(p));
+    if (missing.length > 0) {
+      t.skip(`real burned archives not present: ${missing.join(", ")}`);
+      return;
+    }
+    const ex = buildExclusions();
+    assert.equal(exclusionsHash(ex), "df87de2c3566d64b890620a4c4f8eb52fdc2bf1f15077b998b38c1b0d3ad8318");
   });
 });
 
