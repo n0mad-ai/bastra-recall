@@ -15,9 +15,13 @@ import { boundaryImpact, type BoundaryTouch } from "../src/code-graph/boundary-i
  * REVERT-CHECK, so this file is a guard and not a receipt:
  *   - drop `|| selected.symbols.length === 0` in `changedSymbolsFor` and the
  *     rename case goes red — an empty selection reads as "nothing changed".
- *   - drop `if (touched.has(dependent.file)) continue;` and the opened-file
- *     case goes red — a file the agent edited comes back as "forgotten".
- * Both are the lines that carry the meaning, not the plumbing around them.
+ *   - drop `if (opened.has(hit.file)) continue;` and both opened-file cases
+ *     go red — a file the agent edited or read comes back as "forgotten".
+ *   - make the stale-name branch return `found` instead of `whole` and the
+ *     stale-record case goes red — a name the graph lost narrows to nothing.
+ *   - drop `slot.whole = true` in `mergedTouches` and the merge case goes red —
+ *     nine placeable edits outvote the one that could not be placed.
+ * These are the lines that carry the meaning, not the plumbing around them.
  */
 
 /** Graphify's real node shape, same helper the affected test uses. */
@@ -130,6 +134,7 @@ after(async () => {
 });
 
 const touch = (file: string, diff: string | null = null): BoundaryTouch => ({ file, diff });
+const named = (file: string, ...symbols: string[]): BoundaryTouch => ({ file, symbols });
 
 describe("boundary impact", () => {
   it("names the dependents a task changed but never opened", () => {
@@ -200,5 +205,56 @@ describe("boundary impact", () => {
 
     assert.equal(result.missed.length, 1);
     assert.equal(result.truncated, true);
+  });
+
+  it("takes the names the edit lane recorded, without a diff", () => {
+    const result = boundaryImpact(graph, [named("src/save.ts", "saveMemory")]);
+
+    assert.deepEqual(result.changedSymbols, ["saveMemory"]);
+    assert.deepEqual(
+      result.missed.map((m) => [m.file, m.basis, m.changedFile]),
+      [
+        ["src/audit.ts", "symbol", "src/save.ts"],
+        ["src/report.ts", "symbol", "src/save.ts"],
+      ],
+    );
+  });
+
+  it("reads a recorded name the graph no longer has as whole file, not as nothing", () => {
+    // The record is older than the graph: `persist` was renamed and reindexed
+    // mid-session. Narrowing to the names that still resolve would be empty.
+    const result = boundaryImpact(graph, [named("src/save.ts", "persist")]);
+
+    assert.deepEqual(
+      result.missed.map((m) => [m.file, m.basis]),
+      [
+        ["src/audit.ts", "whole_file"],
+        ["src/report.ts", "whole_file"],
+      ],
+    );
+  });
+
+  it("drops a dependent the task provably read", () => {
+    const result = boundaryImpact(graph, [named("src/save.ts", "saveMemory")], {
+      opened: ["src/report.ts"],
+    });
+
+    assert.deepEqual(
+      result.missed.map((m) => m.file),
+      ["src/audit.ts"],
+    );
+  });
+
+  it("lets one unplaceable edit of a file outvote the placeable ones", () => {
+    const result = boundaryImpact(graph, [
+      named("src/save.ts", "saveMemory"),
+      touch("src/save.ts", null),
+    ]);
+
+    assert.deepEqual(result.touchedFiles, ["src/save.ts"]);
+    for (const m of result.missed) {
+      assert.equal(m.basis, "whole_file");
+    }
+    assert.equal(result.missed.length, 2);
   });
 });
