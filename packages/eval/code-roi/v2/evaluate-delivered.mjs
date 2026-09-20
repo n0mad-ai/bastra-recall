@@ -26,9 +26,9 @@
  *   recall    D must not lose recall at all — the lower bound of a bootstrap
  *             interval on the paired difference has to stay at or above 0
  *
- * BLIND SPOTS ARE SPLIT OUT AND NEVER GATED. 13 of the 45 scenarios carry at
- * least one truth file whose breakage ran over something no import graph holds
- * — a route, an event name, a template string. Pooling them into one recall
+ * BLIND SPOTS ARE SPLIT OUT AND NEVER GATED. Some scenarios carry truth whose
+ * breakage ran over something no import graph holds — a route, an event name,
+ * a template string. Pooling them into one recall
  * makes the graph look worse on a class of edge it never claimed; pooling them
  * out makes the sample easier than the repository is. So the headline recall is
  * the pooled one and the split is reported beside it.
@@ -66,9 +66,11 @@ const median = (xs) => {
  * A bootstrap interval for ANY statistic of a set of rows, resampling whole
  * clusters with replacement.
  *
- * The cluster key is `repo + file`, as registered: a pooled sample can hold the
- * same path in two repositories and clustering on the path alone would treat
- * them as one unit. The statistic is passed in rather than fixed, because the
+ * Rows carry a precomputed truth-overlap component as `clusterKey`: scenarios
+ * sharing ANY truth file belong to one connected component. That keeps fifteen
+ * changes which all break session-assembler.test.ts from pretending to be
+ * fifteen independent answers. Synthetic callers without it fall back to
+ * `repo + changed file`. The statistic is passed in rather than fixed, because the
  * two intervals this scorer needs are of different shapes — a mean of paired
  * differences and a RATIO OF MEDIANS, which is not a mean of anything and
  * cannot be bootstrapped by resampling per-scenario values.
@@ -76,7 +78,7 @@ const median = (xs) => {
 export function bootstrapStat(rows, stat, seed, resamples = RESAMPLES) {
   const clusters = new Map();
   for (const r of rows) {
-    const key = `${r.repo ?? ""}|${r.file}`;
+    const key = r.clusterKey ?? `${r.repo ?? ""}|${r.file}`;
     if (!clusters.has(key)) clusters.set(key, []);
     clusters.get(key).push(r);
   }
@@ -98,6 +100,38 @@ export function bootstrapStat(rows, stat, seed, resamples = RESAMPLES) {
     clusters: groups.length,
     resamplesUsed: values.length,
   };
+}
+
+/**
+ * Connected components of scenarios that share at least one truth file.
+ * Transitive overlap matters: {a,b} and {b,c} are one answer family even when
+ * the first and third scenario share no file directly.
+ */
+export function truthClusterKeys(scenarios) {
+  const parent = new Map(scenarios.map((s) => [s.id, s.id]));
+  const find = (id) => {
+    const p = parent.get(id);
+    if (p === id) return id;
+    const root = find(p);
+    parent.set(id, root);
+    return root;
+  };
+  const union = (a, b) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra === rb) return;
+    if (ra < rb) parent.set(rb, ra);
+    else parent.set(ra, rb);
+  };
+  const owner = new Map();
+  for (const s of scenarios) {
+    for (const file of s.truth ?? []) {
+      const key = `${s.repo ?? ""}|${file}`;
+      if (owner.has(key)) union(s.id, owner.get(key));
+      else owner.set(key, s.id);
+    }
+  }
+  return new Map(scenarios.map((s) => [s.id, `${s.repo ?? ""}|truth:${find(s.id)}`]));
 }
 
 /**
@@ -153,7 +187,8 @@ export function blindSpotOf(scenario) {
 /** The two verdicts and the two guards that belong to both. */
 export function judge(rows, registration) {
   const t = registration.thresholds;
-  const minScenarios = registration.sample.min_scenarios;
+  const minContextPairs = registration.sample.min_context_pairs ?? registration.sample.min_scenarios;
+  const minUseBlocks = registration.sample.min_use_blocks ?? registration.sample.min_scenarios;
   const seed = registration.statistics.seed;
   const n = rows.length;
 
@@ -213,21 +248,25 @@ export function judge(rows, registration) {
     recall,
   };
 
-  const verdictFor = (checks, count) => {
+  const verdictFor = (checks, count, minimum) => {
     if (count === 0) return "not_evaluable";
-    if (count < minScenarios) return "underpowered";
+    if (count < minimum) return "underpowered";
     return Object.values(checks).every((c) => c.pass) ? "pass" : "fail";
   };
 
   return {
     n,
     context: {
-      status: verdictFor(contextChecks, bothSolved.length),
+      status: verdictFor(contextChecks, bothSolved.length, minContextPairs),
       checks: contextChecks,
       ci: contextCi,
       bothSolved: bothSolved.length,
     },
-    use: { status: verdictFor(useChecks, uses.length), checks: useChecks, scenariosWithBlock: uses.length },
+    use: {
+      status: verdictFor(useChecks, uses.length, minUseBlocks),
+      checks: useChecks,
+      scenariosWithBlock: uses.length,
+    },
     recallCi,
   };
 }
@@ -300,6 +339,7 @@ export function buildReport(scenarioFile, readArm, readDelivered, registration, 
   const rows = [];
   const missing = [];
   const planned = scenarioFile.scenarios.filter((s) => !s.excluded);
+  const clusterKeys = truthClusterKeys(planned);
   for (const s of planned) {
     const parsed = {};
     for (const arm of arms) {
@@ -318,6 +358,7 @@ export function buildReport(scenarioFile, readArm, readDelivered, registration, 
       id: s.id,
       repo: s.repo ?? null,
       file: s.file,
+      clusterKey: clusterKeys.get(s.id),
       truth: s.truth.length,
       blindSpot: blind.isBlindSpot,
       blindSpotPartial: blind.partial,
@@ -330,6 +371,7 @@ export function buildReport(scenarioFile, readArm, readDelivered, registration, 
       blockTokensEst: block?.tokensEst ?? null,
       blockTruncated: block?.truncated ?? null,
       blockUse: block === null ? null : blockUse(block.listed, parsed[DELIVERED_ARM].named),
+      blockUseControl: block === null ? null : blockUse(block.listed, parsed[CONTROL_ARM].named),
       ...parsed,
     });
   }
@@ -379,6 +421,9 @@ export function buildReport(scenarioFile, readArm, readDelivered, registration, 
     use: {
       status: verdict.use.status,
       mean: verdict.use.checks.block_use.value,
+      controlOverlapMean: mean(rows.map((r) => r.blockUseControl).filter((u) => u !== null)),
+      incrementalOverlap:
+        verdict.use.checks.block_use.value - mean(rows.map((r) => r.blockUseControl).filter((u) => u !== null)),
       scenariosWithBlock: verdict.use.scenariosWithBlock,
       scenariosWithoutBlock: rows.filter((r) => !r.blockDelivered).map((r) => r.id),
       basisDistribution: rows.reduce((a, r) => {

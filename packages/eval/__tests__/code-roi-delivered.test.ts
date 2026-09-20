@@ -44,7 +44,7 @@ const {
   resolveRegistrationId,
 } = await import("../code-roi/v2/registration.mjs");
 const { ARMS } = await import("../code-roi/v2/run-arms-v3.mjs");
-const { blockUse, blindSpotOf, blindSpotReport, bootstrapStat, judge } = await import(
+const { blockUse, blindSpotOf, blindSpotReport, judge } = await import(
   "../code-roi/v2/evaluate-delivered.mjs"
 );
 const { checkBuildPin, frozenSurfaceMismatches, frozenSurfaceOf } = await import(
@@ -110,15 +110,18 @@ describe("the arms and the thresholds come from the registration", () => {
         recall_guard_ci_lower: 0,
       },
     );
-    assert.equal(DELIVERED.registration_version, 2);
+    assert.equal(DELIVERED.registration_version, 3);
     // The population has been mined, adjudicated and frozen, so the pending
     // state is gone. What must stay true is that the frozen population is
     // named rather than promised — `code-roi-population-freeze.test.ts` holds
     // both that and the gate the pending state used to trip.
     assert.equal(DELIVERED.status, "numbers_registered");
-    assert.equal(DELIVERED.sample.min_scenarios, 40);
+    assert.equal(DELIVERED.sample.min_scenarios, 37);
+    assert.equal(DELIVERED.sample.min_context_pairs, 37);
+    assert.equal(DELIVERED.sample.min_use_blocks, 37);
     assert.equal(DELIVERED.statistics.seed, 20260918);
-    assert.equal(DELIVERED.statistics.cluster_key, "repo + file");
+    assert.equal(DELIVERED.statistics.cluster_key, "connected component of shared repo + truth file");
+    assert.equal(DELIVERED.statistics.population_clusters, 22);
     assert.equal(DELIVERED.run_conditions.cost_ceiling_usd, 40);
     assert.match(DELIVERED.run_conditions.build_pin.start_command, /^npm run build && /);
   });
@@ -635,6 +638,12 @@ describe("the two verdicts, decided by the registered numbers", () => {
     assert.equal(v.use.status, "underpowered");
   });
 
+  test("the exhausted population's reachable floor is 37 observations", () => {
+    const v = judge(rows(37), DELIVERED);
+    assert.equal(v.context.status, "pass");
+    assert.equal(v.use.status, "pass");
+  });
+
   test("an empty run is not_evaluable", () => {
     const v = judge([], DELIVERED);
     assert.equal(v.context.status, "not_evaluable");
@@ -649,7 +658,7 @@ describe("the two verdicts, decided by the registered numbers", () => {
     const v = judge(mixed, DELIVERED);
     assert.equal(v.context.bothSolved, 25);
     assert.ok(v.context.checks.context_ratio.value > 0.5, "the cheap wrong answers are excluded");
-    assert.equal(v.context.status, "underpowered", "25 solved pairs cannot satisfy a 40-pair minimum");
+    assert.equal(v.context.status, "underpowered", "25 solved pairs cannot satisfy a 37-pair minimum");
   });
 
   test("the use verdict needs the registered number of delivered blocks", () => {
@@ -657,39 +666,6 @@ describe("the two verdicts, decided by the registered numbers", () => {
     const v = judge(sparse, DELIVERED);
     assert.equal(v.use.scenariosWithBlock, 1);
     assert.equal(v.use.status, "underpowered", "one used block among 45 scenarios is not a use result");
-  });
-});
-
-describe("the bootstrap resamples clusters, seeded", () => {
-  const rows = Array.from({ length: 30 }, (_, i) => ({ repo: null, file: `f${i}.ts`, v: i }));
-  const statistic = (sample: { v: number }[]) => sample.reduce((a, r) => a + r.v, 0) / sample.length;
-
-  test("the same seed gives the same interval", () => {
-    const a = bootstrapStat(rows, statistic, 20260918, 500);
-    const b = bootstrapStat(rows, statistic, 20260918, 500);
-    assert.deepEqual(a, b);
-    assert.equal(a?.clusters, 30);
-  });
-
-  test("the cluster is repo AND file, so one path in two repositories is two units", () => {
-    const pooled = [
-      { repo: "r1", file: "same.ts", v: 0 },
-      { repo: "r2", file: "same.ts", v: 1 },
-    ];
-    assert.equal(bootstrapStat(pooled, statistic, 1, 50)?.clusters, 2);
-    assert.equal(
-      bootstrapStat(
-        pooled.map((r) => ({ ...r, repo: "r1" })),
-        statistic,
-        1,
-        50,
-      )?.clusters,
-      1,
-    );
-  });
-
-  test("no rows is null, not an interval around nothing", () => {
-    assert.equal(bootstrapStat([], statistic, 1, 10), null);
   });
 });
 

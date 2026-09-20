@@ -105,12 +105,18 @@ ungleich:
 | `packages/daemon/__tests__/code-graph-find.test.ts` | 4 |
 | `packages/daemon/__tests__/cli-flag-validation.test.ts` | 4 |
 
-Auf **15 von 44** Szenarien ist `session-assembler.test.ts` die **ganze**
-Wahrheitsmenge — ein Zusammenbau-Test, den jede Lane-Änderung bricht. Dazu
-haben **34 Szenarien genau eine** Wahrheitsdatei, der Recall ist dort also 0
-oder 1 ohne Zwischenstufe. Der registrierte Bootstrap-Cluster ist
-`repo + file`, zählt diese 15 also als 15 unabhängige Einheiten, obwohl sie
-eine einzige Antwort teilen.
+`session-assembler.test.ts` erscheint in **15 von 44** Szenarien und ist in
+**11** davon die ganze Wahrheitsmenge; vier weitere verbinden es mit
+`code-graph-find.test.ts`. `cli-help.test.ts` erscheint sechsmal und ist
+dreimal allein. Insgesamt haben **34 Szenarien genau eine** Wahrheitsdatei,
+der Recall ist dort also 0 oder 1 ohne Zwischenstufe.
+
+Registrierung 3 clustert deshalb nicht mehr nach geänderter Datei, sondern
+nach der transitiven Zusammenhangskomponente gemeinsam genutzter
+Wahrheitsdateien. Ergebnis: **22 Cluster** — 15 Szenarien im
+Session-Assembler-Cluster, 8 im verbundenen CLI-Help/Flag/Completion-Cluster,
+2 im Log-Stats-Cluster und 19 einzelne. Der Bootstrap trägt die Konzentration
+damit als breiteres Intervall, statt 44 unabhängige Antworten vorzutäuschen.
 
 Das ist **keine Auswahlverzerrung** — die Annahmeregel sieht nie, welcher Test
 bricht — aber es begrenzt, wie fein ein Recall-Unterschied auf dieser
@@ -133,13 +139,14 @@ Szenarios gerendert:
 | **Blöcke, die eine Wahrheitsdatei nennen** | **15 von 37** |
 | **Basisrate `block_use`** | **0,405** |
 
-Die Basisrate ist die entscheidende Zahl zur Frage „zählt bei ≥ 1 von 10
-ohnehin jedes Szenario": **nein.** 15 der 37 Blöcke enthalten eine
-Wahrheitsdatei; jedes dieser Szenarien bekommt `blockUse = 1` geschenkt,
-sobald der Agent sie überhaupt nennt. Das sind 0,405 — die registrierte
-Schwelle ist **0,5 und liegt darüber**. Rund vier weitere Szenarien müssen
-also eine gelistete Datei nennen, die der Agent sonst nicht genannt hätte.
-Die binäre Metrik hält dieser Prüfung stand.
+15 der 37 Blöcke enthalten eine Wahrheitsdatei. Ein perfekt präziser Agent,
+der jede nützliche Blockzeile übernimmt und jede falsche ignoriert, erreicht
+damit auf der breiten Überlappungsmetrik höchstens **0,405**. Für die Schwelle
+0,5 braucht D zusätzlich Überlappung in mindestens vier Szenarien, deren Block
+keine Wahrheit enthält. Ob dieser zusätzliche Gebrauch tolerierbar ist,
+entscheidet deshalb zwingend der Präzisionsboden. Die Metrik allein ist kein
+Kausalbeleg; der Bericht weist zusätzlich die gleiche Blocküberlappung von
+Arm A und die Differenz D−A aus, ungegated.
 
 Nebenbefund zum Produkt, bewusst nicht geändert: `displayOrder()` in
 `impact-block.ts` sortiert **Testdateien ans Ende** und kappt bei 10. Unter
