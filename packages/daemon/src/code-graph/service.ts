@@ -121,7 +121,7 @@ export function detailCode(detail: string | undefined): string | undefined {
   // place on purpose (P2, #582 review).
   if (/^stuck:/.test(detail)) return "stuck";
   if (/timeout|no result after/.test(detail)) return "timeout";
-  if (/^locked|failed: locked/.test(detail)) return "locked";
+  if (/^(?:locked|failed: locked)/.test(detail)) return "locked";
   if (/\baborted\b/.test(detail)) return "aborted";
   const killed = /killed by (SIG[A-Z]+)/.exec(detail);
   if (killed !== null) return `graphify_killed_${killed[1].toLowerCase()}`;
