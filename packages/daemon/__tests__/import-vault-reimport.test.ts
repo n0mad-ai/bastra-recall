@@ -147,3 +147,72 @@ test("a changed source file is updated, and only that one", async (t) => {
     "one audit event for the one real change",
   );
 });
+
+test("#530 follow-up: the marker mirrors a shrunk source set", async (t) => {
+  const src = await mkdtemp(join(tmpdir(), "iv-reimport-shrink-src-"));
+  const vault = await mkdtemp(join(tmpdir(), "iv-reimport-shrink-vault-"));
+  t.after(async () => {
+    resetAuditLogCache();
+    await rm(src, { recursive: true, force: true });
+    await rm(vault, { recursive: true, force: true });
+  });
+  resetAuditLogCache();
+
+  const { writeFile, mkdir, rm: rmFile } = await import("node:fs/promises");
+  await mkdir(src, { recursive: true });
+  await writeFile(join(src, "one.md"), "# One\n\nFirst note.\n", "utf8");
+  await writeFile(join(src, "two.md"), "# Two\n\nSecond note.\n", "utf8");
+
+  const first = await importVault(vault, src, { label: "shrink" });
+  assert.equal(first.imported, 2);
+  const markerPath = join(vault, first.folder, ".bastra-imported");
+  const markerAfterFirst = JSON.parse(await readFile(markerPath, "utf8"));
+  assert.equal(markerAfterFirst.imported, 2, "marker mirrors the full source set");
+
+  // The source set shrinks: "two.md" is removed. The one remaining file is
+  // already in the vault unchanged, so the run creates and updates nothing —
+  // the marker still has to catch up to the smaller set.
+  await rmFile(join(src, "two.md"));
+  const second = await importVault(vault, src, { label: "shrink" });
+
+  assert.equal(second.imported, 1, "only the surviving file is part of the set");
+  assert.equal(second.written.created, 0);
+  assert.equal(second.written.updated, 0);
+  assert.equal(second.written.unchanged, 1, "the surviving file is written to nothing");
+
+  const markerAfterSecond = JSON.parse(await readFile(markerPath, "utf8"));
+  assert.equal(markerAfterSecond.imported, 1, "marker was updated to the shrunk set's count");
+});
+
+test("#530 follow-up: the marker mirrors a grown source set", async (t) => {
+  const src = await mkdtemp(join(tmpdir(), "iv-reimport-grow-src-"));
+  const vault = await mkdtemp(join(tmpdir(), "iv-reimport-grow-vault-"));
+  t.after(async () => {
+    resetAuditLogCache();
+    await rm(src, { recursive: true, force: true });
+    await rm(vault, { recursive: true, force: true });
+  });
+  resetAuditLogCache();
+
+  const { writeFile, mkdir } = await import("node:fs/promises");
+  await mkdir(src, { recursive: true });
+  await writeFile(join(src, "one.md"), "# One\n\nFirst note.\n", "utf8");
+
+  const first = await importVault(vault, src, { label: "grow" });
+  assert.equal(first.imported, 1);
+  const markerPath = join(vault, first.folder, ".bastra-imported");
+  const markerAfterFirst = JSON.parse(await readFile(markerPath, "utf8"));
+  assert.equal(markerAfterFirst.imported, 1);
+
+  // The source set grows: "two.md" is added, as before (#530's original fix
+  // already covered this path — a real write already updates the marker).
+  await writeFile(join(src, "two.md"), "# Two\n\nSecond note.\n", "utf8");
+  const second = await importVault(vault, src, { label: "grow" });
+
+  assert.equal(second.imported, 2);
+  assert.equal(second.written.created, 1, "only the new file is created");
+  assert.equal(second.written.unchanged, 1, "the existing file is untouched");
+
+  const markerAfterSecond = JSON.parse(await readFile(markerPath, "utf8"));
+  assert.equal(markerAfterSecond.imported, 2, "marker was updated to the grown set's count");
+});

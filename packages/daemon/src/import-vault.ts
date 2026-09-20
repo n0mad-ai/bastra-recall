@@ -587,11 +587,27 @@ export async function importVault(
     }
   }
 
-  // #530: Der Marker beschreibt das importierte Set. Ändert ein Lauf nichts
-  // daran, hat er auch nichts Neues zu beschreiben — ein neuer `at`-Stempel
-  // wäre eine Veränderungsmeldung ohne Veränderung, und auf einem
-  // synchronisierten Vault eine Dateiänderung für jeden Client.
-  const setChanged = written.created > 0 || written.updated > 0;
+  // #530: the marker mirrors the CURRENT source set, not a cumulative log
+  // (product decision) — so a run that writes nothing can still owe the
+  // marker an update: the source set may have SHRUNK (a file was removed),
+  // leaving `ids.length` below what the marker already claims even though
+  // every remaining file was already in the vault (written.created ===
+  // written.updated === 0). Compare against the count the existing marker
+  // already stores — no new marker format, `imported` was always there —
+  // and treat a stale count as a change too. A run that writes nothing AND
+  // matches the marker's count stays a true no-op: no read finds a mismatch,
+  // so no restamp.
+  let previousImported: number | undefined;
+  if (!dryRun && ids.length > 0) {
+    try {
+      const prevRaw = await readFile(join(vaultRoot, folder, ".bastra-imported"), "utf8");
+      const prev = JSON.parse(prevRaw) as { imported?: unknown };
+      if (typeof prev.imported === "number") previousImported = prev.imported;
+    } catch {
+      /* no marker yet, or unreadable — nothing to compare against */
+    }
+  }
+  const setChanged = written.created > 0 || written.updated > 0 || previousImported !== ids.length;
   if (!dryRun && ids.length > 0 && setChanged) {
     // Fix-Leiter Stufe 3 (zzallirog): ein Marker im Import-Subtree, damit
     // FREMDE Tools auf dem geteilten Ordner (Atlas, Indexer, grep) das Set
