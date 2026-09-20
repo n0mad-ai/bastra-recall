@@ -20,7 +20,24 @@ import { createHash } from "node:crypto";
 import { SearchIndex, Vault } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { loadMemoryHandler, saveMemoryHandler, type ToolDeps } from "../src/tool-handlers.js";
-import { claimSourceIo } from "../src/derived-claims.js";
+import { claimSourceIo, resolveDerivedClaims } from "../src/derived-claims.js";
+
+test("#609: an empty quote finds nothing, and the load carries on", async () => {
+  const { deps, cleanup } = await makeDeps();
+  try {
+    await mkdir(join(deps.vaultPath, "ops"), { recursive: true });
+    await writeFile(join(deps.vaultPath, "ops", "deploy.md"), "timeout: 30s\n", "utf8");
+    // A hand-edited note can carry a claim the save-time schema would have
+    // refused; the resolver answers it instead of waiting on it.
+    const [claim] = await resolveDerivedClaims(deps.vaultPath, [
+      { id: "blank", resolver: "quote.v1", source: "ops/deploy.md", exact: "" },
+    ]);
+    assert.equal(claim.status, "gone");
+    assert.equal(claim.value, 0);
+  } finally {
+    await cleanup();
+  }
+});
 
 async function makeDeps(): Promise<{ deps: ToolDeps; cleanup: () => Promise<void> }> {
   const dir = await mkdtemp(join(tmpdir(), "bastra-derived-"));
