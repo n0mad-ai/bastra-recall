@@ -30,15 +30,17 @@ import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane } from "./scope-filter.js";
 import { fileSizeNote } from "./file-size-check.js";
-import { impactNote, type ImpactNote } from "./code-graph/impact-block.js";
+import { impactNote, type ImpactNote, type ImpactResult } from "./code-graph/impact-block.js";
 import { appliesToNote, type AppliesToNote } from "./code-graph/applies-to-note.js";
 import { laneRepoRoot } from "./code-graph/git-paths.js";
+import { repoRelative } from "./code-graph/dependents-block.js";
 import { logDeliveredBlock } from "./code-delivered-telemetry.js";
 import { memoryLocationNote } from "./memory-location.js";
 import { reportHinted } from "./hook-hinted.js";
 import { hookClient } from "./hook-surface.js";
 import {
   bumpShown,
+  recordTouched,
   cleanupOldStates,
   decideBackoff,
   getLoadedMarkerMtime,
@@ -276,7 +278,7 @@ export async function runWriteLane(
           toolName,
           toolInput,
           session: sessionState,
-        }).catch(() => ({ note: null, dedupeHit: false })),
+        }).catch((): ImpactResult => ({ note: null, dedupeHit: false })),
         appliesToNote({ filePath: target, repoRoot, session: sessionState }).catch(() => null),
       ]);
       return { repoRoot, impact, applies };
@@ -310,6 +312,29 @@ export async function runWriteLane(
   for (const n of [...codeNotes, ...memoryCodeNotes]) {
     const key = n.dedupeKey;
     stateDeltas.push((s) => bumpShown(s, key, Date.now()));
+  }
+  // #572: book what this call is about to write, block or no block. The
+  // per-edit answer above dedupes by design, so the session-wide union can
+  // only come from an accumulator — the Stop lane reads it at the task
+  // boundary. Booked WITH the dependents of this moment: the watcher reindexes
+  // after the edit, and the next graph no longer knows who called a symbol
+  // this edit removed.
+  for (const t of perTarget) {
+    const booking = t.impact.booking;
+    if (booking === undefined) continue;
+    const repoRoot = t.repoRoot;
+    stateDeltas.push((s) =>
+      recordTouched(s, repoRoot, booking.file, booking.hits, booking.truncated),
+    );
+  }
+  // Targets past MAX_CODE_TARGETS get no impact block (#584's cap), but they
+  // are written all the same. Booked unplaced, so the boundary neither loses
+  // them nor counts their dependents as forgotten files.
+  for (const target of uncappedTargets(toolInput, filePath, cwd).slice(targets.length)) {
+    const repoRoot = laneRepoRoot(target, cwd);
+    const rel = repoRelative(repoRoot, target);
+    if (rel === null) continue;
+    stateDeltas.push((s) => recordTouched(s, repoRoot, rel, null));
   }
 
   const detNote =
@@ -747,6 +772,11 @@ export const MAX_CODE_TARGETS = 4;
  * against the session's `cwd`, which is what they are relative to.
  */
 export function codeTargets(toolInput: Record<string, unknown>, filePath: string, cwd: string): string[] {
+  return uncappedTargets(toolInput, filePath, cwd).slice(0, MAX_CODE_TARGETS);
+}
+
+/** Every target of the call, in order. `codeTargets` is its first four. */
+function uncappedTargets(toolInput: Record<string, unknown>, filePath: string, cwd: string): string[] {
   const listed = Array.isArray(toolInput.file_paths)
     ? toolInput.file_paths.filter((p): p is string => typeof p === "string" && p.length > 0)
     : [];
@@ -754,7 +784,6 @@ export function codeTargets(toolInput: Record<string, unknown>, filePath: string
   const seen = new Set<string>();
   for (const p of all) {
     seen.add(isAbsolute(p) ? p : resolve(cwd, p));
-    if (seen.size >= MAX_CODE_TARGETS) break;
   }
   return [...seen];
 }

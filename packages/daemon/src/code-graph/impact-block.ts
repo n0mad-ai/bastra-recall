@@ -169,6 +169,18 @@ export function impactDedupeKey(repoRelFile: string, signature: string): string 
 export interface ImpactResult {
   note: ImpactNote | null;
   dedupeHit: boolean;
+  /**
+   * #572: what the task-boundary accumulator books for this call — present
+   * whenever the lane knew WHICH file, independent of whether a block went
+   * out, because the boundary needs it exactly where this lane is silent.
+   *
+   * `hits` are the dependents as the graph had them at THIS moment, before the
+   * edit lands and the watcher reindexes. That timing is the point: a later
+   * graph has already forgotten the edges to a symbol this edit deletes.
+   * `hits: null` means the lane could not look (cold graph, unreadable change,
+   * overrun budget) — not "nothing depends on it".
+   */
+  booking?: { file: string; hits: AffectedHit[] | null; truncated: boolean };
 }
 
 const SILENT: ImpactResult = { note: null, dedupeHit: false };
@@ -195,28 +207,40 @@ export async function impactNote(opts: ImpactNoteOptions): Promise<ImpactResult>
   // Cold or unknown repository: silence AND a scheduled load, so the next edit
   // of the session is warm. Before the dedupe check, as in #577 — a deduped
   // file must still keep the graph coming.
+  // #572: from here on the file is known, so every silence below still says
+  // WHICH file was written — as unplaced, because a lane that could not look
+  // cannot claim nothing depends on the edit.
+  const unplaced: ImpactResult = {
+    note: null,
+    dedupeHit: false,
+    booking: { file: rel, hits: null, truncated: false },
+  };
   const graph = (opts.cache ?? codeGraphCache()).get(opts.repoRoot);
-  if (graph === null) return SILENT;
-  if (!graph.symbolsByFile.has(rel)) return SILENT;
+  if (graph === null) return unplaced;
+  if (!graph.symbolsByFile.has(rel)) return unplaced;
 
   const selection = await changedSymbols(graph, rel, opts);
-  if (selection === null || selection.symbols.length === 0) return SILENT;
+  if (selection === null || selection.symbols.length === 0) return unplaced;
 
   const signature = signatureOf(graph, selection);
   const dedupeKey = impactDedupeKey(rel, signature);
   if ((opts.session?.shown?.[dedupeKey]?.count ?? 0) >= MAX_SHOW) {
-    return { note: null, dedupeHit: true };
+    // The same signature is the same graph generation and symbol set, so the
+    // delivery this repeats has already booked these very hits.
+    return { note: null, dedupeHit: true, booking: { file: rel, hits: [], truncated: false } };
   }
-  if (Date.now() - startedAt > budgetMs) return SILENT;
+  if (Date.now() - startedAt > budgetMs) return unplaced;
 
   const names = selection.symbols.filter((s) => s.kind !== "file").map((s) => s.name);
+
   const hits = await narrowPackageHits(
     opts.repoRoot,
     affectedHits(graph, rel, selection.symbols, 1),
     names,
   );
   const result = affectedResult(selection.symbols, hits);
-  if (result.files.length === 0) return SILENT;
+  const booking = { file: rel, hits: result.hits, truncated: result.truncated };
+  if (result.files.length === 0) return { note: null, dedupeHit: false, booking };
 
   // Only now, with an emit decided, does this touch the disk again.
   const stale = await isGraphStale(opts.repoRoot, opts.filePath);
@@ -231,9 +255,10 @@ export async function impactNote(opts: ImpactNoteOptions): Promise<ImpactResult>
     stale,
     lead: selection.basis === "whole_file" ? WRITE_LEAD_WHOLE_FILE : WRITE_LEAD_SYMBOLS,
   });
-  if (Date.now() - startedAt > budgetMs) return SILENT;
+  if (Date.now() - startedAt > budgetMs) return { note: null, dedupeHit: false, booking };
   return {
     dedupeHit: false,
+    booking,
     note: {
       note,
       dedupeKey,
@@ -386,7 +411,7 @@ export async function isGraphStale(repoRoot: string, filePath: string): Promise<
 // ─── The block ───────────────────────────────────────────────────
 
 /** One rule for what counts as a test, shared by the ordering and the count. */
-function isTestFile(f: string): boolean {
+export function isTestFile(f: string): boolean {
   return f.includes("__tests__") || /\.(test|spec)\./.test(f);
 }
 

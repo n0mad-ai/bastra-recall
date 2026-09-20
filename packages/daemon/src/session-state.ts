@@ -54,10 +54,56 @@ export interface SourceBackoff {
   skipped: number;
 }
 
+/** #572: one dependent as the graph had it when the edit was made. */
+export interface TouchedHit {
+  file: string;
+  location: string;
+  via: string;
+  relation: string;
+}
+
+/**
+ * #572: one file this session set out to write, as the Write/Edit lane saw it.
+ *
+ * `hits` is the union, over every edit of the file, of the dependents the
+ * graph held AT EDIT TIME — one per dependent file. `unplaced` is set once any
+ * edit of it could not be looked at, and never cleared: one blind edit is not
+ * outvoted by later sighted ones. `at` is the first booking, which is what the
+ * Stop lane checks the file's mtime against — the lane fires BEFORE the tool
+ * runs, so a booking is an attempt until the disk confirms it.
+ */
+export interface TouchedFile {
+  at: number;
+  /** The latest booking — a read only counts as "after the change" past this. */
+  last: number;
+  hits: TouchedHit[];
+  unplaced: boolean;
+  truncated: boolean;
+}
+
 export interface SessionState {
   shown: Record<string, ShownEntry>;
   /** #161: keyed by hook source ("write-edit", "bash-tripwire", …) */
   sources?: Record<string, SourceBackoff>;
+  /**
+   * #572: what the session wrote, repository root -> repo-relative file. The
+   * accumulator the Stop lane reads for the task-boundary impact — the union
+   * the per-edit block can never produce, because it dedupes by design.
+   */
+  touched?: Record<string, Record<string, TouchedFile>>;
+  /**
+   * #572: the task-boundary block the Stop lane computed, waiting for this
+   * session's next prompt. One slot, overwritten by each Stop: a later
+   * boundary covers everything an earlier one did, because `touched` only
+   * grows.
+   */
+  boundary?: { note: string; dedupeKey: string };
+  /**
+   * #572: the accumulator hit `MAX_TOUCHED_FILES` and stopped recording. From
+   * then on the table is a prefix of the task, and the Stop lane stays silent
+   * rather than answer from a prefix.
+   */
+  touchedOverflow?: boolean;
 }
 
 /**
@@ -83,6 +129,11 @@ export type ReadonlySourceBackoff = Readonly<Omit<SourceBackoff, "ids">> & {
 export interface ReadonlySessionState {
   readonly shown: Readonly<Record<string, Readonly<ShownEntry>>>;
   readonly sources?: Readonly<Record<string, ReadonlySourceBackoff>>;
+  readonly boundary?: Readonly<{ note: string; dedupeKey: string }>;
+  readonly touched?: Readonly<
+    Record<string, Readonly<Record<string, Readonly<Omit<TouchedFile, "hits">> & { readonly hits: readonly TouchedHit[] }>>>
+  >;
+  readonly touchedOverflow?: boolean;
 }
 
 /** Threshold above which a memory is dropped from hints. #32 startete mit 3;
@@ -144,6 +195,18 @@ async function readSessionState(sessionId: string): Promise<SessionState> {
     // every streak on the next dedup save.
     if (parsed.sources && typeof parsed.sources === "object") {
       state.sources = parsed.sources as Record<string, SourceBackoff>;
+    }
+    // #572: same reason — the accumulator must survive every other lane's save.
+    if (parsed.touched && typeof parsed.touched === "object") {
+      state.touched = parsed.touched as Record<string, Record<string, TouchedFile>>;
+    }
+    if (parsed.touchedOverflow === true) state.touchedOverflow = true;
+    if (
+      parsed.boundary &&
+      typeof parsed.boundary.note === "string" &&
+      typeof parsed.boundary.dedupeKey === "string"
+    ) {
+      state.boundary = { note: parsed.boundary.note, dedupeKey: parsed.boundary.dedupeKey };
     }
     return state;
   } catch {
@@ -305,6 +368,67 @@ export function shouldDropHit(
 export function bumpShown(state: SessionState, memId: string, now: number = Date.now()): void {
   const prev = state.shown[memId];
   state.shown[memId] = { count: (prev?.count ?? 0) + 1, at: now };
+}
+
+/** #572: bounds, so a long session cannot grow its state file without limit. */
+export const MAX_TOUCHED_FILES = 128;
+export const MAX_TOUCHED_HITS = 40;
+
+/**
+ * #572: book one file the session is about to write.
+ *
+ * `hits === null` means the lane could not look at this edit. Every bound
+ * resolves toward saying so rather than toward a shorter answer: past the hit
+ * bound the entry is marked `truncated`, and past the file bound the whole
+ * table is marked `touchedOverflow` — it has become a prefix of the task.
+ */
+export function recordTouched(
+  state: SessionState,
+  repoRoot: string,
+  file: string,
+  hits: readonly TouchedHit[] | null,
+  truncated = false,
+  now: number = Date.now(),
+): void {
+  if (state.touched === undefined) state.touched = {};
+  let repo = state.touched[repoRoot];
+  if (repo === undefined) {
+    repo = {};
+    state.touched[repoRoot] = repo;
+  }
+  let entry = repo[file];
+  if (entry === undefined) {
+    if (touchedCount(state) >= MAX_TOUCHED_FILES) {
+      state.touchedOverflow = true;
+      if (Object.keys(repo).length === 0) delete state.touched[repoRoot];
+      return;
+    }
+    entry = { at: now, last: now, hits: [], unplaced: false, truncated: false };
+    repo[file] = entry;
+  }
+  entry.last = now;
+  if (truncated) entry.truncated = true;
+  if (hits === null) {
+    entry.unplaced = true;
+    return;
+  }
+  const known = new Set(entry.hits.map((h) => h.file));
+  for (const hit of hits) {
+    if (known.has(hit.file)) continue;
+    if (entry.hits.length >= MAX_TOUCHED_HITS) {
+      entry.truncated = true;
+      break;
+    }
+    known.add(hit.file);
+    entry.hits.push({ file: hit.file, location: hit.location, via: hit.via, relation: hit.relation });
+  }
+}
+
+/** Files booked across every repository of the session. */
+export function touchedCount(state: ReadonlySessionState | SessionState): number {
+  let n = 0;
+  for (const repo of Object.values(state.touched ?? {})) n += Object.keys(repo).length;
+  return n;
 }
 
 /**

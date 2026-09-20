@@ -59,8 +59,11 @@ import { writePendingSuggestion } from "./pending-suggestions.js";
 import { frustrationCues, decisionCues } from "./lexicon.js";
 import { getDocsMode, type DocsMode } from "./settings.js";
 import { enqueueForPath } from "./code-graph/service.js";
+import { boundaryNote, type ProvenRead } from "./code-graph/boundary-block.js";
+import { loadSessionState, mutateSessionState } from "./session-state.js";
 import {
   claudeToolUseCommands,
+  claudeToolUseReads,
   codexCustomExecCommands,
   codexFunctionCallCommands,
 } from "./stop-lane-command-input.js";
@@ -89,6 +92,8 @@ interface TranscriptTurn {
    *  Codex function_call arguments). Kept apart from `content` so prose that
    *  merely TALKS about a command never counts as running it. */
   commands?: string[];
+  /** #572: files the agent read from this turn (Claude `Read`), with the row's time. */
+  reads?: ProvenRead[];
 }
 
 type Heuristic = "frustration-density" | "feature-completion" | "architecture-decision";
@@ -123,6 +128,16 @@ export async function runStopLane(
   // refresher runs the build on its own, so there is no way for a build to end
   // up awaited here even by accident. A repository that is not enabled is a
   // silent no-op.
+  //
+  // #572: the task-boundary block is computed BEFORE that enqueue, on purpose.
+  // The refresher swaps the cached graph whenever its build ends; read first
+  // and the answer comes from the graph the task started from, which is the
+  // only one that still holds the edges to a symbol the task deleted.
+  //
+  // The transcript is read once, up here, for both consumers. `loadTranscript`
+  // swallows its own IO errors, so this stays inside the never-throws contract.
+  const turns = await loadTranscript(payload);
+  await parkBoundaryNote(payload, turns).catch(() => {});
   if (typeof payload.cwd === "string" && payload.cwd.length > 0) {
     void enqueueForPath(payload.cwd).catch(() => {});
   }
@@ -133,7 +148,7 @@ export async function runStopLane(
   // RegExp compile error, and a future detector may throw. A broken Stop
   // evaluation must degrade to `{}`, never take the hook down.
   try {
-    return await evaluateStop(payload, selfBaseUrl, startedAt);
+    return await evaluateStop(payload, selfBaseUrl, startedAt, turns);
   } catch (err) {
     try {
       await writeTelemetry({
@@ -155,12 +170,41 @@ export async function runStopLane(
   }
 }
 
+/**
+ * #572: compute the task-boundary block and park it in the session's own
+ * state; the prompt lane delivers it on this session's next turn
+ * (`boundary-block.ts` says why not the pending file). A Stop that finds
+ * nothing CLEARS the slot — the agent may have opened the missed files since
+ * the last Stop, and a parked block must not outlive the fact it states.
+ */
+async function parkBoundaryNote(payload: ClaudeStopPayload, turns: TranscriptTurn[]): Promise<void> {
+  const sessionId = payload.session_id ?? "";
+  if (!sessionId) return;
+  const session = await loadSessionState(sessionId);
+  if (session.touched === undefined) return;
+
+  // Only a read the transcript PROVES counts. Claude's Read tool
+  // names its file; a Codex `sed -n` inside a shell string does not, and
+  // guessing paths out of shell text would mark files opened that never were —
+  // the narrow direction. Without proof the answer simply stays wider.
+  const reads = turns.flatMap((t) => t.reads ?? []);
+  const built = await boundaryNote({ session, reads });
+  if (built === null && session.boundary === undefined) return;
+  await mutateSessionState(sessionId, (s) => {
+    if (built === null) {
+      delete s.boundary;
+    } else {
+      s.boundary = { note: built.note, dedupeKey: built.dedupeKey };
+    }
+  });
+}
+
 async function evaluateStop(
   payload: ClaudeStopPayload,
   selfBaseUrl: string,
   startedAt: number,
+  turns: TranscriptTurn[],
 ): Promise<string> {
-  const turns = await loadTranscript(payload);
   if (turns.length === 0) return "{}";
 
   const last30 = turns.slice(-30);
@@ -430,6 +474,13 @@ function normalizeTurns(items: unknown[]): TranscriptTurn[] {
       const turn: TranscriptTurn = { role: effectiveRole(role, m.content), content: scrubTurnContent(stringifyContent(m.content)) };
       const commands = claudeToolUseCommands(m.content);
       if (commands.length > 0) turn.commands = commands;
+      const reads = claudeToolUseReads(m.content);
+      if (reads.length > 0) {
+        // A row without a parseable timestamp cannot be placed after an edit,
+        // and an unplaced read is not counted (`boundary-block.ts`).
+        const at = typeof obj.timestamp === "string" ? Date.parse(obj.timestamp) : Number.NaN;
+        turn.reads = reads.map((path) => ({ path, at: Number.isNaN(at) ? null : at }));
+      }
       out.push(turn);
       continue;
     }

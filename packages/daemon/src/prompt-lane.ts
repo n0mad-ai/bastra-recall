@@ -48,6 +48,7 @@ import { governContext } from "./context-governor.js";
 import { deliverPromptImpact } from "./code-graph/prompt-impact.js";
 import type { Prewarmer, PrewarmOutcome } from "./embedding-prewarm.js";
 import {
+  MAX_SHOW,
   bumpShown,
   decideBackoff,
   getLoadedMarkerMtime,
@@ -660,7 +661,15 @@ export async function runPromptLane(
   // hints. It never rides the recall backoff — it is not recall noise, it is a
   // deterministic answer to an explicit question (same reasoning as the size
   // note in the write lane).
-  const blocks = [impact.block, reflexBlock, recallBlock].filter((b): b is string => b !== null);
+  // #572: the task-boundary block the last Stop parked for THIS session. It
+  // rides first for the same reason: it is about what the agent just did, and
+  // it is worth reading before the next thing is done on top of it.
+  const parked = state.boundary;
+  const boundary =
+    parked !== undefined && (state.shown[parked.dedupeKey]?.count ?? 0) < MAX_SHOW ? parked : null;
+  const blocks = [boundary?.note ?? null, impact.block, reflexBlock, recallBlock].filter(
+    (b): b is string => b !== null,
+  );
   const stdout =
     blocks.length === 0
       ? "{}"
@@ -677,13 +686,17 @@ export async function runPromptLane(
   // #539: the deltas run against the state as it is on disk when the lock is
   // taken, not against the snapshot read before the recall — the other four
   // lanes write the same file in the meantime.
-  if (recallHits.length > 0 || reflexKept.length > 0 || impact.dedupeKey !== null) {
+  if (recallHits.length > 0 || reflexKept.length > 0 || impact.dedupeKey !== null || parked !== undefined) {
     const recallIds = recallHits.map((h) => h.id);
     const impactKey = impact.dedupeKey;
     await mutateSessionState(sessionId, (s) => {
       // #606: booked only when the block actually reached the transcript, so a
       // suppressed turn does not silence the next one.
       if (impactKey !== null) bumpShown(s, impactKey);
+      // #572: the slot empties either way — delivered, or a repeat of what
+      // this session was already told.
+      if (boundary !== null) bumpShown(s, boundary.dedupeKey);
+      if (parked !== undefined) delete s.boundary;
       if (recallBlock) {
         recordSourceEmit(s, BACKOFF_SOURCE, recallIds, consumedForEmit);
       } else if (suppressed) {
