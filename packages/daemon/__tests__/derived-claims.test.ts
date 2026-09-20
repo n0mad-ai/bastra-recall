@@ -48,7 +48,7 @@ const claim = {
   id: "failure-modes.total",
   resolver: COUNT,
   source: SOURCE,
-  case_ref: "harness://case/derived-count-stays-a-formula",
+  case_ref: "case://failure-modes/derived-count",
 };
 
 const fact = (extra: Record<string, unknown> = {}) => ({
