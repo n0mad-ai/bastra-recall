@@ -90,12 +90,12 @@ async function build(opts: BoundaryNoteOptions): Promise<BoundaryNote | null> {
   const identity: string[] = [];
   let files = 0;
 
-  for (const repoRoot of Object.keys(touched).sort()) {
+  for (const repoRoot of [...touched.keys()].sort()) {
     const touches: BoundaryTouch[] = [];
     // Dependent file -> the latest booking of any touched file that names it.
     // A read counts as "after the change" only past that moment.
     const changedAt = new Map<string, number>();
-    for (const [file, entry] of Object.entries(touched[repoRoot] ?? {})) {
+    for (const [file, entry] of touched.get(repoRoot) ?? []) {
       const mtime = await mtimeOf(join(repoRoot, file));
       if (mtime !== null && mtime < entry.at - MTIME_SLACK_MS) continue;
       touches.push({

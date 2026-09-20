@@ -376,7 +376,7 @@ describe("recordTouched — the accumulator", () => {
     recordTouched(s, "/r", "a.ts", [BOOKED[0]!], false, 1);
     recordTouched(s, "/r", "a.ts", BOOKED, false, 2);
 
-    const entry = s.touched!["/r"]!["a.ts"]!;
+    const entry = s.touched!.get("/r")!.get("a.ts")!;
     assert.deepEqual(
       entry.hits.map((h) => h.file),
       ["src/audit.ts", "src/report.ts"],
@@ -390,6 +390,6 @@ describe("recordTouched — the accumulator", () => {
     recordTouched(s, "/r", "a.ts", null, false, 1);
     recordTouched(s, "/r", "a.ts", BOOKED, false, 2);
 
-    assert.equal(s.touched!["/r"]!["a.ts"]!.unplaced, true);
+    assert.equal(s.touched!.get("/r")!.get("a.ts")!.unplaced, true);
   });
 });

@@ -90,7 +90,7 @@ export interface SessionState {
    * accumulator the Stop lane reads for the task-boundary impact — the union
    * the per-edit block can never produce, because it dedupes by design.
    */
-  touched?: Record<string, Record<string, TouchedFile>>;
+  touched?: Map<string, Map<string, TouchedFile>>;
   /**
    * #572: the task-boundary block the Stop lane computed, waiting for this
    * session's next prompt. One slot, overwritten by each Stop: a later
@@ -133,8 +133,9 @@ export interface ReadonlySessionState {
   readonly sources?: Readonly<Record<string, ReadonlySourceBackoff>>;
   readonly boundary?: Readonly<{ note: string; dedupeKey: string; builtFrom: number }>;
   readonly touchedChars?: number;
-  readonly touched?: Readonly<
-    Record<string, Readonly<Record<string, Readonly<Omit<TouchedFile, "hits">> & { readonly hits: readonly TouchedHit[] }>>>
+  readonly touched?: ReadonlyMap<
+    string,
+    ReadonlyMap<string, Readonly<Omit<TouchedFile, "hits">> & { readonly hits: readonly TouchedHit[] }>
   >;
   readonly touchedOverflow?: boolean;
 }
@@ -201,20 +202,10 @@ async function readSessionState(sessionId: string): Promise<SessionState> {
     }
     // #572: same reason — the accumulator must survive every other lane's save.
     if (parsed.touched && typeof parsed.touched === "object") {
-      // Rebuilt through `emptyTable`, not adopted as parsed: the next
-      // `recordTouched` writes into these objects, and a table that came back
-      // from disk with an ordinary prototype reopens the write `emptyTable`
-      // closes.
-      const touched = emptyTable<Record<string, TouchedFile>>();
-      for (const [repoRoot, files] of Object.entries(parsed.touched as Record<string, unknown>)) {
+      const touched = new Map<string, Map<string, TouchedFile>>();
+      for (const [repoRoot, files] of Object.entries(parsed.touched as unknown as Record<string, unknown>)) {
         if (!files || typeof files !== "object") continue;
-        if (repoRoot === "__proto__" || repoRoot === "constructor" || repoRoot === "prototype") continue;
-        const repo = emptyTable<TouchedFile>();
-        for (const [file, entry] of Object.entries(files as Record<string, TouchedFile>)) {
-          if (file === "__proto__" || file === "constructor" || file === "prototype") continue;
-          repo[file] = entry;
-        }
-        touched[repoRoot] = repo;
+        touched.set(repoRoot, new Map(Object.entries(files as Record<string, TouchedFile>)));
       }
       state.touched = touched;
     }
@@ -284,7 +275,15 @@ async function writeSessionState(sessionId: string, state: SessionState): Promis
     await mkdir(dir, { recursive: true, mode: 0o700 });
     const target = sessionFile(sessionId, dir);
     const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
-    await writeFile(tmp, JSON.stringify(state), { encoding: "utf8", mode: 0o600 });
+    // `touched` is a Map, and JSON.stringify writes a Map as `{}`. Converted
+    // here rather than held as an object, because an object keyed by a path
+    // out of tool input is a property write — the prototype-pollution shape
+    // CodeQL flags and a Map does not have.
+    const onDisk = { ...state } as unknown as Record<string, unknown>;
+    if (state.touched !== undefined) {
+      onDisk.touched = Object.fromEntries([...state.touched].map(([k, v]) => [k, Object.fromEntries(v)]));
+    }
+    await writeFile(tmp, JSON.stringify(onDisk), { encoding: "utf8", mode: 0o600 });
     await rename(tmp, target);
   } catch {
     // dedup state is non-essential — never break the hot path
@@ -414,37 +413,24 @@ export const MAX_TOUCHED_CHARS = 128 * 1024;
  * table is marked `touchedOverflow` — it has become a prefix of the task.
  */
 /**
- * #572 (CodeQL `js/remote-property-injection`, three writes in
- * `recordTouched`): both levels of `touched` are keyed by tool input — a
- * repository root and a file path. On an ordinary object
- * `table["__proto__"] = entry` runs the inherited setter and changes the
- * object's prototype instead of storing anything.
+ * #572 (CodeQL `js/remote-property-injection`): both levels of `touched` are
+ * keyed by tool input — a repository root and a file path. An object used as a
+ * map turns those keys into property names, and `table["__proto__"] = entry`
+ * then runs the inherited setter and changes the object's prototype instead of
+ * storing anything.
  *
- * Two answers, because one of them can be read back from disk. `emptyTable`
- * gives every container a null prototype, so there is no setter to reach;
- * `isSafeTableKey` is the same refusal `call-corruption.ts` makes for argument
- * names (#56), and it holds for a table that has made a round trip through
- * `JSON.parse` before this lane writes to it again.
+ * Two guards were tried first — prototype-less containers, then the same
+ * denylist `call-corruption.ts` uses for argument names — and the query kept
+ * flagging the writes, because it does not follow a refusal through a call and
+ * did not read the inline comparisons as a barrier either. So the shape is
+ * gone instead of guarded, which is what the query's own guidance says to do:
+ * a `Map` has no property write to pollute and no name to refuse. Nothing is
+ * dropped any more — a file really named `__proto__` is booked like any other,
+ * which is the outcome a denylist could not give.
  *
- * Refusing costs nothing reachable. The outer key is a repository root —
- * always an absolute path — and the inner key is a path relative to it, so a
- * refused booking needs a file named exactly `__proto__` at the root of a
- * repository whose own absolute path is also exactly `__proto__`.
+ * It costs one conversion at the disk boundary, in `writeSessionState` and in
+ * the load branch, because `JSON.stringify` writes a `Map` as `{}`.
  */
-function emptyTable<T>(): Record<string, T> {
-  return Object.create(null) as Record<string, T>;
-}
-
-/**
- * Written out at every write site rather than called through
- * `isSafeTableKey`-style helper: CodeQL does not follow a denylist through a
- * call, which is the lesson `call-corruption.ts` already wrote down for #56 —
- * that alert stayed open until the resolution happened where the write does.
- * The three names are `__proto__`, `constructor` and `prototype`, written out
- * at each of the two sites below rather than shared, because sharing them is
- * exactly what the analyzer cannot follow.
- */
-
 export function recordTouched(
   state: SessionState,
   repoRoot: string,
@@ -453,19 +439,17 @@ export function recordTouched(
   truncated = false,
   now: number = Date.now(),
 ): void {
-  if (repoRoot === "__proto__" || repoRoot === "constructor" || repoRoot === "prototype") return;
-  if (file === "__proto__" || file === "constructor" || file === "prototype") return;
-  if (state.touched === undefined) state.touched = emptyTable();
-  let repo = state.touched[repoRoot];
+  if (state.touched === undefined) state.touched = new Map();
+  let repo = state.touched.get(repoRoot);
   if (repo === undefined) {
-    repo = emptyTable();
-    state.touched[repoRoot] = repo;
+    repo = new Map();
+    state.touched.set(repoRoot, repo);
   }
-  let entry = repo[file];
+  let entry = repo.get(file);
   if (entry === undefined) {
     if (touchedCount(state) >= MAX_TOUCHED_FILES) {
       state.touchedOverflow = true;
-      if (Object.keys(repo).length === 0) delete state.touched[repoRoot];
+      if (repo.size === 0) state.touched.delete(repoRoot);
       return;
     }
     // The registration itself costs characters, and long paths make it the
@@ -476,11 +460,11 @@ export function recordTouched(
     const base = repoRoot.length + file.length + ENTRY_OVERHEAD;
     if ((state.touchedChars ?? 0) + base > MAX_TOUCHED_CHARS) {
       state.touchedOverflow = true;
-      if (Object.keys(repo).length === 0) delete state.touched[repoRoot];
+      if (repo.size === 0) state.touched.delete(repoRoot);
       return;
     }
     entry = { at: now, last: now, hits: [], unplaced: false, truncated: false };
-    repo[file] = entry;
+    repo.set(file, entry);
     state.touchedChars = (state.touchedChars ?? 0) + base;
   }
   entry.last = now;
@@ -559,7 +543,7 @@ export async function takeParkedBoundary(sessionId: string): Promise<string | nu
 /** Files booked across every repository of the session. */
 export function touchedCount(state: ReadonlySessionState | SessionState): number {
   let n = 0;
-  for (const repo of Object.values(state.touched ?? {})) n += Object.keys(repo).length;
+  for (const repo of (state.touched ?? new Map()).values()) n += repo.size;
   return n;
 }
 

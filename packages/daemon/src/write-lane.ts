@@ -339,7 +339,7 @@ export async function runWriteLane(
     // already booked them. That holds only if this session HAS such an entry;
     // a `shown` counter without one (state written before #572) proves
     // nothing, and the edit is booked as one the lane could not look at.
-    const vouched = sessionState.touched?.[repoRoot]?.[booking.file] !== undefined;
+    const vouched = sessionState.touched?.get(repoRoot)?.get(booking.file) !== undefined;
     const hits = t.impact.dedupeHit && !vouched ? null : booking.hits;
     stateDeltas.push((s) => recordTouched(s, repoRoot, booking.file, hits, booking.truncated));
   });

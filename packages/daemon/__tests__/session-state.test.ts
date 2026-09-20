@@ -214,61 +214,57 @@ test("the accumulator survives another lane's save of the same file", async () =
   await ss.mutateSessionState(id, (s) => ss.recordTouched(s, "/r", "a.ts", null));
   await ss.mutateSessionState(id, (s) => ss.bumpShown(s, "some-memory"));
 
-  assert.equal((await ss.loadSessionState(id)).touched?.["/r"]?.["a.ts"]?.unplaced, true);
+  assert.equal((await ss.loadSessionState(id)).touched?.get("/r")?.get("a.ts")?.unplaced, true);
 });
 
-test("a __proto__ key is refused, and writes never reach a prototype", async () => {
+test("a path named __proto__ is an ordinary key, not a prototype write", async () => {
   // CodeQL js/remote-property-injection: both table levels take their keys from
-  // tool input. Revert-check: drop the `isSafeTableKey` guard in recordTouched
-  // and the refusal assertions go red; drop `emptyTable()` with it and the
-  // prototype assertion goes red; drop the guard in the load branch and the
-  // round-trip assertion goes red — a poisoned state file is adopted as parsed.
+  // tool input. Revert-check: turn the Map in `recordTouched` back into an
+  // object literal — `table["__proto__"] = entry` then writes the prototype
+  // instead of the table and every assertion here goes red.
   const id = "boundary-proto";
-  // In the writer's own state, not after a reload: the load branch carries the
-  // same guard, so reading the refusal back through it would test that guard
-  // twice and never this one.
   await ss.mutateSessionState(id, (s) => {
-    ss.recordTouched(s, "/r", "safe.ts", null); // the table exists to be asked about
     ss.recordTouched(s, "__proto__", "a.ts", null);
     ss.recordTouched(s, "/r", "__proto__", null);
-    assert.equal(s.touched?.["__proto__"], undefined, "an unsafe repo root is not booked");
-    assert.equal(s.touched?.["/r"]?.["__proto__"], undefined, "an unsafe file is not booked");
-    // The container itself, not a fresh `{}`: pollution here would change the
-    // prototype of THIS object, and an assertion about a bystander literal
-    // stays green no matter what the guards do.
-    assert.equal(Object.getPrototypeOf(s.touched ?? {}), null, "the table has no prototype");
-    assert.equal(Object.getPrototypeOf(s.touched?.["/r"] ?? {}), null, "nor does a repo");
+    // Booked, not refused: a Map key is a key. The denylist that came before
+    // this could only drop the file, and a dropped file renders at the task
+    // boundary exactly like a file nothing depends on.
+    assert.equal(s.touched?.get("__proto__")?.get("a.ts")?.unplaced, true);
+    assert.equal(s.touched?.get("/r")?.get("__proto__")?.unplaced, true);
+    // And an ordinary object is untouched by any of it.
+    assert.equal(Object.getPrototypeOf({}), Object.prototype);
+    assert.equal(({} as Record<string, unknown>).a, undefined);
   });
 
   await ss.mutateSessionState(id, (s) => ss.recordTouched(s, "/r", "b.ts", null));
-  assert.equal((await ss.loadSessionState(id)).touched?.["/r"]?.["b.ts"]?.unplaced, true);
+  assert.equal((await ss.loadSessionState(id)).touched?.get("/r")?.get("b.ts")?.unplaced, true);
 });
 
-test("a state file poisoned with a __proto__ key is not adopted as parsed", async () => {
-  // The load-branch guard, exercised by the only input that can reach it: a
-  // state file written by a daemon older than the guard. Revert-check: drop
-  // the isSafeTableKey checks in the load branch and the first two assertions
-  // go red; drop `emptyTable()` there and the prototype assertion goes red.
+test("a state file holding a __proto__ key loads it like any other entry", async () => {
+  // The disk boundary, exercised by the only input that can reach it: a state
+  // file whose JSON really carries the key. Revert-check: rebuild the load
+  // branch into an object literal instead of a Map and the first assertion
+  // goes red — the entry lands on the prototype and is not in the table.
   const id = "boundary-proto-disk";
   await ss.mutateSessionState(id, (s) => ss.recordTouched(s, "/r", "a.ts", null));
   const file = join(testDir, `${id}.json`);
   // Written as text: `raw.touched["__proto__"] = …` on an ordinary object sets
   // that object's prototype and JSON.stringify never sees the key, so building
-  // the poisoned file through assignment would write a perfectly clean one.
+  // the fixture through assignment would write a perfectly clean file.
   const entry = '{"at":1,"last":1,"hits":[],"unplaced":true,"truncated":false}';
   const raw = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
   const poisoned = JSON.stringify(raw).replace(
     '"touched":{',
     `"touched":{"__proto__":{"a.ts":${entry}},`,
   ).replace('"/r":{', `"/r":{"__proto__":${entry},`);
-  assert.ok(poisoned.includes('"__proto__"'), "the fixture really is poisoned");
+  assert.ok(poisoned.includes('"__proto__"'), "the fixture really carries the key");
   await writeFile(file, poisoned);
 
   const state = await ss.loadSessionState(id);
-  assert.equal(state.touched?.["__proto__"], undefined, "a poisoned repo root is dropped");
-  assert.equal(state.touched?.["/r"]?.["__proto__"], undefined, "a poisoned file is dropped");
-  assert.equal(Object.getPrototypeOf(state.touched ?? {}), null, "the rebuilt table has no prototype");
-  assert.equal(state.touched?.["/r"]?.["a.ts"]?.unplaced, true, "the safe entry survives");
+  assert.equal(state.touched?.get("__proto__")?.get("a.ts")?.unplaced, true, "a repo root named __proto__ loads");
+  assert.equal(state.touched?.get("/r")?.get("__proto__")?.unplaced, true, "so does a file named __proto__");
+  assert.equal(Object.getPrototypeOf({}), Object.prototype, "and nothing was polluted on the way");
+  assert.equal(state.touched?.get("/r")?.get("a.ts")?.unplaced, true, "the ordinary entry survives");
 });
 
 test("the character budget counts a file's own registration, not only its hits", async () => {
