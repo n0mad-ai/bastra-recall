@@ -176,16 +176,29 @@ describe("the build lock against adversarial interleavings", () => {
     // the lock kept the heartbeat too: the record was renewed for as long as
     // the daemon lived, so it never went stale and the repository stayed
     // blocked until a restart.
+    //
+    // WAIT FOR THE BEATS, NOT FOR THE CLOCK. Sleeping a fixed span and then
+    // reading the record as a baseline was flaky on a loaded runner in two
+    // ways: the sleep is no promise that any beat ran, and a beat landing
+    // between the baseline read and `suspend()` moved the record after the
+    // baseline was taken — a renewal the test then blamed on the suspension.
     const dir = await tempDir("bastra-lock-suspend-");
     t.after(() => rm(dir, { recursive: true, force: true }));
-    const mine = await acquireRepoLock(dir, { renewMs: 5 });
+    const beats = beatCounter();
+    const mine = await acquireRepoLock(dir, { renewMs: 5, onRenew: beats.count });
     assert.ok(mine !== null);
-    await sleep(40); // many beats
-    const beating = (await readLock(dir))?.renewedAt;
-    assert.notEqual(beating, undefined);
+    await beats.atLeast(2); // beating, observed rather than assumed
 
-    mine.suspend();
+    // `suspend()` resolves once the beat in flight has landed, so the record
+    // it leaves behind is this holder's last word: nothing can still be racing
+    // the read below.
+    await mine.suspend();
+    const beating = (await readLock(dir))?.renewedAt;
+    assert.equal(beating, mine.record.renewedAt, "the beats must have reached the file");
+
+    const quiet = beats.total;
     await sleep(60); // many more beats, had it kept beating
+    assert.equal(beats.total, quiet, "a suspended lock must not beat again");
     assert.equal((await readLock(dir))?.renewedAt, beating, "a suspended lock must not renew");
     assert.notEqual(await readLock(dir), null, "and the lock file must stay behind");
 
@@ -284,6 +297,28 @@ describe("the build lock against adversarial interleavings", () => {
     assert.equal(violations, 0, `two holders inside the critical section: ${shown}`);
   });
 });
+
+/**
+ * Counts heartbeats and lets a test WAIT for them. A beat is an event the lock
+ * reports, so waiting for one is exact however slow the machine is — which a
+ * sleep long enough to "surely" contain a beat is not.
+ */
+function beatCounter(): { readonly total: number; count: () => void; atLeast: (n: number) => Promise<void> } {
+  let total = 0;
+  const waiting: (() => void)[] = [];
+  return {
+    get total() {
+      return total;
+    },
+    count: () => {
+      total++;
+      for (const wake of waiting.splice(0)) wake();
+    },
+    atLeast: async (n: number) => {
+      while (total < n) await new Promise<void>((r) => waiting.push(r));
+    },
+  };
+}
 
 /**
  * A holder whose heartbeat stopped an hour ago: stale for everyone, at once.
