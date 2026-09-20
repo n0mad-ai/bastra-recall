@@ -111,7 +111,11 @@ describe("the arms and the thresholds come from the registration", () => {
       },
     );
     assert.equal(DELIVERED.registration_version, 2);
-    assert.equal(DELIVERED.status, "numbers_registered_population_pending");
+    // The population has been mined, adjudicated and frozen, so the pending
+    // state is gone. What must stay true is that the frozen population is
+    // named rather than promised — `code-roi-population-freeze.test.ts` holds
+    // both that and the gate the pending state used to trip.
+    assert.equal(DELIVERED.status, "numbers_registered");
     assert.equal(DELIVERED.sample.min_scenarios, 40);
     assert.equal(DELIVERED.statistics.seed, 20260918);
     assert.equal(DELIVERED.statistics.cluster_key, "repo + file");
@@ -359,6 +363,85 @@ describe("arm D is rendered by the product's prompt lane", () => {
       assert.equal(block.basis, "whole_file");
       assert.deepEqual(block.listed.sort(), [FILE_B, FILE_C]);
     } finally {
+      rmSync(tree, { recursive: true, force: true });
+      rmSync(graphRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("a candidate the graph knows no line for is still a file the block PRINTED", async () => {
+    const { listedFilesOf } = await import("../code-roi/v2/delivered-block.mjs");
+    const { displayOrder, renderImpactBlock } = await import(
+      "../../daemon/dist/code-graph/impact-block.js"
+    );
+    // A PACKAGE_IMPORT hit is `location: importer` — no `:line` (affected.ts),
+    // and so is any symbol the graph has no line for. Reading the block with a
+    // pattern that demands `:\d+` dropped exactly those, and a block made of
+    // nothing else parsed as an empty list, which `blockUse` scores as "no
+    // block was delivered" rather than as a block nobody used.
+    const hits = [
+      { file: FILE_B, location: `${FILE_B}:12`, via: "touched", relation: "calls", depth: 1 },
+      { file: FILE_C, location: FILE_C, via: "@bastra-recall/core", relation: "imports the package", depth: 1 },
+    ];
+    const note = renderImpactBlock({
+      file: FILE_A,
+      basis: "symbols",
+      changed: ["touched"],
+      hits: displayOrder(hits),
+      total: hits.length,
+      stale: false,
+      lead: "L.",
+    });
+    assert.deepEqual(listedFilesOf(note), [FILE_B, FILE_C]);
+
+    const packageOnly = renderImpactBlock({
+      file: FILE_A,
+      basis: "whole_file",
+      changed: [],
+      hits: [hits[1]],
+      total: 1,
+      stale: false,
+      lead: "L.",
+    });
+    assert.deepEqual(listedFilesOf(packageOnly), [FILE_C]);
+    assert.equal(blockUse(listedFilesOf(packageOnly), [FILE_C]), 1);
+  });
+
+  test("the trailing lines of the block are not read as candidates", async () => {
+    const { listedFilesOf } = await import("../code-roi/v2/delivered-block.mjs");
+    const { renderImpactBlock } = await import("../../daemon/dist/code-graph/impact-block.js");
+    // The "… and N more" line, the staleness sentence and the closing caveat
+    // all live in the same body; only the candidate lines may be read out of it.
+    const note = renderImpactBlock({
+      file: FILE_A,
+      basis: "symbols",
+      changed: ["touched"],
+      hits: [{ file: FILE_B, location: `${FILE_B}:12`, via: "touched", relation: "calls", depth: 1 }],
+      total: 7,
+      stale: true,
+      lead: "L.",
+    });
+    assert.deepEqual(listedFilesOf(note), [FILE_B]);
+  });
+
+  test("the kill switch aborts arm D instead of being measured as product silence", async () => {
+    const { deliveredBlockFor } = await import("../code-roi/v2/delivered-block.mjs");
+    const { tree, graphRoot } = await fixture();
+    const before = process.env.BASTRA_CODE_AWARENESS;
+    process.env.BASTRA_CODE_AWARENESS = "off";
+    try {
+      await assert.rejects(
+        () =>
+          deliveredBlockFor(
+            { file: FILE_A, diff: FORWARD_DIFF },
+            tree,
+            graphRoot,
+            `What breaks if I change \`touched\` in ${FILE_A}?`,
+          ),
+        /BASTRA_CODE_AWARENESS=off/,
+      );
+    } finally {
+      if (before === undefined) delete process.env.BASTRA_CODE_AWARENESS;
+      else process.env.BASTRA_CODE_AWARENESS = before;
       rmSync(tree, { recursive: true, force: true });
       rmSync(graphRoot, { recursive: true, force: true });
     }

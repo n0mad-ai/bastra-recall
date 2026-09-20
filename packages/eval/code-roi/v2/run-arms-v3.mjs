@@ -514,9 +514,15 @@ async function main() {
     return;
   }
   const preflightOnly = process.argv.includes("--preflight-only");
+  // The scenario file is checked whenever there IS one, `--preflight-only`
+  // included. A dry run that reports "ok" while the archive holds a scenario
+  // file from another registration version or another truth rule is a dry run
+  // that clears the very drift it exists to catch; only an archive that has
+  // not been selected yet may pass without the check.
+  const scenarioPath = join(OUT, "scenarios.json");
   let scenarioFile = null;
-  if (!preflightOnly) {
-    scenarioFile = JSON.parse(readFileSync(join(OUT, "scenarios.json"), "utf8"));
+  if (existsSync(scenarioPath)) {
+    scenarioFile = JSON.parse(readFileSync(scenarioPath, "utf8"));
     if (
       registrationId !== DEFAULT_REGISTRATION_ID &&
       scenarioFile.registration_version !== registration.registration_version
@@ -566,6 +572,7 @@ async function main() {
   if (preflightOnly) return;
   const buildPinSignature = pinSignature(preflight.pin);
 
+  if (scenarioFile === null) throw new Error(`${scenarioPath} does not exist — run select.mjs first`);
   const { scenarios } = scenarioFile;
   const live = scenarios.filter((s) => !s.excluded && (!only || only.has(s.id)));
   const maxScenarios = helpingSize();
