@@ -71,7 +71,11 @@ export function workspaceModules(repoRoot: string): WorkspaceModules {
         if (target === null) continue;
         if (subpath.includes("*")) {
           for (const [suffix, file] of wildcardTargets(repoRoot, dir, target)) {
-            out.set(name + subpath.slice(1).replace("*", suffix), file);
+            // A subpath can carry more than one `*` (e.g. `./*/*.js`); Node
+            // substitutes the SAME match into every one of them, so a plain
+            // `replace` — which only touches the first — would leave the
+            // later stars in the specifier literal (#582 CodeQL).
+            out.set(name + subpath.slice(1).replaceAll("*", suffix), file);
           }
           continue;
         }

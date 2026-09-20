@@ -115,6 +115,26 @@ describe("what a refresh row is allowed to say (#582 review)", () => {
     assert.equal(detailCode(undefined), undefined, "no detail stays no detail");
   });
 
+  it("anchors BOTH alternatives of the `locked` pattern, not just the first (CodeQL #63)", () => {
+    // `/^locked|failed: locked/` parses as `(^locked)|(failed: locked)`: the
+    // anchor only binds the first alternative, so the second matched
+    // "failed: locked" ANYWHERE in the string, not just at the start. Every
+    // real detail happens to have it at the start, so the bug never showed up
+    // in REAL_DETAILS — a case with it in the middle is needed to catch it.
+    assert.equal(
+      detailCode("something failed: locked nonsense"),
+      "other",
+      "\"failed: locked\" mid-string must not be misread as the anchored case",
+    );
+    // A prefix of "locked" that is a different word entirely.
+    assert.equal(detailCode("unlocked"), "other");
+    // Contains "timeout" as a substring but must never be pulled into `locked`.
+    assert.equal(detailCode("timeout-ish"), "timeout");
+    // The two shapes the pattern is actually meant to catch, both anchored.
+    assert.equal(detailCode("locked: /Users/someone/Projekte/client/.bastra-code"), "locked");
+    assert.equal(detailCode("failed: locked"), "locked");
+  });
+
   it("lets no path fragment and no stderr through, whatever the input", () => {
     const leaky = [
       ...REAL_DETAILS.map(([raw]) => raw),

@@ -296,6 +296,43 @@ describe("workspace packages", () => {
     }
   });
 
+  it("substitutes EVERY star in a subpath export, not just the first (CodeQL #62)", async () => {
+    // `subpath.replace("*", suffix)` only touches the first "*"; a subpath
+    // with two of them (`./*/*.css`) left the second one literal in the
+    // resolved specifier instead of getting the same match Node substitutes
+    // into every star.
+    const twoStars = await mkdtemp(join(tmpdir(), "bastra-twostars-"));
+    try {
+      const pkg = join(twoStars, "packages", "widgets");
+      await mkdir(join(pkg, "src"), { recursive: true });
+      await writeFile(
+        join(twoStars, "package.json"),
+        JSON.stringify({ name: "root", workspaces: ["packages/*"] }),
+        "utf8",
+      );
+      await writeFile(
+        join(pkg, "package.json"),
+        // The target itself carries a single star (all `wildcardTargets`
+        // supports); the bug is in re-inserting its match into a KEY that
+        // repeats the star.
+        JSON.stringify({ name: "@acme/widgets", exports: { "./*/*.css": "./dist/*.js" } }),
+        "utf8",
+      );
+      await writeFile(join(pkg, "src", "button.ts"), "export {};\n", "utf8");
+      const modules = workspaceModules(twoStars);
+      assert.equal(
+        modules.get("@acme/widgets/button/button.css"),
+        "packages/widgets/src/button.ts",
+        "both stars in the subpath got the same match, the way Node resolves it",
+      );
+      for (const key of modules.keys()) {
+        assert.doesNotMatch(key, /\*/, `"${key}" left a star unreplaced in the specifier`);
+      }
+    } finally {
+      await rm(twoStars, { recursive: true, force: true });
+    }
+  });
+
   it("matches a star in the MIDDLE of a workspace pattern", async () => {
     const apps = await mkdtemp(join(tmpdir(), "bastra-apps-"));
     try {
