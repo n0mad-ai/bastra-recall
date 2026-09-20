@@ -184,6 +184,67 @@ test("#530 follow-up: the marker mirrors a shrunk source set", async (t) => {
   assert.equal(markerAfterSecond.imported, 1, "marker was updated to the shrunk set's count");
 });
 
+test("#530 follow-up: the marker mirrors a source set that shrinks to zero", async (t) => {
+  const src = await mkdtemp(join(tmpdir(), "iv-reimport-shrink0-src-"));
+  const vault = await mkdtemp(join(tmpdir(), "iv-reimport-shrink0-vault-"));
+  t.after(async () => {
+    resetAuditLogCache();
+    await rm(src, { recursive: true, force: true });
+    await rm(vault, { recursive: true, force: true });
+  });
+  resetAuditLogCache();
+
+  const { writeFile, mkdir, rm: rmFile } = await import("node:fs/promises");
+  await mkdir(src, { recursive: true });
+  await writeFile(join(src, "one.md"), "# One\n\nFirst note.\n", "utf8");
+
+  const first = await importVault(vault, src, { label: "shrink0" });
+  assert.equal(first.imported, 1);
+  const markerPath = join(vault, first.folder, ".bastra-imported");
+  const markerAfterFirst = JSON.parse(await readFile(markerPath, "utf8"));
+  assert.equal(markerAfterFirst.imported, 1);
+
+  // The LAST source file is removed: `ids.length` goes to zero, the same
+  // n -> n-1 bug the shrink test above covers, only for n -> 0. Before the
+  // fix, the previous-marker read and the write were both gated on
+  // `ids.length > 0`, so a marker still claiming "1" would be left behind
+  // forever once the source folder emptied out.
+  await rmFile(join(src, "one.md"));
+  const second = await importVault(vault, src, { label: "shrink0" });
+
+  assert.equal(second.imported, 0, "the source set is now empty");
+  assert.equal(second.written.created, 0);
+  assert.equal(second.written.updated, 0);
+
+  const markerAfterSecond = JSON.parse(await readFile(markerPath, "utf8"));
+  assert.equal(markerAfterSecond.imported, 0, "marker was updated to reflect the now-empty set");
+});
+
+test("#530 follow-up: an empty source set with no prior marker writes none", async (t) => {
+  const src = await mkdtemp(join(tmpdir(), "iv-reimport-empty-src-"));
+  const vault = await mkdtemp(join(tmpdir(), "iv-reimport-empty-vault-"));
+  t.after(async () => {
+    resetAuditLogCache();
+    await rm(src, { recursive: true, force: true });
+    await rm(vault, { recursive: true, force: true });
+  });
+  resetAuditLogCache();
+
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir(src, { recursive: true });
+  // No markdown files at all — a first-ever import of an empty (or
+  // already-fully-excluded) folder must stay a true no-op: there was never a
+  // marker to catch up, so none may be created out of nothing.
+
+  const result = await importVault(vault, src, { label: "empty" });
+
+  assert.equal(result.imported, 0);
+  assert.equal(result.written.created, 0);
+  assert.equal(result.written.updated, 0);
+  const markerPath = join(vault, result.folder, ".bastra-imported");
+  assert.equal(existsSync(markerPath), false, "no marker for a set that was always empty");
+});
+
 test("#530 follow-up: the marker mirrors a grown source set", async (t) => {
   const src = await mkdtemp(join(tmpdir(), "iv-reimport-grow-src-"));
   const vault = await mkdtemp(join(tmpdir(), "iv-reimport-grow-vault-"));

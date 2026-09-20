@@ -592,23 +592,35 @@ export async function importVault(
   // marker an update: the source set may have SHRUNK (a file was removed),
   // leaving `ids.length` below what the marker already claims even though
   // every remaining file was already in the vault (written.created ===
-  // written.updated === 0). Compare against the count the existing marker
-  // already stores — no new marker format, `imported` was always there —
-  // and treat a stale count as a change too. A run that writes nothing AND
-  // matches the marker's count stays a true no-op: no read finds a mismatch,
-  // so no restamp.
+  // written.updated === 0). This read is NOT gated on `ids.length > 0`: the
+  // same shrink can go all the way to zero (the last source file removed),
+  // and a marker still claiming the old count would be exactly as stale as
+  // the n -> n-1 case this fix was written for. Compare against the count
+  // the existing marker already stores — no new marker format, `imported`
+  // was always there — and treat a stale count as a change too. A run that
+  // writes nothing AND matches the marker's count stays a true no-op: no
+  // read finds a mismatch, so no restamp.
   let previousImported: number | undefined;
-  if (!dryRun && ids.length > 0) {
+  let markerExisted = false;
+  if (!dryRun) {
     try {
       const prevRaw = await readFile(join(vaultRoot, folder, ".bastra-imported"), "utf8");
       const prev = JSON.parse(prevRaw) as { imported?: unknown };
+      markerExisted = true;
       if (typeof prev.imported === "number") previousImported = prev.imported;
     } catch {
       /* no marker yet, or unreadable — nothing to compare against */
     }
   }
-  const setChanged = written.created > 0 || written.updated > 0 || previousImported !== ids.length;
-  if (!dryRun && ids.length > 0 && setChanged) {
+  // A count mismatch only counts as a change when a marker was actually
+  // there to be stale: an empty source set with no prior marker (ids.length
+  // === 0, markerExisted === false) must stay a true no-op — nothing to
+  // reflect and nothing to skip. Once a marker exists, it mirrors the
+  // current set even when that set is now empty (product decision: the
+  // marker reflects reality, it is never deleted here).
+  const countChanged = markerExisted && previousImported !== ids.length;
+  const setChanged = written.created > 0 || written.updated > 0 || countChanged;
+  if (!dryRun && setChanged) {
     // Fix-Leiter Stufe 3 (zzallirog): ein Marker im Import-Subtree, damit
     // FREMDE Tools auf dem geteilten Ordner (Atlas, Indexer, grep) das Set
     // als maschinell erzeugte Kopie erkennen und überspringen können. Kein
