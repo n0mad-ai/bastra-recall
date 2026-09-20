@@ -29,12 +29,18 @@ import { fileURLToPath } from "node:url";
 
 const SCRIPT_SRC = fileURLToPath(new URL("../../scripts/write-build-revision.mjs", import.meta.url));
 
-/** A throwaway git repo shaped like `<repo>/scripts/write-build-revision.mjs`. */
-async function fixtureRepo(t) {
+/**
+ * A throwaway git repo shaped like `<repo>/scripts/write-build-revision.mjs`.
+ * `packageJson` defaults to a bare manifest for the tests that only read the
+ * stamp file directly; the `npm pack` test below passes one with `name`,
+ * `version` and `files`, which is what `npm pack` requires and what every
+ * real package under `packages/*` ships.
+ */
+async function fixtureRepo(t, packageJson = '{"name":"fixture"}\n') {
   const dir = await mkdtemp(join(tmpdir(), "build-revision-554-"));
   await mkdir(join(dir, "scripts"), { recursive: true });
   await copyFile(SCRIPT_SRC, join(dir, "scripts", "write-build-revision.mjs"));
-  await writeFile(join(dir, "package.json"), '{"name":"fixture"}\n', "utf8");
+  await writeFile(join(dir, "package.json"), packageJson, "utf8");
   // `dist/` is gitignored in the real repo (.gitignore:10) — mirrored here, or
   // the stamp the FIRST run writes into `dist/` would itself show up as an
   // untracked file on the second run and flip `dirty` between the two calls,
@@ -59,6 +65,23 @@ function writeRevision(dir) {
   return readFile(join(dir, "dist", ".build-revision"));
 }
 
+/**
+ * Packs `dir` with the real `npm pack --json` into `destDir` and returns the
+ * resulting tarball's digest fields. `npm pack --json` prints an array of one
+ * entry on most npm versions but has been seen to print the bare entry object
+ * for a single package on npm >= 12 — both shapes are handled the same way
+ * `scripts/publish-release-set.mjs`'s own `packDigest` does.
+ */
+function packTarball(dir, destDir) {
+  const out = execFileSync("npm", ["pack", "--json", "--pack-destination", destDir], {
+    cwd: dir,
+    stdio: "pipe",
+  }).toString("utf8");
+  const parsed = JSON.parse(out);
+  const entry = Array.isArray(parsed) ? parsed[0] : parsed;
+  return { integrity: entry.integrity, shasum: entry.shasum };
+}
+
 test("#554 two builds of the same commit produce byte-identical .build-revision files", async (t) => {
   const dir = await fixtureRepo(t);
   await mkdir(join(dir, "dist"), { recursive: true });
@@ -79,4 +102,40 @@ test("#554 the stamp no longer carries a built_at timestamp", async (t) => {
   const text = (await writeRevision(dir)).toString("utf8");
   assert.ok(!text.includes("built_at"), `stamp still carries a timestamp:\n${text}`);
   assert.match(text, /^revision=[0-9a-f]{40}\ndirty=false\n$/);
+});
+
+// The two tests above compare only the `.build-revision` bytes. #554 asks for
+// "a check that actually packs twice and compares" — this one runs the real
+// `npm pack` a release would, on a package.json shaped like packages/* (name,
+// version, files: ["dist"], so the gitignored dist directory is still packed),
+// and compares the resulting tarball's own content digest. It never touches
+// this repo's real `dist` — everything happens inside the throwaway fixture.
+test("#554 two builds of the same commit pack byte-identical tarballs (npm pack)", async (t) => {
+  const dir = await fixtureRepo(
+    t,
+    '{"name":"build-revision-554-fixture","version":"1.0.0","files":["dist"]}\n',
+  );
+  await mkdir(join(dir, "dist"), { recursive: true });
+  await writeFile(join(dir, "dist", "index.js"), "module.exports = {};\n", "utf8");
+  // Pack destinations live OUTSIDE `dir`: an untracked tarball left inside the
+  // fixture's own working tree would flip `dirty` (git status sees it) between
+  // the two builds and make the digests differ for a reason unrelated to #554.
+  const packOut = await mkdtemp(join(tmpdir(), "build-revision-554-pack-"));
+  t.after(() => rm(packOut, { recursive: true, force: true, maxRetries: 10 }));
+  const out1 = join(packOut, "1");
+  const out2 = join(packOut, "2");
+  await mkdir(out1);
+  await mkdir(out2);
+
+  await writeRevision(dir);
+  const first = packTarball(dir, out1);
+  // A real resume is seconds or days later; >1s is enough to have failed
+  // before this fix, since the old `built_at` was an ISO timestamp that ticks
+  // over every second.
+  await new Promise((r) => setTimeout(r, 1100));
+  await writeRevision(dir);
+  const second = packTarball(dir, out2);
+
+  assert.equal(first.integrity, second.integrity, "pack integrity differs between two builds of the same commit");
+  assert.equal(first.shasum, second.shasum, "pack shasum differs between two builds of the same commit");
 });
