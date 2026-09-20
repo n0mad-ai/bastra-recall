@@ -56,11 +56,12 @@ const MTIME_SLACK_MS = 2_000;
  * one that fires always is read never. Three up, which is where the list stops
  * being something the agent already has in front of it.
  *
- * `unanswered` is deliberately NOT rationed by it: that section says no graph
- * could be asked at all, which — past the `allows()` check in the repo loop —
- * only happens for a code file the task deleted and the reindex already
- * forgot. It is rare, and it is the one case where silence would read as
- * "nothing depends on it".
+ * `unanswered` alone does NOT take the gate. A single deleted file the reindex
+ * already forgot used to speak on its own — "Dependents unknown" with nothing
+ * else in the block — and that is a whole turn for one line the volume gate
+ * exists to ration in the first place. Owner call: the gate counts `files`
+ * only; `unanswered` still rides along INSIDE a block the missed count already
+ * earned (see the loop below), it just cannot earn one by itself any more.
  */
 export const MIN_BOUNDARY_MISSED_FILES = 3;
 
@@ -173,11 +174,14 @@ async function build(opts: BoundaryNoteOptions): Promise<BoundaryNote | null> {
   }
 
   if (sections.length === 0) return null;
-  // The volume gate (MIN_BOUNDARY_MISSED_FILES). An `unanswered` file passes
-  // it: that line is not the advice being rationed. A block that goes out for
-  // one still carries the one or two missed files it already computed — they
-  // are cheaper to read than the paragraph around them.
-  if (files < MIN_BOUNDARY_MISSED_FILES && unanswered === 0) return null;
+  // The volume gate (MIN_BOUNDARY_MISSED_FILES), on `files` alone. Owner call:
+  // `unanswered` used to buy its way past the gate on its own — one deleted
+  // file the reindex forgot was a whole turn for "Dependents unknown" and
+  // nothing else. It no longer does; it only rides along inside a block the
+  // missed count already earned (the per-repo `continue` above still lets a
+  // repo with nothing BUT unanswered contribute one once another repo, or this
+  // one, has cleared the gate on missed files).
+  if (files < MIN_BOUNDARY_MISSED_FILES) return null;
   const dedupeKey = `${DEDUPE_PREFIX}${sha(identity.join("\n"))}`;
   if ((opts.session.shown[dedupeKey]?.count ?? 0) >= MAX_SHOW) return null;
   return { note: sections.join("\n"), dedupeKey, files };
@@ -212,10 +216,21 @@ function render(
     ...missed.filter((m) => isTestFile(m.file)),
   ];
   const shown = ordered.slice(0, MAX_IMPACT_FILES);
-  const lines: string[] = [
-    `Code graph, task boundary (${repoRoot}): files written in this session had ` +
-      "dependents that were neither written nor read since. Context, not an instruction.",
-  ];
+  // The claim only holds when there is a `missed` dependent behind it. A
+  // session can touch more than one repository, and the volume gate is taken
+  // on the SUM across all of them — so a repo that contributed nothing but
+  // `unanswered` can still ride along in a block another repo's missed count
+  // earned (`build()` says so). For that repo "had dependents that were
+  // neither written nor read since" would be a claim with nothing behind it;
+  // the honest header says the graph could not be asked, which is exactly the
+  // line that follows it.
+  const header =
+    missed.length > 0
+      ? `Code graph, task boundary (${repoRoot}): files written in this session had ` +
+        "dependents that were neither written nor read since. Context, not an instruction."
+      : `Code graph, task boundary (${repoRoot}): dependents of files written in this ` +
+        "session could not be asked about. Context, not an instruction.";
+  const lines: string[] = [header];
   if (missed.length > 0) {
     lines.push(`Not opened (${missed.length} candidate file${missed.length === 1 ? "" : "s"}):`);
   }

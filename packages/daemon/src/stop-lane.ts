@@ -60,6 +60,7 @@ import { frustrationCues, decisionCues } from "./lexicon.js";
 import { getDocsMode, type DocsMode } from "./settings.js";
 import { enqueueForPath } from "./code-graph/service.js";
 import { boundaryNote, type ProvenRead } from "./code-graph/boundary-block.js";
+import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
 import { loadSessionState, mutateSessionState, parkBoundary } from "./session-state.js";
 import {
   claudeToolUseCommands,
@@ -184,8 +185,17 @@ export async function runStopLane(
  * (`boundary-block.ts` says why not the pending file). A Stop that finds
  * nothing CLEARS the slot — the agent may have opened the missed files since
  * the last Stop, and a parked block must not outlive the fact it states.
+ *
+ * #607: gated behind the same `promptImpact.enabled` opt-in the delivery side
+ * already needs, default OFF. Computing the block means a `stat` per booked
+ * file (up to `MAX_TOUCHED_FILES`) and a session-state write on EVERY Stop —
+ * work with no reader while the prompt lane never takes it off the parking
+ * spot. The booking itself (`write-lane.ts`'s `recordTouched`) stays
+ * ungated on purpose: it is what lets a switch flipped ON mid-session still
+ * find something to park at the next Stop.
  */
 async function parkBoundaryNote(payload: ClaudeStopPayload, turns: TranscriptTurn[]): Promise<void> {
+  if (!(await getPromptImpactEnabled())) return;
   const sessionId = payload.session_id ?? "";
   if (!sessionId) return;
   const builtFrom = Date.now();

@@ -43,12 +43,15 @@ import {
  *     overflowed".
  *   - drop the `gone` branch → "does not read a deleted file the graph already
  *     dropped as 'nothing depends on it'".
- *   - `continue` on empty `missed` alone → "renders unanswered alone".
+ *   - `continue` on empty `missed` alone → "renders unanswered alongside missed
+ *     dependents from another repository, in one block".
  *   - drop the `allows()` check in the repo loop → "says nothing about a
  *     repository code awareness is off for".
  *   - let `unanswered` render without a graph → "says nothing when there was no
  *     graph to ask at all".
  *   - drop the volume gate → "stays under the volume gate at two files".
+ *   - put back `&& unanswered === 0` on the volume gate (#612, owner call) →
+ *     "a single unanswered file no longer buys its way past the volume gate".
  *   boundary-impact.ts
  *   - push a deleted NON-code file into `unanswered` → "does not claim unknown
  *     dependents for a deleted file the graph could never have held".
@@ -361,17 +364,47 @@ describe("boundary block — what the Stop lane parks", () => {
     assert.equal(again?.files, 5);
   });
 
-  it("renders unanswered alone — could not look is not nothing depends", async () => {
-    // A code file the task deleted, which the reindexed graph has already
-    // dropped: the graph is there to be asked and has no answer left.
+  it("stays under the volume gate on a single unanswered file — owner call, #612: could not look is no longer a free pass", async () => {
+    // Used to speak on its own: "Dependents unknown" and nothing else, a whole
+    // turn for one line. The volume gate exists to ration exactly that, and
+    // `unanswered` was the one section that skipped it. The owner's call was
+    // to count `files` only — a lone deleted file the reindex forgot now stays
+    // silent, same as a lone missed dependent would.
     const s: SessionState = { shown: {} };
     recordTouched(s, REPO, "src/removed.ts", null, false, T0);
     const built = await boundaryNote({ session: s, cache: withGraph, mtimeOf: async () => null });
 
+    assert.equal(built, null);
+  });
+
+  it("renders unanswered alongside missed dependents from another repository, in one block — the header only claims missed dependents where there are some", async () => {
+    // Two repositories in one session: repoA clears the volume gate on its own
+    // three missed dependents; repoB has nothing but a deleted file the
+    // reindexed graph already forgot. repoB's section rides along INSIDE the
+    // block repoA's count earned — that is the "own strength" the gate now
+    // requires (`boundary-block.ts`'s comment on `MIN_BOUNDARY_MISSED_FILES`).
+    const REPO_A = "/repoA";
+    const REPO_B = "/repoB";
+    const s: SessionState = { shown: {} };
+    recordTouched(s, REPO_A, "src/save.ts", BOOKED_FOUR.slice(0, 3), false, T0);
+    recordTouched(s, REPO_B, "src/removed.ts", null, false, T0);
+
+    const built = await boundaryNote({
+      session: s,
+      cache: withGraph,
+      mtimeOf: async (p: string) => (p.endsWith("removed.ts") ? null : T0 + 50),
+    });
+
     assert.notEqual(built, null);
-    assert.equal(built!.files, 0);
+    // Only repoA's missed dependents count toward `files` — repoB contributed
+    // none of its own, just the section it rides in on.
+    assert.equal(built!.files, 3);
+    assert.match(built!.note, /\(\/repoA\): files written in this session had dependents/);
+    assert.match(built!.note, /Not opened \(3 candidate files\):/);
     assert.match(built!.note, /Dependents unknown — no graph could be asked about: src\/removed\.ts\./);
-    assert.doesNotMatch(built!.note, /Not opened/);
+    // repoB never claims dependents it does not have — see the render() fix.
+    assert.match(built!.note, /\(\/repoB\): dependents of files written in this session could not be asked about/);
+    assert.doesNotMatch(built!.note, /\(\/repoB\): files written in this session had dependents/);
   });
 
   it("says nothing when there was no graph to ask at all", async () => {

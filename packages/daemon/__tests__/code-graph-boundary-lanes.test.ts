@@ -14,11 +14,14 @@
  *     `prompt-lane.ts` → "delivers on a trivial prompt".
  *   - book on a repository that is not enabled → "books nothing where code
  *     awareness is off".
+ *   - drop the `getPromptImpactEnabled` gate at the top of `parkBoundaryNote`
+ *     → "parks nothing and leaves the session-state file untouched while the
+ *     opt-in is off".
  */
 import { test, before, after } from "node:test";
 import { strict as assert } from "node:assert";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -307,6 +310,55 @@ test("hands nothing over while the prompt lane's opt-in is off", async () => {
     process.env.BASTRA_PROMPT_IMPACT = "on";
   }
 
+  assert.match(await prompt(repo, id, "ok"), /task boundary/);
+});
+
+test("parks nothing and leaves the session-state file untouched while the opt-in is off", async () => {
+  // #607: `parkBoundaryNote` (stop-lane.ts) is gated behind the SAME switch as
+  // delivery now, checked BEFORE `loadSessionState` — computing the block
+  // means a `stat` per booked file on every Stop, work with nobody left to
+  // read it while the lane cannot deliver it either. Revert-check: drop the
+  // gate at the top of `parkBoundaryNote` and this goes red — the state file
+  // the write lane already wrote gets a new mtime it should not have.
+  const repo = await freshRepo("parkoff", true);
+  const id = "lanes-parkoff";
+
+  await announceEdit(repo, id);
+  await landEditAndReindex(repo);
+  const stateFile = join(home, "hook-state", `${id}.json`);
+  const before = await stat(stateFile);
+
+  process.env.BASTRA_PROMPT_IMPACT = "off";
+  try {
+    assert.equal(await stop(repo, id), "{}");
+  } finally {
+    process.env.BASTRA_PROMPT_IMPACT = "on";
+  }
+
+  const after = await stat(stateFile);
+  assert.equal(after.mtimeMs, before.mtimeMs, "Stop rewrote the state file although the opt-in is off");
+  assert.equal((await loadSessionState(id)).boundary, undefined);
+});
+
+test("books with the opt-in off, parks at the next Stop once it is switched on", async () => {
+  // The booking (`recordTouched`, write-lane.ts) is deliberately NOT gated —
+  // only the Stop-side computation is (`parkBoundaryNote`'s own comment says
+  // why). A switch flipped ON mid-session must still find something to park.
+  const repo = await freshRepo("parklate", true);
+  const id = "lanes-parklate";
+
+  process.env.BASTRA_PROMPT_IMPACT = "off";
+  try {
+    await announceEdit(repo, id);
+    await landEditAndReindex(repo);
+    assert.equal(await stop(repo, id), "{}");
+    assert.equal((await loadSessionState(id)).boundary, undefined);
+  } finally {
+    process.env.BASTRA_PROMPT_IMPACT = "on";
+  }
+
+  assert.equal(await stop(repo, id), "{}");
+  assert.notEqual((await loadSessionState(id)).boundary, undefined, "the surviving booking never got parked");
   assert.match(await prompt(repo, id, "ok"), /task boundary/);
 });
 
