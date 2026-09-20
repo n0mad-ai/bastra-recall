@@ -129,15 +129,23 @@ export async function runStopLane(
   // up awaited here even by accident. A repository that is not enabled is a
   // silent no-op.
   //
-  // #572: the task-boundary block is computed BEFORE that enqueue, on purpose.
-  // The refresher swaps the cached graph whenever its build ends; read first
-  // and the answer comes from the graph the task started from, which is the
-  // only one that still holds the edges to a symbol the task deleted.
+  // #572: the task-boundary block is parked first. It is a sum of what the
+  // Write/Edit lane booked at edit time; the graph is only consulted for edits
+  // that lane could not look at, and those are better asked before the refresh
+  // this Stop is about to enqueue than after it.
   //
-  // The transcript is read once, up here, for both consumers. `loadTranscript`
-  // swallows its own IO errors, so this stays inside the never-throws contract.
-  const turns = await loadTranscript(payload);
-  await parkBoundaryNote(payload, turns).catch(() => {});
+  // The transcript is read once for both consumers — but a read that THROWS
+  // (a poisoned inline entry, #48) must still reach `evaluateStop`'s own catch
+  // and its telemetry row, exactly as before. So a throw here is swallowed,
+  // the boundary goes without reads (wider, never narrower), and
+  // `evaluateStop` repeats the read inside its try.
+  let turns: TranscriptTurn[] | null = null;
+  try {
+    turns = await loadTranscript(payload);
+  } catch {
+    turns = null;
+  }
+  await parkBoundaryNote(payload, turns ?? []).catch(() => {});
   if (typeof payload.cwd === "string" && payload.cwd.length > 0) {
     void enqueueForPath(payload.cwd).catch(() => {});
   }
@@ -200,8 +208,9 @@ async function evaluateStop(
   payload: ClaudeStopPayload,
   selfBaseUrl: string,
   startedAt: number,
-  turns: TranscriptTurn[],
+  loaded: TranscriptTurn[] | null,
 ): Promise<string> {
+  const turns = loaded ?? (await loadTranscript(payload));
   if (turns.length === 0) return "{}";
 
   const last30 = turns.slice(-30);
