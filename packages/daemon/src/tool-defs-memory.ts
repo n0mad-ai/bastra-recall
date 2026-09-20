@@ -547,6 +547,11 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
             "for autonomous saves. On overwrite without this field, the " +
             "existing provenance is preserved.",
         },
+        body_ends_with: {
+          type: "string",
+          description:
+            "Optional: the last ~40 characters of `body`, copied verbatim — if the body arrives truncated the save fails with nothing written (#544).",
+        },
       },
       required: [
         "title",

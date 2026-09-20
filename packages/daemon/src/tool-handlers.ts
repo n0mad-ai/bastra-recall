@@ -19,6 +19,8 @@ import {
   resolveMemoryTarget,
   moveToTrashUnderClaim,
   SaveMemoryInput,
+  assertBodyTail,
+  BodySentinelError,
   stripAutoRelatedSection,
 } from "@bastra-recall/core";
 import { fireAndForget } from "./telemetry.js";
@@ -398,6 +400,12 @@ export async function saveMemoryHandler(
   try {
     result = await saveMemoryInner(deps, rawArgs, access);
   } catch (err) {
+    // #544: a failed tail sentinel is not a failing save — it is the guard
+    // doing its job on a body that lost its end in transit. Resending the
+    // COMPLETE body is the correct next move, so it must not feed the
+    // consecutive-failure cap below, whose message tells the model to stop
+    // saving altogether.
+    if (err instanceof BodySentinelError) throw err;
     const failures = noteSaveFailure();
     if (failures >= SAVE_FAILURE_CAP) {
       // No reset here: every further attempt stays terminal until a success
@@ -449,6 +457,17 @@ async function saveMemoryInner(
 ): Promise<SaveMemoryResult | ClaimGateResult> {
   const parsed = SaveMemoryInput.safeParse(rawArgs);
   if (!parsed.success) throw new Error(parsed.error.message);
+
+  // #544: `saveMemory` carries the same check for every transport, but two
+  // exits below return ABOVE it — the `conflict_with` diversion, which writes
+  // a conflict block into an existing memory, and the claim gate. A truncated
+  // claim is no better than a truncated body, so the sentinel is verified here
+  // first, before anything at all is written or held. Same function, one
+  // implementation. Deliberately AFTER `repairCallCorruption` (#482) ran in
+  // the handler above: where the framing repair trims swallowed XML off the
+  // end of the body, the repaired body ends exactly at the sentinel and the
+  // sentinel confirms the repair; where the repair cut real content, it fails.
+  assertBodyTail(parsed.data.body, parsed.data.body_ends_with);
 
   // Die effektive id muss VOR dem Quality-Scoring feststehen — sonst schließt
   // scoreSaveQuality das Memory nicht von seinen eigenen Duplikat- und
