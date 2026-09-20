@@ -116,11 +116,9 @@ function reasonFor(error: unknown): DerivedClaimResult["reason"] {
   return error instanceof Error && error.message.includes("outside") ? "outside_vault" : "unavailable";
 }
 
-/** How often `needle` stands in `text`, counting overlaps apart. */
+/** How often `needle` stands in `text`, counting overlaps apart; an empty needle stands nowhere. */
 function occurrences(text: string, needle: string): number {
-  let found = 0;
-  for (let at = text.indexOf(needle); at !== -1; at = text.indexOf(needle, at + needle.length)) found += 1;
-  return found;
+  return needle === "" ? 0 : text.split(needle).length - 1;
 }
 
 function countMarkdownNumberedList(text: string): number {
