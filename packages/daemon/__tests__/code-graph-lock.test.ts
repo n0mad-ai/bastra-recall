@@ -305,17 +305,22 @@ describe("the build lock against adversarial interleavings", () => {
  */
 function beatCounter(): { readonly total: number; count: () => void; atLeast: (n: number) => Promise<void> } {
   let total = 0;
-  const waiting: (() => void)[] = [];
   return {
     get total() {
       return total;
     },
     count: () => {
       total++;
-      for (const wake of waiting.splice(0)) wake();
     },
+    // WAITING ON A BEAT NEEDS A TIMER OF ITS OWN. The heartbeat's interval is
+    // `unref`ed — by design, so a finished build may exit — so awaiting a
+    // promise that only the beat resolves leaves NOTHING referenced: Node 22
+    // runs the loop dry and the runner cancels the test with "promise
+    // resolution is still pending but the event loop has already resolved".
+    // `sleep` is referenced, so the loop lives and the unreferenced beat fires;
+    // the condition is still the observed count, never an elapsed span.
     atLeast: async (n: number) => {
-      while (total < n) await new Promise<void>((r) => waiting.push(r));
+      while (total < n) await sleep(1);
     },
   };
 }
