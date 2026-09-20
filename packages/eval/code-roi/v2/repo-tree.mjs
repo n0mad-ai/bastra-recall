@@ -37,6 +37,8 @@ import { join } from "node:path";
 export function pipeSpawn(producer, consumer, label) {
   return new Promise((resolve, reject) => {
     let settled = false;
+    let producerCode = null;
+    let consumerCode = null;
     const done = (fn) => (arg) => {
       if (settled) return;
       settled = true;
@@ -51,7 +53,21 @@ export function pipeSpawn(producer, consumer, label) {
     let err = "";
     producer.stderr.on("data", (d) => (err += d));
     consumer.stderr.on("data", (d) => (err += d));
-    consumer.on("close", (code) => (code === 0 ? ok() : no(new Error(`${label}: ${err.slice(0, 300)}`))));
+    const closed = () => {
+      if (producerCode === null || consumerCode === null) return;
+      if (producerCode === 0 && consumerCode === 0) ok();
+      else no(new Error(`${label}: producer ${producerCode}, consumer ${consumerCode}: ${err.slice(0, 300)}`));
+    };
+    producer.on("close", (code) => {
+      producerCode = code;
+      if (code !== 0) no(new Error(`${label}: producer exited ${code}: ${err.slice(0, 300)}`));
+      else closed();
+    });
+    consumer.on("close", (code) => {
+      consumerCode = code;
+      if (code !== 0) no(new Error(`${label}: consumer exited ${code}: ${err.slice(0, 300)}`));
+      else closed();
+    });
     producer.on("error", fail("producer"));
     consumer.on("error", fail("consumer"));
     producer.stdout.on("error", fail("producer stdout"));

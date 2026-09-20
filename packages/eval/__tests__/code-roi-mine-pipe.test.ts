@@ -92,6 +92,13 @@ describe("a broken pipe is a failed candidate, not a failed run", () => {
       /^Error: extract abc: /,
     );
   });
+
+  test("a non-zero producer cannot be hidden by a consumer that exits zero", async () => {
+    await assert.rejects(
+      () => pipeSpawn(spawn("sh", ["-c", "echo producer-failed >&2; exit 7"]), spawn("cat"), "archive"),
+      /producer exited 7.*producer-failed/,
+    );
+  });
 });
 
 describe("the mining run's own guard is the one that is wired up", () => {

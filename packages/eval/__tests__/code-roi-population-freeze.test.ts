@@ -74,7 +74,7 @@ test("select reads which registration the archive is, instead of assuming the de
   // resolved, and picking the default would have produced a different one.
   writeFileSync(
     join(out, "scenarios.json"),
-    JSON.stringify({ registration: "code-awareness-delivered", registration_version: 2, scenarios: [] }),
+    JSON.stringify({ registration: "code-awareness-delivered", registration_version: 3, scenarios: [] }),
   );
   writeFileSync(join(out, "candidates.jsonl"), "");
   const { code, stderr } = runSelect(out);

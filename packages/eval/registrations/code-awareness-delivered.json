@@ -1,11 +1,12 @@
 {
   "$comment": "Pre-registration of the DELIVERED change-impact measurement (#606, epic #572). Supersedes nothing: registration_version 6 of code-awareness-change-impact.json measured the OFFERED surface and is complete. Version 2 fixes question, real prompt-lane treatment, thresholds, verdicts and truth rule BEFORE the first arm; its population is deliberately marked pending until it has been re-mined, adjudicated and hashed under tests/v2. Both select and runner refuse the pending state. Once that freeze is recorded, any later amendment invalidates the run and requires registration_version 3.",
   "schema_version": 1,
-  "registration_version": 2,
+  "registration_version": 3,
   "registered_at": "2026-09-19",
   "registered_by": "Claude Opus 5; option and thresholds decided by Daniel Nevoigt on 2026-09-19",
   "status": "numbers_registered",
   "$comment_v2": "AMENDED BEFORE THE FIRST ARM after Codex counter-review: v1 combined the Write lane's diff-sharp content with the Prompt lane's pre-search timing, inferred unrelated production imports as test truth, and implemented block use as a fraction of candidate lines rather than the registered share of scenarios. No arm ran under v1. Version 2 calls the real prompt-lane content path, asks the test-aware question, scores broken test files directly, confirms failures mutated AND clean, and requires the population to be re-mined and frozen before status may return to numbers_registered.",
+  "$comment_v3": "AMENDED BEFORE THE FIRST ARM after the exhausted tests/v2 population made the registered minimum unreachable: 44 total scenarios but exactly 37 product deliveries. Daniel Nevoigt decided the absolute minimum is 37, not a relative 75 % rule. Version 3 therefore records separate absolute minima of 37 context pairs and 37 delivered blocks. It also clusters bootstrap resamples by connected components of shared truth files: the 15 session-assembler scenarios are one answer family, not 15 independent observations. Product wording/order/cap, arms, effect thresholds and population are unchanged.",
   "issue": 606,
   "epic": 572,
   "relates_to": "code-awareness-change-impact.json registration_version 6 — same unit, same isolation, same cost discipline, same build pin, a different channel and a different population. The two share arm A (grep) by construction, so their control arms are comparable; nothing else is.",
@@ -60,7 +61,7 @@
         "tokens_est_median": 188,
         "blocks_naming_a_truth_file": 15,
         "block_use_floor": 0.405,
-        "$comment_floor": "15 of the 37 delivered blocks name at least one TRUTH file. Every one of those scores blockUse = 1 for any agent that names that file at all, so 0.405 is the share the metric reaches without a single causal use. The registered floor is 0.5, which is ABOVE it: block_use_min cannot be cleared by the base rate alone, and roughly four further scenarios have to name a listed file the agent would otherwise not have named. That is the check the counter-review asked for, and the binary metric survives it.",
+        "$comment_floor": "15 of the 37 delivered blocks name at least one TRUTH file. A perfectly precise answer that uses every useful block and ignores every false candidate would therefore score 0.405 on the broad overlap metric. Clearing 0.5 requires overlap in at least four further scenarios whose block carries no truth, so the use verdict is meaningful only together with the precision guard. It is NOT causal by itself: the report also gives arm A's overlap with the same block and D−A as non-gated diagnostics.",
         "$comment_cap": "displayOrder in impact-block.ts sorts TEST files last and cuts at MAX_IMPACT_FILES = 10. Under tests/v2 the truth IS the test files, so the block's own display order works against the ruler this run uses. It is not changed: the measurement is of the block as it ships, and the effect is reported as blocks_naming_a_truth_file rather than removed.",
         "measured_by": "packages/eval/code-roi/v2/delivered-block.mjs against packages/daemon/dist at the pinned build, one graphify graph per scenario tree, no agent and no cost."
       }
@@ -113,6 +114,7 @@
       "block size in tokens (`tokensEst`), median and range",
       "scenarios where the product would have been SILENT, by id",
       "P against A on recall, and P against D on context — reported, gated by nothing",
+      "arm A's overlap with the delivered block and D minus A — the causal-use diagnostic the absolute D overlap cannot supply, reported but not gated",
       "the context ratio over every scenario rather than only the solved ones"
     ]
   },
@@ -143,7 +145,7 @@
     "context_ci_upper_max": 1.0,
     "$comment_context_ci": "The upper bound of a 95 % bootstrap interval on that ratio must be strictly below 1.0. This is what separates a repeatable saving from sampling noise, and it is the half of the context verdict that a 286-token block against a 24 000-token transcript can actually fail.",
     "block_use_min": 0.5,
-    "$comment_use": "At least 50 % of scenarios that received a block must name at least one of its files in the final answer. The use verdict also requires at least sample.min_scenarios scenarios WITH a block; one perfect use among many silent deliveries is underpowered, not a pass. This stops the context verdict from passing on a saving while the block is uniformly ignored. It stays weak evidence: grep may independently reach the same file, which is why precision, recall and randomized arm order remain part of the verdict.",
+    "$comment_use": "At least 50 % of scenarios that received a block must name at least one of its files in the final answer. The use verdict also requires sample.min_use_blocks = 37 observations — every block the frozen product emits here. This stops the context verdict from passing on a saving while the block is uniformly ignored. It stays weak evidence: grep may independently reach the same file, which is why precision, recall, arm A overlap and randomized arm order remain part of the report.",
     "precision_loss_max": 0.05,
     "$comment_precision": "Mean paired difference in precision (D − A) not below −0.05. The failure mode is concrete and was measured offline: the block is a candidate list at ~47 % precision, and an agent that pastes it through inflates recall and hands the user a list half of which is noise. A floor, not a target — precision may drop a little, because following up a real candidate the agent would otherwise have missed is worth one file opened and closed.",
     "recall_guard_ci_lower": 0,
@@ -260,14 +262,16 @@
         "full": 3
       },
       "mining_time": "19.09.2026 00:03 to 20.09.2026 04:0x, in two passes: the first died at 732 of 1000 candidates on an unhandled EPIPE in the tree-extraction pipe and was resumed from its truth cache, which decides nothing twice. The crash is fixed in repo-tree.mjs (pipeSpawn) and covered by code-roi-mine-pipe.test.ts; it changed no decision, because a crashed candidate was never recorded as one.",
-      "truth_concentration": "session-assembler.test.ts is the WHOLE truth set of 15 of the 44 scenarios and cli-help.test.ts of 6 more; 34 scenarios have exactly one truth file, so their recall is 0 or 1 with nothing in between. The registered bootstrap cluster is repo + file, which counts those 15 as 15 independent units although they share one answer. Reported here because it bounds how fine a recall difference this sample can resolve, and it was NOT used to select or reject anything — the acceptance rule never looks at which test broke.",
+      "truth_concentration": "session-assembler.test.ts appears in 15 of 44 scenarios and is the whole truth in 11; cli-help.test.ts appears in 6 and is the whole truth in 3. Because multi-truth scenarios connect overlapping answers, the frozen population forms 22 connected truth components: one 15-scenario session-assembler component, one 8-scenario CLI-help/flag/completion component, one 2-scenario log-stats component and 19 singletons. Version 3 bootstraps those components rather than pretending all 44 changed files are independent answers.",
       "every_candidate_is_judged": "All 1000 candidates carry a decision; the population has no 'not evaluable' bucket. 46 of them once did: their trees are from May 2026, before this repository had a test suite in the runner's layout, so testFilesOf found ZERO test files, selectTests fell back to 'run everything' over an empty set, and the baseline reported 1..0. That was recorded as a runner error AND it ended the candidate before the type pass — although the registered truth is a UNION of type errors and broken tests, and a tree without tests can still carry type truth. analyzeTests now routes a testless tree through the type half alone (testSelection.mode = 'no_tests'). Re-deciding exactly those 46 from the truth cache, without re-mining anything else, yielded 29 'breaks nothing', 17 'file already used' and ZERO with type truth — so no scenario was added, N is unchanged at 44 and population_sha256 is the same 00042d15…. The fix was necessary and it confirmed the frozen population rather than replacing it."
     },
     "v1_files_not_excluded": "The 45 scenarios of the invalidated tests/v1 archive are NOT excluded from this population, and the exclusion hash df87de2c… is unchanged because of it. No agent ever ran on them: the v1 archive holds a scenario file and a truth set and nothing else, no threshold was moved against it, and its hand-checked sample verified that attribute() reproduced its own bookkeeping — a rule that is no longer truth under tests/v2. Excluding them would also change exclusions_sha256, which this registration froze before the run."
   },
   "sample": {
-    "min_scenarios": 40,
-    "$comment_size": "40 remains the minimum for a verdict and is NOT changed here. What the mined population makes arithmetic rather than hypothetical: N is 44, and the product delivers a block in 37 of those 44 (measured offline, without an agent, see delivered_block_base_rate). The use verdict requires min_scenarios scenarios WITH a block, so at 37 possible it is UNDERPOWERED before the first arm runs, whatever the agents do. The context verdict requires min_scenarios pairs both arms solved, i.e. 40 of 44 = 91 %. Both readings of min_scenarios are laid out in min_scenarios_is_absolute; which one holds is Daniel's decision and this registration does not make it.",
+    "min_scenarios": 37,
+    "min_context_pairs": 37,
+    "min_use_blocks": 37,
+    "$comment_size": "DECIDED by Daniel Nevoigt on 2026-09-20 before the first arm. The history is exhausted at 44 scenarios and the frozen product delivers exactly 37 blocks, so 40 makes the use verdict impossible by construction. Both minima are absolute 37, not a relative share: context needs 37 solved A/D pairs and use needs all 37 delivered-block observations. The bootstrap CI separately reflects that those observations collapse to fewer independent truth components.",
     "must_be_fresh": true,
     "excluded_pilot": {
       "$comment": "The two bastra-recall pilot commits of registration 4. Enforced mechanically by select.mjs, from THIS registration rather than from the change-impact one — same repository, so unlike in registration 6 the exclusion actually binds here.",
@@ -293,17 +297,19 @@
     },
     "mined_n": 44,
     "min_scenarios_is_absolute": {
-      "$comment": "Written down before the run because it decides the outcome and must not be decided after seeing it.",
-      "as_implemented": "An ABSOLUTE count. verdictFor(checks, count) in evaluate-delivered.mjs compares bothSolved.length and uses.length against sample.min_scenarios = 40. Consequence on this population: use is underpowered at 37 possible delivered blocks; context needs 40 of 44 solved pairs.",
-      "the_other_reading": "min_scenarios as the floor on N (44 >= 40, satisfied) with a SHARE required of the paired and delivered subsets. At 75 % that is 33 pairs and 33 blocks, both reachable; at 80 % it is 36 and 36, and use would clear its floor by one scenario.",
-      "not_decided_here": "No number is changed. The registration records the arithmetic so that a later 'underpowered' is read as a property of the repository's history, not as a surprise."
+      "$comment": "Decided before the run after the exhausted population fixed the reachable maximum.",
+      "context": "min_context_pairs = 37 absolute solved A/D pairs.",
+      "use": "min_use_blocks = 37 absolute delivered blocks — every block this frozen product emits on the population.",
+      "rejected_alternative": "A 75 % relative rule would need only 28 of 37 deliveries and weaken the registered evidence more than the exhausted history requires."
     }
   },
   "statistics": {
     "method": "bootstrap, 10 000 resamples, resampling CLUSTERS with replacement",
     "seed": 20260918,
-    "cluster_key": "repo + file",
-    "$comment": "Two intervals of different shapes, both clustered the same way: a mean of paired differences for the recall guard, and a RATIO OF MEDIANS for the context verdict. The ratio is recomputed inside every resample rather than bootstrapped from per-scenario values — a ratio of medians is not a mean of anything."
+    "cluster_key": "connected component of shared repo + truth file",
+    "population_clusters": 22,
+    "largest_cluster_sizes": [15, 8, 2],
+    "$comment": "Two intervals of different shapes, both clustered the same way: scenarios sharing any truth file are joined transitively into one component. On the frozen population this yields 22 components: the 15 session-assembler scenarios form one and the 8 CLI-help-connected scenarios another. A mean of paired recall differences and a ratio of medians are recomputed inside every resample; the wider interval is the honest price of the concentration, not grounds to delete scenarios after seeing their truth."
   },
   "run_conditions": {
     "repository": "bastra-recall (see population)",
@@ -364,7 +370,7 @@
     {
       "date": "2026-09-20",
       "what": "The mining stop mark was lifted: the history is exhausted instead of stopping at 45 accepted candidates.",
-      "why": "sample.min_scenarios is an absolute count of solved pairs and delivered blocks. At N=45 both verdicts would have required 40 of 45 = 89 %. Exhausting the history is the only lever that raises N without touching a threshold, so it was pulled. It yielded 44 — the repository has no more to give under this truth rule and these exclusions — so the arithmetic is unchanged and is recorded in sample.min_scenarios_is_absolute rather than fixed by loosening anything.",
+      "why": "History exhaustion yielded 44 scenarios and exactly 37 delivered blocks. Before the first arm, Daniel set separate absolute minima of 37 context pairs and 37 delivered blocks; the rejected relative-75-% alternative would have required only 28 blocks. Bootstrap resampling uses 22 connected truth components so the concentration widens the interval instead of being mistaken for independent evidence.",
       "changes_a_threshold": false,
       "decided_by": "Daniel Nevoigt, relayed before the first arm; no arm had run."
     }
