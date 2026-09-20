@@ -154,6 +154,24 @@ Nebenbefund zum Produkt, bewusst nicht geändert: `displayOrder()` in
 des Blocks arbeitet also gegen das Maß, mit dem gemessen wird. Gemessen wird
 der Block, wie er ausgeliefert wird; der Effekt steht als Zahl oben.
 
+### 9e. Entscheidung vor Arm 1 — Registrierung 3
+
+Die Historie ist bei 44 Szenarien ausgeschöpft, der Produktblock wird davon
+exakt 37-mal zugestellt. Daniel setzte deshalb vor dem ersten Arm zwei
+getrennte absolute Mindestwerte auf **37**: 37 gelöste A/D-Paare für Kontext
+und alle 37 ausgelieferten Blöcke für Nutzung. Die Alternative „75 %" wurde
+verworfen; sie hätte nur 28 Blöcke verlangt.
+
+Alle **44** akzeptierten Szenarien bleiben im Lauf (`run_all_accepted=true`).
+Der gesenkte Verdict-Floor darf die Auswahl nicht auf
+`ceil(37 × 1,125) = 42` verkleinern; `select.mjs` hat dafür einen eigenen
+Guard und schrieb die Szenariodatei für Registrierung 3 erneut mit 44/44.
+
+Wegen der Wahrheitskonzentration resampelt der Bootstrap 22 transitive
+Wahrheits-Komponenten statt 44 geänderte Dateien als unabhängig zu behandeln.
+Der Block selbst bleibt unverändert: Testdateien stehen weiterhin hinten und
+der Zehnerdeckel bleibt Teil dessen, was hier gemessen wird.
+
 ## 12A. Adjudikation `tests/v2` — alle 44, keine Streichung
 
 Nicht eine Stichprobe von 10, sondern **alle 44 unabhängig nachgerechnet**.

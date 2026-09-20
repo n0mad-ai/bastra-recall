@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // @ts-expect-error — plain .mjs measurement script, no declarations
-import { populationFreezeMismatches } from "../code-roi/v2/select.mjs";
+import { populationFreezeMismatches, selectionSize } from "../code-roi/v2/select.mjs";
 // @ts-expect-error — plain .mjs measurement scripts, no declarations
 import { preflightBuild } from "../code-roi/v2/build-pin.mjs";
 // @ts-expect-error — plain .mjs measurement scripts, no declarations
@@ -55,6 +55,17 @@ test("a pending population blocks the runner before any build or arm check", asy
   const verdict = await preflightBuild({ registrationId: "code-awareness-delivered", registration: pending });
   assert.equal(verdict.ok, false);
   assert.equal(verdict.reason, "population_pending");
+});
+
+test("lowering the verdict floor does not shrink an exhausted frozen population", () => {
+  assert.deepEqual(selectionSize({ sample: { min_scenarios: 37, run_all_accepted: true } }, 44), {
+    target: 44,
+    draw: 44,
+  });
+  assert.deepEqual(selectionSize({ sample: { min_scenarios: 37 } }, 44), {
+    target: 37,
+    draw: 42,
+  });
 });
 
 /** Run `select.mjs` against a throwaway archive and report how it ended. */

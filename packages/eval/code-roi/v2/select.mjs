@@ -108,6 +108,13 @@ export function fileKey(candidate) {
   return `${candidate.repo ?? ""}\u0000${candidate.file}`;
 }
 
+/** Minimum verdict N must never silently become the sample-size cap. */
+export function selectionSize(registration, uniqueLength) {
+  const runAll = registration?.sample?.run_all_accepted === true;
+  const target = runAll ? uniqueLength : (registration?.sample?.min_scenarios ?? uniqueLength);
+  return { target, draw: runAll ? target : Math.ceil(target * 1.125) };
+}
+
 /**
  * A registered frozen population must be the population actually on disk.
  * Without this gate, changing the truth rule and forgetting to re-mine leaves
@@ -206,7 +213,7 @@ function main() {
     byRepo.get(repo).push(c);
   }
   const order = pooling.allowed === true ? (pooling.repo_order ?? [...byRepo.keys()]) : [...byRepo.keys()].slice(0, 1);
-  const target = registration?.sample?.min_scenarios ?? unique.length;
+  const { target, draw } = selectionSize(registration, unique.length);
   // The cap bounds one repository's share OF A POOL. When the first repository
   // alone reaches the minimum there is no pool, so there is nothing to bound —
   // capping there would shrink a sufficient sample into an underpowered one.
@@ -218,7 +225,7 @@ function main() {
     byRepo,
     pooled ? order : order.slice(0, 1),
     cap,
-    Math.ceil(target * 1.125),
+    draw,
   );
   const kept = drawn;
   const next = rng(SEED);
