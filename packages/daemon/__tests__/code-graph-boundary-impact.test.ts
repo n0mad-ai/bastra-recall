@@ -14,7 +14,7 @@ import {
   type BookedHit,
   type BoundaryTouch,
 } from "../src/code-graph/boundary-impact.js";
-import { boundaryNote } from "../src/code-graph/boundary-block.js";
+import { MIN_BOUNDARY_MISSED_FILES, boundaryNote } from "../src/code-graph/boundary-block.js";
 import {
   MAX_TOUCHED_CHARS,
   MAX_TOUCHED_FILES,
@@ -44,6 +44,14 @@ import {
  *   - drop the `gone` branch → "does not read a deleted file the graph already
  *     dropped as 'nothing depends on it'".
  *   - `continue` on empty `missed` alone → "renders unanswered alone".
+ *   - drop the `allows()` check in the repo loop → "says nothing about a
+ *     repository code awareness is off for".
+ *   - let `unanswered` render without a graph → "says nothing when there was no
+ *     graph to ask at all".
+ *   - drop the volume gate → "stays under the volume gate at two files".
+ *   boundary-impact.ts
+ *   - push a deleted NON-code file into `unanswered` → "does not claim unknown
+ *     dependents for a deleted file the graph could never have held".
  *   session-state.ts
  *   - drop the character budget → "overflows on characters, not only on counts".
  *   - drop the `builtFrom` comparison → "does not let an older Stop overwrite".
@@ -187,6 +195,16 @@ describe("boundary impact — the pure sum", () => {
     assert.deepEqual(result.unanswered, ["src/removed.ts"]);
   });
 
+  it("does not claim unknown dependents for a deleted file the graph could never have held", () => {
+    // A deleted CHANGELOG.md is unknown to the graph because it was never
+    // indexed, not because the reindex forgot it. "Dependents unknown" about it
+    // is a claim with nothing behind it.
+    const result = boundaryImpact(graph, [{ file: "CHANGELOG.md", hits: null, gone: true }]);
+
+    assert.deepEqual(result.missed, []);
+    assert.deepEqual(result.unanswered, []);
+  });
+
   it("moves a dependent read after the change to seen, and keeps counting it", () => {
     const result = boundaryImpact(graph, [placed("src/save.ts", BOOKED)], {
       readAfter: ["src/report.ts"],
@@ -233,20 +251,32 @@ describe("boundary block — what the Stop lane parks", () => {
   const REPO = "/repo";
   const T0 = 1_000_000;
 
+  // Four dependents, because the volume gate (MIN_BOUNDARY_MISSED_FILES) is
+  // about how many unopened files are worth a turn: a fixture at the gate could
+  // not tell a case that went silent from one that fell under it.
+  const BOOKED_FOUR: BookedHit[] = [
+    ...BOOKED,
+    { file: "src/notify.ts", location: "src/notify.ts:1", via: "saveMemory", relation: "calls" },
+    { file: "src/mail.ts", location: "src/mail.ts:1", via: "saveMemory", relation: "calls" },
+  ];
+
   function session(mutate?: (s: SessionState) => void): ReadonlySessionState {
     const s: SessionState = { shown: {} };
-    recordTouched(s, REPO, "src/save.ts", BOOKED, false, T0);
+    recordTouched(s, REPO, "src/save.ts", BOOKED_FOUR, false, T0);
     if (mutate !== undefined) mutate(s);
     return s;
   }
+  // Booked hits are the graph AS IT WAS; answering from them needs no graph at
+  // all, which is why this stub is enough for every case about `missed`.
   const cache = { get: () => null };
+  const withGraph = { get: () => graph };
   const written = async () => T0 + 50;
 
   it("renders the missed dependents of a confirmed write", async () => {
     const built = await boundaryNote({ session: session(), cache, mtimeOf: written });
 
     assert.notEqual(built, null);
-    assert.equal(built!.files, 2);
+    assert.equal(built!.files, 4);
     assert.match(built!.note, /src\/audit\.ts:1 — calls saveMemory \(src\/save\.ts\)/);
     assert.match(built!.note, /src\/report\.ts:1/);
   });
@@ -266,7 +296,7 @@ describe("boundary block — what the Stop lane parks", () => {
   it("treats a file that is gone as written", async () => {
     const built = await boundaryNote({ session: session(), cache, mtimeOf: async () => null });
 
-    assert.equal(built?.files, 2);
+    assert.equal(built?.files, 4);
   });
 
   it("does not count a read from before the change", async () => {
@@ -281,7 +311,7 @@ describe("boundary block — what the Stop lane parks", () => {
       ],
     });
 
-    assert.equal(built?.files, 1);
+    assert.equal(built?.files, 3);
     assert.match(built!.note, /src\/audit\.ts:1/);
     assert.match(built!.note, /1 more dependent file was read after the change/);
   });
@@ -291,10 +321,22 @@ describe("boundary block — what the Stop lane parks", () => {
       session: session(),
       cache,
       mtimeOf: written,
-      reads: BOOKED.map((h) => ({ path: `/repo/${h.file}`, at: T0 + 1 })),
+      reads: BOOKED_FOUR.map((h) => ({ path: `/repo/${h.file}`, at: T0 + 1 })),
     });
 
     assert.equal(built, null);
+  });
+
+  it("stays under the volume gate at two files, and speaks at three", async () => {
+    const few = (n: number): ReadonlySessionState => {
+      const s: SessionState = { shown: {} };
+      recordTouched(s, REPO, "src/save.ts", BOOKED_FOUR.slice(0, n), false, T0);
+      return s;
+    };
+
+    assert.equal(MIN_BOUNDARY_MISSED_FILES, 3);
+    assert.equal(await boundaryNote({ session: few(2), cache, mtimeOf: written }), null);
+    assert.equal((await boundaryNote({ session: few(3), cache, mtimeOf: written }))?.files, 3);
   });
 
   it("is silent for an answer already given, and speaks again when it grows", async () => {
@@ -316,18 +358,39 @@ describe("boundary block — what the Stop lane parks", () => {
       );
     });
     const again = await boundaryNote({ session: grown, cache, mtimeOf: written });
-    assert.equal(again?.files, 3);
+    assert.equal(again?.files, 5);
   });
 
   it("renders unanswered alone — could not look is not nothing depends", async () => {
+    // A code file the task deleted, which the reindexed graph has already
+    // dropped: the graph is there to be asked and has no answer left.
     const s: SessionState = { shown: {} };
-    recordTouched(s, REPO, "src/save.ts", null, false, T0);
-    const built = await boundaryNote({ session: s, cache, mtimeOf: written });
+    recordTouched(s, REPO, "src/removed.ts", null, false, T0);
+    const built = await boundaryNote({ session: s, cache: withGraph, mtimeOf: async () => null });
 
     assert.notEqual(built, null);
     assert.equal(built!.files, 0);
-    assert.match(built!.note, /Dependents unknown — no graph could be asked about: src\/save\.ts\./);
+    assert.match(built!.note, /Dependents unknown — no graph could be asked about: src\/removed\.ts\./);
     assert.doesNotMatch(built!.note, /Not opened/);
+  });
+
+  it("says nothing when there was no graph to ask at all", async () => {
+    // `get()` answers null for a cold, loading or degraded graph. Every touch
+    // then lands in `unanswered`, and a block built from that describes the
+    // graph's state, not the task.
+    const s: SessionState = { shown: {} };
+    recordTouched(s, REPO, "src/save.ts", null, false, T0);
+
+    assert.equal(await boundaryNote({ session: s, cache, mtimeOf: written }), null);
+  });
+
+  it("says nothing about a repository code awareness is off for", async () => {
+    // `bastra code disable` after the edits were booked: the bookings are still
+    // in the table, and the cache answers null for the graph exactly as it does
+    // when one is merely cold.
+    const off = { get: () => null, allows: () => false };
+
+    assert.equal(await boundaryNote({ session: session(), cache: off, mtimeOf: written }), null);
   });
 
   it("is silent once the accumulator overflowed", async () => {
@@ -362,8 +425,8 @@ describe("recordTouched — the accumulator", () => {
 
   it("does not let an older Stop overwrite a newer one's block", () => {
     const s: SessionState = { shown: {} };
-    parkBoundary(s, { note: "NEW", dedupeKey: "k2" }, 200);
-    parkBoundary(s, { note: "OLD", dedupeKey: "k1" }, 100);
+    parkBoundary(s, { note: "NEW", dedupeKey: "k2", files: 3 }, 200);
+    parkBoundary(s, { note: "OLD", dedupeKey: "k1", files: 4 }, 100);
     assert.equal(s.boundary?.note, "NEW");
     parkBoundary(s, null, 100);
     assert.equal(s.boundary?.note, "NEW");

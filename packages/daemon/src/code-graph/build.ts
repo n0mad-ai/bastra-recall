@@ -461,6 +461,15 @@ const CODE_EXTS = new Set([
   ".c", ".h", ".cc", ".cpp", ".hpp", ".cs", ".php", ".scala", ".sh",
 ]);
 
+/**
+ * Whether the graph could ever have held this path (#572). The boundary needs
+ * it to tell a code file the reindex dropped from a file that was never
+ * indexed in the first place.
+ */
+export function isIndexableCodePath(file: string): boolean {
+  return CODE_EXTS.has(extname(file).toLowerCase());
+}
+
 /** Ceiling on the walk, so a mistakenly enabled home directory cannot stall it. */
 const MAX_SCAN_FILES = 200_000;
 

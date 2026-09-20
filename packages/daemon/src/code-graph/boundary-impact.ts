@@ -37,9 +37,11 @@
  * graph, unreadable change, overrun budget, a fifth apply_patch target. Such a
  * file is asked about here against the CURRENT graph, whole-file. That answer
  * is late and says so (`basis: "whole_file_now"`); with no graph at all, or
- * for a deleted file the reindexed graph has already dropped, the file is
+ * for a deleted CODE file the reindexed graph has already dropped, the file is
  * returned in `unanswered`. It is never dropped — "I could not look"
- * and "nothing depends on it" must not render the same.
+ * and "nothing depends on it" must not render the same. A deleted file the
+ * graph could never have indexed (a CHANGELOG.md) is the one exception: there
+ * was no answer to lose, so claiming its dependents are unknown is noise.
  *
  * THE ONE DELIBERATE NARROWING, NAMED. A dependent the transcript proves was
  * read AFTER the change is moved from `missed` to `seen`, and a boundary with
@@ -50,6 +52,7 @@
  * caller can show the count and the trade is reversible in one line.
  */
 
+import { isIndexableCodePath } from "./build.js";
 import { type LoadedGraph } from "./reader.js";
 import { type AffectedHit, MAX_AFFECTED_FILES, affectedHits, allSymbolsOf } from "./affected.js";
 
@@ -146,7 +149,12 @@ export function boundaryImpact(
       if (own.length === 0 && touch.gone === true) {
         // Deleted, and the reindexed graph has already dropped it: "no symbols"
         // here means the witness is gone, not that nothing depended on it.
-        unanswered.push(touch.file);
+        //
+        // Only for a file the graph could ever have held. A deleted
+        // CHANGELOG.md is not a lost witness — the graph never indexed it, so
+        // "dependents unknown" about it says nothing true and reads as if a
+        // code answer went missing.
+        if (isIndexableCodePath(touch.file)) unanswered.push(touch.file);
         continue;
       }
       basis = "whole_file_now";

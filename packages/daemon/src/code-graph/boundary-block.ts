@@ -21,10 +21,13 @@
  * gone (a delete is a write). An unconfirmed file contributes nothing — not
  * its dependents, and not itself as "opened".
  *
- * SILENCE. Kill switch, no booked writes, nothing confirmed, nothing missed,
- * the same answer already delivered this session, and an accumulator that
- * overflowed — a table that stopped recording is a prefix of the task, and a
- * confident answer from a prefix is the narrow lie this lane avoids.
+ * SILENCE. Kill switch, a repository code awareness is off for, no graph to
+ * ask at all (cold, loading or degraded), no booked writes, nothing confirmed,
+ * nothing missed, fewer unopened files than the volume gate
+ * (MIN_BOUNDARY_MISSED_FILES), the same answer already delivered this session,
+ * and an accumulator that overflowed — a table that stopped recording is a
+ * prefix of the task, and a confident answer from a prefix is the narrow lie
+ * this lane avoids.
  */
 
 import { createHash } from "node:crypto";
@@ -45,6 +48,22 @@ const DEDUPE_PREFIX = "code-boundary:";
  */
 const MTIME_SLACK_MS = 2_000;
 
+/**
+ * How many unopened files it takes for the block to be worth a turn.
+ *
+ * Measured on this repository, 21 of 25 commits touch files with dependents at
+ * a median of 4 — so a block with no floor is a block on nearly every task, and
+ * one that fires always is read never. Three up, which is where the list stops
+ * being something the agent already has in front of it.
+ *
+ * `unanswered` is deliberately NOT rationed by it: that section says no graph
+ * could be asked at all, which — past the `allows()` check in the repo loop —
+ * only happens for a code file the task deleted and the reindex already
+ * forgot. It is rare,
+ * and it is the one case where silence would read as "nothing depends on it".
+ */
+export const MIN_BOUNDARY_MISSED_FILES = 3;
+
 /** One read the transcript proves: absolute path, and when (ms), if known. */
 export interface ProvenRead {
   path: string;
@@ -55,8 +74,12 @@ export interface BoundaryNoteOptions {
   session: ReadonlySessionState;
   /** Optional; without it nothing moves from `missed` to `seen`. */
   reads?: readonly ProvenRead[];
-  /** Injectable for tests; defaults to the shared cache. */
-  cache?: Pick<CodeGraphCache, "get">;
+  /**
+   * Injectable for tests; defaults to the shared cache. `allows` is optional so
+   * a stub can be the one method the case under test needs — the daemon's
+   * shared cache always carries it.
+   */
+  cache?: Pick<CodeGraphCache, "get"> & Partial<Pick<CodeGraphCache, "allows">>;
   /** Injectable for tests: mtime in ms, or null when the file is gone. */
   mtimeOf?: (absolutePath: string) => Promise<number | null>;
 }
@@ -85,12 +108,20 @@ async function build(opts: BoundaryNoteOptions): Promise<BoundaryNote | null> {
   if (touched === undefined) return null;
   if (opts.session.touchedOverflow === true) return null;
   const mtimeOf = opts.mtimeOf ?? diskMtime;
+  const cache = opts.cache ?? codeGraphCache();
 
   const sections: string[] = [];
   const identity: string[] = [];
   let files = 0;
+  let unanswered = 0;
 
   for (const repoRoot of [...touched.keys()].sort()) {
+    // Code awareness off for this repository: the cache answers `null` for that
+    // exactly as it does for a cold or degraded graph, so the graph alone
+    // cannot tell the two apart. Without this check a repo that was switched
+    // off — or whose build failed — gets a block on every Stop saying only
+    // that its dependents are unknown.
+    if (cache.allows?.(repoRoot) === false) continue;
     const touches: BoundaryTouch[] = [];
     // Dependent file -> the latest booking of any touched file that names it.
     // A read counts as "after the change" only past that moment.
@@ -119,16 +150,20 @@ async function build(opts: BoundaryNoteOptions): Promise<BoundaryNote | null> {
       if (since !== undefined && read.at >= since) readAfter.push(rel);
     }
 
-    const graph = (opts.cache ?? codeGraphCache()).get(repoRoot);
+    const graph = cache.get(repoRoot);
     const impact = boundaryImpact(graph, touches, {
       readAfter,
       maxMissed: Number.MAX_SAFE_INTEGER,
     });
     // `unanswered` alone still renders: "I could not look" must not come out
-    // the same as "nothing depends on it".
-    if (impact.missed.length === 0 && impact.unanswered.length === 0) continue;
+    // the same as "nothing depends on it" — but only where a graph existed to
+    // be asked. With none, EVERY touch lands in `unanswered`, and the block
+    // would report a cold, loading or degraded graph as a finding about the
+    // task.
+    if (impact.missed.length === 0 && (graph === null || impact.unanswered.length === 0)) continue;
 
     files += impact.missed.length;
+    unanswered += impact.unanswered.length;
     identity.push(
       repoRoot,
       ...impact.missed.map((m) => `${m.file}<${m.changedFile}`),
@@ -138,6 +173,9 @@ async function build(opts: BoundaryNoteOptions): Promise<BoundaryNote | null> {
   }
 
   if (sections.length === 0) return null;
+  // The volume gate (MIN_BOUNDARY_MISSED_FILES). A section that only says the
+  // graph could not be asked passes it: it is not the advice being rationed.
+  if (files < MIN_BOUNDARY_MISSED_FILES && unanswered === 0) return null;
   const dedupeKey = `${DEDUPE_PREFIX}${sha(identity.join("\n"))}`;
   if ((opts.session.shown[dedupeKey]?.count ?? 0) >= MAX_SHOW) return null;
   return { note: sections.join("\n"), dedupeKey, files };
