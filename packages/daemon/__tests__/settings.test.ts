@@ -312,6 +312,27 @@ test("reflex (#217): valid block persists, invalid maxPerTurn dropped", async ()
   });
 });
 
+test("promptImpact (#607): valid block persists, non-boolean dropped, absent stays absent", async () => {
+  await withTempFile(async (path) => {
+    await writeFile(
+      path,
+      JSON.stringify({ update: { mode: "notify" }, promptImpact: { enabled: true } }),
+      "utf8",
+    );
+    assert.deepEqual((await readSettings(path)).promptImpact, { enabled: true });
+
+    await writeFile(
+      path,
+      JSON.stringify({ update: { mode: "notify" }, promptImpact: { enabled: "yes" } }),
+      "utf8",
+    );
+    assert.equal((await readSettings(path)).promptImpact, undefined, "non-boolean enabled must be dropped");
+
+    await writeFile(path, JSON.stringify({ update: { mode: "notify" } }), "utf8");
+    assert.equal((await readSettings(path)).promptImpact, undefined, "absent block stays absent");
+  });
+});
+
 // ── #231: language.primary ───────────────────────────────────────────────────
 
 test("language.primary: set/get round-trips, normalized to lowercase, siblings preserved", async () => {

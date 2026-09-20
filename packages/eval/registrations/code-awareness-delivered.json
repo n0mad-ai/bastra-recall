@@ -5,7 +5,8 @@
   "registered_at": "2026-09-19",
   "amended_at": "2026-09-20",
   "registered_by": "Claude Opus 5; option and thresholds decided by Daniel Nevoigt on 2026-09-19",
-  "status": "numbers_registered",
+  "status": "run_completed",
+  "$comment_status_update": "AMENDED 2026-09-20, after the delivered run finished: 44/44 scenarios, 132/132 arms (3 arms x 44 scenarios), 0 aborts (no `noAnswer` row across all A/D/P arms), 0 mixed builds (see result.build_pin below). `run_completed` is the same terminal status value introduced in code-awareness-change-impact.json registration_version 6 — it means the run happened, not merely that the design was fixed. From here on nothing in this registration changes except the `result` block below; a later measurement is a new registration_version or a new file, never an edit to what is recorded here.",
   "$comment_v2": "AMENDED BEFORE THE FIRST ARM after Codex counter-review: v1 combined the Write lane's diff-sharp content with the Prompt lane's pre-search timing, inferred unrelated production imports as test truth, and implemented block use as a fraction of candidate lines rather than the registered share of scenarios. No arm ran under v1. Version 2 calls the real prompt-lane content path, asks the test-aware question, scores broken test files directly, confirms failures mutated AND clean, and requires the population to be re-mined and frozen before status may return to numbers_registered.",
   "$comment_v3": "AMENDED BEFORE THE FIRST ARM after the exhausted tests/v2 population made the registered minimum unreachable: 44 total scenarios but exactly 37 product deliveries. Daniel Nevoigt decided the absolute minimum is 37, not a relative 75 % rule. Version 3 therefore records separate absolute minima of 37 context pairs and 37 delivered blocks. It also clusters bootstrap resamples by connected components of shared truth files: the 15 session-assembler scenarios are one answer family, not 15 independent observations. Product wording/order/cap, arms, effect thresholds and population are unchanged.",
   "issue": 606,
@@ -376,5 +377,89 @@
       "changes_a_threshold": false,
       "decided_by": "Daniel Nevoigt, relayed before the first arm; no arm had run."
     }
-  ]
+  ],
+
+  "result": {
+    "$comment": "Written 2026-09-20 after the delivered run finished. Every number below is read from `~/.bastra/eval/code-roi-delivered-recall-v2/report.json`, produced by `evaluate-delivered.mjs`; nothing here is derived independently. Full narrative: packages/eval/code-roi/v2/BEFUND.md, section \"Zustellung v3 Endergebnis (20.09.2026)\". This registration measures the UserPromptSubmit delivery lane only (`promptImpactNote()`, see `arms.D.renderer`); the symbol-based Write/Edit block (`impact-block.ts` invoked from the write lane) was not exercised by this run and this result says nothing about it.",
+    "date": "2026-09-20",
+    "report_path": "~/.bastra/eval/code-roi-delivered-recall-v2/report.json",
+    "build_pin": {
+      "head_sha": "973c6b8c496d9b2d34f12e1143f69485162ffc53",
+      "signature": "08f115ad233c079980667f3293f72966f078496f04641762a717a8a3b74fcc42",
+      "mixed_builds": false
+    },
+    "n": 44,
+    "progress": "complete: 44/44 scenarios, 132/132 arms (3 arms x 44 scenarios), 0 aborts",
+    "verdicts": {
+      "context": "underpowered",
+      "use": "fail",
+      "$comment": "No combined status, as registered above."
+    },
+    "key_numbers": {
+      "recall": { "A": 0.469156, "D": 0.457792, "P": 0.480519 },
+      "precision": { "A": 0.371791, "D": 0.392979, "P": 0.395566 },
+      "input_tokens_median": { "A": 66080.5, "D": 64861.5, "P": 77941.5 },
+      "context": {
+        "ratio_gated": 0.840582,
+        "ratio_gated_ci95": [0.728496, 1.473891],
+        "ratio_gated_clusters": 18,
+        "scenarios_solved_both_arms": 19,
+        "ratio_all_scenarios_ungated": 0.981553
+      },
+      "block_use": {
+        "mean": 0.540541,
+        "denominator_scenariosWithBlock": 37,
+        "controlOverlapMean_A": 0.540541,
+        "incrementalOverlap_D_minus_A": 0,
+        "scenariosWithoutBlock_silent_ids": ["S05", "S14", "S18", "S25", "S34", "S38", "S43"],
+        "basisDistribution": { "symbols": 24, "whole_file": 13 },
+        "blockTokensMedian": 188
+      },
+      "recall_guard": {
+        "mean_D_minus_A": -0.011364,
+        "ci95_D_minus_A": [-0.066667, 0.023077],
+        "clusters": 22
+      },
+      "blind_spot_split": {
+        "$comment": "8 blind-spot scenarios (S07, S11, S14, S16, S18, S26, S27, S43), 36 graph-reachable scenarios. Gated by neither verdict.",
+        "recall": {
+          "A": { "graphReachable": 0.517857, "blindSpot": 0.25 },
+          "D": { "graphReachable": 0.503968, "blindSpot": 0.25 },
+          "P": { "graphReachable": 0.503968, "blindSpot": 0.375 }
+        },
+        "precision": {
+          "A": { "graphReachable": 0.428486, "blindSpot": 0.116667 },
+          "D": { "graphReachable": 0.431697, "blindSpot": 0.21875 },
+          "P": { "graphReachable": 0.422953, "blindSpot": 0.272321 }
+        }
+      },
+      "not_gated": {
+        "p_vs_a_recall": 0.011364,
+        "p_vs_d_context": 1.201660
+      },
+      "cost_usd": { "total": 14.615435, "ceiling": 40 }
+    },
+    "checks": {
+      "context": {
+        "context_ratio": { "value": 0.840582, "required": "<= 0.97 (median input tokens, 19 solved in both)", "pass": true },
+        "context_ci_upper": { "value": 1.473891, "required": "< 1", "pass": false },
+        "precision": { "value": 0.021188, "required": ">= -0.05 (mean precision D - A)", "pass": true },
+        "recall": { "value": -0.066667, "mean": -0.011364, "required": ">= 0 (lower bound of the 95 % bootstrap CI on recall D - A)", "pass": false }
+      },
+      "use": {
+        "block_use": { "value": 0.540541, "required": ">= 0.5 (mean over the 37 scenarios that got a block)", "pass": true },
+        "precision": { "value": 0.021188, "required": ">= -0.05 (mean precision D - A)", "pass": true },
+        "recall": { "value": -0.066667, "mean": -0.011364, "required": ">= 0 (lower bound of the 95 % bootstrap CI on recall D - A)", "pass": false }
+      }
+    },
+    "honest_reading": [
+      "Context is underpowered, not passed and not failed: only 19 of 37 A/D pairs solved the scenario (recall >= 0.8) in BOTH arms, so the gated ratio (0.8406) rests on a cluster bootstrap CI of [0.7285; 1.4739] that straddles 1.0 by a wide margin — no repeatable saving is shown. Over all 44 scenarios, ungated, D used 98.16 % of A's median context — a 1.84 % saving that is real in this sample but not statistically secured and not the registered comparison.",
+      "Use fails on the recall guard, not on adoption: block use clears its 50 % floor (20 of 37 = 54.05 %) and the precision guard holds (D - A = +2.12 Pp), but the recall guard's 95 % CI lower bound (-6.67 Pp) is below the required 0, so the registered verdict is fail, not a near-miss reinterpreted as pass.",
+      "Arm A overlaps the delivered block's own files exactly as often as D does - 20/37 = 54.05 % for both - so the incremental overlap D minus A is 0. Clearing the block-use floor is therefore weak evidence only: nothing in this run shows the block CAUSED an agent to name a file it would not otherwise have named, since grep alone reaches the same block-named files equally often.",
+      "The symbol-based Write/Edit block (`impact-block.ts` in the write lane) was NOT the object of this run and is not refuted by it; this registration measures only the silent UserPromptSubmit delivery lane.",
+      "Absolute recall and precision are not comparable with v3 or v6: this population uses the tests/v2 truth rule (broken test files, A-B-B-A confirmed), not the type-oracle truth those runs used.",
+      "Consequence: on this population, automatic unannounced prompt-lane delivery (PR #607) is not shown to make the agent measurably better or cheaper, and should not ship enabled by default without separate evidence. The technical graph/tool foundation (PR #582 - find_affected_files, package-boundary resolution, refresh/locks, limits, telemetry) is unaffected by this finding; only the specific product integration measured here is in question."
+    ],
+    "no_further_changes": "Nothing in this registration changes after this point except this `result` block."
+  }
 }

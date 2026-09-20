@@ -108,7 +108,10 @@ test("an empty sample is refused rather than written", () => {
 
 test("the frozen registration names the population that is actually on disk", () => {
   const registration = loadRegistrationById("code-awareness-delivered");
-  assert.equal(registration.status, "numbers_registered");
+  // #607: the run completed 2026-09-20 and status moved on to the terminal
+  // `run_completed` — what this test actually needs (population frozen, no
+  // placeholder hashes) does not depend on which post-freeze status it is.
+  assert.equal(registration.status, "run_completed");
   const frozen = registration.population.freeze;
   // Nothing may still read as a placeholder: a run started against
   // "TO_BE_REMINED_UNDER_TESTS_V2" would compare a hash against a sentence.

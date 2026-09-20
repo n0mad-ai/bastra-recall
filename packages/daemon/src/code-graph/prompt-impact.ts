@@ -27,6 +27,12 @@
  * NEVER BLOCKS ANYTHING. This is a UserPromptSubmit additionalContext block
  * like the recall hints beside it; it cannot stop a Grep, and #577's rule that
  * Recall does not hook Read/Grep/Glob is untouched.
+ *
+ * EXPERIMENTAL, OFF BY DEFAULT (#607). `deliverPromptImpact()` below — the
+ * lane's own entry point — is gated behind `promptImpact.enabled` /
+ * `BASTRA_PROMPT_IMPACT`; see prompt-impact-settings.ts for why. This module's
+ * lower-level `promptImpactNote()` stays ungated on purpose (see its own
+ * doc comment) so the code-roi measurement harness keeps working.
  */
 
 import { join } from "node:path";
@@ -46,6 +52,7 @@ import { displayOrder, isGraphStale, renderImpactBlock } from "./impact-block.js
 import { bareLabel, type CodeSymbol, type LoadedGraph } from "./reader.js";
 import { logDeliveredBlock } from "../code-delivered-telemetry.js";
 import { MAX_SHOW, type ReadonlySessionState } from "../session-state.js";
+import { getPromptImpactEnabled } from "./prompt-impact-settings.js";
 
 /** Prefix that keeps the block's dedupe key out of the memory-id namespace. */
 const DEDUPE_PREFIX = "code-prompt:";
@@ -95,6 +102,12 @@ const SILENT: PromptImpactResult = { note: null, dedupeHit: false };
  * Write/Edit block is silent in: the kill switch, a cold or missing graph, a
  * prompt whose targets the graph does not know, an empty answer, a block
  * already delivered this session, an overrun budget. Never throws.
+ *
+ * DELIBERATELY NOT gated behind `promptImpact.enabled` (#607): this is the
+ * function `packages/eval/code-roi/v2/delivered-block.mjs` imports and calls
+ * directly, bypassing the lane, to render arm D from the exact product path
+ * regardless of the lane's opt-in default. `deliverPromptImpact()` below is
+ * where the live prompt lane's gate lives.
  */
 export async function promptImpactNote(
   opts: PromptImpactOptions,
@@ -197,6 +210,12 @@ const NOTHING: DeliveredPromptImpact = {
  *
  * Never throws: a failure in here degrades to "no block", exactly like every
  * other code-awareness path (§23).
+ *
+ * #607: gated behind `promptImpact.enabled` / `BASTRA_PROMPT_IMPACT`, default
+ * OFF (see prompt-impact-settings.ts for why). This is the ONLY gate for the
+ * opt-in — `promptImpactNote()` itself stays ungated so the code-roi
+ * measurement harness, which calls it directly, keeps rendering the block
+ * regardless of this default.
  */
 export async function deliverPromptImpact(opts: {
   prompt: string;
@@ -206,6 +225,7 @@ export async function deliverPromptImpact(opts: {
   cache?: CodeGraphCache;
   budgetMs?: number;
 }): Promise<DeliveredPromptImpact> {
+  if (!(await getPromptImpactEnabled())) return NOTHING;
   let result: PromptImpactResult;
   try {
     result = await promptImpactNote(opts);
