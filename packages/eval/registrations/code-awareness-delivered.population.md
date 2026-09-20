@@ -1,11 +1,177 @@
-# Grundgesamtheit „delivered“ — Befund
+# Grundgesamtheit „delivered" — Befund
 
-> **UNGÜLTIGER v1-ZWISCHENSTAND — NICHT STARTEN.** Codex' Gegenprüfung vor
-> dem ersten Arm hat die Produktionsdatei-Attribution R1–R3 als unbelegte
-> Wahrheit verworfen. Registrierung 2 verwendet `tests/v2`: die bestätigte
-> brechende Testdatei selbst ist Wahrheit, mit isolierter Bestätigung auf
-> mutiertem und sauberem Tree. Diese Datei wird nach dem Re-Mining vollständig
-> durch den v2-Befund ersetzt; alle Zahlen darunter beschreiben nur v1.
+Stand: **20.09.2026**, Registrierung `code-awareness-delivered.json`,
+**Registrierung 2**, Wahrheitsregel **`tests/v2`**, Status
+`numbers_registered`. Die Abschnitte 1–8 und 10–11 beschreiben weiterhin
+Vorgehen und Vorfragen und gelten unverändert; Abschnitt 9 (v1-Schürfung) und
+12 (v1-Adjudikation) sind **historisch** und durch **9a** und **12A** ersetzt.
+
+## 9a. Schürfergebnis `tests/v2` — Historie erschöpft
+
+Lauf: `CODE_ROI_REPO=… CODE_ROI_OUT=~/.bastra/eval/code-roi-delivered-recall-v2
+CODE_ROI_WORKERS=4 node packages/eval/code-roi/v2/mine-repo.mjs
+--truth tsc+tests --stop-at 45`, 19.09.2026 00:03 bis 20.09.2026 früh.
+
+**Die Stoppmarke 45 wurde nie erreicht — die Historie ist erschöpft.** Alle
+887 Nicht-Merge-Commits wurden gelaufen, **alle 1000 Kandidatenpaare
+entschieden**, `blockedAt === null`. 44 ist das, was dieses Repo unter dieser
+Wahrheitsregel und diesen Ausschlüssen hergibt, nicht die Stelle, an der ein
+Zähler stehen blieb.
+
+**Der erste Durchgang ist abgestürzt**, nicht regulär beendet: bei 732 von
+1000 Kandidaten, nach 2 h 38 min, mit `write EPIPE` aus der
+Tree-Entpack-Pipe — ein `error`-Ereignis auf einem Stream, auf den niemand
+hörte, also ein Prozessende statt einer Ablehnung. Gefährlich daran ist die
+Form: der Annahmezähler stand schon länger auf 44, der Lauf **sah aus wie
+fertig**. Fortgesetzt aus dem `truth-cache` (entscheidet nichts zweimal),
+danach regulär zu Ende. Behoben in `repo-tree.mjs` (`pipeSpawn`), Test
+`code-roi-mine-pipe.test.ts`. Der Absturz hat **keine Entscheidung
+verändert**: ein abgestürzter Kandidat wurde nie als entschieden verbucht.
+
+**44 angenommen aus 1000 entschiedenen Kandidaten.**
+
+| | |
+| --- | --- |
+| Pakete | `packages/daemon` 42, `packages/core` 2 |
+| Commits | 32 verschiedene; 4 Commits liefern je 3 Szenarien, 4 je 2 |
+| Wahrheitsgröße | 1 → 34×, 2 → 6×, 3 → 3×, 7 → 1× |
+| `truthSource` | **tests 44, tsc 0, both 0** (wie v1, gleiche Ursache) |
+| Zuordnungsregel (nur Diagnose) | `direct-import` 40, `sibling-name` 17, `closure` 5 |
+| Testauswahl | `targeted` 27, `targeted+literals` 14, `full` 3 |
+| **Blindstellen** | **8 von 44 = 18 %**, alle vollständig (keine Teil-Blindstelle) |
+
+Ablehnungen: `breaks nothing` **594**, `file already used` **354**,
+`diff does not apply alone` 8. **Keine Kategorie „nicht bewertbar" mehr** —
+alle 1000 Kandidaten tragen eine echte Entscheidung.
+
+### 9a-bis. Die 46 „nicht bewertbar" — Ursache, Fix, Neubewertung
+
+Belegt statt vermutet: auf **allen 22** betroffenen Parent-Trees findet
+`testFilesOf()` **0 Testdateien im ganzen Tree**; keines der vier
+`__tests__`-Verzeichnisse existiert dort, `scripts/test-env.mjs` auch nicht.
+Es sind Commits aus **Mai 2026**, also von vor der Testsuite in diesem Layout.
+
+Die Fallback-Regel „sonst volle Suite" hat also **korrekt gegriffen** — es gab
+nur nichts, worauf sie fallen konnte: `selectTests()` liefert
+`{ files: [], mode: "full" }`, der Runner lief gegen null Dateien und meldete
+`1..0`. Das war aus zwei Gründen falsch verbucht:
+
+1. Die Begründung las sich wie ein Runner-Defekt, war aber eine Eigenschaft
+   des Trees.
+2. **Schwerwiegender:** der Kandidat endete damit **vor dem Typ-Durchgang**.
+   Die registrierte Wahrheit ist eine **Vereinigung** aus Typfehlern *und*
+   gebrochenen Tests — ein Tree ohne Tests kann sehr wohl Typwahrheit tragen.
+   Die halbe Regel wurde weggeworfen.
+
+**Fix:** `analyzeTests()` erkennt einen testlosen Tree einmal je Commit und
+entscheidet dessen Kandidaten über die Typhälfte allein
+(`testSelection.mode: "no_tests"`, `truthSource` `tsc` oder `none`, nie
+`tests`). Tests: die leere Auswahl in `code-roi-test-truth.test.ts`, die
+Invariante auf den echten Daten in `code-roi-population-freeze.test.ts`.
+
+**Neubewertung nur dieser 46** (Cache-Zeilen entfernt, sonst nichts neu
+geschürft, ~2 min weil keine Suite läuft): **29 `breaks nothing`, 17
+`file already used`, 0 mit Typwahrheit → 0 neue Szenarien.** N bleibt 44,
+`population_sha256` bleibt `00042d15…`. Der Fix war nötig und hat den Freeze
+**bestätigt**, nicht ersetzt.
+
+**Freeze**
+`population_sha256` = `00042d158dd12496a5051f524f91bfc0375e3c800b942724d48e1067ba336ca6`
+`exclusions.sha256` = `df87de2c3566d64b890620a4c4f8eb52fdc2bf1f15077b998b38c1b0d3ad8318`
+`repository_head` = `c0667f1d7ee3a61b179a94bdc4fd91d60e218293`, Seed 20260918,
+Regel `tests/v2`, Modus `tsc+tests`. Nach dem Herauslösen von `repo-tree.mjs`
+aus dem Schürfer **bitgleich reproduziert** (44/1000, gleicher Hash).
+
+### 9b. Warum die v1-Dateien NICHT ausgeschlossen sind
+
+Der v1-Zwischenstand (`~/.bastra/eval/code-roi-delivered-recall`, 45
+Szenarien) ist verworfen, seine Dateien sind aber **nicht verbrannt**: es lief
+nie ein Agent darauf, keine Schwelle wurde dagegen bewegt, und die
+Handprüfung von damals hat nur nachgerechnet, ob `attribute()` seine eigene
+Buchführung reproduziert — eine Regel, die unter `tests/v2` gar keine
+Wahrheit mehr erzeugt. Dazu kommt ein mechanisches Argument: die Registrierung
+hat `exclusions_sha256` = `df87de2c…` **vor** dem Lauf eingefroren; ein
+zusätzlicher Ausschluss würde genau diesen Hash brechen.
+
+### 9c. Konzentration der Wahrheit — bitte mitlesen
+
+35 verschiedene Wahrheitsdateien auf 44 Szenarien, und sie verteilen sich sehr
+ungleich:
+
+| Wahrheitsdatei | Szenarien |
+| --- | --- |
+| `packages/daemon/__tests__/session-assembler.test.ts` | **15** |
+| `packages/daemon/__tests__/cli-help.test.ts` | 6 |
+| `packages/daemon/__tests__/code-graph-find.test.ts` | 4 |
+| `packages/daemon/__tests__/cli-flag-validation.test.ts` | 4 |
+
+Auf **15 von 44** Szenarien ist `session-assembler.test.ts` die **ganze**
+Wahrheitsmenge — ein Zusammenbau-Test, den jede Lane-Änderung bricht. Dazu
+haben **34 Szenarien genau eine** Wahrheitsdatei, der Recall ist dort also 0
+oder 1 ohne Zwischenstufe. Der registrierte Bootstrap-Cluster ist
+`repo + file`, zählt diese 15 also als 15 unabhängige Einheiten, obwohl sie
+eine einzige Antwort teilen.
+
+Das ist **keine Auswahlverzerrung** — die Annahmeregel sieht nie, welcher Test
+bricht — aber es begrenzt, wie fein ein Recall-Unterschied auf dieser
+Stichprobe überhaupt auflösen kann. v1 hatte dasselbe Problem eine Ebene
+tiefer (dort war `session-assembler.ts` die Wahrheit); `tests/v2` macht es nur
+sichtbar.
+
+### 9d. Was der D-Block auf dieser Population sagt (ohne Agent gemessen)
+
+Vor dem ersten Arm, aus `packages/daemon/dist` gegen den echten Prompt jedes
+Szenarios gerendert:
+
+| | |
+| --- | --- |
+| Blöcke zugestellt | **37 von 44** |
+| still (Produkt sagt nichts) | 7 — S05, S14, S18, S25, S34, S38, S43 |
+| `basis` | `symbols` 24, `whole_file` 13 |
+| gelistete Dateien | Median 3, Maximum 10 |
+| Blockgröße | Median 188 geschätzte Token |
+| **Blöcke, die eine Wahrheitsdatei nennen** | **15 von 37** |
+| **Basisrate `block_use`** | **0,405** |
+
+Die Basisrate ist die entscheidende Zahl zur Frage „zählt bei ≥ 1 von 10
+ohnehin jedes Szenario": **nein.** 15 der 37 Blöcke enthalten eine
+Wahrheitsdatei; jedes dieser Szenarien bekommt `blockUse = 1` geschenkt,
+sobald der Agent sie überhaupt nennt. Das sind 0,405 — die registrierte
+Schwelle ist **0,5 und liegt darüber**. Rund vier weitere Szenarien müssen
+also eine gelistete Datei nennen, die der Agent sonst nicht genannt hätte.
+Die binäre Metrik hält dieser Prüfung stand.
+
+Nebenbefund zum Produkt, bewusst nicht geändert: `displayOrder()` in
+`impact-block.ts` sortiert **Testdateien ans Ende** und kappt bei 10. Unter
+`tests/v2` ist die Wahrheit aber genau diese Dateiklasse — die Anzeigereihenfolge
+des Blocks arbeitet also gegen das Maß, mit dem gemessen wird. Gemessen wird
+der Block, wie er ausgeliefert wird; der Effekt steht als Zahl oben.
+
+## 12A. Adjudikation `tests/v2` — alle 44, keine Streichung
+
+Nicht eine Stichprobe von 10, sondern **alle 44 unabhängig nachgerechnet**.
+Vorgehen: je Szenario den Parent-Tree frisch mit `git archive` auspacken und
+ohne den Datensatz des Schürfers prüfen —
+
+1. jede Wahrheitsdatei existiert im Parent-Tree,
+2. jede Wahrheitsdatei ist eine Testdatei,
+3. die geänderte Datei ist nie ihre eigene Wahrheit,
+4. der Importabschluss jeder Wahrheitsdatei neu berechnet und die
+   Blindstellen-Markierung dagegen gehalten.
+
+**Ergebnis: 44 von 44 ohne Befund. Keine Streichung, kein Ausschluss.**
+Punkt 4 stimmte bei **jeder** Wahrheitsdatei **jedes** Szenarios — damit
+zerlegt `blindSpotTests` die Wahrheitsmenge exakt, was der v2-Scorer für die
+getrennte Blindstellen-Auswertung braucht. Ergebnis in `adjudication.json`
+im Archiv.
+
+**Nicht geprüft:** die Suiten wurden nicht erneut gefahren. Das ist die
+A-B-B-A-Bestätigung des Schürfers (gleiche Fall-ID rot auf dem mutierten,
+grün auf dem sauberen Tree) und würde einen zweiten Schürflauf kosten.
+
+---
+
+## Historischer Teil (v1, ungültig)
 
 Stand: 19.09.2026. Gehört zu `code-awareness-delivered.json`, Registrierung 1
 (Option 2: Zustellungsnutzen + Kontextkosten, entschieden von Daniel Nevoigt

@@ -4,19 +4,26 @@
   "registration_version": 2,
   "registered_at": "2026-09-19",
   "registered_by": "Claude Opus 5; option and thresholds decided by Daniel Nevoigt on 2026-09-19",
-  "status": "numbers_registered_population_pending",
+  "status": "numbers_registered",
   "$comment_v2": "AMENDED BEFORE THE FIRST ARM after Codex counter-review: v1 combined the Write lane's diff-sharp content with the Prompt lane's pre-search timing, inferred unrelated production imports as test truth, and implemented block use as a fraction of candidate lines rather than the registered share of scenarios. No arm ran under v1. Version 2 calls the real prompt-lane content path, asks the test-aware question, scores broken test files directly, confirms failures mutated AND clean, and requires the population to be re-mined and frozen before status may return to numbers_registered.",
   "issue": 606,
   "epic": 572,
   "relates_to": "code-awareness-change-impact.json registration_version 6 — same unit, same isolation, same cost discipline, same build pin, a different channel and a different population. The two share arm A (grep) by construction, so their control arms are comparable; nothing else is.",
-  "contract_refs": ["13.1", "16.2", "16.3", "18.1", "24"],
-
+  "contract_refs": [
+    "13.1",
+    "16.2",
+    "16.3",
+    "18.1",
+    "24"
+  ],
   "why_this_arm_exists": "The offered channel has two failure modes and v6 measured them apart. In the wild the tool is simply not used: v3 offered `find_code` in 44 of 44 runs and recorded 0 calls, the v4 pilot 0 of 2, and a full day of real sessions on 19.09.2026 recorded 0 real calls of either tool. Inside the v6 harness, with a tuned description and server instructions in front of it, it WAS used — 32 of 40 — at 2.37x the control's median input tokens. Those two facts are not in conflict: the harness scenario is a change-impact question and nothing else, while a real session is everything else as well, and server instructions reach a client once, on connect. #606 therefore stops relying on the agent reaching for the answer and DELIVERS it through Recall's own hook lane. The honest form of the question is not 'is the block emitted' — the daemon decides that and can always answer yes — and after v6 no longer 'does the agent call the tool'. It is whether the agent that received the block unasked ends up with the same answer more cheaply, and demonstrably used the block getting there.",
-
   "question": "Does the delivered change-impact block reach the agent, get used, and cost less context than the search it replaces, at no loss of precision and no loss of recall? (Option 2 of the draft, chosen by Daniel Nevoigt on 2026-09-19. Option 1 — a recall GAIN on a population with control-arm headroom — is not registered here and is not claimed by this run.)",
-
   "arms": {
-    "ids": ["A", "D", "P"],
+    "ids": [
+      "A",
+      "D",
+      "P"
+    ],
     "$comment_ids": "The arms this registration runs, read by the runner and by `select.mjs` — the runner defines a catalogue and the registration decides which of it is a measurement. `arms.ids` is what makes that true; a registration without it is not runnable.",
     "A": {
       "name": "grep",
@@ -29,7 +36,34 @@
       "renderer": "packages/eval/code-roi/v2/delivered-block.mjs",
       "gated": true,
       "$deviation_live_lane": "The graph cache is warmed before `promptImpactNote()` because cold-start availability is a daemon lifecycle property, not block usefulness. Everything after warm-up is the product path: the intent gate may stay silent, ambiguity may stay silent and the 120 ms budget may drop a late result. Dedupe cannot fire because every arm is a fresh session.",
-      "$silence_is_a_result": "Where the product would be silent — a file the graph does not index, a change nothing depends on — no block is rendered and the arm runs on the bare prompt. Those scenarios are counted in the run, excluded from the block-use denominator, and listed by id in the report (`use.scenariosWithoutBlock`). A silence scored as 0 use would read as 'the block was ignored', which is a different finding."
+      "$silence_is_a_result": "Where the product would be silent — a file the graph does not index, a change nothing depends on — no block is rendered and the arm runs on the bare prompt. Those scenarios are counted in the run, excluded from the block-use denominator, and listed by id in the report (`use.scenariosWithoutBlock`). A silence scored as 0 use would read as 'the block was ignored', which is a different finding.",
+      "delivered_block_base_rate": {
+        "$comment": "What the product's block SAYS on this population, rendered from dist against each scenario's own prompt before any agent ran. It costs nothing and it bounds two of the registered numbers, so leaving it until after the run would mean discovering the ceiling on the use verdict from the result.",
+        "scenarios": 44,
+        "delivered": 37,
+        "silent": 7,
+        "silent_ids": [
+          "S05",
+          "S14",
+          "S18",
+          "S25",
+          "S34",
+          "S38",
+          "S43"
+        ],
+        "basis": {
+          "symbols": 24,
+          "whole_file": 13
+        },
+        "listed_files_median": 3,
+        "listed_files_max": 10,
+        "tokens_est_median": 188,
+        "blocks_naming_a_truth_file": 15,
+        "block_use_floor": 0.405,
+        "$comment_floor": "15 of the 37 delivered blocks name at least one TRUTH file. Every one of those scores blockUse = 1 for any agent that names that file at all, so 0.405 is the share the metric reaches without a single causal use. The registered floor is 0.5, which is ABOVE it: block_use_min cannot be cleared by the base rate alone, and roughly four further scenarios have to name a listed file the agent would otherwise not have named. That is the check the counter-review asked for, and the binary metric survives it.",
+        "$comment_cap": "displayOrder in impact-block.ts sorts TEST files last and cuts at MAX_IMPACT_FILES = 10. Under tests/v2 the truth IS the test files, so the block's own display order works against the ruler this run uses. It is not changed: the measurement is of the block as it ships, and the effect is reported as blocks_naming_a_truth_file rather than removed.",
+        "measured_by": "packages/eval/code-roi/v2/delivered-block.mjs against packages/daemon/dist at the pinned build, one graphify graph per scenario tree, no agent and no cost."
+      }
     },
     "P": {
       "name": "prefilled_full",
@@ -56,7 +90,6 @@
       "$comment_cap": "MAX_IMPACT_FILES in impact-block.ts. The candidate SET is capped at 40 by MAX_AFFECTED_FILES in affected.ts and that cap is silent in the text — a known wording bug recorded in `product_todos` and deliberately NOT fixed before the run, so the measurement is of the block as it ships."
     }
   },
-
   "unit_and_truth": {
     "unit": "one historical change to one file, at most one scenario per file",
     "truth_rule": "tests/v2",
@@ -66,7 +99,6 @@
     "implementation": "packages/eval/code-roi/v2/test-truth.mjs; the import closure comes from its own source parser and NEVER from the code graph, so the population is blind to the tool being measured.",
     "$changed_from_v6": "This IS a change of ruler and it is stated rather than implied. v3 and v6 used the type oracle alone. On this population the type oracle produces nothing: over all 441 evaluable candidates `truthFromTypes` is empty, because the changes in bastra-recall's history that break types across packages are exactly the ones v3 and v4 already used as scenarios, and their 52 files are excluded here at file level. The type pass still runs and is still checked (it reproduces the adjudicated v3 truth of scenario S01 exactly), so what the run has is a TEST-truth population with a type branch that fires nowhere. A recall or precision figure from this run is therefore NOT directly comparable with v3's or v6's, and the report says so."
   },
-
   "metrics": {
     "primary": {
       "context": "Per arm, from the run's own `result` event: modelUsage[claude-sonnet-5].inputTokens + cacheReadInputTokens + cacheCreationInputTokens, all three summed because a cached token is a token the model read. Side models the client calls for itself are excluded. Fallback when modelUsage is absent: the run-level `usage` block summed the same way, with the row marked `usageFallback`. Compared as the MEDIAN of D against the median of A, over the scenarios both arms solved — the v6 rule, unchanged.",
@@ -84,19 +116,26 @@
       "the context ratio over every scenario rather than only the solved ones"
     ]
   },
-
   "verdicts": {
     "$comment": "TWO verdicts, decided separately, with no combined status — the same discipline registration 6 uses for adoption and effect. A block that is free and ignored, and a block that is used and expensive, are opposite findings needing opposite work, and one word covering both would hide which it was. `precision` and `recall` are NOT verdicts: they are checks inside BOTH, because a cost saving or a use rate bought with correctness is the failure this design is shaped around. Each verdict is pass, fail, underpowered (fewer than min_scenarios complete) or not_evaluable.",
     "context": {
-      "criteria": ["context_cost_max_ratio", "context_ci_upper_max", "precision_loss_max", "recall_guard_ci_lower"],
+      "criteria": [
+        "context_cost_max_ratio",
+        "context_ci_upper_max",
+        "precision_loss_max",
+        "recall_guard_ci_lower"
+      ],
       "question": "Does the delivered answer cost less context than the search it replaces, repeatably, at no loss of correctness?"
     },
     "use": {
-      "criteria": ["block_use_min", "precision_loss_max", "recall_guard_ci_lower"],
+      "criteria": [
+        "block_use_min",
+        "precision_loss_max",
+        "recall_guard_ci_lower"
+      ],
       "question": "Does the agent's final answer actually carry what the block told it, at no loss of correctness?"
     }
   },
-
   "thresholds": {
     "$comment": "DECIDED by Daniel Nevoigt on 2026-09-19 after a review with Codex, replacing the draft's TO_BE_DECIDED. The permissive of the draft's two threshold sets was taken as a SET, for the reason the draft gives: 0.97 is defensible only because the CI bound, the use floor and the two guards carry the rest of the burden. Adopting 0.97 while dropping the CI bound would register 'not measurably worse' as a success.",
     "context_cost_max_ratio": 0.97,
@@ -111,7 +150,6 @@
     "$comment_recall": "The LOWER bound of a 95 % bootstrap interval on the paired recall difference (D − A) must be at or above 0. Stated as an interval rather than as a point comparison so one scenario's worth of sampling noise cannot fail the arm, and in the same statistical form the context threshold uses on the other side. This registration does not claim a recall gain; it forbids a recall loss.",
     "verdict_rule": "A verdict passes only if every criterion listed for it holds. One out of three is not a partial success."
   },
-
   "population": {
     "repository": "bastra-recall",
     "repository_path": "/Users/n0mad/Projekte/bastra-recall-hook (a worktree of the same repository; read-only — the miner works on `git archive` copies and creates no worktree in it)",
@@ -121,13 +159,13 @@
     "tool_blindness": "The selection rule never consults the code graph, `find_affected_files`, the block, or anything derived from them. The import closure that drives test selection and attribution comes from `test-truth.mjs`'s own source parser.",
     "freeze": {
       "$comment": "Mined, decided and hashed BEFORE the first arm. The hash covers ordered scenario identity plus truth files, broken tests, blind spots and truth-rule version — not merely commit/file. A population whose scoring targets can move under the same hash is not frozen.",
-      "population_sha256": "TO_BE_REMINED_UNDER_TESTS_V2",
+      "population_sha256": "00042d158dd12496a5051f524f91bfc0375e3c800b942724d48e1067ba336ca6",
       "exclusions_sha256": "df87de2c3566d64b890620a4c4f8eb52fdc2bf1f15077b998b38c1b0d3ad8318",
-      "repository_head": "TO_BE_RECORDED_AFTER_REMINING",
+      "repository_head": "c0667f1d7ee3a61b179a94bdc4fd91d60e218293",
       "seed": 20260918,
       "truth_rule": "tests/v2",
       "truth_mode": "tsc+tests",
-      "recorded_in": "PENDING: re-mine into the fresh archive ~/.bastra/eval/code-roi-delivered-recall-v2 under tests/v2, then record and hash population.json before select.mjs or any arm runs. The tests/v1 archive is invalidated development data and must not be resumed."
+      "recorded_in": "~/.bastra/eval/code-roi-delivered-recall-v2/population.json, written by mine-repo.mjs at the end of the run that exhausted the history, and reproduced bit-identically by a second replay from its truth cache after repo-tree.mjs was split out of the miner. The narrative is code-awareness-delivered.population.md section 9a. The tests/v1 archive ~/.bastra/eval/code-roi-delivered-recall is invalidated development data and is mechanically refused by the runner and the scorer: its scenario file carries registration_version 1 and truthRule tests/v1."
     },
     "mined_v1_invalidated": {
       "$comment": "Historical audit only. These figures came from tests/v1, whose inferred-production-file truth was rejected before the first arm. They MUST NOT populate a v2 scenario file.",
@@ -140,16 +178,40 @@
         "diff does not apply alone": 3,
         "not evaluable": 3
       },
-      "by_package": { "packages/daemon": 42, "packages/core": 3 },
-      "truth_size": { "1": 21, "2": 9, "3": 9, "5": 2, "8": 4 },
-      "truth_source": { "tests": 45, "tsc": 0, "both": 0 },
-      "attribution_rule": { "direct-import": 44, "sibling-name": 18, "closure": 1 },
-      "test_selection": { "targeted": 24, "targeted+literals": 13, "full": 8 }
+      "by_package": {
+        "packages/daemon": 42,
+        "packages/core": 3
+      },
+      "truth_size": {
+        "1": 21,
+        "2": 9,
+        "3": 9,
+        "5": 2,
+        "8": 4
+      },
+      "truth_source": {
+        "tests": 45,
+        "tsc": 0,
+        "both": 0
+      },
+      "attribution_rule": {
+        "direct-import": 44,
+        "sibling-name": 18,
+        "closure": 1
+      },
+      "test_selection": {
+        "targeted": 24,
+        "targeted+literals": 13,
+        "full": 8
+      }
     },
     "exclusions": {
       "$comment": "Built by packages/eval/code-roi/v2/exclusions.mjs, read from the archives at mining time and hashed into population.json. A missing source archive ABORTS the mining run rather than proceeding with an empty exclusion list — a population without the burned list would look like a valid sample while quietly using scenarios the thresholds were tuned on.",
       "burned_scenario_files": "52 distinct files, from the 45 v3 scenarios (~/.bastra/eval/code-roi-v2) and the 9 v4 ones (~/.bastra/eval/code-roi-v4). Excluded at FILE level, not commit level: a second change to a file whose blast radius has already been read is still a change to code somebody looked at while moving a threshold.",
-      "pilot_commits": ["197f9b10f05ca24fa72a09daf98fcdb8d7ffef6c", "c6cf3e21a7150f798fe0c8104735f4db83d0232d"],
+      "pilot_commits": [
+        "197f9b10f05ca24fa72a09daf98fcdb8d7ffef6c",
+        "c6cf3e21a7150f798fe0c8104735f4db83d0232d"
+      ],
       "prefixes": {
         "packages/daemon/src/code-graph/": "the product under measurement — a scenario here asks the tool about its own source",
         "packages/eval/": "the measurement apparatus itself, which is being worked on; its truth set would depend on the half-finished state on disk"
@@ -162,35 +224,87 @@
       "affected_test_files": 19,
       "is_a_lower_bound": "The literal probe only fires on strings the diff itself added or removed, and only on contract-shaped literals (4+ characters containing / . - : or a space). A break over an untouched string or a value computed at runtime is reached by neither clause and is lost. That bias runs in favour of import coupling, i.e. in favour of what a graph tool finds, so the reported blind-spot share is a floor."
     },
-    "privacy": "The repository is the user's own and everything stays local: trees, transcripts and truth sets live under ~/.bastra/eval. Only file paths, commit ids and the aggregate figures above appear in this registration."
+    "privacy": "The repository is the user's own and everything stays local: trees, transcripts and truth sets live under ~/.bastra/eval. Only file paths, commit ids and the aggregate figures above appear in this registration.",
+    "mined": {
+      "$comment": "The tests/v2 population. The history is EXHAUSTED: every non-merge commit of bastra-recall was walked and all 1000 candidate pairs were decided, so 44 is what this repository has to give under this truth rule and these exclusions, not where a counter stopped.",
+      "accepted": 44,
+      "decided": 1000,
+      "distinct_commits": 32,
+      "distinct_truth_files": 35,
+      "rejected": {
+        "breaks nothing": 594,
+        "file already used": 354,
+        "diff does not apply alone": 8
+      },
+      "by_package": {
+        "packages/daemon": 42,
+        "packages/core": 2
+      },
+      "truth_size": {
+        "1": 34,
+        "2": 6,
+        "3": 3,
+        "7": 1
+      },
+      "truth_source": {
+        "tests": 44
+      },
+      "attribution_rule_diagnostic_only": {
+        "direct-import": 40,
+        "sibling-name": 17,
+        "closure": 5
+      },
+      "test_selection": {
+        "targeted": 27,
+        "targeted+literals": 14,
+        "full": 3
+      },
+      "mining_time": "19.09.2026 00:03 to 20.09.2026 04:0x, in two passes: the first died at 732 of 1000 candidates on an unhandled EPIPE in the tree-extraction pipe and was resumed from its truth cache, which decides nothing twice. The crash is fixed in repo-tree.mjs (pipeSpawn) and covered by code-roi-mine-pipe.test.ts; it changed no decision, because a crashed candidate was never recorded as one.",
+      "truth_concentration": "session-assembler.test.ts is the WHOLE truth set of 15 of the 44 scenarios and cli-help.test.ts of 6 more; 34 scenarios have exactly one truth file, so their recall is 0 or 1 with nothing in between. The registered bootstrap cluster is repo + file, which counts those 15 as 15 independent units although they share one answer. Reported here because it bounds how fine a recall difference this sample can resolve, and it was NOT used to select or reject anything — the acceptance rule never looks at which test broke.",
+      "every_candidate_is_judged": "All 1000 candidates carry a decision; the population has no 'not evaluable' bucket. 46 of them once did: their trees are from May 2026, before this repository had a test suite in the runner's layout, so testFilesOf found ZERO test files, selectTests fell back to 'run everything' over an empty set, and the baseline reported 1..0. That was recorded as a runner error AND it ended the candidate before the type pass — although the registered truth is a UNION of type errors and broken tests, and a tree without tests can still carry type truth. analyzeTests now routes a testless tree through the type half alone (testSelection.mode = 'no_tests'). Re-deciding exactly those 46 from the truth cache, without re-mining anything else, yielded 29 'breaks nothing', 17 'file already used' and ZERO with type truth — so no scenario was added, N is unchanged at 44 and population_sha256 is the same 00042d15…. The fix was necessary and it confirmed the frozen population rather than replacing it."
+    },
+    "v1_files_not_excluded": "The 45 scenarios of the invalidated tests/v1 archive are NOT excluded from this population, and the exclusion hash df87de2c… is unchanged because of it. No agent ever ran on them: the v1 archive holds a scenario file and a truth set and nothing else, no threshold was moved against it, and its hand-checked sample verified that attribute() reproduced its own bookkeeping — a rule that is no longer truth under tests/v2. Excluding them would also change exclusions_sha256, which this registration froze before the run."
   },
-
   "sample": {
     "min_scenarios": 40,
-    "$comment_size": "40 remains the minimum for a verdict; the v2 mined N is pending. Below 40 solved pairs the context verdict is underpowered, and below 40 delivered blocks the use verdict is underpowered. A cost ratio needs a real paired sample, while a use claim needs a real delivered sample — total scenario count cannot stand in for either.",
+    "$comment_size": "40 remains the minimum for a verdict and is NOT changed here. What the mined population makes arithmetic rather than hypothetical: N is 44, and the product delivers a block in 37 of those 44 (measured offline, without an agent, see delivered_block_base_rate). The use verdict requires min_scenarios scenarios WITH a block, so at 37 possible it is UNDERPOWERED before the first arm runs, whatever the agents do. The context verdict requires min_scenarios pairs both arms solved, i.e. 40 of 44 = 91 %. Both readings of min_scenarios are laid out in min_scenarios_is_absolute; which one holds is Daniel's decision and this registration does not make it.",
     "must_be_fresh": true,
     "excluded_pilot": {
       "$comment": "The two bastra-recall pilot commits of registration 4. Enforced mechanically by select.mjs, from THIS registration rather than from the change-impact one — same repository, so unlike in registration 6 the exclusion actually binds here.",
       "repository": "bastra-recall",
-      "commits": ["197f9b10f05ca24fa72a09daf98fcdb8d7ffef6c", "c6cf3e21a7150f798fe0c8104735f4db83d0232d"],
-      "files": ["packages/daemon/src/cli/types.ts", "packages/daemon/src/tool-handlers.ts"],
+      "commits": [
+        "197f9b10f05ca24fa72a09daf98fcdb8d7ffef6c",
+        "c6cf3e21a7150f798fe0c8104735f4db83d0232d"
+      ],
+      "files": [
+        "packages/daemon/src/cli/types.ts",
+        "packages/daemon/src/tool-handlers.ts"
+      ],
       "enforced_by": "select.mjs drops any candidate from these commits before writing the scenario file."
     },
     "adjudication": {
       "rule": "Unchanged from v3: a truth entry is removed only with a written reason recorded in the scenario's `adjudication` array, and a whole scenario only with `excluded: \"<reason>\"`. Both stay visible in the archive; nothing is ever dropped silently.",
-      "additional_check": "Under tests/v2 the truth is the broken test file itself, confirmed mutated and clean. Re-adjudicate a frozen sample after re-mining; the v1 production-import attribution sample is not evidence for v2.",
-      "removals": "TO_BE_RECORDED after the v2 population is frozen"
+      "additional_check": "Under tests/v2 the truth is the broken test file itself, confirmed failing on the mutated tree and passing on the clean one, per CASE id. The re-adjudication above checks the bookkeeping and the blind-spot partition on all 44; it does not re-run the suites, which is the miner's A-B-B-A confirmation and would cost a second mining run.",
+      "removals": "NONE. All 44 truth sets were re-derived independently from a freshly extracted parent tree, without the miner's record: every truth file exists in that tree, is a test file, and is never the changed file; and the blind-spot flag was recomputed from the import closure and agreed with the recorded one on every truth file of every scenario. 0 problems, 0 entries removed, 0 scenarios excluded. Written to adjudication.json in the archive."
     },
-    "pooling": { "allowed": false, "$comment": "One repository supplies the sample, so there is nothing to pool and no cap to apply." }
+    "pooling": {
+      "allowed": false,
+      "$comment": "One repository supplies the sample, so there is nothing to pool and no cap to apply."
+    },
+    "mined_n": 44,
+    "min_scenarios_is_absolute": {
+      "$comment": "Written down before the run because it decides the outcome and must not be decided after seeing it.",
+      "as_implemented": "An ABSOLUTE count. verdictFor(checks, count) in evaluate-delivered.mjs compares bothSolved.length and uses.length against sample.min_scenarios = 40. Consequence on this population: use is underpowered at 37 possible delivered blocks; context needs 40 of 44 solved pairs.",
+      "the_other_reading": "min_scenarios as the floor on N (44 >= 40, satisfied) with a SHARE required of the paired and delivered subsets. At 75 % that is 33 pairs and 33 blocks, both reachable; at 80 % it is 36 and 36, and use would clear its floor by one scenario.",
+      "not_decided_here": "No number is changed. The registration records the arithmetic so that a later 'underpowered' is read as a property of the repository's history, not as a surprise."
+    }
   },
-
   "statistics": {
     "method": "bootstrap, 10 000 resamples, resampling CLUSTERS with replacement",
     "seed": 20260918,
     "cluster_key": "repo + file",
     "$comment": "Two intervals of different shapes, both clustered the same way: a mean of paired differences for the recall guard, and a RATIO OF MEDIANS for the context verdict. The ratio is recomputed inside every resample rather than bootstrapped from per-scenario values — a ratio of medians is not a mean of anything."
   },
-
   "run_conditions": {
     "repository": "bastra-recall (see population)",
     "graphify_version": "0.9.63",
@@ -199,7 +313,7 @@
     "cost_ceiling_usd": 40,
     "$comment_ceiling": "Carried over from registration 6 unchanged, enforced by the runner and not merely documented at it: every arm's cost is summed — aborted attempts too, from their own `result` event where there is one and from the mean of the finished arms where there is not — and the next arm only starts while the ceiling is still out of reach. CODE_ROI_COST_CEILING may only LOWER it. A subscription plan pays for these runs; the ceiling is the computed value, not an invoice.",
     "arm_estimate_usd": 0.046,
-    "cost_estimate": "v6 spent 5.5024 USD on 120 arms = 0.04585 USD per arm, rounded upward to the registered 0.046 USD abort estimate. Recompute the total estimate from the v2 mined N before changing status to numbers_registered; the enforced ceiling remains 40 USD.",
+    "cost_estimate": "v6 spent 5.5024 USD on 120 arms = 0.04585 USD per arm, rounded up to the registered 0.046 USD. This run is 3 arms x 44 scenarios = 132 arms, so 132 x 0.046 = 6.07 USD against the enforced 40 USD ceiling. The estimate is also the per-arm charge for an abort that reported no cost of its own.",
     "stretched_run": "Taken in helpings across subscription-quota windows (`run-arms-v3.mjs --max-scenarios N`). Sample, scenario order, arm order and thresholds are unchanged by it. An arm counts as finished only on exit 0 AND is_error === false AND subtype === \"success\"; anything else is kept as `<arm>.jsonl.failed-<ts>` with a meta naming the reason, counts as not run, is charged against the ceiling anyway, and is re-run by the next helping. A partial report is labelled `incomplete (x/N)` and reaches no verdict below the relevant paired/delivered minimum.",
     "build_pin": {
       "$comment": "Carried over from registration 6 unchanged in mechanism, with this registration's own frozen surface. The runner imports packages/daemon/dist directly, so a helping that does not build first can serve a revision nobody reviewed — and a run taken in helpings across days can serve TWO of them under one report unless the pin forbids it.",
@@ -209,7 +323,6 @@
     },
     "frozen_archives": "~/.bastra/eval/code-roi-v2 (v3) and the v6 archives are never written by a script of this registration; archive.mjs refuses the frozen one outright."
   },
-
   "known_deviations": [
     {
       "what": "Arm D's block is rendered offline rather than emitted by the live lane.",
@@ -217,7 +330,6 @@
       "consequence": "This run measures usefulness when the graph is warm. It does not estimate cold-start availability or hook transport failures; those remain lane telemetry and integration-test questions."
     }
   ],
-
   "product_todos": {
     "$comment": "Found while checking the block against this repository's real graph on 2026-09-19. NOT fixed before the run — the arm must be served the block as it ships.",
     "p2_candidate_count_wording": {
@@ -227,7 +339,6 @@
       "why_it_matters_here": "The run records `blockTruncated` per scenario, so a reader can tell which blocks were affected; it does not repair the text they were served."
     }
   },
-
   "reporting_duties": [
     "Both verdicts separately — context and use — and never a combined status.",
     "The two guards (precision, recall) with their values, as checks inside both verdicts rather than as verdicts.",
@@ -241,14 +352,21 @@
     "An honest `underpowered` / `not_evaluable` per 18.1 where the sample does not support a verdict.",
     "The registration_version the report belongs to."
   ],
-
   "what_this_cannot_show": [
     "That the block CAUSED the difference in a real session. The arm shows that an agent given the block answers as well and more cheaply than one that is not; a real session has memory hints, a longer history and a user who interrupts.",
     "How often the lane delivers, or whether a delivery matched the user's intent. That is lane telemetry and a labelled prompt audit, neither of which this run performs.",
     "That the graph knows anything grep does not. A cheaper route to the same answer is worth shipping and is not that claim. The recall guard forbids a loss; it does not claim a gain.",
     "Whether the delivered channel beats the offered one. v6 measured the offered channel on a different population with a different truth rule, so the two have never been compared on one question."
   ],
-
   "failure_is_a_result": true,
-  "$comment_failure": "A missed threshold is recorded as the finding; thresholds are not moved afterwards."
+  "$comment_failure": "A missed threshold is recorded as the finding; thresholds are not moved afterwards.",
+  "amendments": [
+    {
+      "date": "2026-09-20",
+      "what": "The mining stop mark was lifted: the history is exhausted instead of stopping at 45 accepted candidates.",
+      "why": "sample.min_scenarios is an absolute count of solved pairs and delivered blocks. At N=45 both verdicts would have required 40 of 45 = 89 %. Exhausting the history is the only lever that raises N without touching a threshold, so it was pulled. It yielded 44 — the repository has no more to give under this truth rule and these exclusions — so the arithmetic is unchanged and is recorded in sample.min_scenarios_is_absolute rather than fixed by loosening anything.",
+      "changes_a_threshold": false,
+      "decided_by": "Daniel Nevoigt, relayed before the first arm; no arm had run."
+    }
+  ]
 }
