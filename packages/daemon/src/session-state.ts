@@ -208,10 +208,10 @@ async function readSessionState(sessionId: string): Promise<SessionState> {
       const touched = emptyTable<Record<string, TouchedFile>>();
       for (const [repoRoot, files] of Object.entries(parsed.touched as Record<string, unknown>)) {
         if (!files || typeof files !== "object") continue;
-        if (!isSafeTableKey(repoRoot)) continue;
+        if (repoRoot === "__proto__" || repoRoot === "constructor" || repoRoot === "prototype") continue;
         const repo = emptyTable<TouchedFile>();
         for (const [file, entry] of Object.entries(files as Record<string, TouchedFile>)) {
-          if (!isSafeTableKey(file)) continue;
+          if (file === "__proto__" || file === "constructor" || file === "prototype") continue;
           repo[file] = entry;
         }
         touched[repoRoot] = repo;
@@ -435,9 +435,15 @@ function emptyTable<T>(): Record<string, T> {
   return Object.create(null) as Record<string, T>;
 }
 
-function isSafeTableKey(key: string): boolean {
-  return key !== "__proto__" && key !== "constructor" && key !== "prototype";
-}
+/**
+ * Written out at every write site rather than called through
+ * `isSafeTableKey`-style helper: CodeQL does not follow a denylist through a
+ * call, which is the lesson `call-corruption.ts` already wrote down for #56 —
+ * that alert stayed open until the resolution happened where the write does.
+ * The three names are `__proto__`, `constructor` and `prototype`, written out
+ * at each of the two sites below rather than shared, because sharing them is
+ * exactly what the analyzer cannot follow.
+ */
 
 export function recordTouched(
   state: SessionState,
@@ -447,7 +453,8 @@ export function recordTouched(
   truncated = false,
   now: number = Date.now(),
 ): void {
-  if (!isSafeTableKey(repoRoot) || !isSafeTableKey(file)) return;
+  if (repoRoot === "__proto__" || repoRoot === "constructor" || repoRoot === "prototype") return;
+  if (file === "__proto__" || file === "constructor" || file === "prototype") return;
   if (state.touched === undefined) state.touched = emptyTable();
   let repo = state.touched[repoRoot];
   if (repo === undefined) {
