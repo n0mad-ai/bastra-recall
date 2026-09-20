@@ -352,7 +352,8 @@ function makeLock(
   let live: FileHandle | null = handle;
   // The beat that is on its way, if any. A tick issues its write in the same
   // turn it checks `live`, so stopping can never let a NEW write out — but the
-  // one already in flight still has to land before the record is final.
+  // one already in flight still has to land before the record is final. It
+  // starts out settled and `renew` never rejects, so waiting on it always ends.
   let beating: Promise<void> = Promise.resolve();
   // `unref()` so a pending heartbeat never keeps the daemon's event loop
   // alive — a CLI build must be able to exit the moment the build is done.
