@@ -192,3 +192,22 @@ test("surface detection prefers explicit Codex markers and keeps Claude default"
   assert.equal(hookClient({ tool_name: "apply_patch" }), "codex");
   assert.equal(hookClient({ tool_name: "Write" }), "claude-code");
 });
+
+test("#572 NotebookEdit names its target notebook_path, and the write lane reads file_path", () => {
+  // The lane returns on its first line without a `file_path`, so the notebook
+  // was never booked and the task boundary rendered it exactly like a file
+  // nothing depends on. Revert-check: drop the NotebookEdit branch in
+  // normalizeWritePayload and both assertions go red.
+  const cwd = "/work/repo";
+  const normalized = normalizeWritePayload({
+    tool_name: "NotebookEdit",
+    tool_input: { notebook_path: "notebooks/train.ipynb", new_source: "x = 1", edit_mode: "replace" },
+  })!;
+  const input = normalized.tool_input as Record<string, unknown>;
+  assert.equal(input.file_path, "notebooks/train.ipynb");
+  assert.deepEqual(codeTargets(input, input.file_path as string, cwd), [join(cwd, "notebooks/train.ipynb")]);
+  assert.equal(input.new_source, "x = 1", "the rest of the call is untouched");
+
+  // Nothing to normalize is still nothing: a call with neither key has no target.
+  assert.equal(normalizeWritePayload({ tool_name: "NotebookEdit", tool_input: {} }), null);
+});

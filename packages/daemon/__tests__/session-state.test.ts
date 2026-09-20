@@ -10,7 +10,7 @@
  */
 import { test, before, after } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -228,17 +228,61 @@ test("a __proto__ key is refused, and writes never reach a prototype", async () 
   // same guard, so reading the refusal back through it would test that guard
   // twice and never this one.
   await ss.mutateSessionState(id, (s) => {
+    ss.recordTouched(s, "/r", "safe.ts", null); // the table exists to be asked about
     ss.recordTouched(s, "__proto__", "a.ts", null);
     ss.recordTouched(s, "/r", "__proto__", null);
     assert.equal(s.touched?.["__proto__"], undefined, "an unsafe repo root is not booked");
     assert.equal(s.touched?.["/r"]?.["__proto__"], undefined, "an unsafe file is not booked");
+    // The container itself, not a fresh `{}`: pollution here would change the
+    // prototype of THIS object, and an assertion about a bystander literal
+    // stays green no matter what the guards do.
+    assert.equal(Object.getPrototypeOf(s.touched ?? {}), null, "the table has no prototype");
+    assert.equal(Object.getPrototypeOf(s.touched?.["/r"] ?? {}), null, "nor does a repo");
   });
-  assert.equal(Object.getPrototypeOf({}), Object.prototype);
-  assert.equal(({} as Record<string, unknown>).a, undefined);
 
-  // A safe path in the same session is still booked, and survives the round
-  // trip through disk that the load branch rebuilds.
   await ss.mutateSessionState(id, (s) => ss.recordTouched(s, "/r", "b.ts", null));
-  const again = await ss.loadSessionState(id);
-  assert.equal(again.touched?.["/r"]?.["b.ts"]?.unplaced, true);
+  assert.equal((await ss.loadSessionState(id)).touched?.["/r"]?.["b.ts"]?.unplaced, true);
+});
+
+test("a state file poisoned with a __proto__ key is not adopted as parsed", async () => {
+  // The load-branch guard, exercised by the only input that can reach it: a
+  // state file written by a daemon older than the guard. Revert-check: drop
+  // the isSafeTableKey checks in the load branch and the first two assertions
+  // go red; drop `emptyTable()` there and the prototype assertion goes red.
+  const id = "boundary-proto-disk";
+  await ss.mutateSessionState(id, (s) => ss.recordTouched(s, "/r", "a.ts", null));
+  const file = join(testDir, `${id}.json`);
+  // Written as text: `raw.touched["__proto__"] = …` on an ordinary object sets
+  // that object's prototype and JSON.stringify never sees the key, so building
+  // the poisoned file through assignment would write a perfectly clean one.
+  const entry = '{"at":1,"last":1,"hits":[],"unplaced":true,"truncated":false}';
+  const raw = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
+  const poisoned = JSON.stringify(raw).replace(
+    '"touched":{',
+    `"touched":{"__proto__":{"a.ts":${entry}},`,
+  ).replace('"/r":{', `"/r":{"__proto__":${entry},`);
+  assert.ok(poisoned.includes('"__proto__"'), "the fixture really is poisoned");
+  await writeFile(file, poisoned);
+
+  const state = await ss.loadSessionState(id);
+  assert.equal(state.touched?.["__proto__"], undefined, "a poisoned repo root is dropped");
+  assert.equal(state.touched?.["/r"]?.["__proto__"], undefined, "a poisoned file is dropped");
+  assert.equal(Object.getPrototypeOf(state.touched ?? {}), null, "the rebuilt table has no prototype");
+  assert.equal(state.touched?.["/r"]?.["a.ts"]?.unplaced, true, "the safe entry survives");
+});
+
+test("the character budget counts a file's own registration, not only its hits", async () => {
+  // 128 files with long paths and zero hits outspent MAX_TOUCHED_CHARS threefold
+  // while `touchedOverflow` stayed false: the base cost was charged without
+  // being checked. Revert-check: charge `base` unconditionally again in
+  // recordTouched and this goes red.
+  const id = "boundary-chars";
+  // Four segments under the 255-byte limit each: a legal path, ~1 KB, so 128
+  // of them outspend the 128 KiB budget on registration alone.
+  const deep = ["src", "a".repeat(240), "b".repeat(240), "c".repeat(240), "d".repeat(240)].join("/") + "/";
+  await ss.mutateSessionState(id, (s) => {
+    for (let i = 0; i < ss.MAX_TOUCHED_FILES; i++) ss.recordTouched(s, "/r", `${deep}${i}.ts`, []);
+    assert.equal(s.touchedOverflow, true, "the table says it stopped recording");
+    assert.ok((s.touchedChars ?? 0) <= ss.MAX_TOUCHED_CHARS, "and it stopped inside the bound");
+  });
 });

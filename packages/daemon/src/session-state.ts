@@ -461,9 +461,20 @@ export function recordTouched(
       if (Object.keys(repo).length === 0) delete state.touched[repoRoot];
       return;
     }
+    // The registration itself costs characters, and long paths make it the
+    // bigger half: 128 files under a deep workspace root outspend the whole
+    // budget before a single dependent is booked. Charged through the same
+    // check as a hit, or `touchedOverflow` would stay false while the table
+    // grew past the bound this module promises to hold.
+    const base = repoRoot.length + file.length + ENTRY_OVERHEAD;
+    if ((state.touchedChars ?? 0) + base > MAX_TOUCHED_CHARS) {
+      state.touchedOverflow = true;
+      if (Object.keys(repo).length === 0) delete state.touched[repoRoot];
+      return;
+    }
     entry = { at: now, last: now, hits: [], unplaced: false, truncated: false };
     repo[file] = entry;
-    state.touchedChars = (state.touchedChars ?? 0) + repoRoot.length + file.length + ENTRY_OVERHEAD;
+    state.touchedChars = (state.touchedChars ?? 0) + base;
   }
   entry.last = now;
   if (truncated) entry.truncated = true;

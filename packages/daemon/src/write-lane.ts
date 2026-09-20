@@ -324,8 +324,11 @@ export async function runWriteLane(
     const booking = t.impact.booking;
     if (booking === undefined) {
       // The impact module never reached the file — a tool it cannot read a
-      // change out of (NotebookEdit), or it threw. The write happens anyway,
-      // so it is booked unplaced rather than not at all.
+      // change out of, or it threw. The write happens anyway, so it is booked
+      // unplaced rather than not at all. (NotebookEdit used to be the example
+      // here, and it was the wrong one: it names its target `notebook_path`,
+      // so the lane returned before this line ever ran. `hook-write-input.ts`
+      // normalizes it now.)
       const rel = repoRelative(repoRoot, targets[i]!);
       if (rel !== null && codeGraphCache().allows(repoRoot)) {
         stateDeltas.push((s) => recordTouched(s, repoRoot, rel, null));
