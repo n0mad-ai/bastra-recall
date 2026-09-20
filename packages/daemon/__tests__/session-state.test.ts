@@ -216,3 +216,24 @@ test("the accumulator survives another lane's save of the same file", async () =
 
   assert.equal((await ss.loadSessionState(id)).touched?.["/r"]?.["a.ts"]?.unplaced, true);
 });
+
+test("a path named __proto__ is booked as a key, it does not become a prototype", async () => {
+  // CodeQL js/remote-property-injection: both table levels take their keys from
+  // tool input. Revert-check: turn `emptyTable()` back into `{}` in
+  // recordTouched and the first two assertions go red; adopt `parsed.touched`
+  // as parsed instead of rebuilding it and the last one goes red — the table
+  // comes back from disk with an ordinary prototype and the next write
+  // pollutes it again.
+  const id = "boundary-proto";
+  await ss.mutateSessionState(id, (s) => ss.recordTouched(s, "__proto__", "__proto__", null));
+
+  const state = await ss.loadSessionState(id);
+  assert.ok(Object.hasOwn(state.touched ?? {}, "__proto__"), "the repo root is an own key");
+  assert.equal(({} as Record<string, unknown>).polluted, undefined);
+  assert.equal(Object.getPrototypeOf({}), Object.prototype);
+
+  // A second lane's write, after the table has made a round trip through disk.
+  await ss.mutateSessionState(id, (s) => ss.recordTouched(s, "__proto__", "b.ts", null));
+  const again = await ss.loadSessionState(id);
+  assert.equal(again.touched?.["__proto__"]?.["b.ts"]?.unplaced, true);
+});

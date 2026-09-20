@@ -201,7 +201,20 @@ async function readSessionState(sessionId: string): Promise<SessionState> {
     }
     // #572: same reason — the accumulator must survive every other lane's save.
     if (parsed.touched && typeof parsed.touched === "object") {
-      state.touched = parsed.touched as Record<string, Record<string, TouchedFile>>;
+      // Rebuilt through `emptyTable`, not adopted as parsed: the next
+      // `recordTouched` writes into these objects, and a table that came back
+      // from disk with an ordinary prototype reopens the write `emptyTable`
+      // closes.
+      const touched = emptyTable<Record<string, TouchedFile>>();
+      for (const [repoRoot, files] of Object.entries(parsed.touched as Record<string, unknown>)) {
+        if (!files || typeof files !== "object") continue;
+        const repo = emptyTable<TouchedFile>();
+        for (const [file, entry] of Object.entries(files as Record<string, TouchedFile>)) {
+          repo[file] = entry;
+        }
+        touched[repoRoot] = repo;
+      }
+      state.touched = touched;
     }
     if (parsed.touchedOverflow === true) state.touchedOverflow = true;
     if (
@@ -398,6 +411,21 @@ export const MAX_TOUCHED_CHARS = 128 * 1024;
  * bound the entry is marked `truncated`, and past the file bound the whole
  * table is marked `touchedOverflow` — it has become a prefix of the task.
  */
+/**
+ * A keyed table whose keys come from tool input — a repository root and a file
+ * path. Both levels are prototype-less on purpose: on an ordinary object
+ * `table["__proto__"] = entry` runs the inherited setter and changes the
+ * object's prototype instead of storing anything, which is prototype
+ * pollution (CodeQL `js/remote-property-injection`, three writes in
+ * `recordTouched`). With no prototype there is no setter to reach, so such a
+ * path is stored as the ordinary own key it is. Nothing is rejected: a file
+ * the task really wrote must be booked whatever it is called, and "I dropped
+ * it for safety" would render as "nothing depends on it" at the boundary.
+ */
+function emptyTable<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>;
+}
+
 export function recordTouched(
   state: SessionState,
   repoRoot: string,
@@ -406,10 +434,10 @@ export function recordTouched(
   truncated = false,
   now: number = Date.now(),
 ): void {
-  if (state.touched === undefined) state.touched = {};
+  if (state.touched === undefined) state.touched = emptyTable();
   let repo = state.touched[repoRoot];
   if (repo === undefined) {
-    repo = {};
+    repo = emptyTable();
     state.touched[repoRoot] = repo;
   }
   let entry = repo[file];
