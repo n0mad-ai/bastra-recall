@@ -200,7 +200,11 @@ async function parkBoundaryNote(payload: ClaudeStopPayload, turns: TranscriptTur
   const built = await boundaryNote({ session, reads });
   if (built === null && session.boundary === undefined) return;
   await mutateSessionState(sessionId, (s) =>
-    parkBoundary(s, built === null ? null : { note: built.note, dedupeKey: built.dedupeKey }, builtFrom),
+    parkBoundary(
+      s,
+      built === null ? null : { note: built.note, dedupeKey: built.dedupeKey, files: built.files },
+      builtFrom,
+    ),
   );
 }
 

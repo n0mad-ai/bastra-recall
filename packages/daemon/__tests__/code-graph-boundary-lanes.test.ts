@@ -18,7 +18,7 @@
 import { test, before, after } from "node:test";
 import { strict as assert } from "node:assert";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -30,6 +30,10 @@ process.env.HOME = home;
 process.env.BASTRA_HOOK_STATE_DIR = join(home, "hook-state");
 process.env.BASTRA_PENDING_SUGGESTIONS_PATH = join(home, "pending.json");
 process.env.BASTRA_TELEMETRY = "off";
+// #607: the prompt lane's delivery is opt-in and OFF by default, boundary block
+// included. Every case below is about what the lane does once it is switched
+// on; the one case about the default switches it back off itself.
+process.env.BASTRA_PROMPT_IMPACT = "on";
 
 const { runWriteLane } = await import("../src/write-lane.js");
 const { runStopLane } = await import("../src/stop-lane.js");
@@ -79,8 +83,16 @@ const BEFORE = graphJson(
     node("save_fn", "saveMemory()", "src/save.ts", 1),
     node("audit_fn", "auditSave()", "src/audit.ts", 1),
     node("report_fn", "buildReport()", "src/report.ts", 1),
+    node("notify_fn", "notifySave()", "src/notify.ts", 1),
   ],
-  [edge("audit_fn", "save_fn", "calls"), edge("report_fn", "save_fn", "calls")],
+  // Three callers: the volume gate (MIN_BOUNDARY_MISSED_FILES) renders from
+  // three unopened files up, so a two-caller fixture would prove the lanes are
+  // connected by going silent for the wrong reason.
+  [
+    edge("audit_fn", "save_fn", "calls"),
+    edge("report_fn", "save_fn", "calls"),
+    edge("notify_fn", "save_fn", "calls"),
+  ],
 );
 // What the watcher's reindex leaves: `saveMemory` is gone, and so is every
 // edge that pointed at it.
@@ -89,6 +101,7 @@ const AFTER = graphJson(
     node("persist_fn", "persist()", "src/save.ts", 1),
     node("audit_fn", "auditSave()", "src/audit.ts", 1),
     node("report_fn", "buildReport()", "src/report.ts", 1),
+    node("notify_fn", "notifySave()", "src/notify.ts", 1),
   ],
   [],
 );
@@ -126,6 +139,7 @@ async function freshRepo(name: string, enabled: boolean): Promise<string> {
     ["src/save.ts", SAVE_BEFORE],
     ["src/audit.ts", 'import { saveMemory } from "./save.js";\nexport function auditSave() { saveMemory(""); }\n'],
     ["src/report.ts", 'import { saveMemory } from "./save.js";\nexport function buildReport() { saveMemory(""); }\n'],
+    ["src/notify.ts", 'import { saveMemory } from "./save.js";\nexport function notifySave() { saveMemory(""); }\n'],
   ];
   for (const [path, body] of files) {
     await mkdir(join(repo, path, ".."), { recursive: true });
@@ -202,6 +216,7 @@ test("delivers on a trivial prompt, names the callers the reindexed graph forgot
   assert.match(first, /task boundary/);
   assert.match(first, /src\/audit\.ts:1 — calls saveMemory \(src\/save\.ts\)/);
   assert.match(first, /src\/report\.ts:1 — calls saveMemory/);
+  assert.match(first, /src\/notify\.ts:1 — calls saveMemory/);
 
   // Same session, nothing new: a second Stop re-computes the same answer and
   // the dedupe holds it back.
@@ -246,7 +261,10 @@ test("withdraws the parked block once the task opened what it had missed", async
     timestamp: new Date(Date.now() + 1_000).toISOString(),
     message: {
       role: "assistant",
-      content: [{ type: "tool_use", name: "Read", input: { file_path: join(repo, "src/report.ts") } }],
+      content: [
+        { type: "tool_use", name: "Read", input: { file_path: join(repo, "src/report.ts") } },
+        { type: "tool_use", name: "Read", input: { file_path: join(repo, "src/notify.ts") } },
+      ],
     },
   };
   await stop(repo, id, [readRow]);
@@ -265,4 +283,65 @@ test("books nothing where code awareness is off", async () => {
 
   assert.equal((await loadSessionState(id)).touched, undefined);
   assert.doesNotMatch(await prompt(repo, id, "ok"), /task boundary/);
+});
+
+test("hands nothing over while the prompt lane's opt-in is off", async () => {
+  // #607: same lane, same switch (`promptImpact.enabled` / BASTRA_PROMPT_IMPACT,
+  // default off). Revert-check: drop the gate in `prompt-lane.ts` and this goes
+  // red on the first assertion.
+  const repo = await freshRepo("optin", true);
+  const id = "lanes-optin";
+
+  await announceEdit(repo, id);
+  await landEditAndReindex(repo);
+  await stop(repo, id);
+
+  process.env.BASTRA_PROMPT_IMPACT = "off";
+  try {
+    assert.doesNotMatch(await prompt(repo, id, "ok"), /task boundary/);
+    assert.doesNotMatch(await prompt(repo, id, "what changed in the save path?"), /task boundary/);
+    // Not consumed either: the block is still parked for a session that turns
+    // the lane on.
+    assert.notEqual((await loadSessionState(id)).boundary, undefined);
+  } finally {
+    process.env.BASTRA_PROMPT_IMPACT = "on";
+  }
+
+  assert.match(await prompt(repo, id, "ok"), /task boundary/);
+});
+
+test("writes one delivered-block row for the block it hands over", async () => {
+  // #579 measures this delivery the same way it measures the other two: one
+  // `code_tool_call` row with `surface: "delivered"`. Revert-check: drop the
+  // `logBoundaryDelivery` call and this goes red.
+  const repo = await freshRepo("telemetry", true);
+  const id = "lanes-telemetry";
+  const logDir = join(home, "telemetry-rows");
+  process.env.BASTRA_LOG_PATH = logDir;
+  process.env.BASTRA_TELEMETRY = "on";
+  try {
+    await announceEdit(repo, id);
+    await landEditAndReindex(repo);
+    await stop(repo, id);
+    assert.match(await prompt(repo, id, "ok"), /task boundary/);
+    // The row is fire-and-forget; give the append a turn of the loop.
+    await new Promise((done) => setTimeout(done, 50));
+
+    const day = new Date().toISOString().slice(0, 10);
+    const rows = (await readFile(join(logDir, `events-${day}.jsonl`), "utf8"))
+      .split("\n")
+      .filter((l) => l.trim().length > 0)
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .filter((r) => r.surface === "delivered" && r.delivered_lane === "boundary");
+
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]!.kind, "code_tool_call");
+    assert.equal(rows[0]!.status, "ok");
+    assert.equal(rows[0]!.files, 3);
+    assert.equal(rows[0]!.session_id, id);
+    assert.ok((rows[0]!.tokens_est as number) > 0);
+  } finally {
+    process.env.BASTRA_TELEMETRY = "off";
+    delete process.env.BASTRA_LOG_PATH;
+  }
 });

@@ -187,10 +187,13 @@ test("end-to-end drop logic: write → read → shouldDrop after 3 shows", async
 test("takeParkedBoundary hands the block over once and empties the slot", async () => {
   const id = "boundary-once";
   await ss.mutateSessionState(id, (s) => {
-    s.boundary = { note: "BLOCK", dedupeKey: "code-boundary:abc" };
+    ss.parkBoundary(s, { note: "BLOCK", dedupeKey: "code-boundary:abc", files: 3 }, 1);
   });
 
-  assert.equal(await ss.takeParkedBoundary(id), "BLOCK");
+  const taken = await ss.takeParkedBoundary(id);
+  assert.equal(taken?.note, "BLOCK");
+  // #579 measures the delivery by what it cost, so the count rides along.
+  assert.equal(taken?.files, 3);
   assert.equal(await ss.takeParkedBoundary(id), null);
   const state = await ss.loadSessionState(id);
   assert.equal(state.boundary, undefined);
@@ -201,12 +204,40 @@ test("takeParkedBoundary drops a repeat of what the session was already told", a
   const id = "boundary-repeat";
   await ss.mutateSessionState(id, (s) => {
     ss.bumpShown(s, "code-boundary:abc");
-    s.boundary = { note: "BLOCK", dedupeKey: "code-boundary:abc" };
+    ss.parkBoundary(s, { note: "BLOCK", dedupeKey: "code-boundary:abc", files: 3 }, 1);
   });
 
-  assert.equal(await ss.takeParkedBoundary(id), null);
+  const taken = await ss.takeParkedBoundary(id);
+  // Nothing goes out — but the dedupe hit is still a row worth writing.
+  assert.equal(taken?.note, null);
   // The slot empties either way — a stale repeat must not sit there forever.
   assert.equal((await ss.loadSessionState(id)).boundary, undefined);
+});
+
+test("takeBoundary takes and marks inside one mutation a lane already holds", async () => {
+  // #305: the prompt lane folds the take into its own save. Revert-check: take
+  // the block BEFORE the mutation and mark it inside, and the second half goes
+  // red — the same block is handed over twice.
+  const id = "boundary-folded";
+  await ss.mutateSessionState(id, (s) => {
+    ss.parkBoundary(s, { note: "BLOCK", dedupeKey: "code-boundary:folded", files: 3 }, 1);
+  });
+
+  let taken: { note: string | null; files: number } | null = null;
+  await ss.mutateSessionState(id, (s) => {
+    taken = ss.takeBoundary(s);
+    ss.bumpShown(s, "some-memory");
+  });
+
+  assert.equal((taken as { note: string | null } | null)?.note, "BLOCK");
+  const after = await ss.loadSessionState(id);
+  assert.equal(after.boundary, undefined);
+  assert.equal(after.shown["code-boundary:folded"]?.count, 1);
+  // One write did both, so the unrelated delta of the same save survived it.
+  assert.equal(after.shown["some-memory"]?.count, 1);
+  await ss.mutateSessionState(id, (s) => {
+    assert.equal(ss.takeBoundary(s), null);
+  });
 });
 
 test("the accumulator survives another lane's save of the same file", async () => {

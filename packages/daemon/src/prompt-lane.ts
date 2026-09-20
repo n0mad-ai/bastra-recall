@@ -46,6 +46,9 @@ import { reportHinted } from "./hook-hinted.js";
 import { hookClient } from "./hook-surface.js";
 import { governContext } from "./context-governor.js";
 import { deliverPromptImpact } from "./code-graph/prompt-impact.js";
+import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
+import { repoRootSync } from "./code-graph/git-paths.js";
+import { logDeliveredBlock } from "./code-delivered-telemetry.js";
 import type { Prewarmer, PrewarmOutcome } from "./embedding-prewarm.js";
 import {
   bumpShown,
@@ -56,8 +59,10 @@ import {
   recordSourceSuppressed,
   mutateSessionState,
   shouldDropHit,
+  takeBoundary,
   takeParkedBoundary,
   wasEmitConsumed,
+  type TakenBoundary,
 } from "./session-state.js";
 
 // Per trigger class since #305 — see hook-budgets.ts for the measurement.
@@ -376,12 +381,19 @@ export async function runPromptLane(
     // #572: a trivial prompt skips the RECALL, not the task-boundary block. "ok"
     // and "go on" after a finished task are exactly the turn it was parked
     // for, and handing it over costs one state read when nothing is parked.
-    const parkedForTrivial = await takeParkedBoundary(payload.session_id ?? "");
+    // #607: behind the prompt lane's opt-in, like every other delivery of this
+    // lane — the gate is checked first, so a switched-off lane costs nothing.
+    const parkedForTrivial = (await getPromptImpactEnabled())
+      ? await takeParkedBoundary(payload.session_id ?? "")
+      : null;
     if (parkedForTrivial !== null) {
+      logBoundaryDelivery(payload.session_id ?? null, payload.cwd ?? process.cwd(), parkedForTrivial);
+    }
+    if (parkedForTrivial?.note != null) {
       return JSON.stringify({
         hookSpecificOutput: {
           hookEventName: "UserPromptSubmit",
-          additionalContext: parkedForTrivial,
+          additionalContext: parkedForTrivial.note,
         },
       });
     }
@@ -668,27 +680,22 @@ export async function runPromptLane(
 
   const reflexBlock = reflexKept.length > 0 ? formatReflexBlock(reflexKept, project, client) : null;
   const impact = await impactPromise;
-  // The impact block goes FIRST: it is the answer to what the user just asked,
-  // and it is there to be read before the first search, not after the memory
-  // hints. It never rides the recall backoff — it is not recall noise, it is a
-  // deterministic answer to an explicit question (same reasoning as the size
-  // note in the write lane).
-  // #572: the task-boundary block the last Stop parked for THIS session. It
-  // rides first for the same reason: it is about what the agent just did, and
-  // it is worth reading before the next thing is done on top of it.
-  const boundary = await takeParkedBoundary(sessionId);
-  const blocks = [boundary, impact.block, reflexBlock, recallBlock].filter(
-    (b): b is string => b !== null,
-  );
-  const stdout =
-    blocks.length === 0
-      ? "{}"
-      : JSON.stringify({
-          hookSpecificOutput: {
-            hookEventName: "UserPromptSubmit",
-            additionalContext: blocks.join("\n"),
-          },
-        });
+
+  // #572: the task-boundary block the last Stop parked for THIS session.
+  // #607: behind the prompt lane's own opt-in (b3a6f80) — same lane, same
+  // delivery nobody has measured yet, so the same switch and the same default
+  // (off).
+  //
+  // Taken inside the save below rather than through `takeParkedBoundary`: that
+  // would open the session state a SECOND time on a path with a 200 ms ceiling
+  // (#305), next to the snapshot above and the mutation below. The snapshot
+  // only decides whether there is anything to take; the take, the dedupe check
+  // and the marking still happen in one locked mutation, so a crash between
+  // them can neither duplicate nor lose the block. A Stop that parks between
+  // the snapshot and the lock keeps its block for the next prompt, which is
+  // where it was headed anyway.
+  const takeBoundaryNow = state.boundary !== undefined && (await getPromptImpactEnabled());
+  let boundary: TakenBoundary | null = null;
 
   // State-Bookkeeping in einem Save: Backoff-Streak nur für die
   // prompt-lookup-Lane, Reflex bucht nur die Session-Dedup.
@@ -696,10 +703,11 @@ export async function runPromptLane(
   // #539: the deltas run against the state as it is on disk when the lock is
   // taken, not against the snapshot read before the recall — the other four
   // lanes write the same file in the meantime.
-  if (recallHits.length > 0 || reflexKept.length > 0 || impact.dedupeKey !== null) {
+  if (recallHits.length > 0 || reflexKept.length > 0 || impact.dedupeKey !== null || takeBoundaryNow) {
     const recallIds = recallHits.map((h) => h.id);
     const impactKey = impact.dedupeKey;
     await mutateSessionState(sessionId, (s) => {
+      if (takeBoundaryNow) boundary = takeBoundary(s);
       // #606: booked only when the block actually reached the transcript, so a
       // suppressed turn does not silence the next one.
       if (impactKey !== null) bumpShown(s, impactKey);
@@ -720,6 +728,33 @@ export async function runPromptLane(
       }
     });
   }
+  // The assignment happens inside the mutation callback, which TypeScript's
+  // control flow does not follow — without the cast it narrows `boundary` to
+  // the `null` it was declared with.
+  const takenBoundary = boundary as TakenBoundary | null;
+  if (takenBoundary !== null) logBoundaryDelivery(payload.session_id ?? null, cwd, takenBoundary);
+
+  // The impact block goes FIRST: it is the answer to what the user just asked,
+  // and it is there to be read before the first search, not after the memory
+  // hints. It never rides the recall backoff — it is not recall noise, it is a
+  // deterministic answer to an explicit question (same reasoning as the size
+  // note in the write lane).
+  // #572: the boundary block rides ahead of it for the same reason: it is about
+  // what the agent just did, and it is worth reading before the next thing is
+  // done on top of it.
+  const blocks = [takenBoundary?.note ?? null, impact.block, reflexBlock, recallBlock].filter(
+    (b): b is string => b !== null,
+  );
+  const stdout =
+    blocks.length === 0
+      ? "{}"
+      : JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: "UserPromptSubmit",
+            additionalContext: blocks.join("\n"),
+          },
+        });
+
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
   const injectedIds = [
     ...(reflexBlock ? reflexKept.map((h) => h.id) : []),
@@ -785,6 +820,29 @@ export async function runPromptLane(
   });
 
   return stdout;
+}
+
+/**
+ * #572/#579: one `code_tool_call` row per task-boundary block that reached the
+ * transcript — the same shape and the same call the write lane
+ * (`write-lane.ts`) and `prompt-impact.ts` use, so all three deliveries group
+ * by `delivered_lane` in one readout instead of joining two event kinds.
+ *
+ * A block the session-dedupe held back is booked as a dedupe hit, the same
+ * "which kind of nothing" the other two lanes tell apart. Fire-and-forget: the
+ * row is the measurement, never part of the answer.
+ */
+function logBoundaryDelivery(sessionId: string | null, cwd: string, taken: TakenBoundary): void {
+  void logDeliveredBlock({
+    sessionId,
+    lane: "boundary",
+    repo: repoRootSync(cwd) ?? cwd,
+    dedupeHit: taken.note === null,
+    // No `basis`: a boundary block has one per dependent (edit-time or
+    // whole-file-now), not one for the answer, and inventing a single value
+    // would put a number in that column that describes nothing.
+    ...(taken.note !== null ? { files: taken.files, tokensEst: Math.ceil(taken.note.length / 4) } : {}),
+  });
 }
 
 // ─── formatting ─────────────────────────────────────────────────────────────

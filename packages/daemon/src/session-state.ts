@@ -81,6 +81,26 @@ export interface TouchedFile {
   truncated: boolean;
 }
 
+/**
+ * #572: the task-boundary block one Stop computed, waiting for the next prompt
+ * of this session. `files` is what the block is about to cost the agent in
+ * attention — the count #579 measures the delivery by, carried here because the
+ * lane that hands the block over no longer has the note's own arithmetic.
+ */
+export interface ParkedBoundary {
+  note: string;
+  dedupeKey: string;
+  builtFrom: number;
+  files: number;
+}
+
+/** #572: what a lane took out of the slot, from inside its own mutation. */
+export interface TakenBoundary {
+  /** The block, or null when this session had already been told the same. */
+  note: string | null;
+  files: number;
+}
+
 export interface SessionState {
   shown: Record<string, ShownEntry>;
   /** #161: keyed by hook source ("write-edit", "bash-tripwire", …) */
@@ -97,7 +117,7 @@ export interface SessionState {
    * boundary covers everything an earlier one did, because `touched` only
    * grows.
    */
-  boundary?: { note: string; dedupeKey: string; builtFrom: number };
+  boundary?: ParkedBoundary;
   /** #572: characters the accumulator holds, against `MAX_TOUCHED_CHARS`. */
   touchedChars?: number;
   /**
@@ -131,7 +151,7 @@ export type ReadonlySourceBackoff = Readonly<Omit<SourceBackoff, "ids">> & {
 export interface ReadonlySessionState {
   readonly shown: Readonly<Record<string, Readonly<ShownEntry>>>;
   readonly sources?: Readonly<Record<string, ReadonlySourceBackoff>>;
-  readonly boundary?: Readonly<{ note: string; dedupeKey: string; builtFrom: number }>;
+  readonly boundary?: Readonly<ParkedBoundary>;
   readonly touchedChars?: number;
   readonly touched?: ReadonlyMap<
     string,
@@ -219,6 +239,9 @@ async function readSessionState(sessionId: string): Promise<SessionState> {
         note: parsed.boundary.note,
         dedupeKey: parsed.boundary.dedupeKey,
         builtFrom: typeof parsed.boundary.builtFrom === "number" ? parsed.boundary.builtFrom : 0,
+        // A state written before the telemetry row existed carries no count;
+        // zero is honest about that and never inflates the measurement.
+        files: typeof parsed.boundary.files === "number" ? parsed.boundary.files : 0,
       };
     }
     if (typeof parsed.touchedChars === "number") state.touchedChars = parsed.touchedChars;
@@ -504,7 +527,7 @@ const ENTRY_OVERHEAD = 64;
  */
 export function parkBoundary(
   state: SessionState,
-  built: { note: string; dedupeKey: string } | null,
+  built: { note: string; dedupeKey: string; files: number } | null,
   builtFrom: number,
 ): void {
   if (state.boundary !== undefined && state.boundary.builtFrom > builtFrom) return;
@@ -512,7 +535,28 @@ export function parkBoundary(
     delete state.boundary;
     return;
   }
-  state.boundary = { note: built.note, dedupeKey: built.dedupeKey, builtFrom };
+  state.boundary = { note: built.note, dedupeKey: built.dedupeKey, builtFrom, files: built.files };
+}
+
+/**
+ * #572: take the parked block from inside a mutation the caller already holds.
+ *
+ * Read, dedupe-check, book and clear in ONE write — the atomicity
+ * `takeParkedBoundary` describes, available to a lane that has the session
+ * state open anyway. The prompt lane folds it into its own save rather than
+ * opening the file a second time on the hot path (#305's 200 ms ceiling).
+ *
+ * Returns null when nothing was parked. A `note` of null means the slot was
+ * cleared but this session had already been told the same thing — the caller
+ * still has a measurement to write.
+ */
+export function takeBoundary(state: SessionState): TakenBoundary | null {
+  const parked = state.boundary;
+  if (parked === undefined) return null;
+  delete state.boundary;
+  if ((state.shown[parked.dedupeKey]?.count ?? 0) >= MAX_SHOW) return { note: null, files: parked.files };
+  bumpShown(state, parked.dedupeKey);
+  return { note: parked.note, files: parked.files };
 }
 
 /**
@@ -524,20 +568,15 @@ export function parkBoundary(
  * nothing is parked or this session was already told the same thing; the slot
  * empties either way.
  */
-export async function takeParkedBoundary(sessionId: string): Promise<string | null> {
+export async function takeParkedBoundary(sessionId: string): Promise<TakenBoundary | null> {
   if (!sessionId) return null;
   // Cheap early-out: no slot, no lock, no write — the common prompt.
   if ((await loadSessionState(sessionId)).boundary === undefined) return null;
-  let note: string | null = null;
+  let taken: TakenBoundary | null = null;
   await mutateSessionState(sessionId, (state) => {
-    const parked = state.boundary;
-    if (parked === undefined) return;
-    delete state.boundary;
-    if ((state.shown[parked.dedupeKey]?.count ?? 0) >= MAX_SHOW) return;
-    bumpShown(state, parked.dedupeKey);
-    note = parked.note;
+    taken = takeBoundary(state);
   });
-  return note;
+  return taken;
 }
 
 /** Files booked across every repository of the session. */
