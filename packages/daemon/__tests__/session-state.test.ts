@@ -217,23 +217,28 @@ test("the accumulator survives another lane's save of the same file", async () =
   assert.equal((await ss.loadSessionState(id)).touched?.["/r"]?.["a.ts"]?.unplaced, true);
 });
 
-test("a path named __proto__ is booked as a key, it does not become a prototype", async () => {
+test("a __proto__ key is refused, and writes never reach a prototype", async () => {
   // CodeQL js/remote-property-injection: both table levels take their keys from
-  // tool input. Revert-check: turn `emptyTable()` back into `{}` in
-  // recordTouched and the first two assertions go red; adopt `parsed.touched`
-  // as parsed instead of rebuilding it and the last one goes red — the table
-  // comes back from disk with an ordinary prototype and the next write
-  // pollutes it again.
+  // tool input. Revert-check: drop the `isSafeTableKey` guard in recordTouched
+  // and the refusal assertions go red; drop `emptyTable()` with it and the
+  // prototype assertion goes red; drop the guard in the load branch and the
+  // round-trip assertion goes red — a poisoned state file is adopted as parsed.
   const id = "boundary-proto";
-  await ss.mutateSessionState(id, (s) => ss.recordTouched(s, "__proto__", "__proto__", null));
-
-  const state = await ss.loadSessionState(id);
-  assert.ok(Object.hasOwn(state.touched ?? {}, "__proto__"), "the repo root is an own key");
-  assert.equal(({} as Record<string, unknown>).polluted, undefined);
+  // In the writer's own state, not after a reload: the load branch carries the
+  // same guard, so reading the refusal back through it would test that guard
+  // twice and never this one.
+  await ss.mutateSessionState(id, (s) => {
+    ss.recordTouched(s, "__proto__", "a.ts", null);
+    ss.recordTouched(s, "/r", "__proto__", null);
+    assert.equal(s.touched?.["__proto__"], undefined, "an unsafe repo root is not booked");
+    assert.equal(s.touched?.["/r"]?.["__proto__"], undefined, "an unsafe file is not booked");
+  });
   assert.equal(Object.getPrototypeOf({}), Object.prototype);
+  assert.equal(({} as Record<string, unknown>).a, undefined);
 
-  // A second lane's write, after the table has made a round trip through disk.
-  await ss.mutateSessionState(id, (s) => ss.recordTouched(s, "__proto__", "b.ts", null));
+  // A safe path in the same session is still booked, and survives the round
+  // trip through disk that the load branch rebuilds.
+  await ss.mutateSessionState(id, (s) => ss.recordTouched(s, "/r", "b.ts", null));
   const again = await ss.loadSessionState(id);
-  assert.equal(again.touched?.["__proto__"]?.["b.ts"]?.unplaced, true);
+  assert.equal(again.touched?.["/r"]?.["b.ts"]?.unplaced, true);
 });

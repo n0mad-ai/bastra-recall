@@ -208,8 +208,10 @@ async function readSessionState(sessionId: string): Promise<SessionState> {
       const touched = emptyTable<Record<string, TouchedFile>>();
       for (const [repoRoot, files] of Object.entries(parsed.touched as Record<string, unknown>)) {
         if (!files || typeof files !== "object") continue;
+        if (!isSafeTableKey(repoRoot)) continue;
         const repo = emptyTable<TouchedFile>();
         for (const [file, entry] of Object.entries(files as Record<string, TouchedFile>)) {
+          if (!isSafeTableKey(file)) continue;
           repo[file] = entry;
         }
         touched[repoRoot] = repo;
@@ -412,18 +414,29 @@ export const MAX_TOUCHED_CHARS = 128 * 1024;
  * table is marked `touchedOverflow` — it has become a prefix of the task.
  */
 /**
- * A keyed table whose keys come from tool input — a repository root and a file
- * path. Both levels are prototype-less on purpose: on an ordinary object
+ * #572 (CodeQL `js/remote-property-injection`, three writes in
+ * `recordTouched`): both levels of `touched` are keyed by tool input — a
+ * repository root and a file path. On an ordinary object
  * `table["__proto__"] = entry` runs the inherited setter and changes the
- * object's prototype instead of storing anything, which is prototype
- * pollution (CodeQL `js/remote-property-injection`, three writes in
- * `recordTouched`). With no prototype there is no setter to reach, so such a
- * path is stored as the ordinary own key it is. Nothing is rejected: a file
- * the task really wrote must be booked whatever it is called, and "I dropped
- * it for safety" would render as "nothing depends on it" at the boundary.
+ * object's prototype instead of storing anything.
+ *
+ * Two answers, because one of them can be read back from disk. `emptyTable`
+ * gives every container a null prototype, so there is no setter to reach;
+ * `isSafeTableKey` is the same refusal `call-corruption.ts` makes for argument
+ * names (#56), and it holds for a table that has made a round trip through
+ * `JSON.parse` before this lane writes to it again.
+ *
+ * Refusing costs nothing reachable. The outer key is a repository root —
+ * always an absolute path — and the inner key is a path relative to it, so a
+ * refused booking needs a file named exactly `__proto__` at the root of a
+ * repository whose own absolute path is also exactly `__proto__`.
  */
 function emptyTable<T>(): Record<string, T> {
   return Object.create(null) as Record<string, T>;
+}
+
+function isSafeTableKey(key: string): boolean {
+  return key !== "__proto__" && key !== "constructor" && key !== "prototype";
 }
 
 export function recordTouched(
@@ -434,6 +447,7 @@ export function recordTouched(
   truncated = false,
   now: number = Date.now(),
 ): void {
+  if (!isSafeTableKey(repoRoot) || !isSafeTableKey(file)) return;
   if (state.touched === undefined) state.touched = emptyTable();
   let repo = state.touched[repoRoot];
   if (repo === undefined) {
