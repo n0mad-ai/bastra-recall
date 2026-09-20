@@ -8,7 +8,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import matter from "gray-matter";
@@ -102,6 +102,80 @@ test("expectedId null überspringt die Identitätsprüfung — für Dateien im T
     });
     assert.equal(out.kind, "written");
     assert.equal(matter(await readFile(file, "utf8")).data.obsolete, true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── #341: mtime preservation for enrichment-only rewrites ──────────
+//
+// Every file-sync layer (iCloud, Google Drive, Dropbox) resolves a conflict by
+// modification time. A rewrite that only adds derived data — and leaves the
+// authored content byte-identical — must therefore NOT touch the mtime, or the
+// enriched copy outranks a copy a human actually edited elsewhere.
+
+/** Backdate a file so "mtime unchanged" and "mtime is new" are both provable
+ *  without depending on the clock's resolution. */
+async function backdate(file: string): Promise<number> {
+  const when = new Date(Date.now() - 3_600_000);
+  await utimes(file, when, when);
+  return (await stat(file)).mtimeMs;
+}
+
+test("#341: ein Rewrite mit gleichem authored content behält die mtime", async () => {
+  const { dir, file } = await fileWith(memory("m"));
+  try {
+    const before = await backdate(file);
+    const out = await mutateMemoryFile(
+      file,
+      "m",
+      {
+        frontmatter: (fm) => ({ ...fm, recall_when_expanded: ["a", "b"] }),
+        authoredContent: (body) => body,
+      },
+      { vaultRoot: dir },
+    );
+    assert.equal(out.kind, "written");
+    assert.deepEqual(matter(await readFile(file, "utf8")).data.recall_when_expanded, ["a", "b"]);
+    assert.equal((await stat(file)).mtimeMs, before, "mtime unverändert");
+    assert.deepEqual((await readdir(dir)).filter((f) => f.endsWith(".tmp")), []);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("#341: eine echte Inhaltsänderung bekommt eine neue mtime — auch mit authoredContent", async () => {
+  const { dir, file } = await fileWith(memory("m"));
+  try {
+    const before = await backdate(file);
+    const out = await mutateMemoryFile(
+      file,
+      "m",
+      {
+        body: (b) => `${b.trimEnd()}\n\nVOM MENSCHEN\n`,
+        authoredContent: (body) => body,
+      },
+      { vaultRoot: dir },
+    );
+    assert.equal(out.kind, "written");
+    assert.ok((await stat(file)).mtimeMs > before, "mtime neu");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("#341: ohne authoredContent bleibt die mtime-Erhaltung aus — der Save-/Edit-Pfad", async () => {
+  const { dir, file } = await fileWith(memory("m"));
+  try {
+    const before = await backdate(file);
+    const out = await mutateMemoryFile(
+      file,
+      "m",
+      { frontmatter: (fm) => ({ ...fm, superseded_by: "neu" }) },
+      { vaultRoot: dir },
+    );
+    assert.equal(out.kind, "written");
+    assert.ok((await stat(file)).mtimeMs > before, "mtime neu (kein Opt-in)");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

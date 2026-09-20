@@ -27,7 +27,7 @@
  * schließt das Fenster nicht, er erkennt nur, dass es zugeschlagen hat.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { readFile, rename, stat, unlink, utimes, writeFile } from "node:fs/promises";
 import matter from "gray-matter";
 import { occupantOfRaw } from "./memory-locator.js";
 import { withIdClaim } from "./id-transaction.js";
@@ -98,6 +98,23 @@ export interface MemoryMutation {
   frontmatter?: (fm: Record<string, unknown>) => Record<string, unknown> | null;
   /** Body-Transformation. */
   body?: (body: string) => string;
+  /**
+   * Opt-in (#341): the authored slice of a body — everything a human wrote,
+   * with what we generate ourselves left out. Given, this mutation keeps the
+   * file's mtime whenever that slice is byte-identical before and after.
+   *
+   * Only the enrichment passes pass it, and only they may: every file-sync
+   * layer (iCloud, Google Drive, Dropbox) resolves a conflict by modification
+   * time, so a rewrite that adds nothing but derived data — `related_via`,
+   * `recall_when_expanded`, the Auto-Related section — made the enriched copy
+   * outrank a copy a human had really edited elsewhere. Inverted signal,
+   * silent loss, found months later by reading a stale note.
+   *
+   * The default stays untouched for everyone else: a save, an edit, a
+   * conflict marker and an archive stamp all change what the file says, and
+   * their new mtime is the truth the sync layer needs.
+   */
+  authoredContent?: (body: string) => string;
 }
 
 /**
@@ -212,6 +229,19 @@ async function mutateUnderClaim(
   const tmp = `${filePath}.${process.pid}.${randomUUID().slice(0, 8)}.mutate.tmp`;
   await writeFile(tmp, next, "utf8");
   try {
+    // #341: the timestamp goes on the TEMP file, before the rename — a
+    // `utimes` after it would leave a window in which watcher, cloud sync and
+    // reconcile see the new mtime, which is exactly what we are avoiding. The
+    // rename carries the stamp over atomically. A file that vanished under us
+    // simply keeps the fresh mtime; the compare-and-swap below turns that case
+    // into `raced` anyway.
+    if (mutation.authoredContent !== undefined) {
+      const authored = mutation.authoredContent;
+      if (authored(parsed.content) === authored(bodyAfter)) {
+        const st = await stat(filePath).catch(() => null);
+        if (st) await utimes(tmp, st.atime, st.mtime);
+      }
+    }
     const current = await readFile(filePath, "utf8").catch(() => null);
     if (current !== raw) {
       await unlink(tmp).catch(() => {});

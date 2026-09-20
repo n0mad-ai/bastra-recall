@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { Vault } from "../src/vault.js";
+import { mutateMemoryFile } from "../src/memory-mutate.js";
 
 function memoryMd(id: string, title = `Title ${id}`): string {
   return `---
@@ -90,6 +91,51 @@ test("reconcile: in-place edit that changes the id remaps cleanly", async () => 
     assert.equal(await vault.reconcile(), 2);
     assert.equal(vault.get("b"), undefined, "old id dropped");
     assert.equal(vault.get("b-renamed")?.fm.title, "Title b-renamed");
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+/**
+ * #341: an enrichment rewrite keeps the file's mtime, so `reconcile()`'s
+ * stat-compare can no longer see it — and in the worst case the size is
+ * unchanged too (one frontmatter value swapped for another of equal length).
+ * The reindex must not depend on that comparison: the process that writes
+ * updates the index itself (`reindexFile`, what both enrichers do), and a
+ * later reconcile must leave that entry alone instead of reverting it.
+ */
+test("#341: eine mtime-erhaltende Anreicherung bleibt im Index — auch bei gleicher Dateigröße", async () => {
+  const { dir, vault } = await freshVault(["a"]);
+  try {
+    const file = path.join(dir, "a.md");
+    const enrich = (src: string) =>
+      mutateMemoryFile(
+        file,
+        "a",
+        {
+          frontmatter: (fm) => ({ ...fm, recall_when_expanded_src: src }),
+          authoredContent: (body) => body,
+        },
+        { vaultRoot: dir },
+      );
+
+    assert.equal((await enrich("aaaaaaaa")).kind, "written");
+    await vault.reindexFile(file);
+    const stamped = await stat(file);
+
+    assert.equal((await enrich("bbbbbbbb")).kind, "written");
+    await vault.reindexFile(file);
+    const after = await stat(file);
+    assert.equal(after.mtimeMs, stamped.mtimeMs, "mtime unverändert");
+    assert.equal(after.size, stamped.size, "gleiche Dateigröße — der Randfall");
+    assert.equal(vault.get("a")?.fm.recall_when_expanded_src, "bbbbbbbb");
+
+    await vault.reconcile();
+    assert.equal(
+      vault.get("a")?.fm.recall_when_expanded_src,
+      "bbbbbbbb",
+      "reconcile lässt den selbst gesetzten Eintrag stehen",
+    );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
