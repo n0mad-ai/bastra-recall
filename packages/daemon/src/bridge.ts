@@ -64,6 +64,7 @@ import {
 import { expandQuery, BridgePool } from "./learned-recall/bridges.js";
 import { isSupportedLanguage, type SupportedLanguage } from "./learned-recall/language.js";
 import { bridgesPath } from "./cli/bridges.js";
+import { startVaultReconcile } from "./daemon-jobs.js";
 import readline from "node:readline";
 import * as path from "node:path";
 
@@ -216,6 +217,14 @@ async function main(): Promise<void> {
       "\n",
   );
   vault.startWatching();
+  // #368: the bridge is long-lived (spawned once by the Mac app's Tauri
+  // backend) and, unlike the daemon, had only the watcher for ongoing sync —
+  // no fallback for what fsevents misses on cloud mounts or after a watcher
+  // error. Same job the daemon runs on its own boot (daemon-jobs.ts), reused
+  // rather than re-implemented: same env var and default, so
+  // BASTRA_VAULT_RECONCILE_MS=0 disables it in both places alike. unref()'d,
+  // so it never keeps this process alive; cleared below on stdin close.
+  const reconcileTimer = startVaultReconcile(vault);
   const search = new SearchIndex(vault);
   search.start();
   const auditLog = new AuditLog(VAULT_PATH!);
@@ -518,6 +527,12 @@ async function main(): Promise<void> {
   });
 
   rl.on("close", () => {
+    // Stop the reconcile loop explicitly on the bridge's one shutdown path
+    // (the parent closing stdin) — process.exit() below would take it with
+    // it regardless since it's unref'd, but a live handle left dangling past
+    // its owner's shutdown is the wrong invariant to leave for the next
+    // reader of this file.
+    if (reconcileTimer) clearInterval(reconcileTimer);
     process.stderr.write("[bastra-recall.bridge] stdin closed, exiting\n");
     process.exit(0);
   });

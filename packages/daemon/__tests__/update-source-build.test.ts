@@ -157,7 +157,7 @@ async function touchDist(root: string): Promise<void> {
 }
 
 const HEAD: HeadState = { revision: "a".repeat(40), dirty: false };
-const STAMP = { revision: "a".repeat(40), dirty: false, builtAt: null };
+const STAMP = { revision: "a".repeat(40), dirty: false };
 
 // ─── the verdict, as a pure decision ─────────────────────────────────────────
 
@@ -185,7 +185,7 @@ test("#528 — a build stamped with another revision is refused as a mismatch", 
     newestSourceMs: 1000,
     newestBuildMs: 2000,
     head: HEAD,
-    built: { revision: "b".repeat(40), dirty: false, builtAt: null },
+    built: { revision: "b".repeat(40), dirty: false },
   });
   assert.equal(s.ok, false);
   assert.equal(s.reason, "mismatch");
@@ -209,7 +209,7 @@ test("#528 — a dirty tree proceeds but proves no revision", () => {
     newestSourceMs: 1000,
     newestBuildMs: 2000,
     head: { revision: HEAD.revision, dirty: true },
-    built: { revision: HEAD.revision, dirty: true, builtAt: null },
+    built: { revision: HEAD.revision, dirty: true },
   });
   assert.equal(built.ok, true, "a build of the sources on disk is still the build that would go live");
   assert.equal(built.reason, "dirty");
@@ -225,10 +225,18 @@ test("#528 — a tree without workspace sources is not vetoed", () => {
 // ─── the stamp itself ────────────────────────────────────────────────────────
 
 test("#528 — the build stamp is parsed, and a stamp without a revision counts as none", () => {
-  const s = parseBuildStamp("revision=abc\ndirty=true\nbuilt_at=2026-09-12T00:00:00.000Z\n");
-  assert.deepEqual(s, { revision: "abc", dirty: true, builtAt: "2026-09-12T00:00:00.000Z" });
+  const s = parseBuildStamp("revision=abc\ndirty=true\n");
+  assert.deepEqual(s, { revision: "abc", dirty: true });
   assert.equal(parseBuildStamp("dirty=false\n"), null);
   assert.equal(parseBuildStamp(""), null);
+});
+
+// #554 dropped `built_at` from newly written stamps, but a stamp written
+// before that fix still carries the line on disk (e.g. inside an already
+// published tarball) and must keep reading cleanly, just without the field.
+test("#554 — a stamp written before built_at was dropped still parses, minus that field", () => {
+  const s = parseBuildStamp("revision=abc\ndirty=true\nbuilt_at=2026-09-12T00:00:00.000Z\n");
+  assert.deepEqual(s, { revision: "abc", dirty: true });
 });
 
 test("#528 — the build writes the stamp; it is not guessed by the check", async () => {
@@ -462,7 +470,7 @@ test("#528 — a daemon on another build is never reported as a live HEAD", asyn
     newestSourceMs: 1,
     newestBuildMs: 2,
     head: { revision: head, dirty: false },
-    built: { revision: head, dirty: false, builtAt: null },
+    built: { revision: head, dirty: false },
   });
   // The no-LaunchAgent branch: nothing restarted the daemon, so it still
   // answers from the build it was started with.
@@ -484,7 +492,7 @@ test("#528 — an unreachable daemon is reported as 'goes live on the next start
     newestSourceMs: 1,
     newestBuildMs: 2,
     head: { revision: head, dirty: false },
-    built: { revision: head, dirty: false, builtAt: null },
+    built: { revision: head, dirty: false },
   });
   const { verdict, daemonRevision } = await liveRevisionOfDaemon(head, {
     attempts: 2,
@@ -503,7 +511,7 @@ test("#528 — a daemon answering from HEAD is the proof the closing line may st
     newestSourceMs: 1,
     newestBuildMs: 2,
     head: { revision: head, dirty: false },
-    built: { revision: head, dirty: false, builtAt: null },
+    built: { revision: head, dirty: false },
   });
   let calls = 0;
   const { verdict, daemonRevision } = await liveRevisionOfDaemon(head, {

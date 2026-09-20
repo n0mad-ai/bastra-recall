@@ -160,6 +160,24 @@ export const SaveMemoryInput = z.object({
       "folder must be a relative path without '..', '\\', or dot-segments (e.g. \"memories/people\")",
   }).optional(),
   overwrite: z.boolean().optional(),
+  /**
+   * #544 — a TAIL SENTINEL: the last ~40 characters of `body`, copied
+   * verbatim. A body that arrives truncated (MCP framing, a lossy proxy, an
+   * older client) currently lands as a shorter memory that looks exactly
+   * like a successful save — the caller cannot tell, and neither can the
+   * user.
+   *
+   * Why the tail and not a declared length: a language model cannot count
+   * characters reliably, so a length it declares is wrong often enough to
+   * fail legitimate saves — but it copies text reliably, and truncation in
+   * transport always takes the END. Optional: a caller that never sends it
+   * keeps today's behaviour unchanged, exactly like `expected_revision` on
+   * edit_memory (#519).
+   *
+   * `.min(1)` only here; the sentinel's real floor needs the body and lives
+   * in `assertBodyTail` below.
+   */
+  body_ends_with: z.string().min(1).optional(),
   // Bookmark-only fields
   url: z.string().optional(),
   categories: z.array(z.string()).optional(),
@@ -169,6 +187,73 @@ export const SaveMemoryInput = z.object({
   source_app: z.string().optional(),
 });
 export type SaveMemoryInput = z.infer<typeof SaveMemoryInput>;
+
+// ─── #544: the tail sentinel ──────────────────────────────────────────
+
+/**
+ * How much of the ending a sentinel has to repeat before it is evidence.
+ *
+ * Below this it stops proving anything: "the body ends with '.'" is true of
+ * almost every truncation as well. It is NOT a schema-level `.min()`, because
+ * the floor has to yield to a short body — the effective minimum is
+ * `min(BODY_SENTINEL_MIN_CHARS, body.length)`, so a sentinel is never
+ * required to be longer than the body it guards.
+ */
+export const BODY_SENTINEL_MIN_CHARS = 12;
+
+/**
+ * A `body_ends_with` that did not match — its own type so the daemon's
+ * consecutive-failure cap (#150) can skip it. Retrying WITH the complete body
+ * is exactly the right move here, and counting it towards "STOP retrying this
+ * save" would punish the caller for using the guard.
+ */
+export class BodySentinelError extends Error {
+  override readonly name = "BodySentinelError";
+}
+
+/**
+ * CRLF folding is the one normalisation that is warranted.
+ *
+ * A body can travel with `\r\n` (an editor, a Windows client, a pasted file)
+ * while the sentinel the caller copied carries `\n`, or the reverse — that is
+ * a line-ending convention, not damage. Nothing else between client and
+ * server rewrites text: JSON carries code points verbatim, so a Unicode
+ * re-normalisation (NFC) would buy no real case and would start hiding actual
+ * corruption. Trailing whitespace goes on both sides for the same reason.
+ */
+const normalizeTail = (text: string): string => text.replace(/\r\n/g, "\n").trimEnd();
+
+/** The visible part of an ending in an error message. */
+const endingFor = (text: string): string => JSON.stringify(text.slice(-60));
+
+/**
+ * Verify the declared tail against the body that actually arrived.
+ *
+ * Called from `saveMemory` (which every transport reaches, including the Mac
+ * App's `auditedSave`) and from the daemon's `save_memory` handler before the
+ * exits that return above `saveMemory` — the `conflict_with` diversion writes
+ * too, and a truncated conflict claim is no better than a truncated body.
+ * A no-op when the caller did not declare a tail.
+ */
+export function assertBodyTail(body: string, sentinel: string | undefined): void {
+  if (sentinel === undefined) return;
+  const expected = normalizeTail(sentinel);
+  const actual = normalizeTail(body);
+  const required = Math.max(1, Math.min(BODY_SENTINEL_MIN_CHARS, actual.length));
+  if (expected.length < required) {
+    throw new BodySentinelError(
+      `body_ends_with must repeat at least ${required} characters from the end of the body ` +
+        `(got ${expected.length}) — a tail that short would match a truncated body too. ` +
+        `NOTHING was written.`,
+    );
+  }
+  if (actual.endsWith(expected)) return;
+  throw new BodySentinelError(
+    `body_ends_with: the body that arrived does not end with the declared tail — it was ` +
+      `truncated in transit. Declared ending: ${endingFor(expected)}. Actual ending: ` +
+      `${endingFor(actual)}. NOTHING was written; resend save_memory with the COMPLETE body.`,
+  );
+}
 
 export interface SaveMemoryResult {
   id: string;

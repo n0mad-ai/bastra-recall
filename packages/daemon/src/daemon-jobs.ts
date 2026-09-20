@@ -93,12 +93,21 @@ function startCodeGraph(deps: BackgroundJobDeps): void {
 // touches the vault directly. reconcile() walks the disk itself (watcher-
 // independent) and emits add/remove events, which flow through the vault
 // listeners into the shared file. Set BASTRA_VAULT_RECONCILE_MS=0 to disable.
-function startVaultReconcile(vault: Vault): void {
+//
+// #368: exported — the bridge (bridge.ts) is a long-lived process with the
+// same watcher-only blind spot and had no fallback at all. Same function,
+// same env var and default, so a disabled reconcile stays disabled
+// everywhere instead of drifting between the two entry points. Returns the
+// interval handle (null when disabled) so a caller can clearInterval it on
+// its own shutdown; unref() already keeps it from blocking process exit.
+export function startVaultReconcile(vault: Vault): NodeJS.Timeout | null {
   const reconcileMs = envInt("BASTRA_VAULT_RECONCILE_MS", 60_000);
-  if (reconcileMs <= 0) return;
-  setInterval(() => {
+  if (reconcileMs <= 0) return null;
+  const timer = setInterval(() => {
     void vault.reconcile().catch(() => {});
-  }, reconcileMs).unref();
+  }, reconcileMs);
+  timer.unref();
+  return timer;
 }
 
 // Stale-Forwarder-Sweep (#80): Desktop-Zombies (toter Client, lebender

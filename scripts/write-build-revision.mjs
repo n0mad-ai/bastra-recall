@@ -17,6 +17,18 @@
  * has no revision to record, and a build must not die over a stamp. The
  * verifier is the place that decides what a missing stamp means.
  *
+ * No `built_at` timestamp (#554): this file ships inside the published
+ * tarball, and `scripts/publish-release-set.mjs` compares that tarball's
+ * digest against the registry's to decide whether a resumed publish can skip
+ * a package already there. A wall-clock timestamp made two builds of the
+ * identical tree pack to two different digests, seconds apart — so a genuine
+ * resume (rerun after a partial publish) could never match and always hit the
+ * hard "NOT this release" failure the check exists to avoid. `revision` and
+ * `dirty` already say everything the file exists to prove; nothing reads
+ * `built_at` (checked across the repo, including `/health` and `build-stamp.ts`),
+ * so dropping it changes no reported behaviour — it only makes the tarball
+ * reproducible, which is what the digest comparison assumes.
+ *
  * Usage: node scripts/write-build-revision.mjs <distDir>   (cwd = package root)
  */
 import { execFileSync } from "node:child_process";
@@ -55,6 +67,6 @@ const dirty = (git("status", "--porcelain") ?? "").trim() !== "";
 
 writeFileSync(
   resolve(distDir, ".build-revision"),
-  `revision=${revision}\ndirty=${dirty}\nbuilt_at=${new Date().toISOString()}\n`,
+  `revision=${revision}\ndirty=${dirty}\n`,
   "utf8",
 );

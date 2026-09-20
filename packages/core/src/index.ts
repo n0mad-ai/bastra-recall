@@ -47,7 +47,14 @@ export type { BanterMode, BanterLang } from "./recall-banter.js";
 
 export { saveMemory, deleteMemoryFile } from "./save.js";
 export type { DeleteMemoryResult } from "./save.js";
-export { SaveMemoryInput, MemoryWriteConflictError, MEMORY_WRITE_CONFLICT } from "./save-schema.js";
+export {
+  SaveMemoryInput,
+  MemoryWriteConflictError,
+  MEMORY_WRITE_CONFLICT,
+  BodySentinelError,
+  BODY_SENTINEL_MIN_CHARS,
+  assertBodyTail,
+} from "./save-schema.js";
 export type { SaveMemoryResult, SaveMemoryCommitOptions } from "./save-schema.js";
 export {
   slugify,

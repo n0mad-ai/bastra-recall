@@ -281,6 +281,15 @@ async function rewriteFile(
           return fm;
         },
         body: () => (newBody.startsWith("\n") ? newBody : `\n${newBody}`),
+        // #341: Angereichert wird nur Abgeleitetes — `related_via` und die
+        // markierte Auto-Section. Was der Mensch geschrieben hat, ist alles
+        // AUSSERHALB der Marker; bleibt das gleich, behält die Datei ihre
+        // mtime, und „newest wins" in iCloud/Drive/Dropbox zeigt wieder auf
+        // die zuletzt wirklich editierte Kopie. Führende und abschließende
+        // Leerzeilen zählen nicht: die normalisiert `rebuildBodyWithAutoSection`
+        // selbst, sie wären sonst eine Inhaltsänderung, die keine ist.
+        authoredContent: (body) =>
+          stripAutoRelatedSection(body).replace(/^\n+/, "").replace(/\n+$/, ""),
       },
       { vaultRoot },
     );

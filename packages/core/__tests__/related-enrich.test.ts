@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { Vault } from "../src/vault.js";
@@ -373,6 +373,36 @@ body host
     // Zweiter Lauf: nichts mehr zu tun, kein Endlos-Rewrite.
     assert.equal(await enricher.enrich("host"), null);
     assert.equal(await readFile(path.join(dir, "host.md"), "utf8"), raw);
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+/**
+ * #341: Die Anreicherung schreibt nur abgeleitete Daten — `related_via` und
+ * die markierte Auto-Section. Der authored body (alles außerhalb der Marker)
+ * bleibt byte-gleich, also muss die Datei ihre mtime behalten: iCloud, Google
+ * Drive und Dropbox entscheiden Konflikte danach, und eine angereicherte Kopie
+ * darf keine vom Menschen editierte Kopie überstimmen.
+ */
+test("#341: enrich behält die mtime und der Index sieht die Anreicherung trotzdem", async () => {
+  const { dir, vault } = await vaultWith(["a", "b"]);
+  try {
+    const file = path.join(dir, "a.md");
+    const when = new Date(Date.now() - 3_600_000);
+    await utimes(file, when, when);
+    const before = (await stat(file)).mtimeMs;
+
+    const { index } = stubEmbeddings([{ id: "b", score: 0.85 }]);
+    assert.ok(await new RelatedEnricher(vault, index).enrich("a"));
+
+    assert.match(await readFile(file, "utf8"), /- \[\[b\]\] \(cosine 0\.85\)/);
+    assert.equal((await stat(file)).mtimeMs, before, "mtime unverändert");
+    assert.equal(
+      (vault.get("a")?.fm as { related_via?: { id: string }[] }).related_via?.[0]?.id,
+      "b",
+      "der schreibende Prozess hat selbst reindiziert",
+    );
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }

@@ -16,7 +16,7 @@ import type {
   SaveMemoryResult,
   SaveMemoryCommitOptions,
 } from "./save-schema.js";
-import { MemoryWriteConflictError } from "./save-schema.js";
+import { MemoryWriteConflictError, assertBodyTail } from "./save-schema.js";
 import { buildFrontmatter } from "./save-frontmatter.js";
 import { fileExists, readTarget, writeConflict } from "./save-commit.js";
 import { withIdClaim, type IdClaim } from "./id-transaction.js";
@@ -42,6 +42,14 @@ export async function saveMemory(
   input: SaveMemoryInput,
   commit: SaveMemoryCommitOptions = {},
 ): Promise<SaveMemoryResult> {
+  // #544: the declared tail of the body, checked before any lock or file I/O.
+  // A body that arrives truncated (MCP framing, a lossy proxy, an older
+  // client) would otherwise land as a shorter memory that looks exactly like
+  // a successful save — the caller cannot tell, and neither can the user.
+  // Living here, not only in the tool handler, means every caller of
+  // `saveMemory` inherits it, including `auditedSave` / bridge.ts.
+  assertBodyTail(input.body, input.body_ends_with);
+
   const locator = commit.locator ?? { locate: (wanted: string) => scanVaultForId(vaultRoot, wanted) };
   // Der injizierte Locator macht hier nur noch das ROUTING: In welchem Regal
   // und in welcher Schreibweise liegt diese id, damit ein Bestands-Memory
