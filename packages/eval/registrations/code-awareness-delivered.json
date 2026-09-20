@@ -1,8 +1,9 @@
 {
-  "$comment": "Pre-registration of the DELIVERED change-impact measurement (#606, epic #572). Supersedes nothing: registration_version 6 of code-awareness-change-impact.json measured the OFFERED surface and is complete. Version 2 fixes question, real prompt-lane treatment, thresholds, verdicts and truth rule BEFORE the first arm; its population is deliberately marked pending until it has been re-mined, adjudicated and hashed under tests/v2. Both select and runner refuse the pending state. Once that freeze is recorded, any later amendment invalidates the run and requires registration_version 3.",
+  "$comment": "Pre-registration of the DELIVERED change-impact measurement (#606, epic #572). Supersedes nothing: registration_version 6 of code-awareness-change-impact.json measured the OFFERED surface and is complete. Version 2 fixed the real prompt-lane treatment and tests/v2 truth before any arm; the exhausted population was then mined, adjudicated and frozen. Version 3, still before arm 1, makes the reachable absolute minimum 37 and clusters shared truth answers. From this point any amendment invalidates the run and requires registration_version 4.",
   "schema_version": 1,
   "registration_version": 3,
   "registered_at": "2026-09-19",
+  "amended_at": "2026-09-20",
   "registered_by": "Claude Opus 5; option and thresholds decided by Daniel Nevoigt on 2026-09-19",
   "status": "numbers_registered",
   "$comment_v2": "AMENDED BEFORE THE FIRST ARM after Codex counter-review: v1 combined the Write lane's diff-sharp content with the Prompt lane's pre-search timing, inferred unrelated production imports as test truth, and implemented block use as a fraction of candidate lines rather than the registered share of scenarios. No arm ran under v1. Version 2 calls the real prompt-lane content path, asks the test-aware question, scores broken test files directly, confirms failures mutated AND clean, and requires the population to be re-mined and frozen before status may return to numbers_registered.",
@@ -271,7 +272,8 @@
     "min_scenarios": 37,
     "min_context_pairs": 37,
     "min_use_blocks": 37,
-    "$comment_size": "DECIDED by Daniel Nevoigt on 2026-09-20 before the first arm. The history is exhausted at 44 scenarios and the frozen product delivers exactly 37 blocks, so 40 makes the use verdict impossible by construction. Both minima are absolute 37, not a relative share: context needs 37 solved A/D pairs and use needs all 37 delivered-block observations. The bootstrap CI separately reflects that those observations collapse to fewer independent truth components.",
+    "run_all_accepted": true,
+    "$comment_size": "DECIDED by Daniel Nevoigt on 2026-09-20 before the first arm. The history is exhausted at 44 scenarios and the frozen product delivers exactly 37 blocks, so 40 makes the use verdict impossible by construction. Both minima are absolute 37, not a relative share: context needs 37 solved A/D pairs and use needs all 37 delivered-block observations. `run_all_accepted` keeps all 44 frozen scenarios in the run; lowering the verdict minimum must not let select.mjs silently shrink the sample to ceil(37 x 1.125) = 42. The bootstrap CI separately reflects that those observations collapse to fewer independent truth components.",
     "must_be_fresh": true,
     "excluded_pilot": {
       "$comment": "The two bastra-recall pilot commits of registration 4. Enforced mechanically by select.mjs, from THIS registration rather than from the change-impact one — same repository, so unlike in registration 6 the exclusion actually binds here.",
