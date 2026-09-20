@@ -162,8 +162,13 @@ export interface RepoLock {
    * so the repository would never unblock short of a daemon restart. After
    * `suspend()` the record simply ages out over {@link LOCK_STALE_MS} — and
    * `release()` still works, so a child that exits later frees it at once.
+   *
+   * The beat stops SYNCHRONOUSLY — no tick started after this call can write —
+   * and the promise resolves once a beat that was already on its way has
+   * landed and the descriptor is closed. A caller that does not care may
+   * ignore it, which is what the build does.
    */
-  suspend(): void;
+  suspend(): Promise<void>;
 }
 
 export interface AcquireOptions {
@@ -171,6 +176,11 @@ export interface AcquireOptions {
   renewMs?: number;
   /** Off in tests that must not leave a timer behind. Default true. */
   heartbeat?: boolean;
+  /**
+   * Called after every heartbeat has landed. For tests that must observe the
+   * beat rather than sleep for a length of time a loaded machine may exceed.
+   */
+  onRenew?: () => void;
 }
 
 export function lockPath(graphDir: string): string {
@@ -214,7 +224,7 @@ export async function acquireRepoLock(
       const record = newRecord(await nextGeneration(gens, null));
       const handle = await publish(path, record, "create");
       if (handle === null) continue;
-      return makeLock(path, gens, handle, record, tookOver, renewMs, opts.heartbeat !== false);
+      return makeLock(path, gens, handle, record, tookOver, renewMs, opts.heartbeat !== false, opts.onRenew);
     }
 
     if (state.kind === "unreadable") {
@@ -232,7 +242,7 @@ export async function acquireRepoLock(
       const record = newRecord(await nextGeneration(gens, null));
       const handle = await publish(path, record, "replace");
       if (handle === null) continue;
-      return makeLock(path, gens, handle, record, true, renewMs, opts.heartbeat !== false);
+      return makeLock(path, gens, handle, record, true, renewMs, opts.heartbeat !== false, opts.onRenew);
     }
 
     if (state.record.state === "held") {
@@ -251,7 +261,7 @@ export async function acquireRepoLock(
     const handle = await publish(path, record, "replace");
     if (handle === null) continue;
     await pruneOldGenerations(gens, gen);
-    return makeLock(path, gens, handle, record, tookOver, renewMs, opts.heartbeat !== false);
+    return makeLock(path, gens, handle, record, tookOver, renewMs, opts.heartbeat !== false, opts.onRenew);
   }
   return null;
 }
@@ -336,24 +346,32 @@ function makeLock(
   tookOver: boolean,
   renewMs: number,
   heartbeat: boolean,
+  onRenew?: () => void,
 ): RepoLock {
   let released = false;
   let live: FileHandle | null = handle;
+  // The beat that is on its way, if any. A tick issues its write in the same
+  // turn it checks `live`, so stopping can never let a NEW write out — but the
+  // one already in flight still has to land before the record is final.
+  let beating: Promise<void> = Promise.resolve();
   // `unref()` so a pending heartbeat never keeps the daemon's event loop
   // alive — a CLI build must be able to exit the moment the build is done.
   let timer = heartbeat
     ? setInterval(() => {
-        if (live !== null) void renew(live, record);
+        if (live !== null) beating = renew(live, record, onRenew);
       }, renewMs)
     : null;
   timer?.unref?.();
 
-  const stop = () => {
+  const stop = async (): Promise<void> => {
     if (timer !== null) clearInterval(timer);
     timer = null;
     const open = live;
     live = null;
-    void closeQuietly(open);
+    // Close AFTER the beat in flight, not underneath it: once this resolves,
+    // the record on disk is the last word this holder will ever write.
+    await beating;
+    await closeQuietly(open);
   };
 
   return {
@@ -364,7 +382,7 @@ function makeLock(
     async release() {
       if (released) return;
       released = true;
-      stop();
+      await stop();
       await freeLock(path, gens, record);
     },
   };
@@ -477,7 +495,11 @@ async function isYoungerThan(path: string, ms: number): Promise<boolean> {
  * record. Should it nonetheless catch a partial line, the mtime it just saw is
  * fresh, and {@link UNREADABLE_GRACE_MS} makes that "busy", not "junk".
  */
-async function renew(handle: FileHandle, record: LockRecord): Promise<void> {
+async function renew(
+  handle: FileHandle,
+  record: LockRecord,
+  onRenew?: () => void,
+): Promise<void> {
   const beat = { ...record, renewedAt: new Date().toISOString() };
   const text = serialize(beat);
   try {
@@ -487,6 +509,7 @@ async function renew(handle: FileHandle, record: LockRecord): Promise<void> {
   } catch {
     /* a missed beat is not worth failing over: the next one renews the lease */
   }
+  onRenew?.();
 }
 
 
