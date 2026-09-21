@@ -83,15 +83,39 @@ export function foldClientDuplicates(
   // The fold mutates the daemon row's status, so work on copies: `aggregate`
   // must not rewrite the caller's events.
   const copies = new Map<Record<string, unknown>, Record<string, unknown>>();
+  // #615 — the scan used to rescan the whole `events` array for every client
+  // row (O(client rows × all events)). The candidates for one client are
+  // always a single (session, kind) bucket, so index the daemon-side rows
+  // into those buckets once. Buckets are built by walking `events` in order,
+  // so the tie-break below (`gap < bestGap`, first candidate wins) still
+  // resolves to the row that appears earliest in `events`.
+  const bucketsBySession = new Map<string, Map<unknown, Array<Record<string, unknown>>>>();
+  for (const e of events) {
+    if (isClientRow(e)) continue;
+    const session = sessionOf(e);
+    if (session === null) continue;
+    let byKind = bucketsBySession.get(session);
+    if (!byKind) {
+      byKind = new Map();
+      bucketsBySession.set(session, byKind);
+    }
+    let bucket = byKind.get(e.kind);
+    if (!bucket) {
+      bucket = [];
+      byKind.set(e.kind, bucket);
+    }
+    bucket.push(e);
+  }
   for (const client of clients.sort((a, b) => tsOf(a) - tsOf(b))) {
     const at = tsOf(client);
     const session = sessionOf(client);
     if (session === null) continue;
+    const bucket = bucketsBySession.get(session)?.get(client.kind);
+    if (!bucket) continue;
     let best: Record<string, unknown> | null = null;
     let bestGap = Infinity;
-    for (const e of events) {
-      if (e === client || taken.has(e) || isClientRow(e) || e.kind !== client.kind) continue;
-      if (sessionOf(e) !== session) continue;
+    for (const e of bucket) {
+      if (taken.has(e)) continue;
       const gap = Math.abs(tsOf(e) - at);
       if (gap <= DUPLICATE_WINDOW_MS && gap < bestGap) {
         best = e;
