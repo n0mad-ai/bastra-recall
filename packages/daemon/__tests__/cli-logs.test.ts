@@ -82,3 +82,20 @@ test("logs: an event with nothing to say still names itself", () => {
   assert.equal(formatEvent({ kind: "hook_act", ts: "x" }), "hook_act");
   assert.equal(formatEvent({ ts: "x" }), "event");
 });
+
+test("#565: a hook_reflex row with a near-miss trace still renders", () => {
+  // Der Trace ist ein Array in einer Zeile, die der Formatter generisch
+  // rendert — ein unbekanntes Feld darf die Ausgabe nicht sprengen.
+  const out = formatEvent({
+    kind: "hook_reflex",
+    ts: "x",
+    served: [],
+    near_miss: [
+      { id: "nachrichtenkonvention", phrase: "Antwort an zzalli", reason: "tokens-missing", matched_tokens: 1, phrase_tokens: 2, missing_tokens: ["antwort"] },
+    ],
+    latency_ms: 3,
+  });
+  assert.match(out, /^hook_reflex/);
+  assert.match(out, /3ms/);
+  assert.doesNotMatch(out, /\[object Object\]/, "no array is stringified into the line");
+});

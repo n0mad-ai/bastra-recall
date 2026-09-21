@@ -87,7 +87,31 @@ export const CANDIDATES_ONLY_NOTICE =
  * kalten Fall schlicht unwahr, und der Nutzer würde eine dauerhafte
  * Einschränkung lesen, wo eine Sekunde Ladezeit stand.
  */
-export type UnfusedReason = "off" | "cold-model";
+/**
+ * #565: dieselbe Unwahrheit eine Stufe tiefer. Jeder Hint-Block des Vorfalls
+ * las „semantic search is off", während `/health` auf demselben Daemon
+ * `semantic_recall: "on"` und einen geschlossenen Breaker meldete: Der dichte
+ * Arm WAR da, er hat diesen einen Aufruf nur nicht bedient (Frist gerissen,
+ * Fehler, oder nichts zu sagen). Die drei Gründe kommen als `degraded` über
+ * dieselbe Leitung — sie heißen hier genau so, damit kein Aufrufer sie noch
+ * einmal übersetzt.
+ */
+export type UnfusedReason =
+  | "off"
+  | "cold-model"
+  | "vector-arm-timeout"
+  | "vector-arm-error"
+  | "vector-arm-empty";
+
+/** Der `degraded`-Grund der Antwort, als Grund für die Überschrift. Fehlt er,
+ *  gab es wirklich keinen zweiten Arm. */
+export function unfusedReasonFor(degraded: string | undefined): UnfusedReason {
+  return degraded === "vector-arm-timeout" ||
+    degraded === "vector-arm-error" ||
+    degraded === "vector-arm-empty"
+    ? degraded
+    : "off";
+}
 
 export function unfusedHeadline(subject: string, reason: UnfusedReason = "off"): string {
   const why =
@@ -95,7 +119,16 @@ export function unfusedHeadline(subject: string, reason: UnfusedReason = "off"):
       ? `the embedding model was not in memory, so this lookup answered from the ` +
         `lexical path alone rather than wait for the load — it is running in the ` +
         `background and the next recall in this session is fused again`
-      : `semantic search is off`;
+      : reason === "vector-arm-timeout"
+        ? `semantic search is ON but did not answer inside this lookup's deadline, ` +
+          `so this ONE lookup ranked lexically — not a permanent limitation`
+        : reason === "vector-arm-error"
+          ? `semantic search is ON but its call failed on this lookup, so this ONE ` +
+            `lookup ranked lexically — not a permanent limitation`
+          : reason === "vector-arm-empty"
+            ? `semantic search is ON but returned nothing for this text, so no ` +
+              `second path had anything to confirm`
+            : `semantic search is off`;
   return (
     `Lexical matches for ${subject}, ranked by term overlap alone — ${why}, so no ` +
     `second path confirmed any of them and the scores are on an open-ended scale ` +

@@ -33,7 +33,7 @@ import { request } from "node:http";
 import { randomUUID } from "node:crypto";
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
-import { requiredHeadline, unfusedHeadline, CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
+import { requiredHeadline, unfusedHeadline, unfusedReasonFor, CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
 import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane, type ScopeFilterMode } from "./scope-filter.js";
 
 import { envFirst, envInt } from "./env.js";
@@ -581,6 +581,9 @@ export async function runPromptLane(
   );
   const reflexKeptIds = new Set(reflexGoverned.kept.map((g) => g.id));
   const reflexKept: PromptReflexHit[] = rawReflexHits.filter((h) => reflexKeptIds.has(h.id));
+  // #565: der eine Reflex-Miss, den die hook_reflex-Zeile nicht sehen kann —
+  // der Trigger hat gefeuert, der Session-Dedup hat den Hit einbehalten.
+  const reflexDeduped = rawReflexHits.filter((h) => !reflexKeptIds.has(h.id)).map((h) => h.id);
   const reflexIds = new Set(reflexKept.map((h) => h.id));
   let recallHits = filtered.filter((h) => !reflexIds.has(h.id));
   // Per-memory session dedup for ordinary recall hits, in EVERY detected mode
@@ -668,6 +671,7 @@ export async function runPromptLane(
       resp?.weak_result === true,
       resp?.unfused === true,
       client,
+      resp?.degraded,
     );
     if (suppressed) {
       // Suppressed drops only the recall block (#161); reflex still emits.
@@ -779,6 +783,7 @@ export async function runPromptLane(
     daemon_reachable: resp !== null || reflexResp !== null || recallSkipped !== undefined,
     hint_count: suppressed ? 0 : recallHits.length,
     reflex_hint_count: reflexKept.length,
+    ...(reflexDeduped.length > 0 ? { reflex_deduped_ids: reflexDeduped } : {}),
     // #354: which memories this lane actually injected, and of what type.
     // The prompt lane was the one hint source the context-tax evaluation could
     // not see per memory — it reported only counts. Suppressed emits stay
@@ -866,6 +871,10 @@ export function formatHintBlock(
   weak = false,
   unfused = false,
   surface = "claude-code",
+  // #565: der `degraded`-Grund der Antwort — ohne ihn behauptete der Block
+  // „semantic search is off", wo der Arm lief und nur diesen Aufruf nicht
+  // bediente.
+  degraded?: string,
 ): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
   const head = `<recall-hints surface="${escapeAttr(surface)}" trigger="prompt-lookup"${projAttr}>`;
@@ -911,7 +920,7 @@ export function formatHintBlock(
     // Die Ankündigung darf nicht behaupten, ein zweiter Pfad habe zugestimmt —
     // es lief nur einer. `unfusedHeadline` sagt genau das, in derselben
     // Wortwahl, die die Write-Lane bereits benutzt.
-    sections.push(unfusedHeadline("this prompt"));
+    sections.push(unfusedHeadline("this prompt", unfusedReasonFor(degraded)));
     sections.push("");
     for (const h of hits) sections.push(formatHintLine(h, true));
   }
@@ -1034,6 +1043,10 @@ interface PromptHookTelemetry {
   hint_count: number;
   /** #217: Reflex-Hits, die nach Session-Dedup injiziert wurden. */
   reflex_hint_count?: number;
+  /** #565: Reflex-Hits, die der Session-Dedup einbehalten hat — der Trigger
+   *  hat gematcht, injiziert wurde nichts. Ohne diese Liste sieht ein
+   *  unterdrückter Reflex in der Auswertung aus wie ein nie gefeuerter. */
+  reflex_deduped_ids?: string[];
   /** #354: tatsächlich injizierte Memory-IDs dieser Lane (Recall + Reflex). */
   hinted_ids?: string[];
   /** #354: Memory-Typ je `hinted_ids`-Eintrag, gleiche Reihenfolge und Länge.

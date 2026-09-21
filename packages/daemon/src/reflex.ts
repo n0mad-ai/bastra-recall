@@ -63,6 +63,30 @@ export function phraseMatchesContext(
   contextTokens: Set<string>,
   contextSequence?: string,
 ): boolean {
+  return evaluatePhrase(phrase, contextTokens, contextSequence).matched;
+}
+
+/** #565: was der Matcher beim Prüfen einer Phrase ohnehin ausrechnet — der
+ *  Boolean UND das, woran er scheiterte. Keine neue Ähnlichkeit: `found` ist
+ *  die Zahl der Inhaltstokens, die das Token-AND abhakt. */
+interface PhraseEval {
+  matched: boolean;
+  found: number;
+  total: number;
+  missing: string[];
+  /** Nicht ein fehlendes Token hat die Phrase verworfen, sondern die
+   *  Ein-Token-Sperre: das einzige Inhaltstoken STEHT im Prompt. */
+  guard: boolean;
+}
+
+const NO_CONTENT: PhraseEval = { matched: false, found: 0, total: 0, missing: [], guard: false };
+
+/** Die Match-Regel selbst (siehe phraseMatchesContext), mit Protokoll. */
+function evaluatePhrase(
+  phrase: string,
+  contextTokens: Set<string>,
+  contextSequence?: string,
+): PhraseEval {
   // Ein „oder"/„or" in der Phrase ist eine Alternativen-Liste, kein
   // Token-Paket: „Nachricht oder Antwort entwerfen" verlangte sonst BEIDE
   // Substantive im Prompt und feuerte nie (19.08.-Vorfall: die
@@ -71,13 +95,14 @@ export function phraseMatchesContext(
   // normalen Regeln.
   const alternatives = phrase.split(/\s+(?:oder|or)\s+/i);
   if (alternatives.length > 1) {
-    return alternatives.some((alt) => phraseMatchesContext(alt, contextTokens, contextSequence));
+    const evals = alternatives.map((alt) => evaluatePhrase(alt, contextTokens, contextSequence));
+    return evals.find((e) => e.matched) ?? evals.reduce(closerOf);
   }
   const tokens = tokenizeWithIdentifiers(phrase.toLowerCase());
   const meaningful = [
     ...new Set(tokens.filter((t) => t.length >= MIN_TOKEN_LEN && !PHRASE_STOPWORDS.has(t))),
   ];
-  if (meaningful.length === 0) return false;
+  if (meaningful.length === 0) return NO_CONTENT;
   if (meaningful.length === 1 && !IDENTIFIER_TOKEN_RE.test(meaningful[0])) {
     // 20.08.-Vorfall: „antwortentwurf bitte" — vom User wörtlich als Trigger
     // eingetragen, „bitte" ist Funktionswort, übrig blieb EIN Inhaltstoken,
@@ -86,16 +111,65 @@ export function phraseMatchesContext(
     // die der User so aufgeschrieben hat: eine mehrwortige Phrase matcht dann
     // wörtlich — als zusammenhängende Tokenfolge, Funktionswörter inklusive.
     // Ohne Sequenz (Alt-Aufrufer) bleibt es beim Verwerfen.
-    if (tokens.length < 2 || contextSequence === undefined) return false;
-    return contextSequence.includes(` ${tokens.join(" ")} `);
+    const literal =
+      tokens.length >= 2 &&
+      contextSequence !== undefined &&
+      contextSequence.includes(` ${tokens.join(" ")} `);
+    const found = contextTokens.has(meaningful[0]) ? 1 : 0;
+    return {
+      matched: literal,
+      found,
+      total: 1,
+      missing: found === 1 ? [] : meaningful,
+      guard: !literal && found === 1,
+    };
   }
-  return meaningful.every((t) => contextTokens.has(t));
+  const missing = meaningful.filter((t) => !contextTokens.has(t));
+  return {
+    matched: missing.length === 0,
+    found: meaningful.length - missing.length,
+    total: meaningful.length,
+    missing,
+    guard: false,
+  };
 }
+
+/** Die von zwei Phrasen, die näher dran war: mehr abgehakte Tokens im
+ *  Verhältnis, bei Gleichstand die mit mehr Tokens überhaupt. */
+const closerOf = (a: PhraseEval, b: PhraseEval): PhraseEval =>
+  b.found / Math.max(b.total, 1) > a.found / Math.max(a.total, 1) || (b.found > a.found && b.total === a.total)
+    ? b
+    : a;
+
+/**
+ * #565: warum ein verdrahtetes Reflex-Memory NICHT gefeuert hat. Elf Vorfälle
+ * lang war das Ausbleiben stumm — die Zeile trägt jetzt den Trigger, der am
+ * nächsten dran war, und den Grund, den der Code wirklich hatte.
+ */
+export interface ReflexNearMiss {
+  id: string;
+  /** Der Trigger, der am nächsten dran war — Triggertext, nie Memory-Body. */
+  phrase: string;
+  /** `tokens-missing` = Token-AND nicht erfüllt; `single-token-guard` = das
+   *  einzige Inhaltstoken steht im Prompt, die Streutrigger-Regel hat die
+   *  Phrase verworfen; `budget` = hart gematcht, aber maxPerTurn war voll. */
+  reason: "tokens-missing" | "single-token-guard" | "budget";
+  /** Inhaltstokens der Phrase, die im Kontext standen / insgesamt. */
+  matched_tokens: number;
+  phrase_tokens: number;
+  /** Was fehlte (gedeckelt) — die Tokens, an denen das AND scheiterte. */
+  missing_tokens: string[];
+}
+
+/** Deckel für die Trace-Liste: die Zeile läuft auf dem Prompt-Hot-Path. */
+const NEAR_MISS_MAX = 3;
+const MISSING_TOKENS_MAX = 3;
 
 interface ReflexMatch {
   memory: Memory;
   phrase: string;
   matches: number;
+  tokens: number;
 }
 
 /**
@@ -139,13 +213,16 @@ export function collectReflexHits(
   vault: Vault,
   context: string,
   budget: number,
-): { pool: number; matched: ReflexMatch[]; served: ReflexMatch[] } {
+): { pool: number; matched: ReflexMatch[]; served: ReflexMatch[]; nearMisses: ReflexNearMiss[] } {
   const contextTokenList = tokenizeWithIdentifiers(context.toLowerCase());
   const contextTokens = new Set(contextTokenList);
   // Tokenfolge für den wörtlichen Phrasen-Match (siehe phraseMatchesContext).
   const contextSequence = ` ${contextTokenList.join(" ")} `;
   const pool = reflexPool(vault);
   const matched: ReflexMatch[] = [];
+  // #565: Beinahe-Treffer — die Memories, deren bester Trigger den Kontext
+  // teilweise traf. Nur aus dem, was das Token-AND oben ohnehin zählt.
+  const near: { miss: ReflexNearMiss; ratio: number }[] = [];
   for (const m of pool) {
     // recall_when_expanded zählt mit: die Expansion ist deterministisch aus
     // den vom User autorisierten Phrasen generiert (recall_when_expanded_src
@@ -157,8 +234,31 @@ export function collectReflexHits(
       ...(m.fm.recall_when ?? []),
       ...(Array.isArray(expanded) ? expanded : []),
     ].filter((p): p is string => typeof p === "string");
-    const hit = phrases.filter((p) => phraseMatchesContext(p, contextTokens, contextSequence));
-    if (hit.length > 0) matched.push({ memory: m, phrase: hit[0], matches: hit.length });
+    const evaluated = phrases.map((p) => ({ phrase: p, ev: evaluatePhrase(p, contextTokens, contextSequence) }));
+    const hit = evaluated.filter((e) => e.ev.matched);
+    if (hit.length > 0) {
+      matched.push({ memory: m, phrase: hit[0].phrase, matches: hit.length, tokens: hit[0].ev.total });
+      continue;
+    }
+    const closest = evaluated.reduce<(typeof evaluated)[number] | undefined>(
+      (best, e) => (best === undefined || closerOf(best.ev, e.ev) === e.ev ? e : best),
+      undefined,
+    );
+    // Ein Memory, von dessen Trigger kein einziges Token im Prompt steht, ist
+    // kein Beinahe-Treffer, sondern ein anderes Thema.
+    if (closest && closest.ev.found > 0) {
+      near.push({
+        ratio: closest.ev.found / Math.max(closest.ev.total, 1),
+        miss: {
+          id: m.fm.id,
+          phrase: closest.phrase,
+          reason: closest.ev.guard ? "single-token-guard" : "tokens-missing",
+          matched_tokens: closest.ev.found,
+          phrase_tokens: closest.ev.total,
+          missing_tokens: closest.ev.missing.slice(0, MISSING_TOKENS_MAX),
+        },
+      });
+    }
   }
   matched.sort(
     (a, b) =>
@@ -166,7 +266,20 @@ export function collectReflexHits(
       salienceOf(b.memory) - salienceOf(a.memory) ||
       String(b.memory.fm.updated ?? "").localeCompare(String(a.memory.fm.updated ?? "")),
   );
-  return { pool: pool.length, matched, served: matched.slice(0, budget) };
+  const served = matched.slice(0, budget);
+  // Was der Budget-Cut verworfen hat, steht vor den Teiltreffern: es hat hart
+  // gematcht und wäre gefeuert — der härtere Befund von beiden.
+  const overBudget: ReflexNearMiss[] = matched.slice(budget).map((m) => ({
+    id: m.memory.fm.id,
+    phrase: m.phrase,
+    reason: "budget",
+    matched_tokens: m.tokens,
+    phrase_tokens: m.tokens,
+    missing_tokens: [],
+  }));
+  near.sort((a, b) => b.ratio - a.ratio || b.miss.matched_tokens - a.miss.matched_tokens);
+  const nearMisses = [...overBudget, ...near.map((n) => n.miss)].slice(0, NEAR_MISS_MAX);
+  return { pool: pool.length, matched, served, nearMisses };
 }
 
 /** Env gewinnt über cli-settings.json (gleiche Präzedenz wie überall). */
@@ -225,7 +338,7 @@ export function handleHookReflex(
         send(200, { hits: [], recall_id: null });
         return;
       }
-      const { pool, matched, served } = collectReflexHits(vault, context, maxPerTurn);
+      const { pool, matched, served, nearMisses } = collectReflexHits(vault, context, maxPerTurn);
       // recall_id nur minten, wenn wirklich etwas serviert wurde — sonst
       // überschriebe JEDER Prompt telemetry.lastRecall und der
       // follows_recall-Join (recall→save, ≤5min) würde zu Rauschen
@@ -244,6 +357,8 @@ export function handleHookReflex(
           reflex_pool: pool,
           matched: matched.map((m) => ({ id: m.memory.fm.id, phrase: m.phrase })),
           served: served.map((m) => m.memory.fm.id),
+          // #565: warum die Nicht-Feuerungen Nicht-Feuerungen waren.
+          ...(nearMisses.length > 0 ? { near_miss: nearMisses } : {}),
           latency_ms: Date.now() - t0,
           ...(sessionId ? { session_id: sessionId } : {}),
         }),

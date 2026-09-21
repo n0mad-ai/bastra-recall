@@ -13,6 +13,7 @@ import type {
   VectorLateSettleEvent,
 } from "./telemetry-events-embedding.js";
 import type { CodeToolCallEvent, CodeGraphRefreshEvent } from "./telemetry-events-code.js";
+import type { ReflexNearMiss } from "./reflex.js";
 
 // Nur die Events, die DIESE Klasse via write() schreibt. Die Hook-CLIs
 // (hook_call, session_hook_call, prompt_hook_call, bash_hook_call,
@@ -933,6 +934,10 @@ export interface HookReflexEvent extends BaseEvent {
   matched: { id: string; phrase: string }[];
   /** nach Budget-Cut tatsächlich zurückgegebene ids. */
   served: string[];
+  /** #565: die Nicht-Feuerungen, die knapp waren — welches Memory, welcher
+   *  Trigger kam am nächsten, wie nah, und der Grund. Gedeckelt (3), nur
+   *  Trigger-Text, nie ein Memory-Body. Fehlt, wenn es keine gab. */
+  near_miss?: ReflexNearMiss[];
   latency_ms: number;
 }
 

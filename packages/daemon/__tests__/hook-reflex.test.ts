@@ -328,3 +328,112 @@ test("collectReflexHits: the literal-phrase fallback reaches the served list end
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// ── #565 Near-Miss-Trace ────────────────────────────────────────────────────
+// Elf Vorfälle lang war das Nicht-Feuern stumm. Diese Tests halten fest, dass
+// jede Nicht-Feuerung, die knapp war, ihren Grund mitschreibt.
+
+async function nearMissVault(): Promise<{ dir: string; vault: Vault }> {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-reflex-nearmiss-"));
+  const mem = join(dir, "memories");
+  await mkdir(mem, { recursive: true });
+  await writeFile(
+    join(mem, "grid.md"),
+    memoryMarkdown("grid", { recall_when: ["tailwind grid layout bauen"], recall_mode: "reflex", salience: 0.5 }),
+  );
+  await writeFile(
+    join(mem, "literal.md"),
+    memoryMarkdown("literal", { recall_when: ["antwortentwurf bitte"], recall_mode: "reflex", salience: 0.5 }),
+  );
+  await writeFile(
+    join(mem, "elsewhere.md"),
+    memoryMarkdown("elsewhere", { recall_when: ["postgres migration schreiben"], recall_mode: "reflex" }),
+  );
+  const vault = new Vault(dir);
+  await vault.init();
+  return { dir, vault };
+}
+
+test("#565 near miss: a phrase whose token-AND fails names the trigger and the missing token", async () => {
+  const { dir, vault } = await nearMissVault();
+  try {
+    const { matched, nearMisses } = collectReflexHits(vault, "das tailwind flexbox layout bauen", 2);
+    assert.equal(matched.length, 0, "precondition: nothing fired");
+    const miss = nearMisses.find((n) => n.id === "grid");
+    assert.ok(miss, "the memory that came closest is on the trace");
+    assert.equal(miss.phrase, "tailwind grid layout bauen", "the trigger that came closest, verbatim");
+    assert.equal(miss.reason, "tokens-missing");
+    assert.equal(miss.matched_tokens, 3);
+    assert.equal(miss.phrase_tokens, 4);
+    assert.deepEqual(miss.missing_tokens, ["grid"], "the token the AND failed on");
+    assert.equal(
+      nearMisses.some((n) => n.id === "elsewhere"),
+      false,
+      "a trigger with no token in the prompt is another topic, not a near miss",
+    );
+  } finally {
+    await vault.stop?.();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("#565 near miss: the single-token guard says it was the guard, not a missing token", async () => {
+  const { dir, vault } = await nearMissVault();
+  try {
+    // 20.08.-Klasse: das einzige Inhaltstoken STEHT im Prompt, nur nicht als
+    // wörtliche Tokenfolge — die Streutrigger-Regel verwirft, bisher stumm.
+    const { matched, nearMisses } = collectReflexHits(vault, "der antwortentwurf liegt im ordner", 2);
+    assert.equal(matched.length, 0, "precondition: nothing fired");
+    const miss = nearMisses.find((n) => n.id === "literal");
+    assert.ok(miss);
+    assert.equal(miss.reason, "single-token-guard");
+    assert.equal(miss.matched_tokens, 1);
+    assert.equal(miss.phrase_tokens, 1);
+  } finally {
+    await vault.stop?.();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("#565 near miss: a firing memory is never traced as a miss; the budget cut is", async () => {
+  const { dir, vault } = await makeVault();
+  try {
+    const both = collectReflexHits(vault, "bitte das tailwind grid layout bauen und testen", 2);
+    assert.equal(both.served.length, 2, "precondition: both wired memories fire");
+    assert.deepEqual(both.nearMisses, [], "what fired needs no explanation");
+
+    const capped = collectReflexHits(vault, "bitte das tailwind grid layout bauen und testen", 1);
+    assert.equal(capped.nearMisses.length, 1);
+    assert.equal(capped.nearMisses[0].id, "reflex-css", "the hit the budget cut");
+    assert.equal(capped.nearMisses[0].reason, "budget");
+    assert.equal(capped.nearMisses[0].phrase, "tailwind grid layout bauen");
+    assert.deepEqual(capped.nearMisses[0].missing_tokens, [], "it matched — nothing was missing");
+  } finally {
+    await vault.stop?.();
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("#565 near miss: the trace is capped and carries no memory body", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-reflex-cap-"));
+  const mem = join(dir, "memories");
+  await mkdir(mem, { recursive: true });
+  for (let i = 0; i < 5; i++) {
+    await writeFile(
+      join(mem, `near-${i}.md`),
+      memoryMarkdown(`near-${i}`, { recall_when: [`tailwind grid layout bauen ${i}00`], recall_mode: "reflex" }),
+    );
+  }
+  const vault = new Vault(dir);
+  await vault.init();
+  try {
+    const { nearMisses } = collectReflexHits(vault, "das tailwind grid layout bauen", 2);
+    assert.equal(nearMisses.length, 3, "the row stays small: top 3");
+    const serialized = JSON.stringify(nearMisses);
+    assert.doesNotMatch(serialized, /Body of/, "no memory body in telemetry");
+    assert.doesNotMatch(serialized, /Summary of/, "not even the summary — ids and trigger text only");
+  } finally {
+    await vault.stop?.();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
