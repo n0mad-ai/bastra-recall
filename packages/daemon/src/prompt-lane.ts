@@ -43,7 +43,8 @@ import { recordBudgetShadow } from "./session-budget.js";
 import { claudeSessionPidFrom, sessionFeedPath, STATUSLINE_DIR } from "./statusline-session.js";
 import { idleStatuslineState } from "./statusline-feed.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookClient } from "./hook-surface.js";
+import { hookClient, hookClientEvidence, type HookClientEvidence } from "./hook-surface.js";
+import { dimensionsFrom } from "./telemetry-dimensions.js";
 import { governContext } from "./context-governor.js";
 import { deliverPromptImpact } from "./code-graph/prompt-impact.js";
 import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
@@ -339,6 +340,9 @@ export async function runPromptLane(
 ): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
+  // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
+  // der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback.
+  const clientEvidence = hookClientEvidence(payload);
 
   if (payload.hook_event_name !== "UserPromptSubmit") return "{}";
 
@@ -365,6 +369,7 @@ export async function runPromptLane(
   if (isTrivialPrompt(prompt)) {
     await writeTelemetry({
       session_id: payload.session_id ?? null,
+      client: clientEvidence,
       detected_mode: "none",
       gated: true,
       prompt_chars: prompt.length,
@@ -775,6 +780,7 @@ export async function runPromptLane(
   recordBudgetShadow(payload.session_id ?? null, "prompt_hook_call", blocks.length === 0 ? 0 : Math.ceil(blocks.join("\n").length / 4));
   await writeTelemetry({
     session_id: payload.session_id ?? null,
+    client: clientEvidence,
     detected_mode: detectedMode,
     prompt_chars: prompt.length,
     daemon_url: selfBaseUrl,
@@ -1034,6 +1040,9 @@ interface PromptHookTelemetry {
    *  session_id, so per-session aggregation (context tax, #354) is possible.
    *  A synthetic UUID is the fallback only when the payload carried none. */
   session_id?: string | null;
+  /** #507: die aufrufende Oberfläche — NUR wenn belegt (`hookClientEvidence`),
+   *  nie der surface-Default. */
+  client: HookClientEvidence;
   detected_mode: DetectedMode;
   /** #151: true when the trivial-prompt gate suppressed injection. */
   gated?: boolean;
@@ -1131,13 +1140,15 @@ async function writeTelemetry(payload: PromptHookTelemetry): Promise<void> {
     const ts = new Date().toISOString();
     // The session_id from the Claude payload is real session state — fall
     // back to a synthetic UUID only if no payload session was given (#356).
-    const { session_id: payloadSessionId, ...rest } = payload;
+    const { session_id: payloadSessionId, client, ...rest } = payload;
     const event = {
       kind: "prompt_hook_call",
       ts,
       session_id: payloadSessionId ?? randomUUID(),
       hook_version: HOOK_VERSION,
       ...rest,
+      // #507: prompt is this lane's own hook_source — it never varies per call.
+      dimensions: dimensionsFrom({ client, hook_source: "prompt", session_id: payloadSessionId }),
     };
     const file = join(logDir, `events-${ts.slice(0, 10)}.jsonl`);
     await appendFile(file, JSON.stringify(event) + "\n", "utf8");

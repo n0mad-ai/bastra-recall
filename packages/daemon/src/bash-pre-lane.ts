@@ -24,7 +24,8 @@ import { envFirst, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookClient } from "./hook-surface.js";
+import { hookClient, hookClientEvidence, type HookClientEvidence } from "./hook-surface.js";
+import { dimensionsFrom } from "./telemetry-dimensions.js";
 import { governContext } from "./context-governor.js";
 import { postLane } from "./thin-client.js";
 import { isUnfused, type HookRecallHit, type HookRecallResponse } from "./hook-recall-response.js";
@@ -248,6 +249,9 @@ function matchPattern(cmd: string): { label: string; severity: "destructive" | "
 export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: string): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
+  // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
+  // der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback.
+  const clientEvidence = hookClientEvidence(payload);
 
   if (payload.hook_event_name !== "PreToolUse") return "{}";
   if (payload.tool_name !== "Bash") return "{}";
@@ -386,6 +390,7 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
   recordBudgetShadow(payload.session_id ?? null, "bash_hook_call", Math.ceil(block.length / 4));
   await writeTelemetry({
     session_id: payload.session_id ?? null,
+    client: clientEvidence,
     matched_pattern: match.label,
     severity: match.severity,
     daemon_url: selfBaseUrl,
@@ -460,6 +465,9 @@ interface BashHookCallTelemetry {
    *  session_id, so per-session aggregation (context tax, #354) is possible.
    *  A synthetic UUID is the fallback only when the payload carried none. */
   session_id?: string | null;
+  /** #507: die aufrufende Oberfläche — NUR wenn belegt (`hookClientEvidence`),
+   *  nie der surface-Default. */
+  client: HookClientEvidence;
   matched_pattern: string;
   severity: "destructive" | "risky";
   daemon_url: string;
@@ -491,13 +499,15 @@ async function writeTelemetry(payload: BashHookCallTelemetry): Promise<void> {
     const ts = new Date().toISOString();
     // #356: the payload's session_id is real session state — synthetic UUID
     // only when the payload carried none.
-    const { session_id: payloadSessionId, ...rest } = payload;
+    const { session_id: payloadSessionId, client, ...rest } = payload;
     const event = {
       kind: "bash_hook_call",
       ts,
       session_id: payloadSessionId ?? randomUUID(),
       hook_version: HOOK_VERSION,
       ...rest,
+      // #507: bash-pre is this lane's own hook_source — it never varies per call.
+      dimensions: dimensionsFrom({ client, hook_source: "bash-pre", session_id: payloadSessionId }),
     };
     const file = join(logDir, `events-${ts.slice(0, 10)}.jsonl`);
     await appendFile(file, JSON.stringify(event) + "\n", "utf8");

@@ -28,7 +28,8 @@ import { reportHinted } from "./hook-hinted.js";
 import { postLane } from "./thin-client.js";
 import { isUnfused, type HookRecallHit, type HookRecallResponse } from "./hook-recall-response.js";
 import { unfusedHeadline } from "./band-wording.js";
-import { hookClient } from "./hook-surface.js";
+import { hookClient, hookClientEvidence, type HookClientEvidence } from "./hook-surface.js";
+import { dimensionsFrom } from "./telemetry-dimensions.js";
 import {
   decideBackoff,
   loadSessionState,
@@ -77,6 +78,9 @@ type RecallResponse = HookRecallResponse;
 export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: string): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
+  // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
+  // der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback.
+  const clientEvidence = hookClientEvidence(payload);
 
   const hookEventName = payload.hook_event_name;
   if (hookEventName !== "PostToolUse" && hookEventName !== "PostToolUseFailure") return "{}";
@@ -242,6 +246,7 @@ export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: str
   recordBudgetShadow(typeof payload.session_id === "string" ? payload.session_id : null, "bash_fail_hook_call", hintTokensEst);
   await writeTelemetry({
     session_id: typeof payload.session_id === "string" ? payload.session_id : null,
+    client: clientEvidence,
     exit_code: exitCode,
     command_head: commandHead,
     daemon_url: selfBaseUrl,
@@ -438,6 +443,9 @@ interface BashFailHookTelemetry {
    *  session_id, so per-session aggregation (context tax, #354) is possible.
    *  A synthetic UUID is the fallback only when the payload carried none. */
   session_id?: string | null;
+  /** #507: die aufrufende Oberfläche — NUR wenn belegt (`hookClientEvidence`),
+   *  nie der surface-Default. */
+  client: HookClientEvidence;
   exit_code: number | null;
   command_head: string;
   daemon_url: string;
@@ -465,13 +473,15 @@ async function writeTelemetry(payload: BashFailHookTelemetry): Promise<void> {
     const ts = new Date().toISOString();
     // #356: the payload's session_id is real session state — synthetic UUID
     // only when the payload carried none.
-    const { session_id: payloadSessionId, ...rest } = payload;
+    const { session_id: payloadSessionId, client, ...rest } = payload;
     const event = {
       kind: "bash_fail_hook_call",
       ts,
       session_id: payloadSessionId ?? randomUUID(),
       hook_version: HOOK_VERSION,
       ...rest,
+      // #507: bash-fail is this lane's own hook_source — it never varies per call.
+      dimensions: dimensionsFrom({ client, hook_source: "bash-fail", session_id: payloadSessionId }),
     };
     const file = join(logDir, `events-${ts.slice(0, 10)}.jsonl`);
     await appendFile(file, JSON.stringify(event) + "\n", "utf8");

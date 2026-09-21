@@ -24,6 +24,25 @@ export function hookClient(payload: unknown): HookClient {
   return "claude-code";
 }
 
+/** #507 Nachbesserung: dieselben drei Belege wie `hookClient()`, aber ohne
+ *  dessen claude-code-Default. `hookClient()` darf raten — sie füttert nur das
+ *  `surface=`-Attribut im Hint-Block, wo ein plausibler Default besser ist als
+ *  gar keine Angabe. Für eine Mess-Dimension ist genau dieser Default ein
+ *  geratener Client: ein unmarkierter Aufruf würde still als claude-code
+ *  gebucht, obwohl der Payload das nie belegt hat. `"unknown"` ist der
+ *  Unbekannt-Wert, den die TelemetryClient-Allowlist (telemetry-dimensions.ts)
+ *  bereits kennt. */
+export type HookClientEvidence = "claude-code" | "codex" | "unknown";
+
+export function hookClientEvidence(payload: unknown): HookClientEvidence {
+  if (!payload || typeof payload !== "object") return "unknown";
+  const p = payload as Record<string, unknown>;
+  if (p.bastra_client === "codex") return "codex";
+  if (p.bastra_client === "claude-code") return "claude-code";
+  if (p.tool_name === "apply_patch" || p.tool_name === "update_plan") return "codex";
+  return "unknown";
+}
+
 /** Add the registration-owned client marker without mutating stdin data. */
 export function decorateHookPayload<T>(payload: T): T {
   const requested = process.env.BASTRA_HOOK_CLIENT;

@@ -425,4 +425,47 @@ describe("bash-fail-hook: telemetry session (#356)", () => {
       await rm(stateDir, { recursive: true, force: true });
     }
   });
+
+  it("#507: bash_fail_hook_call carries client/hook_source in dimensions, so stats.ts can split by it", async () => {
+    const daemon = await startRecordingDaemon();
+    const logDir = await mkdtemp(join(tmpdir(), "bastra-bashfail-dims-"));
+    const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashfail-dims-state-"));
+    const applied: Record<string, string | undefined> = {};
+    const env: Record<string, string> = {
+      BASTRA_TELEMETRY: "on",
+      BASTRA_LOG_PATH: logDir,
+      BASTRA_HOOK_STATE_DIR: stateDir,
+    };
+    for (const [k, v] of Object.entries(env)) {
+      applied[k] = process.env[k];
+      process.env[k] = v;
+    }
+    try {
+      await runBashFailLane(
+        {
+          hook_event_name: "PostToolUse",
+          tool_name: "Bash",
+          session_id: `bashfail-dims-507-${Date.now()}`,
+          tool_input: { command: "npm test" },
+          tool_response: { exit_code: 1 },
+        } as Parameters<typeof runBashFailLane>[0],
+        `http://127.0.0.1:${daemon.port}`,
+      );
+      const ev = (await readTelemetryEvents(logDir)).find((e) => e.kind === "bash_fail_hook_call");
+      assert.ok(ev, "a bash_fail_hook_call event must be written");
+      const dims = ev.dimensions as Record<string, unknown>;
+      // No bastra_client marker, no Codex tool name — the honest unknown, not
+      // hookClient's claude-code surface default (#507 Nachbesserung).
+      assert.equal(dims.client, "unknown");
+      assert.equal(dims.hook_source, "bash-fail");
+    } finally {
+      for (const [k, v] of Object.entries(applied)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+      await daemon.close();
+      await rm(logDir, { recursive: true, force: true });
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
 });

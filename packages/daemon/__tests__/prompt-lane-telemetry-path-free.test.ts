@@ -207,6 +207,11 @@ describe("prompt lane: delivered change-impact telemetry stays path-free", () =>
 
       const promptEv = events.find((e) => e.kind === "prompt_hook_call");
       assert.ok(promptEv, "a prompt_hook_call row must be written");
+      // #507: the dimensions the context-tax split reads. No bastra_client
+      // marker on this payload → the honest unknown, not the surface default.
+      const promptDims = promptEv.dimensions as Record<string, unknown>;
+      assert.equal(promptDims.client, "unknown");
+      assert.equal(promptDims.hook_source, "prompt");
       assert.equal(typeof promptEv.code_block_tokens_est, "number");
       assert.ok((promptEv.code_block_tokens_est as number) > 0);
       assert.deepEqual(promptEv.code_basis, ["symbols"]);
@@ -269,6 +274,11 @@ describe("write lane: the followed-by-edit join still has its data", () => {
       const events = await readTelemetryEvents(logDir);
       const writeEv = events.find((e) => e.kind === "hook_call");
       assert.ok(writeEv, "a hook_call row must be written");
+      // #507: the dimensions the context-tax split reads. No bastra_client
+      // marker on this payload → the honest unknown, not the surface default.
+      const writeDims = writeEv.dimensions as Record<string, unknown>;
+      assert.equal(writeDims.client, "unknown");
+      assert.equal(writeDims.hook_source, "pre-tool");
       // #606: this is the data the "listed, then edited" join reads — unlike
       // the prompt lane, the write lane's row already carries `file_path` on
       // every call, so these absolute paths are not a new class of leak here.

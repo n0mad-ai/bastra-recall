@@ -100,6 +100,29 @@ test("#373: todo_hook_call carries the payload session_id, hook_version and the 
   }
 });
 
+test("#507: todo_hook_call carries client/hook_source in dimensions, so stats.ts can split by it", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "bastra-todo-dims-"));
+  try {
+    await withDaemon(async (base) => {
+      await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir, BASTRA_SESSION_STATE_DIR: logDir }, () =>
+        runTodoLane(
+          { hook_event_name: "PreToolUse", tool_name: "TodoWrite", session_id: "todo-dims-507", cwd: "/tmp", tool_input: TODOS },
+          base,
+        ),
+      );
+    });
+    const ev = (await readEvents(logDir)).find((e) => e.kind === "todo_hook_call");
+    assert.ok(ev, "a todo_hook_call event must be written");
+    const dims = ev.dimensions as Record<string, unknown>;
+    // No bastra_client marker, no Codex tool name — the honest unknown, not
+    // hookClient's claude-code surface default (#507 Nachbesserung).
+    assert.equal(dims.client, "unknown");
+    assert.equal(dims.hook_source, "todo");
+  } finally {
+    await rm(logDir, { recursive: true, force: true });
+  }
+});
+
 test("#373: without a payload session_id the row carries a synthetic UUID — fallback only", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "bastra-todo-telemetry-uuid-"));
   try {

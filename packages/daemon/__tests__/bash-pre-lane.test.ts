@@ -325,6 +325,113 @@ describe("bash-pre-hook: telemetry session (#356)", () => {
       await rm(stateDir, { recursive: true, force: true });
     }
   });
+
+  it("#507: a call with no client evidence writes the explicit unknown, never the surface default", async () => {
+    const daemon = await startMockDaemon((req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(req.url === "/hook/recall" ? JSON.stringify({ hits: [], vault_size: 0, latency_ms: 1, recall_id: "t" }) : "{}");
+    });
+    const logDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-"));
+    const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-state-"));
+    try {
+      await runHook(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          session_id: "bashpre-dims-507",
+          // No bastra_client marker, no Codex tool name — a real Claude Code
+          // hook call today (the registration never sets BASTRA_HOOK_CLIENT).
+          tool_input: { command: "rm -rf /tmp/whatever" },
+        },
+        {
+          BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
+          BASTRA_HOOK_STATE_DIR: stateDir,
+          BASTRA_TELEMETRY: "on",
+          BASTRA_LOG_PATH: logDir,
+        },
+      );
+      const ev = (await readTelemetryEvents(logDir)).find((e) => e.kind === "bash_hook_call");
+      assert.ok(ev, "a bash_hook_call event must be written");
+      const dims = ev.dimensions as Record<string, unknown>;
+      assert.equal(dims.client, "unknown", "no evidence in the payload → the explicit unknown, not hookClient's claude-code surface default");
+      assert.equal(dims.hook_source, "bash-pre");
+    } finally {
+      await daemon.close();
+      await rm(logDir, { recursive: true, force: true });
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("#507: an explicit bastra_client marker is real evidence and is trusted", async () => {
+    const daemon = await startMockDaemon((req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(req.url === "/hook/recall" ? JSON.stringify({ hits: [], vault_size: 0, latency_ms: 1, recall_id: "t" }) : "{}");
+    });
+    const logDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-codex-"));
+    const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-codex-state-"));
+    try {
+      await runHook(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          session_id: "bashpre-dims-codex-507",
+          bastra_client: "codex",
+          tool_input: { command: "rm -rf /tmp/whatever" },
+        },
+        {
+          BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
+          BASTRA_HOOK_STATE_DIR: stateDir,
+          BASTRA_TELEMETRY: "on",
+          BASTRA_LOG_PATH: logDir,
+        },
+      );
+      const ev = (await readTelemetryEvents(logDir)).find((e) => e.kind === "bash_hook_call");
+      assert.ok(ev, "a bash_hook_call event must be written");
+      const dims = ev.dimensions as Record<string, unknown>;
+      assert.equal(dims.client, "codex");
+    } finally {
+      await daemon.close();
+      await rm(logDir, { recursive: true, force: true });
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("#507: a call without a payload session_id gets the honest unassigned arm, not a guessed one", async () => {
+    const daemon = await startMockDaemon((req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(req.url === "/hook/recall" ? JSON.stringify({ hits: [], vault_size: 0, latency_ms: 1, recall_id: "t" }) : "{}");
+    });
+    const logDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-nosess-"));
+    const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-nosess-state-"));
+    try {
+      await runHook(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          // No session_id: dimensionsFrom cannot pseudonymize a session it never
+          // received, and must say so rather than fabricate one.
+          tool_input: { command: "rm -rf /tmp/whatever" },
+        },
+        {
+          BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
+          BASTRA_HOOK_STATE_DIR: stateDir,
+          BASTRA_TELEMETRY: "on",
+          BASTRA_LOG_PATH: logDir,
+        },
+      );
+      const ev = (await readTelemetryEvents(logDir)).find((e) => e.kind === "bash_hook_call");
+      assert.ok(ev, "a bash_hook_call event must be written");
+      const dims = ev.dimensions as Record<string, unknown>;
+      assert.equal(dims.client, "unknown");
+      assert.equal(dims.hook_source, "bash-pre");
+      assert.equal(dims.experiment_session, null, "no session_id in the payload → no pseudonym");
+      assert.equal(dims.arm, "unassigned");
+    } finally {
+      await daemon.close();
+      await rm(logDir, { recursive: true, force: true });
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("bash-pre-hook: self-exclusion guard is a basename check, not a substring", () => {
