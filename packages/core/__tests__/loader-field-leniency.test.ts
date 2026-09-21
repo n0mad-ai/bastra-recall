@@ -157,6 +157,62 @@ test("A: a column-zero list is not torn off its key by an item that contains a c
   assert.ok(m.damaged?.some((d) => d.field === "title"), "the actually broken field is still flagged");
 });
 
+test("#613: a `__proto__` entry in a rescued fragment cannot smuggle fields past data's own keys", () => {
+  // The exact repro from #613: the whole block fails full-document YAML
+  // parsing (the bad escape in `title`), so the rescue re-parses entry by
+  // entry — and one entry is `__proto__:`. js-yaml hands that back as an OWN
+  // key on the fragment, but `Object.assign(data, parsed)` writes through
+  // `data`'s `[[Set]]`: since `data` has no own `__proto__`, the assignment
+  // hits `Object.prototype`'s `__proto__` accessor and replaces data's
+  // prototype instead of creating an own property. `id` and `sensitivity` are
+  // never written anywhere else in this frontmatter, so a reader using dot
+  // access (schema validation, `repairRequired`'s presence checks) picks up
+  // the smuggled values through the prototype chain while every check that
+  // enumerates own keys sees a clean frontmatter.
+  const m = parse(
+    `---\ntitle: "kaputt\\'hier"\ntype: lesson\nsummary: ok\ntopic_path: [a]\ntags: [t]\nscope: s\nrecall_when: [x]\ncreated: 2026-05-01\nupdated: 2026-05-01\n__proto__:\n  sensitivity: public\n  id: someone-elses-id\n---\nbody`,
+    "/vault/memories/safe-name.md",
+  );
+  assert.notEqual(m.fm.id, "someone-elses-id", "a __proto__ entry must not smuggle an id nobody wrote");
+  assert.notEqual(m.fm.sensitivity, "public", "a __proto__ entry must not smuggle a sensitivity nobody wrote");
+  assert.equal(m.fm.id, "safe-name", "the id must fall back to the filename, exactly as a genuinely missing id would");
+  assert.ok(m.damaged?.some((d) => d.field === "id"), "a smuggled-then-dropped id must still be flagged as repaired");
+});
+
+test("#613: rescueFrontmatter never lets a `__proto__` entry change data's own prototype", () => {
+  const boom = (): never => {
+    throw new Error("forced into the rescue path");
+  };
+  const rescued = rescueFrontmatter(
+    boom as unknown as Parameters<typeof rescueFrontmatter>[0],
+    `---\ntitle: note\n__proto__:\n  sensitivity: public\n  id: someone-elses-id\n---\nbody\n`,
+  );
+  assert.ok(rescued, "a delimited block is rescuable");
+  assert.equal(Object.getPrototypeOf(rescued!.data), Object.prototype, "data's prototype must never change");
+  assert.equal((rescued!.data as Record<string, unknown>).sensitivity, undefined, "no inherited sensitivity");
+  assert.equal((rescued!.data as Record<string, unknown>).id, undefined, "no inherited id");
+  assert.deepEqual(Object.keys(rescued!.data), ["title"], "the __proto__ entry must not appear as an own key either");
+});
+
+test("#613: `constructor` and `prototype` entries are ordinary own keys, not a pollution vector", () => {
+  // Unlike `__proto__`, `constructor` and `prototype` are plain DATA
+  // properties on Object.prototype (or absent entirely, for `prototype`), so
+  // assigning them onto a plain object just shadows them as normal own
+  // properties — enumerable and dot-accessible alike. No special handling
+  // needed; this test pins that down so a future change cannot regress it.
+  const boom = (): never => {
+    throw new Error("forced into the rescue path");
+  };
+  const rescued = rescueFrontmatter(
+    boom as unknown as Parameters<typeof rescueFrontmatter>[0],
+    `---\nconstructor: not a function\nprototype: not a prototype\n---\nbody\n`,
+  );
+  assert.ok(rescued);
+  assert.deepEqual(Object.keys(rescued!.data).sort(), ["constructor", "prototype"]);
+  assert.equal(rescued!.data.constructor, "not a function");
+  assert.equal(rescued!.data.prototype, "not a prototype");
+});
+
 test("a key that starts with a dash is still a key, and no list ever leaks in as `0`/`1` entries", () => {
   // Guarding the split with "a line starting `- ` is a list item" must not
   // swallow a legitimate key whose name begins with a dash, and the array

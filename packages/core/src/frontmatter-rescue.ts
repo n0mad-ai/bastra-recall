@@ -127,7 +127,25 @@ export function rescueFrontmatter(matter: MatterFn, raw: string): RescueResult |
       // that the splitter keeps column-zero lists with their key, and kept as
       // the belt to that pair of braces (#365).
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        Object.assign(data, parsed as Record<string, unknown>);
+        // #613: `parsed` is a fragment out of a block that already failed to
+        // parse as a whole — the least trusted input this module sees.
+        // js-yaml can hand back `__proto__` as an OWN key on `parsed`, but a
+        // bare `Object.assign(data, parsed)` merges through `data`'s
+        // `[[Set]]`: since `data` has no own `__proto__`, the write hits
+        // `Object.prototype`'s `__proto__` accessor and replaces data's
+        // prototype instead of landing as an own property — every check
+        // that enumerates own keys then sees a clean frontmatter while a
+        // reader using dot access (schema validation, the presence checks
+        // below) picks up the smuggled fields anyway. A frontmatter field
+        // literally named `__proto__` has no legitimate meaning, so it is
+        // dropped rather than merged; every other key becomes a plain own
+        // property via direct assignment, which is not a pollution vector
+        // for a plain object (`constructor`/`prototype` are ordinary data
+        // properties, not accessors).
+        for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+          if (key === "__proto__") continue;
+          data[key] = value;
+        }
       } else {
         damaged.push({ field: entryField(entry), reason: "frontmatter entry did not parse as a `key: value` mapping" });
       }
