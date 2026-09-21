@@ -11,15 +11,16 @@ import type { CodeUnavailableReason } from "./code-graph/unavailable-reason.js";
 export type { CodeUnavailableReason };
 
 /**
- * The lane a DELIVERED block went out on (#606) — the UserPromptSubmit gate or
- * the PreToolUse Write/Edit lane.
+ * The lane a DELIVERED block went out on (#606) — the UserPromptSubmit gate,
+ * the PreToolUse Write/Edit lane, or, since #572, the task-boundary block the
+ * prompt lane hands over on behalf of the Stop that computed it.
  *
  * Its own field rather than `lane`: that one already means "which lane of
  * `find_code` produced the hits", and the readouts fold `lane ?? basis` into
  * one column. Reusing it would make a delivered block's basis disappear behind
  * the name of the hook that sent it.
  */
-export type CodeDeliveredLane = "prompt" | "write";
+export type CodeDeliveredLane = "prompt" | "write" | "boundary";
 
 /**
  * One `find_code` / `find_affected_files` call — or, since #606, one DELIVERED
