@@ -13,6 +13,12 @@ const CC_TYPE_MAP: Record<string, SaveMemoryInput["type"]> = {
   reference: "reference",
 };
 
+/** Adapter prefixes a node's `source` stamp (`<adapter>:<label>:<relKey>`) can
+ *  legitimately carry — the only two `buildInput` below ever writes. Read
+ *  back by the importer's ownership check and by orphan detection to tell "a
+ *  prior node of THIS importer" from anything else on a colliding id. */
+export const KNOWN_ADAPTERS = new Set(["claude-code-memory", "markdown"]);
+
 // ── small pure helpers ───────────────────────────────────────────────────────
 
 function str(v: unknown): string | null {

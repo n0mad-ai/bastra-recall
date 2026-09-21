@@ -30,7 +30,9 @@ import { getUiEnabled } from "./settings.js";
 import { saveMemoryWithAuditTrail } from "./audit-trail.js";
 import { linkKey, pathHash, safeSlug, uniqueId } from "./import/identity.js";
 import { harvestIndex, looksLikeIndexHub } from "./import/index-harvest.js";
-import { looksLikeClaudeCode, mapFile, safeParse } from "./import/adapters.js";
+import { KNOWN_ADAPTERS, looksLikeClaudeCode, mapFile, safeParse } from "./import/adapters.js";
+import { findOrphanedMemories, type ImportVaultOrphan } from "./import/orphans.js";
+export type { ImportVaultOrphan } from "./import/orphans.js";
 
 /** Reserved subtree for all folder imports — its own graph cluster, and the
  *  atomic unit for delete/re-import. Never a target of the normal scope/type
@@ -56,12 +58,6 @@ export interface ImportVaultOptions {
 /** Always-skipped directory names (#220): archives hold retired copies of
  *  live notes — importing them mints `-2`/`-3` collision twins. */
 const DEFAULT_EXCLUDED_DIRS = new Set(["_archive", "archive"]);
-
-/** Adapter prefixes the ownership check recognizes in a node's `source` stamp
- *  (`<adapter>:<label>:<relKey>`). A stamp that starts with one of these AND
- *  carries this label is a prior node of THIS importer; anything else on a
- *  colliding id is foreign and must never be overwritten (#240). */
-const KNOWN_ADAPTERS = new Set(["claude-code-memory", "markdown"]);
 
 /** Who owns the node currently sitting on a candidate id, together with the
  * exact preimage the commit must still see. `unverifiable` means the node
@@ -123,6 +119,9 @@ export interface ImportVaultResult {
    *  the user, or a future opt-in `bastra migrate`, removes it with a
    *  confirmed delete. */
   migrated: Array<{ from: string; to: string }>;
+  /** #530 follow-up: memories kept despite a vanished source file — never
+   *  acted on, only reported (see {@link ImportVaultOrphan}). */
+  orphaned: ImportVaultOrphan[];
   dryRun: boolean;
 }
 
@@ -587,6 +586,9 @@ export async function importVault(
     }
   }
 
+  // #530 follow-up: orphaned memories (source file gone) — read-only, see orphans.ts.
+  const orphaned = await findOrphanedMemories(vaultRoot, folder, label, new Set(relKeyByPath.values()));
+
   // #530: the marker mirrors the CURRENT source set, not a cumulative log
   // (product decision) — so a run that writes nothing can still owe the
   // marker an update: the source set may have SHRUNK (a file was removed),
@@ -662,6 +664,7 @@ export async function importVault(
     ids,
     indexNode,
     migrated,
+    orphaned,
     dryRun,
   };
 }
@@ -791,6 +794,7 @@ export async function handleUiImportVault(
     scope: result.scope,
     by_adapter: result.byAdapter,
     skipped: result.skipped.length,
+    orphaned: result.orphaned.length, // #530 follow-up: source gone, memory kept
     dry_run: result.dryRun,
   });
 }
