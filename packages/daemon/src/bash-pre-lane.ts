@@ -437,7 +437,7 @@ export function formatHintBlock(
     lines.push(
       `STOP — destructive Bash command detected (pattern: \`${pattern}\`). ` +
         `Per user-preference this needs explicit user confirmation unless authorized in advance. ` +
-        `Do not run blindly: confirm the target paths, the scope of effect, and that Daniel has asked for this exact action.`,
+        `Do not run blindly: confirm the target paths, the scope of effect, and that the user has asked for this exact action.`,
     );
   } else {
     lines.push(
