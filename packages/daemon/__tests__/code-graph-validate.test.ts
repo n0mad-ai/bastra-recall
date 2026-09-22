@@ -138,3 +138,24 @@ describe("code graph: node and edge allowlist", () => {
     assert.equal(safeEdge(base, EXTRACTED), null);
   });
 });
+
+import {
+  MAX_GRAPH_BYTES as DOC_MAX_GRAPH_BYTES,
+  MAX_NODES as DOC_MAX_NODES,
+  MAX_EDGES as DOC_MAX_EDGES,
+  MAX_TOTAL_HEAP_BYTES as DOC_MAX_TOTAL_HEAP_BYTES,
+} from "../src/code-graph/limits.js";
+
+describe("code-graph limits are the numbers the architecture doc promises", () => {
+  // docs/Evolution Architecture V1 to V2.md, C-093: "(64 MB file size, 500,000 nodes,
+  // 2,000,000 edges, 512 bytes per string)"; LRU heap budget: "256 MB". Every other test
+  // here reads its expectation through these same constants, so a changed limit stayed
+  // green (night 09-22). The doc names the numbers — so does this test, as literals.
+  it("file size 64 MB, 500,000 nodes, 2,000,000 edges, 512 bytes per string, 256 MB heap", () => {
+    assert.equal(DOC_MAX_GRAPH_BYTES, 64 * 1024 * 1024);
+    assert.equal(DOC_MAX_NODES, 500_000);
+    assert.equal(DOC_MAX_EDGES, 2_000_000);
+    assert.equal(MAX_STRING_BYTES, 512);
+    assert.equal(DOC_MAX_TOTAL_HEAP_BYTES, 256 * 1024 * 1024);
+  });
+});

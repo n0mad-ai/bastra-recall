@@ -130,3 +130,11 @@ test("der Assembler ruft weder Reranker noch Cross-Encoder noch Deep Recall", ()
     );
   }
 });
+
+test("ein direkter Treffer GENAU auf dem Cut ist required — die Grenze ist inklusiv", () => {
+  // `>= cut` in band-wording; `>` left all eight tests here green (night 09-22): nothing sat on 100.
+  const on = bandHits([hit("kante", CUT, "direct")], CUT, false);
+  assert.deepEqual(on.required.map((h) => h.id), ["kante"], "score === cut must clear the cut");
+  const under = bandHits([hit("knapp", CUT - 1, "direct")], CUT, false);
+  assert.deepEqual(under.required, [], "score === cut - 1 must not");
+});

@@ -73,9 +73,19 @@ export class EmbedCache {
     try {
       const raw = await fs.readFile(this.cachePath, "utf-8");
       const data = JSON.parse(raw) as EmbedCacheFile;
-      if (data.version !== 1) return;
+      // An incompatible cache is dropped, but never silently: the whole vault re-embeds on
+      // every start until the file is rewritten, and without a line nobody sees why.
+      if (data.version !== 1) {
+        console.error(
+          `[bastra.embeddings] embed-cache ignored: version ${String(data.version)} (want 1) — ${this.cachePath}`,
+        );
+        return;
+      }
       if (data.provider !== this.providerId || data.dim !== this.dim) {
-        // Cache war mit anderem Provider/Dim gebaut → unbrauchbar.
+        console.error(
+          `[bastra.embeddings] embed-cache ignored: built by ${data.provider}/${data.dim}, ` +
+            `provider is ${this.providerId}/${this.dim} — ${this.cachePath}`,
+        );
         return;
       }
       for (const [id, entry] of Object.entries(data.entries)) {

@@ -170,3 +170,21 @@ test("der Durchreiche-Schritt prüft fremde Werte nicht — auch nicht auf Typ",
   assert.equal(fm.tags_de, "kein Array");
   assert.equal(fm.leer, "", "ein leerer String ist ein Wert, kein fehlendes Feld");
 });
+
+test("jedes Feld, das der Save in `fm` schreibt, steht in SAVE_MANAGED_FRONTMATTER_KEYS", async () => {
+  // The pass-through loop has a second guard, `key in fm`, for a managed field someone adds to
+  // `fm` and forgets to list. No fixture can reach it (night 09-22: deleting it kept all tests
+  // green) — so the drift it defends against is closed at the source instead: the set of keys the
+  // save path assigns is derived from the file and must be a subset of the managed list.
+  const src = await readFile(new URL("../src/save-frontmatter.ts", import.meta.url), "utf8");
+  const start = src.indexOf("const fm: Record<string, unknown> = {");
+  assert.ok(start > 0, "fm literal not found");
+  const literal = src.slice(start, src.indexOf("\n  };", start));
+  const written = new Set<string>();
+  for (const m of literal.matchAll(/^\s{4}([a-z_]+):/gm)) written.add(m[1]);
+  for (const m of src.matchAll(/\bfm\.([a-z_]+)\s*=[^=]/g)) written.add(m[1]);
+  for (const m of src.matchAll(/\bfm\["([a-z_]+)"\]\s*=[^=]/g)) written.add(m[1]);
+  assert.ok(written.size >= 10, `parser saw only ${written.size} keys`);
+  const unlisted = [...written].filter((k) => !SAVE_MANAGED_FRONTMATTER_KEYS.has(k));
+  assert.deepEqual(unlisted, [], "managed field written to fm but missing from the list");
+});
