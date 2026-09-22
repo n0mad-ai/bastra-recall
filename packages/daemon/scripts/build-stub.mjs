@@ -19,7 +19,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { STUB_BUILD_INFO, stubSourceDigest, stubSourcesDirty } from "./stub-source-digest.mjs";
+import { STUB_BUILD_INFO, statuslineBundleDigest, stubSourceDigest, stubSourcesDirty } from "./stub-source-digest.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -94,6 +94,11 @@ const info = {
   revision: git("rev-parse", "HEAD"),
   dirty: stubSourcesDirty(),
   built_at: new Date().toISOString(),
+  // The statusline bundle rides inside the same binary but is not in the stub's
+  // source closure, so until #547 a fresh binary could carry a statusline built
+  // from anything at all and still report itself current. Read here, from the
+  // very bundle `deno compile` is about to embed.
+  statusline_digest: statuslineBundleDigest(),
 };
 
 const placeholder = readFileSync(STUB_BUILD_INFO, "utf8");

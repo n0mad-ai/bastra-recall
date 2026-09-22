@@ -30,6 +30,9 @@
  *    lazily imported by the `statusline` subcommand only. It is not part of
  *    the hook-lane contract this guard measures, and it is not committed, so
  *    a fresh checkout could not compute a digest that included it.
+ *
+ * That second exclusion left a gap, and `statuslineBundleDigest()` below closes
+ * it without reopening the boundary — see the comment there (#547).
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -45,6 +48,44 @@ export const STUB_ENTRY = resolve(PACKAGE_ROOT, "stub", "bastra-hook.ts");
 
 /** The generated stamp module. Excluded from the digest it carries. */
 export const STUB_BUILD_INFO = resolve(PACKAGE_ROOT, "stub", "build-info.ts");
+
+/** The statusline bundle the `statusline` subcommand imports, which
+ *  `deno compile` embeds in the same binary (stub/bastra-hook.ts). */
+export const STATUSLINE_BUNDLE = resolve(PACKAGE_ROOT, "..", "statusline", "dist", "index.mjs");
+
+/**
+ * sha256 over the statusline bundle that ships INSIDE the stub binary, or
+ * null when there is no bundle here to hash (#547).
+ *
+ * A second digest rather than a widening of the one above, because the two
+ * answer different questions and must be able to disagree: the stub's source
+ * closure says whether the hook lanes are current, and this says whether the
+ * statusline the same binary carries is. A binary can be right about the first
+ * and wrong about the second — that is the whole of #547 — and one combined
+ * number could not tell anyone which half moved.
+ *
+ * It hashes the BUILT bundle, not `packages/statusline/src/**`, although the
+ * sources are the committed, deterministic input and would be the tidier
+ * thing to hash. `build:stub` does not build the statusline; it compiles
+ * whatever `dist/index.mjs` happens to be there. Stamping the source digest
+ * would therefore certify sources the binary may not contain — a fresh stub
+ * built over a stale `dist` would report itself current, which is exactly the
+ * false "ok" this issue exists to remove. The bytes that go into the binary
+ * are the only thing that cannot lie about what is in the binary.
+ *
+ * The consequence, stated so nobody has to re-derive it: the reference value
+ * now depends on a build artifact. Where `dist` has never been built there is
+ * nothing to compare against, so this returns null and the check says it
+ * cannot decide — the same honest non-answer `localStubSourceDigest()` gives
+ * an npm or Homebrew install, never a guess in either direction.
+ */
+export function statuslineBundleDigest() {
+  try {
+    return createHash("sha256").update(readFileSync(STATUSLINE_BUNDLE)).digest("hex");
+  } catch {
+    return null;
+  }
+}
 
 /** Every `import ... from "…"` / `import("…")` specifier in a source file. */
 function specifiersOf(source) {

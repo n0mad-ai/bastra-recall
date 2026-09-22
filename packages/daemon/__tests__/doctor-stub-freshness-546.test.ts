@@ -22,6 +22,11 @@
  *   missing          the registration points at a file that does not exist
  *   unreadable       the file is there and `version` does not answer
  *
+ * And since #547 a second verdict on the same binary, for the statusline
+ * bundle it also carries: ok / stale / unstamped (built before #547, so it
+ * cannot say) / unknown-bundle (nothing built here to compare against) /
+ * unchecked (the binary could not be asked at all).
+ *
  * Everything runs against a temp HOME with fabricated registrations and fake
  * `bastra-hook` shell scripts. The developer's real registrations and their
  * live binary are never read and never touched — that binary is what their
@@ -104,13 +109,21 @@ async function fakeStub(dir: string, stamp: Record<string, unknown> | null): Pro
   return path;
 }
 
-const STAMP = (digest: string) => ({
+/** A stamp from a binary built since #547: it carries both digests. Leaving
+ *  `statusline` out produces the pre-#547 shape, which several tests need. */
+const STAMP = (digest: string, statusline?: string) => ({
   stub_version: "0.9.2-stub",
   source_digest: digest,
   revision: "8a335951234567890",
   dirty: false,
   built_at: "2026-09-13T08:00:00.000Z",
+  ...(statusline === undefined ? {} : { statusline_digest: statusline }),
 });
+
+/** The statusline bundle is a gitignored build artifact, so both sides of the
+ *  #547 comparison are supplied here instead of read off the machine. */
+const BUNDLE = "b".repeat(64);
+const bundle = (digest: string | null) => async () => digest;
 
 /** A package root with no stub sources at all — an npm or Homebrew install:
  *  `package.json` `files` ships neither `stub/*.ts` nor `scripts/`. */
@@ -124,10 +137,10 @@ test("#546: a binary built from the sources that are here reports ok", async () 
   const home = await tempHome();
   const digest = await localStubSourceDigest();
   assert.equal(typeof digest, "string", "this checkout must be able to compute its own stub digest");
-  const binary = await fakeStub(join(home, "install", "stub"), STAMP(digest!));
+  const binary = await fakeStub(join(home, "install", "stub"), STAMP(digest!, BUNDLE));
   await writeClaudeHooks(home, binary);
 
-  const report = await stubFreshness({ home, ownBinary: binary });
+  const report = await stubFreshness({ home, ownBinary: binary, statuslineDigest: bundle(BUNDLE) });
   assert.equal(report.sourcesAvailable, true);
   assert.equal(report.findings.length, 1);
   assert.equal(report.findings[0]!.state, "ok");
@@ -218,10 +231,14 @@ test("#546: a binary that cannot answer `version` is reported, not treated as cu
 test("#546: a binary from another tree than this installation's is itself a finding", async () => {
   const home = await tempHome();
   const digest = await localStubSourceDigest();
-  const elsewhere = await fakeStub(join(home, "other-checkout", "stub"), STAMP(digest!));
+  const elsewhere = await fakeStub(join(home, "other-checkout", "stub"), STAMP(digest!, BUNDLE));
   await writeClaudeHooks(home, elsewhere);
 
-  const report = await stubFreshness({ home, ownBinary: join(home, "install", "stub", "bastra-hook") });
+  const report = await stubFreshness({
+    home,
+    ownBinary: join(home, "install", "stub", "bastra-hook"),
+    statuslineDigest: bundle(BUNDLE),
+  });
   assert.equal(report.findings[0]!.state, "ok", "the registered binary is current…");
   assert.equal(report.findings[0]!.foreign, true, "…and it is not the one this installation manages");
 
@@ -288,6 +305,108 @@ test("#546: the digest comes from the one module the build stamps with", async (
     null,
     "an installation without stub sources has no reference digest, and must say null rather than invent one",
   );
+});
+
+// ─── #547: the statusline bundle inside the same binary ──────────
+
+test("#547: a current hook binary carrying an older statusline bundle is a finding of its own", async () => {
+  const home = await tempHome();
+  const digest = await localStubSourceDigest();
+  const binary = await fakeStub(join(home, "install", "stub"), STAMP(digest!, "9".repeat(64)));
+  await writeClaudeHooks(home, binary);
+
+  const report = await stubFreshness({ home, ownBinary: binary, statuslineDigest: bundle(BUNDLE) });
+  assert.equal(report.findings[0]!.state, "ok", "every hook lane in this binary IS current…");
+  assert.equal(report.findings[0]!.statusline, "stale", "…and the statusline it also ships is not");
+
+  const lines = stubFreshnessLines(report);
+  assert.equal(lines.length, 2, "the hook verdict and the statusline verdict are two statements");
+  assert.match(lines[0]!, /^✓ ok:/);
+  assert.match(lines[1]!, /^⚠ stale statusline/);
+  assert.ok(lines[1]!.includes("#547"), "the reasoning has an address");
+  assert.ok(lines[1]!.includes(STUB_REBUILD_HINT), "rebuilding the stub embeds the bundle that is here now");
+});
+
+test("#547: a matching bundle says nothing extra", async () => {
+  const home = await tempHome();
+  const digest = await localStubSourceDigest();
+  const binary = await fakeStub(join(home, "install", "stub"), STAMP(digest!, BUNDLE));
+  await writeClaudeHooks(home, binary);
+
+  const report = await stubFreshness({ home, ownBinary: binary, statuslineDigest: bundle(BUNDLE) });
+  assert.equal(report.findings[0]!.statusline, "ok");
+  assert.equal(stubFreshnessLines(report).length, 1);
+});
+
+test("#547: a binary built before this change is readable, and says it cannot say", async () => {
+  const home = await tempHome();
+  const digest = await localStubSourceDigest();
+  // The pre-#547 shape: `version` answers without a `statusline_digest` key.
+  const binary = await fakeStub(join(home, "install", "stub"), STAMP(digest!));
+  await writeClaudeHooks(home, binary);
+
+  const report = await stubFreshness({ home, ownBinary: binary, statuslineDigest: bundle(BUNDLE) });
+  assert.equal(report.findings[0]!.state, "ok", "the missing field must not break the hook verdict");
+  assert.equal(report.findings[0]!.statusline, "unstamped");
+
+  const line = stubFreshnessLines(report)[1]!;
+  assert.match(line, /^⚠ /);
+  assert.ok(line.includes("predates #547"), "not stale, not ok: it cannot be asked");
+  assert.ok(!line.includes("stale statusline"), "we do not know that it is stale");
+});
+
+test("#547: with no bundle built here the statusline question is left open, not answered", async () => {
+  const home = await tempHome();
+  const digest = await localStubSourceDigest();
+  const binary = await fakeStub(join(home, "install", "stub"), STAMP(digest!, "9".repeat(64)));
+  await writeClaudeHooks(home, binary);
+
+  // `packages/statusline/dist` is a build artifact: a fresh checkout, an npm
+  // install and a Homebrew install all have none. Calling the binary stale
+  // there would be a false alarm on every one of them.
+  const report = await stubFreshness({ home, ownBinary: binary, statuslineDigest: bundle(null) });
+  assert.equal(report.findings[0]!.statusline, "unknown-bundle");
+  assert.equal(stubFreshnessLines(report).length, 1, "nothing is claimed about what could not be compared");
+});
+
+test("#547: a binary that cannot be asked at all gets no second verdict", async () => {
+  const home = await tempHome();
+  const binary = join(home, "install", "stub", "bastra-hook");
+  await writeClaudeHooks(home, binary); // never created
+
+  const report = await stubFreshness({ home, ownBinary: binary, statuslineDigest: bundle(BUNDLE) });
+  assert.equal(report.findings[0]!.state, "missing");
+  assert.equal(report.findings[0]!.statusline, "unchecked");
+  assert.equal(stubFreshnessLines(report).length, 1);
+});
+
+test("#547: the bundle digest hashes the very file the binary embeds, and the stub digest still does not", async () => {
+  const { STATUSLINE_BUNDLE, statuslineBundleDigest, stubSourceFiles } = await import(
+    "../scripts/stub-source-digest.mjs"
+  );
+  const { createHash } = await import("node:crypto");
+  const { existsSync, readFileSync } = await import("node:fs");
+  const { readFile } = await import("node:fs/promises");
+  const { resolve } = await import("node:path");
+
+  // The specifier in stub/bastra-hook.ts is what `deno compile` embeds. If it
+  // ever moves, the digest must move with it or it hashes the wrong file.
+  const stubEntry = await readFile(join(DAEMON_PACKAGE_ROOT, "stub", "bastra-hook.ts"), "utf8");
+  const spec = /import\(\s*"(\.\.\/\.\.\/statusline\/[^"]+)"\s*\)/.exec(stubEntry);
+  assert.ok(spec, "the stub must still import the statusline bundle by a static specifier");
+  assert.equal(resolve(DAEMON_PACKAGE_ROOT, "stub", spec![1]!), STATUSLINE_BUNDLE);
+
+  assert.ok(
+    !stubSourceFiles().includes(STATUSLINE_BUNDLE),
+    "the boundary #547 kept: a build artifact stays out of the hook-lane digest",
+  );
+
+  const digest = statuslineBundleDigest();
+  if (existsSync(STATUSLINE_BUNDLE)) {
+    assert.equal(digest, createHash("sha256").update(readFileSync(STATUSLINE_BUNDLE)).digest("hex"));
+  } else {
+    assert.equal(digest, null, "no bundle here is null, not an invented value");
+  }
 });
 
 test("#546: a registration file that is absent or unparseable contributes nothing", async () => {
