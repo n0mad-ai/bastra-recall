@@ -44,7 +44,7 @@ These should fire `save_memory` **without further confirmation** — the user ge
 
 - One-off task descriptions (*"baue mir bitte X"*) — that's a task, not a memory
 - Speculation or "maybe" statements
-- Anything Daniel asks me to forget
+- Anything the user asks me to forget
 - Sensitive personal data unless it's a stable preference
 
 #### What to capture in a save
@@ -72,7 +72,7 @@ Recall_when patterns are critical — the save is only as useful as the contexts
 5. Continue with the actual task
 ```
 
-The ack is short, single-line, prefixed with `→` so it's visually distinct. Daniel can ignore, correct (*"nein, das war anders"* → I update the memory), or delete.
+The ack is short, single-line, prefixed with `→` so it's visually distinct. The user can ignore, correct (*"nein, das war anders"* → I update the memory), or delete.
 
 #### Conversation logging — split across two rails
 
@@ -138,7 +138,7 @@ When a hook finds matches, it injects this into Claude's context:
 <recall-hints surface="claude-code" project="carnexus">
 3 memorys may be relevant — call load_memory if needed before continuing:
 - css-input-focus-ring-stacking (lesson, 0.94): Don't stack focus styles on inputs. Use single :focus-visible.
-- pref-plan-format-recommendation-not-options (preference, 0.71): Daniel wants recommendation + 1 question, not 5-option menus.
+- pref-plan-format-recommendation-not-options (preference, 0.71): The user wants recommendation + 1 question, not 5-option menus.
 - carnexus-large-codebase-multi-session (project-fact, 0.62): Carnexus is large — plan multi-session work.
 </recall-hints>
 ```
@@ -227,9 +227,9 @@ I'm working in a *new* project called `carview`. User says: *"Bau mir ein Login-
 4. I see "score 0.94 lesson" → call load_memory("css-input-focus-ring-stacking")
 5. Read the body: don't stack ring + outline + custom focus
 6. Write LoginForm.tsx with single :focus-visible utility, no extra ring/outline
-7. No double-ring bug. Daniel doesn't have to flag it.
+7. No double-ring bug. The user doesn't have to flag it.
 
-(In Daniel's view: nothing visible happened. That's the point. The bug
+(In the user's view: nothing visible happened. That's the point. The bug
 just doesn't appear, and a future PR review on the new project doesn't
 re-litigate the lesson.)
 ```
@@ -242,8 +242,8 @@ This is the "real teammate" loop: I don't need to be reminded, because I check b
 
 Triggers will be wrong at first. The Dogfood week measures:
 
-- **False-save rate** — saved memorys Daniel deletes within 7 days. Target < 10%.
-- **Missed-save rate** — moments where Daniel says *"das hättest du speichern können"*. Target < 1 per session by week 2.
+- **False-save rate** — saved memorys the user deletes within 7 days. Target < 10%.
+- **Missed-save rate** — moments where the user says *"das hättest du speichern können"*. Target < 1 per session by week 2.
 - **False-recall rate** — recall hints Claude doesn't load. Target: hints ≥ 0.8 should be loaded ≥ 80% of the time. (Logged in `recall_log.claude_loaded`.)
 - **Missed-recall rate** — bugs/mistakes that recur and a relevant memory existed but didn't surface. This is the headline metric.
 
@@ -291,7 +291,7 @@ Diese sollen `save_memory` **ohne weitere Bestätigung** auslösen — der Nutze
 
 - Einmalige Aufgabenbeschreibungen (*"baue mir bitte X"*) — das ist eine Aufgabe, keine Erinnerung
 - Spekulationen oder „vielleicht“-Aussagen
-- Alles, was Daniel mich vergessen lassen will
+- Alles, was der Nutzer mich vergessen lassen will
 - Sensible persönliche Daten, außer es handelt sich um eine stabile Präferenz
 
 #### Was ein Speichervorgang festhalten soll
@@ -319,7 +319,7 @@ Recall_when-Muster sind entscheidend — ein Speichervorgang ist nur so nützlic
 5. Continue with the actual task
 ```
 
-Die Bestätigung ist kurz, einzeilig und mit `→` eingeleitet, damit sie sich optisch abhebt. Daniel kann sie ignorieren, korrigieren (*"nein, das war anders"* → ich aktualisiere die Erinnerung) oder löschen.
+Die Bestätigung ist kurz, einzeilig und mit `→` eingeleitet, damit sie sich optisch abhebt. Der Nutzer kann sie ignorieren, korrigieren (*"nein, das war anders"* → ich aktualisiere die Erinnerung) oder löschen.
 
 #### Gesprächsprotokoll — aufgeteilt auf zwei Schienen
 
@@ -385,7 +385,7 @@ Wenn ein Hook Treffer findet, fügt er Folgendes in Claudes Kontext ein:
 <recall-hints surface="claude-code" project="carnexus">
 3 memorys may be relevant — call load_memory if needed before continuing:
 - css-input-focus-ring-stacking (lesson, 0.94): Don't stack focus styles on inputs. Use single :focus-visible.
-- pref-plan-format-recommendation-not-options (preference, 0.71): Daniel wants recommendation + 1 question, not 5-option menus.
+- pref-plan-format-recommendation-not-options (preference, 0.71): The user wants recommendation + 1 question, not 5-option menus.
 - carnexus-large-codebase-multi-session (project-fact, 0.62): Carnexus is large — plan multi-session work.
 </recall-hints>
 ```
@@ -474,9 +474,9 @@ Ich arbeite in einem *neuen* Projekt namens `carview`. Der Nutzer sagt: *"Bau mi
 4. I see "score 0.94 lesson" → call load_memory("css-input-focus-ring-stacking")
 5. Read the body: don't stack ring + outline + custom focus
 6. Write LoginForm.tsx with single :focus-visible utility, no extra ring/outline
-7. No double-ring bug. Daniel doesn't have to flag it.
+7. No double-ring bug. The user doesn't have to flag it.
 
-(In Daniel's view: nothing visible happened. That's the point. The bug
+(In the user's view: nothing visible happened. That's the point. The bug
 just doesn't appear, and a future PR review on the new project doesn't
 re-litigate the lesson.)
 ```
@@ -489,8 +489,8 @@ Das ist die „echter Teamkollege“-Schleife: Ich muss nicht erinnert werden, w
 
 Die Trigger werden anfangs danebenliegen. Die Dogfood-Woche misst:
 
-- **Fehlspeicher-Rate** — gespeicherte Erinnerungen, die Daniel innerhalb von 7 Tagen löscht. Ziel < 10 %.
-- **Verpasste-Speicher-Rate** — Momente, in denen Daniel sagt *"das hättest du speichern können"*. Ziel < 1 pro Sitzung ab Woche 2.
+- **Fehlspeicher-Rate** — gespeicherte Erinnerungen, die der Nutzer innerhalb von 7 Tagen löscht. Ziel < 10 %.
+- **Verpasste-Speicher-Rate** — Momente, in denen der Nutzer sagt *"das hättest du speichern können"*. Ziel < 1 pro Sitzung ab Woche 2.
 - **Fehl-Recall-Rate** — Recall-Hinweise, die Claude nicht lädt. Ziel: Hinweise ≥ 0.8 sollen in ≥ 80 % der Fälle geladen werden. (Protokolliert in `recall_log.claude_loaded`.)
 - **Verpasste-Recall-Rate** — Bugs/Fehler, die wiederkehren, obwohl eine passende Erinnerung existierte, aber nicht hochkam. Das ist die Leitkennzahl.
 

@@ -490,7 +490,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         source: {
           type: "string",
           description:
-            "Optional provenance, e.g. 'Daniel, 2026-05-01 after retro'.",
+            "Optional provenance, e.g. 'the user, 2026-05-01 after retro'.",
         },
         confidence: {
           type: "number",
