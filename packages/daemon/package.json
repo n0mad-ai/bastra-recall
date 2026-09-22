@@ -42,7 +42,7 @@
     "prepare:package-assets": "node scripts/prepare-package-assets.mjs",
     "prepack": "npm run prepare:package-assets",
     "start": "node dist/index.js",
-    "check:types": "tsc --noEmit && tsc -p tsconfig.scripts.json",
+    "check:types": "tsc --noEmit && tsc -p tsconfig.scripts.json && tsc -p tsconfig.tests.json",
     "test": "node --import tsx --import ../../scripts/test-env.mjs --test __tests__/*.test.ts",
     "smoke": "tsx scripts/smoke.ts",
     "smoke:telemetry": "tsx scripts/telemetry-smoke.ts",

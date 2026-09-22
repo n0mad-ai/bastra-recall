@@ -42,10 +42,12 @@ const mkGraph = (nodeIds: string[], edges: Array<[string, string]>): VaultGraph 
   generated_at: "2026-01-01T00:00:00.000Z",
   vault_name: "test",
   vault_size: nodeIds.length,
+  withheld: { private: 0 },
   clusters: [],
   groups: [],
   nodes: nodeIds.map(mkNode),
   edges: edges.map(([source, target]) => ({ source, target, via: "related" as const })),
+  edge_counts: { related: edges.length, related_via: 0 },
 });
 
 const vec = (values: number[]) => new Float32Array(values);

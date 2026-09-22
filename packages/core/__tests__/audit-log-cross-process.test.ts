@@ -24,7 +24,7 @@ import {
   auditedSoftDelete,
   auditedRestore,
 } from "../src/audit-save.js";
-import type { SaveMemoryInput } from "../src/save.js";
+import type { SaveMemoryInput } from "../src/save-schema.js";
 
 const CONTEXT = { actor: "assistant", reason: "test mutation" } as const;
 

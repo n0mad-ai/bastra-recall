@@ -255,8 +255,8 @@ test("reflex promotion (#217): repeated acted_on recalls become candidates, cool
     { id: "warm", title: "Warm memory", created: iso(60), topic_path: ["css"], related: [] },
   ]);
   const episode = (recallId: string, memoryId: string): TelemetryEvent[] => [
-    { kind: "hook_recall", recall_id: recallId, query: "tailwind grid layout" },
-    { kind: "recall_episode", recall_id: recallId, memory_id: memoryId, acted_on: true },
+    { kind: "hook_recall", ts: iso(0), recall_id: recallId, query: "tailwind grid layout" },
+    { kind: "recall_episode", ts: iso(0), recall_id: recallId, memory_id: memoryId, acted_on: true },
   ];
   const events: TelemetryEvent[] = [
     ...episode("r1", "hot"),
@@ -290,8 +290,8 @@ test("intake adoption (#217): repeatedly used imported memories become candidate
     { id: "native-hot", title: "Native hot", created: iso(60), topic_path: ["css"], related: [] },
   ]);
   const episode = (recallId: string, memoryId: string): TelemetryEvent[] => [
-    { kind: "hook_recall", recall_id: recallId, query: "workshop module fields" },
-    { kind: "recall_episode", recall_id: recallId, memory_id: memoryId, acted_on: true },
+    { kind: "hook_recall", ts: iso(0), recall_id: recallId, query: "workshop module fields" },
+    { kind: "recall_episode", ts: iso(0), recall_id: recallId, memory_id: memoryId, acted_on: true },
   ];
   const events: TelemetryEvent[] = [
     ...episode("a1", "intake-hot"),

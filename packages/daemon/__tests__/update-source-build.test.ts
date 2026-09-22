@@ -442,7 +442,7 @@ test("#528 — /health names the revision the running daemon was built from", ()
   const base = {
     vaultSize: () => 691,
     version: "0.9.2",
-    embedding: { on: false, providerId: null, source: "default" as const },
+    embedding: { on: false, providerId: null, source: "none" as const },
     updateState: () => null,
   };
   // A version number is shared by every build of a release; the revision is not.

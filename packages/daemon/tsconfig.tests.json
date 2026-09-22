@@ -1,0 +1,11 @@
+{
+  "$comment": "Type-checking for the test tree (#542). Tests are not BUILT — `tsc -p tsconfig.json` still compiles only src/ into dist/, so neither the build's output nor its speed changes. What this adds is a guard: a `@ts-expect-error` or a type-level assertion in a test now actually has to hold, and a test file that drifts from the types it exercises fails `npm run check:types` instead of silently going stale. `src` is included alongside `__tests__` so the tests type-check against the real signatures, not a stray copy.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "__tests__/**/*.ts"],
+  "exclude": ["node_modules", "dist", "test-vault"]
+}

@@ -32,14 +32,18 @@ function args(positional: string[], dryRun = false): ParsedArgs {
     fix: false,
     withStopHook: true,
     staged: false,
+    force: false,
     ollama: null,
     origin: null,
     extension: false,
+    stub: null,
     exclude: [],
     follow: false,
     since: null,
     source: null,
     lines: null,
+    stats: false,
+    includeEval: false,
     positional,
   };
 }

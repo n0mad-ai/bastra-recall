@@ -455,7 +455,7 @@ describe("delivered block: dedupe per session, file AND symbol set", () => {
     const first = await noteWith(repo, cache, EDIT_SAVE, EMPTY_SESSION);
     assert.ok(first.note);
     const shown: ReadonlySessionState = {
-      shown: { [first.note.dedupeKey]: { count: 1, lastShownAt: Date.now() } },
+      shown: { [first.note.dedupeKey]: { count: 1, at: Date.now() } },
     };
     const second = await noteWith(repo, cache, EDIT_SAVE, shown);
     assert.equal(second.note, null);
@@ -470,7 +470,7 @@ describe("delivered block: dedupe per session, file AND symbol set", () => {
     const first = await noteWith(repo, cache, EDIT_SAVE, EMPTY_SESSION);
     assert.ok(first.note);
     const shown: ReadonlySessionState = {
-      shown: { [first.note.dedupeKey]: { count: 1, lastShownAt: Date.now() } },
+      shown: { [first.note.dedupeKey]: { count: 1, at: Date.now() } },
     };
     // The file-level dedupe of #577 suppressed this — the second edit of a
     // file was silent however different its blast radius was.

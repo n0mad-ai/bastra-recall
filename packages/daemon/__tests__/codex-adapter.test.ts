@@ -12,7 +12,7 @@ import { join } from "node:path";
 
 import { parseCodexMcpServer, codexServerMatches } from "../src/cli/codex-cli.js";
 import { planCodexHooks, patchCodexHooks } from "../src/cli/adapters/codex.js";
-import { applyPatchPaths, normalizeWritePayload } from "../src/hook-write-input.js";
+import { applyPatchPaths, normalizeWritePayload, type WritePayloadShape } from "../src/hook-write-input.js";
 import { hookClient } from "../src/hook-surface.js";
 import { codeTargets, MAX_CODE_TARGETS } from "../src/write-lane.js";
 import { repoRelative } from "../src/code-graph/dependents-block.js";
@@ -147,7 +147,10 @@ test("apply_patch payloads expose target paths and retain the patch body", () =>
     "packages/daemon/src/a.ts",
     "packages/daemon/src/b.ts",
   ]);
-  const normalized = normalizeWritePayload({ tool_name: "apply_patch", tool_input: { command } });
+  // #542: T is inferred from the literal argument by default, which loses the
+  // `file_path`/`file_paths` the function adds at runtime — pin it to the
+  // (loose) WritePayloadShape instead.
+  const normalized = normalizeWritePayload<WritePayloadShape>({ tool_name: "apply_patch", tool_input: { command } });
   assert.equal(normalized?.tool_input?.file_path, "packages/daemon/src/a.ts");
   assert.deepEqual(normalized?.tool_input?.file_paths, ["packages/daemon/src/a.ts", "packages/daemon/src/b.ts"]);
   assert.equal(normalized?.tool_input?.command, command);

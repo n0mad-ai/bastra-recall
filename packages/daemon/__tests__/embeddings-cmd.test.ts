@@ -284,7 +284,7 @@ test("embeddings status: running daemon with semantic recall ON shows both views
     const daemonOn = async () => ({
       ok: true as const,
       detail: "vault_size=1",
-      semanticRecall: "on",
+      semanticRecall: "on" as const,
       embeddingMode: "ollama-embeddinggemma",
       embeddingSource: "env",
     });

@@ -15,7 +15,7 @@
     "doc2query-lift": "tsx src/doc2query-lift.ts",
     "salience-lift": "tsx src/salience-lift.ts",
     "trust-lift": "tsx src/trust-lift.ts",
-    "check:types": "tsc --noEmit",
+    "check:types": "tsc --noEmit && tsc -p tsconfig.tests.json",
     "absence-honesty": "tsx src/absence-honesty.ts",
     "pool-depth": "tsx src/pool-depth.ts",
     "rrf-k-beir": "tsx src/rrf-k-beir.ts",

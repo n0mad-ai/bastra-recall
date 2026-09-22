@@ -53,6 +53,7 @@ test("das Vorbild eines Soft-Deletes hängt nicht am gray-matter-Cache", async (
     memoryID: "loeschling",
     context: { actor: "user" },
   });
+  assert.ok(audit, "audit is null only when logging itself failed"); // #542
   assert.deepEqual(audit.diff_before?.tags, ["eins", "zwei"]);
 
   // Derselbe Inhalt, zweiter Parse: gray-matter liefert den Cache-Eintrag,

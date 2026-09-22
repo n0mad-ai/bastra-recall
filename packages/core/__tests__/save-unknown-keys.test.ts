@@ -27,7 +27,7 @@ import * as path from "node:path";
 import matter from "gray-matter";
 import { saveMemory } from "../src/save.js";
 import { SAVE_MANAGED_FRONTMATTER_KEYS } from "../src/save-frontmatter.js";
-import type { SaveMemoryInput } from "../src/save.js";
+import type { SaveMemoryInput } from "../src/save-schema.js";
 
 const base = (over: Partial<SaveMemoryInput> = {}): SaveMemoryInput =>
   ({

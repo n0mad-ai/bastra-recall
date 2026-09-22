@@ -37,7 +37,10 @@ async function triggersOf(
     folder_path: "Inbox",
     title,
     tags,
-    category,
+    // #542: this helper takes a plain `category: string` — some callers pass
+    // a value outside the current enum (trigger derivation doesn't validate
+    // it) — cast rather than narrow the parameter and break those.
+    category: category as Parameters<typeof saveDocument>[1]["category"],
     linked_file: false,
     overwrite: false,
     ...(recallWhen ? { recall_when: recallWhen } : {}),

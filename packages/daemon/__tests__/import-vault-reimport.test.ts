@@ -92,7 +92,9 @@ test("a second identical import writes nothing and claims nothing", async (t) =>
   const after = await snapshot(join(vault, first.folder));
   assert.deepEqual([...after.keys()], [...before.keys()], "no file appeared or vanished");
   for (const [rel, now] of after) {
-    const then = before.get(rel);
+    // #542: the deepEqual on the key sets just above guarantees `rel` is in
+    // `before` too.
+    const then = before.get(rel)!;
     assert.equal(now.hash, then.hash, `${rel} changed its bytes`);
     assert.equal(now.mtimeMs, then.mtimeMs, `${rel} was rewritten (mtime moved)`);
   }
@@ -138,7 +140,8 @@ test("a changed source file is updated, and only that one", async (t) => {
   assert.equal(second.written.unchanged, 1, "the untouched note stays untouched");
 
   const after = await snapshot(join(vault, first.folder));
-  const moved = [...after.keys()].filter((rel) => after.get(rel).hash !== before.get(rel)?.hash);
+  // #542: `rel` comes from after.keys(), so after.get(rel) is always defined.
+  const moved = [...after.keys()].filter((rel) => after.get(rel)!.hash !== before.get(rel)?.hash);
   assert.equal(moved.length, 1, `exactly one file may change, changed: ${moved.join(", ")}`);
   assert.match(moved[0], /two/);
 

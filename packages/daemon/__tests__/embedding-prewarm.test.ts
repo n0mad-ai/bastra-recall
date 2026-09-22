@@ -19,8 +19,8 @@ import {
   createEmbeddingPrewarmer,
   PREWARM_DEBOUNCE_MS,
   type PrewarmOutcome,
-} from "../src/embedding-prewarm.ts";
-import { runPromptLane } from "../src/prompt-lane.ts";
+} from "../src/embedding-prewarm.js";
+import { runPromptLane } from "../src/prompt-lane.js";
 
 // ─── pure: gate, debounce, error containment ─────────────────────────────
 
@@ -74,7 +74,10 @@ test("prewarm — debounce stamps the ATTEMPT, not its result", async () => {
   nowMs += 900; // still inside the window, warm still in flight
   assert.equal(prewarm(), "skipped-debounce");
   assert.equal(calls, 1);
-  release?.();
+  // #542: `release` is only ever assigned inside the Promise executor above, a
+  // separate control-flow container — TS's narrowing can't see that write, so
+  // it treats the truthy branch as unreachable (`never`) without this cast.
+  (release as (() => void) | null)?.();
 });
 
 test("prewarm — no dense arm: no provider call at all", () => {

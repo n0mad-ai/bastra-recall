@@ -120,9 +120,14 @@ test("isDokuProject (#511) composed with the live detector: a real repo earns a 
     // guessed name still survives for the bare dir (detectProject stays non-null),
     // even though it no longer pays for doku tokens.
     assert.notEqual(detectProject(bareDir), null, "recall scope must keep the guessed name for a non-repo dir");
+    // #542: this restates topics.ts's own `d.confidence === "none" ? null :
+    // d.raw` formula verbatim (not a dead check) — the assert.equal above
+    // narrowed confidence to the literal "fallback", so TS sees the "none"
+    // comparison as unreachable; widen it back to compare against the rule
+    // generically, the same way detectProject() itself does.
     assert.equal(
       detectProject(bareDir),
-      bareDet.confidence === "none" ? null : bareDet.raw,
+      (bareDet.confidence as string) === "none" ? null : bareDet.raw,
       "session-lane's derived `project` must stay identical to detectProject()",
     );
   } finally {

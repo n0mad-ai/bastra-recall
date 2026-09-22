@@ -647,6 +647,9 @@ test("#305: every gate lane has a threshold, and every threshold names a real bu
       [RECALL_BUDGET_MS, FAST_BUDGET_MS, STOP_BUDGET_MS, PROMPT_ASSERTION_BUDGET_MS].includes(t.budgetMs),
       `${mode}: ${t.budgetMs}ms is not one of the budgets hook-budgets.ts enforces`,
     );
+    // #542: p90TargetMs is null only for prompt-total (not a REQUIRED_LANES
+    // member) — every lane here carries a real target.
+    assert.ok(t.p90TargetMs !== null, `${mode}: REQUIRED_LANES entries must carry a p90 target`);
     assert.ok(t.p90TargetMs <= t.budgetMs, `${mode}: a p90 target above the lane's own budget cannot be missed`);
   }
   assert.deepEqual(

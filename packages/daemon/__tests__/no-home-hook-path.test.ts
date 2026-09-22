@@ -122,7 +122,10 @@ async function makeDaemon(): Promise<Daemon> {
     version: "test",
     toolDeps: { vault, search, telemetry, vaultPath: dir },
     documentWriteEnabled: false,
-    embedding: { on: true, providerId: "test", source: "test" },
+    // #542: "test" isn't a member of EmbeddingSource ("env"|"cli-settings"|
+    // "api-key"|"none") — this harness has no real source, so "none" is the
+    // honest value (providerId stays a free-form test label).
+    embedding: { on: true, providerId: "test", source: "none" },
   });
 
   return {

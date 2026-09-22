@@ -32,9 +32,14 @@ after(async () => {
 });
 
 const ss = await import("../src/session-state.js");
+// #542: `const ss = await import(...)` only binds `ss` as a value, not a
+// type namespace — `ss.SessionState` in a type position doesn't resolve
+// once the test tree is type-checked. This alias gives the same name back
+// in type space without a second (and colliding) import.
+type SessionState = import("../src/session-state.js").SessionState;
 
-async function persisted(sessionId: string): Promise<ss.SessionState> {
-  return JSON.parse(await readFile(join(testDir, `${sessionId}.json`), "utf8")) as ss.SessionState;
+async function persisted(sessionId: string): Promise<SessionState> {
+  return JSON.parse(await readFile(join(testDir, `${sessionId}.json`), "utf8")) as SessionState;
 }
 
 test("#539: concurrent lane updates on one session id all survive", async () => {

@@ -298,6 +298,7 @@ test("#546: the digest comes from the one module the build stamps with", async (
   // `build-stub.mjs` writes into the binary and what the parity guard compares
   // against. Two definitions of "the stub's sources" is how a check goes green
   // against a binary that is wrong.
+  // @ts-expect-error — plain .mjs script, no declarations (#542).
   const { stubSourceDigest } = await import("../scripts/stub-source-digest.mjs");
   assert.equal(await localStubSourceDigest(DAEMON_PACKAGE_ROOT), stubSourceDigest());
   assert.equal(
@@ -382,6 +383,7 @@ test("#547: a binary that cannot be asked at all gets no second verdict", async 
 
 test("#547: the bundle digest hashes the very file the binary embeds, and the stub digest still does not", async () => {
   const { STATUSLINE_BUNDLE, statuslineBundleDigest, stubSourceFiles } = await import(
+    // @ts-expect-error — plain .mjs script, no declarations (#542).
     "../scripts/stub-source-digest.mjs"
   );
   const { createHash } = await import("node:crypto");

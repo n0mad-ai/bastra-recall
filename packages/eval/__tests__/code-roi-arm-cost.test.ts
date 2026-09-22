@@ -39,8 +39,11 @@ const {
   spendOnDisk,
   successfulResult,
   withinCeiling,
+  // @ts-expect-error — plain .mjs script, no declarations (#542).
 } = await import("../code-roi/v2/arm-cost.mjs");
+// @ts-expect-error — plain .mjs script, no declarations (#542).
 const { ARM_IDS } = await import("../code-roi/v2/select.mjs");
+// @ts-expect-error — plain .mjs script, no declarations (#542).
 const { armFinished, scenarioComplete } = await import("../code-roi/v2/run-arms-v3.mjs");
 
 /** The two assistant turns every transcript below starts with. */

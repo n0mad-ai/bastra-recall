@@ -148,6 +148,7 @@ test("survival-by-id: soft-delete trashes append-only — id leaves the active i
 
     // ...but nothing evaporated: the trash file and the append-only audit record persist.
     assert.ok(await fileExists(trashPath), "trashed file exists under .bastra/trash/");
+    assert.ok(audit, "audit is null only when logging itself failed"); // #542
     assert.equal(audit.operation, "delete");
     const lastDelete = await auditLog.lastDeleteFor("trashed");
     assert.ok(lastDelete, "append-only audit holds the delete record");

@@ -158,7 +158,7 @@ test("/health carries code_stale, and null when there is nothing to report", () 
   const base = {
     vaultSize: () => 691,
     version: "0.8.9",
-    embedding: { on: false, providerId: null, source: "default" as const },
+    embedding: { on: false, providerId: null, source: "none" as const },
     updateState: () => null,
   };
   const clean = buildHealthPayload(base);

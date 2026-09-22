@@ -27,13 +27,13 @@ import {
   MUST_LOAD_SCORE,
   type PromptReflexHit,
   type RecallHit,
-} from "../src/prompt-lane.ts";
+} from "../src/prompt-lane.js";
 import {
   clearShown,
   decideBackoff,
   touchLoadedMarker,
   type SourceBackoff,
-} from "../src/session-state.ts";
+} from "../src/session-state.js";
 
 // ─── Pure unit tests ─────────────────────────────────────────────────────
 

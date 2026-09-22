@@ -65,9 +65,12 @@ async function poolWith(bridges: Bridge[]): Promise<BridgePool> {
 // A German query that shares no vocabulary with the memory's English trigger.
 const FAR_DE_QUERY = "warum schließt sich mein Fenster wieder von allein";
 
-/** Score of a given memory in a recall result, or 0 if it did not surface. */
-function scoreFor(res: { hits: { id: string; score: number }[] }, id: string): number {
-  return res.hits.find((h) => h.id === id)?.score ?? 0;
+/** Score of a given memory in a recall result, or 0 if it did not surface.
+ *  #542: RecallResult.hits is `unknown[]` (the shape varies by recall mode) —
+ *  cast once here rather than at every call site. */
+function scoreFor(res: { hits: unknown[] }, id: string): number {
+  const hits = res.hits as Array<{ id: string; score: number }>;
+  return hits.find((h) => h.id === id)?.score ?? 0;
 }
 
 async function withVault(fn: (mkDeps: (extra?: Partial<ToolDeps>) => ToolDeps) => Promise<void>): Promise<void> {
@@ -147,6 +150,9 @@ test("configured language override routes a code-shaped (abstaining) query into 
       mkDeps({ learnedBridges: pool, sharedRecallLang: "de" }),
       { query: "Panel Fenster", k: 5, min_score: 0 },
     );
-    assert.ok(res.hits.some((h) => h.id === "panel-dismiss"), "override pool must widen the query");
+    assert.ok(
+      (res.hits as Array<{ id: string }>).some((h) => h.id === "panel-dismiss"),
+      "override pool must widen the query",
+    );
   });
 });

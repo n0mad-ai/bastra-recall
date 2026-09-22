@@ -51,11 +51,14 @@ const BASE = {
 } as const;
 
 type SaveArgs = Parameters<typeof saveDocument>[1];
+// #542: BASE is `as const`, so its `tags` is a readonly tuple — that no
+// longer overlaps SaveArgs enough for a direct cast. Via `unknown` first,
+// same as TS's own suggestion.
 
 async function savedDoc(dir: string, vault: Vault) {
   const src = join(dir, "Police.pdf");
   await writeFile(src, "POLICE-V1", "utf8");
-  return saveDocument(vault, { ...BASE, original_path: src } as SaveArgs);
+  return saveDocument(vault, { ...BASE, original_path: src } as unknown as SaveArgs);
 }
 
 // ── 1. schreiben und quittieren ─────────────────────────────────
@@ -150,7 +153,7 @@ test("geglückte Dokument-Operationen hinterlassen keinen offenen Eintrag", asyn
   // zweiteilige Operation, nur ohne Ordnerwechsel.
   const src = join(dir, "Police.pdf");
   await writeFile(src, "POLICE-V2", "utf8");
-  await saveDocument(vault, { ...BASE, original_path: src, overwrite: true } as SaveArgs);
+  await saveDocument(vault, { ...BASE, original_path: src, overwrite: true } as unknown as SaveArgs);
   assert.deepEqual(await readOpenRecoveryEntries(dir), [], "der Overwrite quittiert");
 
   await moveDocument(vault, { id: doc.id, folder_path: "neu" });

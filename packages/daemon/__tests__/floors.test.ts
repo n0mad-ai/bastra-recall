@@ -64,7 +64,7 @@ async function tmpFloorsPath(): Promise<{ path: string; actsPath: string; cleanu
 // ─── Modul-Ebene ─────────────────────────────────────────────────
 
 test("addFloor stamps floored_at + last_affirmed and upserts by memory_id", async () => {
-  const { path, actsPath, cleanup } = await tmpFloorsPath();
+  const { path, cleanup } = await tmpFloorsPath();
   try {
     const first = await addFloor({ memory_id: "m1", condition: "decision-a", reason: "killed option" }, path);
     assert.ok(first.floored_at, "floored_at is stamped");
@@ -85,7 +85,7 @@ test("addFloor stamps floored_at + last_affirmed and upserts by memory_id", asyn
 });
 
 test("release(condition) removes ALL entries sharing the token and returns the removed ids", async () => {
-  const { path, actsPath, cleanup } = await tmpFloorsPath();
+  const { path, cleanup } = await tmpFloorsPath();
   try {
     await addFloor({ memory_id: "m1", condition: "migration-x", reason: "constraint 1" }, path);
     await addFloor({ memory_id: "m2", condition: "migration-x", reason: "constraint 2" }, path);
@@ -149,7 +149,7 @@ test("affirm with affirmed_by + why stamps last_affirmed and stores both verbati
 });
 
 test(`cap: entry ${MAX_FLOORS + 1} is rejected with an error listing the current set; upsert still passes`, async () => {
-  const { path, actsPath, cleanup } = await tmpFloorsPath();
+  const { path, cleanup } = await tmpFloorsPath();
   try {
     for (let i = 1; i <= MAX_FLOORS; i++) {
       await addFloor({ memory_id: `m${i}`, condition: `cond-${i}`, reason: `reason ${i}` }, path);
@@ -203,7 +203,7 @@ test("persistence roundtrip: entries survive as valid JSON on disk and re-read i
 });
 
 test("listFloors(scope) returns scoped + unscoped (global) entries only", async () => {
-  const { path, actsPath, cleanup } = await tmpFloorsPath();
+  const { path, cleanup } = await tmpFloorsPath();
   try {
     await addFloor({ memory_id: "ga", condition: "c", reason: "global floor" }, path);
     await addFloor({ memory_id: "pa", condition: "c", reason: "proj-a floor", scope: "proj-a" }, path);
@@ -225,7 +225,7 @@ test("listFloors(scope) returns scoped + unscoped (global) entries only", async 
 // genau sein eigenes Projekt lautlos verschwinden. Ohne den Fix in
 // `listFloors` (scopeEquals statt `===`) ist dieser Test rot.
 test("listFloors: a capitalised project name still finds its own lowercase-scoped floor (#360)", async () => {
-  const { path, actsPath, cleanup } = await tmpFloorsPath();
+  const { path, cleanup } = await tmpFloorsPath();
   try {
     await addFloor({ memory_id: "ga", condition: "c", reason: "global floor" }, path);
     await addFloor({ memory_id: "pc", condition: "c", reason: "CarNexus floor", scope: "carnexus" }, path);

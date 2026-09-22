@@ -63,7 +63,16 @@ test("thin client: response body reaches stdout verbatim, request carries payloa
   // Deliberately non-canonical JSON (spacing) — byte-identical passthrough is
   // the assertion, so any parse/re-stringify in the client would fail it.
   const daemonDoc = '{"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": "<recall-hints>x</recall-hints>"} }';
-  let received: { url: string | undefined; body: { payload?: { prompt?: string }; client_ppid?: unknown } } | null = null;
+  // #542: named rather than inline so the cast below doesn't go through
+  // `typeof received` — received is only ever assigned inside the mock
+  // daemon's request handler (a separate control-flow container), so TS's
+  // flow analysis can't see that assignment and narrows `typeof received`
+  // to `null` at the cast site, making `NonNullable<typeof received>` `never`.
+  interface Received {
+    url: string | undefined;
+    body: { payload?: { prompt?: string }; client_ppid?: unknown };
+  }
+  let received: Received | null = null;
 
   const daemon = await startMockDaemon((req, res) => {
     let body = "";
@@ -84,7 +93,7 @@ test("thin client: response body reaches stdout verbatim, request carries payloa
     assert.equal(stdout, daemonDoc, "body must reach stdout verbatim — no parse, no reserialize");
 
     assert.ok(received, "daemon must have been called");
-    const r = received as NonNullable<typeof received>;
+    const r = received as Received;
     assert.equal(r.url, "/hook/prompt");
     assert.equal(r.body.payload?.prompt, "such mal meinen Strafzettel", "original payload rides inside `payload`");
     assert.ok(

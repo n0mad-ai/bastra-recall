@@ -237,7 +237,7 @@ test("#437: the JSON/web telemetry report publishes no arm rate at all", () => {
 test("#437: `bastra logs --stats` publishes no arm rate either", () => {
   // Die zweite CLI-Fläche. Sie schlüsselt nach Lane auf, nicht nach Arm — und
   // darf es ohne die Mindest-N-Prüfung auch nicht tun.
-  const out = renderStats(aggregate(underpoweredLog() as never[]));
+  const out = renderStats(aggregate(underpoweredLog() as never[]), 600);
   assert.doesNotMatch(out, /wording_current|wording_variant/);
   assert.doesNotMatch(out, /\barm\b/i);
 });

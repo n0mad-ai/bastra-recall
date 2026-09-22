@@ -76,6 +76,9 @@ test("Re-Filing nur der Schreibweise nach lässt das einzige Memory stehen", asy
       folder: "memories/people",
       overwrite: true,
     });
+    // #542: saveMemoryHandler returns SaveMemoryResult | ClaimGateResult; an
+    // overwrite of an existing memory is never held at the claim gate.
+    assert.ok(!("claim_gate" in res), "an overwrite is not a claim-gate hold");
 
     assert.ok(existsSync(res.file_path), `der gemeldete Pfad existiert: ${res.file_path}`);
     assert.match(await readFile(res.file_path, "utf8"), /NEU/);

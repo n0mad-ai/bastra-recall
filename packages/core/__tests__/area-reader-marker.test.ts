@@ -26,7 +26,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, mkdir, readdir, readFile, rm, utimes } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, readFile, rm, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";

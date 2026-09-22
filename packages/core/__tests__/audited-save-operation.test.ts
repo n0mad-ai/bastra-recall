@@ -16,7 +16,7 @@ import * as path from "node:path";
 import { Vault } from "../src/vault.js";
 import { AuditLog } from "../src/audit-log.js";
 import { auditedSave } from "../src/audit-save.js";
-import type { SaveMemoryInput } from "../src/save.js";
+import type { SaveMemoryInput } from "../src/save-schema.js";
 
 const INPUT = {
   title: "Deploy Runbook",
@@ -56,10 +56,12 @@ test("a slug-inferred overwrite is audited as update, with the pre-image kept", 
   const { save } = await harness(t);
 
   const first = await save(INPUT);
+  assert.ok(first.audit, "audit is null only when logging itself failed"); // #542
   assert.equal(first.audit.operation, "create");
   assert.equal(first.audit.diff_before, null);
 
   const second = await save({ ...INPUT, body: "Body v2.", overwrite: true });
+  assert.ok(second.audit, "audit is null only when logging itself failed"); // #542
   assert.equal(second.result.created, false, "the file already existed");
   assert.equal(
     second.audit.operation,
@@ -82,6 +84,7 @@ test("an explicit id still classifies correctly", async (t) => {
   await save({ ...INPUT, id: "explicit-runbook" });
   const second = await save({ ...INPUT, id: "explicit-runbook", overwrite: true });
 
+  assert.ok(second.audit, "audit is null only when logging itself failed"); // #542
   assert.equal(second.audit.operation, "update");
   assert.ok(second.audit.diff_before);
 });
@@ -115,6 +118,7 @@ test("das Save-Audit liest sein Vorbild von der Platte, auch wenn der Index es n
   const second = await save({ ...INPUT, body: "Body v2.", overwrite: true });
 
   assert.equal(second.result.created, false, "auf der Platte lag die Datei sehr wohl");
+  assert.ok(second.audit, "audit is null only when logging itself failed"); // #542
   assert.ok(
     second.audit.diff_before,
     "ein Overwrite ohne Vorbild ist ein Trail, aus dem die Mutation nicht rekonstruierbar ist",
@@ -138,6 +142,7 @@ test("das Save-Audit nennt die Fassung von der Platte, nicht den veralteten Cach
 
   const second = await save({ ...INPUT, body: "Body v3.", overwrite: true });
 
+  assert.ok(second.audit, "audit is null only when logging itself failed"); // #542
   assert.equal(
     (second.audit.diff_before as Record<string, unknown>).summary,
     "extern geaendert",

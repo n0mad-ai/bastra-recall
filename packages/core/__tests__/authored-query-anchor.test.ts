@@ -51,14 +51,13 @@ test("ein Bridge-Term im Query-Text setzt keinen Anker", async () => {
     const expanded = "Hasen Kaninchen";
     const authored = "Hasen";
 
-    const withoutAuthored = search.recall(expanded, { k: 5, minScore: 0 });
+    const withoutAuthored = search.recall(expanded, { k: 5 });
     const ziel1 = withoutAuthored.find((h) => h.id === "ziel");
     assert.ok(ziel1, "der Treffer wird über die Erweiterung gefunden");
     assert.equal(ziel1.matched_recall_when, true, "vorher: der Bridge-Term ankerte");
 
     const withAuthored = search.recall(expanded, {
       k: 5,
-      minScore: 0,
       authored_query: authored,
     });
     const ziel2 = withAuthored.find((h) => h.id === "ziel");
@@ -75,7 +74,6 @@ test("ein selbst getippter Term ankert weiterhin", async () => {
   try {
     const hits = search.recall("Kaninchen Hasen", {
       k: 5,
-      minScore: 0,
       authored_query: "Kaninchen",
     });
     const ziel = hits.find((h) => h.id === "ziel");
@@ -89,8 +87,8 @@ test("ein selbst getippter Term ankert weiterhin", async () => {
 test("ohne authored_query bleibt alles wie bisher — Aufrufer ohne Expansion ändern nichts", async () => {
   const { search, close } = await vaultWithTrigger();
   try {
-    const a = search.recall("Kaninchen", { k: 5, minScore: 0 });
-    const b = search.recall("Kaninchen", { k: 5, minScore: 0, authored_query: "Kaninchen" });
+    const a = search.recall("Kaninchen", { k: 5 });
+    const b = search.recall("Kaninchen", { k: 5, authored_query: "Kaninchen" });
     assert.equal(a.find((h) => h.id === "ziel")?.matched_recall_when, true);
     assert.equal(b.find((h) => h.id === "ziel")?.matched_recall_when, true);
   } finally {

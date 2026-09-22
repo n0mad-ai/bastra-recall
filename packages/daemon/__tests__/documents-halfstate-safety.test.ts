@@ -56,6 +56,9 @@ const BASE = {
 } as const;
 
 type SaveArgs = Parameters<typeof saveDocument>[1];
+// #542: BASE is `as const`, so its `tags` is a readonly tuple — that no
+// longer overlaps SaveArgs enough for a direct cast. Via `unknown` first,
+// same as TS's own suggestion.
 
 /** Ein gültiges Sidecar desselben Dokuments — so, wie es aus Obsidian käme. */
 const EXTERNAL_SIDECAR = (id: string) =>
@@ -82,7 +85,7 @@ const EXTERNAL_SIDECAR = (id: string) =>
 async function savedDoc(dir: string, vault: Vault, body?: string) {
   const src = join(dir, "Police.pdf");
   await writeFile(src, "POLICE-V1", "utf8");
-  return saveDocument(vault, { ...BASE, original_path: src, body } as SaveArgs);
+  return saveDocument(vault, { ...BASE, original_path: src, body } as unknown as SaveArgs);
 }
 
 /**
@@ -225,7 +228,7 @@ test("ein gescheiterter Overwrite lässt die Originaldatei unverändert", async 
   };
 
   await assert.rejects(
-    () => saveDocument(vault, args as SaveArgs),
+    () => saveDocument(vault, args as unknown as SaveArgs),
     /changed on disk/,
   );
   assert.equal(fired, true, "das Commit-Fenster wurde getroffen");
@@ -397,7 +400,7 @@ test("der Original-Rollback löscht keine externe Fassung", async (t) => {
     },
   };
 
-  const outcome = await saveDocument(vault, args as SaveArgs).then(
+  const outcome = await saveDocument(vault, args as unknown as SaveArgs).then(
     () => "fulfilled" as const,
     (err: Error) => err,
   );

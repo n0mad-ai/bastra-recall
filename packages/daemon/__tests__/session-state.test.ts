@@ -28,6 +28,12 @@ after(async () => {
 
 // Import AFTER env override so sessionStateDir() picks up the test dir.
 const ss = await import("../src/session-state.js");
+// #542: `const ss = await import(...)` only binds `ss` as a value, not a
+// type namespace — `ss.SessionState` in a type position doesn't resolve
+// once the test tree is type-checked. These aliases give the same names
+// back in type space without a second (and colliding) import.
+type SessionState = import("../src/session-state.js").SessionState;
+type ReadonlySessionState = import("../src/session-state.js").ReadonlySessionState;
 
 test("loadSessionState: missing file → empty state", async () => {
   const s = await ss.loadSessionState("nonexistent-session-id");
@@ -46,7 +52,7 @@ test("loadSessionState: corrupted JSON → empty state", async () => {
 test("saveSessionState + loadSessionState: roundtrip preserves shape", async () => {
   const sessionId = "session-roundtrip";
   const now = Date.now();
-  const original: ss.SessionState = {
+  const original: SessionState = {
     shown: {
       "mem-a": { count: 2, at: now - 1000 },
       "mem-b": { count: 1, at: now - 5000 },
@@ -106,7 +112,7 @@ test("shouldDropHit: loaded marker older than entry.at → drop (already shown a
 });
 
 test("bumpShown: first-time entry starts at count=1", () => {
-  const state: ss.SessionState = { shown: {} };
+  const state: SessionState = { shown: {} };
   const now = 1_000_000;
   ss.bumpShown(state, "mem-x", now);
   assert.deepEqual(state.shown["mem-x"], { count: 1, at: now });
@@ -114,7 +120,7 @@ test("bumpShown: first-time entry starts at count=1", () => {
 
 test("bumpShown: within window increments", () => {
   const now = 1_000_000;
-  const state: ss.SessionState = { shown: { "mem-x": { count: 2, at: now - 1000 } } };
+  const state: SessionState = { shown: { "mem-x": { count: 2, at: now - 1000 } } };
   ss.bumpShown(state, "mem-x", now);
   assert.equal(state.shown["mem-x"].count, 3);
   assert.equal(state.shown["mem-x"].at, now);
@@ -122,12 +128,27 @@ test("bumpShown: within window increments", () => {
 
 test("#354 bumpShown: an old entry keeps counting — the window no longer resets it", () => {
   const now = 1_000_000;
-  const state: ss.SessionState = {
+  const state: SessionState = {
     shown: { "mem-x": { count: 5, at: now - ss.RESET_WINDOW_MS - 1 } },
   };
   ss.bumpShown(state, "mem-x", now);
   assert.equal(state.shown["mem-x"].count, 6);
   assert.equal(state.shown["mem-x"].at, now);
+});
+
+test("#539/#542 pins the compiler guard: a lane's early snapshot cannot reach a mutator", async () => {
+  // What loadSessionState hands a lane is ReadonlySessionState (aee643c) —
+  // the write-back only ever applies mutateSessionState's own re-read, so a
+  // mutation on THIS snapshot would be silently dropped. The `@ts-expect-error`
+  // lines below are the compiler-enforced half of that guard: if either one
+  // ever stops erroring, the guard has been widened back to a plain
+  // SessionState and this test must fail to pin it back down.
+  const snapshot: ReadonlySessionState = await ss.loadSessionState(`test-readonly-guard-${Date.now()}`);
+  // @ts-expect-error — bumpShown takes SessionState (mutable), not the
+  // read-only snapshot a lane gets from loadSessionState.
+  ss.bumpShown(snapshot, "mem-x");
+  // @ts-expect-error — same guard, recordSourceSuppressed's `state` parameter.
+  ss.recordSourceSuppressed(snapshot, "some-source");
 });
 
 test("#354 clearShown: releases the counters, keeps the backoff state", async () => {
@@ -162,7 +183,7 @@ test("end-to-end drop logic: write → read → shouldDrop after 3 shows", async
   const memId = "mem-noisy";
   const now = Date.now();
   // Show 3 times
-  const state: ss.SessionState = { shown: {} };
+  const state: SessionState = { shown: {} };
   ss.bumpShown(state, memId, now - 3000);
   ss.bumpShown(state, memId, now - 2000);
   ss.bumpShown(state, memId, now - 1000);

@@ -45,7 +45,7 @@
   ],
   "scripts": {
     "build": "tsc && node ../../scripts/write-build-revision.mjs dist",
-    "check:types": "tsc --noEmit",
+    "check:types": "tsc --noEmit && tsc -p tsconfig.tests.json",
     "test": "tsx --test __tests__/*.test.ts",
     "bench:vault-init": "tsx scripts/bench-vault-init.ts"
   },

@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import matter from "gray-matter";
 import { saveMemory } from "../src/save.js";
-import type { SaveMemoryInput } from "../src/save.js";
+import type { SaveMemoryInput } from "../src/save-schema.js";
 
 /** The minimum a caller must send — everything else must be carried over. */
 function minimalRefresh(over: Partial<SaveMemoryInput> = {}): SaveMemoryInput {

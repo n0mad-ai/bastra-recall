@@ -252,7 +252,11 @@ test("start: a rejecting expand via onEmbed is swallowed (crash guard, fix A)", 
     });
     expander.start();
     assert.ok(fire, "onEmbed listener registered");
-    fire!("a"); // triggers expand → chat throws → must be swallowed, not unhandled
+    // #542: fire is only ever assigned inside onEmbed's callback, a separate
+    // control-flow container — TS can't see that write, so it narrows `fire`
+    // to `never` here without this cast (same shape as the release/#542 fix
+    // elsewhere).
+    (fire as ((id: string) => void) | null)!("a"); // triggers expand → chat throws → must be swallowed, not unhandled
     await new Promise((r) => setTimeout(r, 20)); // let the rejection settle
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });

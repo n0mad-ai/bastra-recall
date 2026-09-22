@@ -46,6 +46,7 @@ import { GATE_LANE_BY_KIND } from "../../src/cli/log-stats.js";
 import { CLIENT_ROW_BASE, type ClientLane } from "../../src/hook-client-telemetry.js";
 // The digest rule lives with the build script that stamps it, so the guard and
 // the build can never disagree about what "the stub's sources" means.
+// @ts-expect-error — plain .mjs script, no declarations (#542).
 import { statuslineBundleDigest, stubSourceDigest, stubSourceFiles, stubSourcesDirty } from "../../scripts/stub-source-digest.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
