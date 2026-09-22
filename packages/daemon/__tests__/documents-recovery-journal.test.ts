@@ -222,3 +222,24 @@ test("ein Move, dessen Rollback an einer fremden Datei scheitert, lässt den Ein
     "der Eintrag nennt den Sidecar-Move",
   );
 });
+
+test("ein Eintrag mit gültiger operation_id, aber ohne steps-Array, gilt nicht als offen", async (t) => {
+  // Dropping `Array.isArray(parsed?.steps)` from the validation left all tests green (night 09-22):
+  // no fixture wrote a well-formed-but-wrong-shape entry. A recovery step list that is not a list
+  // would send the rollback into `for (const step of undefined)`.
+  const { dir } = await harness(t);
+  const handle = await openRecoveryJournal(dir, {
+    op: "move_document",
+    id: "doc-shape",
+    steps: [{ from: join(dir, "a", "x.pdf"), to: join(dir, "b", "x.pdf") }],
+  });
+  const vaultRoot = dir;
+  const journal = join(vaultRoot, ".bastra", "recovery");
+  const names = readdirSync(journal).filter((n) => n.endsWith(".json"));
+  assert.equal(names.length, 1);
+  const bad = JSON.parse(await readFile(join(journal, names[0]), "utf8")) as Record<string, unknown>;
+  bad.steps = "not-a-list";
+  writeFileSync(join(journal, names[0]), JSON.stringify(bad));
+  assert.deepEqual(await readOpenRecoveryEntries(dir), [], "steps must be an array to count as open");
+  await handle.acknowledge();
+});
