@@ -75,7 +75,10 @@ test("default recall dampens doc hits, lesson keeps its score", async () => {
     // Identische Memories bis auf type → identischer BM25-Roh-Score. Der
     // doc-Hit muss exakt um DOC_TYPE_DAMPING gedämpft sein, die Lesson nicht.
     assert.equal(lessonHit.score, lessonOnly[0].score);
-    const expected = Math.round(docOnly[0].score * DOC_TYPE_DAMPING * 1000) / 1000;
+    // The docstring promises 0.5. Computing the expectation through DOC_TYPE_DAMPING itself made
+    // any change to the constant invisible (night 09-22) — the number is the contract here.
+    assert.equal(DOC_TYPE_DAMPING, 0.5, "the shipped damping is the documented 0.5");
+    const expected = Math.round(docOnly[0].score * 0.5 * 1000) / 1000;
     assert.equal(docHit.score, expected);
     assert.ok(docHit.score < lessonHit.score, "doc must rank below the equally-matching lesson");
   } finally {

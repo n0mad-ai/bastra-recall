@@ -163,7 +163,9 @@ test("ranking: BASTRA_SALIENCE_RANK=live applies the bounded multiplier", async 
     const plain = hits.find((h) => h.id === "quokka-plain");
     const hot = hits.find((h) => h.id === "quokka-hot");
     assert.ok(plain && hot);
-    const expected = Math.round(plain.score * (1 + salienceRankCap()) * 1000) / 1000;
+    // Expectation through salienceRankCap() itself hid any change to its 0.25 default (night 09-22).
+    assert.equal(salienceRankCap(), 0.25, "default cap is 0.25 when BASTRA_SALIENCE_RANK_CAP is unset");
+    const expected = Math.round(plain.score * (1 + 0.25) * 1000) / 1000;
     assert.equal(hot.score, expected, "salience 1 must boost by exactly 1 + cap");
     assert.ok(hot.score > plain.score);
   } finally {
