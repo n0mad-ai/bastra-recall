@@ -218,3 +218,31 @@ test("/hook/act logs the CLAUDE session id on the hook_act event, not the daemon
     await rm(logDir, { recursive: true, force: true });
   }
 });
+
+test("/hook/act: exactly ONE distinctive token is still a miss — the #144 threshold is 2, not 1", async () => {
+  // `matchStrength < 2` keeps the episode open on a single shared token; weakening it to `< 1`
+  // left every test above green (night 09-22): none of them sent exactly one matching token.
+  const srv = await makeServer();
+  try {
+    srv.telemetry.recordLoadedMemory({
+      memory_id: "m1",
+      distinctive_tokens: ["deploystaging", "portflag"],
+      hook_hint: null,
+    });
+    const one = await httpPost(srv.port, "/hook/act", {
+      tool_name: "Bash",
+      tool_input_excerpt: "grep portflag README.md",
+      exit_code: 0,
+    });
+    assert.equal(one.status, 200);
+    assert.equal((JSON.parse(one.body) as { matched: number }).matched, 0, "one token must not close");
+    const two = await httpPost(srv.port, "/hook/act", {
+      tool_name: "Bash",
+      tool_input_excerpt: "npm run deploystaging -- portflag",
+      exit_code: 0,
+    });
+    assert.equal((JSON.parse(two.body) as { matched: number }).matched, 1, "episode must have survived");
+  } finally {
+    await srv.close();
+  }
+});
