@@ -48,6 +48,11 @@ export const TELEMETRY_CLIENTS = [
   "mac-app",
   "webui",
   "cli",
+  // #619: repository scripts that call recallHandler directly against a real
+  // vault (packages/daemon/scripts/measure-recall-payload.ts,
+  // measure-recall-budget.ts) — not a user-facing surface. Readouts exclude
+  // it from the default report so a probe run cannot dominate the numbers.
+  "eval",
   "unknown",
 ] as const;
 export type TelemetryClient = (typeof TELEMETRY_CLIENTS)[number];
@@ -215,4 +220,17 @@ export function dimensionsFrom(
         }
       : {}),
   };
+}
+
+/**
+ * #619: ist dieses geschriebene Ereignis Mess-/Eval-Traffic statt einer
+ * echten Oberfläche? Reine Prüfung auf den bereits normalisierten
+ * `dimensions.client`-Wert — kein zweiter Normalisierungspfad, keine Heuristik
+ * über Session-id-Präfixe. Ein Ereignis ohne `dimensions` (vor #263) oder mit
+ * `client !== "eval"` bleibt produktiv, auch wenn es `unknown` trägt: `unknown`
+ * heißt „Oberfläche unbekannt", nicht „Probe".
+ */
+export function isEvalTraffic(e: { dimensions?: unknown; [k: string]: unknown }): boolean {
+  const dims = e.dimensions as { client?: unknown } | null | undefined;
+  return dims != null && dims.client === "eval";
 }

@@ -93,6 +93,10 @@ export interface ParsedArgs {
   // `logs --stats` (#279 slice): aggregate the same files per trigger lane
   // instead of printing them line by line.
   stats: boolean;
+  // `logs --stats --include-eval` (#619): also count rows a probe/eval run
+  // marked as `dimensions.client === "eval"` — excluded from the default
+  // report so a probe run cannot dominate the context-tax numbers.
+  includeEval: boolean;
   // All positional tokens, in order — for sub-commands like
   // `config set update.mode auto` that need more than command+surface.
   positional: string[];
