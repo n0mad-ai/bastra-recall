@@ -119,6 +119,7 @@ export async function createHttpServerContext(opts: HttpOptions): Promise<HttpSe
         embedding: opts.embedding,
         embeddingHealth: opts.embeddingHealth,
         embeddingBreaker: opts.embeddingBreaker,
+        triggerExpand: opts.triggerExpand,
         updateState: getUpdateState,
         startedAtMs,
         codeStale: () => staleness.check(),

@@ -26,6 +26,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { collectFeatureState, featureLines, type FeatureState } from "../src/cli/features-note.js";
+import { buildHealthPayload } from "../src/http-health.js";
 
 function allOff(): FeatureState {
   return {
@@ -34,6 +35,7 @@ function allOff(): FeatureState {
     onboardingDone: false,
     vaultSize: 3,
     semanticRecall: { state: "off", detail: "keyword search only" },
+    paraphrasing: { state: "n/a" },
     reflex: { enabled: false, offBy: "reflex.enabled = false" },
     codeAwareness: { repos: 0, offByEnv: false },
     promptImpact: false,
@@ -50,6 +52,7 @@ function allOn(): FeatureState {
     primaryLanguage: "de",
     onboardingDone: true,
     semanticRecall: { state: "on", detail: "ollama" },
+    paraphrasing: { state: "on", model: "gemma3:4b", modelPulled: true },
     reflex: { enabled: true },
     codeAwareness: { repos: 2, offByEnv: false },
     promptImpact: true,
@@ -146,6 +149,30 @@ test("everything on: one on-line per feature and no hints anywhere", () => {
   assert.match(lineFor(lines, "code awareness"), /on for 2 repositories/);
 });
 
+test("doc2query running on a model that is not pulled is an off-feature with the pull command", () => {
+  // The live case: embeddings switched on, the paraphraser started on its
+  // generation model, the model was never pulled — every paraphrase 404s and
+  // the backfill stops after five. doctor said nothing about any of it.
+  // Revert-check: drop the modelPulled === false branch and this line is "✓".
+  const state = allOn();
+  state.paraphrasing = { state: "on", model: "qwen2.5:7b", modelPulled: false };
+  const line = lineFor(featureLines(state), "background paraphrasing (doc2query)");
+  assert.match(line, /○/);
+  assert.match(line, /qwen2\.5:7b is not pulled/);
+  assert.match(line, /→ ollama pull qwen2\.5:7b/);
+});
+
+test("doc2query that runs names its model and its off switch; switched off it is a quiet line; no Ollama, no line", () => {
+  const on = lineFor(featureLines(allOn()), "background paraphrasing (doc2query)");
+  assert.match(on, /✓ .*gemma3:4b.*BASTRA_TRIGGER_EXPAND=0/);
+
+  const off = allOn();
+  off.paraphrasing = { state: "off" };
+  assert.match(lineFor(featureLines(off), "background paraphrasing (doc2query)"), /· .*: off$/);
+
+  assert.ok(!featureLines(allOff()).some((l) => l.includes("doc2query")), "without Ollama embeddings it cannot run");
+});
+
 test("an established vault without the interview: onboarding is a hint, not an off-feature", () => {
   for (const vaultSize of [1296, undefined]) {
     const state = allOff();
@@ -199,6 +226,9 @@ test("collectFeatureState reads settings, the vault marker and the env switches"
   assert.equal(set.primaryLanguage, "de");
   assert.equal(set.onboardingDone, true);
   assert.equal(set.semanticRecall.state, "on");
+  assert.equal(set.paraphrasing.state, "on", "Ollama embeddings start doc2query unless it is switched off");
+  const quiet = await collectFeatureState([], vault, { BASTRA_TRIGGER_EXPAND: "0" });
+  assert.equal(quiet.paraphrasing.state, "off");
   assert.deepEqual(set.reflex, { enabled: false, offBy: "reflex.enabled = false" });
   assert.equal(set.codeAwareness.offByEnv, true);
   assert.equal(set.docsMode, "suggest");
@@ -255,4 +285,14 @@ test("claude-code: no MCP registration means no features row", async (t) => {
   const home = await mkdtemp(join(tmpdir(), "bastra-doctor-features-cc-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   assert.equal(claudeCodeFeaturesIn(home), null);
+});
+
+test("/health says which generation model the paraphraser runs, and null when none", () => {
+  // doctor can only name the model the daemon actually started when the
+  // daemon says it: the switch and the model live in its service environment.
+  // Revert-check: drop the trigger_expand spread from buildHealthPayload.
+  const base = { vaultSize: () => 0, version: "t", embedding: { on: true, source: "test" } as never, updateState: () => null };
+  assert.deepEqual(buildHealthPayload({ ...base, triggerExpand: () => ({ model: "gemma3:4b" }) }).trigger_expand, { model: "gemma3:4b" });
+  assert.equal(buildHealthPayload({ ...base, triggerExpand: () => null }).trigger_expand, null);
+  assert.ok(!("trigger_expand" in buildHealthPayload(base)), "a daemon that does not wire it does not claim a value");
 });
