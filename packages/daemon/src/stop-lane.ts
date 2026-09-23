@@ -435,7 +435,11 @@ function isInjectedSystemContent(text: string): boolean {
     head.startsWith("Base directory for this skill:") ||
     head.startsWith("<system-reminder>") ||
     head.startsWith("<command-name>") ||
-    head.startsWith("<local-command-caveat>")
+    head.startsWith("<local-command-caveat>") ||
+    // A background task or subagent finishing is delivered as a user-role turn
+    // that opens with this tag. Its body is the subagent's own report, so the
+    // decision and frustration heuristics read an agent's prose as the user's.
+    head.startsWith("<task-notification>")
   );
 }
 

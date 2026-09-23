@@ -467,6 +467,22 @@ describe("stop-hook: #149 injected-context scrubbing in normalizeTurns", () => {
     assert.ok(detectFeatureCompletion(turns, ALL_EXIST));
   });
 
+  it("a background task's completion notice is not a user turn", () => {
+    // Claude Code delivers a finished subagent / background command as role
+    // "user" content opening with <task-notification>; the body is the agent's
+    // report. Revert-check: drop the <task-notification> prefix from
+    // isInjectedSystemContent and the role comes back "user".
+    const items = [
+      {
+        role: "user",
+        content:
+          "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n<summary>We decided to go with X over Y, final call.</summary>\n</task-notification>",
+      },
+    ];
+    const turns = normalizeTurns(items);
+    assert.equal(turns[0].role, "system-injected");
+  });
+
   it("prefix-injected turns keep their system-injected role (scrub runs after classification)", () => {
     const items = [{ role: "user", content: "<system-reminder>\nwieder wieder wieder wieder\n</system-reminder>" }];
     const turns = normalizeTurns(items);
