@@ -755,6 +755,8 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
   // save-eval while keeping the rest of the reflex layer active.
   let requiredHooksMissing = false;
   let hookPathBroken = false;
+  let stopHookRegistered = false;
+  let hooksDisabledBy: string | undefined;
   const settingsRead = await readJsonConfig(CLAUDE_CODE_SETTINGS);
   if ("error" in settingsRead) {
     details["hooks"] = `settings.json broken: ${settingsRead.error}`;
@@ -771,6 +773,11 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
       .filter((f) => !REQUIRED_HOOK_FILES.includes(f))
       .filter((f) => !found.has(f));
     requiredHooksMissing = requiredMissing.length > 0 || registrationMissing.length > 0;
+    stopHookRegistered = found.has("stop-hook.js");
+    // Claude Code's own off switch — user file only; a project file can override it.
+    if (settingsRead.data.disableAllHooks === true) {
+      hooksDisabledBy = `"disableAllHooks": true in ${CLAUDE_CODE_SETTINGS}`;
+    }
     details["hooks"] = requiredHooksMissing
       ? `${found.size}/${OUR_HOOK_FILES.length} lanes registered (missing required: ${[
           ...requiredMissing,
@@ -800,14 +807,20 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
   details[`daemon-at-${probe.endpoint?.label ?? "?"}`] = probe.ok ? `reachable (${probe.detail})` : probe.detail;
 
   if (!registered) return { status: "missing", message: "MCP not registered with Claude Code", details };
+  const features = {
+    recallHooks: !requiredHooksMissing,
+    stopHook: stopHookRegistered,
+    skill: skillState.status !== "missing",
+    ...(hooksDisabledBy ? { hooksDisabledBy } : {}),
+  };
   const broken =
     forwarderBroken ||
     details["vault-path"]?.includes("MISSING") === true ||
     requiredHooksMissing ||
     hookPathBroken ||
     (details["skill"] === "missing" || details["skill"].startsWith("STALE"));
-  if (broken) return { status: "broken", message: "registered but some pieces need repair — re-run 'bastra install claude-code'", details };
-  return { status: "ok", message: "MCP + skill + required hooks registered and healthy", details };
+  if (broken) return { status: "broken", message: "registered but some pieces need repair — re-run 'bastra install claude-code'", details, features };
+  return { status: "ok", message: "MCP + skill + required hooks registered and healthy", details, features };
 }
 
 export const claudeCodeAdapter: Adapter = {

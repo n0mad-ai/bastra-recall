@@ -255,6 +255,11 @@ statusline for one surface or all of them. A hook whose command points at a
 replaced or missing runtime makes the surface non-healthy rather than counting
 as registered (#321).
 
+A final "features" section lists which Recall features are on or off (memory
+language, onboarding, semantic recall, hooks and skill per client, opt-in
+extras) with the command that turns each one on. Off features never change the
+exit code, and --fix never switches one on.
+
 ${SURFACE_ARG}
 Options:
   --fix       Repair missing or broken pieces. On 'all' this will not set up a

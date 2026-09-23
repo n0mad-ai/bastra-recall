@@ -50,7 +50,7 @@ and off.
 
 ### Manual client configuration
 
-Use the [manual setup guide](./USAGE.md#fully-manual-install--fallback). Codex uses a separate [TOML-based setup](./CODEX.md). Restart the client after changing registrations, then run `bastra doctor` to check them.
+Use the [manual setup guide](./USAGE.md#fully-manual-install--fallback). Codex uses a separate [TOML-based setup](./CODEX.md). Restart the client after changing registrations, then run `bastra doctor` to check them. Its features section also shows what is switched off, for example no memory language set or no onboarding yet, with the command for each.
 
 <a id="deutsch"></a>
 
@@ -102,4 +102,4 @@ ausschaltet, steht in [USAGE.md](./USAGE.md).
 
 ### Client manuell konfigurieren
 
-Nutze die [manuelle Anleitung](./USAGE.md#komplett-manuelle-installation--fallback). Codex verwendet eine eigene [TOML-Konfiguration](./CODEX.md). Starte den Client nach geänderten Registrierungen neu und prüfe sie mit `bastra doctor`.
+Nutze die [manuelle Anleitung](./USAGE.md#komplett-manuelle-installation--fallback). Codex verwendet eine eigene [TOML-Konfiguration](./CODEX.md). Starte den Client nach geänderten Registrierungen neu und prüfe sie mit `bastra doctor`. Dessen Abschnitt features zeigt auch, was ausgeschaltet ist, etwa keine Memory-Sprache gesetzt oder noch kein Onboarding, jeweils mit dem passenden Befehl.

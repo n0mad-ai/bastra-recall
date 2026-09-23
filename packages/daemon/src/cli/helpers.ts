@@ -368,6 +368,8 @@ export interface DaemonProbe {
   embeddingSource?: string;
   /** Last provider error when semanticRecall === "degraded" (#92). */
   embeddingError?: string;
+  /** Memories the running daemon holds — the size onboarding's "fresh vault" gate uses. */
+  vaultSize?: number;
   /**
    * Full commit sha the RUNNING daemon's build was produced from (#528). This
    * is the only proof of which revision is live: `version` is shared by every
@@ -404,6 +406,7 @@ export function probeDaemon(endpoint: DaemonEndpoint = resolveDaemonEndpoint()):
               embeddingMode: data.embedding_mode,
               embeddingSource: data.embedding_source,
               embeddingError: data.embedding_error,
+              vaultSize: typeof data.vault_size === "number" ? data.vault_size : undefined,
               buildRevision: typeof data.build_revision === "string" ? data.build_revision : undefined,
             });
             return;
