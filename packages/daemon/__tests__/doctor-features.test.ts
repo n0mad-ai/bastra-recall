@@ -25,7 +25,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
-import { collectFeatureState, featureLines, type FeatureState } from "../src/cli/features-note.js";
+import { collectFeatureState, featureLines, paraphrasingState, type FeatureState } from "../src/cli/features-note.js";
+import type { DaemonProbe } from "../src/cli/helpers.js";
 import { buildHealthPayload } from "../src/http-health.js";
 
 function allOff(): FeatureState {
@@ -171,6 +172,25 @@ test("doc2query that runs names its model and its off switch; switched off it is
   assert.match(lineFor(featureLines(off), "background paraphrasing (doc2query)"), /· .*: off$/);
 
   assert.ok(!featureLines(allOff()).some((l) => l.includes("doc2query")), "without Ollama embeddings it cannot run");
+});
+
+test("cloud embeddings on the running daemon: doc2query gets no row, not an off line", async () => {
+  // doc2query only runs on Ollama embeddings. A daemon on a cloud provider
+  // reports trigger_expand: null, which is "cannot run", not "switched off".
+  // Revert-check: decide from triggerExpandModel first and this is "off".
+  const live = { ok: true, embeddingMode: "openai-text-embedding-3-small", triggerExpandModel: null } as DaemonProbe;
+  const s = await paraphrasingState(live, { state: "on", detail: "openai" }, {});
+  assert.equal(s.state, "n/a");
+});
+
+test("Ollama not answering is not 'not pulled': the on-line carries no pull hint", () => {
+  // /api/tags unreachable proves nothing about the model, so modelPulled is
+  // unknown. The pull hint would name a command that fails for the same reason.
+  const state = allOn();
+  state.paraphrasing = { state: "on", model: "qwen2.5:7b", modelPulled: undefined };
+  const line = lineFor(featureLines(state), "background paraphrasing (doc2query)");
+  assert.match(line, /✓ .*qwen2\.5:7b/);
+  assert.doesNotMatch(line, /ollama pull/);
 });
 
 test("an established vault without the interview: onboarding is a hint, not an off-feature", () => {

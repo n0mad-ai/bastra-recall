@@ -171,16 +171,22 @@ export async function enableSemanticRecall(
   return { ...result, persisted };
 }
 
-/** Is a specific Ollama model already pulled? Best-effort via /api/tags. */
-export async function ollamaModelPresent(name: string): Promise<boolean> {
+/** Is a specific Ollama model pulled? Null when the server did not answer:
+ *  "not reachable" is not "not pulled". */
+export async function ollamaModelPulled(name: string): Promise<boolean | null> {
   try {
     const res = await fetch(`${OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(4000) });
-    if (!res.ok) return false;
+    if (!res.ok) return null;
     const data = (await res.json()) as { models?: { name: string }[] };
     return (data.models ?? []).some((m) => m.name === name || m.name === `${name}:latest`);
   } catch {
-    return false;
+    return null;
   }
+}
+
+/** Is a specific Ollama model already pulled? Best-effort via /api/tags. */
+export async function ollamaModelPresent(name: string): Promise<boolean> {
+  return (await ollamaModelPulled(name)) === true;
 }
 
 /**

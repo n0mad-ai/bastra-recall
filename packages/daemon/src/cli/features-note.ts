@@ -19,7 +19,7 @@
  *     listed so they can be found, marked as intentional, never as a warning.
  */
 import { readSettings, resolveEmbeddingChoice, resolveGenerationModel, settingsFilePath, type CliSettings } from "../settings.js";
-import { ollamaModelPresent } from "./ollama.js";
+import { ollamaModelPulled } from "./ollama.js";
 import { FRESH_VAULT_MAX, isOnboardingDone } from "../onboarding.js";
 import { codeAwarenessDisabledByEnv, enabledRepos } from "../code-graph/enabled-repos.js";
 import { getPromptImpactEnabled } from "../code-graph/prompt-impact-settings.js";
@@ -162,23 +162,30 @@ async function semanticState(live: DaemonProbe | null): Promise<FeatureState["se
     : { state: "on", detail: `${choice.provider}, from ${choice.source}` };
 }
 
-async function paraphrasingState(
+export async function paraphrasingState(
   live: DaemonProbe | null,
   semantic: FeatureState["semanticRecall"],
   env: NodeJS.ProcessEnv,
 ): Promise<FeatureState["paraphrasing"]> {
   if (semantic.state === "off") return { state: "n/a" };
+  // doc2query only runs on Ollama embeddings. The running daemon names its
+  // provider ("ollama-<model>"); a cloud provider means no row, not "off".
+  const ollamaEmbeddings = live?.ok && live.embeddingMode
+    ? live.embeddingMode.startsWith("ollama-")
+    : (await resolveEmbeddingChoice()).provider === "ollama";
+  if (!ollamaEmbeddings) return { state: "n/a" };
+  // Unreachable Ollama proves nothing about the model: no pull hint then.
+  const pulled = async (model: string) => (await ollamaModelPulled(model)) ?? undefined;
   // The running daemon is the witness here too: the switch and the model are
   // usually set in its service environment, which this shell does not see.
   if (live?.ok && live.triggerExpandModel !== undefined) {
     const model = live.triggerExpandModel;
-    return model === null ? { state: "off" } : { state: "on", model, modelPulled: await ollamaModelPresent(model) };
+    return model === null ? { state: "off" } : { state: "on", model, modelPulled: await pulled(model) };
   }
-  if ((await resolveEmbeddingChoice()).provider !== "ollama") return { state: "n/a" };
   const raw = env.BASTRA_TRIGGER_EXPAND;
   if (raw && ["0", "false", "off", "no"].includes(raw.toLowerCase())) return { state: "off" };
   const model = await resolveGenerationModel();
-  return { state: "on", model, modelPulled: await ollamaModelPresent(model) };
+  return { state: "on", model, modelPulled: await pulled(model) };
 }
 
 /** Gathers the state from settings, the vault and the running daemon. */
