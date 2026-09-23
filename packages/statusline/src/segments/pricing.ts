@@ -347,9 +347,13 @@ export class PricingService {
     const tier = tierMatch?.[1];
     if (!tier) return null;
 
-    const versionRe = new RegExp(`${tier}-(\\d+)(?:-(\\d+))?`);
+    // Version parts are 1-2 digits; a date suffix (opus-4-20250514) or a
+    // legacy date-only id (claude-3-opus-20240229) must not parse as a version.
+    const versionRe = new RegExp(`${tier}-(\\d{1,2})(?:-(\\d{1,2}))?(?!\\d)`);
     const targetVersion = lowerModelId.match(versionRe);
-    const targetMajor = targetVersion?.[1] ? parseInt(targetVersion[1], 10) : null;
+    if (!targetVersion?.[1]) return null;
+    const targetMajor = parseInt(targetVersion[1], 10);
+    const targetMinor = targetVersion[2] ? parseInt(targetVersion[2], 10) : 0;
 
     const candidates = Object.entries(allPricing)
       .map(([key, pricing]) => {
@@ -366,13 +370,16 @@ export class PricingService {
 
     if (candidates.length === 0) return null;
 
-    if (targetMajor !== null) {
-      const sameMajor = candidates
-        .filter((c) => c.major === targetMajor)
-        .sort((a, b) => b.minor - a.minor);
-      if (sameMajor.length > 0) {
-        return sameMajor[0]!.pricing;
-      }
+    const sameVersion = candidates.find(
+      (c) => c.major === targetMajor && c.minor === targetMinor,
+    );
+    if (sameVersion) return sameVersion.pricing;
+
+    const sameMajor = candidates
+      .filter((c) => c.major === targetMajor)
+      .sort((a, b) => b.minor - a.minor);
+    if (sameMajor.length > 0) {
+      return sameMajor[0]!.pricing;
     }
 
     candidates.sort((a, b) => b.major - a.major || b.minor - a.minor);
