@@ -8,11 +8,11 @@
  * persönlichen Memories gerankt. Es wird NIE in das Repo geschrieben;
  * Beiträge laufen über PRs (siehe Commons-CONTRIBUTING).
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { arch, homedir, platform } from "node:os";
-import { join, basename } from "node:path";
+import { join, basename, dirname } from "node:path";
 import { findExecutable, run } from "./exec.js";
 import { getCommonsEnabled, setCommonsEnabled } from "../settings.js";
 
@@ -311,12 +311,46 @@ async function cloneOrPull(): Promise<number> {
     }
     noteCommonsOverride("clone");
     process.stdout.write(`→ cloning ${COMMONS_REPO_URL} → ${path}\n`);
-    const r = run(git, ["clone", "--depth", "1", COMMONS_REPO_URL, path], { timeoutMs: 300_000, showProgress: true, env: { GIT_TERMINAL_PROMPT: "0" } });
+    const r = cloneIntoRoot(git, COMMONS_REPO_URL, path);
     if (!r.ok) {
-      process.stderr.write(`✗ git clone failed (${r.detail}) — is the repo reachable (public, or your account has access)?\n`);
+      process.stderr.write(`✗ ${r.detail}\n`);
       return 1;
     }
   }
   process.stdout.write("✓ commons up to date\n");
   return 0;
+}
+
+/**
+ * Clone into a root that may already hold local state. The bridges pool
+ * lives under the same root (`bridgesPath()` defaults to `commonsPath()`),
+ * and shared recall bridges are on by default, so the daemon has usually
+ * minted `bridges/` and `last-mint.json` there long before anyone enables
+ * Commons. `git clone` refuses a non-empty directory, which made
+ * `commons enable` fail for every such user. So the checkout is cloned next
+ * to the root and moved in; a name that exists on both sides is refused by
+ * name rather than overwritten, because the local side is the user's data.
+ */
+export function cloneIntoRoot(git: string, url: string, path: string): { ok: true } | { ok: false; detail: string } {
+  const unreachable = " — is the repo reachable (public, or your account has access)?";
+  const occupied = existsSync(path) && readdirSync(path).length > 0;
+  if (!occupied) {
+    const r = run(git, ["clone", "--depth", "1", url, path], { timeoutMs: 300_000, showProgress: true, env: { GIT_TERMINAL_PROMPT: "0" } });
+    return r.ok ? { ok: true } : { ok: false, detail: `git clone failed (${r.detail})${unreachable}` };
+  }
+  const staging = mkdtempSync(join(dirname(path), `.${basename(path)}-clone-`));
+  try {
+    const checkout = join(staging, "checkout");
+    const r = run(git, ["clone", "--depth", "1", url, checkout], { timeoutMs: 300_000, showProgress: true, env: { GIT_TERMINAL_PROMPT: "0" } });
+    if (!r.ok) return { ok: false, detail: `git clone failed (${r.detail})${unreachable}` };
+    const entries = readdirSync(checkout);
+    const clash = entries.filter((name) => existsSync(join(path, name)));
+    if (clash.length > 0) {
+      return { ok: false, detail: `${path} already holds ${clash.join(", ")}, which the Commons checkout also has — move them aside and run 'bastra commons enable' again` };
+    }
+    for (const name of entries) renameSync(join(checkout, name), join(path, name));
+    return { ok: true };
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
 }
