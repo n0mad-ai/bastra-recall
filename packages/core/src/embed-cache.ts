@@ -22,6 +22,29 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import type { Memory } from "./schema.js";
+import { stripAutoRelatedSection } from "./save-text.js";
+
+/** Obergrenze für den Body-Anteil am Embed-Text (Token-Budget). */
+const EMBED_BODY_MAX = 4000;
+
+/**
+ * Der Body-Anteil, der in Embed-Text UND Content-Hash eingeht: der Body ohne
+ * die Auto-Related-Section, auf `EMBED_BODY_MAX` Zeichen gekappt.
+ *
+ * #631: Die Section ist Ausgabe des RelatedEnrichers, der aus genau diesem
+ * Vektor seine Nachbarn berechnet. Stand sie im Embed-Text, hing der Vektor an
+ * der eigenen Ausgabe: neue Section → neuer Vektor → andere Nachbarn → neue
+ * Section. Live tauschte ein Memory so seinen fünften Nachbarn im
+ * Sekundentakt und hielt Ollama dauerhaft unter Last. Gestrippt wird VOR dem
+ * Kappen, damit ein langer Body nicht die Section statt Autorentext abschneidet.
+ * Leerraum am Ende zählt nicht: der Enricher normalisiert die Leerzeilen vor
+ * der Section beim Schreiben selbst (`rebuildBodyWithAutoSection`), sie wären
+ * sonst wieder eine Änderung, die nur aus seiner eigenen Ausgabe stammt.
+ * Ein Helfer für beide Stellen, damit Text und Hash nie auseinanderlaufen.
+ */
+export function embedBody(m: Memory): string {
+  return stripAutoRelatedSection(m.body).trimEnd().slice(0, EMBED_BODY_MAX);
+}
 
 export interface EmbedCacheEntry {
   hash: string;
@@ -49,7 +72,7 @@ export function hashEmbedContent(m: Memory): string {
     fm.tags.join(","),
     fm.recall_when.join("\n"),
     fm.summary,
-    m.body.slice(0, 4000),
+    embedBody(m),
   ].join("|");
   return createHash("sha256").update(seed).digest("hex");
 }
@@ -125,6 +148,15 @@ export class EmbedCache {
     } catch (err) {
       console.error("[bastra.embeddings] embed-cache persist error:", err);
     }
+  }
+
+  /** True wenn ein Eintrag existiert UND einen anderen Hash trägt — der
+   *  Vektor gehört dann nachweislich zu einem anderen Inhalt. Ohne Eintrag
+   *  false: dann ist über den Vektor nichts bekannt (z.B. von außen
+   *  eingespielte Vektoren), und er bleibt stehen. */
+  isStale(id: string, hash: string): boolean {
+    const e = this.entries.get(id);
+    return !!e && e.hash !== hash;
   }
 
   /** True wenn Cache einen Eintrag mit identischem Hash hat. */

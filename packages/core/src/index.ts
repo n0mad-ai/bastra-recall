@@ -209,7 +209,7 @@ export type {
 } from "./embeddings.js";
 export { PROVIDER_COLD_LOAD_MS } from "./embeddings.js";
 
-export { EmbedCache, hashEmbedContent } from "./embed-cache.js";
+export { EmbedCache, embedBody, hashEmbedContent } from "./embed-cache.js";
 export type { EmbedCacheEntry, EmbedCacheFile } from "./embed-cache.js";
 
 export { RelatedEnricher } from "./related-enrich.js";
