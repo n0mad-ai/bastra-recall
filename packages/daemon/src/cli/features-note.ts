@@ -18,7 +18,8 @@
  *   - optional features, off by default ON PURPOSE (opt-in or experimental) —
  *     listed so they can be found, marked as intentional, never as a warning.
  */
-import { readSettings, resolveEmbeddingChoice, settingsFilePath, type CliSettings } from "../settings.js";
+import { readSettings, resolveEmbeddingChoice, resolveGenerationModel, settingsFilePath, type CliSettings } from "../settings.js";
+import { ollamaModelPresent } from "./ollama.js";
 import { FRESH_VAULT_MAX, isOnboardingDone } from "../onboarding.js";
 import { codeAwarenessDisabledByEnv, enabledRepos } from "../code-graph/enabled-repos.js";
 import { getPromptImpactEnabled } from "../code-graph/prompt-impact-settings.js";
@@ -34,6 +35,12 @@ export interface FeatureState {
   /** Memories in the vault per the running daemon; undefined when it is not running. */
   vaultSize?: number;
   semanticRecall: { state: "on" | "off" | "degraded"; detail: string };
+  /**
+   * The doc2query paraphraser. Nobody switches it on by name: Ollama
+   * embeddings start it, and it keeps a local generation model busy over the
+   * whole vault. "n/a" = no Ollama embeddings, so it cannot run.
+   */
+  paraphrasing: { state: "on" | "off" | "n/a"; model?: string; modelPulled?: boolean };
   /** Reflex memories; `offBy` names the switch when off. */
   reflex: { enabled: boolean; offBy?: string };
   codeAwareness: { repos: number; offByEnv: boolean };
@@ -91,6 +98,17 @@ export function featureLines(s: FeatureState): string[] {
     ? row(ON, "semantic recall", `on (${s.semanticRecall.detail})`)
     : row(OFF, "semantic recall", `${s.semanticRecall.state} (${s.semanticRecall.detail})`, "bastra embeddings on"));
 
+  const para = "background paraphrasing (doc2query)";
+  if (s.paraphrasing.state === "on" && s.paraphrasing.modelPulled === false) {
+    lines.push(row(OFF, para, `on, but ${s.paraphrasing.model} is not pulled, so every paraphrase fails`,
+      `ollama pull ${s.paraphrasing.model}  (or BASTRA_TRIGGER_EXPAND=0 in the daemon's environment)`));
+  } else if (s.paraphrasing.state === "on") {
+    lines.push(row(ON, para,
+      `on (${s.paraphrasing.model} keeps rewriting memory triggers in the background; BASTRA_TRIGGER_EXPAND=0 stops it)`));
+  } else if (s.paraphrasing.state === "off") {
+    lines.push(row(INFO, para, "off"));
+  }
+
   if (s.reflex.enabled) lines.push(row(ON, "reflex memories", "on"));
   else lines.push(row(OFF, "reflex memories", `off (${s.reflex.offBy})`, s.reflex.offBy?.startsWith("BASTRA_REFLEX")
     ? "unset BASTRA_REFLEX"
@@ -144,6 +162,25 @@ async function semanticState(live: DaemonProbe | null): Promise<FeatureState["se
     : { state: "on", detail: `${choice.provider}, from ${choice.source}` };
 }
 
+async function paraphrasingState(
+  live: DaemonProbe | null,
+  semantic: FeatureState["semanticRecall"],
+  env: NodeJS.ProcessEnv,
+): Promise<FeatureState["paraphrasing"]> {
+  if (semantic.state === "off") return { state: "n/a" };
+  // The running daemon is the witness here too: the switch and the model are
+  // usually set in its service environment, which this shell does not see.
+  if (live?.ok && live.triggerExpandModel !== undefined) {
+    const model = live.triggerExpandModel;
+    return model === null ? { state: "off" } : { state: "on", model, modelPulled: await ollamaModelPresent(model) };
+  }
+  if ((await resolveEmbeddingChoice()).provider !== "ollama") return { state: "n/a" };
+  const raw = env.BASTRA_TRIGGER_EXPAND;
+  if (raw && ["0", "false", "off", "no"].includes(raw.toLowerCase())) return { state: "off" };
+  const model = await resolveGenerationModel();
+  return { state: "on", model, modelPulled: await ollamaModelPresent(model) };
+}
+
 /** Gathers the state from settings, the vault and the running daemon. */
 export async function collectFeatureState(
   clients: FeatureState["clients"],
@@ -153,12 +190,14 @@ export async function collectFeatureState(
   const settings = await readSettings();
   const vault = await resolveVault({ dryRun: true, vaultPath: cliVault });
   const live = await probeDaemon().catch(() => null);
+  const semanticRecall = await semanticState(live);
   return {
     clients,
     primaryLanguage: settings.language?.primary,
     onboardingDone: "error" in vault ? null : await isOnboardingDone(vault.path),
     vaultSize: live?.ok ? live.vaultSize : undefined,
-    semanticRecall: await semanticState(live),
+    semanticRecall,
+    paraphrasing: await paraphrasingState(live, semanticRecall, env),
     reflex: reflexState(settings, env),
     codeAwareness: { repos: (await enabledRepos(undefined, env)).length, offByEnv: codeAwarenessDisabledByEnv(env) },
     promptImpact: await getPromptImpactEnabled(undefined, env),

@@ -46,6 +46,10 @@ export interface HealthDeps {
    *  process — a running daemon cannot change the build it was started from.
    *  Null when running from source via tsx, or from a build with no stamp. */
   buildRevision?: string | null;
+  /** The doc2query paraphraser, when this process started one: the local
+   *  generation model it runs over every memory. Null = not running. A getter,
+   *  because it starts after the embedding index is ready, not at boot. */
+  triggerExpand?: () => { model: string } | null;
 }
 
 export function buildHealthPayload(deps: HealthDeps): Record<string, unknown> {
@@ -92,6 +96,9 @@ export function buildHealthPayload(deps: HealthDeps): Record<string, unknown> {
     embedding_source: deps.embedding.source,
     ...(degraded ? { embedding_error: rt.lastError } : {}),
     ...(breaker ? { embedding_breaker: breaker } : {}),
+    // A background model the user never switched on by name: turning on
+    // Ollama embeddings starts it. doctor reads this to say so.
+    ...(deps.triggerExpand ? { trigger_expand: deps.triggerExpand() } : {}),
     update_available:
       updateState && updateState.hasUpdate
         ? {

@@ -126,6 +126,8 @@ export interface HttpOptions {
   /** Circuit-Breaker-Zustand (#165) für /health. null = kein Breaker aktiv
    *  (embeddings off). */
   embeddingBreaker?: () => EmbeddingBreakerSnapshot | null;
+  /** The running doc2query paraphraser's model, or null (see http-health.ts). */
+  triggerExpand?: () => { model: string } | null;
   /** Live vector snapshot für die semantic map (#207). Getter, weil der
    *  Index erst nach dem Boot attacht. null = embeddings off / not ready. */
   embeddingVectors?: () => ReadonlyMap<string, Float32Array> | null;

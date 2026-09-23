@@ -378,6 +378,11 @@ export interface DaemonProbe {
    * from source via tsx — "not proven" rather than "mismatch".
    */
   buildRevision?: string;
+  /**
+   * The doc2query paraphraser's generation model, null when the daemon runs
+   * none, absent from a daemon older than the field ("not reported").
+   */
+  triggerExpandModel?: string | null;
 }
 
 /**
@@ -408,6 +413,9 @@ export function probeDaemon(endpoint: DaemonEndpoint = resolveDaemonEndpoint()):
               embeddingError: data.embedding_error,
               vaultSize: typeof data.vault_size === "number" ? data.vault_size : undefined,
               buildRevision: typeof data.build_revision === "string" ? data.build_revision : undefined,
+              triggerExpandModel: !("trigger_expand" in data)
+                ? undefined
+                : typeof data.trigger_expand?.model === "string" ? data.trigger_expand.model : null,
             });
             return;
           }
