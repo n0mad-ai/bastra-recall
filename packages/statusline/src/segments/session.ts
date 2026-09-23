@@ -4,6 +4,7 @@ import {
   findTranscriptFile,
   findAgentTranscripts,
   parseJsonlFile,
+  createUniqueHash,
   type ParsedEntry,
   type ClaudeHookData,
 } from "../utils/claude";
@@ -91,10 +92,25 @@ export class SessionProvider {
         return { totalCost: 0, entries: [] };
       }
 
+      const seenHashes = new Set<string>();
+      const dedupedEntries = parsedEntries.filter((entry) => {
+        const hash = createUniqueHash(entry);
+        if (!hash) return true;
+        if (seenHashes.has(hash)) return false;
+        seenHashes.add(hash);
+        return true;
+      });
+
+      if (dedupedEntries.length !== parsedEntries.length) {
+        debug(
+          `Session usage: dropped ${parsedEntries.length - dedupedEntries.length} duplicate entries (retries/reconnects logged twice)`,
+        );
+      }
+
       const entries: SessionUsageEntry[] = [];
       let totalCost = 0;
 
-      for (const entry of parsedEntries) {
+      for (const entry of dedupedEntries) {
         if (entry.message?.usage) {
           const sessionEntry = convertToSessionEntry(entry);
 
