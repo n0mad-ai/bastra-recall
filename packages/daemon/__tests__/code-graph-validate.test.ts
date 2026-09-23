@@ -7,7 +7,15 @@ import {
   safeNode,
   safeEdge,
 } from "../src/code-graph/validate.js";
-import { CODE_FILE_TYPE, EXTRACTED, MAX_STRING_BYTES } from "../src/code-graph/limits.js";
+import {
+  CODE_FILE_TYPE,
+  EXTRACTED,
+  MAX_STRING_BYTES,
+  MAX_GRAPH_BYTES as DOC_MAX_GRAPH_BYTES,
+  MAX_NODES as DOC_MAX_NODES,
+  MAX_EDGES as DOC_MAX_EDGES,
+  MAX_TOTAL_HEAP_BYTES as DOC_MAX_TOTAL_HEAP_BYTES,
+} from "../src/code-graph/limits.js";
 
 /**
  * `graph.json` is written by a third-party tool into a repository we do not
@@ -138,13 +146,6 @@ describe("code graph: node and edge allowlist", () => {
     assert.equal(safeEdge(base, EXTRACTED), null);
   });
 });
-
-import {
-  MAX_GRAPH_BYTES as DOC_MAX_GRAPH_BYTES,
-  MAX_NODES as DOC_MAX_NODES,
-  MAX_EDGES as DOC_MAX_EDGES,
-  MAX_TOTAL_HEAP_BYTES as DOC_MAX_TOTAL_HEAP_BYTES,
-} from "../src/code-graph/limits.js";
 
 describe("code-graph limits are the numbers the architecture doc promises", () => {
   // docs/Evolution Architecture V1 to V2.md, C-093: "(64 MB file size, 500,000 nodes,

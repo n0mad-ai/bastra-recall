@@ -3,16 +3,16 @@
  * (packages/daemon/README.md): an author-written recall_when trigger outranks the
  * same word buried in a body. Night 09-22: swapping the two extremes
  * (recall_when_flat 5→1, body 1→5) left all 571 core tests green — nothing pinned
- * the table or its effect. Two bites here: the numbers as written in the source
+ * the table or its effect. Two bites here: the exported table
  * must be the README's, and the effect must hold on a two-memory vault.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { Vault } from "../src/vault.js";
-import { SearchIndex } from "../src/search.js";
+import { FIELD_BOOST, SearchIndex } from "../src/search.js";
 
 const DOCUMENTED: Record<string, number> = {
   recall_when_flat: 5,
@@ -42,16 +42,9 @@ ${opts.body}
 `;
 }
 
-test("field boosts in search.ts are the README's numbers", async () => {
-  const src = await readFile(new URL("../src/search.ts", import.meta.url), "utf8");
-  const start = src.indexOf("boost: {");
-  assert.ok(start > 0, "boost block not found");
-  const block = src.slice(start, src.indexOf("}", start));
-  for (const [field, weight] of Object.entries(DOCUMENTED)) {
-    const m = block.match(new RegExp(`\\b${field}:\\s*(\\d+)`));
-    assert.ok(m, `${field} missing from the boost block`);
-    assert.equal(Number(m[1]), weight, `${field} weight drifted from the documented table`);
-  }
+test("field boosts in search.ts are the README's numbers", () => {
+  // Exact equality: a changed weight, a dropped field and an undocumented new one all fail.
+  assert.deepEqual({ ...FIELD_BOOST }, DOCUMENTED);
 });
 
 test("an authored recall_when trigger outranks the same word in a body", async () => {

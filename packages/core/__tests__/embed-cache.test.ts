@@ -190,9 +190,10 @@ test("embed-cache: an incompatible cache (version / provider / dim) is dropped W
       const cache = new EmbedCache(cachePath, "mock-counting", 4);
       await cache.load();
       assert.equal(cache.size(), 0, `${label}: incompatible cache must not be used`);
-      assert.equal(lines.length, 1, `${label}: exactly one log line expected, got ${lines.length}`);
-      assert.match(lines[0], /embed-cache ignored/, label);
-      assert.match(lines[0], new RegExp(cachePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${label}: line names the file`);
+      // Filtered, not counted raw: an unrelated console.error in the same window must not flake this.
+      const ignored = lines.filter((l) => /embed-cache ignored/.test(l));
+      assert.equal(ignored.length, 1, `${label}: exactly one "embed-cache ignored" line expected, got ${ignored.length}`);
+      assert.match(ignored[0], new RegExp(cachePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${label}: line names the file`);
     }
     // control: a compatible file loads silently
     const okPath = path.join(dir, "ok.json");
@@ -201,7 +202,7 @@ test("embed-cache: an incompatible cache (version / provider / dim) is dropped W
     const ok = new EmbedCache(okPath, "mock-counting", 4);
     await ok.load();
     assert.equal(ok.size(), 1);
-    assert.equal(lines.length, 0, "compatible cache must not log");
+    assert.deepEqual(lines.filter((l) => /embed-cache/.test(l)), [], "compatible cache must not log");
   } finally {
     console.error = orig;
     await rmSettled(dir);
