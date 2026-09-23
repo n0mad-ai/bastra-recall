@@ -4,6 +4,7 @@ import {
   findTranscriptFile,
   findAgentTranscripts,
   parseJsonlFile,
+  createUniqueHash,
   type ParsedEntry,
   type ClaudeHookData,
 } from "../utils/claude";
@@ -91,10 +92,25 @@ export class SessionProvider {
         return { totalCost: 0, entries: [] };
       }
 
+      const seenHashes = new Set<string>();
+      const dedupedEntries = parsedEntries.filter((entry) => {
+        const hash = createUniqueHash(entry);
+        if (!hash) return true;
+        if (seenHashes.has(hash)) return false;
+        seenHashes.add(hash);
+        return true;
+      });
+
+      if (dedupedEntries.length !== parsedEntries.length) {
+        debug(
+          `Session usage: dropped ${parsedEntries.length - dedupedEntries.length} duplicate entries (retries/reconnects logged twice)`,
+        );
+      }
+
       const entries: SessionUsageEntry[] = [];
       let totalCost = 0;
 
-      for (const entry of parsedEntries) {
+      for (const entry of dedupedEntries) {
         if (entry.message?.usage) {
           const sessionEntry = convertToSessionEntry(entry);
 
@@ -161,7 +177,11 @@ export class SessionProvider {
 
     const calculatedCost = sessionUsage.totalCost;
     const hookDataCost = hookData?.cost?.total_cost_usd ?? null;
-    const cost = calculatedCost ?? hookDataCost;
+    // Prefer Claude Code's own authoritative total_cost_usd (billed, not guessed
+    // from a client-side price list) whenever the hook provides it; the local
+    // per-token recompute is a fallback for older Claude Code versions that
+    // don't send `cost` at all.
+    const cost = hookDataCost ?? calculatedCost;
 
     return {
       cost,

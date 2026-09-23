@@ -332,6 +332,53 @@ export class PricingService {
     return pricing;
   }
 
+  /**
+   * Matches against the live/cached pricing table (not the hardcoded
+   * OFFLINE_PRICING_DATA fallback list) by tier + major version, so a model
+   * released after this file was last updated (e.g. claude-opus-5-5) prices
+   * against its own generation instead of falling through to an older,
+   * differently-priced generation via the static pattern list below.
+   */
+  private static matchLiveTable(
+    lowerModelId: string,
+    allPricing: Record<string, ModelPricing>,
+  ): ModelPricing | null {
+    const tierMatch = lowerModelId.match(/(opus|sonnet|haiku)/);
+    const tier = tierMatch?.[1];
+    if (!tier) return null;
+
+    const versionRe = new RegExp(`${tier}-(\\d+)(?:-(\\d+))?`);
+    const targetVersion = lowerModelId.match(versionRe);
+    const targetMajor = targetVersion?.[1] ? parseInt(targetVersion[1], 10) : null;
+
+    const candidates = Object.entries(allPricing)
+      .map(([key, pricing]) => {
+        const m = key.toLowerCase().match(versionRe);
+        if (!m?.[1]) return null;
+        return {
+          key,
+          pricing,
+          major: parseInt(m[1], 10),
+          minor: m[2] ? parseInt(m[2], 10) : 0,
+        };
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null);
+
+    if (candidates.length === 0) return null;
+
+    if (targetMajor !== null) {
+      const sameMajor = candidates
+        .filter((c) => c.major === targetMajor)
+        .sort((a, b) => b.minor - a.minor);
+      if (sameMajor.length > 0) {
+        return sameMajor[0]!.pricing;
+      }
+    }
+
+    candidates.sort((a, b) => b.major - a.major || b.minor - a.minor);
+    return candidates[0]!.pricing;
+  }
+
   private static fuzzyMatchModel(
     modelId: string,
     allPricing: Record<string, ModelPricing>,
@@ -343,6 +390,12 @@ export class PricingService {
         return pricing;
       }
     }
+
+    const liveMatch = this.matchLiveTable(lowerModelId, allPricing);
+    if (liveMatch) {
+      return liveMatch;
+    }
+
     const patterns = [
       {
         pattern: ["opus-4-6", "claude-opus-4-6"],
