@@ -348,7 +348,9 @@ export function cloneIntoRoot(git: string, url: string, path: string): { ok: tru
     if (clash.length > 0) {
       return { ok: false, detail: `${path} already holds ${clash.join(", ")}, which the Commons checkout also has — move them aside and run 'bastra commons enable' again` };
     }
-    for (const name of entries) renameSync(join(checkout, name), join(path, name));
+    // `.git` last: the root only counts as cloned once `.git` is in, so a move that stops
+    // midway leaves visible clashes for the next run instead of a half tree it would pull into.
+    for (const name of [...entries.filter((n) => n !== ".git"), ".git"]) renameSync(join(checkout, name), join(path, name));
     return { ok: true };
   } finally {
     rmSync(staging, { recursive: true, force: true });
