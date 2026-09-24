@@ -1049,3 +1049,92 @@ describe("bash-pre-hook: reversible defaults (#650 comment)", () => {
     });
   });
 });
+
+describe("#651 review — the hint weighs the whole command, not the first label in the table", () => {
+  const kindOf = async (command: string, env: Record<string, string> = {}) => {
+    const { stdout } = await runHook(
+      { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command }, session_id: "" },
+      env,
+    );
+    const block: string = JSON.parse(stdout)?.hookSpecificOutput?.additionalContext ?? "";
+    const pattern = /pattern: `([^`]+)`/.exec(block)?.[1] ?? "";
+    if (/STOP — destructive/.test(block)) return { kind: "stop", pattern };
+    if (/REVERSIBLE FORM/.test(block)) return { kind: "reversible-form", pattern };
+    if (/NOTE — reversible/.test(block)) return { kind: "receipt", pattern };
+    return { kind: "none", pattern };
+  };
+  const RM = { BASTRA_RM_ARCHIVES: "1" };
+
+  // Revert-check: make decideDestructive return `{ label: first, undo: true }` →
+  // each of these reads "No confirmation needed" / "Run that form" and goes red.
+  it("an act with no undo chained after one with an undo keeps STOP, naming the act with none", async () => {
+    const want: Record<string, string> = {
+      "git branch -D old && gh repo delete me/prod --yes": "gh repo delete",
+      "git push --force-with-lease; kubectl delete ns prod": "kubectl delete",
+      "git commit --amend --no-edit && psql -c 'DROP TABLE users'": "DROP TABLE",
+      "git reset --hard && docker volume rm data": "docker volume rm",
+      // a single `&` is not a segment separator — both acts sit in one segment
+      "git branch -D x & kubectl delete ns y": "kubectl delete",
+    };
+    for (const [cmd, label] of Object.entries(want)) {
+      assert.deepEqual(await kindOf(cmd), { kind: "stop", pattern: label }, cmd);
+      assert.deepEqual(await kindOf(cmd, RM), { kind: "stop", pattern: label }, `${cmd} (rm opt-in)`);
+    }
+  });
+
+  it("two acts that each need their own form are one STOP — a hint names one form", async () => {
+    assert.equal((await kindOf("git reset --hard origin/main && git push --force")).kind, "stop");
+    assert.equal((await kindOf("git checkout -- . ; git push -f")).kind, "stop");
+    assert.equal((await kindOf("rm -rf build && git clean -fdx", RM)).kind, "stop");
+    assert.equal((await kindOf("rm -rf dist; git reset --hard", RM)).kind, "stop");
+  });
+
+  // Revert-check: put `--force\b` back on the `git push --force` pattern → the
+  // lease also counts as a bare --force, the pair is "mixed" and goes STOP.
+  it("receipts compose: amend + push --force-with-lease stays a receipt", async () => {
+    assert.deepEqual(await kindOf("git commit --amend --no-edit && git push --force-with-lease"), {
+      kind: "receipt",
+      pattern: "git push --force-with-lease",
+    });
+    // …but a --force next to the lease overrides it: no receipt.
+    assert.equal((await kindOf("git push --force-with-lease --force origin main")).kind, "stop");
+  });
+
+  // Revert-check: make rmRunsThroughPath return true → every row here reads
+  // "archives instead of deleting" and goes red.
+  it("rm archives only where this shell's PATH picks the rm: sudo, absolute paths, remote and wrapped rm keep STOP", async () => {
+    for (const cmd of [
+      "sudo rm -rf /opt/app",
+      "/bin/rm -rf ~/work",
+      "/usr/bin/rm -r build",
+      "ssh prod rm -rf /srv/data",
+      'ssh prod "cd /srv; rm -rf data"',
+      "docker exec db rm -rf /var/lib/postgresql",
+      "kubectl exec pod -- rm -rf /data",
+      "git rm -rf src",
+      "find . -name tmp -exec rm -rf {} +",
+      'bash -c "rm -rf build"',
+      "env -i rm -rf build",
+      "PATH=/usr/bin rm -rf build",
+      "ssh prod bash <<'EOF'\nrm -rf /srv/data\nEOF",
+      "rm -rf $(cat list.txt)",
+    ]) {
+      assert.equal((await kindOf(cmd, RM)).kind, "stop", cmd);
+    }
+  });
+
+  it("…and the plain local forms keep their receipt (no new false STOP)", async () => {
+    for (const cmd of [
+      "rm -rf build",
+      "cd pkg && rm -rf node_modules dist",
+      "\\rm -rf x",
+      '"rm" -rf x',
+      "command rm -rf x",
+      "find . -name '*.o' | xargs rm -rf",
+      "rm -rf a && rm -r b",
+      'rm -rf "$TMPDIR/x"',
+    ]) {
+      assert.equal((await kindOf(cmd, RM)).kind, "receipt", cmd);
+    }
+  });
+});

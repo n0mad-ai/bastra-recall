@@ -72,7 +72,9 @@ const DESTRUCTIVE_PATTERNS: Array<{ label: string; re: RegExp }> = [
   { label: "git clean -f", re: /\bgit\s+clean\s+-[a-zA-Z]*f[a-zA-Z]*\b/ },
   { label: "git branch -D", re: /\bgit\s+branch\s+-D\b/ },
   { label: "git push --force-with-lease", re: /\bgit\s+push\b[^\n]*--force-with-lease/ },
-  { label: "git push --force", re: /\bgit\s+push\b[^\n]*--force\b/ },
+  // `(?![\w-])`, not `\b`: `--force-with-lease` must not also count as a bare
+  // `--force` now that every matched label is weighed (#651 review).
+  { label: "git push --force", re: /\bgit\s+push\b[^\n]*--force(?![\w-])/ },
   { label: "git push -f", re: /\bgit\s+push\b[^\n]*\s-f\b/ },
   { label: "git commit --amend", re: /\bgit\s+commit\b[^\n]*--amend\b/ },
   { label: "gh repo delete", re: /\bgh\s+repo\s+delete\b/ },
@@ -373,12 +375,16 @@ function executableSegments(cmd: string): string[] {
     .filter((s) => s.length > 0 && !SEARCH_ONLY_HEAD.test(s));
 }
 
+/** #540: quotes and backslashes inside a word do not change what runs —
+ *  `"rm" -rf /`, `rm "-rf" /` and `r\m -rf /` are `rm -rf /`. Each segment is
+ *  matched as written AND with them removed, so quoting cannot disguise a
+ *  command the patterns would catch unquoted. */
+function matchSegments(cmd: string): string[] {
+  return executableSegments(cmd).flatMap((s) => [s, s.replace(/["'\\]/g, "")]);
+}
+
 function matchPattern(cmd: string): { label: string; severity: "destructive" | "risky" } | null {
-  // #540: quotes and backslashes inside a word do not change what runs —
-  // `"rm" -rf /`, `rm "-rf" /` and `r\m -rf /` are `rm -rf /`. Each segment is
-  // matched as written AND with them removed, so quoting cannot disguise a
-  // command the patterns would catch unquoted.
-  const segments = executableSegments(cmd).flatMap((s) => [s, s.replace(/["'\\]/g, "")]);
+  const segments = matchSegments(cmd);
   for (const p of DESTRUCTIVE_PATTERNS) {
     if (segments.some((s) => p.re.test(s))) return { label: p.label, severity: "destructive" };
   }
@@ -386,6 +392,55 @@ function matchPattern(cmd: string): { label: string; severity: "destructive" | "
     if (segments.some((s) => p.re.test(s))) return { label: p.label, severity: "risky" };
   }
   return null;
+}
+
+const RM_LABELS = new Set(["rm -rf", "rm -r"]);
+
+/**
+ * Is every `rm -r` in this command the PATH-resolved `rm` of THIS shell — the
+ * one an archiving shim can stand in for (#650)? `sudo` (secure_path),
+ * `/bin/rm`, `ssh host rm`, `docker exec … rm`, `git rm`, `find -exec rm`,
+ * `bash -c "…rm…"`, a heredoc body (its consumer may be `ssh`) and anything the
+ * scanner cannot delimit do not qualify. An allowlist on purpose: a form not
+ * recognised here keeps the STOP.
+ */
+function rmRunsThroughPath(cmd: string): boolean {
+  const commands = simpleCommands(cmd);
+  if (!commands) return false;
+  const rmPatterns = DESTRUCTIVE_PATTERNS.filter((p) => RM_LABELS.has(p.label));
+  for (const { words } of commands) {
+    const texts = words.map((w) => w.text.replace(/["'\\]/g, ""));
+    if (!rmPatterns.some((p) => p.re.test(texts.join(" ")))) continue;
+    let k = 0;
+    if (texts[0] === "command") k = 1;
+    else if (texts[0] === "xargs") for (k = 1; k < texts.length && texts[k].startsWith("-"); k++);
+    if (texts[k] !== "rm") return false;
+  }
+  return true;
+}
+
+/**
+ * Which destructive label the hint names, and whether its reversible default
+ * may be offered (#651 review). The table order that picks the label was only
+ * cosmetic while every destructive match said STOP; with receipts it decides
+ * safety — `git branch -D x && gh repo delete y` must not read "No
+ * confirmation needed". So every matched label is weighed:
+ *
+ * - any label without an undo → STOP, naming that label;
+ * - several labels that are not all receipts → STOP (one hint names one form);
+ * - an rm receipt only when every rm runs through this shell's PATH.
+ */
+function decideDestructive(cmd: string, first: string, surface: string): { label: string; undo: boolean } {
+  const segments = matchSegments(cmd);
+  const labels = DESTRUCTIVE_PATTERNS.filter((p) => segments.some((s) => p.re.test(s))).map((p) => p.label);
+  // `rm -rf` also matches the `rm -r` pattern; they are one act.
+  const acts = [...new Set(labels.map((l) => (RM_LABELS.has(l) ? "rm -rf" : l)))];
+  const kinds = acts.map((l) => reversibleDefault(l, surface)?.kind ?? null);
+  const noUndo = acts.find((_, i) => kinds[i] === null);
+  if (noUndo !== undefined) return { label: noUndo === "rm -rf" && RM_LABELS.has(first) ? first : noUndo, undo: false };
+  if (acts.length > 1 && kinds.some((k) => k !== "receipt")) return { label: first, undo: false };
+  if (acts.includes("rm -rf") && !rmRunsThroughPath(cmd)) return { label: first, undo: false };
+  return { label: first, undo: true };
 }
 
 /**
@@ -414,8 +469,11 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
   // silently unhinted and unlogged.
   if (invokesOwnBinary(command)) return "{}";
 
-  const match = matchPattern(command);
-  if (!match) return "{}";
+  const matched = matchPattern(command);
+  if (!matched) return "{}";
+  const decided =
+    matched.severity === "destructive" ? decideDestructive(command, matched.label, client) : { label: matched.label, undo: true };
+  const match = { ...matched, label: decided.label };
 
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
 
@@ -523,7 +581,7 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
 
   // Emit hint even if no memories match — the warning itself is the point.
   // #161 CONSTRAINT (see top of file): the tripwire is exempt from backoff.
-  const block = formatHintBlock(match.label, match.severity, emitted, unfused, client);
+  const block = formatHintBlock(match.label, match.severity, emitted, unfused, client, decided.undo);
   const stdout = JSON.stringify({
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
@@ -540,7 +598,9 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
     matched_pattern: match.label,
     severity: match.severity,
     hint_kind:
-      match.severity === "destructive" ? (reversibleDefault(match.label, client)?.kind ?? "stop") : null,
+      match.severity === "destructive"
+        ? ((decided.undo ? reversibleDefault(match.label, client)?.kind : undefined) ?? "stop")
+        : null,
     daemon_url: selfBaseUrl,
     daemon_reachable: resp !== null,
     hint_count: emitted.length,
@@ -697,12 +757,14 @@ export function formatHintBlock(
   hits: RecallHit[],
   unfused = false,
   surface = "claude-code",
+  /** false: the command as a whole has no undo (see decideDestructive) — STOP. */
+  allowUndo = true,
 ): string {
   const head = `<recall-hints surface="${surface}" trigger="bash-${severity}">`;
   const tail = `</recall-hints>`;
   const lines: string[] = [];
 
-  const undo = severity === "destructive" ? reversibleDefault(pattern, surface) : null;
+  const undo = severity === "destructive" && allowUndo ? reversibleDefault(pattern, surface) : null;
   if (undo?.kind === "receipt") {
     lines.push(`NOTE — reversible (pattern: \`${pattern}\`): ${undo.text} No confirmation needed.`);
   } else if (undo?.kind === "reversible-form") {
