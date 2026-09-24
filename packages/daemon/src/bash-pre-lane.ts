@@ -568,6 +568,20 @@ function formatHintLine(h: RecallHit, hideScore = false): string {
     : `- ${h.id} (${h.type}, score ${Math.round(h.score)}): ${summary}`;
 }
 
+/**
+ * Host opt-in: on a machine whose agent shell puts an archiving `rm` first in
+ * PATH, "STOP — needs explicit confirmation" is false for rm and teaches the
+ * model to fear a reversible move. Only the claude-code surface is covered —
+ * that is where the shim is installed; other surfaces keep the STOP.
+ */
+function rmArchives(pattern: string, surface: string): boolean {
+  return (
+    process.env.BASTRA_RM_ARCHIVES === "1" &&
+    surface === "claude-code" &&
+    (pattern === "rm -rf" || pattern === "rm -r")
+  );
+}
+
 export function formatHintBlock(
   pattern: string,
   severity: "destructive" | "risky",
@@ -579,7 +593,13 @@ export function formatHintBlock(
   const tail = `</recall-hints>`;
   const lines: string[] = [];
 
-  if (severity === "destructive") {
+  if (severity === "destructive" && rmArchives(pattern, surface)) {
+    lines.push(
+      `NOTE — \`${pattern}\` in this shell archives instead of deleting (host opt-in BASTRA_RM_ARCHIVES): ` +
+        `targets move to ~/_archive/<date>/<full path>, \`agent-archive restore <path>\` puts them back; ` +
+        `temp dirs are really removed; /, ~ and system dirs are refused. No confirmation needed — it is reversible.`,
+    );
+  } else if (severity === "destructive") {
     lines.push(
       `STOP — destructive Bash command detected (pattern: \`${pattern}\`). ` +
         `Per user-preference this needs explicit user confirmation unless authorized in advance. ` +

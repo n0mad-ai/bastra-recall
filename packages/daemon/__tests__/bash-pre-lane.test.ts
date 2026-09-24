@@ -859,3 +859,34 @@ describe("#540 — the quoted message or body of git and gh is prose, not a comm
     }
   });
 });
+
+describe("bash-pre-hook: host where rm archives (BASTRA_RM_ARCHIVES)", () => {
+  // Revert-check: drop the rmArchives branch in formatHintBlock → the opt-in
+  // case gets "STOP — … explicit user confirmation" back and the first test is red.
+  const withFlag = (fn: () => void) => {
+    const prev = process.env.BASTRA_RM_ARCHIVES;
+    process.env.BASTRA_RM_ARCHIVES = "1";
+    try {
+      fn();
+    } finally {
+      if (prev === undefined) delete process.env.BASTRA_RM_ARCHIVES;
+      else process.env.BASTRA_RM_ARCHIVES = prev;
+    }
+  };
+
+  it("rm -rf on claude-code says reversible archive, not STOP", () => {
+    withFlag(() => {
+      const out = formatHintBlock("rm -rf", "destructive", [], false, "claude-code");
+      assert.match(out, /archives instead of deleting/);
+      assert.doesNotMatch(out, /STOP/);
+    });
+  });
+
+  it("other surfaces, other destructive patterns and no flag keep STOP", () => {
+    withFlag(() => {
+      assert.match(formatHintBlock("rm -rf", "destructive", [], false, "codex"), /STOP/);
+      assert.match(formatHintBlock("git reset --hard", "destructive", [], false, "claude-code"), /STOP/);
+    });
+    assert.match(formatHintBlock("rm -rf", "destructive", [], false, "claude-code"), /STOP/);
+  });
+});
