@@ -380,3 +380,23 @@ describe("test-map: parseDiff reads git's quoted paths", () => {
     assert.deepEqual(r.files.map((f) => f.file), ["__tests__/a.test.ts"]);
   });
 });
+
+// Revert-check: restore `if (!hit && overlaps(src.lines, h))` in select → both cases land in
+// no bucket at all (no files, not uncovered, not inert) → red.
+describe("test-map: a code change on lines the map dropped as comments is reported", () => {
+  const file = "packages/daemon/src/x.ts";
+  const m = { commit: "c0ffee", tests: [{ file: "packages/daemon/__tests__/a.test.ts", tests: 1, wall_ms: 1, src_lines: 2 }], sources: { [file]: { lines: [[1, 1], [4, 4]], by: { 0: [[1, 1], [4, 4]] } } } };
+  const oldText = ["a();", "// b();", "// c();", "d();"].join("\n");
+
+  it("uncommenting a call is a code change no test ran", () => {
+    const newText = oldText.replace("// b();", "b();");
+    const r = select(m, diff(file, "@@ -2 +2 @@", "-// b();\n+b();"), { readOld: () => oldText, readNew: () => newText });
+    assert.deepEqual(r.uncovered, [`${file}:2-2`], JSON.stringify(r));
+  });
+
+  it("code inserted between two comment lines is a code change no test ran", () => {
+    const newText = ["a();", "// b();", "e();", "// c();", "d();"].join("\n");
+    const r = select(m, diff(file, "@@ -2,0 +3 @@", "+e();"), { readOld: () => oldText, readNew: () => newText });
+    assert.deepEqual(r.uncovered, [`${file}:2-3`], JSON.stringify(r));
+  });
+});

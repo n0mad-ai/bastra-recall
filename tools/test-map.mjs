@@ -445,8 +445,10 @@ export function select(map, diffText, opts = {}) {
       for (const [i, ranges] of Object.entries(src.by)) {
         if (overlaps(ranges, h)) { add(Number(i), `${file}:${h[0]}-${h[1]}`); hit = true; }
       }
-      // Lines that are executable but no test ran them — a regression here goes unseen.
-      if (!hit && overlaps(src.lines, h)) report.uncovered.push(`${file}:${h[0]}-${h[1]}`);
+      // A code change no test ran — a regression here goes unseen. Not only on lines the map
+      // tracks: code that replaced a comment, or was inserted between comments, lands on old
+      // lines the map dropped as non-code, and fell out of every bucket.
+      if (!hit) report.uncovered.push(`${file}:${h[0]}-${h[1]}`);
     }
   }
   // Coverage-blind test files execute no source line: they read sources as text
