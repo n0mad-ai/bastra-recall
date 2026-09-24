@@ -5,7 +5,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import { matchPattern, formatHintBlock, runBashPreLane, reversibleDefault } from "../src/bash-pre-lane.js";
+import { matchPattern, formatHintBlock, runBashPreLane, reversibleDefault, DESTRUCTIVE_PATTERNS, NO_LOCAL_UNDO } from "../src/bash-pre-lane.js";
 
 
 describe("bash-pre-hook: matchPattern", () => {
@@ -931,8 +931,27 @@ describe("bash-pre-hook: reversible defaults (#650 comment)", () => {
     }
   });
 
+  it("every destructive pattern has a decided side: an undo, or listed as having none", () => {
+    // Revert-check: add a pattern to DESTRUCTIVE_PATTERNS without a row here or in
+    // reversibleDefault → red, naming the label.
+    const prev = process.env.BASTRA_RM_ARCHIVES;
+    process.env.BASTRA_RM_ARCHIVES = "1";
+    try {
+      for (const { label } of DESTRUCTIVE_PATTERNS) {
+        const hasUndo = reversibleDefault(label, "claude-code") !== null;
+        assert.ok(hasUndo !== NO_LOCAL_UNDO.has(label), `${label}: undecided or on both sides`);
+      }
+      for (const label of NO_LOCAL_UNDO) {
+        assert.ok(DESTRUCTIVE_PATTERNS.some((p) => p.label === label), `${label}: listed but not a pattern`);
+      }
+    } finally {
+      if (prev === undefined) delete process.env.BASTRA_RM_ARCHIVES;
+      else process.env.BASTRA_RM_ARCHIVES = prev;
+    }
+  });
+
   it("acts with no local undo keep STOP", () => {
-    for (const p of ["DROP TABLE", "kubectl delete", "gh repo delete", "docker volume rm", "rmdir"]) {
+    for (const p of NO_LOCAL_UNDO) {
       assert.equal(reversibleDefault(p, "claude-code"), null, p);
       assert.match(formatHintBlock(p, "destructive", [], false, "claude-code"), /STOP — destructive/, p);
     }

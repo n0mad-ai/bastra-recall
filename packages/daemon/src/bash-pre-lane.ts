@@ -595,6 +595,28 @@ function rmArchives(surface: string): boolean {
  */
 export type HintKind = "stop" | "receipt" | "reversible-form";
 
+/**
+ * The destructive patterns that deliberately keep STOP: no local undo exists.
+ * Every DESTRUCTIVE_PATTERNS label is either here or answered by
+ * reversibleDefault (on a host with the archive opt-in) — a test holds that,
+ * so a new pattern cannot land without somebody deciding which side it is on.
+ */
+export const NO_LOCAL_UNDO: ReadonlySet<string> = new Set([
+  "rmdir",
+  "gh repo delete",
+  "gh release delete",
+  "npm uninstall",
+  "npm rm",
+  "yarn remove",
+  "pnpm rm",
+  "DROP TABLE",
+  "DROP DATABASE",
+  "TRUNCATE TABLE",
+  "docker rm",
+  "docker volume rm",
+  "kubectl delete",
+]);
+
 export function reversibleDefault(pattern: string, surface: string): { kind: HintKind; text: string } | null {
   switch (pattern) {
     case "rm -rf":
