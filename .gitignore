@@ -106,3 +106,6 @@ packages/daemon/stub/manifest.json
 
 # Graphify code graph (local only, see #574)
 graphify-out/
+
+# tools/test-map.mjs build output
+.test-map/
