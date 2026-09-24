@@ -1,10 +1,14 @@
-import { describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseDiff, parseLcov, normalizeSource, select, testFiles, INERT, codeLinesOf, gitDiff } from "../test-map.mjs";
+import { fileURLToPath } from "node:url";
+import {
+  parseDiff, parseLcov, normalizeSource, select, headline, testFiles, testScript, INERT, codeLinesOf, gitDiff,
+  build, loadMap, MapError, DIRTY,
+} from "../test-map.mjs";
 
 // Revert-checks added below, one per bug found in review (each names what to break to
 // go red): INERT swallowing real code after a same-line block comment or a bare leading
@@ -164,10 +168,11 @@ describe("test-map: parseDiff against real git diff output", () => {
     assert.ok(!r.unmapped.includes("renamed.ts"));
   });
 
-  it("a binary file is reported (ignored), not silently dropped from every bucket", () => {
+  it("a binary file is reported (unseen, not vouched), not silently dropped from every bucket", () => {
     const m = { commit: "c0ffee", tests: [], sources: {} };
     const r = select(m, diffText);
-    assert.ok(r.ignored.includes("img.png"), JSON.stringify(r));
+    assert.ok(r.unseen.includes("img.png"), JSON.stringify(r));
+    assert.equal(r.vouched, false);
   });
 
   rmSync(repo, { recursive: true, force: true });
@@ -324,14 +329,14 @@ describe("test-map: test files written or deleted since the map", () => {
 
   it("a new test file the npm test globs pick up is selected, not just 'not in map'", () => {
     const f = "packages/daemon/__tests__/new.test.ts";
-    const r = select(map, add(f), { testFiles: [f], readOld: () => "", readNew: () => 'it("x", () => {});' });
+    const r = select(map, add(f), { script: { setup: [], files: [f] }, readOld: () => "", readNew: () => 'it("x", () => {});' });
     assert.ok(r.files.some((x) => x.file === f && x.new), JSON.stringify(r));
     assert.ok(!r.unmapped.includes(f));
   });
 
   it("a deleted test file is not selected", () => {
     const f = "packages/daemon/__tests__/a.test.ts";
-    const r = select(map, del(f), { testFiles: [], readOld: () => 'it("x", () => {});', readNew: () => "" });
+    const r = select(map, del(f), { script: { setup: [], files: [] }, readOld: () => 'it("x", () => {});', readNew: () => "" });
     assert.ok(!r.files.some((x) => x.file === f), JSON.stringify(r.files));
   });
 
@@ -356,4 +361,229 @@ describe("test-map: test files written or deleted since the map", () => {
       rmSync(repo, { recursive: true, force: true });
     }
   });
+});
+
+// Revert-checks: drop `|| current().setup.includes(file)` in select → the setup file is
+// only "unseen" → red; slice the flags from 0 instead of after "node" → red.
+describe("test-map: the test setup is read from the npm test script, once", () => {
+  it("this repo's script: tsx and scripts/test-env.mjs are the flags, the latter the setup", () => {
+    const { flags, setup } = testScript();
+    assert.deepEqual(flags, ["--import", "tsx", "--import", "./scripts/test-env.mjs"]);
+    assert.deepEqual(setup, ["scripts/test-env.mjs"]);
+  });
+
+  it("a change to a setup file the script preloads runs the full suite", () => {
+    const r = select(map, diff("t/setup.mjs", "@@ -1 +1 @@", "-a()\n+b()"), { script: { setup: ["t/setup.mjs"], files: [] } });
+    assert.equal(r.full_suite, true);
+    assert.deepEqual(r.full_why, ["t/setup.mjs: a global file"]);
+  });
+});
+
+// Revert-checks: in select push every non-code file to `unseen` (drop the FIXTURE branch)
+// → the fixture case is red; drop the unseen line from `doubts` → the README case is red
+// (vouched, "0 test files — no code changed"); drop the `!r.vouched` branch of headline →
+// the headline case is red.
+describe("test-map: a file coverage cannot see is never passed as safe", () => {
+  it("test data under fixtures/ or __tests__/ runs the full suite, and says why", () => {
+    for (const f of ["packages/eval/fixtures/eval-vault/memories/a.md", "fixtures/sample-vault/x.json", "packages/daemon/__tests__/snap.txt"]) {
+      const r = select(map, diff(f, "@@ -1 +1 @@", "-a\n+b"));
+      assert.equal(r.full_suite, true, f);
+      assert.match(headline(r), /^FULL SUITE — .*test data/);
+    }
+  });
+
+  it("any other non-code file selects nothing and is NOT VOUCHED, not \"0 tests, fine\"", () => {
+    const r = select(map, diff("README.md", "@@ -1 +1 @@", "-a\n+b"));
+    assert.equal(r.files.length, 0);
+    assert.equal(r.vouched, false);
+    assert.match(headline(r), /^0 test files, .* — NOT VOUCHED for 1 change:$/);
+    assert.match(r.doubts[0], /^README\.md: not code/);
+  });
+
+  it("a comment-only change is vouched with zero files, and says why it is zero", () => {
+    const r = select(map, diff("packages/daemon/src/x.ts", "@@ -2 +2 @@", "-// old\n+// new"));
+    assert.equal(r.vouched, true);
+    assert.equal(headline(r), "0 test files — only comments or blank lines changed");
+  });
+});
+
+// A real repository with real coverage: build runs its tests, select reads real `git diff`
+// output. Everything here is measured, not hand-typed.
+describe("test-map: select over a real repo and a real map", () => {
+  const TOOL = fileURLToPath(new URL("../test-map.mjs", import.meta.url));
+  const SRC = [
+    "/**", " * add and twice are run by every test; pick(1) by b only.", " */",
+    "export function add(a, b) {", "  return a + b;", "}", "",
+    "// a line comment", "export function pick(x) {", "  if (x > 0) {", '    return "pos";', "  }",
+    '  return "neg"; // no test takes this branch', "}", "",
+    "export function twice(x) {", "  const y = x", "    * 2;", "  return y;", "}", "",
+    "export function unused() {", "  return 42;", "}", "",
+  ].join("\n");
+  const repo = mkdtempSync(join(tmpdir(), "test-map-real-"));
+  const git = (...args) => execFileSync("git", args, { cwd: repo, encoding: "utf8" });
+  const put = (f, text) => { mkdirSync(join(repo, f, ".."), { recursive: true }); writeFileSync(join(repo, f), text); };
+  const cli = (...args) => spawnSync(process.execPath, [join(repo, "tools", "test-map.mjs"), ...args], { cwd: repo, encoding: "utf8" });
+  let m;
+
+  before(async () => {
+    put("package.json", JSON.stringify({ type: "module", scripts: { test: "node --test t/*.test.mjs" } }));
+    put(".gitignore", ".test-map/\n");
+    put("src/m.mjs", SRC);
+    const imp = 'import { it } from "node:test";\nimport { strict as assert } from "node:assert";\nimport { add, pick, twice } from "../src/m.mjs";\n';
+    put("t/a.test.mjs", `${imp}it("a", () => { assert.equal(add(1, 2), 3); assert.equal(twice(2), 4); });\n`);
+    put("t/b.test.mjs", `${imp}it("b", () => { assert.equal(pick(1), "pos"); assert.equal(add(0, 0), 0); });\n`);
+    put("t/c.test.mjs", `${imp}import { readFileSync } from "node:fs";\n` +
+      'it("c", () => { assert.equal(add(JSON.parse(readFileSync(new URL("fixtures/data.json", import.meta.url), "utf8")).n, 1), 2); });\n');
+    put("t/fixtures/data.json", '{ "n": 1 }\n');
+    put("tools/test-map.mjs", readFileSync(TOOL, "utf8"));
+    git("init", "-q");
+    git("config", "user.email", "a@a.com");
+    git("config", "user.name", "a");
+    git("add", "-A");
+    git("commit", "-q", "-m", "base");
+    m = await build({ root: repo, jobs: 3 });
+  });
+  after(() => rmSync(repo, { recursive: true, force: true }));
+
+  const selectNow = () => select(m, gitDiff(m.commit, repo), { root: repo });
+  const ran = (t, line) => Object.entries(m.sources["src/m.mjs"].by).some(([i, rs]) => m.tests[i].file === t && rs.some(([x, y]) => x <= line && line <= y));
+  const at = (text) => SRC.split("\n").indexOf(text) + 1;
+
+  it("the map is real: each test ran what it calls, none ran the untaken branch, no one sees the fixture", () => {
+    assert.deepEqual(m.tests.map((t) => [t.file, t.exit]), [["t/a.test.mjs", 0], ["t/b.test.mjs", 0], ["t/c.test.mjs", 0]]);
+    assert.ok(ran("t/a.test.mjs", at("    * 2;")) && !ran("t/c.test.mjs", at("    * 2;")));
+    assert.ok(ran("t/b.test.mjs", at('    return "pos";')) && !ran("t/a.test.mjs", at('    return "pos";')));
+    for (const t of ["t/a.test.mjs", "t/b.test.mjs", "t/c.test.mjs"]) assert.ok(!ran(t, at('  return "neg"; // no test takes this branch')));
+    assert.deepEqual(Object.keys(m.sources), ["src/m.mjs"]);
+  });
+
+  // The invariant, over seeded random edits of real lines: every test the map says
+  // executed a changed line is selected (sound), and a code change never comes back as
+  // an empty pass. The oracle is the edit itself (which old lines it hit), not the diff.
+  // Revert-checks: read hunks on the new side, or cover only line `start` for a pure
+  // insertion → the sound assertion is red; drop `report.uncovered.push` → the empty-
+  // pass assertion is red.
+  it("sound and never empty-as-pass, over 100 generated edits (the ones that still parse)", () => {
+    const old = SRC.split("\n").slice(0, -1); // the trailing "" is the final newline
+    const oldCode = codeLinesOf(SRC);
+    let rnd = 0x9e3779b9;
+    const next = (n) => { rnd = (Math.imul(rnd ^ (rnd >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) >>> 0; return rnd % n; };
+    const seen = { edits: 0, required: 0, emptyUnvouched: 0, inertOnly: 0 };
+    for (let trial = 0; trial < 100; trial++) {
+      // Edits at least 3 lines apart, one hunk each. Two adjacent edits merge into one
+      // hunk that reads as "these old lines replaced" — seen by the tests of those lines,
+      // not of the neighbours an insertion alone would count (trial 6 of this seed, when
+      // edits could touch: insert after 6 + modify 7 = one hunk on line 7).
+      const lines = [];
+      for (let n = 1 + next(3), tries = 0; lines.length < n && tries < 20; tries++) {
+        const k = 1 + next(old.length);
+        if (lines.every((l) => Math.abs(l - k) >= 3)) lines.push(k);
+      }
+      lines.sort((a, b) => b - a);
+      const text = [...old];
+      const required = new Set();
+      const ops = [];
+      let codeTouched = false;
+      for (const k of lines) { // bottom-up, so each k is still an old line number
+        const op = ["modify", "delete", "insert"][next(3)];
+        ops.push(`${op}@${k}`);
+        const around = op === "insert" ? [k, k + 1] : [k];
+        for (const t of m.tests) if (around.some((l) => ran(t.file, l))) required.add(t.file);
+        if (op === "modify") { text[k - 1] += " 0"; codeTouched ||= oldCode.has(k); }
+        if (op === "delete") { text.splice(k - 1, 1); codeTouched ||= oldCode.has(k); }
+        if (op === "insert") text.splice(k, 0, "globalThis.__e = 1; // INS");
+      }
+      const now = text.join("\n") + "\n";
+      try { new Function(now.replace(/^export /gm, "")); } catch { continue; } // a syntax error is not an edit
+      codeTouched ||= now.split("\n").some((l, i) => l.includes("// INS") && codeLinesOf(now).has(i + 1));
+      put("src/m.mjs", now);
+      seen.edits++;
+      const r = selectNow();
+      const picked = new Set(r.files.map((f) => f.file));
+      const why = `trial ${trial}, ${ops}: ${JSON.stringify({ picked: [...picked], doubts: r.doubts, inert: r.inert })}`;
+      for (const t of required) assert.ok(picked.has(t), `${t} ran a changed line but was not selected — ${why}`);
+      if (codeTouched) assert.ok(picked.size > 0 || !r.vouched, `code changed, nothing selected, and vouched — ${why}`);
+      if (codeTouched && !picked.size) assert.match(headline(r), /NOT VOUCHED/, why);
+      if (required.size) seen.required++;
+      if (codeTouched && !picked.size) seen.emptyUnvouched++;
+      if (!codeTouched) seen.inertOnly++;
+    }
+    put("src/m.mjs", SRC);
+    // Guard against a property that held by testing nothing: each branch was exercised.
+    assert.ok(seen.edits >= 50 && seen.required >= 20 && seen.emptyUnvouched >= 1 && seen.inertOnly >= 1, JSON.stringify(seen));
+  });
+
+  it("the untaken branch alone: zero files, NOT VOUCHED, and --run exits 3 after running nothing", () => {
+    put("src/m.mjs", SRC.replace('return "neg";', 'return "NEG";'));
+    try {
+      const r = selectNow();
+      assert.deepEqual(r.files, []);
+      assert.deepEqual(r.uncovered, [`src/m.mjs:${at('  return "neg"; // no test takes this branch')}-${at('  return "neg"; // no test takes this branch')}`]);
+      const out = cli("select", "--run");
+      assert.equal(out.status, 3, out.stdout + out.stderr);
+      assert.match(out.stdout, /^0 test files, .* — NOT VOUCHED for 1 change:\n {2}src\/m\.mjs:\d+-\d+: code no test executes$/m);
+    } finally {
+      put("src/m.mjs", SRC);
+    }
+  });
+
+  it("a covered change: --run runs the tests that ran it and exits 0", () => {
+    put("src/m.mjs", SRC.replace('return "pos";', 'return "pos" ;'));
+    try {
+      const out = cli("select", "--run");
+      assert.equal(out.status, 0, out.stdout + out.stderr);
+      assert.match(out.stdout, /^1 test files, 1 of 3 tests/m);
+      assert.match(out.stdout, /t\/b\.test\.mjs/);
+    } finally {
+      put("src/m.mjs", SRC);
+    }
+  });
+
+  // Revert-check: drop the FIXTURE branch → the fixture is only "unseen" → red.
+  it("the fixture test c reads, invisible to coverage, runs the full suite", () => {
+    put("t/fixtures/data.json", '{ "n": 2 }\n');
+    try {
+      const r = selectNow();
+      assert.equal(r.full_suite, true);
+      assert.deepEqual(r.fixtures, ["t/fixtures/data.json"]);
+    } finally {
+      put("t/fixtures/data.json", '{ "n": 1 }\n');
+    }
+  });
+
+  // Revert-check: drop the map.dirty line from `doubts` → the select case is red; drop
+  // the `if (map.dirty) warn(DIRTY)` in main → the stderr case is red.
+  it("a map built on a dirty tree: select warns on stderr and does not vouch", () => {
+    const dirty = { ...m, dirty: true };
+    put("src/m.mjs", SRC.replace('return "pos";', 'return "pos" ;'));
+    try {
+      const r = select(dirty, gitDiff(m.commit, repo), { root: repo });
+      assert.equal(r.vouched, false);
+      assert.deepEqual(r.doubts, [DIRTY]);
+      writeFileSync(join(repo, ".test-map", "map.json"), JSON.stringify(dirty));
+      assert.ok(cli("select").stderr.includes(`test-map: ${DIRTY}\n`));
+    } finally {
+      writeFileSync(join(repo, ".test-map", "map.json"), JSON.stringify(m));
+      put("src/m.mjs", SRC);
+    }
+  });
+
+  // Revert-check: drop the `git cat-file -e` check in loadMap → select dies later inside
+  // `git diff` with a stack trace → both assertions red.
+  it("a map commit gone from the repo is one line saying to rebuild, not a stack trace", () => {
+    const gone = { ...m, commit: "0123456789abcdef0123456789abcdef01234567" };
+    writeFileSync(join(repo, ".test-map", "map.json"), JSON.stringify(gone));
+    try {
+      assert.throws(() => loadMap(repo), (e) => e instanceof MapError && /rebuild the map/.test(e.message));
+      const out = cli("select");
+      assert.equal(out.status, 2);
+      assert.equal(out.stderr, "test-map: the map's commit 01234567 is not in this repository any more (rebased or garbage-collected) — rebuild the map: run `node tools/test-map.mjs build`\n");
+    } finally {
+      writeFileSync(join(repo, ".test-map", "map.json"), JSON.stringify(m));
+    }
+  });
+});
+
+describe("test-map: what the map cannot see and select cannot say", () => {
+  it.todo("a source line run only inside a child process a test spawns: whether Node's coverage follows the child is not measured here; if it does not, a change there is `uncovered` (said), but a test spawning it is not selected");
 });

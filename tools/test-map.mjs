@@ -12,10 +12,13 @@
  *         writes .test-map/map.json: per source file, which test files executed
  *         which lines, plus each test file's test count, result and duration.
  * select  diffs the working tree against the commit the map was built at and
- *         picks the test files that executed a changed line. It prints what it
- *         cannot vouch for instead of guessing: a change no test executes, a
- *         file the map has never seen, a global file (package.json, the test
- *         setup) that means "run everything".
+ *         picks the test files that executed a changed line. What it cannot
+ *         vouch for it names instead of guessing — a change no test executes, a
+ *         file the map has never seen, a file no coverage sees read — and then
+ *         the selection is NOT VOUCHED: never "0 tests, fine". A global file
+ *         (package.json, the test setup) or test data means "run everything".
+ *         --run runs the selection; its exit code is the tests', or 3 when they
+ *         passed but the selection does not vouch for the whole change.
  * heatmap every suite with its size and time; per source file the share of
  *         lines any test executes and how many test files do; the hottest
  *         lines (a change there re-runs the most) and the files no test loads.
@@ -28,43 +31,43 @@
  * such lines as uncovered rather than claiming safety.
  *
  * Map staleness: line numbers are the map commit's. `select` diffs against that
- * commit, so hunks are read on the old side — the side the map knows.
+ * commit, so hunks are read on the old side — the side the map knows. A map built
+ * on a dirty tree carries that tree's numbers, not the commit's: select warns and
+ * does not vouch. A map commit gone from the repo (rebase, gc) is an error that
+ * says "rebuild the map", not a git stack trace.
  *
- * Known hole, not fixed here: a non-code file a test reads at runtime (a JSON/YAML
- * fixture under __tests__/fixtures, a .md a tool loads) shows up in `select`'s
- * `ignored` bucket the same as a truly irrelevant file (a .gitignore, a doc nobody
- * loads) — coverage only sees .ts/.js execution, never an fs.readFileSync of data.
- * A change to such a fixture picks no test. Catching it needs instrumenting reads,
- * not diffing; GLOBAL is not the fix (it would force the full suite on every
- * config/doc touch). Treat `ignored` as "the map has no opinion", not "safe".
+ * Non-code files: coverage records execution, never an fs.readFileSync of data, so
+ * a test that reads a JSON/YAML/.md at runtime leaves no trace in the map. A
+ * non-code file under a `fixtures/` or `__tests__/` directory is test data by where
+ * it lives: its change runs the full suite, and says why. Any other non-code file
+ * (a doc, a .gitignore, a CSS file the daemon serves) is `unseen`: listed, and the
+ * selection is not vouched — the map has no opinion on it, which is not "safe".
  */
 import { spawn, execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { cpus } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const OUT = join(ROOT, ".test-map");
-const MAP = join(OUT, "map.json");
+const outDir = (root) => join(root, ".test-map");
+const mapFile = (root) => join(outDir(root), "map.json");
 
-/** Files whose change can move any test: selection gives up and says so. */
-const GLOBAL = [/^package(-lock)?\.json$/, /^packages\/[^/]+\/package\.json$/, /^tsconfig/, /^packages\/[^/]+\/tsconfig/, /^scripts\/test-env\.mjs$/];
+/** Files whose change can move any test: selection gives up and says so. The test
+ * setup files the npm test script preloads join these (see testScript). */
+const GLOBAL = [/^package(-lock)?\.json$/, /^packages\/[^/]+\/package\.json$/, /^tsconfig/, /^packages\/[^/]+\/tsconfig/];
+/** Where test data lives: a non-code file here is read by some test at runtime. */
+const FIXTURE = /(?:^|\/)(?:fixtures|__tests__)\//;
 const CODE = /\.(ts|mts|cts|js|mjs|cjs)$/;
-// A line that cannot change behaviour: blank, a "//" line, or a block comment that opens
-// and closes on the same line with nothing else on it. Deliberately does NOT match a
-// bare leading star (old regex did, unanchored at the end of the alternation — it
-// matched "block-comment-opener eslint-disable block-comment-closer doSomething()" and
-// "block-comment-closer realCode()" as inert too, since it never required the rest of
-// the line to be checked): a star-led line is ambiguous between a JSDoc continuation and
-// code (multiplication continuing on its own line, a chained generator method) with no
-// cross-line state here, so it now falls through to "code" — over-cautious (an unrelated
-// comment-wording tweak may get selected, or flagged uncovered) never under (a real line
-// silently marked inert never reaches select's uncovered report at all: it was dropped
-// from the map's tracked lines at build time, not just mislabeled at select time).
-// Still blind to a "//"-shaped line that is template-literal/string CONTENT, not a
-// comment — no tokenizer here; select's ignored/inert buckets are not proof for files
-// with multi-line string literals, only a best-effort.
+
+/** A map select cannot use as it is: said in one line, with what to do. */
+export class MapError extends Error {}
+
+// A line that cannot change behaviour, judged alone: blank, a `//` line, or a block
+// comment that opens and closes on it with nothing after. A bare leading `*` is not
+// inert: alone, ` * 2;` (a continued product) and ` * explains x` (a JSDoc body) look
+// the same, so it counts as code — over-select, never under. Blind to a `//` inside a
+// multi-line string. codeLinesOf decides on the whole text; this is its fallback.
 export const INERT = /^\s*(?:\/\/.*|\/\*.*\*\/\s*|\*\/\s*)?$/;
 
 /**
@@ -129,9 +132,9 @@ export function codeLinesOf(text) {
 }
 
 /** Line numbers of a source file that carry code — the rest is excluded from the map. */
-function codeLines(file) {
+function codeLines(file, root) {
   try {
-    return codeLinesOf(readFileSync(join(ROOT, file), "utf8"));
+    return codeLinesOf(readFileSync(join(root, file), "utf8"));
   } catch {
     return null;
   }
@@ -139,21 +142,27 @@ function codeLines(file) {
 
 // ------------------------------------------------------------------ tests
 
-/** The test files `npm test` runs — read from the root script, not re-listed here. */
-export function testFiles(root = ROOT) {
-  const script = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).scripts.test;
-  const globs = script.split(/\s+/).filter((a) => /\*.*\.(test\.)?(ts|mjs|js)$/.test(a));
-  const out = [];
-  for (const g of globs) {
+/** What `npm test` runs, read from the root script, not re-listed here: the node flags
+ * before `--test` (the tsx loader, the test setup) and the test files its globs match.
+ * build, --run and the full-suite rule all read this one script. */
+export function testScript(root = ROOT) {
+  const words = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).scripts.test.split(/\s+/);
+  const at = words.indexOf("--test");
+  const flags = words.slice(words.indexOf("node") + 1, at);
+  const setup = flags.filter((f) => f.startsWith("./")).map((f) => f.slice(2));
+  const files = [];
+  for (const g of words.slice(at + 1).filter((a) => /\*.*\.(test\.)?(ts|mjs|js)$/.test(a))) {
     const dir = dirname(g);
     // Escape every regex metacharacter (backslash included), then turn the glob's `*`
     // back into "any run of non-slash": escaping only `.` left a backslash, `+`, `(`… live.
     const rx = new RegExp("^" + g.slice(dir.length + 1).replace(/[\\^$.*+?()[\]{}|]/g, "\\$&").replace(/\\\*/g, "[^/]*") + "$");
     if (!existsSync(join(root, dir))) continue;
-    for (const f of readdirSync(join(root, dir)).sort()) if (rx.test(f)) out.push(join(dir, f));
+    for (const f of readdirSync(join(root, dir)).sort()) if (rx.test(f)) files.push(join(dir, f));
   }
-  return out;
+  return { flags, setup, files };
 }
+
+export const testFiles = (root = ROOT) => testScript(root).files;
 
 /** Repo-relative path of a coverage source, whichever checkout node resolved it through.
  * Inside this checkout the real relative path is returned as-is — do NOT pattern-match
@@ -192,18 +201,26 @@ export function parseLcov(text, root = ROOT) {
   return out;
 }
 
-function runOne(file, dir) {
+/** The environment for a `node --test` of our own. Started from inside a test run, Node
+ * marks it NODE_TEST_CONTEXT=child and the child streams its results to a parent that
+ * is not listening: no reporter writes, no lcov, an empty map. */
+function ownRunner() {
+  const { NODE_TEST_CONTEXT, ...env } = process.env;
+  return env;
+}
+
+function runOne(file, dir, root, flags) {
   const lcov = join(dir, "cov.lcov");
   const tap = join(dir, "run.tap");
   const args = [
     "--enable-source-maps", "--experimental-test-coverage",
     "--test-reporter=lcov", `--test-reporter-destination=${lcov}`,
     "--test-reporter=tap", `--test-reporter-destination=${tap}`,
-    "--import", "tsx", "--import", "./scripts/test-env.mjs", "--test", file,
+    ...flags, "--test", file,
   ];
   const t0 = Date.now();
   return new Promise((done) => {
-    const p = spawn(process.execPath, args, { cwd: ROOT, stdio: "ignore", env: process.env });
+    const p = spawn(process.execPath, args, { cwd: root, stdio: "ignore", env: ownRunner() });
     p.on("close", (code) => {
       const t = existsSync(tap) ? readFileSync(tap, "utf8") : "";
       const num = (k) => Number((t.match(new RegExp(`^# ${k} (\\d+)`, "m")) ?? [])[1] ?? 0);
@@ -230,14 +247,16 @@ function toRanges(lines) {
   return r;
 }
 
-async function build(opts) {
-  const files = testFiles().filter((f) => !opts.only || f.includes(opts.only));
-  const jobs = Math.max(1, opts.jobs ?? Math.min(4, Math.floor(cpus().length / 2)));
-  const work = join(OUT, "work");
+/** Runs every test file under coverage and writes (and returns) the map. */
+export async function build({ root = ROOT, jobs: j, only, progress = () => {} } = {}) {
+  const script = testScript(root);
+  const files = script.files.filter((f) => !only || f.includes(only));
+  const jobs = Math.max(1, j ?? Math.min(4, Math.floor(cpus().length / 2)));
+  const work = join(outDir(root), "work");
   rmSync(work, { recursive: true, force: true });
   mkdirSync(work, { recursive: true });
-  const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
-  const dirty = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { cwd: ROOT, encoding: "utf8" }).trim() !== "";
+  const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  const dirty = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { cwd: root, encoding: "utf8" }).trim() !== "";
   const results = new Array(files.length);
   let next = 0;
   let doneN = 0;
@@ -246,9 +265,9 @@ async function build(opts) {
       const i = next++;
       const d = join(work, String(i));
       mkdirSync(d, { recursive: true });
-      results[i] = await runOne(files[i], d);
+      results[i] = await runOne(files[i], d, root, script.flags);
       doneN++;
-      if (doneN % 20 === 0 || doneN === files.length) process.stderr.write(`test-map: ${doneN}/${files.length}\n`);
+      if (doneN % 20 === 0 || doneN === files.length) progress(`${doneN}/${files.length}`);
     }
   };
   await Promise.all(Array.from({ length: jobs }, worker));
@@ -256,15 +275,15 @@ async function build(opts) {
   const sources = {};
   const codeCache = new Map();
   const isCode = (src, l) => {
-    if (!codeCache.has(src)) codeCache.set(src, codeLines(src));
+    if (!codeCache.has(src)) codeCache.set(src, codeLines(src, root));
     const c = codeCache.get(src);
     return c ? c.has(l) : true;
   };
   const tests = results.map((r, i) => {
-    const cov = parseLcov(r.lcov);
+    const cov = parseLcov(r.lcov, root);
     let srcLines = 0;
     for (const [src, { hit, all }] of cov) {
-      if (src === r.file || src.startsWith("scripts/test-env")) continue;
+      if (src === r.file || script.setup.includes(src)) continue;
       const e = (sources[src] ??= { lines: new Set(), by: {} });
       for (const l of all) if (isCode(src, l)) e.lines.add(l);
       const codeHit = [...hit].filter((l) => isCode(src, l));
@@ -280,23 +299,28 @@ async function build(opts) {
     tests,
     sources: Object.fromEntries(Object.entries(sources).sort().map(([k, v]) => [k, { lines: toRanges(v.lines), by: v.by }])),
   };
-  mkdirSync(OUT, { recursive: true });
-  writeFileSync(MAP, JSON.stringify(map));
+  writeFileSync(mapFile(root), JSON.stringify(map));
   rmSync(work, { recursive: true, force: true });
-  const blind = tests.filter((t) => t.src_lines === 0).length;
-  const failed = tests.filter((t) => t.exit !== 0 && !t.coverage_lost).length;
-  const lost = tests.filter((t) => t.coverage_lost).length;
-  console.log(`test-map: ${tests.length} test files, ${tests.reduce((a, t) => a + t.tests, 0)} tests, ` +
-    `${Object.keys(map.sources).length} source files at ${commit.slice(0, 8)}${dirty ? " (dirty tree)" : ""}; ` +
-    `${failed} files failed during the build, ${blind} executed no source line (coverage-blind${lost ? `, ${lost} of them because Node lost the report` : ""}).`);
+  return map;
 }
 
 // ------------------------------------------------------------------ select
 
-export function loadMap() {
-  if (!existsSync(MAP)) throw new Error("no .test-map/map.json — run `node tools/test-map.mjs build` first");
-  return JSON.parse(readFileSync(MAP, "utf8"));
+const REBUILD = "run `node tools/test-map.mjs build`";
+
+/** The map, if select can read line numbers against it: its commit must still exist. */
+export function loadMap(root = ROOT) {
+  if (!existsSync(mapFile(root))) throw new MapError(`no .test-map/map.json — ${REBUILD} first`);
+  const map = JSON.parse(readFileSync(mapFile(root), "utf8"));
+  try {
+    execFileSync("git", ["cat-file", "-e", `${map.commit}^{commit}`], { cwd: root, stdio: "ignore" });
+  } catch {
+    throw new MapError(`the map's commit ${map.commit.slice(0, 8)} is not in this repository any more (rebased or garbage-collected) — rebuild the map: ${REBUILD}`);
+  }
+  return map;
 }
+
+export const DIRTY = "the map was built on a dirty tree: its line numbers are that tree's, not its commit's — rebuild it on a clean tree";
 
 /** git's C-quoted path ("caf\303\251.ts", "q\"x.ts") → the real one; unquoted input as-is. */
 function unquote(s) {
@@ -311,15 +335,11 @@ function unquote(s) {
   })).toString("utf8");
 }
 
-/** `git diff -U0 <base>` → { file: [[oldStart, oldEnd]] } on the OLD side, plus added files.
- * Also catches what a naive `---`/`+++` scan misses: a pathname with a space gets a
- * trailing tab appended by git on both marker lines (disambiguates the old diff format) —
- * left in, it corrupts the key so the file never matches the map or itself. A binary
- * file has no `---`/`+++`/`@@` at all ("Binary files a/x and b/x differ") and was
- * previously invisible to `select` — not reported anywhere, not even as ignored. A pure
- * rename (identical content) is still invisible on purpose: nothing changed to test. A
- * rename WITH an edit keeps the map's coverage under the OLD path, so its hunks are
- * attached under the new name with `renameFrom` for `select` to fall back to. */
+/** `git diff -U0 <base>` → per file its hunks on the OLD side (the map's numbering),
+ * whether it was added, deleted or binary, and for a rename with an edit the old path
+ * the map's coverage is filed under. A pure rename changes nothing and is absent. Git's
+ * header quirks are read, not assumed away: the tab after a path with a space, the
+ * C-quoting of an unusual path, "Binary files … differ" with no hunks at all. */
 export function parseDiff(text) {
   const files = {};
   let cur = null;
@@ -403,21 +423,27 @@ export function gitDiff(base, root = ROOT) {
 
 const overlaps = (ranges, [a, b]) => ranges.some(([x, y]) => x <= b && a <= y);
 
+/**
+ * The test files a diff needs, and what the map cannot vouch for. `opts.root` is the
+ * checkout (default: this one); `opts.script` its testScript; readOld/readNew override
+ * how a file's text is read at the map commit / on disk.
+ */
 export function select(map, diffText, opts = {}) {
+  const root = opts.root ?? ROOT;
   const diff = parseDiff(diffText);
   // Comment-only or not: decided on whole texts (old side at the map commit, new side on
   // disk) with codeLinesOf; the line-local INERT verdict from parseDiff stays only where
   // a text cannot be read.
   const readOld = opts.readOld ?? ((f) => {
     try {
-      return execFileSync("git", ["show", `${map.commit}:${f}`], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 << 20 });
+      return execFileSync("git", ["show", `${map.commit}:${f}`], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 << 20 });
     } catch {
       return null;
     }
   });
   const readNew = opts.readNew ?? ((f) => {
     try {
-      return readFileSync(join(ROOT, f), "utf8");
+      return readFileSync(join(root, f), "utf8");
     } catch {
       return null;
     }
@@ -437,24 +463,23 @@ export function select(map, diffText, opts = {}) {
     for (const h of d.hunks) h.inert = !touches(oc, h.old) && !touches(nc, h.new);
   }
   const byFile = new Map(map.tests.map((t, i) => [t.file, i]));
-  let current = null;
-  const currentTests = () => (current ??= new Set(opts.testFiles ?? testFiles()));
+  let script = null;
+  const current = () => (script ??= opts.script ?? testScript(root));
   const fresh = [];
   const picked = new Map(); // test idx → reasons
   const add = (i, why) => { if (!picked.has(i)) picked.set(i, new Set()); picked.get(i).add(why); };
-  const report = { global: [], uncovered: [], unmapped: [], ignored: [], inert: [], blind_included: [] };
+  const report = { global: [], fixtures: [], uncovered: [], unmapped: [], unseen: [], inert: [], blind_included: [] };
 
   for (const [file, d] of Object.entries(diff)) {
-    if (GLOBAL.some((rx) => rx.test(file))) { report.global.push(file); continue; }
+    if (GLOBAL.some((rx) => rx.test(file)) || current().setup.includes(file)) { report.global.push(file); continue; }
     // A deleted test file has nothing left to run (`node --test` on it is an error).
     if (byFile.has(file)) { if (!d.deleted) add(byFile.get(file), `${file} (the test itself)`); continue; }
     // A test file written after the map: no coverage of it yet, but it is exactly the
     // test the author wants run. Unselected, it was only "not in map" and --run skipped it.
-    if (!d.deleted && currentTests().has(file)) { fresh.push(file); continue; }
-    // Binary, or a non-code extension the map never tracks (.json/.yaml/.md/...): visible
-    // here as "ignored", but if a test reads it as a runtime fixture rather than a source
-    // module, no coverage run ever recorded that read — a change there selects nothing.
-    if (d.binary || !CODE.test(file)) { report.ignored.push(file); continue; }
+    if (!d.deleted && current().files.includes(file)) { fresh.push(file); continue; }
+    // Not code: coverage never records a test reading it. Test data by where it lives
+    // means the full suite; anywhere else the map has no opinion, and says so.
+    if (d.binary || !CODE.test(file)) { (FIXTURE.test(file) ? report.fixtures : report.unseen).push(file); continue; }
     const src = map.sources[file] ?? (d.renameFrom && map.sources[d.renameFrom]);
     if (!src) { report.unmapped.push(file); continue; }
     for (const h of d.hunks) {
@@ -482,8 +507,20 @@ export function select(map, diffText, opts = {}) {
   const chosen = [...picked.keys()].sort((a, b) => a - b).map((i) => ({ ...map.tests[i], why: [...picked.get(i)] }));
   for (const file of fresh) chosen.push({ file, tests: 0, wall_ms: 0, new: true, why: ["new test file, not in the map"] });
   const all = map.tests.reduce((a, t) => ({ tests: a.tests + t.tests, wall: a.wall + t.wall_ms }), { tests: 0, wall: 0 });
+  const full_suite = report.global.length + report.fixtures.length > 0;
+  // Every change the selection cannot answer for, in words. Empty means vouched: each
+  // changed code line is either comment/blank or executed by a selected test.
+  const doubts = full_suite ? [] : [
+    ...(map.dirty ? [DIRTY] : []),
+    ...report.uncovered.map((x) => `${x}: code no test executes`),
+    ...report.unmapped.map((x) => `${x}: code the map has never seen loaded`),
+    ...report.unseen.map((x) => `${x}: not code — a test reading it would be invisible to coverage`),
+  ];
   return {
-    full_suite: report.global.length > 0,
+    full_suite,
+    full_why: [...report.global.map((f) => `${f}: a global file`), ...report.fixtures.map((f) => `${f}: test data, read at runtime where coverage cannot see`)],
+    vouched: doubts.length === 0,
+    doubts,
     files: chosen,
     tests: chosen.reduce((a, t) => a + t.tests, 0),
     wall_ms: chosen.reduce((a, t) => a + t.wall_ms, 0),
@@ -492,9 +529,20 @@ export function select(map, diffText, opts = {}) {
   };
 }
 
-function runSelected(files) {
+const secs = (ms) => `${(ms / 1000).toFixed(1)}s`;
+
+/** select's verdict in one line. Zero test files reads as a pass only when vouched. */
+export function headline(r) {
+  if (r.full_suite) return `FULL SUITE — ${r.full_why.join("; ")}`;
+  const n = `${r.files.length} test files, ${r.tests} of ${r.of_tests} tests, ~${secs(r.wall_ms)} of ~${secs(r.of_wall_ms)} serial`;
+  if (!r.vouched) return `${n} — NOT VOUCHED for ${r.doubts.length} change${r.doubts.length === 1 ? "" : "s"}:`;
+  if (r.files.length) return n;
+  return r.inert.length ? "0 test files — only comments or blank lines changed" : "0 test files — no code changed since the map";
+}
+
+function runSelected(files, root, flags) {
   if (!files.length) return 0;
-  const r = spawn(process.execPath, ["--import", "tsx", "--import", "./scripts/test-env.mjs", "--test", ...files], { cwd: ROOT, stdio: "inherit" });
+  const r = spawn(process.execPath, [...flags, "--test", ...files], { cwd: root, stdio: "inherit", env: ownRunner() });
   return new Promise((done) => r.on("close", (c) => done(c ?? 1)));
 }
 
@@ -532,28 +580,40 @@ function arg(name, def) {
   return i < 0 ? def : process.argv[i + 1];
 }
 const flag = (name) => process.argv.includes(name);
-const s = (ms) => `${(ms / 1000).toFixed(1)}s`;
+const warn = (msg) => process.stderr.write(`test-map: ${msg}\n`);
 
 async function main() {
   const cmd = process.argv[2];
-  if (cmd === "build") return build({ jobs: arg("--jobs") && Number(arg("--jobs")), only: arg("--only") });
+  if (cmd === "build") {
+    const map = await build({ jobs: arg("--jobs") && Number(arg("--jobs")), only: arg("--only"), progress: warn });
+    const { tests, commit, dirty } = map;
+    const blind = tests.filter((t) => t.src_lines === 0).length;
+    const failed = tests.filter((t) => t.exit !== 0 && !t.coverage_lost).length;
+    const lost = tests.filter((t) => t.coverage_lost).length;
+    return console.log(`test-map: ${tests.length} test files, ${tests.reduce((a, t) => a + t.tests, 0)} tests, ` +
+      `${Object.keys(map.sources).length} source files at ${commit.slice(0, 8)}${dirty ? " (dirty tree)" : ""}; ` +
+      `${failed} files failed during the build, ${blind} executed no source line (coverage-blind${lost ? `, ${lost} of them because Node lost the report` : ""}).`);
+  }
   if (cmd === "select") {
     const map = loadMap();
+    if (map.dirty) warn(DIRTY);
     const base = arg("--base", map.commit);
-    if (base !== map.commit) process.stderr.write(`test-map: --base ${base} is not the map commit ${map.commit.slice(0, 8)} — line numbers may be off\n`);
+    if (base !== map.commit) warn(`--base ${base} is not the map commit ${map.commit.slice(0, 8)} — line numbers may be off`);
     const r = select(map, gitDiff(base));
     if (flag("--json")) console.log(JSON.stringify(r, null, 1));
     else {
-      if (r.full_suite) console.log(`FULL SUITE — global file changed: ${r.global.join(", ")}`);
-      console.log(`${r.files.length} test files, ${r.tests} of ${r.of_tests} tests, ~${s(r.wall_ms)} of ~${s(r.of_wall_ms)} serial`);
+      console.log(headline(r));
+      for (const d of r.doubts) console.log(`  ${d}`);
       for (const f of r.files) console.log(`  ${f.file}  (${f.tests})  ← ${f.why.slice(0, 3).join(", ")}${f.why.length > 3 ? ` +${f.why.length - 3}` : ""}`);
-      if (r.uncovered.length) console.log(`NO TEST EXECUTES: ${r.uncovered.join(", ")}`);
       if (r.inert.length) console.log(`comment/blank only, no test needed: ${r.inert.join(", ")}`);
-      if (r.unmapped.length) console.log(`NOT IN MAP (new, or never loaded by a test): ${r.unmapped.join(", ")}`);
       if (r.blind_included.length) console.log(`coverage-blind, included by package: ${r.blind_included.length}`);
-      if (r.ignored.length) console.log(`ignored — non-code, binary, or a runtime-read file no coverage sees: ${r.ignored.join(", ")}`);
     }
-    if (flag("--run")) process.exitCode = r.full_suite ? await runSelected(testFiles()) : await runSelected(r.files.map((f) => f.file));
+    if (flag("--run")) {
+      const { flags, files } = testScript();
+      const code = await runSelected(r.full_suite ? files : r.files.map((f) => f.file), ROOT, flags);
+      if (!code && !r.vouched) warn("the selected tests passed, but the selection does not vouch for the whole change (listed above) — exit 3");
+      process.exitCode = code || (r.vouched ? 0 : 3);
+    }
     return;
   }
   if (cmd === "heatmap") {
@@ -562,7 +622,7 @@ async function main() {
     if (flag("--json")) return console.log(JSON.stringify(h, null, 1));
     console.log(`map ${h.commit.slice(0, 8)} · ${h.suites.length} suites · src lines executed by ≥1 test: ${h.covered_lines}/${h.total_lines} (${((100 * h.covered_lines) / h.total_lines).toFixed(1)} %)`);
     console.log("\nslowest suites:");
-    for (const t of h.suites.slice(0, 15)) console.log(`  ${s(t.wall_ms).padStart(7)}  ${String(t.tests).padStart(4)} tests  ${t.file}${t.exit ? "  [failed]" : ""}`);
+    for (const t of h.suites.slice(0, 15)) console.log(`  ${secs(t.wall_ms).padStart(7)}  ${String(t.tests).padStart(4)} tests  ${t.file}${t.exit ? "  [failed]" : ""}`);
     console.log("\ncoldest source files (share of lines any test executes):");
     for (const f of h.files.slice(0, 25)) console.log(`  ${(100 * f.pct).toFixed(0).padStart(3)} %  ${String(f.lines).padStart(5)} lines  ${String(f.test_files).padStart(3)} test files  ${f.file}`);
     console.log("\nhottest lines (a change here re-runs the most test files):");
@@ -574,4 +634,12 @@ async function main() {
   process.exitCode = 2;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+// Run as a script, also through a symlinked path (macOS's /var → /private/var): the
+// module URL is the real path, argv[1] is whatever was typed.
+if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main().catch((e) => {
+    if (!(e instanceof MapError)) throw e;
+    warn(e.message);
+    process.exitCode = 2;
+  });
+}
