@@ -330,3 +330,53 @@ describe("test-map: the diff select reads does not depend on the user's git conf
     });
   }
 });
+
+// Real `git diff` output again, for paths git C-quotes: non-ASCII (core.quotePath default),
+// a `"` in the name, a binary with such a name, a rename into one.
+// Revert-check: in parseDiff go back to matching `--- a/`, `+++ b/`, `Binary files a/` and the
+// raw rename lines (no unquote) → every file here is missing from the result → all red.
+describe("test-map: parseDiff reads git's quoted paths", () => {
+  const repo = mkdtempSync(join(tmpdir(), "test-map-quoted-"));
+  const git = (...args) => execFileSync("git", args, { cwd: repo, encoding: "utf8" });
+  let diffText;
+  {
+    git("init", "-q");
+    git("config", "user.email", "a@a.com");
+    git("config", "user.name", "a");
+    writeFileSync(join(repo, "café.ts"), "export const a = 1;\n");
+    writeFileSync(join(repo, 'q"x.ts'), "export const b = 1;\n");
+    writeFileSync(join(repo, "ünï.png"), "\x00a");
+    writeFileSync(join(repo, "old.ts"), "export function a(){\n  return 1;\n}\n");
+    git("add", "-A");
+    git("commit", "-q", "-m", "base");
+    writeFileSync(join(repo, "café.ts"), "export const a = 2;\n");
+    writeFileSync(join(repo, 'q"x.ts'), "export const b = 2;\n");
+    writeFileSync(join(repo, "ünï.png"), "\x00b");
+    git("mv", "old.ts", "rén.ts");
+    writeFileSync(join(repo, "rén.ts"), "export function a(){\n  return 2;\n}\n");
+    git("add", "-A");
+    diffText = gitDiff("HEAD", repo);
+  }
+  rmSync(repo, { recursive: true, force: true });
+
+  it("the diff really is quoted (else this block tests nothing)", () => {
+    assert.match(diffText, /^--- "a\/caf\\303\\251\.ts"$/m);
+  });
+
+  it("a non-ASCII and a quote-carrying path come out as the real names, with their hunks", () => {
+    const d = parseDiff(diffText);
+    assert.deepEqual([...d["café.ts"].hunks[0]], [1, 1]);
+    assert.deepEqual([...d['q"x.ts'].hunks[0]], [1, 1]);
+  });
+
+  it("a binary with a quoted name is still reported as binary", () => {
+    assert.ok(parseDiff(diffText)["ünï.png"]?.binary);
+  });
+
+  it("a rename into a quoted name keeps its old path, so select finds its tests", () => {
+    assert.equal(parseDiff(diffText)["rén.ts"]?.renameFrom, "old.ts");
+    const m = { commit: "c0ffee", tests: [{ file: "__tests__/a.test.ts", tests: 1, wall_ms: 1, src_lines: 3 }], sources: { "old.ts": { lines: [[1, 3]], by: { 0: [[1, 3]] } } } };
+    const r = select(m, diffText, { readOld: () => null, readNew: () => null });
+    assert.deepEqual(r.files.map((f) => f.file), ["__tests__/a.test.ts"]);
+  });
+});

@@ -300,6 +300,19 @@ export function loadMap() {
   return JSON.parse(readFileSync(MAP, "utf8"));
 }
 
+/** git's C-quoted path ("caf\303\251.ts", "q\"x.ts") → the real one; unquoted input as-is. */
+function unquote(s) {
+  if (!(s.length >= 2 && s[0] === '"' && s.at(-1) === '"')) return s;
+  const named = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, "\\": 92 };
+  // Octal escapes are UTF-8 bytes of one character, so bytes are collected and decoded once.
+  const parts = s.slice(1, -1).match(/\\(?:[0-7]{1,3}|.)|[^\\]+/gs) ?? [];
+  return Buffer.concat(parts.map((p) => {
+    if (p[0] !== "\\") return Buffer.from(p, "utf8");
+    const e = p.slice(1);
+    return Buffer.from([/^[0-7]/.test(e) ? parseInt(e, 8) : (named[e] ?? e.charCodeAt(0))]);
+  })).toString("utf8");
+}
+
 /** `git diff -U0 <base>` → { file: [[oldStart, oldEnd]] } on the OLD side, plus added files.
  * Also catches what a naive `---`/`+++` scan misses: a pathname with a space gets a
  * trailing tab appended by git on both marker lines (disambiguates the old diff format) —
@@ -314,24 +327,34 @@ export function parseDiff(text) {
   let cur = null;
   let pendingRename = null;
   const stripTab = (s) => s.replace(/\t$/, "");
+  // A path with a byte git calls unusual (non-ASCII under core.quotePath, a `"`, a
+  // backslash, a control char) comes C-quoted: `--- "a/caf\303\251.ts"`. Unread, the
+  // header matched nothing and the file vanished from every bucket.
+  const side = (raw, prefix) => {
+    const p = unquote(stripTab(raw));
+    if (p === "/dev/null") return null;
+    return p.startsWith(prefix) ? p.slice(prefix.length) : p;
+  };
   for (const line of text.split("\n")) {
     if (/^diff --git /.test(line)) { pendingRename = null; cur = null; continue; }
     const rf = line.match(/^rename from (.+)$/);
-    if (rf) { pendingRename = { from: stripTab(rf[1]), to: pendingRename?.to }; continue; }
+    if (rf) { pendingRename = { from: unquote(stripTab(rf[1])), to: pendingRename?.to }; continue; }
     const rt = line.match(/^rename to (.+)$/);
-    if (rt) { pendingRename = { from: pendingRename?.from, to: stripTab(rt[1]) }; continue; }
-    const bin = line.match(/^Binary files (?:a\/(.+?)|\/dev\/null) and (?:b\/(.+?)|\/dev\/null) differ$/);
+    if (rt) { pendingRename = { from: pendingRename?.from, to: unquote(stripTab(rt[1])) }; continue; }
+    const bin = line.match(/^Binary files ("?a\/.+?|\/dev\/null) and ("?b\/.+|\/dev\/null) differ$/);
     if (bin) {
-      const name = bin[2] ?? bin[1];
-      files[stripTab(name)] ??= { added: bin[1] === undefined, deleted: bin[2] === undefined, hunks: [], binary: true };
+      const from = side(bin[1], "a/");
+      const to = side(bin[2], "b/");
+      files[to ?? from] ??= { added: from === null, deleted: to === null, hunks: [], binary: true };
       continue;
     }
-    const f = line.match(/^--- (?:a\/(.+)|\/dev\/null)$/);
-    if (f) { cur = { old: f[1] ? stripTab(f[1]) : null }; continue; }
-    const t = line.match(/^\+\+\+ (?:b\/(.+)|\/dev\/null)$/);
+    const f = line.match(/^--- ("?a\/.+|\/dev\/null)$/);
+    if (f) { cur = { old: side(f[1], "a/") }; continue; }
+    const t = line.match(/^\+\+\+ ("?b\/.+|\/dev\/null)$/);
     if (t && cur) {
-      cur.name = t[1] ? stripTab(t[1]) : cur.old;
-      files[cur.name] ??= { added: cur.old === null, deleted: t[1] === undefined, hunks: [] };
+      const to = side(t[1], "b/");
+      cur.name = to ?? cur.old;
+      files[cur.name] ??= { added: cur.old === null, deleted: to === null, hunks: [] };
       if (pendingRename && pendingRename.to === cur.name) files[cur.name].renameFrom = pendingRename.from;
       continue;
     }
