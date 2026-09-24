@@ -220,6 +220,7 @@ describe("test-map: heatmap --html escapes a crafted filename before innerHTML",
       assert.ok(byId.detail.innerHTML.includes("&lt;img"), "expected the filename to appear HTML-escaped somewhere");
     } finally {
       if (backup) copyFileSync(backup, mapPath);
+      else rmSync(mapPath, { force: true }); // no map before: leave none, not a fake one `select` would load
       rmSync(work, { recursive: true, force: true });
     }
   });
@@ -265,6 +266,40 @@ describe("test-map: the npm test glob is matched literally, not as a regex", () 
       assert.deepEqual(testFiles(root), ["t/a+b1.test.mjs"]);
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+// Revert-checks: put back the string replacement `.replace("__DATA__", json)` → `$'` in a
+// filename pastes the template tail (with its "</script>") into the data → the one-script
+// assertion is red; put back the `<\/`-only escaping → the no-raw-"<" assertion is red.
+describe("test-map: heatmap --html data cannot leave its <script>", () => {
+  it("a filename with `$'` and a tag stays inside the one script as data", () => {
+    const work = mkdtempSync(join(tmpdir(), "test-map-html-"));
+    const mapPath = join(ROOT, ".test-map", "map.json");
+    const backup = existsSync(mapPath) ? join(work, "map.json.bak") : null;
+    if (backup) copyFileSync(mapPath, backup);
+    try {
+      const evil = "packages/x/src/a$'<img src=x onerror=alert(1)>.ts";
+      const map = {
+        version: 1, commit: "c0ffee", dirty: false, built_at: new Date().toISOString(), node: process.version, jobs: 1,
+        tests: [{ file: "tools/__tests__/fake.test.mjs", tests: 1, pass: 1, fail: 0, skipped: 0, wall_ms: 10, exit: 0, src_lines: 1 }],
+        sources: { [evil]: { lines: [[1, 1]], by: { 0: [[1, 1]] } } },
+      };
+      execFileSync("mkdir", ["-p", dirname(mapPath)]);
+      writeFileSync(mapPath, JSON.stringify(map));
+      const outHtml = join(work, "out.html");
+      execFileSync(process.execPath, [join(ROOT, "tools", "test-map.mjs"), "heatmap", "--html", outHtml], { cwd: ROOT, encoding: "utf8" });
+      const page = readFileSync(outHtml, "utf8");
+      assert.equal(page.split("</script>").length, 2, "exactly one </script>: the template's own");
+      const line = page.match(/const D = (.*);\n/)[1];
+      assert.ok(!line.includes("<"), "no raw \"<\" in the data literal");
+      const data = JSON.parse(line);
+      assert.equal(data.files[0].f, evil, "the filename round-trips unchanged as data");
+    } finally {
+      if (backup) copyFileSync(backup, mapPath);
+      else rmSync(mapPath, { force: true });
+      rmSync(work, { recursive: true, force: true });
     }
   });
 });

@@ -518,9 +518,12 @@ async function main() {
         suites: h.suites.slice(0, 20).map((t) => ({ f: t.file, w: t.wall_ms, n: t.tests, lost: !!t.coverage_lost, fail: t.exit !== 0 && !t.coverage_lost })),
         hot: h.hot_lines.slice(0, 15), blind: h.blind,
       };
-      // The data goes into a <script>: "</" must not close it early.
-      const json = JSON.stringify(data).replace(/<\//g, "<\\/");
-      const page = readFileSync(join(ROOT, "tools", "test-map-heatmap.html"), "utf8").replace("__DATA__", json);
+      // The data goes into a <script>: no "<" may reach it raw ("</script>" closes it,
+      // "<!--" flips the parser into a script-escape state). And the replacement is a
+      // function: a string replacement reads `$'` / `$&` in a filename as a pattern and
+      // pastes the template's own tail — "</script>" included — into the data.
+      const json = JSON.stringify(data).replace(/</g, "\\u003c");
+      const page = readFileSync(join(ROOT, "tools", "test-map-heatmap.html"), "utf8").replace("__DATA__", () => json);
       writeFileSync(arg("--html"), page);
       return console.log(`heatmap → ${arg("--html")}`);
     }
