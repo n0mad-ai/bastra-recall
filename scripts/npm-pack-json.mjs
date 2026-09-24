@@ -15,7 +15,12 @@
  */
 export function packEntry(stdout, name) {
   const start = stdout.search(/^[[{]/m);
-  const parsed = JSON.parse(start >= 0 ? stdout.slice(start) : stdout);
+  let parsed;
+  try {
+    parsed = JSON.parse(start >= 0 ? stdout.slice(start) : stdout);
+  } catch (err) {
+    throw new Error(`npm pack --json for ${name}: unreadable output (${err.message}): ${stdout.slice(0, 200)}`);
+  }
   const entry = Array.isArray(parsed) ? parsed.find((e) => e?.name === name) : parsed?.[name];
   if (entry?.name !== name) {
     throw new Error(`npm pack --json: no entry for ${name} in: ${stdout.slice(0, 200)}`);

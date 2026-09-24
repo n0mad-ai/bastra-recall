@@ -26,12 +26,13 @@ const CANONICAL = resolve(REPO, "packages", "skill");
 /**
  * What the daemon package must ship: whatever the installer copies out of the
  * canonical skill dir (skillPayload), plus the generated Cursor rule. Derived,
- * so a new skill file is covered the day it lands; SKILL.md is the anchor that
- * keeps an empty listing from passing.
+ * so a new skill file is covered the day it lands; SKILL.md and agents/openai.yaml are the
+ * anchors that keep a shrunken listing from passing.
  */
 async function shippedBundle(): Promise<string[]> {
   const payload = await skillPayload(CANONICAL);
   assert.ok(payload.includes("SKILL.md"), `no SKILL.md in the payload of ${CANONICAL}: ${payload.join(", ")}`);
+  assert.ok(payload.includes("agents/openai.yaml"), `no agents/openai.yaml in the payload of ${CANONICAL}: ${payload.join(", ")}`);
   return [...payload, "cursor-rules.mdc"];
 }
 
