@@ -8,10 +8,9 @@
  * counts distinct sessions. Nothing here writes `recall_when`; the output is
  * a reviewer's list, and `confidence` is not computed rather than invented.
  */
-import { resolve } from "node:path";
 import { capAtWordBoundary, MIN_SIGNIFICANT_TOKEN_LEN, PHRASE_STOPWORDS, tokenizeWithIdentifiers } from "@bastra-recall/core";
 import type { ReviewedMissChain } from "./reviewed-miss-harvest.js";
-import type { ObservationEngines, ReviewedMissObservedCandidate } from "./reviewed-miss-engines.js";
+import { realOrResolved, type ObservationEngines, type ReviewedMissObservedCandidate } from "./reviewed-miss-engines.js";
 import type { ReviewedMissClassification } from "./reviewed-miss-observation.js";
 
 export const CUE_GENERATOR = "reviewed-miss-cues/v1";
@@ -65,7 +64,7 @@ export function resolvedMemoryId(chain: ReviewedMissChain, engines: ObservationE
   // `bash-read` resolves exactly like `file-read` in `resolveTarget`; leaving it
   // out here made the same path through `cat` produce no cue proposal at all.
   if ((chain.evidence.kind === "file-read" || chain.evidence.kind === "bash-read") && engines.snapshot) {
-    return engines.snapshot.idByPath.get(resolve(chain.evidence.path)) ?? null;
+    return engines.snapshot.idByPath.get(realOrResolved(chain.evidence.path)) ?? null;
   }
   return null;
 }

@@ -16,7 +16,7 @@
 import { realpathSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
-import { readOccupant } from "@bastra-recall/core";
+import { occupantOfRaw } from "@bastra-recall/core";
 import { hash, type ReviewedMissCandidate, type ReviewedMissChain, toCandidate } from "./reviewed-miss-harvest.js";
 import {
   classifyReviewedMissObservation,
@@ -157,6 +157,25 @@ export async function loadTelemetryPools(dir: string): Promise<Map<string, Telem
 export interface VaultObject {
   hashedPath: string;
   bornAtMs: number;
+  /**
+   * Latest instant the frontmatter's own `created` still allows, or null. The
+   * daemon rewrites memories by tmp+rename, which resets the birth time, so a
+   * birth time after the observation proves nothing when `created` says the
+   * object already existed.
+   */
+  declaredCreatedByMs: number | null;
+}
+
+/** A date-only `created` is a local calendar day; two days of slack cover any timezone. */
+const DATE_ONLY_SLACK_MS = 2 * 86_400_000;
+
+function declaredCreatedBy(raw: string): number | null {
+  const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(raw);
+  const value = fm ? /^created:[ \t]*['"]?([0-9][^'"\r\n]*?)['"]?[ \t]*$/m.exec(fm[1])?.[1] : undefined;
+  if (!value) return null;
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? ms + DATE_ONLY_SLACK_MS : ms;
 }
 
 export interface VaultSnapshot {
@@ -188,7 +207,9 @@ async function walk(dir: string, out: string[]): Promise<void> {
 
 /** Enumerate the vault once; the snapshot id is the hash of its hashed listing. */
 export async function snapshotVault(root: string): Promise<VaultSnapshot> {
-  const absRoot = resolve(root);
+  // Keyed by the dereferenced spelling, so a lookup through either side of a
+  // symlinked vault finds the same object (see `realOrResolved`).
+  const absRoot = realOrResolved(root);
   const files: string[] = [];
   await walk(absRoot, files);
   files.sort();
@@ -199,20 +220,22 @@ export async function snapshotVault(root: string): Promise<VaultSnapshot> {
   for (const file of files) {
     const hashedPath = hash("vault:" + relative(absRoot, file));
     let bornAtMs: number;
+    let raw: string;
     try {
       const s = await stat(file);
       bornAtMs = s.birthtimeMs > 0 ? s.birthtimeMs : s.mtimeMs;
+      raw = await readFile(file, "utf8");
     } catch {
       continue;
     }
-    const occupant = readOccupant(file);
+    const occupant = occupantOfRaw(raw, file);
     if (occupant.kind === "memory") {
       listing.push(hashedPath + "=" + hash("id:" + occupant.id));
-      objects.set(occupant.id, { hashedPath, bornAtMs });
+      objects.set(occupant.id, { hashedPath, bornAtMs, declaredCreatedByMs: declaredCreatedBy(raw) });
       idByPath.set(file, occupant.id);
     } else if (occupant.kind === "foreign") {
       listing.push(hashedPath + "=foreign");
-      foreignByPath.set(file, { hashedPath, bornAtMs });
+      foreignByPath.set(file, { hashedPath, bornAtMs, declaredCreatedByMs: null });
     }
   }
   return {
@@ -233,7 +256,7 @@ export async function snapshotVault(root: string): Promise<VaultSnapshot> {
  * transcript naming a deleted file) keeps the normalized spelling, which is the
  * best that can be known about it.
  */
-function realOrResolved(path: string): string {
+export function realOrResolved(path: string): string {
   try {
     return realpathSync(resolve(path));
   } catch {
@@ -305,7 +328,7 @@ function vaultObjectTarget(
   let indexMembership: MembershipProof;
   if (!isMemory) indexMembership = membership(frozen.indexSnapshotId, candidateId, false, "not-a-memory");
   else if (observedAtMs === null) indexMembership = membership(frozen.indexSnapshotId, candidateId, false, "no-observation-time");
-  else if (object.bornAtMs > observedAtMs) indexMembership = membership(frozen.indexSnapshotId, candidateId, false, "created-after-observation");
+  else if (object.bornAtMs > observedAtMs && !(object.declaredCreatedByMs !== null && object.declaredCreatedByMs < observedAtMs)) indexMembership = membership(frozen.indexSnapshotId, candidateId, false, "created-after-observation");
   else indexMembership = membership(frozen.indexSnapshotId, candidateId, true, "present");
   return { kind: "vault-object", candidateId, vaultMembership, indexMembership };
 }
@@ -335,7 +358,7 @@ export function resolveTarget(
     return vaultObjectTarget(candidateId, snapshot.objects.get(evidence.memoryId) ?? null, true, atMs, frozen);
   }
   if (evidence.kind === "file-read" || evidence.kind === "bash-read") {
-    const path = resolve(evidence.path);
+    const path = realOrResolved(evidence.path);
     const sourceRef = hash("file_path:" + evidence.path);
     if (!vaultRoot || !insideVault(vaultRoot, path)) {
       return { kind: "external-read", sourceRef, vaultChecked: checked, reviewerDurable: durable };
@@ -346,7 +369,7 @@ export function resolveTarget(
       return vaultObjectTarget(hash("id:" + memoryId), snapshot.objects.get(memoryId) ?? null, true, atMs, frozen);
     }
     const foreign = snapshot.foreignByPath.get(path);
-    const candidateId = hash("vault:" + relative(resolve(vaultRoot), path));
+    const candidateId = hash("vault:" + relative(realOrResolved(vaultRoot), path));
     return vaultObjectTarget(candidateId, foreign ?? null, false, atMs, frozen);
   }
   return { kind: "unresolved", sourceRef: evidence.sourceRef };
