@@ -539,6 +539,8 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
     client: clientEvidence,
     matched_pattern: match.label,
     severity: match.severity,
+    hint_kind:
+      match.severity === "destructive" ? (reversibleDefault(match.label, client)?.kind ?? "stop") : null,
     daemon_url: selfBaseUrl,
     daemon_reachable: resp !== null,
     hint_count: emitted.length,
@@ -574,12 +576,97 @@ function formatHintLine(h: RecallHit, hideScore = false): string {
  * model to fear a reversible move. Only the claude-code surface is covered —
  * that is where the shim is installed; other surfaces keep the STOP.
  */
-function rmArchives(pattern: string, surface: string): boolean {
-  return (
-    process.env.BASTRA_RM_ARCHIVES === "1" &&
-    surface === "claude-code" &&
-    (pattern === "rm -rf" || pattern === "rm -r")
-  );
+function rmArchives(surface: string): boolean {
+  return process.env.BASTRA_RM_ARCHIVES === "1" && surface === "claude-code";
+}
+
+/**
+ * What the hint says instead of STOP when the act has an undo (#650 comment).
+ *
+ * - `receipt`: the command as typed is already recoverable — say how, no STOP.
+ * - `reversible-form`: the bare command has no undo, but a form with the SAME
+ *   observable result has one — name it; the bare form keeps the STOP.
+ * - `stop`: no local undo (DROP TABLE, kubectl delete, gh repo delete, …).
+ *
+ * Invariant for every row: the undo changes HOW the act runs, never WHAT the
+ * caller observes afterwards. A form that did less (or more) than the command
+ * would be a lie the next step trips over — which is why `git clean` is not
+ * offered `git stash -u` (that also reverts tracked edits).
+ */
+export type HintKind = "stop" | "receipt" | "reversible-form";
+
+export function reversibleDefault(pattern: string, surface: string): { kind: HintKind; text: string } | null {
+  switch (pattern) {
+    case "rm -rf":
+    case "rm -r":
+      if (!rmArchives(surface)) return null;
+      return {
+        kind: "receipt",
+        text:
+          `\`${pattern}\` in this shell archives instead of deleting (host opt-in BASTRA_RM_ARCHIVES): ` +
+          `targets move to ~/_archive/<date>/<full path>, \`agent-archive restore <path>\` puts them back; ` +
+          `temp dirs are really removed; /, ~ and system dirs are refused.`,
+      };
+    case "git clean -f":
+      if (!rmArchives(surface)) return null;
+      return {
+        kind: "reversible-form",
+        text:
+          `\`git clean\` unlinks directly and bypasses the archiving rm. Same result, reversible: ` +
+          `list with \`git clean -n\` (same other flags), then remove exactly those paths with \`rm -r\` — ` +
+          `it archives in this shell.`,
+      };
+    case "git branch -D":
+      return {
+        kind: "receipt",
+        text:
+          `the branch's commits usually stay recoverable: if it was ever checked out here they are in HEAD's ` +
+          `reflog (\`git reflog\`, then \`git branch <name> <sha>\`). Its own reflog is deleted with it, so a ` +
+          `branch never checked out here is recoverable only via \`git fsck --lost-found\` until gc — ` +
+          `confirm only if it holds unmerged commits that exist nowhere else.`,
+      };
+    case "git commit --amend":
+      return {
+        kind: "receipt",
+        text:
+          `the pre-amend commit stays in HEAD's reflog: \`git reset --soft HEAD@{1}\` right after undoes the amend. ` +
+          `If the old commit was already pushed, publishing the amend needs a force-push — that one is its own hint.`,
+      };
+    case "git push --force-with-lease":
+      return {
+        kind: "receipt",
+        text:
+          `the lease refuses if the remote branch moved since your last fetch, so only what you have seen is ` +
+          `overwritten; the overwritten tip stays in the remote-tracking reflog (\`git reflog <remote>/<branch>\`) ` +
+          `and can be pushed back.`,
+      };
+    case "git push --force":
+    case "git push -f":
+      return {
+        kind: "reversible-form",
+        text:
+          `use \`git push --force-with-lease\` instead: same result when nobody else pushed, a refusal (not a ` +
+          `silent overwrite) when someone did, and the overwritten tip stays in your remote-tracking reflog.`,
+      };
+    case "git reset --hard":
+      return {
+        kind: "reversible-form",
+        text:
+          `committed history is not at risk (the old HEAD stays in \`git reflog\`); what dies is uncommitted ` +
+          `changes to tracked files. \`git stash push\` first, then the reset — same end state, and ` +
+          `\`git stash pop\` brings the changes back (untracked files survive either way).`,
+      };
+    case "git checkout --":
+      return {
+        kind: "reversible-form",
+        text:
+          `what dies is the unstaged changes in those paths. \`git stash push --keep-index -- <paths>\` leaves ` +
+          `exactly the same worktree and index; \`git restore --source=stash@{0} --worktree -- <paths>\` brings the ` +
+          `changes back (not \`git stash pop\` — it conflicts when those paths also have staged changes).`,
+      };
+    default:
+      return null;
+  }
 }
 
 export function formatHintBlock(
@@ -593,11 +680,14 @@ export function formatHintBlock(
   const tail = `</recall-hints>`;
   const lines: string[] = [];
 
-  if (severity === "destructive" && rmArchives(pattern, surface)) {
+  const undo = severity === "destructive" ? reversibleDefault(pattern, surface) : null;
+  if (undo?.kind === "receipt") {
+    lines.push(`NOTE — reversible (pattern: \`${pattern}\`): ${undo.text} No confirmation needed.`);
+  } else if (undo?.kind === "reversible-form") {
     lines.push(
-      `NOTE — \`${pattern}\` in this shell archives instead of deleting (host opt-in BASTRA_RM_ARCHIVES): ` +
-        `targets move to ~/_archive/<date>/<full path>, \`agent-archive restore <path>\` puts them back; ` +
-        `temp dirs are really removed; /, ~ and system dirs are refused. No confirmation needed — it is reversible.`,
+      `REVERSIBLE FORM — destructive Bash command detected (pattern: \`${pattern}\`), but it has an undo: ` +
+        `${undo.text} Run that form — it needs no confirmation. ` +
+        `The bare command keeps the rule: explicit user confirmation unless authorized in advance.`,
     );
   } else if (severity === "destructive") {
     lines.push(
@@ -636,6 +726,10 @@ interface BashHookCallTelemetry {
   client: HookClientEvidence;
   matched_pattern: string;
   severity: "destructive" | "risky";
+  /** #650/#614: what the block told the agent — STOP, a receipt, or the
+   *  reversible form. Follow-through is only a question for `stop`. Null for
+   *  risky (CAUTION). */
+  hint_kind: HintKind | null;
   daemon_url: string;
   daemon_reachable: boolean;
   hint_count: number;

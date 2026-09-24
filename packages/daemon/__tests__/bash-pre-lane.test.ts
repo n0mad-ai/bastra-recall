@@ -3,8 +3,9 @@ import { strict as assert } from "node:assert";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import { matchPattern, formatHintBlock, runBashPreLane } from "../src/bash-pre-lane.js";
+import { matchPattern, formatHintBlock, runBashPreLane, reversibleDefault } from "../src/bash-pre-lane.js";
 
 
 describe("bash-pre-hook: matchPattern", () => {
@@ -885,8 +886,147 @@ describe("bash-pre-hook: host where rm archives (BASTRA_RM_ARCHIVES)", () => {
   it("other surfaces, other destructive patterns and no flag keep STOP", () => {
     withFlag(() => {
       assert.match(formatHintBlock("rm -rf", "destructive", [], false, "codex"), /STOP/);
-      assert.match(formatHintBlock("git reset --hard", "destructive", [], false, "claude-code"), /STOP/);
+      assert.match(formatHintBlock("kubectl delete", "destructive", [], false, "claude-code"), /STOP/);
     });
     assert.match(formatHintBlock("rm -rf", "destructive", [], false, "claude-code"), /STOP/);
+  });
+});
+
+describe("bash-pre-hook: reversible defaults (#650 comment)", () => {
+  // Revert-check: make reversibleDefault return null for every pattern → the
+  // receipt and reversible-form cases get STOP back and go red.
+  it("already-recoverable acts get a receipt, not STOP", () => {
+    for (const p of ["git branch -D", "git commit --amend", "git push --force-with-lease"]) {
+      const out = formatHintBlock(p, "destructive", [], false, "codex");
+      assert.match(out, /NOTE — reversible/, p);
+      assert.doesNotMatch(out, /STOP/, p);
+    }
+  });
+
+  it("acts with a same-result undo name that form; the bare form keeps the confirmation rule", () => {
+    const want: Record<string, RegExp> = {
+      "git push --force": /--force-with-lease/,
+      "git push -f": /--force-with-lease/,
+      "git reset --hard": /git stash push` first/,
+      "git checkout --": /git stash push --keep-index -- <paths>/,
+    };
+    for (const [p, form] of Object.entries(want)) {
+      const out = formatHintBlock(p, "destructive", [], false, "claude-code");
+      assert.match(out, /REVERSIBLE FORM/, p);
+      assert.match(out, form, p);
+      assert.match(out, /bare command keeps the rule: explicit user confirmation/, p);
+    }
+  });
+
+  it("git clean has a reversible form only where rm archives", () => {
+    assert.equal(reversibleDefault("git clean -f", "claude-code"), null);
+    const prev = process.env.BASTRA_RM_ARCHIVES;
+    process.env.BASTRA_RM_ARCHIVES = "1";
+    try {
+      assert.equal(reversibleDefault("git clean -f", "claude-code")?.kind, "reversible-form");
+      assert.equal(reversibleDefault("git clean -f", "codex"), null);
+    } finally {
+      if (prev === undefined) delete process.env.BASTRA_RM_ARCHIVES;
+      else process.env.BASTRA_RM_ARCHIVES = prev;
+    }
+  });
+
+  it("acts with no local undo keep STOP", () => {
+    for (const p of ["DROP TABLE", "kubectl delete", "gh repo delete", "docker volume rm", "rmdir"]) {
+      assert.equal(reversibleDefault(p, "claude-code"), null, p);
+      assert.match(formatHintBlock(p, "destructive", [], false, "claude-code"), /STOP — destructive/, p);
+    }
+  });
+
+  // The hint text is a claim about git. These run the claim, so a wrong recipe
+  // (one that changes what the caller observes, or does not bring work back)
+  // is red here, not in somebody's lost afternoon.
+  describe("the named undo does what the hint says, in a real repo", () => {
+    const repo = async () => {
+      const dir = await mkdtemp(join(tmpdir(), "bash-pre-undo-"));
+      const git = (...a: string[]) =>
+        execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd: dir, encoding: "utf8" }).trim();
+      git("init", "-q");
+      await writeFile(join(dir, "a"), "one\n");
+      git("add", "a");
+      git("commit", "-qm", "c1");
+      return { dir, git };
+    };
+
+    it("amend: reset --soft HEAD@{1} brings the pre-amend commit back", async () => {
+      const { dir, git } = await repo();
+      const before = git("rev-parse", "HEAD");
+      git("commit", "-q", "--amend", "-m", "c1 amended");
+      assert.notEqual(git("rev-parse", "HEAD"), before);
+      git("reset", "--soft", "HEAD@{1}");
+      assert.equal(git("rev-parse", "HEAD"), before);
+      await rm(dir, { recursive: true, force: true });
+    });
+
+    it("branch -D: a branch that was checked out leaves its commits in HEAD's reflog", async () => {
+      const { dir, git } = await repo();
+      git("checkout", "-q", "-b", "gone");
+      await writeFile(join(dir, "b"), "b\n");
+      git("add", "b");
+      git("commit", "-qm", "on gone");
+      const sha = git("rev-parse", "HEAD");
+      git("checkout", "-q", "-");
+      git("branch", "-q", "-D", "gone");
+      assert.match(git("reflog", "--format=%H"), new RegExp(sha));
+      git("branch", "gone", sha);
+      assert.equal(git("rev-parse", "gone"), sha);
+      await rm(dir, { recursive: true, force: true });
+    });
+
+    it("force-with-lease: the overwritten remote tip stays in the remote-tracking reflog", async () => {
+      const { dir, git } = await repo();
+      const remote = await mkdtemp(join(tmpdir(), "bash-pre-undo-remote-"));
+      execFileSync("git", ["init", "-q", "--bare", remote]);
+      git("remote", "add", "origin", remote);
+      git("push", "-q", "-u", "origin", "HEAD:main");
+      const old = git("rev-parse", "HEAD");
+      git("commit", "-q", "--amend", "-m", "rewritten");
+      git("push", "-q", "--force-with-lease", "origin", "HEAD:main");
+      assert.notEqual(git("rev-parse", "origin/main"), old);
+      assert.match(git("reflog", "--format=%H", "origin/main"), new RegExp(old));
+      await rm(dir, { recursive: true, force: true });
+      await rm(remote, { recursive: true, force: true });
+    });
+
+    it("reset --hard: stash first gives the same end state, and pop restores", async () => {
+      const { dir, git } = await repo();
+      await writeFile(join(dir, "a"), "edited\n");
+      await writeFile(join(dir, "u"), "untracked\n");
+      git("stash", "push", "-q");
+      git("reset", "-q", "--hard");
+      assert.equal(await readFile(join(dir, "a"), "utf8"), "one\n");
+      assert.equal(await readFile(join(dir, "u"), "utf8"), "untracked\n", "untracked survives, as with bare reset");
+      git("stash", "pop", "-q");
+      assert.equal(await readFile(join(dir, "a"), "utf8"), "edited\n");
+      await rm(dir, { recursive: true, force: true });
+    });
+
+    it("checkout --: stash --keep-index leaves the same worktree and index as checkout would", async () => {
+      const bare = await repo();
+      const kept = await repo();
+      for (const r of [bare, kept]) {
+        await writeFile(join(r.dir, "a"), "staged\n");
+        r.git("add", "a");
+        await writeFile(join(r.dir, "a"), "unstaged\n");
+      }
+      bare.git("checkout", "--", "a");
+      kept.git("stash", "push", "-q", "--keep-index", "--", "a");
+      for (const r of [bare, kept]) {
+        assert.equal(await readFile(join(r.dir, "a"), "utf8"), "staged\n");
+        assert.equal(r.git("diff", "--cached", "--name-only"), "a");
+      }
+      // `stash pop` would conflict here (staged + unstaged in one path) — the
+      // hint names restore --worktree, which puts back exactly the lost part.
+      kept.git("restore", "--source=stash@{0}", "--worktree", "--", "a");
+      assert.equal(await readFile(join(kept.dir, "a"), "utf8"), "unstaged\n");
+      assert.equal(kept.git("show", ":a"), "staged", "index untouched by the undo");
+      await rm(bare.dir, { recursive: true, force: true });
+      await rm(kept.dir, { recursive: true, force: true });
+    });
   });
 });
