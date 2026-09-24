@@ -69,12 +69,71 @@ const CODE = /\.(ts|mts|cts|js|mjs|cjs)$/;
 // with multi-line string literals, only a best-effort.
 export const INERT = /^\s*(?:\/\/.*|\/\*.*\*\/\s*|\*\/\s*)?$/;
 
+/**
+ * Line numbers that carry code, by one pass over the whole text. A line on its own
+ * cannot tell ` * 2;` (a continued product) from ` * explains x` (a JSDoc body) —
+ * only the state "inside a block comment or not" can, so INERT above is the
+ * fallback for text without its file, never the first choice. Strings and
+ * template literals count as code (their content is behaviour); a regex literal
+ * is skipped whole, so `/[/*]/` cannot open a comment and hide the code under it.
+ */
+export function codeLinesOf(text) {
+  const code = new Set();
+  let inBlock = false;
+  let tpl = false;
+  const lines = text.split("\n");
+  for (let n = 0; n < lines.length; n++) {
+    const l = lines[n];
+    let prev = ""; // last non-space code char on this line, for regex-vs-division
+    let i = 0;
+    if (tpl) code.add(n + 1);
+    while (i < l.length) {
+      const c = l[i];
+      if (inBlock) {
+        if (c === "*" && l[i + 1] === "/") { inBlock = false; i += 2; } else i++;
+        continue;
+      }
+      if (tpl) {
+        if (c === "\\") { i += 2; continue; }
+        if (c === "`") tpl = false;
+        i++;
+        continue;
+      }
+      if (c === " " || c === "\t" || c === "\r") { i++; continue; }
+      if (c === "/" && l[i + 1] === "/") break;
+      if (c === "/" && l[i + 1] === "*") { inBlock = true; i += 2; continue; }
+      code.add(n + 1);
+      if (c === "`") { tpl = true; i++; continue; }
+      if (c === "'" || c === '"') {
+        i++;
+        while (i < l.length && l[i] !== c) i += l[i] === "\\" ? 2 : 1;
+        i++; prev = c;
+        continue;
+      }
+      if (c === "/" && (prev === "" || "(,=:[!&|?{};+-*%<>~^".includes(prev))) {
+        // a regex literal: skip to its closing slash, character classes included
+        i++;
+        let cls = false;
+        while (i < l.length && (cls || l[i] !== "/")) {
+          if (l[i] === "\\") i++;
+          else if (l[i] === "[") cls = true;
+          else if (l[i] === "]") cls = false;
+          i++;
+        }
+        i++; prev = "/";
+        continue;
+      }
+      prev = c;
+      i++;
+    }
+  }
+  return code;
+}
+
 /** Line numbers of a source file that carry code — the rest is excluded from the map. */
 function codeLines(file) {
   try {
-    const set = new Set();
-    readFileSync(join(ROOT, file), "utf8").split("\n").forEach((l, i) => { if (!INERT.test(l)) set.add(i + 1); });
-    return set;
+    return codeLinesOf(readFileSync(join(ROOT, file), "utf8"));
   } catch {
     return null;
   }
@@ -274,12 +333,16 @@ export function parseDiff(text) {
       if (pendingRename && pendingRename.to === cur.name) files[cur.name].renameFrom = pendingRename.from;
       continue;
     }
-    const h = line.match(/^@@ -(\d+)(?:,(\d+))? \+\d+(?:,\d+)? @@/);
+    const h = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
     if (h && cur) {
       const start = Number(h[1]);
       const n = h[2] === undefined ? 1 : Number(h[2]);
       // Pure insertion (n=0) sits AFTER old line `start`: the code around it is what it can change.
       const hunk = n === 0 ? [Math.max(1, start), start + 1] : [start, start + n - 1];
+      const ns = Number(h[3]);
+      const nn = h[4] === undefined ? 1 : Number(h[4]);
+      hunk.old = n === 0 ? null : [start, start + n - 1];
+      hunk.new = nn === 0 ? null : [ns, ns + nn - 1];
       hunk.inert = true;
       files[cur.name].hunks.push(hunk);
       continue;
@@ -295,8 +358,39 @@ export function parseDiff(text) {
 
 const overlaps = (ranges, [a, b]) => ranges.some(([x, y]) => x <= b && a <= y);
 
-export function select(map, diffText) {
+export function select(map, diffText, opts = {}) {
   const diff = parseDiff(diffText);
+  // Comment-only or not: decided on whole texts (old side at the map commit, new side on
+  // disk) with codeLinesOf; the line-local INERT verdict from parseDiff stays only where
+  // a text cannot be read.
+  const readOld = opts.readOld ?? ((f) => {
+    try {
+      return execFileSync("git", ["show", `${map.commit}:${f}`], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 64 << 20 });
+    } catch {
+      return null;
+    }
+  });
+  const readNew = opts.readNew ?? ((f) => {
+    try {
+      return readFileSync(join(ROOT, f), "utf8");
+    } catch {
+      return null;
+    }
+  });
+  const touches = (set, r) => {
+    if (!r) return false;
+    for (let l = r[0]; l <= r[1]; l++) if (set.has(l)) return true;
+    return false;
+  };
+  for (const [file, d] of Object.entries(diff)) {
+    if (d.binary || !CODE.test(file) || !d.hunks.length) continue;
+    const oldText = d.added ? "" : readOld(d.renameFrom ?? file);
+    const newText = d.deleted ? "" : readNew(file);
+    if (oldText === null || newText === null) continue;
+    const oc = codeLinesOf(oldText);
+    const nc = codeLinesOf(newText);
+    for (const h of d.hunks) h.inert = !touches(oc, h.old) && !touches(nc, h.new);
+  }
   const byFile = new Map(map.tests.map((t, i) => [t.file, i]));
   const picked = new Map(); // test idx → reasons
   const add = (i, why) => { if (!picked.has(i)) picked.set(i, new Set()); picked.get(i).add(why); };

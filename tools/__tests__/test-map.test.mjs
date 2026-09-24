@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync, copyFileSync, existsS
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseDiff, parseLcov, normalizeSource, select, testFiles, INERT } from "../test-map.mjs";
+import { parseDiff, parseLcov, normalizeSource, select, testFiles, INERT, codeLinesOf } from "../test-map.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
@@ -222,5 +222,33 @@ describe("test-map: heatmap --html escapes a crafted filename before innerHTML",
       if (backup) copyFileSync(backup, mapPath);
       rmSync(work, { recursive: true, force: true });
     }
+  });
+});
+
+// Revert-check: in select, drop the whole-text pass (leave only parseDiff's line-local
+// INERT) → the JSDoc case is red again (a doc-comment edit selects tests); make
+// codeLinesOf treat every line starting with `*` as a comment → the continuation case
+// is red. This is the pair the line-local regex cannot hold at the same time.
+describe("test-map: comment or code is decided on the whole file", () => {
+  it("codeLinesOf: JSDoc body is not code, a `* 2` continuation is, a regex cannot open a comment", () => {
+    const t = ["/**", " * Explains the thing.", " * @param x", " */", "const a = b", "  * 2;", "const r = /[/*]/;", "after();", "const s = `x", "  // inside a template", "`;", "// c"].join("\n");
+    assert.deepEqual([...codeLinesOf(t)], [5, 6, 7, 8, 9, 10, 11]);
+  });
+
+  const file = "packages/daemon/src/x.ts";
+  const oldText = ["/**", " * Old wording.", " */", "export const k = a", "  * 2;"].join("\n");
+  const m = { commit: "c0ffee", tests: [{ file: "packages/daemon/__tests__/a.test.ts", tests: 1, wall_ms: 1, src_lines: 2 }], sources: { [file]: { lines: [[4, 5]], by: { 0: [[1, 5]] } } } };
+
+  it("a JSDoc-only edit selects nothing", () => {
+    const newText = oldText.replace("Old wording.", "New wording.");
+    const r = select(m, diff(file, "@@ -2 +2 @@", "- * Old wording.\n+ * New wording."), { readOld: () => oldText, readNew: () => newText });
+    assert.equal(r.files.length, 0, JSON.stringify(r));
+    assert.equal(r.inert.length, 1);
+  });
+
+  it("an edit to a `* 2` continuation line is code and selects its tests", () => {
+    const newText = oldText.replace("* 2;", "* 3;");
+    const r = select(m, diff(file, "@@ -5 +5 @@", "-  * 2;\n+  * 3;"), { readOld: () => oldText, readNew: () => newText });
+    assert.deepEqual(r.files.map((f) => f.file), ["packages/daemon/__tests__/a.test.ts"]);
   });
 });
