@@ -42,6 +42,11 @@
  * it lives: its change runs the full suite, and says why. Any other non-code file
  * (a doc, a .gitignore, a CSS file the daemon serves) is `unseen`: listed, and the
  * selection is not vouched — the map has no opinion on it, which is not "safe".
+ *
+ * Built packages: daemon tests import core through `packages/core/dist`. Source
+ * maps put those hits on `packages/core/src`, so selection is right, but `--run`
+ * does not rebuild: after a change under `packages/core/src`, run
+ * `npm run build -w @bastra-recall/core` first, or the selected tests run the old dist.
  */
 import { spawn, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -69,6 +74,10 @@ export class MapError extends Error {}
 // the same, so it counts as code — over-select, never under. Blind to a `//` inside a
 // multi-line string. codeLinesOf decides on the whole text; this is its fallback.
 export const INERT = /^\s*(?:\/\/.*|\/\*.*\*\/\s*|\*\/\s*)?$/;
+
+// After one of these words a `/` starts a regex, not a division: `return /^\/*/` read as a
+// division opened a block comment at `/*` and hid every line below it.
+const REGEX_AFTER_WORD = /(?:^|[^\w$.])(?:return|typeof|instanceof|in|of|new|delete|void|throw|case|do|else|yield|await)\s*$/;
 
 /**
  * Line numbers that carry code, by one pass over the whole text. A line on its own
@@ -111,7 +120,7 @@ export function codeLinesOf(text) {
         i++; prev = c;
         continue;
       }
-      if (c === "/" && (prev === "" || "(,=:[!&|?{};+-*%<>~^".includes(prev))) {
+      if (c === "/" && (prev === "" || "(,=:[!&|?{};+-*%<>~^".includes(prev) || REGEX_AFTER_WORD.test(l.slice(0, i)))) {
         // a regex literal: skip to its closing slash, character classes included
         i++;
         let cls = false;
@@ -344,6 +353,7 @@ export function parseDiff(text) {
   const files = {};
   let cur = null;
   let pendingRename = null;
+  let body = 0; // -/+ lines the current hunk header announced and that are still to come
   const stripTab = (s) => s.replace(/\t$/, "");
   // A path with a byte git calls unusual (non-ASCII under core.quotePath, a `"`, a
   // backslash, a control char) comes C-quoted: `--- "a/caf\303\251.ts"`. Unread, the
@@ -354,7 +364,16 @@ export function parseDiff(text) {
     return p.startsWith(prefix) ? p.slice(prefix.length) : p;
   };
   for (const line of text.split("\n")) {
-    if (/^diff --git /.test(line)) { pendingRename = null; cur = null; continue; }
+    // Body of the current hunk, counted from its header: a removed `-- a/x` is `--- a/x`
+    // here, and read as a file header it reset `cur` and crashed on the next hunk.
+    // One non-inert removed or added line makes the hunk a code change.
+    if (body > 0 && /^[-+]/.test(line)) {
+      body--;
+      const hs = files[cur.name].hunks;
+      if (!INERT.test(line.slice(1))) hs[hs.length - 1].inert = false;
+      continue;
+    }
+    if (/^diff --git /.test(line)) { pendingRename = null; cur = null; body = 0; continue; }
     const rf = line.match(/^rename from (.+)$/);
     if (rf) { pendingRename = { from: unquote(stripTab(rf[1])), to: pendingRename?.to }; continue; }
     const rt = line.match(/^rename to (.+)$/);
@@ -388,12 +407,8 @@ export function parseDiff(text) {
       hunk.new = nn === 0 ? null : [ns, ns + nn - 1];
       hunk.inert = true;
       files[cur.name].hunks.push(hunk);
+      body = n + nn;
       continue;
-    }
-    // Body of the current hunk: one non-inert removed or added line makes it a code change.
-    if (cur && cur.name && /^[-+]/.test(line) && !/^(---|\+\+\+) /.test(line)) {
-      const hs = files[cur.name].hunks;
-      if (hs.length && !INERT.test(line.slice(1))) hs[hs.length - 1].inert = false;
     }
   }
   return files;

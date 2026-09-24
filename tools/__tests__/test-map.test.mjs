@@ -587,3 +587,18 @@ describe("test-map: select over a real repo and a real map", () => {
 describe("test-map: what the map cannot see and select cannot say", () => {
   it.todo("a source line run only inside a child process a test spawns: whether Node's coverage follows the child is not measured here; if it does not, a change there is `uncovered` (said), but a test spawning it is not selected");
 });
+
+// Revert-checks: drop REGEX_AFTER_WORD from codeLinesOf → `return /^\/*/` opens a block
+// comment and the lines below it vanish → red; go back to reading hunk bodies without the
+// header's line count → a removed `-- a/y` line is taken for a file header → throws, red.
+describe("test-map: regex after a keyword, and hunk bodies that look like headers", () => {
+  it("a regex after `return` cannot open a comment and hide the code below it", () => {
+    const t = ["function f(s) {", "  return /^\\/*x/.test(s);", "}", "danger();"].join("\n");
+    assert.deepEqual([...codeLinesOf(t)], [1, 2, 3, 4]);
+  });
+
+  it("a removed line that reads `-- a/y` is hunk body, not a file header", () => {
+    const d = parseDiff("diff --git a/x.ts b/x.ts\n--- a/x.ts\n+++ b/x.ts\n@@ -1,2 +1 @@\n--- a/y\n-z\n+q\n@@ -9 +8 @@\n-a\n+b\n");
+    assert.deepEqual(d["x.ts"].hunks.map((h) => [...h]), [[1, 2], [9, 9]]);
+  });
+});
