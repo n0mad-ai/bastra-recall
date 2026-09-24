@@ -93,6 +93,14 @@ export interface TelemetryDimensions {
   /** `unassigned`, solange keine Experimentkonfiguration registriert ist. */
   arm: string;
   /**
+   * Hauptthread oder Subagent — nur auf Hook-Zeilen, die es belegen können
+   * (`hookAgent`). Subagenten erzeugen einen großen Teil der Tool-Aufrufe;
+   * ohne diese Spalte ist jede Hook-Quote ein Durchschnitt über zwei
+   * Arbeitsweisen. Fehlt auf Zeilen ohne Hook-Payload (MCP), statt dort
+   * `main` zu raten.
+   */
+  agent?: TelemetryAgent;
+  /**
    * #439: Die Identität der Registrierung, unter der dieser Arm zugewiesen
    * wurde. Ein Armname allein ist keine Identität — Armnamen werden
    * wiederverwendet und Registrierungen revidiert, und danach ließe sich eine
@@ -114,6 +122,10 @@ export interface TelemetryDimensions {
   /** Version derselben Registrierung — eine Revision ist ein anderes Experiment. */
   registration_version?: number;
 }
+
+export const TELEMETRY_AGENTS = ["main", "subagent"] as const;
+export type TelemetryAgent = (typeof TELEMETRY_AGENTS)[number];
+const AGENTS = new Set<string>(TELEMETRY_AGENTS);
 
 /** Kein laufendes Experiment. */
 export const UNASSIGNED_ARM = "unassigned";
@@ -196,7 +208,7 @@ export function assignArm(
  * inhaltsfrei.
  */
 export function dimensionsFrom(
-  input: { client?: unknown; hook_source?: unknown; session_id?: unknown },
+  input: { client?: unknown; hook_source?: unknown; session_id?: unknown; agent?: unknown },
   config: ExperimentConfig | null = null,
 ): TelemetryDimensions {
   const experimentSession = pseudonymousSession(
@@ -207,6 +219,9 @@ export function dimensionsFrom(
     hook_source: normalizeHookSource(input.hook_source),
     experiment_session: experimentSession,
     arm: assignArm(experimentSession, config),
+    // Nur auf der Allowlist; alles andere (auch ein fehlender Wert) lässt die
+    // Spalte weg — kein geratener Hauptthread.
+    ...(typeof input.agent === "string" && AGENTS.has(input.agent) ? { agent: input.agent as TelemetryAgent } : {}),
     // #439: Die Registrierungsidentität hängt an der KONFIGURATION, nicht am
     // zugewiesenen Arm. Sie steht deshalb auch auf Zeilen, die (mangels
     // Session) `unassigned` tragen: Dass ein Experiment lief, als diese Zeile

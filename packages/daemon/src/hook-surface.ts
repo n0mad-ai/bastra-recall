@@ -43,6 +43,22 @@ export function hookClientEvidence(payload: unknown): HookClientEvidence {
   return "unknown";
 }
 
+/**
+ * Who inside the client made the call. Claude Code puts `agent_id` and
+ * `agent_type` into a hook payload only when the tool call comes from a
+ * subagent (hooks reference, common input fields); a main-thread payload has
+ * neither — observed on a live PreToolUse/PostToolUse pair, same session_id.
+ * Only the presence of the id is read: `agent_type` can be a user-defined
+ * agent name, i.e. free text, and stays out of telemetry (§23).
+ */
+export type HookAgent = "main" | "subagent";
+
+export function hookAgent(payload: unknown): HookAgent {
+  if (!payload || typeof payload !== "object") return "main";
+  const id = (payload as Record<string, unknown>).agent_id;
+  return typeof id === "string" && id.length > 0 ? "subagent" : "main";
+}
+
 /** Add the registration-owned client marker without mutating stdin data. */
 export function decorateHookPayload<T>(payload: T): T {
   const requested = process.env.BASTRA_HOOK_CLIENT;
