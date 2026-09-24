@@ -54,7 +54,7 @@ import { formatPendingRelay, isCountableSessionStart, takePendingRelay } from ".
 import { clearShown } from "./session-state.js";
 import { formatPinnedBlock, dropPinnedFromRanked, type PinnedFloorLean } from "./pinned-block.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookClientEvidence } from "./hook-surface.js";
+import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookClientEvidence } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import type { Residency, ResidencySource, WarmupCoordinator } from "./embedding-warmup.js";
 // #493: die datensparsame Kennung dieses Hosts — Tor 5 aus #492.
@@ -270,8 +270,7 @@ export async function runSessionLane(
         {
           project,
           source: payload.source ?? null,
-          session_id: payload.session_id ?? null,
-          client,
+          ...hookCaller(payload),
           // Nur die Lane fragt die Cross-Project-Regeln.
           cross_project: true,
           // Die Mengen dieses Dokuments, ausdrücklich gesetzt: Der Endpunkt hat

@@ -2,6 +2,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { fireAndForget, type Telemetry } from "./telemetry.js";
 import { MAX_BODY_BYTES, readJsonBody, sendJson } from "./http-util.js";
+import { dimensionHints } from "./telemetry-dimensions.js";
 
 export function handleHookAct(req: IncomingMessage, res: ServerResponse, telemetry: Telemetry): void {
   readJsonBody(req, MAX_BODY_BYTES)
@@ -29,8 +30,7 @@ export function handleHookAct(req: IncomingMessage, res: ServerResponse, telemet
         matched_episodes: episodes.length,
         exit_code: exitCode,
         ...(sessionId ? { session_id: sessionId } : {}),
-        client: body.client,
-        hook_source: body.hook_source,
+        ...dimensionHints(body),
       }));
       sendJson(res, 200, { matched: episodes.length });
     })

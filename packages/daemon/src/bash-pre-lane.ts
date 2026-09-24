@@ -24,7 +24,7 @@ import { envFirst, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookClientEvidence } from "./hook-surface.js";
+import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookClientEvidence } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import { governContext } from "./context-governor.js";
 import { postLane } from "./thin-client.js";
@@ -440,12 +440,11 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
           topics: ["bash", match.severity, "safety"],
           project: null,
           tool_name: "Bash",
-          session_id: payload.session_id ?? null,
           tool_input_excerpt: command.slice(0, 4096),
           scope: "all-projects",
           k: 3,
           // #263: siehe bash-fail-lane — die Lane weist sich aus.
-          client,
+          ...hookCaller(payload),
           hook_source: "bash-pre",
         },
         remainingMs,

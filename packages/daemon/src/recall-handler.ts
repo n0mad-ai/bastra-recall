@@ -23,6 +23,7 @@ import { mergeBatchResults, dedupeQueries, batchDuplicateNote } from "./recall-b
 import { fitRecallToBudget } from "./recall-budget.js";
 import type { ToolDeps } from "./tool-deps.js";
 import type { PrivateAccess } from "./private-access.js";
+import { dimensionHints, type DimensionHints } from "./telemetry-dimensions.js";
 
 export const RecallArgs = z.object({
   query: z.string().min(1).optional(),
@@ -278,10 +279,8 @@ async function recallAgainstVault(
      *  Der Session-Assembler (#265) weist sich hierüber als eigene Hook-Quelle
      *  aus; ohne das wären seine Recalls von denen des Forwarders nicht zu
      *  trennen. */
-    client?: unknown;
-    hook_source?: unknown;
     session_id?: string | null;
-  } & PrivateAccess = {},
+  } & DimensionHints & PrivateAccess = {},
 ): Promise<RecallResult & { stages?: RecallStageTimings }> {
   const parsed = RecallArgs.safeParse(rawArgs);
   if (!parsed.success) throw new Error(parsed.error.message);
@@ -529,8 +528,7 @@ async function recallAgainstVault(
         recall_id: recallId,
         query: query,
         // #263/#265: von der aufrufenden Oberfläche durchgereicht.
-        client: options.client,
-        hook_source: options.hook_source,
+        ...dimensionHints(options),
         session_id: options.session_id ?? undefined,
         // #351: batch width when this recall is one phrasing of a batch.
         query_count: parsed.data.batch_of,

@@ -42,6 +42,7 @@ import {
   sendJson,
   writeSseEvent,
 } from "./http-util.js";
+import { dimensionHints } from "./telemetry-dimensions.js";
 
 // ─── /hook/recall handler ────────────────────────────────────────
 
@@ -708,8 +709,7 @@ export async function runHookRecall(
                 }
               : {}),
             ...(hookSessionId ? { session_id: hookSessionId } : {}),
-            client: body.client,
-            hook_source: body.hook_source,
+            ...dimensionHints(body),
           }),
         );
       };
@@ -777,8 +777,7 @@ export async function runHookRecall(
             })),
             counts,
             ...(hookSessionId ? { session_id: hookSessionId } : {}),
-            client: body.client,
-            hook_source: body.hook_source,
+            ...dimensionHints(body),
           }),
         );
       } catch (err) {
@@ -798,8 +797,7 @@ export async function runHookRecall(
             decisions: [],
             counts: { required: 0, optional: 0, no_answer: 0 },
             ...(hookSessionId ? { session_id: hookSessionId } : {}),
-            client: body.client,
-            hook_source: body.hook_source,
+            ...dimensionHints(body),
           }),
         );
       }
@@ -947,8 +945,7 @@ export async function runHookRecall(
           // #263: Oberflächen-Hinweise. `hook_source` trennt die Lanes
           // voneinander UND vom MCP-Forwarder, der `recall` über denselben
           // Endpunkt proxyt — ohne die Spalte wären beide dasselbe Ereignis.
-          client: body.client,
-          hook_source: body.hook_source,
+          ...dimensionHints(body),
           // #351: batch width when this recall is one phrasing of a batch.
           query_count: typeof body.batch_of === "number" ? body.batch_of : undefined,
           topics: Array.isArray(body.topics)

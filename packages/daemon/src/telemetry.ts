@@ -7,6 +7,8 @@ import { envFirst, envInt } from "./env.js";
 import { readJoinStateSync, writeJoinState } from "./telemetry-join-store.js";
 import {
   dimensionsFrom,
+  splitHints,
+  type DimensionHints,
   type ExperimentConfig,
   type TelemetryDimensions,
 } from "./telemetry-dimensions.js";
@@ -631,11 +633,7 @@ export class Telemetry {
    * vergessen. Was ein Aufrufer mitschickt, ist ein HINWEIS; die Spalte
    * entsteht hier.
    */
-  private dimensionsFor(hints: {
-    client?: unknown;
-    hook_source?: unknown;
-    session_id?: unknown;
-  }): TelemetryDimensions {
+  private dimensionsFor(hints: DimensionHints & { session_id?: unknown }): TelemetryDimensions {
     return dimensionsFrom(hints, this.experiment);
   }
 
@@ -646,10 +644,7 @@ export class Telemetry {
   }
 
   async logRecall(
-    payload: Omit<RecallEvent, "kind" | "ts" | "session_id" | "dimensions"> & {
-      /** Hinweise auf die Oberfläche — normalisiert, nie durchgereicht. */
-      client?: unknown;
-      hook_source?: unknown;
+    payload: Omit<RecallEvent, "kind" | "ts" | "session_id" | "dimensions"> & DimensionHints & {
       /** Die Session des AUFRUFERS, nicht die Boot-id: Aus ihr entsteht das
        *  Pseudonym und daraus der Arm. Fehlt sie, gibt es keinen Arm. */
       session_id?: string | null;
@@ -663,13 +658,13 @@ export class Telemetry {
       /* Notices dürfen einen Recall nie brechen */
     }
     if (!this.enabled) return;
-    const { client, hook_source, session_id, ...rest } = payload;
+    const { hints, rest: { session_id, ...rest } } = splitHints(payload);
     await this.write({
       kind: "recall",
       ts: new Date().toISOString(),
       session_id: this.sessionId,
       ...rest,
-      dimensions: this.dimensionsFor({ client, hook_source, session_id }),
+      dimensions: this.dimensionsFor({ ...hints, session_id }),
     });
   }
 
@@ -750,9 +745,7 @@ export class Telemetry {
     // auf Recall-Ebene konnte nach Session oder Turn gruppieren (#305, #361).
     payload: Omit<HookRecallEvent, "kind" | "ts" | "session_id" | "dimensions"> & {
       session_id?: string;
-      client?: unknown;
-      hook_source?: unknown;
-    },
+    } & DimensionHints,
   ): Promise<void> {
     // "surfaced"-Notice VOR dem enabled-Gate — der Hook-Pfad ist der
     // Löwenanteil des Traffics; die Map-Notice ist UI, nicht Persistenz. Das Band filtert.
@@ -762,7 +755,7 @@ export class Telemetry {
       /* Notices dürfen einen Hook-Recall nie brechen */
     }
     if (!this.enabled) return;
-    const { client, hook_source, ...rest } = payload;
+    const { hints, rest } = splitHints(payload);
     // #305/#361: der Turn, in dem dieser Recall lief. `session_id` allein
     // beantwortet keine Frage auf Turn-Ebene — „wie oft reißt der erste Recall
     // eines Turns seine Deadline" braucht die Turn-Grenze, und die kennt nur
@@ -781,7 +774,7 @@ export class Telemetry {
       ...rest,
       turn_id: turn.turn_id,
       turn_source: turn.turn_source,
-      dimensions: this.dimensionsFor({ client, hook_source, session_id: payload.session_id }),
+      dimensions: this.dimensionsFor({ ...hints, session_id: payload.session_id }),
     });
   }
 
@@ -797,18 +790,16 @@ export class Telemetry {
   async logEvidenceDecision(
     payload: Omit<EvidenceDecisionEvent, "kind" | "ts" | "session_id" | "dimensions"> & {
       session_id?: string;
-      client?: unknown;
-      hook_source?: unknown;
-    },
+    } & DimensionHints,
   ): Promise<void> {
     if (!this.enabled) return;
-    const { client, hook_source, ...rest } = payload;
+    const { hints, rest } = splitHints(payload);
     await this.write({
       kind: "evidence_decision",
       ts: new Date().toISOString(),
       session_id: this.sessionId,
       ...rest,
-      dimensions: this.dimensionsFor({ client, hook_source, session_id: payload.session_id }),
+      dimensions: this.dimensionsFor({ ...hints, session_id: payload.session_id }),
     });
   }
 
@@ -833,18 +824,16 @@ export class Telemetry {
     // per-Session-Join gegen Transcripts strukturell unmöglich (Audit 2026-07-10).
     payload: Omit<HookActEvent, "kind" | "ts" | "session_id" | "dimensions"> & {
       session_id?: string;
-      client?: unknown;
-      hook_source?: unknown;
-    },
+    } & DimensionHints,
   ): Promise<void> {
     if (!this.enabled) return;
-    const { client, hook_source, ...rest } = payload;
+    const { hints, rest } = splitHints(payload);
     await this.write({
       kind: "hook_act",
       ts: new Date().toISOString(),
       session_id: this.sessionId,
       ...rest,
-      dimensions: this.dimensionsFor({ client, hook_source, session_id: payload.session_id }),
+      dimensions: this.dimensionsFor({ ...hints, session_id: payload.session_id }),
     });
   }
 
@@ -957,19 +946,17 @@ export class Telemetry {
   async logVectorLateSettle(
     payload: Omit<VectorLateSettleEvent, "kind" | "ts" | "session_id" | "late"> & {
       session_id?: string;
-      client?: unknown;
-      hook_source?: unknown;
-    },
+    } & DimensionHints,
   ): Promise<void> {
     if (!this.enabled) return;
-    const { client, hook_source, session_id, ...rest } = payload;
+    const { hints, rest: { session_id, ...rest } } = splitHints(payload);
     await this.write({
       kind: "vector_late_settle",
       ts: new Date().toISOString(),
       session_id: session_id ?? this.sessionId,
       late: true,
       ...rest,
-      dimensions: this.dimensionsFor({ client, hook_source, session_id }),
+      dimensions: this.dimensionsFor({ ...hints, session_id }),
     });
   }
 

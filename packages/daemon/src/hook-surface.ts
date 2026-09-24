@@ -67,6 +67,33 @@ export function hookAgent(payload: unknown): HookAgent | null {
   return hookClientEvidence(payload) === "codex" ? null : "main";
 }
 
+/**
+ * Who is calling, as a lane tells the daemon in every loopback body
+ * (`/hook/recall`, `/hook/act`, `/hook/session-context`). The route copies
+ * these fields onto every row it writes for the call (`dimensionHints`), so a
+ * field missing here is missing on `hook_recall`, `evidence_decision`,
+ * `vector_late_settle` and `hook_act` alike. One constructor, so a lane cannot
+ * send `client` and forget `agent`.
+ *
+ * `client` is the surface default (`hookClient`), not the evidence — the
+ * loopback rows have always booked it that way; the lane's own row uses
+ * `hookClientEvidence` (#507).
+ */
+export interface HookCaller {
+  session_id: string | null;
+  client: HookClient;
+  agent: HookAgent | null;
+}
+
+export function hookCaller(payload: unknown): HookCaller {
+  const sid = payload && typeof payload === "object" ? (payload as Record<string, unknown>).session_id : undefined;
+  return {
+    session_id: typeof sid === "string" ? sid : null,
+    client: hookClient(payload),
+    agent: hookAgent(payload),
+  };
+}
+
 /** Add the registration-owned client marker without mutating stdin data. */
 export function decorateHookPayload<T>(payload: T): T {
   const requested = process.env.BASTRA_HOOK_CLIENT;

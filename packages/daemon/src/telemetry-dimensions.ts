@@ -200,6 +200,39 @@ export function assignArm(
 }
 
 /**
+ * Die Felder, die ein Aufrufer als HINWEIS auf seine Dimensionen mitschickt —
+ * eine Liste für Lane-Body, Route und Sink.
+ *
+ * Vorher reichte jede Route `client: body.client, hook_source: body.hook_source`
+ * von Hand an jeden Log-Aufruf weiter, und jede Log-Methode destrukturierte
+ * dieselben zwei Namen. Eine neue Dimension hieß damit ein Dutzend Handedits,
+ * und ein vergessener war still: Die Zeile fehlt nicht, ihr fehlt nur die
+ * Spalte. Hier steht die Liste einmal; {@link dimensionHints} und
+ * {@link splitHints} lesen nur sie.
+ */
+export const DIMENSION_HINT_KEYS = ["client", "hook_source", "agent"] as const;
+export type DimensionHints = { [K in (typeof DIMENSION_HINT_KEYS)[number]]?: unknown };
+
+/** Die Hinweise aus einem Request-Body (oder Options-Objekt), unverändert —
+ *  normalisiert wird erst in {@link dimensionsFrom}. */
+export function dimensionHints(source: object): DimensionHints {
+  const s = source as Record<string, unknown>;
+  const out: DimensionHints = {};
+  for (const k of DIMENSION_HINT_KEYS) if (k in s) out[k] = s[k];
+  return out;
+}
+
+/** Die Hinweise vom Rest eines Log-Payloads trennen: Die Hinweise werden zur
+ *  Spalte `dimensions`, der Rest steht auf der Zeile. */
+export function splitHints<T extends DimensionHints>(
+  payload: T,
+): { hints: DimensionHints; rest: Omit<T, keyof DimensionHints> } {
+  const rest: Record<string, unknown> = { ...payload };
+  for (const k of DIMENSION_HINT_KEYS) delete rest[k];
+  return { hints: dimensionHints(payload), rest: rest as Omit<T, keyof DimensionHints> };
+}
+
+/**
  * Die vier Spalten aus dem, was ein Aufrufer mitgeschickt hat.
  *
  * Eine Stelle, damit kein Produzent eine Spalte vergisst und keine zwei
@@ -208,7 +241,7 @@ export function assignArm(
  * inhaltsfrei.
  */
 export function dimensionsFrom(
-  input: { client?: unknown; hook_source?: unknown; session_id?: unknown; agent?: unknown },
+  input: DimensionHints & { session_id?: unknown },
   config: ExperimentConfig | null = null,
 ): TelemetryDimensions {
   const experimentSession = pseudonymousSession(

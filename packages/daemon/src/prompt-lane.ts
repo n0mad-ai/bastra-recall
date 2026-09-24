@@ -43,7 +43,7 @@ import { recordBudgetShadow } from "./session-budget.js";
 import { claudeSessionPidFrom, sessionFeedPath, STATUSLINE_DIR } from "./statusline-session.js";
 import { idleStatuslineState } from "./statusline-feed.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookClientEvidence } from "./hook-surface.js";
+import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookClientEvidence } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import { governContext } from "./context-governor.js";
 import { deliverPromptImpact } from "./code-graph/prompt-impact.js";
@@ -522,10 +522,9 @@ export async function runPromptLane(
           project,
           k,
           tool_name: "UserPromptSubmit",
-          session_id: payload.session_id ?? null,
           // #445: die Lane weist sich aus — wie bash-pre/bash-fail seit #263.
-          // Ohne die beiden Felder liest der Empfänger `unknown/unknown`.
-          client,
+          // Ohne die Felder liest der Empfänger `unknown/unknown`.
+          ...hookCaller(payload),
           hook_source: "prompt",
         },
         remainingMs,

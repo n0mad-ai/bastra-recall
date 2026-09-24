@@ -37,7 +37,7 @@ import { codeGraphCache, repoRelative } from "./code-graph/dependents-block.js";
 import { logDeliveredBlock } from "./code-delivered-telemetry.js";
 import { memoryLocationNote } from "./memory-location.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookClientEvidence } from "./hook-surface.js";
+import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookCaller, type HookClientEvidence } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import {
   bumpShown,
@@ -184,12 +184,11 @@ export async function runWriteLane(
       topics: topics.topics,
       project,
       tool_name: toolName,
-      session_id: payload.session_id ?? null,
       tool_input_excerpt: intent.content_excerpt,
       k: 3,
       // #445: die Lane weist sich aus. `pre-tool` ist ihr Allowlist-Wert —
       // sie ist die PreToolUse-Lane für Write/Edit.
-      client,
+      ...hookCaller(payload),
       hook_source: "pre-tool",
     }, remainingMs);
   } catch (err) {
@@ -628,17 +627,15 @@ function escapeAttr(s: string): string {
 
 // ─── loopback self-call ─────────────────────────────────────────────────────
 
-interface RecallRequestBody {
+/** #445: die Identitätsfelder aus #263 kommen aus `HookCaller` — siehe todo-lane.ts. */
+interface RecallRequestBody extends HookCaller {
   query: string;
   topics: string[];
   project: string | null;
   tool_name: string;
-  session_id: string | null;
   tool_input_excerpt: string;
   k: number;
   scope?: string;
-  /** #445: die Identitätsfelder aus #263 — siehe todo-lane.ts. */
-  client: string;
   hook_source: string;
 }
 
