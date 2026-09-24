@@ -59,8 +59,12 @@ import { writePendingSuggestion } from "./pending-suggestions.js";
 import { frustrationCues, decisionCues } from "./lexicon.js";
 import { getDocsMode, type DocsMode } from "./settings.js";
 import { enqueueForPath } from "./code-graph/service.js";
+import { boundaryNote, type ProvenRead } from "./code-graph/boundary-block.js";
+import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
+import { loadSessionState, mutateSessionState, parkBoundary } from "./session-state.js";
 import {
   claudeToolUseCommands,
+  claudeToolUseReads,
   codexCustomExecCommands,
   codexFunctionCallCommands,
 } from "./stop-lane-command-input.js";
@@ -89,6 +93,8 @@ interface TranscriptTurn {
    *  Codex function_call arguments). Kept apart from `content` so prose that
    *  merely TALKS about a command never counts as running it. */
   commands?: string[];
+  /** #572: files the agent read from this turn (Claude `Read`), with the row's time. */
+  reads?: ProvenRead[];
 }
 
 type Heuristic = "frustration-density" | "feature-completion" | "architecture-decision";
@@ -123,6 +129,24 @@ export async function runStopLane(
   // refresher runs the build on its own, so there is no way for a build to end
   // up awaited here even by accident. A repository that is not enabled is a
   // silent no-op.
+  //
+  // #572: the task-boundary block is parked first. It is a sum of what the
+  // Write/Edit lane booked at edit time; the graph is only consulted for edits
+  // that lane could not look at, and those are better asked before the refresh
+  // this Stop is about to enqueue than after it.
+  //
+  // The transcript is read once for both consumers — but a read that THROWS
+  // (a poisoned inline entry, #48) must still reach `evaluateStop`'s own catch
+  // and its telemetry row, exactly as before. So a throw here is swallowed,
+  // the boundary goes without reads (wider, never narrower), and
+  // `evaluateStop` repeats the read inside its try.
+  let turns: TranscriptTurn[] | null = null;
+  try {
+    turns = await loadTranscript(payload);
+  } catch {
+    turns = null;
+  }
+  await parkBoundaryNote(payload, turns ?? []).catch(() => {});
   if (typeof payload.cwd === "string" && payload.cwd.length > 0) {
     void enqueueForPath(payload.cwd).catch(() => {});
   }
@@ -133,7 +157,7 @@ export async function runStopLane(
   // RegExp compile error, and a future detector may throw. A broken Stop
   // evaluation must degrade to `{}`, never take the hook down.
   try {
-    return await evaluateStop(payload, selfBaseUrl, startedAt);
+    return await evaluateStop(payload, selfBaseUrl, startedAt, turns);
   } catch (err) {
     try {
       await writeTelemetry({
@@ -155,12 +179,52 @@ export async function runStopLane(
   }
 }
 
+/**
+ * #572: compute the task-boundary block and park it in the session's own
+ * state; the prompt lane delivers it on this session's next turn
+ * (`boundary-block.ts` says why not the pending file). A Stop that finds
+ * nothing CLEARS the slot — the agent may have opened the missed files since
+ * the last Stop, and a parked block must not outlive the fact it states.
+ *
+ * #607: gated behind the same `promptImpact.enabled` opt-in the delivery side
+ * already needs, default OFF. Computing the block means a `stat` per booked
+ * file (up to `MAX_TOUCHED_FILES`) and a session-state write on EVERY Stop —
+ * work with no reader while the prompt lane never takes it off the parking
+ * spot. The booking itself (`write-lane.ts`'s `recordTouched`) stays
+ * ungated on purpose: it is what lets a switch flipped ON mid-session still
+ * find something to park at the next Stop.
+ */
+async function parkBoundaryNote(payload: ClaudeStopPayload, turns: TranscriptTurn[]): Promise<void> {
+  if (!(await getPromptImpactEnabled())) return;
+  const sessionId = payload.session_id ?? "";
+  if (!sessionId) return;
+  const builtFrom = Date.now();
+  const session = await loadSessionState(sessionId);
+  if (session.touched === undefined) return;
+
+  // Only a read the transcript PROVES counts. Claude's Read tool
+  // names its file; a Codex `sed -n` inside a shell string does not, and
+  // guessing paths out of shell text would mark files opened that never were —
+  // the narrow direction. Without proof the answer simply stays wider.
+  const reads = turns.flatMap((t) => t.reads ?? []);
+  const built = await boundaryNote({ session, reads });
+  if (built === null && session.boundary === undefined) return;
+  await mutateSessionState(sessionId, (s) =>
+    parkBoundary(
+      s,
+      built === null ? null : { note: built.note, dedupeKey: built.dedupeKey, files: built.files },
+      builtFrom,
+    ),
+  );
+}
+
 async function evaluateStop(
   payload: ClaudeStopPayload,
   selfBaseUrl: string,
   startedAt: number,
+  loaded: TranscriptTurn[] | null,
 ): Promise<string> {
-  const turns = await loadTranscript(payload);
+  const turns = loaded ?? (await loadTranscript(payload));
   if (turns.length === 0) return "{}";
 
   const last30 = turns.slice(-30);
@@ -371,7 +435,11 @@ function isInjectedSystemContent(text: string): boolean {
     head.startsWith("Base directory for this skill:") ||
     head.startsWith("<system-reminder>") ||
     head.startsWith("<command-name>") ||
-    head.startsWith("<local-command-caveat>")
+    head.startsWith("<local-command-caveat>") ||
+    // A background task or subagent finishing is delivered as a user-role turn
+    // that opens with this tag. Its body is the subagent's own report, so the
+    // decision and frustration heuristics read an agent's prose as the user's.
+    head.startsWith("<task-notification>")
   );
 }
 
@@ -430,6 +498,13 @@ function normalizeTurns(items: unknown[]): TranscriptTurn[] {
       const turn: TranscriptTurn = { role: effectiveRole(role, m.content), content: scrubTurnContent(stringifyContent(m.content)) };
       const commands = claudeToolUseCommands(m.content);
       if (commands.length > 0) turn.commands = commands;
+      const reads = claudeToolUseReads(m.content);
+      if (reads.length > 0) {
+        // A row without a parseable timestamp cannot be placed after an edit,
+        // and an unplaced read is not counted (`boundary-block.ts`).
+        const at = typeof obj.timestamp === "string" ? Date.parse(obj.timestamp) : Number.NaN;
+        turn.reads = reads.map((path) => ({ path, at: Number.isNaN(at) ? null : at }));
+      }
       out.push(turn);
       continue;
     }

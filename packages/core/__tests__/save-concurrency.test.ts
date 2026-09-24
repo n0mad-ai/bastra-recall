@@ -427,7 +427,7 @@ test("a claim older than the stale window is reclaimed whatever it says", async 
   const old = new Date(Date.now() - 60_000);
   await utimes(lock, old, old);
 
-  const result = await saveMemory(vault, input("after reclaim"));
+  await saveMemory(vault, input("after reclaim"));
 
   assert.match(await readFile(seeded.file_path, "utf8"), /after reclaim/);
   assert.deepEqual(await artifacts(vault, seeded.file_path), []);

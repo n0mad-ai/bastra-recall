@@ -397,7 +397,7 @@ async function privateDocument(
     ...DOC_BASE,
     original_path: src,
     body: "Der vertrauliche Vertragstext.",
-  } as Parameters<typeof saveDocument>[1]);
+  } as unknown as Parameters<typeof saveDocument>[1]);
   await stampSensitivity(doc.sidecar_path, indexed);
   await vault.reindexFile(doc.sidecar_path);
   // …and then the disk moves on alone.

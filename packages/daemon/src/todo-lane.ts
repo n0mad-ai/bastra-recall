@@ -29,7 +29,8 @@ import { envFirst, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookClient } from "./hook-surface.js";
+import { hookClient, hookClientEvidence, type HookClientEvidence } from "./hook-surface.js";
+import { dimensionsFrom } from "./telemetry-dimensions.js";
 import {
   decideBackoff,
   loadSessionState,
@@ -243,6 +244,9 @@ export async function runTodoLane(
 ): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
+  // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
+  // der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback.
+  const clientEvidence = hookClientEvidence(payload);
 
   if (payload.hook_event_name !== "PreToolUse") return "{}";
   const toolName = payload.tool_name ?? "";
@@ -252,6 +256,7 @@ export async function runTodoLane(
   if (isLowConfidence(extraction)) {
     await writeTelemetry({
       session_id: payload.session_id ?? null,
+      client: clientEvidence,
       topic: extraction.topics.join(",") || null,
       todo_count: extraction.todoCount,
       query_chars: extraction.query.length,
@@ -393,6 +398,7 @@ export async function runTodoLane(
   recordBudgetShadow(payload.session_id ?? null, "todo_hook_call", hintTokensEst);
   await writeTelemetry({
     session_id: payload.session_id ?? null,
+    client: clientEvidence,
     topic: extraction.topics.join(",") || null,
     todo_count: extraction.todoCount,
     query_chars: extraction.query.length,
@@ -561,6 +567,9 @@ interface TodoHookTelemetry {
    *  session_id, so per-session aggregation is possible. A synthetic UUID is
    *  the fallback only when the payload carried none. */
   session_id?: string | null;
+  /** #507: die aufrufende Oberfläche — NUR wenn belegt (`hookClientEvidence`),
+   *  nie der surface-Default. */
+  client: HookClientEvidence;
   topic: string | null;
   todo_count: number;
   query_chars: number;
@@ -615,13 +624,15 @@ async function writeTelemetry(payload: TodoHookTelemetry): Promise<void> {
     const ts = new Date().toISOString();
     // The session_id from the Claude payload is real session state — fall
     // back to a synthetic UUID only if no payload session was given (#356).
-    const { session_id: payloadSessionId, ...rest } = payload;
+    const { session_id: payloadSessionId, client, ...rest } = payload;
     const event = {
       kind: "todo_hook_call",
       ts,
       session_id: payloadSessionId ?? randomUUID(),
       hook_version: HOOK_VERSION,
       ...rest,
+      // #507: todo is this lane's own hook_source — it never varies per call.
+      dimensions: dimensionsFrom({ client, hook_source: "todo", session_id: payloadSessionId }),
     };
     const file = join(logDir, `events-${ts.slice(0, 10)}.jsonl`);
     await appendFile(file, JSON.stringify(event) + "\n", "utf8");

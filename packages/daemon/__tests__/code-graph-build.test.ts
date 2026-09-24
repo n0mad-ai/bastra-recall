@@ -355,7 +355,9 @@ describe("the repo build lock", () => {
   it("judges staleness by heartbeat, and by pid only on the same host", () => {
     const fresh = new Date().toISOString();
     const old = new Date(Date.now() - LOCK_STALE_MS - 1_000).toISOString();
-    const base = { pid: process.pid, host: "elsewhere", token: "t", startedAt: fresh };
+    // #542: isStaleLock itself short-circuits on state === "free" — state:
+    // "held" is what actually exercises the heartbeat/pid checks below.
+    const base = { pid: process.pid, host: "elsewhere", token: "t", startedAt: fresh, gen: 1, state: "held" as const };
     assert.equal(isStaleLock({ ...base, renewedAt: fresh }, LOCK_STALE_MS), false);
     assert.equal(isStaleLock({ ...base, renewedAt: old }, LOCK_STALE_MS), true);
     assert.equal(isStaleLock({ ...base, renewedAt: "not-a-date" }, LOCK_STALE_MS), true);

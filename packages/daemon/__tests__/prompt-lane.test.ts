@@ -27,13 +27,13 @@ import {
   MUST_LOAD_SCORE,
   type PromptReflexHit,
   type RecallHit,
-} from "../src/prompt-lane.ts";
+} from "../src/prompt-lane.js";
 import {
   clearShown,
   decideBackoff,
   touchLoadedMarker,
   type SourceBackoff,
-} from "../src/session-state.ts";
+} from "../src/session-state.js";
 
 // ─── Pure unit tests ─────────────────────────────────────────────────────
 
@@ -1428,5 +1428,95 @@ test("#539 — the suppression window re-opens: three skips, then a probe emit",
   } finally {
     await daemon.close();
     await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+// ── #565: der unfused-Grund und der stumme Reflex-Miss ──────────────────────
+
+test("formatHintBlock — #565: a timed-out dense arm is not 'semantic search is off'", () => {
+  // Der Vorfall: JEDER Hint-Block der Session las „semantic search is off",
+  // während `/health` auf demselben Daemon `semantic_recall: "on"` und einen
+  // geschlossenen Breaker meldete. Der Arm war da, er hat diesen Aufruf nur
+  // nicht bedient — der Block behauptete eine dauerhafte Einschränkung.
+  const hits: RecallHit[] = [
+    { id: "lex-only", title: "L", type: "lesson", scope: "p", summary: "s", score: 405584.777 },
+  ];
+  const timedOut = formatHintBlock(hits, "bastra-recall", "generic", false, true, "claude-code", "vector-arm-timeout");
+  assert.doesNotMatch(timedOut, /semantic search is off/i, "it was on");
+  assert.match(timedOut, /semantic search is ON but did not answer inside this lookup's deadline/);
+  assert.doesNotMatch(timedOut, /both search paths agreed/, "still one arm — the old claim stays gone");
+
+  const empty = formatHintBlock(hits, "bastra-recall", "generic", false, true, "claude-code", "vector-arm-empty");
+  assert.match(empty, /semantic search is ON but returned nothing/);
+
+  // Ohne Grund auf der Leitung heißt unfused weiterhin: es gibt keinen zweiten Arm.
+  const off = formatHintBlock(hits, "bastra-recall", "generic", false, true, "claude-code");
+  assert.match(off, /semantic search is off/i);
+});
+
+test("integration — #565: a reflex hit the session dedupe held back is booked, not lost", async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), "bastra-reflex-dedupe-"));
+  const logDir = await mkdtemp(join(tmpdir(), "bastra-reflex-dedupe-log-"));
+  const daemon = await startMockDaemon((req, res) => {
+    req.on("data", () => {});
+    req.on("end", () => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      if (req.url === "/hook/reflex") {
+        res.end(
+          JSON.stringify({
+            hits: [
+              {
+                id: "reflex-css-lesson",
+                title: "CSS-Spezifität",
+                type: "lesson",
+                scope: "all-projects",
+                summary: "Inline style schlägt Tailwind-Hover immer.",
+                matched_phrase: "tailwind grid",
+              },
+            ],
+            recall_id: "reflex-1",
+          }),
+        );
+        return;
+      }
+      res.end('{"ok":true}');
+    });
+  });
+  const env = {
+    BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
+    BASTRA_HOOK_STATE_DIR: stateDir,
+    BASTRA_LOG_PATH: logDir,
+    BASTRA_TELEMETRY: "on",
+  };
+  const payload = {
+    hook_event_name: "UserPromptSubmit",
+    prompt: "lass uns das tailwind grid implementieren",
+    cwd: process.cwd(),
+    session_id: "reflex-dedupe-session",
+  };
+  try {
+    const first = await runHook(payload, env);
+    assert.match(first.stdout, /reflex-css-lesson/, "precondition: it fires the first time");
+    const second = await runHook(payload, env);
+    assert.doesNotMatch(second.stdout, /reflex-css-lesson/, "precondition: the session dedupe holds it back");
+
+    const files = (await readdir(logDir)).filter((f) => f.startsWith("events-"));
+    const rows = (await readFile(join(logDir, files[0]), "utf8"))
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as { kind: string; reflex_deduped_ids?: string[]; reflex_hint_count?: number });
+    const lane = rows.filter((r) => r.kind === "prompt_hook_call");
+    assert.equal(lane.length, 2);
+    assert.equal(lane[0].reflex_deduped_ids, undefined, "nothing was held back on the first turn");
+    assert.deepEqual(
+      lane[1].reflex_deduped_ids,
+      ["reflex-css-lesson"],
+      "a suppressed reflex must not read like a reflex that never matched",
+    );
+    assert.equal(lane[1].reflex_hint_count, 0);
+  } finally {
+    await daemon.close();
+    await rm(stateDir, { recursive: true, force: true });
+    await rm(logDir, { recursive: true, force: true });
   }
 });

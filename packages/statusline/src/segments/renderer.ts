@@ -404,7 +404,8 @@ export class SegmentRenderer {
 
     const getCost = () => {
       if (costSource === "calculated") return usageInfo.session.calculatedCost;
-      if (costSource === "official") return usageInfo.session.officialCost;
+      if (costSource === "official")
+        return usageInfo.session.officialCost ?? usageInfo.session.calculatedCost;
       return usageInfo.session.cost;
     };
 

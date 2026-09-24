@@ -18,9 +18,13 @@
  *     → wenn etwas abweicht: file rewrite (frontmatter + body), vault.reindexFile
  *
  * Loop-Prevention:
- *   Der reindex triggert ein neues Embed (Body hat sich geändert). Das zweite
- *   Embed liefert dasselbe Similarity-Set → sameIdSet UND sameBody → no-op.
- *   Kein File-Write, kein Loop.
+ *   Der reindex meldet das Memory erneut an den EmbeddingIndex. Die
+ *   Auto-Related-Section geht weder in den Embed-Text noch in den Content-Hash
+ *   ein (#631, `embedBody` in embed-cache.ts) — der Hash ist unverändert, es
+ *   wird nicht neu embedded, der Vektor und damit das Similarity-Set bleiben
+ *   gleich → sameIdSet UND sameBody → no-op. Kein File-Write, kein Loop.
+ *   Hing der Vektor an der Section, tauschte ein Memory live seinen fünften
+ *   Nachbarn im Sekundentakt: neue Section → neuer Vektor → neuer Nachbar.
  *
  *   WICHTIG: Der Vergleich ist drift-tolerant (SCORE_EPSILON), nicht exakt.
  *   Zwei Prozesse auf demselben Vault (Daemon + Mac-App-Bridge) haben eigene
@@ -128,10 +132,21 @@ export class RelatedEnricher {
     // ausgeschlossener Nachbar keinen Slot verbraucht, und nach der
     // Hysterese, damit eine Bestandskante ihn nicht überlebt.
     const hostIsPrivate = memory.fm.sensitivity === "private";
+    // #631: Hysterese auch auf der Mitgliedschaft. Die Toleranz oben und in
+    // `autoRelatedEquivalent` deckt nur Drift unter DENSELBEN Nachbarn; am
+    // letzten Slot konnten zwei Kandidaten mit fast gleichem Score (live
+    // 0.780 vs 0.789) trotzdem die Plätze tauschen. Deshalb verdrängt ein
+    // Herausforderer einen bestehenden Nachbarn erst, wenn er um mindestens
+    // SCORE_EPSILON vorn liegt. Der Bonus wirkt nur auf die Auswahl — die
+    // geschriebenen Scores und ihre Reihenfolge bleiben die echten. Bei
+    // Abständen über ε (und ohne Bestand) ist das Ergebnis unverändert.
+    const incumbencyBonus = (h: { id: string }): number => (keepIds.has(h.id) ? SCORE_EPSILON : 0);
     const filtered = similar
-      .filter((h) => h.score >= this.threshold - (keepIds.has(h.id) ? SCORE_EPSILON : 0))
+      .filter((h) => h.score >= this.threshold - incumbencyBonus(h))
       .filter((h) => hostIsPrivate || this.vault.get(h.id)?.fm.sensitivity !== "private")
+      .sort((a, b) => b.score + incumbencyBonus(b) - (a.score + incumbencyBonus(a)))
       .slice(0, this.topN)
+      .sort((a, b) => b.score - a.score)
       .map<RelatedViaEntry>((h) => ({
         id: h.id,
         reason: `cosine ${h.score.toFixed(3)}`,
@@ -281,6 +296,15 @@ async function rewriteFile(
           return fm;
         },
         body: () => (newBody.startsWith("\n") ? newBody : `\n${newBody}`),
+        // #341: Angereichert wird nur Abgeleitetes — `related_via` und die
+        // markierte Auto-Section. Was der Mensch geschrieben hat, ist alles
+        // AUSSERHALB der Marker; bleibt das gleich, behält die Datei ihre
+        // mtime, und „newest wins" in iCloud/Drive/Dropbox zeigt wieder auf
+        // die zuletzt wirklich editierte Kopie. Führende und abschließende
+        // Leerzeilen zählen nicht: die normalisiert `rebuildBodyWithAutoSection`
+        // selbst, sie wären sonst eine Inhaltsänderung, die keine ist.
+        authoredContent: (body) =>
+          stripAutoRelatedSection(body).replace(/^\n+/, "").replace(/\n+$/, ""),
       },
       { vaultRoot },
     );

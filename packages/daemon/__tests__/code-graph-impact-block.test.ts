@@ -245,6 +245,13 @@ describe("delivered change-impact block: what the agent sees", () => {
     assert.doesNotMatch(note, /checks\.ts/);
     assert.equal(out.note.basis, "diff");
     assert.deepEqual(out.note.changedSymbols, ["saveMemory"]);
+    // #572: the same hits are handed to the task-boundary accumulator, taken
+    // from the graph as it is BEFORE this edit lands.
+    assert.equal(out.booking?.file, SAVE);
+    assert.deepEqual(
+      out.booking?.hits?.map((h) => h.file),
+      ["packages/core/__tests__/save.test.ts", "packages/core/src/audit-save.ts"],
+    );
   });
 
   it("says `whole_file` when the change lands outside every symbol", async () => {
@@ -351,8 +358,28 @@ describe("delivered change-impact block: what the agent sees", () => {
     });
     assert.equal(cold.note, null);
     assert.equal(cold.dedupeHit, false);
+    // #572: silent, but not mute about WHICH file — and `hits: null` is "could
+    // not look", which the boundary must not read as "nothing depends on it".
+    assert.deepEqual(cold.booking, { file: SAVE, hits: null, truncated: false });
     await cache.ensureLoaded(repo);
     assert.ok(cache.get(repo) !== null, "the cold call did not schedule a load");
+  });
+
+  it("books nothing where code awareness is off — cold and off are different nulls", async () => {
+    const repo = await freshRepo(root, "off");
+    const off = new CodeGraphCache(undefined, () => false);
+    const out = await impactNote({
+      filePath: join(repo, SAVE),
+      repoRoot: repo,
+      toolName: "Edit",
+      toolInput: EDIT_SAVE,
+      session: EMPTY_SESSION,
+      cache: off,
+    });
+    assert.equal(out.note, null);
+    // #572: an unplaced booking here would surface "dependents unknown" at the
+    // task boundary of every repository the feature was never enabled for.
+    assert.equal(out.booking, undefined);
   });
 
   it("is silent for a tool it cannot read a pending change out of", async () => {
@@ -428,7 +455,7 @@ describe("delivered block: dedupe per session, file AND symbol set", () => {
     const first = await noteWith(repo, cache, EDIT_SAVE, EMPTY_SESSION);
     assert.ok(first.note);
     const shown: ReadonlySessionState = {
-      shown: { [first.note.dedupeKey]: { count: 1, lastShownAt: Date.now() } },
+      shown: { [first.note.dedupeKey]: { count: 1, at: Date.now() } },
     };
     const second = await noteWith(repo, cache, EDIT_SAVE, shown);
     assert.equal(second.note, null);
@@ -443,7 +470,7 @@ describe("delivered block: dedupe per session, file AND symbol set", () => {
     const first = await noteWith(repo, cache, EDIT_SAVE, EMPTY_SESSION);
     assert.ok(first.note);
     const shown: ReadonlySessionState = {
-      shown: { [first.note.dedupeKey]: { count: 1, lastShownAt: Date.now() } },
+      shown: { [first.note.dedupeKey]: { count: 1, at: Date.now() } },
     };
     // The file-level dedupe of #577 suppressed this — the second edit of a
     // file was silent however different its blast radius was.

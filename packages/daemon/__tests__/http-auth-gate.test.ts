@@ -229,7 +229,7 @@ test("addCorsOrigin → getCorsOrigins: normalizes, dedupes, drops invalid", asy
   // Silence the intentional "ignoring invalid …" warning so the run stays clean.
   const origErr = process.stderr.write.bind(process.stderr);
   let warned = 0;
-  // @ts-expect-error test shim: swallow stderr, count the warnings we expect.
+  // test shim: swallow stderr, count the warnings we expect.
   process.stderr.write = () => { warned++; return true; };
   try {
     await addCorsOrigin(SITE, path);

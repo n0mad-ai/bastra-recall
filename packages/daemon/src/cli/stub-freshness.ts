@@ -18,6 +18,9 @@
  *  · the answer from the binary is `bastra-hook version` (stub/build-info.ts),
  *    the only way a compiled binary can say which sources it came from.
  *
+ * Since #547 the same binary is asked a second question, about the statusline
+ * bundle it also carries — see `StatuslineState` below.
+ *
  * Two things this must NOT do:
  *
  *  · build anything. A stub build costs a deno compile; doctor runs it never.
@@ -44,6 +47,10 @@ export interface StubStamp {
   revision?: string | null;
   dirty?: boolean;
   built_at?: string | null;
+  /** The digest of the statusline bundle embedded in the binary (#547).
+   *  Absent on every binary built before #547 — `undefined` is a state of its
+   *  own here, not a missing value to default away. */
+  statusline_digest?: string | null;
 }
 
 /**
@@ -66,6 +73,29 @@ export interface StubStamp {
  */
 export type StubState = "ok" | "stale" | "unstamped" | "unknown-sources" | "missing" | "unreadable";
 
+/**
+ * The same three questions, one level in: the statusline bundle the binary
+ * carries (#547).
+ *
+ * Its own verdict rather than more `StubState` members, because the two halves
+ * are independent — `bastra-hook statusline` and the hook lanes ship in one
+ * file but are built from different inputs, and a binary that is current for
+ * every lane can still render a status line from month-old code. A single
+ * state could only report the worse of the two and would hide which one moved.
+ * It is carried and printed the way `foreign` already is: an extra statement
+ * about the same binary, in the same vocabulary.
+ *
+ *  · `ok`              — the embedded bundle is the one built in this checkout.
+ *  · `stale`           — it is a different one: the #547 finding itself.
+ *  · `unstamped`       — the binary predates #547 (or was built without a
+ *                        bundle digest) and cannot say. Not "stale", not "ok".
+ *  · `unknown-bundle`  — no `packages/statusline/dist` here to compare against,
+ *                        so the question is not answerable in this tree.
+ *  · `unchecked`       — the binary could not be asked at all (missing,
+ *                        unreadable): the hook-level state says that already.
+ */
+export type StatuslineState = "ok" | "stale" | "unstamped" | "unknown-bundle" | "unchecked";
+
 export interface StubFinding {
   /** The absolute path the client registrations execute. */
   binary: string;
@@ -76,11 +106,16 @@ export interface StubFinding {
    *  one they are looking at. A finding in its own right (#546). */
   foreign: boolean;
   state: StubState;
+  /** The verdict on the statusline bundle inside the same binary (#547). */
+  statusline: StatuslineState;
   /** What the binary said about itself, when it could be asked. */
   stamp: StubStamp | null;
   /** The digest of the sources in this installation, or null when there are
    *  none to compute one from. */
   expectedDigest: string | null;
+  /** The digest of the statusline bundle built in this installation, or null
+   *  when there is none to compare against. */
+  expectedStatuslineDigest: string | null;
 }
 
 export interface StubFreshnessReport {
@@ -201,15 +236,36 @@ export async function collectRegisteredStubs(
  * first, so the absence is a state, not an exception.
  */
 export async function localStubSourceDigest(root: string = DAEMON_PACKAGE_ROOT): Promise<string | null> {
-  const digestModule = join(root, "scripts", "stub-source-digest.mjs");
   const stubEntry = join(root, "stub", "bastra-hook.ts");
-  if (!existsSync(digestModule) || !existsSync(stubEntry)) return null;
+  if (!existsSync(stubEntry)) return null;
+  const digest = (await digestModule(root))?.stubSourceDigest?.();
+  return typeof digest === "string" && digest.length > 0 ? digest : null;
+}
+
+/**
+ * The digest of the statusline bundle built in THIS installation, or null when
+ * there is none — no digest module (npm, Homebrew) or no `statusline/dist`
+ * because nothing has built it here yet (#547).
+ *
+ * Same module as the build stamps with, for the same reason the source digest
+ * uses it: two definitions of "the bundle" is how a check goes green against a
+ * binary that carries something else.
+ */
+export async function localStatuslineDigest(root: string = DAEMON_PACKAGE_ROOT): Promise<string | null> {
+  const digest = (await digestModule(root))?.statuslineBundleDigest?.();
+  return typeof digest === "string" && digest.length > 0 ? digest : null;
+}
+
+interface StubDigestModule {
+  stubSourceDigest?: () => string;
+  statuslineBundleDigest?: () => string | null;
+}
+
+async function digestModule(root: string): Promise<StubDigestModule | null> {
+  const path = join(root, "scripts", "stub-source-digest.mjs");
+  if (!existsSync(path)) return null;
   try {
-    const mod = (await import(pathToFileURL(digestModule).href)) as {
-      stubSourceDigest?: () => string;
-    };
-    const digest = mod.stubSourceDigest?.();
-    return typeof digest === "string" && digest.length > 0 ? digest : null;
+    return (await import(pathToFileURL(path).href)) as StubDigestModule;
   } catch {
     // A checkout whose digest module cannot run is indistinguishable, for this
     // check, from one that has none: either way there is no reference value.
@@ -247,6 +303,11 @@ export interface StubFreshnessIo {
   packageRoot?: string;
   exists?: (path: string) => boolean;
   stamp?: (binary: string) => StubStamp | null;
+  /** The statusline bundle digest to compare the binary against. Injectable
+   *  because `packages/statusline/dist` is a build artifact and gitignored:
+   *  without this seam the guard could only pin the #547 states on a machine
+   *  that happens to have built the statusline. */
+  statuslineDigest?: () => Promise<string | null>;
 }
 
 export async function stubFreshness(io: StubFreshnessIo = {}): Promise<StubFreshnessReport> {
@@ -254,36 +315,46 @@ export async function stubFreshness(io: StubFreshnessIo = {}): Promise<StubFresh
   const own = io.ownBinary ?? HOOK_STUB_BIN;
   const exists = io.exists ?? existsSync;
   const stampOf = io.stamp ?? ((b: string) => readStubStamp(b));
-  const expectedDigest = await localStubSourceDigest(io.packageRoot ?? DAEMON_PACKAGE_ROOT);
+  const root = io.packageRoot ?? DAEMON_PACKAGE_ROOT;
+  const expectedDigest = await localStubSourceDigest(root);
+  const expectedStatuslineDigest = await (io.statuslineDigest ?? (() => localStatuslineDigest(root)))();
+
+  /** The statusline half of the same binary, decided independently (#547). */
+  const statuslineStateOf = (stamp: StubStamp): StatuslineState => {
+    const carried = stamp.statusline_digest;
+    if (typeof carried !== "string" || carried === "") return "unstamped";
+    if (expectedStatuslineDigest === null) return "unknown-bundle";
+    return carried === expectedStatuslineDigest ? "ok" : "stale";
+  };
 
   const findings: StubFinding[] = [];
   for (const { binary, surfaces } of await collectRegisteredStubs(home)) {
     const foreign = binary !== own;
+    const base = { binary, surfaces, foreign, expectedDigest, expectedStatuslineDigest };
     if (!exists(binary)) {
-      findings.push({ binary, surfaces, foreign, state: "missing", stamp: null, expectedDigest });
+      findings.push({ ...base, state: "missing", statusline: "unchecked", stamp: null });
       continue;
     }
     const stamp = stampOf(binary);
     if (stamp === null) {
-      findings.push({ binary, surfaces, foreign, state: "unreadable", stamp: null, expectedDigest });
+      findings.push({ ...base, state: "unreadable", statusline: "unchecked", stamp: null });
       continue;
     }
+    const statusline = statuslineStateOf(stamp);
     const digest = typeof stamp.source_digest === "string" ? stamp.source_digest : "";
     if (digest === "") {
-      findings.push({ binary, surfaces, foreign, state: "unstamped", stamp, expectedDigest });
+      findings.push({ ...base, state: "unstamped", statusline, stamp });
       continue;
     }
     if (expectedDigest === null) {
-      findings.push({ binary, surfaces, foreign, state: "unknown-sources", stamp, expectedDigest });
+      findings.push({ ...base, state: "unknown-sources", statusline, stamp });
       continue;
     }
     findings.push({
-      binary,
-      surfaces,
-      foreign,
+      ...base,
       state: digest === expectedDigest ? "ok" : "stale",
+      statusline,
       stamp,
-      expectedDigest,
     });
   }
   return { own, sourcesAvailable: expectedDigest !== null, findings };
@@ -317,7 +388,7 @@ export function stubFreshnessLines(report: StubFreshnessReport): string[] {
     const rebuild = report.sourcesAvailable ? ` — rebuild it with \`${STUB_REBUILD_HINT}\`` : "";
     switch (f.state) {
       case "ok":
-        lines.push(`✓ ok: ${f.binary} matches the sources in this checkout${builtFrom(f.stamp)}`);
+        lines.push(`✓ ok: ${f.binary} matches the stub sources in this checkout${builtFrom(f.stamp)}`);
         break;
       case "stale":
         lines.push(
@@ -350,6 +421,23 @@ export function stubFreshnessLines(report: StubFreshnessReport): string[] {
             ` — an interrupted download or a binary for another architecture. Re-run \`bastra install ${f.surfaces[0]}\``,
         );
         break;
+    }
+    // The statusline half, and only where it adds something (#547): when the
+    // hook digest itself is off, the binary already has a louder finding with
+    // the very same fix, and a second line would only say "rebuild" twice.
+    if (f.state === "ok") {
+      if (f.statusline === "stale") {
+        lines.push(
+          `⚠ stale statusline in an otherwise current hook binary: ${f.binary} carries a statusline bundle built` +
+            ` from different sources than \`packages/statusline/dist\` here. The hook lanes are fine; \`${basename(f.binary)}` +
+            ` statusline\` renders older code (#547)${rebuild}`,
+        );
+      } else if (f.statusline === "unstamped") {
+        lines.push(
+          `⚠ ${f.binary} matches the stub sources but carries no statusline digest, so it predates #547 and cannot` +
+            ` say which statusline bundle is inside it. That is not the same as current${rebuild}`,
+        );
+      }
     }
     if (f.foreign) {
       lines.push(

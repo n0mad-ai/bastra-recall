@@ -52,8 +52,11 @@ async function main(): Promise<void> {
   console.log("------|---|---------------|---------------|-------");
   for (const query of QUERIES) {
     for (const k of KS) {
-      const lean = await recallHandler(deps, { query, k });
-      const full = await recallHandler(deps, { query, k, verbosity: "full" });
+      // #619: declare as eval/synthetic traffic — this script calls
+      // recallHandler directly against a real vault and would otherwise write
+      // unmarked "recall" events that dominate the context-tax report.
+      const lean = await recallHandler(deps, { query, k }, { client: "eval" });
+      const full = await recallHandler(deps, { query, k, verbosity: "full" }, { client: "eval" });
       const lb = payloadBytes(lean);
       const fb = payloadBytes(full);
       totals.lean += lb;

@@ -38,7 +38,9 @@ import {
   pinSignature,
   preflightBuild,
   readBuildRevision,
+  // @ts-expect-error — plain .mjs script, no declarations (#542).
 } from "../code-roi/v2/build-pin.mjs";
+// @ts-expect-error — plain .mjs script, no declarations (#542).
 import { armMetaRows, mixedBuildsReport } from "../code-roi/v2/evaluate-v4.mjs";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -219,7 +221,7 @@ describe("frozenSurfaceMismatches", () => {
     const built = { ...reg.arms.frozen_surface, tool_definition_sha256: "x", code_clause_sha256: "y" };
     const mismatches = frozenSurfaceMismatches(built, reg);
     assert.deepEqual(
-      mismatches.map((m) => m.field).sort(),
+      mismatches.map((m: any) => m.field).sort(),
       ["code_clause_sha256", "tool_definition_sha256"],
     );
   });
@@ -383,7 +385,7 @@ describe("pinSignature and diffBuildPin", () => {
     const recorded = pinOf("a".repeat(40));
     const current = { ...pinOf("b".repeat(40), "different-tool-hash") };
     const diff = diffBuildPin(recorded, current);
-    const fields = diff.map((d) => d.field);
+    const fields = diff.map((d: any) => d.field);
     assert.ok(fields.includes("headSha"));
     assert.ok(fields.includes("distRevision.revision"));
     assert.ok(fields.includes("frozenSurface.tool_definition_sha256"));
@@ -521,7 +523,7 @@ describe("evaluate-v4's mixed_builds report", () => {
       );
       const rows = armMetaRows(join(dir, "runs"));
       assert.equal(rows.length, 2);
-      assert.ok(rows.every((r) => r.buildPin === "sig-1"));
+      assert.ok(rows.every((r: any) => r.buildPin === "sig-1"));
     });
   });
 

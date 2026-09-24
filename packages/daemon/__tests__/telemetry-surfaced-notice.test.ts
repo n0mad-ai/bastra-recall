@@ -56,9 +56,22 @@ test("onRecalled fires on the hook_recall path too", async () => {
   const seen: Notice[][] = [];
   telemetry.onRecalled = (hits) => seen.push(hits);
 
+  // #542: HookRecallEvent grew several required fields unrelated to what
+  // this test checks (onRecalled firing off surfaced hits) — neutral values.
   await telemetry.logHookRecall({
     recall_id: "h1",
     query: "q",
+    topics: [],
+    tool_name: null,
+    project: null,
+    k: 2,
+    scope: null,
+    type: null,
+    vault_size: 0,
+    hit_count: 2,
+    top_score: 88,
+    latency_ms_recall: 0,
+    latency_ms_total: 0,
     hits: [hit("x", 88), hit("y", 77)],
   });
 

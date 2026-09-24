@@ -131,3 +131,20 @@ test("#62: an empty and a malformed body keep their existing verdicts", async ()
     await route.close();
   }
 });
+
+test("#62: a body of EXACTLY the limit is inside it — the limit is inclusive", async () => {
+  // `total > maxBytes` refuses; flipping it to `>=` left every test above green (night 09-22):
+  // nothing sent a body of exactly maxBytes. Pin both sides of the boundary.
+  const limit = 1000;
+  const route = await startRoute(limit);
+  try {
+    const exact = `{"pad":"${"x".repeat(limit - 10)}"}`;
+    assert.equal(Buffer.byteLength(exact), limit);
+    const ok = await fetch(`http://127.0.0.1:${route.port}/x`, { method: "POST", body: exact });
+    assert.equal(ok.status, 200, "exactly maxBytes must be accepted");
+    const over = await fetch(`http://127.0.0.1:${route.port}/x`, { method: "POST", body: exact + " " });
+    assert.equal(over.status, 400, "maxBytes + 1 must be refused");
+  } finally {
+    await route.close();
+  }
+});

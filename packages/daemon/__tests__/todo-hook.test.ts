@@ -19,7 +19,7 @@ import {
   formatHintBlock,
   runTodoLane,
   type RecallHit,
-} from "../src/todo-lane.ts";
+} from "../src/todo-lane.js";
 
 // ─── Pure unit tests ─────────────────────────────────────────────────────
 

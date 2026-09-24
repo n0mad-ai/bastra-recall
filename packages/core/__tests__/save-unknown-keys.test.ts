@@ -26,8 +26,8 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import matter from "gray-matter";
 import { saveMemory } from "../src/save.js";
-import { SAVE_MANAGED_FRONTMATTER_KEYS } from "../src/save-frontmatter.js";
-import type { SaveMemoryInput } from "../src/save.js";
+import { SAVE_MANAGED_FRONTMATTER_KEYS, buildFrontmatter } from "../src/save-frontmatter.js";
+import type { SaveMemoryInput } from "../src/save-schema.js";
 
 const base = (over: Partial<SaveMemoryInput> = {}): SaveMemoryInput =>
   ({
@@ -169,4 +169,44 @@ test("der Durchreiche-Schritt prüft fremde Werte nicht — auch nicht auf Typ",
   const fm = matter(await readFile(file, "utf8")).data;
   assert.equal(fm.tags_de, "kein Array");
   assert.equal(fm.leer, "", "ein leerer String ist ein Wert, kein fehlendes Feld");
+});
+
+test("jedes Feld, das der Save in `fm` schreibt, steht in SAVE_MANAGED_FRONTMATTER_KEYS", () => {
+  // The pass-through loop has a second guard, `key in fm`, for a managed field someone adds to
+  // `fm` and forgets to list. No fixture can reach it (night 09-22: deleting it kept all tests
+  // green) — so the drift it defends against is closed here instead: a save that fills EVERY
+  // field it knows (a bookmark, over a file where each optional field is already set) must write
+  // exactly the managed list — no key more, no key less. Asserted on `buildFrontmatter`'s
+  // output, not on its source text, so a reformat cannot move it.
+  const prev: Record<string, unknown> = {
+    aliases: ["runbook"],
+    recall_when_expanded: ["when shipping"],
+    recall_when_expanded_src: "d2q",
+    valid_until: "2027-01-01",
+    expires_after_days: 30,
+    last_reviewed_at: "2026-09-01",
+    stale_status: "fresh",
+    content_hash: "abc",
+    content_size: 5,
+    source: "the user, 2026-09-01",
+    replaces: "old-runbook",
+    siblings: ["deploy-checklist"],
+    verify_cmd: "npm test",
+    superseded_by: "new-runbook",
+    salience: 0.5,
+    emotion: "risk",
+    recall_mode: "reflex",
+    url: "https://example.org",
+    categories: ["ops"],
+    read_status: "unread",
+    og_image: "https://example.org/og.png",
+    source_app: "safari",
+    saved_at: "2026-09-01T00:00:00.000Z",
+  };
+  const { fm } = buildFrontmatter(base({ type: "bookmark" }), prev, "deploy-runbook", "testproj");
+  assert.deepEqual(
+    Object.keys(fm).sort(),
+    [...SAVE_MANAGED_FRONTMATTER_KEYS].sort(),
+    "a key written to fm but not listed is treated as foreign; a listed key missing here needs a value in `prev`",
+  );
 });

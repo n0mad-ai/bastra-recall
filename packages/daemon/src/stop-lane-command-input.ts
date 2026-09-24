@@ -20,6 +20,25 @@ export function claudeToolUseCommands(content: unknown): string[] {
   return out;
 }
 
+/**
+ * Claude Code: the files a turn read, from its `Read` tool_use blocks (#572).
+ * Absolute paths only — that is what the tool takes, and a relative one could
+ * not be placed in a repository without guessing the cwd of that moment.
+ */
+export function claudeToolUseReads(content: unknown): string[] {
+  if (!Array.isArray(content)) return [];
+  const out: string[] = [];
+  for (const c of content) {
+    if (!c || typeof c !== "object") continue;
+    const block = c as Record<string, unknown>;
+    if (block.type !== "tool_use" || block.name !== "Read") continue;
+    if (!block.input || typeof block.input !== "object") continue;
+    const path = (block.input as Record<string, unknown>).file_path;
+    if (typeof path === "string" && path.startsWith("/")) out.push(path);
+  }
+  return out;
+}
+
 /** Older Codex: function_call arguments are JSON with command or cmd. */
 export function codexFunctionCallCommands(payload: Record<string, unknown>): string[] {
   if (typeof payload.arguments !== "string") return [];

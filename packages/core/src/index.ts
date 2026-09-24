@@ -47,7 +47,14 @@ export type { BanterMode, BanterLang } from "./recall-banter.js";
 
 export { saveMemory, deleteMemoryFile } from "./save.js";
 export type { DeleteMemoryResult } from "./save.js";
-export { SaveMemoryInput, MemoryWriteConflictError, MEMORY_WRITE_CONFLICT } from "./save-schema.js";
+export {
+  SaveMemoryInput,
+  MemoryWriteConflictError,
+  MEMORY_WRITE_CONFLICT,
+  BodySentinelError,
+  BODY_SENTINEL_MIN_CHARS,
+  assertBodyTail,
+} from "./save-schema.js";
 export type { SaveMemoryResult, SaveMemoryCommitOptions } from "./save-schema.js";
 export {
   slugify,
@@ -202,7 +209,7 @@ export type {
 } from "./embeddings.js";
 export { PROVIDER_COLD_LOAD_MS } from "./embeddings.js";
 
-export { EmbedCache, hashEmbedContent } from "./embed-cache.js";
+export { EmbedCache, embedBody, hashEmbedContent } from "./embed-cache.js";
 export type { EmbedCacheEntry, EmbedCacheFile } from "./embed-cache.js";
 
 export { RelatedEnricher } from "./related-enrich.js";

@@ -95,7 +95,9 @@ const MEM: Record<string, MemoryInfo> = {
 const getInfo = (id: string): MemoryInfo | null => MEM[id] ?? null;
 
 test("harvestFarBridges mints when the reranker rescues a LOW-ranked candidate", async () => {
-  const pools = [{ query: "warum schließt sich mein Panel beim Dialog", pool: [{ id: "wrong", score: 80 }, { id: "right", score: 12 }], topScore: 80 }];
+  // #542: scoreKind null = "the event didn't say" (see CandidatePoolEntry) —
+  // exactly what these hand-built fixtures are.
+  const pools = [{ query: "warum schließt sich mein Panel beim Dialog", pool: [{ id: "wrong", score: 80 }, { id: "right", score: 12 }], topScore: 80, scoreKind: null }];
   const chat: ChatFn = async () => "2"; // picks candidate 2 = "right" (rank 2)
   const r = await harvestFarBridges(pools, getInfo, chat, { maxScore: 100 });
   assert.equal(r.judged, 1);
@@ -105,7 +107,7 @@ test("harvestFarBridges mints when the reranker rescues a LOW-ranked candidate",
 });
 
 test("harvestFarBridges skips a confident hit (top_score >= maxScore) — not a far case", async () => {
-  const pools = [{ query: "warum schließt das Panel", pool: [{ id: "right", score: 160 }, { id: "wrong", score: 12 }], topScore: 160 }];
+  const pools = [{ query: "warum schließt das Panel", pool: [{ id: "right", score: 160 }, { id: "wrong", score: 12 }], topScore: 160, scoreKind: null }];
   let called = 0;
   const chat: ChatFn = async () => { called++; return "1"; };
   const r = await harvestFarBridges(pools, getInfo, chat, { maxScore: 100 });
@@ -114,7 +116,7 @@ test("harvestFarBridges skips a confident hit (top_score >= maxScore) — not a 
 });
 
 test("harvestFarBridges does not mint when the reranker keeps the top candidate (no rescue)", async () => {
-  const pools = [{ query: "warum schließt sich mein Panel beim Dialog", pool: [{ id: "right", score: 80 }, { id: "wrong", score: 12 }], topScore: 80 }];
+  const pools = [{ query: "warum schließt sich mein Panel beim Dialog", pool: [{ id: "right", score: 80 }, { id: "wrong", score: 12 }], topScore: 80, scoreKind: null }];
   const chat: ChatFn = async () => "1"; // keeps rank 1 → no far rescue
   const r = await harvestFarBridges(pools, getInfo, chat, { maxScore: 100 });
   assert.equal(r.judged, 1);
@@ -126,6 +128,7 @@ test("harvestFarBridges respects the maxJudge budget", async () => {
     query: `warum schließt sich mein Panel nummer ${i}`,
     pool: [{ id: "wrong", score: 80 }, { id: "right", score: 12 }],
     topScore: 80,
+    scoreKind: null,
   }));
   let called = 0;
   const chat: ChatFn = async () => { called++; return "0"; };

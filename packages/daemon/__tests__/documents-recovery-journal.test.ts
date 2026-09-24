@@ -51,11 +51,14 @@ const BASE = {
 } as const;
 
 type SaveArgs = Parameters<typeof saveDocument>[1];
+// #542: BASE is `as const`, so its `tags` is a readonly tuple — that no
+// longer overlaps SaveArgs enough for a direct cast. Via `unknown` first,
+// same as TS's own suggestion.
 
 async function savedDoc(dir: string, vault: Vault) {
   const src = join(dir, "Police.pdf");
   await writeFile(src, "POLICE-V1", "utf8");
-  return saveDocument(vault, { ...BASE, original_path: src } as SaveArgs);
+  return saveDocument(vault, { ...BASE, original_path: src } as unknown as SaveArgs);
 }
 
 // ── 1. schreiben und quittieren ─────────────────────────────────
@@ -150,7 +153,7 @@ test("geglückte Dokument-Operationen hinterlassen keinen offenen Eintrag", asyn
   // zweiteilige Operation, nur ohne Ordnerwechsel.
   const src = join(dir, "Police.pdf");
   await writeFile(src, "POLICE-V2", "utf8");
-  await saveDocument(vault, { ...BASE, original_path: src, overwrite: true } as SaveArgs);
+  await saveDocument(vault, { ...BASE, original_path: src, overwrite: true } as unknown as SaveArgs);
   assert.deepEqual(await readOpenRecoveryEntries(dir), [], "der Overwrite quittiert");
 
   await moveDocument(vault, { id: doc.id, folder_path: "neu" });
@@ -221,4 +224,25 @@ test("ein Move, dessen Rollback an einer fremden Datei scheitert, lässt den Ein
     open[0].steps.some((s) => s.to.endsWith(join("documents", "neu", "Police.pdf.md"))),
     "der Eintrag nennt den Sidecar-Move",
   );
+});
+
+test("ein Eintrag mit gültiger operation_id, aber ohne steps-Array, gilt nicht als offen", async (t) => {
+  // Dropping `Array.isArray(parsed?.steps)` from the validation left all tests green (night 09-22):
+  // no fixture wrote a well-formed-but-wrong-shape entry. A recovery step list that is not a list
+  // would send the rollback into `for (const step of undefined)`.
+  const { dir } = await harness(t);
+  const handle = await openRecoveryJournal(dir, {
+    op: "move_document",
+    id: "doc-shape",
+    steps: [{ from: join(dir, "a", "x.pdf"), to: join(dir, "b", "x.pdf") }],
+  });
+  const vaultRoot = dir;
+  const journal = join(vaultRoot, ".bastra", "recovery");
+  const names = readdirSync(journal).filter((n) => n.endsWith(".json"));
+  assert.equal(names.length, 1);
+  const bad = JSON.parse(await readFile(join(journal, names[0]), "utf8")) as Record<string, unknown>;
+  bad.steps = "not-a-list";
+  writeFileSync(join(journal, names[0]), JSON.stringify(bad));
+  assert.deepEqual(await readOpenRecoveryEntries(dir), [], "steps must be an array to count as open");
+  await handle.acknowledge();
 });

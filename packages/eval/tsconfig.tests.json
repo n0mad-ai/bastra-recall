@@ -1,0 +1,9 @@
+{
+  "$comment": "Type-checking for the test tree (#542). Tests are not BUILT — eval's own tsconfig already has noEmit: true, so nothing changes about the build. What this adds is a guard: a test file that drifts from the types it exercises now fails `npm run check:types` instead of silently going stale. `src` is included alongside `__tests__` so the tests type-check against the real signatures, not a stray copy.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "../.."
+  },
+  "include": ["src/**/*.ts", "__tests__/**/*.ts"],
+  "exclude": ["node_modules"]
+}

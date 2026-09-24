@@ -356,6 +356,7 @@ test("das Delete-Audit beschreibt die Datei auf der PLATTE, nicht den Cache-Stan
       vault, auditLog, vaultRoot: root, memoryID: "doomed", context: { actor: "user" },
     });
 
+    assert.ok(out.audit, "audit is null only when logging itself failed"); // #542
     assert.equal(
       (out.audit.diff_before as Record<string, unknown>).summary,
       "extern geaendert",

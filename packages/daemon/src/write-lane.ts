@@ -30,15 +30,18 @@ import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane } from "./scope-filter.js";
 import { fileSizeNote } from "./file-size-check.js";
-import { impactNote, type ImpactNote } from "./code-graph/impact-block.js";
+import { impactNote, type ImpactNote, type ImpactResult } from "./code-graph/impact-block.js";
 import { appliesToNote, type AppliesToNote } from "./code-graph/applies-to-note.js";
 import { laneRepoRoot } from "./code-graph/git-paths.js";
+import { codeGraphCache, repoRelative } from "./code-graph/dependents-block.js";
 import { logDeliveredBlock } from "./code-delivered-telemetry.js";
 import { memoryLocationNote } from "./memory-location.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookClient } from "./hook-surface.js";
+import { hookClient, hookClientEvidence, type HookClientEvidence } from "./hook-surface.js";
+import { dimensionsFrom } from "./telemetry-dimensions.js";
 import {
   bumpShown,
+  recordTouched,
   cleanupOldStates,
   decideBackoff,
   getLoadedMarkerMtime,
@@ -128,6 +131,9 @@ export async function runWriteLane(
 ): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
+  // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
+  // der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback.
+  const clientEvidence = hookClientEvidence(payload);
 
   if (payload.hook_event_name !== "PreToolUse") return "{}";
   const toolName = payload.tool_name ?? "";
@@ -276,7 +282,7 @@ export async function runWriteLane(
           toolName,
           toolInput,
           session: sessionState,
-        }).catch(() => ({ note: null, dedupeHit: false })),
+        }).catch((): ImpactResult => ({ note: null, dedupeHit: false })),
         appliesToNote({ filePath: target, repoRoot, session: sessionState }).catch(() => null),
       ]);
       return { repoRoot, impact, applies };
@@ -310,6 +316,45 @@ export async function runWriteLane(
   for (const n of [...codeNotes, ...memoryCodeNotes]) {
     const key = n.dedupeKey;
     stateDeltas.push((s) => bumpShown(s, key, Date.now()));
+  }
+  // #572: book what this call is about to write, block or no block. The
+  // per-edit answer above dedupes by design, so the session-wide union can
+  // only come from an accumulator — the Stop lane reads it at the task
+  // boundary. Booked WITH the dependents of this moment: the watcher reindexes
+  // after the edit, and the next graph no longer knows who called a symbol
+  // this edit removed.
+  perTarget.forEach((t, i) => {
+    const repoRoot = t.repoRoot;
+    const booking = t.impact.booking;
+    if (booking === undefined) {
+      // The impact module never reached the file — a tool it cannot read a
+      // change out of, or it threw. The write happens anyway, so it is booked
+      // unplaced rather than not at all. (NotebookEdit used to be the example
+      // here, and it was the wrong one: it names its target `notebook_path`,
+      // so the lane returned before this line ever ran. `hook-write-input.ts`
+      // normalizes it now.)
+      const rel = repoRelative(repoRoot, targets[i]!);
+      if (rel !== null && codeGraphCache().allows(repoRoot)) {
+        stateDeltas.push((s) => recordTouched(s, repoRoot, rel, null));
+      }
+      return;
+    }
+    // A dedupe hit books no hits on the claim that the delivery it repeats
+    // already booked them. That holds only if this session HAS such an entry;
+    // a `shown` counter without one (state written before #572) proves
+    // nothing, and the edit is booked as one the lane could not look at.
+    const vouched = sessionState.touched?.get(repoRoot)?.get(booking.file) !== undefined;
+    const hits = t.impact.dedupeHit && !vouched ? null : booking.hits;
+    stateDeltas.push((s) => recordTouched(s, repoRoot, booking.file, hits, booking.truncated));
+  });
+  // Targets past MAX_CODE_TARGETS get no impact block (#584's cap), but they
+  // are written all the same. Booked unplaced, so the boundary neither loses
+  // them nor counts their dependents as forgotten files.
+  for (const target of uncappedTargets(toolInput, filePath, cwd).slice(targets.length)) {
+    const repoRoot = laneRepoRoot(target, cwd);
+    const rel = repoRelative(repoRoot, target);
+    if (rel === null || !codeGraphCache().allows(repoRoot)) continue;
+    stateDeltas.push((s) => recordTouched(s, repoRoot, rel, null));
   }
 
   const detNote =
@@ -445,6 +490,7 @@ export async function runWriteLane(
   recordBudgetShadow(sessionId || null, "hook_call", hintTokensEst);
   await writeTelemetry({
     session_id: sessionId || null,
+    client: clientEvidence,
     tool_name: toolName,
     file_path: filePath,
     topics: topics.topics,
@@ -650,6 +696,9 @@ function postRecall(
 
 interface HookCallTelemetry {
   session_id: string | null;
+  /** #507: die aufrufende Oberfläche — NUR wenn belegt (`hookClientEvidence`),
+   *  nie der surface-Default. */
+  client: HookClientEvidence;
   tool_name: string;
   file_path: string | null;
   topics: string[];
@@ -719,13 +768,18 @@ async function writeTelemetry(payload: HookCallTelemetry): Promise<void> {
     const ts = new Date().toISOString();
     // The session_id from the Claude payload is real session state — fall
     // back to a synthetic UUID only if no payload session was given.
-    const { session_id: payloadSessionId, ...rest } = payload;
+    const { session_id: payloadSessionId, client, ...rest } = payload;
     const event = {
       kind: "hook_call",
       ts,
       session_id: payloadSessionId ?? randomUUID(),
       hook_version: HOOK_VERSION,
       ...rest,
+      // #507: pre-tool is this lane's own hook_source — it never varies per
+      // call, unlike client, which the caller already resolved from the
+      // payload (`hookClient`, same value the hint block's surface attribute
+      // uses).
+      dimensions: dimensionsFrom({ client, hook_source: "pre-tool", session_id: payloadSessionId }),
     };
     const file = join(logDir, `events-${ts.slice(0, 10)}.jsonl`);
     await appendFile(file, JSON.stringify(event) + "\n", "utf8");
@@ -747,6 +801,11 @@ export const MAX_CODE_TARGETS = 4;
  * against the session's `cwd`, which is what they are relative to.
  */
 export function codeTargets(toolInput: Record<string, unknown>, filePath: string, cwd: string): string[] {
+  return uncappedTargets(toolInput, filePath, cwd).slice(0, MAX_CODE_TARGETS);
+}
+
+/** Every target of the call, in order. `codeTargets` is its first four. */
+function uncappedTargets(toolInput: Record<string, unknown>, filePath: string, cwd: string): string[] {
   const listed = Array.isArray(toolInput.file_paths)
     ? toolInput.file_paths.filter((p): p is string => typeof p === "string" && p.length > 0)
     : [];
@@ -754,7 +813,6 @@ export function codeTargets(toolInput: Record<string, unknown>, filePath: string
   const seen = new Set<string>();
   for (const p of all) {
     seen.add(isAbsolute(p) ? p : resolve(cwd, p));
-    if (seen.size >= MAX_CODE_TARGETS) break;
   }
   return [...seen];
 }

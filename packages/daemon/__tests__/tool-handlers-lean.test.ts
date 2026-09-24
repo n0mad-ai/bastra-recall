@@ -282,6 +282,9 @@ test("save_memory: injection markers in captured content surface as advisory, sa
       recall_when: ["about to design a rollback pipeline for deployments"],
     });
     assert.ok(res.id, "flag, never block — the save goes through");
+    // #542: save_quality is absent only on a #205 conflict diversion; this is
+    // a plain (flagged) save.
+    assert.ok(res.save_quality);
     assert.ok(
       res.save_quality.issues.some((issue) => issue.includes("prompt-injection markers")),
       "advisory surfaces in save_quality issues",
@@ -308,6 +311,7 @@ test("save_memory returns advisory save_quality with low score for generic trigg
       scope: "lean-test",
       recall_when: ["css", "swift"],
     });
+    assert.ok(res.save_quality); // #542: absent only on a conflict diversion
     assert.equal(res.save_quality.band, "low");
     assert.ok(res.save_quality.score < 50, `expected low score, got ${res.save_quality.score}`);
     assert.ok(
@@ -333,6 +337,7 @@ test("save_memory admission rules (#159): negative claim without fix + imperativ
       scope: "lean-test",
       recall_when: ["about to start a capture run in the flaky panel environment"],
     });
+    assert.ok(res.save_quality); // #542: absent only on a conflict diversion
     assert.ok(
       res.save_quality.issues.some((i) => i.includes("negative capability claim")),
       "broken-claim without a fix should be flagged",
@@ -353,6 +358,7 @@ test("save_memory admission rules (#159): negative claim without fix + imperativ
       scope: "lean-test",
       recall_when: ["chrome extension refuses connections during capture setup"],
     });
+    assert.ok(fixed.save_quality); // #542: absent only on a conflict diversion
     assert.ok(
       !fixed.save_quality.issues.some((i) => i.includes("negative capability claim")),
       "captured fix must not be flagged",
@@ -379,6 +385,7 @@ test("save_memory save_quality does not surface private duplicate candidates by 
       scope: "lean-test",
       recall_when: ["checkout button focus private leak"],
     });
+    assert.ok(res.save_quality); // #542: absent only on a conflict diversion
     assert.deepEqual(res.save_quality.duplicate_candidates, []);
     assert.deepEqual(res.save_quality.trigger_collisions, []);
   } finally {
@@ -442,6 +449,7 @@ test("save_quality (#108, criterion replaced in #300): weak grazing matches don'
       scope: "collision-test",
       recall_when: ["tuning the flux capacitor drift", weakTrigger],
     });
+    assert.ok(res.save_quality); // #542: absent only on a conflict diversion
     const collidingTriggers = res.save_quality.trigger_collisions.map((c) => c.trigger);
     assert.ok(collidingTriggers.includes("tuning the flux capacitor drift"), "real recall_when overlap must still be reported");
     assert.ok(!collidingTriggers.includes(weakTrigger), "below-floor grazing matches must NOT count as collisions");
@@ -495,14 +503,17 @@ test("commons fusion: recall merges read-only commons hits (scope commons, dampe
     const deps: ToolDeps = { vault, search, telemetry: new Telemetry(), vaultPath: dirP, commonsSearch };
 
     // 1. Commons-Rezept wird gefunden und trägt scope "commons".
+    // #542: RecallResult.hits is `unknown[]` — cast to what fused recall
+    // actually returns (id + scope) for this fixture.
     const res = await recallHandler(deps, { query: "button spinner clipped width jumps", k: 5 });
-    const recipeHit = res.hits.find((h) => h.id === "spinner-recipe");
+    const hits = res.hits as Array<{ id: string; scope: string }>;
+    const recipeHit = hits.find((h) => h.id === "spinner-recipe");
     assert.ok(recipeHit, "commons recipe must surface in fused recall");
     assert.equal(recipeHit.scope, "commons");
 
     // 2. ID-Kollision: nur EIN own-note-Hit, und zwar der persönliche.
     const res2 = await recallHandler(deps, { query: "flux compensator drift tuning", k: 5 });
-    const ownHits = res2.hits.filter((h) => h.id === "own-note");
+    const ownHits = (res2.hits as Array<{ id: string; scope: string }>).filter((h) => h.id === "own-note");
     assert.equal(ownHits.length, 1, "id collision must not produce duplicates");
     assert.equal(ownHits[0].scope, "personal", "personal memory wins the collision");
 
@@ -536,6 +547,7 @@ test("save_memory returns high save_quality for specific anchored triggers", asy
         "debugging missing focus ring in checkout flow",
       ],
     });
+    assert.ok(res.save_quality); // #542: absent only on a conflict diversion
     assert.equal(res.save_quality.band, "high");
     assert.ok(res.save_quality.score >= 80, `expected high score, got ${res.save_quality.score}`);
     assert.deepEqual(res.save_quality.issues, []);
@@ -551,8 +563,10 @@ test("save_memory returns high save_quality for specific anchored triggers", asy
 // only, conservative (fires only on a confident "en" detection).
 test("save_quality (#231): recall_when language-mismatch advisory is conservative", async () => {
   const { deps, close } = await makeDeps();
+  // #542: save_quality is absent only on a conflict diversion — no advisory
+  // there, so no lang-mismatch hint either.
   const hasLangHint = (r: Awaited<ReturnType<typeof saveMemoryHandler>>): boolean =>
-    r.save_quality.issues.some((i) => i.includes("reads as English"));
+    r.save_quality?.issues.some((i) => i.includes("reads as English")) ?? false;
   try {
     // (a) primary=de + purely English recall_when → hint fires.
     deps.primaryLanguage = "de";

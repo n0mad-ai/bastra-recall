@@ -74,7 +74,7 @@ export const COMMAND_FLAGS: Record<string, readonly string[]> = {
   rules: ["--dry-run"],
   patches: [],
   completion: [],
-  logs: ["--follow", "-f", "--since", "--source", "--lines", "--stats"],
+  logs: ["--follow", "-f", "--since", "--source", "--lines", "--stats", "--include-eval"],
 };
 
 /** Every option the CLI knows at all — used to tell "unknown" from "misplaced". */

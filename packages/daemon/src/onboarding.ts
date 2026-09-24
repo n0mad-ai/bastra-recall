@@ -50,7 +50,7 @@ export const QUESTIONS: OnboardingQuestion[] = [
   {
     id: "identity",
     ask: "How should your AI address you — and in what language and tone?",
-    hint: "e.g. Daniel · German, informal · terse and technical",
+    hint: "e.g. Alex · German, informal · terse and technical",
     optional: false,
     personas: null,
   },

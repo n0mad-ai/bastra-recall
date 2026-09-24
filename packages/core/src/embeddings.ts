@@ -19,7 +19,7 @@ import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import type { Memory } from "./schema.js";
 import type { Vault, VaultEvent } from "./vault.js";
-import { EmbedCache, hashEmbedContent } from "./embed-cache.js";
+import { EmbedCache, embedBody, hashEmbedContent } from "./embed-cache.js";
 import { RRF_K, RRF_SCALE } from "./rrf.js";
 // #493: Die Provider stehen seit dem 800-Zeilen-Schnitt daneben. Re-exportiert,
 // damit jeder bestehende Import aus `embeddings.js` unverändert weiterläuft.
@@ -168,8 +168,18 @@ export class EmbeddingIndex {
       this.schedulePersist();
     }
     this.detach = this.vault.on((e) => this.handle(e));
+    // Fehlende Vektoren backfillen — und Vektoren, deren Cache-Eintrag einen
+    // anderen Content-Hash trägt: der Inhalt hat sich geändert, während kein
+    // Index lief, oder die Hash-Definition hat sich geändert (#631: seit die
+    // Auto-Related-Section nicht mehr eingeht, einmalig für jedes Memory mit
+    // Section). Ohne diesen Check stünde so ein Vektor, bis das Memory das
+    // nächste Mal geändert wird. Läuft über dieselbe Queue wie der Backfill,
+    // also in 50er-Batches im Hintergrund; bis dahin sucht der alte Vektor.
     for (const m of this.vault.list()) {
-      if (!this.vectors.has(m.fm.id)) this.pendingQueue.add(m.fm.id);
+      const id = m.fm.id;
+      if (!this.vectors.has(id) || this.cache.isStale(id, hashEmbedContent(m))) {
+        this.pendingQueue.add(id);
+      }
     }
     if (this.pendingQueue.size > 0) {
       console.error(
@@ -582,8 +592,8 @@ export class EmbeddingIndex {
 // ─── helpers ─────────────────────────────────────────────────────
 
 /** Baut den Text der ein Memory vector-mäßig repräsentiert. Title +
- *  Tags + recall_when + Summary + Body-Anfang. Body auf 4000 chars
- *  limitiert (Token-Budget). */
+ *  Tags + recall_when + Summary + Body-Anfang ohne Auto-Related-Section
+ *  (#631, siehe `embedBody`), auf 4000 chars limitiert (Token-Budget). */
 function buildEmbedText(m: Memory): string {
   const fm = m.fm;
   const parts = [
@@ -591,7 +601,7 @@ function buildEmbedText(m: Memory): string {
     fm.tags.join(" "),
     fm.recall_when.join(" "),
     fm.summary,
-    m.body.slice(0, 4000),
+    embedBody(m),
   ];
   return parts.filter((p) => p && p.length > 0).join("\n");
 }

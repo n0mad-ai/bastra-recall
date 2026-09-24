@@ -237,7 +237,18 @@ test("#437: the JSON/web telemetry report publishes no arm rate at all", () => {
 test("#437: `bastra logs --stats` publishes no arm rate either", () => {
   // Die zweite CLI-Fläche. Sie schlüsselt nach Lane auf, nicht nach Arm — und
   // darf es ohne die Mindest-N-Prüfung auch nicht tun.
-  const out = renderStats(aggregate(underpoweredLog() as never[]));
+  const out = renderStats(aggregate(underpoweredLog() as never[]), 600);
   assert.doesNotMatch(out, /wording_current|wording_variant/);
   assert.doesNotMatch(out, /\barm\b/i);
+});
+
+test("#437: exactly min-N sessions IS the min-N — evaluable, not one short of it", () => {
+  // The boundary the contract names: "below the min-N" is `<`, so n === minN clears it.
+  // Flipping `<` to `<=` in evaluateArms left every other test here green (night 09-22).
+  const events = Array.from({ length: 10 }, (_, i) => row("a", `s${i}`));
+  const arms = evaluateArms(events, { minN: 10, reportingRule: null, fallbackVerdict: null }, null);
+  assert.equal(arms.get("a")?.sessions, 10);
+  assert.equal(arms.get("a")?.evaluable, true, arms.get("a")?.why);
+  const short = evaluateArms(events.slice(0, 9), { minN: 10, reportingRule: null, fallbackVerdict: null }, null);
+  assert.equal(short.get("a")?.evaluable, false, "9 of 10 must still be NOT EVALUABLE");
 });

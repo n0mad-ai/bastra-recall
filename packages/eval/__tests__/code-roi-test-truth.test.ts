@@ -19,7 +19,6 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// @ts-expect-error — plain .mjs measurement scripts, no declarations
 import {
   TRUTH_RULE,
   attribute,
@@ -34,7 +33,6 @@ import {
   truthPopulationHash,
   // @ts-expect-error — plain .mjs measurement scripts, no declarations
 } from "../code-roi/v2/test-truth.mjs";
-// @ts-expect-error — plain .mjs measurement scripts, no declarations
 import {
   brokenCases,
   confirmCases,
@@ -479,7 +477,7 @@ describe("delivered population: exclusions", () => {
     const ex = buildExclusions({ archives: [v2Archive, v4Archive], registration });
     // 3 + 2 scenarios collapse to 3 distinct files — "b.ts" repeats within and across archives.
     assert.equal(ex.sources.reduce((n: number, s: { scenarios: number }) => n + s.scenarios, 0), 5);
-    assert.deepEqual(ex.files.filter((f) => f !== "packages/pilot/x.ts").sort(), [
+    assert.deepEqual(ex.files.filter((f: any) => f !== "packages/pilot/x.ts").sort(), [
       "packages/bar/c.ts",
       "packages/foo/a.ts",
       "packages/foo/b.ts",

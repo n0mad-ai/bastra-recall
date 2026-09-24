@@ -73,7 +73,11 @@ function input(over: Partial<SaveMemoryInput> = {}): SaveMemoryInput {
 }
 
 /** Die Routing-Auskunft, die den echten Ort nicht kennt. */
-const blinderLocator = { locate: async () => ({ kind: "none" as const }) };
+// #542: MemoryLocator.locate is synchronous — an async version here silently
+// returned a Promise object (`.kind` always undefined), which happened to
+// take the same "continue" branch as a genuine "none" in save-target.ts, but
+// wasn't actually the {kind:"none"} the name promises.
+const blinderLocator = { locate: () => ({ kind: "none" as const }) };
 
 async function fixture(t: { after: (fn: () => unknown) => void }): Promise<{
   root: string;

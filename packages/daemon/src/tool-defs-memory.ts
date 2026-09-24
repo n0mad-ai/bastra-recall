@@ -490,7 +490,7 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
         source: {
           type: "string",
           description:
-            "Optional provenance, e.g. 'Daniel, 2026-05-01 after retro'.",
+            "Optional provenance, e.g. 'the user, 2026-05-01 after retro'.",
         },
         confidence: {
           type: "number",
@@ -546,6 +546,11 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
             "consolidation). Omit otherwise: 'agent-session' is the default " +
             "for autonomous saves. On overwrite without this field, the " +
             "existing provenance is preserved.",
+        },
+        body_ends_with: {
+          type: "string",
+          description:
+            "Optional: the last ~40 characters of `body`, copied verbatim — if the body arrives truncated the save fails with nothing written (#544).",
         },
       },
       required: [

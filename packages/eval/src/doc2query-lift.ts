@@ -57,6 +57,7 @@ import {
   SearchIndex,
   EmbeddingIndex,
   OllamaEmbeddingProvider,
+  stripAutoRelatedSection,
   type RecallHit,
   type Memory,
 } from "@bastra-recall/core";
@@ -105,7 +106,8 @@ function embedTextFor(m: Memory, expansion: string[]): string {
     fm.tags.join(" "),
     // recall_when intentionally omitted (held out in all arms)
     fm.summary,
-    m.body.slice(0, 4000),
+    // #631: production strips the Auto-Related section before the 4000 cut.
+    stripAutoRelatedSection(m.body).trimEnd().slice(0, 4000),
     expansion.join(" "), // empty unless --embed-expansion
   ];
   return parts.filter((p) => p && p.length > 0).join("\n");

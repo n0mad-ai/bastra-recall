@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { Vault } from "../src/vault.js";
@@ -373,6 +373,81 @@ body host
     // Zweiter Lauf: nichts mehr zu tun, kein Endlos-Rewrite.
     assert.equal(await enricher.enrich("host"), null);
     assert.equal(await readFile(path.join(dir, "host.md"), "utf8"), raw);
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+/**
+ * #341: Die Anreicherung schreibt nur abgeleitete Daten — `related_via` und
+ * die markierte Auto-Section. Der authored body (alles außerhalb der Marker)
+ * bleibt byte-gleich, also muss die Datei ihre mtime behalten: iCloud, Google
+ * Drive und Dropbox entscheiden Konflikte danach, und eine angereicherte Kopie
+ * darf keine vom Menschen editierte Kopie überstimmen.
+ */
+test("#341: enrich behält die mtime und der Index sieht die Anreicherung trotzdem", async () => {
+  const { dir, vault } = await vaultWith(["a", "b"]);
+  try {
+    const file = path.join(dir, "a.md");
+    const when = new Date(Date.now() - 3_600_000);
+    await utimes(file, when, when);
+    const before = (await stat(file)).mtimeMs;
+
+    const { index } = stubEmbeddings([{ id: "b", score: 0.85 }]);
+    assert.ok(await new RelatedEnricher(vault, index).enrich("a"));
+
+    assert.match(await readFile(file, "utf8"), /- \[\[b\]\] \(cosine 0\.85\)/);
+    assert.equal((await stat(file)).mtimeMs, before, "mtime unverändert");
+    assert.equal(
+      (vault.get("a")?.fm as { related_via?: { id: string }[] }).related_via?.[0]?.id,
+      "b",
+      "der schreibende Prozess hat selbst reindiziert",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("#631: two candidates within ε of the last slot do not alternate — the file settles after one write", async () => {
+  const { dir, vault } = await vaultWith(["a", "b", "x", "y"]);
+  try {
+    const { stub, index } = stubEmbeddings([
+      { id: "b", score: 0.9 },
+      { id: "x", score: 0.789 },
+      { id: "y", score: 0.78 },
+    ]);
+    const enricher = new RelatedEnricher(vault, index, { topN: 2 });
+    assert.ok(await enricher.enrich("a"), "first pass writes");
+    const settled = await readFile(path.join(dir, "a.md"), "utf8");
+    assert.match(settled, /\[\[x\]\]/);
+
+    // Der Live-Fall: bei jedem Pass liegt der jeweils andere knapp vorn.
+    for (let i = 0; i < 4; i++) {
+      stub.current =
+        i % 2 === 0
+          ? [{ id: "b", score: 0.9 }, { id: "y", score: 0.789 }, { id: "x", score: 0.78 }]
+          : [{ id: "b", score: 0.9 }, { id: "x", score: 0.789 }, { id: "y", score: 0.78 }];
+      assert.equal(await enricher.enrich("a"), null, `pass ${i} must not write`);
+    }
+    assert.equal(await readFile(path.join(dir, "a.md"), "utf8"), settled);
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("#631: a challenger that leads by more than ε still displaces the incumbent", async () => {
+  const { dir, vault } = await vaultWith(["a", "b", "x", "y"]);
+  try {
+    const { stub, index } = stubEmbeddings([
+      { id: "b", score: 0.9 },
+      { id: "x", score: 0.8 },
+      { id: "y", score: 0.75 },
+    ]);
+    const enricher = new RelatedEnricher(vault, index, { topN: 2 });
+    await enricher.enrich("a");
+    stub.current = [{ id: "b", score: 0.9 }, { id: "y", score: 0.83 }, { id: "x", score: 0.8 }];
+    const written = await enricher.enrich("a");
+    assert.deepEqual(written?.map((e) => e.id), ["b", "y"]);
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }

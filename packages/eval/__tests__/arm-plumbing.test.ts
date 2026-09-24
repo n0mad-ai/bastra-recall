@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -27,8 +27,10 @@ const EVAL_DIR = resolve(import.meta.dirname, "..");
 const SCRIPT = join(EVAL_DIR, "src", "persona-lift.ts");
 const FIXTURE_VAULT = join(EVAL_DIR, "fixtures", "eval-vault");
 
-/** Run the persona-lift CLI against the synthetic fixture vault. */
-function runCli(args: string[]): ReturnType<typeof spawnSync<string>> {
+/** Run the persona-lift CLI against the synthetic fixture vault.
+ *  #542: `typeof spawnSync<string>` isn't valid — spawnSync is overloaded,
+ *  not generic, so its type can't take a type argument this way. */
+function runCli(args: string[]): SpawnSyncReturns<string> {
   return spawnSync(process.execPath, ["--import", "tsx", SCRIPT, ...args], {
     cwd: EVAL_DIR,
     encoding: "utf8",

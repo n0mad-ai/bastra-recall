@@ -22,6 +22,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
+// @ts-expect-error — plain .mjs script, no declarations (#542).
 const { diffForTree, reverseUnifiedDiff } = await import("../code-roi/v2/diff-side.mjs");
 const { changedLines } = await import("../../daemon/src/code-graph/affected.js");
 

@@ -99,7 +99,7 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
       // Default window is wider: a per-lane rate needs days, not five minutes.
       if (args.stats) {
         const statsSince = args.since === null ? 7 * 86_400_000 : sinceMs;
-        return cmdLogStats({ sinceMs: statsSince });
+        return cmdLogStats({ sinceMs: statsSince, includeEval: args.includeEval });
       }
       return cmdLogs({ follow: args.follow, sinceMs, source, lines: Math.floor(lines) });
     }

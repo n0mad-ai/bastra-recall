@@ -63,7 +63,7 @@ No prior global npm installation is needed. Alternatively: `npm install -g bastr
 
 Restart your AI client after setup. Claude Desktop needs its [one-time memory setup](https://github.com/n0mad-ai/bastra-recall/wiki/Claude-Desktop); Codex users should review and trust the installed hooks as described in the [Codex guide](./docs/CODEX.md).
 
-Run `bastra doctor` to check the setup; `bastra doctor --fix` repairs registrations. [Other installation methods](./docs/INSTALL.md) cover the macOS download, source builds and manual configuration.
+Run `bastra doctor` to check the setup; `bastra doctor --fix` repairs registrations. Its **features** section lists which Recall features are on or off for you — memory language, onboarding, semantic recall, hooks and skill per client, and the opt-in extras — each off item with the command that turns it on. [Other installation methods](./docs/INSTALL.md) cover the macOS download, source builds and manual configuration.
 
 ### Try your first memory
 
@@ -194,7 +194,7 @@ Eine vorherige globale npm-Installation ist nicht nötig. Alternativ: `npm insta
 
 Starte deinen KI-Client nach der Einrichtung neu. Claude Desktop benötigt das [einmalige Memory-Setup](https://github.com/n0mad-ai/bastra-recall/wiki/Claude-Desktop); bei Codex prüfst und bestätigst du die installierten Hooks wie in der [Codex-Anleitung](./docs/CODEX.md) beschrieben.
 
-`bastra doctor` prüft die Einrichtung; `bastra doctor --fix` repariert Registrierungen. [Weitere Installationswege](./docs/INSTALL.md) erklären den macOS-Download, den Bau aus dem Quellcode und die manuelle Konfiguration.
+`bastra doctor` prüft die Einrichtung; `bastra doctor --fix` repariert Registrierungen. Der Abschnitt **features** zeigt, welche Recall-Funktionen bei dir an oder aus sind — Memory-Sprache, Onboarding, semantischer Recall, Hooks und Skill pro Client sowie die optionalen Extras — und nennt für jede ausgeschaltete den Befehl zum Einschalten. [Weitere Installationswege](./docs/INSTALL.md) erklären den macOS-Download, den Bau aus dem Quellcode und die manuelle Konfiguration.
 
 ### Probiere deine erste Erinnerung aus
 

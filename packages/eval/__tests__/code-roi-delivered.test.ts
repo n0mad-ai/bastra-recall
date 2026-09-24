@@ -42,12 +42,16 @@ const {
   excludedPilotCommitsOf,
   loadRegistrationById,
   resolveRegistrationId,
+  // @ts-expect-error — plain .mjs script, no declarations (#542).
 } = await import("../code-roi/v2/registration.mjs");
+// @ts-expect-error — plain .mjs script, no declarations (#542).
 const { ARMS } = await import("../code-roi/v2/run-arms-v3.mjs");
 const { blockUse, blindSpotOf, blindSpotReport, judge } = await import(
+  // @ts-expect-error — plain .mjs script, no declarations (#542).
   "../code-roi/v2/evaluate-delivered.mjs"
 );
 const { checkBuildPin, frozenSurfaceMismatches, frozenSurfaceOf, preflightBuild } = await import(
+  // @ts-expect-error — plain .mjs script, no declarations (#542).
   "../code-roi/v2/build-pin.mjs"
 );
 
@@ -329,7 +333,9 @@ describe("arm D is rendered by the product's prompt lane", () => {
   }
 
   test("the registered question reaches the intent gate even when the diff exceeds its 4k scan cap", async () => {
+    // @ts-expect-error — plain .mjs script, no declarations (#542).
     const { promptFor } = await import("../code-roi/v2/run-arms.mjs");
+    // @ts-expect-error — compiled script, no declarations (#542).
     const { changeImpactIntent } = await import("../../daemon/dist/code-graph/impact-intent.js");
     const prompt = promptFor({
       file: FILE_A,
@@ -343,8 +349,10 @@ describe("arm D is rendered by the product's prompt lane", () => {
 
   test("the block narrows to the symbol the prompt names, through the real intent gate", async () => {
     const { deliveredBlockFor, promptWithDeliveredBlock } = await import(
+      // @ts-expect-error — plain .mjs script, no declarations (#542).
       "../code-roi/v2/delivered-block.mjs"
     );
+    // @ts-expect-error — compiled script, no declarations (#542).
     const { MAX_IMPACT_FILES } = await import("../../daemon/dist/code-graph/impact-block.js");
     const { tree, graphRoot } = await fixture();
     try {
@@ -385,6 +393,7 @@ describe("arm D is rendered by the product's prompt lane", () => {
   });
 
   test("a file-only impact question gets the prompt lane's honest whole-file answer", async () => {
+    // @ts-expect-error — plain .mjs script, no declarations (#542).
     const { deliveredBlockFor } = await import("../code-roi/v2/delivered-block.mjs");
     const { tree, graphRoot } = await fixture();
     try {
@@ -404,8 +413,10 @@ describe("arm D is rendered by the product's prompt lane", () => {
   });
 
   test("a candidate the graph knows no line for is still a file the block PRINTED", async () => {
+    // @ts-expect-error — plain .mjs script, no declarations (#542).
     const { listedFilesOf } = await import("../code-roi/v2/delivered-block.mjs");
     const { displayOrder, renderImpactBlock } = await import(
+      // @ts-expect-error — compiled script (no source .d.ts checked here), no declarations (#542).
       "../../daemon/dist/code-graph/impact-block.js"
     );
     // A PACKAGE_IMPORT hit is `location: importer` — no `:line` (affected.ts),
@@ -442,7 +453,9 @@ describe("arm D is rendered by the product's prompt lane", () => {
   });
 
   test("the trailing lines of the block are not read as candidates", async () => {
+    // @ts-expect-error — plain .mjs script, no declarations (#542).
     const { listedFilesOf } = await import("../code-roi/v2/delivered-block.mjs");
+    // @ts-expect-error — compiled script, no declarations (#542).
     const { renderImpactBlock } = await import("../../daemon/dist/code-graph/impact-block.js");
     // The "… and N more" line, the staleness sentence and the closing caveat
     // all live in the same body; only the candidate lines may be read out of it.
@@ -459,6 +472,7 @@ describe("arm D is rendered by the product's prompt lane", () => {
   });
 
   test("the kill switch aborts arm D instead of being measured as product silence", async () => {
+    // @ts-expect-error — plain .mjs script, no declarations (#542).
     const { deliveredBlockFor } = await import("../code-roi/v2/delivered-block.mjs");
     const { tree, graphRoot } = await fixture();
     const before = process.env.BASTRA_CODE_AWARENESS;
@@ -484,6 +498,7 @@ describe("arm D is rendered by the product's prompt lane", () => {
 
   test("a file the graph does not index is silence, not an empty block", async () => {
     const { deliveredBlockFor, promptWithDeliveredBlock } = await import(
+      // @ts-expect-error — plain .mjs script, no declarations (#542).
       "../code-roi/v2/delivered-block.mjs"
     );
     const { tree, graphRoot } = await fixture();

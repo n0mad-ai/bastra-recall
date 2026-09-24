@@ -46,7 +46,8 @@ import { GATE_LANE_BY_KIND } from "../../src/cli/log-stats.js";
 import { CLIENT_ROW_BASE, type ClientLane } from "../../src/hook-client-telemetry.js";
 // The digest rule lives with the build script that stamps it, so the guard and
 // the build can never disagree about what "the stub's sources" means.
-import { stubSourceDigest, stubSourceFiles, stubSourcesDirty } from "../../scripts/stub-source-digest.mjs";
+// @ts-expect-error — plain .mjs script, no declarations (#542).
+import { statuslineBundleDigest, stubSourceDigest, stubSourceFiles, stubSourcesDirty } from "../../scripts/stub-source-digest.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = resolve(HERE, "..", "..");
@@ -264,6 +265,14 @@ test("#546: a compiled binary says which sources it was built from", { skip: !de
     "the binary just built does not carry the digest of the sources it was built from — the staleness check below would be blind",
   );
   assert.equal(typeof info.built_at, "string", "the binary must record when it was built");
+  // #547: the statusline bundle ships inside this same binary, so the binary
+  // must also carry the digest of the bundle that went into it — otherwise a
+  // stale statusline in a fresh stub stays invisible to doctor.
+  assert.equal(
+    info.statusline_digest,
+    statuslineBundleDigest(),
+    "the binary just built does not carry the digest of the statusline bundle it embeds (#547)",
+  );
   assert.match(String(info.stub_version), /-stub$/);
 
   // Running from source is not a build, and must say so rather than claim a

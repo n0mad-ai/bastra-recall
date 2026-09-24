@@ -17,14 +17,16 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 const SCRIPT = resolve(import.meta.dirname, "..", "scripts", "eval-stress.ts");
 const FIXTURE_VAULT = resolve(import.meta.dirname, "..", "..", "eval", "fixtures", "eval-vault");
 
-function runStress(args: string[], env: Record<string, string>): ReturnType<typeof spawnSync<string>> {
+// #542: `typeof spawnSync<string>` isn't valid — spawnSync is overloaded, not
+// generic, so its type can't take a type argument this way.
+function runStress(args: string[], env: Record<string, string>): SpawnSyncReturns<string> {
   return spawnSync(process.execPath, ["--import", "tsx", SCRIPT, ...args], {
     encoding: "utf8",
     timeout: 120_000,

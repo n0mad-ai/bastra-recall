@@ -122,6 +122,28 @@ test("#373: session_hook_call carries the payload session_id, hook_version and t
   }
 });
 
+test("#507: session_hook_call carries client/hook_source in dimensions, so stats.ts can split by it", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "bastra-session-dims-"));
+  try {
+    await withDaemon(async (base) => {
+      await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir }, () =>
+        runSessionLane({ hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-507" }, base),
+      );
+    });
+    const ev = (await readEvents(logDir)).find((e) => e.kind === "session_hook_call");
+    assert.ok(ev, "a session_hook_call event must be written");
+    const dims = ev.dimensions as Record<string, unknown>;
+    // No bastra_client marker, no Codex tool name — the honest unknown, not
+    // hookClient's claude-code surface default (#507 Nachbesserung).
+    assert.equal(dims.client, "unknown");
+    // "session", not "session-context" — that value is the shared assembler's
+    // OWN marker for its sub-calls, a different hook_source in the allowlist.
+    assert.equal(dims.hook_source, "session");
+  } finally {
+    await rm(logDir, { recursive: true, force: true });
+  }
+});
+
 test("#373: without a payload session_id the row carries a synthetic UUID — fallback only", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "bastra-session-telemetry-uuid-"));
   try {

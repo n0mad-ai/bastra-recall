@@ -37,6 +37,8 @@ const results = JSON.parse(readFileSync(join(REG_DIR, "rerank-results.json"), "u
     floor_effect?: { cells_differing: number; cells_total: number; by_n: Record<string, number> };
     all_rows_ci_below_zero?: boolean;
     robustness?: { weak_result: { n: number } };
+    /** #542: present on control-figure runs — see rerank-longmemeval.ts. */
+    role?: string;
   }[];
 };
 const decision = loadRerankDecisionRegistration() as {
@@ -104,6 +106,7 @@ test("the floor effect is recorded with its N breakdown, not as a single claim",
 
 test("the control set is recorded as harmful and as carrying no recommendation", () => {
   assert.equal(lme.all_rows_ci_below_zero, true);
+  assert.ok(lme.role, "the control run must carry its role"); // #542
   assert.match(lme.role, /CONTROL FIGURE/);
   assert.match(lme.role, /no recommendation/);
 });

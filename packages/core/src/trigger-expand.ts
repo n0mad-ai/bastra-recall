@@ -345,6 +345,11 @@ async function rewriteFile(
           recall_when_expanded_src: srcHash,
         }),
         body: (content) => (content.startsWith("\n") ? content : `\n${content}`),
+        // #341: this pass writes frontmatter only — everything the user wrote
+        // stays byte-identical, so the file keeps its mtime and a sync layer's
+        // "newest wins" still points at the copy a human last edited. The
+        // leading blank line is gray-matter's formatting, not content.
+        authoredContent: (content) => content.replace(/^\n+/, ""),
       },
       { vaultRoot },
     );

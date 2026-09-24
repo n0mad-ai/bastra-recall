@@ -33,7 +33,7 @@ import { request } from "node:http";
 import { randomUUID } from "node:crypto";
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
-import { requiredHeadline, unfusedHeadline, CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
+import { requiredHeadline, unfusedHeadline, unfusedReasonFor, CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
 import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane, type ScopeFilterMode } from "./scope-filter.js";
 
 import { envFirst, envInt } from "./env.js";
@@ -43,9 +43,13 @@ import { recordBudgetShadow } from "./session-budget.js";
 import { claudeSessionPidFrom, sessionFeedPath, STATUSLINE_DIR } from "./statusline-session.js";
 import { idleStatuslineState } from "./statusline-feed.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookClient } from "./hook-surface.js";
+import { hookClient, hookClientEvidence, type HookClientEvidence } from "./hook-surface.js";
+import { dimensionsFrom } from "./telemetry-dimensions.js";
 import { governContext } from "./context-governor.js";
 import { deliverPromptImpact } from "./code-graph/prompt-impact.js";
+import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
+import { repoRootSync } from "./code-graph/git-paths.js";
+import { logDeliveredBlock } from "./code-delivered-telemetry.js";
 import type { Prewarmer, PrewarmOutcome } from "./embedding-prewarm.js";
 import {
   bumpShown,
@@ -56,7 +60,10 @@ import {
   recordSourceSuppressed,
   mutateSessionState,
   shouldDropHit,
+  takeBoundary,
+  takeParkedBoundary,
   wasEmitConsumed,
+  type TakenBoundary,
 } from "./session-state.js";
 
 // Per trigger class since #305 — see hook-budgets.ts for the measurement.
@@ -333,6 +340,9 @@ export async function runPromptLane(
 ): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
+  // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
+  // der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback.
+  const clientEvidence = hookClientEvidence(payload);
 
   if (payload.hook_event_name !== "UserPromptSubmit") return "{}";
 
@@ -359,6 +369,7 @@ export async function runPromptLane(
   if (isTrivialPrompt(prompt)) {
     await writeTelemetry({
       session_id: payload.session_id ?? null,
+      client: clientEvidence,
       detected_mode: "none",
       gated: true,
       prompt_chars: prompt.length,
@@ -372,6 +383,27 @@ export async function runPromptLane(
       error: null,
       prewarm: prewarmOutcome,
     });
+    // #572: a trivial prompt skips the RECALL, not the task-boundary block. "ok"
+    // and "go on" after a finished task are exactly the turn it was parked
+    // for, and handing it over costs one state read when nothing is parked.
+    // #607: behind the prompt lane's opt-in, like every other delivery of this
+    // lane. The gate is asked only once a block is actually parked, so a
+    // trivial prompt still costs the one state read it always did.
+    const parkedForTrivial = await takeParkedBoundary(
+      payload.session_id ?? "",
+      getPromptImpactEnabled,
+    );
+    if (parkedForTrivial !== null) {
+      logBoundaryDelivery(payload.session_id ?? null, payload.cwd ?? process.cwd(), parkedForTrivial);
+    }
+    if (parkedForTrivial?.note != null) {
+      return JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: "UserPromptSubmit",
+          additionalContext: parkedForTrivial.note,
+        },
+      });
+    }
     return "{}";
   }
 
@@ -554,6 +586,9 @@ export async function runPromptLane(
   );
   const reflexKeptIds = new Set(reflexGoverned.kept.map((g) => g.id));
   const reflexKept: PromptReflexHit[] = rawReflexHits.filter((h) => reflexKeptIds.has(h.id));
+  // #565: der eine Reflex-Miss, den die hook_reflex-Zeile nicht sehen kann —
+  // der Trigger hat gefeuert, der Session-Dedup hat den Hit einbehalten.
+  const reflexDeduped = rawReflexHits.filter((h) => !reflexKeptIds.has(h.id)).map((h) => h.id);
   const reflexIds = new Set(reflexKept.map((h) => h.id));
   let recallHits = filtered.filter((h) => !reflexIds.has(h.id));
   // Per-memory session dedup for ordinary recall hits, in EVERY detected mode
@@ -641,6 +676,7 @@ export async function runPromptLane(
       resp?.weak_result === true,
       resp?.unfused === true,
       client,
+      resp?.degraded,
     );
     if (suppressed) {
       // Suppressed drops only the recall block (#161); reflex still emits.
@@ -655,21 +691,22 @@ export async function runPromptLane(
 
   const reflexBlock = reflexKept.length > 0 ? formatReflexBlock(reflexKept, project, client) : null;
   const impact = await impactPromise;
-  // The impact block goes FIRST: it is the answer to what the user just asked,
-  // and it is there to be read before the first search, not after the memory
-  // hints. It never rides the recall backoff — it is not recall noise, it is a
-  // deterministic answer to an explicit question (same reasoning as the size
-  // note in the write lane).
-  const blocks = [impact.block, reflexBlock, recallBlock].filter((b): b is string => b !== null);
-  const stdout =
-    blocks.length === 0
-      ? "{}"
-      : JSON.stringify({
-          hookSpecificOutput: {
-            hookEventName: "UserPromptSubmit",
-            additionalContext: blocks.join("\n"),
-          },
-        });
+
+  // #572: the task-boundary block the last Stop parked for THIS session.
+  // #607: behind the prompt lane's own opt-in (b3a6f80) — same lane, same
+  // delivery nobody has measured yet, so the same switch and the same default
+  // (off).
+  //
+  // Taken inside the save below rather than through `takeParkedBoundary`: that
+  // would open the session state a SECOND time on a path with a 200 ms ceiling
+  // (#305), next to the snapshot above and the mutation below. The snapshot
+  // only decides whether there is anything to take; the take, the dedupe check
+  // and the marking still happen in one locked mutation, so a crash between
+  // them can neither duplicate nor lose the block. A Stop that parks between
+  // the snapshot and the lock keeps its block for the next prompt, which is
+  // where it was headed anyway.
+  const takeBoundaryNow = state.boundary !== undefined && (await getPromptImpactEnabled());
+  let boundary: TakenBoundary | null = null;
 
   // State-Bookkeeping in einem Save: Backoff-Streak nur für die
   // prompt-lookup-Lane, Reflex bucht nur die Session-Dedup.
@@ -677,10 +714,11 @@ export async function runPromptLane(
   // #539: the deltas run against the state as it is on disk when the lock is
   // taken, not against the snapshot read before the recall — the other four
   // lanes write the same file in the meantime.
-  if (recallHits.length > 0 || reflexKept.length > 0 || impact.dedupeKey !== null) {
+  if (recallHits.length > 0 || reflexKept.length > 0 || impact.dedupeKey !== null || takeBoundaryNow) {
     const recallIds = recallHits.map((h) => h.id);
     const impactKey = impact.dedupeKey;
     await mutateSessionState(sessionId, (s) => {
+      if (takeBoundaryNow) boundary = takeBoundary(s);
       // #606: booked only when the block actually reached the transcript, so a
       // suppressed turn does not silence the next one.
       if (impactKey !== null) bumpShown(s, impactKey);
@@ -701,6 +739,33 @@ export async function runPromptLane(
       }
     });
   }
+  // The assignment happens inside the mutation callback, which TypeScript's
+  // control flow does not follow — without the cast it narrows `boundary` to
+  // the `null` it was declared with.
+  const takenBoundary = boundary as TakenBoundary | null;
+  if (takenBoundary !== null) logBoundaryDelivery(payload.session_id ?? null, cwd, takenBoundary);
+
+  // The impact block goes FIRST: it is the answer to what the user just asked,
+  // and it is there to be read before the first search, not after the memory
+  // hints. It never rides the recall backoff — it is not recall noise, it is a
+  // deterministic answer to an explicit question (same reasoning as the size
+  // note in the write lane).
+  // #572: the boundary block rides ahead of it for the same reason: it is about
+  // what the agent just did, and it is worth reading before the next thing is
+  // done on top of it.
+  const blocks = [takenBoundary?.note ?? null, impact.block, reflexBlock, recallBlock].filter(
+    (b): b is string => b !== null,
+  );
+  const stdout =
+    blocks.length === 0
+      ? "{}"
+      : JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: "UserPromptSubmit",
+            additionalContext: blocks.join("\n"),
+          },
+        });
+
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
   const injectedIds = [
     ...(reflexBlock ? reflexKept.map((h) => h.id) : []),
@@ -715,6 +780,7 @@ export async function runPromptLane(
   recordBudgetShadow(payload.session_id ?? null, "prompt_hook_call", blocks.length === 0 ? 0 : Math.ceil(blocks.join("\n").length / 4));
   await writeTelemetry({
     session_id: payload.session_id ?? null,
+    client: clientEvidence,
     detected_mode: detectedMode,
     prompt_chars: prompt.length,
     daemon_url: selfBaseUrl,
@@ -723,6 +789,7 @@ export async function runPromptLane(
     daemon_reachable: resp !== null || reflexResp !== null || recallSkipped !== undefined,
     hint_count: suppressed ? 0 : recallHits.length,
     reflex_hint_count: reflexKept.length,
+    ...(reflexDeduped.length > 0 ? { reflex_deduped_ids: reflexDeduped } : {}),
     // #354: which memories this lane actually injected, and of what type.
     // The prompt lane was the one hint source the context-tax evaluation could
     // not see per memory — it reported only counts. Suppressed emits stay
@@ -768,6 +835,29 @@ export async function runPromptLane(
   return stdout;
 }
 
+/**
+ * #572/#579: one `code_tool_call` row per task-boundary block that reached the
+ * transcript — the same shape and the same call the write lane
+ * (`write-lane.ts`) and `prompt-impact.ts` use, so all three deliveries group
+ * by `delivered_lane` in one readout instead of joining two event kinds.
+ *
+ * A block the session-dedupe held back is booked as a dedupe hit, the same
+ * "which kind of nothing" the other two lanes tell apart. Fire-and-forget: the
+ * row is the measurement, never part of the answer.
+ */
+function logBoundaryDelivery(sessionId: string | null, cwd: string, taken: TakenBoundary): void {
+  void logDeliveredBlock({
+    sessionId,
+    lane: "boundary",
+    repo: repoRootSync(cwd) ?? cwd,
+    dedupeHit: taken.note === null,
+    // No `basis`: a boundary block has one per dependent (edit-time or
+    // whole-file-now), not one for the answer, and inventing a single value
+    // would put a number in that column that describes nothing.
+    ...(taken.note !== null ? { files: taken.files, tokensEst: Math.ceil(taken.note.length / 4) } : {}),
+  });
+}
+
 // ─── formatting ─────────────────────────────────────────────────────────────
 
 function formatHintLine(h: RecallHit, hideScore = false): string {
@@ -787,6 +877,10 @@ export function formatHintBlock(
   weak = false,
   unfused = false,
   surface = "claude-code",
+  // #565: der `degraded`-Grund der Antwort — ohne ihn behauptete der Block
+  // „semantic search is off", wo der Arm lief und nur diesen Aufruf nicht
+  // bediente.
+  degraded?: string,
 ): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
   const head = `<recall-hints surface="${escapeAttr(surface)}" trigger="prompt-lookup"${projAttr}>`;
@@ -832,7 +926,7 @@ export function formatHintBlock(
     // Die Ankündigung darf nicht behaupten, ein zweiter Pfad habe zugestimmt —
     // es lief nur einer. `unfusedHeadline` sagt genau das, in derselben
     // Wortwahl, die die Write-Lane bereits benutzt.
-    sections.push(unfusedHeadline("this prompt"));
+    sections.push(unfusedHeadline("this prompt", unfusedReasonFor(degraded)));
     sections.push("");
     for (const h of hits) sections.push(formatHintLine(h, true));
   }
@@ -946,6 +1040,9 @@ interface PromptHookTelemetry {
    *  session_id, so per-session aggregation (context tax, #354) is possible.
    *  A synthetic UUID is the fallback only when the payload carried none. */
   session_id?: string | null;
+  /** #507: die aufrufende Oberfläche — NUR wenn belegt (`hookClientEvidence`),
+   *  nie der surface-Default. */
+  client: HookClientEvidence;
   detected_mode: DetectedMode;
   /** #151: true when the trivial-prompt gate suppressed injection. */
   gated?: boolean;
@@ -955,6 +1052,10 @@ interface PromptHookTelemetry {
   hint_count: number;
   /** #217: Reflex-Hits, die nach Session-Dedup injiziert wurden. */
   reflex_hint_count?: number;
+  /** #565: Reflex-Hits, die der Session-Dedup einbehalten hat — der Trigger
+   *  hat gematcht, injiziert wurde nichts. Ohne diese Liste sieht ein
+   *  unterdrückter Reflex in der Auswertung aus wie ein nie gefeuerter. */
+  reflex_deduped_ids?: string[];
   /** #354: tatsächlich injizierte Memory-IDs dieser Lane (Recall + Reflex). */
   hinted_ids?: string[];
   /** #354: Memory-Typ je `hinted_ids`-Eintrag, gleiche Reihenfolge und Länge.
@@ -1039,13 +1140,15 @@ async function writeTelemetry(payload: PromptHookTelemetry): Promise<void> {
     const ts = new Date().toISOString();
     // The session_id from the Claude payload is real session state — fall
     // back to a synthetic UUID only if no payload session was given (#356).
-    const { session_id: payloadSessionId, ...rest } = payload;
+    const { session_id: payloadSessionId, client, ...rest } = payload;
     const event = {
       kind: "prompt_hook_call",
       ts,
       session_id: payloadSessionId ?? randomUUID(),
       hook_version: HOOK_VERSION,
       ...rest,
+      // #507: prompt is this lane's own hook_source — it never varies per call.
+      dimensions: dimensionsFrom({ client, hook_source: "prompt", session_id: payloadSessionId }),
     };
     const file = join(logDir, `events-${ts.slice(0, 10)}.jsonl`);
     await appendFile(file, JSON.stringify(event) + "\n", "utf8");

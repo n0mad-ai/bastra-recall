@@ -16,17 +16,19 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const V2 = join(process.env.HOME ?? "", ".bastra", "eval", "code-roi-v2");
 
+// @ts-expect-error — plain .mjs script, no declarations (#542).
 const { isFrozen, writableOut } = await import("../code-roi/v2/archive.mjs");
 const { ARM_IDS, shuffled, rng, excludedPilotCommits, pooledCandidates, fileKey } = await import(
+  // @ts-expect-error — plain .mjs script, no declarations (#542).
   "../code-roi/v2/select.mjs"
 );
 const { ARMS, firstSymlink, scenarioComplete, helpingSize, treeDirOf, GRAPH_TOOLS } = await import(
+  // @ts-expect-error — plain .mjs script, no declarations (#542).
   "../code-roi/v2/run-arms-v3.mjs"
 );
 // `mutation-gate.mjs` resolves its archive and its repository at module load,
@@ -35,9 +37,11 @@ const { ARMS, firstSymlink, scenarioComplete, helpingSize, treeDirOf, GRAPH_TOOL
 process.env.CODE_ROI_OUT ??= mkdtempSync(join(tmpdir(), "code-roi-gate-test-"));
 process.env.CODE_ROI_REPO ??= process.cwd();
 const { checkPopulation, populationHash, mutationDiff } = await import(
+  // @ts-expect-error — plain .mjs script, no declarations (#542).
   "../code-roi/v2/mutation-gate.mjs"
 );
 const { parseArm, inputTokensOf, judge, buildReport } = await import(
+  // @ts-expect-error — plain .mjs script, no declarations (#542).
   "../code-roi/v2/evaluate-v4.mjs"
 );
 
@@ -211,7 +215,7 @@ describe("select hands the runner arm names it knows", () => {
     // (`P`) prefills as well. What must stay true is that a v6 run has exactly
     // one prefilling arm — two would mean the effect was measured twice under
     // different names.
-    const prefilling = ARM_IDS.filter((id) => (ARMS[id] as { prefill: boolean }).prefill);
+    const prefilling = ARM_IDS.filter((id: any) => (ARMS[id] as { prefill: boolean }).prefill);
     assert.deepEqual(prefilling, ["prefilled"]);
   });
 });
@@ -229,8 +233,8 @@ describe("a pooled sample follows the registration, not the results", () => {
     ]);
     const { pooled } = pooledCandidates(byRepo, ["/r/first", "/r/second"], 30, 15);
     assert.equal(pooled[0].repo, "/r/first", "insertion order must not decide the sample");
-    assert.equal(pooled.filter((c) => c.repo === "/r/first").length, 10);
-    assert.equal(pooled.filter((c) => c.repo === "/r/second").length, 5);
+    assert.equal(pooled.filter((c: any) => c.repo === "/r/first").length, 10);
+    assert.equal(pooled.filter((c: any) => c.repo === "/r/second").length, 5);
   });
 
   test("no repository may carry more than the cap", () => {
@@ -247,13 +251,13 @@ describe("a pooled sample follows the registration, not the results", () => {
     ]);
     const { pooled } = pooledCandidates(byRepo, ["/r/listed"], 30, 40);
     assert.equal(pooled.length, 5);
-    assert.ok(pooled.every((c) => c.repo === "/r/listed"));
+    assert.ok(pooled.every((c: any) => c.repo === "/r/listed"));
   });
 
   test("the cap cuts the TAIL, it does not choose among scenarios", () => {
     const byRepo = new Map([["/r/a", cands("/r/a", 10)]]);
     const { pooled } = pooledCandidates(byRepo, ["/r/a"], 4, 40);
-    assert.deepEqual(pooled.map((c) => c.file), ["src/f0.ts", "src/f1.ts", "src/f2.ts", "src/f3.ts"]);
+    assert.deepEqual(pooled.map((c: any) => c.file), ["src/f0.ts", "src/f1.ts", "src/f2.ts", "src/f3.ts"]);
   });
 
   test("the same path in two repositories is two different files", () => {
@@ -268,7 +272,7 @@ describe("a pooled sample follows the registration, not the results", () => {
     const enough = (byRepo.get("/r/a") ?? []).length >= 40;
     const { pooled } = pooledCandidates(byRepo, enough ? ["/r/a"] : ["/r/a", "/r/b"], enough ? Infinity : 30, 40);
     assert.equal(pooled.length, 40);
-    assert.ok(pooled.every((c) => c.repo === "/r/a"), "no pooling where none is needed");
+    assert.ok(pooled.every((c: any) => c.repo === "/r/a"), "no pooling where none is needed");
   });
 
   test("drawing stops once the target is reached", () => {
@@ -369,6 +373,7 @@ describe("context is the input tokens the run really read", () => {
 
 describe("the cross-package mechanism gate", () => {
   test("it counts only truth files in another package", async () => {
+    // @ts-expect-error — plain .mjs script, no declarations (#542).
     const { gateRows, gateScore } = await import("../code-roi/v2/mechanism-gate.mjs");
     const scenarios = [
       { id: "S1", file: "packages/db/src/a.ts", truth: ["apps/web/x.ts", "packages/db/src/b.ts"] },
@@ -376,7 +381,7 @@ describe("the cross-package mechanism gate", () => {
       { id: "S3", file: "apps/web/y.ts", truth: ["apps/web/z.ts"], excluded: "pilot" },
     ];
     const rows = gateRows(scenarios);
-    assert.deepEqual(rows.map((r) => r.id), ["S1"], "only a scenario that crosses a boundary");
+    assert.deepEqual(rows.map((r: any) => r.id), ["S1"], "only a scenario that crosses a boundary");
     assert.deepEqual(rows[0].crossTruth, ["apps/web/x.ts"], "and only the crossing file of it");
 
     assert.deepEqual(gateScore([{ crossTruth: ["a", "b"], named: ["a"] }]), {
@@ -471,7 +476,9 @@ describe("the historical gate reads real source through its root", () => {
     const { loadGraph, graphDirOf, GRAPH_FILE_NAME } = await import(
       "../../daemon/src/code-graph/reader.js"
     );
+    // @ts-expect-error — plain .mjs script, no declarations (#542).
     const { scenarioRoot } = await import("../code-roi/v2/scenario-root.mjs");
+    // @ts-expect-error — plain .mjs script, no declarations (#542).
     const { affectedFor } = await import("../code-roi/v2/mechanism-gate.mjs");
 
     const tree = mkdtempSync(join(tmpdir(), "code-roi-gate-tree-"));
@@ -534,12 +541,14 @@ describe("the mutation gate makes breakage mechanically", () => {
   ].join("\n");
 
   test("it finds the exported symbols and ignores the private one", async () => {
+    // @ts-expect-error — plain .mjs script, no declarations (#542).
     const { exportedSymbols } = await import("../code-roi/v2/mutation-gate.mjs");
     assert.deepEqual(exportedSymbols(FIXTURE), ["encryptToken", "TokenOptions", "VERSION"]);
     assert.equal(exportedSymbols("const x = 1;\n").length, 0);
   });
 
   test("require-param adds a parameter every caller now misses", async () => {
+    // @ts-expect-error — plain .mjs script, no declarations (#542).
     const { OPERATORS } = await import("../code-roi/v2/mutation-gate.mjs");
     const op = OPERATORS.find((o: { name: string }) => o.name === "require-param");
     const out = op.apply(FIXTURE, "encryptToken");
@@ -548,6 +557,7 @@ describe("the mutation gate makes breakage mechanically", () => {
   });
 
   test("rename-export takes the name away from every importer", async () => {
+    // @ts-expect-error — plain .mjs script, no declarations (#542).
     const { OPERATORS } = await import("../code-roi/v2/mutation-gate.mjs");
     const op = OPERATORS.find((o: { name: string }) => o.name === "rename-export");
     assert.match(op.apply(FIXTURE, "VERSION"), /export const VERSIONRenamed = 1;/);
@@ -555,6 +565,7 @@ describe("the mutation gate makes breakage mechanically", () => {
   });
 
   test("require-field adds a field every object literal must now carry", async () => {
+    // @ts-expect-error — plain .mjs script, no declarations (#542).
     const { OPERATORS } = await import("../code-roi/v2/mutation-gate.mjs");
     const op = OPERATORS.find((o: { name: string }) => o.name === "require-field");
     assert.match(op.apply(FIXTURE, "TokenOptions"), /export interface TokenOptions \{\n  __mutation: never;/);
@@ -562,6 +573,7 @@ describe("the mutation gate makes breakage mechanically", () => {
   });
 
   test("a mutation is reversible: applying and restoring gives the original text", async () => {
+    // @ts-expect-error — plain .mjs script, no declarations (#542).
     const { OPERATORS } = await import("../code-roi/v2/mutation-gate.mjs");
     for (const op of OPERATORS) {
       const mutated = op.apply(FIXTURE, "encryptToken") ?? op.apply(FIXTURE, "TokenOptions");
@@ -575,6 +587,7 @@ describe("the mutation gate makes breakage mechanically", () => {
   });
 
   test("the draw is seeded, so the sample cannot be re-rolled", async () => {
+    // @ts-expect-error — plain .mjs script, no declarations (#542).
     const { drawOrder } = await import("../code-roi/v2/mutation-gate.mjs");
     const items = Array.from({ length: 20 }, (_, i) => i);
     assert.deepEqual(drawOrder(items, 7), drawOrder(items, 7));
@@ -583,6 +596,7 @@ describe("the mutation gate makes breakage mechanically", () => {
   });
 
   test("every file/symbol/operator triple is offered, deterministically", async () => {
+    // @ts-expect-error — plain .mjs script, no declarations (#542).
     const { candidateMutations, OPERATORS } = await import("../code-roi/v2/mutation-gate.mjs");
     const cands = candidateMutations(["a.ts"], () => FIXTURE);
     assert.equal(cands.length, 3 * OPERATORS.length, "three exports x every operator");
@@ -815,7 +829,7 @@ describe("the run can be taken in helpings", () => {
       truth: [`packages/y/src/a${i}.ts`],
     }));
     // Twelve scenarios fully run; four more have their B arm only.
-    const report = buildReport(scenarios, (s, arm) => {
+    const report = buildReport(scenarios, (s: any, arm: any) => {
       const i = Number(s.id.slice(1));
       if (i < 12) return transcript({ files: [`packages/y/src/a${i}.ts`], affectedCalls: arm === "B" ? 1 : 0 });
       if (i < 16 && arm === "B") return transcript({ files: [], affectedCalls: 1 });
@@ -845,7 +859,7 @@ describe("the run can be taken in helpings", () => {
 describe("the report covers three arms", () => {
   test("a missing arm keeps the scenario out and is named", () => {
     const { scenarios } = sample(3, () => ({ files: [] }));
-    const report = buildReport(scenarios, (s, arm) =>
+    const report = buildReport(scenarios, (s: any, arm: any) =>
       arm === "prefilled" && s.id === "S02" ? null : transcript({ files: [] }),
     );
     assert.equal(report.n, 2);
@@ -873,7 +887,7 @@ describe("the report covers three arms", () => {
       file: `packages/x/src/f${i}.ts`,
       truth: [`packages/y/src/a${i}.ts`],
     }));
-    const report = buildReport(scenarios, (s, arm) =>
+    const report = buildReport(scenarios, (s: any, arm: any) =>
       transcript({ files: [`packages/y/src/a${s.id.slice(1)}.ts`], affectedCalls: arm === "B" ? 1 : 0 }),
     );
     assert.equal(report.byRepo["/r/io"].n, 4);

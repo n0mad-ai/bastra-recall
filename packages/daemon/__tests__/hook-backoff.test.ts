@@ -31,8 +31,14 @@ after(async () => {
 
 // Import AFTER env override so sessionStateDir() picks up the test dir.
 const ss = await import("../src/session-state.js");
+// #542: `const ss = await import(...)` only binds `ss` as a value, not a
+// type namespace — `ss.SourceBackoff` in a type position doesn't resolve
+// once the test tree is type-checked. These aliases give the same names
+// back in type space without a second (and colliding) import.
+type SessionState = import("../src/session-state.js").SessionState;
+type SourceBackoff = import("../src/session-state.js").SourceBackoff;
 
-function entry(streak: number, skipped: number, at = 1_000_000): ss.SourceBackoff {
+function entry(streak: number, skipped: number, at = 1_000_000): SourceBackoff {
   return { streak, at, ids: ["mem-a"], skipped };
 }
 
@@ -71,7 +77,7 @@ test("decideBackoff: consumption resets streak to 0 → emit", () => {
 });
 
 test("decideBackoff: malformed entry fails open", () => {
-  const broken = { streak: "x", at: 1, skipped: 0 } as unknown as ss.SourceBackoff;
+  const broken = { streak: "x", at: 1, skipped: 0 } as unknown as SourceBackoff;
   assert.deepEqual(ss.decideBackoff(broken, false, false), { suppress: false, streak: 0 });
   const noEmit = entry(5, 0, 0); // at <= 0 → never emitted
   assert.deepEqual(ss.decideBackoff(noEmit, false, false), { suppress: false, streak: 0 });
@@ -99,14 +105,14 @@ test("decideBackoff: hasRequired bypasses suppression at every streak level", ()
 test("decideBackoff: hasRequired matrix — no entry / consumed / malformed stay identical", () => {
   assert.deepEqual(ss.decideBackoff(undefined, false, true), { suppress: false, streak: 0 });
   assert.deepEqual(ss.decideBackoff(entry(7, 1), true, true), { suppress: false, streak: 0 });
-  const broken = { streak: "x", at: 1, skipped: 0 } as unknown as ss.SourceBackoff;
+  const broken = { streak: "x", at: 1, skipped: 0 } as unknown as SourceBackoff;
   assert.deepEqual(ss.decideBackoff(broken, false, true), { suppress: false, streak: 0 });
 });
 
 // ── recordSourceEmit / recordSourceSuppressed ───────────────────────────────
 
 test("recordSourceEmit: first emit starts at streak 0", () => {
-  const state: ss.SessionState = { shown: {} };
+  const state: SessionState = { shown: {} };
   ss.recordSourceEmit(state, "write-edit", ["m1", "m2"], false, 5000);
   assert.deepEqual(state.sources?.["write-edit"], {
     streak: 0,
@@ -117,33 +123,33 @@ test("recordSourceEmit: first emit starts at streak 0", () => {
 });
 
 test("recordSourceEmit: unconsumed previous emit increments streak, resets skipped", () => {
-  const state: ss.SessionState = { shown: {}, sources: { s: entry(2, 2) } };
+  const state: SessionState = { shown: {}, sources: { s: entry(2, 2) } };
   ss.recordSourceEmit(state, "s", ["m3"], false, 6000);
   assert.deepEqual(state.sources?.s, { streak: 3, at: 6000, ids: ["m3"], skipped: 0 });
 });
 
 test("recordSourceEmit: consumed previous emit resets streak to 0", () => {
-  const state: ss.SessionState = { shown: {}, sources: { s: entry(7, 4) } };
+  const state: SessionState = { shown: {}, sources: { s: entry(7, 4) } };
   ss.recordSourceEmit(state, "s", ["m3"], true, 6000);
   assert.equal(state.sources?.s.streak, 0);
 });
 
 test("recordSourceEmit: ids are capped to bound state size", () => {
-  const state: ss.SessionState = { shown: {} };
+  const state: SessionState = { shown: {} };
   const many = Array.from({ length: 30 }, (_, i) => `m${i}`);
   ss.recordSourceEmit(state, "s", many, false, 1);
   assert.equal(state.sources?.s.ids.length, 10);
 });
 
 test("recordSourceEmit: sources back off independently", () => {
-  const state: ss.SessionState = { shown: {}, sources: { a: entry(4, 0) } };
+  const state: SessionState = { shown: {}, sources: { a: entry(4, 0) } };
   ss.recordSourceEmit(state, "b", ["m1"], false, 1);
   assert.equal(state.sources?.a.streak, 4); // untouched
   assert.equal(state.sources?.b.streak, 0);
 });
 
 test("recordSourceSuppressed: increments skipped; no-op without entry", () => {
-  const state: ss.SessionState = { shown: {}, sources: { s: entry(2, 0) } };
+  const state: SessionState = { shown: {}, sources: { s: entry(2, 0) } };
   ss.recordSourceSuppressed(state, "s");
   ss.recordSourceSuppressed(state, "s");
   assert.equal(state.sources?.s.skipped, 2);
@@ -155,7 +161,7 @@ test("recordSourceSuppressed: increments skipped; no-op without entry", () => {
 
 /** Mimics one injection-worthy hook event: decide, then commit the outcome. */
 function driveEvent(
-  state: ss.SessionState,
+  state: SessionState,
   source: string,
   consumed: boolean,
   now: number,
@@ -171,7 +177,7 @@ function driveEvent(
 }
 
 test("cadence: never-consumed source widens deterministically (E E E S S E S S S E)", () => {
-  const state: ss.SessionState = { shown: {} };
+  const state: SessionState = { shown: {} };
   const pattern: string[] = [];
   for (let i = 0; i < 10; i++) {
     pattern.push(driveEvent(state, "s", false, 1000 + i) ? "E" : "S");
@@ -182,14 +188,14 @@ test("cadence: never-consumed source widens deterministically (E E E S S E S S S
 });
 
 test("cadence: skip requirement never exceeds the cap", () => {
-  const state: ss.SessionState = { shown: {}, sources: { s: entry(50, 0) } };
+  const state: SessionState = { shown: {}, sources: { s: entry(50, 0) } };
   let skips = 0;
   while (!driveEvent(state, "s", false, 2000)) skips++;
   assert.equal(skips, ss.BACKOFF_STREAK_CAP);
 });
 
 test("cadence: REQUIRED emission mid-window emits as a REGULAR emission — streak grows, only consumption resets", () => {
-  const state: ss.SessionState = { shown: {}, sources: { s: entry(3, 0) } };
+  const state: SessionState = { shown: {}, sources: { s: entry(3, 0) } };
   // Suppression window is open (streak 3, skipped 0) — a REQUIRED hit still emits…
   assert.equal(driveEvent(state, "s", false, 4000, true), true);
   // …and is booked as a regular unconsumed emit: streak 3 → 4, not reset.
@@ -204,7 +210,7 @@ test("cadence: REQUIRED emission mid-window emits as a REGULAR emission — stre
 });
 
 test("cadence: consumption mid-window re-opens immediately and resets streak", () => {
-  const state: ss.SessionState = { shown: {}, sources: { s: entry(5, 1) } };
+  const state: SessionState = { shown: {}, sources: { s: entry(5, 1) } };
   // Suppression would continue (skipped 1 < 5), but a load-marker arrived:
   assert.equal(driveEvent(state, "s", true, 3000), true);
   assert.equal(state.sources?.s.streak, 0);
@@ -216,7 +222,7 @@ test("cadence: consumption mid-window re-opens immediately and resets streak", (
 // ── wasEmitConsumed against real load-markers ───────────────────────────────
 
 test("wasEmitConsumed: marker newer than emit → consumed", async () => {
-  const e: ss.SourceBackoff = { streak: 1, at: Date.now() - 5000, ids: ["backoff-mem-1"], skipped: 0 };
+  const e: SourceBackoff = { streak: 1, at: Date.now() - 5000, ids: ["backoff-mem-1"], skipped: 0 };
   assert.equal(await ss.wasEmitConsumed(e), false, "no marker yet");
   await ss.touchLoadedMarker("backoff-mem-1");
   assert.equal(await ss.wasEmitConsumed(e), true);
@@ -224,14 +230,14 @@ test("wasEmitConsumed: marker newer than emit → consumed", async () => {
 
 test("wasEmitConsumed: marker older than emit → not consumed", async () => {
   await ss.touchLoadedMarker("backoff-mem-2");
-  const e: ss.SourceBackoff = { streak: 1, at: Date.now() + 60_000, ids: ["backoff-mem-2"], skipped: 0 };
+  const e: SourceBackoff = { streak: 1, at: Date.now() + 60_000, ids: ["backoff-mem-2"], skipped: 0 };
   assert.equal(await ss.wasEmitConsumed(e), false);
 });
 
 test("wasEmitConsumed: undefined entry / empty ids / malformed → false", async () => {
   assert.equal(await ss.wasEmitConsumed(undefined), false);
   assert.equal(await ss.wasEmitConsumed({ streak: 1, at: 1, ids: [], skipped: 0 }), false);
-  const broken = { streak: 1, at: 1, ids: "nope", skipped: 0 } as unknown as ss.SourceBackoff;
+  const broken = { streak: 1, at: 1, ids: "nope", skipped: 0 } as unknown as SourceBackoff;
   assert.equal(await ss.wasEmitConsumed(broken), false);
 });
 
@@ -239,7 +245,7 @@ test("wasEmitConsumed: undefined entry / empty ids / malformed → false", async
 
 test("round-trip: sources section survives save → load", async () => {
   const sessionId = "session-backoff-roundtrip";
-  const state: ss.SessionState = {
+  const state: SessionState = {
     shown: { "mem-a": { count: 1, at: 123 } },
     sources: {
       "write-edit": { streak: 3, at: 456, ids: ["m1", "m2"], skipped: 2 },

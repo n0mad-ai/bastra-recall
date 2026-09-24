@@ -7,7 +7,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { Vault } from "../src/vault.js";
@@ -252,7 +252,11 @@ test("start: a rejecting expand via onEmbed is swallowed (crash guard, fix A)", 
     });
     expander.start();
     assert.ok(fire, "onEmbed listener registered");
-    fire!("a"); // triggers expand → chat throws → must be swallowed, not unhandled
+    // #542: fire is only ever assigned inside onEmbed's callback, a separate
+    // control-flow container — TS can't see that write, so it narrows `fire`
+    // to `never` here without this cast (same shape as the release/#542 fix
+    // elsewhere).
+    (fire as ((id: string) => void) | null)!("a"); // triggers expand → chat throws → must be swallowed, not unhandled
     await new Promise((r) => setTimeout(r, 20)); // let the rejection settle
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
@@ -396,6 +400,32 @@ test("the model DID answer but the self-test dropped everything → still writte
     assert.match(raw, /recall_when_expanded_src:/, "stamped");
     assert.match(raw, /recall_when_expanded: \[\]/, "empty expansion persisted");
     assert.equal(await expander.expand("a"), null, "second pass is a no-op — loop stays broken");
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+/**
+ * #341: expand() adds derived frontmatter only — the body stays byte-identical,
+ * so the file must keep its mtime. Otherwise the enriched copy always looks
+ * newer to iCloud / Google Drive / Dropbox than a copy a human really edited.
+ */
+test("#341: expand keeps the file's mtime — the authored body is unchanged", async () => {
+  const { dir, vault } = await vaultWith(["a"]);
+  try {
+    const file = path.join(dir, "a.md");
+    const when = new Date(Date.now() - 3_600_000);
+    await utimes(file, when, when);
+    const before = (await stat(file)).mtimeMs;
+
+    const expander = new TriggerExpander(vault, stubEmbeddings(), {
+      chat: async () => "why does it break",
+      backfillOnStart: false,
+    });
+    assert.deepEqual(await expander.expand("a"), ["why does it break"]);
+
+    assert.match(await readFile(file, "utf8"), /recall_when_expanded:/);
+    assert.equal((await stat(file)).mtimeMs, before, "mtime unchanged");
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }

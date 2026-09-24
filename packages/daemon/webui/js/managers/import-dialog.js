@@ -227,7 +227,9 @@ export function createImportDialog({ modal, opener }) {
       const r = await postImportVault(dir, vaultLabelEl.value.trim() || undefined);
       setVaultStatus(
         `✓ imported ${r.imported}/${r.scanned} into ${r.folder}/` +
-          (r.skipped > 0 ? ` · ${r.skipped} skipped` : ""),
+          (r.skipped > 0 ? ` · ${r.skipped} skipped` : "") +
+          // #530 follow-up: source gone, memory kept — nothing removed.
+          (r.orphaned > 0 ? ` · ${r.orphaned} orphaned (source gone, kept)` : ""),
         "ok",
       );
     } catch (err) {

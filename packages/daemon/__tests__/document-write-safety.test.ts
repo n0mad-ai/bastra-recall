@@ -49,7 +49,7 @@ test("a metadata refresh of an already-imported document does not destroy it", a
     ...BASE,
     original_path: src,
     folder_path: "vertraege",
-  } as Parameters<typeof saveDocument>[1]);
+  } as unknown as Parameters<typeof saveDocument>[1]);
 
   // The tool hands back the in-vault path — feed it straight back, which is
   // exactly what a title/tag correction looks like.
@@ -59,7 +59,7 @@ test("a metadata refresh of an already-imported document does not destroy it", a
     original_path: first.original_path,
     folder_path: "vertraege",
     overwrite: true,
-  } as Parameters<typeof saveDocument>[1]);
+  } as unknown as Parameters<typeof saveDocument>[1]);
 
   assert.equal(
     await readFile(refreshed.original_path, "utf8"),
@@ -86,7 +86,7 @@ test("a sidecar collision leaves no copied original behind", async (t) => {
         category: "rechnungen",
         original_path: src,
         folder_path: "rechnungen",
-      } as Parameters<typeof saveDocument>[1]),
+      } as unknown as Parameters<typeof saveDocument>[1]),
     /sidecar already exists/,
   );
 
@@ -110,7 +110,7 @@ test("a move that collides on the sidecar does not half-apply", async (t) => {
     category: "alt",
     original_path: src,
     folder_path: "alt",
-  } as Parameters<typeof saveDocument>[1]);
+  } as unknown as Parameters<typeof saveDocument>[1]);
 
   // Block the target sidecar so the second half of the move must fail.
   const to = join(dir, "documents", "neu");
@@ -140,7 +140,7 @@ test("a moved document survives the next reconcile (#240/A3)", async (t) => {
     category: "alt",
     original_path: src,
     folder_path: "alt",
-  } as Parameters<typeof saveDocument>[1]);
+  } as unknown as Parameters<typeof saveDocument>[1]);
   assert.equal(vault.size(), 1);
 
   await moveDocument(vault, { id: doc.id, folder_path: "neu" });
@@ -166,7 +166,7 @@ test("a clean move still moves both files", async (t) => {
     category: "alt",
     original_path: src,
     folder_path: "alt",
-  } as Parameters<typeof saveDocument>[1]);
+  } as unknown as Parameters<typeof saveDocument>[1]);
 
   const res = await moveDocument(vault, { id: doc.id, folder_path: "neu" });
 

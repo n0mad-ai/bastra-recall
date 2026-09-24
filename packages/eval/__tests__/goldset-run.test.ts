@@ -31,6 +31,11 @@ const row = (over: Partial<CaseResult> = {}): CaseResult => ({
   abstained: false,
   unknown_ids: [],
   top_mode: "hybrid",
+  weak_result: false,
+  // #542: anchor === "none" is exactly weak_result === true (goldset-run.ts) —
+  // any other value is consistent with weak_result: false above.
+  anchor: "recall_when",
+  top_k: [],
   ...over,
 });
 

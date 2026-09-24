@@ -106,3 +106,21 @@ test("lexicon (#476): a file-added cue actually fires detectFrustration (end-to-
     assert.equal(hit?.heuristic, "frustration-density");
   });
 });
+
+test("lexicon: a cue that is not a valid regex, or hides a quantified group (ReDoS), is dropped — defaults untouched", async () => {
+  await withLexiconDir(async (dir) => {
+    await writeFile(
+      join(dir, "frustration.txt"),
+      ["(unclosed", "(a+)+$", "x".repeat(400), "честный-кью"].join("\n"),
+      "utf8",
+    );
+    const cues = frustrationCues();
+    assert.deepEqual(cues.slice(0, DEFAULT_FRUSTRATION_CUES.length), [...DEFAULT_FRUSTRATION_CUES]);
+    assert.ok(cues.includes("честный-кью"), "valid file cue must still be added");
+    for (const bad of ["(unclosed", "(a+)+$", "x".repeat(400)]) {
+      assert.ok(!cues.includes(bad), `invalid cue reached the live lexicon: ${bad.slice(0, 20)}`);
+    }
+    // and the joined lexicon still compiles as one alternation
+    assert.doesNotThrow(() => new RegExp(cues.join("|"), "u"));
+  });
+});

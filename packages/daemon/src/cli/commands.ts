@@ -30,6 +30,7 @@ import { describeStale } from "../code-staleness.js";
 import { autostartWarning } from "./autostart.js";
 import { stubFreshness, stubFreshnessLines } from "./stub-freshness.js";
 import { affectsFilesLines, defaultAffectsFilesIo } from "./affects-files-note.js";
+import { printFeaturesNote, type FeatureState } from "./features-note.js";
 import { installCodeAwarenessStep } from "./code-cmd.js";
 import { enabledRepos } from "../code-graph/enabled-repos.js";
 import { GRAPHIFY_PIN, probeTool } from "../code-graph/graphify-tool.js";
@@ -70,6 +71,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     source: null,
     lines: null,
     stats: false,
+    includeEval: false,
     positional: [],
     errors: [],
   };
@@ -97,6 +99,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     }
     else if (a === "--follow" || a === "-f") result.follow = true;
     else if (a === "--stats") result.stats = true;
+    else if (a === "--include-eval") result.includeEval = true;
     else if (a === "--since") {
       result.since = argv[++i] ?? null;
     } else if (a.startsWith("--since=")) {
@@ -409,6 +412,7 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   }
 
   let hadBroken = false;
+  const clientFeatures: FeatureState["clients"] = [];
   for (const adapter of targets) {
     process.stdout.write(`→ ${adapter.surface} (${adapter.description})\n`);
     process.stdout.write(`  config: ${adapter.configPath}\n`);
@@ -416,6 +420,7 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
       const r = await adapter.doctor();
       process.stdout.write(`  ${formatStatus(r.status)}: ${r.message}\n`);
       if (r.status === "broken" && !args.fix) hadBroken = true;
+      if (r.features) clientFeatures.push({ surface: adapter.surface, features: r.features });
       if (r.details) {
         for (const [k, v] of Object.entries(r.details)) {
           process.stdout.write(`    ${k}: ${v}\n`);
@@ -448,6 +453,9 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   await printStubBinaryNote();
   await printAffectsFilesNote(resolveVaultPath(args.vaultPath));
   await printCodeGraphNote();
+  // What is switched off, as opposed to broken — never flips the exit code,
+  // and --fix never turns a feature on.
+  await printFeaturesNote(clientFeatures, resolveVaultPath(args.vaultPath));
 
   return hadBroken ? 1 : 0;
 }

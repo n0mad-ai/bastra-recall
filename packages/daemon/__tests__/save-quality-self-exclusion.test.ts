@@ -66,6 +66,7 @@ test("overwrite without an explicit id does not flag the memory as its own dupli
   // Exactly the same call again — the documented update path.
   const second = await saveMemoryHandler(deps, { ...REFRESH, overwrite: true });
   assert.equal(second.created, false, "second save must be an update");
+  assert.ok(second.save_quality); // #542: absent only on a conflict diversion
 
   const dupIds = second.save_quality.duplicate_candidates.map((c) => c.id);
   assert.ok(
@@ -91,6 +92,7 @@ test("an explicit id behaves the same as a slug-inferred one", async (t) => {
     id: "explicit-runbook",
     overwrite: true,
   });
+  assert.ok(again.save_quality); // #542: absent only on a conflict diversion
 
   const dupIds = again.save_quality.duplicate_candidates.map((c) => c.id);
   assert.ok(!dupIds.includes("explicit-runbook"));
@@ -110,6 +112,7 @@ test("a genuinely different memory is still reported as a candidate", async (t) 
   });
 
   assert.notEqual(sibling.id, "deploy-runbook-rollback-steps");
+  assert.ok(sibling.save_quality); // #542: absent only on a conflict diversion
   const dupIds = sibling.save_quality.duplicate_candidates.map((c) => c.id);
   assert.ok(
     dupIds.includes("deploy-runbook-rollback-steps"),

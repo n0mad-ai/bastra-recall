@@ -28,6 +28,13 @@ export interface StubBuildInfo {
   dirty: boolean;
   /** ISO timestamp of the build, or null when running from source. */
   built_at: string | null;
+  /** sha256 over the statusline bundle embedded in this binary — see
+   *  `statuslineBundleDigest()` in scripts/stub-source-digest.mjs. Its own
+   *  field rather than part of `source_digest`, because the hook lanes and the
+   *  statusline can be stale independently of each other (#547). Null when
+   *  running from source, and absent altogether on a binary built before #547
+   *  — which the freshness check reads as "cannot say", not as "current". */
+  statusline_digest?: string | null;
 }
 
 export const STUB_BUILD_INFO: StubBuildInfo = {
@@ -35,4 +42,5 @@ export const STUB_BUILD_INFO: StubBuildInfo = {
   revision: null,
   dirty: false,
   built_at: null,
+  statusline_digest: null,
 };

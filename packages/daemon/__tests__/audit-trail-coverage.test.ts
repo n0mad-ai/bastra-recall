@@ -84,6 +84,9 @@ test("#206: an MCP save is recorded — the path that had no trail at all", asyn
   const { deps, vaultPath, cleanup } = await makeDeps();
   try {
     const res = await saveMemoryHandler(deps, memo("Erster Eintrag"));
+    // #542: saveMemoryHandler returns SaveMemoryResult | ClaimGateResult; a
+    // plain create is never held at the claim gate.
+    assert.ok(!("claim_gate" in res), "a plain create is not a claim-gate hold");
     const entries = await auditEntries(vaultPath);
     assert.equal(entries.length, 1, "exactly one entry per write");
     const e = entries[0];
@@ -393,7 +396,10 @@ test("#380: recordAudit gibt die Warnung heraus, statt sie zu behalten", async (
 test("#380: im Normalfall gibt recordAudit nichts heraus", async () => {
   const { deps, cleanup } = await makeDeps();
   try {
-    const res = (await saveMemoryHandler(deps, memo("Ohne Warnung"))) as Record<string, unknown>;
+    // #542: SaveMemoryResult | ClaimGateResult doesn't overlap Record<string,
+    // unknown> enough for a direct cast any more — via unknown first, same as
+    // TS's own suggestion, for the duck-typed access below.
+    const res = (await saveMemoryHandler(deps, memo("Ohne Warnung"))) as unknown as Record<string, unknown>;
     assert.ok(!("warning" in res) || !String(res.warning).includes("audit"), 
       `eine gelungene Protokollierung erzeugt keine Warnung: ${JSON.stringify(res.warning)}`);
   } finally {
@@ -411,7 +417,9 @@ test("#380: die MCP-Antwort trägt die Warnung, wenn der Beleg fehlt", async () 
     await mkdir(join(vaultPath, ".bastra", "audit-log.ndjson"), { recursive: true });
     resetAuditLogCache();
 
-    const res = (await saveMemoryHandler(deps, memo("Mit Warnung"))) as Record<string, unknown>;
+    // #542: same double-cast as above — the union no longer overlaps
+    // Record<string, unknown> enough for a direct cast.
+    const res = (await saveMemoryHandler(deps, memo("Mit Warnung"))) as unknown as Record<string, unknown>;
 
     assert.ok(res.id, "der Save selbst ist gelungen — das ist die Zusage von dfb044e");
     assert.ok(

@@ -13,7 +13,6 @@ import { join } from "node:path";
 import {
   ensureApiToken,
   getApiToken,
-  setApiToken,
   clearApiToken,
   readSettings,
   setUpdateMode,

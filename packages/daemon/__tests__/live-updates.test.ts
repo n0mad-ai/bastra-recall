@@ -22,7 +22,9 @@ import { Vault, buildGraph } from "@bastra-recall/core";
 import { createLiveUpdates, type LiveUpdate } from "../src/live-updates.js";
 // #307 pins BOTH halves of the live path, so the map modules the entry ends up
 // in are exercised for real instead of being restated in the test.
+// @ts-expect-error — plain browser module, no types (same as memory-counter.test.ts).
 import { createSimulation } from "../webui/js/simulation.js";
+// @ts-expect-error — plain browser module, no types.
 import { createLiveNodes } from "../webui/js/live-nodes.js";
 
 const DEBOUNCE = 150; // injected quiet window
@@ -57,7 +59,7 @@ interface Poll {
 /** boots a vault + a tiny server around handleUiUpdates; `call(seq?)` polls,
  *  omitting `since` when seq is undefined (baseline request). */
 async function harness(
-  opts: { debounceMs?: number; maxEntries?: number; maxWaitMs?: number } = {},
+  opts: { debounceMs?: number; maxEntries?: number; maxWaitMs?: number; reannounceMs?: number } = {},
 ): Promise<{
   vault: Vault;
   live: ReturnType<typeof createLiveUpdates>;

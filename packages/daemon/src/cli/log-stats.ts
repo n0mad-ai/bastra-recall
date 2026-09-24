@@ -24,6 +24,8 @@ import {
   renderReleaseGate,
 } from "./log-stats-thresholds.js";
 import { RECALL_BUDGET_MS } from "../hook-budgets.js";
+import { buildContextLedger, type LedgerEvent } from "../context-ledger.js";
+import { isEvalTraffic } from "../telemetry-dimensions.js";
 
 export {
   releaseVerdicts, releaseGateMet, laneVerdict,
@@ -484,8 +486,19 @@ function hookBudgetMs(): number {
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_HOOK_BUDGET_MS;
 }
 
-export async function cmdLogStats(opts: { sinceMs: number }): Promise<number> {
-  const events = await readEvents(defaultLogDir(), Date.now() - opts.sinceMs);
-  process.stdout.write(`${renderStats(aggregate(events), hookBudgetMs())}\n`);
+export async function cmdLogStats(opts: { sinceMs: number; includeEval?: boolean }): Promise<number> {
+  const allEvents = await readEvents(defaultLogDir(), Date.now() - opts.sinceMs);
+  // #619: same exclusion as scripts/stats.ts — a probe/eval run that stamped
+  // dimensions.client = "eval" must not move this readout unnoticed either.
+  const evalEvents = allEvents.filter(isEvalTraffic);
+  const events = opts.includeEval ? allEvents : allEvents.filter((e) => !isEvalTraffic(e));
+  let out = renderStats(aggregate(events), hookBudgetMs());
+  if (evalEvents.length > 0) {
+    const excludedTokens = buildContextLedger(evalEvents as LedgerEvent[]).total.totalTokens;
+    out += opts.includeEval
+      ? `\n  eval/synthetic traffic included (#619): ${evalEvents.length} events, ~${excludedTokens} context-tax tokens`
+      : `\n  excluded as eval/synthetic (#619): ${evalEvents.length} events, ~${excludedTokens} context-tax tokens — rerun with --include-eval to include them`;
+  }
+  process.stdout.write(`${out}\n`);
   return 0;
 }

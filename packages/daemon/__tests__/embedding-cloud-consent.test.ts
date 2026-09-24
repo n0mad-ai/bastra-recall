@@ -42,14 +42,16 @@ interface Captured {
 async function withFetchRecorder<T>(fn: (calls: Captured[]) => Promise<T>): Promise<T> {
   const calls: Captured[] = [];
   const real = globalThis.fetch;
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  // #542: RequestInfo is a DOM-lib type this tsconfig doesn't pull in — same
+  // loose mock signature as learned-recall-reranker.test.ts / stub-install.test.ts.
+  globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body ?? "{}")) as Captured["body"];
     calls.push({ url: String(input), body });
     return new Response(
       JSON.stringify({ data: body.input.map((_, index) => ({ index, embedding: new Array(1536).fill(0) })) }),
       { status: 200, headers: { "content-type": "application/json" } },
     );
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
   try {
     return await fn(calls);
   } finally {

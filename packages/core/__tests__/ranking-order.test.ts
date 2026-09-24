@@ -22,7 +22,14 @@ import * as path from "node:path";
 import { Vault } from "../src/vault.js";
 import { SearchIndex } from "../src/search.js";
 import { EmbeddingIndex, type EmbeddingProvider } from "../src/embeddings.js";
-import { progressIndexFor } from "../src/recall-stages.js";
+import { progressIndexFor, type RecallStage } from "../src/recall-stages.js";
+
+/** #542: white-box access to the private queue-drain — flushQueue is
+ *  intentionally not public API, but these tests need deterministic timing
+ *  around the embed backfill (soft `private`, so this compiles past TS only). */
+function flush(emb: EmbeddingIndex): Promise<void> {
+  return (emb as unknown as { flushQueue(): Promise<void> }).flushQueue();
+}
 
 function memoryMd(
   id: string,
@@ -292,8 +299,10 @@ test("B2: a result cached while the vector arm was empty does not survive recove
   // Provider recovers and the backfill lands — the same query must not keep
   // serving the degraded result for the rest of the cache TTL.
   provider.failing = false;
-  await emb.embedMissing?.();
-  await emb.flushQueue?.();
+  // #542: EmbeddingIndex has no `embedMissing` — that call was a silent
+  // no-op (optional chaining on a property that never existed); flushQueue
+  // alone drains the pending backfill.
+  await flush(emb);
 
   const recovered = await search.recallHybrid("ANCHORWORD", { k: 5 });
   assert.equal(recovered[0].mode, "hybrid", "recovery must invalidate the degraded cache entry");
@@ -305,7 +314,7 @@ test("A8: orphan vectors are pruned at start", async (t) => {
   const persistPath = path.join(dir, ".bastra", "embeddings.json");
   const emb1 = new EmbeddingIndex(vault, new StubProvider(), persistPath);
   await emb1.start();
-  await emb1.flushQueue?.();
+  await flush(emb1);
   emb1.stop();
 
   // A memory deleted while the daemon was down: the file is gone, but its
@@ -335,7 +344,7 @@ test("A8: a scoped query is not truncated by the global vector cut", async (t) =
 
   const emb = track(new EmbeddingIndex(vault, new StubProvider(), path.join(dir, ".bastra", "e.json")));
   await emb.start();
-  await emb.flushQueue?.();
+  await flush(emb);
   search.useEmbeddings(emb);
 
   const hits = await search.recallHybrid("ANCHORWORD", { k: 5, scope: "small" });
@@ -356,7 +365,7 @@ test("B1/A7: MCP progress never moves backwards, on any path", async (t) => {
     "b.md": memoryMd("note-b", { marker: "ANCHORWORD" }),
   });
 
-  const monotonic = (label: string, names: string[]) => {
+  const monotonic = (label: string, names: RecallStage["name"][]) => {
     const idx = names.map(progressIndexFor);
     for (let i = 1; i < idx.length; i++) {
       assert.ok(
@@ -366,8 +375,10 @@ test("B1/A7: MCP progress never moves backwards, on any path", async (t) => {
     }
   };
 
-  const collect = (): { names: string[]; onStage: (s: { name: string; durationMs?: number }) => void } => {
-    const names: string[] = [];
+  // #542: onStage's real parameter is RecallStage (StageListener) — names
+  // kept RecallStage["name"][] so it feeds progressIndexFor without a cast.
+  const collect = (): { names: RecallStage["name"][]; onStage: (s: RecallStage) => void } => {
+    const names: RecallStage["name"][] = [];
     return { names, onStage: (s) => { if (s.durationMs !== undefined) names.push(s.name); } };
   };
 

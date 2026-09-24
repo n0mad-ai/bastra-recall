@@ -30,7 +30,11 @@ export const DEFAULT_CONFIG: PowerlineConfig = {
           session: {
             enabled: false,
             type: "tokens",
-            costSource: "calculated",
+            // Claude Code's own total_cost_usd is billed, not guessed from a
+            // client-side price list — prefer it. It may not cover subagent
+            // spend (undocumented, unverified either way); "calculated" stays
+            // available as an explicit opt-in for the full local recompute.
+            costSource: "official",
             showUnits: true,
           },
           today: { enabled: false, type: "cost", showUnits: true },

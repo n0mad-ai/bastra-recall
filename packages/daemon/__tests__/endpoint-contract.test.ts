@@ -97,7 +97,9 @@ async function startDaemon(memories: number, version: string): Promise<LiveDaemo
     embedding: { on: false, providerId: null, source: "none" },
   });
   return {
-    port: handle.port,
+    // #542: HttpHandle.port is null only when the port was already taken
+    // (addressInUse) — port: 0 here means a genuine ephemeral bind.
+    port: handle.port!,
     vaultSize: memories,
     version,
     stop: async () => {

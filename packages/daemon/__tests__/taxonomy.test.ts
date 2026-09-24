@@ -244,6 +244,9 @@ test("save_memory: folder routes the file, taxonomy scope has a reserved home", 
   const { deps, dir, close } = await makeDeps();
   try {
     const a = await saveMemoryHandler(deps, { ...PERSON_INPUT, folder: "memories/people" });
+    // #542: saveMemoryHandler returns SaveMemoryResult | ClaimGateResult; a
+    // plain create is never held at the claim gate.
+    assert.ok(!("claim_gate" in a), "a plain create is not a claim-gate hold");
     assert.equal(a.file_path, join(dir, "memories/people/caio-ribeiro.md"));
 
     const b = await saveMemoryHandler(deps, {
@@ -253,6 +256,7 @@ test("save_memory: folder routes the file, taxonomy scope has a reserved home", 
       scope: "taxonomy",
       tags: ["convention", "person"],
     });
+    assert.ok(!("claim_gate" in b), "a plain create is not a claim-gate hold");
     assert.equal(b.file_path, join(dir, "memories/taxonomy/person-convention.md"));
   } finally {
     await close();
@@ -263,6 +267,7 @@ test("save_memory: overwrite with a changed folder MOVES (old file trashed)", as
   const { deps, dir, close } = await makeDeps();
   try {
     const first = await saveMemoryHandler(deps, PERSON_INPUT);
+    assert.ok(!("claim_gate" in first), "a plain create is not a claim-gate hold");
     assert.ok(first.file_path.includes("memories/projects/bastra-recall"));
 
     // Ohne overwrite: Umzug wird abgelehnt.
@@ -276,6 +281,7 @@ test("save_memory: overwrite with a changed folder MOVES (old file trashed)", as
       folder: "memories/people",
       overwrite: true,
     });
+    assert.ok(!("claim_gate" in moved), "an overwrite is not a claim-gate hold");
     assert.equal(moved.file_path, join(dir, "memories/people/caio-ribeiro.md"));
     // Alte Datei ist weg (im Trash), neue existiert, Index zeigt auf neu.
     await assert.rejects(access(first.file_path), "old file must be gone");
@@ -291,6 +297,7 @@ test("save_memory: overwrite WITHOUT folder keeps the file in place (no silent r
   try {
     // Memo lives deliberately in memories/people/ (set via explicit folder).
     const created = await saveMemoryHandler(deps, { ...PERSON_INPUT, folder: "memories/people" });
+    assert.ok(!("claim_gate" in created), "a plain create is not a claim-gate hold");
     assert.equal(created.file_path, join(dir, "memories/people/caio-ribeiro.md"));
 
     // Update WITHOUT folder (only the content changed) must NOT re-route to the
@@ -301,6 +308,7 @@ test("save_memory: overwrite WITHOUT folder keeps the file in place (no silent r
       summary: "person memo, updated",
       overwrite: true,
     });
+    assert.ok(!("claim_gate" in updated), "an overwrite is not a claim-gate hold");
     assert.equal(updated.file_path, created.file_path, "update stays in place");
     await access(created.file_path); // same file, still present
     await assert.rejects(

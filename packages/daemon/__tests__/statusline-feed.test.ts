@@ -18,7 +18,7 @@ import {
   defaultStatuslineState,
   idleStatuslineState,
   type StatuslineState,
-} from "../src/statusline-feed.ts";
+} from "../src/statusline-feed.js";
 
 /** Mirror the forwarder's recall-start mutation: adopt the turn, then count. */
 function recallStart(

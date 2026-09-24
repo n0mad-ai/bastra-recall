@@ -5,6 +5,9 @@
  * Usage:
  *   npx tsx packages/daemon/scripts/stats.ts            # all-time
  *   npx tsx packages/daemon/scripts/stats.ts --days 7   # last 7 days
+ *   npx tsx packages/daemon/scripts/stats.ts --include-eval  # #619: also
+ *     count rows a probe/eval run marked as `dimensions.client === "eval"`
+ *     (excluded by default so they cannot dominate the report)
  */
 import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -15,6 +18,7 @@ import { readUsage, type UsageAggregate } from "../src/usage-sidecar.js";
 import { governorWhatIf } from "../src/stats-governor.js";
 import { summarizeEvidenceGate } from "./stats-evidence.js";
 import { buildContextLedger, HOOK_LANE_KINDS, TOOL_PAYLOAD_KINDS } from "../src/context-ledger.js";
+import { isEvalTraffic } from "../src/telemetry-dimensions.js";
 import {
   armIdentities,
   evaluateArms,
@@ -534,6 +538,27 @@ function summarizeContextTax(events: AnyEvent[]): void {
   const laneSum = Object.values(t.lanes).reduce((s, p) => s + p.tokens, 0);
   const toolSum = Object.values(t.tools).reduce((s, p) => s + p.tokens, 0);
   console.log(`  parts: lanes ${laneSum} + tool payloads ${toolSum} = ${laneSum + toolSum}`);
+  // #507: dieselbe Rechnung, gruppiert nach Oberfläche statt nach Session —
+  // je Ausprägung ein eigener Ledger über dieselbe (gefilterte) Eventmenge,
+  // damit `fold()` nicht zweimal geschrieben wird.
+  for (const field of ["client", "hook_source"] as const) {
+    const buckets = new Map<string, AnyEvent[]>();
+    for (const e of events) {
+      const key = dimensionValue(e, field);
+      const bucket = buckets.get(key);
+      if (bucket) bucket.push(e);
+      else buckets.set(key, [e]);
+    }
+    const rows = [...buckets.entries()]
+      .map(([key, evs]) => [key, buildContextLedger(evs).total] as const)
+      .filter(([, t2]) => [...Object.values(t2.lanes), ...Object.values(t2.tools)].some((p) => p.emissions > 0));
+    if (rows.length === 0) continue;
+    console.log(`  by ${field}:`);
+    for (const [key, t2] of rows.sort((a, b) => b[1].totalTokens - a[1].totalTokens)) {
+      const em = [...Object.values(t2.lanes), ...Object.values(t2.tools)].reduce((s, p) => s + p.emissions, 0);
+      console.log(`    ${key.padEnd(22)} ${t2.totalTokens.toString().padStart(8)}  ${em.toString().padStart(5)} emissions`);
+    }
+  }
   const top = [...ledger.sessions.values()]
     .filter((s) => s.session !== "(none)")
     .sort((a, b) => b.totalTokens - a.totalTokens)
@@ -894,15 +919,35 @@ function summarizeContextGovernor(events: AnyEvent[]): void {
 }
 
 async function main(): Promise<void> {
-  const events = await loadEvents();
-  if (events.length === 0) {
+  const allEvents = await loadEvents();
+  if (allEvents.length === 0) {
     console.log("no events in window.");
     return;
   }
+  // #619: repository probes (measure-recall-payload.ts, measure-recall-budget.ts)
+  // call recallHandler directly against a real vault and stamp
+  // dimensions.client = "eval" so they declare themselves — excluded from the
+  // default report so a probe run cannot dominate the context-tax numbers.
+  const includeEval = process.argv.includes("--include-eval");
+  const evalEvents = allEvents.filter(isEvalTraffic);
+  const events = includeEval ? allEvents : allEvents.filter((e) => !isEvalTraffic(e));
+
   const window = DAYS ? `last ${DAYS} day(s)` : "all-time";
   console.log(`# nexus-recall stats — ${window}`);
   console.log(`logs: ${LOG_DIR}`);
   console.log(`events: ${events.length}`);
+  if (evalEvents.length > 0) {
+    const excludedTokens = buildContextLedger(evalEvents).total.totalTokens;
+    console.log(
+      includeEval
+        ? `eval/synthetic traffic included (#619): ${evalEvents.length} events, ~${excludedTokens} context-tax tokens`
+        : `excluded as eval/synthetic (#619): ${evalEvents.length} events, ~${excludedTokens} context-tax tokens — rerun with --include-eval to include them`,
+    );
+  }
+  if (events.length === 0) {
+    console.log("no production events left in window — rerun with --include-eval to see the eval/synthetic traffic");
+    return;
+  }
 
   summarizeHook(events);
   summarizeSessionHook(events);

@@ -100,7 +100,8 @@ async function hybridFixture(t: { after: (fn: () => unknown) => void }) {
   const provider = new TracingProvider();
   const emb = new EmbeddingIndex(vault, provider, path.join(dir, ".bastra", "embeddings.json"));
   await emb.start();
-  await emb.flushQueue?.();
+  // #542: white-box access to the private queue-drain — see ranking-order.test.ts.
+  await (emb as unknown as { flushQueue(): Promise<void> }).flushQueue();
   search.useEmbeddings(emb);
 
   t.after(async () => {

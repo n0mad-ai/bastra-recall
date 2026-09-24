@@ -131,12 +131,13 @@ Logs live outside the vault on purpose so the file watcher doesn't index them. T
 Field boosts (in `src/search.ts`):
 
 ```
-recall_when_flat: 5    ← authored for triggering, highest weight
-title:            4
-tags_flat:        3
-topic_path_flat:  2
-summary:          2
-body:             1
+recall_when_flat:          5    ← authored for triggering, highest weight
+title:                     4
+tags_flat:                 3
+recall_when_expanded_flat: 2    ← doc2query paraphrases (#117): machine-generated, below the author's words
+topic_path_flat:           2
+summary:                   2
+body:                      1
 ```
 
 Fuzzy distance 0.2, prefix matching enabled, `combineWith: "OR"`. Hybrid mode combines BM25 with embedding cosine via Reciprocal Rank Fusion (RRF); the embedding query goes to the provider once per recall and is cached in-memory.

@@ -34,6 +34,23 @@ export interface DoctorResult {
   status: "ok" | "missing" | "broken" | "not-implemented";
   message: string;
   details?: Record<string, string>;
+  /**
+   * Which of this client's Recall features are switched on — read by the
+   * doctor's "features" block. Only set by clients that carry hooks and a
+   * skill (Claude Code, Codex), and only when the MCP server is registered.
+   */
+  features?: ClientFeatures;
+}
+
+export interface ClientFeatures {
+  /** Every required hook lane is registered: session start, prompt, write, plan, bash. */
+  recallHooks: boolean;
+  /** The optional Stop hook (autonomous save suggestions, `--no-stop-hook` turns it off). */
+  stopHook: boolean;
+  /** The skill that tells the model to look at the vault first. */
+  skill: boolean;
+  /** Set when the client itself switches every hook off, e.g. Claude Code's `disableAllHooks`. */
+  hooksDisabledBy?: string;
 }
 
 export interface Adapter {
@@ -93,6 +110,10 @@ export interface ParsedArgs {
   // `logs --stats` (#279 slice): aggregate the same files per trigger lane
   // instead of printing them line by line.
   stats: boolean;
+  // `logs --stats --include-eval` (#619): also count rows a probe/eval run
+  // marked as `dimensions.client === "eval"` — excluded from the default
+  // report so a probe run cannot dominate the context-tax numbers.
+  includeEval: boolean;
   // All positional tokens, in order — for sub-commands like
   // `config set update.mode auto` that need more than command+surface.
   positional: string[];

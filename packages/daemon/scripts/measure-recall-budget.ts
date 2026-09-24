@@ -69,11 +69,14 @@ async function main(): Promise<void> {
   let baselineTokens = 0;
   let emittedTokens = 0;
   for (const query of queries) {
-    const full = (await recallHandler(deps, { query, k: K })) as unknown as Record<string, unknown>;
+    // #619: declare as eval/synthetic traffic — same reason as
+    // measure-recall-payload.ts, this script also calls recallHandler
+    // directly against a real vault.
+    const full = (await recallHandler(deps, { query, k: K }, { client: "eval" })) as unknown as Record<string, unknown>;
     const ranked = full.hits as unknown[];
     const fullTokens = measurePayload(full).tokens;
     for (const budget of BUDGETS) {
-      const res = (await recallHandler(deps, { query, k: K, max_tokens: budget })) as unknown as Record<string, unknown>;
+      const res = (await recallHandler(deps, { query, k: K, max_tokens: budget }, { client: "eval" })) as unknown as Record<string, unknown>;
       const tokens = measurePayload(res).tokens;
       const emitted = (res.hits as unknown[]).length;
       checked++;

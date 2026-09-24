@@ -279,7 +279,7 @@ describe("change-impact block on a prompt: the resolution half", () => {
     const first = await ask("Wer ruft validateMemory auf?");
     assert.ok(first.note);
     const second = await ask("Wer ruft validateMemory auf?", {
-      shown: { [first.note.dedupeKey]: { count: 1, lastShownAt: Date.now() } },
+      shown: { [first.note.dedupeKey]: { count: 1, at: Date.now() } },
     });
     assert.equal(second.note, null);
     assert.equal(second.dedupeHit, true);
@@ -293,7 +293,7 @@ describe("change-impact block on a prompt: the resolution half", () => {
     assert.equal(await cache.reloadIfChanged(repo), true);
 
     const second = await ask("Wer ruft saveMemory auf?", {
-      shown: { [first.note.dedupeKey]: { count: 1, lastShownAt: Date.now() } },
+      shown: { [first.note.dedupeKey]: { count: 1, at: Date.now() } },
     });
     assert.ok(second.note, "a new graph generation can carry a different blast radius");
     assert.notEqual(second.note.dedupeKey, first.note.dedupeKey);

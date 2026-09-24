@@ -146,6 +146,8 @@ Options:
   --lines <n>                Cap the number of lines printed (logs only, default 200)
   --stats                    Aggregate per trigger lane instead of printing lines
                              (logs only; --since defaults to 7d)
+  --include-eval             With --stats: also count rows marked as eval/
+                             synthetic traffic (excluded by default, #619)
   --fix                      With doctor: repair non-ok surfaces (on 'all', won't set up ones never installed)
   --no-stop-hook             Skip the Stop save-eval hook (registered by default)
   --stub                     Download the compiled hook client for Claude Code without asking (~70 MB)
@@ -253,6 +255,11 @@ statusline for one surface or all of them. A hook whose command points at a
 replaced or missing runtime makes the surface non-healthy rather than counting
 as registered (#321).
 
+A final "features" section lists which Recall features are on or off (memory
+language, onboarding, semantic recall, hooks and skill per client, opt-in
+extras) with the command that turns each one on. Off features never change the
+exit code, and --fix never switches one on.
+
 ${SURFACE_ARG}
 Options:
   --fix       Repair missing or broken pieces. On 'all' this will not set up a
@@ -291,6 +298,8 @@ Options:
                          Which log source to read (default all)
   --lines <n>            Cap the number of lines printed (default 200)
   --stats                Aggregate per lane instead of printing lines
+  --include-eval         With --stats: also count eval/synthetic-marked rows
+                         (excluded by default, #619)
 `,
 
   autostart: `bastra autostart — keep the daemon running, or let it start on demand

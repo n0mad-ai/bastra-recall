@@ -30,6 +30,7 @@ import {
   SearchIndex,
   EmbeddingIndex,
   OllamaEmbeddingProvider,
+  stripAutoRelatedSection,
 } from "@bastra-recall/core";
 import type { Memory } from "@bastra-recall/core";
 
@@ -55,7 +56,8 @@ function embedTextFor(m: Memory, includeRecallWhen: boolean): string {
     fm.tags.join(" "),
     includeRecallWhen ? fm.recall_when.join(" ") : "",
     fm.summary,
-    m.body.slice(0, 4000),
+    // #631: production strips the Auto-Related section before the 4000 cut.
+    stripAutoRelatedSection(m.body).trimEnd().slice(0, 4000),
   ];
   return parts.filter((p) => p && p.length > 0).join("\n");
 }

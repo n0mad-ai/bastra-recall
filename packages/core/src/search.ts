@@ -472,6 +472,25 @@ export interface CueIndexOptions {
 }
 
 /**
+ * Field weights of the BM25 index — the "Search ranking" table in
+ * packages/daemon/README.md. The cue field is not here: its weight comes from
+ * the caller (`CueFieldOptions.boost`).
+ */
+export const FIELD_BOOST: Readonly<Record<string, number>> = Object.freeze({
+  // recall_when is authored exactly for triggering — highest weight.
+  recall_when_flat: 5,
+  title: 4,
+  tags_flat: 3,
+  // doc2query paraphrases (#117): machine-generated, so weighted below
+  // the hand-written triggers and tags but above plain body — they widen
+  // far recall without outranking the author's own words.
+  recall_when_expanded_flat: 2,
+  topic_path_flat: 2,
+  summary: 2,
+  body: 1,
+});
+
+/**
  * In-memory BM25 search over the vault.
  * Built on minisearch — handles ~thousands of memorys easily.
  * Field weights chosen so title + recall_when + tags > body.
@@ -600,17 +619,7 @@ export class SearchIndex {
       ],
       searchOptions: {
         boost: {
-          // recall_when is authored exactly for triggering — highest weight.
-          recall_when_flat: 5,
-          title: 4,
-          tags_flat: 3,
-          // doc2query paraphrases (#117): machine-generated, so weighted below
-          // the hand-written triggers and tags but above plain body — they widen
-          // far recall without outranking the author's own words.
-          recall_when_expanded_flat: 2,
-          topic_path_flat: 2,
-          summary: 2,
-          body: 1,
+          ...FIELD_BOOST,
           // Abgeleitete Cues: eigenes Gewicht, eigener Vertrauensklasse wegen.
           // Der Wert kommt vom Aufrufer und wird auf dem Auswahlteil bestimmt
           // (§18.3) — hier steht kein geratener Standardwert.

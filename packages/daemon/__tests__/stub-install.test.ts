@@ -25,6 +25,7 @@ import {
   stubAssetUrl,
   stubTarget,
 } from "../src/cli/stub-install.js";
+// @ts-expect-error — plain .mjs script, no declarations (#542).
 import { buildManifest, parseChecksumFile } from "../scripts/stub-manifest.mjs";
 import { parseArgs } from "../src/cli/commands.js";
 
@@ -130,7 +131,11 @@ const inputs = (f: { stubBin: string; markerPath: string }, mode: "ask" | "yes" 
   mode,
   interactive,
   version: "9.9.9",
-  target: TARGET as const,
+  // #542: `TARGET as const` doesn't type-check (`as const` only accepts a
+  // literal expression, not a reference); `as typeof TARGET` gets the same
+  // effect — the property keeps TARGET's own literal type instead of
+  // widening to `string`, so it still matches the stub's StubTarget union.
+  target: TARGET as typeof TARGET,
   stubBin: f.stubBin,
   markerPath: f.markerPath,
 });

@@ -259,6 +259,7 @@ async function cmdImportVault(args: ParsedArgs): Promise<number> {
       // of the number printed directly above it.
       (result.byAdapter.index > 0 ? ` · ${result.byAdapter.index} curated index` : "") +
       (result.skipped.length > 0 ? ` · ${result.skipped.length} skipped` : "") +
+      (result.orphaned.length > 0 ? ` · ${result.orphaned.length} orphaned` : "") +
       `\n`,
   );
   for (const s of result.skipped.slice(0, 10)) {
@@ -266,6 +267,18 @@ async function cmdImportVault(args: ParsedArgs): Promise<number> {
   }
   if (result.skipped.length > 10) {
     process.stdout.write(`  · …and ${result.skipped.length - 10} more\n`);
+  }
+  // #530 follow-up: a source file that disappeared since the last import never
+  // takes its memory down with it — a vanished file can be a stuck cloud sync.
+  // Nothing is removed; the human decides.
+  for (const o of result.orphaned.slice(0, 10)) {
+    process.stdout.write(`  · source file gone — memory kept: ${o.sourcePath} (${result.folder}/${o.id}.md)\n`);
+  }
+  if (result.orphaned.length > 10) {
+    process.stdout.write(`  · …and ${result.orphaned.length - 10} more orphaned\n`);
+  }
+  if (result.orphaned.length > 0) {
+    process.stdout.write(`  nothing was removed — review and delete by hand if that's what you want.\n`);
   }
   if (!result.dryRun && result.imported > 0) {
     process.stdout.write(

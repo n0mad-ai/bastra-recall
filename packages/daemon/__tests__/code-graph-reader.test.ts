@@ -248,7 +248,7 @@ describe("code graph reader: degradation instead of failure", () => {
     const repo = join(root, "toomany");
     await writeGraph(repo, {
       ...FIXTURE,
-      nodes: { length: MAX_NODES + 1, ...[] } as unknown,
+      nodes: { length: MAX_NODES + 1 } as unknown,
     });
     // A non-array `nodes` is a shape error; the count ceiling is asserted
     // through the exported constants instead of by building a 500k fixture.

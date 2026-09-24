@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join } from "node:path";
 import { matchPattern, formatHintBlock, runBashPreLane } from "../src/bash-pre-lane.js";
 
 
@@ -325,6 +325,113 @@ describe("bash-pre-hook: telemetry session (#356)", () => {
       await rm(stateDir, { recursive: true, force: true });
     }
   });
+
+  it("#507: a call with no client evidence writes the explicit unknown, never the surface default", async () => {
+    const daemon = await startMockDaemon((req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(req.url === "/hook/recall" ? JSON.stringify({ hits: [], vault_size: 0, latency_ms: 1, recall_id: "t" }) : "{}");
+    });
+    const logDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-"));
+    const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-state-"));
+    try {
+      await runHook(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          session_id: "bashpre-dims-507",
+          // No bastra_client marker, no Codex tool name — a real Claude Code
+          // hook call today (the registration never sets BASTRA_HOOK_CLIENT).
+          tool_input: { command: "rm -rf /tmp/whatever" },
+        },
+        {
+          BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
+          BASTRA_HOOK_STATE_DIR: stateDir,
+          BASTRA_TELEMETRY: "on",
+          BASTRA_LOG_PATH: logDir,
+        },
+      );
+      const ev = (await readTelemetryEvents(logDir)).find((e) => e.kind === "bash_hook_call");
+      assert.ok(ev, "a bash_hook_call event must be written");
+      const dims = ev.dimensions as Record<string, unknown>;
+      assert.equal(dims.client, "unknown", "no evidence in the payload → the explicit unknown, not hookClient's claude-code surface default");
+      assert.equal(dims.hook_source, "bash-pre");
+    } finally {
+      await daemon.close();
+      await rm(logDir, { recursive: true, force: true });
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("#507: an explicit bastra_client marker is real evidence and is trusted", async () => {
+    const daemon = await startMockDaemon((req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(req.url === "/hook/recall" ? JSON.stringify({ hits: [], vault_size: 0, latency_ms: 1, recall_id: "t" }) : "{}");
+    });
+    const logDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-codex-"));
+    const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-codex-state-"));
+    try {
+      await runHook(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          session_id: "bashpre-dims-codex-507",
+          bastra_client: "codex",
+          tool_input: { command: "rm -rf /tmp/whatever" },
+        },
+        {
+          BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
+          BASTRA_HOOK_STATE_DIR: stateDir,
+          BASTRA_TELEMETRY: "on",
+          BASTRA_LOG_PATH: logDir,
+        },
+      );
+      const ev = (await readTelemetryEvents(logDir)).find((e) => e.kind === "bash_hook_call");
+      assert.ok(ev, "a bash_hook_call event must be written");
+      const dims = ev.dimensions as Record<string, unknown>;
+      assert.equal(dims.client, "codex");
+    } finally {
+      await daemon.close();
+      await rm(logDir, { recursive: true, force: true });
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("#507: a call without a payload session_id gets the honest unassigned arm, not a guessed one", async () => {
+    const daemon = await startMockDaemon((req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(req.url === "/hook/recall" ? JSON.stringify({ hits: [], vault_size: 0, latency_ms: 1, recall_id: "t" }) : "{}");
+    });
+    const logDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-nosess-"));
+    const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-dims-nosess-state-"));
+    try {
+      await runHook(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          // No session_id: dimensionsFrom cannot pseudonymize a session it never
+          // received, and must say so rather than fabricate one.
+          tool_input: { command: "rm -rf /tmp/whatever" },
+        },
+        {
+          BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
+          BASTRA_HOOK_STATE_DIR: stateDir,
+          BASTRA_TELEMETRY: "on",
+          BASTRA_LOG_PATH: logDir,
+        },
+      );
+      const ev = (await readTelemetryEvents(logDir)).find((e) => e.kind === "bash_hook_call");
+      assert.ok(ev, "a bash_hook_call event must be written");
+      const dims = ev.dimensions as Record<string, unknown>;
+      assert.equal(dims.client, "unknown");
+      assert.equal(dims.hook_source, "bash-pre");
+      assert.equal(dims.experiment_session, null, "no session_id in the payload → no pseudonym");
+      assert.equal(dims.arm, "unassigned");
+    } finally {
+      await daemon.close();
+      await rm(logDir, { recursive: true, force: true });
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("bash-pre-hook: self-exclusion guard is a basename check, not a substring", () => {
@@ -625,6 +732,123 @@ describe("#521 — a heredoc body fed to a data sink is prose, not a command", (
           tool_name: "Bash",
           session_id: "sess-521",
           tool_input: { command: "bash <<'EOF'\nrm -rf /tmp/x\nEOF" },
+        },
+        env,
+      )).stdout;
+      assert.match(real, /STOP — destructive Bash command detected \(pattern: `rm -rf`\)/);
+    } finally {
+      await daemon.close();
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("#540 — the quoted message or body of git and gh is prose, not a command", () => {
+  const RM_RF = { label: "rm -rf", severity: "destructive" };
+
+  it("#540 does not fire on a commit message or issue body that MENTIONS a destructive command", () => {
+    for (const cmd of [
+      'git commit -m "docs: explain why rm -rf is blocked"',
+      "git commit -m 'fix: never git reset --hard in the hook'",
+      'git commit -am "chore: mention DROP TABLE in the changelog"',
+      'git commit --message "note on kubectl delete"',
+      'git commit --message="note on kubectl delete"',
+      'git commit -m "subject" -m "body: the tripwire catches git push --force"',
+      'git commit -m "multi-line\n\nrm -rf is still caught; git push -f too | sh"',
+      'git commit -m "quote \\"rm -rf /\\" in a message"',
+      "git commit -m 'markdown `rm -rf` in single quotes is literal'",
+      'git tag -a v1 -m "release notes mention rm -rf"',
+      'gh issue create --title "tripwire on rm -rf" --body "the tripwire catches git push --force"',
+      'gh issue comment 540 --body "we ran git reset --hard once"',
+      'gh pr create -t "x" -b "DROP TABLE in prose"',
+      'gh release create v1 --notes "removed the rm -rf step"',
+      'gh issue close 540 --comment "fixed: rm -rf in a body no longer fires"',
+      'cd /repo && git commit -m "docs: rm -rf" && git push origin main',
+      'git commit -m "docs: rm -rf" # a comment with a stray \' quote',
+      'git commit -m "docs: rm -rf" 2>&1',
+    ]) {
+      assert.equal(matchPattern(cmd), null, `must not fire for: ${cmd}`);
+    }
+  });
+
+  it("#540 still fires on a real command after the closing quote", () => {
+    for (const cmd of [
+      'git commit -m "x"; rm -rf /tmp/x',
+      'git commit -m "x";rm -rf /tmp/x',
+      'git commit -m "x" && rm -rf /tmp/x',
+      'git commit -m "x" || rm -rf /tmp/x',
+      'git commit -m "x"\nrm -rf /tmp/x',
+      'gh issue create --body "x" & rm -rf /tmp/x',
+    ]) {
+      assert.deepEqual(matchPattern(cmd), RM_RF, `must fire for: ${cmd}`);
+    }
+    // The destructive flag of the same command is not inside the message.
+    assert.deepEqual(matchPattern('git commit --amend -m "rm -rf mention"'), {
+      label: "git commit --amend",
+      severity: "destructive",
+    });
+  });
+
+  it("#540 still fires when quoting is used to DISGUISE a command", () => {
+    for (const cmd of [
+      '"rm" -rf /tmp/x',
+      "'rm' -rf /tmp/x",
+      'rm "-rf" /tmp/x',
+      "r\\m -rf /tmp/x",
+      'eval "rm -rf /tmp/x"',
+      'bash -c "rm -rf /tmp/x"',
+      "sh -c 'rm -rf /tmp/x'",
+      // Command substitution inside the message runs before git sees it.
+      'git commit -m "$(rm -rf /tmp/x)"',
+      'git commit -m "`rm -rf /tmp/x`"',
+      'git commit -m "x$(rm -rf /tmp/x)"',
+      'git commit -m "x"$(rm -rf /tmp/x)',
+      // Unterminated quote: the scanner cannot delimit the value.
+      'git commit -m "rm -rf /tmp/x',
+      // Quoted text that is not the message's value.
+      'git commit -m "x" "rm -rf /tmp/x"',
+      'git commit "rm -rf /tmp/x"',
+      'git commit -m "prefix"" rm -rf /tmp/x"',
+      // A prose flag under a head that is not git commit/tag or gh issue/pr/release.
+      'bash -m "rm -rf /tmp/x"',
+      'sudo git commit -m "rm -rf /tmp/x"',
+      'xargs git commit -m "rm -rf /tmp/x"',
+      // Output that feeds a pipe can land in a shell (#521's rule).
+      'git commit -m "rm -rf /tmp/x" | sh',
+      // A heredoc on the line: the scanner does not strip anything.
+      "bash <<'EOF'\ngit commit -m \"x\"; rm -rf /tmp/x\nEOF",
+      // Process substitution.
+      'git commit -m "x" <(rm -rf /tmp/x)',
+    ]) {
+      assert.deepEqual(matchPattern(cmd), RM_RF, `must fire for: ${cmd}`);
+    }
+  });
+
+  it("#540 the STOP warning still reaches the agent for a disguised command", async () => {
+    const daemon = await startMockDaemon((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ hits: [], vault_size: 10, latency_ms: 1, recall_id: "t" }));
+    });
+    const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-540-"));
+    const env = { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir };
+    try {
+      const prose = (await runHook(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          session_id: "sess-540",
+          tool_input: { command: 'git commit -m "docs: explain why rm -rf is blocked"' },
+        },
+        env,
+      )).stdout;
+      assert.equal(prose.trim(), "{}", "a commit message that mentions rm -rf must not warn");
+
+      const real = (await runHook(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          session_id: "sess-540",
+          tool_input: { command: 'git commit -m "$(rm -rf /tmp/x)"' },
         },
         env,
       )).stdout;

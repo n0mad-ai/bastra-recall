@@ -22,8 +22,6 @@ export interface BuildStamp {
   revision: string;
   /** Did the tree carry uncommitted or untracked changes at build time? */
   dirty: boolean;
-  /** ISO timestamp of the stamp, or null when the file predates the field. */
-  builtAt: string | null;
 }
 
 /** Pure parse, so every malformed shape is testable without a build. */
@@ -40,7 +38,6 @@ export function parseBuildStamp(text: string): BuildStamp | null {
   return {
     revision,
     dirty: fields.get("dirty") === "true",
-    builtAt: fields.get("built_at") ?? null,
   };
 }
 

@@ -326,6 +326,8 @@ async function main(): Promise<void> {
   if (consentNotice) console.error(consentNotice);
   // Für /health (#92): Runtime-Health des Index, nicht nur die Boot-Config.
   let embIdxForHealth: EmbeddingIndex | null = null;
+  /** Set once the doc2query paraphraser starts; /health reports it. */
+  let triggerExpandModel: string | null = null;
   // Circuit breaker (#165) am Provider-Boundary: nach 3 konsekutiven
   // Provider-Fehlern skipt Hybrid-Recall den Embed-Versuch komplett
   // (BM25-only, kein Timeout pro Query gegen ein wedged Ollama); nach dem
@@ -509,6 +511,7 @@ async function main(): Promise<void> {
             },
           });
           expander.start();
+          triggerExpandModel = expandModel;
           console.error(`[bastra-recall] trigger-expand: enabled (doc2query, model ${expandModel})`);
         }
         console.error(
@@ -656,6 +659,7 @@ async function main(): Promise<void> {
           embedding: embeddingStatus,
           embeddingHealth: () => embIdxForHealth?.runtimeHealth() ?? null,
           embeddingBreaker: () => embeddingBreaker?.snapshot(Date.now()) ?? null,
+          triggerExpand: () => (triggerExpandModel ? { model: triggerExpandModel } : null),
           embeddingVectors: () => embIdxForHealth?.snapshot() ?? null,
           // Such-Copilot (#207): gleiche lokale Gen-Model-Auflösung wie
           // doc2query; ohne Ollama bleibt /ui/chat aus (503).

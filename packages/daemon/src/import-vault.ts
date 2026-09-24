@@ -30,7 +30,9 @@ import { getUiEnabled } from "./settings.js";
 import { saveMemoryWithAuditTrail } from "./audit-trail.js";
 import { linkKey, pathHash, safeSlug, uniqueId } from "./import/identity.js";
 import { harvestIndex, looksLikeIndexHub } from "./import/index-harvest.js";
-import { looksLikeClaudeCode, mapFile, safeParse } from "./import/adapters.js";
+import { KNOWN_ADAPTERS, looksLikeClaudeCode, mapFile, safeParse } from "./import/adapters.js";
+import { findOrphanedMemories, type ImportVaultOrphan } from "./import/orphans.js";
+export type { ImportVaultOrphan } from "./import/orphans.js";
 
 /** Reserved subtree for all folder imports — its own graph cluster, and the
  *  atomic unit for delete/re-import. Never a target of the normal scope/type
@@ -56,12 +58,6 @@ export interface ImportVaultOptions {
 /** Always-skipped directory names (#220): archives hold retired copies of
  *  live notes — importing them mints `-2`/`-3` collision twins. */
 const DEFAULT_EXCLUDED_DIRS = new Set(["_archive", "archive"]);
-
-/** Adapter prefixes the ownership check recognizes in a node's `source` stamp
- *  (`<adapter>:<label>:<relKey>`). A stamp that starts with one of these AND
- *  carries this label is a prior node of THIS importer; anything else on a
- *  colliding id is foreign and must never be overwritten (#240). */
-const KNOWN_ADAPTERS = new Set(["claude-code-memory", "markdown"]);
 
 /** Who owns the node currently sitting on a candidate id, together with the
  * exact preimage the commit must still see. `unverifiable` means the node
@@ -123,6 +119,9 @@ export interface ImportVaultResult {
    *  the user, or a future opt-in `bastra migrate`, removes it with a
    *  confirmed delete. */
   migrated: Array<{ from: string; to: string }>;
+  /** #530 follow-up: memories kept despite a vanished source file — never
+   *  acted on, only reported (see {@link ImportVaultOrphan}). */
+  orphaned: ImportVaultOrphan[];
   dryRun: boolean;
 }
 
@@ -587,12 +586,43 @@ export async function importVault(
     }
   }
 
-  // #530: Der Marker beschreibt das importierte Set. Ändert ein Lauf nichts
-  // daran, hat er auch nichts Neues zu beschreiben — ein neuer `at`-Stempel
-  // wäre eine Veränderungsmeldung ohne Veränderung, und auf einem
-  // synchronisierten Vault eine Dateiänderung für jeden Client.
-  const setChanged = written.created > 0 || written.updated > 0;
-  if (!dryRun && ids.length > 0 && setChanged) {
+  // #530 follow-up: orphaned memories (source file gone) — read-only, see orphans.ts.
+  const orphaned = await findOrphanedMemories(vaultRoot, folder, label, new Set(relKeyByPath.values()));
+
+  // #530: the marker mirrors the CURRENT source set, not a cumulative log
+  // (product decision) — so a run that writes nothing can still owe the
+  // marker an update: the source set may have SHRUNK (a file was removed),
+  // leaving `ids.length` below what the marker already claims even though
+  // every remaining file was already in the vault (written.created ===
+  // written.updated === 0). This read is NOT gated on `ids.length > 0`: the
+  // same shrink can go all the way to zero (the last source file removed),
+  // and a marker still claiming the old count would be exactly as stale as
+  // the n -> n-1 case this fix was written for. Compare against the count
+  // the existing marker already stores — no new marker format, `imported`
+  // was always there — and treat a stale count as a change too. A run that
+  // writes nothing AND matches the marker's count stays a true no-op: no
+  // read finds a mismatch, so no restamp.
+  let previousImported: number | undefined;
+  let markerExisted = false;
+  if (!dryRun) {
+    try {
+      const prevRaw = await readFile(join(vaultRoot, folder, ".bastra-imported"), "utf8");
+      const prev = JSON.parse(prevRaw) as { imported?: unknown };
+      markerExisted = true;
+      if (typeof prev.imported === "number") previousImported = prev.imported;
+    } catch {
+      /* no marker yet, or unreadable — nothing to compare against */
+    }
+  }
+  // A count mismatch only counts as a change when a marker was actually
+  // there to be stale: an empty source set with no prior marker (ids.length
+  // === 0, markerExisted === false) must stay a true no-op — nothing to
+  // reflect and nothing to skip. Once a marker exists, it mirrors the
+  // current set even when that set is now empty (product decision: the
+  // marker reflects reality, it is never deleted here).
+  const countChanged = markerExisted && previousImported !== ids.length;
+  const setChanged = written.created > 0 || written.updated > 0 || countChanged;
+  if (!dryRun && setChanged) {
     // Fix-Leiter Stufe 3 (zzallirog): ein Marker im Import-Subtree, damit
     // FREMDE Tools auf dem geteilten Ordner (Atlas, Indexer, grep) das Set
     // als maschinell erzeugte Kopie erkennen und überspringen können. Kein
@@ -634,6 +664,7 @@ export async function importVault(
     ids,
     indexNode,
     migrated,
+    orphaned,
     dryRun,
   };
 }
@@ -763,6 +794,7 @@ export async function handleUiImportVault(
     scope: result.scope,
     by_adapter: result.byAdapter,
     skipped: result.skipped.length,
+    orphaned: result.orphaned.length, // #530 follow-up: source gone, memory kept
     dry_run: result.dryRun,
   });
 }

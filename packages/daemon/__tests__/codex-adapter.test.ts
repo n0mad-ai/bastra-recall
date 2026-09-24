@@ -12,10 +12,11 @@ import { join } from "node:path";
 
 import { parseCodexMcpServer, codexServerMatches } from "../src/cli/codex-cli.js";
 import { planCodexHooks, patchCodexHooks } from "../src/cli/adapters/codex.js";
-import { applyPatchPaths, normalizeWritePayload } from "../src/hook-write-input.js";
+import { applyPatchPaths, normalizeWritePayload, type WritePayloadShape } from "../src/hook-write-input.js";
 import { hookClient } from "../src/hook-surface.js";
 import { codeTargets, MAX_CODE_TARGETS } from "../src/write-lane.js";
 import { repoRelative } from "../src/code-graph/dependents-block.js";
+import { fileSizeNote, thresholdsFor } from "../src/file-size-check.js";
 
 test("Codex MCP JSON matches the same stable stdio block ChatGPT desktop reads", () => {
   const raw = JSON.stringify({
@@ -146,7 +147,10 @@ test("apply_patch payloads expose target paths and retain the patch body", () =>
     "packages/daemon/src/a.ts",
     "packages/daemon/src/b.ts",
   ]);
-  const normalized = normalizeWritePayload({ tool_name: "apply_patch", tool_input: { command } });
+  // #542: T is inferred from the literal argument by default, which loses the
+  // `file_path`/`file_paths` the function adds at runtime — pin it to the
+  // (loose) WritePayloadShape instead.
+  const normalized = normalizeWritePayload<WritePayloadShape>({ tool_name: "apply_patch", tool_input: { command } });
   assert.equal(normalized?.tool_input?.file_path, "packages/daemon/src/a.ts");
   assert.deepEqual(normalized?.tool_input?.file_paths, ["packages/daemon/src/a.ts", "packages/daemon/src/b.ts"]);
   assert.equal(normalized?.tool_input?.command, command);
@@ -191,4 +195,35 @@ test("surface detection prefers explicit Codex markers and keeps Claude default"
   assert.equal(hookClient({ turn_id: "turn-1" }), "claude-code");
   assert.equal(hookClient({ tool_name: "apply_patch" }), "codex");
   assert.equal(hookClient({ tool_name: "Write" }), "claude-code");
+});
+
+test("#572 NotebookEdit names its target notebook_path, and the write lane reads file_path", () => {
+  // The lane returns on its first line without a `file_path`, so the notebook
+  // was never booked and the task boundary rendered it exactly like a file
+  // nothing depends on. Revert-check: drop the NotebookEdit branch in
+  // normalizeWritePayload and both assertions go red.
+  const cwd = "/work/repo";
+  const normalized = normalizeWritePayload({
+    tool_name: "NotebookEdit",
+    tool_input: { notebook_path: "notebooks/train.ipynb", new_source: "x = 1", edit_mode: "replace" },
+  })!;
+  const input = normalized.tool_input as Record<string, unknown>;
+  assert.equal(input.file_path, "notebooks/train.ipynb");
+  assert.deepEqual(codeTargets(input, input.file_path as string, cwd), [join(cwd, "notebooks/train.ipynb")]);
+  assert.equal(input.new_source, "x = 1", "the rest of the call is untouched");
+
+  // Nothing to normalize is still nothing: a call with neither key has no target.
+  assert.equal(normalizeWritePayload({ tool_name: "NotebookEdit", tool_input: {} }), null);
+});
+
+test("#572 the normalized notebook path does not put a .ipynb under the size convention", async () => {
+  // Normalizing `notebook_path` turns the whole write lane on for NotebookEdit,
+  // which the lane's own SUPPORTED_TOOLS already names. The one part that would
+  // read a notebook wrongly is the size note — it would report the JSON's line
+  // count as the file's length — and it does not, because `.ipynb` is not a
+  // code extension. Revert-check: add ".ipynb" to CODE_EXTS in
+  // file-size-check.ts and both assertions go red.
+  assert.equal(thresholdsFor("/work/repo/notebooks/train.ipynb"), null);
+  assert.notEqual(thresholdsFor("/work/repo/src/train.ts"), null);
+  assert.equal(await fileSizeNote("/work/repo/notebooks/train.ipynb"), null);
 });

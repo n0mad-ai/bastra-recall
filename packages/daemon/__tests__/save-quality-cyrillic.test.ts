@@ -60,6 +60,7 @@ test("multi-word Cyrillic recall_when is not flagged as too short/generic", asyn
 
   const res = await saveMemoryHandler(deps, CYRILLIC);
   assert.equal(res.created, true);
+  assert.ok(res.save_quality); // #542: absent only on a conflict diversion
 
   const shortIssues = res.save_quality.issues.filter((i) => i.includes("too short/generic"));
   assert.deepEqual(
@@ -78,6 +79,7 @@ test("a genuinely one-word Cyrillic trigger is still flagged", async (t) => {
     title: "feedback односложный триггер",
     recall_when: ["дрейф"],
   });
+  assert.ok(res.save_quality); // #542: absent only on a conflict diversion
 
   const shortIssues = res.save_quality.issues.filter((i) => i.includes("too short/generic"));
   assert.ok(

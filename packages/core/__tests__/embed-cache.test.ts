@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { Vault } from "../src/vault.js";
 import { EmbeddingIndex, type EmbeddingProvider } from "../src/embeddings.js";
+import { EmbedCache } from "../src/embed-cache.js";
 
 /** rm mit einem Retry: der EmbedCache flusht asynchron — ein Write, der
  *  zwischen readdir und rmdir landet, macht das rekursive rm ENOTEMPTY
@@ -166,6 +167,44 @@ test("embed-cache: cache persists across EmbeddingIndex instances", async () => 
       idx2.stop();
     }
   } finally {
+    await rmSettled(dir);
+  }
+});
+
+test("embed-cache: an incompatible cache (version / provider / dim) is dropped WITH a log line, not silently", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "bastra-cache-4-"));
+  const lines: string[] = [];
+  const orig = console.error;
+  console.error = (...args: unknown[]) => { lines.push(args.map(String).join(" ")); };
+  try {
+    const entries = { m1: { hash: "h", dim: 4, vector: [1, 0, 0, 0] } };
+    const cases: Array<[string, Record<string, unknown>]> = [
+      ["version", { version: 2, provider: "mock-counting", dim: 4, entries }],
+      ["provider", { version: 1, provider: "other-provider", dim: 4, entries }],
+      ["dim", { version: 1, provider: "mock-counting", dim: 8, entries }],
+    ];
+    for (const [label, file] of cases) {
+      const cachePath = path.join(dir, `${label}.json`);
+      await writeFile(cachePath, JSON.stringify(file));
+      lines.length = 0;
+      const cache = new EmbedCache(cachePath, "mock-counting", 4);
+      await cache.load();
+      assert.equal(cache.size(), 0, `${label}: incompatible cache must not be used`);
+      // Filtered, not counted raw: an unrelated console.error in the same window must not flake this.
+      const ignored = lines.filter((l) => /embed-cache ignored/.test(l));
+      assert.equal(ignored.length, 1, `${label}: exactly one "embed-cache ignored" line expected, got ${ignored.length}`);
+      assert.match(ignored[0], new RegExp(cachePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${label}: line names the file`);
+    }
+    // control: a compatible file loads silently
+    const okPath = path.join(dir, "ok.json");
+    await writeFile(okPath, JSON.stringify({ version: 1, provider: "mock-counting", dim: 4, entries }));
+    lines.length = 0;
+    const ok = new EmbedCache(okPath, "mock-counting", 4);
+    await ok.load();
+    assert.equal(ok.size(), 1);
+    assert.deepEqual(lines.filter((l) => /embed-cache/.test(l)), [], "compatible cache must not log");
+  } finally {
+    console.error = orig;
     await rmSettled(dir);
   }
 });

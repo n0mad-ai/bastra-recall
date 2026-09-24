@@ -77,6 +77,10 @@ const BASE = {
 } as const;
 
 type SaveArgs = Parameters<typeof saveDocument>[1];
+// #542: the fixtures below spread BASE (an `as const` object, so its `tags`
+// is a readonly tuple) and often omit fields BASE already carries — neither
+// overlaps SaveArgs enough for a direct cast any more. Every `as SaveArgs`
+// below goes via `unknown` first, same as TS's own suggestion.
 
 // ── 1 ───────────────────────────────────────────────────────────
 
@@ -100,7 +104,7 @@ test("eine fremde Obsidian-Notiz am Sidecar-Pfad wird nie überschrieben", async
         original_path: src,
         folder_path: "notizen",
         overwrite: true,
-      } as SaveArgs),
+      } as unknown as SaveArgs),
     /not a document sidecar|sidecar already exists/,
   );
   assert.equal(
@@ -189,7 +193,7 @@ test("recategorize erhält Felder, die nicht in seiner Feldliste stehen", async 
     title: "Police",
     original_path: src,
     folder_path: "alt",
-  } as SaveArgs);
+  } as unknown as SaveArgs);
 
   // Alles, was ein gelebtes Sidecar über die Zeit ansammelt: Graph-Kanten
   // vom Related-Enricher, ein Sensitivity-Level, die Provenienz, eine
@@ -246,7 +250,7 @@ test("zwei Dateinamen mit derselben Doc-id ergeben kein zweites Sidecar", async 
     ...BASE,
     title: "A plus B",
     original_path: plus,
-  } as SaveArgs);
+  } as unknown as SaveArgs);
 
   await assert.rejects(
     () =>
@@ -254,7 +258,7 @@ test("zwei Dateinamen mit derselben Doc-id ergeben kein zweites Sidecar", async 
         ...BASE,
         title: "A minus B",
         original_path: minus,
-      } as SaveArgs),
+      } as unknown as SaveArgs),
     /id .* already belongs to/,
   );
 
@@ -273,7 +277,7 @@ test("ein fehlschlagender Kopiervorgang löscht die vorhandene Zieldatei nicht",
     title: "Akte",
     original_path: src,
     folder_path: "akten",
-  } as SaveArgs);
+  } as unknown as SaveArgs);
 
   // Quelle des zweiten Saves ist ein VERZEICHNIS — copyFile muss scheitern.
   const bogus = join(dir, "zweitquelle", "Akte.pdf");
@@ -287,7 +291,7 @@ test("ein fehlschlagender Kopiervorgang löscht die vorhandene Zieldatei nicht",
         original_path: bogus,
         folder_path: "akten",
         overwrite: true,
-      } as SaveArgs),
+      } as unknown as SaveArgs),
     /not a regular file|EISDIR/,
   );
 
@@ -310,7 +314,7 @@ test("gleichzeitige Writes aufs selbe Sidecar treten sich nicht auf die Tempdate
     title: "Beleg",
     original_path: src,
     folder_path: "belege",
-  } as SaveArgs);
+  } as unknown as SaveArgs);
 
   const again = () =>
     saveDocument(vault, {
@@ -319,7 +323,7 @@ test("gleichzeitige Writes aufs selbe Sidecar treten sich nicht auf die Tempdate
       original_path: src,
       folder_path: "belege",
       overwrite: true,
-    } as SaveArgs);
+    } as unknown as SaveArgs);
 
   const results = await Promise.allSettled([
     again(),
@@ -363,7 +367,7 @@ test("auch ein Move erhält die Felder außerhalb der Rebuild-Liste", async (t) 
     title: "Bescheid",
     original_path: src,
     folder_path: "alt",
-  } as SaveArgs);
+  } as unknown as SaveArgs);
 
   const parsed = matter(await readFile(doc.sidecar_path, "utf8"));
   await writeFile(
@@ -401,7 +405,7 @@ test("save_document(overwrite) patcht das Sidecar, statt es neu zu bauen", async
     original_path: src,
     folder_path: "versicherung",
     body: "Erfasster Inhalt.",
-  } as SaveArgs);
+  } as unknown as SaveArgs);
 
   // Der gelebte Zustand: der Related-Enricher hat Kanten gezogen, jemand hat
   // die Sensitivity gesetzt, die confidence heruntergestuft und in Obsidian
@@ -434,7 +438,7 @@ test("save_document(overwrite) patcht das Sidecar, statt es neu zu bauen", async
     original_path: doc.original_path,
     folder_path: "versicherung",
     overwrite: true,
-  } as SaveArgs);
+  } as unknown as SaveArgs);
 
   const after = matter(await readFile(doc.sidecar_path, "utf8")).data as Record<
     string,
@@ -473,7 +477,7 @@ test("ein Sidecar mit `scope: Documents` ist dasselbe Sidecar", async (t) => {
     category: "rechnung",
     original_path: src,
     folder_path: "rechnungen",
-  } as SaveArgs);
+  } as unknown as SaveArgs);
 
   const parsed = matter(await readFile(doc.sidecar_path, "utf8"));
   await writeFile(
@@ -504,7 +508,7 @@ test("ein quarantänisiertes Sidecar derselben id blockiert den Save", async (t)
     title: "Akte",
     original_path: src,
     folder_path: "a",
-  } as SaveArgs);
+  } as unknown as SaveArgs);
 
   // Dieselbe id ein zweites Mal auf der Platte — der Index nimmt nur einen
   // Pfad auf und stellt den anderen in Quarantäne.
@@ -527,7 +531,7 @@ test("ein quarantänisiertes Sidecar derselben id blockiert den Save", async (t)
       original_path: src,
       folder_path: loser.includes(`${sep}b${sep}`) ? "b" : "a",
       overwrite: true,
-    } as SaveArgs),
+    } as unknown as SaveArgs),
     /already belongs to/,
   );
 });
@@ -555,7 +559,7 @@ test("ein Symlink im Dokumentenordner führt nicht aus dem Vault heraus", async 
       title: "Geheim",
       original_path: src,
       folder_path: "linked",
-    } as SaveArgs),
+    } as unknown as SaveArgs),
     /outside the documents folder/,
   );
   assert.deepEqual(
@@ -584,13 +588,13 @@ test("zwei Dateinamen mit derselben abgeleiteten id kollidieren auch parallel", 
       title: "Plus",
       original_path: plus,
       folder_path: "",
-    } as SaveArgs),
+    } as unknown as SaveArgs),
     saveDocument(vault, {
       ...BASE,
       title: "Minus",
       original_path: minus,
       folder_path: "",
-    } as SaveArgs),
+    } as unknown as SaveArgs),
   ]);
   const ok = results.filter((r) => r.status === "fulfilled");
   assert.equal(ok.length, 1, "genau ein Sidecar darf die id bekommen");
@@ -625,7 +629,7 @@ test("gleichzeitige Metadaten-Patches verlieren keine Änderung still", async (t
     title: "Police",
     original_path: src,
     folder_path: "vertraege",
-  } as SaveArgs);
+  } as unknown as SaveArgs);
 
   for (let round = 0; round < 10; round++) {
     const results = await Promise.allSettled([
@@ -673,7 +677,7 @@ test("ein Symlink INNERHALB des Vaults führt nicht in ein fremdes Regal", async
       title: "Beleg",
       original_path: src,
       folder_path: "linked",
-    } as SaveArgs),
+    } as unknown as SaveArgs),
     /outside the documents folder/,
   );
   assert.deepEqual(
@@ -748,7 +752,7 @@ async function savedDoc(dir: string, vault: Vault) {
     title: "Police",
     original_path: src,
     folder_path: "alt",
-  } as SaveArgs);
+  } as unknown as SaveArgs);
 }
 
 test("eine externe Änderung im Commit-Fenster geht nicht verloren", async (t) => {
@@ -849,7 +853,7 @@ test("ein neu entstehendes Sidecar hat kein Preimage und wird trotzdem geschrieb
     original_path: doc.original_path,
     folder_path: "alt",
     overwrite: true,
-  } as SaveArgs);
+  } as unknown as SaveArgs);
   assert.equal(again.sidecar_path, doc.sidecar_path);
   assert.equal(
     matter(await readFile(doc.sidecar_path, "utf8")).data.title,
@@ -930,7 +934,7 @@ test("ein Dokumentenordner, der selbst ein Symlink ist, wird nicht beschrieben",
       title: "Beleg",
       original_path: src,
       folder_path: "",
-    } as SaveArgs),
+    } as unknown as SaveArgs),
     /is not .*'s own documents|not .* own documents/,
   );
   assert.deepEqual(

@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`bastra doctor` shows which features are switched off**, not only which
+  registrations are broken. A new `features` section lists, one line each,
+  hooks / Stop hook / skill per registered client (including Claude Code's own
+  `"disableAllHooks": true`), the memory language (unset means memories are
+  written in English), onboarding, semantic recall and reflex memories — every
+  off item with the command that turns it on. Features that are off by default
+  on purpose (code awareness, the experimental change-impact block, product
+  docs, Commons, bridges, the vault map) sit under their own heading as
+  intentional. The section never changes the exit code, and `--fix` never
+  switches a feature on.
+
 ### Changed
 
 - **The pending relay has two lanes** (#513). What the last session raised is

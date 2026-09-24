@@ -24,7 +24,8 @@ import { envFirst, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookClient } from "./hook-surface.js";
+import { hookClient, hookClientEvidence, type HookClientEvidence } from "./hook-surface.js";
+import { dimensionsFrom } from "./telemetry-dimensions.js";
 import { governContext } from "./context-governor.js";
 import { postLane } from "./thin-client.js";
 import { isUnfused, type HookRecallHit, type HookRecallResponse } from "./hook-recall-response.js";
@@ -215,6 +216,148 @@ function stripDataSinkHeredocBodies(cmd: string): string {
 }
 
 /**
+ * Flags whose quoted value is the message or body text (#540), per command
+ * head. Everything these commands take is handed to git/gh as an argument and
+ * never run by a shell, so the flag's value is data by POSITION — no attempt
+ * is made to read the sentence. `git commit -am "…"` is a short-flag cluster
+ * that ends in `-m`, which is why the git entry takes one.
+ */
+const GIT_MESSAGE_FLAG = /^(?:-[a-zA-Z]*m|--message)$/;
+const GH_TEXT_FLAG = /^(?:-[tbn]|--(?:title|body|notes|comment|subject))$/;
+
+function proseFlagFor(words: string[]): RegExp | null {
+  if (words[0] === "git" && (words[1] === "commit" || words[1] === "tag")) return GIT_MESSAGE_FLAG;
+  if (words[0] === "gh" && /^(?:issue|pr|release)$/.test(words[1] ?? "")) return GH_TEXT_FLAG;
+  return null;
+}
+
+interface ShellWord {
+  text: string;
+  start: number;
+  end: number;
+  /** Where a single `'…'`/`"…"` part starts that runs to the word's end, with
+   *  only plain characters before it (`"…"`, `--body="…"`); null otherwise. */
+  quotedFrom: number | null;
+}
+
+const WORD_BREAK = " \t\n|&;()<>";
+
+/**
+ * Split a command into simple commands of words, honouring shell quoting.
+ *
+ * Returns null — "do not strip anything" — for every construct whose words it
+ * cannot delimit exactly: a heredoc (its body is not shell text), command or
+ * process substitution (`$(…)`, backticks, `<(…)`), `$'…'`/`$"…"` quoting, and
+ * an unterminated quote. Bailing out keeps today's behaviour, so a gap in this
+ * scanner can only fall on the safe side.
+ */
+function simpleCommands(cmd: string): Array<{ words: ShellWord[]; piped: boolean }> | null {
+  const commands: Array<{ words: ShellWord[]; piped: boolean }> = [];
+  let words: ShellWord[] = [];
+  const close = (piped: boolean): void => {
+    if (words.length > 0) commands.push({ words, piped });
+    words = [];
+  };
+  let i = 0;
+  while (i < cmd.length) {
+    const c = cmd[i];
+    if (c === " " || c === "\t") {
+      i++;
+    } else if (c === "#") {
+      // A comment only starts at a word boundary; its quotes are not quotes.
+      while (i < cmd.length && cmd[i] !== "\n") i++;
+    } else if (c === "<" || c === ">") {
+      if (cmd[i + 1] === "(") return null;
+      if (c === "<" && cmd.startsWith("<<<", i)) i += 3;
+      else if (c === "<" && cmd[i + 1] === "<") return null;
+      else i += cmd[i + 1] === "&" || cmd[i + 1] === "|" || cmd[i + 1] === c ? 2 : 1;
+    } else if (c === "&" && cmd[i + 1] === ">") {
+      i += 2;
+    } else if (c === "|") {
+      const or = cmd[i + 1] === "|";
+      close(!or);
+      i += or || cmd[i + 1] === "&" ? 2 : 1;
+    } else if (WORD_BREAK.includes(c)) {
+      close(false);
+      i++;
+    } else {
+      const start = i;
+      let quotes = 0;
+      let firstQuote = -1;
+      let plainBefore = true;
+      while (i < cmd.length && !WORD_BREAK.includes(cmd[i])) {
+        const ch = cmd[i];
+        if (ch === "'" || ch === '"') {
+          if (firstQuote < 0) firstQuote = i;
+          let j = i + 1;
+          for (; j < cmd.length && cmd[j] !== ch; j++) {
+            if (ch === "'") continue;
+            if (cmd[j] === "\\") j++;
+            else if (cmd[j] === "`" || (cmd[j] === "$" && cmd[j + 1] === "(")) return null;
+          }
+          if (j >= cmd.length) return null;
+          quotes++;
+          i = j + 1;
+        } else if (ch === "`" || (ch === "$" && "('\"".includes(cmd[i + 1] ?? ""))) {
+          return null;
+        } else {
+          if (firstQuote >= 0 || ch === "\\") plainBefore = false;
+          i += ch === "\\" ? 2 : 1;
+        }
+      }
+      const end = Math.min(i, cmd.length);
+      words.push({
+        text: cmd.slice(start, end),
+        start,
+        end,
+        quotedFrom: quotes === 1 && plainBefore ? firstQuote : null,
+      });
+    }
+  }
+  close(false);
+  return commands;
+}
+
+/**
+ * Blank the quoted message/body values of git and gh (#540).
+ *
+ * #521 made heredoc bodies fed to a data sink out of scope; the same prose
+ * reaches the tripwire as a quoted argument — `git commit -m "docs: why rm -rf
+ * is blocked"`, `gh issue create --body "…git push --force…"`. Only the value
+ * of a flag in `GIT_MESSAGE_FLAG`/`GH_TEXT_FLAG`, under the head it belongs
+ * to, is blanked, and only when that value is exactly one quoted string.
+ * Everything else keeps being matched: the command after the closing quote,
+ * any other quoted argument, `bash -c "…"`/`eval "…"`, and every command whose
+ * output feeds a pipe (it could land in a shell, as in #521).
+ */
+function stripProseArguments(cmd: string): string {
+  if (!cmd.includes("'") && !cmd.includes('"')) return cmd;
+  const commands = simpleCommands(cmd);
+  if (!commands) return cmd;
+  const spans: Array<[number, number]> = [];
+  for (const { words, piped } of commands) {
+    const flag = piped ? null : proseFlagFor(words.map((w) => w.text));
+    if (!flag) continue;
+    for (let k = 2; k < words.length; k++) {
+      const w = words[k];
+      const next = words[k + 1];
+      if (flag.test(w.text) && next && next.quotedFrom === next.start) {
+        spans.push([next.start, next.end]);
+        k++;
+      } else if (w.quotedFrom !== null && w.quotedFrom > w.start) {
+        const prefix = w.text.slice(0, w.quotedFrom - w.start);
+        if (prefix.startsWith("--") && prefix.endsWith("=") && flag.test(prefix.slice(0, -1))) {
+          spans.push([w.quotedFrom, w.end]);
+        }
+      }
+    }
+  }
+  let out = cmd;
+  for (const [s, e] of spans.reverse()) out = out.slice(0, s) + "''" + out.slice(e);
+  return out;
+}
+
+/**
  * The parts of a command line that actually run something (#415).
  *
  * Split on pipeline and sequence separators, then drop the segments that only
@@ -224,14 +367,18 @@ function stripDataSinkHeredocBodies(cmd: string): string {
  * common case costs a split of a short string.
  */
 function executableSegments(cmd: string): string[] {
-  return stripDataSinkHeredocBodies(cmd)
+  return stripProseArguments(stripDataSinkHeredocBodies(cmd))
     .split(/\|\||&&|[|;\n]/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0 && !SEARCH_ONLY_HEAD.test(s));
 }
 
 function matchPattern(cmd: string): { label: string; severity: "destructive" | "risky" } | null {
-  const segments = executableSegments(cmd);
+  // #540: quotes and backslashes inside a word do not change what runs —
+  // `"rm" -rf /`, `rm "-rf" /` and `r\m -rf /` are `rm -rf /`. Each segment is
+  // matched as written AND with them removed, so quoting cannot disguise a
+  // command the patterns would catch unquoted.
+  const segments = executableSegments(cmd).flatMap((s) => [s, s.replace(/["'\\]/g, "")]);
   for (const p of DESTRUCTIVE_PATTERNS) {
     if (segments.some((s) => p.re.test(s))) return { label: p.label, severity: "destructive" };
   }
@@ -248,6 +395,9 @@ function matchPattern(cmd: string): { label: string; severity: "destructive" | "
 export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: string): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
+  // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
+  // der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback.
+  const clientEvidence = hookClientEvidence(payload);
 
   if (payload.hook_event_name !== "PreToolUse") return "{}";
   if (payload.tool_name !== "Bash") return "{}";
@@ -386,6 +536,7 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
   recordBudgetShadow(payload.session_id ?? null, "bash_hook_call", Math.ceil(block.length / 4));
   await writeTelemetry({
     session_id: payload.session_id ?? null,
+    client: clientEvidence,
     matched_pattern: match.label,
     severity: match.severity,
     daemon_url: selfBaseUrl,
@@ -432,7 +583,7 @@ export function formatHintBlock(
     lines.push(
       `STOP — destructive Bash command detected (pattern: \`${pattern}\`). ` +
         `Per user-preference this needs explicit user confirmation unless authorized in advance. ` +
-        `Do not run blindly: confirm the target paths, the scope of effect, and that Daniel has asked for this exact action.`,
+        `Do not run blindly: confirm the target paths, the scope of effect, and that the user has asked for this exact action.`,
     );
   } else {
     lines.push(
@@ -460,6 +611,9 @@ interface BashHookCallTelemetry {
    *  session_id, so per-session aggregation (context tax, #354) is possible.
    *  A synthetic UUID is the fallback only when the payload carried none. */
   session_id?: string | null;
+  /** #507: die aufrufende Oberfläche — NUR wenn belegt (`hookClientEvidence`),
+   *  nie der surface-Default. */
+  client: HookClientEvidence;
   matched_pattern: string;
   severity: "destructive" | "risky";
   daemon_url: string;
@@ -491,13 +645,15 @@ async function writeTelemetry(payload: BashHookCallTelemetry): Promise<void> {
     const ts = new Date().toISOString();
     // #356: the payload's session_id is real session state — synthetic UUID
     // only when the payload carried none.
-    const { session_id: payloadSessionId, ...rest } = payload;
+    const { session_id: payloadSessionId, client, ...rest } = payload;
     const event = {
       kind: "bash_hook_call",
       ts,
       session_id: payloadSessionId ?? randomUUID(),
       hook_version: HOOK_VERSION,
       ...rest,
+      // #507: bash-pre is this lane's own hook_source — it never varies per call.
+      dimensions: dimensionsFrom({ client, hook_source: "bash-pre", session_id: payloadSessionId }),
     };
     const file = join(logDir, `events-${ts.slice(0, 10)}.jsonl`);
     await appendFile(file, JSON.stringify(event) + "\n", "utf8");

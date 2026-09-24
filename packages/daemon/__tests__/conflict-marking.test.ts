@@ -59,6 +59,10 @@ test("#205: the contradicting save is diverted — no sibling, no overwrite, bot
         source: "Deploy-Log 19.08.",
       }),
     );
+    // #542: saveMemoryHandler returns SaveMemoryResult | ClaimGateResult; a
+    // diversion into a conflict mark is never held at the claim gate, so
+    // narrow away that branch before reading conflict_marked.
+    assert.ok(!("claim_gate" in result), "a conflict-mark diversion is not a claim-gate hold");
 
     assert.equal(result.conflict_marked, true);
     assert.equal(result.created, false);
