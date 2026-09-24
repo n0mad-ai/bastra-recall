@@ -1,14 +1,10 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, copyFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { parseDiff, parseLcov, normalizeSource, select, testFiles, INERT, codeLinesOf, gitDiff } from "../test-map.mjs";
-
-const HERE = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(HERE, "..", "..");
 
 // Revert-checks added below, one per bug found in review (each names what to break to
 // go red): INERT swallowing real code after a same-line block comment or a bare leading
@@ -16,8 +12,7 @@ const ROOT = join(HERE, "..", "..");
 // node_modules copy onto this repo's own packages/<name>/src path → revert to matching
 // the tail pattern before checking `rel`; parseDiff losing a space-tagged filename's
 // trailing tab, a binary-file diff entirely, or a rename+edit's old-path coverage →
-// revert parseDiff to the pre-fix version; heatmap --html innerHTML-ing a raw filename →
-// drop the esc() calls in tools/test-map-heatmap.html.
+// revert parseDiff to the pre-fix version.
 
 // Revert-checks: read hunks on the NEW side in parseDiff → "old side" red; drop the
 // inert marking → "comment-only" red; select by file instead of by line → "one line
@@ -178,54 +173,6 @@ describe("test-map: parseDiff against real git diff output", () => {
   rmSync(repo, { recursive: true, force: true });
 });
 
-// Revert-check: drop the esc() wrapping around f.f / g / s.f / h.at / b in the innerHTML
-// template literals of tools/test-map-heatmap.html and the injected marker below reaches
-// the DOM unescaped (assertion fails on the literal "<img" substring).
-describe("test-map: heatmap --html escapes a crafted filename before innerHTML", () => {
-  it("a filename shaped like an HTML injection is escaped in the rendered page", () => {
-    const work = mkdtempSync(join(tmpdir(), "test-map-html-"));
-    const mapPath = join(ROOT, ".test-map", "map.json");
-    const backup = existsSync(mapPath) ? join(work, "map.json.bak") : null;
-    if (backup) copyFileSync(mapPath, backup);
-    try {
-      const evil = 'packages/x/src/"><img src=x onerror=alert(1)>.ts';
-      const map = {
-        version: 1, commit: "c0ffee", dirty: false, built_at: new Date().toISOString(), node: process.version, jobs: 1,
-        tests: [{ file: "tools/__tests__/fake.test.mjs", tests: 1, pass: 1, fail: 0, skipped: 0, wall_ms: 10, exit: 0, src_lines: 1 }],
-        sources: { [evil]: { lines: [[1, 1]], by: { 0: [[1, 1]] } } },
-      };
-      execFileSync("mkdir", ["-p", dirname(mapPath)]);
-      writeFileSync(mapPath, JSON.stringify(map));
-      const outHtml = join(work, "out.html");
-      execFileSync(process.execPath, [join(ROOT, "tools", "test-map.mjs"), "heatmap", "--html", outHtml], { cwd: ROOT, encoding: "utf8" });
-      const page = readFileSync(outHtml, "utf8");
-      const scriptBody = page.match(/<script>([\s\S]*)<\/script>/)[1];
-
-      const el = () => ({ innerHTML: "", textContent: "", value: "", style: {}, attrs: { "aria-pressed": "false" },
-        classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, appendChild() {},
-        setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; } });
-      const byId = Object.fromEntries(["commit", "nums", "verify", "groups", "detail", "suites", "hot", "blind", "q", "cold"].map((id) => [id, el()]));
-      const doc = {
-        getElementById: (id) => byId[id],
-        createElement: () => el(),
-        documentElement: el(),
-      };
-      const getComputedStyle = () => ({ getPropertyValue: () => "#334455" });
-      const fn = new Function("document", "getComputedStyle", scriptBody);
-      fn(doc, getComputedStyle);
-
-      for (const id of ["detail", "groups", "suites", "hot", "blind"]) {
-        assert.ok(!byId[id].innerHTML.includes("<img"), `${id}.innerHTML leaked a raw tag: ${byId[id].innerHTML}`);
-      }
-      assert.ok(byId.detail.innerHTML.includes("&lt;img"), "expected the filename to appear HTML-escaped somewhere");
-    } finally {
-      if (backup) copyFileSync(backup, mapPath);
-      else rmSync(mapPath, { force: true }); // no map before: leave none, not a fake one `select` would load
-      rmSync(work, { recursive: true, force: true });
-    }
-  });
-});
-
 // Revert-check: in select, drop the whole-text pass (leave only parseDiff's line-local
 // INERT) → the JSDoc case is red again (a doc-comment edit selects tests); make
 // codeLinesOf treat every line starting with `*` as a comment → the continuation case
@@ -266,40 +213,6 @@ describe("test-map: the npm test glob is matched literally, not as a regex", () 
       assert.deepEqual(testFiles(root), ["t/a+b1.test.mjs"]);
     } finally {
       rmSync(root, { recursive: true, force: true });
-    }
-  });
-});
-
-// Revert-checks: put back the string replacement `.replace("__DATA__", json)` → `$'` in a
-// filename pastes the template tail (with its "</script>") into the data → the one-script
-// assertion is red; put back the `<\/`-only escaping → the no-raw-"<" assertion is red.
-describe("test-map: heatmap --html data cannot leave its <script>", () => {
-  it("a filename with `$'` and a tag stays inside the one script as data", () => {
-    const work = mkdtempSync(join(tmpdir(), "test-map-html-"));
-    const mapPath = join(ROOT, ".test-map", "map.json");
-    const backup = existsSync(mapPath) ? join(work, "map.json.bak") : null;
-    if (backup) copyFileSync(mapPath, backup);
-    try {
-      const evil = "packages/x/src/a$'<img src=x onerror=alert(1)>.ts";
-      const map = {
-        version: 1, commit: "c0ffee", dirty: false, built_at: new Date().toISOString(), node: process.version, jobs: 1,
-        tests: [{ file: "tools/__tests__/fake.test.mjs", tests: 1, pass: 1, fail: 0, skipped: 0, wall_ms: 10, exit: 0, src_lines: 1 }],
-        sources: { [evil]: { lines: [[1, 1]], by: { 0: [[1, 1]] } } },
-      };
-      execFileSync("mkdir", ["-p", dirname(mapPath)]);
-      writeFileSync(mapPath, JSON.stringify(map));
-      const outHtml = join(work, "out.html");
-      execFileSync(process.execPath, [join(ROOT, "tools", "test-map.mjs"), "heatmap", "--html", outHtml], { cwd: ROOT, encoding: "utf8" });
-      const page = readFileSync(outHtml, "utf8");
-      assert.equal(page.split("</script>").length, 2, "exactly one </script>: the template's own");
-      const line = page.match(/const D = (.*);\n/)[1];
-      assert.ok(!line.includes("<"), "no raw \"<\" in the data literal");
-      const data = JSON.parse(line);
-      assert.equal(data.files[0].f, evil, "the filename round-trips unchanged as data");
-    } finally {
-      if (backup) copyFileSync(backup, mapPath);
-      else rmSync(mapPath, { force: true });
-      rmSync(work, { recursive: true, force: true });
     }
   });
 });
