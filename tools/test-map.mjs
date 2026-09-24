@@ -31,6 +31,14 @@
  *
  * Map staleness: line numbers are the map commit's. `select` diffs against that
  * commit, so hunks are read on the old side — the side the map knows.
+ *
+ * Known hole, not fixed here: a non-code file a test reads at runtime (a JSON/YAML
+ * fixture under __tests__/fixtures, a .md a tool loads) shows up in `select`'s
+ * `ignored` bucket the same as a truly irrelevant file (a .gitignore, a doc nobody
+ * loads) — coverage only sees .ts/.js execution, never an fs.readFileSync of data.
+ * A change to such a fixture picks no test. Catching it needs instrumenting reads,
+ * not diffing; GLOBAL is not the fix (it would force the full suite on every
+ * config/doc touch). Treat `ignored` as "the map has no opinion", not "safe".
  */
 import { spawn, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -45,8 +53,21 @@ const MAP = join(OUT, "map.json");
 /** Files whose change can move any test: selection gives up and says so. */
 const GLOBAL = [/^package(-lock)?\.json$/, /^packages\/[^/]+\/package\.json$/, /^tsconfig/, /^packages\/[^/]+\/tsconfig/, /^scripts\/test-env\.mjs$/];
 const CODE = /\.(ts|mts|cts|js|mjs|cjs)$/;
-/** A line that cannot change behaviour: blank, or a comment line (V8 counts them as executed). */
-export const INERT = /^\s*(?:$|\/\/|\/\*|\*\/|\*(?:\s|$))/;
+// A line that cannot change behaviour: blank, a "//" line, or a block comment that opens
+// and closes on the same line with nothing else on it. Deliberately does NOT match a
+// bare leading star (old regex did, unanchored at the end of the alternation — it
+// matched "block-comment-opener eslint-disable block-comment-closer doSomething()" and
+// "block-comment-closer realCode()" as inert too, since it never required the rest of
+// the line to be checked): a star-led line is ambiguous between a JSDoc continuation and
+// code (multiplication continuing on its own line, a chained generator method) with no
+// cross-line state here, so it now falls through to "code" — over-cautious (an unrelated
+// comment-wording tweak may get selected, or flagged uncovered) never under (a real line
+// silently marked inert never reaches select's uncovered report at all: it was dropped
+// from the map's tracked lines at build time, not just mislabeled at select time).
+// Still blind to a "//"-shaped line that is template-literal/string CONTENT, not a
+// comment — no tokenizer here; select's ignored/inert buckets are not proof for files
+// with multi-line string literals, only a best-effort.
+export const INERT = /^\s*(?:\/\/.*|\/\*.*\*\/\s*|\*\/\s*)?$/;
 
 /** Line numbers of a source file that carry code — the rest is excluded from the map. */
 function codeLines(file) {
@@ -75,13 +96,19 @@ export function testFiles(root = ROOT) {
   return out;
 }
 
-/** Repo-relative path of a coverage source, whichever checkout node resolved it through. */
+/** Repo-relative path of a coverage source, whichever checkout node resolved it through.
+ * Inside this checkout the real relative path is returned as-is — do NOT pattern-match
+ * a "packages/<name>/src/..." tail here, or a vendored/nested copy reached through
+ * node_modules (same layout, different code: `node_modules/x/packages/core/src/f.ts`)
+ * collides with this repo's own `packages/core/src/f.ts` and its coverage gets merged
+ * into the wrong file. Only a path OUTSIDE this checkout (another clone on disk, reached
+ * by relative traversal) falls back to the tail match, since there is no `rel` for it. */
 export function normalizeSource(sf, root = ROOT) {
   const abs = resolve(root, sf);
-  const m = abs.match(/(?:^|\/)((?:packages\/[^/]+\/(?:src|scripts|__tests__)|tools|scripts)\/.+)$/);
-  if (m) return m[1];
   const rel = relative(root, abs);
-  return rel.startsWith("..") ? null : rel;
+  if (!rel.startsWith("..")) return rel;
+  const m = abs.match(/(?:^|\/)((?:packages\/[^/]+\/(?:src|scripts|__tests__)|tools|scripts)\/.+)$/);
+  return m ? m[1] : null;
 }
 
 /** lcov → { source: Set<line> } for lines with a hit count > 0. */
@@ -212,17 +239,39 @@ export function loadMap() {
   return JSON.parse(readFileSync(MAP, "utf8"));
 }
 
-/** `git diff -U0 <base>` → { file: [[oldStart, oldEnd]] } on the OLD side, plus added files. */
+/** `git diff -U0 <base>` → { file: [[oldStart, oldEnd]] } on the OLD side, plus added files.
+ * Also catches what a naive `---`/`+++` scan misses: a pathname with a space gets a
+ * trailing tab appended by git on both marker lines (disambiguates the old diff format) —
+ * left in, it corrupts the key so the file never matches the map or itself. A binary
+ * file has no `---`/`+++`/`@@` at all ("Binary files a/x and b/x differ") and was
+ * previously invisible to `select` — not reported anywhere, not even as ignored. A pure
+ * rename (identical content) is still invisible on purpose: nothing changed to test. A
+ * rename WITH an edit keeps the map's coverage under the OLD path, so its hunks are
+ * attached under the new name with `renameFrom` for `select` to fall back to. */
 export function parseDiff(text) {
   const files = {};
   let cur = null;
+  let pendingRename = null;
+  const stripTab = (s) => s.replace(/\t$/, "");
   for (const line of text.split("\n")) {
+    if (/^diff --git /.test(line)) { pendingRename = null; cur = null; continue; }
+    const rf = line.match(/^rename from (.+)$/);
+    if (rf) { pendingRename = { from: stripTab(rf[1]), to: pendingRename?.to }; continue; }
+    const rt = line.match(/^rename to (.+)$/);
+    if (rt) { pendingRename = { from: pendingRename?.from, to: stripTab(rt[1]) }; continue; }
+    const bin = line.match(/^Binary files (?:a\/(.+?)|\/dev\/null) and (?:b\/(.+?)|\/dev\/null) differ$/);
+    if (bin) {
+      const name = bin[2] ?? bin[1];
+      files[stripTab(name)] ??= { added: bin[1] === undefined, deleted: bin[2] === undefined, hunks: [], binary: true };
+      continue;
+    }
     const f = line.match(/^--- (?:a\/(.+)|\/dev\/null)$/);
-    if (f) { cur = { old: f[1] ?? null }; continue; }
+    if (f) { cur = { old: f[1] ? stripTab(f[1]) : null }; continue; }
     const t = line.match(/^\+\+\+ (?:b\/(.+)|\/dev\/null)$/);
     if (t && cur) {
-      cur.name = t[1] ?? cur.old;
+      cur.name = t[1] ? stripTab(t[1]) : cur.old;
       files[cur.name] ??= { added: cur.old === null, deleted: t[1] === undefined, hunks: [] };
+      if (pendingRename && pendingRename.to === cur.name) files[cur.name].renameFrom = pendingRename.from;
       continue;
     }
     const h = line.match(/^@@ -(\d+)(?:,(\d+))? \+\d+(?:,\d+)? @@/);
@@ -256,8 +305,11 @@ export function select(map, diffText) {
   for (const [file, d] of Object.entries(diff)) {
     if (GLOBAL.some((rx) => rx.test(file))) { report.global.push(file); continue; }
     if (byFile.has(file)) { add(byFile.get(file), `${file} (the test itself)`); continue; }
-    if (!CODE.test(file)) { report.ignored.push(file); continue; }
-    const src = map.sources[file];
+    // Binary, or a non-code extension the map never tracks (.json/.yaml/.md/...): visible
+    // here as "ignored", but if a test reads it as a runtime fixture rather than a source
+    // module, no coverage run ever recorded that read — a change there selects nothing.
+    if (d.binary || !CODE.test(file)) { report.ignored.push(file); continue; }
+    const src = map.sources[file] ?? (d.renameFrom && map.sources[d.renameFrom]);
     if (!src) { report.unmapped.push(file); continue; }
     for (const h of d.hunks) {
       if (h.inert) { report.inert.push(`${file}:${h[0]}-${h[1]}`); continue; }
@@ -351,6 +403,7 @@ async function main() {
       if (r.inert.length) console.log(`comment/blank only, no test needed: ${r.inert.join(", ")}`);
       if (r.unmapped.length) console.log(`NOT IN MAP (new, or never loaded by a test): ${r.unmapped.join(", ")}`);
       if (r.blind_included.length) console.log(`coverage-blind, included by package: ${r.blind_included.length}`);
+      if (r.ignored.length) console.log(`ignored — non-code, binary, or a runtime-read file no coverage sees: ${r.ignored.join(", ")}`);
     }
     if (flag("--run")) process.exitCode = r.full_suite ? await runSelected(testFiles()) : await runSelected(r.files.map((f) => f.file));
     return;
