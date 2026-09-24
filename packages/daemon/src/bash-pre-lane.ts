@@ -38,6 +38,14 @@ import {
   mutateSessionState,
   shouldDropHit,
 } from "./session-state.js";
+import {
+  DESTRUCTIVE_PATTERNS,
+  RISKY_PATTERNS,
+  RM_ARCHIVES,
+  reversibleDefault,
+  type HintKind,
+  type Undo,
+} from "./bash-pre-patterns.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 500, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.2.0"; // 0.2.0 = daemon-side lane (#343)
@@ -57,59 +65,6 @@ export interface BashHookPayload {
 // fusionierte Skala trägt.
 type RecallHit = HookRecallHit;
 type RecallResponse = HookRecallResponse;
-
-/**
- * Destructive patterns — always need a recall.
- * Order matters: longer / more specific phrases first so the *match string*
- * we surface to the user is the meaningful one.
- */
-const DESTRUCTIVE_PATTERNS: Array<{ label: string; re: RegExp }> = [
-  { label: "rm -rf", re: /\brm\s+(?:-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)\b/ },
-  { label: "rm -r", re: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*\b/ },
-  { label: "rmdir", re: /\brmdir\b/ },
-  { label: "git reset --hard", re: /\bgit\s+reset\s+--hard\b/ },
-  { label: "git checkout --", re: /\bgit\s+checkout\s+--\s/ },
-  { label: "git clean -f", re: /\bgit\s+clean\s+-[a-zA-Z]*f[a-zA-Z]*\b/ },
-  { label: "git branch -D", re: /\bgit\s+branch\s+-D\b/ },
-  { label: "git push --force-with-lease", re: /\bgit\s+push\b[^\n]*--force-with-lease/ },
-  // `(?![\w-])`, not `\b`: `--force-with-lease` must not also count as a bare
-  // `--force` now that every matched label is weighed (#651 review).
-  { label: "git push --force", re: /\bgit\s+push\b[^\n]*--force(?![\w-])/ },
-  { label: "git push -f", re: /\bgit\s+push\b[^\n]*\s-f\b/ },
-  { label: "git commit --amend", re: /\bgit\s+commit\b[^\n]*--amend\b/ },
-  { label: "gh repo delete", re: /\bgh\s+repo\s+delete\b/ },
-  { label: "gh release delete", re: /\bgh\s+release\s+delete\b/ },
-  { label: "npm uninstall", re: /\bnpm\s+uninstall\b/ },
-  { label: "npm rm", re: /\bnpm\s+rm\b/ },
-  { label: "yarn remove", re: /\byarn\s+remove\b/ },
-  { label: "pnpm rm", re: /\bpnpm\s+(?:rm|remove)\b/ },
-  { label: "DROP TABLE", re: /\bDROP\s+TABLE\b/i },
-  { label: "DROP DATABASE", re: /\bDROP\s+DATABASE\b/i },
-  // #415: `TRUNCATE` alone is an English word. Requiring the object — the same
-  // shape the two DROP patterns above already have — is what separates the
-  // statement from a sentence that mentions truncating.
-  { label: "TRUNCATE TABLE", re: /\bTRUNCATE\s+TABLE\b/i },
-  { label: "docker rm", re: /\bdocker\s+rm\b/ },
-  { label: "docker volume rm", re: /\bdocker\s+volume\s+rm\b/ },
-  { label: "kubectl delete", re: /\bkubectl\s+delete\b/ },
-];
-
-/**
- * Risky patterns — surface a softer hint. Same code path, only the label
- * differs so the recall query can pick up the right lessons.
- */
-const RISKY_PATTERNS: Array<{ label: string; re: RegExp }> = [
-  { label: "chmod -R", re: /\bchmod\s+-[a-zA-Z]*R[a-zA-Z]*\b/ },
-  { label: "chown -R", re: /\bchown\s+-[a-zA-Z]*R[a-zA-Z]*\b/ },
-  { label: "find ... -exec rm", re: /\bfind\b[^\n]*-exec\s+rm\b/ },
-  // Overwrite redirect: `> file` (not `>>` append, not `2>` stderr, not `>&`).
-  // Require a non-`>` char before `>` and at least one whitespace+filename after.
-  // `> overwrite redirect` was a pattern here until 22.08.2026. Measured over
-  // Jul–Aug: 90% of all tripwire calls, 1.1M injected tokens, the same three
-  // unrelated memories in 99% of the hints, 12 loads in two months (0.4%).
-  // A shell idiom, not a destructive act — it carried the noise, not the
-  // value. Destructive patterns above keep the STOP warning.
-];
 
 /**
  * Command heads that only READ (#415).
@@ -394,7 +349,8 @@ function matchPattern(cmd: string): { label: string; severity: "destructive" | "
   return null;
 }
 
-const RM_LABELS = new Set(["rm -rf", "rm -r"]);
+/** The rows whose receipt is the archiving rm. */
+const RM_ROWS = DESTRUCTIVE_PATTERNS.filter((p) => p.undo === RM_ARCHIVES);
 
 /**
  * Is every `rm -r` in this command the PATH-resolved `rm` of THIS shell — the
@@ -407,10 +363,9 @@ const RM_LABELS = new Set(["rm -rf", "rm -r"]);
 function rmRunsThroughPath(cmd: string): boolean {
   const commands = simpleCommands(cmd);
   if (!commands) return false;
-  const rmPatterns = DESTRUCTIVE_PATTERNS.filter((p) => RM_LABELS.has(p.label));
   for (const { words } of commands) {
     const texts = words.map((w) => w.text.replace(/["'\\]/g, ""));
-    if (!rmPatterns.some((p) => p.re.test(texts.join(" ")))) continue;
+    if (!RM_ROWS.some((p) => p.re.test(texts.join(" ")))) continue;
     let k = 0;
     if (texts[0] === "command") k = 1;
     else if (texts[0] === "xargs") for (k = 1; k < texts.length && texts[k].startsWith("-"); k++);
@@ -419,28 +374,37 @@ function rmRunsThroughPath(cmd: string): boolean {
   return true;
 }
 
+interface Hint {
+  label: string;
+  severity: "destructive" | "risky";
+  /** null for a destructive hint: STOP. */
+  undo: Undo | null;
+}
+
 /**
- * Which destructive label the hint names, and whether its reversible default
- * may be offered (#651 review). The table order that picks the label was only
- * cosmetic while every destructive match said STOP; with receipts it decides
- * safety — `git branch -D x && gh repo delete y` must not read "No
- * confirmation needed". So every matched label is weighed:
+ * The hint for a whole command (#651 review). Safety is a property of the
+ * command, not of the first pattern in table order — `git branch -D x && gh
+ * repo delete y` must not read like its first half. So every destructive act
+ * in it is weighed:
  *
- * - any label without an undo → STOP, naming that label;
- * - several labels that are not all receipts → STOP (one hint names one form);
- * - an rm receipt only when every rm runs through this shell's PATH.
+ * - an act without an undo → STOP, naming that act;
+ * - several acts that are not all receipts → STOP (a hint names one form);
+ * - the rm receipt only when every rm runs through this shell's PATH.
  */
-function decideDestructive(cmd: string, first: string, surface: string): { label: string; undo: boolean } {
+function hintFor(cmd: string, surface: string): Hint | null {
+  const first = matchPattern(cmd);
+  if (!first || first.severity === "risky") return first && { ...first, undo: null };
   const segments = matchSegments(cmd);
-  const labels = DESTRUCTIVE_PATTERNS.filter((p) => segments.some((s) => p.re.test(s))).map((p) => p.label);
-  // `rm -rf` also matches the `rm -r` pattern; they are one act.
-  const acts = [...new Set(labels.map((l) => (RM_LABELS.has(l) ? "rm -rf" : l)))];
-  const kinds = acts.map((l) => reversibleDefault(l, surface)?.kind ?? null);
-  const noUndo = acts.find((_, i) => kinds[i] === null);
-  if (noUndo !== undefined) return { label: noUndo === "rm -rf" && RM_LABELS.has(first) ? first : noUndo, undo: false };
-  if (acts.length > 1 && kinds.some((k) => k !== "receipt")) return { label: first, undo: false };
-  if (acts.includes("rm -rf") && !rmRunsThroughPath(cmd)) return { label: first, undo: false };
-  return { label: first, undo: true };
+  const acts = DESTRUCTIVE_PATTERNS.filter((p) => segments.some((s) => p.re.test(s))).map((p) => ({
+    label: p.label,
+    undo: reversibleDefault(p.label, surface),
+  }));
+  const stop = (label: string): Hint => ({ label, severity: "destructive", undo: null });
+  const bare = acts.find((a) => a.undo === null);
+  if (bare) return stop(bare.label);
+  if (acts.length > 1 && acts.some((a) => a.undo?.kind !== "receipt")) return stop(first.label);
+  if (acts.some((a) => a.undo === RM_ARCHIVES) && !rmRunsThroughPath(cmd)) return stop(first.label);
+  return { ...first, undo: acts[0].undo };
 }
 
 /**
@@ -469,11 +433,8 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
   // silently unhinted and unlogged.
   if (invokesOwnBinary(command)) return "{}";
 
-  const matched = matchPattern(command);
-  if (!matched) return "{}";
-  const decided =
-    matched.severity === "destructive" ? decideDestructive(command, matched.label, client) : { label: matched.label, undo: true };
-  const match = { ...matched, label: decided.label };
+  const match = hintFor(command, client);
+  if (!match) return "{}";
 
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
 
@@ -581,7 +542,7 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
 
   // Emit hint even if no memories match — the warning itself is the point.
   // #161 CONSTRAINT (see top of file): the tripwire is exempt from backoff.
-  const block = formatHintBlock(match.label, match.severity, emitted, unfused, client, decided.undo);
+  const block = formatHintBlock(match.label, match.severity, emitted, unfused, client, match.undo);
   const stdout = JSON.stringify({
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
@@ -597,10 +558,7 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
     client: clientEvidence,
     matched_pattern: match.label,
     severity: match.severity,
-    hint_kind:
-      match.severity === "destructive"
-        ? ((decided.undo ? reversibleDefault(match.label, client)?.kind : undefined) ?? "stop")
-        : null,
+    hint_kind: match.severity === "destructive" ? (match.undo?.kind ?? "stop") : null,
     daemon_url: selfBaseUrl,
     daemon_reachable: resp !== null,
     hint_count: emitted.length,
@@ -630,159 +588,37 @@ function formatHintLine(h: RecallHit, hideScore = false): string {
     : `- ${h.id} (${h.type}, score ${Math.round(h.score)}): ${summary}`;
 }
 
-/**
- * Host opt-in: on a machine whose agent shell puts an archiving `rm` first in
- * PATH, "STOP — needs explicit confirmation" is false for rm and teaches the
- * model to fear a reversible move. Only the claude-code surface is covered —
- * that is where the shim is installed; other surfaces keep the STOP.
- */
-function rmArchives(surface: string): boolean {
-  return process.env.BASTRA_RM_ARCHIVES === "1" && surface === "claude-code";
-}
-
-/**
- * What the hint says instead of STOP when the act has an undo (#650 comment).
- *
- * - `receipt`: the command as typed is already recoverable — say how, no STOP.
- * - `reversible-form`: the bare command has no undo, but a form with the SAME
- *   observable result has one — name it; the bare form keeps the STOP.
- * - `stop`: no local undo (DROP TABLE, kubectl delete, gh repo delete, …).
- *
- * Invariant for every row: the undo changes HOW the act runs, never WHAT the
- * caller observes afterwards. A form that did less (or more) than the command
- * would be a lie the next step trips over — which is why `git clean` is not
- * offered `git stash -u` (that also reverts tracked edits).
- */
-export type HintKind = "stop" | "receipt" | "reversible-form";
-
-/**
- * The destructive patterns that deliberately keep STOP: no local undo exists.
- * Every DESTRUCTIVE_PATTERNS label is either here or answered by
- * reversibleDefault (on a host with the archive opt-in) — a test holds that,
- * so a new pattern cannot land without somebody deciding which side it is on.
- */
-export const NO_LOCAL_UNDO: ReadonlySet<string> = new Set([
-  "rmdir",
-  "gh repo delete",
-  "gh release delete",
-  "npm uninstall",
-  "npm rm",
-  "yarn remove",
-  "pnpm rm",
-  "DROP TABLE",
-  "DROP DATABASE",
-  "TRUNCATE TABLE",
-  "docker rm",
-  "docker volume rm",
-  "kubectl delete",
-]);
-
-export function reversibleDefault(pattern: string, surface: string): { kind: HintKind; text: string } | null {
-  switch (pattern) {
-    case "rm -rf":
-    case "rm -r":
-      if (!rmArchives(surface)) return null;
-      return {
-        kind: "receipt",
-        text:
-          `\`${pattern}\` in this shell archives instead of deleting (host opt-in BASTRA_RM_ARCHIVES): ` +
-          `targets move to ~/_archive/<date>/<full path>, \`agent-archive restore <path>\` puts them back; ` +
-          `temp dirs are really removed; /, ~ and system dirs are refused.`,
-      };
-    case "git clean -f":
-      if (!rmArchives(surface)) return null;
-      return {
-        kind: "reversible-form",
-        text:
-          `\`git clean\` unlinks directly and bypasses the archiving rm. Same result, reversible: ` +
-          `list with \`git clean -n\` (same other flags), then remove exactly those paths with \`rm -r\` — ` +
-          `it archives in this shell.`,
-      };
-    case "git branch -D":
-      return {
-        kind: "receipt",
-        text:
-          `the branch's commits usually stay recoverable: if it was ever checked out here they are in HEAD's ` +
-          `reflog (\`git reflog\`, then \`git branch <name> <sha>\`). Its own reflog is deleted with it, so a ` +
-          `branch never checked out here is recoverable only via \`git fsck --lost-found\` until gc — ` +
-          `confirm only if it holds unmerged commits that exist nowhere else.`,
-      };
-    case "git commit --amend":
-      return {
-        kind: "receipt",
-        text:
-          `the pre-amend commit stays in HEAD's reflog: \`git reset --soft HEAD@{1}\` right after undoes the amend. ` +
-          `If the old commit was already pushed, publishing the amend needs a force-push — that one is its own hint.`,
-      };
-    case "git push --force-with-lease":
-      return {
-        kind: "receipt",
-        text:
-          `the lease refuses if the remote branch moved since your last fetch, so only what you have seen is ` +
-          `overwritten; the overwritten tip stays in the remote-tracking reflog (\`git reflog <remote>/<branch>\`) ` +
-          `and can be pushed back.`,
-      };
-    case "git push --force":
-    case "git push -f":
-      return {
-        kind: "reversible-form",
-        text:
-          `use \`git push --force-with-lease\` instead: same result when nobody else pushed, a refusal (not a ` +
-          `silent overwrite) when someone did, and the overwritten tip stays in your remote-tracking reflog.`,
-      };
-    case "git reset --hard":
-      return {
-        kind: "reversible-form",
-        text:
-          `committed history is not at risk (the old HEAD stays in \`git reflog\`); what dies is uncommitted ` +
-          `changes to tracked files. \`git stash push\` first, then the reset — same end state, and ` +
-          `\`git stash pop\` brings the changes back (untracked files survive either way).`,
-      };
-    case "git checkout --":
-      return {
-        kind: "reversible-form",
-        text:
-          `what dies is the unstaged changes in those paths. \`git stash push --keep-index -- <paths>\` leaves ` +
-          `exactly the same worktree and index; \`git restore --source=stash@{0} --worktree -- <paths>\` brings the ` +
-          `changes back (not \`git stash pop\` — it conflicts when those paths also have staged changes).`,
-      };
-    default:
-      return null;
-  }
-}
-
 export function formatHintBlock(
   pattern: string,
   severity: "destructive" | "risky",
   hits: RecallHit[],
   unfused = false,
   surface = "claude-code",
-  /** false: the command as a whole has no undo (see decideDestructive) — STOP. */
-  allowUndo = true,
+  /** What the whole command allows (see hintFor); defaults to the label's own row. */
+  undo: Undo | null = reversibleDefault(pattern, surface),
 ): string {
   const head = `<recall-hints surface="${surface}" trigger="bash-${severity}">`;
   const tail = `</recall-hints>`;
   const lines: string[] = [];
 
-  const undo = severity === "destructive" && allowUndo ? reversibleDefault(pattern, surface) : null;
-  if (undo?.kind === "receipt") {
-    lines.push(`NOTE — reversible (pattern: \`${pattern}\`): ${undo.text} No confirmation needed.`);
-  } else if (undo?.kind === "reversible-form") {
+  if (severity === "risky") {
     lines.push(
-      `REVERSIBLE FORM — destructive Bash command detected (pattern: \`${pattern}\`), but it has an undo: ` +
-        `${undo.text} Run that form — it needs no confirmation. ` +
-        `The bare command keeps the rule: explicit user confirmation unless authorized in advance.`,
+      `CAUTION — risky Bash command detected (pattern: \`${pattern}\`). ` +
+        `Check the target/scope before running — recursive/destructive side effects are easy to miss.`,
     );
-  } else if (severity === "destructive") {
+  } else if (!undo) {
     lines.push(
       `STOP — destructive Bash command detected (pattern: \`${pattern}\`). ` +
         `Per user-preference this needs explicit user confirmation unless authorized in advance. ` +
         `Do not run blindly: confirm the target paths, the scope of effect, and that the user has asked for this exact action.`,
     );
+  } else if (undo.kind === "receipt") {
+    lines.push(`NOTE — reversible (pattern: \`${pattern}\`): ${undo.text} No confirmation needed.`);
   } else {
     lines.push(
-      `CAUTION — risky Bash command detected (pattern: \`${pattern}\`). ` +
-        `Check the target/scope before running — recursive/destructive side effects are easy to miss.`,
+      `REVERSIBLE FORM — destructive Bash command detected (pattern: \`${pattern}\`), but it has an undo: ` +
+        `${undo.text} Run that form — it needs no confirmation. ` +
+        `The bare command keeps the rule: explicit user confirmation unless authorized in advance.`,
     );
   }
 
@@ -861,4 +697,4 @@ async function writeTelemetry(payload: BashHookCallTelemetry): Promise<void> {
 }
 
 // Export for testing.
-export { matchPattern, DESTRUCTIVE_PATTERNS, RISKY_PATTERNS };
+export { matchPattern, DESTRUCTIVE_PATTERNS, RISKY_PATTERNS, reversibleDefault, type HintKind, type Undo };
