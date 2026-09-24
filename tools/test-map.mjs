@@ -1,0 +1,373 @@
+#!/usr/bin/env node
+/**
+ * test-map — which tests execute which source lines, so a one-line change
+ * runs the tests that can see it instead of the whole suite.
+ *
+ *   node tools/test-map.mjs build   [--jobs N] [--only <glob-substring>]
+ *   node tools/test-map.mjs select  [--base <ref>] [--run] [--json]
+ *   node tools/test-map.mjs heatmap [--json] [--top N]
+ *
+ * build   runs every test file of the root `npm test` script on its own, with
+ *         Node's built-in coverage (source-mapped, so lines are .ts lines), and
+ *         writes .test-map/map.json: per source file, which test files executed
+ *         which lines, plus each test file's test count, result and duration.
+ * select  diffs the working tree against the commit the map was built at and
+ *         picks the test files that executed a changed line. It prints what it
+ *         cannot vouch for instead of guessing: a change no test executes, a
+ *         file the map has never seen, a global file (package.json, the test
+ *         setup) that means "run everything".
+ * heatmap every suite with its size and time; per source file the share of
+ *         lines any test executes and how many test files do; the hottest
+ *         lines (a change there re-runs the most) and the files no test loads.
+ *
+ * Why coverage and not the import graph: an import says a test CAN reach a
+ * file, coverage says it DID run the line. A test that imports a 900-line
+ * module to call one function does not need to re-run when line 700 changes.
+ * The price: a line reached only through a path the recorded run did not take
+ * (a branch taken on another OS, a timeout path) is invisible. `select` names
+ * such lines as uncovered rather than claiming safety.
+ *
+ * Map staleness: line numbers are the map commit's. `select` diffs against that
+ * commit, so hunks are read on the old side — the side the map knows.
+ */
+import { spawn, execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpus } from "node:os";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const OUT = join(ROOT, ".test-map");
+const MAP = join(OUT, "map.json");
+
+/** Files whose change can move any test: selection gives up and says so. */
+const GLOBAL = [/^package(-lock)?\.json$/, /^packages\/[^/]+\/package\.json$/, /^tsconfig/, /^packages\/[^/]+\/tsconfig/, /^scripts\/test-env\.mjs$/];
+const CODE = /\.(ts|mts|cts|js|mjs|cjs)$/;
+/** A line that cannot change behaviour: blank, or a comment line (V8 counts them as executed). */
+export const INERT = /^\s*(?:$|\/\/|\/\*|\*\/|\*(?:\s|$))/;
+
+/** Line numbers of a source file that carry code — the rest is excluded from the map. */
+function codeLines(file) {
+  try {
+    const set = new Set();
+    readFileSync(join(ROOT, file), "utf8").split("\n").forEach((l, i) => { if (!INERT.test(l)) set.add(i + 1); });
+    return set;
+  } catch {
+    return null;
+  }
+}
+
+// ------------------------------------------------------------------ tests
+
+/** The test files `npm test` runs — read from the root script, not re-listed here. */
+export function testFiles(root = ROOT) {
+  const script = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).scripts.test;
+  const globs = script.split(/\s+/).filter((a) => /\*.*\.(test\.)?(ts|mjs|js)$/.test(a));
+  const out = [];
+  for (const g of globs) {
+    const dir = dirname(g);
+    const rx = new RegExp("^" + g.slice(dir.length + 1).replace(/\./g, "\\.").replace(/\*/g, "[^/]*") + "$");
+    if (!existsSync(join(root, dir))) continue;
+    for (const f of readdirSync(join(root, dir)).sort()) if (rx.test(f)) out.push(join(dir, f));
+  }
+  return out;
+}
+
+/** Repo-relative path of a coverage source, whichever checkout node resolved it through. */
+export function normalizeSource(sf, root = ROOT) {
+  const abs = resolve(root, sf);
+  const m = abs.match(/(?:^|\/)((?:packages\/[^/]+\/(?:src|scripts|__tests__)|tools|scripts)\/.+)$/);
+  if (m) return m[1];
+  const rel = relative(root, abs);
+  return rel.startsWith("..") ? null : rel;
+}
+
+/** lcov → { source: Set<line> } for lines with a hit count > 0. */
+export function parseLcov(text, root = ROOT) {
+  const out = new Map();
+  let cur = null;
+  let all = null;
+  for (const line of text.split("\n")) {
+    if (line.startsWith("SF:")) {
+      const src = normalizeSource(line.slice(3), root);
+      cur = src ? (out.get(src) ?? { hit: new Set(), all: new Set() }) : null;
+      if (src) out.set(src, cur);
+      all = cur;
+    } else if (cur && line.startsWith("DA:")) {
+      const [ln, count] = line.slice(3).split(",");
+      all.all.add(Number(ln));
+      if (Number(count) > 0) cur.hit.add(Number(ln));
+    } else if (line === "end_of_record") {
+      cur = null;
+    }
+  }
+  return out;
+}
+
+function runOne(file, dir) {
+  const lcov = join(dir, "cov.lcov");
+  const tap = join(dir, "run.tap");
+  const args = [
+    "--enable-source-maps", "--experimental-test-coverage",
+    "--test-reporter=lcov", `--test-reporter-destination=${lcov}`,
+    "--test-reporter=tap", `--test-reporter-destination=${tap}`,
+    "--import", "tsx", "--import", "./scripts/test-env.mjs", "--test", file,
+  ];
+  const t0 = Date.now();
+  return new Promise((done) => {
+    const p = spawn(process.execPath, args, { cwd: ROOT, stdio: "ignore", env: process.env });
+    p.on("close", (code) => {
+      const t = existsSync(tap) ? readFileSync(tap, "utf8") : "";
+      const num = (k) => Number((t.match(new RegExp(`^# ${k} (\\d+)`, "m")) ?? [])[1] ?? 0);
+      done({
+        file, code, wall_ms: Date.now() - t0,
+        tests: num("tests"), pass: num("pass"), fail: num("fail"), skipped: num("skipped"),
+        // Node drops the whole file's report when a covered script is gone by then (a test
+        // that writes and deletes a temp .mjs): exit 1 with 0 failed tests, not a failure.
+        coverage_lost: t.includes("Could not report code coverage"),
+        lcov: existsSync(lcov) ? readFileSync(lcov, "utf8") : "",
+      });
+    });
+  });
+}
+
+function toRanges(lines) {
+  const s = [...lines].sort((a, b) => a - b);
+  const r = [];
+  for (const l of s) {
+    const last = r[r.length - 1];
+    if (last && l === last[1] + 1) last[1] = l;
+    else r.push([l, l]);
+  }
+  return r;
+}
+
+async function build(opts) {
+  const files = testFiles().filter((f) => !opts.only || f.includes(opts.only));
+  const jobs = Math.max(1, opts.jobs ?? Math.min(4, Math.floor(cpus().length / 2)));
+  const work = join(OUT, "work");
+  rmSync(work, { recursive: true, force: true });
+  mkdirSync(work, { recursive: true });
+  const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
+  const dirty = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { cwd: ROOT, encoding: "utf8" }).trim() !== "";
+  const results = new Array(files.length);
+  let next = 0;
+  let doneN = 0;
+  const worker = async () => {
+    while (next < files.length) {
+      const i = next++;
+      const d = join(work, String(i));
+      mkdirSync(d, { recursive: true });
+      results[i] = await runOne(files[i], d);
+      doneN++;
+      if (doneN % 20 === 0 || doneN === files.length) process.stderr.write(`test-map: ${doneN}/${files.length}\n`);
+    }
+  };
+  await Promise.all(Array.from({ length: jobs }, worker));
+
+  const sources = {};
+  const codeCache = new Map();
+  const isCode = (src, l) => {
+    if (!codeCache.has(src)) codeCache.set(src, codeLines(src));
+    const c = codeCache.get(src);
+    return c ? c.has(l) : true;
+  };
+  const tests = results.map((r, i) => {
+    const cov = parseLcov(r.lcov);
+    let srcLines = 0;
+    for (const [src, { hit, all }] of cov) {
+      if (src === r.file || src.startsWith("scripts/test-env")) continue;
+      const e = (sources[src] ??= { lines: new Set(), by: {} });
+      for (const l of all) if (isCode(src, l)) e.lines.add(l);
+      const codeHit = [...hit].filter((l) => isCode(src, l));
+      if (codeHit.length) {
+        e.by[i] = toRanges(codeHit);
+        srcLines += codeHit.length;
+      }
+    }
+    return { file: r.file, tests: r.tests, pass: r.pass, fail: r.fail, skipped: r.skipped, wall_ms: r.wall_ms, exit: r.code, src_lines: srcLines, ...(r.coverage_lost ? { coverage_lost: true } : {}) };
+  });
+  const map = {
+    version: 1, commit, dirty, built_at: new Date().toISOString(), node: process.version, jobs,
+    tests,
+    sources: Object.fromEntries(Object.entries(sources).sort().map(([k, v]) => [k, { lines: toRanges(v.lines), by: v.by }])),
+  };
+  mkdirSync(OUT, { recursive: true });
+  writeFileSync(MAP, JSON.stringify(map));
+  rmSync(work, { recursive: true, force: true });
+  const blind = tests.filter((t) => t.src_lines === 0).length;
+  const failed = tests.filter((t) => t.exit !== 0 && !t.coverage_lost).length;
+  const lost = tests.filter((t) => t.coverage_lost).length;
+  console.log(`test-map: ${tests.length} test files, ${tests.reduce((a, t) => a + t.tests, 0)} tests, ` +
+    `${Object.keys(map.sources).length} source files at ${commit.slice(0, 8)}${dirty ? " (dirty tree)" : ""}; ` +
+    `${failed} files failed during the build, ${blind} executed no source line (coverage-blind${lost ? `, ${lost} of them because Node lost the report` : ""}).`);
+}
+
+// ------------------------------------------------------------------ select
+
+export function loadMap() {
+  if (!existsSync(MAP)) throw new Error("no .test-map/map.json — run `node tools/test-map.mjs build` first");
+  return JSON.parse(readFileSync(MAP, "utf8"));
+}
+
+/** `git diff -U0 <base>` → { file: [[oldStart, oldEnd]] } on the OLD side, plus added files. */
+export function parseDiff(text) {
+  const files = {};
+  let cur = null;
+  for (const line of text.split("\n")) {
+    const f = line.match(/^--- (?:a\/(.+)|\/dev\/null)$/);
+    if (f) { cur = { old: f[1] ?? null }; continue; }
+    const t = line.match(/^\+\+\+ (?:b\/(.+)|\/dev\/null)$/);
+    if (t && cur) {
+      cur.name = t[1] ?? cur.old;
+      files[cur.name] ??= { added: cur.old === null, deleted: t[1] === undefined, hunks: [] };
+      continue;
+    }
+    const h = line.match(/^@@ -(\d+)(?:,(\d+))? \+\d+(?:,\d+)? @@/);
+    if (h && cur) {
+      const start = Number(h[1]);
+      const n = h[2] === undefined ? 1 : Number(h[2]);
+      // Pure insertion (n=0) sits AFTER old line `start`: the code around it is what it can change.
+      const hunk = n === 0 ? [Math.max(1, start), start + 1] : [start, start + n - 1];
+      hunk.inert = true;
+      files[cur.name].hunks.push(hunk);
+      continue;
+    }
+    // Body of the current hunk: one non-inert removed or added line makes it a code change.
+    if (cur && cur.name && /^[-+]/.test(line) && !/^(---|\+\+\+) /.test(line)) {
+      const hs = files[cur.name].hunks;
+      if (hs.length && !INERT.test(line.slice(1))) hs[hs.length - 1].inert = false;
+    }
+  }
+  return files;
+}
+
+const overlaps = (ranges, [a, b]) => ranges.some(([x, y]) => x <= b && a <= y);
+
+export function select(map, diffText) {
+  const diff = parseDiff(diffText);
+  const byFile = new Map(map.tests.map((t, i) => [t.file, i]));
+  const picked = new Map(); // test idx → reasons
+  const add = (i, why) => { if (!picked.has(i)) picked.set(i, new Set()); picked.get(i).add(why); };
+  const report = { global: [], uncovered: [], unmapped: [], ignored: [], inert: [], blind_included: [] };
+
+  for (const [file, d] of Object.entries(diff)) {
+    if (GLOBAL.some((rx) => rx.test(file))) { report.global.push(file); continue; }
+    if (byFile.has(file)) { add(byFile.get(file), `${file} (the test itself)`); continue; }
+    if (!CODE.test(file)) { report.ignored.push(file); continue; }
+    const src = map.sources[file];
+    if (!src) { report.unmapped.push(file); continue; }
+    for (const h of d.hunks) {
+      if (h.inert) { report.inert.push(`${file}:${h[0]}-${h[1]}`); continue; }
+      let hit = false;
+      for (const [i, ranges] of Object.entries(src.by)) {
+        if (overlaps(ranges, h)) { add(Number(i), `${file}:${h[0]}-${h[1]}`); hit = true; }
+      }
+      // Lines that are executable but no test ran them — a regression here goes unseen.
+      if (!hit && overlaps(src.lines, h)) report.uncovered.push(`${file}:${h[0]}-${h[1]}`);
+    }
+  }
+  // Coverage-blind test files execute no source line: they read sources as text
+  // (hygiene, typecheck wiring, workflow pinning) or spawn a child with a scrubbed
+  // env. The map cannot rule them out, and all of them together cost ~4 % of a
+  // serial full run — so any code change includes every one of them.
+  const codeChanged = Object.entries(diff).some(([f, d]) => CODE.test(f) && (d.added || d.deleted || d.hunks.some((h) => !h.inert)));
+  if (codeChanged) {
+    map.tests.forEach((t, i) => {
+      if (t.src_lines === 0 && !picked.has(i)) { add(i, "coverage-blind"); report.blind_included.push(t.file); }
+    });
+  }
+  const chosen = [...picked.keys()].sort((a, b) => a - b).map((i) => ({ ...map.tests[i], why: [...picked.get(i)] }));
+  const all = map.tests.reduce((a, t) => ({ tests: a.tests + t.tests, wall: a.wall + t.wall_ms }), { tests: 0, wall: 0 });
+  return {
+    full_suite: report.global.length > 0,
+    files: chosen,
+    tests: chosen.reduce((a, t) => a + t.tests, 0),
+    wall_ms: chosen.reduce((a, t) => a + t.wall_ms, 0),
+    of_tests: all.tests, of_wall_ms: all.wall,
+    ...report,
+  };
+}
+
+function runSelected(files) {
+  if (!files.length) return 0;
+  const r = spawn(process.execPath, ["--import", "tsx", "--import", "./scripts/test-env.mjs", "--test", ...files], { cwd: ROOT, stdio: "inherit" });
+  return new Promise((done) => r.on("close", (c) => done(c ?? 1)));
+}
+
+// ------------------------------------------------------------------ heatmap
+
+export function heatmap(map, top = 25) {
+  const rows = Object.entries(map.sources).map(([file, s]) => {
+    const total = s.lines.reduce((a, [x, y]) => a + y - x + 1, 0);
+    const heat = new Map();
+    for (const ranges of Object.values(s.by)) for (const [x, y] of ranges) for (let l = x; l <= y; l++) heat.set(l, (heat.get(l) ?? 0) + 1);
+    const covered = heat.size;
+    let hot = 0;
+    for (const v of heat.values()) hot = Math.max(hot, v);
+    return { file, lines: total, covered, pct: total ? covered / total : 0, test_files: Object.keys(s.by).length, hottest_line_tests: hot, heat };
+  });
+  const src = rows.filter((r) => /\/src\//.test(r.file));
+  const hotLines = [];
+  for (const r of src) for (const [l, v] of r.heat) hotLines.push({ at: `${r.file}:${l}`, tests: v });
+  hotLines.sort((a, b) => b.tests - a.tests);
+  const suites = [...map.tests].sort((a, b) => b.wall_ms - a.wall_ms);
+  const totalLines = src.reduce((a, r) => a + r.lines, 0);
+  const coveredLines = src.reduce((a, r) => a + r.covered, 0);
+  return {
+    commit: map.commit, built_at: map.built_at,
+    suites, files: src.map(({ heat, ...r }) => r).sort((a, b) => a.pct - b.pct || b.lines - a.lines),
+    hot_lines: hotLines.slice(0, top), total_lines: totalLines, covered_lines: coveredLines,
+    blind: map.tests.filter((t) => t.src_lines === 0).map((t) => t.file),
+  };
+}
+
+// ------------------------------------------------------------------ cli
+
+function arg(name, def) {
+  const i = process.argv.indexOf(name);
+  return i < 0 ? def : process.argv[i + 1];
+}
+const flag = (name) => process.argv.includes(name);
+const s = (ms) => `${(ms / 1000).toFixed(1)}s`;
+
+async function main() {
+  const cmd = process.argv[2];
+  if (cmd === "build") return build({ jobs: arg("--jobs") && Number(arg("--jobs")), only: arg("--only") });
+  if (cmd === "select") {
+    const map = loadMap();
+    const base = arg("--base", map.commit);
+    if (base !== map.commit) process.stderr.write(`test-map: --base ${base} is not the map commit ${map.commit.slice(0, 8)} — line numbers may be off\n`);
+    const diff = execFileSync("git", ["diff", "-U0", "--no-color", base], { cwd: ROOT, encoding: "utf8", maxBuffer: 256 << 20 });
+    const r = select(map, diff);
+    if (flag("--json")) console.log(JSON.stringify(r, null, 1));
+    else {
+      if (r.full_suite) console.log(`FULL SUITE — global file changed: ${r.global.join(", ")}`);
+      console.log(`${r.files.length} test files, ${r.tests} of ${r.of_tests} tests, ~${s(r.wall_ms)} of ~${s(r.of_wall_ms)} serial`);
+      for (const f of r.files) console.log(`  ${f.file}  (${f.tests})  ← ${f.why.slice(0, 3).join(", ")}${f.why.length > 3 ? ` +${f.why.length - 3}` : ""}`);
+      if (r.uncovered.length) console.log(`NO TEST EXECUTES: ${r.uncovered.join(", ")}`);
+      if (r.inert.length) console.log(`comment/blank only, no test needed: ${r.inert.join(", ")}`);
+      if (r.unmapped.length) console.log(`NOT IN MAP (new, or never loaded by a test): ${r.unmapped.join(", ")}`);
+      if (r.blind_included.length) console.log(`coverage-blind, included by package: ${r.blind_included.length}`);
+    }
+    if (flag("--run")) process.exitCode = r.full_suite ? await runSelected(testFiles()) : await runSelected(r.files.map((f) => f.file));
+    return;
+  }
+  if (cmd === "heatmap") {
+    const h = heatmap(loadMap(), Number(arg("--top", 25)));
+    if (flag("--json")) return console.log(JSON.stringify(h, null, 1));
+    console.log(`map ${h.commit.slice(0, 8)} · ${h.suites.length} suites · src lines executed by ≥1 test: ${h.covered_lines}/${h.total_lines} (${((100 * h.covered_lines) / h.total_lines).toFixed(1)} %)`);
+    console.log("\nslowest suites:");
+    for (const t of h.suites.slice(0, 15)) console.log(`  ${s(t.wall_ms).padStart(7)}  ${String(t.tests).padStart(4)} tests  ${t.file}${t.exit ? "  [failed]" : ""}`);
+    console.log("\ncoldest source files (share of lines any test executes):");
+    for (const f of h.files.slice(0, 25)) console.log(`  ${(100 * f.pct).toFixed(0).padStart(3)} %  ${String(f.lines).padStart(5)} lines  ${String(f.test_files).padStart(3)} test files  ${f.file}`);
+    console.log("\nhottest lines (a change here re-runs the most test files):");
+    for (const l of h.hot_lines.slice(0, 10)) console.log(`  ${String(l.tests).padStart(4)}  ${l.at}`);
+    if (h.blind.length) console.log(`\ncoverage-blind test files (executed no source line): ${h.blind.length}`);
+    return;
+  }
+  console.error("usage: test-map.mjs build [--jobs N] [--only S] | select [--base REF] [--run] [--json] | heatmap [--json] [--top N]");
+  process.exitCode = 2;
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
