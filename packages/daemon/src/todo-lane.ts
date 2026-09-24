@@ -258,7 +258,7 @@ export async function runTodoLane(
     await writeTelemetry({
       session_id: payload.session_id ?? null,
       client: clientEvidence,
-    agent,
+      agent,
       topic: extraction.topics.join(",") || null,
       todo_count: extraction.todoCount,
       query_chars: extraction.query.length,
