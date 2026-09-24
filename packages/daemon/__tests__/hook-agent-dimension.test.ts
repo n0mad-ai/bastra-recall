@@ -12,6 +12,9 @@ describe("hook agent dimension: main thread vs subagent", () => {
     assert.equal(hookAgent({ session_id: "s", agent_id: "" }), "main");
     assert.equal(hookAgent({ session_id: "s", agent_id: 7 }), "main");
     assert.equal(hookAgent(null), "main");
+    // `claude --agent X` puts agent_type on the MAIN thread's payloads too —
+    // agent_type alone is not a subagent.
+    assert.equal(hookAgent({ session_id: "s", agent_type: "reviewer" }), "main");
   });
 
   it("dimensionsFrom keeps agent only from the allowlist, never free text", () => {

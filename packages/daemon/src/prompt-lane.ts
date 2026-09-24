@@ -371,7 +371,7 @@ export async function runPromptLane(
     await writeTelemetry({
       session_id: payload.session_id ?? null,
       client: clientEvidence,
-    agent,
+      agent,
       detected_mode: "none",
       gated: true,
       prompt_chars: prompt.length,
