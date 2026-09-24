@@ -400,3 +400,47 @@ describe("test-map: a code change on lines the map dropped as comments is report
     assert.deepEqual(r.uncovered, [`${file}:2-3`], JSON.stringify(r));
   });
 });
+
+// Revert-checks: drop the `fresh` branch in select → the new test is only "unmapped" → red;
+// drop the `!d.deleted` guard → the deleted test is selected (and --run would `node --test`
+// a missing file) → red; drop the untracked loop in gitDiff → the untracked files are
+// absent → red.
+describe("test-map: test files written or deleted since the map", () => {
+  const add = (f) => `diff --git a/${f} b/${f}\nnew file mode 100644\n--- /dev/null\n+++ b/${f}\n@@ -0,0 +1 @@\n+it("x", () => {});\n`;
+  const del = (f) => `diff --git a/${f} b/${f}\ndeleted file mode 100644\n--- a/${f}\n+++ /dev/null\n@@ -1 +0,0 @@\n-it("x", () => {});\n`;
+
+  it("a new test file the npm test globs pick up is selected, not just 'not in map'", () => {
+    const f = "packages/daemon/__tests__/new.test.ts";
+    const r = select(map, add(f), { testFiles: [f], readOld: () => "", readNew: () => 'it("x", () => {});' });
+    assert.ok(r.files.some((x) => x.file === f && x.new), JSON.stringify(r));
+    assert.ok(!r.unmapped.includes(f));
+  });
+
+  it("a deleted test file is not selected", () => {
+    const f = "packages/daemon/__tests__/a.test.ts";
+    const r = select(map, del(f), { testFiles: [], readOld: () => 'it("x", () => {});', readNew: () => "" });
+    assert.ok(!r.files.some((x) => x.file === f), JSON.stringify(r.files));
+  });
+
+  it("gitDiff includes untracked files, as added", () => {
+    const repo = mkdtempSync(join(tmpdir(), "test-map-untracked-"));
+    const git = (...args) => execFileSync("git", args, { cwd: repo, encoding: "utf8" });
+    try {
+      git("init", "-q");
+      git("config", "user.email", "a@a.com");
+      git("config", "user.name", "a");
+      writeFileSync(join(repo, ".gitignore"), "skip.ts\n");
+      git("add", "-A");
+      git("commit", "-q", "-m", "base");
+      execFileSync("mkdir", ["-p", join(repo, "__tests__")]);
+      writeFileSync(join(repo, "__tests__", "n.test.ts"), 'it("x", () => {});\n');
+      writeFileSync(join(repo, "my new.ts"), "export const a = 1;\n");
+      writeFileSync(join(repo, "skip.ts"), "export const s = 1;\n");
+      const d = parseDiff(gitDiff("HEAD", repo));
+      assert.deepEqual(Object.keys(d).sort(), ["__tests__/n.test.ts", "my new.ts"]);
+      assert.ok(d["my new.ts"].added);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+});

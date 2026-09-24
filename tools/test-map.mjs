@@ -386,8 +386,21 @@ export function parseDiff(text) {
  * change that shape; parseDiff matches none of it and silently returns {} — "0 test
  * files", nothing reported. So the prefixes and the internal differ are pinned here. */
 export function gitDiff(base, root = ROOT) {
-  return execFileSync("git", ["diff", "-U0", "--no-color", "--no-ext-diff", "--no-relative", "--src-prefix=a/", "--dst-prefix=b/", base],
-    { cwd: root, encoding: "utf8", maxBuffer: 256 << 20 });
+  const shape = ["-U0", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"];
+  const o = { cwd: root, encoding: "utf8", maxBuffer: 256 << 20 };
+  let out = execFileSync("git", ["diff", ...shape, "--no-relative", base], o);
+  // `git diff <base>` never shows an untracked file: a new source or a new test file not
+  // yet `git add`-ed was invisible to select. Each one is diffed against /dev/null (exit 1
+  // means "differs", and is the normal case here).
+  const untracked = execFileSync("git", ["ls-files", "--others", "--exclude-standard", "-z"], o).split("\0").filter(Boolean);
+  for (const f of untracked) {
+    try {
+      out += execFileSync("git", ["diff", "--no-index", ...shape, "--", "/dev/null", f], { ...o, stdio: ["ignore", "pipe", "ignore"] });
+    } catch (e) {
+      out += e.stdout ?? "";
+    }
+  }
+  return out;
 }
 
 const overlaps = (ranges, [a, b]) => ranges.some(([x, y]) => x <= b && a <= y);
@@ -426,13 +439,20 @@ export function select(map, diffText, opts = {}) {
     for (const h of d.hunks) h.inert = !touches(oc, h.old) && !touches(nc, h.new);
   }
   const byFile = new Map(map.tests.map((t, i) => [t.file, i]));
+  let current = null;
+  const currentTests = () => (current ??= new Set(opts.testFiles ?? testFiles()));
+  const fresh = [];
   const picked = new Map(); // test idx → reasons
   const add = (i, why) => { if (!picked.has(i)) picked.set(i, new Set()); picked.get(i).add(why); };
   const report = { global: [], uncovered: [], unmapped: [], ignored: [], inert: [], blind_included: [] };
 
   for (const [file, d] of Object.entries(diff)) {
     if (GLOBAL.some((rx) => rx.test(file))) { report.global.push(file); continue; }
-    if (byFile.has(file)) { add(byFile.get(file), `${file} (the test itself)`); continue; }
+    // A deleted test file has nothing left to run (`node --test` on it is an error).
+    if (byFile.has(file)) { if (!d.deleted) add(byFile.get(file), `${file} (the test itself)`); continue; }
+    // A test file written after the map: no coverage of it yet, but it is exactly the
+    // test the author wants run. Unselected, it was only "not in map" and --run skipped it.
+    if (!d.deleted && currentTests().has(file)) { fresh.push(file); continue; }
     // Binary, or a non-code extension the map never tracks (.json/.yaml/.md/...): visible
     // here as "ignored", but if a test reads it as a runtime fixture rather than a source
     // module, no coverage run ever recorded that read — a change there selects nothing.
@@ -462,6 +482,7 @@ export function select(map, diffText, opts = {}) {
     });
   }
   const chosen = [...picked.keys()].sort((a, b) => a - b).map((i) => ({ ...map.tests[i], why: [...picked.get(i)] }));
+  for (const file of fresh) chosen.push({ file, tests: 0, wall_ms: 0, new: true, why: ["new test file, not in the map"] });
   const all = map.tests.reduce((a, t) => ({ tests: a.tests + t.tests, wall: a.wall + t.wall_ms }), { tests: 0, wall: 0 });
   return {
     full_suite: report.global.length > 0,
