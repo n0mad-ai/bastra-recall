@@ -48,6 +48,14 @@ const FORCE_WITH_LEASE: Undo = {
     `silent overwrite) when someone did, and the overwritten tip stays in your remote-tracking reflog.`,
 };
 
+const DROP_PLUS_REFSPEC: Undo = {
+  kind: "reversible-form",
+  text:
+    `drop the \`+\` and use \`git push --force-with-lease\` instead: a \`+\` refspec forces its ref even under a ` +
+    `lease; without it the lease refuses when someone else pushed, and the overwritten tip stays in your ` +
+    `remote-tracking reflog.`,
+};
+
 /** `git` plus the global options that may sit before the subcommand. */
 const git = (rest: string): RegExp => new RegExp(String.raw`\bgit(?:\s+-[Cc]\s+\S+)*\s+` + rest);
 
@@ -113,6 +121,11 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
   // reflog that makes a lease receipt true. Listed before the force rows so a
   // lease that deletes (`--force-with-lease origin :x`) is weighed as this.
   { label: "git push --delete", re: git(String.raw`push\b[^\n]*\s(?:--delete|-d|--prune|--mirror|\+?:\S)`), undo: null },
+  // A `+` refspec forces that ref and overrides the lease: `git push
+  // --force-with-lease origin +main` overwrites commits never fetched, and
+  // their tip is in no local reflog. Listed before the lease row so the
+  // combination is weighed as a force, never as the lease receipt.
+  { label: "git push +refspec", re: git(String.raw`push\b[^\n]*\s\+[^\s:]`), undo: DROP_PLUS_REFSPEC },
   {
     label: "git push --force-with-lease",
     re: git(String.raw`push\b[^\n]*--force-with-lease`),

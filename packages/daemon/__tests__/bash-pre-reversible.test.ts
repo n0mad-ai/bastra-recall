@@ -94,6 +94,7 @@ const EXAMPLE: Record<string, string> = {
   "git push --force-with-lease": "git push --force-with-lease origin main",
   "git push --force": "git push --force origin main",
   "git push -f": "git push -f origin main",
+  "git push +refspec": "git push origin +main",
   "git commit --amend": "git commit --amend --no-edit",
   "gh repo delete": "gh repo delete me/prod --yes",
   "gh release delete": "gh release delete v1 --yes",
@@ -314,6 +315,7 @@ describe("#650 reversible defaults — every undo row's recipe, run in a real re
     "git push --force-with-lease": leaseProof,
     "git push --force": leaseProof,
     "git push -f": leaseProof,
+    "git push +refspec": leaseProof,
   };
   /** Undo rows whose recipe is not this repo's to run — the hole, named. */
   const NOT_RUN_HERE: Record<string, string> = {
@@ -409,6 +411,9 @@ describe("#651 review — the hint weighs the whole command, not the first row i
     assert.deepEqual(await hintOf("git push --force-with-lease origin :old"), { kind: "stop", pattern: "git push --delete" });
     assert.equal((await hintOf("git push --force-with-lease --prune origin")).kind, "stop");
     assert.equal((await hintOf("git push --force-with-lease --force origin main")).kind, "stop");
+    // Revert-check: remove the `git push +refspec` row → the `+` force reads as a lease receipt.
+    assert.deepEqual(await hintOf("git push --force-with-lease origin +main"), { kind: "stop", pattern: "git push +refspec" });
+    assert.equal((await hintOf("git push --force-with-lease origin +HEAD:main")).kind, "stop");
     // …and a plain lease, or a push to a refspec with a colon inside, stays what it is.
     assert.equal((await hintOf("git push --force-with-lease origin HEAD:main")).kind, "receipt");
     assert.equal(matchPattern("git push origin HEAD:refs/heads/main"), null);
