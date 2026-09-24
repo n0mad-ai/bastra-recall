@@ -14,6 +14,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { copySkill, describeSkillInstall, inspectSkillInstall, skillBundleRevision } from "../src/cli/skill.js";
+// @ts-expect-error — plain .mjs script, no declarations (#542).
+import { packEntry } from "../../../scripts/npm-pack-json.mjs";
 import { cursorRuleState } from "../src/cli/adapters/cursor.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -111,40 +113,14 @@ test("#456: the daemon package ships the canonical bundle — every payload file
   assert.ok(pkg.files.includes("skill"), "package.json must ship the skill directory");
 });
 
-// npm ≤ 11 prints an array of packs, npm 12 an object keyed by package name.
-// Only one shape runs on any given machine, so both are pinned below on fixtures.
-function packFiles(out: string): Set<string> {
-  const parsed = JSON.parse(out) as unknown;
-  const pack = (Array.isArray(parsed) ? parsed[0] : (parsed as Record<string, unknown>)?.["@bastra-recall/daemon"]) as
-    | { files?: Array<{ path: string }> }
-    | undefined;
-  assert.ok(Array.isArray(pack?.files), `npm pack --json: unrecognised shape: ${out.slice(0, 200)}`);
-  return new Set(pack.files.map((f) => f.path));
-}
-
-test("#456: packFiles reads the npm ≤ 11 array and the npm 12 object, and names any other shape", () => {
-  const files = [{ path: "skill/SKILL.md" }];
-  assert.deepEqual([...packFiles(JSON.stringify([{ name: "@bastra-recall/daemon", files }]))], ["skill/SKILL.md"]);
-  assert.deepEqual(
-    [...packFiles(JSON.stringify({ "@bastra-recall/daemon": { name: "@bastra-recall/daemon", files } }))],
-    ["skill/SKILL.md"],
-  );
-  // A workspace pack lists several packages; the daemon is picked by name, not by key order.
-  assert.deepEqual(
-    [...packFiles(JSON.stringify({ "@bastra-recall/core": { files: [] }, "@bastra-recall/daemon": { files } }))],
-    ["skill/SKILL.md"],
-  );
-  assert.throws(() => packFiles(JSON.stringify({ files })), /unrecognised shape/);
-  assert.throws(() => packFiles("null"), /unrecognised shape/);
-});
-
 test("#456: `npm pack` lists the skill payload, the Cursor rule and the OpenAI metadata", () => {
   const out = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
     cwd: DAEMON,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
   });
-  const files = packFiles(out);
+  const entry: { files: Array<{ path: string }> } = packEntry(out, "@bastra-recall/daemon");
+  const files = new Set(entry.files.map((f) => f.path));
   for (const required of ["skill/SKILL.md", "skill/taxonomy.md", "skill/topology.md", "skill/intake.md", "skill/commons.md", "skill/cursor-rules.mdc", "skill/agents/openai.yaml"]) {
     assert.ok(files.has(required), `npm pack does not ship ${required}`);
   }

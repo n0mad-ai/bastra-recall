@@ -58,6 +58,7 @@
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { packEntry } from "./npm-pack-json.mjs";
 import { spawnSync } from "node:child_process";
 import { assertCompleteAssets } from "./release-assets.mjs";
 
@@ -132,12 +133,8 @@ function packDigest(name) {
       `npm pack --dry-run ${name} failed (${res.status}):\n${`${res.stdout ?? ""}${res.stderr ?? ""}`.trim()}`,
     );
   }
-  // npm prints the JSON array on stdout; lifecycle output may precede it.
-  const text = (res.stdout ?? "").trim();
-  const start = text.indexOf("[");
-  const parsed = JSON.parse(start >= 0 ? text.slice(start) : text);
-  const entry = Array.isArray(parsed) ? parsed[0] : parsed;
-  return { integrity: entry?.integrity ?? null, shasum: entry?.shasum ?? null };
+  const entry = packEntry(res.stdout ?? "", name);
+  return { integrity: entry.integrity ?? null, shasum: entry.shasum ?? null };
 }
 
 /**
