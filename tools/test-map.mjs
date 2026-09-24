@@ -5,7 +5,7 @@
  *
  *   node tools/test-map.mjs build   [--jobs N] [--only <glob-substring>]
  *   node tools/test-map.mjs select  [--base <ref>] [--run] [--json]
- *   node tools/test-map.mjs heatmap [--json] [--top N]
+ *   node tools/test-map.mjs heatmap [--json] [--top N] [--html <file>]
  *
  * build   runs every test file of the root `npm test` script on its own, with
  *         Node's built-in coverage (source-mapped, so lines are .ts lines), and
@@ -19,6 +19,8 @@
  * heatmap every suite with its size and time; per source file the share of
  *         lines any test executes and how many test files do; the hottest
  *         lines (a change there re-runs the most) and the files no test loads.
+ *         --html writes the same as one self-contained page (tools/test-map-heatmap.html
+ *         with the numbers filled in) — generated, never committed.
  *
  * Why coverage and not the import graph: an import says a test CAN reach a
  * file, coverage says it DID run the line. A test that imports a 900-line
@@ -354,8 +356,25 @@ async function main() {
     return;
   }
   if (cmd === "heatmap") {
-    const h = heatmap(loadMap(), Number(arg("--top", 25)));
+    const map = loadMap();
+    const h = heatmap(map, Number(arg("--top", 25)));
     if (flag("--json")) return console.log(JSON.stringify(h, null, 1));
+    if (arg("--html")) {
+      const data = {
+        commit: map.commit.slice(0, 8), built: map.built_at.slice(0, 16).replace("T", " "),
+        nfiles: map.tests.length, ntests: map.tests.reduce((a, t) => a + t.tests, 0),
+        serial_s: Math.round(map.tests.reduce((a, t) => a + t.wall_ms, 0) / 1000),
+        covered: h.covered_lines, total: h.total_lines,
+        files: h.files.map((f) => ({ f: f.file, l: f.lines, c: Number(f.pct.toFixed(3)), t: f.test_files, x: f.hottest_line_tests })),
+        suites: h.suites.slice(0, 20).map((t) => ({ f: t.file, w: t.wall_ms, n: t.tests, lost: !!t.coverage_lost, fail: t.exit !== 0 && !t.coverage_lost })),
+        hot: h.hot_lines.slice(0, 15), blind: h.blind,
+      };
+      // The data goes into a <script>: "</" must not close it early.
+      const json = JSON.stringify(data).replace(/<\//g, "<\\/");
+      const page = readFileSync(join(ROOT, "tools", "test-map-heatmap.html"), "utf8").replace("__DATA__", json);
+      writeFileSync(arg("--html"), page);
+      return console.log(`heatmap → ${arg("--html")}`);
+    }
     console.log(`map ${h.commit.slice(0, 8)} · ${h.suites.length} suites · src lines executed by ≥1 test: ${h.covered_lines}/${h.total_lines} (${((100 * h.covered_lines) / h.total_lines).toFixed(1)} %)`);
     console.log("\nslowest suites:");
     for (const t of h.suites.slice(0, 15)) console.log(`  ${s(t.wall_ms).padStart(7)}  ${String(t.tests).padStart(4)} tests  ${t.file}${t.exit ? "  [failed]" : ""}`);
