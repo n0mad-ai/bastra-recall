@@ -701,8 +701,9 @@ interface HookCallTelemetry {
   /** #507: die aufrufende Oberfläche — NUR wenn belegt (`hookClientEvidence`),
    *  nie der surface-Default. */
   client: HookClientEvidence;
-  /** Hauptthread oder Subagent (`hookAgent`) — Telemetrie-Dimension `agent`. */
-  agent: HookAgent;
+  /** Hauptthread oder Subagent (`hookAgent`) — Telemetrie-Dimension `agent`;
+   *  `null` ohne Beleg (Codex), dann fehlt die Spalte. */
+  agent: HookAgent | null;
   tool_name: string;
   file_path: string | null;
   topics: string[];

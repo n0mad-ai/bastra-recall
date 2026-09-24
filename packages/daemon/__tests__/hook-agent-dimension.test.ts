@@ -11,10 +11,19 @@ describe("hook agent dimension: main thread vs subagent", () => {
     assert.equal(hookAgent({ session_id: "s" }), "main");
     assert.equal(hookAgent({ session_id: "s", agent_id: "" }), "main");
     assert.equal(hookAgent({ session_id: "s", agent_id: 7 }), "main");
-    assert.equal(hookAgent(null), "main");
+    assert.equal(hookAgent(null), null);
     // `claude --agent X` puts agent_type on the MAIN thread's payloads too —
     // agent_type alone is not a subagent.
     assert.equal(hookAgent({ session_id: "s", agent_type: "reviewer" }), "main");
+  });
+
+  it("a Codex payload without agent_id backs no answer — null, not a guessed main", () => {
+    // Codex never sends agent_id, so its absence there says nothing (#507 rule).
+    assert.equal(hookAgent({ session_id: "s", bastra_client: "codex" }), null);
+    assert.equal(hookAgent({ session_id: "s", tool_name: "apply_patch" }), null);
+    // Presence is still evidence, whoever sent it.
+    assert.equal(hookAgent({ session_id: "s", bastra_client: "codex", agent_id: "x" }), "subagent");
+    assert.equal(hookAgent({ session_id: "s", bastra_client: "claude-code" }), "main");
   });
 
   it("dimensionsFrom keeps agent only from the allowlist, never free text", () => {

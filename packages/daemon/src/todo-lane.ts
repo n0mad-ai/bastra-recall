@@ -573,8 +573,9 @@ interface TodoHookTelemetry {
   /** #507: die aufrufende Oberfläche — NUR wenn belegt (`hookClientEvidence`),
    *  nie der surface-Default. */
   client: HookClientEvidence;
-  /** Hauptthread oder Subagent (`hookAgent`) — Telemetrie-Dimension `agent`. */
-  agent: HookAgent;
+  /** Hauptthread oder Subagent (`hookAgent`) — Telemetrie-Dimension `agent`;
+   *  `null` ohne Beleg (Codex), dann fehlt die Spalte. */
+  agent: HookAgent | null;
   topic: string | null;
   todo_count: number;
   query_chars: number;

@@ -50,13 +50,21 @@ export function hookClientEvidence(payload: unknown): HookClientEvidence {
  * neither — observed on a live PreToolUse/PostToolUse pair, same session_id.
  * Only the presence of the id is read: `agent_type` can be a user-defined
  * agent name, i.e. free text, and stays out of telemetry (§23).
+ *
+ * `null` where the payload cannot back an answer — the same rule as
+ * `hookClientEvidence` (#507 Nachbesserung): a missing `agent_id` means "main
+ * thread" only under Claude Code's contract. A Codex-marked payload never
+ * carries the field, so its absence there is no evidence, and booking every
+ * Codex call as `main` would be a guessed value in a measurement column.
+ * `null` leaves the column off the row (`dimensionsFrom` allowlist).
  */
 export type HookAgent = "main" | "subagent";
 
-export function hookAgent(payload: unknown): HookAgent {
-  if (!payload || typeof payload !== "object") return "main";
+export function hookAgent(payload: unknown): HookAgent | null {
+  if (!payload || typeof payload !== "object") return null;
   const id = (payload as Record<string, unknown>).agent_id;
-  return typeof id === "string" && id.length > 0 ? "subagent" : "main";
+  if (typeof id === "string" && id.length > 0) return "subagent";
+  return hookClientEvidence(payload) === "codex" ? null : "main";
 }
 
 /** Add the registration-owned client marker without mutating stdin data. */
