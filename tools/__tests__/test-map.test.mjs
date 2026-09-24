@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync, copyFileSync, existsS
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseDiff, parseLcov, normalizeSource, select, testFiles, INERT, codeLinesOf } from "../test-map.mjs";
+import { parseDiff, parseLcov, normalizeSource, select, testFiles, INERT, codeLinesOf, gitDiff } from "../test-map.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
@@ -302,4 +302,31 @@ describe("test-map: heatmap --html data cannot leave its <script>", () => {
       rmSync(work, { recursive: true, force: true });
     }
   });
+});
+
+// Revert-check: in gitDiff drop --src-prefix/--dst-prefix → under diff.mnemonicPrefix the
+// headers read `--- c/x.ts` / `+++ w/x.ts`, under diff.noprefix `--- x.ts`; parseDiff
+// matches neither and returns {} → both cases red.
+describe("test-map: the diff select reads does not depend on the user's git config", () => {
+  for (const [key, value] of [["diff.mnemonicPrefix", "true"], ["diff.noprefix", "true"]]) {
+    it(`${key}=${value} still yields the changed file`, () => {
+      const repo = mkdtempSync(join(tmpdir(), "test-map-cfg-"));
+      const git = (...args) => execFileSync("git", args, { cwd: repo, encoding: "utf8" });
+      try {
+        git("init", "-q");
+        git("config", "user.email", "a@a.com");
+        git("config", "user.name", "a");
+        writeFileSync(join(repo, "x.ts"), "export const a = 1;\n");
+        git("add", "-A");
+        git("commit", "-q", "-m", "base");
+        git("config", key, value);
+        writeFileSync(join(repo, "x.ts"), "export const a = 2;\n");
+        const d = parseDiff(gitDiff("HEAD", repo));
+        assert.deepEqual(Object.keys(d), ["x.ts"]);
+        assert.deepEqual([...d["x.ts"].hunks[0]], [1, 1]);
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    });
+  }
 });

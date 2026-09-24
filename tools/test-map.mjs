@@ -358,6 +358,15 @@ export function parseDiff(text) {
   return files;
 }
 
+/** The diff parseDiff reads, in the shape it reads, whatever the user's git config says.
+ * diff.mnemonicPrefix (c/ w/ i/), diff.noprefix, diff.external and diff.relative each
+ * change that shape; parseDiff matches none of it and silently returns {} — "0 test
+ * files", nothing reported. So the prefixes and the internal differ are pinned here. */
+export function gitDiff(base, root = ROOT) {
+  return execFileSync("git", ["diff", "-U0", "--no-color", "--no-ext-diff", "--no-relative", "--src-prefix=a/", "--dst-prefix=b/", base],
+    { cwd: root, encoding: "utf8", maxBuffer: 256 << 20 });
+}
+
 const overlaps = (ranges, [a, b]) => ranges.some(([x, y]) => x <= b && a <= y);
 
 export function select(map, diffText, opts = {}) {
@@ -488,8 +497,7 @@ async function main() {
     const map = loadMap();
     const base = arg("--base", map.commit);
     if (base !== map.commit) process.stderr.write(`test-map: --base ${base} is not the map commit ${map.commit.slice(0, 8)} — line numbers may be off\n`);
-    const diff = execFileSync("git", ["diff", "-U0", "--no-color", base], { cwd: ROOT, encoding: "utf8", maxBuffer: 256 << 20 });
-    const r = select(map, diff);
+    const r = select(map, gitDiff(base));
     if (flag("--json")) console.log(JSON.stringify(r, null, 1));
     else {
       if (r.full_suite) console.log(`FULL SUITE — global file changed: ${r.global.join(", ")}`);
