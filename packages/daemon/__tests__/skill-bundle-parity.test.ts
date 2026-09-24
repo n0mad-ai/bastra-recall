@@ -117,7 +117,12 @@ test("#456: `npm pack` lists the skill payload, the Cursor rule and the OpenAI m
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
   });
-  const files = new Set((JSON.parse(out)[0].files as Array<{ path: string }>).map((f) => f.path));
+  // npm ≤ 11 prints an array of packs, npm 12 an object keyed by package name.
+  const parsed = JSON.parse(out) as unknown;
+  const pack = (Array.isArray(parsed) ? parsed[0] : Object.values(parsed as Record<string, unknown>)[0]) as {
+    files: Array<{ path: string }>;
+  };
+  const files = new Set(pack.files.map((f) => f.path));
   for (const required of ["skill/SKILL.md", "skill/taxonomy.md", "skill/topology.md", "skill/intake.md", "skill/commons.md", "skill/cursor-rules.mdc", "skill/agents/openai.yaml"]) {
     assert.ok(files.has(required), `npm pack does not ship ${required}`);
   }
