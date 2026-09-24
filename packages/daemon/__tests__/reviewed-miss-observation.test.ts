@@ -298,13 +298,17 @@ test("cli: the accounting line names absent engines, and proposals are written o
 
 import { loadTelemetry } from "../src/learned-recall/reviewed-miss-engines.js";
 import { dens, heatmap, hotPaths, observeHookLane } from "../src/learned-recall/reviewed-miss-evidence.js";
+import { pseudonymousSession } from "../src/telemetry-dimensions.js";
 
-function loadEvent(id: string, ts: string, session: string, link: { from_hook_recall?: string; follows_recall?: string; hook_hint_rank?: number } = {}, found = true): string {
-  return line({ kind: "load_memory", ts, session_id: session, id, found, ...link });
+// The daemon's own shapes: a `load_memory` stamps `session_id` with the daemon
+// run and carries no client session; a recall carries the client session as
+// its pseudonym in `dimensions.experiment_session`.
+function loadEvent(id: string, ts: string, run: string, link: { from_hook_recall?: string; follows_recall?: string; hook_hint_rank?: number } = {}, found = true): string {
+  return line({ kind: "load_memory", ts, session_id: run, id, found, ...link });
 }
 
 function eventIn(recallId: string, ts: string, session: string, poolIds: string[], hits: string[]): string {
-  return JSON.stringify({ ...JSON.parse(event(recallId, ts, poolIds, hits)), session_id: session });
+  return JSON.stringify({ ...JSON.parse(event(recallId, ts, poolIds, hits)), session_id: session, dimensions: { experiment_session: pseudonymousSession(session) } });
 }
 
 async function hookFixture(): Promise<{ dir: string; engines: ObservationEngines; telemetry: Awaited<ReturnType<typeof loadTelemetry>> }> {
@@ -347,12 +351,13 @@ test("hook lane: telemetry alone classifies daemon-joined loads with the same cl
 test("hook lane bite: a renamed join field turns classified loads into a den, not into zero misses", async () => {
   const { dir, engines, telemetry } = await hookFixture();
   try {
-    const broken = { ...telemetry, loads: telemetry.loads.map((l) => ({ ...l, fromHookRecall: null, followsRecall: null })) };
+    // an unlinked load has no client session either: only its daemon run can witness the repeat
+    const broken = { ...telemetry, loads: telemetry.loads.map((l) => ({ ...l, fromHookRecall: null, followsRecall: null, session: null })) };
     const { records, gaps } = observeHookLane(broken, engines);
     assert.equal(records.length, 0);
     const den = dens(gaps).find((d) => d.kind === "load-without-recall-link");
     assert.equal(den?.verdict, "den");
-    assert.ok(den && den.sessions >= 2 && den.exit.length > 0);
+    assert.ok(den && den.witnesses >= 2 && den.exit.length > 0);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -378,9 +383,9 @@ test("heatmap and hot paths: hubs and never-loaded are densities, edges need dis
 
 test("dens: one occurrence is noise, two sessions is a den, absence is none", () => {
   const rows = dens([
-    { kind: "envelope-without-recall-id", sessionRef: hash("a") },
-    { kind: "link-without-pool", sessionRef: hash("a") },
-    { kind: "link-without-pool", sessionRef: hash("b") },
+    { kind: "envelope-without-recall-id", witness: hash("a") },
+    { kind: "link-without-pool", witness: hash("a") },
+    { kind: "link-without-pool", witness: hash("b") },
   ]);
   const by = Object.fromEntries(rows.map((r) => [r.kind, r.verdict]));
   assert.equal(by["envelope-without-recall-id"], "noise");
@@ -590,8 +595,8 @@ test("cli: one load after an MCP recall is one observation, not one per lane", a
   try {
     const later = new Date(Date.now() + 3_600_000 + 60_000).toISOString();
     await writeFile(join(events, "events-2026-09-15.jsonl"), [
-      JSON.stringify({ ...JSON.parse(event("r-mcp", later, ["served-one", "deep-two"], ["served-one"])), kind: "recall", session_id: "sess-1" }),
-      loadEvent("deep-two", later, "sess-1", { follows_recall: "r-mcp" }),
+      JSON.stringify({ ...JSON.parse(event("r-mcp", later, ["served-one", "deep-two"], ["served-one"])), kind: "recall", session_id: "run-1", dimensions: { experiment_session: pseudonymousSession("sess-1") } }),
+      loadEvent("deep-two", later, "run-1", { follows_recall: "r-mcp" }),
     ].join("\n") + "\n");
     const sessionFile = join(dir, "sess-1.jsonl");
     await writeFile(sessionFile, session("r-mcp", ["served-one"], { name: "mcp__bastra-recall__load_memory", input: { id: "deep-two" } }) + "\n");

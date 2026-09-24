@@ -36,7 +36,12 @@ export interface TelemetryPool {
   ts: string;
   /** "recall" (MCP/HTTP call) or "hook_recall" (automatic hook injection). */
   lane: "recall" | "hook_recall";
-  sessionId: string | null;
+  /**
+   * The client session as the daemon pseudonymizes it
+   * (`dimensions.experiment_session`), or null when the caller sent none.
+   * Not `session_id`: an MCP `recall` stamps that with the daemon run id.
+   */
+  session: string | null;
   /** The daemon's own query text for this call (hook lane: derived from the tool input). */
   query: string | null;
   orderedIds: string[];
@@ -49,7 +54,14 @@ export interface TelemetryPool {
 /** A `load_memory` telemetry event, the hook lane's evidence step. */
 export interface TelemetryLoad {
   ts: string;
-  sessionId: string | null;
+  /**
+   * The client session of the recall this load followed (see
+   * `TelemetryPool.session`). A `load_memory` event carries no client session
+   * of its own, so an unlinked load has none.
+   */
+  session: string | null;
+  /** The event's `session_id`: the daemon run, which is not a client session. */
+  run: string | null;
   memoryId: string;
   found: boolean;
   /** recall_id of the hook recall whose hint this load followed, if the daemon joined it. */
@@ -114,7 +126,8 @@ export async function loadTelemetry(dir: string, options: { sinceMs?: number } =
         if (typeof event.id !== "string" || !event.id) continue;
         loads.push({
           ts: event.ts,
-          sessionId: typeof event.session_id === "string" ? event.session_id : null,
+          session: null,
+          run: typeof event.session_id === "string" && event.session_id ? event.session_id : null,
           memoryId: event.id,
           found: event.found !== false,
           fromHookRecall: typeof event.from_hook_recall === "string" && event.from_hook_recall ? event.from_hook_recall : null,
@@ -134,7 +147,7 @@ export async function loadTelemetry(dir: string, options: { sinceMs?: number } =
         recallId: event.recall_id,
         ts: event.ts,
         lane: event.kind,
-        sessionId: typeof event.session_id === "string" ? event.session_id : null,
+        session: clientSessionOf(event),
         query: typeof event.query === "string" && event.query ? event.query : null,
         orderedIds,
         servedIds: idsOf(event.hits),
@@ -144,7 +157,18 @@ export async function loadTelemetry(dir: string, options: { sinceMs?: number } =
       });
     }
   }
+  for (const load of loads) {
+    const recallId = load.fromHookRecall ?? load.followsRecall;
+    load.session = (recallId ? pools.get(recallId)?.session : null) ?? null;
+  }
   return { pools, loads };
+}
+
+function clientSessionOf(event: Record<string, unknown>): string | null {
+  const dimensions = event.dimensions;
+  if (typeof dimensions !== "object" || dimensions === null) return null;
+  const session = (dimensions as { experiment_session?: unknown }).experiment_session;
+  return typeof session === "string" && session ? session : null;
 }
 
 /** Pools only — the transcript lane's join input. */
