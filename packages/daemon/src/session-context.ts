@@ -17,6 +17,7 @@ import type { ToolDeps } from "./tool-handlers.js";
 import { sendJsonPlain } from "./webui.js";
 import { MAX_BODY_BYTES, readJsonBody } from "./http-util.js";
 import { projectForLane } from "./scope-filter.js";
+import { dimensionHints } from "./telemetry-dimensions.js";
 import {
   assembleSessionSections,
   renderSessionContext,
@@ -95,7 +96,9 @@ export async function handleSessionContextPost(
     project,
     source: typeof b.source === "string" ? b.source : null,
     session_id: typeof b.session_id === "string" ? b.session_id : null,
-    client: b.client,
+    // `client`/`agent` des Aufrufers; ein mitgeschicktes `hook_source`
+    // überschreibt der Assembler mit seinem eigenen (`session-context`).
+    ...dimensionHints(b),
     // #265: Nur der POST-Weg fährt die Hook-Pipeline (Scope-Filter,
     // Reflex-Hits, Router-Schatten). GET bleibt auf `recallHandler` — der
     // Wechsel wäre eine stille Produktänderung für hooklose Clients und ist

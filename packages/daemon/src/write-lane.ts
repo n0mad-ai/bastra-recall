@@ -37,7 +37,7 @@ import { codeGraphCache, repoRelative } from "./code-graph/dependents-block.js";
 import { logDeliveredBlock } from "./code-delivered-telemetry.js";
 import { memoryLocationNote } from "./memory-location.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookClient, hookClientEvidence, type HookClientEvidence } from "./hook-surface.js";
+import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookCaller, type HookClientEvidence } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import {
   bumpShown,
@@ -134,6 +134,7 @@ export async function runWriteLane(
   // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
   // der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback.
   const clientEvidence = hookClientEvidence(payload);
+  const agent = hookAgent(payload);
 
   if (payload.hook_event_name !== "PreToolUse") return "{}";
   const toolName = payload.tool_name ?? "";
@@ -183,12 +184,11 @@ export async function runWriteLane(
       topics: topics.topics,
       project,
       tool_name: toolName,
-      session_id: payload.session_id ?? null,
       tool_input_excerpt: intent.content_excerpt,
       k: 3,
       // #445: die Lane weist sich aus. `pre-tool` ist ihr Allowlist-Wert —
       // sie ist die PreToolUse-Lane für Write/Edit.
-      client,
+      ...hookCaller(payload),
       hook_source: "pre-tool",
     }, remainingMs);
   } catch (err) {
@@ -491,6 +491,7 @@ export async function runWriteLane(
   await writeTelemetry({
     session_id: sessionId || null,
     client: clientEvidence,
+    agent,
     tool_name: toolName,
     file_path: filePath,
     topics: topics.topics,
@@ -626,17 +627,15 @@ function escapeAttr(s: string): string {
 
 // ─── loopback self-call ─────────────────────────────────────────────────────
 
-interface RecallRequestBody {
+/** #445: die Identitätsfelder aus #263 kommen aus `HookCaller` — siehe todo-lane.ts. */
+interface RecallRequestBody extends HookCaller {
   query: string;
   topics: string[];
   project: string | null;
   tool_name: string;
-  session_id: string | null;
   tool_input_excerpt: string;
   k: number;
   scope?: string;
-  /** #445: die Identitätsfelder aus #263 — siehe todo-lane.ts. */
-  client: string;
   hook_source: string;
 }
 
@@ -699,6 +698,9 @@ interface HookCallTelemetry {
   /** #507: die aufrufende Oberfläche — NUR wenn belegt (`hookClientEvidence`),
    *  nie der surface-Default. */
   client: HookClientEvidence;
+  /** Hauptthread oder Subagent (`hookAgent`) — Telemetrie-Dimension `agent`;
+   *  `null` ohne Beleg (Codex), dann fehlt die Spalte. */
+  agent: HookAgent | null;
   tool_name: string;
   file_path: string | null;
   topics: string[];
@@ -768,7 +770,7 @@ async function writeTelemetry(payload: HookCallTelemetry): Promise<void> {
     const ts = new Date().toISOString();
     // The session_id from the Claude payload is real session state — fall
     // back to a synthetic UUID only if no payload session was given.
-    const { session_id: payloadSessionId, client, ...rest } = payload;
+    const { session_id: payloadSessionId, client, agent, ...rest } = payload;
     const event = {
       kind: "hook_call",
       ts,
@@ -779,7 +781,7 @@ async function writeTelemetry(payload: HookCallTelemetry): Promise<void> {
       // call, unlike client, which the caller already resolved from the
       // payload (`hookClient`, same value the hint block's surface attribute
       // uses).
-      dimensions: dimensionsFrom({ client, hook_source: "pre-tool", session_id: payloadSessionId }),
+      dimensions: dimensionsFrom({ client, hook_source: "pre-tool", session_id: payloadSessionId, agent }),
     };
     const file = join(logDir, `events-${ts.slice(0, 10)}.jsonl`);
     await appendFile(file, JSON.stringify(event) + "\n", "utf8");

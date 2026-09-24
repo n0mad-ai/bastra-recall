@@ -658,3 +658,36 @@ test("#305: every gate lane has a threshold, and every threshold names a real bu
     "all six kind-based automatic lanes, or the gate covers fewer lanes than the product advertises",
   );
 });
+
+test("the agent split: the same calls, apart by main thread and subagent", () => {
+  // Revert-check: count every row into "none" (drop agentOf) → the subagent
+  // row is missing and the render asserts are red.
+  const call = (sid: string, dims: Record<string, unknown> | undefined, over: Record<string, unknown> = {}) => ({
+    kind: "bash_hook_call", ts: "2026-07-28T05:00:00.000Z", session_id: sid,
+    status: "ok", hint_count: 0, latency_ms_total: 10,
+    ...(dims ? { dimensions: dims } : {}), ...over,
+  });
+  const stats = aggregate([
+    call("a1", { agent: "subagent" }, { hint_count: 2 }),
+    call("a2", { agent: "subagent" }, { status: "timeout" }),
+    call("a3", { agent: "main" }, { hint_count: 1 }),
+    call("a4", { client: "codex" }),
+    call("a5", undefined),
+  ]);
+  const by = Object.fromEntries(stats.byAgent.map((r) => [r.mode, r]));
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(by).map(([k, r]) => [k, [r.calls, r.withHits, r.timeouts]])),
+    { subagent: [2, 1, 1], main: [1, 1, 0], none: [2, 0, 0] },
+  );
+  // Same calls as the lane table, not a second count of something else.
+  assert.equal(stats.byAgent.reduce((n, r) => n + r.calls, 0), stats.totals.calls);
+  const text = renderStats(stats, 200);
+  assert.match(text, /by agent/);
+  assert.match(text, /\n  subagent\s+2\s+50%/);
+});
+
+test("the agent split stays silent while no row carries the column", () => {
+  const stats = aggregate([promptCall({ session_id: "s1" }), promptCall({ session_id: "s2" })]);
+  assert.equal(stats.byAgent.length, 1, "precondition: the rows were counted, as none");
+  assert.doesNotMatch(renderStats(stats, 200), /by agent/);
+});

@@ -362,6 +362,36 @@ describe("bash-pre-hook: telemetry session (#356)", () => {
     }
   });
 
+  it("a subagent's call is booked as agent=subagent, the main thread's as agent=main", async () => {
+    // Revert-check: drop `agent` from the bash-pre dimensionsFrom call → both asserts are red.
+    const daemon = await startMockDaemon((req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(req.url === "/hook/recall" ? JSON.stringify({ hits: [], vault_size: 0, latency_ms: 1, recall_id: "t" }) : "{}");
+    });
+    const logDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-agent-"));
+    const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-agent-state-"));
+    try {
+      const env = {
+        BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
+        BASTRA_HOOK_STATE_DIR: stateDir,
+        BASTRA_TELEMETRY: "on",
+        BASTRA_LOG_PATH: logDir,
+      };
+      const base = { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "rm -rf /tmp/whatever" } };
+      await runHook({ ...base, session_id: "agent-main" }, env);
+      await runHook({ ...base, session_id: "agent-sub", agent_id: "a1b2c3", agent_type: "Explore" }, env);
+      const evs = (await readTelemetryEvents(logDir)).filter((e) => e.kind === "bash_hook_call");
+      const agentOf = (sid: string) =>
+        (evs.find((e) => e.session_id === sid)?.dimensions as Record<string, unknown> | undefined)?.agent;
+      assert.equal(agentOf("agent-main"), "main");
+      assert.equal(agentOf("agent-sub"), "subagent");
+    } finally {
+      await daemon.close();
+      await rm(logDir, { recursive: true, force: true });
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
   it("#507: an explicit bastra_client marker is real evidence and is trusted", async () => {
     const daemon = await startMockDaemon((req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });

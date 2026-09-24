@@ -43,6 +43,57 @@ export function hookClientEvidence(payload: unknown): HookClientEvidence {
   return "unknown";
 }
 
+/**
+ * Who inside the client made the call. Claude Code puts `agent_id` and
+ * `agent_type` into a hook payload only when the tool call comes from a
+ * subagent (hooks reference, common input fields); a main-thread payload has
+ * neither — observed on a live PreToolUse/PostToolUse pair, same session_id.
+ * Only the presence of the id is read: `agent_type` can be a user-defined
+ * agent name, i.e. free text, and stays out of telemetry (§23).
+ *
+ * `null` where the payload cannot back an answer — the same rule as
+ * `hookClientEvidence` (#507 Nachbesserung): a missing `agent_id` means "main
+ * thread" only under Claude Code's contract. A Codex-marked payload never
+ * carries the field, so its absence there is no evidence, and booking every
+ * Codex call as `main` would be a guessed value in a measurement column.
+ * `null` leaves the column off the row (`dimensionsFrom` allowlist).
+ */
+export type HookAgent = "main" | "subagent";
+
+export function hookAgent(payload: unknown): HookAgent | null {
+  if (!payload || typeof payload !== "object") return null;
+  const id = (payload as Record<string, unknown>).agent_id;
+  if (typeof id === "string" && id.length > 0) return "subagent";
+  return hookClientEvidence(payload) === "codex" ? null : "main";
+}
+
+/**
+ * Who is calling, as a lane tells the daemon in every loopback body
+ * (`/hook/recall`, `/hook/act`, `/hook/session-context`). The route copies
+ * these fields onto every row it writes for the call (`dimensionHints`), so a
+ * field missing here is missing on `hook_recall`, `evidence_decision`,
+ * `vector_late_settle` and `hook_act` alike. One constructor, so a lane cannot
+ * send `client` and forget `agent`.
+ *
+ * `client` is the surface default (`hookClient`), not the evidence — the
+ * loopback rows have always booked it that way; the lane's own row uses
+ * `hookClientEvidence` (#507).
+ */
+export interface HookCaller {
+  session_id: string | null;
+  client: HookClient;
+  agent: HookAgent | null;
+}
+
+export function hookCaller(payload: unknown): HookCaller {
+  const sid = payload && typeof payload === "object" ? (payload as Record<string, unknown>).session_id : undefined;
+  return {
+    session_id: typeof sid === "string" ? sid : null,
+    client: hookClient(payload),
+    agent: hookAgent(payload),
+  };
+}
+
 /** Add the registration-owned client marker without mutating stdin data. */
 export function decorateHookPayload<T>(payload: T): T {
   const requested = process.env.BASTRA_HOOK_CLIENT;

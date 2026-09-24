@@ -79,6 +79,11 @@ export interface LogStats {
    *  the trigger-class lanes count, seen once more as one delivery series, and
    *  adding them to the table would double the prompt calls in every total. */
   promptTotal: LaneStats;
+  /** The same hook-lane calls as `lanes`, split by `dimensions.agent` — main
+   *  thread, subagent, or `none` where the row carries no column (Codex, rows
+   *  written before the column). Every quality number above is a mix of both
+   *  ways of working until this split exists. */
+  byAgent: LaneStats[];
   /** #305: client-written rows folded into the daemon row for the same call.
    *  Reported so the readout cannot silently shrink a number it once printed. */
   foldedDuplicates: number;
@@ -186,6 +191,12 @@ function countInto(lane: MutableLane, e: Record<string, unknown>, unclassified =
   if (typeof lat === "number") lane.latencies.push(lat);
 }
 
+/** `dimensions.agent` of a row, or `none` where it carries no column. */
+function agentOf(e: Record<string, unknown>): string {
+  const agent = (e.dimensions as { agent?: unknown } | null | undefined)?.agent;
+  return typeof agent === "string" ? agent : "none";
+}
+
 export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
   const { events, folded } = foldClientDuplicates(rawEvents);
   const windows = restartWindows(events);
@@ -193,6 +204,7 @@ export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
   const byMode = new Map<string, MutableLane>();
   const byModeRestart = new Map<string, MutableLane>();
   const promptTotal = emptyLane(PROMPT_TOTAL_LANE);
+  const byAgent = new Map<string, MutableLane>();
   const otherKinds = new Map<string, number>();
   const holdReasons = new Map<string, number>();
   const suppressedTypes = new Map<string, number>();
@@ -245,6 +257,7 @@ export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
     // a call that fell inside a daemon restart is not a delivery failure here
     // either, for exactly the reason it is not one in the class lanes.
     if (isPrompt && !restarting) countInto(promptTotal, e, mode === "unknown");
+    if (!restarting) countInto(laneOf(byAgent, agentOf(e)), e);
   }
 
   const finish = (table: Map<string, MutableLane>): LaneStats[] =>
@@ -277,6 +290,7 @@ export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
       errors: restartLanes.reduce((n, l) => n + l.errors, 0),
     },
     promptTotal: (({ latencies, ...rest }) => ({ ...rest, latency: percentiles(latencies) }))(promptTotal),
+    byAgent: finish(byAgent),
     foldedDuplicates: folded,
     otherKinds: [...otherKinds.entries()]
       .map(([kind, count]) => ({ kind, count }))
@@ -332,6 +346,27 @@ function renderHintSuppression(s: HintSuppressionStats): string[] {
   return out;
 }
 
+/** The agent split, printed once any row in the window carries the column —
+ *  a table of nothing but `none` would only restate the total. */
+function renderByAgent(rows: LaneStats[]): string[] {
+  if (!rows.some((r) => r.mode !== "none")) return [];
+  const out = ["  by agent    calls   with hits   failed   median    p90"];
+  for (const r of rows) {
+    const failed = r.timeouts + r.errors;
+    out.push(
+      "  " +
+        r.mode.padEnd(11) +
+        String(r.calls).padStart(5) +
+        `   ${pct(r.withHits, r.calls)} (${r.withHits})`.padEnd(12) +
+        `${pct(failed, r.calls)}`.padStart(9) +
+        (r.latency ? `${r.latency.median}ms`.padStart(9) : "        —") +
+        (r.latency ? `${r.latency.p90}ms`.padStart(7) : "      —"),
+    );
+  }
+  out.push("");
+  return out;
+}
+
 function pct(part: number, whole: number): string {
   if (whole === 0) return "—";
   const v = (part / whole) * 100;
@@ -382,6 +417,7 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
     );
   }
   out.push("");
+  out.push(...renderByAgent(stats.byAgent));
 
   // #305: one budget across lanes that do different amounts of work reported
   // the worst lane's p90 against a ceiling most lanes never approach, and said

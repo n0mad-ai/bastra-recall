@@ -29,7 +29,7 @@ import { envFirst, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookClient, hookClientEvidence, type HookClientEvidence } from "./hook-surface.js";
+import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookCaller, type HookClientEvidence } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import {
   decideBackoff,
@@ -247,6 +247,7 @@ export async function runTodoLane(
   // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
   // der surface-Default fürs Hint-Block-Attribut und den Recall-Loopback.
   const clientEvidence = hookClientEvidence(payload);
+  const agent = hookAgent(payload);
 
   if (payload.hook_event_name !== "PreToolUse") return "{}";
   const toolName = payload.tool_name ?? "";
@@ -257,6 +258,7 @@ export async function runTodoLane(
     await writeTelemetry({
       session_id: payload.session_id ?? null,
       client: clientEvidence,
+      agent,
       topic: extraction.topics.join(",") || null,
       todo_count: extraction.todoCount,
       query_chars: extraction.query.length,
@@ -299,11 +301,10 @@ export async function runTodoLane(
         tool_name: toolName,
         k: 5,
         type: "project-fact",
-        // #445: die drei Identitätsfelder, die diese Lane als einzige gar
-        // nicht sendete. Ohne sie ist ihr Ereignis weder nach Quelle noch
-        // nach Session gruppierbar.
-        session_id: payload.session_id ?? null,
-        client,
+        // #445: die Identitätsfelder, die diese Lane als einzige gar nicht
+        // sendete. Ohne sie ist ihr Ereignis weder nach Quelle noch nach
+        // Session gruppierbar.
+        ...hookCaller(payload),
         hook_source: "todo",
       },
       remainingMs,
@@ -399,6 +400,7 @@ export async function runTodoLane(
   await writeTelemetry({
     session_id: payload.session_id ?? null,
     client: clientEvidence,
+    agent,
     topic: extraction.topics.join(",") || null,
     todo_count: extraction.todoCount,
     query_chars: extraction.query.length,
@@ -494,7 +496,7 @@ function escapeAttr(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-interface RecallRequestBody {
+interface RecallRequestBody extends HookCaller {
   query: string;
   topics: string[];
   project: string | null;
@@ -502,11 +504,9 @@ interface RecallRequestBody {
   k: number;
   scope?: string;
   type?: string;
-  /** #445: die Identitätsfelder aus #263. Sie fehlten in diesem Typ, und das
+  /** #445: die Identitätsfelder aus #263 fehlten in diesem Typ, und das
    *  ist der Grund, warum die Lane sie nie mitschickte — der Empfänger liest
-   *  sie aus genau diesem Body. */
-  session_id: string | null;
-  client: string;
+   *  sie aus genau diesem Body. Seitdem kommen sie aus `HookCaller`. */
   hook_source: string;
 }
 
@@ -570,6 +570,9 @@ interface TodoHookTelemetry {
   /** #507: die aufrufende Oberfläche — NUR wenn belegt (`hookClientEvidence`),
    *  nie der surface-Default. */
   client: HookClientEvidence;
+  /** Hauptthread oder Subagent (`hookAgent`) — Telemetrie-Dimension `agent`;
+   *  `null` ohne Beleg (Codex), dann fehlt die Spalte. */
+  agent: HookAgent | null;
   topic: string | null;
   todo_count: number;
   query_chars: number;
@@ -624,7 +627,7 @@ async function writeTelemetry(payload: TodoHookTelemetry): Promise<void> {
     const ts = new Date().toISOString();
     // The session_id from the Claude payload is real session state — fall
     // back to a synthetic UUID only if no payload session was given (#356).
-    const { session_id: payloadSessionId, client, ...rest } = payload;
+    const { session_id: payloadSessionId, client, agent, ...rest } = payload;
     const event = {
       kind: "todo_hook_call",
       ts,
@@ -632,7 +635,7 @@ async function writeTelemetry(payload: TodoHookTelemetry): Promise<void> {
       hook_version: HOOK_VERSION,
       ...rest,
       // #507: todo is this lane's own hook_source — it never varies per call.
-      dimensions: dimensionsFrom({ client, hook_source: "todo", session_id: payloadSessionId }),
+      dimensions: dimensionsFrom({ client, hook_source: "todo", session_id: payloadSessionId, agent }),
     };
     const file = join(logDir, `events-${ts.slice(0, 10)}.jsonl`);
     await appendFile(file, JSON.stringify(event) + "\n", "utf8");

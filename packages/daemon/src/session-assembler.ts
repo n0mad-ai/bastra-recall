@@ -49,6 +49,7 @@ import { parseCareFile, CARE_FILE } from "./webui.js";
 import { countOpenImports, IMPORT_FILE } from "./import-review.js";
 import { queueStatus } from "./import-mining.js";
 import { isOnboardingNeeded } from "./onboarding.js";
+import { dimensionHints, type DimensionHints } from "./telemetry-dimensions.js";
 
 const MAX_PINNED = 5;
 const MAX_HINTS = 3;
@@ -235,11 +236,13 @@ export interface AssembleOptions {
    * Starts hinweg.
    */
   session_start_call_id?: string | null;
-  /** #263: Wer fragt. Der Endpunkt weist sich als eigene Hook-Quelle aus,
-   *  sonst wären seine Recalls von denen des Forwarders nicht zu trennen.
-   *  `unknown`, weil der Wert aus einem Request-Body kommt — normalisiert wird
-   *  er in `telemetry.ts`, nicht hier. */
-  client?: unknown;
+  /** #263: Wer fragt — `client` und `agent` des Aufrufers als Hinweise.
+   *  `hook_source` NICHT: Der Endpunkt weist sich als eigene Hook-Quelle aus
+   *  (`session-context`), sonst wären seine Recalls von denen des Forwarders
+   *  nicht zu trennen. `unknown`, weil die Werte aus einem Request-Body
+   *  kommen — normalisiert wird in `telemetry.ts`, nicht hier. */
+  client?: DimensionHints["client"];
+  agent?: DimensionHints["agent"];
 }
 
 /** Injizierbare Mitspieler — Defaults treffen die echten Module. */
@@ -386,7 +389,7 @@ export async function assembleSessionSections(
           // produktive POST-Lane als `unknown/unknown` und die Splits aus #263
           // trennen ausgerechnet sie nicht. Gleiche Werte wie im GET-Zweig
           // unten — es ist dieselbe Oberfläche, nur die andere Pipeline.
-          client: opts.client,
+          ...dimensionHints(opts),
           hook_source: "session-context",
           ...(opts.vector_deadline_ms !== undefined
             ? { vector_deadline_ms: opts.vector_deadline_ms }
@@ -408,7 +411,7 @@ export async function assembleSessionSections(
         { query, scope, k, expand_hops: expandHops },
         {
           // #263: Dieser Endpunkt ist eine eigene Oberfläche.
-          client: opts.client,
+          ...dimensionHints(opts),
           hook_source: "session-context",
           session_id: opts.session_id ?? undefined,
         },
