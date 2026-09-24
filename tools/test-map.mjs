@@ -148,7 +148,9 @@ export function testFiles(root = ROOT) {
   const out = [];
   for (const g of globs) {
     const dir = dirname(g);
-    const rx = new RegExp("^" + g.slice(dir.length + 1).replace(/\./g, "\\.").replace(/\*/g, "[^/]*") + "$");
+    // Escape every regex metacharacter (backslash included), then turn the glob's `*`
+    // back into "any run of non-slash": escaping only `.` left a backslash, `+`, `(`… live.
+    const rx = new RegExp("^" + g.slice(dir.length + 1).replace(/[\\^$.*+?()[\]{}|]/g, "\\$&").replace(/\\\*/g, "[^/]*") + "$");
     if (!existsSync(join(root, dir))) continue;
     for (const f of readdirSync(join(root, dir)).sort()) if (rx.test(f)) out.push(join(dir, f));
   }

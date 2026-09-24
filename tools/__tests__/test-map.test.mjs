@@ -252,3 +252,19 @@ describe("test-map: comment or code is decided on the whole file", () => {
     assert.deepEqual(r.files.map((f) => f.file), ["packages/daemon/__tests__/a.test.ts"]);
   });
 });
+
+// Revert-check: in testFiles go back to escaping only `.` (CodeQL js/incomplete-sanitization)
+// → `+` stays a regex quantifier: "a+b*" matches aab1 and misses the literal a+b1 — red.
+describe("test-map: the npm test glob is matched literally, not as a regex", () => {
+  it("a regex metacharacter in the glob is a literal character of the filename", () => {
+    const root = mkdtempSync(join(tmpdir(), "test-map-glob-"));
+    try {
+      execFileSync("mkdir", ["-p", join(root, "t")]);
+      writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { test: "node --test t/a+b*.test.mjs" } }));
+      for (const f of ["a+b1.test.mjs", "aab1.test.mjs", "ab1.test.mjs"]) writeFileSync(join(root, "t", f), "");
+      assert.deepEqual(testFiles(root), ["t/a+b1.test.mjs"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
