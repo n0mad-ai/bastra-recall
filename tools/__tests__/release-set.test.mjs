@@ -106,7 +106,8 @@ test("#524 bump.mjs: a prerelease version still gets --prerelease, and is staged
  * A stub `npm`.
  *  - `view <name>@<v> --json` → the manifest when $PUBLISHED lists <name>, else E404
  *  - `view <name> dist-tags.latest` → $LATEST_TAG when published
- *  - `pack --dry-run --json` → the digest this checkout would publish
+ *  - `pack --dry-run --json` → the digest this checkout would publish, as an
+ *    npm ≤ 11 array or, with $PACK_SHAPE=object, npm 12's object keyed by name
  *  - `publish …` → success, logged
  *
  * $PUBLISHED_INTEGRITY is the registry artifact's tarball digest, $PACK_INTEGRITY
@@ -144,7 +145,10 @@ if [ "$1" = "view" ]; then
   exit 1
 fi
 if [ "$1" = "pack" ]; then
-  echo "[{\\"integrity\\":\\"\${PACK_INTEGRITY:-sha512-SAMEBYTES==}\\",\\"shasum\\":\\"abc123\\"}]"
+  name="\${4#--workspace=}"
+  entry="{\\"name\\":\\"$name\\",\\"integrity\\":\\"\${PACK_INTEGRITY:-sha512-SAMEBYTES==}\\",\\"shasum\\":\\"abc123\\"}"
+  # npm <= 11 prints an array of entries, npm 12 an object keyed by name.
+  if [ "\${PACK_SHAPE:-array}" = "object" ]; then echo "{\\"$name\\":$entry}"; else echo "[$entry]"; fi
   exit 0
 fi
 if [ "$1" = "publish" ]; then exit 0; fi
@@ -249,6 +253,20 @@ test("#524 publish set: matching metadata with foreign bytes is NOT skipped as t
   assert.match(out, /NOT this release/);
   assert.match(out, /integrity/);
   assert.deepEqual(publishedWorkspaces(calls), []);
+});
+
+test("#524 publish set: npm 12's pack output is compared too — same bytes skip, foreign bytes fail", async () => {
+  const PUBLISHED = "@bastra-recall/core @bastra-recall/statusline @bastra-recall/daemon bastra-recall";
+  const same = await runPublish([], { PUBLISHED, PACK_SHAPE: "object" });
+  assert.equal(same.code, 0, `this release's own bytes were not recognised in npm 12's shape:\n${same.out}`);
+  const foreign = await runPublish([], {
+    PUBLISHED,
+    PACK_SHAPE: "object",
+    PUBLISHED_INTEGRITY: "sha512-FROMANOTHERCOMMIT==",
+    PACK_INTEGRITY: "sha512-THISCHECKOUT==",
+  });
+  assert.notEqual(foreign.code, 0, `foreign bytes were skipped as verified:\n${foreign.out}`);
+  assert.match(foreign.out, /tarball integrity is sha512-FROMANOTHERCOMMIT==/);
 });
 
 test("#524 publish set: the skip is taken only after the candidate has actually been packed", async () => {

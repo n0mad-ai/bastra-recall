@@ -8,18 +8,33 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { copySkill, describeSkillInstall, inspectSkillInstall, skillBundleRevision } from "../src/cli/skill.js";
+import { copySkill, describeSkillInstall, inspectSkillInstall, skillBundleRevision, skillPayload } from "../src/cli/skill.js";
+// @ts-expect-error — plain .mjs script, no declarations (#542).
+import { packEntry } from "../../../scripts/npm-pack-json.mjs";
 import { cursorRuleState } from "../src/cli/adapters/cursor.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DAEMON = resolve(HERE, "..");
 const REPO = resolve(DAEMON, "..", "..");
 const CANONICAL = resolve(REPO, "packages", "skill");
+
+/**
+ * What the daemon package must ship: whatever the installer copies out of the
+ * canonical skill dir (skillPayload), plus the generated Cursor rule. Derived,
+ * so a new skill file is covered the day it lands; SKILL.md and agents/openai.yaml are the
+ * anchors that keep a shrunken listing from passing.
+ */
+async function shippedBundle(): Promise<string[]> {
+  const payload = await skillPayload(CANONICAL);
+  assert.ok(payload.includes("SKILL.md"), `no SKILL.md in the payload of ${CANONICAL}: ${payload.join(", ")}`);
+  assert.ok(payload.includes("agents/openai.yaml"), `no agents/openai.yaml in the payload of ${CANONICAL}: ${payload.join(", ")}`);
+  return [...payload, "cursor-rules.mdc"];
+}
 
 async function seed(dir: string): Promise<void> {
   await mkdir(join(dir, "agents"), { recursive: true });
@@ -99,10 +114,7 @@ test("#456: the daemon package ships the canonical bundle — every payload file
   if (!existsSync(join(shipped, "SKILL.md"))) {
     execFileSync(process.execPath, [resolve(DAEMON, "scripts", "prepare-package-assets.mjs")], { stdio: "ignore" });
   }
-  const names = (await readdir(CANONICAL, { withFileTypes: true }))
-    .filter((e) => e.isFile() && (e.name.endsWith(".md") || e.name === "cursor-rules.mdc"))
-    .map((e) => e.name);
-  for (const name of [...names, join("agents", "openai.yaml")]) {
+  for (const name of await shippedBundle()) {
     const [a, b] = await Promise.all([readFile(join(CANONICAL, name), "utf8"), readFile(join(shipped, name), "utf8")]);
     assert.equal(a, b, `packaged skill/${name} differs from packages/skill/${name}`);
   }
@@ -111,14 +123,15 @@ test("#456: the daemon package ships the canonical bundle — every payload file
   assert.ok(pkg.files.includes("skill"), "package.json must ship the skill directory");
 });
 
-test("#456: `npm pack` lists the skill payload, the Cursor rule and the OpenAI metadata", () => {
+test("#456: `npm pack` lists the skill payload, the Cursor rule and the OpenAI metadata", async () => {
   const out = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
     cwd: DAEMON,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
   });
-  const files = new Set((JSON.parse(out)[0].files as Array<{ path: string }>).map((f) => f.path));
-  for (const required of ["skill/SKILL.md", "skill/taxonomy.md", "skill/topology.md", "skill/intake.md", "skill/commons.md", "skill/cursor-rules.mdc", "skill/agents/openai.yaml"]) {
-    assert.ok(files.has(required), `npm pack does not ship ${required}`);
+  const entry: { files: Array<{ path: string }> } = packEntry(out, "@bastra-recall/daemon");
+  const files = new Set(entry.files.map((f) => f.path));
+  for (const name of await shippedBundle()) {
+    assert.ok(files.has(`skill/${name}`), `npm pack does not ship skill/${name}`);
   }
 });

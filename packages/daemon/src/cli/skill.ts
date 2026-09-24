@@ -24,7 +24,7 @@ export type SkillStepStatus =
  * plus OpenAI's optional agents/openai.yaml metadata (#15/#232). Everything
  * else next to it (install scripts, Cursor rules) is deliberately excluded.
  */
-async function skillPayload(sourceDir: string): Promise<string[]> {
+export async function skillPayload(sourceDir: string): Promise<string[]> {
   const entries = await readdir(sourceDir, { withFileTypes: true });
   const payload = entries.filter((e) => e.isFile() && e.name.endsWith(".md")).map((e) => e.name);
   const openAiMetadata = join("agents", "openai.yaml");

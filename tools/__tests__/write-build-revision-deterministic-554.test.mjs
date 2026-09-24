@@ -26,6 +26,7 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { packEntry } from "../../scripts/npm-pack-json.mjs";
 
 const SCRIPT_SRC = fileURLToPath(new URL("../../scripts/write-build-revision.mjs", import.meta.url));
 
@@ -67,19 +68,17 @@ function writeRevision(dir) {
 
 /**
  * Packs `dir` with the real `npm pack --json` into `destDir` and returns the
- * resulting tarball's digest fields. `npm pack --json` prints an array of one
- * entry on most npm versions but has been seen to print the bare entry object
- * for a single package on npm >= 12 — both shapes are handled the same way
- * `scripts/publish-release-set.mjs`'s own `packDigest` does.
+ * resulting tarball's digest fields — read through the same `packEntry` the
+ * publish script uses, so both npm output shapes are covered and a missing
+ * entry throws instead of comparing `undefined` with `undefined`.
  */
-function packTarball(dir, destDir) {
+function packTarball(dir, destDir, name) {
   const out = execFileSync("npm", ["pack", "--json", "--pack-destination", destDir], {
     cwd: dir,
     stdio: "pipe",
   }).toString("utf8");
-  const parsed = JSON.parse(out);
-  const entry = Array.isArray(parsed) ? parsed[0] : parsed;
-  return { integrity: entry.integrity, shasum: entry.shasum };
+  const { integrity, shasum } = packEntry(out, name);
+  return { integrity, shasum };
 }
 
 test("#554 two builds of the same commit produce byte-identical .build-revision files", async (t) => {
@@ -111,10 +110,8 @@ test("#554 the stamp no longer carries a built_at timestamp", async (t) => {
 // and compares the resulting tarball's own content digest. It never touches
 // this repo's real `dist` — everything happens inside the throwaway fixture.
 test("#554 two builds of the same commit pack byte-identical tarballs (npm pack)", async (t) => {
-  const dir = await fixtureRepo(
-    t,
-    '{"name":"build-revision-554-fixture","version":"1.0.0","files":["dist"]}\n',
-  );
+  const name = "build-revision-554-fixture";
+  const dir = await fixtureRepo(t, `{"name":"${name}","version":"1.0.0","files":["dist"]}\n`);
   await mkdir(join(dir, "dist"), { recursive: true });
   await writeFile(join(dir, "dist", "index.js"), "module.exports = {};\n", "utf8");
   // Pack destinations live OUTSIDE `dir`: an untracked tarball left inside the
@@ -128,13 +125,13 @@ test("#554 two builds of the same commit pack byte-identical tarballs (npm pack)
   await mkdir(out2);
 
   await writeRevision(dir);
-  const first = packTarball(dir, out1);
+  const first = packTarball(dir, out1, name);
   // A real resume is seconds or days later; >1s is enough to have failed
   // before this fix, since the old `built_at` was an ISO timestamp that ticks
   // over every second.
   await new Promise((r) => setTimeout(r, 1100));
   await writeRevision(dir);
-  const second = packTarball(dir, out2);
+  const second = packTarball(dir, out2, name);
 
   assert.equal(first.integrity, second.integrity, "pack integrity differs between two builds of the same commit");
   assert.equal(first.shasum, second.shasum, "pack shasum differs between two builds of the same commit");
