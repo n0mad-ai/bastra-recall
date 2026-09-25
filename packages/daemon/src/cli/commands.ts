@@ -63,6 +63,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     force: false,
     ollama: null,
     origin: null,
+    answers: null,
     extension: false,
     stub: null,
     exclude: [],
@@ -126,6 +127,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
       result.origin = argv[++i] ?? null;
     } else if (a.startsWith("--origin=")) {
       result.origin = a.slice("--origin=".length);
+    } else if (a === "--answers") {
+      result.answers = argv[++i] ?? null;
+    } else if (a.startsWith("--answers=")) {
+      result.answers = a.slice("--answers=".length);
     } else if (a.startsWith("--")) {
       // Not a warning anymore — validateArgs below turns it into a usage error
       // that never reaches dispatch (#536).

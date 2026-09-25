@@ -318,7 +318,32 @@ export function buildOnboardingMemories(persona: Persona, answers: Record<string
   return out;
 }
 
-export type OnboardingSurface = "ui:onboarding" | "cli:onboard";
+/**
+ * `{ persona, answers }` from untrusted input — the map's POST body or the
+ * `bastra onboard --answers` file (#645). Persona must be one of PERSONAS;
+ * only string (or number) answers are kept (unknown ids are dropped later by
+ * buildOnboardingMemories, which walks the persona's catalog).
+ */
+export function parseOnboardingAnswers(
+  body: unknown,
+): { persona: Persona; answers: Record<string, string> } | { error: string } {
+  const b = (typeof body === "object" && body !== null ? body : {}) as { persona?: unknown; answers?: unknown };
+  const persona = typeof b.persona === "string" && (PERSONAS as readonly string[]).includes(b.persona)
+    ? (b.persona as Persona)
+    : null;
+  if (!persona) return { error: `persona required — one of: ${PERSONAS.join(", ")}` };
+  const answers: Record<string, string> = {};
+  if (typeof b.answers === "object" && b.answers !== null) {
+    for (const [k, v] of Object.entries(b.answers as Record<string, unknown>)) {
+      // A YAML answers file reads `conventions_size: 500` as a number.
+      if (typeof v === "string") answers[k] = v;
+      else if (typeof v === "number" && Number.isFinite(v)) answers[k] = String(v);
+    }
+  }
+  return { persona, answers };
+}
+
+export type OnboardingSurface ="ui:onboarding" | "cli:onboard";
 
 /**
  * Save one interview as one user-authored audit run, regardless of surface.
@@ -517,19 +542,12 @@ export async function handleUiOnboarding(
     sendJsonPlain(res, 200, { saved: 0, skipped: true });
     return;
   }
-  const persona = typeof body.persona === "string" && (PERSONAS as readonly string[]).includes(body.persona)
-    ? (body.persona as Persona)
-    : null;
-  if (!persona) {
-    sendJsonPlain(res, 400, { error: `persona required — one of: ${PERSONAS.join(", ")}` });
+  const parsed = parseOnboardingAnswers(body);
+  if ("error" in parsed) {
+    sendJsonPlain(res, 400, { error: parsed.error });
     return;
   }
-  const answers: Record<string, string> = {};
-  if (typeof body.answers === "object" && body.answers !== null) {
-    for (const [k, v] of Object.entries(body.answers as Record<string, unknown>)) {
-      if (typeof v === "string") answers[k] = v;
-    }
-  }
+  const { persona, answers } = parsed;
   const memories = buildOnboardingMemories(persona, answers);
   // Keep the completion marker after this call: a real write failure must
   // leave onboarding retryable instead of recording a partial interview as done.

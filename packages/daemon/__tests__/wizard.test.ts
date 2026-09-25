@@ -114,7 +114,7 @@ test("install --help documents instead of acting (wizard or missing-surface erro
     command: "install", surface: null, dryRun: false, vaultPath: null,
     showHelp: true, showVersion: false, json: false, quiet: false, yes: false,
     fix: false, withStopHook: false, staged: false, force: false, ollama: null,
-    origin: null, extension: false, stub: null, exclude: [], follow: false,
+    origin: null, answers: null, extension: false, stub: null, exclude: [], follow: false,
     since: null, source: null, lines: null, stats: false, includeEval: false,
     positional: ["install"],
   };

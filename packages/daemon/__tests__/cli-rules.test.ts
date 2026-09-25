@@ -35,6 +35,7 @@ function args(positional: string[], dryRun = false): ParsedArgs {
     force: false,
     ollama: null,
     origin: null,
+    answers: null,
     extension: false,
     stub: null,
     exclude: [],

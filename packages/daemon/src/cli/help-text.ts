@@ -504,14 +504,24 @@ Options:
 
 Usage:
   bastra onboard
+  bastra onboard --answers <file>
   bastra onboard skip
   bastra onboard done
 
 Persona-aware questions whose answers each become a profile memory, so recall
 has something to work with on day one instead of an empty vault.
 
-  skip   Dismiss the nudge — run 'bastra onboard' whenever you want it
-  done   Mark onboarding as completed without running the interview
+  skip              Dismiss the nudge — run 'bastra onboard' whenever you want it
+  done              Mark onboarding as completed without running the interview
+  --answers <file>  Save the answers from a file instead of asking (no TTY
+                    needed): JSON (.json) or YAML, e.g.
+                      persona: developer        # developer|business|personal|mixed
+                      answers:
+                        identity: Alex · English, informal
+                        stack: TypeScript + Node
+                    Answer ids are the interview's question ids (identity,
+                    rules, stack, projects, workflow, conventions_size, ...)
+  --vault <path>    Onboard this vault instead of the configured one
 `,
 
   skills: `bastra skills — declare link targets that live on another surface
