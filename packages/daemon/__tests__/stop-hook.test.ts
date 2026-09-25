@@ -177,6 +177,70 @@ describe("stop-hook: #476 the lane fires for non-German users too", () => {
   });
 });
 
+describe("stop-hook: #678 languages without a cue list fire on repeated corrections", () => {
+  it("fires on a Polish transcript where the user repeats a correction", () => {
+    const turns: TranscriptTurn[] = [
+      userTurn("nie używaj średników w tym pliku"),
+      assistantTurn("ok, poprawione"),
+      userTurn("mówiłem, nie używaj średników w tym pliku!"),
+      assistantTurn("przepraszam"),
+      userTurn("przecież prosiłem: bez średników w tym pliku"),
+    ];
+    const s = detectFrustration(turns);
+    assert.ok(s, "Polish repeated correction must fire");
+    assert.equal(s!.heuristic, "frustration-density");
+    assert.match(s!.body, /language-neutral/);
+  });
+
+  it("fires on a French transcript where the user repeats a correction", () => {
+    const turns: TranscriptTurn[] = [
+      userTurn("n'utilise pas de points-virgules dans ce fichier"),
+      assistantTurn("d'accord"),
+      userTurn("je t'ai dit de ne pas utiliser de points-virgules dans ce fichier"),
+      assistantTurn("désolé"),
+      userTurn("encore une fois : pas de points-virgules dans ce fichier !"),
+    ];
+    assert.ok(detectFrustration(turns), "French repeated correction must fire");
+  });
+
+  it("fires on a Spanish transcript whose emphasis is CAPS instead of '!'", () => {
+    const turns: TranscriptTurn[] = [
+      userTurn("no borres los comentarios del archivo"),
+      userTurn("te dije que no borres los comentarios del archivo"),
+      userTurn("NUNCA borres los comentarios del archivo"),
+    ];
+    assert.ok(detectFrustration(turns), "Spanish repeated correction must fire");
+  });
+
+  it("does not fire on similar routine requests without emphasis", () => {
+    const turns: TranscriptTurn[] = [
+      userTurn("please add a test for the date parser"),
+      userTurn("please add a test for the url parser"),
+      userTurn("please add a test for the path parser"),
+      userTurn("mach weiter mit dem nächsten issue"),
+      userTurn("mach weiter mit dem übernächsten issue bitte"),
+    ];
+    assert.equal(detectFrustration(turns), null);
+  });
+
+  it("does not fire on a single restatement or on short repeated acknowledgements", () => {
+    assert.equal(
+      detectFrustration([userTurn("nie używaj średników w tym pliku"), userTurn("nie używaj średników w tym pliku!")]),
+      null,
+    );
+    assert.equal(detectFrustration([userTurn("dalej!"), userTurn("dalej!"), userTurn("dalej!"), userTurn("dalej!")]), null);
+  });
+
+  it("does not fire on unrelated emphatic requests in one language", () => {
+    const turns: TranscriptTurn[] = [
+      userTurn("dodaj test dla funkcji parsowania dat!"),
+      userTurn("nie używaj średników w tym pliku!"),
+      userTurn("zaktualizuj dokumentację instalacji!"),
+    ];
+    assert.equal(detectFrustration(turns), null);
+  });
+});
+
 describe("stop-hook: detectFeatureCompletion", () => {
   it("fires on user 'git commit' + >=5 source tokens existing in repo (#48 B)", () => {
     const turns: TranscriptTurn[] = [
