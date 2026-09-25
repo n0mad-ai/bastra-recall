@@ -352,19 +352,28 @@ function matchPattern(cmd: string): { label: string; severity: "destructive" | "
 /** The rows whose receipt is the archiving rm. */
 const RM_ROWS = DESTRUCTIVE_PATTERNS.filter((p) => p.undo === RM_ARCHIVES);
 
+/** An `rm()` / `function rm` definition — the scanner splits at `(`, so this
+ *  is read from the raw command (#657). */
+const RM_FUNCTION_DEF = /(?:^|[\s;&|({])(?:function\s+rm\b|rm\s*\(\s*\))/;
+
 /**
  * Is every `rm -r` in this command the PATH-resolved `rm` of THIS shell — the
  * one an archiving shim can stand in for (#650)? `sudo` (secure_path),
  * `/bin/rm`, `ssh host rm`, `docker exec … rm`, `git rm`, `find -exec rm`,
  * `bash -c "…rm…"`, a heredoc body (its consumer may be `ssh`) and anything the
  * scanner cannot delimit do not qualify. An allowlist on purpose: a form not
- * recognised here keeps the STOP.
+ * recognised here keeps the STOP. The same command must also not change what
+ * `rm` resolves to: a `PATH=` assignment (`export PATH=…`), `alias rm=…` or an
+ * `rm()` / `function rm` definition anywhere in it keeps the STOP (#657).
  */
 function rmRunsThroughPath(cmd: string): boolean {
+  if (RM_FUNCTION_DEF.test(cmd)) return false;
   const commands = simpleCommands(cmd);
   if (!commands) return false;
   for (const { words } of commands) {
     const texts = words.map((w) => w.text.replace(/["'\\]/g, ""));
+    if (texts.some((t) => /^PATH\+?=/.test(t))) return false;
+    if (texts[0] === "alias" && texts.some((t) => t.startsWith("rm="))) return false;
     if (!RM_ROWS.some((p) => p.re.test(texts.join(" ")))) continue;
     let k = 0;
     if (texts[0] === "command") k = 1;

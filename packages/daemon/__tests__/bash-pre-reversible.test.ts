@@ -446,6 +446,12 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "PATH=/usr/bin rm -rf build",
       "ssh prod bash <<'EOF'\nrm -rf /srv/data\nEOF",
       "rm -rf $(cat list.txt)",
+      // #657: the same command changes what `rm` resolves to.
+      "export PATH=/bin:$PATH; rm -rf x",
+      "PATH=/bin; rm -rf x",
+      "alias rm=/bin/rm; rm -rf x",
+      'rm() { /bin/rm "$@"; }; rm -rf x',
+      "function rm { /bin/rm \"$@\"; }; rm -rf x",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "stop", cmd);
     }
