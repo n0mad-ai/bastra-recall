@@ -154,6 +154,8 @@ async function writeClientTelemetry(
       daemon_reachable: false,
       hint_count: 0,
       top_score: null,
+      // #508: nothing was injected — a known zero, not an unknown size.
+      hint_tokens_est: 0,
       latency_ms_total: Date.now() - startedAt,
       status,
       error,

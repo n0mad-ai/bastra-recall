@@ -69,7 +69,9 @@ export const CLIENT_ROW_BASE: Record<ClientLane, Record<string, unknown>> = {
   // failure under the silent lane — which is how the readout came to show
   // `none` timing out at 15% behind a 69ms median, an impossible shape,
   // with the assertion lane's failures wearing another lane's name.
-  prompt: { kind: "prompt_hook_call", detected_mode: "unknown", prompt_chars: 0, hint_count: 0, top_score: null },
+  // #508: hint_tokens_est 0 — nothing was injected, so the size is a known
+  // zero; left out, the context ledger counts the no-op as an unknown residual.
+  prompt: { kind: "prompt_hook_call", detected_mode: "unknown", prompt_chars: 0, hint_count: 0, top_score: null, hint_tokens_est: 0 },
   write: {
     kind: "hook_call",
     topics: [],
@@ -140,6 +142,7 @@ export const CLIENT_ROW_BASE: Record<ClientLane, Record<string, unknown>> = {
     query_chars: 0,
     hit_count: 0,
     top_score: null,
+    hint_tokens_est: 0,
     backoff_streak: 0,
   },
 };
