@@ -53,6 +53,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   count, not one that checks that a single item exists. `load_memory` adds the
   same reminder to its anchor hint when the summary states a count.
 
+### Fixed
+
+- **Reflex memories fire on inflected words** (#565). The reflex lane matches
+  exact words, so a trigger "Antwort an zzalli" never fired on "wir antworten
+  zzalli". The trigger expansion now also writes inflected forms of a reflex
+  memory's own triggers into `recall_when_expanded` (one extra local-model
+  call, only for memories wired as `recall_mode: reflex`; existing reflex
+  memories are re-expanded once). The matcher is unchanged, so what fires
+  stays readable in the memory.
+- **"Semantic search is off" only when it is** (#565). The write, bash-pre,
+  bash-fail and todo hint blocks said so whenever one lookup ranked lexically;
+  they now name the reason the lookup had (deadline missed, empty dense arm),
+  as the prompt lane already did.
+
 ## [1.0.0] — 2026-09-14
 
 ### Added

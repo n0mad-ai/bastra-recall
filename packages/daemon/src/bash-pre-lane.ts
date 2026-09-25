@@ -29,7 +29,7 @@ import { dimensionsFrom } from "./telemetry-dimensions.js";
 import { governContext } from "./context-governor.js";
 import { postLane } from "./thin-client.js";
 import { isUnfused, type HookRecallHit, type HookRecallResponse } from "./hook-recall-response.js";
-import { unfusedHeadline } from "./band-wording.js";
+import { unfusedHeadline, unfusedReasonFor } from "./band-wording.js";
 import { extractCommandHead, invokesOwnBinary } from "./bash-fail-lane.js";
 import {
   bumpShown,
@@ -580,7 +580,7 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
 
   // Emit hint even if no memories match — the warning itself is the point.
   // #161 CONSTRAINT (see top of file): the tripwire is exempt from backoff.
-  const block = formatHintBlock(match.label, match.severity, emitted, unfused, client, match.undo);
+  const block = formatHintBlock(match.label, match.severity, emitted, unfused, client, match.undo, resp?.degraded);
   const stdout = JSON.stringify({
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
@@ -635,6 +635,10 @@ export function formatHintBlock(
   surface = "claude-code",
   /** What the whole command allows (see hintFor); defaults to the label's own row. */
   undo: Undo | null = reversibleDefault(pattern, surface),
+  // #565: der `degraded`-Grund der Antwort — ohne ihn behauptete der Block
+  // „semantic search is off", wo der Arm lief und nur diesen Aufruf nicht
+  // bediente.
+  degraded?: string,
 ): string {
   const head = `<recall-hints surface="${surface}" trigger="bash-${severity}">`;
   const tail = `</recall-hints>`;
@@ -666,7 +670,7 @@ export function formatHintBlock(
     lines.push(
       unfused
         ? `Relevant lessons / preferences from the vault — load_memory(id) before deciding to run. ` +
-          unfusedHeadline("this command")
+          unfusedHeadline("this command", unfusedReasonFor(degraded))
         : `Relevant lessons / preferences from the vault — load_memory(id) before deciding to run:`,
     );
     for (const h of hits) lines.push(formatHintLine(h, unfused));

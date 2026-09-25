@@ -11,7 +11,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { request } from "node:http";
-import { Vault, SearchIndex, tokenizeWithIdentifiers } from "@bastra-recall/core";
+import { Vault, SearchIndex, TriggerExpander, buildInflectPrompt, tokenizeWithIdentifiers } from "@bastra-recall/core";
 import { phraseMatchesContext, collectReflexHits } from "../src/reflex.js";
 import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
@@ -432,6 +432,55 @@ test("#565 near miss: the trace is capped and carries no memory body", async () 
     const serialized = JSON.stringify(nearMisses);
     assert.doesNotMatch(serialized, /Body of/, "no memory body in telemetry");
     assert.doesNotMatch(serialized, /Summary of/, "not even the summary — ids and trigger text only");
+  } finally {
+    await vault.stop?.();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("#565 inflection: the 2026-09-15 prompt fires the convention once the expansion carries the inflected trigger", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-reflex-inflect-"));
+  const mem = join(dir, "memories");
+  await mkdir(mem, { recursive: true });
+  await writeFile(
+    join(mem, "nachrichtenkonvention.md"),
+    memoryMarkdown("nachrichtenkonvention", {
+      // The memory's real triggers named in the issue.
+      recall_when: [
+        "Antwort an zzalli oder einen anderen Contributor draften",
+        "Discord- dev.to- oder Email-Text formulieren",
+        "antwortentwurf bitte",
+      ],
+      recall_mode: "reflex",
+      salience: 0.9,
+    }),
+  );
+  const vault = new Vault(dir);
+  await vault.init();
+  const prompt = "danach antworten wir zzalli via dm, seine nachrichten kommen hier.";
+  try {
+    const before = collectReflexHits(vault, prompt, 2);
+    assert.equal(before.matched.length, 0, "precondition: the exact token AND misses 'antworten'");
+    assert.deepEqual(before.nearMisses[0]?.missing_tokens, ["antwort"]);
+
+    // The generator path, with the model stubbed to what the inflection prompt
+    // asks for. The matcher itself is unchanged (owner decision 2026-09-21).
+    const expander = new TriggerExpander(vault, { onEmbed: () => () => {} } as never, {
+      chat: async (p) =>
+        p === buildInflectPrompt(vault.get("nachrichtenkonvention")!)
+          ? "antworten zzalli\nantwortest zzalli"
+          : "text an einen contributor aufsetzen",
+      backfillOnStart: false,
+    });
+    assert.deepEqual(await expander.expand("nachrichtenkonvention"), [
+      "text an einen contributor aufsetzen",
+      "antworten zzalli",
+      "antwortest zzalli",
+    ]);
+
+    const after = collectReflexHits(vault, prompt, 2);
+    assert.equal(after.served[0]?.memory.fm.id, "nachrichtenkonvention", "the convention fires");
+    assert.equal(after.served[0]?.phrase, "antworten zzalli", "what fired is readable in the memory");
   } finally {
     await vault.stop?.();
     await rm(dir, { recursive: true, force: true });
