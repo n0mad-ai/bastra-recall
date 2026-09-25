@@ -80,6 +80,26 @@ test("ein vollständig abgedeckter handgeschriebener Trigger ist ein harter Anke
   assert.equal(d.decision, "required");
 });
 
+test("#440: ein Term zählt nur als ganzes Trigger-Token, nicht als Teilstring", () => {
+  // `art` steckt in `party`, ist aber kein Token des Triggers. Vorher ergab das
+  // bei einer Ein-Term-Query Abdeckung 1 und damit den harten Anker.
+  const d = decideHit({
+    hit: hit({ rrf: oneArm, scope: "fremd" }),
+    memory: memory({ recall_when: ["planning the party"] }),
+    queryTerms: ["art"],
+    scope: "projekt-a",
+  });
+  assert.equal(d.evidence.recall_when_coverage, 0);
+  assert.notEqual(d.decision, "required");
+  // Ganze Tokens treffen weiter, auch Identifier-Teile.
+  const e = collectEvidence({
+    hit: hit(),
+    memory: memory({ recall_when: ["Party planen", "app.config.ts ändern"] }),
+    queryTerms: ["party", "config"],
+  });
+  assert.equal(e.recall_when_coverage, 1);
+});
+
 test("ein hoher Score allein reicht NICHT — die alten Schwellen gelten nicht mehr", () => {
   // Rang-Summe knapp unter der Obergrenze, aber kein einziges Evidenzmerkmal:
   // genau der Fall, den §10.3 meint, wenn es 30/100 verwirft.

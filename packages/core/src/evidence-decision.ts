@@ -32,6 +32,7 @@
  */
 import type { Memory } from "./schema.js";
 import type { RecallHit } from "./search.js";
+import { tokenizeWithIdentifiers } from "./query-normalize.js";
 
 /** §10.3: die Produktsemantik von V1.0. */
 export type RecallDecision =
@@ -172,13 +173,17 @@ function hasExactIdentifier(input: DecisionInput): boolean {
 function recallWhenCoverage(input: DecisionInput): number {
   const terms = input.queryTerms.filter((t) => t.length >= 3);
   if (terms.length === 0) return 0;
-  const triggers = (input.memory?.fm.recall_when ?? []).join(" \n ").toLowerCase();
-  if (triggers.length === 0) {
+  const triggerText = (input.memory?.fm.recall_when ?? []).join(" \n ");
+  if (triggerText.trim().length === 0) {
     // Ohne geladenes Memory bleibt nur das Signal, das der Hit selbst trägt:
     // `matched_recall_when` sagt, DASS ein Term traf, nicht wie viele.
     return input.hit.matched_recall_when === true ? 1 / terms.length : 0;
   }
-  const hits = terms.filter((t) => triggers.includes(t.toLowerCase())).length;
+  // Ganze Tokens vergleichen, nicht Teilstrings: sonst zählt `art` in
+  // `party` und eine Ein-Term-Query öffnet den harten Anker (#440). Derselbe
+  // Tokenizer wie auf der Query-Seite hält beide Seiten symmetrisch.
+  const triggers = new Set(tokenizeWithIdentifiers(triggerText).map((t) => t.toLowerCase()));
+  const hits = terms.filter((t) => triggers.has(t.toLowerCase())).length;
   return Number((hits / terms.length).toFixed(4));
 }
 
