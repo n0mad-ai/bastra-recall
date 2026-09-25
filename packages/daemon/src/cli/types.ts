@@ -91,6 +91,9 @@ export interface ParsedArgs {
   // cli-settings.json in one step (so onboarding is a single command). null =
   // flag absent → `bastra token` behaves exactly as before.
   origin: string | null;
+  // `onboard --answers <file>` (#645): JSON or YAML with the interview's
+  // persona + answers, saved through the same path without readline.
+  answers: string | null;
   // `install claude-desktop --extension`: hand the .mcpb Desktop Extension
   // to Claude Desktop instead of writing the config-file registration.
   extension: boolean;

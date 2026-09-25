@@ -32,6 +32,7 @@ export const VALUE_FLAGS: ReadonlySet<string> = new Set([
   "--lines",
   "--vault",
   "--origin",
+  "--answers",
 ]);
 
 /** Accepted on every command: pure documentation, no side effects. */
@@ -68,7 +69,7 @@ export const COMMAND_FLAGS: Record<string, readonly string[]> = {
   map: [],
   ui: [],
   import: ["--dry-run", "--vault", "--exclude"],
-  onboard: ["--vault"],
+  onboard: ["--vault", "--answers"],
   skills: ["--vault"],
   feedback: [],
   rules: ["--dry-run"],

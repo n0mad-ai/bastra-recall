@@ -5,9 +5,13 @@
  * memories. `onboard skip` just sets the marker (stop nudging); `onboard
  * done` is what an AI session runs after finishing the interview itself.
  */
+import { readFile } from "node:fs/promises";
+import { extname } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
+import matter from "gray-matter";
 import {
+  parseOnboardingAnswers,
   PERSONAS,
   PERSONA_LABELS,
   questionsFor,
@@ -39,10 +43,26 @@ export async function cmdOnboard(args: ParsedArgs): Promise<number> {
     return 0;
   }
 
+  if (args.answers !== null) {
+    const loaded = await loadAnswersFile(args.answers);
+    if ("error" in loaded) {
+      process.stderr.write(`${loaded.error}\n`);
+      return 2;
+    }
+    if (loaded.ignored.length > 0) {
+      process.stderr.write(
+        `ignored (not a ${loaded.persona} question): ${loaded.ignored.join(", ")} — ` +
+          `known ids: ${questionsFor(loaded.persona).map((q) => q.id).join(", ")}\n`,
+      );
+    }
+    return saveInterview(vault.path, loaded.persona, loaded.answers);
+  }
+
   if (!process.stdin.isTTY) {
     process.stderr.write(
-      "usage: bastra onboard          run the interview (interactive)\n" +
-        "       bastra onboard skip    stop the onboarding nudge without answering\n",
+      "usage: bastra onboard                   run the interview (interactive)\n" +
+        "       bastra onboard --answers <file>  save answers from a JSON/YAML file (no TTY needed)\n" +
+        "       bastra onboard skip             stop the onboarding nudge without answering\n",
     );
     return 2;
   }
@@ -56,14 +76,46 @@ export async function cmdOnboard(args: ParsedArgs): Promise<number> {
     process.stderr.write("\ninput ended before the interview finished — nothing saved\n");
     return 1;
   }
-  const { persona, answers } = interview;
+  return saveInterview(vault.path, interview.persona, interview.answers);
+}
+
+/**
+ * `--answers <file>` (#645): `{ persona, answers: { <question id>: text } }`
+ * as JSON (a `.json` file) or YAML (anything else), validated exactly like
+ * the map's POST body. `ignored` lists answer ids the persona's catalog does
+ * not ask, so a typo is reported instead of silently dropped.
+ */
+export async function loadAnswersFile(
+  path: string,
+): Promise<{ persona: Persona; answers: Record<string, string>; ignored: string[] } | { error: string }> {
+  let raw: string;
+  try {
+    raw = await readFile(path, "utf8");
+  } catch (err) {
+    return { error: `cannot read answers file ${path}: ${(err as Error).message}` };
+  }
+  let data: unknown;
+  try {
+    // gray-matter's YAML engine, reused rather than adding a YAML dependency.
+    data = extname(path).toLowerCase() === ".json" ? JSON.parse(raw) : matter(`---\n${raw}\n---\n`).data;
+  } catch (err) {
+    return { error: `cannot parse answers file ${path}: ${(err as Error).message}` };
+  }
+  const parsed = parseOnboardingAnswers(data);
+  if ("error" in parsed) return { error: `answers file ${path}: ${parsed.error}` };
+  const asked = new Set(questionsFor(parsed.persona).map((q) => q.id));
+  const ignored = Object.keys(parsed.answers).filter((id) => !asked.has(id));
+  return { ...parsed, ignored };
+}
+
+async function saveInterview(vaultPath: string, persona: Persona, answers: Record<string, string>): Promise<number> {
   const memories = buildOnboardingMemories(persona, answers);
   // Keep the completion marker after this call: a real write failure must
   // leave onboarding retryable instead of recording a partial interview as done.
-  await saveOnboardingMemories(vault.path, memories, "cli:onboard");
+  await saveOnboardingMemories(vaultPath, memories, "cli:onboard");
   await persistConventionSettings(answers);
   await persistLanguageSetting(answers);
-  await markOnboardingDone(vault.path, "cli");
+  await markOnboardingDone(vaultPath, "cli");
   process.stdout.write(
     `\n✓ ${memories.length} profile memories saved — your AI knows you from the next session on.\n` +
       `  Refine anytime: just tell your AI, or re-run \`bastra onboard\` (answers overwrite).\n` +
