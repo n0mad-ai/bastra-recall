@@ -57,3 +57,28 @@ test("#422: evidenceGate.enabled: false in the settings switches it off durably"
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("#443: an unrecognised env value is ignored with a warning — the settings value stands", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-gate-typo-"));
+  const errors = t.mock.method(console, "error", () => {});
+  try {
+    const off = join(dir, "off.json");
+    const on = join(dir, "on.json");
+    await writeFile(off, JSON.stringify({ evidenceGate: { enabled: false } }), "utf8");
+    await writeFile(on, JSON.stringify({ evidenceGate: { enabled: true } }), "utf8");
+    // Ein Tippfehler schaltet ein ausgeschaltetes Gate nicht mehr ein …
+    for (const typo of ["flase", "disabled", "ture"]) {
+      assert.equal(await withEnv(typo, () => getEvidenceGateEnabled(off)), false, `env ${typo}`);
+    }
+    // … und ist auch kein Aus.
+    assert.equal(await withEnv("flase", () => getEvidenceGateEnabled(on)), true);
+    assert.equal(errors.mock.callCount(), 4);
+    assert.match(String(errors.mock.calls[0].arguments[0]), /BASTRA_EVIDENCE_GATE="flase".*ignored/);
+    // Whitespace und Großschreibung um eine erkannte Schreibweise zählen.
+    assert.equal(await withEnv(" OFF ", () => getEvidenceGateEnabled(on)), false);
+    assert.equal(await withEnv("Yes\n", () => getEvidenceGateEnabled(off)), true);
+    assert.equal(errors.mock.callCount(), 4);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

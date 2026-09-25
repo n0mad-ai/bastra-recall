@@ -736,9 +736,18 @@ export async function getSharedRecallEnabled(path?: string): Promise<boolean> {
 export const EVIDENCE_GATE_DEFAULT = true;
 
 export async function getEvidenceGateEnabled(path?: string): Promise<boolean> {
-  const env = process.env.BASTRA_EVIDENCE_GATE;
+  // #443: Nur erkannte Schreibweisen zählen. Vorher schaltete JEDER Wert
+  // außer 0|false|off|no das Gate ein — ein `flase` überstimmte damit sogar
+  // `enabled: false` in den Settings, und ein vertipptes Aus wirkte nicht.
+  // Ein unbekannter Wert fällt auf die Settings zurück und sagt es.
+  const env = process.env.BASTRA_EVIDENCE_GATE?.trim().toLowerCase();
   if (env !== undefined && env !== "") {
-    return !["0", "false", "off", "no"].includes(env.toLowerCase());
+    if (["1", "true", "on", "yes"].includes(env)) return true;
+    if (["0", "false", "off", "no"].includes(env)) return false;
+    console.error(
+      `[bastra-recall] BASTRA_EVIDENCE_GATE=${JSON.stringify(process.env.BASTRA_EVIDENCE_GATE)} is not ` +
+        `one of 1|true|on|yes|0|false|off|no — ignored, using the settings value (#443)`,
+    );
   }
   return (await readSettings(path)).evidenceGate?.enabled ?? EVIDENCE_GATE_DEFAULT;
 }
