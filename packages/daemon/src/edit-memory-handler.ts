@@ -128,9 +128,17 @@ export interface EditMemoryResult {
   /** Welche Operationen gelaufen sind — `["str_replace", "frontmatter"]`. */
   operations: string[];
   save_quality: SaveQualityResult;
+  /** #661: Listeneinträge, die der Frontmatter-Patch ENTFERNT hat. Ein
+   *  Listenfeld im Patch ersetzt die Liste — wer nur einen neuen Trigger
+   *  schickt, löscht die alten. Das muss in der Antwort stehen, nicht erst
+   *  Wochen später auffallen, wenn die Regel nicht mehr feuert. */
+  dropped?: Partial<Record<(typeof LIST_FIELDS)[number], string[]>>;
   note: string;
   warning?: string;
 }
+
+/** #661: die Frontmatter-Listen, die ein Patch ERSETZT (nicht ergänzt). */
+const LIST_FIELDS = ["recall_when", "tags", "issues", "related"] as const;
 
 /**
  * Eine Vorbedingung des Edits traf nicht zu — nichts wurde geschrieben.
@@ -304,6 +312,8 @@ export async function editMemoryHandler(
   // im Beleg eine Zahl, die zu keiner Fassung dieser Datei gehört.
   let bodyBefore = 0;
   let bodyAfter = 0;
+  // #661: gegen die Bytes unter dem Claim ermittelt, nicht gegen den Index.
+  let dropped: EditMemoryResult["dropped"];
   const outcome = await mutateMemoryFile(
     mem.filePath,
     mem.fm.id,
@@ -336,6 +346,7 @@ export async function editMemoryHandler(
         // `write_origin`, `sensitivity`, Valenz, `created` und alles andere
         // bleiben unangetastet: gepatcht wird über den Bestand, nicht neu
         // gebaut. Das ist der ganze Unterschied zum vollen Save.
+        dropped = droppedListEntries(fm, args.frontmatter);
         return { ...fm, ...(args.frontmatter ?? {}), updated: today };
       },
       body: (body) => {
@@ -395,6 +406,14 @@ export async function editMemoryHandler(
     reason: `edit_memory: ${operations.join(" + ")} (body ${bodyBefore} → ${bodyAfter} chars)`,
     sessionId: deps.telemetry.runId(),
   });
+  const droppedWarning = dropped
+    ? `frontmatter lists REPLACE, they do not add: this edit removed ` +
+      Object.entries(dropped)
+        .map(([field, values]) => `${field} ${JSON.stringify(values)}`)
+        .join(", ") +
+      `. If that was not intended, edit again with the full list (old entries plus new ones).`
+    : undefined;
+  const warning = [droppedWarning, auditWarning].filter(Boolean).join(" ");
 
   return {
     id: mem.fm.id,
@@ -404,9 +423,26 @@ export async function editMemoryHandler(
     revision: outcome.revision,
     operations,
     save_quality: saveQuality,
+    ...(dropped ? { dropped } : {}),
     note: "Edit complete — do not repeat this edit_memory call.",
-    ...(auditWarning ? { warning: auditWarning } : {}),
+    ...(warning ? { warning } : {}),
   };
+}
+
+/** #661: welche bestehenden Listeneinträge der Patch nicht mehr enthält. */
+function droppedListEntries(
+  fm: Record<string, unknown>,
+  patch: EditMemoryArgs["frontmatter"],
+): EditMemoryResult["dropped"] {
+  const out: NonNullable<EditMemoryResult["dropped"]> = {};
+  for (const field of LIST_FIELDS) {
+    const next = patch?.[field];
+    const before = fm[field];
+    if (next === undefined || !Array.isArray(before)) continue;
+    const lost = before.filter((v): v is string => typeof v === "string" && !next.includes(v));
+    if (lost.length > 0) out[field] = lost;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /** Die Versionskette unter `start`, `start` selbst eingeschlossen — dieselbe

@@ -592,7 +592,10 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "- frontmatter: patch summary, recall_when, tags, issues, related, " +
       "confidence or valid_until. Nothing else — id, scope, type, sensitivity " +
       "and write_origin are rejected here and belong to save_memory or a " +
-      "dedicated tool.\n" +
+      "dedicated tool. A list field (recall_when, tags, issues, related) " +
+      "REPLACES the whole list: to add a trigger, send the existing entries " +
+      "plus the new one. Entries a patch removed are named in the response " +
+      "under `dropped` (#661).\n" +
       "\n" +
       "expected_revision is optional optimistic concurrency: pass the " +
       "`revision` load_memory gave you, and the edit is refused if the file " +
@@ -635,7 +638,8 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
           type: "object",
           description:
             "Patch for a small whitelist of fields. Any other key is " +
-            "REJECTED (not silently ignored).",
+            "REJECTED (not silently ignored). List fields REPLACE the " +
+            "existing list — include the old entries to keep them.",
           properties: {
             summary: { type: "string" },
             recall_when: { type: "array", items: { type: "string" } },

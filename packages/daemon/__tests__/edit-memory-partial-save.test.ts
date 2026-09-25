@@ -173,6 +173,35 @@ test("#519: der Frontmatter-Patch ändert genau die erlaubten Felder", async (t)
   assert.equal(mem?.fm.updated, TODAY);
 });
 
+test("#661: ein Listen-Patch, der bestehende Einträge verliert, nennt sie in der Antwort", async (t) => {
+  const { deps, seed } = await fixture(t);
+  await seed({ tags: ["hooks", "daemon"], recall_when: ["writing a claude code hook", "debugging a hook"] });
+
+  // Der Vorfall vom 24.09.2026: nur der NEUE Trigger geschickt.
+  const result = (await editMemoryHandler(deps, {
+    id: "hooks-lesson",
+    frontmatter: { recall_when: ["writing a claude code hook"], tags: ["hooks", "stop-lane"] },
+  })) as EditMemoryResult;
+
+  assert.deepEqual(result.dropped, { recall_when: ["debugging a hook"], tags: ["daemon"] });
+  assert.match(result.warning ?? "", /frontmatter lists REPLACE/);
+  assert.match(result.warning ?? "", /debugging a hook/);
+  assert.deepEqual(deps.vault.get("hooks-lesson")?.fm.tags, ["hooks", "stop-lane"]);
+});
+
+test("#661: ein Listen-Patch mit allen alten Einträgen meldet nichts als verloren", async (t) => {
+  const { deps, seed } = await fixture(t);
+  await seed({ tags: ["hooks"] });
+
+  const result = (await editMemoryHandler(deps, {
+    id: "hooks-lesson",
+    frontmatter: { tags: ["hooks", "daemon"] },
+  })) as EditMemoryResult;
+
+  assert.equal(result.dropped, undefined);
+  assert.equal(result.warning, undefined);
+});
+
 // ── Ein nicht zutreffendes Suchmuster schreibt NICHTS ────────────────
 
 test("#519: str_replace mit fehlendem old_str schreibt NICHTS und sagt warum", async (t) => {
