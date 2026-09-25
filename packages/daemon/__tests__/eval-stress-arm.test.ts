@@ -18,20 +18,32 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 const SCRIPT = resolve(import.meta.dirname, "..", "scripts", "eval-stress.ts");
 const FIXTURE_VAULT = resolve(import.meta.dirname, "..", "..", "eval", "fixtures", "eval-vault");
 
 // #542: `typeof spawnSync<string>` isn't valid — spawnSync is overloaded, not
 // generic, so its type can't take a type argument this way.
-function runStress(args: string[], env: Record<string, string>): SpawnSyncReturns<string> {
-  return spawnSync(process.execPath, ["--import", "tsx", SCRIPT, ...args], {
-    encoding: "utf8",
-    timeout: 120_000,
-    env: { ...process.env, BASTRA_VAULT_PATH: FIXTURE_VAULT, ...env },
-  });
+//
+// #446: every spawned harness gets its own BASTRA_EVAL_RUNS_DIR. A successful
+// run writes a real artifact, and without this a direct run of this file (no
+// scripts/test-env.mjs) deposited it in ~/.bastra/eval-runs next to the cited
+// baselines — 475 fixture runs had piled up there.
+function runStress(args: string[], env: Record<string, string>): SpawnSyncReturns<string> & { runs: string[] } {
+  const runsDir = mkdtempSync(join(tmpdir(), "bastra-stress-arm-runs-"));
+  try {
+    const res = spawnSync(process.execPath, ["--import", "tsx", SCRIPT, ...args], {
+      encoding: "utf8",
+      timeout: 120_000,
+      env: { ...process.env, BASTRA_VAULT_PATH: FIXTURE_VAULT, BASTRA_EVAL_RUNS_DIR: runsDir, ...env },
+    });
+    return Object.assign(res, { runs: readdirSync(runsDir) });
+  } finally {
+    rmSync(runsDir, { recursive: true, force: true });
+  }
 }
 
 test("--hybrid aborts when the embedding provider is unreachable — it never reports BM25 as hybrid", () => {
@@ -59,6 +71,7 @@ test("without --hybrid the harness reports BM25-only and says so in the report",
   // next to the numbers rather than in the reader's head.
   assert.match(out, /Candidate pool per slice/, "the production pool formula is stated in the report");
   assert.match(out, /max\(k\*4, 20\)/);
+  assert.equal(res.runs.length, 1, "the run artifact lands in the test's own BASTRA_EVAL_RUNS_DIR (#446)");
 });
 
 test("--out refuses a path inside a git working tree", () => {
