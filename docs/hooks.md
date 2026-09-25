@@ -185,16 +185,20 @@ Detects retrieval prompts via DE + EN regex (e.g. `^such|finde|wo (ist|sind)`
   block with an explicit "Use bastra-recall:recall (and find_document if
   pdf-likely) BEFORE conversation_search / web_search" instruction.
 
-Non-retrieval prompts emit `{}` by default. Set `BASTRA_PROMPT_HOOK_MODE=all`
-to also recall on generic prompts (only score ≥ 100 hits surface — much
-higher noise gate).
+Every other non-trivial prompt recalls too (#677, `k=3`), in any language —
+the regexes above are German/English only and no longer decide whether a
+prompt recalls. What surfaces there is gated by score: only hits ≥ 100, plus
+memories you wired as `recall_mode: reflex` at the normal floor. Without
+fusion (vector arm off or timed out) the score says nothing, so only wired
+memories surface. `BASTRA_PROMPT_HOOK_MODE=retrieval-only` restores the old
+behaviour: non-retrieval prompts emit `{}` apart from wired reflex memories.
 
 **Assertion lane (#252):** the `PreToolUse` lane is bound to a tool, so it
 reaches an agent that *edits*; writing a sentence touches nothing. A prompt
 asking for outbound text ("draft a reply", "write the release notes") or for
 a claim about measured project state ("what's the state of X") is classified
-as `assertion` and recalls at the retrieval floor — where the default
-retrieval-only mode used to stay silent. The request is classified, not the
+as `assertion` and recalls at the retrieval floor — where the
+retrieval-only mode stays silent. The request is classified, not the
 output: a finished sentence is not lexically distinguishable from an opinion,
 and the intent is visible in the prompt before the text exists. Two signals
 are required (a composing verb *and* an outward artefact; a state question
@@ -438,7 +442,7 @@ new MCP tool):
 | `BASTRA_HOOK_TIMEOUT_MS`      | per lane, see above | Overrides the lane budget (incl. network round-trip). The assertion budget is fixed at 1000 ms and is not read from this var. |
 | `BASTRA_HOOK_QUERY`           | `neutral`        | `english` restores the old action-verb recall query (#231)    |
 | `BASTRA_HOOK_CONTENT_RECALL`  | `off`            | `1` runs the opt-in edit-content recall arm (#282)             |
-| `BASTRA_PROMPT_HOOK_MODE`     | `retrieval-only` | `retrieval-only` or `all` — only the prompt-hook reads this   |
+| `BASTRA_PROMPT_HOOK_MODE`     | `all`            | `all` or `retrieval-only` — only the prompt-hook reads this   |
 | `BASTRA_TELEMETRY`            | `on`             | `off` to disable JSONL telemetry writes                       |
 | `BASTRA_LOG_PATH`             | `~/.bastra/logs` | Telemetry log directory                                       |
 | `BASTRA_DRIFT_WINDOW_DAYS`    | `14`             | Drift detector: how far back "recent memories" reaches        |
@@ -661,18 +665,23 @@ Treffer:
   mit der ausdrücklichen Anweisung „Use bastra-recall:recall (and
   find_document if pdf-likely) BEFORE conversation_search / web_search“ aus.
 
-Prompts ohne Retrieval-Bezug geben standardmäßig `{}` aus. Setze
-`BASTRA_PROMPT_HOOK_MODE=all`, um auch bei allgemeinen Prompts Recall
-auszuführen (dann erscheinen nur Treffer mit Score ≥ 100 — eine deutlich höhere
-Rauschschwelle).
+Jeder andere nicht-triviale Prompt ruft ebenfalls Recall auf (#677, `k=3`),
+in jeder Sprache — die Regexe oben kennen nur Deutsch und Englisch und
+entscheiden nicht mehr, ob ein Prompt Recall bekommt. Was dort erscheint,
+begrenzt der Score: nur Treffer ≥ 100, dazu Memories, die du als
+`recall_mode: reflex` verdrahtet hast, an der normalen Untergrenze. Ohne Fusion
+(Vektor-Arm aus oder in die Deadline gelaufen) sagt der Score nichts, dann
+erscheinen nur verdrahtete Memories. `BASTRA_PROMPT_HOOK_MODE=retrieval-only`
+stellt das alte Verhalten her: Prompts ohne Retrieval-Bezug geben bis auf
+verdrahtete Reflex-Memories `{}` aus.
 
 **Assertion-Lane (#252):** Die `PreToolUse`-Lane ist an ein Werkzeug gebunden,
 erreicht also einen Agenten, der *editiert*; das Schreiben eines Satzes berührt
 nichts. Ein Prompt, der nach Text für außen fragt („entwirf eine Antwort“,
 „schreib die Release Notes“) oder nach einer Aussage über den gemessenen
 Projektzustand („wie ist der Stand von X“), wird als `assertion` eingestuft und
-ruft mit der Retrieval-Untergrenze ab — dort, wo der Standardmodus „nur
-Retrieval“ früher still blieb. Eingestuft wird die Anfrage, nicht die Ausgabe:
+ruft mit der Retrieval-Untergrenze ab — dort, wo der Modus „nur
+Retrieval“ still bleibt. Eingestuft wird die Anfrage, nicht die Ausgabe:
 Ein fertiger Satz ist lexikalisch nicht von einer Meinung zu unterscheiden, und
 die Absicht ist im Prompt sichtbar, bevor der Text existiert. Es braucht zwei
 Signale (ein Verfassen-Verb *und* ein Artefakt für außen; eine Zustandsfrage
@@ -939,7 +948,7 @@ REST-Schnittstelle (Token-Authentifizierung wie bei den anderen
 | `BASTRA_HOOK_TIMEOUT_MS`      | pro Lane, siehe oben | Überschreibt das Lane-Budget (inkl. Netzwerk-Hin- und Rückweg). Das Assertion-Budget ist fest auf 1000 ms und wird nicht aus dieser Variable gelesen. |
 | `BASTRA_HOOK_QUERY`           | `neutral`        | `english` stellt die alte Recall-Anfrage mit Tätigkeitsverb wieder her (#231) |
 | `BASTRA_HOOK_CONTENT_RECALL`  | `off`            | `1` aktiviert den optionalen Recall-Zweig über den Änderungsinhalt (#282) |
-| `BASTRA_PROMPT_HOOK_MODE`     | `retrieval-only` | `retrieval-only` oder `all` — wird nur vom Prompt-Hook gelesen |
+| `BASTRA_PROMPT_HOOK_MODE`     | `all`            | `all` oder `retrieval-only` — wird nur vom Prompt-Hook gelesen |
 | `BASTRA_TELEMETRY`            | `on`             | `off` schaltet das Schreiben der JSONL-Telemetrie ab           |
 | `BASTRA_LOG_PATH`             | `~/.bastra/logs` | Verzeichnis für Telemetrie-Logs                                |
 | `BASTRA_DRIFT_WINDOW_DAYS`    | `14`             | Drift-Detektor: wie weit „neuere Erinnerungen“ zurückreichen   |

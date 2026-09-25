@@ -81,10 +81,18 @@ export const MUST_LOAD_SCORE = 100;
 // #161: backoff source key — prompt-lookup hints back off independently.
 const BACKOFF_SOURCE = "prompt-lookup";
 
-/** "retrieval-only" (default) or "all" (also recall on non-lookup prompts, score-gated to MUST_LOAD_SCORE). */
+/**
+ * "all" (default since #677) — every non-trivial prompt recalls, and what a
+ * prompt the lookup/assertion regexes do not recognise may inject is gated by
+ * score (MUST_LOAD_SCORE), not by the language it is written in. Those regexes
+ * are German/English only: a contributor's month had 0 of 1,039 prompts
+ * recognised as a lookup (#671), so under the old default a user writing any
+ * other language got a silent lane. "retrieval-only" keeps the pre-#677
+ * behaviour (regex-gated recall) as an explicit opt-out.
+ */
 type PromptHookMode = "retrieval-only" | "all";
 const hookMode = (): PromptHookMode =>
-  (envFirst("BASTRA_PROMPT_HOOK_MODE") as PromptHookMode | undefined) ?? "retrieval-only";
+  envFirst("BASTRA_PROMPT_HOOK_MODE") === "retrieval-only" ? "retrieval-only" : "all";
 
 export interface ClaudeHookPayload {
   session_id?: string;
@@ -215,8 +223,8 @@ export function detectAssertion(prompt: string): boolean {
 
 // #151: trivial-prompt gate. Bare acks, one-worders and slash-command
 // invocations cannot act on recalled context — injecting there is pure
-// context tax (and with BASTRA_PROMPT_HOOK_MODE=all the hook otherwise fires
-// on EVERY prompt). Deterministic DE+EN check, runs before any recall work.
+// context tax (and in the default mode "all" the hook otherwise fires on
+// EVERY prompt). Deterministic DE+EN check, runs before any recall work.
 const TRIVIAL_ACKS = new Set([
   // EN
   "ok", "okay", "k", "kk", "yes", "yep", "yeah", "no", "nope", "thx",
@@ -414,7 +422,7 @@ export async function runPromptLane(
   if (isRetrieval) {
     detectedMode = "retrieval";
   } else if (detectAssertion(prompt)) {
-    // #252 — recalls where the default retrieval-only mode used to stay silent.
+    // #252 — recalls where the retrieval-only mode stays silent.
     detectedMode = "assertion";
   } else if (hookMode() === "all") {
     detectedMode = "generic";
@@ -552,7 +560,18 @@ export async function runPromptLane(
     // convention sat at pool rank 6 behind k=5). They pass the same floor.
     const candidates = [...resp.hits, ...(Array.isArray(resp.reflex_hits) ? resp.reflex_hits : [])];
     for (const h of candidates) {
-      if (h.score < effectiveFloor) continue;
+      const wired = h.recall_mode === "reflex";
+      // #677: "generic" replaced "none" as the default for unrecognised
+      // prompts, so it must not lose what "none" delivered — a user-wired
+      // reflex memory keeps the normal floor there (the 19.08. prompt ranked
+      // the convention at 84, see below).
+      const floor = detectedMode === "generic" && wired ? SCORE_FLOOR : effectiveFloor;
+      if (h.score < floor) continue;
+      // #677: the generic gate IS the score — on the unfused scale (raw BM25,
+      // open-ended) MUST_LOAD_SCORE says nothing, and passing everything
+      // would inject the top k on every prompt exactly while the vector arm
+      // is down. Without fusion only wired memories inject, as in "none".
+      if (detectedMode === "generic" && resp.unfused === true && !wired) continue;
       // Semantic reflex: in mode "none" only memories the USER wired as
       // reflex may inject — the semantic arm gives them hearing beyond
       // literal token matches. Deliberately at the normal floor, not
@@ -560,7 +579,7 @@ export async function runPromptLane(
       // at 84 (a long convoluted prompt dilutes the rank), and the pool is
       // tiny and explicitly authorized — the wiring is the noise gate, the
       // backoff still dampens sub-REQUIRED repeats.
-      if (detectedMode === "none" && h.recall_mode !== "reflex") continue;
+      if (detectedMode === "none" && !wired) continue;
       filtered.push(h);
     }
   }
