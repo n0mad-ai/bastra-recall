@@ -10,6 +10,7 @@ import {
   buildServerBlock,
   existingToolSurface,
   serverBlockEndpoint,
+  foreignEnv,
   fileExists,
   getServersBlock,
   probeDaemon,
@@ -40,6 +41,8 @@ async function cursorInstall(opts: InstallOpts): Promise<InstallResult> {
     // #531: the configured endpoint, or the one this registration already
     // carries — a GUI client inherits no shell export.
     serverBlockEndpoint(servers[SERVER_KEY]),
+    // #647: env keys the user added (BASTRA_FORWARDER_SPAWN=0, …) survive.
+    foreignEnv(servers[SERVER_KEY]),
   );
 
   if (blocksMatch(servers[SERVER_KEY], block)) {
