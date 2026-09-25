@@ -132,3 +132,17 @@ test("#305: no two client lanes write the same event kind", async () => {
     );
   }
 });
+
+test("#508: every client lane the context ledger counts declares its injected size as a known zero", async () => {
+  // A client row exists because no answer came back, so nothing reached the
+  // transcript. Without the field, context-ledger.ts cannot tell that no-op from
+  // a pre-#457 row of unknown size and books it as an unknown residual.
+  const { HOOK_LANE_KINDS } = await import("../src/context-ledger.js");
+  const ledgerKinds = new Set<string>(HOOK_LANE_KINDS);
+  for (const [lane, base] of Object.entries(CLIENT_ROW_BASE)) {
+    if (!ledgerKinds.has(String(base.kind))) continue;
+    assert.equal(base.hint_tokens_est, 0, `${lane} (${String(base.kind)}) omits hint_tokens_est`);
+  }
+  const row = await runLane("prompt", "s-508");
+  assert.equal(row.hint_tokens_est, 0, "the stub's prompt row carries the known zero");
+});
