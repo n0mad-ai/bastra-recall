@@ -51,6 +51,7 @@ import {
   type RecoveryJournalHandle,
 } from "./recovery-journal.js";
 import { qualifyDocumentTriggers } from "./document-triggers.js";
+import { recordAudit } from "./audit-trail.js";
 
 // ─── Argument schemas ───────────────────────────────────────────
 
@@ -718,6 +719,8 @@ export interface SaveDocumentResult {
   cloud_mount_warning?: string;
   /** #147: Capture-Scan-Advisory — geflaggt, nie geblockt. */
   injection_warning?: string;
+  /** #452: gesetzt, wenn der Audit-Eintrag nicht geschrieben werden konnte. */
+  warning?: string;
 }
 
 export async function saveDocument(
@@ -970,6 +973,8 @@ async function commitDocument(
 
   // Wird im try unten gesetzt, aber im Ergebnis unten gebraucht.
   let injectionFindings: ReturnType<typeof scanForInjection> = [];
+  // #452: das veröffentlichte Sidecar — Nachbild des Audit-Eintrags.
+  let published = "";
   try {
     const existingSummary =
       typeof existing?.data.summary === "string" ? existing.data.summary : undefined;
@@ -1042,6 +1047,7 @@ async function commitDocument(
     // Dokument-Eintrag", nicht „ich habe eine externe Bearbeitung gesehen und
     // will sie loswerden". Der Vergleich gilt hier deshalb ausnahmslos.
     await publishSidecar(sidecarPath, content, { id: docID, preimage });
+    published = content;
   } catch (err) {
     // Der Sidecar-Commit ist gescheitert — also darf auch die Kopie nicht
     // stehenbleiben. Erst damit stimmt, was `publishSidecar` dem Aufrufer
@@ -1069,6 +1075,19 @@ async function commitDocument(
     ? "Vault is on a cloud-storage mount (Dropbox/GoogleDrive/iCloud) — using polling watcher; reindex done synchronously."
     : undefined;
 
+  // #452: Dokument-Schreibvorgänge stehen auf demselben Trail wie Memories
+  // (#206) — vorher hinterließ ein `save_document --overwrite` keine Spur.
+  const auditWarning = await recordAudit({
+    vaultRoot: root,
+    memoryId: docID,
+    operation: preimage === null ? "create" : "update",
+    actor: "assistant",
+    actorDetail: "mcp:save_document",
+    diffBefore: preimage === null ? null : (frontmatterOf(preimage) ?? null),
+    diffAfter: frontmatterOf(published) ?? null,
+    filePath: sidecarPath,
+  });
+
   return {
     id: docID,
     sidecar_path: sidecarPath,
@@ -1076,6 +1095,7 @@ async function commitDocument(
     reindexed: true,
     cloud_mount_warning: cloudWarn,
     injection_warning: formatInjectionAdvisory(injectionFindings),
+    ...(auditWarning ? { warning: auditWarning } : {}),
   };
 }
 
@@ -1086,7 +1106,7 @@ export async function recategorizeDocument(
   args: z.infer<typeof RecategorizeDocumentArgs> & { force?: boolean },
   /** #464: transportgebunden — siehe private-access.ts. */
   caller?: PrivateAccess,
-): Promise<{ id: string; sidecar_path: string; reindexed: boolean }> {
+): Promise<{ id: string; sidecar_path: string; reindexed: boolean; warning?: string }> {
   const m = vault.get(args.id);
   // #464: Wortgleiche Antwort für „gibt es nicht" und „darfst du nicht sehen".
   // Ein Sidecar mit `sensitivity: private` ist für externe Caller schon im
@@ -1136,7 +1156,7 @@ async function commitRecategorize(
   args: z.infer<typeof RecategorizeDocumentArgs> & { force?: boolean },
   m: { fm: Record<string, unknown> & { id: string; title: string; tags: string[]; summary: string; recall_when: string[]; created: string }; filePath: string },
   caller?: PrivateAccess,
-): Promise<{ id: string; sidecar_path: string; reindexed: boolean }> {
+): Promise<{ id: string; sidecar_path: string; reindexed: boolean; warning?: string }> {
   const fm = m.fm as typeof m.fm & {
     original_path?: string;
     document_category?: string;
@@ -1195,6 +1215,7 @@ async function commitRecategorize(
   // ein Halbzustand, den der gemeldete Fehler nicht einmal erwähnte. Index-
   // Umhängen und Reindex passieren erst nach dem Gesamtcommit.
   let raw: { data: Record<string, unknown>; body: string; raw: string } | undefined;
+  let updated: Record<string, unknown> = {};
   try {
     const category = args.category ?? fm.document_category ?? "sonstiges";
     // Nur die Felder anfassen, die dieser Call meint. Der frühere Rebuild aus
@@ -1218,7 +1239,7 @@ async function commitRecategorize(
       injectionFlags:
         (raw.data.injection_flags as string[] | undefined) ?? fm.injection_flags,
     });
-    const updated = patchSidecarFrontmatter(
+    updated = patchSidecarFrontmatter(
       raw.data,
       metadataPatch(raw.data, rebuilt),
     );
@@ -1247,7 +1268,27 @@ async function commitRecategorize(
   if (sidecarPath !== oldSidecarPath) vault.forgetFile(oldSidecarPath);
   await vault.reindexFile(sidecarPath);
 
-  return { id: m.fm.id, sidecar_path: sidecarPath, reindexed: true };
+  // #452: siehe save_document.
+  const auditWarning = await recordAudit({
+    vaultRoot: vaultRoot(vault),
+    memoryId: m.fm.id,
+    operation: "update",
+    actor: "assistant",
+    actorDetail: "mcp:recategorize_document",
+    diffBefore: raw?.data ?? null,
+    diffAfter: updated,
+    filePath: sidecarPath,
+    ...(sidecarPath !== oldSidecarPath
+      ? { reason: `recategorize_document: moved ${oldSidecarPath} → ${sidecarPath}` }
+      : {}),
+  });
+
+  return {
+    id: m.fm.id,
+    sidecar_path: sidecarPath,
+    reindexed: true,
+    ...(auditWarning ? { warning: auditWarning } : {}),
+  };
 }
 
 /**
@@ -1297,6 +1338,7 @@ export async function moveDocument(
   sidecar_path: string;
   original_path: string;
   reindexed: boolean;
+  warning?: string;
 }> {
   const m = vault.get(args.id);
   // #464: wie im Recategorize — ein Move verschiebt Sidecar UND Originaldatei
@@ -1329,6 +1371,7 @@ async function commitMoveDocument(
   sidecar_path: string;
   original_path: string;
   reindexed: boolean;
+  warning?: string;
 }> {
   const fm = m.fm as typeof m.fm & {
     original_path?: string;
@@ -1368,6 +1411,7 @@ async function commitMoveDocument(
   // lagen. Index-Umhängen erst nach dem Gesamtcommit; bis dahin bleibt der
   // Move rückrollbar.
   let raw: { data: Record<string, unknown>; body: string; raw: string } | undefined;
+  let updated: Record<string, unknown> = {};
   try {
     // Frontmatter im neuen Sidecar patchen — ein Move ändert Pfade, sonst
     // nichts. Der frühere Rebuild verlor dabei `related`, `related_via`,
@@ -1392,7 +1436,7 @@ async function commitMoveDocument(
       injectionFlags:
         (raw.data.injection_flags as string[] | undefined) ?? fm.injection_flags,
     });
-    const updated = patchSidecarFrontmatter(
+    updated = patchSidecarFrontmatter(
       raw.data,
       metadataPatch(raw.data, rebuilt),
     );
@@ -1414,11 +1458,26 @@ async function commitMoveDocument(
   if (moved.newSidecarPath !== located.filePath) vault.forgetFile(located.filePath);
   await vault.reindexFile(moved.newSidecarPath);
 
+  // #452: siehe save_document. Das Pfadpaar steht im `reason` — der
+  // Frontmatter-Diff allein zeigt nur `folder_path`/`original_path`.
+  const auditWarning = await recordAudit({
+    vaultRoot: vaultRoot(vault),
+    memoryId: m.fm.id,
+    operation: "update",
+    actor: "assistant",
+    actorDetail: "mcp:move_document",
+    diffBefore: raw?.data ?? null,
+    diffAfter: updated,
+    filePath: moved.newSidecarPath,
+    reason: `move_document: ${located.filePath} → ${moved.newSidecarPath}`,
+  });
+
   return {
     id: m.fm.id,
     sidecar_path: moved.newSidecarPath,
     original_path: moved.newOriginalPath,
     reindexed: true,
+    ...(auditWarning ? { warning: auditWarning } : {}),
   };
 }
 
