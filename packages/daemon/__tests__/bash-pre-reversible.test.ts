@@ -96,6 +96,9 @@ const EXAMPLE: Record<string, string> = {
   "git push -f": "git push -f origin main",
   "git push +refspec": "git push origin +main",
   "git commit --amend": "git commit --amend --no-edit",
+  "git reflog expire": "git reflog expire --expire=now --all",
+  "git reflog delete": "git reflog delete HEAD@{1}",
+  "git gc --prune": "git gc --prune=now",
   "gh repo delete": "gh repo delete me/prod --yes",
   "gh release delete": "gh release delete v1 --yes",
   "npm uninstall": "npm uninstall left-pad",
@@ -418,6 +421,42 @@ describe("#651 review — the hint weighs the whole command, not the first row i
     assert.equal((await hintOf("git push --force-with-lease origin HEAD:main")).kind, "receipt");
     assert.equal(matchPattern("git push origin HEAD:refs/heads/main"), null);
     assert.equal(matchPattern("git push https://example.com/r.git main"), null);
+  });
+
+  it("#658: removing the reflog turns a reflog-based receipt into STOP", async () => {
+    // Revert-check: drop the reflog/gc rows → the amend receipt is shown although
+    // the same line deletes the reflog entry it points to.
+    assert.deepEqual(
+      await hintOf("git commit --amend; git reflog expire --expire=now --all; git gc --prune=now"),
+      { kind: "stop", pattern: "git reflog expire" },
+    );
+    assert.equal((await hintOf("git commit --amend --no-edit && git gc --prune=now")).kind, "stop");
+    assert.equal((await hintOf("git branch -D old; git reflog delete HEAD@{1}")).kind, "stop");
+    assert.equal(matchPattern("git gc --prune=never"), null);
+    assert.equal(matchPattern("git gc"), null);
+  });
+
+  it("#658: several receipts in one command are all said, each once", async () => {
+    // Revert-check: return acts[0].undo → the amend note is missing.
+    const stdout = await runHook(
+      {
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        tool_input: { command: "git commit --amend --no-edit && git push --force-with-lease origin main" },
+        session_id: "",
+      },
+      {},
+    );
+    const block: string = JSON.parse(stdout)?.hookSpecificOutput?.additionalContext ?? "";
+    assert.match(block, /NOTE — reversible/);
+    assert.match(block, /git reset --soft HEAD@\{1\}/, "the amend receipt");
+    assert.match(block, /the lease refuses/, "the lease receipt");
+    const rmStdout = await runHook(
+      { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "rm -rf a && rm -r b" }, session_id: "" },
+      RM,
+    );
+    const rmBlock: string = JSON.parse(rmStdout)?.hookSpecificOutput?.additionalContext ?? "";
+    assert.equal(rmBlock.split("archives instead of deleting").length - 1, 1, "one rm receipt, not two");
   });
 
   it("git global options before the subcommand do not hide it", () => {

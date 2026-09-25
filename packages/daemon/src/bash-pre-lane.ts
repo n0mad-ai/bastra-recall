@@ -413,7 +413,12 @@ function hintFor(cmd: string, surface: string): Hint | null {
   if (bare) return stop(bare.label);
   if (acts.length > 1 && acts.some((a) => a.undo?.kind !== "receipt")) return stop(first.label);
   if (acts.some((a) => a.undo === RM_ARCHIVES) && !rmRunsThroughPath(cmd)) return stop(first.label);
-  return { ...first, undo: acts[0].undo };
+  // Every act here is a receipt (or the single act has an undo): say each
+  // distinct receipt, not only the first (#658).
+  const distinct = acts.filter((a, i) => acts.findIndex((b) => b.undo === a.undo) === i);
+  if (distinct.length < 2) return { ...first, undo: acts[0].undo };
+  const text = distinct.map((a) => `\`${a.label}\`: ${a.undo?.text}`).join(" ");
+  return { ...first, undo: { kind: "receipt", text } };
 }
 
 /**

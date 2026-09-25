@@ -120,7 +120,9 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
   // remove remote refs; the remote-tracking ref goes too, and with it the
   // reflog that makes a lease receipt true. Listed before the force rows so a
   // lease that deletes (`--force-with-lease origin :x`) is weighed as this.
-  { label: "git push --delete", re: git(String.raw`push\b[^\n]*\s(?:--delete|-d|--prune|--mirror|\+?:\S)`), undo: null },
+  // `--prune(?!=)`: push's `--prune` takes no value; `--prune=now` in the same
+  // segment belongs to `git gc` (#658) and is weighed as that row.
+  { label: "git push --delete", re: git(String.raw`push\b[^\n]*\s(?:--delete|-d|--prune(?!=)|--mirror|\+?:\S)`), undo: null },
   // A `+` refspec forces that ref and overrides the lease: `git push
   // --force-with-lease origin +main` overwrites commits never fetched, and
   // their tip is in no local reflog. Listed before the lease row so the
@@ -151,6 +153,12 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
         `If the old commit was already pushed, publishing the amend needs a force-push — that one is its own hint.`,
     },
   },
+  // #658: these remove the reflog entries and unreachable objects that the
+  // amend, branch and lease receipts point to. STOP on their own, and — by
+  // the "strongest wins" rule in hintFor — next to any of those receipts.
+  { label: "git reflog expire", re: git(String.raw`reflog\s+expire\b`), undo: null },
+  { label: "git reflog delete", re: git(String.raw`reflog\s+delete\b`), undo: null },
+  { label: "git gc --prune", re: git(String.raw`gc\b[^\n]*--prune\b(?!=never)`), undo: null },
   { label: "gh repo delete", re: /\bgh\s+repo\s+delete\b/, undo: null },
   { label: "gh release delete", re: /\bgh\s+release\s+delete\b/, undo: null },
   { label: "npm uninstall", re: /\bnpm\s+uninstall\b/, undo: null },
