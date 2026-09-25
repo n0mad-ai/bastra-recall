@@ -27,7 +27,7 @@ import { recordBudgetShadow } from "./session-budget.js";
 import { reportHinted } from "./hook-hinted.js";
 import { postLane } from "./thin-client.js";
 import { isUnfused, type HookRecallHit, type HookRecallResponse } from "./hook-recall-response.js";
-import { unfusedHeadline } from "./band-wording.js";
+import { unfusedHeadline, unfusedReasonFor } from "./band-wording.js";
 import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookCaller, type HookClientEvidence } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import {
@@ -213,7 +213,7 @@ export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: str
     const decision = decideBackoff(entry, consumed, hasRequired);
     backoffStreak = decision.streak;
     suppressed = decision.suppress;
-    const block = formatHintBlock(hits, unfused, client);
+    const block = formatHintBlock(hits, unfused, client, resp?.degraded);
     if (suppressed) {
       // Suppressed emits {} like the no-hits path; the throttle stays
       // unmarked (nothing was emitted), the saved tokens go to telemetry.
@@ -374,7 +374,15 @@ function formatHintLine(h: RecallHit, hideScore = false): string {
     : `- ${h.id} (${h.type}, score ${Math.round(h.score)}): ${summary}`;
 }
 
-export function formatHintBlock(hits: RecallHit[], unfused = false, surface = "claude-code"): string {
+export function formatHintBlock(
+  hits: RecallHit[],
+  unfused = false,
+  surface = "claude-code",
+  // #565: der `degraded`-Grund der Antwort — ohne ihn behauptete der Block
+  // „semantic search is off", wo der Arm lief und nur diesen Aufruf nicht
+  // bediente.
+  degraded?: string,
+): string {
   const head = `<recall-hints surface="${surface}" trigger="bash-fail">`;
   const tail = `</recall-hints>`;
   const lines: string[] = [];
@@ -382,7 +390,7 @@ export function formatHintBlock(hits: RecallHit[], unfused = false, surface = "c
     `The Bash command above failed. These memories describe similar failure modes — check before re-running or trying alternatives.`,
   );
   // P0: ohne Fusion sagen, woran das Modell die Treffer stattdessen misst.
-  if (unfused) lines.push(unfusedHeadline("this failure"));
+  if (unfused) lines.push(unfusedHeadline("this failure", unfusedReasonFor(degraded)));
   for (const h of hits) lines.push(formatHintLine(h, unfused));
   return [head, HINT_FRAME_NOTE, stripFenceMarkers(lines.join("\n")), tail].join("\n");
 }

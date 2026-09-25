@@ -24,7 +24,7 @@ import { randomUUID } from "node:crypto";
 import { detectTopics, extractContentExcerpt } from "@bastra-recall/core";
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
-import { requiredHeadline, unfusedHeadline, CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
+import { requiredHeadline, unfusedHeadline, unfusedReasonFor, CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
 import { envFirst, envInt } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow } from "./session-budget.js";
@@ -106,6 +106,9 @@ interface RecallResponse {
    *  Scope (oder Familienmitglied)? Nur der Daemon kann das beantworten — die
    *  Lane sieht den Vault nicht. `false` heißt: nicht filtern. */
   project_known?: boolean;
+  /** #342/#565: warum die Fusion ausfiel — `vector-arm-timeout` |
+   *  `vector-arm-error` | `vector-arm-empty`; ohne Feld gab es keinen Arm. */
+  degraded?: string;
 }
 
 type HookStatus =
@@ -445,11 +448,11 @@ export async function runWriteLane(
     } else {
       stdout = "{}";
     }
-    const block = formatHintBlock(requiredHits, optionalHits, project, resp?.weak_result === true, resp?.no_home === true, resp?.unfused === true, client);
+    const block = formatHintBlock(requiredHits, optionalHits, project, resp?.weak_result === true, resp?.no_home === true, resp?.unfused === true, client, resp?.degraded);
     suppressedTokensEst = Math.ceil(block.length / 4);
     stateDeltas.push((s) => recordSourceSuppressed(s, BACKOFF_SOURCE));
   } else {
-    const hintsBlock = formatHintBlock(requiredHits, optionalHits, project, resp?.weak_result === true, resp?.no_home === true, resp?.unfused === true, client);
+    const hintsBlock = formatHintBlock(requiredHits, optionalHits, project, resp?.weak_result === true, resp?.no_home === true, resp?.unfused === true, client, resp?.degraded);
     const block = detNote ? `${detNote}\n${hintsBlock}` : hintsBlock;
     hintTokensEst = Math.ceil(block.length / 4);
     hintedIds = [...requiredHits, ...optionalHits].map((h) => h.id);
@@ -568,6 +571,10 @@ export function formatHintBlock(
   noHome = false,
   unfused = false,
   surface = "claude-code",
+  // #565: der `degraded`-Grund der Antwort — ohne ihn behauptete der Block
+  // „semantic search is off", wo der Arm lief und nur diesen Aufruf nicht
+  // bediente.
+  degraded?: string,
 ): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
   const head = `<recall-hints surface="${escapeAttr(surface)}"${projAttr}>`;
@@ -592,7 +599,7 @@ export function formatHintBlock(
           `high score is rank-1-of-nothing, so treat these as "probably not relevant" ` +
           `unless one obviously fits. Do not load them just because they are listed.`
         : unfused
-        ? `${unfusedHeadline("what you're about to do")} ` +
+        ? `${unfusedHeadline("what you're about to do", unfusedReasonFor(degraded))} ` +
           `load_memory(id) the ones that bear on this edit.`
         : `${requiredHeadline("what you're about to do", MUST_LOAD_SCORE, { k: RRF_K, scale: RRF_SCALE })} ` +
           `${CANDIDATES_ONLY_NOTICE} load_memory(id) the ones that bear on this edit. ` +

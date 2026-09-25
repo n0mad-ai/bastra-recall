@@ -16,6 +16,7 @@ import type { Memory } from "../src/schema.js";
 import {
   TriggerExpander,
   buildExpandPrompt,
+  buildInflectPrompt,
   isSlugChain,
   parseExpansions,
   sourceHash,
@@ -426,6 +427,55 @@ test("#341: expand keeps the file's mtime — the authored body is unchanged", a
 
     assert.match(await readFile(file, "utf8"), /recall_when_expanded:/);
     assert.equal((await stat(file)).mtimeMs, before, "mtime unchanged");
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+// ── #565: inflected trigger variants for reflex memories ───────────
+
+test("#565 buildInflectPrompt carries the triggers and asks for other grammatical forms, untranslated", () => {
+  const p = buildInflectPrompt(fakeMemory({ recall_when: ["Antwort an zzalli draften", "antwortentwurf bitte"] }));
+  assert.match(p, /Antwort an zzalli draften \| antwortentwurf bitte/);
+  assert.match(p, /grammatical forms/);
+  assert.match(p, /Never translate/);
+});
+
+test("#565 sourceHash: a reflex memory re-expands once, every other memory keeps its hash", () => {
+  const plain = sourceHash(fakeMemory());
+  assert.equal(plain, sourceHash(fakeMemory({ recall_mode: "deliberate" })), "non-reflex hash unchanged");
+  assert.notEqual(plain, sourceHash(fakeMemory({ recall_mode: "reflex" })), "wiring as reflex makes it stale");
+});
+
+test("#565 expand: a reflex memory gets inflected variants of its triggers, a plain one does not", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "bastra-expand-inflect-"));
+  await writeFile(
+    path.join(dir, "konvention.md"),
+    memoryMd("konvention")
+      .replace('recall_when: ["original trigger"]', 'recall_when: ["Antwort an zzalli draften"]\nrecall_mode: reflex'),
+  );
+  await writeFile(path.join(dir, "plain.md"), memoryMd("plain"));
+  const vault = new Vault(dir);
+  await vault.init();
+  try {
+    const prompts: string[] = [];
+    const expander = new TriggerExpander(vault, stubEmbeddings(), {
+      chat: async (prompt) => {
+        prompts.push(prompt);
+        return prompt.startsWith("A user wired")
+          ? "antworten zzalli\nantwortet zzalli\nAntwort an zzalli draften"
+          : "reply to the contributor";
+      },
+      backfillOnStart: false,
+    });
+    const kept = await expander.expand("konvention");
+    assert.deepEqual(kept, ["reply to the contributor", "antworten zzalli", "antwortet zzalli"]);
+    assert.equal(prompts.length, 2, "one paraphrase call, one inflection call");
+    assert.match(await readFile(path.join(dir, "konvention.md"), "utf8"), /antworten zzalli/);
+
+    prompts.length = 0;
+    assert.deepEqual(await expander.expand("plain"), ["reply to the contributor"]);
+    assert.equal(prompts.length, 1, "no inflection call for a memory that is not wired as reflex");
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }

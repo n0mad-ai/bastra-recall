@@ -18,7 +18,7 @@
 // #305: subpath leafs, never the core barrel — measured +40ms of process
 // start against +0.8ms for the three leafs, on a fresh spawn per event.
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
-import { requiredHeadline, unfusedHeadline } from "./band-wording.js";
+import { requiredHeadline, unfusedHeadline, unfusedReasonFor } from "./band-wording.js";
 import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane, type ScopeFilterMode } from "./scope-filter.js";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
 import { request } from "node:http";
@@ -91,6 +91,9 @@ interface RecallResponse {
    *  Scope (oder Familienmitglied)? Nur der Daemon kann das beantworten — die
    *  Lane sieht den Vault nicht. `false` heißt: nicht filtern. */
   project_known?: boolean;
+  /** #342/#565: warum die Fusion ausfiel — `vector-arm-timeout` |
+   *  `vector-arm-error` | `vector-arm-empty`; ohne Feld gab es keinen Arm. */
+  degraded?: string;
 }
 
 // Tiny stopword list — covers the most-common DE/EN noise tokens that would
@@ -372,7 +375,7 @@ export async function runTodoLane(
     const decision = decideBackoff(entry, consumed, hasRequired);
     backoffStreak = decision.streak;
     suppressed = decision.suppress;
-    const block = formatHintBlock(filtered, project, extraction.topics, unfused, client, toolName);
+    const block = formatHintBlock(filtered, project, extraction.topics, unfused, client, toolName, resp?.degraded);
     if (suppressed) {
       // Suppressed emits {} exactly like the empty path (#161).
       suppressedTokensEst = Math.ceil(block.length / 4);
@@ -445,6 +448,10 @@ export function formatHintBlock(
   unfused = false,
   surface = "claude-code",
   toolName = "TodoWrite",
+  // #565: der `degraded`-Grund der Antwort — ohne ihn behauptete der Block
+  // „semantic search is off", wo der Arm lief und nur diesen Aufruf nicht
+  // bediente.
+  degraded?: string,
 ): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
   const topicsAttr = topics.length > 0 ? ` topics="${escapeAttr(topics.join(","))}"` : "";
@@ -467,7 +474,7 @@ export function formatHintBlock(
 
   if (unfused) {
     sections.push("");
-    sections.push(unfusedHeadline("these todos"));
+    sections.push(unfusedHeadline("these todos", unfusedReasonFor(degraded)));
     sections.push("");
     for (const h of hits) sections.push(formatHintLine(h, true));
   }

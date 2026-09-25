@@ -67,6 +67,12 @@ const MAX_CONSECUTIVE_GEN_FAILURES = 5;
 /** Drop generated phrases longer than this — a paraphrase is a short query,
  *  not a sentence; long lines are usually the model narrating, not a trigger. */
 const MAX_PHRASE_LEN = 80;
+/** #565: cap for the inflected trigger variants of one reflex memory — a few
+ *  forms per trigger, not a conjugation table. */
+const MAX_INFLECTIONS = 10;
+/** #565: bumping this re-expands every reflex memory once (it is part of their
+ *  source hash), so a changed inflection prompt reaches the existing ones. */
+const INFLECT_VERSION = "inflect-v1";
 
 export class TriggerExpander {
   private detach?: () => void;
@@ -193,6 +199,17 @@ export class TriggerExpander {
       this.consecutiveGenFailures = 0;
 
       const candidates = parseExpansions(raw, memory.fm.recall_when, this.maxPhrases);
+      // #565: the reflex lane matches exact tokens — "Antwort an zzalli" never
+      // fired on "wir antworten zzalli". Owner decision (2026-09-21): the fix is
+      // real inflections in the expansion, the matcher stays an exact token AND,
+      // so what fires stays literally readable in the memory. Only for memories
+      // the user wired as reflex: the BM25 path does not need them.
+      if (memory.fm.recall_mode === "reflex" && memory.fm.recall_when.length > 0) {
+        const inflected = await this.chat(buildInflectPrompt(memory));
+        candidates.push(
+          ...parseExpansions(inflected, [...memory.fm.recall_when, ...candidates], MAX_INFLECTIONS),
+        );
+      }
       const kept: string[] = [];
       for (const phrase of candidates) {
         if (this.selfTest && !(await this.selfTest(phrase, id))) continue;
@@ -218,9 +235,13 @@ export class TriggerExpander {
 
 /** Stable short hash of the fields a paraphrase is derived from. Changes iff
  *  the author edits title/summary/recall_when — which is exactly when the
- *  expansion is stale and must be regenerated. */
+ *  expansion is stale and must be regenerated. #565: a reflex memory also
+ *  carries INFLECT_VERSION, so wiring a memory as reflex (or a new inflection
+ *  prompt) re-expands it once; every other memory's hash is unchanged. */
 export function sourceHash(m: Memory): string {
-  const src = JSON.stringify([m.fm.title, m.fm.summary, m.fm.recall_when]);
+  const fields: unknown[] = [m.fm.title, m.fm.summary, m.fm.recall_when];
+  if (m.fm.recall_mode === "reflex") fields.push(INFLECT_VERSION);
+  const src = JSON.stringify(fields);
   return createHash("sha256").update(src).digest("hex").slice(0, 16);
 }
 
@@ -251,6 +272,31 @@ export function buildExpandPrompt(m: Memory): string {
     `Title: ${clean(m.fm.title)}`,
     `Summary: ${clean(m.fm.summary)}`,
     `Existing triggers: ${m.fm.recall_when.map(clean).join(" | ")}`,
+  ].join("\n");
+}
+
+/** #565: ask for the user's own triggers with their content words in other
+ *  grammatical forms — the reflex matcher needs the exact token the user
+ *  types. Language-neutral on purpose (#676): the model inflects in whatever
+ *  language the trigger is written in; no word list in code. */
+export function buildInflectPrompt(m: Memory): string {
+  const clean = (s: string) => scrubInjectedBlocks(s).text;
+  return [
+    "A user wired the trigger phrases below to a personal memory. A matcher shows the",
+    "memory only when EVERY content word of a trigger appears in the user's message",
+    'exactly as written — so the trigger "Antwort an zzalli" misses the message',
+    '"wir antworten zzalli".',
+    "Rewrite the triggers with their content words in OTHER grammatical forms the",
+    "user might type: verb conjugations and infinitive, noun plural and case forms,",
+    "and the verb or noun of the same word stem.",
+    "",
+    "Rules:",
+    "- Keep each trigger's language. Never translate.",
+    "- Keep names, identifiers and numbers exactly as they are.",
+    "- Short phrases: only the content words, two to four words.",
+    "- One phrase per line. No numbering, no quotes, no commentary, no headings.",
+    "",
+    `Triggers: ${m.fm.recall_when.map(clean).join(" | ")}`,
   ].join("\n");
 }
 

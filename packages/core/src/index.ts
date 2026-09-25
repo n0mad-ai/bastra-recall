@@ -215,7 +215,7 @@ export type { EmbedCacheEntry, EmbedCacheFile } from "./embed-cache.js";
 export { RelatedEnricher } from "./related-enrich.js";
 export type { RelatedEnricherOptions } from "./related-enrich.js";
 
-export { TriggerExpander, buildExpandPrompt, parseExpansions, sourceHash } from "./trigger-expand.js";
+export { TriggerExpander, buildExpandPrompt, buildInflectPrompt, parseExpansions, sourceHash } from "./trigger-expand.js";
 export {
   scanForInjection,
   injectionCategories,
