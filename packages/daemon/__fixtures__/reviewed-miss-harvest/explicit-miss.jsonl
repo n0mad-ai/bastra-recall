@@ -1,0 +1,8 @@
+{"type":"user","message":{"content":"where is the deployment rail"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"recall-1","name":"mcp__bastra-recall__recall","input":{"query":"deployment rail"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"recall-1","content":"{\"weak_result\":true,\"hits\":[]}"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"read-1","name":"Read","input":{"file_path":"/private/operations/deployment-rail.md"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"read-1","content":"deployment ownership rail"}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Found the deployment rail in a source file. It assigns deployment ownership."}]}}
+{"type":"user","message":{"content":"what should the deployment owner check"}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Check the rail before deployment because it names the owner for the handoff."}]}}
