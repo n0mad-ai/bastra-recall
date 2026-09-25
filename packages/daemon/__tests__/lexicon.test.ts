@@ -8,6 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import {
   frustrationCues,
@@ -122,5 +123,64 @@ test("lexicon: a cue that is not a valid regex, or hides a quantified group (ReD
     }
     // and the joined lexicon still compiles as one alternation
     assert.doesNotThrow(() => new RegExp(cues.join("|"), "u"));
+  });
+});
+
+test("lexicon (#517): overlapping repeats without a group are dropped — the issue's table", async () => {
+  await withLexiconDir(async (dir) => {
+    const bad = [
+      String.raw`\w*\w*\w*\w*x`, // 15.6 s on 500 × a
+      String.raw`\w*\w*\w*x`, // ~1 s on 2,000 × a
+      String.raw`\w*a\w*a\w*x`, // a literal between the repeats does not stop the overlap
+      "a?a?a?a?aaaa", // the classic optional explosion
+      String.raw`\w{0,1000}\w{0,1000}\w{0,1000}x`,
+      String.raw`\W\s*\W\s*\W\s*x`, // the `W` of `\W` is no literal letter
+    ];
+    const good = [String.raw`\w*\w*x`, String.raw`schon\s+sowas\s+wieder\s+hier`, String.raw`ha\*ha[*+?]{2}`];
+    await writeFile(join(dir, "frustration.txt"), [...bad, ...good].join("\n"), "utf8");
+    const cues = frustrationCues();
+    for (const b of bad) assert.ok(!cues.includes(b), `polynomial cue reached the live lexicon: ${b}`);
+    for (const g of good) assert.ok(cues.includes(g), `harmless cue was dropped: ${g}`);
+
+    // What stays allowed stays cheap on the issue's input shape.
+    const turns: TranscriptTurn[] = [{ role: "user", content: "a".repeat(8000) + "!" }];
+    const t0 = performance.now();
+    detectFrustration(turns);
+    assert.ok(performance.now() - t0 < 2000, "an allowed cue blocked the event loop");
+  });
+});
+
+test("lexicon (#517): every shipped default fits the cue grammar a file entry has to meet", async () => {
+  await withLexiconDir(async (dir) => {
+    // A suffix makes each one a NEW cue, so it is validated instead of deduped.
+    const variants = [...DEFAULT_FRUSTRATION_CUES, ...DEFAULT_DECISION_CUES].map((c) => `${c}zz`);
+    await writeFile(join(dir, "decision.txt"), variants.join("\n"), "utf8");
+    const cues = decisionCues();
+    for (const v of variants) assert.ok(cues.includes(v), `default-shaped cue rejected: ${v}`);
+  });
+});
+
+test(
+  "lexicon (#517): a FIFO at the cue path does not block — defaults, immediately",
+  { skip: process.platform === "win32" },
+  async () => {
+    await withLexiconDir(async (dir) => {
+      execFileSync("mkfifo", [join(dir, "frustration.txt")]);
+      assert.deepEqual(frustrationCues(), [...DEFAULT_FRUSTRATION_CUES]);
+    });
+  },
+);
+
+test("lexicon (#517): a file of exactly 64 KiB keeps its last complete line", async () => {
+  await withLexiconDir(async (dir) => {
+    const exact = "#".repeat(65528) + "\nlatecue";
+    assert.equal(Buffer.byteLength(exact), 65536);
+    await writeFile(join(dir, "frustration.txt"), exact, "utf8");
+    assert.ok(frustrationCues().includes("latecue"), "complete last line of a 64-KiB file was dropped");
+
+    // One byte over the cap: the last line may be cut, so it is dropped.
+    await writeFile(join(dir, "frustration.txt"), exact + "x", "utf8");
+    const over = frustrationCues();
+    assert.ok(!over.includes("latecue") && !over.includes("latecuex"));
   });
 });

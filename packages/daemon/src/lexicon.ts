@@ -18,7 +18,7 @@
  *
  * Location: $BASTRA_LEXICON_DIR, else ~/.bastra/lexicon/<name>.txt.
  */
-import { closeSync, openSync, readSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -63,12 +63,38 @@ const MAX_CUE_LENGTH = 200;
  * line and freezes the daemon for every session meanwhile. A repeated word is
  * still expressible without it (`haha+`, `ha(?:ha)?(?:ha)?`).
  *
- * NOT covered: polynomial blowup from adjacent overlapping repeats without a
- * group — `\w*\w*\w*\w*x` costs ~15 s on a 500-char word run. Closing that
- * needs a matching time limit or a narrower cue grammar, not another pattern
- * check here.
+ * Polynomial blowup from overlapping repeats WITHOUT a group is closed by
+ * {@link tooManyQuantifiers} (#517).
  */
 const RE_QUANTIFIED_GROUP = /\)[+*{]/;
+
+/**
+ * #517: A narrower cue grammar — at most {@link MAX_CUE_QUANTIFIERS}
+ * quantifiers per cue. Overlapping repeats cost about n^k on a word run of
+ * length n with k quantifiers: `\w*\w*\w*\w*x` took 15.6 s on 500 × `a`,
+ * `\w*\w*\w*x` ~1 s on 2,000, `\w*\w*x` 28 ms on 8,000. Recognising which
+ * repeats overlap is the same losing game as above (`\w*a\w*a\w*x` overlaps on
+ * `aaaa…` although a literal separates the repeats), so the budget counts
+ * EVERY quantifier — `*`, `+`, `?` and `{…}` — which also bounds the classic
+ * `a?a?a?…aaa` explosion.
+ *
+ * One exemption keeps multi-word cues writable: `\s+`/`\s*` directly between
+ * two literal letters (`schon\s+wieder`) cannot overlap with its neighbours —
+ * a letter is never whitespace — so it does not count. All shipped defaults
+ * fit this budget.
+ */
+const MAX_CUE_QUANTIFIERS = 2;
+
+function tooManyQuantifiers(cue: string): boolean {
+  const counted = cue
+    // letter-bounded \s+ / \s* — a LITERAL letter, not the `W` of `\W`
+    .replace(/(?<=(?<!\\)\p{L})\\s[+*](?=\p{L})/gu, " ")
+    .replace(/\\./g, "e") // escapes: `\*` is a literal, `\w` one atom
+    .replace(/\[(?:[^\]\\]|\\.)*\]/g, "c"); // a class is one atom
+  // `?` right after `(` is group syntax, after another quantifier it is lazy.
+  const quantifiers = counted.match(/(?<![(*+?}])[*+?]|\{\d/g) ?? [];
+  return quantifiers.length > MAX_CUE_QUANTIFIERS;
+}
 
 /**
  * A cue is a regex fragment, and a hand-edited file's likeliest malformation is
@@ -87,6 +113,7 @@ const RE_QUANTIFIED_GROUP = /\)[+*{]/;
 function isValidCue(cue: string): boolean {
   if (cue.length > MAX_CUE_LENGTH) return false;
   if (RE_QUANTIFIED_GROUP.test(cue)) return false;
+  if (tooManyQuantifiers(cue)) return false;
   try {
     new RegExp(cue, "u");
     new RegExp(`(?<!\\p{L})(?:${cue})(?!\\p{L})`, "u");
@@ -106,14 +133,21 @@ const MAX_LEXICON_BYTES = 64 * 1024;
  * If the file exceeds the cap the read stops at the boundary and the final,
  * possibly half-written line is dropped, so a cue is never truncated into a
  * different (still valid) cue.
+ *
+ * #517: Opened non-blocking and refused unless it is a regular file — a FIFO
+ * at the cue path with no writer blocked `openSync` forever, and the Stop lane
+ * runs inside the daemon. One byte more than the cap is read, so a file of
+ * exactly `max` bytes counts as whole and keeps its last complete line.
  */
 function readCapped(path: string, max: number): string {
-  const fd = openSync(path, "r");
+  // O_NONBLOCK does not exist on Windows, where a FIFO cannot sit at a file path.
+  const fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
   try {
-    const buf = Buffer.alloc(max);
-    const n = readSync(fd, buf, 0, max, 0);
-    const text = buf.toString("utf8", 0, n);
-    if (n < max) return text; // whole file fit under the cap
+    if (!fstatSync(fd).isFile()) throw new Error(`not a regular file: ${path}`);
+    const buf = Buffer.alloc(max + 1);
+    const n = readSync(fd, buf, 0, max + 1, 0);
+    if (n <= max) return buf.toString("utf8", 0, n); // whole file fit under the cap
+    const text = buf.toString("utf8", 0, max);
     const cut = text.lastIndexOf("\n");
     return cut >= 0 ? text.slice(0, cut) : ""; // drop the truncated last line
   } finally {
