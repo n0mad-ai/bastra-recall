@@ -101,6 +101,19 @@ const DATA_SINK_HEREDOC: RegExp[] = [
   /^git\s+commit\b[^|]*\s(?:-F|--file)[=\s]+-(?:\s|$)/,
 ];
 
+/**
+ * The commit form Claude Code itself writes (#630): the value of a #540
+ * message flag is `"$(cat <<'DELIM'` with a single-quoted delimiter and
+ * nothing else inside the substitution. The header must end right after the
+ * delimiter and hold no other `<<`; the body is data only when the line after
+ * the terminator closes the substitution (`)"`) — see stripDataSinkHeredocBodies.
+ * An unquoted delimiter or any other command in the substitution keeps firing.
+ */
+const MESSAGE_SUBST_HEREDOC: RegExp[] = [
+  /^git\s+(?:commit|tag)\b(?:(?!<<)[^|])*\s(?:-[a-zA-Z]*m|--message)(?:\s+|=)"\$\(cat\s+<<-?[ \t]*'[^']*'\s*$/,
+  /^gh\s+(?:issue|pr|release)\b(?:(?!<<)[^|])*\s(?:-[tbn]|--(?:title|body|notes|comment|subject))(?:\s+|=)"\$\(cat\s+<<-?[ \t]*'[^']*'\s*$/,
+];
+
 /** `<<WORD`, `<<-WORD`, `<<'WORD'`, `<<"WORD"`, `<<\WORD` — never `<<<`. */
 const HEREDOC_OP = /<<(?!<)(-?)[ \t]*(?:'([^']*)'|"([^"]*)"|(\\?[A-Za-z_][A-Za-z0-9_.-]*))/g;
 
@@ -112,6 +125,8 @@ interface HeredocSpec {
   stripTabs: boolean;
   /** The consumer of this body is on the data-sink allowlist. */
   sink: boolean;
+  /** #630: the body is a message flag's `"$(cat <<'DELIM' … )"` value. */
+  messageSubst: boolean;
 }
 
 /** The heredocs opened by one physical line, in the order bash reads them. */
@@ -122,7 +137,8 @@ function headerHeredocs(line: string): HeredocSpec[] {
   const piped = line.includes("|");
   const specs: HeredocSpec[] = [];
   for (const segment of line.split(/&&|;/)) {
-    const sink = !piped && DATA_SINK_HEREDOC.some((re) => re.test(segment.trim()));
+    const messageSubst = !piped && MESSAGE_SUBST_HEREDOC.some((re) => re.test(segment.trim()));
+    const sink = messageSubst || (!piped && DATA_SINK_HEREDOC.some((re) => re.test(segment.trim())));
     HEREDOC_OP.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = HEREDOC_OP.exec(segment)) !== null) {
@@ -132,6 +148,7 @@ function headerHeredocs(line: string): HeredocSpec[] {
         quoted: m[2] !== undefined || m[3] !== undefined || word.startsWith("\\"),
         stripTabs: m[1] === "-",
         sink,
+        messageSubst,
       });
     }
   }
@@ -157,15 +174,22 @@ function stripDataSinkHeredocBodies(cmd: string): string {
     kept.push(line);
     for (const spec of headerHeredocs(line)) {
       const body: string[] = [];
+      let terminated = false;
       while (i < lines.length) {
         const raw = lines[i++];
         const candidate = spec.stripTabs ? raw.replace(/^\t+/, "") : raw;
-        if (candidate.trim() === spec.delim) break;
+        if (candidate.trim() === spec.delim) {
+          terminated = true;
+          break;
+        }
         body.push(raw);
       }
+      // #630: a message substitution is data only when it closes right after
+      // the terminator — anything else inside `$(…)` would run.
+      const substClosed = !spec.messageSubst || (terminated && (lines[i] ?? "").startsWith(')"'));
       // An unquoted delimiter expands the body: `$(…)` and backticks in it are
       // executed by the sink's own shell, so that body is a command, not data.
-      const executable = !spec.sink || (!spec.quoted && /\$\(|`/.test(body.join("\n")));
+      const executable = !spec.sink || !substClosed || (!spec.quoted && /\$\(|`/.test(body.join("\n")));
       if (executable) kept.push(...body);
     }
   }

@@ -854,6 +854,41 @@ describe("#540 — the quoted message or body of git and gh is prose, not a comm
     }
   });
 
+  it("#630 does not fire on the `-m \"$(cat <<'EOF' … EOF)\"` form Claude Code writes", () => {
+    for (const cmd of [
+      "git commit -m \"$(cat <<'EOF'\ndocs: explain why rm -rf is blocked\nEOF\n)\"",
+      "cd /repo && git add a.ts && git commit -m \"$(cat <<'EOF'\nfix: never git reset --hard\n\nbody mentions git push --force; DROP TABLE too | sh\n\nCo-Authored-By: X <x@example.com>\nEOF\n)\"",
+      "git commit --message=\"$(cat <<'EOF'\nrm -rf in prose\nEOF\n)\"",
+      "git tag -a v1 -m \"$(cat <<'EOF'\nremoved the rm -rf step\nEOF\n)\"",
+      "gh pr create --title \"tripwire\" --body \"$(cat <<'EOF'\n## Summary\n- rm -rf is still caught\nEOF\n)\"",
+      "git commit -m \"$(cat <<'EOF'\nrm -rf x\nEOF\n)\" && git push origin main",
+    ]) {
+      assert.equal(matchPattern(cmd), null, `must not fire for: ${JSON.stringify(cmd)}`);
+    }
+  });
+
+  it("#630 keeps firing on every other shape of a heredoc substitution", () => {
+    for (const cmd of [
+      // Unquoted delimiter: the body is expanded.
+      'git commit -m "$(cat <<EOF\nrm -rf /tmp/x\nEOF\n)"',
+      // Double-quoted delimiter is outside the released shape.
+      'git commit -m "$(cat <<"EOF"\nrm -rf /tmp/x\nEOF\n)"',
+      // Another command in the substitution.
+      "git commit -m \"$(bash <<'EOF'\nrm -rf /tmp/x\nEOF\n)\"",
+      "git commit -m \"$(cat <<'EOF' | sh\nrm -rf /tmp/x\nEOF\n)\"",
+      "git commit -m \"$(cat <<'EOF'\nrm -rf /tmp/x\nEOF\n| sh)\"",
+      "git commit -m \"$(cat -v <<'EOF'\nrm -rf /tmp/x\nEOF\n)\"",
+      // Not a message flag.
+      "git commit -F \"$(cat <<'EOF'\nrm -rf /tmp/x\nEOF\n)\"",
+      // No terminator.
+      "git commit -m \"$(cat <<'EOF'\nrm -rf /tmp/x\n)\"",
+      // A real command after the substitution closes.
+      "git commit -m \"$(cat <<'EOF'\nx\nEOF\n)\" && rm -rf /tmp/x",
+    ]) {
+      assert.deepEqual(matchPattern(cmd), RM_RF, `must fire for: ${JSON.stringify(cmd)}`);
+    }
+  });
+
   it("#540 the STOP warning still reaches the agent for a disguised command", async () => {
     const daemon = await startMockDaemon((_req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
