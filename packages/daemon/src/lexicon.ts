@@ -22,27 +22,34 @@ import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-// de / en / ru — longer variants first so the same span is not double-counted.
-export const DEFAULT_FRUSTRATION_CUES: readonly string[] = [
-  // de
-  "schon\\s+wieder", "wieder", "wie\\s+oft", "verdammt", "schei(?:ss|ß)e",
-  // en
-  "yet\\s+again", "again", "how\\s+(?:often|many\\s+times)", "damn", "fuck", "shit",
-  // ru
-  "снова", "опять", "сколько\\s+раз", "ч[её]рт", "бл(?:ин|ять)",
-];
+/**
+ * Shipped cue lists keyed by ISO-639-1 code (#678) — a new language is one
+ * entry here, no code change. Every shipped list stays active whatever
+ * `language.primary` says: users mix languages (an English "again" in a German
+ * session), and dropping a list on a settings change would silently lose cues.
+ * A language WITHOUT a list is not left without a signal any more — the stop
+ * lane's language-neutral repeated-correction check covers it.
+ * Within a list, longer variants first so the same span is not double-counted.
+ */
+export const DEFAULT_FRUSTRATION_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: ["schon\\s+wieder", "wieder", "wie\\s+oft", "verdammt", "schei(?:ss|ß)e"],
+  en: ["yet\\s+again", "again", "how\\s+(?:often|many\\s+times)", "damn", "fuck", "shit"],
+  ru: ["снова", "опять", "сколько\\s+раз", "ч[её]рт", "бл(?:ин|ять)"],
+};
 
-export const DEFAULT_DECISION_CUES: readonly string[] = [
-  // de
-  "ok\\s+dann", "lass\\s+uns", "entschieden", "gehen\\s+wir\\s+mit",
-  // en
-  "ok(?:ay)?\\s+then", "let['’]?s\\s+(?:go\\s+with|use)", "we(?:['’]ll|\\s+will)\\s+go\\s+with",
-  "decided", "settled\\s+on",
-  // ru
-  "решено", "остановимся\\s+на", "договорились",
+export const DEFAULT_DECISION_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: ["ok\\s+dann", "lass\\s+uns", "entschieden", "gehen\\s+wir\\s+mit"],
+  en: [
+    "ok(?:ay)?\\s+then", "let['’]?s\\s+(?:go\\s+with|use)", "we(?:['’]ll|\\s+will)\\s+go\\s+with",
+    "decided", "settled\\s+on",
+  ],
+  ru: ["решено", "остановимся\\s+на", "договорились"],
   // language-neutral
-  "final",
-];
+  neutral: ["final"],
+};
+
+export const DEFAULT_FRUSTRATION_CUES: readonly string[] = Object.values(DEFAULT_FRUSTRATION_CUES_BY_LANGUAGE).flat();
+export const DEFAULT_DECISION_CUES: readonly string[] = Object.values(DEFAULT_DECISION_CUES_BY_LANGUAGE).flat();
 
 export function lexiconDir(): string {
   return process.env.BASTRA_LEXICON_DIR ?? join(homedir(), ".bastra", "lexicon");

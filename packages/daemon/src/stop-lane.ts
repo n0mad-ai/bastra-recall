@@ -17,7 +17,9 @@
  *      turns. CAPS words count as cues only when they are >=5 chars or
  *      repeated in a turn AND not a technical acronym (SKILL/JSON/…); CAPS
  *      alone never triggers. Case and word boundaries are Unicode-aware, so
- *      Cyrillic counts the same way Latin does.
+ *      Cyrillic counts the same way Latin does. Languages without a cue list
+ *      (#678): >=2 user turns restating an earlier one, one of them with
+ *      emphasis (`!` or CAPS) — see stop-lane-repeat.ts.
  *   2. Feature-Completion    — a commit signal + >=5 distinct repo-relative
  *      source-file tokens, at least one of which exists under the session
  *      cwd. Three things count as the signal, whoever typed the commit:
@@ -57,6 +59,7 @@ import { envFirst } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { writePendingSuggestion } from "./pending-suggestions.js";
 import { frustrationCues, decisionCues } from "./lexicon.js";
+import { restatementIndices } from "./stop-lane-repeat.js";
 import { getDocsMode, type DocsMode } from "./settings.js";
 import { enqueueForPath } from "./code-graph/service.js";
 import { boundaryNote, type ProvenRead } from "./code-graph/boundary-block.js";
@@ -74,6 +77,7 @@ const HOOK_VERSION = "0.1.0";
 const FRUSTRATION_WINDOW_TURNS = 10;
 const FRUSTRATION_CUE_THRESHOLD = 4;
 const FRUSTRATION_FRUSTWORD_MIN = 2;
+const REPEAT_TURNS_MIN = 2;
 const DECISION_WINDOW_TURNS = 5;
 const FEATURE_FILE_TOKEN_MIN = 5;
 
@@ -660,8 +664,9 @@ function detectFrustration(turns: TranscriptTurn[]): SaveSuggestion | null {
   const totalCues = frustWordCount + capsCueCount;
   // CAPS alone must never trigger: require both enough total cues AND a
   // minimum of genuine frustration words.
-  if (totalCues < FRUSTRATION_CUE_THRESHOLD) return null;
-  if (frustWordCount < FRUSTRATION_FRUSTWORD_MIN) return null;
+  if (totalCues < FRUSTRATION_CUE_THRESHOLD || frustWordCount < FRUSTRATION_FRUSTWORD_MIN) {
+    return detectRepeatedCorrection(userTurns);
+  }
   return {
     heuristic: "frustration-density",
     title: "recurring frustration — capture the underlying lesson",
@@ -670,6 +675,24 @@ function detectFrustration(turns: TranscriptTurn[]): SaveSuggestion | null {
       `in the last ${userTurns.length} user turns. ` +
       `Exemplars: ${exemplars.join(" | ")}. ` +
       `If a concrete recurring pattern surfaced, save a 'lesson' memory that captures the failure path and the fix.`,
+  };
+}
+
+/** #678 language-neutral fallback: >=2 user turns restate an earlier one
+ *  (stop-lane-repeat.ts) and at least one restatement carries emphasis —
+ *  `!`/`！` or a qualifying CAPS token. No word list, so any language fires. */
+function detectRepeatedCorrection(userTurns: TranscriptTurn[]): SaveSuggestion | null {
+  const repeats = restatementIndices(userTurns.map((t) => t.content)).map((i) => userTurns[i].content);
+  if (repeats.length < REPEAT_TURNS_MIN) return null;
+  if (!repeats.some((c) => /[!！]/u.test(c) || countQualifyingCaps(c) > 0)) return null;
+  return {
+    heuristic: "frustration-density",
+    title: "recurring frustration — capture the underlying lesson",
+    type: "lesson",
+    body: `Detected ${repeats.length} user turns restating an earlier request (language-neutral signal) ` +
+      `in the last ${userTurns.length} user turns. ` +
+      `Exemplars: ${repeats.slice(0, 3).map((c) => c.slice(0, 120)).join(" | ")}. ` +
+      `If the user had to repeat a correction, save a 'lesson' memory that captures the failure path and the fix.`,
   };
 }
 
