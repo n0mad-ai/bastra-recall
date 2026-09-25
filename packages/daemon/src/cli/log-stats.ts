@@ -26,6 +26,7 @@ import {
 import { RECALL_BUDGET_MS } from "../hook-budgets.js";
 import { buildContextLedger, type LedgerEvent } from "../context-ledger.js";
 import { isEvalTraffic } from "../telemetry-dimensions.js";
+import { summarizeSessionStart, type ReportEvent, type SessionStartSection } from "../telemetry-report.js";
 
 export {
   releaseVerdicts, releaseGateMet, laneVerdict,
@@ -102,6 +103,9 @@ export interface LogStats {
    *  Graph-Refreshes. Eigene Ereignisse, deshalb eigene Faltung; dieselbe
    *  Faltung, die der UI-Report benutzt (`code-awareness-stats.ts`). */
   codeAwareness: CodeAwarenessStats;
+  /** #512: which part of the session-start injection spends the tokens (#462)
+   *  — the same fold the UI report serves (`summarizeSessionStart`). */
+  sessionStart: SessionStartSection;
 }
 
 export interface SaveStats {
@@ -274,6 +278,7 @@ export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
     // #579: over ALL events — these kinds are not hook calls and would never
     // have reached a filter written for the passive half.
     codeAwareness: aggregateCodeAwareness(events),
+    sessionStart: summarizeSessionStart(events as ReportEvent[]),
     from,
     to,
     lanes,
@@ -367,6 +372,33 @@ function renderByAgent(rows: LaneStats[]): string[] {
   return out;
 }
 
+/**
+ * #512: the per-part session-start section (#462). The fold lived in the UI
+ * report and a dev script only, so the readout the issue documented printed
+ * nothing. One renderer, used by `scripts/stats.ts` too — two copies of the
+ * same section is how this drifted in the first place.
+ */
+export function renderSessionStart(s: SessionStartSection): string[] {
+  if (s.withParts === 0) return [];
+  const out = [
+    `  session start — ${s.starts} start(s), ${s.withParts} with per-part data, ${s.totalTokens} tokens` +
+      (s.withoutParts > 0 ? ` (${s.withoutParts} older start(s) carry only a total)` : ""),
+    `     part          total   share   avg/start  present-in`,
+  ];
+  for (const p of s.parts) {
+    out.push(
+      `     ${p.part.padEnd(12)} ${p.tokens.toString().padStart(6)}  ${pct(p.tokens, s.totalTokens).padStart(6)}  ` +
+        `${p.avgPerStart.toString().padStart(9)}  ${p.presentIn.toString().padStart(4)}/${s.withParts}`,
+    );
+  }
+  out.push(`    avg tokens per part by source:`);
+  for (const row of s.bySource) {
+    const top = row.parts.slice(0, 4).map((p) => `${p.part} ${p.avg}`).join(", ");
+    out.push(`     ${row.source.padEnd(8)} n=${row.n.toString().padStart(3)}  ${top}`);
+  }
+  return out;
+}
+
 function pct(part: number, whole: number): string {
   if (whole === 0) return "—";
   const v = (part / whole) * 100;
@@ -389,6 +421,7 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
     }
     out.push(...renderSaves(stats.saves));
     out.push(...renderHintSuppression(stats.hintSuppression));
+    out.push(...renderSessionStart(stats.sessionStart));
     // #579: a window can hold tool calls and refreshes without a single hook
     // lane call — an agent that only ever asks `find_code` produces exactly
     // that, and the old early return dropped its whole readout.
@@ -465,6 +498,11 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
   if (suppressionLines.length > 0) {
     out.push("");
     out.push(...suppressionLines);
+  }
+  const sessionStartLines = renderSessionStart(stats.sessionStart);
+  if (sessionStartLines.length > 0) {
+    out.push("");
+    out.push(...sessionStartLines);
   }
   out.push(...renderCodeRoi(stats.codeRoi));
   out.push(...renderCodeAwareness(stats.codeAwareness));
