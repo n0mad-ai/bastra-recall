@@ -84,6 +84,10 @@ async function exists(p: string): Promise<boolean> {
   }
 }
 
+/** Obergrenze für das Backfill eines kalten Stores — ein hängender Provider
+ *  soll scheitern, nicht warten (wie im Goldset-Lauf). */
+const BACKFILL_TIMEOUT_MS = 15 * 60 * 1000;
+
 /**
  * Den Vektorarm anhängen, ohne den produktiven Store anzufassen.
  *
@@ -91,6 +95,11 @@ async function exists(p: string): Promise<boolean> {
  * verändern, was sie misst. Gibt es keinen Store, wird er in der Kopie
  * aufgebaut — das kostet einmal Embedding-Zeit und lässt die Produktion in
  * Ruhe.
+ *
+ * Und dasselbe Bereitschafts-Tor (#433): erst eine Provider-Probe, dann
+ * warten, bis JEDES Memory einen Vektor trägt. Das Backfill läuft asynchron,
+ * und `recallHybrid()` fällt bei leerem Arm still auf BM25 zurück — ohne das
+ * Warten wären die ersten Selbsttests lexikalisch gewesen.
  */
 async function attachVectors(
   vault: Vault,
@@ -103,13 +112,41 @@ async function attachVectors(
   });
   const tmpRoot = await mkdtemp(join(tmpdir(), "bastra-cue-batch-"));
   const persistPath = join(tmpRoot, "embeddings.json");
-  const cleanup = (): Promise<void> => rm(tmpRoot, { recursive: true, force: true });
+  const removeTmp = (): Promise<void> => rm(tmpRoot, { recursive: true, force: true });
 
   const production = join(vault.root, ".bastra", "embeddings.json");
   if (await exists(production)) await copyFile(production, persistPath);
 
+  // EmbeddingIndex.start() schluckt Provider-Fehler und versucht es weiter;
+  // ein unerreichbarer Provider zeigte sich sonst erst als Timeout.
+  try {
+    await provider.embed(["probe"]);
+  } catch (e) {
+    await removeTmp();
+    throw new Error(`Embedding-Provider nicht erreichbar: ${(e as Error).message}`);
+  }
+
   const idx = new EmbeddingIndex(vault, provider, persistPath);
+  const cleanup = async (): Promise<void> => {
+    await idx.stop();
+    await removeTmp();
+  };
   await idx.start();
+  const want = vault.size();
+  const deadline = Date.now() + BACKFILL_TIMEOUT_MS;
+  let loaded = idx.size();
+  while (loaded < want && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 500));
+    const now = idx.size();
+    if (now !== loaded) console.error(`${TAG} embedding ${now}/${want}…`);
+    loaded = now;
+  }
+  if (loaded < want) {
+    await cleanup();
+    throw new Error(
+      `nur ${loaded}/${want} Memories tragen einen Vektor — ein Teil-Arm ist kein semantischer Selbsttest`,
+    );
+  }
   search.useEmbeddings(idx);
   if (!search.hasEmbeddings()) {
     await cleanup();
@@ -152,8 +189,25 @@ async function main(): Promise<void> {
 
   // Der Selbsttest: Holt der Cue sein eigenes Memory zurück, und auf welchem
   // Rang? Der Rang trägt die Konfidenz — siehe `confidenceFromRank`.
+  // Fällt der Vektorarm unterwegs weg, meldet `recallHybrid` das nur über
+  // `done.meta.degraded` — dann ist dieser Rang lexikalisch (#433). Der Wurf
+  // verwirft die Cues dieses Memorys (der Sweep zählt ihn als Fehlschlag und
+  // bremst nach mehreren in Folge); `armLost` sorgt dafür, dass der Lauf am
+  // Ende scheitert, statt ein Sidecar als semantisch geprüft abzuliefern.
+  let armLost: string | undefined;
   const selfTest: CueSelfTest = async (cue, memoryId) => {
-    const hits = await search.recallHybrid(cue, { k: selfTestK });
+    let degraded: string | undefined;
+    const hits = await search.recallHybrid(cue, {
+      k: selfTestK,
+      onStage: (s) => {
+        const reason = s.name === "done" ? s.meta?.degraded : undefined;
+        if (typeof reason === "string") degraded = reason;
+      },
+    });
+    if (degraded !== undefined) {
+      armLost ??= degraded;
+      throw new Error(`der Vektorarm ist auf BM25 zurückgefallen (${degraded}) — Selbsttest nicht semantisch`);
+    }
     const at = hits.findIndex((h) => h.id === memoryId);
     return { rank: at === -1 ? null : at + 1 };
   };
@@ -181,6 +235,9 @@ async function main(): Promise<void> {
         written++;
       },
     });
+    if (armLost !== undefined) {
+      throw new Error(`der Vektorarm ist während des Laufs ausgefallen (${armLost}) — kein Sidecar geschrieben`);
+    }
     if (!dryRun) await rename(partial, out);
     console.error(`${TAG} ${JSON.stringify(report)}`);
     console.error(`${TAG} ${dryRun ? "dry-run, nichts geschrieben" : `${written} Cues → ${out}`}`);
