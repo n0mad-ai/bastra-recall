@@ -30,7 +30,12 @@ npm run build
 node packages/daemon/dist/cli.js install all --vault /absolute/path/to/your/vault
 ```
 
-### Optional: code awareness (third-party tool)
+### Optional: code awareness (experimental, third-party tool)
+
+Code awareness is experimental. It can help an agent find its way into an
+unfamiliar or large repository. For “what breaks if I change this” it measurably
+did not beat plain search on repositories like ours, and it costs context (the
+dependents block before edits) and background CPU (graph refreshes).
 
 `bastra install` asks once whether to enable code awareness. Saying yes installs
 [Graphify](https://github.com/Graphify-Labs/graphify) (PyPI package `graphifyy`,
@@ -80,7 +85,13 @@ npm run build
 node packages/daemon/dist/cli.js install all --vault /absoluter/pfad/zu/deinem/vault
 ```
 
-### Optional: Code-Awareness (Drittanbieter-Werkzeug)
+### Optional: Code-Awareness (experimentell, Drittanbieter-Werkzeug)
+
+Code-Awareness ist experimentell. Sie kann einem Agenten helfen, sich in einem
+unbekannten oder großen Repository zurechtzufinden. Bei „was geht kaputt, wenn
+ich das ändere?“ war sie auf Repositories wie unserem messbar nicht besser als
+eine einfache Suche, und sie kostet Kontext (der Block mit abhängigen Dateien
+vor Änderungen) und Rechenzeit im Hintergrund (Aktualisieren der Karte).
 
 `bastra install` fragt einmal, ob Code-Awareness eingeschaltet werden soll. Bei
 Ja wird [Graphify](https://github.com/Graphify-Labs/graphify) (PyPI-Paket

@@ -207,7 +207,7 @@ Document read tools:
 | `read_document` | Load document sidecar metadata and extracted body |
 | `open_document` | macOS-only open of the original file or sidecar |
 
-Code-awareness read tool (#576):
+Code-awareness read tool (#576; experimental, see #667):
 
 | Tool | Purpose |
 |---|---|
@@ -495,7 +495,7 @@ Werkzeuge zum Lesen von Dokumenten:
 | `read_document` | Metadaten und extrahierten Body eines Dokument-Sidecars laden |
 | `open_document` | Nur macOS: Originaldatei oder Sidecar öffnen |
 
-Werkzeug für Code-Awareness (#576):
+Werkzeug für Code-Awareness (#576; experimentell, siehe #667):
 
 | Werkzeug | Zweck |
 |---|---|

@@ -105,9 +105,9 @@ A project decision made on Monday should still be available on Thursday, even if
 
 [Examples from a working week](./docs/USAGE.md#cookbook) show how these fit together.
 
-### Code awareness
+### Code awareness (experimental)
 
-Optional, off until you switch it on per repository with `bastra code enable`. Recall then tells your assistant, before it edits a file, which other files import or call into it — and adds a `find_code` lookup so a symbol can be found by name instead of grepped for. The code map is built locally by [Graphify](https://github.com/Graphify-Labs/graphify), reads only code, is never committed, and no language model ever sees your source. [How to use it](./docs/USAGE.md#code-awareness--what-depends-on-the-file-you-are-editing). macOS and Linux for now.
+Experimental, optional, off until you switch it on per repository with `bastra code enable`. Recall then tells your assistant, before it edits a file, which other files import or call into it — and adds a `find_code` lookup so a symbol can be found by name instead of grepped for. The code map is built locally by [Graphify](https://github.com/Graphify-Labs/graphify), reads only code, is never committed, and no language model ever sees your source. It can help an agent find its way into an unfamiliar or large repository; for “what breaks if I change this” it measurably did not beat plain search on repositories like ours, and it costs context and background CPU. [How to use it](./docs/USAGE.md#code-awareness--what-depends-on-the-file-you-are-editing). macOS and Linux for now.
 
 ### Privacy and control
 
@@ -236,9 +236,9 @@ Eine Projektentscheidung vom Montag soll am Donnerstag noch verfügbar sein, auc
 
 [Beispiele aus einer Arbeitswoche](./docs/USAGE.md#kochbuch) zeigen das Zusammenspiel.
 
-### Code-Awareness
+### Code-Awareness (experimentell)
 
-Optional und standardmäßig aus; pro Repository mit `bastra code enable` einzuschalten. Recall sagt deinem Assistenten dann vor einer Dateiänderung, welche anderen Dateien sie importieren oder aufrufen — dazu kommt `find_code`, das ein Symbol beim Namen findet, statt danach zu suchen. Die Code-Karte baut [Graphify](https://github.com/Graphify-Labs/graphify) lokal, sie liest ausschließlich Code, wird nie committet, und kein Sprachmodell sieht deinen Quelltext. [Wie du sie nutzt](./docs/USAGE.md#code-awareness--was-von-der-datei-abhängt-die-du-gerade-bearbeitest). Vorerst macOS und Linux.
+Experimentell, optional und standardmäßig aus; pro Repository mit `bastra code enable` einzuschalten. Recall sagt deinem Assistenten dann vor einer Dateiänderung, welche anderen Dateien sie importieren oder aufrufen — dazu kommt `find_code`, das ein Symbol beim Namen findet, statt danach zu suchen. Die Code-Karte baut [Graphify](https://github.com/Graphify-Labs/graphify) lokal, sie liest ausschließlich Code, wird nie committet, und kein Sprachmodell sieht deinen Quelltext. Sie kann einem Agenten helfen, sich in einem unbekannten oder großen Repository zurechtzufinden; bei „was geht kaputt, wenn ich das ändere?“ war sie auf Repositories wie unserem messbar nicht besser als eine einfache Suche, und sie kostet Kontext und Rechenzeit im Hintergrund. [Wie du sie nutzt](./docs/USAGE.md#code-awareness--was-von-der-datei-abhängt-die-du-gerade-bearbeitest). Vorerst macOS und Linux.
 
 ### Datenschutz und Kontrolle
 

@@ -21,6 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Code awareness is marked experimental** wherever you meet it (#667): the
+  `bastra install` prompt, `bastra code enable`, `bastra code --help`, the doctor
+  features section, `bastra logs --stats`, the UI telemetry section and the docs.
+  They say what it can help with (finding the way into an unfamiliar or large
+  repository) and what not (“what breaks if I change this” did not beat plain
+  search on our repositories; it costs context and background CPU). Still
+  opt-in per repository and off by default; no behaviour change.
 - **The pending relay has two lanes** (#513). What the last session raised is
   still shown once at the next start and then gone (`recency`). What keeps
   coming up — today the taxonomy-drift block — now sits in a `trends` lane: it

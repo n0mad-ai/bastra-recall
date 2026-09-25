@@ -152,6 +152,12 @@ Completes subcommands, surfaces (`install <TAB>` → `claude-code`, `cursor`, �
 
 ### Code awareness — what depends on the file you are editing
 
+> **Experimental.** Code awareness uses Graphify to build a code map of a
+> repository. It can help an agent find its way into an unfamiliar or large
+> repository. For “what breaks if I change this” it measurably did not beat
+> plain search on repositories like ours, and it costs context (the dependents
+> block before edits) and background CPU (graph refreshes).
+
 Off until you turn it on, per repository:
 
 ```bash
@@ -382,6 +388,13 @@ bastra completion fish > ~/.config/fish/completions/bastra.fish
 Vervollständigt Subcommands, Surfaces (`install <TAB>` → `claude-code`, `cursor`, …) und Flags. Danach eine neue Shell starten.
 
 ### Code-Awareness — was von der Datei abhängt, die du gerade bearbeitest
+
+> **Experimentell.** Code-Awareness baut mit Graphify eine Code-Karte eines
+> Repositories. Sie kann einem Agenten helfen, sich in einem unbekannten oder
+> großen Repository zurechtzufinden. Bei „was geht kaputt, wenn ich das
+> ändere?“ war sie auf Repositories wie unserem messbar nicht besser als eine
+> einfache Suche, und sie kostet Kontext (der Block mit abhängigen Dateien vor
+> Änderungen) und Rechenzeit im Hintergrund (Aktualisieren der Karte).
 
 Standardmäßig aus, und pro Repository einzuschalten:
 
