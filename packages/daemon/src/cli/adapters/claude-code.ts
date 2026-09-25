@@ -24,6 +24,7 @@ import {
   buildServerBlock,
   existingToolSurface,
   serverBlockEndpoint,
+  foreignEnv,
   fileExists,
   getServersBlock,
   probeDaemon,
@@ -32,7 +33,7 @@ import {
 } from "../helpers.js";
 import { copySkill, describeSkillInstall, inspectSkillInstall } from "../skill.js";
 import { checkForwarderRegistration, ensureStableForwarder, mapBinToStableRuntime } from "../stable-runtime.js";
-import { fileOf, slashes } from "./command-paths.js";
+import { existingHookWrapper, fileOf, slashes, type HookWrapper } from "./command-paths.js";
 import type { Adapter, DoctorResult, InstallOpts, InstallResult, UninstallResult } from "../types.js";
 
 // ─── Hook helpers (claude-code-only surface) ─────────────────────
@@ -110,11 +111,14 @@ export function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[]
 function buildHookEntry(
   def: HookDef,
   stubPresent: boolean = existsSync(HOOK_STUB_BIN),
+  wrap: HookWrapper = { prefix: "", suffix: "" },
 ): Record<string, unknown> {
-  const command =
+  const runner =
     def.stubSubcommand && stubPresent
       ? `${HOOK_STUB_BIN} ${def.stubSubcommand}`
       : `node ${def.bin}`;
+  // #647: a user's wrapper around the runner survives the rewrite.
+  const command = `${wrap.prefix}${runner}${wrap.suffix}`;
   const entry: Record<string, unknown> = {};
   if (def.matcher) entry.matcher = def.matcher;
   entry.hooks = [{
@@ -353,6 +357,15 @@ export function planHookEntries(
   const defs = hookDefinitions({ includeStop: opts.includeStop }).map(withBin);
   const stopDef = withBin(STOP_HOOK_DEF);
   const stubPresent = opts.stubPresent ?? existsSync(HOOK_STUB_BIN);
+  // #647: what wraps our runner for this lane today, kept on the rebuilt entry.
+  const wrapOf = (def: HookDef): HookWrapper =>
+    existingHookWrapper(
+      Array.isArray(hooks[def.event]) ? (hooks[def.event] as unknown[]) : [],
+      def.matcher,
+      fileOf(def.bin),
+      def.stubSubcommand,
+      isOurHookEntry,
+    );
 
   // Per event: keep all foreign entries, append our (possibly re-built) entries.
   const before: Record<HookEventName, unknown[]> = {} as Record<HookEventName, unknown[]>;
@@ -371,13 +384,13 @@ export function planHookEntries(
     // is re-built from the current def, in place; foreign ones stay verbatim.
     if (action === "install" && !opts.includeStop && ev === "Stop") {
       stopPreserved = cur.some((m) => isOurHookEntry(m));
-      after[ev] = cur.map((m) => (isOurHookEntry(m) ? buildHookEntry(stopDef, stubPresent) : m));
+      after[ev] = cur.map((m) => (isOurHookEntry(m) ? buildHookEntry(stopDef, stubPresent, wrapOf(stopDef)) : m));
     } else {
       after[ev] = cur.filter((m) => !isOurHookEntry(m));
     }
   }
   if (action === "install") {
-    for (const def of defs) after[def.event].push(buildHookEntry(def, stubPresent));
+    for (const def of defs) after[def.event].push(buildHookEntry(def, stubPresent, wrapOf(def)));
   }
   return { before, after, stopPreserved };
 }
@@ -592,6 +605,8 @@ async function claudeCodeInstall(opts: InstallOpts): Promise<InstallResult> {
     // #531: the configured endpoint, or the one this registration already
     // carries — a GUI client inherits no shell export.
     serverBlockEndpoint(servers[SERVER_KEY]),
+    // #647: env keys the user added (BASTRA_FORWARDER_SPAWN=0, …) survive.
+    foreignEnv(servers[SERVER_KEY]),
   );
 
   const mcpMatches = blocksMatch(servers[SERVER_KEY], block);

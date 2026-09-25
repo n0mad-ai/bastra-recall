@@ -30,6 +30,7 @@ import {
   buildServerBlock,
   existingToolSurface,
   serverBlockEndpoint,
+  foreignEnv,
   fileExists,
   probeDaemon,
   readJsonConfig,
@@ -40,7 +41,7 @@ import { PLAN_TOOL_KEY, ensureCodexPlanTool, inspectPlanTool } from "./codex-pla
 import { findCodexExecutable, codexMcpGet, codexServerMatches } from "../codex-cli.js";
 import { runCaptured } from "../exec.js";
 import { checkForwarderRegistration, ensureStableForwarder, mapBinToStableRuntime } from "../stable-runtime.js";
-import { fileOf, slashes } from "./command-paths.js";
+import { existingHookWrapper, fileOf, slashes, type HookWrapper } from "./command-paths.js";
 import type { Adapter, DoctorResult, InstallOpts, InstallResult, UninstallResult } from "../types.js";
 
 type HookEvent = "SessionStart" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "Stop";
@@ -91,15 +92,22 @@ function shellToken(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-function hookEntry(def: CodexHookDef, stubPresent = existsSync(HOOK_STUB_BIN)): Record<string, unknown> {
+function hookEntry(
+  def: CodexHookDef,
+  stubPresent = existsSync(HOOK_STUB_BIN),
+  wrap: HookWrapper = { prefix: "", suffix: "" },
+): Record<string, unknown> {
   const runner = stubPresent
     ? `${shellToken(HOOK_STUB_BIN)} ${def.stubSubcommand}`
     : `node ${shellToken(def.bin)}`;
+  // #647: a user's wrapper around the runner survives the rewrite. The client
+  // marker is ours and is written fresh, so it is taken out of the kept prefix.
+  const prefix = wrap.prefix.replace("BASTRA_HOOK_CLIENT=codex ", "");
   const entry: Record<string, unknown> = {};
   if (def.matcher) entry.matcher = def.matcher;
   entry.hooks = [{
     type: "command",
-    command: `BASTRA_HOOK_CLIENT=codex ${runner}`,
+    command: `${prefix}BASTRA_HOOK_CLIENT=codex ${runner}${wrap.suffix}`,
     timeout: def.timeout,
     statusMessage: `Bastra Recall · ${def.label}`,
   }];
@@ -138,6 +146,15 @@ export function planCodexHooks(
   const defs = codexHookDefinitions(opts.includeStop).map(map);
   const stopDef = map(STOP_DEF);
   const stubPresent = opts.stubPresent ?? existsSync(HOOK_STUB_BIN);
+  // #647: what wraps our runner for this lane today, kept on the rebuilt entry.
+  const wrapOf = (def: CodexHookDef): HookWrapper =>
+    existingHookWrapper(
+      Array.isArray(hooks[def.event]) ? hooks[def.event] as unknown[] : [],
+      def.matcher,
+      fileOf(def.bin),
+      def.stubSubcommand,
+      isOurHookEntry,
+    );
   const before = {} as Record<HookEvent, unknown[]>;
   const after = {} as Record<HookEvent, unknown[]>;
   let stopPreserved = false;
@@ -147,13 +164,13 @@ export function planCodexHooks(
     before[event] = current;
     if (action === "install" && !opts.includeStop && event === "Stop") {
       stopPreserved = current.some(isOurHookEntry);
-      after[event] = current.map((entry) => isOurHookEntry(entry) ? hookEntry(stopDef, stubPresent) : entry);
+      after[event] = current.map((entry) => isOurHookEntry(entry) ? hookEntry(stopDef, stubPresent, wrapOf(stopDef)) : entry);
     } else {
       after[event] = current.filter((entry) => !isOurHookEntry(entry));
     }
   }
   if (action === "install") {
-    for (const def of defs) after[def.event].push(hookEntry(def, stubPresent));
+    for (const def of defs) after[def.event].push(hookEntry(def, stubPresent, wrapOf(def)));
   }
   return { before, after, stopPreserved };
 }
@@ -277,6 +294,8 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
     existingToolSurface(current.server?.transport) ?? undefined,
     // #531 — same endpoint contract as the file-backed adapters.
     serverBlockEndpoint(current.server?.transport),
+    // #647: env keys the user added (BASTRA_FORWARDER_SPAWN=0, …) survive.
+    foreignEnv(current.server?.transport),
   );
   const mcpMatches = codexServerMatches(current.server, target);
 

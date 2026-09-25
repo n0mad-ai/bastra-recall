@@ -62,8 +62,10 @@ export function buildServerBlock(
   forwarderPath: string = FORWARDER_SCRIPT_PATH,
   surface: ToolSurface = INSTALL_TOOL_SURFACE,
   daemonUrl: string | null = null,
+  keptEnv: Record<string, string> = {},
 ): McpServerBlock {
   const env: Record<string, string> = {
+    ...keptEnv,
     BASTRA_VAULT_PATH: vaultPath,
     BASTRA_TOOL_SURFACE: surface,
   };
@@ -74,6 +76,33 @@ export function buildServerBlock(
   // ordinary single-daemon registration stays as short as it was.
   if (daemonUrl !== null) env.BASTRA_DAEMON_URL = daemonUrl;
   return { command: "node", args: [forwarderPath], env };
+}
+
+/** The env keys the installer writes and therefore owns (#647) — with their
+ *  legacy NEXUS_* names, which a reinstall has always cleaned out. */
+const OWNED_ENV_KEYS = new Set(
+  ["VAULT_PATH", "TOOL_SURFACE", "DAEMON_URL"].flatMap((k) => [`BASTRA_${k}`, `NEXUS_${k}`]),
+);
+
+/**
+ * Every env key of an existing registration the installer does not own (#647).
+ *
+ * The rewrite used to build the block from scratch, so a re-install silently
+ * dropped whatever else the user had put there. Measured on a contributor's
+ * Mac: `BASTRA_FORWARDER_SPAWN=0` (daemon on another host, reached through an
+ * ssh tunnel) vanished, and while the tunnel was down the forwarder spawned a
+ * local daemon on a stale mirror. Install replaces what it owns and keeps the
+ * rest. Accepts the JSON server block and Codex's `transport` alike.
+ */
+export function foreignEnv(existing: unknown): Record<string, string> {
+  if (typeof existing !== "object" || existing === null) return {};
+  const env = (existing as { env?: unknown }).env;
+  if (typeof env !== "object" || env === null) return {};
+  const kept: Record<string, string> = {};
+  for (const [k, v] of Object.entries(env as Record<string, unknown>)) {
+    if (!OWNED_ENV_KEYS.has(k) && typeof v === "string") kept[k] = v;
+  }
+  return kept;
 }
 
 /**
