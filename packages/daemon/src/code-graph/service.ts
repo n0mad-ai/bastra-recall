@@ -59,7 +59,7 @@ export function codeGraphRefresher(): CodeGraphRefresher {
   return refresher;
 }
 
-// ─── Refresh telemetry (#589) ────────────────────────────────────
+// ─── Refresh telemetry (#579) ────────────────────────────────────
 
 /**
  * How long a repository was behind: wall clock from the `started` row to the

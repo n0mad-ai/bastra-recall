@@ -1,5 +1,5 @@
 /**
- * The code-awareness readout, computed ONCE for both surfaces (#589).
+ * The code-awareness readout, computed ONCE for both surfaces (#579).
  *
  * WHY ONE MODULE. Daniel's standing rule is that every figure in
  * `bastra logs --stats` has to appear in the UI telemetry in the same change.

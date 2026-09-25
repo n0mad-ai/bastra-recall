@@ -1,5 +1,5 @@
 /**
- * #589 — code awareness, both halves. Split out of telemetry-view.js under
+ * #579 — code awareness, both halves. Split out of telemetry-view.js under
  * #601 once that file reached the size ceiling — this section is a coherent
  * unit on its own (one question, one report object) and was already set off
  * by its own heading comment there.

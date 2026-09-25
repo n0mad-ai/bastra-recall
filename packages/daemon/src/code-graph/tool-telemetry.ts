@@ -1,5 +1,5 @@
 /**
- * One telemetry row per `find_code` / `find_affected_files` call (#589).
+ * One telemetry row per `find_code` / `find_affected_files` call (#579).
  *
  * WHY THIS WAS MISSING AND WHY IT MATTERS. The dependents block that the
  * Write/Edit lane injects has been counted since #579 (`log-stats-code.ts`),

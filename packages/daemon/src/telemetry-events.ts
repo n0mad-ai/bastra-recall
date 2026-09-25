@@ -950,7 +950,7 @@ export type {
   VectorLateSettleEvent,
 } from "./telemetry-events-embedding.js";
 
-// #589: dasselbe für die Code-Awareness-Zeilen.
+// #579: dasselbe für die Code-Awareness-Zeilen.
 export type {
   CodeToolCallEvent,
   CodeGraphRefreshEvent,

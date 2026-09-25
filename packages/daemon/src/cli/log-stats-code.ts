@@ -26,9 +26,9 @@
  */
 
 /**
- * WHAT #589 ADDED. The block above is the PASSIVE half — what the Write/Edit
+ * WHAT #579 ADDED. The block above is the PASSIVE half — what the Write/Edit
  * lane injected without being asked. The two tools an agent calls ON PURPOSE
- * (`find_code`, `find_affected_files`) wrote nothing at all until #589, so
+ * (`find_code`, `find_affected_files`) wrote nothing at all until #579, so
  * "nobody calls code awareness" and "code awareness answers nothing" were the
  * same empty log, and the `unavailable` cases — off, not indexed, still
  * loading, refused — were indistinguishable from each other and from silence.
@@ -226,7 +226,7 @@ export function renderCodeRoi(s: CodeRoiStats): string[] {
 }
 
 /**
- * The ACTIVE half (#589): the two tools an agent calls, and the refreshes that
+ * The ACTIVE half (#579): the two tools an agent calls, and the refreshes that
  * keep their answers current.
  *
  * Silent when the window holds no code-awareness event, for the same reason

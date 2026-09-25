@@ -132,7 +132,7 @@ export async function dispatchApi(
       if (!parsed.success) throw new Error(parsed.error.message);
       const cache = sharedCodeGraphCache();
       const result = findCode(cache, parsed.data);
-      // #589: same row as the MCP path, with the caller session this surface
+      // #579: same row as the MCP path, with the caller session this surface
       // knows and the other one does not.
       void toolDeps.telemetry
         .logCodeToolCall(

@@ -1,5 +1,5 @@
 /**
- * The Code-awareness section of the UI telemetry report (#589).
+ * The Code-awareness section of the UI telemetry report (#579).
  *
  * Both halves in one object, because the tab has to answer one question —
  * "is code awareness doing anything, and is it doing it well?" — and the halves

@@ -860,7 +860,7 @@ export class Telemetry {
   }
 
   /**
-   * #589: one row per `find_code` / `find_affected_files` call.
+   * #579: one row per `find_code` / `find_affected_files` call.
    *
    * The two tools wrote nothing until now, so "nobody calls code awareness" and
    * "code awareness answers nothing" were the same empty log. Shapes only —
@@ -879,7 +879,7 @@ export class Telemetry {
     });
   }
 
-  /** #589: one row per graph refresh run — `started` plus its terminal outcome. */
+  /** #579: one row per graph refresh run — `started` plus its terminal outcome. */
   async logCodeGraphRefresh(
     payload: Omit<CodeGraphRefreshEvent, "kind" | "ts" | "session_id">,
   ): Promise<void> {

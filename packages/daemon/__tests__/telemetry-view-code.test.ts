@@ -1,5 +1,5 @@
 /**
- * The Telemetry tab must be able to name every `unavailable` reason (#589).
+ * The Telemetry tab must be able to name every `unavailable` reason (#579).
  *
  * The tab turns a reason code into a sentence a human can act on. A code with no
  * entry falls back to the raw token, which is not wrong but is exactly the kind

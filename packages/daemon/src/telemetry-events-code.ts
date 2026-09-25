@@ -1,5 +1,5 @@
 /**
- * Code-awareness telemetry shapes (#589) — the rows the code graph writes.
+ * Code-awareness telemetry shapes (#579) — the rows the code graph writes.
  *
  * Their own module for the same reason the embedding events got one: types
  * only, and `telemetry-events.ts` is long past the file-size ceiling.

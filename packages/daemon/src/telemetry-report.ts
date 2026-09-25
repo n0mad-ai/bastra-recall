@@ -760,7 +760,7 @@ export interface TelemetryReport {
   saves: SaveSection | null;
   /** #479: live cross-session noise removed from automatic hook injection. */
   hintSuppression: HintSuppressionSection | null;
-  /** #589: code awareness — the tools that were called and the blocks that
+  /** #579: code awareness — the tools that were called and the blocks that
    *  were injected. Null while the window saw neither. */
   codeAwareness: CodeAwarenessSection | null;
   sessionStart: SessionStartSection;

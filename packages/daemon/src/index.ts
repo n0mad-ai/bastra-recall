@@ -829,7 +829,7 @@ async function main(): Promise<void> {
       if (!parsed.success) return errorResult(parsed.error.message);
       const cache = sharedCodeGraphCache();
       const result = findCode(cache, parsed.data);
-      // #589: the call itself, as a countable shape. Never awaited — a
+      // #579: the call itself, as a countable shape. Never awaited — a
       // telemetry write must not sit inside a tool the hook budget depends on.
       void toolDeps.telemetry
         .logCodeToolCall(findCodeEvent(cache, parsed.data, result, { surface: "mcp" }))

@@ -1,5 +1,5 @@
 /**
- * The row a `find_code` / `find_affected_files` call leaves behind (#589).
+ * The row a `find_code` / `find_affected_files` call leaves behind (#579).
  *
  * Two things are load-bearing and neither is arithmetic:
  *

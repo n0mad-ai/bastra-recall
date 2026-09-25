@@ -68,7 +68,7 @@ export function startBackgroundJobs(deps: BackgroundJobDeps): void {
 // graph must not keep the daemon from booting, and the feature is optional by
 // contract (C-090 is a release obligation, not a runtime one).
 function startCodeGraph(deps: BackgroundJobDeps): void {
-  // #589: every refresh run leaves a row — reason, outcome, how long the
+  // #579: every refresh run leaves a row — reason, outcome, how long the
   // repository was behind. Without it the graph's freshness was visible only
   // as a stale marker on a block that happened to be injected.
   observeCodeGraphRefresh((row) => {

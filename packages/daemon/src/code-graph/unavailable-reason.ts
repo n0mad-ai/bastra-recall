@@ -1,5 +1,5 @@
 /**
- * The machine-readable twin of `unavailable-note.ts` (#589).
+ * The machine-readable twin of `unavailable-note.ts` (#579).
  *
  * The note tells the AGENT what to do next, in a sentence. Telemetry needs the
  * same distinction as a token it can count: "unavailable" collapses four very

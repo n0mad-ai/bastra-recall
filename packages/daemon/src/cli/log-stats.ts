@@ -98,7 +98,7 @@ export interface LogStats {
    *  Getrennt geführt, weil `hint_tokens_est` das ganze injizierte Dokument
    *  zählt und Code- von Memory-Kontext nicht unterscheidbar wäre. */
   codeRoi: CodeRoiStats;
-  /** #589: die aktive Hälfte — `find_code`/`find_affected_files` und die
+  /** #579: die aktive Hälfte — `find_code`/`find_affected_files` und die
    *  Graph-Refreshes. Eigene Ereignisse, deshalb eigene Faltung; dieselbe
    *  Faltung, die der UI-Report benutzt (`code-awareness-stats.ts`). */
   codeAwareness: CodeAwarenessStats;
@@ -271,7 +271,7 @@ export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
     codeRoi: aggregateCodeRoi(
       events.filter((e) => e.kind === "hook_call") as Array<Record<string, unknown>>,
     ),
-    // #589: over ALL events — these kinds are not hook calls and would never
+    // #579: over ALL events — these kinds are not hook calls and would never
     // have reached a filter written for the passive half.
     codeAwareness: aggregateCodeAwareness(events),
     from,
@@ -389,7 +389,7 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
     }
     out.push(...renderSaves(stats.saves));
     out.push(...renderHintSuppression(stats.hintSuppression));
-    // #589: a window can hold tool calls and refreshes without a single hook
+    // #579: a window can hold tool calls and refreshes without a single hook
     // lane call — an agent that only ever asks `find_code` produces exactly
     // that, and the old early return dropped its whole readout.
     out.push(...renderCodeAwareness(stats.codeAwareness));

@@ -1,5 +1,5 @@
 /**
- * The code-awareness readout (#589) — the ACTIVE half.
+ * The code-awareness readout (#579) — the ACTIVE half.
  *
  * What is worth holding down here is the same thing #579 pinned for the passive
  * half: the readout must not turn silence into a claim. Specifically —
