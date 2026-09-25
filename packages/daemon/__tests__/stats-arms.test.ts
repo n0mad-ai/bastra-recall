@@ -224,7 +224,7 @@ test("#437: the JSON/web telemetry report publishes no arm rate at all", () => {
   // und muss die Prüfung mitbringen.
   const events = underpoweredLog();
   const report = buildTelemetryReport(
-    { events: events as never[], files: 1, from: "2026-09-10T10:00:00.000Z", to: "2026-09-10T10:00:05.000Z" },
+    { events: events as never[], files: 1, from: "2026-09-10T10:00:00.000Z", to: "2026-09-10T10:00:05.000Z", excludedEval: 0, foldedDuplicates: 0 },
     7,
     { mustLoadScore: 100, scoreFloor: 30 },
     7,

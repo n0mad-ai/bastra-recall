@@ -214,7 +214,7 @@ describe("code awareness: the two readouts", () => {
 
   it("reaches the UI report next to the other sections", () => {
     const report = buildTelemetryReport(
-      { events: [toolCall(), refresh()] as never, files: 1, from: null, to: null },
+      { events: [toolCall(), refresh()] as never, files: 1, from: null, to: null, excludedEval: 0, foldedDuplicates: 0 },
       7,
       { mustLoadScore: 100, scoreFloor: 30 },
       30,
