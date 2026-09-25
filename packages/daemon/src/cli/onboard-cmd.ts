@@ -5,7 +5,8 @@
  * memories. `onboard skip` just sets the marker (stop nudging); `onboard
  * done` is what an AI session runs after finishing the interview itself.
  */
-import { createInterface } from "node:readline/promises";
+import { createInterface } from "node:readline";
+import type { Readable, Writable } from "node:stream";
 import {
   PERSONAS,
   PERSONA_LABELS,
@@ -50,42 +51,76 @@ export async function cmdOnboard(args: ParsedArgs): Promise<number> {
     process.stdout.write("(you have onboarded before — answers overwrite your existing profile memories)\n\n");
   }
 
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const interview = await runInterview(process.stdin, process.stdout);
+  if (!interview) {
+    process.stderr.write("\ninput ended before the interview finished — nothing saved\n");
+    return 1;
+  }
+  const { persona, answers } = interview;
+  const memories = buildOnboardingMemories(persona, answers);
+  // Keep the completion marker after this call: a real write failure must
+  // leave onboarding retryable instead of recording a partial interview as done.
+  await saveOnboardingMemories(vault.path, memories, "cli:onboard");
+  await persistConventionSettings(answers);
+  await persistLanguageSetting(answers);
+  await markOnboardingDone(vault.path, "cli");
+  process.stdout.write(
+    `\n✓ ${memories.length} profile memories saved — your AI knows you from the next session on.\n` +
+      `  Refine anytime: just tell your AI, or re-run \`bastra onboard\` (answers overwrite).\n` +
+      `  Got memories in other AI tools? \`bastra import\` brings them along too.\n`,
+  );
+  return 0;
+}
+
+/**
+ * The interactive interview over one readline interface (#645). Lines are
+ * read through the interface's async iterator, which buffers input that
+ * arrives before the next prompt (a pty fed scripted answers) and simply
+ * ends at EOF or Ctrl-C. `rl.question()` dropped such early lines, hung on
+ * a question pending at EOF and threw ERR_USE_AFTER_CLOSE on the next
+ * question once the input had closed. Returns null when the input ends
+ * before every question was asked — the caller then saves nothing.
+ */
+export async function runInterview(
+  input: Readable,
+  output: Writable,
+): Promise<{ persona: Persona; answers: Record<string, string> } | null> {
+  const rl = createInterface({ input, output });
+  // Create the iterator before the first prompt so no early line is lost.
+  const lines = rl[Symbol.asyncIterator]();
+  // setPrompt keeps readline's own line redraws consistent; the prompt is
+  // written directly because rl.prompt() resumes the input and throws
+  // ERR_USE_AFTER_CLOSE once EOF has closed the interface.
+  rl.setPrompt("> ");
+  const ask = async (): Promise<string | null> => {
+    output.write("> ");
+    const next = await lines.next();
+    return next.done ? null : String(next.value).trim();
+  };
   try {
-    process.stdout.write(
+    output.write(
       "Seed your vault in ~5 minutes — a handful of questions, every answer becomes a memory\n" +
         "your AI recalls from day one. Enter skips an optional question; Ctrl-C aborts.\n\n" +
         "What will your memory mainly hold?\n",
     );
-    PERSONAS.forEach((p, i) => process.stdout.write(`  ${i + 1}. ${PERSONA_LABELS[p]}\n`));
+    PERSONAS.forEach((p, i) => output.write(`  ${i + 1}. ${PERSONA_LABELS[p]}\n`));
     let persona: Persona | null = null;
     while (persona === null) {
-      const pick = (await rl.question("> ")).trim();
+      const pick = await ask();
+      if (pick === null) return null;
       const idx = parseInt(pick, 10) - 1;
       if (idx >= 0 && idx < PERSONAS.length) persona = PERSONAS[idx];
-      else process.stdout.write(`pick 1-${PERSONAS.length}\n`);
+      else output.write(`pick 1-${PERSONAS.length}\n`);
     }
 
     const answers: Record<string, string> = {};
     for (const q of questionsFor(persona)) {
-      process.stdout.write(`\n${q.ask}${q.optional ? "  (optional)" : ""}\n  ${q.hint}\n`);
-      const answer = (await rl.question("> ")).trim();
+      output.write(`\n${q.ask}${q.optional ? "  (optional)" : ""}\n  ${q.hint}\n`);
+      const answer = await ask();
+      if (answer === null) return null;
       if (answer) answers[q.id] = answer;
     }
-
-    const memories = buildOnboardingMemories(persona, answers);
-    // Keep the completion marker after this call: a real write failure must
-    // leave onboarding retryable instead of recording a partial interview as done.
-    await saveOnboardingMemories(vault.path, memories, "cli:onboard");
-    await persistConventionSettings(answers);
-    await persistLanguageSetting(answers);
-    await markOnboardingDone(vault.path, "cli");
-    process.stdout.write(
-      `\n✓ ${memories.length} profile memories saved — your AI knows you from the next session on.\n` +
-        `  Refine anytime: just tell your AI, or re-run \`bastra onboard\` (answers overwrite).\n` +
-        `  Got memories in other AI tools? \`bastra import\` brings them along too.\n`,
-    );
-    return 0;
+    return { persona, answers };
   } finally {
     rl.close();
   }
