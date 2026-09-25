@@ -20,6 +20,7 @@ import { randomBytes } from "node:crypto";
 import { detectLanguage } from "./language.js";
 import { mintBridge, type Bridge } from "./bridges.js";
 import { rerank, type ChatFn, type RerankCandidate } from "./reranker.js";
+import { testRunLogDir } from "../env.js";
 
 export interface TelemetryEvent {
   kind: string;
@@ -34,7 +35,7 @@ export interface Reach {
 }
 
 export function defaultLogDir(): string {
-  return process.env.BASTRA_LOG_PATH ?? join(homedir(), ".bastra", "logs");
+  return process.env.BASTRA_LOG_PATH ?? testRunLogDir() ?? join(homedir(), ".bastra", "logs");
 }
 
 /** Read events-*.jsonl from a log dir, optionally limited to the last `days`. */

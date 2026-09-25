@@ -158,3 +158,20 @@ test("the guard reports only probe events this run could have written (#374)", (
   const byRecallId = { ts: "2026-08-29T10:00:02.000Z", kind: "recall", recall_id: PROBE_RECALL_ID };
   assert.deepEqual(probeEventsSince(JSON.stringify(byRecallId), startedAt), [byRecallId]);
 });
+
+test("#673: without test-env.mjs (a file run directly) the default log dir is still disposable", async () => {
+  // `npx tsx --test file.test.ts` never loads scripts/test-env.mjs, so
+  // BASTRA_LOG_PATH is unset — the path that put 258 fixture rows into real logs.
+  const { logDirFor } = await import("../src/telemetry.js");
+  const { defaultLogDir: harvestDefault } = await import("../src/learned-recall/harvest.js");
+  const prev = process.env.BASTRA_LOG_PATH;
+  delete process.env.BASTRA_LOG_PATH;
+  try {
+    for (const dir of [logDirFor(), harvestDefault(), (new Telemetry() as unknown as { logDir: string }).logDir]) {
+      assert.notEqual(resolve(dir), REAL_LOG_DIR);
+      assert.ok(resolve(dir).startsWith(resolve(tmpdir())), `expected a tmp dir, got ${dir}`);
+    }
+  } finally {
+    if (prev !== undefined) process.env.BASTRA_LOG_PATH = prev;
+  }
+});
