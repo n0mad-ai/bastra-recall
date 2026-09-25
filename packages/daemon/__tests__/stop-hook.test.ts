@@ -483,6 +483,29 @@ describe("stop-hook: #149 injected-context scrubbing in normalizeTurns", () => {
     assert.equal(turns[0].role, "system-injected");
   });
 
+  it("#649: teammate, agent and cross-session mail is not a user turn", () => {
+    // Shapes from real transcripts (the cross-session one from the SendMessage
+    // docs). Revert-check: drop isAgentMail from isInjectedSystemContent and
+    // every role comes back "user".
+    const decided = "\nWe decided to go with X over Y, final call.\n";
+    for (const content of [
+      `<teammate-message teammate_id="team-lead" summary="plan">${decided}</teammate-message>`,
+      `Another Claude session sent a message:\n<teammate-message teammate_id="worker" color="blue">${decided}</teammate-message>`,
+      `<agent-message from="fix-429">${decided}</agent-message>`,
+      `Another Claude session sent a message:\n<agent-message from="impl-50">${decided}</agent-message>`,
+      `<cross-session-message from="main">${decided}</cross-session-message>`,
+    ]) {
+      assert.equal(normalizeTurns([{ role: "user", content }])[0].role, "system-injected", content);
+    }
+    // A user who merely mentions the tag, or the wrapper line alone, stays a user.
+    for (const content of [
+      "why does <teammate-message> show up here? we decided on X",
+      "Another Claude session sent a message: we decided on X",
+    ]) {
+      assert.equal(normalizeTurns([{ role: "user", content }])[0].role, "user", content);
+    }
+  });
+
   it("prefix-injected turns keep their system-injected role (scrub runs after classification)", () => {
     const items = [{ role: "user", content: "<system-reminder>\nwieder wieder wieder wieder\n</system-reminder>" }];
     const turns = normalizeTurns(items);
