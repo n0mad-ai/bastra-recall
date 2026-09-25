@@ -378,7 +378,11 @@ export function checkPresentationRegistration(
       if (!fb.measured_from) {
         issues.push({ where: "underpowered_fallback", problem: "the measurement names its source window and vault, or it cannot be re-checked" });
       }
-      if (typeof conclusion.reporting_rule !== "string") {
+      // Ein leerer oder nur aus Leerzeichen bestehender String ist keine Regel
+      // (#442) — und eine Regel, die das Nicht-Auswertbar nicht nennt, ist
+      // nicht die aus §18.1.
+      const rule = conclusion.reporting_rule;
+      if (typeof rule !== "string" || !/NICHT AUSWERTBAR|not evaluable/i.test(rule.trim())) {
         issues.push({
           where: "underpowered_fallback",
           problem: "§18.1: an arm below its min-N is reported as NOT EVALUABLE, never as a null result — the rule belongs in the registration",

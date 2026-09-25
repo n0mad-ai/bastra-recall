@@ -467,6 +467,22 @@ test("und die Berichtsregel aus §18.1 muss darin stehen", () => {
   );
 });
 
+test("eine leere oder inhaltsfremde Berichtsregel zählt nicht als Regel (#442)", () => {
+  const reg = loadPresentationRegistration();
+  const fb = reg.underpowered_fallback as Record<string, unknown>;
+  const conclusion = fb.conclusion as Record<string, unknown>;
+  for (const rule of ["", "   \n\t", "we report whatever comes out"]) {
+    const mitRegel = { ...reg, underpowered_fallback: { ...fb, conclusion: { ...conclusion, reporting_rule: rule } } };
+    assert.ok(
+      checkPresentationRegistration("structure_registered", mitRegel).some((i) => i.where === "underpowered_fallback"),
+      `reporting_rule ${JSON.stringify(rule)} must be rejected`,
+    );
+  }
+  assert.ok(
+    !checkPresentationRegistration("structure_registered", reg).some((i) => i.where === "underpowered_fallback"),
+  );
+});
+
 test("die gemessenen Zahlen tragen ihre Quelle", () => {
   const fb = loadPresentationRegistration().underpowered_fallback as Record<string, unknown>;
   const from = fb.measured_from as Record<string, unknown>;
