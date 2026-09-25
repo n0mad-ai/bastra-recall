@@ -598,7 +598,10 @@ export function createTelemetryView() {
         );
         root.scrollTop = scrollTop;
         const span = r.window.from && r.window.to ? `${r.window.from.slice(0, 10)} → ${r.window.to.slice(0, 10)}` : "no events";
-        windowNote.textContent = `${span} · ${fmt(r.window.events)} events · retention keeps ${r.window.retentionDays} days`;
+        // #664: the CLI states what it excluded and folded; so does the UI.
+        const excluded = r.window.excludedEval ? ` · ${fmt(r.window.excludedEval)} eval events excluded` : "";
+        const folded = r.window.foldedDuplicates ? ` · ${fmt(r.window.foldedDuplicates)} duplicate client rows folded` : "";
+        windowNote.textContent = `${span} · ${fmt(r.window.events)} events${excluded}${folded} · retention keeps ${r.window.retentionDays} days`;
         if (r.window.days < days) {
           days = r.window.days;
           markDays();

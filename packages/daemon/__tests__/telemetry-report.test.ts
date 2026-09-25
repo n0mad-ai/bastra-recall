@@ -331,3 +331,36 @@ test("#458 budget shadow: per lane and per day, sessions affected, first crossin
   assert.equal(b.firstOverAtEmission, 2);
   assert.equal(summarizeBudgetShadow([]), null);
 });
+
+test("#664: the UI window excludes eval traffic and folds stub/daemon duplicates, so it counts what the CLI counts", async () => {
+  const { aggregate } = await import("../src/cli/log-stats.js");
+  const logDir = await mkdtemp(join(tmpdir(), "bastra-telemetry-parity-"));
+  const now = Date.parse("2026-09-04T12:00:00.000Z");
+  const rows = [
+    // One real call, logged twice: the daemon row and the stub's own row.
+    { kind: "hook_call", ts: "2026-09-04T11:00:00.000Z", session_id: "s1", hook_version: "1.0.0", status: "ok", latency_ms_total: 40 },
+    { kind: "hook_call", ts: "2026-09-04T11:00:00.200Z", session_id: "s1", hook_version: "0.6.0-stub", status: "timeout", latency_ms_total: 900 },
+    // A second real call.
+    { kind: "hook_call", ts: "2026-09-04T11:05:00.000Z", session_id: "s2", hook_version: "1.0.0", status: "ok", latency_ms_total: 60 },
+    // An eval probe (#619).
+    { kind: "hook_call", ts: "2026-09-04T11:10:00.000Z", session_id: "e1", hook_version: "1.0.0", status: "ok", latency_ms_total: 50, dimensions: { client: "eval" } },
+  ];
+  try {
+    await writeFile(join(logDir, "events-2026-09-04.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+    const w = await readEventWindow(logDir, 2, now);
+    assert.equal(w.excludedEval, 1);
+    assert.equal(w.foldedDuplicates, 1);
+    const report = buildTelemetryReport(w, 2, T, 90);
+    const uiCalls = report.latency.lanes.find((l) => l.lane === "hook_call")?.n;
+    const cli = aggregate(rows.filter((r) => !r.dimensions));
+    assert.equal(cli.totals.calls, 2, "precondition: the CLI counts two calls");
+    assert.equal(uiCalls, cli.totals.calls, "the UI counts the same calls as the CLI");
+    assert.deepEqual([report.window.excludedEval, report.window.foldedDuplicates], [1, 1]);
+
+    const all = await readEventWindow(logDir, 2, now, true);
+    assert.equal(all.excludedEval, 0, "includeEval keeps the eval row, like --include-eval");
+    assert.equal(all.events.length, 3);
+  } finally {
+    await rm(logDir, { recursive: true, force: true });
+  }
+});

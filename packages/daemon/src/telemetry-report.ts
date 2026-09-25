@@ -36,6 +36,8 @@ import {
   type ShadowAcceptance,
 } from "./stats-governor.js";
 import { resolveRetentionDays } from "./log-retention.js";
+import { isEvalTraffic } from "./telemetry-dimensions.js";
+import { foldClientDuplicates } from "./cli/log-stats-phases.js";
 import { summarizeHintSuppression, type HintSuppressionSection } from "./telemetry-report-suppression.js";
 export { summarizeHintSuppression } from "./telemetry-report-suppression.js";
 import { summarizeCodeAwareness, type CodeAwarenessSection } from "./telemetry-report-code.js";
@@ -54,6 +56,10 @@ export interface EventWindow {
   /** Ältester und jüngster Zeitstempel im Fenster. */
   from: string | null;
   to: string | null;
+  /** #664: eval/synthetic rows left out (#619) — 0 when `includeEval`. */
+  excludedEval: number;
+  /** #664: client rows folded into the daemon row of the same call. */
+  foldedDuplicates: number;
 }
 
 /**
@@ -61,17 +67,22 @@ export interface EventWindow {
  * nicht geöffnet — auf einer Installation mit drei Monaten Logs sind das
  * über 100 MB, die ein 7-Tage-Fenster nie braucht.
  */
-export async function readEventWindow(logDir: string, days: number, now = Date.now()): Promise<EventWindow> {
+export async function readEventWindow(
+  logDir: string,
+  days: number,
+  now = Date.now(),
+  includeEval = false,
+): Promise<EventWindow> {
   let files: string[];
   try {
     files = (await readdir(logDir)).filter((f) => EVENT_FILE.test(f)).sort();
   } catch {
-    return { events: [], files: 0, from: null, to: null };
+    return { events: [], files: 0, from: null, to: null, excludedEval: 0, foldedDuplicates: 0 };
   }
   const cutoff = now - days * 24 * 60 * 60 * 1000;
   const cutoffDay = new Date(cutoff).toISOString().slice(0, 10);
   const relevant = files.filter((f) => (EVENT_FILE.exec(f)?.[1] ?? "") >= cutoffDay);
-  const events: ReportEvent[] = [];
+  const read: ReportEvent[] = [];
   for (const f of relevant) {
     let raw: string;
     try {
@@ -85,19 +96,33 @@ export async function readEventWindow(logDir: string, days: number, now = Date.n
         const e = JSON.parse(line) as ReportEvent;
         if (typeof e.kind !== "string" || typeof e.ts !== "string") continue;
         if (Date.parse(e.ts) < cutoff) continue;
-        events.push(e);
+        read.push(e);
       } catch {
         /* skip malformed line */
       }
     }
   }
+  // #664: the same two filters `bastra logs --stats` applies, once, here —
+  // so every section of the UI counts what the CLI counts: eval/synthetic
+  // traffic out unless asked for (#619), and a stub row folded into the
+  // daemon row of the same hook call (#305).
+  const kept = includeEval ? read : read.filter((e) => !isEvalTraffic(e));
+  const { events: foldedEvents, folded } = foldClientDuplicates(kept);
+  const events = foldedEvents as ReportEvent[];
   let from: string | null = null;
   let to: string | null = null;
   for (const e of events) {
     if (from === null || e.ts < from) from = e.ts;
     if (to === null || e.ts > to) to = e.ts;
   }
-  return { events, files: relevant.length, from, to };
+  return {
+    events,
+    files: relevant.length,
+    from,
+    to,
+    excludedEval: read.length - kept.length,
+    foldedDuplicates: folded,
+  };
 }
 
 // ─── Hilfen ──────────────────────────────────────────────────────
@@ -748,6 +773,9 @@ export interface TelemetryReport {
     events: number;
     /** Das längste Fenster, das die Retention ehrlich hergibt. */
     retentionDays: number;
+    /** #664: what the CLI states as excluded / folded, stated here too. */
+    excludedEval: number;
+    foldedDuplicates: number;
   };
   thresholds: ReportThresholds;
   quality: QualitySection;
@@ -775,7 +803,16 @@ export function buildTelemetryReport(
   const events = window.events;
   return {
     version: TELEMETRY_REPORT_VERSION,
-    window: { days, from: window.from, to: window.to, files: window.files, events: events.length, retentionDays },
+    window: {
+      days,
+      from: window.from,
+      to: window.to,
+      files: window.files,
+      events: events.length,
+      retentionDays,
+      excludedEval: window.excludedEval,
+      foldedDuplicates: window.foldedDuplicates,
+    },
     thresholds: t,
     quality: summarizeQuality(events, t),
     contextTax: summarizeContextTax(events),
