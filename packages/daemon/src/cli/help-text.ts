@@ -69,10 +69,11 @@ Commands:
                              (e.g. https://bastra.io) so the web app can reach
                              the daemon — no plist/env editing needed
   code <enable|disable|index|rebuild|status>
-                             Code awareness per repository: shows an agent what
-                             depends on a file before it edits one, and adds
-                             find_code. Off until enabled; builds a local code
-                             map, sends nothing anywhere (macOS/Linux)
+                             Code awareness per repository (experimental):
+                             shows an agent what depends on a file before it
+                             edits one, and adds find_code. Off until enabled;
+                             Graphify builds a local code map, sends nothing
+                             anywhere (macOS/Linux)
   commons <enable|update|disable|status>
                              Bastra Commons: community-proven recipes as a
                              read-only second recall index (git-synced)
@@ -185,7 +186,7 @@ const SURFACE_ARG = `Surfaces:
  * whichever spelling the user typed is the one echoed back.
  */
 export const COMMAND_HELP: Record<string, string> = {
-  code: `bastra code — code awareness for a repository
+  code: `bastra code — code awareness for a repository (experimental)
 
 Usage:
   bastra code                        What is enabled, which Graphify, how fresh
@@ -200,6 +201,11 @@ Usage:
 Recall reads the graph Graphify writes and shows an agent what depends on a
 file before it edits one. Nothing is indexed until you enable a repository,
 the graph never leaves your machine, and no code is sent to an LLM.
+
+Experimental. It can help an agent find its way into an unfamiliar or large
+repository. For "what breaks if I change this" it did not beat plain search
+in our measurements on repositories like ours, and it costs context (the
+dependents block before edits) and background CPU (graph refreshes).
 
 The graph lives in <dir>/graphify-out/ and is excluded from git locally.
 macOS and Linux for now.`,

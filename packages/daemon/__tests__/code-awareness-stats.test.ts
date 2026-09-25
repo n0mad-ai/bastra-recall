@@ -208,7 +208,7 @@ describe("code awareness: the two readouts", () => {
     // The old early return printed "(no hook-lane events…)" and stopped, so an
     // agent that only ever calls find_code produced a readout of nothing.
     const out = renderStats(aggregate([toolCall()]), 400);
-    assert.match(out, /code awareness — tool calls/);
+    assert.match(out, /code awareness \(experimental\) — tool calls/);
     assert.match(out, /find_code: 1 call\(s\)/);
   });
 

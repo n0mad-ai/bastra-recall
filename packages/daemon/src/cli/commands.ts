@@ -512,7 +512,7 @@ async function printCodeGraphNote(): Promise<void> {
     const tool = await probeTool();
     if (repos.length === 0 && tool.usable === null && tool.external === null) return;
 
-    process.stdout.write("\u2192 code awareness\n");
+    process.stdout.write("\u2192 code awareness (experimental)\n");
     if (tool.usable !== null) {
       process.stdout.write(`  graphify ${tool.usable.version} (pinned ${GRAPHIFY_PIN})\n`);
     } else if (repos.length > 0) {

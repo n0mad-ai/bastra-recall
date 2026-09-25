@@ -21,7 +21,7 @@ export const UNAVAILABLE_REASONS = {
 };
 
 export function renderCodeAwareness(ca) {
-  const title = "Code awareness";
+  const title = "Code awareness (experimental)";
   const question =
     "How often is the code graph asked, can it answer, and how current does the refresh keep it?";
   if (!ca) {

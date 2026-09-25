@@ -122,6 +122,12 @@ async function cmdEnable(dir: string): Promise<number> {
 
   const changed = await setRepoEnabled(dir, true);
   out(changed ? `✓ code awareness enabled for ${dir}\n` : `code awareness was already enabled for ${dir}\n`);
+  out(
+    "  experimental: it can help an agent find its way into an unfamiliar or large repository. " +
+      "For \"what breaks if I change this\" it did not beat plain search in our measurements, and it costs " +
+      "context (the dependents block before edits) and background CPU (graph refreshes). " +
+      "'bastra code disable' turns it off.\n",
+  );
   await ensureExcluded(dir);
   return await cmdIndex(dir, false, true);
 }
@@ -273,7 +279,10 @@ export async function installCodeAwarenessStep(args: {
   if (!isInteractive() || args.yes) return;
 
   const accepted = await confirm(
-    "Enable code awareness? Recall can show an agent what depends on a file before it edits one. " +
+    "Enable code awareness (experimental)? It uses Graphify to build a code map of a repository " +
+      "and shows an agent what depends on a file before it edits one. It can help an agent find its way " +
+      "into an unfamiliar or large repository; for \"what breaks if I change this\" it did not beat plain " +
+      "search in our measurements, and it costs context and background CPU. " +
       `This installs graphifyy==${GRAPHIFY_PIN} (Apache-2.0) into Recall's own tool directory. ` +
       "Nothing is indexed until you enable a repository, and no code is sent anywhere.",
     { defaultYes: false },

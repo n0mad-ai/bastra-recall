@@ -116,11 +116,11 @@ export function featureLines(s: FeatureState): string[] {
 
   lines.push("  optional, off by default on purpose:");
   if (s.codeAwareness.offByEnv) {
-    lines.push(row(INFO, "code awareness", "off (BASTRA_CODE_AWARENESS=off)", "unset BASTRA_CODE_AWARENESS"));
+    lines.push(row(INFO, "code awareness (experimental)", "off (BASTRA_CODE_AWARENESS=off)", "unset BASTRA_CODE_AWARENESS"));
   } else {
     lines.push(s.codeAwareness.repos > 0
-      ? row(ON, "code awareness", `on for ${s.codeAwareness.repos} ${s.codeAwareness.repos === 1 ? "repository" : "repositories"}`)
-      : row(INFO, "code awareness", "off", "bastra code enable  (inside a repository)"));
+      ? row(ON, "code awareness (experimental)", `on for ${s.codeAwareness.repos} ${s.codeAwareness.repos === 1 ? "repository" : "repositories"}`)
+      : row(INFO, "code awareness (experimental)", "off", "bastra code enable  (inside a repository)"));
   }
   lines.push(s.promptImpact
     ? row(ON, "change impact in prompts (experimental)", "on")

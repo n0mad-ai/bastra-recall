@@ -127,7 +127,7 @@ test("a degraded embedding engine is not reported as on", () => {
 test("optional features that are off are marked intentional, never with the off marker", () => {
   const { optional } = split(featureLines(allOff()));
   const expected: Array<[string, RegExp]> = [
-    ["code awareness", /bastra code enable/],
+    ["code awareness (experimental)", /bastra code enable/],
     ["change impact in prompts (experimental)", /promptImpact/],
     ["product docs", /bastra config set docs\.mode suggest/],
     ["Bastra Commons", /bastra commons enable/],
@@ -147,7 +147,7 @@ test("everything on: one on-line per feature and no hints anywhere", () => {
   for (const line of core.slice(1)) assert.match(line, /✓/, line);
   assert.ok(lines.every((l) => !l.includes("→ bastra")), lines.join("\n"));
   assert.match(lineFor(lines, "memory language"), /: de$/);
-  assert.match(lineFor(lines, "code awareness"), /on for 2 repositories/);
+  assert.match(lineFor(lines, "code awareness (experimental)"), /on for 2 repositories/);
 });
 
 test("doc2query running on a model that is not pulled is an off-feature with the pull command", () => {

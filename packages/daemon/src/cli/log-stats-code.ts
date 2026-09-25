@@ -234,7 +234,7 @@ export function renderCodeRoi(s: CodeRoiStats): string[] {
  */
 export function renderCodeAwareness(s: CodeAwarenessStats): string[] {
   if (s.events === 0) return [];
-  const lines = ["", "code awareness — tool calls"];
+  const lines = ["", "code awareness (experimental) — tool calls"];
   for (const t of s.tools) {
     lines.push(
       `  ${t.tool}: ${t.calls} call(s) — ${t.ok} answered (${pct(t.ok, t.calls)}), ` +
