@@ -293,6 +293,7 @@ warning Claude to stop and confirm with the user.
 Destructive patterns (subset): `rm -rf`, `rm -r`, `rmdir`,
 `git reset --hard`, `git checkout -- `, `git clean -f`, `git branch -D`,
 `git push --force` / `--force-with-lease` / `-f`, `git commit --amend`,
+`git reflog expire` / `git reflog delete`, `git gc --prune`,
 `gh repo delete`, `gh release delete`, `npm uninstall` / `npm rm`,
 `yarn remove`, `pnpm rm`, `DROP TABLE`, `DROP DATABASE`, `TRUNCATE`,
 `docker rm`, `docker volume rm`, `kubectl delete`.
@@ -777,6 +778,7 @@ der Claude warnt, anzuhalten und beim Nutzer nachzufragen.
 Destruktive Muster (Auswahl): `rm -rf`, `rm -r`, `rmdir`,
 `git reset --hard`, `git checkout -- `, `git clean -f`, `git branch -D`,
 `git push --force` / `--force-with-lease` / `-f`, `git commit --amend`,
+`git reflog expire` / `git reflog delete`, `git gc --prune`,
 `gh repo delete`, `gh release delete`, `npm uninstall` / `npm rm`,
 `yarn remove`, `pnpm rm`, `DROP TABLE`, `DROP DATABASE`, `TRUNCATE`,
 `docker rm`, `docker volume rm`, `kubectl delete`.
