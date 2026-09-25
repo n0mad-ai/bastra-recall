@@ -159,6 +159,20 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
   { label: "git reflog expire", re: git(String.raw`reflog\s+expire\b`), undo: null },
   { label: "git reflog delete", re: git(String.raw`reflog\s+delete\b`), undo: null },
   { label: "git gc --prune", re: git(String.raw`gc\b[^\n]*--prune\b(?!=never)`), undo: null },
+  // The same expiry set through config instead of flags: `git -c
+  // gc.reflogExpire=now gc` (or `… maintenance run --task=gc`) and a `git
+  // config gc.pruneExpire now` before a plain `git gc`. Config keys are case
+  // insensitive; `never` keeps everything and stays silent.
+  {
+    label: "git -c gc.*Expire",
+    re: /\bgit\b[^\n]*\s-c\s+gc\.(?:reflogexpire(?:unreachable)?|pruneexpire)=(?!never\b)/i,
+    undo: null,
+  },
+  {
+    label: "git config gc.*Expire",
+    re: new RegExp(git(String.raw`config\b[^\n]*\sgc\.(?:reflogexpire(?:unreachable)?|pruneexpire)\s+(?!never\b)\S`).source, "i"),
+    undo: null,
+  },
   { label: "gh repo delete", re: /\bgh\s+repo\s+delete\b/, undo: null },
   { label: "gh release delete", re: /\bgh\s+release\s+delete\b/, undo: null },
   { label: "npm uninstall", re: /\bnpm\s+uninstall\b/, undo: null },

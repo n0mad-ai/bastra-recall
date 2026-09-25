@@ -377,8 +377,9 @@ function matchPattern(cmd: string): { label: string; severity: "destructive" | "
 const RM_ROWS = DESTRUCTIVE_PATTERNS.filter((p) => p.undo === RM_ARCHIVES);
 
 /** An `rm()` / `function rm` definition — the scanner splits at `(`, so this
- *  is read from the raw command (#657). */
-const RM_FUNCTION_DEF = /(?:^|[\s;&|({])(?:function\s+rm\b|rm\s*\(\s*\))/;
+ *  is read from the raw command (#657). A quote may open it too: `eval
+ *  'rm(){ … }'` defines the function just the same. */
+const RM_FUNCTION_DEF = /(?:^|[\s;&|({'"])(?:function\s+rm\b|rm\s*\(\s*\))/;
 
 /**
  * Is every `rm -r` in this command the PATH-resolved `rm` of THIS shell — the
@@ -387,8 +388,9 @@ const RM_FUNCTION_DEF = /(?:^|[\s;&|({])(?:function\s+rm\b|rm\s*\(\s*\))/;
  * `bash -c "…rm…"`, a heredoc body (its consumer may be `ssh`) and anything the
  * scanner cannot delimit do not qualify. An allowlist on purpose: a form not
  * recognised here keeps the STOP. The same command must also not change what
- * `rm` resolves to: a `PATH=` assignment (`export PATH=…`), `alias rm=…` or an
- * `rm()` / `function rm` definition anywhere in it keeps the STOP (#657).
+ * `rm` resolves to: a `PATH=` assignment (`export PATH=…`), `alias rm=…`,
+ * `hash -p <path> rm` or an `rm()` / `function rm` definition anywhere in it
+ * keeps the STOP (#657).
  */
 function rmRunsThroughPath(cmd: string): boolean {
   if (RM_FUNCTION_DEF.test(cmd)) return false;
@@ -398,6 +400,7 @@ function rmRunsThroughPath(cmd: string): boolean {
     const texts = words.map((w) => w.text.replace(/["'\\]/g, ""));
     if (texts.some((t) => /^PATH\+?=/.test(t))) return false;
     if (texts[0] === "alias" && texts.some((t) => t.startsWith("rm="))) return false;
+    if (texts[0] === "hash" && texts.some((t) => /^-\w*p/.test(t))) return false;
     if (!RM_ROWS.some((p) => p.re.test(texts.join(" ")))) continue;
     let k = 0;
     if (texts[0] === "command") k = 1;

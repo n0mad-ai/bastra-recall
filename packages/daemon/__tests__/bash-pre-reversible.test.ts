@@ -99,6 +99,8 @@ const EXAMPLE: Record<string, string> = {
   "git reflog expire": "git reflog expire --expire=now --all",
   "git reflog delete": "git reflog delete HEAD@{1}",
   "git gc --prune": "git gc --prune=now",
+  "git -c gc.*Expire": "git -c gc.pruneExpire=now gc",
+  "git config gc.*Expire": "git config gc.reflogExpire now",
   "gh repo delete": "gh repo delete me/prod --yes",
   "gh release delete": "gh release delete v1 --yes",
   "npm uninstall": "npm uninstall left-pad",
@@ -436,6 +438,22 @@ describe("#651 review — the hint weighs the whole command, not the first row i
     assert.equal(matchPattern("git gc"), null);
   });
 
+  it("#658: the same expiry set through config turns the receipt into STOP too", async () => {
+    // Revert-check: drop the two gc.*Expire rows → each amend line below gets
+    // the receipt although its gc removes the pre-amend commit for good.
+    for (const cmd of [
+      "git commit --amend --no-edit; git -c gc.reflogExpire=now -c gc.reflogExpireUnreachable=now -c gc.pruneExpire=now gc",
+      "git commit --amend --no-edit; git -c gc.reflogExpire=now -c gc.pruneExpire=now maintenance run --task=gc",
+      "git commit --amend --no-edit; git config gc.reflogExpire now; git config gc.pruneExpire now; git gc",
+      "git commit --amend --no-edit; git -C repo config --local GC.PRUNEEXPIRE now; git gc",
+    ]) {
+      assert.equal((await hintOf(cmd)).kind, "stop", cmd);
+    }
+    assert.equal(matchPattern("git -c gc.pruneExpire=never gc"), null);
+    assert.equal(matchPattern("git config gc.reflogExpire never"), null);
+    assert.equal(matchPattern("git config gc.auto 0"), null);
+  });
+
   it("#658: several receipts in one command are all said, each once", async () => {
     // Revert-check: return acts[0].undo → the amend note is missing.
     const stdout = await runHook(
@@ -491,6 +509,10 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "alias rm=/bin/rm; rm -rf x",
       'rm() { /bin/rm "$@"; }; rm -rf x',
       "function rm { /bin/rm \"$@\"; }; rm -rf x",
+      // …also inside a quoted eval, or by pinning the hash table entry.
+      "eval 'rm(){ /bin/rm \"$@\"; }'; rm -rf x",
+      'eval "rm(){ /bin/rm \\"\\$@\\"; }"; rm -rf x',
+      "hash -p /bin/rm rm; rm -rf x",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "stop", cmd);
     }
