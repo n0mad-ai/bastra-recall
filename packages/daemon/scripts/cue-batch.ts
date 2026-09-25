@@ -29,7 +29,7 @@
  *   BASTRA_CUE_OVERWRITE=1       vorhandene Zieldatei ersetzen
  *   BASTRA_CUE_DRY_RUN=1         nichts schreiben, nur berichten
  */
-import { appendFile, access, copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { appendFile, access, copyFile, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -158,7 +158,14 @@ async function main(): Promise<void> {
     return { rank: at === -1 ? null : at + 1 };
   };
 
-  if (!dryRun) await mkdir(dirname(out), { recursive: true });
+  // Geschrieben wird in eine Nachbardatei, die erst am Ende das Ziel ersetzt
+  // (#427): Ein Overwrite hängte sonst an das alte Sidecar an, und ein
+  // abgebrochener Lauf hinterließe ein halbes.
+  const partial = `${out}.partial`;
+  if (!dryRun) {
+    await mkdir(dirname(out), { recursive: true });
+    await writeFile(partial, "", { mode: 0o600 });
+  }
   let written = 0;
 
   try {
@@ -170,13 +177,15 @@ async function main(): Promise<void> {
       minConfidence,
       onCue: async (cue) => {
         if (dryRun) return;
-        await appendFile(out, cueToJsonl(cue), { mode: 0o600 });
+        await appendFile(partial, cueToJsonl(cue), { mode: 0o600 });
         written++;
       },
     });
+    if (!dryRun) await rename(partial, out);
     console.error(`${TAG} ${JSON.stringify(report)}`);
     console.error(`${TAG} ${dryRun ? "dry-run, nichts geschrieben" : `${written} Cues → ${out}`}`);
   } finally {
+    if (!dryRun) await rm(partial, { force: true });
     await cleanup();
   }
 }
