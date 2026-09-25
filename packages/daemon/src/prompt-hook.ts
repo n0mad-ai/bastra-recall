@@ -36,7 +36,7 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { envFirst, envInt } from "./env.js";
+import { envFirst, envInt, testRunLogDir } from "./env.js";
 import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
 import { PROMPT_ASSERTION_BUDGET_MS } from "./hook-budgets.js";
 import { decorateHookPayload } from "./hook-surface.js";
@@ -129,7 +129,7 @@ async function writeClientTelemetry(
   if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
   try {
     const logDir =
-      envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? join(homedir(), ".bastra", "logs");
+      envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(homedir(), ".bastra", "logs");
     await mkdir(logDir, { recursive: true });
     const ts = new Date().toISOString();
     const event = {

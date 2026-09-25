@@ -17,7 +17,7 @@ import { join } from "node:path";
 import type { Vault } from "@bastra-recall/core";
 import { distinctiveTerms, MIN_BRIDGE_EVIDENCE } from "./bridges.js";
 import { readEventLog, reconstructReaches, harvestBridges, writeBridges } from "./harvest.js";
-import { envFirst } from "../env.js";
+import { envFirst, testRunLogDir } from "../env.js";
 
 export type MintTrigger = "cli" | "daemon-boot" | "daemon-interval";
 
@@ -109,7 +109,7 @@ async function recordLastMint(bridgesRoot: string, record: LastMintRecord): Prom
 async function writeMintTelemetry(record: LastMintRecord): Promise<void> {
   if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
   try {
-    const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? join(homedir(), ".bastra", "logs");
+    const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(homedir(), ".bastra", "logs");
     await mkdir(logDir, { recursive: true });
     const event = {
       kind: "bridges_mint",
