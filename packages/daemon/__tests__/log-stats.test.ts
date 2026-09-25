@@ -691,3 +691,28 @@ test("the agent split stays silent while no row carries the column", () => {
   assert.equal(stats.byAgent.length, 1, "precondition: the rows were counted, as none");
   assert.doesNotMatch(renderStats(stats, 200), /by agent/);
 });
+
+test("#512: `bastra logs --stats` renders the per-part session-start section (#462)", () => {
+  const start = (i: number, source: string, parts: Record<string, number> | null) => ({
+    kind: "session_hook_call",
+    ts: `2026-09-20T08:0${i}:00.000Z`,
+    session_id: `s-${i}`,
+    source,
+    daemon_reachable: true,
+    hint_count: 1,
+    latency_ms_total: 40,
+    status: "ok",
+    ...(parts ? { hint_tokens_by_part: parts } : {}),
+  });
+  const stats = aggregate([
+    start(1, "startup", { conventions: 300, pinned: 100, recency: 0 }),
+    start(2, "clear", { conventions: 500, pinned: 0, recency: 100 }),
+    start(3, "startup", null), // pre-#462 row: a total only, never a zero part
+  ]);
+  assert.equal(stats.sessionStart.withParts, 2);
+  const out = renderStats(stats, 600);
+  assert.match(out, /session start — 3 start\(s\), 2 with per-part data, 1000 tokens \(1 older start\(s\) carry only a total\)/);
+  assert.match(out, /conventions\s+800\s+80%\s+400\s+2\/2/);
+  assert.match(out, /pinned\s+100\s+10%\s+50\s+1\/2/);
+  assert.match(out, /clear\s+n=\s+1\s+conventions 500, recency 100/);
+});
