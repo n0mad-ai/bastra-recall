@@ -16,7 +16,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm, mkdir, chmod } from "node:fs/promises";
 import { writeFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -245,4 +245,41 @@ test("ein Eintrag mit gültiger operation_id, aber ohne steps-Array, gilt nicht 
   writeFileSync(join(journal, names[0]), JSON.stringify(bad));
   assert.deepEqual(await readOpenRecoveryEntries(dir), [], "steps must be an array to count as open");
   await handle.acknowledge();
+});
+
+test("#431: ein readdir-Fehler außer ENOENT wird geloggt statt still verschluckt", async (t) => {
+  const { dir } = await harness(t);
+  const errors = t.mock.method(console, "error", () => {});
+  // Die Datei am Ordnerpfad erzwingt ENOTDIR — kein fehlender Ordner.
+  await mkdir(join(dir, ".bastra"), { recursive: true });
+  await writeFile(join(dir, ".bastra", "recovery"), "not a directory");
+  assert.deepEqual(await readOpenRecoveryEntries(dir), []);
+  assert.equal(errors.mock.callCount(), 1);
+  assert.match(String(errors.mock.calls[0].arguments[0]), /recovery journal: could not read/);
+});
+
+test("#431: ein fehlender Journal-Ordner bleibt still", async (t) => {
+  const { dir } = await harness(t);
+  const errors = t.mock.method(console, "error", () => {});
+  assert.deepEqual(await readOpenRecoveryEntries(dir), []);
+  assert.equal(errors.mock.callCount(), 0);
+});
+
+test("#431: ein unlink-Fehler beim Quittieren wird geloggt", { skip: process.getuid?.() === 0 }, async (t) => {
+  const { dir } = await harness(t);
+  const handle = await openRecoveryJournal(dir, { op: "move_document", id: "doc-x", steps: [] });
+  const journal = join(dir, ".bastra", "recovery");
+  const errors = t.mock.method(console, "error", () => {});
+  await chmod(journal, 0o500);
+  try {
+    await handle.acknowledge();
+  } finally {
+    await chmod(journal, 0o700);
+  }
+  assert.equal(errors.mock.callCount(), 1);
+  assert.match(String(errors.mock.calls[0].arguments[0]), /recovery journal: could not acknowledge/);
+  // Nach erfolgreichem Quittieren ist ein weiteres (ENOENT) still.
+  await handle.acknowledge();
+  await handle.acknowledge();
+  assert.equal(errors.mock.callCount(), 1);
 });

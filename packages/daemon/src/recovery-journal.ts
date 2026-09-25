@@ -103,7 +103,16 @@ export async function openRecoveryJournal(
   return {
     entry,
     acknowledge: async () => {
-      await unlink(path).catch(() => {});
+      // #431: Ein fehlender Eintrag ist harmlos; jeder andere Fehler heißt,
+      // dass der Eintrag stehen bleibt und nach dem nächsten Start als
+      // falscher Halbzustand erscheint — das muss auf stderr sichtbar sein.
+      await unlink(path).catch((err: NodeJS.ErrnoException) => {
+        if (err?.code !== "ENOENT") {
+          console.error(
+            `[bastra-recall] recovery journal: could not acknowledge ${path}: ${err?.message ?? String(err)}`,
+          );
+        }
+      });
     },
   };
 }
@@ -123,7 +132,14 @@ export async function readOpenRecoveryEntries(
   let names: string[];
   try {
     names = await readdir(dir);
-  } catch {
+  } catch (err) {
+    // #431: Fehlt der Ordner, lief nie eine solche Operation. Jeder andere
+    // Fehler (Rechte, Dateisystem) unterdrückt sonst still alle Boot-Warnungen.
+    if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
+      console.error(
+        `[bastra-recall] recovery journal: could not read ${dir}: ${(err as Error)?.message ?? String(err)}`,
+      );
+    }
     return [];
   }
   const entries: RecoveryJournalEntry[] = [];
