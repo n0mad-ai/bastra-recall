@@ -3,7 +3,7 @@
  * test-map — which tests execute which source lines, so a one-line change
  * runs the tests that can see it instead of the whole suite.
  *
- *   node tools/test-map.mjs build   [--jobs N] [--only <glob-substring>]
+ *   node tools/test-map.mjs build   [--jobs N] [--only <path-substring>]
  *   node tools/test-map.mjs select  [--base <ref>] [--run] [--json]
  *   node tools/test-map.mjs heatmap [--json] [--top N]
  *
@@ -11,6 +11,8 @@
  *         Node's built-in coverage (source-mapped, so lines are .ts lines), and
  *         writes .test-map/map.json: per source file, which test files executed
  *         which lines, plus each test file's test count, result and duration.
+ *         --only builds a partial map into .test-map/map-only.json and leaves the
+ *         full map select reads untouched.
  * select  diffs the working tree against the commit the map was built at and
  *         picks the test files that executed a changed line. What it cannot
  *         vouch for it names instead of guessing — a change no test executes, a
@@ -47,16 +49,23 @@
  * maps put those hits on `packages/core/src`, so selection is right, but `--run`
  * does not rebuild: after a change under `packages/core/src`, run
  * `npm run build -w @bastra-recall/core` first, or the selected tests run the old dist.
+ *
+ * Windows: map paths come from path.join/relative (backslashes there), diff paths from
+ * git (forward slashes), so every changed file reads as NOT IN MAP — safe, but useless.
+ * The tool is written for POSIX checkouts.
  */
 import { spawn, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { cpus } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = (root) => join(root, ".test-map");
 const mapFile = (root) => join(outDir(root), "map.json");
+/** Where `build --only` writes: a partial map must not replace the full one select reads. */
+const partialMapFile = (root) => join(outDir(root), "map-only.json");
 
 /** Files whose change can move any test: selection gives up and says so. The test
  * setup files the npm test script preloads join these (see testScript). */
@@ -308,7 +317,7 @@ export async function build({ root = ROOT, jobs: j, only, progress = () => {} } 
     tests,
     sources: Object.fromEntries(Object.entries(sources).sort().map(([k, v]) => [k, { lines: toRanges(v.lines), by: v.by }])),
   };
-  writeFileSync(mapFile(root), JSON.stringify(map));
+  writeFileSync(only ? partialMapFile(root) : mapFile(root), JSON.stringify(map));
   rmSync(work, { recursive: true, force: true });
   return map;
 }
@@ -525,8 +534,12 @@ export function select(map, diffText, opts = {}) {
   const full_suite = report.global.length + report.fixtures.length > 0;
   // Every change the selection cannot answer for, in words. Empty means vouched: each
   // changed code line is either comment/blank or executed by a selected test.
+  // A test file that failed during the build has coverage only up to the failure: the
+  // lines after it are missing, and a change there could leave the file out unseen.
+  const failed = map.tests.filter((t) => "exit" in t && t.exit !== 0 && !t.coverage_lost);
   const doubts = full_suite ? [] : [
     ...(map.dirty ? [DIRTY] : []),
+    ...failed.map((t) => `${t.file}: failed during the map build — its coverage stops at the failure; rebuild on a green suite`),
     ...report.uncovered.map((x) => `${x}: code no test executes`),
     ...report.unmapped.map((x) => `${x}: code the map has never seen loaded`),
     ...report.unseen.map((x) => `${x}: not code — a test reading it would be invisible to coverage`),
@@ -590,32 +603,60 @@ export function heatmap(map, top = 25) {
 
 // ------------------------------------------------------------------ cli
 
-function arg(name, def) {
-  const i = process.argv.indexOf(name);
-  return i < 0 ? def : process.argv[i + 1];
+const USAGE = "usage: test-map.mjs build [--jobs N] [--only S] | select [--base REF] [--run] [--json] | heatmap [--json] [--top N]";
+const OPTIONS = {
+  build: { jobs: { type: "string" }, only: { type: "string" } },
+  select: { base: { type: "string" }, run: { type: "boolean" }, json: { type: "boolean" } },
+  heatmap: { json: { type: "boolean" }, top: { type: "string" } },
+};
+
+/** The command's flags, strictly: an unknown flag or a flag missing its value is a usage
+ * error, not silently ignored (`--jobs` alone parsed to NaN → 0 workers → crash). */
+export function parseCli(argv) {
+  const cmd = argv[0];
+  if (!Object.hasOwn(OPTIONS, cmd ?? "")) return { error: cmd ? `unknown command ${cmd}` : "no command" };
+  let values;
+  try {
+    ({ values } = parseArgs({ args: argv.slice(1), options: OPTIONS[cmd], strict: true, allowPositionals: false }));
+  } catch (e) {
+    return { error: e.message };
+  }
+  for (const k of ["jobs", "top"]) {
+    if (values[k] === undefined) continue;
+    if (!/^[1-9]\d*$/.test(values[k])) return { error: `--${k} takes a positive integer, got ${JSON.stringify(values[k])}` };
+    values[k] = Number(values[k]);
+  }
+  return { cmd, values };
 }
-const flag = (name) => process.argv.includes(name);
+
 const warn = (msg) => process.stderr.write(`test-map: ${msg}\n`);
 
 async function main() {
-  const cmd = process.argv[2];
+  const { cmd, values: o, error } = parseCli(process.argv.slice(2));
+  if (error) {
+    warn(error);
+    console.error(USAGE);
+    process.exitCode = 2;
+    return;
+  }
   if (cmd === "build") {
-    const map = await build({ jobs: arg("--jobs") && Number(arg("--jobs")), only: arg("--only"), progress: warn });
+    const map = await build({ jobs: o.jobs, only: o.only, progress: warn });
     const { tests, commit, dirty } = map;
     const blind = tests.filter((t) => t.src_lines === 0).length;
     const failed = tests.filter((t) => t.exit !== 0 && !t.coverage_lost).length;
     const lost = tests.filter((t) => t.coverage_lost).length;
     return console.log(`test-map: ${tests.length} test files, ${tests.reduce((a, t) => a + t.tests, 0)} tests, ` +
       `${Object.keys(map.sources).length} source files at ${commit.slice(0, 8)}${dirty ? " (dirty tree)" : ""}; ` +
-      `${failed} files failed during the build, ${blind} executed no source line (coverage-blind${lost ? `, ${lost} of them because Node lost the report` : ""}).`);
+      `${failed} files failed during the build, ${blind} executed no source line (coverage-blind${lost ? `, ${lost} of them because Node lost the report` : ""}).` +
+      (o.only ? " Partial map (--only) written to .test-map/map-only.json; the full map is unchanged." : ""));
   }
   if (cmd === "select") {
     const map = loadMap();
     if (map.dirty) warn(DIRTY);
-    const base = arg("--base", map.commit);
+    const base = o.base ?? map.commit;
     if (base !== map.commit) warn(`--base ${base} is not the map commit ${map.commit.slice(0, 8)} — line numbers may be off`);
     const r = select(map, gitDiff(base));
-    if (flag("--json")) console.log(JSON.stringify(r, null, 1));
+    if (o.json) console.log(JSON.stringify(r, null, 1));
     else {
       console.log(headline(r));
       for (const d of r.doubts) console.log(`  ${d}`);
@@ -623,7 +664,7 @@ async function main() {
       if (r.inert.length) console.log(`comment/blank only, no test needed: ${r.inert.join(", ")}`);
       if (r.blind_included.length) console.log(`coverage-blind, included by package: ${r.blind_included.length}`);
     }
-    if (flag("--run")) {
+    if (o.run) {
       const { flags, files } = testScript();
       const code = await runSelected(r.full_suite ? files : r.files.map((f) => f.file), ROOT, flags);
       if (!code && !r.vouched) warn("the selected tests passed, but the selection does not vouch for the whole change (listed above) — exit 3");
@@ -633,8 +674,8 @@ async function main() {
   }
   if (cmd === "heatmap") {
     const map = loadMap();
-    const h = heatmap(map, Number(arg("--top", 25)));
-    if (flag("--json")) return console.log(JSON.stringify(h, null, 1));
+    const h = heatmap(map, o.top ?? 25);
+    if (o.json) return console.log(JSON.stringify(h, null, 1));
     console.log(`map ${h.commit.slice(0, 8)} · ${h.suites.length} suites · src lines executed by ≥1 test: ${h.covered_lines}/${h.total_lines} (${((100 * h.covered_lines) / h.total_lines).toFixed(1)} %)`);
     console.log("\nslowest suites:");
     for (const t of h.suites.slice(0, 15)) console.log(`  ${secs(t.wall_ms).padStart(7)}  ${String(t.tests).padStart(4)} tests  ${t.file}${t.exit ? "  [failed]" : ""}`);
@@ -645,8 +686,6 @@ async function main() {
     if (h.blind.length) console.log(`\ncoverage-blind test files (executed no source line): ${h.blind.length}`);
     return;
   }
-  console.error("usage: test-map.mjs build [--jobs N] [--only S] | select [--base REF] [--run] [--json] | heatmap [--json] [--top N]");
-  process.exitCode = 2;
 }
 
 // Run as a script, also through a symlinked path (macOS's /var → /private/var): the
