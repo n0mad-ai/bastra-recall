@@ -360,7 +360,7 @@ test("integration — retrieval prompt yields recall-hints block", async () => {
   }
 });
 
-test("integration — non-retrieval prompt emits empty object", async () => {
+test("integration — retrieval-only opt-out: a non-retrieval prompt emits empty object", async () => {
   // Seit dem 19.08.-Vorfall ruft auch die "none"-Lane den Recall (semantic
   // reflex) — aber ohne reflex-verdrahtete REQUIRED-Hits bleibt die Ausgabe
   // leer: gewöhnliche Hits injizieren auf Arbeits-Prompts weiterhin nichts.
@@ -391,7 +391,7 @@ test("integration — non-retrieval prompt emits empty object", async () => {
         prompt: "lass uns das implementieren",
         cwd: process.cwd(),
       },
-      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}` },
+      { BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}` },
     );
     assert.equal(stdout.trim(), "{}");
     assert.equal(recallCalled, true, "the none lane now recalls — the filter, not the skip, keeps it quiet");
@@ -444,7 +444,7 @@ test("integration — semantic reflex: a reflex-wired REQUIRED hit injects on a 
       prompt: "dann möchte ich dass du mir eine Nachricht entwirfst, kurz und knapp",
       cwd: process.cwd(),
     };
-    const env = { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir };
+    const env = { BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir };
     const { stdout } = await runHook(payload, env);
     const parsed = JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } };
     const ctx = parsed.hookSpecificOutput?.additionalContext ?? "";
@@ -506,7 +506,7 @@ test("integration — semantic reflex: a wired convention below the top-k cut ar
       prompt: "antwortentwurf bitte. ich freue mich das komplett zu testen sobald ich die freie zeit finde",
       cwd: process.cwd(),
     };
-    const env = { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir };
+    const env = { BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir };
     const { stdout } = await runHook(payload, env);
     const parsed = JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } };
     const ctx = parsed.hookSpecificOutput?.additionalContext ?? "";
@@ -851,11 +851,11 @@ test("#371 — a reflex-wired hit injects in mode none, with the pool gate exact
 
     const pre = await runHook(
       { ...payload, session_id: "s371-before" },
-      { BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: before },
+      { BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: before },
     );
     const post = await runHook(
       { ...payload, session_id: "s371-after" },
-      { BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: after },
+      { BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: after },
       () => ["nachrichtenkonvention"],
     );
 
@@ -906,14 +906,14 @@ test("#371 — a NON-wired hit never injected in mode none, before or after the 
 
     const pre = await runHook(
       { ...payload, session_id: "s371-nw-before" },
-      { BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: before },
+      { BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: before },
     );
     assert.equal(pre.stdout.trim(), "{}", "a non-wired hit never reached the agent in mode none");
     assert.equal(recallCalls, 1, "…and the pre-#371 lane paid a full recall to learn that");
 
     const post = await runHook(
       { ...payload, session_id: "s371-nw-after" },
-      { BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: after },
+      { BASTRA_PROMPT_HOOK_MODE: "retrieval-only", BASTRA_HTTP_URL: url, BASTRA_HOOK_STATE_DIR: after },
       () => ["nachrichtenkonvention"],
     );
     assert.equal(post.stdout.trim(), "{}", "still nothing — the filter, not the gate, keeps it out");
@@ -971,6 +971,7 @@ test("#371 — an empty reflex pool skips the recall entirely", async () => {
         cwd: process.cwd(),
       },
       {
+        BASTRA_PROMPT_HOOK_MODE: "retrieval-only",
         BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
         BASTRA_HOOK_STATE_DIR: stateDir,
         BASTRA_TELEMETRY: "on",
@@ -1045,6 +1046,7 @@ test("#371 — once every wired memory is session-suppressed, the recall stops r
       cwd: process.cwd(),
     };
     const env = {
+      BASTRA_PROMPT_HOOK_MODE: "retrieval-only",
       BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
       BASTRA_HOOK_STATE_DIR: stateDir,
       BASTRA_TELEMETRY: "on",
@@ -1518,5 +1520,129 @@ test("integration — #565: a reflex hit the session dedupe held back is booked,
     await daemon.close();
     await rm(stateDir, { recursive: true, force: true });
     await rm(logDir, { recursive: true, force: true });
+  }
+});
+
+// ─── #677: recall on every prompt, score-gated — no language decides ─────
+
+/** Mock daemon for #677: serves the given recall hits, records recall bodies. */
+async function startRecallMock(recall: object) {
+  const bodies: { query: string; k: number }[] = [];
+  const daemon = await startMockDaemon((req, res) => {
+    let body = "";
+    req.on("data", (c: Buffer) => (body += c.toString()));
+    req.on("end", () => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      if (req.url === "/hook/reflex") return void res.end('{"hits":[],"recall_id":null}');
+      if (req.url === "/hook/hinted") return void res.end('{"ok":true}');
+      bodies.push(JSON.parse(body) as { query: string; k: number });
+      res.end(JSON.stringify({ vault_size: 10, latency_ms: 1, recall_id: "r", ...recall }));
+    });
+  });
+  return { daemon, bodies };
+}
+
+const STRONG_HIT = { id: "strong-fact", title: "T", type: "project-fact", scope: "p", summary: "s", score: 142 };
+
+test("#677 — Russian, French and Polish lookup prompts each reach recall and inject a strong hit by default", async () => {
+  const prompts = [
+    "где мой штрафной талон за парковку?",
+    "où est ma contravention de stationnement ?",
+    "gdzie jest mój mandat za parkowanie?",
+  ];
+  for (const prompt of prompts) {
+    assert.equal(detectRetrieval(prompt), false, "the de/en regex does not know this language");
+    const stateDir = await mkdtemp(join(tmpdir(), "bastra-677-lang-"));
+    const { daemon, bodies } = await startRecallMock({ hits: [STRONG_HIT] });
+    try {
+      const { stdout } = await runHook(
+        { hook_event_name: "UserPromptSubmit", session_id: "s677", prompt, cwd: process.cwd() },
+        { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir },
+        () => [],
+      );
+      assert.equal(bodies.length, 1, `recall ran for: ${prompt}`);
+      assert.equal(bodies[0]!.query, prompt);
+      assert.equal(bodies[0]!.k, 3, "generic mode asks for the top tier only");
+      const ctx =
+        (JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput
+          ?.additionalContext ?? "";
+      assert.match(ctx, /strong-fact/, `the strong hit reaches the agent for: ${prompt}`);
+    } finally {
+      await daemon.close();
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("#677 — the default gate is the score: a sub-MUST_LOAD ordinary hit stays out, a wired reflex memory keeps the normal floor", async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), "bastra-677-gate-"));
+  const { daemon } = await startRecallMock({
+    hits: [
+      { id: "weak-fact", title: "T", type: "project-fact", scope: "p", summary: "s", score: MUST_LOAD_SCORE - 1 },
+      // 19.08. real value — mode "none" delivered it, the new default must too.
+      {
+        id: "wired-convention",
+        title: "C",
+        type: "meta-working",
+        scope: "all-projects",
+        summary: "c",
+        score: 84,
+        recall_mode: "reflex",
+      },
+    ],
+  });
+  try {
+    const { stdout } = await runHook(
+      { hook_event_name: "UserPromptSubmit", session_id: "s677g", prompt: "napisz odpowiedź do zzalli", cwd: process.cwd() },
+      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir },
+    );
+    const ctx =
+      (JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: string } }).hookSpecificOutput
+        ?.additionalContext ?? "";
+    assert.match(ctx, /wired-convention/);
+    assert.ok(!ctx.includes("weak-fact"), "below MUST_LOAD_SCORE an unrecognised prompt injects nothing ordinary");
+  } finally {
+    await daemon.close();
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+test("#677 — unfused, the generic score gate cannot be read: no ordinary hit injects on the raw BM25 scale", async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), "bastra-677-unfused-"));
+  const { daemon } = await startRecallMock({
+    hits: [{ ...STRONG_HIT, score: 48_213 }],
+    unfused: true,
+    degraded: "vector-arm-timeout",
+  });
+  try {
+    const { stdout } = await runHook(
+      { hook_event_name: "UserPromptSubmit", session_id: "s677u", prompt: "où est ma contravention ?", cwd: process.cwd() },
+      { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir },
+    );
+    assert.equal(stdout.trim(), "{}");
+  } finally {
+    await daemon.close();
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+test("#677 — BASTRA_PROMPT_HOOK_MODE=retrieval-only keeps the old regex gate as an opt-out", async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), "bastra-677-optout-"));
+  const { daemon, bodies } = await startRecallMock({ hits: [STRONG_HIT] });
+  try {
+    const { stdout } = await runHook(
+      { hook_event_name: "UserPromptSubmit", session_id: "s677o", prompt: "où est ma contravention ?", cwd: process.cwd() },
+      {
+        BASTRA_PROMPT_HOOK_MODE: "retrieval-only",
+        BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`,
+        BASTRA_HOOK_STATE_DIR: stateDir,
+      },
+      () => [],
+    );
+    assert.equal(stdout.trim(), "{}");
+    assert.equal(bodies.length, 0, "mode none with an empty reflex pool skips the recall (#371)");
+  } finally {
+    await daemon.close();
+    await rm(stateDir, { recursive: true, force: true });
   }
 });

@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The prompt lane recalls on every prompt, in any language** (#677). Whether
+  a prompt recalled at all was decided by German/English lookup regexes — a
+  contributor writing otherwise had 0 of 1,039 prompts recognised in a month.
+  The default `BASTRA_PROMPT_HOOK_MODE` is now `all`: every non-trivial prompt
+  recalls, and what it may inject is gated by score (≥ 100, plus memories
+  wired as `recall_mode: reflex` at the normal floor; without fusion only the
+  wired ones). `BASTRA_PROMPT_HOOK_MODE=retrieval-only` restores the old gate.
+  Latency budgets unchanged.
 - **Code awareness is marked experimental** wherever you meet it (#667): the
   `bastra install` prompt, `bastra code enable`, `bastra code --help`, the doctor
   features section, `bastra logs --stats`, the UI telemetry section and the docs.
