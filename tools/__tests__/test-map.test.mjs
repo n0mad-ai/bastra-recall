@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   parseDiff, parseLcov, normalizeSource, select, headline, testFiles, testScript, INERT, codeLinesOf, gitDiff,
-  build, loadMap, MapError, DIRTY,
+  build, loadMap, MapError, DIRTY, parseCli,
 } from "../test-map.mjs";
 
 // Revert-checks added below, one per bug found in review (each names what to break to
@@ -57,6 +57,30 @@ describe("test-map: diff → the tests that executed the changed lines", () => {
     const r = select(map, diff("packages/daemon/src/x.ts", "@@ -2 +2 @@", "-// old wording\n+// new wording"));
     assert.equal(r.files.length, 0);
     assert.equal(r.inert.length, 1);
+  });
+
+  // #660 — revert-check: drop the `failed` line from `doubts` → red.
+  it("a map with a test file that failed during the build does not vouch", () => {
+    const withFail = { ...map, tests: map.tests.map((t, i) => ({ ...t, exit: i === 0 ? 1 : 0 })) };
+    const r = select(withFail, diff("packages/daemon/src/x.ts", "@@ -25 +25 @@", "-if (a) f()\n+if (!a) f()"));
+    assert.equal(r.vouched, false);
+    assert.match(r.doubts[0], /^packages\/daemon\/__tests__\/a\.test\.ts: failed during the map build/);
+    // A lost coverage report is exit 1 with nothing failed — not a failure.
+    const lost = { ...map, tests: map.tests.map((t, i) => ({ ...t, exit: i === 0 ? 1 : 0, ...(i === 0 ? { coverage_lost: true } : {}) })) };
+    assert.equal(select(lost, diff("packages/daemon/src/x.ts", "@@ -25 +25 @@", "-if (a) f()\n+if (!a) f()")).vouched, true);
+  });
+
+  // #660 — revert-check: go back to indexOf-based flag reading → `--jobs` alone is NaN
+  // and unknown flags pass → red.
+  it("flag parsing rejects a flag without its value, a bad number and an unknown flag", () => {
+    assert.match(parseCli(["build", "--jobs"]).error, /argument missing/);
+    assert.match(parseCli(["build", "--jobs", "0"]).error, /positive integer/);
+    assert.match(parseCli(["build", "--jobs", "x"]).error, /positive integer/);
+    assert.match(parseCli(["heatmap", "--html"]).error, /Unknown option/);
+    assert.match(parseCli(["frobnicate"]).error, /unknown command/);
+    const ok = parseCli(["build", "--jobs", "2", "--only", "a.test"]);
+    assert.deepEqual([ok.cmd, { ...ok.values }], ["build", { jobs: 2, only: "a.test" }]);
+    assert.equal(parseCli(["select", "--run", "--json"]).values.run, true);
   });
 
   it("an executable line nobody runs is reported, not passed as safe", () => {
@@ -566,6 +590,21 @@ describe("test-map: select over a real repo and a real map", () => {
       writeFileSync(join(repo, ".test-map", "map.json"), JSON.stringify(m));
       put("src/m.mjs", SRC);
     }
+  });
+
+  // #660 — revert-check: write the --only map to map.json again → red.
+  it("build --only writes a partial map elsewhere and leaves the full map alone", async () => {
+    const full = readFileSync(join(repo, ".test-map", "map.json"), "utf8");
+    const part = await build({ root: repo, jobs: 1, only: "a.test" });
+    assert.deepEqual(part.tests.map((t) => t.file), ["t/a.test.mjs"]);
+    assert.equal(readFileSync(join(repo, ".test-map", "map.json"), "utf8"), full);
+    assert.deepEqual(JSON.parse(readFileSync(join(repo, ".test-map", "map-only.json"), "utf8")).tests.map((t) => t.file), ["t/a.test.mjs"]);
+  });
+
+  it("the CLI answers a bad flag with a usage line and exit 2", () => {
+    const out = cli("build", "--jobs");
+    assert.equal(out.status, 2);
+    assert.match(out.stderr, /usage: test-map\.mjs build/);
   });
 
   // Revert-check: drop the `git cat-file -e` check in loadMap → select dies later inside
