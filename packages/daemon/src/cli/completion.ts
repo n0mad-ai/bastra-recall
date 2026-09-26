@@ -33,6 +33,7 @@ export const COMMANDS = [
   "rules",
   "patches",
   "feedback",
+  "archive",
   "completion",
   "help",
   "version",

@@ -308,6 +308,30 @@ Risky patterns: `chmod -R`, `chown -R`, `find ... -exec rm`,
 
 Does **not** block. The agent decides whether to proceed.
 
+**The archiving `rm` (#650, Claude Code).** For a command made only of `rm`
+(plain, `command rm`, `xargs rm`, `find … -exec rm`, a non-login `bash -c` of
+the same, plus `cd`), the hook does not warn — it makes the act reversible.
+It answers `permissionDecision: "allow"` with an `updatedInput` that puts
+bastra's `shims/rm` first in that command's `PATH`: the shell expands globs and
+variables as usual, and the shim moves each target to
+`~/.bastra/archive/<date>/<time-pid>/<full path>` instead of unlinking it.
+Temp dirs (`/tmp`, `/var/tmp`, `$TMPDIR`, …) are really removed; `/`, `~` and
+system dirs are refused. After the command, the post hook tells the agent what
+actually happened (archived where, deleted, refused) and how to restore:
+`bastra archive restore <path>`. Old entries go by class — build junk after 1
+day, clean git-tracked files after 7, the rest after 30, with a 10 GB cap that
+never touches your own files younger than 7 days.
+
+Anything else keeps the STOP: a command that mixes `rm` with other work (the
+`allow` would cover it all), one that changes what `rm` resolves to (`PATH=`,
+`alias`, `hash -p`, an `rm()` function, also inside `eval`), `sudo rm`,
+`/bin/rm`, remote and container `rm`. Not covered at all: `find -delete`,
+`git clean`, `rmdir`, deletes from code. Other hooks' `deny` still wins over
+this `allow`. Off with `BASTRA_RM_SHIM=0`; a host that ships its own
+archiving `rm` sets `BASTRA_RM_ARCHIVES=1` instead and gets the receipt text
+without the rewrite. The daemon and Claude Code must share a disk: a shim
+path the client cannot see fails the command before it runs (exit 97).
+
 Telemetry: `bash_hook_call` with `matched_pattern, severity, hit_count,
 top_score, status`.
 

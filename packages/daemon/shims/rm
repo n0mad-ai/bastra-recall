@@ -1,0 +1,4 @@
+#!/bin/sh
+# bastra-recall archiving rm (#650). The bash-pre hook puts this directory first
+# in PATH of the agent's Bash command only; see src/rm-archive.ts.
+exec "${BASTRA_NODE:-node}" "$(dirname "$0")/../dist/rm-shim.js" "$@"
