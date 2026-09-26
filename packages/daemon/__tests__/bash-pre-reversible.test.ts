@@ -513,6 +513,13 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "eval 'rm(){ /bin/rm \"$@\"; }'; rm -rf x",
       'eval "rm(){ /bin/rm \\"\\$@\\"; }"; rm -rf x',
       "hash -p /bin/rm rm; rm -rf x",
+      // …behind a prefix word or an eval: every word is read, an eval body
+      // is shell again (#682 review).
+      "builtin hash -p /bin/rm rm; rm -rf x",
+      "command hash -p /bin/rm rm; rm -rf x",
+      "eval 'hash -p /bin/rm rm'; rm -rf x",
+      "eval 'export PATH=/x:$PATH'; rm -rf x",
+      "eval 'alias rm=/bin/rm'; rm -rf x",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "stop", cmd);
     }
@@ -528,6 +535,16 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "find . -name '*.o' | xargs rm -rf",
       "rm -rf a && rm -r b",
       'rm -rf "$TMPDIR/x"',
+      // `hash -p` for another name leaves `rm` alone; `rm()` in quotes is
+      // a grep pattern, not a definition (#682 review).
+      "hash -p /usr/bin/python3 python; rm -rf dist",
+      'grep -rn "rm()" src; rm -rf dist',
+      "eval 'echo hi'; rm -rf dist",
+      // Only the command word counts: an argument that reads like `hash` /
+      // `eval` is data, and `sudo hash` runs in a child shell.
+      "echo hash -p /bin/rm rm; rm -rf x",
+      "echo eval 'alias rm=/bin/rm'; rm -rf x",
+      "sudo hash -p /bin/rm rm; rm -rf x",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "receipt", cmd);
     }
