@@ -21,6 +21,7 @@
  * in PATH of that one command. The user's shell, build scripts and makepkg
  * keep the system `rm`.
  */
+import { pinLive, restoreCommand, restorePin, unpin } from "./git-archive.js";
 import { execFileSync } from "node:child_process";
 import {
   appendFileSync,
@@ -59,7 +60,7 @@ const shq = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
  */
 export function shimRewrite(command: string, call: string): string {
   return (
-    `[ -x ${shq(SHIM_DIR + "/rm")} ] || exit 97; unset -f rm 2>/dev/null; ` +
+    `[ -x ${shq(SHIM_DIR + "/rm")} ] || exit 97; unset -f rm git 2>/dev/null; ` +
     `export PATH=${shq(SHIM_DIR)}:"$PATH" BASTRA_RM_CALL=${shq(call)} BASTRA_NODE=${shq(process.execPath)}\n` +
     command
   );
@@ -103,7 +104,12 @@ const under = (path: string, root: string): boolean => path === root || path.sta
 
 export interface ManifestRow {
   ts: string;
-  action: "archived" | "deleted" | "refused";
+  /** `pinned`: a git snapshot (git-archive.ts) — orig is the repository,
+   *  dest the ref under refs/bastra-archive/, restore the git argv. */
+  action: "archived" | "deleted" | "refused" | "pinned";
+  sha?: string;
+  act?: string;
+  restore?: string[];
   orig: string;
   dest?: string;
   kind?: "junk" | "in-git" | "user";
@@ -264,7 +270,7 @@ function archiveRootFor(parent: string, archive: string): string | null {
 }
 
 const pad = (n: number, w = 2): string => String(n).padStart(w, "0");
-const localIso = (d: Date): string =>
+export const localIso = (d: Date): string =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
 export interface ShimIo {
@@ -469,7 +475,9 @@ export function callReport(call: string, env: NodeJS.ProcessEnv = process.env): 
   if (rows.length === 0) return null;
   const shown = rows.slice(0, RECEIPT_MAX_LINES);
   const lines = shown.map((r) =>
-    r.action === "archived"
+    r.action === "pinned"
+      ? `- before \`${r.act}\` in ${r.orig}: saved ${(r.sha ?? "").slice(0, 10)} as ${r.dest} (restore: \`${restoreCommand(r.restore ?? [])}\`, or \`bastra archive restore ${r.dest}\`)`
+      : r.action === "archived"
       ? `- archived ${r.orig} → ${r.dest} (restore: \`bastra archive restore ${shq(r.orig)}\`)`
       : r.action === "deleted"
         ? `- deleted for real (temp): ${r.orig}`
@@ -480,10 +488,22 @@ export function callReport(call: string, env: NodeJS.ProcessEnv = process.env): 
     const n = (a: ManifestRow["action"]) => rest.filter((r) => r.action === a).length;
     lines.push(`- … and ${rest.length} more (${n("archived")} archived, ${n("deleted")} deleted, ${n("refused")} refused): \`bastra archive list\``);
   }
-  return `What \`rm\` did in this command (bastra archiving rm):\n${lines.join("\n")}`;
+  const head = rows.some((r) => r.action === "pinned")
+    ? "What bastra's archive kept from this command (git snapshots, archiving rm):"
+    : "What `rm` did in this command (bastra archiving rm):";
+  return `${head}\n${lines.join("\n")}`;
 }
 
 export function restore(target: string, env: NodeJS.ProcessEnv = process.env, cwd = process.cwd()): string {
+  // A git snapshot, by its ref or sha: run the command the receipt named.
+  const pinned = [...manifestRows(env)]
+    .reverse()
+    .find((r) => r.action === "pinned" && r.restore && (r.dest === target || (target.length >= 7 && (r.sha ?? "").startsWith(target))));
+  if (pinned?.restore) {
+    if (!pinLive(pinned.orig, pinned.dest as string)) throw new Error(`${pinned.dest} is gone from ${pinned.orig}`);
+    restorePin(pinned.restore);
+    return `${pinned.act} undone in ${pinned.orig} (${restoreCommand(pinned.restore)})`;
+  }
   // The manifest keeps the path with its parent resolved (/var → /private/var
   // on macOS); a path as the user typed it is resolved the same way.
   const typed = resolve(cwd, target);
@@ -573,6 +593,8 @@ export interface Drop {
   kind: string;
   bytes: number;
   why: string;
+  /** A git snapshot: let go of the ref (only while it still names this sha). */
+  sha?: string;
 }
 
 /**
@@ -599,6 +621,14 @@ export function reconcilePlan(
     else if (age > retain[kind]) drop.push({ ...base, why: `${kind} older than ${retain[kind]} days` });
     else keep.push({ ...r, age });
   }
+  // Git snapshots hold uncommitted work: the user retention, and never the cap.
+  for (const r of manifestRows(env)) {
+    if (r.action !== "pinned" || !r.sha || !r.dest) continue;
+    const age = (now.getTime() - new Date(r.ts).getTime()) / 86_400_000;
+    if (age > retain.user && pinLive(r.orig, r.dest)) {
+      drop.push({ orig: r.orig, dest: r.dest, kind: "user", bytes: 0, why: `git snapshot older than ${retain.user} days`, sha: r.sha });
+    }
+  }
   let total = keep.reduce((s, r) => s + (r.bytes ?? 0), 0);
   const rank = { junk: 0, "in-git": 1, user: 2 };
   for (const r of keep.sort((a, b) => rank[a.kind ?? "user"] - rank[b.kind ?? "user"] || b.age - a.age)) {
@@ -618,7 +648,10 @@ const MANIFEST_DAYS = 30;
 export function applyReconcile(drop: Drop[], env: NodeJS.ProcessEnv = process.env, now = new Date()): void {
   const root = archiveRoot(env);
   stampReconcile(env, now);
-  for (const d of drop) rmSync(d.dest, { recursive: true, force: true });
+  for (const d of drop) {
+    if (d.sha) unpin(d.orig, d.dest, d.sha);
+    else rmSync(d.dest, { recursive: true, force: true });
+  }
   // The manifest is read whole by every receipt and by restore; without this
   // it only grows (one line per target, for good). Rotation is a rename — a
   // shim appending at that moment writes into one of the two files.

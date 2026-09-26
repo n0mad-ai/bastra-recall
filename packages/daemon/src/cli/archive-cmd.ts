@@ -9,7 +9,7 @@ import type { ParsedArgs } from "./types.js";
 
 const USAGE =
   "usage: bastra archive list                 what the agent's rm archived (last 30 days)\n" +
-  "       bastra archive restore <path>       put it back at its original path\n" +
+  "       bastra archive restore <path|ref>   put it back (a path, or a git snapshot ref / sha)\n" +
   "       bastra archive reconcile [--yes]    show (or, with --yes, remove) what the archive can let go\n" +
   "retention: bastra config set archive.retain junk=1,in-git=2,user=2  (days; env BASTRA_ARCHIVE_RETAIN wins)";
 

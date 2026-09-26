@@ -522,7 +522,7 @@ describe("#650 — the bash-pre lane runs rm-only commands through the shim", ()
       const out = await preHook(`cd pkg && ${RM} -rf node_modules dist`);
       assert.equal(out.permissionDecision, "allow");
       assert.equal(out.updatedInput.description, "d");
-      assert.match(out.updatedInput.command, /^\[ -x '[^']*\/shims\/rm' \] \|\| exit 97; unset -f rm 2>\/dev\/null; export PATH='[^']*\/shims':"\$PATH" BASTRA_RM_CALL='toolu_1' BASTRA_NODE='[^']*'\n/);
+      assert.match(out.updatedInput.command, /^\[ -x '[^']*\/shims\/rm' \] \|\| exit 97; unset -f rm git 2>\/dev\/null; export PATH='[^']*\/shims':"\$PATH" BASTRA_RM_CALL='toolu_1' BASTRA_NODE='[^']*'\n/);
       assert.ok(out.updatedInput.command.endsWith(`\ncd pkg && ${RM} -rf node_modules dist`));
       assert.match(out.additionalContext, /NOTE — reversible/);
       // -R and --recursive are rm -r too (before: no row, so the system's rm ran them with no STOP).

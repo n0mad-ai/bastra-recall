@@ -1,0 +1,4 @@
+#!/bin/sh
+# bastra-recall git snapshots (#650). The bash-pre hook puts this directory first
+# in PATH of the agent's Bash command only; see src/git-archive.ts.
+exec "${BASTRA_NODE:-node}" "$(dirname "$0")/../dist/git-shim.js" "$@"
