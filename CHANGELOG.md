@@ -81,6 +81,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   bash-fail and todo hint blocks said so whenever one lookup ranked lexically;
   they now name the reason the lookup had (deadline missed, empty dense arm),
   as the prompt lane already did.
+- **An embedding request can no longer hang forever.** The Ollama provider
+  (keep-alive socket) and the OpenAI provider had no request deadline: an
+  endpoint that accepted the connection and never answered left `embed()`
+  pending, so the breaker never saw a failure and each call parked another
+  socket. Both now reject after `timeoutMs` (default 60 s, well above a cold
+  model load), which the breaker counts like any other provider error.
 
 ## [1.0.0] — 2026-09-14
 
