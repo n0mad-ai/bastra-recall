@@ -351,6 +351,20 @@ archiving `rm` sets `BASTRA_RM_ARCHIVES=1` instead and gets the receipt text
 without the rewrite. The daemon and Claude Code must share a disk: a shim
 path the client cannot see fails the command before it runs (exit 97).
 
+Switched off (`BASTRA_RM_SHIM=0`), the STOP stays — and on a command the shim
+would have taken (the same rm-only decision), the block gets one more line:
+what the shim would have done with this command (which targets it would
+have moved, restorable) and that it is on by default. The wording follows the
+user's own Claude Code rules, read deterministically from the standard files
+(managed, `~/.claude/settings.json` or `CLAUDE_CONFIG_DIR`, the project's
+`.claude/settings.json` and `settings.local.json`; deny > ask > allow, as
+Claude Code decides): with an `ask` rule it says the shim would still ask; a
+`deny` rule gets no line, since the shim would not have changed that. Files
+passed with `claude --settings` or narrowed by `--setting-sources` are not
+visible to a hook. Every such rm is also a telemetry event `rm_shim_shadow`
+(`matched_pattern, rm_only, settings_verdict, settings_rule, hinted`) — what
+the off switch costs, counted. Nothing goes to the vault.
+
 Telemetry: `bash_hook_call` with `matched_pattern, severity, hit_count,
 top_score, status`.
 

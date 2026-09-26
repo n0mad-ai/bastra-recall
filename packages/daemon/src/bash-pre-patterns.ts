@@ -251,6 +251,21 @@ export function rmShim(surface: string): boolean {
   );
 }
 
+/**
+ * The shim is here and would run on this surface — only BASTRA_RM_SHIM=0
+ * keeps it out. Then a command it would have taken still gets its STOP, plus
+ * one line that the shim exists (#650, owner's ask: an off switch should
+ * say what it costs).
+ */
+export function rmShimSwitchedOff(surface: string): boolean {
+  return (
+    surface === "claude-code" &&
+    process.env.BASTRA_RM_SHIM === "0" &&
+    !rmArchives(surface) &&
+    existsSync(join(SHIM_DIR, "rm"))
+  );
+}
+
 /** The undo a destructive label's row declares, where this host can keep it. */
 export function reversibleDefault(label: string, surface: string): Undo | null {
   const undo = DESTRUCTIVE_PATTERNS.find((p) => p.label === label)?.undo ?? null;

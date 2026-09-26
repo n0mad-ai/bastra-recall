@@ -44,10 +44,12 @@ import {
   RM_ARCHIVES,
   RM_SHIM,
   reversibleDefault,
+  rmShimSwitchedOff,
   type HintKind,
   type Undo,
 } from "./bash-pre-patterns.js";
 import { shimRewrite } from "./rm-archive.js";
+import { bashVerdict, settingsFiles, type BashVerdict } from "./cc-permissions.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 500, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.2.0"; // 0.2.0 = daemon-side lane (#343)
@@ -540,6 +542,9 @@ interface Hint {
   /** The receipt holds only if bastra's archiving `rm` runs the command:
    *  the lane rewrites it and allows it (see shimRewrite). */
   viaShim?: boolean;
+  /** The shim is switched off (BASTRA_RM_SHIM=0); set when every act is an
+   *  `rm` row — then true if it would have taken this command. */
+  wouldShim?: boolean;
 }
 
 /**
@@ -562,7 +567,14 @@ function hintFor(cmd: string, surface: string): Hint | null {
   }));
   const stop = (label: string): Hint => ({ label, severity: "destructive", undo: null });
   const bare = acts.find((a) => a.undo === null);
-  if (bare) return stop(bare.label);
+  if (bare) {
+    // Switched off, the rm rows have no undo: ask what the shim would have
+    // said, with the same decision it takes when on.
+    if (rmShimSwitchedOff(surface) && acts.every((a) => RM_ROWS.some((r) => r.label === a.label))) {
+      return { ...stop(bare.label), wouldShim: rmRunsThroughPath(cmd) && rmOnly(cmd) };
+    }
+    return stop(bare.label);
+  }
   if (acts.length > 1 && acts.some((a) => a.undo?.kind !== "receipt")) return stop(first.label);
   const archivingRm = acts.some((a) => a.undo?.needsArchivingRm && a.undo.kind === "receipt");
   if (archivingRm && !rmRunsThroughPath(cmd)) return stop(first.label);
@@ -727,11 +739,27 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
         },
       }
     : {};
+  // The shim is off: count every rm it could have seen (shadow), and on a
+  // command it would have taken, say so in one line — never on a mixed one.
+  let offLine = "";
+  if (match.wouldShim !== undefined) {
+    const settings = bashVerdict(command, settingsFiles(payload.cwd));
+    if (match.wouldShim) offLine = shimOffLine(command, settings);
+    await writeShadow("rm_shim_shadow", {
+      session_id: payload.session_id ?? null,
+      matched_pattern: match.label,
+      rm_only: match.wouldShim,
+      settings_verdict: settings.verdict,
+      settings_rule: settings.rule ?? null,
+      hinted: offLine !== "",
+    });
+  }
+  const text = offLine ? block.replace(/<\/recall-hints>$/, `${offLine}\n</recall-hints>`) : block;
   const stdout = JSON.stringify({
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       ...viaShim,
-      additionalContext: block,
+      additionalContext: text,
     },
   });
 
@@ -862,6 +890,58 @@ interface BashHookCallTelemetry {
   suppressed_tokens_est: 0;
   status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error";
   error: string | null;
+}
+
+/** The literal targets of the command's `rm`s, for the one line below. */
+function rmTargets(cmd: string): string[] {
+  const out: string[] = [];
+  for (const { words } of simpleCommands(cmd) ?? []) {
+    const texts = words.map((w) => unquote(w.text));
+    const k = commandWordAt(texts);
+    if (texts[k] !== "rm") continue;
+    let done = false;
+    for (const t of texts.slice(k + 1)) {
+      if (!done && t === "--") done = true;
+      else if (done || !t.startsWith("-")) out.push(t);
+    }
+  }
+  return out;
+}
+
+/**
+ * One line when the shim is off and would have taken this command: what it
+ * would have done, how to turn it on, and — read from the user's own Claude
+ * Code rules — whether the stop comes from those rules. A user `deny` stays a
+ * deny with the shim on too, so it gets no line (the shim would not have
+ * saved this case); the shadow event still counts it.
+ */
+export function shimOffLine(command: string, settings: BashVerdict): string {
+  if (settings.verdict === "deny") return "";
+  const t = rmTargets(command);
+  const what = t.length === 0 ? "its targets" : t.slice(0, 3).map((x) => `\`${x}\``).join(", ") + (t.length > 3 ? ` and ${t.length - 3} more` : "");
+  const moved = `would have moved ${what} to ~/.bastra/archive (restorable: \`bastra archive restore <path>\`; temp dirs really removed)`;
+  const on = "Turn it on: unset BASTRA_RM_SHIM (it is on by default) — the user's call, tell them.";
+  const lead = "bastra's archiving rm is switched off here (BASTRA_RM_SHIM=0). With it on, this exact command";
+  if (settings.verdict === "ask") {
+    return `${lead} would still be asked about (your settings: \`${settings.rule}\`), and once approved it ${moved} instead of deleting. ${on}`;
+  }
+  if (settings.verdict === "allow") {
+    return `${lead} — which your settings allow (\`${settings.rule}\`), so it deletes for real — ${moved}. ${on}`;
+  }
+  return `${lead} would have run without this stop and ${moved}. ${on}`;
+}
+
+/** A shadow event: telemetry only, nothing in the vault (#650). */
+async function writeShadow(kind: string, fields: Record<string, unknown>): Promise<void> {
+  if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
+  try {
+    const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();
+    await mkdir(logDir, { recursive: true });
+    const ts = new Date().toISOString();
+    await appendFile(join(logDir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify({ kind, ts, hook_version: HOOK_VERSION, ...fields }) + "\n", "utf8");
+  } catch {
+    // Telemetry must never break the lane.
+  }
 }
 
 async function writeTelemetry(payload: BashHookCallTelemetry): Promise<void> {
