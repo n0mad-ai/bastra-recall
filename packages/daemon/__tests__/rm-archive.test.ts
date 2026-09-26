@@ -114,6 +114,29 @@ describe("#650 — the archiving rm itself", () => {
   });
 });
 
+describe("#650 — classifying a target runs nothing from the target's repository", () => {
+  it("core.fsmonitor and a clean filter in the repo's own config never execute; the class still reads in-git", () => {
+    // Revert-check: classify via `git status --porcelain --ignored` again → the marker file appears.
+    const { dir, env } = sandbox();
+    const repo = join(dir, "repo");
+    const marker = join(dir, "EXECUTED");
+    mkdirSync(repo);
+    const g = (...a: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.fsmonitor=false", ...a], { cwd: repo, stdio: "ignore" });
+    g("init", "-q");
+    writeFileSync(join(repo, "a.txt"), "x\n");
+    writeFileSync(join(repo, ".gitattributes"), "*.txt filter=probe\n");
+    g("add", "-A");
+    g("commit", "-qm", "c");
+    g("config", "core.fsmonitor", `touch '${marker}'; false`);
+    g("config", "filter.probe.clean", `sh -c "touch '${marker}'; cat"`);
+    // Stat-dirty but same content: status would re-hash it through the clean filter.
+    writeFileSync(join(repo, "a.txt"), "x\n");
+    runRmShim([join(repo, "a.txt")], { env, cwd: dir, ...quiet });
+    assert.equal(existsSync(marker), false, "nothing from the repo ran");
+    assert.equal(manifestRows(env).at(-1)?.kind, "in-git");
+  });
+});
+
 describe("#650 — retention: two days by default, one knob per class", () => {
   const DAY = 86_400_000;
   const userEntry = () => {

@@ -174,22 +174,42 @@ function classify(real: string, isDir: boolean): "junk" | "in-git" | "user" {
   }
   // null: git failed or ran out of time (3 s; an index.lock, a cold monorepo).
   // A failure is not "clean" — an empty status has to be git's own answer.
-  const git = (cwd: string, args: string[]): string | null => {
+  //
+  // Only plumbing that runs nothing from the repository: this is under the
+  // hook's allow, and the repo's own config could otherwise execute a command
+  // (`core.fsmonitor` on `git status`, a clean filter while status refreshes
+  // the index). No `status`; fsmonitor off; content hashed with --no-filters.
+  const git = (cwd: string, args: string[], input?: string): string | null => {
     try {
-      return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] }).trim();
+      return execFileSync("git", ["-c", "core.fsmonitor=false", "-C", cwd, ...args], {
+        encoding: "utf8",
+        timeout: 3000,
+        input,
+        stdio: [input === undefined ? "ignore" : "pipe", "pipe", "ignore"],
+      }).trim();
     } catch {
       return null;
     }
   };
   const top = git(isDir ? real : dirname(real), ["rev-parse", "--show-toplevel"]);
   if (!top) return "user";
-  const rel = relative(realpathSync(top), real);
+  const topReal = realpathSync(top);
+  const rel = relative(topReal, real);
   // "Get it back with checkout" holds only for tracked, unchanged files: not
   // for the repository itself (unpushed commits, stashes live in .git), not
   // for a directory that also holds untracked or ignored files (.env).
   if (!rel || rel.startsWith("..")) return "user";
-  if (git(top, ["ls-files", "--", rel]) && git(top, ["status", "--porcelain", "--ignored", "--", rel]) === "") return "in-git";
-  return "user";
+  const staged = git(topReal, ["ls-files", "-s", "--", rel]);
+  if (!staged) return "user";
+  const entries = staged.split("\n").map((l) => /^\d+ ([0-9a-f]+) \d\t(.*)$/.exec(l));
+  if (entries.some((m) => !m) || entries.length > 500) return "user";
+  // Worktree = index (hashed as stored, no filters), index = HEAD, nothing
+  // untracked or ignored beside it.
+  const hashes = git(topReal, ["hash-object", "--no-filters", "--stdin-paths"], entries.map((m) => (m as RegExpExecArray)[2]).join("\n") + "\n");
+  if (hashes === null || hashes !== entries.map((m) => (m as RegExpExecArray)[1]).join("\n")) return "user";
+  if (git(topReal, ["diff-index", "--cached", "--quiet", "HEAD", "--", rel]) === null) return "user";
+  if (git(topReal, ["ls-files", "--others", "--", rel]) !== "") return "user";
+  return "in-git";
 }
 
 /** Bytes of a target; a directory walk stops after `cap` entries. */
