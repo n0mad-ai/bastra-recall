@@ -45,18 +45,18 @@ const shq = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
 
 /**
  * The command as it runs when bastra's archiving `rm` carries the receipt:
- * `shims/` first in PATH, the tool call id for the manifest, and node for the
- * shim. A missing shim (a daemon on another host) fails the command before it
- * runs — never a real `rm` behind an archive receipt.
+ * one line — the shim must be on this disk (a daemon on another host: exit 97,
+ * nothing runs, never a real `rm` behind an archive receipt); an rm()
+ * function the shell brought along is dropped (Claude Code's snapshot clears
+ * aliases, not functions); then `shims/` first in PATH, the tool call id for
+ * the manifest and node for the shim — and the command as written. No `.`,
+ * no `$(…)`: under a deny or `ask` rule Claude Code shows this line to the
+ * model and the user, and flags either as "evaluates shell code".
  */
 export function shimRewrite(command: string, call: string): string {
-  const rm = shq(SHIM_DIR + "/rm");
   return (
-    `[ -x ${rm} ] || { echo ${shq(`bastra: archiving rm missing at ${SHIM_DIR} — command not run`)} >&2; exit 97; }\n` +
+    `[ -x ${shq(SHIM_DIR + "/rm")} ] || exit 97; unset -f rm 2>/dev/null; ` +
     `export PATH=${shq(SHIM_DIR)}:"$PATH" BASTRA_RM_CALL=${shq(call)} BASTRA_NODE=${shq(process.execPath)}\n` +
-    // An rm() function (or anything else) in this shell would run instead of
-    // the shim: then the command does not run at all.
-    `[ "$(command -v rm)" = ${rm} ] || { echo "bastra: rm here is $(command -v rm), not the archiving rm — command not run" >&2; exit 97; }\n` +
     command
   );
 }
