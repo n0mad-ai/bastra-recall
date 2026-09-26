@@ -147,6 +147,25 @@ verification contract with measured lift over a held-out set, a near-slice
 regression guard, and a decay/demotion path. (The older note here cited #121; that
 issue closed 2026-06-16 and was never the real blocker.)
 
+**Evidence and decay (#672).** A bridge is written on its **first** reach
+(`MIN_BRIDGE_EVIDENCE = 1`); until a second, independent reach confirms it
+(`CONFIRMED_BRIDGE_EVIDENCE = 2`) it is *unconfirmed*:
+
+- It widens a query only at reduced weight: at least half of its trigger terms
+  must appear in the query (never fewer than two), it adds at most 3 expansion
+  terms, and confirmed bridges are consulted first.
+- It carries a `first_seen` timestamp (the earliest reach behind it). If no second
+  reach arrives within `UNCONFIRMED_BRIDGE_TTL_DAYS = 30`, the next mint pass
+  (daemon boot + daily, or `bastra bridges mint`) deletes it.
+- A confirmed bridge never expires, and a rewrite never lowers its `evidence`.
+- Only bridges this machine minted can be unconfirmed and live: a contributed
+  bridge (with `verifier`) and old evidence-1 files without `first_seen` still need
+  confirmation and are never pruned.
+
+`bastra doctor` shows a **learned bridges** note while shared recall is on: it warns
+when no mint ran in 30 days, when mint runs produced candidates but wrote none, or
+when no acted-on recall reached the telemetry log.
+
 ### What stays private
 
 Your personal memories never leave the machine — the clone is read-only and the
@@ -352,6 +371,26 @@ eine einzige erzeugte Bridge verändert also jede Anfrage, die diesen Begriff en
 Verifikationsvertrag mit gemessener Verbesserung auf einem zurückgehaltenen Testset, einen Regressionsschutz für den nahen Teil
 und einen Weg für Verfall/Abwertung. (Der ältere Hinweis an dieser Stelle nannte #121; dieses
 Issue wurde am 2026-06-16 geschlossen und war nie der eigentliche Blocker.)
+
+**Belege und Verfall (#672).** Eine Bridge wird schon beim **ersten** Treffer
+geschrieben (`MIN_BRIDGE_EVIDENCE = 1`); bis ein zweiter, unabhängiger Treffer sie
+bestätigt (`CONFIRMED_BRIDGE_EVIDENCE = 2`), gilt sie als *unbestätigt*:
+
+- Sie erweitert eine Anfrage nur mit geringerem Gewicht: Mindestens die Hälfte ihrer
+  Triggerbegriffe muss in der Anfrage stehen (nie weniger als zwei), sie fügt höchstens
+  3 Erweiterungsbegriffe hinzu, und bestätigte Bridges kommen zuerst an die Reihe.
+- Sie trägt einen Zeitstempel `first_seen` (der früheste Treffer dahinter). Kommt
+  innerhalb von `UNCONFIRMED_BRIDGE_TTL_DAYS = 30` Tagen kein zweiter Treffer, löscht
+  der nächste Erzeugungslauf (Daemon-Start + täglich, oder `bastra bridges mint`) sie.
+- Eine bestätigte Bridge verfällt nie, und ein erneutes Schreiben senkt ihr `evidence` nie.
+- Unbestätigt und trotzdem aktiv können nur Bridges sein, die dieser Rechner selbst
+  erzeugt hat: Eine beigetragene Bridge (mit `verifier`) und alte Dateien mit
+  `evidence` 1 ohne `first_seen` brauchen weiter eine Bestätigung und werden nie gelöscht.
+
+`bastra doctor` zeigt bei eingeschaltetem Shared Recall einen Abschnitt **learned
+bridges**: Er warnt, wenn 30 Tage lang kein Erzeugungslauf lief, wenn Läufe Kandidaten
+erzeugt, aber keine geschrieben haben, oder wenn kein genutzter Recall im
+Telemetrie-Protokoll ankam.
 
 ### Was privat bleibt
 

@@ -113,7 +113,7 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
         return 0;
       }
       process.stdout.write(
-        `✓ minted ${outcome.minted} bridge(s) from ${outcome.reaches} acted-on reach(es) — ${outcome.written} written to ${join(bridgesPath(), "bridges")}\n` +
+        `✓ minted ${outcome.minted} bridge(s) from ${outcome.reaches} acted-on reach(es) — ${outcome.written} written to ${join(bridgesPath(), "bridges")}, ${outcome.pruned} unconfirmed expired\n` +
           "  a running daemon picks them up with its next scheduled mint, or restart it to load them now\n",
       );
       return 0;
@@ -205,7 +205,8 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       const result = await harvestFarBridges(pools, getMemoryInfo, ollamaChat({ model, numCtx: 8192 }), {
         onProgress: (done, total) => process.stderr.write(`  judged ${done}/${total}\r`),
       });
-      // 20.08.: same evidence gate as the in-band mint — one judged reach stays an anecdote.
+      // Same evidence gate as the in-band mint (#672: a first judged reach is
+      // written unconfirmed; the next mint pass expires it unless confirmed).
       const written = await writeBridges(
         bridgesPath(),
         result.bridges.filter((b) => b.evidence >= MIN_BRIDGE_EVIDENCE),

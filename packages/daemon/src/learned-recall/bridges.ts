@@ -41,8 +41,14 @@ export interface Bridge {
   trigger_terms: string[];
   /** Vocabulary the bridge adds to a matching query to broaden recall. */
   expansion_terms: string[];
-  /** Independent confirmations (verify-loop evidence). 1 when freshly minted. */
+  /** Independent confirmations (verify-loop evidence). 1 when freshly minted;
+   *  CONFIRMED_BRIDGE_EVIDENCE or more makes the bridge permanent (#672). */
   evidence: number;
+  /** #672: ISO timestamp of the first local write. Optional and additive — files
+   *  written before #672 (all confirmed) and cloned Commons bridges have none.
+   *  An unconfirmed local bridge older than UNCONFIRMED_BRIDGE_TTL_DAYS by this
+   *  stamp is dropped at the next mint pass. */
+  first_seen?: string;
   /** Pseudonymous contributor hash (Commons verifierId shape). Absent for local mints. */
   verifier?: string;
   date?: string;
@@ -200,11 +206,55 @@ function triggerOverlap(b: Bridge, queryTerms: Set<string>): number {
   return n;
 }
 
-/** 20.08.: a bridge needs two independent reaches before it may widen a query.
- *  The first in-band mint wrote 116 evidence-1 bridges from single reaches;
- *  one reach is an anecdote, not vocabulary. Applied at load (a cloned pool is
- *  foreign input) and at write (the local mint keeps its dir clean). */
-export const MIN_BRIDGE_EVIDENCE = 2;
+/** Evidence a bridge needs to be written and loaded at all.
+ *
+ *  20.08. this was 2: the first in-band mint wrote 116 evidence-1 bridges from
+ *  single reaches, and a single reach widened queries at full weight. #672
+ *  measured the other side: on a normal-volume vault (~300 loads a month) the
+ *  same reach rarely repeats — 3,435 minted, 0 written in a month. So a bridge
+ *  is now written on its first reach, and the 20.08. risk is carried by two
+ *  other rules instead: an unconfirmed bridge widens a query only at reduced
+ *  weight (expansionsFor), and it expires unless a second reach confirms it
+ *  within UNCONFIRMED_BRIDGE_TTL_DAYS (pruneUnconfirmedBridges). */
+export const MIN_BRIDGE_EVIDENCE = 1;
+
+/** #672: from this evidence on a bridge is confirmed — full weight, never expires.
+ *  The old write threshold, so every bridge written before #672 is confirmed. */
+export const CONFIRMED_BRIDGE_EVIDENCE = 2;
+
+/** #672: how long an unconfirmed bridge may wait for its second reach. 30 days
+ *  matches the curator's mining window and the log-retention floor, so a reach
+ *  that could confirm it is still in the log for the whole window. */
+export const UNCONFIRMED_BRIDGE_TTL_DAYS = 30;
+
+/** #672: reduced weight of an unconfirmed bridge — at most this many of its
+ *  expansion terms reach the query (a confirmed bridge may fill all 12 slots). */
+const MAX_UNCONFIRMED_EXPANSION = 3;
+
+export function isConfirmedBridge(b: Pick<Bridge, "evidence">): boolean {
+  return b.evidence >= CONFIRMED_BRIDGE_EVIDENCE;
+}
+
+/** #672: an unconfirmed LOCAL bridge whose first_seen is older than the TTL.
+ *  Only bridges this machine stamped can expire: no first_seen (pre-#672 or
+ *  cloned) or a verifier (a Commons contribution) is never ours to drop. */
+export function isExpiredUnconfirmed(
+  b: Pick<Bridge, "evidence" | "first_seen" | "verifier">,
+  now: Date,
+  ttlDays: number = UNCONFIRMED_BRIDGE_TTL_DAYS,
+): boolean {
+  if (isConfirmedBridge(b) || b.verifier !== undefined || typeof b.first_seen !== "string") return false;
+  const seen = Date.parse(b.first_seen);
+  if (!Number.isFinite(seen)) return false;
+  return now.getTime() - seen > ttlDays * 24 * 60 * 60 * 1000;
+}
+
+/** #672: an unconfirmed bridge must match a larger share of its trigger — at
+ *  least half its terms, never fewer than the confirmed rule asks. */
+function requiredOverlapFor(b: Bridge): number {
+  const base = requiredOverlap(b);
+  return isConfirmedBridge(b) ? base : Math.max(base, Math.ceil(b.trigger_terms.length / 2));
+}
 
 // #162: the base query is capped BEFORE expansion terms are appended, so the
 // appended terms always survive core's downstream QUERY_MAX_CHARS (8000)
@@ -226,7 +276,7 @@ export class BridgePool {
 
   /** Load <root>/bridges/<lang>/*.json into per-language buckets. Defensive: skips
    *  corrupt files and unknown languages, never throws. */
-  static load(rootDir: string): BridgePool {
+  static load(rootDir: string, now: Date = new Date()): BridgePool {
     const byLang = new Map<SupportedLanguage, Bridge[]>();
     const base = join(rootDir, "bridges");
     try {
@@ -240,6 +290,14 @@ export class BridgePool {
             const b = JSON.parse(readFileSync(join(base, lang, f), "utf8")) as Bridge;
             if (!isValidBridge(b) || b.lang !== lang) continue;
             if (b.evidence < MIN_BRIDGE_EVIDENCE) continue;
+            // #672: a single reach is trusted only from this machine's own mint,
+            // which stamps first_seen. A contributed (verifier-carrying) bridge
+            // still needs confirmation, and so do the evidence-1 files the
+            // pre-20.08. mint left behind (no first_seen — they stay inert, as
+            // they were, instead of coming back without an expiry date).
+            if (!isConfirmedBridge(b) && (b.verifier !== undefined || typeof b.first_seen !== "string")) continue;
+            // Expired but not yet pruned (the prune runs with the next mint).
+            if (isExpiredUnconfirmed(b, now)) continue;
             // Defense-in-depth: a cloned repo is foreign input. Cap term length so
             // no oversized token from a hostile bridge ever reaches the search query
             // (the contribution path scrubs; the load path must not trust more).
@@ -288,9 +346,17 @@ export class BridgePool {
     const added = new Set<string>();
     for (const b of bridges) {
       // bucket is pre-sorted by descending evidence at load time
-      if (triggerOverlap(b, queryTerms) < requiredOverlap(b)) continue;
+      if (triggerOverlap(b, queryTerms) < requiredOverlapFor(b)) continue;
+      // #672: an unconfirmed bridge adds at most MAX_UNCONFIRMED_EXPANSION new
+      // terms; confirmed bridges come first (pre-sorted) and keep full weight.
+      const cap = isConfirmedBridge(b) ? MAX_QUERY_EXPANSION : MAX_UNCONFIRMED_EXPANSION;
+      let fromThis = 0;
       for (const e of b.expansion_terms) {
-        if (!queryTerms.has(e)) added.add(e);
+        if (fromThis >= cap) break;
+        if (!queryTerms.has(e) && !added.has(e)) {
+          added.add(e);
+          fromThis++;
+        }
         if (added.size >= MAX_QUERY_EXPANSION) break;
       }
       if (added.size >= MAX_QUERY_EXPANSION) break;

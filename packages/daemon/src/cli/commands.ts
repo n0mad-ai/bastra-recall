@@ -23,7 +23,11 @@ import { runInstallWizard, shouldRunWizard } from "./wizard.js";
 import { cmdInstallExtension } from "./extension-install.js";
 import { ensureHookStub } from "./stub-install.js";
 import { confirm, isInteractive } from "./prompt.js";
-import { getEmbeddingProvider } from "../settings.js";
+import { getEmbeddingProvider, getSharedRecallEnabled } from "../settings.js";
+import { bridgeLearningLines, readMintRuns } from "./bridges-note.js";
+import { bridgesPath } from "./bridges.js";
+import { readLastMint } from "../learned-recall/mint-job.js";
+import { defaultLogDir } from "../learned-recall/harvest.js";
 import { showHelp } from "./help-text.js";
 import { validateArgs } from "./flag-spec.js";
 import { describeStale } from "../code-staleness.js";
@@ -458,6 +462,7 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   await printStubBinaryNote();
   await printAffectsFilesNote(resolveVaultPath(args.vaultPath));
   await printCodeGraphNote();
+  await printBridgeLearningNote();
   // What is switched off, as opposed to broken — never flips the exit code,
   // and --fix never turns a feature on.
   await printFeaturesNote(clientFeatures, resolveVaultPath(args.vaultPath));
@@ -552,6 +557,27 @@ async function printCodeGraphNote(): Promise<void> {
         }
       }
     }
+    process.stdout.write("\n");
+  } catch {
+    /* a diagnostics NOTE must never break doctor */
+  }
+}
+
+/**
+ * Learned bridges (#672): is the opt-in bridge layer still learning? Wording
+ * and reading live in `bridges-note.ts`; silent when shared recall is off, and
+ * like every global note never a failure.
+ */
+async function printBridgeLearningNote(): Promise<void> {
+  try {
+    const enabled = await getSharedRecallEnabled();
+    if (!enabled) return;
+    const now = new Date();
+    const runs = await readMintRuns(defaultLogDir(), await readLastMint(bridgesPath()), now);
+    const lines = bridgeLearningLines({ enabled, runs, now });
+    if (lines.length === 0) return;
+    process.stdout.write("→ learned bridges\n");
+    for (const line of lines) process.stdout.write(`  ${line}\n`);
     process.stdout.write("\n");
   } catch {
     /* a diagnostics NOTE must never break doctor */

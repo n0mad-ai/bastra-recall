@@ -12,13 +12,13 @@
  * (the runner's word, positive-biased). The below-floor far slice stays invisible until
  * #121 logs it; this harvester picks up everything that is observable today.
  */
-import { readdir, readFile, mkdir, writeFile, rename } from "node:fs/promises";
+import { readdir, readFile, mkdir, writeFile, rename, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { detectLanguage } from "./language.js";
-import { mintBridge, type Bridge } from "./bridges.js";
+import { isExpiredUnconfirmed, mintBridge, UNCONFIRMED_BRIDGE_TTL_DAYS, type Bridge } from "./bridges.js";
 import { rerank, type ChatFn, type RerankCandidate } from "./reranker.js";
 import { testRunLogDir } from "../env.js";
 
@@ -32,6 +32,9 @@ export interface TelemetryEvent {
 export interface Reach {
   query: string;
   memoryId: string;
+  /** #672: when the acted-on episode happened — seeds a bridge's first_seen,
+   *  so a reach already old at mint time does not get a fresh 30-day window. */
+  ts?: string;
 }
 
 export function defaultLogDir(): string {
@@ -81,7 +84,7 @@ export function reconstructReaches(events: TelemetryEvent[]): Reach[] {
   for (const e of events) {
     if (e.kind === "recall_episode" && e.acted_on === true && typeof e.recall_id === "string" && typeof e.memory_id === "string") {
       const query = queryByRecallId.get(e.recall_id);
-      if (query) reaches.push({ query, memoryId: e.memory_id });
+      if (query) reaches.push({ query, memoryId: e.memory_id, ...(typeof e.ts === "string" ? { ts: e.ts } : {}) });
     }
   }
   return reaches;
@@ -108,9 +111,14 @@ export function harvestBridges(reaches: Reach[], getMemoryTerms: (memoryId: stri
     if (terms.length === 0) continue;
     const b = mintBridge(r.query, terms, detectLanguage(r.query).lang, date);
     if (!b) continue;
+    // #672: first_seen = the earliest reach behind the bridge (ISO strings of
+    // the same format compare chronologically).
+    const reachTs = r.ts !== undefined && Number.isFinite(Date.parse(r.ts)) ? new Date(r.ts).toISOString() : undefined;
     const existing = byId.get(b.id);
-    if (existing) existing.evidence += 1;
-    else byId.set(b.id, b);
+    if (existing) {
+      existing.evidence += 1;
+      if (reachTs && (!existing.first_seen || reachTs < existing.first_seen)) existing.first_seen = reachTs;
+    } else byId.set(b.id, reachTs ? { ...b, first_seen: reachTs } : b);
   }
   return { bridges: [...byId.values()], reaches: reaches.length, minted: byId.size };
 }
@@ -293,19 +301,84 @@ export async function harvestFarBridges(
   return { bridges: [...byId.values()], reaches: pools.length, minted: byId.size, judged };
 }
 
-/** Atomically write each bridge to <root>/bridges/<lang>/<id>.json. Returns count written. */
-export async function writeBridges(rootDir: string, bridges: Bridge[]): Promise<number> {
+/** Atomically write each bridge to <root>/bridges/<lang>/<id>.json. Returns count written.
+ *
+ *  #672: a rewrite merges with the file already there. `first_seen` keeps the
+ *  earliest stamp (a bridge's expiry clock never restarts), and `evidence`
+ *  never drops below what the file already carried: the mint recounts from a
+ *  log that retention trims, so a lower recount means "reach aged out of the
+ *  log", not "bridge disproven" — a confirmed bridge stays confirmed. */
+export async function writeBridges(rootDir: string, bridges: Bridge[], now: Date = new Date()): Promise<number> {
   let written = 0;
   for (const b of bridges) {
     const dir = join(rootDir, "bridges", b.lang);
     await mkdir(dir, { recursive: true });
     const path = join(dir, `${b.id}.json`);
+    const prior = await readBridgeFile(path);
+    const stamps = [prior?.first_seen, b.first_seen].filter((s): s is string => typeof s === "string" && Number.isFinite(Date.parse(s)));
+    stamps.sort((x, y) => Date.parse(x) - Date.parse(y));
+    const merged: Bridge = {
+      ...b,
+      evidence: Math.max(b.evidence, typeof prior?.evidence === "number" ? prior.evidence : 0),
+      first_seen: stamps[0] ?? now.toISOString(),
+    };
     const tmp = `${path}.tmp-${randomBytes(4).toString("hex")}`;
-    await writeFile(tmp, JSON.stringify(b, null, 2) + "\n", "utf8");
+    await writeFile(tmp, JSON.stringify(merged, null, 2) + "\n", "utf8");
     await rename(tmp, path);
     written++;
   }
   return written;
+}
+
+async function readBridgeFile(path: string): Promise<Partial<Bridge> | null> {
+  try {
+    const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+    return typeof parsed === "object" && parsed !== null ? (parsed as Partial<Bridge>) : null;
+  } catch {
+    return null; // no file yet, or corrupt → written fresh
+  }
+}
+
+/**
+ * #672: drop every unconfirmed local bridge that waited longer than the TTL for
+ * its second reach (isExpiredUnconfirmed). Confirmed bridges, cloned/contributed
+ * bridges and pre-#672 files without first_seen are never touched. Runs with
+ * every mint pass. Returns how many files were removed.
+ */
+export async function pruneUnconfirmedBridges(
+  rootDir: string,
+  now: Date = new Date(),
+  ttlDays: number = UNCONFIRMED_BRIDGE_TTL_DAYS,
+): Promise<number> {
+  const base = join(rootDir, "bridges");
+  let langs: string[];
+  try {
+    langs = await readdir(base);
+  } catch {
+    return 0; // no bridges dir yet
+  }
+  let pruned = 0;
+  for (const lang of langs) {
+    let files: string[];
+    try {
+      files = (await readdir(join(base, lang))).filter((f) => f.endsWith(".json"));
+    } catch {
+      continue; // not a directory
+    }
+    for (const f of files) {
+      const path = join(base, lang, f);
+      const b = await readBridgeFile(path);
+      if (!b || typeof b.evidence !== "number") continue;
+      if (!isExpiredUnconfirmed(b as Pick<Bridge, "evidence" | "first_seen" | "verifier">, now, ttlDays)) continue;
+      try {
+        await unlink(path);
+        pruned++;
+      } catch {
+        /* already gone — another pass got there first */
+      }
+    }
+  }
+  return pruned;
 }
 
 /** True when a bridges/ dir already exists under root (for status/CLI messaging). */

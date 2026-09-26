@@ -18,8 +18,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   docs, Commons, bridges, the vault map) sit under their own heading as
   intentional. The section never changes the exit code, and `--fix` never
   switches a feature on.
+- **`bastra doctor` reports when learned bridges stop learning** (#672). With
+  shared recall on, a `learned bridges` note looks at the mint runs of the last
+  30 days and warns when none ran, when runs minted candidates but wrote none,
+  or when no acted-on recall reached the telemetry log — each with a one-line
+  hint. Never changes the exit code.
 
 ### Changed
+
+- **Learned bridges are written on their first reach and expire unless
+  confirmed** (#672). On a normal-volume vault the same reach rarely repeats:
+  one contributor's month minted 3,435 bridge candidates and wrote none. A
+  bridge is now written on its first reach but stays *unconfirmed* until a
+  second reach confirms it: it widens a query only at reduced weight (at least
+  half its trigger terms must match, at most 3 expansion terms, after confirmed
+  bridges), and it is deleted by the next mint pass if no second reach comes
+  within 30 days (optional `first_seen` field, no migration). Confirmed bridges
+  behave as before and never expire.
 
 - **The prompt lane recalls on every prompt, in any language** (#677). Whether
   a prompt recalled at all was decided by German/English lookup regexes — a
