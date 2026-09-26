@@ -15,8 +15,8 @@ import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 import type { Vault } from "@bastra-recall/core";
-import { distinctiveTerms, MIN_BRIDGE_EVIDENCE } from "./bridges.js";
-import { readEventLog, reconstructReaches, harvestBridges, writeBridges } from "./harvest.js";
+import { distinctiveTerms, isExpiredUnconfirmed, MIN_BRIDGE_EVIDENCE } from "./bridges.js";
+import { readEventLog, reconstructReaches, harvestBridges, writeBridges, pruneUnconfirmedBridges } from "./harvest.js";
 import { envFirst, testRunLogDir } from "../env.js";
 
 export type MintTrigger = "cli" | "daemon-boot" | "daemon-interval";
@@ -25,6 +25,9 @@ export interface MintOutcome {
   minted: number;
   reaches: number;
   written: number;
+  /** #672: unconfirmed bridges dropped this pass because their TTL ran out.
+   *  Optional on read — last-mint.json files from before #672 lack it. */
+  pruned: number;
 }
 
 export interface LastMintRecord extends MintOutcome {
@@ -59,19 +62,26 @@ export async function runInBandMint(opts: {
   days?: number | null;
   /** Test override for the telemetry log dir. */
   logDir?: string;
+  /** Test override for the clock the TTL is measured against. */
+  now?: Date;
 }): Promise<MintOutcome> {
   const events = await readEventLog(opts.logDir, opts.days ?? null);
   const reaches = reconstructReaches(events);
-  let outcome: MintOutcome = { minted: 0, reaches: reaches.length, written: 0 };
+  const now = opts.now ?? new Date();
+  let outcome: MintOutcome = { minted: 0, reaches: reaches.length, written: 0, pruned: 0 };
   if (reaches.length > 0) {
     const result = harvestBridges(reaches, memoryTermsGetter(opts.vault));
-    // 20.08.: only confirmed bridges reach the disk (MIN_BRIDGE_EVIDENCE).
-    // `minted` keeps counting every candidate, so the gap between minted and
-    // written in last-mint.json is the number of single-reach anecdotes held back.
-    const confirmed = result.bridges.filter((b) => b.evidence >= MIN_BRIDGE_EVIDENCE);
-    const written = await writeBridges(opts.bridgesRoot, confirmed);
-    outcome = { minted: result.minted, reaches: result.reaches, written };
+    // #672: a bridge is written on its first reach (MIN_BRIDGE_EVIDENCE = 1).
+    // A single-reach candidate whose reach is already older than the TTL is
+    // born expired — it would only be pruned again below, so it is not written.
+    // `minted` keeps counting every candidate; the gap to `written` is exactly
+    // those aged-out anecdotes.
+    const keep = result.bridges.filter((b) => b.evidence >= MIN_BRIDGE_EVIDENCE && !isExpiredUnconfirmed(b, now));
+    const written = await writeBridges(opts.bridgesRoot, keep, now);
+    outcome = { minted: result.minted, reaches: result.reaches, written, pruned: 0 };
   }
+  // #672: every pass also drops the unconfirmed bridges whose window closed.
+  outcome.pruned = await pruneUnconfirmedBridges(opts.bridgesRoot, now);
   const record: LastMintRecord = {
     ts: new Date().toISOString(),
     host: hostname(),
@@ -123,6 +133,7 @@ async function writeMintTelemetry(record: LastMintRecord): Promise<void> {
       minted: record.minted,
       reaches: record.reaches,
       written: record.written,
+      pruned: record.pruned,
     };
     await appendFile(
       join(logDir, `events-${record.ts.slice(0, 10)}.jsonl`),

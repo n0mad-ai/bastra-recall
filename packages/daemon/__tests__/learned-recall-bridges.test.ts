@@ -11,7 +11,9 @@ import { join } from "node:path";
 
 import {
   BridgePool,
+  CONFIRMED_BRIDGE_EVIDENCE,
   MIN_BRIDGE_EVIDENCE,
+  UNCONFIRMED_BRIDGE_TTL_DAYS,
   bridgeId,
   distinctiveTerms,
   expandQuery,
@@ -41,8 +43,8 @@ async function withPool<T>(
 function bridge(partial: Partial<Bridge> & Pick<Bridge, "lang" | "trigger_terms" | "expansion_terms">): Bridge {
   return {
     id: partial.id ?? bridgeId(partial.lang, partial.trigger_terms, partial.expansion_terms),
-    // 20.08.: the pool only loads confirmed bridges — fixtures default to the gate.
-    evidence: partial.evidence ?? MIN_BRIDGE_EVIDENCE,
+    // Fixtures default to a confirmed bridge (full weight, never expires, #672).
+    evidence: partial.evidence ?? CONFIRMED_BRIDGE_EVIDENCE,
     ...partial,
   };
 }
@@ -251,13 +253,64 @@ test("configuredLang override forces a pool regardless of detection", async () =
   });
 });
 
-test("BridgePool.load drops bridges below MIN_BRIDGE_EVIDENCE — one reach is an anecdote (20.08.)", async () => {
-  const anecdote = bridge({ lang: "de", trigger_terms: ["panel", "sheet"], expansion_terms: ["resignkey"], evidence: 1 });
-  const confirmed = bridge({ lang: "de", trigger_terms: ["fenster", "schließt"], expansion_terms: ["observer"], evidence: MIN_BRIDGE_EVIDENCE });
-  await withPool([anecdote, confirmed], async (pool) => {
-    assert.equal(pool.size("de"), 1, "the single-reach bridge never enters the pool");
+test("#672: MIN_BRIDGE_EVIDENCE is 1 — a first reach is enough to be written and loaded", () => {
+  assert.equal(MIN_BRIDGE_EVIDENCE, 1);
+  assert.equal(CONFIRMED_BRIDGE_EVIDENCE, 2);
+  assert.equal(UNCONFIRMED_BRIDGE_TTL_DAYS, 30);
+});
+
+test("#672: an unconfirmed local bridge loads; legacy (no first_seen) and contributed ones stay inert", async () => {
+  const fresh = new Date().toISOString();
+  const local = bridge({ lang: "de", trigger_terms: ["panel", "sheet"], expansion_terms: ["resignkey"], evidence: 1, first_seen: fresh });
+  const legacy = bridge({ lang: "de", trigger_terms: ["fenster", "schließt"], expansion_terms: ["observer"], evidence: 1 });
+  const contributed = bridge({ lang: "de", trigger_terms: ["modal", "dialog"], expansion_terms: ["attachedsheet"], evidence: 1, first_seen: fresh, verifier: "abc" });
+  await withPool([local, legacy, contributed], async (pool) => {
+    assert.equal(pool.size("de"), 1, "only the locally minted, stamped single-reach bridge enters the pool");
+    assert.deepEqual(pool.expansionsFor("das Panel mit dem Sheet", "de"), ["resignkey"]);
+    assert.deepEqual(pool.expansionsFor("warum schließt das Fenster", "de"), [], "pre-20.08. evidence-1 file stays inert");
+  });
+});
+
+test("#672: an unconfirmed bridge past its TTL is not loaded even before the prune ran", async () => {
+  const old = new Date(Date.now() - (UNCONFIRMED_BRIDGE_TTL_DAYS + 1) * 86_400_000).toISOString();
+  const expired = bridge({ lang: "de", trigger_terms: ["panel", "sheet"], expansion_terms: ["resignkey"], evidence: 1, first_seen: old });
+  const confirmedOld = bridge({ lang: "de", trigger_terms: ["fenster", "schließt"], expansion_terms: ["observer"], evidence: 2, first_seen: old });
+  await withPool([expired, confirmedOld], async (pool) => {
+    assert.equal(pool.size("de"), 1, "a confirmed bridge never expires");
     assert.deepEqual(pool.expansionsFor("warum schließt das Fenster", "de"), ["observer"]);
-    assert.deepEqual(pool.expansionsFor("das Panel mit dem Sheet", "de"), []);
+  });
+});
+
+test("#672: an unconfirmed bridge widens at reduced weight — half its trigger, at most 3 terms, after confirmed ones", async () => {
+  const fresh = new Date().toISOString();
+  const unconfirmed = bridge({
+    lang: "de",
+    trigger_terms: ["fenster", "schließt", "panel", "observer"],
+    expansion_terms: ["resignkey", "attachedsheet", "nspanel", "dismissal", "keywindow"],
+    evidence: 1,
+    first_seen: fresh,
+  });
+  const confirmed = bridge({ lang: "de", trigger_terms: ["fenster", "schließt"], expansion_terms: ["resignkey", "modal"], evidence: 2 });
+  await withPool([unconfirmed], async (pool) => {
+    // 2 of 4 trigger terms = half → fires; 1 of 4 does not (a confirmed bridge would need 2 too)
+    assert.deepEqual(pool.expansionsFor("warum schließt das Fenster", "de"), ["resignkey", "attachedsheet", "nspanel"], "capped at 3 terms");
+    assert.deepEqual(pool.expansionsFor("das Fenster", "de"), []);
+  });
+  const eight = bridge({
+    lang: "de",
+    trigger_terms: ["fenster", "schließt", "panel", "observer", "sheet", "modal", "dialog", "popover"],
+    expansion_terms: ["resignkey"],
+    evidence: 1,
+    first_seen: fresh,
+  });
+  await withPool([eight], async (pool) => {
+    assert.deepEqual(pool.expansionsFor("warum schließt das Fenster", "de"), [], "2 of 8 is not half");
+    assert.deepEqual(pool.expansionsFor("warum schließt das Fenster panel observer", "de"), ["resignkey"]);
+  });
+  await withPool([unconfirmed, confirmed], async (pool) => {
+    const added = pool.expansionsFor("warum schließt das Fenster", "de");
+    assert.deepEqual(added.slice(0, 2), ["resignkey", "modal"], "confirmed terms come first");
+    assert.deepEqual(added.slice(2), ["attachedsheet", "nspanel", "dismissal"], "unconfirmed adds 3 NEW terms at most");
   });
 });
 
