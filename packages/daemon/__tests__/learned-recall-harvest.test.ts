@@ -30,7 +30,8 @@ test("reconstructReaches joins query (hook_recall/recall) to acted-on memory by 
   ];
   const reaches = reconstructReaches(events);
   assert.equal(reaches.length, 1, "only the acted_on episode with a known query counts");
-  assert.deepEqual(reaches[0], { query: "warum schließt sich das Panel", memoryId: "nspanel-lesson" });
+  // #672: the episode's ts rides along — it seeds the bridge's first_seen.
+  assert.deepEqual(reaches[0], { query: "warum schließt sich das Panel", memoryId: "nspanel-lesson", ts: events[2].ts });
 });
 
 test("harvestBridges mints from reaches, using non-overlapping memory terms as expansion", () => {
