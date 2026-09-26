@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`rm` in Claude Code's Bash is an archive, not a loss** (#650). An rm-only
+  command runs through bastra's archiving `rm`: the bash-pre hook allows it
+  and puts `shims/` first in its PATH, targets move to `~/.bastra/archive`
+  (temp dirs are really removed, `/`, `~` and system dirs refused), and the
+  post hook tells the agent what actually happened and how to restore.
+  `bastra archive list|restore|reconcile`; old entries go by class (junk 1 day,
+  git-tracked 2, the rest 2; `archive.retain` / `BASTRA_ARCHIVE_RETAIN`;
+  10 GB cap; checked hourly). Mixed commands, redirections, rm overrides,
+  `sudo`/absolute/remote `rm` keep the STOP. Off with `BASTRA_RM_SHIM=0`;
+  then a command the shim would have taken gets one line saying what it
+  would have done (worded after the user's own Claude Code permission
+  rules), and a `rm_shim_shadow` telemetry event.
 - **`bastra doctor` shows which features are switched off**, not only which
   registrations are broken. A new `features` section lists, one line each,
   hooks / Stop hook / skill per registered client (including Claude Code's own
@@ -66,6 +78,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   bash-fail and todo hint blocks said so whenever one lookup ranked lexically;
   they now name the reason the lookup had (deadline missed, empty dense arm),
   as the prompt lane already did.
+- **Bash tripwire: the #657 and #658 checks cover their other spellings.**
+  `hash -p <path> rm` keeps the STOP next to an archiving `rm`, like `alias
+  rm=` already did (`hash -p` for another name does not). The verb is read at
+  command position past `builtin` / `command`, so `builtin hash` counts and
+  `echo hash …` or `sudo hash …` (a child shell) do not. An `eval` body is
+  read again as shell: an `rm()` definition, `hash -p`, `alias` or `PATH=`
+  inside it keeps the STOP. `rm()` inside quotes outside an eval (`grep "rm()"`) is
+  data. The gc expiry set through config (`git -c gc.pruneExpire=now gc`,
+  `… maintenance run`, `git config gc.reflogExpire now` before a plain
+  `git gc`) is STOP like `git gc --prune=now`, so it turns an
+  amend/branch/lease receipt into STOP.
 
 ## [1.0.0] — 2026-09-14
 

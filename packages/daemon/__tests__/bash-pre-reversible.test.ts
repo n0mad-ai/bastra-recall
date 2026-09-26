@@ -99,6 +99,8 @@ const EXAMPLE: Record<string, string> = {
   "git reflog expire": "git reflog expire --expire=now --all",
   "git reflog delete": "git reflog delete HEAD@{1}",
   "git gc --prune": "git gc --prune=now",
+  "git -c gc.*Expire": "git -c gc.pruneExpire=now gc",
+  "git config gc.*Expire": "git config gc.reflogExpire now",
   "gh repo delete": "gh repo delete me/prod --yes",
   "gh release delete": "gh release delete v1 --yes",
   "npm uninstall": "npm uninstall left-pad",
@@ -182,6 +184,8 @@ describe("#650 reversible defaults — every undo row's recipe, run in a real re
         cwd: dir,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
+        // The recipes read git's own words ("Would remove", "(was <sha>)").
+        env: { ...process.env, LC_ALL: "C" },
       }).trim();
     git("init", "-q");
     await writeFile(join(dir, "a"), "one\n");
@@ -436,6 +440,22 @@ describe("#651 review — the hint weighs the whole command, not the first row i
     assert.equal(matchPattern("git gc"), null);
   });
 
+  it("#658: the same expiry set through config turns the receipt into STOP too", async () => {
+    // Revert-check: drop the two gc.*Expire rows → each amend line below gets
+    // the receipt although its gc removes the pre-amend commit for good.
+    for (const cmd of [
+      "git commit --amend --no-edit; git -c gc.reflogExpire=now -c gc.reflogExpireUnreachable=now -c gc.pruneExpire=now gc",
+      "git commit --amend --no-edit; git -c gc.reflogExpire=now -c gc.pruneExpire=now maintenance run --task=gc",
+      "git commit --amend --no-edit; git config gc.reflogExpire now; git config gc.pruneExpire now; git gc",
+      "git commit --amend --no-edit; git -C repo config --local GC.PRUNEEXPIRE now; git gc",
+    ]) {
+      assert.equal((await hintOf(cmd)).kind, "stop", cmd);
+    }
+    assert.equal(matchPattern("git -c gc.pruneExpire=never gc"), null);
+    assert.equal(matchPattern("git config gc.reflogExpire never"), null);
+    assert.equal(matchPattern("git config gc.auto 0"), null);
+  });
+
   it("#658: several receipts in one command are all said, each once", async () => {
     // Revert-check: return acts[0].undo → the amend note is missing.
     const stdout = await runHook(
@@ -479,8 +499,6 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "docker exec db rm -rf /var/lib/postgresql",
       "kubectl exec pod -- rm -rf /data",
       "git rm -rf src",
-      "find . -name tmp -exec rm -rf {} +",
-      'bash -c "rm -rf build"',
       "env -i rm -rf build",
       "PATH=/usr/bin rm -rf build",
       "ssh prod bash <<'EOF'\nrm -rf /srv/data\nEOF",
@@ -491,6 +509,17 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "alias rm=/bin/rm; rm -rf x",
       'rm() { /bin/rm "$@"; }; rm -rf x',
       "function rm { /bin/rm \"$@\"; }; rm -rf x",
+      // …also inside a quoted eval, or by pinning the hash table entry.
+      "eval 'rm(){ /bin/rm \"$@\"; }'; rm -rf x",
+      'eval "rm(){ /bin/rm \\"\\$@\\"; }"; rm -rf x',
+      "hash -p /bin/rm rm; rm -rf x",
+      // …behind a prefix word or an eval: every word is read, an eval body
+      // is shell again (#682 review).
+      "builtin hash -p /bin/rm rm; rm -rf x",
+      "command hash -p /bin/rm rm; rm -rf x",
+      "eval 'hash -p /bin/rm rm'; rm -rf x",
+      "eval 'export PATH=/x:$PATH'; rm -rf x",
+      "eval 'alias rm=/bin/rm'; rm -rf x",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "stop", cmd);
     }
@@ -506,6 +535,20 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "find . -name '*.o' | xargs rm -rf",
       "rm -rf a && rm -r b",
       'rm -rf "$TMPDIR/x"',
+      // `hash -p` for another name leaves `rm` alone; `rm()` in quotes is
+      // a grep pattern, not a definition (#682 review).
+      "hash -p /usr/bin/python3 python; rm -rf dist",
+      'grep -rn "rm()" src; rm -rf dist',
+      "eval 'echo hi'; rm -rf dist",
+      // The archiving rm's directory is exported in PATH: a child that looks
+      // `rm` up there runs it too (#650).
+      "find . -name tmp -exec rm -rf {} +",
+      'bash -c "rm -rf build"',
+      // Only the command word counts: an argument that reads like `hash` /
+      // `eval` is data, and `sudo hash` runs in a child shell.
+      "echo hash -p /bin/rm rm; rm -rf x",
+      "echo eval 'alias rm=/bin/rm'; rm -rf x",
+      "sudo hash -p /bin/rm rm; rm -rf x",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "receipt", cmd);
     }

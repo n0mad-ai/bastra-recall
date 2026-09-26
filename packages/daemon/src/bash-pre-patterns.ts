@@ -5,6 +5,10 @@
  * decision live in `bash-pre-lane.ts`; this file is the part a reviewer reads
  * as the spec.
  */
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { SHIM_DIR } from "./rm-archive.js";
+
 /**
  * What the hint says instead of STOP when the act has an undo (#650 comment).
  *
@@ -41,6 +45,19 @@ export const RM_ARCHIVES: Undo = {
     `temp dirs are really removed; /, ~ and system dirs are refused.`,
 };
 
+/**
+ * The same receipt when bastra's own archiving `rm` runs it (rm-archive.ts):
+ * the bash-pre lane rewrites the command so `shims/` is first in its PATH.
+ */
+export const RM_SHIM: Undo = {
+  kind: "receipt",
+  needsArchivingRm: true,
+  text:
+    `bastra runs this command with its archiving \`rm\`: targets move to ~/.bastra/archive/<date>/<full path>, ` +
+    `\`bastra archive restore <path>\` puts them back; temp dirs are really removed; /, ~ and system dirs are ` +
+    `refused. What actually happened comes back after the command.`,
+};
+
 const FORCE_WITH_LEASE: Undo = {
   kind: "reversible-form",
   text:
@@ -67,8 +84,9 @@ const git = (rest: string): RegExp => new RegExp(String.raw`\bgit(?:\s+-[Cc]\s+\
  * we surface to the user is the meaningful one.
  */
 export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; undo: Undo | null }> = [
-  { label: "rm -rf", re: /\brm\s+(?:-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)\b/, undo: RM_ARCHIVES },
-  { label: "rm -r", re: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*\b/, undo: RM_ARCHIVES },
+  // -R and --recursive are the same act: rm(1) takes all three.
+  { label: "rm -rf", re: /\brm\s+(?:-[a-zA-Z]*[rR][a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*[rR])\b/, undo: RM_ARCHIVES },
+  { label: "rm -r", re: /\brm\s+(?:-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)\b/, undo: RM_ARCHIVES },
   { label: "rmdir", re: /\brmdir\b/, undo: null },
   {
     label: "git reset --hard",
@@ -159,6 +177,20 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
   { label: "git reflog expire", re: git(String.raw`reflog\s+expire\b`), undo: null },
   { label: "git reflog delete", re: git(String.raw`reflog\s+delete\b`), undo: null },
   { label: "git gc --prune", re: git(String.raw`gc\b[^\n]*--prune\b(?!=never)`), undo: null },
+  // The same expiry set through config instead of flags: `git -c
+  // gc.reflogExpire=now gc` (or `… maintenance run --task=gc`) and a `git
+  // config gc.pruneExpire now` before a plain `git gc`. Config keys are case
+  // insensitive; `never` keeps everything and stays silent.
+  {
+    label: "git -c gc.*Expire",
+    re: /\bgit\b[^\n]*\s-c\s+gc\.(?:reflogexpire(?:unreachable)?|pruneexpire)=(?!never\b)/i,
+    undo: null,
+  },
+  {
+    label: "git config gc.*Expire",
+    re: new RegExp(git(String.raw`config\b[^\n]*\sgc\.(?:reflogexpire(?:unreachable)?|pruneexpire)\s+(?!never\b)\S`).source, "i"),
+    undo: null,
+  },
   { label: "gh repo delete", re: /\bgh\s+repo\s+delete\b/, undo: null },
   { label: "gh release delete", re: /\bgh\s+release\s+delete\b/, undo: null },
   { label: "npm uninstall", re: /\bnpm\s+uninstall\b/, undo: null },
@@ -204,8 +236,41 @@ function rmArchives(surface: string): boolean {
   return process.env.BASTRA_RM_ARCHIVES === "1" && surface === "claude-code";
 }
 
+/**
+ * bastra's own archiving `rm` (rm-archive.ts): on by default on claude-code,
+ * whose PreToolUse hook can rewrite the command so the shim runs first. Off
+ * with BASTRA_RM_SHIM=0, and off when the host brings its own shim
+ * (BASTRA_RM_ARCHIVES=1) or the shim is not on this disk.
+ */
+export function rmShim(surface: string): boolean {
+  return (
+    surface === "claude-code" &&
+    process.env.BASTRA_RM_SHIM !== "0" &&
+    !rmArchives(surface) &&
+    existsSync(join(SHIM_DIR, "rm"))
+  );
+}
+
+/**
+ * The shim is here and would run on this surface — only BASTRA_RM_SHIM=0
+ * keeps it out. Then a command it would have taken still gets its STOP, plus
+ * one line that the shim exists (#650, owner's ask: an off switch should
+ * say what it costs).
+ */
+export function rmShimSwitchedOff(surface: string): boolean {
+  return (
+    surface === "claude-code" &&
+    process.env.BASTRA_RM_SHIM === "0" &&
+    !rmArchives(surface) &&
+    existsSync(join(SHIM_DIR, "rm"))
+  );
+}
+
 /** The undo a destructive label's row declares, where this host can keep it. */
 export function reversibleDefault(label: string, surface: string): Undo | null {
   const undo = DESTRUCTIVE_PATTERNS.find((p) => p.label === label)?.undo ?? null;
-  return undo?.needsArchivingRm && !rmArchives(surface) ? null : undo;
+  if (!undo?.needsArchivingRm) return undo;
+  if (rmArchives(surface)) return undo;
+  if (!rmShim(surface)) return null;
+  return undo === RM_ARCHIVES ? RM_SHIM : undo;
 }

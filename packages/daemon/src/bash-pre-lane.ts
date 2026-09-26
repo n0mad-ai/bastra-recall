@@ -42,10 +42,14 @@ import {
   DESTRUCTIVE_PATTERNS,
   RISKY_PATTERNS,
   RM_ARCHIVES,
+  RM_SHIM,
   reversibleDefault,
+  rmShimSwitchedOff,
   type HintKind,
   type Undo,
 } from "./bash-pre-patterns.js";
+import { shimRewrite } from "./rm-archive.js";
+import { bashVerdict, settingsFiles, type BashVerdict } from "./cc-permissions.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 500, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.2.0"; // 0.2.0 = daemon-side lane (#343)
@@ -57,6 +61,8 @@ export interface BashHookPayload {
   hook_event_name?: string;
   tool_name?: string;
   tool_input?: Record<string, unknown>;
+  /** Claude Code's id of this call; PostToolUse carries the same one. */
+  tool_use_id?: string;
 }
 
 // P0: EIN gemeinsamer Response-Typ für alle Lanes. Die lokale Kopie hier
@@ -232,11 +238,11 @@ const WORD_BREAK = " \t\n|&;()<>";
  * an unterminated quote. Bailing out keeps today's behaviour, so a gap in this
  * scanner can only fall on the safe side.
  */
-function simpleCommands(cmd: string): Array<{ words: ShellWord[]; piped: boolean }> | null {
-  const commands: Array<{ words: ShellWord[]; piped: boolean }> = [];
+function simpleCommands(cmd: string): Array<{ words: ShellWord[]; piped: boolean; background: boolean }> | null {
+  const commands: Array<{ words: ShellWord[]; piped: boolean; background: boolean }> = [];
   let words: ShellWord[] = [];
-  const close = (piped: boolean): void => {
-    if (words.length > 0) commands.push({ words, piped });
+  const close = (piped: boolean, background = false): void => {
+    if (words.length > 0) commands.push({ words, piped, background });
     words = [];
   };
   let i = 0;
@@ -254,6 +260,11 @@ function simpleCommands(cmd: string): Array<{ words: ShellWord[]; piped: boolean
       else i += cmd[i + 1] === "&" || cmd[i + 1] === "|" || cmd[i + 1] === c ? 2 : 1;
     } else if (c === "&" && cmd[i + 1] === ">") {
       i += 2;
+    } else if (c === "&") {
+      // `&&` joins; a single `&` puts the command in the background.
+      const and = cmd[i + 1] === "&";
+      close(false, !and);
+      i += and ? 2 : 1;
     } else if (c === "|") {
       const or = cmd[i + 1] === "|";
       close(!or);
@@ -377,32 +388,148 @@ function matchPattern(cmd: string): { label: string; severity: "destructive" | "
 const RM_ROWS = DESTRUCTIVE_PATTERNS.filter((p) => p.undo === RM_ARCHIVES);
 
 /** An `rm()` / `function rm` definition — the scanner splits at `(`, so this
- *  is read from the raw command (#657). */
+ *  is read from the raw command (#657). No quote boundary: `grep "rm()"` is
+ *  data; an `eval 'rm(){ … }'` is caught by re-reading the eval body. */
 const RM_FUNCTION_DEF = /(?:^|[\s;&|({])(?:function\s+rm\b|rm\s*\(\s*\))/;
+
+/** A word with its shell quotes removed: `'a b'` → `a b`, `"\$x"y` → `$xy`. */
+function unquote(word: string): string {
+  let out = "";
+  let q: string | null = null;
+  for (let i = 0; i < word.length; i++) {
+    const ch = word[i];
+    if (q === null && (ch === "'" || ch === '"')) q = ch;
+    else if (ch === q) q = null;
+    else if (ch === "\\" && q !== "'") out += word[++i] ?? "";
+    else out += ch;
+  }
+  return out;
+}
+
+/**
+ * Where the command word stands: past `VAR=` assignments and the `builtin` /
+ * `command` prefixes. Those two still run the builtin in THIS shell; `sudo`,
+ * `env`, `xargs` run a child, where `hash` or `alias` cannot change this
+ * shell's `rm`. `echo hash -p …` is an argument, not a command.
+ */
+function commandWordAt(texts: string[]): number {
+  let k = 0;
+  for (;;) {
+    while (k < texts.length && /^\w+\+?=/.test(texts[k])) k++;
+    if (texts[k] === "builtin") k++;
+    else if (texts[k] === "command") for (k++; k < texts.length && texts[k].startsWith("-"); k++);
+    else return k;
+  }
+}
+
+/**
+ * Does this command change what `rm` resolves to (#657)? A `PATH=`
+ * assignment, `alias rm=…`, `hash -p <path> rm`, or an `rm()` / `function rm`
+ * definition. The verb is read at command position (`commandWordAt`), so
+ * `builtin hash` counts and `echo hash` does not. An `eval` body is shell and
+ * is read again (two levels); a body the scanner cannot read counts as a
+ * change, so an unknown form keeps the STOP.
+ */
+function redefinesRm(cmd: string, depth = 0): boolean {
+  if (RM_FUNCTION_DEF.test(cmd)) return true;
+  const commands = simpleCommands(cmd);
+  if (!commands) return true;
+  for (const { words } of commands) {
+    const texts = words.map((w) => unquote(w.text));
+    if (texts.some((t) => /^PATH\+?=/.test(t))) return true;
+    const k = commandWordAt(texts);
+    const args = texts.slice(k + 1);
+    if (texts[k] === "alias" && args.some((t) => t.startsWith("rm="))) return true;
+    if (texts[k] === "hash" && args.some((t) => /^-\w*p/.test(t)) && texts[texts.length - 1] === "rm") return true;
+    if (texts[k] === "eval" && (depth >= 2 || redefinesRm(args.join(" "), depth + 1))) return true;
+  }
+  return false;
+}
 
 /**
  * Is every `rm -r` in this command the PATH-resolved `rm` of THIS shell — the
- * one an archiving shim can stand in for (#650)? `sudo` (secure_path),
- * `/bin/rm`, `ssh host rm`, `docker exec … rm`, `git rm`, `find -exec rm`,
- * `bash -c "…rm…"`, a heredoc body (its consumer may be `ssh`) and anything the
- * scanner cannot delimit do not qualify. An allowlist on purpose: a form not
- * recognised here keeps the STOP. The same command must also not change what
- * `rm` resolves to: a `PATH=` assignment (`export PATH=…`), `alias rm=…` or an
- * `rm()` / `function rm` definition anywhere in it keeps the STOP (#657).
+ * one an archiving shim can stand in for (#650)? The shim's directory is
+ * EXPORTED in PATH, so a child that inherits PATH and looks `rm` up there
+ * qualifies too: `xargs rm`, `find … -exec rm`, and a non-login `bash -c
+ * "…rm…"` (its body is checked the same way). `sudo` (secure_path),
+ * `/bin/rm`, `ssh host rm`, `docker exec … rm`, `git rm`, `bash -lc` (a
+ * profile may reset PATH), a heredoc body (its consumer may be `ssh`) and
+ * anything the scanner cannot delimit do not qualify. An allowlist on
+ * purpose: a form not recognised here keeps the STOP. The same command must
+ * also not change what `rm` resolves to (`redefinesRm`, #657).
  */
-function rmRunsThroughPath(cmd: string): boolean {
-  if (RM_FUNCTION_DEF.test(cmd)) return false;
+function rmRunsThroughPath(cmd: string, depth = 0): boolean {
+  if (redefinesRm(cmd)) return false;
   const commands = simpleCommands(cmd);
   if (!commands) return false;
   for (const { words } of commands) {
     const texts = words.map((w) => w.text.replace(/["'\\]/g, ""));
-    if (texts.some((t) => /^PATH\+?=/.test(t))) return false;
-    if (texts[0] === "alias" && texts.some((t) => t.startsWith("rm="))) return false;
     if (!RM_ROWS.some((p) => p.re.test(texts.join(" ")))) continue;
+    if (/^(?:ba|z|da)?sh$/.test(texts[0]) && texts[1] === "-c" && texts.length === 3) {
+      if (depth >= 2 || !rmRunsThroughPath(unquote(words[2].text), depth + 1)) return false;
+      continue;
+    }
+    if (texts[0] === "find") {
+      const execs = texts.flatMap((t, i) => (/^-(?:exec|execdir|ok|okdir)$/.test(t) ? [i] : []));
+      const rms = texts.flatMap((t, i) => (/\brm\b/.test(t) ? [i] : []));
+      if (execs.length === 0 || rms.some((i) => !execs.includes(i - 1) || texts[i] !== "rm")) return false;
+      continue;
+    }
     let k = 0;
     if (texts[0] === "command") k = 1;
     else if (texts[0] === "xargs") for (k = 1; k < texts.length && texts[k].startsWith("-"); k++);
     if (texts[k] !== "rm") return false;
+  }
+  return true;
+}
+
+/** `find` flags that act on their own, not through `-exec rm`. */
+const FIND_OWN_ACTS = /^-(?:delete|fprint\w*|fls)$/;
+/** `xargs` flags that take no separate argument. Any other flag may take the
+ *  next word (`-E rm`, `-I rm`) and make the command something else. */
+const XARGS_BARE = /^-(?:[0rtx]+|[nLP]\d+|-null|-no-run-if-empty|-verbose|-exit)$/;
+/** A redirection that writes nothing a user keeps: to /dev/null or a dup.
+ *  `/dev/null` whole — not `/dev/null-x`, a file where /dev is writable. */
+const HARMLESS_REDIRECT = /(?:\d|&)?>>?\s*\/dev\/null(?![\w.\/-])|\d?>&\d\b/g;
+
+/**
+ * Is this command nothing but `rm` (#650)? Rewriting needs
+ * `permissionDecision: "allow"`, which allows the WHOLE command — so only a
+ * command whose every simple command is an `rm` (plain, `command rm`, `xargs
+ * rm` with bare flags, `find … -exec rm` without its own acts, a non-login
+ * `bash -c`/`sh -c` of the same) or a `cd` qualifies, with no redirection
+ * but to /dev/null. `rm -rf x && curl … | sh` does not.
+ */
+function rmOnly(cmd: string, depth = 0): boolean {
+  // `rm -rf x > ~/.bashrc` truncates a file no archive keeps.
+  if (/>/.test(cmd.replace(HARMLESS_REDIRECT, ""))) return false;
+  // `${VAR@P}` expands VAR as a prompt: a `$(…)` in its value runs (bash ≥ 4.4).
+  if (/@P\b/.test(cmd)) return false;
+  const commands = simpleCommands(cmd);
+  if (!commands) return false;
+  for (const { words, background } of commands) {
+    // `rm -rf x &` returns before the shim wrote its lines: the receipt would miss them.
+    if (background) return false;
+    const texts = words.map((w) => unquote(w.text));
+    const k = commandWordAt(texts);
+    const verb = texts[k];
+    if (verb === "rm" || verb === "cd") continue;
+    if (verb === "xargs") {
+      let j = k + 1;
+      while (j < texts.length && XARGS_BARE.test(texts[j])) j++;
+      if (texts[j] === "rm") continue;
+      return false;
+    }
+    if (verb === "find") {
+      const acts = texts.flatMap((t, i) => (/^-(?:exec|execdir|ok|okdir)$/.test(t) ? [i] : []));
+      if (texts.some((t) => FIND_OWN_ACTS.test(t)) || acts.some((i) => texts[i + 1] !== "rm")) return false;
+      continue;
+    }
+    // Not zsh: it reads ~/.zshenv first, which may put another rm ahead in PATH.
+    if (/^(?:ba|da)?sh$/.test(verb) && texts[k + 1] === "-c" && texts.length === k + 3 && depth < 2) {
+      if (rmOnly(texts[k + 2], depth + 1)) continue;
+    }
+    return false;
   }
   return true;
 }
@@ -412,6 +539,12 @@ interface Hint {
   severity: "destructive" | "risky";
   /** null for a destructive hint: STOP. */
   undo: Undo | null;
+  /** The receipt holds only if bastra's archiving `rm` runs the command:
+   *  the lane rewrites it and allows it (see shimRewrite). */
+  viaShim?: boolean;
+  /** The shim is switched off (BASTRA_RM_SHIM=0); set when every act is an
+   *  `rm` row — then true if it would have taken this command. */
+  wouldShim?: boolean;
 }
 
 /**
@@ -434,15 +567,27 @@ function hintFor(cmd: string, surface: string): Hint | null {
   }));
   const stop = (label: string): Hint => ({ label, severity: "destructive", undo: null });
   const bare = acts.find((a) => a.undo === null);
-  if (bare) return stop(bare.label);
+  if (bare) {
+    // Switched off, the rm rows have no undo: ask what the shim would have
+    // said, with the same decision it takes when on.
+    if (rmShimSwitchedOff(surface) && acts.every((a) => RM_ROWS.some((r) => r.label === a.label))) {
+      return { ...stop(bare.label), wouldShim: rmRunsThroughPath(cmd) && rmOnly(cmd) };
+    }
+    return stop(bare.label);
+  }
   if (acts.length > 1 && acts.some((a) => a.undo?.kind !== "receipt")) return stop(first.label);
-  if (acts.some((a) => a.undo === RM_ARCHIVES) && !rmRunsThroughPath(cmd)) return stop(first.label);
+  const archivingRm = acts.some((a) => a.undo?.needsArchivingRm && a.undo.kind === "receipt");
+  if (archivingRm && !rmRunsThroughPath(cmd)) return stop(first.label);
+  const viaShim = acts.some((a) => a.undo === RM_SHIM);
+  // bastra's rm only runs where the lane may rewrite: an rm-only command.
+  // Anywhere else the real `rm` runs, and the hint says so.
+  if (viaShim && !rmOnly(cmd)) return stop(first.label);
   // Every act here is a receipt (or the single act has an undo): say each
   // distinct receipt, not only the first (#658).
   const distinct = acts.filter((a, i) => acts.findIndex((b) => b.undo === a.undo) === i);
-  if (distinct.length < 2) return { ...first, undo: acts[0].undo };
+  if (distinct.length < 2) return { ...first, undo: acts[0].undo, viaShim };
   const text = distinct.map((a) => `\`${a.label}\`: ${a.undo?.text}`).join(" ");
-  return { ...first, undo: { kind: "receipt", text } };
+  return { ...first, undo: { kind: "receipt", text }, viaShim };
 }
 
 /**
@@ -581,10 +726,40 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
   // Emit hint even if no memories match — the warning itself is the point.
   // #161 CONSTRAINT (see top of file): the tripwire is exempt from backoff.
   const block = formatHintBlock(match.label, match.severity, emitted, unfused, client, match.undo, resp?.degraded);
+  // bastra's archiving rm carries the receipt: run the command through it and
+  // let it run — a move with an address needs no confirmation. The call id
+  // ties the manifest lines to this call for the PostToolUse receipt.
+  const viaShim = match.viaShim
+    ? {
+        permissionDecision: "allow",
+        permissionDecisionReason: "bastra: rm archives here (bastra archive restore <path>)",
+        updatedInput: {
+          ...toolInput,
+          command: shimRewrite(command, payload.tool_use_id || `${payload.session_id ?? "s"}-${startedAt}`),
+        },
+      }
+    : {};
+  // The shim is off: count every rm it could have seen (shadow), and on a
+  // command it would have taken, say so in one line — never on a mixed one.
+  let offLine = "";
+  if (match.wouldShim !== undefined) {
+    const settings = bashVerdict(command, settingsFiles(payload.cwd));
+    if (match.wouldShim) offLine = shimOffLine(command, settings);
+    await writeShadow("rm_shim_shadow", {
+      session_id: payload.session_id ?? null,
+      matched_pattern: match.label,
+      rm_only: match.wouldShim,
+      settings_verdict: settings.verdict,
+      settings_rule: settings.rule ?? null,
+      hinted: offLine !== "",
+    });
+  }
+  const text = offLine ? block.replace(/<\/recall-hints>$/, `${offLine}\n</recall-hints>`) : block;
   const stdout = JSON.stringify({
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
-      additionalContext: block,
+      ...viaShim,
+      additionalContext: text,
     },
   });
 
@@ -715,6 +890,58 @@ interface BashHookCallTelemetry {
   suppressed_tokens_est: 0;
   status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error";
   error: string | null;
+}
+
+/** The literal targets of the command's `rm`s, for the one line below. */
+function rmTargets(cmd: string): string[] {
+  const out: string[] = [];
+  for (const { words } of simpleCommands(cmd) ?? []) {
+    const texts = words.map((w) => unquote(w.text));
+    const k = commandWordAt(texts);
+    if (texts[k] !== "rm") continue;
+    let done = false;
+    for (const t of texts.slice(k + 1)) {
+      if (!done && t === "--") done = true;
+      else if (done || !t.startsWith("-")) out.push(t);
+    }
+  }
+  return out;
+}
+
+/**
+ * One line when the shim is off and would have taken this command: what it
+ * would have done, how to turn it on, and — read from the user's own Claude
+ * Code rules — whether the stop comes from those rules. A user `deny` stays a
+ * deny with the shim on too, so it gets no line (the shim would not have
+ * saved this case); the shadow event still counts it.
+ */
+export function shimOffLine(command: string, settings: BashVerdict): string {
+  if (settings.verdict === "deny") return "";
+  const t = rmTargets(command);
+  const what = t.length === 0 ? "its targets" : t.slice(0, 3).map((x) => `\`${x}\``).join(", ") + (t.length > 3 ? ` and ${t.length - 3} more` : "");
+  const moved = `would have moved ${what} to ~/.bastra/archive (restorable: \`bastra archive restore <path>\`; temp dirs really removed)`;
+  const on = "Turn it on: unset BASTRA_RM_SHIM (it is on by default) — the user's call, tell them.";
+  const lead = "bastra's archiving rm is switched off here (BASTRA_RM_SHIM=0). With it on, this exact command";
+  if (settings.verdict === "ask") {
+    return `${lead} would still be asked about (your settings: \`${settings.rule}\`), and once approved it ${moved} instead of deleting. ${on}`;
+  }
+  if (settings.verdict === "allow") {
+    return `${lead} — which your settings allow (\`${settings.rule}\`), so it deletes for real — ${moved}. ${on}`;
+  }
+  return `${lead} would have run without this stop and ${moved}. ${on}`;
+}
+
+/** A shadow event: telemetry only, nothing in the vault (#650). */
+async function writeShadow(kind: string, fields: Record<string, unknown>): Promise<void> {
+  if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
+  try {
+    const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();
+    await mkdir(logDir, { recursive: true });
+    const ts = new Date().toISOString();
+    await appendFile(join(logDir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify({ kind, ts, hook_version: HOOK_VERSION, ...fields }) + "\n", "utf8");
+  } catch {
+    // Telemetry must never break the lane.
+  }
 }
 
 async function writeTelemetry(payload: BashHookCallTelemetry): Promise<void> {

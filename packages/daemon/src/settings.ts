@@ -28,6 +28,7 @@
  * The env var BASTRA_UPDATE_CHECK=off is a hard kill-switch over update.mode.
  * The env var BASTRA_EMBEDDING_PROVIDER wins over embedding.provider (the file).
  */
+import { parseRetain } from "./rm-archive.js";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
@@ -143,6 +144,10 @@ export interface CliSettings {
   // experiments, siehe file-size-check.ts) für projekteigene Sandbox-Ordner.
   // Nur hier gepflegt, nicht über `bastra config set` (Skalar-only).
   size?: { guide?: number; critical?: number; exemptPaths?: string[] };
+  // #650: how many days the rm archive keeps a target, per class, as
+  // `junk=1,in-git=2,user=2` (rm-archive.ts parseRetain). Env wins:
+  // BASTRA_ARCHIVE_RETAIN.
+  archive?: { retain?: string };
   // User-Sprache (#231, Language-first recall): primary = 2-stelliger ISO-639-1-
   // Code (lowercase, z.B. "de"). Beim Onboarding aus der identity-Antwort
   // abgeleitet (persistLanguageSetting) oder via `bastra config set
@@ -450,6 +455,10 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
       if (paths.length > 0) size.exemptPaths = paths;
     }
     if (size.guide !== undefined || size.critical !== undefined || size.exemptPaths !== undefined) settings.size = size;
+  }
+  const archiveData = (data as { archive?: { retain?: unknown } }).archive;
+  if (archiveData !== undefined && typeof archiveData.retain === "string" && parseRetain(archiveData.retain)) {
+    settings.archive = { retain: archiveData.retain };
   }
   const codeData = (data as { code?: { repos?: unknown } }).code;
   if (codeData !== undefined && Array.isArray(codeData.repos)) {
@@ -849,6 +858,14 @@ export async function getSizeGuide(path?: string): Promise<number | undefined> {
 export async function setSizeGuide(guide: number, path: string = settingsFilePath()): Promise<void> {
   const n = Math.min(5000, Math.max(100, Math.round(guide)));
   await mutateSettings(path, (current) => ({ ...current, size: { ...current.size, guide: n } }));
+}
+
+export async function getArchiveRetain(path?: string): Promise<string | undefined> {
+  return (await readSettings(path)).archive?.retain;
+}
+
+export async function setArchiveRetain(retain: string, path: string = settingsFilePath()): Promise<void> {
+  await mutateSettings(path, (current) => ({ ...current, archive: { retain } }));
 }
 
 export async function setApiToken(token: string, path: string = settingsFilePath()): Promise<void> {

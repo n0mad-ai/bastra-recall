@@ -297,7 +297,8 @@ warning Claude to stop and confirm with the user.
 Destructive patterns (subset): `rm -rf`, `rm -r`, `rmdir`,
 `git reset --hard`, `git checkout -- `, `git clean -f`, `git branch -D`,
 `git push --force` / `--force-with-lease` / `-f`, `git commit --amend`,
-`git reflog expire` / `git reflog delete`, `git gc --prune`,
+`git reflog expire` / `git reflog delete`, `git gc --prune` (also as
+`git -c gc.pruneExpire=now …` / `git config gc.reflogExpire now`),
 `gh repo delete`, `gh release delete`, `npm uninstall` / `npm rm`,
 `yarn remove`, `pnpm rm`, `DROP TABLE`, `DROP DATABASE`, `TRUNCATE`,
 `docker rm`, `docker volume rm`, `kubectl delete`.
@@ -306,6 +307,63 @@ Risky patterns: `chmod -R`, `chown -R`, `find ... -exec rm`,
 `>` overwrite-redirect.
 
 Does **not** block. The agent decides whether to proceed.
+
+**The archiving `rm` (#650, Claude Code).** For a command made only of `rm`
+(plain, `command rm`, `xargs rm` with argument-free flags, `find … -exec rm`,
+a non-login `bash -c`/`sh -c` of the same, plus `cd`; no redirection except to
+`/dev/null`), the hook does not warn — it makes the act reversible.
+It answers `permissionDecision: "allow"` with an `updatedInput` that puts
+bastra's `shims/rm` first in that command's `PATH`: the shell expands globs and
+variables as usual, and the shim moves each target to
+`~/.bastra/archive/<date>/<time-pid>/<full path>` instead of unlinking it.
+Temp dirs (`/tmp`, `/var/tmp`, `$TMPDIR`, …) are really removed; `/`, `~`,
+system dirs, the temp roots themselves and `.`/`..` are refused. A target on
+another filesystem goes to `<mount>/.bastra-archive`; where none can be made
+(a read-only volume) it is refused and left in place. The rewritten command
+does not run at all if `rm` in that shell is not the shim (an `rm()` function). After the command, the post hook tells the agent what
+actually happened (archived where, deleted, refused) and how to restore:
+`bastra archive restore <path>`. Old entries go by class, checked at most hourly
+after any Bash call — build junk after 1 day, clean git-tracked files after 2,
+the rest after 2, with a 10 GB cap that never touches your own files younger
+than their retention. The archive is a safety net for the next steps, not a
+backup; change it per class (days, fractions allowed) with
+`bastra config set archive.retain junk=1,in-git=2,user=2` or
+`BASTRA_ARCHIVE_RETAIN` (env wins). Claude Code's scratchpads
+(`/tmp/claude-<uid>/…`, or under `CLAUDE_CODE_TMPDIR`) are temp ground: really
+removed.
+
+Anything else keeps the STOP: a command that mixes `rm` with other work (the
+`allow` would cover it all), a redirection that writes a file, an `xargs` flag
+that takes an argument (`xargs -E rm sh …` runs `sh`), `zsh -c` (it reads
+`~/.zshenv` first), one that changes what `rm` resolves to (`PATH=`,
+`alias`, `hash -p`, an `rm()` function, also inside `eval`), a backgrounded
+`rm … &` (the receipt would come before the shim wrote), `sudo rm`,
+`/bin/rm`, remote and container `rm`. Not covered at all: `find -delete`,
+`git clean`, `rmdir`, deletes from code, and `rm` without `-r`/`-R` (no STOP,
+so no rewrite: it runs as the system's). Archiving is a move: it does not free
+disk space until the archive lets the entry go. The receipt shows the first
+25 targets of a call and counts the rest; the manifest is rotated once a day
+past 1 MB and a rotated one goes after 30 days once nothing in it is live. Other hooks' `deny` still wins over
+this `allow`, and so do your own permission rules: the rewritten command keeps
+`rm …` on a line of its own, so `deny: Bash(rm:*)` still denies it and
+`ask: Bash(rm:*)` still asks. Off with `BASTRA_RM_SHIM=0`; a host that ships its own
+archiving `rm` sets `BASTRA_RM_ARCHIVES=1` instead and gets the receipt text
+without the rewrite. The daemon and Claude Code must share a disk: a shim
+path the client cannot see fails the command before it runs (exit 97).
+
+Switched off (`BASTRA_RM_SHIM=0`), the STOP stays — and on a command the shim
+would have taken (the same rm-only decision), the block gets one more line:
+what the shim would have done with this command (which targets it would
+have moved, restorable) and that it is on by default. The wording follows the
+user's own Claude Code rules, read deterministically from the standard files
+(managed, `~/.claude/settings.json` or `CLAUDE_CONFIG_DIR`, the project's
+`.claude/settings.json` and `settings.local.json`; deny > ask > allow, as
+Claude Code decides): with an `ask` rule it says the shim would still ask; a
+`deny` rule gets no line, since the shim would not have changed that. Files
+passed with `claude --settings` or narrowed by `--setting-sources` are not
+visible to a hook. Every such rm is also a telemetry event `rm_shim_shadow`
+(`matched_pattern, rm_only, settings_verdict, settings_rule, hinted`) — what
+the off switch costs, counted. Nothing goes to the vault.
 
 Telemetry: `bash_hook_call` with `matched_pattern, severity, hit_count,
 top_score, status`.
@@ -787,7 +845,8 @@ der Claude warnt, anzuhalten und beim Nutzer nachzufragen.
 Destruktive Muster (Auswahl): `rm -rf`, `rm -r`, `rmdir`,
 `git reset --hard`, `git checkout -- `, `git clean -f`, `git branch -D`,
 `git push --force` / `--force-with-lease` / `-f`, `git commit --amend`,
-`git reflog expire` / `git reflog delete`, `git gc --prune`,
+`git reflog expire` / `git reflog delete`, `git gc --prune` (auch als
+`git -c gc.pruneExpire=now …` / `git config gc.reflogExpire now`),
 `gh repo delete`, `gh release delete`, `npm uninstall` / `npm rm`,
 `yarn remove`, `pnpm rm`, `DROP TABLE`, `DROP DATABASE`, `TRUNCATE`,
 `docker rm`, `docker volume rm`, `kubectl delete`.
