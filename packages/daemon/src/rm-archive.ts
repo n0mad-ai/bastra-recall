@@ -77,7 +77,13 @@ export function ephemeralRoots(env: NodeJS.ProcessEnv = process.env): string[] {
   const roots =
     env.BASTRA_RM_TEMP_ROOTS !== undefined
       ? env.BASTRA_RM_TEMP_ROOTS.split(":").filter(Boolean)
-      : ["/tmp", "/var/tmp", "/dev/shm", `/run/user/${uid}`, "/private/tmp", "/private/var/folders", ...(env.TMPDIR ? [env.TMPDIR] : [])];
+      : [
+          "/tmp", "/var/tmp", "/dev/shm", `/run/user/${uid}`, "/private/tmp", "/private/var/folders",
+          ...(env.TMPDIR ? [env.TMPDIR] : []),
+          // Claude Code's per-uid temp dir (scratchpads live under it) is
+          // /tmp/claude-<uid> on Linux and macOS, unless moved with this.
+          ...(env.CLAUDE_CODE_TMPDIR ? [env.CLAUDE_CODE_TMPDIR] : []),
+        ];
   return roots.flatMap((r) => {
     try {
       return [realpathSync(r)];
@@ -477,9 +483,35 @@ export function restore(target: string, env: NodeJS.ProcessEnv = process.env, cw
   return hit.orig;
 }
 
-const RETAIN_DAYS = { junk: 1, "in-git": 7, user: 30 } as const;
-/** The size cap never drops a user target younger than this. */
-const USER_FLOOR_DAYS = 7;
+export type Kind = "junk" | "in-git" | "user";
+export type Retain = Record<Kind, number>;
+/**
+ * Days the archive keeps a target, per class. Nothing longer than two days by
+ * default: most of what an agent deletes is its own scratch (the harvest in
+ * #650: 81% temp, build or its own probes), and the archive is a safety net
+ * for the next step, not a backup. A maintainer's call — the knob is below.
+ */
+export const DEFAULT_RETAIN: Retain = { junk: 1, "in-git": 2, user: 2 };
+
+/** `junk=1,in-git=2,user=0.5` → the classes it names; null when malformed. */
+export function parseRetain(spec: string): Partial<Retain> | null {
+  const out: Partial<Retain> = {};
+  for (const part of spec.split(",").map((p) => p.trim()).filter(Boolean)) {
+    const m = /^(junk|in-git|user)=(\d+(?:\.\d+)?)$/.exec(part);
+    if (!m) return null;
+    out[m[1] as Kind] = Number(m[2]);
+  }
+  return out;
+}
+
+/** Defaults, then `bastra config set archive.retain …`, then BASTRA_ARCHIVE_RETAIN (env wins, as for every key). */
+export function retainDays(env: NodeJS.ProcessEnv = process.env, stored?: string): Retain {
+  return {
+    ...DEFAULT_RETAIN,
+    ...(stored ? parseRetain(stored) ?? {} : {}),
+    ...(env.BASTRA_ARCHIVE_RETAIN ? parseRetain(env.BASTRA_ARCHIVE_RETAIN) ?? {} : {}),
+  };
+}
 
 /** Compared a chunk at a time: this runs inside the daemon, and two equal-sized
  *  files of a few GB must not become their size in memory. */
@@ -525,11 +557,16 @@ export interface Drop {
 
 /**
  * What the archive can let go of, in this order: a target that came back with
- * the same content; a target older than its class keeps (junk 1 day, in-git 7,
- * user 30); then, over the size cap, junk before in-git — never a user target
- * younger than 7 days.
+ * the same content; a target older than its class keeps (`retain`, default
+ * junk 1 day, in-git 2, user 2); then, over the size cap, junk before in-git —
+ * never a user target younger than the user retention.
  */
-export function reconcilePlan(now: Date, capBytes: number, env: NodeJS.ProcessEnv = process.env): Drop[] {
+export function reconcilePlan(
+  now: Date,
+  capBytes: number,
+  env: NodeJS.ProcessEnv = process.env,
+  retain: Retain = retainDays(env),
+): Drop[] {
   const archive = archiveRoot(env);
   const live = manifestRows(env).filter((r) => r.action === "archived" && r.dest && inArchive(r.dest, archive) && existsSync(r.dest));
   const drop: Drop[] = [];
@@ -539,14 +576,14 @@ export function reconcilePlan(now: Date, capBytes: number, env: NodeJS.ProcessEn
     const kind = r.kind ?? "user";
     const base = { orig: r.orig, dest: r.dest as string, kind, bytes: r.bytes ?? 0 };
     if (sameFile(r.orig, r.dest as string)) drop.push({ ...base, why: "came back with the same content" });
-    else if (age > RETAIN_DAYS[kind]) drop.push({ ...base, why: `${kind} older than ${RETAIN_DAYS[kind]} days` });
+    else if (age > retain[kind]) drop.push({ ...base, why: `${kind} older than ${retain[kind]} days` });
     else keep.push({ ...r, age });
   }
   let total = keep.reduce((s, r) => s + (r.bytes ?? 0), 0);
   const rank = { junk: 0, "in-git": 1, user: 2 };
   for (const r of keep.sort((a, b) => rank[a.kind ?? "user"] - rank[b.kind ?? "user"] || b.age - a.age)) {
     if (total <= capBytes) break;
-    if ((r.kind ?? "user") === "user" && r.age < USER_FLOOR_DAYS) continue;
+    if ((r.kind ?? "user") === "user" && r.age < retain.user) continue;
     drop.push({ orig: r.orig, dest: r.dest as string, kind: r.kind ?? "user", bytes: r.bytes ?? 0, why: "archive size cap" });
     total -= r.bytes ?? 0;
   }
@@ -591,10 +628,16 @@ export function stampReconcile(env: NodeJS.ProcessEnv = process.env, now = new D
 }
 
 /** True when the last reconcile ran more than a day ago (or never, and there is something to reconcile). */
-export function reconcileDue(env: NodeJS.ProcessEnv = process.env): boolean {
-  const root = archiveRoot(env);
+/** How often the archive is looked at: hourly, so a 2-day (or shorter)
+ *  retention is kept to within an hour, not a day. */
+export const RECONCILE_EVERY_MS = 3_600_000;
+
+/** True when the archive exists and was last reconciled over an hour ago
+ *  (or never). Creates nothing: this runs after every Bash call. */
+export function reconcileDue(env: NodeJS.ProcessEnv = process.env, now = Date.now()): boolean {
+  const root = env.BASTRA_ARCHIVE_DIR || join(homedir(), ".bastra", "archive");
   try {
-    return Date.now() - statSync(join(root, ".reconcile-stamp")).mtimeMs > 86_400_000;
+    return now - statSync(join(root, ".reconcile-stamp")).mtimeMs > RECONCILE_EVERY_MS;
   } catch {
     return existsSync(join(root, "manifest.jsonl"));
   }

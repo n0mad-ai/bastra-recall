@@ -588,9 +588,13 @@ Usage:
 
 On Claude Code, an rm-only Bash command runs through bastra's archiving rm:
 targets move to ~/.bastra/archive/<date>/<time-pid>/<full path>, temp dirs
-are really removed, /, ~ and system dirs are refused. Old entries go by class
-(build junk after 1 day, clean git-tracked after 7, the rest after 30; a 10 GB
-cap never touches your own files younger than 7 days). Off: BASTRA_RM_SHIM=0.
+are really removed, /, ~ and system dirs are refused. Old entries go by class,
+checked hourly after Bash calls: build junk after 1 day, clean git-tracked
+after 2, the rest after 2; a 10 GB cap never touches your own files younger
+than their retention. Change it (days, fractions allowed; env
+BASTRA_ARCHIVE_RETAIN wins):
+  bastra config set archive.retain junk=1,in-git=2,user=2
+Off: BASTRA_RM_SHIM=0.
 `,
 
   completion: `bastra completion — Tab completion for your shell
