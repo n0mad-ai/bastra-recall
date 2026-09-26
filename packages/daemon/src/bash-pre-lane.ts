@@ -478,15 +478,23 @@ function rmRunsThroughPath(cmd: string, depth = 0): boolean {
 
 /** `find` flags that act on their own, not through `-exec rm`. */
 const FIND_OWN_ACTS = /^-(?:delete|fprint\w*|fls)$/;
+/** `xargs` flags that take no separate argument. Any other flag may take the
+ *  next word (`-E rm`, `-I rm`) and make the command something else. */
+const XARGS_BARE = /^-(?:[0rtx]+|[nLP]\d+|-null|-no-run-if-empty|-verbose|-exit)$/;
+/** A redirection that writes nothing a user keeps: to /dev/null or a dup. */
+const HARMLESS_REDIRECT = /(?:\d|&)?>>?\s*\/dev\/null\b|\d?>&\d\b/g;
 
 /**
  * Is this command nothing but `rm` (#650)? Rewriting needs
  * `permissionDecision: "allow"`, which allows the WHOLE command — so only a
  * command whose every simple command is an `rm` (plain, `command rm`, `xargs
- * rm`, `find … -exec rm` without its own acts, a non-login `bash -c` of the
- * same) or a `cd` qualifies. `rm -rf x && curl … | sh` does not.
+ * rm` with bare flags, `find … -exec rm` without its own acts, a non-login
+ * `bash -c`/`sh -c` of the same) or a `cd` qualifies, with no redirection
+ * but to /dev/null. `rm -rf x && curl … | sh` does not.
  */
 function rmOnly(cmd: string, depth = 0): boolean {
+  // `rm -rf x > ~/.bashrc` truncates a file no archive keeps.
+  if (/>/.test(cmd.replace(HARMLESS_REDIRECT, ""))) return false;
   const commands = simpleCommands(cmd);
   if (!commands) return false;
   for (const { words } of commands) {
@@ -496,7 +504,7 @@ function rmOnly(cmd: string, depth = 0): boolean {
     if (verb === "rm" || verb === "cd") continue;
     if (verb === "xargs") {
       let j = k + 1;
-      while (j < texts.length && texts[j].startsWith("-")) j++;
+      while (j < texts.length && XARGS_BARE.test(texts[j])) j++;
       if (texts[j] === "rm") continue;
       return false;
     }
@@ -505,7 +513,8 @@ function rmOnly(cmd: string, depth = 0): boolean {
       if (texts.some((t) => FIND_OWN_ACTS.test(t)) || acts.some((i) => texts[i + 1] !== "rm")) return false;
       continue;
     }
-    if (/^(?:ba|z|da)?sh$/.test(verb) && texts[k + 1] === "-c" && texts.length === k + 3 && depth < 2) {
+    // Not zsh: it reads ~/.zshenv first, which may put another rm ahead in PATH.
+    if (/^(?:ba|da)?sh$/.test(verb) && texts[k + 1] === "-c" && texts.length === k + 3 && depth < 2) {
       if (rmOnly(texts[k + 2], depth + 1)) continue;
     }
     return false;

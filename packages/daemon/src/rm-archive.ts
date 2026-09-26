@@ -50,9 +50,13 @@ const shq = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
  * runs — never a real `rm` behind an archive receipt.
  */
 export function shimRewrite(command: string, call: string): string {
+  const rm = shq(SHIM_DIR + "/rm");
   return (
-    `[ -x ${shq(SHIM_DIR + "/rm")} ] || { echo "bastra: archiving rm missing at ${SHIM_DIR} — command not run" >&2; exit 97; }\n` +
+    `[ -x ${rm} ] || { echo ${shq(`bastra: archiving rm missing at ${SHIM_DIR} — command not run`)} >&2; exit 97; }\n` +
     `export PATH=${shq(SHIM_DIR)}:"$PATH" BASTRA_RM_CALL=${shq(call)} BASTRA_NODE=${shq(process.execPath)}\n` +
+    // An rm() function (or anything else) in this shell would run instead of
+    // the shim: then the command does not run at all.
+    `[ "$(command -v rm)" = ${rm} ] || { echo "bastra: rm here is $(command -v rm), not the archiving rm — command not run" >&2; exit 97; }\n` +
     command
   );
 }
@@ -112,6 +116,10 @@ const LONG: Record<string, string> = {
   "--recursive": "r", "--force": "f", "--dir": "d", "--verbose": "v", "--interactive": "i",
   "--preserve-root": "", "--no-preserve-root": "", "--one-file-system": "",
 };
+/** Short flags: GNU's, plus BSD's -x (one file system; a rename never crosses
+ *  one) and -P (overwrite before unlink; a no-op on macOS since 13). -W
+ *  (undelete a whiteout) stays unknown. */
+const SHORT = "rRfdviIxP";
 
 export function parseRmArgs(argv: string[]): Parsed {
   const flags = new Set<string>();
@@ -121,11 +129,12 @@ export function parseRmArgs(argv: string[]): Parsed {
     if (done || a === "-" || !a.startsWith("-")) targets.push(a);
     else if (a === "--") done = true;
     else if (a.startsWith("--")) {
-      if (!(a in LONG)) return { flags, targets, error: `rm: unrecognized option '${a}' (bastra archiving rm)` };
-      if (LONG[a]) flags.add(LONG[a]);
+      const name = /^--(?:interactive|preserve-root)=/.test(a) ? a.slice(0, a.indexOf("=")) : a;
+      if (!(name in LONG)) return { flags, targets, error: `rm: unrecognized option '${a}' (bastra archiving rm)` };
+      if (LONG[name] && name === a) flags.add(LONG[name]);
     } else {
       for (const ch of a.slice(1)) {
-        if (!"rRfdviI".includes(ch)) return { flags, targets, error: `rm: invalid option -- '${ch}' (bastra archiving rm)` };
+        if (!SHORT.includes(ch)) return { flags, targets, error: `rm: invalid option -- '${ch}' (bastra archiving rm)` };
         flags.add(ch === "R" ? "r" : ch);
       }
     }
@@ -133,30 +142,41 @@ export function parseRmArgs(argv: string[]): Parsed {
   return { flags, targets };
 }
 
+/** A target with one of these names is junk. */
 const JUNK_PARTS = new Set([
   "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".cache", "dist", "build",
   "target", ".next", ".turbo", ".venv", "venv", "coverage", ".tox", ".gradle", "out",
 ]);
+/** So is anything inside one of these, whatever its own name. Not `build`,
+ *  `out`, `target`, `dist`: people keep their own files under such names. */
+const JUNK_DIRS = new Set(["node_modules", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".venv", ".gradle", ".next", ".turbo"]);
 const JUNK_SUFFIX = [".pyc", ".o", ".obj", ".class", ".log", ".tmp"];
 
 /** The class decides how long the archive keeps a target (see `reconcile`). */
 function classify(real: string, isDir: boolean): "junk" | "in-git" | "user" {
-  if (real.split("/").some((p) => JUNK_PARTS.has(p)) || (!isDir && JUNK_SUFFIX.some((s) => real.endsWith(s)))) {
+  const parts = real.split("/");
+  if (
+    JUNK_PARTS.has(basename(real)) ||
+    parts.slice(0, -1).some((p) => JUNK_DIRS.has(p)) ||
+    (!isDir && JUNK_SUFFIX.some((s) => real.endsWith(s)))
+  ) {
     return "junk";
   }
-  const cwd = isDir ? real : dirname(real);
-  const git = (args: string[]): string => {
+  const git = (cwd: string, args: string[]): string => {
     try {
       return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] }).trim();
     } catch {
       return "";
     }
   };
-  const top = git(["rev-parse", "--show-toplevel"]);
-  if (top) {
-    const rel = relative(top, real) || ".";
-    if (git(["ls-files", "--", rel]) && !git(["status", "--porcelain", "--", rel])) return "in-git";
-  }
+  const top = git(isDir ? real : dirname(real), ["rev-parse", "--show-toplevel"]);
+  if (!top) return "user";
+  const rel = relative(realpathSync(top), real);
+  // "Get it back with checkout" holds only for tracked, unchanged files: not
+  // for the repository itself (unpushed commits, stashes live in .git), not
+  // for a directory that also holds untracked or ignored files (.env).
+  if (!rel || rel.startsWith("..")) return "user";
+  if (git(top, ["ls-files", "--", rel]) && !git(top, ["status", "--porcelain", "--ignored", "--", rel])) return "in-git";
   return "user";
 }
 
@@ -247,10 +267,23 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
   const call = env.BASTRA_RM_CALL ?? "";
   const ts = localIso(now);
   const log = (row: Omit<ManifestRow, "ts" | "cwd" | "argv" | "call">): void => {
-    appendFileSync(join(archive, "manifest.jsonl"), JSON.stringify({ ts, ...row, cwd, argv, call }) + "\n");
+    const write = (): void => appendFileSync(join(archive, "manifest.jsonl"), JSON.stringify({ ts, ...row, cwd, argv, call }) + "\n");
+    if (row.action === "archived") return write();
+    try {
+      write();
+    } catch {
+      /* the act itself is said on stderr */
+    }
   };
   let rc = 0;
+  const home = realpathSync(homedir());
   for (const t of targets) {
+    // rm refuses these itself: removing the directory you stand in.
+    if (/(?:^|\/)\.\.?\/*$/.test(t)) {
+      err(`rm: refusing to remove '.' or '..' directory: skipping '${t}'`);
+      rc = 1;
+      continue;
+    }
     const ab = resolve(cwd, t);
     let parent: string;
     try {
@@ -276,20 +309,27 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
       rc = 1;
       continue;
     }
-    if (SYSTEM.has(real) || real === realpathSync(homedir()) || under(archive, real)) {
-      err(`rm: refusing '${t}': root, home, a system directory or an ancestor of the archive`);
-      log({ action: "refused", orig: real, reason: "root, home, system directory or archive ancestor" });
+    if (SYSTEM.has(real) || real === home || under(archive, real) || eph.includes(real)) {
+      err(`rm: refusing '${t}': root, home, a system or temp root, or an ancestor of the archive`);
+      log({ action: "refused", orig: real, reason: "root, home, system or temp root, or archive ancestor" });
       rc = 1;
       continue;
     }
     if (under(real, archive)) {
-      err(`rm: '${t}' is already in the archive — prune it with: bastra archive prune`);
+      err(`rm: '${t}' is already in the archive — the archive lets it go by itself (bastra archive reconcile)`);
       log({ action: "refused", orig: real, reason: "already in the archive" });
       rc = 1;
       continue;
     }
     if (eph.some((r) => under(real, r))) {
-      rmSync(real, { recursive: true, force: true });
+      try {
+        rmSync(real, { recursive: true, force: true });
+      } catch (e) {
+        err(`rm: cannot remove '${t}': ${(e as Error).message}`);
+        log({ action: "refused", orig: real, reason: (e as Error).message });
+        rc = 1;
+        continue;
+      }
       log({ action: "deleted", orig: real, reason: "temp" });
       if (flags.has("v")) out(`removed (temp) '${t}'`);
       continue;
@@ -301,11 +341,14 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
       rc = 1;
       continue;
     }
-    const dest = join(root, ts.slice(0, 10), `${ts.slice(11).replace(/:/g, "")}-${process.pid}`, real.replace(/^\/+/, ""));
-    mkdirSync(dirname(dest), { recursive: true });
+    const base = join(root, ts.slice(0, 10), `${ts.slice(11).replace(/:/g, "")}-${process.pid}`, real.replace(/^\/+/, ""));
+    // `rm -r a/b a` in one call: a/b's move made a directory where a goes.
+    let dest = base;
+    for (let n = 2; existsSync(dest); n++) dest = `${base}~${n}`;
     const kind = classify(real, isDir);
     const bytes = sizeOf(real);
     try {
+      mkdirSync(dirname(dest), { recursive: true });
       renameSync(real, dest);
     } catch (e) {
       err(`rm: '${t}' not moved to the archive: ${(e as Error).message}`);
@@ -313,7 +356,15 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
       rc = 1;
       continue;
     }
-    log({ action: "archived", orig: real, dest, kind, bytes });
+    try {
+      log({ action: "archived", orig: real, dest, kind, bytes });
+    } catch (e) {
+      // A move nobody can find is a loss: without its manifest line, put it back.
+      renameSync(dest, real);
+      err(`rm: '${t}' not removed — the archive manifest cannot be written: ${(e as Error).message}`);
+      rc = 1;
+      continue;
+    }
     if (flags.has("v")) out(`archived '${t}' → ${dest}`);
   }
   return rc;
@@ -348,7 +399,7 @@ export function callReport(call: string, env: NodeJS.ProcessEnv = process.env): 
   if (rows.length === 0) return null;
   const lines = rows.map((r) =>
     r.action === "archived"
-      ? `- archived ${r.orig} → ${r.dest} (restore: \`bastra archive restore ${r.orig}\`)`
+      ? `- archived ${r.orig} → ${r.dest} (restore: \`bastra archive restore ${shq(r.orig)}\`)`
       : r.action === "deleted"
         ? `- deleted for real (temp): ${r.orig}`
         : `- refused, left in place: ${r.orig} (${r.reason})`,
@@ -357,10 +408,18 @@ export function callReport(call: string, env: NodeJS.ProcessEnv = process.env): 
 }
 
 export function restore(target: string, env: NodeJS.ProcessEnv = process.env, cwd = process.cwd()): string {
-  const want = resolve(cwd, target);
+  // The manifest keeps the path with its parent resolved (/var → /private/var
+  // on macOS); a path as the user typed it is resolved the same way.
+  const typed = resolve(cwd, target);
+  let want = typed;
+  try {
+    want = join(realpathSync(dirname(typed)), basename(typed));
+  } catch {
+    /* the parent went with it: match as typed */
+  }
   const hit = [...manifestRows(env)]
     .reverse()
-    .find((r) => r.action === "archived" && r.dest && (r.orig === want || r.dest === want) && existsSync(r.dest));
+    .find((r) => r.action === "archived" && r.dest && (r.orig === want || r.orig === typed || r.dest === want || r.dest === typed) && existsSync(r.dest));
   if (!hit || !hit.dest) throw new Error(`nothing live in the archive for ${want}`);
   if (existsSync(hit.orig)) throw new Error(`${hit.orig} exists — not overwriting; move it away and retry`);
   mkdirSync(dirname(hit.orig), { recursive: true });
