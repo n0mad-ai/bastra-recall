@@ -9,7 +9,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import { execFileSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { callReport, manifestRows, reconcilePlan, restore, runRmShim, shimRewrite } from "../src/rm-archive.js";
+import { SHIM_DIR, callReport, manifestRows, reconcilePlan, restore, runRmShim, shimRewrite } from "../src/rm-archive.js";
 import { runBashPreLane } from "../src/bash-pre-lane.js";
 import { runBashFailLane } from "../src/bash-fail-lane.js";
 
@@ -227,21 +227,36 @@ describe("#650 — what the archive keeps how long (class at archive time)", () 
 });
 
 describe("#650 — the rewritten command runs rm through the shim or not at all", () => {
-  const run = (prelude: string, command: string) =>
-    spawnSync("bash", ["-c", `${prelude}\n${shimRewrite(command, "t'; echo INJECTED; '")}`], { encoding: "utf8" });
+  // bash always; zsh where it is installed (Claude Code's shell on macOS).
+  const shells = ["bash", ...(spawnSync("zsh", ["-c", "true"]).status === 0 ? ["zsh"] : [])];
+  const run = (sh: string, prelude: string, command: string) =>
+    spawnSync(sh, ["-c", `${prelude}\n${shimRewrite(command, "t'; echo INJECTED; '")}`], { encoding: "utf8" });
 
   it("runs the command when rm resolves to the shim; a quote in the call id stays data", () => {
     // Revert-check: shq → plain '…' around the call id → INJECTED is printed.
-    const r = run("", "echo ran $BASTRA_RM_CALL");
-    assert.equal(r.status, 0, r.stderr);
-    assert.equal(r.stdout, "ran t'; echo INJECTED; '\n");
+    for (const sh of shells) {
+      const r = run(sh, "", "echo ran $BASTRA_RM_CALL");
+      assert.equal(r.status, 0, `${sh}: ${r.stderr}`);
+      assert.equal(r.stdout, "ran t'; echo INJECTED; '\n", sh);
+    }
   });
 
-  it("does not run it when an rm() function in the shell would win over the shim", () => {
-    // Revert-check: drop the `command -v rm` line → "ran" (and a real rm would have run behind the receipt).
-    const r = run("rm() { :; }", "echo ran");
-    assert.equal(r.status, 97);
-    assert.equal(r.stdout, "");
+  it("does not run it when the shim is not on this disk (a daemon on another host)", () => {
+    // Revert-check: `|| exit 97` → `; true` in shimRewrite → "ran" with the system rm in PATH.
+    for (const sh of shells) {
+      const moved = shimRewrite("echo ran", "c").replaceAll(SHIM_DIR, "/nonexistent/bastra/shims");
+      const r = spawnSync(sh, ["-c", moved], { encoding: "utf8" });
+      assert.equal(r.status, 97, sh);
+      assert.equal(r.stdout, "", sh);
+    }
+  });
+
+  it("an rm() function the shell brought along does not win over the shim", () => {
+    // Revert-check: drop `unset -f rm` from shimRewrite → `command -v rm` says "rm" (the function: a real rm behind the receipt).
+    for (const sh of shells) {
+      const r = run(sh, "rm() { :; }", "command -v rm");
+      assert.equal(r.stdout, `${SHIM_DIR}/rm\n`, sh);
+    }
   });
 });
 
@@ -262,7 +277,7 @@ describe("#650 — the bash-pre lane runs rm-only commands through the shim", ()
       const out = await preHook(`cd pkg && ${RM} -rf node_modules dist`);
       assert.equal(out.permissionDecision, "allow");
       assert.equal(out.updatedInput.description, "d");
-      assert.match(out.updatedInput.command, /export PATH='[^']*\/shims':"\$PATH" BASTRA_RM_CALL='toolu_1'/);
+      assert.match(out.updatedInput.command, /^\[ -x '[^']*\/shims\/rm' \] \|\| exit 97; unset -f rm 2>\/dev\/null; export PATH='[^']*\/shims':"\$PATH" BASTRA_RM_CALL='toolu_1' BASTRA_NODE='[^']*'\n/);
       assert.ok(out.updatedInput.command.endsWith(`\ncd pkg && ${RM} -rf node_modules dist`));
       assert.match(out.additionalContext, /NOTE — reversible/);
       for (const cmd of [`${RM} -rf x 2>/dev/null`, `${RM} -rf x >/dev/null 2>&1`, `xargs -0r ${RM} -rf < list`, `sh -c '${RM} -rf x'`]) {

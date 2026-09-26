@@ -335,7 +335,9 @@ that takes an argument (`xargs -E rm sh …` runs `sh`), `zsh -c` (it reads
 `git clean`, `rmdir`, deletes from code, and `rm` without `-r` (no STOP, so
 no rewrite: it runs as the system's). Archiving is a move: it does not free
 disk space until the archive lets the entry go. Other hooks' `deny` still wins over
-this `allow`. Off with `BASTRA_RM_SHIM=0`; a host that ships its own
+this `allow`, and so do your own permission rules: the rewritten command keeps
+`rm …` on a line of its own, so `deny: Bash(rm:*)` still denies it and
+`ask: Bash(rm:*)` still asks. Off with `BASTRA_RM_SHIM=0`; a host that ships its own
 archiving `rm` sets `BASTRA_RM_ARCHIVES=1` instead and gets the receipt text
 without the rewrite. The daemon and Claude Code must share a disk: a shim
 path the client cannot see fails the command before it runs (exit 97).
