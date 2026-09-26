@@ -10,7 +10,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { callReport, manifestRows, reconcilePlan, applyReconcile, restore } from "../src/rm-archive.js";
+import { SHIM_DIR, callReport, manifestRows, reconcilePlan, applyReconcile, restore } from "../src/rm-archive.js";
 import { gitAct, parseGit, runGitShim } from "../src/git-archive.js";
 import { runBashPreLane } from "../src/bash-pre-lane.js";
 
@@ -34,7 +34,8 @@ function repo(root: string, name: string) {
   const read = (f: string) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), "utf8") : null);
   /** What the caller can observe: worktree + index + untracked/ignored, branches, stash list. */
   const state = () =>
-    [git("status", "--porcelain", "--untracked-files=all", "--ignored"), git("branch", "--format=%(refname:short) %(objectname)"), git("stash", "list", "--format=%H %gs"), read("a"), read("b")].join("\n--\n");
+    // No commit shas: each twin's commits carry their own second.
+    [git("status", "--porcelain", "--untracked-files=all", "--ignored"), git("branch", "--format=%(refname:short) %(tree)"), git("stash", "list", "--format=%gs %T"), git("rev-parse", "HEAD^{tree}"), read("a"), read("b")].join("\n--\n");
   return { dir, git, read, state };
 }
 
@@ -231,6 +232,23 @@ describe("#650 git snapshots — refuse where the repository would run its own c
     assert.equal(t.shim("-c", "advice.detachedHead=false", "reset", "-q", "--hard"), 0);
     assert.equal(manifestRows(t.env).length, 0);
     assert.equal(t.form.read("a"), "one\n", "the act itself ran");
+  });
+});
+
+describe("#650 git snapshots — next to another git shim", () => {
+  it("the git it hands over to sees a PATH without bastra's shims (no ping-pong between two shims)", () => {
+    // Revert-check: childEnv = env (PATH unchanged) → the next shim's PATH still holds shims/ and would call us back.
+    const t = twins();
+    const fake = join(t.root, "other-shim");
+    mkdirSync(fake);
+    const seen = join(t.root, "seen-path");
+    writeFileSync(join(fake, "git"), `#!/bin/sh\nprintf '%s' "$PATH" > '${seen}'\n`);
+    chmodSync(join(fake, "git"), 0o755);
+    const env = { ...t.env, PATH: [SHIM_DIR, fake, process.env.PATH].join(":") };
+    runGitShim(["status"], { env, cwd: t.form.dir, ...quiet });
+    const path = readFileSync(seen, "utf8").split(":");
+    assert.ok(path.includes(fake));
+    assert.equal(path.includes(SHIM_DIR), false);
   });
 });
 

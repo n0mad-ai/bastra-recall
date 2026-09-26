@@ -95,6 +95,26 @@ export function gitAct(p: ParsedGit): GitAct | null {
   return null;
 }
 
+/** PATH with bastra's shims/ taken out. */
+export function withoutShims(path: string | undefined): string {
+  let shims = SHIM_DIR;
+  try {
+    shims = realpathSync(SHIM_DIR);
+  } catch {
+    /* as configured */
+  }
+  return (path ?? "")
+    .split(delimiter)
+    .filter((d) => {
+      try {
+        return realpathSync(d) !== shims;
+      } catch {
+        return d !== SHIM_DIR;
+      }
+    })
+    .join(delimiter);
+}
+
 /** The git after ours in PATH. */
 export function realGit(env: NodeJS.ProcessEnv = process.env): string | null {
   let shims: string;
@@ -166,13 +186,17 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
     err("bastra: no git found in PATH after bastra's shim — nothing was run");
     return 127;
   }
-  const passThrough = (): number => spawnSync(real, argv, { stdio: "inherit", cwd: cwd0, env }).status ?? 1;
+  // Whatever runs next sees a PATH without us: another git shim further down
+  // PATH (one that signs commits, say) looks for "the next git" the same way,
+  // and with us still in PATH the two would hand the call back and forth.
+  const childEnv = { ...env, PATH: withoutShims(env.PATH) };
+  const passThrough = (): number => spawnSync(real, argv, { stdio: "inherit", cwd: cwd0, env: childEnv }).status ?? 1;
   const p = parseGit(argv);
   const act = p && !p.otherGlobals ? gitAct(p) : null;
   if (!p || !act) return passThrough();
 
   const cwd = p.dirs.reduce((d, x) => resolve(d, x), cwd0);
-  const gitEnv = { ...env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" };
+  const gitEnv = { ...childEnv, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" };
   const git = (args: string[]): string | null => {
     try {
       return execFileSync(real, [...SAFE, ...args], { cwd, env: gitEnv, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 }).trimEnd();
