@@ -18,7 +18,7 @@ test("all arms count the serialized envelope and preserve exact source offsets",
       const source = sources.find(s => s.id === e.id)!;
       assert.equal(e.text, source.text.slice(e.start, e.end));
       assert.equal(e.revision, sourceRevision(source.text));
-      assert.equal(e.text.isWellFormed(), true);
+      assert.doesNotThrow(() => encodeURIComponent(e.text)); // throws URIError on lone surrogates, same check as String#isWellFormed (ES2024, outside eval's ES2022 lib)
     }
   }
 });
