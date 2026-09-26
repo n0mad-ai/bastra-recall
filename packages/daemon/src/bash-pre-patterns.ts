@@ -84,8 +84,9 @@ const git = (rest: string): RegExp => new RegExp(String.raw`\bgit(?:\s+-[Cc]\s+\
  * we surface to the user is the meaningful one.
  */
 export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; undo: Undo | null }> = [
-  { label: "rm -rf", re: /\brm\s+(?:-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)\b/, undo: RM_ARCHIVES },
-  { label: "rm -r", re: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*\b/, undo: RM_ARCHIVES },
+  // -R and --recursive are the same act: rm(1) takes all three.
+  { label: "rm -rf", re: /\brm\s+(?:-[a-zA-Z]*[rR][a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*[rR])\b/, undo: RM_ARCHIVES },
+  { label: "rm -r", re: /\brm\s+(?:-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)\b/, undo: RM_ARCHIVES },
   { label: "rmdir", re: /\brmdir\b/, undo: null },
   {
     label: "git reset --hard",

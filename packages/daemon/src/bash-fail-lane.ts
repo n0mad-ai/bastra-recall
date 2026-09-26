@@ -30,7 +30,10 @@ import { isUnfused, type HookRecallHit, type HookRecallResponse } from "./hook-r
 import { unfusedHeadline, unfusedReasonFor } from "./band-wording.js";
 import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookCaller, type HookClientEvidence } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
-import { applyReconcile, callReport, reconcileDue, reconcilePlan } from "./rm-archive.js";
+import { spawn } from "node:child_process";
+import { extname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { callReport, reconcileDue, stampReconcile } from "./rm-archive.js";
 import {
   decideBackoff,
   loadSessionState,
@@ -93,15 +96,7 @@ function withRmReceipt(out: string, payload: BashFailPayload): string {
   let report: string | null = null;
   try {
     report = callReport(payload.tool_use_id ?? "");
-    if (report && reconcileDue()) {
-      setImmediate(() => {
-        try {
-          applyReconcile(reconcilePlan(new Date(), 10 * 2 ** 30));
-        } catch {
-          /* best effort: the archive only grows until the next try */
-        }
-      });
-    }
+    if (report && reconcileDue()) reconcileInBackground();
   } catch {
     return out;
   }
@@ -114,6 +109,23 @@ function withRmReceipt(out: string, payload: BashFailPayload): string {
     additionalContext: prev ? `${report}\n\n${prev}` : report,
   };
   return JSON.stringify(doc);
+}
+
+/**
+ * `bastra archive reconcile --yes` as its own process. The plan stats every
+ * live entry and compares files; the drops are rmSync over up to 10 GB. In
+ * the daemon that blocked the event loop, and a hook that waits on it longer
+ * than its 500 ms times out to `{}` — for bash-pre, no STOP and no shim while
+ * the archive was being cleaned. The stamp is written first, so a second
+ * receipt in the same second does not start a second one; a child that fails
+ * only means the archive grows until tomorrow.
+ */
+function reconcileInBackground(): void {
+  stampReconcile();
+  const cli = fileURLToPath(new URL(`./cli${extname(import.meta.url)}`, import.meta.url));
+  const child = spawn(process.execPath, [...process.execArgv, cli, "archive", "reconcile", "--yes"], { detached: true, stdio: "ignore" });
+  child.on("error", () => {});
+  child.unref();
 }
 
 async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Promise<string> {
