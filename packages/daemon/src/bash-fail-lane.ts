@@ -30,6 +30,7 @@ import { isUnfused, type HookRecallHit, type HookRecallResponse } from "./hook-r
 import { unfusedHeadline, unfusedReasonFor } from "./band-wording.js";
 import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookCaller, type HookClientEvidence } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
+import { applyReconcile, callReport, reconcileDue, reconcilePlan } from "./rm-archive.js";
 import {
   decideBackoff,
   loadSessionState,
@@ -56,6 +57,8 @@ export interface BashFailPayload {
   hook_event_name?: string;
   tool_name?: string;
   tool_input?: Record<string, unknown>;
+  /** Same id the PreToolUse call had — keys the rm archive receipt. */
+  tool_use_id?: string;
   tool_result?: unknown;
   tool_response?: unknown;
   /** Claude Code PostToolUseFailure carries failure details at top level. */
@@ -76,6 +79,44 @@ type RecallResponse = HookRecallResponse;
  * client. Never throws — every failure degrades to `{}` plus telemetry.
  */
 export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: string): Promise<string> {
+  const out = await bashPostLane(payload, selfBaseUrl);
+  return withRmReceipt(out, payload);
+}
+
+/**
+ * The receipt of what bastra's archiving `rm` actually did in this call —
+ * the pre-hook only predicted it (#650). Appended to whatever the lane says,
+ * success or failure. The same call also lets the archive let go of old
+ * entries once a day, off the answer's path.
+ */
+function withRmReceipt(out: string, payload: BashFailPayload): string {
+  let report: string | null = null;
+  try {
+    report = callReport(payload.tool_use_id ?? "");
+    if (report && reconcileDue()) {
+      setImmediate(() => {
+        try {
+          applyReconcile(reconcilePlan(new Date(), 10 * 2 ** 30));
+        } catch {
+          /* best effort: the archive only grows until the next try */
+        }
+      });
+    }
+  } catch {
+    return out;
+  }
+  if (!report) return out;
+  const doc = JSON.parse(out || "{}") as { hookSpecificOutput?: { hookEventName?: string; additionalContext?: string } };
+  const prev = doc.hookSpecificOutput?.additionalContext;
+  doc.hookSpecificOutput = {
+    ...doc.hookSpecificOutput,
+    hookEventName: payload.hook_event_name ?? "PostToolUse",
+    additionalContext: prev ? `${report}\n\n${prev}` : report,
+  };
+  return JSON.stringify(doc);
+}
+
+async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
   // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt

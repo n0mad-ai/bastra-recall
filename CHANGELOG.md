@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`rm` in Claude Code's Bash is an archive, not a loss** (#650). An rm-only
+  command runs through bastra's archiving `rm`: the bash-pre hook allows it
+  and puts `shims/` first in its PATH, targets move to `~/.bastra/archive`
+  (temp dirs are really removed, `/`, `~` and system dirs refused), and the
+  post hook tells the agent what actually happened and how to restore.
+  `bastra archive list|restore|reconcile`; old entries go by class (1 / 7 /
+  30 days, 10 GB cap). Mixed commands, rm overrides, `sudo`/absolute/remote
+  `rm` keep the STOP. Off with `BASTRA_RM_SHIM=0`.
 - **`bastra doctor` shows which features are switched off**, not only which
   registrations are broken. A new `features` section lists, one line each,
   hooks / Stop hook / skill per registered client (including Claude Code's own

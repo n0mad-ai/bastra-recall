@@ -71,6 +71,11 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
   process.env.TMPDIR = root;
   process.env.TEMP = root;
   process.env.TMP = root;
+  // bastra's archiving rm (#650) is on by default on claude-code. The suite
+  // uses `rm -rf` as its stock destructive command, so a test sees the STOP
+  // unless it turns the shim on; and the archive never lands in ~/.bastra.
+  process.env.BASTRA_RM_SHIM = "0";
+  process.env.BASTRA_ARCHIVE_DIR = join(root, "archive");
   const removeRoot = () => {
     try {
       rmSync(root, { recursive: true, force: true, maxRetries: 3 });

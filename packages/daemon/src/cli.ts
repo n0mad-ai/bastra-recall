@@ -31,6 +31,7 @@ import { cmdImport } from "./cli/import-cmd.js";
 import { cmdOnboard } from "./cli/onboard-cmd.js";
 import { cmdSkills } from "./cli/skills-cmd.js";
 import { cmdFeedback } from "./cli/feedback-cmd.js";
+import { cmdArchive } from "./cli/archive-cmd.js";
 import { cmdLogs, parseSince } from "./cli/logs.js";
 import { cmdLogStats } from "./cli/log-stats.js";
 import { cmdCompletion } from "./cli/completion.js";
@@ -76,6 +77,7 @@ async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
     case "onboard": return cmdOnboard(args);
     case "skills": return cmdSkills(args);
     case "feedback": return cmdFeedback(args);
+    case "archive": return cmdArchive(args);
     case "rules": return cmdRules(args);
     case "patches": return cmdPatches(args);
     case "completion": return cmdCompletion(args.surface);

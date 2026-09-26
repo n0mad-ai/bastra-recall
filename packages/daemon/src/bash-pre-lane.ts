@@ -42,10 +42,12 @@ import {
   DESTRUCTIVE_PATTERNS,
   RISKY_PATTERNS,
   RM_ARCHIVES,
+  RM_SHIM,
   reversibleDefault,
   type HintKind,
   type Undo,
 } from "./bash-pre-patterns.js";
+import { shimRewrite } from "./rm-archive.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 500, "NEXUS_HOOK_TIMEOUT_MS");
 const HOOK_VERSION = "0.2.0"; // 0.2.0 = daemon-side lane (#343)
@@ -57,6 +59,8 @@ export interface BashHookPayload {
   hook_event_name?: string;
   tool_name?: string;
   tool_input?: Record<string, unknown>;
+  /** Claude Code's id of this call; PostToolUse carries the same one. */
+  tool_use_id?: string;
 }
 
 // P0: EIN gemeinsamer Response-Typ für alle Lanes. Die lokale Kopie hier
@@ -437,24 +441,74 @@ function redefinesRm(cmd: string, depth = 0): boolean {
 
 /**
  * Is every `rm -r` in this command the PATH-resolved `rm` of THIS shell — the
- * one an archiving shim can stand in for (#650)? `sudo` (secure_path),
- * `/bin/rm`, `ssh host rm`, `docker exec … rm`, `git rm`, `find -exec rm`,
- * `bash -c "…rm…"`, a heredoc body (its consumer may be `ssh`) and anything the
- * scanner cannot delimit do not qualify. An allowlist on purpose: a form not
- * recognised here keeps the STOP. The same command must also not change what
- * `rm` resolves to (`redefinesRm`, #657).
+ * one an archiving shim can stand in for (#650)? The shim's directory is
+ * EXPORTED in PATH, so a child that inherits PATH and looks `rm` up there
+ * qualifies too: `xargs rm`, `find … -exec rm`, and a non-login `bash -c
+ * "…rm…"` (its body is checked the same way). `sudo` (secure_path),
+ * `/bin/rm`, `ssh host rm`, `docker exec … rm`, `git rm`, `bash -lc` (a
+ * profile may reset PATH), a heredoc body (its consumer may be `ssh`) and
+ * anything the scanner cannot delimit do not qualify. An allowlist on
+ * purpose: a form not recognised here keeps the STOP. The same command must
+ * also not change what `rm` resolves to (`redefinesRm`, #657).
  */
-function rmRunsThroughPath(cmd: string): boolean {
+function rmRunsThroughPath(cmd: string, depth = 0): boolean {
   if (redefinesRm(cmd)) return false;
   const commands = simpleCommands(cmd);
   if (!commands) return false;
   for (const { words } of commands) {
     const texts = words.map((w) => w.text.replace(/["'\\]/g, ""));
     if (!RM_ROWS.some((p) => p.re.test(texts.join(" ")))) continue;
+    if (/^(?:ba|z|da)?sh$/.test(texts[0]) && texts[1] === "-c" && texts.length === 3) {
+      if (depth >= 2 || !rmRunsThroughPath(unquote(words[2].text), depth + 1)) return false;
+      continue;
+    }
+    if (texts[0] === "find") {
+      const execs = texts.flatMap((t, i) => (/^-(?:exec|execdir|ok|okdir)$/.test(t) ? [i] : []));
+      const rms = texts.flatMap((t, i) => (/\brm\b/.test(t) ? [i] : []));
+      if (execs.length === 0 || rms.some((i) => !execs.includes(i - 1) || texts[i] !== "rm")) return false;
+      continue;
+    }
     let k = 0;
     if (texts[0] === "command") k = 1;
     else if (texts[0] === "xargs") for (k = 1; k < texts.length && texts[k].startsWith("-"); k++);
     if (texts[k] !== "rm") return false;
+  }
+  return true;
+}
+
+/** `find` flags that act on their own, not through `-exec rm`. */
+const FIND_OWN_ACTS = /^-(?:delete|fprint\w*|fls)$/;
+
+/**
+ * Is this command nothing but `rm` (#650)? Rewriting needs
+ * `permissionDecision: "allow"`, which allows the WHOLE command — so only a
+ * command whose every simple command is an `rm` (plain, `command rm`, `xargs
+ * rm`, `find … -exec rm` without its own acts, a non-login `bash -c` of the
+ * same) or a `cd` qualifies. `rm -rf x && curl … | sh` does not.
+ */
+function rmOnly(cmd: string, depth = 0): boolean {
+  const commands = simpleCommands(cmd);
+  if (!commands) return false;
+  for (const { words } of commands) {
+    const texts = words.map((w) => unquote(w.text));
+    const k = commandWordAt(texts);
+    const verb = texts[k];
+    if (verb === "rm" || verb === "cd") continue;
+    if (verb === "xargs") {
+      let j = k + 1;
+      while (j < texts.length && texts[j].startsWith("-")) j++;
+      if (texts[j] === "rm") continue;
+      return false;
+    }
+    if (verb === "find") {
+      const acts = texts.flatMap((t, i) => (/^-(?:exec|execdir|ok|okdir)$/.test(t) ? [i] : []));
+      if (texts.some((t) => FIND_OWN_ACTS.test(t)) || acts.some((i) => texts[i + 1] !== "rm")) return false;
+      continue;
+    }
+    if (/^(?:ba|z|da)?sh$/.test(verb) && texts[k + 1] === "-c" && texts.length === k + 3 && depth < 2) {
+      if (rmOnly(texts[k + 2], depth + 1)) continue;
+    }
+    return false;
   }
   return true;
 }
@@ -464,6 +518,9 @@ interface Hint {
   severity: "destructive" | "risky";
   /** null for a destructive hint: STOP. */
   undo: Undo | null;
+  /** The receipt holds only if bastra's archiving `rm` runs the command:
+   *  the lane rewrites it and allows it (see shimRewrite). */
+  viaShim?: boolean;
 }
 
 /**
@@ -488,13 +545,18 @@ function hintFor(cmd: string, surface: string): Hint | null {
   const bare = acts.find((a) => a.undo === null);
   if (bare) return stop(bare.label);
   if (acts.length > 1 && acts.some((a) => a.undo?.kind !== "receipt")) return stop(first.label);
-  if (acts.some((a) => a.undo === RM_ARCHIVES) && !rmRunsThroughPath(cmd)) return stop(first.label);
+  const archivingRm = acts.some((a) => a.undo?.needsArchivingRm && a.undo.kind === "receipt");
+  if (archivingRm && !rmRunsThroughPath(cmd)) return stop(first.label);
+  const viaShim = acts.some((a) => a.undo === RM_SHIM);
+  // bastra's rm only runs where the lane may rewrite: an rm-only command.
+  // Anywhere else the real `rm` runs, and the hint says so.
+  if (viaShim && !rmOnly(cmd)) return stop(first.label);
   // Every act here is a receipt (or the single act has an undo): say each
   // distinct receipt, not only the first (#658).
   const distinct = acts.filter((a, i) => acts.findIndex((b) => b.undo === a.undo) === i);
-  if (distinct.length < 2) return { ...first, undo: acts[0].undo };
+  if (distinct.length < 2) return { ...first, undo: acts[0].undo, viaShim };
   const text = distinct.map((a) => `\`${a.label}\`: ${a.undo?.text}`).join(" ");
-  return { ...first, undo: { kind: "receipt", text } };
+  return { ...first, undo: { kind: "receipt", text }, viaShim };
 }
 
 /**
@@ -633,9 +695,23 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
   // Emit hint even if no memories match — the warning itself is the point.
   // #161 CONSTRAINT (see top of file): the tripwire is exempt from backoff.
   const block = formatHintBlock(match.label, match.severity, emitted, unfused, client, match.undo, resp?.degraded);
+  // bastra's archiving rm carries the receipt: run the command through it and
+  // let it run — a move with an address needs no confirmation. The call id
+  // ties the manifest lines to this call for the PostToolUse receipt.
+  const viaShim = match.viaShim
+    ? {
+        permissionDecision: "allow",
+        permissionDecisionReason: "bastra: rm archives here (bastra archive restore <path>)",
+        updatedInput: {
+          ...toolInput,
+          command: shimRewrite(command, payload.tool_use_id || `${payload.session_id ?? "s"}-${startedAt}`),
+        },
+      }
+    : {};
   const stdout = JSON.stringify({
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
+      ...viaShim,
       additionalContext: block,
     },
   });

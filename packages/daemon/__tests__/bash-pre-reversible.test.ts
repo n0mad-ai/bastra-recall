@@ -497,8 +497,6 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "docker exec db rm -rf /var/lib/postgresql",
       "kubectl exec pod -- rm -rf /data",
       "git rm -rf src",
-      "find . -name tmp -exec rm -rf {} +",
-      'bash -c "rm -rf build"',
       "env -i rm -rf build",
       "PATH=/usr/bin rm -rf build",
       "ssh prod bash <<'EOF'\nrm -rf /srv/data\nEOF",
@@ -540,6 +538,10 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "hash -p /usr/bin/python3 python; rm -rf dist",
       'grep -rn "rm()" src; rm -rf dist',
       "eval 'echo hi'; rm -rf dist",
+      // The archiving rm's directory is exported in PATH: a child that looks
+      // `rm` up there runs it too (#650).
+      "find . -name tmp -exec rm -rf {} +",
+      'bash -c "rm -rf build"',
       // Only the command word counts: an argument that reads like `hash` /
       // `eval` is data, and `sudo hash` runs in a child shell.
       "echo hash -p /bin/rm rm; rm -rf x",

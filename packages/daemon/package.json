@@ -33,6 +33,7 @@
     "dist",
     "webui",
     "skill",
+    "shims",
     "stub/manifest.json",
     "README.md"
   ],
