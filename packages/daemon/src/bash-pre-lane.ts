@@ -377,8 +377,63 @@ function matchPattern(cmd: string): { label: string; severity: "destructive" | "
 const RM_ROWS = DESTRUCTIVE_PATTERNS.filter((p) => p.undo === RM_ARCHIVES);
 
 /** An `rm()` / `function rm` definition — the scanner splits at `(`, so this
- *  is read from the raw command (#657). */
+ *  is read from the raw command (#657). No quote boundary: `grep "rm()"` is
+ *  data; an `eval 'rm(){ … }'` is caught by re-reading the eval body. */
 const RM_FUNCTION_DEF = /(?:^|[\s;&|({])(?:function\s+rm\b|rm\s*\(\s*\))/;
+
+/** A word with its shell quotes removed: `'a b'` → `a b`, `"\$x"y` → `$xy`. */
+function unquote(word: string): string {
+  let out = "";
+  let q: string | null = null;
+  for (let i = 0; i < word.length; i++) {
+    const ch = word[i];
+    if (q === null && (ch === "'" || ch === '"')) q = ch;
+    else if (ch === q) q = null;
+    else if (ch === "\\" && q !== "'") out += word[++i] ?? "";
+    else out += ch;
+  }
+  return out;
+}
+
+/**
+ * Where the command word stands: past `VAR=` assignments and the `builtin` /
+ * `command` prefixes. Those two still run the builtin in THIS shell; `sudo`,
+ * `env`, `xargs` run a child, where `hash` or `alias` cannot change this
+ * shell's `rm`. `echo hash -p …` is an argument, not a command.
+ */
+function commandWordAt(texts: string[]): number {
+  let k = 0;
+  for (;;) {
+    while (k < texts.length && /^\w+\+?=/.test(texts[k])) k++;
+    if (texts[k] === "builtin") k++;
+    else if (texts[k] === "command") for (k++; k < texts.length && texts[k].startsWith("-"); k++);
+    else return k;
+  }
+}
+
+/**
+ * Does this command change what `rm` resolves to (#657)? A `PATH=`
+ * assignment, `alias rm=…`, `hash -p <path> rm`, or an `rm()` / `function rm`
+ * definition. The verb is read at command position (`commandWordAt`), so
+ * `builtin hash` counts and `echo hash` does not. An `eval` body is shell and
+ * is read again (two levels); a body the scanner cannot read counts as a
+ * change, so an unknown form keeps the STOP.
+ */
+function redefinesRm(cmd: string, depth = 0): boolean {
+  if (RM_FUNCTION_DEF.test(cmd)) return true;
+  const commands = simpleCommands(cmd);
+  if (!commands) return true;
+  for (const { words } of commands) {
+    const texts = words.map((w) => unquote(w.text));
+    if (texts.some((t) => /^PATH\+?=/.test(t))) return true;
+    const k = commandWordAt(texts);
+    const args = texts.slice(k + 1);
+    if (texts[k] === "alias" && args.some((t) => t.startsWith("rm="))) return true;
+    if (texts[k] === "hash" && args.some((t) => /^-\w*p/.test(t)) && texts[texts.length - 1] === "rm") return true;
+    if (texts[k] === "eval" && (depth >= 2 || redefinesRm(args.join(" "), depth + 1))) return true;
+  }
+  return false;
+}
 
 /**
  * Is every `rm -r` in this command the PATH-resolved `rm` of THIS shell — the
@@ -387,17 +442,14 @@ const RM_FUNCTION_DEF = /(?:^|[\s;&|({])(?:function\s+rm\b|rm\s*\(\s*\))/;
  * `bash -c "…rm…"`, a heredoc body (its consumer may be `ssh`) and anything the
  * scanner cannot delimit do not qualify. An allowlist on purpose: a form not
  * recognised here keeps the STOP. The same command must also not change what
- * `rm` resolves to: a `PATH=` assignment (`export PATH=…`), `alias rm=…` or an
- * `rm()` / `function rm` definition anywhere in it keeps the STOP (#657).
+ * `rm` resolves to (`redefinesRm`, #657).
  */
 function rmRunsThroughPath(cmd: string): boolean {
-  if (RM_FUNCTION_DEF.test(cmd)) return false;
+  if (redefinesRm(cmd)) return false;
   const commands = simpleCommands(cmd);
   if (!commands) return false;
   for (const { words } of commands) {
     const texts = words.map((w) => w.text.replace(/["'\\]/g, ""));
-    if (texts.some((t) => /^PATH\+?=/.test(t))) return false;
-    if (texts[0] === "alias" && texts.some((t) => t.startsWith("rm="))) return false;
     if (!RM_ROWS.some((p) => p.re.test(texts.join(" ")))) continue;
     let k = 0;
     if (texts[0] === "command") k = 1;
