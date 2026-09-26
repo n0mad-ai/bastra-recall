@@ -16,7 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `bastra archive list|restore|reconcile`; old entries go by class (junk 1 day,
   git-tracked 2, the rest 2; `archive.retain` / `BASTRA_ARCHIVE_RETAIN`;
   10 GB cap; checked hourly). Mixed commands, redirections, rm overrides,
-  `sudo`/absolute/remote `rm` keep the STOP. Off with `BASTRA_RM_SHIM=0`.
+  `sudo`/absolute/remote `rm` keep the STOP. Off with `BASTRA_RM_SHIM=0`;
+  then a command the shim would have taken gets one line saying what it
+  would have done (worded after the user's own Claude Code permission
+  rules), and a `rm_shim_shadow` telemetry event.
 - **`bastra doctor` shows which features are switched off**, not only which
   registrations are broken. A new `features` section lists, one line each,
   hooks / Stop hook / skill per registered client (including Claude Code's own
