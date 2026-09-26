@@ -67,11 +67,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   they now name the reason the lookup had (deadline missed, empty dense arm),
   as the prompt lane already did.
 - **Bash tripwire: the #657 and #658 checks cover their other spellings.**
-  An `rm()` definition inside a quoted `eval` and `hash -p <path> rm` keep the
-  STOP next to an archiving `rm`, like `alias rm=` already did. The gc expiry
-  set through config (`git -c gc.pruneExpire=now gc`, `… maintenance run`,
-  `git config gc.reflogExpire now` before a plain `git gc`) is STOP like
-  `git gc --prune=now`, so it turns an amend/branch/lease receipt into STOP.
+  `hash -p <path> rm` keeps the STOP next to an archiving `rm`, like `alias
+  rm=` already did (`hash -p` for another name does not). The verb is read at
+  command position past `builtin` / `command`, so `builtin hash` counts and
+  `echo hash …` or `sudo hash …` (a child shell) do not. An `eval` body is
+  read again as shell: an `rm()` definition, `hash -p`, `alias` or `PATH=`
+  inside it keeps the STOP. `rm()` inside quotes outside an eval (`grep "rm()"`) is
+  data. The gc expiry set through config (`git -c gc.pruneExpire=now gc`,
+  `… maintenance run`, `git config gc.reflogExpire now` before a plain
+  `git gc`) is STOP like `git gc --prune=now`, so it turns an
+  amend/branch/lease receipt into STOP.
 
 ## [1.0.0] — 2026-09-14
 
