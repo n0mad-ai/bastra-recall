@@ -30,7 +30,39 @@ export interface Undo {
   text: string;
   /** Only true on a host whose agent shell archives `rm` (see rmArchives). */
   needsArchivingRm?: true;
+  /** bastra's git snapshots run this act (git-archive.ts): the lane rewrites
+   *  and allows a command made only of such acts. */
+  viaGitShim?: true;
 }
+
+/** What bastra's git shim does per act — the receipt when it runs the command. */
+const gitShimUndo = (what: string): Undo => ({
+  kind: "receipt",
+  viaGitShim: true,
+  text:
+    `bastra runs this command with its git snapshots: ${what} What was saved, and the command that puts it ` +
+    `back, comes back after the command.`,
+});
+export const GIT_SHIM: Readonly<Record<string, Undo>> = {
+  "git clean -f": gitShimUndo(
+    "the files git clean would remove (same list as \`git clean -n\`) move to ~/.bastra/archive instead of being unlinked — same end state.",
+  ),
+  "git reset --hard": gitShimUndo(
+    "uncommitted changes to tracked files are saved first (\`git stash create\`, pinned under refs/bastra-archive/; the stash list is untouched), then the reset runs as typed.",
+  ),
+  "git checkout --": gitShimUndo(
+    "uncommitted changes are saved first (pinned under refs/bastra-archive/), then the checkout runs as typed.",
+  ),
+  "git restore": gitShimUndo(
+    "uncommitted changes are saved first (pinned under refs/bastra-archive/), then the restore runs as typed.",
+  ),
+  "git branch -D": gitShimUndo(
+    "the branch's commit is pinned under refs/bastra-archive/ first (gc cannot take it), then the delete runs as typed.",
+  ),
+  "git stash drop": gitShimUndo(
+    "the dropped stash's commit is pinned under refs/bastra-archive/ first, then the drop runs as typed.",
+  ),
+};
 
 /**
  * The `rm` receipt: the command, as typed, runs the archiving `rm`. The only
@@ -121,6 +153,31 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
         `\`git clean\` unlinks directly and bypasses the archiving rm. Same result, reversible: ` +
         `list with the same command plus \`-n\`, then remove exactly those paths with \`rm -r\` — ` +
         `it archives in this shell.`,
+    },
+  },
+  {
+    // Discards worktree changes like `checkout --`. `--staged` alone only
+    // resets the index, and the worktree keeps the content: not matched.
+    label: "git restore",
+    re: git(String.raw`restore\b(?![^\n;&|]*\s(?:--staged|-S)\b)`),
+    undo: {
+      kind: "reversible-form",
+      text:
+        `what dies is the unstaged changes in those paths. \`git stash push --keep-index -- <paths>\` leaves ` +
+        `exactly the same worktree and index; \`git restore --source=stash@{0} --worktree -- <paths>\` brings the ` +
+        `changes back.`,
+    },
+  },
+  {
+    // The dropped stash's commit is unreachable once dropped: `git fsck`
+    // finds it until gc prunes it. `clear` drops them all.
+    label: "git stash drop",
+    re: git(String.raw`stash\s+(?:drop|clear)\b`),
+    undo: {
+      kind: "receipt",
+      text:
+        `a dropped stash's commit stays until gc prunes it: \`git fsck --unreachable | grep commit\` finds it, ` +
+        `\`git stash store -m <msg> <sha>\` puts it back. git prints the sha on \`drop\`; note it.`,
     },
   },
   {
@@ -266,8 +323,19 @@ export function rmShimSwitchedOff(surface: string): boolean {
   );
 }
 
+/** bastra's git snapshots: on by default on claude-code, off with BASTRA_GIT_SHIM=0. */
+export function gitShim(surface: string): boolean {
+  return surface === "claude-code" && process.env.BASTRA_GIT_SHIM !== "0" && existsSync(join(SHIM_DIR, "git"));
+}
+
+/** Switched off, but here and on this surface (see rmShimSwitchedOff). */
+export function gitShimSwitchedOff(surface: string): boolean {
+  return surface === "claude-code" && process.env.BASTRA_GIT_SHIM === "0" && existsSync(join(SHIM_DIR, "git"));
+}
+
 /** The undo a destructive label's row declares, where this host can keep it. */
 export function reversibleDefault(label: string, surface: string): Undo | null {
+  if (GIT_SHIM[label] && gitShim(surface)) return GIT_SHIM[label];
   const undo = DESTRUCTIVE_PATTERNS.find((p) => p.label === label)?.undo ?? null;
   if (!undo?.needsArchivingRm) return undo;
   if (rmArchives(surface)) return undo;

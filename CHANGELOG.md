@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **git acts that lose work are snapshotted first** (#650 follow-up). A
+  command made only of `git clean -f`, `reset --hard`, `checkout -- <paths>`,
+  `restore`, `branch -D`, `stash drop|clear` (plus `cd`, `rm`) runs through
+  bastra's `shims/git`: clean moves its files into the archive, the others
+  pin what they discard under `refs/bastra-archive/` and then run as typed.
+  The receipt names each pin and its restore command; `bastra archive
+  restore <ref>`. Refused where the repository would run its own code on
+  the act. Off with `BASTRA_GIT_SHIM=0`.
 - **`rm` in Claude Code's Bash is an archive, not a loss** (#650). An rm-only
   command runs through bastra's archiving `rm`: the bash-pre hook allows it
   and puts `shims/` first in its PATH, targets move to `~/.bastra/archive`

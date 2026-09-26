@@ -75,6 +75,7 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
   // uses `rm -rf` as its stock destructive command, so a test sees the STOP
   // unless it turns the shim on; and the archive never lands in ~/.bastra.
   process.env.BASTRA_RM_SHIM = "0";
+  process.env.BASTRA_GIT_SHIM = "0"; // the same for bastra's git snapshots
   process.env.BASTRA_ARCHIVE_DIR = join(root, "archive");
   const removeRoot = () => {
     try {

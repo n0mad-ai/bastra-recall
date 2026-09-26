@@ -365,6 +365,33 @@ visible to a hook. Every such rm is also a telemetry event `rm_shim_shadow`
 (`matched_pattern, rm_only, settings_verdict, settings_rule, hinted`) — what
 the off switch costs, counted. Nothing goes to the vault.
 
+**Git snapshots (#650 follow-up, Claude Code).** The same mechanism for the
+git acts that lose work. A command made only of them (plus `cd`, `rm`, and
+`git -C <dir>`) is rewritten the same way; `shims/git` is the next `git` in
+its PATH and changes how each act runs, never what the caller sees after:
+
+| act | what bastra does first | then |
+|---|---|---|
+| `git clean -f…` | lists exactly what `git clean -n` with the same flags lists | moves those paths through the archiving `rm`, prints git's own `Removing …` lines |
+| `git reset --hard`, `git checkout … -- <paths>`, `git restore <paths>` | `git stash create` (the stash list is untouched), pinned as `refs/bastra-archive/<act>/<time>` | runs the act as typed |
+| `git branch -D`, `git stash drop`, `git stash clear` | pins the commit(s) about to lose their last name | runs the act as typed |
+
+The receipt after the command names each pin and the command that puts it
+back (`git stash apply --index <sha>`, `git restore --source=<sha>
+--worktree -- <paths>`, `git branch <name> <sha>`, `git stash store`);
+`bastra archive restore <ref>` runs it. Pins are refs, so `gc` cannot take
+them; the archive deletes them after the user retention (2 days by default).
+They show up in `git log --all` meanwhile. The shim refuses, before acting,
+in a repository that would run its own code on the act: a repo-local
+`core.fsmonitor`, `core.hooksPath` or `filter.*`, or an executable
+`post-checkout` / `reference-transaction` hook. Its own git calls run with
+fsmonitor off and hooks at /dev/null. Not taken, and why: `git commit
+--amend` and `git rebase` run the repository's hooks and may open an editor;
+`git push --force` publishes (the hint keeps naming `--force-with-lease`);
+`git reflog expire` / `git gc --prune` have no reversible form — the pins
+above survive them. Off with `BASTRA_GIT_SHIM=0`; then a command it would
+have taken gets one line saying so, and a `git_shim_shadow` event.
+
 Telemetry: `bash_hook_call` with `matched_pattern, severity, hit_count,
 top_score, status`.
 

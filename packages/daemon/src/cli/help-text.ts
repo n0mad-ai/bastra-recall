@@ -583,7 +583,7 @@ browser opens with the form filled in — you read it and submit it yourself.
 
 Usage:
   bastra archive list                 what was archived, deleted or refused (30 days)
-  bastra archive restore <path>       put it back at its original path
+  bastra archive restore <path|ref>   put it back (a path, or a git snapshot ref / sha)
   bastra archive reconcile [--yes]    show (with --yes: remove) what can go
 
 On Claude Code, an rm-only Bash command runs through bastra's archiving rm:
@@ -595,6 +595,11 @@ than their retention. Change it (days, fractions allowed; env
 BASTRA_ARCHIVE_RETAIN wins):
   bastra config set archive.retain junk=1,in-git=2,user=2
 Off: BASTRA_RM_SHIM=0.
+
+git acts that lose work (clean -f, reset --hard, checkout -- <paths>,
+restore, branch -D, stash drop|clear) are snapshotted first: clean's files
+go to the archive, the rest are pinned under refs/bastra-archive/ and listed
+here too; \`bastra archive restore <ref>\` puts them back. Off: BASTRA_GIT_SHIM=0.
 `,
 
   completion: `bastra completion — Tab completion for your shell

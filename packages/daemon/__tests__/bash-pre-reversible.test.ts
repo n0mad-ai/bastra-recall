@@ -88,6 +88,8 @@ const EXAMPLE: Record<string, string> = {
   rmdir: "rmdir empty",
   "git reset --hard": "git reset --hard origin/main",
   "git checkout --": "git checkout -- src",
+  "git restore": "git restore src",
+  "git stash drop": "git stash drop",
   "git clean -f": "git clean -fd",
   "git branch -D": "git branch -D old",
   "git push --delete": "git push origin --delete old",
@@ -272,6 +274,34 @@ describe("#650 reversible defaults — every undo row's recipe, run in a real re
       assert.equal(await form.read("a"), "unstaged\n");
       assert.equal(form.git("show", ":a"), "staged", "index untouched by the undo");
       await drop(bare, form);
+    },
+    "git restore": async () => {
+      const [bare, form] = await twins();
+      for (const r of [bare, form]) {
+        await writeFile(join(r.dir, "a"), "staged\n");
+        r.git("add", "a");
+        await writeFile(join(r.dir, "a"), "unstaged\n");
+      }
+      bare.git("restore", "a");
+      form.git("stash", "push", "-q", "--keep-index", "--", "a");
+      assert.equal(await form.read("a"), await bare.read("a"));
+      assert.equal(form.git("diff", "--cached"), bare.git("diff", "--cached"));
+      form.git("restore", "--source=stash@{0}", "--worktree", "--", "a");
+      assert.equal(await form.read("a"), "unstaged\n");
+      await drop(bare, form);
+    },
+    "git stash drop": async () => {
+      const r = await repo();
+      await writeFile(join(r.dir, "a"), "stashed\n");
+      r.git("stash", "push", "-q", "-m", "wip");
+      const sha = r.git("rev-parse", "stash@{0}");
+      r.git("stash", "drop", "-q");
+      assert.equal(r.git("stash", "list"), "");
+      assert.ok(r.git("fsck", "--unreachable", "--no-reflogs").includes(sha), "fsck finds the dropped stash's commit");
+      r.git("stash", "store", "-m", "wip", sha);
+      r.git("stash", "pop", "-q");
+      assert.equal(await r.read("a"), "stashed\n", "store + pop brings it back");
+      await drop(r);
     },
     "git clean -f": async () => {
       // A plain recursive remove stands in for the archiving rm: the claim
