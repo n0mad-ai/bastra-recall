@@ -184,6 +184,8 @@ describe("#650 reversible defaults — every undo row's recipe, run in a real re
         cwd: dir,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
+        // The recipes read git's own words ("Would remove", "(was <sha>)").
+        env: { ...process.env, LC_ALL: "C" },
       }).trim();
     git("init", "-q");
     await writeFile(join(dir, "a"), "one\n");
