@@ -5,12 +5,25 @@
  */
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { SHIM_DIR, callReport, manifestRows, reconcilePlan, restore, runRmShim, shimRewrite } from "../src/rm-archive.js";
-import { runBashPreLane } from "../src/bash-pre-lane.js";
+import {
+  RECEIPT_MAX_LINES,
+  SHIM_DIR,
+  applyReconcile,
+  archiveRoot,
+  callReport,
+  manifestFiles,
+  manifestRows,
+  reconcilePlan,
+  restore,
+  runRmShim,
+  sameFile,
+  shimRewrite,
+} from "../src/rm-archive.js";
+import { matchPattern, runBashPreLane } from "../src/bash-pre-lane.js";
 import { runBashFailLane } from "../src/bash-fail-lane.js";
 
 const RM = "r" + "m";
@@ -224,6 +237,111 @@ describe("#650 — what the archive keeps how long (class at archive time)", () 
     runRmShim([join(dir, "node_modules", "pkg", "index.js")], { env, cwd: dir, ...quiet });
     assert.equal(kindOf(env), "junk");
   });
+
+  it("a tracked file whose `git status` failed is the user's: a failure is not a clean tree", { skip: process.platform === "win32" }, () => {
+    // Revert-check: git() → "" on failure (as first shipped) → the MODIFIED file is "in-git", dropped after 7 days.
+    const { dir, env } = sandbox();
+    const repo = join(dir, "repo");
+    mkdirSync(repo);
+    writeFileSync(join(repo, "a"), "x");
+    git(repo, "init", "-q");
+    git(repo, "add", "a");
+    git(repo, "commit", "-qm", "c");
+    writeFileSync(join(repo, "a"), "CHANGED");
+    // A git whose `status` fails — an index.lock, a 3 s timeout on a cold monorepo; everything else is real.
+    const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "git"), `#!/bin/sh\nfor a in "$@"; do [ "$a" = status ] && exit 128; done\nexec '${realGit}' "$@"\n`, { mode: 0o755 });
+    const prevPath = process.env.PATH;
+    process.env.PATH = `${bin}:${prevPath}`;
+    try {
+      runRmShim([join(repo, "a")], { env, cwd: dir, ...quiet });
+    } finally {
+      process.env.PATH = prevPath;
+    }
+    assert.equal(kindOf(env), "user");
+  });
+});
+
+describe("#650 — the archive over time (second pass on macOS)", () => {
+  it("rm -d of a directory it cannot read fails like rm, not with a node stack", { skip: process.platform === "win32" || process.getuid?.() === 0 }, () => {
+    // Revert-check: readdirSync(real) bare in the -d branch (as first shipped) → EACCES thrown out of runRmShim.
+    const { dir, env } = sandbox();
+    const d = join(dir, "unread");
+    mkdirSync(d);
+    chmodSync(d, 0o000);
+    const errs: string[] = [];
+    try {
+      assert.equal(runRmShim(["-d", d], { env, cwd: dir, out: () => {}, err: (s) => errs.push(s) }), 1);
+    } finally {
+      chmodSync(d, 0o755);
+    }
+    assert.match(errs.join("\n"), /Permission denied/);
+    assert.equal(existsSync(d), true);
+  });
+
+  it("the receipt stops at 25 lines and counts the rest", () => {
+    // Revert-check: `rows.slice(0, RECEIPT_MAX_LINES)` → `rows` → 40 lines and no "and 15 more".
+    const { dir, env } = sandbox();
+    const files = Array.from({ length: 40 }, (_, i) => join(dir, `f${i}`));
+    for (const f of files) writeFileSync(f, "x");
+    runRmShim(files, { env, cwd: dir, ...quiet });
+    const lines = (callReport("call-1", env) ?? "").split("\n").slice(1);
+    assert.equal(lines.length, RECEIPT_MAX_LINES + 1);
+    assert.match(lines.at(-1) ?? "", /and 15 more \(15 archived, 0 deleted, 0 refused\): `bastra archive list`/);
+  });
+
+  it("reconcile rotates a manifest past 1 MB; restore reads the rotated one; a dead one goes after 30 days", () => {
+    // Revert-check: manifestFiles() → only manifest.jsonl → restore of the rotated row throws "nothing live";
+    // drop the unlinkSync → the dead rotated file stays past 30 days.
+    const { dir, env } = sandbox();
+    const f = join(dir, "keep.txt");
+    writeFileSync(f, "x");
+    runRmShim([f], { env, cwd: dir, ...quiet });
+    const current = join(archiveRoot(env), "manifest.jsonl");
+    appendFileSync(current, "#".repeat(1 << 20) + "\n"); // a torn line, skipped when read; it only makes the file big
+    applyReconcile([], env);
+    assert.equal(existsSync(current), false, "rotated away by rename");
+    const rotated = manifestFiles(env).filter((p) => p !== current);
+    assert.equal(rotated.length, 1);
+    assert.equal(callReport("call-1", env), null, "a receipt reads only the file the shim appends to now");
+    const later = new Date(Date.now() + 31 * 86_400_000);
+    applyReconcile([], env, later);
+    assert.equal(existsSync(rotated[0]), true, "kept: it holds a live entry");
+    assert.equal(restore(f, env), f);
+    applyReconcile([], env, later);
+    assert.equal(existsSync(rotated[0]), false, "nothing live in it, and 30 days old");
+  });
+
+  it("reconcile removes only what lies inside an archive: a manifest line aimed elsewhere is ignored", () => {
+    // Revert-check: drop inArchive() from the live filter → the user's file is in the plan (and applyReconcile would rmSync it).
+    const { dir, env } = sandbox();
+    const victim = join(dir, "victim.txt");
+    writeFileSync(victim, "x");
+    const row = { ts: "2020-01-01T00:00:00", action: "archived", orig: join(dir, "gone"), dest: victim, kind: "junk", bytes: 1, cwd: dir, argv: [], call: "x" };
+    appendFileSync(join(archiveRoot(env), "manifest.jsonl"), JSON.stringify(row) + "\n");
+    assert.deepEqual(reconcilePlan(new Date(), 0, env), []);
+    assert.equal(existsSync(victim), true);
+  });
+
+  it("a target that came back with the same content is let go — compared in chunks, whole", () => {
+    // Revert-check: compare only the first chunk (drop the loop) → the copy that differs in its last byte is "the same" and dropped.
+    const { dir, env } = sandbox();
+    const f = join(dir, "big.bin");
+    const body = Buffer.alloc(2_500_000, 7);
+    writeFileSync(f, body);
+    runRmShim([f], { env, cwd: dir, ...quiet });
+    const dest = manifestRows(env)[0].dest as string;
+    const changed = Buffer.from(body);
+    changed[changed.length - 1] = 8;
+    writeFileSync(f, changed);
+    assert.equal(sameFile(f, dest, 1000), false);
+    assert.deepEqual(reconcilePlan(new Date(), 10 * 2 ** 30, env), []);
+    writeFileSync(f, body);
+    assert.equal(sameFile(f, dest, 1000), true);
+    assert.equal(reconcilePlan(new Date(), 10 * 2 ** 30, env)[0]?.why, "came back with the same content");
+  });
 });
 
 describe("#650 — the rewritten command runs rm through the shim or not at all", () => {
@@ -270,7 +388,8 @@ async function preHook(command: string, surface = "claude-code") {
 
 describe("#650 — the bash-pre lane runs rm-only commands through the shim", () => {
   it("rewrites and allows an rm-only command, keeping the rest of the input", async () => {
-    // Revert-check: drop `...viaShim` from the lane's output → no allow, no rewrite.
+    // Revert-check: drop `...viaShim` from the lane's output → no allow, no rewrite;
+    // `[rR]` → `r` in the rm -r row → `rm -Rf x` has no row, no allow; in the rm -rf row → its label is "rm -r".
     const prev = process.env.BASTRA_RM_SHIM;
     delete process.env.BASTRA_RM_SHIM; // the default
     try {
@@ -280,9 +399,11 @@ describe("#650 — the bash-pre lane runs rm-only commands through the shim", ()
       assert.match(out.updatedInput.command, /^\[ -x '[^']*\/shims\/rm' \] \|\| exit 97; unset -f rm 2>\/dev\/null; export PATH='[^']*\/shims':"\$PATH" BASTRA_RM_CALL='toolu_1' BASTRA_NODE='[^']*'\n/);
       assert.ok(out.updatedInput.command.endsWith(`\ncd pkg && ${RM} -rf node_modules dist`));
       assert.match(out.additionalContext, /NOTE — reversible/);
-      for (const cmd of [`${RM} -rf x 2>/dev/null`, `${RM} -rf x >/dev/null 2>&1`, `xargs -0r ${RM} -rf < list`, `sh -c '${RM} -rf x'`]) {
+      // -R and --recursive are rm -r too (before: no row, so the system's rm ran them with no STOP).
+      for (const cmd of [`${RM} -rf x 2>/dev/null`, `${RM} -rf x >/dev/null 2>&1`, `xargs -0r ${RM} -rf < list`, `sh -c '${RM} -rf x'`, `${RM} -Rf x`, `${RM} --recursive x`]) {
         assert.equal((await preHook(cmd)).permissionDecision, "allow", cmd);
       }
+      assert.equal(matchPattern(`${RM} -Rf x`)?.label, "rm -rf");
     } finally {
       if (prev === undefined) delete process.env.BASTRA_RM_SHIM;
       else process.env.BASTRA_RM_SHIM = prev;
@@ -292,7 +413,8 @@ describe("#650 — the bash-pre lane runs rm-only commands through the shim", ()
   it("allows nothing it cannot keep: mixed commands, rm overrides, codex, opt-out", async () => {
     // Revert-check: drop the rmOnly gate in hintFor → the curl line is allowed;
     // XARGS_BARE → /^-/ → the xargs lines; drop the redirect check → the ~/.bashrc lines;
-    // (?:ba|z|da)?sh → the zsh line.
+    // (?:ba|z|da)?sh → the zsh line; HARMLESS_REDIRECT with \b after /dev/null → the /dev/null-x line;
+    // drop the @P check → the PS1 line; drop the background check → the `&` line.
     const prev = process.env.BASTRA_RM_SHIM;
     delete process.env.BASTRA_RM_SHIM;
     try {
@@ -310,6 +432,12 @@ describe("#650 — the bash-pre lane runs rm-only commands through the shim", ()
         `bash -c '${RM} -rf x > ~/.profile'`,
         // zsh reads ~/.zshenv before the body: another rm may come first in PATH.
         `zsh -c '${RM} -rf x'`,
+        // /dev/null whole, not a file beside it (a writable /dev).
+        `${RM} -rf x > /dev/null-x`,
+        // A prompt expansion runs the $(…) in the variable's value.
+        `${RM} -rf "\${PS1@P}"`,
+        // Backgrounded: the receipt would come before the shim wrote its lines.
+        `${RM} -rf x &`,
       ]) {
         const out = await preHook(cmd);
         assert.equal(out.permissionDecision, undefined, cmd);
@@ -349,6 +477,36 @@ describe("#650 — the PostToolUse lane says what rm actually did", () => {
       const ctx = JSON.parse(stdout).hookSpecificOutput.additionalContext as string;
       assert.match(ctx, /What `rm` did in this command/);
       assert.match(ctx, /bastra archive restore .*old\.log\.txt/);
+    } finally {
+      if (prevArchive === undefined) delete process.env.BASTRA_ARCHIVE_DIR;
+      else process.env.BASTRA_ARCHIVE_DIR = prevArchive;
+    }
+  });
+
+  it("lets the archive go of old entries in a child process, off the answer's path", async () => {
+    // Revert-check: drop stampReconcile() from reconcileInBackground → no stamp right after the call;
+    // spawn nothing → the day-old junk entry is still in the archive 10 s later.
+    const { dir, env } = sandbox();
+    const prevArchive = process.env.BASTRA_ARCHIVE_DIR;
+    process.env.BASTRA_ARCHIVE_DIR = env.BASTRA_ARCHIVE_DIR;
+    try {
+      const junk = join(dir, "node_modules");
+      mkdirSync(junk);
+      runRmShim(["-r", junk], { env: { ...env, BASTRA_RM_CALL: "toolu_r" }, cwd: dir, ...quiet });
+      const rows = manifestRows(env);
+      rows[0].ts = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 19);
+      writeFileSync(join(archiveRoot(env), "manifest.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+      const dest = rows[0].dest as string;
+      const stamp = join(archiveRoot(env), ".reconcile-stamp");
+      assert.equal(existsSync(stamp), false);
+      await runBashFailLane(
+        { hook_event_name: "PostToolUse", tool_name: "Bash", session_id: "s", tool_use_id: "toolu_r", tool_input: { command: `${RM} -r node_modules` }, tool_response: { exit_code: 0 } },
+        "http://127.0.0.1:1",
+      );
+      assert.equal(existsSync(stamp), true, "stamped before the child runs: one reconcile a day");
+      // The child is `node <this process's execArgv> src/cli.ts archive reconcile --yes`.
+      for (let i = 0; i < 100 && existsSync(dest); i++) await new Promise((r) => setTimeout(r, 100));
+      assert.equal(existsSync(dest), false, "the junk entry older than a day is gone");
     } finally {
       if (prevArchive === undefined) delete process.env.BASTRA_ARCHIVE_DIR;
       else process.env.BASTRA_ARCHIVE_DIR = prevArchive;

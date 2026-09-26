@@ -330,11 +330,14 @@ Anything else keeps the STOP: a command that mixes `rm` with other work (the
 `allow` would cover it all), a redirection that writes a file, an `xargs` flag
 that takes an argument (`xargs -E rm sh …` runs `sh`), `zsh -c` (it reads
 `~/.zshenv` first), one that changes what `rm` resolves to (`PATH=`,
-`alias`, `hash -p`, an `rm()` function, also inside `eval`), `sudo rm`,
+`alias`, `hash -p`, an `rm()` function, also inside `eval`), a backgrounded
+`rm … &` (the receipt would come before the shim wrote), `sudo rm`,
 `/bin/rm`, remote and container `rm`. Not covered at all: `find -delete`,
-`git clean`, `rmdir`, deletes from code, and `rm` without `-r` (no STOP, so
-no rewrite: it runs as the system's). Archiving is a move: it does not free
-disk space until the archive lets the entry go. Other hooks' `deny` still wins over
+`git clean`, `rmdir`, deletes from code, and `rm` without `-r`/`-R` (no STOP,
+so no rewrite: it runs as the system's). Archiving is a move: it does not free
+disk space until the archive lets the entry go. The receipt shows the first
+25 targets of a call and counts the rest; the manifest is rotated once a day
+past 1 MB and a rotated one goes after 30 days once nothing in it is live. Other hooks' `deny` still wins over
 this `allow`, and so do your own permission rules: the rewritten command keeps
 `rm …` on a line of its own, so `deny: Bash(rm:*)` still denies it and
 `ask: Bash(rm:*)` still asks. Off with `BASTRA_RM_SHIM=0`; a host that ships its own

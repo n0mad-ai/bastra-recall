@@ -236,11 +236,11 @@ const WORD_BREAK = " \t\n|&;()<>";
  * an unterminated quote. Bailing out keeps today's behaviour, so a gap in this
  * scanner can only fall on the safe side.
  */
-function simpleCommands(cmd: string): Array<{ words: ShellWord[]; piped: boolean }> | null {
-  const commands: Array<{ words: ShellWord[]; piped: boolean }> = [];
+function simpleCommands(cmd: string): Array<{ words: ShellWord[]; piped: boolean; background: boolean }> | null {
+  const commands: Array<{ words: ShellWord[]; piped: boolean; background: boolean }> = [];
   let words: ShellWord[] = [];
-  const close = (piped: boolean): void => {
-    if (words.length > 0) commands.push({ words, piped });
+  const close = (piped: boolean, background = false): void => {
+    if (words.length > 0) commands.push({ words, piped, background });
     words = [];
   };
   let i = 0;
@@ -258,6 +258,11 @@ function simpleCommands(cmd: string): Array<{ words: ShellWord[]; piped: boolean
       else i += cmd[i + 1] === "&" || cmd[i + 1] === "|" || cmd[i + 1] === c ? 2 : 1;
     } else if (c === "&" && cmd[i + 1] === ">") {
       i += 2;
+    } else if (c === "&") {
+      // `&&` joins; a single `&` puts the command in the background.
+      const and = cmd[i + 1] === "&";
+      close(false, !and);
+      i += and ? 2 : 1;
     } else if (c === "|") {
       const or = cmd[i + 1] === "|";
       close(!or);
@@ -481,8 +486,9 @@ const FIND_OWN_ACTS = /^-(?:delete|fprint\w*|fls)$/;
 /** `xargs` flags that take no separate argument. Any other flag may take the
  *  next word (`-E rm`, `-I rm`) and make the command something else. */
 const XARGS_BARE = /^-(?:[0rtx]+|[nLP]\d+|-null|-no-run-if-empty|-verbose|-exit)$/;
-/** A redirection that writes nothing a user keeps: to /dev/null or a dup. */
-const HARMLESS_REDIRECT = /(?:\d|&)?>>?\s*\/dev\/null\b|\d?>&\d\b/g;
+/** A redirection that writes nothing a user keeps: to /dev/null or a dup.
+ *  `/dev/null` whole — not `/dev/null-x`, a file where /dev is writable. */
+const HARMLESS_REDIRECT = /(?:\d|&)?>>?\s*\/dev\/null(?![\w.\/-])|\d?>&\d\b/g;
 
 /**
  * Is this command nothing but `rm` (#650)? Rewriting needs
@@ -495,9 +501,13 @@ const HARMLESS_REDIRECT = /(?:\d|&)?>>?\s*\/dev\/null\b|\d?>&\d\b/g;
 function rmOnly(cmd: string, depth = 0): boolean {
   // `rm -rf x > ~/.bashrc` truncates a file no archive keeps.
   if (/>/.test(cmd.replace(HARMLESS_REDIRECT, ""))) return false;
+  // `${VAR@P}` expands VAR as a prompt: a `$(…)` in its value runs (bash ≥ 4.4).
+  if (/@P\b/.test(cmd)) return false;
   const commands = simpleCommands(cmd);
   if (!commands) return false;
-  for (const { words } of commands) {
+  for (const { words, background } of commands) {
+    // `rm -rf x &` returns before the shim wrote its lines: the receipt would miss them.
+    if (background) return false;
     const texts = words.map((w) => unquote(w.text));
     const k = commandWordAt(texts);
     const verb = texts[k];
