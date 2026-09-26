@@ -2,7 +2,7 @@
  * `bastra config get|set <key> [value]` — settings access from the CLI.
  *
  * Keys: update.mode, embedding.provider, ollama.autostart, docs.mode,
- * docs.language. The store is the OSS-owned ~/.bastra/cli-settings.json
+ * docs.language, archive.retain. The store is the OSS-owned ~/.bastra/cli-settings.json
  * (never the Pro-app's config.json). Browsing/editing memories stays in
  * the Pro app — this is flags only.
  */
@@ -28,6 +28,8 @@ import {
   setSizeGuide,
   getPrimaryLanguage,
   setPrimaryLanguage,
+  getArchiveRetain,
+  setArchiveRetain,
   isEmbeddingProviderName,
   isDocsMode,
   isDocsLanguage,
@@ -37,8 +39,9 @@ import {
 } from "../settings.js";
 import type { ParsedArgs } from "./types.js";
 import { mapUrl } from "./map-cmd.js";
+import { parseRetain, retainDays } from "../rm-archive.js";
 
-const KNOWN_KEYS = ["update.mode", "embedding.provider", "ollama.autostart", "docs.mode", "docs.language", "ui.enabled", "size.guide", "language.primary"] as const;
+const KNOWN_KEYS = ["update.mode", "embedding.provider", "ollama.autostart", "docs.mode", "docs.language", "ui.enabled", "size.guide", "language.primary", "archive.retain"] as const;
 type KnownKey = (typeof KNOWN_KEYS)[number];
 
 function isKnownKey(k: string | null): k is KnownKey {
@@ -90,6 +93,14 @@ async function cmdConfigGet(key: KnownKey): Promise<number> {
     case "ui.enabled":
       process.stdout.write(`${await getUiEnabled()}\n`);
       return 0;
+    case "archive.retain": {
+      const r = retainDays(process.env, await getArchiveRetain());
+      const stored = await getArchiveRetain();
+      process.stdout.write(`junk=${r.junk},in-git=${r["in-git"]},user=${r.user}${stored ? "" : "  (default)"}\n`);
+      const env = process.env.BASTRA_ARCHIVE_RETAIN;
+      if (env) process.stdout.write(`  note: BASTRA_ARCHIVE_RETAIN=${env} (env) overrides this file at runtime\n`);
+      return 0;
+    }
     case "size.guide": {
       const g = await getSizeGuide();
       process.stdout.write(`${g ?? "(unset — default 500)"}\n`);
@@ -189,6 +200,20 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
       if (on) {
         process.stdout.write(`  vault map: ${mapUrl()} (or just: bastra map — no daemon restart needed)\n`);
       }
+      return 0;
+    }
+    case "archive.retain": {
+      const parsed = value === null ? null : parseRetain(value);
+      if (!parsed || Object.keys(parsed).length === 0) {
+        process.stderr.write("error: archive.retain is days per class, e.g. junk=1,in-git=2,user=2 (fractions allowed)\n");
+        return 2;
+      }
+      await setArchiveRetain(value as string);
+      const r = retainDays({}, value as string);
+      process.stdout.write(
+        `✓ archive.retain = junk=${r.junk},in-git=${r["in-git"]},user=${r.user}\n  stored in ${settingsFilePath()}\n` +
+          `  the next hourly reconcile uses it (no restart needed).\n`,
+      );
       return 0;
     }
     case "size.guide": {

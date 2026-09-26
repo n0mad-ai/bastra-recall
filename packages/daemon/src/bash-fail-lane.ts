@@ -89,14 +89,16 @@ export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: str
 /**
  * The receipt of what bastra's archiving `rm` actually did in this call —
  * the pre-hook only predicted it (#650). Appended to whatever the lane says,
- * success or failure. The same call also lets the archive let go of old
- * entries once a day, off the answer's path.
+ * success or failure. Any post-Bash call also lets the archive let go of
+ * old entries, at most hourly, off the answer's path.
  */
 function withRmReceipt(out: string, payload: BashFailPayload): string {
   let report: string | null = null;
   try {
+    // After every Bash call, not only an rm one: a retention of hours or
+    // days must hold on a day with no rm.
+    if (reconcileDue()) reconcileInBackground();
     report = callReport(payload.tool_use_id ?? "");
-    if (report && reconcileDue()) reconcileInBackground();
   } catch {
     return out;
   }

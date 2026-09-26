@@ -3,13 +3,15 @@
  * the archiving `rm` (rm-archive.ts): what went where, put it back, and let
  * the archive go of what it no longer needs to keep.
  */
-import { applyReconcile, manifestRows, reconcilePlan, restore } from "../rm-archive.js";
+import { applyReconcile, manifestRows, reconcilePlan, restore, retainDays } from "../rm-archive.js";
+import { getArchiveRetain } from "../settings.js";
 import type { ParsedArgs } from "./types.js";
 
 const USAGE =
   "usage: bastra archive list                 what the agent's rm archived (last 30 days)\n" +
   "       bastra archive restore <path>       put it back at its original path\n" +
-  "       bastra archive reconcile [--yes]    show (or, with --yes, remove) what the archive can let go";
+  "       bastra archive reconcile [--yes]    show (or, with --yes, remove) what the archive can let go\n" +
+  "retention: bastra config set archive.retain junk=1,in-git=2,user=2  (days; env BASTRA_ARCHIVE_RETAIN wins)";
 
 export async function cmdArchive(args: ParsedArgs): Promise<number> {
   const sub = args.surface;
@@ -36,7 +38,7 @@ export async function cmdArchive(args: ParsedArgs): Promise<number> {
     }
   }
   if (sub === "reconcile") {
-    const drop = reconcilePlan(new Date(), 10 * 2 ** 30);
+    const drop = reconcilePlan(new Date(), 10 * 2 ** 30, process.env, retainDays(process.env, await getArchiveRetain()));
     if (args.yes) applyReconcile(drop);
     const verb = args.yes ? "removed" : "would remove";
     console.log(drop.map((d) => `${verb}  ${d.orig}  (${d.why})`).join("\n") || "archive is fine: nothing to let go");

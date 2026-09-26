@@ -22,7 +22,15 @@ import {
   runRmShim,
   sameFile,
   shimRewrite,
+  DEFAULT_RETAIN,
+  ephemeralRoots,
+  parseRetain,
+  reconcileDue,
+  retainDays,
+  stampReconcile,
+  type Retain,
 } from "../src/rm-archive.js";
+import { getArchiveRetain, setArchiveRetain } from "../src/settings.js";
 import { matchPattern, runBashPreLane } from "../src/bash-pre-lane.js";
 import { runBashFailLane } from "../src/bash-fail-lane.js";
 
@@ -92,16 +100,110 @@ describe("#650 — the archiving rm itself", () => {
   });
 
   it("reconcile lets a junk target go after a day and keeps a fresh user one", () => {
-    // Revert-check: RETAIN_DAYS.junk = 30 → the node_modules entry stays.
+    // Revert-check: DEFAULT_RETAIN.junk = 30 → the node_modules entry stays.
     const { dir, env } = sandbox();
     const junk = join(dir, "node_modules");
     const user = join(dir, "draft.md");
     mkdirSync(junk);
     writeFileSync(user, "x");
     runRmShim(["-r", junk, user], { env, cwd: dir, ...quiet });
-    const later = new Date(Date.now() + 2 * 86_400_000);
+    const later = new Date(Date.now() + 1.5 * 86_400_000);
     const drop = reconcilePlan(later, 10 * 2 ** 30, env).map((d) => d.orig);
     assert.deepEqual(drop, [junk]);
+  });
+});
+
+describe("#650 — retention: two days by default, one knob per class", () => {
+  const DAY = 86_400_000;
+  const userEntry = () => {
+    const { dir, env } = sandbox();
+    const f = join(dir, "draft.md");
+    writeFileSync(f, "x");
+    runRmShim([f], { env, cwd: dir, ...quiet });
+    return { f, env };
+  };
+  const drops = (env: NodeJS.ProcessEnv, days: number, cap = 10 * 2 ** 30, retain?: Retain) =>
+    reconcilePlan(new Date(Date.now() + days * DAY), cap, env, retain).map((d) => d.why);
+
+  it("keeps a user target for two days by default, not thirty", () => {
+    // Revert-check: DEFAULT_RETAIN.user = 30 → nothing dropped at 2.5 days.
+    const { env } = userEntry();
+    assert.deepEqual(drops(env, 1.5), []);
+    assert.deepEqual(drops(env, 2.5), ["user older than 2 days"]);
+  });
+
+  it("BASTRA_ARCHIVE_RETAIN sets days per class, fractions allowed, and wins over the stored value", () => {
+    // Revert-check: drop the env spread in retainDays → the stored user=5 keeps it at 1 day.
+    const { env } = userEntry();
+    const e = { ...env, BASTRA_ARCHIVE_RETAIN: "user=0.5" };
+    assert.deepEqual(retainDays(e, "user=5,junk=3"), { junk: 3, "in-git": 2, user: 0.5 });
+    assert.deepEqual(drops(e, 1), ["user older than 0.5 days"]);
+    assert.deepEqual(retainDays({}, "user=5"), { junk: 1, "in-git": 2, user: 5 });
+    // A malformed value changes nothing (the defaults hold), it does not zero a class.
+    assert.equal(parseRetain("user=two"), null);
+    assert.deepEqual(retainDays({ BASTRA_ARCHIVE_RETAIN: "user=-1" }), DEFAULT_RETAIN);
+  });
+
+  it("the size cap never drops a user target younger than the user retention (no fixed 7-day floor)", () => {
+    // Revert-check: floor back to a fixed 7 days → a 10-day retention loses the 8-day-old entry to the cap.
+    const { env } = userEntry();
+    const retain = { junk: 1, "in-git": 2, user: 10 };
+    assert.deepEqual(drops(env, 8, 0, retain), []);
+    assert.deepEqual(drops(env, 1, 0, { junk: 1, "in-git": 2, user: 0.5 }), ["user older than 0.5 days"]);
+  });
+
+  it("archive.retain round-trips through cli-settings.json; a malformed one is dropped", async () => {
+    // Revert-check: drop the archive block in parseSettings → the stored value is lost on read.
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "retain-settings-")));
+    const path = join(dir, "cli-settings.json");
+    await setArchiveRetain("junk=0.5,user=1", path);
+    assert.equal(await getArchiveRetain(path), "junk=0.5,user=1");
+    writeFileSync(path, JSON.stringify({ update: { mode: "notify" }, archive: { retain: "user=forever" } }));
+    assert.equal(await getArchiveRetain(path), undefined);
+  });
+
+  it("is looked at hourly, and only where an archive exists", () => {
+    // Revert-check: RECONCILE_EVERY_MS = 86_400_000 → not due after 61 minutes.
+    const { env } = userEntry();
+    const now = Date.now();
+    assert.equal(reconcileDue(env, now), true, "never reconciled");
+    stampReconcile(env, new Date(now));
+    assert.equal(reconcileDue(env, now + 59 * 60_000), false);
+    assert.equal(reconcileDue(env, now + 61 * 60_000), true);
+    const none = join(realpathSync(tmpdir()), `no-archive-${process.pid}`);
+    assert.equal(reconcileDue({ BASTRA_ARCHIVE_DIR: none }), false);
+    assert.equal(existsSync(none), false, "checking creates nothing");
+  });
+
+  it("a Bash call with no rm in it still starts the reconcile when one is due", async () => {
+    // Revert-check: gate reconcileDue() on the receipt again (`report && …`) → no stamp after a plain `ls`.
+    const { env } = userEntry();
+    const stamp = join(env.BASTRA_ARCHIVE_DIR as string, ".reconcile-stamp");
+    const prev = process.env.BASTRA_ARCHIVE_DIR;
+    process.env.BASTRA_ARCHIVE_DIR = env.BASTRA_ARCHIVE_DIR;
+    try {
+      await runBashFailLane(
+        { hook_event_name: "PostToolUse", tool_name: "Bash", session_id: "s", tool_use_id: "toolu_ls", tool_input: { command: "ls" }, tool_response: { exit_code: 0 } },
+        "http://127.0.0.1:1",
+      );
+      assert.ok(existsSync(stamp));
+    } finally {
+      if (prev === undefined) delete process.env.BASTRA_ARCHIVE_DIR;
+      else process.env.BASTRA_ARCHIVE_DIR = prev;
+    }
+  });
+
+  it("Claude Code's scratchpad is temp ground on both platforms, and where CLAUDE_CODE_TMPDIR moves it", () => {
+    // Revert-check: drop CLAUDE_CODE_TMPDIR from ephemeralRoots → the moved scratchpad is archived, not deleted.
+    const uid = process.getuid?.() ?? 0;
+    const roots = ephemeralRoots({});
+    // /tmp/claude-<uid>/<project>/<session>/scratchpad: Linux /tmp, macOS /private/tmp.
+    const pad = join(realpathSync("/tmp"), `claude-${uid}`, "-proj", "sid", "scratchpad");
+    assert.ok(roots.some((r) => pad.startsWith(r + "/")), `${pad} under ${roots.join(", ")}`);
+    const { dir } = sandbox();
+    const moved = join(dir, "cc-tmp");
+    mkdirSync(moved);
+    assert.ok(ephemeralRoots({ CLAUDE_CODE_TMPDIR: moved }).includes(moved));
   });
 });
 

@@ -13,8 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   and puts `shims/` first in its PATH, targets move to `~/.bastra/archive`
   (temp dirs are really removed, `/`, `~` and system dirs refused), and the
   post hook tells the agent what actually happened and how to restore.
-  `bastra archive list|restore|reconcile`; old entries go by class (1 / 7 /
-  30 days, 10 GB cap). Mixed commands, redirections, rm overrides,
+  `bastra archive list|restore|reconcile`; old entries go by class (junk 1 day,
+  git-tracked 2, the rest 2; `archive.retain` / `BASTRA_ARCHIVE_RETAIN`;
+  10 GB cap; checked hourly). Mixed commands, redirections, rm overrides,
   `sudo`/absolute/remote `rm` keep the STOP. Off with `BASTRA_RM_SHIM=0`.
 - **`bastra doctor` shows which features are switched off**, not only which
   registrations are broken. A new `features` section lists, one line each,

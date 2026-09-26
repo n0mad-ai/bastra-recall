@@ -322,9 +322,15 @@ another filesystem goes to `<mount>/.bastra-archive`; where none can be made
 (a read-only volume) it is refused and left in place. The rewritten command
 does not run at all if `rm` in that shell is not the shim (an `rm()` function). After the command, the post hook tells the agent what
 actually happened (archived where, deleted, refused) and how to restore:
-`bastra archive restore <path>`. Old entries go by class — build junk after 1
-day, clean git-tracked files after 7, the rest after 30, with a 10 GB cap that
-never touches your own files younger than 7 days.
+`bastra archive restore <path>`. Old entries go by class, checked at most hourly
+after any Bash call — build junk after 1 day, clean git-tracked files after 2,
+the rest after 2, with a 10 GB cap that never touches your own files younger
+than their retention. The archive is a safety net for the next steps, not a
+backup; change it per class (days, fractions allowed) with
+`bastra config set archive.retain junk=1,in-git=2,user=2` or
+`BASTRA_ARCHIVE_RETAIN` (env wins). Claude Code's scratchpads
+(`/tmp/claude-<uid>/…`, or under `CLAUDE_CODE_TMPDIR`) are temp ground: really
+removed.
 
 Anything else keeps the STOP: a command that mixes `rm` with other work (the
 `allow` would cover it all), a redirection that writes a file, an `xargs` flag
