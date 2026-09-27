@@ -16,7 +16,7 @@
  * judged per part (`&&`, `||`, `;`, `|`, newline): any part denied → deny,
  * any part asked → ask, every part allowed → allow.
  */
-import { readFileSync, statSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -55,9 +55,27 @@ export function settingsFiles(cwd: string | undefined, env: NodeJS.ProcessEnv = 
 const cache = new Map<string, { mtimeMs: number; rules: Rule[] }>();
 
 function rulesOf(file: string): Rule[] {
+  // One open file for the mtime and the text (CodeQL js/file-system-race):
+  // a file replaced between a stat and a read cannot pair new rules with an
+  // old mtime.
+  let fd: number;
+  try {
+    fd = openSync(file, "r");
+  } catch {
+    cache.delete(file);
+    return [];
+  }
+  try {
+    return rulesOfOpen(file, fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function rulesOfOpen(file: string, fd: number): Rule[] {
   let mtimeMs: number;
   try {
-    mtimeMs = statSync(file).mtimeMs;
+    mtimeMs = fstatSync(fd).mtimeMs;
   } catch {
     cache.delete(file);
     return [];
@@ -66,7 +84,7 @@ function rulesOf(file: string): Rule[] {
   if (hit && hit.mtimeMs === mtimeMs) return hit.rules;
   let rules: Rule[] = [];
   try {
-    const perms = (JSON.parse(readFileSync(file, "utf8")) as { permissions?: Record<string, unknown> }).permissions ?? {};
+    const perms = (JSON.parse(readFileSync(fd, "utf8")) as { permissions?: Record<string, unknown> }).permissions ?? {};
     for (const kind of ["deny", "ask", "allow"] as const) {
       const list = perms[kind];
       if (Array.isArray(list)) {

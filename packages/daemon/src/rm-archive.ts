@@ -26,6 +26,8 @@ import { execFileSync } from "node:child_process";
 import {
   appendFileSync,
   closeSync,
+  constants as fsConstants,
+  fstatSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -613,11 +615,14 @@ export function sameFile(a: string, b: string, chunk = 1 << 20): boolean {
   let fa = -1;
   let fb = -1;
   try {
-    const sa = lstatSync(a);
-    const sb = lstatSync(b);
+    // Open first, then ask the open file (CodeQL js/file-system-race): what
+    // is compared is what was checked. O_NOFOLLOW keeps lstat's "a symlink
+    // is not a file" — opening one throws ELOOP, which is `false` below.
+    fa = openSync(a, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    fb = openSync(b, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    const sa = fstatSync(fa);
+    const sb = fstatSync(fb);
     if (!sa.isFile() || !sb.isFile() || sa.size !== sb.size) return false;
-    fa = openSync(a, "r");
-    fb = openSync(b, "r");
     const ba = Buffer.alloc(chunk);
     const bb = Buffer.alloc(chunk);
     for (let pos = 0; pos < sa.size; pos += chunk) {
