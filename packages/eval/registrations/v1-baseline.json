@@ -1,0 +1,92 @@
+{
+  "$comment": "The V1.0 baseline for V2 (#387). Plan: https://github.com/n0mad-ai/bastra-recall/issues/387#issuecomment-5846047786. Owner decision 2026-09-26 (https://github.com/n0mad-ai/bastra-recall/issues/387#issuecomment-5846178590): #279 and #325 are not prerequisites, and the #305 window values ARE the live half, without a confirmation window after #681 unless the readout shows lanes off-budget. This file is immutable once merged. A correction is a new registration_version with a $comment saying what changed and why, never an in-place edit.",
+  "schema_version": 1,
+  "registration_version": 1,
+  "registered_at": "2026-09-27",
+  "issue": 387,
+  "status": "partial",
+  "$comment_status": "Only the live half (B) and the manifest pins are frozen here. The offline half (A: gold-set runs, determinism check), the query slices, the flag registry and the M2-M6 gates are NOT in this registration yet. Every such field below says 'not measured' or 'not measurable' instead of carrying a guessed value.",
+
+  "manifest": {
+    "code": {
+      "git": "e15090ecad406173607b4ff4ce3dcec5999cee7a",
+      "$comment": "post-#681 main (PR #681 merged 2026-09-26 as cb3ab03), deployed 2026-09-27: daemon, core and statusline dist plus the hook stub were rebuilt from this commit. Read back after the deploy:",
+      "health_build_revision": "e15090ecad406173607b4ff4ce3dcec5999cee7a",
+      "health_started_at": "2026-09-27T10:23:50.414Z",
+      "stub_revision": "e15090ecad406173607b4ff4ce3dcec5999cee7a",
+      "stub_dirty": false,
+      "stub_source_digest": "173a89117f9640e11382c29215322a5a8275bac4b30d0776b6d7cc8209bbe54f"
+    },
+    "tolerances": {
+      "file": "packages/eval/registrations/m1-tolerances.json",
+      "registration_version": 4,
+      "sha256": "f281050eb393c4bcdcc0f694b1a12eebb0b01fba489c6d288816b5deb0379a09",
+      "last_commit": "65061041c18b971206b00389343075bf6705b868 (2026-08-29)",
+      "reference_set_file": "packages/eval/registrations/m1-reference-set.json",
+      "reference_set_sha256": "067034a087eb543a2603cda21aac5381ae5972cbd986ea8e3bb7b3024fca8bba",
+      "$comment": "Referenced unchanged. git log on m1-tolerances.json shows nothing after 2026-08-29, so the tolerances were registered before any V2 baseline run (answers review point 2 on #387)."
+    },
+    "embedding_model": { "name": "embeddinggemma:latest", "mode": "ollama-embeddinggemma", "ollama_digest": "85462619ee72" },
+    "trigger_expand_model": { "name": "qwen3-recall:latest", "ollama_digest": "36d065efbb94" },
+    "host": { "cpu": "Apple M4 Pro", "memory_bytes": 25769803776, "os": "macOS 27.0", "node": "v24.16.0" },
+    "vault": {
+      "size": 1334,
+      "hash": "not measured",
+      "$comment": "vault_size from /health at deploy time. No vault content hash was computed in this step; it belongs to run A."
+    },
+    "configuration_hash": "not measured",
+    "dataset_hash": "not measured — no gold-set run in this step"
+  },
+
+  "live_half": {
+    "source": "https://github.com/n0mad-ai/bastra-recall/issues/305#issuecomment-5854990310",
+    "window": {
+      "start": "2026-09-21T05:04:58Z",
+      "end": "2026-09-27T10:18:06Z",
+      "planned_end": "2026-09-28T05:04:58Z",
+      "$comment": "Closed ~19 h early by owner decision on 2026-09-27. The readout shows the missing hours cannot change the verdict (plan needs 27 more calls)."
+    },
+    "measured_on": {
+      "git": "09bcfd8bbe51f1554a63710edabe7e7d75b0477d",
+      "$comment": "The window ran on 09bcfd8 (daemon and stub, no restart in the window), i.e. pre-#681. The manifest pins e15090e because that is what runs now. Per the owner decision of 2026-09-26 these window values are the live baseline without a post-#681 confirmation window. The readout shows only one lane off its p90 target (none, by 7 ms); whether that triggers the decision's 'off-budget' exception is left to the owner."
+    },
+    "data_basis": {
+      "files": "~/.bastra/logs/events-2026-09-21.jsonl ... events-2026-09-27.jsonl",
+      "rows_in_window": 9179,
+      "excluded_test_suite_rows_686": 13,
+      "rows_evaluated": 9166,
+      "excluded_eval_rows_619": 0,
+      "excluded_restart_window_calls": 2,
+      "hook_lane_calls_judged": 1250,
+      "$comment_686": "The productive log still contains the test-suite rows from #686; the physical purge is pending the owner. All values here are computed with the #686 exclusion filter applied to a copy of the window's files (production files untouched). Gated output is byte-identical with and without the filter; only the saves section moves (84 -> 71 attempted)."
+    },
+    "command": "BASTRA_LOG_PATH=<copy filtered by the #686 predicate> node packages/daemon/dist/cli.js logs --stats --since 537211s",
+    "lanes": {
+      "pretooluse": { "budget_ms": 600, "p90_target_ms": 200, "n": 487, "median_ms": 46, "p90_ms": 80, "max_ms": 112, "failed": 0, "result": "PASS" },
+      "stop": { "budget_ms": 1000, "p90_target_ms": 200, "n": 287, "median_ms": 34, "p90_ms": 50, "max_ms": 177, "failed": 0, "result": "PASS" },
+      "none": { "budget_ms": 600, "p90_target_ms": 300, "n": 230, "median_ms": 68, "p90_ms": 307, "max_ms": 610, "failed": 1, "failed_kind": "timeout", "degraded_dense_arm": 39, "result": "FAIL" },
+      "bash-post": { "budget_ms": 500, "p90_target_ms": 200, "n": 143, "median_ms": 78, "p90_ms": 115, "max_ms": 177, "failed": 0, "result": "PASS" },
+      "bash-pre": { "budget_ms": 500, "p90_target_ms": 200, "n": 43, "median_ms": 68, "p90_ms": 90, "max_ms": 111, "failed": 0, "result": "PASS" },
+      "assertion": { "budget_ms": 1000, "p90_target_ms": 900, "n": 32, "median_ms": 471, "p90_ms": 632, "max_ms": 755, "failed": 0, "result": "PASS" },
+      "session": { "budget_ms": 500, "p90_target_ms": 300, "n": 25, "median_ms": 69, "p90_ms": 97, "max_ms": 115, "failed": 0, "result": "NOT EVALUABLE", "$comment": "25 of min N 30" },
+      "plan": { "budget_ms": 600, "p90_target_ms": 300, "n": 3, "median_ms": 74, "p90_ms": 81, "max_ms": 81, "failed": 0, "result": "NOT EVALUABLE", "$comment": "3 of min N 30, all from one Codex session; Claude Code produced zero plan-lane calls in the window" },
+      "prompt-total": { "gate": "reliability only, 5 %", "failed": 1, "failed_kind": "timeout", "result": "PASS" }
+    },
+    "overall": { "timeouts": 1, "errors": 0, "failure_rate": "0.1 % of all calls" },
+    "gate_305": "NOT MET",
+    "not_measurable_from_this_window": {
+      "p99_per_lane": "not measurable — the readout reports median, p90 and max, not p99",
+      "degraded_rate_per_lane": "not measurable — the readout reports degradation only for the none lane (39 calls with a degraded dense arm)",
+      "context_tokens_per_session": "not measurable — the readout does not include the shadow ledger",
+      "false_interruptions": "not measurable — no labelled source for false interruptions exists in this window"
+    }
+  },
+
+  "offline_half": {
+    "status": "not measured",
+    "$comment": "Plan checklist items still open: determinism check (~200 gold queries, raw vectors, ~1e-5 relative), run A twice on e15090e with the second run reproducing the first within m1-tolerances v4, Recall@1/@3/@10, MRR, recall@pool@N, abstention precision/recall, false_abstention, relevant_loss on m1-descriptive-365."
+  },
+  "query_slices": "not measured",
+  "flag_registry": "not measured",
+  "m2_m6_gates": "not derived — they are derived only from run A"
+}
