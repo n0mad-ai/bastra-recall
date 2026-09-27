@@ -373,24 +373,50 @@ its PATH and changes how each act runs, never what the caller sees after:
 | act | what bastra does first | then |
 |---|---|---|
 | `git clean -f…` | lists exactly what `git clean -n` with the same flags lists | moves those paths through the archiving `rm`, prints git's own `Removing …` lines |
-| `git reset --hard`, `git checkout … -- <paths>`, `git restore <paths>` | `git stash create` (the stash list is untouched), pinned as `refs/bastra-archive/<act>/<time>` | runs the act as typed |
-| `git branch -D`, `git stash drop`, `git stash clear` | pins the commit(s) about to lose their last name | runs the act as typed |
+| `git reset --hard [<commit>]`, `git checkout [<tree>] -- <paths>`, `git restore [--source=<tree>] [--staged] [--worktree] <paths>` | `git stash create` (the stash list is untouched), pinned as `refs/bastra-archive/<act>/<time>`; an untracked file the act would overwrite goes through the archiving `rm` | runs the act as typed |
+| `git branch -D [-r]`, `git stash drop [<stash>]`, `git stash clear` | pins the commit(s) about to lose their last name | runs the act as typed |
 
 The receipt after the command names each pin and the command that puts it
-back (`git stash apply --index <sha>`, `git restore --source=<sha>
---worktree -- <paths>`, `git branch <name> <sha>`, `git stash store`);
-`bastra archive restore <ref>` runs it. Pins are refs, so `gc` cannot take
-them; the archive deletes them after the user retention (2 days by default).
-They show up in `git log --all` meanwhile. The shim refuses, before acting,
-in a repository that would run its own code on the act: a repo-local
-`core.fsmonitor`, `core.hooksPath` or `filter.*`, or an executable
-`post-checkout` / `reference-transaction` hook. Its own git calls run with
-fsmonitor off and hooks at /dev/null. Not taken, and why: `git commit
---amend` and `git rebase` run the repository's hooks and may open an editor;
-`git push --force` publishes (the hint keeps naming `--force-with-lease`);
-`git reflog expire` / `git gc --prune` have no reversible form — the pins
-above survive them. Off with `BASTRA_GIT_SHIM=0`; then a command it would
-have taken gets one line saying so, and a `git_shim_shadow` event.
+back (`git stash apply --index <sha>`; `git restore --source=<sha>
+--worktree -- <files>`, and `--source=<sha>^2 --staged` where the act also
+wrote the index; `git branch <name> <sha>`; `git stash store`);
+`bastra archive restore <ref>` runs it. A path act names the files it
+discards one by one, and pins nothing when its paths lose nothing. Pins are
+refs, so `gc` cannot take them; the archive deletes them after the user
+retention (2 days by default). They show up in `git log --all` meanwhile.
+
+Each act is read with its own short list of flags. A form outside it is not
+an act: `-p` / `--patch`, `-m` / `--merge` / `--conflict`,
+`--recurse-submodules`, `--pathspec-from-file`, `clean -i`, and a switch
+written as `git checkout <branch> --`. The lane keeps the STOP for it. The
+shim reads the arguments again as the shell expanded them (`git restore
+{-p,a}`, a file named `-p` under `*`), and inside an allowed command it runs
+nothing that is not an act.
+
+The shim refuses, before acting, in a repository that would run its own code
+on the act: `core.fsmonitor`, `core.hooksPath` or `filter.*` set by the
+repository (its config, a file that config includes, `config.worktree`) or by
+`GIT_CONFIG_*` in the environment; a partial clone (a missing object is
+fetched through the repository's own remote settings); an executable
+`post-checkout` (checkout, restore), `post-index-change` (reset, checkout,
+restore) or `reference-transaction` hook. A repository-set `core.hooksPath`
+is refused whatever it points to; the user's own global config is not read
+as the repository's. Its own git calls run with fsmonitor off and hooks at
+/dev/null. It
+also refuses where no snapshot can hold what the act discards: submodules
+with `submodule.recurse` on, an index with unmerged paths (a merge in
+progress), a repository without a commit. Needs git 2.26 or newer
+(`git config --show-scope`).
+
+Not taken, and why: `git commit --amend` and `git rebase` run the
+repository's hooks and may open an editor; `git push --force` publishes (the
+hint keeps naming `--force-with-lease`); `git reflog expire` / `git gc
+--prune` have no reversible form — the pins above survive them. Off with
+`BASTRA_GIT_SHIM=0`; then a command it would have taken gets one line saying
+so, and a `git_shim_shadow` event (`matched_pattern, git_only,
+settings_verdict, settings_rule, hinted`). Each shim runs only where it is
+on: with one of the two switched off, a command that needs both is not
+rewritten.
 
 Telemetry: `bash_hook_call` with `matched_pattern, severity, hit_count,
 top_score, status`.

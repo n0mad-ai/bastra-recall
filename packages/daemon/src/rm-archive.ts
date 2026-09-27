@@ -21,7 +21,7 @@
  * in PATH of that one command. The user's shell, build scripts and makepkg
  * keep the system `rm`.
  */
-import { pinLive, restoreCommand, restorePin, unpin } from "./git-archive.js";
+import { pinLive, restoreCommand, restorePin, unpin, withoutShims } from "./git-archive.js";
 import { execFileSync } from "node:child_process";
 import {
   appendFileSync,
@@ -58,9 +58,12 @@ const shq = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
  * no `$(…)`: under a deny or `ask` rule Claude Code shows this line to the
  * model and the user, and flags either as "evaluates shell code".
  */
-export function shimRewrite(command: string, call: string): string {
+export function shimRewrite(command: string, call: string, git = false): string {
+  // A command with a git act needs shims/git too: without it the next `git`
+  // in PATH is the real one, and the act would run unpinned under the allow.
+  const here = `[ -x ${shq(SHIM_DIR + "/rm")} ]` + (git ? ` && [ -x ${shq(SHIM_DIR + "/git")} ]` : "");
   return (
-    `[ -x ${shq(SHIM_DIR + "/rm")} ] || exit 97; unset -f rm git 2>/dev/null; ` +
+    `${here} || exit 97; unset -f rm git 2>/dev/null; ` +
     `export PATH=${shq(SHIM_DIR)}:"$PATH" BASTRA_RM_CALL=${shq(call)} BASTRA_NODE=${shq(process.execPath)}\n` +
     command
   );
@@ -110,6 +113,10 @@ export interface ManifestRow {
   sha?: string;
   act?: string;
   restore?: string[];
+  /** More restore commands, run after `restore` (index, then worktree). */
+  then?: string[][];
+  /** The git act that sent this path through the archiving rm (`git clean`). */
+  via?: string;
   orig: string;
   dest?: string;
   kind?: "junk" | "in-git" | "user";
@@ -190,6 +197,9 @@ function classify(real: string, isDir: boolean): "junk" | "in-git" | "user" {
       return execFileSync("git", ["-c", "core.fsmonitor=false", "-C", cwd, ...args], {
         encoding: "utf8",
         timeout: 3000,
+        // The real git: shims/ is first in this process's PATH, and bastra's
+        // git there runs nothing but an act inside an allowed command.
+        env: { ...process.env, PATH: withoutShims(process.env.PATH) },
         input,
         stdio: [input === undefined ? "ignore" : "pipe", "pipe", "ignore"],
       }).trim();
@@ -279,6 +289,8 @@ export interface ShimIo {
   now?: Date;
   /** Temp roots — injectable so a test can archive inside os.tmpdir(). */
   ephemeral?: string[];
+  /** The git act this rm stands in for (git-archive.ts); the receipt names it. */
+  via?: string;
   out?: (s: string) => void;
   err?: (s: string) => void;
 }
@@ -305,7 +317,8 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
   const call = env.BASTRA_RM_CALL ?? "";
   const ts = localIso(now);
   const log = (row: Omit<ManifestRow, "ts" | "cwd" | "argv" | "call">): void => {
-    const write = (): void => appendFileSync(join(archive, "manifest.jsonl"), JSON.stringify({ ts, ...row, cwd, argv, call }) + "\n");
+    const write = (): void =>
+      appendFileSync(join(archive, "manifest.jsonl"), JSON.stringify({ ts, ...row, ...(io.via ? { via: io.via } : {}), cwd, argv, call }) + "\n");
     if (row.action === "archived") return write();
     try {
       write();
@@ -467,6 +480,13 @@ export function manifestRows(env: NodeJS.ProcessEnv = process.env, current = fal
 /** Lines a receipt shows before it says "and N more": a `find … -exec rm` over a
  *  tree produced 600 lines in one call (47 KB of context) before this cap. */
 export const RECEIPT_MAX_LINES = 25;
+/** A restore command longer than this is not quoted in the receipt. */
+const RECEIPT_MAX_COMMAND = 600;
+
+/** The restore commands of a pinned row, in the order they run (shell-quoted). */
+export function restoreCommands(r: ManifestRow): string[] {
+  return [r.restore ?? [], ...(r.then ?? [])].filter((c) => c.length > 0).map(restoreCommand);
+}
 
 /** What `rm` did in one tool call — the PostToolUse receipt (null: nothing recorded). */
 export function callReport(call: string, env: NodeJS.ProcessEnv = process.env): string | null {
@@ -474,21 +494,26 @@ export function callReport(call: string, env: NodeJS.ProcessEnv = process.env): 
   const rows = manifestRows(env, true).filter((r) => r.call === call);
   if (rows.length === 0) return null;
   const shown = rows.slice(0, RECEIPT_MAX_LINES);
-  const lines = shown.map((r) =>
-    r.action === "pinned"
-      ? `- before \`${r.act}\` in ${r.orig}: saved ${(r.sha ?? "").slice(0, 10)} as ${r.dest} (restore: \`${restoreCommand(r.restore ?? [])}\`, or \`bastra archive restore ${r.dest}\`)`
-      : r.action === "archived"
-      ? `- archived ${r.orig} → ${r.dest} (restore: \`bastra archive restore ${shq(r.orig)}\`)`
+  const lines = shown.map((r) => {
+    if (r.action === "pinned") {
+      // A path act names every file it puts back: past a few, the short form only.
+      const cmds = restoreCommands(r).map((c) => `\`${c}\``).join(" then ");
+      const how = cmds.length > RECEIPT_MAX_COMMAND ? "" : `${cmds}, or `;
+      return `- before \`${r.act}\` in ${r.orig}: saved ${(r.sha ?? "").slice(0, 10)} as ${r.dest} (restore: ${how}\`bastra archive restore ${r.dest}\`)`;
+    }
+    const via = r.via ? ` (before \`${r.via}\`)` : "";
+    return r.action === "archived"
+      ? `- archived${via} ${r.orig} → ${r.dest} (restore: \`bastra archive restore ${shq(r.orig)}\`)`
       : r.action === "deleted"
-        ? `- deleted for real (temp): ${r.orig}`
-        : `- refused, left in place: ${r.orig} (${r.reason})`,
-  );
+        ? `- deleted for real (temp)${via}: ${r.orig}`
+        : `- refused, left in place${via}: ${r.orig} (${r.reason})`;
+  });
   if (rows.length > shown.length) {
     const rest = rows.slice(shown.length);
     const n = (a: ManifestRow["action"]) => rest.filter((r) => r.action === a).length;
     lines.push(`- … and ${rest.length} more (${n("archived")} archived, ${n("deleted")} deleted, ${n("refused")} refused): \`bastra archive list\``);
   }
-  const head = rows.some((r) => r.action === "pinned")
+  const head = rows.some((r) => r.action === "pinned" || r.via)
     ? "What bastra's archive kept from this command (git snapshots, archiving rm):"
     : "What `rm` did in this command (bastra archiving rm):";
   return `${head}\n${lines.join("\n")}`;
@@ -501,8 +526,8 @@ export function restore(target: string, env: NodeJS.ProcessEnv = process.env, cw
     .find((r) => r.action === "pinned" && r.restore && (r.dest === target || (target.length >= 7 && (r.sha ?? "").startsWith(target))));
   if (pinned?.restore) {
     if (!pinLive(pinned.orig, pinned.dest as string)) throw new Error(`${pinned.dest} is gone from ${pinned.orig}`);
-    restorePin(pinned.restore);
-    return `${pinned.act} undone in ${pinned.orig} (${restoreCommand(pinned.restore)})`;
+    for (const cmd of [pinned.restore, ...(pinned.then ?? [])]) restorePin(cmd);
+    return `what \`${pinned.act}\` discarded in ${pinned.orig} (${restoreCommands(pinned).join(" && ")})`;
   }
   // The manifest keeps the path with its parent resolved (/var → /private/var
   // on macOS); a path as the user typed it is resolved the same way.
@@ -672,7 +697,11 @@ export function applyReconcile(drop: Drop[], env: NodeJS.ProcessEnv = process.en
     } catch {
       continue;
     }
-    if (old && !parseManifest(file).some((r) => r.action === "archived" && r.dest && existsSync(r.dest))) unlinkSync(file);
+    // A pin that is still there (its repository was away at every look) keeps
+    // its manifest: without the row nothing would ever let the ref go.
+    const live = (r: ManifestRow): boolean =>
+      !!r.dest && (r.action === "archived" ? existsSync(r.dest) : r.action === "pinned" && pinLive(r.orig, r.dest));
+    if (old && !parseManifest(file).some(live)) unlinkSync(file);
   }
 }
 

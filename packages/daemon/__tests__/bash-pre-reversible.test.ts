@@ -88,7 +88,9 @@ const EXAMPLE: Record<string, string> = {
   rmdir: "rmdir empty",
   "git reset --hard": "git reset --hard origin/main",
   "git checkout --": "git checkout -- src",
+  "git checkout <tree> --": "git checkout HEAD~1 -- src",
   "git restore": "git restore src",
+  "git restore --source": "git restore --source=HEAD~1 src",
   "git stash drop": "git stash drop",
   "git clean -f": "git clean -fd",
   "git branch -D": "git branch -D old",
@@ -232,6 +234,34 @@ describe("#650 reversible defaults — every undo row's recipe, run in a real re
   };
 
   /** Keyed by label. A new undo row without an entry here (or in NOT_RUN_HERE) is red. */
+  /**
+   * The recipe of the rows that write a tree into the paths: the stash with
+   * --keep-index first, then the command as typed — same worktree and index as
+   * the bare command; the worktree content and the staged one come back from
+   * the stash.
+   */
+  const fromTree = async (act: (r: Repo) => void, index: boolean): Promise<void> => {
+    const [bare, form] = await twins();
+    for (const r of [bare, form]) {
+      await writeFile(join(r.dir, "a"), "two\n");
+      r.git("commit", "-qam", "c2");
+      await writeFile(join(r.dir, "a"), "staged\n");
+      r.git("add", "a");
+      await writeFile(join(r.dir, "a"), "unstaged\n");
+    }
+    act(bare);
+    form.git("stash", "push", "-q", "--keep-index", "--", "a");
+    act(form);
+    assert.equal(await form.read("a"), await bare.read("a"));
+    assert.equal(form.git("diff", "--cached"), bare.git("diff", "--cached"));
+    form.git("restore", "--source=stash@{0}", "--worktree", "--", "a");
+    assert.equal(await form.read("a"), "unstaged\n");
+    if (index) {
+      form.git("restore", "--source=stash@{0}^2", "--staged", "--", "a");
+      assert.equal(form.git("show", ":a"), "staged");
+    }
+    await drop(bare, form);
+  };
   const PROOFS: Record<string, () => Promise<void>> = {
     "git reset --hard": async () => {
       // c2 tracks `u`; HEAD is back at c1 with `u` untracked in the way, `v`
@@ -289,6 +319,14 @@ describe("#650 reversible defaults — every undo row's recipe, run in a real re
       form.git("restore", "--source=stash@{0}", "--worktree", "--", "a");
       assert.equal(await form.read("a"), "unstaged\n");
       await drop(bare, form);
+    },
+    // Revert-check (both): `git stash push` without --keep-index in the recipe
+    // → `restore --source` leaves the index at HEAD where the bare command
+    // keeps the staged content, and the twins differ.
+    "git checkout <tree> --": () => fromTree((r) => r.git("checkout", "HEAD~1", "--", "a"), true),
+    "git restore --source": async () => {
+      await fromTree((r) => r.git("restore", "--source=HEAD~1", "a"), false);
+      await fromTree((r) => r.git("restore", "--staged", "--worktree", "a"), true);
     },
     "git stash drop": async () => {
       const r = await repo();
