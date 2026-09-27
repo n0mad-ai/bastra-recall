@@ -61,6 +61,39 @@ export interface EmbedWithMeta {
  */
 export const PROVIDER_COLD_LOAD_MS = 200;
 
+/**
+ * Upper bound for one embedding request, in ms.
+ *
+ * Without it, a provider that accepts the connection and never answers keeps
+ * `embed()` pending forever: nothing rejects, so the breaker (which counts
+ * failures) never opens, and every call parks another socket and promise.
+ * `abandonAfter` (deadline.ts) only stops the recall from WAITING; the request
+ * behind it stays open.
+ *
+ * Deliberately far above a cold model load (585 ms measured above, 734 ms in
+ * #305): this is a hang detector, not a latency budget. Per-provider override
+ * via `timeoutMs`. Batches get more room, see {@link embedDeadlineMs}.
+ */
+export const EMBED_REQUEST_TIMEOUT_MS = 60_000;
+
+/**
+ * Extra deadline per text beyond the first, in ms.
+ *
+ * The backfill (embeddings.ts) and the eval runners send up to 50 texts in one
+ * request through the same `embed()`, and a CPU-only machine with a large
+ * model can take tens of seconds for that. A backfill batch that times out is
+ * requeued and counted by the breaker as a provider failure, so a fixed 60 s
+ * would turn a slow-but-working provider into an "off" one. 1 s per extra
+ * text gives a 50-text batch 109 s while a single query keeps 60 s.
+ */
+export const EMBED_TIMEOUT_PER_TEXT_MS = 1_000;
+
+/** Deadline for one request of `count` texts: `baseMs` plus
+ *  {@link EMBED_TIMEOUT_PER_TEXT_MS} for every text beyond the first. */
+export function embedDeadlineMs(baseMs: number, count: number): number {
+  return baseMs + Math.max(0, count - 1) * EMBED_TIMEOUT_PER_TEXT_MS;
+}
+
 // ─── OpenAI Provider ─────────────────────────────────────────────
 
 export class OpenAIEmbeddingProvider implements EmbeddingProvider {
@@ -68,13 +101,18 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   readonly dim: number;
   private apiKey: string;
   private model: string;
+  private timeoutMs: number;
 
   constructor(opts: {
     apiKey: string;
     model?: string;
     dim?: number;
+    /** Deadline in ms for a one-text request (default
+     *  {@link EMBED_REQUEST_TIMEOUT_MS}); batches add {@link EMBED_TIMEOUT_PER_TEXT_MS}. */
+    timeoutMs?: number;
   }) {
     this.apiKey = opts.apiKey;
+    this.timeoutMs = opts.timeoutMs ?? EMBED_REQUEST_TIMEOUT_MS;
     this.model = opts.model ?? "text-embedding-3-small";
     this.dim = opts.dim ?? 1536;
     this.id = `openai-${this.model}`;
@@ -82,25 +120,40 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
 
   async embed(texts: string[]): Promise<Float32Array[]> {
     if (texts.length === 0) return [];
-    const resp = await fetch("https://api.openai.com/v1/embeddings", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: this.model,
-        input: texts,
-        encoding_format: "float",
-      }),
-    });
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => "<binary>");
-      throw new Error(`OpenAI embed HTTP ${resp.status}: ${body.slice(0, 200)}`);
+    // Same shape as `fetchWithTimeout` in the daemon's ollama-lifecycle.ts
+    // (core cannot import from the daemon): an AbortController on a ref'd
+    // timer. `AbortSignal.timeout` is unref'd, so a fetch that never settles
+    // would not keep the loop alive long enough for it to fire. The timer
+    // covers the body read too — a server can stall after the headers.
+    const ctrl = new AbortController();
+    const timeoutMs = embedDeadlineMs(this.timeoutMs, texts.length);
+    const tid = setTimeout(
+      () => ctrl.abort(new Error(`OpenAI embed timed out after ${timeoutMs} ms`)),
+      timeoutMs,
+    );
+    let json: { data: Array<{ embedding: number[]; index: number }> };
+    try {
+      const resp = await fetch("https://api.openai.com/v1/embeddings", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: this.model,
+          input: texts,
+          encoding_format: "float",
+        }),
+        signal: ctrl.signal,
+      });
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => "<binary>");
+        throw new Error(`OpenAI embed HTTP ${resp.status}: ${body.slice(0, 200)}`);
+      }
+      json = (await resp.json()) as typeof json;
+    } finally {
+      clearTimeout(tid);
     }
-    const json = (await resp.json()) as {
-      data: Array<{ embedding: number[]; index: number }>;
-    };
     const sorted = [...json.data].sort((a, b) => a.index - b.index);
     return sorted.map((d) => new Float32Array(d.embedding));
   }
@@ -158,11 +211,30 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
 const keepAliveHttp = new http.Agent({ keepAlive: true });
 const keepAliveHttps = new https.Agent({ keepAlive: true });
 
-function postJsonKeepAlive(url: string, body: string): Promise<{ status: number; body: string }> {
+/**
+ * `timeoutMs` bounds the whole exchange (connect, response, body). On expiry
+ * the request is destroyed with an error; the agent drops that socket and
+ * opens a fresh one for the next call, so the keep-alive design above is
+ * unaffected on the normal path.
+ */
+function postJsonKeepAlive(
+  url: string,
+  body: string,
+  timeoutMs: number,
+): Promise<{ status: number; body: string }> {
   const target = new URL(url);
   const secure = target.protocol === "https:";
   const request = secure ? https.request : http.request;
-  return new Promise((resolve, reject) => {
+  return new Promise<{ status: number; body: string }>((resolve, reject) => {
+    // The timer starts only once `req` exists: `request()` throws
+    // synchronously on e.g. an unsupported protocol, and a timer armed before
+    // it would fire later into an uninitialised `req` (uncaught
+    // ReferenceError, daemon crash). The executor's throw rejects the promise.
+    let tid: NodeJS.Timeout | undefined;
+    const fail = (err: Error) => {
+      clearTimeout(tid);
+      reject(err);
+    };
     const req = request(
       target,
       {
@@ -176,13 +248,17 @@ function postJsonKeepAlive(url: string, body: string): Promise<{ status: number;
       (res) => {
         const chunks: Buffer[] = [];
         res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () =>
-          resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }),
-        );
-        res.on("error", reject);
+        res.on("end", () => {
+          clearTimeout(tid);
+          resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") });
+        });
+        res.on("error", fail);
       },
     );
-    req.on("error", reject);
+    tid = setTimeout(() => {
+      req.destroy(new Error(`Ollama embed timed out after ${timeoutMs} ms (${url})`));
+    }, timeoutMs);
+    req.on("error", fail);
     req.end(body);
   });
 }
@@ -193,6 +269,7 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
   private baseURL: string;
   private model: string;
   private keepAlive?: string | number;
+  private timeoutMs: number;
 
   constructor(opts: {
     baseURL?: string;
@@ -201,8 +278,12 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
     /** Ollama keep_alive pro Embed-Request, z.B. "10m" oder Sekunden.
      *  undefined = Feld weglassen → Server-Default (OLLAMA_KEEP_ALIVE, 5m). */
     keepAlive?: string | number;
+    /** Deadline in ms for a one-text request (default
+     *  {@link EMBED_REQUEST_TIMEOUT_MS}); batches add {@link EMBED_TIMEOUT_PER_TEXT_MS}. */
+    timeoutMs?: number;
   }) {
     this.baseURL = opts.baseURL ?? "http://localhost:11434";
+    this.timeoutMs = opts.timeoutMs ?? EMBED_REQUEST_TIMEOUT_MS;
     // Embedding text (query + memory) is POSTed to this endpoint. Enforce the
     // same "no egress" contract the reranker does (#124/#125): loopback by
     // default, remote only with BASTRA_ALLOW_REMOTE_OLLAMA=1. Fail fast at
@@ -234,7 +315,11 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
     const url = this.baseURL.replace(/\/+$/, "") + "/api/embed";
     const body: Record<string, unknown> = { model: this.model, input: texts };
     if (this.keepAlive !== undefined) body.keep_alive = this.keepAlive;
-    const resp = await postJsonKeepAlive(url, JSON.stringify(body));
+    const resp = await postJsonKeepAlive(
+      url,
+      JSON.stringify(body),
+      embedDeadlineMs(this.timeoutMs, texts.length),
+    );
     if (resp.status < 200 || resp.status >= 300) {
       throw new Error(
         `Ollama embed HTTP ${resp.status} (${url}): ${resp.body.slice(0, 200)}`,
