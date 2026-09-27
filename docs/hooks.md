@@ -321,6 +321,10 @@ unmarked payload keeps the STOP. Off, `rm -r` and the git acts get exactly
 the hint they got before: nothing is rewritten, nothing is allowed, no line
 about the archive.
 
+How it works in full — the mechanism, why it is safe, the git snapshots,
+what was tested — is in [Archiving `rm` and git snapshots](./archiving-rm-and-git-snapshots.md),
+from the PR descriptions of its author, @zzallirog (#689, #690, #692).
+
 With the opt-in on, for a command made only of `rm`
 (plain, `command rm`, `xargs rm` with argument-free flags, `find … -exec rm`,
 a non-login `bash -c`/`sh -c` of the same, plus `cd`; no redirection except to
@@ -954,6 +958,10 @@ schreibt — einmal neu ausführen): ein Aufruf ohne Kennung behält das STOP.
 Ist der Schalter aus, bekommen `rm -r` und die Git-Befehle genau den Hinweis
 wie bisher: nichts wird umgeschrieben, nichts freigegeben, keine Zeile zum
 Archiv.
+
+Wie es im Einzelnen funktioniert — Mechanismus, Sicherheit, Git-Schnappschüsse,
+Tests — steht in [Archivierendes `rm` und Git-Schnappschüsse](./archiving-rm-and-git-snapshots.md#deutsch),
+nach den PR-Beschreibungen seines Autors @zzallirog (#689, #690, #692).
 
 Ist er an, gilt für einen Befehl, der nur aus `rm` besteht (schlicht,
 `command rm`, `xargs rm` mit Flags ohne Argument, `find … -exec rm`, ein

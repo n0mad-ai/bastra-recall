@@ -124,7 +124,7 @@ A vault in iCloud, Google Drive or Dropbox uses that service's synchronization. 
 - [Updates](https://github.com/n0mad-ai/bastra-recall/wiki/Updating) — update with `bastra update`, or opt into automatic updates.
 - [Product docs](https://github.com/n0mad-ai/bastra-recall/wiki/Product-Docs) — let the assistant maintain user guides for your projects.
 - [Bastra Commons](https://github.com/n0mad-ai/bastra-recall/wiki/Bastra-Commons) — optional community recipes with verification records.
-- [Usage and troubleshooting](./docs/USAGE.md) · [Memory format](./docs/memory-schema.md) · [Architecture](./docs/architecture.md) · [Hooks](./docs/hooks.md) · [Save and recall triggers](./docs/triggers.md) · [Taxonomy](./docs/taxonomy.md) · [Valence and reflex](https://github.com/n0mad-ai/bastra-recall/wiki/Valence-and-Reflex)
+- [Usage and troubleshooting](./docs/USAGE.md) · [Memory format](./docs/memory-schema.md) · [Architecture](./docs/architecture.md) · [Hooks](./docs/hooks.md) · [Archiving `rm` and git snapshots](./docs/archiving-rm-and-git-snapshots.md) · [Save and recall triggers](./docs/triggers.md) · [Taxonomy](./docs/taxonomy.md) · [Valence and reflex](https://github.com/n0mad-ai/bastra-recall/wiki/Valence-and-Reflex)
 
 ### Roadmap
 
@@ -255,7 +255,7 @@ Ein Vault in iCloud, Google Drive oder Dropbox nutzt die Synchronisierung dieses
 - [Updates](https://github.com/n0mad-ai/bastra-recall/wiki/Updating) – mit `bastra update` aktualisieren oder automatische Updates aktivieren.
 - [Produkt-Dokumentation](https://github.com/n0mad-ai/bastra-recall/wiki/Product-Docs) – Anleitungen deiner Projekte vom Assistenten pflegen lassen.
 - [Bastra Commons](https://github.com/n0mad-ai/bastra-recall/wiki/Bastra-Commons) – optionale Community-Rezepte mit Prüfnachweisen.
-- [Nutzung und Fehlerbehebung](./docs/USAGE.md) · [Memory-Format](./docs/memory-schema.md) · [Architektur](./docs/architecture.md) · [Hooks](./docs/hooks.md) · [Speicher- und Abrufauslöser](./docs/triggers.md) · [Taxonomie](./docs/taxonomy.md) · [Valenz und Reflex](https://github.com/n0mad-ai/bastra-recall/wiki/Valence-and-Reflex)
+- [Nutzung und Fehlerbehebung](./docs/USAGE.md) · [Memory-Format](./docs/memory-schema.md) · [Architektur](./docs/architecture.md) · [Hooks](./docs/hooks.md) · [Archivierendes `rm` und Git-Schnappschüsse](./docs/archiving-rm-and-git-snapshots.md#deutsch) · [Speicher- und Abrufauslöser](./docs/triggers.md) · [Taxonomie](./docs/taxonomy.md) · [Valenz und Reflex](https://github.com/n0mad-ai/bastra-recall/wiki/Valence-and-Reflex)
 
 ### Roadmap
 
