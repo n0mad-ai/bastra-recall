@@ -2,7 +2,7 @@
  * `bastra config get|set <key> [value]` — settings access from the CLI.
  *
  * Keys: update.mode, embedding.provider, ollama.autostart, docs.mode,
- * docs.language. The store is the OSS-owned ~/.bastra/cli-settings.json
+ * docs.language, archive.retain, archive.enabled. The store is the OSS-owned ~/.bastra/cli-settings.json
  * (never the Pro-app's config.json). Browsing/editing memories stays in
  * the Pro app — this is flags only.
  */
@@ -28,6 +28,10 @@ import {
   setSizeGuide,
   getPrimaryLanguage,
   setPrimaryLanguage,
+  getArchiveRetain,
+  setArchiveRetain,
+  getArchiveEnabled,
+  setArchiveEnabled,
   isEmbeddingProviderName,
   isDocsMode,
   isDocsLanguage,
@@ -37,8 +41,9 @@ import {
 } from "../settings.js";
 import type { ParsedArgs } from "./types.js";
 import { mapUrl } from "./map-cmd.js";
+import { parseRetain, retainDays } from "../rm-archive.js";
 
-const KNOWN_KEYS = ["update.mode", "embedding.provider", "ollama.autostart", "docs.mode", "docs.language", "ui.enabled", "size.guide", "language.primary"] as const;
+const KNOWN_KEYS = ["update.mode", "embedding.provider", "ollama.autostart", "docs.mode", "docs.language", "ui.enabled", "size.guide", "language.primary", "archive.retain", "archive.enabled"] as const;
 type KnownKey = (typeof KNOWN_KEYS)[number];
 
 function isKnownKey(k: string | null): k is KnownKey {
@@ -90,6 +95,20 @@ async function cmdConfigGet(key: KnownKey): Promise<number> {
     case "ui.enabled":
       process.stdout.write(`${await getUiEnabled()}\n`);
       return 0;
+    case "archive.enabled": {
+      process.stdout.write(`${await getArchiveEnabled()}\n`);
+      const env = process.env.BASTRA_RM_ARCHIVES;
+      if (env) process.stdout.write(`  note: BASTRA_RM_ARCHIVES=${env} (env) overrides this file at runtime\n`);
+      return 0;
+    }
+    case "archive.retain": {
+      const r = retainDays(process.env, await getArchiveRetain());
+      const stored = await getArchiveRetain();
+      process.stdout.write(`junk=${r.junk},in-git=${r["in-git"]},user=${r.user}${stored ? "" : "  (default)"}\n`);
+      const env = process.env.BASTRA_ARCHIVE_RETAIN;
+      if (env) process.stdout.write(`  note: BASTRA_ARCHIVE_RETAIN=${env} (env) overrides this file at runtime\n`);
+      return 0;
+    }
     case "size.guide": {
       const g = await getSizeGuide();
       process.stdout.write(`${g ?? "(unset — default 500)"}\n`);
@@ -189,6 +208,36 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
       if (on) {
         process.stdout.write(`  vault map: ${mapUrl()} (or just: bastra map — no daemon restart needed)\n`);
       }
+      return 0;
+    }
+    case "archive.enabled": {
+      const on = parseBool(value);
+      if (on === null) {
+        process.stderr.write("error: archive.enabled must be one of: true | false (also on|off)\n");
+        return 2;
+      }
+      await setArchiveEnabled(on);
+      process.stdout.write(
+        `✓ archive.enabled = ${on}\n  stored in ${settingsFilePath()}\n` +
+          (on
+            ? `  Claude Code's rm -r and lossy git acts now run through bastra's archive and are allowed without a prompt (docs/hooks.md).\n`
+            : `  rm -r and the lossy git acts get the plain STOP again.\n`) +
+          `  the next Bash call uses it (no restart needed).\n`,
+      );
+      return 0;
+    }
+    case "archive.retain": {
+      const parsed = value === null ? null : parseRetain(value);
+      if (!parsed || Object.keys(parsed).length === 0) {
+        process.stderr.write("error: archive.retain is days per class, e.g. junk=1,in-git=2,user=2 (fractions allowed)\n");
+        return 2;
+      }
+      await setArchiveRetain(value as string);
+      const r = retainDays({}, value as string);
+      process.stdout.write(
+        `✓ archive.retain = junk=${r.junk},in-git=${r["in-git"]},user=${r.user}\n  stored in ${settingsFilePath()}\n` +
+          `  the next hourly reconcile uses it (no restart needed).\n`,
+      );
       return 0;
     }
     case "size.guide": {

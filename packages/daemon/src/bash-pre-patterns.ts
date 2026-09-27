@@ -5,6 +5,10 @@
  * decision live in `bash-pre-lane.ts`; this file is the part a reviewer reads
  * as the spec.
  */
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { SHIM_DIR } from "./rm-archive.js";
+
 /**
  * What the hint says instead of STOP when the act has an undo (#650 comment).
  *
@@ -26,7 +30,45 @@ export interface Undo {
   text: string;
   /** Only true on a host whose agent shell archives `rm` (see rmArchives). */
   needsArchivingRm?: true;
+  /** bastra's git snapshots run this act (git-archive.ts): the lane rewrites
+   *  and allows a command made only of such acts. */
+  viaGitShim?: true;
 }
+
+/** What bastra's git shim does per act — the receipt when it runs the command. */
+const gitShimUndo = (what: string): Undo => ({
+  kind: "receipt",
+  viaGitShim: true,
+  text:
+    `bastra runs this command with its git snapshots: ${what} What was saved, and the command that puts it ` +
+    `back, comes back after the command.`,
+});
+export const GIT_SHIM: Readonly<Record<string, Undo>> = {
+  "git clean -f": gitShimUndo(
+    "the files git clean would remove (same list as \`git clean -n\`) move to ~/.bastra/archive instead of being unlinked — same end state.",
+  ),
+  "git reset --hard": gitShimUndo(
+    "uncommitted changes to tracked files are saved first (\`git stash create\`, pinned under refs/bastra-archive/; the stash list is untouched), an untracked file the reset would overwrite moves to ~/.bastra/archive, then the reset runs as typed.",
+  ),
+  "git checkout --": gitShimUndo(
+    "uncommitted changes are saved first (pinned under refs/bastra-archive/), then the checkout runs as typed.",
+  ),
+  "git checkout <tree> --": gitShimUndo(
+    "staged and unstaged changes are saved first (pinned under refs/bastra-archive/), an untracked file the checkout would overwrite moves to ~/.bastra/archive, then the checkout runs as typed.",
+  ),
+  "git restore": gitShimUndo(
+    "uncommitted changes are saved first (pinned under refs/bastra-archive/), then the restore runs as typed.",
+  ),
+  "git restore --source": gitShimUndo(
+    "staged and unstaged changes are saved first (pinned under refs/bastra-archive/), an untracked file the restore would overwrite moves to ~/.bastra/archive, then the restore runs as typed.",
+  ),
+  "git branch -D": gitShimUndo(
+    "the branch's commit is pinned under refs/bastra-archive/ first (gc cannot take it), then the delete runs as typed.",
+  ),
+  "git stash drop": gitShimUndo(
+    "the dropped stash's commit is pinned under refs/bastra-archive/ first, then the drop runs as typed.",
+  ),
+};
 
 /**
  * The `rm` receipt: the command, as typed, runs the archiving `rm`. The only
@@ -36,9 +78,22 @@ export const RM_ARCHIVES: Undo = {
   kind: "receipt",
   needsArchivingRm: true,
   text:
-    `\`rm\` in this shell archives instead of deleting (host opt-in BASTRA_RM_ARCHIVES): ` +
+    `\`rm\` in this shell archives instead of deleting (host opt-in BASTRA_RM_ARCHIVES=host): ` +
     `targets move to ~/_archive/<date>/<full path>, \`agent-archive restore <path>\` puts them back; ` +
     `temp dirs are really removed; /, ~ and system dirs are refused.`,
+};
+
+/**
+ * The same receipt when bastra's own archiving `rm` runs it (rm-archive.ts):
+ * the bash-pre lane rewrites the command so `shims/` is first in its PATH.
+ */
+export const RM_SHIM: Undo = {
+  kind: "receipt",
+  needsArchivingRm: true,
+  text:
+    `bastra runs this command with its archiving \`rm\`: targets move to ~/.bastra/archive/<date>/<full path>, ` +
+    `\`bastra archive restore <path>\` puts them back; temp dirs are really removed; /, ~ and system dirs are ` +
+    `refused. What actually happened comes back after the command.`,
 };
 
 const FORCE_WITH_LEASE: Undo = {
@@ -59,6 +114,27 @@ const DROP_PLUS_REFSPEC: Undo = {
 /** `git` plus the global options that may sit before the subcommand. */
 const git = (rest: string): RegExp => new RegExp(String.raw`\bgit(?:\s+-[Cc]\s+\S+)*\s+` + rest);
 
+/** The rest of one command has this flag (`restore`'s rows are told apart by three). */
+const flag = (long: string, short: string): string => String.raw`[^\n;&|]*\s(?:--${long}\b|-[a-zA-Z]*${short}(?![a-zA-Z]*-))`;
+const SOURCE = flag("source", "s");
+const STAGED = flag("staged", "S");
+const WORKTREE = flag("worktree", "W");
+
+/**
+ * `checkout <tree> -- <paths>`, `restore --source=<tree>` and `restore
+ * --staged --worktree` write the tree's content into the paths: the index
+ * goes with the worktree, and an untracked file there is overwritten.
+ */
+const FROM_TREE: Undo = {
+  kind: "reversible-form",
+  text:
+    `what dies is the staged and unstaged changes in those paths. \`git stash push --keep-index -- <paths>\` first, ` +
+    `then the command as typed: the same end state, and the changes are in the stash ` +
+    `(\`git restore --source=stash@{0} --worktree -- <paths>\` brings the worktree content back, ` +
+    `\`git restore --source=stash@{0}^2 --staged -- <paths>\` the staged one). ` +
+    `Untracked files are in neither: an untracked file where the tree tracks one is overwritten either way.`,
+};
+
 /**
  * Destructive patterns — always need a recall. Each row decides its undo side
  * here, in the same place as its pattern: `undo: null` is a deliberate STOP,
@@ -67,12 +143,14 @@ const git = (rest: string): RegExp => new RegExp(String.raw`\bgit(?:\s+-[Cc]\s+\
  * we surface to the user is the meaningful one.
  */
 export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; undo: Undo | null }> = [
-  { label: "rm -rf", re: /\brm\s+(?:-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)\b/, undo: RM_ARCHIVES },
-  { label: "rm -r", re: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*\b/, undo: RM_ARCHIVES },
+  // -R and --recursive are the same act: rm(1) takes all three.
+  { label: "rm -rf", re: /\brm\s+(?:-[a-zA-Z]*[rR][a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*[rR])\b/, undo: RM_ARCHIVES },
+  { label: "rm -r", re: /\brm\s+(?:-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)\b/, undo: RM_ARCHIVES },
   { label: "rmdir", re: /\brmdir\b/, undo: null },
   {
+    // `--hard` anywhere in the command: `git reset -q --hard`, `git reset HEAD~1 --hard`.
     label: "git reset --hard",
-    re: git(String.raw`reset\s+--hard\b`),
+    re: git(String.raw`reset\b[^\n;&|]*\s--hard(?![\w-])`),
     undo: {
       kind: "reversible-form",
       text:
@@ -83,8 +161,9 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
     },
   },
   {
+    // Flags may stand before the `--` (`-q`, `-f`): still the index's content.
     label: "git checkout --",
-    re: git(String.raw`checkout\s+--\s`),
+    re: git(String.raw`checkout\s+(?:-{1,2}[a-zA-Z][\w=-]*\s+)*--\s`),
     undo: {
       kind: "reversible-form",
       text:
@@ -92,6 +171,13 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
         `exactly the same worktree and index; \`git restore --source=stash@{0} --worktree -- <paths>\` brings the ` +
         `changes back (not \`git stash pop\` — it conflicts when those paths also have staged changes).`,
     },
+  },
+  {
+    // A word that is no flag before the `--` is a tree, and paths follow.
+    // `git checkout <branch> --` (nothing after) is a switch: not matched.
+    label: "git checkout <tree> --",
+    re: git(String.raw`checkout\s+(?:-{1,2}[a-zA-Z][\w=-]*\s+)*[^-\s]\S*\s+(?:-{1,2}[a-zA-Z][\w=-]*\s+)*--\s+\S`),
+    undo: FROM_TREE,
   },
   {
     label: "git clean -f",
@@ -106,8 +192,42 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
     },
   },
   {
+    // Discards worktree changes like `checkout --`: no `--source`, no
+    // `--staged`. Those two are the next row, or no row at all.
+    label: "git restore",
+    re: git(String.raw`restore\b(?!${SOURCE})(?!${STAGED})`),
+    undo: {
+      kind: "reversible-form",
+      text:
+        `what dies is the unstaged changes in those paths. \`git stash push --keep-index -- <paths>\` leaves ` +
+        `exactly the same worktree and index; \`git restore --source=stash@{0} --worktree -- <paths>\` brings the ` +
+        `changes back.`,
+    },
+  },
+  {
+    // From a tree, into the worktree. `--staged` without `--worktree` only
+    // resets the index, and the worktree keeps the content: not matched.
+    label: "git restore --source",
+    re: git(String.raw`restore\b(?=${SOURCE}|${STAGED})(?!(?!${WORKTREE})${STAGED})`),
+    undo: FROM_TREE,
+  },
+  {
+    // The dropped stash's commit is unreachable once dropped: `git fsck`
+    // finds it until gc prunes it. `clear` drops them all.
+    label: "git stash drop",
+    re: git(String.raw`stash\s+(?:drop|clear)\b`),
+    undo: {
+      kind: "receipt",
+      text:
+        `a dropped stash's commit stays until gc prunes it: \`git fsck --unreachable | grep commit\` finds it, ` +
+        `\`git stash store -m <msg> <sha>\` puts it back. git prints the sha on \`drop\`; note it.`,
+    },
+  },
+  {
+    // `-D` in any cluster and behind other flags (`-q -D`, `-Dr`), or a
+    // delete together with a force (`-d -f`, `--delete --force`).
     label: "git branch -D",
-    re: git(String.raw`branch\s+-D\b`),
+    re: git(String.raw`branch\b(?:(?=[^\n;&|]*\s-[a-zA-Z]*D(?![a-zA-Z]*-))|(?=${flag("delete", "d")})(?=${flag("force", "f")}))`),
     undo: {
       kind: "reversible-form",
       text:
@@ -159,6 +279,20 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
   { label: "git reflog expire", re: git(String.raw`reflog\s+expire\b`), undo: null },
   { label: "git reflog delete", re: git(String.raw`reflog\s+delete\b`), undo: null },
   { label: "git gc --prune", re: git(String.raw`gc\b[^\n]*--prune\b(?!=never)`), undo: null },
+  // The same expiry set through config instead of flags: `git -c
+  // gc.reflogExpire=now gc` (or `… maintenance run --task=gc`) and a `git
+  // config gc.pruneExpire now` before a plain `git gc`. Config keys are case
+  // insensitive; `never` keeps everything and stays silent.
+  {
+    label: "git -c gc.*Expire",
+    re: /\bgit\b[^\n]*\s-c\s+gc\.(?:reflogexpire(?:unreachable)?|pruneexpire)=(?!never\b)/i,
+    undo: null,
+  },
+  {
+    label: "git config gc.*Expire",
+    re: new RegExp(git(String.raw`config\b[^\n]*\sgc\.(?:reflogexpire(?:unreachable)?|pruneexpire)\s+(?!never\b)\S`).source, "i"),
+    undo: null,
+  },
   { label: "gh repo delete", re: /\bgh\s+repo\s+delete\b/, undo: null },
   { label: "gh release delete", re: /\bgh\s+release\s+delete\b/, undo: null },
   { label: "npm uninstall", re: /\bnpm\s+uninstall\b/, undo: null },
@@ -195,17 +329,90 @@ export const RISKY_PATTERNS: Array<{ label: string; re: RegExp }> = [
 ];
 
 /**
+ * The #650 opt-in, read in the daemon — off by default. `BASTRA_RM_ARCHIVES`
+ * in the daemon's environment wins when set: `1` turns on bastra's archiving
+ * `rm` and git snapshots, `host` means the host's agent shell brings its own
+ * archiving `rm` (#651: the receipt text, no rewrite), anything else is off.
+ * Unset, `archive.enabled` in cli-settings.json decides (`setting`, read by
+ * the lane; `bastra config set archive.enabled on`). Off, rm and the git acts
+ * keep their plain STOP: nothing is rewritten, nothing is allowed.
+ */
+export type ArchiveMode = "off" | "bastra" | "host";
+export function archiveMode(setting = false): ArchiveMode {
+  const env = process.env.BASTRA_RM_ARCHIVES;
+  if (env === "1") return "bastra";
+  if (env === "host") return "host";
+  if (env) return "off";
+  return setting ? "bastra" : "off";
+}
+
+/**
  * Host opt-in: on a machine whose agent shell puts an archiving `rm` first in
  * PATH, "STOP — needs explicit confirmation" is false for rm and teaches the
- * model to fear a reversible move. Only the claude-code surface is covered —
- * that is where the shim is installed; other surfaces keep the STOP.
+ * model to fear a reversible move. Only a call that carries Claude Code's
+ * client marker (#657) — that is where the shim is installed; other and
+ * unmarked surfaces keep the STOP.
  */
-function rmArchives(surface: string): boolean {
-  return process.env.BASTRA_RM_ARCHIVES === "1" && surface === "claude-code";
+function rmArchives(surface: string, setting = false): boolean {
+  return surface === "claude-code" && archiveMode(setting) === "host";
+}
+
+/**
+ * bastra's own archiving `rm` (rm-archive.ts): only with the opt-in, and only
+ * on a call marked as Claude Code, whose PreToolUse hook can rewrite the
+ * command so the shim runs first. `BASTRA_RM_SHIM=0` leaves it out while the
+ * git snapshots stay on; off, too, when the shim is not on this disk.
+ */
+export function rmShim(surface: string, setting = false): boolean {
+  return (
+    surface === "claude-code" &&
+    archiveMode(setting) === "bastra" &&
+    process.env.BASTRA_RM_SHIM !== "0" &&
+    existsSync(join(SHIM_DIR, "rm"))
+  );
+}
+
+/**
+ * Opted in, but `BASTRA_RM_SHIM=0` keeps the rm shim out. Then a command it
+ * would have taken still gets its STOP, plus one line that the shim exists
+ * (#650, owner's ask: an off switch should say what it costs). Without the
+ * opt-in there is no such line: off means the hint as before.
+ */
+export function rmShimSwitchedOff(surface: string, setting = false): boolean {
+  return (
+    surface === "claude-code" &&
+    archiveMode(setting) === "bastra" &&
+    process.env.BASTRA_RM_SHIM === "0" &&
+    existsSync(join(SHIM_DIR, "rm"))
+  );
+}
+
+/** bastra's git snapshots: with the opt-in on a Claude Code call, unless BASTRA_GIT_SHIM=0. */
+export function gitShim(surface: string, setting = false): boolean {
+  return (
+    surface === "claude-code" &&
+    archiveMode(setting) === "bastra" &&
+    process.env.BASTRA_GIT_SHIM !== "0" &&
+    existsSync(join(SHIM_DIR, "git"))
+  );
+}
+
+/** Opted in, but BASTRA_GIT_SHIM=0 (see rmShimSwitchedOff). */
+export function gitShimSwitchedOff(surface: string, setting = false): boolean {
+  return (
+    surface === "claude-code" &&
+    archiveMode(setting) === "bastra" &&
+    process.env.BASTRA_GIT_SHIM === "0" &&
+    existsSync(join(SHIM_DIR, "git"))
+  );
 }
 
 /** The undo a destructive label's row declares, where this host can keep it. */
-export function reversibleDefault(label: string, surface: string): Undo | null {
+export function reversibleDefault(label: string, surface: string, setting = false): Undo | null {
+  if (GIT_SHIM[label] && gitShim(surface, setting)) return GIT_SHIM[label];
   const undo = DESTRUCTIVE_PATTERNS.find((p) => p.label === label)?.undo ?? null;
-  return undo?.needsArchivingRm && !rmArchives(surface) ? null : undo;
+  if (!undo?.needsArchivingRm) return undo;
+  if (rmArchives(surface, setting)) return undo;
+  if (!rmShim(surface, setting)) return null;
+  return undo === RM_ARCHIVES ? RM_SHIM : undo;
 }

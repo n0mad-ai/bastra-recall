@@ -75,6 +75,7 @@ export const COMMAND_FLAGS: Record<string, readonly string[]> = {
   rules: ["--dry-run"],
   patches: [],
   completion: [],
+  archive: ["--json", "--yes", "-y"],
   logs: ["--follow", "-f", "--since", "--source", "--lines", "--stats", "--include-eval"],
 };
 

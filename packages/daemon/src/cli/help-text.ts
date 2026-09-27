@@ -111,6 +111,9 @@ Commands:
                              'bug' includes a sanitized diagnostics block
                              (version, OS, embedding mode, vault size — never
                              vault content); you review and submit it yourself
+  archive <list|restore|reconcile>
+                             What the agent's rm moved to ~/.bastra/archive,
+                             put a path back, or let old entries go
   doctor [surface|all]       Check status of one or every surface
   doctor [surface|all] --fix Check status and repair missing/broken pieces
   status                     Check daemon and adapters status (supports --json, -q)
@@ -574,6 +577,36 @@ Usage:
 'bug' attaches a sanitized diagnostics block: version, OS, node, embedding
 mode, vault size, daemon status. Never a file path, never vault content. The
 browser opens with the form filled in — you read it and submit it yourself.
+`,
+
+  archive: `bastra archive — the archive behind the agent's rm
+
+Usage:
+  bastra archive list                 what was archived, deleted or refused (30 days)
+  bastra archive restore <path|ref>   put it back (a path, or a git snapshot ref / sha)
+  bastra archive reconcile [--yes]    show (with --yes: remove) what can go
+
+Opt-in, off by default: bastra config set archive.enabled on (or
+BASTRA_RM_ARCHIVES=1 in the daemon's environment, which wins). Only for hook
+calls marked as Claude Code (re-run bastra install once to add the marker).
+
+With it on, a Claude Code Bash command made only of rm runs through bastra's
+archiving rm, without the usual permission prompt:
+targets move to ~/.bastra/archive/<date>/<time-pid>/<full path>, temp dirs
+are really removed, /, ~ and system dirs are refused. Old entries go by class,
+checked hourly after Bash calls: build junk after 1 day, clean git-tracked
+after 2, the rest after 2; a 10 GB cap never touches your own files younger
+than their retention. Change it (days, fractions allowed; env
+BASTRA_ARCHIVE_RETAIN wins):
+  bastra config set archive.retain junk=1,in-git=2,user=2
+Only the rm part off: BASTRA_RM_SHIM=0.
+
+git acts that lose work (clean -f, reset --hard, checkout [<tree>] -- <paths>,
+restore, branch -D, stash drop|clear) are snapshotted first: clean's files
+and any untracked file the act would overwrite go to the archive, the rest
+is pinned under refs/bastra-archive/ and listed here too;
+\`bastra archive restore <ref>\` puts it back. The pins show up in
+\`git log --all\` until they expire. Only the git part off: BASTRA_GIT_SHIM=0.
 `,
 
   completion: `bastra completion — Tab completion for your shell

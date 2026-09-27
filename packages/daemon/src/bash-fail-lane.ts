@@ -30,6 +30,10 @@ import { isUnfused, type HookRecallHit, type HookRecallResponse } from "./hook-r
 import { unfusedHeadline, unfusedReasonFor } from "./band-wording.js";
 import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookCaller, type HookClientEvidence } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
+import { spawn } from "node:child_process";
+import { extname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { callReport, reconcileDue, stampReconcile } from "./rm-archive.js";
 import {
   decideBackoff,
   loadSessionState,
@@ -56,6 +60,8 @@ export interface BashFailPayload {
   hook_event_name?: string;
   tool_name?: string;
   tool_input?: Record<string, unknown>;
+  /** Same id the PreToolUse call had — keys the rm archive receipt. */
+  tool_use_id?: string;
   tool_result?: unknown;
   tool_response?: unknown;
   /** Claude Code PostToolUseFailure carries failure details at top level. */
@@ -76,6 +82,55 @@ type RecallResponse = HookRecallResponse;
  * client. Never throws — every failure degrades to `{}` plus telemetry.
  */
 export async function runBashFailLane(payload: BashFailPayload, selfBaseUrl: string): Promise<string> {
+  const out = await bashPostLane(payload, selfBaseUrl);
+  return withRmReceipt(out, payload);
+}
+
+/**
+ * The receipt of what bastra's archiving `rm` actually did in this call —
+ * the pre-hook only predicted it (#650). Appended to whatever the lane says,
+ * success or failure. Any post-Bash call also lets the archive let go of
+ * old entries, at most hourly, off the answer's path.
+ */
+function withRmReceipt(out: string, payload: BashFailPayload): string {
+  let report: string | null = null;
+  try {
+    // After every Bash call, not only an rm one: a retention of hours or
+    // days must hold on a day with no rm.
+    if (reconcileDue()) reconcileInBackground();
+    report = callReport(payload.tool_use_id ?? "");
+  } catch {
+    return out;
+  }
+  if (!report) return out;
+  const doc = JSON.parse(out || "{}") as { hookSpecificOutput?: { hookEventName?: string; additionalContext?: string } };
+  const prev = doc.hookSpecificOutput?.additionalContext;
+  doc.hookSpecificOutput = {
+    ...doc.hookSpecificOutput,
+    hookEventName: payload.hook_event_name ?? "PostToolUse",
+    additionalContext: prev ? `${report}\n\n${prev}` : report,
+  };
+  return JSON.stringify(doc);
+}
+
+/**
+ * `bastra archive reconcile --yes` as its own process. The plan stats every
+ * live entry and compares files; the drops are rmSync over up to 10 GB. In
+ * the daemon that blocked the event loop, and a hook that waits on it longer
+ * than its 500 ms times out to `{}` — for bash-pre, no STOP and no shim while
+ * the archive was being cleaned. The stamp is written first, so a second
+ * receipt in the same second does not start a second one; a child that fails
+ * only means the archive grows until tomorrow.
+ */
+function reconcileInBackground(): void {
+  stampReconcile();
+  const cli = fileURLToPath(new URL(`./cli${extname(import.meta.url)}`, import.meta.url));
+  const child = spawn(process.execPath, [...process.execArgv, cli, "archive", "reconcile", "--yes"], { detached: true, stdio: "ignore" });
+  child.on("error", () => {});
+  child.unref();
+}
+
+async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
   // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt

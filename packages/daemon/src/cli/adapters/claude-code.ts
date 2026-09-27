@@ -34,6 +34,8 @@ import {
 import { copySkill, describeSkillInstall, inspectSkillInstall } from "../skill.js";
 import { checkForwarderRegistration, ensureStableForwarder, mapBinToStableRuntime } from "../stable-runtime.js";
 import { existingHookWrapper, fileOf, slashes, type HookWrapper } from "./command-paths.js";
+import { archiveMode } from "../../bash-pre-patterns.js";
+import { getArchiveEnabled } from "../../settings.js";
 import type { Adapter, DoctorResult, InstallOpts, InstallResult, UninstallResult } from "../types.js";
 
 // ─── Hook helpers (claude-code-only surface) ─────────────────────
@@ -108,6 +110,9 @@ export function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[]
  * `stubPresent` is injectable so the planner tests can pin BOTH registered
  * forms; production passes nothing and probes the disk.
  */
+/** The registration-owned client marker the thin clients copy into the payload (hook-surface.ts). */
+const CLIENT_MARKER = "BASTRA_HOOK_CLIENT=claude-code ";
+
 function buildHookEntry(
   def: HookDef,
   stubPresent: boolean = existsSync(HOOK_STUB_BIN),
@@ -117,8 +122,12 @@ function buildHookEntry(
     def.stubSubcommand && stubPresent
       ? `${HOOK_STUB_BIN} ${def.stubSubcommand}`
       : `node ${def.bin}`;
-  // #647: a user's wrapper around the runner survives the rewrite.
-  const command = `${wrap.prefix}${runner}${wrap.suffix}`;
+  // #647: a user's wrapper around the runner survives the rewrite. The
+  // client marker is ours and written fresh (#657/#650: the bash-pre lane
+  // rewrites a command only for a call that proves it is Claude Code), so it
+  // is taken out of the kept prefix — the same shape as the Codex adapter.
+  const prefix = wrap.prefix.replace(CLIENT_MARKER, "");
+  const command = `${CLIENT_MARKER}${prefix}${runner}${wrap.suffix}`;
   const entry: Record<string, unknown> = {};
   if (def.matcher) entry.matcher = def.matcher;
   entry.hooks = [{
@@ -163,8 +172,9 @@ export function stubSubcommandForFile(file: string, defs: HookDef[] = hookDefini
  * moving the last three lanes onto the stub, #369).
  */
 export function stubLaneCommandPath(cmd: string, sub: string, home: string = homedir()): string | null {
-  // Leading program token, quoted (a path with spaces can only appear so) or bare.
-  const m = /^\s*(?:"([^"]+)"|'([^']+)'|(\S+))\s*(.*)$/.exec(cmd);
+  // Leading program token, quoted (a path with spaces can only appear so) or
+  // bare — past our own client marker, which the installer writes in front.
+  const m = /^\s*(?:BASTRA_HOOK_CLIENT=claude-code\s+)?(?:"([^"]+)"|'([^']+)'|(\S+))\s*(.*)$/.exec(cmd);
   if (!m) return null;
   const prog = m[1] ?? m[2] ?? m[3] ?? "";
   const base = fileOf(prog);
@@ -801,6 +811,13 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
       : optionalMissing.length > 0
         ? `${found.size}/${OUR_HOOK_FILES.length} registered (optional disabled: ${optionalMissing.join(", ")})`
         : `${OUR_HOOK_FILES.length}/${OUR_HOOK_FILES.length} registered`;
+
+    // #650: the archive opt-in (its state is in the features block) acts
+    // only on a Bash hook call that carries the Claude Code marker.
+    const bashPre = registeredCommands.find(([f]) => f === "bash-pre-hook.js")?.[1];
+    if (archiveMode(await getArchiveEnabled().catch(() => false)) !== "off" && bashPre !== undefined && !bashPre.includes(CLIENT_MARKER.trim())) {
+      details["archive"] = "opted in, but the Bash hook carries no Claude Code marker, so nothing is rewritten — re-run 'bastra install claude-code'";
+    }
 
     const hookPathProblems = await checkHookPaths(registeredCommands);
     hookPathBroken = hookPathProblems.length > 0;

@@ -71,6 +71,13 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
   process.env.TMPDIR = root;
   process.env.TEMP = root;
   process.env.TMP = root;
+  // bastra's archiving rm and git snapshots (#650) are an opt-in. Set off
+  // here so the user's own `archive.enabled` in ~/.bastra/cli-settings.json
+  // (env wins over it) cannot turn them on under the suite: a test sees the
+  // STOP unless it opts in (BASTRA_RM_ARCHIVES=1), and the archive never
+  // lands in ~/.bastra.
+  process.env.BASTRA_RM_ARCHIVES = "0";
+  process.env.BASTRA_ARCHIVE_DIR = join(root, "archive");
   const removeRoot = () => {
     try {
       rmSync(root, { recursive: true, force: true, maxRetries: 3 });

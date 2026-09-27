@@ -13,7 +13,7 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { matchPattern, formatHintBlock, runBashPreLane, reversibleDefault, DESTRUCTIVE_PATTERNS } from "../src/bash-pre-lane.js";
 
-const RM = { BASTRA_RM_ARCHIVES: "1" };
+const RM = { BASTRA_RM_ARCHIVES: "host" };
 
 /** Apply env vars; the returned function puts the previous values back. */
 function setEnv(env: Record<string, string>): () => void {
@@ -88,6 +88,10 @@ const EXAMPLE: Record<string, string> = {
   rmdir: "rmdir empty",
   "git reset --hard": "git reset --hard origin/main",
   "git checkout --": "git checkout -- src",
+  "git checkout <tree> --": "git checkout HEAD~1 -- src",
+  "git restore": "git restore src",
+  "git restore --source": "git restore --source=HEAD~1 src",
+  "git stash drop": "git stash drop",
   "git clean -f": "git clean -fd",
   "git branch -D": "git branch -D old",
   "git push --delete": "git push origin --delete old",
@@ -99,6 +103,8 @@ const EXAMPLE: Record<string, string> = {
   "git reflog expire": "git reflog expire --expire=now --all",
   "git reflog delete": "git reflog delete HEAD@{1}",
   "git gc --prune": "git gc --prune=now",
+  "git -c gc.*Expire": "git -c gc.pruneExpire=now gc",
+  "git config gc.*Expire": "git config gc.reflogExpire now",
   "gh repo delete": "gh repo delete me/prod --yes",
   "gh release delete": "gh release delete v1 --yes",
   "npm uninstall": "npm uninstall left-pad",
@@ -168,6 +174,25 @@ describe("#650 reversible defaults — the table", () => {
     assert.equal((await hintOf("rm -rf build", RM, "codex")).kind, "stop");
     assert.equal((await hintOf("rm -rf build")).kind, "stop");
   });
+
+  it("#657: a payload without the Claude Code marker keeps STOP — host receipt and bastra's shim alike", async () => {
+    // Revert-check: weigh the hint with hookClient() (which guesses claude-code) → red.
+    for (const env of [RM, { BASTRA_RM_ARCHIVES: "1", BASTRA_RM_SHIM: "", BASTRA_GIT_SHIM: "" }]) {
+      const restore = setEnv(env);
+      try {
+        const stdout = await runHook(
+          { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "rm -rf build" }, session_id: "" },
+          {},
+        );
+        const out = JSON.parse(stdout)?.hookSpecificOutput ?? {};
+        assert.match(out.additionalContext ?? "", /STOP — destructive/, JSON.stringify(env));
+        assert.equal(out.permissionDecision, undefined, "no allow without the marker");
+        assert.equal(out.updatedInput, undefined, "no rewrite without the marker");
+      } finally {
+        restore();
+      }
+    }
+  });
 });
 
 // The hint text is a claim about git. These run the claim — the same command
@@ -182,6 +207,8 @@ describe("#650 reversible defaults — every undo row's recipe, run in a real re
         cwd: dir,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
+        // The recipes read git's own words ("Would remove", "(was <sha>)").
+        env: { ...process.env, LC_ALL: "C" },
       }).trim();
     git("init", "-q");
     await writeFile(join(dir, "a"), "one\n");
@@ -226,6 +253,34 @@ describe("#650 reversible defaults — every undo row's recipe, run in a real re
   };
 
   /** Keyed by label. A new undo row without an entry here (or in NOT_RUN_HERE) is red. */
+  /**
+   * The recipe of the rows that write a tree into the paths: the stash with
+   * --keep-index first, then the command as typed — same worktree and index as
+   * the bare command; the worktree content and the staged one come back from
+   * the stash.
+   */
+  const fromTree = async (act: (r: Repo) => void, index: boolean): Promise<void> => {
+    const [bare, form] = await twins();
+    for (const r of [bare, form]) {
+      await writeFile(join(r.dir, "a"), "two\n");
+      r.git("commit", "-qam", "c2");
+      await writeFile(join(r.dir, "a"), "staged\n");
+      r.git("add", "a");
+      await writeFile(join(r.dir, "a"), "unstaged\n");
+    }
+    act(bare);
+    form.git("stash", "push", "-q", "--keep-index", "--", "a");
+    act(form);
+    assert.equal(await form.read("a"), await bare.read("a"));
+    assert.equal(form.git("diff", "--cached"), bare.git("diff", "--cached"));
+    form.git("restore", "--source=stash@{0}", "--worktree", "--", "a");
+    assert.equal(await form.read("a"), "unstaged\n");
+    if (index) {
+      form.git("restore", "--source=stash@{0}^2", "--staged", "--", "a");
+      assert.equal(form.git("show", ":a"), "staged");
+    }
+    await drop(bare, form);
+  };
   const PROOFS: Record<string, () => Promise<void>> = {
     "git reset --hard": async () => {
       // c2 tracks `u`; HEAD is back at c1 with `u` untracked in the way, `v`
@@ -268,6 +323,42 @@ describe("#650 reversible defaults — every undo row's recipe, run in a real re
       assert.equal(await form.read("a"), "unstaged\n");
       assert.equal(form.git("show", ":a"), "staged", "index untouched by the undo");
       await drop(bare, form);
+    },
+    "git restore": async () => {
+      const [bare, form] = await twins();
+      for (const r of [bare, form]) {
+        await writeFile(join(r.dir, "a"), "staged\n");
+        r.git("add", "a");
+        await writeFile(join(r.dir, "a"), "unstaged\n");
+      }
+      bare.git("restore", "a");
+      form.git("stash", "push", "-q", "--keep-index", "--", "a");
+      assert.equal(await form.read("a"), await bare.read("a"));
+      assert.equal(form.git("diff", "--cached"), bare.git("diff", "--cached"));
+      form.git("restore", "--source=stash@{0}", "--worktree", "--", "a");
+      assert.equal(await form.read("a"), "unstaged\n");
+      await drop(bare, form);
+    },
+    // Revert-check (both): `git stash push` without --keep-index in the recipe
+    // → `restore --source` leaves the index at HEAD where the bare command
+    // keeps the staged content, and the twins differ.
+    "git checkout <tree> --": () => fromTree((r) => r.git("checkout", "HEAD~1", "--", "a"), true),
+    "git restore --source": async () => {
+      await fromTree((r) => r.git("restore", "--source=HEAD~1", "a"), false);
+      await fromTree((r) => r.git("restore", "--staged", "--worktree", "a"), true);
+    },
+    "git stash drop": async () => {
+      const r = await repo();
+      await writeFile(join(r.dir, "a"), "stashed\n");
+      r.git("stash", "push", "-q", "-m", "wip");
+      const sha = r.git("rev-parse", "stash@{0}");
+      r.git("stash", "drop", "-q");
+      assert.equal(r.git("stash", "list"), "");
+      assert.ok(r.git("fsck", "--unreachable", "--no-reflogs").includes(sha), "fsck finds the dropped stash's commit");
+      r.git("stash", "store", "-m", "wip", sha);
+      r.git("stash", "pop", "-q");
+      assert.equal(await r.read("a"), "stashed\n", "store + pop brings it back");
+      await drop(r);
     },
     "git clean -f": async () => {
       // A plain recursive remove stands in for the archiving rm: the claim
@@ -436,6 +527,22 @@ describe("#651 review — the hint weighs the whole command, not the first row i
     assert.equal(matchPattern("git gc"), null);
   });
 
+  it("#658: the same expiry set through config turns the receipt into STOP too", async () => {
+    // Revert-check: drop the two gc.*Expire rows → each amend line below gets
+    // the receipt although its gc removes the pre-amend commit for good.
+    for (const cmd of [
+      "git commit --amend --no-edit; git -c gc.reflogExpire=now -c gc.reflogExpireUnreachable=now -c gc.pruneExpire=now gc",
+      "git commit --amend --no-edit; git -c gc.reflogExpire=now -c gc.pruneExpire=now maintenance run --task=gc",
+      "git commit --amend --no-edit; git config gc.reflogExpire now; git config gc.pruneExpire now; git gc",
+      "git commit --amend --no-edit; git -C repo config --local GC.PRUNEEXPIRE now; git gc",
+    ]) {
+      assert.equal((await hintOf(cmd)).kind, "stop", cmd);
+    }
+    assert.equal(matchPattern("git -c gc.pruneExpire=never gc"), null);
+    assert.equal(matchPattern("git config gc.reflogExpire never"), null);
+    assert.equal(matchPattern("git config gc.auto 0"), null);
+  });
+
   it("#658: several receipts in one command are all said, each once", async () => {
     // Revert-check: return acts[0].undo → the amend note is missing.
     const stdout = await runHook(
@@ -452,7 +559,7 @@ describe("#651 review — the hint weighs the whole command, not the first row i
     assert.match(block, /git reset --soft HEAD@\{1\}/, "the amend receipt");
     assert.match(block, /the lease refuses/, "the lease receipt");
     const rmStdout = await runHook(
-      { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "rm -rf a && rm -r b" }, session_id: "" },
+      { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "rm -rf a && rm -r b" }, session_id: "", bastra_client: "claude-code" },
       RM,
     );
     const rmBlock: string = JSON.parse(rmStdout)?.hookSpecificOutput?.additionalContext ?? "";
@@ -479,8 +586,6 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "docker exec db rm -rf /var/lib/postgresql",
       "kubectl exec pod -- rm -rf /data",
       "git rm -rf src",
-      "find . -name tmp -exec rm -rf {} +",
-      'bash -c "rm -rf build"',
       "env -i rm -rf build",
       "PATH=/usr/bin rm -rf build",
       "ssh prod bash <<'EOF'\nrm -rf /srv/data\nEOF",
@@ -491,6 +596,20 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "alias rm=/bin/rm; rm -rf x",
       'rm() { /bin/rm "$@"; }; rm -rf x',
       "function rm { /bin/rm \"$@\"; }; rm -rf x",
+      // …also inside a quoted eval, or by pinning the hash table entry.
+      "eval 'rm(){ /bin/rm \"$@\"; }'; rm -rf x",
+      'eval "rm(){ /bin/rm \\"\\$@\\"; }"; rm -rf x',
+      "hash -p /bin/rm rm; rm -rf x",
+      // …behind a prefix word or an eval: every word is read, an eval body
+      // is shell again (#682 review).
+      "builtin hash -p /bin/rm rm; rm -rf x",
+      "command hash -p /bin/rm rm; rm -rf x",
+      "eval 'hash -p /bin/rm rm'; rm -rf x",
+      "eval 'export PATH=/x:$PATH'; rm -rf x",
+      "eval 'alias rm=/bin/rm'; rm -rf x",
+      // `hash -p` points EVERY listed name at the path, not just the last.
+      "hash -p /x rm python; rm -rf dist",
+      "hash -p/x rm python; rm -rf dist",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "stop", cmd);
     }
@@ -506,6 +625,21 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "find . -name '*.o' | xargs rm -rf",
       "rm -rf a && rm -r b",
       'rm -rf "$TMPDIR/x"',
+      // `hash -p` for another name leaves `rm` alone; `rm()` in quotes is
+      // a grep pattern, not a definition (#682 review).
+      "hash -p /usr/bin/python3 python; rm -rf dist",
+      "hash -p /usr/bin/python3 python node; rm -rf dist",
+      'grep -rn "rm()" src; rm -rf dist',
+      "eval 'echo hi'; rm -rf dist",
+      // The archiving rm's directory is exported in PATH: a child that looks
+      // `rm` up there runs it too (#650).
+      "find . -name tmp -exec rm -rf {} +",
+      'bash -c "rm -rf build"',
+      // Only the command word counts: an argument that reads like `hash` /
+      // `eval` is data, and `sudo hash` runs in a child shell.
+      "echo hash -p /bin/rm rm; rm -rf x",
+      "echo eval 'alias rm=/bin/rm'; rm -rf x",
+      "sudo hash -p /bin/rm rm; rm -rf x",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "receipt", cmd);
     }

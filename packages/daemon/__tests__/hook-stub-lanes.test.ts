@@ -32,6 +32,8 @@ import {
 import { HOOK_STUB_BIN } from "../src/cli/paths.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+/** The client marker every Claude Code hook command starts with (#657/#650). */
+const CC = "BASTRA_HOOK_CLIENT=claude-code ";
 const HOOK_FILES = [
   "hook.js", "session-hook.js", "prompt-hook.js", "todo-hook.js",
   "bash-pre-hook.js", "bash-fail-hook.js", "stop-hook.js",
@@ -56,16 +58,16 @@ test("all seven lanes register across all eight hook entries when the binary is 
   const cmds = allCommands(true);
   assert.equal(cmds.length, 8, `expected eight hook entries, got ${cmds.length}`);
   for (const cmd of cmds) {
-    assert.ok(cmd.startsWith(`${HOOK_STUB_BIN} `), `still on node: ${cmd}`);
+    assert.ok(cmd.startsWith(`${CC}${HOOK_STUB_BIN} `), `still on node: ${cmd}`);
   }
-  const subs = cmds.map((c) => c.slice(HOOK_STUB_BIN.length + 1)).sort();
+  const subs = cmds.map((c) => c.slice(CC.length + HOOK_STUB_BIN.length + 1)).sort();
   assert.deepEqual(subs, ["bash-fail", "bash-fail", "bash-pre", "prompt", "session", "stop", "todo", "write"]);
 });
 
 test("without the binary every lane falls back to its node client", () => {
   const cmds = allCommands(false);
   assert.equal(cmds.length, 8);
-  for (const cmd of cmds) assert.ok(cmd.startsWith("node /"), `not the node client: ${cmd}`);
+  for (const cmd of cmds) assert.ok(cmd.startsWith(`${CC}node /`), `not the node client: ${cmd}`);
 });
 
 test("the stub declares exactly the lanes registration hands it", async () => {
@@ -75,7 +77,7 @@ test("the stub declares exactly the lanes registration hands it", async () => {
   const decl = /const LANES = new Set<Lane>\(\[([\s\S]*?)\]\)/.exec(src);
   assert.ok(decl, "could not find the LANES declaration in stub/bastra-hook.ts");
   const declared = [...decl[1].matchAll(/"([a-z-]+)"/g)].map((m) => m[1]).sort();
-  const registered = [...new Set(allCommands(true).map((c) => c.slice(HOOK_STUB_BIN.length + 1)))].sort();
+  const registered = [...new Set(allCommands(true).map((c) => c.slice(CC.length + HOOK_STUB_BIN.length + 1)))].sort();
   assert.deepEqual(declared, registered);
 });
 
@@ -165,6 +167,11 @@ test("stubLaneCommandPath accepts the forms a settings.json can carry", () => {
     stubLaneCommandPath("/a/b/stub/bastra-hook statusline --style=powerline", "prompt"),
     null,
     "the statusline entry is not a lane",
+  );
+  assert.equal(
+    stubLaneCommandPath(`${CC}/a/b/stub/bastra-hook stop`, "stop"),
+    "/a/b/stub/bastra-hook",
+    "past the client marker the installer writes in front",
   );
   assert.equal(stubLaneCommandPath("/a/b/stub/bastra-hook stop", "session"), null, "wrong lane");
   assert.equal(stubLaneCommandPath("node /a/b/dist/stop-hook.js", "stop"), null, "the node client");
