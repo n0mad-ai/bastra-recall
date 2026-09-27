@@ -118,7 +118,7 @@ test("#537 — with the client deselected, every Claude Code command runs on nod
   const cmds = claudeCommands(false);
   assert.equal(cmds.length, 8);
   for (const cmd of cmds) {
-    assert.ok(cmd.startsWith("node "), `not on the node client: ${cmd}`);
+    assert.ok(cmd.startsWith("BASTRA_HOOK_CLIENT=claude-code node "), `not on the node client: ${cmd}`);
     assert.ok(!cmd.includes(HOOK_STUB_BIN), `still points at the compiled binary: ${cmd}`);
   }
   assert.equal(
@@ -131,7 +131,7 @@ test("#537 — with the client deselected, every Claude Code command runs on nod
 test("#537 — with the client selected, every Claude Code command runs on the binary", () => {
   const cmds = claudeCommands(true);
   assert.equal(cmds.length, 8);
-  for (const cmd of cmds) assert.ok(cmd.startsWith(`${HOOK_STUB_BIN} `), `not on the compiled client: ${cmd}`);
+  for (const cmd of cmds) assert.ok(cmd.startsWith(`BASTRA_HOOK_CLIENT=claude-code ${HOOK_STUB_BIN} `), `not on the compiled client: ${cmd}`);
   assert.equal(
     statuslineCommand("/pkg/statusline/dist/index.mjs", true),
     `${HOOK_STUB_BIN} statusline --style=powerline`,

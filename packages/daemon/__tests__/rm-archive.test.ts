@@ -7,7 +7,7 @@ import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   RECEIPT_MAX_LINES,
@@ -22,6 +22,7 @@ import {
   runRmShim,
   sameFile,
   shimRewrite,
+  stableNode,
   DEFAULT_RETAIN,
   ephemeralRoots,
   parseRetain,
@@ -30,12 +31,14 @@ import {
   stampReconcile,
   type Retain,
 } from "../src/rm-archive.js";
-import { getArchiveRetain, setArchiveRetain } from "../src/settings.js";
-import { rmShimSwitchedOff } from "../src/bash-pre-patterns.js";
+import { getArchiveEnabled, getArchiveRetain, setArchiveEnabled, setArchiveRetain } from "../src/settings.js";
+import { archiveMode, rmShimSwitchedOff } from "../src/bash-pre-patterns.js";
 import { matchPattern, runBashPreLane } from "../src/bash-pre-lane.js";
 import { runBashFailLane } from "../src/bash-fail-lane.js";
 
 const RM = "r" + "m";
+// The lane tests in this file run opted in (#650); the default-off test sets it back.
+process.env.BASTRA_RM_ARCHIVES = "1";
 /** Outside every temp root: the test-run root is under /tmp, so it is declared not-temp here. */
 const NOT_TEMP = { BASTRA_RM_TEMP_ROOTS: "" };
 
@@ -184,6 +187,17 @@ describe("#650 — retention: two days by default, one knob per class", () => {
     assert.equal(await getArchiveRetain(path), "junk=0.5,user=1");
     writeFileSync(path, JSON.stringify({ update: { mode: "notify" }, archive: { retain: "user=forever" } }));
     assert.equal(await getArchiveRetain(path), undefined);
+  });
+
+  it("archive.enabled (the opt-in) defaults to off and survives a retain write", async () => {
+    // Revert-check: setArchiveRetain writing `{ retain }` alone → the opt-in is lost.
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "enabled-settings-")));
+    const path = join(dir, "cli-settings.json");
+    assert.equal(await getArchiveEnabled(path), false);
+    await setArchiveEnabled(true, path);
+    await setArchiveRetain("user=1", path);
+    assert.equal(await getArchiveEnabled(path), true);
+    assert.equal(await getArchiveRetain(path), "user=1");
   });
 
   it("is looked at hourly, and only where an archive exists", () => {
@@ -502,6 +516,28 @@ describe("#650 — the rewritten command runs rm through the shim or not at all"
       assert.equal(r.stdout, `${SHIM_DIR}/rm\n`, sh);
     }
   });
+
+  it("a node an upgrade took away does not break the shim: Homebrew's opt path, else node on PATH", () => {
+    // Revert-check: shims exec "${BASTRA_NODE:-node}" without the -x fallback → exit 127;
+    // stableNode returning execPath → the Cellar path is pinned.
+    const same = (p: string) => (p.includes("/opt/node@24/") ? "/opt/homebrew/Cellar/node@24/24.1.0/bin/node" : p);
+    assert.equal(stableNode("/opt/homebrew/Cellar/node@24/24.1.0/bin/node", same), "/opt/homebrew/opt/node@24/bin/node");
+    assert.equal(stableNode("/opt/homebrew/Cellar/node/24.1.0/bin/node", (p) => p), "/opt/homebrew/Cellar/node/24.1.0/bin/node");
+    assert.equal(stableNode("/usr/local/bin/node"), "/usr/local/bin/node");
+    // The shipped shim script, next to a stand-in dist/rm-shim.js.
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "shim-node-")));
+    mkdirSync(join(root, "shims"));
+    mkdirSync(join(root, "dist"));
+    writeFileSync(join(root, "shims", "rm"), readFileSync(join(SHIM_DIR, "rm")));
+    chmodSync(join(root, "shims", "rm"), 0o755);
+    writeFileSync(join(root, "dist", "rm-shim.js"), "console.log('shim ran');\n");
+    const r = spawnSync(join(root, "shims", "rm"), [], {
+      encoding: "utf8",
+      env: { ...process.env, BASTRA_NODE: "/nonexistent/Cellar/node/0.0.0/bin/node", PATH: `${dirname(process.execPath)}:/usr/bin:/bin` },
+    });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout, "shim ran\n");
+  });
 });
 
 async function preHook(command: string, surface = "claude-code", cwd?: string) {
@@ -717,8 +753,8 @@ describe("#650 — the shim switched off says it exists, and the off switch is c
     });
   });
 
-  it("with the shim on (the default) there is no such line and no shadow event", async () => {
-    // Revert-check: rmShimSwitchedOff without the BASTRA_RM_SHIM check → the default path logs shadows.
+  it("opted in, with the shim on, there is no such line and no shadow event", async () => {
+    // Revert-check: rmShimSwitchedOff without the BASTRA_RM_SHIM check → the opted-in path logs shadows.
     const prev = process.env.BASTRA_RM_SHIM;
     delete process.env.BASTRA_RM_SHIM;
     try {
@@ -727,10 +763,43 @@ describe("#650 — the shim switched off says it exists, and the off switch is c
       assert.equal(out.permissionDecision, "allow");
       assert.doesNotMatch(out.additionalContext, /switched off/);
       assert.equal(shadows().length, before);
-      assert.equal(rmShimSwitchedOff("claude-code"), false, "on by default is not 'switched off'");
+      assert.equal(rmShimSwitchedOff("claude-code"), false, "on is not 'switched off'");
     } finally {
       if (prev === undefined) delete process.env.BASTRA_RM_SHIM;
       else process.env.BASTRA_RM_SHIM = prev;
+    }
+  });
+
+  it("not opted in (the default): the plain STOP as before — no rewrite, no allow, no line, no shadow", async () => {
+    // Revert-check: archiveMode() returning "bastra" when unset → the rm is allowed and rewritten.
+    const prev = { opt: process.env.BASTRA_RM_ARCHIVES, shim: process.env.BASTRA_RM_SHIM, git: process.env.BASTRA_GIT_SHIM };
+    process.env.BASTRA_RM_ARCHIVES = "0"; // stands for unset: the suite pins it so the user's settings cannot leak in
+    delete process.env.BASTRA_RM_SHIM;
+    delete process.env.BASTRA_GIT_SHIM;
+    try {
+      const before = shadows().length;
+      for (const cmd of [`${RM} -rf victim-a`, "git reset --hard", "git branch -D feature"]) {
+        const out = await preHook(cmd, "claude-code", project());
+        assert.equal(out.permissionDecision, undefined, cmd);
+        assert.equal(out.updatedInput, undefined, cmd);
+        // rm keeps its STOP; the git acts keep #651's hint (a reversible form or STOP).
+        if (cmd.startsWith(RM)) assert.match(out.additionalContext, /STOP — destructive/, cmd);
+        assert.doesNotMatch(out.additionalContext, /switched off|bastra runs this command/, cmd);
+      }
+      assert.equal(shadows().length, before);
+      // The setting alone opts in; the env wins over it either way.
+      delete process.env.BASTRA_RM_ARCHIVES;
+      assert.equal(archiveMode(), "off");
+      assert.equal(archiveMode(true), "bastra");
+      process.env.BASTRA_RM_ARCHIVES = "0";
+      assert.equal(archiveMode(true), "off");
+      process.env.BASTRA_RM_ARCHIVES = "host";
+      assert.equal(archiveMode(false), "host");
+    } finally {
+      for (const [k, v] of [["BASTRA_RM_ARCHIVES", prev.opt], ["BASTRA_RM_SHIM", prev.shim], ["BASTRA_GIT_SHIM", prev.git]] as const) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
     }
   });
 });

@@ -14,6 +14,8 @@ import { SHIM_DIR, callReport, manifestRows, reconcilePlan, applyReconcile, rest
 import { cUnquote, gitAct, parseGit, runGitShim, unpin } from "../src/git-archive.js";
 import { matchPattern, runBashPreLane } from "../src/bash-pre-lane.js";
 
+// The lane tests in this file run opted in (#650); the default-off test sets it back.
+process.env.BASTRA_RM_ARCHIVES = "1";
 const quiet = { out: () => {}, err: () => {} };
 
 function repo(root: string, name: string) {

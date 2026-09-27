@@ -78,7 +78,7 @@ export const RM_ARCHIVES: Undo = {
   kind: "receipt",
   needsArchivingRm: true,
   text:
-    `\`rm\` in this shell archives instead of deleting (host opt-in BASTRA_RM_ARCHIVES): ` +
+    `\`rm\` in this shell archives instead of deleting (host opt-in BASTRA_RM_ARCHIVES=host): ` +
     `targets move to ~/_archive/<date>/<full path>, \`agent-archive restore <path>\` puts them back; ` +
     `temp dirs are really removed; /, ~ and system dirs are refused.`,
 };
@@ -329,61 +329,90 @@ export const RISKY_PATTERNS: Array<{ label: string; re: RegExp }> = [
 ];
 
 /**
+ * The #650 opt-in, read in the daemon — off by default. `BASTRA_RM_ARCHIVES`
+ * in the daemon's environment wins when set: `1` turns on bastra's archiving
+ * `rm` and git snapshots, `host` means the host's agent shell brings its own
+ * archiving `rm` (#651: the receipt text, no rewrite), anything else is off.
+ * Unset, `archive.enabled` in cli-settings.json decides (`setting`, read by
+ * the lane; `bastra config set archive.enabled on`). Off, rm and the git acts
+ * keep their plain STOP: nothing is rewritten, nothing is allowed.
+ */
+export type ArchiveMode = "off" | "bastra" | "host";
+export function archiveMode(setting = false): ArchiveMode {
+  const env = process.env.BASTRA_RM_ARCHIVES;
+  if (env === "1") return "bastra";
+  if (env === "host") return "host";
+  if (env) return "off";
+  return setting ? "bastra" : "off";
+}
+
+/**
  * Host opt-in: on a machine whose agent shell puts an archiving `rm` first in
  * PATH, "STOP — needs explicit confirmation" is false for rm and teaches the
- * model to fear a reversible move. Only the claude-code surface is covered —
- * that is where the shim is installed; other surfaces keep the STOP.
+ * model to fear a reversible move. Only a call that carries Claude Code's
+ * client marker (#657) — that is where the shim is installed; other and
+ * unmarked surfaces keep the STOP.
  */
-function rmArchives(surface: string): boolean {
-  return process.env.BASTRA_RM_ARCHIVES === "1" && surface === "claude-code";
+function rmArchives(surface: string, setting = false): boolean {
+  return surface === "claude-code" && archiveMode(setting) === "host";
 }
 
 /**
- * bastra's own archiving `rm` (rm-archive.ts): on by default on claude-code,
- * whose PreToolUse hook can rewrite the command so the shim runs first. Off
- * with BASTRA_RM_SHIM=0, and off when the host brings its own shim
- * (BASTRA_RM_ARCHIVES=1) or the shim is not on this disk.
+ * bastra's own archiving `rm` (rm-archive.ts): only with the opt-in, and only
+ * on a call marked as Claude Code, whose PreToolUse hook can rewrite the
+ * command so the shim runs first. `BASTRA_RM_SHIM=0` leaves it out while the
+ * git snapshots stay on; off, too, when the shim is not on this disk.
  */
-export function rmShim(surface: string): boolean {
+export function rmShim(surface: string, setting = false): boolean {
   return (
     surface === "claude-code" &&
+    archiveMode(setting) === "bastra" &&
     process.env.BASTRA_RM_SHIM !== "0" &&
-    !rmArchives(surface) &&
     existsSync(join(SHIM_DIR, "rm"))
   );
 }
 
 /**
- * The shim is here and would run on this surface — only BASTRA_RM_SHIM=0
- * keeps it out. Then a command it would have taken still gets its STOP, plus
- * one line that the shim exists (#650, owner's ask: an off switch should
- * say what it costs).
+ * Opted in, but `BASTRA_RM_SHIM=0` keeps the rm shim out. Then a command it
+ * would have taken still gets its STOP, plus one line that the shim exists
+ * (#650, owner's ask: an off switch should say what it costs). Without the
+ * opt-in there is no such line: off means the hint as before.
  */
-export function rmShimSwitchedOff(surface: string): boolean {
+export function rmShimSwitchedOff(surface: string, setting = false): boolean {
   return (
     surface === "claude-code" &&
+    archiveMode(setting) === "bastra" &&
     process.env.BASTRA_RM_SHIM === "0" &&
-    !rmArchives(surface) &&
     existsSync(join(SHIM_DIR, "rm"))
   );
 }
 
-/** bastra's git snapshots: on by default on claude-code, off with BASTRA_GIT_SHIM=0. */
-export function gitShim(surface: string): boolean {
-  return surface === "claude-code" && process.env.BASTRA_GIT_SHIM !== "0" && existsSync(join(SHIM_DIR, "git"));
+/** bastra's git snapshots: with the opt-in on a Claude Code call, unless BASTRA_GIT_SHIM=0. */
+export function gitShim(surface: string, setting = false): boolean {
+  return (
+    surface === "claude-code" &&
+    archiveMode(setting) === "bastra" &&
+    process.env.BASTRA_GIT_SHIM !== "0" &&
+    existsSync(join(SHIM_DIR, "git"))
+  );
 }
 
-/** Switched off, but here and on this surface (see rmShimSwitchedOff). */
-export function gitShimSwitchedOff(surface: string): boolean {
-  return surface === "claude-code" && process.env.BASTRA_GIT_SHIM === "0" && existsSync(join(SHIM_DIR, "git"));
+/** Opted in, but BASTRA_GIT_SHIM=0 (see rmShimSwitchedOff). */
+export function gitShimSwitchedOff(surface: string, setting = false): boolean {
+  return (
+    surface === "claude-code" &&
+    archiveMode(setting) === "bastra" &&
+    process.env.BASTRA_GIT_SHIM === "0" &&
+    existsSync(join(SHIM_DIR, "git"))
+  );
 }
 
 /** The undo a destructive label's row declares, where this host can keep it. */
-export function reversibleDefault(label: string, surface: string): Undo | null {
-  if (GIT_SHIM[label] && gitShim(surface)) return GIT_SHIM[label];
+export function reversibleDefault(label: string, surface: string, setting = false): Undo | null {
+  if (GIT_SHIM[label] && gitShim(surface, setting)) return GIT_SHIM[label];
   const undo = DESTRUCTIVE_PATTERNS.find((p) => p.label === label)?.undo ?? null;
   if (!undo?.needsArchivingRm) return undo;
-  if (rmArchives(surface)) return undo;
-  if (!rmShim(surface)) return null;
+  if (rmArchives(surface, setting)) return undo;
+  if (!rmShim(surface, setting)) return null;
   return undo === RM_ARCHIVES ? RM_SHIM : undo;
 }

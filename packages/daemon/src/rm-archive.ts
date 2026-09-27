@@ -64,13 +64,36 @@ export function shimRewrite(command: string, call: string, git = false): string 
   const here = `[ -x ${shq(SHIM_DIR + "/rm")} ]` + (git ? ` && [ -x ${shq(SHIM_DIR + "/git")} ]` : "");
   return (
     `${here} || exit 97; unset -f rm git 2>/dev/null; ` +
-    `export PATH=${shq(SHIM_DIR)}:"$PATH" BASTRA_RM_CALL=${shq(call)} BASTRA_NODE=${shq(process.execPath)}\n` +
+    `export PATH=${shq(SHIM_DIR)}:"$PATH" BASTRA_RM_CALL=${shq(call)} BASTRA_NODE=${shq(stableNode(process.execPath))}\n` +
     command
   );
 }
 
+/**
+ * The node the shim runs on, spelled so an upgrade does not take it away:
+ * Homebrew's `<prefix>/Cellar/<formula>/<version>/bin/node` is gone after
+ * `brew upgrade` + cleanup, while `<prefix>/opt/<formula>/bin/node` follows
+ * the upgrade. Used only when it resolves to this very node; anything else
+ * passes through (and the shim falls back to `node` on PATH if it vanishes).
+ */
+export function stableNode(execPath: string, realpath: (p: string) => string = realpathSync): string {
+  const m = /^(.*)\/Cellar\/([^/]+)\/[^/]+\/bin\/node$/.exec(execPath);
+  if (!m) return execPath;
+  const opt = `${m[1]}/opt/${m[2]}/bin/node`;
+  try {
+    return realpath(opt) === realpath(execPath) ? opt : execPath;
+  } catch {
+    return execPath;
+  }
+}
+
+/** Where the archive lives — creates nothing (the post lane asks after every Bash call). */
+function archiveDir(env: NodeJS.ProcessEnv): string {
+  return env.BASTRA_ARCHIVE_DIR || join(homedir(), ".bastra", "archive");
+}
+
 export function archiveRoot(env: NodeJS.ProcessEnv = process.env): string {
-  const raw = env.BASTRA_ARCHIVE_DIR || join(homedir(), ".bastra", "archive");
+  const raw = archiveDir(env);
   mkdirSync(raw, { recursive: true });
   return realpathSync(raw);
 }
@@ -490,7 +513,8 @@ export function restoreCommands(r: ManifestRow): string[] {
 
 /** What `rm` did in one tool call — the PostToolUse receipt (null: nothing recorded). */
 export function callReport(call: string, env: NodeJS.ProcessEnv = process.env): string | null {
-  if (!call) return null;
+  // No manifest, nothing to report — and no ~/.bastra/archive made for a user who never opted in.
+  if (!call || !existsSync(join(archiveDir(env), "manifest.jsonl"))) return null;
   const rows = manifestRows(env, true).filter((r) => r.call === call);
   if (rows.length === 0) return null;
   const shown = rows.slice(0, RECEIPT_MAX_LINES);
@@ -723,7 +747,7 @@ export const RECONCILE_EVERY_MS = 3_600_000;
 /** True when the archive exists and was last reconciled over an hour ago
  *  (or never). Creates nothing: this runs after every Bash call. */
 export function reconcileDue(env: NodeJS.ProcessEnv = process.env, now = Date.now()): boolean {
-  const root = env.BASTRA_ARCHIVE_DIR || join(homedir(), ".bastra", "archive");
+  const root = archiveDir(env);
   try {
     return now - statSync(join(root, ".reconcile-stamp")).mtimeMs > RECONCILE_EVERY_MS;
   } catch {

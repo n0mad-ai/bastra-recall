@@ -44,6 +44,7 @@ function allOff(): FeatureState {
     commons: false,
     bridges: false,
     ui: false,
+    archive: "off",
   };
 }
 
@@ -61,6 +62,7 @@ function allOn(): FeatureState {
     commons: true,
     bridges: true,
     ui: true,
+    archive: "bastra",
   };
 }
 
@@ -133,6 +135,7 @@ test("optional features that are off are marked intentional, never with the off 
     ["Bastra Commons", /bastra commons enable/],
     ["shared recall bridges", /bastra bridges enable/],
     ["vault map", /bastra config set ui\.enabled true/],
+    ["archiving rm + git snapshots (Claude Code)", /bastra config set archive\.enabled on/],
   ];
   for (const [name, hint] of expected) {
     const line = lineFor(optional, name);

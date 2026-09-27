@@ -53,6 +53,7 @@ import {
   type Undo,
 } from "./bash-pre-patterns.js";
 import { shimRewrite } from "./rm-archive.js";
+import { getArchiveEnabled } from "./settings.js";
 import { gitAct, parseGit } from "./git-archive.js";
 import { bashVerdict, settingsFiles, type BashVerdict } from "./cc-permissions.js";
 
@@ -596,8 +597,8 @@ interface Hint {
  * - several acts that are not all receipts → STOP (a hint names one form);
  * - the rm receipt only when every rm runs through this shell's PATH.
  */
-function hintFor(cmd: string, surface: string): Hint | null {
-  const h = hintCore(cmd, surface);
+function hintFor(cmd: string, surface: string, setting = false): Hint | null {
+  const h = hintCore(cmd, surface, setting);
   if (!h || h.severity !== "destructive") return h;
   // Switched off, a family's rows get their plain hint; say what the shim
   // would have done, with the same decision it takes when on.
@@ -605,22 +606,22 @@ function hintFor(cmd: string, surface: string): Hint | null {
   const labels = DESTRUCTIVE_PATTERNS.filter((p) => segments.some((s) => p.re.test(s))).map((p) => p.label);
   if (labels.length === 0) return h;
   const family =
-    rmShimSwitchedOff(surface) && labels.every((l) => RM_ROWS.some((r) => r.label === l))
+    rmShimSwitchedOff(surface, setting) && labels.every((l) => RM_ROWS.some((r) => r.label === l))
       ? "rm"
-      : gitShimSwitchedOff(surface) && labels.every((l) => GIT_SHIM[l])
+      : gitShimSwitchedOff(surface, setting) && labels.every((l) => GIT_SHIM[l])
         ? "git"
         : null;
   if (!family) return h;
   return { ...h, offFamily: family, wouldShim: (family === "git" || rmRunsThroughPath(cmd)) && shimOnly(cmd) };
 }
 
-function hintCore(cmd: string, surface: string): Hint | null {
+function hintCore(cmd: string, surface: string, setting = false): Hint | null {
   const first = matchPattern(cmd);
   if (!first || first.severity === "risky") return first && { ...first, undo: null };
   const segments = matchSegments(cmd);
   const acts = DESTRUCTIVE_PATTERNS.filter((p) => segments.some((s) => p.re.test(s))).map((p) => ({
     label: p.label,
-    undo: reversibleDefault(p.label, surface),
+    undo: reversibleDefault(p.label, surface, setting),
   }));
   const stop = (label: string): Hint => ({ label, severity: "destructive", undo: null });
   const bare = acts.find((a) => a.undo === null);
@@ -631,7 +632,7 @@ function hintCore(cmd: string, surface: string): Hint | null {
   const viaShim = acts.some((a) => a.undo === RM_SHIM || a.undo?.viaGitShim);
   // bastra's shims only run where the lane may rewrite: a command made of
   // their acts. Anywhere else the real `rm`/`git` runs, and the hint says so.
-  if (viaShim && !shimOnly(cmd, { rm: rmShim(surface), git: gitShim(surface) })) return stop(first.label);
+  if (viaShim && !shimOnly(cmd, { rm: rmShim(surface, setting), git: gitShim(surface, setting) })) return stop(first.label);
   // Every act here is a receipt (or the single act has an undo): say each
   // distinct receipt, not only the first (#658).
   const viaGit = acts.some((a) => a.undo?.viaGitShim);
@@ -668,7 +669,10 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
   // silently unhinted and unlogged.
   if (invokesOwnBinary(command)) return "{}";
 
-  const match = hintFor(command, client);
+  // #650/#657: the archiving rm and the git snapshots are an opt-in, and
+  // they rewrite and allow only a call that proves it is Claude Code — an
+  // unmarked payload is weighed as "unknown", never as claude-code.
+  const match = hintFor(command, clientEvidence, await getArchiveEnabled().catch(() => false));
   if (!match) return "{}";
 
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
@@ -805,6 +809,8 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
       settings_verdict: settings.verdict,
       settings_rule: settings.rule ?? null,
       hinted: offLine !== "",
+      // The same call's dimensions as its bash_hook_call row (#507/#652).
+      dimensions: dimensionsFrom({ client: clientEvidence, hook_source: "bash-pre", session_id: payload.session_id, agent }),
     });
   }
   const text = offLine ? block.replace(/<\/recall-hints>$/, `${offLine}\n</recall-hints>`) : block;
@@ -977,7 +983,7 @@ export function shimOffLine(command: string, settings: BashVerdict, family: "rm"
     const saved =
       "saves what it discards first (files git clean removes → ~/.bastra/archive; uncommitted changes, a deleted branch's or stash's commit → pinned under refs/bastra-archive/, restorable) and then runs as typed";
     const on =
-      "They refuse in a repository that runs its own code on the act. Turn them on: unset BASTRA_GIT_SHIM (on by default) — the user's call, tell them.";
+      "They refuse in a repository that runs its own code on the act. Turn them on: unset BASTRA_GIT_SHIM (on with the archive opt-in) — the user's call, tell them.";
     if (settings.verdict === "ask") return `${lead} would still be asked about (your settings: \`${settings.rule}\`); once approved it ${saved}. ${on}`;
     if (settings.verdict === "allow") return `${lead} — which your settings allow (\`${settings.rule}\`), so it discards for real now — ${saved}. ${on}`;
     return `${lead} needs no confirmation: it ${saved}. ${on}`;
@@ -985,7 +991,7 @@ export function shimOffLine(command: string, settings: BashVerdict, family: "rm"
   const t = rmTargets(command);
   const what = t.length === 0 ? "its targets" : t.slice(0, 3).map((x) => `\`${x}\``).join(", ") + (t.length > 3 ? ` and ${t.length - 3} more` : "");
   const moved = `would have moved ${what} to ~/.bastra/archive (restorable: \`bastra archive restore <path>\`; temp dirs really removed)`;
-  const on = "Turn it on: unset BASTRA_RM_SHIM (it is on by default) — the user's call, tell them.";
+  const on = "Turn it on: unset BASTRA_RM_SHIM (on with the archive opt-in) — the user's call, tell them.";
   const lead = "bastra's archiving rm is switched off here (BASTRA_RM_SHIM=0). With it on, this exact command";
   if (settings.verdict === "ask") {
     return `${lead} would still be asked about (your settings: \`${settings.rule}\`), and once approved it ${moved} instead of deleting. ${on}`;

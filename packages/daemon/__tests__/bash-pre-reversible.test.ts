@@ -13,7 +13,7 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { matchPattern, formatHintBlock, runBashPreLane, reversibleDefault, DESTRUCTIVE_PATTERNS } from "../src/bash-pre-lane.js";
 
-const RM = { BASTRA_RM_ARCHIVES: "1" };
+const RM = { BASTRA_RM_ARCHIVES: "host" };
 
 /** Apply env vars; the returned function puts the previous values back. */
 function setEnv(env: Record<string, string>): () => void {
@@ -173,6 +173,25 @@ describe("#650 reversible defaults — the table", () => {
     assert.match(withEnv(RM, () => formatHintBlock("rm -rf", "destructive", [])), /archives instead of deleting/);
     assert.equal((await hintOf("rm -rf build", RM, "codex")).kind, "stop");
     assert.equal((await hintOf("rm -rf build")).kind, "stop");
+  });
+
+  it("#657: a payload without the Claude Code marker keeps STOP — host receipt and bastra's shim alike", async () => {
+    // Revert-check: weigh the hint with hookClient() (which guesses claude-code) → red.
+    for (const env of [RM, { BASTRA_RM_ARCHIVES: "1", BASTRA_RM_SHIM: "", BASTRA_GIT_SHIM: "" }]) {
+      const restore = setEnv(env);
+      try {
+        const stdout = await runHook(
+          { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "rm -rf build" }, session_id: "" },
+          {},
+        );
+        const out = JSON.parse(stdout)?.hookSpecificOutput ?? {};
+        assert.match(out.additionalContext ?? "", /STOP — destructive/, JSON.stringify(env));
+        assert.equal(out.permissionDecision, undefined, "no allow without the marker");
+        assert.equal(out.updatedInput, undefined, "no rewrite without the marker");
+      } finally {
+        restore();
+      }
+    }
   });
 });
 
@@ -540,7 +559,7 @@ describe("#651 review — the hint weighs the whole command, not the first row i
     assert.match(block, /git reset --soft HEAD@\{1\}/, "the amend receipt");
     assert.match(block, /the lease refuses/, "the lease receipt");
     const rmStdout = await runHook(
-      { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "rm -rf a && rm -r b" }, session_id: "" },
+      { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "rm -rf a && rm -r b" }, session_id: "", bastra_client: "claude-code" },
       RM,
     );
     const rmBlock: string = JSON.parse(rmStdout)?.hookSpecificOutput?.additionalContext ?? "";

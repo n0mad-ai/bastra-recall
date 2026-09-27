@@ -78,11 +78,11 @@ test("Claude Code: a re-install keeps the user's wrapper around a hook command",
     hooks: [{ type: "command", command: "/usr/local/bin/hook-timer node /old/runtime/dist/prompt-hook.js", timeout: 2, __bastraRecall: true }],
   };
   const plan = planHookEntries("install", { UserPromptSubmit: [wrapped] }, { includeStop: false, stubPresent: false });
-  assert.deepEqual(commandsOf(plan.after.UserPromptSubmit), [`/usr/local/bin/hook-timer node ${PROMPT_HOOK_BIN}`]);
+  assert.deepEqual(commandsOf(plan.after.UserPromptSubmit), [`BASTRA_HOOK_CLIENT=claude-code /usr/local/bin/hook-timer node ${PROMPT_HOOK_BIN}`]);
 
   // Switching to the stub replaces the runner, still inside the wrapper.
   const stub = planHookEntries("install", { UserPromptSubmit: [wrapped] }, { includeStop: false, stubPresent: true });
-  assert.deepEqual(commandsOf(stub.after.UserPromptSubmit), [`/usr/local/bin/hook-timer ${HOOK_STUB_BIN} prompt`]);
+  assert.deepEqual(commandsOf(stub.after.UserPromptSubmit), [`BASTRA_HOOK_CLIENT=claude-code /usr/local/bin/hook-timer ${HOOK_STUB_BIN} prompt`]);
 
   // Idempotent: installing over the result changes nothing.
   const again = planHookEntries("install", plan.after, { includeStop: false, stubPresent: false });
@@ -90,7 +90,7 @@ test("Claude Code: a re-install keeps the user's wrapper around a hook command",
 
   // An unwrapped install stays exactly what it was.
   const plain = planHookEntries("install", {}, { includeStop: false, stubPresent: false });
-  assert.deepEqual(commandsOf(plain.after.UserPromptSubmit), [`node ${PROMPT_HOOK_BIN}`]);
+  assert.deepEqual(commandsOf(plain.after.UserPromptSubmit), [`BASTRA_HOOK_CLIENT=claude-code node ${PROMPT_HOOK_BIN}`]);
 });
 
 test("Codex: a re-install keeps the wrapper and writes the client marker once", () => {

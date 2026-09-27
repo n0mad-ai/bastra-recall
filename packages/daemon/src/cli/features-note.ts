@@ -25,6 +25,7 @@ import { codeAwarenessDisabledByEnv, enabledRepos } from "../code-graph/enabled-
 import { getPromptImpactEnabled } from "../code-graph/prompt-impact-settings.js";
 import { probeDaemon, resolveVault, type DaemonProbe } from "./helpers.js";
 import type { ClientFeatures } from "./types.js";
+import { archiveMode, type ArchiveMode } from "../bash-pre-patterns.js";
 
 export interface FeatureState {
   /** Clients whose MCP server is registered, with their hook/skill state. */
@@ -49,6 +50,8 @@ export interface FeatureState {
   commons: boolean;
   bridges: boolean;
   ui: boolean;
+  /** #650: bastra's archiving rm + git snapshots (bash-pre-patterns.ts archiveMode). */
+  archive: ArchiveMode;
 }
 
 const ON = "✓";
@@ -138,6 +141,12 @@ export function featureLines(s: FeatureState): string[] {
   lines.push(s.ui
     ? row(ON, "vault map", "on")
     : row(INFO, "vault map", "off", "bastra config set ui.enabled true"));
+  const archive = "archiving rm + git snapshots (Claude Code)";
+  lines.push(s.archive === "bastra"
+    ? row(ON, archive, "on (rm -r and lossy git acts run through ~/.bastra/archive without a prompt; bastra archive list)")
+    : s.archive === "host"
+      ? row(ON, archive, "host (BASTRA_RM_ARCHIVES=host: the host's own archiving rm, receipt text only)")
+      : row(INFO, archive, "off", "bastra config set archive.enabled on  (docs/hooks.md)"));
   return lines;
 }
 
@@ -212,6 +221,8 @@ export async function collectFeatureState(
     commons: settings.commons?.enabled ?? false,
     bridges: settings.sharedRecall?.enabled ?? false,
     ui: settings.ui?.enabled ?? false,
+    // This shell's env; the daemon reads its own (a LaunchAgent may differ).
+    archive: archiveMode(settings.archive?.enabled ?? false),
   };
 }
 

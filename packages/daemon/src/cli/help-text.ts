@@ -586,7 +586,12 @@ Usage:
   bastra archive restore <path|ref>   put it back (a path, or a git snapshot ref / sha)
   bastra archive reconcile [--yes]    show (with --yes: remove) what can go
 
-On Claude Code, an rm-only Bash command runs through bastra's archiving rm:
+Opt-in, off by default: bastra config set archive.enabled on (or
+BASTRA_RM_ARCHIVES=1 in the daemon's environment, which wins). Only for hook
+calls marked as Claude Code (re-run bastra install once to add the marker).
+
+With it on, a Claude Code Bash command made only of rm runs through bastra's
+archiving rm, without the usual permission prompt:
 targets move to ~/.bastra/archive/<date>/<time-pid>/<full path>, temp dirs
 are really removed, /, ~ and system dirs are refused. Old entries go by class,
 checked hourly after Bash calls: build junk after 1 day, clean git-tracked
@@ -594,13 +599,14 @@ after 2, the rest after 2; a 10 GB cap never touches your own files younger
 than their retention. Change it (days, fractions allowed; env
 BASTRA_ARCHIVE_RETAIN wins):
   bastra config set archive.retain junk=1,in-git=2,user=2
-Off: BASTRA_RM_SHIM=0.
+Only the rm part off: BASTRA_RM_SHIM=0.
 
 git acts that lose work (clean -f, reset --hard, checkout [<tree>] -- <paths>,
 restore, branch -D, stash drop|clear) are snapshotted first: clean's files
 and any untracked file the act would overwrite go to the archive, the rest
 is pinned under refs/bastra-archive/ and listed here too;
-\`bastra archive restore <ref>\` puts it back. Off: BASTRA_GIT_SHIM=0.
+\`bastra archive restore <ref>\` puts it back. The pins show up in
+\`git log --all\` until they expire. Only the git part off: BASTRA_GIT_SHIM=0.
 `,
 
   completion: `bastra completion — Tab completion for your shell

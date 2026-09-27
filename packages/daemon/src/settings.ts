@@ -146,8 +146,10 @@ export interface CliSettings {
   size?: { guide?: number; critical?: number; exemptPaths?: string[] };
   // #650: how many days the rm archive keeps a target, per class, as
   // `junk=1,in-git=2,user=2` (rm-archive.ts parseRetain). Env wins:
-  // BASTRA_ARCHIVE_RETAIN.
-  archive?: { retain?: string };
+  // BASTRA_ARCHIVE_RETAIN. `enabled` is the opt-in for bastra's archiving
+  // rm and git snapshots (default off); env BASTRA_RM_ARCHIVES wins
+  // (bash-pre-patterns.ts archiveMode).
+  archive?: { retain?: string; enabled?: boolean };
   // User-Sprache (#231, Language-first recall): primary = 2-stelliger ISO-639-1-
   // Code (lowercase, z.B. "de"). Beim Onboarding aus der identity-Antwort
   // abgeleitet (persistLanguageSetting) oder via `bastra config set
@@ -258,6 +260,7 @@ const KNOWN_SETTINGS_KEYS: readonly string[] = [
   "language",
   "code",
   "promptImpact",
+  "archive",
 ];
 
 function warnAboutUnknownKeys(data: unknown, path: string): void {
@@ -456,9 +459,12 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
     }
     if (size.guide !== undefined || size.critical !== undefined || size.exemptPaths !== undefined) settings.size = size;
   }
-  const archiveData = (data as { archive?: { retain?: unknown } }).archive;
-  if (archiveData !== undefined && typeof archiveData.retain === "string" && parseRetain(archiveData.retain)) {
-    settings.archive = { retain: archiveData.retain };
+  const archiveData = (data as { archive?: { retain?: unknown; enabled?: unknown } }).archive;
+  if (archiveData !== undefined && archiveData !== null) {
+    const archive: { retain?: string; enabled?: boolean } = {};
+    if (typeof archiveData.retain === "string" && parseRetain(archiveData.retain)) archive.retain = archiveData.retain;
+    if (typeof archiveData.enabled === "boolean") archive.enabled = archiveData.enabled;
+    if (archive.retain !== undefined || archive.enabled !== undefined) settings.archive = archive;
   }
   const codeData = (data as { code?: { repos?: unknown } }).code;
   if (codeData !== undefined && Array.isArray(codeData.repos)) {
@@ -865,7 +871,16 @@ export async function getArchiveRetain(path?: string): Promise<string | undefine
 }
 
 export async function setArchiveRetain(retain: string, path: string = settingsFilePath()): Promise<void> {
-  await mutateSettings(path, (current) => ({ ...current, archive: { retain } }));
+  await mutateSettings(path, (current) => ({ ...current, archive: { ...current.archive, retain } }));
+}
+
+/** #650 opt-in: bastra's archiving rm and git snapshots. Default false. */
+export async function getArchiveEnabled(path?: string): Promise<boolean> {
+  return (await readSettings(path)).archive?.enabled ?? false;
+}
+
+export async function setArchiveEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
+  await mutateSettings(path, (current) => ({ ...current, archive: { ...current.archive, enabled: on } }));
 }
 
 export async function setApiToken(token: string, path: string = settingsFilePath()): Promise<void> {
