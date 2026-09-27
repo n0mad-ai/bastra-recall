@@ -21,7 +21,7 @@
  * in PATH of that one command. The user's shell, build scripts and makepkg
  * keep the system `rm`.
  */
-import { pinLive, restoreCommand, restorePin, unpin, withoutShims } from "./git-archive.js";
+import { isPin, pinLive, restoreCommand, restorePin, restoreShape, unpin, withoutShims } from "./git-archive.js";
 import { execFileSync } from "node:child_process";
 import {
   appendFileSync,
@@ -525,8 +525,13 @@ export function restore(target: string, env: NodeJS.ProcessEnv = process.env, cw
     .reverse()
     .find((r) => r.action === "pinned" && r.restore && (r.dest === target || (target.length >= 7 && (r.sha ?? "").startsWith(target))));
   if (pinned?.restore) {
-    if (!pinLive(pinned.orig, pinned.dest as string)) throw new Error(`${pinned.dest} is gone from ${pinned.orig}`);
-    for (const cmd of [pinned.restore, ...(pinned.then ?? [])]) restorePin(cmd);
+    const cmds = [pinned.restore, ...(pinned.then ?? [])];
+    // Only what the shim records: the manifest is a plain file, and this runs it.
+    if (!isPin(pinned.dest) || !cmds.every((c) => Array.isArray(c) && restoreShape(pinned.sha, c))) {
+      throw new Error(`the manifest row of ${target} is not one bastra's git snapshots wrote — not run`);
+    }
+    if (!pinLive(pinned.orig, pinned.dest)) throw new Error(`${pinned.dest} is gone from ${pinned.orig}`);
+    for (const cmd of cmds) restorePin(cmd);
     return `what \`${pinned.act}\` discarded in ${pinned.orig} (${restoreCommands(pinned).join(" && ")})`;
   }
   // The manifest keeps the path with its parent resolved (/var → /private/var
@@ -650,6 +655,7 @@ export function reconcilePlan(
   for (const r of manifestRows(env)) {
     if (r.action !== "pinned" || !r.sha || !r.dest) continue;
     const age = (now.getTime() - new Date(r.ts).getTime()) / 86_400_000;
+    // pinLive: a ref under refs/bastra-archive/ that is still there — nothing else.
     if (age > retain.user && pinLive(r.orig, r.dest)) {
       drop.push({ orig: r.orig, dest: r.dest, kind: "user", bytes: 0, why: `git snapshot older than ${retain.user} days`, sha: r.sha });
     }
