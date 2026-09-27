@@ -148,8 +148,9 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
   { label: "rm -r", re: /\brm\s+(?:-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)\b/, undo: RM_ARCHIVES },
   { label: "rmdir", re: /\brmdir\b/, undo: null },
   {
+    // `--hard` anywhere in the command: `git reset -q --hard`, `git reset HEAD~1 --hard`.
     label: "git reset --hard",
-    re: git(String.raw`reset\s+--hard\b`),
+    re: git(String.raw`reset\b[^\n;&|]*\s--hard(?![\w-])`),
     undo: {
       kind: "reversible-form",
       text:
@@ -223,8 +224,10 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
     },
   },
   {
+    // `-D` in any cluster and behind other flags (`-q -D`, `-Dr`), or a
+    // delete together with a force (`-d -f`, `--delete --force`).
     label: "git branch -D",
-    re: git(String.raw`branch\s+-D\b`),
+    re: git(String.raw`branch\b(?:(?=[^\n;&|]*\s-[a-zA-Z]*D(?![a-zA-Z]*-))|(?=${flag("delete", "d")})(?=${flag("force", "f")}))`),
     undo: {
       kind: "reversible-form",
       text:

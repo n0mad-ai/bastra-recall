@@ -848,6 +848,11 @@ describe("#650 git snapshots — the bash-pre lane allows only commands made of 
         "git restore --staged --worktree a",
         "git branch -D -r origin/old",
         "git stash drop 1",
+        "git reset -q --hard HEAD~3",
+        "git reset HEAD~1 --hard",
+        "git branch -q -D old",
+        "git branch -d -f old",
+        "git branch --delete --force old",
       ]) {
         const out = await preHook(cmd);
         assert.equal(out.permissionDecision, "allow", cmd);
@@ -930,8 +935,20 @@ describe("#650 git snapshots — the bash-pre lane allows only commands made of 
   });
 
   it("the tripwire rows tell the index's content from a tree's, and leave a plain index reset alone", () => {
-    // Revert-check: the old `checkout\s+--\s` → `git checkout -q -- a` trips no row and gets no hint at all.
+    // Revert-check (three): the row as it was, `checkout` + `--` with nothing between → `git checkout -q -- a` trips no
+    // row and gets no hint at all; `reset` + `--hard` with nothing between → neither does `git reset -q --hard`;
+    // `branch` + `-D` with nothing between → nor `git branch -q -D x`.
     const row = (cmd: string) => matchPattern(cmd)?.label ?? null;
+    assert.equal(row("git reset -q --hard"), "git reset --hard");
+    assert.equal(row("git reset HEAD~1 --hard"), "git reset --hard");
+    assert.equal(row("git reset --soft HEAD~1"), null);
+    assert.equal(row("git branch -q -D old"), "git branch -D");
+    assert.equal(row("git branch -Dr origin/old"), "git branch -D");
+    assert.equal(row("git branch -d -f old"), "git branch -D");
+    assert.equal(row("git branch --delete --force old"), "git branch -D");
+    assert.equal(row("git branch -d old"), null, "the form that refuses by itself");
+    assert.equal(row("git branch -f old HEAD"), null);
+    assert.equal(row("git branch -m old-Dname new"), null);
     assert.equal(row("git checkout -q -- a"), "git checkout --");
     assert.equal(row("git checkout --ours -- a"), "git checkout --");
     assert.equal(row("git checkout HEAD~1 -- a"), "git checkout <tree> --");
