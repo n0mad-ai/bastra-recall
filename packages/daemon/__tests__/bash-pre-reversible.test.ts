@@ -588,6 +588,9 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "eval 'hash -p /bin/rm rm'; rm -rf x",
       "eval 'export PATH=/x:$PATH'; rm -rf x",
       "eval 'alias rm=/bin/rm'; rm -rf x",
+      // `hash -p` points EVERY listed name at the path, not just the last.
+      "hash -p /x rm python; rm -rf dist",
+      "hash -p/x rm python; rm -rf dist",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "stop", cmd);
     }
@@ -606,6 +609,7 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       // `hash -p` for another name leaves `rm` alone; `rm()` in quotes is
       // a grep pattern, not a definition (#682 review).
       "hash -p /usr/bin/python3 python; rm -rf dist",
+      "hash -p /usr/bin/python3 python node; rm -rf dist",
       'grep -rn "rm()" src; rm -rf dist',
       "eval 'echo hi'; rm -rf dist",
       // The archiving rm's directory is exported in PATH: a child that looks

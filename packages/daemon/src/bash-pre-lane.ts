@@ -428,6 +428,18 @@ function commandWordAt(texts: string[]): number {
 }
 
 /**
+ * The names a `hash -p <path> name…` points at the path: every operand after
+ * the path, not just the last — `hash -p /x rm python` sets both (#657).
+ * No `-p` flag, no names.
+ */
+function hashPathNames(args: string[]): string[] {
+  const i = args.findIndex((t) => /^-\w*p/.test(t));
+  if (i < 0) return [];
+  // `-p /x` takes the next word as the path; `-p/x` carries it attached.
+  return args.slice(/^-\w*p$/.test(args[i]) ? i + 2 : i + 1);
+}
+
+/**
  * Does this command change what `rm` resolves to (#657)? A `PATH=`
  * assignment, `alias rm=…`, `hash -p <path> rm`, or an `rm()` / `function rm`
  * definition. The verb is read at command position (`commandWordAt`), so
@@ -446,7 +458,7 @@ function redefinesRm(cmd: string, depth = 0): boolean {
     const args = texts.slice(k + 1);
     // `git` too: bastra's git snapshots are the other shim in the same PATH entry.
     if (texts[k] === "alias" && args.some((t) => /^(?:rm|git)=/.test(t))) return true;
-    if (texts[k] === "hash" && args.some((t) => /^-\w*p/.test(t)) && /^(?:rm|git)$/.test(texts[texts.length - 1])) return true;
+    if (texts[k] === "hash" && hashPathNames(args).some((t) => /^(?:rm|git)$/.test(t))) return true;
     if (texts[k] === "eval" && (depth >= 2 || redefinesRm(args.join(" "), depth + 1))) return true;
   }
   return false;
