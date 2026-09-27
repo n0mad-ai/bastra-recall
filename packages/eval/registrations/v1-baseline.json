@@ -3,7 +3,7 @@
   "schema_version": 1,
   "registration_version": 2,
   "registered_at": "2026-09-27",
-  "$comment_version_2": "v2 (2026-09-27): ADDITIONS ONLY, no v1 measured value changed; v2 only fills fields v1 marked 'not measured'. Adds the offline half (run A twice + determinism check), the gold-set manifest hashes (vault, configuration, dataset) and the query slices the gold labels support. Everything v1 froze (live half, manifest pins, tolerances reference) is untouched. The flag registry and the M2-M6 gates are still open.",
+  "$comment_version_2": "v2 (2026-09-27): ADDITIONS ONLY, no v1 measured value changed; v2 only fills fields v1 marked 'not measured'. Adds the offline half (run A twice + determinism check + pool coverage to depth 40), the gold-set manifest hashes (vault, configuration, dataset) and the query slices the gold labels support. Everything v1 froze (live half, manifest pins, tolerances reference) is untouched. The flag registry and the M2-M6 gates are still open.",
   "issue": 387,
   "status": "partial",
   "$comment_status": "v1 froze the live half (B) and the manifest pins. v2 adds the offline half (A: two gold-set runs, determinism check) and the query slices the gold labels carry. The flag registry and the M2-M6 gates are NOT in this registration yet. Every such field below says 'not measured', 'not measurable' or 'not derived' instead of carrying a guessed value.",
@@ -132,7 +132,18 @@
     "answerable": { "n": 584, "recall_at_1": 0.2466, "recall_at_3": 0.3904, "recall_at_10": 0.5616, "recall_at_allowed_depth": 0.4897, "recall_at_3_incl_acceptable": 0.5308, "mrr": 0.3401 },
     "recall_at_pool": {
       "recall_at_pool_10": 0.5616,
-      "$comment": "The runner measures at the production pool k=10 only, so recall@pool@10 equals recall@10. A deeper pool (N > 10) is not measured by goldset-run."
+      "$comment": "goldset-run measures at the production pool k=10 only, so recall@pool@10 equals recall@10. The deeper pool (up to HOP_SEED_POOL = 40) comes from rerank-pool-coverage, same production path, same vault state.",
+      "pool_coverage": {
+        "artifact": "~/.bastra/eval-runs/2026-09-27-pool-coverage-fd784c3caa3c",
+        "command": "BASTRA_VAULT_PATH=<vault> npx tsx src/rerank-pool-coverage.ts --gold-dir ~/.bastra/eval-goldset",
+        "vault_size": 1335,
+        "n": 584,
+        "in_pool_at": { "@1": 0.247, "@3": 0.390, "@5": 0.491, "@10": 0.562, "@20": 0.644, "@30": 0.680, "@40": 0.704 },
+        "absent_from_40_pool": 173,
+        "associative": { "n": 137, "@10": 0.080, "@40": 0.168, "absent_from_40_pool": 114 },
+        "descriptive": { "n": 447, "@10": 0.709, "@40": 0.868, "absent_from_40_pool": 59 },
+        "$comment": "@1/@3/@10 match run A (0.2466/0.3904/0.5616 rounded), which cross-checks the two tools. 173 of 584 answerable cases have no expected id anywhere in the 40-deep pool; no reranker can reach those."
+      }
     },
     "control_arm": { "n": 584, "recall_at_1": 0, "recall_at_3": 0, "recall_at_10": 0, "recall_at_allowed_depth": 0, "recall_at_3_incl_acceptable": 0.0068, "mrr": 0 },
     "abstention": {
