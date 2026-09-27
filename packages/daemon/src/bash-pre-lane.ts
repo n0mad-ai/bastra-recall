@@ -45,7 +45,9 @@ import {
   RM_SHIM,
   GIT_SHIM,
   reversibleDefault,
+  rmShim,
   rmShimSwitchedOff,
+  gitShim,
   gitShimSwitchedOff,
   type HintKind,
   type Undo,
@@ -504,7 +506,7 @@ const HARMLESS_REDIRECT = /(?:\d|&)?>>?\s*\/dev\/null(?![\w.\/-])|\d?>&\d\b/g;
  * `bash -c`/`sh -c` of the same) or a `cd` qualifies, with no redirection
  * but to /dev/null. `rm -rf x && curl … | sh` does not.
  */
-function shimOnly(cmd: string, depth = 0): boolean {
+function shimOnly(cmd: string, take: { rm: boolean; git: boolean } = { rm: true, git: true }, depth = 0): boolean {
   // `rm -rf x > ~/.bashrc` truncates a file no archive keeps.
   if (/>/.test(cmd.replace(HARMLESS_REDIRECT, ""))) return false;
   // `${VAR@P}` expands VAR as a prompt: a `$(…)` in its value runs (bash ≥ 4.4).
@@ -517,12 +519,19 @@ function shimOnly(cmd: string, depth = 0): boolean {
     const texts = words.map((w) => unquote(w.text));
     const k = commandWordAt(texts);
     const verb = texts[k];
-    if (verb === "rm" || verb === "cd") continue;
+    if (verb === "cd") continue;
+    // Each shim only where it is on: the rewrite puts both first in PATH, and
+    // `rm -rf build && git stash drop` must not run the one switched off.
+    if (verb === "rm") {
+      if (take.rm) continue;
+      return false;
+    }
     // A git act bastra's git shim makes reversible (git-archive.ts), as the
     // bare word at command position: no `VAR=` before it (GIT_DIR,
     // GIT_CONFIG_* would change which repo or config runs), no `command -p`,
     // no global option but `-C`.
     if (verb === "git") {
+      if (!take.git) return false;
       if (k !== 0 && !(k === 1 && texts[0] === "command")) return false;
       const g = parseGit(texts.slice(k + 1));
       if (g && !g.otherGlobals && gitAct(g)) continue;
@@ -531,17 +540,18 @@ function shimOnly(cmd: string, depth = 0): boolean {
     if (verb === "xargs") {
       let j = k + 1;
       while (j < texts.length && XARGS_BARE.test(texts[j])) j++;
-      if (texts[j] === "rm") continue;
+      if (texts[j] === "rm" && take.rm) continue;
       return false;
     }
     if (verb === "find") {
       const acts = texts.flatMap((t, i) => (/^-(?:exec|execdir|ok|okdir)$/.test(t) ? [i] : []));
       if (texts.some((t) => FIND_OWN_ACTS.test(t)) || acts.some((i) => texts[i + 1] !== "rm")) return false;
+      if (acts.length > 0 && !take.rm) return false;
       continue;
     }
     // Not zsh: it reads ~/.zshenv first, which may put another rm ahead in PATH.
     if (/^(?:ba|da)?sh$/.test(verb) && texts[k + 1] === "-c" && texts.length === k + 3 && depth < 2) {
-      if (shimOnly(texts[k + 2], depth + 1)) continue;
+      if (shimOnly(texts[k + 2], take, depth + 1)) continue;
     }
     return false;
   }
@@ -560,6 +570,8 @@ interface Hint {
    *  every act is one of its rows — then true if it would have taken this command. */
   wouldShim?: boolean;
   offFamily?: "rm" | "git";
+  /** One of the acts runs through bastra's git shim. */
+  viaGit?: boolean;
 }
 
 /**
@@ -607,13 +619,14 @@ function hintCore(cmd: string, surface: string): Hint | null {
   const viaShim = acts.some((a) => a.undo === RM_SHIM || a.undo?.viaGitShim);
   // bastra's shims only run where the lane may rewrite: a command made of
   // their acts. Anywhere else the real `rm`/`git` runs, and the hint says so.
-  if (viaShim && !shimOnly(cmd)) return stop(first.label);
+  if (viaShim && !shimOnly(cmd, { rm: rmShim(surface), git: gitShim(surface) })) return stop(first.label);
   // Every act here is a receipt (or the single act has an undo): say each
   // distinct receipt, not only the first (#658).
+  const viaGit = acts.some((a) => a.undo?.viaGitShim);
   const distinct = acts.filter((a, i) => acts.findIndex((b) => b.undo === a.undo) === i);
-  if (distinct.length < 2) return { ...first, undo: acts[0].undo, viaShim };
+  if (distinct.length < 2) return { ...first, undo: acts[0].undo, viaShim, viaGit };
   const text = distinct.map((a) => `\`${a.label}\`: ${a.undo?.text}`).join(" ");
-  return { ...first, undo: { kind: "receipt", text }, viaShim };
+  return { ...first, undo: { kind: "receipt", text }, viaShim, viaGit };
 }
 
 /**
@@ -761,7 +774,7 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
         permissionDecisionReason: "bastra: rm archives here (bastra archive restore <path>)",
         updatedInput: {
           ...toolInput,
-          command: shimRewrite(command, payload.tool_use_id || `${payload.session_id ?? "s"}-${startedAt}`),
+          command: shimRewrite(command, payload.tool_use_id || `${payload.session_id ?? "s"}-${startedAt}`, match.viaGit),
         },
       }
     : {};
@@ -771,10 +784,12 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
   if (match.wouldShim !== undefined) {
     const settings = bashVerdict(command, settingsFiles(payload.cwd));
     if (match.wouldShim) offLine = shimOffLine(command, settings, match.offFamily);
-    await writeShadow(`${match.offFamily ?? "rm"}_shim_shadow`, {
+    const family = match.offFamily ?? "rm";
+    await writeShadow(`${family}_shim_shadow`, {
       session_id: payload.session_id ?? null,
       matched_pattern: match.label,
-      rm_only: match.wouldShim,
+      // Whether the shim would have taken the command: made of its acts only.
+      [`${family}_only`]: match.wouldShim,
       settings_verdict: settings.verdict,
       settings_rule: settings.rule ?? null,
       hinted: offLine !== "",
@@ -944,13 +959,16 @@ function rmTargets(cmd: string): string[] {
 export function shimOffLine(command: string, settings: BashVerdict, family: "rm" | "git" = "rm"): string {
   if (settings.verdict === "deny") return "";
   if (family === "git") {
+    // Not "without this stop": switched off, some of these rows are a
+    // reversible form or a receipt, and the block above says which.
     const lead = "bastra's git snapshots are switched off here (BASTRA_GIT_SHIM=0). With them on, this exact command";
     const saved =
-      "would have saved what it discards first (files git clean removes → ~/.bastra/archive; uncommitted changes, a deleted branch's or stash's commit → pinned under refs/bastra-archive/, restorable) and then run as typed";
-    const on = "Turn them on: unset BASTRA_GIT_SHIM (on by default) — the user's call, tell them.";
+      "saves what it discards first (files git clean removes → ~/.bastra/archive; uncommitted changes, a deleted branch's or stash's commit → pinned under refs/bastra-archive/, restorable) and then runs as typed";
+    const on =
+      "They refuse in a repository that runs its own code on the act. Turn them on: unset BASTRA_GIT_SHIM (on by default) — the user's call, tell them.";
     if (settings.verdict === "ask") return `${lead} would still be asked about (your settings: \`${settings.rule}\`); once approved it ${saved}. ${on}`;
-    if (settings.verdict === "allow") return `${lead} — which your settings allow (\`${settings.rule}\`), so it discards for real — ${saved}. ${on}`;
-    return `${lead} would have run without this stop and ${saved}. ${on}`;
+    if (settings.verdict === "allow") return `${lead} — which your settings allow (\`${settings.rule}\`), so it discards for real now — ${saved}. ${on}`;
+    return `${lead} needs no confirmation: it ${saved}. ${on}`;
   }
   const t = rmTargets(command);
   const what = t.length === 0 ? "its targets" : t.slice(0, 3).map((x) => `\`${x}\``).join(", ") + (t.length > 3 ? ` and ${t.length - 3} more` : "");

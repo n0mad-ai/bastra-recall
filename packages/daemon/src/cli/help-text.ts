@@ -596,10 +596,11 @@ BASTRA_ARCHIVE_RETAIN wins):
   bastra config set archive.retain junk=1,in-git=2,user=2
 Off: BASTRA_RM_SHIM=0.
 
-git acts that lose work (clean -f, reset --hard, checkout -- <paths>,
+git acts that lose work (clean -f, reset --hard, checkout [<tree>] -- <paths>,
 restore, branch -D, stash drop|clear) are snapshotted first: clean's files
-go to the archive, the rest are pinned under refs/bastra-archive/ and listed
-here too; \`bastra archive restore <ref>\` puts them back. Off: BASTRA_GIT_SHIM=0.
+and any untracked file the act would overwrite go to the archive, the rest
+is pinned under refs/bastra-archive/ and listed here too;
+\`bastra archive restore <ref>\` puts it back. Off: BASTRA_GIT_SHIM=0.
 `,
 
   completion: `bastra completion — Tab completion for your shell

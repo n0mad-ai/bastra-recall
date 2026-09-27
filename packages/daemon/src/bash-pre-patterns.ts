@@ -48,13 +48,19 @@ export const GIT_SHIM: Readonly<Record<string, Undo>> = {
     "the files git clean would remove (same list as \`git clean -n\`) move to ~/.bastra/archive instead of being unlinked — same end state.",
   ),
   "git reset --hard": gitShimUndo(
-    "uncommitted changes to tracked files are saved first (\`git stash create\`, pinned under refs/bastra-archive/; the stash list is untouched), then the reset runs as typed.",
+    "uncommitted changes to tracked files are saved first (\`git stash create\`, pinned under refs/bastra-archive/; the stash list is untouched), an untracked file the reset would overwrite moves to ~/.bastra/archive, then the reset runs as typed.",
   ),
   "git checkout --": gitShimUndo(
     "uncommitted changes are saved first (pinned under refs/bastra-archive/), then the checkout runs as typed.",
   ),
+  "git checkout <tree> --": gitShimUndo(
+    "staged and unstaged changes are saved first (pinned under refs/bastra-archive/), an untracked file the checkout would overwrite moves to ~/.bastra/archive, then the checkout runs as typed.",
+  ),
   "git restore": gitShimUndo(
     "uncommitted changes are saved first (pinned under refs/bastra-archive/), then the restore runs as typed.",
+  ),
+  "git restore --source": gitShimUndo(
+    "staged and unstaged changes are saved first (pinned under refs/bastra-archive/), an untracked file the restore would overwrite moves to ~/.bastra/archive, then the restore runs as typed.",
   ),
   "git branch -D": gitShimUndo(
     "the branch's commit is pinned under refs/bastra-archive/ first (gc cannot take it), then the delete runs as typed.",
@@ -108,6 +114,27 @@ const DROP_PLUS_REFSPEC: Undo = {
 /** `git` plus the global options that may sit before the subcommand. */
 const git = (rest: string): RegExp => new RegExp(String.raw`\bgit(?:\s+-[Cc]\s+\S+)*\s+` + rest);
 
+/** The rest of one command has this flag (`restore`'s rows are told apart by three). */
+const flag = (long: string, short: string): string => String.raw`[^\n;&|]*\s(?:--${long}\b|-[a-zA-Z]*${short}(?![a-zA-Z]*-))`;
+const SOURCE = flag("source", "s");
+const STAGED = flag("staged", "S");
+const WORKTREE = flag("worktree", "W");
+
+/**
+ * `checkout <tree> -- <paths>`, `restore --source=<tree>` and `restore
+ * --staged --worktree` write the tree's content into the paths: the index
+ * goes with the worktree, and an untracked file there is overwritten.
+ */
+const FROM_TREE: Undo = {
+  kind: "reversible-form",
+  text:
+    `what dies is the staged and unstaged changes in those paths. \`git stash push --keep-index -- <paths>\` first, ` +
+    `then the command as typed: the same end state, and the changes are in the stash ` +
+    `(\`git restore --source=stash@{0} --worktree -- <paths>\` brings the worktree content back, ` +
+    `\`git restore --source=stash@{0}^2 --staged -- <paths>\` the staged one). ` +
+    `Untracked files are in neither: an untracked file where the tree tracks one is overwritten either way.`,
+};
+
 /**
  * Destructive patterns — always need a recall. Each row decides its undo side
  * here, in the same place as its pattern: `undo: null` is a deliberate STOP,
@@ -133,8 +160,9 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
     },
   },
   {
+    // Flags may stand before the `--` (`-q`, `-f`): still the index's content.
     label: "git checkout --",
-    re: git(String.raw`checkout\s+--\s`),
+    re: git(String.raw`checkout\s+(?:-{1,2}[a-zA-Z][\w=-]*\s+)*--\s`),
     undo: {
       kind: "reversible-form",
       text:
@@ -142,6 +170,13 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
         `exactly the same worktree and index; \`git restore --source=stash@{0} --worktree -- <paths>\` brings the ` +
         `changes back (not \`git stash pop\` — it conflicts when those paths also have staged changes).`,
     },
+  },
+  {
+    // A word that is no flag before the `--` is a tree, and paths follow.
+    // `git checkout <branch> --` (nothing after) is a switch: not matched.
+    label: "git checkout <tree> --",
+    re: git(String.raw`checkout\s+(?:-{1,2}[a-zA-Z][\w=-]*\s+)*[^-\s]\S*\s+(?:-{1,2}[a-zA-Z][\w=-]*\s+)*--\s+\S`),
+    undo: FROM_TREE,
   },
   {
     label: "git clean -f",
@@ -156,10 +191,10 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
     },
   },
   {
-    // Discards worktree changes like `checkout --`. `--staged` alone only
-    // resets the index, and the worktree keeps the content: not matched.
+    // Discards worktree changes like `checkout --`: no `--source`, no
+    // `--staged`. Those two are the next row, or no row at all.
     label: "git restore",
-    re: git(String.raw`restore\b(?![^\n;&|]*\s(?:--staged|-S)\b)`),
+    re: git(String.raw`restore\b(?!${SOURCE})(?!${STAGED})`),
     undo: {
       kind: "reversible-form",
       text:
@@ -167,6 +202,13 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
         `exactly the same worktree and index; \`git restore --source=stash@{0} --worktree -- <paths>\` brings the ` +
         `changes back.`,
     },
+  },
+  {
+    // From a tree, into the worktree. `--staged` without `--worktree` only
+    // resets the index, and the worktree keeps the content: not matched.
+    label: "git restore --source",
+    re: git(String.raw`restore\b(?=${SOURCE}|${STAGED})(?!(?!${WORKTREE})${STAGED})`),
+    undo: FROM_TREE,
   },
   {
     // The dropped stash's commit is unreachable once dropped: `git fsck`
