@@ -11,7 +11,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { SHIM_DIR, callReport, manifestRows, reconcilePlan, applyReconcile, restore, runRmShim } from "../src/rm-archive.js";
-import { cUnquote, gitAct, parseGit, runGitShim } from "../src/git-archive.js";
+import { cUnquote, gitAct, parseGit, runGitShim, unpin } from "../src/git-archive.js";
 import { matchPattern, runBashPreLane } from "../src/bash-pre-lane.js";
 
 const quiet = { out: () => {}, err: () => {} };
@@ -614,6 +614,36 @@ describe("#650 git snapshots — what the first pass found: more ways a reposito
     assert.equal(pinned(t.env).length, 1);
   });
 
+  it("an edit in a file marked assume-unchanged or skip-worktree: git stash does not see it, the act would overwrite it — refused", () => {
+    // Revert-check: drop the `ls-files -v` check in refusal() → the act runs, the edit is gone, and nothing was pinned.
+    for (const [flag, words] of [
+      ["--assume-unchanged", ["reset", "--hard"]],
+      ["--assume-unchanged", ["checkout", "--", "a"]],
+      ["--skip-worktree", ["checkout", "HEAD~1", "--", "a"]],
+      ["--skip-worktree", ["restore", "--source=HEAD~1", "a"]],
+    ] as Array<[string, string[]]>) {
+      const t = twins();
+      writeFileSync(join(t.form.dir, "a"), "two\n");
+      t.form.git("commit", "-qam", "c2");
+      t.form.git("update-index", flag, "a");
+      writeFileSync(join(t.form.dir, "a"), "kept out of git's sight\n");
+      const errs: string[] = [];
+      assert.equal(runGitShim(words, { env: t.env, cwd: t.form.dir, out: () => {}, err: (s) => errs.push(s) }), 1, `${flag} ${words.join(" ")}`);
+      assert.match(errs.join(""), new RegExp(`a is marked ${flag.slice(2)}.*nothing changed`), words.join(" "));
+      assert.equal(t.form.read("a"), "kept out of git's sight\n");
+    }
+    // Marked and not edited, or marked and not on disk (a sparse checkout): nothing to lose, taken.
+    const t = twins();
+    t.form.git("update-index", "--assume-unchanged", "a");
+    t.form.git("update-index", "--skip-worktree", "b");
+    execFileSync("rm", [join(t.form.dir, "b")]);
+    mkdirSync(join(t.form.dir, "d"));
+    writeFileSync(join(t.form.dir, "d", "f"), "f\n");
+    t.form.git("add", "d");
+    assert.equal(t.shim("reset", "-q", "--hard"), 0);
+    assert.equal(pinned(t.env).length, 1);
+  });
+
   it("a merge in progress, or no commit yet: refused with the reason, nothing changed", () => {
     // Revert-check: drop the `ls-files -u` line → the refusal does not say why ("could not save the uncommitted changes first").
     const t = twins();
@@ -632,6 +662,13 @@ describe("#650 git snapshots — what the first pass found: more ways a reposito
       assert.equal(t.form.read("a"), "resolved by hand\n");
       assert.ok(existsSync(join(t.form.dir, ".git", "MERGE_HEAD")));
     }
+    const n = twins();
+    writeFileSync(join(n.form.dir, "later"), "to be added\n");
+    n.form.git("add", "-N", "later");
+    const said: string[] = [];
+    assert.equal(runGitShim(["reset", "--hard"], { env: n.env, cwd: n.form.dir, out: () => {}, err: (s) => said.push(s) }), 1);
+    assert.match(said.join(""), /later was added with `git add -N`/);
+    assert.equal(n.form.read("later"), "to be added\n");
     const unborn = join(t.root, "unborn");
     mkdirSync(unborn);
     execFileSync("git", ["init", "-q"], { cwd: unborn });
@@ -664,6 +701,52 @@ describe("#650 git snapshots — what the first pass found: retention", () => {
     assert.throws(() => t.form.git("rev-parse", "--verify", "-q", row.dest as string));
     applyReconcile([], t.env);
     assert.equal(existsSync(rotated), false, "the pin is gone: so is the old manifest");
+  });
+
+  it("a manifest row that names a branch, or a command the shim never records: reconcile and restore leave both alone", () => {
+    // Revert-check (three): pinLive without isPin → reconcile plans to drop refs/heads/victim;
+    // unpin without isPin → it deletes the branch; restore without restoreShape → the row's `git -c alias.x=!… x` runs.
+    const t = twins();
+    t.form.git("branch", "victim");
+    const sha = t.form.git("rev-parse", "victim");
+    const mark = join(t.root, "ran");
+    const archive = join(t.root, "_archive");
+    mkdirSync(archive, { recursive: true });
+    const row = (dest: string, restore: string[]) =>
+      JSON.stringify({ ts: "2000-01-01T00:00:00", action: "pinned", orig: t.form.dir, dest, sha, act: "x", restore, kind: "user", cwd: t.form.dir, argv: ["x"], call: "c" }) + "\n";
+    t.form.git("update-ref", "refs/bastra-archive/branch/x/1", sha);
+    writeFileSync(
+      join(archive, "manifest.jsonl"),
+      row("refs/heads/victim", ["-C", t.form.dir, "branch", "victim", sha]) +
+        row("refs/bastra-archive/../heads/victim", ["-C", t.form.dir, "branch", "victim", sha]) +
+        row("refs/bastra-archive/branch/x/1", ["-C", t.form.dir, "-c", `alias.x=!echo ran > '${mark}'`, "x"]),
+    );
+    assert.throws(() => restore("refs/heads/victim", t.env), /not one bastra's git snapshots wrote/);
+    assert.throws(() => restore("refs/bastra-archive/branch/x/1", t.env), /not one bastra's git snapshots wrote/);
+    assert.equal(existsSync(mark), false, "the row's command ran");
+    const drop = reconcilePlan(new Date(), 10 * 2 ** 30, t.env);
+    assert.deepEqual(drop.map((d) => d.dest), ["refs/bastra-archive/branch/x/1"]);
+    applyReconcile(drop, t.env);
+    unpin(t.form.dir, "refs/heads/victim", sha);
+    assert.equal(t.form.git("rev-parse", "refs/heads/victim"), sha);
+  });
+
+  it("every way back the shim records has a shape restore accepts", () => {
+    // Revert-check: restoreShape without the `update-ref refs/remotes/…` form → restoring a remote-tracking branch is refused.
+    const t = twins();
+    t.both(dirty);
+    t.form.git("branch", "side");
+    t.form.git("update-ref", "refs/remotes/origin/feat", "HEAD");
+    t.shim("checkout", "HEAD", "--", "a");
+    t.shim("reset", "-q", "--hard");
+    t.shim("branch", "-D", "side");
+    t.shim("branch", "-D", "-r", "origin/feat");
+    writeFileSync(join(t.form.dir, "a"), "again\n");
+    t.form.git("stash", "push", "-q", "-m", "a message with 'quotes'");
+    t.shim("stash", "drop", "-q");
+    const pins = pinned(t.env);
+    assert.equal(pins.length, 5);
+    for (const p of pins.reverse()) assert.doesNotThrow(() => restore(p.dest as string, t.env), String(p.act));
   });
 
   it("a pin outlives `git gc --prune=now` and `reflog expire`; two shims in the same second never share a ref", () => {

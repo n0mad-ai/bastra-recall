@@ -270,6 +270,8 @@ interface Plumbing {
   raw: (args: string[]) => string | null;
   /** Without our `-c`: what the act itself would read. */
   plain: (args: string[]) => string | null;
+  /** The blob each file would be stored as (`hash-object`), in order. */
+  hash: (files: string[]) => string[] | null;
 }
 
 /**
@@ -282,7 +284,7 @@ interface Plumbing {
  * own install (a global `filter.lfs.*`), `local`, `worktree` and `command`
  * are whatever was written into the repository or the environment.
  */
-function refusal(g: Plumbing, act: GitAct, cwd: string): string | null {
+function refusal(g: Plumbing, act: GitAct, cwd: string, top: string | null): string | null {
   // `git clean -n` runs no hook and no filter; our own calls have fsmonitor off.
   if (act.kind === "clean") return null;
   const listed = g.plain(["config", "--show-scope", "-z", "--list"]);
@@ -333,6 +335,25 @@ function refusal(g: Plumbing, act: GitAct, cwd: string): string | null {
     const recurse = conf.filter((c) => c.key === "submodule.recurse").pop();
     if (recurse && TRUE.test(recurse.value) && conf.some((c) => /^submodule\..+\.url$/.test(c.key))) {
       return "has submodules and submodule.recurse is on: the act would also discard changes inside them, which the snapshot does not hold";
+    }
+  }
+  // An entry marked assume-unchanged or skip-worktree: git stash does not
+  // look at the file, and the act may overwrite it (reset and checkout do
+  // for the first, a checkout from a tree for both). A sparse checkout marks
+  // what is not on disk the same way; only a file that is there counts.
+  if (act.kind === "snapshot" && top !== null) {
+    const listed = g.raw(["ls-files", "-v", "-s", "-z", "--full-name", "--", ...(act.paths.length > 0 ? act.paths : [":/"])]);
+    if (listed === null) return null; // a pathspec git cannot read: the act fails on it the same way
+    const marked = listed
+      .split("\0")
+      .map((l) => /^([a-zS]) \d+ ([0-9a-f]+) \d\t(.*)$/s.exec(l))
+      .filter((m): m is RegExpExecArray => m !== null && existsSync(join(top, m[3])));
+    if (marked.length > 0) {
+      const now = g.hash(marked.map((m) => join(top, m[3])));
+      const edited = marked.find((m, i) => now === null || now[i] !== m[2]);
+      if (edited) {
+        return `has edits git stash does not see (${edited[3]} is marked ${edited[1] === "S" ? "skip-worktree" : "assume-unchanged"}), which the act may overwrite and no snapshot holds`;
+      }
     }
   }
   return null;
@@ -417,9 +438,17 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
 
   const cwd = p.dirs.reduce((d, x) => resolve(d, x), cwd0);
   const gitEnv = { ...childEnv, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" };
-  const run = (args: string[]): string | null => {
+  const run = (args: string[], input?: string): string | null => {
     try {
-      return execFileSync(real, args, { cwd, env: gitEnv, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10_000, maxBuffer: 64 << 20 });
+      return execFileSync(real, args, {
+        cwd,
+        env: gitEnv,
+        encoding: "utf8",
+        input,
+        stdio: [input === undefined ? "ignore" : "pipe", "pipe", "ignore"],
+        timeout: 10_000,
+        maxBuffer: 64 << 20,
+      });
     } catch {
       return null;
     }
@@ -427,12 +456,13 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
   const raw = (args: string[]): string | null => run([...SAFE, ...args]);
   const git = (args: string[]): string | null => raw(args)?.trimEnd() ?? null;
   const plain = (args: string[]): string | null => run(args);
+  const hash = (files: string[]): string[] | null => run([...SAFE, "hash-object", "--stdin-paths"], files.join("\n") + "\n")?.trimEnd().split("\n") ?? null;
   const top = git(["rev-parse", "--show-toplevel"]);
   // A bare repository has branches and no worktree: `-C <its directory>` restores there.
   const home = top ?? (act.kind === "branch" ? git(["rev-parse", "--absolute-git-dir"]) : null);
   if (home === null) return passThrough(); // not a repository, or no worktree: git says so itself
   const out1 = "Ask the user to run it, or BASTRA_GIT_SHIM=0 for the normal permission prompt.";
-  const no = refusal({ git, raw, plain }, act, cwd);
+  const no = refusal({ git, raw, plain, hash }, act, cwd, top);
   if (no) {
     err(`bastra: this repository ${no} — \`git ${p.sub}\` not run under bastra's allow (nothing changed). ${out1}`);
     return 1;
@@ -493,6 +523,8 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
     if (sha === null) {
       if (git(["rev-parse", "--verify", "-q", "HEAD^{commit}"]) === null) return refuse("there is no commit yet, so nothing can hold a snapshot of the staged files");
       if (git(["ls-files", "-u"])) return refuse("the index has unmerged paths (a merge, rebase or cherry-pick in progress), which a snapshot cannot hold");
+      const ita = raw(["diff-files", "--name-only", "-z", "--diff-filter=A"])?.split("\0").filter(Boolean) ?? [];
+      if (ita.length > 0) return refuse(`${ita[0]} was added with \`git add -N\` (intent to add), which git stash cannot save`);
       return refuse("could not save the uncommitted changes first");
     }
     // A tree the act names and git cannot find: git says so itself, and changes nothing.
@@ -568,9 +600,37 @@ export function restoreCommand(args: string[]): string {
   return `git ${args.map((a) => (/^[\w@%+=:,./{}^-]+$/.test(a) ? a : shq(a))).join(" ")}`;
 }
 
+/** A ref the shim made. The manifest is a plain file: a torn or foreign line
+ *  must not aim `update-ref -d` at a branch. */
+export function isPin(ref: string | undefined): ref is string {
+  return typeof ref === "string" && /^refs\/bastra-archive\/[^\s~^:?*[\\]+$/.test(ref) && !ref.includes("..");
+}
+
+/**
+ * Is this one of the commands the shim records as a way back, for this row's
+ * commit? `bastra archive restore` runs what the manifest says, so it runs
+ * nothing else: no `-c`, no alias, no other subcommand.
+ */
+export function restoreShape(sha: string | undefined, cmd: string[]): boolean {
+  if (!sha || !/^[0-9a-f]{40,64}$/.test(sha) || cmd[0] !== "-C" || typeof cmd[1] !== "string") return false;
+  const rest = cmd.slice(2);
+  const is = (...words: Array<string | RegExp>): boolean =>
+    rest.length >= words.length && words.every((w, i) => (typeof w === "string" ? rest[i] === w : w.test(rest[i])));
+  const name = /^[^-]/;
+  if (rest.length === 4 && is("stash", "apply", "--index", sha)) return true;
+  if (rest.length === 3 && is("branch", name, sha)) return true;
+  if (rest.length === 3 && is("update-ref", /^refs\/remotes\/[^-]/, sha)) return true;
+  if (rest.length === 5 && is("stash", "store", "-m", /^/, sha)) return true;
+  const paths = (from: number): boolean => rest[from] === "--" && rest.length > from + 1;
+  if (is("--literal-pathspecs", "restore") && (rest[2] === `--source=${sha}` || rest[2] === `--source=${sha}^2`) && /^--(?:staged|worktree)$/.test(rest[3] ?? "")) return paths(4);
+  // As 631e5af recorded a path act.
+  if (is("restore", `--source=${sha}`, "--worktree")) return paths(3);
+  return false;
+}
+
 /** Whether a pinned ref still exists (reconcile only lets live ones go). */
 export function pinLive(repo: string, ref: string): boolean {
-  if (!existsSync(repo)) return false;
+  if (!isPin(ref) || !existsSync(repo)) return false;
   try {
     execFileSync("git", [...SAFE, "-C", repo, "rev-parse", "--verify", "-q", ref], { stdio: "ignore" });
     return true;
@@ -580,6 +640,7 @@ export function pinLive(repo: string, ref: string): boolean {
 }
 
 export function unpin(repo: string, ref: string, sha: string): void {
+  if (!isPin(ref)) return;
   try {
     execFileSync("git", [...SAFE, "-C", repo, "update-ref", "-d", ref, sha], { stdio: "ignore" });
   } catch {

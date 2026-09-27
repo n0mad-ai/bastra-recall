@@ -404,8 +404,9 @@ is refused whatever it points to; the user's own global config is not read
 as the repository's. Its own git calls run with fsmonitor off and hooks at
 /dev/null. It
 also refuses where no snapshot can hold what the act discards: submodules
-with `submodule.recurse` on, an index with unmerged paths (a merge in
-progress), a repository without a commit. Needs git 2.26 or newer
+with `submodule.recurse` on, an edit in a file marked `assume-unchanged` or
+`skip-worktree` (git stash does not look at it), an index with unmerged
+paths (a merge in progress), a repository without a commit. Needs git 2.26 or newer
 (`git config --show-scope`).
 
 Not taken, and why: `git commit --amend` and `git rebase` run the
