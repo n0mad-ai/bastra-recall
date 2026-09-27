@@ -9,7 +9,8 @@
  *
  * Revert-check: drop the timer in `postJsonKeepAlive` (Ollama) or the signal
  * on the OpenAI `fetch` — the matching test fails on its own guard ("no
- * rejection within …") instead of passing.
+ * rejection within …") instead of passing. Arm the Ollama timer before
+ * `request()` again and the `ftp:` test fails with the ReferenceError.
  *
  * Run: npx tsx --test packages/core/__tests__/embed-timeout.test.ts
  */
@@ -19,15 +20,28 @@ import * as http from "node:http";
 import type { AddressInfo, Socket } from "node:net";
 
 import { OllamaEmbeddingProvider, OpenAIEmbeddingProvider } from "../src/embeddings.js";
+import {
+  EMBED_REQUEST_TIMEOUT_MS,
+  EMBED_TIMEOUT_PER_TEXT_MS,
+  embedDeadlineMs,
+} from "../src/embedding-providers.js";
 
-/** Server that answers /api/embed after `delayMs`, or never when `delayMs` is null. */
-async function ollamaStub(delayMs: number | null): Promise<{ url: string; close: () => Promise<void> }> {
+/** Server that answers /api/embed after `delayMs`, or never when `delayMs` is
+ *  null. `holdFirst` holds only the first request and answers the rest.
+ *  `connections()` counts the TCP connections the server has accepted. */
+async function ollamaStub(
+  delayMs: number | null,
+  opts: { holdFirst?: boolean } = {},
+): Promise<{ url: string; close: () => Promise<void>; connections: () => number }> {
   const sockets = new Set<Socket>();
+  let connections = 0;
+  let requests = 0;
   const server = http.createServer((req, res) => {
+    const nth = ++requests;
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", () => {
-      if (delayMs === null) return; // accept and hold
+      if (delayMs === null || (opts.holdFirst && nth === 1)) return; // accept and hold
       const n = (JSON.parse(body) as { input: string[] }).input.length;
       setTimeout(() => {
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -36,6 +50,7 @@ async function ollamaStub(delayMs: number | null): Promise<{ url: string; close:
     });
   });
   server.on("connection", (s) => {
+    connections++;
     sockets.add(s);
     s.on("close", () => sockets.delete(s));
   });
@@ -43,6 +58,7 @@ async function ollamaStub(delayMs: number | null): Promise<{ url: string; close:
   const { port } = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${port}`,
+    connections: () => connections,
     close: () =>
       new Promise<void>((r) => {
         for (const s of sockets) s.destroy();
@@ -85,21 +101,45 @@ test("Ollama: a server that never answers rejects after timeoutMs", async () => 
   }
 });
 
-test("Ollama: a slow answer inside timeoutMs still resolves, and the socket is reusable after a timeout", async () => {
-  const hang = await ollamaStub(null);
-  const slow = await ollamaStub(50);
+test("Ollama: after a timeout the same endpoint answers again on one fresh keep-alive socket", async () => {
+  // One server: the first request hangs, later ones answer after 50 ms. The
+  // timed-out socket is destroyed; the next two calls must both succeed and
+  // share ONE new connection — the agent dropped the dead socket and keep-alive
+  // works again afterwards.
+  const stub = await ollamaStub(50, { holdFirst: true });
   try {
-    const hung = new OllamaEmbeddingProvider({ baseURL: hang.url, dim: 3, timeoutMs: 100 });
-    await assert.rejects(hung.embed(["x"]), /timed out/);
-    const provider = new OllamaEmbeddingProvider({ baseURL: slow.url, dim: 3, timeoutMs: 1000 });
+    const provider = new OllamaEmbeddingProvider({ baseURL: stub.url, dim: 3, timeoutMs: 300 });
+    await assert.rejects(provider.embed(["x"]), /timed out/);
     const first = await provider.embed(["a", "b"]);
     const second = await provider.embed(["c"]);
     assert.equal(first.length, 2);
     assert.equal(second.length, 1);
+    assert.equal(stub.connections(), 2, "expected the hung socket plus one reused fresh socket");
   } finally {
-    await hang.close();
-    await slow.close();
+    await stub.close();
   }
+});
+
+test("Ollama: a URL http.request rejects synchronously leaves no timer behind", async () => {
+  // `ftp:` passes the loopback guard but makes http.request throw before a
+  // request exists. A deadline timer armed before that would fire into an
+  // uninitialised `req` and crash the process with an uncaught ReferenceError.
+  const uncaught: unknown[] = [];
+  const onUncaught = (err: unknown) => uncaught.push(err);
+  process.on("uncaughtException", onUncaught);
+  try {
+    const provider = new OllamaEmbeddingProvider({ baseURL: "ftp://127.0.0.1:11434", dim: 3, timeoutMs: 50 });
+    await assert.rejects(provider.embed(["x"]), /protocol/i);
+    await new Promise((r) => setTimeout(r, 200));
+    assert.deepEqual(uncaught, [], "a stray deadline timer fired after the synchronous failure");
+  } finally {
+    process.off("uncaughtException", onUncaught);
+  }
+});
+
+test("batch deadline grows with the number of texts", () => {
+  assert.equal(embedDeadlineMs(EMBED_REQUEST_TIMEOUT_MS, 1), EMBED_REQUEST_TIMEOUT_MS);
+  assert.equal(embedDeadlineMs(EMBED_REQUEST_TIMEOUT_MS, 50), EMBED_REQUEST_TIMEOUT_MS + 49 * EMBED_TIMEOUT_PER_TEXT_MS);
 });
 
 test("OpenAI: a fetch that never answers is aborted after timeoutMs", async () => {

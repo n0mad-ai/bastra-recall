@@ -71,10 +71,28 @@ export const PROVIDER_COLD_LOAD_MS = 200;
  * behind it stays open.
  *
  * Deliberately far above a cold model load (585 ms measured above, 734 ms in
- * #305) and a 50-text backfill batch: this is a hang detector, not a latency
- * budget. Per-provider override via `timeoutMs`.
+ * #305): this is a hang detector, not a latency budget. Per-provider override
+ * via `timeoutMs`. Batches get more room, see {@link embedDeadlineMs}.
  */
 export const EMBED_REQUEST_TIMEOUT_MS = 60_000;
+
+/**
+ * Extra deadline per text beyond the first, in ms.
+ *
+ * The backfill (embeddings.ts) and the eval runners send up to 50 texts in one
+ * request through the same `embed()`, and a CPU-only machine with a large
+ * model can take tens of seconds for that. A backfill batch that times out is
+ * requeued and counted by the breaker as a provider failure, so a fixed 60 s
+ * would turn a slow-but-working provider into an "off" one. 1 s per extra
+ * text gives a 50-text batch 109 s while a single query keeps 60 s.
+ */
+export const EMBED_TIMEOUT_PER_TEXT_MS = 1_000;
+
+/** Deadline for one request of `count` texts: `baseMs` plus
+ *  {@link EMBED_TIMEOUT_PER_TEXT_MS} for every text beyond the first. */
+export function embedDeadlineMs(baseMs: number, count: number): number {
+  return baseMs + Math.max(0, count - 1) * EMBED_TIMEOUT_PER_TEXT_MS;
+}
 
 // ─── OpenAI Provider ─────────────────────────────────────────────
 
@@ -89,7 +107,8 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     apiKey: string;
     model?: string;
     dim?: number;
-    /** Request deadline in ms (default {@link EMBED_REQUEST_TIMEOUT_MS}). */
+    /** Deadline in ms for a one-text request (default
+     *  {@link EMBED_REQUEST_TIMEOUT_MS}); batches add {@link EMBED_TIMEOUT_PER_TEXT_MS}. */
     timeoutMs?: number;
   }) {
     this.apiKey = opts.apiKey;
@@ -107,7 +126,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     // would not keep the loop alive long enough for it to fire. The timer
     // covers the body read too — a server can stall after the headers.
     const ctrl = new AbortController();
-    const timeoutMs = this.timeoutMs;
+    const timeoutMs = embedDeadlineMs(this.timeoutMs, texts.length);
     const tid = setTimeout(
       () => ctrl.abort(new Error(`OpenAI embed timed out after ${timeoutMs} ms`)),
       timeoutMs,
@@ -207,9 +226,11 @@ function postJsonKeepAlive(
   const secure = target.protocol === "https:";
   const request = secure ? https.request : http.request;
   return new Promise<{ status: number; body: string }>((resolve, reject) => {
-    const tid = setTimeout(() => {
-      req.destroy(new Error(`Ollama embed timed out after ${timeoutMs} ms (${url})`));
-    }, timeoutMs);
+    // The timer starts only once `req` exists: `request()` throws
+    // synchronously on e.g. an unsupported protocol, and a timer armed before
+    // it would fire later into an uninitialised `req` (uncaught
+    // ReferenceError, daemon crash). The executor's throw rejects the promise.
+    let tid: NodeJS.Timeout | undefined;
     const fail = (err: Error) => {
       clearTimeout(tid);
       reject(err);
@@ -234,6 +255,9 @@ function postJsonKeepAlive(
         res.on("error", fail);
       },
     );
+    tid = setTimeout(() => {
+      req.destroy(new Error(`Ollama embed timed out after ${timeoutMs} ms (${url})`));
+    }, timeoutMs);
     req.on("error", fail);
     req.end(body);
   });
@@ -254,7 +278,8 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
     /** Ollama keep_alive pro Embed-Request, z.B. "10m" oder Sekunden.
      *  undefined = Feld weglassen → Server-Default (OLLAMA_KEEP_ALIVE, 5m). */
     keepAlive?: string | number;
-    /** Request deadline in ms (default {@link EMBED_REQUEST_TIMEOUT_MS}). */
+    /** Deadline in ms for a one-text request (default
+     *  {@link EMBED_REQUEST_TIMEOUT_MS}); batches add {@link EMBED_TIMEOUT_PER_TEXT_MS}. */
     timeoutMs?: number;
   }) {
     this.baseURL = opts.baseURL ?? "http://localhost:11434";
@@ -290,7 +315,11 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
     const url = this.baseURL.replace(/\/+$/, "") + "/api/embed";
     const body: Record<string, unknown> = { model: this.model, input: texts };
     if (this.keepAlive !== undefined) body.keep_alive = this.keepAlive;
-    const resp = await postJsonKeepAlive(url, JSON.stringify(body), this.timeoutMs);
+    const resp = await postJsonKeepAlive(
+      url,
+      JSON.stringify(body),
+      embedDeadlineMs(this.timeoutMs, texts.length),
+    );
     if (resp.status < 200 || resp.status >= 300) {
       throw new Error(
         `Ollama embed HTTP ${resp.status} (${url}): ${resp.body.slice(0, 200)}`,
