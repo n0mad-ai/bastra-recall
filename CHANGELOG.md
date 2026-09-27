@@ -20,8 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `BASTRA_GIT_SHIM=0`.
 - Tripwire rows: `git checkout <tree> -- <paths>` and `git restore
   --source=<tree>` / `--staged --worktree` (they write the index too, and
-  overwrite untracked files); `git checkout -q -- <paths>` now trips the
-  `git checkout --` row.
+  overwrite untracked files). A flag in front no longer hides an act from
+  its row: `git checkout -q -- <paths>`, `git reset -q --hard`, `git branch
+  -q -D`, and `git branch -d -f` / `--delete --force`.
 - **`rm` in Claude Code's Bash is an archive, not a loss** (#650). An rm-only
   command runs through bastra's archiving `rm`: the bash-pre hook allows it
   and puts `shims/` first in its PATH, targets move to `~/.bastra/archive`
