@@ -1,11 +1,12 @@
 {
   "$comment": "The V1.0 baseline for V2 (#387). Plan: https://github.com/n0mad-ai/bastra-recall/issues/387#issuecomment-5846047786. Owner decision 2026-09-26 (https://github.com/n0mad-ai/bastra-recall/issues/387#issuecomment-5846178590): #279 and #325 are not prerequisites, and the #305 window values ARE the live half, without a confirmation window after #681 unless the readout shows lanes off-budget. This file is immutable once merged. A correction is a new registration_version with a $comment saying what changed and why, never an in-place edit.",
   "schema_version": 1,
-  "registration_version": 1,
+  "registration_version": 2,
   "registered_at": "2026-09-27",
+  "$comment_version_2": "v2 (2026-09-27): ADDITIONS ONLY, no v1 measured value changed; v2 only fills fields v1 marked 'not measured'. Adds the offline half (run A twice + determinism check), the gold-set manifest hashes (vault, configuration, dataset) and the query slices the gold labels support. Everything v1 froze (live half, manifest pins, tolerances reference) is untouched. The flag registry and the M2-M6 gates are still open.",
   "issue": 387,
   "status": "partial",
-  "$comment_status": "Only the live half (B) and the manifest pins are frozen here. The offline half (A: gold-set runs, determinism check), the query slices, the flag registry and the M2-M6 gates are NOT in this registration yet. Every such field below says 'not measured' or 'not measurable' instead of carrying a guessed value.",
+  "$comment_status": "v1 froze the live half (B) and the manifest pins. v2 adds the offline half (A: two gold-set runs, determinism check) and the query slices the gold labels carry. The flag registry and the M2-M6 gates are NOT in this registration yet. Every such field below says 'not measured', 'not measurable' or 'not derived' instead of carrying a guessed value.",
 
   "manifest": {
     "code": {
@@ -32,10 +33,15 @@
     "vault": {
       "size": 1334,
       "hash": "not measured",
-      "$comment": "vault_size from /health at deploy time. No vault content hash was computed in this step; it belongs to run A."
+      "$comment": "vault_size from /health at deploy time. No vault content hash was computed in this step; it belongs to run A.",
+      "hash_at_run_a": "a252f6e15aa47981d2c6b3843a4a71ab987da60aa94141247271af3fc38447b3",
+      "size_at_run_a": 1335,
+      "$comment_v2": "v2: the goldset-run manifest hash (sha256 over sorted 'id updated' lines), identical in both run A artifacts. The vault is live: it held 1335 memories at run A vs 1334 at deploy, so 'hash' (deploy time) stays not measured and this field names the vault state run A actually measured."
     },
-    "configuration_hash": "not measured",
-    "dataset_hash": "not measured — no gold-set run in this step"
+    "configuration_hash": "dc2097977f15bb9555a007cf927cc1c69d6d3cbae2c8cebf05313ed214ac3c43",
+    "$comment_configuration_hash": "v2: goldset-run manifest hash over {k: 10, floor: 30, hybrid: true}; identical in both run A artifacts. It covers the runner configuration only, not daemon env flags (that is the flag registry, still open).",
+    "dataset_hash": "69e1475010c64a0a02eee0b2fbc6929f3a33de1029ffc14eea36b91316dced00",
+    "$comment_dataset_hash": "v2: goldset-run datasetHash over the 12 gold files of run A (699 cases); identical in both artifacts. Gold files are private under ~/.bastra/eval-goldset."
   },
 
   "live_half": {
@@ -83,10 +89,98 @@
   },
 
   "offline_half": {
-    "status": "not measured",
-    "$comment": "Plan checklist items still open: determinism check (~200 gold queries, raw vectors, ~1e-5 relative), run A twice on e15090e with the second run reproducing the first within m1-tolerances v4, Recall@1/@3/@10, MRR, recall@pool@N, abstention precision/recall, false_abstention, relevant_loss on m1-descriptive-365."
+    "status": "measured",
+    "$comment": "v2 (2026-09-27). Run A twice plus the determinism check, all on this host (manifest.host) against the live vault, with the daemon on e15090e. Raw artifacts are private under ~/.bastra/eval-runs; only aggregates are here (C-025).",
+    "measured_on": {
+      "git": "8c6bdcb00509dc85fe63f71e214f7af723a84e89",
+      "$comment": "Runs executed from a clean checkout of 8c6bdcb. 'git diff --stat e15090e 8c6bdcb' touches only CHANGELOG.md and this file, so the measured code is the pinned e15090e code. packages/core/dist was the one built for the e15090e deploy.",
+      "goldset_code_hash": "a807c674d052c5dcb9815b403b09cc0a3dcaddea2d73ce85bf7b28ff6aec2704",
+      "embedding_model": "embeddinggemma:latest (ollama digest 85462619ee72), store copied from the vault, 1335 vectors, 0 backfilled"
+    },
+    "determinism_check": {
+      "artifact": "~/.bastra/eval-runs/2026-09-27-determinism-2541273ce3fb",
+      "script": "packages/eval/scripts/determinism-check.mjs",
+      "command": "node scripts/determinism-check.mjs ~/.bastra/eval-runs/2026-09-27-fefe84981fa8/results.json <vault>/.bastra/embeddings.json",
+      "run_date": "2026-09-27T10:48:28Z",
+      "queries": 200,
+      "selection": "answerable non-probe rows of run A #1 with a served top-1, sorted by case id, first 200",
+      "passes": "2 per process, 2 processes (4 passes in total)",
+      "dim": 768,
+      "identical_vectors": "200/200 in every pass",
+      "max_abs_diff": 0,
+      "max_rel_diff": 0,
+      "max_similarity_diff": 0,
+      "tolerance": "~1e-5 relative (review point 1 on #387)",
+      "result": "PASS — bit-identical",
+      "vectors_sha256": "2541273ce3fb1090bed8bd43a05fe5ba74b40c47c279a41ff4cdb967b523126e",
+      "similarities_sha256": "362d69656e13169bb6f36437b87ccdc41e30c131364c94b409b8a69ab88ffadd",
+      "$comment": "The rebaselining reference: a new host embeds the same 200 queries and compares against the private pass-1 vectors in the artifact. Raw similarity = cosine(query vector, stored vector of the served top-1 memory). This is a same-host check; the cross-host half of the protocol needs a second machine."
+    },
+    "runs": [
+      { "artifact": "~/.bastra/eval-runs/2026-09-27-fefe84981fa8", "run_date": "2026-09-27T10:47:03Z", "main_arm_ms": 14634 },
+      { "artifact": "~/.bastra/eval-runs/2026-09-27-4ede67f2cc05", "run_date": "2026-09-27T10:47:26Z", "main_arm_ms": 14620 }
+    ],
+    "command": "BASTRA_VAULT_PATH=<vault> npx tsx src/goldset-run.ts --gold gold-{authored-1,authored-2,authored-3,blind,c036-1,c036-2,probe-lexical,probe-mash,tel-1,tel-2,tel-3,tel-4}.json --hybrid --gate",
+    "reproduction": {
+      "result": "PASS — identical",
+      "$comment": "All six manifest hashes (code, git, vault, model, config, dataset) are equal, and all 699 result rows are field-for-field identical (0 rows differ), so the second run reproduces the first well inside m1-tolerances v4."
+    },
+    "counts": { "cases_in_files": 699, "probes": 36, "main_denominator": 663, "answerable": 584, "no_answer": 79 },
+    "arm": "Hybrid (BM25 + Vector RRF) · ollama-embeddinggemma",
+    "production_k": 10,
+    "score_floor": 30,
+    "answerable": { "n": 584, "recall_at_1": 0.2466, "recall_at_3": 0.3904, "recall_at_10": 0.5616, "recall_at_allowed_depth": 0.4897, "recall_at_3_incl_acceptable": 0.5308, "mrr": 0.3401 },
+    "recall_at_pool": {
+      "recall_at_pool_10": 0.5616,
+      "$comment": "The runner measures at the production pool k=10 only, so recall@pool@10 equals recall@10. A deeper pool (N > 10) is not measured by goldset-run."
+    },
+    "control_arm": { "n": 584, "recall_at_1": 0, "recall_at_3": 0, "recall_at_10": 0, "recall_at_allowed_depth": 0, "recall_at_3_incl_acceptable": 0.0068, "mrr": 0 },
+    "abstention": {
+      "no_answer_cases": 79,
+      "correctly_abstained": 0,
+      "answered_anyway": 79,
+      "abstention_recall": 0,
+      "abstention_precision": "not measurable — the system abstained on 0 of 663 cases, so precision has no denominator",
+      "$comment": "Abstention here means nothing clears the score floor. The runner abstains nowhere, which matches every earlier gold-set run."
+    },
+    "m1_gates": {
+      "tolerances": "m1-tolerances.json v4",
+      "relevant_loss": { "reference_set": "m1-descriptive-365", "present_in_run": "365/365", "value": 0.2137, "count": "78/365", "wilson_95_ci": [0.1747, 0.2586], "tolerance": 0.24, "comparator": "<=", "result": "PASS" },
+      "false_abstention": { "mechanism": "weak_result", "value": 0.0, "count": "0/584", "wilson_95_ci": [0.0, 0.0065], "tolerance": 0.015, "comparator": "<=", "result": "PASS" },
+      "$comment": "Both runs give the same counts. relevant_loss over ALL 584 answerable cases is 256/584; that aggregate is not the gate (v4 binds the gate to the reference set)."
+    },
+    "component_gates_current": {
+      "anti_query_injection": { "value": 0.0357, "count": "1/28", "threshold": 0.05, "within": true },
+      "recall_at_3_gated": { "ungated": 0.3904, "gated": 0.387, "delta": -0.0034, "n": 584 },
+      "false_abstention_gated": { "value": 0.0034, "count": "2/584", "tolerance": 0.015, "within": true }
+    },
+    "arm_modes_top_hit": { "hybrid": 586, "bm25": 87, "vector": 26 }
   },
-  "query_slices": "not measured",
+  "query_slices": {
+    "status": "partial",
+    "source": "run A #1 (~/.bastra/eval-runs/2026-09-27-fefe84981fa8), answerable cases; run A #2 is identical",
+    "association": { "label": "kind=associative", "n": 137, "recall_at_1": 0.0219, "recall_at_3": 0.0365, "recall_at_10": 0.0803, "mrr": 0.0366 },
+    "descriptive": { "label": "kind=descriptive", "n": 447, "recall_at_1": 0.3154, "recall_at_3": 0.4989, "recall_at_10": 0.7092, "mrr": 0.4332 },
+    "anti_no_answer": { "label": "no_answer", "n": 79, "correctly_abstained": 0 },
+    "by_zone": {
+      "core": { "n": 242, "recall_at_3": 0.3058, "recall_at_10": 0.4339, "mrr": 0.2789 },
+      "orbit": { "n": 323, "recall_at_3": 0.4582, "recall_at_10": 0.6502, "mrr": 0.3915 },
+      "outer_orbit": { "n": 19, "recall_at_3": 0.3158, "recall_at_10": 0.6842, "mrr": 0.2475 }
+    },
+    "by_origin": {
+      "issue_incident": { "n": 121, "recall_at_3": 0.0248, "recall_at_10": 0.0496, "mrr": 0.0258 },
+      "second_person": { "n": 158, "recall_at_3": 0.1772, "recall_at_10": 0.3861, "mrr": 0.1696 },
+      "session_transcript": { "n": 260, "recall_at_3": 0.6462, "recall_at_10": 0.8654, "mrr": 0.5572 },
+      "user_query": { "n": 45, "recall_at_3": 0.6444, "recall_at_10": 0.8, "mrr": 0.5298 }
+    },
+    "not_measurable_with_current_labels": {
+      "paraphrase": "not measurable — the gold labels carry no paraphrase marker; independent paraphrases are #325 (deferred by the owner decision of 2026-09-26)",
+      "cross_scope": "not measurable — no scope label on gold cases, and goldset-run recalls unscoped",
+      "action": "not measurable — no action label on gold cases",
+      "time_version": "not measurable — no time/version label on gold cases",
+      "dormant": "not measurable — no dormant label on gold cases"
+    }
+  },
   "flag_registry": "not measured",
   "m2_m6_gates": "not derived — they are derived only from run A"
 }
