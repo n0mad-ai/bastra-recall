@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - **git acts that lose work are snapshotted first** (#650 follow-up, #691;
+  design and implementation by @zzallirog — PR #692 is the design doc;
   opt-in, see the archiving `rm` below). With the opt-in on, a Claude Code
   command made only of `git clean -f`, `reset --hard`, `checkout [<tree>] --
   <paths>`, `restore`, `branch -D`, `stash drop|clear` (plus `cd`, `rm`) runs
@@ -27,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   its row: `git checkout -q -- <paths>`, `git reset -q --hard`, `git branch
   -q -D`, and `git branch -d -f` / `--delete --force`.
 - **`rm` in Claude Code's Bash can be an archive, not a loss** (#650) —
+  design and implementation by @zzallirog (PRs #689, #690 are the design
+  docs; landed via #696 as a squash, so his commits are not in `main`'s history) —
   **opt-in, off by default**: `bastra config set archive.enabled on`, or
   `BASTRA_RM_ARCHIVES=1` in the daemon's environment (env wins; `0` forces
   it off). Only for hook calls that carry Claude Code's client marker (see
