@@ -86,7 +86,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   endpoint that accepted the connection and never answered left `embed()`
   pending, so the breaker never saw a failure and each call parked another
   socket. Both now reject after `timeoutMs` (default 60 s, well above a cold
-  model load), which the breaker counts like any other provider error.
+  model load), which the breaker counts like any other provider error. A
+  batch gets 1 s more per extra text (a 50-text backfill batch: 109 s), so a
+  slow CPU-only model is not mistaken for a hung one. An Ollama URL that Node
+  rejects outright (e.g. `ftp:`) fails the call without leaving a timer that
+  would crash the daemon later. Contributed by @zzallirog (#685).
 
 ## [1.0.0] — 2026-09-14
 
