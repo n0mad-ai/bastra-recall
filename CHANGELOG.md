@@ -8,7 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **git acts that lose work are snapshotted first** (#650 follow-up, #691). A
+- **git acts that lose work are snapshotted first** (#650 follow-up, #691;
+  opt-in, see the archiving `rm` below). With the opt-in on, a Claude Code
   command made only of `git clean -f`, `reset --hard`, `checkout [<tree>] --
   <paths>`, `restore`, `branch -D`, `stash drop|clear` (plus `cd`, `rm`) runs
   through bastra's `shims/git`: clean moves its files into the archive, the
@@ -16,14 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   typed; an untracked file the act would overwrite goes into the archive
   first. The receipt names each pin and its restore command; `bastra archive
   restore <ref>`. Refused where the repository would run its own code on
-  the act, or where no snapshot can hold what it discards. Off with
-  `BASTRA_GIT_SHIM=0`.
+  the act, or where no snapshot can hold what it discards. The pins show up
+  in `git log --all` (and a `git push --mirror` would publish them) until
+  they expire. With the opt-in on, `BASTRA_GIT_SHIM=0` leaves only this part
+  out.
 - Tripwire rows: `git checkout <tree> -- <paths>` and `git restore
   --source=<tree>` / `--staged --worktree` (they write the index too, and
   overwrite untracked files). A flag in front no longer hides an act from
   its row: `git checkout -q -- <paths>`, `git reset -q --hard`, `git branch
   -q -D`, and `git branch -d -f` / `--delete --force`.
-- **`rm` in Claude Code's Bash is an archive, not a loss** (#650). An rm-only
+- **`rm` in Claude Code's Bash can be an archive, not a loss** (#650) —
+  **opt-in, off by default**: `bastra config set archive.enabled on`, or
+  `BASTRA_RM_ARCHIVES=1` in the daemon's environment (env wins; `0` forces
+  it off). Only for hook calls that carry Claude Code's client marker (see
+  Changed). Off, `rm -r` and the git acts get exactly the hint they got
+  before: nothing is rewritten, nothing allowed. With it on, an rm-only
   command runs through bastra's archiving `rm`: the bash-pre hook allows it
   and puts `shims/` first in its PATH, targets move to `~/.bastra/archive`
   (temp dirs are really removed, `/`, `~` and system dirs refused), and the
@@ -31,10 +39,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `bastra archive list|restore|reconcile`; old entries go by class (junk 1 day,
   git-tracked 2, the rest 2; `archive.retain` / `BASTRA_ARCHIVE_RETAIN`;
   10 GB cap; checked hourly). Mixed commands, redirections, rm overrides,
-  `sudo`/absolute/remote `rm` keep the STOP. Off with `BASTRA_RM_SHIM=0`;
-  then a command the shim would have taken gets one line saying what it
-  would have done (worded after the user's own Claude Code permission
-  rules), and a `rm_shim_shadow` telemetry event.
+  `sudo`/absolute/remote `rm` keep the STOP. With the opt-in on,
+  `BASTRA_RM_SHIM=0` leaves only the `rm` part out; then a command the shim
+  would have taken gets one line saying what it would have done (worded
+  after the user's own Claude Code permission rules), and a
+  `rm_shim_shadow` telemetry event. The rewritten command names node by a
+  path that survives `brew upgrade node` (Homebrew's `opt/` link), and the
+  shim falls back to `node` on PATH if that path is gone. `bastra doctor`
+  lists the opt-in among the intentionally-off features; `bastra install`
+  never turns it on. Limits: on a
+  full disk `rm` into the archive fails instead of freeing space; a target
+  on another volume (USB, network drive) is archived under
+  `<mount>/.bastra-archive`, or refused where none can be made. Carried
+  over from #689/#690/#692 by @zzallirog.
 - **`bastra doctor` shows which features are switched off**, not only which
   registrations are broken. A new `features` section lists, one line each,
   hooks / Stop hook / skill per registered client (including Claude Code's own
@@ -52,6 +69,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   hint. Never changes the exit code.
 
 ### Changed
+
+- **Claude Code hook registrations carry a client marker** (#657, #507).
+  `bastra install` now writes `BASTRA_HOOK_CLIENT=claude-code` in front of
+  every Claude Code hook command, as it already did with `codex` for Codex.
+  The bash-pre hook weighs the rm archive receipt and the archive opt-in
+  only for a call that carries it: an unmarked payload (an older or
+  hand-written registration) keeps the STOP instead of being guessed as
+  Claude Code. Re-run `bastra install claude-code` once to add the marker;
+  doctor says so when the opt-in is on and the marker is missing.
+- **`BASTRA_RM_ARCHIVES=1` now turns on bastra's own archiving `rm`** (#650).
+  A host that ships its own archiving `rm` (the #651 receipt text, no
+  rewrite) sets `BASTRA_RM_ARCHIVES=host` instead.
 
 - **Learned bridges are written on their first reach and expire unless
   confirmed** (#672). On a normal-volume vault the same reach rarely repeats:
@@ -118,7 +147,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   data. The gc expiry set through config (`git -c gc.pruneExpire=now gc`,
   `… maintenance run`, `git config gc.reflogExpire now` before a plain
   `git gc`) is STOP like `git gc --prune=now`, so it turns an
-  amend/branch/lease receipt into STOP.
+  amend/branch/lease receipt into STOP. `hash -p <path> name…` points every
+  listed name at the path, so any of them being `rm` keeps the STOP
+  (`hash -p /x rm python; rm -rf dist`).
 
 ## [1.0.0] — 2026-09-14
 

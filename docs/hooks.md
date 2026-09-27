@@ -308,7 +308,20 @@ Risky patterns: `chmod -R`, `chown -R`, `find ... -exec rm`,
 
 Does **not** block. The agent decides whether to proceed.
 
-**The archiving `rm` (#650, Claude Code).** For a command made only of `rm`
+**The archiving `rm` (#650, Claude Code) — opt-in, off by default.** Turn
+it on with `bastra config set archive.enabled on` (stored in
+`~/.bastra/cli-settings.json`, read on the next Bash call), or with
+`BASTRA_RM_ARCHIVES=1` in the daemon's environment — the env wins when set,
+and `BASTRA_RM_ARCHIVES=0` forces it off. `bastra doctor` shows the state
+in its features block (and warns when it is on but the Bash hook lacks the
+marker); `bastra install` and onboarding never turn it on. The same switch covers the git snapshots below. It acts only on a hook
+call that carries Claude Code's client marker (`BASTRA_HOOK_CLIENT=claude-code`,
+written by `bastra install` since this release — re-run it once): an
+unmarked payload keeps the STOP. Off, `rm -r` and the git acts get exactly
+the hint they got before: nothing is rewritten, nothing is allowed, no line
+about the archive.
+
+With the opt-in on, for a command made only of `rm`
 (plain, `command rm`, `xargs rm` with argument-free flags, `find … -exec rm`,
 a non-login `bash -c`/`sh -c` of the same, plus `cd`; no redirection except to
 `/dev/null`), the hook does not warn — it makes the act reversible.
@@ -346,15 +359,26 @@ disk space until the archive lets the entry go. The receipt shows the first
 past 1 MB and a rotated one goes after 30 days once nothing in it is live. Other hooks' `deny` still wins over
 this `allow`, and so do your own permission rules: the rewritten command keeps
 `rm …` on a line of its own, so `deny: Bash(rm:*)` still denies it and
-`ask: Bash(rm:*)` still asks. Off with `BASTRA_RM_SHIM=0`; a host that ships its own
-archiving `rm` sets `BASTRA_RM_ARCHIVES=1` instead and gets the receipt text
-without the rewrite. The daemon and Claude Code must share a disk: a shim
-path the client cannot see fails the command before it runs (exit 97).
+`ask: Bash(rm:*)` still asks. With the opt-in on, `BASTRA_RM_SHIM=0` leaves
+the `rm` part out and keeps the git snapshots; a host that ships its own
+archiving `rm` sets `BASTRA_RM_ARCHIVES=host` instead and gets the receipt
+text without the rewrite. The daemon and Claude Code must share a disk: a shim
+path the client cannot see fails the command before it runs (exit 97). The
+rewrite names node by a path that survives `brew upgrade node` (Homebrew's
+`opt/<formula>` link when it points at the daemon's node); if that path is
+gone anyway, the shim runs `node` from PATH.
 
-Switched off (`BASTRA_RM_SHIM=0`), the STOP stays — and on a command the shim
-would have taken (the same rm-only decision), the block gets one more line:
-what the shim would have done with this command (which targets it would
-have moved, restorable) and that it is on by default. The wording follows the
+Restore: `bastra archive list` shows what went where (30 days);
+`bastra archive restore <original path>` puts a target back,
+`bastra archive restore <ref>` a git snapshot. Limits: archiving is a move,
+so on a full disk the `rm` fails instead of freeing space; a target on
+another volume (a USB or network drive) goes to `<mount>/.bastra-archive`
+there — outside `~/.bastra` — or is refused where none can be made.
+
+Opted in but switched off with `BASTRA_RM_SHIM=0`, the STOP stays — and on a
+command the shim would have taken (the same rm-only decision), the block gets
+one more line: what the shim would have done with this command (which
+targets it would have moved, restorable) and how to turn it back on. The wording follows the
 user's own Claude Code rules, read deterministically from the standard files
 (managed, `~/.claude/settings.json` or `CLAUDE_CONFIG_DIR`, the project's
 `.claude/settings.json` and `settings.local.json`; deny > ask > allow, as
@@ -383,7 +407,9 @@ wrote the index; `git branch <name> <sha>`; `git stash store`);
 `bastra archive restore <ref>` runs it. A path act names the files it
 discards one by one, and pins nothing when its paths lose nothing. Pins are
 refs, so `gc` cannot take them; the archive deletes them after the user
-retention (2 days by default). They show up in `git log --all` meanwhile.
+retention (2 days by default). Until then they show up in `git log --all`,
+`git for-each-ref` and GUI clients, and a `git push --mirror` would publish
+them.
 
 Each act is read with its own short list of flags. A form outside it is not
 an act: `-p` / `--patch`, `-m` / `--merge` / `--conflict`,
@@ -412,8 +438,9 @@ paths (a merge in progress), a repository without a commit. Needs git 2.26 or ne
 Not taken, and why: `git commit --amend` and `git rebase` run the
 repository's hooks and may open an editor; `git push --force` publishes (the
 hint keeps naming `--force-with-lease`); `git reflog expire` / `git gc
---prune` have no reversible form — the pins above survive them. Off with
-`BASTRA_GIT_SHIM=0`; then a command it would have taken gets one line saying
+--prune` have no reversible form — the pins above survive them. The same
+opt-in as the archiving `rm` turns them on; with it on, `BASTRA_GIT_SHIM=0`
+leaves this part out, and a command it would have taken gets one line saying
 so, and a `git_shim_shadow` event (`matched_pattern, git_only,
 settings_verdict, settings_rule, hinted`). Each shim runs only where it is
 on: with one of the two switched off, a command that needs both is not
@@ -568,6 +595,9 @@ new MCP tool):
 | `BASTRA_SALIENCE_RANK_CAP`    | `0.25`           | Max salience score boost (`1 + salience × cap`)               |
 | `BASTRA_SAMPLE_ROT_DAYS`      | `28`             | Sample floor: days a memory may go unmeasured before it must re-enter the sample, whatever its salience (#160) |
 | `BASTRA_SIZE_CHECK`           | `on`             | `off` disables the PreToolUse file-size check                 |
+| `BASTRA_RM_ARCHIVES`          | _unset_          | The #650 opt-in, read by the daemon; wins over `archive.enabled`: `1` bastra's archiving `rm` + git snapshots, `host` the host's own archiving `rm` (receipt text only), `0` off |
+| `BASTRA_RM_SHIM` / `BASTRA_GIT_SHIM` | _unset_   | `0` leaves the `rm` / git part out while the opt-in is on      |
+| `BASTRA_ARCHIVE_RETAIN`       | `junk=1,in-git=2,user=2` | Archive retention in days per class (also `bastra config set archive.retain`) |
 | `BASTRA_SIZE_GUIDE`           | `500`            | Guide line count before the size hook nudges a split (also `bastra config set size.guide`) |
 | `BASTRA_SIZE_CRITICAL`        | `800`            | Critical line count for the size hook (also `size.critical`; test files use 700/1000) |
 
@@ -910,6 +940,94 @@ Riskante Muster: `chmod -R`, `chown -R`, `find ... -exec rm`,
 
 Blockiert **nicht**. Der Agent entscheidet, ob er fortfährt.
 
+**Das archivierende `rm` (#650, Claude Code) — Opt-in, standardmäßig aus.**
+Einschalten mit `bastra config set archive.enabled on` (steht in
+`~/.bastra/cli-settings.json`, gilt ab dem nächsten Bash-Aufruf) oder mit
+`BASTRA_RM_ARCHIVES=1` in der Umgebung des Daemons — ist die Variable gesetzt,
+gewinnt sie, `BASTRA_RM_ARCHIVES=0` schaltet hart aus. `bastra doctor` zeigt
+den Zustand im features-Block (und warnt, wenn er an ist, der Bash-Hook aber
+keine Kennung trägt); `bastra install` und das Onboarding schalten ihn nie
+ein. Derselbe Schalter gilt für die Git-Schnappschüsse
+unten. Er wirkt nur bei einem Hook-Aufruf mit der Claude-Code-Kennung
+(`BASTRA_HOOK_CLIENT=claude-code`, die `bastra install` ab diesem Release
+schreibt — einmal neu ausführen): ein Aufruf ohne Kennung behält das STOP.
+Ist der Schalter aus, bekommen `rm -r` und die Git-Befehle genau den Hinweis
+wie bisher: nichts wird umgeschrieben, nichts freigegeben, keine Zeile zum
+Archiv.
+
+Ist er an, gilt für einen Befehl, der nur aus `rm` besteht (schlicht,
+`command rm`, `xargs rm` mit Flags ohne Argument, `find … -exec rm`, ein
+nicht-Login-`bash -c`/`sh -c` davon, dazu `cd`; keine Umleitung außer nach
+`/dev/null`): Der Hook warnt nicht, er macht die Tat umkehrbar. Er antwortet
+mit `permissionDecision: "allow"` und einem `updatedInput`, das bastras
+`shims/rm` an den Anfang des `PATH` dieses einen Befehls setzt. Die Shell
+expandiert Globs und Variablen wie immer; der Shim verschiebt jedes Ziel nach
+`~/.bastra/archive/<Datum>/<Zeit-PID>/<voller Pfad>`, statt es zu löschen.
+Temp-Verzeichnisse (`/tmp`, `/var/tmp`, `$TMPDIR`, Claude Codes Scratchpads
+unter `/tmp/claude-<uid>/…` bzw. `CLAUDE_CODE_TMPDIR`) werden wirklich
+gelöscht; `/`, `~`, Systemverzeichnisse, die Temp-Wurzeln selbst und `.`/`..`
+werden verweigert. Nach dem Befehl sagt der Post-Hook dem Agenten, was
+tatsächlich passiert ist (archiviert wohin, gelöscht, verweigert) und wie man
+es zurückholt.
+
+Aufräumen: alte Einträge gehen nach Klasse, höchstens stündlich nach einem
+Bash-Aufruf geprüft — Build-Müll nach 1 Tag, saubere git-verfolgte Dateien
+nach 2, der Rest nach 2, mit einer 10-GB-Obergrenze, die eigene Dateien vor
+Ablauf ihrer Frist nie anfasst. Das Archiv ist ein Sicherheitsnetz für die
+nächsten Schritte, kein Backup; Fristen pro Klasse (Tage, Brüche erlaubt)
+mit `bastra config set archive.retain junk=1,in-git=2,user=2` oder
+`BASTRA_ARCHIVE_RETAIN` (die Variable gewinnt).
+
+Zurückholen: `bastra archive list` zeigt, was wohin ging (30 Tage);
+`bastra archive restore <ursprünglicher Pfad>` legt ein Ziel zurück,
+`bastra archive restore <ref>` einen Git-Schnappschuss.
+
+Alles andere behält das STOP: ein Befehl, der `rm` mit anderer Arbeit mischt
+(das `allow` würde alles decken), eine Umleitung in eine Datei, ein
+`xargs`-Flag mit Argument, `zsh -c` (liest vorher `~/.zshenv`), ein Befehl,
+der ändert, was `rm` ist (`PATH=`, `alias`, `hash -p`, eine `rm()`-Funktion,
+auch in `eval`), ein `rm … &` im Hintergrund, `sudo rm`, `/bin/rm`, `rm` auf
+entfernten Rechnern oder in Containern. Gar nicht abgedeckt: `find -delete`,
+`git clean` ohne die Schnappschüsse, `rmdir`, Löschen aus Code und `rm` ohne
+`-r`/`-R`. Die Berechtigungsregeln des Nutzers gelten weiter:
+`deny: Bash(rm:*)` verweigert, `ask: Bash(rm:*)` fragt. Mit Opt-in lässt
+`BASTRA_RM_SHIM=0` nur den `rm`-Teil weg (dann eine Zeile, was der Shim getan
+hätte, und ein Telemetrie-Ereignis `rm_shim_shadow`); ein Host mit eigenem
+archivierenden `rm` setzt `BASTRA_RM_ARCHIVES=host` und bekommt nur den
+Quittungstext ohne Umschreiben. Daemon und Claude Code müssen dieselbe Platte
+sehen (sonst läuft der Befehl nicht: Exit 97). Die Umschreibung nennt node
+über einen Pfad, der `brew upgrade node` übersteht (Homebrews
+`opt/<formula>`); fehlt er trotzdem, nimmt der Shim `node` aus dem PATH.
+
+Grenzen: Archivieren ist Verschieben — auf einer vollen Platte schlägt `rm`
+fehl, statt Platz zu schaffen, und Platz wird erst frei, wenn das Archiv den
+Eintrag loslässt. Ein Ziel auf einem anderen Laufwerk (USB, Netzlaufwerk)
+landet dort unter `<mount>/.bastra-archive` — außerhalb von `~/.bastra` —
+oder wird verweigert, wo sich keins anlegen lässt.
+
+**Git-Schnappschüsse (#650, Claude Code) — derselbe Opt-in.** Ein Befehl nur
+aus Git-Taten, die Arbeit verlieren (plus `cd`, `rm`, `git -C <dir>`), wird
+genauso umgeschrieben; `shims/git` ist das nächste `git` im PATH und ändert,
+wie die Tat läuft, nie, was danach zu sehen ist: `git clean -f…` verschiebt
+genau das, was `git clean -n` mit denselben Flags auflistet, ins Archiv;
+`git reset --hard`, `git checkout [<tree>] -- <Pfade>` und `git restore`
+sichern vorher die nicht committeten Änderungen (`git stash create`, die
+Stash-Liste bleibt unberührt) als `refs/bastra-archive/<Tat>/<Zeit>`;
+`git branch -D`, `git stash drop` und `git stash clear` pinnen die Commits,
+die sonst ihren letzten Namen verlieren. Die Quittung nennt jeden Pin und den
+Befehl, der ihn zurückholt; `bastra archive restore <ref>` führt ihn aus.
+Pins sind Refs: `gc` nimmt sie nicht, das Archiv löscht sie nach der
+Nutzer-Frist (2 Tage). Bis dahin erscheinen sie in `git log --all`,
+`git for-each-ref` und GUI-Clients, und ein `git push --mirror` würde sie
+veröffentlichen. Der Shim verweigert vorab in einem Repository, das bei der
+Tat eigenen Code ausführen würde (`core.fsmonitor`, `core.hooksPath`,
+`filter.*`, Partial Clone, ausführbare `post-checkout`-/`post-index-change`-/
+`reference-transaction`-Hooks), und wo kein Schnappschuss halten kann, was
+die Tat verwirft. Braucht git 2.26 oder neuer. Nicht übernommen:
+`git commit --amend`, `git rebase`, `git push --force`, `git reflog expire`,
+`git gc --prune`. Mit Opt-in lässt `BASTRA_GIT_SHIM=0` nur diesen Teil weg
+(dann eine Zeile und ein Ereignis `git_shim_shadow`).
+
 Telemetrie: `bash_hook_call` mit `matched_pattern, severity, hit_count,
 top_score, status`.
 
@@ -1059,6 +1177,9 @@ REST-Schnittstelle (Token-Authentifizierung wie bei den anderen
 | `BASTRA_HTTP_URL`             | _keiner_         | Vollständige Daemon-Basis-URL (überschreibt Host+Port); wird nur gelesen, wenn `BASTRA_DAEMON_URL` nicht gesetzt ist |
 | `BASTRA_HTTP_PORT`            | `6723`           | Daemon-Port auf `127.0.0.1`; wird nur gelesen, wenn keine der URL-Variablen gesetzt ist |
 | `BASTRA_HOOK_TIMEOUT_MS`      | pro Lane, siehe oben | Überschreibt das Lane-Budget (inkl. Netzwerk-Hin- und Rückweg). Das Assertion-Budget ist fest auf 1000 ms und wird nicht aus dieser Variable gelesen. |
+| `BASTRA_RM_ARCHIVES`          | _nicht gesetzt_  | Der #650-Opt-in, vom Daemon gelesen; gewinnt über `archive.enabled`: `1` bastras archivierendes `rm` + Git-Schnappschüsse, `host` das eigene archivierende `rm` des Hosts (nur Quittungstext), `0` aus |
+| `BASTRA_RM_SHIM` / `BASTRA_GIT_SHIM` | _nicht gesetzt_ | `0` lässt bei eingeschaltetem Opt-in den `rm`- bzw. Git-Teil weg |
+| `BASTRA_ARCHIVE_RETAIN`       | `junk=1,in-git=2,user=2` | Aufbewahrung im Archiv in Tagen pro Klasse (auch `bastra config set archive.retain`) |
 | `BASTRA_HOOK_QUERY`           | `neutral`        | `english` stellt die alte Recall-Anfrage mit Tätigkeitsverb wieder her (#231) |
 | `BASTRA_HOOK_CONTENT_RECALL`  | `off`            | `1` aktiviert den optionalen Recall-Zweig über den Änderungsinhalt (#282) |
 | `BASTRA_PROMPT_HOOK_MODE`     | `all`            | `all` oder `retrieval-only` — wird nur vom Prompt-Hook gelesen |
