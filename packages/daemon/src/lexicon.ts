@@ -60,7 +60,7 @@ export const DEFAULT_FRUSTRATION_CUES_BY_LANGUAGE: Readonly<Record<string, reado
 export const DEFAULT_DECISION_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
   de: ["ok\\s+dann", "lass\\s+uns", "entschieden", "gehen\\s+wir\\s+mit"],
   en: [
-    "ok(?:ay)?\\s+then", "let['’]?s\\s+(?:go\\s+with|use)", "we(?:['’]ll|\\s+will)\\s+go\\s+with",
+    "ok(?:ay)?\\s+then", "let['’]?s\\s+(?:go\\s+with|use)", "we['’]ll\\s+go\\s+with", "we\\s+will\\s+go\\s+with",
     "decided", "settled\\s+on",
   ],
   ru: ["решено", "остановимся\\s+на", "договорились"],
@@ -109,8 +109,16 @@ const RE_QUANTIFIED_GROUP = /\)[+*{]/;
  * two literal letters (`schon\s+wieder`) cannot overlap with its neighbours —
  * a letter is never whitespace — so it does not count. All shipped defaults
  * fit this budget.
+ *
+ * At most ONE of them may be unbounded (`*`, `+`, `{n,}`). The `a`-run
+ * measurements above understated the cost: the wrapper only bars a start
+ * inside a run of LETTERS, so on a hex blob or a run of digits every position
+ * is a start and `\w*\w*y` took 859 ms on 2,000 characters and 64 s on 8,000
+ * — inside the Stop lane, in the daemon, past its own one-second budget. One
+ * unbounded repeat is quadratic at worst.
  */
 const MAX_CUE_QUANTIFIERS = 2;
+const MAX_UNBOUNDED_QUANTIFIERS = 1;
 
 function tooManyQuantifiers(cue: string): boolean {
   const counted = cue
@@ -119,8 +127,9 @@ function tooManyQuantifiers(cue: string): boolean {
     .replace(/\\./g, "e") // escapes: `\*` is a literal, `\w` one atom
     .replace(/\[(?:[^\]\\]|\\.)*\]/g, "c"); // a class is one atom
   // `?` right after `(` is group syntax, after another quantifier it is lazy.
-  const quantifiers = counted.match(/(?<![(*+?}])[*+?]|\{\d/g) ?? [];
-  return quantifiers.length > MAX_CUE_QUANTIFIERS;
+  const quantifiers = counted.match(/(?<![(*+?}])[*+?]|\{\d+(?:,\d*)?\}/g) ?? [];
+  return quantifiers.length > MAX_CUE_QUANTIFIERS ||
+    quantifiers.filter((q) => q === "*" || q === "+" || /^\{\d+,\}$/.test(q)).length > MAX_UNBOUNDED_QUANTIFIERS;
 }
 
 /**
