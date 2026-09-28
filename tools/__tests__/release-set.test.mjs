@@ -194,7 +194,9 @@ async function runPublish(args, env = {}) {
     let out = "";
     child.stdout.on("data", (c) => (out += c));
     child.stderr.on("data", (c) => (out += c));
+    const timeout = setTimeout(() => child.kill("SIGKILL"), 10_000);
     const code = await new Promise((resolve) => child.on("close", resolve));
+    clearTimeout(timeout);
     return { code, out, calls: await readFile(log, "utf8") };
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -316,6 +318,19 @@ test("#553 publish set: --verify still fails a package that never appears", asyn
   });
   assert.notEqual(code, 0, `a missing package verified as present:\n${out}`);
   assert.match(out, /bastra-recall@.*is not on the registry/);
+});
+
+test("#553 publish set: invalid retry settings fail instead of looping forever", async () => {
+  for (const env of [
+    { BASTRA_VERIFY_ATTEMPTS: "not-a-number" },
+    { BASTRA_VERIFY_ATTEMPTS: "Infinity" },
+    { BASTRA_VERIFY_ATTEMPTS: "0" },
+    { BASTRA_VERIFY_INTERVAL_MS: "-1" },
+  ]) {
+    const { code, out } = await runPublish(["--verify"], env);
+    assert.notEqual(code, 0);
+    assert.match(out, /must be a finite integer/);
+  }
 });
 
 test("#524 publish set: --verify fails while any package of the set is missing", async () => {
