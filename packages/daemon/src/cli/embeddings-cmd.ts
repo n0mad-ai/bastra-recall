@@ -21,11 +21,12 @@ import {
   getEmbeddingProvider,
   setEmbeddingProvider,
   resolveEmbeddingChoice,
+  resolveGenerationModel,
   settingsFilePath,
   type EmbeddingChoice,
   type EmbeddingProviderName,
 } from "../settings.js";
-import { enableSemanticRecall, ensureOllama, probeOllama } from "./ollama.js";
+import { enableSemanticRecall, ensureOllama, ollamaModelPulled, probeOllama } from "./ollama.js";
 import { probeDaemon } from "./helpers.js";
 import { confirm, isInteractive } from "./prompt.js";
 
@@ -64,7 +65,30 @@ const INSTALL_OFF_HINT = `→ semantic recall: OFF — recall is keyword-only (B
 export const INSTALL_PROMPT_QUESTION =
   "Enable semantic recall (multilingual vector search)? It finds notes when your wording has drifted from theirs — " +
   "on a real vault 80% of notes found, against 61% keyword-only (#103). " +
-  "Downloads the embeddinggemma model (~620 MB) via Ollama (installed with Homebrew if missing).";
+  "Downloads the embeddinggemma model (~620 MB) via Ollama (installed with Homebrew if missing). " +
+  "It also starts background paraphrasing (doc2query): a local generation model rewrites every memory's triggers, " +
+  "hours of CPU on a machine without a GPU — BASTRA_TRIGGER_EXPAND=0 in the daemon's environment leaves it off.";
+
+/**
+ * #646: Ollama embeddings start the doc2query paraphraser on their own
+ * (index.ts, `BASTRA_TRIGGER_EXPAND` default on), on a GENERATION model with a
+ * different cost than the embedding model the user just agreed to. Turning on
+ * one feature must not turn on another without saying so — so `embeddings on`
+ * names it, its model, its cost and its off switch, and a model that is not
+ * pulled before the first 404. `pulled` null = Ollama did not answer: unknown,
+ * so no pull hint (same rule as doctor's row).
+ */
+export function paraphrasingNotice(model: string, pulled: boolean | null): string[] {
+  const lines = [
+    `→ background paraphrasing (doc2query): starts with Ollama embeddings — ${model} rewrites every memory's triggers in the background`,
+    "  (a generation model, not the embedding model: hours of CPU on a machine without a GPU).",
+    "  Leave it off: BASTRA_TRIGGER_EXPAND=0 in the daemon's environment, then restart the daemon.",
+  ];
+  if (pulled === false) {
+    lines.push(`  ⚠ ${model} is not pulled, so every paraphrase would fail: ollama pull ${model}  (or switch it off as above)`);
+  }
+  return lines;
+}
 
 function write(line: string): void {
   process.stdout.write(line + "\n");
@@ -99,6 +123,12 @@ async function cmdOn(settingsPath?: string): Promise<number> {
   write(`→ semantic recall: ${r.message}`);
   if (r.status === "already-active") {
     write("  restart the daemon to apply (restart your AI client, or it applies on the next boot).");
+  }
+  // Only when Ollama embeddings are what the daemon will actually run: an env
+  // override to another provider means the paraphraser cannot start.
+  if ((await resolveEmbeddingChoice({ path: settingsPath })).provider === "ollama") {
+    const model = await resolveGenerationModel(settingsPath);
+    for (const line of paraphrasingNotice(model, await ollamaModelPulled(model))) write(line);
   }
   if (r.status === "error" || r.status === "unsupported") {
     write("  setting saved — semantic recall turns ON once Ollama + the embeddinggemma model are ready;");
@@ -279,6 +309,10 @@ export async function installSemanticRecallStep(args: {
   // "provision", or the prompt was accepted — same path as `bastra embeddings on`.
   const r = await enableSemanticRecall({ dryRun: args.dryRun });
   write(`→ semantic recall: ${r.message}`);
+  if (r.persisted && (await resolveEmbeddingChoice()).provider === "ollama") {
+    const model = await resolveGenerationModel();
+    for (const line of paraphrasingNotice(model, await ollamaModelPulled(model))) write(line);
+  }
   if (r.persisted && (r.status === "error" || r.status === "unsupported")) {
     write(`  setting saved — finish setup, then re-run: ${ENABLE_HINT}`);
   }

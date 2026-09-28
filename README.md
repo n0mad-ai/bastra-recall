@@ -113,7 +113,7 @@ Experimental, optional, off until you switch it on per repository with `bastra c
 
 Storage and keyword search are local. When your assistant retrieves a memory, it receives that content as context; a cloud-based assistant may process it with its provider. Local storage does not make the whole AI session offline.
 
-Semantic search is optional. `bastra embeddings on` sets up local Ollama embeddings; `bastra embeddings off` returns to keyword search. Choosing OpenAI embeddings explicitly sends queries and indexed memory text to OpenAI. [Privacy and network use](./docs/PRIVACY.md) explains these paths, file sync and optional network features.
+Semantic search is optional. `bastra embeddings on` sets up local Ollama embeddings; `bastra embeddings off` returns to keyword search. With Ollama embeddings on, background paraphrasing (doc2query) starts too: a local generation model rewrites every memory's triggers, which takes hours of CPU on a machine without a GPU. `BASTRA_TRIGGER_EXPAND=0` in the daemon's environment leaves it off; `embeddings on` and `bastra doctor` say which model it uses. Choosing OpenAI embeddings explicitly sends queries and indexed memory text to OpenAI. [Privacy and network use](./docs/PRIVACY.md) explains these paths, file sync and optional network features.
 
 A vault in iCloud, Google Drive or Dropbox uses that service's synchronization. Concurrent edits on multiple computers can conflict, including with Bastra's automatic metadata updates. Bastra does not provide managed multi-device synchronization. Keep backups and check conflicting copies before replacing a file.
 
@@ -244,7 +244,7 @@ Experimentell, optional und standardmäßig aus; pro Repository mit `bastra code
 
 Speicherung und Stichwortsuche laufen lokal. Ruft dein Assistent eine Erinnerung ab, erhält er deren Inhalt als Kontext; ein cloudbasierter Assistent kann ihn bei seinem Anbieter verarbeiten. Lokale Speicherung macht die gesamte KI-Sitzung nicht offline.
 
-Semantische Suche ist optional. `bastra embeddings on` richtet lokale Ollama-Embeddings ein; `bastra embeddings off` schaltet zurück auf Stichwortsuche. Wenn du ausdrücklich OpenAI-Embeddings wählst, gehen Suchanfragen und indizierte Erinnerungstexte an OpenAI. [Datenschutz und Netzwerkzugriffe](./docs/PRIVACY.md#deutsch) erläutert diese Wege, Datei-Sync und optionale Netzwerkfunktionen.
+Semantische Suche ist optional. `bastra embeddings on` richtet lokale Ollama-Embeddings ein; `bastra embeddings off` schaltet zurück auf Stichwortsuche. Mit Ollama-Embeddings startet auch die Hintergrund-Umschreibung (doc2query): Ein lokales Generationsmodell formuliert die Trigger jeder Erinnerung um, auf einem Rechner ohne GPU stundenlang. `BASTRA_TRIGGER_EXPAND=0` in der Umgebung des Daemons lässt sie aus; `embeddings on` und `bastra doctor` nennen das verwendete Modell. Wenn du ausdrücklich OpenAI-Embeddings wählst, gehen Suchanfragen und indizierte Erinnerungstexte an OpenAI. [Datenschutz und Netzwerkzugriffe](./docs/PRIVACY.md#deutsch) erläutert diese Wege, Datei-Sync und optionale Netzwerkfunktionen.
 
 Ein Vault in iCloud, Google Drive oder Dropbox nutzt die Synchronisierung dieses Dienstes. Gleichzeitige Änderungen auf mehreren Rechnern können Konflikte verursachen, auch mit Bastras automatischen Metadaten-Updates. Bastra bietet keinen verwalteten Mehrgeräte-Sync. Bewahre Backups auf und prüfe Konfliktkopien, bevor du Dateien ersetzt.
 
