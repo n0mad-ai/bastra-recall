@@ -134,7 +134,7 @@ export interface ImportVaultResult {
 /** Recursively collect `*.md` files under `dir`, skipping dotdirs and
  *  node_modules (same policy as the vault loader) and the `MEMORY.md` pointer
  *  index (it's a table of contents, not a memory). Returns absolute paths. */
-async function listSourceMarkdown(dir: string, exclude: Set<string> = new Set()): Promise<string[]> {
+export async function listSourceMarkdown(dir: string, exclude: Set<string> = new Set()): Promise<string[]> {
   const out: string[] = [];
   async function walk(current: string): Promise<void> {
     let entries;
