@@ -73,13 +73,60 @@ export function tsOf(e: Record<string, unknown>): number {
   return Number.isNaN(t) ? 0 : t;
 }
 
+/** Available daemon rows of one (session, kind), ordered by time. Removing a
+ * match updates both nearest-neighbour searches; dense sessions no longer
+ * rescan every already-taken row for every client timeout. */
+class CandidateBucket {
+  private readonly rows: Array<{ event: Record<string, unknown>; time: number; order: number }>;
+  private readonly right: number[];
+  private readonly left: number[];
+
+  constructor(rows: Array<{ event: Record<string, unknown>; order: number }>) {
+    this.rows = rows.map(({ event, order }) => ({ event, time: tsOf(event), order }))
+      .sort((a, b) => a.time - b.time || a.order - b.order);
+    this.right = Array.from({ length: rows.length + 1 }, (_, i) => i);
+    this.left = Array.from({ length: rows.length + 1 }, (_, i) => i);
+  }
+
+  private find(parents: number[], at: number): number {
+    let root = at;
+    while (parents[root] !== root) root = parents[root]!;
+    while (parents[at] !== at) {
+      const next = parents[at]!;
+      parents[at] = root;
+      at = next;
+    }
+    return root;
+  }
+
+  takeNearest(time: number): Record<string, unknown> | null {
+    let lo = 0;
+    let hi = this.rows.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (this.rows[mid]!.time < time) lo = mid + 1;
+      else hi = mid;
+    }
+    const before = this.find(this.left, lo) - 1;
+    const after = this.find(this.right, lo);
+    const a = before >= 0 ? this.rows[before] : undefined;
+    const b = after < this.rows.length ? this.rows[after] : undefined;
+    const gapA = a ? Math.abs(a.time - time) : Infinity;
+    const gapB = b ? Math.abs(b.time - time) : Infinity;
+    if (Math.min(gapA, gapB) > DUPLICATE_WINDOW_MS) return null;
+    const chosen = gapA < gapB || (gapA === gapB && (a?.order ?? Infinity) < (b?.order ?? Infinity)) ? before : after;
+    this.right[chosen] = this.find(this.right, chosen + 1);
+    this.left[chosen + 1] = this.find(this.left, chosen);
+    return this.rows[chosen]!.event;
+  }
+}
+
 export function foldClientDuplicates(
   events: Array<Record<string, unknown>>,
 ): { events: Array<Record<string, unknown>>; folded: number } {
   const clients = events.filter(isClientRow);
   if (clients.length === 0) return { events, folded: 0 };
   const dropped = new Set<Record<string, unknown>>();
-  const taken = new Set<Record<string, unknown>>();
   // The fold mutates the daemon row's status, so work on copies: `aggregate`
   // must not rewrite the caller's events.
   const copies = new Map<Record<string, unknown>, Record<string, unknown>>();
@@ -89,8 +136,8 @@ export function foldClientDuplicates(
   // into those buckets once. Buckets are built by walking `events` in order,
   // so the tie-break below (`gap < bestGap`, first candidate wins) still
   // resolves to the row that appears earliest in `events`.
-  const bucketsBySession = new Map<string, Map<unknown, Array<Record<string, unknown>>>>();
-  for (const e of events) {
+  const bucketsBySession = new Map<string, Map<unknown, Array<{ event: Record<string, unknown>; order: number }>>>();
+  for (const [order, e] of events.entries()) {
     if (isClientRow(e)) continue;
     const session = sessionOf(e);
     if (session === null) continue;
@@ -104,26 +151,20 @@ export function foldClientDuplicates(
       bucket = [];
       byKind.set(e.kind, bucket);
     }
-    bucket.push(e);
+    bucket.push({ event: e, order });
+  }
+  const available = new Map<string, Map<unknown, CandidateBucket>>();
+  for (const [session, kinds] of bucketsBySession) {
+    available.set(session, new Map([...kinds].map(([kind, rows]) => [kind, new CandidateBucket(rows)])));
   }
   for (const client of clients.sort((a, b) => tsOf(a) - tsOf(b))) {
     const at = tsOf(client);
     const session = sessionOf(client);
     if (session === null) continue;
-    const bucket = bucketsBySession.get(session)?.get(client.kind);
+    const bucket = available.get(session)?.get(client.kind);
     if (!bucket) continue;
-    let best: Record<string, unknown> | null = null;
-    let bestGap = Infinity;
-    for (const e of bucket) {
-      if (taken.has(e)) continue;
-      const gap = Math.abs(tsOf(e) - at);
-      if (gap <= DUPLICATE_WINDOW_MS && gap < bestGap) {
-        best = e;
-        bestGap = gap;
-      }
-    }
+    const best = bucket.takeNearest(at);
     if (!best) continue;
-    taken.add(best);
     dropped.add(client);
     const status = String(best.status ?? "");
     if (status !== "timeout" && status !== "error" && status !== "daemon-unreachable") {
