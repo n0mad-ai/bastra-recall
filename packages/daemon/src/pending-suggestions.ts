@@ -41,6 +41,10 @@ export interface PendingSuggestion {
   /** Trends only: the session that last advanced `sessions` — a second hook
    *  call for the same session must not count twice. */
   last_session?: string;
+  /** Trends only: tombstone left when the entry aged out. It is never shown;
+   *  it only stops an unchanged re-write of the same text from reviving the
+   *  trend. Changed text (new counts) starts a fresh row. */
+  retired?: boolean;
 }
 
 function laneOf(e: PendingSuggestion): PendingLane {
@@ -153,12 +157,25 @@ export async function writePendingSuggestion(
         /* missing/corrupt → start fresh */
       }
       if (lane === "trends") {
-        // #513: one row per trend. A refresh replaces the text and restarts the
-        // session counter — the trend just came up again.
+        // #513: one row per trend. A refresh replaces the text, but the
+        // session counter keeps its progress — restarting it here made
+        // a STANDING trend (still driving a refresh every time it is written,
+        // e.g. taxonomy-drift on every Stop) never age out: the counter was
+        // reset to 0 before it could reach the threshold that ever drops it.
+        // Aging is takePendingRelay's job, once per real session start; a
+        // refresh only means "still current", not "clock restarts".
         const dup = entries.find(
           (e) => laneOf(e) === "trends" && (opts.key ? e.key === opts.key : e.blocks === capped),
         );
-        const row: PendingSuggestion = { ts: Date.now(), blocks: capped, lane: "trends", sessions: 0 };
+        if (dup?.retired && dup.blocks === capped) return; // aged out, nothing new to say
+        const live = dup && !dup.retired ? dup : undefined;
+        const row: PendingSuggestion = {
+          ts: Date.now(),
+          blocks: capped,
+          lane: "trends",
+          sessions: live?.sessions ?? 0,
+        };
+        if (live?.last_session !== undefined) row.last_session = live.last_session;
         if (opts.key) row.key = opts.key;
         if (dup) entries.splice(entries.indexOf(dup), 1);
         entries.push(row);
@@ -363,22 +380,32 @@ export async function takePendingRelay(
         : [];
       const recency = valid.filter((e) => laneOf(e) === "recency" && now - e.ts <= PENDING_MAX_AGE_MS);
       const trends: PendingSuggestion[] = [];
+      const tombstones: PendingSuggestion[] = [];
       for (const e of valid) {
         if (laneOf(e) !== "trends") continue;
+        if (e.retired) {
+          tombstones.push(e);
+          continue;
+        }
         let sessions = typeof e.sessions === "number" && e.sessions >= 0 ? e.sessions : 0;
         let last = e.last_session;
         if (advanceFor && last !== advanceFor) {
           sessions += 1;
           last = advanceFor;
         }
-        if (sessions > maxSessions) continue; // aged out — this start no longer shows it
+        if (sessions > maxSessions) {
+          // Aged out — this start no longer shows it. Keep a tombstone so the
+          // Stop hook re-writing the same standing trend does not revive it.
+          tombstones.push({ ts: e.ts, blocks: e.blocks, lane: "trends", sessions, ...(e.key ? { key: e.key } : {}), retired: true });
+          continue;
+        }
         const row: PendingSuggestion = { ...e, sessions };
         if (last !== undefined) row.last_session = last;
         trends.push(row);
       }
-      if (trends.length > 0) {
+      if (trends.length + tombstones.length > 0) {
         const tmp = `${path}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
-        await writeFile(tmp, JSON.stringify(trends), "utf8");
+        await writeFile(tmp, JSON.stringify([...tombstones, ...trends]), "utf8");
         await rename(tmp, path);
       } else {
         await unlink(path).catch(() => {});
