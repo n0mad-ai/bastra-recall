@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Query router, shadow first** (#362). `routeQueryArms` (core) marks short
+  (≤ 2 words, Unicode word segmentation) and identifier-shaped queries as
+  BM25-only; everything else stays hybrid. Structural, no word list.
+  `BASTRA_QUERY_ROUTER` defaults to `shadow`: the hook pipeline records
+  `query_route` with `would_save_ms` on `hook_recall` and changes nothing;
+  `live` skips the dense arm for routed queries. New harness
+  `npm run router-lift` (eval) runs gold-set run A as baseline, routed and
+  control arms: 17 of 699 queries routed, no metric below the baseline
+  (recall@3 0.3904 → 0.3938, relevant_loss 78 → 77 of 365), routed queries
+  p50 14.8 → 5.8 ms. The prompt lane's p90 tail comes from long prompts,
+  which the router leaves hybrid, so it is unchanged.
+
 - **One recall pipeline for hooks and MCP** (#421). A client without hooks
   now gets the same selection steps as a hook user
   (`packages/daemon/src/recall-pipeline.ts`): MCP `recall` returns
