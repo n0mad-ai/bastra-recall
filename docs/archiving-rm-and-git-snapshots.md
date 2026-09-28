@@ -94,7 +94,7 @@ Change it with `bastra config set archive.retain junk=1,in-git=2,user=2` or `BAS
   - `find -delete`, `rmdir`, `unlink`, deletes from code (`fs.rm`, `shutil.rmtree`); `git clean` only through the git snapshots below
   - `save_document(overwrite: true)` unlinking the previous version inside bastra itself
 
-Archiving is a move: `rm` does not free disk space until the archive lets the entry go. On a full disk the shim refuses with ENOSPC instead of freeing space (#695).
+Archiving is a move: `rm` does not free disk space until the archive lets the entry go. On a full disk the shim refuses with ENOSPC instead of freeing space (#695): the target stays, nothing is deleted, and the message names `bastra archive reconcile --yes`, `/bin/rm` and `bastra config set archive.enabled off`.
 
 #### Why it is safe
 
@@ -203,7 +203,7 @@ The archiving `rm` depends on knowing when a command changes what `rm` resolves 
 
 ### Known limits and left for later
 
-- **Full disk:** archiving is a move, so `rm` fails with ENOSPC instead of freeing space (#695). A "free space now" path is not built.
+- **Full disk:** archiving is a move, so `rm` refuses with ENOSPC instead of freeing space, and says how to free it (#695). A "free space now" path is not built.
 - **Other volumes:** a target on a USB or network drive goes to `<mount>/.bastra-archive` there, outside `~/.bastra`, or is refused where none can be made.
 - **Restore edges:** after `rm -r a/b a`, restoring `a/b` first recreates `a`, and `a` then refuses to overwrite it — restore the parent first. A path typed through a symlinked parent that has since gone is not found by that spelling; the receipt names the resolved path, which is.
 - **Cost per target:** three `git` calls per target inside a repository (for the class). `find … -exec rm {} \;` starts one node per file (about 83 ms per tracked file measured); `-exec {} +` batches.
@@ -302,7 +302,7 @@ Das Modell erfährt, was tatsächlich passiert ist, nicht was der Pre-Hook vorhe
   - `find -delete`, `rmdir`, `unlink`, Löschen aus Code (`fs.rm`, `shutil.rmtree`); `git clean` nur über die Git-Schnappschüsse unten
   - `save_document(overwrite: true)`, das in bastra selbst die Vorversion löscht
 
-Archivieren ist Verschieben: `rm` gibt keinen Platz frei, bis das Archiv den Eintrag loslässt. Auf einer vollen Platte verweigert der Shim mit ENOSPC, statt Platz zu schaffen (#695).
+Archivieren ist Verschieben: `rm` gibt keinen Platz frei, bis das Archiv den Eintrag loslässt. Auf einer vollen Platte verweigert der Shim mit ENOSPC, statt Platz zu schaffen (#695): Das Ziel bleibt, nichts wird gelöscht, und die Meldung nennt `bastra archive reconcile --yes`, `/bin/rm` und `bastra config set archive.enabled off`.
 
 #### Warum es sicher ist
 
@@ -411,7 +411,7 @@ Das archivierende `rm` muss wissen, wann ein Befehl ändert, was `rm` ist. #689 
 
 ### Bekannte Grenzen und offen
 
-- **Volle Platte:** Archivieren ist Verschieben, `rm` schlägt mit ENOSPC fehl, statt Platz zu schaffen (#695). Ein Weg „jetzt Platz freigeben" ist nicht gebaut.
+- **Volle Platte:** Archivieren ist Verschieben, `rm` verweigert mit ENOSPC, statt Platz zu schaffen, und sagt, wie Platz frei wird (#695). Ein Weg „jetzt Platz freigeben" ist nicht gebaut.
 - **Andere Laufwerke:** Ein Ziel auf USB- oder Netzlaufwerk landet dort unter `<mount>/.bastra-archive`, außerhalb von `~/.bastra`, oder wird verweigert, wo sich keins anlegen lässt.
 - **Grenzfälle beim Zurückholen:** Nach `rm -r a/b a` legt das Zurückholen von `a/b` zuerst `a` an, und `a` weigert sich danach, es zu überschreiben — erst das Elternverzeichnis zurückholen. Ein Pfad über ein inzwischen verschwundenes symverlinktes Elternverzeichnis wird in dieser Schreibweise nicht gefunden; die Quittung nennt den aufgelösten Pfad, der gefunden wird.
 - **Kosten pro Ziel:** drei `git`-Aufrufe pro Ziel in einem Repository (für die Klasse). `find … -exec rm {} \;` startet eine Node pro Datei (gemessen etwa 83 ms pro verfolgter Datei); `-exec {} +` bündelt.

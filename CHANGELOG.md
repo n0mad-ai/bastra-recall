@@ -140,6 +140,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The archiving `rm` on a full disk refuses clearly** (#695). Archiving is
+  a move and frees no space; when the move or its manifest line fails with
+  `ENOSPC`, `rm` now exits 1 with a message that names the ways out
+  (`bastra archive reconcile --yes`, `/bin/rm`, `bastra config set
+  archive.enabled off`). The target stays where it was, nothing is deleted,
+  and the empty dated directory made for the move is removed again.
 - **An `rm` redefinition inside a compound command is seen** (#694). `{ hash
   -p /x rm; }`, `if …; then alias rm=/x; fi`, `! hash -p …`, `time hash -p …`
   before an `rm -rf` got the archive receipt although `rm` was no longer the

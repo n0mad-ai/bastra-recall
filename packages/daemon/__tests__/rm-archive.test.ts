@@ -5,7 +5,8 @@
  */
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { createRequire, syncBuiltinESMExports } from "node:module";
 import { execFileSync, spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -801,5 +802,57 @@ describe("#650 — the shim switched off says it exists, and the off switch is c
         else process.env[k] = v;
       }
     }
+  });
+});
+
+describe("#695 — a full disk: a clear refusal, the target untouched, nothing deleted", () => {
+  /** Make one fs function fail with ENOSPC — the shim imports node:fs by name,
+   *  so the ESM bindings are re-synced from the patched builtin. */
+  function withEnospc(name: "renameSync" | "appendFileSync", run: () => void): void {
+    const fs = createRequire(import.meta.url)("node:fs") as Record<string, unknown>;
+    const orig = fs[name];
+    fs[name] = () => {
+      throw Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" });
+    };
+    syncBuiltinESMExports();
+    try {
+      run();
+    } finally {
+      fs[name] = orig;
+      syncBuiltinESMExports();
+    }
+  }
+
+  it("the move fails with ENOSPC: exit 1, the target stays, the message names the ways out, no empty dirs left", () => {
+    // Revert-check: drop the isDiskFull branch → the message lacks `archive reconcile` / `archive.enabled`.
+    const { dir, env } = sandbox();
+    const target = join(dir, "big");
+    mkdirSync(target);
+    writeFileSync(join(target, "a.bin"), "x");
+    mkdirSync(join(dir, "_archive"));
+    const errs: string[] = [];
+    withEnospc("renameSync", () => {
+      assert.equal(runRmShim(["-rf", target], { env, cwd: dir, out: () => {}, err: (s) => errs.push(s) }), 1);
+    });
+    assert.equal(readFileSync(join(target, "a.bin"), "utf8"), "x", "the target is where it was");
+    const said = errs.join("\n");
+    assert.match(said, /disk is full/);
+    assert.match(said, /bastra archive reconcile --yes/);
+    assert.match(said, /\/bin\/rm/);
+    assert.match(said, /bastra config set archive\.enabled off/);
+    // The dated directory this call made for the move is gone again.
+    assert.deepEqual(readdirSync(join(dir, "_archive")).filter((n) => n !== "manifest.jsonl"), []);
+  });
+
+  it("the manifest line fails with ENOSPC: the move is put back, same clear message", () => {
+    const { dir, env } = sandbox();
+    const target = join(dir, "notes.txt");
+    writeFileSync(target, "keep me\n");
+    const errs: string[] = [];
+    withEnospc("appendFileSync", () => {
+      assert.equal(runRmShim([target], { env, cwd: dir, out: () => {}, err: (s) => errs.push(s) }), 1);
+    });
+    assert.equal(readFileSync(target, "utf8"), "keep me\n");
+    assert.match(errs.join("\n"), /disk is full.*archive reconcile --yes/s);
   });
 });

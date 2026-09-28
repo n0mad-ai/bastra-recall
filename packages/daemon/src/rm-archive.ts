@@ -37,6 +37,7 @@ import {
   readSync,
   realpathSync,
   renameSync,
+  rmdirSync,
   rmSync,
   statSync,
   unlinkSync,
@@ -320,6 +321,15 @@ export interface ShimIo {
   err?: (s: string) => void;
 }
 
+const isDiskFull = (e: unknown): boolean => ["ENOSPC", "EDQUOT"].includes((e as NodeJS.ErrnoException).code ?? "");
+
+/** #695: archiving is a move — on a full disk it cannot free space. Say so and
+ *  name the ways out; the target stays where it was, nothing is deleted. */
+const diskFull = (t: string): string =>
+  `rm: '${t}' not removed — the disk is full (ENOSPC) and archiving is a move, it frees no space. ` +
+  "Free space with `bastra archive reconcile --yes`, delete for real with `/bin/rm`, " +
+  "or turn the archive off: `bastra config set archive.enabled off`";
+
 /** `rm` with the system's exit codes and messages, archiving instead of unlinking. */
 export function runRmShim(argv: string[], io: ShimIo = {}): number {
   const env = io.env ?? process.env;
@@ -435,11 +445,20 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
     for (let n = 2; existsSync(dest); n++) dest = `${base}~${n}`;
     const kind = classify(real, isDir);
     const bytes = sizeOf(real);
+    let made: string | undefined;
     try {
-      mkdirSync(dirname(dest), { recursive: true });
+      made = mkdirSync(dirname(dest), { recursive: true });
       renameSync(real, dest);
     } catch (e) {
-      err(`rm: '${t}' not moved to the archive: ${(e as Error).message}`);
+      // Only the empty directories this mkdir made; rmdir refuses anything else.
+      for (let d = dirname(dest); made && d.length >= made.length; d = dirname(d)) {
+        try {
+          rmdirSync(d);
+        } catch {
+          break;
+        }
+      }
+      err(isDiskFull(e) ? diskFull(t) : `rm: '${t}' not moved to the archive: ${(e as Error).message}`);
       log({ action: "refused", orig: real, reason: (e as Error).message });
       rc = 1;
       continue;
@@ -449,7 +468,7 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
     } catch (e) {
       // A move nobody can find is a loss: without its manifest line, put it back.
       renameSync(dest, real);
-      err(`rm: '${t}' not removed — the archive manifest cannot be written: ${(e as Error).message}`);
+      err(isDiskFull(e) ? diskFull(t) : `rm: '${t}' not removed — the archive manifest cannot be written: ${(e as Error).message}`);
       rc = 1;
       continue;
     }
