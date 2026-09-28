@@ -140,6 +140,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **An `rm` redefinition inside a compound command is seen** (#694). `{ hash
+  -p /x rm; }`, `if …; then alias rm=/x; fi`, `! hash -p …`, `time hash -p …`
+  before an `rm -rf` got the archive receipt although `rm` was no longer the
+  archiving one; the word after `{ ! if then else elif do while until time`
+  is now read as a command, so these keep the STOP.
 - **Task notifications and agent mail no longer recall as owner prompts**
   (#703; found and first fixed by @zzallirog on his fork, #701). Claude Code
   delivers `<task-notification>` and `<teammate-message>` /

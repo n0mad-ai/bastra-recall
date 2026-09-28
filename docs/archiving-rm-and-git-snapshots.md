@@ -184,7 +184,7 @@ From a transcript harvest of agent sessions on two hosts (losses are the ones st
 The archiving `rm` depends on knowing when a command changes what `rm` resolves to. #689 widened that check:
 
 - `hash -p <path> <names…>` counts when `rm` is among the names; `hash -p /usr/bin/python3 python; rm -rf dist` keeps its normal receipt. (#696 extended this to every listed name, e.g. `hash -p /x rm python`.)
-- The verb is read at command position, past assignments and the `builtin` / `command` prefixes, so `builtin hash …` and `command hash …` count, while `echo hash -p /bin/rm rm` or `sudo hash …` (a child shell) do not.
+- The verb is read at command position, past assignments, the reserved words that open a compound (`{ ! if then else elif do while until`, `time [-p]`, #694) and the `builtin` / `command` prefixes, so `{ hash -p /x rm; }`, `builtin hash …` and `command hash …` count, while `echo hash -p /bin/rm rm` or `sudo hash …` (a child shell) do not.
 - An `eval` body is shell, so it is read again (up to two levels); a body the scanner cannot read counts as a change. This also closes `eval 'export PATH=/x:$PATH'; rm -rf x`.
 - An `rm()` definition is found without a quote boundary, so `grep -rn "rm()" src; rm -rf dist` keeps its receipt, while a quoted `eval` definition is still a STOP through the eval re-read.
 
@@ -392,7 +392,7 @@ Aus einer Auswertung von Agenten-Sitzungen auf zwei Rechnern (Verluste = in Pros
 Das archivierende `rm` muss wissen, wann ein Befehl ändert, was `rm` ist. #689 hat diese Prüfung erweitert:
 
 - `hash -p <Pfad> <Namen…>` zählt, wenn `rm` unter den Namen ist; `hash -p /usr/bin/python3 python; rm -rf dist` behält seine normale Quittung. (#696 hat das auf jeden genannten Namen ausgedehnt, z. B. `hash -p /x rm python`.)
-- Das Verb wird an Befehlsposition gelesen, hinter Zuweisungen und den Präfixen `builtin` / `command`: `builtin hash …` und `command hash …` zählen, `echo hash -p /bin/rm rm` oder `sudo hash …` (eine Kind-Shell) nicht.
+- Das Verb wird an Befehlsposition gelesen, hinter Zuweisungen, den reservierten Wörtern, die einen zusammengesetzten Befehl öffnen (`{ ! if then else elif do while until`, `time [-p]`, #694), und den Präfixen `builtin` / `command`: `{ hash -p /x rm; }`, `builtin hash …` und `command hash …` zählen, `echo hash -p /bin/rm rm` oder `sudo hash …` (eine Kind-Shell) nicht.
 - Ein `eval`-Rumpf ist Shell und wird erneut gelesen (bis zu zwei Ebenen); ein Rumpf, den der Scanner nicht lesen kann, gilt als Änderung. Das schließt auch `eval 'export PATH=/x:$PATH'; rm -rf x`.
 - Eine `rm()`-Definition wird ohne Anführungszeichen-Grenze erkannt: `grep -rn "rm()" src; rm -rf dist` behält seine Quittung, eine in Anführungszeichen stehende `eval`-Definition bleibt über das erneute Lesen ein STOP.
 
