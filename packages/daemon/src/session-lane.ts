@@ -51,7 +51,7 @@ import { spawnStagedUpdate, stagedToday, markStagedToday } from "./update-check.
 import { formatBlockedUpdate, readBlockedUpdate } from "./update-blocked.js";
 import { pendingPatchNotice } from "./patch-report.js";
 import { formatPendingRelay, isCountableSessionStart, takePendingRelay } from "./pending-suggestions.js";
-import { clearShown, takeConstantCadence } from "./session-state.js";
+import { bumpShown, clearShown, mutateSessionState, takeConstantCadence } from "./session-state.js";
 import { formatPinnedBlock, dropPinnedFromRanked, type PinnedFloorLean } from "./pinned-block.js";
 import { reportHinted } from "./hook-hinted.js";
 import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookClientEvidence } from "./hook-surface.js";
@@ -725,6 +725,13 @@ export async function runSessionLane(
   });
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
   await reportHinted(url, top.map((h) => h.id), payload.session_id ?? null);
+  // #621: what this start put into the context counts as delivered for the
+  // PreToolUse and prompt dedup as well — the #354 rule the other lanes follow.
+  if (payload.session_id && top.length > 0) {
+    await mutateSessionState(payload.session_id, (s) => {
+      for (const h of top) bumpShown(s, h.id);
+    });
+  }
   return out;
 }
 

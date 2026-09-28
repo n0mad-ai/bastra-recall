@@ -167,6 +167,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   there once (staged, then renamed); the originals are kept, and a pool
   already at the new path is never overwritten. Reading shared bridges from
   `<commons>/bridges` next to the local pool is not part of this change.
+- **PreToolUse is a compact first-touch hint** (#621). The Write/Edit lane
+  shows recall hints only for the first delivered hint of a task area per
+  session (repo + two directory levels), at most one candidate as
+  `id (type): title — rule line` under a 600-character ceiling. Memories
+  already delivered by SessionStart, the prompt lane or an earlier edit are
+  not repeated; a strongly anchored `recall_when` hit in the REQUIRED band is
+  the one named exception (`binding-anchored`). Weak results are not shown.
+  Ranking is unchanged; `BASTRA_PRETOOL_SHAPE=legacy` restores the old
+  presentation. Telemetry: `pretool_shape`, `hint_reason`.
 - **An injected candidate list counts as the recall** (#620). The
   prompt-lookup `<recall-hints>` block now carries `recall-step="done"` and
   the originating `recall_id`, and no longer tells the agent to "use recall"
