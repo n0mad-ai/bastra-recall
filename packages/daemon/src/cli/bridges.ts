@@ -234,7 +234,8 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       // no harvested material" stopped being true. The live gate is #129: a
       // harvested bridge has only a local outcome-based demotion (#129), the judge
       // that mints it is the judge that scores it, and `expansionsFor` perturbs
-      // every query sharing a trigger term — so contribution waits on measured
+      // every query sharing two of its trigger terms (all of them for a one-term
+      // bridge; half, never fewer than two, while unconfirmed) — so contribution waits on measured
       // lift over a held-out set, not on more plumbing.
       process.stderr.write(
         `contribute: not yet available — gated on #129 (verification contract: held-out lift, regression guard, demotion path). ` +

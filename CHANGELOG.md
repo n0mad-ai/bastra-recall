@@ -171,6 +171,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `claude`) never becomes a trigger term, and existing local bridges whose
   trigger is mostly machine vocabulary move to `bridges/archive/` (reversible,
   logged) on the next mint pass.
+- docs/commons.md: a bridge fires on two shared trigger terms, not one (all
+  terms for a one-term bridge, half for an unconfirmed one), and the
+  latin-only note points at #707 instead of the closed #231 (#706; reported
+  by @zzallirog, #701).
 
 - **Reflex memories fire on inflected words** (#565). The reflex lane matches
   exact words, so a trigger "Antwort an zzalli" never fired on "wir antworten

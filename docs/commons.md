@@ -121,7 +121,7 @@ contract (`bridges.ts:7`): **a bridge carries only term lists and a language —
 never a memory id, body, or any vault content.** Language-partitioned: a bridge
 fires only for a query detected as its language.
 
-**Scope: the bridge layer is latin-alphabet only, by design.** Detection knows
+**Scope: the bridge layer is latin-alphabet only today.** Detection knows
 two languages (`SUPPORTED_LANGUAGES = ["de", "en"]`,
 `learned-recall/language.ts:20`) and `distinctiveTerms` tokenizes on
 `/[^a-zäöüß0-9]+/i` (`learned-recall/bridges.ts:66`), so a query in Cyrillic,
@@ -131,7 +131,7 @@ bridges for its latin-query half and none for the rest. This affects **only**
 vocabulary expansion: BM25 and `recall_when` index and match those queries
 normally, so recall itself works — it just doesn't get the widening. Extending
 the set means a stopword list per new language plus a tokenizer that keeps its
-alphabet (#231).
+alphabet — tracked in #707 (#231 closed without changing bridges).
 
 Bridges are minted **locally and offline**, never on the recall hot path:
 telemetry event log → `reconstructReaches` → `mintBridge` (query distinctive
@@ -141,8 +141,10 @@ expansion) → `writeBridges` into the clone. CLI: `bastra bridges mint [days]`
 reranker over the far slice). `bastra bridges contribute` is intentionally **not
 yet wired**, and the reason is a gate rather than missing plumbing: minting works,
 but a harvested bridge is scored by the same judge that mints it, its only way
-down is a local outcome check (below, not a held-out lift measurement), and fires on *any* query sharing one trigger term —
-so one mint perturbs every query that shares it. Contribution waits on **#129**: a
+down is a local outcome check (below, not a held-out lift measurement), and it fires
+on *any* query sharing two of its trigger terms (all of them for a one-term bridge;
+an unconfirmed bridge needs half its terms, never fewer than two) — so one mint
+perturbs every query that shares them. Contribution waits on **#129**: a
 verification contract with measured lift over a held-out set, a near-slice
 regression guard, and a demotion driven by that measurement (the local outcome check below is a first step). (The older note here cited #121; that
 issue closed 2026-06-16 and was never the real blocker.)
@@ -386,7 +388,7 @@ die Erinnerung erreicht, zu der sie laut Nachweis des Beitragenden führt. Der D
 niemals eine Erinnerungs-ID, einen Erinnerungstext oder sonstige Vault-Inhalte.** Nach Sprache getrennt: Eine Bridge
 greift nur bei einer Anfrage, die als ihre Sprache erkannt wurde.
 
-**Umfang: Die Bridge-Ebene ist bewusst auf das lateinische Alphabet beschränkt.** Die Erkennung kennt
+**Umfang: Die Bridge-Ebene ist derzeit auf das lateinische Alphabet beschränkt.** Die Erkennung kennt
 zwei Sprachen (`SUPPORTED_LANGUAGES = ["de", "en"]`,
 `learned-recall/language.ts:20`), und `distinctiveTerms` zerlegt an
 `/[^a-zäöüß0-9]+/i` (`learned-recall/bridges.ts:66`). Eine Anfrage in kyrillischer,
@@ -396,7 +398,7 @@ Bridges für seine Hälfte mit lateinischen Anfragen und für den Rest keine. Da
 die Vokabularerweiterung: BM25 und `recall_when` indizieren und matchen diese Anfragen
 normal, Recall selbst funktioniert also — es fehlt nur die Verbreiterung. Den Umfang zu erweitern
 bedeutet eine Stoppwortliste pro neuer Sprache plus einen Tokenizer, der deren
-Alphabet erhält (#231).
+Alphabet erhält — verfolgt in #707 (#231 wurde geschlossen, ohne Bridges zu ändern).
 
 Bridges werden **lokal und offline** erzeugt, nie im heißen Pfad von Recall:
 Telemetrie-Ereignisprotokoll → `reconstructReaches` → `mintBridge` (markante Begriffe der Anfrage
@@ -407,8 +409,10 @@ Erweiterung) → `writeBridges` in den Klon. CLI: `bastra bridges mint [days]`
 nicht angebunden**, und der Grund ist eine Sperre, keine fehlende Verkabelung: Das Erzeugen funktioniert,
 aber eine geerntete Bridge wird von demselben Bewerter beurteilt, der sie erzeugt, ihr
 einziger Weg nach unten ist eine lokale Ergebnisprüfung (unten, keine Messung auf einem
-zurückgehaltenen Testset), und greift bei *jeder* Anfrage, die einen Triggerbegriff teilt —
-eine einzige erzeugte Bridge verändert also jede Anfrage, die diesen Begriff enthält. Beiträge warten auf **#129**: einen
+zurückgehaltenen Testset), und sie greift bei *jeder* Anfrage, die zwei ihrer
+Triggerbegriffe teilt (bei einer Bridge mit nur einem Begriff alle; eine unbestätigte
+Bridge braucht die Hälfte ihrer Begriffe, nie weniger als zwei) — eine einzige erzeugte
+Bridge verändert also jede Anfrage, die diese Begriffe enthält. Beiträge warten auf **#129**: einen
 Verifikationsvertrag mit gemessener Verbesserung auf einem zurückgehaltenen Testset, einen Regressionsschutz für den nahen Teil
 und eine Abwertung, die sich auf diese Messung stützt (die lokale Ergebnisprüfung unten ist ein erster Schritt). (Der ältere Hinweis an dieser Stelle nannte #121; dieses
 Issue wurde am 2026-06-16 geschlossen und war nie der eigentliche Blocker.)
