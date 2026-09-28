@@ -147,6 +147,29 @@ export function existingToolSurface(existing: unknown): ToolSurface | null {
   return v === "search" || v === "write" || v === "full" ? v : null;
 }
 
+/**
+ * #635: the two env keys in a client's MCP entry that narrow what the model
+ * can do with the vault, reported by doctor's features block when they are
+ * off the default. `BASTRA_TOOL_SURFACE=search` removes every write tool (the
+ * agent can never save on its own); `BASTRA_MCP_SESSION_CONTEXT=0` stops the
+ * forwarder's first-call session context. Same spelling rules as the
+ * forwarder (`toolSurfaceFrom`, `!== "0"`). Accepts the JSON server block and
+ * Codex's `transport` alike.
+ */
+export function mcpEnvFeatures(
+  existing: unknown,
+  configPath: string,
+): { toolSurface?: "search"; sessionContextOff?: true; mcpConfig?: string } {
+  const out: { toolSurface?: "search"; sessionContextOff?: true; mcpConfig?: string } = {};
+  if (existingToolSurface(existing) === "search") out.toolSurface = "search";
+  const env = typeof existing === "object" && existing !== null ? (existing as { env?: unknown }).env : undefined;
+  if (typeof env === "object" && env !== null && (env as Record<string, unknown>).BASTRA_MCP_SESSION_CONTEXT === "0") {
+    out.sessionContextOff = true;
+  }
+  if (out.toolSurface || out.sessionContextOff) out.mcpConfig = configPath;
+  return out;
+}
+
 export function blocksMatch(existing: unknown, target: McpServerBlock): boolean {
   if (typeof existing !== "object" || existing === null) return false;
   const x = existing as Record<string, unknown>;

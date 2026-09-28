@@ -23,6 +23,7 @@ import {
   blocksMatch,
   buildServerBlock,
   existingToolSurface,
+  mcpEnvFeatures,
   serverBlockEndpoint,
   foreignEnv,
   fileExists,
@@ -851,6 +852,7 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
     stopHook: stopHookRegistered,
     skill: skillState.status !== "missing",
     ...(hooksDisabledBy ? { hooksDisabledBy } : {}),
+    ...mcpEnvFeatures(servers[SERVER_KEY], configPath),
   };
   const broken =
     forwarderBroken ||

@@ -26,7 +26,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { collectFeatureState, featureLines, paraphrasingState, type FeatureState } from "../src/cli/features-note.js";
-import type { DaemonProbe } from "../src/cli/helpers.js";
+import { mcpEnvFeatures, type DaemonProbe } from "../src/cli/helpers.js";
 import { buildHealthPayload } from "../src/http-health.js";
 
 function allOff(): FeatureState {
@@ -318,4 +318,43 @@ test("/health says which generation model the paraphraser runs, and null when no
   assert.deepEqual(buildHealthPayload({ ...base, triggerExpand: () => ({ model: "gemma3:4b" }) }).trigger_expand, { model: "gemma3:4b" });
   assert.equal(buildHealthPayload({ ...base, triggerExpand: () => null }).trigger_expand, null);
   assert.ok(!("trigger_expand" in buildHealthPayload(base)), "a daemon that does not wire it does not claim a value");
+});
+
+test("#635: a search-only tool surface and a disabled session context show as off, with the edit that restores them", () => {
+  // Revert-check: drop the toolSurface / sessionContextOff rows from featureLines.
+  const state = allOn();
+  state.clients = [{
+    surface: "codex",
+    features: { recallHooks: true, stopHook: true, skill: true, toolSurface: "search", sessionContextOff: true, mcpConfig: "/h/.codex/config.toml" },
+  }];
+  const lines = featureLines(state);
+  const surface = lineFor(lines, "codex: saving from the agent");
+  assert.match(surface, /○ .*off \(BASTRA_TOOL_SURFACE=search/);
+  assert.match(surface, /→ set BASTRA_TOOL_SURFACE=write in the bastra-recall entry of \/h\/\.codex\/config\.toml/);
+  assert.doesNotMatch(surface, /⚠/, "a narrowed surface is an off-state, not a breakage");
+  const ctx = lineFor(lines, "codex: session context on the first tool call");
+  assert.match(ctx, /○ .*BASTRA_MCP_SESSION_CONTEXT=0.*→ remove BASTRA_MCP_SESSION_CONTEXT/);
+  // Defaults print no row at all.
+  assert.ok(!featureLines(allOn()).some((l) => l.includes("saving from the agent") || l.includes("session context")));
+});
+
+test("#635: mcpEnvFeatures reads a Codex transport and a JSON server block alike, and only non-defaults", () => {
+  const codexTransport = { type: "stdio", command: "node", args: ["/f.js"], env: { BASTRA_TOOL_SURFACE: " Search ", BASTRA_MCP_SESSION_CONTEXT: "0" } };
+  assert.deepEqual(mcpEnvFeatures(codexTransport, "/c.toml"), { toolSurface: "search", sessionContextOff: true, mcpConfig: "/c.toml" });
+  for (const env of [{ BASTRA_TOOL_SURFACE: "write" }, { BASTRA_TOOL_SURFACE: "full" }, { BASTRA_MCP_SESSION_CONTEXT: "1" }, {}]) {
+    assert.deepEqual(mcpEnvFeatures({ command: "node", args: [], env }, "/x.json"), {}, JSON.stringify(env));
+  }
+  assert.deepEqual(mcpEnvFeatures(undefined, "/x.json"), {});
+});
+
+test("#635 claude-code: both env keys in ~/.claude.json reach the features row", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "bastra-doctor-features-cc-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  await writeFile(join(home, ".claude.json"), JSON.stringify({
+    mcpServers: { "bastra-recall": { command: "node", args: [join(home, "forwarder.js")], env: { BASTRA_TOOL_SURFACE: "search", BASTRA_MCP_SESSION_CONTEXT: "0" } } },
+  }));
+  const features = claudeCodeFeaturesIn(home) as Record<string, unknown>;
+  assert.equal(features.toolSurface, "search");
+  assert.equal(features.sessionContextOff, true);
+  assert.equal(features.mcpConfig, join(home, ".claude.json"));
 });

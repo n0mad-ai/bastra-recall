@@ -80,6 +80,14 @@ export function featureLines(s: FeatureState): string[] {
     lines.push(f.skill
       ? row(ON, `${surface}: skill`, "on")
       : row(OFF, `${surface}: skill`, "off", `bastra install ${surface}`));
+    if (f.toolSurface === "search") {
+      lines.push(row(OFF, `${surface}: saving from the agent`, "off (BASTRA_TOOL_SURFACE=search: recall only, no save tools)",
+        `set BASTRA_TOOL_SURFACE=write in the bastra-recall entry of ${f.mcpConfig}`));
+    }
+    if (f.sessionContextOff) {
+      lines.push(row(OFF, `${surface}: session context on the first tool call`, "off (BASTRA_MCP_SESSION_CONTEXT=0)",
+        `remove BASTRA_MCP_SESSION_CONTEXT from the bastra-recall entry of ${f.mcpConfig}`));
+    }
   }
 
   lines.push(s.primaryLanguage

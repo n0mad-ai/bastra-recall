@@ -84,6 +84,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **`bastra doctor` names a narrowed MCP entry** (#635). The features block
+  now shows, per client (Claude Code, Codex), `BASTRA_TOOL_SURFACE=search`
+  (no save tools, so the agent never saves on its own) and
+  `BASTRA_MCP_SESSION_CONTEXT=0` as off-states with the entry to edit. Default
+  values print no row; the exit code is unchanged.
 - **`bastra config set reflex.enabled` and `promptImpact.enabled`** (#634).
   Both were only switchable by editing `~/.bastra/cli-settings.json` by hand,
   and doctor's hint said so. They are now config keys (true | false, also

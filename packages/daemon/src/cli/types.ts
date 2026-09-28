@@ -51,6 +51,12 @@ export interface ClientFeatures {
   skill: boolean;
   /** Set when the client itself switches every hook off, e.g. Claude Code's `disableAllHooks`. */
   hooksDisabledBy?: string;
+  /** #635: `BASTRA_TOOL_SURFACE=search` in the MCP entry — no save tools for this client. */
+  toolSurface?: "search";
+  /** #635: `BASTRA_MCP_SESSION_CONTEXT=0` in the MCP entry. */
+  sessionContextOff?: true;
+  /** The config file holding that MCP entry; set together with either field above. */
+  mcpConfig?: string;
 }
 
 export interface Adapter {
