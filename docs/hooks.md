@@ -388,7 +388,10 @@ gone anyway, the shim runs `node` from PATH.
 Restore: `bastra archive list` shows what went where (30 days);
 `bastra archive restore <original path>` puts a target back,
 `bastra archive restore <ref>` a git snapshot. Limits: archiving is a move,
-so on a full disk the `rm` fails instead of freeing space; a target on
+so on a full disk the `rm` refuses instead of freeing space (#695): the
+target stays where it was, nothing is deleted, and the message names the ways
+out — `bastra archive reconcile --yes`, `/bin/rm`, or `bastra config set
+archive.enabled off`; a target on
 another volume (a USB or network drive) goes to `<mount>/.bastra-archive`
 there — outside `~/.bastra` — or is refused where none can be made.
 
@@ -1047,9 +1050,11 @@ sehen (sonst läuft der Befehl nicht: Exit 97). Die Umschreibung nennt node
 über einen Pfad, der `brew upgrade node` übersteht (Homebrews
 `opt/<formula>`); fehlt er trotzdem, nimmt der Shim `node` aus dem PATH.
 
-Grenzen: Archivieren ist Verschieben — auf einer vollen Platte schlägt `rm`
-fehl, statt Platz zu schaffen, und Platz wird erst frei, wenn das Archiv den
-Eintrag loslässt. Ein Ziel auf einem anderen Laufwerk (USB, Netzlaufwerk)
+Grenzen: Archivieren ist Verschieben — auf einer vollen Platte verweigert `rm`,
+statt Platz zu schaffen, und Platz wird erst frei, wenn das Archiv den
+Eintrag loslässt (#695). Das Ziel bleibt, wo es war, nichts wird gelöscht, und
+die Meldung nennt die Auswege: `bastra archive reconcile --yes`, `/bin/rm` oder
+`bastra config set archive.enabled off`. Ein Ziel auf einem anderen Laufwerk (USB, Netzlaufwerk)
 landet dort unter `<mount>/.bastra-archive` — außerhalb von `~/.bastra` —
 oder wird verweigert, wo sich keins anlegen lässt.
 
