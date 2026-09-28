@@ -206,6 +206,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Bridges earn contribution on held-out data** (#129).
+  `bastra bridges verify [days]` runs a 5-fold check over the candidate-pool
+  log: bridges are minted from the other folds and measured on this fold's
+  labelled recalls (gold = the acted-on or loaded memory) on the vault's BM25
+  index, split into near, far in-pool and far out-of-pool slices, with a
+  foreign-expansion null arm. `bastra bridges contribute` now stages only
+  bridges that are confirmed, not demoted, measured, with lift ≥ 0 in every
+  slice, no near hit pushed out of the top 5 and lift not below the null —
+  scrubbed and signed in `~/.bastra/bridges/contribute/<lang>/` for a reviewed
+  PR; nothing is pushed automatically. `evidence` counts independent occasions
+  (caller session, else day) instead of every repeated reach. On the
+  maintainer's log (924 cases) the pooled bridges at contributed weight pushed
+  100 of 495 near hits out of the top 5 and gained +0.006 / +0.016 reciprocal
+  rank on the far slices; no local bridge passes.
+
 - **The remaining fixed-language matchers are data now** (#707). Duplicate-save
   similarity, todo-lane topics and the acted-on overlap share one per-language
   function-word list (`FUNCTION_WORDS_BY_LANGUAGE`, core `stopwords.ts`); a

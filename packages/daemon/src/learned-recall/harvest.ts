@@ -35,7 +35,31 @@ export interface Reach {
   /** #672: when the acted-on episode happened — seeds a bridge's first_seen,
    *  so a reach already old at mint time does not get a fresh 30-day window. */
   ts?: string;
+  /** #129: the occasion this reach happened on — see occasionOf. Two reaches
+   *  on one occasion are one confirmation, not two. */
+  occasion?: string;
 }
+
+/**
+ * #129: which occasion a logged row belongs to, for counting INDEPENDENT
+ * confirmations. The caller's session (`dimensions.experiment_session`, a
+ * hash of the client session id) when the row carries one, else the UTC day
+ * of `ts`. The same question asked again in the same session — a re-sent
+ * prompt, a repeated hook recall — is the same signal re-minted, and used to
+ * count as fresh evidence. `undefined` when the row names neither.
+ */
+export function occasionOf(e: { ts?: unknown; dimensions?: unknown }): string | undefined {
+  const dims = typeof e.dimensions === "object" && e.dimensions !== null ? (e.dimensions as Record<string, unknown>) : {};
+  if (typeof dims.experiment_session === "string" && dims.experiment_session.length > 0) {
+    return `session:${dims.experiment_session}`;
+  }
+  if (typeof e.ts === "string" && Number.isFinite(Date.parse(e.ts))) return `day:${new Date(e.ts).toISOString().slice(0, 10)}`;
+  return undefined;
+}
+
+/** #129: a row without session or timestamp cannot show it is independent,
+ *  so all such rows share one occasion (fail-closed: they confirm nothing). */
+const UNKNOWN_OCCASION = "unknown";
 
 export function defaultLogDir(): string {
   return process.env.BASTRA_LOG_PATH ?? testRunLogDir() ?? join(homedir(), ".bastra", "logs");
@@ -158,17 +182,26 @@ export function bridgeTeachingEvents(events: TelemetryEvent[]): TelemetryEvent[]
  * teachers pass bridgeTeachingEvents(events) (#704).
  */
 export function reconstructReaches(events: TelemetryEvent[]): Reach[] {
-  const queryByRecallId = new Map<string, string>();
+  const recallById = new Map<string, TelemetryEvent & { query: string }>();
   for (const e of events) {
     if ((e.kind === "hook_recall" || e.kind === "recall") && typeof e.recall_id === "string" && typeof e.query === "string") {
-      queryByRecallId.set(e.recall_id, e.query);
+      recallById.set(e.recall_id, e as TelemetryEvent & { query: string });
     }
   }
   const reaches: Reach[] = [];
   for (const e of events) {
     if (e.kind === "recall_episode" && e.acted_on === true && typeof e.recall_id === "string" && typeof e.memory_id === "string") {
-      const query = queryByRecallId.get(e.recall_id);
-      if (query) reaches.push({ query, memoryId: e.memory_id, ...(typeof e.ts === "string" ? { ts: e.ts } : {}) });
+      const recall = recallById.get(e.recall_id);
+      if (!recall) continue;
+      // #129: the recall row names the session that asked; the episode's own
+      // timestamp is the fallback.
+      const occasion = occasionOf(recall) ?? occasionOf(e);
+      reaches.push({
+        query: recall.query,
+        memoryId: e.memory_id,
+        ...(typeof e.ts === "string" ? { ts: e.ts } : {}),
+        ...(occasion ? { occasion } : {}),
+      });
     }
   }
   return reaches;
@@ -185,11 +218,13 @@ export interface HarvestResult {
 /**
  * Mint bridges from reaches. `getMemoryTerms(id)` supplies a memory's distinctive
  * vocabulary (the near terms); a bridge only forms when the query is far enough that
- * some of those terms are NOT already in the query (mintBridge enforces this). Repeated
- * reaches onto the same bridge accumulate evidence.
+ * some of those terms are NOT already in the query (mintBridge enforces this). Reaches
+ * onto the same bridge on different occasions accumulate evidence (#129: one per
+ * occasion, see occasionOf — a repeat inside one session is not a confirmation).
  */
 export function harvestBridges(reaches: Reach[], getMemoryTerms: (memoryId: string) => string[], date?: string): HarvestResult {
   const byId = new Map<string, Bridge>();
+  const occasions = new Map<string, Set<string>>();
   for (const r of reaches) {
     const terms = getMemoryTerms(r.memoryId);
     if (terms.length === 0) continue;
@@ -198,9 +233,12 @@ export function harvestBridges(reaches: Reach[], getMemoryTerms: (memoryId: stri
     // #672: first_seen = the earliest reach behind the bridge (ISO strings of
     // the same format compare chronologically).
     const reachTs = r.ts !== undefined && Number.isFinite(Date.parse(r.ts)) ? new Date(r.ts).toISOString() : undefined;
+    const seen = occasions.get(b.id) ?? new Set<string>();
+    seen.add(r.occasion ?? occasionOf({ ts: r.ts }) ?? UNKNOWN_OCCASION);
+    occasions.set(b.id, seen);
     const existing = byId.get(b.id);
     if (existing) {
-      existing.evidence += 1;
+      existing.evidence = seen.size;
       if (reachTs && (!existing.first_seen || reachTs < existing.first_seen)) existing.first_seen = reachTs;
     } else byId.set(b.id, reachTs ? { ...b, first_seen: reachTs } : b);
   }
@@ -223,6 +261,9 @@ export interface CandidatePoolEntry {
    *  Einträge bauen können. */
   scoreArms?: string[] | null;
   scoreVersion?: string | null;
+  /** #129: the logged recall's id (joins the outcome) and occasion (occasionOf). */
+  recallId?: string;
+  occasion?: string;
 }
 
 /** Die vollständige Signatur eines Score-Raums: Kind + Formelversion + Armmenge. */
@@ -310,6 +351,7 @@ export function extractCandidatePools(events: TelemetryEvent[]): CandidatePoolEn
     );
     const useTop = sameScoreSpace(topSpace, poolSpace) && typeof e.top_score === "number";
     const space = useTop ? topSpace : poolSpace;
+    const occasion = occasionOf(e);
     out.push({
       query: e.query,
       pool,
@@ -317,6 +359,8 @@ export function extractCandidatePools(events: TelemetryEvent[]): CandidatePoolEn
       scoreKind: space.kind,
       scoreArms: space.arms,
       scoreVersion: space.version,
+      ...(typeof e.recall_id === "string" ? { recallId: e.recall_id } : {}),
+      ...(occasion ? { occasion } : {}),
     });
   }
   return out;
@@ -350,6 +394,7 @@ export async function harvestFarBridges(
   const maxScore = opts.maxScore ?? 100; // only cases without a strong (REQUIRED-band) hit
   const maxJudge = opts.maxJudge ?? 50;
   const byId = new Map<string, Bridge>();
+  const occasions = new Map<string, Set<string>>();
   let judged = 0;
   for (const entry of pools) {
     if (judged >= maxJudge) break;
@@ -378,8 +423,12 @@ export async function harvestFarBridges(
     if (!info) continue;
     const b = mintBridge(entry.query, info.terms, lang, opts.date);
     if (!b) continue;
+    // #129: one confirmation per occasion, as in harvestBridges.
+    const seen = occasions.get(b.id) ?? new Set<string>();
+    seen.add(entry.occasion ?? UNKNOWN_OCCASION);
+    occasions.set(b.id, seen);
     const existing = byId.get(b.id);
-    if (existing) existing.evidence += 1;
+    if (existing) existing.evidence = seen.size;
     else byId.set(b.id, b);
   }
   return { bridges: [...byId.values()], reaches: pools.length, minted: byId.size, judged };

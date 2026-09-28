@@ -18,10 +18,10 @@
  * `bridgesPath()`, ~/.bastra/bridges since #648, outside the clone; they only
  * ever leave via the PR flow.)
  */
-import { cpSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Vault } from "@bastra-recall/core";
+import { SearchIndex, Vault } from "@bastra-recall/core";
 import {
   getSharedRecallEnabled,
   setSharedRecallEnabled,
@@ -31,16 +31,18 @@ import {
   resolveGenerationModel,
 } from "../settings.js";
 import { envFirst } from "../env.js";
-import { commonsPath, COMMONS_REPO_URL } from "./commons.js";
-import { BridgePool, distinctiveTerms, MIN_BRIDGE_EVIDENCE } from "../learned-recall/bridges.js";
+import { commonsPath, COMMONS_REPO_URL, verifierId } from "./commons.js";
+import { BridgePool, distinctiveTerms, isConfirmedBridge, MIN_BRIDGE_EVIDENCE, scrubBridge, type Bridge } from "../learned-recall/bridges.js";
 import {
   readEventLog,
   writeBridges,
   extractCandidatePools,
   harvestFarBridges,
   bridgeTeachingEvents,
+  listLocalBridgeFiles,
 } from "../learned-recall/harvest.js";
-import { runInBandMint, readLastMint, recordHarvestRun, LAST_MINT_FILE } from "../learned-recall/mint-job.js";
+import { runInBandMint, readLastMint, recordHarvestRun, LAST_MINT_FILE, memoryTermsGetter } from "../learned-recall/mint-job.js";
+import { contributionVerdict, verifyBridges, STRATA, SERVING_K, type VerifyReport } from "../learned-recall/verify.js";
 import { ollamaChat, listOllamaModels, resolveRerankModel } from "../learned-recall/reranker.js";
 import { isSupportedLanguage, SUPPORTED_LANGUAGES } from "../learned-recall/language.js";
 
@@ -77,6 +79,41 @@ export function migrateBridgesPool(): string[] {
     copied.push(name);
   }
   return copied;
+}
+
+/** #129: how deep the held-out check reads the ranking. Beyond it a gold
+ *  counts as not found (reciprocal rank 0). */
+const VERIFY_RANK_DEPTH = 50;
+
+/** #129: the pool-level slices of the held-out check, one line each. */
+export function formatVerifyReport(r: VerifyReport): string {
+  const lines = [`held-out check (#129): ${r.cases} labelled case(s) from the candidate-pool log, ${r.folds} folds, near = top ${SERVING_K}`];
+  for (const s of STRATA) {
+    const slice = r.pool[s];
+    const lift = slice.fired > 0 ? (slice.liftSum / slice.fired).toFixed(3) : "—";
+    lines.push(`  ${s}: ${slice.cases} case(s), bridges fired on ${slice.fired}, mean Δ reciprocal rank ${lift}, near regressions ${slice.regressions}`);
+  }
+  return lines.join("\n") + "\n";
+}
+
+/** #129: write each eligible bridge, scrubbed and signed with the pseudonymous
+ *  verifier id, to <bridgesPath>/contribute/<lang>/<id>.json — the files a PR
+ *  would add to the Commons repo. Returns what was staged. */
+function stageContribution(bridges: Bridge[]): Bridge[] {
+  const verifier = verifierId();
+  const date = new Date().toISOString().slice(0, 10);
+  const staged: Bridge[] = [];
+  for (const b of bridges) {
+    const scrubbed = scrubBridge(b);
+    if (!scrubbed) continue;
+    const { first_seen: _local, demoted_at: _never, ...shared } = scrubbed;
+    const out: Bridge = { ...shared, verifier, date };
+    const dir = join(bridgesPath(), "contribute", out.lang);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${out.id}.json`), JSON.stringify(out, null, 2) + "\n", "utf8");
+    staged.push(out);
+  }
+  return staged;
 }
 
 export async function cmdBridges(opts: { sub: string | null; positional?: string[] }): Promise<number> {
@@ -266,25 +303,59 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       );
       return 0;
     }
+    case "verify":
     case "contribute": {
-      // Bridges are minted locally from successful recalls and contributed to the
-      // Commons repo via PR (same flow as `bastra commons verify`). Deliberately
-      // not auto-run: nothing leaves the machine without an explicit, reviewed PR.
-      //
-      // Still not wired, but the blocker moved. #121 (far-slice logging) closed
-      // 2026-06-16 and `mint`/`harvest` above produce real bridges, so "there is
-      // no harvested material" stopped being true. The live gate is #129: a
-      // harvested bridge has only a local outcome-based demotion (#129), the judge
-      // that mints it is the judge that scores it, and `expansionsFor` perturbs
-      // every query sharing two of its trigger terms (all of them for a one-term
-      // bridge; half, never fewer than two, while unconfirmed) — so contribution waits on measured
-      // lift over a held-out set, not on more plumbing.
-      process.stderr.write(
-        `contribute: not yet available — gated on #129 (verification contract: held-out lift, regression guard, demotion path). ` +
-          `Minting works; what is missing is evidence that a bridge helps without regressing anything else. ` +
-          `Bridges will be contributed to ${COMMONS_REPO_URL.replace(/\.git$/, "")} via PR once that gate is met.\n`,
+      // #129: a bridge may leave this machine only after the held-out check in
+      // learned-recall/verify.ts: k-fold over the #121 candidate-pool log, lift
+      // ≥ 0 in every slice it fires on, no near regression, not below the
+      // foreign-expansion null, confirmed on independent occasions, not demoted.
+      // `verify` prints the verdicts; `contribute` also stages the eligible
+      // bridges (scrubbed) for a reviewed PR. Nothing is pushed from here — the
+      // PR is opened by a person who has read what it carries.
+      const daysArg = opts.positional?.[2];
+      const days = daysArg ? parseInt(daysArg, 10) : null;
+      const vaultPath = envFirst("BASTRA_VAULT_PATH", "NEXUS_VAULT_PATH");
+      if (!vaultPath) {
+        process.stderr.write("✗ BASTRA_VAULT_PATH not set — the held-out check ranks against the vault\n");
+        return 1;
+      }
+      const local = (await listLocalBridgeFiles(bridgesPath()))
+        .map((f) => f.bridge)
+        .filter((b): b is Bridge => typeof b.id === "string" && typeof b.lang === "string" && Array.isArray(b.trigger_terms) && Array.isArray(b.expansion_terms) && typeof b.evidence === "number");
+      // Only a confirmed, undemoted bridge can pass; the rest is not measured.
+      const only = new Set(local.filter((b) => isConfirmedBridge(b) && typeof b.demoted_at !== "string").map((b) => b.id));
+      const events = bridgeTeachingEvents(await readEventLog(undefined, days != null && Number.isFinite(days) ? days : null));
+      const vault = new Vault(vaultPath);
+      await vault.init();
+      const search = new SearchIndex(vault);
+      search.start();
+      let report: VerifyReport;
+      try {
+        report = verifyBridges({
+          events,
+          getMemoryTerms: memoryTermsGetter(vault),
+          rank: (q) => search.recall(q, { k: VERIFY_RANK_DEPTH, allow_private: true }).map((h) => h.id),
+          only,
+        });
+      } finally {
+        search.stop();
+        await vault.stop();
+      }
+      process.stdout.write(formatVerifyReport(report));
+      const eligible: Bridge[] = [];
+      for (const b of local) {
+        const verdict = contributionVerdict(b, report.perBridge.get(b.id));
+        process.stdout.write(`  ${verdict.eligible ? "✓" : "·"} ${b.id} [${b.lang}] ${b.trigger_terms.join(" ")}${verdict.eligible ? "" : ` — ${verdict.reasons.join("; ")}`}\n`);
+        if (verdict.eligible) eligible.push(b);
+      }
+      process.stdout.write(`${eligible.length} of ${local.length} local bridge(s) pass the #129 gate\n`);
+      if (sub === "verify" || eligible.length === 0) return 0;
+      const staged = stageContribution(eligible);
+      process.stdout.write(
+        `✓ staged ${staged.length} scrubbed bridge(s) in ${join(bridgesPath(), "contribute")}\n` +
+          `  review them, then open a PR adding them under bridges/<lang>/ to ${COMMONS_REPO_URL.replace(/\.git$/, "")}\n`,
       );
-      return 1;
+      return 0;
     }
     case "status": {
       const enabled = await getSharedRecallEnabled();
@@ -308,7 +379,7 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       return 0;
     }
     default:
-      process.stderr.write(`unknown bridges subcommand '${sub}' — use enable|disable|status|language|mint|harvest|update|contribute\n`);
+      process.stderr.write(`unknown bridges subcommand '${sub}' — use enable|disable|status|language|mint|harvest|update|verify|contribute\n`);
       return 2;
   }
 }

@@ -46,7 +46,9 @@ export interface Bridge {
   trigger_terms: string[];
   /** Vocabulary the bridge adds to a matching query to broaden recall. */
   expansion_terms: string[];
-  /** Independent confirmations (verify-loop evidence). 1 when freshly minted;
+  /** Independent confirmations: the number of distinct occasions (#129 —
+   *  caller sessions, else days; harvest.ts occasionOf) whose reaches minted
+   *  this bridge. 1 when freshly minted;
    *  CONFIRMED_BRIDGE_EVIDENCE or more exempts it from the TTL (#672); only demotion (#129) takes it down. */
   evidence: number;
   /** #672: ISO timestamp of the first local write. Optional and additive — files
@@ -338,6 +340,15 @@ export class BridgePool {
 
   static empty(): BridgePool {
     return new BridgePool(new Map());
+  }
+
+  /** #129: an in-memory pool — the held-out check (verify.ts) measures a
+   *  bridge through the same expansionsFor the recall path runs. */
+  static of(bridges: Bridge[]): BridgePool {
+    const byLang = new Map<string, Bridge[]>();
+    for (const b of bridges) byLang.set(b.lang, [...(byLang.get(b.lang) ?? []), b]);
+    for (const bucket of byLang.values()) bucket.sort(byWeight);
+    return new BridgePool(byLang);
   }
 
   /** Load <root>/bridges/<lang>/*.json into per-language buckets. Defensive: skips
