@@ -36,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   language-neutral; it never writes to the vault. Telemetry
   `session_harvest`; off with `BASTRA_SESSION_HARVEST=0`.
 
+- **`bastra reconcile` finds the copies of a vault** (#339). Without a path
+  it lists the stores it finds: vault paths in the client registrations
+  (Claude Code incl. per-project, Claude Desktop, Cursor, Codex) and
+  `BASTRA_VAULT_PATH` — where a forwarder-spawned daemon writes —, symlinks
+  onto a store, and folders with a bastra audit log in sync folders (iCloud,
+  `~/Library/CloudStorage`, Dropbox, OneDrive, Google Drive, …) whose log
+  shares history with this vault. With exactly one other copy it prints the
+  dry run against it. Read-only; `--yes` still needs the path.
+
 - **After-session harvest: SessionEnd, vault check, save rate** (#675).
   `bastra install` registers Claude Code's `SessionEnd` hook with the Stop
   hook (same client and route); a finished session is harvested on the next

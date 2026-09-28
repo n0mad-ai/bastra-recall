@@ -107,6 +107,7 @@ After the series, the patched CLI is actually started. If it does not boot, ever
 If the same vault lives in two places — a synced mirror on a second machine, a copy a failover daemon wrote into — `bastra reconcile` tells you, memory by memory, which copy is ahead.
 
 ```bash
+bastra reconcile                                # list the copies of this vault it finds
 bastra reconcile /path/to/other/copy            # the plan (dry run, the default)
 bastra reconcile /path/to/other/copy --yes      # carry out the unambiguous copies
 bastra reconcile /path/to/other/copy --json     # the plan as JSON
@@ -114,7 +115,9 @@ bastra reconcile /path/to/other/copy --json     # the plan as JSON
 
 "This store" is your vault (`--vault`, `BASTRA_VAULT_PATH`, or the one your clients are registered with). File date, hash and size decide nothing: the daemon rewrites memory files on its own (generated fields, the auto-related block), so the copy it served looks newer while it may hold the older text. Two copies count as the same when their *authored* content matches — body without the generated block, wrapping collapsed, wikilinks in one spelling, frontmatter without generated fields. Memories are matched by their frontmatter `id`, not their filename.
 
-The direction comes from each store's audit log (`.bastra/audit-log.ndjson`): the copy with recorded writes the other lacks is ahead. Anything else is a **conflict** and is only listed, never resolved: writes on both sides, a change no log records (an edit in another editor), a delete on one side, a duplicate id. `--yes` copies only the unambiguous cases; an overwritten file is first copied to `<store>/.bastra/reconcile-backup/<time>/`, a file that changed since the plan is skipped, and nothing is deleted. Finding stores you do not already know the path of is not part of it yet (#339).
+The direction comes from each store's audit log (`.bastra/audit-log.ndjson`): the copy with recorded writes the other lacks is ahead. Anything else is a **conflict** and is only listed, never resolved: writes on both sides, a change no log records (an edit in another editor), a delete on one side, a duplicate id. `--yes` copies only the unambiguous cases; an overwritten file is first copied to `<store>/.bastra/reconcile-backup/<time>/`, a file that changed since the plan is skipped, and nothing is deleted.
+
+Without a path, `bastra reconcile` looks for copies (#339): the vault paths in the client registrations (Claude Code, including per-project ones; Claude Desktop, Cursor, Codex) and `BASTRA_VAULT_PATH` — the folder a forwarder-spawned daemon writes to when the configured one is unreachable —, symlinks onto a store (listed as another path of the same store), and folders carrying a bastra audit log inside sync folders (iCloud Drive and app containers, `~/Library/CloudStorage`, Dropbox, OneDrive, Google Drive, Nextcloud, pCloud, `~/Sync`). Only directory listings are read on the way, so files a sync client keeps in the cloud are not downloaded. A sync-folder hit counts as a copy when its audit log names at least one memory this vault's log names; otherwise it is another vault and left out. With exactly one other copy it prints the dry run against it; `--yes` always takes the path. The clients' own memory folders are not copies of the vault; `bastra doctor` lists them and `bastra import clients` imports them (#674).
 
 ### Onboarding — five minutes to a warm start
 
@@ -383,6 +386,7 @@ Nach der Serie wird die gepatchte CLI tatsächlich gestartet. Bootet sie nicht, 
 Liegt derselbe Vault an zwei Orten — ein gespiegelter Vault auf einem zweiten Rechner, eine Kopie, in die ein Ersatz-Daemon geschrieben hat —, sagt dir `bastra reconcile` pro Memory, welche Kopie vorn ist.
 
 ```bash
+bastra reconcile                                    # die gefundenen Kopien dieses Vaults auflisten
 bastra reconcile /pfad/zur/anderen/kopie            # der Plan (Probelauf, Standard)
 bastra reconcile /pfad/zur/anderen/kopie --yes      # die eindeutigen Kopien ausführen
 bastra reconcile /pfad/zur/anderen/kopie --json     # der Plan als JSON
@@ -390,7 +394,9 @@ bastra reconcile /pfad/zur/anderen/kopie --json     # der Plan als JSON
 
 „Dieser Store" ist dein Vault (`--vault`, `BASTRA_VAULT_PATH` oder der, bei dem deine Clients registriert sind). Dateidatum, Hash und Größe entscheiden nichts: Der Daemon schreibt Memory-Dateien selbst neu (generierte Felder, der Auto-Related-Block), die von ihm bediente Kopie wirkt also neuer und kann trotzdem den älteren Text halten. Zwei Kopien gelten als gleich, wenn ihr *verfasster* Inhalt übereinstimmt — Body ohne generierten Block, Umbrüche zusammengefasst, Wikilinks in einer Schreibweise, Frontmatter ohne generierte Felder. Memories werden über ihre Frontmatter-`id` zugeordnet, nicht über den Dateinamen.
 
-Die Richtung kommt aus dem Audit-Log jedes Stores (`.bastra/audit-log.ndjson`): Vorn ist die Kopie mit protokollierten Schreibvorgängen, die der anderen fehlen. Alles andere ist ein **Konflikt** und wird nur gemeldet, nie aufgelöst: Schreibvorgänge auf beiden Seiten, eine Änderung, die kein Log kennt (Bearbeitung in einem anderen Editor), ein Löschen auf einer Seite, eine doppelte id. `--yes` kopiert nur die eindeutigen Fälle; eine überschriebene Datei wird vorher nach `<store>/.bastra/reconcile-backup/<zeit>/` kopiert, eine seit dem Plan geänderte Datei übersprungen, gelöscht wird nichts. Stores zu finden, deren Pfad du nicht schon kennst, gehört noch nicht dazu (#339).
+Die Richtung kommt aus dem Audit-Log jedes Stores (`.bastra/audit-log.ndjson`): Vorn ist die Kopie mit protokollierten Schreibvorgängen, die der anderen fehlen. Alles andere ist ein **Konflikt** und wird nur gemeldet, nie aufgelöst: Schreibvorgänge auf beiden Seiten, eine Änderung, die kein Log kennt (Bearbeitung in einem anderen Editor), ein Löschen auf einer Seite, eine doppelte id. `--yes` kopiert nur die eindeutigen Fälle; eine überschriebene Datei wird vorher nach `<store>/.bastra/reconcile-backup/<zeit>/` kopiert, eine seit dem Plan geänderte Datei übersprungen, gelöscht wird nichts.
+
+Ohne Pfad sucht `bastra reconcile` nach Kopien (#339): die Vault-Pfade in den Client-Registrierungen (Claude Code, auch pro Projekt; Claude Desktop, Cursor, Codex) und `BASTRA_VAULT_PATH` — der Ordner, in den ein vom Forwarder gestarteter Daemon schreibt, wenn der eingestellte nicht erreichbar ist —, Symlinks auf einen Store (als weiterer Pfad desselben Stores gelistet) und Ordner mit bastra-Audit-Log in Sync-Ordnern (iCloud Drive samt App-Containern, `~/Library/CloudStorage`, Dropbox, OneDrive, Google Drive, Nextcloud, pCloud, `~/Sync`). Unterwegs werden nur Verzeichnislisten gelesen, Dateien, die ein Sync-Client nur in der Cloud hält, werden also nicht heruntergeladen. Ein Treffer im Sync-Ordner gilt als Kopie, wenn sein Audit-Log mindestens eine Memory nennt, die auch das Log dieses Vaults nennt; sonst ist es ein anderer Vault und bleibt draußen. Bei genau einer anderen Kopie zeigt es den Probelauf gegen sie; `--yes` braucht immer den Pfad. Die eigenen Memory-Ordner der Clients sind keine Kopien des Vaults; `bastra doctor` listet sie, `bastra import clients` importiert sie (#674).
 
 ### Onboarding — in fünf Minuten zum Warmstart
 
