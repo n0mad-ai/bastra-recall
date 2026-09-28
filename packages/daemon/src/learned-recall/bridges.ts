@@ -102,6 +102,25 @@ export function isEphemeralTerm(t: string): boolean {
   return false;
 }
 
+/** #704: machine vocabulary — words that come from tool-call ids, harness
+ *  tags and home-directory paths (`<task-notification>`, `toolu_…`,
+ *  `/home/<user>/.claude/…`), not from anything a person typed. NOT a language
+ *  list: it names the harness, so it stays this short. A trigger term on it is
+ *  dropped at mint, and a trigger made mostly of it is not minted at all
+ *  (isMachineVocabulary) — zzallirog's bridge `task notification tool toolu
+ *  output claude 1000 home` fired on 520 recalls and led to nothing. */
+const MACHINE_TERMS = new Set(["toolu", "task", "notification", "home", "users", "claude"]);
+
+export function isMachineTerm(t: string): boolean {
+  return MACHINE_TERMS.has(t.toLowerCase());
+}
+
+/** #704: more than half of the terms are machine vocabulary. */
+export function isMachineVocabulary(terms: string[]): boolean {
+  if (terms.length === 0) return false;
+  return terms.filter(isMachineTerm).length * 2 > terms.length;
+}
+
 export function distinctiveTerms(text: string): string[] {
   const seen = new Set<string>();
   for (const raw of text.toLowerCase().split(/[^a-zäöüß0-9]+/i)) {
@@ -138,7 +157,11 @@ export function mintBridge(
   date?: string,
 ): Bridge | null {
   if (!lang) return null;
-  const trigger = distinctiveTerms(query).slice(0, MAX_TRIGGER_TERMS);
+  const queryTerms = distinctiveTerms(query);
+  // #704: a query made mostly of harness vocabulary is machine text, whoever
+  // logged it; the rest keeps its topic words and loses the machine ones.
+  if (isMachineVocabulary(queryTerms)) return null;
+  const trigger = queryTerms.filter((t) => !isMachineTerm(t)).slice(0, MAX_TRIGGER_TERMS);
   if (trigger.length === 0) return null;
   const triggerSet = new Set(trigger);
   const expansion = memoryTerms

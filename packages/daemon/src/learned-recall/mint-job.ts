@@ -16,7 +16,15 @@ import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 import type { Vault } from "@bastra-recall/core";
 import { distinctiveTerms, isExpiredUnconfirmed, MIN_BRIDGE_EVIDENCE } from "./bridges.js";
-import { readEventLog, reconstructReaches, harvestBridges, writeBridges, pruneUnconfirmedBridges } from "./harvest.js";
+import {
+  readEventLog,
+  reconstructReaches,
+  bridgeTeachingEvents,
+  harvestBridges,
+  writeBridges,
+  pruneUnconfirmedBridges,
+  archiveMachineBridges,
+} from "./harvest.js";
 import { envFirst, testRunLogDir } from "../env.js";
 
 export type MintTrigger = "cli" | "daemon-boot" | "daemon-interval";
@@ -28,6 +36,9 @@ export interface MintOutcome {
   /** #672: unconfirmed bridges dropped this pass because their TTL ran out.
    *  Optional on read — last-mint.json files from before #672 lack it. */
   pruned: number;
+  /** Bridges moved to archive/ this pass: #704 machine-vocabulary triggers.
+   *  Optional on read — records from before #704 lack it. */
+  archived?: number;
 }
 
 export interface LastMintRecord extends MintOutcome {
@@ -66,7 +77,8 @@ export async function runInBandMint(opts: {
   now?: Date;
 }): Promise<MintOutcome> {
   const events = await readEventLog(opts.logDir, opts.days ?? null);
-  const reaches = reconstructReaches(events);
+  // #704: only owner prompts and explicit MCP recalls teach bridges.
+  const reaches = reconstructReaches(bridgeTeachingEvents(events));
   const now = opts.now ?? new Date();
   let outcome: MintOutcome = { minted: 0, reaches: reaches.length, written: 0, pruned: 0 };
   if (reaches.length > 0) {
@@ -82,6 +94,10 @@ export async function runInBandMint(opts: {
   }
   // #672: every pass also drops the unconfirmed bridges whose window closed.
   outcome.pruned = await pruneUnconfirmedBridges(opts.bridgesRoot, now);
+  // #704: bridges minted from harness text before the origin gate leave the
+  // pool. Idempotent — the mint cannot produce such a bridge any more, so
+  // after the first pass this finds nothing.
+  outcome.archived = await archiveMachineBridges(opts.bridgesRoot, now);
   const record: LastMintRecord = {
     ts: new Date().toISOString(),
     host: hostname(),
@@ -134,6 +150,7 @@ async function writeMintTelemetry(record: LastMintRecord): Promise<void> {
       reaches: record.reaches,
       written: record.written,
       pruned: record.pruned,
+      archived: record.archived ?? 0,
     };
     await appendFile(
       join(logDir, `events-${record.ts.slice(0, 10)}.jsonl`),

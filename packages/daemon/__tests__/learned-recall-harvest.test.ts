@@ -11,10 +11,13 @@ import {
   harvestBridges,
   extractCandidatePools,
   harvestFarBridges,
+  queryOrigin,
+  bridgeTeachingEvents,
   type TelemetryEvent,
   type MemoryInfo,
 } from "../src/learned-recall/harvest.js";
 import type { ChatFn } from "../src/learned-recall/reranker.js";
+import { mintBridge } from "../src/learned-recall/bridges.js";
 
 function ev(kind: string, fields: Record<string, unknown>): TelemetryEvent {
   return { kind, ts: "2026-06-14T00:00:00.000Z", ...fields };
@@ -22,7 +25,7 @@ function ev(kind: string, fields: Record<string, unknown>): TelemetryEvent {
 
 test("reconstructReaches joins query (hook_recall/recall) to acted-on memory by recall_id", () => {
   const events = [
-    ev("hook_recall", { recall_id: "r1", query: "warum schließt sich das Panel" }),
+    ev("hook_recall", { recall_id: "r1", query: "warum schließt sich das Panel", tool_name: "UserPromptSubmit" }),
     ev("recall", { recall_id: "r2", query: "wie speichere ich das Feld" }),
     ev("recall_episode", { recall_id: "r1", memory_id: "nspanel-lesson", acted_on: true }),
     ev("recall_episode", { recall_id: "r2", memory_id: "save-lesson", acted_on: false }), // not acted on
@@ -79,7 +82,7 @@ test("harvestBridges skips a memory with no terms (e.g. deleted memory)", () => 
 
 test("extractCandidatePools pulls (query, pool) from recall/hook_recall events", () => {
   const events = [
-    ev("hook_recall", { query: "warum schließt das Panel", candidate_pool: [{ id: "a", score: 80 }, { id: "b", score: 12 }], top_score: 80 }),
+    ev("hook_recall", { tool_name: "UserPromptSubmit", query: "warum schließt das Panel", candidate_pool: [{ id: "a", score: 80 }, { id: "b", score: 12 }], top_score: 80 }),
     ev("recall", { query: "no pool here" }), // no candidate_pool → skipped
   ];
   const pools = extractCandidatePools(events);
@@ -135,4 +138,59 @@ test("harvestFarBridges respects the maxJudge budget", async () => {
   const chat: ChatFn = async () => { called++; return "0"; };
   await harvestFarBridges(pools, getInfo, chat, { maxScore: 100, maxJudge: 3 });
   assert.equal(called, 3, "stops after maxJudge LLM calls");
+});
+
+// ─── #704: bridges learn only from owner-typed (and explicit MCP) queries ────
+
+const TASK_NOTIFICATION =
+  "<task-notification><task-id>b1</task-id><tool-use-id>toolu_0135deYEhUmCu82AjaPJPT9c</tool-use-id>" +
+  "<output-file>/home/user/.claude/tasks/b1.output</output-file><status>completed</status></task-notification>";
+
+test("#704 queryOrigin: explicit field, system-turn text, lane, legacy tool_name", () => {
+  assert.equal(queryOrigin(ev("hook_recall", { query: "x y", origin: "system", dimensions: { hook_source: "prompt" } })), "system");
+  assert.equal(queryOrigin(ev("hook_recall", { query: TASK_NOTIFICATION, tool_name: "UserPromptSubmit" })), "system");
+  assert.equal(queryOrigin(ev("hook_recall", { query: "  [Subagent hand-back] done", dimensions: { hook_source: "prompt" } })), "system");
+  assert.equal(queryOrigin(ev("hook_recall", { query: "Another Claude session sent a message: hi", tool_name: "UserPromptSubmit" })), "system");
+  assert.equal(queryOrigin(ev("hook_recall", { query: "why does the panel close", dimensions: { hook_source: "prompt" } })), "owner");
+  assert.equal(queryOrigin(ev("hook_recall", { query: "why does the panel close", tool_name: "UserPromptSubmit" })), "owner");
+  assert.equal(queryOrigin(ev("hook_recall", { query: "panel dismiss", dimensions: { hook_source: "mcp" } })), "agent");
+  assert.equal(queryOrigin(ev("recall", { query: "panel dismiss" })), "agent");
+  assert.equal(queryOrigin(ev("hook_recall", { query: "src/panel.swift", dimensions: { hook_source: "pre-tool" }, tool_name: "Edit" })), "tool");
+  assert.equal(queryOrigin(ev("hook_recall", { query: "npm test", tool_name: "Bash" })), "tool");
+  assert.equal(queryOrigin(ev("hook_recall", { query: "no lane at all" })), "unknown");
+});
+
+test("#704 bridgeTeachingEvents + reconstructReaches: a task-notification reach mints nothing, the owner prompt onto the same memory still does", () => {
+  const events = [
+    ev("hook_recall", { recall_id: "sys", query: TASK_NOTIFICATION, tool_name: "UserPromptSubmit" }),
+    ev("recall_episode", { recall_id: "sys", memory_id: "archive-note", acted_on: true }),
+    ev("hook_recall", { recall_id: "tool", query: "Write /Users/me/project/src/panel.swift", dimensions: { hook_source: "pre-tool" }, tool_name: "Write" }),
+    ev("recall_episode", { recall_id: "tool", memory_id: "archive-note", acted_on: true }),
+    ev("hook_recall", { recall_id: "legacy", query: "no lane recorded on this row" }),
+    ev("recall_episode", { recall_id: "legacy", memory_id: "archive-note", acted_on: true }),
+    ev("hook_recall", { recall_id: "own", query: "warum schließt sich mein Fenster von allein", dimensions: { hook_source: "prompt" } }),
+    ev("recall_episode", { recall_id: "own", memory_id: "archive-note", acted_on: true }),
+  ];
+  const reaches = reconstructReaches(bridgeTeachingEvents(events));
+  assert.deepEqual(reaches.map((r) => r.query), ["warum schließt sich mein Fenster von allein"]);
+  const { bridges } = harvestBridges(reaches, () => ["nspanel", "resignkey", "observer"]);
+  assert.equal(bridges.length, 1, "the owner sentence still mints");
+});
+
+test("#704 bridgeTeachingEvents + extractCandidatePools: the far harvest skips system and tool queries too", () => {
+  const pool = [{ id: "a", score: 40 }, { id: "b", score: 12 }];
+  const pools = extractCandidatePools(bridgeTeachingEvents([
+    ev("hook_recall", { query: TASK_NOTIFICATION, tool_name: "UserPromptSubmit", candidate_pool: pool }),
+    ev("hook_recall", { query: "npm run build", tool_name: "Bash", candidate_pool: pool }),
+    ev("hook_recall", { query: "warum schließt das Panel", dimensions: { hook_source: "prompt" }, candidate_pool: pool }),
+  ]));
+  assert.deepEqual(pools.map((p) => p.query), ["warum schließt das Panel"]);
+});
+
+test("#704 mintBridge: zzallirog's machine trigger does not mint; machine terms drop out of an owner trigger", () => {
+  assert.equal(mintBridge("task notification tool toolu output claude home", ["nspanel", "resignkey"], "en"), null);
+  const b = mintBridge("why does the claude panel close on resign", ["nspanel", "resignkey"], "en");
+  assert.ok(b, "an owner sentence mints");
+  assert.ok(!b.trigger_terms.includes("claude"), "a machine term never becomes a trigger");
+  assert.ok(b.trigger_terms.includes("panel"));
 });

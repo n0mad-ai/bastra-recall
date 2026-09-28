@@ -147,6 +147,22 @@ verification contract with measured lift over a held-out set, a near-slice
 regression guard, and a decay/demotion path. (The older note here cited #121; that
 issue closed 2026-06-16 and was never the real blocker.)
 
+**What a bridge learns from (#704).** Only queries someone phrased as a question
+count as reaches, for the in-band mint and the far harvest alike: prompts the
+owner typed (prompt lane) and explicit MCP `recall` calls. Queries the tool lanes
+build from tool input (write, bash, todo, session, stop) and harness turns that
+reach the prompt lane as if typed (`<task-notification`, `<teammate-message`,
+`<agent-message`, `<cross-session-message`, `[Subagent hand-back]`, `Another
+Claude session sent a message`) do not. The origin is read from an explicit
+`origin` field on the event when there is one, else from that text check, else
+from the lane (`dimensions.hook_source`, on older rows `tool_name`); a row that
+names no lane at all does not count. A small stoplist of machine vocabulary
+(`toolu`, `task`, `notification`, `home`, `users`, `claude` — tool ids and home
+paths, not a language list) never becomes a trigger term, and a query made mostly
+of it mints nothing. A local bridge minted before this rule whose trigger is
+mostly machine vocabulary is moved to `bridges/archive/<lang>/` on the next mint
+pass, with a line in `bridges/archive/log.jsonl`; moving the file back restores it.
+
 **Evidence and decay (#672).** A bridge is written on its **first** reach
 (`MIN_BRIDGE_EVIDENCE = 1`); until a second, independent reach confirms it
 (`CONFIRMED_BRIDGE_EVIDENCE = 2`) it is *unconfirmed*:
@@ -371,6 +387,23 @@ eine einzige erzeugte Bridge verändert also jede Anfrage, die diesen Begriff en
 Verifikationsvertrag mit gemessener Verbesserung auf einem zurückgehaltenen Testset, einen Regressionsschutz für den nahen Teil
 und einen Weg für Verfall/Abwertung. (Der ältere Hinweis an dieser Stelle nannte #121; dieses
 Issue wurde am 2026-06-16 geschlossen und war nie der eigentliche Blocker.)
+
+**Woraus eine Bridge lernt (#704).** Als Treffer zählen nur Anfragen, die jemand als
+Frage formuliert hat, beim In-Band-Erzeugen wie bei der fernen Ernte: Prompts, die der
+Besitzer getippt hat (Prompt-Lane), und ausdrückliche MCP-`recall`-Aufrufe. Anfragen,
+die die Tool-Lanes aus Tool-Eingaben bauen (write, bash, todo, session, stop), und
+Harness-Turns, die wie getippt in der Prompt-Lane ankommen (`<task-notification`,
+`<teammate-message`, `<agent-message`, `<cross-session-message`, `[Subagent
+hand-back]`, `Another Claude session sent a message`), zählen nicht. Der Ursprung
+kommt aus einem ausdrücklichen Feld `origin` am Ereignis, falls vorhanden, sonst aus
+dieser Textprüfung, sonst aus der Lane (`dimensions.hook_source`, bei älteren Zeilen
+`tool_name`); eine Zeile ohne jede Lane-Angabe zählt nicht. Eine kleine Stoppliste für
+Maschinenvokabular (`toolu`, `task`, `notification`, `home`, `users`, `claude` —
+Tool-IDs und Home-Pfade, keine Sprachliste) wird nie zum Triggerbegriff, und eine
+Anfrage, die überwiegend daraus besteht, erzeugt nichts. Eine lokale Bridge von vor
+dieser Regel, deren Trigger überwiegend Maschinenvokabular ist, verschiebt der nächste
+Erzeugungslauf nach `bridges/archive/<lang>/`, mit einer Zeile in
+`bridges/archive/log.jsonl`; die Datei zurückzuschieben stellt sie wieder her.
 
 **Belege und Verfall (#672).** Eine Bridge wird schon beim **ersten** Treffer
 geschrieben (`MIN_BRIDGE_EVIDENCE = 1`); bis ein zweiter, unabhängiger Treffer sie
