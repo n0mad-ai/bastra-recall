@@ -19,6 +19,8 @@ import {
   cmdEmbeddings,
   decideInstallRecallAction,
   formatEmbeddingDoctorLines,
+  INSTALL_PROMPT_QUESTION,
+  paraphrasingNotice,
   RECALL_OFF_NOTE,
 } from "../src/cli/embeddings-cmd.js";
 import { getEmbeddingProvider, setEmbeddingProvider } from "../src/settings.js";
@@ -294,5 +296,32 @@ test("embeddings status: running daemon with semantic recall ON shows both views
     assert.match(out, /running daemon at .+ semantic recall on \(ollama-embeddinggemma, source: env\)/);
     assert.match(out, /daemon runs with its own environment/);
     assert.ok(!/Enable: bastra embeddings on/.test(out), "OFF note must be suppressed when the daemon is semantic");
+  });
+});
+
+// ─── #646: switching on embeddings says it also starts doc2query ────────────
+
+test("#646: the install consent text names the paraphraser, its cost and its off switch", () => {
+  // Revert-check: drop the doc2query sentence from INSTALL_PROMPT_QUESTION.
+  assert.match(INSTALL_PROMPT_QUESTION, /background paraphrasing \(doc2query\)/);
+  assert.match(INSTALL_PROMPT_QUESTION, /generation model/);
+  assert.match(INSTALL_PROMPT_QUESTION, /BASTRA_TRIGGER_EXPAND=0/);
+});
+
+test("#646: embeddings on names the model, the cost class and the off switch; a missing model before the first 404", () => {
+  const pulled = paraphrasingNotice("gemma3:4b", true).join("\n");
+  assert.match(pulled, /doc2query.*gemma3:4b/);
+  assert.match(pulled, /generation model, not the embedding model/);
+  assert.match(pulled, /BASTRA_TRIGGER_EXPAND=0/);
+  assert.doesNotMatch(pulled, /ollama pull/);
+  assert.match(paraphrasingNotice("qwen2.5:7b", false).join("\n"), /⚠ qwen2\.5:7b is not pulled.*ollama pull qwen2\.5:7b/);
+  // Ollama not answering proves nothing about the model: no pull hint.
+  assert.doesNotMatch(paraphrasingNotice("qwen2.5:7b", null).join("\n"), /ollama pull/);
+});
+
+test("#646: embeddings on under an env override to another provider says nothing about doc2query (it cannot start)", async () => {
+  await withTempFile(async (path) => {
+    const { out } = await withEnvAndStdout("none", () => cmdEmbeddings({ sub: "on", settingsPath: path }));
+    assert.doesNotMatch(out, /doc2query/);
   });
 });

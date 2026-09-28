@@ -84,6 +84,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **`bastra embeddings on` says it also starts doc2query** (#646, from
+  @zzallirog's #640 report). Ollama embeddings start the background
+  paraphraser on a generation model, a different cost than the embedding
+  model. `embeddings on` (and `bastra install --ollama`) now print its model,
+  its cost class and `BASTRA_TRIGGER_EXPAND=0` as the off switch, and warn
+  when the model is not pulled, before the first 404. The install prompt's
+  consent text names it too. README EN+DE.
 - **`bastra doctor` names a narrowed MCP entry** (#635). The features block
   now shows, per client (Claude Code, Codex), `BASTRA_TOOL_SURFACE=search`
   (no save tools, so the agent never saves on its own) and
