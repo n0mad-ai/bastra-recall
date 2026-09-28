@@ -232,6 +232,26 @@ To reach this daemon from a hosted web app (e.g. a site's admin talking to the u
 
 > **Status:** the ChatGPT Custom GPT Actions path does **not work end-to-end yet**. The REST API and the OpenAPI starter spec are in place; the packaged Custom-GPT action is tracked in [#13](https://github.com/n0mad-ai/bastra-recall/issues/13).
 
+### Battery mode — keep background Ollama work off the battery (macOS)
+
+Opt-in, off by default: `bastra config set battery.saver on` (or
+`BASTRA_BATTERY_SAVER=1` in the daemon's environment, which wins over the file),
+then restart the daemon. It checks the power source once a minute with
+`pmset -g batt`; a plug change takes effect within 60 s. While the Mac runs on
+battery:
+
+- background paraphrasing (doc2query) and its catch-up round wait for AC,
+- the embedding model is not warmed at boot, at turn start or at session start,
+- the model unloads after 60 s without an embed instead of the configured
+  `BASTRA_OLLAMA_IDLE_UNLOAD_MS` window.
+
+An explicit `recall` still uses semantic search; the first one after an unload
+is about 0.5–1 s slower because it loads the model. Hook lanes are unchanged.
+On Linux and Windows the power source reads `unknown` and nothing is deferred.
+`/health` reports `power: {battery_saver, source, saving}`, and `bastra doctor`
+shows a "battery saver" row. bastra cannot stop the Ollama app itself or other
+Ollama clients; an idle Ollama server without a loaded model costs little.
+
 ### Troubleshooting
 
 - **Daemon not reachable / `ECONNREFUSED`** — the MCP forwarder normally auto-spawns the daemon on the first tool call. Check with `curl -sS http://127.0.0.1:6723/health`; `bastra status` shows the same thing in readable form. If the forwarder was disabled (`BASTRA_FORWARDER_SPAWN=0`), remove that override and restart your AI client.
@@ -477,6 +497,26 @@ Auth und CORS:
 Um diesen Daemon aus einer gehosteten Web-App zu erreichen (z.B. das Admin einer Seite, das aus dem Browser auf den *lokalen* Vault des Users zugreift): `BASTRA_CORS_ORIGIN` auf die Seiten-Origin setzen, `bastra token` ausführen und das Token in der Seite hinterlegen. Läuft die Seite über **HTTPS** (z.B. `https://bastra.io`), schickt Chrome für den Public-Origin-→-localhost-Call einen **Private-Network-Access**-Preflight; der Daemon beantwortet ihn für erlaubte Origins automatisch mit `Access-Control-Allow-Private-Network: true` — ohne Zusatzkonfiguration. Für einen serverseitigen Client: einen Tunnel (Cloudflare Tunnel / ngrok / eigener Reverse-Proxy) auf `127.0.0.1:6723` legen und mit Tunnel-URL + Token konfigurieren. Eine OpenAPI-3.0-Starter-Spec liegt in [openapi.yaml](./openapi.yaml).
 
 > **Status:** Der ChatGPT-Custom-GPT-Actions-Weg **funktioniert noch nicht end-to-end**. REST-API und OpenAPI-Starter-Spec stehen; die verpackte Custom-GPT-Action wird in [#13](https://github.com/n0mad-ai/bastra-recall/issues/13) verfolgt.
+
+### Akkumodus — Ollama-Hintergrundarbeit nicht auf dem Akku (macOS)
+
+Optional, standardmäßig aus: `bastra config set battery.saver on` (oder
+`BASTRA_BATTERY_SAVER=1` in der Umgebung des Daemons, das hat Vorrang vor der Datei),
+dann den Daemon neu starten. Er prüft die Stromquelle einmal pro Minute mit
+`pmset -g batt`; ein Ein- oder Ausstecken wirkt innerhalb von 60 s. Solange der Mac
+auf Akku läuft:
+
+- wartet das Hintergrund-Paraphrasieren (doc2query) samt Nachholrunde auf Netzstrom,
+- wird das Embedding-Modell weder beim Boot noch beim Turn- oder Sitzungsstart vorgewärmt,
+- wird das Modell nach 60 s ohne Embed entladen statt nach dem eingestellten
+  `BASTRA_OLLAMA_IDLE_UNLOAD_MS`-Fenster.
+
+Ein ausdrückliches `recall` nutzt weiter die semantische Suche; das erste nach einem
+Entladen ist etwa 0,5–1 s langsamer, weil es das Modell lädt. Die Hook-Lanes bleiben
+unverändert. Unter Linux und Windows lautet die Stromquelle `unknown`, und nichts wird
+verschoben. `/health` meldet `power: {battery_saver, source, saving}`, und `bastra doctor`
+zeigt eine Zeile „battery saver". Die Ollama-App selbst oder andere Ollama-Clients kann
+bastra nicht anhalten; ein untätiger Ollama-Server ohne geladenes Modell kostet wenig.
 
 ### Fehlerbehebung
 

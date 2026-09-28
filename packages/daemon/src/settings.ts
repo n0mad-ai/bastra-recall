@@ -150,6 +150,10 @@ export interface CliSettings {
   // rm and git snapshots (default off); env BASTRA_RM_ARCHIVES wins
   // (bash-pre-patterns.ts archiveMode).
   archive?: { retain?: string; enabled?: boolean };
+  // #632: battery mode, opt-in (default off). On battery the daemon defers
+  // doc2query, skips embedding warm-ups and unloads the model after 60 s idle
+  // (power-source.ts). Env BASTRA_BATTERY_SAVER wins.
+  battery?: { saver?: boolean };
   // User-Sprache (#231, Language-first recall): primary = 2-stelliger ISO-639-1-
   // Code (lowercase, z.B. "de"). Beim Onboarding aus der identity-Antwort
   // abgeleitet (persistLanguageSetting) oder via `bastra config set
@@ -261,6 +265,7 @@ const KNOWN_SETTINGS_KEYS: readonly string[] = [
   "code",
   "promptImpact",
   "archive",
+  "battery",
 ];
 
 function warnAboutUnknownKeys(data: unknown, path: string): void {
@@ -466,6 +471,8 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
     if (typeof archiveData.enabled === "boolean") archive.enabled = archiveData.enabled;
     if (archive.retain !== undefined || archive.enabled !== undefined) settings.archive = archive;
   }
+  const batterySaver = (data as { battery?: { saver?: unknown } }).battery?.saver;
+  if (typeof batterySaver === "boolean") settings.battery = { saver: batterySaver };
   const codeData = (data as { code?: { repos?: unknown } }).code;
   if (codeData !== undefined && Array.isArray(codeData.repos)) {
     // Parsed here, or the list would not survive the next write of any other
@@ -942,4 +949,13 @@ export async function clearApiToken(path: string = settingsFilePath()): Promise<
     return next;
   });
   return removed;
+}
+
+/** #632: battery mode switch as stored in the file (env is applied by the caller). */
+export async function getBatterySaver(path?: string): Promise<boolean | undefined> {
+  return (await readSettings(path)).battery?.saver;
+}
+
+export async function setBatterySaver(on: boolean, path: string = settingsFilePath()): Promise<void> {
+  await mutateSettings(path, (current) => ({ ...current, battery: { ...current.battery, saver: on } }));
 }

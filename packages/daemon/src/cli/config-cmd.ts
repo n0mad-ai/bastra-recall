@@ -3,7 +3,7 @@
  *
  * Keys: update.mode, embedding.provider, ollama.autostart, docs.mode,
  * docs.language, archive.retain, archive.enabled, reflex.enabled,
- * promptImpact.enabled. The store is the OSS-owned ~/.bastra/cli-settings.json
+ * promptImpact.enabled, battery.saver. The store is the OSS-owned ~/.bastra/cli-settings.json
  * (never the Pro-app's config.json). Browsing/editing memories stays in
  * the Pro app — this is flags only.
  */
@@ -35,6 +35,8 @@ import {
   setArchiveEnabled,
   getReflexEnabled,
   setReflexEnabled,
+  getBatterySaver,
+  setBatterySaver,
   isEmbeddingProviderName,
   isDocsMode,
   isDocsLanguage,
@@ -47,7 +49,7 @@ import { mapUrl } from "./map-cmd.js";
 import { parseRetain, retainDays } from "../rm-archive.js";
 import { getPromptImpactEnabled, setPromptImpactEnabled } from "../code-graph/prompt-impact-settings.js";
 
-const KNOWN_KEYS = ["update.mode", "embedding.provider", "ollama.autostart", "docs.mode", "docs.language", "ui.enabled", "size.guide", "language.primary", "archive.retain", "archive.enabled", "reflex.enabled", "promptImpact.enabled"] as const;
+const KNOWN_KEYS = ["update.mode", "embedding.provider", "ollama.autostart", "docs.mode", "docs.language", "ui.enabled", "size.guide", "language.primary", "archive.retain", "archive.enabled", "reflex.enabled", "promptImpact.enabled", "battery.saver"] as const;
 type KnownKey = (typeof KNOWN_KEYS)[number];
 
 function isKnownKey(k: string | null): k is KnownKey {
@@ -109,6 +111,12 @@ async function cmdConfigGet(key: KnownKey): Promise<number> {
       process.stdout.write(`${await getReflexEnabled()}\n`);
       const env = process.env.BASTRA_REFLEX;
       if (env) process.stdout.write(`  note: BASTRA_REFLEX=${env} (env) overrides this file at runtime\n`);
+      return 0;
+    }
+    case "battery.saver": {
+      process.stdout.write(`${(await getBatterySaver()) ?? false}\n`);
+      const env = process.env.BASTRA_BATTERY_SAVER;
+      if (env) process.stdout.write(`  note: BASTRA_BATTERY_SAVER=${env} (env) overrides this file at runtime\n`);
       return 0;
     }
     case "promptImpact.enabled": {
@@ -253,6 +261,24 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
       process.stdout.write(`✓ reflex.enabled = ${on}\n  stored in ${settingsFilePath()}\n  the next prompt uses it (no restart needed).\n`);
       const env = process.env.BASTRA_REFLEX;
       if (env) process.stdout.write(`  ⚠ BASTRA_REFLEX=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`);
+      return 0;
+    }
+    case "battery.saver": {
+      const on = parseBool(value);
+      if (on === null) {
+        process.stderr.write("error: battery.saver must be one of: true | false (also on|off)\n");
+        return 2;
+      }
+      await setBatterySaver(on);
+      process.stdout.write(
+        `✓ battery.saver = ${on}\n  stored in ${settingsFilePath()}\n` +
+          (on
+            ? `  on battery, background paraphrasing waits for AC, model warm-ups are skipped and the model unloads after 60 s idle (macOS).\n`
+            : `  background model work runs the same on battery as on AC.\n`) +
+          `  restart the daemon to apply.\n`,
+      );
+      const env = process.env.BASTRA_BATTERY_SAVER;
+      if (env) process.stdout.write(`  ⚠ BASTRA_BATTERY_SAVER=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`);
       return 0;
     }
     case "promptImpact.enabled": {

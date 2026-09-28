@@ -65,6 +65,7 @@ export interface OllamaLifecycleEvent extends Omit<BaseEvent, "session_id"> {
     | "skipped-in-flight"
     | "skipped-no-provider"
     | "skipped-hosted"
+    | "skipped-battery"
     | "failed";
   /** Beim unload: Alter des letzten erfolgreichen Embeds (ms); sonst null. */
   last_embed_age_ms: number | null;

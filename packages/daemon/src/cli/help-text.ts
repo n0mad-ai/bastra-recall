@@ -375,6 +375,7 @@ Keys:
   reflex.enabled   true | false           (reflex memories; default true)
   promptImpact.enabled
                    true | false           (change impact in prompts, experimental; default false)
+  battery.saver    true | false           (on battery: defer background Ollama work, macOS; default false)
 
 Settings live next to the vault; 'bastra config get' without a value prints the
 effective one including where it was resolved from.

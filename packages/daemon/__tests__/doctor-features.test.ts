@@ -45,6 +45,7 @@ function allOff(): FeatureState {
     bridges: false,
     ui: false,
     archive: "off",
+    battery: { saver: false },
   };
 }
 
@@ -63,6 +64,7 @@ function allOn(): FeatureState {
     bridges: true,
     ui: true,
     archive: "bastra",
+    battery: { saver: true, live: { source: "ac", saving: false } },
   };
 }
 
