@@ -29,7 +29,7 @@
  *   BASTRA_CUE_OVERWRITE=1       vorhandene Zieldatei ersetzen
  *   BASTRA_CUE_DRY_RUN=1         nichts schreiben, nur berichten
  */
-import { appendFile, access, copyFile, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, access, copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -46,6 +46,7 @@ import {
 } from "@bastra-recall/core";
 import { ollamaChat } from "../src/learned-recall/reranker.js";
 import { resolveGenerationModel } from "../src/settings.js";
+import { cuePartialPath, publishCueSidecar } from "./cue-output.js";
 
 const TAG = "[bastra-recall.cues]";
 
@@ -160,13 +161,14 @@ async function attachVectors(
 async function main(): Promise<void> {
   const out = process.env.BASTRA_CUES_OUT ?? cueSidecarPath(VAULT!);
   const dryRun = envBool("BASTRA_CUE_DRY_RUN", false);
+  const overwrite = envBool("BASTRA_CUE_OVERWRITE", false);
   const maxCues = envInt("BASTRA_CUE_MAX", 3);
   const minConfidence = envFloat("BASTRA_CUE_MIN_CONFIDENCE", 0);
   const selfTestK = envInt("BASTRA_CUE_SELFTEST_K", 10);
   const limit = envInt("BASTRA_CUE_LIMIT", 0);
   const model = process.env.BASTRA_CUE_MODEL ?? (await resolveGenerationModel());
 
-  if (!dryRun && (await exists(out)) && !envBool("BASTRA_CUE_OVERWRITE", false)) {
+  if (!dryRun && (await exists(out)) && !overwrite) {
     console.error(
       `${TAG} ${out} existiert bereits. Die beiden Bedingungen aus Anlage A liegen ` +
         `nebeneinander — setze BASTRA_CUES_OUT oder BASTRA_CUE_OVERWRITE=1.`,
@@ -215,14 +217,16 @@ async function main(): Promise<void> {
   // Geschrieben wird in eine Nachbardatei, die erst am Ende das Ziel ersetzt
   // (#427): Ein Overwrite hängte sonst an das alte Sidecar an, und ein
   // abgebrochener Lauf hinterließe ein halbes.
-  const partial = `${out}.partial`;
-  if (!dryRun) {
-    await mkdir(dirname(out), { recursive: true });
-    await writeFile(partial, "", { mode: 0o600 });
-  }
+  // Per-run temp names keep concurrent sweeps from appending to, renaming, or
+  // cleaning up one another's output. Publication remains on this filesystem.
+  const partial = cuePartialPath(out);
   let written = 0;
 
   try {
+    if (!dryRun) {
+      await mkdir(dirname(out), { recursive: true });
+      await writeFile(partial, "", { mode: 0o600, flag: "wx" });
+    }
     const report = await generateCueBatch(limit > 0 ? limitedVault(vault, limit) : vault, {
       chat: ollamaChat({ model, timeoutMs: 60_000, numCtx: 8192 }),
       selfTest,
@@ -238,7 +242,7 @@ async function main(): Promise<void> {
     if (armLost !== undefined) {
       throw new Error(`der Vektorarm ist während des Laufs ausgefallen (${armLost}) — kein Sidecar geschrieben`);
     }
-    if (!dryRun) await rename(partial, out);
+    if (!dryRun) await publishCueSidecar(partial, out, overwrite);
     console.error(`${TAG} ${JSON.stringify(report)}`);
     console.error(`${TAG} ${dryRun ? "dry-run, nichts geschrieben" : `${written} Cues → ${out}`}`);
   } finally {
