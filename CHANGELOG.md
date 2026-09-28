@@ -129,6 +129,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Task notifications and agent mail no longer recall as owner prompts**
+  (#703; found and first fixed by @zzallirog on his fork, #701). Claude Code
+  delivers `<task-notification>` and `<teammate-message>` /
+  `<agent-message>` / `<cross-session-message>` turns (also after "Another
+  Claude session sent a message:") as user turns; on one install they took
+  59 of 265 prompt-hint slots. The prompt lane now skips them like a trivial
+  prompt: no recall, `{}`, and a `prompt_hook_call` row with
+  `gated_reason: "system-injected"` and `origin: "system"`. The Stop lane and
+  the prompt lane share one check (`system-turn.ts`), so their lists cannot
+  drift. A prompt that only quotes such a tag still recalls.
 - **Reflex memories fire on inflected words** (#565). The reflex lane matches
   exact words, so a trigger "Antwort an zzalli" never fired on "wir antworten
   zzalli". The trigger expansion now also writes inflected forms of a reflex

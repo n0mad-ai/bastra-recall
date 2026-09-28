@@ -59,6 +59,7 @@ import { envFirst } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { writePendingSuggestion } from "./pending-suggestions.js";
 import { frustrationCues, decisionCues } from "./lexicon.js";
+import { isSystemInjectedTurn } from "./system-turn.js";
 import { restatementIndices } from "./stop-lane-repeat.js";
 import { getDocsMode, type DocsMode } from "./settings.js";
 import { enqueueForPath } from "./code-graph/service.js";
@@ -440,28 +441,11 @@ function isInjectedSystemContent(text: string): boolean {
     head.startsWith("<system-reminder>") ||
     head.startsWith("<command-name>") ||
     head.startsWith("<local-command-caveat>") ||
-    // A background task or subagent finishing is delivered as a user-role turn
-    // that opens with this tag. Its body is the subagent's own report, so the
-    // decision and frustration heuristics read an agent's prose as the user's.
-    head.startsWith("<task-notification>") ||
-    isAgentMail(head)
+    // Task notifications and agent mail (#639, #649): the body is another
+    // agent's prose, so the decision and frustration heuristics would read it
+    // as the user's. Shared with the prompt lane (#703).
+    isSystemInjectedTurn(head)
   );
-}
-
-/**
- * Agent-to-agent mail is delivered as a user-role turn too (#649); its body is
- * another agent's prose. Shapes seen in real Claude Code transcripts:
- * `<teammate-message teammate_id="…">` and `<agent-message from="…">`, either
- * at the start or after the line "Another Claude session sent a message:".
- * `<cross-session-message from="…">` is the form the SendMessage tool
- * documents for other sessions; no received sample was on disk.
- */
-const AGENT_MAIL_WRAPPER = "Another Claude session sent a message:";
-const AGENT_MAIL_TAG = /^<(?:teammate|agent|cross-session)-message[\s>]/;
-
-function isAgentMail(head: string): boolean {
-  const body = head.startsWith(AGENT_MAIL_WRAPPER) ? head.slice(AGENT_MAIL_WRAPPER.length).trimStart() : head;
-  return AGENT_MAIL_TAG.test(body);
 }
 
 function effectiveRole(role: string, content: unknown): string {

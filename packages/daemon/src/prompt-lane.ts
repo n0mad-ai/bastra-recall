@@ -45,6 +45,7 @@ import { idleStatuslineState } from "./statusline-feed.js";
 import { reportHinted } from "./hook-hinted.js";
 import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookClientEvidence } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
+import { isSystemInjectedTurn } from "./system-turn.js";
 import { governContext } from "./context-governor.js";
 import { deliverPromptImpact } from "./code-graph/prompt-impact.js";
 import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
@@ -372,6 +373,35 @@ export async function runPromptLane(
 
   const prompt = extractPrompt(payload);
   if (!prompt) return "{}";
+
+  // #703: a task notification or agent mail arrives as a user turn nobody
+  // typed — the same turns the Stop lane classifies as system-injected. No
+  // recall, so no hook_recall row carries the injected text as an owner query;
+  // `origin: "system"` marks the event so reach and prompt counts can drop it
+  // (#704). A task-boundary block parked for the owner's next prompt stays
+  // parked: this turn is not that prompt.
+  if (isSystemInjectedTurn(prompt)) {
+    await writeTelemetry({
+      session_id: payload.session_id ?? null,
+      client: clientEvidence,
+      agent,
+      detected_mode: "none",
+      gated: true,
+      gated_reason: "system-injected",
+      origin: "system",
+      prompt_chars: prompt.length,
+      daemon_url: selfBaseUrl,
+      daemon_reachable: true,
+      hint_count: 0,
+      hint_tokens_est: 0,
+      top_score: null,
+      latency_ms_total: Date.now() - startedAt,
+      status: "gated",
+      error: null,
+      prewarm: prewarmOutcome,
+    });
+    return "{}";
+  }
 
   // #151: gate before any recall work — the saved tokens surface in stats
   // via status:"gated" + gated:true.
@@ -1070,6 +1100,13 @@ interface PromptHookTelemetry {
   detected_mode: DetectedMode;
   /** #151: true when the trivial-prompt gate suppressed injection. */
   gated?: boolean;
+  /** #703: why the prompt was gated when it was not the trivial gate —
+   *  "system-injected" (task notification or agent mail). */
+  gated_reason?: "system-injected";
+  /** #703: "system" when nobody typed this turn (task notification, agent
+   *  mail). Absent = an owner prompt. Reach, evidence and prompt counts must
+   *  skip "system" rows (#704). */
+  origin?: "system";
   prompt_chars: number;
   daemon_url: string | null;
   daemon_reachable: boolean;
