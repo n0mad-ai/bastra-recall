@@ -93,7 +93,7 @@ test("every core feature that is off carries the command that turns it on", () =
     ["claude-code: skill", /bastra install claude-code/],
     ["onboarding", /never done .*bastra onboard/],
     ["semantic recall", /bastra embeddings on/],
-    ["reflex memories", /remove "reflex\.enabled"/],
+    ["reflex memories", /bastra config set reflex\.enabled true/],
   ];
   for (const [name, hint] of expected) {
     const line = lineFor(lines, name);
@@ -130,7 +130,7 @@ test("optional features that are off are marked intentional, never with the off 
   const { optional } = split(featureLines(allOff()));
   const expected: Array<[string, RegExp]> = [
     ["code awareness (experimental)", /bastra code enable/],
-    ["change impact in prompts (experimental)", /promptImpact/],
+    ["change impact in prompts (experimental)", /bastra config set promptImpact\.enabled true/],
     ["product docs", /bastra config set docs\.mode suggest/],
     ["Bastra Commons", /bastra commons enable/],
     ["shared recall bridges", /bastra bridges enable/],

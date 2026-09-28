@@ -84,6 +84,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **`bastra config set reflex.enabled` and `promptImpact.enabled`** (#634).
+  Both were only switchable by editing `~/.bastra/cli-settings.json` by hand,
+  and doctor's hint said so. They are now config keys (true | false, also
+  on|off; `get` names an overriding `BASTRA_REFLEX` / `BASTRA_PROMPT_IMPACT`),
+  and the doctor hints name the command.
 - **Claude Code hook registrations carry a client marker** (#657, #507).
   `bastra install` now writes `BASTRA_HOOK_CLIENT=claude-code` in front of
   every Claude Code hook command, as it already did with `codex` for Codex.

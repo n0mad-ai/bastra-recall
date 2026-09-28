@@ -18,7 +18,7 @@
  *   - optional features, off by default ON PURPOSE (opt-in or experimental) —
  *     listed so they can be found, marked as intentional, never as a warning.
  */
-import { readSettings, resolveEmbeddingChoice, resolveGenerationModel, settingsFilePath, type CliSettings } from "../settings.js";
+import { readSettings, resolveEmbeddingChoice, resolveGenerationModel, type CliSettings } from "../settings.js";
 import { ollamaModelPulled } from "./ollama.js";
 import { FRESH_VAULT_MAX, isOnboardingDone } from "../onboarding.js";
 import { codeAwarenessDisabledByEnv, enabledRepos } from "../code-graph/enabled-repos.js";
@@ -115,7 +115,7 @@ export function featureLines(s: FeatureState): string[] {
   if (s.reflex.enabled) lines.push(row(ON, "reflex memories", "on"));
   else lines.push(row(OFF, "reflex memories", `off (${s.reflex.offBy})`, s.reflex.offBy?.startsWith("BASTRA_REFLEX")
     ? "unset BASTRA_REFLEX"
-    : `remove "reflex.enabled" from ${settingsFilePath()}`));
+    : "bastra config set reflex.enabled true"));
 
   lines.push("  optional, off by default on purpose:");
   if (s.codeAwareness.offByEnv) {
@@ -128,7 +128,7 @@ export function featureLines(s: FeatureState): string[] {
   lines.push(s.promptImpact
     ? row(ON, "change impact in prompts (experimental)", "on")
     : row(INFO, "change impact in prompts (experimental)", "off, not shown to help yet",
-        `opt in: "promptImpact": { "enabled": true } in ${settingsFilePath()}`));
+        "bastra config set promptImpact.enabled true"));
   lines.push(s.docsMode !== "off"
     ? row(ON, "product docs", s.docsMode)
     : row(INFO, "product docs", "off", "bastra config set docs.mode suggest"));
