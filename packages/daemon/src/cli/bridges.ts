@@ -31,7 +31,13 @@ import {
 import { envFirst } from "../env.js";
 import { commonsPath, COMMONS_REPO_URL } from "./commons.js";
 import { BridgePool, distinctiveTerms, MIN_BRIDGE_EVIDENCE } from "../learned-recall/bridges.js";
-import { readEventLog, writeBridges, extractCandidatePools, harvestFarBridges } from "../learned-recall/harvest.js";
+import {
+  readEventLog,
+  writeBridges,
+  extractCandidatePools,
+  harvestFarBridges,
+  bridgeTeachingEvents,
+} from "../learned-recall/harvest.js";
 import { runInBandMint, readLastMint } from "../learned-recall/mint-job.js";
 import { ollamaChat, listOllamaModels, resolveRerankModel } from "../learned-recall/reranker.js";
 import { isSupportedLanguage, SUPPORTED_LANGUAGES } from "../learned-recall/language.js";
@@ -113,7 +119,7 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
         return 0;
       }
       process.stdout.write(
-        `✓ minted ${outcome.minted} bridge(s) from ${outcome.reaches} acted-on reach(es) — ${outcome.written} written to ${join(bridgesPath(), "bridges")}, ${outcome.pruned} unconfirmed expired\n` +
+        `✓ minted ${outcome.minted} bridge(s) from ${outcome.reaches} acted-on reach(es) — ${outcome.written} written to ${join(bridgesPath(), "bridges")}, ${outcome.pruned} unconfirmed expired, ${outcome.archived ?? 0} archived\n` +
           "  a running daemon picks them up with its next scheduled mint, or restart it to load them now\n",
       );
       return 0;
@@ -123,7 +129,8 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       const daysArg = opts.positional?.[2];
       const days = daysArg ? parseInt(daysArg, 10) : null;
       const events = await readEventLog(undefined, days != null && Number.isFinite(days) ? days : null);
-      const pools = extractCandidatePools(events);
+      // #704: the far harvest learns from the same origins as the in-band mint.
+      const pools = extractCandidatePools(bridgeTeachingEvents(events));
       if (pools.length === 0) {
         process.stdout.write("no candidate pools in telemetry yet (needs #121 logging + some recalls) — nothing to harvest\n");
         return 0;

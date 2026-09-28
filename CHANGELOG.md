@@ -150,6 +150,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   from transcripts). `bastra logs --stats` and the Telemetry tab now print
   that rate, joined on `caller_session` with a fallback to `session_id`,
   and say how many saves the join can see.
+- **Learned bridges learn only from owner-typed queries** (#704; reported by
+  @zzallirog, #701). Any logged query counted as a reach, so a recurring
+  `<task-notification>` turn became a confirmed bridge that fired on 520 of his
+  578 September recalls with a bridge, and led to nothing. The in-band mint and
+  `bastra bridges harvest` now count only owner prompts and explicit MCP
+  `recall` calls; tool-lane queries, harness turns and rows without a lane do
+  not. Machine vocabulary (`toolu`, `task`, `notification`, `home`, `users`,
+  `claude`) never becomes a trigger term, and existing local bridges whose
+  trigger is mostly machine vocabulary move to `bridges/archive/` (reversible,
+  logged) on the next mint pass.
+
 - **Reflex memories fire on inflected words** (#565). The reflex lane matches
   exact words, so a trigger "Antwort an zzalli" never fired on "wir antworten
   zzalli". The trigger expansion now also writes inflected forms of a reflex

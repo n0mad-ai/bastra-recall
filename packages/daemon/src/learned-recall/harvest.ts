@@ -12,13 +12,13 @@
  * (the runner's word, positive-biased). The below-floor far slice stays invisible until
  * #121 logs it; this harvester picks up everything that is observable today.
  */
-import { readdir, readFile, mkdir, writeFile, rename, unlink } from "node:fs/promises";
+import { readdir, readFile, mkdir, writeFile, rename, unlink, appendFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { detectLanguage } from "./language.js";
-import { isExpiredUnconfirmed, mintBridge, UNCONFIRMED_BRIDGE_TTL_DAYS, type Bridge } from "./bridges.js";
+import { isExpiredUnconfirmed, isMachineVocabulary, mintBridge, UNCONFIRMED_BRIDGE_TTL_DAYS, type Bridge } from "./bridges.js";
 import { rerank, type ChatFn, type RerankCandidate } from "./reranker.js";
 import { testRunLogDir } from "../env.js";
 
@@ -68,10 +68,94 @@ export async function readEventLog(logDir: string = defaultLogDir(), days: numbe
   return out;
 }
 
+// ─── Query origin (#704) ────────────────────────────────────────────────────
+
+/**
+ * #704: who wrote a logged recall query.
+ * - `owner`: a prompt the person typed (prompt lane).
+ * - `agent`: an explicit `recall` the model called over MCP.
+ * - `tool`: built by a tool lane from tool input (write, bash, todo, session, stop).
+ * - `system`: a harness-injected turn (task notification, teammate or
+ *   cross-session message, subagent hand-back).
+ * - `unknown`: the event names neither an origin nor a lane.
+ */
+export type QueryOrigin = "owner" | "agent" | "tool" | "system" | "unknown";
+
+/** #704: the origins a bridge may learn from. Owner prompts and explicit MCP
+ *  recalls are phrasings someone chose for a question. Tool-lane queries are
+ *  assembled from tool input (paths, commands, file bodies) and recur with the
+ *  work, not with the question — #704 leaves their status open, so they do not
+ *  count until a measurement says they should. */
+const BRIDGE_TEACHING_ORIGINS: ReadonlySet<QueryOrigin> = new Set<QueryOrigin>(["owner", "agent"]);
+
+/** Harness turns that reach the prompt lane as if typed (#703, #704). The
+ *  prompt lane gates them since #703; older log rows still carry them. */
+const SYSTEM_TURN_PREFIXES = [
+  "<task-notification",
+  "<teammate-message",
+  "<agent-message",
+  "<cross-session-message",
+  "[Subagent hand-back]",
+  "Another Claude session sent a message",
+];
+
+export function isSystemTurnText(text: string): boolean {
+  const t = text.trimStart();
+  return SYSTEM_TURN_PREFIXES.some((p) => t.startsWith(p));
+}
+
+const TOOL_HOOK_SOURCES = new Set(["pre-tool", "session", "stop", "bash-pre", "bash-fail", "todo", "session-context"]);
+
+/**
+ * #704: the origin of a logged recall query, read robustly from what the event
+ * carries. An explicit `origin`/`query_origin` field wins (none is written on
+ * recall events today; a missing field means unknown, never owner). Otherwise
+ * the query text is checked for a harness wrapper, then the lane:
+ * `dimensions.hook_source` (since #263), else `tool_name` (older rows:
+ * `UserPromptSubmit` = prompt lane, `mcp-forwarder` = MCP). An MCP `recall`
+ * event is the model's own call.
+ */
+export function queryOrigin(e: TelemetryEvent): QueryOrigin {
+  const dims = typeof e.dimensions === "object" && e.dimensions !== null ? (e.dimensions as Record<string, unknown>) : {};
+  const explicit = [e.origin, e.query_origin, dims.origin].find((v) => typeof v === "string") as string | undefined;
+  if (explicit === "system") return "system";
+  if (explicit === "tool") return "tool";
+  if (typeof e.query === "string" && isSystemTurnText(e.query)) return "system";
+  if (explicit === "owner" || explicit === "user") return "owner";
+  if (explicit === "agent") return "agent";
+  if (e.kind === "recall") return "agent";
+  const source = dims.hook_source;
+  if (source === "prompt") return "owner";
+  if (source === "mcp") return "agent";
+  if (typeof source === "string" && TOOL_HOOK_SOURCES.has(source)) return "tool";
+  if (e.tool_name === "UserPromptSubmit") return "owner";
+  if (e.tool_name === "mcp-forwarder") return "agent";
+  if (typeof e.tool_name === "string" && e.tool_name.length > 0) return "tool";
+  return "unknown";
+}
+
+/** #704: may a bridge be minted from this event's query? */
+export function teachesBridges(e: TelemetryEvent): boolean {
+  return BRIDGE_TEACHING_ORIGINS.has(queryOrigin(e));
+}
+
+/**
+ * #704: the log as the bridge teachers may see it — recall/hook_recall rows
+ * whose query does not teach bridges are dropped, everything else stays. Applied
+ * by the two teachers (in-band mint, `bastra bridges harvest`), not inside
+ * reconstructReaches / extractCandidatePools: the curator counts reaches per
+ * memory (reflex promotion, intake adoption) and the pool scripts read every
+ * recall, and neither depends on who phrased the query.
+ */
+export function bridgeTeachingEvents(events: TelemetryEvent[]): TelemetryEvent[] {
+  return events.filter((e) => (e.kind !== "hook_recall" && e.kind !== "recall") || teachesBridges(e));
+}
+
 /**
  * Join recall/hook_recall (which carry the query) with recall_episode (which carries
  * the acted-on memory) by recall_id, yielding the (query → memory) reaches a bridge is
- * mined from. Only acted_on episodes count — the agent's terminal pick.
+ * mined from. Only acted_on episodes count — the agent's terminal pick. The bridge
+ * teachers pass bridgeTeachingEvents(events) (#704).
  */
 export function reconstructReaches(events: TelemetryEvent[]): Reach[] {
   const queryByRecallId = new Map<string, string>();
@@ -359,6 +443,7 @@ export async function pruneUnconfirmedBridges(
   }
   let pruned = 0;
   for (const lang of langs) {
+    if (lang === "archive") continue; // retired bridges (#704/#129) do not expire again
     let files: string[];
     try {
       files = (await readdir(join(base, lang))).filter((f) => f.endsWith(".json"));
@@ -379,6 +464,88 @@ export async function pruneUnconfirmedBridges(
     }
   }
   return pruned;
+}
+
+/** #704/#129: where a retired bridge goes — <root>/bridges/archive/<lang>/<id>.json.
+ *  Out of the pool (BridgePool.load reads language dirs only), not deleted:
+ *  moving the file back restores it. */
+export function archivedBridgePath(rootDir: string, lang: string, id: string): string {
+  return join(rootDir, "bridges", "archive", lang, `${id}.json`);
+}
+
+/** Move one bridge file to archive/ and append a line to archive/log.jsonl.
+ *  Returns false when the move failed (file gone, another pass got there). */
+export async function archiveBridgeFile(
+  rootDir: string,
+  path: string,
+  b: Pick<Bridge, "id" | "lang" | "trigger_terms">,
+  reason: string,
+  now: Date,
+): Promise<boolean> {
+  try {
+    await mkdir(join(rootDir, "bridges", "archive", b.lang), { recursive: true });
+    await rename(path, archivedBridgePath(rootDir, b.lang, b.id));
+  } catch {
+    return false;
+  }
+  try {
+    const line = { ts: now.toISOString(), id: b.id, lang: b.lang, reason, trigger_terms: b.trigger_terms };
+    await appendFile(join(rootDir, "bridges", "archive", "log.jsonl"), JSON.stringify(line) + "\n", "utf8");
+  } catch {
+    /* the move is what matters; the log line is observability */
+  }
+  return true;
+}
+
+/** Every local bridge file under <root>/bridges/<lang>/ (archive/ excluded). */
+export async function listLocalBridgeFiles(rootDir: string): Promise<{ path: string; bridge: Partial<Bridge> }[]> {
+  const base = join(rootDir, "bridges");
+  let langs: string[];
+  try {
+    langs = await readdir(base);
+  } catch {
+    return [];
+  }
+  const out: { path: string; bridge: Partial<Bridge> }[] = [];
+  for (const lang of langs) {
+    if (lang === "archive") continue;
+    let files: string[];
+    try {
+      files = (await readdir(join(base, lang))).filter((f) => f.endsWith(".json"));
+    } catch {
+      continue; // not a directory
+    }
+    for (const f of files) {
+      const path = join(base, lang, f);
+      const bridge = await readBridgeFile(path);
+      if (bridge) out.push({ path, bridge });
+    }
+  }
+  return out;
+}
+
+/**
+ * #704: move every local bridge whose trigger is mostly machine vocabulary
+ * (isMachineVocabulary) to archive/. Such a bridge was minted from harness text
+ * before the origin gate existed; the mint can no longer produce one, so after
+ * the first pass this finds nothing. Contributed (verifier) bridges are not
+ * ours to move. Returns how many were archived.
+ */
+export async function archiveMachineBridges(rootDir: string, now: Date = new Date()): Promise<number> {
+  let archived = 0;
+  for (const { path, bridge } of await listLocalBridgeFiles(rootDir)) {
+    if (bridge.verifier !== undefined || typeof bridge.id !== "string" || typeof bridge.lang !== "string") continue;
+    if (!Array.isArray(bridge.trigger_terms) || !isMachineVocabulary(bridge.trigger_terms)) continue;
+    const ok = await archiveBridgeFile(
+      rootDir,
+      path,
+      { id: bridge.id, lang: bridge.lang, trigger_terms: bridge.trigger_terms },
+      "machine-vocabulary trigger (#704)",
+      now,
+    );
+    if (ok) archived++;
+  }
+  return archived;
 }
 
 /** True when a bridges/ dir already exists under root (for status/CLI messaging). */
