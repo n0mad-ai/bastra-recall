@@ -108,6 +108,7 @@ test("die Prompt-Lane weist sich aus", async () => {
     await runPromptLane(
       {
         hook_event_name: "UserPromptSubmit",
+        bastra_client: "claude-code",
         session_id: SESSION,
         // Lang genug, um am Trivial-Gate vorbeizukommen.
         prompt: "wie war noch die Entscheidung zur Deployment-Strategie im Projekt",
@@ -125,6 +126,7 @@ test("die Write-Lane weist sich aus", async () => {
       {
         hook_event_name: "PreToolUse",
         tool_name: "Write",
+        bastra_client: "claude-code",
         session_id: SESSION,
         tool_input: {
           file_path: "/tmp/beispiel/service.ts",
@@ -143,6 +145,7 @@ test("die Todo-Lane weist sich aus", async () => {
       {
         hook_event_name: "PreToolUse",
         tool_name: "TodoWrite",
+        bastra_client: "claude-code",
         session_id: SESSION,
         tool_input: {
           todos: [
@@ -177,6 +180,7 @@ test("die Bash-Fail-Lane weist sich aus", async (t) => {
       {
         hook_event_name: "PostToolUse",
         tool_name: "Bash",
+        bastra_client: "claude-code",
         session_id: SESSION,
         tool_input: { command: "npm run build" },
         tool_response: { exit_code: 1, stderr: "Error: ENOENT missing module tsconfig" },
