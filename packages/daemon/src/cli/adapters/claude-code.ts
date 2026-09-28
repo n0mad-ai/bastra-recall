@@ -92,7 +92,14 @@ export function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[]
     // `TaskUpdate` carries a status transition and an `activeForm` label, so
     // binding it would fire the lane on every pending→in_progress→completed
     // move for text the plan already said.
-    { event: "PreToolUse", matcher: "TodoWrite|TaskCreate", bin: TODO_HOOK_BIN, timeout: 2, note: "bastra-recall plan hook (topology-recall, #36/#506)", stubSubcommand: "todo" },
+    //
+    // #698: `ExitPlanMode` too. Since 2.1.28x Claude Code gives the task tools
+    // only to older models (Opus ≤ 4.7, Sonnet ≤ 4.6, Haiku 4.5) unless
+    // `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`; on current models no `TaskCreate`
+    // is ever called, and the lane saw 0 Claude Code calls in the #305
+    // window. The plan a current session writes goes through plan mode:
+    // `ExitPlanMode` carries it as `plan` (markdown) when it is presented.
+    { event: "PreToolUse", matcher: "TodoWrite|TaskCreate|ExitPlanMode", bin: TODO_HOOK_BIN, timeout: 2, note: "bastra-recall plan hook (topology-recall, #36/#506/#698)", stubSubcommand: "todo" },
     { event: "PreToolUse", matcher: "Bash", bin: BASH_PRE_HOOK_BIN, timeout: 2, note: "bastra-recall Bash-pre hook (safety, #34)", stubSubcommand: "bash-pre" },
     { event: "PostToolUse", matcher: "Bash", bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall Bash post hook (act-signal #144 + lesson recall on fail #37)", stubSubcommand: "bash-fail" },
     { event: "PostToolUseFailure", matcher: "Bash", bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall Bash failure hook (act-signal #144 + lesson recall on fail #37)", stubSubcommand: "bash-fail" },

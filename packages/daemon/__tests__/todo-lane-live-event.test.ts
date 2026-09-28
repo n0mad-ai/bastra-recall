@@ -320,3 +320,64 @@ test("#506: multi-step topic extraction is unchanged by the single-step rule", (
   // "middleware" appears in exactly one of the two todos and must stay out.
   assert.equal(shared.topics.includes("middleware"), false);
 });
+
+// ─── #698: plan mode, the plan event a current Claude Code session emits ────
+
+/**
+ * The `ExitPlanMode` input as Claude Code 2.1.2xx records it in the session
+ * transcript (owner's install, 2026-09): `allowedPrompts` from the model, and
+ * `plan` / `planFilePath` filled in by the client from the plan file. Text
+ * shortened and made neutral; field names and shape are verbatim.
+ */
+const LIVE_EXIT_PLAN_MODE = {
+  session_id: "698-exit-plan-mode",
+  cwd: "/tmp",
+  hook_event_name: "PreToolUse",
+  tool_name: "ExitPlanMode",
+  tool_input: {
+    allowedPrompts: [{ tool: "Bash", prompt: "install workspace dependencies (pnpm install)" }],
+    plan:
+      "# Mono-repo setup with a staged boilerplate\n\n## Context\n\nThe web app and the api live in two repos.\n\n" +
+      "## Steps\n1. **Move the web app** into `apps/web` of the workspace.\n2. Move the api into `apps/api` of the workspace.\n" +
+      "- [ ] Share the tsconfig between the web app and the api\n\n```sh\npnpm install\n```\n",
+    planFilePath: "/Users/someone/.claude/plans/mono-repo-setup.md",
+  },
+};
+
+test("#698: the registered matcher fires on ExitPlanMode and keeps the task names", () => {
+  // Current models get no task tools by default (Claude Code tools reference,
+  // "Task tool availability"): TaskCreate is never called there, the plan goes
+  // through plan mode. The old names stay — older models and opt-ins send them.
+  const m = todoLaneMatcher();
+  assert.equal(matcherMatches(m, "ExitPlanMode"), true, m);
+  assert.equal(matcherMatches(m, "TaskCreate"), true, m);
+  assert.equal(matcherMatches(m, "TodoWrite"), true, m);
+  // Entering plan mode carries no plan yet.
+  assert.equal(matcherMatches(m, "EnterPlanMode"), false, m);
+});
+
+test("#698: an ExitPlanMode plan produces hints and a todo_hook_call row", async () => {
+  await withIsolatedLogs(async (logDir) => {
+    await withDaemon(async (url) => {
+      const out = await runTodoLane(LIVE_EXIT_PLAN_MODE, url);
+      assert.match(out, /recall-hints/, "the plan-mode payload must reach the hint block");
+      const ev = (await readEvents(logDir)).find((e) => e.kind === "todo_hook_call");
+      assert.ok(ev, "the lane that fired must leave its own telemetry row");
+      assert.equal(ev.status, "ok");
+      // One item per plan line; the code fence body is not a plan step.
+      assert.equal(ev.todo_count, 7);
+      assert.match(String(ev.topic), /web/);
+    });
+  });
+});
+
+test("#698: an ExitPlanMode without plan text is gated, not a recall on nothing", async () => {
+  await withIsolatedLogs(async (logDir) => {
+    await withDaemon(async (url) => {
+      const bare = { ...LIVE_EXIT_PLAN_MODE, tool_input: { allowedPrompts: [] } };
+      assert.equal(await runTodoLane(bare, url), "{}");
+      const ev = (await readEvents(logDir)).find((e) => e.kind === "todo_hook_call");
+      assert.equal(ev?.status, "low-confidence");
+    });
+  });
+});

@@ -194,8 +194,14 @@ export function extractTopicsFromTodos(todosRaw: unknown): TopicExtraction {
  *
  * `TaskUpdate` is accepted but NOT registered by the installer (see
  * adapters/claude-code.ts): a status transition is not a new plan.
+ *
+ * `ExitPlanMode` (#698): on current models Claude Code offers no task tools
+ * by default, so the plan it writes arrives as plan mode's markdown instead.
  */
-const PLAN_TOOLS = new Set(["TodoWrite", "update_plan", "TaskCreate", "TaskUpdate"]);
+const PLAN_TOOLS = new Set(["TodoWrite", "update_plan", "TaskCreate", "TaskUpdate", "ExitPlanMode"]);
+
+/** Markdown list and heading markers at the start of a plan line. */
+const PLAN_LINE_MARKER = /^\s*(?:#{1,6}\s+|[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+|>\s*)*/;
 
 /**
  * The plan items to extract topics from, in whatever shape the client sent.
@@ -206,6 +212,9 @@ const PLAN_TOOLS = new Set(["TodoWrite", "update_plan", "TaskCreate", "TaskUpdat
  *    activeForm? }` — no array at all. `description` is absent from the
  *    documented shape but present in every live payload observed, and it is
  *    the richer half; both are kept, subject first.
+ *  · Claude Code `ExitPlanMode` (#698): `{ plan: "<markdown>", planFilePath?,
+ *    allowedPrompts? }` — one item per non-empty line outside code fences,
+ *    list and heading markers stripped.
  */
 function planItemsOf(payload: ClaudeHookPayload): unknown {
   const input = payload.tool_input ?? {};
@@ -215,6 +224,20 @@ function planItemsOf(payload: ClaudeHookPayload): unknown {
       const step = (item as Record<string, unknown>).step;
       return { ...(item as Record<string, unknown>), content: step };
     });
+  }
+  if (payload.tool_name === "ExitPlanMode") {
+    if (typeof input.plan !== "string") return [];
+    let fenced = false;
+    const items: Array<{ content: string }> = [];
+    for (const line of input.plan.split("\n")) {
+      if (/^\s*(?:```|~~~)/.test(line)) {
+        fenced = !fenced;
+        continue;
+      }
+      const content = line.replace(PLAN_LINE_MARKER, "").trim();
+      if (!fenced && content.length > 0) items.push({ content });
+    }
+    return items;
   }
   if (payload.tool_name === "TaskCreate" || payload.tool_name === "TaskUpdate") {
     const text = [input.subject, input.description, input.activeForm ?? input.active_form]

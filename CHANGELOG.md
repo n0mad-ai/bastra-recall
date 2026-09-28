@@ -140,6 +140,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The plan lane fires from Claude Code plan mode** (#698). The lane saw 0
+  Claude Code calls in the #305 window: current Claude Code offers
+  `TaskCreate` / `TodoWrite` by default only on older models (Opus ≤ 4.7,
+  Sonnet ≤ 4.6, Haiku 4.5) or with `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, so the
+  registered matcher never matched. It is now `TodoWrite|TaskCreate|ExitPlanMode`:
+  a plan presented from plan mode is read line by line (code fences left
+  out) and recalls like a task list. The old names stay. Re-run `bastra
+  install claude-code` (or `bastra update`) to register it; until then doctor
+  reports the plan hook as not registered. A wrapper the user put around the
+  old entry is kept.
 - **The archiving `rm` on a full disk refuses clearly** (#695). Archiving is
   a move and frees no space; when the move or its manifest line fails with
   `ENOSPC`, `rm` now exits 1 with a message that names the ways out

@@ -290,7 +290,7 @@ test("claude-code: disableAllHooks, a missing Stop hook and a missing skill reac
       UserPromptSubmit: [lane("prompt")],
       PreToolUse: [
         { matcher: "Write|Edit|MultiEdit|NotebookEdit", ...lane("write") },
-        { matcher: "TodoWrite|TaskCreate", ...lane("todo") },
+        { matcher: "TodoWrite|TaskCreate|ExitPlanMode", ...lane("todo") },
         { matcher: "Bash", ...lane("bash-pre") },
       ],
       PostToolUse: [{ matcher: "Bash", ...lane("bash-fail") }],
