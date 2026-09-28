@@ -303,20 +303,44 @@ Telemetry event: `todo_hook_call` (`topic`, `todo_count`, `hit_count`, …).
 Matches the Bash command against a curated list of destructive and risky
 patterns. On match it recalls relevant safety lessons / user-preferences
 (`scope=all-projects`, score floor 50) and emits a
-`<recall-hints surface="claude-code" trigger="bash-destructive">` block
-warning Claude to stop and confirm with the user.
+`<recall-hints surface="claude-code" trigger="bash-destructive">` block. What
+the block tells the agent depends on whether the act has a local undo
+(#650/#651; the tables are `packages/daemon/src/bash-pre-patterns.ts`):
 
-Destructive patterns (subset): `rm -rf`, `rm -r`, `rmdir`,
-`git reset --hard`, `git checkout -- `, `git clean -f`, `git branch -D`,
-`git push --force` / `--force-with-lease` / `-f`, `git commit --amend`,
-`git reflog expire` / `git reflog delete`, `git gc --prune` (also as
-`git -c gc.pruneExpire=now …` / `git config gc.reflogExpire now`),
-`gh repo delete`, `gh release delete`, `npm uninstall` / `npm rm`,
-`yarn remove`, `pnpm rm`, `DROP TABLE`, `DROP DATABASE`, `TRUNCATE`,
-`docker rm`, `docker volume rm`, `kubectl delete`.
+- **Receipt** (`NOTE — reversible`): the command as typed is already
+  recoverable. The block says how to get it back; no STOP, no confirmation.
+- **Reversible form** (`REVERSIBLE FORM`): the bare command has no undo, but
+  another form of it does, with the same end state (or a refusal the next
+  step cannot miss). The block names that form; the bare command keeps the
+  confirmation rule.
+- **STOP**: no local undo. Explicit user confirmation unless authorized in
+  advance.
 
-Risky patterns: `chmod -R`, `chown -R`, `find ... -exec rm`,
-`>` overwrite-redirect.
+| hint | patterns |
+|---|---|
+| receipt | `git push --force-with-lease`, `git commit --amend`, `git stash drop` / `clear`; with the archive opt-in on (Claude Code, below): `rm -r` / `rm -rf` and the acts bastra's git snapshots take |
+| reversible form | `git reset --hard`, `git checkout -- <paths>`, `git checkout <tree> -- <paths>`, `git restore` (with or without `--source`) → `git stash push` first; `git branch -D` → `git branch -d`; `git push --force` / `-f` → `--force-with-lease`; `git push +refspec` → drop the `+` and use `--force-with-lease`; `git clean -f` → `-n`, then `rm -r` on those paths (only where `rm` archives; otherwise STOP) |
+| STOP | `rm -r` / `rm -rf` without the opt-in, `rmdir`, `git push --delete` (also `-d`, `--prune`, `--mirror`, a `:branch` refspec), `git reflog expire` / `delete`, `git gc --prune` (also the expiry set through `git -c gc.…Expire=` or `git config gc.…Expire`), `gh repo delete`, `gh release delete`, `npm uninstall` / `npm rm`, `yarn remove`, `pnpm rm`, `DROP TABLE`, `DROP DATABASE`, `TRUNCATE TABLE`, `docker rm`, `docker volume rm`, `kubectl delete` |
+
+A command with several destructive acts is weighed as a whole: one act
+without an undo makes it STOP, and so do several acts that are not all
+receipts (`git branch -D x && gh repo delete y` never reads like its first
+half). `git reflog expire` / `gc --prune` next to an amend or lease receipt
+is STOP, because they delete what that receipt points to.
+
+`BASTRA_RM_ARCHIVES` (daemon environment, read on every Bash call) changes
+only the `rm` rows, and only for a call marked as Claude Code
+(`BASTRA_HOOK_CLIENT=claude-code`, written by `bastra install`): `1` is
+bastra's own archiving `rm` and git snapshots (below); `host` says the host's
+agent shell already puts an archiving `rm` first in PATH, which moves targets
+to `~/_archive/<date>/<full path>` and restores with `agent-archive restore`.
+bastra does not check that `rm`; with `host` it only rewrites the hint to the
+receipt, and only when every `rm` in the command resolves through PATH (not
+`/bin/rm`, `sudo rm`, a redefined `rm`). Other surfaces and unmarked calls
+keep the STOP.
+
+Risky patterns (`CAUTION`, softer): `chmod -R`, `chown -R`,
+`find ... -exec rm`, `find ... -delete`.
 
 Does **not** block. The agent decides whether to proceed.
 
@@ -462,8 +486,10 @@ settings_verdict, settings_rule, hinted`). Each shim runs only where it is
 on: with one of the two switched off, a command that needs both is not
 rewritten.
 
-Telemetry: `bash_hook_call` with `matched_pattern, severity, hit_count,
-top_score, status`.
+Telemetry: `bash_hook_call` with `matched_pattern, severity, hint_kind,
+hit_count, top_score, status`. `hint_kind` is what the block told the agent:
+`stop`, `receipt` or `reversible-form` for a destructive match, `null` for a
+risky one.
 
 #### `bastra-recall-bash-fail-hook` (#37, #144)
 
@@ -966,20 +992,45 @@ Telemetrie-Event: `todo_hook_call` (`topic`, `todo_count`, `hit_count`, …).
 Gleicht den Bash-Befehl mit einer kuratierten Liste destruktiver und riskanter
 Muster ab. Bei einem Treffer ruft er passende Sicherheits-Lessons und
 Nutzerpräferenzen ab (`scope=all-projects`, Score-Untergrenze 50) und gibt einen
-Block `<recall-hints surface="claude-code" trigger="bash-destructive">` aus,
-der Claude warnt, anzuhalten und beim Nutzer nachzufragen.
+Block `<recall-hints surface="claude-code" trigger="bash-destructive">` aus.
+Was der Block dem Agenten sagt, hängt davon ab, ob die Aktion ein lokales
+Undo hat (#650/#651; die Tabellen stehen in
+`packages/daemon/src/bash-pre-patterns.ts`):
 
-Destruktive Muster (Auswahl): `rm -rf`, `rm -r`, `rmdir`,
-`git reset --hard`, `git checkout -- `, `git clean -f`, `git branch -D`,
-`git push --force` / `--force-with-lease` / `-f`, `git commit --amend`,
-`git reflog expire` / `git reflog delete`, `git gc --prune` (auch als
-`git -c gc.pruneExpire=now …` / `git config gc.reflogExpire now`),
-`gh repo delete`, `gh release delete`, `npm uninstall` / `npm rm`,
-`yarn remove`, `pnpm rm`, `DROP TABLE`, `DROP DATABASE`, `TRUNCATE`,
-`docker rm`, `docker volume rm`, `kubectl delete`.
+- **Quittung** (`NOTE — reversible`): Der Befehl, wie er dasteht, ist schon
+  rückholbar. Der Block sagt, wie; kein STOP, keine Rückfrage.
+- **Umkehrbare Form** (`REVERSIBLE FORM`): Der nackte Befehl hat kein Undo,
+  eine andere Form davon schon, mit demselben Endzustand (oder einer
+  Weigerung, die der nächste Schritt nicht übersehen kann). Der Block nennt
+  diese Form; für den nackten Befehl bleibt die Rückfrage-Regel.
+- **STOP**: kein lokales Undo. Ausdrückliche Bestätigung des Nutzers, sofern
+  nicht vorab freigegeben.
 
-Riskante Muster: `chmod -R`, `chown -R`, `find ... -exec rm`,
-`>`-Umleitung mit Überschreiben.
+| Hinweis | Muster |
+|---|---|
+| Quittung | `git push --force-with-lease`, `git commit --amend`, `git stash drop` / `clear`; mit eingeschaltetem Archiv-Opt-in (Claude Code, unten): `rm -r` / `rm -rf` und die Aktionen, die bastras Git-Schnappschüsse übernehmen |
+| umkehrbare Form | `git reset --hard`, `git checkout -- <Pfade>`, `git checkout <Baum> -- <Pfade>`, `git restore` (mit oder ohne `--source`) → vorher `git stash push`; `git branch -D` → `git branch -d`; `git push --force` / `-f` → `--force-with-lease`; `git push +refspec` → das `+` weglassen und `--force-with-lease` nehmen; `git clean -f` → `-n`, dann `rm -r` auf genau diese Pfade (nur wo `rm` archiviert; sonst STOP) |
+| STOP | `rm -r` / `rm -rf` ohne Opt-in, `rmdir`, `git push --delete` (auch `-d`, `--prune`, `--mirror`, eine `:branch`-Refspec), `git reflog expire` / `delete`, `git gc --prune` (auch die Frist über `git -c gc.…Expire=` oder `git config gc.…Expire`), `gh repo delete`, `gh release delete`, `npm uninstall` / `npm rm`, `yarn remove`, `pnpm rm`, `DROP TABLE`, `DROP DATABASE`, `TRUNCATE TABLE`, `docker rm`, `docker volume rm`, `kubectl delete` |
+
+Ein Befehl mit mehreren destruktiven Aktionen wird als Ganzes gewogen: Eine
+Aktion ohne Undo macht ihn zum STOP, ebenso mehrere Aktionen, die nicht alle
+Quittungen sind (`git branch -D x && gh repo delete y` liest sich nie wie
+seine erste Hälfte). `git reflog expire` / `gc --prune` neben einer Amend-
+oder Lease-Quittung ist STOP, weil sie löschen, worauf diese Quittung zeigt.
+
+`BASTRA_RM_ARCHIVES` (Umgebung des Daemons, bei jedem Bash-Aufruf gelesen)
+ändert nur die `rm`-Zeilen und nur für einen als Claude Code gekennzeichneten
+Aufruf (`BASTRA_HOOK_CLIENT=claude-code`, von `bastra install` geschrieben):
+`1` ist bastras eigenes archivierendes `rm` samt Git-Schnappschüssen (unten);
+`host` sagt, dass die Agenten-Shell des Hosts schon ein archivierendes `rm`
+vorn im PATH hat, das Ziele nach `~/_archive/<Datum>/<voller Pfad>` verschiebt
+und mit `agent-archive restore` zurückholt. bastra prüft dieses `rm` nicht;
+mit `host` wird nur der Hinweis zur Quittung, und nur wenn jedes `rm` im Befehl
+über den PATH aufgelöst wird (nicht `/bin/rm`, `sudo rm`, ein umdefiniertes
+`rm`). Andere Oberflächen und Aufrufe ohne Kennung behalten das STOP.
+
+Riskante Muster (`CAUTION`, weicher): `chmod -R`, `chown -R`,
+`find ... -exec rm`, `find ... -delete`.
 
 Blockiert **nicht**. Der Agent entscheidet, ob er fortfährt.
 
@@ -1075,8 +1126,10 @@ die Tat verwirft. Braucht git 2.26 oder neuer. Nicht übernommen:
 `git gc --prune`. Mit Opt-in lässt `BASTRA_GIT_SHIM=0` nur diesen Teil weg
 (dann eine Zeile und ein Ereignis `git_shim_shadow`).
 
-Telemetrie: `bash_hook_call` mit `matched_pattern, severity, hit_count,
-top_score, status`.
+Telemetrie: `bash_hook_call` mit `matched_pattern, severity, hint_kind,
+hit_count, top_score, status`. `hint_kind` ist, was der Block dem Agenten
+gesagt hat: `stop`, `receipt` oder `reversible-form` bei einem destruktiven
+Treffer, `null` bei einem riskanten.
 
 #### `bastra-recall-bash-fail-hook` (#37, #144)
 
