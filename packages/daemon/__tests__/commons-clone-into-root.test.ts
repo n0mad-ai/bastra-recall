@@ -11,7 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cloneIntoRoot } from "../src/cli/commons.js";
@@ -79,5 +79,48 @@ test("an absent root is a plain clone", { skip: !git }, () => {
   withFixture((_dir, url, root) => {
     assert.deepEqual(cloneIntoRoot(git!, url, root), { ok: true });
     assert.ok(existsSync(join(root, "recipes", "one.md")));
+  });
+});
+
+test("#638: a mid-move failure rolls back copied checkout entries", { skip: !git }, () => {
+  withFixture((dir, url, root) => {
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, "last-mint.json"), "local\n");
+    let moves = 0;
+    const result = cloneIntoRoot(git!, url, root, {
+      move: (from, to) => {
+        if (++moves === 2) throw new Error("injected move failure");
+        renameSync(from, to);
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.match((result as { detail: string }).detail, /rolled back/);
+    assert.deepEqual(readdirSync(root), ["last-mint.json"]);
+    assert.equal(readFileSync(join(root, "last-mint.json"), "utf8"), "local\n");
+    assert.deepEqual(readdirSync(dir).filter((n) => n.includes("-clone-")), []);
+  });
+});
+
+test("#638: a changed moved entry is left for manual recovery with staging preserved", { skip: !git }, () => {
+  withFixture((dir, url, root) => {
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, "last-mint.json"), "local\n");
+    let firstDest = "";
+    let moves = 0;
+    const result = cloneIntoRoot(git!, url, root, {
+      move: (from, to) => {
+        if (++moves === 2) {
+          rmSync(firstDest, { recursive: true, force: true });
+          writeFileSync(firstDest, "external change\n");
+          throw new Error("injected move failure");
+        }
+        renameSync(from, to);
+        firstDest = String(to);
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.match((result as { detail: string }).detail, /partial checkout.*remaining staging/);
+    assert.equal(readFileSync(firstDest, "utf8"), "external change\n");
+    assert.equal(readdirSync(dir).filter((n) => n.includes("-clone-")).length, 1);
   });
 });
