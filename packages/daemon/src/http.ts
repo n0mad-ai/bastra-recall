@@ -130,6 +130,8 @@ export interface HttpOptions {
   triggerExpand?: () => { model: string } | null;
   /** #632: battery mode state (see http-health.ts). */
   power?: () => { battery_saver: boolean; source: string; saving: boolean };
+  /** #684: started_by / env_origin (see http-health.ts). */
+  origin?: { startedBy: string; envOrigin: string };
   /** Live vector snapshot für die semantic map (#207). Getter, weil der
    *  Index erst nach dem Boot attacht. null = embeddings off / not ready. */
   embeddingVectors?: () => ReadonlyMap<string, Float32Array> | null;

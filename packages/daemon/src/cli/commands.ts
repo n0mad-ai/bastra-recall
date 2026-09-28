@@ -36,6 +36,7 @@ import { stubFreshness, stubFreshnessLines } from "./stub-freshness.js";
 import { affectsFilesLines, defaultAffectsFilesIo } from "./affects-files-note.js";
 import { clientMemoryLines, findClientMemoryDirs } from "./client-memory.js";
 import { printFeaturesNote, type FeatureState } from "./features-note.js";
+import { daemonOriginLines } from "./daemon-origin-note.js";
 import { installCodeAwarenessStep } from "./code-cmd.js";
 import { enabledRepos } from "../code-graph/enabled-repos.js";
 import { GRAPHIFY_PIN, probeTool } from "../code-graph/graphify-tool.js";
@@ -459,6 +460,7 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   // broken, so it never flips doctor's exit code (#79).
   await printEmbeddingDoctorNote();
   await printVersionPairNote();
+  await printDaemonOriginNote();
   await printAutostartNote();
   await printStubBinaryNote();
   await printAffectsFilesNote(resolveVaultPath(args.vaultPath));
@@ -646,6 +648,16 @@ async function printAutostartNote(): Promise<void> {
  * failure: a drifted pair still answers every call, it just isn't the build the
  * user installed.
  */
+/** #684: who started the running daemon, and with whose env. */
+async function printDaemonOriginNote(): Promise<void> {
+  try {
+    const lines = daemonOriginLines(await probeDaemon());
+    if (lines.length > 0) process.stdout.write(`${lines.join("\n")}\n\n`);
+  } catch {
+    /* a diagnostics NOTE must never break doctor */
+  }
+}
+
 async function printVersionPairNote(): Promise<void> {
   try {
     const probe = await probeDaemon();

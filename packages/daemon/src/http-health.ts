@@ -53,6 +53,9 @@ export interface HealthDeps {
   /** #632: battery mode — the switch, the last power reading, and whether
    *  background model work is being deferred right now. */
   power?: () => { battery_saver: boolean; source: string; saving: boolean };
+  /** #684: who started this process and where its behaviour env came from
+   *  (daemon-spawn-env.ts daemonOrigin). Static for the life of the process. */
+  origin?: { startedBy: string; envOrigin: string };
 }
 
 export function buildHealthPayload(deps: HealthDeps): Record<string, unknown> {
@@ -103,6 +106,7 @@ export function buildHealthPayload(deps: HealthDeps): Record<string, unknown> {
     // Ollama embeddings starts it. doctor reads this to say so.
     ...(deps.triggerExpand ? { trigger_expand: deps.triggerExpand() } : {}),
     ...(deps.power ? { power: deps.power() } : {}),
+    ...(deps.origin ? { started_by: deps.origin.startedBy, env_origin: deps.origin.envOrigin } : {}),
     update_available:
       updateState && updateState.hasUpdate
         ? {

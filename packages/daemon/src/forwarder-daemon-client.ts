@@ -8,6 +8,8 @@ import { spawn } from "node:child_process";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
+import { daemonSpawnEnv } from "./daemon-spawn-env.js";
+import { readSettings } from "./settings.js";
 
 // #531 — the same resolver the CLI, the daemon and the LaunchAgent use, so a
 // registration that carries only BASTRA_HTTP_PORT reaches the same instance a
@@ -70,13 +72,20 @@ export async function probeHealth(): Promise<boolean> {
   }
 }
 
-function spawnDaemon(): void {
+async function spawnDaemon(): Promise<void> {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const daemonScript = path.join(here, "index.js");
+  // #684: not this client's env as-is — client-only keys dropped, the
+  // `daemon.env` pins from cli-settings.json on top. readSettings never throws
+  // on a missing or broken file (it returns the defaults).
+  const { env, origin, pinned } = daemonSpawnEnv(process.env, (await readSettings()).daemon?.env);
+  console.error(
+    `[bastra-recall-mcp] spawn env: ${origin}${pinned.length > 0 ? ` (daemon.env: ${pinned.join(", ")})` : ""}`,
+  );
   const child = spawn(process.execPath, [daemonScript], {
     detached: true,
     stdio: "ignore",
-    env: process.env,
+    env,
   });
   child.unref();
 }
@@ -99,7 +108,7 @@ export async function ensureDaemonRunning(): Promise<boolean> {
     return false;
   }
   console.error("[bastra-recall-mcp] daemon not running, spawning…");
-  spawnDaemon();
+  await spawnDaemon();
   const ready = await waitForHealth();
   if (!ready) {
     console.error(
