@@ -231,7 +231,8 @@ renders them as a `<recall-hints … trigger="reflex">` block ahead of the
 lookup block. Reflex hits bypass the #161 backoff (user-wired = never
 noise) but respect the per-session dedup (`BASTRA_HOOK_MAX_SHOW`, default 1×
 per memory per session). #354 removed the former 4h expiry: a `load_memory` of
-that id, or a compact/clear/resume signal, is what releases it again.
+that id, or a compact/clear signal, is what releases it again (#509: not
+`resume` — it restores the transcript intact, the hint is still in it).
 Kill switch: `BASTRA_REFLEX=off` or `reflex.enabled: false` in
 `cli-settings.json`. Every firing is traced as a `hook_reflex` event.
 
@@ -591,6 +592,19 @@ the active convention memories (reserved scope `taxonomy`, newest first, cap
 6 rendered). Conventions are binding save-rules — see
 [taxonomy.md](taxonomy.md). Telemetry gains `convention_count`.
 
+Each line carries `[id] title` only (#509); the block's frame points at
+`load_memory(id)` for the full rule, so the summary is not sent a second time.
+
+**Cadence of the session-start constants (#509, decided in #462).** The
+taxonomy, doku and `<memory-language>` blocks are sent *on change only*: a
+start whose context still holds the byte-identical text — a `resume`, which
+restores the transcript intact — leaves them out. `compact` and `clear` empty
+the context, so the next start sends them again; the same two sources reset the
+per-session hint dedup and the shadow session budget. `resume` resets neither.
+Recalls and pending suggestions are sent on every start. Telemetry:
+`constants_skipped` on `session_hook_call` names the parts left out, and
+`hint_tokens_by_part` counts only what was actually sent.
+
 #### Pinned-memories injection (session hook, #141/#142)
 
 Recall is pull-by-relevance — and the thing you most need to *not* forget (a
@@ -931,7 +945,8 @@ Lookup-Block. Reflex-Treffer umgehen den Backoff aus #161 (vom Nutzer
 verdrahtet = nie Rauschen), beachten aber die Deduplizierung pro Session
 (`BASTRA_HOOK_MAX_SHOW`, Standard 1× pro Erinnerung pro Session). #354 hat den
 früheren Ablauf nach 4 h entfernt: Ein `load_memory` dieser ID oder ein
-Compact-/Clear-/Resume-Signal gibt sie wieder frei. Notschalter:
+Compact-/Clear-Signal gibt sie wieder frei (#509: nicht `resume` — es stellt
+das Transkript unverändert wieder her, der Hinweis steht noch darin). Notschalter:
 `BASTRA_REFLEX=off` oder `reflex.enabled: false` in `cli-settings.json`. Jedes
 Auslösen wird als Event `hook_reflex` protokolliert.
 
@@ -1256,6 +1271,21 @@ des gesamten Hook-Budgets, fail-silent) und hängt einen Block
 Scope `taxonomy`, neueste zuerst, höchstens 6 gerendert). Konventionen sind
 verbindliche Speicherregeln — siehe [taxonomy.md](taxonomy.md). Die Telemetrie
 erhält `convention_count`.
+
+Jede Zeile trägt nur `[id] Titel` (#509); der Rahmen des Blocks verweist für die
+vollständige Regel auf `load_memory(id)`, die Zusammenfassung wird also nicht
+ein zweites Mal geschickt.
+
+**Takt der Session-Start-Konstanten (#509, entschieden in #462).** Die Blöcke
+Taxonomie, Doku und `<memory-language>` gehen *nur bei Änderung* raus: Ein Start,
+dessen Kontext den byte-gleichen Text noch enthält — ein `resume`, das das
+Transkript unverändert wiederherstellt —, lässt sie weg. `compact` und `clear`
+leeren den Kontext, also schickt der nächste Start sie wieder; dieselben beiden
+Quellen setzen die Hinweis-Deduplizierung pro Session und das Schatten-
+Sitzungsbudget zurück. `resume` setzt keins von beiden zurück. Recalls und
+offene Vorschläge gehen bei jedem Start raus. Telemetrie: `constants_skipped` am
+Event `session_hook_call` nennt die weggelassenen Teile, und
+`hint_tokens_by_part` zählt nur, was tatsächlich geschickt wurde.
 
 #### Einblendung angehefteter Erinnerungen (Session-Hook, #141/#142)
 

@@ -51,7 +51,7 @@ import { spawnStagedUpdate, stagedToday, markStagedToday } from "./update-check.
 import { formatBlockedUpdate, readBlockedUpdate } from "./update-blocked.js";
 import { pendingPatchNotice } from "./patch-report.js";
 import { formatPendingRelay, isCountableSessionStart, takePendingRelay } from "./pending-suggestions.js";
-import { clearShown } from "./session-state.js";
+import { clearShown, takeConstantCadence } from "./session-state.js";
 import { formatPinnedBlock, dropPinnedFromRanked, type PinnedFloorLean } from "./pinned-block.js";
 import { reportHinted } from "./hook-hinted.js";
 import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookClientEvidence } from "./hook-surface.js";
@@ -199,18 +199,21 @@ export async function runSessionLane(
   // diesem Prozess ist die einzige sichere Annahme die teure.
   const denseCold = residency === "cold" || residency === "unknown";
 
-  // #354: compact/clear/resume keep the session id but rebuild the transcript,
+  // #354: compact/clear keep the session id but rebuild the context,
   // so every hint the per-session dedup was holding back is gone from the
   // context. Verified over all Aug/Sep session starts: ids like 01a05b6f carry
   // `startup,compact,compact`. Releasing the counters here is what lets the 4h
   // window go — it was the only thing covering this case, and it paid for that
   // coverage with a re-injection into every session that merely ran long.
   // "startup" is a fresh id and needs nothing; best-effort, never blocking.
-  // #458 (shadow): nur `clear` beginnt einen neuen Kontext — compact und
-  // resume lassen den bisher injizierten Kontext im Transkript stehen, also
-  // bleibt auch das Sitzungsbudget stehen.
+  // #509: the two halves below used to disagree — the budget reset only on
+  // `clear`, the dedup was released on compact, clear AND resume. Settled on
+  // Claude Code's documented behaviour: `/compact` replaces the history with a
+  // summary (anything given only in conversation, hook context included, is
+  // gone), `/clear` empties it, `resume` restores the transcript intact. So
+  // compact and clear release both; resume releases neither.
   resetBudgetOnSource(payload.session_id, payload.source);
-  if (payload.source === "compact" || payload.source === "clear" || payload.source === "resume") {
+  if (payload.source === "compact" || payload.source === "clear") {
     try {
       await clearShown(payload.session_id ?? "");
     } catch {
@@ -378,7 +381,7 @@ export async function runSessionLane(
   // des Vaults. Dedizierter Listen-Endpoint statt Recall-Suche — Konventionen
   // konkurrieren nicht über Scores und dürfen nicht am Floor sterben.
   const conventions: ConventionLean[] = conventionsFetched;
-  const taxonomyBlock = formatTaxonomyBlock(conventions);
+  let taxonomyBlock = formatTaxonomyBlock(conventions);
 
   // Vault-care (#207): open flags from the vault map. Injected as a standing
   // instruction so no user ever has to EXPLAIN the workflow to their agent —
@@ -607,6 +610,26 @@ export async function runSessionLane(
     // Language hint is best-effort — never block session start.
   }
 
+  // #509: the #462 cadence — taxonomy, doku and language go out "on change
+  // only". They are near-constants (two, four and one distinct values over 141
+  // starts); a start whose context still carries the identical text (a resume,
+  // or a repeated startup under the same id) leaves them out. compact/clear
+  // emptied the record above, so they are sent again there.
+  let constantsSkipped: string[] = [];
+  try {
+    const skip = await takeConstantCadence(payload.session_id ?? "", {
+      taxonomy: taxonomyBlock,
+      doku: dokuBlock,
+      language: languageBlock,
+    });
+    if (skip.has("taxonomy")) taxonomyBlock = "";
+    if (skip.has("doku")) dokuBlock = "";
+    if (skip.has("language")) languageBlock = "";
+    constantsSkipped = [...skip].sort();
+  } catch {
+    /* cadence is best-effort — a failed read re-sends, it never drops */
+  }
+
   const extras = taxonomyBlock + languageBlock + careBlock + importBlock + onboardingBlock + updateBlock + patchBlock + pendingBlock + dokuBlock;
   // #141/#142: der Pinned-Block steht VOR den score-gated Hints — die
   // garantierten Einträge zuerst, die relevanz-gerankte Liste dahinter.
@@ -696,6 +719,7 @@ export async function runSessionLane(
     hinted_ids: top.map((h) => h.id),
     hinted_types: top.map((h) => h.type),
     pending_lanes: pendingLanes,
+    constants_skipped: constantsSkipped,
     status,
     error: errMsg,
   });
@@ -819,10 +843,12 @@ function escapeAttr(s: string): string {
 }
 
 /**
- * Konventions-Block (#66). Kompakt: Titel + Summary pro Konvention, dazu die
+ * Konventions-Block (#66). Kompakt: Id + Titel pro Konvention, dazu die
  * Anweisung, sie beim Speichern zu BEFOLGEN (Details via load_memory). Cap 6 —
  * mehr Konventionen heißt das Vault braucht eher eine Meta-Aufräumrunde als
- * mehr Kontext.
+ * mehr Kontext. #509: keine Summary mehr — der Rahmen verweist ohnehin auf
+ * load_memory(id), und die Summaries waren gemessen 440 von 605 Tokens der
+ * sechs Zeilen (Vault des Owners, 28.09.2026).
  */
 function formatTaxonomyBlock(conventions: ConventionLean[]): string {
   if (conventions.length === 0) return "";
@@ -830,7 +856,7 @@ function formatTaxonomyBlock(conventions: ConventionLean[]): string {
   // conventions are meant to be BINDING instructions.
   const lines = conventions
     .slice(0, 6)
-    .map((c) => stripFenceMarkers(`- [${c.id}] ${c.title}: ${c.summary}`));
+    .map((c) => stripFenceMarkers(`- [${c.id}] ${c.title}`));
   return (
     `\n<vault-taxonomy>\n` +
     `Self-learned vault conventions — BINDING when saving memories in these clusters. ` +
@@ -885,6 +911,10 @@ interface SessionHookTelemetry {
   /** #513: Einträge je Relay-Spur und die Größe ihres gerenderten Blocks in
    *  Zeichen. Fehlt auf Zeilen vor #513. */
   pending_lanes: { recency: number; trends: number; recency_chars: number; trends_chars: number };
+  /** #509: which session-start constants (taxonomy, doku, language) were left
+   *  out because this session's context already carries the identical text.
+   *  Fehlt auf Zeilen vor #509. */
+  constants_skipped: string[];
   status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error";
   error: string | null;
   /** #342/Deep-Dive 07.09.2026: welcher Arm ausgefallen ist — `vector-arm-timeout`
