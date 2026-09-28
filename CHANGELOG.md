@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **One recall pipeline for hooks and MCP** (#421). A client without hooks
+  now gets the same selection steps as a hook user
+  (`packages/daemon/src/recall-pipeline.ts`): MCP `recall` returns
+  `reflex_hits` (user-wired `recall_mode: reflex` memories below the top-k
+  cut) on the forwarder and the stdio server, and runs the prompt lane's
+  project scope filter with the caller's project. The filter follows
+  `BASTRA_SCOPE_FILTER_LANES` — `shadow` by default, so hits do not change
+  and the `recall`/`hook_recall` row records `dropped_scope_count`; an
+  explicit `scope` argument skips it. Hook lanes are unchanged. The remaining
+  gaps (evidence gate on the stdio/REST path, GET session context) are
+  listed on #421.
+
 - **Dense-weighted fusion, opt-in** (#641). On LongMemEval-S the dense arm
   alone ranks the gold session first more often than the equal-weight RRF
   (83.8% vs 79.6% R@1, 500 questions): BM25 puts a distractor at rank 1 that

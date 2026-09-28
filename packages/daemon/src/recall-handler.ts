@@ -20,7 +20,8 @@ import { commonsRankFactor } from "./cli/commons.js";
 import { fuseCommonsHits } from "./commons-fusion.js";
 import { expandQuery } from "./learned-recall/bridges.js";
 import { mergeBatchResults, dedupeQueries, batchDuplicateNote } from "./recall-batch.js";
-import { fitRecallToBudget } from "./recall-budget.js";
+import { fitRecallWithReflexToBudget } from "./recall-budget.js";
+import { applyCallerScopeFilter, collectPoolReflexHits } from "./recall-pipeline.js";
 import type { ToolDeps } from "./tool-deps.js";
 import type { PrivateAccess } from "./private-access.js";
 import { dimensionHints, type DimensionHints } from "./telemetry-dimensions.js";
@@ -155,6 +156,11 @@ export interface RecallResult {
   /** #487: wie viele gerankte Treffer das Budget weggelassen hat. Steht nur
    *  neben `truncated_by_budget`. */
   dropped_by_budget?: number;
+  /** #421: vom Nutzer als `recall_mode: reflex` verdrahtete Memories aus dem
+   *  tieferen Kandidatenpool, die der top-k-Schnitt ausgelassen hat — dieselbe
+   *  Liste (`PoolReflexHit`), die `/hook/recall` den Lanes liefert. Nur
+   *  gesetzt, wenn nicht leer. */
+  reflex_hits?: unknown[];
 }
 
 /**
@@ -280,6 +286,11 @@ async function recallAgainstVault(
      *  aus; ohne das wären seine Recalls von denen des Forwarders nicht zu
      *  trennen. */
     session_id?: string | null;
+    /** #421: das Projekt des AUFRUFERS, bereits durch das Konfidenz-Gate
+     *  (`projectForFilter`). Kommt vom Transport — der stdio-Server kennt sein
+     *  cwd —, nie aus den Tool-Argumenten. Fehlt es, läuft der Scope-Filter
+     *  nicht (`scope_filter_skipped: "no-project"`). */
+    project?: string | null;
   } & DimensionHints & PrivateAccess = {},
 ): Promise<RecallResult & { stages?: RecallStageTimings }> {
   const parsed = RecallArgs.safeParse(rawArgs);
@@ -301,7 +312,9 @@ async function recallAgainstVault(
     // #464: Nur die Capability reist in die Sub-Recalls mit — Stage-Listener
     // und Telemetrie-Hinweise gehören zum gemergten Aufruf, nicht zu jedem
     // Teil-Recall.
-    const subOptions = { trustedPrivate: options.trustedPrivate };
+    // #421: das Aufrufer-Projekt ebenso — es ist eine Eigenschaft des
+    // Transports wie die Capability, nicht des gemergten Aufrufs.
+    const subOptions = { trustedPrivate: options.trustedPrivate, project: options.project };
     const subs = await Promise.all(
       kept.map((q) =>
         recallHandler(deps, {
@@ -320,9 +333,13 @@ async function recallAgainstVault(
     );
     // #487: dieselbe Regel wie einarmig, angewandt auf die gemergte Liste —
     // die Hits sind hier bereits projiziert, die Rangfolge steht.
-    return fitRecallToBudget(merged.hits, max_tokens, (emitted, dropped) => ({
+    // #421: Reflex-Treffer bleiben im Batch erhalten — sonst verlöre ein
+    // Modell, das mehrere Phrasierungen schickt, genau die Verdrahtung, die
+    // eine Einzelquery liefert.
+    return fitRecallWithReflexToBudget(merged.hits, merged.reflex_hits ?? [], max_tokens, (emitted, emittedReflex, dropped) => ({
       ...merged,
       hits: emitted,
+      reflex_hits: emittedReflex.length > 0 ? emittedReflex : undefined,
       query_count: queries.length,
       recall_id: merged.recall_id ?? "",
       vault_size: merged.vault_size ?? deps.vault.size(),
@@ -437,7 +454,7 @@ async function recallAgainstVault(
 
   // Prong 3 (#50 / #9): Sub-Floor-Rauschen gar nicht erst zurückgeben.
   const floor = parsed.data.min_score ?? RECALL_FLOOR;
-  const hits = rawHits.filter((h) => h.score >= floor);
+  let hits = rawHits.filter((h) => h.score >= floor);
   const droppedBelowFloor = rawHits.length - hits.length;
 
   // #230: No-answer-Signal. Der Hybrid-Score ist eine skalierte Rang-Summe —
@@ -456,6 +473,19 @@ async function recallAgainstVault(
   // `weak_result`/`no_home` bleiben an `hybridActive` hängen: die beantworten
   // eine andere Frage (waren sich zwei PERSÖNLICHE Arme einig?).
   const scoreKind: "rrf" | "bm25" = hybridActive || commonsFused ? "rrf" : "bm25";
+  // #421: derselbe Projekt-Scope-Filter wie auf dem Hook-Weg
+  // (`recall-pipeline.ts`), vor den Ehrlichkeitsflags, damit sie das
+  // beschreiben, was serviert wird. „Ohne Fusion" heißt hier: die servierte
+  // Zahl liegt auf der rohen Skala — dort trägt der Anker-Bypass nicht.
+  const scopeFilter = applyCallerScopeFilter(hits, {
+    project: options.project ?? null,
+    explicitScope: parsed.data.scope !== undefined,
+    unfused: scoreKind === "bm25",
+    vault: deps.vault,
+  });
+  hits = scopeFilter.hits;
+  // #421: die Pool-Reflexe, mit demselben Floor wie die gerankten Treffer.
+  const reflexHits = collectPoolReflexHits(candidatePool, new Set(hits.map((h) => h.id)), deps.vault, floor);
   // Codex-Gegenreview (P0): `score_kind: "rrf"` bezeichnet inzwischen MEHRERE
   // verschiedene Zahlen — BM25+Vector (≤163.934), BM25+Vector+Commons
   // (≤241.803) und den Kollaps-Pfad aus persönlichem Listenrang + Commons
@@ -495,10 +525,11 @@ async function recallAgainstVault(
   // #487: die projizierten Treffer in Rangfolge — was das Budget gleich
   // beschneidet, ist genau das, was der Aufrufer sonst bekäme.
   const projected = (full ? hits : hits.map(toLeanHit)).map(flagConflict);
-  const budgeted = fitRecallToBudget(projected, parsed.data.max_tokens, (emitted, dropped) => ({
+  const budgeted = fitRecallWithReflexToBudget(projected, reflexHits, parsed.data.max_tokens, (emitted, emittedReflex, dropped) => ({
     query: query,
     vault_size: deps.vault.size(),
     hits: emitted,
+    ...(emittedReflex.length > 0 ? { reflex_hits: emittedReflex } : {}),
     recall_id: recallId,
     latency_ms: latencyMs,
     // #230: nur setzen wenn true — Abwesenheit = nicht weak, hält lean schlank.
@@ -550,6 +581,9 @@ async function recallAgainstVault(
         latency_ms: latencyMs,
         recall_stages: collector.timings,
         dropped_below_floor: droppedBelowFloor,
+        // #421: Filterstufe und Messung, dieselben Felder wie auf hook_recall —
+        // nur auf Aufrufen, deren Transport überhaupt ein Projekt kennt.
+        ...(options.project !== undefined ? scopeFilter.telemetry : {}),
         // #249: the flag has to be recorded on every path, not only returned.
         weak_result: weakResult || undefined,
         no_home: noHome || undefined,

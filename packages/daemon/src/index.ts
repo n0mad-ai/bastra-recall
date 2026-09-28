@@ -100,6 +100,7 @@ import { hostProfileId } from "./host-profile.js";
 import { ensureOllamaServerForDaemon } from "./cli/ollama.js";
 import { spawnSync } from "node:child_process";
 import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
+import { projectForFilter } from "./scope-filter.js";
 
 // Triage Issue #24: Write-Tools sind Pro-Feature. Aktuelles Gate ist ein
 // env-Flag — wenn ein Pro-License-Service kommt, ersetzt der das hier.
@@ -785,7 +786,10 @@ async function main(): Promise<void> {
               }).catch(() => undefined);
             }
           : undefined;
-        const result = await recallHandler(toolDeps, args, { onStage });
+        // #421: Das Projekt dieses stdio-Clients (sein cwd, durch dasselbe
+        // Konfidenz-Gate wie in den Lanes) — ohne es liefe der Scope-Filter
+        // der gemeinsamen Pipeline für einen Client ohne Hooks nie.
+        const result = await recallHandler(toolDeps, args, { onStage, project: projectForFilter(process.cwd()) });
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };

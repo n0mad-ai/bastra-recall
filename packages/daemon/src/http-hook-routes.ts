@@ -18,7 +18,7 @@ import { fireAndForget, type Telemetry } from "./telemetry.js";
 import { envBool, envInt } from "./env.js";
 import { computeSalienceShadow } from "./salience-shadow.js";
 import { computeTrustShadow, trustRankMode, usageForShadow } from "./trust-shadow.js";
-import { toLeanHit, truncateSummary } from "./tool-handlers.js";
+import { toLeanHit } from "./tool-handlers.js";
 import { expandQuery, type BridgePool } from "./learned-recall/bridges.js";
 import { type SupportedLanguage } from "./learned-recall/language.js";
 import { isWeakResult, isNoHome, decideHits, type RecallDecisionHit } from "@bastra-recall/core";
@@ -26,6 +26,7 @@ import { tokenizeWithIdentifiers } from "@bastra-recall/core";
 import { armsOf, SCORE_VERSION } from "./score-space.js";
 import { effectiveHintSuppressionMode, suppressRepeatedUnused } from "./hint-suppression.js";
 import { mergeHookRecallHits } from "./hook-recall-merge.js";
+import { applyCallerScopeFilter, collectPoolReflexHits } from "./recall-pipeline.js";
 import { fitRecallWithReflexToBudget, measurePayload } from "./recall-budget.js";
 import { type DeadlineShadow } from "./latency-profile.js";
 // #493: die Schattenbuchführung eines Recalls, herausgelöst aus dieser Datei.
@@ -813,6 +814,22 @@ export async function runHookRecall(
         if (suppressed.size > 0) hits = hits.filter((h) => !suppressed.has(h.id));
       }
 
+      // #421: Der Projekt-Scope-Filter der Prompt-Lane, hier für Aufrufer, die
+      // ihn nicht selbst anwenden können — der MCP-Forwarder setzt
+      // `apply_scope_filter` und schickt sein Projekt mit. Die Hook-Lanes
+      // setzen das Feld nicht und filtern weiter selbst; für sie ändert sich
+      // an dieser Antwort nichts. Nach dem Evidenz-Gate und vor den
+      // Ehrlichkeitsflags, damit beide das beschreiben, was serviert wird.
+      const callerScopeFilter = body.apply_scope_filter === true
+        ? applyCallerScopeFilter(hits, {
+            project: hookProject,
+            explicitScope: scope !== undefined,
+            unfused: !hybridActiveAtRecall,
+            vault,
+          })
+        : null;
+      if (callerScopeFilter) hits = callerScopeFilter.hits;
+
       const weakResult = isWeakResult(hits, hybridActiveAtRecall);
       const noHome = isNoHome(hits, hybridActiveAtRecall);
 
@@ -833,22 +850,9 @@ export async function runHookRecall(
       // at pool rank 6 behind a k of 5 and never reached the agent. The pool is
       // the user's explicit wiring — two memories — so scanning it is cheap,
       // and the lane keeps every floor and dedup it already applies.
-      const hitIds = new Set(hits.map((h) => h.id));
-      const reflexHits = candidatePool.flatMap((c) => {
-        if (hitIds.has(c.id)) return [];
-        const mem = vault.get(c.id);
-        if (mem?.fm.recall_mode !== "reflex") return [];
-        return [{
-          id: c.id,
-          title: mem.fm.title,
-          type: mem.fm.type,
-          scope: mem.fm.scope,
-          summary: truncateSummary(mem.fm.summary),
-          score: c.score,
-          matched_recall_when: false,
-          recall_mode: "reflex" as const,
-        }];
-      });
+      // #421: derselbe Schritt, den der MCP-`recallHandler` fährt
+      // (`recall-pipeline.ts`). Floor 0: Die Lanes wenden ihren eigenen an.
+      const reflexHits = collectPoolReflexHits(candidatePool, new Set(hits.map((h) => h.id)), vault);
       // recall_mode rides along only when the user wired the memory as
       // reflex: the prompt lane's mode-"none" semantic filter keys on it
       // (19.08. incident — see prompt-lane.ts).
@@ -1005,6 +1009,9 @@ export async function runHookRecall(
             : {}),
           bridge_expansion:
             expansion.lang && expansion.added.length > 0 ? { lang: expansion.lang, added: expansion.added } : undefined,
+          // #421: nur auf Aufrufen mit `apply_scope_filter` (MCP) — Hook-Zeilen
+          // behalten ihre Felder unverändert.
+          ...(callerScopeFilter ? callerScopeFilter.telemetry : {}),
           candidate_pool: candidatePool.length > 0 ? candidatePool : undefined,
           // Zweiter Gegenreview: derselbe explizite Raum wie auf dem Response.
           // `top_score` und `candidate_pool` sind sonst Zahlen ohne Skala, und
