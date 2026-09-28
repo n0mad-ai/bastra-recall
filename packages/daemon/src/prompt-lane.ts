@@ -469,6 +469,13 @@ export async function runPromptLane(
       // would inject the top k on every prompt exactly while the vector arm
       // is down. Without fusion only wired memories inject, as in "none".
       if (detectedMode === "generic" && resp.unfused === true && !wired) continue;
+      // Without fusion the floor reads a raw BM25 number, and short function
+      // words shared with a wired memory's body ("la", "de", "los") push it
+      // over — in the languages whose articles are long enough to count. A
+      // wired memory outside an explicit question then needs its own
+      // triggers anchored by the prompt (two content words or a rare
+      // identifier, search.ts anchorStrength): evidence, not a raw score.
+      if (resp.unfused === true && wired && detectedMode !== "retrieval" && h.anchor_strength !== "strong") continue;
       // Semantic reflex: in mode "none" only memories the USER wired as
       // reflex may inject — the semantic arm gives them hearing beyond
       // literal token matches. Deliberately at the normal floor, not
