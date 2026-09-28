@@ -13,7 +13,7 @@ import type {
   StageListener,
 } from "@bastra-recall/core";
 import { vaultKnowsProject } from "./scope-filter.js";
-import { routeRetrieval } from "@bastra-recall/core";
+import { routeRetrieval, routeQueryArms, type QueryRoute } from "@bastra-recall/core";
 import { fireAndForget, type Telemetry } from "./telemetry.js";
 import { envBool, envInt } from "./env.js";
 import { computeSalienceShadow } from "./salience-shadow.js";
@@ -83,6 +83,29 @@ const hookVectorDeadlineMs = (): number => envInt("BASTRA_VECTOR_DEADLINE_MS", 1
 /** #305/#362: Zielbudget der Hook-Lane in ms — die Zahl, gegen die der
  *  Schatten-Router seine Kostenschätzung hält. Das Milestone-Ziel ist 200. */
 const hookBudgetMs = (): number => envInt("BASTRA_HOOK_BUDGET_MS", 200);
+
+/**
+ * #362: Der Query-Router (`routeQueryArms`, core) — SCHATTEN zuerst.
+ *
+ * `shadow` (Default) berechnet für jeden Recall mit dichtem Arm, ob er nur
+ * den BM25-Arm bräuchte (kurze oder bezeichnerförmige Anfrage), und schreibt
+ * das samt der Zeit, die es gespart hätte, als `query_route` an die
+ * `hook_recall`-Zeile — geändert wird nichts. `live` lässt geroutete Anfragen
+ * ohne dichten Arm laufen (ehrlich einarmig: `score_kind: "bm25"`, `unfused`,
+ * kein `degraded`). `off` rechnet nichts.
+ *
+ * Warum nicht `live` als Default: Der Router ändert, welche Arme ein Ranking
+ * bilden, und Ranking-Änderungen gehen erst durch den Schatten und das
+ * Lift-Gate (Owner-Regel). Gemessen auf Gold-Set-Lauf A
+ * (`npm run router-lift`, eval) hält er die Baseline; scharf geschaltet wird
+ * er trotzdem erst auf Entscheid. Pro Aufruf gelesen wie die anderen
+ * Latenzschalter hier.
+ */
+export type QueryRouterMode = "off" | "shadow" | "live";
+export function queryRouterMode(): QueryRouterMode {
+  const v = process.env.BASTRA_QUERY_ROUTER;
+  return v === "off" || v === "live" ? v : "shadow";
+}
 
 export function handleHookRecall(
   req: IncomingMessage,
@@ -407,6 +430,20 @@ export async function runHookRecall(
       // beschreibt, der tatsächlich serviert wird (siehe recallHandler).
       const embeddingDegradedAtRecall =
         search.hasEmbeddings() && (embeddingDegraded?.() ?? false);
+      // #362: der Query-Router. Nur wo es einen dichten Arm gibt, den er
+      // abwählen könnte — ohne Embeddings, bei offenem Breaker oder bei
+      // `lexical_only` des Aufrufers gibt es nichts zu entscheiden. Beurteilt
+      // wird die URSPRÜNGLICHE Anfrage, nicht die brückenerweiterte.
+      const routerMode = queryRouterMode();
+      const queryRoute: QueryRoute | null =
+        routerMode !== "off" && search.hasEmbeddings() && !embeddingDegradedAtRecall && !lexicalOnly
+          ? routeQueryArms(query)
+          : null;
+      const routedLexical = routerMode === "live" && queryRoute?.arms === "bm25";
+      // Ab hier heißt „kein dichter Arm": der Aufrufer hat verzichtet ODER der
+      // Router hat abgewählt. `lexicalOnly` selbst bleibt die Aussage des
+      // Aufrufers — die Telemetriespalte gleichen Namens meint nur ihn.
+      const skipDense = lexicalOnly || routedLexical;
       // #489: Das echte Ende eines aufgegebenen Arms. Feuert erst, wenn der
       // weiterlaufende Embed fertig ist — da ist die Antwort längst raus und
       // das `hook_recall`-Event geschrieben, deshalb eine eigene Zeile mit
@@ -433,7 +470,7 @@ export async function runHookRecall(
       // ohne Messung in der Auswertung, und das Zeit-Tor am 13.09. sähe einen
       // Kaltstart, der nie stattgefunden hat.
       const shadowKey =
-        search.hasEmbeddings() && !embeddingDegradedAtRecall && !lexicalOnly
+        search.hasEmbeddings() && !embeddingDegradedAtRecall && !skipDense
           ? (deps.deadlineShadow?.key() ?? null)
           : null;
       const shadow = shadowKey ? deps.deadlineShadow! : null;
@@ -451,7 +488,7 @@ export async function runHookRecall(
       {
         // #494: `lexicalOnly` schlägt `hasEmbeddings()` — der Verzicht ist eine
         // Entscheidung des Aufrufers und keine Eigenschaft der Maschine.
-        hits = search.hasEmbeddings() && !lexicalOnly
+        hits = search.hasEmbeddings() && !skipDense
           ? await search.recallHybrid(expansion.query, {
               authored_query: query,
               k,
@@ -481,7 +518,7 @@ export async function runHookRecall(
       // also sind die Zahlen rohes BM25 und die 30/100-Bänder beschreiben sie
       // nicht (#302). Dass niemand ausgefallen ist, ändert daran nichts.
       const promptFused =
-        search.hasEmbeddings() && !embeddingDegradedAtRecall && !lexicalOnly && degradedReason === undefined;
+        search.hasEmbeddings() && !embeddingDegradedAtRecall && !skipDense && degradedReason === undefined;
 
       const contentQuery = typeof body.tool_input_excerpt === "string"
         ? body.tool_input_excerpt.trim().slice(0, 4096)
@@ -520,7 +557,7 @@ export async function runHookRecall(
           // Arm neben einem Prompt-Recall ohne wäre genau die Last, die
           // `lexical_only` vermeiden soll — und das Merge-Gate darunter würde
           // ihn wegen des Skalenbruchs ohnehin verwerfen.
-          const contentHits = search.hasEmbeddings() && !lexicalOnly
+          const contentHits = search.hasEmbeddings() && !skipDense
             ? await search.recallHybrid(contentQuery, {
                 k,
                 scope,
@@ -997,6 +1034,27 @@ export async function runHookRecall(
             : loopBlockMs >= loopProbeEveryMs
               ? { event_loop_block_ms: loopBlockMs, event_loop_block_source: "probe" as const }
               : {}),
+          // #362: die Messuhr des Query-Routers. Nur wo er eingegriffen hätte
+          // (bzw. hat) — eine `hybrid`-Zeile auf jedem Recall wäre Rauschen;
+          // der Nenner ist die Zahl der hook_recall-Zeilen. `would_save_ms` ist
+          // die Wartezeit auf den dichten Arm NACH BM25 (#489) — genau das, was
+          // ein BM25-only-Lauf diesem Aufrufer erspart hätte.
+          ...(queryRoute && queryRoute.arms === "bm25"
+            ? {
+                query_route: {
+                  arms: "bm25" as const,
+                  // `arms: "bm25"` kommt nur mit `short` oder `identifier`.
+                  reason: queryRoute.reason as "short" | "identifier",
+                  unique_terms: queryRoute.unique_terms,
+                  identifier_terms: queryRoute.identifier_terms,
+                  mode: routerMode as "shadow" | "live",
+                  applied: routedLexical,
+                  ...(!routedLexical && stageTimings.vector_wait_ms !== undefined
+                    ? { would_save_ms: stageTimings.vector_wait_ms }
+                    : {}),
+                },
+              }
+            : {}),
           ...(shadowRoute
             ? {
                 shadow_route: {

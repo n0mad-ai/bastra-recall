@@ -26,7 +26,8 @@
     "rerank-replay": "tsx src/rerank-replay.ts",
     "rerank-pool-coverage": "tsx src/rerank-pool-coverage.ts",
     "rerank-longmemeval": "tsx src/rerank-longmemeval.ts",
-    "evidence-windows": "tsx src/evidence-windows-run.ts"
+    "evidence-windows": "tsx src/evidence-windows-run.ts",
+    "router-lift": "tsx src/router-lift.ts"
   },
   "dependencies": {
     "@bastra-recall/core": "1.0.0",

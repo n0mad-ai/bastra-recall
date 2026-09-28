@@ -38,6 +38,14 @@ export {
   type RouteInput,
   type RouteDecision,
 } from "./retrieval-mode.js";
+export {
+  routeQueryArms,
+  isIdentifierTerm,
+  ROUTER_SHORT_MAX_TERMS,
+  type QueryArms,
+  type QueryRoute,
+  type QueryRouteReason,
+} from "./query-router.js";
 
 export type { RecallStage, StageListener } from "./recall-stages.js";
 export { RECALL_STAGE_ORDER, progressIndexFor } from "./recall-stages.js";

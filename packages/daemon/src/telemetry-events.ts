@@ -823,6 +823,22 @@ export interface HookRecallEvent extends BaseEvent, DimensionedEvent {
     lexical_fits: boolean;
     unique_terms: number;
   };
+  /**
+   * #362: der Query-Router (`routeQueryArms`). Nur gesetzt, wo er den dichten
+   * Arm abgewählt hätte (`mode: "shadow"`, `applied: false`) oder abgewählt
+   * hat (`mode: "live"`, `applied: true`). `would_save_ms` ist im Schatten die
+   * Wartezeit auf den dichten Arm nach BM25 — was ein BM25-only-Lauf gespart
+   * hätte. Fehlt auf Zeilen vor #362-Router und bei `BASTRA_QUERY_ROUTER=off`.
+   */
+  query_route?: {
+    arms: "bm25";
+    reason: "short" | "identifier";
+    unique_terms: number;
+    identifier_terms: number;
+    mode: "shadow" | "live";
+    applied: boolean;
+    would_save_ms?: number;
+  };
   /** Shared learned-recall (#120): bridge expansion applied to this query, if any. */
   bridge_expansion?: BridgeExpansion;
   /** #421: der Projekt-Scope-Filter der Prompt-Lane, auf dem MCP-Weg in der
