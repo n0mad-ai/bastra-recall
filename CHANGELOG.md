@@ -198,6 +198,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `bastra doctor` gets a `derived claims` note that lists claims out of step
   with their source (`differs`, `gone`, `ambiguous`) and counts the
   unverifiable ones — silent without claims, never changes the exit code.
+  A pilot test runs the three resolvers through a daemon started in the test:
+  seven notes (one decision note without claims) saved and loaded over
+  `/api/v1/save_memory` and `/api/v1/load_memory`, then the sources edited on
+  disk — the verdicts move, the decision note gets no `derived` block, and
+  no load changes a note or a source.
 
 ### Changed
 
