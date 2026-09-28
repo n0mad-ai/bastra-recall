@@ -52,14 +52,24 @@ function formatPinnedLine(e: PinnedFloorLean): string {
   return `- [${e.memory_id}] ${title} — floored since ${since}${affirmed}: ${reason}`;
 }
 
+export interface FormattedPinnedBlock {
+  text: string;
+  /** Entries that actually made it into `text` — a strict prefix of
+   *  `entries`, since the loop below breaks at the first one that does not
+   *  fit. Truncated-out entries are NOT in here, on purpose: they were never
+   *  shown, so they must stay eligible for a normal ranked hint slot instead
+   *  of being dropped from both surfaces at once. */
+  included: PinnedFloorLean[];
+}
+
 /**
  * Formatiert die Floor-Einträge als <pinned-memories>-Block. Leere Liste →
  * leerer String (kein Block). Einträge über dem Zeichen-Budget werden
  * abgeschnitten und als Truncation-Zeile ausgewiesen — die Kuration (was
  * zuerst fliegt) bleibt oberhalb des Engines; hier gilt Registry-Reihenfolge.
  */
-export function formatPinnedBlock(entries: PinnedFloorLean[]): string {
-  if (entries.length === 0) return "";
+export function formatPinnedBlock(entries: PinnedFloorLean[]): FormattedPinnedBlock {
+  if (entries.length === 0) return { text: "", included: [] };
   const head = `<pinned-memories surface="claude-code">`;
   const intro =
     `Pinned memories — push-by-state (#141/#142): a governance surface floored these ` +
@@ -69,6 +79,7 @@ export function formatPinnedBlock(entries: PinnedFloorLean[]): string {
     `owned by the pinning surface, not by you.`;
 
   const lines: string[] = [];
+  const included: PinnedFloorLean[] = [];
   let used = head.length + HINT_FRAME_NOTE.length + intro.length + `</pinned-memories>`.length;
   let truncatedCount = 0;
   for (const e of entries) {
@@ -79,6 +90,7 @@ export function formatPinnedBlock(entries: PinnedFloorLean[]): string {
       break;
     }
     lines.push(line);
+    included.push(e);
     used += line.length + 1;
   }
   if (truncatedCount > 0) {
@@ -87,7 +99,8 @@ export function formatPinnedBlock(entries: PinnedFloorLean[]): string {
         `the pinned set exceeds the ${PINNED_BLOCK_CHAR_BUDGET}-char context budget.`,
     );
   }
-  return [head, HINT_FRAME_NOTE, intro, lines.join("\n"), `</pinned-memories>`].join("\n");
+  const text = [head, HINT_FRAME_NOTE, intro, lines.join("\n"), `</pinned-memories>`].join("\n");
+  return { text, included };
 }
 
 /**
