@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Guard test against new language-bound matchers** (#679, part of #676).
+  `packages/daemon/__tests__/language-bound-matchers.test.ts` scans daemon
+  and core sources for language-named lists (`*_DE`, `*_CUES`, `*STOPWORDS`
+  …), language-keyed word lists, case-insensitive word alternations and
+  `a-z`+umlaut tokenizers. Every finding must be on an allowlist with an issue
+  reference (today's places: #707, #677, #676, plus detector false
+  positives); an allowlisted place that is gone fails the test until its line
+  is removed, so the list only shrinks. Newly found and filed under #707:
+  save-similarity, todo-lane, tool-handlers and taxonomy stopword/tokenizer
+  lists and the save-quality admission regexes.
 - **Learned bridges have a way down** (#129, part of it; data from
   @zzallirog, #701). A bridge (confirmed ones too) with 20 or more fires in 30
   days and no load or acted-on episode after any recall it expanded is
