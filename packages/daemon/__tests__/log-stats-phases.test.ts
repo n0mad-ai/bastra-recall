@@ -184,3 +184,17 @@ test("#615: one dense session stays fast as its daemon rows are consumed", () =>
   assert.ok(result.events.every((e) => e.status === "timeout"));
   assert.ok(elapsed < 4000, `dense bucket scan took ${elapsed.toFixed(0)}ms`);
 });
+
+test("#731: equal earlier timestamps keep the reference loop's first-row tie break", () => {
+  const ts = Date.parse("2026-09-06T05:30:00.000Z");
+  const events: Array<Record<string, unknown>> = [
+    { kind: "prompt_hook_call", ts: new Date(ts - 1).toISOString(), session_id: "dense-tie", status: "ok", order: 1 },
+    { kind: "prompt_hook_call", ts: new Date(ts - 1).toISOString(), session_id: "dense-tie", status: "ok", order: 2 },
+    { kind: "prompt_hook_call", ts: new Date(ts).toISOString(), session_id: "dense-tie", hook_version: "0.6.0-stub", status: "timeout" },
+  ];
+  const expected = referenceFoldClientDuplicates(events);
+  const actual = foldClientDuplicates(events);
+  assert.deepEqual(actual, expected);
+  assert.equal(actual.events[0].status, "timeout");
+  assert.equal(actual.events[1].status, "ok");
+});

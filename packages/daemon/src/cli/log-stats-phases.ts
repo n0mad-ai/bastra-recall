@@ -99,7 +99,7 @@ class CandidateBucket {
     return root;
   }
 
-  takeNearest(time: number): Record<string, unknown> | null {
+  private lowerBound(time: number): number {
     let lo = 0;
     let hi = this.rows.length;
     while (lo < hi) {
@@ -107,7 +107,18 @@ class CandidateBucket {
       if (this.rows[mid]!.time < time) lo = mid + 1;
       else hi = mid;
     }
-    const before = this.find(this.left, lo) - 1;
+    return lo;
+  }
+
+  takeNearest(time: number): Record<string, unknown> | null {
+    const lo = this.lowerBound(time);
+    const beforeLast = this.find(this.left, lo) - 1;
+    // The nearest earlier timestamp can have several rows. The reference
+    // loop chooses the first row in events order on an equal gap, so take the
+    // earliest AVAILABLE row of that timestamp, not its final row in sort order.
+    const before = beforeLast >= 0
+      ? this.find(this.right, this.lowerBound(this.rows[beforeLast]!.time))
+      : -1;
     const after = this.find(this.right, lo);
     const a = before >= 0 ? this.rows[before] : undefined;
     const b = after < this.rows.length ? this.rows[after] : undefined;
