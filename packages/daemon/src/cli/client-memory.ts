@@ -17,7 +17,7 @@ import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { slugify } from "@bastra-recall/core";
-import { IMPORT_ROOT } from "../import-vault.js";
+import { IMPORT_ROOT, listSourceMarkdown } from "../import-vault.js";
 
 export interface ClientMemoryDir {
   client: "claude-code" | "codex";
@@ -78,14 +78,16 @@ async function describe(
   label: string,
   vaultRoot: string | null,
 ): Promise<ClientMemoryDir | null> {
-  const files = (await listDir(dir)).filter((f) => f.toLowerCase().endsWith(".md") && f !== "MEMORY.md");
+  // The very walk `bastra import clients` runs, so what doctor counts is what
+  // the import writes (subfolders included, MEMORY.md and dotdirs not).
+  const files = await listSourceMarkdown(dir);
   if (files.length === 0) return null;
   // The import writes a marker into its folder on every run that changed
   // something; a note newer than it has not been imported yet.
   const importedAt = vaultRoot ? await mtime(join(vaultRoot, IMPORT_ROOT, label, ".bastra-imported")) : null;
   let pending = 0;
   for (const f of files) {
-    const m = await mtime(join(dir, f));
+    const m = await mtime(f);
     if (m !== null && (importedAt === null || m > importedAt)) pending += 1;
   }
   return { client, dir, label, notes: files.length, pending };
