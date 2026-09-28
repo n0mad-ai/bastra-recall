@@ -138,7 +138,9 @@ telemetry event log → `reconstructReaches` → `mintBridge` (query distinctive
 terms = trigger; the resolved memory's distinctive terms not in the query =
 expansion) → `writeBridges` into the clone. CLI: `bastra bridges mint [days]`
 (in-band reaches) and `bastra bridges harvest [days]` (deep, local Ollama
-reranker over the far slice). `bastra bridges contribute` is intentionally **not
+reranker over the far slice). Both record each run as a `bridges_mint`
+telemetry event (the harvest with `trigger: "cli-harvest"`), which the bridge
+note in `bastra doctor` reads. `bastra bridges contribute` is intentionally **not
 yet wired**, and the reason is a gate rather than missing plumbing: minting works,
 but a harvested bridge is scored by the same judge that mints it, its only way
 down is a local outcome check (below, not a held-out lift measurement), and it fires
@@ -405,7 +407,9 @@ Telemetrie-Ereignisprotokoll → `reconstructReaches` → `mintBridge` (markante
 = Trigger; markante Begriffe der gefundenen Erinnerung, die nicht in der Anfrage stehen =
 Erweiterung) → `writeBridges` in den Klon. CLI: `bastra bridges mint [days]`
 (In-Band-Treffer) und `bastra bridges harvest [days]` (gründlich, mit lokalem Ollama-Reranker
-über den fernen Teil). `bastra bridges contribute` ist absichtlich **noch
+über den fernen Teil). Beide protokollieren jeden Lauf als Telemetrie-Ereignis
+`bridges_mint` (die Ernte mit `trigger: "cli-harvest"`), das der Bridge-Hinweis in
+`bastra doctor` liest. `bastra bridges contribute` ist absichtlich **noch
 nicht angebunden**, und der Grund ist eine Sperre, keine fehlende Verkabelung: Das Erzeugen funktioniert,
 aber eine geerntete Bridge wird von demselben Bewerter beurteilt, der sie erzeugt, ihr
 einziger Weg nach unten ist eine lokale Ergebnisprüfung (unten, keine Messung auf einem
