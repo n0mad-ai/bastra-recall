@@ -33,6 +33,7 @@
 import { mkdir, readFile, rename, stat, writeFile, readdir, unlink } from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import { createHash } from "node:crypto";
 import { envInt } from "./env.js";
 import { withPathLock } from "./path-lock.js";
 
@@ -132,6 +133,13 @@ export interface SessionState {
    * re-fire on every Stop, and every delivery extends the turn.
    */
   saveEvalDelivered?: string[];
+  /**
+   * #509: the session-start constants (taxonomy, doku, language) this session's
+   * CURRENT context already carries, part -> content hash. The #462 cadence
+   * "on change only" reads it; `clearShown` empties it with the counters,
+   * because compact and clear drop that text from the context as well.
+   */
+  constants?: Record<string, string>;
 }
 
 /**
@@ -165,6 +173,7 @@ export interface ReadonlySessionState {
   >;
   readonly touchedOverflow?: boolean;
   readonly saveEvalDelivered?: readonly string[];
+  readonly constants?: Readonly<Record<string, string>>;
 }
 
 /** Threshold above which a memory is dropped from hints. #32 startete mit 3;
@@ -176,7 +185,7 @@ export interface ReadonlySessionState {
 export const MAX_SHOW = Math.max(1, envInt("BASTRA_HOOK_MAX_SHOW", 1));
 /** #32 legacy: the dedup counter used to expire after 4h. #354 removed that
  *  window from `shouldDropHit`/`bumpShown` — a hint still standing in the
- *  transcript gains nothing from being repeated, and compact/clear/resume now
+ *  transcript gains nothing from being repeated, and compact/clear (#509) now
  *  reset the state by signal. Kept only as the documented former value. */
 export const RESET_WINDOW_MS = 4 * 60 * 60 * 1000;
 /** Cleanup: drop session files older than this (mtime). #354: this has to
@@ -254,6 +263,14 @@ async function readSessionState(sessionId: string): Promise<SessionState> {
     if (typeof parsed.touchedChars === "number") state.touchedChars = parsed.touchedChars;
     if (Array.isArray(parsed.saveEvalDelivered)) {
       state.saveEvalDelivered = parsed.saveEvalDelivered.filter((h): h is string => typeof h === "string");
+    }
+    // #509: same reason — a resume must still see what the context carries.
+    if (parsed.constants && typeof parsed.constants === "object") {
+      const constants: Record<string, string> = {};
+      for (const [part, hash] of Object.entries(parsed.constants)) {
+        if (typeof hash === "string") constants[part] = hash;
+      }
+      state.constants = constants;
     }
     return state;
   } catch {
@@ -401,8 +418,8 @@ export async function getLoadedMarkerMtime(memId: string): Promise<number | null
  * 23.08.–01.09. window were the same memory re-entering the same still-running
  * session after its window expired, 33,661 tokens, 17.9 % of that window's
  * whole context tax. A hint whose text is still in the transcript buys nothing
- * by being repeated. What genuinely empties the transcript — compact, clear,
- * resume — now resets the state explicitly via `clearShown` (session-lane.ts),
+ * by being repeated. What genuinely empties the context — compact and clear
+ * (#509: not resume) — now resets the state explicitly via `clearShown` (session-lane.ts),
  * which is a signal, not a timer.
  */
 export function shouldDropHit(
@@ -607,20 +624,52 @@ export function touchedCount(state: ReadonlySessionState | SessionState): number
 }
 
 /**
- * #354: drop the shown-counters for a session because its transcript was
- * rebuilt (SessionStart with source compact/clear/resume). The hint text the
+ * #354: drop the shown-counters for a session because its context was
+ * rebuilt (SessionStart with source compact/clear). The hint text the
  * dedup was protecting against repeating is gone from the context, so every
  * memory becomes eligible again. Backoff state (`sources`) deliberately
  * survives: an empty streak describes the retrieval side, not the transcript.
+ *
+ * #509: `resume` no longer lands here — it restores the transcript intact, so
+ * the hints are still in it. The delivered session-start constants go with the
+ * counters: compact and clear drop them from the context just the same.
  */
 export async function clearShown(sessionId: string): Promise<void> {
   if (!sessionId) return;
   // Cheap early-out kept from #354: nothing shown, nothing to write (and no
   // state file conjured for a session that never had one).
-  if (Object.keys((await loadSessionState(sessionId)).shown).length === 0) return;
+  const current = await loadSessionState(sessionId);
+  if (Object.keys(current.shown).length === 0 && current.constants === undefined) return;
   await mutateSessionState(sessionId, (state) => {
     state.shown = {};
+    delete state.constants;
   });
+}
+
+/**
+ * #509: the #462 cadence for the session-start constants. Returns the parts
+ * whose text this session's current context already carries byte-identically
+ * — those are left out — and records the hashes of what is sent now, in one
+ * locked mutation. A part that changed, or was never sent, is sent. An empty
+ * part is neither sent nor recorded, so a later non-empty one counts as new.
+ */
+export async function takeConstantCadence(
+  sessionId: string,
+  parts: Record<string, string>,
+): Promise<Set<string>> {
+  const skip = new Set<string>();
+  if (!sessionId) return skip;
+  await mutateSessionState(sessionId, (state) => {
+    const delivered = state.constants ?? {};
+    for (const [part, text] of Object.entries(parts)) {
+      if (text === "") continue;
+      const hash = createHash("sha256").update(text).digest("hex").slice(0, 16);
+      if (delivered[part] === hash) skip.add(part);
+      else delivered[part] = hash;
+    }
+    state.constants = delivered;
+  });
+  return skip;
 }
 
 /* ── #161: per hook-source empty-streak backoff ────────────────────────────

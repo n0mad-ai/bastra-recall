@@ -181,14 +181,14 @@ test("#373: an unreachable daemon still yields a row with the payload session an
   }
 });
 
-test("#458 (shadow): the SessionStart lane charges its emitted block to the session budget and writes a reconciling budget_shadow row; clear resets, compact does not", async () => {
+test("#458 (shadow): the SessionStart lane charges its emitted block to the session budget and writes a reconciling budget_shadow row; compact and clear reset, resume does not (#509)", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "bastra-session-budget-"));
   try {
     await withDaemon(async (base) => {
       await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir, BASTRA_SESSION_BUDGET_SHADOW: "100" }, async () => {
         await runSessionLane({ hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-458" }, base);
+        await runSessionLane({ hook_event_name: "SessionStart", source: "resume", cwd: "/tmp", session_id: "sess-458" }, base);
         await runSessionLane({ hook_event_name: "SessionStart", source: "compact", cwd: "/tmp", session_id: "sess-458" }, base);
-        await runSessionLane({ hook_event_name: "SessionStart", source: "clear", cwd: "/tmp", session_id: "sess-458" }, base);
       });
     });
     // fire-and-forget writes — give them a tick
@@ -207,10 +207,83 @@ test("#458 (shadow): the SessionStart lane charges its emitted block to the sess
     assert.ok(t > 100, "fixture block exceeds the 100-token test budget");
     assert.equal(shadow[0].spent_before, 0);
     assert.equal(shadow[0].would_drop, true, "even the first block would fall against a 100-token budget");
-    assert.equal(shadow[1].spent_before, t, "compact keeps the ledger — the injected text survives compaction");
-    assert.equal(shadow[2].spent_before, 0, "clear starts a new context");
+    assert.equal(shadow[1].spent_before, t, "resume keeps the ledger — the transcript is restored intact");
+    assert.equal(shadow[2].spent_before, 0, "compact replaces the history with a summary — a new context");
     // and nothing was trimmed: every call still injected its block
     for (const c of calls) assert.equal(c.hint_count, 1);
+  } finally {
+    await rm(logDir, { recursive: true, force: true });
+  }
+});
+
+const WITH_CONVENTIONS = (() => {
+  const doc = JSON.parse(SESSION_CONTEXT) as { data: { conventions: unknown[] } };
+  doc.data.conventions = [
+    { id: "konvention-person", title: "People go under memories/people", summary: "A long summary that the pointer already covers.", updated: "2026-09-01" },
+  ];
+  return JSON.stringify(doc);
+})();
+
+async function withConventionDaemon(fn: (baseUrl: string) => Promise<void>): Promise<void> {
+  const bodies: Record<string, string> = {
+    "/hook/session-context": WITH_CONVENTIONS,
+    "/health": JSON.stringify({ ok: true }),
+    "/hook/hinted": "{}",
+  };
+  const server: Server = createServer((req, res) => {
+    const path = (req.url ?? "").split("?")[0];
+    req.on("data", () => {});
+    req.on("end", () => {
+      const body = bodies[path];
+      res.writeHead(body ? 200 : 404, { "content-type": "application/json" });
+      res.end(body ?? "{}");
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as { port: number }).port;
+  try {
+    await fn(`http://127.0.0.1:${port}`);
+  } finally {
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+}
+
+test("#509: taxonomy lines carry id + title only — the pointer covers the summary", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "bastra-session-taxonomy-"));
+  try {
+    await withConventionDaemon(async (base) => {
+      const out = await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir }, () =>
+        runSessionLane({ hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: `sess-509-tax-${Date.now()}` }, base),
+      );
+      const ctx = String((JSON.parse(out) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext);
+      assert.match(ctx, /- \[konvention-person\] People go under memories\/people\n/);
+      assert.doesNotMatch(ctx, /A long summary/);
+      assert.match(ctx, /load_memory\(id\) for the full rule/, "the pointer to the full rule stays");
+    });
+  } finally {
+    await rm(logDir, { recursive: true, force: true });
+  }
+});
+
+test("#509: the #462 cadence — resume leaves the unchanged taxonomy out, compact and clear send it again", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "bastra-session-cadence-"));
+  const sid = `sess-509-cadence-${Date.now()}`;
+  const contexts: string[] = [];
+  try {
+    await withConventionDaemon(async (base) => {
+      await withEnv({ BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir }, async () => {
+        for (const source of ["startup", "resume", "compact", "resume", "clear"] as const) {
+          const out = await runSessionLane({ hook_event_name: "SessionStart", source, cwd: "/tmp", session_id: sid }, base);
+          contexts.push(String((JSON.parse(out) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext));
+        }
+      });
+    });
+    const has = contexts.map((c) => c.includes("<vault-taxonomy>"));
+    assert.deepEqual(has, [true, false, true, false, true]);
+    for (const c of contexts) assert.match(c, /m1/, "recalls stay every start (#462)");
+    const calls = (await readEvents(logDir)).filter((e) => e.kind === "session_hook_call");
+    assert.deepEqual(calls.map((e) => (e.constants_skipped as string[]).includes("taxonomy")), [false, true, false, true, false]);
+    assert.deepEqual(calls.map((e) => (e.hint_tokens_by_part as Record<string, number>).taxonomy > 0), has, "the per-part tokens measure what was sent");
   } finally {
     await rm(logDir, { recursive: true, force: true });
   }

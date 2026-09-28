@@ -665,7 +665,7 @@ export async function runPromptLane(
   // and bash-pre lane apply this pair unconditionally and show 8.5% / 1.6%.
   // #354's principle: a hint already in the transcript buys nothing by being
   // repeated. Reset stays by signal — the load marker, and `clearShown` on
-  // compact/clear/resume — never by timer.
+  // compact/clear (#509: not resume) — never by timer.
   {
     const governed = governContext(
       await Promise.all(

@@ -1,7 +1,7 @@
 /**
  * #458 (shadow) — das kumulative Sitzungsbudget über alle Lanes: rechnet
  * zusammen, entscheidet wie der Governor, kürzt nichts, und der Reset-Vertrag
- * (clear ja, compact/resume nein) hält.
+ * (clear und compact ja, resume nein — #509) hält.
  *
  * Runner: node --import tsx --test packages/daemon/__tests__/session-budget.test.ts
  */
@@ -66,13 +66,14 @@ test("#458: zero-token emissions decide nothing, and a missing session id has no
   assert.equal(ledger.size(), 0);
 });
 
-test("#458 §1: clear starts a new context, compact and resume keep the ledger", () => {
+test("#458 §1 / #509: clear and compact start a new context, resume keeps the ledger", () => {
   const ledger = new SessionBudgetLedger();
   ledger.charge("s", "session_hook_call", 700, 1000);
-  resetBudgetOnSource("s", "compact", ledger);
-  assert.equal(ledger.spent("s"), 700, "compact must not silently reset — the injected text survives compaction");
   resetBudgetOnSource("s", "resume", ledger);
-  assert.equal(ledger.spent("s"), 700);
+  assert.equal(ledger.spent("s"), 700, "resume restores the transcript intact — the injected text is still in it");
+  resetBudgetOnSource("s", "compact", ledger);
+  assert.equal(ledger.spent("s"), 0, "compact replaces the history with a summary — the injected text is gone");
+  ledger.charge("s", "session_hook_call", 700, 1000);
   resetBudgetOnSource("s", "clear", ledger);
   assert.equal(ledger.spent("s"), 0);
   assert.equal(ledger.charge("s", "session_hook_call", 700, 1000)!.would_drop, false);
