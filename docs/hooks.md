@@ -552,7 +552,9 @@ three heuristics:
    `[branch sha] subject` line in a tool result. Home/URL paths and
    non-source files (`.json`, `.yaml`, …) are filtered out.
 3. **architecture-decision** — `ok dann | lass uns | entschieden | final |
-   gehen wir mit` in last 5 user turns → suggests a `decision` save.
+   gehen wir mit` in last 5 user turns → suggests a `decision` save. In a
+   language without a cue list (#707): the user picks one of the numbered
+   options the agent offered with a question ("2 olsun", "вариант 1").
 
 Output is one or more multi-line `<save-eval>` blocks suggesting title/type/body. The
 hook **never calls `save_memory` itself** — only the agent does, in the next
@@ -1213,7 +1215,9 @@ drei Heuristiken aus:
    herausgefiltert.
 3. **architecture-decision** — `ok dann | lass uns | entschieden | final |
    gehen wir mit` in den letzten 5 Nutzer-Turns → schlägt eine `decision` zum
-   Speichern vor.
+   Speichern vor. In einer
+   Sprache ohne Cue-Liste (#707): der Nutzer wählt eine der nummerierten
+   Optionen, die der Agent mit einer Frage angeboten hat („2 olsun", „вариант 1").
 
 Die Ausgabe besteht aus einem oder mehreren mehrzeiligen `<save-eval>`-Blöcken
 mit Vorschlägen für Titel/Typ/Inhalt. Der Hook **ruft `save_memory` nie selbst

@@ -225,17 +225,27 @@ export function detectAssertion(prompt: string): boolean {
 // #151: trivial-prompt gate. Bare acks, one-worders and slash-command
 // invocations cannot act on recalled context — injecting there is pure
 // context tax (and in the default mode "all" the hook otherwise fires on
-// EVERY prompt). Deterministic DE+EN check, runs before any recall work.
-const TRIVIAL_ACKS = new Set([
-  // EN
-  "ok", "okay", "k", "kk", "yes", "yep", "yeah", "no", "nope", "thx",
-  "thanks", "thank you", "cool", "nice", "great", "perfect", "go",
-  "continue", "proceed", "stop", "wait", "done", "sure",
-  // DE
-  "ja", "jo", "jep", "nein", "ne", "nö", "danke", "super", "top", "passt",
-  "perfekt", "weiter", "mach", "mach weiter", "los", "gut", "genau",
-  "richtig", "stimmt", "erledigt", "fertig",
-]);
+// EVERY prompt). Deterministic, runs before any recall work.
+//
+// #707: the ack words are data per language (ISO-639-1), like the cue lists
+// in lexicon.ts. Two structural rules need no list and hold in every script:
+// a prompt of at most two characters ("да", "ok"), and one without any letter
+// or digit ("👍", "!!", "…"). The NEUTRAL path for an ack in a language
+// without a list ("tamam", "спасибо") is one ordinary recall, gated by score
+// like any prompt — a missed ack costs one lookup, never a lost recall.
+const TRIVIAL_ACKS_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  en: [
+    "ok", "okay", "k", "kk", "yes", "yep", "yeah", "no", "nope", "thx",
+    "thanks", "thank you", "cool", "nice", "great", "perfect", "go",
+    "continue", "proceed", "stop", "wait", "done", "sure",
+  ],
+  de: [
+    "ja", "jo", "jep", "nein", "ne", "nö", "danke", "super", "top", "passt",
+    "perfekt", "weiter", "mach", "mach weiter", "los", "gut", "genau",
+    "richtig", "stimmt", "erledigt", "fertig",
+  ],
+};
+const TRIVIAL_ACKS = new Set(Object.values(TRIVIAL_ACKS_BY_LANGUAGE).flat());
 
 // A typed slash command: "/name" or "/name args". The first token must not
 // contain a second "/" so absolute paths ("/Users/… bitte lesen") never gate.
@@ -254,6 +264,8 @@ export function isTrivialPrompt(prompt: string): boolean {
   const bare = trimmed.toLowerCase().replace(/[\s!.?…]+$/u, "");
   if (TRIVIAL_ACKS.has(bare)) return true;
   if (bare.length <= 2) return true;
+  // #707: nothing to recall on in any language — emoji, punctuation, symbols.
+  if (!/[\p{L}\p{N}]/u.test(bare)) return true;
   return false;
 }
 

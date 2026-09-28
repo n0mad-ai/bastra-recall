@@ -604,6 +604,18 @@ test("isTrivialPrompt gates bare acks DE+EN (trailing punctuation tolerated)", (
   }
 });
 
+test("#707 isTrivialPrompt: structural rules hold in every script; an unlisted ack takes the neutral path", () => {
+  // no list needed: at most two characters, or no letter/digit at all
+  for (const p of ["да", "ok", "👍👍", "!!!", "…", "🙏 🙏"]) assert.equal(isTrivialPrompt(p), true, `should gate: ${p}`);
+  // an ack in a language without a list runs one score-gated recall — the
+  // neutral direction, never a lost prompt
+  for (const p of ["спасибо", "tamam", "ευχαριστώ"]) assert.equal(isTrivialPrompt(p), false, `neutral path: ${p}`);
+  // real prose in Russian, Turkish and Greek is never gated
+  assert.equal(isTrivialPrompt("почему сервер падает ночью?"), false);
+  assert.equal(isTrivialPrompt("veritabanı şifresi nerede?"), false);
+  assert.equal(isTrivialPrompt("γιατί πέφτει ο διακομιστής;"), false);
+});
+
 test("isTrivialPrompt gates slash-command invocations, typed and expanded", () => {
   assert.equal(isTrivialPrompt("/fast"), true);
   assert.equal(isTrivialPrompt("/code-review ultra 123"), true);

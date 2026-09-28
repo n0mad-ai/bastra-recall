@@ -46,17 +46,23 @@ const SCAN_ROOTS = ["packages/daemon/src", "packages/core/src"];
 
 /** file :: finding → why it may stay (must reference an issue). */
 const ALLOWLIST: Readonly<Record<string, string>> = {
-  // ── #707: known fixed-language places, remove each line when #707 fixes it ──
-  "packages/daemon/src/learned-recall/language.ts :: name SUPPORTED_LANGUAGES": "#707 bridge pools de/en only",
-  "packages/daemon/src/learned-recall/language.ts :: name DE_STOPWORDS": "#707 language detection by DE stopwords",
-  "packages/daemon/src/learned-recall/language.ts :: name EN_STOPWORDS": "#707 language detection by EN stopwords",
-  "packages/daemon/src/learned-recall/language.ts :: latin [^a-zäöüß]": "#707 detection tokenizer drops non-Latin letters",
-  "packages/daemon/src/learned-recall/bridges.ts :: latin [^a-zäöüß0-9]": "#707 distinctiveTerms drops non-Latin letters",
-  "packages/core/src/stopwords.ts :: name PHRASE_STOPWORDS": "#707 anchorStrength / reflex significance by DE/EN list",
-  "packages/daemon/src/prompt-lane.ts :: name TRIVIAL_ACKS": "#707 EN/DE ack list (benign direction, kept in #677)",
-  "packages/daemon/src/lexicon.ts :: name DEFAULT_DECISION_CUES_BY_LANGUAGE": "#707 decision cues de/en/ru without a neutral fallback",
-  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_DECISION_CUES_BY_LANGUAGE": "#707 decision cues de/en/ru without a neutral fallback",
-  "packages/daemon/src/lexicon.ts :: name DEFAULT_DECISION_CUES": "#707 flattened decision cues",
+  // ── #707: detection only FILES a bridge (bridges/<lang>/, else "und"); mint and fire are language-neutral ──
+  "packages/daemon/src/learned-recall/language.ts :: name SUPPORTED_LANGUAGES": "#707 names the filing folder and the override values; an unknown language files under und and still mints/fires",
+  "packages/daemon/src/learned-recall/language.ts :: name DE_STOPWORDS": "#707 filing-folder detection only, never a gate",
+  "packages/daemon/src/learned-recall/language.ts :: name EN_STOPWORDS": "#707 filing-folder detection only, never a gate",
+  "packages/daemon/src/learned-recall/language.ts :: latin [^a-zäöüß]": "#707 filing-folder detection only (a non-Latin query abstains → und)",
+
+  // ── #707: per-language data with a documented neutral path — allowed shape ──
+  "packages/core/src/stopwords.ts :: name PHRASE_STOPWORDS": "#707 union of the per-language data below; an unlisted language drops no word (neutral)",
+  "packages/core/src/stopwords.ts :: name PHRASE_STOPWORDS_BY_LANGUAGE": "#707 per-language data; neutral path documented and tested (ru/tr/el)",
+  "packages/core/src/stopwords.ts :: keyed PHRASE_STOPWORDS_BY_LANGUAGE": "#707 per-language data with a neutral path",
+  "packages/daemon/src/prompt-lane.ts :: name TRIVIAL_ACKS": "#707 union of per-language data; an unlisted ack runs one score-gated recall (neutral)",
+  "packages/daemon/src/prompt-lane.ts :: keyed TRIVIAL_ACKS_BY_LANGUAGE": "#707 per-language data; structural no-letter/≤2-char rule covers every script",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_DECISION_CUES_BY_LANGUAGE": "#707 per-language data; stop-lane-choice.ts option pick is the neutral fallback",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_DECISION_CUES_BY_LANGUAGE": "#707 per-language data with a neutral fallback (option pick)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_DECISION_CUES": "#707 flattened decision cues, neutral fallback exists",
+
+  // ── #707: known fixed-language places not fixed yet ──
   // Found by this guard, not in #707's table (reported there).
   "packages/daemon/src/save-similarity.ts :: name STOPWORDS": "#707 duplicate-save similarity ignores DE/EN function words only",
   "packages/daemon/src/save-similarity.ts :: name FOLDED_STOPWORDS": "#707 folded copy of the DE/EN list above",

@@ -114,24 +114,23 @@ A language-tagged **vocabulary-expansion rule, NOT a memory** (`bridges.ts:33`):
 ```
 
 `id` is a deterministic dedup hash of `lang` + sorted trigger + sorted expansion.
-A bridge says: *"for a query in language L phrased with `trigger_terms`, also
+A bridge says: *"for a query phrased with `trigger_terms`, also
 search for `expansion_terms`"* — widening the BM25 surface so a far-worded query
 reaches the memory the contributor proved it resolves to. The in-code privacy
 contract (`bridges.ts:7`): **a bridge carries only term lists and a language —
-never a memory id, body, or any vault content.** Language-partitioned: a bridge
-fires only for a query detected as its language.
+never a memory id, body, or any vault content.**
 
-**Scope: the bridge layer is latin-alphabet only today.** Detection knows
-two languages (`SUPPORTED_LANGUAGES = ["de", "en"]`,
-`learned-recall/language.ts:20`) and `distinctiveTerms` tokenizes on
-`/[^a-zäöüß0-9]+/i` (`learned-recall/bridges.ts:66`), so a query in Cyrillic,
-Greek, CJK or any other non-latin script yields no trigger and no expansion
-terms — nothing to mint from, nothing to fire. A mixed-language vault gets
-bridges for its latin-query half and none for the rest. This affects **only**
-vocabulary expansion: BM25 and `recall_when` index and match those queries
-normally, so recall itself works — it just doesn't get the widening. Extending
-the set means a stopword list per new language plus a tokenizer that keeps its
-alphabet — tracked in #707 (#231 closed without changing bridges).
+**The language is a folder, not a gate (#707).** Detection knows two languages
+(`SUPPORTED_LANGUAGES = ["de", "en"]`, `learned-recall/language.ts`); a query
+in any other language, or one detection abstains on, is filed under `und`
+(BCP-47 "undetermined"). Without a configured override (`bastra bridges
+language`) a query consults every folder — the trigger rule (two shared
+trigger terms) decides, and trigger terms are words of the language they were
+minted from. `distinctiveTerms` keeps every letter and combining mark
+(`\p{L}\p{M}\p{N}`), so Cyrillic, Greek, Turkish or Devanagari queries mint
+and fire like German and English ones. Remaining gap: scripts written without
+spaces (Chinese, Japanese, Thai) have no word segmentation, so a sentence is one
+long term and rarely makes a useful trigger — noted in #707.
 
 Bridges are minted **locally and offline**, never on the recall hot path:
 telemetry event log → `reconstructReaches` → `mintBridge` (query distinctive
@@ -255,7 +254,7 @@ bastra commons status      # enabled-state + clone presence
 bastra commons verify <recipe-id> works|fails ["env note"]   # record + best-effort PR
 
 bastra bridges enable      # flip sharedRecall.enabled (needs commons cloned first)
-bastra bridges language <tag|auto>   # query-language override (default: auto-detect)
+bastra bridges language <tag|auto>   # query-language override (default: auto — every folder)
 bastra bridges mint [days] # mint bridges from in-band reaches
 bastra bridges harvest [days]        # deep harvest via local reranker
 bastra bridges status      # enabled-state, pool size per language, repo path
@@ -383,24 +382,23 @@ Eine sprachmarkierte **Regel zur Vokabularerweiterung, KEINE Erinnerung** (`brid
 ```
 
 `id` ist ein deterministischer Deduplizierungs-Hash aus `lang` + sortierten Trigger- + sortierten Erweiterungsbegriffen.
-Eine Bridge sagt: *„Bei einer Anfrage in Sprache L, die mit `trigger_terms` formuliert ist, suche auch
+Eine Bridge sagt: *„Bei einer Anfrage, die mit `trigger_terms` formuliert ist, suche auch
 nach `expansion_terms`"* — das verbreitert die BM25-Suchfläche, sodass eine weit entfernt formulierte Anfrage
 die Erinnerung erreicht, zu der sie laut Nachweis des Beitragenden führt. Der Datenschutzvertrag im Code
 (`bridges.ts:7`): **Eine Bridge enthält nur Begriffslisten und eine Sprache —
-niemals eine Erinnerungs-ID, einen Erinnerungstext oder sonstige Vault-Inhalte.** Nach Sprache getrennt: Eine Bridge
-greift nur bei einer Anfrage, die als ihre Sprache erkannt wurde.
+niemals eine Erinnerungs-ID, einen Erinnerungstext oder sonstige Vault-Inhalte.**
 
-**Umfang: Die Bridge-Ebene ist derzeit auf das lateinische Alphabet beschränkt.** Die Erkennung kennt
-zwei Sprachen (`SUPPORTED_LANGUAGES = ["de", "en"]`,
-`learned-recall/language.ts:20`), und `distinctiveTerms` zerlegt an
-`/[^a-zäöüß0-9]+/i` (`learned-recall/bridges.ts:66`). Eine Anfrage in kyrillischer,
-griechischer, CJK- oder einer anderen nicht-lateinischen Schrift liefert daher keine Trigger- und keine Erweiterungsbegriffe
-— nichts, woraus eine Bridge entstehen oder was sie auslösen könnte. Ein gemischtsprachiger Vault bekommt
-Bridges für seine Hälfte mit lateinischen Anfragen und für den Rest keine. Das betrifft **nur**
-die Vokabularerweiterung: BM25 und `recall_when` indizieren und matchen diese Anfragen
-normal, Recall selbst funktioniert also — es fehlt nur die Verbreiterung. Den Umfang zu erweitern
-bedeutet eine Stoppwortliste pro neuer Sprache plus einen Tokenizer, der deren
-Alphabet erhält — verfolgt in #707 (#231 wurde geschlossen, ohne Bridges zu ändern).
+**Die Sprache ist ein Ordner, keine Sperre (#707).** Die Erkennung kennt zwei Sprachen
+(`SUPPORTED_LANGUAGES = ["de", "en"]`, `learned-recall/language.ts`); eine Anfrage in
+jeder anderen Sprache, oder eine, bei der die Erkennung sich enthält, wird unter `und`
+(BCP-47 „unbestimmt") abgelegt. Ohne eingestellte Vorgabe (`bastra bridges language`)
+fragt eine Anfrage alle Ordner ab — es entscheidet die Trigger-Regel (zwei gemeinsame
+Triggerbegriffe), und Triggerbegriffe sind Wörter der Sprache, aus der sie entstanden sind.
+`distinctiveTerms` behält jeden Buchstaben und jedes kombinierende Zeichen
+(`\p{L}\p{M}\p{N}`), sodass kyrillische, griechische, türkische oder Devanagari-Anfragen
+Bridges erzeugen und auslösen wie deutsche und englische. Offene Lücke: Schriften ohne
+Leerzeichen (Chinesisch, Japanisch, Thai) haben keine Wortzerlegung, ein Satz ist dort ein
+einziger langer Begriff und selten ein brauchbarer Trigger — in #707 vermerkt.
 
 Bridges werden **lokal und offline** erzeugt, nie im heißen Pfad von Recall:
 Telemetrie-Ereignisprotokoll → `reconstructReaches` → `mintBridge` (markante Begriffe der Anfrage
@@ -531,7 +529,7 @@ bastra commons status      # enabled-state + clone presence
 bastra commons verify <recipe-id> works|fails ["env note"]   # record + best-effort PR
 
 bastra bridges enable      # flip sharedRecall.enabled (needs commons cloned first)
-bastra bridges language <tag|auto>   # query-language override (default: auto-detect)
+bastra bridges language <tag|auto>   # query-language override (default: auto — every folder)
 bastra bridges mint [days] # mint bridges from in-band reaches
 bastra bridges harvest [days]        # deep harvest via local reranker
 bastra bridges status      # enabled-state, pool size per language, repo path

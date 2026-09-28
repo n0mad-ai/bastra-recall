@@ -394,6 +394,39 @@ describe("stop-hook: detectArchitectureDecision", () => {
   });
 });
 
+describe("stop-hook: #707 a decision in a language without a cue list fires on an option pick", () => {
+  const offer = (q: string) => assistantTurn(`Two ways:\n1. Drizzle\n2. Prisma\n${q}`);
+
+  it("fires when a Turkish user picks an offered option by number", () => {
+    const s = detectArchitectureDecision([offer("Hangisi?"), userTurn("2 olsun")]);
+    assert.ok(s, "Turkish pick must fire");
+    assert.equal(s!.heuristic, "architecture-decision");
+    assert.match(s!.body, /language-neutral/);
+  });
+
+  it("fires for a Greek pick (Greek question mark) and a Japanese pick (fullwidth ？)", () => {
+    assert.ok(detectArchitectureDecision([offer("Ποιο προτιμάς\u037E"), userTurn("το 1")]));
+    assert.ok(detectArchitectureDecision([offer("どちらにしますか？"), userTurn("2でお願いします")]));
+  });
+
+  it("skips tool turns between the offer and the pick", () => {
+    assert.ok(detectArchitectureDecision([offer("Какой?"), { role: "tool", content: "ok" }, userTurn("вариант 1")]));
+  });
+
+  it("does not fire on a numbered list without a question, a number that was not offered, or two numbers", () => {
+    assert.equal(detectArchitectureDecision([assistantTurn("Steps:\n1. build\n2. test"), userTurn("2 olsun")]), null);
+    assert.equal(detectArchitectureDecision([offer("Hangisi?"), userTurn("3 olsun")]), null);
+    assert.equal(detectArchitectureDecision([offer("Hangisi?"), userTurn("1 ve 2 birlikte")]), null);
+  });
+
+  it("does not fire on a long new request that happens to contain an offered number", () => {
+    assert.equal(
+      detectArchitectureDecision([offer("Hangisi?"), userTurn("önce 2 dosyadaki testleri düzelt, sonra derleme hatalarına bak ve raporla")]),
+      null,
+    );
+  });
+});
+
 describe("stop-hook: evaluateHeuristics", () => {
   it("returns empty array on neutral transcript", () => {
     const out = evaluateHeuristics([
