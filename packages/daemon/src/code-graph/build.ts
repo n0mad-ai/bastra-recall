@@ -53,7 +53,7 @@ import { spawn } from "node:child_process";
 import { access, readdir, stat } from "node:fs/promises";
 import { constants, existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, extname } from "node:path";
+import { join, extname, isAbsolute } from "node:path";
 import { graphDirOf } from "./reader.js";
 import { readManifest, writeManifest, type CodeGraphManifest } from "./manifest.js";
 import { acquireRepoLock, type RepoLock } from "./lock.js";
@@ -181,6 +181,9 @@ export async function buildCodeGraph(opts: BuildOptions): Promise<BuildResult> {
   }
 
   const bin = opts.bin ?? graphifyBinPath();
+  if (!isAbsolute(bin)) {
+    return { ok: false, reason: "graphify-missing", detail: "Graphify binary path must be absolute; PATH lookup is not allowed" };
+  }
   if (!(await isExecutable(bin))) {
     return { ok: false, reason: "graphify-missing", detail: bin };
   }
