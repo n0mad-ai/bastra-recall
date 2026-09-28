@@ -7,7 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { memoryLocationNote } from "../src/memory-location.js";
@@ -46,5 +46,28 @@ test("memoryLocationNote (#297): fires only for memory-shaped .md outside the ro
   } finally {
     await rm(vaultRoot, { recursive: true, force: true });
     await rm(outside, { recursive: true, force: true });
+  }
+});
+
+// Regression: on the old `path.resolve`-only isInside, a write through
+// a symlinked vault (or given as the symlink's resolved realpath) computes a
+// `..`-relative path against the unresolved root and is flagged OUTSIDE even
+// though it resolves to the same directory.
+test("memoryLocationNote (#297): a symlinked vault root is not flagged OUTSIDE", async () => {
+  const realVault = await mkdtemp(join(tmpdir(), "bastra-loc-real-"));
+  const linkParent = await mkdtemp(join(tmpdir(), "bastra-loc-link-"));
+  const vaultLink = join(linkParent, "vault-link");
+  try {
+    await symlink(realVault, vaultLink);
+
+    // Configured root is the symlink; the write target is given as the
+    // realpath (as e.g. a tool resolving symlinks before reporting a path
+    // would produce) — same directory, should read as inside.
+    const note = await memoryLocationNote(join(realVault, "x.md"), { content: MEMORY_MD }, vaultLink);
+    assert.equal(note, null, `expected inside-vault silence, got ${note}`);
+  } finally {
+    await rm(vaultLink, { force: true });
+    await rm(linkParent, { recursive: true, force: true });
+    await rm(realVault, { recursive: true, force: true });
   }
 });

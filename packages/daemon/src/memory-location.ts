@@ -10,7 +10,7 @@
  * the hook process) — an isolated agent with its own vault talks to its own
  * daemon and is measured against that root.
  */
-import { open } from "node:fs/promises";
+import { open, realpath } from "node:fs/promises";
 import * as path from "node:path";
 import { isMemoryShapedMarkdown } from "./hook-skip.js";
 
@@ -33,8 +33,23 @@ async function pendingHead(filePath: string, toolInput: Record<string, unknown>)
   }
 }
 
-function isInside(root: string, filePath: string): boolean {
-  const rel = path.relative(path.resolve(root), path.resolve(filePath));
+/** Resolves symlinks on the deepest existing ancestor, then rebuilds the
+ *  (possibly not-yet-existing) tail on top of it — a pending Write's target
+ *  has no inode yet, so a plain `realpath` on the full path would throw. */
+async function resolveReal(p: string): Promise<string> {
+  try {
+    return await realpath(p);
+  } catch {
+    const resolved = path.resolve(p);
+    const parent = path.dirname(resolved);
+    if (parent === resolved) return resolved;
+    return path.join(await resolveReal(parent), path.basename(resolved));
+  }
+}
+
+async function isInside(root: string, filePath: string): Promise<boolean> {
+  const [realRoot, realFile] = await Promise.all([resolveReal(root), resolveReal(filePath)]);
+  const rel = path.relative(realRoot, realFile);
   // Ein Vault-Unterordner darf `..sync` heißen — nur ein `..`-SEGMENT
   // verlässt den Baum (Codex-Gegenreview, P2).
   const escapes = rel === ".." || rel.startsWith(".." + path.sep) || rel.startsWith("../");
@@ -52,7 +67,7 @@ export async function memoryLocationNote(
 ): Promise<string | null> {
   if (!vaultRoot) return null;
   if (path.extname(filePath).toLowerCase() !== ".md") return null;
-  if (isInside(vaultRoot, filePath)) return null;
+  if (await isInside(vaultRoot, filePath)) return null;
   const head = await pendingHead(filePath, toolInput);
   if (!isMemoryShapedMarkdown(head)) return null;
   const typeMatch = head ? /^type:\s*["']?([\w-]+)["']?\s*$/m.exec(head) : null;
