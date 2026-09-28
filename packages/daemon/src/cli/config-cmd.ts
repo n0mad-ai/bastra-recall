@@ -2,7 +2,8 @@
  * `bastra config get|set <key> [value]` — settings access from the CLI.
  *
  * Keys: update.mode, embedding.provider, ollama.autostart, docs.mode,
- * docs.language, archive.retain, archive.enabled. The store is the OSS-owned ~/.bastra/cli-settings.json
+ * docs.language, archive.retain, archive.enabled, reflex.enabled,
+ * promptImpact.enabled. The store is the OSS-owned ~/.bastra/cli-settings.json
  * (never the Pro-app's config.json). Browsing/editing memories stays in
  * the Pro app — this is flags only.
  */
@@ -32,6 +33,8 @@ import {
   setArchiveRetain,
   getArchiveEnabled,
   setArchiveEnabled,
+  getReflexEnabled,
+  setReflexEnabled,
   isEmbeddingProviderName,
   isDocsMode,
   isDocsLanguage,
@@ -42,8 +45,9 @@ import {
 import type { ParsedArgs } from "./types.js";
 import { mapUrl } from "./map-cmd.js";
 import { parseRetain, retainDays } from "../rm-archive.js";
+import { getPromptImpactEnabled, setPromptImpactEnabled } from "../code-graph/prompt-impact-settings.js";
 
-const KNOWN_KEYS = ["update.mode", "embedding.provider", "ollama.autostart", "docs.mode", "docs.language", "ui.enabled", "size.guide", "language.primary", "archive.retain", "archive.enabled"] as const;
+const KNOWN_KEYS = ["update.mode", "embedding.provider", "ollama.autostart", "docs.mode", "docs.language", "ui.enabled", "size.guide", "language.primary", "archive.retain", "archive.enabled", "reflex.enabled", "promptImpact.enabled"] as const;
 type KnownKey = (typeof KNOWN_KEYS)[number];
 
 function isKnownKey(k: string | null): k is KnownKey {
@@ -99,6 +103,19 @@ async function cmdConfigGet(key: KnownKey): Promise<number> {
       process.stdout.write(`${await getArchiveEnabled()}\n`);
       const env = process.env.BASTRA_RM_ARCHIVES;
       if (env) process.stdout.write(`  note: BASTRA_RM_ARCHIVES=${env} (env) overrides this file at runtime\n`);
+      return 0;
+    }
+    case "reflex.enabled": {
+      process.stdout.write(`${await getReflexEnabled()}\n`);
+      const env = process.env.BASTRA_REFLEX;
+      if (env) process.stdout.write(`  note: BASTRA_REFLEX=${env} (env) overrides this file at runtime\n`);
+      return 0;
+    }
+    case "promptImpact.enabled": {
+      // The file value alone: the env override is named below, not folded in.
+      process.stdout.write(`${await getPromptImpactEnabled(settingsFilePath(), {})}\n`);
+      const env = process.env.BASTRA_PROMPT_IMPACT;
+      if (env) process.stdout.write(`  note: BASTRA_PROMPT_IMPACT=${env} (env) overrides this file at runtime\n`);
       return 0;
     }
     case "archive.retain": {
@@ -224,6 +241,30 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
             : `  rm -r and the lossy git acts get the plain STOP again.\n`) +
           `  the next Bash call uses it (no restart needed).\n`,
       );
+      return 0;
+    }
+    case "reflex.enabled": {
+      const on = parseBool(value);
+      if (on === null) {
+        process.stderr.write("error: reflex.enabled must be one of: true | false (also on|off)\n");
+        return 2;
+      }
+      await setReflexEnabled(on);
+      process.stdout.write(`✓ reflex.enabled = ${on}\n  stored in ${settingsFilePath()}\n  the next prompt uses it (no restart needed).\n`);
+      const env = process.env.BASTRA_REFLEX;
+      if (env) process.stdout.write(`  ⚠ BASTRA_REFLEX=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`);
+      return 0;
+    }
+    case "promptImpact.enabled": {
+      const on = parseBool(value);
+      if (on === null) {
+        process.stderr.write("error: promptImpact.enabled must be one of: true | false (also on|off)\n");
+        return 2;
+      }
+      await setPromptImpactEnabled(on);
+      process.stdout.write(`✓ promptImpact.enabled = ${on}\n  stored in ${settingsFilePath()}\n  the next prompt uses it (no restart needed).\n`);
+      const env = process.env.BASTRA_PROMPT_IMPACT;
+      if (env) process.stdout.write(`  ⚠ BASTRA_PROMPT_IMPACT=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`);
       return 0;
     }
     case "archive.retain": {

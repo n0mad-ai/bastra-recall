@@ -883,6 +883,15 @@ export async function setArchiveEnabled(on: boolean, path: string = settingsFile
   await mutateSettings(path, (current) => ({ ...current, archive: { ...current.archive, enabled: on } }));
 }
 
+/** #634: reflex memories on/off in the file (default on; BASTRA_REFLEX wins at runtime). */
+export async function getReflexEnabled(path?: string): Promise<boolean> {
+  return (await readSettings(path)).reflex?.enabled ?? true;
+}
+
+export async function setReflexEnabled(on: boolean, path: string = settingsFilePath()): Promise<void> {
+  await mutateSettings(path, (current) => ({ ...current, reflex: { ...current.reflex, enabled: on } }));
+}
+
 export async function setApiToken(token: string, path: string = settingsFilePath()): Promise<void> {
   await mutateSettings(path, (current) => ({ ...current, api: { token } }));
 }

@@ -370,6 +370,9 @@ Keys:
   update.mode      notify | auto | off
   docs.mode        off | suggest | auto   (product documentation capture)
   docs.language    en | de | …            (language docs are written in)
+  reflex.enabled   true | false           (reflex memories; default true)
+  promptImpact.enabled
+                   true | false           (change impact in prompts, experimental; default false)
 
 Settings live next to the vault; 'bastra config get' without a value prints the
 effective one including where it was resolved from.
