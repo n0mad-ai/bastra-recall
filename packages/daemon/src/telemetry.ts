@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { envFirst, envInt, testRunLogDir } from "./env.js";
 import { readJoinStateSync, writeJoinState } from "./telemetry-join-store.js";
+import { callerSessionField } from "./caller-session.js";
 import {
   dimensionsFrom,
   splitHints,
@@ -666,6 +667,8 @@ export class Telemetry {
       kind: "recall",
       ts: new Date().toISOString(),
       session_id: this.sessionId,
+      // #708: the caller's Claude Code session, when a forwarded call brought one.
+      ...callerSessionField(),
       ...rest,
       dimensions: this.dimensionsFor({ ...hints, session_id }),
     });
@@ -704,6 +707,7 @@ export class Telemetry {
       kind: "save_memory",
       ts: new Date().toISOString(),
       session_id: this.sessionId,
+      ...callerSessionField(),
       ...payload,
     });
   }
@@ -721,6 +725,7 @@ export class Telemetry {
       kind: "save_hold",
       ts: new Date().toISOString(),
       session_id: this.sessionId,
+      ...callerSessionField(),
       ...payload,
     });
   }

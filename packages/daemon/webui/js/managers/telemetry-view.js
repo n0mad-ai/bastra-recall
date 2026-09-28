@@ -455,9 +455,38 @@ function renderEvidence(ev) {
  * two throwing exits left no event at all, so "recall never saves" could not be
  * answered with a measurement in either direction.
  */
-function renderSaves(sv) {
+/**
+ * #708/#662 — sessions that got a save suggestion, and how many of them saved.
+ * Joined on caller_session, the id hook and MCP rows share; the coverage note
+ * is part of the number, because a save without it cannot be joined.
+ */
+function saveSuggestionsBlock(ss) {
+  if (!ss) return null;
+  return h(
+    "div",
+    null,
+    h(
+      "div",
+      { class: "tv-figs" },
+      h("div", null, h("div", { class: "tv-fig-k" }, "sessions with a save suggestion"), h("div", { class: "tv-fig-v" }, fmt(ss.suggestedSessions))),
+      h("div", null, h("div", { class: "tv-fig-k" }, "of them saved"), h("div", { class: "tv-fig-v ok" }, fmt(ss.savedSessions)),
+        h("div", { class: "tv-fig-sub" }, `${pct(ss.savedSessions, ss.suggestedSessions)} · ${fmt(ss.savedAfterSuggestion)} after the suggestion`)),
+    ),
+    note(
+      `Joined on caller_session: ${fmt(ss.savesWithCallerSession)} of ${fmt(ss.saves)} save(s) carry one` +
+        (ss.savesWithCallerSession < ss.saves ? " — the rest cannot be joined, so the saved count is a lower bound." : "."),
+    ),
+  );
+}
+
+function renderSaves(sv, ss) {
   if (!sv) {
-    return section("Saves", "How many saves became a file, and how many never got there?", empty("no save_memory or save_hold events in this window"));
+    return section(
+      "Saves",
+      "How many saves became a file, and how many never got there?",
+      empty("no save_memory or save_hold events in this window"),
+      saveSuggestionsBlock(ss),
+    );
   }
   const attempted = sv.written + sv.held;
   const REASONS = {
@@ -488,6 +517,7 @@ function renderSaves(sv) {
     sv.claimedTotal > 0
       ? note(`The claim gate named ${fmt(sv.claimedTotal)} already-owned memories across ${fmt(sv.byReason.find((r) => r.reason === "claim_gate")?.count ?? 0)} hold(s) — each one is a successor, a contradiction or a deliberate pair that nobody answered yet.`)
       : null,
+    saveSuggestionsBlock(ss),
     note("A held save carries no title, body or trigger text into the log: what a save wanted to say is yours, and a rejected one says it just as much as an accepted one."),
   );
 }
@@ -592,7 +622,7 @@ export function createTelemetryView() {
           renderBudgetShadow(r.budgetShadow),
           renderLatency(r.latency),
           renderEvidence(r.evidence),
-          renderSaves(r.saves),
+          renderSaves(r.saves, r.saveSuggestions),
           renderCodeAwareness(r.codeAwareness),
           renderSessionStart(r.sessionStart),
         );
