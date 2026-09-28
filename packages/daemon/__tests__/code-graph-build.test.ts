@@ -89,6 +89,13 @@ describe("code graph build command", () => {
     assert.equal(graphifyBinPath({ BASTRA_GRAPHIFY_BIN: "  " }), DEFAULT_GRAPHIFY_BIN);
   });
 
+  it("rejects a relative binary override before spawning anything", async () => {
+    const result = await buildCodeGraph({ repoRoot: "/tmp/unused-code-graph", bin: "graphify" });
+    assert.equal(result.ok, false);
+    assert.equal(result.ok === false && result.reason, "graphify-missing");
+    assert.match(result.ok === false ? result.detail : "", /must be absolute/);
+  });
+
   it("names macOS and Linux as the supported platforms", () => {
     assert.equal(isSupportedPlatform("darwin"), true);
     assert.equal(isSupportedPlatform("linux"), true);
