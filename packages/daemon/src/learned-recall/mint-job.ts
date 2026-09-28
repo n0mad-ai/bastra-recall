@@ -28,7 +28,10 @@ import {
 import { demoteIdleBridges } from "./demotion.js";
 import { envFirst, testRunLogDir } from "../env.js";
 
-export type MintTrigger = "cli" | "daemon-boot" | "daemon-interval";
+/** `cli-harvest` (#705): Teacher 2, `bastra bridges harvest`. It records only
+ *  the telemetry event — last-mint.json stays the in-band mint's marker, so
+ *  `bastra bridges status` keeps saying when the free mint last ran. */
+export type MintTrigger = "cli" | "daemon-boot" | "daemon-interval" | "cli-harvest";
 
 export interface MintOutcome {
   minted: number;
@@ -118,6 +121,22 @@ export async function runInBandMint(opts: {
   await recordLastMint(opts.bridgesRoot, record);
   await writeMintTelemetry(record);
   return outcome;
+}
+
+/**
+ * #705: record one far-harvest run (`bastra bridges harvest`) as a
+ * `bridges_mint` event with trigger `cli-harvest`. Before, only the in-band
+ * mint recorded itself, so a pool filled by the harvest read "written 0" in
+ * `bastra doctor`. `reaches` is the number of far cases the reranker judged.
+ */
+export async function recordHarvestRun(run: { minted: number; reaches: number; written: number }): Promise<void> {
+  await writeMintTelemetry({
+    ts: new Date().toISOString(),
+    host: hostname(),
+    trigger: "cli-harvest",
+    pruned: 0,
+    ...run,
+  });
 }
 
 /** Read the per-box last-mint marker; null when no mint ever ran here. */

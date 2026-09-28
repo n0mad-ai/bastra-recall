@@ -175,6 +175,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **`bastra bridges harvest` records its run** (#705; reported by
+  @zzallirog). The far harvest wrote bridges but no `bridges_mint` event, so
+  `bastra doctor` said "written 0" over a pool the harvest had filled. Each
+  harvest run now emits one `bridges_mint` event with `trigger: "cli-harvest"`
+  (minted, far cases judged as `reaches`, written), and the doctor's bridge
+  note counts it next to the in-band mint. `last-mint.json` stays the in-band
+  mint's marker.
+
 - **The plan lane fires from Claude Code plan mode** (#698). The lane saw 0
   Claude Code calls in the #305 window: current Claude Code offers
   `TaskCreate` / `TodoWrite` by default only on older models (Opus ≤ 4.7,

@@ -38,7 +38,7 @@ import {
   harvestFarBridges,
   bridgeTeachingEvents,
 } from "../learned-recall/harvest.js";
-import { runInBandMint, readLastMint } from "../learned-recall/mint-job.js";
+import { runInBandMint, readLastMint, recordHarvestRun } from "../learned-recall/mint-job.js";
 import { ollamaChat, listOllamaModels, resolveRerankModel } from "../learned-recall/reranker.js";
 import { isSupportedLanguage, SUPPORTED_LANGUAGES } from "../learned-recall/language.js";
 
@@ -98,7 +98,7 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       // Offline harvest: reconstruct (far query → acted-on memory) reaches from the
       // telemetry log and mint bridges from them. Optional [days] limits the window.
       // Shared core with the daemon's own schedule (#353) — both record last-mint.json
-      // and a bridges_mint telemetry event.
+      // and a bridges_mint telemetry event (`harvest` below records the event too, #705).
       const daysArg = opts.positional?.[2];
       const days = daysArg ? parseInt(daysArg, 10) : null;
       const vaultPath = envFirst("BASTRA_VAULT_PATH", "NEXUS_VAULT_PATH");
@@ -218,6 +218,9 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
         bridgesPath(),
         result.bridges.filter((b) => b.evidence >= MIN_BRIDGE_EVIDENCE),
       );
+      // #705: the doctor's bridge note reads bridges_mint events; without one a
+      // pool the harvest filled reported "written 0".
+      await recordHarvestRun({ minted: result.minted, reaches: result.judged, written });
       process.stdout.write(
         `\n✓ judged ${result.judged} far case(s) → minted ${result.minted} bridge(s) — ${written} written to ${join(bridgesPath(), "bridges")}\n` +
           "  restart the daemon to load them\n",
