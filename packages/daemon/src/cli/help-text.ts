@@ -98,6 +98,8 @@ Commands:
                              Claude Code memory dir) into its own isolated
                              set under memories/imported/ — deterministic,
                              no per-item review, nothing existing is touched
+  import clients             Import Claude Code's and Codex's own memory
+                             folders the same way (one set per folder)
   import <mine|clear>        Print the next mining chunk for the AI session /
                              discard the local mining queue
   onboard                    5-minute interview that seeds a fresh vault:
@@ -485,6 +487,7 @@ Usage:
   bastra import <file|-> [source]     Stage candidates from a list or free text
   bastra import rules                 Stage local rules files
   bastra import vault <dir> [label]   Import a whole folder of memory files
+  bastra import clients               Import the clients' own memory folders
   bastra import <mine|clear>          Mining queue for a data export
   bastra import status                How many candidates are waiting
 
@@ -497,6 +500,9 @@ your accept.
   vault <dir>      Deterministic folder import into its own isolated subtree
                    under memories/imported/ — no per-item review, nothing
                    existing is touched
+  clients          Every ~/.claude/projects/*/memory folder and ~/.codex/memories
+                   that holds notes, each imported like 'vault' under its own
+                   label; a re-run only writes what changed
   mine             Print the next chunk of a queued conversations.json export
   clear            Discard the local mining queue
 

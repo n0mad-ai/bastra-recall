@@ -34,6 +34,7 @@ import { describeStale } from "../code-staleness.js";
 import { autostartWarning } from "./autostart.js";
 import { stubFreshness, stubFreshnessLines } from "./stub-freshness.js";
 import { affectsFilesLines, defaultAffectsFilesIo } from "./affects-files-note.js";
+import { clientMemoryLines, findClientMemoryDirs } from "./client-memory.js";
 import { printFeaturesNote, type FeatureState } from "./features-note.js";
 import { installCodeAwarenessStep } from "./code-cmd.js";
 import { enabledRepos } from "../code-graph/enabled-repos.js";
@@ -463,6 +464,7 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   await printAffectsFilesNote(resolveVaultPath(args.vaultPath));
   await printCodeGraphNote();
   await printBridgeLearningNote();
+  await printClientMemoryNote(resolveVaultPath(args.vaultPath));
   // What is switched off, as opposed to broken — never flips the exit code,
   // and --fix never turns a feature on.
   await printFeaturesNote(clientFeatures, resolveVaultPath(args.vaultPath));
@@ -500,6 +502,24 @@ async function printAffectsFilesNote(cliVault: string | null): Promise<void> {
     const lines = await affectsFilesLines(defaultAffectsFilesIo(vault.path));
     if (lines.length === 0) return;
     process.stdout.write("→ affects_files\n");
+    for (const line of lines) process.stdout.write(`  ${line}\n`);
+    process.stdout.write("\n");
+  } catch {
+    /* a diagnostics NOTE must never break doctor */
+  }
+}
+
+/**
+ * The clients' own memory folders (#674): notes an agent saved to Claude
+ * Code's or Codex's file-based memory never reach the vault. Silent when those
+ * folders are empty; a NOTE, never a failure.
+ */
+async function printClientMemoryNote(cliVault: string | null): Promise<void> {
+  try {
+    const vault = await resolveVault({ dryRun: true, vaultPath: cliVault });
+    const lines = clientMemoryLines(await findClientMemoryDirs("error" in vault ? null : vault.path));
+    if (lines.length === 0) return;
+    process.stdout.write("→ client memory folders\n");
     for (const line of lines) process.stdout.write(`  ${line}\n`);
     process.stdout.write("\n");
   } catch {

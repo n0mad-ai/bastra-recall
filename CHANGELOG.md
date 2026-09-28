@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Client memory folders reach the vault** (#674; data from @zzallirog,
+  #701). `bastra doctor` lists every Claude Code
+  (`~/.claude/projects/*/memory`) and Codex (`~/.codex/memories`) memory
+  folder that holds notes and how many are not in the vault yet;
+  `bastra import clients [--dry-run]` imports each through the folder import
+  (Claude Code adapter, audit trail, idempotent re-runs) under its own label.
+
 - **After-session harvest** (#675; data from @zzallirog, #701). The Stop hook
   books each session; a daemon job reads the transcript once the session has
   been quiet for 30 minutes and relays up to three things the user said and
