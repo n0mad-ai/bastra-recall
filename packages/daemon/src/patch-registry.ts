@@ -98,7 +98,6 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -106,6 +105,7 @@ import {
   unlinkSync,
 } from "node:fs";
 import { findExecutable } from "./cli/exec.js";
+import { appliedByLastRun, canonicalPatchRoot, priorPatchIds, rememberPatch } from "./patch-provenance.js";
 
 export interface PatchEntry {
   /** Ordering prefix + slug, e.g. "010-cyrillic-slugify". Stable, user-visible. */
@@ -422,9 +422,13 @@ export function statusAll(root: string, home = homedir(), version?: string): Pat
   const dir = patchesDir(home);
   const applyRoot = resolveRoots(root).apply;
   const last = readLastRun(home);
+  const prior = priorPatchIds(canonicalPatchRoot(applyRoot), version, home);
   return activePatches(home).map((entry) => {
     const { state, detail } = probePatch(root, join(dir, entry.file), applyRoot);
-    if (state === "already-upstream" && appliedByLastRun(last, entry.id, applyRoot, version)) {
+    if (state === "already-upstream" && prior === null && !appliedByLastRun(last, entry.id, applyRoot, version)) {
+      return { entry, state: "unknown" as const, detail: "patch provenance is unreadable; keeping the registered patch" };
+    }
+    if (state === "already-upstream" && (appliedByLastRun(last, entry.id, applyRoot, version) || prior?.has(entry.id))) {
       return { entry, state: "applied-here" as const, detail };
     }
     return { entry, state, detail };
@@ -625,33 +629,6 @@ export interface ApplyOptions {
   version?: string;
 }
 
-function canonical(p: string): string {
-  try {
-    return realpathSync(p);
-  } catch {
-    return resolve(p);
-  }
-}
-
-/**
- * "Reverse-applies" has two causes, and only one means upstream merged the
- * patch. When the series runs over a tree that was not replaced (`bastra
- * update` with nothing newer to install), the user's own patch is still there
- * from the last run — read as "merged upstream" it was auto-retired, and the
- * next real update came up without it. It is ours when the last run applied or
- * kept this id on the same tree at the same version; with a root or version
- * missing from the record it is kept, because a kept patch costs nothing and a
- * wrong retire costs the patch (there is no un-retire).
- */
-function appliedByLastRun(last: LastRun | null, id: string, applyRoot: string, version?: string): boolean {
-  if (!last || !last.applied.includes(id)) return false;
-  // A record written before root/version existed — the very update that installs
-  // this code writes one — cannot rule the tree out, so it keeps.
-  if (last.root && canonical(last.root) !== canonical(applyRoot)) return false;
-  if (version !== undefined && last.version !== undefined) return version === last.version;
-  return true;
-}
-
 /**
  * Apply the whole series onto `root`, in order.
  *
@@ -668,8 +645,9 @@ export function applySeries(root: string, opts: ApplyOptions = {}): ApplyOutcome
 
   const dir = patchesDir(home);
   const roots = resolveRoots(root);
-  out.tree = { root: canonical(roots.apply), ...(opts.version ? { version: opts.version } : {}) };
+  out.tree = { root: canonicalPatchRoot(roots.apply), ...(opts.version ? { version: opts.version } : {}) };
   const last = readLastRun(home);
+  const prior = priorPatchIds(out.tree.root, opts.version, home);
   // The 3-way second chance is for a source checkout and nowhere else: it needs
   // an object database holding the pre-image blobs, and pointing it at whatever
   // repository an install root happens to sit inside would merge against a tree
@@ -694,7 +672,7 @@ export function applySeries(root: string, opts: ApplyOptions = {}): ApplyOutcome
     const file = join(dir, entry.file);
     const { state, detail } = probePatch(root, file, roots.apply);
 
-    if (state === "already-upstream" && appliedByLastRun(last, entry.id, roots.apply, opts.version)) {
+    if (state === "already-upstream" && (appliedByLastRun(last, entry.id, roots.apply, opts.version) || prior === null || prior.has(entry.id))) {
       out.kept.push(entry);
       continue;
     }
@@ -711,6 +689,8 @@ export function applySeries(root: string, opts: ApplyOptions = {}): ApplyOutcome
         continue;
       }
       const covered = takeSnapshot(file);
+      try { rememberPatch(out.tree.root, opts.version, entry.id, home); }
+      catch (err) { out.setAside.push({ entry, detail: `could not record patch provenance: ${(err as Error).message}` }); continue; }
       if (applyPatch(roots.apply, file).ok) {
         out.applied.push(entry);
         if (!covered) unenumerable.add(entry.id);
@@ -721,6 +701,8 @@ export function applySeries(root: string, opts: ApplyOptions = {}): ApplyOutcome
     // Conflict — one more attempt, and only where it is actually available.
     if (state === "conflict" && repo && !opts.dryRun) {
       takeSnapshot(file);
+      try { rememberPatch(out.tree.root, opts.version, entry.id, home); }
+      catch (err) { out.setAside.push({ entry, detail: `could not record patch provenance: ${(err as Error).message}` }); continue; }
       if (tryThreeWay(roots.apply, file)) {
         out.applied.push(entry);
         continue;

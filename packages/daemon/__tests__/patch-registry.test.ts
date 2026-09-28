@@ -794,6 +794,40 @@ test("a patch the last run applied is kept on the same tree, not retired as merg
   }
 });
 
+test("#733: a patch stays registered when the post-apply last-run write never lands", () => {
+  const s = scratch();
+  try {
+    writeFileSync(join(s.root, "src", "a.txt"), "old\n", "utf8");
+    addPatch(writePatchFile(s.home, "p.patch", diffFor("src/a.txt", ["old"], ["mine"])), s.home);
+    const first = applySeries(s.root, { home: s.home, skipSmoke: true, version: "1.0.0" });
+    assert.equal(first.applied.length, 1);
+    // Simulate interruption or ENOSPC before writeLastRun. The write-ahead
+    // marker was committed before git apply and must carry the attribution.
+    const again = applySeries(s.root, { home: s.home, skipSmoke: true, version: "1.0.0" });
+    assert.equal(again.kept.length, 1);
+    assert.equal(again.retired.length, 0);
+    assert.equal(activePatches(s.home).length, 1);
+  } finally {
+    s.cleanup();
+  }
+});
+
+test("#733: a provenance I/O failure prevents applying an untracked patch", () => {
+  const s = scratch();
+  try {
+    writeFileSync(join(s.root, "src", "a.txt"), "old\n", "utf8");
+    addPatch(writePatchFile(s.home, "p.patch", diffFor("src/a.txt", ["old"], ["mine"])), s.home);
+    mkdirSync(join(s.home, ".bastra", "patches", "reapply-provenance.json"));
+    const out = applySeries(s.root, { home: s.home, skipSmoke: true, version: "1.0.0" });
+    assert.equal(out.applied.length, 0);
+    assert.equal(out.setAside.length, 1);
+    assert.match(out.setAside[0].detail, /could not record patch provenance/);
+    assert.equal(readFileSync(join(s.root, "src", "a.txt"), "utf8"), "old\n");
+  } finally {
+    s.cleanup();
+  }
+});
+
 test("a new version that already contains the change still retires the patch", () => {
   const s = scratch();
   try {
