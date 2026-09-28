@@ -64,7 +64,9 @@ export function hookAgent(payload: unknown): HookAgent | null {
   if (!payload || typeof payload !== "object") return null;
   const id = (payload as Record<string, unknown>).agent_id;
   if (typeof id === "string" && id.length > 0) return "subagent";
-  return hookClientEvidence(payload) === "codex" ? null : "main";
+  // An unmarked payload may be an older/manual Codex registration. Only a
+  // Claude Code marker makes the missing agent_id evidence of the main thread.
+  return hookClientEvidence(payload) === "claude-code" ? "main" : null;
 }
 
 /**
@@ -75,13 +77,13 @@ export function hookAgent(payload: unknown): HookAgent | null {
  * `vector_late_settle` and `hook_act` alike. One constructor, so a lane cannot
  * send `client` and forget `agent`.
  *
- * `client` is the surface default (`hookClient`), not the evidence — the
- * loopback rows have always booked it that way; the lane's own row uses
- * `hookClientEvidence` (#507).
+ * `client` is evidence, just as on the lane's own row. An unmarked Codex
+ * registration must not become a Claude Code row merely because the default
+ * hint surface is Claude Code (#507/#652).
  */
 export interface HookCaller {
   session_id: string | null;
-  client: HookClient;
+  client: HookClientEvidence;
   agent: HookAgent | null;
 }
 
@@ -89,7 +91,7 @@ export function hookCaller(payload: unknown): HookCaller {
   const sid = payload && typeof payload === "object" ? (payload as Record<string, unknown>).session_id : undefined;
   return {
     session_id: typeof sid === "string" ? sid : null,
-    client: hookClient(payload),
+    client: hookClientEvidence(payload),
     agent: hookAgent(payload),
   };
 }
