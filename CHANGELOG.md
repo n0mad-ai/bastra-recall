@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Learned bridges have a way down** (#129, part of it; data from
+  @zzallirog, #701). A bridge (confirmed ones too) with 20 or more fires in 30
+  days and no load or acted-on episode after any recall it expanded is
+  demoted: it keeps its evidence but widens queries only at unconfirmed
+  weight. An outcome restores it; another 30 days of fires without one move it
+  to `bridges/archive/` (reversible, logged in `bridges/archive/log.jsonl`),
+  and the mint does not write it back. `bastra doctor` shows demotions and
+  archives under "learned bridges". New bridge field `demoted_at` is optional;
+  old files load unchanged. The held-out lift gate #129 asks for before
+  contribution is still open.
+
 - **git acts that lose work are snapshotted first** (#650 follow-up, #691;
   design and implementation by @zzallirog — PR #692 is the design doc;
   opt-in, see the archiving `rm` below). With the opt-in on, a Claude Code

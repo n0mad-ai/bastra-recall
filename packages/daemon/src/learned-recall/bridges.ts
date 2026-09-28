@@ -42,13 +42,19 @@ export interface Bridge {
   /** Vocabulary the bridge adds to a matching query to broaden recall. */
   expansion_terms: string[];
   /** Independent confirmations (verify-loop evidence). 1 when freshly minted;
-   *  CONFIRMED_BRIDGE_EVIDENCE or more makes the bridge permanent (#672). */
+   *  CONFIRMED_BRIDGE_EVIDENCE or more exempts it from the TTL (#672); only demotion (#129) takes it down. */
   evidence: number;
   /** #672: ISO timestamp of the first local write. Optional and additive — files
    *  written before #672 (all confirmed) and cloned Commons bridges have none.
    *  An unconfirmed local bridge older than UNCONFIRMED_BRIDGE_TTL_DAYS by this
    *  stamp is dropped at the next mint pass. */
   first_seen?: string;
+  /** #129: ISO timestamp of the demotion — the bridge fired at least
+   *  DEMOTION_MIN_FIRES times inside DEMOTION_WINDOW_DAYS and no recall it
+   *  expanded led to a load or an acted-on episode. A demoted bridge widens a
+   *  query only at unconfirmed weight; one more window without an outcome moves
+   *  it to archive/, an outcome clears the stamp. Optional and additive. */
+  demoted_at?: string;
   /** Pseudonymous contributor hash (Commons verifierId shape). Absent for local mints. */
   verifier?: string;
   date?: string;
@@ -229,6 +235,16 @@ function triggerOverlap(b: Bridge, queryTerms: Set<string>): number {
   return n;
 }
 
+/** #129: did this bridge contribute to a logged expansion? The event names
+ *  only the added terms, not the bridge, so a fire is attributed when the
+ *  query meets the bridge's trigger rule (the confirmed one, the loosest) and
+ *  at least one added term is one of its expansions. `queryTerms` =
+ *  distinctiveTerms(query) of the logged (unexpanded) query. */
+export function bridgeFiredOn(b: Bridge, queryTerms: Set<string>, added: readonly string[]): boolean {
+  if (triggerOverlap(b, queryTerms) < requiredOverlap(b)) return false;
+  return added.some((t) => b.expansion_terms.includes(t));
+}
+
 /** Evidence a bridge needs to be written and loaded at all.
  *
  *  20.08. this was 2: the first in-band mint wrote 116 evidence-1 bridges from
@@ -241,7 +257,7 @@ function triggerOverlap(b: Bridge, queryTerms: Set<string>): number {
  *  within UNCONFIRMED_BRIDGE_TTL_DAYS (pruneUnconfirmedBridges). */
 export const MIN_BRIDGE_EVIDENCE = 1;
 
-/** #672: from this evidence on a bridge is confirmed — full weight, never expires.
+/** #672: from this evidence on a bridge is confirmed — full weight (unless demoted, #129), never expires by age.
  *  The old write threshold, so every bridge written before #672 is confirmed. */
 export const CONFIRMED_BRIDGE_EVIDENCE = 2;
 
@@ -256,6 +272,13 @@ const MAX_UNCONFIRMED_EXPANSION = 3;
 
 export function isConfirmedBridge(b: Pick<Bridge, "evidence">): boolean {
   return b.evidence >= CONFIRMED_BRIDGE_EVIDENCE;
+}
+
+/** #129: a confirmed bridge that has not been demoted — the only kind that
+ *  widens a query at full weight. Expiry still reads isConfirmedBridge: a
+ *  demoted bridge leaves through archive/, not through the TTL. */
+function hasFullWeight(b: Pick<Bridge, "evidence" | "demoted_at">): boolean {
+  return isConfirmedBridge(b) && typeof b.demoted_at !== "string";
 }
 
 /** #672: an unconfirmed LOCAL bridge whose first_seen is older than the TTL.
@@ -276,7 +299,7 @@ export function isExpiredUnconfirmed(
  *  least half its terms, never fewer than the confirmed rule asks. */
 function requiredOverlapFor(b: Bridge): number {
   const base = requiredOverlap(b);
-  return isConfirmedBridge(b) ? base : Math.max(base, Math.ceil(b.trigger_terms.length / 2));
+  return hasFullWeight(b) ? base : Math.max(base, Math.ceil(b.trigger_terms.length / 2));
 }
 
 // #162: the base query is capped BEFORE expansion terms are appended, so the
@@ -335,7 +358,9 @@ export class BridgePool {
         // Sort once by descending evidence here so the recall hot path (expansionsFor)
         // can iterate directly without re-sorting on every query.
         if (bucket.length > 0) {
-          bucket.sort((a, c) => c.evidence - a.evidence);
+          // #129: full-weight bridges first, so a demoted one never takes the
+          // budget ahead of a confirmed one that still earns its place.
+          bucket.sort((a, c) => Number(hasFullWeight(c)) - Number(hasFullWeight(a)) || c.evidence - a.evidence);
           byLang.set(lang, bucket);
         }
       }
@@ -372,7 +397,8 @@ export class BridgePool {
       if (triggerOverlap(b, queryTerms) < requiredOverlapFor(b)) continue;
       // #672: an unconfirmed bridge adds at most MAX_UNCONFIRMED_EXPANSION new
       // terms; confirmed bridges come first (pre-sorted) and keep full weight.
-      const cap = isConfirmedBridge(b) ? MAX_QUERY_EXPANSION : MAX_UNCONFIRMED_EXPANSION;
+      // #129: a demoted bridge is dampened the same way.
+      const cap = hasFullWeight(b) ? MAX_QUERY_EXPANSION : MAX_UNCONFIRMED_EXPANSION;
       let fromThis = 0;
       for (const e of b.expansion_terms) {
         if (fromThis >= cap) break;

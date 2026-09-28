@@ -119,7 +119,7 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
         return 0;
       }
       process.stdout.write(
-        `✓ minted ${outcome.minted} bridge(s) from ${outcome.reaches} acted-on reach(es) — ${outcome.written} written to ${join(bridgesPath(), "bridges")}, ${outcome.pruned} unconfirmed expired, ${outcome.archived ?? 0} archived\n` +
+        `✓ minted ${outcome.minted} bridge(s) from ${outcome.reaches} acted-on reach(es) — ${outcome.written} written to ${join(bridgesPath(), "bridges")}, ${outcome.pruned} unconfirmed expired, ${outcome.demoted ?? 0} demoted, ${outcome.archived ?? 0} archived\n` +
           "  a running daemon picks them up with its next scheduled mint, or restart it to load them now\n",
       );
       return 0;
@@ -232,7 +232,7 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       // Still not wired, but the blocker moved. #121 (far-slice logging) closed
       // 2026-06-16 and `mint`/`harvest` above produce real bridges, so "there is
       // no harvested material" stopped being true. The live gate is #129: a
-      // harvested bridge has promotion (`evidence`) and no demotion, the judge
+      // harvested bridge has only a local outcome-based demotion (#129), the judge
       // that mints it is the judge that scores it, and `expansionsFor` perturbs
       // every query sharing a trigger term — so contribution waits on measured
       // lift over a held-out set, not on more plumbing.

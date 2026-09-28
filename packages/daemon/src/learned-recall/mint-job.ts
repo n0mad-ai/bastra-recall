@@ -25,6 +25,7 @@ import {
   pruneUnconfirmedBridges,
   archiveMachineBridges,
 } from "./harvest.js";
+import { demoteIdleBridges } from "./demotion.js";
 import { envFirst, testRunLogDir } from "../env.js";
 
 export type MintTrigger = "cli" | "daemon-boot" | "daemon-interval";
@@ -36,9 +37,13 @@ export interface MintOutcome {
   /** #672: unconfirmed bridges dropped this pass because their TTL ran out.
    *  Optional on read — last-mint.json files from before #672 lack it. */
   pruned: number;
-  /** Bridges moved to archive/ this pass: #704 machine-vocabulary triggers.
+  /** Bridges moved to archive/ this pass: #704 machine-vocabulary triggers
+   *  and #129 demoted bridges that stayed without outcome.
    *  Optional on read — records from before #704 lack it. */
   archived?: number;
+  /** #129: bridges demoted / restored this pass. Optional on read. */
+  demoted?: number;
+  restored?: number;
 }
 
 export interface LastMintRecord extends MintOutcome {
@@ -98,6 +103,12 @@ export async function runInBandMint(opts: {
   // pool. Idempotent — the mint cannot produce such a bridge any more, so
   // after the first pass this finds nothing.
   outcome.archived = await archiveMachineBridges(opts.bridgesRoot, now);
+  // #129: a bridge whose fires never lead to a load or an acted-on episode
+  // is demoted, and archived after one more window without an outcome.
+  const demotion = await demoteIdleBridges(opts.bridgesRoot, events, now);
+  outcome.demoted = demotion.demoted;
+  outcome.restored = demotion.restored;
+  outcome.archived += demotion.archived;
   const record: LastMintRecord = {
     ts: new Date().toISOString(),
     host: hostname(),
@@ -151,6 +162,8 @@ async function writeMintTelemetry(record: LastMintRecord): Promise<void> {
       written: record.written,
       pruned: record.pruned,
       archived: record.archived ?? 0,
+      demoted: record.demoted ?? 0,
+      restored: record.restored ?? 0,
     };
     await appendFile(
       join(logDir, `events-${record.ts.slice(0, 10)}.jsonl`),
