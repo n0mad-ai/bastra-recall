@@ -84,6 +84,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Learned bridges work in every language** (#707; reported by @zzallirog,
+  #701). The language is now only the folder a bridge is filed under:
+  detection still names de/en, anything else (and anything it abstains on)
+  goes to `bridges/und/`. Without a `bastra bridges language` override a
+  query consults every folder; the trigger rule (two shared trigger terms)
+  decides. Before, a Russian, Greek or Turkish query minted no bridge and got
+  none, and a Russian prompt with Latin paths only saw `en` bridges.
+  Bridge terms keep every letter and combining mark (Cyrillic, Greek,
+  Devanagari; Turkish "şifresi" is no longer cut to "ifresi"). Folders with
+  any 2–3 letter language code load. Scripts without spaces (Chinese,
+  Japanese, Thai) still lack word segmentation — open in #707.
+- **Other fixed language lists got a neutral path** (#707).
+  `PHRASE_STOPWORDS` and the trivial-ack words are data per language; a
+  language without a list drops no word as a function word, and an unlisted
+  ack runs one score-gated recall. A prompt without any letter or digit
+  ("👍👍", "!!!") now counts as trivial in every script. The Stop lane's
+  decision suggestion has a language-neutral fallback like #678's for
+  frustration: the user picks one of the numbered options the agent offered
+  with a question ("2 olsun", "вариант 1", "2でお願いします").
+
 - **Claude Code hook registrations carry a client marker** (#657, #507).
   `bastra install` now writes `BASTRA_HOOK_CLIENT=claude-code` in front of
   every Claude Code hook command, as it already did with `codex` for Codex.

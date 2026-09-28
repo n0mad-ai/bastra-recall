@@ -257,7 +257,7 @@ async function main(): Promise<void> {
       const lang = await getSharedRecallLanguage();
       sharedRecallLang = isSupportedLanguage(lang) ? lang : null;
       console.error(
-        `[bastra-recall] shared learned-recall: enabled (${learnedBridges.size()} bridges across ${learnedBridges.languages().join(", ") || "no"} languages, query-language ${sharedRecallLang ?? "auto-detect"})`,
+        `[bastra-recall] shared learned-recall: enabled (${learnedBridges.size()} bridges across ${learnedBridges.languages().join(", ") || "no"} languages, query-language ${sharedRecallLang ?? "auto — every folder"})`,
       );
     } catch (err) {
       console.error(`[bastra-recall] shared learned-recall: failed to load (${(err as Error).message}) — continuing without`);

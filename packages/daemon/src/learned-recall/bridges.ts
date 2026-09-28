@@ -9,9 +9,13 @@
  * encoder learning the far↔near map, a bridge widens the BM25 surface so a
  * far-worded query reaches the memory the contributor already proved it resolves to.
  *
- * Pools are partitioned by language (product requirement): a German bridge only
- * ever fires for a query detected as German. Bridges are loaded read-only from a
- * git-synced clone (mirroring Bastra Commons) and never written there by the daemon.
+ * #707: the language is a filing folder, not a gate. Bridges are stored under
+ * bridges/<lang>/ (detected language, or "und" when detection abstains), and a
+ * query without a configured language override consults every folder: the
+ * trigger rule (two shared trigger terms) is the match, and trigger terms are
+ * words of the language they were minted from. Before, only de/en queries could
+ * mint or fire at all. Bridges are loaded read-only from a git-synced clone
+ * (mirroring Bastra Commons) and never written there by the daemon.
  *
  * The shared/contribution path is privacy-sensitive: scrubBridge() is a best-effort
  * filter, and the real guarantee is the same PR review gate Commons uses. The local
@@ -29,13 +33,14 @@ import { readdirSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { capAtWordBoundary } from "@bastra-recall/core";
-import { detectLanguage, isSupportedLanguage, type SupportedLanguage } from "./language.js";
+import { bridgeLanguage, isBridgeLanguage } from "./language.js";
 
 export interface Bridge {
   /** Deterministic dedup key = hash(lang + sorted trigger + sorted expansion). */
   id: string;
-  /** Language of the far query this bridge serves; selects which pool it lives in. */
-  lang: SupportedLanguage;
+  /** Language of the far query this bridge was minted from ("und" when not
+   *  detected, #707); the folder it is filed under. */
+  lang: string;
   /** Distinctive tokens of the far query — at least two must appear for the
    *  bridge to fire (all of them for a one-term bridge), see MIN_TRIGGER_OVERLAP. */
   trigger_terms: string[];
@@ -127,9 +132,15 @@ export function isMachineVocabulary(terms: string[]): boolean {
   return terms.filter(isMachineTerm).length * 2 > terms.length;
 }
 
+/** #707: every letter of every script survives (`\p{L}`), plus combining marks
+ *  (`\p{M}` — Devanagari vowel signs, the dot Turkish "İ" lowercases to). The
+ *  old `[^a-zäöüß0-9]` split dropped Cyrillic, Greek and CJK entirely and cut
+ *  Turkish "şifresi" to "ifresi". */
+const TERM_SPLIT_RE = /[^\p{L}\p{M}\p{N}]+/u;
+
 export function distinctiveTerms(text: string): string[] {
   const seen = new Set<string>();
-  for (const raw of text.toLowerCase().split(/[^a-zäöüß0-9]+/i)) {
+  for (const raw of text.toLowerCase().split(TERM_SPLIT_RE)) {
     if (raw.length < MIN_TERM_LEN) continue;
     if (GENERIC_TERMS.has(raw)) continue;
     if (isEphemeralTerm(raw)) continue;
@@ -153,16 +164,15 @@ const MAX_EXPANSION_TERMS = 10;
  * Build a bridge from a successful recall: the far query's distinctive terms become
  * the trigger, and the resolved memory's distinctive terms (those NOT already in the
  * query) become the expansion — the near vocabulary the far query failed to use.
- * Returns null when there is no usable signal or the language could not be detected
- * (no language → no pool to put it in).
+ * Returns null when there is no usable signal. The language only files the bridge
+ * (#707): an undetected one mints under "und".
  */
 export function mintBridge(
   query: string,
   memoryTerms: string[],
-  lang: SupportedLanguage | null = detectLanguage(query).lang,
+  lang: string = bridgeLanguage(query),
   date?: string,
 ): Bridge | null {
-  if (!lang) return null;
   const queryTerms = distinctiveTerms(query);
   // #704: a query made mostly of harness vocabulary is machine text, whoever
   // logged it; the rest keeps its topic words and loses the machine ones.
@@ -309,25 +319,35 @@ function requiredOverlapFor(b: Bridge): number {
 // 4000 base + ≤12 terms of ≤24 chars stays far below the core cap.
 const MAX_BASE_QUERY_CHARS = 4000;
 
+/** #129: full-weight bridges first, so a demoted one never takes the budget
+ *  ahead of a confirmed one that still earns its place; then by evidence. */
+const byWeight = (a: Bridge, c: Bridge): number =>
+  Number(hasFullWeight(c)) - Number(hasFullWeight(a)) || c.evidence - a.evidence;
+
 /**
- * A language-partitioned, read-only set of bridges. Built once at daemon boot from
- * <root>/bridges/<lang>/*.json (mirroring the Commons recipes layout). Never written.
+ * A read-only set of bridges, filed by language folder. Built once at daemon boot
+ * from <root>/bridges/<lang>/*.json (mirroring the Commons recipes layout). Never written.
  */
 export class BridgePool {
-  private constructor(private readonly byLang: Map<SupportedLanguage, Bridge[]>) {}
+  /** Every folder's bridges in one list, pre-sorted — the default (#707). */
+  private readonly all: Bridge[];
+
+  private constructor(private readonly byLang: Map<string, Bridge[]>) {
+    this.all = [...byLang.values()].flat().sort(byWeight);
+  }
 
   static empty(): BridgePool {
     return new BridgePool(new Map());
   }
 
   /** Load <root>/bridges/<lang>/*.json into per-language buckets. Defensive: skips
-   *  corrupt files and unknown languages, never throws. */
+   *  corrupt files and folders that are not a language code (archive/), never throws. */
   static load(rootDir: string, now: Date = new Date()): BridgePool {
-    const byLang = new Map<SupportedLanguage, Bridge[]>();
+    const byLang = new Map<string, Bridge[]>();
     const base = join(rootDir, "bridges");
     try {
       for (const langDir of readdirSync(base, { withFileTypes: true })) {
-        if (!langDir.isDirectory() || !isSupportedLanguage(langDir.name)) continue;
+        if (!langDir.isDirectory() || !isBridgeLanguage(langDir.name)) continue;
         const lang = langDir.name;
         const bucket: Bridge[] = [];
         for (const f of readdirSync(join(base, lang))) {
@@ -358,9 +378,7 @@ export class BridgePool {
         // Sort once by descending evidence here so the recall hot path (expansionsFor)
         // can iterate directly without re-sorting on every query.
         if (bucket.length > 0) {
-          // #129: full-weight bridges first, so a demoted one never takes the
-          // budget ahead of a confirmed one that still earns its place.
-          bucket.sort((a, c) => Number(hasFullWeight(c)) - Number(hasFullWeight(a)) || c.evidence - a.evidence);
+          bucket.sort(byWeight);
           byLang.set(lang, bucket);
         }
       }
@@ -370,24 +388,25 @@ export class BridgePool {
     return new BridgePool(byLang);
   }
 
-  size(lang?: SupportedLanguage): number {
+  size(lang?: string): number {
     if (lang) return this.byLang.get(lang)?.length ?? 0;
     let n = 0;
     for (const b of this.byLang.values()) n += b.length;
     return n;
   }
 
-  languages(): SupportedLanguage[] {
+  languages(): string[] {
     return [...this.byLang.keys()];
   }
 
   /**
-   * Collect expansion terms from every bridge in `lang` whose trigger overlaps the
-   * query. Higher-evidence bridges contribute first; result is deduped, excludes
-   * terms already in the query, and is capped. Pure — no detection here.
+   * Collect expansion terms from every bridge whose trigger overlaps the query —
+   * in `lang` only when one is given (the configured override), else in every
+   * folder (#707). Higher-evidence bridges contribute first; result is deduped,
+   * excludes terms already in the query, and is capped. Pure — no detection here.
    */
-  expansionsFor(query: string, lang: SupportedLanguage): string[] {
-    const bridges = this.byLang.get(lang);
+  expansionsFor(query: string, lang: string | null = null): string[] {
+    const bridges = lang ? this.byLang.get(lang) : this.all;
     if (!bridges || bridges.length === 0) return [];
     const queryTerms = new Set(distinctiveTerms(query));
     if (queryTerms.size === 0) return [];
@@ -419,7 +438,7 @@ function isValidBridge(b: unknown): b is Bridge {
   return (
     !!x &&
     typeof x.id === "string" &&
-    isSupportedLanguage(x.lang) &&
+    isBridgeLanguage(x.lang) &&
     Array.isArray(x.trigger_terms) &&
     x.trigger_terms.every((t) => typeof t === "string") &&
     Array.isArray(x.expansion_terms) &&
@@ -434,28 +453,29 @@ export interface ExpansionResult {
   /** The query to actually run — original (base capped at MAX_BASE_QUERY_CHARS
    *  when expansions fire), plus any bridge expansion terms appended. */
   query: string;
-  /** The language the bridge layer routed on (null = abstained, no expansion). */
-  lang: SupportedLanguage | null;
+  /** The configured override, else the query's filing language (detected or
+   *  "und", #707). Null only without a pool. Telemetry logs it with `added`. */
+  lang: string | null;
   /** The expansion terms that were appended (empty when none fired). */
   added: string[];
 }
 
 /**
  * The single recall-time entry point used by both the MCP recall handler and the
- * hook recall path. Detects the query language (or uses a configured override),
- * consults ONLY the matching language pool, and returns the (possibly widened)
- * query. Local-first/no-op safety: a null pool or an abstained/unsupported language
- * returns the query untouched.
+ * hook recall path. With a configured language override only that folder is
+ * consulted; without one every folder is (#707) — an undetected language takes
+ * the same path as de/en instead of getting no bridges. Returns the (possibly
+ * widened) query. Local-first/no-op safety: a null pool returns it untouched.
  */
 export function expandQuery(
   query: string,
   pool: BridgePool | null | undefined,
-  opts: { configuredLang?: SupportedLanguage | null } = {},
+  opts: { configuredLang?: string | null } = {},
 ): ExpansionResult {
   if (!pool) return { query, lang: null, added: [] };
-  const lang = opts.configuredLang ?? detectLanguage(query).lang;
-  if (!lang) return { query, lang: null, added: [] };
-  const added = pool.expansionsFor(query, lang);
+  const configured = opts.configuredLang ?? null;
+  const lang = configured ?? bridgeLanguage(query);
+  const added = pool.expansionsFor(query, configured);
   if (added.length === 0) return { query, lang, added: [] };
   // Trigger-Matching (expansionsFor) sah die VOLLE Query; nur die Basis des
   // zusammengesetzten Suchstrings wird gedeckelt (Wortgrenze, nie im Token),

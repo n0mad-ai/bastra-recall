@@ -5,8 +5,9 @@
  *      DOES find the memory once a language-matched bridge widens it;
  *   2. with the layer off (no pool), the same query finds nothing — so the lift
  *      is attributable to the bridge, not the index;
- *   3. a bridge in the WRONG language pool does not fire — language isolation
- *      holds through the handler, not just in the unit test.
+ *   3. #707: the language folder is not a gate — a bridge filed under another
+ *      folder ("und") lifts the query too; only a configured language override
+ *      restricts the pool, and that restriction holds through the handler.
  *
  * Run: npx tsx --test packages/daemon/__tests__/learned-recall-integration.test.ts
  */
@@ -20,7 +21,6 @@ import { Vault, SearchIndex } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { recallHandler, type ToolDeps } from "../src/tool-handlers.js";
 import { BridgePool, bridgeId, type Bridge } from "../src/learned-recall/bridges.js";
-import type { SupportedLanguage } from "../src/learned-recall/language.js";
 
 // A memory whose recall trigger uses ONLY near, technical/English vocabulary —
 // deliberately sharing no terms with the German far query below.
@@ -48,7 +48,7 @@ function nearMemory(): string {
   ].join("\n");
 }
 
-function bridge(lang: SupportedLanguage, trigger: string[], expansion: string[]): Bridge {
+function bridge(lang: string, trigger: string[], expansion: string[]): Bridge {
   return { id: bridgeId(lang, trigger, expansion), lang, trigger_terms: trigger, expansion_terms: expansion, evidence: 3 };
 }
 
@@ -101,19 +101,24 @@ test("a German bridge lifts the far query's score for the near-worded memory", a
   });
 });
 
-test("language isolation: an English-pool bridge with the same triggers leaves a German query unchanged", async () => {
+test("#707: a bridge in another language folder lifts the query; a configured override still isolates", async () => {
   await withVault(async (mkDeps) => {
     const off = scoreFor(await recallHandler(mkDeps(), { query: FAR_DE_QUERY, k: 5, min_score: 0 }), "panel-dismiss");
-    // Same trigger/expansion terms, but filed under the English pool. The query
-    // detects as German, so only the (empty) German pool is consulted.
+    // Same trigger/expansion terms, filed under "und". The query detects as
+    // German; without an override every folder is consulted.
     const pool = await poolWith([
-      bridge("en", ["fenster", "schließt"], ["resignkey", "observer", "attachedsheet", "dismiss"]),
+      bridge("und", ["fenster", "schließt"], ["resignkey", "observer", "attachedsheet", "dismiss"]),
     ]);
-    const en = scoreFor(
+    const auto = scoreFor(
       await recallHandler(mkDeps({ learnedBridges: pool }), { query: FAR_DE_QUERY, k: 5, min_score: 0 }),
       "panel-dismiss",
     );
-    assert.equal(en, off, "a wrong-language bridge must not change recall at all");
+    assert.ok(auto > off, `the filing folder must not block the bridge (off=${off}, auto=${auto})`);
+    const pinned = scoreFor(
+      await recallHandler(mkDeps({ learnedBridges: pool, sharedRecallLang: "de" }), { query: FAR_DE_QUERY, k: 5, min_score: 0 }),
+      "panel-dismiss",
+    );
+    assert.equal(pinned, off, "with the override pinned to de, a bridge outside bridges/de/ does not change recall");
   });
 });
 

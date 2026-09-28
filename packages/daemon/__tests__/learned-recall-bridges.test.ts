@@ -106,8 +106,47 @@ test("mintBridge builds trigger from query, expansion from non-overlapping memor
   assert.equal(b!.evidence, 1);
 });
 
-test("mintBridge returns null when language cannot be detected", () => {
-  assert.equal(mintBridge("NSPanel resignKey", ["foo", "bar"], null), null);
+test("#707: an undetected language still mints — filed under und", () => {
+  const b = mintBridge("NSPanel resignKey", ["observer", "attachedsheet"]);
+  assert.ok(b, "abstained detection no longer blocks the mint");
+  assert.equal(b!.lang, "und");
+});
+
+test("#707: distinctiveTerms keeps every letter — Cyrillic, Greek, Turkish, Devanagari", () => {
+  assert.deepEqual(distinctiveTerms("почему сервер падает"), ["почему", "сервер", "падает"]);
+  assert.deepEqual(distinctiveTerms("γιατί πέφτει ο διακομιστής"), ["γιατί", "πέφτει", "διακομιστής"]);
+  assert.ok(distinctiveTerms("veritabanı şifresi nerede").includes("şifresi"), "Turkish ş is kept, not cut to 'ifresi'");
+  assert.ok(distinctiveTerms("İstanbul sunucusu").includes("i̇stanbul"), "the combining dot of a lowercased İ stays inside the word");
+  assert.ok(distinctiveTerms("सर्वर क्रैश होता है").includes("सर्वर"), "Devanagari vowel signs (\\p{M}) stay inside the word");
+});
+
+test("#707: a Russian query mints a bridge and a later Russian query fires it (no language list involved)", async () => {
+  const minted = mintBridge("почему сервер падает ночью", ["systemd", "watchdog", "перезапуск"]);
+  assert.ok(minted);
+  assert.equal(minted!.lang, "und", "Russian has no stopword set — filed under und");
+  assert.ok(minted!.trigger_terms.includes("сервер"));
+  await withPool([{ ...minted!, evidence: CONFIRMED_BRIDGE_EVIDENCE }], async (pool) => {
+    const r = expandQuery("сервер опять падает", pool);
+    assert.deepEqual(r.added, ["systemd", "watchdog", "перезапуск"]);
+    assert.equal(r.lang, "und");
+  });
+});
+
+test("#707: a Russian prompt full of Latin paths (detected as en) still reaches a bridge filed under und", async () => {
+  const ru = bridge({ lang: "und", trigger_terms: ["сервер", "падает"], expansion_terms: ["watchdog"] });
+  await withPool([ru], async (pool) => {
+    const r = expandQuery("the logs in /var/log/app: сервер падает again and again", pool);
+    assert.deepEqual(r.added, ["watchdog"]);
+  });
+});
+
+test("#707: a Greek and a Turkish bridge fire on their own queries", async () => {
+  const el = bridge({ lang: "und", trigger_terms: ["πέφτει", "διακομιστής"], expansion_terms: ["systemd"] });
+  const tr = bridge({ lang: "und", trigger_terms: ["veritabanı", "şifresi"], expansion_terms: ["keychain"] });
+  await withPool([el, tr], async (pool) => {
+    assert.deepEqual(expandQuery("γιατί πέφτει ο διακομιστής", pool).added, ["systemd"]);
+    assert.deepEqual(expandQuery("veritabanı şifresi nerede", pool).added, ["keychain"]);
+  });
 });
 
 test("mintBridge returns null when there is no non-overlapping expansion", () => {
@@ -157,13 +196,17 @@ test("BridgePool ignores corrupt and unknown-language files", async () => {
   const root = await mkdtemp(join(tmpdir(), "bastra-bridges-"));
   try {
     await mkdir(join(root, "bridges", "de"), { recursive: true });
+    await mkdir(join(root, "bridges", "not-a-lang"), { recursive: true });
     await mkdir(join(root, "bridges", "fr"), { recursive: true });
     await writeFile(join(root, "bridges", "de", "ok.json"), JSON.stringify(bridge({ lang: "de", trigger_terms: ["panel"], expansion_terms: ["sheet", "modal"] })), "utf8");
     await writeFile(join(root, "bridges", "de", "corrupt.json"), "{ not json", "utf8");
-    await writeFile(join(root, "bridges", "fr", "x.json"), JSON.stringify({ lang: "fr", trigger_terms: ["x"], expansion_terms: ["y"], id: "z", evidence: 1 }), "utf8");
+    await writeFile(join(root, "bridges", "not-a-lang", "x.json"), JSON.stringify(bridge({ lang: "not-a-lang", trigger_terms: ["panel"], expansion_terms: ["sheet"] })), "utf8");
+    // #707: a language without a stopword set is a folder like any other.
+    await writeFile(join(root, "bridges", "fr", "y.json"), JSON.stringify(bridge({ lang: "fr", trigger_terms: ["fenêtre"], expansion_terms: ["panel"] })), "utf8");
     const pool = BridgePool.load(root);
     assert.equal(pool.size("de"), 1, "corrupt file skipped, valid kept");
-    assert.deepEqual(pool.languages(), ["de"], "unknown language dir ignored");
+    assert.equal(pool.size("fr"), 1, "a language code folder loads whether or not detection knows it");
+    assert.deepEqual(pool.languages().sort(), ["de", "fr"], "a folder that is not a language code is ignored");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -192,15 +235,17 @@ test("expandQuery appends matching expansion terms and routes on detected langua
   });
 });
 
-test("expandQuery is a no-op for a null pool or abstained language", async () => {
+test("expandQuery is a no-op for a null pool; an abstained language consults every folder (#707)", async () => {
   assert.deepEqual(expandQuery("anything", null), { query: "anything", lang: null, added: [] });
   const deB = bridge({ lang: "de", trigger_terms: ["panel"], expansion_terms: ["resignkey"] });
-  await withPool([deB], async (pool) => {
-    // code-shaped query → language abstains → no expansion even though a bridge exists
+  const enB = bridge({ lang: "en", trigger_terms: ["nspanel", "observer"], expansion_terms: ["attachedsheet"] });
+  await withPool([deB, enB], async (pool) => {
+    // code-shaped query → detection abstains → filed as "und", but the pool is consulted
     const r = expandQuery("NSPanel resignKey Observer", pool);
-    assert.equal(r.lang, null);
-    assert.equal(r.added.length, 0);
-    assert.equal(r.query, "NSPanel resignKey Observer");
+    assert.equal(r.lang, "und");
+    assert.deepEqual(r.added, ["attachedsheet"], "the trigger rule decides, not the language");
+    // no trigger overlap → untouched
+    assert.equal(expandQuery("völlig anderes Thema hier", pool).added.length, 0);
   });
 });
 
