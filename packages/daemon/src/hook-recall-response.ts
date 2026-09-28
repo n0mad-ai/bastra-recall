@@ -19,6 +19,11 @@ export interface HookRecallHit {
   scope: string;
   summary: string;
   score: number;
+  /** #148: the hit matched on its hand-written `recall_when`. */
+  matched_recall_when?: boolean;
+  /** P0: how strong that trigger anchor is — `strong` = two exact trigger
+   *  terms or one rare one. */
+  anchor_strength?: "strong" | "weak";
 }
 
 export interface HookRecallResponse {

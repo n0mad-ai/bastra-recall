@@ -94,6 +94,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The bash tripwire lists only memories wired to the command** (#614).
+  Under the STOP / CAUTION / reversible-form text, a recalled memory now
+  appears only when its own `recall_when` matched the command with a strong
+  anchor. The offline check the issue asked for first (157 hinting calls,
+  2026-08-22 to 09-28) showed the hinted memories were unrelated topics
+  matched through path tokens — the reason none was ever loaded. The static
+  warning is unchanged and unconditional. New telemetry field
+  `dropped_unanchored_count` on `bash_hook_call`.
+
 - **PreToolUse is a compact first-touch hint** (#621). The Write/Edit lane
   shows recall hints only for the first delivered hint of a task area per
   session (repo + two directory levels), at most one candidate as

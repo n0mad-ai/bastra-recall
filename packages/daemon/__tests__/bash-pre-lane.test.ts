@@ -222,6 +222,9 @@ describe("bash-pre-hook: backoff exemption (#161)", () => {
                 scope: "all-projects",
                 summary: "Never rm -rf without explicit ok.",
                 score: 80,
+                // #614: only a strongly anchored recall_when rides under the warning.
+                matched_recall_when: true,
+                anchor_strength: "strong",
               },
             ],
             vault_size: 10,
@@ -544,7 +547,7 @@ describe("bash-pre-hook: query is the command head, hints dedup per session (22.
           res.end(
             JSON.stringify({
               hits: [
-                { id: hitId, title: "never rm -rf node_modules", type: "user-preference", scope: "all-projects", summary: "Ask first.", score: 120 },
+                { id: hitId, title: "never rm -rf node_modules", type: "user-preference", scope: "all-projects", summary: "Ask first.", score: 120, matched_recall_when: true, anchor_strength: "strong" },
               ],
               vault_size: 10,
               latency_ms: 1,
@@ -589,6 +592,49 @@ describe("bash-pre-hook: query is the command head, hints dedup per session (22.
     } finally {
       await daemon.close();
       await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("#614 — only a memory wired to this command rides under the warning", () => {
+  it("drops title-only matches, keeps a strong recall_when anchor, and counts what it dropped", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-614-"));
+    const logDir = await mkdtemp(join(tmpdir(), "bastra-bashpre-614-log-"));
+    const daemon = await startMockDaemon((req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      if (req.url === "/hook/recall") {
+        res.end(
+          JSON.stringify({
+            hits: [
+              { id: "avatar-corners", title: "Avatars are square", type: "lesson", scope: "all-projects", summary: "UI.", score: 150 },
+              { id: "weak-trigger", title: "tmp", type: "lesson", scope: "all-projects", summary: "x", score: 140, matched_recall_when: true, anchor_strength: "weak" },
+              { id: "wired-rule", title: "Test data", type: "lesson", scope: "all-projects", summary: "Never delete by pattern.", score: 120, matched_recall_when: true, anchor_strength: "strong" },
+            ],
+            vault_size: 10,
+            latency_ms: 1,
+            recall_id: "t",
+          }),
+        );
+      } else {
+        res.end("{}");
+      }
+    });
+    try {
+      const { stdout } = await runHook(
+        { hook_event_name: "PreToolUse", tool_name: "Bash", session_id: "sess-614", tool_input: { command: "rm -rf /tmp/testdata-*" } },
+        { BASTRA_HTTP_URL: `http://127.0.0.1:${daemon.port}`, BASTRA_HOOK_STATE_DIR: stateDir, BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir },
+      );
+      assert.match(stdout, /STOP — destructive Bash command detected/, "the static warning is unconditional");
+      assert.match(stdout, /wired-rule/);
+      assert.doesNotMatch(stdout, /avatar-corners/);
+      assert.doesNotMatch(stdout, /weak-trigger/);
+      const row = (await readTelemetryEvents(logDir)).find((e) => e.kind === "bash_hook_call");
+      assert.equal(row?.dropped_unanchored_count, 2);
+      assert.deepEqual(row?.hinted_ids, ["wired-rule"]);
+    } finally {
+      await daemon.close();
+      await rm(stateDir, { recursive: true, force: true });
+      await rm(logDir, { recursive: true, force: true });
     }
   });
 });

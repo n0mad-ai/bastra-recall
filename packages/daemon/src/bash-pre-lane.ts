@@ -730,9 +730,24 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
   // keinen Punkt. Die Warnung selbst hängt ohnehin nicht an einem Score.
   const unfused = isUnfused(resp);
   const hits: RecallHit[] = [];
+  // #614: only a memory whose own hand-written `recall_when` matched this
+  // command with a strong anchor is listed under the warning. After the #358
+  // cut, 0 of 118 hinting calls had a hinted id loaded, and the offline check
+  // the issue asked for first showed why: the top hinted memories (Discord
+  // bot token, avatar corners, UI layout, Hetzner access — 157 hinting calls,
+  // 2026-08-22..09-28) are about nothing a destructive shell command does; the
+  // command's path tokens matched their titles. A rule someone wired to fire
+  // on this kind of command is the one thing worth the tokens here; the
+  // static warning above still goes out unconditionally.
+  let droppedUnanchoredCount = 0;
   if (resp && Array.isArray(resp.hits)) {
     for (const h of resp.hits) {
-      if (unfused || h.score >= SCORE_FLOOR) hits.push(h);
+      if (!unfused && h.score < SCORE_FLOOR) continue;
+      if (h.matched_recall_when !== true || h.anchor_strength !== "strong") {
+        droppedUnanchoredCount++;
+        continue;
+      }
+      hits.push(h);
     }
   }
   if (resp && hits.length === 0) status = "no-hits";
@@ -843,6 +858,7 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
     daemon_reachable: resp !== null,
     hint_count: emitted.length,
     dropped_dedup_count: droppedDedupCount,
+    dropped_unanchored_count: droppedUnanchoredCount,
     top_score: resp?.hits?.[0]?.score ?? null,
     latency_ms_total: Date.now() - startedAt,
     hint_tokens_est: Math.ceil(block.length / 4),
@@ -942,6 +958,9 @@ interface BashHookCallTelemetry {
   hint_count: number;
   /** Memory lines dropped by the session dedup (same clock as the write lane). */
   dropped_dedup_count: number;
+  /** #614: recalled hits left out because no strong `recall_when` anchor tied
+   *  them to this command. */
+  dropped_unanchored_count: number;
   top_score: number | null;
   latency_ms_total: number;
   /** Geschätzte Tokens des injizierten Tripwire-Blocks (#72). */
