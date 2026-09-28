@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Dense-weighted fusion, opt-in** (#641). On LongMemEval-S the dense arm
+  alone ranks the gold session first more often than the equal-weight RRF
+  (83.8% vs 79.6% R@1, 500 questions): BM25 puts a distractor at rank 1 that
+  the dense arm ranks 2nd or 3rd, and equal weights hand it rank 1.
+  `BASTRA_RRF_VECTOR_WEIGHT=<w>` weights the dense arm (default `1`, the
+  shipped fusion, unchanged). At `1.5`: LongMemEval-S R@1 79.6% → 83.2%
+  (27 gained / 9 lost, p = 0.004), R@5 98.2% unchanged; gold-set run A keeps
+  both M1 gates (relevant_loss 0.2137 → 0.2301 ≤ 0.24, false abstention 0).
+  `2` gains more on LongMemEval (84.8%) but breaks false abstention on the
+  gold set. Goes live only by owner decision. `longmemeval-run` records the
+  weight, and a non-default weight enters the gold-set config hash.
+
 - **Client memory folders reach the vault** (#674; data from @zzallirog,
   #701). `bastra doctor` lists every Claude Code
   (`~/.claude/projects/*/memory`) and Codex (`~/.codex/memories`) memory

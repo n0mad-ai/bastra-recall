@@ -41,6 +41,7 @@ import {
   isWeakResult,
   hitTitleMatches,
   decideHits,
+  rrfVectorWeight,
   tokenizeWithIdentifiers,
   type RecallHit,
   type StageListener,
@@ -737,7 +738,15 @@ async function main(): Promise<void> {
       git: gitState(),
       vault: sha256(vault.list().map((m) => `${String(m.fm.id)} ${String(m.fm.updated ?? "")}`).sort().join("\n")),
       model: sha256(armLabel),
-      config: sha256(JSON.stringify({ k: PRODUCTION_K, floor: SCORE_FLOOR, hybrid: args.hybrid })),
+      // #641: a weighted fusion is a different configuration. Only a non-default
+      // weight enters the hash, so every run on the shipped fusion keeps the
+      // config hash the registered baselines pin.
+      config: sha256(JSON.stringify({
+        k: PRODUCTION_K,
+        floor: SCORE_FLOOR,
+        hybrid: args.hybrid,
+        ...(rrfVectorWeight() !== 1 ? { rrf_vector_weight: rrfVectorWeight() } : {}),
+      })),
       dataset: datasetHash(sources, cases),
     },
   };
