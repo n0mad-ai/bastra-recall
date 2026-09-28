@@ -540,6 +540,15 @@ hit_count, top_score, status`. `hint_kind` is what the block told the agent:
 `stop`, `receipt` or `reversible-form` for a destructive match, `null` for a
 risky one.
 
+**Which memories ride under the warning (#614).** Only a recalled memory whose
+own hand-written `recall_when` matched the command with a strong anchor is
+listed. A title or path-token match is not enough: after #358 no hinted memory
+was loaded in 118 hinting calls, and the hinted memories were about unrelated
+topics (a Discord bot token, avatar corners, UI layout) that shared a path
+token with the command. The static STOP / CAUTION / reversible-form text is
+unconditional. `bash_hook_call` carries `dropped_unanchored_count`. To have a
+rule appear here, give it a `recall_when` that names the command.
+
 #### `bastra-recall-bash-fail-hook` (#37, #144)
 
 Fires on `PostToolUse` for every completed Bash command and on
@@ -1287,6 +1296,17 @@ Telemetrie: `bash_hook_call` mit `matched_pattern, severity, hint_kind,
 hit_count, top_score, status`. `hint_kind` ist, was der Block dem Agenten
 gesagt hat: `stop`, `receipt` oder `reversible-form` bei einem destruktiven
 Treffer, `null` bei einem riskanten.
+
+**Welche Erinnerungen unter der Warnung stehen (#614).** Nur eine abgerufene
+Erinnerung, deren eigenes handgeschriebenes `recall_when` mit starkem Anker auf
+den Befehl gepasst hat, wird aufgeführt. Ein Treffer über Titel oder
+Pfadbestandteile reicht nicht: Nach #358 wurde in 118 Aufrufen mit Hinweisen
+keine einzige genannte Erinnerung geladen, und die genannten Erinnerungen
+handelten von Fremdem (Discord-Bot-Token, Avatar-Ecken, UI-Layout), das nur
+einen Pfadbestandteil mit dem Befehl teilte. Der feste Text STOP / CAUTION /
+reversible Form geht immer raus. `bash_hook_call` trägt
+`dropped_unanchored_count`. Damit eine Regel hier erscheint, braucht sie ein
+`recall_when`, das den Befehl nennt.
 
 #### `bastra-recall-bash-fail-hook` (#37, #144)
 
