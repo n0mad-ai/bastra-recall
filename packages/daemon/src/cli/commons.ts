@@ -164,7 +164,7 @@ export function verificationRecordPath(rootDir: string, recipeId: string, verifi
 /** Pseudonymer, stabiler Verifier-Schlüssel: Kurzhash der git-Mail. Der
  *  Klarname steht ohnehin im PR; der Hash macht nur den Dateinamen
  *  deterministisch ("ein Record pro User+Solution"). */
-function verifierId(): string {
+export function verifierId(): string {
   const r = spawnSync("git", ["config", "user.email"], { stdio: ["ignore", "pipe", "ignore"], timeout: 5_000 });
   const email = r.status === 0 ? String(r.stdout).trim() : "";
   const seed = email || `${homedir()}`;

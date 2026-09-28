@@ -150,16 +150,12 @@ expansion) → `writeBridges` into `~/.bastra/bridges` (#648). CLI: `bastra brid
 (in-band reaches) and `bastra bridges harvest [days]` (deep, local Ollama
 reranker over the far slice). Both record each run as a `bridges_mint`
 telemetry event (the harvest with `trigger: "cli-harvest"`), which the bridge
-note in `bastra doctor` reads. `bastra bridges contribute` is intentionally **not
-yet wired**, and the reason is a gate rather than missing plumbing: minting works,
-but a harvested bridge is scored by the same judge that mints it, its only way
-down is a local outcome check (below, not a held-out lift measurement), and it fires
-on *any* query sharing two of its trigger terms (all of them for a one-term bridge;
-an unconfirmed bridge needs half its terms, never fewer than two) — so one mint
-perturbs every query that shares them. Contribution waits on **#129**: a
-verification contract with measured lift over a held-out set, a near-slice
-regression guard, and a demotion driven by that measurement (the local outcome check below is a first step). (The older note here cited #121; that
-issue closed 2026-06-16 and was never the real blocker.)
+note in `bastra doctor` reads. A harvested bridge is scored by the same judge that
+mints it, and it fires on *any* query sharing two of its trigger terms (all of them
+for a one-term bridge; an unconfirmed bridge needs half its terms, never fewer than
+two) — so one mint perturbs every query that shares them. That is why
+`bastra bridges contribute` only offers bridges that pass the **held-out check
+(#129, below)**.
 
 **What a bridge learns from (#704).** Only queries someone phrased as a question
 count as reaches, for the in-band mint and the far harvest alike: prompts the
@@ -179,7 +175,11 @@ pass, with a line in `bridges/archive/log.jsonl`; moving the file back restores 
 
 **Evidence and decay (#672).** A bridge is written on its **first** reach
 (`MIN_BRIDGE_EVIDENCE = 1`); until a second, independent reach confirms it
-(`CONFIRMED_BRIDGE_EVIDENCE = 2`) it is *unconfirmed*:
+(`CONFIRMED_BRIDGE_EVIDENCE = 2`) it is *unconfirmed*. `evidence` counts
+**independent occasions** (#129), not reaches: the caller's session
+(`dimensions.experiment_session`), else the UTC day of the reach. The same question
+asked again in one session is one confirmation; a row with neither session nor
+timestamp confirms nothing.
 
 - It widens a query only at reduced weight: at least half of its trigger terms
   must appear in the query (never fewer than two), it adds at most 3 expansion
@@ -212,8 +212,42 @@ outcomes of those recalls (an acted-on `recall_episode`, or a `load_memory` whos
 The log names the terms an expansion added, not the bridge, and it cannot tell
 which hit a bridge brought in: a fire is attributed from the query and the added
 terms, and any load after that recall counts as the bridge's outcome. Both errors
-lean toward keeping a bridge. This is a local way down, not the held-out lift and
-regression gate #129 asks for before contribution.
+lean toward keeping a bridge. This is the local way down; the held-out check below
+is the gate for contribution.
+
+**Held-out check and contribution gate (#129).** `bastra bridges verify [days]`
+measures, and `bastra bridges contribute [days]` measures and stages
+(`learned-recall/verify.ts`):
+
+- **Cases** come from the #121 candidate-pool log: every logged recall with a pool
+  and an outcome (an acted-on episode, else a found load after it). The outcome is
+  the gold memory. A case is **near** when the gold already ranks in the top 5
+  (`SERVING_K`) without any bridge, else **far**; a far case is **in-pool** when the
+  gold was in the logged candidate pool and **out-of-pool** when it was not.
+- **Folds:** hash(query) → one of 5 folds (`VERIFY_FOLDS`), so a query and its
+  repeats share a fold. For each fold the bridges are minted from the reaches of the
+  other folds (the normal mint), then measured on this fold's cases only.
+- **Lift:** for each held-out case a bridge fires on (the recall path's own
+  `expansionsFor`, at the weight a contributed bridge would have), the change in
+  reciprocal rank of the gold when its terms are added, on the vault's BM25 index.
+  A near case pushed out of the top 5 is a regression.
+- **Null arm:** the same trigger with another bridge's expansion terms. Lift that a
+  foreign expansion also produces is query-length inflation, not direction.
+
+A local bridge may be contributed only when every rule holds: not demoted;
+confirmed (evidence from ≥ 2 independent occasions); it fired on at least one
+held-out case; held-out lift ≥ 0 in **every** slice it fired on (an out-of-pool loss
+cannot hide behind an in-pool gain); no near case pushed out of the top 5; lift not
+below the null arm. `verify` prints the pool-level slices and a verdict per local
+bridge with the reasons; `contribute` also writes the passing bridges, scrubbed and
+signed with the pseudonymous `verifier`, to `~/.bastra/bridges/contribute/<lang>/`
+for a reviewed PR to the Commons repo. Nothing is pushed automatically. Only
+confirmed, undemoted local bridges are measured one by one (on a 924-case log the
+check takes about a minute); the pool level always runs every fold's bridges.
+
+Not covered: bridges from `bastra bridges harvest` (Teacher 2) are minted by the
+reranker, which the k-fold does not rerun (an LLM pass per fold), so they stay
+unmeasured and are not offered.
 
 `bastra doctor` shows a **learned bridges** note while shared recall is on: it warns
 when no mint ran in 30 days, when mint runs produced candidates but wrote none, or
@@ -268,6 +302,8 @@ bastra bridges enable      # flip sharedRecall.enabled (needs commons cloned fir
 bastra bridges language <tag|auto>   # query-language override (default: auto — every folder)
 bastra bridges mint [days] # mint bridges from in-band reaches
 bastra bridges harvest [days]        # deep harvest via local reranker
+bastra bridges verify [days]         # held-out check (#129), verdict per local bridge
+bastra bridges contribute [days]     # same check, stages passing bridges for a PR
 bastra bridges status      # enabled-state, pool size per language, repo path
 ```
 
@@ -429,17 +465,13 @@ Erweiterung) → `writeBridges` nach `~/.bastra/bridges` (#648). CLI: `bastra br
 (In-Band-Treffer) und `bastra bridges harvest [days]` (gründlich, mit lokalem Ollama-Reranker
 über den fernen Teil). Beide protokollieren jeden Lauf als Telemetrie-Ereignis
 `bridges_mint` (die Ernte mit `trigger: "cli-harvest"`), das der Bridge-Hinweis in
-`bastra doctor` liest. `bastra bridges contribute` ist absichtlich **noch
-nicht angebunden**, und der Grund ist eine Sperre, keine fehlende Verkabelung: Das Erzeugen funktioniert,
-aber eine geerntete Bridge wird von demselben Bewerter beurteilt, der sie erzeugt, ihr
-einziger Weg nach unten ist eine lokale Ergebnisprüfung (unten, keine Messung auf einem
-zurückgehaltenen Testset), und sie greift bei *jeder* Anfrage, die zwei ihrer
-Triggerbegriffe teilt (bei einer Bridge mit nur einem Begriff alle; eine unbestätigte
-Bridge braucht die Hälfte ihrer Begriffe, nie weniger als zwei) — eine einzige erzeugte
-Bridge verändert also jede Anfrage, die diese Begriffe enthält. Beiträge warten auf **#129**: einen
-Verifikationsvertrag mit gemessener Verbesserung auf einem zurückgehaltenen Testset, einen Regressionsschutz für den nahen Teil
-und eine Abwertung, die sich auf diese Messung stützt (die lokale Ergebnisprüfung unten ist ein erster Schritt). (Der ältere Hinweis an dieser Stelle nannte #121; dieses
-Issue wurde am 2026-06-16 geschlossen und war nie der eigentliche Blocker.)
+`bastra doctor` liest. Eine geerntete Bridge wird von demselben Bewerter beurteilt,
+der sie erzeugt, und sie greift bei *jeder* Anfrage, die zwei ihrer Triggerbegriffe
+teilt (bei einer Bridge mit nur einem Begriff alle; eine unbestätigte Bridge braucht
+die Hälfte ihrer Begriffe, nie weniger als zwei) — eine einzige erzeugte Bridge
+verändert also jede Anfrage, die diese Begriffe enthält. Deshalb bietet
+`bastra bridges contribute` nur Bridges an, die die **Prüfung auf zurückgehaltenen
+Fällen (#129, unten)** bestehen.
 
 **Woraus eine Bridge lernt (#704).** Als Treffer zählen nur Anfragen, die jemand als
 Frage formuliert hat, beim In-Band-Erzeugen wie bei der fernen Ernte: Prompts, die der
@@ -460,7 +492,11 @@ Erzeugungslauf nach `bridges/archive/<lang>/`, mit einer Zeile in
 
 **Belege und Verfall (#672).** Eine Bridge wird schon beim **ersten** Treffer
 geschrieben (`MIN_BRIDGE_EVIDENCE = 1`); bis ein zweiter, unabhängiger Treffer sie
-bestätigt (`CONFIRMED_BRIDGE_EVIDENCE = 2`), gilt sie als *unbestätigt*:
+bestätigt (`CONFIRMED_BRIDGE_EVIDENCE = 2`), gilt sie als *unbestätigt*. `evidence`
+zählt **unabhängige Gelegenheiten** (#129), nicht Treffer: die Session des Aufrufers
+(`dimensions.experiment_session`), sonst den UTC-Tag des Treffers. Dieselbe Frage in
+derselben Session noch einmal ist eine Bestätigung; eine Zeile ohne Session und ohne
+Zeitstempel bestätigt nichts.
 
 - Sie erweitert eine Anfrage nur mit geringerem Gewicht: Mindestens die Hälfte ihrer
   Triggerbegriffe muss in der Anfrage stehen (nie weniger als zwei), sie fügt höchstens
@@ -497,8 +533,47 @@ Das Protokoll nennt die Begriffe, die eine Erweiterung hinzugefügt hat, nicht d
 Bridge, und es kann nicht sagen, welchen Treffer eine Bridge hereingebracht hat: Eine
 Auslösung wird aus Anfrage und hinzugefügten Begriffen zugeordnet, und jedes Laden nach
 diesem Recall zählt als Ergebnis der Bridge. Beide Fehler fallen zugunsten der Bridge
-aus. Das ist ein lokaler Weg nach unten, nicht die Messung auf einem zurückgehaltenen
-Testset mit Regressionsschutz, die #129 vor Beiträgen verlangt.
+aus. Das ist der lokale Weg nach unten; die Prüfung unten ist die Sperre für Beiträge.
+
+**Prüfung auf zurückgehaltenen Fällen und Beitragssperre (#129).**
+`bastra bridges verify [days]` misst, `bastra bridges contribute [days]` misst und legt
+bereit (`learned-recall/verify.ts`):
+
+- **Fälle** kommen aus dem Kandidaten-Pool-Protokoll (#121): jeder protokollierte
+  Recall mit Pool und Ergebnis (eine genutzte Episode, sonst ein gefundenes Laden
+  danach). Das Ergebnis ist die Ziel-Erinnerung. Ein Fall ist **nah**, wenn das Ziel
+  ohne Bridge schon unter den ersten 5 steht (`SERVING_K`), sonst **fern**; ein ferner
+  Fall ist **im Pool**, wenn das Ziel im protokollierten Kandidaten-Pool lag, und
+  **außerhalb des Pools**, wenn nicht.
+- **Folds:** hash(Anfrage) → einer von 5 Folds (`VERIFY_FOLDS`), eine Anfrage und ihre
+  Wiederholungen liegen also im selben Fold. Pro Fold werden die Bridges aus den
+  Treffern der anderen Folds erzeugt (das normale Erzeugen) und nur an den Fällen
+  dieses Folds gemessen.
+- **Verbesserung:** Für jeden zurückgehaltenen Fall, bei dem eine Bridge greift (das
+  `expansionsFor` des Recall-Pfads, mit dem Gewicht einer beigetragenen Bridge), die
+  Änderung des reziproken Rangs des Ziels, wenn ihre Begriffe dazukommen, auf dem
+  BM25-Index des Vaults. Ein naher Fall, der aus den ersten 5 fällt, ist eine
+  Regression.
+- **Null-Vergleich:** derselbe Trigger mit den Erweiterungsbegriffen einer anderen
+  Bridge. Eine Verbesserung, die auch fremde Begriffe bringen, ist ein Längeneffekt
+  der Anfrage, keine Richtung.
+
+Eine lokale Bridge darf nur beigetragen werden, wenn alle Regeln gelten: nicht
+abgewertet; bestätigt (Belege aus ≥ 2 unabhängigen Gelegenheiten); sie hat bei
+mindestens einem zurückgehaltenen Fall gegriffen; Verbesserung ≥ 0 in **jedem** Teil,
+in dem sie gegriffen hat (ein Verlust außerhalb des Pools versteckt sich nicht hinter
+einem Gewinn im Pool); kein naher Fall aus den ersten 5 verdrängt; Verbesserung nicht
+unter dem Null-Vergleich. `verify` zeigt die Teile auf Pool-Ebene und pro lokaler
+Bridge ein Urteil mit Gründen; `contribute` schreibt die bestehenden Bridges zusätzlich
+bereinigt und mit dem pseudonymen `verifier` nach `~/.bastra/bridges/contribute/<lang>/`,
+für einen geprüften PR ans Commons-Repo. Automatisch gepusht wird nichts. Einzeln
+gemessen werden nur bestätigte, nicht abgewertete lokale Bridges (bei einem Protokoll
+mit 924 Fällen dauert die Prüfung etwa eine Minute); die Pool-Ebene läuft immer mit
+allen Bridges eines Folds.
+
+Nicht abgedeckt: Bridges aus `bastra bridges harvest` (Teacher 2) erzeugt der Reranker,
+den der k-Fold nicht erneut laufen lässt (ein LLM-Lauf pro Fold); sie bleiben ungemessen
+und werden nicht angeboten.
 
 `bastra doctor` zeigt bei eingeschaltetem Shared Recall einen Abschnitt **learned
 bridges**: Er warnt, wenn 30 Tage lang kein Erzeugungslauf lief, wenn Läufe Kandidaten
@@ -554,6 +629,8 @@ bastra bridges enable      # flip sharedRecall.enabled (needs commons cloned fir
 bastra bridges language <tag|auto>   # query-language override (default: auto — every folder)
 bastra bridges mint [days] # mint bridges from in-band reaches
 bastra bridges harvest [days]        # deep harvest via local reranker
+bastra bridges verify [days]         # held-out check (#129), verdict per local bridge
+bastra bridges contribute [days]     # same check, stages passing bridges for a PR
 bastra bridges status      # enabled-state, pool size per language, repo path
 ```
 

@@ -34,7 +34,8 @@ test("reconstructReaches joins query (hook_recall/recall) to acted-on memory by 
   const reaches = reconstructReaches(events);
   assert.equal(reaches.length, 1, "only the acted_on episode with a known query counts");
   // #672: the episode's ts rides along — it seeds the bridge's first_seen.
-  assert.deepEqual(reaches[0], { query: "warum schließt sich das Panel", memoryId: "nspanel-lesson", ts: events[2].ts });
+  // #129: the occasion (no session on the row → the day) counts independent evidence.
+  assert.deepEqual(reaches[0], { query: "warum schließt sich das Panel", memoryId: "nspanel-lesson", ts: events[2].ts, occasion: "day:2026-06-14" });
 });
 
 test("harvestBridges mints from reaches, using non-overlapping memory terms as expansion", () => {
@@ -51,15 +52,15 @@ test("harvestBridges mints from reaches, using non-overlapping memory terms as e
   assert.equal(b.evidence, 1);
 });
 
-test("harvestBridges accumulates evidence when the same bridge is reached repeatedly", () => {
+test("harvestBridges accumulates evidence when the same bridge is reached on different occasions", () => {
   const reaches = [
-    { query: "warum schließt sich das Panel beim Dialog", memoryId: "m1" },
-    { query: "warum schließt sich das Panel beim Dialog", memoryId: "m1" },
-    { query: "warum schließt sich das Panel beim Dialog", memoryId: "m1" },
+    { query: "warum schließt sich das Panel beim Dialog", memoryId: "m1", occasion: "session:a" },
+    { query: "warum schließt sich das Panel beim Dialog", memoryId: "m1", occasion: "session:b" },
+    { query: "warum schließt sich das Panel beim Dialog", memoryId: "m1", occasion: "session:c" },
   ];
   const { bridges, minted } = harvestBridges(reaches, () => ["nspanel", "resignkey", "observer"]);
   assert.equal(minted, 1, "identical reaches dedupe to one bridge");
-  assert.equal(bridges[0].evidence, 3, "evidence counts the reaches");
+  assert.equal(bridges[0].evidence, 3, "evidence counts the independent occasions (#129)");
 });
 
 test("harvestBridges skips reaches with no language signal or no usable expansion", () => {
