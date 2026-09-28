@@ -50,6 +50,7 @@ test("the checker reports the two shapes the review found", () => {
       "External: [site](https://bastra.io/install).",
       "Anchor: [here](#architecture).",
       "Wiki: [map](../../wiki/Vault-Map).",
+      "Overshoot: [typo](../../../typo.md).",
       "Regex in code is not a link: `[a-z0-9][a-z0-9_-]*`.",
       "",
       "[0.9.1]: https://example.invalid/v0.9.1",
@@ -60,6 +61,7 @@ test("the checker reports the two shapes the review found", () => {
   const problems = checkFile(file, root);
   assert.deepEqual(problems, [
     { file: "docs/architecture.md", kind: "inline", target: "./docs/survival.md" },
+    { file: "docs/architecture.md", kind: "inline", target: "../../../typo.md" },
     { file: "docs/architecture.md", kind: "reference", target: "[0.9.2]" },
   ]);
 });

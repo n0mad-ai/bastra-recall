@@ -112,7 +112,9 @@ export function checkFile(file, root = REPO_ROOT) {
     const resolved = resolve(dirname(file), path);
     // `../../wiki/Page` from the repository root is a GitHub Wiki link: it
     // resolves on github.com and deliberately points outside the checkout.
-    if (relative(root, resolved).startsWith("..")) continue;
+    // Only that shape is waved through — a link that climbs out of the repo
+    // toward anything else (`../../../typo.md`) is a broken link.
+    if (/^(\.\.[\\/])+wiki([\\/]|$)/.test(relative(root, resolved))) continue;
     let ok = false;
     try {
       statSync(resolved);
