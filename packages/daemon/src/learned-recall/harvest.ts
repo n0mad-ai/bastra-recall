@@ -395,6 +395,9 @@ export async function harvestFarBridges(
 export async function writeBridges(rootDir: string, bridges: Bridge[], now: Date = new Date()): Promise<number> {
   let written = 0;
   for (const b of bridges) {
+    // #129: an archived bridge is retired. Its reaches can still sit in the
+    // log; recounting them must not bring it back — moving the file does.
+    if (existsSync(archivedBridgePath(rootDir, b.lang, b.id))) continue;
     const dir = join(rootDir, "bridges", b.lang);
     await mkdir(dir, { recursive: true });
     const path = join(dir, `${b.id}.json`);
@@ -405,16 +408,23 @@ export async function writeBridges(rootDir: string, bridges: Bridge[], now: Date
       ...b,
       evidence: Math.max(b.evidence, typeof prior?.evidence === "number" ? prior.evidence : 0),
       first_seen: stamps[0] ?? now.toISOString(),
+      // #129: a fresh recount is not an outcome — a demotion survives the rewrite.
+      ...(typeof prior?.demoted_at === "string" ? { demoted_at: prior.demoted_at } : {}),
     };
-    const tmp = `${path}.tmp-${randomBytes(4).toString("hex")}`;
-    await writeFile(tmp, JSON.stringify(merged, null, 2) + "\n", "utf8");
-    await rename(tmp, path);
+    await writeBridgeFileAtomic(path, merged);
     written++;
   }
   return written;
 }
 
-async function readBridgeFile(path: string): Promise<Partial<Bridge> | null> {
+/** Atomic write of one bridge file (tmp + rename). */
+export async function writeBridgeFileAtomic(path: string, b: Bridge): Promise<void> {
+  const tmp = `${path}.tmp-${randomBytes(4).toString("hex")}`;
+  await writeFile(tmp, JSON.stringify(b, null, 2) + "\n", "utf8");
+  await rename(tmp, path);
+}
+
+export async function readBridgeFile(path: string): Promise<Partial<Bridge> | null> {
   try {
     const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
     return typeof parsed === "object" && parsed !== null ? (parsed as Partial<Bridge>) : null;
@@ -488,13 +498,26 @@ export async function archiveBridgeFile(
   } catch {
     return false;
   }
+  await appendBridgeLog(rootDir, "archive", b, reason, now);
+  return true;
+}
+
+/** One line in bridges/archive/log.jsonl per retirement step (#704/#129):
+ *  archive, demote, restore. Never throws — the state change is what matters. */
+export async function appendBridgeLog(
+  rootDir: string,
+  action: "archive" | "demote" | "restore",
+  b: Pick<Bridge, "id" | "lang" | "trigger_terms">,
+  reason: string,
+  now: Date,
+): Promise<void> {
   try {
-    const line = { ts: now.toISOString(), id: b.id, lang: b.lang, reason, trigger_terms: b.trigger_terms };
+    await mkdir(join(rootDir, "bridges", "archive"), { recursive: true });
+    const line = { ts: now.toISOString(), action, id: b.id, lang: b.lang, reason, trigger_terms: b.trigger_terms };
     await appendFile(join(rootDir, "bridges", "archive", "log.jsonl"), JSON.stringify(line) + "\n", "utf8");
   } catch {
-    /* the move is what matters; the log line is observability */
+    /* observability must never break the pass */
   }
-  return true;
 }
 
 /** Every local bridge file under <root>/bridges/<lang>/ (archive/ excluded). */

@@ -140,11 +140,11 @@ expansion) → `writeBridges` into the clone. CLI: `bastra bridges mint [days]`
 (in-band reaches) and `bastra bridges harvest [days]` (deep, local Ollama
 reranker over the far slice). `bastra bridges contribute` is intentionally **not
 yet wired**, and the reason is a gate rather than missing plumbing: minting works,
-but a harvested bridge today has promotion (`evidence`) with no demotion, is scored
-by the same judge that mints it, and fires on *any* query sharing one trigger term —
+but a harvested bridge is scored by the same judge that mints it, its only way
+down is a local outcome check (below, not a held-out lift measurement), and fires on *any* query sharing one trigger term —
 so one mint perturbs every query that shares it. Contribution waits on **#129**: a
 verification contract with measured lift over a held-out set, a near-slice
-regression guard, and a decay/demotion path. (The older note here cited #121; that
+regression guard, and a demotion driven by that measurement (the local outcome check below is a first step). (The older note here cited #121; that
 issue closed 2026-06-16 and was never the real blocker.)
 
 **What a bridge learns from (#704).** Only queries someone phrased as a question
@@ -173,14 +173,38 @@ pass, with a line in `bridges/archive/log.jsonl`; moving the file back restores 
 - It carries a `first_seen` timestamp (the earliest reach behind it). If no second
   reach arrives within `UNCONFIRMED_BRIDGE_TTL_DAYS = 30`, the next mint pass
   (daemon boot + daily, or `bastra bridges mint`) deletes it.
-- A confirmed bridge never expires, and a rewrite never lowers its `evidence`.
+- A confirmed bridge never expires by age, and a rewrite never lowers its `evidence`.
 - Only bridges this machine minted can be unconfirmed and live: a contributed
   bridge (with `verifier`) and old evidence-1 files without `first_seen` still need
   confirmation and are never pruned.
 
+**Demotion (#129).** A bridge, confirmed or not, that keeps firing without leading
+anywhere loses its weight and then leaves the pool. Each mint pass counts, per local
+bridge, its fires (recalls whose `bridge_expansion` it contributed to) and the
+outcomes of those recalls (an acted-on `recall_episode`, or a `load_memory` whose
+`follows_recall` / `from_hook_recall` names the recall):
+
+- `DEMOTION_MIN_FIRES = 20` or more fires in `DEMOTION_WINDOW_DAYS = 30` and no
+  outcome → the bridge gets a `demoted_at` stamp and widens a query only at the
+  unconfirmed weight above. Its `evidence` stays as it was.
+- An outcome after the stamp clears it.
+- Still no outcome a full window after the stamp, and it fired again → the file moves
+  to `bridges/archive/<lang>/` (not deleted; moving it back restores it), and the
+  mint does not write it again from reaches still in the log. A demoted bridge
+  that stopped firing stays demoted.
+- Every step writes a line to `bridges/archive/log.jsonl`. Contributed bridges are
+  never changed.
+
+The log names the terms an expansion added, not the bridge, and it cannot tell
+which hit a bridge brought in: a fire is attributed from the query and the added
+terms, and any load after that recall counts as the bridge's outcome. Both errors
+lean toward keeping a bridge. This is a local way down, not the held-out lift and
+regression gate #129 asks for before contribution.
+
 `bastra doctor` shows a **learned bridges** note while shared recall is on: it warns
 when no mint ran in 30 days, when mint runs produced candidates but wrote none, or
-when no acted-on recall reached the telemetry log.
+when no acted-on recall reached the telemetry log, and adds a line when bridges were
+demoted or archived in the last 30 days.
 
 ### What stays private
 
@@ -381,11 +405,12 @@ Erweiterung) → `writeBridges` in den Klon. CLI: `bastra bridges mint [days]`
 (In-Band-Treffer) und `bastra bridges harvest [days]` (gründlich, mit lokalem Ollama-Reranker
 über den fernen Teil). `bastra bridges contribute` ist absichtlich **noch
 nicht angebunden**, und der Grund ist eine Sperre, keine fehlende Verkabelung: Das Erzeugen funktioniert,
-aber eine geerntete Bridge hat heute eine Aufwertung (`evidence`) ohne Abwertung, wird
-von demselben Bewerter beurteilt, der sie erzeugt, und greift bei *jeder* Anfrage, die einen Triggerbegriff teilt —
+aber eine geerntete Bridge wird von demselben Bewerter beurteilt, der sie erzeugt, ihr
+einziger Weg nach unten ist eine lokale Ergebnisprüfung (unten, keine Messung auf einem
+zurückgehaltenen Testset), und greift bei *jeder* Anfrage, die einen Triggerbegriff teilt —
 eine einzige erzeugte Bridge verändert also jede Anfrage, die diesen Begriff enthält. Beiträge warten auf **#129**: einen
 Verifikationsvertrag mit gemessener Verbesserung auf einem zurückgehaltenen Testset, einen Regressionsschutz für den nahen Teil
-und einen Weg für Verfall/Abwertung. (Der ältere Hinweis an dieser Stelle nannte #121; dieses
+und eine Abwertung, die sich auf diese Messung stützt (die lokale Ergebnisprüfung unten ist ein erster Schritt). (Der ältere Hinweis an dieser Stelle nannte #121; dieses
 Issue wurde am 2026-06-16 geschlossen und war nie der eigentliche Blocker.)
 
 **Woraus eine Bridge lernt (#704).** Als Treffer zählen nur Anfragen, die jemand als
@@ -415,15 +440,43 @@ bestätigt (`CONFIRMED_BRIDGE_EVIDENCE = 2`), gilt sie als *unbestätigt*:
 - Sie trägt einen Zeitstempel `first_seen` (der früheste Treffer dahinter). Kommt
   innerhalb von `UNCONFIRMED_BRIDGE_TTL_DAYS = 30` Tagen kein zweiter Treffer, löscht
   der nächste Erzeugungslauf (Daemon-Start + täglich, oder `bastra bridges mint`) sie.
-- Eine bestätigte Bridge verfällt nie, und ein erneutes Schreiben senkt ihr `evidence` nie.
+- Eine bestätigte Bridge verfällt nie durch Alter, und ein erneutes Schreiben senkt ihr `evidence` nie.
 - Unbestätigt und trotzdem aktiv können nur Bridges sein, die dieser Rechner selbst
   erzeugt hat: Eine beigetragene Bridge (mit `verifier`) und alte Dateien mit
   `evidence` 1 ohne `first_seen` brauchen weiter eine Bestätigung und werden nie gelöscht.
 
+**Abwertung (#129).** Eine Bridge, bestätigt oder nicht, die immer wieder greift, ohne
+dass daraus etwas folgt, verliert ihr Gewicht und verlässt danach den Pool. Jeder
+Erzeugungslauf zählt pro lokaler Bridge ihre Auslösungen (Recalls, zu deren
+`bridge_expansion` sie beigetragen hat) und deren Ergebnisse (ein `recall_episode` mit
+`acted_on` oder ein `load_memory`, dessen `follows_recall` / `from_hook_recall` diesen
+Recall nennt):
+
+- `DEMOTION_MIN_FIRES = 20` oder mehr Auslösungen in `DEMOTION_WINDOW_DAYS = 30` Tagen
+  und kein Ergebnis → die Bridge bekommt einen Stempel `demoted_at` und erweitert eine
+  Anfrage nur noch mit dem Gewicht einer unbestätigten Bridge (siehe oben). Ihr
+  `evidence` bleibt, wie es war.
+- Ein Ergebnis nach dem Stempel entfernt ihn wieder.
+- Ein volles Fenster nach dem Stempel noch immer kein Ergebnis, und sie hat wieder
+  gegriffen → die Datei wandert nach `bridges/archive/<lang>/` (nicht gelöscht;
+  zurückschieben stellt sie wieder her), und das Erzeugen schreibt sie aus Treffern,
+  die noch im Protokoll stehen, nicht neu. Eine abgewertete Bridge, die nicht mehr
+  greift, bleibt abgewertet.
+- Jeder Schritt schreibt eine Zeile nach `bridges/archive/log.jsonl`. Beigetragene
+  Bridges werden nie verändert.
+
+Das Protokoll nennt die Begriffe, die eine Erweiterung hinzugefügt hat, nicht die
+Bridge, und es kann nicht sagen, welchen Treffer eine Bridge hereingebracht hat: Eine
+Auslösung wird aus Anfrage und hinzugefügten Begriffen zugeordnet, und jedes Laden nach
+diesem Recall zählt als Ergebnis der Bridge. Beide Fehler fallen zugunsten der Bridge
+aus. Das ist ein lokaler Weg nach unten, nicht die Messung auf einem zurückgehaltenen
+Testset mit Regressionsschutz, die #129 vor Beiträgen verlangt.
+
 `bastra doctor` zeigt bei eingeschaltetem Shared Recall einen Abschnitt **learned
 bridges**: Er warnt, wenn 30 Tage lang kein Erzeugungslauf lief, wenn Läufe Kandidaten
 erzeugt, aber keine geschrieben haben, oder wenn kein genutzter Recall im
-Telemetrie-Protokoll ankam.
+Telemetrie-Protokoll ankam, und ergänzt eine Zeile, wenn in den letzten 30 Tagen
+Bridges abgewertet oder archiviert wurden.
 
 ### Was privat bleibt
 

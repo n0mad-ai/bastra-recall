@@ -30,16 +30,43 @@ export interface MintRun {
   minted: number;
   reaches: number;
   written: number;
+  /** #129: bridges demoted / archived by this run. Optional — runs before
+   *  #704/#129 do not carry them. Unlike the counts above these are state
+   *  changes, not recounts, so they are summed over the window. */
+  demoted?: number;
+  archived?: number;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The note's lines, pure. Empty when shared recall is off. One line otherwise:
- * a warning with a hint when learning is stalled, an ok line when it is not.
+ * a warning with a hint when learning is stalled, an ok line when it is not —
+ * plus, when any run in the window demoted or archived a bridge (#129, #704),
+ * a second line saying so.
  */
 export function bridgeLearningLines(input: { enabled: boolean; runs: MintRun[]; now: Date }): string[] {
   if (!input.enabled) return [];
+  const lines = learningLines(input);
+  const cutoff = input.now.getTime() - BRIDGE_STALL_WINDOW_DAYS * DAY_MS;
+  let demoted = 0;
+  let archived = 0;
+  for (const r of input.runs) {
+    if (!Number.isFinite(Date.parse(r.ts)) || Date.parse(r.ts) < cutoff) continue;
+    demoted += r.demoted ?? 0;
+    archived += r.archived ?? 0;
+  }
+  if (demoted > 0 || archived > 0) {
+    lines.push(
+      `· ${demoted} bridge(s) demoted, ${archived} archived in the last ${BRIDGE_STALL_WINDOW_DAYS} days — ` +
+        "fired without leading to a load or acted-on episode (#129), or minted from machine text (#704); " +
+        "see bridges/archive/log.jsonl in the Commons clone, move a file back to restore it",
+    );
+  }
+  return lines;
+}
+
+function learningLines(input: { runs: MintRun[]; now: Date }): string[] {
   const cutoff = input.now.getTime() - BRIDGE_STALL_WINDOW_DAYS * DAY_MS;
   const runs = input.runs
     .filter((r) => Number.isFinite(Date.parse(r.ts)) && Date.parse(r.ts) >= cutoff)
@@ -118,5 +145,12 @@ export async function readMintRuns(
 function toRun(e: Record<string, unknown>): MintRun | null {
   if (typeof e.ts !== "string") return null;
   const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
-  return { ts: e.ts, minted: num(e.minted), reaches: num(e.reaches), written: num(e.written) };
+  return {
+    ts: e.ts,
+    minted: num(e.minted),
+    reaches: num(e.reaches),
+    written: num(e.written),
+    demoted: num(e.demoted),
+    archived: num(e.archived),
+  };
 }

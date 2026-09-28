@@ -49,6 +49,26 @@ test("bridge note: reaches that needed no bridge are not a fault", () => {
   assert.match(lines[0], /^✓ ok: 1 mint run\(s\)/);
 });
 
+test("#129 bridge note: demotions and archives in the window are summed and shown on their own line", () => {
+  const lines = bridgeLearningLines({
+    enabled: true,
+    runs: [
+      { ...run(daysAgo(40), 1, 1), demoted: 5, archived: 5 }, // outside the window
+      { ...run(daysAgo(10), 1, 1), demoted: 2, archived: 0 },
+      { ...run(daysAgo(1), 0, 0, 3), demoted: 1, archived: 1 },
+    ],
+    now: NOW,
+  });
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /^✓ ok/);
+  assert.match(lines[1], /^· 3 bridge\(s\) demoted, 1 archived in the last 30 days/);
+  assert.match(lines[1], /#129/);
+});
+
+test("#129 bridge note: no demotion line when nothing was demoted", () => {
+  assert.equal(bridgeLearningLines({ enabled: true, runs: [run(daysAgo(1), 3, 3)], now: NOW }).length, 1);
+});
+
 test("readMintRuns: reads bridges_mint events inside the window and falls back to last-mint.json", async () => {
   const logDir = await mkdtemp(join(tmpdir(), "bastra-bridges-note-"));
   try {
@@ -71,8 +91,8 @@ test("readMintRuns: reads bridges_mint events inside the window and falls back t
     const lastMint = { ts: daysAgo(1), host: "h", trigger: "cli" as const, minted: 2, reaches: 2, written: 2, pruned: 0 };
     const runs = await readMintRuns(logDir, lastMint, NOW);
     assert.deepEqual(runs, [
-      { ts: inWindow, minted: 9, reaches: 9, written: 0 },
-      { ts: lastMint.ts, minted: 2, reaches: 2, written: 2 },
+      { ts: inWindow, minted: 9, reaches: 9, written: 0, demoted: 0, archived: 0 },
+      { ts: lastMint.ts, minted: 2, reaches: 2, written: 2, demoted: 0, archived: 0 },
     ]);
     // the fallback is not double-counted when the log already has that run
     const again = await readMintRuns(logDir, { ...lastMint, ts: inWindow }, NOW);

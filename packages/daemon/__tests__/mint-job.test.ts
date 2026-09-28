@@ -98,7 +98,7 @@ test("runInBandMint: empty log still records the run (frozen-pool visibility)", 
     const vault = new Vault(vaultDir);
     await vault.init();
     const outcome = await runInBandMint({ vault, bridgesRoot, trigger: "cli", logDir });
-    assert.deepEqual(outcome, { minted: 0, reaches: 0, written: 0, pruned: 0, archived: 0 });
+    assert.deepEqual(outcome, { minted: 0, reaches: 0, written: 0, pruned: 0, archived: 0, demoted: 0, restored: 0 });
     const last = await readLastMint(bridgesRoot);
     assert.ok(last, `${LAST_MINT_FILE} must be written even when nothing minted`);
     assert.equal(last.minted, 0);
@@ -143,7 +143,7 @@ test("#672: a single reach is written on first evidence, unconfirmed, stamped wi
     const reachTs = new Date().toISOString();
     await writeFile(join(logDir, `events-${reachTs.slice(0, 10)}.jsonl`), eventLogLines(1, reachTs), "utf8");
     const out = await runInBandMint({ vault, bridgesRoot, trigger: "cli", logDir });
-    assert.deepEqual(out, { minted: 1, reaches: 1, written: 1, pruned: 0, archived: 0 });
+    assert.deepEqual(out, { minted: 1, reaches: 1, written: 1, pruned: 0, archived: 0, demoted: 0, restored: 0 });
     const [b] = await bridgeFiles(bridgesRoot);
     assert.equal(b.evidence, 1);
     assert.equal(b.first_seen, reachTs, "first_seen is the reach, not the mint run");
