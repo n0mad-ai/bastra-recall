@@ -212,15 +212,27 @@ const DOCUMENTS_ROOT = "documents";
 const SLUG_MAX_LEN = 80;
 
 function slugify(input: string): string {
-  const slug = input
-    .toLowerCase()
-    .replace(/ä/g, "ae")
-    .replace(/ö/g, "oe")
-    .replace(/ü/g, "ue")
-    .replace(/ß/g, "ss")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, SLUG_MAX_LEN);
+  // Letters of any script survive (`\p{L}\p{N}`) so two Cyrillic/CJK
+  // filenames in one folder do not collapse onto one id. NFC first: macOS
+  // hands out decomposed names. Accents on a Latin base are still folded
+  // (é -> e) as before, so existing ids of accented Latin names hold; marks on
+  // non-Latin letters (й, ё) are kept.
+  const slug = Array.from(
+    input
+      .normalize("NFC")
+      .toLowerCase()
+      .replace(/ä/g, "ae")
+      .replace(/ö/g, "oe")
+      .replace(/ü/g, "ue")
+      .replace(/ß/g, "ss")
+      .normalize("NFKD")
+      .replace(/(\p{Script=Latin})\p{M}+/gu, "$1")
+      .normalize("NFC")
+      .replace(/[^\p{L}\p{N}]+/gu, "-")
+      .replace(/^-+|-+$/g, ""),
+  )
+    .slice(0, SLUG_MAX_LEN)
+    .join("");
   if (!slug) throw new Error(`cannot slugify: ${JSON.stringify(input)}`);
   return slug;
 }
