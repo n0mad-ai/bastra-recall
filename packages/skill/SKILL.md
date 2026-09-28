@@ -36,6 +36,8 @@ Call `recall(query, k=5)` proactively in these moments:
 
 `recall` is **step 1 of two**: it returns lean candidates, no bodies. Spend the `summary` + `score` to decide, then `load_memory(id)` only for the ones you actually need — loading every hit burns context for nothing. Never ignore a `lesson` hit that matched on `recall_when` or title. Don't reload a memory you already loaded this turn. (Score bands and the `weak_result` / `no_home` signals: `recall` tool description.)
 
+**An injected candidate list already is step 1.** A `<recall-hints … recall-step="done">` block for the current prompt, or the `<session-context>` block at session start, is the output of a recall that already ran: go straight to `load_memory(id)` for the fitting candidates instead of calling `recall` on the same intent again. Call `recall` anyway when your intent differs from what the block covered, the user asks for a wider or narrower scope, the block reports a weak / no-home result and you deliberately reformulate, or a new topic comes up later in the task. An explicit user request to search always runs.
+
 **Claims that leave the machine are the strictest case.** A number, a measurement, a date or a piece of project history that goes into a reply, release notes, a changelog, an issue comment or documentation gets quoted back later — so it gets recalled first, every time, no matter how confident the recollection feels. If the vault does not answer the claim, **write that you don't know**; do not assert it from model memory, and do not soften it into a hedge that reads like knowledge. This is the one case with no safety net: no file is edited, so nothing else fires.
 
 ### Tool priority for retrieval

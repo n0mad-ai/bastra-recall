@@ -739,6 +739,7 @@ export async function runPromptLane(
       resp?.unfused === true,
       client,
       resp?.degraded,
+      resp?.recall_id,
     );
     if (suppressed) {
       // Suppressed drops only the recall block (#161); reflex still emits.
@@ -944,9 +945,15 @@ export function formatHintBlock(
   // „semantic search is off", wo der Arm lief und nur diesen Aufruf nicht
   // bediente.
   degraded?: string,
+  // #620: the block IS this prompt's recall. `recall-step="done"` plus the
+  // originating recall_id tell the agent (and the skill, which names the
+  // marker) that step 1 already ran — a second `recall` on the same intent
+  // would only return the same candidates as another payload.
+  recallId?: string,
 ): string {
   const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
-  const head = `<recall-hints surface="${escapeAttr(surface)}" trigger="prompt-lookup"${projAttr}>`;
+  const idAttr = recallId ? ` recall_id="${escapeAttr(recallId)}"` : "";
+  const head = `<recall-hints surface="${escapeAttr(surface)}" trigger="prompt-lookup" recall-step="done"${idAttr}${projAttr}>`;
   const tail = `</recall-hints>`;
 
   // P0: Ohne Fusion gibt es keine Bänder. Die Werte stammen aus einer offenen
@@ -959,7 +966,8 @@ export function formatHintBlock(
   if (mode === "retrieval") {
     sections.push(
       `The user prompt looks like a LOOKUP / retrieval query. ` +
-        `Use bastra-recall:recall (and find_document if pdf-likely) BEFORE conversation_search / web_search. ` +
+        `bastra-recall:recall already ran for it — these candidates are its result: load_memory the fitting ones ` +
+        `(and find_document if pdf-likely) BEFORE conversation_search / web_search. ` +
         `Pre-recalled candidates for this prompt:`,
     );
   } else if (mode === "assertion") {
