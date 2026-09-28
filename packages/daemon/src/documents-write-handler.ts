@@ -47,6 +47,7 @@ import { truncateSummaryTo, SUMMARY_MAX } from "@bastra-recall/core";
 import { scopeEquals } from "@bastra-recall/core/scope";
 import { hiddenFromCaller, hiddenOnDisk, type PrivateAccess } from "./private-access.js";
 import {
+  acknowledgeCommittedJournal,
   openRecoveryJournal,
   type RecoveryJournalHandle,
 } from "./recovery-journal.js";
@@ -1066,8 +1067,6 @@ async function commitDocument(
   // Ab hier ist der Vorgang unumkehrbar geglückt: das Backup der alten
   // Originaldatei wird nicht mehr gebraucht.
   await commitOriginal?.();
-  await journal?.acknowledge();
-
   // Cloud-Watcher-Mitigation: synchroner reindex statt auf chokidar warten.
   await vault.reindexFile(sidecarPath);
 
@@ -1088,6 +1087,8 @@ async function commitDocument(
     filePath: sidecarPath,
   });
 
+  const journalWarning = await acknowledgeCommittedJournal(journal);
+
   return {
     id: docID,
     sidecar_path: sidecarPath,
@@ -1095,7 +1096,7 @@ async function commitDocument(
     reindexed: true,
     cloud_mount_warning: cloudWarn,
     injection_warning: formatInjectionAdvisory(injectionFindings),
-    ...(auditWarning ? { warning: auditWarning } : {}),
+    ...((auditWarning || journalWarning) ? { warning: [auditWarning, journalWarning].filter(Boolean).join("; ") } : {}),
   };
 }
 
@@ -1256,10 +1257,6 @@ async function commitRecategorize(
     if (moved) await abortMove(vault, moved, oldSidecarPath, raw?.raw, err);
     throw err;
   }
-  // #378: Beide Dateien liegen am Ziel und das Sidecar ist veröffentlicht — der
-  // letzte Schritt ist durch, der Eintrag quittiert.
-  await moved?.journal?.acknowledge();
-
   // #240/A3: the OLD sidecar path must leave the index before the new one
   // enters it. Without this both paths point at the same id; the next
   // reconcile (60 s, or any /vault/count) removes the old path and takes
@@ -1283,11 +1280,13 @@ async function commitRecategorize(
       : {}),
   });
 
+  const journalWarning = await acknowledgeCommittedJournal(moved?.journal);
+
   return {
     id: m.fm.id,
     sidecar_path: sidecarPath,
     reindexed: true,
-    ...(auditWarning ? { warning: auditWarning } : {}),
+    ...((auditWarning || journalWarning) ? { warning: [auditWarning, journalWarning].filter(Boolean).join("; ") } : {}),
   };
 }
 
@@ -1449,9 +1448,6 @@ async function commitMoveDocument(
   } catch (err) {
     await abortMove(vault, moved, located.filePath, raw?.raw, err);
   }
-  // #378: Der letzte Schritt ist durch — Eintrag quittiert.
-  await moved.journal?.acknowledge();
-
   // #240/A3: drop the old path from the index before the new one is read —
   // otherwise both paths carry the same id and the next reconcile deletes
   // the moved document.
@@ -1472,12 +1468,14 @@ async function commitMoveDocument(
     reason: `move_document: ${located.filePath} → ${moved.newSidecarPath}`,
   });
 
+  const journalWarning = await acknowledgeCommittedJournal(moved.journal);
+
   return {
     id: m.fm.id,
     sidecar_path: moved.newSidecarPath,
     original_path: moved.newOriginalPath,
     reindexed: true,
-    ...(auditWarning ? { warning: auditWarning } : {}),
+    ...((auditWarning || journalWarning) ? { warning: [auditWarning, journalWarning].filter(Boolean).join("; ") } : {}),
   };
 }
 

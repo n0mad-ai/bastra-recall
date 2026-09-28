@@ -61,8 +61,21 @@ export interface RecoveryJournalHandle {
    * nach dem geglückten Commit als auch nach einem VOLLSTÄNDIGEN Rollback: In
    * beiden Fällen ist der Zustand auf der Platte ein ganzer. Blieb der Rollback
    * stecken, wird NICHT quittiert; dann soll der nächste Start davon erfahren.
+   * I/O-Fehler außer einem bereits fehlenden Eintrag werden geworfen.
    */
   acknowledge(): Promise<void>;
+}
+
+/** A committed document stays committed if cleanup fails. Surface the failure
+ * as a result warning while keeping the journal for boot-time inspection. */
+export async function acknowledgeCommittedJournal(journal: RecoveryJournalHandle | undefined): Promise<string | undefined> {
+  if (!journal) return undefined;
+  try {
+    await journal.acknowledge();
+    return undefined;
+  } catch (err) {
+    return `document committed, but recovery journal cleanup failed: ${(err as Error).message}`;
+  }
 }
 
 function journalDir(vaultRoot: string): string {
@@ -103,16 +116,14 @@ export async function openRecoveryJournal(
   return {
     entry,
     acknowledge: async () => {
-      // #431: Ein fehlender Eintrag ist harmlos; jeder andere Fehler heißt,
-      // dass der Eintrag stehen bleibt und nach dem nächsten Start als
-      // falscher Halbzustand erscheint — das muss auf stderr sichtbar sein.
-      await unlink(path).catch((err: NodeJS.ErrnoException) => {
-        if (err?.code !== "ENOENT") {
-          console.error(
-            `[bastra-recall] recovery journal: could not acknowledge ${path}: ${err?.message ?? String(err)}`,
-          );
-        }
-      });
+      // Only an already absent entry is acknowledged. A failed unlink must
+      // reach the caller: otherwise a completed mutation appears successful
+      // while its journal entry is reported as partial on the next boot.
+      try {
+        await unlink(path);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") throw err;
+      }
     },
   };
 }
@@ -120,10 +131,9 @@ export async function openRecoveryJournal(
 /**
  * Alle offenen Einträge lesen.
  *
- * Ein unlesbarer oder unparsbarer Eintrag wird übersprungen: Der Schreibweg ist
- * atomar, also kann so etwas nur von Hand entstanden sein — und ein kaputtes
- * Journal darf den Daemon-Start nicht aufhalten. Der Ordner selbst fehlt bei
- * einem Vault, in dem nie eine solche Operation lief; das ist kein Fehler.
+ * Unparsbare JSON-Einträge werden übersprungen; I/O-Fehler werden gemeldet.
+ * Der Ordner selbst fehlt bei einem Vault, in dem nie eine solche Operation
+ * lief; das ist kein Fehler.
  */
 export async function readOpenRecoveryEntries(
   vaultRoot: string,
@@ -133,25 +143,29 @@ export async function readOpenRecoveryEntries(
   try {
     names = await readdir(dir);
   } catch (err) {
-    // #431: Fehlt der Ordner, lief nie eine solche Operation. Jeder andere
-    // Fehler (Rechte, Dateisystem) unterdrückt sonst still alle Boot-Warnungen.
-    if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
-      console.error(
-        `[bastra-recall] recovery journal: could not read ${dir}: ${(err as Error)?.message ?? String(err)}`,
-      );
-    }
-    return [];
+    // A missing directory means no operations were journaled. Every other
+    // error must reach the boot observer instead of looking like an empty log.
+    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return [];
+    throw err;
   }
   const entries: RecoveryJournalEntry[] = [];
   for (const name of names.sort()) {
     if (!name.endsWith(".json")) continue;
+    let raw: string;
     try {
-      const parsed = JSON.parse(await readFile(join(dir, name), "utf8")) as RecoveryJournalEntry;
+      raw = await readFile(join(dir, name), "utf8");
+    } catch (err) {
+      // Another process may have acknowledged the entry after readdir.
+      if ((err as NodeJS.ErrnoException)?.code === "ENOENT") continue;
+      throw err;
+    }
+    try {
+      const parsed = JSON.parse(raw) as RecoveryJournalEntry;
       if (typeof parsed?.operation_id === "string" && Array.isArray(parsed?.steps)) {
         entries.push(parsed);
       }
     } catch {
-      /* von Hand angelegt oder kaputt — nicht unser Fall */
+      /* Malformed JSON is not an I/O error; leave the hand-edited entry alone. */
     }
   }
   return entries;

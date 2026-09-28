@@ -23,6 +23,7 @@ import { join } from "node:path";
 import matter from "gray-matter";
 import { Vault, type MutationIncident } from "@bastra-recall/core";
 import {
+  acknowledgeCommittedJournal,
   openRecoveryJournal,
   readOpenRecoveryEntries,
   reportOpenRecoveryEntries,
@@ -247,15 +248,12 @@ test("ein Eintrag mit gültiger operation_id, aber ohne steps-Array, gilt nicht 
   await handle.acknowledge();
 });
 
-test("#431: ein readdir-Fehler außer ENOENT wird geloggt statt still verschluckt", async (t) => {
+test("#431: ein readdir-Fehler außer ENOENT erreicht den Aufrufer", async (t) => {
   const { dir } = await harness(t);
-  const errors = t.mock.method(console, "error", () => {});
   // Die Datei am Ordnerpfad erzwingt ENOTDIR — kein fehlender Ordner.
   await mkdir(join(dir, ".bastra"), { recursive: true });
   await writeFile(join(dir, ".bastra", "recovery"), "not a directory");
-  assert.deepEqual(await readOpenRecoveryEntries(dir), []);
-  assert.equal(errors.mock.callCount(), 1);
-  assert.match(String(errors.mock.calls[0].arguments[0]), /recovery journal: could not read/);
+  await assert.rejects(readOpenRecoveryEntries(dir), { code: "ENOTDIR" });
 });
 
 test("#431: ein fehlender Journal-Ordner bleibt still", async (t) => {
@@ -265,21 +263,32 @@ test("#431: ein fehlender Journal-Ordner bleibt still", async (t) => {
   assert.equal(errors.mock.callCount(), 0);
 });
 
-test("#431: ein unlink-Fehler beim Quittieren wird geloggt", { skip: process.getuid?.() === 0 }, async (t) => {
+test("#431: ein I/O-Fehler beim Lesen eines Eintrags ist kein leeres Journal", async (t) => {
+  const { dir } = await harness(t);
+  const journal = join(dir, ".bastra", "recovery");
+  await mkdir(join(journal, "unreadable.json"), { recursive: true });
+  await assert.rejects(readOpenRecoveryEntries(dir), { code: "EISDIR" });
+});
+
+test("#431: ein unlink-Fehler beim Quittieren erreicht den Aufrufer", { skip: process.getuid?.() === 0 }, async (t) => {
   const { dir } = await harness(t);
   const handle = await openRecoveryJournal(dir, { op: "move_document", id: "doc-x", steps: [] });
   const journal = join(dir, ".bastra", "recovery");
-  const errors = t.mock.method(console, "error", () => {});
   await chmod(journal, 0o500);
   try {
-    await handle.acknowledge();
+    await assert.rejects(handle.acknowledge(), { code: "EACCES" });
   } finally {
     await chmod(journal, 0o700);
   }
-  assert.equal(errors.mock.callCount(), 1);
-  assert.match(String(errors.mock.calls[0].arguments[0]), /recovery journal: could not acknowledge/);
   // Nach erfolgreichem Quittieren ist ein weiteres (ENOENT) still.
   await handle.acknowledge();
   await handle.acknowledge();
-  assert.equal(errors.mock.callCount(), 1);
+});
+
+test("#431: nach dem Commit wird ein Cleanup-Fehler als Warnung gemeldet", async () => {
+  const warning = await acknowledgeCommittedJournal({
+    entry: {} as Awaited<ReturnType<typeof openRecoveryJournal>>["entry"],
+    acknowledge: async () => { throw new Error("EIO"); },
+  });
+  assert.match(warning ?? "", /committed.*cleanup failed: EIO/);
 });
