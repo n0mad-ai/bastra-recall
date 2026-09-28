@@ -6,6 +6,8 @@
  *   <file>      a conversations.json data export — queued locally, the AI
  *               session mines it chunk-wise via `bastra import mine`
  *   rules       local instruction files (CLAUDE.md, AGENTS.md, Cursor rules)
+ *   clients     Claude Code's and Codex's own memory folders (#674) —
+ *               imported like `import vault`, one label per folder
  *   mine|clear  work off / discard the conversation mining queue
  * Nothing is ever auto-saved: candidates wait in `import-review.md` until
  * the session distills them WITH the user.
@@ -26,6 +28,7 @@ import {
 import { findRulesFiles, extractRulesCandidates } from "../import-rules.js";
 import { parseConversationExport, buildQueue, readNextChunk, clearQueue, queueStatus } from "../import-mining.js";
 import { importVault } from "../import-vault.js";
+import { findClientMemoryDirs } from "./client-memory.js";
 import { resolveVault } from "./helpers.js";
 import type { ParsedArgs } from "./types.js";
 
@@ -47,6 +50,7 @@ async function readStdin(): Promise<string> {
 export async function cmdImport(args: ParsedArgs): Promise<number> {
   if (args.surface === "rules") return cmdImportRules(args);
   if (args.surface === "vault") return cmdImportVault(args);
+  if (args.surface === "clients") return cmdImportClients(args);
   if (args.surface === "mine") return cmdImportMine();
   if (args.surface === "clear") return cmdImportClear();
 
@@ -71,6 +75,7 @@ export async function cmdImport(args: ParsedArgs): Promise<number> {
         "usage: bastra import <file|-> [chatgpt|claude|gemini|text]\n" +
           "       bastra import rules    scan local rules files (CLAUDE.md, AGENTS.md,\n" +
           "                              .cursorrules, .cursor/rules/, ~/.claude/CLAUDE.md)\n" +
+          "       bastra import clients  Claude Code's and Codex's own memory folders\n" +
           "       bastra import mine     next chunk of a queued conversations.json export\n" +
           "       bastra import clear    discard the mining queue\n" +
           "  <file>  an exported memory list (one fact per line, or a JSON array of strings) —\n" +
@@ -294,6 +299,46 @@ async function cmdImportVault(args: ParsedArgs): Promise<number> {
     );
   }
   return 0;
+}
+
+/**
+ * #674: import the clients' own memory folders — each through `importVault`
+ * under its own label, so a re-run only writes what changed (#530).
+ *   bastra import clients [--dry-run]
+ */
+async function cmdImportClients(args: ParsedArgs): Promise<number> {
+  const vault = await resolveVault({ dryRun: false, vaultPath: args.vaultPath });
+  if ("error" in vault) {
+    process.stderr.write(`${vault.error}\n`);
+    return 1;
+  }
+  const dirs = await findClientMemoryDirs(vault.path);
+  if (dirs.length === 0) {
+    process.stdout.write(
+      "no client memory notes found — looked in ~/.claude/projects/*/memory and ~/.codex/memories\n",
+    );
+    return 0;
+  }
+  let failed = 0;
+  for (const d of dirs) {
+    try {
+      const r = await importVault(vault.path, d.dir, { label: d.label, dryRun: args.dryRun });
+      const counts = r.dryRun
+        ? `${r.imported}/${r.scanned} file(s) would be imported`
+        : `${r.written.created} created · ${r.written.updated} updated · ${r.written.unchanged} unchanged` +
+          (r.skipped.length > 0 ? ` · ${r.skipped.length} skipped` : "");
+      process.stdout.write(`✓ ${d.client} ${d.dir} → ${r.folder}/ — ${counts}\n`);
+    } catch (err) {
+      failed += 1;
+      process.stdout.write(`✗ ${d.client} ${d.dir}: ${(err as Error).message}\n`);
+    }
+  }
+  if (!args.dryRun) {
+    process.stdout.write(
+      "  the originals stay where they are; the running daemon indexes the imported copies.\n",
+    );
+  }
+  return failed > 0 ? 1 : 0;
 }
 
 /** #211: print the next mining chunk for the AI session to distill. */
