@@ -116,9 +116,10 @@ Commands:
   archive <list|restore|reconcile>
                              What the agent's rm moved to ~/.bastra/archive,
                              put a path back, or let old entries go
-  reconcile <other-store>    Two copies of the same vault: which one is ahead,
+  reconcile [other-store]    Two copies of the same vault: which one is ahead,
                              per memory (dry run; --yes copies with backup,
-                             conflicts are only listed)
+                             conflicts are only listed); no argument lists
+                             the copies it finds
   doctor [surface|all]       Check status of one or every surface
   doctor [surface|all] --fix Check status and repair missing/broken pieces
   status                     Check daemon and adapters status (supports --json, -q)
@@ -625,9 +626,20 @@ is pinned under refs/bastra-archive/ and listed here too;
   reconcile: `bastra reconcile — two stores of the same vault: which copy is ahead
 
 Usage:
+  bastra reconcile [--vault <this-store>]                  list the copies of this vault
   bastra reconcile <other-store> [--vault <this-store>]   the plan (dry run, default)
   bastra reconcile <other-store> --yes                     carry out the copies
   bastra reconcile <other-store> --json                    the plan as JSON
+
+Without <other-store> it looks for copies: vault paths in the client
+registrations (Claude Code, also per project; Claude Desktop, Cursor, Codex)
+and BASTRA_VAULT_PATH — where a forwarder-spawned daemon writes when the
+configured one is unreachable —, symlinks onto a store, and folders with a
+bastra audit log in sync folders (iCloud Drive, ~/Library/CloudStorage,
+Dropbox, OneDrive, Google Drive, Nextcloud, pCloud, ~/Sync). A sync-folder
+hit counts as a copy when its audit log shares a memory with this vault's.
+With exactly one other copy it prints the dry run against it; --yes always
+takes the store as an argument.
 
 Compares memory by memory, joined by the frontmatter id. mtime, hash and size
 say nothing here: the daemon rewrites files on its own (generated fields, the

@@ -4,6 +4,11 @@
  * Dry run is the default; `--yes` copies the unambiguous cases with a backup.
  * Conflicts are listed and left alone. The comparison lives in
  * core/src/store-reconcile.ts.
+ *
+ * Without `<other-store>` it lists the copies store discovery finds
+ * (store-discovery.ts: settings, symlinks, sync folders) and, when exactly one
+ * other copy exists, prints the dry run against it. Writing (`--yes`) always
+ * takes the store as an argument.
  */
 import { realpath, stat } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -16,10 +21,17 @@ import {
   type ReconcilePlan,
 } from "@bastra-recall/core";
 import { resolveVault } from "./helpers.js";
+import {
+  defaultStoreDiscoveryEnv,
+  discoverStores,
+  formatDiscovery,
+  type StoreDiscoveryEnv,
+} from "./store-discovery.js";
 import type { ParsedArgs } from "./types.js";
 
 const USAGE =
-  "usage: bastra reconcile <other-store> [--vault <this-store>]   show which copy is ahead (dry run)\n" +
+  "usage: bastra reconcile [--vault <this-store>]                  list the copies of this vault\n" +
+  "       bastra reconcile <other-store> [--vault <this-store>]   show which copy is ahead (dry run)\n" +
   "       bastra reconcile <other-store> --yes                     copy the unambiguous ones, with backup";
 
 const REASON: Record<string, string> = {
@@ -103,14 +115,19 @@ function planJson(plan: ReconcilePlan): unknown {
   };
 }
 
-export async function cmdReconcile(args: ParsedArgs, now: Date = new Date()): Promise<number> {
+export async function cmdReconcile(
+  args: ParsedArgs,
+  now: Date = new Date(),
+  discoveryEnv?: StoreDiscoveryEnv,
+): Promise<number> {
   const otherArg = args.positional[1];
-  if (!otherArg) {
-    console.error(USAGE);
-    return 2;
-  }
   if (args.yes && args.dryRun) {
     console.error("bastra reconcile: --yes and --dry-run exclude each other");
+    return 2;
+  }
+  if (!otherArg && args.yes) {
+    console.error("bastra reconcile: --yes needs the other store as an argument");
+    console.error(USAGE);
     return 2;
   }
   const vault = await resolveVault({ dryRun: true, vaultPath: args.vaultPath });
@@ -119,6 +136,7 @@ export async function cmdReconcile(args: ParsedArgs, now: Date = new Date()): Pr
     return 2;
   }
   const here = resolve(vault.path);
+  if (!otherArg) return listStores(here, discoveryEnv ?? (await defaultStoreDiscoveryEnv()), args.json === true);
   const there = resolve(otherArg);
   for (const p of [here, there]) {
     if (!(await isDir(p))) {
@@ -157,4 +175,29 @@ export async function cmdReconcile(args: ParsedArgs, now: Date = new Date()): Pr
     if (results.length === 0) console.log("nothing to copy.");
   }
   return results.some((r) => r.status === "skipped") ? 1 : 0;
+}
+
+/** `bastra reconcile` without a store: what discovery finds, and the dry run
+ *  against the other copy when there is exactly one. */
+async function listStores(here: string, env: StoreDiscoveryEnv, json: boolean): Promise<number> {
+  if (!(await isDir(here))) {
+    console.error(`bastra reconcile: not a directory: ${here}`);
+    return 2;
+  }
+  const found = await discoverStores(here, env);
+  const comparable = found.others.filter((s) => s.exists);
+  const plan = comparable.length === 1 ? await planReconcile(await loadStore(here), await loadStore(comparable[0].path)) : null;
+  if (json) {
+    console.log(JSON.stringify({ stores: found, ...(plan ? { dry_run: true, ...(planJson(plan) as object) } : {}) }));
+    return 0;
+  }
+  console.log(formatDiscovery(found));
+  if (plan) {
+    console.log(`\ndry run against ${comparable[0].path}:\n`);
+    console.log(formatPlan(plan));
+    console.log(`\nnothing written. 'bastra reconcile ${comparable[0].path} --yes' copies the unambiguous ones.`);
+  } else if (comparable.length > 1) {
+    console.log(`\ncompare one with 'bastra reconcile <store>'.`);
+  }
+  return 0;
 }
