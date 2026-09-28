@@ -34,6 +34,7 @@ import { describeStale } from "../code-staleness.js";
 import { autostartWarning } from "./autostart.js";
 import { stubFreshness, stubFreshnessLines } from "./stub-freshness.js";
 import { affectsFilesLines, defaultAffectsFilesIo } from "./affects-files-note.js";
+import { defaultDerivedClaimsIo, derivedClaimsLines } from "./derived-claims-note.js";
 import { printFeaturesNote, type FeatureState } from "./features-note.js";
 import { installCodeAwarenessStep } from "./code-cmd.js";
 import { enabledRepos } from "../code-graph/enabled-repos.js";
@@ -461,6 +462,7 @@ export async function cmdDoctor(args: ParsedArgs): Promise<number> {
   await printAutostartNote();
   await printStubBinaryNote();
   await printAffectsFilesNote(resolveVaultPath(args.vaultPath));
+  await printDerivedClaimsNote(resolveVaultPath(args.vaultPath));
   await printCodeGraphNote();
   await printBridgeLearningNote();
   // What is switched off, as opposed to broken — never flips the exit code,
@@ -500,6 +502,25 @@ async function printAffectsFilesNote(cliVault: string | null): Promise<void> {
     const lines = await affectsFilesLines(defaultAffectsFilesIo(vault.path));
     if (lines.length === 0) return;
     process.stdout.write("→ affects_files\n");
+    for (const line of lines) process.stdout.write(`  ${line}\n`);
+    process.stdout.write("\n");
+  } catch {
+    /* a diagnostics NOTE must never break doctor */
+  }
+}
+
+/**
+ * Derived claims (#609): which declared claims no longer agree with their
+ * source. Wording and reading live in `derived-claims-note.ts`; silent when no
+ * memory declares a claim, and like every global note never a failure.
+ */
+async function printDerivedClaimsNote(cliVault: string | null): Promise<void> {
+  try {
+    const vault = await resolveVault({ dryRun: true, vaultPath: cliVault });
+    if ("error" in vault) return;
+    const lines = await derivedClaimsLines(defaultDerivedClaimsIo(vault.path));
+    if (lines.length === 0) return;
+    process.stdout.write("\u2192 derived claims\n");
     for (const line of lines) process.stdout.write(`  ${line}\n`);
     process.stdout.write("\n");
   } catch {

@@ -17,10 +17,11 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { SearchIndex, Vault } from "@bastra-recall/core";
+import { SearchIndex, Vault, type DerivedClaim } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { loadMemoryHandler, saveMemoryHandler, type ToolDeps } from "../src/tool-handlers.js";
 import { claimSourceIo, resolveDerivedClaims } from "../src/derived-claims.js";
+import { derivedClaimsLines } from "../src/cli/derived-claims-note.js";
 
 test("#609: an empty quote finds nothing, and the load carries on", async () => {
   const { deps, cleanup } = await makeDeps();
@@ -119,7 +120,7 @@ test("#609: the lean load path carries derived.claims", async () => {
     // Lean is the default an agent gets; a verdict that only `verbosity:
     // "full"` shows would reach nobody.
     const { loaded } = await statusesFor(deps, [{ ...claim, expect: 3 }]);
-    assert.equal(loaded.frontmatter.derived_claims?.length, 1, "lean is the default an agent gets");
+    assert.equal((loaded.frontmatter as { derived_claims?: unknown[] }).derived_claims?.length, 1, "lean is the default an agent gets");
     assert.equal(loaded.derived?.claims[0]?.status, "matches");
   } finally {
     await cleanup();
@@ -330,6 +331,63 @@ test("#609: quote.v1 asks for the string it should look for", async () => {
         ),
       /quote\.v1 needs `exact`/,
     );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("#609: sha256.v1 hashes the bytes on disk, not a UTF-8 round trip of them", async () => {
+  const { deps, cleanup } = await makeDeps();
+  try {
+    await mkdir(join(deps.vaultPath, "bin"), { recursive: true });
+    // 0xff is no UTF-8: decoding would turn it into U+FFFD and move the digest.
+    const bytes = Buffer.from([0x61, 0xff, 0x62, 0x0a]);
+    await writeFile(join(deps.vaultPath, "bin", "blob.dat"), bytes);
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const [same, changed] = await resolveDerivedClaims(deps.vaultPath, [
+      { id: "blob", resolver: "sha256.v1", source: "bin/blob.dat", expect: digest },
+      { id: "blob-old", resolver: "sha256.v1", source: "bin/blob.dat", expect: "ab".repeat(32) },
+    ]);
+    assert.equal(same.status, "matches");
+    assert.equal(same.value, digest);
+    assert.equal(changed.status, "differs", "a digest that no longer fits marks the claim stale");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("#609: doctor's derived-claims note is silent without claims and lists the stale ones", async () => {
+  const { deps, cleanup } = await makeDeps();
+  try {
+    await mkdir(join(deps.vaultPath, "sources"), { recursive: true });
+    await writeFile(join(deps.vaultPath, SOURCE), LIST, "utf8");
+    const resolve = (claims: readonly DerivedClaim[]) => resolveDerivedClaims(deps.vaultPath, claims);
+
+    assert.deepEqual(
+      await derivedClaimsLines({ memories: async () => [{ id: "plain", claims: [] }], resolve }),
+      [],
+      "no memory declares a claim -> nothing to say",
+    );
+
+    const lines = await derivedClaimsLines({
+      memories: async () => [
+        { id: "fresh", claims: [{ id: "ok", resolver: COUNT, source: SOURCE, expect: 3 }] },
+        {
+          id: "old",
+          claims: [
+            { id: "count", resolver: COUNT, source: SOURCE, expect: 27 },
+            { id: "quote", resolver: "quote.v1", source: SOURCE, exact: "fourth" },
+            { id: "missing", resolver: COUNT, source: "sources/absent.md", expect: 1 },
+          ],
+        },
+      ],
+      resolve,
+    });
+    assert.equal(lines[0], "4 claims in 2 memories, 2 out of step with its source");
+    assert.ok(lines.some((l) => l.includes("old → count") && l.includes("note says 27") && l.includes("says 3")));
+    assert.ok(lines.some((l) => l.includes("old → quote") && l.includes("no longer in")));
+    assert.ok(!lines.some((l) => l.includes("fresh")), "a matching claim is not listed");
+    assert.equal(lines.at(-1), "1 claim could not be checked (source missing, outside the vault, not a file or over 1 MB)");
   } finally {
     await cleanup();
   }

@@ -109,7 +109,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   without `expect` keeps reporting the observed value on its own. The
   `save_memory` description carries the field and the claim shape, so a model
   that has just read a file declares the claim in the same save call. A note
-  without `derived_claims` reads no source.
+  without `derived_claims` reads no source. Contributed by @zzallirog (branch
+  `feat/derived-claims-609`, cherry-picked with his authorship). On top:
+  `sha256.v1` hashes the bytes on disk (equal to `shasum -a 256`), and
+  `bastra doctor` gets a `derived claims` note that lists claims out of step
+  with their source (`differs`, `gone`, `ambiguous`) and counts the
+  unverifiable ones — silent without claims, never changes the exit code.
 
 ### Changed
 
