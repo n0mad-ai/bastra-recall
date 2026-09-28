@@ -26,6 +26,7 @@ import { getPromptImpactEnabled } from "../code-graph/prompt-impact-settings.js"
 import { probeDaemon, resolveVault, type DaemonProbe } from "./helpers.js";
 import type { ClientFeatures } from "./types.js";
 import { archiveMode, type ArchiveMode } from "../bash-pre-patterns.js";
+import { batterySaverEnabled } from "../power-source.js";
 
 export interface FeatureState {
   /** Clients whose MCP server is registered, with their hook/skill state. */
@@ -52,6 +53,9 @@ export interface FeatureState {
   ui: boolean;
   /** #650: bastra's archiving rm + git snapshots (bash-pre-patterns.ts archiveMode). */
   archive: ArchiveMode;
+  /** #632: battery mode. `live` = what the running daemon reports, absent when
+   *  it is not running or predates the field. */
+  battery: { saver: boolean; live?: { source: string; saving: boolean } };
 }
 
 const ON = "✓";
@@ -155,6 +159,14 @@ export function featureLines(s: FeatureState): string[] {
     : s.archive === "host"
       ? row(ON, archive, "host (BASTRA_RM_ARCHIVES=host: the host's own archiving rm, receipt text only)")
       : row(INFO, archive, "off", "bastra config set archive.enabled on  (docs/hooks.md)"));
+  const battery = "battery saver (macOS)";
+  if (!s.battery.saver) {
+    lines.push(row(INFO, battery, "off", "bastra config set battery.saver on"));
+  } else if (s.battery.live?.saving) {
+    lines.push(row(ON, battery, "on, on battery now: paraphrasing waits for AC, no warm-ups, model unloads after 60 s idle"));
+  } else {
+    lines.push(row(ON, battery, s.battery.live ? `on (power source: ${s.battery.live.source})` : "on"));
+  }
   return lines;
 }
 
@@ -231,6 +243,11 @@ export async function collectFeatureState(
     ui: settings.ui?.enabled ?? false,
     // This shell's env; the daemon reads its own (a LaunchAgent may differ).
     archive: archiveMode(settings.archive?.enabled ?? false),
+    // The running daemon is the witness when it reports the field; else this
+    // shell's env over the file.
+    battery: live?.ok && live.power
+      ? { saver: live.power.batterySaver, live: { source: live.power.source, saving: live.power.saving } }
+      : { saver: batterySaverEnabled(settings.battery?.saver, env) },
   };
 }
 

@@ -435,6 +435,8 @@ export interface DaemonProbe {
    * none, absent from a daemon older than the field ("not reported").
    */
   triggerExpandModel?: string | null;
+  /** #632: the running daemon's battery mode; absent from older daemons. */
+  power?: { batterySaver: boolean; source: string; saving: boolean };
 }
 
 /**
@@ -468,6 +470,9 @@ export function probeDaemon(endpoint: DaemonEndpoint = resolveDaemonEndpoint()):
               triggerExpandModel: !("trigger_expand" in data)
                 ? undefined
                 : typeof data.trigger_expand?.model === "string" ? data.trigger_expand.model : null,
+              power: typeof data.power?.battery_saver === "boolean"
+                ? { batterySaver: data.power.battery_saver, source: String(data.power.source), saving: data.power.saving === true }
+                : undefined,
             });
             return;
           }

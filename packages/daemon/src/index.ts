@@ -43,7 +43,8 @@ import { wireBootObservers } from "./boot-observers.js";
 import { startBackgroundJobs } from "./daemon-jobs.js";
 import { embeddingStatusLine, cloudConsentNotice, type EmbeddingStatus, type EmbeddingSource } from "./embedding-status.js";
 import { cloudEmbeddingProvider } from "./embedding-cloud.js";
-import { resolveEmbeddingChoice, getCommonsEnabled, getSharedRecallEnabled, getSharedRecallLanguage, getPrimaryLanguage, resolveGenerationModel, getEvidenceGateEnabled, getExperimentConfig } from "./settings.js";
+import { resolveEmbeddingChoice, getCommonsEnabled, getSharedRecallEnabled, getSharedRecallLanguage, getPrimaryLanguage, resolveGenerationModel, getEvidenceGateEnabled, getExperimentConfig, getBatterySaver } from "./settings.js";
+import { batterySaverEnabled, createPowerMonitor } from "./power-source.js";
 import { commonsPath, loadVerificationCounts } from "./cli/commons.js";
 import { bridgesPath, migrateBridgesPool } from "./cli/bridges.js";
 import { BridgePool } from "./learned-recall/bridges.js";
@@ -361,12 +362,20 @@ async function main(): Promise<void> {
   // Boot-Prewarm feuerte seinen eigenen HTTP-Call, und die Zusage „ein Warmup"
   // galt für alles außer dem ersten. Die Getter lesen `guardedProvider` und
   // `embIdxForHealth` erst beim Aufruf, also stört die frühere Zeile nichts.
+  // #632: battery mode (opt-in). Polls `pmset` once a minute; off = never
+  // polls and never defers anything.
+  const power = createPowerMonitor({
+    enabled: batterySaverEnabled(await getBatterySaver()),
+    onChange: (source) => console.error(`[bastra-recall] power source: ${source}${source === "battery" ? " — battery saver defers background model work" : ""}`),
+  });
+  power.start();
   const warmupEmbedding = createEmbeddingWarmup({
     // `ollama` is set exactly when the resolved provider is an Ollama one —
     // the only case with a model that goes cold and that our per-request
     // keep_alive (#78) governs. A hosted API keeps no model of ours resident,
     // so warming it is one egress request for nothing.
     hostedProvider: () => rawProvider !== null && ollama === undefined,
+    deferred: () => power.saving(),
     denseArmAvailable: () => search.hasEmbeddings() && embeddingBreaker?.state(Date.now()) !== "open",
     // #494: Der Boot fragt nur den Breaker. `embIdx.start()` läuft daneben und
     // ist in den ersten Sekunden nicht fertig — daran zu scheitern hieße, #78
@@ -514,8 +523,14 @@ async function main(): Promise<void> {
           // its own generous timeout instead of the reranker's 30s default —
           // otherwise every gen aborts and the backfill writes nothing.
           const expandTimeoutMs = envInt("BASTRA_EXPAND_TIMEOUT_MS", 120_000);
+          const expandChat = ollamaChat({ baseURL: ollama.baseURL, model: expandModel, timeoutMs: expandTimeoutMs });
           const expander = new TriggerExpander(vault, embIdx, {
-            chat: ollamaChat({ baseURL: ollama.baseURL, model: expandModel, timeoutMs: expandTimeoutMs }),
+            // #632: on battery (saver on) every generation — the per-embed
+            // one and the catch-up sweep, which is sequential — waits for AC.
+            chat: async (prompt) => {
+              await power.waitUntilNotSaving();
+              return expandChat(prompt);
+            },
             selfTest: async (phrase, id) => {
               const hits = await search.recallHybrid(phrase, { k: 10, allow_private: true });
               return hits.some((h) => h.id === id);
@@ -671,6 +686,7 @@ async function main(): Promise<void> {
           embeddingHealth: () => embIdxForHealth?.runtimeHealth() ?? null,
           embeddingBreaker: () => embeddingBreaker?.snapshot(Date.now()) ?? null,
           triggerExpand: () => (triggerExpandModel ? { model: triggerExpandModel } : null),
+          power: () => power.snapshot(),
           embeddingVectors: () => embIdxForHealth?.snapshot() ?? null,
           // Such-Copilot (#207): gleiche lokale Gen-Model-Auflösung wie
           // doc2query; ohne Ollama bleibt /ui/chat aus (503).
@@ -1001,6 +1017,7 @@ async function main(): Promise<void> {
     // selbst aus dem Speicher werfen — also die einzige, die Grundwahrheit
     // darüber hat. Sie geht in denselben Lifecycle-Zustand wie Warmups.
     onModelUnloaded: () => warmupEmbedding.noteUnloaded(),
+    power,
   });
 }
 

@@ -14,6 +14,7 @@ import { runInBandMint } from "./learned-recall/mint-job.js";
 import { BridgePool } from "./learned-recall/bridges.js";
 import { bridgesPath } from "./cli/bridges.js";
 import { unloadOllamaModel } from "./ollama-lifecycle.js";
+import { BATTERY_UNLOAD_MS, type PowerMonitor } from "./power-source.js";
 import { runCuratorPass } from "./curator-run.js";
 import { pruneEventLogs } from "./log-retention.js";
 import { observeCodeGraphRefresh, startCodeAwareness } from "./code-graph/service.js";
@@ -47,6 +48,9 @@ export interface BackgroundJobDeps {
    * eigenen Auslöser widersprechen konnte.
    */
   onModelUnloaded?: () => void;
+  /** #632: battery mode. While it is saving, the idle unload fires after
+   *  60 s instead of the configured window. Absent = never. */
+  power?: PowerMonitor;
 }
 
 export function startBackgroundJobs(deps: BackgroundJobDeps): void {
@@ -234,7 +238,10 @@ function startOllamaUnload(deps: BackgroundJobDeps): void {
     // Letzter erfolgreicher Provider-Call (search ODER Backfill-Batch);
     // vor dem ersten Embed zählt der Boot (deckt das Prewarm-Load ab).
     const lastUse = deps.embIdx()?.runtimeHealth().lastOkAt ?? bootAt;
-    if (lastUse > lastUnloadAt && Date.now() - lastUse >= ollamaUnloadMs) {
+    // #632: on battery the model a recall loaded leaves memory soon after —
+    // the short keep-alive, without touching the provider's per-request value.
+    const unloadAfterMs = deps.power?.saving() ? Math.min(BATTERY_UNLOAD_MS, ollamaUnloadMs) : ollamaUnloadMs;
+    if (lastUse > lastUnloadAt && Date.now() - lastUse >= unloadAfterMs) {
       lastUnloadAt = Date.now();
       void unloadOllamaModel(ollama.baseURL, ollama.model).then((ok) => {
         // #493: Grundwahrheit vor Schätzung — nur ein geglückter Unload sagt,

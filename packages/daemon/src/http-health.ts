@@ -50,6 +50,9 @@ export interface HealthDeps {
    *  generation model it runs over every memory. Null = not running. A getter,
    *  because it starts after the embedding index is ready, not at boot. */
   triggerExpand?: () => { model: string } | null;
+  /** #632: battery mode — the switch, the last power reading, and whether
+   *  background model work is being deferred right now. */
+  power?: () => { battery_saver: boolean; source: string; saving: boolean };
 }
 
 export function buildHealthPayload(deps: HealthDeps): Record<string, unknown> {
@@ -99,6 +102,7 @@ export function buildHealthPayload(deps: HealthDeps): Record<string, unknown> {
     // A background model the user never switched on by name: turning on
     // Ollama embeddings starts it. doctor reads this to say so.
     ...(deps.triggerExpand ? { trigger_expand: deps.triggerExpand() } : {}),
+    ...(deps.power ? { power: deps.power() } : {}),
     update_available:
       updateState && updateState.hasUpdate
         ? {

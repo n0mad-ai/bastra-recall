@@ -182,7 +182,8 @@ export type WarmupOutcome =
   | "skipped-in-flight"
   | "skipped-warm"
   | "skipped-no-provider"
-  | "skipped-hosted";
+  | "skipped-hosted"
+  | "skipped-battery";
 
 /**
  * WER wärmt (#494). The singleflight, the hosted check and the breaker apply to
@@ -278,6 +279,10 @@ export interface WarmupOptions {
    * Absent = treat the provider as one worth warming.
    */
   hostedProvider?: () => boolean;
+  /** #632: battery mode — true while the Mac runs on battery with
+   *  `battery.saver` on. Then no trigger warms: a recall that needs the model
+   *  loads it itself. Absent = never deferred. */
+  deferred?: () => boolean;
   /** `embIdx().runtimeHealth().lastOkAt` — the last successful provider call,
    *  or null when none has happened in this process. */
   lastOkAt: () => number | null;
@@ -361,6 +366,7 @@ export function createEmbeddingWarmup(opts: WarmupOptions): WarmupCoordinator {
     // Asked first, like in the prewarmer: "there is nothing here to warm" is a
     // different event from "the arm is down", and the two must stay apart.
     if (opts.hostedProvider?.() === true) return "skipped-hosted";
+    if (opts.deferred?.() === true) return "skipped-battery";
     // #494: Der Boot fragt nur nach dem Provider, alle anderen nach dem
     // dichten Arm — siehe {@link WarmupTrigger}.
     const available =

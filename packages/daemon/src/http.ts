@@ -128,6 +128,8 @@ export interface HttpOptions {
   embeddingBreaker?: () => EmbeddingBreakerSnapshot | null;
   /** The running doc2query paraphraser's model, or null (see http-health.ts). */
   triggerExpand?: () => { model: string } | null;
+  /** #632: battery mode state (see http-health.ts). */
+  power?: () => { battery_saver: boolean; source: string; saving: boolean };
   /** Live vector snapshot für die semantic map (#207). Getter, weil der
    *  Index erst nach dem Boot attacht. null = embeddings off / not ready. */
   embeddingVectors?: () => ReadonlyMap<string, Float32Array> | null;

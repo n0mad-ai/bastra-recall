@@ -36,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `already-delivered`). The save rate is measured with the #708
   `caller_session` join.
 
+- **Battery mode** (#632, opt-in). `bastra config set battery.saver on` (or
+  `BASTRA_BATTERY_SAVER=1`): the daemon reads `pmset -g batt` once a minute,
+  and while the Mac runs on battery the doc2query paraphraser and its
+  catch-up round wait for AC, boot/turn/session warm-ups of the embedding
+  model are skipped (`skipped-battery`), and the idle unload fires after
+  60 s instead of 10 min. Explicit recalls keep the vector arm. Not macOS or
+  an unreadable reading behaves like AC. `/health` has a `power` block and
+  `bastra doctor` a "battery saver" row. Hook lanes are not switched to
+  BM25-only on battery (not part of this change).
 - **Guard test against new language-bound matchers** (#679, part of #676).
   `packages/daemon/__tests__/language-bound-matchers.test.ts` scans daemon
   and core sources for language-named lists (`*_DE`, `*_CUES`, `*STOPWORDS`
