@@ -29,6 +29,7 @@ import {
   backupConfig,
   buildServerBlock,
   existingToolSurface,
+  mcpEnvFeatures,
   serverBlockEndpoint,
   foreignEnv,
   fileExists,
@@ -562,7 +563,12 @@ async function codexDoctor(): Promise<DoctorResult> {
   // #531 — the key names the endpoint that was actually probed.
   details[`daemon-at-${probe.endpoint?.label ?? "?"}`] = probe.ok ? `reachable (${probe.detail})` : probe.detail;
   if (!registered) return { status: "missing", message: "MCP not registered with Codex/ChatGPT desktop", details };
-  const features = { recallHooks: !hooksBroken, stopHook: stopHookRegistered, skill: skillState.status !== "missing" };
+  const features = {
+    recallHooks: !hooksBroken,
+    stopHook: stopHookRegistered,
+    skill: skillState.status !== "missing",
+    ...mcpEnvFeatures(current.server?.transport, CODEX_CONFIG),
+  };
   const broken = forwarderBroken || hooksBroken || planTool.broken || (details.skill === "missing" || details.skill.startsWith("STALE")) ||
     details["vault-path"]?.includes("MISSING") === true || details["vault-path"]?.startsWith("not ") === true;
   if (broken) return { status: "broken", message: "registered but some pieces need repair — re-run 'bastra install codex'", details, features };
