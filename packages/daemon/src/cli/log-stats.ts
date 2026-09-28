@@ -39,6 +39,7 @@ import { aggregateCodeRoi, renderCodeAwareness, renderCodeRoi, type CodeRoiStats
 export { aggregateCodeRoi, renderCodeAwareness, renderCodeRoi, type CodeRoiStats } from "./log-stats-code.js";
 import { aggregateCodeAwareness, type CodeAwarenessStats } from "../code-awareness-stats.js";
 export { aggregateCodeAwareness, type CodeAwarenessStats } from "../code-awareness-stats.js";
+import { aggregateSaveSuggestions, type SaveSuggestionStats } from "../save-suggestion-stats.js";
 
 const EVENT_FILE = /^events-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 
@@ -93,6 +94,10 @@ export interface LogStats {
   /** #477: attempted vs. written saves. Until save_hold existed, only the
    *  written half was visible and the hold rate could not be read at all. */
   saves: SaveStats;
+  /** #708/#662: sessions with a save suggestion, and how many of them saved —
+   *  joined on `caller_session`, the one id hook and MCP rows share. Null
+   *  while the window holds no suggestion. */
+  saveSuggestions: SaveSuggestionStats | null;
   /** #479: automatic hints removed after repeated version-local non-use. */
   hintSuppression: HintSuppressionStats;
   /** #579: was die Code-Awareness in diesem Fenster gekostet und genannt hat.
@@ -301,6 +306,7 @@ export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
       .map(([kind, count]) => ({ kind, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 8),
+    saveSuggestions: aggregateSaveSuggestions(events),
     saves: {
       written,
       held: [...holdReasons.values()].reduce((n, c) => n + c, 0),
@@ -333,6 +339,20 @@ function renderSaves(s: SaveStats): string[] {
     out.push(`    held by: ${s.byReason.map((r) => `${r.reason}×${r.count}`).join(", ")}`);
   }
   return out;
+}
+
+/** #708/#662 — suggested sessions → sessions that saved. The coverage line is
+ *  part of the number: a save without `caller_session` cannot be joined, so
+ *  below full coverage the saved counts are a lower bound. */
+function renderSaveSuggestions(s: SaveSuggestionStats | null): string[] {
+  if (!s) return [];
+  return [
+    `  save suggestions — ${s.suggestedSessions} session(s) got one, ` +
+      `${s.savedSessions} of them saved (${pct(s.savedSessions, s.suggestedSessions)}), ` +
+      `${s.savedAfterSuggestion} after the suggestion`,
+    `    joined on caller_session: ${s.savesWithCallerSession} of ${s.saves} save(s) carry one` +
+      (s.savesWithCallerSession < s.saves ? " — the rest cannot be joined, so this is a lower bound" : ""),
+  ];
 }
 
 function renderHintSuppression(s: HintSuppressionStats): string[] {
@@ -420,6 +440,7 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
       out.push(`  other events present: ${stats.otherKinds.map((k) => `${k.kind}×${k.count}`).join(", ")}`);
     }
     out.push(...renderSaves(stats.saves));
+    out.push(...renderSaveSuggestions(stats.saveSuggestions));
     out.push(...renderHintSuppression(stats.hintSuppression));
     out.push(...renderSessionStart(stats.sessionStart));
     // #579: a window can hold tool calls and refreshes without a single hook
@@ -489,7 +510,7 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
         `(counted once, client verdict kept)`,
     );
   }
-  const saveLines = renderSaves(stats.saves);
+  const saveLines = [...renderSaves(stats.saves), ...renderSaveSuggestions(stats.saveSuggestions)];
   if (saveLines.length > 0) {
     out.push("");
     out.push(...saveLines);

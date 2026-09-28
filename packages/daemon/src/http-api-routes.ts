@@ -38,6 +38,7 @@ import { addFloor, affirm, release } from "./floors.js";
 import { saveProductDocHandler } from "./product-doc-handler.js";
 import { recoverCallArguments } from "./call-corruption.js";
 import { TOOL_ARG_EXPECTATIONS } from "./tool-defs.js";
+import { callerSessionStore } from "./caller-session.js";
 
 // ─── /api/v1 dispatcher ──────────────────────────────────────────
 
@@ -49,6 +50,16 @@ export interface DispatchCtx {
 }
 
 export async function dispatchApi(
+  tool: string,
+  body: Record<string, unknown>,
+  ctx: DispatchCtx,
+): Promise<unknown | undefined> {
+  // #708: every MCP tool event a forwarded call writes carries the caller's
+  // Claude Code session — see caller-session.ts. `null` = forwarded, no header.
+  return callerSessionStore.run(ctx.ccSessionId ?? null, () => dispatchTool(tool, body, ctx));
+}
+
+async function dispatchTool(
   tool: string,
   body: Record<string, unknown>,
   ctx: DispatchCtx,

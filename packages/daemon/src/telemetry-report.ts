@@ -41,6 +41,7 @@ import { foldClientDuplicates } from "./cli/log-stats-phases.js";
 import { summarizeHintSuppression, type HintSuppressionSection } from "./telemetry-report-suppression.js";
 export { summarizeHintSuppression } from "./telemetry-report-suppression.js";
 import { summarizeCodeAwareness, type CodeAwarenessSection } from "./telemetry-report-code.js";
+import { aggregateSaveSuggestions, type SaveSuggestionStats } from "./save-suggestion-stats.js";
 export { summarizeCodeAwareness, type CodeAwarenessSection } from "./telemetry-report-code.js";
 
 export const TELEMETRY_REPORT_VERSION = 1;
@@ -786,6 +787,9 @@ export interface TelemetryReport {
   evidence: EvidenceSection | null;
   /** #477: attempted vs. written saves — null while the window saw neither. */
   saves: SaveSection | null;
+  /** #708/#662: suggested sessions → sessions that saved; the same fold
+   *  `bastra logs --stats` prints. Null while the window holds no suggestion. */
+  saveSuggestions: SaveSuggestionStats | null;
   /** #479: live cross-session noise removed from automatic hook injection. */
   hintSuppression: HintSuppressionSection | null;
   /** #579: code awareness — the tools that were called and the blocks that
@@ -820,6 +824,7 @@ export function buildTelemetryReport(
     latency: summarizeLatency(events),
     evidence: summarizeEvidence(events, t),
     saves: summarizeSaves(events),
+    saveSuggestions: aggregateSaveSuggestions(events),
     hintSuppression: summarizeHintSuppression(events),
     codeAwareness: summarizeCodeAwareness(events),
     sessionStart: summarizeSessionStart(events),

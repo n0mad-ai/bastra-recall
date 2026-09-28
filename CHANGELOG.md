@@ -139,6 +139,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `gated_reason: "system-injected"` and `origin: "system"`. The Stop lane and
   the prompt lane share one check (`system-turn.ts`), so their lists cannot
   drift. A prompt that only quotes such a tag still recalls.
+- **One session id across MCP and hook events** (#708, found by @zzallirog
+  in #701). `recall`, `save_memory` and `save_hold` events now record the
+  Claude Code session from the forwarder's `x-bastra-cc-session` header as
+  `caller_session`, as `load_memory` already did; `session_id` stays the
+  daemon's telemetry id, so older rows read as before. Clients without the
+  header (Codex, Cursor) record `caller_session: null`. Before, "sessions
+  with a save suggestion that then saved" joined on two different ids and
+  read zero whatever had happened (#662: "0 of 56", 23 of 44 when recounted
+  from transcripts). `bastra logs --stats` and the Telemetry tab now print
+  that rate, joined on `caller_session` with a fallback to `session_id`,
+  and say how many saves the join can see.
 - **Reflex memories fire on inflected words** (#565). The reflex lane matches
   exact words, so a trigger "Antwort an zzalli" never fired on "wir antworten
   zzalli". The trigger expansion now also writes inflected forms of a reflex

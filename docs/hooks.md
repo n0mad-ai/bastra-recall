@@ -527,6 +527,20 @@ suggestion only, the agent decides.
 Budget 1000 ms. Telemetry: `save_eval_call` with `heuristic, suggested_count,
 drift_clusters, drift_keys, turn_count, latency_ms_total`.
 
+**Joining a suggestion to the save (#708).** Hook events carry the Claude Code
+session in `session_id`; MCP tool events (`recall`, `save_memory`, `save_hold`,
+`load_memory`, `read_document`, `find_code`, `find_affected_files`) carry the
+daemon's own telemetry id there. The forwarder sends the Claude Code id as the
+`x-bastra-cc-session` header, and every tool event of a forwarded call records
+it as `caller_session` — join on `caller_session` = hook `session_id`, falling
+back to `session_id` for rows without it (written before #708). A forwarded
+call without the header (Codex, Cursor, or any client whose forwarder has no
+Claude Code session) records `caller_session: null`; a call that did not come
+through the forwarder has no field. `bastra logs --stats` and the Telemetry
+tab print the join as "save suggestions — N session(s) got one, M of them
+saved, K after the suggestion", with how many saves carry a `caller_session`:
+below all of them the saved count is a lower bound.
+
 #### Taxonomy injection (session hook, #66)
 
 The session hook also fetches `GET /hook/taxonomy` (budget 150 ms within the
@@ -1134,6 +1148,21 @@ entscheidet.
 
 Budget 1000 ms. Telemetrie: `save_eval_call` mit `heuristic, suggested_count,
 drift_clusters, drift_keys, turn_count, latency_ms_total`.
+
+**Vorschlag und Save zusammenführen (#708).** Hook-Events tragen die
+Claude-Code-Session in `session_id`; MCP-Tool-Events (`recall`, `save_memory`,
+`save_hold`, `load_memory`, `read_document`, `find_code`, `find_affected_files`)
+tragen dort die eigene Telemetrie-ID des Daemons. Der Forwarder schickt die
+Claude-Code-ID als Header `x-bastra-cc-session`, und jedes Tool-Event eines
+weitergeleiteten Aufrufs schreibt sie als `caller_session` mit — verknüpft wird
+über `caller_session` = Hook-`session_id`, bei Zeilen ohne das Feld (vor #708
+geschrieben) über `session_id`. Ein weitergeleiteter Aufruf ohne Header (Codex,
+Cursor oder jeder Client, dessen Forwarder keine Claude-Code-Session kennt)
+schreibt `caller_session: null`; ein Aufruf, der nicht über den Forwarder kam,
+hat das Feld gar nicht. `bastra logs --stats` und der Telemetrie-Tab zeigen die
+Verknüpfung als „save suggestions — N session(s) got one, M of them saved,
+K after the suggestion" und dazu, wie viele Saves eine `caller_session`
+tragen: Tragen sie nicht alle eine, ist die Zahl der Saves eine Untergrenze.
 
 #### Taxonomie-Einblendung (Session-Hook, #66)
 

@@ -119,6 +119,8 @@ export interface RecallEvent extends BaseEvent, DimensionedEvent {
   kind: "recall";
   recall_id: string;
   query: string;
+  /** #708: see {@link SaveMemoryEvent.caller_session}. */
+  caller_session?: string | null;
   /** #351: set when this recall is one phrasing of a batched call — the
    *  batch width (2-4). Absent on plain single-query recalls. */
   query_count?: number;
@@ -370,6 +372,11 @@ export interface SaveMemoryEvent extends BaseEvent {
   overwrite: boolean;
   created: boolean;
   follows_recall: string | null;
+  /** #708: the caller's Claude Code session from the forwarder header — the
+   *  key that joins this row to the hook events of the same session. `null` =
+   *  forwarded without the header; absent = not a forwarded call, or a row
+   *  written before #708. `session_id` stays the daemon's telemetry id. */
+  caller_session?: string | null;
 }
 
 /**
@@ -404,6 +411,8 @@ export interface SaveHoldEvent extends BaseEvent {
   claimed_count: number;
   overwrite: boolean;
   follows_recall: string | null;
+  /** #708: see {@link SaveMemoryEvent.caller_session}. */
+  caller_session?: string | null;
 }
 
 /** #144: lightweight act-signal from the PostToolUse:Bash hook — no recall,
