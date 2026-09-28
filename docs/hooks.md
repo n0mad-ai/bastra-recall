@@ -181,9 +181,18 @@ Detects retrieval prompts via DE + EN regex (e.g. `^such|finde|wo (ist|sind)`
 / `^find|search|where (is|are)`). On a match:
 
 - POSTs the prompt verbatim to `/hook/recall` with `k=5`, score-floor `50`.
-- Emits a `<recall-hints surface="claude-code" trigger="prompt-lookup">`
-  block with an explicit "Use bastra-recall:recall (and find_document if
-  pdf-likely) BEFORE conversation_search / web_search" instruction.
+- Emits a `<recall-hints surface="claude-code" trigger="prompt-lookup"
+  recall-step="done" recall_id="…">` block saying that the recall already ran
+  for this prompt: load the fitting candidates (and `find_document` if
+  pdf-likely) BEFORE conversation_search / web_search.
+- #620: `recall-step="done"` marks every prompt-lookup block (not only
+  retrieval prompts) as the result of recall step 1; `recall_id` names the
+  recall it came from. The skill and its Cursor/Codex projections say the
+  same: with such a block for the current prompt,
+  go straight to `load_memory` and call `recall` again only for a different
+  intent, a wider or narrower scope, a deliberate reformulation after a
+  weak / no-home result, or a new topic later in the task. An explicit user
+  request to search always runs.
 
 Every other non-trivial prompt recalls too (#677, `k=3`), in any language —
 the regexes above are German/English only and no longer decide whether a
@@ -930,9 +939,18 @@ Treffer:
 
 - sendet er den Prompt wörtlich per POST an `/hook/recall` mit `k=5` und
   Score-Untergrenze `50`.
-- gibt er einen Block `<recall-hints surface="claude-code" trigger="prompt-lookup">`
-  mit der ausdrücklichen Anweisung „Use bastra-recall:recall (and
-  find_document if pdf-likely) BEFORE conversation_search / web_search“ aus.
+- gibt er einen Block `<recall-hints surface="claude-code" trigger="prompt-lookup"
+  recall-step="done" recall_id="…">` aus, der sagt, dass der Recall für diesen
+  Prompt schon gelaufen ist: passende Kandidaten laden (und `find_document`,
+  wenn ein PDF wahrscheinlich ist), BEVOR conversation_search / web_search.
+- #620: `recall-step="done"` markiert jeden Prompt-Lookup-Block (nicht nur
+  Retrieval-Prompts) als Ergebnis von Recall-Schritt 1; `recall_id` nennt den
+  Recall, aus dem er stammt. Der Skill und seine Cursor-/Codex-Projektionen
+  sagen dasselbe: Mit so einem Block zum aktuellen
+  Prompt direkt `load_memory` aufrufen und `recall` nur erneut rufen bei
+  anderer Absicht, breiterem oder engerem Umfang, einer bewussten
+  Umformulierung nach schwachem / heimatlosem Ergebnis oder einem neuen Thema
+  später in der Aufgabe. Eine ausdrückliche Suchanfrage des Nutzers läuft immer.
 
 Jeder andere nicht-triviale Prompt ruft ebenfalls Recall auf (#677, `k=3`),
 in jeder Sprache — die Regexe oben kennen nur Deutsch und Englisch und
