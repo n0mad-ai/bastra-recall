@@ -193,6 +193,18 @@ fusion (vector arm off or timed out) the score says nothing, so only wired
 memories surface. `BASTRA_PROMPT_HOOK_MODE=retrieval-only` restores the old
 behaviour: non-retrieval prompts emit `{}` apart from wired reflex memories.
 
+**Turns nobody typed (#703):** Claude Code delivers a finished background task
+(`<task-notification>…`) and agent-to-agent mail (`<teammate-message …>`,
+`<agent-message …>`, `<cross-session-message …>`, also after the line
+"Another Claude session sent a message:") as user turns. The prompt lane runs
+no recall on them and emits `{}`; its `prompt_hook_call` row carries
+`status: "gated"`, `gated_reason: "system-injected"`, `hint_tokens_est: 0` and
+`origin: "system"`, so reach and prompt counts can leave it out. A
+task-boundary block parked for the owner's next prompt stays parked. Only the
+start of the turn counts: a prompt that merely quotes such a tag, or has text
+before it, is still a prompt. The Stop lane uses the same check
+(`packages/daemon/src/system-turn.ts`).
+
 **Assertion lane (#252):** the `PreToolUse` lane is bound to a tool, so it
 reaches an agent that *edits*; writing a sentence touches nothing. A prompt
 asking for outbound text ("draft a reply", "write the release notes") or for
@@ -820,6 +832,19 @@ begrenzt der Score: nur Treffer ≥ 100, dazu Memories, die du als
 erscheinen nur verdrahtete Memories. `BASTRA_PROMPT_HOOK_MODE=retrieval-only`
 stellt das alte Verhalten her: Prompts ohne Retrieval-Bezug geben bis auf
 verdrahtete Reflex-Memories `{}` aus.
+
+**Turns, die niemand getippt hat (#703):** Claude Code liefert eine fertige
+Hintergrund-Aufgabe (`<task-notification>…`) und Post zwischen Agenten
+(`<teammate-message …>`, `<agent-message …>`, `<cross-session-message …>`,
+auch nach der Zeile „Another Claude session sent a message:“) als
+Nutzer-Turns aus. Die Prompt-Lane ruft darauf keinen Recall auf und gibt `{}`
+aus; ihre `prompt_hook_call`-Zeile trägt `status: "gated"`,
+`gated_reason: "system-injected"`, `hint_tokens_est: 0` und
+`origin: "system"`, damit Reichweiten- und Prompt-Zählungen sie auslassen
+können. Ein für den nächsten Owner-Prompt geparkter Aufgabengrenzen-Block
+bleibt geparkt. Es zählt nur der Anfang des Turns: Ein Prompt, der so ein Tag
+nur zitiert oder Text davor hat, bleibt ein Prompt. Dieselbe Prüfung
+(`packages/daemon/src/system-turn.ts`) nutzt die Stop-Lane.
 
 **Assertion-Lane (#252):** Die `PreToolUse`-Lane ist an ein Werkzeug gebunden,
 erreicht also einen Agenten, der *editiert*; das Schreiben eines Satzes berührt
