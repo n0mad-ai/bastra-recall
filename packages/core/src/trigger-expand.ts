@@ -196,8 +196,6 @@ export class TriggerExpander {
         console.error(`[bastra.expand] empty generation for ${id} — not written, will retry`);
         return null;
       }
-      this.consecutiveGenFailures = 0;
-
       const candidates = parseExpansions(raw, memory.fm.recall_when, this.maxPhrases);
       // #565: the reflex lane matches exact tokens — "Antwort an zzalli" never
       // fired on "wir antworten zzalli". Owner decision (2026-09-21): the fix is
@@ -206,10 +204,16 @@ export class TriggerExpander {
       // the user wired as reflex: the BM25 path does not need them.
       if (memory.fm.recall_mode === "reflex" && memory.fm.recall_when.length > 0) {
         const inflected = await this.chat(buildInflectPrompt(memory));
+        if (inflected.trim().length === 0) {
+          this.consecutiveGenFailures++;
+          console.error(`[bastra.expand] empty inflection generation for ${id} — not written, will retry`);
+          return null;
+        }
         candidates.push(
           ...parseExpansions(inflected, [...memory.fm.recall_when, ...candidates], MAX_INFLECTIONS),
         );
       }
+      this.consecutiveGenFailures = 0;
       const kept: string[] = [];
       for (const phrase of candidates) {
         if (this.selfTest && !(await this.selfTest(phrase, id))) continue;

@@ -480,3 +480,25 @@ test("#565 expand: a reflex memory gets inflected variants of its triggers, a pl
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });
+
+test("#565: an empty inflection reply leaves a reflex memory eligible for retry", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "bastra-expand-inflect-empty-"));
+  const file = path.join(dir, "reflex.md");
+  await writeFile(file, memoryMd("reflex").replace('recall_when: ["original trigger"]', 'recall_when: ["Antwort an zzalli draften"]\nrecall_mode: reflex'));
+  const vault = new Vault(dir);
+  await vault.init();
+  try {
+    const before = await readFile(file, "utf8");
+    let calls = 0;
+    const expander = new TriggerExpander(vault, stubEmbeddings(), {
+      chat: async () => (++calls % 2 === 1 ? "reply to contributor" : ""),
+      backfillOnStart: false,
+    });
+    assert.equal(await expander.expand("reflex"), null);
+    assert.equal(await readFile(file, "utf8"), before, "no source stamp may freeze a missing inflection");
+    assert.equal(await expander.backfill(), 0);
+    assert.equal(calls, 4, "the next sweep retries both generations");
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
