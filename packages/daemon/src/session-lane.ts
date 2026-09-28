@@ -371,8 +371,12 @@ export async function runSessionLane(
   // Ohne erkanntes Projekt injizieren nur globale (unscoped) Floors —
   // fremd-gescopte Einträge wären in einer projektlosen Session Rauschen.
   if (!project) pinned = pinned.filter((e) => !e.scope);
-  const pinnedBlock = formatPinnedBlock(pinned);
-  const top = dropPinnedFromRanked(merged, pinned).slice(0, TOTAL_HINTS_CAP);
+  // dropPinnedFromRanked only sees entries the block actually SHOWED
+  // (`.included`) — an entry the 1200-char budget truncated out of the
+  // pinned block must stay eligible for a ranked hint slot, or it vanishes
+  // from both surfaces at once instead of falling back to the other one.
+  const { text: pinnedBlock, included: pinnedIncluded } = formatPinnedBlock(pinned);
+  const top = dropPinnedFromRanked(merged, pinnedIncluded).slice(0, TOTAL_HINTS_CAP);
 
   // Taxonomie-Konventionen (#66): bindende, selbst-gelernte Struktur-Regeln
   // des Vaults. Dedizierter Listen-Endpoint statt Recall-Suche — Konventionen
