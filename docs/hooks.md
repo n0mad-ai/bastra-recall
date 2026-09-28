@@ -175,6 +175,31 @@ that survived into the served top-k; `rescored_count` counts shared hits whose
 content score replaced a lower file-axis score. The edit excerpt itself is not
 logged.
 
+**Compact first-touch shape (#621, default).** The lane's ranking and filters
+are unchanged; what changed is how much of the result is shown:
+
+- Hints appear only for the **first delivered hint of a task area** in the
+  session. An area is the repository plus the first two directory segments of
+  the file's path, case-folded (outside a repository: the parent directory),
+  so aliases and renames inside an area do not open new ones. Later edits in
+  the same area stay silent.
+- **At most one candidate**, rendered as `id (type): title — first sentence of
+  the summary` in a `<recall-hints … trigger="first-touch">` block, never
+  longer than 600 characters (~150 tokens).
+- A memory already delivered in this session — by SessionStart, the prompt
+  lane or an earlier edit — is not shown again (session-start hints now count
+  as delivered too).
+- One named exception: a REQUIRED-band hit whose hand-written `recall_when`
+  matched with a strong anchor is shown on a repeat edit as well
+  (`trigger="binding-anchored"`), same one-candidate shape.
+- Weak / no-home results are not shown at all.
+- The size, memory-location and code-graph notes are unaffected.
+
+Telemetry on `hook_call`: `pretool_shape` (`compact` | `legacy`) and
+`hint_reason` (`first-touch`, `binding-anchored`, `repeat-area`, `weak`).
+Rollback: `BASTRA_PRETOOL_SHAPE=legacy` on the daemon restores the previous
+presentation (every edit, full candidate list with summaries).
+
 #### `bastra-recall-prompt-hook` (#33)
 
 Detects retrieval prompts via DE + EN regex (e.g. `^such|finde|wo (ist|sind)`
@@ -889,6 +914,35 @@ versuchte Zweig ergänzt das Telemetrie-Event `hook_recall` nur um
 geschafft haben; `rescored_count` zählt gemeinsame Treffer, deren Inhalts-Score
 einen niedrigeren Dateiachsen-Score ersetzt hat. Der Änderungsausschnitt selbst
 wird nicht protokolliert.
+
+**Kompakte Erst-Kontakt-Form (#621, Standard).** Ranking und Filter der Lane
+sind unverändert; geändert hat sich, wie viel vom Ergebnis gezeigt wird:
+
+- Hinweise erscheinen nur beim **ersten ausgelieferten Hinweis eines
+  Arbeitsbereichs** in der Session. Ein Bereich ist das Repository plus die
+  ersten zwei Verzeichnisebenen des Dateipfads, ohne Groß-/Kleinschreibung
+  (außerhalb eines Repositorys: das Elternverzeichnis) — Aliasse und
+  Umbenennungen innerhalb eines Bereichs öffnen also keinen neuen. Spätere
+  Änderungen im selben Bereich bleiben still.
+- **Höchstens ein Kandidat**, dargestellt als `id (typ): Titel — erster Satz
+  der Zusammenfassung` in einem Block `<recall-hints … trigger="first-touch">`,
+  nie länger als 600 Zeichen (~150 Tokens).
+- Eine Erinnerung, die in dieser Session schon ausgeliefert wurde — vom
+  SessionStart, von der Prompt-Lane oder bei einer früheren Änderung —, wird
+  nicht erneut gezeigt (Session-Start-Hinweise zählen jetzt auch als
+  ausgeliefert).
+- Eine benannte Ausnahme: Ein Treffer im REQUIRED-Band, dessen handgeschriebenes
+  `recall_when` mit starkem Anker getroffen hat, erscheint auch bei einer
+  wiederholten Änderung (`trigger="binding-anchored"`), in derselben
+  Ein-Kandidaten-Form.
+- Schwache / heimatlose Ergebnisse werden gar nicht gezeigt.
+- Die Hinweise zu Dateigröße, Ablageort und Code-Graph sind nicht betroffen.
+
+Telemetrie an `hook_call`: `pretool_shape` (`compact` | `legacy`) und
+`hint_reason` (`first-touch`, `binding-anchored`, `repeat-area`, `weak`).
+Rückweg: `BASTRA_PRETOOL_SHAPE=legacy` beim Daemon stellt die bisherige
+Darstellung wieder her (jede Änderung, volle Kandidatenliste mit
+Zusammenfassungen).
 
 #### `bastra-recall-prompt-hook` (#33)
 

@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildContextLedger, type LedgerEvent } from "../src/context-ledger.js";
 import { runSessionLane } from "../src/session-lane.js";
+import { loadSessionState } from "../src/session-state.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -281,6 +282,7 @@ test("#509: the #462 cadence — resume leaves the unchanged taxonomy out, compa
     const has = contexts.map((c) => c.includes("<vault-taxonomy>"));
     assert.deepEqual(has, [true, false, true, false, true]);
     for (const c of contexts) assert.match(c, /m1/, "recalls stay every start (#462)");
+    assert.ok((await loadSessionState(sid)).shown.m1, "#621: a session-start hint counts as delivered for the PreToolUse/prompt dedup");
     const calls = (await readEvents(logDir)).filter((e) => e.kind === "session_hook_call");
     assert.deepEqual(calls.map((e) => (e.constants_skipped as string[]).includes("taxonomy")), [false, true, false, true, false]);
     assert.deepEqual(calls.map((e) => (e.hint_tokens_by_part as Record<string, number>).taxonomy > 0), has, "the per-part tokens measure what was sent");

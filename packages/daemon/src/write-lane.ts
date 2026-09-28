@@ -40,6 +40,13 @@ import { reportHinted } from "./hook-hinted.js";
 import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookCaller, type HookClientEvidence } from "./hook-surface.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import {
+  formatCompactHint,
+  isBindingAnchored,
+  pretoolAreaKey,
+  pretoolLegacyShape,
+  type PretoolHintReason,
+} from "./pretool-shape.js";
+import {
   bumpShown,
   recordTouched,
   cleanupOldStates,
@@ -387,16 +394,40 @@ export async function runWriteLane(
   // Treffer stehen dann in EINER Liste unter der ehrlichen Überschrift, statt
   // an einer Schwelle geteilt zu werden, die auf dieser Skala nichts bedeutet.
   const unfused = resp?.unfused === true;
+
+  // #621: compact first-touch shape (pretool-shape.ts). Ranking and filters
+  // above are unchanged; this only decides which (at most one) surviving hit
+  // is presented. `legacy` presents every surviving hit as before.
+  const legacyShape = pretoolLegacyShape();
+  let hintReason: PretoolHintReason | null = null;
+  let compactHit: RecallHit | null = null;
+  let areaKey: string | null = null;
+  if (!legacyShape && survivingHits.length > 0) {
+    const target = targets[0] ?? (isAbsolute(filePath) ? filePath : resolve(cwd, filePath));
+    areaKey = pretoolAreaKey(laneRepoRoot(target, cwd), target);
+    const firstTouch = sessionState.shown[areaKey] === undefined;
+    if (resp?.weak_result === true || resp?.no_home === true) {
+      hintReason = "weak";
+    } else if (firstTouch) {
+      hintReason = "first-touch";
+      compactHit = survivingHits[0]!;
+    } else {
+      compactHit = survivingHits.find((h) => isBindingAnchored(h, MUST_LOAD_SCORE, unfused)) ?? null;
+      hintReason = compactHit ? "binding-anchored" : "repeat-area";
+    }
+  }
+  const presentedHits = legacyShape ? survivingHits : compactHit ? [compactHit] : [];
+
   const requiredHits: RecallHit[] = [];
   const optionalHits: RecallHit[] = [];
-  for (const h of survivingHits) {
+  for (const h of presentedHits) {
     if (unfused) requiredHits.push(h);
     else if (h.score >= MUST_LOAD_SCORE) requiredHits.push(h);
     else optionalHits.push(h);
   }
 
   const totalHints = requiredHits.length + optionalHits.length;
-  if (resp && totalHints === 0) status = "no-hits";
+  if (resp && totalHints === 0 && hintReason === null) status = "no-hits";
 
   const topScore = resp?.hits?.[0]?.score ?? null;
 
@@ -448,11 +479,15 @@ export async function runWriteLane(
     } else {
       stdout = "{}";
     }
-    const block = formatHintBlock(requiredHits, optionalHits, project, resp?.weak_result === true, resp?.no_home === true, resp?.unfused === true, client, resp?.degraded);
+    const block = compactHit
+      ? formatCompactHint(compactHit, project, client, hintReason as "first-touch" | "binding-anchored")
+      : formatHintBlock(requiredHits, optionalHits, project, resp?.weak_result === true, resp?.no_home === true, resp?.unfused === true, client, resp?.degraded);
     suppressedTokensEst = Math.ceil(block.length / 4);
     stateDeltas.push((s) => recordSourceSuppressed(s, BACKOFF_SOURCE));
   } else {
-    const hintsBlock = formatHintBlock(requiredHits, optionalHits, project, resp?.weak_result === true, resp?.no_home === true, resp?.unfused === true, client, resp?.degraded);
+    const hintsBlock = compactHit
+      ? formatCompactHint(compactHit, project, client, hintReason as "first-touch" | "binding-anchored")
+      : formatHintBlock(requiredHits, optionalHits, project, resp?.weak_result === true, resp?.no_home === true, resp?.unfused === true, client, resp?.degraded);
     const block = detNote ? `${detNote}\n${hintsBlock}` : hintsBlock;
     hintTokensEst = Math.ceil(block.length / 4);
     hintedIds = [...requiredHits, ...optionalHits].map((h) => h.id);
@@ -464,9 +499,13 @@ export async function runWriteLane(
 
   // Bump shown-counts for everything we surfaced, then persist. When
   // suppressed nothing was shown — only the backoff counter changed.
-  if (dedupActive && !suppressed && survivingHits.length > 0) {
+  if (dedupActive && !suppressed && presentedHits.length > 0) {
     const now = Date.now();
-    for (const h of survivingHits) stateDeltas.push((s) => bumpShown(s, h.id, now));
+    for (const h of presentedHits) stateDeltas.push((s) => bumpShown(s, h.id, now));
+    // #621: the area is opened by its first delivered hint, not by its first
+    // edit — an area whose first edits found nothing keeps its first touch.
+    const area = areaKey;
+    if (hintReason === "first-touch" && area !== null) stateDeltas.push((s) => bumpShown(s, area, now));
   }
   // #539: replay the deltas against the state as it is on disk now — the
   // snapshot above is minutes of recall old and four other lanes may have
@@ -542,6 +581,8 @@ export async function runWriteLane(
     backoff_streak: backoffStreak,
     suppressed,
     suppressed_tokens_est: suppressedTokensEst,
+    pretool_shape: legacyShape ? "legacy" : "compact",
+    ...(hintReason !== null ? { hint_reason: hintReason } : {}),
     status,
     error: errMsg,
   });
@@ -765,6 +806,12 @@ interface HookCallTelemetry {
   suppressed: boolean;
   /** #161: Tokens des NICHT injizierten Blocks — die Sparseite der ROI. */
   suppressed_tokens_est: number;
+  /** #621: `compact` (first-touch, one candidate) or `legacy` (BASTRA_PRETOOL_SHAPE=legacy). */
+  pretool_shape: "compact" | "legacy";
+  /** #621: why the compact shape presented or withheld a hint — `first-touch`,
+   *  `binding-anchored` (the named exception), `repeat-area`, `weak`. Absent
+   *  when there was nothing to present or the shape is legacy. */
+  hint_reason?: PretoolHintReason;
   status: HookStatus;
   error: string | null;
 }
