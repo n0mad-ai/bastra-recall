@@ -81,3 +81,44 @@ export const RRF_K = 5;
  * is.
  */
 export const RRF_SCALE = (5000 * (RRF_K + 1)) / 61;
+
+/**
+ * #641: weight of the dense arm in the fusion, relative to BM25. Default 1 —
+ * the equal-weight RRF that ships. `BASTRA_RRF_VECTOR_WEIGHT=<w>` switches a
+ * process to the weighted fusion; like `BASTRA_SALIENCE_RANK=live` it is an
+ * opt-in that goes live only after a lift has been shown (discipline of #160),
+ * and it is read per call but must never flip per request — the query cache
+ * holds fused rankings.
+ *
+ * Why the knob exists: on LongMemEval-S (cleaned, all 500 questions, the #500
+ * protocol) the dense arm ALONE ranks the gold session first more often than
+ * the equal-weight fusion does — 83.8% against 79.6% R@1. In 48 questions the
+ * dense arm has the gold at rank 1 and the fusion does not; in 27 it is the
+ * other way round. The typical loss: BM25 ranks a distractor 1st that the dense
+ * arm ranks 2nd or 3rd, the gold sits at dense 1 / BM25 5+, and equal weights
+ * hand the distractor rank 1. Both arm lists captured once, re-fused offline:
+ *
+ *   w     LME R@1  R@5    MRR    | gold set (run A, 584 answerable)
+ *   1     79.6%   98.2%  0.875  | R@1 24.1%  relevant_loss 0.2137  false_abst 0
+ *   1.5   83.2%   98.2%  0.897  | R@1 24.3%  relevant_loss 0.2301  false_abst 0
+ *   2     84.8%   97.8%  0.907  | R@1 25.0%  relevant_loss 0.2384  false_abst 2
+ *   3     84.0%   97.4%  0.901  | R@1 24.5%  relevant_loss 0.2438  false_abst 25
+ *
+ * 1.5 is the largest weight that keeps both M1 gates (relevant_loss <= 0.24,
+ * false abstention 0). LME R@1 at 1.5 against 1: 27 questions gained, 9 lost,
+ * exact sign test p = 0.004. On the gold set the same weight costs relevant
+ * loss (78 -> 84 of 365), so this stays opt-in until the owner decides.
+ *
+ * `fuseRRF` normalises the pair so the weights sum to 2: rank 1 in both arms
+ * keeps the 163.934 ceiling. The one-armed rank-1 anchor does NOT hold — a
+ * dense-only rank 1 scores above 81.967, a BM25-only rank 1 below it — which
+ * moves band occupancy the same way a change of RRF_K does (see RRF_SCALE).
+ *
+ * Out-of-range or unparsable values fall back to 1, the shipped behaviour.
+ */
+export function rrfVectorWeight(): number {
+  const raw = process.env.BASTRA_RRF_VECTOR_WEIGHT;
+  if (raw === undefined || raw.trim() === "") return 1;
+  const w = Number(raw);
+  return Number.isFinite(w) && w > 0 && w <= 10 ? w : 1;
+}

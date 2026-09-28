@@ -20,7 +20,7 @@ import * as path from "node:path";
 import type { Memory } from "./schema.js";
 import type { Vault, VaultEvent } from "./vault.js";
 import { EmbedCache, embedBody, hashEmbedContent } from "./embed-cache.js";
-import { RRF_K, RRF_SCALE } from "./rrf.js";
+import { RRF_K, RRF_SCALE, rrfVectorWeight } from "./rrf.js";
 // #493: Die Provider stehen seit dem 800-Zeilen-Schnitt daneben. Re-exportiert,
 // damit jeder bestehende Import aus `embeddings.js` unverändert weiterläuft.
 import type { EmbeddingProvider } from "./embedding-providers.js";
@@ -643,7 +643,7 @@ export interface FusedEntry {
 // below and every existing importer are unaffected. (Imported at the top of
 // the file too — a bare `export … from` would not put RRF_K in local scope,
 // and `fuseRRF` uses it as a default parameter.)
-export { RRF_K, RRF_SCALE };
+export { RRF_K, RRF_SCALE, rrfVectorWeight };
 
 /**
  * Reciprocal-Rank-Fusion aus BM25-Hits und Vector-Hits. Höherer RRF-Score =
@@ -654,8 +654,13 @@ export function fuseRRF(
   bm25Ids: string[],
   vectorIds: string[],
   k: number = RRF_K,
+  vectorWeight: number = rrfVectorWeight(),
 ): Map<string, FusedEntry> {
   const fused = new Map<string, FusedEntry>();
+  // #641: weights normalised to sum 2, so w=1 is exactly the unweighted sum
+  // and rank 1 in both arms keeps its ceiling at any w.
+  const wBm25 = 2 / (1 + vectorWeight);
+  const wVector = (2 * vectorWeight) / (1 + vectorWeight);
   const ensure = (id: string): FusedEntry => {
     let e = fused.get(id);
     if (!e) {
@@ -666,12 +671,12 @@ export function fuseRRF(
   };
   bm25Ids.forEach((id, idx) => {
     const e = ensure(id);
-    e.score += 1 / (k + idx + 1);
+    e.score += wBm25 / (k + idx + 1);
     e.rank_bm25 = idx + 1;
   });
   vectorIds.forEach((id, idx) => {
     const e = ensure(id);
-    e.score += 1 / (k + idx + 1);
+    e.score += wVector / (k + idx + 1);
     e.rank_vector = idx + 1;
   });
   return fused;

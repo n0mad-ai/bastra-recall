@@ -94,6 +94,7 @@ import {
   SearchIndex,
   EmbeddingIndex,
   OllamaEmbeddingProvider,
+  rrfVectorWeight,
 } from "@bastra-recall/core";
 import {
   haystackMemories,
@@ -423,7 +424,8 @@ async function main(): Promise<void> {
   console.error(
     `LongMemEval: ${questions.length}/${all.length} questions` +
       `${loaded.dropped ? ` (${loaded.dropped} abstention-typed dropped)` : ""}` +
-      ` · arms ${args.arms.join("+")} · turns ${args.turns} · k=${args.k}`,
+      ` · arms ${args.arms.join("+")} · turns ${args.turns} · k=${args.k}` +
+      ` · rrf vector weight ${rrfVectorWeight()}`,
   );
   const engine = engineIdentity();
   console.error(`dataset ${datasetHash.slice(0, 12)} · code ${codeHash.slice(0, 12)} · ${corpus}`);
@@ -635,6 +637,10 @@ async function main(): Promise<void> {
           n_questions: questions.length,
           n_sessions: sessionCount,
           embedding_model: provider ? (process.env.BASTRA_EMBEDDING_MODEL ?? "embeddinggemma") : null,
+          // #641: the fusion weight the hybrid arm ran with (BASTRA_RRF_VECTOR_WEIGHT,
+          // 1 = the shipped equal-weight RRF). Without it a weighted run and the
+          // default run are indistinguishable in the artifact.
+          rrf_vector_weight: rrfVectorWeight(),
           near_far: { cut, mode: args.near === null ? "median" : "fixed", near: near.length, far: far.length },
           summary,
           far_retention: farRetention,

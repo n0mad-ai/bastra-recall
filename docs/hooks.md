@@ -705,6 +705,7 @@ new MCP tool):
 | `BASTRA_SCOPE_FILTER_LANES`   | `shadow`         | `shadow` \| `enforce` — Projekt-Scope-Filter für Prompt- und Todo-Lane. `shadow` misst nur (`dropped_scope_count`, `dropped_scopes`, `project_confidence` in der Telemetrie), `enforce` verwirft. Write-Lane und SessionStart filtern unabhängig davon seit #110 |
 | `BASTRA_SALIENCE_RANK`        | `shadow`         | `off` \| `shadow` \| `live` — salience ranking multiplier (#217, lift-gated) |
 | `BASTRA_SALIENCE_RANK_CAP`    | `0.25`           | Max salience score boost (`1 + salience × cap`)               |
+| `BASTRA_RRF_VECTOR_WEIGHT`    | `1`              | Weight of the dense arm in the hybrid fusion, relative to BM25 (#641, opt-in, lift-gated). `1.5` measured +3.6 pp R@1 on LongMemEval-S and keeps the gold-set M1 gates; moves score bands |
 | `BASTRA_SAMPLE_ROT_DAYS`      | `28`             | Sample floor: days a memory may go unmeasured before it must re-enter the sample, whatever its salience (#160) |
 | `BASTRA_SIZE_CHECK`           | `on`             | `off` disables the PreToolUse file-size check                 |
 | `BASTRA_RM_ARCHIVES`          | _unset_          | The #650 opt-in, read by the daemon; wins over `archive.enabled`: `1` bastra's archiving `rm` + git snapshots, `host` the host's own archiving `rm` (receipt text only), `0` off |
@@ -1425,6 +1426,7 @@ REST-Schnittstelle (Token-Authentifizierung wie bei den anderen
 | `BASTRA_SCOPE_FILTER_LANES`   | `shadow`         | `shadow` \| `enforce` — Projekt-Scope-Filter für Prompt- und Todo-Lane. `shadow` misst nur (`dropped_scope_count`, `dropped_scopes`, `project_confidence` in der Telemetrie), `enforce` verwirft. Write-Lane und SessionStart filtern unabhängig davon seit #110 |
 | `BASTRA_SALIENCE_RANK`        | `shadow`         | `off` \| `shadow` \| `live` — Salienz-Multiplikator fürs Ranking (#217, hinter Lift-Gate) |
 | `BASTRA_SALIENCE_RANK_CAP`    | `0.25`           | Maximaler Salienz-Aufschlag auf den Score (`1 + salience × cap`) |
+| `BASTRA_RRF_VECTOR_WEIGHT`    | `1`              | Gewicht des Dense-Arms in der hybriden Fusion relativ zu BM25 (#641, Opt-in, hinter Lift-Gate). `1.5` brachte auf LongMemEval-S +3,6 pp R@1 und hält die M1-Gates des Gold-Sets; verschiebt die Score-Bänder |
 | `BASTRA_SAMPLE_ROT_DAYS`      | `28`             | Stichproben-Untergrenze: Tage, die eine Erinnerung ungemessen bleiben darf, bevor sie unabhängig von ihrer Salienz wieder in die Stichprobe muss (#160) |
 | `BASTRA_SIZE_CHECK`           | `on`             | `off` schaltet die Dateigrößenprüfung in PreToolUse ab         |
 | `BASTRA_SIZE_GUIDE`           | `500`            | Richtwert für Zeilen, ab dem der Größen-Hook eine Aufteilung anregt (auch `bastra config set size.guide`) |
