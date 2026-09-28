@@ -417,3 +417,54 @@ test(
     }
   },
 );
+
+test("#710: a type: feedback memory gets no recall_when entry 'feedback'; the type stays in tags", async () => {
+  const src = await tmp("iv-src-");
+  const vault = await tmp("iv-vault-");
+  try {
+    await writeSrc(src, "feedback_borders.md", "---\nname: Keine doppelten Borders\ndescription: prüfen dass keine doppelten Borders entstehen\ntype: feedback\n---\nBody.");
+    const r = await importVault(vault, src, { label: "ccmem" });
+    const { data } = await readMem(vault, r.folder, r.ids[0]);
+    const rw = data.recall_when as string[];
+    assert.ok(!rw.some((e) => e.toLowerCase() === "feedback"), `no type word in recall_when: ${JSON.stringify(rw)}`);
+    assert.ok((data.tags as string[]).includes("feedback"), "the type word is still a tag");
+    assert.deepEqual(r.warnings, [], "a clean note raises no warning");
+
+    // A note from an import before #710 carries the type word; re-running the
+    // same import rewrites it.
+    const path = join(vault, r.folder, `${r.ids[0]}.md`);
+    const raw = await readFile(path, "utf8");
+    await writeFile(path, raw.replace("recall_when:\n", "recall_when:\n  - feedback\n"), "utf8");
+    assert.ok(((await readMem(vault, r.folder, r.ids[0])).data.recall_when as string[]).includes("feedback"));
+    const again = await importVault(vault, src, { label: "ccmem" });
+    assert.equal(again.written.updated, 1, "the stale note is rewritten");
+    const repaired = (await readMem(vault, r.folder, r.ids[0])).data.recall_when as string[];
+    assert.ok(!repaired.includes("feedback"), "re-import repairs a pre-#710 note");
+  } finally {
+    await rm(src, { recursive: true, force: true });
+    await rm(vault, { recursive: true, force: true });
+  }
+});
+
+test("#710: an over-long description is cut in recall_when (summary keeps it), a bare type word is dropped, both with a warning", async () => {
+  const src = await tmp("iv-src-");
+  const vault = await tmp("iv-vault-");
+  try {
+    const long = "Wenn ein Deployment auf dem Staging-Server hängt, ".repeat(10).trim();
+    await writeSrc(src, "project_deploy.md", `---\nname: Deploy hängt\ndescription: ${long}\ntype: project\n---\nBody.`);
+    await writeSrc(src, "reference_x.md", "---\nname: Referenz X\ndescription: reference\ntype: reference\n---\nBody.");
+    const r = await importVault(vault, src, { label: "ccmem" });
+    assert.equal(r.imported, 2, "a warning never blocks the import");
+    const deploy = await readMem(vault, r.folder, r.ids.find((id) => id.includes("deploy"))!);
+    assert.ok((deploy.data.summary as string).length > 200, "summary keeps the description beyond the trigger cap");
+    for (const e of deploy.data.recall_when as string[]) assert.ok(e.length <= 200, `entry capped: ${e.length}`);
+    const ref = await readMem(vault, r.folder, r.ids.find((id) => id.includes("reference"))!);
+    assert.deepEqual(ref.data.recall_when, ["Referenz X"], "a description that is only a type word is dropped");
+    assert.equal(r.warnings.length, 2);
+    assert.ok(r.warnings.some((w) => /cut to 200/.test(w.reason)));
+    assert.ok(r.warnings.some((w) => /type word/.test(w.reason)));
+  } finally {
+    await rm(src, { recursive: true, force: true });
+    await rm(vault, { recursive: true, force: true });
+  }
+});
