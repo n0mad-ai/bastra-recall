@@ -8,7 +8,7 @@
  * persönlichen Memories gerankt. Es wird NIE in das Repo geschrieben;
  * Beiträge laufen über PRs (siehe Commons-CONTRIBUTING).
  */
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { arch, homedir, platform } from "node:os";
@@ -331,7 +331,12 @@ async function cloneOrPull(): Promise<number> {
  * to the root and moved in; a name that exists on both sides is refused by
  * name rather than overwritten, because the local side is the user's data.
  */
-export function cloneIntoRoot(git: string, url: string, path: string): { ok: true } | { ok: false; detail: string } {
+export function cloneIntoRoot(
+  git: string,
+  url: string,
+  path: string,
+  io: { move?: typeof renameSync } = {},
+): { ok: true } | { ok: false; detail: string } {
   const unreachable = " — is the repo reachable (public, or your account has access)?";
   const occupied = existsSync(path) && readdirSync(path).length > 0;
   if (!occupied) {
@@ -339,6 +344,7 @@ export function cloneIntoRoot(git: string, url: string, path: string): { ok: tru
     return r.ok ? { ok: true } : { ok: false, detail: `git clone failed (${r.detail})${unreachable}` };
   }
   const staging = mkdtempSync(join(dirname(path), `.${basename(path)}-clone-`));
+  let preserveStaging = false;
   try {
     const checkout = join(staging, "checkout");
     const r = run(git, ["clone", "--depth", "1", url, checkout], { timeoutMs: 300_000, showProgress: true, env: { GIT_TERMINAL_PROMPT: "0" } });
@@ -350,9 +356,36 @@ export function cloneIntoRoot(git: string, url: string, path: string): { ok: tru
     }
     // `.git` last: the root only counts as cloned once `.git` is in, so a move that stops
     // midway leaves visible clashes for the next run instead of a half tree it would pull into.
-    for (const name of [...entries.filter((n) => n !== ".git"), ".git"]) renameSync(join(checkout, name), join(path, name));
+    const moved: Array<{ name: string; dev: number; ino: number; size: number; mtimeMs: number; ctimeMs: number }> = [];
+    try {
+      for (const name of [...entries.filter((n) => n !== ".git"), ".git"]) {
+        const dest = join(path, name);
+        (io.move ?? renameSync)(join(checkout, name), dest);
+        const st = lstatSync(dest);
+        moved.push({ name, dev: st.dev, ino: st.ino, size: st.size, mtimeMs: st.mtimeMs, ctimeMs: st.ctimeMs });
+      }
+    } catch (err) {
+      const stuck: string[] = [];
+      for (const item of moved.reverse()) {
+        const dest = join(path, item.name);
+        try {
+          const st = lstatSync(dest);
+          if (st.dev !== item.dev || st.ino !== item.ino || st.size !== item.size || st.mtimeMs !== item.mtimeMs || st.ctimeMs !== item.ctimeMs) {
+            stuck.push(item.name);
+            continue;
+          }
+          renameSync(dest, join(checkout, item.name));
+        } catch {
+          stuck.push(item.name);
+        }
+      }
+      preserveStaging = stuck.length > 0;
+      return { ok: false, detail: preserveStaging
+        ? `clone move failed (${(err as Error).message}); partial checkout in ${path}, remaining staging in ${staging}; inspect ${stuck.join(", ")} before retrying`
+        : `clone move failed (${(err as Error).message}); checkout move rolled back, local files unchanged` };
+    }
     return { ok: true };
   } finally {
-    rmSync(staging, { recursive: true, force: true });
+    if (!preserveStaging) rmSync(staging, { recursive: true, force: true });
   }
 }
