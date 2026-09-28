@@ -221,9 +221,27 @@ export function parseLcov(text, root = ROOT) {
 
 /** The environment for a `node --test` of our own. Started from inside a test run, Node
  * marks it NODE_TEST_CONTEXT=child and the child streams its results to a parent that
- * is not listening: no reporter writes, no lcov, an empty map. */
-function ownRunner() {
-  const { NODE_TEST_CONTEXT, ...env } = process.env;
+ * is not listening: no reporter writes, no lcov, an empty map.
+ * With `dropReporters`, test-reporter options also leave NODE_OPTIONS. A reporter there
+ * (a CI or wrapper asking for `spec`) is the same trap from the other side for the child
+ * `runOne` pins two reporters on: Node adds it to them, then refuses a run whose
+ * reporters outnumber their destinations — every file "failed", an empty map. `select
+ * --run` pins nothing and shows the output to the person who asked for it, so it keeps
+ * the wrapper's reporter. */
+function ownRunner({ dropReporters = false } = {}) {
+  const { NODE_TEST_CONTEXT, NODE_OPTIONS, ...env } = process.env;
+  if (!dropReporters) {
+    if (NODE_OPTIONS !== undefined) env.NODE_OPTIONS = NODE_OPTIONS;
+    return env;
+  }
+  const kept = [];
+  const opts = (NODE_OPTIONS ?? "").split(/\s+/).filter(Boolean);
+  for (let i = 0; i < opts.length; i++) {
+    const m = /^--test-reporter(?:-destination)?(=)?/.exec(opts[i]);
+    if (!m) kept.push(opts[i]);
+    else if (!m[1]) i++; // `--test-reporter spec`: the value is the next word
+  }
+  if (kept.length > 0) env.NODE_OPTIONS = kept.join(" ");
   return env;
 }
 
@@ -238,7 +256,7 @@ function runOne(file, dir, root, flags) {
   ];
   const t0 = Date.now();
   return new Promise((done) => {
-    const p = spawn(process.execPath, args, { cwd: root, stdio: "ignore", env: ownRunner() });
+    const p = spawn(process.execPath, args, { cwd: root, stdio: "ignore", env: ownRunner({ dropReporters: true }) });
     p.on("close", (code) => {
       const t = existsSync(tap) ? readFileSync(tap, "utf8") : "";
       const num = (k) => Number((t.match(new RegExp(`^# ${k} (\\d+)`, "m")) ?? [])[1] ?? 0);
