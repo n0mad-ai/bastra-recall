@@ -102,6 +102,20 @@ Three outcomes per patch, and the third is the point: a patch that **applies cle
 
 After the series, the patched CLI is actually started. If it does not boot, every patch from that run is reversed and the install is left as the updater produced it. `bastra patches status` prints the directory patches are addressed from when it differs from the install root — on a source checkout those are two different roots, and that line is the first thing to check when every verdict looks wrong.
 
+### Two copies of one vault — which one is ahead
+
+If the same vault lives in two places — a synced mirror on a second machine, a copy a failover daemon wrote into — `bastra reconcile` tells you, memory by memory, which copy is ahead.
+
+```bash
+bastra reconcile /path/to/other/copy            # the plan (dry run, the default)
+bastra reconcile /path/to/other/copy --yes      # carry out the unambiguous copies
+bastra reconcile /path/to/other/copy --json     # the plan as JSON
+```
+
+"This store" is your vault (`--vault`, `BASTRA_VAULT_PATH`, or the one your clients are registered with). File date, hash and size decide nothing: the daemon rewrites memory files on its own (generated fields, the auto-related block), so the copy it served looks newer while it may hold the older text. Two copies count as the same when their *authored* content matches — body without the generated block, wrapping collapsed, wikilinks in one spelling, frontmatter without generated fields. Memories are matched by their frontmatter `id`, not their filename.
+
+The direction comes from each store's audit log (`.bastra/audit-log.ndjson`): the copy with recorded writes the other lacks is ahead. Anything else is a **conflict** and is only listed, never resolved: writes on both sides, a change no log records (an edit in another editor), a delete on one side, a duplicate id. `--yes` copies only the unambiguous cases; an overwritten file is first copied to `<store>/.bastra/reconcile-backup/<time>/`, a file that changed since the plan is skipped, and nothing is deleted. Finding stores you do not already know the path of is not part of it yet (#339).
+
 ### Onboarding — five minutes to a warm start
 
 A fresh vault offers to seed itself. Pick what your memory will mainly hold — code & projects, company & decisions, life & knowledge, or a mix — and answer a handful of persona-aware questions; every answer becomes a profile memory your AI recalls from day one. Two surfaces run it for certain: the vault map auto-opens it on a fresh vault, and `bastra onboard` runs it in the terminal (`bastra onboard --answers <file>` saves prepared answers from a JSON/YAML file, no terminal needed — see `bastra onboard --help`). On top of that, an AI session with hooks (Claude Code, Codex) is handed the interview at session start and usually opens it for you — the most adaptive of the three, it follows up where an answer is thin. Skippable everywhere, never asked twice.
@@ -363,6 +377,20 @@ Eine id besteht aus dem Ordnungspräfix und einem Slug der `Subject:`-Zeile des 
 Drei Ausgänge pro Patch, und der dritte ist der Punkt: Ein Patch, der **sauber greift**, wird wieder eingespielt; einer, den Upstream **wortgleich übernommen** hat, fliegt automatisch aus der Serie; und einer, der **nicht mehr passt**, wird *beiseitegelegt, nie erzwungen* — die Datei bleibt exakt so, wie das Update sie erzeugt hat, und die nächste Session sagt dir, welcher Patch wartet. Ein erzwungenes Anwenden erzeugte eine Datei, die niemand geschrieben und niemand geprüft hat — schlimmer als ein zurückgenommener Fix.
 
 Nach der Serie wird die gepatchte CLI tatsächlich gestartet. Bootet sie nicht, wird jeder Patch dieses Laufs zurückgenommen und die Installation bleibt so, wie das Update sie hinterlassen hat. `bastra patches status` nennt das Verzeichnis, aus dem Patches adressiert werden, sobald es vom Install-Root abweicht — bei einem Source-Checkout sind das zwei verschiedene Wurzeln, und diese Zeile ist das Erste, was man prüft, wenn alle Urteile falsch aussehen.
+
+### Zwei Kopien eines Vaults — welche ist vorn
+
+Liegt derselbe Vault an zwei Orten — ein gespiegelter Vault auf einem zweiten Rechner, eine Kopie, in die ein Ersatz-Daemon geschrieben hat —, sagt dir `bastra reconcile` pro Memory, welche Kopie vorn ist.
+
+```bash
+bastra reconcile /pfad/zur/anderen/kopie            # der Plan (Probelauf, Standard)
+bastra reconcile /pfad/zur/anderen/kopie --yes      # die eindeutigen Kopien ausführen
+bastra reconcile /pfad/zur/anderen/kopie --json     # der Plan als JSON
+```
+
+„Dieser Store" ist dein Vault (`--vault`, `BASTRA_VAULT_PATH` oder der, bei dem deine Clients registriert sind). Dateidatum, Hash und Größe entscheiden nichts: Der Daemon schreibt Memory-Dateien selbst neu (generierte Felder, der Auto-Related-Block), die von ihm bediente Kopie wirkt also neuer und kann trotzdem den älteren Text halten. Zwei Kopien gelten als gleich, wenn ihr *verfasster* Inhalt übereinstimmt — Body ohne generierten Block, Umbrüche zusammengefasst, Wikilinks in einer Schreibweise, Frontmatter ohne generierte Felder. Memories werden über ihre Frontmatter-`id` zugeordnet, nicht über den Dateinamen.
+
+Die Richtung kommt aus dem Audit-Log jedes Stores (`.bastra/audit-log.ndjson`): Vorn ist die Kopie mit protokollierten Schreibvorgängen, die der anderen fehlen. Alles andere ist ein **Konflikt** und wird nur gemeldet, nie aufgelöst: Schreibvorgänge auf beiden Seiten, eine Änderung, die kein Log kennt (Bearbeitung in einem anderen Editor), ein Löschen auf einer Seite, eine doppelte id. `--yes` kopiert nur die eindeutigen Fälle; eine überschriebene Datei wird vorher nach `<store>/.bastra/reconcile-backup/<zeit>/` kopiert, eine seit dem Plan geänderte Datei übersprungen, gelöscht wird nichts. Stores zu finden, deren Pfad du nicht schon kennst, gehört noch nicht dazu (#339).
 
 ### Onboarding — in fünf Minuten zum Warmstart
 
