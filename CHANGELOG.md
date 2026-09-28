@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Save suggestions reach the session that produced them** (#662; data from
+  @zzallirog, #701). The Stop lane used to park every suggestion for the next
+  session start, where neither the conversation nor the body was left to
+  save. In Claude Code it now returns the suggestion as
+  `hookSpecificOutput.additionalContext` (`<save-eval-now>`), which the agent
+  reads in the same turn as "Stop hook feedback". Once per heuristic per
+  session; `stop_hook_active` keeps it from looping. Codex, payloads without a
+  session id and `BASTRA_STOP_SAME_TURN=0` keep the pending relay.
+  `save_eval_call` gains `delivery` (`same-turn` / `pending` /
+  `already-delivered`). The save rate is measured with the #708
+  `caller_session` join.
+
 - **Guard test against new language-bound matchers** (#679, part of #676).
   `packages/daemon/__tests__/language-bound-matchers.test.ts` scans daemon
   and core sources for language-named lists (`*_DE`, `*_CUES`, `*STOPWORDS`

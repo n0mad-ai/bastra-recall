@@ -34,9 +34,11 @@
  *      (#707): the user picks one of the numbered options the agent offered
  *      with a question — see stop-lane-choice.ts.
  *
- * Output: ALWAYS `{}` (#48 — suggestions go to the pending file, which the
- * next SessionStart injects silently). The lane still returns that document
- * rather than nothing, so the client keeps writing the daemon's answer
+ * Output: `{}`, or — #662 — a `hookSpecificOutput.additionalContext` document
+ * that hands a Claude Code session its save suggestions in the running turn
+ * (once per heuristic per session). Codex and payloads without a session id
+ * keep the #48 route: suggestions go to the pending file, which the next
+ * SessionStart injects silently. The client writes the daemon's answer
  * verbatim like every other lane.
  *
  * Discipline:
@@ -62,6 +64,7 @@ import { defaultLogDir } from "./telemetry.js";
 import { writePendingSuggestion } from "./pending-suggestions.js";
 import { frustrationCues, decisionCues } from "./lexicon.js";
 import { isSystemInjectedTurn } from "./system-turn.js";
+import { hookClientEvidence } from "./hook-surface.js";
 import { restatementIndices } from "./stop-lane-repeat.js";
 import { optionPicks } from "./stop-lane-choice.js";
 import { getDocsMode, type DocsMode } from "./settings.js";
@@ -252,6 +255,8 @@ async function evaluateStop(
   // bilden. Best-effort mit hartem Budget; Daemon weg → still.
   const drift = await fetchDrift(selfBaseUrl, 250);
 
+  let stdout = "{}";
+  let delivery: SaveEvalDelivery | null = null;
   if (suggestions.length > 0 || drift.length > 0) {
     // #48 Redesign: Stop-Hooks haben keinen stillen Output-Kanal — das
     // einzige sichtbare Feld (systemMessage) rendert Claude Code 1:1 in den
@@ -263,7 +268,30 @@ async function evaluateStop(
     // zeigen). Der Taxonomie-Drift beschreibt dagegen, was im Vault immer
     // wieder auftaucht — er gehört in die Trends-Spur, unter einem festen
     // Schlüssel, damit neue Zählungen die Zeile ersetzen statt sie zu stapeln.
-    if (suggestions.length > 0) await writePendingSuggestion(suggestions.map(formatSuggestion).join("\n"));
+    //
+    // #662: Claude Code's Stop takes `hookSpecificOutput.additionalContext` —
+    // non-error feedback Claude reads IN THIS TURN, labelled "Stop hook
+    // feedback" in the transcript (not the systemMessage chat dump #48 fled).
+    // The next session has neither the conversation nor the body, so a
+    // suggestion relayed there cannot be acted on. A Claude Code session with
+    // an id therefore gets its suggestions here, once per heuristic per
+    // session (the windows re-fire on every Stop, and each delivery extends
+    // the turn). Codex, a payload without a session id, or the off switch keep
+    // the pending relay.
+    if (suggestions.length > 0) {
+      const sameTurn = await takeSameTurnSuggestions(payload, suggestions);
+      if (sameTurn === null) {
+        await writePendingSuggestion(suggestions.map(formatSuggestion).join("\n"));
+        delivery = "pending";
+      } else if (sameTurn.length > 0) {
+        stdout = JSON.stringify({
+          hookSpecificOutput: { hookEventName: "Stop", additionalContext: formatSameTurnBlock(sameTurn) },
+        });
+        delivery = "same-turn";
+      } else {
+        delivery = "already-delivered";
+      }
+    }
     if (drift.length > 0) {
       await writePendingSuggestion(formatDriftBlock(drift), { lane: "trends", key: "taxonomy-drift" });
     }
@@ -278,8 +306,48 @@ async function evaluateStop(
     drift_keys: drift.map((c) => `${c.key}:${c.count}`),
     turn_count: turns.length,
     latency_ms_total: totalMs,
+    ...(delivery ? { delivery } : {}),
   });
-  return "{}";
+  return stdout;
+}
+
+/** #662: where this Stop's save suggestions went. */
+type SaveEvalDelivery = "same-turn" | "pending" | "already-delivered";
+
+/**
+ * #662: the suggestions this Stop may hand to the running Claude Code turn, or
+ * `null` when the same-turn path does not apply (Codex, no session id,
+ * `BASTRA_STOP_SAME_TURN=0`) and the pending relay takes them. Heuristics
+ * already delivered to this session are filtered out and the rest are booked
+ * as delivered in the session state before they are returned.
+ */
+async function takeSameTurnSuggestions(
+  payload: ClaudeStopPayload,
+  suggestions: SaveSuggestion[],
+): Promise<SaveSuggestion[] | null> {
+  const sessionId = typeof payload.session_id === "string" ? payload.session_id : "";
+  if (!sessionId) return null;
+  if (hookClientEvidence(payload) === "codex") return null;
+  if ((process.env.BASTRA_STOP_SAME_TURN ?? "").trim() === "0") return null;
+  let fresh: SaveSuggestion[] = [];
+  await mutateSessionState(sessionId, (s) => {
+    const done = new Set(s.saveEvalDelivered ?? []);
+    fresh = suggestions.filter((x) => !done.has(x.heuristic));
+    for (const x of fresh) done.add(x.heuristic);
+    s.saveEvalDelivered = [...done];
+  });
+  return fresh;
+}
+
+function formatSameTurnBlock(suggestions: SaveSuggestion[]): string {
+  return [
+    `<save-eval-now source="stop-hook">`,
+    `bastra-recall found a save-worthy moment in THIS conversation. Judge it from the conversation; ` +
+      `if it genuinely qualifies, save it now via bastra-recall:save_memory with a concrete body ` +
+      `(the user's own words, the why, file paths). If it does not, end the turn without comment.`,
+    ...suggestions.map(formatSuggestion),
+    `</save-eval-now>`,
+  ].join("\n");
 }
 
 // ─── Taxonomie-Drift (#67) ───────────────────────────────────────
@@ -851,6 +919,8 @@ interface StopHookTelemetry {
   drift_keys: string[];
   turn_count: number;
   latency_ms_total: number;
+  /** #662: where the suggestions went — absent when there were none. */
+  delivery?: SaveEvalDelivery;
   /** Set only on the fail-open backstop path: the error that made the Stop
    *  evaluation degrade to `{}`. Absent on every normal event. */
   error?: string;
