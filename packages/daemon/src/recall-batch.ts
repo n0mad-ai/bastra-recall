@@ -102,6 +102,8 @@ export interface BatchSubResult {
   degraded?: string;
   /** The vault directory is absent — see vault-presence.ts. */
   vault_missing?: string;
+  /** #421: Pool-Reflexe dieser Phrasierung (`recall-pipeline.ts`). */
+  reflex_hits?: BatchHit[];
 }
 
 export interface BatchMerged {
@@ -124,6 +126,10 @@ export interface BatchMerged {
   /** Version der Score-Formel, ebenfalls nur bei einheitlicher Bauart. */
   score_version?: string;
   unfused?: true;
+  /** #421: die Pool-Reflexe aller Phrasierungen, je id einmal (bester Score),
+   *  ohne die, die schon als gerankter Treffer dastehen. Nur gesetzt, wenn
+   *  nicht leer. */
+  reflex_hits?: BatchHit[];
   /** Woraus die Reihenfolge entstanden ist — `"score"` nur, wenn alle
    *  Sub-Ergebnisse im selben Raum lagen. */
   merged_by: "score" | "query-rank-fusion";
@@ -217,6 +223,9 @@ export function mergeBatchResults(queries: string[], subs: BatchSubResult[], k: 
   const scoreKind: "rrf" | "bm25" = !mixed && spaces.size === 1 ? [...spaces][0]! : "bm25";
 
   const hits = mixed ? fuseByQueryRank(subs, k) : mergeByScore(subs, k);
+  const hitIds = new Set(hits.map((h) => h.id));
+  const reflexHits = mergeByScore(subs.map((s) => ({ hits: s.reflex_hits })), Infinity)
+    .filter((h) => !hitIds.has(h.id));
   return {
     query: queries.join(" | "),
     query_count: queries.length,
@@ -230,6 +239,7 @@ export function mergeBatchResults(queries: string[], subs: BatchSubResult[], k: 
     score_kind: scoreKind,
     ...(mixed ? {} : { score_arms: subs[0]?.score_arms, score_version: subs[0]?.score_version }),
     ...(scoreKind === "bm25" ? { unfused: true as const } : {}),
+    ...(reflexHits.length > 0 ? { reflex_hits: reflexHits } : {}),
     merged_by: mixed ? "query-rank-fusion" : "score",
   };
 }
@@ -330,5 +340,10 @@ export function projectRecallResult(
     ...(payload.unfused === true ? { unfused: true as const } : {}),
     ...(typeof payload.degraded === "string" ? { degraded: payload.degraded } : {}),
     ...(typeof payload.vault_missing === "string" ? { vault_missing: payload.vault_missing } : {}),
+    // #421: Der Forwarder warf die Pool-Reflexe hier weg — ein MCP-Client sah
+    // die Verdrahtung nie, die die Hook-Pipeline für ihn schon berechnet hatte.
+    ...(Array.isArray(payload.reflex_hits) && payload.reflex_hits.length > 0
+      ? { reflex_hits: payload.reflex_hits }
+      : {}),
   };
 }

@@ -161,6 +161,15 @@ If `expand_hops: 1` is passed, recall adds one-hop neighbors from `frontmatter.r
 
 `RelatedEnricher` can maintain `related_via` automatically after embedding batches. It also appends an auto-managed Obsidian wikilink section to the memory body, bounded by marker comments so manual links and automatic links stay separate.
 
+#### One Recall Pipeline For Hooks And MCP (#421)
+
+Hook lanes and MCP `recall` share the selection steps in `packages/daemon/src/recall-pipeline.ts`; what differs is parameters, not code:
+
+- **Reflex hits.** Memories the user wired as `recall_mode: reflex` that sit in the deeper candidate pool below the top-k cut come back as `reflex_hits` on every path — `/hook/recall` (hook lanes and the MCP forwarder, which used to drop the field in its projection) and the stdio server's `recallHandler`. The MCP path applies its own `min_score` floor to them; the hook path passes them unfloored because the lanes apply their own floor. Batch recall merges them across phrasings. `max_tokens` counts them, ranked hits are cut first.
+- **Project scope filter.** The prompt lane's filter (anchored cross-scope bypass, reflex hits exempt, bypass closed without fusion, `project_known` from the vault) now also runs for MCP callers: the forwarder sends its client's project (`projectForFilter(cwd)`, the same confidence gate as the lanes) with `apply_scope_filter: true`, and the stdio server passes its own cwd. An explicit `scope` argument disables it (`scope_filter_skipped: "explicit-scope"`). The mode is the lanes' switch, `BASTRA_SCOPE_FILTER_LANES`: `shadow` (default) only records `scope_filter_mode`/`dropped_scope_count`/`dropped_scopes`/`filter_project` on the `recall` or `hook_recall` row, `enforce` drops. Hook lanes do not set `apply_scope_filter` and keep filtering on their side, so their responses and telemetry rows are unchanged.
+
+Still separate, tracked on #421: the evidence gate and deadline shadow run only on `/hook/recall` (the stdio `recallHandler` and `/api/v1/recall` do not), the REST path has no caller project, commons fusion and `verbosity: "full"` exist only in `recallHandler`, and the GET session-context path still runs `recallHandler`.
+
 ### Daemon And Transports
 
 The main daemon is `packages/daemon/src/index.ts`.
@@ -474,6 +483,15 @@ Auf dem hybriden Pfad ist der zurückgegebene `score` eine **Rang-Größe, keine
 Wird `expand_hops: 1` übergeben, ergänzt Recall direkte Nachbarn aus `frontmatter.related_via`. Diese Nachbarn werden mit denselben Regeln für obsolete/scope/type/sensitivity gefiltert und erhalten einen reduzierten Score.
 
 `RelatedEnricher` kann `related_via` nach Embedding-Batches automatisch pflegen. Er hängt außerdem einen automatisch verwalteten Abschnitt mit Obsidian-Wikilinks an den Body der Erinnerung an, begrenzt durch Marker-Kommentare, damit manuelle und automatische Links getrennt bleiben.
+
+#### Eine Recall-Pipeline für Hooks und MCP (#421)
+
+Hook-Lanes und MCP-`recall` teilen die Auswahlschritte in `packages/daemon/src/recall-pipeline.ts`; was sich unterscheidet, sind Parameter, nicht der Code:
+
+- **Reflex-Hits.** Vom Nutzer als `recall_mode: reflex` verdrahtete Erinnerungen, die im tieferen Kandidatenpool unter dem top-k-Schnitt liegen, kommen auf jedem Weg als `reflex_hits` zurück — über `/hook/recall` (Hook-Lanes und MCP-Forwarder, der das Feld früher in seiner Projektion verwarf) und über den `recallHandler` des stdio-Servers. Der MCP-Weg wendet seinen eigenen `min_score`-Floor auf sie an; der Hook-Weg reicht sie ungefiltert durch, weil die Lanes ihren eigenen Floor haben. Batch-Recall vereinigt sie über die Phrasierungen. `max_tokens` zählt sie mit, gerankte Treffer fallen zuerst.
+- **Projekt-Scope-Filter.** Der Filter der Prompt-Lane (Anker-Ausnahme für Cross-Scope, Reflex-Treffer ausgenommen, Ausnahme ohne Fusion zu, `project_known` aus dem Vault) läuft jetzt auch für MCP-Aufrufer: Der Forwarder schickt das Projekt seines Clients (`projectForFilter(cwd)`, dasselbe Konfidenz-Gate wie in den Lanes) mit `apply_scope_filter: true`, der stdio-Server gibt sein eigenes cwd mit. Ein explizites `scope`-Argument schaltet ihn ab (`scope_filter_skipped: "explicit-scope"`). Die Stufe ist der Schalter der Lanes, `BASTRA_SCOPE_FILTER_LANES`: `shadow` (Default) schreibt nur `scope_filter_mode`/`dropped_scope_count`/`dropped_scopes`/`filter_project` an die `recall`- bzw. `hook_recall`-Zeile, `enforce` verwirft. Hook-Lanes setzen `apply_scope_filter` nicht und filtern weiter selbst; ihre Antworten und Telemetriezeilen bleiben unverändert.
+
+Noch getrennt, verfolgt in #421: Evidenz-Gate und Deadline-Schatten laufen nur auf `/hook/recall` (nicht im stdio-`recallHandler` und nicht auf `/api/v1/recall`), der REST-Weg kennt kein Aufrufer-Projekt, Commons-Fusion und `verbosity: "full"` gibt es nur im `recallHandler`, und der GET-Weg des Session-Kontexts fährt weiterhin den `recallHandler`.
 
 ### Daemon und Transporte
 

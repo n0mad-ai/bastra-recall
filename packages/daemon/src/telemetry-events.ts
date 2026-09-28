@@ -4,6 +4,7 @@
  * runtime code. telemetry.ts re-exports everything, so importers keep their
  * path.
  */
+import type { CallerScopeFilterTelemetry } from "./recall-pipeline.js";
 import type { SalienceShadow } from "./salience-shadow.js";
 import type { TrustShadow } from "./trust-shadow.js";
 import type { TelemetryDimensions } from "./telemetry-dimensions.js";
@@ -158,6 +159,15 @@ export interface RecallEvent extends BaseEvent, DimensionedEvent {
   dropped_below_floor?: number;
   /** Shared learned-recall (#120): bridge expansion applied to this query, if any. */
   bridge_expansion?: BridgeExpansion;
+  /** #421: der Projekt-Scope-Filter der Prompt-Lane, auf dem MCP-Weg in der
+   *  gemeinsamen Pipeline angewandt (`recall-pipeline.ts`). Dieselben Namen wie
+   *  auf `prompt_hook_call`. Fehlen auf Aufrufen, die ihn nicht anfordern
+   *  (Hook-Lanes filtern selbst) — und auf Zeilen vor #421. */
+  scope_filter_mode?: CallerScopeFilterTelemetry["scope_filter_mode"];
+  dropped_scope_count?: number;
+  dropped_scopes?: string[];
+  filter_project?: string | null;
+  scope_filter_skipped?: CallerScopeFilterTelemetry["scope_filter_skipped"];
   /** #121: the deeper candidate pool (incl. below-floor ranks) behind this recall,
    *  so the far slice is observable for offline harvesting. Lean {id, score} only. */
   candidate_pool?: { id: string; score: number }[];
@@ -815,6 +825,15 @@ export interface HookRecallEvent extends BaseEvent, DimensionedEvent {
   };
   /** Shared learned-recall (#120): bridge expansion applied to this query, if any. */
   bridge_expansion?: BridgeExpansion;
+  /** #421: der Projekt-Scope-Filter der Prompt-Lane, auf dem MCP-Weg in der
+   *  gemeinsamen Pipeline angewandt (`recall-pipeline.ts`). Dieselben Namen wie
+   *  auf `prompt_hook_call`. Fehlen auf Aufrufen, die ihn nicht anfordern
+   *  (Hook-Lanes filtern selbst) — und auf Zeilen vor #421. */
+  scope_filter_mode?: CallerScopeFilterTelemetry["scope_filter_mode"];
+  dropped_scope_count?: number;
+  dropped_scopes?: string[];
+  filter_project?: string | null;
+  scope_filter_skipped?: CallerScopeFilterTelemetry["scope_filter_skipped"];
   /** #121: the deeper candidate pool (incl. below-floor ranks) behind this recall. */
   candidate_pool?: { id: string; score: number }[];
   /** #282: opt-in second recall over tool_input_excerpt. The excerpt itself is

@@ -782,7 +782,7 @@ new MCP tool):
 | `BASTRA_REFLEX_MAX_PER_TURN`  | `2`              | Reflex injection budget per prompt (clamp 1–5)                |
 | `BASTRA_REFLEX_PROMOTION_MIN` | `3`              | Acted-on recalls (30d) before the curator proposes a reflex promotion |
 | `BASTRA_ADOPTION_PROMOTION_MIN` | `2`            | Acted-on recalls (30d) before the curator proposes adopting an intake memory (#217) |
-| `BASTRA_SCOPE_FILTER_LANES`   | `shadow`         | `shadow` \| `enforce` — Projekt-Scope-Filter für Prompt- und Todo-Lane. `shadow` misst nur (`dropped_scope_count`, `dropped_scopes`, `project_confidence` in der Telemetrie), `enforce` verwirft. Write-Lane und SessionStart filtern unabhängig davon seit #110 |
+| `BASTRA_SCOPE_FILTER_LANES`   | `shadow`         | `shadow` \| `enforce` — project scope filter for the prompt and todo lanes and, since #421, for MCP `recall` (forwarder and stdio server, same parameters as the prompt lane). `shadow` only measures (`dropped_scope_count`, `dropped_scopes`, `project_confidence` in the telemetry), `enforce` drops. The write lane and SessionStart filter independently of this since #110 |
 | `BASTRA_SALIENCE_RANK`        | `shadow`         | `off` \| `shadow` \| `live` — salience ranking multiplier (#217, lift-gated) |
 | `BASTRA_SALIENCE_RANK_CAP`    | `0.25`           | Max salience score boost (`1 + salience × cap`)               |
 | `BASTRA_RRF_VECTOR_WEIGHT`    | `1`              | Weight of the dense arm in the hybrid fusion, relative to BM25 (#641, opt-in, lift-gated). `1.5` measured +3.6 pp R@1 on LongMemEval-S and keeps the gold-set M1 gates; moves score bands |
@@ -1592,7 +1592,7 @@ REST-Schnittstelle (Token-Authentifizierung wie bei den anderen
 | `BASTRA_REFLEX_MAX_PER_TURN`  | `2`              | Reflex-Einblendungsbudget pro Prompt (begrenzt auf 1–5)        |
 | `BASTRA_REFLEX_PROMOTION_MIN` | `3`              | Umgesetzte Recalls (30 Tage), bevor der Curator eine Reflex-Hochstufung vorschlägt |
 | `BASTRA_ADOPTION_PROMOTION_MIN` | `2`            | Umgesetzte Recalls (30 Tage), bevor der Curator vorschlägt, eine Intake-Erinnerung zu übernehmen (#217) |
-| `BASTRA_SCOPE_FILTER_LANES`   | `shadow`         | `shadow` \| `enforce` — Projekt-Scope-Filter für Prompt- und Todo-Lane. `shadow` misst nur (`dropped_scope_count`, `dropped_scopes`, `project_confidence` in der Telemetrie), `enforce` verwirft. Write-Lane und SessionStart filtern unabhängig davon seit #110 |
+| `BASTRA_SCOPE_FILTER_LANES`   | `shadow`         | `shadow` \| `enforce` — Projekt-Scope-Filter für Prompt- und Todo-Lane und seit #421 für den MCP-`recall` (Forwarder und stdio-Server, dieselben Parameter wie die Prompt-Lane). `shadow` misst nur (`dropped_scope_count`, `dropped_scopes`, `project_confidence` in der Telemetrie), `enforce` verwirft. Write-Lane und SessionStart filtern unabhängig davon seit #110 |
 | `BASTRA_SALIENCE_RANK`        | `shadow`         | `off` \| `shadow` \| `live` — Salienz-Multiplikator fürs Ranking (#217, hinter Lift-Gate) |
 | `BASTRA_SALIENCE_RANK_CAP`    | `0.25`           | Maximaler Salienz-Aufschlag auf den Score (`1 + salience × cap`) |
 | `BASTRA_RRF_VECTOR_WEIGHT`    | `1`              | Gewicht des Dense-Arms in der hybriden Fusion relativ zu BM25 (#641, Opt-in, hinter Lift-Gate). `1.5` brachte auf LongMemEval-S +3,6 pp R@1 und hält die M1-Gates des Gold-Sets; verschiebt die Score-Bänder |

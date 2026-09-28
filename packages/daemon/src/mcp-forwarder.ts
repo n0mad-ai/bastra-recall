@@ -62,7 +62,8 @@ import {
   toolSurfaceFrom,
 } from "./tool-defs.js";
 import { mergeBatchResults, projectRecallResult } from "./recall-batch.js";
-import { fitRecallToBudget } from "./recall-budget.js";
+import { fitRecallWithReflexToBudget } from "./recall-budget.js";
+import { projectForFilter } from "./scope-filter.js";
 import { claudeSessionPid, sessionFeedPath, STATUSLINE_DIR, reapStaleFeeds } from "./statusline-session.js";
 import { commandOf, parentPidOf } from "./reap-forwarders.js";
 import { DAEMON_VERSION } from "./version.js";
@@ -566,7 +567,19 @@ interface HookRecallDonePayload {
   unfused?: boolean;
   degraded?: string;
   vault_missing?: string;
+  /** #421: Pool-Reflexe, von `projectRecallResult` durchgereicht. */
+  reflex_hits?: Array<{ id: string; score: number } & Record<string, unknown>>;
 }
+
+/**
+ * #421: Das Projekt dieses MCP-Clients, für den Scope-Filter der gemeinsamen
+ * Pipeline. Der Forwarder läuft im cwd des Clients (Claude Code startet ihn im
+ * Projektverzeichnis); dasselbe Konfidenz-Gate wie in den Lanes — ein
+ * geratenes Projekt (Claude Desktop startet in `/` oder `~`) ist `null`, und
+ * dann filtert niemand. Einmal beim Start: das cwd eines stdio-Servers ändert
+ * sich nicht.
+ */
+const CLIENT_FILTER_PROJECT = projectForFilter(process.cwd());
 
 /** Dense-arm deadline for model-triggered recalls (see body.vector_deadline_ms). */
 const MCP_VECTOR_DEADLINE_MS = envInt("BASTRA_MCP_VECTOR_DEADLINE_MS", 1500);
@@ -595,12 +608,15 @@ async function callRecallStreaming(
       ),
     )) as Parameters<typeof mergeBatchResults>[1];
     const merged = mergeBatchResults(queries, subs, typeof a.k === "number" ? a.k : 5);
-    return fitRecallToBudget(
+    // #421: Die Pool-Reflexe zählen wie auf der Einzelquery ins Budget.
+    return fitRecallWithReflexToBudget(
       merged.hits,
+      merged.reflex_hits ?? [],
       typeof a.max_tokens === "number" ? a.max_tokens : 0,
-      (emitted, dropped) => ({
+      (emitted, emittedReflex, dropped) => ({
         ...merged,
         hits: emitted,
+        reflex_hits: emittedReflex.length > 0 ? emittedReflex : undefined,
         ...(dropped > 0 ? { truncated_by_budget: true, dropped_by_budget: dropped } : {}),
       }),
     ).payload;
@@ -615,6 +631,11 @@ async function callRecallStreaming(
     // #74: echte CC-Session an die hook_recall-Telemetrie durchreichen.
     session_id: typeof liveStatusline.cc_session_id === "string" ? liveStatusline.cc_session_id : null,
   };
+  // #421: Scope-Filter und Reflex-Hits wie auf dem Hook-Weg. Die Lanes
+  // filtern ihre Antwort selbst; der Forwarder hat keine Lane dahinter, also
+  // bittet er die Pipeline darum und nennt sein Projekt.
+  body.apply_scope_filter = true;
+  if (CLIENT_FILTER_PROJECT) body.project = CLIENT_FILTER_PROJECT;
   if (typeof a.k === "number") body.k = a.k;
   // #487: Das Kontextbudget des Modells reicht bis in die Pipeline durch — der
   // Forwarder ist der Weg, den ein MCP-Client wirklich geht.
