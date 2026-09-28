@@ -167,3 +167,20 @@ test("#615: 40,000 client rows fold against 40,000 daemon rows in well under 2s"
   );
   assert.ok(folded > 30_000, "an ~85% pairing rate over 40,000 calls must fold most of them");
 });
+
+test("#615: one dense session stays fast as its daemon rows are consumed", () => {
+  const count = 10_000;
+  const ts = "2026-09-06T05:30:00.000Z";
+  const events: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < count; i++) {
+    events.push({ kind: "prompt_hook_call", ts, session_id: "one-long-session", status: "ok", call: i });
+    events.push({ kind: "prompt_hook_call", ts, session_id: "one-long-session", hook_version: "0.6.0-stub", status: "timeout" });
+  }
+  const start = performance.now();
+  const result = foldClientDuplicates(events);
+  const elapsed = performance.now() - start;
+  assert.equal(result.folded, count);
+  assert.equal(result.events.length, count);
+  assert.ok(result.events.every((e) => e.status === "timeout"));
+  assert.ok(elapsed < 4000, `dense bucket scan took ${elapsed.toFixed(0)}ms`);
+});
