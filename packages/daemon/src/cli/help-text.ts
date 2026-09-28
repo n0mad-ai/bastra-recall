@@ -116,6 +116,9 @@ Commands:
   archive <list|restore|reconcile>
                              What the agent's rm moved to ~/.bastra/archive,
                              put a path back, or let old entries go
+  reconcile <other-store>    Two copies of the same vault: which one is ahead,
+                             per memory (dry run; --yes copies with backup,
+                             conflicts are only listed)
   doctor [surface|all]       Check status of one or every surface
   doctor [surface|all] --fix Check status and repair missing/broken pieces
   status                     Check daemon and adapters status (supports --json, -q)
@@ -617,6 +620,32 @@ and any untracked file the act would overwrite go to the archive, the rest
 is pinned under refs/bastra-archive/ and listed here too;
 \`bastra archive restore <ref>\` puts it back. The pins show up in
 \`git log --all\` until they expire. Only the git part off: BASTRA_GIT_SHIM=0.
+`,
+
+  reconcile: `bastra reconcile — two stores of the same vault: which copy is ahead
+
+Usage:
+  bastra reconcile <other-store> [--vault <this-store>]   the plan (dry run, default)
+  bastra reconcile <other-store> --yes                     carry out the copies
+  bastra reconcile <other-store> --json                    the plan as JSON
+
+Compares memory by memory, joined by the frontmatter id. mtime, hash and size
+say nothing here: the daemon rewrites files on its own (generated fields, the
+auto-related block). Two copies count as the same when their authored content
+matches — body without the generated block, wrapping collapsed, wikilinks in
+one spelling, frontmatter without generated fields.
+
+Which side is ahead comes from each store's audit log
+(.bastra/audit-log.ndjson): the side with writes the other lacks. Writes on
+both sides, a change neither log records (an edit in another editor), a
+delete on one side, or a duplicate id is a conflict: listed, never resolved.
+
+--yes copies only the unambiguous cases. An overwritten file is first copied
+to <store>/.bastra/reconcile-backup/<time>/; a file that changed since the
+plan is skipped. The copied memory's audit entries go along, so the next run
+still knows the order. Nothing is deleted. Exit code 1 if a copy was skipped.
+
+Not the daemon's periodic vault reindex (BASTRA_VAULT_RECONCILE_MS).
 `,
 
   completion: `bastra completion — Tab completion for your shell

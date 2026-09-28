@@ -45,6 +45,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   an unreadable reading behaves like AC. `/health` has a `power` block and
   `bastra doctor` a "battery saver" row. Hook lanes are not switched to
   BM25-only on battery (not part of this change).
+- **`bastra reconcile <other-store>`: which copy of a vault is ahead** (#339,
+  core of it; comparison design after @zzallirog's reviewed patch). Compares
+  two stores of the same vault memory by memory, joined by the frontmatter
+  `id`. "Same" means the same authored content — body without the
+  auto-related block, wrapping collapsed, wikilinks in one spelling,
+  frontmatter without generated fields — so a daemon-enriched copy no longer
+  looks different. The direction comes from the audit logs (the side with
+  recorded writes the other lacks), not from mtime; writes on both sides,
+  unrecorded changes, one-sided deletes and duplicate ids are listed as
+  conflicts and never resolved. Dry run by default; `--yes` copies the
+  unambiguous cases, backs up every overwritten file under
+  `.bastra/reconcile-backup/<time>/`, skips files that changed since the plan
+  and carries the copied memory's audit entries along. Store discovery is not
+  part of it yet.
 - **Guard test against new language-bound matchers** (#679, part of #676).
   `packages/daemon/__tests__/language-bound-matchers.test.ts` scans daemon
   and core sources for language-named lists (`*_DE`, `*_CUES`, `*STOPWORDS`
