@@ -68,6 +68,7 @@ export {
   slugify,
   canonicalMemoryId,
   extractWikilinks,
+  WIKILINK_RE,
   stripAutoRelatedSection,
   stripCodeSpans,
   AUTO_RELATED_START,
