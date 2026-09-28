@@ -192,9 +192,21 @@ test("formatHintBlock — retrieval mode includes lookup instruction", () => {
   assert.match(block, /<recall-hints surface="claude-code" trigger="prompt-lookup"/);
   assert.match(block, /project="myproject"/);
   assert.match(block, /LOOKUP \/ retrieval query/);
-  assert.match(block, /bastra-recall:recall.*BEFORE conversation_search/i);
+  assert.match(block, /recall already ran for it/, "#620: the block says step 1 is done");
+  assert.match(block, /BEFORE conversation_search/i);
   assert.match(block, /test-memory/);
   assert.match(block, /<\/recall-hints>/);
+});
+
+test("#620: the prompt block carries recall-step=\"done\" and the originating recall_id", () => {
+  const hits: RecallHit[] = [
+    { id: "test-memory", title: "Test", type: "lesson", scope: "user", summary: "Summary", score: 120 },
+  ];
+  const block = formatHintBlock(hits, null, "generic", false, false, "codex", undefined, "r-620");
+  assert.match(block, /<recall-hints surface="codex" trigger="prompt-lookup" recall-step="done" recall_id="r-620">/);
+  const noId = formatHintBlock(hits, null, "generic");
+  assert.match(noId, /trigger="prompt-lookup" recall-step="done">/, "without an id the marker still stands");
+  assert.doesNotMatch(noId, /recall_id=/);
 });
 
 test("formatHintBlock — separates strong vs OPTIONAL by score", () => {

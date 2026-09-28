@@ -94,6 +94,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **An injected candidate list counts as the recall** (#620). The
+  prompt-lookup `<recall-hints>` block now carries `recall-step="done"` and
+  the originating `recall_id`, and no longer tells the agent to "use recall"
+  on retrieval prompts — it says the recall already ran. SKILL.md (and the
+  generated Cursor/Codex projections) say:
+  with such a block, or `<session-context>` at start, load candidates directly
+  and call `recall` again only for a different intent, scope change,
+  deliberate reformulation or a new topic. Server-side suppression of
+  same-turn duplicates and its telemetry are not part of this change.
+
 - **Smaller session-start block** (#509). Taxonomy lines carry `[id] title`
   without the summary — the block already points at `load_memory(id)` for the
   full rule; on the owner's vault the six summaries were 440 of the 605 tokens
