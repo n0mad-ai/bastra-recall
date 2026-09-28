@@ -1,10 +1,11 @@
 import { describe, it, before, after } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, mkdir, open, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   loadGraph,
+  readBounded,
   dependentFilesOf,
   dependentSymbolsOf,
   symbolsOfFile,
@@ -221,6 +222,19 @@ describe("code graph reader: every allowlisted relation resolves", () => {
 });
 
 describe("code graph reader: degradation instead of failure", () => {
+  it("#591 caps bytes read when the same graph inode grows after fstat", async () => {
+    const file = join(root, "growing-graph.json");
+    await writeFile(file, "{}");
+    const handle = await open(file, "r");
+    try {
+      assert.equal((await handle.stat()).size, 2);
+      await appendFile(file, "x".repeat(2048));
+      assert.equal(await readBounded(handle, 1024), null);
+    } finally {
+      await handle.close();
+    }
+  });
+
   it("reports a missing graph rather than throwing", async () => {
     const r = await loadGraph(join(root, "absent"));
     assert.equal(r.ok, false);
