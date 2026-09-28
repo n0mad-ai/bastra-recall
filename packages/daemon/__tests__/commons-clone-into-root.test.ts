@@ -1,7 +1,7 @@
 /**
  * `bastra commons enable` on a root the bridges pool already occupies.
  *
- * `bridgesPath()` defaults to `commonsPath()`, and shared recall bridges are
+ * Before #648 `bridgesPath()` defaulted to `commonsPath()`, and shared recall bridges are
  * on by default, so the daemon mints `bridges/` and `last-mint.json` into
  * ~/.bastra/commons before Commons is ever enabled. A plain `git clone` into
  * that non-empty directory failed with exit 128 for every such user.

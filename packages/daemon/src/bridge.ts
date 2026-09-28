@@ -63,7 +63,7 @@ import {
 } from "./settings.js";
 import { expandQuery, BridgePool } from "./learned-recall/bridges.js";
 import { isSupportedLanguage, type SupportedLanguage } from "./learned-recall/language.js";
-import { bridgesPath } from "./cli/bridges.js";
+import { bridgesPath, migrateBridgesPool } from "./cli/bridges.js";
 import { startVaultReconcile } from "./daemon-jobs.js";
 import readline from "node:readline";
 import * as path from "node:path";
@@ -235,6 +235,11 @@ async function main(): Promise<void> {
   let learnedBridges: BridgePool | null = null;
   let sharedRecallLang: SupportedLanguage | null = null;
   if (await getSharedRecallEnabled()) {
+    try {
+      migrateBridgesPool(); // #648: the app may start before the daemon does
+    } catch {
+      /* the daemon's own start retries and logs it */
+    }
     try {
       learnedBridges = BridgePool.load(bridgesPath());
       const lang = await getSharedRecallLanguage();
