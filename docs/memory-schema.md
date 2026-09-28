@@ -267,6 +267,19 @@ file go stale when the file changes; decisions, reasons and preferences stay as
 prose. The optional `case_ref` is an opaque link to an independent case; Bastra
 stores it and leaves it alone.
 
+**Stale, not broken.** `differs` and `gone` are how a stale claim shows up: the
+note is still loaded, the verdict sits next to it, and nothing throws. A missing
+source is `unverifiable`, not an error. `sha256.v1` hashes the bytes on disk, so
+its `expect` is exactly what `shasum -a 256 <file>` prints. A hand-edited claim
+that fails validation is dropped on load like any other damaged optional field;
+the note itself still loads.
+
+**In `bastra doctor`.** A `derived claims` note runs the same read-only
+resolvers over every memory that declares claims and lists the ones out of step
+with their source (`differs`, `gone`, `ambiguous`) by memory id, the first five
+by name and the rest as a count; `unverifiable` claims are only counted. Silent
+when no memory declares a claim, never changes the exit code, writes nothing.
+
 #### Supersession (#164)
 
 `replaces` and `superseded_by` are the two halves of one directed edge. Passing
@@ -833,6 +846,68 @@ der Erinnerung selbst.
 Ein fehlgeschlagener Anker als *Veralterungssignal*, eine Drei-Urteile-Disziplin
 (bestätigt / widerlegt / nicht prüfbar) und Drift-Bindung an einen Quellblock sind
 Stufe 2 und brauchen eine eigene Sicherheitsrunde.
+
+#### Abgeleitete Behauptungen (#467, #609)
+
+Eine Erinnerung nennt oft etwas, das sie aus einer Datei übernommen hat: eine Anzahl,
+eine Einstellung, eine Version, einen Satz. Ändert sich die Datei, behält die Notiz den
+alten Wortlaut. `derived_claims` bindet die Behauptung selbst – nicht die ganze Notiz und
+nicht die ganze Datei:
+
+```yaml
+derived_claims:
+  - id: modes
+    source: catalog/failure-modes.md
+    resolver: count.markdown-numbered-list.v1
+    expect: 27                    # was die Notiz sagt
+  - id: timeout
+    source: ops/deploy.md
+    resolver: quote.v1
+    exact: "timeout: 30s"
+```
+
+Beim `load_memory` löst der Daemon jede Behauptung nur lesend auf und gibt das Ergebnis
+neben der Notiz unter `derived.claims` zurück, im schlanken Pfad ebenso wie mit
+`verbosity: "full"`. Notiz und Quelle behalten ihre Bytes; der Wert steht in der Quelle.
+
+| Urteil | Bedeutung |
+|---|---|
+| `matches` | die Quelle sagt noch, was die Notiz sagt |
+| `differs` | die Notiz sagt 27, die Quelle 29 |
+| `gone` | der zitierte Text steht nicht mehr in der Quelle |
+| `ambiguous` | der zitierte Text steht mehrfach da, also wird nichts ausgewählt |
+| `unverifiable` | die Quelle liegt außerhalb des Vaults, hinter einem hinausführenden Symlink, ist größer als 1 MB, ein Ordner oder fehlt |
+| `observed` | eine Zählung ohne `expect`: nur der Wert, die Form aus #467 |
+
+| Resolver | was er tut |
+|---|---|
+| `count.markdown-numbered-list.v1` | zählt nummerierte Markdown-Listeneinträge und vergleicht mit `expect` |
+| `quote.v1` | `exact` steht genau einmal in der Quelle; übersteht fremde Änderungen und verschobene Zeilen |
+| `sha256.v1` | der Digest der Bytes der ganzen Quelle gegen das `expect` der Notiz (gleich der Ausgabe von `shasum -a 256 <datei>`) |
+
+Es gilt die Urteilsdisziplin aus #235: Eine Abweichung wird dem Leser gezeigt,
+`unverifiable` bleibt neutral, entscheiden tut, wer die Erinnerung lädt. Nichts hier
+bearbeitet, entwertet oder stuft eine Notiz herab. `differs` und `gone` sind die
+Markierung „veraltet“; die Notiz lädt trotzdem, und nichts wirft einen Fehler. Eine
+fehlende Quelle ist `unverifiable`, kein Fehler. Eine von Hand kaputt editierte
+Behauptung wird beim Laden wie jedes beschädigte optionale Feld verworfen; die Notiz
+lädt weiter.
+
+**Reichweite des Lesens.** Die Quelle wird durch eine einzige Tür gelesen: im Vault,
+reguläre Datei, höchstens 1 MB, vorher per `realpath` aufgelöst. Eine Quelle mit `..`
+oder führendem `/` wird schon beim Speichern abgelehnt. Eine Notiz ohne
+`derived_claims` liest keine Datei.
+
+**Die Deklaration schreiben.** Die Beschreibung von `save_memory` nennt das Feld und die
+Form einer Behauptung, damit ein Modell, das gerade eine Datei gelesen hat, die
+Behauptung im selben Aufruf deklariert. Entscheidungen, Gründe und Vorlieben bleiben
+Prosa. `case_ref` ist ein optionaler, undurchsichtiger Verweis; Bastra speichert ihn nur.
+
+**In `bastra doctor`.** Ein Abschnitt `derived claims` wendet dieselben Resolver nur
+lesend auf alle Erinnerungen mit Behauptungen an und nennt die, die nicht mehr zur
+Quelle passen (`differs`, `gone`, `ambiguous`), nach Memory-ID – die ersten fünf mit
+Namen, den Rest als Anzahl; `unverifiable` wird nur gezählt. Still, wenn keine
+Erinnerung Behauptungen deklariert; ändert nie den Exit-Code und schreibt nichts.
 
 #### Ablösung (#164)
 
