@@ -140,6 +140,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **`bastra bridges harvest` records its run** (#705; reported by
+  @zzallirog). The far harvest wrote bridges but no `bridges_mint` event, so
+  `bastra doctor` said "written 0" over a pool the harvest had filled. Each
+  harvest run now emits one `bridges_mint` event with `trigger: "cli-harvest"`
+  (minted, far cases judged as `reaches`, written), and the doctor's bridge
+  note counts it next to the in-band mint. `last-mint.json` stays the in-band
+  mint's marker.
+
 - **Task notifications and agent mail no longer recall as owner prompts**
   (#703; found and first fixed by @zzallirog on his fork, #701). Claude Code
   delivers `<task-notification>` and `<teammate-message>` /
