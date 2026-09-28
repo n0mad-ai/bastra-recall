@@ -552,6 +552,7 @@ export async function runSessionLane(
   // additionalContext, der Chat bleibt sauber.
   let pendingBlock = "";
   let pendingLanes: SessionHookTelemetry["pending_lanes"] = { recency: 0, trends: 0, recency_chars: 0, trends_chars: 0 };
+  let pendingHarvest = 0;
   try {
     // #513: Recency wird konsumiert, Trends bleiben liegen; nur ein echter
     // Start zählt die Lebensdauer der Trends weiter.
@@ -564,6 +565,8 @@ export async function runSessionLane(
     // sie ohne CLI-Seiteneffekte testbar sind — dieselbe Trennung wie pinned.
     const rendered = formatPendingRelay(relay);
     if (rendered.text) pendingBlock = `\n${rendered.text}`;
+    // #675: counted in what was rendered, after the char budget.
+    pendingHarvest = (rendered.text.match(/<session-harvest /g) ?? []).length;
     pendingLanes = {
       recency: relay.recency.length,
       trends: relay.trends.length,
@@ -719,6 +722,7 @@ export async function runSessionLane(
     hinted_ids: top.map((h) => h.id),
     hinted_types: top.map((h) => h.type),
     pending_lanes: pendingLanes,
+    ...(pendingHarvest > 0 ? { pending_harvest: pendingHarvest } : {}),
     constants_skipped: constantsSkipped,
     status,
     error: errMsg,
@@ -918,6 +922,9 @@ interface SessionHookTelemetry {
   /** #513: Einträge je Relay-Spur und die Größe ihres gerenderten Blocks in
    *  Zeichen. Fehlt auf Zeilen vor #513. */
   pending_lanes: { recency: number; trends: number; recency_chars: number; trends_chars: number };
+  /** #675: after-session harvest blocks this start delivered — the join key
+   *  for the harvest save rate (`bastra logs --stats`). Absent before #675. */
+  pending_harvest?: number;
   /** #509: which session-start constants (taxonomy, doku, language) were left
    *  out because this session's context already carries the identical text.
    *  Fehlt auf Zeilen vor #509. */

@@ -12,12 +12,16 @@
  *  1. The Stop lane books every session it sees (`noteSessionForHarvest`):
  *     session id, transcript path, time of the last Stop. One small locked
  *     write, no transcript work in the Stop budget.
+ *     Where the client sends `SessionEnd`, the same lane books the session as
+ *     finished (`ended: true`), so it does not wait for the idle window.
  *  2. A daemon job (`runSessionHarvest`, daemon-jobs.ts) picks the sessions
- *     that have been quiet for {@link HARVEST_IDLE_MS}, reads their
+ *     that ended or have been quiet for {@link HARVEST_IDLE_MS}, reads their
  *     transcript and extracts candidates (`harvestCandidates`).
- *  3. Candidates go into the pending-suggestions relay (#513, recency lane) as
- *     verbatim quotes. The next session start shows them; the agent judges and
- *     saves. Nothing here writes to the vault.
+ *  3. Candidates the vault already holds in the same words are dropped
+ *     (`harvest-vault-match.ts`); the rest go into the pending-suggestions
+ *     relay (#513, recency lane) as verbatim quotes. The next session start
+ *     shows them; the agent judges and saves. Nothing here writes to the
+ *     vault.
  *
  * Extraction is structural and language-neutral (#676): no word lists, only
  * the shape of the conversation.
@@ -40,7 +44,7 @@ import { defaultLogDir } from "./telemetry.js";
 import { writePendingSuggestion } from "./pending-suggestions.js";
 import { restatementIndices } from "./stop-lane-repeat.js";
 
-/** A session counts as finished once no Stop arrived for this long. */
+/** Without a SessionEnd, a session counts as finished once no Stop arrived for this long. */
 export const HARVEST_IDLE_MS = 30 * 60 * 1000;
 /** Booked sessions older than this are dropped from the queue unharvested. */
 const QUEUE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -84,6 +88,10 @@ interface QueueEntry {
   /** Turns already harvested — a resumed session only yields what is new. */
   harvested_upto?: number;
   harvested_at?: number;
+  /** A SessionEnd hook arrived: the session is finished, no idle wait. A later
+   *  Stop (a resumed session) moves `last_stop` past it and the idle rule is
+   *  back. */
+  ended_at?: number;
 }
 
 export function harvestQueuePath(): string {
@@ -112,7 +120,7 @@ function lastLine(s: string): string {
  * Pure extraction over a normalized transcript. `from` skips turns an earlier
  * pass already harvested.
  */
-export function harvestCandidates(turns: HarvestTurn[], from = 0): HarvestCandidate[] {
+export function harvestCandidates(turns: HarvestTurn[], from = 0, max = HARVEST_MAX_CANDIDATES): HarvestCandidate[] {
   const userIdx: number[] = [];
   for (let i = 0; i < turns.length; i++) if (turns[i].role === "user") userIdx.push(i);
 
@@ -163,7 +171,7 @@ export function harvestCandidates(turns: HarvestTurn[], from = 0): HarvestCandid
   const rank: Record<HarvestKind, number> = { restated: 0, correction: 1, answer: 2 };
   return [...found.values()]
     .sort((a, b) => rank[a.kind] - rank[b.kind] || b.turn - a.turn)
-    .slice(0, HARVEST_MAX_CANDIDATES);
+    .slice(0, max);
 }
 
 /** The relay entry for one finished session. */
@@ -208,6 +216,7 @@ async function writeQueue(path: string, entries: QueueEntry[]): Promise<void> {
 /**
  * Stop lane: book the session for a later harvest. Only a transcript on disk
  * can be harvested after the fact, so an inline transcript is not booked.
+ * `ended` comes from a SessionEnd hook: the session is finished now.
  * Best-effort, never throws.
  */
 export async function noteSessionForHarvest(p: {
@@ -215,6 +224,7 @@ export async function noteSessionForHarvest(p: {
   transcript_path?: unknown;
   cwd?: unknown;
   client?: string;
+  ended?: boolean;
   now?: number;
 }): Promise<void> {
   if (!sessionHarvestEnabled()) return;
@@ -226,15 +236,17 @@ export async function noteSessionForHarvest(p: {
     await withPathLock(path, async () => {
       const entries = await readQueue(path);
       const hit = entries.find((e) => e.session_id === p.session_id);
-      if (hit) {
-        hit.last_stop = now;
-        hit.transcript_path = p.transcript_path as string;
+      let row = hit;
+      if (row) {
+        row.last_stop = now;
+        row.transcript_path = p.transcript_path as string;
       } else {
-        const row: QueueEntry = { session_id: p.session_id as string, transcript_path: p.transcript_path as string, last_stop: now };
+        row = { session_id: p.session_id as string, transcript_path: p.transcript_path as string, last_stop: now };
         if (typeof p.cwd === "string" && p.cwd) row.cwd = p.cwd;
         if (p.client) row.client = p.client;
         entries.push(row);
       }
+      if (p.ended) row.ended_at = now;
       await writeQueue(path, entries.slice(-QUEUE_MAX_ENTRIES));
     });
   } catch {
@@ -245,6 +257,14 @@ export async function noteSessionForHarvest(p: {
 export interface HarvestPassResult {
   harvested: number;
   candidates: number;
+  /** Candidates dropped because the vault already holds them (#675). */
+  stored: number;
+}
+
+/** Ended by a SessionEnd after its last Stop, or quiet for the idle window. */
+function isFinished(e: QueueEntry, now: number): boolean {
+  if (e.ended_at !== undefined && e.ended_at >= e.last_stop) return true;
+  return now - e.last_stop >= HARVEST_IDLE_MS;
 }
 
 /**
@@ -254,9 +274,12 @@ export interface HarvestPassResult {
  */
 export async function runSessionHarvest(opts: {
   loadTurns: (transcriptPath: string) => Promise<HarvestTurn[]>;
+  /** The id of a memory that already holds this quote, or null (#675).
+   *  Absent = no vault check. */
+  storedIn?: () => (quote: string) => string | null;
   now?: number;
 }): Promise<HarvestPassResult> {
-  const result: HarvestPassResult = { harvested: 0, candidates: 0 };
+  const result: HarvestPassResult = { harvested: 0, candidates: 0, stored: 0 };
   if (!sessionHarvestEnabled()) return result;
   const now = opts.now ?? Date.now();
   const path = harvestQueuePath();
@@ -267,25 +290,39 @@ export async function runSessionHarvest(opts: {
     const due = await withPathLock(path, async () => {
       const entries = await readQueue(path);
       return entries.filter(
-        (e) => now - e.last_stop >= HARVEST_IDLE_MS && (e.harvested_at === undefined || e.harvested_at < e.last_stop),
+        (e) => isFinished(e, now) && (e.harvested_at === undefined || e.harvested_at < e.last_stop),
       );
     });
     const progress = new Map<string, { upto: number; at: number }>();
+    let storedIn: ((quote: string) => string | null) | null = null;
     for (const e of due) {
+      const ended = e.ended_at !== undefined && e.ended_at >= e.last_stop;
       try {
         const st = await stat(e.transcript_path);
-        if (now - st.mtimeMs < HARVEST_IDLE_MS) continue; // still being written
+        if (!ended && now - st.mtimeMs < HARVEST_IDLE_MS) continue; // still being written
       } catch {
         progress.set(e.session_id, { upto: e.harvested_upto ?? 0, at: now }); // gone — never retry
         continue;
       }
       const turns = await opts.loadTurns(e.transcript_path);
-      const candidates = harvestCandidates(turns, e.harvested_upto ?? 0);
+      // Every candidate is checked against the vault before the cap, so a
+      // stored one does not take the place of a new one.
+      let candidates = harvestCandidates(turns, e.harvested_upto ?? 0, Infinity);
+      let stored = 0;
+      if (candidates.length > 0 && opts.storedIn) {
+        storedIn ??= opts.storedIn();
+        const matcher = storedIn;
+        const fresh = candidates.filter((c) => matcher(c.quote) === null);
+        stored = candidates.length - fresh.length;
+        candidates = fresh;
+      }
+      candidates = candidates.slice(0, HARVEST_MAX_CANDIDATES);
       if (candidates.length > 0) await writePendingSuggestion(formatHarvestBlock(e, candidates));
       progress.set(e.session_id, { upto: turns.length, at: now });
       result.harvested += 1;
       result.candidates += candidates.length;
-      await writeHarvestTelemetry(e, turns.length, candidates);
+      result.stored += stored;
+      await writeHarvestTelemetry(e, turns.length, candidates, stored, ended);
     }
     await withPathLock(path, async () => {
       const entries = await readQueue(path);
@@ -307,7 +344,13 @@ export async function runSessionHarvest(opts: {
   return result;
 }
 
-async function writeHarvestTelemetry(e: QueueEntry, turnCount: number, candidates: HarvestCandidate[]): Promise<void> {
+async function writeHarvestTelemetry(
+  e: QueueEntry,
+  turnCount: number,
+  candidates: HarvestCandidate[],
+  stored: number,
+  ended: boolean,
+): Promise<void> {
   if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
   try {
     const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();
@@ -323,6 +366,8 @@ async function writeHarvestTelemetry(e: QueueEntry, turnCount: number, candidate
       turn_count: turnCount,
       candidate_count: candidates.length,
       candidate_kinds: kinds,
+      stored_count: stored,
+      trigger: ended ? "session_end" : "idle",
     };
     await appendFile(join(logDir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify(event) + "\n", "utf8");
   } catch {

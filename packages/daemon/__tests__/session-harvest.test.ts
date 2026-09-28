@@ -146,14 +146,14 @@ test("end to end: Stop books, the job waits for quiet, relays once, and never re
 
     const loadTurns = (p: string) => loadTranscript({ transcript_path: p });
     // Too early: the session is still active.
-    assert.deepEqual(await runSessionHarvest({ loadTurns, now: booked + 1000 }), { harvested: 0, candidates: 0 });
+    assert.deepEqual(await runSessionHarvest({ loadTurns, now: booked + 1000 }), { harvested: 0, candidates: 0, stored: 0 });
     assert.equal(existsSync(join(dir, "pending.json")), false);
 
     // Quiet for the idle window, transcript untouched as long.
     const later = booked + HARVEST_IDLE_MS + 1000;
     const old = new Date(booked - 1000);
     await utimes(transcript, old, old);
-    assert.deepEqual(await runSessionHarvest({ loadTurns, now: later }), { harvested: 1, candidates: 1 });
+    assert.deepEqual(await runSessionHarvest({ loadTurns, now: later }), { harvested: 1, candidates: 1, stored: 0 });
     const pending = JSON.parse(await readFile(join(dir, "pending.json"), "utf8")) as { blocks: string; lane?: string }[];
     assert.equal(pending.length, 1);
     assert.equal(pending[0].lane, undefined, "recency lane (#513)");
@@ -162,13 +162,13 @@ test("end to end: Stop books, the job waits for quiet, relays once, and never re
     assert.match(pending[0].blocks, /always sign the tag/);
 
     // A second pass finds nothing new to do.
-    assert.deepEqual(await runSessionHarvest({ loadTurns, now: later + 1000 }), { harvested: 0, candidates: 0 });
+    assert.deepEqual(await runSessionHarvest({ loadTurns, now: later + 1000 }), { harvested: 0, candidates: 0, stored: 0 });
 
     // The session resumes: the new Stop re-books it, only new turns are harvested.
     await noteSessionForHarvest({ session_id: "harvest-e2e-1", transcript_path: transcript, now: later + 2000 });
     assert.deepEqual(
       await runSessionHarvest({ loadTurns, now: later + 2000 + HARVEST_IDLE_MS }),
-      { harvested: 1, candidates: 0 },
+      { harvested: 1, candidates: 0, stored: 0 },
     );
 
     const events = (await readFile(join(dir, "logs", (await import("node:fs")).readdirSync(join(dir, "logs"))[0]), "utf8"))

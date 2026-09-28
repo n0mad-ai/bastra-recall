@@ -36,6 +36,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   language-neutral; it never writes to the vault. Telemetry
   `session_harvest`; off with `BASTRA_SESSION_HARVEST=0`.
 
+- **After-session harvest: SessionEnd, vault check, save rate** (#675).
+  `bastra install` registers Claude Code's `SessionEnd` hook with the Stop
+  hook (same client and route); a finished session is harvested on the next
+  pass instead of after 30 quiet minutes. Codex keeps the idle rule: a Codex
+  build without `SessionEnd` would reject the whole `hooks.json`. Each pick is
+  checked against the vault first (BM25 candidates, IDF-weighted word
+  containment ≥ 0.7, no stopword list) and dropped when a memory already says
+  it. `bastra logs --stats` prints a "session harvest" line: sessions read,
+  quotes relayed and already stored, and how many sessions that got a
+  harvest block saved afterwards (joined on `caller_session`).
+
 - **Save suggestions reach the session that produced them** (#662; data from
   @zzallirog, #701). The Stop lane used to park every suggestion for the next
   session start, where neither the conversation nor the body was left to

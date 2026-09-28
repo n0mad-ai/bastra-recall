@@ -19,6 +19,7 @@ import { runCuratorPass } from "./curator-run.js";
 import { pruneEventLogs } from "./log-retention.js";
 import { observeCodeGraphRefresh, startCodeAwareness } from "./code-graph/service.js";
 import { runSessionHarvest } from "./session-harvest.js";
+import { storedQuoteMatcher } from "./harvest-vault-match.js";
 import { loadTranscript } from "./stop-lane.js";
 
 export interface BackgroundJobDeps {
@@ -63,19 +64,25 @@ export function startBackgroundJobs(deps: BackgroundJobDeps): void {
   startCuratorTick(deps);
   startLogRetention();
   startCodeGraph(deps);
-  startSessionHarvest();
+  startSessionHarvest(deps);
 }
 
 // After-session harvest (#675): sessions the Stop lane booked are read once
 // they have gone quiet, and what the user said that the session did not save
 // goes to the pending relay as suggestions. Off the hook path entirely; the
 // pass is never-throw, and it writes nothing to the vault.
-function startSessionHarvest(): void {
+function startSessionHarvest(deps: BackgroundJobDeps): void {
   setInterval(() => {
-    void runSessionHarvest({ loadTurns: (transcript_path) => loadTranscript({ transcript_path }) })
+    void runSessionHarvest({
+      loadTurns: (transcript_path) => loadTranscript({ transcript_path }),
+      // A quote the vault already holds in the same words is not relayed.
+      storedIn: () => storedQuoteMatcher(deps.vault, deps.search),
+    })
       .then((r) => {
         if (r.harvested > 0) {
-          console.error(`[bastra-recall] session harvest: ${r.harvested} session(s), ${r.candidates} candidate(s) relayed`);
+          console.error(
+            `[bastra-recall] session harvest: ${r.harvested} session(s), ${r.candidates} candidate(s) relayed, ${r.stored} already stored`,
+          );
         }
       })
       .catch((err) => {

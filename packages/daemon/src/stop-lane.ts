@@ -132,6 +132,20 @@ export async function runStopLane(
 ): Promise<string> {
   const startedAt = Date.now();
 
+  // #675: SessionEnd rides the Stop client (same binary, same route). It only
+  // books the session as finished for the after-session harvest — no
+  // transcript work here: Claude Code gives all SessionEnd hooks 1.5 s
+  // together, and the harvest job reads the transcript on its own schedule.
+  if (payload.hook_event_name === "SessionEnd") {
+    await noteSessionForHarvest({
+      session_id: payload.session_id,
+      transcript_path: payload.transcript_path,
+      cwd: payload.cwd,
+      client: hookClientEvidence(payload),
+      ended: true,
+    });
+    return "{}";
+  }
   if (payload.hook_event_name !== "Stop") return "{}";
   if (payload.stop_hook_active === true) return "{}";
 
