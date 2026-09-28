@@ -30,7 +30,9 @@
  *      could structurally never fire (the #476 pattern, scope-bound instead
  *      of language-bound).
  *   3. Architecture-Decision — a decision cue from the German, English or
- *      Russian list in the last 5 user turns.
+ *      Russian list in the last 5 user turns. Languages without a cue list
+ *      (#707): the user picks one of the numbered options the agent offered
+ *      with a question — see stop-lane-choice.ts.
  *
  * Output: ALWAYS `{}` (#48 — suggestions go to the pending file, which the
  * next SessionStart injects silently). The lane still returns that document
@@ -61,6 +63,7 @@ import { writePendingSuggestion } from "./pending-suggestions.js";
 import { frustrationCues, decisionCues } from "./lexicon.js";
 import { isSystemInjectedTurn } from "./system-turn.js";
 import { restatementIndices } from "./stop-lane-repeat.js";
+import { optionPicks } from "./stop-lane-choice.js";
 import { getDocsMode, type DocsMode } from "./settings.js";
 import { enqueueForPath } from "./code-graph/service.js";
 import { boundaryNote, type ProvenRead } from "./code-graph/boundary-block.js";
@@ -778,12 +781,28 @@ function detectArchitectureDecision(turns: TranscriptTurn[]): SaveSuggestion | n
       }
     }
   }
-  if (exemplars.length === 0) return null;
+  if (exemplars.length === 0) return detectOptionPick(turns);
   return {
     heuristic: "architecture-decision",
     title: "decision finalized — save the chosen path and the why",
     type: "decision",
     body: `Decision-language in the last ${userTurns.length} user turns: ${exemplars.join(" | ")}. ` +
+      `If an architectural choice was committed (X over Y, the trade-off), save a 'decision' memory ` +
+      `with the why + how-to-apply.`,
+  };
+}
+
+/** #707 language-neutral fallback: the user picked one of the numbered
+ *  options the agent offered with a question (stop-lane-choice.ts). No word
+ *  list, so any language fires. */
+function detectOptionPick(turns: TranscriptTurn[]): SaveSuggestion | null {
+  const picks = optionPicks(turns, DECISION_WINDOW_TURNS);
+  if (picks.length === 0) return null;
+  return {
+    heuristic: "architecture-decision",
+    title: "decision finalized — save the chosen path and the why",
+    type: "decision",
+    body: `The user picked one of the offered options (language-neutral signal): ${picks.slice(0, 2).map((c) => c.slice(0, 160)).join(" | ")}. ` +
       `If an architectural choice was committed (X over Y, the trade-off), save a 'decision' memory ` +
       `with the why + how-to-apply.`,
   };

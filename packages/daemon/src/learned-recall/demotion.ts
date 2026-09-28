@@ -76,7 +76,6 @@ function outcomeRecallIds(events: TelemetryEvent[]): Set<string> {
 
 interface Fire {
   ts: number;
-  lang: string;
   queryTerms: Set<string>;
   added: string[];
   ledSomewhere: boolean;
@@ -87,13 +86,12 @@ function firesFrom(events: TelemetryEvent[]): Fire[] {
   const fires: Fire[] = [];
   for (const e of events) {
     if (e.kind !== "recall" && e.kind !== "hook_recall") continue;
-    const be = e.bridge_expansion as { lang?: unknown; added?: unknown } | undefined;
-    if (!be || typeof be.lang !== "string" || !Array.isArray(be.added) || typeof e.query !== "string") continue;
+    const be = e.bridge_expansion as { added?: unknown } | undefined;
+    if (!be || !Array.isArray(be.added) || typeof e.query !== "string") continue;
     const ts = Date.parse(e.ts);
     if (!Number.isFinite(ts)) continue;
     fires.push({
       ts,
-      lang: be.lang,
       queryTerms: new Set(distinctiveTerms(e.query)),
       added: be.added.filter((t): t is string => typeof t === "string"),
       ledSomewhere: typeof e.recall_id === "string" && outcomes.has(e.recall_id),
@@ -105,7 +103,9 @@ function firesFrom(events: TelemetryEvent[]): Fire[] {
 function statsFor(b: Bridge, fires: Fire[], since: number, until: number): BridgeFireStats {
   const stats: BridgeFireStats = { fires: 0, outcomes: 0 };
   for (const f of fires) {
-    if (f.ts < since || f.ts > until || f.lang !== b.lang) continue;
+    // #707: no language match — a query consults every folder, so a bridge
+    // filed under "und" fires on a query logged as "en" and vice versa.
+    if (f.ts < since || f.ts > until) continue;
     if (!bridgeFiredOn(b, f.queryTerms, f.added)) continue;
     stats.fires++;
     if (f.ledSomewhere) stats.outcomes++;

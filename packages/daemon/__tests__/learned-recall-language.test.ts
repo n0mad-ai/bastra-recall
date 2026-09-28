@@ -7,9 +7,12 @@ import { test } from "node:test";
 import { strict as assert } from "node:assert";
 
 import {
+  bridgeLanguage,
   detectLanguage,
+  isBridgeLanguage,
   isSupportedLanguage,
   SUPPORTED_LANGUAGES,
+  UNDETERMINED_LANGUAGE,
 } from "../src/learned-recall/language.js";
 
 test("detects clear German from function words", () => {
@@ -88,4 +91,18 @@ test("isSupportedLanguage guards the enum", () => {
 
 test("SUPPORTED_LANGUAGES is the source of truth", () => {
   assert.deepEqual([...SUPPORTED_LANGUAGES], ["de", "en"]);
+});
+
+test("#707: bridgeLanguage never returns null — Russian, Turkish, Greek file under und", () => {
+  assert.equal(UNDETERMINED_LANGUAGE, "und");
+  assert.equal(bridgeLanguage("wie kann ich das Feld in der Datenbank speichern"), "de");
+  assert.equal(bridgeLanguage("почему сервер падает ночью"), "und");
+  assert.equal(bridgeLanguage("veritabanı şifresi nerede duruyor"), "und");
+  assert.equal(bridgeLanguage("γιατί πέφτει ο διακομιστής"), "und");
+  assert.equal(bridgeLanguage("NSPanel resignKey"), "und");
+});
+
+test("#707: isBridgeLanguage checks the folder shape, not a language list", () => {
+  for (const ok of ["de", "en", "und", "ru", "tr", "el"]) assert.equal(isBridgeLanguage(ok), true, ok);
+  for (const bad of ["archive", "../x", "", "DE", "de-DE", 42, null]) assert.equal(isBridgeLanguage(bad), false, String(bad));
 });

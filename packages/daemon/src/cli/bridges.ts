@@ -76,18 +76,18 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       const lang = opts.positional?.[2] ?? null;
       if (!lang) {
         const cur = await getSharedRecallLanguage();
-        process.stdout.write(`query-language override: ${cur ?? "(auto-detect)"}\n`);
+        process.stdout.write(`query-language override: ${cur ?? "(auto — every language folder)"}\n`);
         return 0;
       }
       if (lang === "auto") {
         await clearSharedRecallLanguage();
-        process.stdout.write("✓ query-language override cleared — auto-detect per query\n");
+        process.stdout.write("✓ query-language override cleared — queries consult every language folder\n");
         return 0;
       }
       // Validate against the SAME set the daemon enforces at boot (SUPPORTED_LANGUAGES),
       // so the CLI never confirms an override the daemon would silently discard.
       if (!isSupportedLanguage(lang.toLowerCase())) {
-        process.stderr.write(`✗ unsupported language '${lang}' — bridge pools exist only for: ${SUPPORTED_LANGUAGES.join(", ")} (or 'auto' to clear)\n`);
+        process.stderr.write(`✗ unsupported language '${lang}' — the override accepts: ${SUPPORTED_LANGUAGES.join(", ")} (or 'auto' to clear; without an override every language folder is consulted, #707)\n`);
         return 2;
       }
       await setSharedRecallLanguage(lang);

@@ -30,7 +30,7 @@ export interface ToolDeps {
    *  null/absent = feature off, query untouched (local-first guarantee). */
   learnedBridges?: BridgePool | null;
   /** Optional query-language override for the bridge pool (sharedRecall.language);
-   *  null/absent = auto-detect the query language per recall. */
+   *  null/absent = every language folder is consulted (#707). */
   sharedRecallLang?: SupportedLanguage | null;
   /** #165: true while the embedding circuit breaker is open — hybrid recall
    *  is silently served BM25-only (no embed attempt). Recall telemetry flags

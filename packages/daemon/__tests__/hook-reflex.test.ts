@@ -73,6 +73,15 @@ test("phraseMatchesContext: token-AND, stopwords dropped, no prefix matching", (
   assert.equal(phraseMatchesContext("beim bitte wenn", context), false, "stopword-only phrase never matches");
 });
 
+test("#707 phraseMatchesContext: a language without a stopword list takes the neutral path, never 'never fires'", () => {
+  // Russian, Turkish, Greek: no word is dropped as a function word, so every
+  // token of the phrase must be in the context — and then it matches.
+  assert.equal(phraseMatchesContext("перезапуск сервера", ctx("нужен перезапуск сервера сейчас")), true);
+  assert.equal(phraseMatchesContext("перезапуск сервера", ctx("нужен перезапуск базы")), false, "one missing token → no match");
+  assert.equal(phraseMatchesContext("veritabanı şifresi", ctx("veritabanı şifresi nerede")), true);
+  assert.equal(phraseMatchesContext("επανεκκίνηση διακομιστή", ctx("χρειάζεται επανεκκίνηση διακομιστή")), true);
+});
+
 test("phraseMatchesContext: single free-text token never fires, single identifier token does", () => {
   const context = ctx("deployment via npm-shrinkwrap auf es2022 umstellen");
   // Ein einzelnes Freitext-Wort wäre ein Streutrigger — gesperrt.

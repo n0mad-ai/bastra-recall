@@ -1,22 +1,25 @@
 /**
  * Lightweight, zero-dependency language detection for the shared learned-recall
- * layer (#120). The vault is mixed DE/EN and the embedding model is multilingual,
- * so detection here is a PRECISION tool, not a capability gate: it decides which
- * language-specific bridge pool a query may draw from (a German bridge must only
- * help German queries — product requirement). It is deliberately heuristic
- * (stopword overlap + diacritic signal) rather than a dependency: recall runs on
- * a 500 ms hook budget, queries are short, and a wrong-but-cheap guess that
- * abstains on low confidence is safer than a heavy library that still fails on
- * 3-word, code-token-heavy inputs.
+ * layer (#120). It is deliberately heuristic (stopword overlap + diacritic
+ * signal) rather than a dependency: recall runs on a 500 ms hook budget, queries
+ * are short, and a cheap guess that abstains on low confidence beats a heavy
+ * library that still fails on 3-word, code-token-heavy inputs.
  *
- * The contract that matters: detectLanguage ABSTAINS (returns lang=null) when the
- * input is too short, code-shaped, or genuinely ambiguous. Callers treat abstain
- * as "consult no language pool" (or fall back to a user-configured default), never
- * as a coin-flip — a misrouted bridge is worse than no bridge.
+ * #707: detection only FILES a bridge. It picks the folder a new bridge is
+ * written to (bridges/<lang>/); it no longer decides whether a bridge is minted
+ * or fires. Only de and en have stopword sets, so any other language — and any
+ * query detection abstains on — is filed under "und" (BCP-47 "undetermined")
+ * and mints and fires like every other bridge. Before, abstain meant "no pool":
+ * a Russian owner's prompts never minted a bridge and never got one.
+ *
+ * detectLanguage still ABSTAINS (lang=null) when the input is too short,
+ * code-shaped, or ambiguous; bridgeLanguage() turns that into "und".
  */
 
-/** Languages the bridge layer partitions pools by. Extend deliberately — each
- *  new language needs a stopword set below or detection silently never picks it. */
+/** Languages detectLanguage can name, and the values the `bastra bridges
+ *  language` override accepts. Extend deliberately — each new language needs a
+ *  stopword set below or detection silently never picks it. A language that is
+ *  not here is not locked out: its bridges live under "und" (#707). */
 export const SUPPORTED_LANGUAGES = ["de", "en"] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 
@@ -117,4 +120,20 @@ export function detectLanguage(text: string): LanguageResult {
     return { lang: null, confidence, scores };
   }
   return { lang: top, confidence, scores };
+}
+
+/** #707: the folder for bridges whose language detection could not name. */
+export const UNDETERMINED_LANGUAGE = "und";
+
+/** #707: the folder a bridge minted from `text` is filed under — the detected
+ *  language, or "und". Never null: filing never blocks a mint. */
+export function bridgeLanguage(text: string): string {
+  return detectLanguage(text).lang ?? UNDETERMINED_LANGUAGE;
+}
+
+/** A bridge folder name: a 2–3 letter language code ("de", "en", "und", and
+ *  whatever a Commons clone adds). The shape check keeps a cloned file's `lang`
+ *  out of path tricks without naming languages. */
+export function isBridgeLanguage(v: unknown): v is string {
+  return typeof v === "string" && /^[a-z]{2,3}$/.test(v);
 }

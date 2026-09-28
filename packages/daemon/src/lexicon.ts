@@ -28,7 +28,9 @@ import { join } from "node:path";
  * `language.primary` says: users mix languages (an English "again" in a German
  * session), and dropping a list on a settings change would silently lose cues.
  * A language WITHOUT a list is not left without a signal any more — the stop
- * lane's language-neutral repeated-correction check covers it.
+ * lane's language-neutral checks cover it: a repeated correction for
+ * frustration (#678), a pick among the agent's numbered options for a
+ * decision (#707, stop-lane-choice.ts).
  * Within a list, longer variants first so the same span is not double-counted.
  */
 export const DEFAULT_FRUSTRATION_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {

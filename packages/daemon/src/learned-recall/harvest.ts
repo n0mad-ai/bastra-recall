@@ -17,7 +17,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
-import { detectLanguage } from "./language.js";
+import { bridgeLanguage } from "./language.js";
 import { isExpiredUnconfirmed, isMachineVocabulary, mintBridge, UNCONFIRMED_BRIDGE_TTL_DAYS, type Bridge } from "./bridges.js";
 import { rerank, type ChatFn, type RerankCandidate } from "./reranker.js";
 import { testRunLogDir } from "../env.js";
@@ -177,7 +177,7 @@ export function reconstructReaches(events: TelemetryEvent[]): Reach[] {
 export interface HarvestResult {
   /** Minted bridges, deduped by id with evidence = how many reaches produced each. */
   bridges: Bridge[];
-  /** Reaches seen / reaches that produced a usable (far enough, language-detected) bridge. */
+  /** Reaches seen / reaches that produced a usable (far enough) bridge. */
   reaches: number;
   minted: number;
 }
@@ -193,7 +193,7 @@ export function harvestBridges(reaches: Reach[], getMemoryTerms: (memoryId: stri
   for (const r of reaches) {
     const terms = getMemoryTerms(r.memoryId);
     if (terms.length === 0) continue;
-    const b = mintBridge(r.query, terms, detectLanguage(r.query).lang, date);
+    const b = mintBridge(r.query, terms, bridgeLanguage(r.query), date);
     if (!b) continue;
     // #672: first_seen = the earliest reach behind the bridge (ISO strings of
     // the same format compare chronologically).
@@ -362,8 +362,8 @@ export async function harvestFarBridges(
     // fail-closed hieße hier, den kompletten historischen Log wegzuwerfen.
     if (entry.scoreKind === "bm25") continue;
     if (entry.topScore >= maxScore) continue; // already a confident hit → not a far case
-    const lang = detectLanguage(entry.query).lang;
-    if (!lang) continue;
+    // #707: the language only files the bridge; an undetected one is "und".
+    const lang = bridgeLanguage(entry.query);
     const candidates: RerankCandidate[] = [];
     for (const p of entry.pool) {
       const info = getMemoryInfo(p.id);
