@@ -51,6 +51,17 @@ defaults to `false` (`settings.ts:235`); `sharedRecall.enabled` defaults to `fal
 enable` only flips the toggle — you still need `bastra commons enable` to actually
 clone the repo.
 
+**Where the local pool lives (#648).** Bridges this machine mints — `bridges/`
+and `last-mint.json` — are per-box state and live in `~/.bastra/bridges`
+(override with `BASTRA_BRIDGES_PATH`), outside the Commons checkout, so a
+`git pull` of the clone never collides with them. Before #648 they sat in the
+Commons root. The first daemon start (or `bastra bridges …` command) after the
+upgrade copies an existing `<commons>/bridges` and `last-mint.json` to the new
+directory once; the originals stay where they were, so moving them aside or
+deleting them is up to you. The copy runs only while `~/.bastra/bridges/bridges`
+does not exist yet, so it never overwrites a pool minted there. Setting
+`BASTRA_BRIDGES_PATH` to the Commons root keeps the old layout.
+
 ### What is shared
 
 Three artifact kinds. **None carries private vault content** — no memory bodies,
@@ -135,7 +146,7 @@ long term and rarely makes a useful trigger — noted in #707.
 Bridges are minted **locally and offline**, never on the recall hot path:
 telemetry event log → `reconstructReaches` → `mintBridge` (query distinctive
 terms = trigger; the resolved memory's distinctive terms not in the query =
-expansion) → `writeBridges` into the clone. CLI: `bastra bridges mint [days]`
+expansion) → `writeBridges` into `~/.bastra/bridges` (#648). CLI: `bastra bridges mint [days]`
 (in-band reaches) and `bastra bridges harvest [days]` (deep, local Ollama
 reranker over the far slice). Both record each run as a `bridges_mint`
 telemetry event (the harvest with `trigger: "cli-harvest"`), which the bridge
@@ -319,6 +330,17 @@ ist standardmäßig `false` (`settings.ts:235`); `sharedRecall.enabled` ist stan
 (`settings.ts:245`). Bridges liegen *innerhalb* des Commons-Klons, daher schaltet `bastra bridges
 enable` nur den Schalter um — um das Repo tatsächlich zu klonen, brauchst du weiterhin `bastra commons enable`.
 
+**Wo der lokale Pool liegt (#648).** Bridges, die dieser Rechner erzeugt — `bridges/`
+und `last-mint.json` —, sind rechnerbezogener Zustand und liegen in `~/.bastra/bridges`
+(überschreibbar mit `BASTRA_BRIDGES_PATH`), außerhalb des Commons-Klons, damit ein
+`git pull` des Klons nie mit ihnen kollidiert. Vor #648 lagen sie im Commons-Wurzelverzeichnis.
+Der erste Daemon-Start (oder `bastra bridges …`-Befehl) nach dem Update kopiert ein
+vorhandenes `<commons>/bridges` und `last-mint.json` einmalig in das neue Verzeichnis; die
+Originale bleiben liegen, ob du sie wegräumst oder löschst, entscheidest du. Die Kopie
+läuft nur, solange `~/.bastra/bridges/bridges` noch nicht existiert, überschreibt also nie
+einen dort erzeugten Pool. Wer `BASTRA_BRIDGES_PATH` auf das Commons-Verzeichnis setzt,
+behält das alte Layout.
+
 ### Was geteilt wird
 
 Drei Artefaktarten. **Keine davon enthält private Vault-Inhalte** — keine Erinnerungstexte
@@ -403,7 +425,7 @@ einziger langer Begriff und selten ein brauchbarer Trigger — in #707 vermerkt.
 Bridges werden **lokal und offline** erzeugt, nie im heißen Pfad von Recall:
 Telemetrie-Ereignisprotokoll → `reconstructReaches` → `mintBridge` (markante Begriffe der Anfrage
 = Trigger; markante Begriffe der gefundenen Erinnerung, die nicht in der Anfrage stehen =
-Erweiterung) → `writeBridges` in den Klon. CLI: `bastra bridges mint [days]`
+Erweiterung) → `writeBridges` nach `~/.bastra/bridges` (#648). CLI: `bastra bridges mint [days]`
 (In-Band-Treffer) und `bastra bridges harvest [days]` (gründlich, mit lokalem Ollama-Reranker
 über den fernen Teil). Beide protokollieren jeden Lauf als Telemetrie-Ereignis
 `bridges_mint` (die Ernte mit `trigger: "cli-harvest"`), das der Bridge-Hinweis in

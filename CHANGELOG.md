@@ -122,6 +122,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The local bridges pool moves out of the Commons checkout** (#648).
+  `bridgesPath()` defaulted to `commonsPath()`, so `bridges/` and
+  `last-mint.json` lived inside the git checkout of the shared repo and
+  would clash with a Commons that ships its own `bridges/`. The pool now
+  lives in `~/.bastra/bridges` (`BASTRA_BRIDGES_PATH` still overrides). The
+  first daemon start, Mac-app bridge start or `bastra bridges …` command
+  after the upgrade copies an existing `<commons>/bridges` + `last-mint.json`
+  there once (staged, then renamed); the originals are kept, and a pool
+  already at the new path is never overwritten. Reading shared bridges from
+  `<commons>/bridges` next to the local pool is not part of this change.
 - **Learned bridges work in every language** (#707; reported by @zzallirog,
   #701). The language is now only the folder a bridge is filed under:
   detection still names de/en, anything else (and anything it abstains on)
@@ -141,7 +151,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   decision suggestion has a language-neutral fallback like #678's for
   frustration: the user picks one of the numbered options the agent offered
   with a question ("2 olsun", "вариант 1", "2でお願いします").
-
 - **docs/hooks.md describes the tripwire's three hint kinds** (#659). The
   bash-pre section (EN+DE) still said STOP for every destructive pattern. It
   now has receipt / reversible form / STOP with a table of which pattern is

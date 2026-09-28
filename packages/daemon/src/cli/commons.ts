@@ -322,11 +322,11 @@ async function cloneOrPull(): Promise<number> {
 }
 
 /**
- * Clone into a root that may already hold local state. The bridges pool
- * lives under the same root (`bridgesPath()` defaults to `commonsPath()`),
- * and shared recall bridges are on by default, so the daemon has usually
- * minted `bridges/` and `last-mint.json` there long before anyone enables
- * Commons. `git clone` refuses a non-empty directory, which made
+ * Clone into a root that may already hold local state. Before #648 the
+ * bridges pool lived under the same root (`bridgesPath()` defaulted to
+ * `commonsPath()`), so the daemon has usually minted `bridges/` and
+ * `last-mint.json` there long before anyone enables Commons; #648 copies them
+ * to ~/.bastra/bridges but leaves the originals in place. `git clone` refuses a non-empty directory, which made
  * `commons enable` fail for every such user. So the checkout is cloned next
  * to the root and moved in; a name that exists on both sides is refused by
  * name rather than overwritten, because the local side is the user's data.

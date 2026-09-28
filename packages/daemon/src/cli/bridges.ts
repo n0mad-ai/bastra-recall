@@ -14,10 +14,12 @@
  * Local-first: toggle off ⇒ the daemon never builds the pool; nothing leaves the
  * machine. Contribution is opt-in and PR-only — there is no auto-egress.
  * ("Never writes" means the SYNCED content / no egress: local mints — CLI or
- * the daemon's own #353 schedule — write new local bridge files into the same
- * clone; they only ever leave via the PR flow.)
+ * the daemon's own #353 schedule — write new local bridge files into
+ * `bridgesPath()`, ~/.bastra/bridges since #648, outside the clone; they only
+ * ever leave via the PR flow.)
  */
-import { existsSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { Vault } from "@bastra-recall/core";
 import {
@@ -38,17 +40,54 @@ import {
   harvestFarBridges,
   bridgeTeachingEvents,
 } from "../learned-recall/harvest.js";
-import { runInBandMint, readLastMint, recordHarvestRun } from "../learned-recall/mint-job.js";
+import { runInBandMint, readLastMint, recordHarvestRun, LAST_MINT_FILE } from "../learned-recall/mint-job.js";
 import { ollamaChat, listOllamaModels, resolveRerankModel } from "../learned-recall/reranker.js";
 import { isSupportedLanguage, SUPPORTED_LANGUAGES } from "../learned-recall/language.js";
 
-/** Bridges share the Commons clone. Env override kept for tests/relocation. */
+/** #648: the local pool (`bridges/`, `last-mint.json`) is per-box state and
+ *  lives in its own directory, not inside the git checkout of the shared
+ *  Commons repo. Env override kept for tests/relocation. */
 export function bridgesPath(): string {
-  return process.env.BASTRA_BRIDGES_PATH ?? commonsPath();
+  return process.env.BASTRA_BRIDGES_PATH ?? join(homedir(), ".bastra", "bridges");
+}
+
+/**
+ * #648: one-time move of a pool minted before the split, from its old home
+ * inside the Commons root to `bridgesPath()`. Copies, never deletes: the old
+ * files stay where they were, so a downgrade still finds them. Idempotent — it
+ * only runs while the new root has no `bridges/` yet, so a pool minted at the
+ * new path is never overwritten. Returns what it copied (empty when nothing).
+ */
+export function migrateBridgesPool(): string[] {
+  const from = commonsPath();
+  const to = bridgesPath();
+  if (from === to || existsSync(join(to, "bridges"))) return [];
+  const copied: string[] = [];
+  for (const name of ["bridges", LAST_MINT_FILE]) {
+    const src = join(from, name);
+    const dest = join(to, name);
+    if (!existsSync(src) || existsSync(dest)) continue;
+    // Staged, then renamed: a copy that stops midway must not leave a partial
+    // `bridges/` that the idempotence check above would take for a finished one.
+    const staging = `${dest}.migrating`;
+    rmSync(staging, { recursive: true, force: true });
+    mkdirSync(to, { recursive: true });
+    cpSync(src, staging, { recursive: true });
+    renameSync(staging, dest);
+    copied.push(name);
+  }
+  return copied;
 }
 
 export async function cmdBridges(opts: { sub: string | null; positional?: string[] }): Promise<number> {
   const sub = opts.sub ?? "status";
+  // #648: a CLI mint before the first daemon start after the upgrade must not
+  // start a fresh pool next to the old one.
+  try {
+    migrateBridgesPool();
+  } catch (err) {
+    process.stderr.write(`! could not copy the bridges pool from ${commonsPath()} to ${bridgesPath()} (${(err as Error).message})\n`);
+  }
   switch (sub) {
     case "enable": {
       await setSharedRecallEnabled(true);

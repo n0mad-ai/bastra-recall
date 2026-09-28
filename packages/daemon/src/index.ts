@@ -45,7 +45,7 @@ import { embeddingStatusLine, cloudConsentNotice, type EmbeddingStatus, type Emb
 import { cloudEmbeddingProvider } from "./embedding-cloud.js";
 import { resolveEmbeddingChoice, getCommonsEnabled, getSharedRecallEnabled, getSharedRecallLanguage, getPrimaryLanguage, resolveGenerationModel, getEvidenceGateEnabled, getExperimentConfig } from "./settings.js";
 import { commonsPath, loadVerificationCounts } from "./cli/commons.js";
-import { bridgesPath } from "./cli/bridges.js";
+import { bridgesPath, migrateBridgesPool } from "./cli/bridges.js";
 import { BridgePool } from "./learned-recall/bridges.js";
 import { isSupportedLanguage, type SupportedLanguage } from "./learned-recall/language.js";
 import { ollamaChat } from "./learned-recall/reranker.js";
@@ -247,6 +247,17 @@ async function main(): Promise<void> {
   } else {
     // #422: seit dem Default `true` ist AUS die Abweichung, die man sehen muss.
     console.error("[bastra-recall] evidence gate: OFF (settings or BASTRA_EVIDENCE_GATE) — legacy bands serve every hit");
+  }
+
+  // #648: a pool minted before the split still sits in the Commons root; copy
+  // it to its own directory once, before the first load or mint reads it.
+  try {
+    const copied = migrateBridgesPool();
+    if (copied.length > 0) {
+      console.error(`[bastra-recall] bridges: copied ${copied.join(" + ")} from ${commonsPath()} to ${bridgesPath()} (#648; originals kept)`);
+    }
+  } catch (err) {
+    console.error(`[bastra-recall] bridges: could not copy the pool from ${commonsPath()} to ${bridgesPath()} (${(err as Error).message}) — minting starts a new pool`);
   }
 
   let learnedBridges: BridgePool | null = null;
