@@ -7,6 +7,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { activePatches, lastRunPath, patchesDir, readLastRun, type ApplyOutcome, type LastRun } from "./patch-registry.js";
+import { clearPatchProvenance } from "./patch-provenance.js";
 
 export function writeLastRun(o: ApplyOutcome, home = homedir()): void {
   try {
@@ -23,8 +24,11 @@ export function writeLastRun(o: ApplyOutcome, home = homedir()): void {
       ...(o.tree ? { root: o.tree.root, ...(o.tree.version ? { version: o.tree.version } : {}) } : {}),
     };
     writeFileSync(lastRunPath(home), JSON.stringify(rec, null, 2) + "\n", "utf8");
-  } catch {
-    // A record that cannot be written costs a notice, never an update.
+    if (o.tree) clearPatchProvenance(o.tree.root, o.tree.version, home);
+  } catch (err) {
+    // The write-ahead record remains, so a later update keeps rather than
+    // retiring a patch that may already be on this installation.
+    console.error(`[bastra-recall] patch provenance could not be finalised: ${(err as Error).message}`);
   }
 }
 
@@ -93,7 +97,7 @@ export function formatApplyOutcome(o: ApplyOutcome): string {
   if (o.skipped) return `  ${o.skipped}\n`;
   const lines: string[] = [];
   for (const e of o.applied) lines.push(`  ✓ applied   ${e.id} — ${e.subject}`);
-  for (const e of o.kept ?? []) lines.push(`  = kept      ${e.id} — still on this install from the last run`);
+  for (const e of o.kept ?? []) lines.push(`  = kept      ${e.id} — already present on this install; kept in the series`);
   for (const e of o.retired) lines.push(`  ↩ retired   ${e.id} — merged upstream, dropped from the series`);
   for (const s of o.setAside) {
     lines.push(`  ⚠ set aside ${s.entry.id} — ${s.entry.subject}`);
