@@ -46,6 +46,21 @@ export function graphFileOf(repoRoot: string): string {
   return join(graphDirOf(repoRoot), GRAPH_FILE_NAME);
 }
 
+/** Read from the already-open handle with a hard byte cap, even if the same
+ * inode grows after fstat. `FileHandle.readFile` would read that growth whole. */
+export async function readBounded(handle: FileHandle, maxBytes: number): Promise<string | null> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  while (total <= maxBytes) {
+    const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1 - total));
+    const { bytesRead } = await handle.read(chunk, 0, chunk.length, null);
+    if (bytesRead === 0) return Buffer.concat(chunks, total).toString("utf8");
+    chunks.push(chunk.subarray(0, bytesRead));
+    total += bytesRead;
+  }
+  return null;
+}
+
 /**
  * What kind of thing a node is, derived from how Graphify labels it.
  *
@@ -152,7 +167,13 @@ export async function loadGraph(repoRoot: string): Promise<LoadResult> {
     if (sizeBytes > MAX_GRAPH_BYTES) {
       return { ok: false, reason: "too-large", detail: `${sizeBytes} bytes` };
     }
-    raw = await handle.readFile({ encoding: "utf8" });
+    const bounded = await readBounded(handle, MAX_GRAPH_BYTES);
+    if (bounded === null) return { ok: false, reason: "too-large", detail: "grew while reading" };
+    raw = bounded;
+    const after = await handle.stat();
+    if (after.size !== st.size || after.mtimeMs !== st.mtimeMs) {
+      return { ok: false, reason: "unreadable", detail: "changed while reading" };
+    }
   } catch {
     return { ok: false, reason: "unreadable" };
   } finally {
