@@ -17,6 +17,9 @@ export interface RecallHit {
   /** Present (as "reflex") only when the user wired the memory to self-inject
    *  — the mode-"none" semantic filter keys on it. */
   recall_mode?: string;
+  /** P0/#360: how firmly the prompt's own words anchor the memory's
+   *  triggers; absent when no trigger term matched at all. */
+  anchor_strength?: "strong" | "weak";
 }
 
 /** #217 Reflex-Lane: lean hit vom /hook/reflex-Endpoint. */
