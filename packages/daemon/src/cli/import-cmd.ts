@@ -268,6 +268,13 @@ async function cmdImportVault(args: ParsedArgs): Promise<number> {
   if (result.skipped.length > 10) {
     process.stdout.write(`  · …and ${result.skipped.length - 10} more\n`);
   }
+  // #710: imported, but a field was fixed on the way in — say so.
+  for (const w of result.warnings.slice(0, 10)) {
+    process.stdout.write(`  · warning ${basename(w.path)}: ${w.reason}\n`);
+  }
+  if (result.warnings.length > 10) {
+    process.stdout.write(`  · …and ${result.warnings.length - 10} more warnings\n`);
+  }
   // #530 follow-up: a source file that disappeared since the last import never
   // takes its memory down with it — a vanished file can be a stuck cloud sync.
   // Nothing is removed; the human decides.
