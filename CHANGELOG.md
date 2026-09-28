@@ -84,6 +84,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **docs/hooks.md describes the tripwire's three hint kinds** (#659). The
+  bash-pre section (EN+DE) still said STOP for every destructive pattern. It
+  now has receipt / reversible form / STOP with a table of which pattern is
+  which (incl. `git branch -D` as reversible form, the `git push +refspec`
+  and `git push --delete` rows), the whole-command rule, what
+  `BASTRA_RM_ARCHIVES=host` assumes about the host's `rm`, `find … -delete`
+  among the risky patterns (the dropped `>` redirect is gone from the list),
+  and the `hint_kind` field on `bash_hook_call`.
 - **`bastra embeddings on` says it also starts doc2query** (#646, from
   @zzallirog's #640 report). Ollama embeddings start the background
   paraphraser on a generation model, a different cost than the embedding
