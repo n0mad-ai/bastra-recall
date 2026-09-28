@@ -85,7 +85,7 @@ After `npm run build` the daemon package exposes these bin entries:
 | `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`/`TaskCreate`/`ExitPlanMode`   | Topology recall before multi-step plans (#36 #506 #698)   |
 | `bastra-recall-bash-pre-hook`     | `PreToolUse`       | `Bash` (destructive/risky)                | Safety recall before destructive shell ops (#34)          |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse` / `PostToolUseFailure` | `Bash` (every completed or failed command) | Act-signal for acted_on (#144); lesson recall on failure (#37) |
-| `bastra-recall-stop-hook`         | `Stop`             | —                                         | Optional autonomous save-eval at end of session (#35)      |
+| `bastra-recall-stop-hook`         | `Stop` / `SessionEnd` | —                                      | Optional autonomous save-eval at end of session (#35); SessionEnd books the finished session for the harvest (#675) |
 
 ### Activation snippet for `~/.claude/settings.json`
 
@@ -647,9 +647,19 @@ rules said a second time — is never saved in the session. The Stop hook
 therefore also books the session (session id, transcript path, time of the
 last Stop) in `~/.bastra/harvest-queue.json`; this is one small write and no
 transcript work. A daemon job runs every 5 minutes and takes each booked
-session that has had no Stop, and whose transcript has not changed, for 30
-minutes. It reads the transcript and picks at most three user turns by the
-shape of the conversation, with no word lists, so it works in any language:
+session that has ended, or that has had no Stop, and whose transcript has not
+changed, for 30 minutes. "Ended" comes from Claude Code's `SessionEnd` hook:
+`bastra install` registers it together with the Stop hook, on the same client
+and daemon route (`/hook/stop`, timeout 2 s — Claude Code gives all SessionEnd
+hooks 1.5 s together unless one asks for more). It only marks the session as
+finished; a later Stop (a resumed session) brings the 30-minute rule back.
+Codex has a `SessionEnd` hook in current builds with the same input, and the
+daemon accepts it on the same route, but `bastra install codex` does not
+register it: Codex rejects a whole `hooks.json` that names an event it does
+not know, so on an older Codex this one entry would switch off every hook.
+Codex sessions keep the idle rule. The job reads the transcript and picks at
+most three user turns by the shape of the conversation, with no word lists, so
+it works in any language:
 
 - `restated` — a user turn that restates an earlier one (the #678 bigram
   similarity);
@@ -659,13 +669,26 @@ shape of the conversation, with no word lists, so it works in any language:
 
 Pastes (2,000 characters or more), system-injected turns and anything the agent
 saved later in the session (`save_memory`, `edit_memory`, `save_hold`) are
-skipped. The picks go into the pending relay (recency lane, #513) as one
+skipped. Before the cap of three, each pick is checked against the vault: BM25
+proposes up to eight memories, and a pick counts as already stored when a
+memory carries at least 70 % of its words, each word weighted by its inverse
+document frequency over the vault. Function words of any language occur in
+most notes of that language and weigh almost nothing, so no stopword list is
+involved; a rephrased or translated note is not matched, and that pick is
+relayed. The rest go into the pending relay (recency lane, #513) as one
 `<session-harvest>` block of verbatim quotes, which the next session start
 shows. **The harvest never writes to the vault**: the agent recalls, judges
 and saves. A resumed session is harvested again only for its new turns.
 Telemetry: `session_harvest` with `session_id, client, turn_count,
-candidate_count, candidate_kinds`. Switch it off with
-`BASTRA_SESSION_HARVEST=0` in the daemon's environment.
+candidate_count, candidate_kinds, stored_count, trigger` (`session_end` or
+`idle`); the session start that delivers a harvest block records
+`pending_harvest` on its `session_hook_call` row. `bastra logs --stats` prints
+"session harvest — N session(s) read (K on SessionEnd), Q quote(s) relayed,
+S already in the vault" and "delivered to D session start(s), M of them saved
+afterwards", joined on `caller_session` as above. "Saved afterwards" counts any
+save of the session that got the block, so it bounds the harvest's effect from
+above. Switch it off with `BASTRA_SESSION_HARVEST=0` in the daemon's
+environment.
 
 #### Taxonomy injection (session hook, #66)
 
@@ -868,7 +891,7 @@ Nach `npm run build` stellt das Daemon-Paket diese Bin-Einträge bereit:
 | `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`/`TaskCreate`/`ExitPlanMode`   | Topologie-Recall vor mehrstufigen Plänen (#36 #506 #698)  |
 | `bastra-recall-bash-pre-hook`     | `PreToolUse`       | `Bash` (destruktiv/riskant)               | Sicherheits-Recall vor destruktiven Shell-Befehlen (#34)  |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse` / `PostToolUseFailure` | `Bash` (jeder abgeschlossene oder fehlgeschlagene Befehl) | Handlungssignal für acted_on (#144); Lesson-Recall bei Fehlern (#37) |
-| `bastra-recall-stop-hook`         | `Stop`             | —                                         | Optionale autonome Speicherbewertung am Session-Ende (#35) |
+| `bastra-recall-stop-hook`         | `Stop` / `SessionEnd` | —                                      | Optionale autonome Speicherbewertung am Session-Ende (#35); SessionEnd trägt die beendete Session für den Harvest ein (#675) |
 
 ### Aktivierungs-Snippet für `~/.claude/settings.json`
 
@@ -1419,10 +1442,20 @@ Stop-Hook trägt die Session deshalb zusätzlich in
 `~/.bastra/harvest-queue.json` ein (Session-ID, Transcript-Pfad, Zeit des
 letzten Stops); das ist ein kleiner Schreibvorgang, das Transcript wird dabei
 nicht verarbeitet. Ein Daemon-Job läuft alle 5 Minuten und nimmt jede
-eingetragene Session, die seit 30 Minuten keinen Stop hatte und deren
-Transcript sich so lange nicht geändert hat. Er liest das Transcript und wählt
-höchstens drei Nutzer-Turns nach der Form des Gesprächs aus, ohne Wortlisten,
-also in jeder Sprache:
+eingetragene Session, die beendet ist oder seit 30 Minuten keinen Stop hatte
+und deren Transcript sich so lange nicht geändert hat. „Beendet" meldet der
+`SessionEnd`-Hook von Claude Code: `bastra install` registriert ihn zusammen
+mit dem Stop-Hook, über denselben Client und dieselbe Daemon-Route
+(`/hook/stop`, Timeout 2 s — Claude Code gibt allen SessionEnd-Hooks zusammen
+1,5 s, sofern keiner mehr verlangt). Er markiert die Session nur als beendet;
+ein späterer Stop (fortgesetzte Session) setzt wieder die 30-Minuten-Regel in
+Kraft. Codex hat in aktuellen Versionen einen `SessionEnd`-Hook mit derselben
+Eingabe, und der Daemon nimmt ihn auf derselben Route an, aber
+`bastra install codex` registriert ihn nicht: Codex verwirft eine ganze
+`hooks.json`, die ein unbekanntes Event nennt, auf einem älteren Codex würde
+dieser eine Eintrag also alle Hooks abschalten. Codex-Sessions behalten die
+Ruhe-Regel. Der Job liest das Transcript und wählt höchstens drei Nutzer-Turns
+nach der Form des Gesprächs aus, ohne Wortlisten, also in jeder Sprache:
 
 - `restated` — ein Nutzer-Turn, der einen früheren wiederholt (die
   Bigramm-Ähnlichkeit aus #678);
@@ -1433,12 +1466,26 @@ also in jeder Sprache:
 
 Eingefügte Texte (ab 2.000 Zeichen), vom System eingefügte Turns und alles, was
 der Agent später in der Session gespeichert hat (`save_memory`, `edit_memory`,
-`save_hold`), fallen weg. Die Auswahl landet als ein `<session-harvest>`-Block
-mit wörtlichen Zitaten im Pending-Relay (Recency-Spur, #513), den der nächste
-Session-Start zeigt. **Der Harvest schreibt nie in den Vault**: Der Agent
-sucht per recall, prüft und speichert. Eine fortgesetzte Session wird nur für
-ihre neuen Turns erneut ausgewertet. Telemetrie: `session_harvest` mit
-`session_id, client, turn_count, candidate_count, candidate_kinds`. Abschalten
+`save_hold`), fallen weg. Vor der Grenze von drei wird jede Auswahl gegen den
+Vault geprüft: BM25 schlägt bis zu acht Memories vor, und eine Auswahl gilt als
+schon gespeichert, wenn eine Memory mindestens 70 % ihrer Wörter enthält, jedes
+Wort gewichtet mit seiner inversen Dokumenthäufigkeit im Vault. Funktionswörter
+jeder Sprache stehen in den meisten Notizen dieser Sprache und wiegen fast
+nichts, deshalb braucht es keine Stoppwortliste; eine umformulierte oder
+übersetzte Notiz wird nicht erkannt, und diese Auswahl wird weitergereicht. Der
+Rest landet als ein `<session-harvest>`-Block mit wörtlichen Zitaten im
+Pending-Relay (Recency-Spur, #513), den der nächste Session-Start zeigt.
+**Der Harvest schreibt nie in den Vault**: Der Agent sucht per recall, prüft
+und speichert. Eine fortgesetzte Session wird nur für ihre neuen Turns erneut
+ausgewertet. Telemetrie: `session_harvest` mit `session_id, client,
+turn_count, candidate_count, candidate_kinds, stored_count, trigger`
+(`session_end` oder `idle`); der Session-Start, der einen Harvest-Block
+ausliefert, schreibt `pending_harvest` in seine `session_hook_call`-Zeile.
+`bastra logs --stats` zeigt „session harvest — N session(s) read (K on
+SessionEnd), Q quote(s) relayed, S already in the vault" und „delivered to D
+session start(s), M of them saved afterwards", verknüpft über `caller_session`
+wie oben. „Saved afterwards" zählt jeden Save der Session, die den Block
+bekam, und ist damit eine Obergrenze für die Wirkung des Harvests. Abschalten
 mit `BASTRA_SESSION_HARVEST=0` in der Umgebung des Daemons.
 
 #### Taxonomie-Einblendung (Session-Hook, #66)

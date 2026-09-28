@@ -9,6 +9,7 @@
 #   - PreToolUse Bash → safety recall before destructive ops (#34)
 #   - PostToolUse Bash → lesson recall when a command fails (#37)
 #   - Stop            → optional autonomous save-eval (#35), off by default
+#   - SessionEnd      → with Stop: books the finished session for the after-session harvest (#675)
 #
 # Idempotent: re-running strips our previous entries (by __bastraRecall marker
 # or dist path) and re-adds them with current paths; will not duplicate. Cleans
@@ -83,8 +84,9 @@ const DEFS = [
 ];
 if (withStop) {
   DEFS.push({ event: "Stop", file: "stop-hook.js", timeout: 3, note: "bastra-recall Stop hook (optional autonomous save-eval, #35)" });
+  DEFS.push({ event: "SessionEnd", file: "stop-hook.js", timeout: 2, note: "bastra-recall SessionEnd hook (after-session harvest, #675)" });
 }
-const EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"];
+const EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "SessionEnd"];
 const OUR_FILES = ["hook.js", "session-hook.js", "prompt-hook.js", "todo-hook.js", "bash-pre-hook.js", "bash-fail-hook.js", "stop-hook.js"];
 
 const raw = readFileSync(file, "utf8") || "{}";
@@ -146,7 +148,7 @@ case "$ACTION" in
   install)
     echo "✓ bastra-recall reflex layer registered in ${SETTINGS_FILE}"
     if [[ "${WITH_STOP}" == "1" ]]; then
-      echo "  7 hooks: SessionStart · UserPromptSubmit · PreToolUse(Write/Edit, TodoWrite|TaskCreate|ExitPlanMode, Bash) · PostToolUse(Bash) · Stop"
+      echo "  8 hooks: SessionStart · UserPromptSubmit · PreToolUse(Write/Edit, TodoWrite|TaskCreate|ExitPlanMode, Bash) · PostToolUse(Bash) · Stop · SessionEnd"
     else
       echo "  6 hooks: SessionStart · UserPromptSubmit · PreToolUse(Write/Edit, TodoWrite|TaskCreate|ExitPlanMode, Bash) · PostToolUse(Bash)"
       echo "  Stop hook is optional/off. Re-run with --with-stop-hook to enable save-eval."

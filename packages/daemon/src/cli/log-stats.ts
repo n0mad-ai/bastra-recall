@@ -39,7 +39,12 @@ import { aggregateCodeRoi, renderCodeAwareness, renderCodeRoi, type CodeRoiStats
 export { aggregateCodeRoi, renderCodeAwareness, renderCodeRoi, type CodeRoiStats } from "./log-stats-code.js";
 import { aggregateCodeAwareness, type CodeAwarenessStats } from "../code-awareness-stats.js";
 export { aggregateCodeAwareness, type CodeAwarenessStats } from "../code-awareness-stats.js";
-import { aggregateSaveSuggestions, type SaveSuggestionStats } from "../save-suggestion-stats.js";
+import {
+  aggregateHarvest,
+  aggregateSaveSuggestions,
+  type HarvestStats,
+  type SaveSuggestionStats,
+} from "../save-suggestion-stats.js";
 
 const EVENT_FILE = /^events-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 
@@ -98,6 +103,10 @@ export interface LogStats {
    *  joined on `caller_session`, the one id hook and MCP rows share. Null
    *  while the window holds no suggestion. */
   saveSuggestions: SaveSuggestionStats | null;
+  /** #675: after-session harvest — sessions read, quotes relayed or already
+   *  stored, and whether the session that got them saved. Null while the
+   *  window holds no harvest. */
+  harvest: HarvestStats | null;
   /** #479: automatic hints removed after repeated version-local non-use. */
   hintSuppression: HintSuppressionStats;
   /** #579: was die Code-Awareness in diesem Fenster gekostet und genannt hat.
@@ -307,6 +316,7 @@ export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
       .sort((a, b) => b.count - a.count)
       .slice(0, 8),
     saveSuggestions: aggregateSaveSuggestions(events),
+    harvest: aggregateHarvest(events),
     saves: {
       written,
       held: [...holdReasons.values()].reduce((n, c) => n + c, 0),
@@ -352,6 +362,19 @@ function renderSaveSuggestions(s: SaveSuggestionStats | null): string[] {
       `${s.savedAfterSuggestion} after the suggestion`,
     `    joined on caller_session: ${s.savesWithCallerSession} of ${s.saves} save(s) carry one` +
       (s.savesWithCallerSession < s.saves ? " — the rest cannot be joined, so this is a lower bound" : ""),
+  ];
+}
+
+/** #675 — the harvest line. "saved after" counts any save of the receiving
+ *  session, so it bounds the harvest's effect from above. */
+function renderHarvest(s: HarvestStats | null): string[] {
+  if (!s) return [];
+  return [
+    `  session harvest — ${s.harvestedSessions} session(s) read` +
+      (s.bySessionEnd > 0 ? ` (${s.bySessionEnd} on SessionEnd)` : "") +
+      `, ${s.candidates} quote(s) relayed, ${s.stored} already in the vault`,
+    `    delivered to ${s.deliveredSessions} session start(s), ${s.savedAfterDelivery} of them saved afterwards ` +
+      `(${pct(s.savedAfterDelivery, s.deliveredSessions)})`,
   ];
 }
 
@@ -441,6 +464,7 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
     }
     out.push(...renderSaves(stats.saves));
     out.push(...renderSaveSuggestions(stats.saveSuggestions));
+    out.push(...renderHarvest(stats.harvest));
     out.push(...renderHintSuppression(stats.hintSuppression));
     out.push(...renderSessionStart(stats.sessionStart));
     // #579: a window can hold tool calls and refreshes without a single hook
@@ -510,7 +534,11 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
         `(counted once, client verdict kept)`,
     );
   }
-  const saveLines = [...renderSaves(stats.saves), ...renderSaveSuggestions(stats.saveSuggestions)];
+  const saveLines = [
+    ...renderSaves(stats.saves),
+    ...renderSaveSuggestions(stats.saveSuggestions),
+    ...renderHarvest(stats.harvest),
+  ];
   if (saveLines.length > 0) {
     out.push("");
     out.push(...saveLines);

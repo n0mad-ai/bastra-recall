@@ -47,7 +47,8 @@ type HookEventName =
   | "PreToolUse"
   | "PostToolUse"
   | "PostToolUseFailure"
-  | "Stop";
+  | "Stop"
+  | "SessionEnd";
 
 export interface HookDef {
   event: HookEventName;
@@ -69,6 +70,16 @@ export interface HookDef {
 // (see planHookEntries).
 const STOP_HOOK_DEF: HookDef = {
   event: "Stop", bin: STOP_HOOK_BIN, timeout: 3, note: "bastra-recall Stop hook (optional autonomous save-eval, #35)", stubSubcommand: "stop",
+};
+
+// #675: the Stop lane's end-of-session signal. Same client and daemon route as
+// Stop; the lane only books the session as finished, so the after-session
+// harvest does not wait 30 minutes of quiet. Registered and kept together
+// with Stop: it is part of the same opt-in. Claude Code gives all SessionEnd
+// hooks 1.5 s together unless one asks for more; 2 s covers the stop client's
+// own 1 s budget.
+const SESSION_END_HOOK_DEF: HookDef = {
+  event: "SessionEnd", bin: STOP_HOOK_BIN, timeout: 2, note: "bastra-recall SessionEnd hook (after-session harvest, #675)", stubSubcommand: "stop",
 };
 
 // Single source of truth for the reflex layer. The Stop hook is ON by default
@@ -105,7 +116,7 @@ export function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[]
     { event: "PostToolUse", matcher: "Bash", bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall Bash post hook (act-signal #144 + lesson recall on fail #37)", stubSubcommand: "bash-fail" },
     { event: "PostToolUseFailure", matcher: "Bash", bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall Bash failure hook (act-signal #144 + lesson recall on fail #37)", stubSubcommand: "bash-fail" },
   ];
-  if (opts.includeStop) defs.push(STOP_HOOK_DEF);
+  if (opts.includeStop) defs.push(STOP_HOOK_DEF, SESSION_END_HOOK_DEF);
   return defs;
 }
 
@@ -210,7 +221,7 @@ function isOurHookEntry(matcher: unknown): boolean {
 }
 
 const HOOK_EVENTS: HookEventName[] = [
-  "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop",
+  "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "SessionEnd",
 ];
 
 /**
@@ -374,6 +385,7 @@ export function planHookEntries(
     opts.mapBin ? { ...def, bin: opts.mapBin(def.bin) } : def;
   const defs = hookDefinitions({ includeStop: opts.includeStop }).map(withBin);
   const stopDef = withBin(STOP_HOOK_DEF);
+  const sessionEndDef = withBin(SESSION_END_HOOK_DEF);
   const stubPresent = opts.stubPresent ?? existsSync(HOOK_STUB_BIN);
   // #647: what wraps our runner for this lane today, kept on the rebuilt entry.
   const wrapOf = (def: HookDef): HookWrapper =>
@@ -409,6 +421,8 @@ export function planHookEntries(
   }
   if (action === "install") {
     for (const def of defs) after[def.event].push(buildHookEntry(def, stubPresent, wrapOf(def)));
+    // #675: a preserved Stop opt-in brings its SessionEnd companion along.
+    if (stopPreserved) after.SessionEnd.push(buildHookEntry(sessionEndDef, stubPresent, wrapOf(sessionEndDef)));
   }
   return { before, after, stopPreserved };
 }
@@ -483,7 +497,7 @@ async function patchClaudeCodeHooks(
   return action === "install"
     ? {
         status: "installed",
-        detail: `${sourceDefs.length} hooks registered (SessionStart, UserPromptSubmit, PreToolUse×3, PostToolUse, PostToolUseFailure${includeStop ? ", Stop" : stopPreserved ? "; Stop kept at current path" : "; Stop optional/off"})`,
+        detail: `${sourceDefs.length} hooks registered (SessionStart, UserPromptSubmit, PreToolUse×3, PostToolUse, PostToolUseFailure${includeStop ? ", Stop, SessionEnd" : stopPreserved ? "; Stop + SessionEnd kept at current path" : "; Stop optional/off"})`,
         backupPath: backupPath ?? undefined,
       }
     : { status: "removed", detail: "bastra-recall hook entries removed", backupPath: backupPath ?? undefined };

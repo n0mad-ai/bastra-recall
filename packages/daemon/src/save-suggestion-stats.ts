@@ -74,3 +74,70 @@ export function aggregateSaveSuggestions(events: readonly Row[]): SaveSuggestion
     savesWithCallerSession,
   };
 }
+
+/**
+ * #675 — the after-session harvest's save rate.
+ *
+ * A harvest block is relayed to the NEXT session start, so the join runs on
+ * the session that received it: a `session_hook_call` row with
+ * `pending_harvest` names that session, and a `save_memory` joined to it
+ * (`caller_session`, as above) after that start counts as a save after the
+ * harvest. The quote itself is not in the telemetry, so this is "the session
+ * that got the harvest saved something afterwards" — an upper bound for the
+ * harvest's own effect, read against the suggestion rate above.
+ */
+export interface HarvestStats {
+  /** `session_harvest` rows: sessions the job read. */
+  harvestedSessions: number;
+  /** Quotes relayed, and quotes dropped because the vault already held them. */
+  candidates: number;
+  stored: number;
+  /** Harvest passes started by a SessionEnd instead of the idle window. */
+  bySessionEnd: number;
+  /** Session starts that delivered at least one harvest block. */
+  deliveredSessions: number;
+  /** Of those, sessions with a `save_memory` after the delivery. */
+  savedAfterDelivery: number;
+}
+
+/** Null when the window holds neither a harvest pass nor a delivery. */
+export function aggregateHarvest(events: readonly Row[]): HarvestStats | null {
+  let harvestedSessions = 0;
+  let candidates = 0;
+  let stored = 0;
+  let bySessionEnd = 0;
+  const delivered = new Map<string, string>();
+  for (const e of events) {
+    if (e.kind === "session_harvest") {
+      harvestedSessions++;
+      if (typeof e.candidate_count === "number") candidates += e.candidate_count;
+      if (typeof e.stored_count === "number") stored += e.stored_count;
+      if (e.trigger === "session_end") bySessionEnd++;
+      continue;
+    }
+    if (e.kind !== "session_hook_call") continue;
+    if (typeof e.pending_harvest !== "number" || e.pending_harvest <= 0) continue;
+    const sid = joinSessionKey(e);
+    const ts = typeof e.ts === "string" ? e.ts : null;
+    if (!sid || !ts) continue;
+    const prev = delivered.get(sid);
+    if (prev === undefined || ts < prev) delivered.set(sid, ts);
+  }
+  if (harvestedSessions === 0 && delivered.size === 0) return null;
+
+  const saved = new Set<string>();
+  for (const e of events) {
+    if (e.kind !== "save_memory") continue;
+    const sid = joinSessionKey(e);
+    const at = sid ? delivered.get(sid) : undefined;
+    if (sid && at !== undefined && typeof e.ts === "string" && e.ts > at) saved.add(sid);
+  }
+  return {
+    harvestedSessions,
+    candidates,
+    stored,
+    bySessionEnd,
+    deliveredSessions: delivered.size,
+    savedAfterDelivery: saved.size,
+  };
+}
