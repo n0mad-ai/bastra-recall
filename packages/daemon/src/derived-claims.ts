@@ -66,16 +66,19 @@ async function resolveClaim(vaultRoot: string, claim: DerivedClaim): Promise<Der
     ...(claim.expect === undefined ? {} : { expect: claim.expect }),
     ...(claim.exact === undefined ? {} : { exact: claim.exact }),
   };
-  let text: string;
+  let bytes: Buffer;
   try {
-    text = await readSource(vaultRoot, claim.source);
+    bytes = await readSource(vaultRoot, claim.source);
   } catch (error) {
     return { ...base, status: "unverifiable", reason: reasonFor(error) };
   }
   if (claim.resolver === "sha256.v1") {
-    const value = createHash("sha256").update(text).digest("hex");
+    // The digest of the bytes on disk, so it equals what `shasum -a 256`
+    // prints — a UTF-8 round trip would change it for any non-UTF-8 byte.
+    const value = createHash("sha256").update(bytes).digest("hex");
     return { ...base, value, status: value === claim.expect ? "matches" : "differs" };
   }
+  const text = bytes.toString("utf8");
   if (claim.resolver === "quote.v1") {
     const value = occurrences(text, claim.exact ?? "");
     return { ...base, value, status: value === 1 ? "matches" : value === 0 ? "gone" : "ambiguous" };
@@ -97,9 +100,10 @@ class SourceOutOfBounds extends Error {
 
 /**
  * The one door to a claim's source, shared by every resolver: inside the vault,
- * a regular file, up to 1 MB, read as UTF-8.
+ * a regular file, up to 1 MB. The bytes come back as they are on disk; the
+ * text resolvers decode them as UTF-8.
  */
-async function readSource(vaultRoot: string, source: string): Promise<string> {
+async function readSource(vaultRoot: string, source: string): Promise<Buffer> {
   const target = resolve(vaultRoot, source);
   // `assertInsideVault` resolves the path through its symlinks before it
   // compares, so a vault-relative spelling that walks out through a link lands
@@ -108,7 +112,7 @@ async function readSource(vaultRoot: string, source: string): Promise<string> {
   const info = await claimSourceIo.stat(target);
   if (!info.isFile()) throw new SourceOutOfBounds("not_a_file");
   if (info.size > MAX_SOURCE_BYTES) throw new SourceOutOfBounds("too_large");
-  return claimSourceIo.readFile(target, "utf8");
+  return claimSourceIo.readFile(target);
 }
 
 function reasonFor(error: unknown): DerivedClaimResult["reason"] {

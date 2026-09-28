@@ -192,6 +192,7 @@ test("jedes Feld, das der Save in `fm` schreibt, steht in SAVE_MANAGED_FRONTMATT
     replaces: "old-runbook",
     siblings: ["deploy-checklist"],
     verify_cmd: "npm test",
+    derived_claims: [{ id: "steps", resolver: "count.markdown-numbered-list.v1", source: "ops/runbook.md", expect: 4 }],
     superseded_by: "new-runbook",
     salience: 0.5,
     emotion: "risk",
