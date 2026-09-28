@@ -159,7 +159,7 @@ test("#354 clearShown: releases the counters, keeps the backoff state", async ()
   });
   await ss.clearShown(sid);
   const after = await ss.loadSessionState(sid);
-  assert.deepEqual(after.shown, {}, "compact/clear/resume rebuilt the transcript — every hint is eligible again");
+  assert.deepEqual(after.shown, {}, "compact/clear rebuilt the context — every hint is eligible again");
   assert.equal(after.sources?.["write-edit"]?.streak, 4, "an empty streak describes retrieval, not the transcript");
 });
 
@@ -358,4 +358,23 @@ test("the character budget counts a file's own registration, not only its hits",
     assert.equal(s.touchedOverflow, true, "the table says it stopped recording");
     assert.ok((s.touchedChars ?? 0) <= ss.MAX_TOUCHED_CHARS, "and it stopped inside the bound");
   });
+});
+
+test("#509 takeConstantCadence: skips an identical part, sends a changed or new one", async () => {
+  const sid = `test-cadence-${Date.now()}`;
+  const first = await ss.takeConstantCadence(sid, { taxonomy: "T1", doku: "", language: "L1" });
+  assert.deepEqual([...first], [], "nothing delivered yet");
+  const second = await ss.takeConstantCadence(sid, { taxonomy: "T1", doku: "D1", language: "L2" });
+  assert.deepEqual([...second], ["taxonomy"], "only the byte-identical part is left out");
+  const third = await ss.takeConstantCadence(sid, { taxonomy: "T1", doku: "D1", language: "L2" });
+  assert.deepEqual([...third].sort(), ["doku", "language", "taxonomy"]);
+  assert.deepEqual([...(await ss.takeConstantCadence("", { taxonomy: "T1" }))], [], "no session id, no cadence");
+});
+
+test("#509 clearShown: compact/clear also forget the delivered constants", async () => {
+  const sid = `test-cadence-clear-${Date.now()}`;
+  await ss.takeConstantCadence(sid, { taxonomy: "T1" });
+  await ss.clearShown(sid);
+  assert.equal((await ss.loadSessionState(sid)).constants, undefined);
+  assert.deepEqual([...(await ss.takeConstantCadence(sid, { taxonomy: "T1" }))], [], "sent again after a rebuild");
 });

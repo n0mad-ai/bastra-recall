@@ -167,6 +167,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   there once (staged, then renamed); the originals are kept, and a pool
   already at the new path is never overwritten. Reading shared bridges from
   `<commons>/bridges` next to the local pool is not part of this change.
+- **Smaller session-start block** (#509). Taxonomy lines carry `[id] title`
+  without the summary — the block already points at `load_memory(id)` for the
+  full rule; on the owner's vault the six summaries were 440 of the 605 tokens
+  of those lines. Taxonomy, doku and memory-language are sent on change only
+  (the #462 cadence): a `resume` whose transcript still holds the identical
+  text leaves them out. The compact/resume contradiction is settled on Claude
+  Code's documented behaviour: `compact` and `clear` start a new context
+  (hint dedup, delivered constants and the shadow session budget reset),
+  `resume` keeps all three. New telemetry field `constants_skipped`.
 - **Learned bridges work in every language** (#707; reported by @zzallirog,
   #701). The language is now only the folder a bridge is filed under:
   detection still names de/en, anything else (and anything it abstains on)

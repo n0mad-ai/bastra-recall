@@ -183,9 +183,15 @@ export function recordBudgetShadow(
   return decision;
 }
 
-/** `clear` beginnt einen neuen Kontext (#458 §1); compact/resume lassen das Ledger stehen. */
+/**
+ * `clear` und `compact` beginnen einen neuen Kontext; `resume` lässt das Ledger
+ * stehen (#458 §1, korrigiert in #509). `/compact` ersetzt den Verlauf durch
+ * eine Zusammenfassung — was nur im Gespräch stand, also auch jeder injizierte
+ * Hook-Kontext, ist danach weg (Claude-Code-Doku, „What survives compaction").
+ * `resume` stellt das Transkript unverändert wieder her.
+ */
 export function resetBudgetOnSource(sessionId: string | null | undefined, source: string | null | undefined, ledger = sessionBudget): void {
-  if (source === "clear" && typeof sessionId === "string" && sessionId !== "") ledger.reset(sessionId);
+  if ((source === "clear" || source === "compact") && typeof sessionId === "string" && sessionId !== "") ledger.reset(sessionId);
 }
 
 async function writeBudgetShadow(decision: BudgetShadowDecision): Promise<void> {
