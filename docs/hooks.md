@@ -82,7 +82,7 @@ After `npm run build` the daemon package exposes these bin entries:
 | `bastra-recall-session-hook`      | `SessionStart`     | — (every session)                         | Preload user-preferences + active project context         |
 | `bastra-recall-hook`              | `PreToolUse`       | `Write`/`Edit`/`MultiEdit`/`NotebookEdit` | Topic-aware recall before file mutations (#20 #28 #32)    |
 | `bastra-recall-prompt-hook`       | `UserPromptSubmit` | — (every user message)                    | Lookup-mode reflex (#33)                                  |
-| `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`/`TaskCreate`                  | Topology recall before multi-step plans (#36 #506)        |
+| `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`/`TaskCreate`/`ExitPlanMode`   | Topology recall before multi-step plans (#36 #506 #698)   |
 | `bastra-recall-bash-pre-hook`     | `PreToolUse`       | `Bash` (destructive/risky)                | Safety recall before destructive shell ops (#34)          |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse` / `PostToolUseFailure` | `Bash` (every completed or failed command) | Act-signal for acted_on (#144); lesson recall on failure (#37) |
 | `bastra-recall-stop-hook`         | `Stop`             | —                                         | Optional autonomous save-eval at end of session (#35)      |
@@ -111,7 +111,7 @@ Default shape written by `bastra install claude-code`:
         "hooks": [{ "type": "command", "command": "bastra-recall-hook", "timeout": 2 }]
       },
       {
-        "matcher": "TodoWrite|TaskCreate",
+        "matcher": "TodoWrite|TaskCreate|ExitPlanMode",
         "hooks": [{ "type": "command", "command": "bastra-recall-todo-hook", "timeout": 2 }]
       },
       {
@@ -278,6 +278,16 @@ the client, and it has changed (#506):
 | Claude Code ≥ 2.1.268 | `TaskCreate` — one call per plan step | `{ subject, description?, activeForm? }` |
 | Claude Code ≤ 2.1.267, or `CLAUDE_CODE_ENABLE_TASKS=0` | `TodoWrite` — one call per plan | `{ todos: [{ content, status }] }` |
 | Codex / ChatGPT desktop | `update_plan` — one call per plan | `{ plan: [{ step, status }] }` |
+| Claude Code, plan mode (#698) | `ExitPlanMode` — once, when the plan is presented | `{ plan: "<markdown>", planFilePath, allowedPrompts? }` |
+
+On current models Claude Code offers no task tools at all: `TaskCreate` /
+`TodoWrite` come by default only with Claude 3.x, Opus 4–4.7, Sonnet 4–4.6 and
+Haiku 4.5, otherwise only with `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` (Claude Code
+tools reference, "Task tool availability"). That is why the #305 window saw no
+plan-lane call from Claude Code (#698). There the lane fires when a plan-mode
+plan is presented (`ExitPlanMode`: one step per plan line, code fences left
+out); a session that plans without plan mode and without task tools gives the
+lane nothing to fire on. Headless `claude -p` has no `ExitPlanMode`.
 
 `TaskUpdate` is accepted by the lane but deliberately **not** registered by
 `bastra install`: it carries a status transition, not a new plan, so binding it
@@ -729,7 +739,7 @@ Nach `npm run build` stellt das Daemon-Paket diese Bin-Einträge bereit:
 | `bastra-recall-session-hook`      | `SessionStart`     | — (jede Session)                          | Lädt Nutzerpräferenzen und aktiven Projektkontext vorab   |
 | `bastra-recall-hook`              | `PreToolUse`       | `Write`/`Edit`/`MultiEdit`/`NotebookEdit` | Themenbezogener Recall vor Dateiänderungen (#20 #28 #32)  |
 | `bastra-recall-prompt-hook`       | `UserPromptSubmit` | — (jede Nutzernachricht)                  | Lookup-Reflex (#33)                                       |
-| `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`/`TaskCreate`                  | Topologie-Recall vor mehrstufigen Plänen (#36 #506)       |
+| `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`/`TaskCreate`/`ExitPlanMode`   | Topologie-Recall vor mehrstufigen Plänen (#36 #506 #698)  |
 | `bastra-recall-bash-pre-hook`     | `PreToolUse`       | `Bash` (destruktiv/riskant)               | Sicherheits-Recall vor destruktiven Shell-Befehlen (#34)  |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse` / `PostToolUseFailure` | `Bash` (jeder abgeschlossene oder fehlgeschlagene Befehl) | Handlungssignal für acted_on (#144); Lesson-Recall bei Fehlern (#37) |
 | `bastra-recall-stop-hook`         | `Stop`             | —                                         | Optionale autonome Speicherbewertung am Session-Ende (#35) |
@@ -758,7 +768,7 @@ Standardform, die `bastra install claude-code` schreibt:
         "hooks": [{ "type": "command", "command": "bastra-recall-hook", "timeout": 2 }]
       },
       {
-        "matcher": "TodoWrite|TaskCreate",
+        "matcher": "TodoWrite|TaskCreate|ExitPlanMode",
         "hooks": [{ "type": "command", "command": "bastra-recall-todo-hook", "timeout": 2 }]
       },
       {
@@ -943,6 +953,17 @@ Werkzeug das ist, hängt vom Client ab und hat sich geändert (#506):
 | Claude Code ≥ 2.1.268 | `TaskCreate` — ein Aufruf pro Planschritt | `{ subject, description?, activeForm? }` |
 | Claude Code ≤ 2.1.267 oder `CLAUDE_CODE_ENABLE_TASKS=0` | `TodoWrite` — ein Aufruf pro Plan | `{ todos: [{ content, status }] }` |
 | Codex / ChatGPT Desktop | `update_plan` — ein Aufruf pro Plan | `{ plan: [{ step, status }] }` |
+| Claude Code, Plan-Modus (#698) | `ExitPlanMode` — einmal, wenn der Plan vorgelegt wird | `{ plan: "<Markdown>", planFilePath, allowedPrompts? }` |
+
+Auf aktuellen Modellen bietet Claude Code gar keine Task-Werkzeuge an:
+`TaskCreate` / `TodoWrite` gibt es standardmäßig nur mit Claude 3.x, Opus 4–4.7,
+Sonnet 4–4.6 und Haiku 4.5, sonst nur mit `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`
+(Claude-Code-Werkzeugreferenz, „Task tool availability"). Deshalb kam im
+#305-Fenster kein Plan-Lane-Aufruf aus Claude Code (#698). Dort feuert die Lane,
+wenn ein Plan aus dem Plan-Modus vorgelegt wird (`ExitPlanMode`: ein Schritt pro
+Planzeile, Codeblöcke ausgenommen); eine Sitzung, die ohne Plan-Modus und ohne
+Task-Werkzeuge plant, gibt der Lane nichts, worauf sie feuern kann. Headless
+`claude -p` hat kein `ExitPlanMode`.
 
 `TaskUpdate` wird von der Lane akzeptiert, aber von `bastra install` absichtlich
 **nicht** registriert: Es trägt einen Statuswechsel, keinen neuen Plan. Eine

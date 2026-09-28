@@ -104,3 +104,17 @@ test("Codex: a re-install keeps the wrapper and writes the client marker once", 
   const plain = planCodexHooks("install", {}, { includeStop: false, stubPresent: false });
   assert.deepEqual(commandsOf(plain.after.UserPromptSubmit), [`BASTRA_HOOK_CLIENT=codex node '${PROMPT_HOOK_BIN}'`]);
 });
+
+test("#698: re-installing over the old plan-lane matcher moves it to the new one and keeps the wrapper", () => {
+  const old = {
+    matcher: "TodoWrite|TaskCreate",
+    hooks: [{ type: "command", command: "/usr/local/bin/hook-timer node /old/runtime/dist/todo-hook.js", timeout: 2, __bastraRecall: true }],
+  };
+  const plan = planHookEntries("install", { PreToolUse: [old] }, { includeStop: false, stubPresent: false });
+  const todo = (plan.after.PreToolUse as Array<{ matcher?: string; hooks?: Array<{ command?: string }> }>).filter((e) =>
+    (e.hooks ?? []).some((h) => (h.command ?? "").includes("todo-hook.js")),
+  );
+  assert.equal(todo.length, 1, "one plan-lane entry, the old one replaced");
+  assert.equal(todo[0].matcher, "TodoWrite|TaskCreate|ExitPlanMode");
+  assert.match(String(todo[0].hooks?.[0]?.command), /\/usr\/local\/bin\/hook-timer node .*todo-hook\.js$/);
+});

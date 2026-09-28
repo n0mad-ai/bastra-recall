@@ -65,7 +65,9 @@ export function hookWrapper(cmd: string, file: string, sub?: string): HookWrappe
 /**
  * The wrapper around lane `file`/`sub` among the entries already registered
  * for one event and matcher; `isOurs` recognises our entries the way each
- * adapter does. Empty when nothing wraps it.
+ * adapter does. Empty when nothing wraps it. The same lane under an older
+ * matcher counts too (#698 widened the plan lane's), so a changed matcher
+ * does not drop the user's wrapping; the exact matcher wins when both exist.
  */
 export function existingHookWrapper(
   entries: unknown[],
@@ -74,15 +76,17 @@ export function existingHookWrapper(
   sub: string | undefined,
   isOurs: (entry: unknown) => boolean,
 ): HookWrapper {
-  for (const entry of entries) {
-    if (!isOurs(entry)) continue;
-    const record = entry as Record<string, unknown>;
-    if ((record.matcher ?? undefined) !== matcher) continue;
-    const handlers = Array.isArray(record.hooks) ? record.hooks : [];
-    for (const h of handlers) {
-      const cmd = (h as Record<string, unknown> | null)?.command;
-      const wrap = typeof cmd === "string" ? hookWrapper(cmd, file, sub) : null;
-      if (wrap) return wrap;
+  for (const exact of [true, false]) {
+    for (const entry of entries) {
+      if (!isOurs(entry)) continue;
+      const record = entry as Record<string, unknown>;
+      if (exact && (record.matcher ?? undefined) !== matcher) continue;
+      const handlers = Array.isArray(record.hooks) ? record.hooks : [];
+      for (const h of handlers) {
+        const cmd = (h as Record<string, unknown> | null)?.command;
+        const wrap = typeof cmd === "string" ? hookWrapper(cmd, file, sub) : null;
+        if (wrap) return wrap;
+      }
     }
   }
   return { prefix: "", suffix: "" };
