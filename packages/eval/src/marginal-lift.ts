@@ -37,7 +37,10 @@
  *   npm run lift -- --boost 5 --k 3       # tune the treatment weight / @k
  *   BASTRA_VAULT_PATH=/v npm run lift -- --cases cases.json --out lift.json
  *
- * Exit code: 0 always (this is a measurement, not a pass/fail gate).
+ * Exit code: 0 on a normal run; 1 if zero paraphrased queries were evaluated
+ * (empty case file, or every case id missing from the vault) — a lift number
+ * over zero queries is not a measurement, so it is refused rather than
+ * printed as a misleading "+0.0 pp".
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -221,6 +224,15 @@ async function main(): Promise<void> {
         rescued.push({ id: c.id, query: q, ctrlRank: cRank, treatRank: tRank });
       }
     }
+  }
+
+  if (controlRun.total === 0) {
+    const reason =
+      caseFile.paraphrased.length === 0
+        ? "the case file has no paraphrased cases"
+        : `all ${unknownIds.length} case id(s) are missing from the vault`;
+    console.error(`[lift] not evaluable: ${reason} — refusing to report a lift number`);
+    process.exit(1);
   }
 
   const ctrl = finalize(controlRun);
