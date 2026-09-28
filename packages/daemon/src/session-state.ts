@@ -126,6 +126,12 @@ export interface SessionState {
    * rather than answer from a prefix.
    */
   touchedOverflow?: boolean;
+  /**
+   * #662: save-eval heuristics the Stop lane already handed to this session's
+   * running turn. Each is delivered once per session: the detection windows
+   * re-fire on every Stop, and every delivery extends the turn.
+   */
+  saveEvalDelivered?: string[];
 }
 
 /**
@@ -158,6 +164,7 @@ export interface ReadonlySessionState {
     ReadonlyMap<string, Readonly<Omit<TouchedFile, "hits">> & { readonly hits: readonly TouchedHit[] }>
   >;
   readonly touchedOverflow?: boolean;
+  readonly saveEvalDelivered?: readonly string[];
 }
 
 /** Threshold above which a memory is dropped from hints. #32 startete mit 3;
@@ -245,6 +252,9 @@ async function readSessionState(sessionId: string): Promise<SessionState> {
       };
     }
     if (typeof parsed.touchedChars === "number") state.touchedChars = parsed.touchedChars;
+    if (Array.isArray(parsed.saveEvalDelivered)) {
+      state.saveEvalDelivered = parsed.saveEvalDelivered.filter((h): h is string => typeof h === "string");
+    }
     return state;
   } catch {
     return { shown: {} };

@@ -557,8 +557,20 @@ three heuristics:
    options the agent offered with a question ("2 olsun", "вариант 1").
 
 Output is one or more multi-line `<save-eval>` blocks suggesting title/type/body. The
-hook **never calls `save_memory` itself** — only the agent does, in the next
-turn, if it agrees with the suggestion.
+hook **never calls `save_memory` itself** — only the agent does, if it agrees
+with the suggestion.
+
+**Where the suggestion goes (#662).** In a Claude Code session the blocks go
+back to the agent **in the same turn**, wrapped in `<save-eval-now>`, as the
+Stop hook's `hookSpecificOutput.additionalContext`. Claude Code shows that as
+"Stop hook feedback" and lets the agent continue once, so it can save while
+the conversation is still in its context. Each heuristic is handed over once
+per session (the session state remembers it); a later Stop that fires the same
+heuristic stays silent. A Stop raised by a Stop hook (`stop_hook_active`) is
+never evaluated, so the hand-over cannot loop. Codex, a payload without a
+session id, and `BASTRA_STOP_SAME_TURN=0` keep the older route: the blocks go
+to `~/.bastra/pending-suggestions.json` and the next session start shows them
+(#48, #513).
 
 Additionally the stop hook asks the daemon's drift detector (`GET /hook/drift`,
 budget 250 ms, fail-silent) whether recent memories form a recurring cluster
@@ -567,7 +579,8 @@ with no taxonomy convention covering it, and surfaces at most two clusters as a
 suggestion only, the agent decides.
 
 Budget 1000 ms. Telemetry: `save_eval_call` with `heuristic, suggested_count,
-drift_clusters, drift_keys, turn_count, latency_ms_total`.
+drift_clusters, drift_keys, turn_count, latency_ms_total`, plus `delivery`
+(`same-turn`, `pending` or `already-delivered`) when there were suggestions.
 
 **Joining a suggestion to the save (#708).** Hook events carry the Claude Code
 session in `session_id`; MCP tool events (`recall`, `save_memory`, `save_hold`,
@@ -1221,7 +1234,21 @@ drei Heuristiken aus:
 
 Die Ausgabe besteht aus einem oder mehreren mehrzeiligen `<save-eval>`-Blöcken
 mit Vorschlägen für Titel/Typ/Inhalt. Der Hook **ruft `save_memory` nie selbst
-auf** — das tut nur der Agent im nächsten Turn, wenn er dem Vorschlag zustimmt.
+auf** — das tut nur der Agent, wenn er dem Vorschlag zustimmt.
+
+**Wohin der Vorschlag geht (#662).** In einer Claude-Code-Session gehen die
+Blöcke **im selben Turn** an den Agenten zurück, in `<save-eval-now>`
+verpackt, als `hookSpecificOutput.additionalContext` des Stop-Hooks. Claude
+Code zeigt das als „Stop hook feedback" und lässt den Agenten einmal
+weiterarbeiten, damit er speichern kann, solange das Gespräch noch in seinem
+Kontext ist. Jede Heuristik wird pro Session einmal übergeben (der
+Session-State merkt sich das); ein späterer Stop, der dieselbe Heuristik
+auslöst, bleibt still. Ein Stop, den ein Stop-Hook ausgelöst hat
+(`stop_hook_active`), wird nie ausgewertet, die Übergabe kann also nicht
+kreisen. Codex, ein Payload ohne Session-ID und `BASTRA_STOP_SAME_TURN=0`
+behalten den alten Weg: Die Blöcke landen in
+`~/.bastra/pending-suggestions.json`, und der nächste Session-Start zeigt sie
+(#48, #513).
 
 Zusätzlich fragt der Stop-Hook den Drift-Detektor des Daemons
 (`GET /hook/drift`, Budget 250 ms, fail-silent), ob neuere Erinnerungen einen
@@ -1231,7 +1258,8 @@ zeigt höchstens zwei Cluster als `<taxonomy-drift>`-Vorschlag an — siehe
 entscheidet.
 
 Budget 1000 ms. Telemetrie: `save_eval_call` mit `heuristic, suggested_count,
-drift_clusters, drift_keys, turn_count, latency_ms_total`.
+drift_clusters, drift_keys, turn_count, latency_ms_total`, dazu `delivery`
+(`same-turn`, `pending` oder `already-delivered`), wenn es Vorschläge gab.
 
 **Vorschlag und Save zusammenführen (#708).** Hook-Events tragen die
 Claude-Code-Session in `session_id`; MCP-Tool-Events (`recall`, `save_memory`,
