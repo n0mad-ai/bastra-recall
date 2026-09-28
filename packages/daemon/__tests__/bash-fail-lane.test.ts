@@ -172,6 +172,7 @@ describe("bash-fail-hook: #144 act-signal", () => {
         {
           hook_event_name: "PostToolUse",
           tool_name: "Bash",
+          bastra_client: "claude-code",
           session_id: `act-ok-${Date.now()}`,
           tool_input: { command: "npm test" },
           tool_response: { exit_code: 0 },
@@ -204,6 +205,7 @@ describe("bash-fail-hook: #144 act-signal", () => {
         {
           hook_event_name: "PostToolUseFailure",
           tool_name: "Bash",
+          bastra_client: "claude-code",
           session_id: `act-failure-event-${Date.now()}`,
           tool_input: { command: "npm run build" },
           error: "Command exited with non-zero status code 1: TS2304 missing name",
