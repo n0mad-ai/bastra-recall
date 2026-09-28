@@ -1,6 +1,6 @@
 import { sep } from "node:path";
 import matter from "gray-matter";
-import type { SaveMemoryInput } from "@bastra-recall/core";
+import { capAtWordBoundary, type SaveMemoryInput } from "@bastra-recall/core";
 import { namespaceWikilinks, safeSlug } from "./identity.js";
 import { looksLikeIndexHub, type IndexEntry } from "./index-harvest.js";
 
@@ -18,6 +18,41 @@ const CC_TYPE_MAP: Record<string, SaveMemoryInput["type"]> = {
  *  back by the importer's ownership check and by orphan detection to tell "a
  *  prior node of THIS importer" from anything else on a colliding id. */
 export const KNOWN_ADAPTERS = new Set(["claude-code-memory", "markdown"]);
+
+/** #710: a `recall_when` entry is a trigger phrase, not a summary — longer
+ *  entries are cut at a word boundary (the description stays in `summary`). */
+export const MAX_RECALL_WHEN_CHARS = 200;
+
+/** #710: memory type words, source and target. As a trigger a bare type word
+ *  matches every query that contains it, on the field BM25 weighs 5. */
+const TYPE_WORDS = new Set([...Object.keys(CC_TYPE_MAP), ...Object.values(CC_TYPE_MAP)]);
+
+/**
+ * #710: the import path's recall_when check. Drops empty entries and bare type
+ * words, cuts over-long entries at {@link MAX_RECALL_WHEN_CHARS}, dedupes, and
+ * says what it changed so the importer can warn. `fallback` (the title) keeps
+ * the list non-empty — the save schema requires one entry.
+ */
+export function cleanRecallWhen(candidates: string[], fallback: string): { recall_when: string[]; warnings: string[] } {
+  const warnings: string[] = [];
+  const out: string[] = [];
+  for (const raw of candidates) {
+    const entry = raw.trim();
+    if (!entry) continue;
+    if (TYPE_WORDS.has(entry.toLowerCase())) {
+      warnings.push(`recall_when entry '${entry}' is a memory type word — dropped`);
+      continue;
+    }
+    if (entry.length > MAX_RECALL_WHEN_CHARS) {
+      warnings.push(`recall_when entry of ${entry.length} chars cut to ${MAX_RECALL_WHEN_CHARS} (the description stays in summary)`);
+      out.push(capAtWordBoundary(entry, MAX_RECALL_WHEN_CHARS));
+      continue;
+    }
+    out.push(entry);
+  }
+  const recall_when = [...new Set(out)];
+  return { recall_when: recall_when.length > 0 ? recall_when : [capAtWordBoundary(fallback.trim(), MAX_RECALL_WHEN_CHARS)], warnings };
+}
 
 // ── small pure helpers ───────────────────────────────────────────────────────
 
@@ -83,7 +118,7 @@ export function looksLikeClaudeCode(data: Record<string, unknown>): boolean {
 
 // ── per-file mapping ─────────────────────────────────────────────────────────
 
-type MapResult = { ok: true; input: SaveMemoryInput } | { ok: false; reason: string };
+type MapResult = { ok: true; input: SaveMemoryInput; warnings: string[] } | { ok: false; reason: string };
 
 interface MapContext {
   label: string;
@@ -116,7 +151,7 @@ function buildInput(
   fileBase: string,
   body: string,
   ctx: MapContext,
-): SaveMemoryInput {
+): { input: SaveMemoryInput; warnings: string[] } {
   const { name, description, type, ccType, adapter } = fields;
   const relSegments = ctx.relDir ? ctx.relDir.split(sep).filter(Boolean).map((s) => s.trim()).filter(Boolean) : [];
   // #240/A10: the id must come from the SOURCE IDENTITY, not from the file's
@@ -143,9 +178,11 @@ function buildInput(
   const sectionSeg = section ? [section] : [];
   const topic_path = ["imported", ctx.label, ...sectionSeg, ...relSegments];
   const tags = [...new Set(["imported", ctx.label, ccType, ...sectionSeg].filter(Boolean))];
-  const recall_when = [...new Set([description, deSlug(name), ccType].map((s) => s.trim()).filter(Boolean))];
+  // #710: the type word stays in `tags`; it used to be a recall_when entry too,
+  // next to the whole description however long.
+  const { recall_when, warnings } = cleanRecallWhen([description, deSlug(name)], name);
   const safeBody = namespaceWikilinks(body.trim().length > 0 ? body : description || name, ctx.label, ctx.idByBase);
-  return {
+  const input: SaveMemoryInput = {
     id,
     title: name,
     type,
@@ -162,6 +199,7 @@ function buildInput(
     // ownership check reads back on reimport (#240, Codex gegencheck 5cf71bb).
     source: `${adapter}:${ctx.label}:${ctx.relKey}`,
   };
+  return { input, warnings };
 }
 
 export function mapFile(fileBase: string, raw: string, ctx: MapContext): MapResult {
@@ -176,7 +214,7 @@ export function mapFile(fileBase: string, raw: string, ctx: MapContext): MapResu
     const type = CC_TYPE_MAP[ccType] ?? "reference";
     const name = str(data.name) ?? firstH1(content) ?? deSlug(fileBase);
     const description = str(data.description) ?? idxDesc ?? firstParagraph(content) ?? name;
-    return { ok: true, input: buildInput({ name, description, type, ccType, adapter: "claude-code-memory" }, fileBase, content, ctx) };
+    return { ok: true, ...buildInput({ name, description, type, ccType, adapter: "claude-code-memory" }, fileBase, content, ctx) };
   }
 
   // generic markdown — no recognizable memory frontmatter
@@ -196,5 +234,5 @@ export function mapFile(fileBase: string, raw: string, ctx: MapContext): MapResu
   }
   const ccType = typeFromFilename(fileBase) ?? "reference";
   const type = CC_TYPE_MAP[ccType] ?? "reference";
-  return { ok: true, input: buildInput({ name, description, type, ccType, adapter: "markdown" }, fileBase, content, ctx) };
+  return { ok: true, ...buildInput({ name, description, type, ccType, adapter: "markdown" }, fileBase, content, ctx) };
 }

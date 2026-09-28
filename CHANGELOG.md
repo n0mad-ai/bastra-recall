@@ -160,6 +160,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Folder import no longer writes the type word or a whole description into
+  `recall_when`** (#710; reported by @zzallirog: 442 single-type-word entries
+  and 47 over 300 characters in one import). `bastra import vault` builds
+  triggers from the description and title only; the type word (`feedback`,
+  `reference`, `project`, `user`) stays a tag, and an entry over 200
+  characters is cut at a word boundary (the description stays in `summary`).
+  Each fix is reported as a warning (CLI list, `warnings` count in the map
+  dialog's answer); the note is still imported. Existing notes are not
+  touched; re-running the same folder import rewrites them.
+
 - **`bastra bridges harvest` records its run** (#705; reported by
   @zzallirog). The far harvest wrote bridges but no `bridges_mint` event, so
   `bastra doctor` said "written 0" over a pool the harvest had filled. Each

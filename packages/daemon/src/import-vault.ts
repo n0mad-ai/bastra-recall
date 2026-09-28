@@ -108,6 +108,10 @@ export interface ImportVaultResult {
    *  echter Lauf vorgefunden hätte. */
   written: { created: number; updated: number; unchanged: number };
   skipped: ImportVaultSkip[];
+  /** #710: imported, but the adapter had to fix a field on the way in (a bare
+   *  type word dropped from recall_when, an over-long entry cut). One entry
+   *  per fix; the file still counts as imported. */
+  warnings: ImportVaultSkip[];
   ids: string[];
   /** #217: id of the synthetic curated-index node minted from the source
    *  index (MEMORY.md / hubs), or null when the source carried no index.
@@ -207,6 +211,7 @@ export async function importVault(
   );
   const used = new Set<string>();
   const skipped: ImportVaultSkip[] = [];
+  const warnings: ImportVaultSkip[] = [];
   const ids: string[] = [];
   const byAdapter = { claudeCode: 0, generic: 0, index: 0 };
   // #530: created / updated / unchanged, gezählt aus dem, was der Save
@@ -432,6 +437,7 @@ export async function importVault(
       skipped.push({ path: filePath, reason: mapped.reason });
       continue;
     }
+    for (const reason of mapped.warnings) warnings.push({ path: filePath, reason });
     let expectedTarget: string | null = null;
     if (!dryRun) {
       // #245 P1 (TOCTOU): the id was cleared back in Pass 0, and Pass C runs
@@ -661,6 +667,7 @@ export async function importVault(
     byAdapter,
     written,
     skipped,
+    warnings,
     ids,
     indexNode,
     migrated,
@@ -794,6 +801,7 @@ export async function handleUiImportVault(
     scope: result.scope,
     by_adapter: result.byAdapter,
     skipped: result.skipped.length,
+    warnings: result.warnings.length, // #710: fields the adapter fixed on the way in
     orphaned: result.orphaned.length, // #530 follow-up: source gone, memory kept
     dry_run: result.dryRun,
   });

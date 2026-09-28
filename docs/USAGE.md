@@ -117,6 +117,8 @@ bastra import rules                # local rules files: CLAUDE.md, AGENTS.md, .c
 bastra import vault <dir>          # a whole folder of memory files (e.g. a Claude Code memory dir) — no review needed
 ```
 
+A folder import builds each note's `recall_when` from the source's description and title: the memory type word (`feedback`, `reference`, …) stays a tag, never a trigger, and an entry longer than 200 characters is cut at a word boundary (the description stays in `summary`). Each such fix is printed as a warning; the note is imported anyway. Notes imported before this change keep their old triggers until you run the same `bastra import vault` again (#710).
+
 A `conversations.json` never stages raw chat history: only **your own messages** are kept (assistant turns dropped), queued locally under `~/.bastra/` — the queue is deleted when mining completes, and `bastra import clear` discards it anytime. Text read by your assistant becomes its context and may be processed by its cloud provider; see [privacy](./PRIVACY.md). Your AI session combs the queue chunk-wise (`bastra import mine`) and stages candidate lessons, decisions and preferences for your review. The vault map carries a visual import dialog (topbar ↓) for the paste path and the folder path.
 
 `import vault` is the fourth path and skips the gate on purpose: a folder of already-structured memory files (Claude Code's `name`/`description`/`type` frontmatter — both its variants — or plain markdown notes) carries every field a memory needs, so it maps deterministically. The set lands isolated under `memories/imported/<label>/` with its own scope and namespaced ids — nothing existing is read or modified, and deleting that one folder removes the whole set. An identical re-import is a true no-op (#530): unchanged memories are not rewritten, no audit event is appended and the `.bastra-imported` marker stays put — the run reports `created · updated · unchanged` so you can see which it was.
@@ -353,6 +355,8 @@ bastra import conversations.json   # ein kompletter Daten-Export (ChatGPT / Clau
 bastra import rules                # lokale Rules-Dateien: CLAUDE.md, AGENTS.md, .cursorrules, .cursor/rules/, ~/.claude/CLAUDE.md
 bastra import vault <dir>          # ein ganzer Ordner Memory-Dateien (z.B. ein Claude-Code-Memory-Dir) — ohne Review
 ```
+
+Ein Ordner-Import baut `recall_when` jeder Notiz aus Beschreibung und Titel der Quelle: Das Typwort (`feedback`, `reference`, …) bleibt ein Tag, nie ein Trigger, und ein Eintrag über 200 Zeichen wird an einer Wortgrenze gekürzt (die Beschreibung bleibt in `summary`). Jede solche Korrektur erscheint als Warnung; die Notiz wird trotzdem importiert. Vorher importierte Notizen behalten ihre alten Trigger, bis du denselben `bastra import vault` erneut ausführst (#710).
 
 Eine `conversations.json` staged nie rohe Chat-History: Nur **deine eigenen Messages** bleiben (Assistant-Antworten fliegen raus), lokal gequeued unter `~/.bastra/` — wird nach dem Mining gelöscht, `bastra import clear` verwirft jederzeit. Vom Assistenten gelesene Abschnitte werden zu seinem Kontext und können bei seinem Cloud-Anbieter verarbeitet werden; siehe [Datenschutz](./PRIVACY.md#deutsch). Deine AI-Session kämmt die Queue Chunk-weise durch (`bastra import mine`) und staged Kandidaten-Lessons, -Entscheidungen und -Präferenzen für deine Review. Die Vault-Map hat einen visuellen Import-Dialog (Topbar ↓) für den Paste-Weg und den Ordner-Weg.
 
