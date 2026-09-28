@@ -150,10 +150,11 @@ describe("hook agent dimension on every lane's own row", () => {
           await withEnv(
             { BASTRA_TELEMETRY: "on", BASTRA_LOG_PATH: logDir, BASTRA_HOOK_STATE_DIR: logDir, BASTRA_SESSION_STATE_DIR: logDir },
             async () => {
-              await lane.run({ session_id: `agent-main-${lane.name}` }, base);
+              await lane.run({ session_id: `agent-main-${lane.name}`, bastra_client: "claude-code" }, base);
               // `claude --agent X` stamps agent_type on the MAIN thread too —
               // only agent_id marks a subagent.
-              await lane.run({ session_id: `agent-flag-${lane.name}`, agent_type: "reviewer" }, base);
+              await lane.run({ session_id: `agent-flag-${lane.name}`, bastra_client: "claude-code", agent_type: "reviewer" }, base);
+              await lane.run({ session_id: `agent-unmarked-${lane.name}` }, base);
               await lane.run({ session_id: `agent-sub-${lane.name}`, agent_id: "a1b2c3", agent_type: "Explore" }, base);
             },
           );
@@ -166,6 +167,7 @@ describe("hook agent dimension on every lane's own row", () => {
         };
         assert.equal(agentOf(`agent-main-${lane.name}`), "main");
         assert.equal(agentOf(`agent-flag-${lane.name}`), "main");
+        assert.equal(agentOf(`agent-unmarked-${lane.name}`), undefined);
         assert.equal(agentOf(`agent-sub-${lane.name}`), "subagent");
         // agent_type is free text (§23) — it never lands anywhere in the row.
         for (const r of rows) assert.doesNotMatch(JSON.stringify(r), /reviewer|Explore/);

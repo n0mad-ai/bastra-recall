@@ -377,7 +377,7 @@ describe("bash-pre-hook: telemetry session (#356)", () => {
         BASTRA_TELEMETRY: "on",
         BASTRA_LOG_PATH: logDir,
       };
-      const base = { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "rm -rf /tmp/whatever" } };
+      const base = { hook_event_name: "PreToolUse", tool_name: "Bash", bastra_client: "claude-code", tool_input: { command: "rm -rf /tmp/whatever" } };
       await runHook({ ...base, session_id: "agent-main" }, env);
       await runHook({ ...base, session_id: "agent-sub", agent_id: "a1b2c3", agent_type: "Explore" }, env);
       const evs = (await readTelemetryEvents(logDir)).filter((e) => e.kind === "bash_hook_call");
