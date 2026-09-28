@@ -12,7 +12,8 @@
  * vorkommen — mindestens 2 Tokens, oder genau 1 Identifier-Token exakt;
  * eine mehrwortige Phrase, von der nur ein Inhaltstoken übrig bleibt
  * („antwortentwurf bitte"), matcht wörtlich als Tokenfolge (20.08.);
- * „oder"/„or" teilt eine Phrase in Alternativen. Bewusst NICHT
+ * „oder"/„or" (Sprachdaten, #707) oder ein freistehendes „/" teilt eine
+ * Phrase in Alternativen. Bewusst NICHT
  * matchedRecallWhen (MiniSearch: fuzzy/prefix). recall_when_expanded zählt
  * seit dem 19.08.-Vorfall MIT: deterministisch aus den autorisierten Phrasen
  * generiert, erweitert es die Formulierung, nicht die Autorisierung — ohne
@@ -26,7 +27,7 @@
  * Client-Report via /hook/hinted (Phantom-Demand-Regel, telemetry.ts).
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { tokenizeWithIdentifiers, PHRASE_STOPWORDS, MIN_SIGNIFICANT_TOKEN_LEN } from "@bastra-recall/core";
+import { tokenizeWithIdentifiers, PHRASE_STOPWORDS, MIN_SIGNIFICANT_TOKEN_LEN, ALTERNATIVE_WORDS } from "@bastra-recall/core";
 import type { Vault, Memory } from "@bastra-recall/core";
 import { envFirst, envInt } from "./env.js";
 import { readSettings } from "./settings.js";
@@ -38,6 +39,13 @@ import { truncateSummary } from "./tool-handlers.js";
 // für die Zweierregel. Ein Alias hier, damit der lokale Name unverändert bleibt.
 const MIN_TOKEN_LEN = MIN_SIGNIFICANT_TOKEN_LEN;
 const DEFAULT_MAX_PER_TURN = 2;
+
+/** #707: „oder"/„or"/„или" … aus den Sprachdaten, plus die strukturellen
+ *  Trenner „/" und „|" (nur freistehend — `src/app` bleibt ein Token). */
+const ALTERNATIVE_SPLIT_RE = new RegExp(
+  `\\s+(?:${[...ALTERNATIVE_WORDS].map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\s+|\\s+[/|]\\s+`,
+  "iu",
+);
 
 export interface ReflexHit {
   id: string;
@@ -92,8 +100,10 @@ function evaluatePhrase(
   // Substantive im Prompt und feuerte nie (19.08.-Vorfall: die
   // Nachrichtenkonvention — reflex, salience 0.9 — blieb beim Entwerfen
   // einer Nachricht stumm). Jede Alternative matcht für sich nach den
-  // normalen Regeln.
-  const alternatives = phrase.split(/\s+(?:oder|or)\s+/i);
+  // normalen Regeln. #707: die Wörter sind Daten pro Sprache
+  // (ALTERNATIVE_WORDS, core/stopwords.ts), ein freistehendes „/" oder „|"
+  // teilt in jeder Schrift.
+  const alternatives = phrase.split(ALTERNATIVE_SPLIT_RE);
   if (alternatives.length > 1) {
     const evals = alternatives.map((alt) => evaluatePhrase(alt, contextTokens, contextSequence));
     return evals.find((e) => e.matched) ?? evals.reduce(closerOf);

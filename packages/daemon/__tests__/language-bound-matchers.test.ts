@@ -61,18 +61,15 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
   "packages/daemon/src/lexicon.ts :: name DEFAULT_DECISION_CUES_BY_LANGUAGE": "#707 per-language data; stop-lane-choice.ts option pick is the neutral fallback",
   "packages/daemon/src/lexicon.ts :: keyed DEFAULT_DECISION_CUES_BY_LANGUAGE": "#707 per-language data with a neutral fallback (option pick)",
   "packages/daemon/src/lexicon.ts :: name DEFAULT_DECISION_CUES": "#707 flattened decision cues, neutral fallback exists",
-
-  // ── #707: known fixed-language places not fixed yet ──
-  // Found by this guard, not in #707's table (reported there).
-  "packages/daemon/src/save-similarity.ts :: name STOPWORDS": "#707 duplicate-save similarity ignores DE/EN function words only",
-  "packages/daemon/src/save-similarity.ts :: name FOLDED_STOPWORDS": "#707 folded copy of the DE/EN list above",
-  "packages/daemon/src/todo-lane.ts :: name STOPWORDS": "#707 todo-lane query terms drop EN/DE function words only",
-  "packages/daemon/src/todo-lane.ts :: latin [^a-z0-9äöüß\\s-]": "#707 todo-lane tokenizer drops non-Latin letters",
-  "packages/daemon/src/tool-handlers.ts :: name ACTED_ON_STOPWORDS": "#707 acted-on overlap ignores EN function words only",
-  "packages/daemon/src/taxonomy.ts :: latin [^a-zäöüß0-9_-]": "#707 taxonomy title tokenizer drops non-Latin letters",
-  "packages/daemon/src/save-quality.ts :: words /is broken|does ?n[o']?t work|not working/": "#707 save-quality negative-claim flag, EN/DE phrasing only",
-  "packages/daemon/src/save-quality.ts :: words /fix(ed)?|lösung|solution/": "#707 save-quality fix marker, EN/DE only",
-  "packages/daemon/src/save-quality.ts :: words /always|never|don'?t/": "#707 save-quality imperative lead, EN/DE only",
+  "packages/core/src/stopwords.ts :: keyed FUNCTION_WORDS_BY_LANGUAGE": "#707 per-language data for similarity/todo/acted-on; an unlisted language drops no word (neutral, tested with ru)",
+  "packages/core/src/stopwords.ts :: keyed ALTERNATIVE_WORDS_BY_LANGUAGE": "#707 per-language data; a free-standing / or | splits alternatives in any script (tested with el)",
+  "packages/daemon/src/todo-lane.ts :: keyed TODO_VERBS_BY_LANGUAGE": "#707 per-language data; an unlisted language keeps every content word as a topic (tested with ru)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_NEGATIVE_CLAIM_CUES_BY_LANGUAGE": "#707 per-language data, user-extensible; an unlisted language gets no advisory penalty",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_NEGATIVE_CLAIM_CUES_BY_LANGUAGE": "#707 per-language data with a neutral path (no penalty)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_FIX_MARKER_CUES_BY_LANGUAGE": "#707 per-language data; a code span/fenced block counts as the fix in any script",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_FIX_MARKER_CUES_BY_LANGUAGE": "#707 per-language data with a structural fallback (code span)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_IMPERATIVE_LEAD_CUES_BY_LANGUAGE": "#707 per-language data, user-extensible; an unlisted language gets no advisory penalty",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_IMPERATIVE_LEAD_CUES_BY_LANGUAGE": "#707 per-language data with a neutral path (no penalty)",
 
   // ── #676: per-language data with a neutral fallback (#678) — allowed shape ──
   "packages/daemon/src/lexicon.ts :: name DEFAULT_FRUSTRATION_CUES_BY_LANGUAGE": "#678 per-language data; the stop lane's neutral repeated-correction check covers other languages",

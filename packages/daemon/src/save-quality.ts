@@ -19,6 +19,7 @@ import {
   scopeEquals,
 } from "@bastra-recall/core";
 import { detectLanguage } from "./learned-recall/language.js";
+import { fixMarkerCues, imperativeLeadCues, negativeClaimCues } from "./lexicon.js";
 import {
   containedIn,
   fieldSimilarity,
@@ -145,12 +146,19 @@ export function claimingTrigger(trigger: string, theirs: string[]): string | und
 // claims harden into standing refusals that outlive the problem; imperative
 // phrasing gets re-read as a directive in unrelated later contexts. Both are
 // advisory-only flags, never blocks.
-const NEGATIVE_CLAIM_RE =
-  /\b(is broken|does ?n[o']?t work|not working|no longer works|never works|funktioniert nicht( mehr)?|ist kaputt|geht nicht( mehr)?)\b/i;
-const FIX_MARKER_RE =
-  /\b(fix(ed)?|lösung|solution|workaround|abhilfe|stattdessen|instead|how to apply)\b/i;
-const IMPERATIVE_LEAD_RE =
-  /^(always|never|don'?t|do not|avoid|remember to|ensure|immer|nie(mals)?|benutze|verwende|vermeide|nutze|stelle sicher)\b/i;
+//
+// #707: the phrasings are per-language data in lexicon.ts (user-extensible),
+// matched with Unicode letter boundaries — JS `\b` is ASCII-only, so a
+// Cyrillic cue could never match. A language without a list gets no penalty.
+function cueRegex(cues: readonly string[], anchored: boolean): RegExp {
+  const lead = anchored ? "^" : "(?<![\\p{L}\\p{N}])";
+  return new RegExp(`${lead}(?:${cues.join("|")})(?![\\p{L}\\p{N}])`, "iu");
+}
+
+/** #707: the language-neutral half of "did they capture the fix": an inline
+ *  code span or a fenced block (a command, a config line, an env var) is the
+ *  fix in any script, whatever words surround it. */
+const CODE_FIX_RE = /```|`[^`\n]+`/;
 
 /**
  * @param excludeId Die EFFEKTIVE id des Saves (`input.id ?? slugify(title)`).
@@ -202,8 +210,9 @@ export function scoreSaveQuality(
   // #159: 'X is broken / doesn't work' without a fix becomes a standing
   // refusal that keeps surfacing long after the problem was solved
   if (
-    NEGATIVE_CLAIM_RE.test(`${input.title} ${input.summary}`) &&
-    !FIX_MARKER_RE.test(`${input.summary} ${input.body}`)
+    cueRegex(negativeClaimCues(), false).test(`${input.title} ${input.summary}`) &&
+    !cueRegex(fixMarkerCues(), false).test(`${input.summary} ${input.body}`) &&
+    !CODE_FIX_RE.test(input.body)
   ) {
     issues.push("negative capability claim without a fix — hardens into a standing refusal");
     suggestions.push(
@@ -214,7 +223,8 @@ export function scoreSaveQuality(
 
   // #159: imperative lead reads as a directive when recalled in unrelated
   // contexts — declarative facts age better
-  if (IMPERATIVE_LEAD_RE.test(input.title.trim()) || IMPERATIVE_LEAD_RE.test(input.summary.trim())) {
+  const imperativeLead = cueRegex(imperativeLeadCues(), true);
+  if (imperativeLead.test(input.title.trim()) || imperativeLead.test(input.summary.trim())) {
     issues.push("imperative phrasing — re-reads as a self-directive in unrelated later contexts");
     suggestions.push("state it as a declarative fact: 'User prefers …' / 'X requires Y', not 'Always/Never …'");
     score -= 8;

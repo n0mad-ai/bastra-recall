@@ -205,3 +205,47 @@ export function frustrationCues(): string[] {
 export function decisionCues(): string[] {
   return loadCues("decision", DEFAULT_DECISION_CUES);
 }
+
+/**
+ * #707 — the #159 save-quality admission flags (save-quality.ts), formerly
+ * three EN/DE regex literals. Same shape as the stop-lane cues: per-language
+ * data, extended by a user file (`negative-claim.txt`, `fix-marker.txt`,
+ * `imperative-lead.txt`), matched with Unicode letter boundaries.
+ *
+ * The neutral path for a language without a list: the flags are advisory
+ * penalties, so an unlisted language gets NO penalty rather than a guessed
+ * one — and the fix check has a structural half that works in every script
+ * (a code span or fenced block in the body counts as a captured fix).
+ */
+export const DEFAULT_NEGATIVE_CLAIM_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  en: ["is\\s+broken", "does\\s?n[o']?t\\s+work", "not\\s+working", "no\\s+longer\\s+works", "never\\s+works"],
+  de: ["funktioniert\\s+nicht(?:\\s+mehr)?", "ist\\s+kaputt", "geht\\s+nicht(?:\\s+mehr)?"],
+  ru: ["не\\s+работает", "больше\\s+не\\s+работает", "сломан[аоы]?"],
+};
+
+export const DEFAULT_FIX_MARKER_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  en: ["fix(?:ed)?", "solution", "workaround", "instead", "how\\s+to\\s+apply"],
+  de: ["lösung", "abhilfe", "stattdessen"],
+  ru: ["исправлен[оаы]?", "решение", "вместо", "обходной\\s+путь"],
+};
+
+export const DEFAULT_IMPERATIVE_LEAD_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  en: ["always", "never", "don'?t", "do\\s+not", "avoid", "remember\\s+to", "ensure"],
+  de: ["immer", "nie(?:mals)?", "benutze", "verwende", "vermeide", "nutze", "stelle\\s+sicher"],
+  ru: ["всегда", "никогда", "не\\s+используй", "избегай", "используй"],
+};
+
+/** Negative-claim cues: defaults extended by ~/.bastra/lexicon/negative-claim.txt. */
+export function negativeClaimCues(): string[] {
+  return loadCues("negative-claim", Object.values(DEFAULT_NEGATIVE_CLAIM_CUES_BY_LANGUAGE).flat());
+}
+
+/** Fix-marker cues: defaults extended by ~/.bastra/lexicon/fix-marker.txt. */
+export function fixMarkerCues(): string[] {
+  return loadCues("fix-marker", Object.values(DEFAULT_FIX_MARKER_CUES_BY_LANGUAGE).flat());
+}
+
+/** Imperative-lead cues: defaults extended by ~/.bastra/lexicon/imperative-lead.txt. */
+export function imperativeLeadCues(): string[] {
+  return loadCues("imperative-lead", Object.values(DEFAULT_IMPERATIVE_LEAD_CUES_BY_LANGUAGE).flat());
+}

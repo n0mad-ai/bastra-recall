@@ -22,6 +22,7 @@ import {
   assertBodyTail,
   BodySentinelError,
   stripAutoRelatedSection,
+  FUNCTION_WORDS,
 } from "@bastra-recall/core";
 import { fireAndForget } from "./telemetry.js";
 import type { SaveHoldEvent } from "./telemetry-events.js";
@@ -323,35 +324,15 @@ export interface SaveMemoryResult {
 // letters in any script; toLowerCase already folds Unicode case.
 
 
-const ACTED_ON_STOPWORDS = new Set([
-  "about",
-  "after",
-  "also",
-  "and",
-  "because",
-  "been",
-  "before",
-  "between",
-  "from",
-  "have",
-  "into",
-  "that",
-  "their",
-  "then",
-  "there",
-  "this",
-  "through",
-  "with",
-  "without",
-  "would",
-]);
-
+// #707: function words are per-language data (`FUNCTION_WORDS`,
+// core/stopwords.ts) instead of an English-only list here. A language without
+// a list drops no word — its function words then count toward the overlap.
 export function distinctiveTokensForActedOn(text: string): string[] {
   return Array.from(
     new Set(
       words(text)
         .filter((token) => token.length >= 4)
-        .filter((token) => !ACTED_ON_STOPWORDS.has(token))
+        .filter((token) => !FUNCTION_WORDS.has(token))
         .filter((token) => !GENERIC_TRIGGER_WORDS.has(token)),
     ),
   ).slice(0, 200);
