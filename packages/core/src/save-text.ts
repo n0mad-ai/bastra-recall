@@ -94,7 +94,7 @@ export function stripCodeSpans(body: string): string {
 // Die Faltung bleibt außen vor: ids sind kanonisch klein (siehe
 // `canonicalMemoryId`), und ein Wikilink zeigt auf die id, nicht auf eine
 // Schreibvariante davon.
-const WIKILINK_RE = /\[\[(\p{L}[\p{L}\p{N}_-]{0,79}|\p{N}[\p{L}\p{N}_-]{0,79})\]\]/gu;
+export const WIKILINK_RE = /\[\[(\p{L}[\p{L}\p{N}_-]{0,79}|\p{N}[\p{L}\p{N}_-]{0,79})\]\]/gu;
 export function extractWikilinks(body: string): string[] {
   const scanned = stripCodeSpans(stripAutoRelatedSection(body));
   const seen = new Set<string>();

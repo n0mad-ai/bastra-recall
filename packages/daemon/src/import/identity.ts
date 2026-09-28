@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
-import { slugify } from "@bastra-recall/core";
+import { slugify, WIKILINK_RE } from "@bastra-recall/core";
 
-export const WIKILINK_RE = /\[\[([a-z0-9][a-z0-9_-]{0,79})\]\]/g;
+// One wikilink grammar for save and import: a private ASCII copy left
+// every non-Latin link un-namespaced while core mirrored it into related[].
+export { WIKILINK_RE };
 
 /** Namespace every body `[[x]]` → `[[slugify(<label>-x)]]` so intra-set links
  *  stay inside the imported set and can NEVER resolve onto a hand-authored
