@@ -17,6 +17,8 @@ import { unloadOllamaModel } from "./ollama-lifecycle.js";
 import { runCuratorPass } from "./curator-run.js";
 import { pruneEventLogs } from "./log-retention.js";
 import { observeCodeGraphRefresh, startCodeAwareness } from "./code-graph/service.js";
+import { runSessionHarvest } from "./session-harvest.js";
+import { loadTranscript } from "./stop-lane.js";
 
 export interface BackgroundJobDeps {
   vault: Vault;
@@ -57,6 +59,25 @@ export function startBackgroundJobs(deps: BackgroundJobDeps): void {
   startCuratorTick(deps);
   startLogRetention();
   startCodeGraph(deps);
+  startSessionHarvest();
+}
+
+// After-session harvest (#675): sessions the Stop lane booked are read once
+// they have gone quiet, and what the user said that the session did not save
+// goes to the pending relay as suggestions. Off the hook path entirely; the
+// pass is never-throw, and it writes nothing to the vault.
+function startSessionHarvest(): void {
+  setInterval(() => {
+    void runSessionHarvest({ loadTurns: (transcript_path) => loadTranscript({ transcript_path }) })
+      .then((r) => {
+        if (r.harvested > 0) {
+          console.error(`[bastra-recall] session harvest: ${r.harvested} session(s), ${r.candidates} candidate(s) relayed`);
+        }
+      })
+      .catch((err) => {
+        console.error(`[bastra-recall] session harvest error (non-fatal): ${(err as Error)?.message ?? err}`);
+      });
+  }, 5 * 60_000).unref();
 }
 
 // Code awareness (#574, #581): preload the graphs of enabled repositories,

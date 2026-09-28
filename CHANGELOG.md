@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **After-session harvest** (#675; data from @zzallirog, #701). The Stop hook
+  books each session; a daemon job reads the transcript once the session has
+  been quiet for 30 minutes and relays up to three things the user said and
+  the session did not save — restated requests, the turn after an
+  interruption, answers to the agent's questions — as verbatim quotes in a
+  `<session-harvest>` block through the pending relay (#513). Structural and
+  language-neutral; it never writes to the vault. Telemetry
+  `session_harvest`; off with `BASTRA_SESSION_HARVEST=0`.
+
 - **Save suggestions reach the session that produced them** (#662; data from
   @zzallirog, #701). The Stop lane used to park every suggestion for the next
   session start, where neither the conversation nor the body was left to

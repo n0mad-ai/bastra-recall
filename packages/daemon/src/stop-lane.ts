@@ -72,8 +72,10 @@ import { enqueueForPath } from "./code-graph/service.js";
 import { boundaryNote, type ProvenRead } from "./code-graph/boundary-block.js";
 import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
 import { loadSessionState, mutateSessionState, parkBoundary } from "./session-state.js";
+import { noteSessionForHarvest } from "./session-harvest.js";
 import {
   claudeToolUseCommands,
+  claudeToolUseNames,
   claudeToolUseReads,
   codexCustomExecCommands,
   codexFunctionCallCommands,
@@ -106,6 +108,8 @@ interface TranscriptTurn {
   commands?: string[];
   /** #572: files the agent read from this turn (Claude `Read`), with the row's time. */
   reads?: ProvenRead[];
+  /** #675: tool names the turn called — the after-session harvest skips what was saved. */
+  tools?: string[];
 }
 
 type Heuristic = "frustration-density" | "feature-completion" | "architecture-decision";
@@ -158,6 +162,14 @@ export async function runStopLane(
     turns = null;
   }
   await parkBoundaryNote(payload, turns ?? []).catch(() => {});
+  // #675: book the session for the after-session harvest (a daemon job reads
+  // the transcript once the session has gone quiet — nothing of it runs here).
+  await noteSessionForHarvest({
+    session_id: payload.session_id,
+    transcript_path: payload.transcript_path,
+    cwd: payload.cwd,
+    client: hookClientEvidence(payload),
+  });
   if (typeof payload.cwd === "string" && payload.cwd.length > 0) {
     void enqueueForPath(payload.cwd).catch(() => {});
   }
@@ -550,6 +562,7 @@ function normalizeTurns(items: unknown[]): TranscriptTurn[] {
       // feeds file-token scanning.
       if (p.type === "function_call") {
         attachCommands(out, codexFunctionCallCommands(p));
+        if (typeof p.name === "string") attachTools(out, [p.name]);
         continue;
       }
       // Current Codex desktop rollouts use a free-form `custom_tool_call`
@@ -574,6 +587,8 @@ function normalizeTurns(items: unknown[]): TranscriptTurn[] {
       const turn: TranscriptTurn = { role: effectiveRole(role, m.content), content: scrubTurnContent(stringifyContent(m.content)) };
       const commands = claudeToolUseCommands(m.content);
       if (commands.length > 0) turn.commands = commands;
+      const tools = claudeToolUseNames(m.content);
+      if (tools.length > 0) turn.tools = tools;
       const reads = claudeToolUseReads(m.content);
       if (reads.length > 0) {
         // A row without a parseable timestamp cannot be placed after an edit,
@@ -589,6 +604,12 @@ function normalizeTurns(items: unknown[]): TranscriptTurn[] {
     }
   }
   return out;
+}
+
+function attachTools(out: TranscriptTurn[], tools: string[]): void {
+  const last = out[out.length - 1];
+  if (last && last.role === "assistant") last.tools = [...(last.tools ?? []), ...tools];
+  else out.push({ role: "assistant", content: "", tools });
 }
 
 function attachCommands(out: TranscriptTurn[], commands: string[]): void {
@@ -958,5 +979,6 @@ export {
   formatSuggestion,
   parseTranscriptFile,
   normalizeTurns,
+  loadTranscript,
 };
 export type { TranscriptTurn, SaveSuggestion };
