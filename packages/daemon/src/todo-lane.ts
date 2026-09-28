@@ -18,6 +18,7 @@
 // #305: subpath leafs, never the core barrel — measured +40ms of process
 // start against +0.8ms for the three leafs, on a fresh spawn per event.
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
+import { FUNCTION_WORDS } from "@bastra-recall/core";
 import { requiredHeadline, unfusedHeadline, unfusedReasonFor } from "./band-wording.js";
 import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane, type ScopeFilterMode } from "./scope-filter.js";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
@@ -96,22 +97,17 @@ interface RecallResponse {
   degraded?: string;
 }
 
-// Tiny stopword list — covers the most-common DE/EN noise tokens that would
-// otherwise dominate the topic-frequency map ("add", "fix", "the", "und"…).
-const STOPWORDS = new Set([
-  // EN
-  "the", "a", "an", "and", "or", "but", "if", "then", "for", "to", "of", "in",
-  "on", "at", "by", "with", "from", "as", "is", "are", "was", "were", "be",
-  "this", "that", "these", "those", "it", "its", "we", "i", "you", "they",
-  "add", "fix", "update", "make", "do", "use", "run", "set", "get", "new",
-  "all", "any", "into", "via", "out", "up", "down", "also",
-  // DE
-  "der", "die", "das", "den", "dem", "des", "ein", "eine", "einen", "einem",
-  "und", "oder", "aber", "wenn", "dann", "für", "fur", "zu", "von", "in",
-  "an", "auf", "mit", "bei", "aus", "als", "ist", "sind", "war", "waren",
-  "im", "am", "zur", "zum", "auch", "noch", "nicht", "kein", "keine",
-  "neu", "neue", "alle", "alles",
-]);
+// Noise tokens that would otherwise dominate the topic-frequency map ("add",
+// "fix", "the", "und"…). #707: per-language DATA, not a fixed DE/EN list —
+// function words come from the shared `FUNCTION_WORDS` (core/stopwords.ts),
+// and the task verbs every todo starts with are listed here by language. A
+// language without a list drops no word: its function words may then show up
+// among the topics, but its content words are never lost.
+const TODO_VERBS_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  en: ["add", "fix", "update", "make", "do", "use", "run", "set", "get", "new", "via", "out", "up", "down"],
+  de: ["neu", "neue"],
+};
+const TODO_NOISE: ReadonlySet<string> = new Set([...FUNCTION_WORDS, ...Object.values(TODO_VERBS_BY_LANGUAGE).flat()]);
 
 export interface TopicExtraction {
   query: string;
@@ -122,7 +118,8 @@ export interface TopicExtraction {
 /**
  * Pull a topic-rich query out of a TodoWrite payload. Strategy:
  * 1. Use the first 1–2 `content` strings verbatim as the spine of the query.
- * 2. Tokenize ALL todo contents to a-z/0-9 words (length >= 3, no stopwords).
+ * 2. Tokenize ALL todo contents to letter/digit words of any script
+ *    (length >= 3, no function words or task verbs).
  * 3. Pick the top words that appear in >= 2 todos as `topics`.
  * 4. Final query = "<topics joined>  <first 2 todos joined>".
  */
@@ -146,9 +143,11 @@ export function extractTopicsFromTodos(todosRaw: unknown): TopicExtraction {
   const perTodoWords: Set<string>[] = contents.map((c) => {
     const words = c
       .toLowerCase()
-      .replace(/[^a-z0-9äöüß\s-]/gi, " ")
+      // #707: letters of every script — `[a-z0-9äöüß]` dropped Cyrillic,
+      // Greek, CJK … entirely, so a non-Latin todo list had no topics.
+      .replace(/[^\p{L}\p{M}\p{N}\s-]/gu, " ")
       .split(/\s+/)
-      .filter((w) => w.length >= 3 && !STOPWORDS.has(w));
+      .filter((w) => w.length >= 3 && !TODO_NOISE.has(w));
     return new Set(words);
   });
 

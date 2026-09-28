@@ -133,6 +133,8 @@ The current matching stack is BM25 with prefix/fuzzy search, optionally fused wi
 
 The stopword list that softens this (`PHRASE_STOPWORDS`, per-language data in `packages/core/src/stopwords.ts`) covers **German and English only**; a language is one entry there (#707). In another language the function words are not recognised as function words, which cuts both ways: a phrase of common words has no stopwords removed, so it becomes a scatter trigger that fires whenever those everyday words happen to co-occur. Authoring reflex triggers in a third language means leaning on distinctive terms — names, identifiers, domain nouns — rather than on phrasing.
 
+A phrase can list alternatives: `or`, `oder` and `или` (per-language data, `ALTERNATIVE_WORDS` in `packages/core/src/stopwords.ts`) or a free-standing `/` or `|` in any script split it, and each alternative matches on its own (#707). `draft message / reply` fires on "draft a message".
+
 ### Relationships
 
 `related` is a manual list of memory ids. The save path also extracts `[[memory-id]]` wikilinks from the body and mirrors them into `related`, excluding links in the auto-related section.
@@ -769,6 +771,8 @@ Der aktuelle Matching-Stack ist BM25 mit Präfix-/Fuzzy-Suche, optional über Re
 **Halte Phrasen kurz – die Reflex-Lane vergleicht per Token-UND.** Beim gewöhnlichen Recall werden die Phrasen bewertet, eine lange trägt also trotzdem bei. In der Reflex-Lane (`recall_mode: reflex`, siehe unten) werden sie dagegen *abgeglichen*: `phraseMatchesContext` (`packages/daemon/src/reflex.ts:71`) verlangt, dass **jedes** inhaltliche Token der Phrase – alles ab 3 Zeichen, das kein Stoppwort ist – im Prompt vorkommt. Kein Präfix, kein Fuzzy. Ein `recall_when`-Eintrag in Satzlänge ist deshalb ein toter Reflex-Trigger: Der Prompt müsste alle seine Wörter enthalten. Drei bis sechs Inhaltswörter sind der praktikable Bereich.
 
 Die Stoppwortliste, die das abmildert (`PHRASE_STOPWORDS`, Daten pro Sprache in `packages/core/src/stopwords.ts`), deckt **nur Deutsch und Englisch** ab; eine Sprache ist dort ein Eintrag (#707). In einer anderen Sprache werden Funktionswörter nicht als solche erkannt, und das wirkt in beide Richtungen: Aus einer Phrase aus Allerweltswörtern werden keine Stoppwörter entfernt, sie wird also zu einem Streu-Trigger, der immer dann feuert, wenn diese Alltagswörter zufällig zusammen vorkommen. Wer Reflex-Trigger in einer dritten Sprache schreibt, sollte sich auf markante Begriffe stützen – Namen, Bezeichner, Fachnomen – statt auf Formulierungen.
+
+Eine Phrase kann Alternativen aufzählen: `or`, `oder` und `или` (Daten pro Sprache, `ALTERNATIVE_WORDS` in `packages/core/src/stopwords.ts`) oder ein freistehendes `/` bzw. `|` in jeder Schrift teilen sie, und jede Alternative matcht für sich (#707). `Nachricht entwerfen / Antwort entwerfen` greift bei „Nachricht entwerfen".
 
 ### Beziehungen
 

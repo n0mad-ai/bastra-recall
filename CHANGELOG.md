@@ -218,6 +218,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The remaining fixed-language matchers are data now** (#707). Duplicate-save
+  similarity, todo-lane topics and the acted-on overlap share one per-language
+  function-word list (`FUNCTION_WORDS_BY_LANGUAGE`, core `stopwords.ts`); a
+  language without a list drops no word. The todo-lane and taxonomy tokenizers
+  keep every script (`\p{L}\p{M}\p{N}`), so a Cyrillic todo list has topics and a
+  Cyrillic convention title covers its cluster. Reflex alternatives split on
+  per-language data (`or`, `oder`, `или`) and on a free-standing `/` or `|` in
+  any script. The #159 save-quality flags (negative claim, fix marker,
+  imperative lead) are lexicon data with Unicode boundaries, shipped for
+  de/en/ru and extendable per user (`~/.bastra/lexicon/negative-claim.txt`,
+  `fix-marker.txt`, `imperative-lead.txt`); an unlisted language gets no
+  penalty, and a code span in the body counts as the fix in any script. Still
+  open: word segmentation for scripts without spaces (#711) and the prompt
+  lane's `detectAssertion`.
+
 - **The local bridges pool moves out of the Commons checkout** (#648).
   `bridgesPath()` defaulted to `commonsPath()`, so `bridges/` and
   `last-mint.json` lived inside the git checkout of the shared repo and

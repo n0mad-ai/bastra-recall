@@ -27,6 +27,7 @@
  * summary" advisory, which needs the same primitive. Two competing similarity
  * measures inside one scoring function would be worse than either.
  */
+import { FUNCTION_WORDS } from "@bastra-recall/core";
 
 /** Case-folded tokens in ANY script — the Unicode class matters, an ASCII
  *  `\w` regex shreds exactly the tokens that carry the signal on a non-English
@@ -34,8 +35,8 @@
  *
  *  Exported as the single tokenizer for the save path: `save-quality.ts` and
  *  the acted-on token derivation in `tool-handlers.ts` both use it, so a
- *  tokenizer fix lands in one place. This module is a leaf (no project
- *  imports), so nobody can create a cycle through it. */
+ *  tokenizer fix lands in one place. This module is a leaf (no daemon
+ *  imports, only the core package), so nobody can create a cycle through it. */
 export function tokens(text: string): string[] {
   return text.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}_-]*/gu) ?? [];
 }
@@ -78,34 +79,20 @@ export function foldUmlauts(token: string): string {
  *  notes look similar, which is the failure mode STOPWORDS exists to prevent. */
 function contentToken(raw: string): string | null {
   const token = foldUmlauts(raw);
-  if (token.length < MIN_TOKEN_LENGTH || FOLDED_STOPWORDS.has(token)) return null;
+  if (token.length < MIN_TOKEN_LENGTH || FOLDED_FUNCTION_WORDS.has(token)) return null;
   return token;
 }
 
 /** Function words carry no topical signal, so leaving them in would make any
- *  two German notes look similar — which is the reported failure mode. Same
- *  list as the reflex lane's (`reflex.ts`), duplicated rather than imported:
- *  that one is tuned for prompt matching and must stay free to drift. */
-const STOPWORDS = new Set([
-  // EN
-  "about", "after", "all", "and", "any", "are", "because", "been", "before",
-  // NOTE: this list is folded through `foldUmlauts` where it is used, so "für"
-  // and "über" below still match after folding. Write entries the way a German
-  // writes them; the folding is applied to both sides.
-  "between", "but", "can", "for", "from", "has", "have", "how", "into", "its",
-  "just", "not", "only", "should", "than", "that", "the", "their", "then",
-  "there", "these", "this", "through", "was", "were", "what", "when", "which",
-  "will", "with", "without", "would", "you", "your",
-  // DE
-  "aber", "alle", "als", "auch", "auf", "aus", "bei", "beim", "bitte", "das",
-  "dass", "dem", "den", "der", "des", "die", "durch", "ein", "eine", "einem",
-  "einen", "einer", "für", "hat", "ist", "kann", "mal", "man", "mit", "nach",
-  "nicht", "noch", "nur", "oder", "sich", "sind", "soll", "über", "und", "von",
-  "vor", "war", "wenn", "werden", "wie", "wird", "zum", "zur",
-]);
-
-/** The list above, in the same shape tokens arrive in after folding. */
-const FOLDED_STOPWORDS = new Set([...STOPWORDS].map(foldUmlauts));
+ *  two German notes look similar — which is the reported failure mode.
+ *
+ *  #707: the words are per-language DATA in `core/src/stopwords.ts`
+ *  (`FUNCTION_WORDS_BY_LANGUAGE`), shared with the todo lane and the acted-on
+ *  overlap. A language without a list drops no word: its function words then
+ *  count as content, which lowers every score a little but never switches
+ *  the measure off for that language. Folded here through `foldUmlauts`, so
+ *  "für" and "über" still match after folding. */
+const FOLDED_FUNCTION_WORDS = new Set([...FUNCTION_WORDS].map(foldUmlauts));
 
 /** A single character carries no topical signal and inflates the union. */
 const MIN_TOKEN_LENGTH = 2;

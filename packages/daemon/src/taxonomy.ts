@@ -123,7 +123,9 @@ export function detectTaxonomyDrift(vault: Vault, now: number = Date.now()): Dri
     if (!isTaxonomyScope(c.fm.scope) || c.fm.obsolete) continue;
     for (const t of c.fm.tags) covered.add(norm(t));
     for (const seg of c.fm.topic_path) covered.add(norm(seg));
-    for (const w of c.fm.title.toLowerCase().split(/[^a-zäöüß0-9_-]+/u)) {
+    // #707: letters of every script — `[a-zäöüß]` cut a Cyrillic or Greek
+    // title into nothing, so its words never counted as covered.
+    for (const w of c.fm.title.toLowerCase().split(/[^\p{L}\p{M}\p{N}_-]+/u)) {
       if (w.length >= 3) covered.add(w);
     }
   }
