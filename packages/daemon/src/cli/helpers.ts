@@ -437,6 +437,9 @@ export interface DaemonProbe {
   triggerExpandModel?: string | null;
   /** #632: the running daemon's battery mode; absent from older daemons. */
   power?: { batterySaver: boolean; source: string; saving: boolean };
+  /** #684: who started the running daemon and where its env came from; absent from older daemons. */
+  startedBy?: string;
+  envOrigin?: string;
 }
 
 /**
@@ -473,6 +476,8 @@ export function probeDaemon(endpoint: DaemonEndpoint = resolveDaemonEndpoint()):
               power: typeof data.power?.battery_saver === "boolean"
                 ? { batterySaver: data.power.battery_saver, source: String(data.power.source), saving: data.power.saving === true }
                 : undefined,
+              startedBy: typeof data.started_by === "string" ? data.started_by : undefined,
+              envOrigin: typeof data.env_origin === "string" ? data.env_origin : undefined,
             });
             return;
           }

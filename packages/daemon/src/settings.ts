@@ -36,6 +36,7 @@ import { join, dirname } from "node:path";
 import { withPathLock } from "./path-lock.js";
 import { isSupportedLanguage } from "./learned-recall/language.js";
 import type { EmbeddingSource } from "./embedding-status.js";
+import { isDaemonEnvKey, type DaemonEnvKey } from "./daemon-spawn-env.js";
 
 export type UpdateMode = "notify" | "auto" | "off";
 export const UPDATE_MODES: readonly UpdateMode[] = ["notify", "auto", "off"];
@@ -154,6 +155,11 @@ export interface CliSettings {
   // doc2query, skips embedding warm-ups and unloads the model after 60 s idle
   // (power-source.ts). Env BASTRA_BATTERY_SAVER wins.
   battery?: { saver?: boolean };
+  // #684: daemon behaviour that exists only as env (DAEMON_ENV_KEYS in
+  // daemon-spawn-env.ts), pinned for a daemon the MCP forwarder auto-spawns.
+  // Wins over the spawning client's env; a service keeps its own env.
+  // Hand-edited, not via `bastra config set` (a map, not a scalar).
+  daemon?: { env?: Partial<Record<DaemonEnvKey, string>> };
   // User-Sprache (#231, Language-first recall): primary = 2-stelliger ISO-639-1-
   // Code (lowercase, z.B. "de"). Beim Onboarding aus der identity-Antwort
   // abgeleitet (persistLanguageSetting) oder via `bastra config set
@@ -266,6 +272,7 @@ const KNOWN_SETTINGS_KEYS: readonly string[] = [
   "promptImpact",
   "archive",
   "battery",
+  "daemon",
 ];
 
 function warnAboutUnknownKeys(data: unknown, path: string): void {
@@ -473,6 +480,15 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
   }
   const batterySaver = (data as { battery?: { saver?: unknown } }).battery?.saver;
   if (typeof batterySaver === "boolean") settings.battery = { saver: batterySaver };
+  const daemonEnv = (data as { daemon?: { env?: unknown } }).daemon?.env;
+  if (daemonEnv !== undefined && daemonEnv !== null && typeof daemonEnv === "object" && !Array.isArray(daemonEnv)) {
+    const env: Partial<Record<DaemonEnvKey, string>> = {};
+    for (const [k, v] of Object.entries(daemonEnv)) {
+      if (isDaemonEnvKey(k) && typeof v === "string") env[k] = v;
+      else process.stderr.write(`[bastra-recall] cli-settings.json: ignoring daemon.env.${k} (not a documented daemon key with a string value)\n`);
+    }
+    if (Object.keys(env).length > 0) settings.daemon = { env };
+  }
   const codeData = (data as { code?: { repos?: unknown } }).code;
   if (codeData !== undefined && Array.isArray(codeData.repos)) {
     // Parsed here, or the list would not survive the next write of any other

@@ -241,6 +241,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **An auto-spawned daemon no longer runs on the MCP client's env as-is**
+  (#684, first cut; report by @zzallirog). The forwarder spawned the shared
+  daemon with `env: process.env`, so a client's `BASTRA_HOOK_TIMEOUT_MS` set
+  every hook lane's budget and a service's behaviour switches were silently
+  missing. The spawn now drops client-only keys (`BASTRA_TOOL_SURFACE`,
+  `BASTRA_MCP_SESSION_CONTEXT`, `BASTRA_HOOK_TIMEOUT_MS`,
+  `BASTRA_FORWARDER_SPAWN`, `BASTRA_HOOK_CLIENT`) and applies
+  `daemon.env` from `~/.bastra/cli-settings.json` for the five env-only
+  daemon keys (`BASTRA_TRIGGER_EXPAND`, `BASTRA_PROMPT_HOOK_MODE`,
+  `BASTRA_DOCUMENT_WRITE`, `BASTRA_RM_ARCHIVES`, `BASTRA_OLLAMA_URL`), which
+  win over the client's value. `/health` reports `started_by` and
+  `env_origin`; `bastra doctor` prints them under "daemon origin". Not in
+  this cut: a config fingerprint, and the service taking the port back.
 - **Folder import no longer writes the type word or a whole description into
   `recall_when`** (#710; reported by @zzallirog: 442 single-type-word entries
   and 47 over 300 characters in one import). `bastra import vault` builds
@@ -258,7 +271,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (minted, far cases judged as `reaches`, written), and the doctor's bridge
   note counts it next to the in-band mint. `last-mint.json` stays the in-band
   mint's marker.
-
 - **The plan lane fires from Claude Code plan mode** (#698). The lane saw 0
   Claude Code calls in the #305 window: current Claude Code offers
   `TaskCreate` / `TodoWrite` by default only on older models (Opus ≤ 4.7,

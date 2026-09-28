@@ -45,6 +45,7 @@ import { embeddingStatusLine, cloudConsentNotice, type EmbeddingStatus, type Emb
 import { cloudEmbeddingProvider } from "./embedding-cloud.js";
 import { resolveEmbeddingChoice, getCommonsEnabled, getSharedRecallEnabled, getSharedRecallLanguage, getPrimaryLanguage, resolveGenerationModel, getEvidenceGateEnabled, getExperimentConfig, getBatterySaver } from "./settings.js";
 import { batterySaverEnabled, createPowerMonitor } from "./power-source.js";
+import { daemonOrigin } from "./daemon-spawn-env.js";
 import { commonsPath, loadVerificationCounts } from "./cli/commons.js";
 import { bridgesPath, migrateBridgesPool } from "./cli/bridges.js";
 import { BridgePool } from "./learned-recall/bridges.js";
@@ -687,6 +688,7 @@ async function main(): Promise<void> {
           embeddingBreaker: () => embeddingBreaker?.snapshot(Date.now()) ?? null,
           triggerExpand: () => (triggerExpandModel ? { model: triggerExpandModel } : null),
           power: () => power.snapshot(),
+          origin: daemonOrigin(),
           embeddingVectors: () => embIdxForHealth?.snapshot() ?? null,
           // Such-Copilot (#207): gleiche lokale Gen-Model-Auflösung wie
           // doc2query; ohne Ollama bleibt /ui/chat aus (503).

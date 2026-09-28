@@ -188,6 +188,32 @@ HTTP can be disabled with `BASTRA_HTTP=off`. The endpoint is resolved in exactly
 
 This lets multiple MCP clients share a single daemon, index, embedding queue, and telemetry stream.
 
+**The env of an auto-spawned daemon (#684).** The spawned daemon is shared by
+every client, so it does not take the spawning client's env as-is
+(`packages/daemon/src/daemon-spawn-env.ts`). Keys that only a client reads are
+dropped: `BASTRA_TOOL_SURFACE`, `BASTRA_MCP_SESSION_CONTEXT`,
+`BASTRA_HOOK_TIMEOUT_MS` (the daemon's hook lanes read it, so one client's
+entry used to set every lane's budget), `BASTRA_FORWARDER_SPAWN`,
+`BASTRA_HOOK_CLIENT`. Daemon behaviour that exists only as env —
+`BASTRA_TRIGGER_EXPAND`, `BASTRA_PROMPT_HOOK_MODE`, `BASTRA_DOCUMENT_WRITE`,
+`BASTRA_RM_ARCHIVES`, `BASTRA_OLLAMA_URL` — can be pinned in
+`~/.bastra/cli-settings.json`:
+
+```json
+{ "daemon": { "env": { "BASTRA_TRIGGER_EXPAND": "0", "BASTRA_PROMPT_HOOK_MODE": "all" } } }
+```
+
+A pin wins over the client's value; other keys are ignored with a warning.
+Put the same values there that your service unit or LaunchAgent sets, and a
+daemon a client spawns while the service is down runs the same config. A
+service-started daemon keeps its own env; this only shapes the forwarder's
+spawn. `/health` reports `started_by` (`forwarder`, `launchagent`, `systemd`
+— detected by `INVOCATION_ID` — or `direct`) and `env_origin` (`own`,
+`client`, `client+settings`), and `bastra doctor` prints them under "daemon
+origin". A forwarder-spawned daemon still holds the port until it exits (idle
+shutdown after 30 min); a service that must own it needs
+`BASTRA_FORWARDER_SPAWN=0` in the client entry.
+
 ### Tools
 
 Core memory tools:
@@ -475,6 +501,33 @@ HTTP lässt sich mit `BASTRA_HTTP=off` abschalten. Der Endpunkt wird seit #531 a
 4. leitet jeden Werkzeugaufruf an `/api/v1/<tool>` weiter.
 
 So können mehrere MCP-Clients einen einzigen Daemon, Index, eine Embedding-Warteschlange und einen Telemetrie-Strom teilen.
+
+**Die Umgebung eines automatisch gestarteten Daemons (#684).** Der gestartete
+Daemon gehört allen Clients, daher übernimmt er die Umgebung des startenden
+Clients nicht unverändert (`packages/daemon/src/daemon-spawn-env.ts`).
+Schlüssel, die nur ein Client liest, fallen weg: `BASTRA_TOOL_SURFACE`,
+`BASTRA_MCP_SESSION_CONTEXT`, `BASTRA_HOOK_TIMEOUT_MS` (die Hook-Lanes des
+Daemons lesen ihn, also legte der Eintrag eines Clients das Budget jeder Lane
+fest), `BASTRA_FORWARDER_SPAWN`, `BASTRA_HOOK_CLIENT`. Daemon-Verhalten, das es
+nur als Umgebungsvariable gibt — `BASTRA_TRIGGER_EXPAND`,
+`BASTRA_PROMPT_HOOK_MODE`, `BASTRA_DOCUMENT_WRITE`, `BASTRA_RM_ARCHIVES`,
+`BASTRA_OLLAMA_URL` —, lässt sich in `~/.bastra/cli-settings.json` festlegen:
+
+```json
+{ "daemon": { "env": { "BASTRA_TRIGGER_EXPAND": "0", "BASTRA_PROMPT_HOOK_MODE": "all" } } }
+```
+
+Ein festgelegter Wert hat Vorrang vor dem des Clients; andere Schlüssel werden
+mit einer Warnung ignoriert. Trägst du dort dieselben Werte ein wie in deiner
+Service-Unit oder deinem LaunchAgent, läuft ein Daemon, den ein Client startet,
+während der Service steht, mit derselben Konfiguration. Ein vom Service
+gestarteter Daemon behält seine eigene Umgebung; das hier formt nur den Start
+durch den Forwarder. `/health` meldet `started_by` (`forwarder`, `launchagent`,
+`systemd` — erkannt an `INVOCATION_ID` — oder `direct`) und `env_origin`
+(`own`, `client`, `client+settings`), und `bastra doctor` zeigt beides unter
+„daemon origin". Ein vom Forwarder gestarteter Daemon hält den Port weiter, bis
+er endet (Idle-Shutdown nach 30 min); soll ein Service ihn besitzen, braucht der
+Client-Eintrag `BASTRA_FORWARDER_SPAWN=0`.
 
 ### Werkzeuge
 
