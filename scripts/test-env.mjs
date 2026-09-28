@@ -125,6 +125,12 @@ if (!process.env.BASTRA_EVAL_RUNS_DIR) {
   process.env.BASTRA_EVAL_RUNS_DIR = throwawayDir("bastra-test-eval-runs-");
 }
 
+/** #675: every Stop-lane test with a transcript path books its session for the
+ *  after-session harvest; the queue must not land in the real ~/.bastra. */
+if (!process.env.BASTRA_HARVEST_QUEUE_PATH) {
+  process.env.BASTRA_HARVEST_QUEUE_PATH = join(throwawayDir("bastra-test-harvest-"), "harvest-queue.json");
+}
+
 /**
  * Keep application output off the frame pipe — but ONLY application output.
  *

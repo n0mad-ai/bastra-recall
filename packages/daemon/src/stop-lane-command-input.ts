@@ -21,6 +21,21 @@ export function claudeToolUseCommands(content: unknown): string[] {
 }
 
 /**
+ * Claude Code: the names of the tools a turn called (#675 — the after-session
+ * harvest skips what the session already saved).
+ */
+export function claudeToolUseNames(content: unknown): string[] {
+  if (!Array.isArray(content)) return [];
+  const out: string[] = [];
+  for (const c of content) {
+    if (!c || typeof c !== "object") continue;
+    const block = c as Record<string, unknown>;
+    if (block.type === "tool_use" && typeof block.name === "string") out.push(block.name);
+  }
+  return out;
+}
+
+/**
  * Claude Code: the files a turn read, from its `Read` tool_use blocks (#572).
  * Absolute paths only — that is what the tool takes, and a relative one could
  * not be placed in a repository without guessing the cwd of that moment.

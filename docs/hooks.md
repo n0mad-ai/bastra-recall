@@ -596,6 +596,33 @@ tab print the join as "save suggestions — N session(s) got one, M of them
 saved, K after the suggestion", with how many saves carry a `caller_session`:
 below all of them the saved count is a lower bound.
 
+#### After-session harvest (#675)
+
+Most of what a user states — answers to the agent's questions, corrections,
+rules said a second time — is never saved in the session. The Stop hook
+therefore also books the session (session id, transcript path, time of the
+last Stop) in `~/.bastra/harvest-queue.json`; this is one small write and no
+transcript work. A daemon job runs every 5 minutes and takes each booked
+session that has had no Stop, and whose transcript has not changed, for 30
+minutes. It reads the transcript and picks at most three user turns by the
+shape of the conversation, with no word lists, so it works in any language:
+
+- `restated` — a user turn that restates an earlier one (the #678 bigram
+  similarity);
+- `correction` — the first user turn after the user interrupted the agent;
+- `answer` — a user turn with at least 20 letters right after an assistant
+  turn that ended on `?`, `？` or `؟`.
+
+Pastes (2,000 characters or more), system-injected turns and anything the agent
+saved later in the session (`save_memory`, `edit_memory`, `save_hold`) are
+skipped. The picks go into the pending relay (recency lane, #513) as one
+`<session-harvest>` block of verbatim quotes, which the next session start
+shows. **The harvest never writes to the vault**: the agent recalls, judges
+and saves. A resumed session is harvested again only for its new turns.
+Telemetry: `session_harvest` with `session_id, client, turn_count,
+candidate_count, candidate_kinds`. Switch it off with
+`BASTRA_SESSION_HARVEST=0` in the daemon's environment.
+
 #### Taxonomy injection (session hook, #66)
 
 The session hook also fetches `GET /hook/taxonomy` (budget 150 ms within the
@@ -1275,6 +1302,36 @@ hat das Feld gar nicht. `bastra logs --stats` und der Telemetrie-Tab zeigen die
 Verknüpfung als „save suggestions — N session(s) got one, M of them saved,
 K after the suggestion" und dazu, wie viele Saves eine `caller_session`
 tragen: Tragen sie nicht alle eine, ist die Zahl der Saves eine Untergrenze.
+
+#### Harvest nach der Session (#675)
+
+Das meiste, was Nutzer sagen — Antworten auf Fragen des Agenten, Korrekturen,
+zum zweiten Mal genannte Regeln — wird in der Session nie gespeichert. Der
+Stop-Hook trägt die Session deshalb zusätzlich in
+`~/.bastra/harvest-queue.json` ein (Session-ID, Transcript-Pfad, Zeit des
+letzten Stops); das ist ein kleiner Schreibvorgang, das Transcript wird dabei
+nicht verarbeitet. Ein Daemon-Job läuft alle 5 Minuten und nimmt jede
+eingetragene Session, die seit 30 Minuten keinen Stop hatte und deren
+Transcript sich so lange nicht geändert hat. Er liest das Transcript und wählt
+höchstens drei Nutzer-Turns nach der Form des Gesprächs aus, ohne Wortlisten,
+also in jeder Sprache:
+
+- `restated` — ein Nutzer-Turn, der einen früheren wiederholt (die
+  Bigramm-Ähnlichkeit aus #678);
+- `correction` — der erste Nutzer-Turn, nachdem der Nutzer den Agenten
+  unterbrochen hat;
+- `answer` — ein Nutzer-Turn mit mindestens 20 Buchstaben direkt nach einem
+  Assistant-Turn, der auf `?`, `？` oder `؟` endet.
+
+Eingefügte Texte (ab 2.000 Zeichen), vom System eingefügte Turns und alles, was
+der Agent später in der Session gespeichert hat (`save_memory`, `edit_memory`,
+`save_hold`), fallen weg. Die Auswahl landet als ein `<session-harvest>`-Block
+mit wörtlichen Zitaten im Pending-Relay (Recency-Spur, #513), den der nächste
+Session-Start zeigt. **Der Harvest schreibt nie in den Vault**: Der Agent
+sucht per recall, prüft und speichert. Eine fortgesetzte Session wird nur für
+ihre neuen Turns erneut ausgewertet. Telemetrie: `session_harvest` mit
+`session_id, client, turn_count, candidate_count, candidate_kinds`. Abschalten
+mit `BASTRA_SESSION_HARVEST=0` in der Umgebung des Daemons.
 
 #### Taxonomie-Einblendung (Session-Hook, #66)
 
