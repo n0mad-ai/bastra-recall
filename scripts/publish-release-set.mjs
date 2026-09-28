@@ -198,8 +198,17 @@ const version = pkgs[0].version;
  *
  * Overridable so the tests can drive the same convergence without sleeping.
  */
-const VERIFY_ATTEMPTS = Number(process.env.BASTRA_VERIFY_ATTEMPTS ?? 12);
-const VERIFY_INTERVAL_MS = Number(process.env.BASTRA_VERIFY_INTERVAL_MS ?? 5000);
+function verifySetting(name, fallback, minimum) {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < minimum) {
+    throw new Error(`${name} must be a finite integer >= ${minimum} (got ${JSON.stringify(raw)})`);
+  }
+  return value;
+}
+const VERIFY_ATTEMPTS = verifySetting("BASTRA_VERIFY_ATTEMPTS", 12, 1);
+const VERIFY_INTERVAL_MS = verifySetting("BASTRA_VERIFY_INTERVAL_MS", 5000, 0);
 
 /** Block this process without a timer — the script is synchronous throughout. */
 function sleepSync(ms) {
