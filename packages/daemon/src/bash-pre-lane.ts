@@ -412,17 +412,24 @@ function unquote(word: string): string {
   return out;
 }
 
+/** Reserved words that open a compound command or a pipeline; the word after
+ *  them is at command position again, in THIS shell (#694). */
+const LEADING_RESERVED = new Set(["{", "!", "if", "then", "else", "elif", "do", "while", "until"]);
+
 /**
- * Where the command word stands: past `VAR=` assignments and the `builtin` /
- * `command` prefixes. Those two still run the builtin in THIS shell; `sudo`,
- * `env`, `xargs` run a child, where `hash` or `alias` cannot change this
- * shell's `rm`. `echo hash -p …` is an argument, not a command.
+ * Where the command word stands: past `VAR=` assignments, the reserved words
+ * that open a compound (`{ … }`, `if … then`, `!`, `time [-p]`, #694) and the
+ * `builtin` / `command` prefixes. All of those still run the command in THIS
+ * shell; `sudo`, `env`, `xargs` run a child, where `hash` or `alias` cannot
+ * change this shell's `rm`. `echo hash -p …` is an argument, not a command.
  */
 function commandWordAt(texts: string[]): number {
   let k = 0;
   for (;;) {
     while (k < texts.length && /^\w+\+?=/.test(texts[k])) k++;
-    if (texts[k] === "builtin") k++;
+    if (LEADING_RESERVED.has(texts[k])) k++;
+    else if (texts[k] === "time") k += texts[k + 1] === "-p" ? 2 : 1;
+    else if (texts[k] === "builtin") k++;
     else if (texts[k] === "command") for (k++; k < texts.length && texts[k].startsWith("-"); k++);
     else return k;
   }

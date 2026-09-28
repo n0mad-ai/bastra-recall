@@ -610,6 +610,14 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       // `hash -p` points EVERY listed name at the path, not just the last.
       "hash -p /x rm python; rm -rf dist",
       "hash -p/x rm python; rm -rf dist",
+      // …inside a compound command or behind a reserved word: the word after
+      // `{`, `then`, `!`, `time` is at command position in this shell (#694).
+      "{ hash -p /x rm; }; rm -rf dist",
+      "if true; then alias rm=/x; fi; rm -rf dist",
+      "! hash -p /x rm; rm -rf dist",
+      "time hash -p /x rm; rm -rf dist",
+      "time -p alias rm=/x; rm -rf dist",
+      "while false; do hash -p /x rm; done; rm -rf dist",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "stop", cmd);
     }
@@ -640,6 +648,10 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "echo hash -p /bin/rm rm; rm -rf x",
       "echo eval 'alias rm=/bin/rm'; rm -rf x",
       "sudo hash -p /bin/rm rm; rm -rf x",
+      // A compound that does not touch `rm` keeps the receipt (#694).
+      "{ echo hash -p /x rm; }; rm -rf dist",
+      "if true; then hash -p /x python; fi; rm -rf dist",
+      "time make; rm -rf dist",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "receipt", cmd);
     }
