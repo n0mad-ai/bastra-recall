@@ -29,8 +29,8 @@
  * Regel, die jede Sprache gleich behandelt.
  *
  * Der Router ist rein rechnerisch, ohne I/O. Ob er etwas bewirkt, entscheidet
- * der Aufrufer (`BASTRA_QUERY_ROUTER`, Schatten zuerst — #362 schreibt seine
- * Entscheidung und die Zeit, die er gespart hätte, und ändert nichts).
+ * der Aufrufer (`BASTRA_QUERY_ROUTER`, #362: seit v1.0.1 `live`, `shadow`
+ * schreibt nur die Entscheidung und die Zeit, die er gespart hätte).
  */
 
 export type QueryArms = "bm25" | "hybrid";
