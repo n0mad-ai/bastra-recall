@@ -47,26 +47,26 @@ import { assembleHookRecallPayload } from "./hook-recall-payload.js";
 // ─── /hook/recall handler ────────────────────────────────────────
 
 /**
- * #362: Der Query-Router (`routeQueryArms`, core) — SCHATTEN zuerst.
+ * #362: Der Query-Router (`routeQueryArms`, core) — seit v1.0.1 scharf.
  *
- * `shadow` (Default) berechnet für jeden Recall mit dichtem Arm, ob er nur
+ * `live` (Default) lässt geroutete Anfragen ohne dichten Arm laufen (siehe
+ * unten). `shadow` berechnet für jeden Recall mit dichtem Arm, ob er nur
  * den BM25-Arm bräuchte (kurze oder bezeichnerförmige Anfrage), und schreibt
  * das samt der Zeit, die es gespart hätte, als `query_route` an die
  * `hook_recall`-Zeile — geändert wird nichts. `live` lässt geroutete Anfragen
  * ohne dichten Arm laufen (ehrlich einarmig: `score_kind: "bm25"`, `unfused`,
  * kein `degraded`). `off` rechnet nichts.
  *
- * Warum nicht `live` als Default: Der Router ändert, welche Arme ein Ranking
- * bilden, und Ranking-Änderungen gehen erst durch den Schatten und das
- * Lift-Gate (Owner-Regel). Gemessen auf Gold-Set-Lauf A
- * (`npm run router-lift`, eval) hält er die Baseline; scharf geschaltet wird
- * er trotzdem erst auf Entscheid. Pro Aufruf gelesen wie die anderen
- * Latenzschalter hier.
+ * Warum `live` als Default: Gemessen auf Gold-Set-Lauf A
+ * (`npm run router-lift`, eval) liegt keine Kennzahl unter der Baseline, und
+ * geroutete Anfragen sinken von p50 14,8 auf 5,8 ms; der Owner hat am
+ * 29.09.2026 für v1.0.1 scharf geschaltet. `shadow` bleibt als Rückweg. Pro
+ * Aufruf gelesen wie die anderen Latenzschalter hier.
  */
 export type QueryRouterMode = "off" | "shadow" | "live";
 export function queryRouterMode(): QueryRouterMode {
   const v = process.env.BASTRA_QUERY_ROUTER;
-  return v === "off" || v === "live" ? v : "shadow";
+  return v === "off" || v === "shadow" ? v : "live";
 }
 
 export function handleHookRecall(

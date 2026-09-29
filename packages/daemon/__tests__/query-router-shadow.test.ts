@@ -1,10 +1,10 @@
 /**
- * #362 — der Query-Router auf der Hook-Pipeline: Schatten zuerst.
+ * #362 — der Query-Router auf der Hook-Pipeline, seit v1.0.1 `live` per Default.
  *
- *  - `shadow` (Default): der dichte Arm läuft wie bisher, die Antwort ist
+ *  - `shadow`: der dichte Arm läuft wie bisher, die Antwort ist
  *    unverändert; die `hook_recall`-Zeile trägt `query_route` mit der Zeit,
  *    die ein BM25-only-Lauf gespart hätte.
- *  - `live`: eine geroutete Anfrage fragt den dichten Arm gar nicht, und die
+ *  - `live` (Default): eine geroutete Anfrage fragt den dichten Arm gar nicht, und die
  *    Antwort sagt ehrlich, dass sie einarmig ist — ohne `degraded`.
  *  - `off`: nichts wird gerechnet.
  *  - Eine gewöhnliche Anfrage und ein `lexical_only`-Aufrufer bekommen keine
@@ -92,16 +92,17 @@ async function withRouter<T>(mode: string | undefined, fn: () => Promise<T>): Pr
   }
 }
 
-test("#362: der Default ist shadow, unbekannte Werte auch", async () => {
-  await withRouter(undefined, async () => assert.equal(queryRouterMode(), "shadow"));
-  await withRouter("LIVE", async () => assert.equal(queryRouterMode(), "shadow"));
+test("#362: der Default ist live, unbekannte Werte auch", async () => {
+  await withRouter(undefined, async () => assert.equal(queryRouterMode(), "live"));
+  await withRouter("SHADOW", async () => assert.equal(queryRouterMode(), "live"));
+  await withRouter("shadow", async () => assert.equal(queryRouterMode(), "shadow"));
   await withRouter("live", async () => assert.equal(queryRouterMode(), "live"));
   await withRouter("off", async () => assert.equal(queryRouterMode(), "off"));
 });
 
 test("#362: shadow — der dichte Arm läuft, die Zeile trägt die Messuhr", async (t) => {
   const s = await setup(t);
-  const res = await withRouter(undefined, () => runHookRecall({ query: "deployen" }, "deployen", Date.now(), s.deps));
+  const res = await withRouter("shadow", () => runHookRecall({ query: "deployen" }, "deployen", Date.now(), s.deps));
   assert.equal(s.denseCalls(), 1, "im Schatten ändert sich am Arm nichts");
   assert.equal(res.score_kind, "rrf");
   const [row] = await readEvents(s.logDir, "hook_recall");
@@ -112,9 +113,9 @@ test("#362: shadow — der dichte Arm läuft, die Zeile trägt die Messuhr", asy
   assert.equal(typeof route.would_save_ms, "number");
 });
 
-test("#362: live — eine geroutete Anfrage fragt den dichten Arm nicht, ehrlich einarmig", async (t) => {
+test("#362: live (Default) — eine geroutete Anfrage fragt den dichten Arm nicht, ehrlich einarmig", async (t) => {
   const s = await setup(t);
-  const res = await withRouter("live", () => runHookRecall({ query: "deployen" }, "deployen", Date.now(), s.deps));
+  const res = await withRouter(undefined, () => runHookRecall({ query: "deployen" }, "deployen", Date.now(), s.deps));
   assert.equal(s.denseCalls(), 0);
   assert.equal(res.score_kind, "bm25");
   assert.equal(res.unfused, true);

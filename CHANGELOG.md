@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Query router, shadow first** (#362). `routeQueryArms` (core) marks short
   (≤ 2 words, Unicode word segmentation) and identifier-shaped queries as
   BM25-only; everything else stays hybrid. Structural, no word list.
-  `BASTRA_QUERY_ROUTER` defaults to `shadow`: the hook pipeline records
+  `BASTRA_QUERY_ROUTER` defaulted to `shadow` here (now `live`, see
+  Changed): the hook pipeline records
   `query_route` with `would_save_ms` on `hook_recall` and changes nothing;
   `live` skips the dense arm for routed queries. New harness
   `npm run router-lift` (eval) runs gold-set run A as baseline, routed and
@@ -230,6 +231,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   no load changes a note or a source.
 
 ### Changed
+
+- **Query router is live by default** (#362, owner decision 2026-09-29).
+  `BASTRA_QUERY_ROUTER` now defaults to `live`: short (≤ 2 words) and
+  identifier-shaped hook queries skip the dense arm and are answered
+  BM25-only (`score_kind: "bm25"`, `unfused`, no `degraded`); the
+  `hook_recall` row carries `query_route` with `applied: true`. Measured on
+  gold-set run A (`npm run router-lift`): 17 of 699 queries routed, no
+  metric below the baseline, routed queries p50 14.8 → 5.8 ms.
+  `BASTRA_QUERY_ROUTER=shadow` restores the v1.0.0 behaviour (record only).
 
 - **Dense-weighted fusion is the default** (#641, owner decision
   2026-09-29). `BASTRA_RRF_VECTOR_WEIGHT` now defaults to `1.5` instead of
