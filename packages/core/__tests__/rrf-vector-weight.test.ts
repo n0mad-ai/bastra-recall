@@ -1,8 +1,9 @@
 /**
- * #641: the dense-arm weight of the fusion, opt-in via BASTRA_RRF_VECTOR_WEIGHT.
+ * #641: the dense-arm weight of the fusion, BASTRA_RRF_VECTOR_WEIGHT.
  *
- * Pinned as arithmetic, like rrf-damping.test.ts: the default must be the
- * shipped equal-weight RRF bit for bit, a weight above 1 must let the dense
+ * Pinned as arithmetic, like rrf-damping.test.ts: the default is 1.5 since
+ * v1.0.1 (owner decision 2026-09-29), weight 1 must be the v1.0.0
+ * equal-weight RRF bit for bit, a weight above 1 must let the dense
  * arm's rank 1 beat a BM25 rank 1 the dense arm only ranks 3rd (the loss #641
  * measured on LongMemEval-S), and the both-arms ceiling must not move.
  *
@@ -29,8 +30,8 @@ function withWeight<T>(value: string | undefined, fn: () => T): T {
 const BM25 = ["distractor", "b2", "b3", "gold"];
 const VECTOR = ["gold", "v2", "distractor"];
 
-test("default weight is 1 and reproduces the unweighted sum exactly", () => {
-  withWeight(undefined, () => {
+test("weight 1 reproduces the v1.0.0 unweighted sum exactly", () => {
+  withWeight("1", () => {
     assert.equal(rrfVectorWeight(), 1);
     const fused = fuseRRF(BM25, VECTOR);
     assert.equal(fused.get("distractor")!.score, 1 / 6 + 1 / 8);
@@ -39,8 +40,9 @@ test("default weight is 1 and reproduces the unweighted sum exactly", () => {
   });
 });
 
-test("a dense weight of 1.5 hands rank 1 to the dense arm's pick", () => {
-  withWeight("1.5", () => {
+test("the default weight is 1.5 and hands rank 1 to the dense arm's pick", () => {
+  withWeight(undefined, () => {
+    assert.equal(rrfVectorWeight(), 1.5);
     const fused = fuseRRF(BM25, VECTOR);
     assert.ok(
       fused.get("gold")!.score > fused.get("distractor")!.score,
@@ -58,9 +60,9 @@ test("rank 1 in both arms keeps the 163.934 ceiling at any weight", () => {
   }
 });
 
-test("unparsable or out-of-range values fall back to the shipped weight", () => {
+test("unparsable or out-of-range values fall back to the default weight", () => {
   for (const v of ["", "abc", "0", "-1", "11", "Infinity"]) {
-    withWeight(v, () => assert.equal(rrfVectorWeight(), 1, `value ${JSON.stringify(v)}`));
+    withWeight(v, () => assert.equal(rrfVectorWeight(), 1.5, `value ${JSON.stringify(v)}`));
   }
   withWeight("2", () => assert.equal(rrfVectorWeight(), 2));
 });

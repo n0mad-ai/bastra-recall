@@ -83,12 +83,10 @@ export const RRF_K = 5;
 export const RRF_SCALE = (5000 * (RRF_K + 1)) / 61;
 
 /**
- * #641: weight of the dense arm in the fusion, relative to BM25. Default 1 —
- * the equal-weight RRF that ships. `BASTRA_RRF_VECTOR_WEIGHT=<w>` switches a
- * process to the weighted fusion; like `BASTRA_SALIENCE_RANK=live` it is an
- * opt-in that goes live only after a lift has been shown (discipline of #160),
- * and it is read per call but must never flip per request — the query cache
- * holds fused rankings.
+ * #641: weight of the dense arm in the fusion, relative to BM25. Default 1.5
+ * since v1.0.1 (owner decision 2026-09-29); `BASTRA_RRF_VECTOR_WEIGHT=1`
+ * restores the equal-weight RRF that v1.0.0 shipped. It is read per call but
+ * must never flip per request — the query cache holds fused rankings.
  *
  * Why the knob exists: on LongMemEval-S (cleaned, all 500 questions, the #500
  * protocol) the dense arm ALONE ranks the gold session first more often than
@@ -107,18 +105,22 @@ export const RRF_SCALE = (5000 * (RRF_K + 1)) / 61;
  * 1.5 is the largest weight that keeps both M1 gates (relevant_loss <= 0.24,
  * false abstention 0). LME R@1 at 1.5 against 1: 27 questions gained, 9 lost,
  * exact sign test p = 0.004. On the gold set the same weight costs relevant
- * loss (78 -> 84 of 365), so this stays opt-in until the owner decides.
+ * loss (78 -> 84 of 365); the owner took that trade for v1.0.1. The V1.0
+ * baseline registration (v1-baseline.json) was measured at weight 1 and stays
+ * as registered — the LongMemEval lift is the reason for the change.
  *
  * `fuseRRF` normalises the pair so the weights sum to 2: rank 1 in both arms
  * keeps the 163.934 ceiling. The one-armed rank-1 anchor does NOT hold — a
  * dense-only rank 1 scores above 81.967, a BM25-only rank 1 below it — which
  * moves band occupancy the same way a change of RRF_K does (see RRF_SCALE).
  *
- * Out-of-range or unparsable values fall back to 1, the shipped behaviour.
+ * Out-of-range or unparsable values fall back to the default.
  */
+const RRF_VECTOR_WEIGHT_DEFAULT = 1.5;
+
 export function rrfVectorWeight(): number {
   const raw = process.env.BASTRA_RRF_VECTOR_WEIGHT;
-  if (raw === undefined || raw.trim() === "") return 1;
+  if (raw === undefined || raw.trim() === "") return RRF_VECTOR_WEIGHT_DEFAULT;
   const w = Number(raw);
-  return Number.isFinite(w) && w > 0 && w <= 10 ? w : 1;
+  return Number.isFinite(w) && w > 0 && w <= 10 ? w : RRF_VECTOR_WEIGHT_DEFAULT;
 }

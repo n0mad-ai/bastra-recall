@@ -738,9 +738,11 @@ async function main(): Promise<void> {
       git: gitState(),
       vault: sha256(vault.list().map((m) => `${String(m.fm.id)} ${String(m.fm.updated ?? "")}`).sort().join("\n")),
       model: sha256(armLabel),
-      // #641: a weighted fusion is a different configuration. Only a non-default
-      // weight enters the hash, so every run on the shipped fusion keeps the
-      // config hash the registered baselines pin.
+      // #641: a weighted fusion is a different configuration. A weight other
+      // than 1 enters the hash, so a run at weight 1 keeps the config hash the
+      // registered baselines pin (v1-baseline.json was measured at 1). Since
+      // v1.0.1 the default is 1.5, so a default run hashes differently from
+      // that baseline — by design, the baseline stays as registered.
       config: sha256(JSON.stringify({
         k: PRODUCTION_K,
         floor: SCORE_FLOOR,
