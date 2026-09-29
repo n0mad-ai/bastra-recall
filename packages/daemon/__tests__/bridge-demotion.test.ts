@@ -161,3 +161,12 @@ test("#129: contributed bridges are never demoted; a mint rewrite keeps demoted_
     assert.equal(b.demoted_at, at(5), "a recount is not an outcome");
   });
 });
+
+test("shadow fires (applied: false, owner decision 2026-09-29) are not counted — they changed nothing", () => {
+  const shadow = fires(25, 3).map((e) => ({
+    ...e,
+    bridge_expansion: { ...(e.bridge_expansion as object), applied: false },
+  }));
+  const stats = bridgeFireStats([BRIDGE], shadow, new Date(NOW.getTime() - 30 * DAY), NOW);
+  assert.deepEqual(stats.get(BRIDGE.id), { fires: 0, outcomes: 0 });
+});

@@ -261,6 +261,25 @@ export async function getSharedRecallEnabled(path?: string): Promise<boolean> {
 }
 
 /**
+ * Do bridges widen the recall query, or only get logged? Default false
+ * (shadow), owner decision 2026-09-29: on the maintainer's log (28.09.) the
+ * pooled bridges pushed 100 of 495 near hits out of the top 5, and 0 of 47
+ * pass `bastra bridges verify`. In shadow a firing bridge is still recorded
+ * (`bridge_expansion` with `applied: false`) and the ranking is unchanged.
+ * Whoever has a bridge that passes verify can switch it on here.
+ */
+export async function getSharedRecallLive(path?: string): Promise<boolean> {
+  return (await readSettings(path)).sharedRecall?.live ?? false;
+}
+
+export async function setSharedRecallLive(on: boolean, path: string = settingsFilePath()): Promise<void> {
+  await mutateSettings(path, (current) => ({
+    ...current,
+    sharedRecall: { ...current.sharedRecall, enabled: current.sharedRecall?.enabled ?? false, live: on },
+  }));
+}
+
+/**
  * Ist der Evidenzentscheid scharf? Default `true` seit #422 (03.09.2026).
  *
  * Aktiviert nach §18.2: Shadow-Abnahme erreicht (6.544 Entscheidungen, 40
@@ -350,7 +369,7 @@ export async function getSharedRecallLanguage(path?: string): Promise<string | u
 export async function setSharedRecallLanguage(language: string, path: string = settingsFilePath()): Promise<void> {
   await mutateSettings(path, (current) => ({
     ...current,
-    sharedRecall: { enabled: current.sharedRecall?.enabled ?? false, language: language.trim().toLowerCase() },
+    sharedRecall: { ...current.sharedRecall, enabled: current.sharedRecall?.enabled ?? false, language: language.trim().toLowerCase() },
   }));
 }
 
@@ -359,7 +378,10 @@ export async function setSharedRecallLanguage(language: string, path: string = s
 export async function clearSharedRecallLanguage(path: string = settingsFilePath()): Promise<void> {
   await mutateSettings(path, (current) => ({
     ...current,
-    sharedRecall: { enabled: current.sharedRecall?.enabled ?? false },
+    sharedRecall: {
+      enabled: current.sharedRecall?.enabled ?? false,
+      ...(current.sharedRecall?.live !== undefined ? { live: current.sharedRecall.live } : {}),
+    },
   }));
 }
 

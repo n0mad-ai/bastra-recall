@@ -34,7 +34,9 @@ async function withPool<T>(
       await mkdir(dir, { recursive: true });
       await writeFile(join(dir, `${b.id}.json`), JSON.stringify(b), "utf8");
     }
-    return await fn(BridgePool.load(root), root);
+    // The expansion tests exercise the live path (owner decision 2026-09-29:
+    // shadow is the default and is pinned in its own test below).
+    return await fn(BridgePool.load(root, undefined, { live: true }), root);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -235,8 +237,27 @@ test("expandQuery appends matching expansion terms and routes on detected langua
   });
 });
 
+test("expandQuery on a shadow pool (the default) reports the fire but leaves the query untouched", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bastra-bridges-"));
+  try {
+    const b = bridge({ lang: "de", trigger_terms: ["panel"], expansion_terms: ["resignkey", "observer"] });
+    await mkdir(join(root, "bridges", "de"), { recursive: true });
+    await writeFile(join(root, "bridges", "de", `${b.id}.json`), JSON.stringify(b), "utf8");
+    const pool = BridgePool.load(root);
+    assert.equal(pool.live, false);
+    const q = "warum schließt sich das Panel wieder";
+    const r = expandQuery(q, pool);
+    assert.equal(r.query, q, "shadow: the ranking query is the original");
+    assert.deepEqual(r.added, ["resignkey", "observer"], "shadow: what it would add is still reported");
+    assert.equal(r.applied, false);
+    assert.equal(expandQuery(q, BridgePool.load(root, undefined, { live: true })).applied, true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("expandQuery is a no-op for a null pool; an abstained language consults every folder (#707)", async () => {
-  assert.deepEqual(expandQuery("anything", null), { query: "anything", lang: null, added: [] });
+  assert.deepEqual(expandQuery("anything", null), { query: "anything", lang: null, added: [], applied: false });
   const deB = bridge({ lang: "de", trigger_terms: ["panel"], expansion_terms: ["resignkey"] });
   const enB = bridge({ lang: "en", trigger_terms: ["nspanel", "observer"], expansion_terms: ["attachedsheet"] });
   await withPool([deB, enB], async (pool) => {

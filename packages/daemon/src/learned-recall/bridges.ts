@@ -334,8 +334,16 @@ export class BridgePool {
   /** Every folder's bridges in one list, pre-sorted — the default (#707). */
   private readonly all: Bridge[];
 
-  private constructor(private readonly byLang: Map<string, Bridge[]>) {
+  /**
+   * Owner decision 2026-09-29: whether `expandQuery` widens the query (live)
+   * or only reports what it would add (shadow, the default). Set from the
+   * `sharedRecall.live` setting where the pool is loaded.
+   */
+  readonly live: boolean;
+
+  private constructor(private readonly byLang: Map<string, Bridge[]>, live = false) {
     this.all = [...byLang.values()].flat().sort(byWeight);
+    this.live = live;
   }
 
   static empty(): BridgePool {
@@ -344,16 +352,16 @@ export class BridgePool {
 
   /** #129: an in-memory pool — the held-out check (verify.ts) measures a
    *  bridge through the same expansionsFor the recall path runs. */
-  static of(bridges: Bridge[]): BridgePool {
+  static of(bridges: Bridge[], opts: { live?: boolean } = {}): BridgePool {
     const byLang = new Map<string, Bridge[]>();
     for (const b of bridges) byLang.set(b.lang, [...(byLang.get(b.lang) ?? []), b]);
     for (const bucket of byLang.values()) bucket.sort(byWeight);
-    return new BridgePool(byLang);
+    return new BridgePool(byLang, opts.live);
   }
 
   /** Load <root>/bridges/<lang>/*.json into per-language buckets. Defensive: skips
    *  corrupt files and folders that are not a language code (archive/), never throws. */
-  static load(rootDir: string, now: Date = new Date()): BridgePool {
+  static load(rootDir: string, now: Date = new Date(), opts: { live?: boolean } = {}): BridgePool {
     const byLang = new Map<string, Bridge[]>();
     const base = join(rootDir, "bridges");
     try {
@@ -396,7 +404,7 @@ export class BridgePool {
     } catch {
       /* no bridges dir yet → empty pool */
     }
-    return new BridgePool(byLang);
+    return new BridgePool(byLang, opts.live);
   }
 
   size(lang?: string): number {
@@ -467,8 +475,12 @@ export interface ExpansionResult {
   /** The configured override, else the query's filing language (detected or
    *  "und", #707). Null only without a pool. Telemetry logs it with `added`. */
   lang: string | null;
-  /** The expansion terms that were appended (empty when none fired). */
+  /** The expansion terms the firing bridges add (empty when none fired). In
+   *  shadow they are NOT in `query` — see `applied`. */
   added: string[];
+  /** Whether `added` is in `query` (the pool is live). False in shadow: the
+   *  fire is still logged, the ranking is unchanged. */
+  applied: boolean;
 }
 
 /**
@@ -477,20 +489,25 @@ export interface ExpansionResult {
  * consulted; without one every folder is (#707) — an undetected language takes
  * the same path as de/en instead of getting no bridges. Returns the (possibly
  * widened) query. Local-first/no-op safety: a null pool returns it untouched.
+ *
+ * Owner decision 2026-09-29: a pool that is not `live` (the default) only
+ * reports what it would add — the returned query is the original, so the
+ * ranking does not change, and the caller still logs `bridge_expansion`.
  */
 export function expandQuery(
   query: string,
   pool: BridgePool | null | undefined,
   opts: { configuredLang?: string | null } = {},
 ): ExpansionResult {
-  if (!pool) return { query, lang: null, added: [] };
+  if (!pool) return { query, lang: null, added: [], applied: false };
   const configured = opts.configuredLang ?? null;
   const lang = configured ?? bridgeLanguage(query);
   const added = pool.expansionsFor(query, configured);
-  if (added.length === 0) return { query, lang, added: [] };
+  if (added.length === 0) return { query, lang, added: [], applied: false };
+  if (!pool.live) return { query, lang, added, applied: false };
   // Trigger-Matching (expansionsFor) sah die VOLLE Query; nur die Basis des
   // zusammengesetzten Suchstrings wird gedeckelt (Wortgrenze, nie im Token),
   // damit die Expansions strukturell vor dem Core-Cap sicher sind (#162).
   const base = capAtWordBoundary(query, MAX_BASE_QUERY_CHARS);
-  return { query: `${base} ${added.join(" ")}`, lang, added };
+  return { query: `${base} ${added.join(" ")}`, lang, added, applied: true };
 }

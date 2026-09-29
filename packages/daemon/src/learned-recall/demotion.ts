@@ -86,8 +86,12 @@ function firesFrom(events: TelemetryEvent[]): Fire[] {
   const fires: Fire[] = [];
   for (const e of events) {
     if (e.kind !== "recall" && e.kind !== "hook_recall") continue;
-    const be = e.bridge_expansion as { added?: unknown } | undefined;
+    const be = e.bridge_expansion as { added?: unknown; applied?: unknown } | undefined;
     if (!be || !Array.isArray(be.added) || typeof e.query !== "string") continue;
+    // A shadow fire (owner decision 2026-09-29) added nothing to the query, so
+    // what followed says nothing about the bridge — it neither demotes nor
+    // restores. Rows before the switch carry no `applied` and were live.
+    if (be.applied === false) continue;
     const ts = Date.parse(e.ts);
     if (!Number.isFinite(ts)) continue;
     fires.push({

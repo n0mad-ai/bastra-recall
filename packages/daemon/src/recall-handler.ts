@@ -589,7 +589,7 @@ async function recallAgainstVault(
         no_home: noHome || undefined,
         bridge_expansion:
           expansion.lang && expansion.added.length > 0
-            ? { lang: expansion.lang, added: expansion.added }
+            ? { lang: expansion.lang, added: expansion.added, applied: expansion.applied }
             : undefined,
         candidate_pool: candidatePool.length > 0 ? candidatePool : undefined,
         // Zweiter Gegenreview: `top_score` und `candidate_pool` sind Zahlen,

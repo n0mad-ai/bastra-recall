@@ -252,7 +252,18 @@ unmeasured and are not offered.
 `bastra doctor` shows a **learned bridges** note while shared recall is on: it warns
 when no mint ran in 30 days, when mint runs produced candidates but wrote none, or
 when no acted-on recall reached the telemetry log, and adds a line when bridges were
-demoted or archived in the last 30 days.
+demoted or archived in the last 30 days. Its last line says whether query expansion
+is live or shadow.
+
+**Query expansion is shadow by default (owner decision 2026-09-29).** With shared
+recall on, a firing bridge does NOT widen the query unless `sharedRecall.live` is
+`true` (`bastra bridges live on`, then restart the daemon). In shadow the fire is
+still recorded — `bridge_expansion` on `recall`/`hook_recall` carries the terms it
+would add with `applied: false` — and the ranking is exactly the one without
+bridges; shadow fires do not count toward demotion. Why: on the maintainer's log
+(28.09.) the pooled bridges pushed 100 of 495 near hits out of the top 5, and 0 of
+47 local bridges pass `bastra bridges verify`. Switch live on once a bridge passes
+verify.
 
 ### What stays private
 
@@ -300,11 +311,12 @@ bastra commons verify <recipe-id> works|fails ["env note"]   # record + best-eff
 
 bastra bridges enable      # flip sharedRecall.enabled (needs commons cloned first)
 bastra bridges language <tag|auto>   # query-language override (default: auto — every folder)
+bastra bridges live <on|off>         # let bridges widen the query (default off: shadow, logged only)
 bastra bridges mint [days] # mint bridges from in-band reaches
 bastra bridges harvest [days]        # deep harvest via local reranker
 bastra bridges verify [days]         # held-out check (#129), verdict per local bridge
 bastra bridges contribute [days]     # same check, stages passing bridges for a PR
-bastra bridges status      # enabled-state, pool size per language, repo path
+bastra bridges status      # enabled-state, query expansion live/shadow, pool size per language, repo path
 ```
 
 ### Licensing
@@ -579,7 +591,18 @@ und werden nicht angeboten.
 bridges**: Er warnt, wenn 30 Tage lang kein Erzeugungslauf lief, wenn Läufe Kandidaten
 erzeugt, aber keine geschrieben haben, oder wenn kein genutzter Recall im
 Telemetrie-Protokoll ankam, und ergänzt eine Zeile, wenn in den letzten 30 Tagen
-Bridges abgewertet oder archiviert wurden.
+Bridges abgewertet oder archiviert wurden. Die letzte Zeile sagt, ob die
+Query-Erweiterung live oder im Schatten läuft.
+
+**Query-Erweiterung standardmäßig im Schatten (Owner-Entscheid 29.09.2026).** Bei
+eingeschaltetem Shared Recall erweitert eine feuernde Bridge die Anfrage NICHT, solange
+`sharedRecall.live` nicht `true` ist (`bastra bridges live on`, danach Daemon neu
+starten). Im Schatten wird das Feuern weiter protokolliert — `bridge_expansion` an
+`recall`/`hook_recall` trägt die Terme, die sie ergänzen würde, mit `applied: false` —
+und das Ranking ist genau das ohne Bridges; Schatten-Feuer zählen nicht für die
+Abwertung. Grund: Im Log des Maintainers (28.09.) verdrängten die gepoolten Bridges
+100 von 495 nahen Treffern aus den Top 5, und 0 von 47 lokalen Bridges bestehen
+`bastra bridges verify`. Live erst einschalten, wenn eine Bridge verify besteht.
 
 ### Was privat bleibt
 
@@ -627,11 +650,12 @@ bastra commons verify <recipe-id> works|fails ["env note"]   # record + best-eff
 
 bastra bridges enable      # flip sharedRecall.enabled (needs commons cloned first)
 bastra bridges language <tag|auto>   # query-language override (default: auto — every folder)
+bastra bridges live <on|off>         # let bridges widen the query (default off: shadow, logged only)
 bastra bridges mint [days] # mint bridges from in-band reaches
 bastra bridges harvest [days]        # deep harvest via local reranker
 bastra bridges verify [days]         # held-out check (#129), verdict per local bridge
 bastra bridges contribute [days]     # same check, stages passing bridges for a PR
-bastra bridges status      # enabled-state, pool size per language, repo path
+bastra bridges status      # enabled-state, query expansion live/shadow, pool size per language, repo path
 ```
 
 ### Lizenzierung

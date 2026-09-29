@@ -54,7 +54,7 @@ export interface CliSettings {
   // loads a git-synced, language-partitioned bridge pool and uses it to widen
   // recall queries. `language` is an optional override for the auto-detected
   // query language (e.g. force "de" when you always search in German).
-  sharedRecall?: { enabled: boolean; language?: string };
+  sharedRecall?: { enabled: boolean; language?: string; live?: boolean };
   /**
    * Der deterministische Evidenzentscheid (#264): `undefined` = AUS, und das
    * ist der Auslieferungszustand.
@@ -274,7 +274,7 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
   }
   if (raw.trim() === "") return { update: { mode: DEFAULT_UPDATE_MODE } };
 
-  let data: { update?: { mode?: unknown }; embedding?: { provider?: unknown }; ollama?: { autostart?: unknown }; api?: { token?: unknown }; cors?: { origins?: unknown }; commons?: { enabled?: unknown }; sharedRecall?: { enabled?: unknown; language?: unknown }; docs?: { mode?: unknown; language?: unknown }; generation?: { model?: unknown }; ui?: { enabled?: unknown }; reflex?: { enabled?: unknown; maxPerTurn?: unknown }; evidenceGate?: { enabled?: unknown } };
+  let data: { update?: { mode?: unknown }; embedding?: { provider?: unknown }; ollama?: { autostart?: unknown }; api?: { token?: unknown }; cors?: { origins?: unknown }; commons?: { enabled?: unknown }; sharedRecall?: { enabled?: unknown; language?: unknown; live?: unknown }; docs?: { mode?: unknown; language?: unknown }; generation?: { model?: unknown }; ui?: { enabled?: unknown }; reflex?: { enabled?: unknown; maxPerTurn?: unknown }; evidenceGate?: { enabled?: unknown } };
   try {
     data = JSON.parse(raw);
   } catch (e) {
@@ -336,7 +336,9 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
     settings.commons = { enabled: data.commons.enabled };
   }
   if (typeof data?.sharedRecall?.enabled === "boolean") {
-    const sr: { enabled: boolean; language?: string } = { enabled: data.sharedRecall.enabled };
+    const sr: { enabled: boolean; language?: string; live?: boolean } = { enabled: data.sharedRecall.enabled };
+    // Bridges owner decision 2026-09-29: live query expansion is opt-in.
+    if (typeof data.sharedRecall.live === "boolean") sr.live = data.sharedRecall.live;
     // Validate against the supported pool languages (de/en) — the SAME set the boot
     // gate enforces — not the loose docs-language regex, so the file, CLI, and daemon
     // agree on what a valid override is.

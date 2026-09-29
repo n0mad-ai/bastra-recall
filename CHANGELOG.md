@@ -232,6 +232,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Bridge query expansion runs in shadow by default** (#129, #672, owner
+  decision 2026-09-29). With shared recall on, a firing bridge no longer
+  widens the query unless `sharedRecall.live` is `true`
+  (`bastra bridges live on`). In shadow the ranking is exactly the one without
+  bridges, and the fire is still logged: `bridge_expansion` on
+  `recall`/`hook_recall` carries the terms it would add with
+  `applied: false`; shadow fires do not count toward demotion. Why: on the
+  maintainer's log (28.09.) the pooled bridges pushed 100 of 495 near hits
+  out of the top 5, and 0 of 47 local bridges pass `bastra bridges verify`.
+  `bastra doctor` and `bastra bridges status` show live/shadow; switch live on
+  once a bridge passes verify.
+
 - **Query router is live by default** (#362, owner decision 2026-09-29).
   `BASTRA_QUERY_ROUTER` now defaults to `live`: short (≤ 2 words) and
   identifier-shaped hook queries skip the dense arm and are answered

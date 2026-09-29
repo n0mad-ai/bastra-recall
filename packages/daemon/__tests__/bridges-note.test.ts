@@ -21,14 +21,14 @@ test("bridge note: silent when shared recall is off", () => {
 
 test("bridge note: warns when no mint ran inside the window", () => {
   const lines = bridgeLearningLines({ enabled: true, runs: [run(daysAgo(BRIDGE_STALL_WINDOW_DAYS + 1), 5, 5)], now: NOW });
-  assert.equal(lines.length, 1);
+  assert.equal(lines.length, 2);
   assert.match(lines[0], /^⚠ no bridge mint ran in the last 30 days/);
   assert.match(lines[0], /bastra bridges mint/);
 });
 
 test("bridge note: minted but never written is reported as stalled (the zzallirog month)", () => {
   const lines = bridgeLearningLines({ enabled: true, runs: [run(daysAgo(10), 20, 0), run(daysAgo(1), 23, 0)], now: NOW });
-  assert.equal(lines.length, 1);
+  assert.equal(lines.length, 2);
   assert.match(lines[0], /^⚠ bridge learning stalled: 2 mint run\(s\)/);
   assert.match(lines[0], /last: 23 minted, 0 written/);
 });
@@ -59,14 +59,22 @@ test("#129 bridge note: demotions and archives in the window are summed and show
     ],
     now: NOW,
   });
-  assert.equal(lines.length, 2);
+  assert.equal(lines.length, 3);
   assert.match(lines[0], /^✓ ok/);
   assert.match(lines[1], /^· 3 bridge\(s\) demoted, 1 archived in the last 30 days/);
   assert.match(lines[1], /#129/);
 });
 
 test("#129 bridge note: no demotion line when nothing was demoted", () => {
-  assert.equal(bridgeLearningLines({ enabled: true, runs: [run(daysAgo(1), 3, 3)], now: NOW }).length, 1);
+  assert.equal(bridgeLearningLines({ enabled: true, runs: [run(daysAgo(1), 3, 3)], now: NOW }).length, 2);
+});
+
+test("bridge note: query expansion is shown as shadow by default and as live when switched on", () => {
+  const shadow = bridgeLearningLines({ enabled: true, runs: [run(daysAgo(1), 3, 3)], now: NOW });
+  assert.match(shadow.at(-1)!, /^· query expansion: shadow — .*ranking is unchanged/);
+  assert.match(shadow.at(-1)!, /bastra bridges verify/);
+  const live = bridgeLearningLines({ enabled: true, live: true, runs: [run(daysAgo(1), 3, 3)], now: NOW });
+  assert.match(live.at(-1)!, /^· query expansion: live/);
 });
 
 test("readMintRuns: reads bridges_mint events inside the window and falls back to last-mint.json", async () => {

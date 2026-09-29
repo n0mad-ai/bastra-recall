@@ -681,7 +681,7 @@ export async function runHookRecall(
               }
             : {}),
           bridge_expansion:
-            expansion.lang && expansion.added.length > 0 ? { lang: expansion.lang, added: expansion.added } : undefined,
+            expansion.lang && expansion.added.length > 0 ? { lang: expansion.lang, added: expansion.added, applied: expansion.applied } : undefined,
           // #421: nur auf Aufrufen mit `apply_scope_filter` (MCP) — Hook-Zeilen
           // behalten ihre Felder unverändert.
           ...(callerScopeFilter ? callerScopeFilter.telemetry : {}),
