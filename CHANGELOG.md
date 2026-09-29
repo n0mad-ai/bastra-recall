@@ -41,8 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (27 gained / 9 lost, p = 0.004), R@5 98.2% unchanged; gold-set run A keeps
   both M1 gates (relevant_loss 0.2137 → 0.2301 ≤ 0.24, false abstention 0).
   `2` gains more on LongMemEval (84.8%) but breaks false abstention on the
-  gold set. Goes live only by owner decision. `longmemeval-run` records the
-  weight, and a non-default weight enters the gold-set config hash.
+  gold set. The default became `1.5` by owner decision (see Changed).
+  `longmemeval-run` records the weight, and a weight other than `1` enters
+  the gold-set config hash.
 
 - **Client memory folders reach the vault** (#674; data from @zzallirog,
   #701). `bastra doctor` lists every Claude Code
@@ -229,6 +230,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   no load changes a note or a source.
 
 ### Changed
+
+- **Dense-weighted fusion is the default** (#641, owner decision
+  2026-09-29). `BASTRA_RRF_VECTOR_WEIGHT` now defaults to `1.5` instead of
+  `1`: LongMemEval-S R@1 79.6% → 83.2% (+3.6 pp). Gold-set run A re-measured
+  on this branch at the default: relevant_loss 84 of 365 (0.2301 ≤ 0.24),
+  false abstention 0, R@1 24.1% → 24.3%. `BASTRA_RRF_VECTOR_WEIGHT=1`
+  restores the v1.0.0 equal-weight fusion. Score bands move (a dense-only
+  rank 1 scores above 81.967, a BM25-only one below it), and the gold-set
+  config hash of a default run changes; the V1.0 baseline registration
+  (`v1-baseline.json`) was measured at weight 1 and stays as registered.
 
 - **Bridges earn contribution on held-out data** (#129).
   `bastra bridges verify [days]` runs a 5-fold check over the candidate-pool
