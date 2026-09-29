@@ -41,6 +41,10 @@ import {
   type DeadlineShadow,
 } from "../src/latency-profile.js";
 
+// #362: these tests measure the dense arm on short hook queries ("deployen");
+// the query router, live by default since v1.0.1, would skip that arm.
+process.env.BASTRA_QUERY_ROUTER = "shadow";
+
 const KEY = "ollama-embeddinggemma";
 /** Ein anderes Modell hinter demselben Provider — der Fall aus #491. */
 const ANDERES_MODELL = "ollama-qwen3-embedding";

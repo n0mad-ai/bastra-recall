@@ -26,6 +26,10 @@ import { Vault, SearchIndex } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { startHttpServer } from "../src/http.js";
 
+// #362: these tests measure the dense arm on short hook queries ("deployen");
+// the query router, live by default since v1.0.1, would skip that arm.
+process.env.BASTRA_QUERY_ROUTER = "shadow";
+
 const DEADLINE_MS = 50;
 /**
  * Node's timer may fire a tick EARLY: a 50 ms deadline was observed settling at

@@ -25,6 +25,10 @@ import { Vault, SearchIndex, EmbeddingIndex, type EmbeddingProvider } from "@bas
 import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
 
+// #362: these tests measure the dense arm on short hook queries ("ANCHORWORD");
+// the query router, live by default since v1.0.1, would skip that arm.
+process.env.BASTRA_QUERY_ROUTER = "shadow";
+
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 function memoryMarkdown(id: string): string {
