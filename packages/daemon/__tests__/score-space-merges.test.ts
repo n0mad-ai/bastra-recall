@@ -40,6 +40,10 @@ import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
 import { extractCandidatePools, type TelemetryEvent } from "../src/learned-recall/harvest.js";
 
+// #362: these tests measure the dense arm on short hook queries ("ANCHORWORD");
+// the query router, live by default since v1.0.1, would skip that arm.
+process.env.BASTRA_QUERY_ROUTER = "shadow";
+
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /** Obergrenze der fusionierten Skala: Rang 1 in beiden Armen. */

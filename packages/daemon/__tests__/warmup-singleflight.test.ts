@@ -35,6 +35,10 @@ import { runSessionLane } from "../src/session-lane.js";
 import { countingProvider, createLatencyProfile, type DeadlineShadow } from "../src/latency-profile.js";
 import { createEmbeddingWarmup } from "../src/embedding-warmup.js";
 
+// #362: these tests measure the dense arm on short hook queries ("deployen");
+// the query router, live by default since v1.0.1, would skip that arm.
+process.env.BASTRA_QUERY_ROUTER = "shadow";
+
 const KEY = "ollama-embeddinggemma";
 
 function memo(id: string): string {

@@ -36,6 +36,10 @@ import { createEmbeddingWarmup, RESIDENT_WINDOW_MS } from "../src/embedding-warm
 import { computeHostProfileId } from "../src/host-profile.js";
 import { FORWARDER_HOOK_BUDGET_MS, REQUEST_TIMEOUT_MS } from "../src/forwarder-daemon-client.js";
 
+// #362: these tests measure the dense arm on short hook queries ("deployen");
+// the query router, live by default since v1.0.1, would skip that arm.
+process.env.BASTRA_QUERY_ROUTER = "shadow";
+
 const KEY = "ollama-embeddinggemma";
 
 function memo(id: string): string {
