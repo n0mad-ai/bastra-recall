@@ -149,7 +149,7 @@ export async function loadGraph(repoRoot: string): Promise<LoadResult> {
   // js/file-system-race, flagged high on this very function) — and the size
   // limit is one of the hard promises this module makes about untrusted
   // input, so a limit that can be stepped around by replacing the file is not
-  // a limit at all. Same discipline as the transcript read in stop-lane.ts.
+  // a limit at all. Same discipline as the transcript read in stop-transcript.ts.
   let sizeBytes: number;
   let mtimeMs: number;
   let raw: string;

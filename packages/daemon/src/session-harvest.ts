@@ -270,7 +270,7 @@ function isFinished(e: QueueEntry, now: number): boolean {
 /**
  * The daemon job: harvest every booked session that has been quiet for
  * {@link HARVEST_IDLE_MS}. `loadTurns` reads and normalizes a transcript
- * (stop-lane.ts owns the parser). Never throws.
+ * (stop-transcript.ts owns the parser). Never throws.
  */
 export async function runSessionHarvest(opts: {
   loadTurns: (transcriptPath: string) => Promise<HarvestTurn[]>;

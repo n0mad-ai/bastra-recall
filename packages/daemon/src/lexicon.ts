@@ -11,7 +11,7 @@
  * the next Stop event with no daemon restart and no rebuild.
  *
  * File format: one cue per line, `#` starts a comment, blank lines ignored.
- * A cue is a regex fragment in the same dialect as the defaults; stop-lane.ts
+ * A cue is a regex fragment in the same dialect as the defaults; stop-heuristics.ts
  * wraps it with the Unicode letter-boundary lookarounds. This is the
  * write-target a future automatic harvester would populate — but the floor is
  * just: stop baking the lexicon into the binary.
@@ -107,7 +107,7 @@ function tooManyQuantifiers(cue: string): boolean {
 
 /**
  * A cue is a regex fragment, and a hand-edited file's likeliest malformation is
- * a regex typo (`schei(`). stop-lane.ts compiles the cues into a RegExp, so a
+ * a regex typo (`schei(`). stop-heuristics.ts compiles the cues into a RegExp, so a
  * single invalid fragment would throw there — outside the Stop lane's try/catch
  * — and kill every heuristic. Validate each fragment in the SAME wrapped shape
  * both call sites compile (`(?<!\p{L})(?:…)(?!\p{L})`, `u`), and skip the bad
