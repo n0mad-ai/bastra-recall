@@ -3,7 +3,6 @@
  * Routing stays in http.ts; the handler logic lives here.
  * Split out of http.ts (file-size convention).
  */
-import { missingVaultReason } from "./vault-presence.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type {
   LateSettleSample,
@@ -12,77 +11,40 @@ import type {
   RecallStage,
   StageListener,
 } from "@bastra-recall/core";
-import { vaultKnowsProject } from "./scope-filter.js";
 import { routeRetrieval, routeQueryArms, type QueryRoute } from "@bastra-recall/core";
 import { fireAndForget, type Telemetry } from "./telemetry.js";
-import { envBool, envInt } from "./env.js";
 import { computeSalienceShadow } from "./salience-shadow.js";
 import { computeTrustShadow, trustRankMode, usageForShadow } from "./trust-shadow.js";
 import { toLeanHit } from "./tool-handlers.js";
 import { expandQuery, type BridgePool } from "./learned-recall/bridges.js";
 import { type SupportedLanguage } from "./learned-recall/language.js";
-import { isWeakResult, isNoHome, decideHits, type RecallDecisionHit } from "@bastra-recall/core";
-import { tokenizeWithIdentifiers } from "@bastra-recall/core";
+import { isWeakResult, isNoHome, decideHits } from "@bastra-recall/core";
 import { armsOf, SCORE_VERSION } from "./score-space.js";
 import { effectiveHintSuppressionMode, suppressRepeatedUnused } from "./hint-suppression.js";
-import { mergeHookRecallHits } from "./hook-recall-merge.js";
-import { applyCallerScopeFilter, collectPoolReflexHits } from "./recall-pipeline.js";
-import { fitRecallWithReflexToBudget, measurePayload } from "./recall-budget.js";
+import { applyCallerScopeFilter } from "./recall-pipeline.js";
+import { measurePayload } from "./recall-budget.js";
 import { type DeadlineShadow } from "./latency-profile.js";
 // #493: die Schattenbuchführung eines Recalls, herausgelöst aus dieser Datei.
 import {
   observeDeadlineShadow,
   recordLateSettleSample,
+  logVectorLateSettleRow,
   type VectorArmReport,
 } from "./deadline-shadow-row.js";
 import {
   MAX_BODY_BYTES,
-  clampInt,
   openSseHeaders,
   readJsonBody,
   sendJson,
   writeSseEvent,
 } from "./http-util.js";
 import { dimensionHints } from "./telemetry-dimensions.js";
+import { readHookRecallInput } from "./hook-recall-input.js";
+import { runContentRecall } from "./hook-content-recall.js";
+import { applyEvidenceGate } from "./hook-recall-evidence.js";
+import { assembleHookRecallPayload } from "./hook-recall-payload.js";
 
 // ─── /hook/recall handler ────────────────────────────────────────
-
-const CONTENT_RECALL_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
-
-/**
- * #342: deadline for the dense arm on the HOOK path only — the surface with a
- * hard client-side budget (per lane since #305: 600ms for the recall lanes,
- * 1000ms for the assertion class — see hook-budgets.ts). Offline callers (bridge
- * harvest, doc2query self-test, the WebUI) keep waiting indefinitely; they have
- * no budget and want the better result.
- *
- * The number comes from the per-stage split measured on a real host, and it is
- * a bound on THIS STAGE, not on the call:
- *
- *   warm   bm25 15-24ms   vector  87-96ms   →  total 106-113ms
- *   cold   bm25 24ms      vector 668ms      →  total 694ms
- *
- * So 150ms clears every warm dense arm with ~55ms to spare, and caps the cold
- * one at 150 + ~25ms of BM25 ≈ 180ms. That keeps BOTH cases under the 200ms
- * p90 target #305 sets for the FAST lanes (it is no longer a single ceiling
- * across all of them) — the warm path untouched at ~110ms, the cold path degraded
- * to BM25-only but arriving, instead of the whole call expiring silently and
- * the turn continuing as if there had been nothing to say.
- *
- * 0 disables the deadline (kill switch, pre-#342 behaviour). Every expiry is
- * visible as `degraded: "vector-arm-timeout"` on the recall telemetry, so a
- * machine where the warm arm genuinely needs longer shows up as a rate rather
- * than as quietly worse recall.
- *
- * Read per call, not once at module load, like BASTRA_HOOK_CONTENT_RECALL
- * below: a latency kill switch that needs a daemon restart to take effect is
- * not much of a kill switch.
- */
-const hookVectorDeadlineMs = (): number => envInt("BASTRA_VECTOR_DEADLINE_MS", 150);
-
-/** #305/#362: Zielbudget der Hook-Lane in ms — die Zahl, gegen die der
- *  Schatten-Router seine Kostenschätzung hält. Das Milestone-Ziel ist 200. */
-const hookBudgetMs = (): number => envInt("BASTRA_HOOK_BUDGET_MS", 200);
 
 /**
  * #362: Der Query-Router (`routeQueryArms`, core) — SCHATTEN zuerst.
@@ -252,71 +214,13 @@ export async function runHookRecall(
   emitStage?: (s: RecallStage) => void,
 ): Promise<Record<string, unknown>> {
   const { vault, search, telemetry, learnedBridges, sharedRecallLang, embeddingDegraded } = deps;
-      const k = clampInt(body.k, 1, 10, 3);
-      const hookSessionId = typeof body.session_id === "string" ? body.session_id : null;
-      const hookToolName = typeof body.tool_name === "string" ? body.tool_name : null;
-      const hookProject = typeof body.project === "string" ? body.project : null;
+      const {
+        k, hookSessionId, hookToolName, hookProject, scope, type, expand_hops, vectorDeadlineMs,
+        lexicalOnly, maxTokens, budgetMs, budgetSource, sessionStartCallId,
+      } = readHookRecallInput(body);
       if (hookToolName === "UserPromptSubmit") {
         telemetry.rotateTurn(hookSessionId);
       }
-      const scope = typeof body.scope === "string" ? body.scope : undefined;
-      const type = typeof body.type === "string" ? body.type : undefined;
-      // expand_hops: Hooks profitieren vom Multi-Hop-Recall sobald
-      // related_via befüllt ist (über RelatedEnricher). Default 1 — der
-      // Caller kann explizit 0 schicken um es zu deaktivieren.
-      const expand_hops = body.expand_hops === 0 ? 0 : 1;
-      // 20.08.: the caller may widen the dense arm's deadline. The 150ms
-      // default is sized for the 600ms hook budget; the MCP forwarder reuses
-      // this route with a waiting model behind it and was paying the hook's
-      // deadline for nothing — 15 of 19 MCP recalls on 20.08. came back
-      // BM25-only because a 3-query batch (#351) serialises on one Ollama.
-      const vectorDeadlineMs = clampInt(body.vector_deadline_ms, 50, 10_000, hookVectorDeadlineMs());
-      /**
-       * #494: Der Aufrufer verzichtet auf den dichten Arm — GAR KEIN Embed,
-       * nicht bloß eine kurze Frist.
-       *
-       * #490 wollte genau das und konnte es nicht bauen (`search.ts` lag
-       * damals bei #489), also bekam der kalte SessionStart 50 ms statt eines
-       * Verzichts. Als EINZIGER aufgegebener Embed, der das Modell nebenbei
-       * wärmt, wäre das vertretbar gewesen; neben einem eigenen Warmup und
-       * drei parallelen Session-Recalls ist es redundante Last, aufgebracht
-       * genau dann, wenn die Maschine am langsamsten ist.
-       *
-       * Die Antwort ist ehrlich einarmig (`score_kind: "bm25"`, `unfused`) —
-       * aber ohne `degraded`: Es ist kein Arm ausgefallen, es war keiner
-       * vorgesehen. Wer den Verzicht ausgelöst hat, sagt der Aufrufer in
-       * seinem eigenen Block (die SessionStart-Lane: „not in memory").
-       */
-      const lexicalOnly = body.lexical_only === true;
-      // #487: Das Kontextbudget des Aufrufs in geschätzten Token. `0` (der
-      // Default, also auch „nicht geschickt") heißt unbegrenzt und ändert an
-      // dieser Antwort nichts. Der MCP-Forwarder reicht das Feld durch — für
-      // ein Modell, das sein Restfenster kennt, ist das die Größe, in der es
-      // rechnet, und `k` ist es nicht.
-      const maxTokens = clampInt(body.max_tokens, 0, 1_000_000, 0);
-      // Dieselbe Regel wie bei der Deadline eine Zeile darüber: Das Budget, gegen
-      // das der Schatten-Router rechnet, gehört zum AUFRUF, nicht zum Endpunkt.
-      // Die 200 sind die Wanduhr der Prompt-Lane; die SessionStart-Lane hat ihre
-      // eigene (`HOOK_TIMEOUT_MS`, 500) und schickt sie mit. Ohne das würde der
-      // Schatten für sie eine Grenze prüfen, unter der sie gar nicht läuft.
-      // `0` heißt weiterhin „kein Budget" (siehe `lexicalFitsBudget`).
-      const budgetMs = clampInt(body.hook_budget_ms, 0, 10_000, hookBudgetMs());
-      // #493: WOHER diese Zahl kommt. Sie stand bisher ohne Herkunft in der
-      // Telemetrie, und genau daran ist die MCP-Lane verunglückt: Der
-      // Forwarder schickte nichts, also galt für ihn die 200 der Prompt-Lane,
-      // und die Zeilen lasen live `deadline_ms 1500, lane_budget_ms 200,
-      // cap_reason floor` — ein gesunder 400-ms-Arm gemessen an einer
-      // Wanduhr, die es für ihn nie gab. Der Forwarder schickt seitdem sein
-      // eigenes Budget; die Spalte sagt, ob ein Aufrufer das getan hat.
-      const budgetSource: "caller" | "endpoint-default" =
-        typeof body.hook_budget_ms === "number" && Number.isFinite(body.hook_budget_ms)
-          ? "caller"
-          : "endpoint-default";
-      // #493: Die Klammer um die (bis zu drei) Recalls EINES Sitzungsstarts.
-      // Ohne sie ist ein Sitzungsstart mit drei kalten Armen von drei
-      // Sitzungsstarts nicht zu unterscheiden — siehe HookRecallEvent.
-      const sessionStartCallId =
-        typeof body.session_start_call_id === "string" ? body.session_start_call_id : null;
 
       const stageTimings: NonNullable<Parameters<Telemetry["logHookRecall"]>[0]["recall_stages"]> = {};
       // #342: why the hit list came back one-armed, if it did. Recorded rather
@@ -520,105 +424,12 @@ export async function runHookRecall(
       const promptFused =
         search.hasEmbeddings() && !embeddingDegradedAtRecall && !skipDense && degradedReason === undefined;
 
-      const contentQuery = typeof body.tool_input_excerpt === "string"
-        ? body.tool_input_excerpt.trim().slice(0, 4096)
-        : "";
-      let contentRecall:
-        | {
-            hit_count: number;
-            added_count: number;
-            rescored_count: number;
-            latency_ms: number;
-            failed?: boolean;
-            skipped_score_space?: true;
-          }
-        | undefined;
-      if (
-        envBool("BASTRA_HOOK_CONTENT_RECALL", false)
-        && CONTENT_RECALL_TOOLS.has(hookToolName ?? "")
-        && contentQuery
-        && contentQuery !== query
-      ) {
-        const contentRecallStarted = Date.now();
-        try {
-          // Codex-Gegenreview: Der Content-Recall ist ein EIGENER Recall und
-          // degradiert unabhängig — sein Vektor-Arm kann in die Deadline laufen,
-          // während der Prompt-Recall fusioniert hat. Sein Degradations-Grund
-          // ging bisher verloren (kein onStage), und der Score-Modus wurde nur
-          // aus dem ERSTEN Recall abgeleitet. Ergebnis: rohe BM25-Werte, in eine
-          // RRF-Liste einsortiert und als „rrf" gemeldet.
-          let contentDegradedReason: string | undefined;
-          const collectContentStage = (st: RecallStage): void => {
-            if (st.name === "done" && typeof st.meta?.degraded === "string") {
-              contentDegradedReason = st.meta.degraded;
-            }
-          };
-          // #494: Derselbe Verzicht wie oben. Ein Content-Recall mit dichtem
-          // Arm neben einem Prompt-Recall ohne wäre genau die Last, die
-          // `lexical_only` vermeiden soll — und das Merge-Gate darunter würde
-          // ihn wegen des Skalenbruchs ohnehin verwerfen.
-          const contentHits = search.hasEmbeddings() && !skipDense
-            ? await search.recallHybrid(contentQuery, {
-                k,
-                scope,
-                type,
-                expand_hops,
-                onStage: collectContentStage,
-                // Same deadline, not a remaining-budget split: by the time this
-                // runs the query recall above has either warmed the model (so
-                // this costs ~120ms) or is still loading it (so this expires
-                // too and degrades the same way). Both are the right outcome.
-                vector_deadline_ms: vectorDeadlineMs,
-              })
-            : search.recall(contentQuery, {
-                k,
-                scope,
-                type,
-                expand_hops,
-              });
-          const contentFused =
-            search.hasEmbeddings() && !embeddingDegradedAtRecall && contentDegradedReason === undefined;
-          if (contentFused !== promptFused) {
-            // Fail-closed: Die beiden Listen liegen in verschiedenen Räumen, und
-            // „der höhere Score gewinnt" heißt dann nur „die Skala ohne
-            // Obergrenze gewinnt". Der Content-Arm fällt weg, statt die
-            // fusionierte Liste zu verunreinigen — die servierten Zahlen kommen
-            // dann alle aus dem Prompt-Recall und `score_kind` beschreibt sie.
-            contentRecall = {
-              hit_count: contentHits.length,
-              added_count: 0,
-              rescored_count: 0,
-              latency_ms: Date.now() - contentRecallStarted,
-              skipped_score_space: true,
-            };
-          } else {
-            const queryHitsById = new Map(hits.map((hit) => [hit.id, hit]));
-            const contentHitsById = new Map(contentHits.map((hit) => [hit.id, hit]));
-            const mergedHits = mergeHookRecallHits(hits, contentHits, k);
-            contentRecall = {
-              hit_count: contentHits.length,
-              added_count: mergedHits.filter((hit) => !queryHitsById.has(hit.id)).length,
-              rescored_count: mergedHits.filter((hit) => {
-                const queryHit = queryHitsById.get(hit.id);
-                const contentHit = contentHitsById.get(hit.id);
-                return queryHit !== undefined
-                  && contentHit !== undefined
-                  && contentHit.score > queryHit.score;
-              }).length,
-              latency_ms: Date.now() - contentRecallStarted,
-            };
-            hits = mergedHits;
-          }
-        } catch {
-          contentRecall = {
-            hit_count: 0,
-            added_count: 0,
-            rescored_count: 0,
-            latency_ms: Date.now() - contentRecallStarted,
-            failed: true,
-          };
-        }
-      }
+      const content = await runContentRecall({
+        body, search, hookToolName, query, hits, k, scope, type, expand_hops, skipDense,
+        vectorDeadlineMs, embeddingDegradedAtRecall, promptFused,
+      });
+      hits = content.hits;
+      const contentRecall = content.contentRecall;
       clearInterval(loopProbe);
       const recallLatencyMs = Date.now() - tRecall0;
       // #362 Phase 2: Schatten-Route. Die Suche ist zu diesem Zeitpunkt
@@ -704,52 +515,10 @@ export async function runHookRecall(
         if (deadlineShadowRow && shadow && shadowResidency) {
           recordLateSettleSample(shadow, shadowKey!, shadowResidency, deadlineShadowRow, sample);
         }
-        fireAndForget(
-          telemetry.logVectorLateSettle({
-            recall_id: recallId,
-            deadline_ms: vectorDeadlineMs,
-            wait_ms: stageTimings.vector_wait_ms ?? 0,
-            settle_ms: sample.settle_ms,
-            settled: sample.settled,
-            // #493: das ERGEBNIS des aufgegebenen Arms. Kriterium 4 aus #492
-            // fragt nach der kontrafaktischen Fusionsrate — die Laufzeit allein
-            // sagt nicht, ob eine längere Frist diesen Recall fusioniert hätte.
-            ...(sample.outcome ? { provider_outcome: sample.outcome } : {}),
-            ...(sample.hit_count !== undefined ? { vector_hit_count: sample.hit_count } : {}),
-            ...(sample.cold_start_observed !== undefined
-              ? { cold_start_observed: sample.cold_start_observed }
-              : {}),
-            ...(typeof sample.provider_load_ms === "number"
-              ? { provider_load_ms: sample.provider_load_ms }
-              : {}),
-            ...(sessionStartCallId ? { session_start_call_id: sessionStartCallId } : {}),
-            ...(shadow ? { host_profile_id: shadow.hostProfileId() } : {}),
-            // #491: Die Prognose reist mit, statt nur über `recall_id`
-            // joinbar zu sein. Diese Zeile IST die Wirklichkeit für den
-            // aufgegebenen Arm; sie muss die Frage „hätte die gelernte Frist
-            // gehalten?" allein beantworten können.
-            ...(deadlineShadowRow
-              ? {
-                  predicted_deadline_ms: deadlineShadowRow.predicted_deadline_ms,
-                  cap_reason: deadlineShadowRow.cap_reason,
-                  residency: deadlineShadowRow.residency,
-                  residency_source: deadlineShadowRow.residency_source,
-                  residency_estimated: deadlineShadowRow.residency_estimated,
-                  shadow_would_run: deadlineShadowRow.shadow_would_run,
-                  shadow_would_wait: deadlineShadowRow.shadow_would_wait,
-                  // #499: Der Vergleich steht auf JEDER Zeile. Bis hierher
-                  // fehlte er bei einer Prognose von 0, weil die als „kein
-                  // dichter Arm" gelesen wurde — der Arm lief aber, er wäre
-                  // nur nicht mehr abgewartet worden. Genau dann ist die
-                  // Antwort auch klar: Ein Arm, der erst spät settelt, reißt
-                  // eine Frist von null definitionsgemäß.
-                  shadow_timeout: sample.settle_ms > deadlineShadowRow.predicted_deadline_ms,
-                }
-              : {}),
-            ...(hookSessionId ? { session_id: hookSessionId } : {}),
-            ...dimensionHints(body),
-          }),
-        );
+        logVectorLateSettleRow({
+          telemetry, recallId, vectorDeadlineMs, waitMs: stageTimings.vector_wait_ms ?? 0, sample,
+          sessionStartCallId, shadow, deadlineShadowRow, hookSessionId, body,
+        });
       };
       if (lateSettleSeen) emitLateSettle(lateSettleSeen);
 
@@ -781,75 +550,10 @@ export async function runHookRecall(
       // in beiden Fällen beschreibt `promptFused` die servierten Zahlen.
       const hybridActiveAtRecall = promptFused;
       const gateEnabled = deps.evidenceGateEnabled?.() === true;
-      // #264: Der Evidenzentscheid. Hier und nicht später, weil die Treffer an
-      // dieser Stelle noch ihre Hop-Herkunft tragen — die Projektion unten
-      // wirft sie weg, und C-046 verlangt sie am Entscheidungspunkt.
-      //
-      // Die Merkmale werden gegen die URSPRÜNGLICHE Anfrage erhoben, nicht
-      // gegen die brückenerweiterte: Beurteilt wird, was der Nutzer gefragt
-      // hat, nicht was die Suche daraus gemacht hat.
-      let decisions: RecallDecisionHit[] | null = null;
-      try {
-        decisions = (deps.decideFn ?? decideHits)(hits, {
-          queryTerms: tokenizeWithIdentifiers(query),
-          scope: scope ?? null,
-          memoryOf: (id) => vault.get(id),
-        });
-        const counts = { required: 0, optional: 0, no_answer: 0 };
-        for (const d of decisions) counts[d.decision]++;
-        const hopOf = new Map(hits.map((h) => [h.id, h.hop]));
-        fireAndForget(
-          telemetry.logEvidenceDecision({
-            recall_id: recallId,
-            // Solange das Flag aus ist, ist die Entscheidung reine Beobachtung.
-            shadow: !gateEnabled,
-            // C-047/C-052: Ein Budget-Abbruch ist keine Abstention. Wer die
-            // Quote rechnet, muss diese Läufe ausschließen können.
-            degraded: degradedReason !== undefined,
-            decisions: decisions.map((d) => ({
-              memory_id: d.id,
-              decision: d.decision,
-              ...(d.abstain_reason ? { abstain_reason: d.abstain_reason } : {}),
-              evidence: d.evidence,
-              ...(hopOf.get(d.id) ? { hop: hopOf.get(d.id) } : {}),
-            })),
-            counts,
-            ...(hookSessionId ? { session_id: hookSessionId } : {}),
-            ...dimensionHints(body),
-          }),
-        );
-      } catch (err) {
-        // Ein Defekt im Entscheid geht in KEINE der beiden Statistiken
-        // (C-047/C-052) — leere Entscheidungen, Zähler auf null. Sichtbar
-        // bleibt er trotzdem, sonst wäre er von einem Aufruf ohne Treffer nicht
-        // zu unterscheiden. `decisions` bleibt null, und damit filtert der Gate
-        // unten nichts: fail-open, wie überall auf dem Hook-Pfad.
-        decisions = null;
-        console.error(`[bastra.evidence] decision failed: ${(err as Error).message}`);
-        fireAndForget(
-          telemetry.logEvidenceDecision({
-            recall_id: recallId,
-            shadow: !gateEnabled,
-            degraded: degradedReason !== undefined,
-            failed: true,
-            decisions: [],
-            counts: { required: 0, optional: 0, no_answer: 0 },
-            ...(hookSessionId ? { session_id: hookSessionId } : {}),
-            ...dimensionHints(body),
-          }),
-        );
-      }
-
-      // Scharf geschaltet heißt: `no_answer` wird respektiert — die vorhandene
-      // Evidenz reichte für keine Ausspielung (§10.3), also wird nichts
-      // ausgespielt. Ausgeschaltet ändert diese Zeile nichts, und das ist der
-      // Auslieferungszustand (§21.1: erst shadow, dann aktiv).
-      if (gateEnabled && decisions) {
-        const suppressed = new Set(
-          decisions.filter((d) => d.decision === "no_answer").map((d) => d.id),
-        );
-        if (suppressed.size > 0) hits = hits.filter((h) => !suppressed.has(h.id));
-      }
+      hits = applyEvidenceGate({
+        hits, query, scope, vault, decideFn: deps.decideFn, telemetry, recallId, gateEnabled, degradedReason,
+        hookSessionId, body,
+      });
 
       // #421: Der Projekt-Scope-Filter der Prompt-Lane, hier für Aufrufer, die
       // ihn nicht selbst anwenden können — der MCP-Forwarder setzt
@@ -871,99 +575,10 @@ export async function runHookRecall(
       const noHome = isNoHome(hits, hybridActiveAtRecall);
 
 
-      // Lean projection (#50): the hook CLI only consumes lean fields, so we
-      // never need to send matched_terms/mode/hop/topic_path over the wire.
-      // Telemetry above already logged the full hits. #148: the hook scope
-      // filter needs the one extra bit `matched_recall_when` (kept here only,
-      // not in the shared toLeanHit — MCP recall stays the documented lean shape).
-      // #249: the honesty flag has to reach THIS path above all. /hook/recall
-      // writes <recall-hints> into the agent's context on every Bash and Edit,
-      // and without the flag the formatters label pure noise as "Strong
-      // matches" — the daemon computed the contradicting signal and simply did
-      // not send it. Same computation as the MCP path, from the same module.
-      // 20.08.: reflex-wired memories (recall_mode "reflex") from the deeper
-      // candidate pool that the top-k cut left out. The prompt lane's semantic
-      // reflex filter only ever saw `hits`; on 20.08. the wired convention sat
-      // at pool rank 6 behind a k of 5 and never reached the agent. The pool is
-      // the user's explicit wiring — two memories — so scanning it is cheap,
-      // and the lane keeps every floor and dedup it already applies.
-      // #421: derselbe Schritt, den der MCP-`recallHandler` fährt
-      // (`recall-pipeline.ts`). Floor 0: Die Lanes wenden ihren eigenen an.
-      const reflexHits = collectPoolReflexHits(candidatePool, new Set(hits.map((h) => h.id)), vault);
-      // recall_mode rides along only when the user wired the memory as
-      // reflex: the prompt lane's mode-"none" semantic filter keys on it
-      // (19.08. incident — see prompt-lane.ts).
-      const leanHits = hits.map((h) => ({
-        ...toLeanHit(h),
-        matched_recall_when: h.matched_recall_when ?? false,
-        // P0: Der Cross-Scope-Bypass in den Lanes braucht mehr als das Flag —
-        // ein einzelnes häufiges Wort in einer fremden Triggerphrase ist
-        // keine Absicht. Nur gesetzt, wenn überhaupt ein Trigger-Term traf.
-        ...(h.anchor_strength ? { anchor_strength: h.anchor_strength } : {}),
-        ...(vault.get(h.id)?.fm.recall_mode === "reflex" ? { recall_mode: "reflex" as const } : {}),
-      }));
-      // #487: Das Kontextbudget des AUFRUFS. Gestrichen wird von hinten, und
-      // die Streichliste ist [reflex …, gerankt …]: zuerst fallen die
-      // gerankten Treffer (der schwächste zuerst), und erst wenn keiner mehr
-      // da ist, die `reflex_hits` (der schwächste zuerst). Sie behalten damit
-      // den Vorrang, der ihnen als ausdrückliche Verdrahtung des Nutzers
-      // zusteht — aber sie sind nicht mehr vom Budget ausgenommen. Waren sie
-      // es (bis P1/#487), stand bei `max_tokens: 1` und 32 reflex-Memories ein
-      // Payload von 2352 Token auf der Leitung: ein Budget mit unbegrenzter
-      // Ausnahme ist kein Budget. Gemessen wird wie überall das ganze Payload.
-      // Ohne `max_tokens` (0) baut die Funktion einmal und die Antwort ist
-      // byte-gleich zu der vor #487.
-      const vaultMissing = missingVaultReason(vault.root);
-      const budgeted = fitRecallWithReflexToBudget(leanHits, reflexHits, maxTokens, (emittedHits, emittedReflex, droppedByBudget) => ({
-        hits: emittedHits,
-        ...(emittedReflex.length > 0 ? { reflex_hits: emittedReflex } : {}),
-        vault_size: vault.size(),
-        // The MCP forwarder's recall path is this stream, not recallHandler.
-        ...(vaultMissing ? { vault_missing: vaultMissing } : {}),
-        latency_ms: totalLatencyMs,
-        recall_id: recallId,
-        ...(weakResult ? { weak_result: true } : {}),
-        // #230: the stricter half travels the same wire. A strict subset of
-        // weak_result, so a consumer that only knows weak_result is unaffected.
-        ...(noHome ? { no_home: true } : {}),
-        // #302: whether RRF ran at all. Without a vector arm there is no
-        // fusion and no ceiling — raw BM25 is unbounded (top hits into six
-        // digits on a real vault), so the 30/100 cuts describe nothing there.
-        // The formatter has to say so rather than band an unbounded scale.
-        // Same shape as the flags above: present only when it has something
-        // to say, computed once from the value the honesty flags already use.
-        // P0: derselbe explizite Score-Raum wie auf dem MCP-Pfad. `unfused`
-        // sagt es indirekt, aber ein Konsument soll das Feld lesen können,
-        // statt aus einer Abwesenheit zu schließen.
-        // Codex-Gegenreview zum Confidence-Gate: Kennt der Vault den
-        // Projektnamen überhaupt? `detectProject()` liefert für
-        // `/workspace/packages/core` das Projekt "packages" — mit voller
-        // Zuversicht, denn ein Pfadsegment hieß "workspace". Ein scharfer
-        // Scope-Filter würde damit das ganze eigene Gedächtnis entfernen.
-        // Die Frage ist nur HIER beantwortbar, wo der Vault liegt; die Lanes
-        // sehen ihn nicht. Früher Abbruch beim ersten Treffer: der Normalfall
-        // (eigenes Projekt) kostet nichts, nur der seltene Fehlerfall läuft
-        // einmal durch.
-        ...(hookProject !== null ? { project_known: vaultKnowsProject(vault, hookProject) } : {}),
-        score_kind: hybridActiveAtRecall ? ("rrf" as const) : ("bm25" as const),
-        // Dieselbe Angabe wie auf dem MCP-Pfad: `score_kind` allein macht zwei
-        // Zahlen nicht vergleichbar, die Armmenge tut es. Der Hook-Pfad kennt
-        // keine Commons — hier sind es immer die persönlichen Arme, und genau
-        // das muss auf der Leitung stehen, statt vom Konsumenten geraten zu
-        // werden.
-        score_arms: armsOf({ hybridActive: hybridActiveAtRecall, commonsFused: false }),
-        // Keine Formelversion auf einer rohen Skala — siehe recall-handler.ts.
-        ...(hybridActiveAtRecall ? { score_version: SCORE_VERSION } : { unfused: true }),
-        // #342: name the reason on the wire too. `unfused` says the bands do
-        // not apply; this says why, so a slow machine degrading on every call
-        // is distinguishable from embeddings being off — from the response
-        // alone, without correlating against the telemetry log.
-        ...(degradedReason ? { degraded: degradedReason } : {}),
-        // #487: nur gesetzt, wenn das Budget wirklich gestrichen hat.
-        ...(droppedByBudget > 0
-          ? { truncated_by_budget: true, dropped_by_budget: droppedByBudget }
-          : {}),
-      }));
+      const budgeted = assembleHookRecallPayload({
+        hits, candidatePool, vault, maxTokens, totalLatencyMs, recallId, weakResult, noHome,
+        hookProject, hybridActiveAtRecall, degradedReason,
+      });
       const payload = budgeted.payload;
       // #487: Gemessen wird nur, wo ein Budget galt — die Serialisierung
       // kostet, und dieser Endpunkt läuft an jedem Bash und jedem Edit.

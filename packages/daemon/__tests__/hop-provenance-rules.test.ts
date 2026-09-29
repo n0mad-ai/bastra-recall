@@ -100,7 +100,7 @@ test("auch die Hook-Antwort projiziert den Hop nicht", () => {
   // Zusatzfeldern. Kippt das, hinge der öffentliche Vertrag an einer
   // Spread-Zeile, die niemand mehr liest.
   const here = dirname(fileURLToPath(import.meta.url));
-  const src = readFileSync(join(here, "..", "src", "http-hook-routes.ts"), "utf8");
+  const src = readFileSync(join(here, "..", "src", "hook-recall-payload.ts"), "utf8");
   // #487: Die Projektion steht seit dem Budget in `leanHits` — sie muss VOR
   // dem Payload stehen, weil das Budget die fertigen Treffer beschneidet.
   const start = src.indexOf("const leanHits = hits.map(");
