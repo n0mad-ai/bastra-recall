@@ -22,8 +22,15 @@
  * Version der Score-FORMEL. Zu erhöhen, sobald DIESELBE Armmenge eine andere
  * Zahl ergibt — sonst vergleicht ein Konsument über die Versionsgrenze hinweg
  * zwei Werte, die nichts miteinander zu tun haben.
+ *
+ * `rrf-2` (v1.0.1, #641): der Dense-Arm wiegt per Default 1.5
+ * (`BASTRA_RRF_VECTOR_WEIGHT`). Rang 1 in beiden Armen bleibt 163.934, aber
+ * ein einarmiger Rang 1 liegt jetzt bei ≈ 65.6 (nur BM25) bzw. ≈ 98.4 (nur
+ * Vektor) statt beide bei 81.967 (`rrf-1`). Die Version benennt die
+ * ausgelieferte Default-Formel; wer `BASTRA_RRF_VECTOR_WEIGHT=1` setzt, bekommt
+ * `rrf-1`-Zahlen unter dem Label `rrf-2`.
  */
-export const SCORE_VERSION = "rrf-1";
+export const SCORE_VERSION = "rrf-2";
 
 /**
  * Die Armmenge, aus der der ausgelieferte Score gebildet wurde, sortiert.

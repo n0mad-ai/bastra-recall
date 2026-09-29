@@ -30,6 +30,7 @@ import {
   EmbeddingIndex,
   type EmbeddingProvider,
   type RecallHit,
+  fuseRRF,
 } from "@bastra-recall/core";
 import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { mergeBatchResults } from "../src/recall-batch.js";
@@ -39,6 +40,7 @@ import { recallHandler, type ToolDeps } from "../src/tool-handlers.js";
 import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
 import { extractCandidatePools, type TelemetryEvent } from "../src/learned-recall/harvest.js";
+import { SCORE_VERSION } from "../src/score-space.js";
 
 // #362: these tests measure the dense arm on short hook queries ("ANCHORWORD");
 // the query router, live by default since v1.0.1, would skip that arm.
@@ -692,4 +694,12 @@ test("Befund P1 — fehlende Felder heißen unbekannt, nicht gleich (fail-closed
     }),
   ]);
   assert.equal(ver!.topScore, 80);
+});
+
+test("#641: the dense-arm weight 1.5 changed the one-armed numbers, so the formula version is rrf-2", () => {
+  assert.equal(SCORE_VERSION, "rrf-2");
+  const bm25Only = fuseRRF(["solo"], []).get("solo")!.score * RRF_SCALE;
+  const denseOnly = fuseRRF([], ["solo"]).get("solo")!.score * RRF_SCALE;
+  assert.equal(Math.round(bm25Only * 10) / 10, 65.6, "the anchor the recall tool description names");
+  assert.equal(Math.round(denseOnly * 10) / 10, 98.4, "the anchor the recall tool description names");
 });
