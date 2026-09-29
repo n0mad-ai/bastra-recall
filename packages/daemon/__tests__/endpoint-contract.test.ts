@@ -444,7 +444,7 @@ test("#531 no CLI surface carries its own copy of the daemon address", async () 
     "cli/helpers.ts", "cli/status.ts", "cli/panel.ts", "cli/map-cmd.ts",
     "cli/update-hint.ts", "cli/daemon-processes.ts", "cli/daemon-start.ts",
     "cli/embeddings-cmd.ts", "cli/autostart.ts", "cli/config-cmd.ts",
-    "cli/adapters/claude-code.ts", "cli/adapters/claude-desktop.ts",
+    "cli/adapters/claude-code.ts", "cli/adapters/claude-code-hooks.ts", "cli/adapters/claude-desktop.ts",
     "cli/adapters/cursor.ts", "cli/adapters/codex.ts",
     "thin-client.ts", "hook.ts", "prompt-hook.ts", "bridge.ts",
     "forwarder-daemon-client.ts",
