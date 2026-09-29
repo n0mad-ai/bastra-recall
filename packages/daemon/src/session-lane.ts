@@ -33,19 +33,13 @@
 // #305: subpath leafs, never the core barrel — measured +40ms of process
 // start against +0.8ms for the three leafs, on a fresh spawn per event.
 import { detectProjectDetailed } from "@bastra-recall/core/topics";
-import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
 import { projectForLane } from "./scope-filter.js";
-import { bandHits, requiredHeadline, unfusedHeadline, CANDIDATES_ONLY_NOTICE, type UnfusedReason } from "./band-wording.js";
 import { isUnfused } from "./hook-recall-response.js";
-import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
-import { appendFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { envFirst, envInt } from "./env.js";
+import { envInt } from "./env.js";
 import { effectiveUpdateMode, getDocsLanguage, getDocsMode, getPrimaryLanguage } from "./settings.js";
 import { formatDokuBlock, isDokuProject } from "./doku-block.js";
 import { buildOnboardingBlock } from "./session-onboarding-block.js";
-import { defaultLogDir } from "./telemetry.js";
 import { recordBudgetShadow, resetBudgetOnSource } from "./session-budget.js";
 import { spawnStagedUpdate, stagedToday, markStagedToday } from "./update-check.js";
 import { formatBlockedUpdate, readBlockedUpdate } from "./update-blocked.js";
@@ -54,19 +48,23 @@ import { formatPendingRelay, isCountableSessionStart, takePendingRelay } from ".
 import { bumpShown, clearShown, mutateSessionState, takeConstantCadence } from "./session-state.js";
 import { formatPinnedBlock, dropPinnedFromRanked, type PinnedFloorLean } from "./pinned-block.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookClientEvidence } from "./hook-surface.js";
-import { dimensionsFrom } from "./telemetry-dimensions.js";
-import type { Residency, ResidencySource, WarmupCoordinator } from "./embedding-warmup.js";
+import { hookCaller, hookClient, hookAgent, hookClientEvidence } from "./hook-surface.js";
+import type { Residency, WarmupCoordinator } from "./embedding-warmup.js";
 // #493: die datensparsame Kennung dieses Hosts — Tor 5 aus #492.
 import { hostProfileId } from "./host-profile.js";
 import {
   postSessionContext, probeHealth,
-  type ConventionLean, type RecallHit, type RecallResponse, type SessionContextResponse,
+  type ConventionLean, type RecallResponse, type SessionContextResponse,
 } from "./session-hook-http.js";
+import { SCORE_FLOOR, formatBlock, formatTaxonomyBlock, mergeSessionHits } from "./session-format.js";
+import { tokensByPart, writeTelemetry, type SessionHookTelemetry } from "./session-lane-telemetry.js";
+
+// #680: merging/formatting and the telemetry row live in their own modules;
+// the lane's public surface is re-exported unchanged.
+export { formatBlock, mergeSessionHits } from "./session-format.js";
+export { SESSION_CONTEXT_PARTS, tokensByPart, type SessionContextPart } from "./session-lane-telemetry.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 500, "NEXUS_HOOK_TIMEOUT_MS");
-const HOOK_VERSION = "0.3.0";
-const SCORE_FLOOR = 30;
 
 /**
  * Deadline des dichten Arms für DIESE Lane, in ms (Daniel, 07.09.2026).
@@ -141,7 +139,6 @@ const SESSION_HOOK_BUDGET_MS = 500;
  * (`unfusedHeadline(..., "cold-model")`). Ab dem zweiten Recall derselben
  * Sitzung ist fusioniert — unverändert die Zusage aus #490.
  */
-const MUST_LOAD_SCORE = 100;
 const TOTAL_HINTS_CAP = 7;
 
 export interface SessionPayload {
@@ -739,278 +736,6 @@ export async function runSessionLane(
   return out;
 }
 
-/**
- * Dedup + Reihenfolge über die (bis zu drei) scope-gefilterten Antworten.
- *
- * P0: `unfused` entscheidet, ob überhaupt gerechnet werden darf. Fusioniert
- * bleibt alles wie bisher — gemeinsame Skala, Floor, absteigend sortiert.
- * Unfusioniert stammen die Zahlen aus einer offenen Skala und aus getrennten
- * Aufrufen: 405585 schlägt 160 immer, ohne besser zu sein. Dann wird REIHUM
- * genommen, jede Query behält ihren eigenen Rang, und der Floor entfällt, weil
- * 30 auf dieser Skala keinen Punkt markiert.
- */
-export function mergeSessionHits(
-  responses: Array<{ scope: string; resp: { hits: RecallHit[] } | null }>,
-  unfused: boolean,
-  floor: number,
-): RecallHit[] {
-  const seen = new Set<string>();
-  const lists = responses.filter((r) => r.resp !== null).map((r) => r.resp!.hits);
-
-  if (unfused) {
-    const merged: RecallHit[] = [];
-    const depth = Math.max(0, ...lists.map((l) => l.length));
-    for (let i = 0; i < depth; i++) {
-      for (const list of lists) {
-        const h = list[i];
-        if (!h || seen.has(h.id)) continue;
-        seen.add(h.id);
-        merged.push(h);
-      }
-    }
-    return merged;
-  }
-
-  const merged: RecallHit[] = [];
-  for (const list of lists) {
-    for (const h of list) {
-      if (h.score < floor) continue;
-      if (seen.has(h.id)) continue;
-      seen.add(h.id);
-      merged.push(h);
-    }
-  }
-  merged.sort((a, b) => b.score - a.score);
-  return merged;
-}
-
-export function formatBlock(
-  hits: RecallHit[],
-  project: string | null,
-  source: string | null,
-  weak = false,
-  unfused = false,
-  surface = "claude-code",
-  /** #490: WARUM einarmig. `cold-model` nur, wenn der Koordinator das Modell
-   *  als nicht resident gemeldet hat — sonst bleibt es bei der alten Aussage. */
-  unfusedReason: UnfusedReason = "off",
-): string {
-  const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
-  const srcAttr = source ? ` source="${escapeAttr(source)}"` : "";
-  const head = `<session-context surface="${escapeAttr(surface)}"${projAttr}${srcAttr}>`;
-  const tail = `</session-context>`;
-
-  // P0: zentrale Bandzuweisung. Ohne Fusion vergibt sie kein Band — die Cuts
-  // 30/100 sind Punkte auf der Rang-Summen-Skala und selektieren auf rohen
-  // BM25-Werten nichts.
-  const { required, optional, unbanded } = bandHits(hits, MUST_LOAD_SCORE, unfused);
-  const sections: string[] = [];
-
-  if (unbanded.length > 0) {
-    sections.push(
-      `${unfusedHeadline(`the ${project ?? "current"} session`, unfusedReason)} ${CANDIDATES_ONLY_NOTICE} ` +
-        `load_memory(id) the ones relevant to what the user actually asks for. ` +
-        `These are hints, not obligations.`,
-    );
-    for (const h of unbanded) sections.push(formatHintLine(h, true));
-  }
-
-  if (required.length > 0) {
-    // #249: see hook.ts — the honesty flag decides how this block is framed.
-    sections.push(
-      weak
-        ? `Ranked matches, but NONE anchors lexically (no trigger phrase, no title term matched) — on the hybrid path a high score is rank-1-of-nothing. Treat these as probably-not-relevant unless one obviously fits; do not load them just because they are listed.`
-        : `${requiredHeadline(`the ${project ?? "current"} session`, MUST_LOAD_SCORE, { k: RRF_K, scale: RRF_SCALE })} ` +
-          `${CANDIDATES_ONLY_NOTICE} ` +
-          `load_memory(id) the ones relevant to what the user actually asks for. ` +
-          `These are hints, not obligations: load only what fits, don't batch-load the list, ` +
-          `and if the user requested a specific number or scope, honor that over this list.`,
-    );
-    for (const h of required) sections.push(formatHintLine(h));
-  }
-
-  if (optional.length > 0) {
-    if (required.length > 0) sections.push("");
-    sections.push(
-      `OPTIONAL (score ${SCORE_FLOOR}–${MUST_LOAD_SCORE - 1}) — load only when the user prompt directly touches the topic:`,
-    );
-    for (const h of optional) sections.push(formatHintLine(h));
-  }
-
-  return [head, HINT_FRAME_NOTE, stripFenceMarkers(sections.join("\n")), tail].join("\n");
-}
-
-function formatHintLine(h: RecallHit, hideScore = false): string {
-  const summary = h.summary.length > 220 ? h.summary.slice(0, 217) + "…" : h.summary;
-  // P0: Auf der unfused Skala ist die Zahl weder mit den Bändern noch zwischen
-  // zwei Aufrufen vergleichbar — gleiche Wahl wie in prompt-lane.ts.
-  return hideScore
-    ? `- ${h.id} (${h.type}/${h.scope}): ${summary}`
-    : `- ${h.id} (${h.type}/${h.scope}, score ${Math.round(h.score)}): ${summary}`;
-}
-
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-/**
- * Konventions-Block (#66). Kompakt: Id + Titel pro Konvention, dazu die
- * Anweisung, sie beim Speichern zu BEFOLGEN (Details via load_memory). Cap 6 —
- * mehr Konventionen heißt das Vault braucht eher eine Meta-Aufräumrunde als
- * mehr Kontext. #509: keine Summary mehr — der Rahmen verweist ohnehin auf
- * load_memory(id), und die Summaries waren gemessen 440 von 605 Tokens der
- * sechs Zeilen (Vault des Owners, 28.09.2026).
- */
-function formatTaxonomyBlock(conventions: ConventionLean[]): string {
-  if (conventions.length === 0) return "";
-  // #152: anti-spoof strip only — deliberately NO reference-only note here,
-  // conventions are meant to be BINDING instructions.
-  const lines = conventions
-    .slice(0, 6)
-    .map((c) => stripFenceMarkers(`- [${c.id}] ${c.title}`));
-  return (
-    `\n<vault-taxonomy>\n` +
-    `Self-learned vault conventions — BINDING when saving memories in these clusters. ` +
-    `Follow the convention's folder/topic_path/tags exactly (load_memory(id) for the full rule) ` +
-    `instead of inventing variant tags that fragment recall:\n` +
-    lines.join("\n") +
-    // #232: the gate carries the read-hint for its own reference file. Applying
-    // a listed convention needs nothing extra; establishing a new one does, and
-    // this block is the only moment that distinction is visible.
-    `\nSaving into a recurring cluster that NO convention above covers is the ` +
-    `establish case — read the skill's taxonomy.md before inventing a home for it.` +
-    `\n</vault-taxonomy>`
-  );
-}
-
 // spawnStagedUpdate / stagedToday / markStagedToday wohnen seit #81 in
 // update-check.ts — der Daemon-Self-Update-Pfad teilt denselben Tages-
 // Throttle, damit Hook und Daemon nicht am selben Tag doppelt stagen.
-
-interface SessionHookTelemetry {
-  /** #356: the Claude Code session this call belongs to — the payload's
-   *  session_id, so per-session aggregation is possible. A synthetic UUID is
-   *  the fallback only when the payload carried none. */
-  session_id?: string | null;
-  /** #507: die aufrufende Oberfläche — NUR wenn belegt (`hookClientEvidence`),
-   *  nie der surface-Default. */
-  client: HookClientEvidence;
-  /** Hauptthread oder Subagent (`hookAgent`) — Telemetrie-Dimension `agent`;
-   *  `null` ohne Beleg (Codex), dann fehlt die Spalte. */
-  agent: HookAgent | null;
-  source: string | null;
-  project: string | null;
-  queries: number;
-  daemon_url: string;
-  daemon_reachable: boolean;
-  hint_count: number;
-  convention_count: number;
-  /** Gepinnte Floor-Einträge im <pinned-memories>-Block (#141/#142). */
-  pinned_count: number;
-  top_score: number | null;
-  latency_ms_total: number;
-  /** Geschätzte Tokens des injizierten Session-Kontexts (#72). */
-  hint_tokens_est: number;
-  /** #462: dieselbe Schätzung je Teil des Blocks (pinned, recalls, taxonomy,
-   *  language, care, import, onboarding, update, patch, pending, doku). Die
-   *  Teile runden einzeln, ihre Summe kann `hint_tokens_est` um wenige Tokens
-   *  übersteigen. Fehlt auf Zeilen vor #462. */
-  hint_tokens_by_part: Record<SessionContextPart, number>;
-  hinted_ids: string[];
-  /** #354: Memory-Typ je `hinted_ids`-Eintrag, gleiche Reihenfolge. */
-  hinted_types: string[];
-  /** #513: Einträge je Relay-Spur und die Größe ihres gerenderten Blocks in
-   *  Zeichen. Fehlt auf Zeilen vor #513. */
-  pending_lanes: { recency: number; trends: number; recency_chars: number; trends_chars: number };
-  /** #675: after-session harvest blocks this start delivered — the join key
-   *  for the harvest save rate (`bastra logs --stats`). Absent before #675. */
-  pending_harvest?: number;
-  /** #509: which session-start constants (taxonomy, doku, language) were left
-   *  out because this session's context already carries the identical text.
-   *  Fehlt auf Zeilen vor #509. */
-  constants_skipped: string[];
-  status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error";
-  error: string | null;
-  /** #342/Deep-Dive 07.09.2026: welcher Arm ausgefallen ist — `vector-arm-timeout`
-   *  oder `vector-arm-empty`. `null` heißt „keiner ist ausgefallen", NICHT
-   *  „fusioniert": dafür ist `score_unfused` da. Fehlt auf Zeilen davor. */
-  degraded_reason: string | null;
-  /** Lagen die servierten Scores auf der rohen BM25-Skala statt auf der
-   *  fusionierten? Derselbe fail-closed berechnete Wert, mit dem die Lane den
-   *  Block bandet — die Telemetrie soll denselben Satz erzählen wie der Text,
-   *  den der Nutzer sieht. */
-  score_unfused: boolean;
-  /** #490: Lag das Embedding-Modell beim Sitzungsstart im Speicher? `cold`
-   *  und `unknown` heißen: Der dichte Arm bekam nur COLD_VECTOR_DEADLINE_MS
-   *  und der Warmup lief daneben an. `null` = kein Koordinator (keine
-   *  Embeddings). Fehlt auf Zeilen vor #490. */
-  embedding_residency: Residency | null;
-  /** #493: Woher die Residenz stammt und ob sie geschätzt ist — siehe
-   *  `ResidencyReading`. `null` = kein Koordinator. Fehlt auf Zeilen davor. */
-  embedding_residency_source: ResidencySource | null;
-  embedding_residency_estimated: boolean | null;
-  /** #493: Die Klammer, unter der die `hook_recall`-Events DIESES Starts
-   *  stehen. Verbindet dieses Ereignis mit seinen Teil-Recalls. */
-  session_start_call_id: string;
-  /** #493: die datensparsame Kennung dieses Hosts — Tor 5 aus #492. */
-  host_profile_id: string;
-}
-
-export const SESSION_CONTEXT_PARTS = [
-  "pinned",
-  "recalls",
-  "taxonomy",
-  "language",
-  "care",
-  "import",
-  "onboarding",
-  "update",
-  "patch",
-  "pending",
-  "doku",
-] as const;
-export type SessionContextPart = (typeof SESSION_CONTEXT_PARTS)[number];
-
-/**
- * #462: Token-Schätzung je Teil des Session-Start-Blocks — derselbe chars/4-
- * Schätzer wie `hint_tokens_est`, auf jeden Teil einzeln. 152 Starts trugen
- * 14,5 % der gesamten Kontextsteuer, und niemand konnte sagen, welcher der
- * zehn Teile die 2.344 Tokens pro Start ausgibt. Erst messen, dann über die
- * Kadenz entscheiden — die Entscheidung bleibt beim Nutzer, nicht hier.
- * Fehlende Teile zählen 0; ein leerer Eingabe-Record heißt „nichts injiziert".
- */
-export function tokensByPart(parts: Partial<Record<SessionContextPart, string>>): Record<SessionContextPart, number> {
-  const out = {} as Record<SessionContextPart, number>;
-  for (const name of SESSION_CONTEXT_PARTS) {
-    const text = parts[name] ?? "";
-    out[name] = text.length === 0 ? 0 : Math.ceil(text.trim().length / 4);
-  }
-  return out;
-}
-
-async function writeTelemetry(payload: SessionHookTelemetry): Promise<void> {
-  if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
-  try {
-    const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();
-    await mkdir(logDir, { recursive: true });
-    const ts = new Date().toISOString();
-    // The session_id from the Claude payload is real session state — fall
-    // back to a synthetic UUID only if no payload session was given (#356).
-    const { session_id: payloadSessionId, client, agent, ...rest } = payload;
-    const event = {
-      kind: "session_hook_call",
-      ts,
-      session_id: payloadSessionId ?? randomUUID(),
-      hook_version: HOOK_VERSION,
-      ...rest,
-      // #507: session is this lane's own hook_source — it never varies per
-      // call. Distinct from "session-context", the shared assembler's own
-      // marker for its sub-calls (session-assembler.ts).
-      dimensions: dimensionsFrom({ client, hook_source: "session", session_id: payloadSessionId, agent }),
-    };
-    const file = join(logDir, `events-${ts.slice(0, 10)}.jsonl`);
-    await appendFile(file, JSON.stringify(event) + "\n", "utf8");
-  } catch {
-    // Telemetry must never break the hook.
-  }
-}

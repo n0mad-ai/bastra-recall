@@ -62,9 +62,10 @@ test("gated subsystems name their reference file inside the gate signal", async 
   assert.match(adoption, /intake\.md/);
 
   // #369: the block lives in the daemon-side lane now — session-hook.ts is a
-  // thin client and carries no prompt text at all.
+  // thin client and carries no prompt text at all. #680: its formatter sits
+  // in session-format.ts.
   const sessionLane = await readFile(
-    join(dirname(fileURLToPath(import.meta.url)), "..", "src", "session-lane.ts"),
+    join(dirname(fileURLToPath(import.meta.url)), "..", "src", "session-format.ts"),
     "utf8",
   );
   const taxonomyBlock = sessionLane.slice(

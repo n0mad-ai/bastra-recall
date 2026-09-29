@@ -549,7 +549,7 @@ test("#305: the fold's client/daemon split matches what the sources actually sta
       `${rel} writes telemetry from the hook process; its version must say so, or its rows count twice`,
     );
   }
-  for (const rel of ["src/prompt-lane-telemetry.ts", "src/write-lane.ts", "src/todo-lane.ts", "src/session-lane.ts"]) {
+  for (const rel of ["src/prompt-lane-telemetry.ts", "src/write-lane.ts", "src/todo-lane.ts", "src/session-lane-telemetry.ts"]) {
     assert.doesNotMatch(
       await versionOf(rel),
       /-(thin|stub)$/,
