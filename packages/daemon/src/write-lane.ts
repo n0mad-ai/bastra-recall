@@ -17,16 +17,10 @@
  * loopback self-call (the hook_call telemetry series keeps measuring the same
  * thing mid-migration), session state stays on the file bus.
  */
-import { appendFile, mkdir } from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { request } from "node:http";
-import { randomUUID } from "node:crypto";
 import { detectTopics, extractContentExcerpt } from "@bastra-recall/core";
-import { RRF_K, RRF_SCALE } from "@bastra-recall/core/rrf";
-import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
-import { requiredHeadline, unfusedHeadline, unfusedReasonFor, CANDIDATES_ONLY_NOTICE } from "./band-wording.js";
-import { envFirst, envInt } from "./env.js";
-import { defaultLogDir } from "./telemetry.js";
+import { envInt } from "./env.js";
 import { recordBudgetShadow } from "./session-budget.js";
 import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane } from "./scope-filter.js";
 import { fileSizeNote } from "./file-size-check.js";
@@ -37,8 +31,7 @@ import { codeGraphCache, repoRelative } from "./code-graph/dependents-block.js";
 import { logDeliveredBlock } from "./code-delivered-telemetry.js";
 import { memoryLocationNote } from "./memory-location.js";
 import { reportHinted } from "./hook-hinted.js";
-import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookAgent, type HookCaller, type HookClientEvidence } from "./hook-surface.js";
-import { dimensionsFrom } from "./telemetry-dimensions.js";
+import { hookCaller, hookClient, hookAgent, hookClientEvidence, type HookCaller } from "./hook-surface.js";
 import {
   formatCompactHint,
   isBindingAnchored,
@@ -61,15 +54,17 @@ import {
   type ReadonlySessionState,
   type SessionState,
 } from "./session-state.js";
+import { MUST_LOAD_SCORE, formatHintBlock, type RecallHit } from "./write-format.js";
+import { writeTelemetry, type HookStatus } from "./write-lane-telemetry.js";
+
+// #680: formatting and the telemetry row live in their own modules; the lane's
+// public surface is re-exported unchanged.
+export { formatHintBlock } from "./write-format.js";
 
 // 600ms — measured rationale in the original hook header (12,966 calls,
 // median 60ms, p90 225ms, 6.2% timeouts at the old 250ms budget).
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 600, "NEXUS_HOOK_TIMEOUT_MS");
-const HOOK_VERSION = "0.4.0"; // 0.4.0 = daemon-side lane (#343)
 const SCORE_FLOOR = envInt("BASTRA_RECALL_FLOOR", 30); // mirror SKILL.md: <30 is noise
-// Hits at/above this are non-negotiable loads. #9 Stage C: env-tunable so we
-// can lift the REQUIRED band from telemetry without a rebuild.
-const MUST_LOAD_SCORE = envInt("BASTRA_MUST_LOAD_SCORE", 100);
 // #161: backoff source key — write-edit hints back off independently of the
 // other hook sources (bash-tripwire, bash-fail, prompt-lookup, todo-plan).
 const BACKOFF_SOURCE = "write-edit";
@@ -80,21 +75,6 @@ export interface WriteHookPayload {
   hook_event_name?: string;
   tool_name?: string;
   tool_input?: Record<string, unknown>;
-}
-
-interface RecallHit {
-  id: string;
-  title: string;
-  type: string;
-  scope: string;
-  summary: string;
-  score: number;
-  /** #148: matchte der Hit auf seinem hand-geschriebenen `recall_when`?
-   *  Lässt starke, absichtliche Cross-Scope-Hits durch den #110-Filter. */
-  matched_recall_when?: boolean;
-  /** P0: Tragfähigkeit dieses Ankers — der Cross-Scope-Bypass verlangt
-   *  `"strong"` (zwei exakte Trigger-Terme oder einen seltenen). */
-  anchor_strength?: "strong" | "weak";
 }
 
 interface RecallResponse {
@@ -117,15 +97,6 @@ interface RecallResponse {
    *  `vector-arm-error` | `vector-arm-empty`; ohne Feld gab es keinen Arm. */
   degraded?: string;
 }
-
-type HookStatus =
-  | "ok"
-  | "no-hits"
-  | "skipped"
-  | "suppressed"
-  | "daemon-unreachable"
-  | "timeout"
-  | "error";
 
 const SUPPORTED_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"]);
 
@@ -592,87 +563,6 @@ export async function runWriteLane(
   return stdout;
 }
 
-// ─── formatting ─────────────────────────────────────────────────────────────
-
-function formatHintLine(h: RecallHit, hideScore = false): string {
-  // Truncate summary to keep total payload small.
-  const summary = h.summary.length > 220 ? h.summary.slice(0, 217) + "…" : h.summary;
-  // Auf der unfused Skala ist die Zahl weder mit den Bändern noch zwischen
-  // zwei Aufrufen vergleichbar — dieselbe Regel wie in den anderen Lanes.
-  return hideScore
-    ? `- ${h.id} (${h.type}): ${summary}`
-    : `- ${h.id} (${h.type}, score ${Math.round(h.score)}): ${summary}`;
-}
-
-export function formatHintBlock(
-  required: RecallHit[],
-  optional: RecallHit[],
-  project: string | null,
-  weak = false,
-  noHome = false,
-  unfused = false,
-  surface = "claude-code",
-  // #565: der `degraded`-Grund der Antwort — ohne ihn behauptete der Block
-  // „semantic search is off", wo der Arm lief und nur diesen Aufruf nicht
-  // bediente.
-  degraded?: string,
-): string {
-  const projAttr = project ? ` project="${escapeAttr(project)}"` : "";
-  const head = `<recall-hints surface="${escapeAttr(surface)}"${projAttr}>`;
-  const tail = `</recall-hints>`;
-  const sections: string[] = [];
-
-  if (required.length > 0) {
-    // #249: on the hybrid path a top score is high BY CONSTRUCTION — a list
-    // always has a first element. Calling that "strong" when nothing lexically
-    // anchored is the defect this issue is about: the daemon knows, and used to
-    // keep it to itself. Annotated rather than omitted, so the agent still sees
-    // that a lookup happened and came up empty instead of silently getting less.
-    sections.push(
-      noHome
-        ? `A lookup ran for what you're about to do and this vault has NO memory of ` +
-          `it — nothing anchored lexically, and the ranking found no near neighbour ` +
-          `either. The lines below are the least-bad rows of an empty result. Treat ` +
-          `this as "not written down yet", not as weak evidence, and do not load them.`
-        : weak
-        ? `Ranked matches for what you're about to do — but NONE of them anchors ` +
-          `lexically (no trigger phrase, no title term matched). On the hybrid path a ` +
-          `high score is rank-1-of-nothing, so treat these as "probably not relevant" ` +
-          `unless one obviously fits. Do not load them just because they are listed.`
-        : unfused
-        ? `${unfusedHeadline("what you're about to do", unfusedReasonFor(degraded))} ` +
-          `load_memory(id) the ones that bear on this edit.`
-        : `${requiredHeadline("what you're about to do", MUST_LOAD_SCORE, { k: RRF_K, scale: RRF_SCALE })} ` +
-          `${CANDIDATES_ONLY_NOTICE} load_memory(id) the ones that bear on this edit. ` +
-          `Hints, not obligations: load only what fits, don't batch-load the list.`,
-    );
-    for (const h of required) sections.push(formatHintLine(h, unfused));
-  }
-
-  if (optional.length > 0) {
-    if (required.length > 0) sections.push("");
-    sections.push(
-      unfused
-        ? `FURTHER DOWN the same lexical ranking — load only if the title/summary directly relates to the pending change:`
-        : // #302: the honest reading of this band. Either one path only — such
-          // a hit can never clear MUST_LOAD however well it ranks, since it
-          // scores half of a two-armed hit at the same rank — or both paths,
-          // but further down than the REQUIRED band demands.
-          `OPTIONAL — found by ONE search path only, or by both but ranked lower. ` +
-          `Load only if the title/summary directly relates to the pending change:`,
-    );
-    for (const h of optional) sections.push(formatHintLine(h, unfused));
-  }
-
-  // #152: reference-only frame + anti-spoof — vault-derived text (titles,
-  // summaries) must not carry marker fragments that break out of the block.
-  return [head, HINT_FRAME_NOTE, stripFenceMarkers(sections.join("\n")), tail].join("\n");
-}
-
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
 // ─── loopback self-call ─────────────────────────────────────────────────────
 
 /** #445: die Identitätsfelder aus #263 kommen aus `HookCaller` — siehe todo-lane.ts. */
@@ -737,111 +627,6 @@ function postRecall(
     req.write(payload);
     req.end();
   });
-}
-
-// ─── telemetry ──────────────────────────────────────────────────────────────
-
-interface HookCallTelemetry {
-  session_id: string | null;
-  /** #507: die aufrufende Oberfläche — NUR wenn belegt (`hookClientEvidence`),
-   *  nie der surface-Default. */
-  client: HookClientEvidence;
-  /** Hauptthread oder Subagent (`hookAgent`) — Telemetrie-Dimension `agent`;
-   *  `null` ohne Beleg (Codex), dann fehlt die Spalte. */
-  agent: HookAgent | null;
-  tool_name: string;
-  file_path: string | null;
-  topics: string[];
-  query_chars: number;
-  daemon_url: string;
-  daemon_reachable: boolean;
-  hint_count: number;
-  required_count: number;
-  top_score: number | null;
-  latency_ms_total: number;
-  dropped_dedup_count: number;
-  dropped_scope_count: number;
-  /** §20.5: "root-match" = echtes Repo-Wurzelsegment getroffen, "fallback" =
-   *  letztes Pfadsegment geraten (dann filtert die Lane nicht), "none" = kein
-   *  Pfad. Ohne dieses Feld ist `dropped_scope_count` nicht interpretierbar. */
-  project_confidence?: "git-root" | "root-match" | "fallback" | "none";
-  /** Der Name, gegen den verglichen wurde — null heißt: nicht gefiltert.
-   *  `project_confidence: "root-match"` allein zeigt nicht, dass irrtümlich
-   *  gegen "packages" verglichen wurde; dieses Feld zeigt es. */
-  filter_project?: string | null;
-  scope_filter_skipped?: "no-project" | "no-scope-evidence";
-  dropped_scopes?: string[];
-  /** Geschätzte Tokens des injizierten <recall-hints>-Blocks (#72). */
-  hint_tokens_est: number;
-  /** #579, Code-Awareness — fehlt, wenn kein Codeblock ausgegeben wurde.
-   *  Getrennt von `hint_tokens_est` geführt, weil die ROI-Frage lautet, was
-   *  der CODE-Kontext kostet und was er dafür an Abhängigen nennt. */
-  code_block_tokens_est?: number;
-  /** Anzahl der genannten abhängigen Dateien — die Nutzenseite. */
-  code_dependents?: number;
-  /** Der Graph lag hinter der Datei zurück, als der Block gebaut wurde. */
-  code_stale?: boolean;
-  /** #588: die im Block namentlich genannten Abhängigen, absolut — für
-   *  `dependents_block_followed_by_edit`. */
-  code_listed?: string[];
-  /** #606: `basis` je ausgegebenem Block — symbols | diff | whole_file. */
-  code_basis?: string[];
-  /** #588: die Zieldateien dieses Aufrufs, absolut, die Gegenseite des Joins. */
-  code_targets?: string[];
-  /** #579: Tokens des `affects_files`-Blocks, falls einer ausging. */
-  applies_to_tokens_est?: number;
-  /** Anzahl der zugeordneten Memories. */
-  applies_to_count?: number;
-  /** IDs, die tatsächlich emittiert wurden (#72 context-tax per memory). */
-  hinted_ids: string[];
-  /** #354: Memory-Typ je Eintrag von `hinted_ids`, gleiche Reihenfolge und
-   *  Länge. Trägt die Auswertung, die `acted_on` allein nicht leisten kann:
-   *  eine Direktive („niemals X“) wirkt, indem NICHTS passiert, erzeugt also
-   *  nie ein acted_on-Signal — ohne den Typ liest sich das in der Statistik
-   *  wie eine ungenutzte Faktenmemory und lädt zum falschen Ausmisten ein. */
-  hinted_types: string[];
-  /** #161: aufgelöster Streak der Backoff-Entscheidung dieses Events. */
-  backoff_streak: number;
-  /** #161: true, wenn der Backoff die Injektion unterdrückt hat. */
-  suppressed: boolean;
-  /** #161: Tokens des NICHT injizierten Blocks — die Sparseite der ROI. */
-  suppressed_tokens_est: number;
-  /** #621: `compact` (first-touch, one candidate) or `legacy` (BASTRA_PRETOOL_SHAPE=legacy). */
-  pretool_shape: "compact" | "legacy";
-  /** #621: why the compact shape presented or withheld a hint — `first-touch`,
-   *  `binding-anchored` (the named exception), `repeat-area`, `weak`. Absent
-   *  when there was nothing to present or the shape is legacy. */
-  hint_reason?: PretoolHintReason;
-  status: HookStatus;
-  error: string | null;
-}
-
-async function writeTelemetry(payload: HookCallTelemetry): Promise<void> {
-  if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
-  try {
-    const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();
-    await mkdir(logDir, { recursive: true });
-    const ts = new Date().toISOString();
-    // The session_id from the Claude payload is real session state — fall
-    // back to a synthetic UUID only if no payload session was given.
-    const { session_id: payloadSessionId, client, agent, ...rest } = payload;
-    const event = {
-      kind: "hook_call",
-      ts,
-      session_id: payloadSessionId ?? randomUUID(),
-      hook_version: HOOK_VERSION,
-      ...rest,
-      // #507: pre-tool is this lane's own hook_source — it never varies per
-      // call, unlike client, which the caller already resolved from the
-      // payload (`hookClient`, same value the hint block's surface attribute
-      // uses).
-      dimensions: dimensionsFrom({ client, hook_source: "pre-tool", session_id: payloadSessionId, agent }),
-    };
-    const file = join(logDir, `events-${ts.slice(0, 10)}.jsonl`);
-    await appendFile(file, JSON.stringify(event) + "\n", "utf8");
-  } catch {
-    // Telemetry must never break the lane.
-  }
 }
 
 /**
