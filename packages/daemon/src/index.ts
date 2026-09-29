@@ -43,7 +43,7 @@ import { wireBootObservers } from "./boot-observers.js";
 import { startBackgroundJobs } from "./daemon-jobs.js";
 import { embeddingStatusLine, cloudConsentNotice, type EmbeddingStatus, type EmbeddingSource } from "./embedding-status.js";
 import { cloudEmbeddingProvider } from "./embedding-cloud.js";
-import { resolveEmbeddingChoice, getCommonsEnabled, getSharedRecallEnabled, getSharedRecallLanguage, getPrimaryLanguage, resolveGenerationModel, getEvidenceGateEnabled, getExperimentConfig, getBatterySaver } from "./settings.js";
+import { resolveEmbeddingChoice, getCommonsEnabled, getSharedRecallEnabled, getSharedRecallLanguage, getSharedRecallLive, getPrimaryLanguage, resolveGenerationModel, getEvidenceGateEnabled, getExperimentConfig, getBatterySaver } from "./settings.js";
 import { batterySaverEnabled, createPowerMonitor } from "./power-source.js";
 import { daemonOrigin } from "./daemon-spawn-env.js";
 import { commonsPath, loadVerificationCounts } from "./cli/commons.js";
@@ -267,11 +267,11 @@ async function main(): Promise<void> {
   let sharedRecallLang: SupportedLanguage | null = null;
   if (await getSharedRecallEnabled()) {
     try {
-      learnedBridges = BridgePool.load(bridgesPath());
+      learnedBridges = BridgePool.load(bridgesPath(), undefined, { live: await getSharedRecallLive() });
       const lang = await getSharedRecallLanguage();
       sharedRecallLang = isSupportedLanguage(lang) ? lang : null;
       console.error(
-        `[bastra-recall] shared learned-recall: enabled (${learnedBridges.size()} bridges across ${learnedBridges.languages().join(", ") || "no"} languages, query-language ${sharedRecallLang ?? "auto — every folder"})`,
+        `[bastra-recall] shared learned-recall: enabled (${learnedBridges.size()} bridges across ${learnedBridges.languages().join(", ") || "no"} languages, query-language ${sharedRecallLang ?? "auto — every folder"}, query expansion ${learnedBridges.live ? "live" : "shadow"})`,
       );
     } catch (err) {
       console.error(`[bastra-recall] shared learned-recall: failed to load (${(err as Error).message}) — continuing without`);

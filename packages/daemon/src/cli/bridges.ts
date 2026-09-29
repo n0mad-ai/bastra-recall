@@ -27,6 +27,8 @@ import {
   setSharedRecallEnabled,
   getSharedRecallLanguage,
   setSharedRecallLanguage,
+  getSharedRecallLive,
+  setSharedRecallLive,
   clearSharedRecallLanguage,
   resolveGenerationModel,
 } from "../settings.js";
@@ -168,6 +170,26 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       }
       await setSharedRecallLanguage(lang);
       process.stdout.write(`✓ query-language override set to '${lang.toLowerCase()}'\n`);
+      return 0;
+    }
+    case "live": {
+      // Owner decision 2026-09-29: bridges widen the query only when switched
+      // on here; by default they run in shadow (logged, ranking unchanged).
+      const arg = opts.positional?.[2];
+      if (arg !== "on" && arg !== "off") {
+        const live = await getSharedRecallLive();
+        process.stdout.write(
+          `query expansion: ${live ? "live — bridges widen recall queries" : "shadow — fires are logged (bridge_expansion, applied: false), ranking unchanged"}\n` +
+            "  usage: bastra bridges live <on|off> — switch on only after 'bastra bridges verify' passes a bridge\n",
+        );
+        return arg === undefined ? 0 : 2;
+      }
+      await setSharedRecallLive(arg === "on");
+      process.stdout.write(
+        arg === "on"
+          ? "✓ query expansion live — bridges widen recall queries; restart the daemon to apply\n"
+          : "✓ query expansion back to shadow — restart the daemon to apply\n",
+      );
       return 0;
     }
     case "mint": {
@@ -360,6 +382,7 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
     case "status": {
       const enabled = await getSharedRecallEnabled();
       const langOverride = await getSharedRecallLanguage();
+      const live = await getSharedRecallLive();
       // Honor the same gate as the daemon (index.ts): when disabled, the pool is
       // never built — so status must not imply a live pool either.
       const pool = enabled ? BridgePool.load(bridgesPath()) : null;
@@ -373,13 +396,14 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
         : "last mint: never ran on this box";
       process.stdout.write(
         `shared learned-recall: ${enabled ? "enabled" : "disabled"} · language: ${langOverride ?? "auto"} · ` +
+          `query expansion: ${live ? "live" : "shadow"} · ` +
           `pool: ${poolStr} · repo: ${join(bridgesPath(), "bridges")}\n` +
           `${mintStr}\n`,
       );
       return 0;
     }
     default:
-      process.stderr.write(`unknown bridges subcommand '${sub}' — use enable|disable|status|language|mint|harvest|update|verify|contribute\n`);
+      process.stderr.write(`unknown bridges subcommand '${sub}' — use enable|disable|status|language|live|mint|harvest|update|verify|contribute\n`);
       return 2;
   }
 }

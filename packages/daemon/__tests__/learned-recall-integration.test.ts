@@ -7,13 +7,16 @@
  *      is attributable to the bridge, not the index;
  *   3. #707: the language folder is not a gate — a bridge filed under another
  *      folder ("und") lifts the query too; only a configured language override
- *      restricts the pool, and that restriction holds through the handler.
+ *      restricts the pool, and that restriction holds through the handler;
+ *   4. owner decision 2026-09-29: a pool that is not live (the default) leaves
+ *      the ranking untouched and still writes the `bridge_expansion` row.
+ *      The lift tests above load their pool live.
  *
  * Run: npx tsx --test packages/daemon/__tests__/learned-recall-integration.test.ts
  */
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -52,14 +55,14 @@ function bridge(lang: string, trigger: string[], expansion: string[]): Bridge {
   return { id: bridgeId(lang, trigger, expansion), lang, trigger_terms: trigger, expansion_terms: expansion, evidence: 3 };
 }
 
-async function poolWith(bridges: Bridge[]): Promise<BridgePool> {
+async function poolWith(bridges: Bridge[], live = true): Promise<BridgePool> {
   const root = await mkdtemp(join(tmpdir(), "bastra-bridge-pool-"));
   for (const b of bridges) {
     const dir = join(root, "bridges", b.lang);
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, `${b.id}.json`), JSON.stringify(b), "utf8");
   }
-  return BridgePool.load(root);
+  return BridgePool.load(root, undefined, { live });
 }
 
 // A German query that shares no vocabulary with the memory's English trigger.
@@ -160,4 +163,47 @@ test("configured language override routes a code-shaped (abstaining) query into 
       "override pool must widen the query",
     );
   });
+});
+
+test("default shadow: a firing bridge does not change the ranking, the bridge_expansion row is still written", async () => {
+  const logDir = await mkdtemp(join(tmpdir(), "bastra-lr-logs-"));
+  const prev = process.env.BASTRA_LOG_PATH;
+  process.env.BASTRA_LOG_PATH = logDir;
+  const telemetry = new Telemetry();
+  if (prev === undefined) delete process.env.BASTRA_LOG_PATH;
+  else process.env.BASTRA_LOG_PATH = prev;
+  try {
+    await withVault(async (mkDeps) => {
+      const b = bridge("de", ["fenster", "schließt"], ["resignkey", "observer", "attachedsheet", "dismiss"]);
+      const off = await recallHandler(mkDeps(), { query: FAR_DE_QUERY, k: 5, min_score: 0 });
+      const shadowPool = BridgePool.load(join(logDir, "missing"));
+      assert.equal(shadowPool.live, false, "a pool is shadow unless loaded live");
+      const shadow = await recallHandler(
+        mkDeps({ learnedBridges: await poolWith([b], false), telemetry }),
+        { query: FAR_DE_QUERY, k: 5, min_score: 0 },
+      );
+      const ids = (r: { hits: unknown[] }) => (r.hits as Array<{ id: string; score: number }>).map((h) => `${h.id}:${h.score}`);
+      assert.deepEqual(ids(shadow), ids(off), "shadow must leave the ranking exactly as without bridges");
+
+      let row: Record<string, unknown> | undefined;
+      for (let i = 0; i < 40 && !row; i++) {
+        await new Promise((r) => setTimeout(r, 40));
+        for (const f of (await readdir(logDir)).filter((n) => n.startsWith("events-"))) {
+          for (const line of (await readFile(join(logDir, f), "utf8")).split("\n")) {
+            if (!line.trim()) continue;
+            const ev = JSON.parse(line) as Record<string, unknown>;
+            if (ev.kind === "recall" && ev.bridge_expansion) row = ev;
+          }
+        }
+      }
+      assert.ok(row, "the fire is logged");
+      assert.deepEqual(row!.bridge_expansion, {
+        lang: "de",
+        added: ["resignkey", "observer", "attachedsheet", "dismiss"],
+        applied: false,
+      });
+    });
+  } finally {
+    await rm(logDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
 });

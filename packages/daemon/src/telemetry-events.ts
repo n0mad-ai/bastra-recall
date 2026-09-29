@@ -114,6 +114,9 @@ export interface DimensionedEvent {
 export interface BridgeExpansion {
   lang: string;
   added: string[];
+  /** Owner decision 2026-09-29: false when the bridges ran in shadow (the
+   *  terms were NOT added to the query). Absent on rows before that. */
+  applied?: boolean;
 }
 
 export interface RecallEvent extends BaseEvent, DimensionedEvent {

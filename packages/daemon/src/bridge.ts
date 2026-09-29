@@ -59,6 +59,7 @@ import {
   DOCS_MODES,
   getSharedRecallEnabled,
   getSharedRecallLanguage,
+  getSharedRecallLive,
   resolveEmbeddingChoice,
 } from "./settings.js";
 import { expandQuery, BridgePool } from "./learned-recall/bridges.js";
@@ -241,7 +242,7 @@ async function main(): Promise<void> {
       /* the daemon's own start retries and logs it */
     }
     try {
-      learnedBridges = BridgePool.load(bridgesPath());
+      learnedBridges = BridgePool.load(bridgesPath(), undefined, { live: await getSharedRecallLive() });
       const lang = await getSharedRecallLanguage();
       sharedRecallLang = isSupportedLanguage(lang) ? lang : null;
     } catch {

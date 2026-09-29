@@ -167,7 +167,9 @@ function startMintSchedule(deps: BackgroundJobDeps): void {
       const outcome = await runInBandMint({ vault: deps.vault, bridgesRoot: bridgesPath(), trigger });
       const retired = (outcome.archived ?? 0) + (outcome.demoted ?? 0) + (outcome.restored ?? 0);
       if (outcome.written > 0 || outcome.pruned > 0 || retired > 0) {
-        deps.toolDeps.learnedBridges = BridgePool.load(bridgesPath());
+        deps.toolDeps.learnedBridges = BridgePool.load(bridgesPath(), undefined, {
+          live: deps.toolDeps.learnedBridges?.live ?? false,
+        });
         console.error(
           `[bastra-recall] in-band mint (${trigger}): ${outcome.minted} bridge(s) from ${outcome.reaches} acted-on reach(es), ${outcome.pruned} expired, ${outcome.demoted ?? 0} demoted, ${outcome.archived ?? 0} archived — pool reloaded (${deps.toolDeps.learnedBridges.size()} bridges)`,
         );

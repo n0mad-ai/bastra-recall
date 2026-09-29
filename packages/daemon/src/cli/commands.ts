@@ -23,7 +23,7 @@ import { runInstallWizard, shouldRunWizard } from "./wizard.js";
 import { cmdInstallExtension } from "./extension-install.js";
 import { ensureHookStub } from "./stub-install.js";
 import { confirm, isInteractive } from "./prompt.js";
-import { getEmbeddingProvider, getSharedRecallEnabled } from "../settings.js";
+import { getEmbeddingProvider, getSharedRecallEnabled, getSharedRecallLive } from "../settings.js";
 import { bridgeLearningLines, readMintRuns } from "./bridges-note.js";
 import { bridgesPath } from "./bridges.js";
 import { readLastMint } from "../learned-recall/mint-job.js";
@@ -617,7 +617,7 @@ async function printBridgeLearningNote(): Promise<void> {
     if (!enabled) return;
     const now = new Date();
     const runs = await readMintRuns(defaultLogDir(), await readLastMint(bridgesPath()), now);
-    const lines = bridgeLearningLines({ enabled, runs, now });
+    const lines = bridgeLearningLines({ enabled, live: await getSharedRecallLive(), runs, now });
     if (lines.length === 0) return;
     process.stdout.write("→ learned bridges\n");
     for (const line of lines) process.stdout.write(`  ${line}\n`);

@@ -40,12 +40,13 @@ export interface MintRun {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * The note's lines, pure. Empty when shared recall is off. One line otherwise:
- * a warning with a hint when learning is stalled, an ok line when it is not —
+ * The note's lines, pure. Empty when shared recall is off. Otherwise a
+ * warning with a hint when learning is stalled, an ok line when it is not —
  * plus, when any run in the window demoted or archived a bridge (#129, #704),
- * a second line saying so.
+ * a line saying so, and last a line saying whether query expansion is live or
+ * shadow (owner decision 2026-09-29).
  */
-export function bridgeLearningLines(input: { enabled: boolean; runs: MintRun[]; now: Date }): string[] {
+export function bridgeLearningLines(input: { enabled: boolean; live?: boolean; runs: MintRun[]; now: Date }): string[] {
   if (!input.enabled) return [];
   const lines = learningLines(input);
   const cutoff = input.now.getTime() - BRIDGE_STALL_WINDOW_DAYS * DAY_MS;
@@ -63,6 +64,13 @@ export function bridgeLearningLines(input: { enabled: boolean; runs: MintRun[]; 
         "see bridges/archive/log.jsonl in the Commons clone, move a file back to restore it",
     );
   }
+  // Owner decision 2026-09-29: say whether bridges change the ranking at all.
+  lines.push(
+    input.live
+      ? "· query expansion: live — bridges widen recall queries ('bastra bridges live off' returns to shadow)"
+      : "· query expansion: shadow — fires are logged (bridge_expansion, applied: false), the ranking is unchanged; " +
+          "'bastra bridges live on' once 'bastra bridges verify' passes a bridge",
+  );
   return lines;
 }
 

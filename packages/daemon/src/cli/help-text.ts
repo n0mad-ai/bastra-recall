@@ -77,9 +77,10 @@ Commands:
   commons <enable|update|disable|status>
                              Bastra Commons: community-proven recipes as a
                              read-only second recall index (git-synced)
-  bridges <enable|disable|status|language|mint|harvest>
+  bridges <enable|disable|status|language|live|mint|harvest>
                              Shared learned-recall: opt-in, language-partitioned
-                             vocabulary bridges that widen recall (off by default).
+                             vocabulary bridges that widen recall (off by default;
+                             when on, query expansion runs in shadow until 'live on').
                              'mint' = bridges from acted-on reaches; 'harvest' =
                              deep far-slice pass with the local reranker (Teacher 2).
   map                        Open the vault map in the browser — an interactive
@@ -453,7 +454,7 @@ ever written into your memories, and nothing of yours is sent anywhere.
   bridges: `bastra bridges — shared learned-recall vocabulary (opt-in)
 
 Usage:
-  bastra bridges <enable|disable|status|language|mint|harvest>
+  bastra bridges <enable|disable|status|language|live|mint|harvest>
 
 Vocabulary bridges widen recall by connecting the words you search with the
 words your memories use. Off by default and language-partitioned.
@@ -461,6 +462,9 @@ words your memories use. Off by default and language-partitioned.
   enable / disable   Turn the shared index on or off
   status             What is active, and how many bridges are held
   language           Show or set the partition language
+  live <on|off>      Let bridges widen the query (default off: shadow — fires
+                     are logged, the ranking is unchanged). Switch on only for
+                     bridges that pass 'bastra bridges verify'
   mint               Derive bridges from reaches you actually acted on
   harvest            Deep far-slice pass with the local reranker (Teacher 2)
 `,
