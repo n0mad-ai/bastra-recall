@@ -527,6 +527,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   rejects outright (e.g. `ftp:`) fails the call without leaving a timer that
   would crash the daemon later. Contributed by @zzallirog (#685).
 
+### Internal
+
+- **Oversized modules split, behaviour-neutral** (#680). Ten files over the
+  800-line convention were cut along one responsibility each, code moved
+  verbatim and every public export re-exported from its old path:
+  `prompt-lane.ts` (1239 → 774), `http-hook-routes.ts` (1139 → 755),
+  `bash-pre-lane.ts` (1070 → 444), `session-lane.ts` (1016 → 741),
+  `telemetry-events.ts` (1003 → 593), `stop-lane.ts` (998 → 463),
+  `settings.ts` (977 → 480), `scripts/stats.ts` (937 → 625),
+  `cli/adapters/claude-code.ts` (888 → 439), `write-lane.ts` (874 → 659).
+  The new neighbour modules are listed in the module map in
+  `docs/architecture.md`. No logic change; tests that read sources by path
+  follow the moved code.
+
 ## [1.0.0] — 2026-09-14
 
 ### Added

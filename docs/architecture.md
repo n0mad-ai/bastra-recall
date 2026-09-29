@@ -297,6 +297,23 @@ Current live hook binaries:
 
 Topic detection is deterministic and based on file extension, path segments, and content patterns. The hook sends a bounded natural-language query to `/hook/recall`.
 
+#### Module Map (#680)
+
+Files that passed the 800-line convention were split along one responsibility each; the original file keeps the orchestration and re-exports its public surface, so import paths did not change. All paths under `packages/daemon/`.
+
+| Module | Split-out neighbours |
+|---|---|
+| `src/prompt-lane.ts` (UserPromptSubmit pipeline) | `prompt-classify.ts` (mode detection, trivial gate, score floors), `prompt-format.ts` (hint blocks), `prompt-lane-telemetry.ts` (`prompt_hook_call` row), `prompt-loopback.ts` (self-call) |
+| `src/http-hook-routes.ts` (`/hook/recall` route + `runHookRecall`) | `hook-recall-input.ts` (request fields), `hook-content-recall.ts` (content recall + merge gate), `hook-recall-evidence.ts` (evidence decision/gate), `hook-recall-payload.ts` (lean projection, reflex hits, budget), `deadline-shadow-row.ts` (also the `vector_late_settle` row) |
+| `src/bash-pre-lane.ts` (Bash tripwire pipeline) | `bash-pre-analysis.ts` (command analysis, shim eligibility, hint), next to `bash-pre-patterns.ts` (tables) |
+| `src/session-lane.ts` (SessionStart pipeline) | `session-format.ts` (hit merge, session/taxonomy blocks), `session-lane-telemetry.ts` (`session_hook_call` row, per-part tokens) |
+| `src/stop-lane.ts` (Stop pipeline) | `stop-transcript.ts` (transcript loading/normalising), `stop-heuristics.ts` (save heuristics, suggestion format) |
+| `src/write-lane.ts` (PreToolUse Write/Edit pipeline) | `write-format.ts` (hint block), `write-lane-telemetry.ts` (`hook_call` row) |
+| `src/settings.ts` (typed per-key accessors) | `settings-file.ts` (shape, validation, read/write, `mutateSettings`) |
+| `src/telemetry-events.ts` (event types) | `telemetry-events-hook.ts` (hook rows), next to `-embedding` and `-code` |
+| `src/cli/adapters/claude-code.ts` (install/uninstall/doctor) | `claude-code-hooks.ts` (hook definitions, settings.json entries, checks) |
+| `scripts/stats.ts` (readout entry, runs on import) | `stats-context.ts` (context readouts), `stats-shared.ts` (leaf helpers) |
+
 ### Privacy And Safety
 
 Storage and keyword search run locally. MCP results and hook context are handed to the connected AI client; a cloud-backed client may send that context to its provider. Explicitly configured remote embeddings, REST exposure and vault-folder synchronization add separate data paths. The [privacy overview](./PRIVACY.md) covers these boundaries and metadata-only network features; the transport-level controls below apply to Bastra's own API.
@@ -622,6 +639,23 @@ Aktuell aktive Hook-Programme:
 | `bastra-recall-session-hook` | `SessionStart` | bei startup/resume/clear/compact Nutzerpräferenzen, projektübergreifende Regeln und Projekterinnerungen vorladen |
 
 Die Themenerkennung ist deterministisch und beruht auf Dateiendung, Pfadsegmenten und Inhaltsmustern. Der Hook sendet eine begrenzte natürlichsprachige Anfrage an `/hook/recall`.
+
+#### Modulkarte (#680)
+
+Dateien über der 800-Zeilen-Konvention wurden entlang je einer Verantwortung geteilt; die Ursprungsdatei behält die Orchestrierung und re-exportiert ihre öffentliche Oberfläche, Importpfade bleiben also gleich. Alle Pfade unter `packages/daemon/`.
+
+| Modul | Ausgelagerte Nachbarmodule |
+|---|---|
+| `src/prompt-lane.ts` (UserPromptSubmit-Pipeline) | `prompt-classify.ts` (Moduserkennung, Trivial-Gate, Score-Floors), `prompt-format.ts` (Hinweisblöcke), `prompt-lane-telemetry.ts` (`prompt_hook_call`-Zeile), `prompt-loopback.ts` (Selbstaufruf) |
+| `src/http-hook-routes.ts` (`/hook/recall`-Route + `runHookRecall`) | `hook-recall-input.ts` (Request-Felder), `hook-content-recall.ts` (Content-Recall + Merge-Gate), `hook-recall-evidence.ts` (Evidenzentscheid/-Gate), `hook-recall-payload.ts` (Lean-Projektion, Reflex-Hits, Budget), `deadline-shadow-row.ts` (auch die `vector_late_settle`-Zeile) |
+| `src/bash-pre-lane.ts` (Bash-Stolperdraht-Pipeline) | `bash-pre-analysis.ts` (Befehlsanalyse, Shim-Eignung, Hinweis), neben `bash-pre-patterns.ts` (Tabellen) |
+| `src/session-lane.ts` (SessionStart-Pipeline) | `session-format.ts` (Treffer-Merge, Session-/Taxonomie-Block), `session-lane-telemetry.ts` (`session_hook_call`-Zeile, Token je Teil) |
+| `src/stop-lane.ts` (Stop-Pipeline) | `stop-transcript.ts` (Transkript laden/normalisieren), `stop-heuristics.ts` (Save-Heuristiken, Vorschlagsformat) |
+| `src/write-lane.ts` (PreToolUse-Write/Edit-Pipeline) | `write-format.ts` (Hinweisblock), `write-lane-telemetry.ts` (`hook_call`-Zeile) |
+| `src/settings.ts` (typisierte Zugriffe je Schlüssel) | `settings-file.ts` (Form, Validierung, Lesen/Schreiben, `mutateSettings`) |
+| `src/telemetry-events.ts` (Ereignistypen) | `telemetry-events-hook.ts` (Hook-Zeilen), neben `-embedding` und `-code` |
+| `src/cli/adapters/claude-code.ts` (Install/Uninstall/Doctor) | `claude-code-hooks.ts` (Hook-Definitionen, settings.json-Einträge, Prüfungen) |
+| `scripts/stats.ts` (Auswertungs-Einstieg, läuft beim Import) | `stats-context.ts` (Kontext-Auswertungen), `stats-shared.ts` (Blatt-Helfer) |
 
 ### Datenschutz und Sicherheit
 
