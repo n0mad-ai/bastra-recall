@@ -262,6 +262,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   rank 1 scores above 81.967, a BM25-only one below it), and the gold-set
   config hash of a default run changes; the V1.0 baseline registration
   (`v1-baseline.json`) was measured at weight 1 and stays as registered.
+  `score_version` is bumped `rrf-1` → `rrf-2`: rank 1 in both arms stays
+  163.934, rank 1 in the BM25 arm only is ≈ 65.6, in the vector arm only
+  ≈ 98.4 (was 81.967 for either). Compare scores only within one
+  `score_version`; the recall tool description, `docs/openapi.yaml`,
+  `docs/architecture.md` and `docs/hooks.md` carry the new anchors.
 
 - **Bridges earn contribution on held-out data** (#129).
   `bastra bridges verify [days]` runs a 5-fold check over the candidate-pool

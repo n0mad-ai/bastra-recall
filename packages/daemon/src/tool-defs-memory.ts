@@ -62,6 +62,9 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "Two scores are comparable only within the same `score_arms` (and the " +
       "same `score_version`): the fused scale reaches 163.934 with the two " +
       "personal arms and 241.803 once the Bastra Commons contribute a third. " +
+      "Under `score_version: \"rrf-2\"` rank 1 in both arms is 163.934, rank " +
+      "1 in the BM25 arm only ≈ 65.6, in the vector arm only ≈ 98.4 " +
+      "(`rrf-1`: 81.967 for either). " +
       "A batch response whose phrasings disagreed on that reports " +
       "`merged_by: \"query-rank-fusion\"` and drops back to `unfused` — its " +
       "order is meaningful, its numbers are not a band.\n" +

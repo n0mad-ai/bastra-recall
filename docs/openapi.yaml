@@ -365,8 +365,11 @@ components:
           type: string
           description: >
             Version of the score FORMULA. It changes when the same arm set
-            starts producing a different number; scores are not comparable
-            across versions.
+            starts producing a different number; two scores are comparable
+            only within the same score_version. "rrf-2" (v1.0.1, dense-arm
+            weight 1.5): rank 1 in both arms 163.934, rank 1 in BM25 only
+            ≈ 65.6, in the vector arm only ≈ 98.4. "rrf-1" (v1.0.0, equal
+            weights): 81.967 for a rank 1 in either single arm.
         degraded:
           type: string
           enum: [vector-arm-timeout, vector-arm-error, vector-arm-empty]
