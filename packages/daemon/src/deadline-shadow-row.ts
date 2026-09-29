@@ -23,6 +23,8 @@ import { PROVIDER_COLD_LOAD_MS, type LateSettleSample } from "@bastra-recall/cor
 import type { Residency, ResidencyReading } from "./embedding-warmup.js";
 import type { DeadlineShadow } from "./latency-profile.js";
 import type { DeadlineShadowRow } from "./telemetry-events.js";
+import { fireAndForget, type Telemetry } from "./telemetry.js";
+import { dimensionHints } from "./telemetry-dimensions.js";
 
 /**
  * Was der dichte Arm über sich selbst berichtet hat (#493) — aus der
@@ -284,4 +286,71 @@ export function recordLateSettleSample(
     concurrency: row.concurrency,
     totalMs: row.overlap_ms + sample.settle_ms,
   });
+}
+
+export interface VectorLateSettleRowInput {
+  telemetry: Telemetry;
+  recallId: string;
+  vectorDeadlineMs: number;
+  waitMs: number;
+  sample: LateSettleSample;
+  sessionStartCallId: string | null;
+  shadow: DeadlineShadow | null;
+  deadlineShadowRow: DeadlineShadowRow | undefined;
+  hookSessionId: string | null;
+  body: Record<string, unknown>;
+}
+
+/**
+ * #489: the `vector_late_settle` row for an abandoned dense arm, written once
+ * the recall_id is known (moved here from http-hook-routes.ts, #680).
+ */
+export function logVectorLateSettleRow(input: VectorLateSettleRowInput): void {
+  const { telemetry, recallId, vectorDeadlineMs, sample, sessionStartCallId, shadow, deadlineShadowRow, hookSessionId, body } = input;
+  fireAndForget(
+    telemetry.logVectorLateSettle({
+      recall_id: recallId,
+      deadline_ms: vectorDeadlineMs,
+      wait_ms: input.waitMs,
+      settle_ms: sample.settle_ms,
+      settled: sample.settled,
+      // #493: das ERGEBNIS des aufgegebenen Arms. Kriterium 4 aus #492
+      // fragt nach der kontrafaktischen Fusionsrate — die Laufzeit allein
+      // sagt nicht, ob eine längere Frist diesen Recall fusioniert hätte.
+      ...(sample.outcome ? { provider_outcome: sample.outcome } : {}),
+      ...(sample.hit_count !== undefined ? { vector_hit_count: sample.hit_count } : {}),
+      ...(sample.cold_start_observed !== undefined
+        ? { cold_start_observed: sample.cold_start_observed }
+        : {}),
+      ...(typeof sample.provider_load_ms === "number"
+        ? { provider_load_ms: sample.provider_load_ms }
+        : {}),
+      ...(sessionStartCallId ? { session_start_call_id: sessionStartCallId } : {}),
+      ...(shadow ? { host_profile_id: shadow.hostProfileId() } : {}),
+      // #491: Die Prognose reist mit, statt nur über `recall_id`
+      // joinbar zu sein. Diese Zeile IST die Wirklichkeit für den
+      // aufgegebenen Arm; sie muss die Frage „hätte die gelernte Frist
+      // gehalten?" allein beantworten können.
+      ...(deadlineShadowRow
+        ? {
+            predicted_deadline_ms: deadlineShadowRow.predicted_deadline_ms,
+            cap_reason: deadlineShadowRow.cap_reason,
+            residency: deadlineShadowRow.residency,
+            residency_source: deadlineShadowRow.residency_source,
+            residency_estimated: deadlineShadowRow.residency_estimated,
+            shadow_would_run: deadlineShadowRow.shadow_would_run,
+            shadow_would_wait: deadlineShadowRow.shadow_would_wait,
+            // #499: Der Vergleich steht auf JEDER Zeile. Bis hierher
+            // fehlte er bei einer Prognose von 0, weil die als „kein
+            // dichter Arm" gelesen wurde — der Arm lief aber, er wäre
+            // nur nicht mehr abgewartet worden. Genau dann ist die
+            // Antwort auch klar: Ein Arm, der erst spät settelt, reißt
+            // eine Frist von null definitionsgemäß.
+            shadow_timeout: sample.settle_ms > deadlineShadowRow.predicted_deadline_ms,
+          }
+        : {}),
+      ...(hookSessionId ? { session_id: hookSessionId } : {}),
+      ...dimensionHints(body),
+    }),
+  );
 }
