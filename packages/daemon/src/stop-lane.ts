@@ -33,7 +33,8 @@
  *   3. Architecture-Decision — a decision cue from the German, English or
  *      Russian list in the last 5 user turns. Languages without a cue list
  *      (#707): the user picks one of the numbered options the agent offered
- *      with a question — see stop-lane-choice.ts.
+ *      with a question — see stop-lane-choice.ts. An answer given through
+ *      Claude Code's AskUserQuestion tool counts the same way (#701).
  *
  * Output: `{}`, or — #662 — a `hookSpecificOutput.additionalContext` document
  * that hands a Claude Code session its save suggestions in the running turn

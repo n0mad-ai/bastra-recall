@@ -8,7 +8,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { frustrationCues, decisionCues } from "./lexicon.js";
 import { restatementIndices } from "./stop-lane-repeat.js";
-import { optionPicks } from "./stop-lane-choice.js";
+import { askAnswers, optionPicks } from "./stop-lane-choice.js";
 import type { DocsMode } from "./settings.js";
 import type { TranscriptTurn } from "./stop-transcript.js";
 
@@ -243,7 +243,7 @@ export function detectArchitectureDecision(turns: TranscriptTurn[]): SaveSuggest
       }
     }
   }
-  if (exemplars.length === 0) return detectOptionPick(turns);
+  if (exemplars.length === 0) return detectOptionPick(turns) ?? detectAskAnswer(turns);
   return {
     heuristic: "architecture-decision",
     title: "decision finalized — save the chosen path and the why",
@@ -265,6 +265,22 @@ function detectOptionPick(turns: TranscriptTurn[]): SaveSuggestion | null {
     title: "decision finalized — save the chosen path and the why",
     type: "decision",
     body: `The user picked one of the offered options (language-neutral signal): ${picks.slice(0, 2).map((c) => c.slice(0, 160)).join(" | ")}. ` +
+      `If an architectural choice was committed (X over Y, the trade-off), save a 'decision' memory ` +
+      `with the why + how-to-apply.`,
+  };
+}
+
+/** #701 structural signal: the user answered the agent's `AskUserQuestion`
+ *  (stop-lane-choice.ts). The answer is a tool result, which the cue check
+ *  above never reads. */
+function detectAskAnswer(turns: TranscriptTurn[]): SaveSuggestion | null {
+  const answers = askAnswers(turns, DECISION_WINDOW_TURNS);
+  if (answers.length === 0) return null;
+  return {
+    heuristic: "architecture-decision",
+    title: "decision finalized — save the chosen path and the why",
+    type: "decision",
+    body: `The user answered the agent's question (structural signal): ${[...new Set(answers)].slice(0, 2).map((c) => c.slice(0, 160)).join(" | ")}. ` +
       `If an architectural choice was committed (X over Y, the trade-off), save a 'decision' memory ` +
       `with the why + how-to-apply.`,
   };
