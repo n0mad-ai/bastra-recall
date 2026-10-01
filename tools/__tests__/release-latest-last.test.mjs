@@ -89,6 +89,10 @@ async function runPublish(args, env = {}) {
         HOME: dir,
         NPM_LOG: npmLog,
         GITHUB_REPOSITORY: "n0mad-ai/bastra-recall",
+        // The stub registry never converges. Retry behavior has its own tests
+        // in release-set.test.mjs; this case only needs the first answer.
+        BASTRA_VERIFY_ATTEMPTS: "1",
+        BASTRA_VERIFY_INTERVAL_MS: "0",
         ...env,
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -188,4 +192,6 @@ test("#549 publish set: --verify still needs no tag and still publishes nothing"
   const { code, npm } = await runPublish(["--verify"], {});
   assert.notEqual(code, 0); // the stub registry has nothing published
   assert.deepEqual(publishedWorkspaces(npm), []);
+  assert.equal(npm.split("\n").filter((line) => line.startsWith("npm view")).length, 4,
+    "the deliberately empty stub registry needs one read per package, not production retries");
 });
