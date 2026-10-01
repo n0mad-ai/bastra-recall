@@ -100,6 +100,17 @@ test("#524 bump.mjs: a prerelease version still gets --prerelease, and is staged
   assert.ok(!out.includes("--latest=false"), `a prerelease must not be staged as latest:\n${out}`);
 });
 
+test("bump.mjs: a hyphen in +build metadata is not a prerelease", async () => {
+  // 1.0.0+2026-09-28 is a stable version (the accepted grammar lets build
+  // metadata carry hyphens); only a hyphen before the `+` marks a prerelease.
+  const stable = await bump("99.0.0+2026-09-28");
+  assert.ok(!stable.includes("--prerelease"), `a stable version with dashed build metadata is staged as a prerelease:\n${stable}`);
+  assert.match(stable, /gh release create v99\.0\.0\+2026-09-28 --draft --generate-notes/);
+
+  const pre = await bump("99.0.0-rc.1+build-5");
+  assert.match(pre, /gh release create v99\.0\.0-rc\.1\+build-5 --draft --prerelease/);
+});
+
 /* ------------------------------------------------ publish-release-set.mjs */
 
 /**

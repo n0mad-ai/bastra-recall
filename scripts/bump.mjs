@@ -149,7 +149,8 @@ for (const relPath of GUARDED_SOURCES) {
 // the release event: it is started explicitly with the tag of the draft
 // (`workflow_dispatch`), which is also the only way the jobs can attach assets
 // to something that is not public yet.
-const isPrerelease = version.includes("-");
+// A hyphen in the +build metadata (1.0.0+2026-09-28) is not a prerelease.
+const isPrerelease = version.split("+")[0].includes("-");
 const releaseCmd = isPrerelease
   ? `gh release create v${version} --draft --prerelease --generate-notes --target "$(git rev-parse HEAD)"`
   : `gh release create v${version} --draft --generate-notes --target "$(git rev-parse HEAD)"`;
