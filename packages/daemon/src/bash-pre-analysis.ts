@@ -64,7 +64,7 @@ const DATA_SINK_HEREDOC: RegExp[] = [
  * An unquoted delimiter or any other command in the substitution keeps firing.
  */
 const MESSAGE_SUBST_HEREDOC: RegExp[] = [
-  /^git\s+(?:commit|tag)\b(?:(?!<<)[^|])*\s(?:-[a-zA-Z]*m|--message)(?:\s+|=)"\$\(cat\s+<<-?[ \t]*'[^']*'\s*$/,
+  /^git(?:\s+(?:-[Cc]\s+[^\s-]\S*|--(?:git-dir|work-tree|namespace|config-env)\s+[^\s-]\S*|--(?!(?:git-dir|work-tree|namespace|config-env)(?:\s|$))[\w-]+(?:=\S+)?))*\s+(?:commit|tag)\b(?:(?!<<)[^|])*\s(?:-[a-zA-Z]*m|--message)(?:\s+|=)"\$\(cat\s+<<-?[ \t]*'[^']*'\s*$/,
   /^gh\s+(?:issue|pr|release)\b(?:(?!<<)[^|])*\s(?:-[tbn]|--(?:title|body|notes|comment|subject))(?:\s+|=)"\$\(cat\s+<<-?[ \t]*'[^']*'\s*$/,
 ];
 
@@ -160,8 +160,19 @@ function stripDataSinkHeredocBodies(cmd: string): string {
 const GIT_MESSAGE_FLAG = /^(?:-[a-zA-Z]*m|--message)$/;
 const GH_TEXT_FLAG = /^(?:-[tbn]|--(?:title|body|notes|comment|subject))$/;
 
+/** Index of the git subcommand: past the global options (`-C <dir>`, `-c k=v`,
+ *  `--git-dir <d>`, `--no-pager`, …) that may stand between `git` and it. */
+function gitSubcommandAt(words: string[]): number {
+  let i = 1;
+  while (i < words.length && words[i].startsWith("-")) {
+    i += /^(?:-[Cc]|--(?:git-dir|work-tree|namespace|config-env))$/.test(words[i]) ? 2 : 1;
+  }
+  return i;
+}
+
 function proseFlagFor(words: string[]): RegExp | null {
-  if (words[0] === "git" && (words[1] === "commit" || words[1] === "tag")) return GIT_MESSAGE_FLAG;
+  const sub = words[0] === "git" ? words[gitSubcommandAt(words)] : undefined;
+  if (sub === "commit" || sub === "tag") return GIT_MESSAGE_FLAG;
   if (words[0] === "gh" && /^(?:issue|pr|release)$/.test(words[1] ?? "")) return GH_TEXT_FLAG;
   return null;
 }
@@ -403,12 +414,23 @@ function redefinesRm(cmd: string, depth = 0): boolean {
   if (!commands) return true;
   for (const { words } of commands) {
     const texts = words.map((w) => unquote(w.text));
+    // zsh ties the array `path` to PATH, so `path=(…)` / `path+=(…)` is the same
+    // change. A scalar `path=x` is an ordinary variable in bash.
+    // The array's `(` breaks the word, so it is the character after `path=`.
     if (texts.some((t) => /^PATH\+?=/.test(t))) return true;
+    if (words.some((w) => /^path\+?=$/.test(w.text) && cmd[w.end] === "(")) return true;
     const k = commandWordAt(texts);
     const args = texts.slice(k + 1);
     // `git` too: bastra's git snapshots are the other shim in the same PATH entry.
     if (texts[k] === "alias" && args.some((t) => /^(?:rm|git)=/.test(t))) return true;
     if (texts[k] === "hash" && hashPathNames(args).some((t) => /^(?:rm|git)$/.test(t))) return true;
+    // zsh `hash rm=/bin/echo`: the assignment form of the same table entry.
+    if (texts[k] === "hash" && args.some((t) => /^(?:rm|git)=/.test(t))) return true;
+    // Assignments to PATH that carry no `PATH=` word: `printf -v PATH …`,
+    // `read PATH`, and a nameref onto it (`declare -n p=PATH`).
+    if (texts[k] === "printf" && args.some((t, j) => t === "-v" && args[j + 1] === "PATH")) return true;
+    if (texts[k] === "read" && args.includes("PATH")) return true;
+    if (/^(?:declare|typeset|local)$/.test(texts[k]) && args.some((t) => /^-\w*n/.test(t)) && args.some((t) => /=PATH$/.test(t))) return true;
     if (texts[k] === "eval" && (depth >= 2 || redefinesRm(args.join(" "), depth + 1))) return true;
   }
   return false;
