@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import matter from "gray-matter";
 import { importVault, listSubdirs } from "../src/import-vault.js";
+import { cleanRecallWhen } from "../src/import/adapters.js";
 
 async function tmp(prefix: string): Promise<string> {
   return mkdtemp(join(tmpdir(), prefix));
@@ -467,4 +468,11 @@ test("#710: an over-long description is cut in recall_when (summary keeps it), a
     await rm(src, { recursive: true, force: true });
     await rm(vault, { recursive: true, force: true });
   }
+});
+
+test("recall_when: a title that is itself a bare type word is not the fallback trigger", () => {
+  // The filter drops bare type words; the title fallback must not put one back.
+  const { recall_when } = cleanRecallWhen(["reference", "feedback"], "reference");
+  assert.deepEqual(recall_when, ["reference (imported)"]);
+  assert.deepEqual(cleanRecallWhen([], "deploy checklist").recall_when, ["deploy checklist"]);
 });

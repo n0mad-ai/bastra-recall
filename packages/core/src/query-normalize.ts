@@ -31,6 +31,13 @@
  *  traces) ihre diskriminierenden Identifier nicht verlieren (#162). */
 export const QUERY_MAX_CHARS = 8000;
 
+/** A hard cut can land between the two halves of an astral character (𠮷, an
+ *  emoji) — the dangling high surrogate is not text, so it goes. */
+function withoutLoneHighSurrogate(s: string): string {
+  const last = s.charCodeAt(s.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? s.slice(0, -1) : s;
+}
+
 /**
  * Schneidet `text` auf höchstens `maxChars` Zeichen — an einer Whitespace-
  * Grenze, nie mitten im Token (ein halbierter Identifier matcht nichts und
@@ -48,7 +55,7 @@ export function capAtWordBoundary(text: string, maxChars: number): string {
   const partialStart = head.search(/\S+$/);
   // -1: Kopf endet auf Whitespace (Grenze schon sauber). 0: Monster-Token
   // ohne jedes Whitespace → harter Schnitt.
-  if (partialStart <= 0) return head.trimEnd();
+  if (partialStart <= 0) return withoutLoneHighSurrogate(head).trimEnd();
   return head.slice(0, partialStart).trimEnd();
 }
 

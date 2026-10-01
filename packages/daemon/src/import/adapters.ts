@@ -51,7 +51,10 @@ export function cleanRecallWhen(candidates: string[], fallback: string): { recal
     out.push(entry);
   }
   const recall_when = [...new Set(out)];
-  return { recall_when: recall_when.length > 0 ? recall_when : [capAtWordBoundary(fallback.trim(), MAX_RECALL_WHEN_CHARS)], warnings };
+  // The fallback is the title — which can itself be a bare type word ("reference").
+  const title = fallback.trim();
+  const fallbackEntry = TYPE_WORDS.has(title.toLowerCase()) ? `${title} (imported)` : title;
+  return { recall_when: recall_when.length > 0 ? recall_when : [capAtWordBoundary(fallbackEntry, MAX_RECALL_WHEN_CHARS)], warnings };
 }
 
 // ── small pure helpers ───────────────────────────────────────────────────────
