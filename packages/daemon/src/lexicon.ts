@@ -267,3 +267,89 @@ export function fixMarkerCues(): string[] {
 export function imperativeLeadCues(): string[] {
   return loadCues("imperative-lead", Object.values(DEFAULT_IMPERATIVE_LEAD_CUES_BY_LANGUAGE).flat());
 }
+
+/**
+ * One alternation over `cues`, bounded by Unicode letters and digits — JS `\b`
+ * is ASCII-only, so a Cyrillic cue could never match behind it. `anchored`
+ * pins the match to the start of the text instead.
+ */
+export function cueRegex(cues: readonly string[], anchored = false): RegExp {
+  const lead = anchored ? "^" : "(?<![\\p{L}\\p{N}])";
+  return new RegExp(`${lead}(?:${cues.join("|")})(?![\\p{L}\\p{N}])`, "iu");
+}
+
+/**
+ * #707 — the prompt lane's assertion signals (#252, prompt-classify.ts),
+ * formerly four DE/EN regex literals. Per-language data, extended by a user
+ * file each (`compose-verb.txt`, `outward-artifact.txt`, `state-question.txt`,
+ * `project-state.txt`), matched with {@link cueRegex}.
+ *
+ * The neutral path for a language without a list: the prompt is not labelled
+ * `assertion` on a guess. It stays an ordinary prompt, which still recalls and
+ * delivers what clears the must-load score — the label only lowers that floor.
+ */
+export const DEFAULT_COMPOSE_VERB_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  en: ["draft", "write", "compose", "announce", "reply", "respond", "publish"],
+  de: [
+    "schreib\\p{L}*", "verfass\\p{L}*", "formulier\\p{L}*", "entwirf", "entwerfe", "antworte\\p{L}*",
+    "beantworte", "ver(?:ö|oe)ffentlich\\p{L}*",
+  ],
+  ru: [
+    "напиши\\p{L}*", "написать", "составь\\p{L}*", "подготовь\\p{L}*", "сформулируй\\p{L}*", "ответь\\p{L}*",
+    "ответить", "опубликуй\\p{L}*", "опубликовать",
+  ],
+};
+
+export const DEFAULT_OUTWARD_ARTIFACT_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  en: [
+    "release[- ]?notes?", "changelog", "announcement", "blog\\p{L}*", "newsletter", "readme", "docs?",
+    "documentation", "issue", "pr", "pull[- ]?requests?", "comment", "reply", "thread", "discord", "mail",
+    "e-?mail", "posting", "tweet",
+  ],
+  de: [
+    "release-?notizen", "(?:ä|ae)nderungsprotokoll", "ank(?:ü|ue)ndigung", "dokumentation", "kommentar",
+    "antwort", "beitrag",
+  ],
+  ru: [
+    "анонс\\p{L}*", "блог\\p{L}*", "рассылк\\p{L}*", "документаци\\p{L}*", "комментари\\p{L}*", "ответ(?:а|у|ом|е|ы|ов)?",
+    "тред\\p{L}*", "письм\\p{L}*",
+  ],
+};
+
+export const DEFAULT_STATE_QUESTION_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  en: ["what'?s", "what\\s+is", "how\\s+(?:far|many|much|good)", "status", "state"],
+  de: ["wie\\s+(?:ist|weit|viele?|gut)", "stand", "wo\\s+stehen\\s+wir"],
+  ru: ["сколько", "насколько", "статус\\p{L}*", "состояни\\p{L}*", "как\\s+обстоят"],
+};
+
+export const DEFAULT_PROJECT_STATE_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  en: [
+    "measured?", "measurement", "benchmark", "eval", "recall@\\w*", "numbers?", "metrics?", "coverage",
+    "latency", "ceiling", "milestone", "roadmap", "release", "version", "tests?",
+  ],
+  de: ["zahlen", "gemessen", "messung", "kennzahl\\p{L}*"],
+  ru: [
+    "замер\\p{L}*", "измерен\\p{L}*", "бенчмарк\\p{L}*", "метрик\\p{L}*", "цифр\\p{L}*", "покрыти\\p{L}*",
+    "релиз\\p{L}*", "верси\\p{L}*", "тест\\p{L}*",
+  ],
+};
+
+/** Compose-verb cues: defaults extended by ~/.bastra/lexicon/compose-verb.txt. */
+export function composeVerbCues(): string[] {
+  return loadCues("compose-verb", Object.values(DEFAULT_COMPOSE_VERB_CUES_BY_LANGUAGE).flat());
+}
+
+/** Outward-artifact cues: defaults extended by ~/.bastra/lexicon/outward-artifact.txt. */
+export function outwardArtifactCues(): string[] {
+  return loadCues("outward-artifact", Object.values(DEFAULT_OUTWARD_ARTIFACT_CUES_BY_LANGUAGE).flat());
+}
+
+/** State-question cues: defaults extended by ~/.bastra/lexicon/state-question.txt. */
+export function stateQuestionCues(): string[] {
+  return loadCues("state-question", Object.values(DEFAULT_STATE_QUESTION_CUES_BY_LANGUAGE).flat());
+}
+
+/** Project-state cues: defaults extended by ~/.bastra/lexicon/project-state.txt. */
+export function projectStateCues(): string[] {
+  return loadCues("project-state", Object.values(DEFAULT_PROJECT_STATE_CUES_BY_LANGUAGE).flat());
+}

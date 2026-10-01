@@ -4,6 +4,7 @@
  * per-mode score floor and prompt extraction from the hook payload. Pure and
  * deterministic; runs before any recall work.
  */
+import { composeVerbCues, cueRegex, outwardArtifactCues, projectStateCues, stateQuestionCues } from "./lexicon.js";
 
 export const SCORE_FLOOR = 50; // higher than PreToolUse: prompts rarely match recall_when exactly
 export const MUST_LOAD_SCORE = 100;
@@ -45,22 +46,16 @@ export function detectRetrieval(prompt: string): boolean {
 // a lane that fires on every declarative prompt is the noise that made the
 // passive channel fail. Misses claims that only arise mid-draft; that is the
 // known gap, tracked in #252 as the case for an outbound verification pass.
+//
+// #707: the four signals are per-language data in lexicon.ts (de/en/ru,
+// user-extensible), matched with Unicode letter boundaries: composing an
+// artefact for someone else, that leaves this machine; asking for a state,
+// that this project has measured or recorded. A prompt in a language without
+// a list takes the NEUTRAL path: it is not labelled `assertion`, and recalls
+// as an ordinary prompt, gated by the must-load score.
 
-/** Composing an artefact for someone else. */
-const COMPOSE_VERB =
-  /\b(draft|write|compose|announce|reply|respond|publish|schreib\w*|verfass\w*|formulier\w*|entwirf|entwerfe|antworte\w*|beantworte|ver(ö|oe)ffentlich\w*)\b/i;
-
-/** …that leaves this machine. `#123` counts: naming an issue is outward. */
-const OUTWARD_ARTIFACT =
-  /(\B#\d+\b|\b(release[- ]?notes?|release-?notizen|changelog|(ä|ae)nderungsprotokoll|announcement|ank(ü|ue)ndigung|blog\w*|newsletter|readme|docs?|documentation|dokumentation|issue|pr|pull[- ]?requests?|comment|kommentar|reply|antwort|thread|discord|mail|e-?mail|posting|tweet|beitrag)\b)/i;
-
-/** Asking for a state… */
-const STATE_QUESTION =
-  /\b(what'?s|what is|how (far|many|much|good)|status|state|wie (ist|weit|viele?|gut)|stand|wo stehen wir)\b/i;
-
-/** …that this project has actually measured or recorded. */
-const PROJECT_STATE_NOUN =
-  /\b(measured?|measurement|benchmark|eval|recall@\w*|numbers?|metrics?|coverage|latency|ceiling|zahlen|gemessen|messung|kennzahl\w*|milestone|roadmap|release|version|tests?)\b/i;
+/** `#123` is an outward artefact in any script: naming an issue is outward. */
+const ISSUE_REFERENCE = /(?<![\p{L}\p{N}_])#\d+(?![\p{L}\p{N}_])/u;
 
 /**
  * #252: does the prompt ask for an ASSERTION — outbound text, or a claim about
@@ -70,8 +65,9 @@ const PROJECT_STATE_NOUN =
 export function detectAssertion(prompt: string): boolean {
   const trimmed = prompt.trim();
   if (trimmed.length === 0) return false;
-  if (COMPOSE_VERB.test(trimmed) && OUTWARD_ARTIFACT.test(trimmed)) return true;
-  return STATE_QUESTION.test(trimmed) && PROJECT_STATE_NOUN.test(trimmed);
+  const has = (cues: readonly string[]): boolean => cueRegex(cues).test(trimmed);
+  if (has(composeVerbCues()) && (ISSUE_REFERENCE.test(trimmed) || has(outwardArtifactCues()))) return true;
+  return has(stateQuestionCues()) && has(projectStateCues());
 }
 
 // #151: trivial-prompt gate. Bare acks, one-worders and slash-command
