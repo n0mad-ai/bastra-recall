@@ -328,6 +328,7 @@ Files that passed the 800-line convention were split along one responsibility ea
 | `src/write-lane.ts` (PreToolUse Write/Edit pipeline) | `write-format.ts` (hint block), `write-lane-telemetry.ts` (`hook_call` row) |
 | `src/settings.ts` (typed per-key accessors) | `settings-file.ts` (shape, validation, read/write, `mutateSettings`) |
 | `src/telemetry-events.ts` (event types) | `telemetry-events-hook.ts` (hook rows), next to `-embedding` and `-code` |
+| `src/rm-archive.ts` (archiving `rm` shim, manifest, receipt, restore) | `rm-archive-reconcile.ts` (retention per class, reconcile plan and apply, hourly stamp) |
 | `src/cli/adapters/claude-code.ts` (install/uninstall/doctor) | `claude-code-hooks.ts` (hook definitions, settings.json entries, checks) |
 | `scripts/stats.ts` (readout entry, runs on import) | `stats-context.ts` (context readouts), `stats-shared.ts` (leaf helpers) |
 
@@ -691,6 +692,7 @@ Dateien über der 800-Zeilen-Konvention wurden entlang je einer Verantwortung ge
 | `src/write-lane.ts` (PreToolUse-Write/Edit-Pipeline) | `write-format.ts` (Hinweisblock), `write-lane-telemetry.ts` (`hook_call`-Zeile) |
 | `src/settings.ts` (typisierte Zugriffe je Schlüssel) | `settings-file.ts` (Form, Validierung, Lesen/Schreiben, `mutateSettings`) |
 | `src/telemetry-events.ts` (Ereignistypen) | `telemetry-events-hook.ts` (Hook-Zeilen), neben `-embedding` und `-code` |
+| `src/rm-archive.ts` (archivierendes `rm`: Shim, Manifest, Quittung, Wiederherstellen) | `rm-archive-reconcile.ts` (Aufbewahrung je Klasse, Reconcile-Plan und -Ausführung, Stundenstempel) |
 | `src/cli/adapters/claude-code.ts` (Install/Uninstall/Doctor) | `claude-code-hooks.ts` (Hook-Definitionen, settings.json-Einträge, Prüfungen) |
 | `scripts/stats.ts` (Auswertungs-Einstieg, läuft beim Import) | `stats-context.ts` (Kontext-Auswertungen), `stats-shared.ts` (Blatt-Helfer) |
 
