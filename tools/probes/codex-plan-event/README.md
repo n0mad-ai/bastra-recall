@@ -92,7 +92,9 @@ bash tools/probes/codex-plan-event/run.sh --copy-auth
 credential on your machine and it never leaves it — but it is a copy of a
 credential, which is why the script will not do it unless you ask. It deletes
 its copy when the run ends (normally, on failure or on Ctrl-C). If the probe home
-already holds a login, nothing is copied and that login is left alone.
+already holds a login, nothing is copied and that login is left alone. The probe
+home must belong to your user; the script makes it private (mode 700) and refuses
+symlinks or files owned by another user before handling any credential.
 
 ### What it does, and what it does not touch
 

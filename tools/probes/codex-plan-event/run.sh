@@ -42,8 +42,36 @@ command -v codex >/dev/null 2>&1 || {
   exit 1
 }
 
+# The default probe path is predictable. Never place a copied credential in a
+# symlink or a directory another user owns; close older loose permissions before
+# any probe file is written. Existing probe logins remain in place.
+if [ -L "$HOME_DIR" ]; then
+  echo "✗ probe home is a symlink: $HOME_DIR" >&2
+  exit 1
+fi
+mkdir -m 700 -p "$HOME_DIR"
+if [ -L "$HOME_DIR" ] || [ ! -O "$HOME_DIR" ]; then
+  echo "✗ probe home must be owned by your user and not be a symlink: $HOME_DIR" >&2
+  exit 1
+fi
+chmod 700 "$HOME_DIR"
+for path in "$WORK_DIR" "$CAPTURE" "${HOME_DIR}/hooks.json" "${HOME_DIR}/config.toml" "${HOME_DIR}/capture-control.jsonl" "${HOME_DIR}/auth.json"; do
+  if [ -L "$path" ] || { [ -e "$path" ] && [ ! -O "$path" ]; }; then
+    echo "✗ probe path is a symlink or not owned by your user: $path" >&2
+    exit 1
+  fi
+done
+if [ -e "${HOME_DIR}/auth.json" ]; then
+  if [ ! -f "${HOME_DIR}/auth.json" ]; then
+    echo "✗ probe login is not a regular file: ${HOME_DIR}/auth.json" >&2
+    exit 1
+  fi
+  chmod 600 "${HOME_DIR}/auth.json"
+fi
+
 echo "Codex version: $(codex --version 2>&1 | head -1)"
 mkdir -p "$WORK_DIR"
+chmod 700 "$WORK_DIR"
 : > "$CAPTURE"
 
 # Every plan/todo tool name worth catching, plus the ones Codex is known to
