@@ -9,7 +9,6 @@
  */
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, symlink, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -363,8 +362,11 @@ test("#441: a staged update repoints the managed LaunchAgent without restarting 
     assert.equal(program[1], fresh.script, "staged must still hand the owned plist to the new runtime");
 
     // Und der laufende Agent bleibt unangetastet: kein bootout, kein bootstrap,
-    // kein kickstart — nur das lesende `print` aus readState.
-    const calls = existsSync(log) ? await readFile(log, "utf8") : "";
+    // kein kickstart — nur das lesende `print` aus readState. Das Log MUSS das
+    // `print` enthalten: fehlt es, wurde der Stub nie erreicht und das
+    // doesNotMatch unten wäre leer wahr.
+    const calls = await readFile(log, "utf8");
+    assert.match(calls, /\bprint\b/, "the launchctl stub was never reached");
     assert.doesNotMatch(calls, /bootout|bootstrap|kickstart/, `launchctl was used to restart: ${calls}`);
   });
 });
