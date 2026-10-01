@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #817 corrects the local Desktop Extension packaging description: its daemon tarball omits the publish-only stub manifest.
+- Follow-up to #817: the second packaging comment matches that behavior, with a workflow contract test for the manifest difference.
+
 - @zzallirog's #815 makes an evaluation with zero cases fail instead of reporting a perfect result.
 - Follow-up to #815: the regression test requires the specific failure and the message accurately covers an empty vault.
 

@@ -49,8 +49,9 @@ cpSync(join(mcpbDir, "icon.png"), join(buildDir, "icon.png"));
 // 3. Install the server package (+ deps) into the bundle.
 const installArgs = ["install", "--omit=dev", "--no-audit", "--no-fund", "--install-links=false"];
 if (local) {
-  // npm pack runs each workspace's prepack (asset staging) — the tarballs
-  // are exactly what a release publishes.
+  // npm pack runs each workspace's prepack (asset staging). Only the npm
+  // publish job first writes stub/manifest.json, so this local daemon tarball
+  // does not contain that release manifest.
   const tarballDir = join(buildDir, "tarballs");
   mkdirSync(tarballDir, { recursive: true });
   for (const ws of ["packages/core", "packages/statusline", "packages/daemon"]) {
