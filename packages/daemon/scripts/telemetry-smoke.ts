@@ -6,18 +6,25 @@
  * Run: npm run smoke:telemetry
  */
 import { Telemetry } from "../src/telemetry.js";
-import { readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const TMP_LOG = "/tmp/bastra-recall-telemetry-smoke";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(`assertion failed: ${msg}`);
 }
 
 async function main(): Promise<void> {
-  await rm(TMP_LOG, { recursive: true, force: true });
-  process.env.BASTRA_LOG_PATH = TMP_LOG;
+  const logDir = await mkdtemp(join(tmpdir(), "bastra-telemetry-smoke-"));
+  try {
+    await smoke(logDir);
+  } finally {
+    await rm(logDir, { recursive: true, force: true });
+  }
+}
+
+async function smoke(logDir: string): Promise<void> {
+  process.env.BASTRA_LOG_PATH = logDir;
   // Unset, so the assertion below is about the default and not about a value we set.
   delete process.env.BASTRA_TELEMETRY;
   delete process.env.NEXUS_TELEMETRY;
@@ -65,10 +72,10 @@ async function main(): Promise<void> {
     follows_recall: followup,
   });
 
-  const files = await readdir(TMP_LOG);
+  const files = await readdir(logDir);
   assert(files.length === 1, `expected 1 log file, got ${files.length}`);
 
-  const content = await readFile(join(TMP_LOG, files[0]), "utf8");
+  const content = await readFile(join(logDir, files[0]), "utf8");
   const lines = content.trim().split("\n").filter(Boolean);
   assert(lines.length === 3, `expected 3 events, got ${lines.length}`);
 
@@ -96,8 +103,7 @@ async function main(): Promise<void> {
   const off = new Telemetry();
   assert(!off.isEnabled(), "telemetry should be disabled when BASTRA_TELEMETRY=off");
 
-  await rm(TMP_LOG, { recursive: true, force: true });
-  console.error(`[telemetry-smoke] PASS — ${lines.length} events, correlation ok`);
+  console.error(`[telemetry-smoke] PASS — ${lines.length} events, correlation ok; log-dir: ${logDir}`);
 }
 
 main().catch((err) => {
