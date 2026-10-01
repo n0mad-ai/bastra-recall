@@ -713,11 +713,15 @@ describe("test-map: a zero-test build and a zero-source heatmap are not success-
   });
   after(() => rmSync(repo, { recursive: true, force: true }));
 
-  it("build with 0 parsed test files exits non-zero and says why", () => {
+  it("build with 0 parsed test files leaves a previous full map untouched", () => {
+    mkdirSync(join(repo, ".test-map"), { recursive: true });
+    const mapPath = join(repo, ".test-map", "map.json");
+    const previous = JSON.stringify({ commit: git("rev-parse", "HEAD").trim(), tests: [{ file: "t/old.test.mjs" }], sources: {} });
+    writeFileSync(mapPath, previous);
     const out = cli("build");
-    assert.match(out.stdout, /0 test files/);
-    assert.notEqual(out.status, 0, "a zero-test map must not look like a clean pass");
+    assert.equal(out.status, 2, out.stderr);
     assert.match(out.stderr, /0 test files parsed/);
+    assert.equal(readFileSync(mapPath, "utf8"), previous, "the rejected build replaced a good map");
   });
 
   it("heatmap on a map with no /src/ source prints 0.0 %, not NaN", () => {

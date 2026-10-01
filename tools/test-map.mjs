@@ -289,6 +289,9 @@ function toRanges(lines) {
 export async function build({ root = ROOT, jobs: j, only, progress = () => {} } = {}) {
   const script = testScript(root);
   const files = script.files.filter((f) => !only || f.includes(only));
+  if (!only && files.length === 0) {
+    throw new MapError("0 test files parsed from the root package.json's `test` script — existing full map left unchanged");
+  }
   const jobs = Math.max(1, j ?? Math.min(4, Math.floor(cpus().length / 2)));
   const work = join(outDir(root), "work");
   rmSync(work, { recursive: true, force: true });
@@ -669,15 +672,6 @@ async function main() {
       `${Object.keys(map.sources).length} source files at ${commit.slice(0, 8)}${dirty ? " (dirty tree)" : ""}; ` +
       `${failed} files failed during the build, ${blind} executed no source line (coverage-blind${lost ? `, ${lost} of them because Node lost the report` : ""}).` +
       (o.only ? " Partial map (--only) written to .test-map/map-only.json; the full map is unchanged." : ""));
-    // 0 test files is indistinguishable, in this printout, from "I
-    // honestly parsed the root `test` script and it lists nothing" vs "I
-    // could not parse it at all" — both give a success-shaped zero-test map.
-    // Fail loudly instead: a build that found nothing to run is a build to
-    // doubt, not a clean pass.
-    if (!o.only && tests.length === 0) {
-      warn("0 test files parsed from the root package.json's `test` script — refusing to write a success-shaped empty map");
-      process.exitCode = 1;
-    }
     return;
   }
   if (cmd === "select") {

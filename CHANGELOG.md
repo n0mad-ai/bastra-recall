@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #829 makes a zero-test map build fail and a zero-source heatmap display 0.0% instead of NaN.
+- Follow-up to #829: an unparseable full test list is rejected before it can overwrite a previous coverage map.
+
 - @zzallirog's #821 restores the stub build-info placeholder after a terminal interrupt and corrects its permission description.
 - Follow-up to #821: parent-only SIGTERM/SIGHUP now exit with their signal status after restoring the placeholder.
 
