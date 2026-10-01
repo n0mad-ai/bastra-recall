@@ -31,7 +31,8 @@
  *     log the calls that never reached it, and that rate is exactly what
  *     #346's fallback will be judged against.
  */
-import { request } from "node:http";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -82,22 +83,44 @@ function postPromptLane(baseUrl: string, body: unknown, timeoutMs: number): Prom
       return;
     }
     const payload = Buffer.from(JSON.stringify(body), "utf8");
-    const req = request(
+    // An https:// daemon URL must use TLS, not fall through to plain
+    // HTTP because `request` was always the node:http one regardless of
+    // url.protocol; and `net.isIP()` (which node:http/net use to skip DNS for
+    // a literal address) does not recognize URL's bracketed IPv6 hostname
+    // ("[::1]"), so passing it through as-is sent that literal string to the
+    // resolver and failed with EAI_AGAIN instead of connecting.
+    const isHttps = url.protocol === "https:";
+    const transport = isHttps ? httpsRequest : httpRequest;
+    const defaultPort = isHttps ? 443 : 80;
+    let settled = false;
+    // `timeout` on the options object is Node's socket-IDLE timeout — a
+    // response dripping data never goes idle and never trips it. A plain
+    // setTimeout that destroys the request regardless of activity is a real
+    // deadline.
+    const deadline = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      req.destroy();
+      reject(new Error("timeout"));
+    }, timeoutMs);
+    const req = transport(
       {
         method: "POST",
-        hostname: url.hostname,
-        port: url.port || 80,
+        hostname: url.hostname.replace(/^\[|\]$/g, ""),
+        port: url.port || defaultPort,
         path: url.pathname,
         headers: {
           "Content-Type": "application/json; charset=utf-8",
           "Content-Length": payload.byteLength.toString(),
         },
-        timeout: timeoutMs,
       },
       (res) => {
         const chunks: Buffer[] = [];
         res.on("data", (c: Buffer) => chunks.push(c));
         res.on("end", () => {
+          if (settled) return;
+          clearTimeout(deadline);
+          settled = true;
           const data = Buffer.concat(chunks).toString("utf8");
           if ((res.statusCode ?? 500) >= 400) {
             reject(new Error(`HTTP ${res.statusCode}: ${data.slice(0, 200)}`));
@@ -107,10 +130,12 @@ function postPromptLane(baseUrl: string, body: unknown, timeoutMs: number): Prom
         });
       },
     );
-    req.on("timeout", () => {
-      req.destroy(new Error("timeout"));
+    req.on("error", (err) => {
+      if (settled) return;
+      clearTimeout(deadline);
+      settled = true;
+      reject(err);
     });
-    req.on("error", reject);
     req.write(payload);
     req.end();
   });

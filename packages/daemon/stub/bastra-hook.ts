@@ -32,7 +32,8 @@
  * both runtimes and plain node can run this file unchanged — which is also
  * the fallback: `node stub/bastra-hook.ts` behaves identically, just slower.
  */
-import { request } from "node:http";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { envInt } from "../src/env.js";
 import { writeClientTelemetry, type ClientLane } from "../src/hook-client-telemetry.js";
 import { resolveDaemonEndpoint } from "../src/daemon-endpoint.js";
@@ -110,6 +111,17 @@ function emitOnce(payload: string): void {
   process.stdout.write(payload);
 }
 
+/**
+ * `URL#hostname` keeps the brackets for an IPv6 literal (`"[::1]"`),
+ * but `net.isIP()` — the check node:http/net use to skip DNS for a literal
+ * address — does not recognize a bracketed string as one. Passing it through
+ * as `hostname` sent "[::1]" itself to the resolver, which failed with
+ * EAI_AGAIN instead of connecting.
+ */
+function unbracketHostname(hostname: string): string {
+  return hostname.replace(/^\[|\]$/g, "");
+}
+
 function postLane(baseUrl: string, path: string, body: unknown, timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
     let url: URL;
@@ -120,22 +132,40 @@ function postLane(baseUrl: string, path: string, body: unknown, timeoutMs: numbe
       return;
     }
     const payload = Buffer.from(JSON.stringify(body), "utf8");
-    const req = request(
+    // An https:// daemon URL must use TLS, not fall through to a
+    // plain-HTTP socket because `request` was always the node:http one.
+    const isHttps = url.protocol === "https:";
+    const transport = isHttps ? httpsRequest : httpRequest;
+    const defaultPort = isHttps ? 443 : 80;
+    let settled = false;
+    // `timeout` on the options object is Node's socket-IDLE timeout — a
+    // response dripping data never goes idle and never trips it. A plain
+    // setTimeout that destroys the request regardless of activity is a real
+    // deadline.
+    const deadline = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      req.destroy();
+      reject(new Error("timeout"));
+    }, timeoutMs);
+    const req = transport(
       {
         method: "POST",
-        hostname: url.hostname,
-        port: url.port || 80,
+        hostname: unbracketHostname(url.hostname),
+        port: url.port || defaultPort,
         path: url.pathname,
         headers: {
           "Content-Type": "application/json; charset=utf-8",
           "Content-Length": payload.byteLength.toString(),
         },
-        timeout: timeoutMs,
       },
       (res) => {
         const chunks: Buffer[] = [];
         res.on("data", (c: Buffer) => chunks.push(c));
         res.on("end", () => {
+          if (settled) return;
+          clearTimeout(deadline);
+          settled = true;
           const data = Buffer.concat(chunks).toString("utf8");
           if ((res.statusCode ?? 500) >= 400) {
             reject(new Error(`HTTP ${res.statusCode}: ${data.slice(0, 200)}`));
@@ -145,10 +175,12 @@ function postLane(baseUrl: string, path: string, body: unknown, timeoutMs: numbe
         });
       },
     );
-    req.on("timeout", () => {
-      req.destroy(new Error("timeout"));
+    req.on("error", (err) => {
+      if (settled) return;
+      clearTimeout(deadline);
+      settled = true;
+      reject(err);
     });
-    req.on("error", reject);
     req.write(payload);
     req.end();
   });
