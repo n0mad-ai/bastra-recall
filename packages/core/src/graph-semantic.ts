@@ -9,6 +9,11 @@
  * Pure math over the in-memory vector snapshot — no provider calls, no I/O.
  * Ghosts and notes without a vector carry no position here; viewers place
  * them near their linked neighbors.
+ *
+ * The neighbor scan is O(n²·dim); `buildSemanticLayout` is `async` and
+ * yields to the event loop every {@link YIELD_EVERY_ROWS} rows so a large
+ * vault's computation (measured 16s+ at n≈3900) does not block every other
+ * hook lane on the daemon for the whole run.
  */
 import type { VaultGraph } from "./graph.js";
 import { cosine } from "./embeddings.js";
@@ -30,13 +35,20 @@ export interface SemanticLayout {
 const KNN_K = 4; // semantic neighbors considered per note
 const SIM_FLOOR = 0.6; // below this, "close" isn't close enough to show
 const POWER_ITERATIONS = 40;
+/** How many outer rows of the O(n²) neighbor scan run before yielding once
+ *  to the event loop. At n≈3900 (measured, 16.4s total) this keeps
+ *  any one uninterrupted stretch under ~250ms instead of blocking every
+ *  hook lane on the daemon for the whole computation. */
+const YIELD_EVERY_ROWS = 25;
 
 const pairKey = (a: string, b: string) => (a < b ? `${a}\0${b}` : `${b}\0${a}`);
 
-export function buildSemanticLayout(
+const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+export async function buildSemanticLayout(
   graph: VaultGraph,
   vectors: ReadonlyMap<string, Float32Array>,
-): SemanticLayout {
+): Promise<SemanticLayout> {
   const ids: string[] = [];
   const mat: Float32Array[] = [];
   for (const n of graph.nodes) {
@@ -70,6 +82,7 @@ export function buildSemanticLayout(
       seen.add(key);
       edges.push({ source: ids[i], target: ids[j], sim: Math.round(sim * 1000) / 1000 });
     }
+    if (i % YIELD_EVERY_ROWS === 0) await yieldToEventLoop();
   }
   edges.sort((a, b) => b.sim - a.sim);
 

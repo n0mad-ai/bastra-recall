@@ -53,7 +53,7 @@ const mkGraph = (nodeIds: string[], edges: Array<[string, string]>): VaultGraph 
 const vec = (values: number[]) => new Float32Array(values);
 const pair = (a: string, b: string) => (a < b ? `${a} ${b}` : `${b} ${a}`);
 
-test("buildSemanticLayout: positions, unwritten edges, missing vectors skipped", () => {
+test("buildSemanticLayout: positions, unwritten edges, missing vectors skipped", async () => {
   // two clean semantic clusters: n1/n2/n3 vs n4/n5; n6 has no vector
   const vectors = new Map<string, Float32Array>([
     ["n1", vec([1, 0.05, 0, 0])],
@@ -64,7 +64,7 @@ test("buildSemanticLayout: positions, unwritten edges, missing vectors skipped",
   ]);
   // n1–n2 is already written — it must NOT come back as a discovery
   const graph = mkGraph(["n1", "n2", "n3", "n4", "n5", "n6"], [["n1", "n2"]]);
-  const layout = buildSemanticLayout(graph, vectors);
+  const layout = await buildSemanticLayout(graph, vectors);
 
   assert.equal(layout.count, 5, "only embedded notes get a position");
   assert.equal(layout.dim, 4);
@@ -89,13 +89,13 @@ test("buildSemanticLayout: positions, unwritten edges, missing vectors skipped",
   );
 });
 
-test("buildSemanticLayout: empty and single-vector vaults don't blow up", () => {
-  const empty = buildSemanticLayout(mkGraph([], []), new Map());
+test("buildSemanticLayout: empty and single-vector vaults don't blow up", async () => {
+  const empty = await buildSemanticLayout(mkGraph([], []), new Map());
   assert.equal(empty.count, 0);
   assert.deepEqual(empty.positions, []);
   assert.deepEqual(empty.edges, []);
 
-  const one = buildSemanticLayout(
+  const one = await buildSemanticLayout(
     mkGraph(["solo"], []),
     new Map([["solo", vec([1, 0, 0, 0])]]),
   );
@@ -214,6 +214,51 @@ test("GET /api/v1/graph/semantic: layout with vectors, 503 without, private excl
     search.stop();
     await vault.stop?.();
     await handle2.close();
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("GET /api/v1/graph/semantic: concurrent requests share one layout build", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-semantic-inflight-"));
+  const folder = join(dir, "memories", "projects", "alpha");
+  await mkdir(folder, { recursive: true });
+  const vectors = new Map<string, Float32Array>();
+  for (let i = 0; i < 60; i++) {
+    await writeFile(join(folder, `m${i}.md`), memoryMarkdown(`m${i}`));
+    vectors.set(`m${i}`, vec([1, Math.sin(i), Math.cos(i), i / 60]));
+  }
+  const vault = new Vault(dir);
+  await vault.init();
+  const search = new SearchIndex(vault);
+  search.start();
+  const telemetry = new Telemetry();
+  // Every build of the layout starts from the vault's graph.
+  let builds = 0;
+  const list = vault.list.bind(vault);
+  vault.list = () => {
+    builds++;
+    return list();
+  };
+  const handle = await startHttpServer({
+    port: 0,
+    vault,
+    search,
+    telemetry,
+    version: "test",
+    toolDeps: { vault, search, telemetry, vaultPath: dir },
+    documentWriteEnabled: false,
+    embedding: { on: false, providerId: null, source: "none" },
+    embeddingVectors: () => vectors,
+  });
+  try {
+    const got = await Promise.all([1, 2, 3].map(() => httpGet(handle.port!, "/api/v1/graph/semantic")));
+    assert.deepEqual(got.map((r) => r.status), [200, 200, 200]);
+    assert.equal(builds, 1, `three concurrent requests built the layout ${builds} times`);
+    assert.equal(new Set(got.map((r) => r.body)).size, 1, "all three get the same layout");
+  } finally {
+    search.stop();
+    await vault.stop?.();
+    await handle.close();
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });

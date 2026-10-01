@@ -34,7 +34,7 @@ function graphOf(ids: string[]): VaultGraph {
   } as unknown as VaultGraph;
 }
 
-test("semantic layout: positions carry x/y/z in the unit cube", () => {
+test("semantic layout: positions carry x/y/z in the unit cube", async () => {
   // vier Punkte, die in drei orthogonalen Richtungen variieren
   const vectors = new Map<string, Float32Array>([
     ["a", Float32Array.from([1, 0, 0, 0])],
@@ -42,7 +42,7 @@ test("semantic layout: positions carry x/y/z in the unit cube", () => {
     ["c", Float32Array.from([0, 1, 0.5, 0])],
     ["d", Float32Array.from([0, -1, -0.5, 0.3])],
   ]);
-  const layout = buildSemanticLayout(graphOf(["a", "b", "c", "d"]), vectors);
+  const layout = await buildSemanticLayout(graphOf(["a", "b", "c", "d"]), vectors);
   assert.equal(layout.count, 4);
   for (const p of layout.positions) {
     for (const axis of ["x", "y", "z"] as const) {
@@ -57,10 +57,28 @@ test("semantic layout: positions carry x/y/z in the unit cube", () => {
   assert.ok(new Set(zs.map((z) => z.toFixed(3))).size >= 2, "z ist keine Konstante");
 });
 
-test("semantic layout: single vector centers at (0.5, 0.5, 0.5)", () => {
-  const layout = buildSemanticLayout(
+test("semantic layout: single vector centers at (0.5, 0.5, 0.5)", async () => {
+  const layout = await buildSemanticLayout(
     graphOf(["solo"]),
     new Map([["solo", Float32Array.from([1, 2, 3])]]),
   );
   assert.deepEqual(layout.positions, [{ id: "solo", x: 0.5, y: 0.5, z: 0.5 }]);
+});
+
+test("semantic layout: the O(n²) neighbor scan yields to the event loop while it runs", async () => {
+  // Ohne Yield läuft der ganze Scan in einem Stück: kein anderer Callback
+  // (Hook-Lanes im Daemon) kommt dran, bis das Layout fertig ist.
+  const ids = Array.from({ length: 80 }, (_, i) => `n${i}`);
+  const vectors = new Map(ids.map((id, i) => [id, Float32Array.from([Math.cos(i), Math.sin(i), (i % 7) / 7, 1])]));
+  let ticks = 0;
+  let running = true;
+  const tick = () => {
+    ticks++;
+    if (running) setImmediate(tick);
+  };
+  setImmediate(tick);
+  const layout = await buildSemanticLayout(graphOf(ids), vectors);
+  running = false;
+  assert.equal(layout.count, 80);
+  assert.ok(ticks >= 2, `the event loop ran ${ticks} time(s) during the scan`);
 });
