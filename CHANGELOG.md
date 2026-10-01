@@ -466,6 +466,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Hook install and uninstall identify the executed runner, leaving foreign hooks whose arguments merely name `bastra-hook` untouched (#945).
+
 - Telemetry smoke runs use their own temporary log directories instead of deleting a shared fixed path (#944).
 
 - Release-set stub tests fail immediately against their deliberately empty registry (#948); production retry behavior remains covered by its dedicated tests.
