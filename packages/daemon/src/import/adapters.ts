@@ -51,7 +51,14 @@ export function cleanRecallWhen(candidates: string[], fallback: string): { recal
     out.push(entry);
   }
   const recall_when = [...new Set(out)];
-  return { recall_when: recall_when.length > 0 ? recall_when : [capAtWordBoundary(fallback.trim(), MAX_RECALL_WHEN_CHARS)], warnings };
+  if (recall_when.length > 0) return { recall_when, warnings };
+  // Nothing survived, so the title stands in — say so when the title is itself a
+  // type word, or the log says "dropped" while the note keeps that very word.
+  const title = fallback.trim();
+  if (TYPE_WORDS.has(title.toLowerCase())) {
+    warnings.push(`recall_when falls back to the title '${title}', a memory type word — no other trigger was left`);
+  }
+  return { recall_when: [capAtWordBoundary(title, MAX_RECALL_WHEN_CHARS)], warnings };
 }
 
 // ── small pure helpers ───────────────────────────────────────────────────────
