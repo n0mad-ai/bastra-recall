@@ -29,5 +29,15 @@ test("spacing marks and base letters still take a column", () => {
   assert.equal(codePointWidth(0x05d0), 1);
   assert.equal(codePointWidth(0x0627), 1);
   assert.equal(codePointWidth(0x0915), 1);
+  assert.equal(codePointWidth(0x093e), 1); // Devanagari spacing vowel sign (Mc)
+  assert.equal(codePointWidth(0x0600), 1); // visible Arabic format sign, not a combining mark
   assert.equal(visibleLength("abc"), 3);
+});
+
+test("combining marks in scripts the original fix did not list take no column", () => {
+  assert.equal(codePointWidth(0x0e48), 0); // Thai tone mark
+  assert.equal(codePointWidth(0x0bcd), 0); // Tamil virama
+  assert.equal(codePointWidth(0x08d3), 0); // Arabic Extended-A mark
+  assert.equal(visibleLength("ที่นี่"), 2);
+  assert.equal(visibleLength("தமிழ்"), 4);
 });

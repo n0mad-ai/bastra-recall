@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #857 corrects terminal width for Hebrew, Arabic and Devanagari combining marks.
+- Follow-up to #857: all Unicode non-spacing and enclosing marks use zero columns, including Thai and Tamil.
+
 - @zzallirog's #843 invalidates yesterday's Today usage cache after midnight.
 - Follow-up to #843: a valid empty Today cache remains reusable instead of triggering repeated transcript reads.
 
