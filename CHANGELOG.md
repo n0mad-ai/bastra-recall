@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #865 recognizes wrapped compiled-hook registrations and preserves foreign handlers beside Bastra hooks.
+- Follow-up to #865: quoted runner paths and shell operators in quoted arguments survive re-install; doctor and Codex retain the same ownership boundaries.
+
 - @zzallirog's #857 corrects terminal width for Hebrew, Arabic and Devanagari combining marks.
 - Follow-up to #857: all Unicode non-spacing and enclosing marks use zero columns, including Thai and Tamil.
 

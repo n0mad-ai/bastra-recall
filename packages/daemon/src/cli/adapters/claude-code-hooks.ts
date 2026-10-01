@@ -28,6 +28,8 @@ import { checkForwarderRegistration } from "../stable-runtime.js";
 import {
   existingHookWrapper,
   fileOf,
+  hookCommandTokens,
+  lastShellOperatorCut,
   leftAloneNote,
   lookalikeHookCommands,
   runsOurHookRunner,
@@ -145,8 +147,7 @@ function buildHookEntry(
   // A variable assignment scopes to the one command it precedes, so behind a
   // shell operator (`cd /dir && node …`) the marker goes after the last one —
   // in front of the runner it is for — instead of onto `cd`.
-  const ops = [...prefix.matchAll(/(?:&&|\|\||[;|])\s*/g)];
-  const cut = ops.length ? (ops[ops.length - 1].index ?? 0) + ops[ops.length - 1][0].length : 0;
+  const cut = lastShellOperatorCut(prefix);
   const command = `${prefix.slice(0, cut)}${CLIENT_MARKER}${prefix.slice(cut)}${runner}${wrap.suffix}`;
   const entry: Record<string, unknown> = {};
   if (def.matcher) entry.matcher = def.matcher;
@@ -195,11 +196,13 @@ export function stubLaneCommandPath(cmd: string, sub: string, home: string = hom
   // The stub token followed by the lane's subcommand, quoted (a path with
   // spaces can only appear so) or bare — after our client marker and after
   // whatever the user wrapped around the runner (#647).
-  const tokens = [...cmd.matchAll(/"([^"]+)"|'([^']+)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3] ?? "");
+  const tokens = hookCommandTokens(cmd);
   for (let i = 0; i + 1 < tokens.length; i++) {
-    const base = fileOf(tokens[i]);
-    if ((base === "bastra-hook" || base === "bastra-hook.exe") && tokens[i + 1] === sub) {
-      return tokens[i].startsWith("~/") ? join(home, tokens[i].slice(2)) : tokens[i];
+    const base = fileOf(tokens[i].value);
+    if ((base === "bastra-hook" || base === "bastra-hook.exe") &&
+      tokens[i + 1].group === tokens[i].group && tokens[i + 1].value === sub) {
+      const path = tokens[i].value;
+      return path.startsWith("~/") ? join(home, path.slice(2)) : path;
     }
   }
   return null;
@@ -252,14 +255,9 @@ export function hookCommandPath(
 ): string | null {
   const suffix = `/${file}`;
   const expand = (p: string) => (p.startsWith("~/") ? join(home, p.slice(2)) : p);
-  // Quoted first — a path containing spaces can only appear that way.
-  for (const m of cmd.matchAll(/"([^"]+)"|'([^']+)'/g)) {
-    const v = m[1] ?? m[2];
-    if (slashes(v).endsWith(suffix)) return expand(v);
-  }
-  for (const tok of cmd.split(/\s+/)) {
-    const t = tok.replace(/^["']+|["']+$/g, "");
-    if (slashes(t).endsWith(suffix)) return expand(t);
+  for (const token of hookCommandTokens(cmd)) {
+    const path = token.value;
+    if (/^(?:[/~]|[A-Za-z]:[\\/])/.test(path) && slashes(path).endsWith(suffix)) return expand(path);
   }
   return null;
 }

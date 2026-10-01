@@ -25,6 +25,59 @@ export interface HookWrapper {
 
 const unquote = (t: string): string => t.replace(/^["']|["']$/g, "");
 
+export interface HookCommandToken {
+  value: string;
+  start: number;
+  end: number;
+  /** null for shell words; a shared id for words inside one quoted command argument. */
+  group: number | null;
+}
+
+/** Keep shell words separate from the words inside `wrapper -- "node script"`.
+ * A quoted log message is not a command, so only `--` opens an inner command. */
+export function hookCommandTokens(cmd: string): HookCommandToken[] {
+  const tokens: HookCommandToken[] = [];
+  let previous = "";
+  let group = 0;
+  for (const outer of cmd.matchAll(/"[^"]*"|'[^']*'|\S+/g)) {
+    const raw = outer[0];
+    const start = outer.index ?? 0;
+    const value = unquote(raw);
+    tokens.push({ value, start, end: start + raw.length, group: null });
+    if (/^["'].*["']$/.test(raw) && /\s/.test(value) && previous === "--") {
+      const id = ++group;
+      for (const inner of value.matchAll(/"[^"]*"|'[^']*'|\S+/g)) {
+        const innerStart = start + 1 + (inner.index ?? 0);
+        tokens.push({ value: unquote(inner[0]), start: innerStart, end: innerStart + inner[0].length, group: id });
+      }
+    }
+    previous = raw;
+  }
+  return tokens;
+}
+
+/** Last real shell separator before a runner; quoted labels are data. */
+export function lastShellOperatorCut(prefix: string): number {
+  let quote: string | null = null;
+  let escaped = false;
+  let cut = 0;
+  for (let i = 0; i < prefix.length; i++) {
+    const ch = prefix[i];
+    if (escaped) { escaped = false; continue; }
+    if (ch === "\\" && quote !== "'") { escaped = true; continue; }
+    if (quote) { if (ch === quote) quote = null; continue; }
+    if (ch === "'" || ch === '"') { quote = ch; continue; }
+    let end = i;
+    if (ch === ";" || ch === "|") end = i + 1 + (ch === "|" && prefix[i + 1] === "|" ? 1 : 0);
+    else if (ch === "&" && prefix[i + 1] === "&") end = i + 2;
+    if (end === i) continue;
+    while (/\s/.test(prefix[end] ?? "")) end++;
+    cut = end;
+    i = end - 1;
+  }
+  return cut;
+}
+
 /**
  * The text before and after the runner in a registered hook command — the
  * runner being `node <…/file>` or `<…/bastra-hook> <sub>` — or null when the
@@ -36,18 +89,7 @@ const unquote = (t: string): string => t.replace(/^["']|["']$/g, "");
  * own runner and keeps whatever wraps it.
  */
 export function hookWrapper(cmd: string, file: string, sub?: string): HookWrapper | null {
-  const tokens: Array<{ text: string; index: number }> = [];
-  for (const m of cmd.matchAll(/"[^"]*"|'[^']*'|\S+/g)) {
-    tokens.push({ text: m[0], index: m.index ?? 0 });
-    // A wrapper that takes the runner as ONE quoted argument (`wrap -- "node
-    // /…/hook.js"`): the words inside are tokens too, so prefix and suffix cut
-    // inside the quotes and the runner is replaced in place.
-    if (/^["'].*\s.*["']$/.test(m[0])) {
-      for (const inner of m[0].slice(1, -1).matchAll(/"[^"]*"|'[^']*'|\S+/g)) {
-        tokens.push({ text: inner[0], index: (m.index ?? 0) + 1 + (inner.index ?? 0) });
-      }
-    }
-  }
+  const tokens = hookCommandTokens(cmd);
   let start = -1;
   let end = -1;
   // Only a whole absolute path counts. An unquoted path with a space splits
@@ -55,21 +97,23 @@ export function hookWrapper(cmd: string, file: string, sub?: string): HookWrappe
   // it twice; such a command keeps the old behaviour (no wrapper kept).
   const rooted = (t: string): boolean => /^(?:[/~]|[A-Za-z]:[\\/])/.test(t);
   for (let i = 0; i < tokens.length && start < 0; i++) {
-    const t = unquote(tokens[i].text);
+    const t = tokens[i].value;
     if (!rooted(t)) continue;
     if (slashes(t).endsWith(`/${file}`)) {
-      const node = i > 0 && /^node(\.exe)?$/.test(fileOf(unquote(tokens[i - 1].text)));
+      const node = i > 0 && tokens[i - 1].group === tokens[i].group &&
+        /^node(\.exe)?$/.test(fileOf(tokens[i - 1].value));
       start = node ? i - 1 : i;
       end = i;
-    } else if (sub && /^bastra-hook(\.exe)?$/.test(fileOf(t)) && tokens[i + 1]?.text === sub) {
+    } else if (sub && /^bastra-hook(\.exe)?$/.test(fileOf(t)) &&
+      tokens[i + 1]?.group === tokens[i].group && tokens[i + 1]?.value === sub) {
       start = i;
       end = i + 1;
     }
   }
   if (start < 0) return null;
   return {
-    prefix: cmd.slice(0, tokens[start].index),
-    suffix: cmd.slice(tokens[end].index + tokens[end].text.length),
+    prefix: cmd.slice(0, tokens[start].start),
+    suffix: cmd.slice(tokens[end].end),
   };
 }
 
