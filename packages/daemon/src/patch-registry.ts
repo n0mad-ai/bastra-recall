@@ -301,7 +301,10 @@ interface GitRun {
 function git(root: string, args: string[], env?: NodeJS.ProcessEnv): GitRun {
   const bin = findExecutable("git");
   if (!bin) return { ok: false, output: "git not found on a trusted PATH", stdout: "" };
-  const r = spawnSync(bin, args, { cwd: root, encoding: "utf8", timeout: 30_000, ...(env ? { env } : {}) });
+  // Every reader below matches git's English messages ("Skipped patch"); a
+  // localized git translates that line and a skipped patch reads as applied.
+  const cEnv = { ...(env ?? process.env), LC_ALL: "C", LANGUAGE: "C" };
+  const r = spawnSync(bin, args, { cwd: root, encoding: "utf8", timeout: 30_000, env: cEnv });
   const stdout = r.stdout ?? "";
   return { ok: r.status === 0, output: `${stdout}\n${r.stderr ?? ""}`.trim(), stdout };
 }
