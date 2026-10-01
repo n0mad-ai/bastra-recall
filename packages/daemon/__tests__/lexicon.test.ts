@@ -137,8 +137,14 @@ test("lexicon (#517): overlapping repeats without a group are dropped — the is
       String.raw`\w{0,1000}\w{0,1000}\w{0,1000}x`,
       String.raw`\W\s*\W\s*\W\s*x`, // the `W` of `\W` is no literal letter
       String.raw`\w*\w*x`, // 859 ms on 2,000 hex digits, 64 s on 8,000 — every digit is a start
+      String.raw`\w*\w{0,1000}x`, // a large finite upper bound is still a long repeat
+      String.raw`\w{0,5000}\w{0,5000}x`,
+      String.raw`\d*\w{0,200}x`,
+      String.raw`\p{N}*\p{N}*x`, // count the quantifier after the whole Unicode escape
+      String.raw`\P{L}*\P{L}*x`,
+      String.raw`\u{37}*\u{37}*x`,
     ];
-    const good = [String.raw`\w+x`, String.raw`schon\s+sowas\s+wieder\s+hier`, String.raw`ha\*ha[*+?]{2}`];
+    const good = [String.raw`\w+x`, String.raw`\p{N}+x`, String.raw`\w{0,8}\w{0,8}x`, String.raw`schon\s+sowas\s+wieder\s+hier`, String.raw`ha\*ha[*+?]{2}`];
     await writeFile(join(dir, "frustration.txt"), [...bad, ...good].join("\n"), "utf8");
     const cues = frustrationCues();
     for (const b of bad) assert.ok(!cues.includes(b), `polynomial cue reached the live lexicon: ${b}`);
