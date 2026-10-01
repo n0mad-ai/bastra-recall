@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #803 prevents the one-off vault migration from replacing an existing target and rejects escaping scopes.
+- Follow-up to #803: migration uses the normal scope validator, reports planned target collisions in dry-run, and names incomplete apply runs without duplicate collision lines.
+
 - @zzallirog's #801 separates unstamped tool payloads from genuinely historical dimension rows in stats.
 - Follow-up to #801: unstamped `recall` stays historical, and unmatched IDs get a neutral label that covers reflex hints.
 

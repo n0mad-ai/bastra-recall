@@ -15,6 +15,7 @@
 import { readdir, readFile, mkdir, rename, rmdir, access } from "node:fs/promises";
 import { join, basename } from "node:path";
 import matter from "gray-matter";
+import { isPathSafeComponent } from "@bastra-recall/core";
 
 const VAULT = process.env.BASTRA_VAULT_PATH ?? process.env.NEXUS_VAULT_PATH;
 if (!VAULT) {
@@ -64,8 +65,9 @@ async function planFolder(folder: string, vault: string): Promise<Plan[]> {
     const scope = typeof fm.scope === "string" ? fm.scope : "unscoped";
     const type = typeof fm.type === "string" ? fm.type : "memory";
     const id = typeof fm.id === "string" ? fm.id : basename(name, ".md");
-    // The scope becomes a path segment — one that climbs out of memories/projects/ is not a scope.
-    if (scope.includes("/") || scope.includes("\\") || scope === "." || scope === "..") {
+    // Use the same component contract as save_memory. A leading dot would
+    // move the note into a directory the vault loader intentionally skips.
+    if (!scope || !isPathSafeComponent(scope)) {
       console.error(`! skip (unsafe scope ${JSON.stringify(scope)}): ${from}`);
       continue;
     }
@@ -98,16 +100,17 @@ async function main(): Promise<void> {
   }
   console.log("");
   console.log(`total moves: ${all.length}`);
-  let collisions = 0;
-  for (const p of all) {
-    if (await exists(p.to)) {
-      collisions++;
-      console.log(`  collision (target exists, would be skipped): ${p.to.replace(vault, "…")}`);
-    }
-  }
-  if (collisions > 0) console.log(`collisions: ${collisions}`);
-
   if (!APPLY) {
+    let collisions = 0;
+    const plannedTargets = new Set<string>();
+    for (const p of all) {
+      if (plannedTargets.has(p.to) || await exists(p.to)) {
+        collisions++;
+        console.log(`  collision (target exists or planned twice, would be skipped): ${p.to.replace(vault, "…")}`);
+      }
+      plannedTargets.add(p.to);
+    }
+    if (collisions > 0) console.log(`collisions: ${collisions}`);
     console.log("\nfirst 5 moves (preview):");
     for (const p of all.slice(0, 5)) {
       console.log(`  ${p.from.replace(vault, "…")} → ${p.to.replace(vault, "…")}`);
@@ -144,6 +147,7 @@ async function main(): Promise<void> {
   console.log(`moved:  ${moved}`);
   console.log(`skipped: ${skipped}`);
   console.log(`failed: ${failed}`);
+  if (skipped > 0) console.log("incomplete: skipped source files remain in their original folders");
 
   // Try to remove now-empty old folders.
   for (const old of ["memorys", "bookmarks"]) {
