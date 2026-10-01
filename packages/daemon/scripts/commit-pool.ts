@@ -147,18 +147,26 @@ function synthetic(): void {
   const recipientLog = makeLog(); // recipient's own pool, same near coverage the author can't omit
   const fold = 0;
 
-  const controls: Array<{ name: string; bridge: Bridge; expect: string }> = [
+  const controls: Array<{ name: string; bridge: Bridge; expect: string; tamperShippedHash?: boolean }> = [
     { name: "positive (+far, 0 near)", bridge: { farLift: 1, nearReg: 0 }, expect: "PASS / PASS" },
     { name: "LEAK     (+far, -near) ", bridge: { farLift: 1, nearReg: 1 }, expect: "PASS / FAIL  <- leak closed" },
     { name: "null     ( 0 far, 0 near)", bridge: { farLift: 0, nearReg: 0 }, expect: "FAIL / FAIL" },
+    // Without this control the hash check compares canonicalLogHash(asEntries(authorLog))
+    // against itself — always equal, so a mutant that deletes the comparison outright is
+    // byte-identical output. This bridge would PASS both gates on its own merits (positive,
+    // no near-regression to leak) — the shipped hash is deliberately wrong, so a FAIL here can
+    // only come from the hash comparison itself, not from the recipient re-score.
+    { name: "TAMPERED (a fine bridge, wrong shipped hash)", bridge: { farLift: 1, nearReg: 0 }, expect: "PASS / FAIL  <- caught by hash check", tamperShippedHash: true },
   ];
 
   console.log("control                     | naive | committed | what should happen");
   console.log("-".repeat(78));
-  for (const { name, bridge, expect } of controls) {
+  for (const { name, bridge, expect, tamperShippedHash } of controls) {
     // ATTACK: for the harmful bridge the author OMITS its near-regression queries before scoring.
     const authorLog = bridge.nearReg > 0 ? fullLog.filter((q) => q.kind !== "near") : fullLog;
-    const shippedHash = canonicalLogHash(asEntries(authorLog));
+    // The tampered control ships the hash of a DIFFERENT log (extra fold) than the one it scored
+    // on, so canonicalLogHash(asEntries(authorLog)) can never equal it by construction.
+    const shippedHash = tamperShippedHash ? canonicalLogHash(asEntries(makeLog(1, 1))) : canonicalLogHash(asEntries(authorLog));
 
     const naive = naiveGate(authorLog, bridge, fold);
     const committed = committedGate(asEntries(authorLog), shippedHash, recipientLog, bridge, fold);
@@ -166,9 +174,10 @@ function synthetic(): void {
     console.log(`${name.padEnd(27)}| ${cell(naive, 5)} | ${cell(committed, 9)} | ${expect}`);
   }
   console.log(
-    "\nThe commitment flips exactly the harmful-bridge verdict (naive PASS → committed FAIL) and\n" +
-      "leaves positive + null unchanged. Magnitudes illustrative; the claim is the discrimination,\n" +
-      "not the number. Tier B = real reaches + #121 log on a production vault.",
+    "\nThe commitment flips the harmful-bridge verdict via the recipient re-check (naive PASS →\n" +
+      "committed FAIL) AND catches a shipped hash that names a different log than the one actually\n" +
+      "scored (TAMPERED). Magnitudes illustrative; the claim is the discrimination, not the number.\n" +
+      "Tier B = real reaches + #121 log on a production vault.",
   );
 }
 
