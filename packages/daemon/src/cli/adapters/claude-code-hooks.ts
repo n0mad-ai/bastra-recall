@@ -142,7 +142,12 @@ function buildHookEntry(
   // rewrites a command only for a call that proves it is Claude Code), so it
   // is taken out of the kept prefix — the same shape as the Codex adapter.
   const prefix = wrap.prefix.replace(CLIENT_MARKER, "");
-  const command = `${CLIENT_MARKER}${prefix}${runner}${wrap.suffix}`;
+  // A variable assignment scopes to the one command it precedes, so behind a
+  // shell operator (`cd /dir && node …`) the marker goes after the last one —
+  // in front of the runner it is for — instead of onto `cd`.
+  const ops = [...prefix.matchAll(/(?:&&|\|\||[;|])\s*/g)];
+  const cut = ops.length ? (ops[ops.length - 1].index ?? 0) + ops[ops.length - 1][0].length : 0;
+  const command = `${prefix.slice(0, cut)}${CLIENT_MARKER}${prefix.slice(cut)}${runner}${wrap.suffix}`;
   const entry: Record<string, unknown> = {};
   if (def.matcher) entry.matcher = def.matcher;
   entry.hooks = [{
@@ -187,31 +192,41 @@ export function stubSubcommandForFile(file: string, defs: HookDef[] = hookDefini
  * moving the last three lanes onto the stub, #369).
  */
 export function stubLaneCommandPath(cmd: string, sub: string, home: string = homedir()): string | null {
-  // Leading program token, quoted (a path with spaces can only appear so) or
-  // bare — past our own client marker, which the installer writes in front.
-  const m = /^\s*(?:BASTRA_HOOK_CLIENT=claude-code\s+)?(?:"([^"]+)"|'([^']+)'|(\S+))\s*(.*)$/.exec(cmd);
-  if (!m) return null;
-  const prog = m[1] ?? m[2] ?? m[3] ?? "";
-  const base = fileOf(prog);
-  if (base !== "bastra-hook" && base !== "bastra-hook.exe") return null;
-  const args = (m[4] ?? "").trim().split(/\s+/);
-  if (args[0] !== sub) return null;
-  return prog.startsWith("~/") ? join(home, prog.slice(2)) : prog;
+  // The stub token followed by the lane's subcommand, quoted (a path with
+  // spaces can only appear so) or bare — after our client marker and after
+  // whatever the user wrapped around the runner (#647).
+  const tokens = [...cmd.matchAll(/"([^"]+)"|'([^']+)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3] ?? "");
+  for (let i = 0; i + 1 < tokens.length; i++) {
+    const base = fileOf(tokens[i]);
+    if ((base === "bastra-hook" || base === "bastra-hook.exe") && tokens[i + 1] === sub) {
+      return tokens[i].startsWith("~/") ? join(home, tokens[i].slice(2)) : tokens[i];
+    }
+  }
+  return null;
+}
+
+function isOurHandler(h: unknown): boolean {
+  if (typeof h !== "object" || h === null) return false;
+  const hh = h as Record<string, unknown>;
+  if (hh.__bastraRecall === true || hh.__nexusRecall === true) return true;
+  // #683 (mirrors install-hook.sh): by the runner the command invokes — a
+  // dist path, the stub, or the bare-bin form from the docs snippet — not by
+  // substrings of its text.
+  return typeof hh.command === "string" && runsOurHookRunner(hh.command, OUR_HOOK_FILES, CLIENT_MARKER.trim());
 }
 
 function isOurHookEntry(matcher: unknown): boolean {
   if (typeof matcher !== "object" || matcher === null) return false;
   const m = matcher as Record<string, unknown>;
-  const hooks = Array.isArray(m.hooks) ? m.hooks : [];
-  return hooks.some((h: unknown) => {
-    if (typeof h !== "object" || h === null) return false;
-    const hh = h as Record<string, unknown>;
-    if (hh.__bastraRecall === true || hh.__nexusRecall === true) return true;
-    // #683 (mirrors install-hook.sh): by the runner the command invokes — a
-    // dist path, the stub, or the bare-bin form from the docs snippet — not by
-    // substrings of its text.
-    return typeof hh.command === "string" && runsOurHookRunner(hh.command, OUR_HOOK_FILES, CLIENT_MARKER.trim());
-  });
+  return (Array.isArray(m.hooks) ? m.hooks : []).some(isOurHandler);
+}
+
+/** What is left of our entry once our handlers are taken out: a handler the
+ *  user put next to ours in the same entry is theirs and stays. */
+function foreignRemainder(entry: unknown): unknown[] {
+  const record = entry as Record<string, unknown>;
+  const rest = (Array.isArray(record.hooks) ? record.hooks : []).filter((h) => !isOurHandler(h));
+  return rest.length ? [{ ...record, hooks: rest }] : [];
 }
 
 // The recognition before #683 — only to name what is now left alone.
@@ -414,9 +429,9 @@ export function planHookEntries(
     // is re-built from the current def, in place; foreign ones stay verbatim.
     if (action === "install" && !opts.includeStop && ev === "Stop") {
       stopPreserved = cur.some((m) => isOurHookEntry(m));
-      after[ev] = cur.map((m) => (isOurHookEntry(m) ? buildHookEntry(stopDef, stubPresent, wrapOf(stopDef)) : m));
+      after[ev] = cur.flatMap((m) => (isOurHookEntry(m) ? [buildHookEntry(stopDef, stubPresent, wrapOf(stopDef)), ...foreignRemainder(m)] : [m]));
     } else {
-      after[ev] = cur.filter((m) => !isOurHookEntry(m));
+      after[ev] = cur.flatMap((m) => (isOurHookEntry(m) ? foreignRemainder(m) : [m]));
     }
   }
   if (action === "install") {
