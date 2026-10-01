@@ -53,6 +53,7 @@ import {
 } from "./recovery-journal.js";
 import { qualifyDocumentTriggers } from "./document-triggers.js";
 import { recordAudit } from "./audit-trail.js";
+import { legacyDocId, makeDocId } from "./document-id.js";
 
 // ─── Argument schemas ───────────────────────────────────────────
 
@@ -209,38 +210,6 @@ export const documentWriteTools = [
 // ─── Helpers ────────────────────────────────────────────────────
 
 const DOCUMENTS_ROOT = "documents";
-const SLUG_MAX_LEN = 80;
-
-function slugify(input: string): string {
-  // Letters of any script survive (`\p{L}\p{N}`) so two Cyrillic/CJK
-  // filenames in one folder do not collapse onto one id. NFC first: macOS
-  // hands out decomposed names. Accents on a Latin base are still folded
-  // (é -> e) as before, so existing ids of accented Latin names hold; marks on
-  // non-Latin letters (й, ё) are kept.
-  const slug = Array.from(
-    input
-      .normalize("NFC")
-      .toLowerCase()
-      .replace(/ä/g, "ae")
-      .replace(/ö/g, "oe")
-      .replace(/ü/g, "ue")
-      .replace(/ß/g, "ss")
-      .normalize("NFKD")
-      .replace(/(\p{Script=Latin})\p{M}+/gu, "$1")
-      .normalize("NFC")
-      .replace(/[^\p{L}\p{N}]+/gu, "-")
-      .replace(/^-+|-+$/g, ""),
-  )
-    .slice(0, SLUG_MAX_LEN)
-    .join("");
-  if (!slug) throw new Error(`cannot slugify: ${JSON.stringify(input)}`);
-  return slug;
-}
-
-function makeDocId(folderPath: string, filename: string): string {
-  const combined = folderPath ? `${folderPath}/${filename}` : filename;
-  return `doc-${slugify(combined)}`;
-}
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -764,12 +733,18 @@ export async function saveDocument(
   await mkdir(folder, { recursive: true });
 
   const filename = basename(args.original_path);
-  const docID = makeDocId(args.folder_path ?? "", filename);
-
   const sidecarPath = join(folder, `${filename}.md`);
   const originalDest = args.linked_file
     ? args.original_path
     : join(folder, filename);
+  let docID = makeDocId(args.folder_path ?? "", filename);
+  if (args.overwrite && readOccupant(sidecarPath).kind === "memory") {
+    const oldId = legacyDocId(args.folder_path ?? "", filename);
+    if (oldId && oldId !== docID) {
+      const sidecar = await readSidecarRaw(sidecarPath);
+      if (isDocumentSidecar(sidecar.data, oldId)) docID = oldId;
+    }
+  }
 
   // Codex-Gegenreview (P0): Dokumente schrieben ganz an der ID-Transaktion
   // vorbei. Zwei parallele `saveDocument`-Aufrufe für `a+b.pdf` und `a-b.pdf`
