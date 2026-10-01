@@ -838,10 +838,10 @@ new MCP tool):
 
 | Env var                       | Default          | What it does                                                  |
 | ----------------------------- | ---------------- | ------------------------------------------------------------- |
-| `BASTRA_DAEMON_URL`           | _none_           | Full daemon base URL — highest precedence, and what `bastra install` writes into a client registration (#531) |
+| `BASTRA_DAEMON_URL`           | _none_           | Full daemon base URL — highest precedence, and what `bastra install` writes into a client registration (#531); hook clients support `http:`, `https:` and bracketed IPv6 literals |
 | `BASTRA_HTTP_URL`             | _none_           | Full daemon base URL (overrides host+port); read only when `BASTRA_DAEMON_URL` is unset |
 | `BASTRA_HTTP_PORT`            | `6723`           | Daemon port on `127.0.0.1`, read only when neither URL var is set |
-| `BASTRA_HOOK_TIMEOUT_MS`      | per lane, see above | Overrides the lane budget (incl. network round-trip). The daemon's assertion budget is fixed at 1000 ms and is not read from this var, but the prompt-hook client takes it as its own deadline (default 1000 ms) — set below 1000 it cuts assertion calls short on the client side. |
+| `BASTRA_HOOK_TIMEOUT_MS`      | per lane, see above | Overrides the lane budget (incl. network round-trip). Hook clients enforce a wall-clock deadline even if a response keeps streaming. The daemon's assertion budget is fixed at 1000 ms and is not read from this var; setting the prompt-hook client's deadline below 1000 ms cuts assertion calls short on the client side. |
 | `BASTRA_HOOK_QUERY`           | `neutral`        | `english` restores the old action-verb recall query (#231)    |
 | `BASTRA_HOOK_CONTENT_RECALL`  | `off`            | `1` runs the opt-in edit-content recall arm (#282)             |
 | `BASTRA_PROMPT_HOOK_MODE`     | `all`            | `all` or `retrieval-only` — read by the daemon's prompt lane (set it in the daemon env)   |
@@ -1729,10 +1729,10 @@ REST-Schnittstelle (Token-Authentifizierung wie bei den anderen
 
 | Umgebungsvariable             | Standard         | Wirkung                                                       |
 | ----------------------------- | ---------------- | ------------------------------------------------------------- |
-| `BASTRA_DAEMON_URL`           | _keiner_         | Vollständige Daemon-Basis-URL — höchster Vorrang; das schreibt `bastra install` in eine Client-Registrierung (#531) |
+| `BASTRA_DAEMON_URL`           | _keiner_         | Vollständige Daemon-Basis-URL — höchster Vorrang; das schreibt `bastra install` in eine Client-Registrierung (#531); Hook-Clients unterstützen `http:`, `https:` und IPv6-Literale in eckigen Klammern |
 | `BASTRA_HTTP_URL`             | _keiner_         | Vollständige Daemon-Basis-URL (überschreibt Host+Port); wird nur gelesen, wenn `BASTRA_DAEMON_URL` nicht gesetzt ist |
 | `BASTRA_HTTP_PORT`            | `6723`           | Daemon-Port auf `127.0.0.1`; wird nur gelesen, wenn keine der URL-Variablen gesetzt ist |
-| `BASTRA_HOOK_TIMEOUT_MS`      | pro Lane, siehe oben | Überschreibt das Lane-Budget (inkl. Netzwerk-Hin- und Rückweg). Das Assertion-Budget des Daemons ist fest auf 1000 ms und wird nicht aus dieser Variable gelesen; der Prompt-Hook-Client nimmt sie aber als eigenen Deadline (Default 1000 ms) — unter 1000 gesetzt kappt sie Assertion-Aufrufe clientseitig. |
+| `BASTRA_HOOK_TIMEOUT_MS`      | pro Lane, siehe oben | Überschreibt das Lane-Budget (inkl. Netzwerk-Hin- und Rückweg). Hook-Clients setzen eine echte Zeitgrenze durch, auch wenn die Antwort weiter Daten liefert. Das Assertion-Budget des Daemons bleibt fest bei 1000 ms; eine Prompt-Hook-Deadline unter 1000 ms kappt Assertion-Aufrufe clientseitig. |
 | `BASTRA_RM_ARCHIVES`          | _nicht gesetzt_  | Der #650-Opt-in, vom Daemon gelesen; gewinnt über `archive.enabled`: `1` bastras archivierendes `rm` + Git-Schnappschüsse, `host` das eigene archivierende `rm` des Hosts (nur Quittungstext), `0` aus |
 | `BASTRA_RM_SHIM` / `BASTRA_GIT_SHIM` | _nicht gesetzt_ | `0` lässt bei eingeschaltetem Opt-in den `rm`- bzw. Git-Teil weg |
 | `BASTRA_ARCHIVE_RETAIN`       | `junk=1,in-git=2,user=2` | Aufbewahrung im Archiv in Tagen pro Klasse (auch `bastra config set archive.retain`) |
