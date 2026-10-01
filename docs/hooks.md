@@ -479,8 +479,7 @@ Restore: `bastra archive list` shows what went where (30 days);
 so on a full disk the `rm` refuses instead of freeing space (#695): the
 target stays where it was, nothing is deleted, and the message names the ways
 out — `bastra archive reconcile --yes`, `/bin/rm`, or `bastra config set
-archive.enabled off`. A disk with less free space than the target takes counts
-as full: there the move would succeed, exit 0 and free nothing; a target on
+archive.enabled off`; a target on
 another volume (a USB or network drive) goes to `<mount>/.bastra-archive`
 there — outside `~/.bastra` — or is refused where none can be made.
 
@@ -1366,9 +1365,7 @@ Grenzen: Archivieren ist Verschieben — auf einer vollen Platte verweigert `rm`
 statt Platz zu schaffen, und Platz wird erst frei, wenn das Archiv den
 Eintrag loslässt (#695). Das Ziel bleibt, wo es war, nichts wird gelöscht, und
 die Meldung nennt die Auswege: `bastra archive reconcile --yes`, `/bin/rm` oder
-`bastra config set archive.enabled off`. Eine Platte mit weniger freiem Platz, als
-das Ziel belegt, gilt als voll: Dort gelänge das Verschieben, `rm` endete mit 0
-und nichts würde frei. Ein Ziel auf einem anderen Laufwerk (USB, Netzlaufwerk)
+`bastra config set archive.enabled off`. Ein Ziel auf einem anderen Laufwerk (USB, Netzlaufwerk)
 landet dort unter `<mount>/.bastra-archive` — außerhalb von `~/.bastra` —
 oder wird verweigert, wo sich keins anlegen lässt.
 

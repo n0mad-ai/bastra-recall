@@ -34,7 +34,6 @@ import {
   renameSync,
   rmdirSync,
   rmSync,
-  statfsSync,
   statSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -319,20 +318,10 @@ export interface ShimIo {
 
 const isDiskFull = (e: unknown): boolean => ["ENOSPC", "EDQUOT"].includes((e as NodeJS.ErrnoException).code ?? "");
 
-/** Bytes a non-root process can still write on the volume of `path`. */
-function freeBytes(path: string): number {
-  try {
-    const s = statfsSync(path);
-    return s.bavail * s.bsize;
-  } catch {
-    return Infinity;
-  }
-}
-
 /** #695: archiving is a move — on a full disk it cannot free space. Say so and
  *  name the ways out; the target stays where it was, nothing is deleted. */
-const diskFull = (t: string, why = "the disk is full (ENOSPC)"): string =>
-  `rm: '${t}' not removed — ${why} and archiving is a move, it frees no space. ` +
+const diskFull = (t: string): string =>
+  `rm: '${t}' not removed — the disk is full (ENOSPC) and archiving is a move, it frees no space. ` +
   "Free space with `bastra archive reconcile --yes`, delete for real with `/bin/rm`, " +
   "or turn the archive off: `bastra config set archive.enabled off`";
 
@@ -438,21 +427,14 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
       if (flags.has("v")) out(`removed (temp) '${t}'`);
       continue;
     }
-    const bytes = sizeOf(real);
-    // #695: a move that succeeds on a nearly full volume would exit 0 and free
-    // nothing. With less room than the target takes, that is the disk-full case.
-    let root: string | null = null;
-    let tight = "";
+    let root: string | null;
     try {
       root = archiveRootFor(parent, archive);
     } catch (e) {
+      // #695: the volume's own archive cannot be made on a full disk.
       if (!isDiskFull(e)) throw e;
-      tight = "the disk is full (ENOSPC)";
-    }
-    if (root && freeBytes(root) < bytes) tight = "the disk has less free space than it takes";
-    if (tight) {
-      err(diskFull(t, tight));
-      log({ action: "refused", orig: real, reason: tight });
+      err(diskFull(t));
+      log({ action: "refused", orig: real, reason: (e as Error).message });
       rc = 1;
       continue;
     }
@@ -467,6 +449,7 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
     let dest = base;
     for (let n = 2; existsSync(dest); n++) dest = `${base}~${n}`;
     const kind = classify(real, isDir);
+    const bytes = sizeOf(real);
     // The topmost directory the mkdir has to make: it can fail halfway (ENOSPC).
     let top = dirname(dest);
     while (!existsSync(dirname(top))) top = dirname(top);

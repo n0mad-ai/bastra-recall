@@ -884,27 +884,6 @@ describe("#695 — a full disk: a clear refusal, the target untouched, nothing d
     assert.deepEqual(readdirSync(archive).filter((n) => n !== "manifest.jsonl"), []);
   });
 
-  it("a nearly full disk: with less room than the target takes, rm refuses instead of exiting 0 with nothing freed", () => {
-    // Revert-check: drop the freeBytes check → exit 0, the target sits in the archive on the same full disk.
-    const { dir, env } = sandbox();
-    const target = join(dir, "big");
-    mkdirSync(target);
-    writeFileSync(join(target, "a.bin"), "x".repeat(8192));
-    const errs: string[] = [];
-    const run = (): number => runRmShim(["-rf", target], { env, cwd: dir, out: () => {}, err: (s) => errs.push(s) });
-    withEnospc("statfsSync", () => assert.equal(run(), 1), () => () => ({ bavail: 1, bsize: 4096 }));
-    assert.equal(readFileSync(join(target, "a.bin"), "utf8").length, 8192, "the target is where it was");
-    const said = errs.join("\n");
-    assert.match(said, /less free space than it takes and archiving is a move, it frees no space/);
-    assert.match(said, /bastra archive reconcile --yes.*\/bin\/rm.*archive\.enabled off/s);
-    assert.equal(manifestRows(env).at(-1)?.action, "refused");
-    assert.deepEqual(readdirSync(join(dir, "_archive")).filter((n) => n !== "manifest.jsonl"), []);
-    // With room for it, the same call archives as before.
-    withEnospc("statfsSync", () => assert.equal(run(), 0), () => () => ({ bavail: 2, bsize: 4096 }));
-    assert.equal(existsSync(target), false);
-    assert.equal(manifestRows(env).at(-1)?.action, "archived");
-  });
-
   it("a full volume without its .bastra-archive yet: the same clear message, not 'no writable archive'", () => {
     // Revert-check: swallow ENOSPC in archiveRootFor again → "on another filesystem without a writable .bastra-archive".
     const { dir, env } = sandbox();
