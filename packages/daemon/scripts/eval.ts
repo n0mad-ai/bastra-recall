@@ -91,6 +91,10 @@ async function main(): Promise<void> {
   }
 
   const total = rows.length;
+  if (total === 0) {
+    console.error(`[eval] FATAL: 0 eval cases — no memory (of ${memories.length}, ${loaded} loaded) has a recall_when phrase to query with`);
+    process.exit(1);
+  }
   const top1 = rows.filter((r) => r.rank === 1).length;
   const top3 = rows.filter((r) => r.rank >= 1 && r.rank <= 3).length;
   const mrr =
