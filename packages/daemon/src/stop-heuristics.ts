@@ -65,8 +65,14 @@ const ALL_CAPS_RE = /^\p{Lu}{4,}$/u;
 const CAPS_STOPLIST = new Set([
   "SKILL", "JSON", "CLAUDE", "BASTRA", "NEXUS", "API", "REST", "URL", "HTML",
   "CSS", "HTTP", "HTTPS", "YAML", "XML", "SQL", "PRS", "TUI", "TSX", "JSX",
-  "SVG", "PNG", "PDF", "JPG", "TODO", "FIXME",
+  "SVG", "PNG", "PDF", "JPG", "TODO", "FIXME", "README", "LICENSE", "CHANGELOG",
 ]);
+
+// A word that is an identifier or a path (`BASTRA_VAULT_PATH`, `src/README.md`),
+// not prose: its capitals are a name's, never emphasis.
+const IDENTIFIER_WORD_RE = /\S*[\p{L}\p{N}](?:[_/\\]|\.(?=[\p{L}\p{N}]))[\p{L}\p{N}]\S*/gu;
+// `!`/`！` as emphasis: not the `!` of `!=`, `!==`, `!cmd` or `!important`.
+const EMPHASIS_BANG_RE = /!(?![=~\p{L}\p{N}_/.-])|！/u;
 
 function countFrustWords(content: string, re: RegExp): number {
   const m = content.match(re);
@@ -79,7 +85,7 @@ function countFrustWords(content: string, re: RegExp): number {
  * turn. A single short token like "SKILL" or "JSON" never qualifies.
  */
 function countQualifyingCaps(content: string): number {
-  const words = content.match(WORD_TOKEN_RE);
+  const words = content.replace(IDENTIFIER_WORD_RE, " ").match(WORD_TOKEN_RE);
   if (!words) return 0;
   const counts = new Map<string, number>();
   for (const w of words) {
@@ -133,7 +139,7 @@ export function detectFrustration(turns: TranscriptTurn[]): SaveSuggestion | nul
 function detectRepeatedCorrection(userTurns: TranscriptTurn[]): SaveSuggestion | null {
   const repeats = restatementIndices(userTurns.map((t) => t.content)).map((i) => userTurns[i].content);
   if (repeats.length < REPEAT_TURNS_MIN) return null;
-  if (!repeats.some((c) => /[!！]/u.test(c) || countQualifyingCaps(c) > 0)) return null;
+  if (!repeats.some((c) => EMPHASIS_BANG_RE.test(c) || countQualifyingCaps(c) > 0)) return null;
   return {
     heuristic: "frustration-density",
     title: "recurring frustration — capture the underlying lesson",
