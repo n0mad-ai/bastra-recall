@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #909 gives four hook transports a real deadline, TLS selection and IPv6-literal support.
+- Follow-up to #909: TLS regressions run without IPv6 loopback, unused test/transport exports are removed, and EN/DE hook docs describe the behavior.
+
 - @zzallirog's #901 identifies a false brew-services start label during an Ollama re-probe.
 - Follow-up to #901: the re-probe still prevents a second server, while brew/systemd labels require a successful start.
 

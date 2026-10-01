@@ -99,7 +99,7 @@ function runHook(
   args: string[],
   url: string,
   logDir: string,
-  stdin: unknown | null,
+  stdin: unknown,
   env: Record<string, string> = {},
 ): Promise<number | null> {
   return new Promise((ok, ko) => {
@@ -110,8 +110,7 @@ function runHook(
     });
     child.on("error", ko);
     child.on("close", (code) => ok(code));
-    // null keeps stdin open: the hook waits on it until its kill switch fires.
-    if (stdin !== null) child.stdin.end(JSON.stringify(stdin));
+    child.stdin.end(JSON.stringify(stdin));
   });
 }
 
@@ -137,18 +136,25 @@ const CLIENTS: Array<{ name: string; args: string[]; payload: unknown; path: str
 ];
 
 for (const c of CLIENTS) {
-  test(`${c.name}: reaches a daemon on an IPv6 literal, and an https:// URL never goes out as plain HTTP`, async (t) => {
+  test(`${c.name}: reaches a daemon on an IPv6 literal`, async (t) => {
     const v6 = await v6Daemon(t);
     if (!v6) return;
     const logDir = await mkdtemp(join(tmpdir(), "bastra-hook-transport-"));
-    const v4 = await daemon("127.0.0.1");
     t.after(async () => {
       await close(v6.server);
-      await close(v4.server);
       await rm(logDir, { recursive: true, force: true });
     });
     await runHook(c.args, `http://[::1]:${v6.port}`, logDir, c.payload);
     assert.deepEqual(v6.hits, [c.path], `${c.name} did not reach http://[::1]`);
+  });
+
+  test(`${c.name}: an https:// URL never goes out as plain HTTP`, async (t) => {
+    const logDir = await mkdtemp(join(tmpdir(), "bastra-hook-transport-"));
+    const v4 = await daemon("127.0.0.1");
+    t.after(async () => {
+      await close(v4.server);
+      await rm(logDir, { recursive: true, force: true });
+    });
     await runHook(c.args, `https://127.0.0.1:${v4.port}`, logDir, c.payload);
     assert.deepEqual(v4.hits, [], `${c.name} sent an https:// call as plain HTTP`);
   });
