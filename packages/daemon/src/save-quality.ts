@@ -19,7 +19,7 @@ import {
   scopeEquals,
 } from "@bastra-recall/core";
 import { detectLanguage } from "./learned-recall/language.js";
-import { fixMarkerCues, imperativeLeadCues, negativeClaimCues } from "./lexicon.js";
+import { cueRegex, fixMarkerCues, imperativeLeadCues, negativeClaimCues } from "./lexicon.js";
 import {
   containedIn,
   fieldSimilarity,
@@ -148,12 +148,8 @@ export function claimingTrigger(trigger: string, theirs: string[]): string | und
 // advisory-only flags, never blocks.
 //
 // #707: the phrasings are per-language data in lexicon.ts (user-extensible),
-// matched with Unicode letter boundaries — JS `\b` is ASCII-only, so a
-// Cyrillic cue could never match. A language without a list gets no penalty.
-function cueRegex(cues: readonly string[], anchored: boolean): RegExp {
-  const lead = anchored ? "^" : "(?<![\\p{L}\\p{N}])";
-  return new RegExp(`${lead}(?:${cues.join("|")})(?![\\p{L}\\p{N}])`, "iu");
-}
+// matched with Unicode letter boundaries (`cueRegex`). A language without a
+// list gets no penalty.
 
 /** #707: the language-neutral half of "did they capture the fix": an inline
  *  code span or a fenced block (a command, a config line, an env var) is the

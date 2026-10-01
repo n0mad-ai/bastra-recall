@@ -255,7 +255,13 @@ retrieval-only mode stays silent. The request is classified, not the
 output: a finished sentence is not lexically distinguishable from an opinion,
 and the intent is visible in the prompt before the text exists. Two signals
 are required (a composing verb *and* an outward artefact; a state question
-*and* a project-state noun), so a bare "write a helper" never fires. The hint
+*and* a project-state noun), so a bare "write a helper" never fires. The four
+signals are per-language data (German, English, Russian; #707), matched with
+Unicode letter boundaries; an issue reference (`#123`) counts as an outward
+artefact in any script. One cue per line in `~/.bastra/lexicon/compose-verb.txt`,
+`outward-artifact.txt`, `state-question.txt` or `project-state.txt` adds a
+language. A prompt in a language without a list is not labelled `assertion` on
+a guess: it recalls as an ordinary prompt, where only hits ≥ 100 surface. The hint
 block instructs the agent not to assert numbers from model memory and to say
 it does not know when the vault has no answer. Claims that only arise
 mid-draft are still missed — that is the open half of #252. Backoff applies
@@ -1089,7 +1095,14 @@ Ein fertiger Satz ist lexikalisch nicht von einer Meinung zu unterscheiden, und
 die Absicht ist im Prompt sichtbar, bevor der Text existiert. Es braucht zwei
 Signale (ein Verfassen-Verb *und* ein Artefakt für außen; eine Zustandsfrage
 *und* ein Substantiv für Projektzustand), deshalb löst ein bloßes „schreib einen
-Helper“ nie aus. Der Hinweisblock weist den Agenten an, keine Zahlen aus dem
+Helper“ nie aus. Die vier Signale sind Daten pro Sprache (Deutsch, Englisch,
+Russisch; #707) und werden an Unicode-Buchstabengrenzen geprüft; ein
+Issue-Verweis (`#123`) zählt in jeder Schrift als Artefakt für außen. Eine Zeile
+je Begriff in `~/.bastra/lexicon/compose-verb.txt`, `outward-artifact.txt`,
+`state-question.txt` oder `project-state.txt` ergänzt eine Sprache. Ein Prompt
+in einer Sprache ohne Liste wird nicht auf Verdacht als `assertion` eingestuft:
+Er ruft wie ein gewöhnlicher Prompt ab, bei dem nur Treffer ≥ 100 erscheinen.
+Der Hinweisblock weist den Agenten an, keine Zahlen aus dem
 Modellgedächtnis zu behaupten und zu sagen, dass er es nicht weiß, wenn der
 Vault keine Antwort hat. Aussagen, die erst mitten im Entwurf entstehen, werden
 weiterhin verpasst — das ist die offene Hälfte von #252. Backoff gilt normal

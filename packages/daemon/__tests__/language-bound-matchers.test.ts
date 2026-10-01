@@ -70,6 +70,14 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
   "packages/daemon/src/lexicon.ts :: keyed DEFAULT_FIX_MARKER_CUES_BY_LANGUAGE": "#707 per-language data with a structural fallback (code span)",
   "packages/daemon/src/lexicon.ts :: name DEFAULT_IMPERATIVE_LEAD_CUES_BY_LANGUAGE": "#707 per-language data, user-extensible; an unlisted language gets no advisory penalty",
   "packages/daemon/src/lexicon.ts :: keyed DEFAULT_IMPERATIVE_LEAD_CUES_BY_LANGUAGE": "#707 per-language data with a neutral path (no penalty)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_COMPOSE_VERB_CUES_BY_LANGUAGE": "#707 assertion label, per-language data, user-extensible; an unlisted language recalls as an ordinary prompt (tested with el)",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_COMPOSE_VERB_CUES_BY_LANGUAGE": "#707 per-language data with a neutral path (score-gated recall)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_OUTWARD_ARTIFACT_CUES_BY_LANGUAGE": "#707 assertion label, per-language data, user-extensible; an issue reference counts in any script",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_OUTWARD_ARTIFACT_CUES_BY_LANGUAGE": "#707 per-language data with a structural half (#123) and a neutral path",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_STATE_QUESTION_CUES_BY_LANGUAGE": "#707 assertion label, per-language data, user-extensible; an unlisted language recalls as an ordinary prompt",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_STATE_QUESTION_CUES_BY_LANGUAGE": "#707 per-language data with a neutral path (score-gated recall)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_PROJECT_STATE_CUES_BY_LANGUAGE": "#707 assertion label, per-language data, user-extensible; an unlisted language recalls as an ordinary prompt",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_PROJECT_STATE_CUES_BY_LANGUAGE": "#707 per-language data with a neutral path (score-gated recall)",
 
   // ── #676: per-language data with a neutral fallback (#678) — allowed shape ──
   "packages/daemon/src/lexicon.ts :: name DEFAULT_FRUSTRATION_CUES_BY_LANGUAGE": "#678 per-language data; the stop lane's neutral repeated-correction check covers other languages",
@@ -81,12 +89,6 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
   "packages/daemon/src/prompt-classify.ts :: name RETRIEVAL_EN": "#677 labels detected_mode/budget; recall no longer gated on it",
   "packages/daemon/src/prompt-classify.ts :: words /such|finde|wo (ist|sind)/": "#677 RETRIEVAL_DE body",
   "packages/daemon/src/prompt-classify.ts :: words /find|search|where (is|are)/": "#677 RETRIEVAL_EN body",
-  "packages/daemon/src/prompt-classify.ts :: words /ist|weit|viele?/": "#677 assertion label (STATE_QUESTION)",
-  "packages/daemon/src/prompt-classify.ts :: words /draft|write|compose/": "#677 assertion label (COMPOSE_VERB)",
-  "packages/daemon/src/prompt-classify.ts :: words /release[- ]?notes?|release-?notizen|changelog/": "#677 assertion label (OUTWARD_ARTIFACT)",
-  "packages/daemon/src/prompt-classify.ts :: words /what'?s|what is|how (far|many|much|good)/": "#677 assertion label (STATE_QUESTION)",
-  "packages/daemon/src/prompt-classify.ts :: words /far|many|much/": "#677 assertion label (STATE_QUESTION)",
-  "packages/daemon/src/prompt-classify.ts :: words /measured?|measurement|benchmark/": "#677 assertion label (PROJECT_STATE_NOUN)",
 
   // ── #676: impact intent stays with the Experimental milestone ──
   "packages/daemon/src/code-graph/impact-intent.ts :: name IMPACT_DE": "#676 experimental impact intent, decided there",
