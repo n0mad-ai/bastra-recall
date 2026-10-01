@@ -87,6 +87,7 @@ async function withServer(
       activityCount += 1;
     },
     embedding: { on: false, providerId: null, source: "none" },
+    origin: { startedBy: "direct", envOrigin: "own", configFingerprint: "0123456789ab" },
   });
   try {
     await fn(handle.port!, () => activityCount);
@@ -134,6 +135,10 @@ test("api health: same payload as /health — one shape, two doors", async () =>
     delete a.uptime_seconds;
     delete o.uptime_seconds;
     assert.deepEqual(a, o);
+    // #684 / #719: who started the daemon and its config fingerprint, on both.
+    assert.equal(o.started_by, "direct");
+    assert.equal(o.env_origin, "own");
+    assert.equal(o.config_fingerprint, "0123456789ab");
   });
 });
 

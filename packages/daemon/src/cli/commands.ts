@@ -23,7 +23,8 @@ import { runInstallWizard, shouldRunWizard } from "./wizard.js";
 import { cmdInstallExtension } from "./extension-install.js";
 import { ensureHookStub } from "./stub-install.js";
 import { confirm, isInteractive } from "./prompt.js";
-import { getEmbeddingProvider, getSharedRecallEnabled, getSharedRecallLive } from "../settings.js";
+import { getEmbeddingProvider, getSharedRecallEnabled, getSharedRecallLive, readSettings } from "../settings.js";
+import { canAutoSpawnAt } from "../forwarder-daemon-client.js";
 import { bridgeLearningLines, readMintRuns } from "./bridges-note.js";
 import { bridgesPath } from "./bridges.js";
 import { readLastMint } from "../learned-recall/mint-job.js";
@@ -31,13 +32,13 @@ import { defaultLogDir } from "../learned-recall/harvest.js";
 import { showHelp } from "./help-text.js";
 import { validateArgs } from "./flag-spec.js";
 import { describeStale } from "../code-staleness.js";
-import { autostartWarning } from "./autostart.js";
+import { autostartWarning, readState } from "./autostart.js";
 import { stubFreshness, stubFreshnessLines } from "./stub-freshness.js";
 import { affectsFilesLines, defaultAffectsFilesIo } from "./affects-files-note.js";
 import { defaultDerivedClaimsIo, derivedClaimsLines } from "./derived-claims-note.js";
 import { clientMemoryLines, findClientMemoryDirs } from "./client-memory.js";
 import { printFeaturesNote, type FeatureState } from "./features-note.js";
-import { daemonOriginLines } from "./daemon-origin-note.js";
+import { configuredState, daemonOriginLines } from "./daemon-origin-note.js";
 import { installCodeAwarenessStep } from "./code-cmd.js";
 import { enabledRepos } from "../code-graph/enabled-repos.js";
 import { GRAPHIFY_PIN, probeTool } from "../code-graph/graphify-tool.js";
@@ -669,10 +670,18 @@ async function printAutostartNote(): Promise<void> {
  * failure: a drifted pair still answers every call, it just isn't the build the
  * user installed.
  */
-/** #684: who started the running daemon, and with whose env. */
+/** #684: who started the running daemon, and with whose env. #719: and
+ *  whether its behaviour config is the configured one — compared only for a
+ *  daemon on this machine; another host's is configured there. */
 async function printDaemonOriginNote(): Promise<void> {
   try {
-    const lines = daemonOriginLines(await probeDaemon());
+    const probe = await probeDaemon();
+    let configured: ReturnType<typeof configuredState> | undefined;
+    if (probe.ok && probe.configFingerprint && probe.endpoint && canAutoSpawnAt(probe.endpoint)) {
+      const agent = process.platform === "darwin" ? await readState() : null;
+      configured = configuredState((await readSettings()).daemon?.env, agent?.managed ? agent.env : null);
+    }
+    const lines = daemonOriginLines(probe, configured);
     if (lines.length > 0) process.stdout.write(`${lines.join("\n")}\n\n`);
   } catch {
     /* a diagnostics NOTE must never break doctor */

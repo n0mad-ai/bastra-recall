@@ -49,6 +49,23 @@ paths:
                   embedding_mode:
                     type: string
                     description: Resolved provider and model, or "disabled".
+                  started_by:
+                    type: string
+                    enum: [forwarder, launchagent, systemd, direct]
+                    description: Who started this daemon process.
+                  env_origin:
+                    type: string
+                    enum: [own, client, client+settings]
+                    description: Where its behaviour env came from.
+                  config_fingerprint:
+                    type: string
+                    pattern: "^[0-9a-f]{12}$"
+                    description: |
+                      Fingerprint of the daemon's behaviour settings — its
+                      `BASTRA_*` env without client-only keys, paths, the
+                      endpoint and secrets. Two daemons with the same value run
+                      the same behaviour config; `bastra doctor` compares it
+                      with the configured state.
   /recall:
     post:
       operationId: recall

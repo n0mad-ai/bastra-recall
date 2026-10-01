@@ -440,6 +440,8 @@ export interface DaemonProbe {
   /** #684: who started the running daemon and where its env came from; absent from older daemons. */
   startedBy?: string;
   envOrigin?: string;
+  /** #719: fingerprint of the running daemon's behaviour config; absent from older daemons. */
+  configFingerprint?: string;
 }
 
 /**
@@ -478,6 +480,7 @@ export function probeDaemon(endpoint: DaemonEndpoint = resolveDaemonEndpoint()):
                 : undefined,
               startedBy: typeof data.started_by === "string" ? data.started_by : undefined,
               envOrigin: typeof data.env_origin === "string" ? data.env_origin : undefined,
+              configFingerprint: typeof data.config_fingerprint === "string" ? data.config_fingerprint : undefined,
             });
             return;
           }
