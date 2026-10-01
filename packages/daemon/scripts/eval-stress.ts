@@ -32,8 +32,16 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { Vault, SearchIndex } from "@bastra-recall/core";
-import { attachHybrid, makeControlRecaller, makeRecaller, type HybridArm } from "./stress-arm.js";
 import {
+  RRF_ONE_ARMED_FLOOR,
+  antiNotEvaluableUnderHybrid,
+  attachHybrid,
+  makeControlRecaller,
+  makeRecaller,
+  type HybridArm,
+} from "./stress-arm.js";
+import {
+  stressVerdict,
   runParaphrased,
   runCrossMemory,
   runAntiHallucination,
@@ -541,6 +549,10 @@ async function main(): Promise<void> {
   const anti = args.slices.includes("anti")
     ? await runAntiHallucination(vault, recall, args.cutoff)
     : undefined;
+  // The cutoff is in BM25 units; under --hybrid at or below the RRF
+  // one-armed floor this slice cannot pass whatever retrieval quality is, so
+  // it does not gate the verdict there.
+  const antiNotEvaluable = antiNotEvaluableUnderHybrid(args.hybrid, args.cutoff);
 
   // #261: two baselines, without which the numbers above have no scale.
   //
@@ -601,20 +613,36 @@ async function main(): Promise<void> {
     // so a shuffle has nothing to shuffle. Said out loud rather than left as a
     // blank the reader has to interpret.
     console.log(`| anti-hallucination | median ${anti.median.toFixed(1)} | n/a | n/a — no gold labels to permute |`);
+    if (antiNotEvaluable) {
+      console.log(
+        `  not evaluable under --hybrid: cutoff ${args.cutoff} is at or below the RRF one-armed floor ` +
+          `${RRF_ONE_ARMED_FLOOR.toFixed(3)} — every hybrid hit scores at least that by construction, so this ` +
+          `slice cannot pass regardless of retrieval quality and does not gate the verdict here.`,
+      );
+    }
   }
 
   // M0 gate: "keine unbekannten Gold-IDs". Not a warning — a fixture pointing
   // at a memory that no longer exists makes every number below it wrong.
   const unknownGold = [...(para?.unknownIds ?? []), ...(cross?.unknownIds ?? [])];
-  const passes: boolean[] = [];
-  if (unknownGold.length > 0) passes.push(false);
-  if (para) passes.push(para.pass);
-  if (cross) passes.push(cross.pass);
-  if (anti) passes.push(anti.pass);
-  const allPass = passes.length > 0 && passes.every((p) => p);
+  const { verdict, allPass, baselineFailures } = stressVerdict({
+    unknownGold: unknownGold.length,
+    para,
+    nullPara,
+    cross,
+    nullCross,
+    anti,
+    antiNotEvaluable,
+  });
 
   console.log("\n## Overall\n");
-  console.log(`Verdict: **${allPass ? "PASS" : "FAIL"}**`);
+  console.log(`Verdict: **${verdict}**`);
+  for (const f of baselineFailures) {
+    console.log(
+      `  baseline gate failed — ${f.slice}: label-shuffle null (${pct(f.nullScore)}) is not below measured ` +
+        `(${pct(f.measured)}) — the null baseline is scoring as well as retrieval`,
+    );
+  }
 
   // ── JSON export ───────────────────────────────────────────
   if (args.out) {
@@ -689,7 +717,7 @@ async function main(): Promise<void> {
         control: { paraphrased: controlPara, cross: controlCross },
         label_shuffle_null: { paraphrased: nullPara, cross: nullCross },
       },
-      verdict: allPass ? "PASS" : "FAIL",
+      verdict,
     },
   });
   // #261: the markdown report lands NEXT TO the artifact, not in the checkout.

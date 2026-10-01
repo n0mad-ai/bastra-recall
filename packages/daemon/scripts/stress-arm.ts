@@ -9,7 +9,7 @@
 import { copyFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Vault, SearchIndex, EmbeddingIndex, OllamaEmbeddingProvider } from "@bastra-recall/core";
+import { Vault, SearchIndex, EmbeddingIndex, OllamaEmbeddingProvider, RRF_K, RRF_SCALE } from "@bastra-recall/core";
 import type { RecallHit, RecallOptions } from "@bastra-recall/core";
 
 // ── Search wrapper (sync BM25 by default, async hybrid optional) ───
@@ -21,6 +21,23 @@ export function makeRecaller(search: SearchIndex, hybrid: boolean): Recaller {
     return (q, opts) => search.recallHybrid(q, opts);
   }
   return async (q, opts) => search.recall(q, opts);
+}
+
+/**
+ * Core/src/search.ts — "a one-armed rank-1 hit scores
+ * RRF_SCALE/(RRF_K+1) by construction". The dense arm has no similarity
+ * floor, so under --hybrid every query returns a rank-1 neighbour at or above
+ * this score.
+ */
+export const RRF_ONE_ARMED_FLOOR = RRF_SCALE / (RRF_K + 1);
+
+/**
+ * The anti-hallucination cutoff lives in BM25 units. Under --hybrid, with the
+ * cutoff at or below the RRF floor, `median < cutoff` is unreachable whatever
+ * retrieval quality is — the slice cannot pass, so it must not gate the verdict.
+ */
+export function antiNotEvaluableUnderHybrid(hybrid: boolean, cutoff: number): boolean {
+  return hybrid && cutoff <= RRF_ONE_ARMED_FLOOR;
 }
 
 // ── Hybrid arm (M0 gate, #261) ─────────────────────────────────
