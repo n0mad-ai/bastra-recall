@@ -577,6 +577,10 @@ updated: 2026-05-01
 ---
 ```
 
+`save_document` keeps non-Latin letters and combining marks in new document
+IDs; Latin accents still fold. When `overwrite: true` updates a document saved
+before the Unicode ID change, its existing sidecar ID remains stable.
+
 ### Validation Rules
 
 The current Zod schema rejects files that have a recognized memory `type` but invalid frontmatter. Required validations include:
@@ -1063,6 +1067,10 @@ Nur für Lesezeichen:
 | `source_app` | App/Quelle, die das Lesezeichen gespeichert hat |
 
 Nur für Dokumente:
+
+`save_document` behält nichtlateinische Buchstaben und kombinierende Zeichen
+in neuen Dokument-IDs; lateinische Akzente werden weiter gefaltet. Bei
+`overwrite: true` bleibt die bisherige Sidecar-ID eines älteren Dokuments erhalten.
 
 | Feld | Bedeutung |
 |---|---|
