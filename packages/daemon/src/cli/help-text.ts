@@ -466,12 +466,12 @@ Usage:
 
 Vocabulary bridges widen recall by connecting the words you search with the
 words your memories use. Off by default. Without a language setting every
-folder is searched; the setting pins queries to one folder and files new
-bridges there.
+folder is searched; an override limits query expansion to one folder. New
+bridges are filed by the detected language of their source query.
 
   enable / disable   Turn the shared index on or off
   status             What is active, and how many bridges are held
-  language           Show or set the partition language
+  language           Show or set the query-language override
   live <on|off>      Let bridges widen the query (default off: shadow — fires
                      are logged, the ranking is unchanged). Switch on only for
                      bridges that pass 'bastra bridges verify'
