@@ -34,6 +34,13 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "../../..");
 const RUNS = Number(process.env.RUNS ?? 70);
+// `Number("0")` and `Number("abc")` both make the run loop below
+// iterate zero times — `results` stays empty, `deviations` is computed off
+// nothing, and the script exits 0 having checked no saves at all.
+if (!Number.isInteger(RUNS) || RUNS < 1) {
+  console.error(`FATAL: RUNS must be a positive integer, got ${JSON.stringify(process.env.RUNS)}`);
+  process.exit(1);
+}
 
 /** Sizes bracket the interesting boundaries: the ~600 chars the issue first
  *  saw fail, a 64 KiB stdio pipe buffer, and well past it. */
