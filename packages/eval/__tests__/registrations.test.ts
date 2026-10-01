@@ -483,6 +483,36 @@ test("eine leere oder inhaltsfremde Berichtsregel zählt nicht als Regel (#442)"
   );
 });
 
+test("die Berichtsregel: das Gegenteil zählt nicht, die eigenen Schreibweisen schon", () => {
+  const reg = loadPresentationRegistration();
+  const fb = reg.underpowered_fallback as Record<string, unknown>;
+  const conclusion = fb.conclusion as Record<string, unknown>;
+  const issuesFor = (rule: string) =>
+    checkPresentationRegistration("structure_registered", {
+      ...reg,
+      underpowered_fallback: { ...fb, conclusion: { ...conclusion, reporting_rule: rule } },
+    }).filter((i) => i.where === "underpowered_fallback");
+  // The OPPOSITE of §18.1 contains the phrase too — a substring test accepts it.
+  assert.ok(issuesFor("never reported as not evaluable; reported as a null result instead").length > 0);
+  assert.ok(issuesFor("an arm below its min-N is never NOT EVALUABLE — it is a null result").length > 0);
+  assert.ok(issuesFor("not evaluable arms are ignored").length > 0);
+  // The repository's own verdict spellings are the rule, not a violation of it.
+  for (const rule of [
+    "an arm below its min-N is not_evaluable, never a null result",
+    "verdict: NOT-EVALUABLE, never a null result",
+    // The negation that follows the verdict in a dash, parenthesis or colon
+    // clause rules out the null result, not the verdict.
+    "an arm below its min-N is NOT EVALUABLE — never a null result",
+    "an arm below its min-N is NOT EVALUABLE (never a null result)",
+    "Underpowered arms are reported as NOT EVALUABLE: never as a null result",
+    "not evaluable arms are never reported as null results",
+    "never a null result — an arm below its min-N is NOT EVALUABLE",
+    "Never a null result: an underpowered arm is reported as NOT EVALUABLE",
+  ]) {
+    assert.equal(issuesFor(rule).length, 0, `${JSON.stringify(rule)} must be accepted`);
+  }
+});
+
 test("die gemessenen Zahlen tragen ihre Quelle", () => {
   const fb = loadPresentationRegistration().underpowered_fallback as Record<string, unknown>;
   const from = fb.measured_from as Record<string, unknown>;
