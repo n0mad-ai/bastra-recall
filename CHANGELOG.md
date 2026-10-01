@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #925 aligns the checkout hook installer with the Claude Code adapter, including Stop defaults and failure hooks.
+- Follow-up to #925: uninstall works without a build, stale dist fails clearly before settings change, and shell parity tests skip Windows.
+
 - #975 waits for the area test's shared lock before racing a rename, removing a flaky root-suite assertion.
 
 - @zzallirog's #909 gives four hook transports a real deadline, TLS selection and IPv6-literal support.
