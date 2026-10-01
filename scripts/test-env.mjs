@@ -131,6 +131,14 @@ if (!process.env.BASTRA_HARVEST_QUEUE_PATH) {
   process.env.BASTRA_HARVEST_QUEUE_PATH = join(throwawayDir("bastra-test-harvest-"), "harvest-queue.json");
 }
 
+/** host-profile.ts's salt file — the one ~/.bastra writer this file's
+ *  own NODE_TEST_CONTEXT fallback (env.ts's testRunHostProfileDir) does not
+ *  reach when a test spawns a CHILD process that does not inherit that flag
+ *  (a fresh `node --test` is set per-process, not per-tree). */
+if (!process.env.BASTRA_HOST_PROFILE_PATH) {
+  process.env.BASTRA_HOST_PROFILE_PATH = throwawayDir("bastra-test-host-profile-");
+}
+
 /**
  * Keep application output off the frame pipe — but ONLY application output.
  *
