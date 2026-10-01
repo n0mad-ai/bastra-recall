@@ -22,6 +22,7 @@
  * keep the system `rm`.
  */
 import { isPin, pinLive, restoreCommand, restorePin, restoreShape, withoutShims } from "./git-archive.js";
+import { archiveMaxItem, formatSize } from "./rm-archive-reconcile.js";
 import { execFileSync } from "node:child_process";
 import {
   appendFileSync,
@@ -54,13 +55,15 @@ const shq = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`;
  * no `$(…)`: under a deny or `ask` rule Claude Code shows this line to the
  * model and the user, and flags either as "evaluates shell code".
  */
-export function shimRewrite(command: string, call: string, git = false): string {
+export function shimRewrite(command: string, call: string, git = false, maxItem: number | null = null): string {
   // A command with a git act needs shims/git too: without it the next `git`
   // in PATH is the real one, and the act would run unpinned under the allow.
   const here = `[ -x ${shq(SHIM_DIR + "/rm")} ]` + (git ? ` && [ -x ${shq(SHIM_DIR + "/git")} ]` : "");
+  // #934: the shim reads no settings file; the lane hands it the per-target limit.
+  const limit = maxItem === null ? "" : ` BASTRA_ARCHIVE_MAX_ITEM=${maxItem}B`;
   return (
     `${here} || exit 97; unset -f rm git 2>/dev/null; ` +
-    `export PATH=${shq(SHIM_DIR)}:"$PATH" BASTRA_RM_CALL=${shq(call)} BASTRA_NODE=${shq(stableNode(process.execPath))}\n` +
+    `export PATH=${shq(SHIM_DIR)}:"$PATH" BASTRA_RM_CALL=${shq(call)} BASTRA_NODE=${shq(stableNode(process.execPath))}${limit}\n` +
     command
   );
 }
@@ -247,8 +250,15 @@ function classify(real: string, isDir: boolean): "junk" | "in-git" | "user" {
   return "in-git";
 }
 
-/** Bytes of a target; a directory walk stops after `cap` entries. */
-function sizeOf(real: string, cap = 50_000): number {
+/**
+ * Bytes of a target (file sizes as lstat reports them). Without a per-target
+ * limit a directory walk stops after 50,000 entries: the number only feeds the
+ * manifest. With one (#934) it has to be right, so the walk goes on, and stops
+ * as soon as the total is over `limit`.
+ */
+function sizeOf(real: string, limit: number | null = null): number {
+  const cap = limit === null ? 50_000 : Infinity;
+  const stop = limit ?? Infinity;
   let total = 0;
   let seen = 0;
   const walk = (p: string): void => {
@@ -270,7 +280,7 @@ function sizeOf(real: string, cap = 50_000): number {
       return;
     }
     for (const n of names) {
-      if (seen > cap) return;
+      if (seen > cap || total > stop) return;
       walk(join(p, n));
     }
   };
@@ -325,6 +335,13 @@ const diskFull = (t: string): string =>
   "Free space with `bastra archive reconcile --yes`, delete for real with `/bin/rm`, " +
   "or turn the archive off: `bastra config set archive.enabled off`";
 
+/** #934: over `archive.max-item` a target is neither archived nor deleted —
+ *  the same rule as #695. `counted` is where the walk stopped, not the total. */
+const tooLarge = (t: string, counted: number, limit: number): string =>
+  `rm: '${t}' not removed — it is over the per-target archive limit of ${formatSize(limit)} ` +
+  `(counted ${formatSize(counted)} and stopped). Not archived, not deleted. ` +
+  "Delete it for real with `/bin/rm`, or raise the limit: `bastra config set archive.max-item <size>`";
+
 /** `rm` with the system's exit codes and messages, archiving instead of unlinking. */
 export function runRmShim(argv: string[], io: ShimIo = {}): number {
   const env = io.env ?? process.env;
@@ -343,6 +360,7 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
     return 1;
   }
   const archive = archiveRoot(env);
+  const maxItem = archiveMaxItem(env);
   const eph = io.ephemeral ?? ephemeralRoots(env);
   const call = env.BASTRA_RM_CALL ?? "";
   const ts = localIso(now);
@@ -448,8 +466,14 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
     // `rm -r a/b a` in one call: a/b's move made a directory where a goes.
     let dest = base;
     for (let n = 2; existsSync(dest); n++) dest = `${base}~${n}`;
+    const bytes = sizeOf(real, maxItem);
+    if (maxItem !== null && bytes > maxItem) {
+      err(tooLarge(t, bytes, maxItem));
+      log({ action: "refused", orig: real, bytes, reason: `over the per-target archive limit of ${formatSize(maxItem)}` });
+      rc = 1;
+      continue;
+    }
     const kind = classify(real, isDir);
-    const bytes = sizeOf(real);
     // The topmost directory the mkdir has to make: it can fail halfway (ENOSPC).
     let top = dirname(dest);
     while (!existsSync(dirname(top))) top = dirname(top);

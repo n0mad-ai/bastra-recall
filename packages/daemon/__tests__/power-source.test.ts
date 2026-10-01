@@ -146,6 +146,7 @@ test("doctor: off names the command, on battery says what is deferred", () => {
     bridges: false,
     ui: false,
     archive: "off",
+    archiveLimits: { cap: 10 * 2 ** 30, maxItem: null },
     battery: { saver: false },
   } as FeatureState;
   const row = (s: FeatureState) => featureLines(s).find((l) => l.includes("battery saver"))!;

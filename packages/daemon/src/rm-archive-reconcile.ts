@@ -41,6 +41,42 @@ export function retainDays(env: NodeJS.ProcessEnv = process.env, stored?: string
   };
 }
 
+/** #934: what the archive may hold in total when no cap is configured. */
+export const DEFAULT_CAP_BYTES = 10 * 2 ** 30;
+
+/** `5GB`, `500 MB`, `1.5g`, `4096B` → bytes (1 GB = 2^30); null when malformed or zero. */
+export function parseSize(spec: string): number | null {
+  const m = /^(\d+(?:\.\d+)?)\s*(?:([kmgt])b?|b)$/i.exec(spec.trim());
+  if (!m) return null;
+  const bytes = Math.round(Number(m[1]) * 2 ** (10 * ("kmgt".indexOf((m[2] ?? " ").toLowerCase()) + 1)));
+  return bytes > 0 ? bytes : null;
+}
+
+/** Bytes in the largest unit with a whole part: `10 GB`, `1.5 GB`, `512 MB`. */
+export function formatSize(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let n = bytes;
+  let i = 0;
+  for (; n >= 1024 && i < units.length - 1; i++) n /= 1024;
+  return `${Number(n.toFixed(1))} ${units[i]}`;
+}
+
+/** #934: the total cap — 10 GB, then `bastra config set archive.cap …`, then BASTRA_ARCHIVE_CAP (env wins). */
+export function archiveCap(env: NodeJS.ProcessEnv = process.env, stored?: string): number {
+  return (env.BASTRA_ARCHIVE_CAP ? parseSize(env.BASTRA_ARCHIVE_CAP) : null) ?? (stored ? parseSize(stored) : null) ?? DEFAULT_CAP_BYTES;
+}
+
+/**
+ * #934: the per-target limit — none by default (null), then `bastra config set
+ * archive.max-item …`, then BASTRA_ARCHIVE_MAX_ITEM (env wins; `off` there
+ * lifts a stored limit).
+ */
+export function archiveMaxItem(env: NodeJS.ProcessEnv = process.env, stored?: string): number | null {
+  const fromEnv = env.BASTRA_ARCHIVE_MAX_ITEM?.trim();
+  if (fromEnv === "off") return null;
+  return (fromEnv ? parseSize(fromEnv) : null) ?? (stored ? parseSize(stored) : null);
+}
+
 /** Compared a chunk at a time: this runs inside the daemon, and two equal-sized
  *  files of a few GB must not become their size in memory. */
 export function sameFile(a: string, b: string, chunk = 1 << 20): boolean {
