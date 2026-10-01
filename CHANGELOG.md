@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #831 removes a temporary Codex auth copy after a probe run and preserves an existing probe-home login.
+- Follow-up to #831: the predictable probe home is owner-only, and symlinked or foreign-owned credential paths are refused before copying.
+
 - @zzallirog's #829 makes a zero-test map build fail and a zero-source heatmap display 0.0% instead of NaN.
 - Follow-up to #829: an unparseable full test list is rejected before it can overwrite a previous coverage map.
 
