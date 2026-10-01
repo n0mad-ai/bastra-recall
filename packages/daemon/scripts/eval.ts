@@ -92,7 +92,7 @@ async function main(): Promise<void> {
 
   const total = rows.length;
   if (total === 0) {
-    console.error(`[eval] FATAL: 0 eval cases — no memory (of ${memories.length}, ${loaded} loaded) has a recall_when phrase to query with`);
+    console.error(`[eval] FATAL: 0 eval cases (${memories.length} non-obsolete of ${loaded} loaded) — check the vault path and eval inputs`);
     process.exit(1);
   }
   const top1 = rows.filter((r) => r.rank === 1).length;
