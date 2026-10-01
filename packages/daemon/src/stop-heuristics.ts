@@ -104,7 +104,9 @@ export function detectFrustration(turns: TranscriptTurn[]): SaveSuggestion | nul
     const fw = countFrustWords(t.content, re);
     if (fw > 0) {
       frustWordCount += fw;
-      if (exemplars.length < 3) exemplars.push(t.content.slice(0, 120));
+      // #756: a sentence the user said twice is one exemplar, not two.
+      const ex = t.content.slice(0, 120);
+      if (exemplars.length < 3 && !exemplars.includes(ex)) exemplars.push(ex);
     }
     capsCueCount += countQualifyingCaps(t.content);
   }
@@ -138,7 +140,7 @@ function detectRepeatedCorrection(userTurns: TranscriptTurn[]): SaveSuggestion |
     type: "lesson",
     body: `Detected ${repeats.length} user turns restating an earlier request (language-neutral signal) ` +
       `in the last ${userTurns.length} user turns. ` +
-      `Exemplars: ${repeats.slice(0, 3).map((c) => c.slice(0, 120)).join(" | ")}. ` +
+      `Exemplars: ${[...new Set(repeats.map((c) => c.slice(0, 120)))].slice(0, 3).join(" | ")}. ` +
       `If the user had to repeat a correction, save a 'lesson' memory that captures the failure path and the fix.`,
   };
 }

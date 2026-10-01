@@ -590,11 +590,21 @@ Fires on `Stop` by default; opt out during installation with `--no-stop-hook`
 three heuristics:
 
 1. **frustration-density** — ≥ 4 cues AND ≥ 2 explicit frustration words
-   (`wieder`, `schon wieder`, `wie oft`, `fuck`, `verdammt`,
-   `scheisse/scheiße`) in the last 10 user turns. CAPS words count as cues
-   only when ≥ 5 chars or repeated in a turn and not a technical acronym
-   (`SKILL`, `JSON`, `CLAUDE`, …); CAPS alone never triggers → suggests a
-   `lesson` save.
+   (`schon wieder`, `immer wieder`, `wieder nicht`, `wie oft`, `not again`,
+   `yet again`, `fuck`, `verdammt`, `scheisse/scheiße`, …) in the last 10
+   user turns. The plain word for "again" (`wieder`, `again`, `снова`,
+   `опять`) is not a cue on its own (#756): "jetzt geht es wieder" or "it
+   works again" says something works. It counts only in a frustration
+   construction — `schon wieder`, `immer wieder`, `wieder und wieder`,
+   `wieder nicht/kaputt/falsch/dasselbe/das gleiche`; `yet again`,
+   `not again`, `again and again`, `again the same`, `broken/wrong/failed
+   again`; `снова/опять не`, `снова/опять то же`, `снова/опять слома…`. The
+   lists are data (`packages/daemon/src/lexicon.ts`); add your own cues, the
+   bare word included, in `~/.bastra/lexicon/frustration.txt`. CAPS words
+   count as cues only when ≥ 5 chars or repeated in a turn and not a
+   technical acronym (`SKILL`, `JSON`, `CLAUDE`, …); CAPS alone never
+   triggers → suggests a `lesson` save. The suggestion quotes up to three
+   user turns as exemplars, each text once.
 2. **feature-completion** — a commit signal + ≥ 5 distinct repo-relative
    source-file tokens, at least one of which exists under the session cwd →
    suggests a `project-fact` save. The signal is any of: `git commit` in a
@@ -1385,12 +1395,23 @@ Kompatibilitätsalias erhalten). Liest die letzten ~30 Transkript-Turns (aus
 drei Heuristiken aus:
 
 1. **frustration-density** — ≥ 4 Hinweise UND ≥ 2 ausdrückliche
-   Frustrationswörter (`wieder`, `schon wieder`, `wie oft`, `fuck`,
-   `verdammt`, `scheisse/scheiße`) in den letzten 10 Nutzer-Turns.
+   Frustrationswörter (`schon wieder`, `immer wieder`, `wieder nicht`,
+   `wie oft`, `not again`, `yet again`, `fuck`, `verdammt`,
+   `scheisse/scheiße`, …) in den letzten 10 Nutzer-Turns. Das bloße Wort für
+   „wieder" (`wieder`, `again`, `снова`, `опять`) ist allein kein Hinweis
+   (#756): „jetzt geht es wieder" oder „it works again" sagt, dass etwas
+   funktioniert. Es zählt nur in einer Frust-Konstruktion — `schon wieder`,
+   `immer wieder`, `wieder und wieder`,
+   `wieder nicht/kaputt/falsch/dasselbe/das gleiche`; `yet again`,
+   `not again`, `again and again`, `again the same`, `broken/wrong/failed
+   again`; `снова/опять не`, `снова/опять то же`, `снова/опять слома…`. Die
+   Listen sind Daten (`packages/daemon/src/lexicon.ts`); eigene Hinweise,
+   auch das bloße Wort, trägst du in `~/.bastra/lexicon/frustration.txt` ein.
    Großgeschriebene Wörter zählen nur als Hinweis, wenn sie ≥ 5 Zeichen lang
    sind oder in einem Turn wiederholt werden und kein technisches Akronym sind
    (`SKILL`, `JSON`, `CLAUDE`, …); Großschreibung allein löst nie aus →
-   schlägt eine `lesson` zum Speichern vor.
+   schlägt eine `lesson` zum Speichern vor. Der Vorschlag zitiert bis zu drei
+   Nutzer-Turns als Beispiele, jeden Text nur einmal.
 2. **feature-completion** — ein Commit-Signal + ≥ 5 unterschiedliche
    repo-relative Quelldatei-Tokens, von denen mindestens eines unter dem
    Session-cwd existiert → schlägt einen `project-fact` zum Speichern vor. Als

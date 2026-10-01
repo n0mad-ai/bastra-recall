@@ -36,7 +36,8 @@ describe("stop-hook: detectFrustration", () => {
       assistantTurn("sorry"),
       userTurn("wieder das gleiche!"),
       assistantTurn("fixe ich"),
-      userTurn("wieder!"),
+      // #756: a bare "wieder!" is no cue any more — the construction is.
+      userTurn("immer wieder!"),
       userTurn("wie oft denn noch"),
     ];
     const s = detectFrustration(turns);
@@ -111,6 +112,52 @@ describe("stop-hook: detectFrustration", () => {
   });
 });
 
+describe('stop-hook: #756 the plain word for "again" is not a frustration cue', () => {
+  // The session that surfaced it: a router that keeps asking for its
+  // password, and a user who is back home and reports that it works.
+  const ROUTER: TranscriptTurn[] = [
+    userTurn("fragt immer wieder nach dem passwort"),
+    assistantTurn("Prüf bitte die gespeicherten Netzwerke."),
+    userTurn("ich bin jetzt wieder zu hause"),
+    assistantTurn("Gut, dann teste die Verbindung."),
+    userTurn("jetzt geht es wieder"),
+  ];
+
+  it('the three router sentences do not fire — only "immer wieder" counts', () => {
+    assert.equal(detectFrustration(ROUTER), null);
+    // Said twice, as in the real session: 2 cues, still below the threshold.
+    assert.equal(detectFrustration([userTurn("fragt immer wieder nach dem passwort"), ...ROUTER]), null);
+  });
+
+  it('neutral "again" sentences never reach the threshold, in any shipped language', () => {
+    for (const neutral of [
+      ["ich bin jetzt wieder zu hause", "jetzt geht es wieder", "das wlan ist wieder da", "starte ihn wieder", "wieder online"],
+      ["I'm back home again", "it works again now", "run it again", "try again please", "again, thanks"],
+      ["я снова дома", "теперь снова работает", "запусти снова", "опять работает", "попробуй опять"],
+    ]) {
+      assert.equal(detectFrustration(neutral.map(userTurn)), null, neutral[0]);
+    }
+  });
+
+  it("the constructions still count, one cue per span", () => {
+    const fired = (lines: string[]) => detectFrustration(lines.map(userTurn));
+    assert.ok(fired(["schon wieder", "immer wieder das", "geht wieder nicht", "wieder kaputt"]));
+    assert.ok(fired(["not again", "yet again", "it is broken again", "again and again"]));
+    assert.ok(fired(["опять не работает", "снова не то", "опять то же самое", "снова сломалось"]));
+    // "schon wieder nicht" is ONE cue ("schon wieder"), not two.
+    assert.match(fired(["schon wieder nicht", "schon wieder nicht", "verdammt", "verdammt"])!.body, /Detected 4 frustration cues/);
+  });
+
+  it("an exemplar the user said twice is listed once", () => {
+    const s = detectFrustration(
+      ["immer wieder dieser fehler", "immer wieder dieser fehler", "schon wieder", "wieder kaputt"].map(userTurn),
+    );
+    assert.ok(s);
+    const exemplars = /Exemplars: (.*?)\. If/.exec(s!.body)![1].split(" | ");
+    assert.deepEqual(exemplars, ["immer wieder dieser fehler", "schon wieder", "wieder kaputt"]);
+  });
+});
+
 describe("stop-hook: #476 the lane fires for non-German users too", () => {
   it("fires on English frustration words", () => {
     const turns: TranscriptTurn[] = [
@@ -140,8 +187,9 @@ describe("stop-hook: #476 the lane fires for non-German users too", () => {
 
   it("counts Cyrillic CAPS as a cue — the Latin-only regex never could", () => {
     const turns: TranscriptTurn[] = [
-      userTurn("опять ОШИБКА"),
-      userTurn("снова ПРОБЛЕМА"),
+      // #756: bare "опять"/"снова" are no cues; "опять не"/"снова не" are.
+      userTurn("опять не работает, ОШИБКА"),
+      userTurn("снова не то, ПРОБЛЕМА"),
     ];
     // 2 frustration words + 2 qualifying CAPS tokens = 4 cues, threshold met
     // only if the CAPS tokens are recognised at all.
@@ -163,14 +211,15 @@ describe("stop-hook: #476 the lane fires for non-German users too", () => {
   });
 
   it("does not match a cue inside a longer word", () => {
-    // "again" inside "against", "wieder" inside "wiederholen" — the Unicode
-    // lookarounds replace \b, which could not do this for Cyrillic at all.
+    // "not again" inside "not against", "wieder" inside "wiederholen" — the
+    // Unicode lookarounds replace \b, which could not do this for Cyrillic at
+    // all. (#756: the cue is the construction "not again", not a bare "again".)
     assert.equal(
       detectFrustration([
-        userTurn("weighing this against that"),
-        userTurn("weighing this against that"),
-        userTurn("weighing this against that"),
-        userTurn("weighing this against that"),
+        userTurn("this is not against the rules"),
+        userTurn("this is not against the rules"),
+        userTurn("this is not against the rules"),
+        userTurn("this is not against the rules"),
       ]),
       null,
     );
@@ -441,7 +490,7 @@ describe("stop-hook: evaluateHeuristics", () => {
       userTurn("wieder kaputt"),
       userTurn("schon wieder"),
       userTurn("wie oft noch"),
-      userTurn("und wieder"),
+      userTurn("immer wieder"), // #756: a bare "und wieder" no longer counts
       assistantTurn(FIVE_SOURCE_FILES),
       userTurn("ok dann nehmen wir das, git commit ist durch"),
     ];

@@ -14,7 +14,8 @@
  * Heuristics:
  *   1. Frustration-Density   — >=4 cues AND >=2 explicit frustration words
  *      (German, English and Russian cue lists, #476) in the last 10 user
- *      turns. CAPS words count as cues only when they are >=5 chars or
+ *      turns. The bare word for "again" is no cue, only its frustration
+ *      constructions are (#756). CAPS words count as cues only when they are >=5 chars or
  *      repeated in a turn AND not a technical acronym (SKILL/JSON/…); CAPS
  *      alone never triggers. Case and word boundaries are Unicode-aware, so
  *      Cyrillic counts the same way Latin does. Languages without a cue list

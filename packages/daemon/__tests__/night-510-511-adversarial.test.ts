@@ -188,7 +188,7 @@ test("lexicon (#476) DEFECT: a regex-invalid cue must fall back to defaults, nev
     await writeFile(join(dir, "frustration.txt"), "schei(\n", "utf8"); // unbalanced group
     const turns: TranscriptTurn[] = Array.from({ length: 4 }, () => ({
       role: "user" as const,
-      content: "again again", // a SHIPPED default cue — must still fire
+      content: "not again, yet again", // SHIPPED default cues (#756: constructions, no bare "again") — must still fire
     }));
     // The invariant: a bad user file degrades to defaults; it must not throw,
     // and the default cue must still drive detection.
@@ -254,7 +254,7 @@ test("lexicon (#476): a catastrophic-backtracking cue is rejected, not compiled 
     const cues = frustrationCues();
     assert.ok(!cues.includes("(a+)+b"), "the ReDoS cue must be dropped");
     assert.ok(cues.includes("genuinecue"), "a normal cue on the same file still loads");
-    assert.ok(cues.includes("again"), "shipped defaults survive");
+    assert.ok(cues.includes("damn"), "shipped defaults survive");
   } finally {
     if (prev === undefined) delete process.env.BASTRA_LEXICON_DIR;
     else process.env.BASTRA_LEXICON_DIR = prev;
