@@ -40,7 +40,7 @@ import { recallHandler, type ToolDeps } from "../src/tool-handlers.js";
 import { startHttpServer } from "../src/http.js";
 import { Telemetry } from "../src/telemetry.js";
 import { extractCandidatePools, type TelemetryEvent } from "../src/learned-recall/harvest.js";
-import { SCORE_VERSION } from "../src/score-space.js";
+import { SCORE_VERSION, currentScoreVersion } from "../src/score-space.js";
 
 // #362: these tests measure the dense arm on short hook queries ("ANCHORWORD");
 // the query router, live by default since v1.0.1, would skip that arm.
@@ -702,4 +702,21 @@ test("#641: the dense-arm weight 1.5 changed the one-armed numbers, so the formu
   const denseOnly = fuseRRF([], ["solo"]).get("solo")!.score * RRF_SCALE;
   assert.equal(Math.round(bm25Only * 10) / 10, 65.6, "the anchor the recall tool description names");
   assert.equal(Math.round(denseOnly * 10) / 10, 98.4, "the anchor the recall tool description names");
+});
+
+test("#641: an overridden dense weight identifies its actual score formula", () => {
+  const previous = process.env.BASTRA_RRF_VECTOR_WEIGHT;
+  try {
+    delete process.env.BASTRA_RRF_VECTOR_WEIGHT;
+    assert.equal(currentScoreVersion(), "rrf-2");
+    process.env.BASTRA_RRF_VECTOR_WEIGHT = "1";
+    assert.equal(currentScoreVersion(), "rrf-1");
+    process.env.BASTRA_RRF_VECTOR_WEIGHT = "2";
+    assert.equal(currentScoreVersion(), "rrf-2-w2");
+    process.env.BASTRA_RRF_VECTOR_WEIGHT = "invalid";
+    assert.equal(currentScoreVersion(), "rrf-2");
+  } finally {
+    if (previous === undefined) delete process.env.BASTRA_RRF_VECTOR_WEIGHT;
+    else process.env.BASTRA_RRF_VECTOR_WEIGHT = previous;
+  }
 });

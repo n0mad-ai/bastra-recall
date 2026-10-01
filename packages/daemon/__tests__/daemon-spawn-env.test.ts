@@ -11,6 +11,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { daemonOrigin, daemonSpawnEnv, CLIENT_ONLY_ENV_KEYS } from "../src/daemon-spawn-env.js";
+import { canAutoSpawnAt } from "../src/forwarder-daemon-client.js";
+import { resolveDaemonEndpoint } from "../src/daemon-endpoint.js";
 import { readSettings } from "../src/settings.js";
 import { buildHealthPayload } from "../src/http-health.js";
 import { daemonOriginLines } from "../src/cli/daemon-origin-note.js";
@@ -25,6 +27,15 @@ const CLIENT_ENV = {
   BASTRA_TOOL_SURFACE: "search",
   BASTRA_VAULT_PATH: "/v",
 };
+
+test("#684: a remote or TLS endpoint never triggers local daemon auto-spawn", () => {
+  const endpoint = (url: string) => resolveDaemonEndpoint({ BASTRA_DAEMON_URL: url });
+  assert.equal(canAutoSpawnAt(endpoint("http://127.0.0.1:6723")), true);
+  assert.equal(canAutoSpawnAt(endpoint("http://localhost:6723")), true);
+  assert.equal(canAutoSpawnAt(endpoint("http://[::1]:6723")), true);
+  assert.equal(canAutoSpawnAt(endpoint("http://memory.example:6723")), false);
+  assert.equal(canAutoSpawnAt(endpoint("https://127.0.0.1:6723")), false);
+});
 
 test("client-only keys are dropped; vault, endpoint and the rest pass through", () => {
   const { env, origin, pinned } = daemonSpawnEnv({ ...CLIENT_ENV, BASTRA_MCP_SESSION_CONTEXT: "0", BASTRA_HOOK_CLIENT: "codex", BASTRA_FORWARDER_SPAWN: "1" }, undefined);

@@ -6,7 +6,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile, readFile, readdir } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile, readFile, readdir, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { AuditLog } from "../src/audit-log.js";
@@ -194,7 +194,9 @@ test("apply: copies with backup, carries audit entries, leaves conflicts alone",
       await readFile(path.join(b, "notes/ahead-here.md"), "utf8"),
       await readFile(path.join(a, "notes/ahead-here.md"), "utf8"),
     );
-    const backup = path.join(b, ".bastra", "reconcile-backup", "2026-09-28T12-00-00Z", "notes/ahead-here.md");
+    const backup = results.find((r) => r.id === "ahead-here")?.backup;
+    assert.ok(backup?.includes("/.bastra/reconcile-backup/2026-09-28T12-00-00Z/notes/ahead-here.md."));
+    if (!backup) throw new Error("expected overwritten copy backup");
     assert.equal(await readFile(backup, "utf8"), oldB, "the overwritten copy is kept");
     assert.match(await readFile(path.join(a, "ahead-there.md"), "utf8"), /Retracted/);
     assert.equal(await readFile(path.join(b, "deep/only-here.md"), "utf8"), await readFile(path.join(a, "deep/only-here.md"), "utf8"));
@@ -234,6 +236,58 @@ test("apply skips a target that changed after the plan", async () => {
     const r = results.find((x) => x.id === "ahead-here")!;
     assert.equal(r.status, "skipped");
     assert.match(await readFile(path.join(b, "notes/ahead-here.md"), "utf8"), /in between/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("#339: a writer arriving after backup wins the target path", async () => {
+  const { a, b, cleanup } = await fixture();
+  try {
+    const plan = await planReconcile(await loadStore(a), await loadStore(b));
+    const external = memo("ahead-here", "An external writer arrived during publication.");
+    const results = await applyReconcile(plan, new Date("2026-09-28T12:00:00.000Z"), {
+      beforePublish: async (target) => {
+        if (target === path.join(b, "notes/ahead-here.md")) await writeFile(target, external);
+      },
+    });
+    const row = results.find((r) => r.id === "ahead-here")!;
+    assert.equal(row.status, "skipped");
+    assert.equal(await readFile(path.join(b, "notes/ahead-here.md"), "utf8"), external);
+    assert.ok(row.backup, "the previous target remains available independently");
+    assert.equal(await readFile(row.backup, "utf8"), memo("ahead-here", "Old text."));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("#339: a new file with the same id at another path blocks a stale copy plan", async () => {
+  const { a, b, cleanup } = await fixture();
+  try {
+    const plan = await planReconcile(await loadStore(a), await loadStore(b));
+    await put(b, "another-folder/only-here.md", memo("only-here", "A newer local save."));
+    const results = await applyReconcile(plan);
+    const row = results.find((r) => r.id === "only-here")!;
+    assert.equal(row.status, "skipped");
+    assert.match(row.reason ?? "", /target id changed/);
+    await assert.rejects(readFile(path.join(b, "deep/only-here.md"), "utf8"));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("#339: a committed copy reports an audit-log failure as a warning", async () => {
+  const { a, b, cleanup } = await fixture();
+  try {
+    const plan = await planReconcile(await loadStore(a), await loadStore(b));
+    const log = path.join(b, ".bastra", "audit-log.ndjson");
+    await rename(log, `${log}.saved`);
+    await mkdir(log);
+    const rows = await applyReconcile(plan);
+    const row = rows.find((r) => r.id === "ahead-here")!;
+    assert.equal(row.status, "copied");
+    assert.match(row.warning ?? "", /audit entries could not all be copied/);
+    assert.match(await readFile(path.join(b, "notes/ahead-here.md"), "utf8"), /retraction added later/);
   } finally {
     await cleanup();
   }

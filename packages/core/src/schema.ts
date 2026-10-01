@@ -81,6 +81,19 @@ export const DerivedClaimSchema = z
   .refine((claim) => claim.resolver !== "sha256.v1" || typeof claim.expect === "string", {
     message: "sha256.v1 needs `expect`, the digest recorded for the source",
     path: ["expect"],
+  })
+  .refine((claim) => claim.resolver !== "sha256.v1" || /^[0-9a-f]{64}$/i.test(String(claim.expect)), {
+    message: "sha256.v1 expects a 64-character hexadecimal digest",
+    path: ["expect"],
+  })
+  .refine((claim) => claim.resolver !== "count.markdown-numbered-list.v1" || claim.expect === undefined ||
+    (typeof claim.expect === "number" && Number.isSafeInteger(claim.expect) && claim.expect >= 0), {
+    message: "count.markdown-numbered-list.v1 expects a non-negative integer",
+    path: ["expect"],
+  })
+  .refine((claim) => claim.resolver !== "quote.v1" || claim.expect === undefined, {
+    message: "quote.v1 compares its exact text and does not use expect",
+    path: ["expect"],
   });
 export type DerivedClaim = z.infer<typeof DerivedClaimSchema>;
 export type MemoryType = z.infer<typeof MemoryTypeEnum>;

@@ -11,9 +11,9 @@ import { envInt } from "./env.js";
 import { fireAndForget } from "./telemetry.js";
 import type { RecallStageBuckets } from "./telemetry-events.js";
 import { isWeakResult, isNoHome } from "@bastra-recall/core";
-import { armsOf, SCORE_VERSION } from "./score-space.js";
+import { armsOf, currentScoreVersion } from "./score-space.js";
 
-export { armsOf, SCORE_VERSION } from "./score-space.js";
+export { armsOf, SCORE_VERSION, currentScoreVersion } from "./score-space.js";
 import { computeSalienceShadow } from "./salience-shadow.js";
 import { computeTrustShadow, trustRankMode, usageForShadow } from "./trust-shadow.js";
 import { commonsRankFactor } from "./cli/commons.js";
@@ -543,7 +543,7 @@ async function recallAgainstVault(
     // Vergleichbarkeit, die es dort nicht gibt. Rohe BM25-Werte sind nicht
     // einmal untereinander vergleichbar.
     score_arms: scoreArms,
-    ...(scoreKind === "rrf" ? { score_version: SCORE_VERSION } : { unfused: true }),
+    ...(scoreKind === "rrf" ? { score_version: currentScoreVersion() } : { unfused: true }),
     ...(degradedDuringCall ? { degraded: degradedDuringCall } : {}),
     ...(full ? { stages: collector.timings } : {}),
     // #487: nur gesetzt, wenn das Budget wirklich gestrichen hat — ohne
@@ -603,14 +603,14 @@ async function recallAgainstVault(
         // Ohne die Version wäre eine spätere Formeländerung historisch nicht
         // auswertbar — zwei Zeilen mit derselben Armmenge sähen vergleichbar
         // aus, obwohl die Zahl dazwischen ihre Bedeutung geändert hat.
-        score_version: scoreKind === "rrf" ? SCORE_VERSION : undefined,
+        score_version: scoreKind === "rrf" ? currentScoreVersion() : undefined,
         candidate_pool_score_kind: candidatePool.length > 0 ? candidatePoolKind : undefined,
         candidate_pool_score_arms: candidatePool.length > 0 ? candidatePoolArms : undefined,
         // Dieselbe Regel wie beim Haupt-Score: eine Formelversion NUR auf der
         // fusionierten Skala. Auf rohem BM25 gibt es keine Formel, deren
         // Version etwas bedeutet.
         candidate_pool_score_version:
-          candidatePool.length > 0 && candidatePoolKind === "rrf" ? SCORE_VERSION : undefined,
+          candidatePool.length > 0 && candidatePoolKind === "rrf" ? currentScoreVersion() : undefined,
         embedding_degraded: embeddingDegraded ? true : undefined,
         // Codex-Gegenreview (P1): Der Grund stand in der ANTWORT, aber nicht im
         // Telemetrie-Eintrag — `embedding_degraded` unterscheidet nur „Breaker
