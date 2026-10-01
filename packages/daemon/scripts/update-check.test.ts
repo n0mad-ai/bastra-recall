@@ -371,6 +371,17 @@ test("#441: a staged update repoints the managed LaunchAgent without restarting 
 
 test("#441: the staged path is wired to the same refresh as the interactive one", async () => {
   const src = await readFile(new URL("../src/cli/update.ts", import.meta.url), "utf8");
+  // The two anchors below only pin RELATIVE ORDER, and three real
+  // regressions preserve that order while breaking the wiring — staged
+  // skipping the refresh call outright, staged forcing a reload, and the
+  // failure branch being disabled all leave both anchors exactly where they
+  // were. Pin the exact snippet each regression changes, not just the order.
+  assert.ok(
+    src.includes("if (!args.dryRun) {\n    const autostart"),
+    "the refresh must run unconditionally (not skipped for --staged)",
+  );
+  assert.ok(src.includes("reload: !args.staged,"), "staged must pass reload: false, never a hardcoded reload");
+  assert.ok(src.includes("if (!autostart.ok) {"), "a failed refresh must not be ignored");
   const refreshAt = src.indexOf("refreshManagedAutostart((s)");
   const stagedReturnAt = src.indexOf("→ staged — daemon left running on old code");
   assert.ok(refreshAt > 0 && stagedReturnAt > 0, "both anchors must exist");
