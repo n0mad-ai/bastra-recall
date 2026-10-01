@@ -23,7 +23,7 @@ const entry = (timestamp, costUSD) => ({
   model: "m",
 });
 
-async function todayWithCache(cached) {
+async function todayWithCache(cached, onSet = () => {}) {
   const claudeDir = mkdtempSync(join(tmpdir(), "statusline-today-"));
   mkdirSync(join(claudeDir, "projects"));
   const saved = {
@@ -35,7 +35,7 @@ async function todayWithCache(cached) {
   process.env.CLAUDE_CONFIG_DIR = claudeDir;
   CacheManager.getLatestTranscriptMtime = async () => 1;
   CacheManager.getUsageCache = async () => cached;
-  CacheManager.setUsageCache = async () => {};
+  CacheManager.setUsageCache = async () => { onSet(); };
   try {
     return await new TodayProvider().getTodayInfo();
   } finally {
@@ -57,4 +57,11 @@ test("a cache holding only yesterday's entries is not reused as today", async ()
 test("a cache holding today's entries is still reused", async () => {
   const info = await todayWithCache([entry(new Date(), 5)]);
   assert.equal(info.cost, 5);
+});
+
+test("a valid empty today cache is reused without reading transcripts again", async () => {
+  let writes = 0;
+  const info = await todayWithCache([], () => { writes++; });
+  assert.equal(info.cost, null);
+  assert.equal(writes, 0, "the empty cache was discarded and recomputed");
 });
