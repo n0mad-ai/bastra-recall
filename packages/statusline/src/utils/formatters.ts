@@ -6,13 +6,13 @@ interface TokenBreakdown {
 }
 
 export function formatCost(cost: number | null): string {
-  if (cost === null) return "$0.00";
+  if (cost === null) return "--";
   if (cost < 0.01) return "<$0.01";
   return `$${cost.toFixed(2)}`;
 }
 
 export function formatTokens(tokens: number | null): string {
-  if (tokens === null) return "0 tokens";
+  if (tokens === null) return "--";
   if (tokens === 0) return "0 tokens";
   if (tokens >= 1_000_000) {
     return `${(tokens / 1_000_000).toFixed(1)}M tokens`;
@@ -23,7 +23,7 @@ export function formatTokens(tokens: number | null): string {
 }
 
 export function formatTokenBreakdown(breakdown: TokenBreakdown | null): string {
-  if (!breakdown) return "0 tokens";
+  if (!breakdown) return "--";
 
   const parts: string[] = [];
 
