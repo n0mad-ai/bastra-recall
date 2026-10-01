@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #789 prevents inherited test reporters from emptying the coverage map while preserving reporters for `select --run`.
+- Follow-up to #789: quoted reporter destinations with spaces no longer leave stray `NODE_OPTIONS` tokens in map-build children.
+
 - **install: a hook script of your own is no longer removed because of its
   name** (#683). `bastra install` and `uninstall` recognised bastra's hook
   entries by the substrings `bastra-recall` and `hook`, so a script like

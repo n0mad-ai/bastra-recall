@@ -235,9 +235,11 @@ function ownRunner({ dropReporters = false } = {}) {
     return env;
   }
   const kept = [];
-  const opts = (NODE_OPTIONS ?? "").split(/\s+/).filter(Boolean);
+  // NODE_OPTIONS accepts quoted values containing spaces. Keep each quoted
+  // value with its option so removing a reporter cannot leave half a path.
+  const opts = (NODE_OPTIONS ?? "").match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [];
   for (let i = 0; i < opts.length; i++) {
-    const m = /^--test-reporter(?:-destination)?(=)?/.exec(opts[i]);
+    const m = /^--test-reporter(?:-destination)?(?:(=)|$)/.exec(opts[i]);
     if (!m) kept.push(opts[i]);
     else if (!m[1]) i++; // `--test-reporter spec`: the value is the next word
   }
