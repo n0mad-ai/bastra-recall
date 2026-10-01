@@ -263,6 +263,13 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
   // `--force` now that every matched label is weighed (#651 review).
   { label: "git push --force", re: git(String.raw`push\b[^\n]*--force(?![\w-])`), undo: FORCE_WITH_LEASE },
   { label: "git push -f", re: git(String.raw`push\b[^\n]*\s-f\b`), undo: FORCE_WITH_LEASE },
+  // With the reflog switched off an amend leaves no `HEAD@{1}` for the receipt
+  // below to point at — listed first so it is the row that names the command.
+  {
+    label: "git commit --amend (reflog off)",
+    re: /\bgit\b[^\n]*\s-c\s+core\.logallrefupdates=(?:false|0|no|off)\b[^\n]*\scommit\b[^\n]*--amend\b/i,
+    undo: null,
+  },
   {
     label: "git commit --amend",
     re: git(String.raw`commit\b[^\n]*--amend\b`),
@@ -278,6 +285,8 @@ export const DESTRUCTIVE_PATTERNS: ReadonlyArray<{ label: string; re: RegExp; un
   // the "strongest wins" rule in hintFor — next to any of those receipts.
   { label: "git reflog expire", re: git(String.raw`reflog\s+expire\b`), undo: null },
   { label: "git reflog delete", re: git(String.raw`reflog\s+delete\b`), undo: null },
+  // `drop` (git ≥ 2.49) removes reflog entries as well.
+  { label: "git reflog drop", re: git(String.raw`reflog\s+drop\b`), undo: null },
   { label: "git gc --prune", re: git(String.raw`gc\b[^\n]*--prune\b(?!=never)`), undo: null },
   // The same expiry set through config instead of flags: `git -c
   // gc.reflogExpire=now gc` (or `… maintenance run --task=gc`) and a `git

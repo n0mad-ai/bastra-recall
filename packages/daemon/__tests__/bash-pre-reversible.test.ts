@@ -102,6 +102,8 @@ const EXAMPLE: Record<string, string> = {
   "git commit --amend": "git commit --amend --no-edit",
   "git reflog expire": "git reflog expire --expire=now --all",
   "git reflog delete": "git reflog delete HEAD@{1}",
+  "git reflog drop": "git reflog drop --all",
+  "git commit --amend (reflog off)": "git -c core.logAllRefUpdates=false commit --amend --no-edit",
   "git gc --prune": "git gc --prune=now",
   "git -c gc.*Expire": "git -c gc.pruneExpire=now gc",
   "git config gc.*Expire": "git config gc.reflogExpire now",
@@ -541,6 +543,20 @@ describe("#651 review — the hint weighs the whole command, not the first row i
     assert.equal(matchPattern("git -c gc.pruneExpire=never gc"), null);
     assert.equal(matchPattern("git config gc.reflogExpire never"), null);
     assert.equal(matchPattern("git config gc.auto 0"), null);
+  });
+
+  it("#658: `git reflog drop` and an amend with the reflog off leave no HEAD@{1} — STOP, not the amend receipt", async () => {
+    // Revert-check: drop the two rows → both lines get the amend receipt
+    // although the entry `git reset --soft HEAD@{1}` needs is gone or never written.
+    assert.deepEqual(
+      await hintOf("git commit --amend --no-edit; git reflog drop --all"),
+      { kind: "stop", pattern: "git reflog drop" },
+    );
+    assert.deepEqual(
+      await hintOf("git -c core.logAllRefUpdates=false commit --amend --no-edit"),
+      { kind: "stop", pattern: "git commit --amend (reflog off)" },
+    );
+    assert.equal((await hintOf("git -c core.logAllRefUpdates=true commit --amend --no-edit")).kind, "receipt");
   });
 
   it("#658: several receipts in one command are all said, each once", async () => {
