@@ -55,6 +55,8 @@ import {
   mutateMemoryFile,
   type Memory,
   type SaveMemoryInput,
+  clampSummary,
+  SUMMARY_MAX,
 } from "@bastra-recall/core";
 import { recordAudit } from "./audit-trail.js";
 import { claimGateResult, unansweredClaims, GENERATED_TRIGGER_TYPES, type ClaimGateResult } from "./claim-gate.js";
@@ -264,7 +266,13 @@ export async function editMemoryHandler(
   if (!parsed.success) {
     throw new Error(`invalid edit_memory args: ${parsed.error.issues.map((i) => i.message).join(", ")}`);
   }
-  const args = parsed.data;
+  // The summary budget of a full save applies to a patch too — an
+  // over-long summary is cut with a note, not written as-is.
+  const summaryPatch = parsed.data.frontmatter?.summary;
+  const clamped = summaryPatch === undefined ? null : clampSummary(summaryPatch);
+  const args = clamped?.truncated
+    ? { ...parsed.data, frontmatter: { ...parsed.data.frontmatter, summary: clamped.summary } }
+    : parsed.data;
   const mem = deps.vault.get(args.id);
   // #464: DIESELBE Grenze wie `save_memory(overwrite)` und `load_memory` —
   // eine Teiländerung ist ein Schreibpfad auf einen Datensatz, den der Caller
@@ -413,7 +421,10 @@ export async function editMemoryHandler(
         .join(", ") +
       `. If that was not intended, edit again with the full list (old entries plus new ones).`
     : undefined;
-  const warning = [droppedWarning, auditWarning].filter(Boolean).join(" ");
+  const truncatedWarning = clamped?.truncated
+    ? `summary was auto-truncated to ${SUMMARY_MAX} chars; the full text belongs in the body.`
+    : undefined;
+  const warning = [droppedWarning, truncatedWarning, auditWarning].filter(Boolean).join(" ");
 
   return {
     id: mem.fm.id,
