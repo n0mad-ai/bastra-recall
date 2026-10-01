@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #877 limits unbounded repeats in custom Stop cues so digit-heavy input cannot trigger the reported two-star slowdown.
+- Follow-up to #877: large bounded and Unicode-escape repeats count toward the same limit, with regressions and EN/DE cue guidance.
+
 - @zzallirog's #873 makes `git reflog drop` and an amend with the reflog disabled STOP instead of issuing an unusable undo receipt.
 - Follow-up to #873: English/German hook docs list both STOP cases, with a regression for the other false reflog settings.
 

@@ -52,7 +52,7 @@ export const DEFAULT_FRUSTRATION_CUES_BY_LANGUAGE: Readonly<Record<string, reado
     "how\\s+(?:often|many\\s+times)", "damn", "fuck", "shit",
   ],
   ru: [
-    "(?:снова|опять)\\s+не", "(?:снова|опять)\\s+то\\s+же", "(?:снова|опять)\\s+слома\\p{L}*",
+    "(?:снова|опять)\\s+не", "(?:снова|опять)\\s+то\\s+же", "(?:снова|опять)\\s{1,8}слома\\p{L}*",
     "сколько\\s+раз", "ч[её]рт", "бл(?:ин|ять)",
   ],
 };
@@ -110,26 +110,33 @@ const RE_QUANTIFIED_GROUP = /\)[+*{]/;
  * a letter is never whitespace — so it does not count. All shipped defaults
  * fit this budget.
  *
- * At most ONE of them may be unbounded (`*`, `+`, `{n,}`). The `a`-run
+ * At most ONE of them may be long (`*`, `+`, `{n,}` or an upper bound above 8). The `a`-run
  * measurements above understated the cost: the wrapper only bars a start
  * inside a run of LETTERS, so on a hex blob or a run of digits every position
  * is a start and `\w*\w*y` took 859 ms on 2,000 characters and 64 s on 8,000
  * — inside the Stop lane, in the daemon, past its own one-second budget. One
- * unbounded repeat is quadratic at worst.
+ * long repeat avoids the combinations measured above.
  */
 const MAX_CUE_QUANTIFIERS = 2;
-const MAX_UNBOUNDED_QUANTIFIERS = 1;
+const MAX_LONG_QUANTIFIERS = 1;
 
 function tooManyQuantifiers(cue: string): boolean {
   const counted = cue
     // letter-bounded \s+ / \s* — a LITERAL letter, not the `W` of `\W`
     .replace(/(?<=(?<!\\)\p{L})\\s[+*](?=\p{L})/gu, " ")
+    .replace(/\\(?:[pP]|u)\{[^}]+\}/g, "e") // Unicode property/code point escape is one atom
     .replace(/\\./g, "e") // escapes: `\*` is a literal, `\w` one atom
     .replace(/\[(?:[^\]\\]|\\.)*\]/g, "c"); // a class is one atom
   // `?` right after `(` is group syntax, after another quantifier it is lazy.
   const quantifiers = counted.match(/(?<![(*+?}])[*+?]|\{\d+(?:,\d*)?\}/g) ?? [];
-  return quantifiers.length > MAX_CUE_QUANTIFIERS ||
-    quantifiers.filter((q) => q === "*" || q === "+" || /^\{\d+,\}$/.test(q)).length > MAX_UNBOUNDED_QUANTIFIERS;
+  const longRepeats = quantifiers.filter((q) => {
+    if (q === "*" || q === "+") return true;
+    const range = /^\{(\d+)(?:,(\d*))?\}$/.exec(q);
+    if (!range) return false;
+    const upper = range[2] === undefined ? Number(range[1]) : range[2] === "" ? Infinity : Number(range[2]);
+    return upper > 8;
+  });
+  return quantifiers.length > MAX_CUE_QUANTIFIERS || longRepeats.length > MAX_LONG_QUANTIFIERS;
 }
 
 /**

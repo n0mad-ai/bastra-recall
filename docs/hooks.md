@@ -623,7 +623,9 @@ three heuristics:
    `not again`, `again and again`, `again the same`, `broken/wrong/failed
    again`; `снова/опять не`, `снова/опять то же`, `снова/опять слома…`. The
    lists are data (`packages/daemon/src/lexicon.ts`); add your own cues, the
-   bare word included, in `~/.bastra/lexicon/frustration.txt`. CAPS words
+   bare word included, in `~/.bastra/lexicon/frustration.txt`. Regex cues may
+   have at most two quantifiers, including at most one long repeat (`*`, `+`,
+   `{n,}`, or a bound above 8); cues outside this limit are skipped. CAPS words
    count as cues only when ≥ 5 chars or repeated in a turn and not a
    technical acronym (`SKILL`, `JSON`, `CLAUDE`, …); CAPS alone never
    triggers → suggests a `lesson` save. The suggestion quotes up to three
@@ -1490,6 +1492,9 @@ drei Heuristiken aus:
    again`; `снова/опять не`, `снова/опять то же`, `снова/опять слома…`. Die
    Listen sind Daten (`packages/daemon/src/lexicon.ts`); eigene Hinweise,
    auch das bloße Wort, trägst du in `~/.bastra/lexicon/frustration.txt` ein.
+   Regex-Hinweise dürfen höchstens zwei Quantoren enthalten, davon höchstens
+   eine lange Wiederholung (`*`, `+`, `{n,}` oder eine Obergrenze über 8);
+   Hinweise außerhalb dieser Grenze werden übersprungen.
    Großgeschriebene Wörter zählen nur als Hinweis, wenn sie ≥ 5 Zeichen lang
    sind oder in einem Turn wiederholt werden und kein technisches Akronym sind
    (`SKILL`, `JSON`, `CLAUDE`, …); Großschreibung allein löst nie aus →
