@@ -16,14 +16,17 @@
  * never reaches a user turn at all — see {@link askAnswers}.
  */
 
-/** A numbered list line: "1. …", "2) …", "**3.** …", "- 4. …". */
-const OPTION_LINE_RE = /^[ \t]*(?:[-*][ \t]+)?\**(\d{1,2})[.)]\**[ \t]+\S/gm;
+/** A numbered or lettered list line: "1. …", "2) …", "(3) …", "**3.** …",
+ *  "- 4. …", "### 5. …", "B) …", "б) …". */
+const OPTION_LINE_RE = /^[ \t]*(?:[-*][ \t]+|#{1,6}[ \t]+)?\**\(?(\d{1,2}|\p{L})[.)]\**[ \t]+\S/gmu;
 /** Question marks across scripts: Latin/fullwidth/Arabic/Greek. */
 const QUESTION_RE = /[?？؟\u037E]/u;
 /** A standalone number — not part of a Latin identifier ("v2", "2nd"), a
  *  version or a longer number. Other scripts may touch it: CJK writes "2で",
  *  "案2" without a space. */
 const STANDALONE_NUMBER_RE = /(?<![\p{N}\p{Script=Latin}.])\d{1,2}(?![\p{N}\p{Script=Latin}]|\.\d)/gu;
+/** A lone letter answer ("B", "б)") — the pick for a lettered option list. */
+const LONE_LETTER_RE = /^[\s(\[*]*(\p{L})[\s.)\]*!]*$/u;
 /** A pick is a short answer, not a new request that happens to contain a digit. */
 const PICK_MAX_CHARS = 60;
 const MIN_OPTIONS = 2;
@@ -35,16 +38,36 @@ export interface ChoiceTurn {
   tools?: string[];
 }
 
+/**
+ * Digits of every script (fullwidth, Arabic-Indic, Devanagari…) read as ASCII.
+ * Nd blocks are runs of ten, so a digit's value is its offset in the run, mod 10.
+ */
+function asciiDigits(text: string): string {
+  return text.replace(/(?![0-9])\p{Nd}/gu, (d) => {
+    let cp = d.codePointAt(0)!;
+    let offset = 0;
+    while (/\p{Nd}/u.test(String.fromCodePoint(cp - 1))) {
+      cp--;
+      offset++;
+    }
+    return String(offset % 10);
+  });
+}
+
 function offeredOptions(assistantText: string): Set<string> {
   if (!QUESTION_RE.test(assistantText)) return new Set();
   const options = new Set<string>();
-  for (const m of assistantText.matchAll(OPTION_LINE_RE)) options.add(String(Number(m[1])));
+  for (const m of asciiDigits(assistantText).matchAll(OPTION_LINE_RE)) {
+    options.add(/^\d+$/.test(m[1]) ? String(Number(m[1])) : m[1].toLowerCase());
+  }
   return options.size >= MIN_OPTIONS ? options : new Set();
 }
 
 function pickedOption(userText: string, options: Set<string>): boolean {
-  const text = userText.trim();
+  const text = asciiDigits(userText).trim();
   if (text.length === 0 || text.length > PICK_MAX_CHARS) return false;
+  const letter = LONE_LETTER_RE.exec(text);
+  if (letter) return options.has(letter[1].toLowerCase());
   const numbers = new Set((text.match(STANDALONE_NUMBER_RE) ?? []).map((n) => String(Number(n))));
   if (numbers.size !== 1) return false;
   return options.has([...numbers][0]);

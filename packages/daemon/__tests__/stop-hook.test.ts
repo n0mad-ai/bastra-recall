@@ -495,6 +495,25 @@ describe("stop-hook: #707 a decision in a language without a cue list fires on a
     assert.equal(detectArchitectureDecision([offer("Hangisi?"), userTurn("1 ve 2 birlikte")]), null);
   });
 
+  it("reads the pick in any digit script: fullwidth, Arabic-Indic, Devanagari", () => {
+    assert.ok(detectArchitectureDecision([offer("どちらにしますか？"), userTurn("２でお願いします")]));
+    assert.ok(detectArchitectureDecision([offer("أيهما تفضل؟"), userTurn("الخيار ٢")]));
+    assert.ok(detectArchitectureDecision([offer("कौन सा?"), userTurn("२ ठीक है")]));
+    assert.equal(detectArchitectureDecision([offer("どちらにしますか？"), userTurn("３でお願いします")]), null);
+  });
+
+  it("reads parenthesised, heading and lettered option lists", () => {
+    const paren = assistantTurn("Two ways:\n(1) Drizzle\n(2) Prisma\nHangisi?");
+    assert.ok(detectArchitectureDecision([paren, userTurn("2 olsun")]));
+    const heading = assistantTurn("### 1. Drizzle\nfast\n### 2. Prisma\nmature\nHangisi?");
+    assert.ok(detectArchitectureDecision([heading, userTurn("1 olsun")]));
+    const lettered = assistantTurn("Two ways:\nA) Drizzle\nB) Prisma\nHangisi?");
+    assert.ok(detectArchitectureDecision([lettered, userTurn("B")]));
+    const cyrillic = assistantTurn("Два пути:\nа) Drizzle\nб) Prisma\nКакой?");
+    assert.ok(detectArchitectureDecision([cyrillic, userTurn("б)")]));
+    assert.equal(detectArchitectureDecision([lettered, userTurn("C")]), null, "a letter that was not offered");
+  });
+
   it("does not fire on a long new request that happens to contain an offered number", () => {
     assert.equal(
       detectArchitectureDecision([offer("Hangisi?"), userTurn("önce 2 dosyadaki testleri düzelt, sonra derleme hatalarına bak ve raporla")]),
