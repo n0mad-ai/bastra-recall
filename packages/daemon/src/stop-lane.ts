@@ -37,7 +37,8 @@
  *
  * Output: `{}`, or — #662 — a `hookSpecificOutput.additionalContext` document
  * that hands a Claude Code session its save suggestions in the running turn
- * (once per heuristic per session). Codex and payloads without a session id
+ * (once per heuristic per session), with a one-line `systemMessage` that
+ * tells the user what it is (#757). Codex and payloads without a session id
  * keep the #48 route: suggestions go to the pending file, which the next
  * SessionStart injects silently. The client writes the daemon's answer
  * verbatim like every other lane.
@@ -60,7 +61,7 @@ import { envFirst } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { writePendingSuggestion } from "./pending-suggestions.js";
 import { hookClientEvidence } from "./hook-surface.js";
-import { getDocsMode } from "./settings.js";
+import { getDocsMode, getPrimaryLanguage } from "./settings.js";
 import { enqueueForPath } from "./code-graph/service.js";
 import { boundaryNote } from "./code-graph/boundary-block.js";
 import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
@@ -68,6 +69,7 @@ import { loadSessionState, mutateSessionState, parkBoundary } from "./session-st
 import { noteSessionForHarvest } from "./session-harvest.js";
 import { loadTranscript, type ClaudeStopPayload, type TranscriptTurn } from "./stop-transcript.js";
 import { appendProductDocHint, evaluateHeuristics, formatSuggestion, type SaveSuggestion } from "./stop-heuristics.js";
+import { formatSameTurnBlock, sameTurnNotice } from "./stop-lane-same-turn.js";
 
 // 0.1.0 = unchanged event contract; the lane moved, the shape did not (#369).
 const HOOK_VERSION = "0.1.0";
@@ -247,8 +249,10 @@ async function evaluateStop(
     // Schlüssel, damit neue Zählungen die Zeile ersetzen statt sie zu stapeln.
     //
     // #662: Claude Code's Stop takes `hookSpecificOutput.additionalContext` —
-    // non-error feedback Claude reads IN THIS TURN, labelled "Stop hook
-    // feedback" in the transcript (not the systemMessage chat dump #48 fled).
+    // non-error feedback Claude reads IN THIS TURN. Claude Code prints it to
+    // the user in full as "Stop hook feedback" (#757, measured on 2.1.286;
+    // `suppressOutput` changes nothing), so the block is kept minimal and a
+    // one-line `systemMessage` in the user's language says what it is.
     // The next session has neither the conversation nor the body, so a
     // suggestion relayed there cannot be acted on. A Claude Code session with
     // an id therefore gets its suggestions here, once per heuristic per
@@ -262,6 +266,7 @@ async function evaluateStop(
         delivery = "pending";
       } else if (sameTurn.length > 0) {
         stdout = JSON.stringify({
+          systemMessage: sameTurnNotice(await getPrimaryLanguage().catch(() => undefined)),
           hookSpecificOutput: { hookEventName: "Stop", additionalContext: formatSameTurnBlock(sameTurn) },
         });
         delivery = "same-turn";
@@ -314,17 +319,6 @@ async function takeSameTurnSuggestions(
     s.saveEvalDelivered = [...done];
   });
   return fresh;
-}
-
-function formatSameTurnBlock(suggestions: SaveSuggestion[]): string {
-  return [
-    `<save-eval-now source="stop-hook">`,
-    `bastra-recall found a save-worthy moment in THIS conversation. Judge it from the conversation; ` +
-      `if it genuinely qualifies, save it now via bastra-recall:save_memory with a concrete body ` +
-      `(the user's own words, the why, file paths). If it does not, end the turn without comment.`,
-    ...suggestions.map(formatSuggestion),
-    `</save-eval-now>`,
-  ].join("\n");
 }
 
 // ─── Taxonomie-Drift (#67) ───────────────────────────────────────

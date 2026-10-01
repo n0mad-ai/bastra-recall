@@ -617,21 +617,42 @@ three heuristics:
    language without a cue list (#707): the user picks one of the numbered
    options the agent offered with a question ("2 olsun", "вариант 1").
 
-Output is one or more multi-line `<save-eval>` blocks suggesting title/type/body. The
+Output is a save suggestion per heuristic that fired. The
 hook **never calls `save_memory` itself** — only the agent does, if it agrees
 with the suggestion.
 
-**Where the suggestion goes (#662).** In a Claude Code session the blocks go
-back to the agent **in the same turn**, wrapped in `<save-eval-now>`, as the
-Stop hook's `hookSpecificOutput.additionalContext`. Claude Code shows that as
-"Stop hook feedback" and lets the agent continue once, so it can save while
-the conversation is still in its context. Each heuristic is handed over once
-per session (the session state remembers it); a later Stop that fires the same
-heuristic stays silent. A Stop raised by a Stop hook (`stop_hook_active`) is
-never evaluated, so the hand-over cannot loop. Codex, a payload without a
-session id, and `BASTRA_STOP_SAME_TURN=0` keep the older route: the blocks go
-to `~/.bastra/pending-suggestions.json` and the next session start shows them
+**Where the suggestion goes (#662).** In a Claude Code session the suggestions
+go back to the agent **in the same turn**, as the Stop hook's
+`hookSpecificOutput.additionalContext`, and Claude Code lets the agent
+continue once, so it can save while the conversation is still in its context.
+Each heuristic is handed over once per session (the session state remembers
+it); a later Stop that fires the same heuristic stays silent. A Stop raised by
+a Stop hook (`stop_hook_active`) is never evaluated, so the hand-over cannot
+loop. Codex, a payload without a session id, and `BASTRA_STOP_SAME_TURN=0`
+keep the older route: the `<save-eval>` blocks go to
+`~/.bastra/pending-suggestions.json` and the next session start shows them
 (#48, #513).
+
+**What you see (#757).** Claude Code has no agent-only channel on `Stop`: it
+prints `additionalContext` in full under "Stop hook feedback" (measured on
+Claude Code 2.1.286; `suppressOutput` has no effect, and `decision: "block"`
+prints its `reason` as "Stop hook error"). So the hand-over is two parts:
+
+```
+  ⎿  Stop says: bastra-recall is checking whether anything from this conversation is worth remembering — nothing for you to do.
+⏺ Ran 1 stop hook
+  ⎿  Stop hook feedback: <save-eval-now source="stop-hook">
+     bastra-recall memory check (Stop hook). Judge each line from this conversation: save it via save_memory if it holds, otherwise end the turn without comment.
+     - architecture-decision: Decision-language in the last 5 user turns: … If an architectural choice was committed (X over Y, the trade-off), save a 'decision' memory with the why + how-to-apply.
+     </save-eval-now>
+```
+
+The first line is for you (`systemMessage`), in your `language.primary`
+(shipped: English, German, Russian; any other language gets English). It says
+what this is and that you have nothing to do. The block below it is for the
+agent and is kept minimal: one instruction, then one line per suggestion. The
+agent then either saves or ends the turn without comment. It happens at most
+once per heuristic per session; `BASTRA_STOP_SAME_TURN=0` turns it off.
 
 Additionally the stop hook asks the daemon's drift detector (`GET /hook/drift`,
 budget 250 ms, fail-silent) whether recent memories form a recurring cluster
@@ -1427,23 +1448,45 @@ drei Heuristiken aus:
    Sprache ohne Cue-Liste (#707): der Nutzer wählt eine der nummerierten
    Optionen, die der Agent mit einer Frage angeboten hat („2 olsun", „вариант 1").
 
-Die Ausgabe besteht aus einem oder mehreren mehrzeiligen `<save-eval>`-Blöcken
-mit Vorschlägen für Titel/Typ/Inhalt. Der Hook **ruft `save_memory` nie selbst
-auf** — das tut nur der Agent, wenn er dem Vorschlag zustimmt.
+Die Ausgabe ist ein Speichervorschlag pro ausgelöster Heuristik. Der Hook
+**ruft `save_memory` nie selbst auf** — das tut nur der Agent, wenn er dem
+Vorschlag zustimmt.
 
 **Wohin der Vorschlag geht (#662).** In einer Claude-Code-Session gehen die
-Blöcke **im selben Turn** an den Agenten zurück, in `<save-eval-now>`
-verpackt, als `hookSpecificOutput.additionalContext` des Stop-Hooks. Claude
-Code zeigt das als „Stop hook feedback" und lässt den Agenten einmal
-weiterarbeiten, damit er speichern kann, solange das Gespräch noch in seinem
-Kontext ist. Jede Heuristik wird pro Session einmal übergeben (der
-Session-State merkt sich das); ein späterer Stop, der dieselbe Heuristik
-auslöst, bleibt still. Ein Stop, den ein Stop-Hook ausgelöst hat
+Vorschläge **im selben Turn** an den Agenten zurück, als
+`hookSpecificOutput.additionalContext` des Stop-Hooks, und Claude Code lässt
+den Agenten einmal weiterarbeiten, damit er speichern kann, solange das
+Gespräch noch in seinem Kontext ist. Jede Heuristik wird pro Session einmal
+übergeben (der Session-State merkt sich das); ein späterer Stop, der dieselbe
+Heuristik auslöst, bleibt still. Ein Stop, den ein Stop-Hook ausgelöst hat
 (`stop_hook_active`), wird nie ausgewertet, die Übergabe kann also nicht
 kreisen. Codex, ein Payload ohne Session-ID und `BASTRA_STOP_SAME_TURN=0`
-behalten den alten Weg: Die Blöcke landen in
+behalten den alten Weg: Die `<save-eval>`-Blöcke landen in
 `~/.bastra/pending-suggestions.json`, und der nächste Session-Start zeigt sie
 (#48, #513).
+
+**Was du siehst (#757).** Claude Code hat bei `Stop` keinen Kanal nur für den
+Agenten: Es gibt `additionalContext` vollständig unter „Stop hook feedback"
+aus (gemessen mit Claude Code 2.1.286; `suppressOutput` bewirkt nichts, und
+`decision: "block"` gibt seinen `reason` als „Stop hook error" aus). Die
+Übergabe besteht deshalb aus zwei Teilen:
+
+```
+  ⎿  Stop says: bastra-recall prüft, ob sich aus diesem Gespräch etwas zu merken lohnt — du musst nichts tun.
+⏺ Ran 1 stop hook
+  ⎿  Stop hook feedback: <save-eval-now source="stop-hook">
+     bastra-recall memory check (Stop hook). Judge each line from this conversation: save it via save_memory if it holds, otherwise end the turn without comment.
+     - architecture-decision: Decision-language in the last 5 user turns: … If an architectural choice was committed (X over Y, the trade-off), save a 'decision' memory with the why + how-to-apply.
+     </save-eval-now>
+```
+
+Die erste Zeile ist für dich (`systemMessage`), in deiner `language.primary`
+(mitgeliefert: Englisch, Deutsch, Russisch; jede andere Sprache bekommt
+Englisch). Sie sagt, was das ist und dass du nichts tun musst. Der Block
+darunter ist für den Agenten und bewusst knapp: eine Anweisung, dann eine
+Zeile pro Vorschlag. Der Agent speichert danach oder beendet den Turn ohne
+Kommentar. Das passiert höchstens einmal pro Heuristik und Session;
+`BASTRA_STOP_SAME_TURN=0` schaltet es ab.
 
 Zusätzlich fragt der Stop-Hook den Drift-Detektor des Daemons
 (`GET /hook/drift`, Budget 250 ms, fail-silent), ob neuere Erinnerungen einen
