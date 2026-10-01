@@ -139,9 +139,21 @@ export async function appendAct(
   return full;
 }
 
-/** Ordering key: the carried intent time when there is one, else the write time. */
-function orderKey(a: FloorAct): string {
-  return a.occurred_at ?? a.recorded;
+/**
+ * Ordering key: the carried intent time when there is one, else the write
+ * time — as an epoch number, not the raw string. `occurred_at` comes
+ * verbatim off the REST body, so it can carry any UTC offset
+ * ("+03:00", "Z", none); a string compare against another timestamp in a
+ * different format sorts on lexical order, not on time — an act at
+ * 11:30+03:00 (08:30Z) then outranks a 09:00Z floor it is actually BEFORE.
+ * `replay_gap_ms` a few lines down already parses both clocks for this
+ * reason; ordering uses the same numeric comparison. An unparsable stamp
+ * sorts as `-Infinity` (never wins, never crashes the comparison) rather
+ * than being trusted lexically.
+ */
+function orderKey(a: FloorAct): number {
+  const t = Date.parse(a.occurred_at ?? a.recorded);
+  return Number.isFinite(t) ? t : -Infinity;
 }
 
 /**
@@ -165,7 +177,8 @@ export function liveIntent(
   acts: FloorAct[],
   fallback: { last_affirmed: string; affirmed_by?: string; why?: string },
 ): LiveIntent {
-  const mine = acts.filter((a) => a.memory_id === memoryId && orderKey(a) >= flooredAt);
+  const flooredAtMs = Date.parse(flooredAt);
+  const mine = acts.filter((a) => a.memory_id === memoryId && orderKey(a) >= flooredAtMs);
 
   if (mine.length === 0) {
     return {

@@ -168,6 +168,23 @@ test("a replay carrying a pre-release intent time does not resurrect the dead fl
   }
 });
 
+test("intent times with a UTC offset are compared as time, not as strings", () => {
+  // occurred_at arrives verbatim off the REST body and may carry any offset.
+  const flooredAt = "2026-09-28T09:00:00.000Z";
+  // 11:30+03:00 is 08:30Z — before the floor, so it must be filtered out.
+  const preFloor = [
+    { memory_id: "m1", occurred_at: "2026-09-28T11:30:00+03:00", recorded: "2026-09-28T09:05:00.000Z", affirmed_by: "x", why: "pre-floor" },
+  ];
+  assert.equal(liveIntent("m1", flooredAt, preFloor, { last_affirmed: flooredAt }).source, "registry_fallback");
+
+  // Same instant format, different precision: the later intent wins.
+  const two = [
+    { memory_id: "m1", occurred_at: "2026-09-28T10:00:00.900Z", recorded: "2026-09-28T10:00:01.000Z", affirmed_by: "a", why: "later" },
+    { memory_id: "m1", occurred_at: "2026-09-28T10:00:00Z", recorded: "2026-09-28T10:00:02.000Z", affirmed_by: "b", why: "earlier" },
+  ];
+  assert.equal(liveIntent("m1", flooredAt, two, { last_affirmed: flooredAt }).why, "later");
+});
+
 test("acts are per memory: one floor's history never leaks into another's", async () => {
   const { actsPath, cleanup } = await tmpPaths();
   try {
