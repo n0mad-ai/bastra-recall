@@ -445,7 +445,14 @@ the rest after 2, with a 10 GB cap that never touches your own files younger
 than their retention. The archive is a safety net for the next steps, not a
 backup; change it per class (days, fractions allowed) with
 `bastra config set archive.retain junk=1,in-git=2,user=2` or
-`BASTRA_ARCHIVE_RETAIN` (env wins). Claude Code's scratchpads
+`BASTRA_ARCHIVE_RETAIN` (env wins). Two limits are yours to set (#934; sizes
+like `5GB` or `500MB`): `bastra config set archive.cap 5GB` is what the whole
+archive may hold (default 10 GB; over it, junk goes first, then clean
+git-tracked files), and `bastra config set archive.max-item 2GB` is the largest
+target it takes (default: no limit; `off` removes it). A target over that limit
+is not archived and not deleted: `rm` refuses, exits non-zero and names the
+limit and the ways out, `/bin/rm` or a higher limit. `BASTRA_ARCHIVE_CAP` and
+`BASTRA_ARCHIVE_MAX_ITEM` in the daemon's environment win. Claude Code's scratchpads
 (`/tmp/claude-<uid>/…`, or under `CLAUDE_CODE_TMPDIR`) are temp ground: really
 removed.
 
@@ -846,6 +853,8 @@ new MCP tool):
 | `BASTRA_RM_ARCHIVES`          | _unset_          | The #650 opt-in, read by the daemon; wins over `archive.enabled`: `1` bastra's archiving `rm` + git snapshots, `host` the host's own archiving `rm` (receipt text only), `0` off |
 | `BASTRA_RM_SHIM` / `BASTRA_GIT_SHIM` | _unset_   | `0` leaves the `rm` / git part out while the opt-in is on      |
 | `BASTRA_ARCHIVE_RETAIN`       | `junk=1,in-git=2,user=2` | Archive retention in days per class (also `bastra config set archive.retain`) |
+| `BASTRA_ARCHIVE_CAP`          | `10GB`           | What the whole archive may hold; over it, junk goes first (also `bastra config set archive.cap`) |
+| `BASTRA_ARCHIVE_MAX_ITEM`     | _unset_          | Largest target the archiving `rm` takes; a larger one is refused, not archived, not deleted. `off` lifts a stored limit (also `bastra config set archive.max-item`) |
 | `BASTRA_SIZE_GUIDE`           | `500`            | Guide line count before the size hook nudges a split (also `bastra config set size.guide`) |
 | `BASTRA_SIZE_CRITICAL`        | `800`            | Critical line count for the size hook (also `size.critical`; test files use 700/1000) |
 
@@ -1338,7 +1347,16 @@ nach 2, der Rest nach 2, mit einer 10-GB-Obergrenze, die eigene Dateien vor
 Ablauf ihrer Frist nie anfasst. Das Archiv ist ein Sicherheitsnetz für die
 nächsten Schritte, kein Backup; Fristen pro Klasse (Tage, Brüche erlaubt)
 mit `bastra config set archive.retain junk=1,in-git=2,user=2` oder
-`BASTRA_ARCHIVE_RETAIN` (die Variable gewinnt).
+`BASTRA_ARCHIVE_RETAIN` (die Variable gewinnt). Zwei Grenzen stellst du selbst
+ein (#934; Größen wie `5GB` oder `500MB`): `bastra config set archive.cap 5GB`
+legt fest, wie viel das ganze Archiv halten darf (Standard 10 GB; darüber geht
+zuerst Build-Müll, dann saubere git-verfolgte Dateien), und
+`bastra config set archive.max-item 2GB` das größte Ziel, das es aufnimmt
+(Standard: keine Grenze; `off` entfernt sie). Ein Ziel über dieser Grenze wird
+weder archiviert noch gelöscht: `rm` verweigert, endet mit einem Fehlercode und
+nennt die Grenze und die Auswege, `/bin/rm` oder eine höhere Grenze.
+`BASTRA_ARCHIVE_CAP` und `BASTRA_ARCHIVE_MAX_ITEM` in der Umgebung des Daemons
+gewinnen.
 
 Zurückholen: `bastra archive list` zeigt, was wohin ging (30 Tage);
 `bastra archive restore <ursprünglicher Pfad>` legt ein Ziel zurück,
@@ -1695,6 +1713,8 @@ REST-Schnittstelle (Token-Authentifizierung wie bei den anderen
 | `BASTRA_RM_ARCHIVES`          | _nicht gesetzt_  | Der #650-Opt-in, vom Daemon gelesen; gewinnt über `archive.enabled`: `1` bastras archivierendes `rm` + Git-Schnappschüsse, `host` das eigene archivierende `rm` des Hosts (nur Quittungstext), `0` aus |
 | `BASTRA_RM_SHIM` / `BASTRA_GIT_SHIM` | _nicht gesetzt_ | `0` lässt bei eingeschaltetem Opt-in den `rm`- bzw. Git-Teil weg |
 | `BASTRA_ARCHIVE_RETAIN`       | `junk=1,in-git=2,user=2` | Aufbewahrung im Archiv in Tagen pro Klasse (auch `bastra config set archive.retain`) |
+| `BASTRA_ARCHIVE_CAP`          | `10GB`           | Wie viel das ganze Archiv halten darf; darüber geht zuerst Build-Müll (auch `bastra config set archive.cap`) |
+| `BASTRA_ARCHIVE_MAX_ITEM`     | _nicht gesetzt_  | Größtes Ziel, das das archivierende `rm` aufnimmt; ein größeres wird verweigert, weder archiviert noch gelöscht. `off` hebt eine gespeicherte Grenze auf (auch `bastra config set archive.max-item`) |
 | `BASTRA_HOOK_QUERY`           | `neutral`        | `english` stellt die alte Recall-Anfrage mit Tätigkeitsverb wieder her (#231) |
 | `BASTRA_HOOK_CONTENT_RECALL`  | `off`            | `1` aktiviert den optionalen Recall-Zweig über den Änderungsinhalt (#282) |
 | `BASTRA_PROMPT_HOOK_MODE`     | `all`            | `all` oder `retrieval-only` — wird von der Prompt-Lane des Daemons gelesen (im Daemon-Env setzen) |

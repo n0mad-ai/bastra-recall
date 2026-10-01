@@ -49,8 +49,8 @@ import { hintFor, matchPattern, shimOffLine } from "./bash-pre-analysis.js";
 // #680: the command analysis lives in bash-pre-analysis.ts; shimOffLine stays
 // part of this lane's public surface.
 export { shimOffLine } from "./bash-pre-analysis.js";
-import { shimRewrite } from "./rm-archive.js";
-import { getArchiveEnabled } from "./settings.js";
+import { archiveMaxItem, shimRewrite } from "./rm-archive.js";
+import { getArchiveEnabled, getArchiveMaxItem } from "./settings.js";
 import { bashVerdict, settingsFiles } from "./cc-permissions.js";
 
 const HOOK_TIMEOUT_MS = envInt("BASTRA_HOOK_TIMEOUT_MS", 500, "NEXUS_HOOK_TIMEOUT_MS");
@@ -237,7 +237,13 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
         permissionDecisionReason: "bastra: rm archives here (bastra archive restore <path>)",
         updatedInput: {
           ...toolInput,
-          command: shimRewrite(command, payload.tool_use_id || `${payload.session_id ?? "s"}-${startedAt}`, match.viaGit),
+          command: shimRewrite(
+            command,
+            payload.tool_use_id || `${payload.session_id ?? "s"}-${startedAt}`,
+            match.viaGit,
+            // #934: the per-target limit rides along; the shim reads no settings.
+            archiveMaxItem(process.env, await getArchiveMaxItem().catch(() => undefined)),
+          ),
         },
       }
     : {};

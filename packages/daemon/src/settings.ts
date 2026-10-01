@@ -422,6 +422,27 @@ export async function setArchiveRetain(retain: string, path: string = settingsFi
   await mutateSettings(path, (current) => ({ ...current, archive: { ...current.archive, retain } }));
 }
 
+/** #934: the archive's total cap as stored (`5GB`); undefined = the 10 GB default. */
+export async function getArchiveCap(path?: string): Promise<string | undefined> {
+  return (await readSettings(path)).archive?.cap;
+}
+
+export async function setArchiveCap(cap: string, path: string = settingsFilePath()): Promise<void> {
+  await mutateSettings(path, (current) => ({ ...current, archive: { ...current.archive, cap } }));
+}
+
+/** #934: the per-target limit as stored; undefined = none. `null` removes it. */
+export async function getArchiveMaxItem(path?: string): Promise<string | undefined> {
+  return (await readSettings(path)).archive?.maxItem;
+}
+
+export async function setArchiveMaxItem(maxItem: string | null, path: string = settingsFilePath()): Promise<void> {
+  await mutateSettings(path, (current) => {
+    const { maxItem: _dropped, ...rest } = current.archive ?? {};
+    return { ...current, archive: maxItem === null ? rest : { ...rest, maxItem } };
+  });
+}
+
 /** #650 opt-in: bastra's archiving rm and git snapshots. Default false. */
 export async function getArchiveEnabled(path?: string): Promise<boolean> {
   return (await readSettings(path)).archive?.enabled ?? false;

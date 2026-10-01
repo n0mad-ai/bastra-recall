@@ -5,7 +5,7 @@
  * The typed per-key accessors stay in settings.ts, which re-exports this
  * module's public surface; see its header for the key reference.
  */
-import { parseRetain } from "./rm-archive.js";
+import { parseRetain, parseSize } from "./rm-archive.js";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
@@ -125,8 +125,11 @@ export interface CliSettings {
   // `junk=1,in-git=2,user=2` (rm-archive.ts parseRetain). Env wins:
   // BASTRA_ARCHIVE_RETAIN. `enabled` is the opt-in for bastra's archiving
   // rm and git snapshots (default off); env BASTRA_RM_ARCHIVES wins
-  // (bash-pre-patterns.ts archiveMode).
-  archive?: { retain?: string; enabled?: boolean };
+  // (bash-pre-patterns.ts archiveMode). #934: `cap` is what the archive may
+  // hold in total (default 10 GB), `maxItem` the largest target it takes
+  // (default none) — sizes like `5GB`; env BASTRA_ARCHIVE_CAP and
+  // BASTRA_ARCHIVE_MAX_ITEM win.
+  archive?: { retain?: string; enabled?: boolean; cap?: string; maxItem?: string };
   // #632: battery mode, opt-in (default off). On battery the daemon defers
   // doc2query, skips embedding warm-ups and unloads the model after 60 s idle
   // (power-source.ts). Env BASTRA_BATTERY_SAVER wins.
@@ -449,12 +452,14 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
     }
     if (size.guide !== undefined || size.critical !== undefined || size.exemptPaths !== undefined) settings.size = size;
   }
-  const archiveData = (data as { archive?: { retain?: unknown; enabled?: unknown } }).archive;
+  const archiveData = (data as { archive?: { retain?: unknown; enabled?: unknown; cap?: unknown; maxItem?: unknown } }).archive;
   if (archiveData !== undefined && archiveData !== null) {
-    const archive: { retain?: string; enabled?: boolean } = {};
+    const archive: NonNullable<CliSettings["archive"]> = {};
     if (typeof archiveData.retain === "string" && parseRetain(archiveData.retain)) archive.retain = archiveData.retain;
     if (typeof archiveData.enabled === "boolean") archive.enabled = archiveData.enabled;
-    if (archive.retain !== undefined || archive.enabled !== undefined) settings.archive = archive;
+    if (typeof archiveData.cap === "string" && parseSize(archiveData.cap)) archive.cap = archiveData.cap;
+    if (typeof archiveData.maxItem === "string" && parseSize(archiveData.maxItem)) archive.maxItem = archiveData.maxItem;
+    if (Object.keys(archive).length > 0) settings.archive = archive;
   }
   const batterySaver = (data as { battery?: { saver?: unknown } }).battery?.saver;
   if (typeof batterySaver === "boolean") settings.battery = { saver: batterySaver };

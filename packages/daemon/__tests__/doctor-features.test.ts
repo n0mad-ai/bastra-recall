@@ -45,6 +45,7 @@ function allOff(): FeatureState {
     bridges: false,
     ui: false,
     archive: "off",
+    archiveLimits: { cap: 10 * 2 ** 30, maxItem: null },
     battery: { saver: false },
   };
 }
@@ -64,6 +65,7 @@ function allOn(): FeatureState {
     bridges: true,
     ui: true,
     archive: "bastra",
+    archiveLimits: { cap: 10 * 2 ** 30, maxItem: null },
     battery: { saver: true, live: { source: "ac", saving: false } },
   };
 }

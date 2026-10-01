@@ -63,7 +63,18 @@ The model learns what actually happened, not what the pre-hook predicted. The fi
 | `in-git` | tracked and unchanged as git itself reports it (a failed or timed-out `git status` is not "clean"), nothing untracked or ignored inside, not a repository root | 2 days |
 | `user` | everything else | 2 days |
 
-Change it with `bastra config set archive.retain junk=1,in-git=2,user=2` or `BASTRA_ARCHIVE_RETAIN` (env wins). There is a 10 GB cap: it drops junk first, then in-git, and never a user entry younger than the user retention. Git snapshots (below) keep the user retention and are never dropped by the cap. Reconcile removes only a destination that lies inside an archive: the manifest is a plain file, and a torn or foreign line must not aim it anywhere else. The manifest is rotated past 1 MB (a rename, so a shim appending at that moment lands in one of the two files); a rotated one goes after 30 days once none of its rows is live. A receipt reads only the current file.
+Change it with `bastra config set archive.retain junk=1,in-git=2,user=2` or `BASTRA_ARCHIVE_RETAIN` (env wins). There is a cap, 10 GB unless configured (below): it drops junk first, then in-git, and never a user entry younger than the user retention. Git snapshots (below) keep the user retention and are never dropped by the cap. Reconcile removes only a destination that lies inside an archive: the manifest is a plain file, and a torn or foreign line must not aim it anywhere else. The manifest is rotated past 1 MB (a rename, so a shim appending at that moment lands in one of the two files); a rotated one goes after 30 days once none of its rows is live. A receipt reads only the current file.
+
+**Limits (#934).** Two sizes are the user's to set, written like `5GB` or `500MB` (KB, MB, GB, TB; 1 GB = 2^30 bytes):
+
+| setting | env (wins) | default | what it does |
+|---|---|---|---|
+| `bastra config set archive.cap 5GB` | `BASTRA_ARCHIVE_CAP` | 10 GB | What the whole archive may hold. Over it, the hourly reconcile drops junk first, then in-git, and never a user entry younger than the user retention. |
+| `bastra config set archive.max-item 2GB` | `BASTRA_ARCHIVE_MAX_ITEM` | none | The largest target the archive takes. `off` removes a stored limit. |
+
+A target over `archive.max-item` is neither archived nor deleted: `rm` exits non-zero, the target stays, and the message names the limit, how far the count got, and the ways out (`/bin/rm`, or a higher limit). It is the #695 rule again: a clear refusal, never a silent real delete. Temp ground is still really removed, whatever its size.
+
+How the size is measured: the shim walks the target with `lstat` and adds up file sizes. Without a limit that walk stops after 50,000 entries, because the number only feeds the manifest. With a limit it has to be right, so the walk goes on past 50,000 entries and stops as soon as the total is over the limit. A target over the limit therefore costs less than before; a very large tree *under* the limit is walked in full (about 80,000 to 220,000 files per second on a laptop SSD). The daemon reads the setting and hands the limit to the shim in the rewritten command (`BASTRA_ARCHIVE_MAX_ITEM=<bytes>B`); the shim itself reads no settings file. `bastra doctor` shows both effective values on the archive line while the archive is on.
 
 **5. CLI:** `bastra archive list | restore <path> | reconcile [--yes]`.
 
@@ -271,7 +282,18 @@ Das Modell erfährt, was tatsächlich passiert ist, nicht was der Pre-Hook vorhe
 | `in-git` | verfolgt und laut git unverändert (ein fehlgeschlagenes oder abgelaufenes `git status` gilt nicht als sauber), nichts Unverfolgtes oder Ignoriertes darin, keine Repository-Wurzel | 2 Tage |
 | `user` | alles andere | 2 Tage |
 
-Ändern mit `bastra config set archive.retain junk=1,in-git=2,user=2` oder `BASTRA_ARCHIVE_RETAIN` (die Variable gewinnt). Es gibt eine Obergrenze von 10 GB: Sie wirft zuerst junk, dann in-git, und nie einen user-Eintrag vor Ablauf seiner Frist. Git-Schnappschüsse (unten) halten die Nutzer-Frist und fallen nie der Obergrenze zum Opfer. Reconcile entfernt nur ein Ziel, das in einem Archiv liegt: Das Manifest ist eine einfache Datei, und eine kaputte oder fremde Zeile darf es nirgendwo anders hinlenken. Ab 1 MB wird das Manifest rotiert (ein Umbenennen, ein gleichzeitig schreibender Shim landet in einer der beiden Dateien); ein rotiertes geht nach 30 Tagen, wenn keine seiner Zeilen mehr lebt. Eine Quittung liest nur die aktuelle Datei.
+Ändern mit `bastra config set archive.retain junk=1,in-git=2,user=2` oder `BASTRA_ARCHIVE_RETAIN` (die Variable gewinnt). Es gibt eine Obergrenze, 10 GB, wenn nichts anderes eingestellt ist (unten): Sie wirft zuerst junk, dann in-git, und nie einen user-Eintrag vor Ablauf seiner Frist. Git-Schnappschüsse (unten) halten die Nutzer-Frist und fallen nie der Obergrenze zum Opfer. Reconcile entfernt nur ein Ziel, das in einem Archiv liegt: Das Manifest ist eine einfache Datei, und eine kaputte oder fremde Zeile darf es nirgendwo anders hinlenken. Ab 1 MB wird das Manifest rotiert (ein Umbenennen, ein gleichzeitig schreibender Shim landet in einer der beiden Dateien); ein rotiertes geht nach 30 Tagen, wenn keine seiner Zeilen mehr lebt. Eine Quittung liest nur die aktuelle Datei.
+
+**Grenzen (#934).** Zwei Größen stellt der Nutzer selbst ein, geschrieben wie `5GB` oder `500MB` (KB, MB, GB, TB; 1 GB = 2^30 Bytes):
+
+| Einstellung | Variable (gewinnt) | Standard | Wirkung |
+|---|---|---|---|
+| `bastra config set archive.cap 5GB` | `BASTRA_ARCHIVE_CAP` | 10 GB | Wie viel das ganze Archiv halten darf. Darüber wirft der stündliche Reconcile zuerst junk, dann in-git, und nie einen user-Eintrag vor Ablauf seiner Frist. |
+| `bastra config set archive.max-item 2GB` | `BASTRA_ARCHIVE_MAX_ITEM` | keine | Das größte Ziel, das das Archiv aufnimmt. `off` entfernt eine gespeicherte Grenze. |
+
+Ein Ziel über `archive.max-item` wird weder archiviert noch gelöscht: `rm` endet mit einem Fehlercode, das Ziel bleibt, und die Meldung nennt die Grenze, wie weit die Zählung kam, und die Auswege (`/bin/rm` oder eine höhere Grenze). Das ist wieder die Regel aus #695: eine klare Verweigerung, nie ein stilles echtes Löschen. Temp-Boden wird weiterhin wirklich entfernt, egal wie groß.
+
+So wird die Größe gemessen: Der Shim läuft das Ziel mit `lstat` ab und addiert die Dateigrößen. Ohne Grenze endet dieser Lauf nach 50.000 Einträgen, weil die Zahl nur ins Manifest geht. Mit Grenze muss sie stimmen, also läuft er über 50.000 Einträge hinaus und hört auf, sobald die Summe über der Grenze liegt. Ein Ziel über der Grenze kostet damit weniger als bisher; ein sehr großer Baum *unter* der Grenze wird ganz abgelaufen (etwa 80.000 bis 220.000 Dateien pro Sekunde auf einer Laptop-SSD). Der Daemon liest die Einstellung und gibt die Grenze im umgeschriebenen Befehl an den Shim (`BASTRA_ARCHIVE_MAX_ITEM=<Bytes>B`); der Shim selbst liest keine Einstellungsdatei. `bastra doctor` zeigt beide wirksamen Werte in der Archiv-Zeile, solange das Archiv an ist.
 
 **5. CLI:** `bastra archive list | restore <Pfad> | reconcile [--yes]`.
 

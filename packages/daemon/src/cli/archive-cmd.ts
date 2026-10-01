@@ -3,15 +3,17 @@
  * the archiving `rm` (rm-archive.ts): what went where, put it back, and let
  * the archive go of what it no longer needs to keep.
  */
-import { applyReconcile, manifestRows, reconcilePlan, restore, retainDays } from "../rm-archive.js";
-import { getArchiveRetain } from "../settings.js";
+import { applyReconcile, archiveCap, manifestRows, reconcilePlan, restore, retainDays } from "../rm-archive.js";
+import { getArchiveCap, getArchiveRetain } from "../settings.js";
 import type { ParsedArgs } from "./types.js";
 
 const USAGE =
   "usage: bastra archive list                 what the agent's rm archived (last 30 days)\n" +
   "       bastra archive restore <path|ref>   put it back (a path, or a git snapshot ref / sha)\n" +
   "       bastra archive reconcile [--yes]    show (or, with --yes, remove) what the archive can let go\n" +
-  "retention: bastra config set archive.retain junk=1,in-git=2,user=2  (days; env BASTRA_ARCHIVE_RETAIN wins)";
+  "retention: bastra config set archive.retain junk=1,in-git=2,user=2  (days; env BASTRA_ARCHIVE_RETAIN wins)\n" +
+  "limits:    bastra config set archive.cap 10GB       (the whole archive; env BASTRA_ARCHIVE_CAP wins)\n" +
+  "           bastra config set archive.max-item 2GB   (largest target it takes, off = none; env BASTRA_ARCHIVE_MAX_ITEM wins)";
 
 export async function cmdArchive(args: ParsedArgs): Promise<number> {
   const sub = args.surface;
@@ -38,7 +40,8 @@ export async function cmdArchive(args: ParsedArgs): Promise<number> {
     }
   }
   if (sub === "reconcile") {
-    const drop = reconcilePlan(new Date(), 10 * 2 ** 30, process.env, retainDays(process.env, await getArchiveRetain()));
+    const cap = archiveCap(process.env, await getArchiveCap());
+    const drop = reconcilePlan(new Date(), cap, process.env, retainDays(process.env, await getArchiveRetain()));
     if (args.yes) applyReconcile(drop);
     const verb = args.yes ? "removed" : "would remove";
     console.log(drop.map((d) => `${verb}  ${d.orig}  (${d.why})`).join("\n") || "archive is fine: nothing to let go");

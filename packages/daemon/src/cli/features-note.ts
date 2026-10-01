@@ -27,6 +27,7 @@ import { probeDaemon, resolveVault, type DaemonProbe } from "./helpers.js";
 import type { ClientFeatures } from "./types.js";
 import { archiveMode, type ArchiveMode } from "../bash-pre-patterns.js";
 import { batterySaverEnabled } from "../power-source.js";
+import { archiveCap, archiveMaxItem, formatSize } from "../rm-archive.js";
 
 export interface FeatureState {
   /** Clients whose MCP server is registered, with their hook/skill state. */
@@ -53,6 +54,8 @@ export interface FeatureState {
   ui: boolean;
   /** #650: bastra's archiving rm + git snapshots (bash-pre-patterns.ts archiveMode). */
   archive: ArchiveMode;
+  /** #934: the archive's effective total cap and per-target limit, in bytes (null = no limit). */
+  archiveLimits: { cap: number; maxItem: number | null };
   /** #632: battery mode. `live` = what the running daemon reports, absent when
    *  it is not running or predates the field. */
   battery: { saver: boolean; live?: { source: string; saving: boolean } };
@@ -155,7 +158,10 @@ export function featureLines(s: FeatureState): string[] {
     : row(INFO, "vault map", "off", "bastra config set ui.enabled true"));
   const archive = "archiving rm + git snapshots (Claude Code)";
   lines.push(s.archive === "bastra"
-    ? row(ON, archive, "on (rm -r and lossy git acts run through ~/.bastra/archive without a prompt; bastra archive list)")
+    ? row(ON, archive,
+        "on (rm -r and lossy git acts run through ~/.bastra/archive without a prompt; " +
+          `cap ${formatSize(s.archiveLimits.cap)}, ` +
+          `per-target limit ${s.archiveLimits.maxItem === null ? "off" : formatSize(s.archiveLimits.maxItem)}; bastra archive list)`)
     : s.archive === "host"
       ? row(ON, archive, "host (BASTRA_RM_ARCHIVES=host: the host's own archiving rm, receipt text only)")
       : row(INFO, archive, "off", "bastra config set archive.enabled on  (docs/hooks.md)"));
@@ -243,6 +249,7 @@ export async function collectFeatureState(
     ui: settings.ui?.enabled ?? false,
     // This shell's env; the daemon reads its own (a LaunchAgent may differ).
     archive: archiveMode(settings.archive?.enabled ?? false),
+    archiveLimits: { cap: archiveCap(env, settings.archive?.cap), maxItem: archiveMaxItem(env, settings.archive?.maxItem) },
     // The running daemon is the witness when it reports the field; else this
     // shell's env over the file.
     battery: live?.ok && live.power

@@ -2,7 +2,7 @@
  * `bastra config get|set <key> [value]` — settings access from the CLI.
  *
  * Keys: update.mode, embedding.provider, ollama.autostart, docs.mode,
- * docs.language, archive.retain, archive.enabled, reflex.enabled,
+ * docs.language, archive.retain, archive.enabled, archive.cap, archive.max-item, reflex.enabled,
  * promptImpact.enabled, battery.saver. The store is the OSS-owned ~/.bastra/cli-settings.json
  * (never the Pro-app's config.json). Browsing/editing memories stays in
  * the Pro app — this is flags only.
@@ -32,6 +32,10 @@ import {
   getArchiveRetain,
   setArchiveRetain,
   getArchiveEnabled,
+  getArchiveCap,
+  setArchiveCap,
+  getArchiveMaxItem,
+  setArchiveMaxItem,
   setArchiveEnabled,
   getReflexEnabled,
   setReflexEnabled,
@@ -46,10 +50,10 @@ import {
 } from "../settings.js";
 import type { ParsedArgs } from "./types.js";
 import { mapUrl } from "./map-cmd.js";
-import { parseRetain, retainDays } from "../rm-archive.js";
+import { archiveCap, archiveMaxItem, formatSize, parseRetain, parseSize, retainDays } from "../rm-archive.js";
 import { getPromptImpactEnabled, setPromptImpactEnabled } from "../code-graph/prompt-impact-settings.js";
 
-const KNOWN_KEYS = ["update.mode", "embedding.provider", "ollama.autostart", "docs.mode", "docs.language", "ui.enabled", "size.guide", "language.primary", "archive.retain", "archive.enabled", "reflex.enabled", "promptImpact.enabled", "battery.saver"] as const;
+const KNOWN_KEYS = ["update.mode", "embedding.provider", "ollama.autostart", "docs.mode", "docs.language", "ui.enabled", "size.guide", "language.primary", "archive.retain", "archive.enabled", "archive.cap", "archive.max-item", "reflex.enabled", "promptImpact.enabled", "battery.saver"] as const;
 type KnownKey = (typeof KNOWN_KEYS)[number];
 
 function isKnownKey(k: string | null): k is KnownKey {
@@ -132,6 +136,20 @@ async function cmdConfigGet(key: KnownKey): Promise<number> {
       process.stdout.write(`junk=${r.junk},in-git=${r["in-git"]},user=${r.user}${stored ? "" : "  (default)"}\n`);
       const env = process.env.BASTRA_ARCHIVE_RETAIN;
       if (env) process.stdout.write(`  note: BASTRA_ARCHIVE_RETAIN=${env} (env) overrides this file at runtime\n`);
+      return 0;
+    }
+    case "archive.cap": {
+      const stored = await getArchiveCap();
+      process.stdout.write(`${formatSize(archiveCap({}, stored))}${stored ? "" : "  (default)"}\n`);
+      const env = process.env.BASTRA_ARCHIVE_CAP;
+      if (env) process.stdout.write(`  note: BASTRA_ARCHIVE_CAP=${env} (env) overrides this file at runtime\n`);
+      return 0;
+    }
+    case "archive.max-item": {
+      const limit = archiveMaxItem({}, await getArchiveMaxItem());
+      process.stdout.write(`${limit === null ? "(unset — no per-target limit)" : formatSize(limit)}\n`);
+      const env = process.env.BASTRA_ARCHIVE_MAX_ITEM;
+      if (env) process.stdout.write(`  note: BASTRA_ARCHIVE_MAX_ITEM=${env} (env) overrides this file at runtime\n`);
       return 0;
     }
     case "size.guide": {
@@ -305,6 +323,42 @@ async function cmdConfigSet(key: KnownKey, value: string | null): Promise<number
         `✓ archive.retain = junk=${r.junk},in-git=${r["in-git"]},user=${r.user}\n  stored in ${settingsFilePath()}\n` +
           `  the next hourly reconcile uses it (no restart needed).\n`,
       );
+      return 0;
+    }
+    case "archive.cap": {
+      const bytes = value === null ? null : parseSize(value);
+      if (bytes === null) {
+        process.stderr.write(`error: archive.cap is a size above zero, e.g. 5GB or 500MB (units KB, MB, GB, TB) — got '${value ?? ""}'\n`);
+        return 2;
+      }
+      await setArchiveCap(value as string);
+      process.stdout.write(
+        `✓ archive.cap = ${formatSize(bytes)}\n  stored in ${settingsFilePath()}\n` +
+          `  the next hourly reconcile uses it (no restart needed): over the cap, build junk goes first, then clean git-tracked files.\n`,
+      );
+      const env = process.env.BASTRA_ARCHIVE_CAP;
+      if (env) process.stdout.write(`  ⚠ BASTRA_ARCHIVE_CAP=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`);
+      return 0;
+    }
+    case "archive.max-item": {
+      const off = value === "off" || value === "none";
+      const bytes = value === null || off ? null : parseSize(value);
+      if (bytes === null && !off) {
+        process.stderr.write(
+          `error: archive.max-item is a size above zero, e.g. 2GB or 500MB (units KB, MB, GB, TB), or off for no limit — got '${value ?? ""}'\n`,
+        );
+        return 2;
+      }
+      await setArchiveMaxItem(off ? null : (value as string));
+      process.stdout.write(
+        `✓ archive.max-item = ${bytes === null ? "off (no per-target limit)" : formatSize(bytes)}\n  stored in ${settingsFilePath()}\n` +
+          (bytes === null
+            ? `  rm archives a target of any size again.\n`
+            : `  a larger target is neither archived nor deleted: rm refuses and names /bin/rm and this setting.\n`) +
+          `  the next Bash call uses it (no restart needed).\n`,
+      );
+      const env = process.env.BASTRA_ARCHIVE_MAX_ITEM;
+      if (env) process.stdout.write(`  ⚠ BASTRA_ARCHIVE_MAX_ITEM=${env} (env) is set and OVERRIDES this — unset it for the file to take effect.\n`);
       return 0;
     }
     case "size.guide": {

@@ -613,10 +613,16 @@ archiving rm, without the usual permission prompt:
 targets move to ~/.bastra/archive/<date>/<time-pid>/<full path>, temp dirs
 are really removed, /, ~ and system dirs are refused. Old entries go by class,
 checked hourly after Bash calls: build junk after 1 day, clean git-tracked
-after 2, the rest after 2; a 10 GB cap never touches your own files younger
+after 2, the rest after 2; the size cap never touches your own files younger
 than their retention. Change it (days, fractions allowed; env
 BASTRA_ARCHIVE_RETAIN wins):
   bastra config set archive.retain junk=1,in-git=2,user=2
+Limits (sizes like 5GB or 500MB; env BASTRA_ARCHIVE_CAP and
+BASTRA_ARCHIVE_MAX_ITEM win):
+  bastra config set archive.cap 10GB       the whole archive (default 10 GB)
+  bastra config set archive.max-item 2GB   largest target it takes (default:
+                                           none; off removes it). A larger one
+                                           is refused, not archived, not deleted.
 Only the rm part off: BASTRA_RM_SHIM=0.
 
 git acts that lose work (clean -f, reset --hard, checkout [<tree>] -- <paths>,
