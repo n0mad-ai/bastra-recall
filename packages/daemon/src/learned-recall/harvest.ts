@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { bridgeLanguage } from "./language.js";
+import { isSystemInjectedTurn } from "../system-turn.js";
 import { isExpiredUnconfirmed, isMachineVocabulary, mintBridge, UNCONFIRMED_BRIDGE_TTL_DAYS, type Bridge } from "./bridges.js";
 import { rerank, type ChatFn, type RerankCandidate } from "./reranker.js";
 import { testRunLogDir } from "../env.js";
@@ -114,19 +115,11 @@ export type QueryOrigin = "owner" | "agent" | "tool" | "system" | "unknown";
 const BRIDGE_TEACHING_ORIGINS: ReadonlySet<QueryOrigin> = new Set<QueryOrigin>(["owner", "agent"]);
 
 /** Harness turns that reach the prompt lane as if typed (#703, #704). The
- *  prompt lane gates them since #703; older log rows still carry them. */
-const SYSTEM_TURN_PREFIXES = [
-  "<task-notification",
-  "<teammate-message",
-  "<agent-message",
-  "<cross-session-message",
-  "[Subagent hand-back]",
-  "Another Claude session sent a message",
-];
-
+ *  prompt lane gates them since #703; older log rows still carry them. The
+ *  prefix list is the shared one (system-turn.ts); only the bare agent-mail
+ *  wrapper line is a legacy-row form kept here. */
 export function isSystemTurnText(text: string): boolean {
-  const t = text.trimStart();
-  return SYSTEM_TURN_PREFIXES.some((p) => t.startsWith(p));
+  return isSystemInjectedTurn(text) || text.trimStart().startsWith("Another Claude session sent a message");
 }
 
 const TOOL_HOOK_SOURCES = new Set(["pre-tool", "session", "stop", "bash-pre", "bash-fail", "todo", "session-context"]);

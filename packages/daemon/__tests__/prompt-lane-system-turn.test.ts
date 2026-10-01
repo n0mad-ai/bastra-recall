@@ -12,6 +12,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { runPromptLane } from "../src/prompt-lane.js";
 import { isSystemInjectedTurn } from "../src/system-turn.js";
+import { normalizeTurns } from "../src/stop-transcript.js";
+import { queryOrigin } from "../src/learned-recall/harvest.js";
 
 function startMockDaemon(handler: (req: IncomingMessage, res: ServerResponse) => void) {
   const server = createServer(handler);
@@ -102,6 +104,11 @@ const SYSTEM_TURNS: Array<[string, string]> = [
     "send_user_message_question_reply",
     '<send_user_message_question_reply>\n[{"question":"where is the lease agreement?","answer":"in the vault"}]\n</send_user_message_question_reply>',
   ],
+  // Forms the Stop lane gated on its own list, and the prompt lane recalled on.
+  ["system-reminder", "<system-reminder>\nBackground task finished: where is the lease agreement?\n</system-reminder>"],
+  ["skill body", "Base directory for this skill: /skills/bastra\n\nwhere is the lease agreement?"],
+  ["command echo", "<command-name>/lease</command-name>\nwhere is the lease agreement?"],
+  ["subagent hand-back", "[Subagent hand-back] where is the lease agreement? It is in the vault."],
 ];
 
 for (const [shape, prompt] of SYSTEM_TURNS) {
@@ -172,5 +179,15 @@ test("#703 — an owner prompt that quotes a tag still recalls, and its event ca
       await rm(stateDir, { recursive: true, force: true });
       await rm(logDir, { recursive: true, force: true });
     }
+  }
+});
+
+test("The prompt lane, the Stop lane and the bridge harvest agree on every system turn", () => {
+  for (const [shape, text] of SYSTEM_TURNS) {
+    assert.equal(isSystemInjectedTurn(text), true, `prompt lane: ${shape}`);
+    const [turn] = normalizeTurns([{ type: "user", message: { role: "user", content: text } }]);
+    assert.equal(turn?.role, "system-injected", `Stop lane: ${shape}`);
+    const origin = queryOrigin({ kind: "hook_recall", ts: "2026-09-14T00:00:00.000Z", query: text, dimensions: { hook_source: "prompt" } });
+    assert.equal(origin, "system", `bridge harvest: ${shape}`);
   }
 });
