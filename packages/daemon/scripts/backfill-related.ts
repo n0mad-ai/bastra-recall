@@ -27,6 +27,8 @@
  *   BACKFILL_SKIP_WIKILINKS=1   (Pass A überspringen)
  *   BACKFILL_SKIP_EMBEDDINGS=1  (Pass B überspringen)
  *   BACKFILL_DRY_RUN=1          (nur reporten, nichts schreiben)
+ *   BACKFILL_EMBED_WAIT_MS      (Pass B: wie lange auf fehlende Vektoren
+ *                                warten, default 300000)
  */
 import {
   Vault,
@@ -119,17 +121,25 @@ async function main(): Promise<void> {
     `[bastra-recall.backfill] embeddings: ${embIdx.size()} ready, ${embIdx.pendingSize()} pending`,
   );
 
-  // Warten bis alle pending embeddings durch sind. Poll alle 500ms, max 5min.
-  const deadline = Date.now() + 5 * 60 * 1000;
-  while (embIdx.pendingSize() > 0 && Date.now() < deadline) {
+  // Warten, bis jede Memory einen Vektor trägt. `pendingSize()` reicht nicht:
+  // start() nimmt den Batch aus der Queue, bevor die Vektoren im Index liegen,
+  // und der Enricher würde bestehende related_via-Kanten zu noch fehlenden
+  // Nachbarn löschen. Wie stress-arm/cue-batch: ein Teil-Index schreibt nichts.
+  const want = vault.size();
+  const deadline = Date.now() + envInt("BACKFILL_EMBED_WAIT_MS", 5 * 60 * 1000);
+  while (embIdx.size() < want && Date.now() < deadline) {
     await sleep(500);
   }
-  if (embIdx.pendingSize() > 0) {
+  if (embIdx.size() < want) {
     console.error(
-      `[bastra-recall.backfill] WARN: ${embIdx.pendingSize()} embeddings noch pending nach 5min — weiter mit was da ist.`,
+      `[bastra-recall.backfill] Pass B: nur ${embIdx.size()}/${want} Memories tragen einen Vektor nach dem Warten — abort, ` +
+        "ein Teil-Index würde bestehende related_via-Kanten löschen. Später erneut starten.",
     );
+    embIdx.stop();
+    await vault.stop();
+    process.exit(1);
   }
-  console.error(`[bastra-recall.backfill] embeddings: ${embIdx.size()} ready (alle backfilled)`);
+  console.error(`[bastra-recall.backfill] embeddings: ${embIdx.size()}/${want} ready`);
 
   // RelatedEnricher fürs Schreiben nutzen — aber im DRY_RUN nur reporten.
   let updatedB = 0;
@@ -211,7 +221,8 @@ function pickEmbeddingProvider(): EmbeddingProvider | null {
     if (!apiKey) return null;
     return new OpenAIEmbeddingProvider({ apiKey });
   }
-  if (apiKey) return new OpenAIEmbeddingProvider({ apiKey });
+  // A bare OPENAI_API_KEY is a credential, not consent to send vault text to
+  // OpenAI (#520) — cloud embeddings need BASTRA_EMBEDDING_PROVIDER=openai.
   return null;
 }
 
