@@ -94,3 +94,21 @@ test("#674 — CLAUDE_CONFIG_DIR / CODEX_HOME move the folders; nothing found me
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("a project opened in the home directory itself is labelled without the OS user name", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bastra-client-memory-"));
+  try {
+    const home = join(root, "Users", "alice");
+    const slug = home.replace(/[^a-zA-Z0-9]/g, "-");
+    for (const project of [slug, `${slug}-Projects-shop`]) {
+      const mem = join(home, ".claude", "projects", project, "memory");
+      await mkdir(mem, { recursive: true });
+      await writeFile(join(mem, "feedback_no_silent_removals.md"), CC_NOTE);
+    }
+    const labels = (await findClientMemoryDirs(null, { home })).map((d) => d.label);
+    assert.deepEqual(labels, ["claude-code-home", "claude-code-projects-shop"]);
+    assert.ok(labels.every((l) => !l.includes("alice")), labels.join(", "));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

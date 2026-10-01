@@ -63,8 +63,11 @@ async function mtime(path: string): Promise<number | null> {
 /** Claude Code names a project folder after its path with every non-alphanumeric
  *  character turned into `-`; the home prefix carries no information. */
 function claudeProjectLabel(project: string, home: string): string {
-  const homeSlug = home.replace(/[^a-zA-Z0-9]/g, "-") + "-";
-  const rest = project.startsWith(homeSlug) ? project.slice(homeSlug.length) : project;
+  const homeSlug = home.replace(/[^a-zA-Z0-9]/g, "-");
+  // A project opened in the home directory itself IS the home slug, with no
+  // dash after it — without this it kept the OS user name in label and ids.
+  if (project === homeSlug) return "claude-code-home";
+  const rest = project.startsWith(`${homeSlug}-`) ? project.slice(homeSlug.length + 1) : project;
   try {
     return slugify(`claude-code-${rest}`) || "claude-code";
   } catch {
