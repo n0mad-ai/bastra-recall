@@ -8,7 +8,7 @@ const execAsync = promisify(exec);
 
 export interface GitInfo {
   branch: string;
-  status: "clean" | "dirty" | "conflicts";
+  status: "clean" | "dirty" | "conflicts" | "unknown";
   ahead: number;
   behind: number;
   sha?: string;
@@ -356,7 +356,7 @@ export class GitService {
 
   private async getStatusWithBranchAsync(workingDir: string): Promise<{
     branch: string | null;
-    status: "clean" | "dirty" | "conflicts";
+    status: "clean" | "dirty" | "conflicts" | "unknown";
     workingTree?: {
       staged: number;
       unstaged: number;
@@ -430,7 +430,7 @@ export class GitService {
       debug(`Git status with branch command failed in ${workingDir}:`, error);
       return {
         branch: await this.getFallbackBranch(workingDir),
-        status: "clean",
+        status: "unknown",
       };
     }
   }
