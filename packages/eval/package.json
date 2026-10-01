@@ -34,9 +34,9 @@
     "minisearch": "^7.1.1"
   },
   "devDependencies": {
-    "@types/node": "^22.20.1",
+    "@types/node": "^22.20.4",
     "js-tiktoken": "^1.0.21",
-    "tsx": "^4.23.13",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3"
   },
   "homepage": "https://bastra.io"

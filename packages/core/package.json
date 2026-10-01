@@ -53,11 +53,11 @@
     "chokidar": "^5.0.0",
     "gray-matter": "^4.0.3",
     "minisearch": "^7.1.1",
-    "zod": "^4.5.4"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/node": "^22.20.1",
-    "tsx": "^4.23.13",
+    "@types/node": "^22.20.4",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3"
   },
   "homepage": "https://bastra.io"
