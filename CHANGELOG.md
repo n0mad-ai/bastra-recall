@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Archive limits** (#934). `bastra config set archive.cap <size>` sets what
+  the whole archive may hold (default 10 GB; env `BASTRA_ARCHIVE_CAP` wins);
+  the eviction order is unchanged. `bastra config set archive.max-item <size>`
+  sets the largest target the archiving `rm` takes (default: none; env
+  `BASTRA_ARCHIVE_MAX_ITEM` wins): a larger target is neither archived nor
+  deleted, `rm` refuses and names the limit, `/bin/rm` and the setting.
+  `bastra doctor` shows both values while the archive is on.
+
+- **`/health` reports `config_fingerprint`, and `bastra doctor` flags a daemon
+  whose config differs** (#719). The fingerprint covers the daemon's `BASTRA_*`
+  behaviour settings, without client-only keys, paths, the endpoint and
+  secrets. Doctor compares it with the configured state — the `daemon.env`
+  pins in `cli-settings.json`, plus on macOS the managed LaunchAgent's env —
+  and prints a warning under "daemon origin" on a mismatch. The exit code does
+  not change.
+
 - **Query router, shadow first** (#362). `routeQueryArms` (core) marks short
   (≤ 2 words, Unicode word segmentation) and identifier-shaped queries as
   BM25-only; everything else stays hybrid. Structural, no word list.
@@ -232,6 +248,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Stop hook: the same-turn save suggestion says what it is** (#757). It now
+  comes with one line for the user, in their language ("bastra-recall is
+  checking whether anything from this conversation is worth remembering —
+  nothing for you to do."), and the block for the agent is cut to one
+  instruction plus one line per suggestion. Claude Code prints Stop-hook
+  feedback in full; there is no agent-only channel.
+
 - **Bridge query expansion runs in shadow by default** (#129, #672, owner
   decision 2026-09-29). With shared recall on, a firing bridge no longer
   widens the query unless `sharedRecall.live` is `true`
@@ -443,6 +466,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **install: a hook script of your own is no longer removed because of its
+  name** (#683). `bastra install` and `uninstall` recognised bastra's hook
+  entries by the substrings `bastra-recall` and `hook`, so a script like
+  `~/bin/my-bastra-recall-audit-hook.sh` was deleted from
+  `~/.claude/settings.json` without a word; the Codex adapter and
+  `install-hook.sh` had the same test. Entries are now recognised by the hook
+  runner their command invokes. A script that only looks like ours stays
+  registered, and install and uninstall print a `hooks left alone` line.
+
+- **Stop hook: the plain word for "again" is no frustration cue** (#756).
+  `wieder`, `again`, `снова`, `опять` count only in a construction ("schon
+  wieder", "immer wieder", "not again", "опять не …"). "Jetzt geht es wieder"
+  used to trigger a save suggestion. Exemplars are listed once.
+
+- **Harvest and Stop hook: injected rows are not the user** (#701). Rows Claude
+  Code injects with `isMeta: true` (hook feedback, skill bodies) and Codex
+  harness wrappers (`<environment_context>`,
+  `<send_user_message_question_reply>`, …) are no longer read as something the
+  user said. A decision the user makes by answering an `AskUserQuestion`
+  prompt now counts for the architecture-decision suggestion.
+
+- **Bridges: recall events carry their origin** (#704). `recall` and
+  `hook_recall` events carry an `origin` (`owner`, `agent`, `tool`, `system`).
+  A prompt-lane row without it no longer counts as the owner, so machine text
+  logged before the field teaches no bridge.
+
+- **Archiving `rm` on a full disk** (#695). An ENOSPC halfway through the
+  archive `mkdir` no longer leaves an empty dated directory behind, and a full
+  volume on which `<mount>/.bastra-archive` cannot be made gets the disk-full
+  message instead of "no writable .bastra-archive".
+
+- **`acted_on` in any script** (#701). The tool input is tokenised with the
+  Unicode tokenizer the memory side uses; a Cyrillic or CJK token finds its
+  partner.
+
+- **Ollama idle unload never loads a cold model** (#701). The unload asks
+  `/api/ps` first and unloads with `/api/generate` + `keep_alive: 0`. A model
+  Ollama already evicted is no longer loaded by the unload request.
+
+- **Prompt lane: assertion signals in any listed language** (#707). The
+  signals are per-language data (de/en/ru, extensible in `~/.bastra/lexicon/`)
+  with Unicode boundaries; an unlisted language recalls as an ordinary prompt.
+
 - Post-release review: `bastra reconcile --yes` protects concurrent writes
   and keeps a unique backup when replacing a copy (#749); forwarders pointed
   at remote or TLS daemons no longer start a local fallback (#750); bridge
@@ -579,6 +645,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   would crash the daemon later. Contributed by @zzallirog (#685).
 
 ### Internal
+
+- `rm-archive.ts` split: retention and reconcile live in
+  `rm-archive-reconcile.ts` (#680).
 
 - **Oversized modules split, behaviour-neutral** (#680). Ten files over the
   800-line convention were cut along one responsibility each, code moved
