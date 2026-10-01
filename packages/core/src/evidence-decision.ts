@@ -160,7 +160,19 @@ function hasExactIdentifier(input: DecisionInput): boolean {
   ]
     .join(" \n ")
     .toLowerCase();
-  return candidates.some((t) => haystack.includes(t.toLowerCase()));
+  return candidates.some((t) => containsWhole(haystack, t.toLowerCase()));
+}
+
+/**
+ * `term` steht im Text als ganzer Identifier, nicht als Ausschnitt eines
+ * längeren: kein Buchstabe, keine Ziffer und kein Kleber (`.` `-` `_`) direkt
+ * davor, und danach weder Buchstabe/Ziffer/`_`/`-` noch `.` + Buchstabe/Ziffer.
+ * Sonst trifft `1.0` in `11.0.3` und `e-com` in `pre-commit` (#440, zweiter Pfad).
+ * `/` bleibt Grenze — Pfade sind Identifier mit Segmenten.
+ */
+function containsWhole(text: string, term: string): boolean {
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(String.raw`(?<![\p{L}\p{N}_.-])${escaped}(?![\p{L}\p{N}_-]|\.[\p{L}\p{N}])`, "u").test(text);
 }
 
 /**

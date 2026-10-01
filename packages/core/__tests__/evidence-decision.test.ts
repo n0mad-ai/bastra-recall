@@ -70,6 +70,31 @@ test("ein exakter Identifier-Treffer ist ein harter Anker", () => {
   assert.equal(d.decision, "required");
 });
 
+test("#440: der Identifier-Anker trifft ganze Identifier, keine Ausschnitte längerer", () => {
+  // `1.0` steckt in `11.0.3`, `e-com` in `pre-commit` — beides kein Identifier
+  // des Titels. Vorher trug der Teilstring allein den harten Anker.
+  for (const [title, term] of [
+    ["Upgrade-Notizen für 11.0.3", "1.0"],
+    ["pre-commit-hooks einrichten", "e-com"],
+    ["Konfig für my_app.config.ts", "app.config.ts"],
+  ]) {
+    const d = decideHit({
+      hit: hit({ title, rrf: oneArm, scope: "fremd" }),
+      memory: memory({ title, recall_when: ["wenn wir upgraden"] }),
+      queryTerms: [term],
+      scope: "projekt-a",
+    });
+    assert.equal(d.evidence.exact_identifier, false, `${term} in ${title}`);
+    assert.notEqual(d.decision, "required", `${term} in ${title}`);
+  }
+  // Ganze Identifier treffen weiter: als Pfadsegment und am Satzende.
+  for (const title of ["Konfig in src/app.config.ts", "Siehe app.config.ts.", "Version 1.0 freigegeben"]) {
+    const term = title.includes("1.0") ? "1.0" : "app.config.ts";
+    const d = decideHit({ hit: hit({ title }), memory: memory({ title }), queryTerms: [term] });
+    assert.equal(d.evidence.exact_identifier, true, `${term} in ${title}`);
+  }
+});
+
 test("ein vollständig abgedeckter handgeschriebener Trigger ist ein harter Anker", () => {
   const d = decideHit({
     hit: hit(),
