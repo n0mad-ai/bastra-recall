@@ -71,8 +71,9 @@ const CAPS_STOPLIST = new Set([
 // A word that is an identifier or a path (`BASTRA_VAULT_PATH`, `src/README.md`),
 // not prose: its capitals are a name's, never emphasis.
 const IDENTIFIER_WORD_RE = /\S*[\p{L}\p{N}](?:[_/\\]|\.(?=[\p{L}\p{N}]))[\p{L}\p{N}]\S*/gu;
-// `!`/`！` as emphasis: not the `!` of `!=`, `!==`, `!cmd` or `!important`.
-const EMPHASIS_BANG_RE = /!(?![=~\p{L}\p{N}_/.-])|！/u;
+// Sentence emphasis can touch the next word in scripts without spaces.
+// Exclude operators and command prefixes by their context, not by language.
+const EMPHASIS_BANG_RE = /(?:(?<=[\p{L}\p{N}!?])!(?![=~])|!(?![=~])(?=[\s\p{Pe}\p{Pf}.,;:!?…"'”’»]|$)|！)/u;
 
 function countFrustWords(content: string, re: RegExp): number {
   const m = content.match(re);
