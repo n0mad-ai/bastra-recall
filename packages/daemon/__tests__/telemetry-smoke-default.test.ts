@@ -10,12 +10,14 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFile, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
+import { promisify } from "node:util";
 
 const SCRIPT = resolve(import.meta.dirname, "..", "scripts", "telemetry-smoke.ts");
+const exec = promisify(execFile);
 
 test("telemetry-smoke never assigns the telemetry switch before asserting the default", () => {
   const dir = mkdtempSync(join(tmpdir(), "bastra-telsmoke-"));
@@ -42,5 +44,32 @@ test("telemetry-smoke never assigns the telemetry switch before asserting the de
     assert.doesNotMatch(out, /ENV-SET/, "the smoke must test the default, not a value it set itself");
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("concurrent smoke runs use separate temporary log directories and clean them", async () => {
+  const roots = [
+    mkdtempSync(join(tmpdir(), "bastra-smoke-one-")),
+    mkdtempSync(join(tmpdir(), "bastra-smoke-two-")),
+  ];
+  try {
+    const runs = await Promise.all(roots.map((root) =>
+      exec(process.execPath, ["--import", "tsx", SCRIPT], {
+        timeout: 60_000,
+        env: { ...process.env, TMPDIR: root, TMP: root, TEMP: root, HOME: root },
+      }),
+    ));
+    const logDirs = runs.map(({ stderr }, i) => {
+      const match = /log-dir: (.+)/.exec(stderr);
+      assert.ok(match, `run ${i + 1} did not report its temporary log directory: ${stderr}`);
+      return match[1].trim();
+    });
+    assert.notEqual(logDirs[0], logDirs[1]);
+    for (const [i, dir] of logDirs.entries()) {
+      assert.ok(dir.startsWith(roots[i] + sep), `run ${i + 1} used ${dir} outside its temp root`);
+      assert.equal(existsSync(dir), false, `run ${i + 1} left its log directory behind`);
+    }
+  } finally {
+    for (const root of roots) rmSync(root, { recursive: true, force: true });
   }
 });
