@@ -616,6 +616,25 @@ describe("test-map: select over a real repo and a real map", () => {
     }
   });
 
+  it("a quoted reporter destination with spaces leaves no stray NODE_OPTIONS token", async () => {
+    const prev = process.env.NODE_OPTIONS;
+    const destination = join(repo, "report with spaces.txt");
+    try {
+      for (const option of [
+        `--test-reporter-destination "${destination}"`,
+        `--test-reporter-destination="${destination}"`,
+      ]) {
+        process.env.NODE_OPTIONS = `--test-reporter=spec ${option}`;
+        const again = await build({ root: repo, jobs: 3 });
+        assert.equal(again.tests.length, m.tests.length);
+        assert.deepEqual(again.tests.filter((t) => "exit" in t && t.exit !== 0).map((t) => t.file), [], option);
+      }
+    } finally {
+      if (prev === undefined) delete process.env.NODE_OPTIONS;
+      else process.env.NODE_OPTIONS = prev;
+    }
+  });
+
   // Regression: strip the reporter in runSelected too → the run prints spec, not TAP → red.
   it("select --run keeps the reporter a wrapper put in NODE_OPTIONS", () => {
     put("src/m.mjs", SRC.replace('return "pos";', 'return "pos" ;'));
