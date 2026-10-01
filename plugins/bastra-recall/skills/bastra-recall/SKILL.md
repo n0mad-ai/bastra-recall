@@ -2,7 +2,7 @@
 name: bastra-recall
 description: Proactive private local memory for ChatGPT and Codex — recall before acting, save durable rules, lessons and decisions without being asked. Requires the local bastra-recall MCP server installed by `bastra install codex`.
 ---
-<!-- GENERATED from packages/skill/SKILL.md (canonical b302a58a061681ec) by scripts/build-skill-projections.mjs — do not edit; edit the canonical file and run `npm run skill:build` -->
+<!-- GENERATED from packages/skill/SKILL.md (canonical 30c0948c32175421) by scripts/build-skill-projections.mjs — do not edit; edit the canonical file and run `npm run skill:build` -->
 
 # bastra-recall — autonomous teammate memory
 
