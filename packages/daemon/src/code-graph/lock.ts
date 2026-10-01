@@ -47,8 +47,11 @@
  *      SO THE LOCK IS A CHAIN OF GENERATIONS. Every record carries `gen`, and
  *      writing generation N means first creating the directory `N` under
  *      `<lock>.gens` — `mkdir` is atomic and fails with EEXIST, so exactly one
- *      process in the world may ever write generation N. A contender numbers
- *      its generation one past the record it read, so two contenders reading
+ *      contender wins a fresh generation marker. An abandoned marker may be
+ *      replaced after LOCK_STALE_MS, so a paused former winner can return;
+ *      publish checks the recorded generation before replacing the lock.
+ *      A contender numbers its generation one past the record it read, so
+ *      two contenders reading
  *      the same record compete for the same marker and exactly one wins; the
  *      loser reads again and finds the successor. The record itself is then
  *      `rename`d into place, which is atomic and leaves no window where the
@@ -301,7 +304,9 @@ async function nextGeneration(gens: string, _unused: null): Promise<number> {
  * inode and mtime. Contenders that judged the same marker abandoned compete
  * for the same name and exactly one wins; a contender that looks later sees
  * either no marker (and claims it plainly) or the winner's fresh one, whose
- * identity is a different name.
+ * identity is a different name. If the takeover process stops after claiming
+ * that sibling but before removing the old marker, the marker stays blocked;
+ * a later contender still needs manual recovery in that narrow window.
  */
 async function claimTurn(gens: string, name: string): Promise<boolean> {
   const marker = join(gens, name);
@@ -456,9 +461,10 @@ async function freeLock(path: string, gens: string, record: LockRecord): Promise
  * `replace` is for a path that does: the record goes to a private temporary
  * file and is RENAMED over it, so a reader sees either the previous generation
  * or this one, never half of either. The caller has already won this turn's
- * marker, so it is the only process that may write here; the generation check
- * catches only the case the marker cannot — a turn won so long ago that the
- * marker has since been pruned and the chain has moved on without it.
+ * marker. An abandoned marker can be reused, so a paused earlier claimant may
+ * still return; the generation check rejects a record that has already
+ * reached or passed this generation. It is a read before rename, not an atomic
+ * compare-and-swap, so it does not fully close that interruption window.
  *
  * The descriptor returned is the one the holder beats through: both `link` and
  * `rename` give the temporary file's inode the lock's name, so the descriptor
