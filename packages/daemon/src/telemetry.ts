@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { envFirst, envInt, testRunLogDir } from "./env.js";
 import { readJoinStateSync, writeJoinState } from "./telemetry-join-store.js";
 import { callerSessionField } from "./caller-session.js";
+import { tokens as words } from "./save-similarity.js";
 import {
   dimensionsFrom,
   recallOrigin,
@@ -144,10 +145,6 @@ function surfacedHits(
     id: h.id,
     band: bandForScore(typeof h.score === "number" ? h.score : null),
   }));
-}
-
-function tokenize(text: string): Set<string> {
-  return new Set(text.toLowerCase().match(/[a-z0-9][a-z0-9_-]*/g) ?? []);
 }
 
 /** Bump bei inkompatibler Snapshot-Shape — alte Snapshots werden dann verworfen. */
@@ -544,7 +541,9 @@ export class Telemetry {
     const closeOnMiss = payload.closeOnMiss !== false;
     const now = Date.now();
     const current = this.currentTurn(payload.session_id ?? null);
-    const inputTokens = tokenize(payload.tool_input_excerpt);
+    // The tokenizer the memory side derives `distinctive_tokens` with
+    // (tool-handlers.ts): an ASCII one here never matched a Cyrillic or CJK token.
+    const inputTokens = new Set(words(payload.tool_input_excerpt));
     const episodes: Omit<RecallEpisodeEvent, "kind" | "ts" | "session_id">[] = [];
 
     for (const entry of this.loadedMemories) {
