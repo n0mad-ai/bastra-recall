@@ -24,10 +24,29 @@ export type DetectedMode = "retrieval" | "assertion" | "none" | "generic";
 const RETRIEVAL_DE = /^\s*(such|finde|wo (ist|sind)|wann (war|hatte)|wieviel|wie viel|was hab(e ich)?|was war)/i;
 const RETRIEVAL_EN = /^\s*(find|search|where (is|are)|when (was|did)|how much|what (did|was))/i;
 
+// #707: further languages are data keyed by ISO-639-1 — regex fragments like
+// the cue lists in lexicon.ts, matched with Unicode letter boundaries (`\b` is
+// ASCII-only). An unlisted language takes the neutral path: generic mode, the
+// same score-gated recall with the MUST_LOAD floor (#677: recall is not gated
+// on the mode).
+const RETRIEVAL_LEADS_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  ru: [
+    "найд[иё]\\p{L}*", "найти", "ищи", "поищи",
+    "где\\s+(?:лежит|лежат|находится|находятся|был[аио]?|были)",
+    "когда\\s+(?:был[аио]?|были|мы)", "сколько",
+    "что\\s+(?:я|мы)\\s+(?:делал|делали|писал|писали)", "что\\s+было",
+  ],
+};
+
+const leadRe = (cues: readonly string[]) => new RegExp(`^\\s*(?:${cues.join("|")})(?![\\p{L}\\p{N}])`, "iu");
+const wordRe = (cues: readonly string[]) => new RegExp(`(?<![\\p{L}\\p{N}])(?:${cues.join("|")})(?![\\p{L}\\p{N}])`, "iu");
+
+const RETRIEVAL = [RETRIEVAL_DE, RETRIEVAL_EN, ...Object.values(RETRIEVAL_LEADS_BY_LANGUAGE).map(leadRe)];
+
 export function detectRetrieval(prompt: string): boolean {
   const trimmed = prompt.trim();
   if (trimmed.length === 0) return false;
-  return RETRIEVAL_DE.test(trimmed) || RETRIEVAL_EN.test(trimmed);
+  return RETRIEVAL.some((re) => re.test(trimmed));
 }
 
 // ─── assertion lane (#252) ───────────────────────────────────────────────────
@@ -67,11 +86,43 @@ const PROJECT_STATE_NOUN =
  * this project's measured state? Both end in sentences someone else reads, and
  * neither edits a file, so no other lane fires for them.
  */
+interface AssertionSignals<T> {
+  compose: T;
+  outward: T;
+  state: T;
+  noun: T;
+}
+
+/** #707: the same two signals for further languages, as data (see
+ *  RETRIEVAL_LEADS_BY_LANGUAGE for the neutral path). */
+const ASSERTION_SIGNALS_BY_LANGUAGE: Readonly<Record<string, AssertionSignals<readonly string[]>>> = {
+  ru: {
+    compose: ["напиши\\p{L}*", "составь\\p{L}*", "сформулируй\\p{L}*", "набросай\\p{L}*", "подготовь\\p{L}*", "ответь\\p{L}*", "ответить", "опубликуй\\p{L}*", "анонсируй\\p{L}*"],
+    outward: [
+      "релиз-?нот\\p{L}*", "заметк\\p{L}*\\s+к\\s+релизу", "чейнджлог\\p{L}*", "список\\s+изменений", "анонс\\p{L}*", "блог\\p{L}*",
+      "рассылк\\p{L}*", "ридми", "документаци\\p{L}*", "ишью", "комментари\\p{L}*", "ответ\\p{L}*", "тред\\p{L}*",
+      "дискорд\\p{L}*", "письм\\p{L}*", "почт\\p{L}*", "пост\\p{L}*", "твит\\p{L}*",
+    ],
+    state: ["какой", "какая", "какие", "каков\\p{L}*", "статус\\p{L}*", "состояни\\p{L}*", "как\\s+(?:дела|далеко|хорошо)", "сколько", "насколько", "где\\s+мы"],
+    noun: ["замер\\p{L}*", "измер\\p{L}*", "бенчмарк\\p{L}*", "метрик\\p{L}*", "цифр\\p{L}*", "покрыти\\p{L}*", "задержк\\p{L}*", "потолок", "роадмап\\p{L}*", "вех\\p{L}*", "верси\\p{L}*", "тест\\p{L}*"],
+  },
+};
+
+const ASSERTION: AssertionSignals<RegExp>[] = [
+  { compose: COMPOSE_VERB, outward: OUTWARD_ARTIFACT, state: STATE_QUESTION, noun: PROJECT_STATE_NOUN },
+  ...Object.values(ASSERTION_SIGNALS_BY_LANGUAGE).map((l) => ({
+    compose: wordRe(l.compose), outward: wordRe(l.outward), state: wordRe(l.state), noun: wordRe(l.noun),
+  })),
+];
+
 export function detectAssertion(prompt: string): boolean {
   const trimmed = prompt.trim();
   if (trimmed.length === 0) return false;
-  if (COMPOSE_VERB.test(trimmed) && OUTWARD_ARTIFACT.test(trimmed)) return true;
-  return STATE_QUESTION.test(trimmed) && PROJECT_STATE_NOUN.test(trimmed);
+  // A signal may come from any language: "напиши README" is a compose verb in
+  // one and an artefact in the other.
+  const any = (k: keyof AssertionSignals<RegExp>) => ASSERTION.some((l) => l[k].test(trimmed));
+  if (any("compose") && any("outward")) return true;
+  return any("state") && any("noun");
 }
 
 // #151: trivial-prompt gate. Bare acks, one-worders and slash-command

@@ -139,6 +139,31 @@ test("detectAssertion — a bare composing verb is not a trigger", () => {
   }
 });
 
+test("#707: a Russian request gets the mode of its DE/EN twin; an unlisted language stays generic", () => {
+  // Without the ru data these fell to generic mode and the MUST_LOAD floor
+  // while "wo ist die nginx config" / "write the release notes" did not.
+  for (const c of ["где лежит конфиг nginx", "найди заметку про деплой", "когда мы обновляли сертификаты", "сколько стоил сервер"]) {
+    assert.equal(detectRetrieval(c), true, `expected retrieval match for: ${c}`);
+  }
+  for (const c of [
+    "составь заметки к релизу",
+    "напиши ответ в тред на дискорде",
+    "напиши README для проекта",
+    "какие у нас цифры по замеру recall",
+    "какой статус у тестов",
+  ]) {
+    assert.equal(detectAssertion(c), true, `expected assertion match for: ${c}`);
+  }
+  // Two signals, as in DE/EN: a bare verb or a mid-word hit is not a trigger.
+  for (const c of ["напиши функцию парсинга", "перепиши хелпер", "найдёшь время?", "постгрес упал"]) {
+    assert.equal(detectAssertion(c), false, `expected NO assertion match for: ${c}`);
+  }
+  assert.equal(detectRetrieval("постгрес упал"), false);
+  // Neutral path: a language without data is not guessed at.
+  assert.equal(detectRetrieval("nginx yapılandırması nerede"), false);
+  assert.equal(detectAssertion("sürüm notlarını yaz"), false);
+});
+
 test("detectAssertion — retrieval wins the classification", () => {
   // "how much …" is both; the hook checks retrieval first, so the lookup
   // instruction is what the agent sees.
