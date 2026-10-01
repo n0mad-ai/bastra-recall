@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #815 makes an evaluation with zero cases fail instead of reporting a perfect result.
+- Follow-up to #815: the regression test requires the specific failure and the message accurately covers an empty vault.
+
 - @zzallirog's #803 prevents the one-off vault migration from replacing an existing target and rejects escaping scopes.
 - Follow-up to #803: migration uses the normal scope validator, reports planned target collisions in dry-run, and names incomplete apply runs without duplicate collision lines.
 

@@ -22,7 +22,8 @@ test("eval.ts exits non-zero on an empty vault instead of printing a clean pass"
       env: { ...process.env, BASTRA_VAULT_PATH: vault },
     });
     const out = `${res.stdout ?? ""}${res.stderr ?? ""}`;
-    assert.notEqual(res.status, 0, `an empty vault must fail the run; output:\n${out}`);
+    assert.equal(res.status, 1, `expected the empty-case refusal, not an import failure or timeout:\n${out}`);
+    assert.match(res.stderr, /\[eval\] FATAL: 0 eval cases \(0 non-obsolete of 0 loaded\)/);
     assert.doesNotMatch(out, /Every memory ranked in top-3/);
     assert.doesNotMatch(out, /NaN/);
   } finally {
