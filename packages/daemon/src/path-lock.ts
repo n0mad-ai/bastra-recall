@@ -48,9 +48,10 @@
  * NOT covered: a state file on a network share where O_EXCL is not atomic.
  * That would need a lease with a heartbeat, which these files are not worth.
  */
-import { mkdir, open, stat, unlink } from "node:fs/promises";
+import { mkdir, open, readFile, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
+import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
 /** When a lock left behind counts as orphaned and may be taken over. */
@@ -81,9 +82,24 @@ function hostnameSafe(): string {
   }
 }
 
-async function acquireFileLock(path: string): Promise<boolean> {
+interface LockBody {
+  pid: number;
+  host: string;
+  ts: number;
+  token: string;
+}
+
+/**
+ * Returns the token this call wrote into the lock file, or null when it gave
+ * up without the lock (no writable directory, or busy past {@link
+ * LOCK_WAIT_MS}). The token is what makes release() safe (see there): two
+ * lock files can carry the same pid+host+ts down to the millisecond, but never
+ * the same random token.
+ */
+async function acquireFileLock(path: string): Promise<string | null> {
   const lockPath = pathLockFilePath(path);
-  const body = JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now() });
+  const token = randomUUID();
+  const body = JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token });
   const deadline = Date.now() + LOCK_WAIT_MS;
   // The lock sits next to the state file; on the very first write the
   // directory may not exist yet (the writers create it themselves otherwise).
@@ -96,14 +112,14 @@ async function acquireFileLock(path: string): Promise<boolean> {
       } finally {
         await handle.close();
       }
-      return true;
+      return token;
     } catch (err) {
       if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") {
         // No writable directory or similar — then without the lock, as before.
         process.stderr.write(
           `[bastra-recall] cannot create lock ${lockPath} (${(err as Error).message}) — writing unserialized\n`,
         );
-        return false;
+        return null;
       }
     }
     // Orphaned? Age is the only indicator that needs no extra state; the loser
@@ -121,10 +137,31 @@ async function acquireFileLock(path: string): Promise<boolean> {
       process.stderr.write(
         `[bastra-recall] lock ${lockPath} busy for ${LOCK_WAIT_MS}ms — writing unserialized\n`,
       );
-      return false;
+      return null;
     }
     await delay(5 + Math.floor(Math.random() * 10));
   }
+}
+
+/**
+ * A blind `unlink` on release deleted whatever lock file was there —
+ * including a SUCCESSOR's, if this holder's own lock had already been taken
+ * over as orphaned (a slow filesystem, a critical section past {@link
+ * LOCK_STALE_MS}). Same fix as `core/save-commit.ts` releaseCommitClaim: read
+ * the file back, and only unlink when its token still matches the one this
+ * call wrote. Gone, unreadable or unparsable — none of that is provably still
+ * ours, so it is left alone; it ages out on its own.
+ */
+async function releaseFileLock(path: string, token: string): Promise<void> {
+  const lockPath = pathLockFilePath(path);
+  try {
+    const raw = await readFile(lockPath, "utf8");
+    const lock = JSON.parse(raw) as LockBody;
+    if (lock.token !== token) return; // not our lock any more
+  } catch {
+    return;
+  }
+  await unlink(lockPath).catch(() => undefined);
 }
 
 /**
@@ -139,11 +176,11 @@ async function acquireFileLock(path: string): Promise<boolean> {
 export function withPathLock<T>(path: string, fn: () => Promise<T>, opts: PathLockOptions = {}): Promise<T> {
   const guarded = opts.crossProcess
     ? async (): Promise<T> => {
-        const held = await acquireFileLock(path);
+        const token = await acquireFileLock(path);
         try {
           return await fn();
         } finally {
-          if (held) await unlink(pathLockFilePath(path)).catch(() => undefined);
+          if (token) await releaseFileLock(path, token);
         }
       }
     : fn;
