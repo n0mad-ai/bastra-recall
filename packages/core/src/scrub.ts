@@ -34,6 +34,7 @@ export const INJECTED_BLOCK_TAGS = [
   "pending-save-suggestions",
   "bastra-product-docs",
   "save-eval",
+  "save-eval-now",
   "taxonomy-drift",
   // Claude Code harness injections
   "system-reminder",
@@ -46,7 +47,7 @@ export type InjectedBlockTag = (typeof INJECTED_BLOCK_TAGS)[number];
 /**
  * Fresh regex per call — a shared global-flagged RegExp carries lastIndex
  * state across calls, which is a classic source of skipped matches. The
- * construction cost is negligible at this call volume (≤ ~30 turns × 12 tags
+ * construction cost is negligible at this call volume (≤ ~30 turns × 13 tags
  * per stop-hook run).
  */
 function blockRe(tag: string): RegExp {
