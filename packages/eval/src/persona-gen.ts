@@ -162,6 +162,16 @@ async function main(): Promise<void> {
   );
   await vault.stop();
 
+  // With sample.length === 0 the `for (const row of sample)` loop
+  // below never runs for any voice, fs.writeFile is never called, and
+  // outPath is never created (or is left stale from a prior run) — yet
+  // "wrote <file>" printed unconditionally at the end read as success.
+  if (sample.length === 0) {
+    console.error(`FATAL: 0 eligible memories to sample (of ${admitted.length} admitted) — nothing to generate, ${outPath} not written`);
+    process.exitCode = 1;
+    return;
+  }
+
   const personas: Record<string, Record<string, string>> = {};
   let done = 0;
   let failed = 0;
@@ -193,7 +203,9 @@ async function main(): Promise<void> {
       if (done % 10 === 0) process.stderr.write(`\rgenerated ${done}/${total}`);
       // Written after every voice, not at the end: 180 generations is minutes of
       // model time, and losing all of it to one bad response is avoidable.
-      await fs.writeFile(
+      // Not before the first persona exists: an empty file would replace the
+      // previous run's.
+      if (done > failed) await fs.writeFile(
         outPath,
         JSON.stringify(
           {
@@ -212,6 +224,13 @@ async function main(): Promise<void> {
   }
   process.stderr.write(`\rgenerated ${done}/${total}\n`);
   if (failed > 0) console.error(`${failed} generations failed and were skipped`);
+  // Every generation failed (model down, wrong model name, only empty answers):
+  // nothing was written, and "wrote" would read as a completed run.
+  if (done === failed) {
+    console.error(`FATAL: 0 of ${total} generations produced a persona — ${outPath} not written`);
+    process.exitCode = 1;
+    return;
+  }
   console.error(`wrote ${outPath}`);
 }
 
