@@ -44,19 +44,19 @@ function run(...args: string[]): { status: number | null; stderr: string; regist
 const keys = (includeStop: boolean) =>
   hookDefinitions({ includeStop }).map((d) => `${d.event}:${d.matcher ?? ""}`).sort();
 
-test("install-hook.sh: default registers the same set as the CLI, Stop included", () => {
+test("install-hook.sh: default registers the same set as the CLI, Stop included", { skip: process.platform === "win32" }, () => {
   const r = run();
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(r.registered, keys(true));
 });
 
-test("install-hook.sh: --no-stop-hook opts out of Stop and nothing else", () => {
+test("install-hook.sh: --no-stop-hook opts out of Stop and nothing else", { skip: process.platform === "win32" }, () => {
   const r = run("--no-stop-hook");
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(r.registered, keys(false));
 });
 
-test("install-hook.sh: --with-stop-hook stays valid (compat — now the default)", () => {
+test("install-hook.sh: --with-stop-hook stays valid (compat — now the default)", { skip: process.platform === "win32" }, () => {
   const r = run("--with-stop-hook");
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(r.registered, keys(true));

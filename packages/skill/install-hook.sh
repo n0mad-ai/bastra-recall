@@ -11,8 +11,8 @@
 # Idempotent: re-running strips our previous entries (by __bastraRecall marker
 # or the runner the command invokes) and re-adds them with current paths; will
 # not duplicate. A foreign script that merely has "bastra-recall" and "hook" in
-# its name is kept and named (#683). Cleans up legacy `__nexusRecall`-marked entries from the pre-rename setup. Backs up
-# settings.json before each write.
+# its name is kept and named (#683). Cleans up legacy `__nexusRecall`-marked
+# entries from the pre-rename setup. Backs up settings.json before each write.
 #
 # Usage:
 #   bash packages/skill/install-hook.sh                    # install (Stop included)
@@ -38,17 +38,11 @@ for arg in "$@"; do
   esac
 done
 
-mkdir -p "$(dirname "${SETTINGS_FILE}")"
-[[ -f "${SETTINGS_FILE}" ]] || echo "{}" > "${SETTINGS_FILE}"
-
-if [[ "$ACTION" != "print" ]]; then
-  cp "${SETTINGS_FILE}" "${SETTINGS_FILE}.bak"
-fi
-
 # Patch JSON via inline Node — robust against existing hook entries.
 DAEMON_DIST="${DAEMON_DIST}" SETTINGS_FILE="${SETTINGS_FILE}" ACTION="${ACTION}" WITH_STOP="${WITH_STOP}" \
   node --input-type=module -e '
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { stdout } from "node:process";
 import { pathToFileURL } from "node:url";
 
@@ -57,25 +51,90 @@ const dist = process.env.DAEMON_DIST;
 const action = process.env.ACTION;
 const includeStop = process.env.WITH_STOP === "1";
 
-// Single source of truth: the adapter behind `bastra install claude-code`.
+// Install/print use the adapter behind `bastra install claude-code`.
 const adapterPath = `${dist}/cli/adapters/claude-code.js`;
-if (!existsSync(adapterPath)) {
-  console.error(`✗ hook binaries not built: ${adapterPath}`);
-  console.error("  Run: npm install && npm run build");
+const buildNeeded = (reason) => {
+  console.error(`✗ ${reason}; run npm run build and retry`);
   process.exit(1);
-}
-const { hookDefinitions, planHookEntries } = await import(pathToFileURL(adapterPath).href);
+};
+let adapter;
 if (action !== "uninstall") {
-  for (const def of hookDefinitions({ includeStop })) {
-    if (!existsSync(def.bin)) {
-      console.error(`✗ hook binary not built: ${def.bin}`);
-      console.error("  Run: npm install && npm run build");
-      process.exit(1);
-    }
+  if (!existsSync(adapterPath)) buildNeeded("hook adapter not built");
+  try { adapter = await import(pathToFileURL(adapterPath).href); }
+  catch { buildNeeded("hook adapter cannot be loaded"); }
+  if (typeof adapter.hookDefinitions !== "function" || typeof adapter.planHookEntries !== "function") {
+    buildNeeded("hook adapter is outdated");
+  }
+  let defs;
+  try { defs = adapter.hookDefinitions({ includeStop }); }
+  catch { buildNeeded("hook adapter is outdated"); }
+  if (!Array.isArray(defs)) buildNeeded("hook adapter is outdated");
+  for (const def of defs) {
+    if (typeof def.bin !== "string" || !existsSync(def.bin)) buildNeeded(`hook binary not built: ${def.bin}`);
   }
 }
 
-const raw = readFileSync(file, "utf8") || "{}";
+const OWN_FILES = ["hook.js", "session-hook.js", "prompt-hook.js", "todo-hook.js", "bash-pre-hook.js", "bash-fail-hook.js", "stop-hook.js"];
+const EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "SessionEnd"];
+function runsOurRunner(cmd) {
+  const words = cmd.match(/"[^"]*"|\x27[^\x27]*\x27|\S+/g) ?? [];
+  const pathAt = (at) => (words[at] ?? "").replace(/^["\x27]|["\x27]$/g, "").replace(/\\/g, "/");
+  const baseAt = (at) => pathAt(at).split("/").pop();
+  let at = 0;
+  let marked = false;
+  const skipAssignments = () => {
+    while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[at] ?? "")) {
+      if (words[at] === "BASTRA_HOOK_CLIENT=claude-code") marked = true;
+      at++;
+    }
+  };
+  skipAssignments();
+  if (baseAt(at) === "env") { at++; skipAssignments(); }
+  if (baseAt(at) === "hook-timer") {
+    at++;
+    if (words[at] === "--tag") at += 2;
+    skipAssignments();
+  }
+  const program = baseAt(at);
+  if (/^node(\.exe)?$/.test(program)) {
+    const script = pathAt(at + 1);
+    return OWN_FILES.includes(script.split("/").pop()) && (marked || script.includes("/daemon/dist/"));
+  }
+  if (/^bastra-hook(\.exe)?$/.test(program)) {
+    return new Set(["session", "prompt", "write", "todo", "bash-pre", "bash-fail", "stop"]).has(words[at + 1] ?? "");
+  }
+  const bin = /^(?:bastra|nexus)-recall-(.+?)(?:\.cmd)?$/.exec(program);
+  if (bin && OWN_FILES.includes(`${bin[1]}.js`)) return true;
+  return OWN_FILES.includes(program) && (marked || pathAt(at).includes("/daemon/dist/"));
+}
+function isOurHandler(handler) {
+  if (!handler || typeof handler !== "object") return false;
+  return handler.__bastraRecall === true || handler.__nexusRecall === true ||
+    (typeof handler.command === "string" && runsOurRunner(handler.command));
+}
+function uninstallWithoutBuild(hooks) {
+  const after = {};
+  const leftAlone = [];
+  for (const event of EVENTS) {
+    const entries = Array.isArray(hooks[event]) ? hooks[event] : [];
+    after[event] = entries.flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [entry];
+      const handlers = Array.isArray(entry.hooks) ? entry.hooks : [];
+      const rest = handlers.filter((handler) => !isOurHandler(handler));
+      if (rest.length === handlers.length) {
+        for (const handler of handlers) {
+          const cmd = typeof handler?.command === "string" ? handler.command : "";
+          if (/(?:bastra|nexus)-recall/.test(cmd) && cmd.includes("hook")) leftAlone.push(cmd);
+        }
+        return [entry];
+      }
+      return rest.length ? [{ ...entry, hooks: rest }] : [];
+    });
+  }
+  return { after, leftAlone };
+}
+
+const raw = existsSync(file) ? readFileSync(file, "utf8") : "{}";
 let cfg;
 try { cfg = JSON.parse(raw); }
 catch { console.error(`✗ ${file} is not valid JSON. Aborting.`); process.exit(1); }
@@ -83,11 +142,19 @@ if (typeof cfg !== "object" || cfg === null || Array.isArray(cfg)) cfg = {};
 
 cfg.hooks ??= {};
 
-// Always the node runner (this script is for a repo checkout); every entry the
-// adapter builds — client marker, timeouts, user wrappers, a kept Stop — is
-// built by the adapter itself.
-const plan = planHookEntries(action === "uninstall" ? "uninstall" : "install", cfg.hooks, { includeStop, stubPresent: false });
+// Install uses the adapter; uninstall remains possible from a checkout with
+// no dist. The fallback only recognizes our markers and executed hook runners.
+let plan;
+try {
+  plan = action === "uninstall"
+    ? uninstallWithoutBuild(cfg.hooks)
+    : adapter.planHookEntries("install", cfg.hooks, { includeStop, stubPresent: false });
+} catch { buildNeeded("hook adapter is outdated"); }
+if (!plan || typeof plan.after !== "object" || plan.after === null || !Array.isArray(plan.leftAlone)) {
+  buildNeeded("hook adapter is outdated");
+}
 for (const [ev, entries] of Object.entries(plan.after)) {
+  if (!Array.isArray(entries)) buildNeeded("hook adapter is outdated");
   if (entries.length) cfg.hooks[ev] = entries; else delete cfg.hooks[ev];
 }
 for (const cmd of plan.leftAlone) {
@@ -97,7 +164,9 @@ for (const cmd of plan.leftAlone) {
 const out = JSON.stringify(cfg, null, 2) + "\n";
 if (action === "print") {
   stdout.write(out);
-} else {
+} else if (action === "install" || existsSync(file)) {
+  mkdirSync(dirname(file), { recursive: true });
+  if (existsSync(file)) copyFileSync(file, `${file}.bak`);
   writeFileSync(file, out, "utf8");
 }
 '

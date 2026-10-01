@@ -77,7 +77,7 @@ bash packages/skill/install.sh        # copies the skill files → ~/.claude/ski
 bash packages/skill/install-hook.sh   # registers all 7 reflex-layer hooks (opt out of the Stop save-eval with --no-stop-hook)
 ```
 
-`bastra install claude-code` does both of these for you. Re-run `install.sh` whenever a skill file changes; re-run `install-hook.sh` only if hook binary paths move. To remove the hooks again: `bash packages/skill/install-hook.sh --uninstall`.
+`bastra install claude-code` does both of these for you. Re-run `install.sh` whenever a skill file changes; re-run `install-hook.sh` only if hook binary paths move. To remove the hooks again: `bash packages/skill/install-hook.sh --uninstall` (no daemon build needed).
 
 Every adapter write is **idempotent** (re-runs are no-ops), **atomic** (tmp file + rename), **backed up** (timestamped `.bak-…` next to the original), and **parse-safe** (broken JSON aborts the run instead of corrupting it). Vault path resolves in this order: `--vault <path>` flag → `BASTRA_VAULT_PATH` env → auto-detect from an existing Claude or Codex registration. If none of those produce a path (a fresh machine), an interactive `bastra install` offers to create `~/BastraVault` for you; non-interactive runs (piped, `--yes`, `--dry-run`) keep the clear deterministic error.
 
@@ -362,7 +362,7 @@ bash packages/skill/install.sh        # kopiert die Skill-Dateien → ~/.claude/
 bash packages/skill/install-hook.sh   # registriert alle 7 Reflex-Layer-Hooks (Stop-Save-Eval abwählen mit --no-stop-hook)
 ```
 
-`bastra install claude-code` erledigt beides für dich. `install.sh` neu ausführen, wenn sich eine Skill-Datei ändert; `install-hook.sh` nur, wenn sich Hook-Binärpfade verschieben. Hooks wieder entfernen: `bash packages/skill/install-hook.sh --uninstall`.
+`bastra install claude-code` erledigt beides für dich. `install.sh` neu ausführen, wenn sich eine Skill-Datei ändert; `install-hook.sh` nur, wenn sich Hook-Binärpfade verschieben. Hooks wieder entfernen: `bash packages/skill/install-hook.sh --uninstall` (ohne gebauten Daemon möglich).
 
 Jeder Adapter-Write ist **idempotent** (Re-Runs sind No-Ops), **atomar** (Tmp-File + Rename), **gesichert** (timestamped `.bak-…` neben dem Original) und **parse-safe** (kaputtes JSON bricht den Lauf ab statt es zu zerstören). Vault-Pfad-Auflösung in dieser Reihenfolge: `--vault <pfad>`-Flag → `BASTRA_VAULT_PATH`-ENV → Auto-Detect aus bestehender Claude- oder Codex-Registrierung. Greift nichts davon (frische Maschine), bietet ein interaktives `bastra install` an, `~/BastraVault` anzulegen; nicht-interaktive Läufe (gepiped, `--yes`, `--dry-run`) behalten die klare, deterministische Fehlermeldung.
 
