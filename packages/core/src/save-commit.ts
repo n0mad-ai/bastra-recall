@@ -49,6 +49,22 @@ export async function readTarget(path: string): Promise<string | null> {
 const COMMIT_CLAIM_STALE_MS = 30_000;
 
 /**
+ * How long a claim whose owner pid answers alive still counts as proof of
+ * life, before the age check below takes over instead.
+ *
+ * A dead owner's pid is not retired — the OS hands it to any later process,
+ * on some systems within seconds. `process.kill(pid, 0)` cannot tell "the
+ * writer that took this claim" from "an unrelated live process that happens
+ * to share its old pid", so without a ceiling a claim whose owner died and
+ * whose pid was reused never ages out: the alive-check above wins forever.
+ * Ten minutes is far longer than the commit this guards ever takes (a read
+ * plus a link/rename, margin included for a stalled cloud mount) and far
+ * longer than a pid usually sits unrecycled, so a false "still alive" self-
+ * heals instead of requiring the lock file to be removed by hand.
+ */
+const COMMIT_CLAIM_LIVE_OWNER_MAX_MS = 10 * 60_000;
+
+/**
  * A claim names its owner so a later writer can tell "someone is committing"
  * from "someone died mid-commit". Without this the claim outlives the process
  * that took it — `finally` does not run on SIGKILL, OOM or power loss — and the
@@ -107,7 +123,9 @@ export async function claimIsAbandoned(lockPath: string): Promise<boolean> {
   if (claim && claim.host === hostname() && typeof claim.pid === "number") {
     try {
       process.kill(claim.pid, 0);
-      return false; // owner is alive and working — age says nothing here
+      // owner is alive and working — age says nothing here, up to the ceiling
+      // a reused pid cannot plausibly still be the original owner past.
+      if (ageMs <= COMMIT_CLAIM_LIVE_OWNER_MAX_MS) return false;
     } catch (err) {
       // ESRCH: der Besitzer ist weg, der Claim ist sofort frei. Alles andere
       // (EPERM — fremder Nutzer, gleiche PID) bleibt eine Altersfrage.
