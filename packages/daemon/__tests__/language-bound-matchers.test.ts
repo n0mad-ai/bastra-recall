@@ -116,6 +116,7 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
   "packages/daemon/src/pending-suggestions.ts :: words /eval|test|synthetic/": "#679 fixture/session-id markers",
   "packages/core/src/topics.ts :: words /jwt|bearer|oauth/": "#679 technical topic vocabulary",
   "packages/core/src/topics.ts :: words /\\bbcrypt|argon2|sha-?256/": "#679 technical topic vocabulary",
+  "packages/core/src/injection-scan.ts :: keyed IGNORE_PREVIOUS_BY_LANGUAGE": "#707 per-language data for the injection signatures; flag-only, an unlisted language is read by the English signatures and the script-neutral fold",
   "packages/core/src/injection-scan.ts :: words /previous|prior|above/": "#679 prompt-injection signatures (English attack phrasing), not an intent gate",
   "packages/core/src/injection-scan.ts :: words /previous|prior|your/": "#679 prompt-injection signatures",
   "packages/core/src/injection-scan.ts :: words /instructions?|prompts?|rules?/": "#679 prompt-injection signatures",
