@@ -6,8 +6,10 @@
  *   node scripts/build-mcpb.mjs            # pull @bastra-recall/* from npm
  *   node scripts/build-mcpb.mjs --local    # pack the workspace tarballs
  *                                          # (CI release path — no registry
- *                                          # propagation race, byte-identical
- *                                          # to what npm publish ships)
+ *                                          # propagation race; the same pack
+ *                                          # as npm publish, but WITHOUT
+ *                                          # stub/manifest.json, which only
+ *                                          # the npm publish job writes)
  *
  * Output: mcpb/bastra-recall-<version>.mcpb
  * Staging (mcpb/build/) and the .mcpb artifact are gitignored.
