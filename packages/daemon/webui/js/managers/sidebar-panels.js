@@ -107,7 +107,11 @@ export function createSidebarPanels(deps) {
     const edges = sim.edges.filter((e) => visIds.has(e.s.id) && visIds.has(e.t.id)).length;
     const care = vis.filter((n) => hasOpenCare(n.id)).length;
     const rows = [
-      { key: "memories", label: "memories", value: vis.length - ghosts },
+      // This counts nodes ON THE MAP right now (drilled area, minus
+      // ghosts) — a different number from the topbar's vault-wide
+      // `#stat-count`, which includes private memories the map never draws.
+      // Same word on both read as one measurement; "on map" names which one.
+      { key: "memories", label: "memories on map", value: vis.length - ghosts },
       { key: null, label: "connections", value: edges },
       { key: "ghosts", label: "unwritten notes", value: ghosts },
       { key: "bridges", label: "bridge nodes", value: bridges },
