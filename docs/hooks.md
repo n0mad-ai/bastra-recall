@@ -463,7 +463,8 @@ Anything else keeps the STOP: a command that mixes `rm` with other work (the
 `allow` would cover it all), a redirection that writes a file, an `xargs` flag
 that takes an argument (`xargs -E rm sh …` runs `sh`), `zsh -c` (it reads
 `~/.zshenv` first), one that changes what `rm` resolves to (`PATH=`,
-`alias`, `hash -p`, an `rm()` function, also inside `eval` or behind `{`,
+`alias`, `hash -p`, `hash rm=…`, zsh array `path=(…)`/`path+=(…)`,
+`printf -v PATH`, `read PATH`, an `rm()` function, also inside `eval` or behind `{`,
 `if … then`, `!`, `time`), a backgrounded
 `rm … &` (the receipt would come before the shim wrote), `sudo rm`,
 `/bin/rm`, remote and container `rm`. Not covered at all: `find -delete`,
@@ -1377,7 +1378,8 @@ Zurückholen: `bastra archive list` zeigt, was wohin ging (30 Tage);
 Alles andere behält das STOP: ein Befehl, der `rm` mit anderer Arbeit mischt
 (das `allow` würde alles decken), eine Umleitung in eine Datei, ein
 `xargs`-Flag mit Argument, `zsh -c` (liest vorher `~/.zshenv`), ein Befehl,
-der ändert, was `rm` ist (`PATH=`, `alias`, `hash -p`, eine `rm()`-Funktion,
+der ändert, was `rm` ist (`PATH=`, `alias`, `hash -p`, `hash rm=…`,
+zsh-Arrays `path=(…)`/`path+=(…)`, `printf -v PATH`, `read PATH`, eine `rm()`-Funktion,
 auch in `eval` oder hinter `{`, `if … then`, `!`, `time`), ein `rm … &` im Hintergrund, `sudo rm`, `/bin/rm`, `rm` auf
 entfernten Rechnern oder in Containern. Gar nicht abgedeckt: `find -delete`,
 `git clean` ohne die Schnappschüsse, `rmdir`, Löschen aus Code und `rm` ohne
