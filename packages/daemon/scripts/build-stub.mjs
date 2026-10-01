@@ -3,8 +3,10 @@
  * build-stub.mjs — compile stub/bastra-hook.ts with deno (#344).
  *
  * One place for the permission flags: they are the stub's security contract
- * (loopback only, no arbitrary exec — `sh`/`ps` are what the skip gate and
- * the statusline need), and the release workflow compiles the same file once
+ * (network limited to loopback; exec limited to `sh`/`ps`, which the skip gate
+ * and the statusline need — but `--allow-run=sh` is still a shell, so this is
+ * defence in depth, not a sandbox, and read/write/env are unscoped), and the
+ * release workflow compiles the same file once
  * per target (#350). Two package.json strings carrying the same flag list is
  * how they drift.
  *
@@ -112,6 +114,12 @@ if (stamped === placeholder) {
 }
 
 let r;
+// Ctrl-C reaches this process and deno alike. With no handler installed node
+// dies on the spot and the `finally` below never runs, leaving the tracked
+// build-info.ts stamped — and the next build would keep that stamp as its
+// "placeholder". A handler keeps node alive until spawnSync returns (deno dies
+// of the same signal), so the placeholder is always put back.
+for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(sig, () => {});
 try {
   writeFileSync(STUB_BUILD_INFO, stamped, "utf8");
   r = spawnSync("deno", denoArgs, { cwd: packageRoot, stdio: "inherit" });
@@ -122,4 +130,4 @@ if (r.error) {
   console.error(`error: could not run deno (${r.error.message}) — install it from https://deno.com`);
   process.exit(1);
 }
-process.exit(r.status ?? 1);
+process.exit(r.status ?? (r.signal === "SIGINT" ? 130 : 1));
