@@ -20,17 +20,35 @@
  * Alle Calls best-effort: werfen nie, loggen nur.
  */
 
-/** Modell sofort entladen (Idle). true = unload akzeptiert. */
+/** `/api/ps` lists every model as `model:tag`; a name without a tag is `:latest`. */
+const tagged = (name: string): string => (/:[^/]*$/.test(name) ? name : `${name}:latest`).toLowerCase();
+
+/**
+ * Unload the model now (idle). true = it is out of memory afterwards.
+ *
+ * Only a model that is in memory is unloaded (#701). The old request,
+ * `/api/embed` with an empty input and `keep_alive: 0`, loaded a model Ollama
+ * had already evicted: the embed handler schedules the runner before it looks
+ * at the input, so the "unload" cost a 14–18 s load that the 10 s abort left
+ * running. `GET /api/ps` says what is loaded; a model that is not there is
+ * done, without a request. A loaded one gets the documented unload,
+ * `/api/generate` with `keep_alive: 0` and no prompt, which expires the runner
+ * and loads nothing. When `/api/ps` gives no answer, nothing is sent.
+ */
 export async function unloadOllamaModel(baseURL: string, model: string): Promise<boolean> {
   const base = baseURL.replace(/\/+$/, "");
   try {
-    // Primär: /api/embed mit leerem Input + keep_alive:0. Fallback auf
-    // /api/generate (der historisch dokumentierte Unload-Weg), falls eine
-    // Ollama-Version den leeren Embed-Input ablehnt.
-    let resp = await fetchWithTimeout(`${base}/api/embed`, { model, input: "", keep_alive: 0 }, 10_000);
-    if (!resp.ok) {
-      resp = await fetchWithTimeout(`${base}/api/generate`, { model, keep_alive: 0 }, 10_000);
+    const ps = await fetchWithTimeout(`${base}/api/ps`, null, 10_000);
+    if (!ps.ok) {
+      console.error(`[bastra-recall] ollama idle-unload failed: /api/ps HTTP ${ps.status}`);
+      return false;
     }
+    const running = ((await ps.json()) as { models?: { name?: unknown; model?: unknown }[] }).models ?? [];
+    if (!running.some((m) => [m.name, m.model].some((n) => typeof n === "string" && tagged(n) === tagged(model)))) {
+      console.error(`[bastra-recall] ollama idle-unload: ${model} is not in memory, nothing to unload`);
+      return true;
+    }
+    const resp = await fetchWithTimeout(`${base}/api/generate`, { model, keep_alive: 0 }, 10_000);
     if (resp.ok) {
       console.error(`[bastra-recall] ollama idle-unload: ${model} released (~RAM freed; next embed reloads it)`);
       return true;
@@ -43,18 +61,17 @@ export async function unloadOllamaModel(baseURL: string, model: string): Promise
   }
 }
 
+/** POST `body` as JSON, or GET when there is none. */
 async function fetchWithTimeout(
   url: string,
-  body: Record<string, unknown>,
+  body: Record<string, unknown> | null,
   timeoutMs: number,
 ): Promise<Response> {
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     return await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      ...(body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
       signal: ctrl.signal,
     });
   } finally {
