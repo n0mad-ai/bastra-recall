@@ -26,6 +26,9 @@ import {
   rankArm,
   checkBatchInvariance,
   vaultFingerprint,
+  assertDenseArmHealthy,
+  collectHealthyPools,
+  type ArmHealth,
 } from "../src/rerank-replay.js";
 import {
   ASSOCIATIVE_MIN_N,
@@ -559,4 +562,32 @@ test("the vault fingerprint does not depend on listing order", () => {
   const a = fake([mem("a", "2026-09-01"), mem("b", "2026-09-02")]);
   const b = fake([mem("b", "2026-09-02"), mem("a", "2026-09-01")]);
   assert.equal(vaultFingerprint(a).ids_updated_sha256, vaultFingerprint(b).ids_updated_sha256);
+});
+
+// The report says a run with a conspicuous dense-arm timeout rate is
+// DISCARDED; nothing acted on it.
+const health = (cases: number, timeouts = 0, errors = 0): ArmHealth => ({ vector_timeouts: timeouts, vector_errors: errors, wait_ms: [], cases });
+
+test("a dense arm at or above 5% timeouts+errors discards the run instead of reporting it", () => {
+  assert.throws(() => assertDenseArmHealthy(health(60, 3), health(40, 2, 0)), /DISCARDED/);
+  assert.throws(() => assertDenseArmHealthy(health(50, 0, 2), health(50, 3, 0)), /DISCARDED/);
+});
+
+test("a healthy or empty dense arm passes the discard rule", () => {
+  assert.doesNotThrow(() => assertDenseArmHealthy(health(60, 1), health(40, 0, 0)));
+  assert.doesNotThrow(() => assertDenseArmHealthy(health(0), health(0)));
+});
+
+test("the pools main() reports from are held to the discard rule", async () => {
+  const collect = (healthOf: Record<string, ArmHealth>) => async (cases: string[], label: string) => ({
+    rows: cases,
+    health: healthOf[label],
+  });
+  await assert.rejects(
+    collectHealthyPools(collect({ answerable: health(60, 3), no_answer: health(40, 2) }), ["a"], ["g"]),
+    /DISCARDED/,
+  );
+  const ok = await collectHealthyPools(collect({ answerable: health(60, 1), no_answer: health(40) }), ["a"], ["g"]);
+  assert.deepEqual(ok.main.rows, ["a"]);
+  assert.deepEqual(ok.guard.rows, ["g"]);
 });
