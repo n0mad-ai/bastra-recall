@@ -11,7 +11,7 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, readdir, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -19,6 +19,7 @@ import {
   acquireRepoLock,
   lockPath,
   readLock,
+  LOCK_STALE_MS,
   UNREADABLE_GRACE_MS,
 } from "../src/code-graph/lock.js";
 
@@ -206,6 +207,64 @@ describe("the build lock against adversarial interleavings", () => {
     // next generation, which is what a late `close` from the child triggers.
     await mine.release();
     assert.equal(await readLock(dir), null, "a late release must free the lock at once");
+  });
+
+  it("does not wedge on a generation marker that was claimed and never published", async (t) => {
+    // A contender claimed marker gen+1 and died before its record landed. Every
+    // later contender read the same stale record, lost the mkdir to that marker
+    // and gave up — the repository stayed locked until the directory was removed
+    // by hand.
+    const dir = await tempDir("bastra-lock-orphan-marker-");
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    const dead = await acquireRepoLock(dir, { heartbeat: false });
+    assert.ok(dead !== null);
+    await dead.suspend(); // the holder is gone; its record stays behind
+    const marker = join(dir, ".bastra-build.lock.gens", String(dead.record.gen + 1));
+    await mkdir(marker);
+
+    // A fresh marker is a contender mid-publish: still busy.
+    assert.equal(await acquireRepoLock(dir, { staleMs: -1, heartbeat: false }), null);
+
+    // Older than the lock's own stale age, it is abandoned.
+    const old = new Date(Date.now() - LOCK_STALE_MS - 1_000);
+    await utimes(marker, old, old);
+    const next = await acquireRepoLock(dir, { staleMs: -1, heartbeat: false });
+    assert.ok(next !== null, "an abandoned marker must not lock the repository for good");
+    assert.equal(next.record.gen, dead.record.gen + 1);
+    await next.release();
+    const gens = join(dir, ".bastra-build.lock.gens");
+    assert.ok((await readdir(gens)).some((n) => n.includes(".abandoned-")));
+    // The takeover's own marker is pruned with the generation it took over.
+    for (let i = 0; i < 6; i++) {
+      const l = await acquireRepoLock(dir, { heartbeat: false });
+      assert.ok(l !== null);
+      await l.release();
+    }
+    assert.deepEqual((await readdir(gens)).filter((n) => n.includes(".abandoned-")), []);
+  });
+
+  it("lets exactly one of several contenders take over an abandoned marker", async (t) => {
+    // Regression: removing the old marker and claiming it again is two steps.
+    // A contender that judged the marker abandoned could remove the one another
+    // contender had just claimed, and both would hold the lock.
+    for (let round = 0; round < 60; round++) {
+      const dir = await tempDir("bastra-lock-orphan-race-");
+      t.after(() => rm(dir, { recursive: true, force: true }));
+      const dead = await acquireRepoLock(dir, { heartbeat: false });
+      assert.ok(dead !== null);
+      await dead.suspend();
+      const marker = join(dir, ".bastra-build.lock.gens", String(dead.record.gen + 1));
+      await mkdir(marker);
+      const old = new Date(Date.now() - LOCK_STALE_MS - 1_000);
+      await utimes(marker, old, old);
+
+      const got = await Promise.all(
+        Array.from({ length: 6 }, () => acquireRepoLock(dir, { staleMs: -1, heartbeat: false })),
+      );
+      const holders = got.filter((l) => l !== null);
+      assert.ok(holders.length <= 1, `round ${round}: ${holders.length} holders of one lock`);
+      for (const h of holders) await h!.release();
+    }
   });
 
   it("keeps numeric generation markers bounded across normal acquire/release cycles", async (t) => {
