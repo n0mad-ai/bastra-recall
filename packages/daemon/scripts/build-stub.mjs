@@ -117,17 +117,26 @@ let r;
 // Ctrl-C reaches this process and deno alike. With no handler installed node
 // dies on the spot and the `finally` below never runs, leaving the tracked
 // build-info.ts stamped — and the next build would keep that stamp as its
-// "placeholder". A handler keeps node alive until spawnSync returns (deno dies
-// of the same signal), so the placeholder is always put back.
-for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(sig, () => {});
+// "placeholder". A handler keeps node alive until spawnSync returns, so
+// handled signals let the finally restore it. A signal sent only to node may
+// not stop deno; preserve that signal as the eventual exit status too.
+let interrupted = null;
+for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(sig, () => { interrupted ??= sig; });
+}
 try {
   writeFileSync(STUB_BUILD_INFO, stamped, "utf8");
   r = spawnSync("deno", denoArgs, { cwd: packageRoot, stdio: "inherit" });
 } finally {
   writeFileSync(STUB_BUILD_INFO, placeholder, "utf8");
 }
+// spawnSync blocked signal callbacks. Give them one event-loop turn before a
+// synchronous process.exit can turn a parent-only SIGTERM/SIGHUP into success.
+await new Promise((resolve) => setImmediate(resolve));
+const signal = interrupted ?? r.signal;
+if (signal) process.exit({ SIGINT: 130, SIGTERM: 143, SIGHUP: 129 }[signal] ?? 1);
 if (r.error) {
   console.error(`error: could not run deno (${r.error.message}) — install it from https://deno.com`);
   process.exit(1);
 }
-process.exit(r.status ?? (r.signal === "SIGINT" ? 130 : 1));
+process.exit(r.status ?? 1);
