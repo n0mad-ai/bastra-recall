@@ -235,7 +235,15 @@ function summarizeUseRate(events: AnyEvent[]): void {
   const directLoads = episodes.length - surfacedEpisodes.length;
 
   const bands = ["required", "optional", "below_floor"] as const;
-  const surfaced = new Map<string, number>(bands.map((band) => [band, 0]));
+  // Hook_recall.hits[] is the engine's raw top-k, BEFORE the hook
+  // CLIs apply the score floor, scope filter and per-session dedup that
+  // decide what a client actually injects (src/telemetry.ts recordHookHints:
+  // "these are the engine's raw top-k... counting them as 'surfaced' would
+  // let phantom demand demote memories nobody ever saw"). The real surfaced
+  // count is the sidecar's, printed under "Exposure-normalised use" below.
+  // Calling this population `candidates` keeps that distinction visible
+  // instead of relying on a reader to remember it.
+  const candidates = new Map<string, number>(bands.map((band) => [band, 0]));
   const loaded = new Map<string, number>(bands.map((band) => [band, 0]));
   const acted = new Map<string, number>(bands.map((band) => [band, 0]));
 
@@ -244,7 +252,7 @@ function summarizeUseRate(events: AnyEvent[]): void {
     for (const h of hits) {
       const score = Number(h.score ?? 0);
       const band = score >= MUST_LOAD_SCORE ? "required" : score >= SCORE_FLOOR ? "optional" : "below_floor";
-      surfaced.set(band, (surfaced.get(band) ?? 0) + 1);
+      candidates.set(band, (candidates.get(band) ?? 0) + 1);
     }
   }
 
@@ -257,16 +265,17 @@ function summarizeUseRate(events: AnyEvent[]): void {
   }
 
   console.log(`\n## USE-rate  (did loaded hints affect the next tool input?)`);
-  console.log(`  loaded/surfaced is a LOWER BOUND on follow-through: applied hints without load_memory are invisible.`);
+  console.log(`  loaded/candidates is a LOWER BOUND on follow-through: applied hints without load_memory are invisible.`);
+  console.log(`  candidates = engine top-k before hook-side filtering, NOT what was actually injected — see "Exposure-normalised use" for that.`);
   for (const band of bands) {
-    const s = surfaced.get(band) ?? 0;
+    const s = candidates.get(band) ?? 0;
     const l = loaded.get(band) ?? 0;
     const a = acted.get(band) ?? 0;
-    // acted_on/surfaced ist der Funnel-Endpunkt (von Repeat-Resurfacing
+    // acted_on/candidates ist der Funnel-Endpunkt (von Repeat-Resurfacing
     // verwässert); acted_on/loaded ist die EHRLICHE USE-rate, die die
     // Header-Frage „haben geladene Hints den nächsten Input beeinflusst?"
     // beantwortet — sonst liest man pct(a,s)≈0 als „wirkt nicht".
-    console.log(`  ${band.padEnd(11)} surfaced ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)} lower bound)  acted_on ${a.toString().padStart(4)}  (${pct(a, l)} of loaded · ${pct(a, s)} of surfaced)`);
+    console.log(`  ${band.padEnd(11)} candidates ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)} lower bound)  acted_on ${a.toString().padStart(4)}  (${pct(a, l)} of loaded · ${pct(a, s)} of candidates)`);
   }
   if (directLoads > 0) {
     console.log(`  (excluded: ${directLoads} direct load(s) with no preceding hint — not part of any band quota)`);
@@ -295,7 +304,7 @@ function summarizeUseRate(events: AnyEvent[]): void {
   for (const src of ["bash-tripwire", "write-edit"] as const) {
     const s = hintsBySource[src];
     const [l, a] = epBySource[src];
-    console.log(`    ${src.padEnd(14)} surfaced ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)} lower bound)  acted_on ${a.toString().padStart(4)} (${pct(a, s)})`);
+    console.log(`    ${src.padEnd(14)} candidates ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)} lower bound)  acted_on ${a.toString().padStart(4)} (${pct(a, s)})`);
   }
 
   // #263/§17.4 Punkt 5: „Auswertung getrennt nach Client, Hook-Quelle und
@@ -381,13 +390,13 @@ function printDimensionSplit(
     if (verdict && !verdict.evaluable) {
       console.log(
         `    ${key.padEnd(14)} NOT EVALUABLE — ${verdict.why}` +
-          `  [counts only: sessions ${verdict.sessions}  surfaced ${s}  loaded ${l}  acted_on ${a}]`,
+          `  [counts only: sessions ${verdict.sessions}  candidates ${s}  loaded ${l}  acted_on ${a}]`,
       );
       continue;
     }
     const units = verdict ? `  sessions ${verdict.sessions.toString().padStart(4)} ≥ min-N ${verdict.minN}` : "";
     console.log(
-      `    ${key.padEnd(14)} surfaced ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)} lower bound)  acted_on ${a.toString().padStart(4)}  (${pct(a, l)} of loaded)${units}`,
+      `    ${key.padEnd(14)} candidates ${s.toString().padStart(4)}  loaded ${l.toString().padStart(4)} (${pct(l, s)} lower bound)  acted_on ${a.toString().padStart(4)}  (${pct(a, l)} of loaded)${units}`,
     );
   }
   if (armEval && [...armEval.values()].some((v) => !v.evaluable)) {
