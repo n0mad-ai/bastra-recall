@@ -25,7 +25,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import {
   addPatch,
   activePatches,
@@ -39,6 +39,7 @@ import {
   statusAll,
 } from "../src/patch-registry.js";
 import { formatApplyOutcome, pendingPatchNotice, writeLastRun } from "../src/patch-report.js";
+import { findExecutable } from "../src/cli/exec.js";
 
 /** A scratch HOME + a scratch install root, torn down by the caller. */
 function scratch(): { home: string; root: string; cleanup: () => void } {
@@ -401,6 +402,52 @@ test("a patch git skips is never counted as applied", () => {
     assert.equal(out.retired.length, 0, "and it is not upstream either");
     assert.equal(out.setAside.length, 1);
   } finally {
+    s.cleanup();
+  }
+});
+
+test("a localized git cannot hide a skipped patch: git runs in the C locale", { skip: process.platform === "win32" }, () => {
+  // The skip check reads git's English "Skipped patch". A localized git prints
+  // that line in the caller's language (de: "Patch '…' ausgelassen.") and still
+  // exits 0. The stand-in below is such a git for `apply`: it skips every patch
+  // and says so in German unless LC_ALL is C; everything else goes to real git.
+  const onPath = findExecutable("git");
+  assert.ok(onPath, "git must be installed for this test");
+  // The git binary itself, not a wrapper that would find the stand-in on PATH again.
+  const execPath = spawnSync(onPath, ["--exec-path"], { encoding: "utf8" }).stdout.trim();
+  const realGit = existsSync(join(execPath, "git")) ? join(execPath, "git") : onPath;
+  const s = scratch();
+  const binDir = join(s.root, "..", "localized-bin");
+  mkdirSync(binDir, { mode: 0o700 });
+  const shim = join(binDir, "git");
+  writeFileSync(
+    shim,
+    `#!/bin/sh\n` +
+      `[ "$1" = apply ] || exec '${realGit}' "$@"\n` +
+      `if [ "$LC_ALL" = C ]; then echo "Skipped patch 'src/a.txt'."; else echo "Patch 'src/a.txt' ausgelassen."; fi\n` +
+      `exit 0\n`,
+    { mode: 0o755 },
+  );
+  const prev = { PATH: process.env.PATH, LC_ALL: process.env.LC_ALL, LANGUAGE: process.env.LANGUAGE };
+  process.env.PATH = `${binDir}${delimiter}${prev.PATH ?? ""}`;
+  process.env.LC_ALL = "de_DE.UTF-8";
+  process.env.LANGUAGE = "de";
+  try {
+    assert.equal(findExecutable("git"), shim, "the localized stand-in is the git the registry runs");
+    writeFileSync(join(s.root, "src", "a.txt"), "old\n", "utf8");
+    const file = writePatchFile(s.root, "p.patch", diffFor("src/a.txt", ["old"], ["new"]));
+    assert.notEqual(probePatch(s.root, file).state, "already-upstream", "a skipped patch must never read as merged upstream");
+    addPatch(file, s.home);
+    const out = applySeries(s.root, { home: s.home, skipSmoke: true });
+    assert.equal(out.retired.length, 0, "nothing may be retired on the strength of a skip, in any language");
+    assert.equal(out.applied.length, 0, "and a skip is not an apply");
+    assert.equal(activePatches(s.home).length, 1, "the patch stays in the series");
+  } finally {
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    rmSync(binDir, { recursive: true, force: true });
     s.cleanup();
   }
 });
