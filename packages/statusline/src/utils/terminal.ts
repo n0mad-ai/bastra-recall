@@ -15,6 +15,25 @@ export function stripAnsi(str: string): string {
 export function codePointWidth(cp: number): number {
   if (
     (cp >= 0x0300 && cp <= 0x036f) || // combining diacritics
+    (cp >= 0x0591 && cp <= 0x05bd) || // Hebrew points
+    cp === 0x05bf ||
+    (cp >= 0x05c1 && cp <= 0x05c2) ||
+    (cp >= 0x05c4 && cp <= 0x05c5) ||
+    cp === 0x05c7 ||
+    (cp >= 0x0610 && cp <= 0x061a) || // Arabic marks
+    (cp >= 0x064b && cp <= 0x065f) ||
+    cp === 0x0670 ||
+    (cp >= 0x06d6 && cp <= 0x06dc) ||
+    (cp >= 0x06df && cp <= 0x06e4) ||
+    (cp >= 0x06e7 && cp <= 0x06e8) ||
+    (cp >= 0x06ea && cp <= 0x06ed) ||
+    (cp >= 0x0900 && cp <= 0x0902) || // Devanagari non-spacing marks
+    cp === 0x093a ||
+    cp === 0x093c ||
+    (cp >= 0x0941 && cp <= 0x0948) ||
+    cp === 0x094d ||
+    (cp >= 0x0951 && cp <= 0x0957) ||
+    (cp >= 0x0962 && cp <= 0x0963) ||
     (cp >= 0x1ab0 && cp <= 0x1aff) ||
     (cp >= 0x1dc0 && cp <= 0x1dff) ||
     (cp >= 0x20d0 && cp <= 0x20ff) || // combining for symbols
