@@ -148,11 +148,21 @@ export function dispatchApiSurface(
         return true;
       }
       (async () => {
-        if (!server.semanticCache || Date.now() - server.semanticCache.at > 60_000) {
-          const skills = await listSkills();
-          server.semanticCache = { at: Date.now(), body: buildSemanticLayout(buildGraph(vault, skills), vecs) };
+        if (server.semanticCache && Date.now() - server.semanticCache.at <= 60_000) {
+          sendJson(res, 200, server.semanticCache.body);
+          return;
         }
-        sendJson(res, 200, server.semanticCache.body);
+        // The build yields while it runs, so requests arriving meanwhile
+        // wait for the same one instead of each starting their own O(n²) scan.
+        server.semanticInflight ??= (async () => {
+          const skills = await listSkills();
+          const body = await buildSemanticLayout(buildGraph(vault, skills), vecs);
+          server.semanticCache = { at: Date.now(), body };
+          return body;
+        })().finally(() => {
+          server.semanticInflight = null;
+        });
+        sendJson(res, 200, await server.semanticInflight);
       })().catch((err: Error) => sendJson(res, 500, { error: err.message }));
       return true;
     }

@@ -42,6 +42,8 @@ export interface HttpServerContext {
    *  every vector) — cached per server, refreshed at most once a minute.
    *  Mutable: /api/v1/graph/semantic writes it back. */
   semanticCache: { at: number; body: SemanticLayout } | null;
+  /** The layout build in progress, shared by requests that arrive during it. */
+  semanticInflight: Promise<SemanticLayout> | null;
 }
 
 export async function createHttpServerContext(opts: HttpOptions): Promise<HttpServerContext> {
@@ -129,5 +131,6 @@ export async function createHttpServerContext(opts: HttpOptions): Promise<HttpSe
       }),
     isHealthProbe: (url: string): boolean => url === "/health" || url === "/api/v1/health",
     semanticCache: null,
+    semanticInflight: null,
   };
 }
