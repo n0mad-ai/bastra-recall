@@ -18,7 +18,9 @@ function assert(cond: unknown, msg: string): asserts cond {
 async function main(): Promise<void> {
   await rm(TMP_LOG, { recursive: true, force: true });
   process.env.BASTRA_LOG_PATH = TMP_LOG;
-  process.env.BASTRA_TELEMETRY = "on";
+  // Unset, so the assertion below is about the default and not about a value we set.
+  delete process.env.BASTRA_TELEMETRY;
+  delete process.env.NEXUS_TELEMETRY;
 
   const t = new Telemetry();
   assert(t.isEnabled(), "telemetry should be enabled by default");
