@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #801 separates unstamped tool payloads from genuinely historical dimension rows in stats.
+- Follow-up to #801: unstamped `recall` stays historical, and unmatched IDs get a neutral label that covers reflex hints.
+
 - @zzallirog's #797 aligns the historical context-ROI denominator with its counted hook lanes.
 - Follow-up to #797: the ratio identifies legacy and unmatched loads, reports `n/a` when no denominator can be assigned, and reuses the existing recall lookup.
 

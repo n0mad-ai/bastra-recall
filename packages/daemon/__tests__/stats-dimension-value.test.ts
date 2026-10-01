@@ -1,9 +1,8 @@
 /**
  * dimensionValue() labelled every event without `dimensions` "(pre-#263)".
- * recall / load_memory / read_document events never carry `dimensions` (they
- * are direct tool payloads, not a hook lane's own event), so every current
- * instance of them read as legacy data; a recall_id with no hook_recall in the
- * window (no event at all) fell into the same label. Three causes, three labels.
+ * load_memory and read_document have no dimension stamp today, while recall
+ * has had one since #263. A missing hook_recall row can also be a reflex hint,
+ * not only a row outside the selected time window.
  *
  * Run: npx tsx --test packages/daemon/__tests__/stats-dimension-value.test.ts
  */
@@ -13,19 +12,25 @@ import assert from "node:assert/strict";
 import { dimensionValue } from "../scripts/stats-shared.js";
 
 test("a current tool-payload event is not labelled as a pre-#263 legacy row", () => {
-  for (const kind of ["recall", "load_memory", "read_document"]) {
-    const label = dimensionValue({ kind, ts: "2026-09-25T10:00:00.000Z" }, "hook_source");
-    assert.notEqual(label, "(pre-#263)", kind);
+  for (const kind of ["load_memory", "read_document"]) {
+    for (const field of ["client", "hook_source", "arm"] as const) {
+      assert.equal(
+        dimensionValue({ kind, ts: "2026-09-25T10:00:00.000Z" }, field),
+        "(tool call — not stamped)",
+        `${kind}/${field}`,
+      );
+    }
   }
 });
 
 test("a hook-lane row without dimensions is still the legacy bucket", () => {
   assert.equal(dimensionValue({ kind: "hook_call", ts: "2026-08-01T10:00:00.000Z" }, "client"), "(pre-#263)");
+  assert.equal(dimensionValue({ kind: "recall", ts: "2026-08-01T10:00:00.000Z" }, "hook_source"), "(pre-#263)");
 });
 
 test("a missing event is neither legacy nor a tool call", () => {
   const label = dimensionValue(undefined, "client");
-  assert.notEqual(label, "(pre-#263)");
+  assert.equal(label, "(unmatched — no hook_recall row)");
   assert.notEqual(label, dimensionValue({ kind: "recall", ts: "2026-09-25T10:00:00.000Z" }, "client"));
 });
 

@@ -4,8 +4,6 @@
  * A leaf module — stats.ts runs main() on import, so the section modules
  * must never import it.
  */
-import { TOOL_PAYLOAD_KINDS } from "../src/context-ledger.js";
-
 export interface AnyEvent {
   kind: string;
   ts: string;
@@ -35,18 +33,14 @@ export function p95(xs: number[]): number {
  *  deshalb auch anders benannt — sonst liest man Altbestand als Messwert. */
 const PRE_DIMENSIONS = "(pre-#263)";
 
-/** `recall`/`load_memory`/`read_document` never carry `dimensions` —
- *  they are direct tool payloads, not a hook lane's own event. A CURRENT
- *  instance of one of these looks identical, on this field, to a genuinely
- *  legacy pre-#263 row; labelling both "(pre-#263)" reads today's traffic as
- *  old data. */
-const NO_LANE_KINDS = new Set<string>(TOOL_PAYLOAD_KINDS);
-const NO_LANE_DIMENSIONS = "(tool call — no lane)";
+/** Loads and document reads do not stamp dimensions today. `recall` does,
+ *  so a recall without them is genuinely historical. */
+const NO_LANE_KINDS = new Set(["load_memory", "read_document"]);
+const NO_LANE_DIMENSIONS = "(tool call — not stamped)";
 
-/** A `recall_id` with no matching `hook_recall` inside the window: not a
- *  missing field on an existing event, but no event to look the field up on
- *  at all. */
-const UNMATCHED_DIMENSIONS = "(unmatched — no hook_recall in window)";
+/** A missing hook_recall can be outside the window or absent by design, as
+ *  with a reflex hint. The label names only what the report can prove. */
+const UNMATCHED_DIMENSIONS = "(unmatched — no hook_recall row)";
 
 export function dimensionValue(event: AnyEvent | undefined, field: "client" | "hook_source" | "arm"): string {
   if (!event) return UNMATCHED_DIMENSIONS;
