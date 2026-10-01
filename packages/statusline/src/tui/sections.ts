@@ -450,6 +450,7 @@ export function collectFooterParts(
       const { fg, bold } = cacheTimerStyle(
         data.cacheTimerInfo.elapsedSeconds,
         colors,
+        cacheTimerTtl(config, data),
       );
       parts.push(colorize(cacheTimerText, fg, reset, bold));
     }
@@ -1066,14 +1067,24 @@ function formatCacheTimerSegment(
   return parts.icon ? `${parts.icon} ${parts.value}` : parts.value;
 }
 
+/** The TTL the timer colors against: configured, else detected, else the 300s default
+ * of cacheTimerStyle — the same order the classic renderer uses. */
+function cacheTimerTtl(config: PowerlineConfig, data: TuiData): number | undefined {
+  const configured = config.display.lines
+    .map((line) => line.segments.cacheTimer)
+    .find((t) => t?.enabled)?.ttlSeconds;
+  return configured ?? data.cacheTimerInfo?.detectedTtlSeconds;
+}
+
 function cacheTimerStyle(
   elapsed: number,
   colors: PowerlineColors,
+  ttlSeconds = 300,
 ): { fg: string; bold: boolean } {
-  if (elapsed >= 300) {
+  if (elapsed >= ttlSeconds) {
     return { fg: colors.contextCriticalFg, bold: colors.contextCriticalBold };
   }
-  if (elapsed >= 180) {
+  if (elapsed >= ttlSeconds * 0.6) {
     return { fg: colors.contextWarningFg, bold: colors.contextWarningBold };
   }
   return { fg: colors.cacheTimerFg, bold: colors.cacheTimerBold };
@@ -1499,7 +1510,11 @@ export function resolveSegments(
 
   // CacheTimer
   const cacheTimerElapsed = data.cacheTimerInfo?.elapsedSeconds ?? 0;
-  const cacheTimerStyleResolved = cacheTimerStyle(cacheTimerElapsed, colors);
+  const cacheTimerStyleResolved = cacheTimerStyle(
+    cacheTimerElapsed,
+    colors,
+    cacheTimerTtl(config, data),
+  );
   const cacheTimerColor = pf?.["cacheTimer"] ?? cacheTimerStyleResolved.fg;
   result.cacheTimer = colorizeOrEmpty(
     formatCacheTimerSegment(data, sym, iconVisible.cacheTimer),

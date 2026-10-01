@@ -947,11 +947,12 @@ export class SegmentRenderer {
     }
 
     const text = `${iconPrefix}${formatCacheTimerElapsed(e)}`;
-    if (e >= 300) {
+    const ttl = config?.ttlSeconds ?? info.detectedTtlSeconds ?? 300;
+    if (e >= ttl) {
       bgColor = colors.contextCriticalBg;
       fgColor = colors.contextCriticalFg;
       bold = colors.contextCriticalBold;
-    } else if (e >= 180) {
+    } else if (e >= ttl * 0.6) {
       bgColor = colors.contextWarningBg;
       fgColor = colors.contextWarningFg;
       bold = colors.contextWarningBold;
