@@ -387,12 +387,12 @@ the block tells the agent depends on whether the act has a local undo
 |---|---|
 | receipt | `git push --force-with-lease`, `git commit --amend`, `git stash drop` / `clear`; with the archive opt-in on (Claude Code, below): `rm -r` / `rm -rf` and the acts bastra's git snapshots take |
 | reversible form | `git reset --hard`, `git checkout -- <paths>`, `git checkout <tree> -- <paths>`, `git restore` (with or without `--source`) → `git stash push` first; `git branch -D` → `git branch -d`; `git push --force` / `-f` → `--force-with-lease`; `git push +refspec` → drop the `+` and use `--force-with-lease`; `git clean -f` → `-n`, then `rm -r` on those paths (only where `rm` archives; otherwise STOP) |
-| STOP | `rm -r` / `rm -rf` without the opt-in, `rmdir`, `git push --delete` (also `-d`, `--prune`, `--mirror`, a `:branch` refspec), `git reflog expire` / `delete`, `git gc --prune` (also the expiry set through `git -c gc.…Expire=` or `git config gc.…Expire`), `gh repo delete`, `gh release delete`, `npm uninstall` / `npm rm`, `yarn remove`, `pnpm rm`, `DROP TABLE`, `DROP DATABASE`, `TRUNCATE TABLE`, `docker rm`, `docker volume rm`, `kubectl delete` |
+| STOP | `rm -r` / `rm -rf` without the opt-in, `rmdir`, `git push --delete` (also `-d`, `--prune`, `--mirror`, a `:branch` refspec), `git reflog expire` / `delete` / `drop`, `git -c core.logAllRefUpdates=false commit --amend`, `git gc --prune` (also the expiry set through `git -c gc.…Expire=` or `git config gc.…Expire`), `gh repo delete`, `gh release delete`, `npm uninstall` / `npm rm`, `yarn remove`, `pnpm rm`, `DROP TABLE`, `DROP DATABASE`, `TRUNCATE TABLE`, `docker rm`, `docker volume rm`, `kubectl delete` |
 
 A command with several destructive acts is weighed as a whole: one act
 without an undo makes it STOP, and so do several acts that are not all
 receipts (`git branch -D x && gh repo delete y` never reads like its first
-half). `git reflog expire` / `gc --prune` next to an amend or lease receipt
+half). `git reflog expire` / `delete` / `drop` or `gc --prune` next to an amend or lease receipt
 is STOP, because they delete what that receipt points to.
 
 `BASTRA_RM_ARCHIVES` (daemon environment, read on every Bash call) changes
@@ -1296,12 +1296,12 @@ Undo hat (#650/#651; die Tabellen stehen in
 |---|---|
 | Quittung | `git push --force-with-lease`, `git commit --amend`, `git stash drop` / `clear`; mit eingeschaltetem Archiv-Opt-in (Claude Code, unten): `rm -r` / `rm -rf` und die Aktionen, die bastras Git-Schnappschüsse übernehmen |
 | umkehrbare Form | `git reset --hard`, `git checkout -- <Pfade>`, `git checkout <Baum> -- <Pfade>`, `git restore` (mit oder ohne `--source`) → vorher `git stash push`; `git branch -D` → `git branch -d`; `git push --force` / `-f` → `--force-with-lease`; `git push +refspec` → das `+` weglassen und `--force-with-lease` nehmen; `git clean -f` → `-n`, dann `rm -r` auf genau diese Pfade (nur wo `rm` archiviert; sonst STOP) |
-| STOP | `rm -r` / `rm -rf` ohne Opt-in, `rmdir`, `git push --delete` (auch `-d`, `--prune`, `--mirror`, eine `:branch`-Refspec), `git reflog expire` / `delete`, `git gc --prune` (auch die Frist über `git -c gc.…Expire=` oder `git config gc.…Expire`), `gh repo delete`, `gh release delete`, `npm uninstall` / `npm rm`, `yarn remove`, `pnpm rm`, `DROP TABLE`, `DROP DATABASE`, `TRUNCATE TABLE`, `docker rm`, `docker volume rm`, `kubectl delete` |
+| STOP | `rm -r` / `rm -rf` ohne Opt-in, `rmdir`, `git push --delete` (auch `-d`, `--prune`, `--mirror`, eine `:branch`-Refspec), `git reflog expire` / `delete` / `drop`, `git -c core.logAllRefUpdates=false commit --amend`, `git gc --prune` (auch die Frist über `git -c gc.…Expire=` oder `git config gc.…Expire`), `gh repo delete`, `gh release delete`, `npm uninstall` / `npm rm`, `yarn remove`, `pnpm rm`, `DROP TABLE`, `DROP DATABASE`, `TRUNCATE TABLE`, `docker rm`, `docker volume rm`, `kubectl delete` |
 
 Ein Befehl mit mehreren destruktiven Aktionen wird als Ganzes gewogen: Eine
 Aktion ohne Undo macht ihn zum STOP, ebenso mehrere Aktionen, die nicht alle
 Quittungen sind (`git branch -D x && gh repo delete y` liest sich nie wie
-seine erste Hälfte). `git reflog expire` / `gc --prune` neben einer Amend-
+seine erste Hälfte). `git reflog expire` / `delete` / `drop` oder `gc --prune` neben einer Amend-
 oder Lease-Quittung ist STOP, weil sie löschen, worauf diese Quittung zeigt.
 
 `BASTRA_RM_ARCHIVES` (Umgebung des Daemons, bei jedem Bash-Aufruf gelesen)

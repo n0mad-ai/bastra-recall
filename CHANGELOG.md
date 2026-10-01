@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #873 makes `git reflog drop` and an amend with the reflog disabled STOP instead of issuing an unusable undo receipt.
+- Follow-up to #873: English/German hook docs list both STOP cases, with a regression for the other false reflog settings.
+
 - @zzallirog's #871 recognizes more PATH/rm redefinitions and treats git commit messages after global options as prose; its updated regex passes CodeQL.
 - Follow-up to #871: English/German safety docs cover the new forms, with a regression for `git --work-tree` messages.
 
