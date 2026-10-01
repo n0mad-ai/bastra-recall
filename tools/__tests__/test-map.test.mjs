@@ -641,3 +641,47 @@ describe("test-map: regex after a keyword, and hunk bodies that look like header
     assert.deepEqual(d["x.ts"].hunks.map((h) => [...h]), [[1, 2], [9, 9]]);
   });
 });
+
+// Regression: restore the old `return console.log(...)` in build
+// (no zero-test refusal) → the first case goes red; restore the unguarded headline
+// division in heatmap → the second goes red.
+describe("test-map: a zero-test build and a zero-source heatmap are not success-shaped", () => {
+  const TOOL = fileURLToPath(new URL("../test-map.mjs", import.meta.url));
+  const repo = mkdtempSync(join(tmpdir(), "test-map-zero-"));
+  const git = (...args) => execFileSync("git", args, { cwd: repo, encoding: "utf8" });
+  const cli = (...args) => spawnSync(process.execPath, [join(repo, "tools", "test-map.mjs"), ...args], { cwd: repo, encoding: "utf8" });
+
+  before(() => {
+    // A quoted glob: the whitespace/glob parser in testScript() cannot follow it, so it lists no test file.
+    writeFileSync(join(repo, "package.json"), JSON.stringify({ type: "module", scripts: { test: 'node --test "t/*.test.mjs"' } }));
+    writeFileSync(join(repo, ".gitignore"), ".test-map/\n");
+    mkdirSync(join(repo, "tools"));
+    writeFileSync(join(repo, "tools", "test-map.mjs"), readFileSync(TOOL, "utf8"));
+    git("init", "-q");
+    git("config", "user.email", "a@a.com");
+    git("config", "user.name", "a");
+    git("add", "-A");
+    git("commit", "-q", "-m", "base");
+  });
+  after(() => rmSync(repo, { recursive: true, force: true }));
+
+  it("build with 0 parsed test files exits non-zero and says why", () => {
+    const out = cli("build");
+    assert.match(out.stdout, /0 test files/);
+    assert.notEqual(out.status, 0, "a zero-test map must not look like a clean pass");
+    assert.match(out.stderr, /0 test files parsed/);
+  });
+
+  it("heatmap on a map with no /src/ source prints 0.0 %, not NaN", () => {
+    mkdirSync(join(repo, ".test-map"), { recursive: true });
+    const commit = git("rev-parse", "HEAD").trim();
+    writeFileSync(join(repo, ".test-map", "map.json"), JSON.stringify({
+      commit, tests: [{ file: "t/a.test.mjs", tests: 1, wall_ms: 5, src_lines: 1, exit: 0 }],
+      sources: { "lib/x.mjs": { lines: [[1, 4]], by: { 0: [[1, 2]] } } },
+    }));
+    const out = cli("heatmap");
+    assert.equal(out.status, 0, out.stderr);
+    assert.doesNotMatch(out.stdout, /NaN/);
+    assert.match(out.stdout, /\(0\.0 %\)/);
+  });
+});
