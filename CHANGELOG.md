@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #881 recognizes `not_evaluable` and `NOT-EVALUABLE` in eval reporting rules.
+- Follow-up to #881: German verdict spellings work too; the unreliable prose-negation word list is removed pending a structured verdict decision.
+
 - @zzallirog's #877 limits unbounded repeats in custom Stop cues so digit-heavy input cannot trigger the reported two-star slowdown.
 - Follow-up to #877: large bounded and Unicode-escape repeats count toward the same limit, with regressions and EN/DE cue guidance.
 

@@ -483,7 +483,7 @@ test("eine leere oder inhaltsfremde Berichtsregel zählt nicht als Regel (#442)"
   );
 });
 
-test("die Berichtsregel: das Gegenteil zählt nicht, die eigenen Schreibweisen schon", () => {
+test("die Berichtsregel erkennt die eigenen Verdikt-Schreibweisen ohne Wortlisten-Fehlalarm", () => {
   const reg = loadPresentationRegistration();
   const fb = reg.underpowered_fallback as Record<string, unknown>;
   const conclusion = fb.conclusion as Record<string, unknown>;
@@ -492,22 +492,23 @@ test("die Berichtsregel: das Gegenteil zählt nicht, die eigenen Schreibweisen s
       ...reg,
       underpowered_fallback: { ...fb, conclusion: { ...conclusion, reporting_rule: rule } },
     }).filter((i) => i.where === "underpowered_fallback");
-  // The OPPOSITE of §18.1 contains the phrase too — a substring test accepts it.
-  assert.ok(issuesFor("never reported as not evaluable; reported as a null result instead").length > 0);
-  assert.ok(issuesFor("an arm below its min-N is never NOT EVALUABLE — it is a null result").length > 0);
-  assert.ok(issuesFor("not evaluable arms are ignored").length > 0);
-  // The repository's own verdict spellings are the rule, not a violation of it.
+  assert.ok(issuesFor("an arm below its min-N is a null result").length > 0);
+  // The check recognizes spellings. A prose negation needs a structured
+  // registration verdict; keyword lists reject valid rules too.
   for (const rule of [
     "an arm below its min-N is not_evaluable, never a null result",
     "verdict: NOT-EVALUABLE, never a null result",
-    // The negation that follows the verdict in a dash, parenthesis or colon
-    // clause rules out the null result, not the verdict.
+    "ein Arm unter Mindest-N ist NICHT_AUSWERTBAR",
+    "ein Arm unter Mindest-N ist NICHT-AUSWERTBAR",
     "an arm below its min-N is NOT EVALUABLE — never a null result",
     "an arm below its min-N is NOT EVALUABLE (never a null result)",
     "Underpowered arms are reported as NOT EVALUABLE: never as a null result",
     "not evaluable arms are never reported as null results",
     "never a null result — an arm below its min-N is NOT EVALUABLE",
     "Never a null result: an underpowered arm is reported as NOT EVALUABLE",
+    "an arm that can never reach its min-N is reported as NOT EVALUABLE",
+    "an arm that cannot reach its min-N is NOT EVALUABLE",
+    "a null result is never reported for an underpowered arm which is NOT EVALUABLE",
   ]) {
     assert.equal(issuesFor(rule).length, 0, `${JSON.stringify(rule)} must be accepted`);
   }
