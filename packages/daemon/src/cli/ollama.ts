@@ -325,7 +325,8 @@ export async function probeOllama(): Promise<{ ok: boolean; detail: string; hasM
 
 // ── server lifecycle ─────────────────────────────────────────────────────────
 
-async function ensureServing(
+/** Exported for tests only; callers go through ensureOllama / ensureOllamaServerForDaemon. */
+export async function ensureServing(
   autostart: boolean,
   brewBin: string | null,
   ollamaPath: string,
@@ -340,11 +341,16 @@ async function ensureServing(
   if (autostart && brewBin) {
     const r = run(brewBin, ["services", "start", "ollama"], { timeoutMs: 30_000 });
     if (r.ok && (await pollServer(15_000))) return { ok: true, detail: "started via brew services (login agent)" };
+    // brew services may have launched the agent but bound slowly — re-probe once
+    // before spawning a competing instance (avoids an EADDRINUSE race on 11434).
+    //
+    // This re-probe used to sit outside the `brewBin` guard, so it fired
+    // even when brew was never invoked (not installed, or autostart off) and
+    // attributed whatever answered on 11434 — a separately managed ollama, in
+    // one observed case — to "brew services". Scoped here it only claims that
+    // label when `brew services start` was actually run.
+    if (await serverVersion()) return { ok: true, detail: "started via brew services (login agent)" };
   }
-
-  // brew services may have launched the agent but bound slowly — re-probe once
-  // before spawning a competing instance (avoids an EADDRINUSE race on 11434).
-  if (await serverVersion()) return { ok: true, detail: "started via brew services (login agent)" };
 
   // Linux: systemd --user is the closest equivalent to brew services on the one
   // platform where a real service manager is standardly available. A named,
