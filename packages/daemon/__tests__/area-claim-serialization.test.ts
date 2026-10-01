@@ -59,10 +59,14 @@ test("ein laufender Save hält seinen Scope — der Rename daneben schreibt kein
   // kompletter Rename durch.
   let release!: () => void;
   const held = new Promise<void>((r) => (release = r));
+  let entered!: () => void;
+  const sharedLockHeld = new Promise<void>((r) => (entered = r));
   const saving = withAreaShared(root, ["carnexus"], async () => {
+    entered();
     await held;
     return "saved";
   });
+  await sharedLockHeld;
 
   await assert.rejects(
     () => renameArea(root, "project", "carnexus", "neu"),
