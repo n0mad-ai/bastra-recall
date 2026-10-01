@@ -152,8 +152,10 @@ test("#704 queryOrigin: explicit field, system-turn text, lane, legacy tool_name
   assert.equal(queryOrigin(ev("hook_recall", { query: TASK_NOTIFICATION, tool_name: "UserPromptSubmit" })), "system");
   assert.equal(queryOrigin(ev("hook_recall", { query: "  [Subagent hand-back] done", dimensions: { hook_source: "prompt" } })), "system");
   assert.equal(queryOrigin(ev("hook_recall", { query: "Another Claude session sent a message: hi", tool_name: "UserPromptSubmit" })), "system");
-  assert.equal(queryOrigin(ev("hook_recall", { query: "why does the panel close", dimensions: { hook_source: "prompt" } })), "owner");
-  assert.equal(queryOrigin(ev("hook_recall", { query: "why does the panel close", tool_name: "UserPromptSubmit" })), "owner");
+  assert.equal(queryOrigin(ev("hook_recall", { query: "why does the panel close", origin: "owner", dimensions: { hook_source: "prompt" } })), "owner");
+  // A prompt-lane row from before the origin field is never the owner.
+  assert.equal(queryOrigin(ev("hook_recall", { query: "why does the panel close", dimensions: { hook_source: "prompt" } })), "unknown");
+  assert.equal(queryOrigin(ev("hook_recall", { query: "why does the panel close", tool_name: "UserPromptSubmit" })), "unknown");
   assert.equal(queryOrigin(ev("hook_recall", { query: "panel dismiss", dimensions: { hook_source: "mcp" } })), "agent");
   assert.equal(queryOrigin(ev("recall", { query: "panel dismiss" })), "agent");
   assert.equal(queryOrigin(ev("hook_recall", { query: "src/panel.swift", dimensions: { hook_source: "pre-tool" }, tool_name: "Edit" })), "tool");
@@ -169,7 +171,9 @@ test("#704 bridgeTeachingEvents + reconstructReaches: a task-notification reach 
     ev("recall_episode", { recall_id: "tool", memory_id: "archive-note", acted_on: true }),
     ev("hook_recall", { recall_id: "legacy", query: "no lane recorded on this row" }),
     ev("recall_episode", { recall_id: "legacy", memory_id: "archive-note", acted_on: true }),
-    ev("hook_recall", { recall_id: "own", query: "warum schließt sich mein Fenster von allein", dimensions: { hook_source: "prompt" } }),
+    ev("hook_recall", { recall_id: "persona", query: "You are Mira, the support assistant of the garden shop", tool_name: "UserPromptSubmit", dimensions: { hook_source: "prompt" } }),
+    ev("recall_episode", { recall_id: "persona", memory_id: "archive-note", acted_on: true }),
+    ev("hook_recall", { recall_id: "own", query: "warum schließt sich mein Fenster von allein", origin: "owner", dimensions: { hook_source: "prompt" } }),
     ev("recall_episode", { recall_id: "own", memory_id: "archive-note", acted_on: true }),
   ];
   const reaches = reconstructReaches(bridgeTeachingEvents(events));
@@ -183,7 +187,8 @@ test("#704 bridgeTeachingEvents + extractCandidatePools: the far harvest skips s
   const pools = extractCandidatePools(bridgeTeachingEvents([
     ev("hook_recall", { query: TASK_NOTIFICATION, tool_name: "UserPromptSubmit", candidate_pool: pool }),
     ev("hook_recall", { query: "npm run build", tool_name: "Bash", candidate_pool: pool }),
-    ev("hook_recall", { query: "warum schließt das Panel", dimensions: { hook_source: "prompt" }, candidate_pool: pool }),
+    ev("hook_recall", { query: "warum öffnet das Panel", dimensions: { hook_source: "prompt" }, candidate_pool: pool }),
+    ev("hook_recall", { query: "warum schließt das Panel", origin: "owner", dimensions: { hook_source: "prompt" }, candidate_pool: pool }),
   ]));
   assert.deepEqual(pools.map((p) => p.query), ["warum schließt das Panel"]);
 });

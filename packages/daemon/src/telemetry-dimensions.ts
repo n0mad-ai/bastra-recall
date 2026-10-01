@@ -33,6 +33,7 @@
  * Registrierung sie später benennen kann.
  */
 import { createHash } from "node:crypto";
+import { isSystemInjectedTurn } from "./system-turn.js";
 
 /**
  * Welche Anwendung den Aufruf ausgelöst hat.
@@ -141,6 +142,31 @@ export function normalizeClient(raw: unknown): TelemetryClient {
 /** Dieselbe Behandlung für die Hook-Quelle. */
 export function normalizeHookSource(raw: unknown): HookSource {
   return typeof raw === "string" && SOURCES.has(raw) ? (raw as HookSource) : "unknown";
+}
+
+/**
+ * #704: who wrote a recall query. The sink writes it on every `recall` and
+ * `hook_recall` row, from the lane that built the query:
+ * - `owner`: a prompt the person typed (prompt lane).
+ * - `system`: a harness turn that reached the prompt lane as if typed.
+ * - `agent`: an explicit `recall` the model called over MCP.
+ * - `tool`: assembled by a tool lane from tool input.
+ * A `hook_recall` whose caller names no lane gets no origin, and a reader
+ * treats a row without the field as not the owner.
+ */
+export type RecallOrigin = "owner" | "agent" | "tool" | "system";
+
+export function recallOrigin(
+  kind: "recall" | "hook_recall",
+  hookSource: HookSource,
+  query: string,
+): RecallOrigin | undefined {
+  if (hookSource === "prompt") return isSystemInjectedTurn(query) ? "system" : "owner";
+  if (hookSource === "mcp") return "agent";
+  // The MCP `recall` tool names no lane; among its callers only the session
+  // assembler does.
+  if (hookSource === "unknown") return kind === "recall" ? "agent" : undefined;
+  return "tool";
 }
 
 /**

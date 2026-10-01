@@ -101,7 +101,8 @@ export async function readEventLog(logDir: string = defaultLogDir(), days: numbe
  * - `tool`: built by a tool lane from tool input (write, bash, todo, session, stop).
  * - `system`: a harness-injected turn (task notification, teammate or
  *   cross-session message, subagent hand-back).
- * - `unknown`: the event names neither an origin nor a lane.
+ * - `unknown`: the event names neither an origin nor a lane, or it is a
+ *   prompt-lane row from before the origin field.
  */
 export type QueryOrigin = "owner" | "agent" | "tool" | "system" | "unknown";
 
@@ -132,12 +133,14 @@ const TOOL_HOOK_SOURCES = new Set(["pre-tool", "session", "stop", "bash-pre", "b
 
 /**
  * #704: the origin of a logged recall query, read robustly from what the event
- * carries. An explicit `origin`/`query_origin` field wins (none is written on
- * recall events today; a missing field means unknown, never owner). Otherwise
- * the query text is checked for a harness wrapper, then the lane:
- * `dimensions.hook_source` (since #263), else `tool_name` (older rows:
- * `UserPromptSubmit` = prompt lane, `mcp-forwarder` = MCP). An MCP `recall`
- * event is the model's own call.
+ * carries. The explicit `origin` field wins (written on every recall event
+ * since v1.0.1, see `recallOrigin`). A row without it is from before the field:
+ * it is never the owner. Its prompt-lane text may be a bot's persona prompt or
+ * a harness loop prompt as well as something typed, and nothing on the row
+ * tells them apart, so it stays `unknown`. The text check for a harness
+ * wrapper and the lanes that are not the owner either way are still read from
+ * such a row: `dimensions.hook_source` (since #263), else `tool_name`
+ * (`mcp-forwarder` = MCP). An MCP `recall` event is the model's own call.
  */
 export function queryOrigin(e: TelemetryEvent): QueryOrigin {
   const dims = typeof e.dimensions === "object" && e.dimensions !== null ? (e.dimensions as Record<string, unknown>) : {};
@@ -147,12 +150,11 @@ export function queryOrigin(e: TelemetryEvent): QueryOrigin {
   if (typeof e.query === "string" && isSystemTurnText(e.query)) return "system";
   if (explicit === "owner" || explicit === "user") return "owner";
   if (explicit === "agent") return "agent";
-  if (e.kind === "recall") return "agent";
   const source = dims.hook_source;
-  if (source === "prompt") return "owner";
+  if (source === "prompt" || e.tool_name === "UserPromptSubmit") return "unknown";
+  if (e.kind === "recall") return "agent";
   if (source === "mcp") return "agent";
   if (typeof source === "string" && TOOL_HOOK_SOURCES.has(source)) return "tool";
-  if (e.tool_name === "UserPromptSubmit") return "owner";
   if (e.tool_name === "mcp-forwarder") return "agent";
   if (typeof e.tool_name === "string" && e.tool_name.length > 0) return "tool";
   return "unknown";

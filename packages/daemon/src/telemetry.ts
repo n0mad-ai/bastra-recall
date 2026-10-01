@@ -8,6 +8,7 @@ import { readJoinStateSync, writeJoinState } from "./telemetry-join-store.js";
 import { callerSessionField } from "./caller-session.js";
 import {
   dimensionsFrom,
+  recallOrigin,
   splitHints,
   type DimensionHints,
   type ExperimentConfig,
@@ -648,7 +649,7 @@ export class Telemetry {
   }
 
   async logRecall(
-    payload: Omit<RecallEvent, "kind" | "ts" | "session_id" | "dimensions"> & DimensionHints & {
+    payload: Omit<RecallEvent, "kind" | "ts" | "session_id" | "dimensions" | "origin"> & DimensionHints & {
       /** Die Session des AUFRUFERS, nicht die Boot-id: Aus ihr entsteht das
        *  Pseudonym und daraus der Arm. Fehlt sie, gibt es keinen Arm. */
       session_id?: string | null;
@@ -663,6 +664,7 @@ export class Telemetry {
     }
     if (!this.enabled) return;
     const { hints, rest: { session_id, ...rest } } = splitHints(payload);
+    const dimensions = this.dimensionsFor({ ...hints, session_id });
     await this.write({
       kind: "recall",
       ts: new Date().toISOString(),
@@ -670,7 +672,9 @@ export class Telemetry {
       // #708: the caller's Claude Code session, when a forwarded call brought one.
       ...callerSessionField(),
       ...rest,
-      dimensions: this.dimensionsFor({ ...hints, session_id }),
+      // #704: who wrote the query — bridges learn from owner and agent rows only.
+      origin: recallOrigin("recall", dimensions.hook_source, rest.query),
+      dimensions,
     });
   }
 
@@ -751,7 +755,7 @@ export class Telemetry {
     // Spread die Daemon-Boot-UUID. Ohne diesen Hatch stempelte jeder der 194
     // hook_recall-Events eines Tages dieselben 4 Boot-ids: keine Auswertung
     // auf Recall-Ebene konnte nach Session oder Turn gruppieren (#305, #361).
-    payload: Omit<HookRecallEvent, "kind" | "ts" | "session_id" | "dimensions"> & {
+    payload: Omit<HookRecallEvent, "kind" | "ts" | "session_id" | "dimensions" | "origin"> & {
       session_id?: string;
     } & DimensionHints,
   ): Promise<void> {
@@ -775,14 +779,18 @@ export class Telemetry {
     // erschlossen ist. Beides mitzuschreiben ist der Unterschied zwischen einer
     // Gruppierung, der man trauen kann, und einer, die stillschweigend rät.
     const turn = this.currentTurn(payload.session_id ?? null);
+    const dimensions = this.dimensionsFor({ ...hints, session_id: payload.session_id });
+    const origin = recallOrigin("hook_recall", dimensions.hook_source, rest.query);
     await this.write({
       kind: "hook_recall",
       ts: new Date().toISOString(),
       session_id: this.sessionId,
       ...rest,
+      // #704: who wrote the query. Absent when the caller named no lane.
+      ...(origin ? { origin } : {}),
       turn_id: turn.turn_id,
       turn_source: turn.turn_source,
-      dimensions: this.dimensionsFor({ ...hints, session_id: payload.session_id }),
+      dimensions,
     });
   }
 

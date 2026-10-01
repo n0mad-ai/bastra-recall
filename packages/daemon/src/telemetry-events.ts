@@ -7,7 +7,7 @@
 import type { CallerScopeFilterTelemetry } from "./recall-pipeline.js";
 import type { SalienceShadow } from "./salience-shadow.js";
 import type { TrustShadow } from "./trust-shadow.js";
-import type { TelemetryDimensions } from "./telemetry-dimensions.js";
+import type { RecallOrigin, TelemetryDimensions } from "./telemetry-dimensions.js";
 import type {
   OllamaLifecycleEvent,
   WarmupSettleEvent,
@@ -123,6 +123,9 @@ export interface RecallEvent extends BaseEvent, DimensionedEvent {
   kind: "recall";
   recall_id: string;
   query: string;
+  /** #704: who wrote the query (`recallOrigin`). Absent on rows from before
+   *  the field; a reader treats that as not the owner. */
+  origin?: RecallOrigin;
   /** #708: see {@link SaveMemoryEvent.caller_session}. */
   caller_session?: string | null;
   /** #351: set when this recall is one phrasing of a batched call — the
