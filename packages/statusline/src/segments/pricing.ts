@@ -491,10 +491,15 @@ export class PricingService {
       cacheCreationTokens,
       breakdown?.ephemeral_1h_input_tokens || 0,
     );
+    // The live pricing table may omit the 1h field for a model. Keep the
+    // estimate numeric using the known 5m rate instead of spreading NaN.
+    const cacheWrite1hRate = Number.isFinite(pricing.cache_write_1h)
+      ? pricing.cache_write_1h
+      : pricing.cache_write_5m;
     const cacheCreationCost =
       ((cacheCreationTokens - cacheWrite1hTokens) / 1_000_000) *
         pricing.cache_write_5m +
-      (cacheWrite1hTokens / 1_000_000) * pricing.cache_write_1h;
+      (cacheWrite1hTokens / 1_000_000) * cacheWrite1hRate;
 
     return inputCost + outputCost + cacheCreationCost + cacheReadCost;
   }
