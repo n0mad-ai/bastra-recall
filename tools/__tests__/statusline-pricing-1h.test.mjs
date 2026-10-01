@@ -17,9 +17,17 @@ PricingService.modelPricingCache.set("test-model-1h", {
   cache_write_1h: 2,
 });
 
-const cost = (usage) =>
+PricingService.modelPricingCache.set("test-model-no-1h", {
+  name: "test",
+  input: 0,
+  output: 0,
+  cache_read: 0,
+  cache_write_5m: 1,
+});
+
+const cost = (usage, model = "test-model-1h") =>
   PricingService.calculateCostForEntry({
-    message: { model: "test-model-1h", usage },
+    message: { model, usage },
   });
 
 test("1h cache-write tokens bill at the 1h rate", async () => {
@@ -44,4 +52,14 @@ test("a mixed write splits between the 1h and 5m rates", async () => {
 test("without the split everything bills at the 5m rate", async () => {
   const c = await cost({ cache_creation_input_tokens: 1_000_000 });
   assert.equal(c, 1);
+});
+
+test("a missing 1h price falls back to the 5m rate without making costs NaN", async () => {
+  for (const oneHourTokens of [0, 1_000_000]) {
+    const c = await cost({
+      cache_creation_input_tokens: 1_000_000,
+      cache_creation: { ephemeral_1h_input_tokens: oneHourTokens },
+    }, "test-model-no-1h");
+    assert.equal(c, 1, `1h tokens: ${oneHourTokens}`);
+  }
 });

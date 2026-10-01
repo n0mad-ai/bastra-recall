@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #841 bills one-hour cache writes at the one-hour rate in statusline cost estimates.
+- Follow-up to #841: missing one-hour prices fall back to the five-minute rate instead of turning costs into NaN.
+
 - @zzallirog's #831 removes a temporary Codex auth copy after a probe run and preserves an existing probe-home login.
 - Follow-up to #831: the predictable probe home is owner-only, and symlinked or foreign-owned credential paths are refused before copying.
 
