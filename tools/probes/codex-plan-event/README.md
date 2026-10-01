@@ -90,7 +90,9 @@ bash tools/probes/codex-plan-event/run.sh --copy-auth
 
 `--copy-auth` copies `~/.codex/auth.json` into the probe home. It is your
 credential on your machine and it never leaves it — but it is a copy of a
-credential, which is why the script will not do it unless you ask.
+credential, which is why the script will not do it unless you ask. It deletes
+its copy when the run ends (normally, on failure or on Ctrl-C). If the probe home
+already holds a login, nothing is copied and that login is left alone.
 
 ### What it does, and what it does not touch
 

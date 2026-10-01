@@ -78,9 +78,17 @@ cat > "${HOME_DIR}/config.toml" <<'TOML'
 TOML
 
 if [ "$COPY_AUTH" = "1" ]; then
-  if [ -f "${HOME}/.codex/auth.json" ]; then
-    cp "${HOME}/.codex/auth.json" "${HOME_DIR}/auth.json"
-    echo "· copied your existing login into the probe home"
+  if [ -e "${HOME_DIR}/auth.json" ]; then
+    # A login already made in the probe home is the operator's: it is neither
+    # overwritten nor removed, so there is nothing to copy and no trap to install.
+    echo "· the probe home already holds a login — using it, not copying yours over it"
+  elif [ -f "${HOME}/.codex/auth.json" ]; then
+    # A copy of a live credential must not outlive the run — whether it ends
+    # normally, fails under set -e, or is interrupted.
+    trap 'rm -f "${HOME_DIR}/auth.json"' EXIT
+    trap 'exit 130' INT TERM
+    ( umask 077; cp "${HOME}/.codex/auth.json" "${HOME_DIR}/auth.json" )
+    echo "· copied your existing login into the probe home (removed again when the run ends)"
   else
     echo "✗ no ~/.codex/auth.json to copy — run: CODEX_HOME='${HOME_DIR}' codex login" >&2
     exit 1
