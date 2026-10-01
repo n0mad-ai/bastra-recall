@@ -96,6 +96,42 @@ test("loadAnswersFile: a missing persona, bad JSON or a missing file is an error
   }
 });
 
+test("loadAnswersFile: a file with no usable answer is an error; a leading BOM is not", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-onboard-answers-"));
+  try {
+    // A typo in the only id, values that are not text, blank text.
+    await writeFile(join(dir, "typo.yaml"), "persona: personal\nanswers:\n  identty: Kim\n", "utf8");
+    await writeFile(join(dir, "nontext.yaml"), "persona: personal\nanswers:\n  identity: true\n  world: [a, b]\n", "utf8");
+    await writeFile(join(dir, "blank.json"), JSON.stringify({ persona: "personal", answers: { identity: "  " } }), "utf8");
+    for (const f of ["typo.yaml", "nontext.yaml", "blank.json"]) {
+      const r = await loadAnswersFile(join(dir, f));
+      assert.ok("error" in r, `${f} should be an error`);
+      assert.match(r.error, /no usable answer.*identity/, f);
+    }
+    const bom = join(dir, "bom.json");
+    await writeFile(bom, "\uFEFF" + JSON.stringify({ persona: "personal", answers: { identity: "Kim" } }), "utf8");
+    assert.deepEqual(await loadAnswersFile(bom), { persona: "personal", answers: { identity: "Kim" }, ignored: [] });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("cmdOnboard --answers: no usable answer exits 2 and leaves onboarding open", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-onboard-answers-"));
+  const vault = join(dir, "vault");
+  const savedHome = process.env.HOME;
+  process.env.HOME = join(dir, "home");
+  try {
+    const file = join(dir, "answers.yaml");
+    await writeFile(file, "persona: personal\nanswers:\n  identty: Kim\n", "utf8");
+    assert.equal(await cmdOnboard(parseArgs(["onboard", "--vault", vault, "--answers", file])), 2);
+    assert.equal(await isOnboardingDone(vault), false);
+  } finally {
+    process.env.HOME = savedHome;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("parseArgs: onboard --answers <file> and --answers=<file> are accepted", () => {
   assert.equal(parseArgs(["onboard", "--answers", "a.yaml"]).answers, "a.yaml");
   assert.equal(parseArgs(["onboard", "--answers=a.json"]).answers, "a.json");

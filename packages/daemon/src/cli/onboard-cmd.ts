@@ -97,7 +97,9 @@ export async function loadAnswersFile(
   let data: unknown;
   try {
     // gray-matter's YAML engine, reused rather than adding a YAML dependency.
-    data = extname(path).toLowerCase() === ".json" ? JSON.parse(raw) : matter(`---\n${raw}\n---\n`).data;
+    // A BOM (Windows editors) is not JSON whitespace and would sit in the first YAML key.
+    const text = raw.replace(/^\uFEFF/, "");
+    data = extname(path).toLowerCase() === ".json" ? JSON.parse(text) : matter(`---\n${text}\n---\n`).data;
   } catch (err) {
     return { error: `cannot parse answers file ${path}: ${(err as Error).message}` };
   }
@@ -105,6 +107,14 @@ export async function loadAnswersFile(
   if ("error" in parsed) return { error: `answers file ${path}: ${parsed.error}` };
   const asked = new Set(questionsFor(parsed.persona).map((q) => q.id));
   const ignored = Object.keys(parsed.answers).filter((id) => !asked.has(id));
+  // Nothing to save is a failed run, not a finished onboarding: a typo in the
+  // only id, or answers that are not text, must not set the done marker.
+  if (!Object.entries(parsed.answers).some(([id, text]) => asked.has(id) && text.trim() !== "")) {
+    return {
+      error: `answers file ${path}: no usable answer for a ${parsed.persona} question — text values for: ` +
+        [...asked].join(", "),
+    };
+  }
   return { ...parsed, ignored };
 }
 
