@@ -224,6 +224,33 @@ describe("bash-fail-hook: #144 act-signal", () => {
     }
   });
 
+  it("the same memory rides under one failure per session, not under every failure", async () => {
+    // Before the cap, one memory rode under every failure of a session.
+    // Revert check: drop the shouldDropHit filter → the second failure carries "same-lesson" again.
+    const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashfail-dedup-"));
+    const prev = process.env.BASTRA_HOOK_STATE_DIR;
+    process.env.BASTRA_HOOK_STATE_DIR = stateDir;
+    const sid = `dedup-fail-${Date.now()}`;
+    const daemon = await startRecordingDaemon([{
+      id: "same-lesson", title: "Known build failure", type: "lesson", scope: "all",
+      summary: "Use the generated type before building.", score: 80,
+    }]);
+    const fail = {
+      hook_event_name: "PostToolUseFailure", tool_name: "Bash", bastra_client: "claude-code", session_id: sid,
+      tool_input: { command: "npm run build" }, error: "Command exited with non-zero status code 1: TS2304", is_interrupt: false,
+    };
+    try {
+      assert.match(await runFailHook(fail, daemon.port), /same-lesson/, "first failure carries the memory");
+      await rm(throttleFile(sid), { force: true });
+      assert.doesNotMatch(await runFailHook(fail, daemon.port), /same-lesson/, "second failure: already shown");
+    } finally {
+      await daemon.close();
+      if (prev === undefined) delete process.env.BASTRA_HOOK_STATE_DIR;
+      else process.env.BASTRA_HOOK_STATE_DIR = prev;
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
   it("PostToolUseFailure sends the act-signal and recalls from its top-level error", async () => {
     const daemon = await startRecordingDaemon([{
       id: "failure-lesson",
