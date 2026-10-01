@@ -665,10 +665,20 @@ async function main() {
     const blind = tests.filter((t) => t.src_lines === 0).length;
     const failed = tests.filter((t) => t.exit !== 0 && !t.coverage_lost).length;
     const lost = tests.filter((t) => t.coverage_lost).length;
-    return console.log(`test-map: ${tests.length} test files, ${tests.reduce((a, t) => a + t.tests, 0)} tests, ` +
+    console.log(`test-map: ${tests.length} test files, ${tests.reduce((a, t) => a + t.tests, 0)} tests, ` +
       `${Object.keys(map.sources).length} source files at ${commit.slice(0, 8)}${dirty ? " (dirty tree)" : ""}; ` +
       `${failed} files failed during the build, ${blind} executed no source line (coverage-blind${lost ? `, ${lost} of them because Node lost the report` : ""}).` +
       (o.only ? " Partial map (--only) written to .test-map/map-only.json; the full map is unchanged." : ""));
+    // 0 test files is indistinguishable, in this printout, from "I
+    // honestly parsed the root `test` script and it lists nothing" vs "I
+    // could not parse it at all" — both give a success-shaped zero-test map.
+    // Fail loudly instead: a build that found nothing to run is a build to
+    // doubt, not a clean pass.
+    if (!o.only && tests.length === 0) {
+      warn("0 test files parsed from the root package.json's `test` script — refusing to write a success-shaped empty map");
+      process.exitCode = 1;
+    }
+    return;
   }
   if (cmd === "select") {
     const map = loadMap();
@@ -696,7 +706,11 @@ async function main() {
     const map = loadMap();
     const h = heatmap(map, o.top ?? 25);
     if (o.json) return console.log(JSON.stringify(h, null, 1));
-    console.log(`map ${h.commit.slice(0, 8)} · ${h.suites.length} suites · src lines executed by ≥1 test: ${h.covered_lines}/${h.total_lines} (${((100 * h.covered_lines) / h.total_lines).toFixed(1)} %)`);
+    // With no source path containing `/src/`, total_lines is 0 and
+    // the division below is 0/0 — NaN, not the guarded "0 %" every per-file
+    // row already gets (`pct: total ? covered / total : 0` above).
+    const headlinePct = h.total_lines ? ((100 * h.covered_lines) / h.total_lines).toFixed(1) : "0.0";
+    console.log(`map ${h.commit.slice(0, 8)} · ${h.suites.length} suites · src lines executed by ≥1 test: ${h.covered_lines}/${h.total_lines} (${headlinePct} %)`);
     console.log("\nslowest suites:");
     for (const t of h.suites.slice(0, 15)) console.log(`  ${secs(t.wall_ms).padStart(7)}  ${String(t.tests).padStart(4)} tests  ${t.file}${t.exit ? "  [failed]" : ""}`);
     console.log("\ncoldest source files (share of lines any test executes):");
