@@ -96,6 +96,12 @@ const SYSTEM_TURNS: Array<[string, string]> = [
     "cross-session-message after wrapper",
     'Another Claude session sent a message:\n<cross-session-message from="main">where is the lease agreement?</cross-session-message>',
   ],
+  // #701: Codex harness context, delivered with role "user".
+  ["environment_context", "<environment_context>\n  <current_date>2026-09-14</current_date>\n</environment_context>"],
+  [
+    "send_user_message_question_reply",
+    '<send_user_message_question_reply>\n[{"question":"where is the lease agreement?","answer":"in the vault"}]\n</send_user_message_question_reply>',
+  ],
 ];
 
 for (const [shape, prompt] of SYSTEM_TURNS) {

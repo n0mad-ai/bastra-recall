@@ -244,7 +244,13 @@ no recall on them and emits `{}`; its `prompt_hook_call` row carries
 task-boundary block parked for the owner's next prompt stays parked. Only the
 start of the turn counts: a prompt that merely quotes such a tag, or has text
 before it, is still a prompt. The Stop lane uses the same check
-(`packages/daemon/src/system-turn.ts`).
+(`packages/daemon/src/system-turn.ts`). The same list covers the harness
+context Codex writes with role "user" (#701): `<environment_context>`,
+`<recommended_plugins>`, `<codex_internal_context …>` and
+`<send_user_message_question_reply>`. When it reads a transcript, the Stop
+lane — and with it the after-session harvest — also skips every Claude Code
+row flagged `isMeta: true` (hook feedback, skill bodies, notes from other
+sessions), whatever it starts with: nobody typed those.
 
 **Assertion lane (#252):** the `PreToolUse` lane is bound to a tool, so it
 reaches an agent that *edits*; writing a sentence touches nothing. A prompt
@@ -1106,7 +1112,14 @@ aus; ihre `prompt_hook_call`-Zeile trägt `status: "gated"`,
 können. Ein für den nächsten Owner-Prompt geparkter Aufgabengrenzen-Block
 bleibt geparkt. Es zählt nur der Anfang des Turns: Ein Prompt, der so ein Tag
 nur zitiert oder Text davor hat, bleibt ein Prompt. Dieselbe Prüfung
-(`packages/daemon/src/system-turn.ts`) nutzt die Stop-Lane.
+(`packages/daemon/src/system-turn.ts`) nutzt die Stop-Lane. Dieselbe Liste
+deckt den Harness-Kontext ab, den Codex mit der Rolle „user" schreibt (#701):
+`<environment_context>`, `<recommended_plugins>`,
+`<codex_internal_context …>` und `<send_user_message_question_reply>`. Beim
+Lesen eines Transkripts überspringt die Stop-Lane — und damit auch der
+After-Session-Harvest — außerdem jede Claude-Code-Zeile mit `isMeta: true`
+(Hook-Feedback, Skill-Texte, Notizen anderer Sessions), egal womit sie
+beginnt: Die hat niemand getippt.
 
 **Assertion-Lane (#252):** Die `PreToolUse`-Lane ist an ein Werkzeug gebunden,
 erreicht also einen Agenten, der *editiert*; das Schreiben eines Satzes berührt

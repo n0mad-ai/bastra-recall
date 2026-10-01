@@ -122,16 +122,24 @@ function isInjectedSystemContent(text: string): boolean {
     head.startsWith("<system-reminder>") ||
     head.startsWith("<command-name>") ||
     head.startsWith("<local-command-caveat>") ||
-    // Task notifications and agent mail (#639, #649): the body is another
-    // agent's prose, so the decision and frustration heuristics would read it
-    // as the user's. Shared with the prompt lane (#703).
+    // Task notifications, agent mail (#639, #649) and Codex harness context
+    // (#701): the body is another agent's prose or the harness's own text, so
+    // the decision and frustration heuristics would read it as the user's.
+    // Shared with the prompt lane (#703).
     isSystemInjectedTurn(head)
   );
 }
 
-function effectiveRole(role: string, content: unknown): string {
+/**
+ * `meta` is Claude Code's `isMeta: true` on a transcript row (#701): text the
+ * client put into the conversation with role "user" — Stop-hook feedback,
+ * skill bodies, notes from other sessions, image captions. Nobody typed it,
+ * whatever it starts with, so the prefix list above cannot be the only check:
+ * the after-session harvest quoted hook feedback as the user's own words.
+ */
+function effectiveRole(role: string, content: unknown, meta = false): string {
   if (role === "user" && isToolResultContent(content)) return "tool";
-  if (role === "user" && isInjectedSystemContent(stringifyContent(content))) return "system-injected";
+  if (role === "user" && (meta || isInjectedSystemContent(stringifyContent(content)))) return "system-injected";
   return role;
 }
 
@@ -182,7 +190,10 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
     if (msg && typeof msg === "object") {
       const m = msg as Record<string, unknown>;
       const role = typeof m.role === "string" ? m.role : "unknown";
-      const turn: TranscriptTurn = { role: effectiveRole(role, m.content), content: scrubTurnContent(stringifyContent(m.content)) };
+      const turn: TranscriptTurn = {
+        role: effectiveRole(role, m.content, obj.isMeta === true),
+        content: scrubTurnContent(stringifyContent(m.content)),
+      };
       const commands = claudeToolUseCommands(m.content);
       if (commands.length > 0) turn.commands = commands;
       const tools = claudeToolUseNames(m.content);
