@@ -32,11 +32,29 @@ import { join } from "node:path";
  * frustration (#678), a pick among the agent's numbered options for a
  * decision (#707, stop-lane-choice.ts).
  * Within a list, longer variants first so the same span is not double-counted.
+ *
+ * #756: the plain adverb for "again" (`wieder`, `again`, `снова`, `опять`) is
+ * NOT a cue on its own — "jetzt geht es wieder", "I'm back home again" and
+ * "снова работает" say something works. It counts only inside a frustration
+ * construction: "schon wieder", "immer wieder", "wieder nicht", "not again",
+ * "broken again", "опять не …". A user who wants the bare word back can add
+ * it to their frustration.txt.
  */
 export const DEFAULT_FRUSTRATION_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
-  de: ["schon\\s+wieder", "wieder", "wie\\s+oft", "verdammt", "schei(?:ss|ß)e"],
-  en: ["yet\\s+again", "again", "how\\s+(?:often|many\\s+times)", "damn", "fuck", "shit"],
-  ru: ["снова", "опять", "сколько\\s+раз", "ч[её]рт", "бл(?:ин|ять)"],
+  de: [
+    "schon\\s+wieder", "immer\\s+wieder", "wieder\\s+und\\s+wieder",
+    "wieder\\s+(?:nicht|kaputt|falsch|dasselbe|derselbe|das\\s+gleiche|der\\s+gleiche)",
+    "wie\\s+oft", "verdammt", "schei(?:ss|ß)e",
+  ],
+  en: [
+    "yet\\s+again", "not\\s+again", "again\\s+and\\s+again", "again\\s+the\\s+same",
+    "(?:broken|wrong|failed|failing|fails)\\s+again",
+    "how\\s+(?:often|many\\s+times)", "damn", "fuck", "shit",
+  ],
+  ru: [
+    "(?:снова|опять)\\s+не", "(?:снова|опять)\\s+то\\s+же", "(?:снова|опять)\\s+слома\\p{L}*",
+    "сколько\\s+раз", "ч[её]рт", "бл(?:ин|ять)",
+  ],
 };
 
 export const DEFAULT_DECISION_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {

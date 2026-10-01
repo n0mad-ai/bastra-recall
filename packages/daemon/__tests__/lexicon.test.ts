@@ -47,7 +47,7 @@ test("lexicon (#476): a file EXTENDS the defaults, comments/blanks ignored, dupe
         "разозлился",
         "",
         "ach-nein   # inline comment stripped",
-        "wieder", // already a default → must not duplicate
+        "verdammt", // already a default → must not duplicate
       ].join("\n"),
       "utf8",
     );
@@ -57,8 +57,9 @@ test("lexicon (#476): a file EXTENDS the defaults, comments/blanks ignored, dupe
     // new entries appended
     assert.ok(cues.includes("разозлился"), "file cue missing");
     assert.ok(cues.includes("ach-nein"), "inline-comment line not cleaned/kept");
-    // "wieder" is a default; it must appear exactly once
-    assert.equal(cues.filter((c) => c === "wieder").length, 1, "default duplicated");
+    // "verdammt" is a default; it must appear exactly once (#756: the bare
+    // "wieder" this used to check is no default any more)
+    assert.equal(cues.filter((c) => c === "verdammt").length, 1, "default duplicated");
   });
 });
 
