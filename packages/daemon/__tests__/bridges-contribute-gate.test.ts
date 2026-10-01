@@ -78,7 +78,7 @@ function twoQueries(): [string, string] {
 function reachLines(query: string, session: string, id: string): string[] {
   const ts = "2026-09-20T10:00:00.000Z";
   return [
-    { kind: "hook_recall", ts, recall_id: id, query, tool_name: "UserPromptSubmit", dimensions: { hook_source: "prompt", experiment_session: session }, candidate_pool: [{ id: "d1", score: 40 }, { id: "d2", score: 30 }] },
+    { kind: "hook_recall", ts, recall_id: id, query, origin: "owner", tool_name: "UserPromptSubmit", dimensions: { hook_source: "prompt", experiment_session: session }, candidate_pool: [{ id: "d1", score: 40 }, { id: "d2", score: 30 }] },
     { kind: "recall_episode", ts, recall_id: id, memory_id: "panel", acted_on: true },
   ].map((e) => JSON.stringify(e));
 }

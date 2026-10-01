@@ -163,10 +163,14 @@ owner typed (prompt lane) and explicit MCP `recall` calls. Queries the tool lane
 build from tool input (write, bash, todo, session, stop) and harness turns that
 reach the prompt lane as if typed (`<task-notification`, `<teammate-message`,
 `<agent-message`, `<cross-session-message`, `[Subagent hand-back]`, `Another
-Claude session sent a message`) do not. The origin is read from an explicit
-`origin` field on the event when there is one, else from that text check, else
-from the lane (`dimensions.hook_source`, on older rows `tool_name`); a row that
-names no lane at all does not count. A small stoplist of machine vocabulary
+Claude session sent a message`) do not. Every `recall` and `hook_recall` event
+carries the origin since v1.0.1: `origin` is `owner`, `agent`, `tool` or `system`,
+written from the lane that built the query. A row without the field is from
+before it and never counts as the owner: a prompt-lane row could be a bot's
+persona prompt or a harness loop prompt as well as typed text, so it teaches
+nothing. On such a row only the text check and the lanes that are not the owner
+either way are still read (`dimensions.hook_source`, on older rows `tool_name`);
+an older explicit MCP `recall` still counts. A small stoplist of machine vocabulary
 (`toolu`, `task`, `notification`, `home`, `users`, `claude` — tool ids and home
 paths, not a language list) never becomes a trigger term, and a query made mostly
 of it mints nothing. A local bridge minted before this rule whose trigger is
@@ -491,10 +495,15 @@ Besitzer getippt hat (Prompt-Lane), und ausdrückliche MCP-`recall`-Aufrufe. Anf
 die die Tool-Lanes aus Tool-Eingaben bauen (write, bash, todo, session, stop), und
 Harness-Turns, die wie getippt in der Prompt-Lane ankommen (`<task-notification`,
 `<teammate-message`, `<agent-message`, `<cross-session-message`, `[Subagent
-hand-back]`, `Another Claude session sent a message`), zählen nicht. Der Ursprung
-kommt aus einem ausdrücklichen Feld `origin` am Ereignis, falls vorhanden, sonst aus
-dieser Textprüfung, sonst aus der Lane (`dimensions.hook_source`, bei älteren Zeilen
-`tool_name`); eine Zeile ohne jede Lane-Angabe zählt nicht. Eine kleine Stoppliste für
+hand-back]`, `Another Claude session sent a message`), zählen nicht. Seit v1.0.1
+trägt jedes `recall`- und `hook_recall`-Ereignis den Ursprung: `origin` ist `owner`,
+`agent`, `tool` oder `system` und wird von der Lane geschrieben, die die Anfrage gebaut
+hat. Eine Zeile ohne das Feld stammt aus der Zeit davor und zählt nie als Besitzer:
+Eine Zeile der Prompt-Lane kann ebenso der Persona-Prompt eines Bots oder ein
+Schleifen-Prompt des Harness sein wie getippter Text, also lernt daraus keine Bridge.
+An so einer Zeile werden nur noch die Textprüfung und die Lanes gelesen, die ohnehin
+nicht der Besitzer sind (`dimensions.hook_source`, bei älteren Zeilen `tool_name`); ein
+älterer ausdrücklicher MCP-`recall` zählt weiter. Eine kleine Stoppliste für
 Maschinenvokabular (`toolu`, `task`, `notification`, `home`, `users`, `claude` —
 Tool-IDs und Home-Pfade, keine Sprachliste) wird nie zum Triggerbegriff, und eine
 Anfrage, die überwiegend daraus besteht, erzeugt nichts. Eine lokale Bridge von vor

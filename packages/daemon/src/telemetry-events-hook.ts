@@ -12,6 +12,7 @@ import type { CallerScopeFilterTelemetry } from "./recall-pipeline.js";
 import type { SalienceShadow } from "./salience-shadow.js";
 import type { TrustShadow } from "./trust-shadow.js";
 import type { ReflexNearMiss } from "./reflex.js";
+import type { RecallOrigin } from "./telemetry-dimensions.js";
 
 export interface HookActEvent extends BaseEvent, DimensionedEvent {
   kind: "hook_act";
@@ -154,6 +155,10 @@ export interface DeadlineShadowRow {
 export interface HookRecallEvent extends BaseEvent, DimensionedEvent {
   kind: "hook_recall";
   recall_id: string;
+  /** #704: who wrote the query (`recallOrigin`). Absent when the caller named
+   *  no lane, and on rows from before the field; a reader treats that as not
+   *  the owner. */
+  origin?: RecallOrigin;
   /**
    * #493: Die Klammer um die Recalls EINES Sitzungsstarts.
    *
