@@ -18,7 +18,7 @@ export function calculateBudgetPercentage(
   budget: number | undefined,
 ): number | null {
   if (!budget || budget <= 0 || cost < 0) return null;
-  return Math.min(100, (cost / budget) * 100);
+  return (cost / budget) * 100;
 }
 
 export function getBudgetStatus(
