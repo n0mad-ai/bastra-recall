@@ -515,7 +515,7 @@ export class SegmentRenderer {
         ? contextInfo.contextLeftPercentage
         : contextInfo.usablePercentage;
     const filledCount = Math.round(
-      (contextInfo.usablePercentage / 100) * barLength,
+      (pct / 100) * barLength,
     );
     const emptyCount = barLength - filledCount;
 
