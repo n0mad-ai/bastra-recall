@@ -272,6 +272,19 @@ describe("stop-hook: #678 languages without a cue list fire on repeated correcti
     assert.equal(detectFrustration(turns), null);
   });
 
+  it("does not read `!=`, a file name or an identifier in routine requests as emphasis", () => {
+    const routine = (mention: string) =>
+      ["date", "url", "csv"].map((p) => userTurn(`add a test for the ${p} parser, ${mention}`));
+    for (const mention of [
+      "assert result != null",
+      "and update the README section",
+      "and list it in src/README.md",
+      "and read BASTRA_VAULT_PATH first",
+    ]) {
+      assert.equal(detectFrustration(routine(mention)), null, mention);
+    }
+  });
+
   it("does not fire on a single restatement or on short repeated acknowledgements", () => {
     assert.equal(
       detectFrustration([userTurn("nie używaj średników w tym pliku"), userTurn("nie używaj średników w tym pliku!")]),
