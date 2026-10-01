@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
-test("with no brew, a server that comes up is not attributed to brew services", async (t) => {
+test("a server that comes up between probes is reused without a false start claim", async (t) => {
   let calls = 0;
   // The first probe finds nothing; whatever answers afterwards was started by
   // someone else.
@@ -25,8 +25,14 @@ test("with no brew, a server that comes up is not attributed to brew services", 
   process.env.BASTRA_OLLAMA_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const { ensureServing } = await import("../src/cli/ollama.js");
 
-  // autostart off: no brew, no systemd; the one-shot spawn is a no-op binary.
-  const r = await ensureServing(false, null, "/usr/bin/true");
-  assert.equal(r.ok, true);
-  assert.doesNotMatch(r.detail, /brew/, `no brew ran, yet: ${r.detail}`);
+  for (const [autostart, brewBin] of [
+    [false, null],
+    [true, null],
+    [true, "/usr/bin/false"], // brew start failed; a foreign server still won the port
+  ] as const) {
+    calls = 0;
+    const r = await ensureServing(autostart, brewBin, "/usr/bin/true");
+    assert.equal(r.ok, true);
+    assert.equal(r.detail, "using already-running ollama on 11434");
+  }
 });
