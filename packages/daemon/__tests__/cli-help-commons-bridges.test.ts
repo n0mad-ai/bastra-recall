@@ -3,8 +3,8 @@
  * sent anywhere", while `commons verify` pushes a branch and opens a public PR
  * carrying the recipe id, result, note, verifier id, OS, arch and Node version.
  * The bridges help still called the pool "language-partitioned" although
- * query expansion reads every folder when no language is set (#707); a set
- * language pins queries to its folder and files new bridges there.
+ * query expansion reads every folder when no language is set (#707); an
+ * override limits query expansion, while new bridges use detected language.
  *
  * Run: npx tsx --test packages/daemon/__tests__/cli-help-commons-bridges.test.ts
  */
@@ -41,5 +41,8 @@ test("bridges help no longer calls the pool language-partitioned", () => {
   assert.doesNotMatch(captureShowHelp(), /language-partitioned/);
   // The setting does change which bridges fire: with an override, expandQuery
   // consults only that folder.
-  assert.match(COMMAND_HELP.bridges, /Without a language setting every\s+folder is searched; the setting pins queries to one folder/);
+  assert.match(COMMAND_HELP.bridges, /Without a language setting every\s+folder is searched; an override limits query expansion to one folder/);
+  assert.match(COMMAND_HELP.bridges, /New\s+bridges are filed by the detected language of their source query/);
+  assert.match(COMMAND_HELP.bridges, /language\s+Show or set the query-language override/);
+  assert.doesNotMatch(COMMAND_HELP.bridges, /partition language|files new bridges there/);
 });

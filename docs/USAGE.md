@@ -269,6 +269,12 @@ On Linux and Windows the power source reads `unknown` and nothing is deferred.
 shows a "battery saver" row. bastra cannot stop the Ollama app itself or other
 Ollama clients; an idle Ollama server without a loaded model costs little.
 
+### Commons verification and bridge language
+
+`bastra commons verify` opens a public pull request with the recipe ID, works/fails result, optional note, verifier ID, OS, CPU architecture and Node version. It does not submit your vault. If submission fails, the record remains on disk for manual submission.
+
+`bastra bridges language <code>` limits query expansion to one language folder; `auto` searches all folders. New bridges are stored under the detected language of their source query, regardless of that override.
+
 ### Troubleshooting
 
 - **Ollama says `using already-running ollama on 11434`** — another server answered after the first check. Bastra reuses it without starting a competing server; a brew or systemd start label appears only after that start command succeeded.
@@ -557,6 +563,12 @@ unverändert. Unter Linux und Windows lautet die Stromquelle `unknown`, und nich
 verschoben. `/health` meldet `power: {battery_saver, source, saving}`, und `bastra doctor`
 zeigt eine Zeile „battery saver". Die Ollama-App selbst oder andere Ollama-Clients kann
 bastra nicht anhalten; ein untätiger Ollama-Server ohne geladenes Modell kostet wenig.
+
+### Commons-Verifikation und Bridge-Sprache
+
+`bastra commons verify` öffnet einen öffentlichen Pull Request mit Rezept-ID, Ergebnis (funktioniert/nicht), optionaler Notiz, Verifier-ID, Betriebssystem, CPU-Architektur und Node-Version. Dein Vault wird dabei nicht übertragen. Scheitert die Einreichung, bleibt der Eintrag zur manuellen Abgabe lokal liegen.
+
+`bastra bridges language <code>` beschränkt die Anfrage-Erweiterung auf einen Sprachordner; `auto` durchsucht alle Ordner. Neue Bridges werden unabhängig von dieser Einstellung nach der erkannten Sprache ihrer Quellanfrage abgelegt.
 
 ### Fehlerbehebung
 

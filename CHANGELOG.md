@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #931 lists Commons verification and its public record in CLI help, removes stale bridge partition wording, and corrects the collapse-path score ceiling.
+- Follow-up to #931: bridge help distinguishes query-language override from where new bridges are filed, with EN/DE usage guidance and regressions.
+
 - @zzallirog's #925 aligns the checkout hook installer with the Claude Code adapter, including Stop defaults and failure hooks.
 - Follow-up to #925: uninstall works without a build, stale dist fails clearly before settings change, and shell parity tests skip Windows.
 
