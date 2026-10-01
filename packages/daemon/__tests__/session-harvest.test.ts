@@ -19,7 +19,7 @@ import {
   HARVEST_IDLE_MS,
   type HarvestTurn,
 } from "../src/session-harvest.js";
-import { loadTranscript, runStopLane } from "../src/stop-lane.js";
+import { loadTranscript, parseTranscriptFile, runStopLane } from "../src/stop-lane.js";
 
 const u = (content: string): HarvestTurn => ({ role: "user", content });
 const a = (content: string, tools?: string[]): HarvestTurn => ({ role: "assistant", content, ...(tools ? { tools } : {}) });
@@ -93,6 +93,45 @@ test("pastes and system-injected turns are never candidates", () => {
     { role: "system-injected", content: "<task-notification>agent finished, what next?</task-notification>" },
   ];
   assert.equal(harvestCandidates(turns).length, 0);
+});
+
+test("#701 — a row the client injected (isMeta) is not quoted as the user", () => {
+  const question = { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Should staging share the production database?" }] } };
+  const feedback =
+    "Stop hook feedback:\nbastra-recall memory check. Judge each line from this conversation and save it via save_memory if it holds.";
+  const jsonl = (isMeta: boolean): string =>
+    [question, { type: "user", ...(isMeta ? { isMeta } : {}), message: { role: "user", content: feedback } }]
+      .map((r) => JSON.stringify(r))
+      .join("\n");
+
+  const turns = parseTranscriptFile(jsonl(true));
+  assert.equal(turns[1].role, "system-injected");
+  assert.equal(harvestCandidates(turns).length, 0);
+  // Revert-check: only the flag tells this row from an answer — no prefix does.
+  assert.equal(harvestCandidates(parseTranscriptFile(jsonl(false)))[0]?.kind, "answer");
+});
+
+test("#701 — Codex harness wrappers are not quoted as the user", () => {
+  const codex = (role: string, text: string): object => ({
+    type: "response_item",
+    payload: { type: "message", role, content: [{ type: role === "user" ? "input_text" : "output_text", text }] },
+  });
+  const rollout = (userText: string): string =>
+    [codex("assistant", "Which database should staging use?"), codex("user", userText)].map((r) => JSON.stringify(r)).join("\n");
+  const wrappers = [
+    "<environment_context>\n  <current_date>2026-09-14</current_date>\n  <timezone>Europe/Berlin</timezone>\n  <filesystem><workspace_roots><root>/work/repo</root></workspace_roots></filesystem>\n</environment_context>",
+    '<send_user_message_question_reply>\n[{"questionItemId":"[\\"request_user_input_async\\",\\"call_1\\",0]","question":"Which database should staging use?","answer":"Its own one, never the production database"}]\n</send_user_message_question_reply>',
+    "<recommended_plugins>\nHere is a list of plugins that are available but not installed.\n</recommended_plugins>",
+    '<codex_internal_context source="goal">\nContinue working toward the active thread goal.\n</codex_internal_context>',
+  ];
+  for (const wrapper of wrappers) {
+    const turns = parseTranscriptFile(rollout(wrapper));
+    assert.equal(turns[1].role, "system-injected", wrapper.slice(0, 40));
+    assert.equal(harvestCandidates(turns).length, 0, wrapper.slice(0, 40));
+  }
+  // Only the start of the turn counts: a user who quotes the tag is still the user.
+  const quoted = parseTranscriptFile(rollout("what does <environment_context> tell you about the timezone here?"));
+  assert.equal(harvestCandidates(quoted)[0]?.kind, "answer");
 });
 
 async function sandbox<T>(fn: (dir: string) => Promise<T>): Promise<T> {
