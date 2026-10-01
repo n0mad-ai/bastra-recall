@@ -225,6 +225,23 @@ origin". A forwarder-spawned daemon still holds the port until it exits (idle
 shutdown after 30 min); a service that must own it needs
 `BASTRA_FORWARDER_SPAWN=0` in the client entry.
 
+Who started the daemon does not say whether its config differs, so `/health`
+also reports `config_fingerprint`: twelve hex characters over the daemon's
+behaviour settings. That is every `BASTRA_*` variable in its env except the
+client-only keys above, everything about how and where the process runs
+(`BASTRA_DAEMON_*`, the HTTP port, the autostart marker), paths (`*_PATH`,
+`*_DIR`, `*_BIN`) and secrets (`*_KEY`, `*_TOKEN`; a URL counts without its
+credentials). Key order does not matter, and an empty value counts as unset.
+`bastra doctor` computes the same fingerprint over the configured state — the
+`daemon.env` pins, plus on macOS the env of the LaunchAgent that `bastra
+autostart on` wrote — and prints a warning under "daemon origin" when the
+running daemon's differs; on a match it prints the fingerprint and says so.
+The exit code does not change. With no pins and no managed LaunchAgent there
+is nothing to compare with (a systemd unit's env is not readable from the
+CLI), and doctor only shows the fingerprint. A mismatch means the two start
+paths do not run the same settings: set them in both places, then restart the
+daemon. The fingerprint does not say which setting differs.
+
 ### Tools
 
 Core memory tools:
@@ -567,6 +584,26 @@ durch den Forwarder. `/health` meldet `started_by` (`forwarder`, `launchagent`,
 „daemon origin". Ein vom Forwarder gestarteter Daemon hält den Port weiter, bis
 er endet (Idle-Shutdown nach 30 min); soll ein Service ihn besitzen, braucht der
 Client-Eintrag `BASTRA_FORWARDER_SPAWN=0`.
+
+Wer den Daemon gestartet hat, sagt noch nicht, ob seine Konfiguration abweicht.
+Deshalb meldet `/health` zusätzlich `config_fingerprint`: zwölf Hex-Zeichen über
+die Verhaltenseinstellungen des Daemons. Das ist jede `BASTRA_*`-Variable in
+seiner Umgebung, ausgenommen die oben genannten Client-Schlüssel, alles dazu,
+wie und wo der Prozess läuft (`BASTRA_DAEMON_*`, der HTTP-Port, die
+Autostart-Marke), Pfade (`*_PATH`, `*_DIR`, `*_BIN`) und Geheimnisse (`*_KEY`,
+`*_TOKEN`; eine URL zählt ohne ihre Zugangsdaten). Die Reihenfolge der
+Schlüssel spielt keine Rolle, ein leerer Wert gilt als nicht gesetzt.
+`bastra doctor` berechnet denselben Fingerprint über den konfigurierten Stand —
+die `daemon.env`-Werte, auf macOS zusätzlich die Umgebung des LaunchAgents, den
+`bastra autostart on` geschrieben hat — und gibt unter „daemon origin" eine
+Warnung aus, wenn der des laufenden Daemons abweicht; stimmen beide überein,
+zeigt es den Fingerprint und sagt das dazu. Der Exit-Code ändert sich nicht.
+Ohne `daemon.env`-Werte und ohne verwalteten LaunchAgent gibt es nichts zu
+vergleichen (die Umgebung einer systemd-Unit ist vom CLI aus nicht lesbar),
+und doctor zeigt nur den Fingerprint. Eine Abweichung heißt: Die beiden
+Startwege laufen nicht mit denselben Einstellungen. Trag sie an beiden Stellen
+ein und starte den Daemon neu. Welche Einstellung abweicht, verrät der
+Fingerprint nicht.
 
 ### Werkzeuge
 

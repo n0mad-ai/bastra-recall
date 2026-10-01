@@ -96,6 +96,9 @@ export interface AutostartState {
    * diesen Wert würde jedes Neuschreiben den Daemon auf 6723 zurückwerfen.
    */
   endpoint: string | null;
+  /** #719: the plist's EnvironmentVariables (string values) — what a daemon
+   *  this agent starts runs with. Empty when there is none or it is unreadable. */
+  env: Record<string, string>;
 }
 
 /**
@@ -117,6 +120,7 @@ export async function readState(path = plistPath(), launchctl = LAUNCHCTL): Prom
     missingProgramPath: null,
     danglingProgram: false,
     endpoint: null,
+    env: {},
   };
   if (!state.exists) return state;
   const conv = spawnSync("/usr/bin/plutil", ["-convert", "json", "-o", "-", path], {
@@ -135,6 +139,9 @@ export async function readState(path = plistPath(), launchctl = LAUNCHCTL): Prom
     state.managed = parsed.EnvironmentVariables?.[MANAGED_MARKER] === "1";
     const url = parsed.EnvironmentVariables?.BASTRA_DAEMON_URL;
     state.endpoint = typeof url === "string" && url.trim() !== "" ? url.trim() : null;
+    for (const [k, v] of Object.entries(parsed.EnvironmentVariables ?? {})) {
+      if (typeof v === "string") state.env[k] = v;
+    }
   } catch {
     // Unparsebar heißt FREMD, nicht „gehört uns" — dieselbe fail-closed-Regel
     // wie im Vault-Schreibpfad. Ein Fehler beim Lesen darf nie zu einem

@@ -19,6 +19,7 @@
  * (this file only shapes the forwarder's spawn). The spawned daemon learns
  * who started it and where its env came from, and /health + doctor say so.
  */
+import { createHash } from "node:crypto";
 
 /** Keys only a client (forwarder, hook process) reads. Never a daemon setting. */
 export const CLIENT_ONLY_ENV_KEYS = [
@@ -87,4 +88,37 @@ export function daemonOrigin(env: NodeJS.ProcessEnv = process.env): { startedBy:
   // systemd sets INVOCATION_ID for every unit it starts.
   if (typeof env.INVOCATION_ID === "string" && env.INVOCATION_ID !== "") return { startedBy: "systemd", envOrigin: "own" };
   return { startedBy: "direct", envOrigin: "own" };
+}
+
+/**
+ * #719: a short fingerprint of the behaviour config a daemon runs with.
+ * /health reports the running daemon's; doctor computes the same over the
+ * configured state (daemon.env pins, the managed LaunchAgent env) and flags a
+ * daemon whose fingerprint differs.
+ *
+ * It covers every BASTRA_* / NEXUS_* key in the env that is a daemon setting,
+ * i.e. not one of the client-only keys the spawn drops, except:
+ *   - how and where the process runs, not what it does: BASTRA_DAEMON_* (the
+ *     start markers, the endpoint, the idle shutdown a LaunchAgent switches
+ *     off by design), BASTRA_AUTOSTART_MANAGED, the HTTP port and URL;
+ *   - locations (*_PATH, *_DIR, *_BIN, *_ROOTS, BASTRA_NODE): a plist and a
+ *     client entry spell the same vault differently, and a path differs per
+ *     machine without saying anything about behaviour;
+ *   - secrets (*_KEY, *_TOKEN, *_SECRET) and the userinfo of a URL value —
+ *     nothing secret goes into a value /health hands out without a token.
+ * Unset and empty count as the same; key order does not matter.
+ */
+const NOT_BEHAVIOUR =
+  /^(?:BASTRA|NEXUS)_(?:DAEMON_.*|AUTOSTART_MANAGED|HTTP_PORT|HTTP_URL|NODE|.*_(?:PATH|DIR|BIN|ROOTS|KEY|TOKEN|SECRET))$/;
+
+export function configFingerprint(env: Record<string, string | undefined>): string {
+  const pairs: Array<[string, string]> = [];
+  for (const [k, v] of Object.entries(env)) {
+    if (!/^(?:BASTRA|NEXUS)_/.test(k) || NOT_BEHAVIOUR.test(k)) continue;
+    if ((CLIENT_ONLY_ENV_KEYS as readonly string[]).includes(k)) continue;
+    const value = (v ?? "").trim().replace(/\/\/[^/@\s]*@/, "//");
+    if (value !== "") pairs.push([k, value]);
+  }
+  pairs.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return createHash("sha256").update(JSON.stringify(pairs)).digest("hex").slice(0, 12);
 }
