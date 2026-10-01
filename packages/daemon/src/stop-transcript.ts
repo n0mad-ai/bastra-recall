@@ -4,7 +4,7 @@
  * its file, and normalising Claude/Codex rows into turns with the commands,
  * reads and tool names the heuristics consume.
  */
-import { open } from "node:fs/promises";
+import { open, stat } from "node:fs/promises";
 // #305: the scrub leaf, never the core barrel — the barrel costs +40ms of
 // process start for a function that lives in a dependency-free module.
 import { scrubInjectedBlocks } from "@bastra-recall/core/scrub";
@@ -69,6 +69,29 @@ export async function loadTranscript(payload: ClaudeStopPayload): Promise<Transc
 }
 
 const MAX_TRANSCRIPT_BYTES = 64 * 1024 * 1024; // 64 MiB — weit über realen Transcripts
+
+/**
+ * Classifies an empty `turns` list for telemetry. `loadTranscript`'s
+ * catch deliberately swallows every read/parse failure into `[]` (never
+ * throws) — this repeats the minimal stat to tell "there genuinely was
+ * nothing to read" (no path, no inline transcript, an empty file) from
+ * "there was a transcript and this host could not read it" (ENOENT on a
+ * remote daemon whose transcript_path is local to the client, a path that
+ * grew stale, permissions). Null means the former; a string names the latter.
+ */
+export async function emptyTranscriptReason(payload: ClaudeStopPayload): Promise<string | null> {
+  if (Array.isArray(payload.transcript)) return null;
+  if (typeof payload.transcript_path !== "string") return null;
+  if (!/\.jsonl?$/.test(payload.transcript_path)) return "transcript_path is not .json/.jsonl";
+  try {
+    const st = await stat(payload.transcript_path);
+    if (!st.isFile()) return "transcript_path is not a regular file";
+    if (st.size > MAX_TRANSCRIPT_BYTES) return `transcript exceeds ${MAX_TRANSCRIPT_BYTES} bytes`;
+    return null; // readable and in bounds — an empty or fully-unparsable file
+  } catch (err) {
+    return `transcript_path not readable on this host: ${(err as NodeJS.ErrnoException).code ?? "unknown"}`;
+  }
+}
 
 export function parseTranscriptFile(raw: string): TranscriptTurn[] {
   const trimmed = raw.trim();

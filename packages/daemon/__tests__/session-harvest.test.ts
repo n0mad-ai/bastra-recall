@@ -234,3 +234,53 @@ test("BASTRA_SESSION_HARVEST=0 books nothing and harvests nothing; inline transc
     }
   });
 });
+
+async function logRows(dir: string, kind: string): Promise<Record<string, unknown>[]> {
+  const logs = join(dir, "logs");
+  if (!existsSync(logs)) return [];
+  const { readdirSync } = await import("node:fs");
+  const out: Record<string, unknown>[] = [];
+  for (const f of readdirSync(logs)) {
+    for (const l of (await readFile(join(logs, f), "utf8")).split("\n").filter(Boolean)) {
+      const e = JSON.parse(l) as Record<string, unknown>;
+      if (e.kind === kind) out.push(e);
+    }
+  }
+  return out;
+}
+
+test("a booked session whose transcript this host cannot read leaves a harvest row naming why", async () => {
+  // A remote daemon gets the client host's transcript_path: not on this disk.
+  await sandbox(async (dir) => {
+    const t0 = Date.now() - 2 * HARVEST_IDLE_MS;
+    await noteSessionForHarvest({ session_id: "remote-1", transcript_path: join(dir, "elsewhere", "remote-1.jsonl"), now: t0 });
+    await runSessionHarvest({ loadTurns: async () => [], now: Date.now() });
+    const rows = await logRows(dir, "session_harvest");
+    assert.equal(rows.length, 1, "the skipped session is visible in telemetry");
+    assert.equal(rows[0].session_id, "remote-1");
+    assert.equal(rows[0].candidate_count, 0);
+    assert.match(String(rows[0].error), /not readable: ENOENT/);
+  });
+});
+
+test("the Stop lane writes a row for a transcript it cannot read, with the reason", async () => {
+  await sandbox(async (dir) => {
+    const out = await runStopLane(
+      { hook_event_name: "Stop", session_id: "stop-unreadable", transcript_path: join(dir, "elsewhere", "s.jsonl"), cwd: "/work" },
+      "http://127.0.0.1:1",
+    );
+    assert.equal(out, "{}");
+    const rows = (await logRows(dir, "save_eval_call")).filter((e) => e.session_id === "stop-unreadable");
+    assert.equal(rows.length, 1, "the Stop lane ran and says so");
+    assert.equal(rows[0].turn_count, 0);
+    assert.match(String(rows[0].error), /not readable on this host: ENOENT/);
+
+    // A genuinely empty transcript is a row too, without an error.
+    const empty = join(dir, "empty.jsonl");
+    await writeFile(empty, "");
+    await runStopLane({ hook_event_name: "Stop", session_id: "stop-empty", transcript_path: empty, cwd: "/work" }, "http://127.0.0.1:1");
+    const emptyRows = (await logRows(dir, "save_eval_call")).filter((e) => e.session_id === "stop-empty");
+    assert.equal(emptyRows.length, 1);
+    assert.equal(emptyRows[0].error, undefined);
+  });
+});
