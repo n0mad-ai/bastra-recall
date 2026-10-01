@@ -61,6 +61,7 @@ import {
   type RecallHit,
   type Memory,
 } from "@bastra-recall/core";
+import { doc2queryVerdict, type ArmRow } from "./doc2query-verdict.js";
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
@@ -211,12 +212,6 @@ function applyArmPolicy(
     }
     (m.fm as { recall_when_expanded?: string[] }).recall_when_expanded = expanded;
   }
-}
-
-interface ArmRow {
-  meanDeltaRank: number;
-  crossedIn: number;
-  nearRegression: number;
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────────
@@ -391,23 +386,32 @@ async function main(): Promise<void> {
   const foreignArm = armRow((r) => r.foreign);
 
   // ── Verdict ─────────────────────────────────────────────────────────────────
-  // null-relative NEAR rule (#129): charge a lever for NEAR-regression only above
-  // what the FOREIGN null also pays — lever-specific harm, not generic churn.
-  const ownShowsLift = ownArm.crossedIn > 0 || ownArm.meanDeltaRank < 0;
-  const nearWithinNull = ownArm.nearRegression <= foreignArm.nearRegression;
-  const beatsForeignCrossed = ownArm.crossedIn > foreignArm.crossedIn;
-  const beatsForeignDelta = ownArm.meanDeltaRank < foreignArm.meanDeltaRank;
-  const beatsForeign = beatsForeignCrossed && beatsForeignDelta;
-  const promote = ownShowsLift && nearWithinNull && beatsForeign;
+  const {
+    ownShowsLift,
+    nearWithinNull,
+    beatsForeignCrossed,
+    beatsForeignDelta,
+    nearFrac,
+    identicalFrac,
+    dataStarved,
+    holdoutSanityFailed,
+    armDivergenceSanityFailed,
+    promote,
+  } = doc2queryVerdict({
+    own: ownArm,
+    foreign: foreignArm,
+    near: near.length,
+    farInPool: farInPool.length,
+    oop: oop.length,
+    cases: cases.length,
+    identicalArms,
+  });
 
   // ── Print ──────────────────────────────────────────────────────────────────
   const pct = (x: number): string => (Number.isNaN(x) ? "n/a" : `${(x * 100).toFixed(1)}%`);
   const num = (x: number): string => (Number.isNaN(x) ? "n/a" : x.toFixed(2));
   const tiny = (label: string, count: number): string =>
     count < 5 ? `  ⚠ DATA-STARVED: ${label} n=${count} (<5) — treat the number as noise` : "";
-
-  const totalCases = near.length + farInPool.length + oop.length;
-  const nearFrac = totalCases ? near.length / totalCases : NaN;
 
   console.log("");
   console.log("════════════════════════════════════════════════════════════════════");
@@ -434,15 +438,14 @@ async function main(): Promise<void> {
   console.log(`    FAR-IN-POOL (${S} < rank ≤ P)      : ${farInPool.length}`);
   console.log(`    OOP         (rank > P / absent)  : ${oop.length}`);
   // Holdout sanity: recall_when held out → far queries → NEAR must not dominate.
-  if (nearFrac >= 0.9) {
+  if (holdoutSanityFailed) {
     console.log("");
     console.log(`  ⚠⚠ HOLDOUT SANITY: NEAR is ${pct(nearFrac)} (≥90%). recall_when may not be held out`);
     console.log("     of both legs — far queries aren't far. Distrust the gate below.");
   }
   // Arm-divergence sanity: if every case ranks identically across arms, the lever
   // isn't reaching retrieval (e.g. dense-only and paraphrases not embedded).
-  const identicalFrac = cases.length ? identicalArms / cases.length : NaN;
-  if (cases.length && identicalFrac >= 0.98) {
+  if (armDivergenceSanityFailed) {
     console.log("");
     console.log(`  ⚠⚠ ARM-DIVERGENCE SANITY: ${pct(identicalFrac)} of cases rank IDENTICALLY across all`);
     console.log("     three arms — the doc2query lever is barely reaching retrieval. Distrust the gate.");
@@ -469,6 +472,7 @@ async function main(): Promise<void> {
   console.log(`    near-reg ≤ null              : ${nearWithinNull ? "yes" : "no"} (own ${pct(ownArm.nearRegression)} vs null ${pct(foreignArm.nearRegression)})`);
   console.log(`    own beats foreign (crossed-in): ${beatsForeignCrossed ? "yes" : "no"} (own ${pct(ownArm.crossedIn)} vs foreign ${pct(foreignArm.crossedIn)})`);
   console.log(`    own beats foreign (meanΔrank) : ${beatsForeignDelta ? "yes" : "no"} (own ${num(ownArm.meanDeltaRank)} vs foreign ${num(foreignArm.meanDeltaRank)})`);
+  console.log(`    sanity checks clean           : ${!dataStarved && !holdoutSanityFailed && !armDivergenceSanityFailed ? "yes" : "no"}${dataStarved ? " (DATA-STARVED)" : ""}${holdoutSanityFailed ? " (HOLDOUT SANITY)" : ""}${armDivergenceSanityFailed ? " (ARM-DIVERGENCE SANITY)" : ""}`);
   console.log("");
   console.log(`    >>> ${promote ? "PROMOTE" : "DO NOT PROMOTE"} <<<`);
   console.log("");
