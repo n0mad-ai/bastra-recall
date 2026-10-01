@@ -25,10 +25,28 @@ export type DetectedMode = "retrieval" | "assertion" | "none" | "generic";
 const RETRIEVAL_DE = /^\s*(such|finde|wo (ist|sind)|wann (war|hatte)|wieviel|wie viel|was hab(e ich)?|was war)/i;
 const RETRIEVAL_EN = /^\s*(find|search|where (is|are)|when (was|did)|how much|what (did|was))/i;
 
+// #707: further languages are data keyed by ISO-639-1 — regex fragments like
+// the cue lists in lexicon.ts, matched with Unicode letter boundaries (`\b` is
+// ASCII-only). An unlisted language takes the neutral path: generic mode, the
+// same score-gated recall with the MUST_LOAD floor (#677: recall is not gated
+// on the mode).
+const RETRIEVAL_LEADS_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  ru: [
+    "найд[иё]\\p{L}*", "найти", "ищи", "поищи",
+    "где\\s+(?:лежит|лежат|находится|находятся|был[аио]?|были)",
+    "когда\\s+(?:был[аио]?|были|мы)", "сколько",
+    "что\\s+(?:я|мы)\\s+(?:делал|делали|писал|писали)", "что\\s+было",
+  ],
+};
+
+const leadRe = (cues: readonly string[]) => new RegExp(`^\\s*(?:${cues.join("|")})(?![\\p{L}\\p{N}])`, "iu");
+
+const RETRIEVAL = [RETRIEVAL_DE, RETRIEVAL_EN, ...Object.values(RETRIEVAL_LEADS_BY_LANGUAGE).map(leadRe)];
+
 export function detectRetrieval(prompt: string): boolean {
   const trimmed = prompt.trim();
   if (trimmed.length === 0) return false;
-  return RETRIEVAL_DE.test(trimmed) || RETRIEVAL_EN.test(trimmed);
+  return RETRIEVAL.some((re) => re.test(trimmed));
 }
 
 // ─── assertion lane (#252) ───────────────────────────────────────────────────
