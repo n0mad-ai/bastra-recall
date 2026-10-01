@@ -7,10 +7,11 @@
  */
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault } from "@bastra-recall/core";
+import matter from "gray-matter";
 import { saveDocument } from "../src/documents-write-handler.js";
 import { resetAuditLogCache } from "../src/audit-trail.js";
 
@@ -73,4 +74,47 @@ test("marks on non-Latin letters are kept, so и and й do not collide", async (
   const r = await twoDocs("и.pdf", "й.pdf");
   assert.ok(r.every((x) => x.startsWith("ok:")), r.join(" | "));
   assert.notEqual(r[0], r[1]);
+});
+
+test("Devanagari vowel marks remain part of the document id", async () => {
+  const r = await twoDocs("हिन्दी.pdf", "हंद.pdf");
+  assert.equal(r[0], "ok:doc-inbox-हिन्दी-pdf");
+  assert.equal(r[1], "ok:doc-inbox-हंद-pdf");
+});
+
+test("overwrite retains an existing id from before the Unicode change", async () => {
+  resetAuditLogCache();
+  const dir = await mkdtemp(join(tmpdir(), "docid-legacy-"));
+  try {
+    const vault = new Vault(join(dir, "vault"));
+    await vault.init();
+    const src = join(dir, "résumé.pdf");
+    await writeFile(src, "old bytes");
+    const args = {
+      original_path: src,
+      folder_path: "Inbox",
+      title: "Résumé",
+      tags: ["test"],
+      category: "vertrag" as const,
+      linked_file: false,
+    };
+    const first = await saveDocument(vault, { ...args, overwrite: false });
+    assert.equal(first.id, "doc-inbox-resume-pdf");
+    const before = matter(await readFile(first.sidecar_path, "utf8"));
+    const legacyId = "doc-inbox-r-sum-pdf";
+    await writeFile(
+      first.sidecar_path,
+      matter.stringify(before.content, { ...before.data, id: legacyId }),
+    );
+    await vault.reindexFile(first.sidecar_path);
+
+    await writeFile(src, "new bytes");
+    const updated = await saveDocument(vault, { ...args, overwrite: true });
+    assert.equal(updated.id, legacyId);
+    assert.equal(matter(await readFile(updated.sidecar_path, "utf8")).data.id, legacyId);
+    assert.equal(await readFile(updated.original_path, "utf8"), "new bytes");
+  } finally {
+    resetAuditLogCache();
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
 });

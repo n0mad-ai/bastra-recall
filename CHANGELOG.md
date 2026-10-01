@@ -509,6 +509,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   signals are per-language data (de/en/ru, extensible in `~/.bastra/lexicon/`)
   with Unicode boundaries; an unlisted language recalls as an ordinary prompt.
 
+- @zzallirog's #775 gives documents with different non-Latin filenames distinct IDs.
+- Follow-up to #775: document overwrite retains existing IDs, and new IDs keep non-Latin combining marks.
+
 - Post-release review: `bastra reconcile --yes` protects concurrent writes
   and keeps a unique backup when replacing a copy (#749); forwarders pointed
   at remote or TLS daemons no longer start a local fallback (#750); bridge
