@@ -40,7 +40,7 @@ import { join } from "node:path";
 import { fitsBudget } from "./context-governor.js";
 import type { HookLaneKind } from "./context-ledger.js";
 import { defaultLogDir } from "./telemetry.js";
-import { envFirst } from "./env.js";
+import { envFirst, envOff } from "./env.js";
 
 /**
  * Vorläufige Budgethöhe, aus dem #457-Ledger abgelesen (04.09.2026, dieser
@@ -195,7 +195,7 @@ export function resetBudgetOnSource(sessionId: string | null | undefined, source
 }
 
 async function writeBudgetShadow(decision: BudgetShadowDecision): Promise<void> {
-  if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
+  if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
     const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();
     await mkdir(logDir, { recursive: true });

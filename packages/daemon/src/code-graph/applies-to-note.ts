@@ -47,6 +47,7 @@ import {
 import { codeGraphCache, repoRelative } from "./dependents-block.js";
 import { MAX_SHOW, type ReadonlySessionState } from "../session-state.js";
 import type { CodeGraphCache } from "./cache.js";
+import { envOff } from "../env.js";
 
 /** Memories listed by name before the rest becomes a count, per relationship. */
 const MAX_LISTED = 6;
@@ -95,7 +96,7 @@ export function appliesToDedupeKey(repoRelFile: string): string {
  * wrote down and needs no graph at all.
  */
 export async function appliesToNote(opts: AppliesToNoteOptions): Promise<AppliesToNote | null> {
-  if ((process.env.BASTRA_CODE_AWARENESS ?? "").toLowerCase() === "off") return null;
+  if (envOff("BASTRA_CODE_AWARENESS")) return null;
   const startedAt = Date.now();
 
   const rel = repoRelative(opts.repoRoot, opts.filePath);

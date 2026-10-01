@@ -28,6 +28,7 @@ import type { ClientFeatures } from "./types.js";
 import { archiveMode, type ArchiveMode } from "../bash-pre-patterns.js";
 import { batterySaverEnabled } from "../power-source.js";
 import { archiveCap, archiveMaxItem, formatSize } from "../rm-archive.js";
+import { isOffValue } from "../env.js";
 
 export interface FeatureState {
   /** Clients whose MCP server is registered, with their hook/skill state. */
@@ -180,7 +181,7 @@ function reflexState(settings: CliSettings, env: NodeJS.ProcessEnv): FeatureStat
   // Same precedence as reflexConfig() in the daemon: env wins over the file.
   const raw = env.BASTRA_REFLEX;
   if (raw !== undefined && raw !== "") {
-    return raw.toLowerCase() === "off" ? { enabled: false, offBy: `BASTRA_REFLEX=${raw}` } : { enabled: true };
+    return isOffValue(raw) ? { enabled: false, offBy: `BASTRA_REFLEX=${raw}` } : { enabled: true };
   }
   return settings.reflex?.enabled === false ? { enabled: false, offBy: "reflex.enabled = false" } : { enabled: true };
 }

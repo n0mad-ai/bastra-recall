@@ -39,7 +39,7 @@ import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { withPathLock } from "./path-lock.js";
-import { envFirst } from "./env.js";
+import { envFirst, envOff } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { writePendingSuggestion } from "./pending-suggestions.js";
 import { restatementIndices } from "./stop-lane-repeat.js";
@@ -99,7 +99,7 @@ export function harvestQueuePath(): string {
 }
 
 export function sessionHarvestEnabled(): boolean {
-  return (process.env.BASTRA_SESSION_HARVEST ?? "").trim() !== "0";
+  return !envOff("BASTRA_SESSION_HARVEST");
 }
 
 function letters(s: string): number {
@@ -365,7 +365,7 @@ async function writeHarvestTelemetry(
   ended: boolean,
   skippedReason?: string,
 ): Promise<void> {
-  if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
+  if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
     const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();
     await mkdir(logDir, { recursive: true });

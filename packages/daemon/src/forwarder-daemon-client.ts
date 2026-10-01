@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { resolveDaemonEndpoint, type DaemonEndpoint } from "./daemon-endpoint.js";
 import { daemonSpawnEnv } from "./daemon-spawn-env.js";
 import { readSettings } from "./settings.js";
+import { envOff } from "./env.js";
 
 // #531 — the same resolver the CLI, the daemon and the LaunchAgent use, so a
 // registration that carries only BASTRA_HTTP_PORT reaches the same instance a
@@ -17,7 +18,7 @@ import { readSettings } from "./settings.js";
 const ENDPOINT = resolveDaemonEndpoint();
 export const DAEMON_URL = ENDPOINT.baseUrl;
 export const API_TOKEN = process.env.BASTRA_API_TOKEN ?? "";
-export const SPAWN_ENABLED = (process.env.BASTRA_FORWARDER_SPAWN ?? "1") !== "0";
+export const SPAWN_ENABLED = !envOff("BASTRA_FORWARDER_SPAWN");
 
 /** The packaged daemon binds local plain HTTP. A remote or TLS endpoint is
  * somebody else's service; starting a local daemon cannot repair its health. */

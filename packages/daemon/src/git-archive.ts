@@ -40,6 +40,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { accessSync, appendFileSync, constants, existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
 import { delimiter, join, resolve } from "node:path";
 import { SHIM_DIR, archiveRoot, localIso, runRmShim, type ShimIo } from "./rm-archive.js";
+import { isOffValue } from "./env.js";
 
 export type GitAct =
   | { kind: "clean"; /** The same arguments without `-q`, for the dry run. */ dry: string[]; quiet: boolean }
@@ -420,7 +421,7 @@ export function runGitShim(argv: string[], io: ShimIo = {}): number {
   const passThrough = (): number => spawnSync(real, argv, { stdio: "inherit", cwd: cwd0, env: childEnv }).status ?? 1;
   // Switched off in the command's own environment: the real git, whatever
   // put this directory in PATH.
-  if (env.BASTRA_GIT_SHIM === "0") return passThrough();
+  if (isOffValue(env.BASTRA_GIT_SHIM)) return passThrough();
   const p = parseGit(argv);
   const act = p && !p.otherGlobals ? gitAct(p) : null;
   if (!p || !act) {

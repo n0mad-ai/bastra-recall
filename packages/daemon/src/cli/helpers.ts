@@ -10,6 +10,7 @@ import { INSTALL_TOOL_SURFACE, type ToolSurface } from "../tool-defs.js";
 import { endpointToPersist, resolveDaemonEndpoint, type DaemonEndpoint } from "../daemon-endpoint.js";
 import type { CodeStale } from "../code-staleness.js";
 import type { InstallOpts } from "./types.js";
+import { isOffValue } from "../env.js";
 
 // Read from package.json at runtime (see ../version.ts) instead of a literal.
 // The literals drifted: this one said 0.8.9 while index.ts still said 0.8.8,
@@ -153,7 +154,7 @@ export function existingToolSurface(existing: unknown): ToolSurface | null {
  * off the default. `BASTRA_TOOL_SURFACE=search` removes every write tool (the
  * agent can never save on its own); `BASTRA_MCP_SESSION_CONTEXT=0` stops the
  * forwarder's first-call session context. Same spelling rules as the
- * forwarder (`toolSurfaceFrom`, `!== "0"`). Accepts the JSON server block and
+ * forwarder (`toolSurfaceFrom`; `isOffValue` for the session-context switch). Accepts the JSON server block and
  * Codex's `transport` alike.
  */
 export function mcpEnvFeatures(
@@ -163,7 +164,7 @@ export function mcpEnvFeatures(
   const out: { toolSurface?: "search"; sessionContextOff?: true; mcpConfig?: string } = {};
   if (existingToolSurface(existing) === "search") out.toolSurface = "search";
   const env = typeof existing === "object" && existing !== null ? (existing as { env?: unknown }).env : undefined;
-  if (typeof env === "object" && env !== null && (env as Record<string, unknown>).BASTRA_MCP_SESSION_CONTEXT === "0") {
+  if (typeof env === "object" && env !== null && isOffValue(String((env as Record<string, unknown>).BASTRA_MCP_SESSION_CONTEXT ?? ""))) {
     out.sessionContextOff = true;
   }
   if (out.toolSurface || out.sessionContextOff) out.mcpConfig = configPath;
