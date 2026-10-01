@@ -139,6 +139,13 @@ The bins are installed by Homebrew or `npm install -g @bastra-recall/daemon`.
 Prefer `bastra install claude-code`; it writes the exact shape above, keeps
 foreign hook entries, and backs up the settings file first.
 
+An entry counts as bastra's by what its command runs: one of the hook scripts
+(`…/daemon/dist/prompt-hook.js` and its siblings), the compiled `bastra-hook`
+client, a `bastra-recall-*-hook` bin, or the marker the installer writes on its
+own entries. A name is not enough (#683). A script of your own such as
+`~/bin/my-bastra-recall-audit-hook.sh` stays registered through install and
+uninstall, and both print a `hooks left alone` line naming it.
+
 The Stop hook is optional because it can emit multi-line save-eval suggestions
 at turn end. Enable it explicitly with `bastra install claude-code
 --with-stop-hook`. If you remove only `bastra-recall-stop-hook`, Doctor reports
@@ -946,6 +953,14 @@ Die Programme werden über Homebrew oder `npm install -g @bastra-recall/daemon`
 installiert. Nutze bevorzugt `bastra install claude-code`; es schreibt genau die
 Form oben, behält fremde Hook-Einträge bei und sichert die Settings-Datei
 vorher.
+
+Ein Eintrag gilt als Bastra-eigen nach dem, was sein Befehl ausführt: eines der
+Hook-Skripte (`…/daemon/dist/prompt-hook.js` und seine Geschwister), den
+kompilierten `bastra-hook`-Client, ein `bastra-recall-*-hook`-Programm oder die
+Markierung, die der Installer auf seine eigenen Einträge schreibt. Der Name
+allein reicht nicht (#683). Ein eigenes Skript wie
+`~/bin/my-bastra-recall-audit-hook.sh` bleibt bei install und uninstall
+registriert, und beide geben eine Zeile `hooks left alone` aus, die es nennt.
 
 Der Stop-Hook ist optional, weil er am Ende eines Turns mehrzeilige
 Speichervorschläge ausgeben kann. Aktiviere ihn ausdrücklich mit

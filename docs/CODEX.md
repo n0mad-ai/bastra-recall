@@ -22,7 +22,7 @@ The adapter:
 
 1. registers `bastra-recall` through the official `codex mcp add` command;
 2. installs the skill at `~/.agents/skills/bastra-recall`, including `agents/openai.yaml`;
-3. merges Bastra-owned entries into `~/.codex/hooks.json` while preserving foreign entries;
+3. merges Bastra-owned entries into `~/.codex/hooks.json` while preserving foreign entries — an entry is Bastra's by the hook client its command runs, not by its name, and a look-alike is reported as `hooks left alone` (#683);
 4. backs up existing configuration before changes and pins ephemeral `npx` runtimes;
 5. activates the same integration for Codex CLI, Codex IDE, and ChatGPT desktop on this host.
 
@@ -82,7 +82,7 @@ Der Adapter:
 
 1. registriert `bastra-recall` über den offiziellen Befehl `codex mcp add`;
 2. installiert den Skill nach `~/.agents/skills/bastra-recall` einschließlich `agents/openai.yaml`;
-3. führt Bastra-eigene Einträge in `~/.codex/hooks.json` zusammen und bewahrt fremde Einträge;
+3. führt Bastra-eigene Einträge in `~/.codex/hooks.json` zusammen und bewahrt fremde Einträge — Bastra-eigen ist ein Eintrag nach dem Hook-Client, den sein Befehl ausführt, nicht nach dem Namen; ein nur ähnlich benannter wird als `hooks left alone` gemeldet (#683);
 4. sichert vorhandene Konfigurationen vor Änderungen und pinnt flüchtige `npx`-Runtimes;
 5. aktiviert dieselbe Integration für Codex CLI, Codex IDE und ChatGPT Desktop auf diesem Host.
 

@@ -25,7 +25,15 @@ import {
   readJsonConfig,
 } from "../helpers.js";
 import { checkForwarderRegistration } from "../stable-runtime.js";
-import { existingHookWrapper, fileOf, slashes, type HookWrapper } from "./command-paths.js";
+import {
+  existingHookWrapper,
+  fileOf,
+  leftAloneNote,
+  lookalikeHookCommands,
+  runsOurHookRunner,
+  slashes,
+  type HookWrapper,
+} from "./command-paths.js";
 
 // ─── Hook helpers (claude-code-only surface) ─────────────────────
 
@@ -199,14 +207,16 @@ function isOurHookEntry(matcher: unknown): boolean {
     if (typeof h !== "object" || h === null) return false;
     const hh = h as Record<string, unknown>;
     if (hh.__bastraRecall === true || hh.__nexusRecall === true) return true;
-    const cmd = typeof hh.command === "string" ? slashes(hh.command) : "";
-    if (cmd.includes("/daemon/dist/") && OUR_HOOK_FILES.some((f) => cmd.includes(`/${f}`))) return true;
-    // Fallback (mirrors install-hook.sh): bare-bin / legacy command form, e.g.
-    // `bastra-recall-session-hook` or `nexus-recall-*-hook` from the docs snippet.
-    if ((cmd.includes("bastra-recall") || cmd.includes("nexus-recall")) && cmd.includes("hook")) return true;
-    return false;
+    // #683 (mirrors install-hook.sh): by the runner the command invokes — a
+    // dist path, the stub, or the bare-bin form from the docs snippet — not by
+    // substrings of its text.
+    return typeof hh.command === "string" && runsOurHookRunner(hh.command, OUR_HOOK_FILES, CLIENT_MARKER.trim());
   });
 }
+
+// The recognition before #683 — only to name what is now left alone.
+const lookedOurs = (cmd: string): boolean =>
+  (cmd.includes("bastra-recall") || cmd.includes("nexus-recall")) && cmd.includes("hook");
 
 const HOOK_EVENTS: HookEventName[] = [
   "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "SessionEnd",
@@ -349,6 +359,8 @@ export interface HookPlan {
   before: Record<HookEventName, unknown[]>;
   after: Record<HookEventName, unknown[]>;
   stopPreserved: boolean;
+  /** #683: commands the old substring recognition claimed; kept as they are. */
+  leftAlone: string[];
 }
 
 /**
@@ -412,7 +424,7 @@ export function planHookEntries(
     // #675: a preserved Stop opt-in brings its SessionEnd companion along.
     if (stopPreserved) after.SessionEnd.push(buildHookEntry(sessionEndDef, stubPresent, wrapOf(sessionEndDef)));
   }
-  return { before, after, stopPreserved };
+  return { before, after, stopPreserved, leftAlone: lookalikeHookCommands(hooks, HOOK_EVENTS, isOurHookEntry, lookedOurs) };
 }
 
 export async function patchClaudeCodeHooks(
@@ -424,7 +436,7 @@ export async function patchClaudeCodeHooks(
     /** #537 — the client the install step selected; undefined probes the disk. */
     stubPresent?: boolean;
   },
-): Promise<{ status: HookStepStatus; detail: string; backupPath?: string }> {
+): Promise<{ status: HookStepStatus; detail: string; backupPath?: string; note?: string }> {
   const sourceDefs = hookDefinitions({ includeStop: opts.includeStop });
   const includeStop = opts.includeStop === true;
 
@@ -446,11 +458,12 @@ export async function patchClaudeCodeHooks(
     ? data.hooks as Record<string, unknown>
     : {};
 
-  const { before, after, stopPreserved } = planHookEntries(action, hooks, {
+  const { before, after, stopPreserved, leftAlone } = planHookEntries(action, hooks, {
     includeStop,
     mapBin: opts.mapBin,
     stubPresent: opts.stubPresent,
   });
+  const note = leftAloneNote(leftAlone);
   const installNote = includeStop
     ? ""
     : stopPreserved
@@ -463,14 +476,14 @@ export async function patchClaudeCodeHooks(
 
   if (currentMatches) {
     return action === "install"
-      ? { status: "already-installed", detail: `${sourceDefs.length} hooks already registered with matching paths${installNote}` }
-      : { status: "not-present", detail: "no bastra-recall hooks present" };
+      ? { status: "already-installed", detail: `${sourceDefs.length} hooks already registered with matching paths${installNote}`, note }
+      : { status: "not-present", detail: "no bastra-recall hooks present", note };
   }
 
   if (opts.dryRun) {
     return action === "install"
-      ? { status: "would-install", detail: `would (re)register ${sourceDefs.length} hooks across ${HOOK_EVENTS.length} events${installNote}` }
-      : { status: "would-remove", detail: "would strip bastra-recall hook entries" };
+      ? { status: "would-install", detail: `would (re)register ${sourceDefs.length} hooks across ${HOOK_EVENTS.length} events${installNote}`, note }
+      : { status: "would-remove", detail: "would strip bastra-recall hook entries", note };
   }
 
   // Commit changes
@@ -487,6 +500,7 @@ export async function patchClaudeCodeHooks(
         status: "installed",
         detail: `${sourceDefs.length} hooks registered (SessionStart, UserPromptSubmit, PreToolUse×3, PostToolUse, PostToolUseFailure${includeStop ? ", Stop, SessionEnd" : stopPreserved ? "; Stop + SessionEnd kept at current path" : "; Stop optional/off"})`,
         backupPath: backupPath ?? undefined,
+        note,
       }
-    : { status: "removed", detail: "bastra-recall hook entries removed", backupPath: backupPath ?? undefined };
+    : { status: "removed", detail: "bastra-recall hook entries removed", backupPath: backupPath ?? undefined, note };
 }
