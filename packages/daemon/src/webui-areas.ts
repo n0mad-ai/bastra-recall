@@ -846,7 +846,17 @@ async function deleteAreaLocked(
   // dazwischen lässt den Namen gesperrt zurück, und das ist die Richtung, in
   // der nichts unbemerkt passiert.
   if (kind === "project") await markAreaDeleted(vaultRoot, name);
-  await rename(from, dest);
+  try {
+    await rename(from, dest);
+  } catch (err) {
+    // Nichts wurde bewegt — die Area liegt weiter unter `from`. Der
+    // Grabstein darf dann nicht stehen bleiben: Er hätte jeden Save in
+    // dieses Regal mit "was deleted" abgewiesen, während `createArea`
+    // gleichzeitig ablehnt, weil der Ordner noch existiert — ein Name, den
+    // niemand mehr anlegen oder löschen kann.
+    if (kind === "project") await clearAreaMark(vaultRoot, name);
+    throw err;
+  }
   // Nebeneinander statt ineinander: der Trash-Ordner der Memories behält
   // seine Form (`<name>-<stamp>/<memory>.md`), damit ein Restore von Hand
   // nicht plötzlich eine Ebene tiefer suchen muss.

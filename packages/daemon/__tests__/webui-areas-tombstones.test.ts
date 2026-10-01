@@ -201,6 +201,26 @@ test("deleteArea: ein vollständiger Rollback räumt den Grabstein wieder ab", a
 });
 
 /**
+ * Scheitert schon das Verschieben der Area selbst (EXDEV, EACCES, EBUSY),
+ * liegt der Ordner unverändert da. Ein stehengebliebener Grabstein würde
+ * jeden Save abweisen, während `createArea` am existierenden Ordner scheitert.
+ */
+test("deleteArea: ein gescheitertes Verschieben der Area räumt den Grabstein ab", async () => {
+  const v = await makeVault();
+  const projectsDir = join(v, "memories", "projects");
+  try {
+    await chmod(projectsDir, 0o555);
+    await assert.rejects(deleteArea(v, "project", "carnexus"), /EACCES|EPERM/);
+    assert.equal(await readAreaMark(v, "carnexus"), null);
+    await assertAreaWritable(v, "carnexus");
+    assert.deepEqual(await readdir(projectsDir), ["carnexus"]);
+  } finally {
+    await chmod(projectsDir, 0o755).catch(() => {});
+    await rm(v, { recursive: true, force: true });
+  }
+});
+
+/**
  * Der eine Weg, einen Grabstein aufzuheben: Wer die Area unter dem Namen NEU
  * anlegt, entscheidet das bewusst. Der Grabstein darf `createArea` deshalb
  * nicht blockieren — er soll nur die beiläufige Wiederbelebung durch einen
