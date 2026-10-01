@@ -44,7 +44,7 @@ function eventLogLines(reaches = 2, ts = new Date().toISOString()): string {
   const lines: object[] = [];
   for (let i = 1; i <= reaches; i++) {
     lines.push(
-      { kind: "hook_recall", ts, recall_id: `r${i}`, query: "warum schließt sich mein Fenster von allein", tool_name: "UserPromptSubmit" },
+      { kind: "hook_recall", ts, recall_id: `r${i}`, query: "warum schließt sich mein Fenster von allein", origin: "owner", tool_name: "UserPromptSubmit" },
       { kind: "recall_episode", ts, recall_id: `r${i}`, memory_id: "panel-dismiss", acted_on: true },
     );
   }
@@ -175,7 +175,7 @@ test("#672: a second reach inside the window confirms the bridge — it outlives
     const secondTs = new Date().toISOString();
     // a second, distinct reach (own recall_id) onto the same bridge
     const lines = [
-      { kind: "hook_recall", ts: secondTs, recall_id: "r2", query: "warum schließt sich mein Fenster von allein", tool_name: "UserPromptSubmit" },
+      { kind: "hook_recall", ts: secondTs, recall_id: "r2", query: "warum schließt sich mein Fenster von allein", origin: "owner", tool_name: "UserPromptSubmit" },
       { kind: "recall_episode", ts: secondTs, recall_id: "r2", memory_id: "panel-dismiss", acted_on: true },
     ].map((e) => JSON.stringify(e)).join("\n") + "\n";
     await writeFile(join(logDir, `events-${secondTs.slice(0, 10)}.jsonl`), lines, { encoding: "utf8", flag: "a" });
