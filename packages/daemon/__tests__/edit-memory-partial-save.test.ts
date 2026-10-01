@@ -18,12 +18,14 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import matter from "gray-matter";
 import {
   Vault,
   SearchIndex,
   saveMemory,
   AUTO_RELATED_START,
   AUTO_RELATED_END,
+  SUMMARY_MAX,
   type SaveMemoryInput,
 } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
@@ -171,6 +173,24 @@ test("#519: der Frontmatter-Patch ändert genau die erlaubten Felder", async (t)
   assert.deepEqual(mem?.fm.tags, ["hooks", "daemon"]);
   assert.equal(mem?.fm.confidence, 0.9);
   assert.equal(mem?.fm.updated, TODAY);
+});
+
+test("Ein Summary-Patch bekommt dieselbe Längengrenze wie save_memory, mit Hinweis", async (t) => {
+  const { deps, seed } = await fixture(t);
+  const file = await seed();
+
+  const long = "Hooks run before every tool call and must stay fast. ".repeat(12);
+  assert.ok(long.length > SUMMARY_MAX);
+  const result = (await editMemoryHandler(deps, {
+    id: "hooks-lesson",
+    frontmatter: { summary: long },
+  })) as EditMemoryResult;
+
+  // Auf der Platte, nicht erst beim Laden gekürzt.
+  const summary = String(matter(await bytes(file)).data.summary);
+  assert.ok(summary.length <= SUMMARY_MAX, `summary on disk has ${summary.length} chars`);
+  assert.match(summary, /…$/);
+  assert.match(result.warning ?? "", new RegExp(`auto-truncated to ${SUMMARY_MAX}`));
 });
 
 test("#661: ein Listen-Patch, der bestehende Einträge verliert, nennt sie in der Antwort", async (t) => {
