@@ -34,6 +34,7 @@ import {
   renameSync,
   rmdirSync,
   rmSync,
+  statfsSync,
   statSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -293,7 +294,9 @@ function archiveRootFor(parent: string, archive: string): string | null {
   try {
     mkdirSync(alt, { recursive: true });
     return statSync(alt).dev === dev ? alt : null;
-  } catch {
+  } catch (e) {
+    // #695: a full volume is said as that, not as "no writable archive".
+    if (isDiskFull(e)) throw e;
     return null;
   }
 }
@@ -316,10 +319,20 @@ export interface ShimIo {
 
 const isDiskFull = (e: unknown): boolean => ["ENOSPC", "EDQUOT"].includes((e as NodeJS.ErrnoException).code ?? "");
 
+/** Bytes a non-root process can still write on the volume of `path`. */
+function freeBytes(path: string): number {
+  try {
+    const s = statfsSync(path);
+    return s.bavail * s.bsize;
+  } catch {
+    return Infinity;
+  }
+}
+
 /** #695: archiving is a move — on a full disk it cannot free space. Say so and
  *  name the ways out; the target stays where it was, nothing is deleted. */
-const diskFull = (t: string): string =>
-  `rm: '${t}' not removed — the disk is full (ENOSPC) and archiving is a move, it frees no space. ` +
+const diskFull = (t: string, why = "the disk is full (ENOSPC)"): string =>
+  `rm: '${t}' not removed — ${why} and archiving is a move, it frees no space. ` +
   "Free space with `bastra archive reconcile --yes`, delete for real with `/bin/rm`, " +
   "or turn the archive off: `bastra config set archive.enabled off`";
 
@@ -425,7 +438,24 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
       if (flags.has("v")) out(`removed (temp) '${t}'`);
       continue;
     }
-    const root = archiveRootFor(parent, archive);
+    const bytes = sizeOf(real);
+    // #695: a move that succeeds on a nearly full volume would exit 0 and free
+    // nothing. With less room than the target takes, that is the disk-full case.
+    let root: string | null = null;
+    let tight = "";
+    try {
+      root = archiveRootFor(parent, archive);
+    } catch (e) {
+      if (!isDiskFull(e)) throw e;
+      tight = "the disk is full (ENOSPC)";
+    }
+    if (root && freeBytes(root) < bytes) tight = "the disk has less free space than it takes";
+    if (tight) {
+      err(diskFull(t, tight));
+      log({ action: "refused", orig: real, reason: tight });
+      rc = 1;
+      continue;
+    }
     if (!root) {
       err(`rm: '${t}' is on another filesystem without a writable .bastra-archive — not archived, not removed`);
       log({ action: "refused", orig: real, reason: "no archive on this filesystem" });
@@ -437,18 +467,20 @@ export function runRmShim(argv: string[], io: ShimIo = {}): number {
     let dest = base;
     for (let n = 2; existsSync(dest); n++) dest = `${base}~${n}`;
     const kind = classify(real, isDir);
-    const bytes = sizeOf(real);
-    let made: string | undefined;
+    // The topmost directory the mkdir has to make: it can fail halfway (ENOSPC).
+    let top = dirname(dest);
+    while (!existsSync(dirname(top))) top = dirname(top);
+    const fresh = !existsSync(top);
     try {
-      made = mkdirSync(dirname(dest), { recursive: true });
+      mkdirSync(dirname(dest), { recursive: true });
       renameSync(real, dest);
     } catch (e) {
       // Only the empty directories this mkdir made; rmdir refuses anything else.
-      for (let d = dirname(dest); made && d.length >= made.length; d = dirname(d)) {
+      for (let d = dirname(dest); fresh && d.length >= top.length; d = dirname(d)) {
         try {
           rmdirSync(d);
-        } catch {
-          break;
+        } catch (gone) {
+          if ((gone as NodeJS.ErrnoException).code !== "ENOENT") break;
         }
       }
       err(isDiskFull(e) ? diskFull(t) : `rm: '${t}' not moved to the archive: ${(e as Error).message}`);
