@@ -12,7 +12,7 @@
  *   BASTRA_VAULT_PATH=… npx tsx scripts/migrate-vault-structure.ts          # dry-run
  *   BASTRA_VAULT_PATH=… npx tsx scripts/migrate-vault-structure.ts --apply  # actually move
  */
-import { readdir, readFile, mkdir, rename, rmdir } from "node:fs/promises";
+import { readdir, readFile, mkdir, rename, rmdir, access } from "node:fs/promises";
 import { join, basename } from "node:path";
 import matter from "gray-matter";
 
@@ -38,6 +38,15 @@ function targetSubfolder(scope: string, type: string): string {
   return `memories/projects/${scope}`;
 }
 
+async function exists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function planFolder(folder: string, vault: string): Promise<Plan[]> {
   const dir = join(vault, folder);
   let entries: string[];
@@ -55,6 +64,11 @@ async function planFolder(folder: string, vault: string): Promise<Plan[]> {
     const scope = typeof fm.scope === "string" ? fm.scope : "unscoped";
     const type = typeof fm.type === "string" ? fm.type : "memory";
     const id = typeof fm.id === "string" ? fm.id : basename(name, ".md");
+    // The scope becomes a path segment — one that climbs out of memories/projects/ is not a scope.
+    if (scope.includes("/") || scope.includes("\\") || scope === "." || scope === "..") {
+      console.error(`! skip (unsafe scope ${JSON.stringify(scope)}): ${from}`);
+      continue;
+    }
     const sub = targetSubfolder(scope, type);
     const to = join(vault, sub, name);
     if (from === to) continue;
@@ -84,6 +98,14 @@ async function main(): Promise<void> {
   }
   console.log("");
   console.log(`total moves: ${all.length}`);
+  let collisions = 0;
+  for (const p of all) {
+    if (await exists(p.to)) {
+      collisions++;
+      console.log(`  collision (target exists, would be skipped): ${p.to.replace(vault, "…")}`);
+    }
+  }
+  if (collisions > 0) console.log(`collisions: ${collisions}`);
 
   if (!APPLY) {
     console.log("\nfirst 5 moves (preview):");
@@ -97,7 +119,15 @@ async function main(): Promise<void> {
   const ensured = new Set<string>();
   let moved = 0;
   let failed = 0;
+  let skipped = 0;
   for (const p of all) {
+    // rename() replaces an existing target on POSIX — an already-migrated note
+    // would be overwritten by the old flat copy. Refuse, like migrate-scope.
+    if (await exists(p.to)) {
+      console.error(`! skip (target exists, would clobber): ${p.from} → ${p.to}`);
+      skipped++;
+      continue;
+    }
     const dir = p.to.split("/").slice(0, -1).join("/");
     if (!ensured.has(dir)) {
       await mkdir(dir, { recursive: true });
@@ -112,6 +142,7 @@ async function main(): Promise<void> {
     }
   }
   console.log(`moved:  ${moved}`);
+  console.log(`skipped: ${skipped}`);
   console.log(`failed: ${failed}`);
 
   // Try to remove now-empty old folders.
