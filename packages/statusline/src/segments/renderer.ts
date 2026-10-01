@@ -368,6 +368,8 @@ export class SegmentRenderer {
       gitStatusIcon = this.symbols.git_conflicts;
     } else if (gitInfo.status === "dirty") {
       gitStatusIcon = this.symbols.git_dirty;
+    } else if (gitInfo.status === "unknown") {
+      gitStatusIcon = "?";
     }
     parts.push(gitStatusIcon);
 

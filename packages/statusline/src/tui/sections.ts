@@ -860,6 +860,8 @@ function formatGitParts(
     statusIcon = sym.git_conflicts;
   } else if (data.gitInfo.status === "dirty") {
     statusIcon = sym.git_dirty;
+  } else if (data.gitInfo.status === "unknown") {
+    statusIcon = "?";
   } else {
     statusIcon = sym.git_clean;
   }
