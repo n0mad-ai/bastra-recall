@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #889 lets the code-graph build lock recover an abandoned generation marker.
+- Follow-up to #889: the race regression checks uniqueness per generation and lock comments describe takeover limits.
+
 - @zzallirog's #881 recognizes `not_evaluable` and `NOT-EVALUABLE` in eval reporting rules.
 - Follow-up to #881: German verdict spellings work too; the unreliable prose-negation word list is removed pending a structured verdict decision.
 
