@@ -913,6 +913,25 @@ describe("#540 — the quoted message or body of git and gh is prose, not a comm
     }
   });
 
+  it("the message is prose under git's global options too", () => {
+    for (const head of [
+      "git -C /repo commit",
+      "git -c user.name=x commit",
+      "git --no-pager commit",
+      "git --git-dir /repo/.git commit",
+      "git -C /repo tag -a v1",
+    ]) {
+      for (const cmd of [
+        `${head} -m "docs: explain why rm -rf build is blocked"`,
+        `${head} -m "$(cat <<'EOF'\ndocs: explain why rm -rf build is blocked\nEOF\n)"`,
+      ]) {
+        assert.equal(matchPattern(cmd), null, `must not fire for: ${JSON.stringify(cmd)}`);
+      }
+    }
+    // A real command after the message still fires.
+    assert.deepEqual(matchPattern('git -C /repo commit -m "x"; rm -rf /tmp/x'), RM_RF);
+  });
+
   it("#630 keeps firing on every other shape of a heredoc substitution", () => {
     for (const cmd of [
       // Unquoted delimiter: the body is expanded.
@@ -968,5 +987,14 @@ describe("#540 — the quoted message or body of git and gh is prose, not a comm
       await daemon.close();
       await rm(stateDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("git option prefix before a heredoc commit message", () => {
+  it("stays linear on a long run of option-shaped words (no catastrophic backtracking)", () => {
+    const cmd = "git\t" + "--git-dir\t---\t".repeat(30) + "x <<'E'\nbody\nE";
+    const t0 = performance.now();
+    matchPattern(cmd);
+    assert.ok(performance.now() - t0 < 1000, `matchPattern took ${Math.round(performance.now() - t0)} ms`);
   });
 });

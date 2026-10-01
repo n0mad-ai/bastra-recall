@@ -618,6 +618,14 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "time hash -p /x rm; rm -rf dist",
       "time -p alias rm=/x; rm -rf dist",
       "while false; do hash -p /x rm; done; rm -rf dist",
+      // zsh ties the array `path` to PATH, and `hash rm=…` is its form of
+      // `hash -p`; PATH also changes without a `PATH=` word.
+      "path=(/opt/x $path); rm -rf dist",
+      "path+=(/opt/x); rm -rf dist",
+      "hash rm=/bin/echo; rm -rf dist",
+      "printf -v PATH %s /opt/x; rm -rf dist",
+      "read -r PATH <<< /opt/x; rm -rf dist",
+      "declare -n p=PATH; p=/opt/x; rm -rf dist",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "stop", cmd);
     }
@@ -652,6 +660,15 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "{ echo hash -p /x rm; }; rm -rf dist",
       "if true; then hash -p /x python; fi; rm -rf dist",
       "time make; rm -rf dist",
+      // Reading or printing into another variable leaves PATH alone.
+      "read -r line <<< x; rm -rf dist",
+      "printf -v out %s x; rm -rf dist",
+      "hash python=/usr/bin/python3; rm -rf dist",
+      // In bash `path` is an ordinary variable: only zsh's array form is PATH.
+      'path=/tmp/x; rm -rf "$path"',
+      "while read path; do echo $path; done < list; rm -rf dist",
+      "printf -v path %s x; rm -rf dist",
+      "declare -n p=path; rm -rf dist",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "receipt", cmd);
     }
