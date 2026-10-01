@@ -91,3 +91,60 @@ export function existingHookWrapper(
   }
   return { prefix: "", suffix: "" };
 }
+
+/**
+ * Whether a registered hook command runs one of our hook runners (#683).
+ *
+ * Recognition used to be a substring test (`bastra-recall` + `hook` anywhere
+ * in the command), so a user's own `~/bin/my-bastra-recall-audit-hook.sh` was
+ * claimed and deleted on install. What counts now is the program a token
+ * names: the compiled stub (`bastra-hook`), one of our package bins
+ * (`bastra-recall-session-hook`, the docs snippet; `nexus-recall-*` before
+ * the rename), or one of our hook scripts — under `…/daemon/dist/`, or in any
+ * directory when the command carries the installer's client marker.
+ */
+export function runsOurHookRunner(cmd: string, files: string[], clientMarker: string): boolean {
+  const marked = cmd.includes(clientMarker);
+  for (const m of cmd.matchAll(/"[^"]*"|'[^']*'|\S+/g)) {
+    const path = slashes(unquote(m[0]));
+    const base = fileOf(path);
+    if (/^bastra-hook(\.exe)?$/.test(base)) return true;
+    const bin = /^(?:bastra|nexus)-recall-(.+?)(?:\.cmd)?$/.exec(base);
+    if (bin && files.includes(`${bin[1]}.js`)) return true;
+    if (files.includes(base) && (marked || path.includes("/daemon/dist/"))) return true;
+  }
+  return false;
+}
+
+/**
+ * #683: the commands under `hooks` that the old substring recognition
+ * (`lookedOurs`) claimed and `isOurs` no longer does. They stay registered;
+ * install and uninstall say so instead of deleting them without a word.
+ */
+export function lookalikeHookCommands(
+  hooks: Record<string, unknown>,
+  events: readonly string[],
+  isOurs: (entry: unknown) => boolean,
+  lookedOurs: (cmd: string) => boolean,
+): string[] {
+  const found: string[] = [];
+  for (const event of events) {
+    const entries = Array.isArray(hooks[event]) ? hooks[event] as unknown[] : [];
+    for (const entry of entries) {
+      if (isOurs(entry)) continue;
+      const handlers = (entry as Record<string, unknown> | null)?.hooks;
+      for (const h of Array.isArray(handlers) ? handlers : []) {
+        const cmd = (h as Record<string, unknown> | null)?.command;
+        if (typeof cmd === "string" && lookedOurs(cmd) && !found.includes(cmd)) found.push(cmd);
+      }
+    }
+  }
+  return found;
+}
+
+/** The line install/uninstall print for those commands; undefined when there are none. */
+export function leftAloneNote(commands: string[]): string | undefined {
+  return commands.length > 0
+    ? `hooks left alone (the name looks like ours, the command does not run a bastra-recall hook): ${commands.join(" | ")}`
+    : undefined;
+}

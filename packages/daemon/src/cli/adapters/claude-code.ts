@@ -225,7 +225,8 @@ async function claudeCodeInstall(opts: InstallOpts): Promise<InstallResult> {
     const msg = statuslineResult.status === "foreign-kept"
       ? "MCP, skill, hooks in place; statusLine: foreign one kept (pass --yes to use bastra's)"
       : "MCP server, skill, hooks, and statusLine all already in place";
-    return { status: "already-installed", message: msg, configPath };
+    // #683: an entry that was left alone is named on every run, this one too.
+    return { status: "already-installed", message: [msg, hookResult.note].filter(Boolean).join("\n  · "), configPath };
   }
 
   if (opts.dryRun) {
@@ -235,6 +236,7 @@ async function claudeCodeInstall(opts: InstallOpts): Promise<InstallResult> {
     else steps.push("mcp: already matches");
     steps.push(`skill: ${skillResult.detail}`);
     steps.push(`hooks: ${hookResult.detail}`);
+    if (hookResult.note) steps.push(hookResult.note);
     steps.push(`statusline: ${statuslineResult.detail}`);
     return { status: "would-install", message: steps.join("\n  · "), configPath };
   }
@@ -252,6 +254,7 @@ async function claudeCodeInstall(opts: InstallOpts): Promise<InstallResult> {
   lines.push(mcpMatches ? "mcp: already matches" : `mcp: registered '${SERVER_KEY}'`);
   lines.push(`skill: ${skillResult.detail}`);
   lines.push(`hooks: ${hookResult.detail}`);
+  if (hookResult.note) lines.push(hookResult.note);
   lines.push(`statusline: ${statuslineResult.detail}`);
   lines.push("restart Claude Code to activate");
 
@@ -287,6 +290,7 @@ async function claudeCodeUninstall(opts: { dryRun: boolean }): Promise<Uninstall
     const steps: string[] = [];
     steps.push(mcpPresent ? `mcp: would remove '${SERVER_KEY}'` : "mcp: not present");
     steps.push(`hooks: ${hookResult.detail}`);
+    if (hookResult.note) steps.push(hookResult.note);
     steps.push(`statusline: ${statuslineResult.detail}`);
     steps.push("skill: shared file — final sweep decides");
     return { status: "would-remove", message: steps.join("\n  · "), configPath };
@@ -304,6 +308,7 @@ async function claudeCodeUninstall(opts: { dryRun: boolean }): Promise<Uninstall
   const lines: string[] = [];
   lines.push(mcpPresent ? `mcp: removed '${SERVER_KEY}'` : "mcp: not present");
   lines.push(`hooks: ${hookResult.detail}`);
+  if (hookResult.note) lines.push(hookResult.note);
   lines.push(`statusline: ${statuslineResult.detail}`);
   lines.push("skill: shared file — final sweep decides");
   lines.push("restart Claude Code to drop the connection");

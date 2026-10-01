@@ -42,7 +42,15 @@ import { PLAN_TOOL_KEY, ensureCodexPlanTool, inspectPlanTool } from "./codex-pla
 import { findCodexExecutable, codexMcpGet, codexServerMatches } from "../codex-cli.js";
 import { runCaptured } from "../exec.js";
 import { checkForwarderRegistration, ensureStableForwarder, mapBinToStableRuntime } from "../stable-runtime.js";
-import { existingHookWrapper, fileOf, slashes, type HookWrapper } from "./command-paths.js";
+import {
+  existingHookWrapper,
+  fileOf,
+  leftAloneNote,
+  lookalikeHookCommands,
+  runsOurHookRunner,
+  slashes,
+  type HookWrapper,
+} from "./command-paths.js";
 import type { Adapter, DoctorResult, InstallOpts, InstallResult, UninstallResult } from "../types.js";
 
 type HookEvent = "SessionStart" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "Stop";
@@ -89,6 +97,8 @@ const OUR_HOOK_FILES = [
 ];
 const REQUIRED_HOOK_FILES = OUR_HOOK_FILES.filter((file) => file !== "stop-hook.js");
 
+const CLIENT_MARKER = "BASTRA_HOOK_CLIENT=codex";
+
 function shellToken(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
@@ -103,12 +113,12 @@ function hookEntry(
     : `node ${shellToken(def.bin)}`;
   // #647: a user's wrapper around the runner survives the rewrite. The client
   // marker is ours and is written fresh, so it is taken out of the kept prefix.
-  const prefix = wrap.prefix.replace("BASTRA_HOOK_CLIENT=codex ", "");
+  const prefix = wrap.prefix.replace(`${CLIENT_MARKER} `, "");
   const entry: Record<string, unknown> = {};
   if (def.matcher) entry.matcher = def.matcher;
   entry.hooks = [{
     type: "command",
-    command: `${prefix}BASTRA_HOOK_CLIENT=codex ${runner}${wrap.suffix}`,
+    command: `${prefix}${CLIENT_MARKER} ${runner}${wrap.suffix}`,
     timeout: def.timeout,
     statusMessage: `Bastra Recall · ${def.label}`,
   }];
@@ -125,15 +135,22 @@ function isOurHookEntry(value: unknown): boolean {
     if (typeof record.statusMessage === "string" &&
         (record.statusMessage.startsWith("bastra-recall:") || record.statusMessage.startsWith("Bastra Recall ·"))) return true;
     const command = typeof record.command === "string" ? record.command : "";
-    return command.includes("BASTRA_HOOK_CLIENT=codex") &&
-      (command.includes("bastra-hook") || OUR_HOOK_FILES.some((file) => slashes(command).includes(`/${file}`)));
+    // #683: the stub or a hook script as the program run, not `bastra-hook`
+    // anywhere in the text.
+    return command.includes(CLIENT_MARKER) && runsOurHookRunner(command, OUR_HOOK_FILES, CLIENT_MARKER);
   });
 }
+
+// The recognition before #683 — only to name what is now left alone.
+const lookedOurs = (command: string): boolean =>
+  command.includes(CLIENT_MARKER) && command.includes("bastra-hook");
 
 export interface CodexHookPlan {
   before: Record<HookEvent, unknown[]>;
   after: Record<HookEvent, unknown[]>;
   stopPreserved: boolean;
+  /** #683: commands the old substring recognition claimed; kept as they are. */
+  leftAlone: string[];
 }
 
 /** Pure merge planner: foreign hook entries pass through byte-for-byte. */
@@ -173,7 +190,7 @@ export function planCodexHooks(
   if (action === "install") {
     for (const def of defs) after[def.event].push(hookEntry(def, stubPresent, wrapOf(def)));
   }
-  return { before, after, stopPreserved };
+  return { before, after, stopPreserved, leftAlone: lookalikeHookCommands(hooks, HOOK_EVENTS, isOurHookEntry, lookedOurs) };
 }
 
 type HookStepStatus = "installed" | "already-installed" | "would-install" | "removed" | "not-present" | "would-remove" | "error";
@@ -188,7 +205,7 @@ export async function patchCodexHooks(
     stubPresent?: boolean;
     exists?: (path: string) => Promise<boolean>;
   },
-): Promise<{ status: HookStepStatus; detail: string; backupPath?: string }> {
+): Promise<{ status: HookStepStatus; detail: string; backupPath?: string; note?: string }> {
   const hooksPath = opts.hooksPath ?? CODEX_HOOKS;
   const exists = opts.exists ?? fileExists;
   const sourceDefs = codexHookDefinitions(opts.includeStop === true);
@@ -211,18 +228,19 @@ export async function patchCodexHooks(
     mapBin: opts.mapBin,
     stubPresent: opts.stubPresent,
   });
+  const note = leftAloneNote(plan.leftAlone);
   const unchanged = HOOK_EVENTS.every(
     (event) => JSON.stringify(plan.before[event]) === JSON.stringify(plan.after[event]),
   );
   if (unchanged) {
     return action === "install"
-      ? { status: "already-installed", detail: `${sourceDefs.length} Codex hooks already match` }
-      : { status: "not-present", detail: "no bastra-recall Codex hooks present" };
+      ? { status: "already-installed", detail: `${sourceDefs.length} Codex hooks already match`, note }
+      : { status: "not-present", detail: "no bastra-recall Codex hooks present", note };
   }
   if (opts.dryRun) {
     return action === "install"
-      ? { status: "would-install", detail: `would register ${sourceDefs.length} Codex hooks${plan.stopPreserved ? " (existing Stop hook retained)" : ""}` }
-      : { status: "would-remove", detail: "would remove bastra-recall Codex hooks" };
+      ? { status: "would-install", detail: `would register ${sourceDefs.length} Codex hooks${plan.stopPreserved ? " (existing Stop hook retained)" : ""}`, note }
+      : { status: "would-remove", detail: "would remove bastra-recall Codex hooks", note };
   }
 
   for (const event of HOOK_EVENTS) {
@@ -234,8 +252,8 @@ export async function patchCodexHooks(
   const backupPath = await backupConfig(hooksPath);
   await atomicWriteJson(hooksPath, data);
   return action === "install"
-    ? { status: "installed", detail: `${sourceDefs.length} Codex hooks registered`, backupPath: backupPath ?? undefined }
-    : { status: "removed", detail: "bastra-recall Codex hooks removed", backupPath: backupPath ?? undefined };
+    ? { status: "installed", detail: `${sourceDefs.length} Codex hooks registered`, backupPath: backupPath ?? undefined, note }
+    : { status: "removed", detail: "bastra-recall Codex hooks removed", backupPath: backupPath ?? undefined, note };
 }
 
 function mcpMissing(detail: string): boolean {
@@ -326,6 +344,7 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
       mcpMatches ? "mcp: already matches" : `mcp: would register '${SERVER_KEY}' through codex mcp`,
       `skill: ${skillPlan.detail}`,
       `hooks: ${hookPlan.detail}`,
+      hookPlan.note ?? "",
       `plan tool: ${planToolPlan.detail}`,
     ].filter(Boolean);
     return { status: "would-install", message: lines.join("\n  · "), configPath };
@@ -358,8 +377,9 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
       status: "already-installed",
       message: [
         "MCP, Codex/ChatGPT skill and required hooks already match",
+        hooks.note ?? "",
         `plan tool: ${planTool.detail}`,
-      ].join("\n  · "),
+      ].filter(Boolean).join("\n  · "),
       configPath,
     };
   }
@@ -368,6 +388,7 @@ async function codexInstall(opts: InstallOpts): Promise<InstallResult> {
     mcpMatches ? "mcp: already matches" : `mcp: registered '${SERVER_KEY}' through Codex`,
     `skill: ${skill.detail}`,
     `hooks: ${hooks.detail}`,
+    hooks.note ?? "",
     `plan tool: ${planTool.detail}`,
     hooks.status === "installed"
       ? `hook definitions changed — Codex trusts a hook by the hash of its exact command, so re-approve them in Codex with '/hooks' or they stay silent`
@@ -410,9 +431,10 @@ async function codexUninstall(opts: { dryRun: boolean }): Promise<UninstallResul
       message: [
         mcpPresent ? `mcp: would remove '${SERVER_KEY}'` : "mcp: not present",
         `hooks: ${hookPlan.detail}`,
+        hookPlan.note ?? "",
         skillPresent ? `skill: would remove ${CODEX_SKILL_TARGET_DIR}` : "skill: not present",
         `plan tool: ${planToolPlan.detail}`,
-      ].join("\n  · "),
+      ].filter(Boolean).join("\n  · "),
       configPath,
     };
   }
@@ -433,10 +455,11 @@ async function codexUninstall(opts: { dryRun: boolean }): Promise<UninstallResul
     message: [
       mcpPresent ? `mcp: removed '${SERVER_KEY}'` : "mcp: not present",
       `hooks: ${hooks.detail}`,
+      hooks.note ?? "",
       skillPresent ? `skill: removed ${CODEX_SKILL_TARGET_DIR}` : "skill: not present",
       `plan tool: ${planTool.detail}`,
       "restart ChatGPT desktop, Codex CLI sessions and the IDE extension",
-    ].join("\n  · "),
+    ].filter(Boolean).join("\n  · "),
     configPath,
     backupPath: backupPath ?? hooks.backupPath ?? planTool.backupPath,
   };

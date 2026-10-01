@@ -12,7 +12,9 @@
 #   - SessionEnd      → with Stop: books the finished session for the after-session harvest (#675)
 #
 # Idempotent: re-running strips our previous entries (by __bastraRecall marker
-# or dist path) and re-adds them with current paths; will not duplicate. Cleans
+# or the runner the command invokes) and re-adds them with current paths; will
+# not duplicate. A foreign script that merely has "bastra-recall" and "hook" in
+# its name is kept and named (#683). Cleans
 # up legacy `__nexusRecall`-marked entries from the pre-rename setup. Backs up
 # settings.json before each write.
 #
@@ -103,10 +105,23 @@ function isOurs(matcher) {
   return hooks.some((h) => {
     if (!h || typeof h !== "object") return false;
     if (h.__bastraRecall === true || h.__nexusRecall === true) return true;
-    const cmd = typeof h.command === "string" ? h.command : "";
-    if (cmd.includes("/daemon/dist/") && OUR_FILES.some((f) => cmd.includes(`/${f}`))) return true;
-    if ((cmd.includes("bastra-recall") || cmd.includes("nexus-recall")) && cmd.includes("hook")) return true;
-    return false;
+    return typeof h.command === "string" && runsOurRunner(h.command);
+  });
+}
+
+// #683 (mirrors runsOurHookRunner in cli/adapters/command-paths.ts): ours by
+// the program the command runs — the stub, a package bin, or a hook script
+// under daemon/dist or next to the client marker — not by substrings, which
+// claimed and deleted a user script named like my-bastra-recall-audit-hook.sh.
+function runsOurRunner(cmd) {
+  const marked = cmd.includes("BASTRA_HOOK_CLIENT=claude-code");
+  return cmd.split(/\s+/).some((tok) => {
+    const path = tok.replace(/^["\x27]|["\x27]$/g, "").replace(/\\/g, "/");
+    const base = path.split("/").pop();
+    if (/^bastra-hook(\.exe)?$/.test(base)) return true;
+    const bin = /^(?:bastra|nexus)-recall-(.+?)(?:\.cmd)?$/.exec(base);
+    if (bin && OUR_FILES.includes(`${bin[1]}.js`)) return true;
+    return OUR_FILES.includes(base) && (marked || path.includes("/daemon/dist/"));
   });
 }
 
@@ -127,6 +142,14 @@ function buildEntry(def) {
 for (const ev of EVENTS) {
   const arr = Array.isArray(cfg.hooks[ev]) ? cfg.hooks[ev] : [];
   const kept = arr.filter((m) => !isOurs(m));
+  for (const m of kept) {
+    for (const h of Array.isArray(m?.hooks) ? m.hooks : []) {
+      const cmd = typeof h?.command === "string" ? h.command : "";
+      if ((cmd.includes("bastra-recall") || cmd.includes("nexus-recall")) && cmd.includes("hook")) {
+        console.error(`  left alone (the name looks like ours, the command does not run a bastra-recall hook): ${cmd}`);
+      }
+    }
+  }
   if (kept.length) cfg.hooks[ev] = kept; else delete cfg.hooks[ev];
 }
 
