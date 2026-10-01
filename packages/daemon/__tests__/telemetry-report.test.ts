@@ -364,3 +364,18 @@ test("#664: the UI window excludes eval traffic and folds stub/daemon duplicates
     await rm(logDir, { recursive: true, force: true });
   }
 });
+
+test("#664: a call inside a daemon-restart window stays out of latency, like the CLI sets it aside", async () => {
+  const { aggregate } = await import("../src/cli/log-stats.js");
+  const rows: ReportEvent[] = [
+    { kind: "hook_call", ts: "2026-09-04T11:00:00.000Z", session_id: "s1", hook_version: "1.0.0", status: "ok", latency_ms_total: 40 },
+    // A daemon restart, and a cold call 10 s later inside its window.
+    { kind: "warmup_settle", ts: "2026-09-04T11:30:00.000Z", trigger: "boot", session_id: "boot-2" },
+    { kind: "hook_call", ts: "2026-09-04T11:30:10.000Z", session_id: "s2", hook_version: "1.0.0", status: "ok", latency_ms_total: 900 },
+  ];
+  const cli = aggregate(rows);
+  assert.deepEqual([cli.totals.calls, cli.restart.calls], [1, 1], "precondition: the CLI sets the restart call aside");
+  const l = summarizeLatency(rows);
+  assert.deepEqual(l.lanes, [{ lane: "hook_call", n: 1, median: 40, p95: 40 }]);
+  assert.equal(l.daily[0].hook?.n, 1);
+});
