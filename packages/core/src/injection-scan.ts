@@ -40,6 +40,18 @@ interface Pattern {
   re: RegExp;
 }
 
+// The same "ignore your previous instructions" ask in further languages —
+// #707: per-language data keyed by ISO-639-1 (regex sources). Distinctive verb
+// + qualifier + object, like the English signatures below. An unlisted language
+// is read by the English signatures and the fold (foldForScan) only; the scan
+// is flag-only, so a missing language costs a flag, never a write.
+const IGNORE_PREVIOUS_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: [String.raw`(?:ignorier|missachte|vergiss)\p{L}*\s+(?:alle\s+|jegliche\s+)?(?:vorherigen|vorigen|früheren|bisherigen|obigen|deine)\s+(?:anweisungen|instruktionen|regeln|befehle|vorgaben)`],
+  ru: [String.raw`(?:игнорир|забуд|не\s+учитыва)\p{L}*\s+(?:все\s+|любые\s+|всё\s+)?(?:предыдущ|прежн|прошл|вышеуказанн|выш\p{L}+\s+)\p{L}*\s+(?:инструкци|указани|правил|команд|промпт)\p{L}*`],
+  es: [String.raw`ignora\s+(?:todas\s+)?(?:las\s+)?(?:instrucciones|indicaciones|reglas)\s+(?:anteriores|previas)`],
+  fr: [String.raw`ignore[zr]?\s+(?:toutes\s+)?(?:les\s+)?(?:instructions|consignes|règles)\s+(?:précédentes|antérieures|ci-dessus)`],
+};
+
 // Instructions addressed to the AI. Each regex is anchored on a distinctive
 // verb+object pair so ordinary technical prose ("ignore previous errors and
 // retry") does not flag.
@@ -51,6 +63,9 @@ const AI_INSTRUCTION: Pattern[] = [
   { category: "ai-instruction", re: /<\|im_start\|>|\[\/?INST\]|<<SYS>>/g },
   { category: "ai-instruction", re: /(?:^|\n)#{1,4}\s*(?:system\s+prompt|new\s+instructions?)\b/gi },
   { category: "ai-instruction", re: /do\s+not\s+(?:tell|inform|alert)\s+the\s+user/gi },
+  ...Object.values(IGNORE_PREVIOUS_BY_LANGUAGE)
+    .flat()
+    .map((source): Pattern => ({ category: "ai-instruction", re: new RegExp(source, "giu") })),
 ];
 
 // Authority / urgency / pre-authorization framing.
@@ -80,6 +95,43 @@ const EXFIL: Pattern[] = [
 
 const ALL_PATTERNS: Pattern[] = [...AI_INSTRUCTION, ...AUTHORITY, ...EXFIL];
 
+// Look-alike letters that let "ignore" pass as "іgnоre". Applied only
+// inside a word that ALSO holds Latin letters, so genuine Cyrillic or Greek
+// text is left alone for the per-language patterns above.
+const CONFUSABLES: Readonly<Record<string, string>> = {
+  а: "a", е: "e", о: "o", р: "p", с: "c", х: "x", у: "y", і: "i", ј: "j", ѕ: "s", ԁ: "d", һ: "h", ԛ: "q", ԝ: "w",
+  А: "A", В: "B", Е: "E", К: "K", М: "M", Н: "H", О: "O", Р: "P", С: "C", Т: "T", Х: "X", І: "I",
+  α: "a", ο: "o", ρ: "p", ν: "v", ι: "i", τ: "t", Ο: "O", Α: "A", Β: "B", Ε: "E", Ι: "I", Κ: "K", Μ: "M", Ν: "N", Ρ: "P", Τ: "T", Χ: "X", Υ: "Y",
+};
+const INVISIBLE_RE = /[\u00AD\u200B-\u200D\u2060\uFEFF]/g;
+const LATIN_LETTER_RE = /\p{Script=Latin}/u;
+
+/**
+ * The text as the matchers should read it: fullwidth and compatibility forms
+ * folded (NFKC), invisible characters removed, and look-alike letters inside
+ * Latin words mapped to Latin. Identity for plain ASCII. `at[k]` is the index
+ * in `text` of the character that produced `folded[k]` (`at[folded.length]`
+ * is `text.length`), so a match in the folded copy maps back to the text as
+ * delivered.
+ */
+function foldForScan(text: string): { folded: string; at: number[] } {
+  let folded = "";
+  const at: number[] = [];
+  // One base character with its combining marks at a time, so a decomposed
+  // accent still composes and every output unit knows where it came from.
+  for (const m of text.matchAll(/[^\p{M}][\p{M}]*|[\p{M}]+/gsu)) {
+    const piece = m[0].normalize("NFKC").replace(INVISIBLE_RE, "");
+    folded += piece;
+    for (let k = 0; k < piece.length; k++) at.push(m.index);
+  }
+  at.push(text.length);
+  // One-to-one per UTF-16 unit, so `at` still lines up.
+  folded = folded.replace(/[\p{L}\p{M}]+/gu, (word) =>
+    LATIN_LETTER_RE.test(word) ? word.replace(/[\u0370-\u03FF\u0400-\u04FF]/g, (c) => CONFUSABLES[c] ?? c) : word,
+  );
+  return { folded, at };
+}
+
 function excerptAt(text: string, index: number, matchLen: number): string {
   const start = Math.max(0, index - EXCERPT_CONTEXT);
   const end = Math.min(text.length, index + matchLen + EXCERPT_CONTEXT);
@@ -94,12 +146,18 @@ function excerptAt(text: string, index: number, matchLen: number): string {
 export function scanForInjection(text: string): InjectionFinding[] {
   if (typeof text !== "string" || text.length === 0) return [];
   const findings: InjectionFinding[] = [];
+  // The phrase patterns read the folded copy; their `index` and `excerpt` are
+  // mapped back to the text as delivered, like the zero-width and base64
+  // checks below, which read it directly.
+  const { folded, at } = foldForScan(text);
 
   for (const p of ALL_PATTERNS) {
     p.re.lastIndex = 0;
     let m: RegExpExecArray | null;
-    while ((m = p.re.exec(text)) !== null && findings.length < MAX_FINDINGS) {
-      findings.push({ category: p.category, excerpt: excerptAt(text, m.index, m[0].length), index: m.index });
+    while ((m = p.re.exec(folded)) !== null && findings.length < MAX_FINDINGS) {
+      const index = at[m.index];
+      const end = at[m.index + m[0].length];
+      findings.push({ category: p.category, excerpt: excerptAt(text, index, end - index), index });
       if (m.index === p.re.lastIndex) p.re.lastIndex++; // zero-width safety
     }
     if (findings.length >= MAX_FINDINGS) break;
