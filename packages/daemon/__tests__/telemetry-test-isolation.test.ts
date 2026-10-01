@@ -175,3 +175,20 @@ test("#673: without test-env.mjs (a file run directly) the default log dir is st
     if (prev !== undefined) process.env.BASTRA_LOG_PATH = prev;
   }
 });
+
+test("the host-profile salt file of a test run is disposable, with or without test-env.mjs", async () => {
+  // host-profile.ts had no override, so a test run created ~/.bastra/host-profile.json.
+  const { hostProfilePath } = await import("../src/host-profile.js");
+  const real = resolve(join(homedir(), ".bastra", "host-profile.json"));
+  const prev = process.env.BASTRA_HOST_PROFILE_PATH;
+  try {
+    for (const unset of [false, true]) {
+      if (unset) delete process.env.BASTRA_HOST_PROFILE_PATH;
+      const path = resolve(hostProfilePath());
+      assert.notEqual(path, real);
+      assert.ok(path.startsWith(resolve(tmpdir())), `expected a tmp path, got ${path}`);
+    }
+  } finally {
+    if (prev !== undefined) process.env.BASTRA_HOST_PROFILE_PATH = prev;
+  }
+});

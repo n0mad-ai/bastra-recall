@@ -30,6 +30,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { arch, cpus, homedir, hostname, platform, totalmem, userInfo } from "node:os";
 import { dirname, join } from "node:path";
+import { envFirst, testRunHostProfileDir } from "./env.js";
 
 const FILE_VERSION = 1;
 
@@ -40,6 +41,8 @@ interface HostProfileFile {
 }
 
 export function hostProfilePath(): string {
+  const dir = envFirst("BASTRA_HOST_PROFILE_PATH") ?? testRunHostProfileDir();
+  if (dir) return dir.endsWith(".json") ? dir : join(dir, "host-profile.json");
   return join(homedir(), ".bastra", "host-profile.json");
 }
 

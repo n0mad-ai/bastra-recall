@@ -36,6 +36,24 @@ export function testRunLogDir(): string | undefined {
   return testLogDir;
 }
 
+/**
+ * Same shape as {@link testRunLogDir}, for host-profile.ts's salt file.
+ * That module had no env override at all and resolved unconditionally to
+ * `~/.bastra/host-profile.json` — the one `~/.bastra` writer among several
+ * (logs, eval runs, harvest queue) that test-env.mjs could not redirect,
+ * because there was no env var to redirect. A run of 81 test files (878
+ * tests) under a machine with no prior profile created exactly this one
+ * file there. `NODE_TEST_CONTEXT` closes it the same way `testRunLogDir`
+ * does — for a direct `npx tsx --test file.test.ts` run too, not only one
+ * started through test-env.mjs.
+ */
+let testHostProfileDir: string | undefined;
+export function testRunHostProfileDir(): string | undefined {
+  if (!process.env.NODE_TEST_CONTEXT) return undefined;
+  testHostProfileDir ??= mkdtempSync(join(tmpdir(), "bastra-test-host-profile-"));
+  return testHostProfileDir;
+}
+
 export function envFirst(...names: string[]): string | undefined {
   for (let i = 0; i < names.length; i++) {
     const name = names[i];
