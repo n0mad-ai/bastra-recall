@@ -621,7 +621,11 @@ three heuristics:
 3. **architecture-decision** — `ok dann | lass uns | entschieden | final |
    gehen wir mit` in last 5 user turns → suggests a `decision` save. In a
    language without a cue list (#707): the user picks one of the numbered
-   options the agent offered with a question ("2 olsun", "вариант 1").
+   options the agent offered with a question ("2 olsun", "вариант 1"). An
+   answer given through Claude Code's `AskUserQuestion` tool counts too
+   (#701): it comes back as a tool result (`"question"="answer"`), which the
+   cue check never reads, so the lane looks for the tool call followed by
+   that pair. A declined question does not count.
 
 Output is a save suggestion per heuristic that fired. The
 hook **never calls `save_memory` itself** — only the agent does, if it agrees
@@ -1460,6 +1464,10 @@ drei Heuristiken aus:
    Speichern vor. In einer
    Sprache ohne Cue-Liste (#707): der Nutzer wählt eine der nummerierten
    Optionen, die der Agent mit einer Frage angeboten hat („2 olsun", „вариант 1").
+   Eine Antwort über Claude Codes `AskUserQuestion`-Werkzeug zählt ebenfalls
+   (#701): Sie kommt als Werkzeugergebnis zurück (`"Frage"="Antwort"`), das
+   die Cue-Prüfung nie liest; die Lane sucht deshalb nach dem Werkzeugaufruf,
+   auf den dieses Paar folgt. Eine abgelehnte Frage zählt nicht.
 
 Die Ausgabe ist ein Speichervorschlag pro ausgelöster Heuristik. Der Hook
 **ruft `save_memory` nie selbst auf** — das tut nur der Agent, wenn er dem
