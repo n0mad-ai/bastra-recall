@@ -518,13 +518,11 @@ async function summarizeExposureNormalised(events: AnyEvent[]): Promise<void> {
     return;
   }
 
-  let usage: UsageAggregate;
-  try {
-    usage = await readUsage(vaultRoot);
-  } catch (err) {
-    console.log(`\n## Exposure-normalised use  (skipped: usage sidecar unreadable — ${(err as Error).message})`);
-    return;
-  }
+  // ReadUsage() never throws — its own outer try/catch returns `{}`
+  // on any read failure — so a try/catch here for "sidecar unreadable" never
+  // fires. A missing/broken sidecar shows up as every row falling into
+  // `unknown` below, not as this skip message.
+  const usage: UsageAggregate = await readUsage(vaultRoot);
 
   const actedByMemory = new Map<string, number>();
   for (const e of episodes) {
@@ -542,6 +540,9 @@ async function summarizeExposureNormalised(events: AnyEvent[]): Promise<void> {
   const neverSurfaced = rows.filter((r) => r.surfaced === 0);
 
   console.log(`\n## Exposure-normalised use  (acted_on per surfacing, denominator from the usage sidecar)`);
+  if (DAYS) {
+    console.log(`  CAUTION: acted_on is windowed to the last ${DAYS} day(s); the sidecar's surfaced count is all-time — the rate below is understated, not comparable across --days values.`);
+  }
   console.log(`  NORMALISATION, NOT BIAS CORRECTION (§17.5). Dividing by the number of`);
   console.log(`  surfacings makes rates comparable; it says nothing about WHY a memory was`);
   console.log(`  surfaced, because the selection itself depends on the current ranking. A`);
