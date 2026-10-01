@@ -57,3 +57,41 @@ test("Ctrl-C during deno compile restores stub/build-info.ts", { skip: process.p
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+for (const [signal, exitCode] of [["SIGTERM", 143], ["SIGHUP", 129]] as const) {
+  test(`${signal} sent only to node restores the placeholder and does not report success`, { skip: process.platform === "win32" }, async () => {
+    const root = mkdtempSync(join(tmpdir(), "bastra-build-stub-signal-"));
+    try {
+      mkdirSync(join(root, "scripts"), { recursive: true });
+      mkdirSync(join(root, "stub"), { recursive: true });
+      mkdirSync(join(root, "bin"), { recursive: true });
+      for (const f of ["build-stub.mjs", "stub-source-digest.mjs"]) copyFileSync(join(SCRIPTS, f), join(root, "scripts", f));
+      copyFileSync(REAL_BUILD_INFO, join(root, "stub", "build-info.ts"));
+      writeFileSync(join(root, "stub", "bastra-hook.ts"), 'import { STUB_BUILD_INFO } from "./build-info.ts";\nconsole.log(STUB_BUILD_INFO);\n');
+      const started = join(root, "deno-started");
+      writeFileSync(join(root, "bin", "deno"), `#!/bin/sh\ntouch "${started}"\nsleep 1\n`);
+      chmodSync(join(root, "bin", "deno"), 0o755);
+      const placeholder = readFileSync(join(root, "stub", "build-info.ts"), "utf8");
+
+      const child = spawn(process.execPath, [join(root, "scripts", "build-stub.mjs")], {
+        detached: true,
+        stdio: "ignore",
+        env: { ...process.env, PATH: `${join(root, "bin")}:${process.env.PATH}` },
+      });
+      const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((done) =>
+        child.on("close", (code, seenSignal) => done({ code, signal: seenSignal })),
+      );
+      for (let i = 0; i < 200 && !existsSync(started); i++) await new Promise((r) => setTimeout(r, 50));
+      assert.ok(existsSync(started), "the fake deno never started");
+      assert.notEqual(readFileSync(join(root, "stub", "build-info.ts"), "utf8"), placeholder);
+
+      process.kill(child.pid as number, signal);
+      const result = await exited;
+      assert.equal(readFileSync(join(root, "stub", "build-info.ts"), "utf8"), placeholder);
+      assert.equal(result.signal, null);
+      assert.equal(result.code, exitCode);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}

@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #821 restores the stub build-info placeholder after a terminal interrupt and corrects its permission description.
+- Follow-up to #821: parent-only SIGTERM/SIGHUP now exit with their signal status after restoring the placeholder.
+
 - @zzallirog's #817 corrects the local Desktop Extension packaging description: its daemon tarball omits the publish-only stub manifest.
 - Follow-up to #817: the second packaging comment matches that behavior, with a workflow contract test for the manifest difference.
 
