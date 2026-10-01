@@ -35,11 +35,14 @@ import { extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { callReport, reconcileDue, stampReconcile } from "./rm-archive.js";
 import {
+  bumpShown,
   decideBackoff,
+  getLoadedMarkerMtime,
   loadSessionState,
   recordSourceEmit,
   recordSourceSuppressed,
   mutateSessionState,
+  shouldDropHit,
   wasEmitConsumed,
 } from "./session-state.js";
 
@@ -199,7 +202,7 @@ async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Prom
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
 
   let resp: RecallResponse | null = null;
-  let status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error" = "ok";
+  let status: "ok" | "no-hits" | "deduped" | "daemon-unreachable" | "timeout" | "error" = "ok";
   let errMsg: string | null = null;
   try {
     resp = JSON.parse(
@@ -246,6 +249,22 @@ async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Prom
   }
   if (resp && hits.length === 0) status = "no-hits";
 
+  // Session dedup — the shown-state bash-pre, prompt and write use (#106 MAX_SHOW; a load_memory marker,
+  // compact and clear reset it, #354). Without it one memory rode under every failure of a session.
+  // The command still failed; only the repeated memory line is dropped.
+  const realSession = typeof payload.session_id === "string" && payload.session_id !== "";
+  let droppedDedupCount = 0;
+  if (realSession && hits.length > 0) {
+    const shownState = await loadSessionState(sessionId);
+    const fresh: RecallHit[] = [];
+    for (const h of hits) {
+      if (shouldDropHit(shownState.shown[h.id], await getLoadedMarkerMtime(h.id))) droppedDedupCount++;
+      else fresh.push(h);
+    }
+    hits.splice(0, hits.length, ...fresh);
+    if (hits.length === 0) status = "deduped";
+  }
+
   // No hits above floor → no value in interrupting Claude.
   let backoffStreak = 0;
   let suppressed = false;
@@ -284,7 +303,11 @@ async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Prom
       // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
       await reportHinted(selfBaseUrl, hits.map((h) => h.id), typeof payload.session_id === "string" ? payload.session_id : null);
       const emitted = hits.map((h) => h.id);
-      await mutateSessionState(sessionId, (s) => recordSourceEmit(s, BACKOFF_SOURCE, emitted, consumed));
+      const now = Date.now();
+      await mutateSessionState(sessionId, (s) => {
+        recordSourceEmit(s, BACKOFF_SOURCE, emitted, consumed);
+        if (realSession) for (const id of emitted) bumpShown(s, id, now);
+      });
       stdout = JSON.stringify({
         hookSpecificOutput: {
           hookEventName,
@@ -306,6 +329,7 @@ async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Prom
     daemon_url: selfBaseUrl,
     daemon_reachable: resp !== null,
     hit_count: suppressed ? 0 : hits.length,
+    dropped_dedup_count: droppedDedupCount,
     top_score: resp?.hits?.[0]?.score ?? null,
     latency_ms_total: Date.now() - startedAt,
     backoff_streak: backoffStreak,
@@ -531,7 +555,9 @@ interface BashFailHookTelemetry {
   suppressed_tokens_est: number;
   /** #457: est. tokens of the injected block; 0 when nothing was emitted. */
   hint_tokens_est: number;
-  status: "ok" | "no-hits" | "suppressed" | "daemon-unreachable" | "timeout" | "error";
+  status: "ok" | "no-hits" | "deduped" | "suppressed" | "daemon-unreachable" | "timeout" | "error";
+  /** Hits dropped because this session already showed them (MAX_SHOW in the 4h window). */
+  dropped_dedup_count: number;
   error: string | null;
 }
 
