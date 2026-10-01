@@ -12,6 +12,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   fieldSimilarity,
+  foldUmlauts,
   triggerRestatesSummary,
   containedIn,
   DUPLICATE_SIMILARITY_MIN,
@@ -93,6 +94,18 @@ test("diacritics survive — a German pair is not reduced to fragments", () => {
   const c = mem({ title: "Lösung für die Größe" });
   const d = mem({ title: "Abstand und Farbe" });
   assert.equal(fieldSimilarity(c, d), 0, "no shared content word → 0, not a stopword-driven partial");
+});
+
+test("diacritics fold only on Latin letters — another alphabet keeps its letters", () => {
+  assert.equal(foldUmlauts("café"), "cafe");
+  assert.equal(foldUmlauts("Größe"), "Groesse");
+  // й and ё are letters of their own, not и/е with an accent.
+  assert.equal(foldUmlauts("край"), "край");
+  assert.equal(foldUmlauts("ёлка"), "ёлка");
+  assert.equal(foldUmlauts("край").length, 4, "recomposed to NFC, not a letter plus a combining mark");
+  const a = mem({ title: "мой ключ", recall_when: ["мой ключ от сервера"] });
+  const b = mem({ title: "мои ключ", recall_when: ["мои ключ от сервера"] });
+  assert.ok(fieldSimilarity(a, b) < 1, "different Cyrillic letters are different words");
 });
 
 test("stopwords alone never produce similarity", () => {
