@@ -94,6 +94,23 @@ export function summarizeContextROI(events: AnyEvent[]): void {
     typeof e.surfaced === "boolean" ? Boolean(e.surfaced) : e.surfaced_score != null;
   const actedSurfaced = episodes.filter((e) => isSurfaced(e) && e.acted_on === true);
 
+  // `totalTokens` only sums the 3 lanes in `hookKinds` (pre-tool,
+  // session, bash-pre) — but `actedSurfaced` above counts acted-on episodes
+  // from EVERY lane, including mcp/prompt/bash-fail/todo, whose tokens never
+  // entered totalTokens. Dividing the two mixes tokens spent by one
+  // population with loads caused by another. The ratio below uses only the
+  // acted-on loads whose surfacing lane is one of the 3 in the numerator.
+  // Event kind -> hook_source on the lane's hook_recall: hook_call -> "pre-tool",
+  // bash_hook_call -> "bash-pre", session_hook_call -> "session-context" (the shared
+  // assembler's stamp; "session" is only the lane's own hook_call dimension).
+  const numeratorHookSources = new Set(["pre-tool", "session", "session-context", "bash-pre"]);
+  const hookRecallsForRatio = events.filter((e) => e.kind === "hook_recall");
+  const byRecallIdForRatio = new Map<string, AnyEvent>();
+  for (const r of hookRecallsForRatio) byRecallIdForRatio.set(String(r.recall_id), r);
+  const actedFromNumeratorLanes = actedSurfaced.filter((e) =>
+    numeratorHookSources.has(dimensionValue(byRecallIdForRatio.get(String(e.recall_id)), "hook_source")),
+  );
+
   // #161: Backoff-Ersparnis — Events, deren Injektion der Empty-Streak-
   // Backoff unterdrückt hat, tragen suppressed_tokens_est als Sparseite.
   const allHookKinds = new Set([
@@ -144,9 +161,9 @@ export function summarizeContextROI(events: AnyEvent[]): void {
     `  (token side not split: hook-CLI emissions carry no dimensions — only the yield side is attributable)`,
   );
   console.log(
-    actedSurfaced.length > 0
-      ? `  tokens per acted-on load:     ~${Math.round(totalTokens / actedSurfaced.length)}`
-      : `  tokens per acted-on load:     ∞ (no acted-on load yet — pure context tax so far)`,
+    actedFromNumeratorLanes.length > 0
+      ? `  tokens per acted-on load:     ~${Math.round(totalTokens / actedFromNumeratorLanes.length)}  (pre-tool/session/bash-pre loads only, ${actedFromNumeratorLanes.length} of ${actedSurfaced.length} acted-on — other lanes' tokens aren't in totalTokens)`
+      : `  tokens per acted-on load:     ∞ (no acted-on load from pre-tool/session/bash-pre yet — pure context tax so far)`,
   );
 
   // Per-session injected tokens (top 5 by cost).
