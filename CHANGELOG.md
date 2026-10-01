@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #867 stops routine code operators, identifiers and filenames from counting as frustration emphasis.
+- Follow-up to #867: sentence exclamation marks in scripts without spaces remain language-neutral repeat cues.
+
 - @zzallirog's #865 recognizes wrapped compiled-hook registrations and preserves foreign handlers beside Bastra hooks.
 - Follow-up to #865: quoted runner paths and shell operators in quoted arguments survive re-install; doctor and Codex retain the same ownership boundaries.
 

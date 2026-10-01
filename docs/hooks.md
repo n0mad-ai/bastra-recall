@@ -626,7 +626,11 @@ three heuristics:
    count as cues only when ≥ 5 chars or repeated in a turn and not a
    technical acronym (`SKILL`, `JSON`, `CLAUDE`, …); CAPS alone never
    triggers → suggests a `lesson` save. The suggestion quotes up to three
-   user turns as exemplars, each text once.
+   user turns as exemplars, each text once. Identifiers and file paths such as
+   `BASTRA_VAULT_PATH` or `src/README.md` do not count as CAPS emphasis. For
+   languages without a listed cue, repeated corrections can still be noticed
+   through a sentence `!`/`！` or CAPS, even without a space after `!`; `!=`
+   and command-like `!name` are not emphasis.
 2. **feature-completion** — a commit signal + ≥ 5 distinct repo-relative
    source-file tokens, at least one of which exists under the session cwd →
    suggests a `project-fact` save. The signal is any of: `git commit` in a
@@ -1488,7 +1492,11 @@ drei Heuristiken aus:
    sind oder in einem Turn wiederholt werden und kein technisches Akronym sind
    (`SKILL`, `JSON`, `CLAUDE`, …); Großschreibung allein löst nie aus →
    schlägt eine `lesson` zum Speichern vor. Der Vorschlag zitiert bis zu drei
-   Nutzer-Turns als Beispiele, jeden Text nur einmal.
+   Nutzer-Turns als Beispiele, jeden Text nur einmal. Bezeichner und Dateipfade
+   wie `BASTRA_VAULT_PATH` oder `src/README.md` zählen nicht als CAPS-Nachdruck.
+   Auch ohne gelisteten Sprachhinweis können wiederholte Korrekturen über ein
+   Satz-`!`/`！` oder CAPS erkannt werden, selbst ohne Leerzeichen nach `!`;
+   `!=` und befehlsartige `!name` zählen nicht als Nachdruck.
 2. **feature-completion** — ein Commit-Signal + ≥ 5 unterschiedliche
    repo-relative Quelldatei-Tokens, von denen mindestens eines unter dem
    Session-cwd existiert → schlägt einen `project-fact` zum Speichern vor. Als

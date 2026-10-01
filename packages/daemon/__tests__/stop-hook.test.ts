@@ -277,12 +277,26 @@ describe("stop-hook: #678 languages without a cue list fire on repeated correcti
       ["date", "url", "csv"].map((p) => userTurn(`add a test for the ${p} parser, ${mention}`));
     for (const mention of [
       "assert result != null",
+      "use !cmd in the shell example",
+      "show !important and ![shot](a.png) as text",
+      "keep #!/bin/sh in the example",
+      "assert !(a == b) in the test",
       "and update the README section",
       "and list it in src/README.md",
       "and read BASTRA_VAULT_PATH first",
     ]) {
       assert.equal(detectFrustration(routine(mention)), null, mention);
     }
+  });
+
+  it("keeps a no-space exclamation mark as emphasis in a repeated Japanese correction", () => {
+    const request = "このファイルでセミコロンを使わないで";
+    assert.ok(detectFrustration([
+      userTurn(request), userTurn(request), userTurn(`${request}!言ったよね`),
+    ]));
+    assert.ok(detectFrustration([
+      userTurn(request), userTurn(request), userTurn(`${request}!...`),
+    ]));
   });
 
   it("does not fire on a single restatement or on short repeated acknowledgements", () => {
