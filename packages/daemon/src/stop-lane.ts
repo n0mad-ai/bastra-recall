@@ -68,7 +68,7 @@ import { boundaryNote } from "./code-graph/boundary-block.js";
 import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
 import { loadSessionState, mutateSessionState, parkBoundary } from "./session-state.js";
 import { noteSessionForHarvest } from "./session-harvest.js";
-import { loadTranscript, type ClaudeStopPayload, type TranscriptTurn } from "./stop-transcript.js";
+import { emptyTranscriptReason, loadTranscript, type ClaudeStopPayload, type TranscriptTurn } from "./stop-transcript.js";
 import { appendProductDocHint, evaluateHeuristics, formatSuggestion, type SaveSuggestion } from "./stop-heuristics.js";
 import { formatSameTurnBlock, sameTurnNotice } from "./stop-lane-same-turn.js";
 
@@ -216,7 +216,28 @@ async function evaluateStop(
   loaded: TranscriptTurn[] | null,
 ): Promise<string> {
   const turns = loaded ?? (await loadTranscript(payload));
-  if (turns.length === 0) return "{}";
+  if (turns.length === 0) {
+    // loadTranscript's catch collapses "nothing to read" and "could not
+    // read the transcript on THIS host" into the same []. Silently returning
+    // here (the old behaviour) left no telemetry row at all, so the gate
+    // could not tell "genuinely nothing to suggest" from "never really ran" —
+    // exactly the shape a remote-daemon topology hits on every session whose
+    // transcript path is local to the CLIENT host. A row is written either
+    // way now, with `error` naming the reason when a transcript existed but
+    // could not be read.
+    const reason = await emptyTranscriptReason(payload);
+    await writeTelemetry({
+      session_id: payload.session_id ?? null,
+      heuristic: null,
+      suggested_count: 0,
+      drift_clusters: 0,
+      drift_keys: [],
+      turn_count: 0,
+      latency_ms_total: Date.now() - startedAt,
+      ...(reason ? { error: reason } : {}),
+    });
+    return "{}";
+  }
 
   const last30 = turns.slice(-30);
   const suggestions = evaluateHeuristics(last30, { cwd: payload.cwd });
