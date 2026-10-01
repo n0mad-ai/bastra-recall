@@ -52,7 +52,22 @@ test("runsOurHookRunner: the program run decides, not the text", () => {
     "~/bin/my-bastra-hook-audit.sh",
     "bastra-recall-mcp --hook",
     "echo bastra-recall hook",
+    "echo bastra-hook prompt",
+    "echo bastra-recall-prompt-hook",
+    "node /tmp/foreign.js /opt/daemon/dist/prompt-hook.js",
+    `${cc} /usr/bin/echo bastra-hook prompt`,
+    `${cc} node /tmp/foreign.js /opt/daemon/dist/prompt-hook.js`,
   ]) assert.equal(runsOurHookRunner(foreign, FILES, cc), false, foreign);
+});
+
+test("a runner name in an argument never makes a foreign hook ours", () => {
+  const claude = entry("/usr/bin/echo bastra-hook prompt");
+  const cc = planHookEntries("uninstall", { UserPromptSubmit: [claude] }, { includeStop: false });
+  assert.deepEqual(cc.after.UserPromptSubmit, [claude]);
+
+  const codex = entry("BASTRA_HOOK_CLIENT=codex /usr/bin/echo bastra-hook prompt");
+  const cx = planCodexHooks("uninstall", { UserPromptSubmit: [codex] }, { includeStop: false });
+  assert.deepEqual(cx.after.UserPromptSubmit, [codex]);
 });
 
 test("Claude Code: a foreign script named like ours survives install and uninstall", () => {
@@ -144,6 +159,22 @@ test("install-hook.sh: the same rule — foreign script kept and named, our lega
     assert.equal(commands[0], "~/bin/my-bastra-recall-audit-hook.sh");
     assert.match(commands[1], /^node .*\/daemon\/dist\/prompt-hook\.js$/);
     assert.match(run.stderr, /left alone.*my-bastra-recall-audit-hook\.sh/);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("install-hook.sh leaves a runner name in a foreign argument alone", { skip: process.platform === "win32" }, async () => {
+  const home = await mkdtemp(join(tmpdir(), "bastra-install-argument-945-"));
+  try {
+    await mkdir(join(home, ".claude"));
+    const foreign = entry("/usr/bin/echo bastra-hook prompt");
+    const settings = join(home, ".claude", "settings.json");
+    await writeFile(settings, JSON.stringify({ hooks: { UserPromptSubmit: [foreign] } }), "utf8");
+    const script = fileURLToPath(new URL("../../skill/install-hook.sh", import.meta.url));
+    const run = spawnSync("bash", [script, "--uninstall"], { env: { ...process.env, HOME: home }, encoding: "utf8" });
+    assert.equal(run.status, 0, run.stderr);
+    assert.deepEqual(JSON.parse(await readFile(settings, "utf8")).hooks.UserPromptSubmit, [foreign]);
   } finally {
     await rm(home, { recursive: true, force: true });
   }

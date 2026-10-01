@@ -114,15 +114,35 @@ function isOurs(matcher) {
 // under daemon/dist or next to the client marker — not by substrings, which
 // claimed and deleted a user script named like my-bastra-recall-audit-hook.sh.
 function runsOurRunner(cmd) {
-  const marked = cmd.includes("BASTRA_HOOK_CLIENT=claude-code");
-  return cmd.split(/\s+/).some((tok) => {
-    const path = tok.replace(/^["\x27]|["\x27]$/g, "").replace(/\\/g, "/");
-    const base = path.split("/").pop();
-    if (/^bastra-hook(\.exe)?$/.test(base)) return true;
-    const bin = /^(?:bastra|nexus)-recall-(.+?)(?:\.cmd)?$/.exec(base);
-    if (bin && OUR_FILES.includes(`${bin[1]}.js`)) return true;
-    return OUR_FILES.includes(base) && (marked || path.includes("/daemon/dist/"));
-  });
+  const words = cmd.match(/"[^"]*"|\x27[^\x27]*\x27|\S+/g) ?? [];
+  const pathAt = (at) => (words[at] ?? "").replace(/^["\x27]|["\x27]$/g, "").replace(/\\/g, "/");
+  const baseAt = (at) => pathAt(at).split("/").pop();
+  let at = 0;
+  let marked = false;
+  const skipAssignments = () => {
+    while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[at] ?? "")) {
+      if (words[at] === "BASTRA_HOOK_CLIENT=claude-code") marked = true;
+      at++;
+    }
+  };
+  skipAssignments();
+  if (baseAt(at) === "env") { at++; skipAssignments(); }
+  if (baseAt(at) === "hook-timer") {
+    at++;
+    if (words[at] === "--tag") at += 2;
+    skipAssignments();
+  }
+  const program = baseAt(at);
+  if (/^node(\.exe)?$/.test(program)) {
+    const script = pathAt(at + 1);
+    return OUR_FILES.includes(script.split("/").pop()) && (marked || script.includes("/daemon/dist/"));
+  }
+  if (/^bastra-hook(\.exe)?$/.test(program)) {
+    return new Set(["session", "prompt", "write", "todo", "bash-pre", "bash-fail", "stop"]).has(words[at + 1] ?? "");
+  }
+  const bin = /^(?:bastra|nexus)-recall-(.+?)(?:\.cmd)?$/.exec(program);
+  if (bin && OUR_FILES.includes(`${bin[1]}.js`)) return true;
+  return OUR_FILES.includes(program) && (marked || pathAt(at).includes("/daemon/dist/"));
 }
 
 function buildEntry(def) {

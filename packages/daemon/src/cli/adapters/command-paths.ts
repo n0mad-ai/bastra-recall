@@ -104,16 +104,40 @@ export function existingHookWrapper(
  * directory when the command carries the installer's client marker.
  */
 export function runsOurHookRunner(cmd: string, files: string[], clientMarker: string): boolean {
-  const marked = cmd.includes(clientMarker);
-  for (const m of cmd.matchAll(/"[^"]*"|'[^']*'|\S+/g)) {
-    const path = slashes(unquote(m[0]));
-    const base = fileOf(path);
-    if (/^bastra-hook(\.exe)?$/.test(base)) return true;
-    const bin = /^(?:bastra|nexus)-recall-(.+?)(?:\.cmd)?$/.exec(base);
-    if (bin && files.includes(`${bin[1]}.js`)) return true;
-    if (files.includes(base) && (marked || path.includes("/daemon/dist/"))) return true;
+  const words = [...cmd.matchAll(/"[^"]*"|'[^']*'|\S+/g)].map((m) => m[0]);
+  const pathAt = (at: number): string => slashes(unquote(words[at] ?? ""));
+  const baseAt = (at: number): string => fileOf(pathAt(at));
+  let at = 0;
+  let marked = false;
+  const skipAssignments = (): void => {
+    while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[at] ?? "")) {
+      if (words[at] === clientMarker) marked = true;
+      at++;
+    }
+  };
+  skipAssignments();
+  if (baseAt(at) === "env") {
+    at++;
+    skipAssignments();
   }
-  return false;
+  // The wrapper observed in #647 accepts a child command after an optional tag.
+  if (baseAt(at) === "hook-timer") {
+    at++;
+    if (words[at] === "--tag") at += 2;
+    skipAssignments();
+  }
+
+  const program = baseAt(at);
+  if (/^node(\.exe)?$/.test(program)) {
+    const script = pathAt(at + 1);
+    return files.includes(fileOf(script)) && (marked || script.includes("/daemon/dist/"));
+  }
+  if (/^bastra-hook(\.exe)?$/.test(program)) {
+    return new Set(["session", "prompt", "write", "todo", "bash-pre", "bash-fail", "stop"]).has(words[at + 1] ?? "");
+  }
+  const bin = /^(?:bastra|nexus)-recall-(.+?)(?:\.cmd)?$/.exec(program);
+  if (bin && files.includes(`${bin[1]}.js`)) return true;
+  return files.includes(program) && (marked || pathAt(at).includes("/daemon/dist/"));
 }
 
 /**
