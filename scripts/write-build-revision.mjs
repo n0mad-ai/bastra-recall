@@ -63,7 +63,10 @@ if (!revision) process.exit(0);
 // Untracked files count: an untracked `.ts` under a package's `src` is compiled
 // like any other, so "the tree differs from HEAD" is the honest question here.
 // Recorded AFTER the build, so it describes the tree the output came from.
-const dirty = (git("status", "--porcelain") ?? "").trim() !== "";
+// A status git could not answer (timeout, index.lock) is "could not tell", not
+// "clean" — the same reading headState() in cli/source-build.ts takes.
+const status = git("status", "--porcelain");
+const dirty = status === null || status.trim() !== "";
 
 writeFileSync(
   resolve(distDir, ".build-revision"),
