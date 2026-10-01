@@ -53,6 +53,39 @@ test("--apply does not overwrite a note that already exists at the target", () =
     assert.match(readFileSync(join(vault, "memories", "user", "dup.md"), "utf8"), /MIGRATED current copy/);
     assert.ok(existsSync(join(vault, "memorys", "dup.md")), "the flat copy was moved over the migrated note");
     assert.match(res.stdout, /skipped: 1/);
+    assert.doesNotMatch(res.stdout, /collision \(target exists/, "apply should not print the pre-scan collision again");
+    assert.equal((res.stderr.match(/skip \(target exists/g) ?? []).length, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("--apply leaves scopes rejected by the normal save path in place", () => {
+  const { root, vault } = makeRoot();
+  try {
+    writeFileSync(join(vault, "memorys", "hidden.md"), note("hidden", ".hidden", "must stay indexed"));
+    writeFileSync(join(vault, "memorys", "empty.md"), note("empty", "", "must stay put"));
+    const res = runMigration(vault, true);
+    assert.equal(res.status, 0, res.stderr);
+    assert.ok(existsSync(join(vault, "memorys", "hidden.md")));
+    assert.ok(existsSync(join(vault, "memorys", "empty.md")));
+    assert.equal(existsSync(join(vault, "memories", "projects", ".hidden", "hidden.md")), false);
+    assert.match(res.stderr, /unsafe scope/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("dry-run names two sources planned for the same empty target", () => {
+  const { root, vault } = makeRoot();
+  try {
+    mkdirSync(join(vault, "bookmarks"), { recursive: true });
+    writeFileSync(join(vault, "memorys", "dup.md"), note("dup", "all-projects", "first source"));
+    writeFileSync(join(vault, "bookmarks", "dup.md"), note("dup", "all-projects", "second source"));
+    const dry = runMigration(vault, false);
+    assert.equal(dry.status, 0, dry.stderr);
+    assert.match(dry.stdout, /collisions: 1/);
+    assert.equal(existsSync(join(vault, "memories", "all-projects", "dup.md")), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
