@@ -74,12 +74,13 @@ Commands:
                              edits one, and adds find_code. Off until enabled;
                              Graphify builds a local code map, sends nothing
                              anywhere (macOS/Linux)
-  commons <enable|update|disable|status>
+  commons <enable|update|disable|status|verify>
                              Bastra Commons: community-proven recipes as a
-                             read-only second recall index (git-synced)
+                             read-only second recall index (git-synced);
+                             'verify' submits a works/fails record as a PR
   bridges <enable|disable|status|language|live|mint|harvest>
-                             Shared learned-recall: opt-in, language-partitioned
-                             vocabulary bridges that widen recall (off by default;
+                             Shared learned-recall: opt-in vocabulary
+                             bridges that widen recall (off by default;
                              when on, query expansion runs in shadow until 'live on').
                              'mint' = bridges from acted-on reaches; 'harvest' =
                              deep far-slice pass with the local reranker (Teacher 2).
@@ -440,15 +441,22 @@ Options:
 
 Usage:
   bastra commons <enable|update|disable|status>
+  bastra commons verify <recipe-id> <works|fails> ["environment note"]
 
 Bastra Commons is a git-synced set of community-proven recipes, searched as a
 second recall index next to your own vault. Read-only: nothing from Commons is
-ever written into your memories, and nothing of yours is sent anywhere.
+ever written into your memories, and your vault is never sent anywhere. Only
+'verify' sends something out (see below).
 
   enable    Clone and register the index
   update    Pull the latest revision
   disable   Unregister it (the clone stays on disk)
   status    Revision, size and when it was last pulled
+  verify    Record that a recipe works or fails for you and open a pull request
+            with that record. The PR is public: it carries the recipe id, the
+            result, your note, a verifier id, and your OS, CPU architecture and
+            Node version. If git or gh is missing, or the target is refused, the
+            record stays on disk to submit by hand.
 `,
 
   bridges: `bastra bridges — shared learned-recall vocabulary (opt-in)
@@ -457,7 +465,9 @@ Usage:
   bastra bridges <enable|disable|status|language|live|mint|harvest>
 
 Vocabulary bridges widen recall by connecting the words you search with the
-words your memories use. Off by default and language-partitioned.
+words your memories use. Off by default. Without a language setting every
+folder is searched; the setting pins queries to one folder and files new
+bridges there.
 
   enable / disable   Turn the shared index on or off
   status             What is active, and how many bridges are held

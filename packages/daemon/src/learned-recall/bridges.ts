@@ -230,7 +230,7 @@ export function scrubBridge(b: Bridge): Bridge | null {
   return { ...b, id: bridgeId(b.lang, trigger, expansion), trigger_terms: trigger, expansion_terms: expansion };
 }
 
-// ─── Pool (read-only, language-partitioned, loaded from a clone) ─────────────
+// ─── Pool (read-only, loaded from a clone) ───────────────────────────────────
 
 const MAX_QUERY_EXPANSION = 12; // cap how much a single query can be widened
 

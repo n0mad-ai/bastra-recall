@@ -376,7 +376,8 @@ components:
             only within the same arm set: ["bm25","vector"] tops out at
             163.934, ["bm25","commons","vector"] at 241.803 (the Bastra Commons
             contribute a third arm), and the degraded collapse path
-            ["commons","personal-rank"] at 147.541. Consumers that compare
+            ["commons","personal-rank"] at 159.836 (147.541 at the
+            default commons weight of 0.8). Consumers that compare
             scores across arm sets must re-fuse by RANK instead.
         score_version:
           type: string

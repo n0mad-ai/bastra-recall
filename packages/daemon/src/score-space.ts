@@ -7,7 +7,7 @@ import { rrfVectorWeight } from "@bastra-recall/core";
  * Codex-Gegenreview (P0): `score_kind: "rrf"` bezeichnet seit dem Commons-Arm
  * MEHRERE verschiedene Zahlen. Die persönlichen Arme reichen bis 163.934, mit
  * Commons als drittem Arm bis 241.803, auf dem degradierten Kollaps-Pfad nur
- * bis 147.541. `>= 100` konnte damit vier verschiedene Dinge bedeuten, und der
+ * bis 159.836 (147.541 beim Standard-Commons-Gewicht 0.8). `>= 100` konnte damit vier verschiedene Dinge bedeuten, und der
  * Batch-Merge stellte einen Dreiarm-Wert vor einen Zweiarm-Wert — weil seine
  * Skala höher reicht, nicht weil er besser passte.
  *
