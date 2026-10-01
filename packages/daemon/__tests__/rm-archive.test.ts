@@ -808,12 +808,15 @@ describe("#650 — the shim switched off says it exists, and the off switch is c
 describe("#695 — a full disk: a clear refusal, the target untouched, nothing deleted", () => {
   /** Make one fs function fail with ENOSPC — the shim imports node:fs by name,
    *  so the ESM bindings are re-synced from the patched builtin. */
-  function withEnospc(name: "renameSync" | "appendFileSync", run: () => void): void {
-    const fs = createRequire(import.meta.url)("node:fs") as Record<string, unknown>;
+  const enospc = (): never => {
+    throw Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" });
+  };
+  type Fs = Record<string, (...a: unknown[]) => unknown>;
+  /** `stub(orig)` builds the replacement; the default fails every call. */
+  function withEnospc(name: string, run: () => void, stub: (orig: Fs[string]) => Fs[string] = () => enospc): void {
+    const fs = createRequire(import.meta.url)("node:fs") as Fs;
     const orig = fs[name];
-    fs[name] = () => {
-      throw Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" });
-    };
+    fs[name] = stub(orig);
     syncBuiltinESMExports();
     try {
       run();
@@ -852,6 +855,77 @@ describe("#695 — a full disk: a clear refusal, the target untouched, nothing d
     withEnospc("appendFileSync", () => {
       assert.equal(runRmShim([target], { env, cwd: dir, out: () => {}, err: (s) => errs.push(s) }), 1);
     });
+    assert.equal(readFileSync(target, "utf8"), "keep me\n");
+    assert.match(errs.join("\n"), /disk is full.*archive reconcile --yes/s);
+  });
+
+  it("the mkdir fails halfway with ENOSPC: the dated directory it had already made is gone again", () => {
+    // Revert-check: clean up only from mkdirSync's return value → `_archive/<date>` stays behind, empty.
+    const { dir, env } = sandbox();
+    const target = join(dir, "work", "big");
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, "a.bin"), "x");
+    const archive = join(dir, "_archive");
+    mkdirSync(archive);
+    const errs: string[] = [];
+    withEnospc(
+      "mkdirSync",
+      () => assert.equal(runRmShim(["-rf", target], { env, cwd: dir, out: () => {}, err: (s) => errs.push(s) }), 1),
+      // The first level under the archive is made, the next one hits the full disk.
+      (orig) => (p, o) => {
+        const rel = String(p).startsWith(archive + "/") ? String(p).slice(archive.length + 1).split("/") : [];
+        if (rel.length < 2) return orig(p, o);
+        orig(join(archive, rel[0]));
+        return enospc();
+      },
+    );
+    assert.equal(readFileSync(join(target, "a.bin"), "utf8"), "x", "the target is where it was");
+    assert.match(errs.join("\n"), /disk is full.*archive reconcile --yes/s);
+    assert.deepEqual(readdirSync(archive).filter((n) => n !== "manifest.jsonl"), []);
+  });
+
+  it("a nearly full disk: with less room than the target takes, rm refuses instead of exiting 0 with nothing freed", () => {
+    // Revert-check: drop the freeBytes check → exit 0, the target sits in the archive on the same full disk.
+    const { dir, env } = sandbox();
+    const target = join(dir, "big");
+    mkdirSync(target);
+    writeFileSync(join(target, "a.bin"), "x".repeat(8192));
+    const errs: string[] = [];
+    const run = (): number => runRmShim(["-rf", target], { env, cwd: dir, out: () => {}, err: (s) => errs.push(s) });
+    withEnospc("statfsSync", () => assert.equal(run(), 1), () => () => ({ bavail: 1, bsize: 4096 }));
+    assert.equal(readFileSync(join(target, "a.bin"), "utf8").length, 8192, "the target is where it was");
+    const said = errs.join("\n");
+    assert.match(said, /less free space than it takes and archiving is a move, it frees no space/);
+    assert.match(said, /bastra archive reconcile --yes.*\/bin\/rm.*archive\.enabled off/s);
+    assert.equal(manifestRows(env).at(-1)?.action, "refused");
+    assert.deepEqual(readdirSync(join(dir, "_archive")).filter((n) => n !== "manifest.jsonl"), []);
+    // With room for it, the same call archives as before.
+    withEnospc("statfsSync", () => assert.equal(run(), 0), () => () => ({ bavail: 2, bsize: 4096 }));
+    assert.equal(existsSync(target), false);
+    assert.equal(manifestRows(env).at(-1)?.action, "archived");
+  });
+
+  it("a full volume without its .bastra-archive yet: the same clear message, not 'no writable archive'", () => {
+    // Revert-check: swallow ENOSPC in archiveRootFor again → "on another filesystem without a writable .bastra-archive".
+    const { dir, env } = sandbox();
+    const target = join(dir, "notes.txt");
+    writeFileSync(target, "keep me\n");
+    const archive = archiveRoot(env);
+    const errs: string[] = [];
+    // The archive reads as another filesystem, and the volume's own archive cannot be made.
+    withEnospc(
+      "statSync",
+      () =>
+        withEnospc(
+          "mkdirSync",
+          () => assert.equal(runRmShim([target], { env, cwd: dir, out: () => {}, err: (s) => errs.push(s) }), 1),
+          (orig) => (p, o) => (String(p).endsWith("/.bastra-archive") ? enospc() : orig(p, o)),
+        ),
+      (orig) => (p, o) => {
+        const st = orig(p, o) as { dev: number };
+        return p === archive ? { dev: st.dev + 1 } : st;
+      },
+    );
     assert.equal(readFileSync(target, "utf8"), "keep me\n");
     assert.match(errs.join("\n"), /disk is full.*archive reconcile --yes/s);
   });
