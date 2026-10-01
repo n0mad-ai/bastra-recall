@@ -324,7 +324,7 @@ Files that passed the 800-line convention were split along one responsibility ea
 | `src/http-hook-routes.ts` (`/hook/recall` route + `runHookRecall`) | `hook-recall-input.ts` (request fields), `hook-content-recall.ts` (content recall + merge gate), `hook-recall-evidence.ts` (evidence decision/gate), `hook-recall-payload.ts` (lean projection, reflex hits, budget), `deadline-shadow-row.ts` (also the `vector_late_settle` row) |
 | `src/bash-pre-lane.ts` (Bash tripwire pipeline) | `bash-pre-analysis.ts` (command analysis, shim eligibility, hint), next to `bash-pre-patterns.ts` (tables) |
 | `src/session-lane.ts` (SessionStart pipeline) | `session-format.ts` (hit merge, session/taxonomy blocks), `session-lane-telemetry.ts` (`session_hook_call` row, per-part tokens) |
-| `src/stop-lane.ts` (Stop pipeline) | `stop-transcript.ts` (transcript loading/normalising), `stop-heuristics.ts` (save heuristics, suggestion format) |
+| `src/stop-lane.ts` (Stop pipeline) | `stop-transcript.ts` (transcript loading/normalising), `stop-heuristics.ts` (save heuristics, suggestion format), `stop-lane-same-turn.ts` (same-turn hand-over: user notice, agent block) |
 | `src/write-lane.ts` (PreToolUse Write/Edit pipeline) | `write-format.ts` (hint block), `write-lane-telemetry.ts` (`hook_call` row) |
 | `src/settings.ts` (typed per-key accessors) | `settings-file.ts` (shape, validation, read/write, `mutateSettings`) |
 | `src/telemetry-events.ts` (event types) | `telemetry-events-hook.ts` (hook rows), next to `-embedding` and `-code` |
@@ -687,7 +687,7 @@ Dateien über der 800-Zeilen-Konvention wurden entlang je einer Verantwortung ge
 | `src/http-hook-routes.ts` (`/hook/recall`-Route + `runHookRecall`) | `hook-recall-input.ts` (Request-Felder), `hook-content-recall.ts` (Content-Recall + Merge-Gate), `hook-recall-evidence.ts` (Evidenzentscheid/-Gate), `hook-recall-payload.ts` (Lean-Projektion, Reflex-Hits, Budget), `deadline-shadow-row.ts` (auch die `vector_late_settle`-Zeile) |
 | `src/bash-pre-lane.ts` (Bash-Stolperdraht-Pipeline) | `bash-pre-analysis.ts` (Befehlsanalyse, Shim-Eignung, Hinweis), neben `bash-pre-patterns.ts` (Tabellen) |
 | `src/session-lane.ts` (SessionStart-Pipeline) | `session-format.ts` (Treffer-Merge, Session-/Taxonomie-Block), `session-lane-telemetry.ts` (`session_hook_call`-Zeile, Token je Teil) |
-| `src/stop-lane.ts` (Stop-Pipeline) | `stop-transcript.ts` (Transkript laden/normalisieren), `stop-heuristics.ts` (Save-Heuristiken, Vorschlagsformat) |
+| `src/stop-lane.ts` (Stop-Pipeline) | `stop-transcript.ts` (Transkript laden/normalisieren), `stop-heuristics.ts` (Save-Heuristiken, Vorschlagsformat), `stop-lane-same-turn.ts` (Übergabe im selben Turn: Nutzerhinweis, Agentenblock) |
 | `src/write-lane.ts` (PreToolUse-Write/Edit-Pipeline) | `write-format.ts` (Hinweisblock), `write-lane-telemetry.ts` (`hook_call`-Zeile) |
 | `src/settings.ts` (typisierte Zugriffe je Schlüssel) | `settings-file.ts` (Form, Validierung, Lesen/Schreiben, `mutateSettings`) |
 | `src/telemetry-events.ts` (Ereignistypen) | `telemetry-events-hook.ts` (Hook-Zeilen), neben `-embedding` und `-code` |
