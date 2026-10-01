@@ -83,10 +83,21 @@ export class Vault {
    * nicht lesen kann, verbergen beide eine id.
    */
   private unreadableFiles = new Set<string>();
+  /**
+   * True once this vault has seen its root present: `init()` found it as a
+   * directory, or a file under it was read. It never goes back to false. A
+   * save into a root this flag has seen, but that is missing right now, is a
+   * mount that vanished under a running daemon — not the "vault created on
+   * first save" case, which is a root this flag never saw. save.ts uses this
+   * to refuse recreating a vault it once knew, instead of silently
+   * `mkdir`-ing a fresh empty one on the parent filesystem.
+   */
+  rootKnownPresent = false;
 
   constructor(public readonly root: string) {}
 
   async init(): Promise<{ loaded: number; skipped: { path: string; err: string }[] }> {
+    if (await stat(this.root).then((st) => st.isDirectory(), () => false)) this.rootKnownPresent = true;
     // Reihenfolge stabil halten: nach Pfad sortieren bevor wir parallel laden.
     // So bleibt die Map-Iterationsordnung deterministisch (Maps iterieren in
     // Insertion-Order; wir setzen die Ergebnisse in Pfad-Sortierreihenfolge).
@@ -481,6 +492,7 @@ export class Vault {
       // Definition kein quarantänisiertes Duplikat mehr.
       this.forgetDuplicate(filePath);
       this.unreadableFiles.delete(filePath);
+      this.rootKnownPresent = true;
       this.memorys.set(m.fm.id, m);
       this.filePathToId.set(filePath, m.fm.id);
       // A file this vault already knows under the same id is a CHANGE, whatever

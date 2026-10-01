@@ -355,6 +355,16 @@ export interface SaveMemoryCommitOptions {
    */
   precondition?: (previousFrontmatter: Record<string, unknown>) => void;
   /**
+   * Whether this daemon has seen the vault root present (`Vault.rootKnownPresent`).
+   * A root never seen present is the "created on first save" case and may be
+   * `mkdir`ed. A root that WAS seen but is missing right now is a mount that
+   * vanished under a running daemon — `mkdir` would recreate it on the parent
+   * filesystem and silence `vault_missing` for good, so the save is refused
+   * instead. Absent/undefined (a caller with no Vault, e.g. import or a
+   * script) keeps the old create-on-demand behaviour.
+   */
+  vaultRootKnownPresent?: boolean;
+  /**
    * KEIN `authority`-Feld mehr. Codex-Gegenreview (P0): Solange die öffentliche
    * Core-API erlaubte, die Auskunft „wo lebt diese id" selbst mitzubringen, war
    * der autoritative Plattenscan optional — und damit die Invariante „eine ID,
