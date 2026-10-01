@@ -338,18 +338,17 @@ export async function ensureServing(
   // autostart on → persistent login agent via brew services (best for the
   // long-lived daemon). Falls back to a one-shot detached serve if brew
   // services is unavailable (e.g. headless/SSH, no GUI domain).
+  let startedWithBrew = false;
   if (autostart && brewBin) {
     const r = run(brewBin, ["services", "start", "ollama"], { timeoutMs: 30_000 });
+    startedWithBrew = r.ok;
     if (r.ok && (await pollServer(15_000))) return { ok: true, detail: "started via brew services (login agent)" };
-    // brew services may have launched the agent but bound slowly — re-probe once
-    // before spawning a competing instance (avoids an EADDRINUSE race on 11434).
-    //
-    // This re-probe used to sit outside the `brewBin` guard, so it fired
-    // even when brew was never invoked (not installed, or autostart off) and
-    // attributed whatever answered on 11434 — a separately managed ollama, in
-    // one observed case — to "brew services". Scoped here it only claims that
-    // label when `brew services start` was actually run.
-    if (await serverVersion()) return { ok: true, detail: "started via brew services (login agent)" };
+  }
+
+  // Another server may have bound after the first probe. Keep this check even
+  // without brew so we do not spawn a competitor on the same port.
+  if (await serverVersion()) {
+    return { ok: true, detail: startedWithBrew ? "started via brew services (login agent)" : "using already-running ollama on 11434" };
   }
 
   // Linux: systemd --user is the closest equivalent to brew services on the one
@@ -377,7 +376,9 @@ export async function ensureServing(
       // circuits the poll (`r.ok &&`), and its most likely cause is that the unit
       // already exists — in which case ollama may well be serving. Re-probe before
       // spawning a competitor on 11434, or a slow unit costs a second server.
-      if (await serverVersion()) return { ok: true, detail: "started via systemd --user (bastra-ollama.service)" };
+      if (await serverVersion()) {
+        return { ok: true, detail: r.ok ? "started via systemd --user (bastra-ollama.service)" : "using already-running ollama on 11434" };
+      }
     }
   }
 

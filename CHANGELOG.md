@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #901 identifies a false brew-services start label during an Ollama re-probe.
+- Follow-up to #901: the re-probe still prevents a second server, while brew/systemd labels require a successful start.
+
 - @zzallirog's #889 lets the code-graph build lock recover an abandoned generation marker.
 - Follow-up to #889: the race regression checks uniqueness per generation and lock comments describe takeover limits.
 

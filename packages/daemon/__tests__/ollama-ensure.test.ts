@@ -58,7 +58,7 @@ test("the systemd path re-probes before it risks a second server on 11434", () =
   assert.ok(spawnIdx > start, "the detached fallback no longer follows the Linux branch");
   const between = src.slice(start, spawnIdx);
   assert.ok(
-    /if \(await serverVersion\(\)\) return/.test(between),
+    /if \(await serverVersion\(\)\)/.test(between),
     "no re-probe between the systemd attempt and the detached spawn",
   );
   // And the acting part stays behind the platform gate — macOS never enters it.
