@@ -46,7 +46,7 @@ import {
 } from "@bastra-recall/core";
 import { ollamaChat } from "../src/learned-recall/reranker.js";
 import { resolveGenerationModel } from "../src/settings.js";
-import { cuePartialPath, publishCueSidecar } from "./cue-output.js";
+import { cuePartialPath, finishCueRun } from "./cue-output.js";
 
 const TAG = "[bastra-recall.cues]";
 
@@ -239,10 +239,7 @@ async function main(): Promise<void> {
         written++;
       },
     });
-    if (armLost !== undefined) {
-      throw new Error(`der Vektorarm ist während des Laufs ausgefallen (${armLost}) — kein Sidecar geschrieben`);
-    }
-    if (!dryRun) await publishCueSidecar(partial, out, overwrite);
+    await finishCueRun(report, { armLost, dryRun, partial, out, overwrite });
     console.error(`${TAG} ${JSON.stringify(report)}`);
     console.error(`${TAG} ${dryRun ? "dry-run, nichts geschrieben" : `${written} Cues → ${out}`}`);
   } finally {
