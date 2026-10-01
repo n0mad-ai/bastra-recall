@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #933 adds `find_code` and `archive_memory` to the skill's tool list.
+- Follow-up to #933: the list covers every registered tool by access tier, while PRIVACY keeps users' direct-edit freedom.
+
 - @zzallirog's #931 lists Commons verification and its public record in CLI help, removes stale bridge partition wording, and corrects the collapse-path score ceiling.
 - Follow-up to #931: bridge help distinguishes query-language override from where new bridges are filed, with EN/DE usage guidance and regressions.
 
