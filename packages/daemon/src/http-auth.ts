@@ -103,6 +103,32 @@ export function resolveCorsOrigin(
   return null;
 }
 
+/** Local routes do not require a bearer token, so a browser may write to them
+ * only from the daemon's own page. A JSON media type also forces a browser on
+ * another site to preflight; the local surface does not grant that preflight.
+ * The image upload has its own non-simple media types. */
+export function gateLocalPost(p: {
+  origin: string | undefined;
+  host: string | undefined;
+  contentType: string | undefined;
+  path: string;
+}): 200 | 403 | 415 {
+  if (p.origin !== undefined) {
+    let sameOrigin = false;
+    try {
+      const origin = new URL(p.origin);
+      sameOrigin = (origin.protocol === "http:" || origin.protocol === "https:") &&
+        origin.host.toLowerCase() === p.host?.toLowerCase();
+    } catch { /* malformed and opaque origins are foreign */ }
+    if (!sameOrigin) return 403;
+  }
+  const type = p.contentType?.split(";", 1)[0]?.trim().toLowerCase();
+  if (p.path.split("?", 1)[0] === "/ui/vault-image") {
+    return type === "image/png" || type === "image/jpeg" || type === "image/webp" ? 200 : 415;
+  }
+  return type === "application/json" ? 200 : 415;
+}
+
 /**
  * Auth decision for /api/v1/*. A request WITH an Origin header is a browser
  * request (possibly a foreign site): it must be on the allowlist AND carry the

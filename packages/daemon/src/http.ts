@@ -79,7 +79,7 @@ import { type ChatFn } from "./webui-chat.js";
 import { type CuratorRunDeps } from "./curator-run.js";
 import type { EmbeddingStatus } from "./embedding-status.js";
 import { sendCors, sendJson } from "./http-util.js";
-import { isLoopbackHost, resolveCorsOrigin } from "./http-auth.js";
+import { isLoopbackHost, resolveCorsOrigin, gateLocalPost } from "./http-auth.js";
 import { dispatchUiRoutes } from "./http-ui-routes.js";
 import { dispatchLocalRoutes } from "./http-local-routes.js";
 import { dispatchApiSurface } from "./http-api-surface.js";
@@ -216,6 +216,19 @@ export async function startHttpServer(opts: HttpOptions): Promise<HttpHandle> {
     if (!url.startsWith("/api/v1/") && !isLoopbackHost(req.headers.host, ctx.allowedHosts)) {
       sendJson(res, 403, { error: "host not allowed" });
       return;
+    }
+
+    if (method === "POST" && !url.startsWith("/api/v1/")) {
+      const gate = gateLocalPost({
+        origin: req.headers.origin,
+        host: req.headers.host,
+        contentType: req.headers["content-type"],
+        path: url,
+      });
+      if (gate !== 200) {
+        sendJson(res, gate, { error: gate === 403 ? "origin not allowed" : "unsupported content type" });
+        return;
+      }
     }
 
     // CORS preflight for /api/v1/*

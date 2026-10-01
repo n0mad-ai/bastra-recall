@@ -33,6 +33,7 @@ import { connect, createServer as createTcpServer, type AddressInfo } from "node
 import { Vault, SearchIndex } from "@bastra-recall/core";
 import { startHttpServer } from "../src/http.js";
 import { gateApiRequest } from "../src/http-auth.js";
+import { gateLocalPost } from "../src/http-auth.js";
 import { Telemetry } from "../src/telemetry.js";
 
 const TOKEN = "rebinding-test-token";
@@ -189,6 +190,34 @@ async function withServer(
 }
 
 const JSON_HEADERS = { "content-type": "application/json" };
+
+test("local POST gate: foreign and opaque browser origins cannot reach local writes", async () => {
+  await withServer({ token: "unset" }, async (port) => {
+    for (const path of ["/ui/areas", "/settings/docs", "/ui/onboarding", "/hook/hinted"]) {
+      for (const origin of ["https://attacker.example", "null"]) {
+        const result = await call(port, "POST", path, {
+          "content-type": "text/plain",
+          origin,
+        }, "{}");
+        assert.equal(result.status, 403, `${path} accepted ${origin}`);
+      }
+    }
+    const simple = await call(port, "POST", "/settings/docs", { "content-type": "text/plain" }, "{}");
+    assert.equal(simple.status, 415, "an originless simple POST must not be parsed as JSON");
+    const local = await call(port, "POST", "/hook/hinted", {
+      ...JSON_HEADERS,
+      origin: `http://127.0.0.1:${port}`,
+    }, "{}");
+    assert.notEqual(local.status, 403, "the daemon's own page keeps its local POST path");
+  });
+});
+
+test("local POST gate: image uploads require a non-simple image media type", () => {
+  const base = { origin: undefined, host: "127.0.0.1:6723", path: "/ui/vault-image?entity=demo" };
+  assert.equal(gateLocalPost({ ...base, contentType: "image/png" }), 200);
+  assert.equal(gateLocalPost({ ...base, contentType: "text/plain" }), 415);
+  assert.equal(gateLocalPost({ ...base, contentType: "application/json" }), 415);
+});
 
 // ── Die Matrix: Host-Zustand × Token-Zustand, gegen den echten Server ──
 //
