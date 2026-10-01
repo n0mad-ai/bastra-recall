@@ -73,7 +73,6 @@ export class TodayProvider {
     // still holds yesterday's entries until a transcript is touched.
     if (
       sharedCached &&
-      sharedCached.length > 0 &&
       sharedCached.every((e) => formatDate(e.timestamp) === todayDateString)
     ) {
       debug("Using shared today usage cache");

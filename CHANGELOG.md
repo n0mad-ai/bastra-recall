@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #843 invalidates yesterday's Today usage cache after midnight.
+- Follow-up to #843: a valid empty Today cache remains reusable instead of triggering repeated transcript reads.
+
 - @zzallirog's #841 bills one-hour cache writes at the one-hour rate in statusline cost estimates.
 - Follow-up to #841: missing one-hour prices fall back to the five-minute rate instead of turning costs into NaN.
 
