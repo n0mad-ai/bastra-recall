@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Telemetry } from "../src/telemetry.js";
+import { distinctiveTokensForActedOn } from "../src/tool-handlers.js";
 
 // Der Telemetry-Konstruktor liest jetzt join-state.json (Boot-Restore). Jeder
 // Test bekommt ein frisches, isoliertes Log-Dir, damit `new Telemetry()` nie
@@ -258,4 +259,31 @@ test("recall_episode (#77): direct load without a hint is marked surfaced=false"
   assert.equal(episodes[0].surfaced, false, "no hint → must not count into any band quota");
   assert.equal(episodes[0].band, "not_hinted", "#469: no score, so no floor to be below");
   assert.equal(episodes[0].acted_on, true, "acted_on stays measurable for direct loads");
+});
+
+test("acted_on (#701): the tool input is tokenised like the memory — Cyrillic and CJK tokens find their partner", () => {
+  // The memory side derives its tokens with the Unicode tokenizer; an ASCII
+  // one on the input side left these with match_strength 0.
+  const body = "Перед релизом проверяем миграцию хранилища сессий. 发布前检查 会话存储迁移";
+  const tokens = distinctiveTokensForActedOn(body);
+  assert.ok(tokens.includes("миграцию") && tokens.includes("хранилища") && tokens.includes("会话存储迁移"), tokens.join(" "));
+
+  const telemetry = new Telemetry();
+  telemetry.rotateTurn("session-ru");
+  telemetry.recordLoadedMemory({ memory_id: "mem-ru", distinctive_tokens: tokens, hook_hint: null, session_id: "session-ru" });
+  const [ru] = telemetry.matchLoadedMemories({
+    tool_name: "Edit",
+    tool_input_excerpt: "// Миграцию хранилища запускаем до релиза",
+    session_id: "session-ru",
+  });
+  assert.equal(ru.match_strength, 2);
+  assert.equal(ru.acted_on, true);
+
+  telemetry.recordLoadedMemory({ memory_id: "mem-zh", distinctive_tokens: tokens, hook_hint: null, session_id: "session-ru" });
+  const [zh] = telemetry.matchLoadedMemories({
+    tool_name: "Edit",
+    tool_input_excerpt: "发布前检查 会话存储迁移 done",
+    session_id: "session-ru",
+  });
+  assert.equal(zh.acted_on, true);
 });
