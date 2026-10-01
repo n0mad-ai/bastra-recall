@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 
 import { blocksMatch, buildServerBlock, foreignEnv } from "../src/cli/helpers.js";
 import { codexServerMatches } from "../src/cli/codex-cli.js";
-import { planHookEntries } from "../src/cli/adapters/claude-code.js";
+import { missingRequiredHookRegistrations, planHookEntries, registeredHookBins } from "../src/cli/adapters/claude-code.js";
 import { planCodexHooks } from "../src/cli/adapters/codex.js";
 import { hookWrapper } from "../src/cli/adapters/command-paths.js";
 import { PROMPT_HOOK_BIN, HOOK_STUB_BIN } from "../src/cli/paths.js";
@@ -117,4 +117,61 @@ test("#698: re-installing over the old plan-lane matcher moves it to the new one
   assert.equal(todo.length, 1, "one plan-lane entry, the old one replaced");
   assert.equal(todo[0].matcher, "TodoWrite|TaskCreate|ExitPlanMode");
   assert.match(String(todo[0].hooks?.[0]?.command), /\/usr\/local\/bin\/hook-timer node .*todo-hook\.js$/);
+});
+
+test("Claude Code: a wrapped registration on the stub is still seen as registered", () => {
+  // The shape install itself writes on the stub: marker, wrapper, stub, lane.
+  const wrap = (file: string, matcher?: string) => ({
+    ...(matcher ? { matcher } : {}),
+    hooks: [{ type: "command", command: `/usr/local/bin/hook-timer node /old/packages/daemon/dist/${file}`, timeout: 2 }],
+  });
+  const hooks = {
+    SessionStart: [wrap("session-hook.js", "startup|resume|clear|compact")],
+    UserPromptSubmit: [wrap("prompt-hook.js")],
+    PreToolUse: [wrap("hook.js", "Write|Edit|MultiEdit|NotebookEdit"), wrap("todo-hook.js", "TodoWrite|TaskCreate|ExitPlanMode"), wrap("bash-pre-hook.js", "Bash")],
+    PostToolUse: [wrap("bash-fail-hook.js", "Bash")],
+    PostToolUseFailure: [wrap("bash-fail-hook.js", "Bash")],
+  };
+  const plan = planHookEntries("install", hooks, { includeStop: false, stubPresent: true });
+  for (const c of Object.values(plan.after).flatMap((e) => commandsOf(e as unknown[]))) {
+    assert.ok(c.startsWith(`BASTRA_HOOK_CLIENT=claude-code /usr/local/bin/hook-timer ${HOOK_STUB_BIN} `), c);
+  }
+  assert.deepEqual(missingRequiredHookRegistrations(plan.after), [], "doctor: no required lane missing");
+  assert.equal(registeredHookBins(plan.after).size, 6, "doctor: every required lane registered");
+  const again = planHookEntries("install", plan.after, { includeStop: false, stubPresent: true });
+  assert.deepEqual(again.after, plan.after, "idempotent");
+});
+
+test("Claude Code: a second handler the user put into our entry survives a re-install", () => {
+  const entry = {
+    hooks: [
+      { type: "command", command: "node /old/runtime/dist/prompt-hook.js", timeout: 2, __bastraRecall: true },
+      { type: "command", command: "/usr/local/bin/my-prompt-logger", timeout: 1 },
+    ],
+  };
+  const plan = planHookEntries("install", { UserPromptSubmit: [entry] }, { includeStop: false, stubPresent: false });
+  const all = commandsOf(plan.after.UserPromptSubmit);
+  assert.ok(all.includes("/usr/local/bin/my-prompt-logger"), `user handler dropped: ${JSON.stringify(all)}`);
+  assert.ok(all.includes(`BASTRA_HOOK_CLIENT=claude-code node ${PROMPT_HOOK_BIN}`));
+  // Uninstall takes ours out and leaves theirs.
+  const gone = planHookEntries("uninstall", { UserPromptSubmit: [entry] }, { includeStop: false, stubPresent: false });
+  assert.deepEqual(commandsOf(gone.after.UserPromptSubmit), ["/usr/local/bin/my-prompt-logger"]);
+});
+
+test("Claude Code: a wrapper that takes the runner as one quoted argument is kept", () => {
+  const entry = {
+    hooks: [{ type: "command", command: `/usr/local/bin/hook-timer --tag p -- "node /old/runtime/dist/prompt-hook.js"`, timeout: 2, __bastraRecall: true }],
+  };
+  const plan = planHookEntries("install", { UserPromptSubmit: [entry] }, { includeStop: false, stubPresent: false });
+  assert.deepEqual(commandsOf(plan.after.UserPromptSubmit), [
+    `BASTRA_HOOK_CLIENT=claude-code /usr/local/bin/hook-timer --tag p -- "node ${PROMPT_HOOK_BIN}"`,
+  ]);
+});
+
+test("Claude Code: behind `cd /dir &&` the client marker scopes to the runner, not to cd", () => {
+  const entry = {
+    hooks: [{ type: "command", command: "cd /work && node /old/runtime/dist/prompt-hook.js", timeout: 2, __bastraRecall: true }],
+  };
+  const plan = planHookEntries("install", { UserPromptSubmit: [entry] }, { includeStop: false, stubPresent: false });
+  assert.deepEqual(commandsOf(plan.after.UserPromptSubmit), [`cd /work && BASTRA_HOOK_CLIENT=claude-code node ${PROMPT_HOOK_BIN}`]);
 });

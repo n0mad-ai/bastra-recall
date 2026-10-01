@@ -36,7 +36,18 @@ const unquote = (t: string): string => t.replace(/^["']|["']$/g, "");
  * own runner and keeps whatever wraps it.
  */
 export function hookWrapper(cmd: string, file: string, sub?: string): HookWrapper | null {
-  const tokens = [...cmd.matchAll(/"[^"]*"|'[^']*'|\S+/g)];
+  const tokens: Array<{ text: string; index: number }> = [];
+  for (const m of cmd.matchAll(/"[^"]*"|'[^']*'|\S+/g)) {
+    tokens.push({ text: m[0], index: m.index ?? 0 });
+    // A wrapper that takes the runner as ONE quoted argument (`wrap -- "node
+    // /…/hook.js"`): the words inside are tokens too, so prefix and suffix cut
+    // inside the quotes and the runner is replaced in place.
+    if (/^["'].*\s.*["']$/.test(m[0])) {
+      for (const inner of m[0].slice(1, -1).matchAll(/"[^"]*"|'[^']*'|\S+/g)) {
+        tokens.push({ text: inner[0], index: (m.index ?? 0) + 1 + (inner.index ?? 0) });
+      }
+    }
+  }
   let start = -1;
   let end = -1;
   // Only a whole absolute path counts. An unquoted path with a space splits
@@ -44,13 +55,13 @@ export function hookWrapper(cmd: string, file: string, sub?: string): HookWrappe
   // it twice; such a command keeps the old behaviour (no wrapper kept).
   const rooted = (t: string): boolean => /^(?:[/~]|[A-Za-z]:[\\/])/.test(t);
   for (let i = 0; i < tokens.length && start < 0; i++) {
-    const t = unquote(tokens[i][0]);
+    const t = unquote(tokens[i].text);
     if (!rooted(t)) continue;
     if (slashes(t).endsWith(`/${file}`)) {
-      const node = i > 0 && /^node(\.exe)?$/.test(fileOf(unquote(tokens[i - 1][0])));
+      const node = i > 0 && /^node(\.exe)?$/.test(fileOf(unquote(tokens[i - 1].text)));
       start = node ? i - 1 : i;
       end = i;
-    } else if (sub && /^bastra-hook(\.exe)?$/.test(fileOf(t)) && tokens[i + 1]?.[0] === sub) {
+    } else if (sub && /^bastra-hook(\.exe)?$/.test(fileOf(t)) && tokens[i + 1]?.text === sub) {
       start = i;
       end = i + 1;
     }
@@ -58,7 +69,7 @@ export function hookWrapper(cmd: string, file: string, sub?: string): HookWrappe
   if (start < 0) return null;
   return {
     prefix: cmd.slice(0, tokens[start].index),
-    suffix: cmd.slice(tokens[end].index + tokens[end][0].length),
+    suffix: cmd.slice(tokens[end].index + tokens[end].text.length),
   };
 }
 
