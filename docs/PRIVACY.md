@@ -29,7 +29,7 @@ These requests are distinct from uploading a vault. Local telemetry records acti
 
 ### Your control
 
-Inspect and edit the Markdown files directly, or use the memory tools through your assistant. Use `bastra embeddings off` for keyword-only search and `bastra embeddings on` to set up local embeddings. Removing client registrations with `bastra uninstall all` keeps your vault; uninstalling the package is a separate step.
+Read the Markdown files directly whenever you like. To change a memory, use the memory tools through your assistant (`edit_memory`): a direct file write skips the audit log, the `updated` stamp, the id lock and the index refresh. Use `bastra embeddings off` for keyword-only search and `bastra embeddings on` to set up local embeddings. Removing client registrations with `bastra uninstall all` keeps your vault; uninstalling the package is a separate step.
 
 The `sensitivity` field filters access through specific Bastra interfaces. It is not file encryption or a substitute for operating-system permissions. See the [memory schema](./memory-schema.md#privacy-field). Report suspected vulnerabilities through [SECURITY.md](../SECURITY.md).
 
@@ -62,7 +62,7 @@ Diese Anfragen sind vom Hochladen eines Vaults zu unterscheiden. Lokale Telemetr
 
 ### Deine Kontrolle
 
-Prüfe und bearbeite Markdown-Dateien direkt oder nutze die Memory-Tools über deinen Assistenten. `bastra embeddings off` aktiviert reine Stichwortsuche; `bastra embeddings on` richtet lokale Embeddings ein. `bastra uninstall all` entfernt Client-Registrierungen und behält deinen Vault. Das Paket wird separat deinstalliert.
+Lies die Markdown-Dateien jederzeit direkt. Zum Ändern einer Memory nutze die Memory-Tools über deinen Assistenten (`edit_memory`): Ein direkter Dateischreibzugriff umgeht Audit-Log, den `updated`-Stempel, das ID-Lock und die Index-Aktualisierung. `bastra embeddings off` aktiviert reine Stichwortsuche; `bastra embeddings on` richtet lokale Embeddings ein. `bastra uninstall all` entfernt Client-Registrierungen und behält deinen Vault. Das Paket wird separat deinstalliert.
 
 Das Feld `sensitivity` filtert den Zugriff über bestimmte Bastra-Schnittstellen. Es verschlüsselt keine Dateien und ersetzt keine Betriebssystemrechte. Siehe [Memory-Schema](./memory-schema.md#privacy-field). Vermutete Sicherheitslücken melde über [SECURITY.md](../SECURITY.md).
 
