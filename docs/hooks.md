@@ -146,6 +146,8 @@ own entries. A name is not enough (#683). A script of your own such as
 `~/bin/my-bastra-recall-audit-hook.sh` stays registered through install and
 uninstall, and both print a `hooks left alone` line naming it. A foreign command
 that only passes `bastra-hook` as an argument stays registered too (#945).
+Re-install also keeps a shell wrapper around a Bastra hook runner and foreign
+handlers placed beside it in the same entry; quoted wrapper labels stay intact.
 
 The Stop hook is optional because it can emit multi-line save-eval suggestions
 at turn end. Enable it explicitly with `bastra install claude-code
@@ -1020,6 +1022,9 @@ allein reicht nicht (#683). Ein eigenes Skript wie
 registriert, und beide geben eine Zeile `hooks left alone` aus, die es nennt.
 Auch ein fremder Befehl, der `bastra-hook` nur als Argument übergibt, bleibt
 registriert (#945).
+Bei einer erneuten Installation bleiben auch ein Shell-Wrapper um den
+Bastra-Hook und fremde Handler im selben Eintrag erhalten; gequotete
+Wrapper-Argumente werden nicht verändert.
 
 Der Stop-Hook ist optional, weil er am Ende eines Turns mehrzeilige
 Speichervorschläge ausgeben kann. Aktiviere ihn ausdrücklich mit

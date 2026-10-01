@@ -125,20 +125,25 @@ function hookEntry(
   return entry;
 }
 
+function isOurHandler(hook: unknown): boolean {
+  if (!hook || typeof hook !== "object") return false;
+  const record = hook as Record<string, unknown>;
+  if (typeof record.statusMessage === "string" &&
+      (record.statusMessage.startsWith("bastra-recall:") || record.statusMessage.startsWith("Bastra Recall ·"))) return true;
+  const command = typeof record.command === "string" ? record.command : "";
+  return command.includes(CLIENT_MARKER) && runsOurHookRunner(command, OUR_HOOK_FILES, CLIENT_MARKER);
+}
+
 function isOurHookEntry(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   const hooks = (value as Record<string, unknown>).hooks;
-  if (!Array.isArray(hooks)) return false;
-  return hooks.some((hook) => {
-    if (!hook || typeof hook !== "object") return false;
-    const record = hook as Record<string, unknown>;
-    if (typeof record.statusMessage === "string" &&
-        (record.statusMessage.startsWith("bastra-recall:") || record.statusMessage.startsWith("Bastra Recall ·"))) return true;
-    const command = typeof record.command === "string" ? record.command : "";
-    // #683: the stub or a hook script as the program run, not `bastra-hook`
-    // anywhere in the text.
-    return command.includes(CLIENT_MARKER) && runsOurHookRunner(command, OUR_HOOK_FILES, CLIENT_MARKER);
-  });
+  return Array.isArray(hooks) && hooks.some(isOurHandler);
+}
+
+function foreignRemainder(entry: unknown): unknown[] {
+  const record = entry as Record<string, unknown>;
+  const rest = (Array.isArray(record.hooks) ? record.hooks : []).filter((hook) => !isOurHandler(hook));
+  return rest.length ? [{ ...record, hooks: rest }] : [];
 }
 
 // The recognition before #683 — only to name what is now left alone.
@@ -182,9 +187,10 @@ export function planCodexHooks(
     before[event] = current;
     if (action === "install" && !opts.includeStop && event === "Stop") {
       stopPreserved = current.some(isOurHookEntry);
-      after[event] = current.map((entry) => isOurHookEntry(entry) ? hookEntry(stopDef, stubPresent, wrapOf(stopDef)) : entry);
+      after[event] = current.flatMap((entry) => isOurHookEntry(entry)
+        ? [hookEntry(stopDef, stubPresent, wrapOf(stopDef)), ...foreignRemainder(entry)] : [entry]);
     } else {
-      after[event] = current.filter((entry) => !isOurHookEntry(entry));
+      after[event] = current.flatMap((entry) => isOurHookEntry(entry) ? foreignRemainder(entry) : [entry]);
     }
   }
   if (action === "install") {

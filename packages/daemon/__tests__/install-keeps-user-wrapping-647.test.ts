@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 
 import { blocksMatch, buildServerBlock, foreignEnv } from "../src/cli/helpers.js";
 import { codexServerMatches } from "../src/cli/codex-cli.js";
-import { missingRequiredHookRegistrations, planHookEntries, registeredHookBins } from "../src/cli/adapters/claude-code.js";
+import { hookCommandPath, missingRequiredHookRegistrations, planHookEntries, registeredHookBins, stubLaneCommandPath } from "../src/cli/adapters/claude-code.js";
 import { planCodexHooks } from "../src/cli/adapters/codex.js";
 import { hookWrapper } from "../src/cli/adapters/command-paths.js";
 import { PROMPT_HOOK_BIN, HOOK_STUB_BIN } from "../src/cli/paths.js";
@@ -166,6 +166,55 @@ test("Claude Code: a wrapper that takes the runner as one quoted argument is kep
   assert.deepEqual(commandsOf(plan.after.UserPromptSubmit), [
     `BASTRA_HOOK_CLIENT=claude-code /usr/local/bin/hook-timer --tag p -- "node ${PROMPT_HOOK_BIN}"`,
   ]);
+  assert.equal(hookCommandPath(commandsOf(plan.after.UserPromptSubmit)[0], "prompt-hook.js"), PROMPT_HOOK_BIN);
+});
+
+test("a quoted node executable path with spaces never leaves an unbalanced quote", () => {
+  for (const command of [
+    '"C:\\Program Files\\nodejs\\node.exe" C:\\old\\daemon\\dist\\prompt-hook.js',
+    '"/opt/my tools/node" /old/runtime/dist/prompt-hook.js',
+  ]) {
+    const entry = { hooks: [{ type: "command", command, __bastraRecall: true }] };
+    const plan = planHookEntries("install", { UserPromptSubmit: [entry] }, { includeStop: false, stubPresent: false });
+    assert.deepEqual(commandsOf(plan.after.UserPromptSubmit), [`BASTRA_HOOK_CLIENT=claude-code node ${PROMPT_HOOK_BIN}`]);
+  }
+});
+
+test("a quoted log message cannot redirect replacement away from the real runner", () => {
+  const old = '/old/runtime/dist/prompt-hook.js';
+  const entry = { hooks: [{ type: "command", command: `logger "ran node ${old}" ; node /real/runtime/dist/prompt-hook.js`, __bastraRecall: true }] };
+  const plan = planHookEntries("install", { UserPromptSubmit: [entry] }, { includeStop: false, stubPresent: false });
+  const command = commandsOf(plan.after.UserPromptSubmit)[0];
+  assert.equal(command, `logger "ran node ${old}" ; BASTRA_HOOK_CLIENT=claude-code node ${PROMPT_HOOK_BIN}`);
+  assert.equal(hookCommandPath(command, "prompt-hook.js"), PROMPT_HOOK_BIN);
+});
+
+test("shell operators inside quoted arguments do not move the client marker", () => {
+  for (const label of ['a; b', 'x && y', 'a|b']) {
+    const entry = { hooks: [{ type: "command", command: `/usr/local/bin/timer --label "${label}" node /old/runtime/dist/prompt-hook.js`, __bastraRecall: true }] };
+    const plan = planHookEntries("install", { UserPromptSubmit: [entry] }, { includeStop: false, stubPresent: false });
+    assert.deepEqual(commandsOf(plan.after.UserPromptSubmit), [
+      `BASTRA_HOOK_CLIENT=claude-code /usr/local/bin/timer --label "${label}" node ${PROMPT_HOOK_BIN}`,
+    ]);
+  }
+});
+
+test("doctor recognizes a stub runner kept inside one quoted wrapper argument", () => {
+  const entry = { hooks: [{ type: "command", command: '/usr/local/bin/hook-timer --tag p -- "/old/stub/bastra-hook prompt"', __bastraRecall: true }] };
+  const plan = planHookEntries("install", { UserPromptSubmit: [entry] }, { includeStop: false, stubPresent: true });
+  const command = commandsOf(plan.after.UserPromptSubmit)[0];
+  assert.equal(stubLaneCommandPath(command, "prompt"), HOOK_STUB_BIN);
+});
+
+test("Codex keeps a foreign handler beside its own during install and uninstall", () => {
+  const entry = { hooks: [
+    { type: "command", command: "BASTRA_HOOK_CLIENT=codex node /old/daemon/dist/prompt-hook.js", statusMessage: "Bastra Recall · prompt" },
+    { type: "command", command: "/usr/local/bin/user-logger" },
+  ] };
+  const installed = planCodexHooks("install", { UserPromptSubmit: [entry] }, { includeStop: false, stubPresent: false });
+  assert.ok(commandsOf(installed.after.UserPromptSubmit).includes("/usr/local/bin/user-logger"));
+  const removed = planCodexHooks("uninstall", { UserPromptSubmit: [entry] }, { includeStop: false, stubPresent: false });
+  assert.deepEqual(commandsOf(removed.after.UserPromptSubmit), ["/usr/local/bin/user-logger"]);
 });
 
 test("Claude Code: behind `cd /dir &&` the client marker scopes to the runner, not to cd", () => {
