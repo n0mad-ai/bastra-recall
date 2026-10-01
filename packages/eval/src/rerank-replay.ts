@@ -549,9 +549,10 @@ async function main(): Promise<void> {
     L.push("");
     L.push("  added latency — M4 Pro, lower bound, direct span (NOT a difference: contention is not cancelled).");
     for (const l of latency) {
+      const fmt = (v: number | null): string => (v === null ? "n/a" : v.toFixed(1));
       L.push(
         `    ${`${l.model}/${l.passage}`.padEnd(16)} | N=${String(l.n).padStart(2)} | ` +
-          `p50 ${l.warm_p50_ms.toFixed(1)} ms | p95 ${l.warm_p95_ms.toFixed(1)} ms | ` +
+          `p50 ${fmt(l.warm_p50_ms)} ms | p95 ${fmt(l.warm_p95_ms)} ms | ` +
           `first ${l.first_call_ms.toFixed(1)} ms${l.first_call_is_cold ? " (cold)" : ""} | n=${l.samples}`,
       );
     }

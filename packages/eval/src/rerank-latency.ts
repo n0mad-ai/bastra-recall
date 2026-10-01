@@ -28,8 +28,9 @@ export interface LatencyReport {
    */
   first_call_ms: number;
   first_call_is_cold: boolean;
-  warm_p50_ms: number;
-  warm_p95_ms: number;
+  /** null when `samples` is 0 — no warm call happened at this N, not "0 ms". */
+  warm_p50_ms: number | null;
+  warm_p95_ms: number | null;
   samples: number;
 }
 
@@ -102,8 +103,11 @@ export async function measureLatency(
       load_ms: scorer.loadMs,
       first_call_ms: firstCall ?? 0,
       first_call_is_cold: firstWasCold,
-      warm_p50_ms: samples.length ? samples[Math.floor(0.5 * samples.length)] : 0,
-      warm_p95_ms: samples.length ? samples[Math.min(samples.length - 1, Math.floor(0.95 * samples.length))] : 0,
+      // An empty warm sample (pool shallower than N for every row) used
+      // to print 0 ms, indistinguishable from a real fast measurement — null
+      // says "no data" instead of "instant".
+      warm_p50_ms: samples.length ? samples[Math.floor(0.5 * samples.length)] : null,
+      warm_p95_ms: samples.length ? samples[Math.min(samples.length - 1, Math.floor(0.95 * samples.length))] : null,
       samples: samples.length,
     });
   }
