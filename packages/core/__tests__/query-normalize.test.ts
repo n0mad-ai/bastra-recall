@@ -149,6 +149,16 @@ test("capAtWordBoundary: single whitespace-free monster token falls back to a ha
   assert.equal(capAtWordBoundary("x".repeat(100), 10), "x".repeat(10));
 });
 
+test("capAtWordBoundary: a hard cut never leaves half of an astral character", () => {
+  // 𠮷 and 😀 are two UTF-16 units each; a cut between them left a lone high
+  // surrogate, which is not text.
+  const kanji = "𠮷".repeat(10);
+  const cut = capAtWordBoundary(kanji, 7);
+  assert.equal(cut, "𠮷".repeat(3));
+  assert.ok(!/[\uD800-\uDBFF]$/.test(capAtWordBoundary("😀".repeat(10), 5)), "no dangling high surrogate");
+  assert.equal(capAtWordBoundary("😀".repeat(10), 6), "😀".repeat(3), "an even cut keeps whole characters");
+});
+
 test("normalizeQuery: long hook prompt keeps identifiers past the old 1000-char cap", () => {
   // Regression for #162: a pasted stack trace pushed the discriminating
   // identifier past the old slice(0, 1000) and it vanished from the query.
