@@ -292,31 +292,6 @@ export function checkCueRegistration(
 }
 
 /**
- * A plain substring test for "not evaluable" accepts a rule that
- * states the OPPOSITE ("never reported as not evaluable; reported as a null
- * result instead") and rejects the repository's own verdict spellings
- * (`not_evaluable`, NOT-EVALUABLE) because they use `_`/`-` instead of a
- * space. Split the rule into clauses on sentence punctuation, dashes,
- * colons, parentheses and and/und/aber/but, then require the verdict phrase
- * in a clause where no negation precedes it ("never … not evaluable" flips
- * it; "not evaluable … never a null result" is the rule) and nothing says
- * the arm is ignored.
- */
-function hasReportingRuleFor(rule: string): boolean {
-  const VERDICT_RX = /not[ _-]evaluable|nicht auswertbar/i;
-  const NEGATION_BEFORE = ["never", "isn't", "cannot", "no longer", "niemals"];
-  const IGNORED = ["ignored", "ignoring", "ignores", "ignoriert"];
-  const clauses = rule.split(/[.;,:()\u2013\u2014]|\s-\s|\s+\b(?:and|und|aber|but)\b\s+/i);
-  return clauses.some((clause) => {
-    const at = clause.search(VERDICT_RX);
-    if (at < 0) return false;
-    const lower = clause.toLowerCase();
-    const before = lower.slice(0, at);
-    return !NEGATION_BEFORE.some((cue) => before.includes(cue)) && !IGNORED.some((cue) => lower.includes(cue));
-  });
-}
-
-/**
  * Das §17.4-Präsentationsexperiment (#267).
  *
  * Dieselben Stufen wie bei der Cue-Registrierung, und aus demselben Grund: Eine
@@ -403,11 +378,10 @@ export function checkPresentationRegistration(
       if (!fb.measured_from) {
         issues.push({ where: "underpowered_fallback", problem: "the measurement names its source window and vault, or it cannot be re-checked" });
       }
-      // Ein leerer oder nur aus Leerzeichen bestehender String ist keine Regel
-      // (#442) — und eine Regel, die das Nicht-Auswertbar nicht nennt, ist
-      // nicht die aus §18.1.
+      // Require the §18.1 verdict spelling. Prose semantics cannot be checked
+      // reliably by negation keywords; that needs a structured verdict field.
       const rule = conclusion.reporting_rule;
-      if (typeof rule !== "string" || !hasReportingRuleFor(rule.trim())) {
+      if (typeof rule !== "string" || !/nicht[ _-]auswertbar|not[ _-]evaluable/i.test(rule.trim())) {
         issues.push({
           where: "underpowered_fallback",
           problem: "§18.1: an arm below its min-N is reported as NOT EVALUABLE, never as a null result — the rule belongs in the registration",
