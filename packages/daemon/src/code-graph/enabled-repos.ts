@@ -22,6 +22,7 @@ import { closeSync, fstatSync, openSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { mutateSettings, readSettings, settingsFilePath } from "../settings.js";
 import { platformSupported } from "./graphify-tool.js";
+import { isOffValue } from "../env.js";
 
 /**
  * The env kill switch. Checked everywhere the feature could do work, and
@@ -29,7 +30,7 @@ import { platformSupported } from "./graphify-tool.js";
  * turns the whole feature off rather than half of it.
  */
 export function codeAwarenessDisabledByEnv(env: NodeJS.ProcessEnv = process.env): boolean {
-  return (env.BASTRA_CODE_AWARENESS ?? "").toLowerCase() === "off";
+  return isOffValue(env.BASTRA_CODE_AWARENESS);
 }
 
 /**

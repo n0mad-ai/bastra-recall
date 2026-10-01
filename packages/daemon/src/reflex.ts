@@ -29,7 +29,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tokenizeWithIdentifiers, PHRASE_STOPWORDS, MIN_SIGNIFICANT_TOKEN_LEN, ALTERNATIVE_WORDS } from "@bastra-recall/core";
 import type { Vault, Memory } from "@bastra-recall/core";
-import { envFirst, envInt } from "./env.js";
+import { envFirst, envInt, isOffValue } from "./env.js";
 import { readSettings } from "./settings.js";
 import { fireAndForget, type Telemetry } from "./telemetry.js";
 import { truncateSummary } from "./tool-handlers.js";
@@ -298,7 +298,7 @@ export async function reflexConfig(): Promise<{ enabled: boolean; maxPerTurn: nu
   const envMode = envFirst("BASTRA_REFLEX");
   const enabled =
     envMode !== undefined
-      ? envMode.toLowerCase() !== "off"
+      ? !isOffValue(envMode)
       : settings?.reflex?.enabled ?? true;
   const raw = envInt("BASTRA_REFLEX_MAX_PER_TURN", settings?.reflex?.maxPerTurn ?? DEFAULT_MAX_PER_TURN);
   const maxPerTurn = Math.min(Math.max(Math.trunc(raw), 1), 5);

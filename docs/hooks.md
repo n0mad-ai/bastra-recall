@@ -872,6 +872,11 @@ new MCP tool):
 
 ### Environment overrides
 
+Every kill switch below reads its value the same way (the tables show the
+canonical spelling): `0`, `false`, `off` or `no` (any case) is off — `BASTRA_TELEMETRY=0`, `BASTRA_RM_SHIM=off` and
+`BASTRA_REFLEX=no` all switch off. Opt-ins accept `1`, `true`, `on`, `yes`. Mode variables such as
+`BASTRA_QUERY_ROUTER` keep their own values.
+
 | Env var                       | Default          | What it does                                                  |
 | ----------------------------- | ---------------- | ------------------------------------------------------------- |
 | `BASTRA_DAEMON_URL`           | _none_           | Full daemon base URL — highest precedence, and what `bastra install` writes into a client registration (#531); hook clients support `http:`, `https:` and bracketed IPv6 literals |
@@ -896,7 +901,7 @@ new MCP tool):
 | `BASTRA_RRF_VECTOR_WEIGHT`    | `1.5`            | Weight of the dense arm in the hybrid fusion, relative to BM25 (#641). Default `1.5` since v1.0.1 (owner decision): +3.6 pp R@1 on LongMemEval-S, keeps the gold-set M1 gates (relevant_loss 84/365, false abstention 0); `1` restores the v1.0.0 equal-weight fusion. Moves score bands: `score_version` `rrf-2` — rank 1 in both arms 163.934, BM25 only ≈ 65.6, vector only ≈ 98.4 (`rrf-1`: 81.967); compare scores only within one `score_version` |
 | `BASTRA_SAMPLE_ROT_DAYS`      | `28`             | Sample floor: days a memory may go unmeasured before it must re-enter the sample, whatever its salience (#160) |
 | `BASTRA_SIZE_CHECK`           | `on`             | `off` disables the PreToolUse file-size check                 |
-| `BASTRA_RM_ARCHIVES`          | _unset_          | The #650 opt-in, read by the daemon; wins over `archive.enabled`: `1` bastra's archiving `rm` + git snapshots, `host` the host's own archiving `rm` (receipt text only), `0` off |
+| `BASTRA_RM_ARCHIVES`          | _unset_          | The #650 opt-in, read by the daemon; wins over `archive.enabled`: `1` (or `true`/`on`/`yes`) bastra's archiving `rm` + git snapshots, `host` the host's own archiving `rm` (receipt text only), `0` (or `false`/`off`/`no`) off |
 | `BASTRA_RM_SHIM` / `BASTRA_GIT_SHIM` | _unset_   | `0` leaves the `rm` / git part out while the opt-in is on      |
 | `BASTRA_ARCHIVE_RETAIN`       | `junk=1,in-git=2,user=2` | Archive retention in days per class (also `bastra config set archive.retain`) |
 | `BASTRA_ARCHIVE_CAP`          | `10GB`           | What the whole archive may hold; over it, junk goes first (also `bastra config set archive.cap`) |
@@ -1803,13 +1808,20 @@ REST-Schnittstelle (Token-Authentifizierung wie bei den anderen
 
 ### Umgebungsvariablen
 
+Jeder Abschalter unten wird gleich gelesen (die Tabellen zeigen die
+übliche Schreibweise): `0`, `false`, `off` oder `no` (Groß-/Kleinschreibung
+egal) heißt aus — `BASTRA_TELEMETRY=0`,
+`BASTRA_RM_SHIM=off` und `BASTRA_REFLEX=no` schalten alle ab. Opt-ins nehmen
+`1`, `true`, `on`, `yes`. Modus-Variablen wie `BASTRA_QUERY_ROUTER` behalten
+ihre eigenen Werte.
+
 | Umgebungsvariable             | Standard         | Wirkung                                                       |
 | ----------------------------- | ---------------- | ------------------------------------------------------------- |
 | `BASTRA_DAEMON_URL`           | _keiner_         | Vollständige Daemon-Basis-URL — höchster Vorrang; das schreibt `bastra install` in eine Client-Registrierung (#531); Hook-Clients unterstützen `http:`, `https:` und IPv6-Literale in eckigen Klammern |
 | `BASTRA_HTTP_URL`             | _keiner_         | Vollständige Daemon-Basis-URL (überschreibt Host+Port); wird nur gelesen, wenn `BASTRA_DAEMON_URL` nicht gesetzt ist |
 | `BASTRA_HTTP_PORT`            | `6723`           | Daemon-Port auf `127.0.0.1`; wird nur gelesen, wenn keine der URL-Variablen gesetzt ist |
 | `BASTRA_HOOK_TIMEOUT_MS`      | pro Lane, siehe oben | Überschreibt das Lane-Budget (inkl. Netzwerk-Hin- und Rückweg). Hook-Clients setzen eine echte Zeitgrenze durch, auch wenn die Antwort weiter Daten liefert. Das Assertion-Budget des Daemons bleibt fest bei 1000 ms; eine Prompt-Hook-Deadline unter 1000 ms kappt Assertion-Aufrufe clientseitig. |
-| `BASTRA_RM_ARCHIVES`          | _nicht gesetzt_  | Der #650-Opt-in, vom Daemon gelesen; gewinnt über `archive.enabled`: `1` bastras archivierendes `rm` + Git-Schnappschüsse, `host` das eigene archivierende `rm` des Hosts (nur Quittungstext), `0` aus |
+| `BASTRA_RM_ARCHIVES`          | _nicht gesetzt_  | Der #650-Opt-in, vom Daemon gelesen; gewinnt über `archive.enabled`: `1` (auch `true`/`on`/`yes`) bastras archivierendes `rm` + Git-Schnappschüsse, `host` das eigene archivierende `rm` des Hosts (nur Quittungstext), `0` aus |
 | `BASTRA_RM_SHIM` / `BASTRA_GIT_SHIM` | _nicht gesetzt_ | `0` lässt bei eingeschaltetem Opt-in den `rm`- bzw. Git-Teil weg |
 | `BASTRA_ARCHIVE_RETAIN`       | `junk=1,in-git=2,user=2` | Aufbewahrung im Archiv in Tagen pro Klasse (auch `bastra config set archive.retain`) |
 | `BASTRA_ARCHIVE_CAP`          | `10GB`           | Wie viel das ganze Archiv halten darf; darüber geht zuerst Build-Müll (auch `bastra config set archive.cap`) |

@@ -86,8 +86,27 @@ export function envFloat(name: string, fallback: number, legacyName?: string): n
   return Number.isFinite(n) ? n : fallback;
 }
 
+/**
+ * The one reading of "this switch says off": 0 | false | off | no, any case,
+ * surrounding whitespace ignored. Every env kill switch goes through here so
+ * `BASTRA_TELEMETRY=0` and `BASTRA_RM_SHIM=off` mean what they look like.
+ */
+export function isOffValue(raw: string | undefined | null): boolean {
+  return ["0", "false", "off", "no"].includes((raw ?? "").trim().toLowerCase());
+}
+
+/** The counterpart for opt-ins: 1 | true | on | yes. */
+export function isOnValue(raw: string | undefined | null): boolean {
+  return ["1", "true", "on", "yes"].includes((raw ?? "").trim().toLowerCase());
+}
+
+/** True when the first of `names` that is set (non-empty) holds an off value; unset is not off. */
+export function envOff(...names: string[]): boolean {
+  return isOffValue(envFirst(...names));
+}
+
 export function envBool(name: string, fallback: boolean, legacyName?: string): boolean {
   const raw = legacyName ? envFirst(name, legacyName) : process.env[name];
   if (raw == null || raw === "") return fallback;
-  return !["0", "false", "off", "no"].includes(raw.toLowerCase());
+  return !isOffValue(raw);
 }

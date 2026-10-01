@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { envFirst, envInt, testRunLogDir } from "./env.js";
+import { envFirst, envOff, envInt, testRunLogDir } from "./env.js";
 import { readJoinStateSync, writeJoinState } from "./telemetry-join-store.js";
 import { callerSessionField } from "./caller-session.js";
 import { tokens as words } from "./save-similarity.js";
@@ -222,7 +222,7 @@ export class Telemetry {
   constructor(opts: { onUsage?: UsageSink; logDir?: string } = {}) {
     this.onUsage = opts.onUsage;
     this.enabled =
-      (envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() !== "off";
+      !envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY");
     // Log-Pfad bleibt bei `~/.nexus-recall/logs` bis zur User-Data-Migration
     // (Daniel hat existing logs, die wir nicht orphanen wollen).
     this.logDir = opts.logDir ?? envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();

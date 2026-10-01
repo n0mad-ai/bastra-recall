@@ -20,6 +20,7 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, extname, join } from "node:path";
+import { envOff } from "./env.js";
 
 const CODE_EXTS = new Set([
   ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx",
@@ -174,7 +175,7 @@ export async function fileSizeNote(
   settingsPath?: string,
   cwd?: string,
 ): Promise<string | null> {
-  if ((process.env.BASTRA_SIZE_CHECK ?? "").toLowerCase() === "off") return null;
+  if (envOff("BASTRA_SIZE_CHECK")) return null;
   const t = thresholdsFor(filePath, await readSizeSettings(settingsPath), cwd);
   if (!t) return null;
   try {

@@ -8,6 +8,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { SHIM_DIR } from "./rm-archive.js";
+import { envOff, isOnValue } from "./env.js";
 
 /**
  * What the hint says instead of STOP when the act has an undo (#650 comment).
@@ -348,9 +349,9 @@ export const RISKY_PATTERNS: Array<{ label: string; re: RegExp }> = [
  */
 export type ArchiveMode = "off" | "bastra" | "host";
 export function archiveMode(setting = false): ArchiveMode {
-  const env = process.env.BASTRA_RM_ARCHIVES;
-  if (env === "1") return "bastra";
-  if (env === "host") return "host";
+  const env = process.env.BASTRA_RM_ARCHIVES?.trim();
+  if (env?.toLowerCase() === "host") return "host";
+  if (isOnValue(env)) return "bastra";
   if (env) return "off";
   return setting ? "bastra" : "off";
 }
@@ -376,7 +377,7 @@ export function rmShim(surface: string, setting = false): boolean {
   return (
     surface === "claude-code" &&
     archiveMode(setting) === "bastra" &&
-    process.env.BASTRA_RM_SHIM !== "0" &&
+    !envOff("BASTRA_RM_SHIM") &&
     existsSync(join(SHIM_DIR, "rm"))
   );
 }
@@ -391,7 +392,7 @@ export function rmShimSwitchedOff(surface: string, setting = false): boolean {
   return (
     surface === "claude-code" &&
     archiveMode(setting) === "bastra" &&
-    process.env.BASTRA_RM_SHIM === "0" &&
+    envOff("BASTRA_RM_SHIM") &&
     existsSync(join(SHIM_DIR, "rm"))
   );
 }
@@ -401,7 +402,7 @@ export function gitShim(surface: string, setting = false): boolean {
   return (
     surface === "claude-code" &&
     archiveMode(setting) === "bastra" &&
-    process.env.BASTRA_GIT_SHIM !== "0" &&
+    !envOff("BASTRA_GIT_SHIM") &&
     existsSync(join(SHIM_DIR, "git"))
   );
 }
@@ -411,7 +412,7 @@ export function gitShimSwitchedOff(surface: string, setting = false): boolean {
   return (
     surface === "claude-code" &&
     archiveMode(setting) === "bastra" &&
-    process.env.BASTRA_GIT_SHIM === "0" &&
+    envOff("BASTRA_GIT_SHIM") &&
     existsSync(join(SHIM_DIR, "git"))
   );
 }

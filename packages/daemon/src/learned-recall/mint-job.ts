@@ -26,7 +26,7 @@ import {
   archiveMachineBridges,
 } from "./harvest.js";
 import { demoteIdleBridges } from "./demotion.js";
-import { envFirst, testRunLogDir } from "../env.js";
+import { envFirst, envOff, testRunLogDir } from "../env.js";
 
 /** `cli-harvest` (#705): Teacher 2, `bastra bridges harvest`. It records only
  *  the telemetry event — last-mint.json stays the in-band mint's marker, so
@@ -163,7 +163,7 @@ async function recordLastMint(bridgesRoot: string, record: LastMintRecord): Prom
 
 /** Same event-log discipline as the hook clients: append-only, never throws. */
 async function writeMintTelemetry(record: LastMintRecord): Promise<void> {
-  if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
+  if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
     const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(homedir(), ".bastra", "logs");
     await mkdir(logDir, { recursive: true });

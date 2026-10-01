@@ -44,7 +44,7 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { envFirst, testRunLogDir } from "./env.js";
+import { envFirst, envOff, testRunLogDir } from "./env.js";
 
 /** Every lane a client can run. One entry per hook registration. */
 export type ClientLane = "prompt" | "write" | "bash-pre" | "bash-fail" | "stop" | "session" | "todo";
@@ -161,7 +161,7 @@ export async function writeClientTelemetry(
   sessionId: string | null,
   hookVersion: string,
 ): Promise<void> {
-  if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
+  if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
     const logDir =
       envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? testRunLogDir() ?? join(homedir(), ".bastra", "logs");
