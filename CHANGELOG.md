@@ -443,6 +443,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Env off-switches read one way**. `BASTRA_TELEMETRY`,
+  `BASTRA_REFLEX`, `BASTRA_SIZE_CHECK` and `BASTRA_CODE_AWARENESS` only took
+  `off`; `BASTRA_RM_SHIM`, `BASTRA_GIT_SHIM`, `BASTRA_MCP_SESSION_CONTEXT` and
+  a few more only `0` — so `BASTRA_TELEMETRY=0` kept writing telemetry — and
+  `BASTRA_RM_ARCHIVES=true` silently switched the archive off over
+  `archive.enabled=on`. All of them now go through one parser (`0` | `false` |
+  `off` | `no` off, `1` | `true` | `on` | `yes` on); every value that worked
+  before still does, and `0`/`false`/`no` now also switch off where only `off`
+  was read.
 - Post-release review: `bastra reconcile --yes` protects concurrent writes
   and keeps a unique backup when replacing a copy (#749); forwarders pointed
   at remote or TLS daemons no longer start a local fallback (#750); bridge

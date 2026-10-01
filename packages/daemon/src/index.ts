@@ -87,7 +87,7 @@ import {
   moveDocument,
 } from "./documents-write-handler.js";
 import { productDocTools, saveProductDocHandler } from "./product-doc-handler.js";
-import { envFirst, envInt, envFloat, envBool } from "./env.js";
+import { envFirst, envInt, envFloat, envBool, envOff } from "./env.js";
 import { startBackgroundCheck } from "./update-check.js";
 import { DAEMON_VERSION } from "./version.js";
 import { writeSharedVaultSize } from "./statusline-session.js";
@@ -110,7 +110,7 @@ const DOCUMENT_WRITE_ENABLED = envFirst("BASTRA_DOCUMENT_WRITE", "NEXUS_DOCUMENT
 // top of main(), once by the real listen() further down — and since #531 the
 // SAME resolver the CLI probes with, so the daemon cannot bind one port while
 // every diagnostic describes another.
-const HTTP_DISABLED = envFirst("BASTRA_HTTP", "NEXUS_HTTP") === "off";
+const HTTP_DISABLED = envOff("BASTRA_HTTP", "NEXUS_HTTP");
 const HTTP_PORT = resolveDaemonEndpoint().port;
 
 /** #483 review find (Vera): fd 0 says whether a stdio MCP client is attached —

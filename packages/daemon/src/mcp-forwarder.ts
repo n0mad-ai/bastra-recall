@@ -67,7 +67,7 @@ import { projectForFilter } from "./scope-filter.js";
 import { claudeSessionPid, sessionFeedPath, STATUSLINE_DIR, reapStaleFeeds } from "./statusline-session.js";
 import { commandOf, parentPidOf } from "./reap-forwarders.js";
 import { DAEMON_VERSION } from "./version.js";
-import { envInt } from "./env.js";
+import { envInt, envOff } from "./env.js";
 import {
   adoptTurn,
   defaultStatuslineState,
@@ -158,7 +158,7 @@ async function callDaemon(tool: string, args: unknown): Promise<unknown> {
  * without the endpoint → give up for this session; transient error → retry
  * on the next call. Opt out with BASTRA_MCP_SESSION_CONTEXT=0.
  */
-let sessionContextPending = process.env.BASTRA_MCP_SESSION_CONTEXT !== "0";
+let sessionContextPending = !envOff("BASTRA_MCP_SESSION_CONTEXT");
 
 async function maybeSessionContextItem(): Promise<{ type: "text"; text: string } | null> {
   if (!sessionContextPending) return null;

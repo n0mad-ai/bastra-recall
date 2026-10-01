@@ -25,6 +25,7 @@ import { createLiveUpdates } from "./live-updates.js";
 import { getApiToken, getCorsOrigins } from "./settings.js";
 import { corsAllowlistFromEnv, resolveCorsAllowlist } from "./http-auth.js";
 import type { HttpOptions } from "./http.js";
+import { envOff } from "./env.js";
 
 export interface HttpServerContext {
   apiToken: string;
@@ -66,7 +67,7 @@ export async function createHttpServerContext(opts: HttpOptions): Promise<HttpSe
   // env wins (ops override); else the token minted by `bastra token` in
   // cli-settings.json. Empty = no token issued → browser clients are rejected.
   const apiToken = process.env.BASTRA_API_TOKEN || (await getApiToken()) || "";
-  const loopbackSkip = (process.env.BASTRA_AUTH_LOOPBACK_SKIP ?? "1") !== "0";
+  const loopbackSkip = !envOff("BASTRA_AUTH_LOOPBACK_SKIP");
   // CORS-Allowlist (Komma-Liste). Default seit #95: LEER — Browser-Origins
   // müssen explizit freigeschaltet werden (BASTRA_CORS_ORIGIN=https://your.host).
   // "*" bleibt als explizites Opt-in für Tunnel/Dev. Bei einer echten Liste

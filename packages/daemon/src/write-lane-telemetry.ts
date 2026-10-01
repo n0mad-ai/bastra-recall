@@ -5,7 +5,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { envFirst } from "./env.js";
+import { envFirst, envOff } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { dimensionsFrom } from "./telemetry-dimensions.js";
 import type { HookAgent, HookClientEvidence } from "./hook-surface.js";
@@ -100,7 +100,7 @@ interface HookCallTelemetry {
 }
 
 export async function writeTelemetry(payload: HookCallTelemetry): Promise<void> {
-  if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
+  if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
     const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();
     await mkdir(logDir, { recursive: true });

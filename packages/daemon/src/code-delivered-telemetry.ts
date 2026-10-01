@@ -22,7 +22,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { envFirst } from "./env.js";
+import { envFirst, envOff } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { shortRepo } from "./code-graph/unavailable-note.js";
 import type { AffectedBasis } from "./code-graph/find-affected-files.js";
@@ -45,7 +45,7 @@ export interface DeliveredBlockRow {
 
 /** Append one row. Never throws, never awaits anything a lane depends on. */
 export async function logDeliveredBlock(row: DeliveredBlockRow): Promise<void> {
-  if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
+  if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
     const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();
     await mkdir(logDir, { recursive: true });

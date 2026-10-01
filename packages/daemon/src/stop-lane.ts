@@ -58,7 +58,7 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { request } from "node:http";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { envFirst } from "./env.js";
+import { envFirst, envOff } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { writePendingSuggestion } from "./pending-suggestions.js";
 import { hookClientEvidence } from "./hook-surface.js";
@@ -311,7 +311,7 @@ async function takeSameTurnSuggestions(
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : "";
   if (!sessionId) return null;
   if (hookClientEvidence(payload) === "codex") return null;
-  if ((process.env.BASTRA_STOP_SAME_TURN ?? "").trim() === "0") return null;
+  if (envOff("BASTRA_STOP_SAME_TURN")) return null;
   let fresh: SaveSuggestion[] = [];
   await mutateSessionState(sessionId, (s) => {
     const done = new Set(s.saveEvalDelivered ?? []);
@@ -422,7 +422,7 @@ interface StopHookTelemetry {
 }
 
 async function writeTelemetry(payload: StopHookTelemetry): Promise<void> {
-  if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
+  if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
     const logDir = envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? defaultLogDir();
     await mkdir(logDir, { recursive: true });
