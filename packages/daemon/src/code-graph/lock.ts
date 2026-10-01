@@ -285,10 +285,47 @@ async function nextGeneration(gens: string, _unused: null): Promise<number> {
   return max + 1;
 }
 
-/** True when this process, and only this process, won this turn's marker. */
+/**
+ * True when this process, and only this process, won this turn's marker.
+ *
+ * A marker can be claimed and never published: the winner dies (or `publish`
+ * loses a race and returns null) between `mkdir` succeeding here and the
+ * record landing at the lock path. Every later contender then reads the same
+ * stale predecessor record forever, computes the same next generation, and
+ * loses this `mkdir` to a marker nobody will ever fill — the repository is
+ * wedged for good. A marker older than {@link LOCK_STALE_MS} is abandoned by
+ * the same definition the lock record itself uses.
+ *
+ * Removing it and claiming it again is two steps, so the takeover is decided
+ * by one more `mkdir` first: a sibling named after the abandoned marker's
+ * inode and mtime. Contenders that judged the same marker abandoned compete
+ * for the same name and exactly one wins; a contender that looks later sees
+ * either no marker (and claims it plainly) or the winner's fresh one, whose
+ * identity is a different name.
+ */
 async function claimTurn(gens: string, name: string): Promise<boolean> {
+  const marker = join(gens, name);
   try {
-    await mkdir(join(gens, name));
+    await mkdir(marker);
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") return false;
+  }
+  let seen;
+  try {
+    seen = await stat(marker);
+  } catch {
+    // Gone since our mkdir: someone took it over. One plain claim, like theirs.
+    return mkdir(marker).then(
+      () => true,
+      () => false,
+    );
+  }
+  if (Date.now() - seen.mtimeMs < LOCK_STALE_MS) return false;
+  try {
+    await mkdir(join(gens, `${name}.abandoned-${seen.ino}-${Math.trunc(seen.mtimeMs)}`));
+    await rm(marker, { recursive: true, force: true });
+    await mkdir(marker);
     return true;
   } catch {
     return false;
@@ -310,7 +347,8 @@ async function pruneOldGenerations(gens: string, gen: number): Promise<void> {
   const names = await readdir(gens).catch(() => [] as string[]);
   await Promise.all(
     names.map(async (name) => {
-      const n = Number(name);
+      // `<n>.abandoned-…` is the takeover of marker n and goes with it.
+      const n = Number(name.replace(/\.abandoned-.*$/, ""));
       if (!Number.isInteger(n) || n < 1 || n > drop) return;
       try {
         await rm(join(gens, name), { recursive: true, force: true });
