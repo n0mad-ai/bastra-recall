@@ -69,7 +69,13 @@ export class TodayProvider {
       "today",
       latestMtime,
     )) as TodayUsageEntry[] | null;
-    if (sharedCached) {
+    // The disk cache is keyed on transcript mtime only, so after midnight it
+    // still holds yesterday's entries until a transcript is touched.
+    if (
+      sharedCached &&
+      sharedCached.length > 0 &&
+      sharedCached.every((e) => formatDate(e.timestamp) === todayDateString)
+    ) {
       debug("Using shared today usage cache");
       return sharedCached;
     }
