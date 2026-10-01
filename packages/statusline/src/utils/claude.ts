@@ -71,6 +71,21 @@ export interface ClaudeHookData {
   };
 }
 
+// A rate-limit window whose percentage is not a finite number carries no
+// usage data; drop it so no renderer reads null as 0%.
+export function dropUnreadableRateLimits(
+  hookData: ClaudeHookData,
+): ClaudeHookData {
+  const limits = hookData.rate_limits;
+  if (!limits) return hookData;
+  const readable = (w?: { used_percentage: number }) =>
+    typeof w?.used_percentage === "number" && Number.isFinite(w.used_percentage);
+  const rate_limits = { ...limits };
+  if (!readable(limits.five_hour)) delete rate_limits.five_hour;
+  if (!readable(limits.seven_day)) delete rate_limits.seven_day;
+  return { ...hookData, rate_limits };
+}
+
 export function getEffortLevel(hookData: ClaudeHookData): string | null {
   const level = hookData.effort?.level;
   if (typeof level !== "string") return null;
