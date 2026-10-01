@@ -37,7 +37,7 @@ import {
 } from "./stats-governor.js";
 import { resolveRetentionDays } from "./log-retention.js";
 import { isEvalTraffic } from "./telemetry-dimensions.js";
-import { foldClientDuplicates } from "./cli/log-stats-phases.js";
+import { foldClientDuplicates, restartWindows, tsOf } from "./cli/log-stats-phases.js";
 import { summarizeHintSuppression, type HintSuppressionSection } from "./telemetry-report-suppression.js";
 export { summarizeHintSuppression } from "./telemetry-report-suppression.js";
 import { summarizeCodeAwareness, type CodeAwarenessSection } from "./telemetry-report-code.js";
@@ -503,11 +503,21 @@ const LATENCY_FIELD: Record<string, string> = {
 const latencyRow = (lane: string, xs: number[]): LatencyRow => ({ lane, n: xs.length, median: median(xs), p95: p95(xs) });
 
 export function summarizeLatency(events: ReportEvent[]): LatencySection {
+  // The CLI (`log-stats.ts`'s `aggregate`) excludes calls that landed
+  // inside a daemon-restart window from its totals — a cold warmup skews
+  // latency and is not a delivery number worth reporting alongside steady
+  // state. This section had no such exclusion at all, so the same log
+  // produced a higher call count here than the CLI ever showed for it
+  // (measured: 10 vs 9 on one synthetic log) — the #664 claim that "every
+  // section of the UI counts what the CLI counts" did not hold for latency.
+  const windows = restartWindows(events);
+  const inRestart = (t: number): boolean => windows.some((w) => t >= w.start && t <= w.end);
   const byLane = new Map<string, number[]>();
   const perDay = new Map<string, { hook: number[]; recall: number[] }>();
   for (const e of events) {
     const field = LATENCY_FIELD[e.kind];
     if (!field) continue;
+    if (inRestart(tsOf(e))) continue;
     const v = num(e[field]);
     if (v === null) continue;
     const list = byLane.get(e.kind) ?? [];
