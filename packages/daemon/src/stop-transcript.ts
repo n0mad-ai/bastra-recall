@@ -109,37 +109,16 @@ function isToolResultContent(content: unknown): boolean {
 }
 
 /**
- * System-injizierte Turns, die im Transcript als role "user" auftauchen, aber
- * keine getippte Prosa sind. Der Skill-Body (Prefix "Base directory for this
- * skill:") dokumentiert die Frust-Trigger SELBST — ohne diesen Ausschluss
- * triggert jede Session, die den bastra-Skill lädt, die frustration-Heuristik
- * auf der eigenen Doku (der zweite strukturelle Defekt hinter #48).
- */
-function isInjectedSystemContent(text: string): boolean {
-  const head = text.trimStart();
-  return (
-    head.startsWith("Base directory for this skill:") ||
-    head.startsWith("<system-reminder>") ||
-    head.startsWith("<command-name>") ||
-    head.startsWith("<local-command-caveat>") ||
-    // Task notifications, agent mail (#639, #649) and Codex harness context
-    // (#701): the body is another agent's prose or the harness's own text, so
-    // the decision and frustration heuristics would read it as the user's.
-    // Shared with the prompt lane (#703).
-    isSystemInjectedTurn(head)
-  );
-}
-
-/**
  * `meta` is Claude Code's `isMeta: true` on a transcript row (#701): text the
  * client put into the conversation with role "user" — Stop-hook feedback,
  * skill bodies, notes from other sessions, image captions. Nobody typed it,
- * whatever it starts with, so the prefix list above cannot be the only check:
- * the after-session harvest quoted hook feedback as the user's own words.
+ * whatever it starts with, so the prefix list in system-turn.ts cannot be the
+ * only check: the after-session harvest quoted hook feedback as the user's own
+ * words.
  */
 function effectiveRole(role: string, content: unknown, meta = false): string {
   if (role === "user" && isToolResultContent(content)) return "tool";
-  if (role === "user" && (meta || isInjectedSystemContent(stringifyContent(content)))) return "system-injected";
+  if (role === "user" && (meta || isSystemInjectedTurn(stringifyContent(content)))) return "system-injected";
   return role;
 }
 
