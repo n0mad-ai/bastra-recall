@@ -1,5 +1,5 @@
 /** Package Skill assets for Claude, Codex and ChatGPT desktop (#232/#15). */
-import { copyFile, mkdir, readdir } from "node:fs/promises";
+import { copyFile, mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,10 +23,17 @@ const src = resolve(packageRoot, "..", "skill");
 const dst = resolve(packageRoot, "skill");
 
 const assets = (await readdir(src, { withFileTypes: true }))
-  .filter((e) => e.isFile() && (e.name.endsWith(".md") || e.name === "cursor-rules.mdc"))
+  // Dotfiles are editor/scratch notes (`.handover-notes.md`), never payload.
+  .filter((e) => e.isFile() && !e.name.startsWith(".") && (e.name.endsWith(".md") || e.name === "cursor-rules.mdc"))
   .map((e) => e.name);
 
 await mkdir(dst, { recursive: true });
+// The staged copy mirrors the source: a reference file deleted or renamed in
+// packages/skill/ (or a dotfile staged by an older build) must not linger in
+// the directory package.json ships whole. Subdirectories (agents/) are handled below.
+for (const e of await readdir(dst, { withFileTypes: true })) {
+  if (e.isFile() && !assets.includes(e.name)) await rm(resolve(dst, e.name));
+}
 for (const name of assets) {
   await copyFile(resolve(src, name), resolve(dst, name));
 }
