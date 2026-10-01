@@ -34,4 +34,16 @@ jobs:
         with:
           node-version: 22
       - name: Compare the live tap formula with this repository's
-        run: node tools/check-tap-drift.mjs
+        # check-tap-drift exits 1 for real drift and 2 when the live copy could
+        # not be fetched. Drift stays a red run. A failed fetch on the daily cron
+        # is an annotation instead, so a raw.githubusercontent.com hiccup does
+        # not read as drift and train everyone to ignore red; a person who
+        # triggered the run (push, dispatch) still gets the failure.
+        run: |
+          code=0
+          node tools/check-tap-drift.mjs || code=$?
+          if [ "$code" = "2" ] && [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "::warning title=formula drift::live tap formula could not be fetched — drift not checked this run"
+            exit 0
+          fi
+          exit "$code"
