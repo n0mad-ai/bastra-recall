@@ -786,8 +786,12 @@ export class SegmentRenderer {
     }
 
     if (projectDir && projectDir !== currentDir) {
-      if (currentDir.startsWith(projectDir)) {
-        const relativePath = currentDir.slice(projectDir.length + 1);
+      const base = projectDir.replace(/[\\/]+$/, "");
+      if (
+        currentDir.startsWith(base) &&
+        /[\\/]/.test(currentDir.charAt(base.length))
+      ) {
+        const relativePath = currentDir.slice(base.length + 1);
         return relativePath || projectDir.split(/[\\/]/).pop() || "project";
       }
     }
