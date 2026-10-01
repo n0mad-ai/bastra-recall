@@ -1,4 +1,4 @@
-import type { ClaudeHookData } from "./utils/claude";
+import { dropUnreadableRateLimits, type ClaudeHookData } from "./utils/claude";
 import type { PowerlineColors, ColorTheme } from "./themes";
 import type { PowerlineConfig, LineConfig } from "./config/loader";
 import type {
@@ -161,7 +161,8 @@ export class PowerlineRenderer {
     );
   }
 
-  async generateStatusline(hookData: ClaudeHookData): Promise<string> {
+  async generateStatusline(rawHookData: ClaudeHookData): Promise<string> {
+    const hookData = dropUnreadableRateLimits(rawHookData);
     if (this.config.display.style === "tui") {
       return this.generateTuiStatusline(hookData);
     }
