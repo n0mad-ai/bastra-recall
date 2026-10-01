@@ -106,3 +106,28 @@ test("a session-lane load (hook_source session-context) is counted against sessi
   assert.match(line, /~1000\b/, line);
   assert.match(line, /1 of 2/, line);
 });
+
+test("legacy and unmatched loads are named as unattributed, not silently counted", async () => {
+  const line = await roiLine([
+    spend,
+    recall("new", "pre-tool"),
+    { ...recall("old", "pre-tool"), dimensions: undefined, tool_name: "Write" },
+    acted("new"),
+    acted("old"),
+    acted("missing"),
+  ]);
+  assert.match(line, /~1000\b/, line);
+  assert.match(line, /1 of 3/, line);
+  assert.match(line, /2 unattributed without a usable hook source/, line);
+});
+
+test("only unassignable legacy loads make the ratio not evaluable", async () => {
+  const line = await roiLine([
+    spend,
+    { ...recall("old", "pre-tool"), dimensions: undefined, tool_name: "Write" },
+    acted("old"),
+  ]);
+  assert.match(line, /n\/a/, line);
+  assert.match(line, /1 unattributed/, line);
+  assert.doesNotMatch(line, /∞/, line);
+});

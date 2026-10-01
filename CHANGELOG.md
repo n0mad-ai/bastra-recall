@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #797 aligns the historical context-ROI denominator with its counted hook lanes.
+- Follow-up to #797: the ratio identifies legacy and unmatched loads, reports `n/a` when no denominator can be assigned, and reuses the existing recall lookup.
+
 - Hook install and uninstall identify the executed runner, leaving foreign hooks whose arguments merely name `bastra-hook` untouched (#945).
 
 - Telemetry smoke runs use their own temporary log directories instead of deleting a shared fixed path (#944).

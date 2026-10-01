@@ -93,6 +93,9 @@ export function summarizeContextROI(events: AnyEvent[]): void {
   const isSurfaced = (e: AnyEvent): boolean =>
     typeof e.surfaced === "boolean" ? Boolean(e.surfaced) : e.surfaced_score != null;
   const actedSurfaced = episodes.filter((e) => isSurfaced(e) && e.acted_on === true);
+  const hookRecalls = events.filter((e) => e.kind === "hook_recall");
+  const byRecallId = new Map<string, AnyEvent>();
+  for (const r of hookRecalls) byRecallId.set(String(r.recall_id), r);
 
   // `totalTokens` only sums the 3 lanes in `hookKinds` (pre-tool,
   // session, bash-pre) — but `actedSurfaced` above counts acted-on episodes
@@ -104,12 +107,17 @@ export function summarizeContextROI(events: AnyEvent[]): void {
   // bash_hook_call -> "bash-pre", session_hook_call -> "session-context" (the shared
   // assembler's stamp; "session" is only the lane's own hook_call dimension).
   const numeratorHookSources = new Set(["pre-tool", "session", "session-context", "bash-pre"]);
-  const hookRecallsForRatio = events.filter((e) => e.kind === "hook_recall");
-  const byRecallIdForRatio = new Map<string, AnyEvent>();
-  for (const r of hookRecallsForRatio) byRecallIdForRatio.set(String(r.recall_id), r);
-  const actedFromNumeratorLanes = actedSurfaced.filter((e) =>
-    numeratorHookSources.has(dimensionValue(byRecallIdForRatio.get(String(e.recall_id)), "hook_source")),
-  );
+  const sourceForRatio = (e: AnyEvent): string | null => {
+    const dimensions = byRecallId.get(String(e.recall_id))?.dimensions;
+    if (!dimensions || typeof dimensions !== "object") return null;
+    const source = (dimensions as Record<string, unknown>).hook_source;
+    return typeof source === "string" && source !== "unknown" ? source : null;
+  };
+  const ratioSources = actedSurfaced.map(sourceForRatio);
+  const actedFromNumeratorLanes = ratioSources.filter(
+    (source) => source !== null && numeratorHookSources.has(source),
+  ).length;
+  const unattributed = ratioSources.filter((source) => source === null).length;
 
   // #161: Backoff-Ersparnis — Events, deren Injektion der Empty-Streak-
   // Backoff unterdrückt hat, tragen suppressed_tokens_est als Sparseite.
@@ -136,15 +144,10 @@ export function summarizeContextROI(events: AnyEvent[]): void {
   }
   console.log(`  acted-on surfaced loads:      ${actedSurfaced.length}`);
 
-  // #263/§17.4: der ROI getrennt nach Oberfläche — soweit die Daten es
-  // hergeben. Die TOKENSEITE stammt aus den Hook-CLI-Events (`hook_call` &
-  // Co.), die eigene Prozesse mit eigenen Telemetrie-Interfaces schreiben und
-  // die Dimensionen nicht führen. Attribuierbar ist deshalb nur die
-  // Ertragsseite. Eine Zuordnung der Tokens über die Session zu erraten wäre
-  // eine Zahl mit einer Genauigkeit, die sie nicht hat.
-  const hookRecalls = events.filter((e) => e.kind === "hook_recall");
-  const byRecallId = new Map<string, AnyEvent>();
-  for (const r of hookRecalls) byRecallId.set(String(r.recall_id), r);
+  // #263/§17.4: the dimension split here attributes the yield side. Hook
+  // emissions carry dimensions since #507, but this historical ROI section
+  // does not calculate a per-dimension token sum. Older recall rows without
+  // dimensions remain unattributed rather than being guessed from tool_name.
   for (const field of ["client", "hook_source", "arm"] as const) {
     const actedBy = new Map<string, number>();
     for (const e of actedSurfaced) {
@@ -158,12 +161,17 @@ export function summarizeContextROI(events: AnyEvent[]): void {
     }
   }
   console.log(
-    `  (token side not split: hook-CLI emissions carry no dimensions — only the yield side is attributable)`,
+    `  (token side is limited to pre-tool/session/bash-pre event kinds; the dimension split above covers acted-on loads)`,
   );
+  const coverage =
+    `(${actedFromNumeratorLanes} of ${actedSurfaced.length} acted-on from counted lanes; ` +
+    `${unattributed} unattributed without a usable hook source)`;
   console.log(
-    actedFromNumeratorLanes.length > 0
-      ? `  tokens per acted-on load:     ~${Math.round(totalTokens / actedFromNumeratorLanes.length)}  (pre-tool/session/bash-pre loads only, ${actedFromNumeratorLanes.length} of ${actedSurfaced.length} acted-on — other lanes' tokens aren't in totalTokens)`
-      : `  tokens per acted-on load:     ∞ (no acted-on load from pre-tool/session/bash-pre yet — pure context tax so far)`,
+    actedFromNumeratorLanes > 0
+      ? `  tokens per acted-on load:     ~${Math.round(totalTokens / actedFromNumeratorLanes)}  ${coverage}`
+      : unattributed > 0
+        ? `  tokens per acted-on load:     n/a ${coverage} — an unassigned load may belong to the counted lanes`
+        : `  tokens per acted-on load:     ∞ ${coverage} — no attributable load from the counted lanes`,
   );
 
   // Per-session injected tokens (top 5 by cost).
