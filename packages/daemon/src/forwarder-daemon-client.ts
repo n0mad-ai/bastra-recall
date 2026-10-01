@@ -7,16 +7,24 @@
 import { spawn } from "node:child_process";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveDaemonEndpoint } from "./daemon-endpoint.js";
+import { resolveDaemonEndpoint, type DaemonEndpoint } from "./daemon-endpoint.js";
 import { daemonSpawnEnv } from "./daemon-spawn-env.js";
 import { readSettings } from "./settings.js";
 
 // #531 — the same resolver the CLI, the daemon and the LaunchAgent use, so a
 // registration that carries only BASTRA_HTTP_PORT reaches the same instance a
 // registration carrying BASTRA_DAEMON_URL does.
-export const DAEMON_URL = resolveDaemonEndpoint().baseUrl;
+const ENDPOINT = resolveDaemonEndpoint();
+export const DAEMON_URL = ENDPOINT.baseUrl;
 export const API_TOKEN = process.env.BASTRA_API_TOKEN ?? "";
 export const SPAWN_ENABLED = (process.env.BASTRA_FORWARDER_SPAWN ?? "1") !== "0";
+
+/** The packaged daemon binds local plain HTTP. A remote or TLS endpoint is
+ * somebody else's service; starting a local daemon cannot repair its health. */
+export function canAutoSpawnAt(endpoint: DaemonEndpoint): boolean {
+  return endpoint.baseUrl.startsWith("http://") &&
+    ["127.0.0.1", "localhost", "[::1]"].includes(endpoint.host);
+}
 
 /** Cold Ollama load can take a while on first boot — generous on purpose. */
 const HEALTH_TIMEOUT_MS = 60_000;
@@ -105,6 +113,10 @@ export async function ensureDaemonRunning(): Promise<boolean> {
     console.error(
       "[bastra-recall-mcp] daemon not running and auto-spawn disabled (BASTRA_FORWARDER_SPAWN=0). Returning errors for tool calls until daemon is up.",
     );
+    return false;
+  }
+  if (!canAutoSpawnAt(ENDPOINT)) {
+    console.error(`[bastra-recall-mcp] ${DAEMON_URL} is not a local plain-HTTP endpoint; not spawning a different local daemon`);
     return false;
   }
   console.error("[bastra-recall-mcp] daemon not running, spawning…");

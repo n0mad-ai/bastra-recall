@@ -443,6 +443,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Post-release review: `bastra reconcile --yes` protects concurrent writes
+  and keeps a unique backup when replacing a copy (#749); forwarders pointed
+  at remote or TLS daemons no longer start a local fallback (#750); bridge
+  migration publishes its completion marker last and uses isolated staging
+  (#751).
+- Derived claims now validate expected values, count fenced lists correctly,
+  normalize quotes and bound source reads (#752, #753). The reported
+  `score_version` reflects the effective dense weight (#641). SessionStart
+  still returns assembled context when optional dedup state cannot be written
+  (#754).
+- Updated transitive `fast-uri` and `ip-address` dependencies to patched
+  releases.
+
 - **An auto-spawned daemon no longer runs on the MCP client's env as-is**
   (#684, first cut; report by @zzallirog). The forwarder spawned the shared
   daemon with `env: process.env`, so a client's `BASTRA_HOOK_TIMEOUT_MS` set

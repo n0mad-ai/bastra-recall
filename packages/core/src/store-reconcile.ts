@@ -25,8 +25,8 @@
  *
  * Not to be confused with `Vault.reconcile()`, the periodic disk reindex.
  */
-import { readdir, readFile, copyFile, mkdir, rename, stat, constants } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { readdir, readFile, copyFile, mkdir, rename, stat, writeFile, link, unlink, constants } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
 import { dirname, join, relative, sep, basename } from "node:path";
 import matter from "gray-matter";
 import { parseMemoryWith } from "./schema.js";
@@ -34,6 +34,8 @@ import { isMarkdownFile } from "./markdown-file.js";
 import { slugify, stripAutoRelatedSection } from "./save-text.js";
 import { memoryRevision } from "./memory-mutate.js";
 import { AuditLog, type AuditEntry } from "./audit-log.js";
+import { withIdClaim } from "./id-transaction.js";
+import { assertInsideDir, assertOwnSubdir } from "./file-identity.js";
 
 /** Frontmatter the daemon writes on its own — not authored, not compared. */
 const GENERATED_FIELDS: ReadonlySet<string> = new Set([
@@ -371,6 +373,8 @@ export interface ApplyResult {
   reason?: string;
   /** Where the overwritten target's previous bytes went. */
   backup?: string;
+  /** A copy committed but its audit trail could not be completed. */
+  warning?: string;
   target: string;
 }
 
@@ -387,6 +391,21 @@ async function revisionOf(path: string): Promise<string | null> {
   }
 }
 
+/** Restore from a backup without making the restored file and the backup the
+ * same inode. The final link claims the absent destination exclusively. */
+async function restoreBackupExclusive(backup: string, target: string): Promise<boolean> {
+  const tmp = join(dirname(target), `.${basename(target)}.restore-${randomUUID()}.tmp`);
+  try {
+    await copyFile(backup, tmp, constants.COPYFILE_EXCL);
+    await link(tmp, target);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await unlink(tmp).catch(() => {});
+  }
+}
+
 /**
  * Carry out the plan's copies — conflicts are never touched. Files are only
  * copied and renamed: an overwritten target is first copied to
@@ -398,7 +417,11 @@ async function revisionOf(path: string): Promise<string | null> {
  * log (same ids, same timestamps). Without them the next run would see the
  * target's later writes as a conflict instead of "ahead".
  */
-export async function applyReconcile(plan: ReconcilePlan, now: Date = new Date()): Promise<ApplyResult[]> {
+export async function applyReconcile(
+  plan: ReconcilePlan,
+  now: Date = new Date(),
+  io: { beforePublish?: (target: string) => Promise<void> } = {},
+): Promise<ApplyResult[]> {
   const stamp = backupStamp(now);
   const results: ApplyResult[] = [];
   for (const item of plan.items) {
@@ -407,38 +430,88 @@ export async function applyReconcile(plan: ReconcilePlan, now: Date = new Date()
     const dst = item.from === "a" ? plan.b : plan.a;
     const targetPath = item.target ? item.target.filePath : join(dst.root, item.source.rel);
     const base = { id: item.id, from: item.from, target: targetPath };
-    if ((await revisionOf(item.source.filePath)) !== item.source.revision) {
-      results.push({ ...base, status: "skipped", reason: "source changed since the plan" });
-      continue;
-    }
-    let backup: string | undefined;
     try {
-      if (item.target) {
-        if ((await revisionOf(targetPath)) !== item.target.revision) {
-          results.push({ ...base, status: "skipped", reason: "target changed since the plan" });
-          continue;
-        }
-        backup = join(dst.root, ".bastra", "reconcile-backup", stamp, item.target.rel);
-        await mkdir(dirname(backup), { recursive: true });
-        await copyFile(targetPath, backup, constants.COPYFILE_EXCL);
-        const tmp = join(dirname(targetPath), `.${basename(targetPath)}.reconcile-${process.pid}.tmp`);
-        await copyFile(item.source.filePath, tmp, constants.COPYFILE_EXCL);
-        await rename(tmp, targetPath);
-      } else {
-        await mkdir(dirname(targetPath), { recursive: true });
-        // EXCL: a file that appeared at this path since the plan wins.
-        await copyFile(item.source.filePath, targetPath, constants.COPYFILE_EXCL);
-      }
+      const result = await withIdClaim(
+        { vaultRoot: dst.root, id: item.id, filePath: targetPath, op: "reconcile_store" },
+        async (claim): Promise<ApplyResult> => {
+          const located = await claim.locate();
+          if (item.target
+            ? located.kind !== "unique" || located.filePath !== targetPath
+            : located.kind !== "none") {
+            return { ...base, status: "skipped", reason: "target id changed since the plan" };
+          }
+          let sourceRaw: string;
+          try { sourceRaw = await readFile(item.source.filePath, "utf8"); }
+          catch { return { ...base, status: "skipped", reason: "source unreadable since the plan" }; }
+          if (memoryRevision(sourceRaw) !== item.source.revision) {
+            return { ...base, status: "skipped", reason: "source changed since the plan" };
+          }
+          if (item.target && (await revisionOf(targetPath)) !== item.target.revision) {
+            return { ...base, status: "skipped", reason: "target changed since the plan" };
+          }
+
+          await mkdir(dirname(targetPath), { recursive: true });
+          const tmp = join(dirname(targetPath), `.${basename(targetPath)}.reconcile-${process.pid}-${randomUUID()}.tmp`);
+          let backup: string | undefined;
+          try {
+            await writeFile(tmp, sourceRaw, { encoding: "utf8", flag: "wx", mode: (await stat(item.source.filePath)).mode & 0o777 });
+            // Some cloud mounts cannot create hard links. Discover that while
+            // the old target is still in place, before moving it to backup.
+            const probe = `${tmp}.link-probe`;
+            try { await link(tmp, probe); } finally { await unlink(probe).catch(() => {}); }
+            if (item.target) {
+              // Move, then verify the exact bytes now held by the backup. An
+              // external edit in the preflight window is preserved there and
+              // never replaced silently. The unique name cannot overwrite a
+              // prior backup from another attempt in the same second.
+              const privateDir = join(dst.root, ".bastra");
+              const backupRoot = join(privateDir, "reconcile-backup");
+              assertOwnSubdir(dst.root, privateDir, "reconcile backup");
+              assertOwnSubdir(privateDir, backupRoot, "reconcile backup");
+              const backupPath = join(backupRoot, stamp, item.target.rel) + `.${randomUUID()}`;
+              assertInsideDir(backupRoot, backupPath, "reconcile backup");
+              await mkdir(dirname(backupPath), { recursive: true });
+              await rename(targetPath, backupPath);
+              backup = backupPath;
+              if ((await revisionOf(backup)) !== item.target.revision) {
+                const restored = await restoreBackupExclusive(backup, targetPath);
+                return { ...base, status: "skipped", reason: restored
+                  ? "target changed before backup; original restored and backup preserved"
+                  : "target changed before backup; check target and preserved backup", backup };
+              }
+            }
+            await io.beforePublish?.(targetPath);
+            // Exclusive publication: a writer arriving after the backup move
+            // wins the path. `rename(tmp, target)` would overwrite that edit.
+            await link(tmp, targetPath);
+          } catch (err) {
+            let restored = false;
+            if (backup) {
+              restored = await restoreBackupExclusive(backup, targetPath);
+            }
+            return { ...base, status: "skipped", reason: `publish failed: ${(err as Error).message}` +
+              (backup ? restored ? "; target restored, backup preserved" : "; inspect target and preserved backup" : ""),
+              ...(backup ? { backup } : {}) };
+          } finally {
+            await unlink(tmp).catch(() => {});
+          }
+
+          const carry = new Set(item.carryAudit);
+          const log = new AuditLog(dst.root);
+          try {
+            for (const e of src.audit) {
+              if (e.memory_id === item.id && carry.has(e.id)) await log.record(e);
+            }
+          } catch (err) {
+            return { ...base, status: "copied", ...(backup ? { backup } : {}), warning: `audit entries could not all be copied: ${(err as Error).message}` };
+          }
+          return { ...base, status: "copied", ...(backup ? { backup } : {}) };
+        },
+      );
+      results.push(result);
     } catch (err) {
-      results.push({ ...base, status: "skipped", reason: (err as Error).message, ...(backup ? { backup } : {}) });
-      continue;
+      results.push({ ...base, status: "skipped", reason: (err as Error).message });
     }
-    const carry = new Set(item.carryAudit);
-    const log = new AuditLog(dst.root);
-    for (const e of src.audit) {
-      if (e.memory_id === item.id && carry.has(e.id)) await log.record(e);
-    }
-    results.push({ ...base, status: "copied", ...(backup ? { backup } : {}) });
   }
   return results;
 }

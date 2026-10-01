@@ -13,14 +13,14 @@
  */
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, open, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { SearchIndex, Vault, type DerivedClaim } from "@bastra-recall/core";
+import { DerivedClaimSchema, SearchIndex, Vault, type DerivedClaim } from "@bastra-recall/core";
 import { Telemetry } from "../src/telemetry.js";
 import { loadMemoryHandler, saveMemoryHandler, type ToolDeps } from "../src/tool-handlers.js";
-import { claimSourceIo, resolveDerivedClaims } from "../src/derived-claims.js";
+import { claimSourceIo, readBoundedSource, resolveDerivedClaims } from "../src/derived-claims.js";
 import { derivedClaimsLines } from "../src/cli/derived-claims-note.js";
 
 test("#609: an empty quote finds nothing, and the load carries on", async () => {
@@ -35,6 +35,63 @@ test("#609: an empty quote finds nothing, and the load carries on", async () => 
     ]);
     assert.equal(claim.status, "gone");
     assert.equal(claim.value, 0);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("#609: quote matching folds Unicode and line endings, then counts overlaps", async () => {
+  const { deps, cleanup } = await makeDeps();
+  try {
+    await plantSource(deps, "ops/quote.md", "е\u0308\r\nnext\r\naaa\n");
+    const results = await resolveDerivedClaims(deps.vaultPath, [
+      { id: "unicode", resolver: "quote.v1", source: "ops/quote.md", exact: "ё\nnext" },
+      { id: "overlap", resolver: "quote.v1", source: "ops/quote.md", exact: "aa" },
+    ]);
+    assert.equal(results[0].status, "matches");
+    assert.equal(results[1].status, "ambiguous");
+    assert.equal(results[1].value, 2);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("#609: numbered lines in fenced code are not list items", async () => {
+  const { deps, cleanup } = await makeDeps();
+  try {
+    await plantSource(deps, SOURCE, "1. real\n```text\n2. pasted log\n```\n3) real\n");
+    const [result] = await resolveDerivedClaims(deps.vaultPath, [{ ...claim, expect: 2 }]);
+    assert.equal(result.status, "matches");
+    assert.equal(result.value, 2);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("#609: resolver expectations are typed to the value actually compared", async () => {
+  for (const [input, message] of [
+    [{ ...claim, expect: "3" }, /non-negative integer/],
+    [{ id: "digest", resolver: "sha256.v1", source: SOURCE, expect: "not-a-digest" }, /64-character hexadecimal/],
+    [{ id: "quote", resolver: "quote.v1", source: SOURCE, exact: "text", expect: 1 }, /does not use expect/],
+  ] as const) {
+    const parsed = DerivedClaimSchema.safeParse(input);
+    assert.equal(parsed.success, false);
+    if (!parsed.success) assert.match(JSON.stringify(parsed.error.issues), message);
+  }
+});
+
+test("#609: an opened source cannot grow past its byte cap between stat and read", async () => {
+  const { deps, cleanup } = await makeDeps();
+  try {
+    const file = await plantSource(deps, SOURCE, "ok");
+    const handle = await open(file, "r");
+    try {
+      assert.equal((await handle.stat()).size, 2);
+      await appendFile(file, "x".repeat(2048));
+      assert.equal(await readBoundedSource(handle, 1024), null);
+    } finally {
+      await handle.close();
+    }
   } finally {
     await cleanup();
   }
@@ -214,7 +271,7 @@ test("#609: a canary outside the vault stays unopened", async () => {
     await mkdir(join(deps.vaultPath, "sources"), { recursive: true });
     await writeFile(canary, canaryText, "utf8");
     await symlink(canary, join(deps.vaultPath, SOURCE));
-    const reads = mock.method(claimSourceIo, "readFile");
+    const reads = mock.method(claimSourceIo, "open");
 
     const { claims } = await statusesFor(deps, [claim]);
 
@@ -235,7 +292,7 @@ test("#609: a note without derived_claims reads no source at all", async () => {
   const { deps, cleanup } = await makeDeps();
   try {
     await plantSource(deps, SOURCE, LIST);
-    const reads = mock.method(claimSourceIo, "readFile");
+    const reads = mock.method(claimSourceIo, "open");
 
     const saved = await saveMemoryHandler(deps, fact());
     const loaded = await loadMemoryHandler(deps, { id: saved.id });

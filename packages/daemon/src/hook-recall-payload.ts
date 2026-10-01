@@ -7,7 +7,7 @@ import type { RecallHit, Vault } from "@bastra-recall/core";
 import { missingVaultReason } from "./vault-presence.js";
 import { vaultKnowsProject } from "./scope-filter.js";
 import { toLeanHit } from "./tool-handlers.js";
-import { armsOf, SCORE_VERSION } from "./score-space.js";
+import { armsOf, currentScoreVersion } from "./score-space.js";
 import { collectPoolReflexHits } from "./recall-pipeline.js";
 import { fitRecallWithReflexToBudget } from "./recall-budget.js";
 
@@ -113,7 +113,7 @@ export function assembleHookRecallPayload(input: HookRecallPayloadInput) {
     // werden.
     score_arms: armsOf({ hybridActive: hybridActiveAtRecall, commonsFused: false }),
     // Keine Formelversion auf einer rohen Skala — siehe recall-handler.ts.
-    ...(hybridActiveAtRecall ? { score_version: SCORE_VERSION } : { unfused: true }),
+    ...(hybridActiveAtRecall ? { score_version: currentScoreVersion() } : { unfused: true }),
     // #342: name the reason on the wire too. `unfused` says the bands do
     // not apply; this says why, so a slow machine degrading on every call
     // is distinguishable from embeddings being off — from the response

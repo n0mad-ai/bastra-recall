@@ -169,8 +169,8 @@ export async function cmdReconcile(
     console.log("");
     for (const r of results) {
       console.log(r.status === "copied"
-        ? `copied   ${r.id} → ${r.target}${r.backup ? `  (backup: ${r.backup})` : ""}`
-        : `skipped  ${r.id}: ${r.reason}`);
+        ? `copied   ${r.id} → ${r.target}${r.backup ? `  (backup: ${r.backup})` : ""}${r.warning ? `  WARNING: ${r.warning}` : ""}`
+        : `skipped  ${r.id}: ${r.reason}${r.backup ? `  (backup: ${r.backup})` : ""}`);
     }
     if (results.length === 0) console.log("nothing to copy.");
   }

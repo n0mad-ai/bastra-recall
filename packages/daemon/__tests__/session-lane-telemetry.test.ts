@@ -10,7 +10,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildContextLedger, type LedgerEvent } from "../src/context-ledger.js";
@@ -120,6 +120,23 @@ test("#373: session_hook_call carries the payload session_id, hook_version and t
     assert.equal(parts.taxonomy, 0);
   } finally {
     await rm(logDir, { recursive: true, force: true });
+  }
+});
+
+test("#754: an unavailable dedup directory does not discard assembled SessionStart context", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-session-state-failure-"));
+  const file = join(dir, "not-a-directory");
+  try {
+    await writeFile(file, "occupied");
+    await withDaemon(async (base) => {
+      const out = await withEnv({ BASTRA_HOOK_STATE_DIR: file, BASTRA_TELEMETRY: "off" }, () =>
+        runSessionLane({ hook_event_name: "SessionStart", source: "startup", cwd: "/tmp", session_id: "sess-754" }, base),
+      );
+      const parsed = JSON.parse(out) as { hookSpecificOutput?: { additionalContext?: string } };
+      assert.match(parsed.hookSpecificOutput?.additionalContext ?? "", /m1/);
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
 

@@ -19,7 +19,7 @@ import { toLeanHit } from "./tool-handlers.js";
 import { expandQuery, type BridgePool } from "./learned-recall/bridges.js";
 import { type SupportedLanguage } from "./learned-recall/language.js";
 import { isWeakResult, isNoHome, decideHits } from "@bastra-recall/core";
-import { armsOf, SCORE_VERSION } from "./score-space.js";
+import { armsOf, currentScoreVersion } from "./score-space.js";
 import { effectiveHintSuppressionMode, suppressRepeatedUnused } from "./hint-suppression.js";
 import { applyCallerScopeFilter } from "./recall-pipeline.js";
 import { measurePayload } from "./recall-budget.js";
@@ -692,7 +692,7 @@ export async function runHookRecall(
           // hinweg mittelt, misst zwei verschiedene Größen als eine.
           score_kind: hybridActiveAtRecall ? ("rrf" as const) : ("bm25" as const),
           score_arms: armsOf({ hybridActive: hybridActiveAtRecall, commonsFused: false }),
-          score_version: hybridActiveAtRecall ? SCORE_VERSION : undefined,
+          score_version: hybridActiveAtRecall ? currentScoreVersion() : undefined,
           candidate_pool_score_kind:
             candidatePool.length > 0 ? (hybridActiveAtRecall ? ("rrf" as const) : ("bm25" as const)) : undefined,
           // Codex-Gegenreview (P1): Der Pool trug nur seinen `score_kind`.
@@ -708,7 +708,7 @@ export async function runHookRecall(
           // Version NUR auf der fusionierten Skala — dieselbe Regel wie beim
           // Haupt-Score, auf rohem BM25 gibt es keine Formel zu versionieren.
           candidate_pool_score_version:
-            candidatePool.length > 0 && hybridActiveAtRecall ? SCORE_VERSION : undefined,
+            candidatePool.length > 0 && hybridActiveAtRecall ? currentScoreVersion() : undefined,
           content_recall: contentRecall,
           // #165: pre-recall festgehalten, siehe oben / recallHandler.
           embedding_degraded: embeddingDegradedAtRecall ? true : undefined,

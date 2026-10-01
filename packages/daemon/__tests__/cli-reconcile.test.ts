@@ -7,7 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, writeFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AuditLog } from "@bastra-recall/core";
@@ -196,7 +196,11 @@ test("--yes copies the unambiguous one with a backup, leaves the conflict", asyn
     const r = await capture(() => cmdReconcile(parseArgs(["reconcile", b, "--vault", a, "--yes"]), now));
     assert.equal(r.code, 0, r.err);
     assert.equal(await readFile(join(b, "m.md"), "utf8"), memo("m", "old\n\nnew paragraph"));
-    assert.equal(await readFile(join(b, ".bastra/reconcile-backup/2026-09-28T12-00-00Z/m.md"), "utf8"), memo("m", "old"));
+    const backupDir = join(b, ".bastra/reconcile-backup/2026-09-28T12-00-00Z");
+    const backups = await readdir(backupDir);
+    assert.equal(backups.length, 1);
+    assert.match(backups[0], /^m\.md\./);
+    assert.equal(await readFile(join(backupDir, backups[0]), "utf8"), memo("m", "old"));
     assert.equal(await readFile(join(b, "c.md"), "utf8"), memo("c", "there"));
     assert.match(r.out, /copied {3}m → /);
   } finally {

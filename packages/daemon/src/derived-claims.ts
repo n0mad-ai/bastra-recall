@@ -13,14 +13,14 @@
  * a difference is shown, and the reader decides.
  */
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
+import { open, realpath, stat, constants, type FileHandle } from "node:fs/promises";
 import { resolve } from "node:path";
 import { assertInsideVault, type DerivedClaim } from "@bastra-recall/core";
 
 const MAX_SOURCE_BYTES = 1_000_000;
 
 /** Every file touch a claim makes, in one object so a test can watch them. */
-export const claimSourceIo = { readFile, stat };
+export const claimSourceIo = { open, realpath, stat };
 
 /**
  * `observed` is the pre-#609 shape: a value with nothing to compare it to.
@@ -80,7 +80,7 @@ async function resolveClaim(vaultRoot: string, claim: DerivedClaim): Promise<Der
   }
   const text = bytes.toString("utf8");
   if (claim.resolver === "quote.v1") {
-    const value = occurrences(text, claim.exact ?? "");
+    const value = occurrences(normalizeQuote(text), normalizeQuote(claim.exact ?? ""));
     return { ...base, value, status: value === 1 ? "matches" : value === 0 ? "gone" : "ambiguous" };
   }
   const value = countMarkdownNumberedList(text);
@@ -109,10 +109,39 @@ async function readSource(vaultRoot: string, source: string): Promise<Buffer> {
   // compares, so a vault-relative spelling that walks out through a link lands
   // outside the vault here and is reported instead of read.
   assertInsideVault(vaultRoot, target, "read derived claim");
-  const info = await claimSourceIo.stat(target);
-  if (!info.isFile()) throw new SourceOutOfBounds("not_a_file");
-  if (info.size > MAX_SOURCE_BYTES) throw new SourceOutOfBounds("too_large");
-  return claimSourceIo.readFile(target);
+  const handle = await claimSourceIo.open(target, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try {
+    const info = await handle.stat();
+    if (!info.isFile()) throw new SourceOutOfBounds("not_a_file");
+    if (info.size > MAX_SOURCE_BYTES) throw new SourceOutOfBounds("too_large");
+    // The path may have changed after the first containment check. Compare
+    // its current inode with the handle before reading any source bytes.
+    const canonical = await claimSourceIo.realpath(target);
+    assertInsideVault(vaultRoot, canonical, "read derived claim");
+    const atPath = await claimSourceIo.stat(target);
+    if (atPath.dev !== info.dev || atPath.ino !== info.ino) throw new SourceOutOfBounds("unavailable");
+    const bytes = await readBoundedSource(handle, MAX_SOURCE_BYTES);
+    if (bytes === null) throw new SourceOutOfBounds("too_large");
+    const after = await handle.stat();
+    if (after.size !== info.size || after.mtimeMs !== info.mtimeMs) throw new SourceOutOfBounds("unavailable");
+    return bytes;
+  } finally {
+    await handle.close();
+  }
+}
+
+/** The size limit applies to bytes read, including growth after fstat. */
+export async function readBoundedSource(handle: Pick<FileHandle, "read">, maxBytes: number): Promise<Buffer | null> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  while (total <= maxBytes) {
+    const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1 - total));
+    const { bytesRead } = await handle.read(chunk, 0, chunk.length, null);
+    if (bytesRead === 0) return Buffer.concat(chunks, total);
+    chunks.push(chunk.subarray(0, bytesRead));
+    total += bytesRead;
+  }
+  return null;
 }
 
 function reasonFor(error: unknown): DerivedClaimResult["reason"] {
@@ -120,11 +149,29 @@ function reasonFor(error: unknown): DerivedClaimResult["reason"] {
   return error instanceof Error && error.message.includes("outside") ? "outside_vault" : "unavailable";
 }
 
-/** How often `needle` stands in `text`, counting overlaps apart; an empty needle stands nowhere. */
+/** Count every occurrence, including overlaps; an empty needle stands nowhere. */
 function occurrences(text: string, needle: string): number {
-  return needle === "" ? 0 : text.split(needle).length - 1;
+  if (needle === "") return 0;
+  let count = 0;
+  for (let at = text.indexOf(needle); at !== -1; at = text.indexOf(needle, at + 1)) count++;
+  return count;
+}
+
+function normalizeQuote(text: string): string {
+  return text.normalize("NFC").replace(/\r\n?/g, "\n");
 }
 
 function countMarkdownNumberedList(text: string): number {
-  return text.split(/\r?\n/).filter((line) => /^\s*\d+[.)]\s+/.test(line)).length;
+  let count = 0;
+  let fence: { char: string; length: number } | null = null;
+  for (const line of text.split(/\r?\n/)) {
+    const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (marker) {
+      if (fence === null) fence = { char: marker[1][0], length: marker[1].length };
+      else if (marker[1][0] === fence.char && marker[1].length >= fence.length && marker[2].trim() === "") fence = null;
+      continue;
+    }
+    if (fence === null && /^\s*\d+[.)]\s+/.test(line)) count++;
+  }
+  return count;
 }

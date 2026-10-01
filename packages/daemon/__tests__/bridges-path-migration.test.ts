@@ -68,6 +68,35 @@ test("a legacy pool is copied to the new root, originals kept", () => {
   });
 });
 
+test("#648: an interrupted copy resumes the missing bridge directory", () => {
+  withRoots((commons, bridges) => {
+    legacyPool(commons);
+    assert.throws(() => migrateBridgesPool({ afterPublished: (name) => {
+      if (name === "last-mint.json") throw new Error("interrupted between publications");
+    } }), /interrupted/);
+    assert.ok(existsSync(join(bridges, "last-mint.json")));
+    assert.ok(!existsSync(join(bridges, "bridges")));
+    assert.deepEqual(migrateBridgesPool(), ["bridges"]);
+    assert.equal(readFileSync(join(bridges, "bridges/en/b.json"), "utf8"), '{"lang":"en"}');
+  });
+});
+
+test("#648: a second startup publishing first cannot be overwritten by this one", () => {
+  withRoots((commons, bridges) => {
+    legacyPool(commons);
+    let raced = false;
+    const outer = migrateBridgesPool({ beforePublish: (name) => {
+      if (name === "last-mint.json" && !raced) {
+        raced = true;
+        assert.deepEqual(migrateBridgesPool(), ["bridges", "last-mint.json"]);
+        writeFileSync(join(bridges, "bridges/en/local.json"), '{"local":true}');
+      }
+    } });
+    assert.deepEqual(outer, []);
+    assert.equal(readFileSync(join(bridges, "bridges/en/local.json"), "utf8"), '{"local":true}');
+  });
+});
+
 test("the copy runs once: a second start copies nothing and keeps new mints", () => {
   withRoots((commons, bridges) => {
     legacyPool(commons);

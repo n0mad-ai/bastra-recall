@@ -729,9 +729,14 @@ export async function runSessionLane(
   // #621: what this start put into the context counts as delivered for the
   // PreToolUse and prompt dedup as well — the #354 rule the other lanes follow.
   if (payload.session_id && top.length > 0) {
-    await mutateSessionState(payload.session_id, (s) => {
-      for (const h of top) bumpShown(s, h.id);
-    });
+    try {
+      await mutateSessionState(payload.session_id, (s) => {
+        for (const h of top) bumpShown(s, h.id);
+      });
+    } catch {
+      // State is an optional dedup cache. Never discard the context that was
+      // already assembled when its directory is unavailable.
+    }
   }
   return out;
 }

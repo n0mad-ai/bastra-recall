@@ -1,3 +1,5 @@
+import { rrfVectorWeight } from "@bastra-recall/core";
+
 /**
  * In welchem Zahlenraum ein ausgelieferter Recall-Score liegt — die eine
  * Antwort für alle Pfade (MCP, Hook, Batch).
@@ -27,10 +29,18 @@
  * (`BASTRA_RRF_VECTOR_WEIGHT`). Rang 1 in beiden Armen bleibt 163.934, aber
  * ein einarmiger Rang 1 liegt jetzt bei ≈ 65.6 (nur BM25) bzw. ≈ 98.4 (nur
  * Vektor) statt beide bei 81.967 (`rrf-1`). Die Version benennt die
- * ausgelieferte Default-Formel; wer `BASTRA_RRF_VECTOR_WEIGHT=1` setzt, bekommt
- * `rrf-1`-Zahlen unter dem Label `rrf-2`.
+ * ausgelieferte Default-Formel; `currentScoreVersion()` benennt Overrides
+ * separat, damit verschieden gewichtete Antworten nicht zusammengemischt werden.
  */
 export const SCORE_VERSION = "rrf-2";
+
+/** The formula actually serving this process, including a non-default weight. */
+export function currentScoreVersion(): string {
+  const weight = rrfVectorWeight();
+  if (weight === 1) return "rrf-1";
+  if (weight === 1.5) return SCORE_VERSION;
+  return `rrf-2-w${weight}`;
+}
 
 /**
  * Die Armmenge, aus der der ausgelieferte Score gebildet wurde, sortiert.
