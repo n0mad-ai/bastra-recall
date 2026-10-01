@@ -121,7 +121,7 @@ export interface RecallResult {
    * `score_kind: "rrf"` allein reicht seit dem Commons-Arm nicht mehr: Es
    * bezeichnet BM25+Vector (Obergrenze 163.934), BM25+Vector+Commons
    * (241.803) und den Kollaps-Pfad aus persönlichem Listenrang plus Commons
-   * (147.541). Zwei Scores sind nur innerhalb DERSELBEN Armmenge vergleichbar
+   * (159.836). Zwei Scores sind nur innerhalb DERSELBEN Armmenge vergleichbar
    * — wer Ergebnisse verschiedener Armmengen zusammenführt, muss über die
    * Ränge fusionieren statt über die Zahlen (siehe `recall-batch.ts`).
    */
@@ -489,7 +489,7 @@ async function recallAgainstVault(
   // Codex-Gegenreview (P0): `score_kind: "rrf"` bezeichnet inzwischen MEHRERE
   // verschiedene Zahlen — BM25+Vector (≤163.934), BM25+Vector+Commons
   // (≤241.803) und den Kollaps-Pfad aus persönlichem Listenrang + Commons
-  // (≤147.541). Zwei „rrf"-Scores sind nur dann vergleichbar, wenn ihre
+  // (≤159.836). Zwei „rrf"-Scores sind nur dann vergleichbar, wenn ihre
   // ARMMENGE dieselbe ist; ohne diese Angabe stellte der Batch-Merge einen
   // Dreiarm-Wert vor einen Zweiarm-Wert, ohne dass er besser passte.
   const scoreArms = armsOf({ hybridActive, commonsFused });

@@ -27,7 +27,7 @@
  * **`personalFused: false`** — der persönliche Arm ist degradiert, seine Zahlen
  * sind rohes BM25 und mit nichts addierbar. Dann bleibt nur die Rang-Kollaps-
  * Fusion: beide Listen werden zu je einem Arm, das Ergebnis liegt in der
- * RRF-Skala. Die Obergrenze ist dort 147.541 (1.8 × 81.967) statt 163.934 —
+ * RRF-Skala. Die Obergrenze ist dort (1 + Commons-Gewicht) × 81.967 statt 163.934 — 147.541 beim Standardgewicht 0.8, 159.836 an der Kappe 0.95 —
  * eine gestauchte, aber ehrliche Skala, und strikt konservativer als der
  * vorherige Zustand, in dem dieser Pfad rohe unbegrenzte Werte servierte.
  *

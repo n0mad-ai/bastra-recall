@@ -234,7 +234,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // Shared learned-recall bridges (#120): read-only, language-partitioned pool
+  // Shared learned-recall bridges (#120): read-only pool
   // that widens recall queries. Same discipline as Commons — never written, only
   // loaded when opted in. Off = pool stays null and nothing is constructed or
   // contacted (local-first). The optional language override skips per-query detection.

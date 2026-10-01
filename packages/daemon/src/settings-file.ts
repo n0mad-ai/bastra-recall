@@ -51,7 +51,7 @@ export interface CliSettings {
   commons?: { enabled: boolean };
   // Shared learned-recall bridges (#120): undefined = disabled (opt-in,
   // privacy-respecting). Enabled via `bastra bridges enable`; the daemon then
-  // loads a git-synced, language-partitioned bridge pool and uses it to widen
+  // loads a git-synced bridge pool and uses it to widen
   // recall queries. `language` is an optional override for the auto-detected
   // query language (e.g. force "de" when you always search in German).
   sharedRecall?: { enabled: boolean; language?: string; live?: boolean };

@@ -25,7 +25,7 @@ export interface ToolDeps {
   /** works/fails-Zählung aus den Verification-Records pro Rezept-ID — die
    *  Evidenz, die das Fusion-Ranking hebt oder senkt (verify-Loop). */
   commonsVerifications?: Map<string, { works: number; fails: number }> | null;
-  /** Read-only, language-partitioned learned-recall bridge pool (#120), present
+  /** Read-only learned-recall bridge pool (#120), present
    *  only when `bastra bridges enable` is active. Used to widen the recall query;
    *  null/absent = feature off, query untouched (local-first guarantee). */
   learnedBridges?: BridgePool | null;

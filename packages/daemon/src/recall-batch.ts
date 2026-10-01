@@ -149,7 +149,7 @@ function spaceOf(s: BatchSubResult): "rrf" | "bm25" {
  *
  * Codex-Gegenreview (P0): Verglichen wurde nur `score_kind`, und seit dem
  * Commons-Arm heißen mehrere verschiedene Zahlen `"rrf"` — BM25+Vector
- * (≤163.934), BM25+Vector+Commons (≤241.803), Kollaps-Rang+Commons (≤147.541).
+ * (≤163.934), BM25+Vector+Commons (≤241.803), Kollaps-Rang+Commons (≤159.836).
  * Zwei Phrasierungen, von denen eine Commons-Treffer hatte und die andere
  * nicht, wurden damit per Best-Score gegeneinandergestellt: Der Dreiarm-Wert
  * gewann, weil seine Skala höher reicht, nicht weil er besser passte. Gleiche
