@@ -339,6 +339,9 @@ export function invokesOwnBinary(command: string): boolean {
   return false;
 }
 
+const EXIT_STATUS_RX =
+  /(?:exit(?:ed)?(?:\s+with)?(?:\s+(?:non-zero\s+)?status)?(?:\s+code)?|status\s+code|exit_code)\D{0,8}(-?\d+)/i;
+
 export function readExitCode(result: Record<string, unknown>): number | null {
   for (const key of ["exit_code", "exitCode", "returncode", "return_code", "status"]) {
     const v = result[key];
@@ -348,11 +351,15 @@ export function readExitCode(result: Record<string, unknown>): number | null {
       if (Number.isFinite(n)) return n;
     }
   }
-  const text = ["stderr", "error", "output", "stdout", "content"]
-    .map((key) => result[key])
-    .filter((value): value is string => typeof value === "string")
-    .join("\n");
-  const match = /(?:exit(?:ed)?(?:\s+with)?(?:\s+(?:non-zero\s+)?status)?(?:\s+code)?|status\s+code|exit_code)\D{0,8}(-?\d+)/i.exec(text);
+  // Text fallback reads only where a STATUS is written, never the command's own output: `error` is
+  // PostToolUseFailure's wording, the head line of a plain-text `output` is where Codex puts
+  // "Process exited with code N". Scanning stdout/stderr/content made every successful `cat`/`sed`
+  // of a log or source mentioning "Exit code 1" / "exitCode": 1 a "failed" command — the lane then
+  // injected failure-mode recall after rc 0.
+  const sources: string[] = [];
+  if (typeof result.error === "string") sources.push(result.error);
+  if (typeof result.output === "string") sources.push(result.output.split("\n", 1)[0] ?? "");
+  const match = EXIT_STATUS_RX.exec(sources.join("\n"));
   if (match) {
     const parsed = Number.parseInt(match[1] ?? "", 10);
     if (Number.isFinite(parsed)) return parsed;
