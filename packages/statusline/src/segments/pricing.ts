@@ -469,6 +469,11 @@ export class PricingService {
     if (!usage) {
       return 0;
     }
+    const breakdown = (
+      usage as unknown as {
+        cache_creation?: { ephemeral_1h_input_tokens?: number };
+      }
+    ).cache_creation;
 
     const modelId = this.extractModelId(entry);
     const pricing = await this.getModelPricing(modelId);
@@ -481,8 +486,15 @@ export class PricingService {
     const inputCost = (inputTokens / 1_000_000) * pricing.input;
     const outputCost = (outputTokens / 1_000_000) * pricing.output;
     const cacheReadCost = (cacheReadTokens / 1_000_000) * pricing.cache_read;
+    // The 1h share of cache writes bills at the 1h rate; the rest at 5m.
+    const cacheWrite1hTokens = Math.min(
+      cacheCreationTokens,
+      breakdown?.ephemeral_1h_input_tokens || 0,
+    );
     const cacheCreationCost =
-      (cacheCreationTokens / 1_000_000) * pricing.cache_write_5m;
+      ((cacheCreationTokens - cacheWrite1hTokens) / 1_000_000) *
+        pricing.cache_write_5m +
+      (cacheWrite1hTokens / 1_000_000) * pricing.cache_write_1h;
 
     return inputCost + outputCost + cacheCreationCost + cacheReadCost;
   }
