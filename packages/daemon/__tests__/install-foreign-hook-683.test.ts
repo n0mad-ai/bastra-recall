@@ -121,8 +121,8 @@ test("Codex: our entries, current and legacy shapes, are still replaced", () => 
   assert.deepEqual(plan.leftAlone, []);
 });
 
-// The checkout script carries its own copy of the recognition (inline node in
-// bash). `--print` writes nothing but the resulting JSON; HOME is a temp dir.
+// The checkout script applies the adapter's planHookEntries, so it uses the
+// same recognition. `--print` writes nothing but the resulting JSON; HOME is a temp dir.
 test("install-hook.sh: the same rule — foreign script kept and named, our legacy forms replaced", { skip: process.platform === "win32" }, async () => {
   const home = await mkdtemp(join(tmpdir(), "bastra-install-hook-683-"));
   try {
@@ -142,7 +142,8 @@ test("install-hook.sh: the same rule — foreign script kept and named, our lega
     const commands = commandsOf(JSON.parse(run.stdout).hooks.UserPromptSubmit);
     assert.equal(commands.length, 2);
     assert.equal(commands[0], "~/bin/my-bastra-recall-audit-hook.sh");
-    assert.match(commands[1], /^node .*\/daemon\/dist\/prompt-hook\.js$/);
+    // The script now builds entries with the CLI's adapter, client marker included.
+    assert.match(commands[1], /^BASTRA_HOOK_CLIENT=claude-code node .*\/daemon\/dist\/prompt-hook\.js$/);
     assert.match(run.stderr, /left alone.*my-bastra-recall-audit-hook\.sh/);
   } finally {
     await rm(home, { recursive: true, force: true });
