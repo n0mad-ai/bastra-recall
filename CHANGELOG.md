@@ -466,6 +466,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #791 — backfill-related: no cloud embeddings from a bare `OPENAI_API_KEY`, and no Pass B on a partial index.
+- @zzallirog's #771 — pending-suggestions: a standing trend is shown for N session starts and then stays retired until its text changes (replaces the refreshed counter of #513).
+- Follow-up to #771 (#996): a retired trend's tombstone ends after N counted starts without a re-write, takes no slot in the trends cap, and changed text always starts a fresh row with a fresh counter.
+- @zzallirog's #765 — prompt-lane: a Russian lookup ("где лежит конфиг nginx", "найди заметку про деплой") is recognised as a retrieval prompt like its German or English twin.
+- Follow-up to #765 (#998): retrieval leads are per-language data (German, English, Russian) that you can extend in `~/.bastra/lexicon/retrieval-lead.txt`; they match whole words only, so "когда мы закончим, удали ветку", "Suchmaschine …" or "findings …" are no longer treated as lookups.
 - @zzallirog's #767 — stop-lane: an option pick is read in any digit script and for lettered, parenthesised or heading option lists.
 - Follow-up to #767 (#987): stop-lane: the language-neutral option pick no longer reads numbered section headings (`## 1. …`) or a letter followed by a dot (`A.`, "z. B.", "A. Smith") as option lines; digit scripts, `(1)` and `A)` stay.
 - @zzallirog's #769 — system-turn: one prefix list decides what is a harness-written turn for the prompt lane, Stop lane and bridge harvest.
