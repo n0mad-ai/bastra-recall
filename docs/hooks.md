@@ -705,6 +705,14 @@ suggestion only, the agent decides.
 Budget 1000 ms. Telemetry: `save_eval_call` with `heuristic, suggested_count,
 drift_clusters, drift_keys, turn_count, latency_ms_total`, plus `delivery`
 (`same-turn`, `pending` or `already-delivered`) when there were suggestions.
+A Stop without a readable transcript still writes a row with `turn_count: 0`.
+If the payload named a transcript this host cannot read — a remote daemon is
+handed the client's path, the path went stale, the file is over the size
+bound — the row carries `skipped_reason`. `bastra logs --stats` counts such a
+row as a call under `gated`, never as a failure, and leaves it out of the
+lane's latency figures, so a remote daemon does not turn the Stop gate red.
+`error` is set only when the evaluation itself threw and the hook fell back to
+`{}`; that row counts as a lane failure.
 
 **Joining a suggestion to the save (#708).** Hook events carry the Claude Code
 session in `session_id`; MCP tool events (`recall`, `save_memory`, `save_hold`,
@@ -762,10 +770,14 @@ and saves. A resumed session is harvested again only for its new turns.
 Telemetry: `session_harvest` with `session_id, client, turn_count,
 candidate_count, candidate_kinds, stored_count, trigger` (`session_end` or
 `idle`); the session start that delivers a harvest block records
-`pending_harvest` on its `session_hook_call` row. `bastra logs --stats` prints
+`pending_harvest` on its `session_hook_call` row. A session whose transcript
+this host cannot read (a remote daemon, a path gone stale) gets a row with
+`skipped_reason` and zero counts; it is not retried. `bastra logs --stats` prints
 "session harvest — N session(s) read (K on SessionEnd), Q quote(s) relayed,
 S already in the vault" and "delivered to D session start(s), M of them saved
-afterwards", joined on `caller_session` as above. "Saved afterwards" counts any
+afterwards", joined on `caller_session` as above. Skipped sessions are not
+among the N read; when there are any, the first line ends with ", X skipped
+(transcript not readable on this host)". "Saved afterwards" counts any
 save of the session that got the block, so it bounds the harvest's effect from
 above. Switch it off with `BASTRA_SESSION_HARVEST=0` in the daemon's
 environment.
@@ -1591,6 +1603,15 @@ entscheidet.
 Budget 1000 ms. Telemetrie: `save_eval_call` mit `heuristic, suggested_count,
 drift_clusters, drift_keys, turn_count, latency_ms_total`, dazu `delivery`
 (`same-turn`, `pending` oder `already-delivered`), wenn es Vorschläge gab.
+Auch ein Stop ohne lesbares Transcript schreibt eine Zeile, mit
+`turn_count: 0`. Nennt der Payload ein Transcript, das dieser Host nicht lesen
+kann — ein Remote-Daemon bekommt den Pfad des Clients, der Pfad ist veraltet,
+die Datei liegt über der Größenschranke —, trägt die Zeile `skipped_reason`.
+`bastra logs --stats` zählt sie als Aufruf unter `gated`, nie als Fehler, und
+lässt sie aus den Latenzwerten der Lane heraus; ein Remote-Daemon färbt das
+Stop-Gate also nicht rot. `error` steht nur dann in der Zeile, wenn die
+Auswertung selbst abgebrochen ist und der Hook auf `{}` zurückfiel; diese
+Zeile zählt als Lane-Fehler.
 
 **Vorschlag und Save zusammenführen (#708).** Hook-Events tragen die
 Claude-Code-Session in `session_id`; MCP-Tool-Events (`recall`, `save_memory`,
@@ -1654,10 +1675,15 @@ ausgewertet. Telemetrie: `session_harvest` mit `session_id, client,
 turn_count, candidate_count, candidate_kinds, stored_count, trigger`
 (`session_end` oder `idle`); der Session-Start, der einen Harvest-Block
 ausliefert, schreibt `pending_harvest` in seine `session_hook_call`-Zeile.
+Eine Session, deren Transcript dieser Host nicht lesen kann (Remote-Daemon,
+veralteter Pfad), bekommt eine Zeile mit `skipped_reason` und Nullwerten; sie
+wird nicht erneut versucht.
 `bastra logs --stats` zeigt „session harvest — N session(s) read (K on
 SessionEnd), Q quote(s) relayed, S already in the vault" und „delivered to D
 session start(s), M of them saved afterwards", verknüpft über `caller_session`
-wie oben. „Saved afterwards" zählt jeden Save der Session, die den Block
+wie oben. Übersprungene Sessions zählen nicht zu den N gelesenen; gibt es
+welche, endet die erste Zeile mit „, X skipped (transcript not readable on
+this host)". „Saved afterwards" zählt jeden Save der Session, die den Block
 bekam, und ist damit eine Obergrenze für die Wirkung des Harvests. Abschalten
 mit `BASTRA_SESSION_HARVEST=0` in der Umgebung des Daemons.
 

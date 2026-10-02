@@ -259,7 +259,10 @@ test("a booked session whose transcript this host cannot read leaves a harvest r
     assert.equal(rows.length, 1, "the skipped session is visible in telemetry");
     assert.equal(rows[0].session_id, "remote-1");
     assert.equal(rows[0].candidate_count, 0);
-    assert.match(String(rows[0].error), /not readable: ENOENT/);
+    // #887 follow-up: the reason is `skipped_reason`, not `error` — the job
+    // did not fail, the transcript is on another host.
+    assert.match(String(rows[0].skipped_reason), /not readable: ENOENT/);
+    assert.equal(rows[0].error, undefined);
   });
 });
 
@@ -273,7 +276,10 @@ test("the Stop lane writes a row for a transcript it cannot read, with the reaso
     const rows = (await logRows(dir, "save_eval_call")).filter((e) => e.session_id === "stop-unreadable");
     assert.equal(rows.length, 1, "the Stop lane ran and says so");
     assert.equal(rows[0].turn_count, 0);
-    assert.match(String(rows[0].error), /not readable on this host: ENOENT/);
+    // #887 follow-up: `skipped_reason`, not `error` — `error` is the fail-open
+    // backstop's field and counts as a lane failure in the release gate.
+    assert.match(String(rows[0].skipped_reason), /not readable on this host: ENOENT/);
+    assert.equal(rows[0].error, undefined);
 
     // A genuinely empty transcript is a row too, without an error.
     const empty = join(dir, "empty.jsonl");
@@ -282,5 +288,6 @@ test("the Stop lane writes a row for a transcript it cannot read, with the reaso
     const emptyRows = (await logRows(dir, "save_eval_call")).filter((e) => e.session_id === "stop-empty");
     assert.equal(emptyRows.length, 1);
     assert.equal(emptyRows[0].error, undefined);
+    assert.equal(emptyRows[0].skipped_reason, undefined);
   });
 });

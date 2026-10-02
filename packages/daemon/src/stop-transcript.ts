@@ -77,7 +77,10 @@ const MAX_TRANSCRIPT_BYTES = 64 * 1024 * 1024; // 64 MiB — weit über realen T
  * nothing to read" (no path, no inline transcript, an empty file) from
  * "there was a transcript and this host could not read it" (ENOENT on a
  * remote daemon whose transcript_path is local to the client, a path that
- * grew stale, permissions). Null means the former; a string names the latter.
+ * grew stale, permissions). Null means the former; a string names the latter
+ * and becomes the row's `skipped_reason`. The cases are not told apart any
+ * further — a stale path and a remote daemon are the same ENOENT — and none of
+ * them is the lane failing, so none is an `error`.
  */
 export async function emptyTranscriptReason(payload: ClaudeStopPayload): Promise<string | null> {
   if (Array.isArray(payload.transcript)) return null;

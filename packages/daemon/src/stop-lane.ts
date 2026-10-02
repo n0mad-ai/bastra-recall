@@ -223,8 +223,9 @@ async function evaluateStop(
     // could not tell "genuinely nothing to suggest" from "never really ran" —
     // exactly the shape a remote-daemon topology hits on every session whose
     // transcript path is local to the CLIENT host. A row is written either
-    // way now, with `error` naming the reason when a transcript existed but
-    // could not be read.
+    // way now, with `skipped_reason` naming why when a transcript existed but
+    // could not be read. Not `error`: the lane did not fail, it had nothing it
+    // could read, and a remote daemon must not turn the Stop gate red.
     const reason = await emptyTranscriptReason(payload);
     await writeTelemetry({
       session_id: payload.session_id ?? null,
@@ -234,7 +235,7 @@ async function evaluateStop(
       drift_keys: [],
       turn_count: 0,
       latency_ms_total: Date.now() - startedAt,
-      ...(reason ? { error: reason } : {}),
+      ...(reason ? { skipped_reason: reason } : {}),
     });
     return "{}";
   }
@@ -438,8 +439,14 @@ interface StopHookTelemetry {
   /** #662: where the suggestions went — absent when there were none. */
   delivery?: SaveEvalDelivery;
   /** Set only on the fail-open backstop path: the error that made the Stop
-   *  evaluation degrade to `{}`. Absent on every normal event. */
+   *  evaluation degrade to `{}`. Absent on every normal event — a transcript
+   *  this host could not read is `skipped_reason`, not an error. */
   error?: string;
+  /** Why nothing was evaluated: the payload named a transcript this host could
+   *  not read (a remote daemon handed the client's path, a path gone stale, a
+   *  file over the size bound). The gate counts the row as a call, not as a
+   *  failure, and leaves it out of the latency sample. */
+  skipped_reason?: string;
 }
 
 async function writeTelemetry(payload: StopHookTelemetry): Promise<void> {

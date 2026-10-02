@@ -89,6 +89,9 @@ export function aggregateSaveSuggestions(events: readonly Row[]): SaveSuggestion
 export interface HarvestStats {
   /** `session_harvest` rows: sessions the job read. */
   harvestedSessions: number;
+  /** Rows with `skipped_reason`: sessions whose transcript this host could not
+   *  read. Not among the sessions read. */
+  skippedSessions: number;
   /** Quotes relayed, and quotes dropped because the vault already held them. */
   candidates: number;
   stored: number;
@@ -103,12 +106,17 @@ export interface HarvestStats {
 /** Null when the window holds neither a harvest pass nor a delivery. */
 export function aggregateHarvest(events: readonly Row[]): HarvestStats | null {
   let harvestedSessions = 0;
+  let skippedSessions = 0;
   let candidates = 0;
   let stored = 0;
   let bySessionEnd = 0;
   const delivered = new Map<string, string>();
   for (const e of events) {
     if (e.kind === "session_harvest") {
+      if (typeof e.skipped_reason === "string" && e.skipped_reason.length > 0) {
+        skippedSessions++;
+        continue;
+      }
       harvestedSessions++;
       if (typeof e.candidate_count === "number") candidates += e.candidate_count;
       if (typeof e.stored_count === "number") stored += e.stored_count;
@@ -123,7 +131,7 @@ export function aggregateHarvest(events: readonly Row[]): HarvestStats | null {
     const prev = delivered.get(sid);
     if (prev === undefined || ts < prev) delivered.set(sid, ts);
   }
-  if (harvestedSessions === 0 && delivered.size === 0) return null;
+  if (harvestedSessions === 0 && skippedSessions === 0 && delivered.size === 0) return null;
 
   const saved = new Set<string>();
   for (const e of events) {
@@ -134,6 +142,7 @@ export function aggregateHarvest(events: readonly Row[]): HarvestStats | null {
   }
   return {
     harvestedSessions,
+    skippedSessions,
     candidates,
     stored,
     bySessionEnd,

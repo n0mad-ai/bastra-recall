@@ -220,6 +220,7 @@ test("stats: harvest line joins the delivering session start to later saves on c
   ];
   assert.deepEqual(aggregateHarvest(rows), {
     harvestedSessions: 2,
+    skippedSessions: 0,
     candidates: 3,
     stored: 1,
     bySessionEnd: 1,
@@ -227,6 +228,19 @@ test("stats: harvest line joins the delivering session start to later saves on c
     savedAfterDelivery: 1,
   });
   assert.equal(aggregateHarvest(rows.filter((r) => r.kind === "save_memory")), null);
+
+  // #887: a row with `skipped_reason` is a session the job could NOT read —
+  // it has its own count and never raises "session(s) read".
+  const skipped = { kind: "session_harvest", ts: "2026-09-28T10:06:00Z", session_id: "r", candidate_count: 0, stored_count: 0, trigger: "session_end", skipped_reason: "transcript_path not readable: ENOENT" };
+  const withSkipped = aggregateHarvest([...rows, skipped]);
+  assert.equal(withSkipped?.harvestedSessions, 2);
+  assert.equal(withSkipped?.bySessionEnd, 1);
+  assert.equal(withSkipped?.skippedSessions, 1);
+  assert.match(
+    renderStats(aggregate([...rows, skipped]), 600),
+    /session harvest — 2 session\(s\) read \(1 on SessionEnd\), 3 quote\(s\) relayed, 1 already in the vault, 1 skipped \(transcript not readable on this host\)/,
+  );
+  assert.equal(aggregateHarvest([skipped])?.harvestedSessions, 0, "a window of skipped sessions only still reports them");
   const text = renderStats(aggregate(rows), 600);
   assert.match(text, /session harvest — 2 session\(s\) read \(1 on SessionEnd\), 3 quote\(s\) relayed, 1 already in the vault/);
   assert.match(text, /delivered to 2 session start\(s\), 1 of them saved afterwards/);
