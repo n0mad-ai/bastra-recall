@@ -7,7 +7,7 @@
  * (the id-level claim) and `save-target.ts` (where the file goes). They were
  * split out when this file passed 800 lines; nothing changed but the location.
  */
-import { writeFile, mkdir, unlink, rename, link } from "node:fs/promises";
+import { writeFile, mkdir, unlink, rename, link, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import matter from "gray-matter";
 import { SUMMARY_MAX } from "./summary.js";
@@ -49,6 +49,26 @@ export async function saveMemory(
   // Living here, not only in the tool handler, means every caller of
   // `saveMemory` inherits it, including `auditedSave` / bridge.ts.
   assertBodyTail(input.body, input.body_ends_with);
+
+  // A root this daemon has confirmed present before, but that is
+  // missing right now, is a mount that vanished under it — `mkdir(recursive)`
+  // would otherwise recreate the whole tree, root included, on the parent
+  // filesystem and silence `vault_missing` on every /health and recall from
+  // then on. A root never confirmed present is the legitimate
+  // "created on first save" case and is still created on demand. Checked
+  // before the area and id claims: their lock files live under the root and
+  // would recreate it first.
+  if (commit.vaultRootKnownPresent === true) {
+    const rootExists = await stat(vaultRoot)
+      .then((st) => st.isDirectory())
+      .catch(() => false);
+    if (!rootExists) {
+      throw new Error(
+        `the vault at ${vaultRoot} is missing — it was present before but is not now ` +
+          `(unmounted drive, dropped network share). Refusing to recreate it; remount it and retry.`,
+      );
+    }
+  }
 
   const locator = commit.locator ?? { locate: (wanted: string) => scanVaultForId(vaultRoot, wanted) };
   // Der injizierte Locator macht hier nur noch das ROUTING: In welchem Regal
