@@ -37,10 +37,6 @@
     "./rrf": {
       "types": "./dist/rrf.d.ts",
       "import": "./dist/rrf.js"
-    },
-    "./env-switch": {
-      "types": "./dist/env-switch.d.ts",
-      "import": "./dist/env-switch.js"
     }
   },
   "files": [
