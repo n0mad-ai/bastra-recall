@@ -155,6 +155,24 @@ export async function findProjectPaths(
   return projectPaths;
 }
 
+// Whether the usage source itself can be read. Only then does "no entries"
+// mean nothing was spent; a missing or unreadable projects directory means
+// the usage is unknown.
+export async function canReadProjects(): Promise<boolean> {
+  let readable = false;
+
+  for (const claudePath of getClaudePaths()) {
+    try {
+      await readdir(join(claudePath, "projects"));
+      readable = true;
+    } catch (error) {
+      if ((error as { code?: string }).code !== "ENOENT") return false;
+    }
+  }
+
+  return readable;
+}
+
 export async function findTranscriptFile(
   sessionId: string,
 ): Promise<string | null> {
@@ -311,26 +329,32 @@ const STREAMING_THRESHOLD_BYTES = 1024 * 1024;
 
 export async function parseJsonlFile(filePath: string): Promise<ParsedEntry[]> {
   try {
-    const stats = await stat(filePath);
-    const fileSizeBytes = stats.size;
-    let entries: ParsedEntry[];
-
-    if (fileSizeBytes > STREAMING_THRESHOLD_BYTES) {
-      debug(
-        `Using streaming parser for large file ${filePath} (${Math.round(fileSizeBytes / 1024)}KB)`,
-      );
-      entries = await parseJsonlFileStreaming(filePath);
-    } else {
-      entries = await parseJsonlFileInMemory(filePath);
-    }
-
-    debug(`Parsed ${entries.length} entries from ${filePath}`);
-
-    return entries;
+    return await readJsonlFile(filePath);
   } catch (error) {
     debug(`Failed to read file ${filePath}:`, error);
     return [];
   }
+}
+
+// parseJsonlFile for callers that must tell an unreadable file from an empty
+// one: a read error throws instead of yielding no entries.
+export async function readJsonlFile(filePath: string): Promise<ParsedEntry[]> {
+  const stats = await stat(filePath);
+  const fileSizeBytes = stats.size;
+  let entries: ParsedEntry[];
+
+  if (fileSizeBytes > STREAMING_THRESHOLD_BYTES) {
+    debug(
+      `Using streaming parser for large file ${filePath} (${Math.round(fileSizeBytes / 1024)}KB)`,
+    );
+    entries = await parseJsonlFileStreaming(filePath);
+  } else {
+    entries = await parseJsonlFileInMemory(filePath);
+  }
+
+  debug(`Parsed ${entries.length} entries from ${filePath}`);
+
+  return entries;
 }
 
 async function parseJsonlFileInMemory(

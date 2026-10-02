@@ -7,6 +7,7 @@ interface TokenBreakdown {
 
 export function formatCost(cost: number | null): string {
   if (cost === null) return "--";
+  if (cost === 0) return "$0.00";
   if (cost < 0.01) return "<$0.01";
   return `$${cost.toFixed(2)}`;
 }

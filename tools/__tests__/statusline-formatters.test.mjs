@@ -17,6 +17,11 @@ test("null usage renders as the absent-value placeholder, not as zero", () => {
 });
 
 test("a measured zero keeps its own text", () => {
-  assert.equal(formatCost(0), "<$0.01");
+  assert.equal(formatCost(0), "$0.00");
   assert.equal(formatTokens(0), "0 tokens");
+});
+
+test("a tiny non-zero cost is not printed as zero", () => {
+  assert.equal(formatCost(0.004), "<$0.01");
+  assert.equal(formatCost(0.01), "$0.01");
 });

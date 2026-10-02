@@ -4,6 +4,8 @@ import {
   findTranscriptFile,
   findAgentTranscripts,
   parseJsonlFile,
+  readJsonlFile,
+  canReadProjects,
   createUniqueHash,
   type ParsedEntry,
   type ClaudeHookData,
@@ -69,12 +71,14 @@ export class SessionProvider {
       const transcriptPath = await findTranscriptFile(sessionId);
       if (!transcriptPath) {
         debug(`No transcript found for session: ${sessionId}`);
-        return null;
+        // A session that has not written its transcript yet has spent nothing;
+        // without a readable projects directory the usage is unknown.
+        return (await canReadProjects()) ? { totalCost: 0, entries: [] } : null;
       }
 
       debug(`Found transcript at: ${transcriptPath}`);
 
-      const parsedEntries = await parseJsonlFile(transcriptPath);
+      const parsedEntries = await readJsonlFile(transcriptPath);
       const projectPath = dirname(transcriptPath);
       const agentTranscripts = await findAgentTranscripts(
         sessionId,
@@ -158,7 +162,7 @@ export class SessionProvider {
   ): Promise<SessionInfo> {
     const sessionUsage = await this.getSessionUsage(sessionId);
 
-    if (!sessionUsage || sessionUsage.entries.length === 0) {
+    if (!sessionUsage) {
       return {
         cost: null,
         calculatedCost: null,

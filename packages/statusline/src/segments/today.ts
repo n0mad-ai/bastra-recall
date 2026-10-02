@@ -4,7 +4,7 @@ import type { TokenBreakdown } from "./session";
 import { debug } from "../utils/logger";
 import { PricingService } from "./pricing";
 import { CacheManager } from "../utils/cache";
-import { loadEntriesFromProjects } from "../utils/claude";
+import { loadEntriesFromProjects, canReadProjects } from "../utils/claude";
 
 export interface TodayUsageEntry {
   timestamp: Date;
@@ -129,20 +129,13 @@ export class TodayProvider {
     return todayEntries;
   }
 
-  private async getTodayEntries(): Promise<TodayUsageEntry[]> {
-    try {
-      return await this.loadTodayEntries();
-    } catch (error) {
-      debug("Error loading today's entries:", error);
-      return [];
-    }
-  }
-
   async getTodayInfo(): Promise<TodayInfo> {
     try {
-      const entries = await this.getTodayEntries();
+      const entries = await this.loadTodayEntries();
 
-      if (entries.length === 0) {
+      // No entries is a measured zero only while the projects directory can
+      // be read; otherwise today's usage is unknown.
+      if (entries.length === 0 && !(await canReadProjects())) {
         return {
           cost: null,
           tokens: null,

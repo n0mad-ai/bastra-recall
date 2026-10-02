@@ -51,7 +51,7 @@ async function todayWithCache(cached, onSet = () => {}) {
 test("a cache holding only yesterday's entries is not reused as today", async () => {
   const yesterday = new Date(Date.now() - 36 * 3600 * 1000);
   const info = await todayWithCache([entry(yesterday, 5)]);
-  assert.equal(info.cost, null);
+  assert.equal(info.cost, 0);
 });
 
 test("a cache holding today's entries is still reused", async () => {
@@ -62,6 +62,6 @@ test("a cache holding today's entries is still reused", async () => {
 test("a valid empty today cache is reused without reading transcripts again", async () => {
   let writes = 0;
   const info = await todayWithCache([], () => { writes++; });
-  assert.equal(info.cost, null);
+  assert.equal(info.cost, 0);
   assert.equal(writes, 0, "the empty cache was discarded and recomputed");
 });
