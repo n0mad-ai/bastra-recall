@@ -369,3 +369,41 @@ export function stateQuestionCues(): string[] {
 export function projectStateCues(): string[] {
   return loadCues("project-state", Object.values(DEFAULT_PROJECT_STATE_CUES_BY_LANGUAGE).flat());
 }
+
+/**
+ * #765 — the prompt lane's retrieval leads (#33, prompt-classify.ts), formerly
+ * two DE/EN regex literals. Per-language data, extended by
+ * `retrieval-lead.txt`, matched with {@link cueRegex} anchored at the start of
+ * the prompt: a lead is how a lookup OPENS, and the Unicode boundary after it
+ * keeps a stem from matching a longer word ("найди" is not "найдёшь").
+ *
+ * The leads are whole forms, not stems. A lookup asks about the past, so the
+ * Russian "когда"/"сколько" leads require a past-tense verb: "когда мы
+ * обновляли сертификаты" is one, "когда мы закончим, удали ветку" and
+ * "сколько будет 2+2" are not.
+ *
+ * The neutral path for a language without a list: the prompt is not labelled
+ * `retrieval` on a guess. It stays an ordinary prompt, which still recalls and
+ * delivers what clears the must-load score.
+ */
+export const DEFAULT_RETRIEVAL_LEAD_CUES_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
+  de: [
+    "such(?:e|en|t|)", "finde(?:n|t|)", "wo\\s+(?:ist|sind)", "wann\\s+(?:war|waren|hatte|hatten)", "wieviel",
+    "wie\\s+viele?", "was\\s+hab(?:e|en|)", "was\\s+war(?:en|)",
+  ],
+  en: ["find", "search", "where\\s+(?:is|are)", "when\\s+(?:was|did)", "how\\s+much", "what\\s+(?:did|was)"],
+  ru: [
+    "найди(?:те|)", "найти", "ищи(?:те|)", "поищи(?:те|)",
+    "где\\s+(?:лежит|лежат|находится|находятся|был[аио]?|были)",
+    "когда\\s+(?:был[аио]?|были)", "когда\\s+я\\s{1,4}\\p{L}+(?:л|ла|лся|лась)",
+    "когда\\s+мы\\s{1,4}\\p{L}+(?:ли|лись)",
+    "сколько\\s+(?:стоил[аио]?|стоили|было)", "сколько\\s+я\\s{1,4}\\p{L}+(?:л|ла)",
+    "сколько\\s+мы\\s{1,4}\\p{L}+ли",
+    "что\\s+(?:я|мы)\\s{1,4}(?:делал|писал|решил|говорил)(?:а|и|)", "что\\s+было",
+  ],
+};
+
+/** Retrieval-lead cues: defaults extended by ~/.bastra/lexicon/retrieval-lead.txt. */
+export function retrievalLeadCues(): string[] {
+  return loadCues("retrieval-lead", Object.values(DEFAULT_RETRIEVAL_LEAD_CUES_BY_LANGUAGE).flat());
+}

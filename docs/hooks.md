@@ -221,10 +221,19 @@ presentation (every edit, full candidate list with summaries).
 
 #### `bastra-recall-prompt-hook` (#33)
 
-Detects retrieval prompts via DE + EN regex (e.g. `^such|finde|wo (ist|sind)`
-/ `^find|search|where (is|are)`). On a match:
+Detects retrieval prompts by how they open. The leads are per-language data
+(German, English, Russian; #765), anchored at the start of the prompt and
+matched with Unicode letter boundaries: `such`, `finde`, `wo ist` / `find`,
+`search`, `where is` / `найди`, `где лежит`. They are whole forms, not stems
+— `найди` does not match "найдёшь время?" — and the Russian "when" and "how
+much" leads need a past-tense verb, so "когда мы закончим, удали ветку" and
+"сколько будет 2+2" stay ordinary prompts. One lead per line in
+`~/.bastra/lexicon/retrieval-lead.txt` adds a language. On a match:
 
 - POSTs the prompt verbatim to `/hook/recall` with `k=5`, score-floor `50`.
+- Skips the backoff, and still delivers when the recall ran without fusion —
+  you asked for a lookup. The time budget is the same 600 ms as for any other
+  prompt.
 - Emits a `<recall-hints surface="claude-code" trigger="prompt-lookup"
   recall-step="done" recall_id="…">` block saying that the recall already ran
   for this prompt: load the fitting candidates (and `find_document` if
@@ -239,8 +248,9 @@ Detects retrieval prompts via DE + EN regex (e.g. `^such|finde|wo (ist|sind)`
   request to search always runs.
 
 Every other non-trivial prompt recalls too (#677, `k=3`), in any language —
-the regexes above are German/English only and no longer decide whether a
-prompt recalls. What surfaces there is gated by score: only hits ≥ 100, plus
+the leads above cover three languages and do not decide whether a prompt
+recalls: a lookup in a language without a list is not labelled `retrieval` on
+a guess. What surfaces there is gated by score: only hits ≥ 100, plus
 memories you wired as `recall_mode: reflex` at the normal floor. Without
 fusion (vector arm off or timed out) the score says nothing, so only wired
 memories surface. `BASTRA_PROMPT_HOOK_MODE=retrieval-only` restores the old
@@ -1151,12 +1161,21 @@ Zusammenfassungen).
 
 #### `bastra-recall-prompt-hook` (#33)
 
-Erkennt Retrieval-Prompts über deutsche und englische Regex (z. B.
-`^such|finde|wo (ist|sind)` / `^find|search|where (is|are)`). Bei einem
-Treffer:
+Erkennt Retrieval-Prompts daran, wie sie anfangen. Die Anfänge sind Daten pro
+Sprache (Deutsch, Englisch, Russisch; #765), am Prompt-Anfang verankert und an
+Unicode-Buchstabengrenzen geprüft: `such`, `finde`, `wo ist` / `find`,
+`search`, `where is` / `найди`, `где лежит`. Es sind ganze Formen, keine
+Wortstämme — `найди` trifft „найдёшь время?“ nicht —, und die russischen
+Anfänge für „wann“ und „wie viel“ verlangen ein Verb in der Vergangenheit:
+„когда мы закончим, удали ветку“ und „сколько будет 2+2“ bleiben gewöhnliche
+Prompts. Eine Zeile je Anfang in `~/.bastra/lexicon/retrieval-lead.txt` ergänzt
+eine Sprache. Bei einem Treffer:
 
 - sendet er den Prompt wörtlich per POST an `/hook/recall` mit `k=5` und
   Score-Untergrenze `50`.
+- überspringt er den Backoff und liefert auch dann, wenn der Recall ohne
+  Fusion lief — du hast nach einer Suche gefragt. Das Zeitbudget ist dasselbe
+  wie bei jedem anderen Prompt (600 ms).
 - gibt er einen Block `<recall-hints surface="claude-code" trigger="prompt-lookup"
   recall-step="done" recall_id="…">` aus, der sagt, dass der Recall für diesen
   Prompt schon gelaufen ist: passende Kandidaten laden (und `find_document`,
@@ -1171,8 +1190,9 @@ Treffer:
   später in der Aufgabe. Eine ausdrückliche Suchanfrage des Nutzers läuft immer.
 
 Jeder andere nicht-triviale Prompt ruft ebenfalls Recall auf (#677, `k=3`),
-in jeder Sprache — die Regexe oben kennen nur Deutsch und Englisch und
-entscheiden nicht mehr, ob ein Prompt Recall bekommt. Was dort erscheint,
+in jeder Sprache — die Anfänge oben decken drei Sprachen ab und entscheiden
+nicht, ob ein Prompt Recall bekommt: Eine Suchanfrage in einer Sprache ohne
+Liste wird nicht auf Verdacht als `retrieval` eingestuft. Was dort erscheint,
 begrenzt der Score: nur Treffer ≥ 100, dazu Memories, die du als
 `recall_mode: reflex` verdrahtet hast, an der normalen Untergrenze. Ohne Fusion
 (Vektor-Arm aus oder in die Deadline gelaufen) sagt der Score nichts, dann
