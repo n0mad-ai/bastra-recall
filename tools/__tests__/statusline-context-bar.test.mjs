@@ -45,3 +45,21 @@ test("used mode: the bar fills to the printed used percentage", () => {
   assert.match(seg.text, /\(90%\)$/);
   assert.equal(seg.text.split("█").length - 1, 9);
 });
+
+test("no context data, remaining mode: a full bar beside 100%", () => {
+  const seg = context(null, {
+    enabled: true,
+    displayStyle: "blocks",
+    percentageMode: "remaining",
+  });
+  assert.equal(seg.text, `${"█".repeat(10)} 100%`);
+});
+
+test("no context data, used mode: an empty bar beside 0%", () => {
+  const seg = context(null, {
+    enabled: true,
+    displayStyle: "blocks",
+    percentageMode: "used",
+  });
+  assert.equal(seg.text, `${"░".repeat(10)} 0%`);
+});

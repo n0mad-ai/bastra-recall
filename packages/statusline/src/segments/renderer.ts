@@ -482,7 +482,10 @@ export class SegmentRenderer {
     const emptyPct = mode === "remaining" ? "100%" : "0%";
     if (!contextInfo) {
       if (barStyleDef) {
-        const emptyBar = barStyleDef.empty.repeat(barLength);
+        const emptyBar =
+          mode === "remaining"
+            ? this.buildBar(barStyleDef, barLength, 0, barLength)
+            : barStyleDef.empty.repeat(barLength);
         return {
           text: `${emptyBar} ${emptyPct}`,
           bgColor: colors.contextBg,
