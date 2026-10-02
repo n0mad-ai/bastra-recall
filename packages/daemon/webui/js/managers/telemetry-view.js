@@ -146,14 +146,14 @@ function renderOverview(r) {
   );
 }
 
-function renderQuality(q, t) {
+export function renderQuality(q, t) {
   const bands = q.bands;
-  const maxS = Math.max(1, ...bands.map((b) => b.surfaced));
+  const maxS = Math.max(1, ...bands.map((b) => b.candidates));
   const bandRows = bands.map((b) =>
-    h("tr", null, td(b.band), barCell(b.surfaced, maxS), td(fmt(b.surfaced)), td(fmt(b.loaded)), td(pct(b.loaded, b.surfaced), "dim"), td(fmt(b.acted)), td(pct(b.acted, b.loaded), b.acted > 0 ? "ok" : null)),
+    h("tr", null, td(b.band), barCell(b.candidates, maxS), td(fmt(b.candidates)), td(fmt(b.loaded)), td(pct(b.loaded, b.candidates), "dim"), td(fmt(b.acted)), td(pct(b.acted, b.loaded), b.acted > 0 ? "ok" : null)),
   );
   const srcRows = q.bySource.map((x) =>
-    h("tr", null, td(x.source), td(fmt(x.surfaced)), td(fmt(x.loaded)), td(pct(x.loaded, x.surfaced), "dim"), td(fmt(x.acted)), td(pct(x.acted, x.loaded), x.acted > 0 ? "ok" : null)),
+    h("tr", null, td(x.source), td(fmt(x.candidates)), td(fmt(x.loaded)), td(pct(x.loaded, x.candidates), "dim"), td(fmt(x.acted)), td(pct(x.acted, x.loaded), x.acted > 0 ? "ok" : null)),
   );
   const ft = q.followThrough;
   const maxR = Math.max(1, ...ft.ranks.map((x) => x.count));
@@ -168,21 +168,21 @@ function renderQuality(q, t) {
 
   return section(
     "Recall quality",
-    "Which surfaced hints caused an explicit load_memory call, and did those loaded hints change the next tool input?",
+    "Which hint candidates led to an explicit load_memory call, and did those loaded hints change the next tool input?",
     h(
       "div",
       { class: "tv-cols" },
       h(
         "div",
         null,
-        h3("Hit bands — surfaced → loaded → acted on"),
-        bands.some((b) => b.surfaced + b.loaded > 0)
-          ? table(["band", "", "surfaced", "loaded", "load lower bound", "acted", "use-rate"], bandRows)
+        h3("Hit bands — candidates → loaded → acted on"),
+        bands.some((b) => b.candidates + b.loaded > 0)
+          ? table(["band", "", "candidates", "loaded", "load lower bound", "acted", "use-rate"], bandRows)
           : empty("no hook recalls with hits in this window"),
-        note("Loaded / surfaced is only a lower bound on follow-through: a client can apply an injected hint without calling load_memory, and that path is not observable. Use-rate describes the explicit-load population only (acted on / loaded)."),
+        note("Candidates are the engine's top-k before the hook's score floor, scope filter and per-session dedup, not what was actually injected; the injected count is not in this table. Loaded / candidates is only a lower bound on follow-through: a client can apply an injected hint without calling load_memory, and that path is not observable. Use-rate describes the explicit-load population only (acted on / loaded)."),
         q.directLoads > 0 ? note(`${fmt(q.directLoads)} direct load(s) without a preceding hint are excluded from every band quota (#77).`) : null,
         h3("By hint source"),
-        table(["source", "surfaced", "loaded", "load lower bound", "acted", "use-rate"], srcRows),
+        table(["source", "candidates", "loaded", "load lower bound", "acted", "use-rate"], srcRows),
       ),
       h(
         "div",

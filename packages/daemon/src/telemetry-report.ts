@@ -157,7 +157,7 @@ const BANDS: Band[] = ["required", "optional", "below_floor"];
 
 export interface BandRow {
   band: Band;
-  surfaced: number;
+  candidates: number;
   loaded: number;
   acted: number;
 }
@@ -173,7 +173,7 @@ export interface QualitySection {
   bands: BandRow[];
   /** Episoden ohne vorangehenden Hint — in keiner Bandquote (#77). */
   directLoads: number;
-  bySource: Array<{ source: "bash-tripwire" | "write-edit"; surfaced: number; loaded: number; acted: number }>;
+  bySource: Array<{ source: "bash-tripwire" | "write-edit"; candidates: number; loaded: number; acted: number }>;
   followThrough: {
     loads: number;
     fromHint: number;
@@ -203,10 +203,10 @@ export function summarizeQuality(events: ReportEvent[], t: ReportThresholds): Qu
   const episodes = events.filter((e) => e.kind === "recall_episode");
   const surfacedEpisodes = episodes.filter(isSurfaced);
 
-  const rows = new Map<Band, BandRow>(BANDS.map((b) => [b, { band: b, surfaced: 0, loaded: 0, acted: 0 }]));
+  const rows = new Map<Band, BandRow>(BANDS.map((b) => [b, { band: b, candidates: 0, loaded: 0, acted: 0 }]));
   for (const r of hookRecalls) {
     for (const h of r.hits as Array<{ score?: number }>) {
-      rows.get(bandFor(Number(h.score ?? 0), t))!.surfaced++;
+      rows.get(bandFor(Number(h.score ?? 0), t))!.candidates++;
     }
   }
   for (const e of surfacedEpisodes) {
@@ -219,10 +219,10 @@ export function summarizeQuality(events: ReportEvent[], t: ReportThresholds): Qu
   // #71: Tripwire-Hints (bash-pre-hook) getrennt von Write/Edit-Hints.
   const recallTool = new Map<string, string>();
   for (const r of hookRecalls) recallTool.set(String(r.recall_id), String(r.tool_name ?? ""));
-  const src = { "bash-tripwire": { surfaced: 0, loaded: 0, acted: 0 }, "write-edit": { surfaced: 0, loaded: 0, acted: 0 } };
+  const src = { "bash-tripwire": { candidates: 0, loaded: 0, acted: 0 }, "write-edit": { candidates: 0, loaded: 0, acted: 0 } };
   for (const r of hookRecalls) {
     const k = String(r.tool_name ?? "") === "Bash" ? "bash-tripwire" : "write-edit";
-    src[k].surfaced += (r.hits as unknown[]).length;
+    src[k].candidates +=(r.hits as unknown[]).length;
   }
   for (const e of surfacedEpisodes) {
     const k = recallTool.get(String(e.recall_id)) === "Bash" ? "bash-tripwire" : "write-edit";

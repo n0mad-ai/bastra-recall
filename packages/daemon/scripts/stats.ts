@@ -42,7 +42,7 @@ const LOG_DIR =
   process.env.BASTRA_LOG_PATH ?? process.env.NEXUS_LOG_PATH ?? defaultLogDir();
 
 // Band-Schwellen müssen mit telemetry.ts (bandForScore) übereinstimmen — sonst
-// werden surfaced-Bänder (hier aus hits[].score) und loaded/acted-Bänder
+// werden candidates-Bänder (hier aus hits[].score) und loaded/acted-Bänder
 // (episode.band, daemon-seitig env-getrieben) auf verschiedenen Cut-Points
 // berechnet und die USE-rate-Tabelle vergleicht still falsche Bänder.
 const MUST_LOAD_SCORE = Number(process.env.BASTRA_MUST_LOAD_SCORE ?? 100);
@@ -235,12 +235,13 @@ function summarizeUseRate(events: AnyEvent[]): void {
   const directLoads = episodes.length - surfacedEpisodes.length;
 
   const bands = ["required", "optional", "below_floor"] as const;
-  // Hook_recall.hits[] is the engine's raw top-k, BEFORE the hook
+  // `hook_recall.hits[]` is the engine's raw top-k, BEFORE the hook
   // CLIs apply the score floor, scope filter and per-session dedup that
   // decide what a client actually injects (src/telemetry.ts recordHookHints:
   // "these are the engine's raw top-k... counting them as 'surfaced' would
   // let phantom demand demote memories nobody ever saw"). The real surfaced
-  // count is the sidecar's, printed under "Exposure-normalised use" below.
+  // count is the usage sidecar's: per memory and all-time, so no section of
+  // this report prints it as a window total to hold against this column.
   // Calling this population `candidates` keeps that distinction visible
   // instead of relying on a reader to remember it.
   const candidates = new Map<string, number>(bands.map((band) => [band, 0]));
@@ -266,7 +267,7 @@ function summarizeUseRate(events: AnyEvent[]): void {
 
   console.log(`\n## USE-rate  (did loaded hints affect the next tool input?)`);
   console.log(`  loaded/candidates is a LOWER BOUND on follow-through: applied hints without load_memory are invisible.`);
-  console.log(`  candidates = engine top-k before hook-side filtering, NOT what was actually injected — see "Exposure-normalised use" for that.`);
+  console.log(`  candidates = engine top-k before hook-side filtering, NOT what was actually injected. The injected count is not in this table: the usage sidecar holds it per memory, all-time.`);
   for (const band of bands) {
     const s = candidates.get(band) ?? 0;
     const l = loaded.get(band) ?? 0;
@@ -339,7 +340,7 @@ function armVerdict(hookRecalls: AnyEvent[]): Map<string, ArmEvaluation> {
 /**
  * Use-Rate je Ausprägung einer Dimension.
  *
- * `surfaced` kommt aus den Hits der hook_recalls, `loaded`/`acted_on` aus den
+ * `candidates` kommt aus den Hits der hook_recalls, `loaded`/`acted_on` aus den
  * Episoden, die über `recall_id` daran hängen — beide Seiten also aus derselben
  * Population, sonst teilte man Zähler und Nenner aus zwei verschiedenen Welten.
  */
@@ -353,7 +354,7 @@ function printDimensionSplit(
   const byRecallId = new Map<string, AnyEvent>();
   for (const r of hookRecalls) byRecallId.set(String(r.recall_id), r);
 
-  const surfaced = new Map<string, number>();
+  const candidates = new Map<string, number>();
   const loaded = new Map<string, number>();
   const acted = new Map<string, number>();
   const bump = (m: Map<string, number>, key: string, n = 1): void => {
@@ -361,7 +362,7 @@ function printDimensionSplit(
   };
 
   for (const r of hookRecalls) {
-    bump(surfaced, dimensionValue(r, field), (r.hits as unknown[]).length);
+    bump(candidates, dimensionValue(r, field), (r.hits as unknown[]).length);
   }
   for (const e of surfacedEpisodes) {
     const key = dimensionValue(byRecallId.get(String(e.recall_id)), field);
@@ -369,7 +370,7 @@ function printDimensionSplit(
     if (e.acted_on === true) bump(acted, key);
   }
 
-  const keys = [...new Set([...surfaced.keys(), ...loaded.keys()])].sort();
+  const keys = [...new Set([...candidates.keys(), ...loaded.keys()])].sort();
   if (keys.length === 0) return;
   console.log(`  by ${field}:`);
   if (field === "arm" && keys.some((k) => k === UNASSIGNED_ARM)) {
@@ -379,7 +380,7 @@ function printDimensionSplit(
     console.log(`    (\`unassigned\` is the absence of an arm, not an arm)`);
   }
   for (const key of keys) {
-    const s = surfaced.get(key) ?? 0;
+    const s = candidates.get(key) ?? 0;
     const l = loaded.get(key) ?? 0;
     const a = acted.get(key) ?? 0;
     // #437/§18.1: Ein Arm unterhalb seines Mindest-N wird als NICHT AUSWERTBAR
