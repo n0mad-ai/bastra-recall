@@ -96,18 +96,28 @@ test("loadAnswersFile: a missing persona, bad JSON or a missing file is an error
   }
 });
 
-test("loadAnswersFile: a file with no usable answer is an error; a leading BOM is not", async () => {
+test("loadAnswersFile: nothing usable plus an ignored or dropped entry is an error naming it; a leading BOM is not", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-onboard-answers-"));
   try {
-    // A typo in the only id, values that are not text, blank text.
+    // A typo in the only id, values that are not text.
     await writeFile(join(dir, "typo.yaml"), "persona: personal\nanswers:\n  identty: Kim\n", "utf8");
     await writeFile(join(dir, "nontext.yaml"), "persona: personal\nanswers:\n  identity: true\n  world: [a, b]\n", "utf8");
+    const typo = await loadAnswersFile(join(dir, "typo.yaml"));
+    assert.ok("error" in typo);
+    assert.match(typo.error, /no usable answer \(not a personal question: identty\) — known ids: identity/);
+    const nontext = await loadAnswersFile(join(dir, "nontext.yaml"));
+    assert.ok("error" in nontext);
+    assert.match(nontext.error, /no usable answer \(not text: identity, world\) — known ids: identity/);
+    // Only the persona, or a blank answer (the interview's Enter), is a valid
+    // file like on the map — the contributor's test pinned blank as an error.
+    await writeFile(join(dir, "persona.yaml"), "persona: personal\n", "utf8");
     await writeFile(join(dir, "blank.json"), JSON.stringify({ persona: "personal", answers: { identity: "  " } }), "utf8");
-    for (const f of ["typo.yaml", "nontext.yaml", "blank.json"]) {
-      const r = await loadAnswersFile(join(dir, f));
-      assert.ok("error" in r, `${f} should be an error`);
-      assert.match(r.error, /no usable answer.*identity/, f);
-    }
+    assert.deepEqual(await loadAnswersFile(join(dir, "persona.yaml")), { persona: "personal", answers: {}, ignored: [] });
+    assert.deepEqual(await loadAnswersFile(join(dir, "blank.json")), {
+      persona: "personal",
+      answers: { identity: "  " },
+      ignored: [],
+    });
     const bom = join(dir, "bom.json");
     await writeFile(bom, "\uFEFF" + JSON.stringify({ persona: "personal", answers: { identity: "Kim" } }), "utf8");
     assert.deepEqual(await loadAnswersFile(bom), { persona: "personal", answers: { identity: "Kim" }, ignored: [] });
@@ -116,7 +126,23 @@ test("loadAnswersFile: a file with no usable answer is an error; a leading BOM i
   }
 });
 
-test("cmdOnboard --answers: no usable answer exits 2 and leaves onboarding open", async () => {
+/** Runs `fn` and returns what it wrote to stderr. */
+async function captureStderr(fn: () => Promise<void>): Promise<string> {
+  const original = process.stderr.write;
+  let captured = "";
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    captured += String(chunk);
+    return true;
+  }) as typeof process.stderr.write;
+  try {
+    await fn();
+  } finally {
+    process.stderr.write = original;
+  }
+  return captured;
+}
+
+test("cmdOnboard --answers: only a mistyped id exits 2, names the id and leaves onboarding open", async () => {
   const dir = await mkdtemp(join(tmpdir(), "bastra-onboard-answers-"));
   const vault = join(dir, "vault");
   const savedHome = process.env.HOME;
@@ -124,8 +150,46 @@ test("cmdOnboard --answers: no usable answer exits 2 and leaves onboarding open"
   try {
     const file = join(dir, "answers.yaml");
     await writeFile(file, "persona: personal\nanswers:\n  identty: Kim\n", "utf8");
-    assert.equal(await cmdOnboard(parseArgs(["onboard", "--vault", vault, "--answers", file])), 2);
+    const stderr = await captureStderr(async () => {
+      assert.equal(await cmdOnboard(parseArgs(["onboard", "--vault", vault, "--answers", file])), 2);
+    });
+    assert.match(stderr, /no usable answer \(not a personal question: identty\)/);
     assert.equal(await isOnboardingDone(vault), false);
+  } finally {
+    process.env.HOME = savedHome;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("cmdOnboard --answers: a file with only the persona completes onboarding, as on the map", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-onboard-answers-"));
+  const vault = join(dir, "vault");
+  const savedHome = process.env.HOME;
+  process.env.HOME = join(dir, "home");
+  try {
+    const file = join(dir, "answers.yaml");
+    await writeFile(file, "persona: developer\n", "utf8");
+    assert.equal(await cmdOnboard(parseArgs(["onboard", "--vault", vault, "--answers", file])), 0);
+    assert.equal(await isOnboardingDone(vault), true);
+  } finally {
+    process.env.HOME = savedHome;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("cmdOnboard --answers: one valid answer plus a mistyped id saves, warns about the id and sets the marker", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-onboard-answers-"));
+  const vault = join(dir, "vault");
+  const savedHome = process.env.HOME;
+  process.env.HOME = join(dir, "home");
+  try {
+    const file = join(dir, "answers.yaml");
+    await writeFile(file, "persona: personal\nanswers:\n  identity: Kim\n  wrold: Warsaw\n", "utf8");
+    const stderr = await captureStderr(async () => {
+      assert.equal(await cmdOnboard(parseArgs(["onboard", "--vault", vault, "--answers", file])), 0);
+    });
+    assert.match(stderr, /ignored \(not a personal question\): wrold/);
+    assert.equal(await isOnboardingDone(vault), true);
   } finally {
     process.env.HOME = savedHome;
     await rm(dir, { recursive: true, force: true });

@@ -81,9 +81,12 @@ export async function cmdOnboard(args: ParsedArgs): Promise<number> {
 
 /**
  * `--answers <file>` (#645): `{ persona, answers: { <question id>: text } }`
- * as JSON (a `.json` file) or YAML (anything else), validated exactly like
- * the map's POST body. `ignored` lists answer ids the persona's catalog does
- * not ask, so a typo is reported instead of silently dropped.
+ * as JSON (a `.json` file) or YAML (anything else), parsed like the map's
+ * POST body — a file that holds only the persona completes onboarding, as it
+ * does there. `ignored` lists answer ids the persona's catalog does not ask,
+ * so a typo is reported instead of silently dropped. One case is stricter
+ * than the map: nothing usable AND at least one entry that was ignored or
+ * dropped is an error, because that file was meant to answer something.
  */
 export async function loadAnswersFile(
   path: string,
@@ -107,12 +110,23 @@ export async function loadAnswersFile(
   if ("error" in parsed) return { error: `answers file ${path}: ${parsed.error}` };
   const asked = new Set(questionsFor(parsed.persona).map((q) => q.id));
   const ignored = Object.keys(parsed.answers).filter((id) => !asked.has(id));
-  // Nothing to save is a failed run, not a finished onboarding: a typo in the
-  // only id, or answers that are not text, must not set the done marker.
-  if (!Object.entries(parsed.answers).some(([id, text]) => asked.has(id) && text.trim() !== "")) {
+  // Entries parseOnboardingAnswers dropped because their value is not text.
+  const given = (data as { answers?: unknown }).answers;
+  const notText = typeof given === "object" && given !== null
+    ? Object.keys(given).filter((id) => !Object.hasOwn(parsed.answers, id))
+    : [];
+  // A file that tried to answer and got nothing through is a failed run, not
+  // a finished onboarding: a typo in the only id, or answers that are not
+  // text, must not set the done marker. Only the persona (or blank answers,
+  // the interview's Enter) is a valid file.
+  const usable = Object.entries(parsed.answers).some(([id, text]) => asked.has(id) && text.trim() !== "");
+  if (!usable && (ignored.length > 0 || notText.length > 0)) {
+    const named = [
+      ...(ignored.length > 0 ? [`not a ${parsed.persona} question: ${ignored.join(", ")}`] : []),
+      ...(notText.length > 0 ? [`not text: ${notText.join(", ")}`] : []),
+    ];
     return {
-      error: `answers file ${path}: no usable answer for a ${parsed.persona} question — text values for: ` +
-        [...asked].join(", "),
+      error: `answers file ${path}: no usable answer (${named.join("; ")}) — known ids: ${[...asked].join(", ")}`,
     };
   }
   return { ...parsed, ignored };
