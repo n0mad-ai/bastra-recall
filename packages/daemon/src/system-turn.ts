@@ -11,8 +11,8 @@
 
 /**
  * A background task or subagent finishing is delivered as a user-role turn
- * that opens with `<task-notification>` (#639). Its body is the subagent's own
- * report.
+ * that opens with `<task-notification>` (#639), with or without attributes.
+ * Its body is the subagent's own report.
  *
  * Agent-to-agent mail is delivered as a user-role turn too (#649); its body is
  * another agent's prose. Shapes seen in real Claude Code transcripts:
@@ -30,7 +30,7 @@
  * is not a statement they typed).
  */
 const CODEX_HARNESS_TAG = /^<(?:environment_context|recommended_plugins|codex_internal_context|send_user_message_question_reply)[\s>]/;
-const TASK_NOTIFICATION = "<task-notification>";
+const TASK_NOTIFICATION = /^<task-notification[\s>]/;
 const AGENT_MAIL_WRAPPER = "Another Claude session sent a message:";
 const AGENT_MAIL_TAG = /^<(?:teammate|agent|cross-session)-message[\s>]/;
 
@@ -44,13 +44,14 @@ function isAgentMail(head: string): boolean {
  * triggers itself — the second structural defect behind #48), system
  * reminders, slash-command echoes and a subagent's hand-back.
  */
-const INJECTED_PREFIXES = [
-  "Base directory for this skill:",
-  "<system-reminder>",
-  "<command-name>",
-  "<local-command-caveat>",
-  "[Subagent hand-back]",
-];
+const INJECTED_PREFIXES = ["Base directory for this skill:", "[Subagent hand-back]"];
+const REMINDER_OPEN = "<system-reminder>";
+const REMINDER_CLOSE = "</system-reminder>";
+const COMMAND_ECHO_PREFIXES = ["<command-name>", "<local-command-caveat>"];
+
+function isCommandEcho(head: string): boolean {
+  return COMMAND_ECHO_PREFIXES.some((p) => head.startsWith(p));
+}
 
 /** True when the turn is harness-written (notification, agent mail, Codex
  *  harness context, skill body, reminder, command echo, hand-back), not typed
@@ -58,9 +59,36 @@ const INJECTED_PREFIXES = [
 export function isSystemInjectedTurn(text: string): boolean {
   const head = text.trimStart();
   return (
-    head.startsWith(TASK_NOTIFICATION) ||
+    TASK_NOTIFICATION.test(head) ||
     isAgentMail(head) ||
     CODEX_HARNESS_TAG.test(head) ||
+    head.startsWith(REMINDER_OPEN) ||
+    isCommandEcho(head) ||
     INJECTED_PREFIXES.some((p) => head.startsWith(p))
   );
+}
+
+/**
+ * The prompt lane's reading of a submitted prompt: the text the owner typed,
+ * or null when the harness wrote all of it. Two shapes are read differently
+ * from the transcript and log readers above:
+ *
+ * - A command echo is the expanded form of a slash command the owner typed.
+ *   It is the owner's turn and comes back unchanged; the trivial gate skips
+ *   the recall and still hands over a parked task-boundary block (#572).
+ * - Leading `<system-reminder>` blocks are harness text, but a harness may
+ *   put them in front of what the owner typed. The text after the last
+ *   closing tag is the prompt; a reminder with nothing after it, or one that
+ *   never closes, is a harness turn.
+ */
+export function ownerPromptText(prompt: string): string | null {
+  let head = prompt.trimStart();
+  while (head.startsWith(REMINDER_OPEN)) {
+    const end = head.indexOf(REMINDER_CLOSE);
+    if (end === -1) return null;
+    head = head.slice(end + REMINDER_CLOSE.length).trimStart();
+  }
+  if (head.length === 0) return null;
+  if (isCommandEcho(head)) return head;
+  return isSystemInjectedTurn(head) ? null : head;
 }

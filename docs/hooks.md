@@ -247,7 +247,7 @@ memories surface. `BASTRA_PROMPT_HOOK_MODE=retrieval-only` restores the old
 behaviour: non-retrieval prompts emit `{}` apart from wired reflex memories.
 
 **Turns nobody typed (#703):** Claude Code delivers a finished background task
-(`<task-notification>…`) and agent-to-agent mail (`<teammate-message …>`,
+(`<task-notification>…`, with or without attributes) and agent-to-agent mail (`<teammate-message …>`,
 `<agent-message …>`, `<cross-session-message …>`, also after the line
 "Another Claude session sent a message:") as user turns. The prompt lane runs
 no recall on them and emits `{}`; its `prompt_hook_call` row carries
@@ -255,11 +255,22 @@ no recall on them and emits `{}`; its `prompt_hook_call` row carries
 `origin: "system"`, so reach and prompt counts can leave it out. A
 task-boundary block parked for the owner's next prompt stays parked. Only the
 start of the turn counts: a prompt that merely quotes such a tag, or has text
-before it, is still a prompt. The Stop lane uses the same check
-(`packages/daemon/src/system-turn.ts`). The same list covers the harness
+before it, is still a prompt. The Stop lane and the bridge harvest read the
+same list (`packages/daemon/src/system-turn.ts`). It also covers the harness
 context Codex writes with role "user" (#701): `<environment_context>`,
 `<recommended_plugins>`, `<codex_internal_context …>` and
-`<send_user_message_question_reply>`. When it reads a transcript, the Stop
+`<send_user_message_question_reply>`, and three more forms (#769): a skill
+body (`Base directory for this skill:`), a subagent's hand-back
+(`[Subagent hand-back]`) and a `<system-reminder>` block.
+
+The prompt lane reads two shapes differently from the Stop lane and the
+harvest. A prompt that opens with `<system-reminder>` is gated only when
+nothing follows the closing tag; text typed after the block is an ordinary
+prompt, and the recall runs on that text alone. An expanded slash command
+(`<command-name>…`, `<local-command-caveat>…`) is something you typed: it is
+a trivial prompt — no recall, no `origin: "system"`, and a parked
+task-boundary block is delivered. In a transcript, the Stop lane skips a turn
+that starts with any of these, whatever follows. When it reads a transcript, the Stop
 lane — and with it the after-session harvest — also skips every Claude Code
 row flagged `isMeta: true` (hook feedback, skill bodies, notes from other
 sessions), whatever it starts with: nobody typed those.
@@ -1154,7 +1165,7 @@ stellt das alte Verhalten her: Prompts ohne Retrieval-Bezug geben bis auf
 verdrahtete Reflex-Memories `{}` aus.
 
 **Turns, die niemand getippt hat (#703):** Claude Code liefert eine fertige
-Hintergrund-Aufgabe (`<task-notification>…`) und Post zwischen Agenten
+Hintergrund-Aufgabe (`<task-notification>…`, mit oder ohne Attribute) und Post zwischen Agenten
 (`<teammate-message …>`, `<agent-message …>`, `<cross-session-message …>`,
 auch nach der Zeile „Another Claude session sent a message:“) als
 Nutzer-Turns aus. Die Prompt-Lane ruft darauf keinen Recall auf und gibt `{}`
@@ -1163,11 +1174,24 @@ aus; ihre `prompt_hook_call`-Zeile trägt `status: "gated"`,
 `origin: "system"`, damit Reichweiten- und Prompt-Zählungen sie auslassen
 können. Ein für den nächsten Owner-Prompt geparkter Aufgabengrenzen-Block
 bleibt geparkt. Es zählt nur der Anfang des Turns: Ein Prompt, der so ein Tag
-nur zitiert oder Text davor hat, bleibt ein Prompt. Dieselbe Prüfung
-(`packages/daemon/src/system-turn.ts`) nutzt die Stop-Lane. Dieselbe Liste
-deckt den Harness-Kontext ab, den Codex mit der Rolle „user" schreibt (#701):
-`<environment_context>`, `<recommended_plugins>`,
-`<codex_internal_context …>` und `<send_user_message_question_reply>`. Beim
+nur zitiert oder Text davor hat, bleibt ein Prompt. Dieselbe Liste
+(`packages/daemon/src/system-turn.ts`) lesen die Stop-Lane und der
+Bridge-Harvest. Sie deckt auch den Harness-Kontext ab, den Codex mit der Rolle
+„user" schreibt (#701): `<environment_context>`, `<recommended_plugins>`,
+`<codex_internal_context …>` und `<send_user_message_question_reply>`, dazu
+drei weitere Formen (#769): einen Skill-Text (`Base directory for this
+skill:`), die Rückgabe eines Subagenten (`[Subagent hand-back]`) und einen
+`<system-reminder>`-Block.
+
+Zwei Formen liest die Prompt-Lane anders als Stop-Lane und Harvest. Ein
+Prompt, der mit `<system-reminder>` beginnt, wird nur dann ausgelassen, wenn
+nach dem schließenden Tag nichts mehr folgt; getippter Text hinter dem Block
+ist ein gewöhnlicher Prompt, und der Recall läuft nur auf diesem Text. Ein
+expandierter Slash-Befehl (`<command-name>…`, `<local-command-caveat>…`) ist
+von dir getippt: Er gilt als trivialer Prompt — kein Recall, kein
+`origin: "system"`, und ein geparkter Aufgabengrenzen-Block wird ausgeliefert.
+In einem Transkript überspringt die Stop-Lane einen Turn, der mit einer dieser
+Formen beginnt, egal was folgt. Beim
 Lesen eines Transkripts überspringt die Stop-Lane — und damit auch der
 After-Session-Harvest — außerdem jede Claude-Code-Zeile mit `isMeta: true`
 (Hook-Feedback, Skill-Texte, Notizen anderer Sessions), egal womit sie
