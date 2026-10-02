@@ -657,6 +657,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `off` | `no` off, `1` | `true` | `on` | `yes` on); every value that worked
   before still does, and `0`/`false`/`no` now also switch off where only `off`
   was read.
+- Takeover of #787 (@zzallirog's commit above) with a follow-up: the remaining hand-compared switches go through the same parser — `BASTRA_DOCUMENT_WRITE`, `BASTRA_ALLOW_REMOTE_OLLAMA`, `BASTRA_ALLOW_REMOTE_COMMONS` and `BASTRA_PROGRESS_DEBUG` take `true`/`on`/`yes` like `1`, and the off value of `BASTRA_QUERY_ROUTER`, `BASTRA_SALIENCE_RANK`, `BASTRA_TRUST_RANK`, `BASTRA_HINT_SUPPRESS`, `BASTRA_BANTER` and `BASTRA_ARCHIVE_MAX_ITEM` may be written `0`/`false`/`no` as well. Behaviour changes to check in your environment: `BASTRA_RM_ARCHIVES=true|on|yes` now turns the archiving `rm` ON, `BASTRA_AUTH_LOOPBACK_SKIP=false|off|no` now requires the token on loopback, and `BASTRA_TELEMETRY`/`BASTRA_REFLEX`/`BASTRA_SIZE_CHECK`/`BASTRA_CODE_AWARENESS` set to `0`/`false`/`no` now switch off.
 - Post-release review: `bastra reconcile --yes` protects concurrent writes
   and keeps a unique backup when replacing a copy (#749); forwarders pointed
   at remote or TLS daemons no longer start a local fallback (#750); bridge

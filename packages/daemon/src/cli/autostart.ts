@@ -50,6 +50,7 @@ import {
   resolveDaemonEndpoint,
 } from "../daemon-endpoint.js";
 import type { ParsedArgs } from "./types.js";
+import { isOnValue } from "../env.js";
 
 /** Dasselbe Label, das `index.ts` und `update.ts` kennen. Ein zweites wäre ein
  *  zweiter Daemon auf demselben Port. */
@@ -136,7 +137,8 @@ export async function readState(path = plistPath(), launchctl = LAUNCHCTL): Prom
     state.program = Array.isArray(parsed.ProgramArguments)
       ? parsed.ProgramArguments.filter((a): a is string => typeof a === "string")
       : [];
-    state.managed = parsed.EnvironmentVariables?.[MANAGED_MARKER] === "1";
+    const marker = parsed.EnvironmentVariables?.[MANAGED_MARKER];
+    state.managed = typeof marker === "string" && isOnValue(marker);
     const url = parsed.EnvironmentVariables?.BASTRA_DAEMON_URL;
     state.endpoint = typeof url === "string" && url.trim() !== "" ? url.trim() : null;
     for (const [k, v] of Object.entries(parsed.EnvironmentVariables ?? {})) {

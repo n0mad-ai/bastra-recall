@@ -67,7 +67,7 @@ import { projectForFilter } from "./scope-filter.js";
 import { claudeSessionPid, sessionFeedPath, STATUSLINE_DIR, reapStaleFeeds } from "./statusline-session.js";
 import { commandOf, parentPidOf } from "./reap-forwarders.js";
 import { DAEMON_VERSION } from "./version.js";
-import { envInt, envOff } from "./env.js";
+import { envInt, envOff, isOnValue } from "./env.js";
 import {
   adoptTurn,
   defaultStatuslineState,
@@ -305,7 +305,7 @@ async function main(): Promise<void> {
     // progressToken to each tool call. Without one, no notifications/progress
     // can be sent — so this tells us if the live-phrase channel is even open.
     // Lands in the CC MCP debug log as "Server stderr: …".
-    if (process.env.BASTRA_PROGRESS_DEBUG) {
+    if (isOnValue(process.env.BASTRA_PROGRESS_DEBUG)) {
       console.error(
         `[bastra-progress-debug] tool=${name} progressToken=${
           progressToken === undefined ? "ABSENT" : `present(${JSON.stringify(progressToken)})`

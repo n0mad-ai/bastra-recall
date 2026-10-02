@@ -17,6 +17,7 @@
  * Phrase. Das macht Tests stabil ohne Seed-Injection.
  */
 import type { RecallStage } from "./recall-stages.js";
+import { isOffValue } from "./env-switch.js";
 
 export type BanterMode = "on" | "terse" | "off";
 export type BanterLang = "de" | "en";
@@ -233,7 +234,7 @@ const DEFAULT_TOOL_PHRASES: PhrasePool = {
  */
 export function banterModeFromEnv(env: NodeJS.ProcessEnv = process.env): BanterMode {
   const raw = (env.BASTRA_BANTER ?? "on").toLowerCase();
-  if (raw === "off") return "off";
+  if (isOffValue(raw)) return "off";
   if (raw === "terse") return "terse";
   return "on";
 }

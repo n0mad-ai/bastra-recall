@@ -201,6 +201,7 @@ export {
 } from "./audit-save.js";
 
 export { assertLocalOrOptIn } from "./ollama-egress.js";
+export { isOffValue, isOnValue } from "./env-switch.js";
 
 export {
   EmbeddingIndex,

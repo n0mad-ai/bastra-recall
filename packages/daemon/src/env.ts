@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { isOffValue, isOnValue } from "@bastra-recall/core/env-switch";
 
 /**
  * Env-Var-Helper mit Legacy-Fallback.
@@ -87,18 +88,13 @@ export function envFloat(name: string, fallback: number, legacyName?: string): n
 }
 
 /**
- * The one reading of "this switch says off": 0 | false | off | no, any case,
- * surrounding whitespace ignored. Every env kill switch goes through here so
- * `BASTRA_TELEMETRY=0` and `BASTRA_RM_SHIM=off` mean what they look like.
+ * The one reading of "this switch says off" (0 | false | off | no) and "on"
+ * (1 | true | on | yes), any case, surrounding whitespace ignored. Every
+ * on/off env switch goes through here so `BASTRA_TELEMETRY=0` and
+ * `BASTRA_RM_SHIM=off` mean what they look like. Defined in core, which reads
+ * switches of its own (`BASTRA_ALLOW_REMOTE_OLLAMA`, `BASTRA_BANTER`).
  */
-export function isOffValue(raw: string | undefined | null): boolean {
-  return ["0", "false", "off", "no"].includes((raw ?? "").trim().toLowerCase());
-}
-
-/** The counterpart for opt-ins: 1 | true | on | yes. */
-export function isOnValue(raw: string | undefined | null): boolean {
-  return ["1", "true", "on", "yes"].includes((raw ?? "").trim().toLowerCase());
-}
+export { isOffValue, isOnValue };
 
 /** True when the first of `names` that is set (non-empty) holds an off value; unset is not off. */
 export function envOff(...names: string[]): boolean {

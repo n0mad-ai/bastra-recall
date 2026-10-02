@@ -11,7 +11,7 @@
  * echten Score — der Shadow skippt dann (er würde nur Identität loggen).
  */
 import { salienceRankCap } from "@bastra-recall/core";
-import { envFirst } from "./env.js";
+import { envFirst, isOffValue } from "./env.js";
 
 export type SalienceRankMode = "off" | "shadow" | "live";
 
@@ -30,7 +30,7 @@ export interface SalienceShadow {
 
 export function salienceRankMode(): SalienceRankMode {
   const raw = (envFirst("BASTRA_SALIENCE_RANK") ?? "shadow").toLowerCase();
-  return raw === "off" || raw === "live" ? raw : "shadow";
+  return isOffValue(raw) ? "off" : raw === "live" ? raw : "shadow";
 }
 
 const clamp01 = (n: number): number => Math.min(Math.max(n, 0), 1);

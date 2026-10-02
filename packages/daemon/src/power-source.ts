@@ -15,6 +15,7 @@
  * output it cannot read → "unknown", which behaves exactly like AC.
  */
 import { execFile } from "node:child_process";
+import { isOffValue, isOnValue } from "./env.js";
 
 export type PowerSource = "ac" | "battery" | "unknown";
 
@@ -56,9 +57,9 @@ export async function readPowerSource(
 
 /** The switch: env wins over the settings file, same words as the other boolean switches. */
 export function batterySaverEnabled(fileValue: boolean | undefined, env: NodeJS.ProcessEnv = process.env): boolean {
-  const raw = env.BASTRA_BATTERY_SAVER?.trim().toLowerCase();
-  if (raw && ["1", "true", "on", "yes"].includes(raw)) return true;
-  if (raw && ["0", "false", "off", "no"].includes(raw)) return false;
+  const raw = env.BASTRA_BATTERY_SAVER;
+  if (isOnValue(raw)) return true;
+  if (isOffValue(raw)) return false;
   return fileValue ?? false;
 }
 

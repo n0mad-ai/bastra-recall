@@ -87,6 +87,8 @@ npm run backfill:related   # populate related_via on legacy memories
 
 ## Configuration (environment variables)
 
+Every on/off switch reads `0`, `false`, `off` or `no` as off and `1`, `true`, `on` or `yes` as on, in any case; the table shows the canonical spelling.
+
 | env var | required | default | meaning |
 |---|---|---|---|
 | `BASTRA_VAULT_PATH` | yes | — | absolute path to the vault root (memories are auto-discovered) |
