@@ -654,6 +654,10 @@ three heuristics:
    gehen wir mit` in last 5 user turns → suggests a `decision` save. In a
    language without a cue list (#707): the user picks one of the numbered
    options the agent offered with a question ("2 olsun", "вариант 1"). An
+   option line starts with `1.`, `2)` or `(3)` — digits of any script (`２`,
+   `٢`) — or with a letter and a closing parenthesis (`A)`, picked by the
+   bare letter). A numbered heading (`## 1. …`) and a letter with a dot
+   (`A.`, "z. B.") are not options. An
    answer given through Claude Code's `AskUserQuestion` tool counts too
    (#701): it comes back as a tool result (`"question"="answer"`), which the
    cue check never reads, so the lane looks for the tool call followed by
@@ -1536,6 +1540,10 @@ drei Heuristiken aus:
    Speichern vor. In einer
    Sprache ohne Cue-Liste (#707): der Nutzer wählt eine der nummerierten
    Optionen, die der Agent mit einer Frage angeboten hat („2 olsun", „вариант 1").
+   Eine Optionszeile beginnt mit `1.`, `2)` oder `(3)` — Ziffern jeder Schrift
+   (`２`, `٢`) — oder mit einem Buchstaben und schließender Klammer (`A)`,
+   gewählt mit dem bloßen Buchstaben). Eine nummerierte Überschrift
+   (`## 1. …`) und ein Buchstabe mit Punkt (`A.`, „z. B.") sind keine Optionen.
    Eine Antwort über Claude Codes `AskUserQuestion`-Werkzeug zählt ebenfalls
    (#701): Sie kommt als Werkzeugergebnis zurück (`"Frage"="Antwort"`), das
    die Cue-Prüfung nie liest; die Lane sucht deshalb nach dem Werkzeugaufruf,

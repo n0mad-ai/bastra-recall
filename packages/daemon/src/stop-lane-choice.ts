@@ -17,8 +17,10 @@
  */
 
 /** A numbered or lettered list line: "1. …", "2) …", "(3) …", "**3.** …",
- *  "- 4. …", "### 5. …", "B) …", "б) …". */
-const OPTION_LINE_RE = /^[ \t]*(?:[-*][ \t]+|#{1,6}[ \t]+)?\**\(?(\d{1,2}|\p{L})[.)]\**[ \t]+\S/gmu;
+ *  "- 4. …", "B) …", "б) …". A letter counts only with ")": "z. B.", "d. h."
+ *  and "A. Smith" are prose. A numbered heading ("## 1. …") structures a
+ *  report and is not an option. */
+const OPTION_LINE_RE = /^[ \t]*(?:[-*][ \t]+)?\**(?:\(?(\d{1,2})[.)]|(\p{L})\))\**[ \t]+\S/gmu;
 /** Question marks across scripts: Latin/fullwidth/Arabic/Greek. */
 const QUESTION_RE = /[?？؟\u037E]/u;
 /** A standalone number — not part of a Latin identifier ("v2", "2nd"), a
@@ -58,7 +60,7 @@ function offeredOptions(assistantText: string): Set<string> {
   if (!QUESTION_RE.test(assistantText)) return new Set();
   const options = new Set<string>();
   for (const m of asciiDigits(assistantText).matchAll(OPTION_LINE_RE)) {
-    options.add(/^\d+$/.test(m[1]) ? String(Number(m[1])) : m[1].toLowerCase());
+    options.add(m[1] ? String(Number(m[1])) : m[2].toLowerCase());
   }
   return options.size >= MIN_OPTIONS ? options : new Set();
 }
