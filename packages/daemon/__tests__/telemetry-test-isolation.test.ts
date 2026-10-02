@@ -21,9 +21,10 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, statSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 import { Telemetry } from "../src/telemetry.js";
 
@@ -187,8 +188,27 @@ test("the host-profile salt file of a test run is disposable, with or without te
       const path = resolve(hostProfilePath());
       assert.notEqual(path, real);
       assert.ok(path.startsWith(resolve(tmpdir())), `expected a tmp path, got ${path}`);
+      // Both routes hand over the file itself, in a directory of its own.
+      assert.equal(basename(path), "host-profile.json");
     }
   } finally {
     if (prev !== undefined) process.env.BASTRA_HOST_PROFILE_PATH = prev;
+  }
+});
+
+test("BASTRA_HOST_PROFILE_PATH always names the salt FILE, whatever its extension", async () => {
+  // #883 read the value as a directory unless it ended in ".json", so the same
+  // variable meant two things. It is the file, and the salt is written there.
+  const { computeHostProfileId, hostProfilePath } = await import("../src/host-profile.js");
+  const file = join(mkdtempSync(join(tmpdir(), "bastra-test-host-profile-")), "salt");
+  const prev = process.env.BASTRA_HOST_PROFILE_PATH;
+  process.env.BASTRA_HOST_PROFILE_PATH = file;
+  try {
+    assert.equal(hostProfilePath(), file);
+    computeHostProfileId(hostProfilePath());
+    assert.ok(statSync(file).isFile(), "the salt is written to the named path, not into a directory of that name");
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_HOST_PROFILE_PATH;
+    else process.env.BASTRA_HOST_PROFILE_PATH = prev;
   }
 });

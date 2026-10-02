@@ -45,13 +45,14 @@ export function testRunLogDir(): string | undefined {
  * tests) under a machine with no prior profile created exactly this one
  * file there. `NODE_TEST_CONTEXT` closes it the same way `testRunLogDir`
  * does — for a direct `npx tsx --test file.test.ts` run too, not only one
- * started through test-env.mjs.
+ * started through test-env.mjs. Returns the FILE, like the
+ * `BASTRA_HOST_PROFILE_PATH` it stands in for.
  */
-let testHostProfileDir: string | undefined;
-export function testRunHostProfileDir(): string | undefined {
+let testHostProfilePath: string | undefined;
+export function testRunHostProfilePath(): string | undefined {
   if (!process.env.NODE_TEST_CONTEXT) return undefined;
-  testHostProfileDir ??= mkdtempSync(join(tmpdir(), "bastra-test-host-profile-"));
-  return testHostProfileDir;
+  testHostProfilePath ??= join(mkdtempSync(join(tmpdir(), "bastra-test-host-profile-")), "host-profile.json");
+  return testHostProfilePath;
 }
 
 export function envFirst(...names: string[]): string | undefined {
