@@ -551,7 +551,11 @@ has something to work with on day one instead of an empty vault.
                         identity: Alex · English, informal
                         stack: TypeScript + Node
                     Answer ids are the interview's question ids (identity,
-                    rules, stack, projects, workflow, conventions_size, ...)
+                    rules, stack, projects, workflow, conventions_size, ...).
+                    An unknown id is reported and skipped. The file fails
+                    (exit 2, onboarding stays open) when nothing in it is
+                    usable and an entry was skipped: an unknown id or a value
+                    that is not text. Only the persona is a valid file.
   --vault <path>    Onboard this vault instead of the configured one
 `,
 
