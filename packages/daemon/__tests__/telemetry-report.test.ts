@@ -379,3 +379,33 @@ test("#664: a call inside a daemon-restart window stays out of latency, like the
   assert.deepEqual(l.lanes, [{ lane: "hook_call", n: 1, median: 40, p95: 40 }]);
   assert.equal(l.daily[0].hook?.n, 1);
 });
+
+test("#875: the report states how many calls latency left out for a restart window — zero without one", () => {
+  const call = (kind: string, ts: string, field: string, ms: number): ReportEvent => ({ kind, ts, session_id: "s", [field]: ms });
+  const steady: ReportEvent[] = [
+    call("hook_call", "2026-09-04T11:00:00.000Z", "latency_ms_total", 40),
+    call("recall", "2026-09-04T11:01:00.000Z", "latency_ms", 30),
+  ];
+  const cold: ReportEvent[] = [
+    // 20 s before the boot and 10 s / 60 s after it: all inside the window.
+    call("hook_call", "2026-09-04T11:29:40.000Z", "latency_ms_total", 1000),
+    call("hook_recall", "2026-09-04T11:30:10.000Z", "latency_ms_recall", 800),
+    call("recall", "2026-09-04T11:31:00.000Z", "latency_ms", 900),
+    // Inside the window but without a latency value: never a latency row, so not a dropped one.
+    { kind: "hook_call", ts: "2026-09-04T11:30:20.000Z", session_id: "s" },
+  ];
+  const boot: ReportEvent = { kind: "warmup_settle", ts: "2026-09-04T11:30:00.000Z", trigger: "boot", session_id: "boot-2" };
+  const report = (events: ReportEvent[]) =>
+    buildTelemetryReport({ events, files: 1, from: null, to: null, excludedEval: 0, foldedDuplicates: 0 }, 2, T, 90);
+  const rows = (r: ReturnType<typeof report>) => r.latency.lanes.reduce((sum, l) => sum + l.n, 0);
+
+  const noRestart = report([...steady, ...cold]);
+  assert.equal(noRestart.window.excludedRestart, 0, "no restart window, nothing left out");
+  assert.equal(rows(noRestart), 5);
+
+  const withRestart = report([...steady, boot, ...cold]);
+  assert.equal(rows(withRestart), 2);
+  assert.equal(withRestart.window.excludedRestart, rows(noRestart) - rows(withRestart), "the count is the rows that dropped out");
+  assert.equal(withRestart.window.excludedRestart, 3);
+  assert.equal("excludedRestart" in withRestart.latency, false, "stated once, in the window");
+});
