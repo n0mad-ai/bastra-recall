@@ -502,16 +502,32 @@ describe("stop-hook: #707 a decision in a language without a cue list fires on a
     assert.equal(detectArchitectureDecision([offer("どちらにしますか？"), userTurn("３でお願いします")]), null);
   });
 
-  it("reads parenthesised, heading and lettered option lists", () => {
+  it("reads parenthesised and lettered option lists", () => {
     const paren = assistantTurn("Two ways:\n(1) Drizzle\n(2) Prisma\nHangisi?");
     assert.ok(detectArchitectureDecision([paren, userTurn("2 olsun")]));
-    const heading = assistantTurn("### 1. Drizzle\nfast\n### 2. Prisma\nmature\nHangisi?");
-    assert.ok(detectArchitectureDecision([heading, userTurn("1 olsun")]));
     const lettered = assistantTurn("Two ways:\nA) Drizzle\nB) Prisma\nHangisi?");
     assert.ok(detectArchitectureDecision([lettered, userTurn("B")]));
     const cyrillic = assistantTurn("Два пути:\nа) Drizzle\nб) Prisma\nКакой?");
     assert.ok(detectArchitectureDecision([cyrillic, userTurn("б)")]));
     assert.equal(detectArchitectureDecision([lettered, userTurn("C")]), null, "a letter that was not offered");
+  });
+
+  // #767 follow-up: numbered headings structure a report, they are not options.
+  it("does not read numbered section headings as options", () => {
+    const report = assistantTurn("## 1. Befund\nder Cache läuft voll\n## 2. Ursache\nkein Limit\n\nSoll ich das so umsetzen?");
+    assert.equal(detectArchitectureDecision([report, userTurn("ja, aber 2 nochmal prüfen")]), null);
+    const heading = assistantTurn("### 1. Drizzle\nfast\n### 2. Prisma\nmature\nHangisi?");
+    assert.equal(detectArchitectureDecision([heading, userTurn("1 olsun")]), null);
+  });
+
+  // #767 follow-up: a letter with a dot is an abbreviation or an initial.
+  it("does not read a letter followed by a dot as an option", () => {
+    const abbreviations = assistantTurn("Zwei Wege:\nz. B. so\nd. h. anders\nPasst das?");
+    assert.equal(detectArchitectureDecision([abbreviations, userTurn("d")]), null);
+    const initials = assistantTurn("Two views:\nA. Smith said keep it\nB. Jones said drop it\nWhich one?");
+    assert.equal(detectArchitectureDecision([initials, userTurn("a")]), null);
+    const dotted = assistantTurn("Two ways:\nA. Drizzle\nB. Prisma\nHangisi?");
+    assert.equal(detectArchitectureDecision([dotted, userTurn("B")]), null);
   });
 
   it("does not fire on a long new request that happens to contain an offered number", () => {
