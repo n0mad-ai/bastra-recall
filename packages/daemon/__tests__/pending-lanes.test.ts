@@ -113,27 +113,122 @@ test("#513: a standing trend that aged out stays retired until its text changes"
   });
 });
 
-test("#513: identical trends dedupe to one row, and a refresh does not restart the counter", async () => {
+test("#513: identical trends dedupe to one row, and only changed text restarts the counter", async () => {
   await withRelay(async () => {
     await writePendingSuggestion("<t>3 memories share tag a</t>", { lane: "trends", key: "drift" });
     await start("s-1");
     await start("s-2");
+    // An unchanged re-write used to reset `sessions` to 0, so a STANDING trend
+    // (written again at every Stop, e.g. taxonomy-drift) never reached the
+    // threshold that ages it out. It keeps its progress from s-1/s-2.
+    await writePendingSuggestion("<t>3 memories share tag a</t>", { lane: "trends", key: "drift" });
+    const same = await start("s-3");
+    assert.equal(same.trends.length, 1, "never stacked");
+    assert.equal(same.trends[0].sessions, 3, "the unchanged re-write kept the counter's progress");
+
+    // #771 follow-up: this used to pin 3 → 4 here (changed text on a LIVE trend
+    // kept the counter) while changed text on an AGED-OUT trend started at 0.
+    // One rule now: changed text is news in both states and gets its N starts.
     await writePendingSuggestion("<t>4 memories share tag a</t>", { lane: "trends", key: "drift" });
     await writePendingSuggestion("<t>4 memories share tag a</t>", { lane: "trends", key: "drift" });
-    const r = await start("s-3");
+    const r = await start("s-4");
     assert.equal(r.trends.length, 1, "never stacked");
     assert.match(r.trends[0].blocks, /4 memories/);
-    // A refresh used to reset `sessions` to 0, so a STANDING trend
-    // (refreshed on every write, e.g. taxonomy-drift on every Stop) never
-    // reached the threshold that ages it out. The refresh here changes only
-    // the text; the counter keeps its progress from s-1/s-2 and s-3 advances it.
-    assert.equal(r.trends[0].sessions, 3, "the refresh kept the counter's progress");
+    assert.equal(r.trends[0].sessions, 1, "changed text on a live trend restarts the counter");
 
     // Without a key the text itself is the identity.
     await writePendingSuggestion("<t>same</t>", { lane: "trends" });
     await writePendingSuggestion("<t>same</t>", { lane: "trends" });
-    assert.equal((await start("s-4")).trends.length, 2);
+    assert.equal((await start("s-5")).trends.length, 2);
   });
+});
+
+test("#771: a tombstone ends once N starts pass without a re-write, and the file goes with it", async () => {
+  await withRelay(
+    async (path) => {
+      const stop = () => writePendingSuggestion("<t>standing</t>", { lane: "trends", key: "drift" });
+      await stop();
+      await start("s-1");
+      await start("s-2");
+      assert.equal((await start("s-3")).trends.length, 0, "aged out");
+      assert.match(await readFile(path, "utf8"), /"retired":true/);
+
+      // While the condition stands, every Stop writes it again and pushes the
+      // tombstone's end back: it outlasts any number of starts.
+      for (let i = 4; i <= 9; i++) {
+        await stop();
+        assert.equal((await start(`s-${i}`)).trends.length, 0, `start ${i}: still retired`);
+      }
+      // The condition is gone: nobody writes the trend any more. The tombstone
+      // lasts N more starts and is dropped at the next; nothing else is left,
+      // so the file is removed.
+      await start("s-10");
+      await start("s-11");
+      await assert.rejects(readFile(path, "utf8"), /ENOENT/);
+      // The same text coming up again after that is a new trend.
+      await stop();
+      const back = await start("s-12");
+      assert.equal(back.trends.length, 1);
+      assert.equal(back.trends[0].sessions, 1);
+    },
+    { BASTRA_PENDING_TRENDS_SESSIONS: "2" },
+  );
+});
+
+test("#771: a start that does not count leaves a tombstone alone", async () => {
+  await withRelay(
+    async (path) => {
+      await writePendingSuggestion("<t>standing</t>", { lane: "trends", key: "drift" });
+      await start("s-1");
+      await start("s-2"); // aged out
+      for (let i = 0; i < 5; i++) await start(`eval-${i}`);
+      await consumePendingSuggestions();
+      assert.match(await readFile(path, "utf8"), /"retired":true/);
+    },
+    { BASTRA_PENDING_TRENDS_SESSIONS: "1" },
+  );
+});
+
+test("#771: tombstones take no slot in the trends cap and are never reported as dropped", async () => {
+  await withRelay(
+    async (path) => {
+      const errs: string[] = [];
+      const write = process.stderr.write;
+      process.stderr.write = ((chunk: string | Uint8Array) => {
+        errs.push(String(chunk));
+        return true;
+      }) as typeof process.stderr.write;
+      try {
+        const trend = (name: string) => writePendingSuggestion(`<t>${name}</t>`, { lane: "trends", key: name });
+        const tombstonesOnDisk = async () =>
+          (JSON.parse(await readFile(path, "utf8")) as { retired?: boolean }[]).filter((e) => e.retired).length;
+        // Five trends age out at the same start: five tombstones.
+        for (let i = 0; i < 5; i++) await trend(`old-${i}`);
+        await start("s-1");
+        assert.equal((await start("s-2")).trends.length, 0, "all aged out");
+        // Five live trends next to them: none is pushed out, nothing is reported.
+        for (let i = 0; i < 5; i++) await trend(`new-${i}`);
+        assert.equal((await start("s-3")).trends.length, 5, "the tombstones did not use up the cap");
+        // The old ones are still standing (re-written), the new ones age out
+        // too: ten tombstones. The next write trims them to their own bound —
+        // without a notice, a tombstone is nothing a session would have seen.
+        for (let i = 0; i < 5; i++) await trend(`old-${i}`);
+        assert.equal((await start("s-4")).trends.length, 0);
+        assert.equal(await tombstonesOnDisk(), 10);
+        await trend("live-0");
+        assert.equal(await tombstonesOnDisk(), 5, "tombstones are bounded on their own");
+        for (let i = 1; i < 5; i++) await trend(`live-${i}`);
+        assert.deepEqual(errs.filter((l) => /dropped/.test(l)), []);
+        // A sixth LIVE trend still drops the oldest live one, and says so.
+        await trend("live-5");
+        assert.equal(errs.filter((l) => /1 oldest entry dropped/.test(l)).length, 1);
+        assert.equal((await takePendingRelay()).trends.length, 5);
+      } finally {
+        process.stderr.write = write;
+      }
+    },
+    { BASTRA_PENDING_TRENDS_SESSIONS: "1" },
+  );
 });
 
 test("#513: synthetic/eval ids, resumed sessions and a repeated id never advance the counter", async () => {

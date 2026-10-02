@@ -36,15 +36,22 @@ export interface PendingSuggestion {
   /** Trends only: dedupe key. A refreshed trend (same key, new counts in the
    *  text) replaces its row instead of stacking next to it. */
   key?: string;
-  /** Trends only: real session starts this entry has been shown at. */
+  /** Trends only: real session starts this entry has been shown at. On a
+   *  tombstone: real session starts since the trend was last written. */
   sessions?: number;
   /** Trends only: the session that last advanced `sessions` — a second hook
    *  call for the same session must not count twice. */
   last_session?: string;
-  /** Trends only: tombstone left when the entry aged out. It is never shown;
-   *  it only stops an unchanged re-write of the same text from reviving the
-   *  trend. Changed text (new counts) starts a fresh row. */
+  /** Trends only: tombstone left when the entry aged out. It is never shown
+   *  and takes no slot in the trends cap; it only stops an unchanged re-write
+   *  of the same text from reviving the trend. Changed text starts a fresh
+   *  row. Each unchanged re-write restarts the tombstone's own `sessions`;
+   *  once that passes the same N without a re-write, the tombstone is dropped. */
   retired?: boolean;
+}
+
+function isTombstone(e: PendingSuggestion): boolean {
+  return e.lane === "trends" && e.retired === true;
 }
 
 function laneOf(e: PendingSuggestion): PendingLane {
@@ -157,43 +164,43 @@ export async function writePendingSuggestion(
         /* missing/corrupt → start fresh */
       }
       if (lane === "trends") {
-        // #513: one row per trend. A refresh replaces the text, but the
-        // session counter keeps its progress — restarting it here made
-        // a STANDING trend (still driving a refresh every time it is written,
-        // e.g. taxonomy-drift on every Stop) never age out: the counter was
-        // reset to 0 before it could reach the threshold that ever drops it.
-        // Aging is takePendingRelay's job, once per real session start; a
-        // refresh only means "still current", not "clock restarts".
+        // #513/#771: one row per trend, and one rule for its counter — the N
+        // session starts belong to the TEXT. An unchanged re-write says
+        // nothing new: a live row keeps its progress (restarting it here made
+        // a STANDING trend, e.g. taxonomy-drift on every Stop, never age out)
+        // and a tombstone stays one, with its expiry pushed back. Changed text
+        // is news, live or aged out: a fresh row with a fresh counter.
         const dup = entries.find(
           (e) => laneOf(e) === "trends" && (opts.key ? e.key === opts.key : e.blocks === capped),
         );
-        if (dup?.retired && dup.blocks === capped) return; // aged out, nothing new to say
-        const live = dup && !dup.retired ? dup : undefined;
-        const row: PendingSuggestion = {
-          ts: Date.now(),
-          blocks: capped,
-          lane: "trends",
-          sessions: live?.sessions ?? 0,
-        };
-        if (live?.last_session !== undefined) row.last_session = live.last_session;
-        if (opts.key) row.key = opts.key;
         if (dup) entries.splice(entries.indexOf(dup), 1);
-        entries.push(row);
+        if (dup && dup.blocks === capped) {
+          dup.ts = Date.now();
+          if (dup.retired) dup.sessions = 0;
+          entries.push(dup);
+        } else {
+          const row: PendingSuggestion = { ts: Date.now(), blocks: capped, lane: "trends", sessions: 0 };
+          if (opts.key) row.key = opts.key;
+          entries.push(row);
+        }
       } else {
         const dup = entries.find((e) => laneOf(e) === "recency" && e.blocks === capped);
         if (dup) dup.ts = Date.now();
         else entries.push({ ts: Date.now(), blocks: capped });
       }
       // The cap holds per lane: a burst of hot suggestions must not evict a
-      // trend that is still alive, nor the other way round.
+      // trend that is still alive, nor the other way round. Tombstones are
+      // nothing a session would see, so they take no slot in the trends lane;
+      // they are bounded on their own and dropping one is not a loss.
       const keep = new Set<PendingSuggestion>();
-      for (const l of ["recency", "trends"] as const) {
-        for (const e of entries.filter((x) => laneOf(x) === l).slice(-MAX_ENTRIES)) keep.add(e);
+      const live = (l: PendingLane) => entries.filter((x) => laneOf(x) === l && !isTombstone(x));
+      for (const rows of [live("recency"), live("trends"), entries.filter(isTombstone)]) {
+        for (const e of rows.slice(-MAX_ENTRIES)) keep.add(e);
       }
       const kept = entries.filter((e) => keep.has(e));
       // Dropping the oldest is the documented contract, not a bug — but it IS
       // a durable loss, so it gets a line instead of happening in silence.
-      const droppedAtCap = entries.length - kept.length;
+      const droppedAtCap = entries.filter((e) => !keep.has(e) && !isTombstone(e)).length;
       if (droppedAtCap > 0) {
         reportLoss(
           `${droppedAtCap} oldest ${droppedAtCap === 1 ? "entry" : "entries"} dropped ` +
@@ -357,8 +364,9 @@ export interface PendingRelay {
  * - recency: fresh entries are returned and removed (consume-once);
  * - trends: every live entry is returned and KEPT. On a countable start
  *   (see {@link isCountableSessionStart}) each entry's session counter advances
- *   once per session id; an entry past {@link pendingTrendsSessions} is dropped
- *   instead of shown.
+ *   once per session id; an entry past {@link pendingTrendsSessions} is
+ *   retired instead of shown. It leaves a tombstone, which counts the same
+ *   way and is dropped once N starts passed without the trend being written.
  *
  * #532: read and write-back run under the SAME per-path lock as the writers, so
  * a session start can no longer drop a set that a writer published between its
@@ -383,25 +391,24 @@ export async function takePendingRelay(
       const tombstones: PendingSuggestion[] = [];
       for (const e of valid) {
         if (laneOf(e) !== "trends") continue;
-        if (e.retired) {
-          tombstones.push(e);
-          continue;
-        }
         let sessions = typeof e.sessions === "number" && e.sessions >= 0 ? e.sessions : 0;
         let last = e.last_session;
         if (advanceFor && last !== advanceFor) {
           sessions += 1;
           last = advanceFor;
         }
-        if (sessions > maxSessions) {
-          // Aged out — this start no longer shows it. Keep a tombstone so the
-          // Stop hook re-writing the same standing trend does not revive it.
-          tombstones.push({ ts: e.ts, blocks: e.blocks, lane: "trends", sessions, ...(e.key ? { key: e.key } : {}), retired: true });
-          continue;
-        }
         const row: PendingSuggestion = { ...e, sessions };
         if (last !== undefined) row.last_session = last;
-        trends.push(row);
+        if (sessions <= maxSessions) {
+          (isTombstone(e) ? tombstones : trends).push(row);
+        } else if (!isTombstone(e)) {
+          // Aged out — this start no longer shows it. Keep a tombstone so the
+          // Stop hook re-writing the same standing trend does not revive it.
+          // Its counter starts over and now counts starts WITHOUT a re-write:
+          // a standing trend resets it at every Stop, so only a trend nobody
+          // writes any more lets its tombstone pass N and be dropped here.
+          tombstones.push({ ...row, sessions: 0, retired: true });
+        }
       }
       if (trends.length + tombstones.length > 0) {
         const tmp = `${path}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
