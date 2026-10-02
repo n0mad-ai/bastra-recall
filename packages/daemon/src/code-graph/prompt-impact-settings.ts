@@ -39,9 +39,7 @@
  * lane calls.
  */
 import { mutateSettings, readSettings, settingsFilePath } from "../settings.js";
-
-const TRUTHY = new Set(["1", "true", "on", "yes"]);
-const FALSY = new Set(["0", "false", "off", "no"]);
+import { isOffValue, isOnValue } from "../env.js";
 
 export const PROMPT_IMPACT_DEFAULT = false;
 
@@ -53,9 +51,8 @@ export async function getPromptImpactEnabled(
   path: string = settingsFilePath(),
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<boolean> {
-  const raw = (env.BASTRA_PROMPT_IMPACT ?? "").toLowerCase();
-  if (TRUTHY.has(raw)) return true;
-  if (FALSY.has(raw)) return false;
+  if (isOnValue(env.BASTRA_PROMPT_IMPACT)) return true;
+  if (isOffValue(env.BASTRA_PROMPT_IMPACT)) return false;
   return (await readSettings(path)).promptImpact?.enabled ?? PROMPT_IMPACT_DEFAULT;
 }
 

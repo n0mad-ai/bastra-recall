@@ -219,7 +219,7 @@ export async function paraphrasingState(
     return model === null ? { state: "off" } : { state: "on", model, modelPulled: await pulled(model) };
   }
   const raw = env.BASTRA_TRIGGER_EXPAND;
-  if (raw && ["0", "false", "off", "no"].includes(raw.toLowerCase())) return { state: "off" };
+  if (isOffValue(raw)) return { state: "off" };
   const model = await resolveGenerationModel();
   return { state: "on", model, modelPulled: await pulled(model) };
 }

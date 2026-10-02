@@ -83,10 +83,14 @@ test("the explicit opt-in lets any target through", () => {
   }
 });
 
-test("only the literal value 1 opts in", () => {
+// #787 (owner decision 2026-10-02): every on/off switch reads the same words,
+// so `true`/`on`/`yes` opt in like `1` — this test pinned "only the literal 1"
+// before. What it guards stays: an off word, a typo or an empty value never
+// opens the target (env-switches-787.test.ts pins the on words).
+test("only an on word opts in — an off word, a typo or an empty value does not", () => {
   const prev = process.env.BASTRA_ALLOW_REMOTE_COMMONS;
   try {
-    for (const value of ["0", "true", "yes", ""]) {
+    for (const value of ["0", "false", "no", "tru", "2", "enabled", ""]) {
       process.env.BASTRA_ALLOW_REMOTE_COMMONS = value;
       assert.ok(commonsRepoRefusal("https://evil.example/x/y.git"), `"${value}" must not count as opt-in`);
     }

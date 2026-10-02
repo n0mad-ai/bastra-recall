@@ -13,6 +13,7 @@ import type {
 } from "@bastra-recall/core";
 import { routeRetrieval, routeQueryArms, type QueryRoute } from "@bastra-recall/core";
 import { fireAndForget, type Telemetry } from "./telemetry.js";
+import { isOffValue } from "./env.js";
 import { computeSalienceShadow } from "./salience-shadow.js";
 import { computeTrustShadow, trustRankMode, usageForShadow } from "./trust-shadow.js";
 import { toLeanHit } from "./tool-handlers.js";
@@ -66,7 +67,7 @@ import { assembleHookRecallPayload } from "./hook-recall-payload.js";
 export type QueryRouterMode = "off" | "shadow" | "live";
 export function queryRouterMode(): QueryRouterMode {
   const v = process.env.BASTRA_QUERY_ROUTER;
-  return v === "off" || v === "shadow" ? v : "live";
+  return isOffValue(v) ? "off" : v === "shadow" ? v : "live";
 }
 
 export function handleHookRecall(

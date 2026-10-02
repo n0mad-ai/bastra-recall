@@ -20,6 +20,7 @@
  * who started it and where its env came from, and /health + doctor say so.
  */
 import { createHash } from "node:crypto";
+import { isOnValue } from "./env.js";
 
 /** Keys only a client (forwarder, hook process) reads. Never a daemon setting. */
 export const CLIENT_ONLY_ENV_KEYS = [
@@ -84,7 +85,7 @@ export function daemonOrigin(env: NodeJS.ProcessEnv = process.env): { startedBy:
     const o = env[ENV_ORIGIN_ENV];
     return { startedBy: "forwarder", envOrigin: o === "client+settings" ? "client+settings" : "client" };
   }
-  if (env.BASTRA_AUTOSTART_MANAGED === "1") return { startedBy: "launchagent", envOrigin: "own" };
+  if (isOnValue(env.BASTRA_AUTOSTART_MANAGED)) return { startedBy: "launchagent", envOrigin: "own" };
   // systemd sets INVOCATION_ID for every unit it starts.
   if (typeof env.INVOCATION_ID === "string" && env.INVOCATION_ID !== "") return { startedBy: "systemd", envOrigin: "own" };
   return { startedBy: "direct", envOrigin: "own" };

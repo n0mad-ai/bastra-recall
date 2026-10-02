@@ -21,6 +21,7 @@ import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { effectiveUpdateMode } from "./settings.js";
+import { isOffValue } from "./env.js";
 import { readBlockedUpdate } from "./update-blocked.js";
 
 export const GITHUB_RELEASES_LATEST_URL =
@@ -65,8 +66,7 @@ export function setUpdateState(s: UpdateState | null): void {
 }
 
 export function isOptedOut(): boolean {
-  const v = (process.env.BASTRA_UPDATE_CHECK ?? "").toLowerCase();
-  return v === "off" || v === "0" || v === "false" || v === "no";
+  return isOffValue(process.env.BASTRA_UPDATE_CHECK);
 }
 
 export function cacheFilePath(): string {

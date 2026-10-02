@@ -15,6 +15,7 @@ import { arch, homedir, platform } from "node:os";
 import { join, basename, dirname } from "node:path";
 import { findExecutable, run } from "./exec.js";
 import { getCommonsEnabled, setCommonsEnabled } from "../settings.js";
+import { isOnValue } from "../env.js";
 
 export const COMMONS_REPO_URL = process.env.BASTRA_COMMONS_REPO ?? "https://github.com/n0mad-ai/bastra-commons.git";
 
@@ -60,7 +61,7 @@ function parseRemote(rawUrl: string): { host: string; owner: string; repo: strin
  *  Fail-closed on purpose: git would happily clone a path or an odd URL, so an
  *  unrecognized shape must not fall through the way the Ollama guard does. */
 export function commonsRepoRefusal(rawUrl: string): string | null {
-  if (process.env[COMMONS_OPT_IN_ENV] === "1") return null;
+  if (isOnValue(process.env[COMMONS_OPT_IN_ENV])) return null;
   const parsed = parseRemote(rawUrl);
   if (
     parsed &&
@@ -80,7 +81,7 @@ export function commonsRepoRefusal(rawUrl: string): string | null {
  *  each egress point so the operator sees the target they redirected to, every
  *  time, not just when they set the variable. */
 function noteCommonsOverride(action: string): void {
-  if (process.env[COMMONS_OPT_IN_ENV] !== "1") return;
+  if (!isOnValue(process.env[COMMONS_OPT_IN_ENV])) return;
   if (COMMONS_REPO_URL === "https://github.com/n0mad-ai/bastra-commons.git") return;
   process.stdout.write(`! commons target overridden (${COMMONS_OPT_IN_ENV}=1): ${action} → ${COMMONS_REPO_URL}\n`);
 }

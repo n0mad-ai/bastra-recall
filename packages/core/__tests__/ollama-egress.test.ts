@@ -34,6 +34,23 @@ function withOptIn(fn: () => void): void {
 
 // ─── the guard itself (mirrors the reranker's #124 tests) ──────────
 
+test("#787: the opt-in reads every on word, and an off word or a typo stays refused", () => {
+  const prev = process.env.BASTRA_ALLOW_REMOTE_OLLAMA;
+  try {
+    for (const v of ["1", "true", "on", "yes", " YES "]) {
+      process.env.BASTRA_ALLOW_REMOTE_OLLAMA = v;
+      assert.doesNotThrow(() => assertLocalOrOptIn("http://ollama.example:11434"), v);
+    }
+    for (const v of ["0", "false", "off", "no", "maybe", ""]) {
+      process.env.BASTRA_ALLOW_REMOTE_OLLAMA = v;
+      assert.throws(() => assertLocalOrOptIn("http://ollama.example:11434"), /refusing non-loopback/, v);
+    }
+  } finally {
+    if (prev === undefined) delete process.env.BASTRA_ALLOW_REMOTE_OLLAMA;
+    else process.env.BASTRA_ALLOW_REMOTE_OLLAMA = prev;
+  }
+});
+
 test("assertLocalOrOptIn allows loopback endpoints", () => {
   for (const u of ["http://localhost:11434", "http://127.0.0.1:11434", "http://[::1]:11434"]) {
     assert.doesNotThrow(() => assertLocalOrOptIn(u), `${u} should be allowed`);

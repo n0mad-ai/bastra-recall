@@ -898,10 +898,14 @@ new MCP tool):
 
 ### Environment overrides
 
-Every kill switch below reads its value the same way (the tables show the
-canonical spelling): `0`, `false`, `off` or `no` (any case) is off — `BASTRA_TELEMETRY=0`, `BASTRA_RM_SHIM=off` and
-`BASTRA_REFLEX=no` all switch off. Opt-ins accept `1`, `true`, `on`, `yes`. Mode variables such as
-`BASTRA_QUERY_ROUTER` keep their own values.
+Every on/off switch — in the table below and anywhere else in these docs —
+reads its value the same way (the tables show the canonical spelling): `0`,
+`false`, `off` or `no` is off, `1`, `true`, `on` or `yes` is on, in any case.
+`BASTRA_TELEMETRY=0`, `BASTRA_RM_SHIM=off` and `BASTRA_REFLEX=no` all switch
+off; `BASTRA_HOOK_CONTENT_RECALL=true` switches on. A variable with more than
+two states keeps its other values (`host` for `BASTRA_RM_ARCHIVES`, `shadow`
+and `live` for `BASTRA_QUERY_ROUTER` and `BASTRA_SALIENCE_RANK`, a size for
+`BASTRA_ARCHIVE_MAX_ITEM`) and reads its off value with the same four words.
 
 | Env var                       | Default          | What it does                                                  |
 | ----------------------------- | ---------------- | ------------------------------------------------------------- |
@@ -1863,12 +1867,16 @@ REST-Schnittstelle (Token-Authentifizierung wie bei den anderen
 
 ### Umgebungsvariablen
 
-Jeder Abschalter unten wird gleich gelesen (die Tabellen zeigen die
-übliche Schreibweise): `0`, `false`, `off` oder `no` (Groß-/Kleinschreibung
-egal) heißt aus — `BASTRA_TELEMETRY=0`,
-`BASTRA_RM_SHIM=off` und `BASTRA_REFLEX=no` schalten alle ab. Opt-ins nehmen
-`1`, `true`, `on`, `yes`. Modus-Variablen wie `BASTRA_QUERY_ROUTER` behalten
-ihre eigenen Werte.
+Jeder Ein-/Aus-Schalter — in der Tabelle unten und überall sonst in dieser
+Dokumentation — wird gleich gelesen (die Tabellen zeigen die übliche
+Schreibweise): `0`, `false`, `off` oder `no` heißt aus, `1`, `true`, `on` oder
+`yes` heißt an, Groß-/Kleinschreibung egal. `BASTRA_TELEMETRY=0`,
+`BASTRA_RM_SHIM=off` und `BASTRA_REFLEX=no` schalten alle ab;
+`BASTRA_HOOK_CONTENT_RECALL=true` schaltet ein. Eine Variable mit mehr als
+zwei Zuständen behält ihre übrigen Werte (`host` bei `BASTRA_RM_ARCHIVES`,
+`shadow` und `live` bei `BASTRA_QUERY_ROUTER` und `BASTRA_SALIENCE_RANK`, eine
+Größe bei `BASTRA_ARCHIVE_MAX_ITEM`) und liest ihren Aus-Wert mit denselben
+vier Wörtern.
 
 | Umgebungsvariable             | Standard         | Wirkung                                                       |
 | ----------------------------- | ---------------- | ------------------------------------------------------------- |
@@ -1876,7 +1884,7 @@ ihre eigenen Werte.
 | `BASTRA_HTTP_URL`             | _keiner_         | Vollständige Daemon-Basis-URL (überschreibt Host+Port); wird nur gelesen, wenn `BASTRA_DAEMON_URL` nicht gesetzt ist |
 | `BASTRA_HTTP_PORT`            | `6723`           | Daemon-Port auf `127.0.0.1`; wird nur gelesen, wenn keine der URL-Variablen gesetzt ist |
 | `BASTRA_HOOK_TIMEOUT_MS`      | pro Lane, siehe oben | Überschreibt das Lane-Budget (inkl. Netzwerk-Hin- und Rückweg). Hook-Clients setzen eine echte Zeitgrenze durch, auch wenn die Antwort weiter Daten liefert. Das Assertion-Budget des Daemons bleibt fest bei 1000 ms; eine Prompt-Hook-Deadline unter 1000 ms kappt Assertion-Aufrufe clientseitig. |
-| `BASTRA_RM_ARCHIVES`          | _nicht gesetzt_  | Der #650-Opt-in, vom Daemon gelesen; gewinnt über `archive.enabled`: `1` (auch `true`/`on`/`yes`) bastras archivierendes `rm` + Git-Schnappschüsse, `host` das eigene archivierende `rm` des Hosts (nur Quittungstext), `0` aus |
+| `BASTRA_RM_ARCHIVES`          | _nicht gesetzt_  | Der #650-Opt-in, vom Daemon gelesen; gewinnt über `archive.enabled`: `1` (auch `true`/`on`/`yes`) bastras archivierendes `rm` + Git-Schnappschüsse, `host` das eigene archivierende `rm` des Hosts (nur Quittungstext), `0` (auch `false`/`off`/`no`) aus |
 | `BASTRA_RM_SHIM` / `BASTRA_GIT_SHIM` | _nicht gesetzt_ | `0` lässt bei eingeschaltetem Opt-in den `rm`- bzw. Git-Teil weg |
 | `BASTRA_ARCHIVE_RETAIN`       | `junk=1,in-git=2,user=2` | Aufbewahrung im Archiv in Tagen pro Klasse (auch `bastra config set archive.retain`) |
 | `BASTRA_ARCHIVE_CAP`          | `10GB`           | Wie viel das ganze Archiv halten darf; darüber geht zuerst Build-Müll (auch `bastra config set archive.cap`) |

@@ -46,6 +46,7 @@ import {
 } from "@bastra-recall/core";
 import { ollamaChat } from "../src/learned-recall/reranker.js";
 import { resolveGenerationModel } from "../src/settings.js";
+import { isOffValue } from "../src/env.js";
 import { cuePartialPath, finishCueRun } from "./cue-output.js";
 
 const TAG = "[bastra-recall.cues]";
@@ -73,7 +74,7 @@ function envFloat(name: string, fallback: number): number {
 function envBool(name: string, fallback: boolean): boolean {
   const raw = process.env[name];
   if (!raw) return fallback;
-  return !["0", "false", "off", "no"].includes(raw.toLowerCase());
+  return !isOffValue(raw);
 }
 
 async function exists(p: string): Promise<boolean> {

@@ -14,7 +14,7 @@
  * called only by the curator and one UI endpoint). Shadow avoids the question
  * entirely by running after the response — see the call site.
  */
-import { envFirst, envFloat } from "./env.js";
+import { envFirst, envFloat, isOffValue } from "./env.js";
 import { readUsage, type UsageAggregate, type UsageEntry } from "./usage-sidecar.js";
 
 export type TrustRankMode = "off" | "shadow" | "live";
@@ -34,7 +34,7 @@ export interface TrustShadow {
 
 export function trustRankMode(): TrustRankMode {
   const raw = (envFirst("BASTRA_TRUST_RANK") ?? "shadow").toLowerCase();
-  return raw === "off" || raw === "live" ? raw : "shadow";
+  return isOffValue(raw) ? "off" : raw === "live" ? raw : "shadow";
 }
 
 /** The step. One surfaced-but-never-loaded hit moves trust down by twice this

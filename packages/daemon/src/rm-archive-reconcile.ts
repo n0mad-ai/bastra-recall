@@ -9,6 +9,7 @@
 import { closeSync, constants as fsConstants, existsSync, fstatSync, openSync, readSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pinLive, unpin } from "./git-archive.js";
+import { isOffValue } from "./env.js";
 import { archiveDir, archiveRoot, localIso, manifestFiles, manifestRows, parseManifest, under, type ManifestRow } from "./rm-archive.js";
 
 export type Kind = "junk" | "in-git" | "user";
@@ -68,12 +69,12 @@ export function archiveCap(env: NodeJS.ProcessEnv = process.env, stored?: string
 
 /**
  * #934: the per-target limit — none by default (null), then `bastra config set
- * archive.max-item …`, then BASTRA_ARCHIVE_MAX_ITEM (env wins; `off` there
- * lifts a stored limit).
+ * archive.max-item …`, then BASTRA_ARCHIVE_MAX_ITEM (env wins; an off value
+ * there — `off`, `0`, `false`, `no` — lifts a stored limit).
  */
 export function archiveMaxItem(env: NodeJS.ProcessEnv = process.env, stored?: string): number | null {
   const fromEnv = env.BASTRA_ARCHIVE_MAX_ITEM?.trim();
-  if (fromEnv === "off") return null;
+  if (isOffValue(fromEnv)) return null;
   return (fromEnv ? parseSize(fromEnv) : null) ?? (stored ? parseSize(stored) : null);
 }
 

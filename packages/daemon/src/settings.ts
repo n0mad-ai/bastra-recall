@@ -30,6 +30,7 @@
  */
 import { randomBytes } from "node:crypto";
 import type { EmbeddingSource } from "./embedding-status.js";
+import { isOffValue, isOnValue } from "./env.js";
 import {
   DEFAULT_DOCS_LANGUAGE,
   DEFAULT_DOCS_MODE,
@@ -74,8 +75,7 @@ export async function getUpdateMode(path?: string): Promise<UpdateMode> {
  * is set to a falsy value, the mode is forced to "off" regardless of the file.
  */
 export async function effectiveUpdateMode(path?: string): Promise<UpdateMode> {
-  const env = (process.env.BASTRA_UPDATE_CHECK ?? "").toLowerCase();
-  if (env === "off" || env === "0" || env === "false" || env === "no") return "off";
+  if (isOffValue(process.env.BASTRA_UPDATE_CHECK)) return "off";
   return getUpdateMode(path);
 }
 
@@ -302,8 +302,8 @@ export async function getEvidenceGateEnabled(path?: string): Promise<boolean> {
   // Ein unbekannter Wert fällt auf die Settings zurück und sagt es.
   const env = process.env.BASTRA_EVIDENCE_GATE?.trim().toLowerCase();
   if (env !== undefined && env !== "") {
-    if (["1", "true", "on", "yes"].includes(env)) return true;
-    if (["0", "false", "off", "no"].includes(env)) return false;
+    if (isOnValue(env)) return true;
+    if (isOffValue(env)) return false;
     console.error(
       `[bastra-recall] BASTRA_EVIDENCE_GATE=${JSON.stringify(process.env.BASTRA_EVIDENCE_GATE)} is not ` +
         `one of 1|true|on|yes|0|false|off|no — ignored, using the settings value (#443)`,

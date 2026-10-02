@@ -1,4 +1,5 @@
 import net from "node:net";
+import { isOnValue } from "./env-switch.js";
 
 /**
  * Egress contract for the local Ollama endpoint.
@@ -30,7 +31,7 @@ export function assertLocalOrOptIn(rawUrl: string): void {
   } catch {
     return; // not a parseable URL — let fetch fail normally, behaviour unchanged
   }
-  if (isLoopbackHost(host) || process.env.BASTRA_ALLOW_REMOTE_OLLAMA === "1") return;
+  if (isLoopbackHost(host) || isOnValue(process.env.BASTRA_ALLOW_REMOTE_OLLAMA)) return;
   throw new Error(
     `bastra-recall: refusing non-loopback Ollama endpoint "${host}" — this would ` +
       `send memory text off-box. Set BASTRA_ALLOW_REMOTE_OLLAMA=1 to use a remote endpoint on purpose.`,

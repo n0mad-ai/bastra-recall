@@ -87,7 +87,7 @@ import {
   moveDocument,
 } from "./documents-write-handler.js";
 import { productDocTools, saveProductDocHandler } from "./product-doc-handler.js";
-import { envFirst, envInt, envFloat, envBool, envOff } from "./env.js";
+import { envFirst, envInt, envFloat, envBool, envOff, isOnValue } from "./env.js";
 import { startBackgroundCheck } from "./update-check.js";
 import { DAEMON_VERSION } from "./version.js";
 import { writeSharedVaultSize } from "./statusline-session.js";
@@ -104,7 +104,7 @@ import { projectForFilter } from "./scope-filter.js";
 
 // Triage Issue #24: Write-Tools sind Pro-Feature. Aktuelles Gate ist ein
 // env-Flag — wenn ein Pro-License-Service kommt, ersetzt der das hier.
-const DOCUMENT_WRITE_ENABLED = envFirst("BASTRA_DOCUMENT_WRITE", "NEXUS_DOCUMENT_WRITE") === "1";
+const DOCUMENT_WRITE_ENABLED = isOnValue(envFirst("BASTRA_DOCUMENT_WRITE", "NEXUS_DOCUMENT_WRITE"));
 
 // One truth for the port, read twice: once by the #483 bind probe at the very
 // top of main(), once by the real listen() further down — and since #531 the

@@ -413,6 +413,29 @@ test("#526: BASTRA_AUTH_LOOPBACK_SKIP=0 requires the token even on a loopback Ho
   });
 });
 
+test("#787: BASTRA_AUTH_LOOPBACK_SKIP reads every off word — false|off|no enforce the token on loopback too", async () => {
+  // Before #787 only "0" switched the skip off; `false` was ignored and a
+  // direct loopback caller got in without the bearer.
+  for (const v of ["false", "off", "no", " No "]) {
+    await withServer({ token: "set", env: { BASTRA_AUTH_LOOPBACK_SKIP: v } }, async (port) => {
+      const off = await call(port, "GET", "/api/v1/graph/node?id=a1", { host: `127.0.0.1:${port}` });
+      assert.equal(off.status, 401, `BASTRA_AUTH_LOOPBACK_SKIP=${v} must require the token`);
+      const on = await call(port, "GET", "/api/v1/graph/node?id=a1", {
+        host: `127.0.0.1:${port}`,
+        authorization: `Bearer ${TOKEN}`,
+      });
+      assert.equal(on.status, 200, v);
+    });
+  }
+  // The on words and an unknown value keep the default: the token-free loopback path.
+  for (const v of ["1", "true", "on", "yes", "maybe"]) {
+    await withServer({ token: "set", env: { BASTRA_AUTH_LOOPBACK_SKIP: v } }, async (port) => {
+      const local = await call(port, "GET", "/api/v1/graph/node?id=a1", { host: `127.0.0.1:${port}` });
+      assert.equal(local.status, 200, `BASTRA_AUTH_LOOPBACK_SKIP=${v} keeps the loopback skip`);
+    });
+  }
+});
+
 test("#526: the pre-existing gates are untouched — /health and a foreign Origin", async () => {
   for (const tokenState of ["set", "unset"] as const) {
     await withServer({ token: tokenState }, async (port) => {

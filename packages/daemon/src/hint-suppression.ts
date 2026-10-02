@@ -6,7 +6,7 @@
  * content/trigger edit changes the revision hash and starts a clean trial.
  */
 import { createHash } from "node:crypto";
-import { envFirst, envInt } from "./env.js";
+import { envFirst, envInt, isOffValue } from "./env.js";
 import type { UsageAggregate } from "./usage-sidecar.js";
 
 const DIRECTIVE_TYPES = new Set(["preference", "user-preference", "meta-working", "workflow"]);
@@ -49,7 +49,7 @@ export type HintSuppressionMode = "off" | "shadow" | "live";
  */
 export function hintSuppressionMode(): HintSuppressionMode {
   const raw = (envFirst("BASTRA_HINT_SUPPRESS") ?? "shadow").toLowerCase();
-  if (raw === "off") return "off";
+  if (isOffValue(raw)) return "off";
   // #484: `live` is deliberately NOT returned here any more — the breaker does
   // not go live in v1.0, and `BASTRA_HINT_SUPPRESS=live` now lands in `shadow`
   // like any other unknown value. The measurement on 35 suppressed memories
