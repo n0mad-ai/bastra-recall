@@ -4,7 +4,14 @@
  * per-mode score floor and prompt extraction from the hook payload. Pure and
  * deterministic; runs before any recall work.
  */
-import { composeVerbCues, cueRegex, outwardArtifactCues, projectStateCues, stateQuestionCues } from "./lexicon.js";
+import {
+  composeVerbCues,
+  cueRegex,
+  outwardArtifactCues,
+  projectStateCues,
+  retrievalLeadCues,
+  stateQuestionCues,
+} from "./lexicon.js";
 
 export const SCORE_FLOOR = 50; // higher than PreToolUse: prompts rarely match recall_when exactly
 export const MUST_LOAD_SCORE = 100;
@@ -21,32 +28,21 @@ export interface ClaudeHookPayload {
 
 export type DetectedMode = "retrieval" | "assertion" | "none" | "generic";
 
-// DE + EN retrieval triggers — match the spec in Issue #33.
-const RETRIEVAL_DE = /^\s*(such|finde|wo (ist|sind)|wann (war|hatte)|wieviel|wie viel|was hab(e ich)?|was war)/i;
-const RETRIEVAL_EN = /^\s*(find|search|where (is|are)|when (was|did)|how much|what (did|was))/i;
-
-// #707: further languages are data keyed by ISO-639-1 — regex fragments like
-// the cue lists in lexicon.ts, matched with Unicode letter boundaries (`\b` is
-// ASCII-only). An unlisted language takes the neutral path: generic mode, the
-// same score-gated recall with the MUST_LOAD floor (#677: recall is not gated
-// on the mode).
-const RETRIEVAL_LEADS_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
-  ru: [
-    "найд[иё]\\p{L}*", "найти", "ищи", "поищи",
-    "где\\s+(?:лежит|лежат|находится|находятся|был[аио]?|были)",
-    "когда\\s+(?:был[аио]?|были|мы)", "сколько",
-    "что\\s+(?:я|мы)\\s+(?:делал|делали|писал|писали)", "что\\s+было",
-  ],
-};
-
-const leadRe = (cues: readonly string[]) => new RegExp(`^\\s*(?:${cues.join("|")})(?![\\p{L}\\p{N}])`, "iu");
-
-const RETRIEVAL = [RETRIEVAL_DE, RETRIEVAL_EN, ...Object.values(RETRIEVAL_LEADS_BY_LANGUAGE).map(leadRe)];
-
+// Retrieval leads — how a lookup opens (the spec in Issue #33). #765: the
+// leads are per-language data in lexicon.ts (de/en/ru, user-extensible),
+// anchored at the start of the prompt and closed by a Unicode boundary (`\b`
+// is ASCII-only). A prompt in a language without a list takes the NEUTRAL
+// path: it is not labelled `retrieval`, and recalls as an ordinary prompt,
+// gated by the must-load score (#677: recall is not gated on the mode).
+//
+// The label is not cosmetic, so a lead has to be tight: `retrieval` halves
+// the score floor (effectiveScoreFloor), asks for k=5 instead of 3, is exempt
+// from the backoff, still delivers when the recall ran unfused, and words the
+// block as the answer to a lookup.
 export function detectRetrieval(prompt: string): boolean {
   const trimmed = prompt.trim();
   if (trimmed.length === 0) return false;
-  return RETRIEVAL.some((re) => re.test(trimmed));
+  return cueRegex(retrievalLeadCues(), true).test(trimmed);
 }
 
 // ─── assertion lane (#252) ───────────────────────────────────────────────────

@@ -93,12 +93,12 @@ const BACKOFF_SOURCE = "prompt-lookup";
 
 /**
  * "all" (default since #677) — every non-trivial prompt recalls, and what a
- * prompt the lookup/assertion regexes do not recognise may inject is gated by
- * score (MUST_LOAD_SCORE), not by the language it is written in. Those regexes
- * are German/English only: a contributor's month had 0 of 1,039 prompts
- * recognised as a lookup (#671), so under the old default a user writing any
- * other language got a silent lane. "retrieval-only" keeps the pre-#677
- * behaviour (regex-gated recall) as an explicit opt-out.
+ * prompt the lookup/assertion cues do not recognise may inject is gated by
+ * score (MUST_LOAD_SCORE), not by the language it is written in. Those cues
+ * cover a few languages (lexicon.ts): a contributor's month had 0 of 1,039
+ * prompts recognised as a lookup (#671), so under the old default a user
+ * writing any other language got a silent lane. "retrieval-only" keeps the
+ * pre-#677 behaviour (cue-gated recall) as an explicit opt-out.
  */
 type PromptHookMode = "retrieval-only" | "all";
 const hookMode = (): PromptHookMode =>

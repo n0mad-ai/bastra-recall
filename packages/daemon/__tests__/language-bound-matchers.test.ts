@@ -58,7 +58,6 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
   "packages/core/src/stopwords.ts :: keyed PHRASE_STOPWORDS_BY_LANGUAGE": "#707 per-language data with a neutral path",
   "packages/daemon/src/prompt-classify.ts :: name TRIVIAL_ACKS": "#707 union of per-language data; an unlisted ack runs one score-gated recall (neutral)",
   "packages/daemon/src/prompt-classify.ts :: keyed TRIVIAL_ACKS_BY_LANGUAGE": "#707 per-language data; structural no-letter/≤2-char rule covers every script",
-  "packages/daemon/src/prompt-classify.ts :: keyed RETRIEVAL_LEADS_BY_LANGUAGE": "#707 per-language data (mode label only, #677); an unlisted language gets generic mode, the same score-gated recall",
   "packages/daemon/src/lexicon.ts :: name DEFAULT_DECISION_CUES_BY_LANGUAGE": "#707 per-language data; stop-lane-choice.ts option pick is the neutral fallback",
   "packages/daemon/src/lexicon.ts :: keyed DEFAULT_DECISION_CUES_BY_LANGUAGE": "#707 per-language data with a neutral fallback (option pick)",
   "packages/daemon/src/lexicon.ts :: name DEFAULT_DECISION_CUES": "#707 flattened decision cues, neutral fallback exists",
@@ -79,17 +78,13 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
   "packages/daemon/src/lexicon.ts :: keyed DEFAULT_STATE_QUESTION_CUES_BY_LANGUAGE": "#707 per-language data with a neutral path (score-gated recall)",
   "packages/daemon/src/lexicon.ts :: name DEFAULT_PROJECT_STATE_CUES_BY_LANGUAGE": "#707 assertion label, per-language data, user-extensible; an unlisted language recalls as an ordinary prompt",
   "packages/daemon/src/lexicon.ts :: keyed DEFAULT_PROJECT_STATE_CUES_BY_LANGUAGE": "#707 per-language data with a neutral path (score-gated recall)",
+  "packages/daemon/src/lexicon.ts :: name DEFAULT_RETRIEVAL_LEAD_CUES_BY_LANGUAGE": "#765 retrieval label (floor 50 instead of 100, k=5, no backoff, delivers unfused), per-language data, user-extensible; an unlisted language recalls as an ordinary prompt (tested with tr)",
+  "packages/daemon/src/lexicon.ts :: keyed DEFAULT_RETRIEVAL_LEAD_CUES_BY_LANGUAGE": "#765 per-language data with a neutral path (score-gated recall, #677)",
 
   // ── #676: per-language data with a neutral fallback (#678) — allowed shape ──
   "packages/daemon/src/lexicon.ts :: name DEFAULT_FRUSTRATION_CUES_BY_LANGUAGE": "#678 per-language data; the stop lane's neutral repeated-correction check covers other languages",
   "packages/daemon/src/lexicon.ts :: keyed DEFAULT_FRUSTRATION_CUES_BY_LANGUAGE": "#678 per-language data with a neutral fallback",
   "packages/daemon/src/lexicon.ts :: name DEFAULT_FRUSTRATION_CUES": "#678 flattened frustration cues, neutral fallback exists",
-
-  // ── #677: the prompt-lane gate is language-neutral; these only label the mode ──
-  "packages/daemon/src/prompt-classify.ts :: name RETRIEVAL_DE": "#677 labels detected_mode/budget; recall no longer gated on it",
-  "packages/daemon/src/prompt-classify.ts :: name RETRIEVAL_EN": "#677 labels detected_mode/budget; recall no longer gated on it",
-  "packages/daemon/src/prompt-classify.ts :: words /such|finde|wo (ist|sind)/": "#677 RETRIEVAL_DE body",
-  "packages/daemon/src/prompt-classify.ts :: words /find|search|where (is|are)/": "#677 RETRIEVAL_EN body",
 
   // ── #676: impact intent stays with the Experimental milestone ──
   "packages/daemon/src/code-graph/impact-intent.ts :: name IMPACT_DE": "#676 experimental impact intent, decided there",
