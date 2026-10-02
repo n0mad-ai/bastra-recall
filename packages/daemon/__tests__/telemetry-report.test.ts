@@ -52,14 +52,14 @@ test("#463 quality: bands from hook hits, loaded/acted from surfaced episodes, d
   const q = summarizeQuality(events, T);
   assert.deepEqual(q.hookCalls, { calls: 3, reachable: 2, withHints: 1, topScore: { required: 1, optional: 1, below_floor: 0, none: 1 } });
   assert.deepEqual(q.bands, [
-    { band: "required", surfaced: 2, loaded: 2, acted: 2 },
-    { band: "optional", surfaced: 1, loaded: 1, acted: 0 },
-    { band: "below_floor", surfaced: 1, loaded: 0, acted: 0 },
+    { band: "required", candidates: 2, loaded: 2, acted: 2 },
+    { band: "optional", candidates: 1, loaded: 1, acted: 0 },
+    { band: "below_floor", candidates: 1, loaded: 0, acted: 0 },
   ]);
   assert.equal(q.directLoads, 1);
   assert.deepEqual(q.bySource, [
-    { source: "bash-tripwire", surfaced: 1, loaded: 1, acted: 1 },
-    { source: "write-edit", surfaced: 3, loaded: 2, acted: 1 },
+    { source: "bash-tripwire", candidates: 1, loaded: 1, acted: 1 },
+    { source: "write-edit", candidates: 3, loaded: 2, acted: 1 },
   ]);
   assert.deepEqual(q.followThrough, { loads: 3, fromHint: 2, hookRecallsWithHits: 2, hookRecallsConsumed: 2, ranks: [{ rank: 1, count: 2 }] });
 });

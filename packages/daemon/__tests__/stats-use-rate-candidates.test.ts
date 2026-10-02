@@ -54,6 +54,11 @@ test("USE-rate labels the raw top-k population `candidates`, not `surfaced`", as
     assert.match(section, /optional\s+candidates\s+1\b/);
     assert.match(section, /below_floor\s+candidates\s+1\b/);
     assert.doesNotMatch(section, /\bsurfaced\b/, `the raw top-k must not be called surfaced:\n${section}`);
+    // Follow-up to #795: no section of this report prints a window total of
+    // injected hints ("Exposure-normalised use" is per memory, all-time, and
+    // absent without a vault), so the hint says so instead of pointing there.
+    assert.match(section, /injected count is not in this table/);
+    assert.doesNotMatch(section, /Exposure-normalised/);
   } finally {
     await rm(logDir, { recursive: true, force: true });
   }
