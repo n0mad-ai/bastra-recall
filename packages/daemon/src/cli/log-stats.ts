@@ -202,11 +202,17 @@ function countInto(lane: MutableLane, e: Record<string, unknown>, unclassified =
   // Without this the lane's failure rate was 0% by construction.
   else if (status === "" && typeof e.error === "string" && e.error.length > 0) lane.errors++;
   else if (unclassified) lane.errors++;
-  if (status === "gated" || status === "skipped" || e.gated === true) lane.gated++;
+  // `skipped_reason`: the Stop lane was handed a transcript this host cannot
+  // read (a remote daemon gets the client's path). It answered, so it is a
+  // call and never a failure; it evaluated nothing, so it sits under `gated`
+  // and its few milliseconds stay out of the latency sample — a p90 over
+  // rows that did no work would read as a fast lane.
+  const skipped = typeof e.skipped_reason === "string" && e.skipped_reason.length > 0;
+  if (status === "gated" || status === "skipped" || e.gated === true || skipped) lane.gated++;
   if (e.suppressed === true || status === "suppressed") lane.suppressed++;
   if (hitCountOf(e) > 0) lane.withHits++;
   const lat = e.latency_ms_total ?? e.latency_ms;
-  if (typeof lat === "number") lane.latencies.push(lat);
+  if (typeof lat === "number" && !skipped) lane.latencies.push(lat);
 }
 
 /** `dimensions.agent` of a row, or `none` where it carries no column. */
@@ -372,7 +378,8 @@ function renderHarvest(s: HarvestStats | null): string[] {
   return [
     `  session harvest — ${s.harvestedSessions} session(s) read` +
       (s.bySessionEnd > 0 ? ` (${s.bySessionEnd} on SessionEnd)` : "") +
-      `, ${s.candidates} quote(s) relayed, ${s.stored} already in the vault`,
+      `, ${s.candidates} quote(s) relayed, ${s.stored} already in the vault` +
+      (s.skippedSessions > 0 ? `, ${s.skippedSessions} skipped (transcript not readable on this host)` : ""),
     `    delivered to ${s.deliveredSessions} session start(s), ${s.savedAfterDelivery} of them saved afterwards ` +
       `(${pct(s.savedAfterDelivery, s.deliveredSessions)})`,
   ];

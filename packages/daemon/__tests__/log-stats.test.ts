@@ -619,6 +619,35 @@ test("#305: a Stop lane over its failure ceiling turns the gate red", () => {
   assert.match(rendered, /gate: NOT MET/);
 });
 
+test("#887: a Stop row with `skipped_reason` is a call, not a failure, and stays out of the latency sample", () => {
+  // A remote daemon cannot read the client's transcript_path, so every Stop
+  // writes such a row. It must not turn the gate red, and its 1ms must not
+  // pass for the lane's p90.
+  const skipped = lane("save_eval_call", 40, {
+    status: undefined, hint_count: undefined, suggested_count: 0, turn_count: 0,
+    latency_ms_total: 1, skipped_reason: "transcript_path not readable on this host: ENOENT",
+  });
+  const others = ["hook_call", "todo_hook_call", "session_hook_call", "bash_hook_call", "bash_fail_hook_call"]
+    .flatMap((kind) => lane(kind, 40, { latency_ms: 60 }));
+  const prompts = lane("prompt_hook_call", 40, { detected_mode: "none", latency_ms_total: 60 });
+  const remote = aggregate([...others, ...prompts, ...skipped]);
+  const stop = remote.lanes.find((l) => l.mode === "stop")!;
+  assert.deepEqual(
+    { calls: stop.calls, errors: stop.errors, gated: stop.gated, latency: stop.latency },
+    { calls: 40, errors: 0, gated: 40, latency: null },
+  );
+  const rendered = renderStats(remote, 600);
+  assert.match(rendered, /stop\s+1000ms budget · p90 ≤ 200ms · fail ≤ 2% — PASS/);
+  assert.match(rendered, /gate: MET/);
+
+  // Next to evaluated Stops the skipped rows leave errors and p90 as they were.
+  const real = lane("save_eval_call", 40, { status: undefined, suggested_count: 1, latency_ms_total: 150 });
+  const mixed = aggregate([...real, ...skipped]).lanes.find((l) => l.mode === "stop")!;
+  assert.equal(mixed.calls, 80);
+  assert.equal(mixed.errors, 0);
+  assert.deepEqual(mixed.latency, aggregate(real).lanes.find((l) => l.mode === "stop")!.latency);
+});
+
 test("#305: an automatic lane the window never saw is NOT EVALUABLE, not absent", () => {
   // "We did not measure it" is a verdict of its own — #437's word for the
   // same situation in the experiment arms (stats-arms.ts). A lane that simply

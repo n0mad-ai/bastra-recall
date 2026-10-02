@@ -301,11 +301,11 @@ export async function runSessionHarvest(opts: {
         const st = await stat(e.transcript_path);
         if (!ended && now - st.mtimeMs < HARVEST_IDLE_MS) continue; // still being written
       } catch (err) {
-        // Marked harvested with no telemetry row used to mean this
-        // stat failure — same class as the Stop lane's unreadable transcript (a transcript this HOST cannot
-        // read, e.g. a remote daemon whose transcript_path is local to the
-        // client) looked identical to "nothing worth harvesting" in the log.
-        // A row is written now, naming why nothing was harvested.
+        // A transcript this HOST cannot stat — e.g. a remote daemon whose
+        // transcript_path is local to the client — used to be marked harvested
+        // with no telemetry row, identical to "nothing worth harvesting" in
+        // the log. The row is written now and carries `skipped_reason`: the
+        // session was not read, and that is not a failure of the job.
         progress.set(e.session_id, { upto: e.harvested_upto ?? 0, at: now }); // gone — never retry
         await writeHarvestTelemetry(
           e,
@@ -363,7 +363,7 @@ async function writeHarvestTelemetry(
   candidates: HarvestCandidate[],
   stored: number,
   ended: boolean,
-  error?: string,
+  skippedReason?: string,
 ): Promise<void> {
   if ((envFirst("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ?? "on").toLowerCase() === "off") return;
   try {
@@ -382,7 +382,7 @@ async function writeHarvestTelemetry(
       candidate_kinds: kinds,
       stored_count: stored,
       trigger: ended ? "session_end" : "idle",
-      ...(error ? { error } : {}),
+      ...(skippedReason ? { skipped_reason: skippedReason } : {}),
     };
     await appendFile(join(logDir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify(event) + "\n", "utf8");
   } catch {
