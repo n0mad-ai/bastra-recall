@@ -502,7 +502,7 @@ const LATENCY_FIELD: Record<string, string> = {
 
 const latencyRow = (lane: string, xs: number[]): LatencyRow => ({ lane, n: xs.length, median: median(xs), p95: p95(xs) });
 
-export function summarizeLatency(events: ReportEvent[]): LatencySection {
+export function summarizeLatency(events: ReportEvent[]): LatencySection & { excludedRestart: number } {
   // The CLI (`log-stats.ts`'s `aggregate`) excludes calls that landed
   // inside a daemon-restart window from its totals — a cold warmup skews
   // latency and is not a delivery number worth reporting alongside steady
@@ -514,12 +514,17 @@ export function summarizeLatency(events: ReportEvent[]): LatencySection {
   const inRestart = (t: number): boolean => windows.some((w) => t >= w.start && t <= w.end);
   const byLane = new Map<string, number[]>();
   const perDay = new Map<string, { hook: number[]; recall: number[] }>();
+  // Stated, not applied silently — the CLI prints its `excluded:` line too.
+  let excludedRestart = 0;
   for (const e of events) {
     const field = LATENCY_FIELD[e.kind];
     if (!field) continue;
-    if (inRestart(tsOf(e))) continue;
     const v = num(e[field]);
     if (v === null) continue;
+    if (inRestart(tsOf(e))) {
+      excludedRestart++;
+      continue;
+    }
     const list = byLane.get(e.kind) ?? [];
     list.push(v);
     byLane.set(e.kind, list);
@@ -540,6 +545,7 @@ export function summarizeLatency(events: ReportEvent[]): LatencySection {
         hook: r.hook.length ? latencyRow("hook", r.hook) : null,
         recall: r.recall.length ? latencyRow("recall", r.recall) : null,
       })),
+    excludedRestart,
   };
 }
 
@@ -787,6 +793,9 @@ export interface TelemetryReport {
     /** #664: what the CLI states as excluded / folded, stated here too. */
     excludedEval: number;
     foldedDuplicates: number;
+    /** #875: calls the latency section left out because they fell inside a
+     *  daemon-restart window. Latency only — every other section counts them. */
+    excludedRestart: number;
   };
   thresholds: ReportThresholds;
   quality: QualitySection;
@@ -815,6 +824,7 @@ export function buildTelemetryReport(
   retentionDays = resolveRetentionDays(),
 ): TelemetryReport {
   const events = window.events;
+  const { excludedRestart, ...latency } = summarizeLatency(events);
   return {
     version: TELEMETRY_REPORT_VERSION,
     window: {
@@ -826,12 +836,13 @@ export function buildTelemetryReport(
       retentionDays,
       excludedEval: window.excludedEval,
       foldedDuplicates: window.foldedDuplicates,
+      excludedRestart,
     },
     thresholds: t,
     quality: summarizeQuality(events, t),
     contextTax: summarizeContextTax(events),
     budgetShadow: summarizeBudgetShadow(events),
-    latency: summarizeLatency(events),
+    latency,
     evidence: summarizeEvidence(events, t),
     saves: summarizeSaves(events),
     saveSuggestions: aggregateSaveSuggestions(events),

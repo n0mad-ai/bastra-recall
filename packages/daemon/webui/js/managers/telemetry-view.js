@@ -631,7 +631,9 @@ export function createTelemetryView() {
         // #664: the CLI states what it excluded and folded; so does the UI.
         const excluded = r.window.excludedEval ? ` · ${fmt(r.window.excludedEval)} eval events excluded` : "";
         const folded = r.window.foldedDuplicates ? ` · ${fmt(r.window.foldedDuplicates)} duplicate client rows folded` : "";
-        windowNote.textContent = `${span} · ${fmt(r.window.events)} events${excluded}${folded} · retention keeps ${r.window.retentionDays} days`;
+        // #875: latency leaves out calls inside a daemon-restart window; say how many.
+        const restart = r.window.excludedRestart ? ` · ${fmt(r.window.excludedRestart)} restart-window calls left out of latency` : "";
+        windowNote.textContent = `${span} · ${fmt(r.window.events)} events${excluded}${folded}${restart} · retention keeps ${r.window.retentionDays} days`;
         if (r.window.days < days) {
           days = r.window.days;
           markDays();

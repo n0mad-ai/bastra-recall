@@ -61,6 +61,15 @@ out of the lane table and the call totals so no call is added twice.
 Constants live in `packages/daemon/src/hook-budgets.ts`, thresholds in
 `packages/daemon/src/cli/log-stats-thresholds.ts`.
 
+A call that falls inside a daemon restart window — from 30 s before a boot to
+120 s after it — measures the restart, not the lane. `bastra logs --stats`
+keeps such calls out of the lane numbers and prints them on its `excluded:`
+line. The Telemetry tab's latency section leaves them out as well (n, median
+and p95, per lane and per day) and the tab names the count in the note under
+its window selector: "N restart-window calls left out of latency"
+(`window.excludedRestart` in the `/ui/telemetry` report, #875). The tab's
+other sections still count those calls.
+
 Recalled-content blocks (`<recall-hints>`, `<session-context>`,
 `<pinned-memories>`) are framed
 (#152): the first body line is a versioned reference-only note marking the
@@ -938,6 +947,15 @@ die behalten ihre eigenen Latenzgrenzen — und bleibt deshalb aus der
 Lane-Tabelle und den Aufrufsummen heraus, damit kein Aufruf doppelt gezählt
 wird. Die Konstanten stehen in `packages/daemon/src/hook-budgets.ts`, die
 Schwellen in `packages/daemon/src/cli/log-stats-thresholds.ts`.
+
+Ein Aufruf, der in ein Neustart-Fenster des Daemons fällt — von 30 s vor einem
+Boot bis 120 s danach —, misst den Neustart, nicht die Lane.
+`bastra logs --stats` hält solche Aufrufe aus den Lane-Zahlen heraus und nennt
+sie in seiner `excluded:`-Zeile. Der Latenz-Abschnitt des Telemetrie-Tabs lässt
+sie ebenfalls weg (n, Median und p95, je Lane und je Tag), und der Tab nennt
+die Anzahl in der Notiz unter seiner Fensterauswahl: „N restart-window calls
+left out of latency“ (`window.excludedRestart` im `/ui/telemetry`-Report,
+#875). Die übrigen Abschnitte des Tabs zählen diese Aufrufe weiterhin.
 
 Blöcke mit abgerufenem Inhalt (`<recall-hints>`, `<session-context>`,
 `<pinned-memories>`) sind eingerahmt (#152): Die erste Zeile des Inhalts ist
