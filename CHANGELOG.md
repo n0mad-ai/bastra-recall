@@ -466,6 +466,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #767 — stop-lane: an option pick is read in any digit script and for lettered, parenthesised or heading option lists.
+- Follow-up to #767 (#987): stop-lane: the language-neutral option pick no longer reads numbered section headings (`## 1. …`) or a letter followed by a dot (`A.`, "z. B.", "A. Smith") as option lines; digit scripts, `(1)` and `A)` stay.
+- @zzallirog's #769 — system-turn: one prefix list decides what is a harness-written turn for the prompt lane, Stop lane and bridge harvest.
+- Follow-up to #769 (#989): prompt lane: an expanded slash command is a trivial owner prompt again (parked task-boundary block delivered, no `origin: "system"`), a prompt that opens with `<system-reminder>` is gated only when no typed text follows the block, and `<task-notification …>` with attributes is recognised as a harness turn.
+- @zzallirog's #795 — stats: USE-rate table stops calling raw top-k "surfaced".
+- Follow-up to #795 (#990): Telemetry: the raw top-k of a hook recall is called `candidates` in the Telemetry tab and the `/ui/telemetry` report as well (`bands[].candidates`, `bySource[].candidates`, formerly `surfaced`), matching `stats.ts`; the hint under the USE-rate table no longer points to a section that does not print the injected count.
+- @zzallirog's #851 — statusline: the context bar fills to the percentage printed beside it.
+- Follow-up to #851 (#985): statusline: with `percentageMode: "remaining"` and no context data yet, the context bar is drawn full beside `100%` instead of empty.
+- @zzallirog's #879 — onboard: --answers with no usable answer fails and leaves onboarding open.
+- Follow-up to #879 (#988): `bastra onboard --answers <file>` fails (exit 2, onboarding stays open) only when nothing in the file is usable and an entry was ignored or dropped — a mistyped question id, a value that is not text — and the error names those entries; a file with only the persona is valid again, as on the map and in the interview.
+- @zzallirog's #883 — host-profile: a test run no longer creates ~/.bastra/host-profile.json.
+- Follow-up to #883 (#986): host-profile: the test seam `BASTRA_HOST_PROFILE_PATH` always names the salt file; a value without `.json` is no longer read as a directory.
+- @zzallirog's #887 — stop-lane, session-harvest: an unreadable transcript writes a telemetry row.
+- Follow-up to #887 (#991): Stop lane and session harvest: a transcript the daemon's host cannot read (e.g. a remote daemon) is recorded with `skipped_reason` instead of `error`; `bastra logs --stats` no longer counts it as a Stop-lane failure or as a session read, and keeps it out of the lane's latency figures.
 - @zzallirog's #773 — pinned-block: a truncated-out pin stays eligible for a ranked hint slot.
 - @zzallirog's #777 — save-similarity: diacritics fold only on Latin letters.
 - @zzallirog's #779 — edit_memory: a frontmatter summary patch is capped like a save.
