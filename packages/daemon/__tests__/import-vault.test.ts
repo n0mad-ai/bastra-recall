@@ -470,9 +470,36 @@ test("#710: an over-long description is cut in recall_when (summary keeps it), a
   }
 });
 
-test("recall_when: a title that is itself a bare type word is not the fallback trigger", () => {
-  // The filter drops bare type words; the title fallback must not put one back.
-  const { recall_when } = cleanRecallWhen(["reference", "feedback"], "reference");
-  assert.deepEqual(recall_when, ["reference (imported)"]);
-  assert.deepEqual(cleanRecallWhen([], "deploy checklist").recall_when, ["deploy checklist"]);
+test("recall_when: a title that is itself a bare type word is never the trigger — the note's body supplies one, and the log says so", () => {
+  // The filter drops bare type words; nothing may put one back, in any spelling.
+  const { recall_when, warnings } = cleanRecallWhen(["reference", "Reference"], "# reference\n\n---\nWhere the API tokens live\nmore");
+  assert.deepEqual(recall_when, ["Where the API tokens live"]);
+  assert.ok(warnings.some((w) => /taken from the note's body: 'Where the API tokens live'/.test(w)), JSON.stringify(warnings));
+  // A body-derived trigger gets the same surrogate-safe cut as any other entry.
+  const cut = cleanRecallWhen(["reference"], "a" + "𠮷".repeat(150)).recall_when[0];
+  assert.equal(cut, "a" + "𠮷".repeat(99));
+  // Nothing but type words anywhere: no trigger, and none is invented.
+  assert.deepEqual(cleanRecallWhen(["reference", "feedback"], "reference\n").recall_when, []);
+  assert.deepEqual(cleanRecallWhen(["deploy checklist"], "").recall_when, ["deploy checklist"]);
+});
+
+test("#781: a note titled with a bare type word imports under a body line; one with nothing else is skipped with a reason", async () => {
+  const src = await tmp("iv-src-");
+  const vault = await tmp("iv-vault-");
+  try {
+    await writeSrc(src, "tokens.md", "---\nname: reference\ndescription: reference\ntype: reference\n---\n# reference\nWhere the API tokens live");
+    await writeSrc(src, "bare.md", "---\nname: feedback\ndescription: feedback\ntype: feedback\n---\n");
+    const r = await importVault(vault, src, { label: "ccmem" });
+    assert.equal(r.imported, 1);
+    const { data } = await readMem(vault, r.folder, r.ids[0]);
+    assert.deepEqual(data.recall_when, ["Where the API tokens live"]);
+    assert.ok(!JSON.stringify(data.recall_when).includes("(imported)"), "no fixed literal in user data");
+    assert.ok(r.warnings.some((w) => /tokens\.md$/.test(w.path) && /taken from the note's body/.test(w.reason)), JSON.stringify(r.warnings));
+    assert.equal(r.skipped.length, 1);
+    assert.match(r.skipped[0].path, /bare\.md$/);
+    assert.match(r.skipped[0].reason, /nothing but a memory type word/);
+  } finally {
+    await rm(src, { recursive: true, force: true });
+    await rm(vault, { recursive: true, force: true });
+  }
 });
