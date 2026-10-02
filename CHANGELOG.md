@@ -466,6 +466,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #773 — pinned-block: a truncated-out pin stays eligible for a ranked hint slot.
+- @zzallirog's #777 — save-similarity: diacritics fold only on Latin letters.
+- @zzallirog's #779 — edit_memory: a frontmatter summary patch is capped like a save.
+- @zzallirog's #783 — eval: marginal-lift refuses to report a number over zero queries.
+- @zzallirog's #785 — memory-location: resolve symlinks before the vault-root containment check.
+- @zzallirog's #793 — stats: evidence-gate decision table counts live decisions once active.
+- @zzallirog's #805 — commit-pool: --synthetic exercises the hash check it demonstrates.
+- @zzallirog's #807 — tests(update-check): #441 wiring test pins the snippet, not just the order.
+- @zzallirog's #809 — stub-source-digest: the closure follows side-effect, extensionless and directory imports.
+- @zzallirog's #811 — stats: exposure section drops its dead catch, warns on --days mismatch.
+- @zzallirog's #813 — stress-save-62: RUNS=0 or non-numeric RUNS fails instead of checking nothing.
+- @zzallirog's #819 — prepare-package-assets: the staged skill/ mirrors the source and skips dotfiles.
+- @zzallirog's #823 — update-check.test: the #441 no-restart check proves the launchctl stub was reached.
+- @zzallirog's #825 — telemetry-smoke: "enabled by default" is asserted with BASTRA_TELEMETRY unset.
+- @zzallirog's #827 — link-check: only a wiki link may leave the repository root.
+- @zzallirog's #833 — write-build-revision: a git status that could not be read stamps dirty=true.
+- @zzallirog's #835 — bump: a hyphen in +build metadata does not make the release a prerelease.
+- @zzallirog's #839 — statusline: a failed git status shows "?", not the clean symbol.
+- @zzallirog's #845 — statusline: cache-timer colors follow the detected TTL in elapsed mode and the TUI.
+- @zzallirog's #849 — statusline: a rate-limit window with no percentage is hidden, not drawn as 0%.
+- @zzallirog's #853 — statusline: a sibling directory sharing the project path as a prefix is not shown as a subpath.
+- @zzallirog's #855 — statusline: the budget percentage is not capped at 100%.
+- @zzallirog's #859 — scrub: the session-harvest relay block is scrubbed as injected scaffolding.
+- @zzallirog's #861 — doctor: the client memory note count walks the folder the way the import does.
+- @zzallirog's #863 — cue-batch: a run stopped by the generation brake keeps the previous sidecar.
+- @zzallirog's #891 — update: patch skip detection runs git in the C locale so a localized git cannot hide a skipped patch.
+- @zzallirog's #897 — webui-areas: a failed delete-rename clears its tombstone instead of stranding it.
+- @zzallirog's #899 — floor-acts: order live-intent acts on parsed time, not the raw string.
+- @zzallirog's #905 — path-lock: a token proves the lock being released is still this holder's.
+- @zzallirog's #907 — graph-semantic: the O(n²) neighbor scan yields, instead of blocking the daemon.
+- @zzallirog's #911 — import: wikilink namespacing uses the same grammar as save, so non-Latin links stay in the imported set.
+- @zzallirog's #913 — eval: doc2query-lift PROMOTE respects its own reliability warnings.
+- @zzallirog's #917 — eval: persona-gen fails loudly when it generated no persona.
+- @zzallirog's #919 — eval: rerank-latency reports no warm sample as n/a, not 0 ms.
+- @zzallirog's #921 — webui: the sidebar's memory count says it is scoped to the map.
+- @zzallirog's #927 — docs: hooks.md env table names the right reader for BASTRA_HOOK_TIMEOUT_MS and BASTRA_PROMPT_HOOK_MODE.
+- @zzallirog's #781 — import: the `recall_when` cut never splits a surrogate pair.
+- Follow-up to #781 (#981): a note whose title is a bare type word (`reference`, `feedback`, …) no longer gets `"<title> (imported)"` as its trigger; the trigger is taken from the first meaningful line of the note's body and the import warns about it, and a note that holds nothing but a type word is skipped with the reason.
+- @zzallirog's #847 — statusline: usage data that is missing or cannot be read renders as `--`, not as a real zero.
+- Follow-up to #847 (#983): a fresh session and a day without usage show `$0.00` again; `--` is left for usage data that is missing or cannot be read.
+- @zzallirog's #875 — telemetry-report: the latency section excludes restart-window calls like the CLI does.
+- Follow-up to #875 (#982): the telemetry tab says how many calls the latency section left out because they fell inside a daemon-restart window (`window.excludedRestart` in the `/ui/telemetry` report).
 - @zzallirog's #933 adds `find_code` and `archive_memory` to the skill's tool list.
 - Follow-up to #933: the list covers every registered tool by access tier, while PRIVACY keeps users' direct-edit freedom.
 
