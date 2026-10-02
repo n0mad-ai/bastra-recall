@@ -36,7 +36,7 @@ import { claudeSessionPidFrom, sessionFeedPath, STATUSLINE_DIR } from "./statusl
 import { idleStatuslineState } from "./statusline-feed.js";
 import { reportHinted } from "./hook-hinted.js";
 import { hookCaller, hookClient, hookAgent, hookClientEvidence } from "./hook-surface.js";
-import { isSystemInjectedTurn } from "./system-turn.js";
+import { ownerPromptText } from "./system-turn.js";
 import { governContext } from "./context-governor.js";
 import { deliverPromptImpact } from "./code-graph/prompt-impact.js";
 import { getPromptImpactEnabled } from "./code-graph/prompt-impact-settings.js";
@@ -234,8 +234,8 @@ export async function runPromptLane(
   const sessionPid = resolveSessionPid(clientPpid);
   if (sessionPid !== null) resetStatuslineFeed(sessionPid, payload.session_id ?? null);
 
-  const prompt = extractPrompt(payload);
-  if (!prompt) return "{}";
+  const submitted = extractPrompt(payload);
+  if (!submitted) return "{}";
 
   // #703: a task notification or agent mail arrives as a user turn nobody
   // typed — the same turns the Stop lane classifies as system-injected. No
@@ -243,7 +243,10 @@ export async function runPromptLane(
   // `origin: "system"` marks the event so reach and prompt counts can drop it
   // (#704). A task-boundary block parked for the owner's next prompt stays
   // parked: this turn is not that prompt.
-  if (isSystemInjectedTurn(prompt)) {
+  // #769: an expanded slash command is the owner's turn (trivial gate below),
+  // and text typed after a leading <system-reminder> block is the prompt.
+  const prompt = ownerPromptText(submitted);
+  if (prompt === null) {
     await writeTelemetry({
       session_id: payload.session_id ?? null,
       client: clientEvidence,
@@ -252,7 +255,7 @@ export async function runPromptLane(
       gated: true,
       gated_reason: "system-injected",
       origin: "system",
-      prompt_chars: prompt.length,
+      prompt_chars: submitted.length,
       daemon_url: selfBaseUrl,
       daemon_reachable: true,
       hint_count: 0,

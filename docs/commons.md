@@ -161,9 +161,14 @@ two) — so one mint perturbs every query that shares them. That is why
 count as reaches, for the in-band mint and the far harvest alike: prompts the
 owner typed (prompt lane) and explicit MCP `recall` calls. Queries the tool lanes
 build from tool input (write, bash, todo, session, stop) and harness turns that
-reach the prompt lane as if typed (`<task-notification`, `<teammate-message`,
-`<agent-message`, `<cross-session-message`, `[Subagent hand-back]`, `Another
-Claude session sent a message`) do not. Every `recall` and `hook_recall` event
+reach the prompt lane as if typed do not. Those are the turns
+`packages/daemon/src/system-turn.ts` lists, by how the query starts:
+`<task-notification` (with or without attributes), `<teammate-message`,
+`<agent-message`, `<cross-session-message`, `[Subagent hand-back]`, a skill
+body (`Base directory for this skill:`), `<system-reminder>`, a slash-command
+echo (`<command-name>`, `<local-command-caveat>`) and the Codex harness tags
+(`<environment_context>` and its siblings), plus the bare line `Another
+Claude session sent a message` on older rows. Every `recall` and `hook_recall` event
 carries the origin since v1.0.1: `origin` is `owner`, `agent`, `tool` or `system`,
 written from the lane that built the query. A row without the field is from
 before it and never counts as the owner: a prompt-lane row could be a bot's
@@ -493,9 +498,14 @@ Fällen (#129, unten)** bestehen.
 Frage formuliert hat, beim In-Band-Erzeugen wie bei der fernen Ernte: Prompts, die der
 Besitzer getippt hat (Prompt-Lane), und ausdrückliche MCP-`recall`-Aufrufe. Anfragen,
 die die Tool-Lanes aus Tool-Eingaben bauen (write, bash, todo, session, stop), und
-Harness-Turns, die wie getippt in der Prompt-Lane ankommen (`<task-notification`,
-`<teammate-message`, `<agent-message`, `<cross-session-message`, `[Subagent
-hand-back]`, `Another Claude session sent a message`), zählen nicht. Seit v1.0.1
+Harness-Turns, die wie getippt in der Prompt-Lane ankommen, zählen nicht. Das sind die
+Turns aus `packages/daemon/src/system-turn.ts`, erkannt am Anfang der Anfrage:
+`<task-notification` (mit oder ohne Attribute), `<teammate-message`, `<agent-message`,
+`<cross-session-message`, `[Subagent hand-back]`, ein Skill-Text (`Base directory for
+this skill:`), `<system-reminder>`, das Echo eines Slash-Befehls (`<command-name>`,
+`<local-command-caveat>`) und die Codex-Harness-Tags (`<environment_context>` und
+verwandte), dazu auf älteren Zeilen die bloße Zeile `Another Claude session sent a
+message`. Seit v1.0.1
 trägt jedes `recall`- und `hook_recall`-Ereignis den Ursprung: `origin` ist `owner`,
 `agent`, `tool` oder `system` und wird von der Lane geschrieben, die die Anfrage gebaut
 hat. Eine Zeile ohne das Feld stammt aus der Zeit davor und zählt nie als Besitzer:
