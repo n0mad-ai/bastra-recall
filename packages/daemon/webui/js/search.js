@@ -52,7 +52,7 @@ export function createSearch(input, resultsEl, nodes, { colorOf, onPick, aiSearc
         aiDividerDone = true;
       }
       html += `<li data-i="${i}" class="${i === active ? "active" : ""}${it.ai ? " ai-row" : ""}${it.agent ? " agent-row" : ""}">
-        <span class="dot" style="background:${colorOf(it.node)}"></span>
+        <span class="dot" data-color="${esc(colorOf(it.node))}"></span>
         <span class="r-title">${esc(it.node.title)}</span>
         ${it.ai || it.agent ? `<span class="ai-badge">AI</span>` : ""}
         <span class="r-type">${esc(it.node.kind === "ghost" ? "unwritten" : it.node.type)}</span>
@@ -60,6 +60,8 @@ export function createSearch(input, resultsEl, nodes, { colorOf, onPick, aiSearc
     });
     if (!list.length) html = `<li class="divider">no matches — ask the copilot →</li>`;
     resultsEl.innerHTML = html;
+    // style-src 'self' blocks inline style attributes: colour through the CSSOM.
+    for (const dot of resultsEl.querySelectorAll(".dot[data-color]")) dot.style.background = dot.dataset.color;
     setOpen(true);
   }
 

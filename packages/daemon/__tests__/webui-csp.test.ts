@@ -89,10 +89,10 @@ test("CSP: the document carries a policy that bounds where the map may talk", as
   // diesen Test bewusst anfassen.
   assert.ok(!csp.includes("unsafe-eval"), "the viewer needs no eval");
   assert.match(csp, /script-src 'self'/);
-  assert.ok(
-    !/script-src[^;]*unsafe-inline/.test(csp),
-    "inline script must stay forbidden — style attributes are the only inline exception",
-  );
+  assert.ok(!/script-src[^;]*unsafe-inline/.test(csp), "inline script must stay forbidden");
+  // Index.html carries no style="" attributes any more — 'unsafe-inline'
+  // on style-src would now be unused permission, not a documented exception.
+  assert.ok(!/style-src[^;]*unsafe-inline/.test(csp), "no style= attribute justifies unsafe-inline any more");
 
   // Kein Einbetten, kein Plugin, kein umgebogener <base>.
   assert.match(csp, /frame-ancestors 'none'/);
@@ -153,4 +153,31 @@ test("CSP: every host the shipped web UI fetches from is declared", async () => 
       `${host} is fetched by the web UI but missing from connect-src — the browser would block it silently`,
     );
   }
+});
+
+test("CSP: the shipped web UI writes no inline style attribute that style-src 'self' would block", async () => {
+  // style-src has no 'unsafe-inline'. A style="" in markup or in an HTML string
+  // assigned via innerHTML is then dropped by the browser; colour and layout set
+  // through the CSSOM (el.style.x = …) are not governed by the directive.
+  // vendor/ctxmenu.js can set a style attribute only from an item's `style`
+  // field, which nothing in this app populates.
+  const root = resolveWebUiDir();
+  const files: string[] = [join(root, "index.html")];
+  const walk = async (dir: string): Promise<void> => {
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name !== "vendor") await walk(p);
+      } else if (e.name.endsWith(".js")) files.push(p);
+    }
+  };
+  await walk(join(root, "js"));
+  const hits: string[] = [];
+  for (const f of files) {
+    const lines = (await readFile(f, "utf8")).split("\n");
+    lines.forEach((line, i) => {
+      if (/\sstyle\s*=\s*["'$]|setAttribute\(\s*["']style["']/.test(line)) hits.push(`${f.slice(root.length)}:${i + 1}: ${line.trim()}`);
+    });
+  }
+  assert.deepEqual(hits, [], "an inline style attribute is blocked by style-src 'self'");
 });

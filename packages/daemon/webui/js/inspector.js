@@ -180,7 +180,7 @@ export function createInspector(el, contentEl, { knownIds, onNavigate, clusterCo
   function kicker(node) {
     const kindLabel = node.kind === "ghost" ? "unwritten" : node.kind === "skill" ? "skill" : node.type;
     return `<div class="insp-kicker">
-      <span class="dot" style="background:${clusterColorOf(node)}"></span>
+      <span class="dot" data-color="${esc(clusterColorOf(node))}"></span>
       <span>${esc(node.cluster)}</span><span>·</span><span>${esc(kindLabel)}</span>
     </div>`;
   }
@@ -200,13 +200,22 @@ export function createInspector(el, contentEl, { knownIds, onNavigate, clusterCo
     return `<div class="insp-section-title">${title}</div><ul class="link-list">${lis}</ul>`;
   }
 
+  // The CSP forbids inline style attributes (style-src 'self'), so a dot's
+  // colour travels as data-color and is set through the CSSOM after insertion.
+  const content = {
+    set html(html) {
+      contentEl.innerHTML = html;
+      for (const dot of contentEl.querySelectorAll(".dot[data-color]")) dot.style.background = dot.dataset.color;
+    },
+  };
+
   async function show(node) {
     el.hidden = false;
     current = node;
     careKind = null;
 
     if (node.kind === "ghost") {
-      contentEl.innerHTML = `
+      content.html = `
         ${kicker(node)}
         <div class="insp-title">${esc(node.title)}</div>
         <div class="ghost-note">This note doesn't exist yet — it only lives as a link target.
@@ -223,7 +232,7 @@ export function createInspector(el, contentEl, { knownIds, onNavigate, clusterCo
     }
 
     if (node.kind === "skill") {
-      contentEl.innerHTML = `
+      content.html = `
         ${kicker(node)}
         <div class="insp-title">${esc(node.title)}</div>
         <div class="ghost-note">Declared skill — it lives on another surface; the vault only references
@@ -235,15 +244,15 @@ export function createInspector(el, contentEl, { knownIds, onNavigate, clusterCo
       return;
     }
 
-    contentEl.innerHTML = `${kicker(node)}<div class="insp-title">${esc(node.title)}</div><div class="insp-loading">loading…</div>`;
+    content.html = `${kicker(node)}<div class="insp-title">${esc(node.title)}</div><div class="insp-loading">loading…</div>`;
     const full = await fetchNode(node.id);
     if (el.hidden || current !== node) return; // closed or replaced while loading
     if (!full) {
-      contentEl.innerHTML = `${kicker(node)}<div class="insp-title">${esc(node.title)}</div>
+      content.html = `${kicker(node)}<div class="insp-title">${esc(node.title)}</div>
         <div class="ghost-note">Body could not be loaded.</div>`;
       return;
     }
-    contentEl.innerHTML = `
+    content.html = `
       ${kicker(node)}
       <div class="insp-title">${esc(full.title)}</div>
       ${chips([full.scope, ...full.tags], true)}

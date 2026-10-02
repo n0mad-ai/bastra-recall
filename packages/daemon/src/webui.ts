@@ -32,10 +32,15 @@ import { getUiEnabled } from "./settings.js";
  *                         (managers/weather.js: forecast · geocode · reverse)
  *   img-src data:       — the inline SVG favicon in index.html
  *           blob:       — components/image-cropper.js previews a picked file
- *   style-src 'unsafe-inline' — three style="" attributes in index.html. Only
- *                         attributes and <style> blocks need this; the .style
- *                         assignments across the managers are CSSOM writes and
- *                         are not governed by CSP at all.
+ *   style-src           — 'self' only. The three style="" attributes
+ *                         that once justified 'unsafe-inline' here are gone
+ *                         from index.html, and the colour dots in search.js
+ *                         and inspector.js are set through the CSSOM after
+ *                         insertion; the .style assignments across the
+ *                         managers are CSSOM writes and were never governed
+ *                         by this directive. ctxmenu.js can still set an
+ *                         inline style attribute from an item's `style`
+ *                         field, but nothing in this app populates it.
  *   object-src 'none' · frame-ancestors 'none' · base-uri 'self' — the page
  *                         embeds no plugins, must not be framed, and must not
  *                         let an injected <base> retarget its relative URLs.
@@ -52,7 +57,7 @@ const CSP = [
   "default-src 'self'",
   "connect-src 'self' https://api.open-meteo.com https://geocoding-api.open-meteo.com https://api.bigdatacloud.net",
   "img-src 'self' data: blob:",
-  "style-src 'self' 'unsafe-inline'",
+  "style-src 'self'",
   "script-src 'self'",
   "font-src 'self'",
   "object-src 'none'",
