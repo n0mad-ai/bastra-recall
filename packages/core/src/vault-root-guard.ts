@@ -51,10 +51,20 @@ export class VaultRootMissingError extends Error {
   }
 }
 
+export type VaultRootHistoryCause = "corrupt" | "unwritable" | "unknown";
+
+/** Two sentences: the marker file, the cause (when known) and the repair. */
 export class VaultRootHistoryError extends Error {
   readonly code = "VAULT_ROOT_HISTORY_UNAVAILABLE";
-  constructor(readonly markerPath: string) {
-    super(`vault-root history at ${markerPath} is unreadable or cannot be written; refusing a vault write until it is repaired`);
+  constructor(readonly markerPath: string, readonly cause: VaultRootHistoryCause = "unknown") {
+    const dir = dirname(markerPath);
+    super(
+      cause === "corrupt"
+        ? `Bastra refuses every vault write: the vault-root history ${markerPath} is empty or corrupt. If the vault is mounted, delete that file; it is rewritten on the next save.`
+        : cause === "unwritable"
+        ? `Bastra refuses every vault write: the vault-root history ${markerPath} cannot be written. Fix the permissions of ${dir}; the file is rewritten on the next save.`
+        : `Bastra refuses every vault write: the vault-root history ${markerPath} is empty or corrupt, or ${dir} is not writable. If the vault is mounted, delete that file (it is rewritten on the next save); otherwise fix the permissions of ${dir}.`,
+    );
     this.name = "VaultRootHistoryError";
   }
 }
@@ -99,10 +109,22 @@ function readRoots(): Map<string, RootEntry> | null {
   }
 }
 
+/** Why {@link readRoots} returned null: a file that reads fine but does not
+ * parse is corrupt; a read that fails (not ENOENT) leaves the cause open. */
+function historyReadError(): VaultRootHistoryError {
+  let cause: VaultRootHistoryCause = "corrupt";
+  try {
+    readFileSync(vaultRootsPath(), "utf8");
+  } catch {
+    cause = "unknown";
+  }
+  return new VaultRootHistoryError(vaultRootsPath(), cause);
+}
+
 /** Throws the guard's {@link VaultRootHistoryError} when the root history is
  * unreadable or corrupt — for a caller that must stop before its own writes. */
 export function assertVaultRootHistory(): void {
-  if (!readRoots()) throw new VaultRootHistoryError(vaultRootsPath());
+  if (!readRoots()) throw historyReadError();
 }
 
 /** Roots this process has seen present (and recorded, as far as it could). */
@@ -189,7 +211,7 @@ export async function ensureVaultDir(vaultRoot: string, dir: string, opts: { cre
     throw new Error(`directory ${dir} is outside vault root ${vaultRoot}`);
   }
   const roots = readRoots();
-  if (!roots) throw new VaultRootHistoryError(vaultRootsPath());
+  if (!roots) throw historyReadError();
   if (!roots.has(root)) persisted.delete(root); // marker removed since this process last wrote it
   const present = await stat(root).then(
     (st) => {
@@ -229,5 +251,5 @@ export async function ensureVaultDir(vaultRoot: string, dir: string, opts: { cre
     throw new VaultRootMissingError(vaultRoot, vaultRootFirstSeen(vaultRoot));
   }
   noteVaultRootPresent(root);
-  if (!readRoots()?.has(root)) throw new VaultRootHistoryError(vaultRootsPath());
+  if (!readRoots()?.has(root)) throw new VaultRootHistoryError(vaultRootsPath(), "unwritable");
 }
