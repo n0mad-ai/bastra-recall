@@ -5,6 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  collapseHome,
   formatCost,
   formatTokens,
   formatTokenBreakdown,
@@ -24,4 +25,15 @@ test("a measured zero keeps its own text", () => {
 test("a tiny non-zero cost is not printed as zero", () => {
   assert.equal(formatCost(0.004), "<$0.01");
   assert.equal(formatCost(0.01), "$0.01");
+});
+
+test("collapseHome shortens the home directory and paths below it only", () => {
+  assert.equal(collapseHome("/Users/n0mad", "/Users/n0mad"), "~");
+  assert.equal(collapseHome("/Users/n0mad/proj", "/Users/n0mad"), "~/proj");
+  assert.equal(collapseHome("C:\\Users\\n0mad\\proj", "C:\\Users\\n0mad"), "~\\proj");
+});
+
+test("collapseHome leaves a sibling that merely shares the home prefix alone", () => {
+  assert.equal(collapseHome("/Users/n0mad-backup", "/Users/n0mad"), "/Users/n0mad-backup");
+  assert.equal(collapseHome("/Users/n0mad-backup/x", "/Users/n0mad"), "/Users/n0mad-backup/x");
 });
