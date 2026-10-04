@@ -466,6 +466,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #799 — eval-stress: a cross slice with no gradable cases fails instead of reading `0 === 0` as PASS.
+- Follow-up to #799 (#1004): the label-shuffle null stays a reported baseline and does not gate, and the anti slice gates under `--hybrid` as before (the floor of 81.967 no longer holds since the dense arm is weighted, #641). Which rules should gate a stress verdict is open in #1003.
+- @zzallirog's #895 — save-commit: a live-owner save claim ages out after 10 minutes instead of never, so a reused pid cannot block an area forever.
+- Follow-up to #895 (#1002): comments in `save-commit.ts` and `area-claim.ts` and the architecture docs (EN + DE) say so instead of promising a live owner is never dispossessed.
+- @zzallirog's #903 — injection-scan: "ignore previous instructions" is flagged when written with fullwidth, look-alike (Cyrillic/Greek) or zero-width characters.
+- Follow-up to #903 (#1006): the per-language de/ru/es/fr signatures are dropped because they flagged ordinary prose and the Russian one could go quadratic (3.3 s on 64,000 spaces); text the fold would not change skips it, so a 1 MB ASCII document scans as fast as before #903.
+- @zzallirog's #923 — web UI: the CSP is tightened to `style-src 'self'`, no inline style attribute is left.
+- Follow-up to #923 (#1005): the right-click menu on the map keeps its layout under that policy, because its base rules now live in `overlays.css` instead of a `<style>` element the policy blocks (one harmless CSP message in the console on first open).
+- @zzallirog's #885, taken over in #1001 — import clients: the project opened in the home directory is labelled `claude-code-home` instead of a label carrying the OS user name, and a project in `~/home` is labelled `claude-code-home-home`. An earlier import under the old label is moved to the new one (folder, ids, `[[links]]`, source stamps; `--dry-run` reports it), so no note is imported twice (#884).
 - @zzallirog's #791 — backfill-related: no cloud embeddings from a bare `OPENAI_API_KEY`, and no Pass B on a partial index.
 - @zzallirog's #771 — pending-suggestions: a standing trend is shown for N session starts and then stays retired until its text changes (replaces the refreshed counter of #513).
 - Follow-up to #771 (#996): a retired trend's tombstone ends after N counted starts without a re-write, takes no slot in the trends cap, and changed text always starts a fresh row with a fresh counter.
