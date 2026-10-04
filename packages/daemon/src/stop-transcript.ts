@@ -90,10 +90,17 @@ export async function emptyTranscriptReason(payload: ClaudeStopPayload): Promise
     const st = await stat(payload.transcript_path);
     if (!st.isFile()) return "transcript_path is not a regular file";
     if (st.size > MAX_TRANSCRIPT_BYTES) return `transcript exceeds ${MAX_TRANSCRIPT_BYTES} bytes`;
-    return null; // readable and in bounds — an empty or fully-unparsable file
   } catch (err) {
     return `transcript_path not readable on this host: ${(err as NodeJS.ErrnoException).code ?? "unknown"}`;
   }
+  // stat needs no read permission, so a file that exists but cannot be opened
+  // (EACCES, EMFILE, …) got past it and read as an empty session.
+  try {
+    await (await open(payload.transcript_path, "r")).close();
+  } catch (err) {
+    return `transcript_path not readable on this host: ${(err as NodeJS.ErrnoException).code ?? "unknown"}`;
+  }
+  return null; // readable and in bounds — an empty or fully-unparsable file
 }
 
 export function parseTranscriptFile(raw: string): TranscriptTurn[] {

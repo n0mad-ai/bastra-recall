@@ -745,3 +745,11 @@ test("#512: `bastra logs --stats` renders the per-part session-start section (#4
   assert.match(out, /pinned\s+100\s+10%\s+50\s+1\/2/);
   assert.match(out, /clear\s+n=\s+1\s+conventions 500, recency 100/);
 });
+
+test("#993: a genuinely empty Stop row (turn_count 0) stays out of the latency sample", () => {
+  const empty = lane("save_eval_call", 40, { status: undefined, suggested_count: 0, turn_count: 0, latency_ms_total: 1 });
+  const real = lane("save_eval_call", 40, { status: undefined, suggested_count: 1, turn_count: 3, latency_ms_total: 150 });
+  const stop = (rows: Array<Record<string, unknown>>) => aggregate(rows).lanes.find((l) => l.mode === "stop")!;
+  assert.equal(stop(empty).latency, null);
+  assert.deepEqual(stop([...real, ...empty]).latency, stop(real).latency);
+});

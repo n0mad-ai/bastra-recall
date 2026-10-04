@@ -211,8 +211,10 @@ function countInto(lane: MutableLane, e: Record<string, unknown>, unclassified =
   if (status === "gated" || status === "skipped" || e.gated === true || skipped) lane.gated++;
   if (e.suppressed === true || status === "suppressed") lane.suppressed++;
   if (hitCountOf(e) > 0) lane.withHits++;
+  // A genuinely empty Stop (`turn_count` 0, nothing to evaluate) is no work
+  // either — its row would pull the p90 down the same way.
   const lat = e.latency_ms_total ?? e.latency_ms;
-  if (typeof lat === "number" && !skipped) lane.latencies.push(lat);
+  if (typeof lat === "number" && !skipped && e.turn_count !== 0) lane.latencies.push(lat);
 }
 
 /** `dimensions.agent` of a row, or `none` where it carries no column. */
