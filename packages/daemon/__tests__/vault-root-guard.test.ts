@@ -89,7 +89,7 @@ test("createVaultAt with a broken root history creates nothing, not even the par
   t.after(() => (before === null ? rm(marker, { force: true }) : writeFile(marker, before)));
   await writeFile(marker, "{broken");
   const out = await createVaultAt(join(parent, "deep", "new", "vault"));
-  assert.match("error" in out ? out.error : "", /history .* unreadable/);
+  assert.match("error" in out ? out.error : "", /vault-roots\.json is empty or corrupt\. If the vault is mounted, delete that file/);
   assert.equal(existsSync(join(parent, "deep")), false);
 });
 
