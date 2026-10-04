@@ -227,9 +227,19 @@ const EXPECTED = {
     "\u001b[0m\u001b[48;2;255;107;71m\u001b[38;2;255;255;255m project-dir \u001b[0m\u001b[48;2;135;206;235m\u001b[38;2;255;107;71m\u001b[48;2;135;206;235m\u001b[38;2;0;0;0m ✱ Opus 4.1 \u001b[0m\u001b[38;2;135;206;235m\u001b[0m\n\u001b[0m\u001b[48;2;218;112;214m\u001b[38;2;255;255;255m ⌗ 0123abcd-4567-89ef-0123-456789abcdef \u001b[0m\u001b[38;2;218;112;214m\u001b[0m\n\u001b[0m\u001b[48;2;139;125;216m\u001b[38;2;255;255;255m ◈ v2.1.78 \u001b[0m\u001b[48;2;220;38;38m\u001b[38;2;139;125;216m\u001b[48;2;220;38;38m\u001b[38;2;255;255;255m ◔ 140.000 (16%) \u001b[0m\u001b[38;2;220;38;38m\u001b[0m\n\u001b[0m\u001b[48;2;212;93;191m\u001b[38;2;255;255;255m ⚙ env: staging \u001b[0m\u001b[48;2;124;58;237m\u001b[38;2;212;93;191m\u001b[48;2;124;58;237m\u001b[38;2;255;255;255m ◇ agent: reviewer \u001b[0m\u001b[38;2;124;58;237m\u001b[0m\n\u001b[0m\u001b[48;2;124;58;237m\u001b[38;2;255;255;255m ✦ On · high \u001b[0m\u001b[38;2;124;58;237m\u001b[0m",
 };
 
+// The context segment formats its token count with the process locale
+// (`totalTokens.toLocaleString()`), and EXPECTED was generated under de_DE.
+// The locale is fixed at process start, so re-format that one number the way
+// this process does: "140.000" on de_DE, "140,000" on the en_US CI runners.
+const TOKENS_DE = "140.000";
+const TOKENS_HERE = (140000).toLocaleString();
+
 for (const [name, c] of Object.entries(CASES)) {
   test(`powerline output is unchanged: ${name}`, async () => {
-    assert.equal(await render(c), EXPECTED[name]);
+    assert.equal(
+      await render(c),
+      EXPECTED[name].replaceAll(TOKENS_DE, TOKENS_HERE),
+    );
   });
 }
 
