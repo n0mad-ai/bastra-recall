@@ -70,6 +70,44 @@ test("ein exakter Identifier-Treffer ist ein harter Anker", () => {
   assert.equal(d.decision, "required");
 });
 
+test("#868: ein links angeklebter Term ist kein Identifier-Treffer", () => {
+  // `1.0` steckt in `11.0.3`, `e-com` in `pre-commit` — jeweils klebt links
+  // ein Buchstabe, eine Ziffer oder `_` an, der zum längeren Identifier gehört.
+  for (const [title, term] of [
+    ["Upgrade-Notizen für 11.0.3", "1.0"],
+    ["pre-commit-hooks einrichten", "e-com"],
+    ["Konfig für my_app.config.ts", "app.config.ts"],
+    ["Release 21.0 notiert", "1.0"],
+    ["Version vv1.0 ist ein Tippfehler", "1.0"],
+  ]) {
+    const d = decideHit({
+      hit: hit({ title }),
+      memory: memory({ title, recall_when: ["wenn wir upgraden"] }),
+      queryTerms: [term],
+    });
+    assert.equal(d.evidence.exact_identifier, false, `${term} in ${title}`);
+    assert.notEqual(d.decision, "required", `${term} in ${title}`);
+  }
+});
+
+test("#868: rechts offen, links sind `-`/`.` und ein einzelnes v vor einer Version erlaubt", () => {
+  for (const [title, term] of [
+    ["Version v1.0 freigegeben", "1.0"],
+    ["Release V0.8.1 mit Ordner-Import", "0.8.1"],
+    ["Omneum 1.0.1 nachgemessen", "1.0"],
+    ["Arbeitsstand 09.09.2026", "09.09"],
+    ["import-vault.ts splitten", "import-vault"],
+    ["Konfig in src/app.config.ts", "app.config.ts"],
+    ["Listen-/Board-/Card-Views", "card-view"],
+    ["Messung 244-falsifikations-run", "falsifikations-run"],
+    ["Marker .in_use bleibt liegen", "in_use"],
+  ]) {
+    const d = decideHit({ hit: hit({ title }), memory: memory({ title }), queryTerms: [term] });
+    assert.equal(d.evidence.exact_identifier, true, `${term} in ${title}`);
+    assert.equal(d.decision, "required", `${term} in ${title}`);
+  }
+});
+
 test("ein vollständig abgedeckter handgeschriebener Trigger ist ein harter Anker", () => {
   const d = decideHit({
     hit: hit(),
