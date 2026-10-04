@@ -466,6 +466,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- @zzallirog's #893, taken over in #1009 — a vault root the daemon has seen is never recreated when its drive is not mounted. Every writer under the vault (saves, documents, locks, audit log, usage sidecar, curator, embeddings, journals) goes through one guard, and `~/.bastra/vault-roots.json` remembers seen vaults across restarts, so `vault_missing` stays on `/health` and recall instead of an empty vault appearing on the parent disk (#892).
+- The exact-identifier anchor no longer fires on a fragment glued to the left of a longer identifier (#868, reported in @zzallirog's #869, fixed in #1010): `1.0` stops anchoring on `11.0.3`, `e-com` on `pre-commit`. `v1.0`, `1.0.1`, `09.09.2026` and `import-vault.ts` still anchor; measured on the gold set, no anchor is lost.
 - @zzallirog's #799 — eval-stress: a cross slice with no gradable cases fails instead of reading `0 === 0` as PASS.
 - Follow-up to #799 (#1004): the label-shuffle null stays a reported baseline and does not gate, and the anti slice gates under `--hybrid` as before (the floor of 81.967 no longer holds since the dense arm is weighted, #641). Which rules should gate a stress verdict is open in #1003.
 - @zzallirog's #895 — save-commit: a live-owner save claim ages out after 10 minutes instead of never, so a reused pid cannot block an area forever.
