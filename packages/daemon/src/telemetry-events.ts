@@ -349,7 +349,7 @@ export interface RecallEpisodeEvent extends BaseEvent {
  * unobservable signal as evidence of worthlessness.
  *
  * Deliberately its OWN kind rather than a field on `RecallEpisodeEvent`:
- * `telemetry-report.ts:184-188` counts every surfaced episode as `loaded`, so
+ * `summarizeQuality` (`telemetry-report-recall.ts`) counts every surfaced episode as `loaded`, so
  * emitting these as episodes would inflate the USE rate — a measurement that
  * changes the numbers it measures. Nothing reads this kind yet; it is a
  * parallel count for the 10.09. evaluation.

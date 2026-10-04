@@ -568,7 +568,7 @@ export class Telemetry {
       entry.closed = true;
       // #478 Part 2: an injected-but-never-loaded hint is counted in its OWN
       // event kind. It must not become a `recall_episode` — the report counts
-      // every surfaced episode as `loaded` (`telemetry-report.ts:184-188`), so
+      // every surfaced episode as `loaded` (`summarizeQuality` in `telemetry-report-recall.ts`), so
       // emitting one here would inflate the USE rate this is meant to measure.
       // And no `acted_on` usage either: `hint-suppression.ts:93` reads that,
       // and Package 2 delivers a number, not a behaviour change.
