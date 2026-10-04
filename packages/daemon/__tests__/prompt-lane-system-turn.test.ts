@@ -292,15 +292,30 @@ test("#769 — ownerPromptText: what follows a reminder block decides", () => {
 
 test("The prompt lane, the Stop lane and the bridge harvest agree on every system turn", () => {
   for (const [shape, text] of SYSTEM_TURNS) assert.equal(ownerPromptText(text), null, `prompt lane: ${shape}`);
-  // #769: the shapes only the prompt lane reads as the owner's. The Stop lane
-  // and the harvest see the start of the turn and nothing else.
+  // #769: the shapes only the prompt lane reads as the owner's. The bridge
+  // harvest sees the start of the turn and nothing else; the Stop lane reads a
+  // typed text after a system-reminder block like the prompt lane (#994).
   const transcriptOnly: Array<[string, string]> = [...COMMAND_ECHOES, ["system-reminder before typed text", REMINDER_THEN_TYPED]];
   for (const [shape, text] of transcriptOnly) assert.notEqual(ownerPromptText(text), null, `prompt lane: ${shape}`);
   for (const [shape, text] of [...SYSTEM_TURNS, ...transcriptOnly]) {
     assert.equal(isSystemInjectedTurn(text), true, `shared list: ${shape}`);
     const [turn] = normalizeTurns([{ type: "user", message: { role: "user", content: text } }]);
-    assert.equal(turn?.role, "system-injected", `Stop lane: ${shape}`);
+    assert.equal(turn?.role, text === REMINDER_THEN_TYPED ? "user" : "system-injected", `Stop lane: ${shape}`);
     const origin = queryOrigin({ kind: "hook_recall", ts: "2026-09-14T00:00:00.000Z", query: text, dimensions: { hook_source: "prompt" } });
     assert.equal(origin, "system", `bridge harvest: ${shape}`);
   }
+});
+
+test("#994 — the Stop lane keeps text typed after a leading system-reminder block, without the block", () => {
+  const typed = "was soll diese scheisse";
+  const rows = [
+    { type: "user", message: { role: "user", content: `<system-reminder>\nThe worktree was deleted.\n</system-reminder>\n\n${typed}` } },
+    { type: "user", message: { role: "user", content: [{ type: "text", text: `<system-reminder>a</system-reminder>\n<system-reminder>b</system-reminder>\n${typed}` }] } },
+    { type: "user", message: { role: "user", content: "<system-reminder>\nonly a reminder\n</system-reminder>" } },
+    { type: "user", message: { role: "user", content: `<system-reminder>never closed ${typed}` } },
+  ];
+  const turns = normalizeTurns(rows);
+  assert.deepEqual(turns.map((t) => t.role), ["user", "user", "system-injected", "system-injected"]);
+  assert.equal(turns[0]?.content, typed);
+  assert.equal(turns[1]?.content, typed);
 });
