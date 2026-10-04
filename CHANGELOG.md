@@ -466,6 +466,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- On macOS and Windows, a missing vault root now matches recorded path spellings without case, so a case-only alias cannot bypass the vanished-root guard.
 - README and changelog now state the first-seen vault-mount limit and that the Desktop compiled hook stub still requires opt-in.
 
 - Interrupted `bastra import clients` home-label migrations now resume after a file was rewritten or renamed, preserving long-ID links and refusing ambiguous ownership.

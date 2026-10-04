@@ -95,6 +95,23 @@ function readRoots(): Map<string, RootEntry> | null {
 const seen = new Set<string>();
 const persisted = new Set<string>();
 
+/** A missing path may have been recorded with another spelling on a
+ * case-insensitive macOS/Windows volume. False STOP on a case-sensitive volume
+ * is safer than recreating a known vault on its unmounted parent filesystem. */
+function sameRootKey(a: string, b: string): boolean {
+  return a === b || ((process.platform === "darwin" || process.platform === "win32") && a.toLowerCase() === b.toLowerCase());
+}
+
+function firstSeenIn(roots: Map<string, RootEntry>, key: string): string | null {
+  for (const [stored, entry] of roots) if (sameRootKey(stored, key)) return entry.first_seen;
+  return null;
+}
+
+function seenThisRun(key: string): boolean {
+  for (const stored of seen) if (sameRootKey(stored, key)) return true;
+  return false;
+}
+
 /**
  * When this vault root was first seen present, from this process or the
  * marker file; null for a root never seen. A path, not an id: the question is
@@ -102,9 +119,8 @@ const persisted = new Set<string>();
  */
 export function vaultRootFirstSeen(vaultRoot: string): string | null {
   const key = resolve(vaultRoot);
-  const entry = readRoots()?.get(key);
-  if (entry && typeof entry.first_seen === "string") return entry.first_seen;
-  return seen.has(key) ? "earlier in this run" : null;
+  const roots = readRoots();
+  return (roots && firstSeenIn(roots, key)) || (seenThisRun(key) ? "earlier in this run" : null);
 }
 
 /**
@@ -172,7 +188,7 @@ export async function ensureVaultDir(vaultRoot: string, dir: string, opts: { cre
     },
   );
   if (!present) {
-    const firstSeen = roots.get(root)?.first_seen ?? (seen.has(root) ? "earlier in this run" : null);
+    const firstSeen = firstSeenIn(roots, root) ?? (seenThisRun(root) ? "earlier in this run" : null);
     if (firstSeen || !opts.createRoot) throw new VaultRootMissingError(vaultRoot, firstSeen);
     await mkdir(root, { recursive: true }); // only this explicit first-create path may make the root
   }
