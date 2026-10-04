@@ -136,7 +136,7 @@ A native Bastra Mac app is in development. The open-source package already inclu
 
 ### License and contact
 
-MIT — see [LICENSE](./LICENSE). The statusline includes [owloops/claude-powerline](https://github.com/owloops/claude-powerline) under its retained [MIT license](./packages/statusline/LICENSE).
+MIT — see [LICENSE](./LICENSE). The statusline includes [owloops/claude-powerline](https://github.com/owloops/claude-powerline) under its retained [MIT license](./packages/statusline/LICENSE). The optional code awareness uses [Graphify](https://github.com/Graphify-Labs/graphify) (Apache-2.0), a separate project that Recall does not bundle; it is installed from PyPI only if you enable the feature.
 
 [Ask a question](https://github.com/n0mad-ai/bastra-recall/discussions) · [Report a bug](https://github.com/n0mad-ai/bastra-recall/issues/new?template=bug_report.yml) · [Contribute](./CONTRIBUTING.md) · [Support the project](./SUPPORTERS.md). Report vulnerabilities privately via [SECURITY.md](./SECURITY.md).
 
@@ -269,7 +269,7 @@ Eine native Bastra-Mac-App ist in Entwicklung. Das Open-Source-Paket enthält be
 
 ### Lizenz und Kontakt
 
-MIT – siehe [LICENSE](./LICENSE). Die Statusline enthält [owloops/claude-powerline](https://github.com/owloops/claude-powerline) unter seiner beibehaltenen [MIT-Lizenz](./packages/statusline/LICENSE).
+MIT – siehe [LICENSE](./LICENSE). Die Statusline enthält [owloops/claude-powerline](https://github.com/owloops/claude-powerline) unter seiner beibehaltenen [MIT-Lizenz](./packages/statusline/LICENSE). Die optionale Code-Awareness nutzt [Graphify](https://github.com/Graphify-Labs/graphify) (Apache-2.0), ein eigenständiges Projekt, das Recall nicht mitliefert; es wird nur von PyPI installiert, wenn du die Funktion einschaltest.
 
 [Frage stellen](https://github.com/n0mad-ai/bastra-recall/discussions) · [Fehler melden](https://github.com/n0mad-ai/bastra-recall/issues/new?template=bug_report.yml) · [Mitmachen](./CONTRIBUTING.md) · [Projekt unterstützen](./SUPPORTERS.md). Sicherheitsprobleme bitte vertraulich über [SECURITY.md](./SECURITY.md) melden.
 
