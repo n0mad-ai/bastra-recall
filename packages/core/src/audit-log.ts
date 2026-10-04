@@ -1,4 +1,4 @@
-import { mkdir, appendFile, readdir, stat, open, link, unlink } from "node:fs/promises";
+import { appendFile, readdir, stat, open, link, unlink } from "node:fs/promises";
 import { join, dirname, resolve, sep } from "node:path";
 import { assertInsideDir, assertOwnSubdir } from "./file-identity.js";
 import { readTarget } from "./save-commit.js";
@@ -6,6 +6,7 @@ import { MemoryWriteConflictError } from "./save-schema.js";
 import { assertRealClaim, type IdClaim } from "./id-transaction.js";
 import matter from "gray-matter";
 import { occupantOfRaw } from "./memory-locator.js";
+import { ensureVaultDir } from "./vault-root-guard.js";
 
 /**
  * Audit-Log: jede Memory-Mutation wird als JSON-Zeile in
@@ -87,7 +88,7 @@ export class AuditLog {
     };
 
     const filePath = this.filePath();
-    await mkdir(dirname(filePath), { recursive: true });
+    await ensureVaultDir(this.vaultRoot, dirname(filePath));
     await appendFile(filePath, JSON.stringify(entry) + "\n", "utf8");
     this.cache = null;
     this.cacheKey = null;
@@ -393,7 +394,7 @@ export async function moveToTrashUnderClaim(
   }
   const frontmatter = JSON.parse(JSON.stringify(matter(raw).data)) as Record<string, unknown>;
   const base = trashPathFor(vaultRoot, id);
-  await mkdir(dirname(base), { recursive: true });
+  await ensureVaultDir(vaultRoot, dirname(base));
   for (const dest of trashCandidates(base)) {
     try {
       await link(filePath, dest);
@@ -440,7 +441,7 @@ export async function restoreFromTrashUnderClaim(
   // atomar mit EEXIST fehl, wenn am Ziel schon etwas liegt; erst danach wird
   // die Trash-Fassung entfernt. Trash und Vault liegen auf demselben
   // Dateisystem, ein Hardlink ist dort immer möglich.
-  await mkdir(dirname(destFile), { recursive: true });
+  await ensureVaultDir(vaultRoot, dirname(destFile));
   try {
     await link(trashFile, destFile);
   } catch (err) {

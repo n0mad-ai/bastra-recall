@@ -23,6 +23,7 @@ import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import type { Memory } from "./schema.js";
 import { stripAutoRelatedSection } from "./save-text.js";
+import { ensureVaultDir } from "./vault-root-guard.js";
 
 /** Obergrenze für den Body-Anteil am Embed-Text (Token-Budget). */
 const EMBED_BODY_MAX = 4000;
@@ -83,6 +84,7 @@ export class EmbedCache {
   private dim: number;
 
   constructor(
+    private readonly vaultRoot: string,
     private readonly cachePath: string,
     providerId: string,
     dim: number,
@@ -133,7 +135,7 @@ export class EmbedCache {
       entries,
     };
     try {
-      await fs.mkdir(path.dirname(this.cachePath), { recursive: true });
+      await ensureVaultDir(this.vaultRoot, path.dirname(this.cachePath));
       // tmp + rename — kein Torn-Write bei Prozess-Kill mitten im Save.
       // #240/B3: unique per WRITE, not per process. A fixed `.tmp-<pid>` name
       // means two overlapping saves from the same instance interleave their

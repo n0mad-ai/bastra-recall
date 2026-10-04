@@ -66,7 +66,7 @@ export async function auditedSave(args: {
   // selbst zurückgibt: Es ist per Konstruktion die Datei, die gepatcht wurde,
   // es kostet keinen zweiten Vaultscan, und es braucht keinen Riegel mehr,
   // weil zwischen Lesen und Schreiben nichts mehr liegt.
-  const result = await saveMemory(vaultRoot, input, { locator, vaultRootKnownPresent: vault.rootKnownPresent });
+  const result = await saveMemory(vaultRoot, input, { locator });
   const diffBefore = result.audit_before;
 
   // Das Re-Filing selbst erledigt `saveMemory` unter der ID-Transaktion —

@@ -7,10 +7,11 @@
  * (the id-level claim) and `save-target.ts` (where the file goes). They were
  * split out when this file passed 800 lines; nothing changed but the location.
  */
-import { writeFile, mkdir, unlink, rename, link, stat } from "node:fs/promises";
+import { writeFile, unlink, rename, link } from "node:fs/promises";
 import { dirname } from "node:path";
 import matter from "gray-matter";
 import { SUMMARY_MAX } from "./summary.js";
+import { ensureVaultDir } from "./vault-root-guard.js";
 import type {
   SaveMemoryInput,
   SaveMemoryResult,
@@ -50,25 +51,13 @@ export async function saveMemory(
   // `saveMemory` inherits it, including `auditedSave` / bridge.ts.
   assertBodyTail(input.body, input.body_ends_with);
 
-  // A root this daemon has confirmed present before, but that is
-  // missing right now, is a mount that vanished under it — `mkdir(recursive)`
-  // would otherwise recreate the whole tree, root included, on the parent
-  // filesystem and silence `vault_missing` on every /health and recall from
-  // then on. A root never confirmed present is the legitimate
-  // "created on first save" case and is still created on demand. Checked
-  // before the area and id claims: their lock files live under the root and
-  // would recreate it first.
-  if (commit.vaultRootKnownPresent === true) {
-    const rootExists = await stat(vaultRoot)
-      .then((st) => st.isDirectory())
-      .catch(() => false);
-    if (!rootExists) {
-      throw new Error(
-        `the vault at ${vaultRoot} is missing — it was present before but is not now ` +
-          `(unmounted drive, dropped network share). Refusing to recreate it; remount it and retry.`,
-      );
-    }
-  }
+  // #892: the vault root first, through the one guard. A root seen present
+  // before (this run or an earlier one, vault-root-guard.ts) but missing now
+  // is a mount that is gone, and the save is refused instead of recreating it
+  // on the parent filesystem. A root never seen is the "created on first
+  // save" case: a save is a writer that may make a vault. Before the area and
+  // id claims, whose lock files live under the root.
+  await ensureVaultDir(vaultRoot, vaultRoot, { createRoot: true });
 
   const locator = commit.locator ?? { locate: (wanted: string) => scanVaultForId(vaultRoot, wanted) };
   // Der injizierte Locator macht hier nur noch das ROUTING: In welchem Regal
@@ -421,7 +410,7 @@ async function commitMemory(
     }
   }
 
-  await mkdir(dirname(filePath), { recursive: true });
+  await ensureVaultDir(vaultRoot, dirname(filePath));
   // Atomar via temp+rename — dieselbe Begründung wie in related-enrich.ts:241
   // ("ein direkter writeFile lässt das File kurzzeitig leer, live beobachtet").
   // Der Fix war dort gegen ein beobachtetes Datenverlust-Fenster eingebaut,

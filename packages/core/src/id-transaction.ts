@@ -25,7 +25,6 @@
  * Die Invariante, die daraus folgt und die dieses Modul trägt: **eine ID, eine
  * Datei, ein transaktionaler Writer.**
  */
-import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { assertInsideDir, assertInsideVault, assertOwnSubdir } from "./file-identity.js";
 import { scanVaultForIdAsync, type IdScanStats, type Located } from "./memory-locator.js";
@@ -34,6 +33,7 @@ import {
   commitLockPathFor,
   releaseCommitClaim,
 } from "./save-commit.js";
+import { ensureVaultDir } from "./vault-root-guard.js";
 
 /**
  * Wer beantwortet unter dem Lock die Frage „wo lebt diese id?".
@@ -215,7 +215,7 @@ export async function withIdClaim<T>(
   const locksDir = dirname(lockPath);
   assertOwnSubdir(bastraDir, locksDir, "lock");
   assertInsideDir(locksDir, lockPath, "lock", "the locks folder");
-  await mkdir(dirname(lockPath), { recursive: true });
+  await ensureVaultDir(opts.vaultRoot, dirname(lockPath));
   const token = await acquireCommitClaim(lockPath, opts.id, opts.filePath);
   // Kein injizierbares `authority` mehr. Codex-Gegenreview Runde 10
   // (Security): Solange `IdClaimOptions` eine austauschbare Auskunft führte,

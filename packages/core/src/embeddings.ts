@@ -30,6 +30,7 @@ export {
   OllamaEmbeddingProvider,
   PROVIDER_COLD_LOAD_MS,
 } from "./embedding-providers.js";
+import { ensureVaultDir } from "./vault-root-guard.js";
 export type { EmbeddingProvider, EmbedWithMeta } from "./embedding-providers.js";
 
 // ─── Tunables (env-overridable für load-tests / large-vault-bursts) ──
@@ -143,6 +144,7 @@ export class EmbeddingIndex {
     const resolvedCachePath =
       cachePath ?? path.join(path.dirname(persistPath), "embed-cache.json");
     this.cache = new EmbedCache(
+      vault.root,
       resolvedCachePath,
       provider.id,
       provider.dim,
@@ -377,7 +379,7 @@ export class EmbeddingIndex {
       vectors,
     };
     try {
-      await fs.mkdir(path.dirname(this.persistPath), { recursive: true });
+      await ensureVaultDir(this.vault.root, path.dirname(this.persistPath));
       // tmp + rename: ein Kill mitten im Write darf keine angerissene (aber
       // JSON-valide) Datei hinterlassen, die beim Load Vectors verliert.
       // #240/B3: unique per write — see embed-cache.ts. Same defect here.
