@@ -414,13 +414,14 @@ function redefinesRm(cmd: string, depth = 0): boolean {
   if (!commands) return true;
   for (const { words } of commands) {
     const texts = words.map((w) => unquote(w.text));
-    // zsh ties the array `path` to PATH, so `path=(…)` / `path+=(…)` is the same
-    // change. A scalar `path=x` is an ordinary variable in bash.
-    // The array's `(` breaks the word, so it is the character after `path=`.
+    // zsh ties `path` to PATH even for scalar assignments and reads. A bash
+    // variable named `path` can be harmless, but the shell is not known here:
+    // keep STOP rather than claiming the archiving shim certainly ran.
     if (texts.some((t) => /^PATH\+?=/.test(t))) return true;
-    if (words.some((w) => /^path\+?=$/.test(w.text) && cmd[w.end] === "(")) return true;
     const k = commandWordAt(texts);
     const args = texts.slice(k + 1);
+    if (texts.slice(0, k).some((t) => /^path\+?=/.test(t))) return true;
+    if (/^(?:export|declare|typeset|local|readonly)$/.test(texts[k]) && args.some((t) => /^path\+?=/.test(t))) return true;
     // `git` too: bastra's git snapshots are the other shim in the same PATH entry.
     if (texts[k] === "alias" && args.some((t) => /^(?:rm|git)=/.test(t))) return true;
     if (texts[k] === "hash" && hashPathNames(args).some((t) => /^(?:rm|git)$/.test(t))) return true;
@@ -428,9 +429,9 @@ function redefinesRm(cmd: string, depth = 0): boolean {
     if (texts[k] === "hash" && args.some((t) => /^(?:rm|git)=/.test(t))) return true;
     // Assignments to PATH that carry no `PATH=` word: `printf -v PATH …`,
     // `read PATH`, and a nameref onto it (`declare -n p=PATH`).
-    if (texts[k] === "printf" && args.some((t, j) => t === "-v" && args[j + 1] === "PATH")) return true;
-    if (texts[k] === "read" && args.includes("PATH")) return true;
-    if (/^(?:declare|typeset|local)$/.test(texts[k]) && args.some((t) => /^-\w*n/.test(t)) && args.some((t) => /=PATH$/.test(t))) return true;
+    if (texts[k] === "printf" && args.some((t, j) => t === "-v" && /^(?:PATH|path)$/.test(args[j + 1] ?? ""))) return true;
+    if (texts[k] === "read" && args.some((t) => /^(?:PATH|path)$/.test(t))) return true;
+    if (/^(?:declare|typeset|local)$/.test(texts[k]) && args.some((t) => /^-\w*n/.test(t)) && args.some((t) => /=(?:PATH|path)$/.test(t))) return true;
     if (texts[k] === "eval" && (depth >= 2 || redefinesRm(args.join(" "), depth + 1))) return true;
   }
   return false;

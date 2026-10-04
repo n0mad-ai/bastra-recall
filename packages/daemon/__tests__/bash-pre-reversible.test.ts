@@ -638,6 +638,12 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       // `hash -p`; PATH also changes without a `PATH=` word.
       "path=(/opt/x $path); rm -rf dist",
       "path+=(/opt/x); rm -rf dist",
+      'path=/tmp/x; rm -rf "$path"',
+      "path+=/opt/x; rm -rf dist",
+      "while read path; do echo $path; done < list; rm -rf dist",
+      "printf -v path %s x; rm -rf dist",
+      "declare -n p=path; rm -rf dist",
+      "eval 'path=/opt/x'; rm -rf dist",
       "hash rm=/bin/echo; rm -rf dist",
       "printf -v PATH %s /opt/x; rm -rf dist",
       "read -r PATH <<< /opt/x; rm -rf dist",
@@ -680,11 +686,8 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "read -r line <<< x; rm -rf dist",
       "printf -v out %s x; rm -rf dist",
       "hash python=/usr/bin/python3; rm -rf dist",
-      // In bash `path` is an ordinary variable: only zsh's array form is PATH.
-      'path=/tmp/x; rm -rf "$path"',
-      "while read path; do echo $path; done < list; rm -rf dist",
-      "printf -v path %s x; rm -rf dist",
-      "declare -n p=path; rm -rf dist",
+      // An argument containing `path=` is data, not an assignment.
+      "echo path=/tmp/x; rm -rf dist",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "receipt", cmd);
     }
