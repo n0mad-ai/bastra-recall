@@ -7,10 +7,11 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, utimes, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { slugify } from "@bastra-recall/core";
 import { clientMemoryLines, findClientMemoryDirs, migrateClientLabels, type ClientMemoryEnv } from "../src/cli/client-memory.js";
 import { importVault, IMPORT_ROOT } from "../src/import-vault.js";
 
@@ -230,6 +231,73 @@ test("#885 — an import under the old home label moves to claude-code-home, ids
     const r = await importVault(vault, d.dir, { label: d.label });
     assert.deepEqual([r.written.created, r.skipped.length], [0, 0]);
     assert.deepEqual(await migrateClientLabels(vault, await findClientMemoryDirs(vault, env)), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("#1001 review — migration resumes after content was rewritten but its file was not renamed", async () => {
+  const { root, env, vault, mem } = await homeFixture();
+  try {
+    await seed(mem(""));
+    const [d] = await findClientMemoryDirs(vault, env);
+    await importVault(vault, d.dir, { label: d.previousLabel });
+    const oldDir = join(vault, IMPORT_ROOT, d.previousLabel!);
+    const oldFile = join(oldDir, `${d.previousLabel}-feedback-no-silent-removals.md`);
+    await writeFile(oldFile, (await readFile(oldFile, "utf8")).replaceAll(d.previousLabel!, d.label));
+
+    const moved = await migrateClientLabels(vault, [d]);
+    assert.equal(moved[0]?.skipped, undefined);
+    assert.equal(existsSync(join(vault, IMPORT_ROOT, d.label)), true);
+    const again = await importVault(vault, d.dir, { label: d.label });
+    assert.equal(again.written.created, 0, "a resumed migration does not duplicate a note");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("#1001 review — a renamed long id still rewrites links left in other notes", async () => {
+  const { root, env, vault, mem } = await homeFixture();
+  try {
+    await seed(mem(""));
+    await writeFile(join(mem(""), "feedback_release.md"), `${LINKED_NOTE}\nSee [[${LONG}]].\n`);
+    const [d] = await findClientMemoryDirs(vault, env);
+    await importVault(vault, d.dir, { label: d.previousLabel });
+    const oldDir = join(vault, IMPORT_ROOT, d.previousLabel!);
+    const oldId = slugify(`${d.previousLabel}-${LONG}`);
+    const newId = slugify(`${d.label}-${LONG}`);
+    const oldFile = join(oldDir, `${oldId}.md`);
+    await writeFile(oldFile, (await readFile(oldFile, "utf8")).replaceAll(d.previousLabel!, d.label).replaceAll(oldId, newId));
+    await rename(oldFile, join(oldDir, `${newId}.md`));
+
+    const moved = await migrateClientLabels(vault, [d]);
+    assert.equal(moved[0]?.skipped, undefined);
+    const text = await notesText(join(vault, IMPORT_ROOT, d.label));
+    assert.match(text, new RegExp(`\\[\\[${newId}\\]\\]`));
+    assert.ok(!text.includes(`[[${oldId}]]`), "no link to the truncated old id remains");
+    const again = await importVault(vault, d.dir, { label: d.label });
+    assert.equal(again.written.created, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("#1001 review — an unrecognizable partial id is reported, not rewritten", async () => {
+  const { root, env, vault, mem } = await homeFixture();
+  try {
+    await seed(mem(""));
+    const [d] = await findClientMemoryDirs(vault, env);
+    await importVault(vault, d.dir, { label: d.previousLabel });
+    const oldDir = join(vault, IMPORT_ROOT, d.previousLabel!);
+    const oldFile = join(oldDir, `${d.previousLabel}-feedback-no-silent-removals.md`);
+    const unknown = join(oldDir, "unexpected-id.md");
+    await writeFile(oldFile, (await readFile(oldFile, "utf8")).replaceAll(d.previousLabel!, d.label));
+    await rename(oldFile, unknown);
+
+    const result = await migrateClientLabels(vault, [d]);
+    assert.match(result[0]?.skipped ?? "", /cannot be reconstructed/);
+    assert.equal(existsSync(unknown), true);
+    assert.equal(existsSync(join(vault, IMPORT_ROOT, d.label)), false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
