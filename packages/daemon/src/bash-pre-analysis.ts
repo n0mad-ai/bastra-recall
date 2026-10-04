@@ -379,7 +379,7 @@ const LEADING_RESERVED = new Set(["{", "!", "if", "then", "else", "elif", "do", 
 function commandWordAt(texts: string[]): number {
   let k = 0;
   for (;;) {
-    while (k < texts.length && /^\w+\+?=/.test(texts[k])) k++;
+    while (k < texts.length && /^\w+(?:\[[^\]]*\])?\+?=/.test(texts[k])) k++;
     if (LEADING_RESERVED.has(texts[k])) k++;
     else if (texts[k] === "time") k += texts[k + 1] === "-p" ? 2 : 1;
     else if (texts[k] === "builtin") k++;
@@ -424,13 +424,18 @@ function redefinesRm(cmd: string, depth = 0): boolean | "path" {
     if (texts[k] === "hash" && hashPathNames(args).some((t) => /^(?:rm|git)$/.test(t))) return true;
     // zsh `hash rm=/bin/echo`: the assignment form of the same table entry.
     if (texts[k] === "hash" && args.some((t) => /^(?:rm|git)=/.test(t))) return true;
+    // A sourced file runs in THIS shell and may set PATH or define `rm`; its
+    // text is not in the command, so it counts as a change (#1047).
+    if (texts[k] === "source" || texts[k] === ".") return true;
     // The variables this command writes: an assignment before the verb or
     // behind `export`/`declare`/…, `printf -v X`, `read X`, a nameref onto X
     // (`declare -n p=X`), and a `for`/`select` loop variable (`for X in …`,
     // `for X;`, `for X do`, zsh `for X Y in …`, #1047).
     const vars = [...texts.slice(0, k), ...(/^(?:export|declare|typeset|local|readonly)$/.test(texts[k]) ? args : [])].map(
-      (t) => /^(\w+)\+?=/.exec(t)?.[1],
+      (t) => /^(\w+)(?:\[[^\]]*\])?\+?=/.exec(t)?.[1],
     );
+    // `path[1]=…` above writes one element of the zsh array; `unset` drops it (#1047).
+    if (texts[k] === "unset") vars.push(...args.map((t) => /^(\w+)/.exec(t)?.[1]));
     if (texts[k] === "printf") vars.push(...args.filter((_, j) => args[j - 1] === "-v"));
     if (texts[k] === "read") vars.push(...args);
     if (/^(?:declare|typeset|local)$/.test(texts[k]) && args.some((t) => /^-\w*n/.test(t))) {

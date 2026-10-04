@@ -95,7 +95,7 @@ How the size is measured: the shim walks the target with `lstat` and adds up fil
   - `${VAR@P}` anywhere: a prompt expansion runs a `$(…)` held in the variable's value
   - an `xargs` flag that takes an argument (`xargs -E rm sh -c '…' rm -rf` runs `sh`)
   - `zsh -c` (it reads `~/.zshenv` first) and `bash -lc`
-  - anything that may change what `rm` resolves to: `PATH=`, zsh `path=`/`path+=` (scalar or array), `printf -v PATH`/`path`, `read PATH`/`path`, a `for`/`select` loop over `path` or `PATH`, `alias rm=`, `hash -p … rm`, `hash rm=…`, `rm()`, also inside `eval` (see [#689](#the-rm-override-spellings-689))
+  - anything that may change what `rm` resolves to: `PATH=`, zsh `path=`/`path+=` (scalar or array), `path[n]=…`, `unset PATH`/`path`, `source`/`.` (the sourced file may change PATH), `printf -v PATH`/`path`, `read PATH`/`path`, a `for`/`select` loop over `path` or `PATH`, `alias rm=`, `hash -p … rm`, `hash rm=…`, `rm()`, also inside `eval` (see [#689](#the-rm-override-spellings-689))
   - `sudo rm`, `/bin/rm`, `command -p rm`, `env rm`, `ssh host rm`, `docker exec … rm`, `git rm`
   - any call without Claude Code's client marker
 - **Not covered at all:**
@@ -315,7 +315,7 @@ So wird die Größe gemessen: Der Shim läuft das Ziel mit `lstat` ab und addier
   - `${VAR@P}` irgendwo: eine Prompt-Expansion führt ein `$(…)` im Wert der Variablen aus
   - ein `xargs`-Flag mit Argument (`xargs -E rm sh -c '…' rm -rf` startet `sh`)
   - `zsh -c` (liest vorher `~/.zshenv`) und `bash -lc`
-  - alles, was ändern kann, was `rm` ist: `PATH=`, zsh-`path=`/`path+=` (skalar oder Array), `printf -v PATH`/`path`, `read PATH`/`path`, eine `for`-/`select`-Schleife über `path` oder `PATH`, `alias rm=`, `hash -p … rm`, `hash rm=…`, `rm()`, auch in `eval` (siehe [#689](#die-schreibweisen-einer-rm-umdefinition-689))
+  - alles, was ändern kann, was `rm` ist: `PATH=`, zsh-`path=`/`path+=` (skalar oder Array), `path[n]=…`, `unset PATH`/`path`, `source`/`.` (die geladene Datei kann PATH ändern), `printf -v PATH`/`path`, `read PATH`/`path`, eine `for`-/`select`-Schleife über `path` oder `PATH`, `alias rm=`, `hash -p … rm`, `hash rm=…`, `rm()`, auch in `eval` (siehe [#689](#die-schreibweisen-einer-rm-umdefinition-689))
   - `sudo rm`, `/bin/rm`, `command -p rm`, `env rm`, `ssh host rm`, `docker exec … rm`, `git rm`
   - jeder Aufruf ohne Claude-Code-Kennung
 - **Gar nicht abgedeckt:**

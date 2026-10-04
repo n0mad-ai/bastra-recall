@@ -494,7 +494,7 @@ Anything else keeps the STOP: a command that mixes `rm` with other work (the
 that takes an argument (`xargs -E rm sh …` runs `sh`), `zsh -c` (it reads
 `~/.zshenv` first), one that changes what `rm` resolves to (`PATH=`,
 `alias`, `hash -p`, `hash rm=…`, zsh `path=`/`path+=` (scalar or array),
-`printf -v PATH`/`path`, `read PATH`/`path`, `for`/`select path in …`, an `rm()` function, also inside `eval` or behind `{`,
+`path[n]=…`, `unset PATH`/`path`, `source`/`.`, `printf -v PATH`/`path`, `read PATH`/`path`, `for`/`select path in …`, an `rm()` function, also inside `eval` or behind `{`,
 `if … then`, `!`, `time`), a backgrounded
 `rm … &` (the receipt would come before the shim wrote), `sudo rm`,
 `/bin/rm`, remote and container `rm`. Not covered at all: `find -delete`,
@@ -1493,7 +1493,7 @@ Alles andere behält das STOP: ein Befehl, der `rm` mit anderer Arbeit mischt
 (das `allow` würde alles decken), eine Umleitung in eine Datei, ein
 `xargs`-Flag mit Argument, `zsh -c` (liest vorher `~/.zshenv`), ein Befehl,
 der ändert, was `rm` ist (`PATH=`, `alias`, `hash -p`, `hash rm=…`,
-zsh-`path=`/`path+=` (skalar oder Array), `printf -v PATH`/`path`, `read PATH`/`path`, `for`/`select path in …`, eine `rm()`-Funktion,
+zsh-`path=`/`path+=` (skalar oder Array), `path[n]=…`, `unset PATH`/`path`, `source`/`.`, `printf -v PATH`/`path`, `read PATH`/`path`, `for`/`select path in …`, eine `rm()`-Funktion,
 auch in `eval` oder hinter `{`, `if … then`, `!`, `time`), ein `rm … &` im Hintergrund, `sudo rm`, `/bin/rm`, `rm` auf
 entfernten Rechnern oder in Containern. Gar nicht abgedeckt: `find -delete`,
 `git clean` ohne die Schnappschüsse, `rmdir`, Löschen aus Code und `rm` ohne
