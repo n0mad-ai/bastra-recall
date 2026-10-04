@@ -568,7 +568,7 @@ async function main(): Promise<void> {
   L.push(
     `  dense-arm health — ${main.health.vector_timeouts + guard.health.vector_timeouts} timeout(s), ` +
       `${main.health.vector_errors + guard.health.vector_errors} error(s) over ${totalCases} recalls. ` +
-      "A run with a conspicuous timeout rate is DISCARDED, not interpreted.",
+      "A dense-arm timeout or error stops the run (gatedHybridRecaller), so a finished run reports 0 here; wait_ms is for the reader to judge.",
   );
   if (Object.keys(invariance).length) {
     L.push("");
