@@ -35,7 +35,7 @@ Bastra Recall picks up there:
 
 Keep your CLAUDE.md. Recall adds the knowledge that doesn't belong in every session.
 
-**Version 1.0 is available.** Find published downloads in the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), changes in the [changelog](./CHANGELOG.md), and tested integrations in the [support matrix](#supported-surfaces).
+**Version 1.0.1 is available.** Find published downloads in the [latest release](https://github.com/n0mad-ai/bastra-recall/releases/latest), changes in the [changelog](./CHANGELOG.md), and tested integrations in the [support matrix](#supported-surfaces).
 
 <p align="center">
   <img src="./assets/recall-demo.gif" alt="A terminal session: two questions, and Bastra Recall surfaces the matching decisions on its own. The status line at the bottom counts the calls, hits and milliseconds." width="100%" />
@@ -90,7 +90,7 @@ Other MCP clients can connect through the forwarder, but are untested. Scripts a
 
 | Platform | Status | Availability |
 |---|---|---|
-| **macOS** (Apple Silicon and Intel) | Supported | Homebrew and npm installation, `bastra autostart`, Claude Desktop `.mcpb` extension (release builds carry the verified compiled hook client manifest, like npm), `open_document` and compiled hook client |
+| **macOS** (Apple Silicon and Intel) | Supported | Homebrew and npm installation, `bastra autostart`, Claude Desktop `.mcpb` extension (release builds carry the verified compiled hook client manifest, like npm; the client itself is downloaded only after you opt in), `open_document` and compiled hook client |
 | **Linux** (x86_64 and arm64) | Daemon, CLI, MCP and hooks | Install with npm; compiled hook client available. No Homebrew install path, macOS LaunchAgent (`bastra autostart`), `.mcpb` extension installation or `open_document`. The forwarder starts the daemon on demand. |
 | **Windows** | not covered | No compiled hook client; not tested |
 
@@ -168,7 +168,7 @@ Bastra Recall setzt dort an:
 
 Deine CLAUDE.md kann bleiben. Recall ergänzt sie um das Wissen, das nicht in jede Sitzung gehört.
 
-**Version 1.0 ist verfügbar.** Veröffentlichte Downloads findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), Änderungen im [Changelog](./CHANGELOG.md) und getestete Integrationen in der [Support-Matrix](#unterstützte-oberflächen).
+**Version 1.0.1 ist verfügbar.** Veröffentlichte Downloads findest du im [aktuellen Release](https://github.com/n0mad-ai/bastra-recall/releases/latest), Änderungen im [Changelog](./CHANGELOG.md) und getestete Integrationen in der [Support-Matrix](#unterstützte-oberflächen).
 
 <p align="center">
   <img src="./assets/recall-demo.gif" alt="Eine Terminal-Sitzung: zwei Fragen, und Bastra Recall legt die passenden Entscheidungen von selbst vor. Die Statusleiste unten zählt Aufrufe, Treffer und Millisekunden." width="100%" />
@@ -223,7 +223,7 @@ Weitere MCP-Clients können den Forwarder verwenden, sind aber ungetestet. Skrip
 
 | Plattform | Status | Verfügbarkeit |
 |---|---|---|
-| **macOS** (Apple Silicon und Intel) | Unterstützt | Homebrew- und npm-Installation, `bastra autostart`, Claude-Desktop-Extension `.mcpb` (Release-Builds enthalten wie npm das Manifest des verifizierten kompilierten Hook-Clients), `open_document` und kompilierter Hook-Client |
+| **macOS** (Apple Silicon und Intel) | Unterstützt | Homebrew- und npm-Installation, `bastra autostart`, Claude-Desktop-Extension `.mcpb` (Release-Builds enthalten wie npm das Manifest des verifizierten kompilierten Hook-Clients; den Client selbst lädt es erst, wenn du zustimmst), `open_document` und kompilierter Hook-Client |
 | **Linux** (x86_64 und arm64) | Daemon, CLI, MCP und Hooks | Installation mit npm; kompilierter Hook-Client verfügbar. Kein Homebrew-Installationsweg, macOS-LaunchAgent (`bastra autostart`), `.mcpb`-Extension-Installation oder `open_document`. Der Forwarder startet den Daemon bei Bedarf. |
 | **Windows** | Nicht abgedeckt | Kein kompilierter Hook-Client; nicht getestet |
 

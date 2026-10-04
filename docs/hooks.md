@@ -139,6 +139,16 @@ Default shape written by `bastra install claude-code`:
         "matcher": "Bash",
         "hooks": [{ "type": "command", "command": "bastra-recall-bash-fail-hook", "timeout": 2 }]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [{ "type": "command", "command": "bastra-recall-stop-hook", "timeout": 3 }]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [{ "type": "command", "command": "bastra-recall-stop-hook", "timeout": 2 }]
+      }
     ]
   }
 }
@@ -158,10 +168,11 @@ that only passes `bastra-hook` as an argument stays registered too (#945).
 Re-install also keeps a shell wrapper around a Bastra hook runner and foreign
 handlers placed beside it in the same entry; quoted wrapper labels stay intact.
 
-The Stop hook is optional because it can emit multi-line save-eval suggestions
-at turn end. Enable it explicitly with `bastra install claude-code
---with-stop-hook`. If you remove only `bastra-recall-stop-hook`, Doctor reports
-it as intentionally disabled instead of broken.
+The Stop hook is registered by default, together with its `SessionEnd`
+companion (#675). Leave both out with `bastra install claude-code
+--no-stop-hook` (`--with-stop-hook` is still accepted). If you remove only
+`bastra-recall-stop-hook`, Doctor reports it as intentionally disabled instead
+of broken.
 
 ### Per-hook behavior
 
@@ -1099,6 +1110,16 @@ Standardform, die `bastra install claude-code` schreibt:
         "matcher": "Bash",
         "hooks": [{ "type": "command", "command": "bastra-recall-bash-fail-hook", "timeout": 2 }]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [{ "type": "command", "command": "bastra-recall-stop-hook", "timeout": 3 }]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [{ "type": "command", "command": "bastra-recall-stop-hook", "timeout": 2 }]
+      }
     ]
   }
 }
@@ -1122,9 +1143,9 @@ Bei einer erneuten Installation bleiben auch ein Shell-Wrapper um den
 Bastra-Hook und fremde Handler im selben Eintrag erhalten; gequotete
 Wrapper-Argumente werden nicht verändert.
 
-Der Stop-Hook ist optional, weil er am Ende eines Turns mehrzeilige
-Speichervorschläge ausgeben kann. Aktiviere ihn ausdrücklich mit
-`bastra install claude-code --with-stop-hook`. Wenn du nur
+Der Stop-Hook wird standardmäßig registriert, zusammen mit seinem
+`SessionEnd`-Begleiter (#675). Beide lässt `bastra install claude-code
+--no-stop-hook` weg (`--with-stop-hook` wird weiter angenommen). Wenn du nur
 `bastra-recall-stop-hook` entfernst, meldet Doctor ihn als absichtlich
 deaktiviert statt als defekt.
 

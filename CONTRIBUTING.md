@@ -39,7 +39,8 @@ branch in your fork.
 
 ### Requirements
 
-- Node ≥ 22 (`node --version`) — the workspace `engines` field
+- Node ≥ 22.18 (`node --version`) — the build needs it (tsdown 0.23); the
+  workspace `engines` field (runtime) stays at ≥ 22
 - macOS for the full experience (Linux works for daemon + CLI; some
   adapters are macOS-only)
 - npm (comes with Node)

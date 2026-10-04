@@ -2140,6 +2140,15 @@ the code and is corrected by C-088.*
 > Replaced reading: ~~the identifier haystack comprises title, `recall_when`
 > and the memory body~~.
 
+*Identifier boundary (#868, current state since v1.0.1).* The term must start
+at an identifier boundary in that text: no letter, digit or `_` directly before
+it, with one exception, a single `v` before a term that starts with a digit
+(`1.0` matches `v1.0`). `-`, `.` and `/` before it stay allowed. The right side
+stays open, because a short form of a real identifier is a real anchor: `1.0`
+anchors on `1.0.1`, `09.09` on `09.09.2026`, `import-vault` on
+`import-vault.ts`, but `1.0` no longer on `11.0.3` and `e-com` no longer on
+`pre-commit`. Measured on the gold set, no anchor is lost.
+
 The justification is the separation 10.2 already draws: title, triggers and
 frontmatter are authorized text that someone wrote as a retrieval signal. Prose
 in the body is content. A match there substantiates that the memory mentions

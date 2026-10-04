@@ -20,7 +20,7 @@ The installer sets up Homebrew if needed and runs guided setup. The **Uninstall 
 
 ### Build from source
 
-Requires Node 22+ and Git. Building this branch may include changes not yet published in a release.
+Requires Node 22.18+ and Git (the build tool needs 22.18; the installed package runs on Node 22+). Building this branch may include changes not yet published in a release.
 
 ```bash
 git clone https://github.com/n0mad-ai/bastra-recall.git
@@ -75,7 +75,7 @@ Der Installer richtet bei Bedarf Homebrew ein und startet das geführte Setup. D
 
 ### Aus dem Quellcode bauen
 
-Benötigt Node 22+ und Git. Dieser Branch kann Änderungen enthalten, die noch nicht als Release veröffentlicht sind.
+Benötigt Node 22.18+ und Git (das Build-Werkzeug braucht 22.18; das installierte Paket läuft ab Node 22). Dieser Branch kann Änderungen enthalten, die noch nicht als Release veröffentlicht sind.
 
 ```bash
 git clone https://github.com/n0mad-ai/bastra-recall.git
