@@ -9,6 +9,7 @@
  */
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, symlink, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -225,8 +226,35 @@ test("detectInstallMode: unknown path", () => {
 // gegen ECHTE Keg-Verzeichnisse in einem Temp-Baum plus einen brew-Stub auf
 // PATH; launchd wird nie angefasst — `launchctl` ist ebenfalls ein Stub, und
 // der plist liegt im Temp-Verzeichnis, nie unter ~/Library.
+//
+// #940: CI läuft nur auf Linux, und dort sind diese Tests bisher still
+// übersprungen worden. Jetzt laufen sie überall: die Plattform wird als
+// "darwin" hineingereicht, und wo es kein `plutil` gibt, liest ein Stub den
+// plist, den `renderPlist` geschrieben hat. Auf einem Mac bleibt es das echte
+// `plutil`.
 
-const onMac = process.platform === "darwin";
+/** Das echte `plutil`, wo es eins gibt; sonst ein Stub, der genau die zwei
+ *  Felder als JSON ausgibt, die `readState` liest. */
+async function plutilFor(dir: string): Promise<string> {
+  if (existsSync("/usr/bin/plutil")) return "/usr/bin/plutil";
+  const reader = join(dir, "plutil-stub.cjs");
+  await writeFile(
+    reader,
+    String.raw`const xml = require("node:fs").readFileSync(process.argv[process.argv.length - 1], "utf8");
+const un = (s) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+const block = (key, tag) => (xml.match(new RegExp("<key>" + key + "</key>\\s*<" + tag + ">([\\s\\S]*?)</" + tag + ">")) || [])[1] || "";
+const strings = (s) => [...s.matchAll(/<(key|string)>([^<]*)<\/\1>/g)].map((m) => un(m[2]));
+const env = strings(block("EnvironmentVariables", "dict"));
+const out = { ProgramArguments: strings(block("ProgramArguments", "array")), EnvironmentVariables: {} };
+for (let i = 0; i + 1 < env.length; i += 2) out.EnvironmentVariables[env[i]] = env[i + 1];
+process.stdout.write(JSON.stringify(out));
+`,
+    "utf8",
+  );
+  const plutil = join(dir, "plutil");
+  await writeFile(plutil, `#!/bin/sh\nexec "${process.execPath}" "${reader}" "$@"\n`, { encoding: "utf8", mode: 0o755 });
+  return plutil;
+}
 
 interface Keg {
   root: string;
@@ -265,13 +293,14 @@ function programFromPlist(xml: string): string[] {
 }
 
 async function withKegFixture<T>(
-  fn: (ctx: { dir: string; old: Keg; fresh: Keg; plist: string; launchctl: string; log: string }) => Promise<T>,
+  fn: (ctx: { dir: string; old: Keg; fresh: Keg; plist: string; launchctl: string; plutil: string; log: string }) => Promise<T>,
 ): Promise<T> {
   return withTempDir(async (dir) => {
     const cellar = join(dir, "Cellar", "bastra-recall");
     const old = await makeKeg(cellar, "0.9.1");
     const fresh = await makeKeg(cellar, "0.9.2");
     const { bin, log, launchctl } = await makeStubs(dir, fresh.root);
+    const plutil = await plutilFor(dir);
     const plist = join(dir, "LaunchAgents", "ai.n0mad.bastra-recall.plist");
     await mkdir(join(dir, "LaunchAgents"), { recursive: true });
     // Der plist, den `bastra autostart on` vor dem Update geschrieben hat:
@@ -286,7 +315,7 @@ async function withKegFixture<T>(
     process.env.PATH = `${bin}${delimiter}${prevPath ?? ""}`;
     process.env.BASTRA_VAULT_PATH = join(dir, "vault");
     try {
-      return await fn({ dir, old, fresh, plist, launchctl, log });
+      return await fn({ dir, old, fresh, plist, launchctl, plutil, log });
     } finally {
       if (prevPath === undefined) delete process.env.PATH;
       else process.env.PATH = prevPath;
@@ -302,8 +331,8 @@ function oldKegCliPath(old: Keg): string {
   return join(old.root, "libexec", "packages", "daemon", "dist", "cli", "update.js");
 }
 
-test("#435: after a Homebrew update the managed autostart names the NEW keg, not the superseded one", { skip: onMac ? false : "macOS-only: drives a LaunchAgent plist through plutil" }, async () => {
-  await withKegFixture(async ({ old, fresh, plist, launchctl }) => {
+test("#435: after a Homebrew update the managed autostart names the NEW keg, not the superseded one", async () => {
+  await withKegFixture(async ({ old, fresh, plist, launchctl, plutil }) => {
     const mode = detectInstallMode(oldKegCliPath(old));
     assert.equal(mode.mode, "brew");
 
@@ -318,6 +347,8 @@ test("#435: after a Homebrew update the managed autostart names the NEW keg, not
       reload: true,
       plistFile: plist,
       launchctl,
+      plutil,
+      platform: "darwin",
     });
     assert.equal(outcome.ok, true, out);
 
@@ -328,14 +359,16 @@ test("#435: after a Homebrew update the managed autostart names the NEW keg, not
   });
 });
 
-test("#435: an unresolvable install leaves the managed autostart alone instead of reporting success", { skip: onMac ? false : "macOS-only: drives a LaunchAgent plist through plutil" }, async () => {
-  await withKegFixture(async ({ old, plist, launchctl }) => {
+test("#435: an unresolvable install leaves the managed autostart alone instead of reporting success", async () => {
+  await withKegFixture(async ({ old, plist, launchctl, plutil }) => {
     let out = "";
     const outcome = await refreshManagedAutostart((s) => { out += s; }, {
       target: null,
       reload: true,
       plistFile: plist,
       launchctl,
+      plutil,
+      platform: "darwin",
     });
     assert.equal(outcome.ok, false, "an update may not report success it cannot prove");
     const program = programFromPlist(await readFile(plist, "utf8"));
@@ -343,8 +376,8 @@ test("#435: an unresolvable install leaves the managed autostart alone instead o
   });
 });
 
-test("#441: a staged update repoints the managed LaunchAgent without restarting it", { skip: onMac ? false : "macOS-only: drives a LaunchAgent plist through plutil" }, async () => {
-  await withKegFixture(async ({ old, fresh, plist, launchctl, log }) => {
+test("#441: a staged update repoints the managed LaunchAgent without restarting it", async () => {
+  await withKegFixture(async ({ old, fresh, plist, launchctl, plutil, log }) => {
     const target = resolveInstalledRuntime(detectInstallMode(oldKegCliPath(old)));
     assert.ok(target);
 
@@ -355,6 +388,8 @@ test("#441: a staged update repoints the managed LaunchAgent without restarting 
       reload: false,
       plistFile: plist,
       launchctl,
+      plutil,
+      platform: "darwin",
     });
     assert.equal(outcome.ok, true, out);
 
@@ -403,8 +438,8 @@ test("#441: the staged path is wired to the same refresh as the interactive one"
 // Die Auflösung selbst ist reine Pfad- und Prozessarbeit: kein plutil, kein
 // launchd, keine macOS-Annahme. Diese Tests laufen deshalb AUCH auf dem
 // Linux-Runner, gegen einen echten Keg-Baum im Temp-Verzeichnis, dessen „node"
-// ein Shell-Skript ist, das sich wie node meldet. Nur die zwei Tests, die
-// wirklich einen plist lesen, sind macOS-only — und sagen das.
+// ein Shell-Skript ist, das sich wie node meldet. Die zwei Tests, die einen
+// plist lesen, laufen über denselben `plutilFor`-Weg wie oben (#940).
 
 /** Ein node-Keg wie Homebrew ihn anlegt, wahlweise mit stabilem opt-Symlink. */
 async function makeNodeKeg(prefix: string, version: string, opts: { stable: boolean }): Promise<string> {
@@ -461,9 +496,8 @@ test("#435: a stable path that is not a working node is refused rather than writ
 });
 
 test("#435: a plist naming a node binary that is gone fails the update instead of reporting success", {
-  skip: onMac ? false : "macOS-only: writes and reads a LaunchAgent plist through plutil",
 }, async () => {
-  await withKegFixture(async ({ dir, fresh, plist, launchctl }) => {
+  await withKegFixture(async ({ dir, fresh, plist, launchctl, plutil }) => {
     const deadNode = join(dir, "homebrew", "Cellar", "node", "23.0.0", "bin", "node");
     let out = "";
     const outcome = await refreshManagedAutostart((s) => { out += s; }, {
@@ -471,6 +505,8 @@ test("#435: a plist naming a node binary that is gone fails the update instead o
       reload: true,
       plistFile: plist,
       launchctl,
+      plutil,
+      platform: "darwin",
     });
     assert.equal(outcome.ok, false, "an update may not report a service whose runtime does not exist");
     assert.match(out, /is not on disk|does not run as node/);
@@ -478,7 +514,6 @@ test("#435: a plist naming a node binary that is gone fails the update instead o
 });
 
 test("#435: doctor names a dead node binary, not only a dead script", {
-  skip: onMac ? false : "macOS-only: reads a LaunchAgent plist through plutil",
 }, async () => {
   await withTempDir(async (dir) => {
     const p = join(dir, "own.plist");
@@ -489,7 +524,7 @@ test("#435: doctor names a dead node binary, not only a dead script", {
     // Das Skript liegt, das Binary nicht — genau der Fall, der vorher unsichtbar
     // war, weil nur ProgramArguments[1] geprüft wurde.
     await writeFile(p, renderPlist(autostartEnv(join(dir, "vault"), goneNode), [goneNode, script]), "utf8");
-    const state = await readState(p, join(dir, "no-launchctl"));
+    const state = await readState(p, join(dir, "no-launchctl"), await plutilFor(dir));
     assert.equal(state.danglingProgram, true, "a missing node binary is a dangling program too");
     assert.equal(state.missingProgramPath, goneNode, "and doctor has to be able to name it");
   });

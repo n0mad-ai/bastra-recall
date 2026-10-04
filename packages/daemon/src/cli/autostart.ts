@@ -71,6 +71,11 @@ const MANAGED_MARKER = "BASTRA_AUTOSTART_MANAGED";
  *  against a stub instead of the machine's own launchd. */
 const LAUNCHCTL = "/bin/launchctl";
 
+/** The plist reader. Same rule as LAUNCHCTL: absolute, and the parameter that
+ *  carries it exists so those regressions also run on a runner without one
+ *  (#940 — CI is Linux, where there is no plutil). */
+const PLUTIL = "/usr/bin/plutil";
+
 export function plistPath(home: string = homedir()): string {
   return join(home, "Library", "LaunchAgents", `${LAUNCH_AGENT_LABEL}.plist`);
 }
@@ -111,7 +116,7 @@ export interface AutostartState {
  * gelesener fremder plist ist genau der, den dieser Code nicht überschreiben
  * soll. `plutil` liegt auf jedem Mac.
  */
-export async function readState(path = plistPath(), launchctl = LAUNCHCTL): Promise<AutostartState> {
+export async function readState(path = plistPath(), launchctl = LAUNCHCTL, plutil = PLUTIL): Promise<AutostartState> {
   const state: AutostartState = {
     path,
     exists: existsSync(path),
@@ -124,7 +129,7 @@ export async function readState(path = plistPath(), launchctl = LAUNCHCTL): Prom
     env: {},
   };
   if (!state.exists) return state;
-  const conv = spawnSync("/usr/bin/plutil", ["-convert", "json", "-o", "-", path], {
+  const conv = spawnSync(plutil, ["-convert", "json", "-o", "-", path], {
     encoding: "utf8",
     timeout: 15_000,
   });
@@ -569,15 +574,19 @@ export async function refreshManagedAutostart(
     target: InstalledRuntime | null;
     /** #441 — staged: umbiegen ja, kickstarten nein. */
     reload: boolean;
-    /** Nur für die Regressionen: plist-Datei und launchd-CLI. */
+    /** Nur für die Regressionen: plist-Datei, launchd-CLI, plist-Leser und
+     *  Plattform — damit sie auch auf dem Linux-Runner laufen (#940). */
     plistFile?: string;
     launchctl?: string;
+    plutil?: string;
+    platform?: NodeJS.Platform;
   },
 ): Promise<RefreshOutcome> {
-  if (process.platform !== "darwin") return { ok: true, detail: "not macOS" };
+  if ((opts.platform ?? process.platform) !== "darwin") return { ok: true, detail: "not macOS" };
   const launchctl = opts.launchctl ?? LAUNCHCTL;
+  const plutil = opts.plutil ?? PLUTIL;
   const path = opts.plistFile ?? plistPath();
-  const state = await readState(path, launchctl);
+  const state = await readState(path, launchctl, plutil);
   if (!state.exists || !state.managed) return { ok: true, detail: "no managed autostart" };
 
   if (!opts.target) {
@@ -624,7 +633,7 @@ export async function refreshManagedAutostart(
 
   // Der Beweis: erneut lesen. Erst wenn die Datei die installierte Laufzeit
   // nennt und die auch auf der Platte liegt, darf das hier Erfolg melden.
-  const after = await readState(path, launchctl);
+  const after = await readState(path, launchctl, plutil);
   if (after.program[0] !== opts.target.node || after.program[1] !== opts.target.script) {
     write(
       `  ✗ the autostart still names ${after.program.join(" ") || "nothing"} — expected ` +
