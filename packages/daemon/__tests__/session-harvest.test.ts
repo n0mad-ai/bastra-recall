@@ -8,7 +8,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -289,5 +289,23 @@ test("the Stop lane writes a row for a transcript it cannot read, with the reaso
     assert.equal(emptyRows.length, 1);
     assert.equal(emptyRows[0].error, undefined);
     assert.equal(emptyRows[0].skipped_reason, undefined);
+  });
+});
+
+test("#993: the Stop lane records a transcript that exists but cannot be opened as skipped, not as an empty session", async (t) => {
+  if (process.getuid?.() === 0) return t.skip("root reads a mode-000 file");
+  await sandbox(async (dir) => {
+    const locked = join(dir, "locked.jsonl");
+    await writeFile(locked, '{"type":"user","message":{"role":"user","content":"hi"}}\n');
+    await chmod(locked, 0o000);
+    try {
+      await runStopLane({ hook_event_name: "Stop", session_id: "stop-locked", transcript_path: locked, cwd: "/work" }, "http://127.0.0.1:1");
+    } finally {
+      await chmod(locked, 0o600);
+    }
+    const rows = (await logRows(dir, "save_eval_call")).filter((e) => e.session_id === "stop-locked");
+    assert.equal(rows.length, 1);
+    assert.match(String(rows[0].skipped_reason), /not readable on this host: EACCES/);
+    assert.equal(rows[0].error, undefined);
   });
 });
