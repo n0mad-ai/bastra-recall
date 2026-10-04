@@ -8,7 +8,7 @@ import { open, stat } from "node:fs/promises";
 // #305: the scrub leaf, never the core barrel — the barrel costs +40ms of
 // process start for a function that lives in a dependency-free module.
 import { scrubInjectedBlocks } from "@bastra-recall/core/scrub";
-import { isSystemInjectedTurn } from "./system-turn.js";
+import { isSystemInjectedTurn, textAfterReminders } from "./system-turn.js";
 import type { ProvenRead } from "./code-graph/boundary-block.js";
 import {
   claudeToolUseCommands,
@@ -151,8 +151,20 @@ function isToolResultContent(content: unknown): boolean {
  */
 function effectiveRole(role: string, content: unknown, meta = false): string {
   if (role === "user" && isToolResultContent(content)) return "tool";
-  if (role === "user" && (meta || isSystemInjectedTurn(stringifyContent(content)))) return "system-injected";
+  if (role === "user" && (meta || isSystemInjectedTurn(typedText(content)))) return "system-injected";
   return role;
+}
+
+/** A leading `<system-reminder>` block is harness text, but what the owner
+ *  typed after it is theirs (#994; the prompt lane reads it the same way, #769). */
+function typedText(content: unknown): string {
+  const text = stringifyContent(content);
+  return textAfterReminders(text) ?? text;
+}
+
+/** Turn text: for a user turn without harness-only content, the typed part. */
+function turnContent(role: string, content: unknown): string {
+  return scrubTurnContent(role === "user" ? typedText(content) : stringifyContent(content));
 }
 
 export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
@@ -168,10 +180,8 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
     if (obj.type === "response_item" && payload && typeof payload === "object") {
       const p = payload as Record<string, unknown>;
       if (p.type === "message" && typeof p.role === "string") {
-        out.push({
-          role: effectiveRole(p.role, p.content),
-          content: scrubTurnContent(stringifyContent(p.content)),
-        });
+        const role = effectiveRole(p.role, p.content);
+        out.push({ role, content: turnContent(role, p.content) });
         continue;
       }
       // Codex: `{type:"function_call", name:"shell", arguments:"{\"command\":[…]}"}`.
@@ -195,17 +205,16 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
     const directRole = obj.role;
     const directContent = obj.content;
     if (typeof directRole === "string") {
-      out.push({ role: effectiveRole(directRole, directContent), content: scrubTurnContent(stringifyContent(directContent)) });
+      const role = effectiveRole(directRole, directContent);
+      out.push({ role, content: turnContent(role, directContent) });
       continue;
     }
     const msg = obj.message;
     if (msg && typeof msg === "object") {
       const m = msg as Record<string, unknown>;
       const role = typeof m.role === "string" ? m.role : "unknown";
-      const turn: TranscriptTurn = {
-        role: effectiveRole(role, m.content, obj.isMeta === true),
-        content: scrubTurnContent(stringifyContent(m.content)),
-      };
+      const eff = effectiveRole(role, m.content, obj.isMeta === true);
+      const turn: TranscriptTurn = { role: eff, content: turnContent(eff, m.content) };
       const commands = claudeToolUseCommands(m.content);
       if (commands.length > 0) turn.commands = commands;
       const tools = claudeToolUseNames(m.content);

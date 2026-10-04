@@ -82,13 +82,23 @@ export function isSystemInjectedTurn(text: string): boolean {
  *   never closes, is a harness turn.
  */
 export function ownerPromptText(prompt: string): string | null {
-  let head = prompt.trimStart();
+  const head = textAfterReminders(prompt);
+  if (head === null) return null;
+  if (isCommandEcho(head)) return head;
+  return isSystemInjectedTurn(head) ? null : head;
+}
+
+/**
+ * The text after any leading `<system-reminder>` blocks, or null when nothing
+ * follows them (or a block never closes). Text without a leading block comes
+ * back trimmed at the start only.
+ */
+export function textAfterReminders(text: string): string | null {
+  let head = text.trimStart();
   while (head.startsWith(REMINDER_OPEN)) {
     const end = head.indexOf(REMINDER_CLOSE);
     if (end === -1) return null;
     head = head.slice(end + REMINDER_CLOSE.length).trimStart();
   }
-  if (head.length === 0) return null;
-  if (isCommandEcho(head)) return head;
-  return isSystemInjectedTurn(head) ? null : head;
+  return head.length === 0 ? null : head;
 }
