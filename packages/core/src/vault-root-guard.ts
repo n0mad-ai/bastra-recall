@@ -18,6 +18,11 @@
  * only a writer that legitimately makes a vault (a save, `createVaultAt`)
  * passes `createRoot` and may create it; the side writers (locks, audit log,
  * usage sidecar, curator state, embeddings, journals, documents) never do.
+ * Even then the root is made non-recursively, only under a parent that
+ * exists: on a machine that never saw the path, a missing parent is the
+ * likeliest sign of an unmounted drive, so the first save stops instead of
+ * building the path on the boot disk. `createVaultAt` (install, wizard) makes
+ * the parent chain itself first — the user named that path explicitly.
  *
  * Escape hatch for a vault deliberately moved or deleted: create the folder
  * again (by hand), or point bastra at the new path. A present root is all the
@@ -30,9 +35,12 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export class VaultRootMissingError extends Error {
   readonly code = "VAULT_MISSING";
-  constructor(readonly vaultRoot: string, readonly firstSeen: string | null) {
+  constructor(readonly vaultRoot: string, readonly firstSeen: string | null, missingParent?: string) {
     super(
-      firstSeen
+      missingParent
+        ? `the vault at ${vaultRoot} cannot be created: its parent directory ${missingParent} does not exist ` +
+            `(often a drive that is not mounted). Refusing to create the path; mount the drive or create the parent directory first.`
+        : firstSeen
         ? `the vault at ${vaultRoot} is missing — it was present before (first seen ${firstSeen}) but is not now ` +
             `(unmounted drive, dropped network share). Refusing to recreate it; remount it and retry. ` +
             `If the vault was moved or deleted on purpose, create the folder again or point bastra at the new path.`
@@ -163,9 +171,9 @@ export function vaultRootPresent(vaultRoot: string): boolean {
 /**
  * Create `dir` (recursively) under `vaultRoot` — the replacement for every
  * `mkdir(dir, { recursive: true })` under the vault. `dir` may be the root
- * itself. A missing root is created only with `createRoot`, and only when it
- * was never seen present; otherwise this throws a {@link VaultRootMissingError}
- * and creates nothing.
+ * itself. A missing root is created only with `createRoot`, only when it was
+ * never seen present, and only when its parent directory exists; otherwise
+ * this throws a {@link VaultRootMissingError} and creates nothing.
  */
 export async function ensureVaultDir(vaultRoot: string, dir: string, opts: { createRoot?: boolean } = {}): Promise<void> {
   const root = resolve(vaultRoot);
@@ -190,7 +198,14 @@ export async function ensureVaultDir(vaultRoot: string, dir: string, opts: { cre
   if (!present) {
     const firstSeen = firstSeenIn(roots, root) ?? (seenThisRun(root) ? "earlier in this run" : null);
     if (firstSeen || !opts.createRoot) throw new VaultRootMissingError(vaultRoot, firstSeen);
-    await mkdir(root, { recursive: true }); // only this explicit first-create path may make the root
+    // Only this explicit first-create path may make the root, and only one
+    // level: a missing parent is an unmounted drive until proven otherwise.
+    try {
+      await mkdir(root);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") throw new VaultRootMissingError(vaultRoot, null, dirname(root));
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
   }
   // Non-recursive children cannot recreate the root if its mount vanishes
   // between the stat above and a later mkdir.

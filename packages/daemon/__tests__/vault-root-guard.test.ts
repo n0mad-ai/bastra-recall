@@ -68,10 +68,18 @@ test("createVaultAt makes a new vault, but does not recreate one that is not mou
   assert.deepEqual(await createVaultAt(fresh), { path: fresh });
   assert.ok(existsSync(join(fresh, "README.md")));
 
-  const { root } = await vanished(t);
+  // install and the wizard name the path explicitly, so a deep new path gets
+  // its parents — unlike a first save, which the guard stops on a missing parent.
+  const deep = join(parent, "not", "yet", "there", "vault");
+  assert.deepEqual(await createVaultAt(deep), { path: deep });
+  assert.ok(existsSync(join(deep, "README.md")));
+
+  const { root, parent: driveParent } = await vanished(t);
+  await rm(driveParent, { recursive: true, force: true });
   const out = await createVaultAt(root);
   assert.match("error" in out ? out.error : "", /missing/);
   assert.equal(existsSync(root), false);
+  assert.equal(existsSync(driveParent), false, "a known vault's parent chain is not rebuilt either");
 });
 
 function post(port: number, path: string, payload: unknown): Promise<Record<string, unknown>> {

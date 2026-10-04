@@ -11,7 +11,7 @@ import { endpointToPersist, resolveDaemonEndpoint, type DaemonEndpoint } from ".
 import type { CodeStale } from "../code-staleness.js";
 import type { InstallOpts } from "./types.js";
 import { isOffValue } from "../env.js";
-import { ensureVaultDir } from "@bastra-recall/core";
+import { ensureVaultDir, vaultRootFirstSeen } from "@bastra-recall/core";
 
 // Read from package.json at runtime (see ../version.ts) instead of a literal.
 // The literals drifted: this one said 0.8.9 while index.ts still said 0.8.8,
@@ -326,6 +326,9 @@ export async function createVaultAt(path: string): Promise<{ path: string } | { 
   try {
     // The one place outside a save that makes a vault (#892): explicit, and
     // still refused for a path that held a vault before and is missing now.
+    // The guard creates the root only under an existing parent; here the user
+    // named the path, so a new one gets its parent chain made first.
+    if (!vaultRootFirstSeen(path)) await mkdir(dirname(resolve(path)), { recursive: true });
     await ensureVaultDir(path, path, { createRoot: true });
     try {
       await writeFile(join(path, "README.md"), VAULT_README, { flag: "wx" });
