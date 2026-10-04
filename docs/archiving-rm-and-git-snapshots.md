@@ -95,7 +95,7 @@ How the size is measured: the shim walks the target with `lstat` and adds up fil
   - `${VAR@P}` anywhere: a prompt expansion runs a `$(…)` held in the variable's value
   - an `xargs` flag that takes an argument (`xargs -E rm sh -c '…' rm -rf` runs `sh`)
   - `zsh -c` (it reads `~/.zshenv` first) and `bash -lc`
-  - anything that may change what `rm` resolves to: `PATH=`, zsh `path=`/`path+=` (scalar or array), `printf -v PATH`/`path`, `read PATH`/`path`, `alias rm=`, `hash -p … rm`, `hash rm=…`, `rm()`, also inside `eval` (see [#689](#the-rm-override-spellings-689))
+  - anything that may change what `rm` resolves to: `PATH=`, zsh `path=`/`path+=` (scalar or array), `printf -v PATH`/`path`, `read PATH`/`path`, a `for`/`select` loop over `path` or `PATH`, `alias rm=`, `hash -p … rm`, `hash rm=…`, `rm()`, also inside `eval` (see [#689](#the-rm-override-spellings-689))
   - `sudo rm`, `/bin/rm`, `command -p rm`, `env rm`, `ssh host rm`, `docker exec … rm`, `git rm`
   - any call without Claude Code's client marker
 - **Not covered at all:**
@@ -195,7 +195,7 @@ From a transcript harvest of agent sessions on two hosts (losses are the ones st
 The archiving `rm` depends on knowing when a command changes what `rm` resolves to. #689 widened that check:
 
 - `hash -p <path> <names…>` counts when `rm` is among the names; `hash -p /usr/bin/python3 python; rm -rf dist` keeps its normal receipt. (#696 extended this to every listed name, e.g. `hash -p /x rm python`.)
-- In zsh, scalar and array assignments to `path` change PATH. So do `hash rm=<path>`, `printf -v PATH`/`path`, `read PATH`/`path`, and a nameref onto either spelling; they keep STOP before a later destructive `rm`. A scalar `path=/x` may be an ordinary variable in Bash, but the hook cannot prove which shell will run it, so it chooses the conservative STOP.
+- In zsh, scalar and array assignments to `path` change PATH. So do `hash rm=<path>`, `printf -v PATH`/`path`, `read PATH`/`path`, and a nameref onto either spelling; a `for path in …` or `select path in …` loop writes it as well (#1047); they keep STOP before a later destructive `rm`. A scalar `path=/x` may be an ordinary variable in Bash, but the hook cannot prove which shell will run it, so it chooses the conservative STOP. When the variable `path` is the only reason, the STOP says so: rename the variable and the reversible receipt comes back.
 - The verb is read at command position, past assignments, the reserved words that open a compound (`{ ! if then else elif do while until`, `time [-p]`, #694) and the `builtin` / `command` prefixes, so `{ hash -p /x rm; }`, `builtin hash …` and `command hash …` count, while `echo hash -p /bin/rm rm` or `sudo hash …` (a child shell) do not.
 - An `eval` body is shell, so it is read again (up to two levels); a body the scanner cannot read counts as a change. This also closes `eval 'export PATH=/x:$PATH'; rm -rf x`.
 - An `rm()` definition is found without a quote boundary, so `grep -rn "rm()" src; rm -rf dist` keeps its receipt, while a quoted `eval` definition is still a STOP through the eval re-read.
@@ -315,7 +315,7 @@ So wird die Größe gemessen: Der Shim läuft das Ziel mit `lstat` ab und addier
   - `${VAR@P}` irgendwo: eine Prompt-Expansion führt ein `$(…)` im Wert der Variablen aus
   - ein `xargs`-Flag mit Argument (`xargs -E rm sh -c '…' rm -rf` startet `sh`)
   - `zsh -c` (liest vorher `~/.zshenv`) und `bash -lc`
-  - alles, was ändern kann, was `rm` ist: `PATH=`, zsh-`path=`/`path+=` (skalar oder Array), `printf -v PATH`/`path`, `read PATH`/`path`, `alias rm=`, `hash -p … rm`, `hash rm=…`, `rm()`, auch in `eval` (siehe [#689](#die-schreibweisen-einer-rm-umdefinition-689))
+  - alles, was ändern kann, was `rm` ist: `PATH=`, zsh-`path=`/`path+=` (skalar oder Array), `printf -v PATH`/`path`, `read PATH`/`path`, eine `for`-/`select`-Schleife über `path` oder `PATH`, `alias rm=`, `hash -p … rm`, `hash rm=…`, `rm()`, auch in `eval` (siehe [#689](#die-schreibweisen-einer-rm-umdefinition-689))
   - `sudo rm`, `/bin/rm`, `command -p rm`, `env rm`, `ssh host rm`, `docker exec … rm`, `git rm`
   - jeder Aufruf ohne Claude-Code-Kennung
 - **Gar nicht abgedeckt:**
@@ -415,7 +415,7 @@ Aus einer Auswertung von Agenten-Sitzungen auf zwei Rechnern (Verluste = in Pros
 Das archivierende `rm` muss wissen, wann ein Befehl ändert, was `rm` ist. #689 hat diese Prüfung erweitert:
 
 - `hash -p <Pfad> <Namen…>` zählt, wenn `rm` unter den Namen ist; `hash -p /usr/bin/python3 python; rm -rf dist` behält seine normale Quittung. (#696 hat das auf jeden genannten Namen ausgedehnt, z. B. `hash -p /x rm python`.)
-- In zsh ändern skalare und Array-Zuweisungen an `path` den PATH. Das gilt auch für `hash rm=<Pfad>`, `printf -v PATH`/`path`, `read PATH`/`path` und eine Referenz auf eine der beiden Schreibweisen; vor einem späteren verlustreichen `rm` bleibt es bei STOP. In Bash kann ein skalares `path=/x` eine gewöhnliche Variable sein. Weil der Hook die ausführende Shell nicht sicher kennt, entscheidet er sich hier bewusst für STOP.
+- In zsh ändern skalare und Array-Zuweisungen an `path` den PATH. Das gilt auch für `hash rm=<Pfad>`, `printf -v PATH`/`path`, `read PATH`/`path` und eine Referenz auf eine der beiden Schreibweisen; eine Schleife `for path in …` oder `select path in …` schreibt sie ebenfalls (#1047); vor einem späteren verlustreichen `rm` bleibt es bei STOP. In Bash kann ein skalares `path=/x` eine gewöhnliche Variable sein. Weil der Hook die ausführende Shell nicht sicher kennt, entscheidet er sich hier bewusst für STOP. Ist die Variable `path` der einzige Grund, sagt das STOP das: Wer die Variable umbenennt, bekommt die Quittung zurück.
 - Das Verb wird an Befehlsposition gelesen, hinter Zuweisungen, den reservierten Wörtern, die einen zusammengesetzten Befehl öffnen (`{ ! if then else elif do while until`, `time [-p]`, #694), und den Präfixen `builtin` / `command`: `{ hash -p /x rm; }`, `builtin hash …` und `command hash …` zählen, `echo hash -p /bin/rm rm` oder `sudo hash …` (eine Kind-Shell) nicht.
 - Ein `eval`-Rumpf ist Shell und wird erneut gelesen (bis zu zwei Ebenen); ein Rumpf, den der Scanner nicht lesen kann, gilt als Änderung. Das schließt auch `eval 'export PATH=/x:$PATH'; rm -rf x`.
 - Eine `rm()`-Definition wird ohne Anführungszeichen-Grenze erkannt: `grep -rn "rm()" src; rm -rf dist` behält seine Quittung, eine in Anführungszeichen stehende `eval`-Definition bleibt über das erneute Lesen ein STOP.

@@ -406,35 +406,53 @@ function hashPathNames(args: string[]): string[] {
  * definition. The verb is read at command position (`commandWordAt`), so
  * `builtin hash` counts and `echo hash` does not. An `eval` body is shell and
  * is read again (two levels); a body the scanner cannot read counts as a
- * change, so an unknown form keeps the STOP.
+ * change, so an unknown form keeps the STOP. `"path"` when the only change is
+ * a write to the variable `path` (#1047): renaming it would lift the STOP.
  */
-function redefinesRm(cmd: string, depth = 0): boolean {
+function redefinesRm(cmd: string, depth = 0): boolean | "path" {
   if (RM_FUNCTION_DEF.test(cmd)) return true;
   const commands = simpleCommands(cmd);
   if (!commands) return true;
+  let path = false;
   for (const { words } of commands) {
     const texts = words.map((w) => unquote(w.text));
-    // zsh ties `path` to PATH even for scalar assignments and reads. A bash
-    // variable named `path` can be harmless, but the shell is not known here:
-    // keep STOP rather than claiming the archiving shim certainly ran.
     if (texts.some((t) => /^PATH\+?=/.test(t))) return true;
     const k = commandWordAt(texts);
     const args = texts.slice(k + 1);
-    if (texts.slice(0, k).some((t) => /^path\+?=/.test(t))) return true;
-    if (/^(?:export|declare|typeset|local|readonly)$/.test(texts[k]) && args.some((t) => /^path\+?=/.test(t))) return true;
     // `git` too: bastra's git snapshots are the other shim in the same PATH entry.
     if (texts[k] === "alias" && args.some((t) => /^(?:rm|git)=/.test(t))) return true;
     if (texts[k] === "hash" && hashPathNames(args).some((t) => /^(?:rm|git)$/.test(t))) return true;
     // zsh `hash rm=/bin/echo`: the assignment form of the same table entry.
     if (texts[k] === "hash" && args.some((t) => /^(?:rm|git)=/.test(t))) return true;
-    // Assignments to PATH that carry no `PATH=` word: `printf -v PATH …`,
-    // `read PATH`, and a nameref onto it (`declare -n p=PATH`).
-    if (texts[k] === "printf" && args.some((t, j) => t === "-v" && /^(?:PATH|path)$/.test(args[j + 1] ?? ""))) return true;
-    if (texts[k] === "read" && args.some((t) => /^(?:PATH|path)$/.test(t))) return true;
-    if (/^(?:declare|typeset|local)$/.test(texts[k]) && args.some((t) => /^-\w*n/.test(t)) && args.some((t) => /=(?:PATH|path)$/.test(t))) return true;
-    if (texts[k] === "eval" && (depth >= 2 || redefinesRm(args.join(" "), depth + 1))) return true;
+    // The variables this command writes: an assignment before the verb or
+    // behind `export`/`declare`/…, `printf -v X`, `read X`, a nameref onto X
+    // (`declare -n p=X`), and a `for`/`select` loop variable (`for X in …`,
+    // `for X;`, `for X do`, zsh `for X Y in …`, #1047).
+    const vars = [...texts.slice(0, k), ...(/^(?:export|declare|typeset|local|readonly)$/.test(texts[k]) ? args : [])].map(
+      (t) => /^(\w+)\+?=/.exec(t)?.[1],
+    );
+    if (texts[k] === "printf") vars.push(...args.filter((_, j) => args[j - 1] === "-v"));
+    if (texts[k] === "read") vars.push(...args);
+    if (/^(?:declare|typeset|local)$/.test(texts[k]) && args.some((t) => /^-\w*n/.test(t))) {
+      vars.push(...args.map((t) => /=(\w+)$/.exec(t)?.[1]));
+    }
+    if (/^(?:for|select)$/.test(texts[k])) {
+      const end = args.findIndex((t) => t === "in" || t === "do");
+      vars.push(...(end < 0 ? args : args.slice(0, end)));
+    }
+    if (vars.includes("PATH")) return true;
+    // zsh ties `path` to PATH even for scalar assignments, reads and loop
+    // variables. A bash variable named `path` can be harmless, but the shell
+    // is not known here: keep STOP rather than claiming the archiving shim
+    // certainly ran — and say why, so a rename brings the receipt back.
+    if (vars.includes("path")) path = true;
+    if (texts[k] === "eval") {
+      const inner = depth >= 2 || redefinesRm(args.join(" "), depth + 1);
+      if (inner === true) return true;
+      if (inner === "path") path = true;
+    }
   }
-  return false;
+  return path ? "path" : false;
 }
 
 /**
@@ -449,15 +467,16 @@ function redefinesRm(cmd: string, depth = 0): boolean {
  * purpose: a form not recognised here keeps the STOP. The same command must
  * also not change what `rm` resolves to (`redefinesRm`, #657).
  */
-function rmRunsThroughPath(cmd: string, depth = 0): boolean {
-  if (redefinesRm(cmd)) return false;
+function rmRunsThroughPath(cmd: string, depth = 0, ignorePath = false): boolean {
+  const redefined = redefinesRm(cmd);
+  if (redefined === true || (redefined && !ignorePath)) return false;
   const commands = simpleCommands(cmd);
   if (!commands) return false;
   for (const { words } of commands) {
     const texts = words.map((w) => w.text.replace(/["'\\]/g, ""));
     if (!RM_ROWS.some((p) => p.re.test(texts.join(" ")))) continue;
     if (/^(?:ba|z|da)?sh$/.test(texts[0]) && texts[1] === "-c" && texts.length === 3) {
-      if (depth >= 2 || !rmRunsThroughPath(unquote(words[2].text), depth + 1)) return false;
+      if (depth >= 2 || !rmRunsThroughPath(unquote(words[2].text), depth + 1, ignorePath)) return false;
       continue;
     }
     if (texts[0] === "find") {
@@ -557,6 +576,9 @@ interface Hint {
   offFamily?: "rm" | "git";
   /** One of the acts runs through bastra's git shim. */
   viaGit?: boolean;
+  /** The STOP comes only from a write to the variable `path` (#1047): with
+   *  it renamed, the command would get its receipt. */
+  pathVar?: boolean;
 }
 
 /**
@@ -587,7 +609,7 @@ export function hintFor(cmd: string, surface: string, setting = false): Hint | n
   return { ...h, offFamily: family, wouldShim: (family === "git" || rmRunsThroughPath(cmd)) && shimOnly(cmd) };
 }
 
-function hintCore(cmd: string, surface: string, setting = false): Hint | null {
+function hintCore(cmd: string, surface: string, setting = false, ignorePath = false): Hint | null {
   const first = matchPattern(cmd);
   if (!first || first.severity === "risky") return first && { ...first, undo: null };
   const segments = matchSegments(cmd);
@@ -600,7 +622,12 @@ function hintCore(cmd: string, surface: string, setting = false): Hint | null {
   if (bare) return stop(bare.label);
   if (acts.length > 1 && acts.some((a) => a.undo?.kind !== "receipt")) return stop(first.label);
   const archivingRm = acts.some((a) => a.undo?.needsArchivingRm && a.undo.kind === "receipt");
-  if (archivingRm && !rmRunsThroughPath(cmd)) return stop(first.label);
+  if (archivingRm && !rmRunsThroughPath(cmd, 0, ignorePath)) {
+    // Name the variable only when it is the whole reason: weighed without it,
+    // the command must reach a receipt.
+    const pathVar = !ignorePath && redefinesRm(cmd) === "path" && hintCore(cmd, surface, setting, true)?.undo?.kind === "receipt";
+    return pathVar ? { ...stop(first.label), pathVar } : stop(first.label);
+  }
   const viaShim = acts.some((a) => a.undo === RM_SHIM || a.undo?.viaGitShim);
   // bastra's shims only run where the lane may rewrite: a command made of
   // their acts. Anywhere else the real `rm`/`git` runs, and the hint says so.

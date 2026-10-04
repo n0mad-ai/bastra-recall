@@ -227,7 +227,7 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
 
   // Emit hint even if no memories match — the warning itself is the point.
   // #161 CONSTRAINT (see top of file): the tripwire is exempt from backoff.
-  const block = formatHintBlock(match.label, match.severity, emitted, unfused, client, match.undo, resp?.degraded);
+  const block = formatHintBlock(match.label, match.severity, emitted, unfused, client, match.undo, resp?.degraded, match.pathVar);
   // bastra's archiving rm carries the receipt: run the command through it and
   // let it run — a move with an address needs no confirmation. The call id
   // ties the manifest lines to this call for the PostToolUse receipt.
@@ -327,6 +327,8 @@ export function formatHintBlock(
   // „semantic search is off", wo der Arm lief und nur diesen Aufruf nicht
   // bediente.
   degraded?: string,
+  /** #1047: the STOP comes only from a write to the variable `path`. */
+  pathVar = false,
 ): string {
   const head = `<recall-hints surface="${surface}" trigger="bash-${severity}">`;
   const tail = `</recall-hints>`;
@@ -340,6 +342,9 @@ export function formatHintBlock(
   } else if (!undo) {
     lines.push(
       `STOP — destructive Bash command detected (pattern: \`${pattern}\`). ` +
+        (pathVar
+          ? `The command writes the variable \`path\`, which zsh ties to PATH, so the archiving \`rm\` may not be the one that runs — rename that variable and the reversible receipt comes back. `
+          : "") +
         `Per user-preference this needs explicit user confirmation unless authorized in advance. ` +
         `Do not run blindly: confirm the target paths, the scope of effect, and that the user has asked for this exact action.`,
     );
