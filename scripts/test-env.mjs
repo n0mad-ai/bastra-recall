@@ -131,6 +131,13 @@ if (!process.env.BASTRA_HARVEST_QUEUE_PATH) {
   process.env.BASTRA_HARVEST_QUEUE_PATH = join(throwawayDir("bastra-test-harvest-"), "harvest-queue.json");
 }
 
+/** #892: the vault-root marker (core's vault-root-guard.ts) records every vault
+ *  a test opens; those temp paths must not land in the real ~/.bastra — also
+ *  for a CLI child a test spawns without NODE_TEST_CONTEXT. */
+if (!process.env.BASTRA_VAULT_ROOTS_PATH) {
+  process.env.BASTRA_VAULT_ROOTS_PATH = join(throwawayDir("bastra-test-vault-roots-"), "vault-roots.json");
+}
+
 /** host-profile.ts's salt file — the one ~/.bastra writer this file's
  *  own NODE_TEST_CONTEXT fallback (env.ts's testRunHostProfilePath) does not
  *  reach when a test spawns a CHILD process that does not inherit that flag

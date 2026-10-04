@@ -30,7 +30,7 @@
  * für die dieselben Regeln gelten wie für Trash und Locks: eigenes
  * Unterverzeichnis, kein Symlink.
  */
-import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
@@ -38,6 +38,7 @@ import { assertInsideDir, assertOwnSubdir } from "./file-identity.js";
 import { acquireCommitClaim, claimIsAbandoned, releaseCommitClaim } from "./save-commit.js";
 import { newOperationId, reportMutationIncident } from "./mutation-incident.js";
 import { normalizeScopeKey } from "./scope.js";
+import { ensureVaultDir } from "./vault-root-guard.js";
 
 const AUDIT_DIR = ".bastra";
 const AREAS_DIR = "areas";
@@ -98,7 +99,7 @@ export async function readAreaMark(vaultRoot: string, name: string): Promise<Are
 /** Marke setzen — atomar, damit ein Absturz keine halbe Datei hinterlässt. */
 async function writeMark(vaultRoot: string, name: string, mark: AreaMark): Promise<void> {
   const path = markPathFor(vaultRoot, name);
-  await mkdir(join(vaultRoot, AUDIT_DIR, AREAS_DIR), { recursive: true });
+  await ensureVaultDir(vaultRoot, join(vaultRoot, AUDIT_DIR, AREAS_DIR));
   const tmp = `${path}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
   await writeFile(tmp, JSON.stringify(mark), "utf8");
   try {
@@ -433,7 +434,7 @@ export async function withAreaShared<T>(
   const wanted = [...new Set(names.filter((n): n is string => n !== null).map(normalizeScopeKey))].sort();
   if (wanted.length === 0) return fn();
   const shelves = wanted.map((name) => ({ name, ...areaLockPaths(vaultRoot, name) }));
-  for (const s of shelves) await mkdir(s.readers, { recursive: true });
+  for (const s of shelves) await ensureVaultDir(vaultRoot, s.readers);
   for (let attempt = 0; ; attempt++) {
     const markers = shelves.map((s) => ({ shelf: s, path: join(s.readers, `${randomUUID()}.json`) }));
     const body = claimBody();
@@ -481,7 +482,7 @@ export async function withAreaExclusive<T>(
   try {
     for (const name of wanted) {
       const { lock, readers } = areaLockPaths(vaultRoot, name);
-      await mkdir(dirname(lock), { recursive: true });
+      await ensureVaultDir(vaultRoot, dirname(lock));
       // Codex-Abschlussprüfung (P0-1): Hier stand ein ZWEITER, eigener
       // Reclaim-Algorithmus — `claimIsAbandoned()` gefolgt von einem
       // ungeschützten `rename(tmp, lock)`. Nachgestellt mit 30 Runden à 16

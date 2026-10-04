@@ -187,7 +187,7 @@ test("embed-cache: an incompatible cache (version / provider / dim) is dropped W
       const cachePath = path.join(dir, `${label}.json`);
       await writeFile(cachePath, JSON.stringify(file));
       lines.length = 0;
-      const cache = new EmbedCache(cachePath, "mock-counting", 4);
+      const cache = new EmbedCache(dir, cachePath, "mock-counting", 4);
       await cache.load();
       assert.equal(cache.size(), 0, `${label}: incompatible cache must not be used`);
       // Filtered, not counted raw: an unrelated console.error in the same window must not flake this.
@@ -199,7 +199,7 @@ test("embed-cache: an incompatible cache (version / provider / dim) is dropped W
     const okPath = path.join(dir, "ok.json");
     await writeFile(okPath, JSON.stringify({ version: 1, provider: "mock-counting", dim: 4, entries }));
     lines.length = 0;
-    const ok = new EmbedCache(okPath, "mock-counting", 4);
+    const ok = new EmbedCache(dir, okPath, "mock-counting", 4);
     await ok.load();
     assert.equal(ok.size(), 1);
     assert.deepEqual(lines.filter((l) => /embed-cache/.test(l)), [], "compatible cache must not log");

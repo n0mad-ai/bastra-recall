@@ -25,7 +25,7 @@
  *
  * Not to be confused with `Vault.reconcile()`, the periodic disk reindex.
  */
-import { readdir, readFile, copyFile, mkdir, rename, stat, writeFile, link, unlink, constants } from "node:fs/promises";
+import { readdir, readFile, copyFile, rename, stat, writeFile, link, unlink, constants } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, join, relative, sep, basename } from "node:path";
 import matter from "gray-matter";
@@ -36,6 +36,7 @@ import { memoryRevision } from "./memory-mutate.js";
 import { AuditLog, type AuditEntry } from "./audit-log.js";
 import { withIdClaim } from "./id-transaction.js";
 import { assertInsideDir, assertOwnSubdir } from "./file-identity.js";
+import { ensureVaultDir } from "./vault-root-guard.js";
 
 /** Frontmatter the daemon writes on its own — not authored, not compared. */
 const GENERATED_FIELDS: ReadonlySet<string> = new Set([
@@ -450,7 +451,7 @@ export async function applyReconcile(
             return { ...base, status: "skipped", reason: "target changed since the plan" };
           }
 
-          await mkdir(dirname(targetPath), { recursive: true });
+          await ensureVaultDir(dst.root, dirname(targetPath));
           const tmp = join(dirname(targetPath), `.${basename(targetPath)}.reconcile-${process.pid}-${randomUUID()}.tmp`);
           let backup: string | undefined;
           try {
@@ -470,7 +471,7 @@ export async function applyReconcile(
               assertOwnSubdir(privateDir, backupRoot, "reconcile backup");
               const backupPath = join(backupRoot, stamp, item.target.rel) + `.${randomUUID()}`;
               assertInsideDir(backupRoot, backupPath, "reconcile backup");
-              await mkdir(dirname(backupPath), { recursive: true });
+              await ensureVaultDir(dst.root, dirname(backupPath));
               await rename(targetPath, backupPath);
               backup = backupPath;
               if ((await revisionOf(backup)) !== item.target.revision) {

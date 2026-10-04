@@ -4,6 +4,10 @@
  * filesystem: `mkdir(recursive)` would bring the root back empty and
  * `vault_missing` would never be reported again. A root never seen keeps
  * the "created on first save" behaviour.
+ *
+ * #892 take-over: the knowledge moved from a per-process `Vault.rootKnownPresent`
+ * flag passed into `saveMemory` to the guard in vault-root-guard.ts, which every
+ * writer consults and which persists outside the vault; the cases stay the same.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -12,6 +16,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { Vault } from "../src/vault.js";
+import { vaultRootFirstSeen } from "../src/vault-root-guard.js";
 import { saveMemory } from "../src/save.js";
 import { AuditLog } from "../src/audit-log.js";
 import { auditedSave } from "../src/audit-save.js";
@@ -37,13 +42,13 @@ test("save refuses to recreate a vault root that was present at init", async () 
     await mkdir(root);
     const vault = new Vault(root);
     await vault.init();
-    assert.equal(vault.rootKnownPresent, true);
+    assert.notEqual(vaultRootFirstSeen(root), null);
 
     // The mount goes away under the running daemon.
     await rm(root, { recursive: true, force: true });
 
     await assert.rejects(
-      saveMemory(root, input(), { vaultRootKnownPresent: vault.rootKnownPresent }),
+      saveMemory(root, input()),
       /missing/,
     );
     assert.equal(existsSync(root), false, "the vault root must not be recreated");
@@ -58,9 +63,9 @@ test("a root never seen present is still created on first save", async () => {
   try {
     const vault = new Vault(root);
     await vault.init().catch(() => undefined);
-    assert.equal(vault.rootKnownPresent, false);
+    assert.equal(vaultRootFirstSeen(root), null);
 
-    await saveMemory(root, input(), { vaultRootKnownPresent: vault.rootKnownPresent });
+    await saveMemory(root, input());
     assert.equal(existsSync(root), true);
   } finally {
     await rm(parent, { recursive: true, force: true });
@@ -102,7 +107,7 @@ test("a re-run of init while the root is gone does not forget it was there", asy
     await rm(root, { recursive: true, force: true });
     await vault.init().catch(() => undefined);
 
-    await assert.rejects(saveMemory(root, input(), { vaultRootKnownPresent: vault.rootKnownPresent }), /missing/);
+    await assert.rejects(saveMemory(root, input()), /missing/);
     assert.equal(existsSync(root), false);
   } finally {
     await rm(parent, { recursive: true, force: true });
@@ -115,11 +120,11 @@ test("a root created by the first save is known from then on", async () => {
   try {
     const vault = new Vault(root);
     await vault.init().catch(() => undefined);
-    const first = await saveMemory(root, input(), { vaultRootKnownPresent: vault.rootKnownPresent });
+    const first = await saveMemory(root, input());
     await vault.reindexFile(first.file_path);
     await rm(root, { recursive: true, force: true });
 
-    await assert.rejects(saveMemory(root, input(), { vaultRootKnownPresent: vault.rootKnownPresent }), /missing/);
+    await assert.rejects(saveMemory(root, input()), /missing/);
     assert.equal(existsSync(root), false);
   } finally {
     await rm(parent, { recursive: true, force: true });
