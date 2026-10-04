@@ -76,9 +76,9 @@ export function isSystemInjectedTurn(text: string): boolean {
  * - A command echo is the expanded form of a slash command the owner typed.
  *   It is the owner's turn and comes back unchanged; the trivial gate skips
  *   the recall and still hands over a parked task-boundary block (#572).
- * - Leading `<system-reminder>` blocks are harness text, but a harness may
- *   put them in front of what the owner typed. The text after the last
- *   closing tag is the prompt; a reminder with nothing after it, or one that
+ * - A leading `<system-reminder>` block is harness text, but a harness may
+ *   put it in front of what the owner typed. The text after its closing tag
+ *   is the prompt; a reminder with nothing after it, or one that
  *   never closes, is a harness turn.
  */
 export function ownerPromptText(prompt: string): string | null {
@@ -89,16 +89,21 @@ export function ownerPromptText(prompt: string): string | null {
 }
 
 /**
- * The text after any leading `<system-reminder>` blocks, or null when nothing
- * follows them (or a block never closes). Text without a leading block comes
- * back trimmed at the start only.
+ * The text after ONE leading `<system-reminder>` block, or null when nothing
+ * follows it, it never closes, or the rest still carries a reminder tag. A
+ * reminder's inner content is not typed by the owner (hook output, file
+ * contents), so a fake closing tag inside it must not promote what follows to
+ * the owner's words: several or nested tags make the whole turn harness text
+ * (#994). Text without a leading block comes back trimmed at the start only.
  */
 export function textAfterReminders(text: string): string | null {
-  let head = text.trimStart();
-  while (head.startsWith(REMINDER_OPEN)) {
-    const end = head.indexOf(REMINDER_CLOSE);
-    if (end === -1) return null;
-    head = head.slice(end + REMINDER_CLOSE.length).trimStart();
-  }
-  return head.length === 0 ? null : head;
+  const head = text.trimStart();
+  if (!head.startsWith(REMINDER_OPEN)) return head.length === 0 ? null : head;
+  const end = head.indexOf(REMINDER_CLOSE);
+  if (end === -1) return null;
+  const nested = head.indexOf(REMINDER_OPEN, REMINDER_OPEN.length);
+  if (nested !== -1 && nested < end) return null;
+  const rest = head.slice(end + REMINDER_CLOSE.length).trimStart();
+  if (rest.length === 0 || rest.includes(REMINDER_OPEN) || rest.includes(REMINDER_CLOSE)) return null;
+  return rest;
 }
