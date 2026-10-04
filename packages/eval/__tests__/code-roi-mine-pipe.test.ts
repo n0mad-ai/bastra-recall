@@ -40,15 +40,26 @@ describe("a broken pipe is a failed candidate, not a failed run", () => {
   test("the unguarded pattern really does kill the process", () => {
     // The exact shape `extract()` had: handlers on the two ChildProcess
     // objects, none on the streams the pipe runs over.
+    //
+    // No clock decides the outcome (#940). A consumer that EXITS races its
+    // own exit against the first failed write: when node sees the exit first
+    // it destroys `c.stdin`, the pipe unpipes quietly and nothing crashes —
+    // that is what turned CI red after a 4 s timeout. This consumer closes
+    // its stdin and stays alive, so the next write fails with EPIPE every
+    // time. `unpipe` is the deterministic end: on the unguarded pattern the
+    // pipe emits it just before it rethrows the write error synchronously,
+    // so the crash always wins; if that error were ever handled instead, the
+    // child exits 0 and the assertion below says so.
     const script = `
       const { spawn } = require("node:child_process");
       const p = spawn("yes", ["x"]);
-      const c = spawn("false");
+      const c = spawn("sh", ["-c", "exec 0<&-; exec sleep 60"]);
+      process.on("exit", () => c.kill());
       p.stdout.pipe(c.stdin);
       p.on("error", () => process.exit(9));
       c.on("error", () => process.exit(9));
       c.on("close", () => {});
-      setTimeout(() => process.exit(0), 4000);
+      c.stdin.on("unpipe", () => setImmediate(() => process.exit(0)));
     `;
     const child = spawn(process.execPath, ["-e", script]);
     return new Promise<void>((resolve) => {
