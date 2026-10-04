@@ -223,7 +223,7 @@ test("#363: ohne session_id im Payload bleibt die Boot-UUID stehen — kein unde
 
 test("#363: ollama_lifecycle sagt session_id: null und trägt die Boot-id als run_id", async () => {
   // Beide Emitter sind kontextlos: der prewarm läuft im Boot-Pfad
-  // (index.ts:270), der unload auf einem 60-s-Timer (daemon-jobs.ts:167). Es
+  // (boot-embeddings.ts:232), der unload auf einem 60-s-Timer (daemon-jobs.ts:167). Es
   // gibt keine Session, die man durchreichen könnte — die Boot-UUID hier zu
   // stempeln hat 4 Daemon-Starts wie 4 Sessions aussehen lassen. `null` ist die
   // ehrliche Aussage; die Boot-id bleibt als run_id erhalten, weil das

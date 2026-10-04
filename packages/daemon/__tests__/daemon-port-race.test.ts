@@ -124,27 +124,35 @@ test("startHttpServer reports the lost bind instead of a silent success", async 
  * Same approach as file-size-check.test.ts / update-preflight.test.ts.
  */
 test("the port probe stays above the vault and embedding lifecycle", async () => {
-  const src = await readFile(fileURLToPath(new URL("../src/index.ts", import.meta.url)), "utf8");
+  const read = (file: string) => readFile(fileURLToPath(new URL(`../src/${file}`, import.meta.url)), "utf8");
+  const src = await read("index.ts");
+  // #1039: the vault and the embedding lifecycle live in their own start-up
+  // phase modules now; main() calls them in order, so the order to pin is the
+  // probe against those two calls, plus what each phase still contains.
+  const storageSrc = await read("boot-storage.ts");
+  const embeddingsSrc = await read("boot-embeddings.ts");
 
   const probe = src.indexOf("probeDaemonPort(HTTP_PORT)");
-  const vault = src.indexOf("new Vault(VAULT_PATH!)");
-  const init = src.indexOf("vault.init()");
-  const watching = src.indexOf("vault.startWatching()");
-  // #494: Das Boot-Prewarm heißt jetzt so — es läuft seit #494 durch dieselbe
-  // Singleflight-Grenze wie die beiden anderen Warmup-Auslöser, statt einen
-  // eigenen HTTP-Call zu feuern.
-  const prewarm = src.indexOf('ensureWarm("boot")');
+  const storage = src.indexOf("await openStorage(");
+  const embeddings = src.indexOf("await startEmbeddings(");
 
   assert.ok(probe > 0, "the early bind probe is gone from index.ts");
   for (const [name, at] of [
-    ["new Vault", vault],
-    ["vault.init", init],
-    ["vault.startWatching", watching],
-    ["the boot warm-up", prewarm],
+    ["openStorage (new Vault, vault.init, vault.startWatching)", storage],
+    ["startEmbeddings (the boot warm-up)", embeddings],
   ] as const) {
     assert.ok(at > 0, `${name} not found in index.ts — update this test`);
     assert.ok(probe < at, `the #483 probe must run before ${name}, not after it`);
   }
+
+  const vault = storageSrc.indexOf("new Vault(vaultPath)");
+  const init = storageSrc.indexOf("vault.init()");
+  const watching = storageSrc.indexOf("vault.startWatching()");
+  assert.ok(vault > 0 && vault < init && init < watching, "boot-storage.ts must open, init and then watch the vault");
+  // #494: Das Boot-Prewarm heißt jetzt so — es läuft seit #494 durch dieselbe
+  // Singleflight-Grenze wie die beiden anderen Warmup-Auslöser, statt einen
+  // eigenen HTTP-Call zu feuern.
+  assert.ok(embeddingsSrc.indexOf('ensureWarm("boot")') > 0, "the boot warm-up not found in boot-embeddings.ts — update this test");
 
   // And it must not fire in the deliberate no-server mode.
   assert.match(

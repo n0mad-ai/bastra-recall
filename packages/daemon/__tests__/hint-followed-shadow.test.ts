@@ -476,7 +476,7 @@ test("fourth review find: a load without a session clears every window for that 
   const h = await harness();
   try {
     // The standalone stdio surface calls loadMemoryHandler with no session
-    // (index.ts:578-580), while its own hook opened the window under a real one.
+    // (boot-stdio.ts:156), while its own hook opened the window under a real one.
     h.telemetry.rotateTurn("sess-standalone");
     h.telemetry.recordSurfacedHints([{ memory_id: "m1", distinctive_tokens: TOKENS }], "sess-standalone");
 
