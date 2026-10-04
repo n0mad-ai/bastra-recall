@@ -6,7 +6,6 @@ import type { BlockInfo } from "./block";
 import type { CacheTimerInfo } from "./cacheTimer";
 import type {
   UsageInfo,
-  TokenBreakdown,
   GitInfo,
   ContextInfo,
   MetricsInfo,
@@ -17,10 +16,6 @@ import type { BastraInfo } from "./bastra";
 import {
   formatModelName,
   abbreviateFishStyle,
-  formatCost,
-  formatTokens,
-  formatTokenCount,
-  formatTokenBreakdown,
   formatTimeSince,
   formatDuration,
   formatLongTimeRemaining,
@@ -29,203 +24,67 @@ import {
   collapseHome,
   minutesUntilReset,
 } from "../utils/formatters";
-import { resolveBudgetDisplay } from "../utils/budget";
-import type { BudgetItemConfig } from "../config/loader";
 
-/** "1 call" / "2 calls" — the counter is visible in every session, so the
- *  singular case must not read as a typo. Same for hits. */
-function plural(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
-}
+// #1039: the segment config types, the bar drawing and the shared text
+// formatting live in their own modules; this class keeps one render method per
+// segment and delegates to them. The types are re-exported so every import
+// from "./renderer" keeps working.
+import {
+  plural,
+  getDisplayDirectoryName,
+  formatUsageWithBudget,
+} from "./renderer-format";
+import {
+  buildBar,
+  resolveBarStyleDef,
+  formatPercentageWithBar,
+} from "./renderer-bars";
 
 import { shouldShowIcon } from "../utils/icon-visibility";
 
-export interface SegmentConfig {
-  enabled: boolean;
-  showIcon?: boolean;
-}
-
-export interface DirectorySegmentConfig extends SegmentConfig {
-  showBasename?: boolean;
-  style?: "full" | "fish" | "basename";
-}
-
-export interface GitSegmentConfig extends SegmentConfig {
-  showSha?: boolean;
-  showAheadBehind?: boolean;
-  showWorkingTree?: boolean;
-  showOperation?: boolean;
-  showTag?: boolean;
-  showTimeSinceCommit?: boolean;
-  showStashCount?: boolean;
-  showUpstream?: boolean;
-  showRepoName?: boolean;
-}
-
-export interface UsageSegmentConfig extends SegmentConfig {
-  type: "cost" | "tokens" | "both" | "breakdown";
-  costSource?: "calculated" | "official";
-  /** Show the trailing "tokens" unit on token counts. Only affects `type: "tokens"` and `type: "both"` (default: true). Inert in the `tui` display style, which never renders the suffix. */
-  showUnits?: boolean;
-}
-
-export interface TmuxSegmentConfig extends SegmentConfig {}
-
-export type BarDisplayStyle =
-  | "text"
-  | "ball"
-  | "bar"
-  | "blocks"
-  | "blocks-line"
-  | "capped"
-  | "dots"
-  | "filled"
-  | "geometric"
-  | "line"
-  | "squares";
-
-export interface ContextSegmentConfig extends SegmentConfig {
-  showPercentageOnly?: boolean;
-  displayStyle?: BarDisplayStyle;
-  autocompactBuffer?: number;
-  percentageMode?: "remaining" | "used";
-}
-
-export interface MetricsSegmentConfig extends SegmentConfig {
-  showResponseTime?: boolean;
-  showLastResponseTime?: boolean;
-  showDuration?: boolean;
-  showMessageCount?: boolean;
-  showLinesAdded?: boolean;
-  showLinesRemoved?: boolean;
-}
-
-export interface BlockSegmentConfig extends SegmentConfig {
-  type: "cost" | "tokens" | "both" | "time" | "weighted";
-  burnType?: "cost" | "tokens" | "both" | "none";
-  displayStyle?: BarDisplayStyle;
-}
-
-export interface TodaySegmentConfig extends SegmentConfig {
-  type: "cost" | "tokens" | "both" | "breakdown";
-  /** Show the trailing "tokens" unit on token counts. Only affects `type: "tokens"` and `type: "both"` (default: true). Inert in the `tui` display style, which never renders the suffix. */
-  showUnits?: boolean;
-}
-
-export interface VersionSegmentConfig extends SegmentConfig {}
-
-export interface SessionIdSegmentConfig extends SegmentConfig {
-  showIdLabel?: boolean;
-}
-
-export interface EnvSegmentConfig extends SegmentConfig {
-  variable: string;
-  prefix?: string;
-}
-
-export interface WeeklySegmentConfig extends SegmentConfig {
-  displayStyle?: BarDisplayStyle;
-}
-
-export interface AgentSegmentConfig extends SegmentConfig {
-  showLabel?: boolean;
-}
-
-export interface ThinkingSegmentConfig extends SegmentConfig {
-  showEnabled?: boolean;
-  showEffort?: boolean;
-}
-
-export interface CacheTimerSegmentConfig extends SegmentConfig {
-  displayMode?: "elapsed" | "remaining";
-  ttlSeconds?: number;
-}
-
-export interface BastraSegmentConfig extends SegmentConfig {}
-
-export type AnySegmentConfig =
-  | SegmentConfig
-  | DirectorySegmentConfig
-  | GitSegmentConfig
-  | UsageSegmentConfig
-  | TmuxSegmentConfig
-  | ContextSegmentConfig
-  | MetricsSegmentConfig
-  | BlockSegmentConfig
-  | TodaySegmentConfig
-  | VersionSegmentConfig
-  | SessionIdSegmentConfig
-  | EnvSegmentConfig
-  | WeeklySegmentConfig
-  | AgentSegmentConfig
-  | ThinkingSegmentConfig
-  | CacheTimerSegmentConfig
-  | BastraSegmentConfig;
-
-export interface PowerlineSymbols {
-  right: string;
-  left: string;
-  branch: string;
-  model: string;
-  git_clean: string;
-  git_dirty: string;
-  git_conflicts: string;
-  git_ahead: string;
-  git_behind: string;
-  git_worktree: string;
-  git_tag: string;
-  git_sha: string;
-  git_upstream: string;
-  git_stash: string;
-  git_time: string;
-  session_cost: string;
-  block_cost: string;
-  today_cost: string;
-  context_time: string;
-  metrics_response: string;
-  metrics_last_response: string;
-  metrics_duration: string;
-  metrics_messages: string;
-  metrics_lines_added: string;
-  metrics_lines_removed: string;
-  metrics_burn: string;
-  version: string;
-  bar_filled: string;
-  bar_empty: string;
-  env: string;
-  session_id: string;
-  weekly_cost: string;
-  agent: string;
-  thinking: string;
-  cache_timer: string;
-  bastra: string;
-}
-
-export interface SegmentData {
-  text: string;
-  bgColor: string;
-  fgColor: string;
-  bold?: boolean;
-}
-
-interface BarStyleDef {
-  filled: string;
-  empty: string;
-  cap?: string;
-  marker?: string;
-}
-
-const BAR_STYLES: Record<string, BarStyleDef> = {
-  ball: { filled: "─", empty: "─", marker: "●" },
-  blocks: { filled: "█", empty: "░" },
-  "blocks-line": { filled: "█", empty: "─" },
-  capped: { filled: "━", empty: "┄", cap: "╸" },
-  dots: { filled: "●", empty: "○" },
-  filled: { filled: "■", empty: "□" },
-  geometric: { filled: "▰", empty: "▱" },
-  line: { filled: "━", empty: "┄" },
-  squares: { filled: "◼", empty: "◻" },
-};
+import type {
+  SegmentConfig,
+  DirectorySegmentConfig,
+  GitSegmentConfig,
+  UsageSegmentConfig,
+  ContextSegmentConfig,
+  MetricsSegmentConfig,
+  BlockSegmentConfig,
+  TodaySegmentConfig,
+  VersionSegmentConfig,
+  SessionIdSegmentConfig,
+  EnvSegmentConfig,
+  WeeklySegmentConfig,
+  AgentSegmentConfig,
+  ThinkingSegmentConfig,
+  CacheTimerSegmentConfig,
+  BastraSegmentConfig,
+  PowerlineSymbols,
+  SegmentData,
+} from "./renderer-types";
+export type {
+  SegmentConfig,
+  DirectorySegmentConfig,
+  GitSegmentConfig,
+  UsageSegmentConfig,
+  TmuxSegmentConfig,
+  BarDisplayStyle,
+  ContextSegmentConfig,
+  MetricsSegmentConfig,
+  BlockSegmentConfig,
+  TodaySegmentConfig,
+  VersionSegmentConfig,
+  SessionIdSegmentConfig,
+  EnvSegmentConfig,
+  WeeklySegmentConfig,
+  AgentSegmentConfig,
+  ThinkingSegmentConfig,
+  CacheTimerSegmentConfig,
+  BastraSegmentConfig,
+  AnySegmentConfig,
+  PowerlineSymbols,
+  SegmentData,
+} from "./renderer-types";
 
 export class SegmentRenderer {
   constructor(
@@ -268,7 +127,7 @@ export class SegmentRenderer {
       ? collapseHome(projectDir)
       : projectDir;
 
-    let dirName = this.getDisplayDirectoryName(displayDir, displayProjectDir);
+    let dirName = getDisplayDirectoryName(displayDir, displayProjectDir);
 
     if (style === "fish") {
       dirName = abbreviateFishStyle(dirName);
@@ -411,7 +270,7 @@ export class SegmentRenderer {
       return usageInfo.session.cost;
     };
 
-    const formattedUsage = this.formatUsageWithBudget(
+    const formattedUsage = formatUsageWithBudget(
       getCost(),
       usageInfo.session.tokens,
       usageInfo.session.tokenBreakdown,
@@ -477,14 +336,14 @@ export class SegmentRenderer {
     const defaultMode = style === "text" ? "remaining" : "used";
     const mode = config?.percentageMode ?? defaultMode;
 
-    const barStyleDef = this.resolveBarStyleDef(style);
+    const barStyleDef = resolveBarStyleDef(this.symbols, style);
 
     const emptyPct = mode === "remaining" ? "100%" : "0%";
     if (!contextInfo) {
       if (barStyleDef) {
         const emptyBar =
           mode === "remaining"
-            ? this.buildBar(barStyleDef, barLength, 0, barLength)
+            ? buildBar(barStyleDef, barLength, 0, barLength)
             : barStyleDef.empty.repeat(barLength);
         return {
           text: `${emptyBar} ${emptyPct}`,
@@ -523,7 +382,7 @@ export class SegmentRenderer {
     const emptyCount = barLength - filledCount;
 
     if (barStyleDef) {
-      const bar = this.buildBar(
+      const bar = buildBar(
         barStyleDef,
         filledCount,
         emptyCount,
@@ -543,61 +402,6 @@ export class SegmentRenderer {
       : `${iconPrefix}${contextInfo.totalTokens.toLocaleString()} (${pct}%)`;
 
     return { text, bgColor, fgColor, bold };
-  }
-
-  private buildBar(
-    s: BarStyleDef,
-    filledCount: number,
-    emptyCount: number,
-    barLength: number,
-  ): string {
-    if (s.marker) {
-      const pos = Math.min(filledCount, barLength - 1);
-      return (
-        s.filled.repeat(pos) + s.marker + s.empty.repeat(barLength - pos - 1)
-      );
-    }
-    if (s.cap) {
-      if (filledCount === 0) {
-        return s.cap + s.empty.repeat(barLength - 1);
-      }
-      if (filledCount >= barLength) {
-        return s.filled.repeat(barLength);
-      }
-      return (
-        s.filled.repeat(filledCount - 1) + s.cap + s.empty.repeat(emptyCount)
-      );
-    }
-    return s.filled.repeat(filledCount) + s.empty.repeat(emptyCount);
-  }
-
-  private resolveBarStyleDef(style: string): BarStyleDef | null {
-    return style === "bar"
-      ? { filled: this.symbols.bar_filled, empty: this.symbols.bar_empty }
-      : (BAR_STYLES[style] ?? null);
-  }
-
-  private formatPercentageWithBar(
-    pct: number,
-    displayStyle?: BarDisplayStyle,
-    timeStr?: string | null,
-  ): string {
-    const style = displayStyle ?? "text";
-    const barStyleDef = this.resolveBarStyleDef(style);
-    const barLength = 10;
-
-    if (barStyleDef) {
-      const filledCount = Math.round((pct / 100) * barLength);
-      const emptyCount = barLength - filledCount;
-      const bar = this.buildBar(
-        barStyleDef,
-        filledCount,
-        emptyCount,
-        barLength,
-      );
-      return timeStr ? `${bar} ${pct}% (${timeStr})` : `${bar} ${pct}%`;
-    }
-    return timeStr ? `${pct}% (${timeStr})` : `${pct}%`;
   }
 
   renderMetrics(
@@ -710,7 +514,7 @@ export class SegmentRenderer {
     }
 
     return {
-      text: `${this.leadingIcon(this.symbols.block_cost, config)}${this.formatPercentageWithBar(pct, config?.displayStyle, timeStr)}`,
+      text: `${this.leadingIcon(this.symbols.block_cost, config)}${formatPercentageWithBar(this.symbols, pct, config?.displayStyle, timeStr)}`,
       bgColor,
       fgColor,
       bold,
@@ -744,7 +548,7 @@ export class SegmentRenderer {
     }
 
     return {
-      text: `${this.leadingIcon(this.symbols.weekly_cost, config)}${this.formatPercentageWithBar(pct, config?.displayStyle, timeStr)}`,
+      text: `${this.leadingIcon(this.symbols.weekly_cost, config)}${formatPercentageWithBar(this.symbols, pct, config?.displayStyle, timeStr)}`,
       bgColor,
       fgColor,
       bold,
@@ -762,7 +566,7 @@ export class SegmentRenderer {
         : configOrType;
     const type = config?.type ?? "cost";
     const todayBudget = this.config.budget?.today;
-    const formattedUsage = this.formatUsageWithBudget(
+    const formattedUsage = formatUsageWithBudget(
       todayInfo.cost,
       todayInfo.tokens,
       todayInfo.tokenBreakdown,
@@ -780,76 +584,6 @@ export class SegmentRenderer {
       bgColor: colors.todayBg,
       fgColor: colors.todayFg,
     };
-  }
-
-  private getDisplayDirectoryName(
-    currentDir: string,
-    projectDir?: string,
-  ): string {
-    if (currentDir.startsWith("~")) {
-      return currentDir;
-    }
-
-    if (projectDir && projectDir !== currentDir) {
-      const base = projectDir.replace(/[\\/]+$/, "");
-      if (
-        currentDir.startsWith(base) &&
-        /[\\/]/.test(currentDir.charAt(base.length))
-      ) {
-        const relativePath = currentDir.slice(base.length + 1);
-        return relativePath || projectDir.split(/[\\/]/).pop() || "project";
-      }
-    }
-
-    return currentDir;
-  }
-
-  private formatUsageDisplay(
-    cost: number | null,
-    tokens: number | null,
-    tokenBreakdown: TokenBreakdown | null,
-    type: string,
-    showUnits: boolean,
-  ): string {
-    const tokenStr = showUnits
-      ? formatTokens(tokens)
-      : formatTokenCount(tokens);
-    switch (type) {
-      case "cost":
-        return formatCost(cost);
-      case "tokens":
-        return tokenStr;
-      case "both":
-        return `${formatCost(cost)} (${tokenStr})`;
-      case "breakdown":
-        return formatTokenBreakdown(tokenBreakdown);
-      default:
-        return formatCost(cost);
-    }
-  }
-
-  private formatUsageWithBudget(
-    cost: number | null,
-    tokens: number | null,
-    tokenBreakdown: TokenBreakdown | null,
-    type: string,
-    budget: BudgetItemConfig | undefined,
-    showUnits: boolean,
-  ): string | null {
-    const state = resolveBudgetDisplay(cost, tokens, budget);
-    if (state.suppressAll) return null;
-    if (!state.showBase) return state.percentText;
-
-    const baseDisplay = this.formatUsageDisplay(
-      cost,
-      tokens,
-      tokenBreakdown,
-      type,
-      showUnits,
-    );
-    return state.percentText
-      ? `${baseDisplay} ${state.percentText}`
-      : baseDisplay;
   }
 
   renderVersion(
