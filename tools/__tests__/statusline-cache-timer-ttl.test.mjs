@@ -22,10 +22,10 @@ const baseConfig = structuredClone(DEFAULT_CONFIG);
 // Non-TTY test runs resolve "auto" to no color; pin it so the colors differ.
 baseConfig.display.colorCompatibility = "truecolor";
 const renderer = new PowerlineRenderer(baseConfig);
-const colors = renderer.getThemeColors();
+const colors = renderer.theme.getThemeColors();
 
 function classic(elapsedSeconds, detectedTtlSeconds, config = {}) {
-  return renderer.segmentRenderer.renderCacheTimer(
+  return renderer.segments.segmentRenderer.renderCacheTimer(
     { elapsedSeconds, detectedTtlSeconds },
     colors,
     { enabled: true, ...config },

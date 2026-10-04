@@ -33,9 +33,9 @@ async function gitInfoWith(statusOutput) {
 
 function renderGit(info) {
   const renderer = new PowerlineRenderer(structuredClone(DEFAULT_CONFIG));
-  return renderer.segmentRenderer.renderGit(
+  return renderer.segments.segmentRenderer.renderGit(
     info,
-    renderer.getThemeColors(),
+    renderer.theme.getThemeColors(),
     { enabled: true },
   ).text;
 }
