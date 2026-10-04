@@ -7,9 +7,9 @@
  *   node scripts/build-mcpb.mjs --local    # pack the workspace tarballs
  *                                          # (CI release path — no registry
  *                                          # propagation race; the same pack
- *                                          # as npm publish, but WITHOUT
- *                                          # stub/manifest.json, which only
- *                                          # the npm publish job writes)
+ *                                          # as npm publish — the release job
+ *                                          # stages stub/manifest.json first,
+ *                                          # a plain local run has none)
  *
  * Output: mcpb/bastra-recall-<version>.mcpb
  * Staging (mcpb/build/) and the .mcpb artifact are gitignored.
@@ -49,9 +49,10 @@ cpSync(join(mcpbDir, "icon.png"), join(buildDir, "icon.png"));
 // 3. Install the server package (+ deps) into the bundle.
 const installArgs = ["install", "--omit=dev", "--no-audit", "--no-fund", "--install-links=false"];
 if (local) {
-  // npm pack runs each workspace's prepack (asset staging). Only the npm
-  // publish job first writes stub/manifest.json, so this local daemon tarball
-  // does not contain that release manifest.
+  // npm pack runs each workspace's prepack (asset staging). The daemon
+  // tarball carries stub/manifest.json only if it was staged before this run
+  // (the release workflow does, #957); without it the bundle uses the Node
+  // hook client.
   const tarballDir = join(buildDir, "tarballs");
   mkdirSync(tarballDir, { recursive: true });
   for (const ws of ["packages/core", "packages/statusline", "packages/daemon"]) {

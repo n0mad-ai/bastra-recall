@@ -90,7 +90,7 @@ Other MCP clients can connect through the forwarder, but are untested. Scripts a
 
 | Platform | Status | Availability |
 |---|---|---|
-| **macOS** (Apple Silicon and Intel) | Supported | Homebrew and npm installation, `bastra autostart`, Claude Desktop `.mcpb` extension, `open_document` and compiled hook client |
+| **macOS** (Apple Silicon and Intel) | Supported | Homebrew and npm installation, `bastra autostart`, Claude Desktop `.mcpb` extension (release builds carry the verified compiled hook client manifest, like npm), `open_document` and compiled hook client |
 | **Linux** (x86_64 and arm64) | Daemon, CLI, MCP and hooks | Install with npm; compiled hook client available. No Homebrew install path, macOS LaunchAgent (`bastra autostart`), `.mcpb` extension installation or `open_document`. The forwarder starts the daemon on demand. |
 | **Windows** | not covered | No compiled hook client; not tested |
 
@@ -223,7 +223,7 @@ Weitere MCP-Clients können den Forwarder verwenden, sind aber ungetestet. Skrip
 
 | Plattform | Status | Verfügbarkeit |
 |---|---|---|
-| **macOS** (Apple Silicon und Intel) | Unterstützt | Homebrew- und npm-Installation, `bastra autostart`, Claude-Desktop-Extension `.mcpb`, `open_document` und kompilierter Hook-Client |
+| **macOS** (Apple Silicon und Intel) | Unterstützt | Homebrew- und npm-Installation, `bastra autostart`, Claude-Desktop-Extension `.mcpb` (Release-Builds enthalten wie npm das Manifest des verifizierten kompilierten Hook-Clients), `open_document` und kompilierter Hook-Client |
 | **Linux** (x86_64 und arm64) | Daemon, CLI, MCP und Hooks | Installation mit npm; kompilierter Hook-Client verfügbar. Kein Homebrew-Installationsweg, macOS-LaunchAgent (`bastra autostart`), `.mcpb`-Extension-Installation oder `open_document`. Der Forwarder startet den Daemon bei Bedarf. |
 | **Windows** | Nicht abgedeckt | Kein kompilierter Hook-Client; nicht getestet |
 
