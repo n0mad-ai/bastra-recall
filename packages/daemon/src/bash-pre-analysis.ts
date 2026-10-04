@@ -192,6 +192,9 @@ const WORD_BREAK = " \t\n|&;()<>";
  * single quotes, where the backslash and newline are literal data. */
 function joinShellLines(cmd: string): string {
   if (!cmd.includes("\\\n") && !cmd.includes("\\\r\n")) return cmd;
+  // A quoted heredoc has literal physical lines: joining its body could hide
+  // its terminator and swallow a later command. Its scanner already fails closed.
+  if (cmd.includes("<<") && !simpleCommands(cmd)) return cmd;
   let out = "";
   let quote: string | null = null;
   for (let i = 0; i < cmd.length; i++) {

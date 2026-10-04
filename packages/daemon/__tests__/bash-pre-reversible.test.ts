@@ -662,6 +662,8 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "source ./env.sh; rm -rf dist",
       "sour\\\nce ./env.sh; rm -rf dist",
       "unset PA\\\nTH; rm -rf dist",
+      "echo '<<'; sour\\\nce ./env.sh; rm -rf dist",
+      "cat > f <<'EOF'\nliteral\\\nEOF\nrm -rf dist",
       'r""m() { /bin/rm "$@"; }; rm -rf dist',
       'function r""m { /bin/rm "$@"; }; rm -rf dist',
       ". ./env.sh; rm -rf dist",
