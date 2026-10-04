@@ -91,3 +91,15 @@ test("--out refuses a path inside a git working tree", () => {
     "and nothing was written",
   );
 });
+
+test("the label-shuffle null is reported but does not decide the verdict (#799)", () => {
+  // The registered M0 gate asks for the null to be REPORTED. The fixture vault
+  // does not hold the gold ids, so the verdict is FAIL here on the unknown-gold
+  // gate alone; the null column must still be printed and must never add a
+  // gate of its own to the output.
+  const res = runStress(["--slice", "paraphrased"], {});
+  const out = `${res.stdout ?? ""}${res.stderr ?? ""}`;
+  assert.match(out, /label-shuffle null/, "the baseline table still carries the null column");
+  assert.match(out, /\| paraphrased Recall@3 \|/, "the null score is printed next to the measured one");
+  assert.doesNotMatch(out, /baseline gate failed/, "the null is not a gate");
+});

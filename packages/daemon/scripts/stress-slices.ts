@@ -134,61 +134,6 @@ export function shuffleCrossLabels(cases: readonly CrossMemoryCase[], seed: numb
   return cases.map((c, i) => ({ ...c, expected: expected[i].expected, oneHop: expected[i].oneHop }));
 }
 
-/**
- * The verdict has to consult the baselines it prints. A label-shuffle
- * null that scores at least as well as the measured run means the gold set's
- * shape, not retrieval, is being measured — that slice must not read as PASS.
- * Returns one entry per slice whose null is not strictly below its measured score.
- */
-export function baselineGateFailures(r: {
-  para?: { recallAt3: number };
-  nullPara?: { recallAt3: number };
-  cross?: { recallAtK: number };
-  nullCross?: { recallAtK: number };
-}): Array<{ slice: "paraphrased" | "cross"; measured: number; nullScore: number }> {
-  const out: Array<{ slice: "paraphrased" | "cross"; measured: number; nullScore: number }> = [];
-  if (r.para && r.nullPara && r.nullPara.recallAt3 >= r.para.recallAt3) {
-    out.push({ slice: "paraphrased", measured: r.para.recallAt3, nullScore: r.nullPara.recallAt3 });
-  }
-  if (r.cross && r.nullCross && r.nullCross.recallAtK >= r.cross.recallAtK) {
-    out.push({ slice: "cross", measured: r.cross.recallAtK, nullScore: r.nullCross.recallAtK });
-  }
-  return out;
-}
-
-/**
- * The overall verdict, from everything the run printed: an unknown gold id
- * fails it, each evaluated slice gates it, a label-shuffle null that scores as
- * well as the measured run fails it, and an anti-hallucination slice that
- * cannot pass by construction (`antiNotEvaluable`, --hybrid below the RRF
- * floor) does not gate it. When that slice was the only one run, the run says
- * NOT EVALUABLE instead of reading a skipped gate as PASS.
- */
-export function stressVerdict(r: {
-  unknownGold: number;
-  para?: { pass: boolean; recallAt3: number };
-  nullPara?: { recallAt3: number };
-  cross?: { pass: boolean; recallAtK: number };
-  nullCross?: { recallAtK: number };
-  anti?: { pass: boolean };
-  antiNotEvaluable: boolean;
-}): {
-  verdict: "PASS" | "FAIL" | "NOT EVALUABLE";
-  allPass: boolean;
-  baselineFailures: ReturnType<typeof baselineGateFailures>;
-} {
-  const passes: boolean[] = [];
-  if (r.unknownGold > 0) passes.push(false);
-  if (r.para) passes.push(r.para.pass);
-  if (r.cross) passes.push(r.cross.pass);
-  if (r.anti && !r.antiNotEvaluable) passes.push(r.anti.pass);
-  const baselineFailures = baselineGateFailures(r);
-  if (baselineFailures.length > 0) passes.push(false);
-  const allPass = passes.length > 0 && passes.every((p) => p);
-  const nothingEvaluable = passes.length === 0 && r.anti !== undefined && r.antiNotEvaluable;
-  return { verdict: nothingEvaluable ? "NOT EVALUABLE" : allPass ? "PASS" : "FAIL", allPass, baselineFailures };
-}
-
 // ── Slice 1: paraphrased ───────────────────────────────────────
 
 export interface ParaphrasedResult {
