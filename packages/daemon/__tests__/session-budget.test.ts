@@ -7,13 +7,14 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   SESSION_BUDGET_SHADOW_TOKENS,
   SessionBudgetLedger,
+  budgetShadowWritesSettled,
   recordBudgetShadow,
   resetBudgetOnSource,
   shadowBudgetTokens,
@@ -106,10 +107,14 @@ test("#458: recordBudgetShadow writes a budget_shadow event that reconciles with
     const ledger = new SessionBudgetLedger();
     const d = recordBudgetShadow("sess", "prompt_hook_call", 480, { ledger, budget: 400, source: null })!;
     assert.equal(d.would_drop, true);
-    // Der Schreibvorgang ist fire-and-forget — kurz warten.
-    await new Promise((r) => setTimeout(r, 50));
-    const day = new Date().toISOString().slice(0, 10);
-    const lines = (await readFile(join(logDir, `events-${day}.jsonl`), "utf8")).trim().split("\n");
+    // Der Schreibvorgang ist fire-and-forget. #1056: auf ihn warten, nicht auf
+    // eine feste Zeit — 50 ms reichten unter Last nicht, die Datei fehlte noch.
+    // Den Dateinamen nimmt der Test aus dem eigenen Temp-Verzeichnis statt aus
+    // der Uhr, damit auch ein Lauf über Mitternacht die Zeile findet.
+    await budgetShadowWritesSettled();
+    const files = (await readdir(logDir)).filter((f) => /^events-.*\.jsonl$/.test(f));
+    assert.equal(files.length, 1, "exactly one event file in the test's own log dir");
+    const lines = (await readFile(join(logDir, files[0]), "utf8")).trim().split("\n");
     const ev = JSON.parse(lines[lines.length - 1]) as Record<string, unknown>;
     assert.equal(ev.kind, "budget_shadow");
     assert.equal(ev.lane, "prompt_hook_call");

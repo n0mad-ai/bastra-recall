@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildContextLedger, type LedgerEvent } from "../src/context-ledger.js";
 import { runSessionLane } from "../src/session-lane.js";
+import { budgetShadowWritesSettled } from "../src/session-budget.js";
 import { loadSessionState } from "../src/session-state.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -209,8 +210,8 @@ test("#458 (shadow): the SessionStart lane charges its emitted block to the sess
         await runSessionLane({ hook_event_name: "SessionStart", source: "compact", cwd: "/tmp", session_id: "sess-458" }, base);
       });
     });
-    // fire-and-forget writes — give them a tick
-    await new Promise((r) => setTimeout(r, 50));
+    // The budget_shadow rows are fire-and-forget — #1056: wait for them, not for a fixed time.
+    await budgetShadowWritesSettled();
     const events = await readEvents(logDir);
     const calls = events.filter((e) => e.kind === "session_hook_call");
     const shadow = events.filter((e) => e.kind === "budget_shadow" && e.session_id === "sess-458");
