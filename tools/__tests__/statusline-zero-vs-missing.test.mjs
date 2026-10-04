@@ -141,12 +141,12 @@ const config = (budget) => ({ ...structuredClone(DEFAULT_CONFIG), budget });
 
 function classic(values, segment, budget) {
   const renderer = new PowerlineRenderer(config(budget));
-  const colors = renderer.getThemeColors();
+  const colors = renderer.theme.getThemeColors();
   const segConfig = { enabled: true, showIcon: false, ...segment };
   return [
-    renderer.segmentRenderer.renderSession(asUsage(values), colors, segConfig)
+    renderer.segments.segmentRenderer.renderSession(asUsage(values), colors, segConfig)
       .text,
-    renderer.segmentRenderer.renderToday(values, colors, segConfig).text,
+    renderer.segments.segmentRenderer.renderToday(values, colors, segConfig).text,
   ];
 }
 

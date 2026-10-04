@@ -10,9 +10,9 @@ import { DEFAULT_CONFIG } from "../../packages/statusline/src/config/defaults.ts
 
 function context(info, config) {
   const renderer = new PowerlineRenderer(structuredClone(DEFAULT_CONFIG));
-  return renderer.segmentRenderer.renderContext(
+  return renderer.segments.segmentRenderer.renderContext(
     info,
-    renderer.getThemeColors(),
+    renderer.theme.getThemeColors(),
     config,
   );
 }

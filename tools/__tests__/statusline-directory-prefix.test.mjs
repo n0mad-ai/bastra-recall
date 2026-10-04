@@ -10,9 +10,9 @@ import { DEFAULT_CONFIG } from "../../packages/statusline/src/config/defaults.ts
 
 function directory(currentDir, projectDir) {
   const renderer = new PowerlineRenderer(structuredClone(DEFAULT_CONFIG));
-  return renderer.segmentRenderer.renderDirectory(
+  return renderer.segments.segmentRenderer.renderDirectory(
     { workspace: { current_dir: currentDir, project_dir: projectDir } },
-    renderer.getThemeColors(),
+    renderer.theme.getThemeColors(),
     { enabled: true, style: "full" },
   ).text;
 }
