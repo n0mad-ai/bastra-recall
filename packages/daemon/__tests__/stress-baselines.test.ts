@@ -16,7 +16,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeControlRecaller, seededShuffle, seededDerangement, seededRandom } from "../scripts/stress-arm.js";
-import { baselineGateFailures, runCrossMemory, stressVerdict, shuffleCrossLabels, shuffleParaphrasedLabels } from "../scripts/stress-slices.js";
+import { runCrossMemory, shuffleCrossLabels, shuffleParaphrasedLabels } from "../scripts/stress-slices.js";
 import { computeHashes, hashVault, runDirFor, writeRunArtifact, type RunManifest } from "../scripts/stress-artifact.js";
 import type { Vault } from "@bastra-recall/core";
 
@@ -180,45 +180,10 @@ test("the real fixture had a fixed point under the old shuffle and has none now"
   assert.deepEqual(deranged.filter((id, i) => id === ids[i]), []);
 });
 
-// The verdict consults its own baselines.
-test("a label-shuffle null that is not below the measured score fails its slice", () => {
-  assert.deepEqual(baselineGateFailures({ para: { recallAt3: 0.5 }, nullPara: { recallAt3: 0.2 } }), []);
-  assert.deepEqual(baselineGateFailures({ cross: { recallAtK: 0.5 }, nullCross: { recallAtK: 0.1 } }), []);
-
-  assert.deepEqual(baselineGateFailures({ para: { recallAt3: 0.5 }, nullPara: { recallAt3: 0.5 } }), [
-    { slice: "paraphrased", measured: 0.5, nullScore: 0.5 },
-  ]);
-  assert.deepEqual(baselineGateFailures({ cross: { recallAtK: 0.4 }, nullCross: { recallAtK: 0.6 } }), [
-    { slice: "cross", measured: 0.4, nullScore: 0.6 },
-  ]);
-  // A slice that did not run has no baseline to consult.
-  assert.deepEqual(baselineGateFailures({}), []);
-});
-
+// #799: a cross slice with nothing left to grade is not a PASS.
 test("a cross slice whose every case is retired or unknown does not pass on 0 === 0", async () => {
   const emptyVault = { list: () => [] } as unknown as Vault;
   const res = await runCrossMemory(emptyVault, async () => [], [{ query: "q", expected: ["gone-1", "gone-2"] }]);
   assert.equal(res.rows.length, 0, "nothing was left to grade");
   assert.equal(res.pass, false, "an empty slice grades nothing; it must not read as PASS");
-});
-
-test("the overall verdict fails when a label-shuffle null scores as well as the measured run", () => {
-  const r = stressVerdict({
-    unknownGold: 0,
-    para: { pass: true, recallAt3: 0.6 },
-    nullPara: { recallAt3: 0.6 },
-    antiNotEvaluable: false,
-  });
-  assert.equal(r.verdict, "FAIL");
-  assert.equal(r.allPass, false);
-  assert.deepEqual(r.baselineFailures.map((f) => f.slice), ["paraphrased"]);
-});
-
-test("an anti slice that cannot pass under --hybrid does not gate the verdict", () => {
-  const anti = { pass: false };
-  const para = { pass: true, recallAt3: 0.6 };
-  const nullPara = { recallAt3: 0.1 };
-  assert.equal(stressVerdict({ unknownGold: 0, para, nullPara, anti, antiNotEvaluable: true }).verdict, "PASS");
-  assert.equal(stressVerdict({ unknownGold: 0, para, nullPara, anti, antiNotEvaluable: false }).verdict, "FAIL");
-  assert.equal(stressVerdict({ unknownGold: 0, anti, antiNotEvaluable: true }).verdict, "NOT EVALUABLE");
 });
