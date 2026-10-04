@@ -6,7 +6,7 @@
   "type": "module",
   "license": "MIT",
   "engines": {
-    "node": ">=22.18"
+    "node": ">=22"
   },
   "scripts": {
     "lift": "tsx src/marginal-lift.ts",

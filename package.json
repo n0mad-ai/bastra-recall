@@ -5,7 +5,7 @@
   "private": true,
   "license": "MIT",
   "engines": {
-    "node": ">=22.18"
+    "node": ">=22"
   },
   "workspaces": [
     "packages/core",

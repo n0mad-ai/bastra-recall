@@ -13,7 +13,7 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=22.18"
+    "node": ">=22"
   },
   "bin": {
     "bastra": "./dist/cli.js",
