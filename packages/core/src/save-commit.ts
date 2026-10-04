@@ -8,8 +8,9 @@
  * question: not "what does this memory look like" but "may I write right now".
  *
  * The claim outlives its process on SIGKILL, OOM or power loss, so age is a
- * release criterion — but only for a claim whose owner cannot be shown to be
- * alive. Details on each rule are at the function that implements it.
+ * release criterion — but for a claim whose owner can be shown to be alive,
+ * only past a ceiling (COMMIT_CLAIM_LIVE_OWNER_MAX_MS), because a reused pid
+ * looks alive too. Details on each rule are at the function that implements it.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, access, open, rename, stat, unlink, writeFile } from "node:fs/promises";
@@ -88,8 +89,11 @@ interface CommitClaim {
  * May this writer take a claim it found already present?
  *
  * Zwei unabhängige Gründe, und der BESITZER kommt zuerst: Lebt der eingetragene
- * Prozess auf dieser Maschine noch, ist der Claim in Benutzung, egal wie alt er
- * ist. Das Alter bleibt für alles andere zuständig — ein fremder Host (eine PID
+ * Prozess auf dieser Maschine noch, ist der Claim in Benutzung — bis zur
+ * Obergrenze COMMIT_CLAIM_LIVE_OWNER_MAX_MS (10 Minuten, #895); danach kann es
+ * nur eine wiederverwendete PID sein, und das Alter entscheidet wie sonst. Ein
+ * toter Besitzer (ESRCH) gibt den Claim sofort frei. Das Alter bleibt für alles
+ * andere zuständig — ein fremder Host (eine PID
  * ist nur auf ihrer Maschine aussagekräftig, und der Vault liegt erwartbar auf
  * geteilten Cloud-Mounts) oder ein unparsebarer Claim.
  */
@@ -113,7 +117,9 @@ export async function claimIsAbandoned(lockPath: string): Promise<boolean> {
   // war umgekehrt, und damit enteignete ein zweiter Writer nach 30 Sekunden
   // einen Claim, dessen Besitzer auf DIESER Maschine nachweislich noch lief
   // und gerade schrieb — ein langsamer Cloud-Mount reicht dafür aus. Ein
-  // lebender lokaler Prozess ist ein Beweis, das Alter nur ein Indiz.
+  // lebender lokaler Prozess ist ein Beweis, das Alter nur ein Indiz — aber
+  // nur bis COMMIT_CLAIM_LIVE_OWNER_MAX_MS (#895): Eine PID wird nach dem Tod
+  // ihres Besitzers wiederverwendet, ein Beweis ist sie nicht für immer.
   let claim: CommitClaim | undefined;
   try {
     claim = JSON.parse(raw) as CommitClaim;

@@ -305,8 +305,9 @@ async function liveReaders(readersDir: string): Promise<string[]> {
   for (const e of entries) {
     const full = join(readersDir, e);
     // Dieselbe Besitzer-vor-Alter-Regel wie beim Commit-Claim: Ein lebender
-    // lokaler Prozess ist ein Beweis, das Alter nur ein Indiz. Ein Save, der
-    // per SIGKILL starb, darf eine Area nicht dauerhaft unumbenennbar machen.
+    // lokaler Prozess ist ein Beweis, das Alter nur ein Indiz — bis zur
+    // Obergrenze aus `claimIsAbandoned` (#895). Ein Save, der per SIGKILL
+    // starb, darf eine Area nicht dauerhaft unumbenennbar machen.
     if (await claimIsAbandoned(full)) {
       await unlink(full).catch(() => {});
       continue;
@@ -362,19 +363,21 @@ export function areaKeyForPath(vaultRoot: string, filePath: string): string | nu
  *
  * WARUM DAS NICHT SCHWEIGEN DARF. Hier stand `unlink(path).catch(() => {})`.
  * Bleibt eine Markierung liegen, trägt sie die pid DIESES noch laufenden
- * Prozesses — `claimIsAbandoned` verweigert die Freigabe also völlig zu Recht,
+ * Prozesses — `claimIsAbandoned` verweigert die Freigabe also zu Recht,
  * und der Vault hält einen Save für aktiv, den es nicht gibt. Jedes Rename,
  * Delete und Create auf diesem Regal scheitert danach mit „saves are writing
- * into …", bis der Prozess endet. Ein verschluckter Fehler wurde so zu einer
+ * into …", bis der Prozess endet oder die Obergrenze von `claimIsAbandoned`
+ * (#895, 10 Minuten) greift. Ein verschluckter Fehler wurde so zu einer
  * Blockade, die niemand erklären konnte.
  *
  * ZWEI STUFEN, weil eine nicht reicht. Melden allein ließe den Vault blockiert
  * zurück, nur eben mit Begründung. Deshalb wird die Markierung, wenn sie sich
  * nicht löschen lässt, ENTWERTET: Ein Body ohne pid fällt in
  * `claimIsAbandoned` auf die Altersregel zurück und verfällt nach dem
- * bestehenden Fenster. Das schwächt die Zusage „ein lebender Besitzer wird nie
- * enteignet" NICHT — entwertet wird ausschließlich die eigene Markierung, und
- * erst nachdem `fn` fertig ist.
+ * bestehenden Fenster. Das schwächt die Zusage „ein lebender Besitzer wird
+ * nicht vorzeitig enteignet" NICHT — entwertet wird ausschließlich die eigene
+ * Markierung, und erst nachdem `fn` fertig ist. (Die Zusage gilt seit #895 nur
+ * bis zur Obergrenze von `claimIsAbandoned`, 10 Minuten.)
  *
  * Scheitert auch das (der Repro-Fall des Issues ist ein schreibgeschützter
  * readers-Ordner), bleibt nur die Meldung. Dann ist die Blockade echt, und
