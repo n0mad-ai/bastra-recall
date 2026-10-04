@@ -1,5 +1,11 @@
 # Bastra Recall – Evolution Architecture V1 → V2
 
+> **Current contract (C-095, 2026-10-04):** V2 combines the former V2/V3 plans.
+> Development and beta releases run alongside measurements; stable V2 requires
+> complete confirmation and multiple adversarial reviews. Code awareness belongs
+> exclusively to experimental milestone #29. The [unified V2 plan](./Evolution%20Plan%20V2.md)
+> and §42 govern. Status/ledger notes through C-094 below describe the historical state.
+
 > Status: release and target architecture; the V1.0 release contract is met
 > and shipped with Bastra Recall 1.0.0 on 14 September 2026, V2.0 is the
 > measurement-dependent long-term target
@@ -48,7 +54,7 @@
 > The product-owner decisions in Section 31 have been taken and bind
 > the implementation.
 >
-> Next available ID: C-095. A new delta is carried forward in this file and is
+> Next available ID: C-096. A new delta is carried forward in this file and is
 > no longer kept as a separate revision file.
 
 ## 0. Decision and Review Status
@@ -89,33 +95,17 @@ and proven:
 V1.0 contains no new memory types, claims, graph edge types, dual vectors,
 chunking, HNSW, or learned-ranking live layer.
 
-### 0.2 Release Ladder
+### 0.2 Release ladder (C-095)
 
 | Release | Function | Approval logic |
 |---|---|---|
-| 0.8.6 | historical starting point: the pre-V1 state at the time | diagnostic foundation, not a completed V1 contract |
-| V1.0 | observable and selective measurement/control foundation | Section 0.1 and Definition of Done 26.1 fully satisfied — **shipped as 1.0.0 on 2026-09-14** |
-| v1.0.1 | post-release measurement and follow-ups | work that is built but whose evidence or rate only arises in real use after 1.0, plus the P2 items deliberately deferred at the 1.0 approval; open |
-| V1.x | incremental evolution | each component approved individually through its named measurement gate and delivered backward-compatibly |
-| V2.0 | complete adaptive memory system | all mandatory V2 properties from 26.2 proven together; open |
-| V3.0 | anticipatory, causal and shared memory | in planning, builds on the V2 contracts; separate document: [Evolution Architecture V2 to V3](./Evolution%20Architecture%20V2%20to%20V3.md) |
+| V1.0 / v1.0.1 | existing foundation and hardening | existing release contract; no waiting for unrelated measurement windows |
+| V2 beta | incremental adaptive, prospective, causal and shared functions | technical dependencies, functional checks, safe migration and rollback; measurements in parallel |
+| Stable V2.0 | one confirmed system | all mandatory functions confirmed and at least two adversarial review rounds completed; #400 |
 
-Measurement, shadow operation, and read-only projections are permitted at any
-time. Measurement gates gate solely schema/contract changes and
-live activation. The exception is quality comparisons whose interpretation
-requires the M0 baseline.
-
-Accessibility/Asteroid Belt, Deep Recall, Episodic Memory, Claims, Typed
-Graph, consolidation, dual vectors, HNSW, and learned ranking remain in the
-document as the V2 long-term target. During V1.x, only those components may be
-permanently implemented in product behavior, schema, or contracts, or activated
-live, whose named measurement gate substantiates the need and the safety.
-Until then they remain limited to measurement, shadow, read-only, or isolated
-experiments.
-
-V2.0 is not a blanket approval for components built in advance. It is the
-promotion of the parts individually proven during V1.x into one stable overall
-system.
+There is no separate V3 release plan. Pure measurements belong to #30;
+code awareness belongs entirely to #29. §42 replaces the previous restriction
+on schema/live development while preserving methodology and security invariants.
 
 ### 0.3 Review Discipline
 
@@ -218,11 +208,12 @@ reopened only with new evidence.
 | C-087 | contract change | Of the global context budget from 16.3, V1.0 owes the latency budget live and the cumulative cross-lane token budget per session as a **shadow ledger** (26.1): charge and log, do not trim. **Live enforcement** — budget size fixed from the shadow data, a canary profile with instant rollback to unlimited, a seven-day canary report — is moved to 26.2. The reason is measured: six days of shadow (742 decisions, 135 sessions, 80 evaluable) would have touched 8 sessions against the provisional 7,500-token profile and withheld 36,976 tokens, roughly 5 % of 719,322 tokens of weekly use. The value lies in the tail, and a tail does not carry a live activation on shadow data alone. |
 | C-088 | current-state correction | Status update without a contract change: V1.0 is met and shipped as 1.0.0 on 2026-09-14 (tag `v1.0.0`); header, 0.1, 0.2, 18.0, 21.1, 25, 26.1 and 27 carry this, historical statements stay as such. Six current-state statements are outdated and are corrected with today's location: mutation audit also in the MCP/REST save (C-008), evidence decision active by default and hop-safe (13.1, C-046), shared parallel session assembler with a POST path (16.1, C-004), hybrid stress path builds the vector arm (2.2), pinned block outside `session-hook.ts` (6.3), identifier anchor reads only title and `recall_when` (C-086). Shifted line references are updated, the per-lane budgets of 2026-09-12 are added to 9.4 and 16.3 as a status note, C-087 is added to 28 and 37. No verdict is reinterpreted. |
 | C-089 | architectural decision | **Tightened by C-090, refined by C-092, extended by C-091, C-093 and C-094:** shipped code awareness is a mandatory criterion of the V2.0 promotion. Code awareness in V2 does not come from an in-house symbol indexer but from Graphify as an external code-graph source (epic #572, #573–#580; product-owner decision of 2026-09-17). Recall uses only the Graphify CLI in code-only mode and the `graph.json` it writes, never its installers or hooks. The code graph is a logical view of its own next to 13.1 (hop budget one, only directly extracted edges in Normal Recall, no-graph control arm), lives git-ignored inside the project, is not projected into the vault, and runs in the hook path without Python within the existing budgets. `applies_to` is implemented via the existing field `affects_files`; a code hop never produces `required` on its own. |
-| C-090 | contract change | Code awareness via Graphify (C-089, #572–#580) is a **mandatory criterion of the V2.0 promotion** (26.2): it has shipped, keeps the boundaries from 13.1, 16.2, 22, 23 and 24, and its context savings are substantiated against the no-graph control arm (#579). This is a release obligation, not a runtime obligation: for the user Graphify remains an optional companion, and Recall works unchanged without it (22). Reason: code indexing was decided earlier; only its timing was open, and that dependency no longer exists (product-owner decision of 2026-09-17). |
+| C-090 | contract change | **Withdrawn by C-095; historical only:** Code awareness via Graphify (C-089, #572–#580) is a **mandatory criterion of the V2.0 promotion** (26.2): it has shipped, keeps the boundaries from 13.1, 16.2, 22, 23 and 24, and its context savings are substantiated against the no-graph control arm (#579). This is a release obligation, not a runtime obligation: for the user Graphify remains an optional companion, and Recall works unchanged without it (22). Reason: code indexing was decided earlier; only its timing was open, and that dependency no longer exists (product-owner decision of 2026-09-17). |
 | C-091 | current-state correction | The update route `graphify update` planned in #574 violates the code-only boundary from C-089, C-090 and Section 23. Measured on 2026-09-17 against this repository: `graphify extract . --code-only` yields 6,677 nodes and 19,444 edges in 11.14 s; `graphify update .` has no `--code-only`, additionally took in 65 Markdown files and yielded 7,671 nodes and 20,603 edges in 9.32 s. The only admissible build command is therefore `graphify extract <repo> --code-only`. It is itself incremental: unchanged 1.53 s (independently re-measured 2.11 s), one changed file 2.18 s, one deletion 2.68 s and correctly detected without `--force`. It follows that `--force` is never passed automatically, only as an explicitly confirmed repair. The earlier assumption that a refresh costs 9–12 s even for a single file — the reason for a long debounce and for an automatic `--force` rule — no longer holds. |
 | C-092 | refinement | The statement "at most about 10 ms" on the code dependents block (16.2, C-089) describes the **warm** path. Measured on 2026-09-17: cold start 26.35 ms on 11.1 MB (reading 5.89 ms, parsing 15.24 ms, indexing 5.23 ms, +21.9 MB heap) and independently 20.72 ms on 9.7 MB (3.70 / 13.34 / 3.67 ms, +20.3 MB); warm p50 0.003 ms and p90 0.005 ms across 200 queries. Rule: the graph is preloaded asynchronously on activation and after a daemon start; a hook arriving cold skips the block silently and only triggers the load. The load is never waited for synchronously. In addition, a daemon-wide LRU heap budget of 256 MB across all loaded graphs. |
 | C-093 | contract addition | `graph.json` is untrusted input and not an artifact of our own: produced by a foreign tool, without a schema version (the field `graph` is `{}`), in a repository that need not belong to the user, and its content ends up verbatim in the agent context. Quantified limits apply before every use: 64 MB file size, 500,000 nodes, 2,000,000 edges, 512 bytes per string; only normalized repo-relative paths, no `..` escape, no absolute paths, no control or bidi characters; output solely through a field allowlist. Any violation leads only to "code awareness not available"; Recall itself is never impaired. In addition the deliberately fixed relation allowlist: the measured graph contains fifteen relation types, not four. Counting as a dependency edge, and only with origin `EXTRACTED`: `calls`, `imports`, `imports_from`, `inherits`, `re_exports`, `dynamic_import`, `implements`. Structure without dependency: `contains`, `method`. Excluded: `indirect_call` (100 % `INFERRED`), `references`, `rationale_for`, `defines`, `cites` and `extends` — the latter denotes tsconfig inheritance in the measured graph, not class inheritance. The trust filter runs per **edge**, not per relation: `calls` mixes 4,363 extracted with 153 inferred edges. Even under `--code-only` the graph contains non-code nodes (`concept` 220, `rationale` 24); they stay within the code-only boundary but are not navigable locations and never reach a hook context. |
 | C-094 | contract addition | The platform scope of this sub-release is macOS and Linux. Windows is explicitly not promised while locking, git path resolution, worktrees and process termination have not been checked in a Windows CI; until then the feature reports itself as unavailable there instead of half working. Reason: Graphify's process lock rests on `fcntl` and is a no-op on Windows, `nice` is not portable, and `.git` is a file rather than a directory in worktrees — git paths are therefore resolved via `git rev-parse --git-path`. Recall brings its own cross-platform repository lock. Also recorded: the graph provides no `rename` or `move` relation; renames are detected solely through git evidence (`git diff --name-status -M`) and never inferred from similar symbol sets. Without evidence no rename is claimed. |
+| C-095 | Product-owner decision | Unified V2 roadmap, parallel measurements in #30, beta delivery before complete evidence, stable V2 after confirmation and at least two adversarial review rounds; code awareness exclusively in #29. See §42–43. |
 
 **Sign-off status 24 July 2026:** full reconciliation of ledger C-001–C-027,
 gate measurability, current-state claim sweep (58 claims, all covered),
@@ -436,7 +427,7 @@ to a relation allowlist. C-094 limits the platform scope of this sub-release to
 macOS and Linux and binds renames to git evidence. No verdict from C-001–C-090
 is reinterpreted.
 
-**Next available ID: C-095.** New delta reviews begin there. A verdict
+**Next available ID: C-096.** New delta reviews begin there. A verdict
 changes only with new code, telemetry, or run evidence; matters of taste
 are marked as an architectural decision instead of a factual error.
 
@@ -2458,7 +2449,7 @@ are active at all and with which hop budget:
 - an improvement in the overall result without a passed control arm does not
   count as substantiation that the graph was the cause.
 
-**Code view (V2, C-089).** The code graph from Graphify is a logical view of
+**Experimental code view (milestone #29; outside V2, C-095).** The code graph from Graphify is a logical view of
 its own next to the memory views and is not merged into the memory graph.
 Normal Recall uses it with a hard hop budget of one and only via edges
 extracted directly from source (`EXTRACTED`), not inferred ones. A code hop
@@ -4268,46 +4259,17 @@ measurement gates.
 - no Windows promise for this sub-release (C-094);
 - no rename inferred from similar symbol sets without git evidence (C-094).
 
-## 25. Implementation order
+## 25. Implementation order (C-095)
 
-V1.0:
+The shared order is in the [V2 evolution plan](./Evolution%20Plan%20V2.md).
+Development follows actual technical dependencies; #387/#402 and M0–M6
+measurements run alongside it in #30. Start with commitments and reliable due
+item delivery (#250/#403/#404), enabling follow-up on measurement readouts.
+No function waits for completion of the entire former V2.
 
-1. Measurement truth and reproducible baselines.
-2. Deterministic relevance evidence and genuine abstention.
-3. Shared, project-capable session assembler with internal parallelization.
-4. Global context budget — shadow ledger in V1.0, live enforcement under 26.2
-   (C-087) — and a separate retrieval/presentation experiment.
-
-Up to and including item 4, the implementation is done and shipped as V1.0
-with 1.0.0 on 2026-09-14 (C-088); before that it was approved as V1.0. All
-following numbers order schema/contract changes and live activations.
-Measurement, shadow operation and read-only projections remain permitted
-independently of that; quality claims with reference effect presuppose M0:
-
-5. BM25-first cascade and query embedding cache live after M2 has been passed.
-6. Derived accessibility and Asteroid Belt live after the M1 proof and after M3
-   has been passed. The provenance review of the inventory under 6.3 runs
-   independently of that as read-only sidecar work and is bound to no gate.
-7. Deep Recall Tier 1 live after M3 has been passed; Tier 2 only after
-   additional proof of its own benefit over Tier 1 under 8.5.
-8. Cue/content vectors, the derived cue layer and chunking persistent or live
-   only after a separate representation decision under 11.2 and 11.4; M2 alone
-   is not sufficient.
-9. Episodic Memory, structured claims, the time axes from 6.3 and the
-   `provenance_class` persistent only after a separate schema decision, live
-   after M4 has been passed.
-10. Typed graph, logical views, versions and reconsolidation persistent only
-    after a separate schema decision under 21.4, live after M4 has been passed
-    and, per view, after the no-graph control arm has been passed.
-11. Controlled consolidation with the proposal operators from 14.4 live after
-    M4 has been passed.
-12. Flat/HNSW strategy live only once controlled profiling substantiates a Flat
-    search bottleneck and M5 substantiates the quality and latency advantage.
-13. Learned ranking in shadow after M0/M1, live only after M6 has been passed.
-14. Code awareness via Graphify (C-089), mandatory for V2.0 (C-090), in the order #573 → #574 → #575 →
-    #576/#577 → #578 → #579, with documentation (#580) alongside; its benefit
-    counts as substantiated only after the comparison with the no-graph control
-    arm (#579).
+Requirements in sections 6–24 remain. Their previous schema/live measurement
+restrictions become stable-confirmation requirements under §42 rather than
+development or beta-release blockers. Graphify is outside this order, entirely in #29.
 
 ## 26. Definition of Done
 
@@ -4494,14 +4456,12 @@ promotion follows only when:
   (C-087, moved here from 26.1);
 - HNSW is activated automatically only when it is measurably worthwhile on the
   current hardware and qualitatively safe;
-- every adaptive decision is shadow-tested, explainable and reversible;
-- code awareness via Graphify (C-089, #572–#580) has shipped, keeps the
-  boundaries from 13.1, 16.2, 22, 23 and 24, and its context savings are
-  substantiated against the no-graph control arm (#579) (C-090).
+- every adaptive decision is shadow-tested, explainable and reversible.
 
-The last item is a release obligation, not a runtime obligation: for the user
-Graphify remains an optional companion, and Recall works unchanged without it
-(22).
+The mandatory prospective, causal and shared functions in §43 must also be
+confirmed. Evidence from #402/#410 and milestone #30 feeds #400. At least two
+documented adversarial review rounds with follow-up on changes and resolved release
+findings are required. Beta releases may ship earlier (§42). Code awareness is not a V2 criterion.
 
 ## 27. Short version
 
@@ -4531,7 +4491,7 @@ The goal is not maximum recall. The goal is:
 
 > The right memory at the right time – and otherwise silence.
 
-## 28. Delta ledger (C-029–C-094)
+## 28. Delta ledger (C-029–C-095)
 
 This section documents eleven consecutive rounds of deltas against the
 signed-off state C-001–C-028, eight later individual entries on contract,
@@ -6609,7 +6569,7 @@ verdict is reinterpreted; what changes is the scope of the release contract.*
 
 *From here the contract change C-090 of 17 September 2026.*
 
-### C-090 – Code awareness becomes a mandatory criterion of the V2.0 promotion
+### C-090 – Historical code-awareness obligation (withdrawn by C-095)
 
 - **Passage:** preamble; ledger row C-089 with a tightening reference, new
   ledger row C-090; 0.4 sign-off block and next free ID; 25 item 14; 26.2 note
@@ -6749,6 +6709,15 @@ verdict is reinterpreted; what changes is the scope of the release contract.*
 - **Rollback:** the scope is extensible without changing anything existing: as
   soon as the four points are green in a Windows CI, a new entry lifts the
   restriction.
+
+### C-095 – Unified V2/V3, parallel measurements, final stable confirmation
+
+- **Passage:** 0.2, 25, 26.2, 42–43; unified V2 plan, #386/#400 and milestones #19/#30/#29.
+- **Classification:** explicit product-owner decision of 2026-10-04, not a measured quality finding.
+- **Evidence:** Daniel requests merging into V2, parallel measurement ownership, beta intermediate releases, stable V2 after confirmation and multiple adversarial reviews; code awareness outside the version roadmap.
+- **Delta:** complete former V2 approval is no prerequisite for former V3 implementation. Measurements confirm features and stable release; implementation and beta follow technical dependencies. C-090's code-awareness obligation is withdrawn.
+- **Acceptance:** one tracker #386, final approval #400, pure measurement #30, code awareness #29; at least two documented adversarial review rounds for stable V2. This change claims neither completed review rounds nor confirmed product functions.
+- **Rollback:** safe feature fallbacks, migration, permissions and data preservation remain; known-good profiles stay recoverable.
 
 ## 29. Source and claim matrix
 
@@ -7019,7 +6988,7 @@ denotes queue position only; the earlier exemption for `agent-session` and
 missing `write_origin` does not apply. The review runs in four priority stages
 and ends, per memory, with origin clarified or explicitly confirmed as unclear.
 
-### Decision 6 – Code awareness via Graphify
+### Decision 6 – Code awareness via Graphify (historical; version obligation withdrawn by C-095)
 
 **Decided on 17 September 2026 (C-089, tightened by C-090): Graphify instead of
 an in-house symbol indexer, as a mandatory part of V2.0.** Graphify builds the code map, Recall decides what of
@@ -7454,7 +7423,7 @@ and #573–#580; this document records the boundaries.
 **Next free ID: C-090.** *(State of this section. The currently valid next free
 ID is at the end of Section 41.)*
 
-## 40. Handover after the contract change C-090
+## 40. Historical C-090 handover (version obligation withdrawn by C-095)
 
 **What was changed.** This version adds the contract change C-090. Solely the
 following passages were changed:
@@ -7533,3 +7502,285 @@ renames are detected only through git evidence (C-094).
    process termination comes about, which would extend the scope from C-094.
 
 **Next free ID: C-095.**
+
+## 42. Contract change C-095 – Unified V2 roadmap and beta delivery
+
+**Decided by Daniel on 2026-10-04.** The [unified V2 evolution plan](./Evolution%20Plan%20V2.md)
+and tracker #386 combine the former V2 and V3 features. C-095 governs any conflict
+with older passages in this document. Historical C-IDs remain decision history,
+not current development blockers.
+
+- Implementation and beta delivery may proceed alongside measurement windows.
+  Dependencies are technical and feature-specific, not a blanket release ladder.
+- Pure measurements and feature confirmations belong to milestone #30. They
+  confirm the affected feature and final stable V2 without blocking other development
+  or beta delivery. Mixed issues separate implementation from measurement evidence.
+  Version/configuration changes are recorded; restart an affected measurement window
+  where necessary rather than stop delivery.
+- Intermediate releases with outstanding evidence use `2.0.0-beta.N`. Pending,
+  failed and not-evaluable evidence stays visible. Beta neither claims demonstrated
+  utility nor automatically enables an unconfirmed learned policy by default:
+  opt-in, shadow and fallback modes are documented per feature.
+- Schema and live development do not require prior longitudinal measurements.
+  Migration, data integrity, permissions, privacy and tested rollback remain
+  prerequisites for the affected beta delivery. Scoped external action permissions still apply.
+- Stable `2.0.0` requires all mandatory functions and their confirmation: §26.2,
+  §43 requirements and the shared release tracker #400. Not evaluable is not passed.
+  At least two documented adversarial review rounds are required; later changes
+  receive follow-up review and all release findings have traceable resolutions.
+- Code awareness/Graphify is entirely outside the version roadmap in milestone #29.
+  C-090's V2 delivery obligation is withdrawn. Neither implementation nor its utility
+  proof is a prerequisite for beta or stable V2; experimental measurements also remain
+  in the experimental milestone.
+
+**Technical order:** commitments #403 → time/event triggers #404 → permissioned
+operations #405; outcomes #388/#589 → causal evaluation #406 → reviewed workflows
+#407; identity/versions/provenance → federation #408 → coordination #409.
+Measurement planning #387/#402 runs alongside development and introduces no
+back-edge from #400 into implementation. Former V3 functions no longer require
+an already confirmed V2 release.
+
+**Measurement boundary:** M0–M6 remain measurement methodology and confirmation
+contracts. Older rules limiting schema/live work to a passed gate, prohibiting live
+work on synthetic results alone, or requiring V2 before V3 are superseded for beta
+development by this contract. Security invariants and permission checks remain.
+
+## 43. Prospective, causal and shared memory – part of V2
+
+The following specifications are retained from the former V3 plan. §42 governs
+beta delivery and stable confirmation. #403–#409 belong to #386; #402/#410
+provide parallel evidence. Identity, permissions, privacy, idempotency, visible
+conflicts and recovery remain binding.
+
+###### Step 02 – Commitments, deadlines and lifecycle ([#403](https://github.com/n0mad-ai/bastra-recall/issues/403))
+
+Recall can record what must resurface in the future without confusing a plan, a
+prediction or a reminder with a fact. The starting point is
+[#250](https://github.com/n0mad-ai/bastra-recall/issues/250): "remind me when
+X" cannot be fulfilled today.
+
+A commitment carries at least:
+
+- stable ID, source and owner,
+- scope (personal, project, team),
+- deterministic trigger predicate and due window,
+- timezone and recurrence policy,
+- status `pending | due | snoozed | resolved | cancelled | expired`,
+- the expected level (notification or action),
+- the evidence or condition that resolves it,
+- a key against double firing and the receipt of the last firing,
+- validity, sensitivity and required permissions.
+
+Rules:
+
+- A read-only prototype comes first, then the schema decision.
+- "Due" does not mean "true"; it means "must be checked or surfaced".
+- A resolved or cancelled commitment does not silently re-arm.
+- Recurrence is explicit and bounded.
+- Timezone and daylight saving time are stored, versioned and testable.
+- The first surface is session start. This step never acts externally.
+- A one-shot commitment fires at most once per due transition; offline time and
+  "only in the next session" never lose a due event.
+
+###### Step 03 – Deterministic event and trigger engine ([#404](https://github.com/n0mad-ai/bastra-recall/issues/404))
+
+Recall detects when a condition actually becomes due through a local,
+replayable event engine. Models may propose conditions, but cannot decide on
+their own that an event occurred.
+
+Event sources, each behind its own permission and reliability gate, local
+first:
+
+- time (monotonic and wall clock) and catch-up in the next session,
+- project, worktree and task phase,
+- Git refs, releases and repository state,
+- changes to files, paths and symbols,
+- state of entities, documents and versions,
+- explicit events from the user or tools,
+- optionally external connectors and webhooks.
+
+Rules:
+
+- Events have a versioned format with source, time axes, deduplication key and
+  sensitivity.
+- A journal allows replay and recovery after a crash. A trigger fires logically
+  exactly once, even if delivery is retried.
+- "In the next session" comes first; background wakeups need their own opt-in
+  and stay resource-bounded.
+- Every firing is explainable: which event, which condition.
+- Clock changes, restarts or retries never create a duplicate firing.
+- A failing source is visible and never counted as "condition not met".
+- Evaluation never blocks the normal recall hooks.
+
+###### Step 04 – Permissioned actions: notify, prepare, execute ([#405](https://github.com/n0mad-ai/bastra-recall/issues/405))
+
+A due commitment can notify, prepare an action or – only with an explicit
+capability – execute a bounded action. Memory never becomes ambient authority.
+
+Levels:
+
+1. `notify` – surface context only (default).
+2. `prepare` – dry run, draft, diff or proposed command.
+3. `execute` – exactly the approved operation within a scoped capability.
+
+Rules:
+
+- A capability is bound to actor, resource, action, scope, expiry and
+  revocation.
+- Approval has no preselected execute option. Every mutating action shows a dry
+  run and a readable diff first.
+- Approval for one action or target cannot be reused for another.
+- A learned workflow can neither create, widen, delegate nor renew a
+  capability.
+- Partial failure is never reported as completed.
+- Secrets and capability material never enter memory or public telemetry.
+- The chain commitment → trigger → proposal → approval → action → outcome is
+  fully traceable.
+- A revocation takes effect before the next action and survives a restart.
+- If step 04 is switched off, prospective memory remains as notification only.
+
+##### Phase C – Causal learning
+
+###### Step 05 – Causal outcome memory ([#406](https://github.com/n0mad-ai/bastra-recall/issues/406))
+
+Along the chain `memory → decision → trigger → action → outcome`, Recall
+separates correlation from demonstrated value. It learns not only which memory
+was used, but whether surfacing it at that moment improved the result.
+
+Rules:
+
+- Outcomes are distinguished: success, failure, avoided violation, correction,
+  no effect, partial, unknown.
+- Without known selection probability, a control group and handling of
+  unobserved cases, there is no causal claim.
+- A successful task after exposure does not prove that the memory caused the
+  success.
+- Not shown and silence count as "not observed", not as negative.
+- Experiments exclude destructive, privacy-sensitive and high-risk actions.
+- Descriptive, associational and causal reports stay visibly separate.
+- The output is proposals for timing, interruption, routing and action level –
+  never a change to facts, never more permissions.
+- A learned policy must beat the fixed rule before it enters a test phase. A
+  rollback removes the policy, not the collected episodes.
+
+###### Step 06 – Reviewed workflow and strategy synthesis ([#407](https://github.com/n0mad-ai/bastra-recall/issues/407))
+
+Repeated successful sequences can yield a proposal for a reusable workflow –
+never an unreviewed autonomous routine.
+
+A proposal records goal and applicability conditions, steps with branches,
+expected intermediate results, known failure modes and abort rules, required
+resources and permissions, source episodes, tested environments, a review date
+and a version with a rollback target.
+
+Rules:
+
+- Frequency is not success; only proven successful episodes count, and a single
+  one is never enough.
+- A workflow does not inherit permissions from its source episodes.
+- It is compared in a sandbox against simpler strategies and against "do
+  nothing", and must be measurably better.
+- A human accepts, edits, rejects or retires it.
+- If a precondition is missing, the workflow abstains instead of improvising.
+- Generated executable content is untrusted until reviewed.
+- Changes to environment, dependencies or evidence trigger a new review.
+- Retirement deletes neither evidence nor earlier versions.
+
+##### Phase D – Federation and coordination
+
+###### Step 07 – Federated personal, project and team memory ([#408](https://github.com/n0mad-ai/bastra-recall/issues/408))
+
+Several devices and people can share selected memories without the vault
+turning into "last writer wins" and without losing personal context.
+
+Scopes: personal, project/workspace, team and – only when explicitly enabled –
+organization/public. Sharing is explicit and additive: a personal and a team
+claim may coexist and visibly contradict each other.
+
+Rules:
+
+- Shared content has a content-based identity and version.
+- Offline first: a journal and a deterministic reconciliation procedure merge
+  changes. No merging by timestamp alone.
+- Shared scopes are encrypted in transit and at rest, with key rotation and
+  revocation. Revoked devices receive nothing new.
+- Conflicts become objects of their own with a reviewed merge.
+- Deletions propagate without destroying required history and without
+  resurrecting data.
+- Metadata does not reveal that a protected memory exists.
+- Offline edits stay attributed to their device and person.
+- Team consensus never overwrites personal memory.
+- A sync failure is visible and never reported as up to date.
+- The merge rules are fixed before transport and storage are chosen; changing
+  the backend does not change them.
+- Federation can be detached and leaves a consistent local vault.
+
+Existing import and device-sync work
+([#299](https://github.com/n0mad-ai/bastra-recall/issues/299),
+[#339](https://github.com/n0mad-ai/bastra-recall/issues/339),
+[#341](https://github.com/n0mad-ai/bastra-recall/issues/341)) stays in its own
+milestone; step 07 uses its results without duplicating them.
+
+###### Step 08 – Multi-agent coordination ([#409](https://github.com/n0mad-ai/bastra-recall/issues/409))
+
+Several assistants can observe and use shared memory without echo
+amplification, duplicate work, hidden ownership or truth by majority.
+
+Rules:
+
+- Every observation, proposal and action carries the agent's identity and its
+  provenance.
+- Events are deduplicated across agents and devices, and loops are detected.
+- Open commitments and prepared actions have time-limited ownership (a lease).
+  It coordinates work but does not hide the commitment from others.
+- Shared knowledge states: `asserted | confirmed | contested | superseded | unknown`.
+- Agreement between agents with the same source is not independent evidence;
+  repeated citation of the same source counts once.
+- A majority does not establish truth.
+- One agent cannot spend another agent's capability.
+- Echoes raise neither confidence, weight, rank nor learned utility.
+- Unresolved conflicts stay visible to everyone authorized.
+- Handoffs preserve evidence, state, permissions and rollback target.
+- Before any shared execution, coordination first runs as a read-only
+  simulation. It can be switched off while shared memory stays readable.
+
+#### Open design questions
+
+These points come from an external critical review of the plan on 28 August
+2026 and are attached as comments to the respective issues. They are not decided
+yet.
+
+- **Whose approval counts when there are several owners?**
+  ([#450](https://github.com/n0mad-ai/bastra-recall/issues/450)) Step 04
+  assumes exactly one approving person. When an action touches personal and
+  team memory at the same time, it is open whether every affected party must
+  approve, whether a defined quorum is enough, and whether partial execution is
+  allowed. Proposal: approval becomes a set (one per affected domain), and
+  execution happens only when all required approvals or an explicitly defined
+  quorum are present. This must be decided before federation.
+- **Stale approvals** ([#405](https://github.com/n0mad-ai/bastra-recall/issues/405))
+  A capability expires over time or is revoked, but not when the approved
+  content changes before execution. Proposal: the capability binds the state it
+  was approved against; it is checked again at execution time, and "stale"
+  becomes an outcome of its own next to "expired" and "revoked". Also open: the
+  reasoning why the approver must not be the proposer.
+- **Order of causal methods**
+  ([#406](https://github.com/n0mad-ai/bastra-recall/issues/406)) Proposal: first
+  use the existing threshold in the recall score as a natural experiment, then a
+  randomized grey zone via V2's canary mechanism instead of separate
+  experimentation machinery; fix the smallest detectable effect in advance.
+
+#### Cross-cutting metrics
+
+Each step reports the values that apply to it:
+
+- precision and recall of helpful triggers, rate of missed triggers,
+- cost of interruptions and completion rate of commitments,
+- denied or violated permissions and duplicate actions,
+- effect of interventions with uncertainty and unobserved cases,
+- adoption, success, abstention and rollback of workflows,
+- sync conflicts, silent loss, recovery and convergence,
+- leaks across scope and sensitivity boundaries,
+- accuracy of provenance and attribution,
+- echo amplification, duplicate work and lease recovery across agents,
+- latency, resource use and behavior offline or in degraded mode.

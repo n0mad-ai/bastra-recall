@@ -42,11 +42,19 @@ has been field-tested; the support matrix retains those distinctions.
 - Evaluate deeper retrieval, episodic memory, consolidation and learned ranking before enabling them in normal use.
 - Continue the native Mac app as a separate interface over the same memory service.
 
-The technical [evolution design](./docs/Evolutionsarchitektur%20V1%20zu%20V2.md)
-defines the research stages and their measurement gates. The
-[V2 → V3 plan](./docs/Evolution%20Architecture%20V2%20to%20V3.md) describes the
-following stage: commitments, permissioned actions, causal learning and shared
-memory. Both are design references, not lists of features already shipped.
+The [unified V2 evolution plan](./docs/Evolution%20Plan%20V2.md) combines the
+former V2 and V3 scopes: adaptive recall, proactive commitments, permissioned
+actions, causal learning and shared memory. Implementation follows feature-level
+technical dependencies. Measurement windows run alongside development in
+[milestone #30](https://github.com/n0mad-ai/bastra-recall/milestone/30).
+
+Intermediate releases with pending confirmations are `2.0.0-beta.N`. Stable
+V2.0 requires all mandatory functions to be confirmed and at least two documented
+adversarial review rounds, tracked in [#400](https://github.com/n0mad-ai/bastra-recall/issues/400).
+Code awareness/Graphify is entirely outside the version roadmap in
+[experimental milestone #29](https://github.com/n0mad-ai/bastra-recall/milestone/29).
+The [technical architecture](./docs/Evolutionsarchitektur%20V1%20zu%20V2.md)
+retains the detailed contracts; C-095 (§42) governs the revised release policy.
 
 ## Boundaries
 

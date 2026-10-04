@@ -1,5 +1,12 @@
 # Bastra Recall – Evolutionsarchitektur V1 → V2
 
+> **Aktueller Vertrag (C-095, 04.10.2026):** V2 vereint die bisherigen V2/V3-Pläne.
+> Entwicklung und Beta-Releases laufen parallel zu Messungen; stabile V2 erst nach
+> vollständiger Bestätigung und mehreren adversariellen Reviews. Code-Awareness
+> gehört ausschließlich zum experimentellen Milestone #29. Maßgeblich sind
+> [der gemeinsame V2-Plan](./Evolution%20Plan%20V2.md) und §42 dieses Dokuments.
+> Die folgenden Status-/Ledgerangaben bis C-094 beschreiben den historischen Stand.
+
 > Status: Release- und Zielarchitektur; der V1.0-Releasevertrag ist erfüllt und
 > mit Bastra Recall 1.0.0 am 14. September 2026 ausgeliefert, V2.0 ist das
 > langfristige, messungsabhängige Zielbild
@@ -49,7 +56,7 @@
 > Die Product-Owner-Entscheidungen in Abschnitt 31 sind getroffen und binden
 > die Umsetzung.
 >
-> Nächste freie ID: C-095. Ein neues Delta wird in dieser Datei fortgeschrieben
+> Nächste freie ID: C-096. Ein neues Delta wird in dieser Datei fortgeschrieben
 > und nicht mehr als eigene Revisionsdatei geführt.
 
 ## 0. Entscheidungs- und Reviewstatus
@@ -91,33 +98,17 @@ nachgewiesen sind:
 V1.0 enthält keine neuen Memory-Typen, Claims, Graph-Kantentypen,
 Dual-Vektoren, Chunking-, HNSW- oder Learned-Ranking-Live-Schicht.
 
-### 0.2 Releaseleiter
+### 0.2 Releaseleiter (C-095)
 
 | Release | Funktion | Freigabelogik |
 |---|---|---|
-| 0.8.6 | historischer Ausgangspunkt: damaliger Vor-V1-Ist-Stand | Diagnosegrundlage, kein abgeschlossener V1-Vertrag |
-| V1.0 | beobachtbare und selektive Mess-/Kontrollbasis | Abschnitt 0.1 und Definition of Done 26.1 vollständig erfüllt — **ausgeliefert als 1.0.0 am 14.09.2026** |
-| v1.0.1 | Nachmessung nach dem Release und Folgearbeiten | Arbeit, die gebaut ist, deren Evidenz oder Rate aber erst im realen Betrieb nach 1.0 entsteht, sowie die bei der 1.0-Freigabe bewusst zurückgestellten P2-Punkte; offen |
-| V1.x | schrittweise Evolution | jeder Baustein einzeln durch das jeweils benannte Messgate freigegeben und rückwärtskompatibel ausgeliefert |
-| V2.0 | vollständiges adaptives Gedächtnissystem | alle verpflichtenden V2-Eigenschaften aus 26.2 gemeinsam nachgewiesen; offen |
-| V3.0 | vorausschauendes, kausales und geteiltes Gedächtnis | in Planung, baut auf den V2-Verträgen auf; eigenes Dokument: [Evolution Architecture V2 to V3](./Evolution%20Architecture%20V2%20to%20V3.md) |
+| V1.0 / v1.0.1 | bestehende Basis und Härtung | bestehender Releasevertrag; kein Warten auf fremde Messfenster |
+| V2 Beta | adaptive, vorausschauende, kausale und geteilte Funktionen schrittweise | technische Abhängigkeiten, Funktionsprüfungen, sichere Migration und Rollback; Messungen parallel |
+| V2.0 stabil | gemeinsames bestätigtes Gesamtsystem | alle Pflichtfunktionen bestätigt und mindestens zwei adversarielle Reviewrunden abgeschlossen; #400 |
 
-Messung, Shadow-Betrieb und read-only Projektionen sind jederzeit zulässig.
-Messgates gaten ausschließlich Schema-/Vertragsänderungen und
-Live-Aktivierung. Ausnahme sind Qualitätsvergleiche, deren Interpretation die
-M0-Baseline voraussetzt.
-
-Accessibility/Asteroidengürtel, Deep Recall, Episodic Memory, Claims, Typed
-Graph, Konsolidierung, Dual-Vektoren, HNSW und Learned Ranking bleiben als
-V2-Zielbild im Dokument. Während V1.x dürfen nur die Bausteine dauerhaft in
-Produktverhalten, Schema oder Verträgen umgesetzt beziehungsweise live
-aktiviert werden, deren benanntes Messgate den Bedarf und die Sicherheit
-belegt. Vorher bleiben sie auf Messung, Shadow, read-only oder isolierte
-Experimente begrenzt.
-
-V2.0 ist keine Sammelfreigabe für vorab gebaute Komponenten. Es ist die
-Beförderung der während V1.x einzeln bewiesenen Teile zu einem stabilen
-Gesamtsystem.
+Es gibt keinen separaten V3-Releaseplan mehr. Reine Messaufgaben liegen in #30,
+Code-Awareness vollständig in #29. §42 ersetzt die frühere Freigabesperre
+für Schema-/Live-Entwicklung; die Methodik und Sicherheitsinvarianten bleiben.
 
 ### 0.3 Reviewdisziplin
 
@@ -220,11 +211,12 @@ neuer Evidenz erneut geöffnet.
 | C-087 | Vertragsänderung | V1.0 schuldet vom globalen Kontextbudget aus 16.3 das Latenzbudget live und das kumulative Cross-Lane-Tokenbudget je Sitzung als **Shadow-Ledger** (26.1): verbuchen und protokollieren, nicht kürzen. Die **Live-Erzwingung** — aus Shadow-Daten festgelegte Budgethöhe, Canary-Profil mit sofortigem Rollback auf unbegrenzt, Siebentage-Canary-Bericht — ist nach 26.2 verschoben. Begründung ist gemessen: Sechs Tage Shadow (742 Entscheidungen, 135 Sessions, 80 auswertbar) hätten gegen das vorläufige 7.500-Token-Profil 8 Sessions berührt und 36.976 Tokens zurückgehalten, rund 5 % von 719.322 Tokens Wochenbetrieb. Der Nutzen liegt im Tail, und ein Tail trägt keine Live-Schaltung auf Shadow-Daten allein. |
 | C-088 | Ist-Korrektur | Statusnachtrag ohne Vertragsänderung: V1.0 ist erfüllt und als 1.0.0 am 14.09.2026 ausgeliefert (Tag `v1.0.0`); Kopf, 0.1, 0.2, 18.0, 21.1, 25, 26.1 und 27 tragen das, historische Aussagen bleiben als solche stehen. Sechs Ist-Aussagen sind überholt und werden mit heutiger Fundstelle berichtigt: Mutation-Audit auch im MCP-/REST-Save (C-008), Evidenzentscheid standardmäßig aktiv und hop-sicher (13.1, C-046), gemeinsamer paralleler Session-Assembler mit POST-Pfad (16.1, C-004), Hybrid-Stresspfad baut den Vektorarm (2.2), Pinned-Block außerhalb von `session-hook.ts` (6.3), Identifier-Anker liest nur Titel und `recall_when` (C-086). Verschobene Zeilenangaben sind nachgezogen, die Lane-Budgets vom 12.09.2026 in 9.4 und 16.3 als Statusnotiz ergänzt, C-087 in 28 und 37 nachgetragen. Kein Urteil wird umgedeutet. |
 | C-089 | Architekturentscheidung | **Verschärft durch C-090, präzisiert durch C-092, ergänzt durch C-091, C-093 und C-094:** Die ausgelieferte Code-Awareness ist verpflichtendes Kriterium der V2.0-Promotion. Code-Awareness in V2 entsteht nicht über einen eigenen Symbolindexer, sondern über Graphify als externe Code-Graph-Quelle (Epic #572, #573–#580; Product-Owner-Entscheidung vom 17.09.2026). Recall nutzt nur die Graphify-CLI im Code-only-Modus und das erzeugte `graph.json`, nie dessen Installer oder Hooks. Der Code-Graph ist eine eigene logische Sicht neben 13.1 (Hop-Budget eins, nur direkt extrahierte Kanten im Normal Recall, No-Graph-Kontrollarm), liegt git-ignoriert im Projekt, wird nicht in den Vault projiziert und läuft im Hook-Pfad ohne Python innerhalb der bestehenden Budgets. `applies_to` wird über das vorhandene Feld `affects_files` umgesetzt; ein Code-Hop erzeugt nie allein `required`. |
-| C-090 | Vertragsänderung | Die Code-Awareness über Graphify (C-089, #572–#580) ist ein **verpflichtendes Kriterium der V2.0-Promotion** (26.2): Sie ist ausgeliefert, hält die Grenzen aus 13.1, 16.2, 22, 23 und 24 ein, und ihre Kontextersparnis ist gegen den No-Graph-Kontrollarm belegt (#579). Das ist eine Lieferpflicht des Releases, keine Laufzeitpflicht: Für den Nutzer bleibt Graphify ein optionaler Begleiter, und Recall funktioniert ohne ihn unverändert (22). Begründung: Code-Indexing war bereits beschlossen, offen war nur der Zeitpunkt; diese Abhängigkeit besteht nicht mehr (Product-Owner-Entscheidung vom 17.09.2026). |
+| C-090 | Vertragsänderung | **Aufgehoben durch C-095; nur historisch:** Die Code-Awareness über Graphify (C-089, #572–#580) ist ein **verpflichtendes Kriterium der V2.0-Promotion** (26.2): Sie ist ausgeliefert, hält die Grenzen aus 13.1, 16.2, 22, 23 und 24 ein, und ihre Kontextersparnis ist gegen den No-Graph-Kontrollarm belegt (#579). Das ist eine Lieferpflicht des Releases, keine Laufzeitpflicht: Für den Nutzer bleibt Graphify ein optionaler Begleiter, und Recall funktioniert ohne ihn unverändert (22). Begründung: Code-Indexing war bereits beschlossen, offen war nur der Zeitpunkt; diese Abhängigkeit besteht nicht mehr (Product-Owner-Entscheidung vom 17.09.2026). |
 | C-091 | Ist-Korrektur | Der in #574 geplante Aktualisierungsweg `graphify update` verletzt die Code-only-Grenze aus C-089, C-090 und Abschnitt 23. Gemessen am 17.09.2026 an diesem Repository: `graphify extract . --code-only` ergibt 6.677 Knoten und 19.444 Kanten in 11,14 s; `graphify update .` kennt kein `--code-only`, nahm zusätzlich 65 Markdown-Dateien auf und ergab 7.671 Knoten und 20.603 Kanten in 9,32 s. Der einzige zulässige Baubefehl ist deshalb `graphify extract <repo> --code-only`. Er ist selbst inkrementell: unverändert 1,53 s (unabhängig nachgemessen 2,11 s), eine geänderte Datei 2,18 s, eine Löschung 2,68 s und ohne `--force` korrekt erkannt. Daraus folgt: `--force` wird nie automatisch übergeben, sondern nur als ausdrücklich bestätigte Reparatur. Die frühere Annahme, ein Refresh koste auch für eine einzelne Datei 9–12 s — die Begründung für langes Debounce und eine automatische `--force`-Regel —, ist damit hinfällig. |
 | C-092 | Präzisierung | Die Angabe „höchstens etwa 10 ms“ zum Code-Abhängigenblock (16.2, C-089) beschreibt den **warmen** Pfad. Gemessen am 17.09.2026: Kaltstart 26,35 ms bei 11,1 MB (lesen 5,89 ms, parsen 15,24 ms, indizieren 5,23 ms, +21,9 MB Heap) und unabhängig 20,72 ms bei 9,7 MB (3,70 / 13,34 / 3,67 ms, +20,3 MB); warm p50 0,003 ms und p90 0,005 ms über 200 Abfragen. Regel: Der Graph wird beim Aktivieren und nach einem Daemonstart asynchron vorgeladen; ein kalt eintreffender Hook überspringt den Block still und stößt nur das Laden an. Auf das Laden wird nie synchron gewartet. Dazu ein daemonweites LRU-Heapbudget von 256 MB über alle geladenen Graphen. |
 | C-093 | Vertragsergänzung | `graph.json` ist unvertrauenswürdige Eingabe und kein eigenes Artefakt: fremderzeugt, ohne Schemaversion (das Feld `graph` ist `{}`), in einem Repository, das dem Nutzer nicht gehören muss, und sein Inhalt landet wörtlich im Agentenkontext. Vor jeder Nutzung gelten bezifferte Grenzen: 64 MB Dateigröße, 500.000 Knoten, 2.000.000 Kanten, 512 Byte je String; nur normalisierte repo-relative Pfade, keine `..`-Flucht, keine absoluten Pfade, keine Steuer- und Bidi-Zeichen; Ausgabe ausschließlich über eine Feld-Allowlist. Jeder Verstoß führt allein zu „Code-Awareness nicht verfügbar“; Recall selbst wird nie beeinträchtigt. Dazu die bewusst festgelegte Relations-Allowlist: Der gemessene Graph enthält fünfzehn Relationstypen, nicht vier. Als Abhängigkeitskante zählen, und nur mit Herkunft `EXTRACTED`: `calls`, `imports`, `imports_from`, `inherits`, `re_exports`, `dynamic_import`, `implements`. Struktur ohne Abhängigkeit: `contains`, `method`. Ausgeschlossen: `indirect_call` (zu 100 % `INFERRED`), `references`, `rationale_for`, `defines`, `cites` und `extends` — letzteres ist im gemessenen Graphen tsconfig-Vererbung, nicht Klassenvererbung. Der Vertrauensfilter läuft je **Kante**, nicht je Relation: `calls` mischt 4.363 extrahierte mit 153 erschlossenen Kanten. Auch unter `--code-only` enthält der Graph Nicht-Code-Knoten (`concept` 220, `rationale` 24); sie bleiben innerhalb der Code-only-Grenze, sind aber keine navigierbaren Orte und erreichen nie einen Hook-Kontext. |
 | C-094 | Vertragsergänzung | Plattform-Scope dieses Unter-Releases sind macOS und Linux. Windows wird ausdrücklich nicht zugesagt, solange Locking, Git-Pfadauflösung, Worktrees und Prozessabbruch nicht in einer Windows-CI geprüft sind; bis dahin meldet sich die Funktion dort als nicht verfügbar, statt halb zu funktionieren. Begründung: Graphifys Prozess-Lock beruht auf `fcntl` und ist unter Windows ein No-op, `nice` ist nicht portabel, und `.git` ist in Worktrees eine Datei statt eines Verzeichnisses — Git-Pfade werden deshalb über `git rev-parse --git-path` aufgelöst. Recall bringt einen eigenen, plattformübergreifenden Repo-Lock mit. Ebenfalls festgehalten: Der Graph liefert keine `rename`- oder `move`-Relation; Umbenennungen werden ausschließlich über Git-Evidenz (`git diff --name-status -M`) erkannt und nie aus ähnlichen Symbolmengen geschlossen. Ohne Evidenz wird kein Rename behauptet. |
+| C-095 | Product-Owner-Entscheidung | Gemeinsame V2-Roadmap, Messungen parallel in #30, Beta-Auslieferung vor vollständigem Nachweis, stabile V2 erst nach Bestätigung und mindestens zwei adversariellen Reviewrunden; Code-Awareness ausschließlich #29. Siehe §42–43. |
 
 **Abnahmestand 24.07.2026:** Vollabgleich Ledger C-001–C-027,
 Gate-Messbarkeit, Ist-Behauptungs-Sweep (58 Aussagen, alle gedeckt),
@@ -442,7 +434,7 @@ und an eine Relations-Allowlist. C-094 begrenzt den Plattform-Scope dieses
 Unter-Releases auf macOS und Linux und bindet Umbenennungen an Git-Evidenz.
 Kein Urteil aus C-001–C-090 wird umgedeutet.
 
-**Nächste freie ID: C-095.** Neue Delta-Reviews beginnen dort. Ein Urteil
+**Nächste freie ID: C-096.** Neue Delta-Reviews beginnen dort. Ein Urteil
 ändert sich nur mit neuer Code-, Telemetrie- oder Run-Evidenz; Geschmacksfragen
 werden als Architekturentscheidung statt als Faktenfehler markiert.
 
@@ -2496,7 +2488,7 @@ bestimmt, welche Sichten mit welchem Hop-Budget überhaupt aktiv sind:
 - eine Verbesserung des Gesamtergebnisses ohne bestandenen Kontrollarm gilt
   nicht als Beleg dafür, dass der Graph die Ursache war.
 
-**Code-Sicht (V2, C-089).** Der Code-Graph aus Graphify ist eine eigene
+**Experimentelle Code-Sicht (Milestone #29; außerhalb V2, C-095).** Der Code-Graph aus Graphify ist eine eigene
 logische Sicht neben den Memory-Sichten und wird nicht in den Memory-Graphen
 eingemischt. Normal Recall nutzt ihn mit hartem Hop-Budget eins und nur über
 direkt aus dem Quelltext extrahierte Kanten (`EXTRACTED`), nicht über
@@ -4365,46 +4357,18 @@ bestandenen Messgates.
 - kein aus ähnlichen Symbolmengen geschlossenes Rename ohne Git-Evidenz
   (C-094).
 
-## 25. Umsetzungsreihenfolge
+## 25. Umsetzungsreihenfolge (C-095)
 
-V1.0:
+Die gemeinsame Reihenfolge steht im [V2-Evolutionsplan](./Evolution%20Plan%20V2.md).
+Entwicklung folgt tatsächlichen technischen Abhängigkeiten; #387/#402 und
+M0–M6-Messungen laufen parallel in #30. Zuerst Aufgaben/Fristen und zuverlässige
+Wiedervorlage (#250/#403/#404), damit Messauswertungen selbst wieder vorgelegt
+werden können. Keine Funktion wartet pauschal auf das komplette frühere V2.
 
-1. Messwahrheit und reproduzierbare Baselines.
-2. Deterministische Relevanzevidenz und echte Abstention.
-3. Gemeinsamer projektfähiger Session-Assembler mit interner Parallelisierung.
-4. Globales Kontextbudget — Shadow-Ledger in V1.0, Live-Erzwingung nach 26.2
-   (C-087) — und getrenntes Retrieval-/Präsentationsexperiment.
-
-Bis einschließlich Punkt 4 ist die Umsetzung als V1.0 umgesetzt und mit 1.0.0
-am 14.09.2026 ausgeliefert (C-088); zuvor war sie als V1.0 freigegeben. Alle
-folgenden Nummern ordnen Schema-/Vertragsänderungen und Live-Aktivierungen.
-Messung, Shadow-Betrieb und read-only Projektionen bleiben unabhängig davon
-zulässig; Qualitätsaussagen mit Referenzwirkung setzen M0 voraus:
-
-5. BM25-first-Kaskade und Query-Embedding-Cache live nach bestandenem M2.
-6. Abgeleitete Accessibility und Asteroidengürtel live nach M1-Nachweis und
-   bestandenem M3. Die Provenienzprüfung des Bestands nach 6.3 läuft davon
-   unabhängig als read-only Sidecar-Arbeit und ist an kein Gate gebunden.
-7. Deep Recall Stufe 1 live nach bestandenem M3; Stufe 2 erst nach
-   zusätzlichem Nachweis eigenen Nutzens gegenüber Stufe 1 gemäß 8.5.
-8. Cue-/Content-Vektoren, abgeleitete Cue-Schicht und Chunking persistent oder
-   live erst nach gesondertem Repräsentationsentscheid gemäß 11.2 und 11.4;
-   M2 allein genügt nicht.
-9. Episodic Memory, strukturierte Claims, die Zeitachsen aus 6.3 und die
-   `provenance_class` persistent erst nach gesondertem Schemaentscheid, live
-   nach bestandenem M4.
-10. Typed Graph, logische Sichten, Versionen und Rekonsolidierung persistent
-    erst nach gesondertem Schemaentscheid gemäß 21.4, live nach bestandenem M4
-    und je Sicht bestandenem No-Graph-Kontrollarm.
-11. Kontrollierte Konsolidierung mit den Proposal-Operatoren aus 14.4 live nach
-    bestandenem M4.
-12. Flat-/HNSW-Strategie live erst, wenn kontrolliertes Profiling einen
-    Flat-Search-Engpass und M5 den Qualitäts- und Latenzvorteil belegen.
-13. Learned Ranking shadow nach M0/M1, live erst nach bestandenem M6.
-14. Code-Awareness über Graphify (C-089), verpflichtend für V2.0 (C-090), in der Reihenfolge #573 → #574 →
-    #575 → #576/#577 → #578 → #579, Dokumentation (#580) begleitend; der
-    Nutzen gilt erst nach dem Vergleich mit dem No-Graph-Kontrollarm (#579)
-    als belegt.
+Die fachlichen Anforderungen der Abschnitte 6–24 bleiben erhalten. Ihre bisherigen
+Schema-/Live-Messgate-Sperren gelten gemäß §42 für die stabile Bestätigung,
+nicht als Entwicklungs- oder Beta-Releaseblockade. Graphify gehört nicht zur
+Umsetzungsreihenfolge; seine Arbeit liegt vollständig in #29.
 
 ## 26. Definition of Done
 
@@ -4603,14 +4567,13 @@ Promotion erfolgt erst, wenn:
   Required-Drops (C-087, aus 26.1 hierher verschoben);
 - HNSW nur dann automatisch aktiviert wird, wenn es auf der aktuellen Hardware
   messbar sinnvoll und qualitativ sicher ist;
-- jede adaptive Entscheidung shadow-getestet, erklärbar und zurückrollbar ist;
-- die Code-Awareness über Graphify (C-089, #572–#580) ausgeliefert ist, die
-  Grenzen aus 13.1, 16.2, 22, 23 und 24 einhält und ihre Kontextersparnis
-  gegen den No-Graph-Kontrollarm belegt ist (#579) (C-090).
+- jede adaptive Entscheidung shadow-getestet, erklärbar und zurückrollbar ist.
 
-Der letzte Punkt ist eine Lieferpflicht des Releases, keine Laufzeitpflicht:
-Für den Nutzer bleibt Graphify ein optionaler Begleiter, und Recall
-funktioniert ohne ihn unverändert (22).
+Zusätzlich müssen die vorausschauenden, kausalen und geteilten Pflichtfunktionen
+aus §43 bestätigt sein. Die Nachweise aus #402/#410 und Milestone #30 fließen
+in #400 ein. Mindestens zwei dokumentierte adversarielle Reviewrunden mit
+Nachprüfung nach Änderungen und aufgelösten Freigabebefunden sind erforderlich.
+Beta-Releases dürfen vorher erscheinen (§42). Code-Awareness ist kein V2-Kriterium.
 
 ## 27. Kurzfassung
 
@@ -4642,7 +4605,7 @@ Das Ziel ist nicht maximaler Recall. Das Ziel ist:
 
 > Zur richtigen Zeit die richtige Erinnerung – und ansonsten Ruhe.
 
-## 28. Delta-Ledger (C-029–C-094)
+## 28. Delta-Ledger (C-029–C-095)
 
 Dieser Abschnitt dokumentiert elf aufeinanderfolgende Runden von Deltas
 gegenüber dem abgenommenen Stand C-001–C-028, acht spätere Einzeleinträge zu
@@ -6761,7 +6724,7 @@ Urteil wird umgedeutet, geändert wird der Umfang des Releasevertrags.*
 
 *Ab hier die Vertragsänderung C-090 vom 17.09.2026.*
 
-### C-090 – Code-Awareness wird verpflichtendes Kriterium der V2.0-Promotion
+### C-090 – Historische Code-Awareness-Pflicht (aufgehoben durch C-095)
 
 - **Passage:** Präambel; Ledgerzeile C-089 mit Verschärfungsverweis, neue
   Ledgerzeile C-090; 0.4 Abnahmeblock und nächste freie ID; 25 Punkt 14; 26.2
@@ -6907,6 +6870,15 @@ Urteil wird umgedeutet, geändert wird der Umfang des Releasevertrags.*
 - **Rollback:** Der Scope ist erweiterbar, ohne Bestehendes zu ändern: Sobald
   die vier Punkte in einer Windows-CI grün sind, hebt ein neuer Eintrag die
   Einschränkung auf.
+
+### C-095 – V2/V3 zusammengeführt, Messungen parallel, stabile Bestätigung am Ende
+
+- **Passage:** 0.2, 25, 26.2, 42–43; gemeinsamer V2-Plan, #386/#400 und Milestones #19/#30/#29.
+- **Einordnung:** ausdrückliche Product-Owner-Entscheidung vom 04.10.2026, kein gemessener Qualitätsbefund.
+- **Evidenz:** Daniel beauftragt Zusammenführung zu V2, parallele Messzuordnung, Beta-Zwischenreleases, stabile V2 erst nach Bestätigung und mehreren adversariellen Reviews; Code-Awareness außerhalb der Versionsroadmap.
+- **Delta:** vollständige frühere V2-Abnahme ist keine Voraussetzung der bisherigen V3-Implementierung. Messnachweise bestätigen Funktionen und die stabile Freigabe; Bau und Beta folgen technischen Abhängigkeiten. C-090s Code-Awareness-Pflicht ist aufgehoben.
+- **Abnahme:** eindeutiger Tracker #386, finale Freigabe #400, reine Messungen #30, Code-Awareness #29; mindestens zwei dokumentierte adversarielle Reviewrunden für stabile V2. Dieser Neuschnitt selbst behauptet keine bereits erfolgten Reviewrunden oder Funktionsbestätigungen.
+- **Rollback:** sichere Funktions-Fallbacks, Migration, Berechtigungen und Datenerhaltung gelten weiterhin; bekannte gute Profile bleiben rückkehrfähig.
 
 ## 29. Quellen- und Behauptungsmatrix
 
@@ -7183,7 +7155,7 @@ Warteschlangenposition; die frühere Aussetzung für `agent-session` und fehlend
 `write_origin` entfällt. Die Prüfung läuft in vier Prioritätsstufen und endet je
 Memory mit geklärter oder ausdrücklich bestätigt unklarer Herkunft.
 
-### Entscheidung 6 – Code-Awareness über Graphify
+### Entscheidung 6 – Code-Awareness über Graphify (historisch; Versionspflicht durch C-095 aufgehoben)
 
 **Entschieden am 17. September 2026 (C-089, verschärft durch C-090): Graphify
 statt eigenem Symbolindexer, als verpflichtender Bestandteil von V2.0.** Graphify baut die Code-Karte, Recall
@@ -7623,7 +7595,7 @@ bleibt in Epic #572 und #573–#580; dieses Dokument hält die Grenzen fest.
 **Nächste freie ID: C-090.** *(Stand dieses Abschnitts. Die aktuell gültige
 nächste freie ID steht am Ende von Abschnitt 41.)*
 
-## 40. Übergabe nach der Vertragsänderung C-090
+## 40. Historische Übergabe C-090 (Versionspflicht durch C-095 aufgehoben)
 
 **Was geändert wurde.** Diese Fassung fügt die Vertragsänderung C-090 hinzu.
 Geändert wurden ausschließlich die folgenden Passagen:
@@ -7702,4 +7674,314 @@ Umbenennungen werden nur über Git-Evidenz erkannt (C-094).
 4. Wann die Windows-CI über Locking, Git-Pfadauflösung, Worktrees und
    Prozessabbruch entsteht, die den Scope aus C-094 erweitern würde.
 
-**Nächste freie ID: C-095.**
+**Nächste freie ID: C-096.**
+
+## 42. Vertragsänderung C-095 – Gemeinsame V2-Roadmap und Beta-Freigaben
+
+**Beschlossen durch Daniel am 04.10.2026.** Der [gemeinsame Evolutionsplan V2](./Evolution%20Plan%20V2.md)
+und Tracker #386 führen die bisherigen V2- und V3-Funktionen zusammen. Bei Widersprüchen
+zu älteren Passagen dieses Dokuments gilt C-095. Historische C-IDs bleiben als
+Entscheidungsgeschichte erhalten; sie sind keine aktuellen Entwicklungsblockaden.
+
+- Implementierung und Beta-Auslieferung dürfen parallel zu Messfenstern erfolgen.
+  Technische Abhängigkeiten gelten pro Funktion, nicht als pauschale Releaseleiter.
+- Reine Messungen und Funktionsnachweise liegen in Milestone #30. Sie bestätigen
+  die betreffende Funktion und die finale stabile V2, blockieren aber keine andere
+  Entwicklung oder Beta-Auslieferung. Gemischte Issues werden in Implementierung
+  und Messnachweis getrennt. Ein Versions-/Konfigurationswechsel wird dokumentiert;
+  bei Bedarf beginnt ein betroffenes Messfenster neu, statt den Release anzuhalten.
+- Zwischenreleases mit offenen Nachweisen sind `2.0.0-beta.N`. Offene, gescheiterte
+  oder nicht auswertbare Nachweise werden sichtbar als solche geführt. Beta ist
+  keine Behauptung bestätigten Nutzens und keine automatische Standardaktivierung
+  eines unbestätigten Lernverfahrens; Opt-in, Shadow und Fallback werden pro Funktion erklärt.
+- Schema- und Live-Entwicklung erfordern keine vorherige Langzeitmessung. Migration,
+  Datenintegrität, Berechtigungen, Privacy und getesteter Rollback bleiben Voraussetzungen
+  der betreffenden Beta-Auslieferung. Befristete externe Handlungsrechte gelten weiterhin.
+- Die stabile `2.0.0` setzt sämtliche Pflichtfunktionen und ihre Bestätigung voraus:
+  §26.2, die Anforderungen aus §43 und der gemeinsame Freigabe-Tracker #400.
+  Nicht auswertbar ist kein bestandenes Gate. Mindestens zwei dokumentierte
+  adversarielle Reviewrunden sind erforderlich; Änderungen nach einem Review
+  werden nachgeprüft und alle Freigabebefunde nachvollziehbar aufgelöst.
+- Code-Awareness/Graphify ist vollständig außerhalb der Versionsroadmap in
+  Milestone #29. C-090s V2-Lieferpflicht ist aufgehoben. Weder sein Bau noch sein
+  Nutzenbeleg ist Voraussetzung einer Beta oder der stabilen V2; experimentelle
+  Messungen dieses Bereichs verbleiben ebenfalls im experimentellen Milestone.
+
+**Technische Reihenfolge:** Aufgaben/Fristen #403 → Zeit-/Eventtrigger #404 →
+berechtigte Handlungen #405; Outcomes #388/#589 → kausale Auswertung #406 →
+reviewte Workflows #407; Identität/Versionen/Provenienz → Federation #408 →
+Koordination #409. Die Messplanung #387/#402 läuft parallel und ist keine
+Abhängigkeit von #400 zurück in die Implementierung. Ein bestätigtes V2-Release
+ist nicht mehr Voraussetzung einer bisherigen V3-Funktion.
+
+**Mess- und Freigabegrenze:** Die M0–M6-Verträge bleiben als Methodik und
+Funktionsbestätigung bestehen. Frühere Formulierungen „Schema/live erst nach
+Gate“, „kein Live auf synthetischen Ergebnissen“ und „V3 erst nach V2“ werden
+für Beta-Entwicklung durch diesen Vertrag ersetzt. Sicherheitsinvarianten und
+Berechtigungsprüfungen werden dadurch nicht aufgehoben.
+
+## 43. Vorausschau, kausales Lernen und geteiltes Gedächtnis – Bestandteil von V2
+
+Die folgenden Spezifikationen wurden aus dem früheren V3-Plan übernommen.
+§42 regelt Beta-Auslieferung und stabile Bestätigung. #403–#409 gehören zu #386;
+#402/#410 liefern parallele Messnachweise. Rollen, Berechtigungen, Privacy,
+Idempotenz, sichtbare Konflikte und Recovery bleiben verbindlich.
+
+###### Schritt 02 – Zusagen, Fristen und Lebenszyklus ([#403](https://github.com/n0mad-ai/bastra-recall/issues/403))
+
+Recall kann festhalten, was künftig wieder auftauchen muss, ohne einen Plan,
+eine Vorhersage oder eine Erinnerung mit einem Fakt zu verwechseln. Ausgangspunkt
+ist [#250](https://github.com/n0mad-ai/bastra-recall/issues/250): „Erinnere mich,
+wenn X“ ist heute nicht erfüllbar.
+
+Eine Zusage enthält mindestens:
+
+- stabile ID, Quelle und Eigentümer,
+- Scope (persönlich, Projekt, Team),
+- deterministische Auslösebedingung und Fälligkeitsfenster,
+- Zeitzone und Wiederholungsregel,
+- Status `pending | due | snoozed | resolved | cancelled | expired`,
+- die erwartete Stufe (Benachrichtigung oder Handlung),
+- den Beleg oder die Bedingung, die sie erledigt,
+- einen Schlüssel gegen Doppelauslösung und den Beleg der letzten Auslösung,
+- Gültigkeit, Sensitivität und nötige Berechtigungen.
+
+Regeln:
+
+- Zuerst ein nur lesender Prototyp, danach die Entscheidung über das Schema.
+- „Fällig“ heißt nicht „wahr“, sondern „muss geprüft oder gezeigt werden“.
+- Eine erledigte oder abgesagte Zusage wird nicht still wieder scharf.
+- Wiederholungen sind ausdrücklich und begrenzt.
+- Zeitzone und Sommerzeit sind gespeichert, versioniert und testbar.
+- Die erste Oberfläche ist der Sitzungsstart. Dieser Schritt wirkt nie nach
+  außen.
+- Eine einmalige Zusage löst pro Fälligkeit höchstens einmal aus; Offline-Zeit
+  und „erst in der nächsten Sitzung“ verlieren kein fälliges Ereignis.
+
+###### Schritt 03 – Deterministische Event- und Trigger-Engine ([#404](https://github.com/n0mad-ai/bastra-recall/issues/404))
+
+Recall erkennt über eine lokale, wiederholbare Event-Engine, wann eine Bedingung
+wirklich fällig wird. Modelle dürfen Bedingungen vorschlagen, aber nicht
+selbst entscheiden, dass ein Ereignis eingetreten ist.
+
+Ereignisquellen, jede mit eigener Berechtigung und eigener
+Zuverlässigkeitsschwelle, zuerst lokal:
+
+- Uhrzeit (monoton und Wanduhr) und Nachholen in der nächsten Sitzung,
+- Projekt, Worktree und Aufgabenphase,
+- Git-Refs, Releases und Repository-Zustand,
+- Änderungen an Dateien, Pfaden und Symbolen,
+- Zustand von Entitäten, Dokumenten und Versionen,
+- ausdrückliche Ereignisse von Nutzer oder Werkzeugen,
+- optional externe Connectoren und Webhooks.
+
+Regeln:
+
+- Ereignisse haben ein versioniertes Format mit Quelle, Zeitachsen,
+  Duplikatschlüssel und Sensitivität.
+- Ein Journal erlaubt Wiederholung und Wiederaufnahme nach Absturz. Eine
+  Auslösung passiert logisch genau einmal, auch wenn die Zustellung
+  wiederholt wird.
+- Zuerst gilt „in der nächsten Sitzung“; Aufwecken im Hintergrund braucht eine
+  eigene Freigabe und bleibt ressourcenbegrenzt.
+- Jede Auslösung ist erklärbar: welches Ereignis, welche Bedingung.
+- Uhrumstellung, Neustart oder Wiederholung erzeugen keine doppelte Auslösung.
+- Fällt eine Quelle aus, wird das sichtbar und nie als „Bedingung nicht
+  erfüllt“ gewertet.
+- Die Auswertung blockiert nie die normalen Recall-Hooks.
+
+###### Schritt 04 – Berechtigte Handlungen: benachrichtigen, vorbereiten, ausführen ([#405](https://github.com/n0mad-ai/bastra-recall/issues/405))
+
+Eine fällige Zusage kann benachrichtigen, eine Handlung vorbereiten oder – nur
+mit ausdrücklicher Berechtigung – eine begrenzte Handlung ausführen. Gedächtnis
+wird nie zu einer stillschweigenden Vollmacht.
+
+Stufen:
+
+1. `notify` – nur Kontext zeigen (Standard).
+2. `prepare` – Probelauf, Entwurf, Diff oder vorgeschlagener Befehl.
+3. `execute` – genau die freigegebene Operation innerhalb einer begrenzten
+   Berechtigung.
+
+Regeln:
+
+- Eine Berechtigung ist gebunden an Handelnden, Ressource, Aktion, Scope,
+  Ablauf und Widerruf.
+- Die Freigabe hat keine vorausgewählte Ausführen-Option. Jede verändernde
+  Aktion zeigt vorher einen Probelauf und einen lesbaren Diff.
+- Eine Freigabe für eine Aktion oder ein Ziel lässt sich nicht für ein anderes
+  wiederverwenden.
+- Ein gelernter Workflow kann Berechtigungen weder schaffen, erweitern,
+  weitergeben noch verlängern.
+- Teilweises Scheitern wird nie als „erledigt“ gemeldet.
+- Geheimnisse und Berechtigungsmaterial landen nie im Gedächtnis oder in
+  öffentlicher Telemetrie.
+- Die Kette Zusage → Auslösung → Vorschlag → Freigabe → Handlung → Ergebnis
+  ist lückenlos nachvollziehbar.
+- Ein Widerruf wirkt vor der nächsten Aktion und übersteht einen Neustart.
+- Wird Schritt 04 abgeschaltet, bleibt das prospektive Gedächtnis als reine
+  Benachrichtigung erhalten.
+
+##### Phase C – Kausales Lernen
+
+###### Schritt 05 – Kausales Outcome-Gedächtnis ([#406](https://github.com/n0mad-ai/bastra-recall/issues/406))
+
+Recall unterscheidet entlang der Kette
+`Erinnerung → Entscheidung → Auslösung → Handlung → Ergebnis` zwischen
+Zusammenhang und belegtem Nutzen. Es lernt nicht nur, welche Erinnerung genutzt
+wurde, sondern ob ihr Auftauchen zu diesem Zeitpunkt das Ergebnis verbessert hat.
+
+Regeln:
+
+- Ergebnisse werden unterschieden: Erfolg, Fehlschlag, vermiedener Verstoß,
+  Korrektur, wirkungslos, teilweise, unbekannt.
+- Ohne bekannte Auswahlwahrscheinlichkeit, Kontrollgruppe und Umgang mit
+  fehlenden Beobachtungen gibt es keine kausale Aussage.
+- Eine erfolgreiche Aufgabe nach dem Zeigen beweist nicht, dass die Erinnerung
+  den Erfolg verursacht hat.
+- Nicht gezeigt und Schweigen zählen als „nicht beobachtet“, nicht als
+  negativ.
+- Experimente schließen zerstörerische, datenschutzkritische und riskante
+  Handlungen aus.
+- Beschreibende, zusammenhängende und kausale Berichte bleiben sichtbar
+  getrennt.
+- Das Ergebnis sind Vorschläge für Zeitpunkt, Unterbrechung, Routing und
+  Handlungsstufe – nie eine Änderung an Fakten, nie mehr Rechte.
+- Eine gelernte Strategie muss die feste Regel schlagen, bevor sie in eine
+  Testphase geht. Ein Rollback entfernt die Strategie, nicht die gesammelten
+  Episoden.
+
+###### Schritt 06 – Geprüfte Workflow- und Strategie-Synthese ([#407](https://github.com/n0mad-ai/bastra-recall/issues/407))
+
+Wiederholt erfolgreiche Abläufe können einen Vorschlag für einen
+wiederverwendbaren Workflow ergeben – nie eine ungeprüfte autonome Routine.
+
+Ein Vorschlag enthält Ziel und Anwendungsbedingungen, die Schritte mit
+Verzweigungen, erwartete Zwischenergebnisse, bekannte Fehlerbilder und
+Abbruchregeln, benötigte Ressourcen und Berechtigungen, die Quell-Episoden,
+getestete Umgebungen, ein Prüfdatum und eine Version mit Rollback-Ziel.
+
+Regeln:
+
+- Häufigkeit ist kein Erfolg; nur belegte erfolgreiche Episoden zählen, und
+  eine einzelne reicht nie.
+- Ein Workflow übernimmt keine Rechte aus seinen Quell-Episoden.
+- Er wird im Sandkasten gegen einfachere Strategien und gegen „nichts tun“
+  verglichen und muss messbar besser sein.
+- Ein Mensch nimmt an, ändert, lehnt ab oder zieht zurück.
+- Fehlt eine Vorbedingung, enthält sich der Workflow, statt zu improvisieren.
+- Erzeugter ausführbarer Inhalt gilt bis zur Prüfung als nicht
+  vertrauenswürdig.
+- Ändern sich Umgebung, Abhängigkeiten oder Belege, wird neu geprüft.
+- Zurückziehen löscht weder Belege noch frühere Versionen.
+
+##### Phase D – Föderation und Koordination
+
+###### Schritt 07 – Föderiertes persönliches, Projekt- und Team-Gedächtnis ([#408](https://github.com/n0mad-ai/bastra-recall/issues/408))
+
+Mehrere Geräte und Personen können ausgewählte Erinnerungen teilen, ohne dass
+der Vault zu „der letzte Schreiber gewinnt“ wird oder persönlicher Kontext
+verloren geht.
+
+Scopes: persönlich, Projekt/Workspace, Team und – nur wenn ausdrücklich
+aktiviert – Organisation/öffentlich. Teilen ist ausdrücklich und ergänzend: Eine
+persönliche und eine Team-Aussage dürfen nebeneinander stehen und sichtbar
+widersprechen.
+
+Regeln:
+
+- Geteilte Inhalte haben eine inhaltsbasierte Identität und Version.
+- Offline zuerst: Ein Journal und ein deterministisches Abgleichverfahren
+  führen Änderungen zusammen. Kein Zusammenführen allein nach Zeitstempel.
+- Geteilte Scopes sind unterwegs und gespeichert verschlüsselt, mit
+  Schlüsselwechsel und Widerruf. Widerrufene Geräte erhalten nichts Neues.
+- Konflikte werden zu eigenen Objekten mit geprüftem Zusammenführen.
+- Löschungen verbreiten sich, ohne nötige Historie zu zerstören und ohne
+  Daten wiederauferstehen zu lassen.
+- Metadaten verraten nicht, dass eine geschützte Erinnerung existiert.
+- Offline-Änderungen bleiben ihrem Gerät und ihrer Person zugeordnet.
+- Team-Konsens überschreibt nie persönliches Gedächtnis.
+- Ein Sync-Fehler ist sichtbar und wird nie als „aktuell“ gemeldet.
+- Die Zusammenführungsregeln stehen fest, bevor Transport und Speicher gewählt
+  werden; ein Wechsel des Backends ändert sie nicht.
+- Die Föderation lässt sich abkoppeln und hinterlässt einen konsistenten
+  lokalen Vault.
+
+Bestehende Arbeit zu Import und Geräte-Sync
+([#299](https://github.com/n0mad-ai/bastra-recall/issues/299),
+[#339](https://github.com/n0mad-ai/bastra-recall/issues/339),
+[#341](https://github.com/n0mad-ai/bastra-recall/issues/341)) bleibt in ihrem
+eigenen Milestone; Schritt 07 nutzt ihre Ergebnisse, ohne sie zu doppeln.
+
+###### Schritt 08 – Multi-Agent-Koordination ([#409](https://github.com/n0mad-ai/bastra-recall/issues/409))
+
+Mehrere Assistenten können geteiltes Gedächtnis beobachten und nutzen, ohne
+Echo-Verstärkung, doppelte Arbeit, versteckte Zuständigkeit oder Wahrheit per
+Mehrheit.
+
+Regeln:
+
+- Jede Beobachtung, jeder Vorschlag und jede Handlung trägt die Identität des
+  Agenten und ihre Herkunft.
+- Ereignisse werden über Agenten und Geräte hinweg dedupliziert, Schleifen
+  erkannt.
+- Offene Zusagen und vorbereitete Handlungen haben eine Zuständigkeit auf Zeit
+  (Lease). Sie regelt die Arbeit, versteckt die Zusage aber nicht vor anderen.
+- Geteilte Wissenszustände: `asserted | confirmed | contested | superseded | unknown`.
+- Zustimmung mehrerer Agenten mit derselben Quelle ist kein unabhängiger Beleg;
+  wiederholtes Zitieren derselben Quelle zählt einmal.
+- Mehrheit begründet keine Wahrheit.
+- Ein Agent kann nicht die Berechtigung eines anderen verbrauchen.
+- Echos erhöhen weder Vertrauen, Gewicht, Rang noch gelernten Nutzen.
+- Ungelöste Konflikte bleiben für alle Berechtigten sichtbar.
+- Übergaben erhalten Belege, Zustand, Berechtigungen und Rollback-Ziel.
+- Vor jeder gemeinsamen Ausführung läuft die Koordination zuerst als nur
+  lesende Simulation. Sie lässt sich abschalten, das geteilte Gedächtnis bleibt
+  lesbar.
+
+#### Offene Designfragen
+
+Diese Punkte stammen aus einem externen, kritischen Review des Plans vom
+28.08.2026 und hängen als Kommentare an den jeweiligen Issues. Sie sind noch
+nicht entschieden.
+
+- **Wessen Freigabe gilt bei mehreren Eigentümern?**
+  ([#450](https://github.com/n0mad-ai/bastra-recall/issues/450)) Schritt 04
+  geht von genau einer freigebenden Person aus. Betrifft eine Handlung
+  persönliches Gedächtnis und Team-Gedächtnis zugleich, ist offen, ob jede
+  betroffene Partei zustimmen muss, ob ein festgelegtes Quorum reicht und ob
+  eine teilweise Ausführung erlaubt ist. Vorschlag: Die Freigabe wird zu einer
+  Menge (eine je betroffenem Bereich), ausgeführt wird nur, wenn alle nötigen
+  Freigaben oder ein ausdrücklich festgelegtes Quorum vorliegen. Das muss vor
+  der Föderation entschieden werden.
+- **Veraltete Freigaben** ([#405](https://github.com/n0mad-ai/bastra-recall/issues/405))
+  Eine Berechtigung läuft nach Zeit ab oder wird widerrufen, aber nicht, wenn
+  sich der freigegebene Inhalt bis zur Ausführung ändert. Vorschlag: Die
+  Berechtigung bindet den Zustand, gegen den freigegeben wurde; bei der
+  Ausführung wird erneut geprüft, und „veraltet“ wird ein eigenes Ergebnis
+  neben „abgelaufen“ und „widerrufen“. Offen ist außerdem die Begründung, warum
+  der Freigebende nicht der Vorschlagende sein darf.
+- **Reihenfolge der kausalen Methoden**
+  ([#406](https://github.com/n0mad-ai/bastra-recall/issues/406)) Vorschlag:
+  zuerst die vorhandene Schwelle im Recall-Score als natürliches Experiment
+  nutzen, danach eine zufällige Grauzone über den Canary-Mechanismus aus V2
+  statt eigener Experimentiertechnik; die kleinste nachweisbare Wirkung vorab
+  festlegen.
+
+#### Übergreifende Kennzahlen
+
+Jeder Schritt berichtet die zu ihm passenden Werte:
+
+- Genauigkeit und Vollständigkeit hilfreicher Auslösungen, Anteil verpasster
+  Auslösungen,
+- Kosten von Unterbrechungen und Erledigungsquote von Zusagen,
+- verweigerte oder verletzte Berechtigungen und doppelte Handlungen,
+- Wirkung von Eingriffen mit Unsicherheit und fehlenden Beobachtungen,
+- Übernahme, Erfolg, Enthaltung und Rollback von Workflows,
+- Sync-Konflikte, stiller Verlust, Wiederherstellung und Konvergenz,
+- Lecks über Scope- und Sensitivitätsgrenzen,
+- Genauigkeit von Herkunft und Zuordnung,
+- Echo-Verstärkung, doppelte Arbeit und Lease-Wiederherstellung bei mehreren
+  Agenten,
+- Latenz, Ressourcenverbrauch und Verhalten ohne Netz oder im
+  eingeschränkten Betrieb.
