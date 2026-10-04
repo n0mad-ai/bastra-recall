@@ -13,7 +13,7 @@
  *    audit-save.ts. Runtime reflection diffs that surface against the pinned
  *    arms — a new audited export without a pin goes red here.
  *  - Score mutations all pass through ONE gateway: `applyStaleness` in
- *    search.ts (staleness, curator-demote, doc-damping, salience-live in a
+ *    search-staleness.ts (staleness, curator-demote, doc-damping, salience-live in a
  *    single multiplier). A static source scan counts every `.score`
  *    assignment in core and daemon src — a new assignment anywhere goes red
  *    here until it is routed through the gateway or pinned with its own arm.
@@ -61,7 +61,8 @@ test("#194: every audited cell-mutation export carries a pinned survival arm", (
 
 /** Files allowed to write a score, with the exact count of assignment
  *  sites and the CLASS of each:
- *  - search.ts: the mutation gateway (`applyStaleness` — all multiplier
+ *  - search-staleness.ts (split out of search.ts, #1039): the mutation
+ *    gateway (`applyStaleness` — all multiplier
  *    sources in one place) plus the freestanding `applyStalenessMultiplier`
  *    kept as the bench baseline (scripts/bench-cache compares against it;
  *    nothing in src imports it — pinned below).
@@ -70,7 +71,7 @@ test("#194: every audited cell-mutation export carries a pinned survival arm", (
  *    existing hit. Listed so the scan stays exhaustive instead of quietly
  *    pattern-excluding it. */
 const PINNED_SCORE_SITES: Record<string, number> = {
-  "core/src/search.ts": 2,
+  "core/src/search-staleness.ts": 2,
   "core/src/embeddings.ts": 2,
 };
 
@@ -105,7 +106,7 @@ test("#194: every score assignment lives in the pinned gateway files", () => {
     found,
     PINNED_SCORE_SITES,
     "a score assignment exists outside the pinned gateway sites. Route the new " +
-      "multiplier through applyStaleness (search.ts) so every ranking effect stays " +
+      "multiplier through applyStaleness (search-staleness.ts) so every ranking effect stays " +
       "score-only and survival-guarded — or, if it genuinely needs its own path, " +
       "write its survival arm and pin the site here.",
   );
@@ -117,7 +118,8 @@ test("#194: the legacy freestanding multiplier is bench-only — no src module i
   for (const pkg of ["core", "daemon"]) {
     for (const file of walk(join(packagesRoot, pkg, "src"))) {
       const src = readFileSync(file, "utf8");
-      if (file.endsWith(join("core", "src", "search.ts"))) continue; // its own definition
+      if (file.endsWith(join("core", "src", "search-staleness.ts"))) continue; // its own definition
+      if (file.endsWith(join("core", "src", "search.ts"))) continue; // its public re-export (#1039)
       if (src.includes("applyStalenessMultiplier")) offenders.push(relative(packagesRoot, file));
     }
   }

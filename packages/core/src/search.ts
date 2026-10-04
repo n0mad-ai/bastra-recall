@@ -1,475 +1,48 @@
 import type { Memory } from "./schema.js";
 import type { Vault, VaultEvent } from "./vault.js";
 import type { EmbeddingIndex } from "./embeddings.js";
-import { fuseRRF, RRF_SCALE } from "./embeddings.js";
-import type { RecallStage, StageListener } from "./recall-stages.js";
 import { normalizeQuery, tokenizeWithIdentifiers } from "./query-normalize.js";
-import { PHRASE_STOPWORDS, MIN_SIGNIFICANT_TOKEN_LEN } from "./stopwords.js";
 import { DocFreqMiniSearch } from "./doc-freq-index.js";
 import { rareTermFuzzy } from "./bm25-expansion.js";
 import { groupQueryTerms, groupedTokenize } from "./bm25-grouping.js";
 import { capBm25Query } from "./bm25-query-cap.js";
-import { abandonAfter, type LateSettleSample } from "./deadline.js";
-import { scopeEquals } from "./scope.js";
 import type { CueProjection } from "./cue-sidecar.js";
+import type { CueIndexOptions, IndexDoc, RecallHit, RecallOptions } from "./search-types.js";
+import { matchedRecallWhen, anchorStrength } from "./search-anchor.js";
+import {
+  passesRecallFilters,
+  round,
+  StageEmitter,
+  lookupQueryCache,
+  emitCachedPool,
+  storeQueryCache,
+  collectOneHopNeighbors,
+  type QueryCacheEntry,
+} from "./search-pipeline.js";
+import { applyStaleness, type StaleStatus } from "./search-staleness.js";
+import { awaitDenseArm, fuseArms } from "./search-hybrid.js";
 
-export interface RecallHit {
-  id: string;
-  title: string;
-  type: string;
-  scope: string;
-  summary: string;
-  topic_path: string[];
-  score: number;
-  matched_terms: string[];
-  /** „bm25" | „vector" | „hybrid" — primärer Treffer-Modus für Telemetrie. */
-  mode?: "bm25" | "vector" | "hybrid";
-  /** „direct" | „1-hop" — bei Multi-Hop-Recall: ob das Memory ein direkter
-   *  Match war oder ein Nachbar über `related_via`. UI kann das anders rendern. */
-  hop?: "direct" | "1-hop";
-  /** true wenn ein Query-Term auf dem HAND-geschriebenen `recall_when` matchte
-   *  (nicht `recall_when_expanded`, nicht title/tags/topic/body). Signal für
-   *  einen „deliberate" Treffer — der Autor hat genau diesen Kontext als Trigger
-   *  deklariert. Genutzt vom Hook-Scope-Filter (#148), um starke, absichtliche
-   *  Cross-Scope-Hits durchzulassen ohne den tag/topic-Noise (#110) zu öffnen. */
-  matched_recall_when?: boolean;
-  /**
-   * P0: Wie tragfähig der Anker ist — `"strong"` (zwei exakte Trigger-Terme
-   * oder ein seltener), `"weak"` (genau ein häufiger). Fehlt, wenn gar kein
-   * Trigger-Term traf.
-   *
-   * Der Cross-Scope-Bypass (`hook-skip.ts`) verlangt `"strong"`: Ein einzelnes
-   * Allerweltswort, das zufällig in einer fremden Triggerphrase steht, ist
-   * keine Absichtserklärung.
-   */
-  anchor_strength?: "strong" | "weak";
-  /** #230: RRF-Herkunft des Scores auf dem Hybrid-Pfad. Der `score` ist eine
-   *  skalierte Rang-Summe, keine Content-Similarity — dieses Feld macht
-   *  dekomponierbar, woraus die Zahl besteht. Nur auf dem Hybrid-Pfad gesetzt
-   *  (das reine BM25-`recall()` lässt es weg); im lean-Response nicht enthalten,
-   *  nur bei `verbosity: "full"`. */
-  rrf?: {
-    /** 1-basierter Rang im BM25-Arm, `null` wenn dieser Arm den Hit nicht führte. */
-    rank_bm25: number | null;
-    /** 1-basierter Rang im Vector-Arm, `null` wenn dieser Arm den Hit nicht führte. */
-    rank_vector: number | null;
-    /**
-     * Unskalierter RRF-Wert (Σ 1/(k+rank)) vor der RRF_SCALE-Skalierung, die
-     * `score` ergibt: `round3(raw × RRF_SCALE) === score`, auf JEDEM Pfad.
-     *
-     * Das schließt den Commons-Arm ein, wenn er zu diesem Hit beigetragen hat
-     * (siehe `commons-fusion.ts`) — der Beitrag wurde dort früher nur auf den
-     * ausgelieferten Score addiert, und `raw` erklärte danach eine Zahl, die
-     * gar nicht mehr serviert wurde (gemessen: 225.574 gegen 160). Wer den
-     * Anteil OHNE Commons braucht, liest `personal_score`.
-     */
-    raw: number;
-    /**
-     * Der Commons-Arm, nur gesetzt wenn er zu DIESEM Hit etwas beigetragen hat
-     * (siehe `commons-fusion.ts`).
-     *
-     * Codex-Gegenreview (P0): Ohne diese drei Felder erklärte das
-     * Evidence-Objekt den ausgelieferten Score nicht mehr. Es nannte die
-     * persönlichen Ränge, während die Zahl daneben zusätzlich einen
-     * Commons-Beitrag enthielt — ein Feld, das eine Zahl erklären soll und es
-     * nur zur Hälfte tut, ist irreführender als keines.
-     */
-    /** 1-basierter Rang im Commons-Index. */
-    rank_commons?: number;
-    /**
-     * Nur auf dem KOLLAPS-Pfad (der persönliche Arm war degradiert): der Rang
-     * des Treffers in der persönlichen Liste. Dort geht nicht der persönliche
-     * Zahlenwert in den Score ein, sondern nur dieser Rang — `rank_bm25` und
-     * `rank_vector` beschreiben die Zahl dann nicht mehr und sind `null`.
-     */
-    rank_personal_list?: number;
-    /** Vertrauensgewicht dieses Commons-Treffers (`commonsRankFactor`, 0.5–0.95). */
-    commons_weight?: number;
-    /** Der Score OHNE den Commons-Beitrag — die Zahl, die derselbe Recall
-     *  ohne aktive Commons ausgeliefert hätte. */
-    personal_score?: number;
-  };
-}
-
-/**
- * Hat ein Query-Term EXAKT auf dem hand-geschriebenen `recall_when_flat`
- * gematcht?
+/*
+ * #1039: Die Recall-Pipeline ist auf fünf Module verteilt. Dieses hier hält den
+ * Index und seinen Zustand (`SearchIndex`) und die beiden Recall-Pfade; die
+ * öffentlichen Typen und Funktionen der anderen Module werden unten unter dem
+ * alten Pfad re-exportiert, damit kein Importeur sich ändert.
  *
- * MiniSearch `match` ist `{ term: fields[] }`, wobei `term` der **Dokument**-
- * Term ist, nicht der Query-Term — bei einem Prefix- oder Fuzzy-Treffer stehen
- * dort Wörter, die in der Query gar nicht vorkommen. Die frühere Fassung fragte
- * nur, ob irgendein solcher Term im Trigger-Feld lag, und beantwortete damit
- * eine andere Frage als die, für die das Flag existiert.
- *
- * Der Unterschied ist keine Feinheit: Das Flag bedeutet „der Autor hat GENAU
- * diesen Kontext als Auslöser deklariert" und schaltet daran zwei Dinge frei —
- * den Cross-Scope-Bypass (`hook-skip.ts`) und die Unterdrückung von
- * `weak_result` (`weak-result.ts`). Beides sind Aussagen über Absicht, und
- * Absicht lässt sich nicht aus einer Tippfehler-Nachbarschaft ableiten:
- * gemessen setzte `obsidan` (ein Edit) und `tripwir` (ein Präfix) das Flag auf
- * Memories, deren Trigger diese Wörter nie enthielten.
- *
- * Deshalb zählt ab jetzt nur, was auch in der Query steht. `queryTerms` sind
- * die produktiv tokenisierten, gefalteten Terme der Query; ist das Set leer
- * (kein Caller-Kontext), bleibt das Flag false — lieber ein Anker zu wenig als
- * einer, der Absicht behauptet, die es nicht gibt.
- *
- * `recall_when_expanded_flat` zählt weiterhin NICHT: doc2query-generiert, vom
- * Autor nicht als Trigger geschrieben (#148).
+ *   search-types.ts      RecallHit, RecallOptions, IndexDoc, CueIndexOptions
+ *   search-anchor.ts     matched_recall_when / anchor_strength pro Treffer
+ *   search-pipeline.ts   Filter, Rundung, Stage-Events, Query-Cache, 1-Hop
+ *   search-hybrid.ts     dichter Arm (Warten + Filter) und RRF-Fusion
+ *   search-staleness.ts  Lifecycle-Reranking und das Score-Gateway
  */
-function matchedRecallWhen(
-  r: { match?: Record<string, string[]> },
-  queryTerms: ReadonlySet<string>,
-): boolean {
-  const match = r.match;
-  if (!match || queryTerms.size === 0) return false;
-  for (const [term, fields] of Object.entries(match)) {
-    if (fields.includes("recall_when_flat") && queryTerms.has(term.toLowerCase())) return true;
-  }
-  return false;
-}
-
-/**
- * Wie TRAGFÄHIG ist der Anker? (P0, Punkt 6.)
- *
- * `matched_recall_when` sagt nur, DASS ein Query-Term wörtlich in einer
- * autorisierten Triggerphrase stand. Für Telemetrie genügt das; für die eine
- * Entscheidung, die daran am teuersten hängt, nicht: Ein Memory aus einem
- * FREMDEN Projekt darf sich in diese Session drängen (`hook-skip.ts`).
- *
- * **Was `strong` verlangt** — dieselbe Regel, die der Reflex-Pfad seit dem
- * 20.08.-Vorfall anwendet (`reflex.ts`):
- *
- *  - zwei signifikante exakte Terme aus **derselben** authored Phrase, oder
- *  - ein exakter Term, der wie ein Bezeichner aussieht UND im Vault selten ist.
- *
- * „Derselben Phrase" ist der Punkt, an dem die erste Fassung zu schwach war:
- * Sie zählte Treffer über das flach zusammengefügte `recall_when_flat`, also
- * quer über alle Phrasen eines Memories. Ein Memory mit zehn Triggern sammelt
- * so leicht zwei zufällige Wörter aus zwei unabhängigen Situationen ein — was
- * keine Absichtserklärung ist, sondern Statistik. Deshalb kommen die Phrasen
- * hier einzeln aus dem Vault.
- *
- * #360: die erste Fassung dieser Funktion hatte drei weitere Lücken.
- *
- * 1. Sie zählte EMISSIONEN, nicht distinkte Wörter — `"foo bei foo"` mit
- *    Query `foo` traf den Rohtoken-Strom zweimal (zwei Positionen, gleiches
- *    Wort) und wurde `strong`, und ein einzelnes `my-app` (Dual-Emission zu
- *    `my-app`, `my`, `app`) füllte die Zweierregel allein. Jetzt wird pro
- *    Phrase WORTWEISE gesplittet (am Whitespace) und je Wort nur EINMAL in
- *    ein `Set` eingetragen — Wiederholungen desselben Wortes und mehrere
- *    Emissionen eines einzelnen Wortes zählen beide als „ein Ursprung".
- * 2. Zwei x-beliebige Terme reichten, auch wenn beide Allerweltswörter waren.
- *    `isSignificantTriggerTerm` filtert jetzt Funktionswörter (geteilte Liste
- *    mit dem Reflex-Pfad, `stopwords.ts`) und Kurzwörter unter
- *    `MIN_SIGNIFICANT_TOKEN_LEN` heraus, bevor ein Wort zur Zweierregel
- *    beiträgt.
- * 3. Die Seltenheit lief über `DocFreqMiniSearch.docFreq()` — Summe über ALLE
- *    SIEBEN Felder, nicht über distinkte Memories mit dem Term in
- *    `recall_when`. Ein Term, der nur in einem authored Trigger, aber in
- *    zehn Bodies steht, riss die Schwelle künstlich. `recallWhenDocFreq`
- *    (siehe `SearchIndex`) zählt jetzt genau das Gefragte. Zusätzlich lief
- *    die Identifier-Prüfung auf dem bereits GEFALTETEN Term — camelCase war
- *    zu diesem Zeitpunkt strukturell unsichtbar. Beide Einzelterm-Checks
- *    laufen jetzt auf der ROHEN (ungefalteten) Phrase aus dem Vault; gefaltet
- *    wird nur für den Set-Vergleich gegen die gematchten Query-Terme.
- *
- * **Zur Seltenheitsschwelle, offen gesagt:** Sie ist nicht kalibriert, weil es
- * dafür noch keine Labels gibt. Der Wert `5` ist unverändert — er war nie zu
- * hoch, er wurde nur gegen die falsche (zu große) DF gemessen; siehe Punkt 3.
- *
- * Der Preis ist ein bewusster: Eine legitime Cross-Project-Erinnerung, die an
- * einem einzelnen natürlichen Wort hängt, kommt nicht mehr durch. Bei einem
- * Bypass ist dieser Fehler die billigere Richtung — ein themenfremdes REQUIRED
- * kostet Kontext und Vertrauen, ein fehlender Hinweis nur eine Nachfrage.
- */
-function anchorStrength(
-  r: { id: unknown; match?: Record<string, string[]> },
-  queryTerms: ReadonlySet<string>,
-  recallWhenDocFreq: (term: string) => number,
-  phrasesOf: (id: string) => string[],
-): "strong" | "weak" | undefined {
-  const match = r.match;
-  if (!match || queryTerms.size === 0) return undefined;
-
-  const matchedTriggerTerms = new Set<string>();
-  for (const [term, fields] of Object.entries(match)) {
-    const folded = term.toLowerCase();
-    if (fields.includes("recall_when_flat") && queryTerms.has(folded)) {
-      matchedTriggerTerms.add(folded);
-    }
-  }
-  if (matchedTriggerTerms.size === 0) return undefined;
-
-  const phrases = phrasesOf(String(r.id));
-
-  // Einzelterm: trägt nur, wenn er wie ein Bezeichner aussieht UND selten ist
-  // (recall_when-DF, nicht die Summe über alle Felder). Geprüft an der ROHEN
-  // Schreibweise jedes Phrasen-Wortes — sonst ist camelCase schon vor dem
-  // Vergleich weggefaltet.
-  for (const phrase of phrases) {
-    for (const word of phrase.split(/\s+/)) {
-      if (!word) continue;
-      for (const rawToken of tokenizeWithIdentifiers(word)) {
-        const folded = rawToken.toLowerCase();
-        if (!matchedTriggerTerms.has(folded)) continue;
-        const df = recallWhenDocFreq(folded);
-        if (looksLikeIdentifier(rawToken) && df > 0 && df <= ANCHOR_RARE_DF_MAX) return "strong";
-      }
-    }
-  }
-
-  // Zweierregel: „zwei exakte Trigger-Terme" heißt zwei verschiedene
-  // Wortursprünge, die auf zwei verschiedene Query-Terme abbilden — nicht
-  // nur zwei verschiedene Ursprünge. `my-app your-app` gegen die Query
-  // `app` sind zwei Wörter, aber beide treffen (über die Dual-Emission)
-  // ausschließlich denselben einen Term `app` — das ist EIN Query-Term, kein
-  // Beleg für zwei.
-  //
-  // Pro Ursprung wird deshalb die MENGE der getroffenen signifikanten Terme
-  // gemerkt (Schlüssel ist wie zuvor die normalisierte Emissionssignatur —
-  // Wiederholungen und Satzzeichen-Varianten desselben Wortes bleiben EIN
-  // Ursprung, dessen Treffermengen zusammengeführt werden). "Strong" gilt,
-  // wenn zwei Ursprünge A und B existieren, die sich auf zwei DISTINKTE
-  // Terme verteilen lassen (ein bipartites Matching der Größe 2).
-  //
-  // Reicht "A und B treffen unterschiedliche Mengen" als Test? Nein — wenn
-  // A und B beide NUR `{app}` treffen, sind ihre Mengen identisch (korrekt
-  // weak), aber wenn A und B beide `{app, konfig}` treffen (identische
-  // Mengen!), gibt es sehr wohl ein Matching (A→app, B→konfig) und es MUSS
-  // strong sein. Der Mengen-Vergleich sagt in diesem Fall "gleich" und würde
-  // fälschlich weak liefern. Die tatsächliche Bedingung (Hall'sches Kriterium
-  // für zwei Mengen) ist einfacher: ein SDR der Größe 2 existiert genau dann,
-  // wenn |A ∪ B| >= 2 — das versagt nur, wenn A und B beide dasselbe
-  // Einzelelement sind.
-  for (const phrase of phrases) {
-    const originTerms = new Map<string, Set<string>>();
-    for (const word of phrase.split(/\s+/)) {
-      if (!word) continue;
-      const emitted = tokenizeWithIdentifiers(word).map((t) => t.toLowerCase());
-      if (emitted.length === 0) continue;
-      const hits = emitted.filter((t) => matchedTriggerTerms.has(t) && isSignificantTriggerTerm(t));
-      if (hits.length === 0) continue;
-      const origin = emitted.join("\0");
-      const existing = originTerms.get(origin);
-      if (existing) {
-        for (const t of hits) existing.add(t);
-      } else {
-        originTerms.set(origin, new Set(hits));
-      }
-    }
-    const origins = Array.from(originTerms.values());
-    for (let i = 0; i < origins.length; i++) {
-      for (let j = i + 1; j < origins.length; j++) {
-        const union = new Set([...origins[i], ...origins[j]]);
-        if (union.size >= 2) return "strong";
-      }
-    }
-  }
-  return "weak";
-}
-
-/**
- * DF-Grenze, unter der ein identifierartiger Trigger-Term für sich Absicht
- * belegt. `5` — konservative Setzung ohne Labels, kein kalibrierter Wert.
- * Jetzt gegen `recallWhenDocFreq` gemessen (distinkte Memories mit dem Term
- * in `recall_when`), nicht mehr gegen die feldübergreifende Summe.
- */
-const ANCHOR_RARE_DF_MAX = 5;
-
-/**
- * Ist `term` (roh, in Original-Schreibweise) selbst signifikant genug, um zur
- * Zweierregel beizutragen? Filtert Funktionswörter (geteilte Liste mit dem
- * Reflex-Pfad, #360) und Kurzwörter unter der Signifikanz-Mindestlänge —
- * zwei x-beliebige Allerweltswörter derselben Phrase sind keine Absicht,
- * auch wenn beide exakt in der Query stehen.
- */
-function isSignificantTriggerTerm(term: string): boolean {
-  return term.length >= MIN_SIGNIFICANT_TOKEN_LEN && !PHRASE_STOPWORDS.has(term);
-}
-
-/**
- * Trägt dieser eine Term für sich, oder ist er nur ein Wort?
- *
- * MUSS auf der ROHEN, ungefalteten Schreibweise laufen — camelCase
- * (`NSHostingController`) ist danach durch `processTerm` bereits zu
- * `nshostingcontroller` gefaltet und nicht mehr von einem langen deutschen
- * Wort zu unterscheiden.
- *
- * #360: die reine Längenschwelle (`>= 12`) ist raus. Gemessen an 4219
- * Trigger-Termen mit df<=5 bestanden 2886 die alte Heuristik, davon 646 NUR
- * wegen der Länge — im Deutschen sind lange natürliche Wörter normal
- * („Zusammenfassung", „Benachrichtigung"), Länge allein trägt also keine
- * Bezeichner-Aussage. Ersetzt durch die Case-Form: ein innerer Wechsel von
- * klein- zu großgeschrieben (camelCase, `myApp`) oder ein Lauf aus zwei-plus
- * Großbuchstaben (Akronym-Präfix wie in `NSHostingController`) schreibt
- * niemand beiläufig — ein Wort dieser Form IST ein Name.
- */
-function looksLikeIdentifier(term: string): boolean {
-  if (term.length < 4) return false;
-  if (/[./_-]/.test(term) || /\d/.test(term)) return true;
-  return /[a-z][A-Z]/.test(term) || /[A-Z]{2,}/.test(term);
-}
-
-export interface RecallOptions {
-  k?: number;
-  scope?: string; // exact-match filter
-  type?: string; // exact-match filter
-  /**
-   * Sensitivity-Filter (#58). Default `false` — externe MCP-Caller (Claude
-   * Code, Cursor, etc.) sehen keine als `private` markierten Memories. Die
-   * Mac-App ruft mit `allow_private: true` und sieht alles.
-   */
-  allow_private?: boolean;
-  /**
-   * Multi-Hop-Recall (#30 / #51). Default `0` — nur direkte BM25/Vector-Hits.
-   * Bei `1`: nach den direkten Treffern werden deren `related_via`-Nachbarn
-   * (1-Hop) eingehängt, mit reduziertem Score. UI kennzeichnet sie als
-   * `hop: "1-hop"`.
-   */
-  expand_hops?: 0 | 1;
-  /**
-   * Stage-Event-Listener (#38). Wenn gesetzt, emittiert die Recall-
-   * Pipeline pro Schritt einen Start- + Stop-Event (`query.parse`,
-   * `bm25.search`, `vector.search`, `rrf.fuse`, `hops.expand`,
-   * `staleness.rank`, `done`). Bei Query-Cache-Hits feuert zusätzlich
-   * ein `cache.hit`-Event mit `meta.cache = "query"` — danach folgt
-   * direkt `done`. Null-Overhead, wenn nicht gesetzt.
-   */
-  onStage?: StageListener;
-  /**
-   * #121: receives the DEEPER candidate pool (before the top-k slice / score floor),
-   * so the "far slice" — relevant memories that ranked below the returned k or below
-   * the floor and would otherwise be dropped from telemetry — becomes observable for
-   * offline bridge harvesting. Null-overhead when unset.
-   *
-   * #365/16: die Scores sind die GEDÄMPFTEN (post-staleness/curator/doc) —
-   * dieselbe Skala und dieselbe Reihenfolge wie die servierten Hits.
-   * #365/5: feuert auch bei einem Query-Cache-Hit, mit derselben Tiefe wie
-   * auf dem kalten Pfad.
-   */
-  onCandidatePool?: (pool: RecallHit[]) => void;
-  /**
-   * #342: per-arm deadline for the vector leg, in ms. The two arms have
-   * measurably different cost profiles — BM25 is in-memory, the dense arm needs
-   * a warm model — but they share one deadline today, so a cold Ollama makes the
-   * whole call miss it and the caller gets nothing (#305: 734ms cold vs ~161ms
-   * warm, against a 600ms hook budget).
-   *
-   * When the vector arm exceeds this, it is ABANDONED, not aborted: the embed
-   * call keeps running so the model finishes loading and the next call is warm.
-   * The result degrades to BM25 through the same path an empty vector arm takes
-   * (see #240/B1 below for why one-armed RRF is not an option).
-   *
-   * Unset or 0 = wait indefinitely, the pre-#342 behaviour.
-   */
-  vector_deadline_ms?: number;
-  /**
-   * #489: Die SPÄTE Stichprobe eines aufgegebenen dichten Arms. Feuert nur nach
-   * einem Timeout, und erst wenn der weiterlaufende Arm wirklich fertig ist —
-   * also nachdem `recallHybrid` längst zurückgekehrt ist.
-   *
-   * Warum ein eigener Kanal und keine Stage: Der Wert kommt NACH `done` an. Ein
-   * Stage-Event danach würde einen bereits geschlossenen Fortschrittsstrom
-   * bedienen und der Banter-Engine einen Schritt nach dem Ende melden. Er ist
-   * auch keine Wartezeit — niemand hat sie bezahlt (siehe `LateSettleSample`).
-   *
-   * Null-Overhead, wenn nicht gesetzt: ohne Listener hängt `abandonAfter` gar
-   * keine Fortsetzung an.
-   */
-  onVectorLateSettle?: (sample: LateSettleSample) => void;
-  /**
-   * #362: Zeichen-Budget für die Query des LEXIKALISCHEN Arms. Unset/`0` =
-   * Cap AUS (Default, siehe `bm25Query()` unten für die Begründung). Nur ein
-   * EXPLIZIT gesetzter Wert > 0 aktiviert ihn — z.B. `BM25_QUERY_MAX_CHARS`
-   * für den in #362 gemessenen 200er-Cap.
-   *
-   * Betrifft nur BM25. Der Dense-Arm sieht immer die vollständige Query.
-   */
-  bm25_query_max_chars?: number;
-  /**
-   * #362: DF-Schwelle, ab der ein Query-Term seine Fuzzy-Expansion verliert.
-   * Unset/`0` = Verhalten vor #362 (Fuzzy für ALLE Terme), der Default. Ein
-   * gesetzter Wert — z.B. `BM25_FUZZY_RARE_DF_MAX` — expandiert nur noch
-   * seltene Terme.
-   *
-   * Anders als `bm25_query_max_chars` entfernt das KEINEN Term: Jeder sucht
-   * weiter exakt und mit Präfix, nur die Fuzzy-Nachbarschaft häufiger Terme
-   * entfällt. Begründung und Messung in `bm25-expansion.ts`.
-   */
-  bm25_fuzzy_rare_df_max?: number;
-  /**
-   * #362 Phase 3: Der schnelle lexikalische Pfad — exact + prefix, KEIN Fuzzy.
-   *
-   * Für den Fall, den keine der anderen Stellschrauben löst: eine Maschine ohne
-   * Embeddings, ein langer Prompt, und trotzdem ein Budget. Gemessen sind das
-   * 140 ms p50 / 194 ms p90 gegen 1137 ms des vollen Arms — der einzige Weg,
-   * dort überhaupt in die Nähe von 200 ms zu kommen.
-   *
-   * Der Preis ist echt und wird hier nicht kleingeredet: Ohne Fuzzy findet ein
-   * vertipptes Wort sein Memory nicht mehr. Deshalb default AUS und dem
-   * Aufrufer überlassen, der sein Budget kennt — nicht als globale Einstellung,
-   * die einmal gesetzt und dann vergessen wird.
-   */
-  bm25_no_fuzzy?: boolean;
-  /**
-   * Die UNVERÄNDERTE Benutzerquery, wenn `query` maschinell erweitert wurde
-   * (Learned Bridges, `expandQuery`). Codex-Gegenreview: Ohne dieses Feld
-   * galten hinzuerfundene Bridge-Terme als exakte Query-Terme — sie konnten
-   * `matched_recall_when` setzen, `weak_result` unterdrücken und einen
-   * Cross-Scope-Anker erzeugen, obwohl der Benutzer den Term nie geschrieben
-   * hat. Genau das sollte der Anker seit P0 ausschließen: Er misst
-   * AUTORENABSICHT auf beiden Seiten — ein hand-geschriebener Trigger trifft
-   * ein selbst getipptes Wort.
-   *
-   * Fürs RANKING bleibt die erweiterte Query maßgeblich; die Erweiterung soll
-   * Treffer finden. Nur die Berechtigungs- und Ankerentscheidungen ziehen sich
-   * auf das zurück, was der Mensch geschrieben hat. Fehlt das Feld, ist
-   * `query` selbst die authored Query — Aufrufer ohne Expansion ändern nichts.
-   */
-  authored_query?: string;
-}
-
-interface IndexDoc {
-  id: string;
-  title: string;
-  summary: string;
-  tags_flat: string;
-  recall_when_flat: string;
-  recall_when_expanded_flat: string;
-  topic_path_flat: string;
-  body: string;
-  /**
-   * §11.4: die abgeleiteten Cues als ACHTES Feld, nie in `recall_when_flat`
-   * hineingeschrieben — „handgeschriebenes `recall_when` und abgeleiteter Cue
-   * haben verschiedene Vertrauensklassen und werden nie zu einem Feld
-   * verschmolzen". Optional, weil es ohne geladene Projektion gar nicht erst
-   * entsteht (siehe Konstruktor).
-   */
-  cues_flat?: string;
-  // not searched, just stored
-  type: string;
-  scope: string;
-  topic_path: string[];
-  obsolete: boolean;
-  confidence: number;
-  sensitivity: string;
-}
-
-/**
- * Womit die Cue-Schicht (§11.4) am Index angemeldet wird.
- *
- * Beides sind FREIE Parameter im Sinne von §18.3: Sie werden auf dem
- * Auswahlteil der registrierten Aufteilung bestimmt und nicht hier gesetzt.
- * Ohne dieses Argument — dem Produktionszustand — verhält sich der Index
- * exakt wie vor der Cue-Schicht.
- */
-export interface CueIndexOptions {
-  /** Die geladene Projektion (`cue-sidecar.ts`). */
-  projection: CueProjection;
-  /** Feldgewicht des Cue-Felds. Default 0 = aus, Feld wird nicht angelegt. */
-  boost?: number;
-}
+export type { RecallHit, RecallOptions, CueIndexOptions } from "./search-types.js";
+export {
+  type StaleStatus,
+  CURATOR_DEMOTION_MULTIPLIER,
+  DOC_TYPE_DAMPING,
+  salienceRankCap,
+  computeStaleness,
+  applyStalenessMultiplier,
+} from "./search-staleness.js";
 
 /**
  * Field weights of the BM25 index — the "Search ranking" table in
@@ -509,7 +82,6 @@ export class SearchIndex {
     string,
     { touchTs: number; status: StaleStatus; computedAt: number }
   >();
-  private static readonly STALENESS_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 
   // Curator-Demotions (#155): id-Set, vom Daemon nach jedem Curator-Pass
   // (und beim Boot aus dem State-File) gesetzt. Reiner Score-Mechanismus —
@@ -563,12 +135,7 @@ export class SearchIndex {
   // unterhalb von k (Reflex-/Hop-Seeds, far-slice-Harvest) — ohne Pool im Cache
   // lieferte ein Hit für die volle TTL nichts (BM25) bzw. Tiefe k statt
   // max(k*4, 20) (Hybrid). Rein In-Memory, ~20 flache Objekte pro Eintrag.
-  private queryCache = new Map<
-    string,
-    { hits: RecallHit[]; pool: RecallHit[]; at: number; degraded?: string }
-  >();
-  private static readonly QUERY_CACHE_MAX = 100;
-  private static readonly QUERY_CACHE_TTL_MS = 30_000;
+  private queryCache = new Map<string, QueryCacheEntry>();
 
   /**
    * Die geladene Cue-Projektion, oder `null` — und `null` ist der
@@ -653,7 +220,6 @@ export class SearchIndex {
     return this.embeddings !== undefined;
   }
 
-
   /**
    * Alles, was der lexikalische Arm für EINEN Aufruf braucht — an einer Stelle,
    * damit die drei Dinge zusammenbleiben, die zusammengehören: die gruppierte
@@ -726,7 +292,7 @@ export class SearchIndex {
     // Expansion und Staleness-Reranking. Cache speichert das finale
     // RecallHit[], nicht den BM25-Roh-Output.
     const cacheKey = `recall|${query}|${JSON.stringify(opts)}`;
-    const cached = this.lookupQueryCache(cacheKey);
+    const cached = lookupQueryCache(this.queryCache, cacheKey);
     if (cached) {
       stage.emit("cache.hit", recallStart, { cache: "query", hit_count: cached.hits.length });
       // #365/5: der Hit kehrte hier zurück, BEVOR irgendein `onCandidatePool`
@@ -734,7 +300,7 @@ export class SearchIndex {
       // primender Caller reichte, um Reflex- und Hop-Seeds für die volle TTL
       // verschwinden zu lassen. Replay vor `done`, damit die Reihenfolge
       // dieselbe ist wie auf dem kalten Pfad.
-      this.emitCachedPool(opts, cached.pool);
+      emitCachedPool(opts, cached.pool);
       stage.emit("done", recallStart, {
         hit_count: cached.hits.length,
         vault_size: this.mini.documentCount,
@@ -769,7 +335,7 @@ export class SearchIndex {
 
     const { ranked, pool } = this.rankBm25(filtered, k, opts, stage, authoredTerms);
 
-    this.storeQueryCache(cacheKey, ranked, pool);
+    storeQueryCache(this.queryCache, cacheKey, ranked, pool);
 
     stage.emit("done", recallStart, {
       hit_count: ranked.length,
@@ -854,7 +420,7 @@ export class SearchIndex {
       // Seeded from the RAW pool; each neighbour is damped exactly once, by
       // its own multiplier.
       const neighbors = this.applyStaleness(
-        this.collectOneHopNeighbors(directFull, opts, new Set(direct.map((h) => h.id))),
+        collectOneHopNeighbors(this.vault, directFull, opts, new Set(direct.map((h) => h.id))),
         opts,
       ).slice(0, k);
       stage.end("hops.expand", tHops, { hop_count: neighbors.length });
@@ -904,7 +470,7 @@ export class SearchIndex {
     // inject. Callbacks vanish from JSON.stringify, so they never varied the
     // key; the generation does.
     const cacheKey = `hybrid|${this.embeddings.size()}|${query}|${JSON.stringify(opts)}`;
-    const cached = this.lookupQueryCache(cacheKey);
+    const cached = lookupQueryCache(this.queryCache, cacheKey);
     if (cached) {
       // #240/B2: the sync path emits cache.hit + done on a hit; this one
       // returned before any emission, so SSE progress and the candidate-pool
@@ -913,7 +479,7 @@ export class SearchIndex {
       // #365/5: bisher gingen hier die SERVIERTEN k Hits als „Pool" raus —
       // bei k=2 also Tiefe 2 statt der 8, die derselbe Call kalt geliefert
       // hätte. Jetzt der mitgecachte tiefe Pool.
-      this.emitCachedPool(opts, cached.pool);
+      emitCachedPool(opts, cached.pool);
       stage.emit("done", recallStart, {
         hit_count: cached.hits.length,
         vault_size: this.mini.documentCount,
@@ -1042,88 +608,8 @@ export class SearchIndex {
       terms_unique: plan.unique,
     });
 
-    // #342: race the dense arm against its own deadline. `abandonAfter` never
-    // rejects and never cancels — on expiry it hands back null and leaves the
-    // embed in flight, which is the point: the model finishes loading on the
-    // call that gave up on it, so the NEXT call is warm. Cancelling here would
-    // re-pay the cold load every single time.
-    // #466: Der Timer startet HIER, beim echten Warten (siehe oben).
-    // #489: Die Wanduhr des Aufrufers. `vector.search` misst ab dem Abfeuern und
-    // überlappt damit BM25 — gemessen 06.–08.09. ist dieser Überlapp in der
-    // Prompt-Lane praktisch alles: vector p50 336 ms gegen bm25 p50 329 ms, echte
-    // Wartezeit 5 ms. Wer die alte Zahl als Wartezeit las, sah 82,6 % gerissene
-    // Deadlines, wo in Wahrheit 14 von 323 Aufrufen ihre Frist rissen. Ab hier
-    // gibt es beide Größen nebeneinander: die alte Spanne unverändert (die Serie
-    // läuft seit Wochen), die Wartezeit als eigenes Feld.
-    const tVecWait = Date.now();
-    const vecOrTimeout = await abandonAfter(
-      vectorArm,
-      opts.vector_deadline_ms ?? 0,
-      opts.onVectorLateSettle,
-      // #493: Der späte Arm meldet sein ERGEBNIS mit, nicht nur seine Laufzeit
-      // — ohne das kann Kriterium 4 aus #492 die kontrafaktische Fusionsrate
-      // nicht rechnen (ein Arm, der spät mit `empty` settelt, hätte auch mit
-      // längerer Frist nichts fusioniert).
-      (r) => ({
-        outcome: r.outcome,
-        hit_count: r.hits.length,
-        provider_load_ms: r.providerLoadMs,
-        cold_start_observed: r.coldStartObserved,
-      }),
-    );
-    const vectorWaitMs = Date.now() - tVecWait;
-    const vectorArmTimedOut = vecOrTimeout === null;
-    // #493: der Ausgang, wie der Provider ihn berichtet — nicht mehr aus einem
-    // Fehlerzähler-Delta erschlossen. Beim Timeout ist der Arm noch in Flug und
-    // hat noch gar keinen Ausgang; die späte Stichprobe trägt ihn nach.
-    const vectorArmErrored = vecOrTimeout?.outcome === "error";
-    const vec = vecOrTimeout?.hits ?? [];
-    const vectorTop = vec
-      .map((h) => ({ hit: h, mem: this.vault.get(h.id) }))
-      .filter(({ mem }) => {
-        if (!mem) return false;
-        if (mem.fm.obsolete === true) return false;
-        if (opts.scope && !scopeEquals(mem.fm.scope, opts.scope)) return false;
-        if (opts.type && mem.fm.type !== opts.type) return false;
-        if (
-          !opts.allow_private &&
-          (mem.fm as { sensitivity?: string }).sensitivity === "private"
-        ) {
-          return false;
-        }
-        return true;
-      })
-      .slice(0, 50);
-    // #370: die Spanne deckt dispatch→settle und ÜBERLAPPT `bm25.search`.
-    // `overlapped` sagt jedem Leser dieser Telemetrie, dass die Stages keine
-    // Partition des Totals mehr sind — genau die Residuum-Rechnung, mit der
-    // die Sequentialität nachgewiesen wurde, gilt danach nicht mehr.
-    // #489: `wait_ms` reitet auf derselben Stage mit, statt eine neue
-    // aufzumachen — die Stage-Namen sind eine geschlossene Union, an der
-    // Banter-Phrasen und Fortschrittsindex hängen, und eine zweite Stage für
-    // dieselbe Sache hätte den Fortschrittsbalken verlängert, ohne dass ein
-    // Schritt dazugekommen wäre. `durationMs` bleibt exakt die alte Spanne.
-    stage.end("vector.search", tVec, {
-      vector_hit_count: vectorTop.length,
-      overlapped: true,
-      wait_ms: vectorWaitMs,
-      // Ohne dieses Bit ist eine Wartezeit auf der Deadline nicht von einem Arm
-      // zu unterscheiden, der zufällig genau dort fertig wurde.
-      timed_out: vectorArmTimedOut,
-      // #493: der strukturierte Ausgang, für den Schatten in
-      // `http-hook-routes.ts`. `provider_hit_count` sind die ROHEN Treffer des
-      // Providers vor dem Vault-Filter — `vector_hit_count` darüber bleibt die
-      // gefilterte Zahl, die diese Stage seit jeher meldet, damit keine
-      // laufende Auswertung ihre Bedeutung wechselt.
-      ...(vecOrTimeout
-        ? {
-            provider_outcome: vecOrTimeout.outcome,
-            provider_hit_count: vecOrTimeout.hits.length,
-            provider_load_ms: vecOrTimeout.providerLoadMs,
-            cold_start_observed: vecOrTimeout.coldStartObserved,
-          }
-        : {}),
-    });
+    const { vectorTop, vectorArmTimedOut, vectorArmErrored } =
+      await awaitDenseArm(vectorArm, this.vault, opts, stage, tVec);
 
     // #240/B1: an empty vector arm is NOT "degraded to BM25" — running RRF
     // on one arm produced a different score space, not the BM25 one. A
@@ -1154,7 +640,7 @@ export class SearchIndex {
         // P0: der Grund geht MIT in den Cache. Diese Hits sind rohe
         // BM25-Scores; ein Cache-Hit, der das verschweigt, macht sie beim
         // Leser wieder zu RRF-Werten.
-        this.storeQueryCache(cacheKey, bm25Only, bm25Pool, "vector-arm-empty");
+        storeQueryCache(this.queryCache, cacheKey, bm25Only, bm25Pool, "vector-arm-empty");
       }
       stage.emit("done", recallStart, {
         hit_count: bm25Only.length,
@@ -1169,57 +655,15 @@ export class SearchIndex {
       return bm25Only;
     }
 
-    const tFuse = stage.start("rrf.fuse");
-    const bm25Ids = bm25Top.map((r) => r.id as string);
-    const vectorIds = vectorTop.map(({ hit }) => hit.id);
-    const fused = fuseRRF(bm25Ids, vectorIds);
-
-    // Lookup-Maps für die finale Hit-Konstruktion.
-    const bm25Lookup = new Map(bm25Top.map((r) => [r.id as string, r]));
-    const vectorLookup = new Map(vectorTop.map((v) => [v.hit.id, v]));
-
-    const sorted = Array.from(fused.entries()).sort((a, b) => b[1].score - a[1].score);
-    // Größerer Pool für Hop-Seeds (siehe recall()-Kommentar).
-    const HOP_SEED_POOL = Math.max(k * 4, 20);
-    const outFull: RecallHit[] = [];
-    for (const [id, entry] of sorted) {
-      if (outFull.length >= HOP_SEED_POOL) break;
-      const bm = bm25Lookup.get(id);
-      const v = vectorLookup.get(id);
-      const mem = v?.mem ?? this.vault.get(id);
-      if (!mem) continue;
-      const fm = mem.fm;
-      const inBoth = bm !== undefined && v !== undefined;
-      outFull.push({
-        id: fm.id,
-        title: fm.title,
-        type: fm.type,
-        scope: fm.scope,
-        summary: fm.summary,
-        topic_path: fm.topic_path,
-        // RRF-Score skaliert auf BM25-vergleichbare Range. Der Faktor hängt an
-        // RRF_K (embeddings.ts), damit die Anker 163.934 / 81.967 stehen
-        // bleiben, wenn sich die Fusion ändert.
-        score: round(entry.score * RRF_SCALE),
-        matched_terms: bm?.terms ?? [],
-        // #148: vom BM25-Arm; ein reiner Vektor-Treffer (kein `bm`) ist kein
-        // lexikalisches recall_when-Match → false.
-        matched_recall_when: bm ? matchedRecallWhen(bm, authoredTerms) : false,
-        ...(() => {
-          const a = bm
-            ? anchorStrength(bm, authoredTerms, (t) => this.recallWhenDocFreq(t), (id) =>
-                this.vault.get(id)?.fm.recall_when ?? [],
-              )
-            : undefined;
-          return a ? { anchor_strength: a } : {};
-        })(),
-        mode: inBoth ? "hybrid" : bm ? "bm25" : "vector",
-        hop: "direct" as const,
-        // #230: Rang-Herkunft des skalierten Scores durchreichen (nur Hybrid).
-        rrf: { rank_bm25: entry.rank_bm25, rank_vector: entry.rank_vector, raw: entry.score },
-      });
-    }
-    stage.end("rrf.fuse", tFuse, { fused_count: outFull.length });
+    const outFull = fuseArms(
+      bm25Top,
+      vectorTop,
+      k,
+      this.vault,
+      authoredTerms,
+      (t) => this.recallWhenDocFreq(t),
+      stage,
+    );
 
     // #240/A7: same ordering fix as the BM25 path — multipliers and re-sort
     // over the full pool, THEN cut to k. Damping runs on a clone so `outFull`
@@ -1238,7 +682,7 @@ export class SearchIndex {
     if (opts.expand_hops === 1) {
       const tHops = stage.start("hops.expand");
       const neighbors = this.applyStaleness(
-        this.collectOneHopNeighbors(outFull, opts, new Set(out.map((h) => h.id))),
+        collectOneHopNeighbors(this.vault, outFull, opts, new Set(out.map((h) => h.id))),
         opts,
       ).slice(0, k);
       stage.end("hops.expand", tHops, { hop_count: neighbors.length });
@@ -1247,7 +691,7 @@ export class SearchIndex {
       ranked = out;
     }
 
-    this.storeQueryCache(cacheKey, ranked, rankedFull);
+    storeQueryCache(this.queryCache, cacheKey, ranked, rankedFull);
 
     stage.emit("done", recallStart, {
       hit_count: ranked.length,
@@ -1255,61 +699,6 @@ export class SearchIndex {
       total_ms: Date.now() - recallStart,
     });
     return ranked;
-  }
-
-  /**
-   * Multi-Hop-Expansion (#30 / #51): sammelt `related_via.id`-Nachbarn aus
-   * den Seed-Hits (typischerweise top-20 aus dem BM25/Hybrid-Pool, nicht nur
-   * top-k — sonst gehen Nachbarn von Position 6–20 verloren), filtert sie
-   * (obsolete / scope / type / sensitivity / dedup gegen `exclude`), und
-   * liefert sie mit reduziertem Score sortiert zurück. Score-Reduktion:
-   * `seed.score * 0.5 * link.score` (heuristisch — Nachbarn sollen nie über
-   * direkte Treffer ranken). Wenn ein Nachbar mehrfach gefunden wird, gewinnt
-   * der höchste Score.
-   */
-  private collectOneHopNeighbors(
-    seeds: RecallHit[],
-    opts: RecallOptions,
-    exclude: Set<string>,
-  ): RecallHit[] {
-    if (seeds.length === 0) return [];
-    const best = new Map<string, RecallHit>();
-    for (const seed of seeds) {
-      const mem = this.vault.get(seed.id);
-      const related = (mem?.fm as { related_via?: { id: string; reason: string; score: number }[] })
-        ?.related_via;
-      if (!related?.length) continue;
-      for (const link of related) {
-        if (exclude.has(link.id)) continue;
-        const neigh = this.vault.get(link.id);
-        if (!neigh) continue;
-        if (neigh.fm.obsolete === true) continue;
-        if (opts.scope && !scopeEquals(neigh.fm.scope, opts.scope)) continue;
-        if (opts.type && neigh.fm.type !== opts.type) continue;
-        if (
-          !opts.allow_private &&
-          (neigh.fm as { sensitivity?: string }).sensitivity === "private"
-        ) {
-          continue;
-        }
-        const score = round(seed.score * 0.5 * link.score);
-        const prior = best.get(link.id);
-        if (prior && prior.score >= score) continue;
-        best.set(link.id, {
-          id: neigh.fm.id,
-          title: neigh.fm.title,
-          type: neigh.fm.type,
-          scope: neigh.fm.scope,
-          summary: neigh.fm.summary,
-          topic_path: neigh.fm.topic_path,
-          score,
-          matched_terms: [],
-          mode: seed.mode,
-          hop: "1-hop" as const,
-        });
-      }
-    }
-    return Array.from(best.values()).sort((a, b) => b.score - a.score);
   }
 
   loadFull(id: string): Memory | undefined {
@@ -1357,115 +746,10 @@ export class SearchIndex {
     this.indexOne(e.memory);
   }
 
-  /**
-   * Staleness-Reranking mit Per-Memory-Cache (#29). Cache-Key ist die
-   * memId — invalidiert in `handle()` bei change/remove. Zusätzlich
-   * 12h-TTL gegen Tageswechsel-Flips (`aging → stale` ohne Vault-Change).
-   *
-   * Behält die Sortier-Semantik von `applyStalenessMultiplier`: Direct-
-   * vs 1-hop-Hits bleiben getrennt sortiert.
-   *
-   * Doc-Dämpfung: type="doc" (Document-Sidecars + Produkt-Doku) wird im
-   * Default-Recall (kein expliziter type-Filter) gedämpft — lange Doc-Bodies
-   * sollen Lessons/Decisions nicht verdrängen. `find_document` und jeder
-   * Recall mit type:"doc" ranken ungedämpft (das ist die dedizierte Lane).
-   */
+  /** Score-Gateway (#194): alle Multiplikatoren in EINER Funktion, siehe
+   *  `applyStaleness` in search-staleness.ts — hier nur mit dem Zustand. */
   private applyStaleness(hits: RecallHit[], opts: RecallOptions = {}, now: Date = new Date()): RecallHit[] {
-    const nowMs = now.getTime();
-    for (const h of hits) {
-      const fm = this.vault.get(h.id)?.fm as Record<string, unknown> | undefined;
-      if (!fm) continue;
-      const touchTs = computeTouchTs(fm);
-      let entry = this.stalenessCache.get(h.id);
-      const ttlExpired =
-        entry != null && nowMs - entry.computedAt > SearchIndex.STALENESS_CACHE_TTL_MS;
-      if (!entry || entry.touchTs !== touchTs || ttlExpired) {
-        const status = computeStaleness(fm, now);
-        entry = { touchTs, status, computedAt: nowMs };
-        this.stalenessCache.set(h.id, entry);
-      }
-      let mult = STALE_MULTIPLIERS[entry.status];
-      if (this.curatorDemotions.has(h.id)) mult *= CURATOR_DEMOTION_MULTIPLIER;
-      if (!opts.type && h.type === "doc") mult *= DOC_TYPE_DAMPING;
-      // #217: Salience boostet nur im Live-Modus (default: shadow-only im
-      // Daemon). Prozess-statisch schalten — nie pro Request. Case-insensitiv
-      // wie salienceRankMode() im Daemon — sonst schaltet "LIVE" beide Lanes
-      // still aus (Review-Finding).
-      if ((process.env.BASTRA_SALIENCE_RANK ?? "").toLowerCase() === "live") {
-        const sal =
-          typeof fm.salience === "number" ? Math.min(Math.max(fm.salience, 0), 1) : 0;
-        if (sal > 0) mult *= 1 + sal * salienceRankCap();
-      }
-      if (mult !== 1.0) h.score = round(h.score * mult);
-    }
-    const direct = hits.filter((h) => h.hop !== "1-hop");
-    const hops = hits.filter((h) => h.hop === "1-hop");
-    direct.sort((a, b) => b.score - a.score);
-    hops.sort((a, b) => b.score - a.score);
-    return [...direct, ...hops];
-  }
-
-  /**
-   * LRU-Lookup für `queryCache` (#30). Bei Hit wird der Eintrag
-   * re-inserted, damit die Map-insertion-order ihn als „recently used"
-   * sieht. TTL 30s — frische Edits sollen den Cache nicht zu lange
-   * dominieren, auch wenn der Watcher nicht feuert.
-   */
-  private lookupQueryCache(
-    key: string,
-  ): { hits: RecallHit[]; pool: RecallHit[]; degraded?: string } | undefined {
-    const cached = this.queryCache.get(key);
-    if (!cached) return undefined;
-    if (Date.now() - cached.at > SearchIndex.QUERY_CACHE_TTL_MS) {
-      this.queryCache.delete(key);
-      return undefined;
-    }
-    // LRU-Bump: löschen + neu setzen, damit Map-iteration den Eintrag
-    // als jüngsten sieht.
-    this.queryCache.delete(key);
-    this.queryCache.set(key, cached);
-    // Defensive Kopie — Caller könnte das Array mutieren (sortieren,
-    // pushen). Cache-Werte bleiben damit stabil über Calls hinweg.
-    // #365/5: `pool` ist bewusst die CACHE-INTERNE Referenz und darf so nie
-    // nach außen — der defensive Klon liegt in `emitCachedPool()`, damit ein
-    // Cache-Hit ohne `onCandidatePool` keine einzige Allokation mehr kostet
-    // als vor #365 (Hook-Budget #305/#362).
-    // P0: `degraded` muss mit raus. Der Score-RAUM (rohes BM25 vs. RRF) ist
-    // eine Eigenschaft des gecachten Ergebnisses, nicht des Calls, der es
-    // ausliefert — ohne dieses Feld nannte der Handler dieselben Zahlen beim
-    // zweiten Aufruf `rrf` und legte die Bänder 50/100 an eine offene Skala.
-    return { hits: cached.hits.map((h) => ({ ...h })), pool: cached.pool, degraded: cached.degraded };
-  }
-
-  /** #365/5: den mitgecachten tiefen Pool bei einem Query-Cache-Hit
-   *  nachliefern. Defensiver Klon nur hier, und nur wenn jemand zuhört. */
-  private emitCachedPool(opts: RecallOptions, pool: RecallHit[]): void {
-    if (!opts.onCandidatePool) return;
-    opts.onCandidatePool(pool.map((h) => ({ ...h })));
-  }
-
-  private storeQueryCache(
-    key: string,
-    hits: RecallHit[],
-    pool: RecallHit[],
-    degraded?: string,
-  ): void {
-    if (this.queryCache.size >= SearchIndex.QUERY_CACHE_MAX) {
-      // Oldest first — Map preserved insertion order.
-      const oldest = this.queryCache.keys().next().value;
-      if (oldest !== undefined) this.queryCache.delete(oldest);
-    }
-    // Kopie der Hit-Objekte, gleicher Grund wie in lookupQueryCache. Bewusst
-    // FLACH: `topic_path`, `matched_terms` und `rrf` bleiben mit dem Original
-    // geteilt. Das reicht, weil die Pipeline nur `score` schreibt (in
-    // applyStaleness) und Consumer die Arrays lesen; ein tiefer Klon wäre auf
-    // dem Hook-Pfad reiner Overhead.
-    this.queryCache.set(key, {
-      hits: hits.map((h) => ({ ...h })),
-      pool: pool.map((h) => ({ ...h })),
-      at: Date.now(),
-      ...(degraded ? { degraded } : {}),
-    });
+    return applyStaleness(this.vault, this.stalenessCache, this.curatorDemotions, hits, opts, now);
   }
 
   private indexOne(m: Memory): void {
@@ -1508,241 +792,4 @@ export class SearchIndex {
     };
     this.mini.add(doc);
   }
-}
-
-/**
- * Standard-Filter für BM25-Roh-Treffer: obsolete-Maskierung, scope/type-
- * Exact-Match (scope gefaltet über `scopeEquals`, #360-Folgefund — ein aus
- * dem Dateisystem erkannter Projektname trägt eine andere Schreibweise als
- * der im Vault gespeicherte Scope), und der neue Sensitivity-Filter (#58). Wird sowohl von
- * `recall` als auch von `recallHybrid` aufgerufen, damit der Filter an
- * einer Stelle gepflegt wird. `r` ist ein MiniSearch-`SearchResult`, das
- * via `storeFields` die gespeicherten Doc-Properties als beliebige
- * Keys mit-trägt — daher das `Record<string, unknown>`-Typing hier.
- */
-function passesRecallFilters(
-  r: Record<string, unknown>,
-  opts: RecallOptions,
-): boolean {
-  if (r.obsolete) return false;
-  if (opts.scope && !scopeEquals(r.scope as string, opts.scope)) return false;
-  if (opts.type && r.type !== opts.type) return false;
-  if (!opts.allow_private && r.sensitivity === "private") return false;
-  return true;
-}
-
-function round(n: number): number {
-  return Math.round(n * 1000) / 1000;
-}
-
-// MARK: - Stage-Event-Emitter (#38)
-
-/**
- * Hilfsklasse für Stage-Events in `recall` / `recallHybrid`. Hält den
- * optionalen Listener und liefert `start()`/`end()`/`emit()`. Bei
- * fehlendem Listener sind alle Methoden no-op und allokationsfrei
- * (kein `Date.now()` ohne Bedarf). Die Klasse lebt nur in `search.ts`,
- * weil sie tight an die Stage-Sequenz gekoppelt ist — die public Types
- * stehen in `recall-stages.ts`.
- */
-class StageEmitter {
-  constructor(private readonly listener?: StageListener) {}
-
-  /** Start-Event feuern. Liefert den Start-Timestamp, der unverändert
-   *  an `end()` zurückgegeben wird (so muss der Caller kein lokales
-   *  `const t = Date.now()` aufmachen). */
-  start(name: RecallStage["name"], meta?: Record<string, unknown>): number {
-    if (!this.listener) return 0;
-    const t = Date.now();
-    this.listener({ name, startedAtMs: t, meta });
-    return t;
-  }
-
-  /** Stop-Event feuern. `startedAt` ist der Rückgabewert von `start()`. */
-  end(name: RecallStage["name"], startedAt: number, meta?: Record<string, unknown>): void {
-    if (!this.listener) return;
-    const dur = Date.now() - startedAt;
-    this.listener({ name, startedAtMs: startedAt, durationMs: dur, meta });
-  }
-
-  /** One-shot-Event (kein separates Stop) — für `cache.hit`, `done`,
-   *  `error`. `startedAtMs` ist der „Recall-Start" (für `done`) oder
-   *  der Event-Zeitpunkt selbst. */
-  emit(name: RecallStage["name"], startedAtMs: number, meta?: Record<string, unknown>): void {
-    if (!this.listener) return;
-    this.listener({ name, startedAtMs, durationMs: Date.now() - startedAtMs, meta });
-  }
-}
-
-// MARK: - Lifecycle-Reranking (#74)
-
-/**
- * Default-Verfallszeit pro Memory-Type. Identisch zu
- * `Sources/Bastra/MemoryLifecycle.swift:defaultExpirationDays` — bei
- * Änderungen beide Stellen mitziehen.
- * `null` = Type altert nie automatisch (Bookmarks, Documents,
- * Preferences, References).
- */
-const DEFAULT_EXPIRATION_DAYS: Record<string, number | null> = {
-  lesson: 180,
-  decision: 365,
-  "project-fact": 90,
-  "meta-working": 365,
-  workflow: 180,
-  preference: null,
-  "user-preference": null,
-  reference: null,
-  bookmark: null,
-  doc: null,
-};
-
-const AGING_THRESHOLD_FRACTION = 0.75;
-
-/**
- * Score-Multiplier basierend auf der Staleness (#74). Wird nach allen
- * anderen Filtern in `recall`/`recallHybrid` auf den finalen Hit-Score
- * angewandt — stale Memories ranken niedriger, expired noch niedriger.
- */
-export type StaleStatus = "fresh" | "aging" | "stale" | "expired";
-
-const STALE_MULTIPLIERS: Record<StaleStatus, number> = {
-  fresh: 1.0,
-  aging: 0.85,
-  stale: 0.5,
-  expired: 0.2,
-};
-
-/**
- * Curator-Demotion (#155): Score-Faktor für Memories, die der deterministische
- * Staleness-Pass demotet hat (surfaced-but-never-acted-on). Gleiche Liga wie
- * "stale": auffindbar, aber hinter engagierten Memories. Score-only per
- * survival-by-id-Vertrag (#146) — load_memory, Citations und die Datei selbst
- * bleiben unberührt; die Engine trägt nur den Mechanismus (setDemotions),
- * die Curation-Entscheidung lebt im Daemon.
- */
-export const CURATOR_DEMOTION_MULTIPLIER = 0.5;
-
-/**
- * Dämpfung für type="doc"-Hits im Default-Recall (kein expliziter type-
- * Filter). Docs altern nie (DEFAULT_EXPIRATION_DAYS: null) UND haben lange
- * Bodies — ohne Dämpfung würden Produkt-Doku und Document-Sidecars Lessons
- * aus den Top-k drängen. 0.5 = gleiche Liga wie "stale": auffindbar, aber
- * hinter frischen Memories. Mit type:"doc" (= find_document) volle Scores.
- */
-export const DOC_TYPE_DAMPING = 0.5;
-
-/**
- * #217 Valenz: begrenzter Salience-Multiplikator (1 + salience × CAP).
- * Default ist SHADOW-only — der Daemon loggt die would-be-Reihenfolge
- * (salience-shadow.ts), live wird erst via BASTRA_SALIENCE_RANK=live nach
- * Lift-Nachweis geschaltet (Disziplin wie #160). Env wird pro Aufruf
- * gelesen (testfreundlich), darf aber nie pro Request umgeschaltet werden —
- * der Query-Cache cached das post-staleness-Ranking.
- */
-export function salienceRankCap(): number {
-  const raw = Number(process.env.BASTRA_SALIENCE_RANK_CAP ?? "0.25");
-  return Number.isFinite(raw) ? Math.min(Math.max(raw, 0), 1) : 0.25;
-}
-
-export function computeStaleness(
-  fm: Record<string, unknown>,
-  now: Date = new Date(),
-): StaleStatus {
-  const updated = parseDateValue(fm.updated);
-  const lastReviewed = parseDateValue(fm.last_reviewed_at);
-  const touch = Math.max(updated ?? 0, lastReviewed ?? 0);
-
-  const validUntil = parseDateValue(fm.valid_until);
-  if (validUntil != null) {
-    if (now.getTime() >= validUntil) return "expired";
-    // #365/14: unbekanntes `touch` (weder `updated` noch `last_reviewed_at`
-    // parsebar) ist 0 = Unix-Epoche. `elapsed/total` misst dann den Abstand
-    // zu 1970 statt zur letzten Bearbeitung und landet für jedes Ablaufdatum
-    // nahe heute bei ≈0.99 → immer „aging". Der Zweig ohne `valid_until` hat
-    // denselben Guard (unten, vor der Ratio) — beide müssen dasselbe sagen.
-    if (touch <= 0) return "fresh";
-    const total = validUntil - touch;
-    const elapsed = now.getTime() - touch;
-    if (total > 0 && elapsed / total >= AGING_THRESHOLD_FRACTION) {
-      return "aging";
-    }
-    return "fresh";
-  }
-
-  const type = String(fm.type ?? "");
-  const userOverride =
-    typeof fm.expires_after_days === "number" ? (fm.expires_after_days as number) : null;
-  const typeDefault =
-    type in DEFAULT_EXPIRATION_DAYS ? DEFAULT_EXPIRATION_DAYS[type] : null;
-  let days = userOverride ?? typeDefault;
-  if (days == null || days <= 0) return "fresh";
-
-  // #217 Valenz: hohe Salience altert langsamer — emotional aufgeladene
-  // Memories verblassen zuletzt. salience 1 = doppelte Lebensdauer.
-  // `valid_until` bleibt unberührt (explizites User-Datum gewinnt).
-  const salience =
-    typeof fm.salience === "number" ? Math.min(Math.max(fm.salience, 0), 1) : 0;
-  if (salience > 0) days = days * (1 + salience);
-
-  if (touch <= 0) return "fresh";
-  const secondsSinceTouch = (now.getTime() - touch) / 1000;
-  const staleSeconds = days * 86400;
-  if (secondsSinceTouch <= 0) return "fresh";
-  const ratio = secondsSinceTouch / staleSeconds;
-  if (ratio >= 1.5) return "expired";
-  if (ratio >= 1.0) return "stale";
-  if (ratio >= AGING_THRESHOLD_FRACTION) return "aging";
-  return "fresh";
-}
-
-function parseDateValue(raw: unknown): number | null {
-  if (raw == null) return null;
-  // YAML kann `2026-05-12` als Date entlocken — wir akzeptieren beides.
-  if (raw instanceof Date) return raw.getTime();
-  if (typeof raw === "string" && raw.length > 0) {
-    const t = Date.parse(raw);
-    return Number.isNaN(t) ? null : t;
-  }
-  return null;
-}
-
-/**
- * „Touch-Timestamp" einer Memory: jüngeres aus `updated` und
- * `last_reviewed_at`. Wird vom Staleness-Cache (#29) als Identitäts-
- * Stempel benutzt — ändert sich der touchTs, wird der Cache-Eintrag
- * neu berechnet, auch ohne Vault-Event (z.B. wenn die Mac-App die
- * Frontmatter direkt patcht).
- */
-function computeTouchTs(fm: Record<string, unknown>): number {
-  const updated = parseDateValue(fm.updated) ?? 0;
-  const lastReviewed = parseDateValue(fm.last_reviewed_at) ?? 0;
-  return Math.max(updated, lastReviewed);
-}
-
-/**
- * Wendet den Staleness-Multiplier auf einen Hit-Score an. Daemon nutzt
- * die `vault.get(id).fm` als Quelle für das Frontmatter — die Computation
- * läuft lazy beim Recall (kein File-Write).
- */
-export function applyStalenessMultiplier(
-  hits: RecallHit[],
-  resolveFrontmatter: (id: string) => Record<string, unknown> | undefined,
-  now: Date = new Date(),
-): RecallHit[] {
-  for (const h of hits) {
-    const fm = resolveFrontmatter(h.id);
-    if (!fm) continue;
-    const status = computeStaleness(fm, now);
-    const mult = STALE_MULTIPLIERS[status];
-    if (mult !== 1.0) {
-      h.score = round(h.score * mult);
-    }
-  }
-  // Re-sort nach möglicher Score-Anpassung. Direct-Hits vor 1-hop-Hits
-  // bleiben aber Gruppe — wir sortieren INNERHALB jeder Gruppe.
-  const direct = hits.filter((h) => h.hop !== "1-hop");
-  const hops = hits.filter((h) => h.hop === "1-hop");
-  direct.sort((a, b) => b.score - a.score);
-  hops.sort((a, b) => b.score - a.score);
-  return [...direct, ...hops];
 }
