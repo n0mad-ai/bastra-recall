@@ -7,6 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { buildSemanticLayout } from "../src/graph-semantic.js";
 import type { VaultGraph } from "../src/graph.js";
 
@@ -81,4 +82,36 @@ test("semantic layout: the O(n²) neighbor scan yields to the event loop while i
   running = false;
   assert.equal(layout.count, 80);
   assert.ok(ticks >= 2, `the event loop ran ${ticks} time(s) during the scan`);
+});
+
+/** Fixed-seed vectors (LCG), so the projection fingerprint below is stable. */
+function seededVectors(n: number, dim: number): Map<string, Float32Array> {
+  let s = 939;
+  const rnd = () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648 - 0.5;
+  return new Map(Array.from({ length: n }, (_, i) => [`n${i}`, Float32Array.from({ length: dim }, rnd)]));
+}
+
+test("semantic layout: the PCA projection yields to the event loop between power iterations (#939)", async () => {
+  // 10 vectors → the neighbour scan yields once (row 0); every other turn of
+  // the event loop comes from the projection, which used to run in one block.
+  const vectors = seededVectors(10, 16);
+  let ticks = 0;
+  let running = true;
+  const tick = () => {
+    ticks++;
+    if (running) setImmediate(tick);
+  };
+  setImmediate(tick);
+  const layout = await buildSemanticLayout(graphOf([...vectors.keys()]), vectors);
+  running = false;
+  assert.equal(layout.count, 10);
+  assert.ok(ticks >= 40, `the event loop ran ${ticks} time(s) during the projection`);
+});
+
+test("semantic layout: yielding leaves the projection bit-identical (#939)", async () => {
+  // Fingerprint of the positions the synchronous PCA produced before #939.
+  const vectors = seededVectors(200, 32);
+  const layout = await buildSemanticLayout(graphOf([...vectors.keys()]), vectors);
+  const sha = createHash("sha256").update(JSON.stringify(layout.positions)).digest("hex");
+  assert.equal(sha, "9b21c62a0c270b1b29983925e8c6de13675bd3d40c749350aec9f0e8b7bc3b34");
 });
