@@ -373,7 +373,7 @@ export class JoinState {
     //
     // EXCEPT when the load carries no session (fourth review find): the
     // standalone stdio surface calls `loadMemoryHandler` without one
-    // (`index.ts:578-580`), and that same client's hook DID open a window
+    // (`boot-stdio.ts:156`), and that same client's hook DID open a window
     // under a real session id. Not knowing which, the only honest move is to
     // drop every open window for this memory — the load happened, so none of
     // them may still claim "followed without ever being loaded".
