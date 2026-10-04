@@ -657,6 +657,20 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "if true; then for path in /x; do :; done; fi; rm -rf dist",
       "eval 'for path in /x; do :; done'; rm -rf dist",
       "for PATH in /x; do :; done; rm -rf dist",
+      // `source` / `.` may set PATH or define `rm`; a `path[n]` element write
+      // and `unset PATH`/`path` change PATH too (#1047).
+      "source ./env.sh; rm -rf dist",
+      ". ./env.sh; rm -rf dist",
+      "cd pkg && source env.sh && rm -rf dist",
+      "{ . ./env.sh; }; rm -rf dist",
+      "path[1]=/opt/x; rm -rf dist",
+      "path[1]=(/opt/x); rm -rf dist",
+      "path[2]+=/opt/x; rm -rf dist",
+      "PATH[1]=/x; rm -rf dist",
+      "unset PATH; rm -rf dist",
+      "unset path; rm -rf dist",
+      "unset -v PATH; rm -rf dist",
+      "eval 'unset path'; rm -rf dist",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "stop", cmd);
     }
@@ -705,6 +719,15 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       'echo $path; rm -rf "$path"',
       'echo "for path in x"; rm -rf dist',
       "for paths in a b; do :; done; rm -rf dist",
+      // Words that only look like the new forms stay data (#1047).
+      "echo source x; rm -rf dist",
+      "echo path[1]=x; rm -rf dist",
+      "unset FOO; rm -rf dist",
+      "unset paths; rm -rf dist",
+      "read -r line; rm -rf dist",
+      "xargs rm -rf < list",
+      "find . -exec rm -rf {} +",
+      "'rm' -rf x",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "receipt", cmd);
     }
