@@ -841,6 +841,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `docs/architecture.md`. No logic change; tests that read sources by path
   follow the moved code.
 
+- **Eight more oversized files split, behaviour-neutral** (#680). Code moved
+  verbatim, public exports re-exported from the old paths:
+  `telemetry-report.ts` (853 → 338, #1030), `webui-areas.ts` (957 → 184,
+  #1031), `mcp-forwarder.ts` (818 → 430, #1032), `import-vault.ts`
+  (809 → 644, #1033), `documents-write-handler.ts` (1775 → 210, #1034),
+  `webui/js/renderer.js` (835 → 528, #1035), statusline `tui/sections.ts`
+  (1555 → 786, #1036), `tool-handlers.ts` (851 → 195, #1037). The new
+  neighbour modules are listed in the module map in `docs/architecture.md`.
+
+- ci(#1019): the `max(bm25, dense)` overlap test decides through a gated fake arm and a 1 ms deadline instead of a stopwatch, and the in-flight test catches a sequential dispatch again (#1029).
+
 ## [1.0.0] — 2026-09-14
 
 ### Added

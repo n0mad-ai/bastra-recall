@@ -318,7 +318,7 @@ Topic detection is deterministic and based on file extension, path segments, and
 
 #### Module Map (#680)
 
-Files that passed the 800-line convention were split along one responsibility each; the original file keeps the orchestration and re-exports its public surface, so import paths did not change. All paths under `packages/daemon/`.
+Files that passed the 800-line convention were split along one responsibility each; the original file keeps the orchestration and re-exports its public surface, so import paths did not change. All paths under `packages/daemon/` unless noted.
 
 | Module | Split-out neighbours |
 |---|---|
@@ -333,6 +333,14 @@ Files that passed the 800-line convention were split along one responsibility ea
 | `src/rm-archive.ts` (archiving `rm` shim, manifest, receipt, restore) | `rm-archive-reconcile.ts` (retention per class, reconcile plan and apply, hourly stamp) |
 | `src/cli/adapters/claude-code.ts` (install/uninstall/doctor) | `claude-code-hooks.ts` (hook definitions, settings.json entries, checks) |
 | `scripts/stats.ts` (readout entry, runs on import) | `stats-context.ts` (context readouts), `stats-shared.ts` (leaf helpers) |
+| `src/telemetry-report.ts` (telemetry report entry, 853 → 338 lines) | `telemetry-report-recall.ts` (recall quality, `summarizeQuality`), `telemetry-report-tokens.ts` (token readouts), `telemetry-report-shared.ts` (leaf helpers), next to `-code` and `-suppression` |
+| `src/webui-areas.ts` (area routes, 957 → 184) | `webui-areas-rename.ts` (rename), `webui-areas-delete.ts` (delete), `webui-areas-shared.ts` (shared helpers) |
+| `src/mcp-forwarder.ts` (MCP forwarder, 818 → 430) | `mcp-forwarder-calls.ts` (tool-call forwarding), `mcp-forwarder-statusline.ts` (statusline hand-over) |
+| `src/import-vault.ts` (vault import, 809 → 644) | `import-vault-shared.ts` (shared helpers), `import-vault-fs-browse.ts` (filesystem browse) |
+| `src/documents-write-handler.ts` (document write tools, 1775 → 210) | `documents-write-shared.ts` (shared checks and helpers), `documents-write-save.ts` (`save_document`), `documents-write-recategorize.ts` (`recategorize_document`), `documents-write-move.ts` (`move_document`) |
+| `webui/js/renderer.js` (web UI renderer, 835 → 528) | `renderer-bolts.js` (bolts), `renderer-flow.js` (flow) |
+| `src/tool-handlers.ts` (MCP tool handlers, 851 → 195) | `load-memory-handler.ts` (`load_memory`), `save-memory-handler.ts` (`save_memory`) |
+| `tui/sections.ts` (statusline TUI sections, 1555 → 786; under `packages/statusline/src/`) | `tui/sections-bars.ts` (bars), `tui/sections-parts.ts` (parts), `tui/sections-shared.ts` (shared helpers) |
 
 ### Privacy And Safety
 
@@ -684,7 +692,7 @@ Die Themenerkennung ist deterministisch und beruht auf Dateiendung, Pfadsegmente
 
 #### Modulkarte (#680)
 
-Dateien über der 800-Zeilen-Konvention wurden entlang je einer Verantwortung geteilt; die Ursprungsdatei behält die Orchestrierung und re-exportiert ihre öffentliche Oberfläche, Importpfade bleiben also gleich. Alle Pfade unter `packages/daemon/`.
+Dateien über der 800-Zeilen-Konvention wurden entlang je einer Verantwortung geteilt; die Ursprungsdatei behält die Orchestrierung und re-exportiert ihre öffentliche Oberfläche, Importpfade bleiben also gleich. Alle Pfade unter `packages/daemon/`, sofern nicht anders angegeben.
 
 | Modul | Ausgelagerte Nachbarmodule |
 |---|---|
@@ -699,6 +707,14 @@ Dateien über der 800-Zeilen-Konvention wurden entlang je einer Verantwortung ge
 | `src/rm-archive.ts` (archivierendes `rm`: Shim, Manifest, Quittung, Wiederherstellen) | `rm-archive-reconcile.ts` (Aufbewahrung je Klasse, Reconcile-Plan und -Ausführung, Stundenstempel) |
 | `src/cli/adapters/claude-code.ts` (Install/Uninstall/Doctor) | `claude-code-hooks.ts` (Hook-Definitionen, settings.json-Einträge, Prüfungen) |
 | `scripts/stats.ts` (Auswertungs-Einstieg, läuft beim Import) | `stats-context.ts` (Kontext-Auswertungen), `stats-shared.ts` (Blatt-Helfer) |
+| `src/telemetry-report.ts` (Telemetrie-Report-Einstieg, 853 → 338 Zeilen) | `telemetry-report-recall.ts` (Recall-Qualität, `summarizeQuality`), `telemetry-report-tokens.ts` (Token-Auswertungen), `telemetry-report-shared.ts` (Blatt-Helfer), neben `-code` und `-suppression` |
+| `src/webui-areas.ts` (Bereichs-Routen, 957 → 184) | `webui-areas-rename.ts` (Umbenennen), `webui-areas-delete.ts` (Löschen), `webui-areas-shared.ts` (gemeinsame Helfer) |
+| `src/mcp-forwarder.ts` (MCP-Forwarder, 818 → 430) | `mcp-forwarder-calls.ts` (Weiterleitung der Tool-Aufrufe), `mcp-forwarder-statusline.ts` (Übergabe an die Statusline) |
+| `src/import-vault.ts` (Vault-Import, 809 → 644) | `import-vault-shared.ts` (gemeinsame Helfer), `import-vault-fs-browse.ts` (Dateisystem-Browse) |
+| `src/documents-write-handler.ts` (Dokument-Schreibwerkzeuge, 1775 → 210) | `documents-write-shared.ts` (gemeinsame Prüfungen und Helfer), `documents-write-save.ts` (`save_document`), `documents-write-recategorize.ts` (`recategorize_document`), `documents-write-move.ts` (`move_document`) |
+| `webui/js/renderer.js` (Web-UI-Renderer, 835 → 528) | `renderer-bolts.js` (Bolts), `renderer-flow.js` (Flow) |
+| `src/tool-handlers.ts` (MCP-Tool-Handler, 851 → 195) | `load-memory-handler.ts` (`load_memory`), `save-memory-handler.ts` (`save_memory`) |
+| `tui/sections.ts` (Statusline-TUI-Abschnitte, 1555 → 786; unter `packages/statusline/src/`) | `tui/sections-bars.ts` (Balken), `tui/sections-parts.ts` (Teile), `tui/sections-shared.ts` (gemeinsame Helfer) |
 
 ### Datenschutz und Sicherheit
 
