@@ -174,6 +174,8 @@ test("text the fold leaves unchanged is scanned as is, with offsets intact", () 
 test("long runs of spaces or zero-width characters scan in linear time", () => {
   // #903 follow-up: a Russian signature backtracked quadratically on a long
   // whitespace run (seconds for 64,000 spaces after "\u0438\u0433\u043D\u043E\u0440\u0438\u0440\u0443\u0439 \u0432\u044B\u0448\u0430").
+  // The bound is loose on purpose: a linear scan takes a few ms here, the
+  // quadratic one ~3 s, and a tight wall-clock bound flakes on slow CI (#940).
   const inputs = [
     " ".repeat(64_000),
     "\u200B".repeat(64_000),
@@ -186,6 +188,6 @@ test("long runs of spaces or zero-width characters scan in linear time", () => {
     const t0 = performance.now();
     scanForInjection(text);
     const ms = performance.now() - t0;
-    assert.ok(ms < 100, `${JSON.stringify(text.slice(0, 16))}\u2026 took ${ms.toFixed(1)} ms`);
+    assert.ok(ms < 1000,`${JSON.stringify(text.slice(0, 16))}\u2026 took ${ms.toFixed(1)} ms`);
   }
 });
