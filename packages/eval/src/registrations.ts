@@ -378,13 +378,31 @@ export function checkPresentationRegistration(
       if (!fb.measured_from) {
         issues.push({ where: "underpowered_fallback", problem: "the measurement names its source window and vault, or it cannot be re-checked" });
       }
-      // Require the §18.1 verdict spelling. Prose semantics cannot be checked
-      // reliably by negation keywords; that needs a structured verdict field.
+      // §18.1 (#972): the verdict for an arm below its min-N is a field, not
+      // a reading of the prose — keyword lists cannot tell a rule from its
+      // opposite (#881/#971). The prose stays as the human statement and must
+      // not name a different verdict than the field: it names the
+      // NOT EVALUABLE spelling exactly when the field says `not_evaluable`.
+      const verdict = conclusion.underpowered_arm_verdict;
       const rule = conclusion.reporting_rule;
-      if (typeof rule !== "string" || !/nicht[ _-]auswertbar|not[ _-]evaluable/i.test(rule.trim())) {
+      const namesNotEvaluable = typeof rule === "string" && /nicht[ _-]auswertbar|not[ _-]evaluable/i.test(rule);
+      if (verdict !== "not_evaluable" && verdict !== "null_result") {
         issues.push({
           where: "underpowered_fallback",
-          problem: "§18.1: an arm below its min-N is reported as NOT EVALUABLE, never as a null result — the rule belongs in the registration",
+          problem: "§18.1: `conclusion.underpowered_arm_verdict` states the verdict for an arm below its min-N (`not_evaluable` | `null_result`)",
+        });
+      } else if (verdict === "null_result") {
+        issues.push({
+          where: "underpowered_fallback",
+          problem: "§18.1: an arm below its min-N is reported as NOT EVALUABLE, never as a null result — `underpowered_arm_verdict` must be `not_evaluable`",
+        });
+      }
+      if (typeof rule !== "string" || !rule.trim()) {
+        issues.push({ where: "underpowered_fallback", problem: "§18.1: the reporting rule belongs in the registration as prose next to its verdict field" });
+      } else if ((verdict === "not_evaluable" && !namesNotEvaluable) || (verdict === "null_result" && namesNotEvaluable)) {
+        issues.push({
+          where: "underpowered_fallback",
+          problem: `§18.1: \`reporting_rule\` contradicts \`underpowered_arm_verdict: ${verdict}\` — the prose names a different verdict than the field`,
         });
       }
     }

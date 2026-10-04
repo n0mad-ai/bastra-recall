@@ -6349,7 +6349,11 @@ verdict is reinterpreted; what changes is the scope of the release contract.*
   design is registered before every run, the arm assignment is deterministic
   and session-stable, and the evaluation reports an arm below its minimum N as
   not evaluable — with a stated justification and without a null result. No
-  report may turn an underpopulated arm into a "no difference found". For V2.0
+  report may turn an underpopulated arm into a "no difference found". The
+  registration states this verdict in the field
+  `underpowered_fallback.conclusion.underpowered_arm_verdict` (`not_evaluable`;
+  `null_result` is rejected); the validator reads the field, not the prose, and
+  flags a `reporting_rule` that names a different verdict (#972). For V2.0
   the point from 26.2 applies.
 - **Rollback:** The change is purely contractual and without effect on code; it
   can be undone by reverting these passages. Should the reason fall away — a

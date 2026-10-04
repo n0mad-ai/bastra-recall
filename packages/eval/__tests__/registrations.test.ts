@@ -493,8 +493,8 @@ test("die Berichtsregel erkennt die eigenen Verdikt-Schreibweisen ohne Wortliste
       underpowered_fallback: { ...fb, conclusion: { ...conclusion, reporting_rule: rule } },
     }).filter((i) => i.where === "underpowered_fallback");
   assert.ok(issuesFor("an arm below its min-N is a null result").length > 0);
-  // The check recognizes spellings. A prose negation needs a structured
-  // registration verdict; keyword lists reject valid rules too.
+  // The prose check recognizes spellings only; the verdict itself is the
+  // structured field `underpowered_arm_verdict` (#972).
   for (const rule of [
     "an arm below its min-N is not_evaluable, never a null result",
     "verdict: NOT-EVALUABLE, never a null result",
@@ -512,6 +512,45 @@ test("die Berichtsregel erkennt die eigenen Verdikt-Schreibweisen ohne Wortliste
   ]) {
     assert.equal(issuesFor(rule).length, 0, `${JSON.stringify(rule)} must be accepted`);
   }
+});
+
+test("das §18.1-Verdikt steht als Feld in der Registrierung, die Prosa darf ihm nicht widersprechen (#972)", () => {
+  const reg = loadPresentationRegistration();
+  const fb = reg.underpowered_fallback as Record<string, unknown>;
+  const conclusion = fb.conclusion as Record<string, unknown>;
+  const issuesWith = (patch: Record<string, unknown>) =>
+    checkPresentationRegistration("structure_registered", {
+      ...reg,
+      underpowered_fallback: { ...fb, conclusion: { ...conclusion, ...patch } },
+    }).filter((i) => i.where === "underpowered_fallback");
+
+  // The migrated registration carries the value its prose has always stated.
+  assert.equal(conclusion.underpowered_arm_verdict, "not_evaluable");
+  assert.deepEqual(issuesWith({}), []);
+
+  // Without the field (or with a value outside the enum) the prose alone is
+  // no longer enough.
+  const { underpowered_arm_verdict: _dropped, ...withoutField } = conclusion;
+  const missing = checkPresentationRegistration("structure_registered", {
+    ...reg,
+    underpowered_fallback: { ...fb, conclusion: withoutField },
+  }).filter((i) => i.where === "underpowered_fallback");
+  assert.ok(missing.some((i) => i.problem.includes("underpowered_arm_verdict")));
+  assert.ok(issuesWith({ underpowered_arm_verdict: true }).some((i) => i.problem.includes("underpowered_arm_verdict")));
+
+  // `null_result` is the verdict §18.1 forbids — rejected even with matching prose.
+  const nullResult = issuesWith({
+    underpowered_arm_verdict: "null_result",
+    reporting_rule: "an arm below its min-N is reported as a null result",
+  });
+  assert.equal(nullResult.length, 1);
+  assert.match(nullResult[0]!.problem, /must be `not_evaluable`/);
+
+  // Field and prose naming different verdicts is a contradiction, both ways.
+  const proseSaysNull = issuesWith({ reporting_rule: "an arm below its min-N is reported as a null result" });
+  assert.ok(proseSaysNull.some((i) => i.problem.includes("contradicts")));
+  const proseSaysNotEvaluable = issuesWith({ underpowered_arm_verdict: "null_result" });
+  assert.ok(proseSaysNotEvaluable.some((i) => i.problem.includes("contradicts")));
 });
 
 test("die gemessenen Zahlen tragen ihre Quelle", () => {
