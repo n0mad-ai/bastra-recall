@@ -12,8 +12,9 @@ import { ALL_TOOL_DEFS } from "../src/tool-defs.js";
  *
  *   - `ALL_TOOL_DEFS` (tool-defs.ts) — what `GET /tools` returns, and what the
  *     forwarder falls back to.
- *   - the `ListToolsRequestSchema` handler in `index.ts` — the embedded stdio
- *     server, which spreads its own set of arrays.
+ *   - the `ListToolsRequestSchema` handler in `boot-stdio.ts` (moved out of
+ *     `index.ts` in #1039) — the embedded stdio server, which spreads its
+ *     own set of arrays.
  *
  * A tool added to only the first one works through the forwarder and simply
  * does not exist over stdio: no error, no warning, just absent for every client
@@ -30,26 +31,26 @@ import { ALL_TOOL_DEFS } from "../src/tool-defs.js";
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const INDEX_TS = join(HERE, "..", "src", "index.ts");
+const STDIO_TS = join(HERE, "..", "src", "boot-stdio.ts");
 
 /**
  * The tool-group identifiers mentioned inside the stdio ListTools handler.
  *
  * Matched as bare identifiers rather than as `...name`, because a group can be
- * spread conditionally — `...(DOCUMENT_WRITE_ENABLED ? documentWriteTools : [])`
+ * spread conditionally — `...(documentWriteEnabled ? documentWriteTools : [])`
  * is a registration too. A gate that only understood the unconditional form
  * would report that one as missing, which is a false alarm about working code
  * and exactly the kind of noise that gets a gate switched off.
  */
 async function stdioToolArrays(): Promise<string[]> {
-  const source = await readFile(INDEX_TS, "utf8");
+  const source = await readFile(STDIO_TS, "utf8");
   // The HANDLER, not the import of the same name at the top of the file.
   // Anchoring on the bare symbol matched the import, which made the "block"
   // span almost the whole file — and a gate that reads the whole file finds
   // every identifier and can never fail. Verified by deleting the
   // registration and watching this go red.
   const start = source.indexOf("setRequestHandler(ListToolsRequestSchema");
-  assert.notEqual(start, -1, "could not find the stdio ListTools handler in index.ts");
+  assert.notEqual(start, -1, "could not find the stdio ListTools handler in boot-stdio.ts");
   const end = source.indexOf("}));", start);
   assert.notEqual(end, -1, "could not find the end of the stdio ListTools handler");
   // Comments are stripped first. The block carries a comment that NAMES this
@@ -86,7 +87,7 @@ test("every tool group in ALL_TOOL_DEFS is also served over stdio", async () => 
     [],
     `these tool groups are in ALL_TOOL_DEFS but not in the stdio ListTools handler, ` +
       `so they are invisible to stdio clients: ${missing.join(", ")}. ` +
-      `Add them to the handler in index.ts.`,
+      `Add them to the handler in boot-stdio.ts.`,
   );
 });
 
@@ -101,7 +102,7 @@ test("code awareness is registered on both surfaces", async () => {
 test("every tool in ALL_TOOL_DEFS has a CallTool branch in the stdio server", async () => {
   // ListTools advertising a tool the CallTool chain cannot dispatch is the
   // other half of the same mistake: the client sees it and every call fails.
-  const source = await readFile(INDEX_TS, "utf8");
+  const source = await readFile(STDIO_TS, "utf8");
   const undispatched = (ALL_TOOL_DEFS as Array<{ name: string }>)
     .map((def) => def.name)
     .filter((name) => !source.includes(`name === "${name}"`));

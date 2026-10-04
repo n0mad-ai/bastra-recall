@@ -344,6 +344,7 @@ Files that passed the 800-line convention were split along one responsibility ea
 | `src/tool-handlers.ts` (MCP tool handlers, 851 → 195) | `load-memory-handler.ts` (`load_memory`), `save-memory-handler.ts` (`save_memory`) |
 | `tui/sections.ts` (statusline TUI sections, 1555 → 786; under `packages/statusline/src/`) | `tui/sections-bars.ts` (bars), `tui/sections-parts.ts` (parts), `tui/sections-shared.ts` (shared helpers) |
 | `src/telemetry.ts` (`Telemetry`: event writers, notices, dimensions; 1093 → 605, #1039) | `telemetry-join-state.ts` (`JoinState`: recall/hint/turn correlation, acted_on windows, `join-state.json` snapshot), `telemetry-sink.ts` (`EventSink`: the `events-*.jsonl` append) |
+| `src/index.ts` (daemon entry; `main()` is the start-up sequence, 1110 → 256, #1039) | one module per start-up phase, called in this order: `boot-storage.ts` (vault, search index, Commons), `boot-recall-options.ts` (evidence gate, bridge pool), `boot-telemetry.ts` (telemetry, experiment, observers, curator demotions), `boot-embeddings.ts` (provider, breaker, warm-up, embedding index), `boot-tool-deps.ts` (shared tool deps), `boot-http.ts` (REST gateway), `boot-stdio.ts` (stdio MCP server), `boot-shutdown.ts` (graceful shutdown, signals) |
 
 ### Privacy And Safety
 
@@ -721,6 +722,7 @@ Dateien über der 800-Zeilen-Konvention wurden entlang je einer Verantwortung ge
 | `src/tool-handlers.ts` (MCP-Tool-Handler, 851 → 195) | `load-memory-handler.ts` (`load_memory`), `save-memory-handler.ts` (`save_memory`) |
 | `tui/sections.ts` (Statusline-TUI-Abschnitte, 1555 → 786; unter `packages/statusline/src/`) | `tui/sections-bars.ts` (Balken), `tui/sections-parts.ts` (Teile), `tui/sections-shared.ts` (gemeinsame Helfer) |
 | `src/telemetry.ts` (`Telemetry`: Ereignis-Schreiber, Notices, Dimensionen; 1093 → 605, #1039) | `telemetry-join-state.ts` (`JoinState`: Korrelation von Recall, Hinweis und Turn, acted_on-Fenster, Snapshot `join-state.json`), `telemetry-sink.ts` (`EventSink`: Anhängen an `events-*.jsonl`) |
+| `src/index.ts` (Daemon-Einstieg; `main()` ist die Startreihenfolge, 1110 → 256, #1039) | ein Modul je Startphase, in dieser Reihenfolge aufgerufen: `boot-storage.ts` (Vault, Suchindex, Commons), `boot-recall-options.ts` (Evidenz-Gate, Bridge-Pool), `boot-telemetry.ts` (Telemetrie, Experiment, Beobachter, Curator-Demotions), `boot-embeddings.ts` (Provider, Breaker, Warmup, Embedding-Index), `boot-tool-deps.ts` (gemeinsame Tool-Abhängigkeiten), `boot-http.ts` (REST-Gateway), `boot-stdio.ts` (stdio-MCP-Server), `boot-shutdown.ts` (geordnetes Herunterfahren, Signale) |
 
 ### Datenschutz und Sicherheit
 
