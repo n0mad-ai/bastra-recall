@@ -26,7 +26,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { mkdir, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export class VaultRootMissingError extends Error {
   readonly code = "VAULT_MISSING";
@@ -43,7 +43,15 @@ export class VaultRootMissingError extends Error {
   }
 }
 
-type RootsFile = Record<string, { first_seen: string }>;
+export class VaultRootHistoryError extends Error {
+  readonly code = "VAULT_ROOT_HISTORY_UNAVAILABLE";
+  constructor(readonly markerPath: string) {
+    super(`vault-root history at ${markerPath} is unreadable or cannot be written; refusing a vault write until it is repaired`);
+    this.name = "VaultRootHistoryError";
+  }
+}
+
+type RootEntry = { first_seen: string };
 
 /**
  * A test process that did not choose a marker file gets a throwaway one, so a
@@ -61,17 +69,31 @@ export function vaultRootsPath(): string {
   return join(homedir(), ".bastra", "vault-roots.json");
 }
 
-function readRoots(): RootsFile {
+/** Null means unreadable or corrupt; only ENOENT means no history yet. */
+function readRoots(): Map<string, RootEntry> | null {
+  let raw: string;
   try {
-    const parsed = JSON.parse(readFileSync(vaultRootsPath(), "utf8"));
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as RootsFile) : {};
+    raw = readFileSync(vaultRootsPath(), "utf8");
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "ENOENT" ? new Map() : null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const roots = new Map<string, RootEntry>();
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!value || typeof value !== "object" || typeof (value as RootEntry).first_seen !== "string") return null;
+      roots.set(key, { first_seen: (value as RootEntry).first_seen });
+    }
+    return roots;
   } catch {
-    return {};
+    return null;
   }
 }
 
 /** Roots this process has seen present (and recorded, as far as it could). */
 const seen = new Set<string>();
+const persisted = new Set<string>();
 
 /**
  * When this vault root was first seen present, from this process or the
@@ -80,7 +102,7 @@ const seen = new Set<string>();
  */
 export function vaultRootFirstSeen(vaultRoot: string): string | null {
   const key = resolve(vaultRoot);
-  const entry = readRoots()[key];
+  const entry = readRoots()?.get(key);
   if (entry && typeof entry.first_seen === "string") return entry.first_seen;
   return seen.has(key) ? "earlier in this run" : null;
 }
@@ -93,17 +115,19 @@ export function vaultRootFirstSeen(vaultRoot: string): string | null {
  */
 export function noteVaultRootPresent(vaultRoot: string): void {
   const key = resolve(vaultRoot);
-  if (seen.has(key)) return;
   seen.add(key);
+  if (persisted.has(key)) return;
   try {
     const roots = readRoots();
-    if (roots[key]) return;
-    roots[key] = { first_seen: new Date().toISOString() };
+    if (!roots) return; // never overwrite a corrupt history with one entry
+    if (roots.has(key)) { persisted.add(key); return; }
+    roots.set(key, { first_seen: new Date().toISOString() });
     const path = vaultRootsPath();
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     const tmp = `${path}.tmp-${process.pid}`;
-    writeFileSync(tmp, JSON.stringify(roots, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
+    writeFileSync(tmp, JSON.stringify(Object.fromEntries(roots), null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
     renameSync(tmp, path);
+    persisted.add(key);
   } catch {
     /* best-effort, see above */
   }
@@ -128,7 +152,16 @@ export function vaultRootPresent(vaultRoot: string): boolean {
  * and creates nothing.
  */
 export async function ensureVaultDir(vaultRoot: string, dir: string, opts: { createRoot?: boolean } = {}): Promise<void> {
-  const present = await stat(vaultRoot).then(
+  const root = resolve(vaultRoot);
+  const target = resolve(dir);
+  const child = relative(root, target);
+  if (child === ".." || child.startsWith(`..${sep}`) || isAbsolute(child)) {
+    throw new Error(`directory ${dir} is outside vault root ${vaultRoot}`);
+  }
+  const roots = readRoots();
+  if (!roots) throw new VaultRootHistoryError(vaultRootsPath());
+  if (!roots.has(root)) persisted.delete(root); // marker removed since this process last wrote it
+  const present = await stat(root).then(
     (st) => {
       if (!st.isDirectory()) throw new Error(`the vault path ${vaultRoot} is not a directory`);
       return true;
@@ -139,9 +172,25 @@ export async function ensureVaultDir(vaultRoot: string, dir: string, opts: { cre
     },
   );
   if (!present) {
-    const firstSeen = vaultRootFirstSeen(vaultRoot);
+    const firstSeen = roots.get(root)?.first_seen ?? (seen.has(root) ? "earlier in this run" : null);
     if (firstSeen || !opts.createRoot) throw new VaultRootMissingError(vaultRoot, firstSeen);
+    await mkdir(root, { recursive: true }); // only this explicit first-create path may make the root
   }
-  await mkdir(dir, { recursive: true });
-  noteVaultRootPresent(vaultRoot);
+  // Non-recursive children cannot recreate the root if its mount vanishes
+  // between the stat above and a later mkdir.
+  let current = root;
+  for (const part of child ? child.split(sep) : []) {
+    current = join(current, part);
+    try {
+      await mkdir(current);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") throw new VaultRootMissingError(vaultRoot, vaultRootFirstSeen(vaultRoot));
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST" || !(await stat(current)).isDirectory()) throw err;
+    }
+  }
+  if (!(await stat(root).catch(() => null))?.isDirectory()) {
+    throw new VaultRootMissingError(vaultRoot, vaultRootFirstSeen(vaultRoot));
+  }
+  noteVaultRootPresent(root);
+  if (!readRoots()?.has(root)) throw new VaultRootHistoryError(vaultRootsPath());
 }
