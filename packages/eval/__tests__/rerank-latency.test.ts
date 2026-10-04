@@ -27,6 +27,11 @@ test("an N deeper than every pool reports null percentiles with samples 0", asyn
   assert.equal(r.warm_p95_ms, null);
 });
 
+test("an N deeper than every pool reports first_call_ms null, not 0", async () => {
+  const [r] = await measureLatency(scorer, "short", [row(3)], memoryOf, "fake", [10], { scoredAnything: false });
+  assert.equal(r.first_call_ms, null);
+});
+
 test("with warm samples the percentiles are numbers", async () => {
   const rows = [row(5), row(5), row(5)];
   const [r] = await measureLatency(scorer, "short", rows, memoryOf, "fake", [5], { scoredAnything: false });
