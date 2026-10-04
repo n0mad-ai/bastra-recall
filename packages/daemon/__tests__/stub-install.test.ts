@@ -21,8 +21,10 @@ import {
   decideStubAction,
   ensureHookStub,
   parseStubManifest,
+  readStubManifest,
   readStubOptIn,
   stubAssetUrl,
+  stubManifestPath,
   stubTarget,
 } from "../src/cli/stub-install.js";
 // @ts-expect-error — plain .mjs script, no declarations (#542).
@@ -269,4 +271,16 @@ test("--stub / --no-stub parse; absent means ask once", () => {
   assert.equal(parseArgs(["install", "claude-code", "--stub"]).stub, "yes");
   assert.equal(parseArgs(["install", "claude-code", "--no-stub"]).stub, "skip");
   assert.equal(parseArgs(["install", "claude-code"]).stub, null);
+});
+
+test("the manifest is found next to the stub in the desktop bundle layout (#957)", async () => {
+  // The .mcpb bundle installs the daemon package under server/node_modules, so
+  // stub/manifest.json sits beside the stub exactly as in the npm package.
+  const pkg = join(await mkdtemp(join(tmpdir(), "bundle-")), "server/node_modules/@bastra-recall/daemon");
+  await mkdir(join(pkg, "stub"), { recursive: true });
+  const m = { version: "1.0.0", assets: { "aarch64-apple-darwin": { file: "bastra-hook-aarch64-apple-darwin", sha256: HEX } } };
+  await writeFile(join(pkg, "stub", "manifest.json"), JSON.stringify(m));
+  const found = await readStubManifest(stubManifestPath(join(pkg, "stub", "bastra-hook")));
+  assert.equal(found?.assets["aarch64-apple-darwin"]?.sha256, HEX);
+  assert.equal(await readStubManifest(stubManifestPath(join(pkg, "elsewhere", "bastra-hook"))), null);
 });
