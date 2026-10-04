@@ -81,7 +81,7 @@ test("a followed hint is counted in its own event kind, not as acted_on", async 
     });
 
     // No recall_episode: the report counts every surfaced episode as `loaded`
-    // (telemetry-report.ts:184-188), so one here would inflate the USE rate.
+    // (`summarizeQuality` in telemetry-report-recall.ts), so one here would inflate the USE rate.
     assert.deepEqual(episodes, []);
 
     const shadow = (await h.events(1)).filter((e) => e.kind === "hint_followed_shadow");
