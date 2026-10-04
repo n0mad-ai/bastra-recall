@@ -127,7 +127,10 @@ export function slugify(input: string): string {
     // unaffected. Umlauts still transliterate above, before this runs.
     .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, SLUG_MAX_LEN);
+    .slice(0, SLUG_MAX_LEN)
+    // The cut counts UTF-16 units: an astral letter (e.g. CJK Extension B)
+    // straddling the limit leaves a lone high surrogate, an invalid id (#938).
+    .replace(/[\uD800-\uDBFF]$/, "");
   if (!slug) throw new Error(`cannot slugify: ${JSON.stringify(input)}`);
   return slug;
 }
