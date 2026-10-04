@@ -41,7 +41,7 @@ function defaultLogDir(): string {
 const LOG_DIR =
   process.env.BASTRA_LOG_PATH ?? process.env.NEXUS_LOG_PATH ?? defaultLogDir();
 
-// Band-Schwellen müssen mit telemetry.ts (bandForScore) übereinstimmen — sonst
+// Band-Schwellen müssen mit telemetry-join-state.ts (bandForScore) übereinstimmen — sonst
 // werden candidates-Bänder (hier aus hits[].score) und loaded/acted-Bänder
 // (episode.band, daemon-seitig env-getrieben) auf verschiedenen Cut-Points
 // berechnet und die USE-rate-Tabelle vergleicht still falsche Bänder.
@@ -237,7 +237,7 @@ function summarizeUseRate(events: AnyEvent[]): void {
   const bands = ["required", "optional", "below_floor"] as const;
   // `hook_recall.hits[]` is the engine's raw top-k, BEFORE the hook
   // CLIs apply the score floor, scope filter and per-session dedup that
-  // decide what a client actually injects (src/telemetry.ts recordHookHints:
+  // decide what a client actually injects (src/telemetry-join-state.ts recordHookHints:
   // "these are the engine's raw top-k... counting them as 'surfaced' would
   // let phantom demand demote memories nobody ever saw"). The real surfaced
   // count is the usage sidecar's: per memory and all-time, so no section of

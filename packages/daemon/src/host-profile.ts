@@ -22,7 +22,7 @@
  * sei dieselbe Maschine. Der Fingerabdruck lässt die Kennung dann wechseln,
  * was die ehrlichere Aussage ist.
  *
- * Synchron gelesen und geschrieben, wie der Join-State-Snapshot (telemetry.ts):
+ * Synchron gelesen und geschrieben, wie der Join-State-Snapshot (telemetry-join-state.ts):
  * Es passiert einmal pro Prozess, und der Wert wird an Stellen gebraucht, die
  * kein `await` mehr haben.
  */

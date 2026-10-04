@@ -343,6 +343,7 @@ Files that passed the 800-line convention were split along one responsibility ea
 | `webui/js/renderer.js` (web UI renderer, 835 → 528) | `renderer-bolts.js` (bolts), `renderer-flow.js` (flow) |
 | `src/tool-handlers.ts` (MCP tool handlers, 851 → 195) | `load-memory-handler.ts` (`load_memory`), `save-memory-handler.ts` (`save_memory`) |
 | `tui/sections.ts` (statusline TUI sections, 1555 → 786; under `packages/statusline/src/`) | `tui/sections-bars.ts` (bars), `tui/sections-parts.ts` (parts), `tui/sections-shared.ts` (shared helpers) |
+| `src/telemetry.ts` (`Telemetry`: event writers, notices, dimensions; 1093 → 605, #1039) | `telemetry-join-state.ts` (`JoinState`: recall/hint/turn correlation, acted_on windows, `join-state.json` snapshot), `telemetry-sink.ts` (`EventSink`: the `events-*.jsonl` append) |
 
 ### Privacy And Safety
 
@@ -719,6 +720,7 @@ Dateien über der 800-Zeilen-Konvention wurden entlang je einer Verantwortung ge
 | `webui/js/renderer.js` (Web-UI-Renderer, 835 → 528) | `renderer-bolts.js` (Bolts), `renderer-flow.js` (Flow) |
 | `src/tool-handlers.ts` (MCP-Tool-Handler, 851 → 195) | `load-memory-handler.ts` (`load_memory`), `save-memory-handler.ts` (`save_memory`) |
 | `tui/sections.ts` (Statusline-TUI-Abschnitte, 1555 → 786; unter `packages/statusline/src/`) | `tui/sections-bars.ts` (Balken), `tui/sections-parts.ts` (Teile), `tui/sections-shared.ts` (gemeinsame Helfer) |
+| `src/telemetry.ts` (`Telemetry`: Ereignis-Schreiber, Notices, Dimensionen; 1093 → 605, #1039) | `telemetry-join-state.ts` (`JoinState`: Korrelation von Recall, Hinweis und Turn, acted_on-Fenster, Snapshot `join-state.json`), `telemetry-sink.ts` (`EventSink`: Anhängen an `events-*.jsonl`) |
 
 ### Datenschutz und Sicherheit
 

@@ -72,7 +72,7 @@ export const RRF_K = 5;
  * rank, and the anchors are the two points where rank is 1. A two-armed hit at
  * rank 20 was 125.0 and is now 39.3. Every absolute cut downstream
  * (`hook.ts` 30/100, `bash-fail-hook.ts` 50, `harvest.ts` 100, `webui.ts` 100,
- * `telemetry.ts` bandForScore) therefore sees a different distribution, and
+ * `telemetry-join-state.ts` bandForScore) therefore sees a different distribution, and
  * a telemetry series over `band` is not comparable across this change.
  *
  * There is no constant that avoids this. Band occupancy is a property of the
