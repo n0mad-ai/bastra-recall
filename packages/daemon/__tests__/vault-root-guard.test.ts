@@ -82,6 +82,17 @@ test("createVaultAt makes a new vault, but does not recreate one that is not mou
   assert.equal(existsSync(driveParent), false, "a known vault's parent chain is not rebuilt either");
 });
 
+test("createVaultAt with a broken root history creates nothing, not even the parents", async (t) => {
+  const parent = await scratch(t);
+  const marker = process.env.BASTRA_VAULT_ROOTS_PATH!;
+  const before = await readFile(marker, "utf8").catch(() => null);
+  t.after(() => (before === null ? rm(marker, { force: true }) : writeFile(marker, before)));
+  await writeFile(marker, "{broken");
+  const out = await createVaultAt(join(parent, "deep", "new", "vault"));
+  assert.match("error" in out ? out.error : "", /history .* unreadable/);
+  assert.equal(existsSync(join(parent, "deep")), false);
+});
+
 function post(port: number, path: string, payload: unknown): Promise<Record<string, unknown>> {
   const body = JSON.stringify(payload);
   return new Promise((ok, fail) => {

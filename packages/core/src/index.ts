@@ -54,7 +54,7 @@ export { pickPhrase, pickToolPhrase, banterModeFromEnv } from "./recall-banter.j
 export type { BanterMode, BanterLang } from "./recall-banter.js";
 
 export { saveMemory, deleteMemoryFile } from "./save.js";
-export { ensureVaultDir, VaultRootMissingError, VaultRootHistoryError, vaultRootFirstSeen, vaultRootPresent, noteVaultRootPresent, vaultRootsPath } from "./vault-root-guard.js";
+export { ensureVaultDir, assertVaultRootHistory, VaultRootMissingError, VaultRootHistoryError, vaultRootFirstSeen, vaultRootPresent, noteVaultRootPresent, vaultRootsPath } from "./vault-root-guard.js";
 export type { DeleteMemoryResult } from "./save.js";
 export {
   SaveMemoryInput,

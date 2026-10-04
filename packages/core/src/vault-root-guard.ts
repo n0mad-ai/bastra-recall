@@ -99,6 +99,12 @@ function readRoots(): Map<string, RootEntry> | null {
   }
 }
 
+/** Throws the guard's {@link VaultRootHistoryError} when the root history is
+ * unreadable or corrupt — for a caller that must stop before its own writes. */
+export function assertVaultRootHistory(): void {
+  if (!readRoots()) throw new VaultRootHistoryError(vaultRootsPath());
+}
+
 /** Roots this process has seen present (and recorded, as far as it could). */
 const seen = new Set<string>();
 const persisted = new Set<string>();
