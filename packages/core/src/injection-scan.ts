@@ -91,7 +91,8 @@ const CONFUSABLES: Readonly<Record<string, string>> = {
 const INVISIBLE_RE = /[\u00AD\u200B-\u200D\u2060\uFEFF]/g;
 const LATIN_LETTER_RE = /\p{Script=Latin}/u;
 const NON_ASCII_RE = /[^\x00-\x7F]/;
-const FOLD_CANDIDATE_RE = /[­​-‍⁠﻿Ͱ-ϿЀ-ӿ]/;
+// Include Cyrillic Supplement (ԁ/ԛ/ԝ): CONFUSABLES maps those too.
+const FOLD_CANDIDATE_RE = /[­​-‍⁠﻿Ͱ-ϿЀ-ԯ]/;
 
 /**
  * The text as the matchers should read it: fullwidth and compatibility forms
@@ -119,7 +120,7 @@ function foldForScan(text: string): { folded: string; at?: number[] } {
   at.push(text.length);
   // One-to-one per UTF-16 unit, so `at` still lines up.
   folded = folded.replace(/[\p{L}\p{M}]+/gu, (word) =>
-    LATIN_LETTER_RE.test(word) ? word.replace(/[\u0370-\u03FF\u0400-\u04FF]/g, (c) => CONFUSABLES[c] ?? c) : word,
+    LATIN_LETTER_RE.test(word) ? word.replace(/[\u0370-\u03FF\u0400-\u052F]/g, (c) => CONFUSABLES[c] ?? c) : word,
   );
   return { folded, at };
 }
