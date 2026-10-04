@@ -363,3 +363,88 @@ test("#885 — ~/home leaves claude-code-home first, then the home directory mov
     await rm(root, { recursive: true, force: true });
   }
 });
+
+const FOREIGN = "# My own note\n\nWritten by hand into the import folder.\n";
+
+/** An earlier import under the old home label, plus a note the user dropped
+ *  into that folder by hand (no frontmatter, so no source stamp). */
+async function foreignFixture() {
+  const f = await homeFixture();
+  await seed(f.mem(""));
+  const [d] = await findClientMemoryDirs(f.vault, f.env);
+  await importVault(f.vault, d.dir, { label: d.previousLabel });
+  const oldDir = join(f.vault, IMPORT_ROOT, d.previousLabel!);
+  const newDir = join(f.vault, IMPORT_ROOT, d.label);
+  await writeFile(join(oldDir, "my-own-note.md"), FOREIGN);
+  return { ...f, d, oldDir, newDir };
+}
+
+// Revert-check: return skip(...) for the foreign note again (#1044) → red: the
+// migration skips, and the re-import creates all 3 notes a second time.
+test("#1048 — a foreign note stays in the old folder, the rest moves; a second run is a no-op", async () => {
+  const { root, env, vault, d, oldDir, newDir } = await foreignFixture();
+  try {
+    const dry = await migrateClientLabels(vault, [d], { dryRun: true });
+    assert.deepEqual(dry, [
+      { from: d.previousLabel, to: d.label, memories: 3, left: [`${IMPORT_ROOT}/${d.previousLabel}/my-own-note.md`] },
+    ]);
+    assert.equal(existsSync(newDir), false, "a dry run moves nothing");
+
+    const moved = await migrateClientLabels(vault, [d]);
+    assert.deepEqual(moved, dry);
+    assert.deepEqual(await readdir(oldDir), ["my-own-note.md"], "only the foreign note is left");
+    assert.equal(await readFile(join(oldDir, "my-own-note.md"), "utf8"), FOREIGN, "and it is untouched");
+    assert.deepEqual((await readdir(newDir)).sort(), [
+      ".bastra-imported",
+      "claude-code-home-feedback-never-remove-an-existing-feature-when-adding-a-new-one.md",
+      "claude-code-home-feedback-no-silent-removals.md",
+      "claude-code-home-feedback-release.md",
+    ]);
+    assert.ok(!(await notesText(newDir)).includes("alice"));
+
+    assert.deepEqual(await migrateClientLabels(vault, await findClientMemoryDirs(vault, env)), []);
+    const r = await importVault(vault, d.dir, { label: d.label });
+    assert.deepEqual([r.written.created, r.skipped.length], [0, 0]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("#1048 — with a foreign note present, a run stopped between rewrite and rename completes next time", async () => {
+  const { root, vault, d, oldDir } = await foreignFixture();
+  try {
+    const oldFile = join(oldDir, `${d.previousLabel}-feedback-no-silent-removals.md`);
+    await writeFile(oldFile, (await readFile(oldFile, "utf8")).replaceAll(d.previousLabel!, d.label));
+
+    const moved = await migrateClientLabels(vault, [d]);
+    assert.deepEqual([moved[0]?.skipped, moved[0]?.memories, moved[0]?.left?.length], [undefined, 3, 1]);
+    assert.deepEqual(await readdir(oldDir), ["my-own-note.md"]);
+    const r = await importVault(vault, d.dir, { label: d.label });
+    assert.equal(r.written.created, 0, "a resumed migration does not duplicate a note");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+// Revert-check: skip whenever the new folder exists (#1044) → red: the stopped
+// move never finishes and the marker stays in the old folder.
+test("#1048 — a file-by-file move stopped before its marker moved finishes on the next run", async () => {
+  const { root, vault, d, oldDir, newDir } = await foreignFixture();
+  try {
+    await migrateClientLabels(vault, [d]);
+    // The state a crash halfway through the moves leaves: every file already
+    // rewritten, one note and the marker still in the old folder.
+    const back = "claude-code-home-feedback-release.md";
+    await rename(join(newDir, back), join(oldDir, back));
+    await rename(join(newDir, ".bastra-imported"), join(oldDir, ".bastra-imported"));
+
+    const moved = await migrateClientLabels(vault, [d]);
+    assert.deepEqual([moved[0]?.skipped, moved[0]?.left?.length], [undefined, 1]);
+    assert.deepEqual(await readdir(oldDir), ["my-own-note.md"]);
+    assert.ok(existsSync(join(newDir, back)) && existsSync(join(newDir, ".bastra-imported")));
+    const r = await importVault(vault, d.dir, { label: d.label });
+    assert.equal(r.written.created, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
