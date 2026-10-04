@@ -466,6 +466,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Prompt, Stop and bridge readers now reject noncanonical `system-reminder` tags instead of treating harness text as an owner turn.
+- Injection scanning now folds Cyrillic Supplement look-alikes already in its mapping table, including `ԁ` in `ԁisregard`.
+
 - statusline: `collapseHome` no longer rewrites a sibling of the home directory (`/Users/n0mad-backup` stayed `~-backup`); only the home directory and paths below it are shortened (#937, same class as #853).
 - eval: rerank-latency stores `first_call_ms` as null and the report prints `n/a` when no call happened at an N, instead of `0 ms` (#941, follow-up to #919).
 - scrub: every hook block the daemon emits (pending-trends, memory-language, local-patches, vault-care, the curator candidates, and seven more that were missing) is scrubbed as injected context, and a test reads the tags from the emitting sources so the list cannot drift (#936).

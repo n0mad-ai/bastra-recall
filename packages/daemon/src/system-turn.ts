@@ -47,6 +47,10 @@ function isAgentMail(head: string): boolean {
 const INJECTED_PREFIXES = ["Base directory for this skill:", "[Subagent hand-back]"];
 const REMINDER_OPEN = "<system-reminder>";
 const REMINDER_CLOSE = "</system-reminder>";
+// Non-canonical tag spellings are harness-shaped too. Only the exact pair
+// above may be stripped to recover owner text; other spellings fail closed.
+const REMINDER_TAG_START = /^<\s*system(?:\s*-\s*|&#(?:x0*2d|0*45);?|&hyphen;?)\s*reminder(?=[\s/>])/i;
+const REMINDER_TAG_ANY = /<\s*\/?\s*system(?:\s*-\s*|&#(?:x0*2d|0*45);?|&hyphen;?)\s*reminder(?=[\s/>])/gi;
 const COMMAND_ECHO_PREFIXES = ["<command-name>", "<local-command-caveat>"];
 
 function isCommandEcho(head: string): boolean {
@@ -62,7 +66,7 @@ export function isSystemInjectedTurn(text: string): boolean {
     TASK_NOTIFICATION.test(head) ||
     isAgentMail(head) ||
     CODEX_HARNESS_TAG.test(head) ||
-    head.startsWith(REMINDER_OPEN) ||
+    REMINDER_TAG_START.test(head) ||
     isCommandEcho(head) ||
     INJECTED_PREFIXES.some((p) => head.startsWith(p))
   );
@@ -98,12 +102,12 @@ export function ownerPromptText(prompt: string): string | null {
  */
 export function textAfterReminders(text: string): string | null {
   const head = text.trimStart();
-  if (!head.startsWith(REMINDER_OPEN)) return head.length === 0 ? null : head;
+  if (!head.startsWith(REMINDER_OPEN)) return head.length === 0 || REMINDER_TAG_START.test(head) ? null : head;
   const end = head.indexOf(REMINDER_CLOSE);
   if (end === -1) return null;
-  const nested = head.indexOf(REMINDER_OPEN, REMINDER_OPEN.length);
-  if (nested !== -1 && nested < end) return null;
+  const tags = [...head.matchAll(REMINDER_TAG_ANY)];
+  if (tags.length !== 2 || tags[0].index !== 0 || tags[1].index !== end) return null;
   const rest = head.slice(end + REMINDER_CLOSE.length).trimStart();
-  if (rest.length === 0 || rest.includes(REMINDER_OPEN) || rest.includes(REMINDER_CLOSE)) return null;
+  if (rest.length === 0) return null;
   return rest;
 }
