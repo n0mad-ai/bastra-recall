@@ -19,10 +19,9 @@
  * (b) ids can't collide with hand-authored memories, (c) the whole set is
  * delete-/re-importable atomically (one folder, one scope, one source tag).
  */
-import { readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { homedir } from "node:os";
-import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, extname, join, relative, resolve, sep } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { slugify, extractWikilinks, snapshotLocator } from "@bastra-recall/core";
 import { sendJsonPlain } from "./webui.js";
@@ -31,34 +30,15 @@ import { saveMemoryWithAuditTrail } from "./audit-trail.js";
 import { linkKey, pathHash, safeSlug, uniqueId } from "./import/identity.js";
 import { harvestIndex, looksLikeIndexHub } from "./import/index-harvest.js";
 import { KNOWN_ADAPTERS, looksLikeClaudeCode, mapFile, safeParse } from "./import/adapters.js";
-import { findOrphanedMemories, type ImportVaultOrphan } from "./import/orphans.js";
+import { findOrphanedMemories } from "./import/orphans.js";
 import { ensureVaultDir } from "@bastra-recall/core";
+import { IMPORT_ROOT, listSourceMarkdown, type ImportVaultOptions, type ImportVaultResult, type ImportVaultSkip } from "./import-vault-shared.js";
 export type { ImportVaultOrphan } from "./import/orphans.js";
-
-/** Reserved subtree for all folder imports — its own graph cluster, and the
- *  atomic unit for delete/re-import. Never a target of the normal scope/type
- *  routing, so it can't overlap a hand-authored memory's path. */
-export const IMPORT_ROOT = "memories/imported";
-
-export interface ImportVaultOptions {
-  /** Namespace label for this batch; defaults to the source dir's basename.
-   *  Becomes the subfolder, the scope, and the id prefix. */
-  label?: string;
-  /** Re-import in place instead of erroring on an existing id (default true —
-   *  a folder import is idempotent by design). */
-  overwrite?: boolean;
-  /** Map + count without writing anything (default false). */
-  dryRun?: boolean;
-  /** #220 (zzallirog): additional directory NAMES to skip anywhere in the
-   *  tree (case-insensitive). Dotdirs, node_modules and `_archive`/`archive`
-   *  are always skipped — retired notes must not compete with live ones for
-   *  node identity. */
-  exclude?: string[];
-}
-
-/** Always-skipped directory names (#220): archives hold retired copies of
- *  live notes — importing them mints `-2`/`-3` collision twins. */
-const DEFAULT_EXCLUDED_DIRS = new Set(["_archive", "archive"]);
+// #680: split modules — re-exported so no importer has to change.
+export { IMPORT_ROOT, listSourceMarkdown } from "./import-vault-shared.js";
+export type { ImportVaultOptions, ImportVaultResult, ImportVaultSkip } from "./import-vault-shared.js";
+export { listSubdirs, handleUiFsBrowse } from "./import-vault-fs-browse.js";
+export type { FsBrowseEntry } from "./import-vault-fs-browse.js";
 
 /** Who owns the node currently sitting on a candidate id, together with the
  * exact preimage the commit must still see. `unverifiable` means the node
@@ -79,86 +59,6 @@ type Allocation = { id: string; skip?: undefined } | { id?: undefined; skip: str
  *  by a foreign node. Exhausting them is astronomically unlikely — and if it
  *  happens, the file is skipped rather than written onto a stranger (#245 P2). */
 const HASH_CANDIDATES = 8;
-
-export interface ImportVaultSkip {
-  path: string;
-  reason: string;
-}
-
-export interface ImportVaultResult {
-  sourceDir: string;
-  label: string;
-  folder: string;
-  scope: string;
-  scanned: number;
-  imported: number;
-  /** #312: every id in `ids` is counted in exactly ONE of these, so the
-   *  breakdown always sums to `imported`. `index` is the synthetic
-   *  curated-index node (#217) — it is a written memory like any other, but it
-   *  comes from no source file and therefore from no adapter, which is why it
-   *  used to fall out of the itemisation while still inflating the total.
-   *  #365/7: counted is the import that LANDED, not the attempt. A dry-run and
-   *  the real run therefore still predict the same numbers as long as no save
-   *  fails; a failed write shows up in `skipped` and in no counter — deliberate,
-   *  because the breakdown must keep summing to `imported`. */
-  byAdapter: { claudeCode: number; generic: number; index: number };
-  /** #530: Wie viel von `imported` wirklich geschrieben wurde. Ein identischer
-   *  Re-Import meldete vorher erneut jede Datei als importiert, obwohl er
-   *  nichts änderte. `created + updated + unchanged === imported`; im Dry-Run
-   *  steht alles in `created`, weil ohne Write niemand sagen kann, was ein
-   *  echter Lauf vorgefunden hätte. */
-  written: { created: number; updated: number; unchanged: number };
-  skipped: ImportVaultSkip[];
-  /** #710: imported, but the adapter had to fix a field on the way in (a bare
-   *  type word dropped from recall_when, an over-long entry cut). One entry
-   *  per fix; the file still counts as imported. */
-  warnings: ImportVaultSkip[];
-  ids: string[];
-  /** #217: id of the synthetic curated-index node minted from the source
-   *  index (MEMORY.md / hubs), or null when the source carried no index.
-   *  #312: a dry-run predicts this id too — it is resolved without writing. */
-  indexNode: string | null;
-  /** #240/A10: kept for shape compatibility, ALWAYS []. Weg C: the import
-   *  never trashes a pre-A10 twin — automatic retirement could not be made
-   *  loss-free (see the orchestrator). A pre-A10 duplicate stays active until
-   *  the user, or a future opt-in `bastra migrate`, removes it with a
-   *  confirmed delete. */
-  migrated: Array<{ from: string; to: string }>;
-  /** #530 follow-up: memories kept despite a vanished source file — never
-   *  acted on, only reported (see {@link ImportVaultOrphan}). */
-  orphaned: ImportVaultOrphan[];
-  dryRun: boolean;
-}
-
-// ── directory walk ───────────────────────────────────────────────────────────
-
-/** Recursively collect `*.md` files under `dir`, skipping dotdirs and
- *  node_modules (same policy as the vault loader) and the `MEMORY.md` pointer
- *  index (it's a table of contents, not a memory). Returns absolute paths. */
-export async function listSourceMarkdown(dir: string, exclude: Set<string> = new Set()): Promise<string[]> {
-  const out: string[] = [];
-  async function walk(current: string): Promise<void> {
-    let entries;
-    try {
-      entries = await readdir(current, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-      if (e.name === "node_modules" || (e.name.startsWith(".") && e.name.length > 1)) continue;
-      const full = join(current, e.name);
-      if (e.isDirectory()) {
-        const name = e.name.toLowerCase();
-        if (DEFAULT_EXCLUDED_DIRS.has(name) || exclude.has(name)) continue;
-        await walk(full);
-      } else if (e.isFile() && extname(e.name).toLowerCase() === ".md" && e.name.toLowerCase() !== "memory.md") {
-        out.push(full);
-      }
-    }
-  }
-  await walk(dir);
-  return out;
-}
 
 // ── orchestration ────────────────────────────────────────────────────────────
 
@@ -675,71 +575,6 @@ export async function importVault(
     orphaned,
     dryRun,
   };
-}
-
-export interface FsBrowseEntry {
-  name: string;
-  path: string;
-  /** Number of markdown files directly inside — a quick "is this a vault?" cue. */
-  md: number;
-}
-
-/**
- * Subdirectories of `dir`, for the map's folder picker. Directories only —
- * never file names, never file contents. Dot-directories are included (the
- * common import source `~/.claude/projects/<x>/memory` lives behind one) but
- * sorted after the visible ones; node_modules is dropped.
- */
-export async function listSubdirs(dir: string): Promise<{ path: string; parent: string | null; dirs: FsBrowseEntry[] }> {
-  const abs = resolve(dir);
-  const entries = await readdir(abs, { withFileTypes: true });
-  const dirs: FsBrowseEntry[] = [];
-  for (const e of entries) {
-    if (!e.isDirectory() || e.name === "node_modules") continue;
-    const full = join(abs, e.name);
-    let md = 0;
-    try {
-      md = (await readdir(full)).filter((n) => n.toLowerCase().endsWith(".md")).length;
-    } catch {
-      // unreadable subdir — still listed, just without the count
-    }
-    dirs.push({ name: e.name, path: full, md });
-  }
-  dirs.sort((a, b) => {
-    const da = a.name.startsWith(".") ? 1 : 0;
-    const db = b.name.startsWith(".") ? 1 : 0;
-    return da - db || a.name.localeCompare(b.name);
-  });
-  const parent = dirname(abs);
-  return { path: abs, parent: parent === abs ? null : parent, dirs };
-}
-
-/**
- * GET /ui/fs?path=<abs> — the folder picker's data source. Directory names
- * only, loopback + ui-gated like the rest of /ui (same trust boundary as the
- * import itself, which reads arbitrary local folders). Defaults to $HOME.
- */
-export async function handleUiFsBrowse(
-  req: IncomingMessage,
-  res: ServerResponse,
-  settingsPath?: string,
-): Promise<void> {
-  if (!(await getUiEnabled(settingsPath))) {
-    sendJsonPlain(res, 404, { error: "ui disabled" });
-    return;
-  }
-  const u = new URL(req.url ?? "/", "http://127.0.0.1");
-  const raw = u.searchParams.get("path");
-  const dir = raw && raw.trim().length > 0 ? raw.trim() : homedir();
-  if (!isAbsolute(dir)) {
-    sendJsonPlain(res, 400, { error: "path must be absolute" });
-    return;
-  }
-  try {
-    sendJsonPlain(res, 200, await listSubdirs(dir));
-  } catch (err) {
-    sendJsonPlain(res, 400, { error: (err as Error).message });
-  }
 }
 
 /**
