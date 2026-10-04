@@ -26,7 +26,8 @@ export interface LatencyReport {
    * the first sample. The report says which, rather than labelling all three
    * "cold" and inviting the reader to believe it.
    */
-  first_call_ms: number;
+  /** null when no call happened at this N (pool shallower than N for every row), not "0 ms". */
+  first_call_ms: number | null;
   first_call_is_cold: boolean;
   /** null when `samples` is 0 — no warm call happened at this N, not "0 ms". */
   warm_p50_ms: number | null;
@@ -101,7 +102,7 @@ export async function measureLatency(
       passage: mode,
       n,
       load_ms: scorer.loadMs,
-      first_call_ms: firstCall ?? 0,
+      first_call_ms: firstCall,
       first_call_is_cold: firstWasCold,
       // An empty warm sample (pool shallower than N for every row) used
       // to print 0 ms, indistinguishable from a real fast measurement — null

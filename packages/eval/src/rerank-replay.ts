@@ -553,7 +553,7 @@ async function main(): Promise<void> {
       L.push(
         `    ${`${l.model}/${l.passage}`.padEnd(16)} | N=${String(l.n).padStart(2)} | ` +
           `p50 ${fmt(l.warm_p50_ms)} ms | p95 ${fmt(l.warm_p95_ms)} ms | ` +
-          `first ${l.first_call_ms.toFixed(1)} ms${l.first_call_is_cold ? " (cold)" : ""} | n=${l.samples}`,
+          `first ${fmt(l.first_call_ms)} ms${l.first_call_is_cold ? " (cold)" : ""} | n=${l.samples}`,
       );
     }
     L.push(`    model load: ${latency[0].load_ms} ms — a prewarm-lane cost (#361), not a recall cost.`);
