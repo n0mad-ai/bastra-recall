@@ -179,8 +179,25 @@ export function recordBudgetShadow(
   if (typeof sessionId !== "string" || sessionId === "") return null;
   const ledger = opts.ledger ?? sessionBudget;
   const decision = ledger.charge(sessionId, lane, tokens, opts.budget ?? shadowBudgetTokens(), opts.source);
-  if (decision) void writeBudgetShadow(decision);
+  if (decision) {
+    const write = writeBudgetShadow(decision);
+    pendingWrites.add(write);
+    void write.finally(() => pendingWrites.delete(write));
+  }
   return decision;
+}
+
+/** Die `budget_shadow`-Zeilen, die gerade geschrieben werden. */
+const pendingWrites = new Set<Promise<void>>();
+
+/**
+ * #1056: der Sync-Punkt für den Fire-and-forget-Schreibvorgang. Die Lane wartet
+ * nie darauf; ein Test, der die Zeile lesen will, wartet hierauf statt eine
+ * feste Zeit — unter Last brauchten mkdir + appendFile mehr als die 50 ms, die
+ * der Test früher gab, und die Datei fehlte noch.
+ */
+export async function budgetShadowWritesSettled(): Promise<void> {
+  await Promise.all(pendingWrites);
 }
 
 /**

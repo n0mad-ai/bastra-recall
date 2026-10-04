@@ -11,11 +11,12 @@
  *
  * The lock deliberately does NOT wrap the lane's own work (recall, search,
  * governor). Only the short mutation is serialised, so the hook path keeps
- * its latency — the budget test at the bottom pins that.
+ * its latency — the cost test further down pins that through its properties.
  */
 import { test, before, after } from "node:test";
 import { strict as assert } from "node:assert";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, rm, readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -32,6 +33,7 @@ after(async () => {
 });
 
 const ss = await import("../src/session-state.js");
+const { pathLockFilePath, withPathLock } = await import("../src/path-lock.js");
 // #542: `const ss = await import(...)` only binds `ss` as a value, not a
 // type namespace — `ss.SessionState` in a type position doesn't resolve
 // once the test tree is type-checked. This alias gives the same name back
@@ -111,20 +113,44 @@ test("#539: empty session id stays a no-op", async () => {
 });
 
 test("#539: the mutation stays cheap enough for the hook path", async () => {
+  // #1056: this used to time 200 calls against a 10 ms ceiling and failed under
+  // parallel load. The two regressions it was there to catch are properties,
+  // asserted directly: no cross-process lock file around the mutation, and a
+  // lock that covers one session's read-modify-write and nothing else.
   const sid = "sess-budget";
-  // Warm the file so we measure the steady state, not the mkdir.
-  await ss.mutateSessionState(sid, (state) => ss.bumpShown(state, "warm", 1_000));
-  const rounds = 200;
-  const t0 = performance.now();
+  const file = join(testDir, `${sid}.json`);
+  const rounds = 20;
+  let calls = 0;
   for (let i = 0; i < rounds; i++) {
-    await ss.mutateSessionState(sid, (state) => ss.bumpShown(state, `m-${i}`, 1_000));
+    await ss.mutateSessionState(sid, (state) => {
+      calls++;
+      // The callback runs while the lock is held — a crossProcess lock would
+      // have its O_EXCL file on disk right now.
+      assert.equal(existsSync(pathLockFilePath(file)), false, "no cross-process lock file on the hook path");
+      ss.bumpShown(state, `m-${i}`, 1_000);
+    });
   }
-  const perCall = (performance.now() - t0) / rounds;
-  // A hook lane spends hundreds of ms in recall; the serialised mutation must
-  // stay in the noise. Generous ceiling — it measures ~0.2ms locally and this
-  // only has to catch an order-of-magnitude regression (e.g. a cross-process
-  // lock file, or the lock accidentally wrapping the lane's own work).
-  assert.ok(perCall < 10, `mutateSessionState took ${perCall.toFixed(3)}ms per call`);
+  assert.equal(calls, rounds, "one read-modify-write per call, no retries");
+  assert.equal(Object.keys((await persisted(sid)).shown).length, rounds);
+  assert.deepEqual(
+    (await readdir(testDir)).filter((f) => f.startsWith(sid)),
+    [`${sid}.json`],
+    "one atomic write per call, no lock or tmp file left behind",
+  );
+
+  // The lock is per session: while another session's lock is held (a gate this
+  // test controls), this session's mutation still completes.
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const held = withPathLock(join(testDir, "sess-held.json"), () => gate);
+  let otherDone = false;
+  const queued = ss.mutateSessionState("sess-held", () => {}).then(() => (otherDone = true));
+  await ss.mutateSessionState(sid, (state) => ss.bumpShown(state, "while-held", 1_000));
+  assert.equal(otherDone, false, "the held session is still queued behind its lock");
+  release();
+  await held;
+  await queued;
+  assert.equal(otherDone, true);
 });
 
 /**
