@@ -477,6 +477,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Vault writes now refuse corrupt or unreadable root history and require a durable marker; child creation cannot recursively rebuild a root lost after the presence check.
 - Prompt, Stop and bridge readers now reject noncanonical `system-reminder` tags instead of treating harness text as an owner turn.
 - Injection scanning now folds Cyrillic Supplement look-alikes already in its mapping table, including `ԁ` in `ԁisregard`.
+- Vault: a root recorded as present that goes missing is also recognised when it is addressed with different letter case (`Vault` vs `vault`) on macOS and Windows, so a first save no longer recreates an empty directory; on a case-sensitive volume this may stop two distinct paths that differ only by case. Symlink aliases remain a documented limitation (#1009, #1046).
+- Vault: a never-seen vault root is created on first save only if its parent folder exists; a missing parent (e.g. an unmounted drive) stops with an error naming it. `bastra install --vault` and the wizard still create missing parent folders for the path you name (#892, #1050).
+- The vault-root "history unavailable" stop now names `~/.bastra/vault-roots.json`, the cause (empty/corrupt file or unwritable `~/.bastra`) and the repair (#1049, #1055).
+- `bastra import clients`: a note in the old `imported/claude-code-users-<name>/` folder that the import did not write no longer blocks the label move. It stays where it is and is named in the output, and the other notes move as before, so none is imported twice (#1048, #1051).
+- bash-pre: `for path in …` / `select path in …` now stop before a destructive `rm` like a scalar `path` assignment, and when the `path` variable is the only reason the STOP says so and that renaming it brings the reversible receipt back (#1047, #1052).
+- bash-pre: `source`/`.`, `path[n]=…` and `unset PATH`/`path` before an `rm` now stop like a PATH redefinition instead of showing the reversible receipt (#1047, #1054).
 
 - statusline: `collapseHome` no longer rewrites a sibling of the home directory (`/Users/n0mad-backup` stayed `~-backup`); only the home directory and paths below it are shortened (#937, same class as #853).
 - eval: rerank-latency stores `first_call_ms` as null and the report prints `n/a` when no call happened at an N, instead of `0 ms` (#941, follow-up to #919).
