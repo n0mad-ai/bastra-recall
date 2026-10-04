@@ -466,6 +466,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Client-label migration leaves foreign attachments and symlinks untouched and uses the vault-root guard for its file-by-file moves, so it cannot recreate a root that disappears during the move (#1072).
+- bash-pre keeps STOP in host archive mode when line continuations disguise PATH/source changes or quoted zsh function names redefine `rm`; ordinary quoted data keeps its receipt (#1073).
+- Temporary library and benchmark vaults no longer write disposable root entries into the default home marker. An explicitly chosen `BASTRA_VAULT_ROOTS_PATH` retains durable history for temporary roots (#1071).
+
 - On macOS and Windows, a missing vault root now matches recorded path spellings without case, so a case-only alias cannot bypass the vanished-root guard.
 - README and changelog now state the first-seen vault-mount limit and that the Desktop compiled hook stub still requires opt-in.
 
@@ -872,7 +876,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Five design-level splits, behaviour-neutral** (#1039). Code moved verbatim, public exports unchanged. `segments/renderer.ts` (1020 → 754, #1062, output pinned by a golden test), `telemetry.ts` (1093 → 605, #1063, event-log format pinned byte for byte), `powerline.ts` (1084 → 301, #1064, ANSI output pinned by a snapshot test), core `search.ts` (1748 → 795, #1065, result order of 20 fixed queries pinned by a hash test), daemon `index.ts` (1110 → 256, #1067, start-up side effects in the same order, proven by boot-trace diffs). The new neighbour modules are listed in the module map in `docs/architecture.md`.
 
-- ci: the #458 session-budget and #539 session-state tests wait on an explicit write sync point and assert properties instead of elapsed time, so they no longer flake under parallel load (#1056, #1061).
+- ci: the #458 session-budget and #539 session-state tests wait on an explicit write sync point and assert properties instead of elapsed time, removing their fixed-sleep and stopwatch failure modes under parallel load (#1056, #1061).
 
 - test(#1039): the powerline snapshot test formats the context token count with the process locale instead of the de_DE form, so it passes on en_US CI runners (#1069).
 

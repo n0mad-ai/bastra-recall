@@ -13,10 +13,10 @@
  * existing folder import (`importVault`, Claude Code adapter included), which
  * is idempotent (#530) and writes through the audit trail.
  */
-import { mkdir, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
+import { readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join, relative } from "node:path";
-import { slugify, snapshotLocator } from "@bastra-recall/core";
+import { ensureVaultDir, slugify, snapshotLocator } from "@bastra-recall/core";
 import { recordAudit } from "../audit-trail.js";
 import { KNOWN_ADAPTERS, safeParse } from "../import/adapters.js";
 import { escapeRe, uniqueId } from "../import/identity.js";
@@ -165,7 +165,7 @@ export interface LabelMigration {
   memories: number;
   /** Why the folder stayed where it is; absent when it moved. */
   skipped?: string;
-  /** #1048: notes in the old folder this import did not write, left there
+  /** #1048: files in the old folder this import did not write, left there
    *  (paths relative to the vault). */
   left?: string[];
 }
@@ -240,7 +240,8 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
   // new label — read from its `source` stamp, the way the import recognises
   // its own notes. Replacing the label inside the old id is not enough: ids
   // are cut at 80 characters, so a long one would come out different.
-  const files = (await readdir(oldDir, { recursive: true, withFileTypes: true }))
+  const entries = await readdir(oldDir, { recursive: true, withFileTypes: true });
+  const files = entries
     .filter((f) => f.isFile())
     .map((f) => join(f.parentPath, f.name))
     .sort();
@@ -255,8 +256,17 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
           .map((f) => basename(f.name, ".md"))
       : [],
   );
-  const foreign: string[] = [];
+  const markerPath = join(oldDir, ".bastra-imported");
+  // Only imported Markdown and the root marker belong to this migration.
+  // Attachments and symlinks are user data; never decode or rename them.
+  const foreign: string[] = entries
+    .filter((f) => !f.isDirectory() && !f.isFile())
+    .map((f) => join(f.parentPath, f.name));
   for (const path of files) {
+    if (!path.endsWith(".md") && path !== markerPath) {
+      foreign.push(path);
+      continue;
+    }
     raws.set(path, await readFile(path, "utf8"));
     if (!path.endsWith(".md")) continue;
     const src = String(safeParse(raws.get(path)!).data.source ?? "").split(":");
@@ -313,7 +323,6 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
   // With a foreign note in it the old folder stays, so every other file
   // moves on its own — the marker last, which marks the move as finished.
   const byFile = foreign.length > 0 || newExists;
-  const markerPath = join(oldDir, ".bastra-imported");
   const ids = snapshotLocator(vaultRoot);
   const plan: Array<{ path: string; target: string; dest: string; oldId?: string; newId?: string }> = [];
   for (const path of [...files.filter((f) => f !== markerPath && !foreign.includes(f)), markerPath]) {
@@ -329,7 +338,7 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
     plan.push({ path, target, dest, ...(newId !== oldId ? { oldId, newId } : {}) });
   }
   const memories = plan.filter((p) => p.newId).length;
-  const left = foreign.map((f) => relative(vaultRoot, f));
+  const left = foreign.map((f) => relative(vaultRoot, f)).sort();
   const done: LabelMigration = { from, to, memories, ...(left.length > 0 ? { left } : {}) };
   if (dryRun) return done;
 
@@ -344,7 +353,7 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
   if (!byFile) await rename(oldDir, newDir);
   else {
     for (const p of plan) {
-      await mkdir(dirname(p.dest), { recursive: true });
+      await ensureVaultDir(vaultRoot, dirname(p.dest));
       await rename(p.target, p.dest);
     }
   }

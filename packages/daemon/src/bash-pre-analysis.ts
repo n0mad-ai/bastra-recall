@@ -188,6 +188,27 @@ interface ShellWord {
 
 const WORD_BREAK = " \t\n|&;()<>";
 
+/** Shell line continuations disappear before tokenization, except inside
+ * single quotes, where the backslash and newline are literal data. */
+function joinShellLines(cmd: string): string {
+  if (!cmd.includes("\\\n") && !cmd.includes("\\\r\n")) return cmd;
+  let out = "";
+  let quote: string | null = null;
+  for (let i = 0; i < cmd.length; i++) {
+    const ch = cmd[i];
+    if (ch === "\\" && quote !== "'") {
+      if (cmd[i + 1] === "\n") { i++; continue; }
+      if (cmd[i + 1] === "\r" && cmd[i + 2] === "\n") { i += 2; continue; }
+      out += ch + (cmd[++i] ?? "");
+      continue;
+    }
+    if (ch === quote) quote = null;
+    else if (quote === null && (ch === "'" || ch === '"')) quote = ch;
+    out += ch;
+  }
+  return out;
+}
+
 /**
  * Split a command into simple commands of words, honouring shell quoting.
  *
@@ -329,7 +350,7 @@ function executableSegments(cmd: string): string[] {
  *  matched as written AND with them removed, so quoting cannot disguise a
  *  command the patterns would catch unquoted. */
 function matchSegments(cmd: string): string[] {
-  return executableSegments(cmd).flatMap((s) => [s, s.replace(/["'\\]/g, "")]);
+  return executableSegments(joinShellLines(cmd)).flatMap((s) => [s, s.replace(/["'\\]/g, "")]);
 }
 
 export function matchPattern(cmd: string): { label: string; severity: "destructive" | "risky" } | null {
@@ -419,6 +440,10 @@ function redefinesRm(cmd: string, depth = 0): boolean | "path" {
     if (texts.some((t) => /^PATH\+?=/.test(t))) return true;
     const k = commandWordAt(texts);
     const args = texts.slice(k + 1);
+    // Function names can contain quote/escape parts too: r""m() and
+    // function 'rm' still replace rm, while echo 'rm()' is only data.
+    if (texts[k] === "function" && /^(?:rm|git)$/.test(texts[k + 1] ?? "")) return true;
+    if (/^(?:rm|git)$/.test(texts[k] ?? "") && /^\s*\(\s*\)/.test(cmd.slice(words[k].end))) return true;
     // `git` too: bastra's git snapshots are the other shim in the same PATH entry.
     if (texts[k] === "alias" && args.some((t) => /^(?:rm|git)=/.test(t))) return true;
     if (texts[k] === "hash" && hashPathNames(args).some((t) => /^(?:rm|git)$/.test(t))) return true;
@@ -597,6 +622,7 @@ interface Hint {
  * - the rm receipt only when every rm runs through this shell's PATH.
  */
 export function hintFor(cmd: string, surface: string, setting = false): Hint | null {
+  cmd = joinShellLines(cmd);
   const h = hintCore(cmd, surface, setting);
   if (!h || h.severity !== "destructive") return h;
   // Switched off, a family's rows get their plain hint; say what the shim

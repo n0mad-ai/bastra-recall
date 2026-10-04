@@ -7,8 +7,9 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, readFile, rename, rm, utimes, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import fs, { existsSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { slugify } from "@bastra-recall/core";
@@ -365,6 +366,64 @@ test("#885 — ~/home leaves claude-code-home first, then the home directory mov
 });
 
 const FOREIGN = "# My own note\n\nWritten by hand into the import folder.\n";
+
+test("label migration leaves attachments and symlinks byte-for-byte in the old folder", async () => {
+  const { root, vault, d, oldDir, newDir } = await foreignFixture();
+  try {
+    const bytes = Buffer.concat([Buffer.from([0xff, 0xfe, 0]), Buffer.from(d.previousLabel!)]);
+    await writeFile(join(oldDir, "attachment.bin"), bytes);
+    const link = join(oldDir, "note-link.md");
+    await symlink(join(oldDir, "my-own-note.md"), link);
+
+    const [m] = await migrateClientLabels(vault, [d]);
+    assert.equal(m.skipped, undefined);
+    assert.deepEqual(m.left, ["attachment.bin", "my-own-note.md", "note-link.md"].map((name) => `${IMPORT_ROOT}/${d.previousLabel}/${name}`));
+    assert.deepEqual(await readFile(join(oldDir, "attachment.bin")), bytes);
+    assert.equal(await fs.promises.readlink(link), join(oldDir, "my-own-note.md"));
+    assert.equal(existsSync(join(newDir, "attachment.bin")), false);
+    assert.equal((await importVault(vault, d.dir, { label: d.label })).written.created, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("label migration preserves a user's new folder without an import marker", async () => {
+  const { root, vault, d, newDir } = await foreignFixture();
+  try {
+    await mkdir(newDir);
+    await writeFile(join(newDir, "user.md"), FOREIGN);
+    const [m] = await migrateClientLabels(vault, [d]);
+    assert.equal(m.skipped, undefined);
+    assert.equal(await readFile(join(newDir, "user.md"), "utf8"), FOREIGN);
+    assert.equal((await importVault(vault, d.dir, { label: d.label })).written.created, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a file-by-file label move cannot recreate a vault that disappears before mkdir", async () => {
+  const { root, vault, d, newDir } = await foreignFixture();
+  const original = fs.promises.mkdir;
+  let vanished = false;
+  try {
+    fs.promises.mkdir = (async (path: Parameters<typeof mkdir>[0], options?: Parameters<typeof mkdir>[1]) => {
+      if (!vanished && String(path) === newDir) {
+        vanished = true;
+        await rename(vault, join(root, "unmounted-vault"));
+      }
+      return original(path, options);
+    }) as typeof mkdir;
+    syncBuiltinESMExports();
+    await assert.rejects(migrateClientLabels(vault, [d]), (e: unknown) =>
+      e instanceof Error && (e as Error & { code?: string }).code === "VAULT_MISSING");
+    assert.equal(vanished, true, "the disappearing-mount boundary was exercised");
+    assert.equal(existsSync(vault), false, "no empty replacement vault appeared");
+  } finally {
+    fs.promises.mkdir = original;
+    syncBuiltinESMExports();
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 /** An earlier import under the old home label, plus a note the user dropped
  *  into that folder by hand (no frontmatter, so no source stamp). */

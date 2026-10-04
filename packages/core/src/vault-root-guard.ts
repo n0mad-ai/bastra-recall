@@ -28,7 +28,7 @@
  * again (by hand), or point bastra at the new path. A present root is all the
  * guard asks for; the old entry in the marker file is then simply true again.
  */
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { mkdir, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -148,6 +148,25 @@ function seenThisRun(key: string): boolean {
   return false;
 }
 
+/** Temporary library/benchmark vaults have process-local history, never an
+ * implicit write to the user's home. An explicit marker keeps durable history
+ * even there (as does the isolated test runner). Compare physical paths so a
+ * symlink under /tmp onto a persistent vault still gets recorded. */
+function persistsRoot(root: string): boolean {
+  if (process.env.BASTRA_VAULT_ROOTS_PATH || process.env.NODE_TEST_CONTEXT) return true;
+  const physical = (path: string): string => {
+    try { return realpathSync(path); } catch { return resolve(path); }
+  };
+  const key = physical(root);
+  const tempRoots = [tmpdir(), ...(process.platform === "win32" ? [] : ["/tmp"])];
+  return !tempRoots.some((dir) => {
+    const temp = physical(dir);
+    if (dirname(temp) === temp) return false; // TMPDIR=/ must not disable all history
+    const child = relative(temp, key);
+    return child === "" || (child !== ".." && !child.startsWith(`..${sep}`) && !isAbsolute(child));
+  });
+}
+
 /**
  * When this vault root was first seen present, from this process or the
  * marker file; null for a root never seen. A path, not an id: the question is
@@ -169,6 +188,7 @@ export function noteVaultRootPresent(vaultRoot: string): void {
   const key = resolve(vaultRoot);
   seen.add(key);
   if (persisted.has(key)) return;
+  if (!persistsRoot(key)) return;
   try {
     const roots = readRoots();
     if (!roots) return; // never overwrite a corrupt history with one entry
@@ -251,5 +271,5 @@ export async function ensureVaultDir(vaultRoot: string, dir: string, opts: { cre
     throw new VaultRootMissingError(vaultRoot, vaultRootFirstSeen(vaultRoot));
   }
   noteVaultRootPresent(root);
-  if (!readRoots()?.has(root)) throw new VaultRootHistoryError(vaultRootsPath(), "unwritable");
+  if (persistsRoot(root) && !readRoots()?.has(root)) throw new VaultRootHistoryError(vaultRootsPath(), "unwritable");
 }

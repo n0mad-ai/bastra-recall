@@ -199,6 +199,7 @@ The archiving `rm` depends on knowing when a command changes what `rm` resolves 
 - The verb is read at command position, past assignments, the reserved words that open a compound (`{ ! if then else elif do while until`, `time [-p]`, #694) and the `builtin` / `command` prefixes, so `{ hash -p /x rm; }`, `builtin hash …` and `command hash …` count, while `echo hash -p /bin/rm rm` or `sudo hash …` (a child shell) do not.
 - An `eval` body is shell, so it is read again (up to two levels); a body the scanner cannot read counts as a change. This also closes `eval 'export PATH=/x:$PATH'; rm -rf x`.
 - An `rm()` definition is found without a quote boundary, so `grep -rn "rm()" src; rm -rf dist` keeps its receipt, while a quoted `eval` definition is still a STOP through the eval re-read.
+- Shell line continuations are joined before analysis, except inside single-quoted data. Quoted function names accepted by zsh, such as `r""m()` or `function r""m`, also keep STOP before a later destructive `rm` (#1073).
 
 ### Turning it on and off
 
@@ -419,6 +420,7 @@ Das archivierende `rm` muss wissen, wann ein Befehl ändert, was `rm` ist. #689 
 - Das Verb wird an Befehlsposition gelesen, hinter Zuweisungen, den reservierten Wörtern, die einen zusammengesetzten Befehl öffnen (`{ ! if then else elif do while until`, `time [-p]`, #694), und den Präfixen `builtin` / `command`: `{ hash -p /x rm; }`, `builtin hash …` und `command hash …` zählen, `echo hash -p /bin/rm rm` oder `sudo hash …` (eine Kind-Shell) nicht.
 - Ein `eval`-Rumpf ist Shell und wird erneut gelesen (bis zu zwei Ebenen); ein Rumpf, den der Scanner nicht lesen kann, gilt als Änderung. Das schließt auch `eval 'export PATH=/x:$PATH'; rm -rf x`.
 - Eine `rm()`-Definition wird ohne Anführungszeichen-Grenze erkannt: `grep -rn "rm()" src; rm -rf dist` behält seine Quittung, eine in Anführungszeichen stehende `eval`-Definition bleibt über das erneute Lesen ein STOP.
+- Zeilenfortsetzungen der Shell werden vor der Analyse verbunden, außer in einfach zitierten Daten. Auch zitierte Funktionsnamen, die zsh akzeptiert, etwa `r""m()` oder `function r""m`, behalten vor einem späteren verlustreichen `rm` das STOP (#1073).
 
 ### Ein- und ausschalten
 

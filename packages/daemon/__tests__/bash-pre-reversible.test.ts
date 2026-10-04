@@ -660,6 +660,10 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       // `source` / `.` may set PATH or define `rm`; a `path[n]` element write
       // and `unset PATH`/`path` change PATH too (#1047).
       "source ./env.sh; rm -rf dist",
+      "sour\\\nce ./env.sh; rm -rf dist",
+      "unset PA\\\nTH; rm -rf dist",
+      'r""m() { /bin/rm "$@"; }; rm -rf dist',
+      'function r""m { /bin/rm "$@"; }; rm -rf dist',
       ". ./env.sh; rm -rf dist",
       "cd pkg && source env.sh && rm -rf dist",
       "{ . ./env.sh; }; rm -rf dist",
@@ -711,6 +715,8 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "hash python=/usr/bin/python3; rm -rf dist",
       // An argument containing `path=` is data, not an assignment.
       "echo path=/tmp/x; rm -rf dist",
+      "echo 'sour\\\nce setup'; rm -rf dist",
+      'echo "r\\\nm()"; rm -rf dist',
       // Only the loop variable counts: another name, `path` read as `$path`,
       // or `for path in` as data keep the receipt (#1047).
       'echo "path=$x"; rm -rf dist',
