@@ -74,6 +74,8 @@
     "conclusion": {
       "verdict": "not_evaluable_on_current_population",
       "$comment": "Der strukturelle Grund steht über der Rechnung: §17.4 setzt implizit eine Population voraus, dieser Vault hat einen Nutzer. Bei ~40 Sessions je Arm in zwei Wochen — davon 8 mit überhaupt einem Ergebnis — trägt keine Rate mit Basiswert um 1% eine Aussage.",
+      "underpowered_arm_verdict": "not_evaluable",
+      "$comment_underpowered_arm_verdict": "Added 2026-10-04 (#972) as the field the validator reads; it restates what reporting_rule below has said since registration and changes no rule. No arm had started.",
       "reporting_rule": "§18.1: Ein Arm unterhalb seines Mindest-N wird als NICHT AUSWERTBAR berichtet, niemals als Nullbefund. Kein „kein Unterschied gefunden\", kein „der Wortlaut wirkt nicht\" — beides wären Aussagen, die die Fallzahl nicht hergibt.",
       "revisit_when": "Eine Mehrnutzer-Basis existiert, oder die Versuchseinheit wird bewusst geändert (z.B. je Turn statt je Session). Letzteres wäre eine Änderung an §17.4 und keine Konfiguration."
     }

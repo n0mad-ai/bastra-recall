@@ -6496,7 +6496,11 @@ Urteil wird umgedeutet, geändert wird der Umfang des Releasevertrags.*
   session-stabil erfolgt und die Auswertung einen Arm unterhalb seines
   Mindest-N als nicht auswertbar ausweist — mit ausgewiesener Begründung und
   ohne Nullbefund. Kein Bericht darf aus einem unterbesetzten Arm ein „kein
-  Unterschied gefunden“ machen. Für V2.0 gilt der Punkt aus 26.2.
+  Unterschied gefunden“ machen. Die Registrierung hält dieses Verdikt im Feld
+  `underpowered_fallback.conclusion.underpowered_arm_verdict` fest
+  (`not_evaluable`; `null_result` wird abgewiesen); der Validator liest das
+  Feld, nicht die Prosa, und meldet eine `reporting_rule`, die ein anderes
+  Verdikt nennt (#972). Für V2.0 gilt der Punkt aus 26.2.
 - **Rollback:** Die Änderung ist rein vertraglich und ohne Codewirkung; sie
   lässt sich durch Rückgängigmachen dieser Passagen aufheben. Fällt der Grund
   weg — eine Mehrnutzer-Population entsteht, oder die Versuchseinheit wird
