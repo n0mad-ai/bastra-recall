@@ -2182,6 +2182,16 @@ Code und ist durch C-088 berichtigt.*
 > Ersetzte Lesart: ~~der Identifier-Heuhaufen umfasst Titel, `recall_when` und
 > den Memory-Body~~.
 
+*Identifier-Grenze (#868, Ist-Stand seit v1.0.1).* Der Term muss in diesem Text
+an einer Identifier-Grenze beginnen: Direkt davor steht kein Buchstabe, keine
+Ziffer und kein `_`, mit einer Ausnahme, einem einzelnen `v` vor einem Term, der
+mit einer Ziffer beginnt (`1.0` trifft `v1.0`). `-`, `.` und `/` davor bleiben
+erlaubt. Die rechte Seite bleibt offen, denn die Kurzform eines echten
+Identifiers ist ein echter Anker: `1.0` ankert auf `1.0.1`, `09.09` auf
+`09.09.2026`, `import-vault` auf `import-vault.ts`, aber `1.0` nicht mehr auf
+`11.0.3` und `e-com` nicht mehr auf `pre-commit`. Auf dem Gold-Set gemessen geht
+kein Anker verloren.
+
 Die Begründung ist die Trennung, die 10.2 ohnehin zieht: Titel, Trigger und
 Frontmatter sind autorisierter Text, den jemand als Abrufsignal geschrieben
 hat. Prosa im Body ist Inhalt. Ein Treffer dort belegt, dass das Memory das
