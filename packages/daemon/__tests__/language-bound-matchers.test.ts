@@ -109,7 +109,7 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
   "packages/core/src/recall-banter.ts :: keyed DEFAULT_TOOL_PHRASES": "#679 output phrases the product writes, never matched against user text",
   "packages/daemon/src/bash-fail-lane.ts :: words /exit(?:ed)?(?:\\s+with)?(?:\\s+(?:non-zero\\s+)?status)?(?:\\s+code)?|status\\s+code|exit_code/": "#679 reads tool output (exit status), not user text",
   "packages/daemon/src/boot-observers.ts :: words /CloudStorage|Dropbox|iCloud/": "#679 sync-folder path names",
-  "packages/daemon/src/documents-write-handler.ts :: words /CloudStorage|Dropbox|iCloud/": "#679 sync-folder path names",
+  "packages/daemon/src/documents-write-shared.ts :: words /CloudStorage|Dropbox|iCloud/": "#679 sync-folder path names",
   "packages/core/src/vault.ts :: words /CloudStorage|Dropbox|iCloud/": "#679 sync-folder path names",
   "packages/daemon/src/pending-suggestions.ts :: words /eval|test|synthetic/": "#679 fixture/session-id markers",
   "packages/core/src/topics.ts :: words /jwt|bearer|oauth/": "#679 technical topic vocabulary",
