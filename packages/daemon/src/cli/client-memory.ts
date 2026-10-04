@@ -13,10 +13,13 @@
  * existing folder import (`importVault`, Claude Code adapter included), which
  * is idempotent (#530) and writes through the audit trail.
  */
-import { readdir, stat } from "node:fs/promises";
+import { readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
-import { slugify } from "@bastra-recall/core";
+import { basename, dirname, extname, join } from "node:path";
+import { slugify, snapshotLocator } from "@bastra-recall/core";
+import { recordAudit } from "../audit-trail.js";
+import { KNOWN_ADAPTERS, safeParse } from "../import/adapters.js";
+import { escapeRe, uniqueId } from "../import/identity.js";
 import { IMPORT_ROOT, listSourceMarkdown } from "../import-vault.js";
 
 export interface ClientMemoryDir {
@@ -24,6 +27,8 @@ export interface ClientMemoryDir {
   dir: string;
   /** The label `bastra import clients` imports it under. */
   label: string;
+  /** The label an import before #885 used, where it differs. */
+  previousLabel?: string;
   /** Markdown notes in the folder (the `MEMORY.md` index not counted). */
   notes: number;
   /** Notes changed since this folder was last imported (all, if never). */
@@ -61,13 +66,12 @@ async function mtime(path: string): Promise<number | null> {
 }
 
 /** Claude Code names a project folder after its path with every non-alphanumeric
- *  character turned into `-`; the home prefix carries no information. */
-function claudeProjectLabel(project: string, home: string): string {
-  const homeSlug = home.replace(/[^a-zA-Z0-9]/g, "-");
-  // A project opened in the home directory itself IS the home slug, with no
-  // dash after it — without this it kept the OS user name in label and ids.
-  if (project === homeSlug) return "claude-code-home";
-  const rest = project.startsWith(`${homeSlug}-`) ? project.slice(homeSlug.length + 1) : project;
+ *  character turned into `-`; the home prefix carries no information. This is
+ *  the label every project got up to #885 — kept, because the migration below
+ *  needs to know where an earlier import put a folder. */
+function legacyClaudeProjectLabel(project: string, home: string): string {
+  const homeSlug = home.replace(/[^a-zA-Z0-9]/g, "-") + "-";
+  const rest = project.startsWith(homeSlug) ? project.slice(homeSlug.length) : project;
   try {
     return slugify(`claude-code-${rest}`) || "claude-code";
   } catch {
@@ -75,25 +79,40 @@ function claudeProjectLabel(project: string, home: string): string {
   }
 }
 
+const HOME_LABEL = "claude-code-home";
+
+function claudeProjectLabel(project: string, home: string): string {
+  // A project opened in the home directory itself IS the home slug, with no
+  // dash after it — without this it kept the OS user name in label and ids.
+  if (project === home.replace(/[^a-zA-Z0-9]/g, "-")) return HOME_LABEL;
+  // #885: `~/home` (or `~/Home`, or `/home` itself) slugs to the same label as
+  // the home directory; it gets its own so the two never share a folder.
+  const label = legacyClaudeProjectLabel(project, home);
+  return label === HOME_LABEL ? `${HOME_LABEL}-home` : label;
+}
+
 async function describe(
   client: ClientMemoryDir["client"],
   dir: string,
   label: string,
   vaultRoot: string | null,
+  previousLabel?: string,
 ): Promise<ClientMemoryDir | null> {
   // The very walk `bastra import clients` runs, so what doctor counts is what
   // the import writes (subfolders included, MEMORY.md and dotdirs not).
   const files = await listSourceMarkdown(dir);
   if (files.length === 0) return null;
   // The import writes a marker into its folder on every run that changed
-  // something; a note newer than it has not been imported yet.
+  // something; a note newer than it has not been imported yet. (An import
+  // still under its pre-#885 label counts as pending: `import clients` is
+  // what moves it.)
   const importedAt = vaultRoot ? await mtime(join(vaultRoot, IMPORT_ROOT, label, ".bastra-imported")) : null;
   let pending = 0;
   for (const f of files) {
     const m = await mtime(f);
     if (m !== null && (importedAt === null || m > importedAt)) pending += 1;
   }
-  return { client, dir, label, notes: files.length, pending };
+  return { client, dir, label, ...(previousLabel ? { previousLabel } : {}), notes: files.length, pending };
 }
 
 /** Every client memory folder that holds at least one note. Never throws. */
@@ -105,11 +124,14 @@ export async function findClientMemoryDirs(
   const claudeRoot = env.claudeConfigDir ?? join(env.home, ".claude");
   const projectsDir = join(claudeRoot, "projects");
   for (const project of (await listDir(projectsDir)).sort()) {
+    const label = claudeProjectLabel(project, env.home);
+    const previous = legacyClaudeProjectLabel(project, env.home);
     const d = await describe(
       "claude-code",
       join(projectsDir, project, "memory"),
-      claudeProjectLabel(project, env.home),
+      label,
       vaultRoot,
+      previous === label ? undefined : previous,
     );
     if (d) out.push(d);
   }
@@ -134,4 +156,152 @@ export function clientMemoryLines(dirs: ClientMemoryDir[]): string[] {
     );
   }
   return lines;
+}
+
+export interface LabelMigration {
+  from: string;
+  to: string;
+  /** Memories whose id moved with the label. */
+  memories: number;
+  /** Why the folder stayed where it is; absent when it moved. */
+  skipped?: string;
+}
+
+/**
+ * #885: the project opened in the home directory used to be imported under a
+ * label built from the home path (`claude-code-users-<name>` on macOS,
+ * `claude-code-home-<name>` on Linux), and `~/home` under `claude-code-home`.
+ * Re-importing under the new labels would write every note a second time
+ * beside the old copy, so the old folder moves to the new label first: every
+ * file inside it gets the label rewritten — ids and file names, the `source`
+ * stamps the import recognises its own notes by, scope, tags, links — and the
+ * folder is renamed. Nothing is deleted or overwritten.
+ *
+ * A folder only moves when the new one does not exist yet and its import
+ * marker names this very source folder, so a second run, a vault that never
+ * had the old folder, and a folder another import made under that name are
+ * all left alone. `dryRun` reports without moving.
+ */
+export async function migrateClientLabels(
+  vaultRoot: string,
+  dirs: ClientMemoryDir[],
+  { dryRun = false }: { dryRun?: boolean } = {},
+): Promise<LabelMigration[]> {
+  const moved: LabelMigration[] = [];
+  let skipped: LabelMigration[] = [];
+  let todo = dirs.filter((d) => d.previousLabel);
+  // `~/home` has to leave `claude-code-home` before the home directory can
+  // move in, so repeat while a pass still moved something.
+  for (let again = true; again; ) {
+    again = false;
+    skipped = [];
+    const left: ClientMemoryDir[] = [];
+    for (const d of todo) {
+      const m = await migrateOne(vaultRoot, d, dryRun);
+      if (m && !m.skipped) {
+        moved.push(m);
+        again = !dryRun;
+      } else {
+        left.push(d);
+        if (m) skipped.push(m);
+      }
+    }
+    todo = left;
+  }
+  return [...moved, ...skipped];
+}
+
+async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean): Promise<LabelMigration | null> {
+  const from = d.previousLabel!;
+  const to = d.label;
+  const oldDir = join(vaultRoot, IMPORT_ROOT, from);
+  const newDir = join(vaultRoot, IMPORT_ROOT, to);
+  let marker: { source?: unknown };
+  try {
+    marker = JSON.parse(await readFile(join(oldDir, ".bastra-imported"), "utf8"));
+  } catch {
+    return null; // never imported under the old label
+  }
+  if (marker.source !== (await realpath(d.dir).catch(() => d.dir))) return null; // another import's folder
+  const skip = (why: string): LabelMigration => ({ from, to, memories: 0, skipped: why });
+  if ((await mtime(newDir)) !== null) return skip(`${IMPORT_ROOT}/${to}/ exists already`);
+
+  // Each memory gets the id the import mints for its source file under the
+  // new label — read from its `source` stamp, the way the import recognises
+  // its own notes. Replacing the label inside the old id is not enough: ids
+  // are cut at 80 characters, so a long one would come out different.
+  const files = (await readdir(oldDir, { recursive: true, withFileTypes: true }))
+    .filter((f) => f.isFile())
+    .map((f) => join(f.parentPath, f.name))
+    .sort();
+  const raws = new Map<string, string>();
+  const newIdOf = new Map<string, string>();
+  const used = new Set<string>();
+  for (const path of files) {
+    raws.set(path, await readFile(path, "utf8"));
+    if (!path.endsWith(".md")) continue;
+    const src = String(safeParse(raws.get(path)!).data.source ?? "").split(":");
+    const relKey = src.slice(2).join(":");
+    let base: string | undefined;
+    if (src[0] === "index" && src[1] === from) base = slugify(`${to}-index`);
+    else if (KNOWN_ADAPTERS.has(src[0]) && src[1] === from && relKey) {
+      const segments = relKey.split("/");
+      const file = segments.pop()!;
+      base = slugify([to, ...segments, file.slice(0, file.length - extname(file).length)].join("-"));
+    }
+    if (base) newIdOf.set(basename(path, ".md"), uniqueId(base, used));
+  }
+  // Only a label near the 80-character cap leaves an id that IS the label;
+  // then the text no longer tells the two apart.
+  if (newIdOf.has(from)) return skip(`an id there is the label itself`);
+  // One pass over every file: an old id becomes its new id, the bare label
+  // (scope, tags, `source` stamps, a link outside the set) the new label. One
+  // pass, because the new label may begin with the old one (`~/home`).
+  const oldIds = [...newIdOf.keys()].sort((a, b) => b.length - a.length).map(escapeRe);
+  const token = new RegExp(
+    `(?<![\\p{L}\\p{N}-])(?:(${oldIds.join("|") || "(?!)"})(?![\\p{L}\\p{N}-])|${escapeRe(from)}(?![\\p{L}\\p{N}]))`,
+    "gu",
+  );
+  const rewrite = (s: string) => s.replace(token, (_, id?: string) => (id ? newIdOf.get(id)! : to));
+
+  const ids = snapshotLocator(vaultRoot);
+  const plan: Array<{ path: string; target: string; oldId?: string; newId?: string }> = [];
+  for (const path of files) {
+    const target = join(dirname(path), rewrite(basename(path)));
+    if (target !== path && (await mtime(target)) !== null) return skip(`${target} exists already`);
+    const oldId = basename(path, ".md");
+    const newId = path.endsWith(".md") ? basename(target, ".md") : oldId;
+    const kind = ids.locate(newId).kind;
+    if (newId !== oldId && (kind === "unique" || kind === "ambiguous")) {
+      return skip(`the id ${newId} is taken elsewhere in the vault`);
+    }
+    plan.push({ path, target, ...(newId !== oldId ? { oldId, newId } : {}) });
+  }
+  const memories = plan.filter((p) => p.newId).length;
+  if (dryRun) return { from, to, memories };
+
+  // Files first, the folder last: a run that stops halfway leaves the old
+  // folder in place, and the next run finishes it.
+  for (const p of plan) {
+    const raw = raws.get(p.path)!;
+    const next = rewrite(raw);
+    if (next !== raw) await writeFile(p.path, next, "utf8");
+    if (p.target !== p.path) await rename(p.path, p.target);
+  }
+  await rename(oldDir, newDir);
+  for (const p of plan) {
+    if (!p.newId) continue;
+    await recordAudit({
+      vaultRoot,
+      memoryId: p.newId,
+      operation: "update",
+      actor: "import",
+      actorDetail: "cli:import clients",
+      diffBefore: { id: p.oldId },
+      diffAfter: { id: p.newId },
+      filePath: join(newDir, p.target.slice(oldDir.length + 1)),
+      reason: `#885: the import label ${from} became ${to}`,
+    });
+  }
+  return { from, to, memories };
 }

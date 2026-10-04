@@ -7,11 +7,11 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { clientMemoryLines, findClientMemoryDirs } from "../src/cli/client-memory.js";
+import { clientMemoryLines, findClientMemoryDirs, migrateClientLabels, type ClientMemoryEnv } from "../src/cli/client-memory.js";
 import { importVault, IMPORT_ROOT } from "../src/import-vault.js";
 
 const CC_NOTE = `---
@@ -139,6 +139,158 @@ test("a project opened in the home directory itself is labelled without the OS u
     const labels = (await findClientMemoryDirs(null, { home })).map((d) => d.label);
     assert.deepEqual(labels, ["claude-code-home", "claude-code-projects-shop"]);
     assert.ok(labels.every((l) => !l.includes("alice")), labels.join(", "));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+// #885 follow-up: `~/home` slugged to the same `claude-code-home` as the home
+// directory itself, so both would have been imported into one folder.
+test("#885 — a project in ~/home gets a label of its own", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bastra-client-memory-"));
+  try {
+    const home = join(root, "Users", "alice");
+    const slug = home.replace(/[^a-zA-Z0-9]/g, "-");
+    for (const project of [slug, `${slug}-home`]) {
+      const mem = join(home, ".claude", "projects", project, "memory");
+      await mkdir(mem, { recursive: true });
+      await writeFile(join(mem, "feedback_no_silent_removals.md"), CC_NOTE);
+    }
+    const labels = (await findClientMemoryDirs(null, { home })).map((d) => d.label);
+    assert.deepEqual(labels, ["claude-code-home", "claude-code-home-home"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+const LINKED_NOTE = `---
+name: Release rule
+description: Releases are cut from main
+type: feedback
+---
+Releases come from main only. See [[feedback_no_silent_removals]].
+`;
+
+/** A real home path, so the old label is `claude-code-users-alice` (a temp
+ *  path would run into the 80-character id cap); the folders sit in the temp
+ *  dir through CLAUDE_CONFIG_DIR / CODEX_HOME. */
+async function homeFixture(): Promise<{ root: string; env: ClientMemoryEnv; vault: string; mem: (p: string) => string }> {
+  const root = await mkdtemp(join(tmpdir(), "bastra-client-memory-"));
+  const env = { home: "/Users/alice", claudeConfigDir: join(root, "claude"), codexHome: join(root, "codex") };
+  const vault = join(root, "vault");
+  await mkdir(join(vault, "memories"), { recursive: true });
+  const mem = (project: string) =>
+    join(env.claudeConfigDir, "projects", project === "" ? "-Users-alice" : `-Users-alice-${project}`, "memory");
+  return { root, env, vault, mem };
+}
+
+// Long enough that `claude-code-users-alice-…` and `claude-code-home-…` are cut
+// at different places: the new id is not the old one with the label swapped.
+const LONG = "feedback_never_remove_an_existing_feature_when_adding_a_new_one_anywhere";
+
+async function seed(dir: string): Promise<void> {
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, "feedback_no_silent_removals.md"), CC_NOTE);
+  await writeFile(join(dir, "feedback_release.md"), LINKED_NOTE);
+  await writeFile(join(dir, `${LONG}.md`), CC_NOTE);
+}
+
+async function notesText(dir: string): Promise<string> {
+  // The notes only: the marker names the source folder, which is a path.
+  const files = (await readdir(dir, { recursive: true, withFileTypes: true })).filter((f) => f.name.endsWith(".md"));
+  return (await Promise.all(files.map((f) => readFile(join(f.parentPath, f.name), "utf8")))).join("\n");
+}
+
+// Revert-check: drop the migrateClientLabels() call → the re-import creates
+// every note a second time (`created` 3, not 0) and the old folder stays.
+// Swap the old label inside the id instead of minting it from the source
+// stamp → red: the long note keeps a cut-off id the import never mints.
+test("#885 — an import under the old home label moves to claude-code-home, ids included; a second run is a no-op", async () => {
+  const { root, env, vault, mem } = await homeFixture();
+  try {
+    await seed(mem(""));
+    const [d] = await findClientMemoryDirs(vault, env);
+    assert.deepEqual([d.label, d.previousLabel], ["claude-code-home", "claude-code-users-alice"]);
+    await importVault(vault, d.dir, { label: d.previousLabel }); // what an earlier `import clients` wrote
+
+    const moved = await migrateClientLabels(vault, [d]);
+    assert.deepEqual(moved, [{ from: "claude-code-users-alice", to: "claude-code-home", memories: 3 }]);
+    assert.equal(existsSync(join(vault, IMPORT_ROOT, "claude-code-users-alice")), false, "the old folder is gone");
+    const files = (await readdir(join(vault, IMPORT_ROOT, "claude-code-home"))).sort();
+    assert.deepEqual(files.slice(0, 3), [
+      ".bastra-imported",
+      "claude-code-home-feedback-never-remove-an-existing-feature-when-adding-a-new-one.md",
+      "claude-code-home-feedback-no-silent-removals.md",
+    ]);
+    const text = await notesText(join(vault, IMPORT_ROOT));
+    assert.ok(!text.includes("alice"), "no id, link, scope or source stamp keeps the user name");
+    assert.match(text, /\[\[claude-code-home-feedback-no-silent-removals\]\]/, "links follow the new ids");
+
+    // The import recognises every note as its own: nothing is written twice.
+    const r = await importVault(vault, d.dir, { label: d.label });
+    assert.deepEqual([r.written.created, r.skipped.length], [0, 0]);
+    assert.deepEqual(await migrateClientLabels(vault, await findClientMemoryDirs(vault, env)), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("#885 — a vault without the old folder, or with one another import made, is left alone", async () => {
+  const { root, env, vault, mem } = await homeFixture();
+  try {
+    await seed(mem(""));
+    await seed(join(root, "elsewhere"));
+    const [d] = await findClientMemoryDirs(vault, env);
+    assert.deepEqual(await migrateClientLabels(vault, [d]), []);
+    assert.equal(existsSync(join(vault, IMPORT_ROOT)), false);
+
+    // Same folder name, but its marker names another source folder.
+    await importVault(vault, join(root, "elsewhere"), { label: d.previousLabel });
+    assert.deepEqual(await migrateClientLabels(vault, [d]), []);
+    assert.ok(existsSync(join(vault, IMPORT_ROOT, d.previousLabel!, ".bastra-imported")));
+    assert.equal(existsSync(join(vault, IMPORT_ROOT, "claude-code-home")), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("#885 — ~/home leaves claude-code-home first, then the home directory moves in; a dry run moves nothing", async () => {
+  const { root, env, vault, mem } = await homeFixture();
+  try {
+    await seed(mem(""));
+    await seed(mem("home"));
+    const dirs = await findClientMemoryDirs(vault, env);
+    assert.deepEqual(
+      dirs.map((d) => [d.label, d.previousLabel === "claude-code-home"]),
+      [
+        ["claude-code-home", false],
+        ["claude-code-home-home", true],
+      ],
+    );
+    for (const d of dirs) await importVault(vault, d.dir, { label: d.previousLabel });
+
+    const dry = await migrateClientLabels(vault, dirs, { dryRun: true });
+    assert.deepEqual(
+      dry.map((m) => [m.to, m.skipped === undefined]),
+      [
+        ["claude-code-home-home", true],
+        ["claude-code-home", false], // its target is taken until ~/home has moved
+      ],
+    );
+    assert.ok(existsSync(join(vault, IMPORT_ROOT, dirs[0].previousLabel!)), "a dry run moves nothing");
+
+    const moved = await migrateClientLabels(vault, dirs);
+    assert.deepEqual(
+      moved.map((m) => [m.to, m.memories, m.skipped]),
+      [
+        ["claude-code-home-home", 3, undefined],
+        ["claude-code-home", 3, undefined],
+      ],
+    );
+    for (const d of await findClientMemoryDirs(vault, env)) {
+      const r = await importVault(vault, d.dir, { label: d.label });
+      assert.equal(r.written.created, 0, `${d.label}: nothing imported twice`);
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }

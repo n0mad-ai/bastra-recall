@@ -27,8 +27,8 @@ import {
 } from "../import-review.js";
 import { findRulesFiles, extractRulesCandidates } from "../import-rules.js";
 import { parseConversationExport, buildQueue, readNextChunk, clearQueue, queueStatus } from "../import-mining.js";
-import { importVault } from "../import-vault.js";
-import { findClientMemoryDirs } from "./client-memory.js";
+import { importVault, IMPORT_ROOT } from "../import-vault.js";
+import { findClientMemoryDirs, migrateClientLabels } from "./client-memory.js";
 import { resolveVault } from "./helpers.js";
 import type { ParsedArgs } from "./types.js";
 
@@ -320,6 +320,22 @@ async function cmdImportClients(args: ParsedArgs): Promise<number> {
     return 0;
   }
   let failed = 0;
+  // #885: an import under a label that carried the OS user name moves first,
+  // so the re-import below finds its notes instead of writing them twice.
+  // Stopped halfway, nothing is imported: the next run finishes the move.
+  try {
+    for (const m of await migrateClientLabels(vault.path, dirs, { dryRun: args.dryRun })) {
+      const where = `${IMPORT_ROOT}/${m.from}/ → ${IMPORT_ROOT}/${m.to}/`;
+      process.stdout.write(
+        m.skipped
+          ? `! ${where} not moved: ${m.skipped} — the import below writes beside it\n`
+          : `✓ ${where} — ${m.memories} memory id(s) ${args.dryRun ? "would be renamed" : "renamed"}\n`,
+      );
+    }
+  } catch (err) {
+    process.stdout.write(`✗ moving an earlier import to its new label failed: ${(err as Error).message}\n`);
+    return 1;
+  }
   for (const d of dirs) {
     try {
       const r = await importVault(vault.path, d.dir, { label: d.label, dryRun: args.dryRun });
