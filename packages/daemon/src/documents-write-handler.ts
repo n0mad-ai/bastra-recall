@@ -17,7 +17,6 @@
 import {
   writeFile,
   readFile,
-  mkdir,
   copyFile,
   unlink,
   stat,
@@ -54,6 +53,7 @@ import {
 import { qualifyDocumentTriggers } from "./document-triggers.js";
 import { recordAudit } from "./audit-trail.js";
 import { legacyDocId, makeDocId } from "./document-id.js";
+import { ensureVaultDir } from "@bastra-recall/core";
 
 // ─── Argument schemas ───────────────────────────────────────────
 
@@ -730,7 +730,8 @@ export async function saveDocument(
   const root = vaultRoot(vault);
   const docsRoot = join(root, DOCUMENTS_ROOT);
   const folder = resolveDocsFolder(root, docsRoot, args.folder_path);
-  await mkdir(folder, { recursive: true });
+  // #892: a save may make a new vault, never recreate one that is not mounted.
+  await ensureVaultDir(root, folder, { createRoot: true });
 
   const filename = basename(args.original_path);
   const sidecarPath = join(folder, `${filename}.md`);
@@ -1574,7 +1575,7 @@ async function moveDocumentFiles(
   const root = vaultRoot(vault);
   const docsRoot = join(root, DOCUMENTS_ROOT);
   const targetFolder = resolveDocsFolder(root, docsRoot, args.newFolderPath);
-  await mkdir(targetFolder, { recursive: true });
+  await ensureVaultDir(root, targetFolder);
 
   const sidecarFilename = basename(args.sidecarPath);
   const originalFilename = basename(args.originalPath);

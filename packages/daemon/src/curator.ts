@@ -13,10 +13,11 @@
  * (#141/#142) and young memories are never touched. A real load/acted_on
  * after the demotion clears it on the next pass (reactivation).
  */
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readFile, rename, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import type { UsageAggregate } from "./usage-sidecar.js";
+import { ensureVaultDir } from "@bastra-recall/core";
 
 // ─── state store ─────────────────────────────────────────────────────────────
 
@@ -64,7 +65,7 @@ export async function loadCuratorState(vaultRoot: string): Promise<CuratorState>
 
 export async function saveCuratorState(vaultRoot: string, state: CuratorState): Promise<void> {
   const dir = join(vaultRoot, CURATOR_DIR);
-  await mkdir(dir, { recursive: true });
+  await ensureVaultDir(vaultRoot, dir);
   // Zufallsanteil, nicht nur die PID (#532-Scan): ein Curator-Pass kann vom
   // 15-Minuten-Job und von POST /curator/run gleichzeitig laufen, und zwei
   // Pässe DESSELBEN Prozesses teilten sich sonst diese tmp-Datei.

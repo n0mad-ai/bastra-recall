@@ -12,10 +12,11 @@
  * (NotAMemoryFile) — the journal is meta, not memory, and never enters the
  * recall index.
  */
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readFile, rename, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { AuditLog, type AuditEntry } from "@bastra-recall/core";
+import { ensureVaultDir } from "@bastra-recall/core";
 
 export const JOURNAL_DIR = "journal";
 
@@ -72,7 +73,7 @@ export async function writeVaultJournal(vaultRoot: string): Promise<string[]> {
       else byMonth.set(month, [e]);
     }
     const dir = join(vaultRoot, JOURNAL_DIR);
-    await mkdir(dir, { recursive: true });
+    await ensureVaultDir(vaultRoot, dir);
     const written: string[] = [];
     for (const [month, entries] of byMonth) {
       const target = join(dir, `${month}.md`);

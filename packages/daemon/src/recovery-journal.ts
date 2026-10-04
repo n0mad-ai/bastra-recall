@@ -28,10 +28,11 @@
  * es wertlos. Die Start-Meldung trennt beides sauber: Die Pfade gehen auf
  * stderr, ins Event geht nur op, id und Phase.
  */
-import { writeFile, rename, unlink, readdir, readFile, mkdir } from "node:fs/promises";
+import { writeFile, rename, unlink, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { newOperationId, type MutationIncident } from "@bastra-recall/core";
+import { ensureVaultDir } from "@bastra-recall/core";
 
 const JOURNAL_DIR = join(".bastra", "recovery");
 
@@ -103,7 +104,7 @@ export async function openRecoveryJournal(
     steps: what.steps,
   };
   const dir = journalDir(vaultRoot);
-  await mkdir(dir, { recursive: true });
+  await ensureVaultDir(vaultRoot, dir);
   const path = join(dir, `${entry.operation_id}.json`);
   const tmp = `${path}.tmp-${process.pid}-${randomUUID()}`;
   await writeFile(tmp, JSON.stringify(entry, null, 2), "utf8");
