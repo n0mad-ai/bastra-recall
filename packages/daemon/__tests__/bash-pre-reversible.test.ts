@@ -648,6 +648,15 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "printf -v PATH %s /opt/x; rm -rf dist",
       "read -r PATH <<< /opt/x; rm -rf dist",
       "declare -n p=PATH; p=/opt/x; rm -rf dist",
+      // A `for`/`select` loop variable is a write too (#1047).
+      "for path in /bin /usr/bin; do :; done; rm -rf dist",
+      "for path; do :; done; rm -rf dist",
+      "for path do :; done; rm -rf dist",
+      "for a path in x y z w; do :; done; rm -rf dist",
+      "select path in a b; do break; done; rm -rf dist",
+      "if true; then for path in /x; do :; done; fi; rm -rf dist",
+      "eval 'for path in /x; do :; done'; rm -rf dist",
+      "for PATH in /x; do :; done; rm -rf dist",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "stop", cmd);
     }
@@ -688,8 +697,47 @@ describe("#651 review — the hint weighs the whole command, not the first row i
       "hash python=/usr/bin/python3; rm -rf dist",
       // An argument containing `path=` is data, not an assignment.
       "echo path=/tmp/x; rm -rf dist",
+      // Only the loop variable counts: another name, `path` read as `$path`,
+      // or `for path in` as data keep the receipt (#1047).
+      'echo "path=$x"; rm -rf dist',
+      "for p in /bin /usr/bin; do :; done; rm -rf dist",
+      "for p in $path; do echo $p; done; rm -rf dist",
+      'echo $path; rm -rf "$path"',
+      'echo "for path in x"; rm -rf dist',
+      "for paths in a b; do :; done; rm -rf dist",
     ]) {
       assert.equal((await hintOf(cmd, RM)).kind, "receipt", cmd);
     }
+  });
+
+  it("names the variable `path` when it is the only reason for the STOP (#1047)", async () => {
+    const reason = "The command writes the variable `path`, which zsh ties to PATH, so the archiving `rm` may not be the one that runs — rename that variable and the reversible receipt comes back.";
+    const block = async (command: string): Promise<string> =>
+      JSON.parse(
+        await runHook({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command }, session_id: "", bastra_client: "claude-code" }, RM),
+      ).hookSpecificOutput.additionalContext;
+    for (const cmd of ["for path in /bin; do :; done; rm -rf dist", "select path in a b; do break; done; rm -rf dist", "path=/x; rm -rf dist", "read path; rm -rf dist"]) {
+      assert.ok((await block(cmd)).includes(reason), cmd);
+    }
+    // Another reason in the same command, PATH itself, or a heredoc (whose
+    // body the scanner cannot read): renaming would not help, so no such line.
+    for (const cmd of [
+      "for path in /x; do :; done; alias rm=/bin/rm; rm -rf dist",
+      "for path in /x; do :; done; sudo rm -rf dist",
+      "for PATH in /x; do :; done; rm -rf dist",
+      "cat <<'EOF'\nfor path in a b\nEOF\nrm -rf dist",
+    ]) {
+      const b = await block(cmd);
+      assert.match(b, /STOP — destructive/, cmd);
+      assert.ok(!b.includes("variable `path`"), cmd);
+    }
+  });
+
+  it("a heredoc that only mentions `for path in` is weighed like any heredoc (#1047)", async () => {
+    // A heredoc body is not read as shell, so the loop text changes nothing.
+    assert.deepEqual(
+      await hintOf("cat <<'EOF'\nfor path in a b\nEOF\nrm -rf dist", RM),
+      await hintOf("cat <<'EOF'\nfor p in a b\nEOF\nrm -rf dist", RM),
+    );
   });
 });
