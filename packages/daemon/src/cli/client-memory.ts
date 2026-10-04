@@ -13,9 +13,9 @@
  * existing folder import (`importVault`, Claude Code adapter included), which
  * is idempotent (#530) and writes through the audit trail.
  */
-import { readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, extname, join } from "node:path";
+import { basename, dirname, extname, join, relative } from "node:path";
 import { slugify, snapshotLocator } from "@bastra-recall/core";
 import { recordAudit } from "../audit-trail.js";
 import { KNOWN_ADAPTERS, safeParse } from "../import/adapters.js";
@@ -165,6 +165,9 @@ export interface LabelMigration {
   memories: number;
   /** Why the folder stayed where it is; absent when it moved. */
   skipped?: string;
+  /** #1048: notes in the old folder this import did not write, left there
+   *  (paths relative to the vault). */
+  left?: string[];
 }
 
 /**
@@ -175,7 +178,9 @@ export interface LabelMigration {
  * beside the old copy, so the old folder moves to the new label first: every
  * file inside it gets the label rewritten — ids and file names, the `source`
  * stamps the import recognises its own notes by, scope, tags, links — and the
- * folder is renamed. Nothing is deleted or overwritten.
+ * folder is renamed. Nothing is deleted or overwritten. A note in the old
+ * folder this import did not write (no `source` stamp of it) stays where it
+ * is and is reported; the rest then moves file by file instead (#1048).
  *
  * A folder only moves when the new one does not exist yet and its import
  * marker names this very source folder, so a second run, a vault that never
@@ -224,7 +229,12 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
   }
   if (marker.source !== (await realpath(d.dir).catch(() => d.dir))) return null; // another import's folder
   const skip = (why: string): LabelMigration => ({ from, to, memories: 0, skipped: why });
-  if ((await mtime(newDir)) !== null) return skip(`${IMPORT_ROOT}/${to}/ exists already`);
+  // A new folder without a marker is a file-by-file move (#1048) that stopped
+  // before its marker, the last file, moved: finish it.
+  const newExists = (await mtime(newDir)) !== null;
+  if (newExists && (await mtime(join(newDir, ".bastra-imported"))) !== null) {
+    return skip(`${IMPORT_ROOT}/${to}/ exists already`);
+  }
 
   // Each memory gets the id the import mints for its source file under the
   // new label — read from its `source` stamp, the way the import recognises
@@ -237,12 +247,23 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
   const raws = new Map<string, string>();
   const newIdOf = new Map<string, string>();
   const oldAliases = new Map<string, string>();
-  const used = new Set<string>();
+  // Ids a stopped file-by-file move already took, so the rest mint the same.
+  const used = new Set<string>(
+    newExists
+      ? (await readdir(newDir, { recursive: true, withFileTypes: true }))
+          .filter((f) => f.isFile() && f.name.endsWith(".md"))
+          .map((f) => basename(f.name, ".md"))
+      : [],
+  );
+  const foreign: string[] = [];
   for (const path of files) {
     raws.set(path, await readFile(path, "utf8"));
     if (!path.endsWith(".md")) continue;
     const src = String(safeParse(raws.get(path)!).data.source ?? "").split(":");
-    if (src[1] !== from && src[1] !== to) return skip(`the source stamp in ${path} is not this import`);
+    if (src[1] !== from && src[1] !== to) {
+      foreign.push(path);
+      continue;
+    }
     const relKey = src.slice(2).join(":");
     const baseFor = (label: string): string | null => {
       if (src[0] === "index") return slugify(`${label}-index`);
@@ -289,20 +310,28 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
   );
   const rewrite = (s: string) => s.replace(token, (_, id?: string) => (id ? newIdOf.get(id)! : to));
 
+  // With a foreign note in it the old folder stays, so every other file
+  // moves on its own — the marker last, which marks the move as finished.
+  const byFile = foreign.length > 0 || newExists;
+  const markerPath = join(oldDir, ".bastra-imported");
   const ids = snapshotLocator(vaultRoot);
-  const plan: Array<{ path: string; target: string; oldId?: string; newId?: string }> = [];
-  for (const path of files) {
+  const plan: Array<{ path: string; target: string; dest: string; oldId?: string; newId?: string }> = [];
+  for (const path of [...files.filter((f) => f !== markerPath && !foreign.includes(f)), markerPath]) {
     const target = join(dirname(path), rewrite(basename(path)));
     if (target !== path && (await mtime(target)) !== null) return skip(`${target} exists already`);
+    const dest = join(newDir, relative(oldDir, target));
+    if (byFile && (await mtime(dest)) !== null) return skip(`${dest} exists already`);
     const oldId = basename(path, ".md");
     const newId = path.endsWith(".md") ? basename(target, ".md") : oldId;
     const located = ids.locate(newId);
     if (located.kind === "incomplete" || located.kind === "ambiguous" ||
         (located.kind === "unique" && located.filePath !== path)) return skip(`the id ${newId} is taken or cannot be checked`);
-    plan.push({ path, target, ...(newId !== oldId ? { oldId, newId } : {}) });
+    plan.push({ path, target, dest, ...(newId !== oldId ? { oldId, newId } : {}) });
   }
   const memories = plan.filter((p) => p.newId).length;
-  if (dryRun) return { from, to, memories };
+  const left = foreign.map((f) => relative(vaultRoot, f));
+  const done: LabelMigration = { from, to, memories, ...(left.length > 0 ? { left } : {}) };
+  if (dryRun) return done;
 
   // Files first, the folder last: a run that stops halfway leaves the old
   // folder in place, and the next run finishes it.
@@ -312,7 +341,13 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
     if (next !== raw) await writeFile(p.path, next, "utf8");
     if (p.target !== p.path) await rename(p.path, p.target);
   }
-  await rename(oldDir, newDir);
+  if (!byFile) await rename(oldDir, newDir);
+  else {
+    for (const p of plan) {
+      await mkdir(dirname(p.dest), { recursive: true });
+      await rename(p.target, p.dest);
+    }
+  }
   for (const p of plan) {
     if (!p.newId) continue;
     await recordAudit({
@@ -323,9 +358,9 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
       actorDetail: "cli:import clients",
       diffBefore: { id: p.oldId },
       diffAfter: { id: p.newId },
-      filePath: join(newDir, p.target.slice(oldDir.length + 1)),
+      filePath: p.dest,
       reason: `#885: the import label ${from} became ${to}`,
     });
   }
-  return { from, to, memories };
+  return done;
 }

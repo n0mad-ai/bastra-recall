@@ -331,6 +331,12 @@ async function cmdImportClients(args: ParsedArgs): Promise<number> {
           ? `! ${where} not moved: ${m.skipped} — the import below writes beside it\n`
           : `✓ ${where} — ${m.memories} memory id(s) ${args.dryRun ? "would be renamed" : "renamed"}\n`,
       );
+      for (const f of m.left ?? []) {
+        process.stdout.write(
+          `  · left untouched: ${f} — not written by this import; ` +
+            `it stays in ${IMPORT_ROOT}/${m.from}/; move it where it belongs, or leave it (a rerun does not touch it)\n`,
+        );
+      }
     }
   } catch (err) {
     process.stdout.write(`✗ moving an earlier import to its new label failed: ${(err as Error).message}\n`);
