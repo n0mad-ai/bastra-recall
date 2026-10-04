@@ -64,3 +64,18 @@ test("#455: the plugin skill dir carries every reference file the body points at
   ]);
   assert.equal(a, b);
 });
+
+test("#763: the frustration trigger text names a repetition phrase, never the bare word for \"again\"", async () => {
+  const { MEMORY_TOOL_DEFS } = await import("../src/tool-defs-memory.js");
+  const save = MEMORY_TOOL_DEFS.find((t) => t.name === "save_memory");
+  assert.ok(save, "save_memory tool def");
+  const bare = /["']again["'],\s*["']wieder["']/;
+  for (const [what, text] of [
+    ["SKILL.md", canonical],
+    ["save_memory description", save.description],
+    ["docs/triggers.md", await readFile(join(REPO, "docs", "triggers.md"), "utf8")],
+  ] as const) {
+    assert.doesNotMatch(text, bare, `${what} lists the bare adverb as a frustration signal`);
+    assert.match(text, /schon wieder/, `${what} names the repetition phrase`);
+  }
+});

@@ -2,7 +2,7 @@
 description: Persistent memory across sessions via the bastra-recall MCP server — recall before acting, save durable rules and hard-won fixes.
 alwaysApply: true
 ---
-<!-- GENERATED from packages/skill/SKILL.md (canonical 025c31ccee871ecf) by scripts/build-skill-projections.mjs — do not edit; edit the canonical file and run `npm run skill:build` -->
+<!-- GENERATED from packages/skill/SKILL.md (canonical 95410512e3e58ceb) by scripts/build-skill-projections.mjs — do not edit; edit the canonical file and run `npm run skill:build` -->
 
 # bastra-recall — autonomous teammate memory
 
@@ -67,7 +67,7 @@ The cue column holds **examples, not a word list** — the user may write in any
 
 | Signal | Cue (examples) | Memory `type` |
 |---|---|---|
-| User-frustration about a recurring issue | "again", "wieder", "снова", "how often", emphatic CAPS in any script | `lesson` + `emotion: frustration`, `salience: 0.8` |
+| User-frustration about a recurring issue | "not again", "schon wieder", "снова … опять", "how often", emphatic CAPS in any script (not the bare word "again" / "wieder" / "снова") | `lesson` + `emotion: frustration`, `salience: 0.8` |
 | Explicit durable rule | "always X", "never Y", "on this project we use Z" | `preference` / `workflow` |
 | Correction of a recurring tendency | "you overcomplicate CSS", "keep it simpler" | `meta-working` |
 | Architectural decision finalized after weighing options | "ok then, we take Drizzle" | `decision` |

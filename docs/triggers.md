@@ -95,8 +95,8 @@ own long-term memory, not a tool to be used on request.
 
 **Save autonomously** when any of the following happens in a turn:
 
-1. User expresses frustration about a recurring issue ("wieder", "schon wieder",
-   emphatic caps, "wie oft"). Save a `lesson`. Trigger:
+1. User expresses frustration about a recurring issue ("schon wieder", "not again",
+   "снова … опять", emphatic caps, "wie oft"; the bare word "wieder" / "again" alone is not a signal). Save a `lesson`. Trigger:
    `autonomous-frustration`.
 2. User states an explicit, durable rule ("immer X", "nie Y", "bei diesem
    Projekt …"). Save a `preference` or `workflow`. Trigger: `autonomous-rule`.
@@ -342,8 +342,8 @@ own long-term memory, not a tool to be used on request.
 
 **Save autonomously** when any of the following happens in a turn:
 
-1. User expresses frustration about a recurring issue ("wieder", "schon wieder",
-   emphatic caps, "wie oft"). Save a `lesson`. Trigger:
+1. User expresses frustration about a recurring issue ("schon wieder", "not again",
+   "снова … опять", emphatic caps, "wie oft"; the bare word "wieder" / "again" alone is not a signal). Save a `lesson`. Trigger:
    `autonomous-frustration`.
 2. User states an explicit, durable rule ("immer X", "nie Y", "bei diesem
    Projekt …"). Save a `preference` or `workflow`. Trigger: `autonomous-rule`.

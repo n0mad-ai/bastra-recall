@@ -209,8 +209,9 @@ export const MEMORY_TOOL_DEFS: ToolDef[] = [
       "The cues below are EXAMPLES in whatever language the user writes: " +
       "match the situation, not the sample words (#476).\n" +
       "- User expresses repetition/frustration about a recurring issue " +
-      "  ('again', 'wieder', 'снова', 'how often', emphatic caps in any " +
-      "  script) → lesson, emotion:'frustration', salience:0.8\n" +
+      "  ('not again', 'schon wieder', 'снова … опять', 'how often', emphatic " +
+      "  caps in any script; the bare word 'again'/'wieder'/'снова' alone is " +
+      "  no signal) → lesson, emotion:'frustration', salience:0.8\n" +
       "- User states an explicit durable rule ('always X', 'never Y', " +
       "  'on this project we use Z') → preference / workflow\n" +
       "- User corrects a recurring tendency in your behavior → " +
