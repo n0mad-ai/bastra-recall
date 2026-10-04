@@ -13,7 +13,7 @@
  * existing folder import (`importVault`, Claude Code adapter included), which
  * is idempotent (#530) and writes through the audit trail.
  */
-import { readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
+import { lstat, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, extname, join, relative } from "node:path";
 import { ensureVaultDir, slugify, snapshotLocator } from "@bastra-recall/core";
@@ -327,9 +327,9 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
   const plan: Array<{ path: string; target: string; dest: string; oldId?: string; newId?: string }> = [];
   for (const path of [...files.filter((f) => f !== markerPath && !foreign.includes(f)), markerPath]) {
     const target = join(dirname(path), rewrite(basename(path)));
-    if (target !== path && (await mtime(target)) !== null) return skip(`${target} exists already`);
+    if (target !== path && await migrationPathTaken(target)) return skip(`${target} exists already`);
     const dest = join(newDir, relative(oldDir, target));
-    if (byFile && (await mtime(dest)) !== null) return skip(`${dest} exists already`);
+    if (byFile && await migrationPathTaken(dest)) return skip(`${dest} exists already`);
     const oldId = basename(path, ".md");
     const newId = path.endsWith(".md") ? basename(target, ".md") : oldId;
     const located = ids.locate(newId);
@@ -372,4 +372,14 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
     });
   }
   return done;
+}
+
+/** A dangling symlink still occupies its name; stat would treat its missing
+ * target as a free slot and rename could replace the user's link. */
+async function migrationPathTaken(path: string): Promise<boolean> {
+  try { await lstat(path); return true; }
+  catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw err;
+  }
 }

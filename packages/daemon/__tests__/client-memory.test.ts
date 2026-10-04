@@ -401,6 +401,26 @@ test("label migration preserves a user's new folder without an import marker", a
   }
 });
 
+test("label migration refuses occupied rename slots even when the symlink target is missing", async () => {
+  for (const where of ["old", "new"]) {
+    const { root, vault, d, oldDir, newDir } = await foreignFixture();
+    try {
+      if (where === "new") await mkdir(newDir);
+      const link = join(where === "old" ? oldDir : newDir, `${d.label}-feedback-no-silent-removals.md`);
+      const target = join(root, "missing");
+      await symlink(target, link);
+      const oldFile = join(oldDir, `${d.previousLabel}-feedback-no-silent-removals.md`);
+      const before = await readFile(oldFile, "utf8");
+      const [m] = await migrateClientLabels(vault, [d]);
+      assert.match(m.skipped ?? "", /exists already/, where);
+      assert.equal(await fs.promises.readlink(link), target, where);
+      assert.equal(await readFile(oldFile, "utf8"), before, "conflict is detected before any rewrite");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+});
+
 test("a file-by-file label move cannot recreate a vault that disappears before mkdir", async () => {
   const { root, vault, d, newDir } = await foreignFixture();
   const original = fs.promises.mkdir;
