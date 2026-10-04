@@ -4,7 +4,7 @@
  * its file, and normalising Claude/Codex rows into turns with the commands,
  * reads and tool names the heuristics consume.
  */
-import { open, stat } from "node:fs/promises";
+import { open } from "node:fs/promises";
 // #305: the scrub leaf, never the core barrel — the barrel costs +40ms of
 // process start for a function that lives in a dependency-free module.
 import { scrubInjectedBlocks } from "@bastra-recall/core/scrub";
@@ -73,7 +73,7 @@ const MAX_TRANSCRIPT_BYTES = 64 * 1024 * 1024; // 64 MiB — weit über realen T
 /**
  * Classifies an empty `turns` list for telemetry. `loadTranscript`'s
  * catch deliberately swallows every read/parse failure into `[]` (never
- * throws) — this repeats the minimal stat to tell "there genuinely was
+ * throws) — this repeats a minimal handle check to tell "there genuinely was
  * nothing to read" (no path, no inline transcript, an empty file) from
  * "there was a transcript and this host could not read it" (ENOENT on a
  * remote daemon whose transcript_path is local to the client, a path that
@@ -87,16 +87,15 @@ export async function emptyTranscriptReason(payload: ClaudeStopPayload): Promise
   if (typeof payload.transcript_path !== "string") return null;
   if (!/\.jsonl?$/.test(payload.transcript_path)) return "transcript_path is not .json/.jsonl";
   try {
-    const st = await stat(payload.transcript_path);
-    if (!st.isFile()) return "transcript_path is not a regular file";
-    if (st.size > MAX_TRANSCRIPT_BYTES) return `transcript exceeds ${MAX_TRANSCRIPT_BYTES} bytes`;
-  } catch (err) {
-    return `transcript_path not readable on this host: ${(err as NodeJS.ErrnoException).code ?? "unknown"}`;
-  }
-  // stat needs no read permission, so a file that exists but cannot be opened
-  // (EACCES, EMFILE, …) got past it and read as an empty session.
-  try {
-    await (await open(payload.transcript_path, "r")).close();
+    const fh = await open(payload.transcript_path, "r");
+    try {
+      // Check the opened inode, not a path that may change before open.
+      const st = await fh.stat();
+      if (!st.isFile()) return "transcript_path is not a regular file";
+      if (st.size > MAX_TRANSCRIPT_BYTES) return `transcript exceeds ${MAX_TRANSCRIPT_BYTES} bytes`;
+    } finally {
+      await fh.close().catch(() => {});
+    }
   } catch (err) {
     return `transcript_path not readable on this host: ${(err as NodeJS.ErrnoException).code ?? "unknown"}`;
   }
