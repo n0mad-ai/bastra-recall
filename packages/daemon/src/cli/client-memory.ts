@@ -236,20 +236,45 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
     .sort();
   const raws = new Map<string, string>();
   const newIdOf = new Map<string, string>();
+  const oldAliases = new Map<string, string>();
   const used = new Set<string>();
   for (const path of files) {
     raws.set(path, await readFile(path, "utf8"));
     if (!path.endsWith(".md")) continue;
     const src = String(safeParse(raws.get(path)!).data.source ?? "").split(":");
+    if (src[1] !== from && src[1] !== to) return skip(`the source stamp in ${path} is not this import`);
     const relKey = src.slice(2).join(":");
-    let base: string | undefined;
-    if (src[0] === "index" && src[1] === from) base = slugify(`${to}-index`);
-    else if (KNOWN_ADAPTERS.has(src[0]) && src[1] === from && relKey) {
+    const baseFor = (label: string): string | null => {
+      if (src[0] === "index") return slugify(`${label}-index`);
+      if (!KNOWN_ADAPTERS.has(src[0]) || !relKey) return null;
       const segments = relKey.split("/");
       const file = segments.pop()!;
-      base = slugify([to, ...segments, file.slice(0, file.length - extname(file).length)].join("-"));
+      return slugify([label, ...segments, file.slice(0, file.length - extname(file).length)].join("-"));
+    };
+    const base = baseFor(to);
+    if (!base) return skip(`the source stamp in ${path} cannot identify its note`);
+    const currentId = basename(path, ".md");
+    const newId = uniqueId(base, used);
+    const oldId = baseFor(from)!;
+    if (src[1] === to && currentId !== oldId && currentId !== newId) {
+      return skip(`the partially moved id in ${path} cannot be reconstructed`);
     }
-    if (base) newIdOf.set(basename(path, ".md"), uniqueId(base, used));
+    newIdOf.set(currentId, newId);
+    // A previous run may have written AND renamed one file before stopping.
+    // Its current filename is new, but another note may still link to the old
+    // id. The source stamp reconstructs that alias, including the 80-unit cut.
+    if (src[1] === to && currentId === newId) {
+      if (oldId !== currentId) {
+        const prior = oldAliases.get(oldId);
+        if (prior && prior !== newId) return skip(`the old id ${oldId} is ambiguous`);
+        oldAliases.set(oldId, newId);
+      }
+    }
+  }
+  for (const [oldId, newId] of oldAliases) {
+    const prior = newIdOf.get(oldId);
+    if (prior && prior !== newId) return skip(`the old id ${oldId} is ambiguous`);
+    newIdOf.set(oldId, newId);
   }
   // Only a label near the 80-character cap leaves an id that IS the label;
   // then the text no longer tells the two apart.
@@ -271,10 +296,9 @@ async function migrateOne(vaultRoot: string, d: ClientMemoryDir, dryRun: boolean
     if (target !== path && (await mtime(target)) !== null) return skip(`${target} exists already`);
     const oldId = basename(path, ".md");
     const newId = path.endsWith(".md") ? basename(target, ".md") : oldId;
-    const kind = ids.locate(newId).kind;
-    if (newId !== oldId && (kind === "unique" || kind === "ambiguous")) {
-      return skip(`the id ${newId} is taken elsewhere in the vault`);
-    }
+    const located = ids.locate(newId);
+    if (located.kind === "incomplete" || located.kind === "ambiguous" ||
+        (located.kind === "unique" && located.filePath !== path)) return skip(`the id ${newId} is taken or cannot be checked`);
     plan.push({ path, target, ...(newId !== oldId ? { oldId, newId } : {}) });
   }
   const memories = plan.filter((p) => p.newId).length;
