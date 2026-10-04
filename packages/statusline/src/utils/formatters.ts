@@ -131,8 +131,14 @@ export function collapseHome(dirPath: string, homeDir?: string): string {
     homeDir ??
     globalThis.process?.env?.HOME ??
     globalThis.process?.env?.USERPROFILE;
-  if (home && dirPath.startsWith(home)) {
-    return dirPath.replace(home, "~");
+  if (
+    home &&
+    dirPath.startsWith(home) &&
+    (dirPath.length === home.length ||
+      dirPath[home.length] === "/" ||
+      dirPath[home.length] === "\\")
+  ) {
+    return `~${dirPath.slice(home.length)}`;
   }
   return dirPath;
 }
