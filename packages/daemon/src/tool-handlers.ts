@@ -593,7 +593,6 @@ async function saveMemoryInner(
   // die Patch-Basis ist seither die Quelldatei, nicht der Index.
   const result = await saveMemory(deps.vaultPath, parsed.data, {
     locator: vaultLocator(deps.vault),
-    vaultRootKnownPresent: deps.vault.rootKnownPresent,
     // #464 (wiedereröffnet): Die Prüfung oben fragte den INDEX — und zwischen
     // Index und Schreibvorgang liegt ein Fenster, in dem die Datei auf der
     // Platte längst `sensitivity: private` tragen kann (Cloud-Sync, fremder

@@ -11,6 +11,7 @@ import { endpointToPersist, resolveDaemonEndpoint, type DaemonEndpoint } from ".
 import type { CodeStale } from "../code-staleness.js";
 import type { InstallOpts } from "./types.js";
 import { isOffValue } from "../env.js";
+import { ensureVaultDir } from "@bastra-recall/core";
 
 // Read from package.json at runtime (see ../version.ts) instead of a literal.
 // The literals drifted: this one said 0.8.9 while index.ts still said 0.8.8,
@@ -323,7 +324,9 @@ with your actual preferences instead of leaving you a blank folder.
  */
 export async function createVaultAt(path: string): Promise<{ path: string } | { error: string }> {
   try {
-    await mkdir(path, { recursive: true });
+    // The one place outside a save that makes a vault (#892): explicit, and
+    // still refused for a path that held a vault before and is missing now.
+    await ensureVaultDir(path, path, { createRoot: true });
     try {
       await writeFile(join(path, "README.md"), VAULT_README, { flag: "wx" });
     } catch (e) {

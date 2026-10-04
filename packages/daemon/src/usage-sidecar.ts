@@ -18,12 +18,13 @@
  * Safety contract: every export is best-effort and never throws — a broken
  * sidecar must never break a tool call.
  */
-import { appendFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 import { envInt } from "./env.js";
 import { foldUsageEvent } from "./usage-fold.js";
+import { ensureVaultDir } from "@bastra-recall/core";
 
 /** Engagement kinds: someone did something with the memory. These count. */
 export type UsageKind = "surfaced" | "loaded" | "acted_on";
@@ -310,7 +311,7 @@ export async function recordUsage(vaultRoot: string, events: UsageEvent[]): Prom
   if (events.length === 0) return;
   try {
     const dir = usageDir(vaultRoot);
-    await mkdir(dir, { recursive: true });
+    await ensureVaultDir(vaultRoot, dir);
     const lines = events.map((e) => JSON.stringify(e)).join("\n") + "\n";
     await appendFile(join(dir, EVENTS_FILE), lines, "utf8");
   } catch {

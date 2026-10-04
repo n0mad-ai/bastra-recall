@@ -15,13 +15,14 @@
  *     vault.reconcile() — drops run before adds there, so renames resolve
  *     cleanly. Never mix per-file reindexFile into a bulk move.
  */
-import { mkdir, readdir, rename, stat } from "node:fs/promises";
+import { readdir, rename, stat } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { assertInsideDir, assertInsideVault, assertOwnSubdir, clearAreaMark, isMarkdownFile, isPathSafeComponent, markAreaDeleted, markAreaRenamed, mutateMemoryFile, readOccupant, slugify, withAreaExclusive } from "@bastra-recall/core";
 import { normalizeScopeKey, scopeEquals } from "@bastra-recall/core/scope";
 import { sendJsonPlain } from "./webui.js";
 import { getUiEnabled } from "./settings.js";
+import { ensureVaultDir } from "@bastra-recall/core";
 
 /** Folders under memories/ whose names the save-routing depends on. */
 const RESERVED_TOP = new Set(["projects", "user", "all-projects", "taxonomy"]);
@@ -188,7 +189,7 @@ export async function createArea(vaultRoot: string, rawName: string): Promise<Ar
 async function createAreaLocked(vaultRoot: string, name: string): Promise<AreaInfo> {
   const dir = areaPath(vaultRoot, "project", name);
   if (await isDir(dir)) throw new Error(`area already exists: ${name}`);
-  await mkdir(dir, { recursive: true });
+  await ensureVaultDir(vaultRoot, dir);
   // Der eine Weg, einen Grabstein wieder abzuräumen (siehe `markAreaRenamed`
   // in core/area-claim.ts): Wer eine Area unter einem fortgezogenen oder
   // gelöschten Namen NEU anlegt, tut das bewusst — und ab hier ist der Name
@@ -833,7 +834,7 @@ async function deleteAreaLocked(
   // VOR dem mkdir: `recursive: true` folgt einem umgebogenen `.bastra` und
   // legt den Trash dort an, bevor irgendeine Prüfung ihn zu sehen bekommt.
   assertAreaTrashBoundary(vaultRoot, trashRoot, [dest, docsDest]);
-  await mkdir(trashRoot, { recursive: true });
+  await ensureVaultDir(vaultRoot, trashRoot);
   // Und danach noch einmal: zwischen Prüfung und mkdir liegt ein await, und
   // erst jetzt existieren die Ordner, deren Realpfad wirklich zählt.
   assertAreaTrashBoundary(vaultRoot, trashRoot, [dest, docsDest]);

@@ -117,6 +117,8 @@ Semantic search is optional. `bastra embeddings on` sets up local Ollama embeddi
 
 A vault in iCloud, Google Drive or Dropbox uses that service's synchronization. Concurrent edits on multiple computers can conflict, including with Bastra's automatic metadata updates. Bastra does not provide managed multi-device synchronization. Keep backups and check conflicting copies before replacing a file.
 
+If the drive holding the vault is not mounted, for example when the daemon starts before Google Drive does, `/health` and every recall report `vault_missing` and Bastra writes nothing. It remembers in `~/.bastra/vault-roots.json` which vault folders it has seen, so it does not recreate a known vault as an empty folder on your disk, even after a restart. A brand-new vault is still created by the first save. If you moved or deleted the vault on purpose, create the folder again or point Bastra at the new path.
+
 ### Guides
 
 - [Import existing memories](https://github.com/n0mad-ai/bastra-recall/wiki/Importing-Memories) — lists, chat exports, rules and memory folders. Folder imports go directly into a separate intake area; the other paths stage candidates for review.
@@ -247,6 +249,8 @@ Speicherung und Stichwortsuche laufen lokal. Ruft dein Assistent eine Erinnerung
 Semantische Suche ist optional. `bastra embeddings on` richtet lokale Ollama-Embeddings ein; `bastra embeddings off` schaltet zurück auf Stichwortsuche. Mit Ollama-Embeddings startet auch die Hintergrund-Umschreibung (doc2query): Ein lokales Generationsmodell formuliert die Trigger jeder Erinnerung um, auf einem Rechner ohne GPU stundenlang. `BASTRA_TRIGGER_EXPAND=0` in der Umgebung des Daemons lässt sie aus; `embeddings on` und `bastra doctor` nennen das verwendete Modell. Wenn du ausdrücklich OpenAI-Embeddings wählst, gehen Suchanfragen und indizierte Erinnerungstexte an OpenAI. [Datenschutz und Netzwerkzugriffe](./docs/PRIVACY.md#deutsch) erläutert diese Wege, Datei-Sync und optionale Netzwerkfunktionen.
 
 Ein Vault in iCloud, Google Drive oder Dropbox nutzt die Synchronisierung dieses Dienstes. Gleichzeitige Änderungen auf mehreren Rechnern können Konflikte verursachen, auch mit Bastras automatischen Metadaten-Updates. Bastra bietet keinen verwalteten Mehrgeräte-Sync. Bewahre Backups auf und prüfe Konfliktkopien, bevor du Dateien ersetzt.
+
+Ist das Laufwerk mit dem Vault nicht eingehängt, etwa weil der Daemon vor Google Drive startet, melden `/health` und jeder Recall `vault_missing`, und Bastra schreibt nichts. In `~/.bastra/vault-roots.json` merkt es sich, welche Vault-Ordner es schon gesehen hat. Einen bekannten Vault legt es deshalb auch nach einem Neustart nicht als leeren Ordner auf deiner Platte neu an. Einen ganz neuen Vault legt weiterhin das erste Speichern an. Hast du den Vault absichtlich verschoben oder gelöscht, lege den Ordner neu an oder gib Bastra den neuen Pfad.
 
 ### Anleitungen
 

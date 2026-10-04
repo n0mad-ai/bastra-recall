@@ -19,6 +19,7 @@ import { sendJsonPlain } from "./webui.js";
 import { getUiEnabled } from "./settings.js";
 import { queueStatus } from "./import-mining.js";
 import { withPathLock } from "./path-lock.js";
+import { ensureVaultDir } from "@bastra-recall/core";
 
 export const IMPORT_FILE = "import-review.md";
 export const IMPORT_SOURCES = ["chatgpt", "claude", "gemini", "text", "rules"] as const;
@@ -183,6 +184,9 @@ export async function stageImport(
   candidates: string[],
 ): Promise<StageResult> {
   const filePath = join(vaultPath, IMPORT_FILE);
+  // #892: the path lock makes its file's directory — here the vault root
+  // itself — so the root has to be there first, never created from here.
+  await ensureVaultDir(vaultPath, vaultPath);
   return withPathLock(
     filePath,
     async () => {

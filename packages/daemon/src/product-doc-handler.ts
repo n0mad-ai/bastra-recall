@@ -159,7 +159,6 @@ export async function saveProductDocHandler(
     },
     {
       locator: vaultLocator(deps.vault),
-      vaultRootKnownPresent: deps.vault.rootKnownPresent,
       // #464 (wiedereröffnet): Die Prüfung oben fragte den INDEX; dieser Pfad
       // schreibt mit fest verdrahtetem `overwrite: true`. War die Datei auf der
       // Platte inzwischen privat, ersetzte er sie trotzdem (5 von 5 Läufen).

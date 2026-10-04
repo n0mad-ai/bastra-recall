@@ -19,7 +19,7 @@
  * (b) ids can't collide with hand-authored memories, (c) the whole set is
  * delete-/re-importable atomically (one folder, one scope, one source tag).
  */
-import { mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -32,6 +32,7 @@ import { linkKey, pathHash, safeSlug, uniqueId } from "./import/identity.js";
 import { harvestIndex, looksLikeIndexHub } from "./import/index-harvest.js";
 import { KNOWN_ADAPTERS, looksLikeClaudeCode, mapFile, safeParse } from "./import/adapters.js";
 import { findOrphanedMemories, type ImportVaultOrphan } from "./import/orphans.js";
+import { ensureVaultDir } from "@bastra-recall/core";
 export type { ImportVaultOrphan } from "./import/orphans.js";
 
 /** Reserved subtree for all folder imports — its own graph cluster, and the
@@ -635,7 +636,7 @@ export async function importVault(
     // .md — der Vault-Loader ignoriert die Datei.
     try {
       const markerDir = join(vaultRoot, folder);
-      await mkdir(markerDir, { recursive: true });
+      await ensureVaultDir(vaultRoot, markerDir);
       await writeFile(
         join(markerDir, ".bastra-imported"),
         JSON.stringify(
