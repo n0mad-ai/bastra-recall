@@ -37,6 +37,8 @@ import {
   runParaphrased,
   runCrossMemory,
   runAntiHallucination,
+  stressVerdict,
+  ANTI_NOT_EVALUABLE_REASON,
   shuffleParaphrasedLabels,
   shuffleCrossLabels,
   EVAL_POOL_K,
@@ -118,7 +120,7 @@ function printHelp(): void {
 Flags:
   --slice paraphrased|cross|anti|all   default: all
   --out report.json                    write JSON report
-  --cutoff 80                          anti-slice noise cutoff (default 80)
+  --cutoff 80                          anti-slice noise cutoff (default 80); under --hybrid the slice is NOT EVALUABLE and does not gate
   --hybrid                             use SearchIndex.recallHybrid (BM25+vector)
   --seed 20260726                      seed for the control arm + shuffle null
   -h, --help                           this message
@@ -258,10 +260,16 @@ function printCross(s: CrossSummary): void {
   }
 }
 
+function antiVerdictText(s: AntiSummary): string {
+  return s.evaluable
+    ? `${s.pass ? "PASS" : "FAIL"} (median < cutoff)`
+    : `NOT EVALUABLE (${ANTI_NOT_EVALUABLE_REASON}); does not gate the verdict`;
+}
+
 function printAnti(s: AntiSummary): void {
   console.log("\n## Slice 3 — Anti-Hallucination\n");
   console.log(
-    `Cases: **${s.total}**  ·  Cutoff: **<${s.cutoff}**  ·  Median top-score: **${s.median.toFixed(1)}**  ·  Verdict: ${s.pass ? "PASS" : "FAIL"} (median < cutoff)`,
+    `Cases: **${s.total}**  ·  Cutoff: **<${s.cutoff}**  ·  Median top-score: **${s.median.toFixed(1)}**  ·  Verdict: ${antiVerdictText(s)}`,
   );
   console.log(
     `\nIndividual cases under cutoff: **${s.underCutoff}/${s.total}** (${pct(s.underCutoff / s.total)}).`,
@@ -370,7 +378,7 @@ function buildMarkdownReport(r: ReportInput): string {
   // ausgewiesen". They existed only on stdout.
   lines.push("## Baselines");
   lines.push("");
-  lines.push(`Seed \`${r.seed}\`. Control = random ranking at the same k. Null = same arm, gold labels permuted.`);
+  lines.push(`Seed \`${r.seed}\`. Control = random ranking at the same k. Null = same arm, gold labels permuted. The null is informational only and never gates the verdict.`);
   lines.push("");
   lines.push("| slice | measured | control arm | label-shuffle null |");
   lines.push("|---|---:|---:|---:|");
@@ -457,7 +465,7 @@ function buildMarkdownReport(r: ReportInput): string {
     lines.push(
       `- Under-cutoff cases: **${r.anti.underCutoff}/${r.anti.total}** (${pct(r.anti.underCutoff / r.anti.total)})`,
     );
-    lines.push(`- **Verdict: ${r.anti.pass ? "PASS" : "FAIL"} (median < cutoff)**`);
+    lines.push(`- **Verdict: ${antiVerdictText(r.anti)}**`);
     lines.push("");
     lines.push("### Histogram");
     lines.push("");
@@ -539,7 +547,7 @@ async function main(): Promise<void> {
     ? await runCrossMemory(vault, recall)
     : undefined;
   const anti = args.slices.includes("anti")
-    ? await runAntiHallucination(vault, recall, args.cutoff)
+    ? await runAntiHallucination(vault, recall, args.cutoff, args.hybrid)
     : undefined;
 
   // #261: two baselines, without which the numbers above have no scale.
@@ -582,7 +590,7 @@ async function main(): Promise<void> {
   console.log("\n## Baselines\n");
   console.log(
     `Seed: \`${args.seed}\`  ·  Control = random ranking, same k  ·  ` +
-      `Null = same arm, gold labels permuted across queries.`,
+      `Null = same arm, gold labels permuted across queries. The null is informational only and never gates the verdict.`,
   );
   console.log("\n| slice | measured | control arm | label-shuffle null |");
   console.log("|---|---:|---:|---:|");
@@ -606,12 +614,7 @@ async function main(): Promise<void> {
   // M0 gate: "keine unbekannten Gold-IDs". Not a warning — a fixture pointing
   // at a memory that no longer exists makes every number below it wrong.
   const unknownGold = [...(para?.unknownIds ?? []), ...(cross?.unknownIds ?? [])];
-  const passes: boolean[] = [];
-  if (unknownGold.length > 0) passes.push(false);
-  if (para) passes.push(para.pass);
-  if (cross) passes.push(cross.pass);
-  if (anti) passes.push(anti.pass);
-  const allPass = passes.length > 0 && passes.every((p) => p);
+  const allPass = stressVerdict({ para, cross, anti }, unknownGold);
 
   console.log("\n## Overall\n");
   console.log(`Verdict: **${allPass ? "PASS" : "FAIL"}**`);
@@ -651,6 +654,7 @@ async function main(): Promise<void> {
               median: anti.median,
               under_cutoff: anti.underCutoff,
               pass: anti.pass,
+              evaluable: anti.evaluable,
               histogram: Object.fromEntries(anti.histogram),
               rows: anti.rows,
             }

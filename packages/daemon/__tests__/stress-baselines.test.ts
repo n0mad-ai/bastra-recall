@@ -16,7 +16,14 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeControlRecaller, seededShuffle, seededDerangement, seededRandom } from "../scripts/stress-arm.js";
-import { runCrossMemory, shuffleCrossLabels, shuffleParaphrasedLabels } from "../scripts/stress-slices.js";
+import {
+  ANTI_NOT_EVALUABLE_REASON,
+  runAntiHallucination,
+  runCrossMemory,
+  shuffleCrossLabels,
+  shuffleParaphrasedLabels,
+  stressVerdict,
+} from "../scripts/stress-slices.js";
 import { computeHashes, hashVault, runDirFor, writeRunArtifact, type RunManifest } from "../scripts/stress-artifact.js";
 import type { Vault } from "@bastra-recall/core";
 
@@ -186,4 +193,31 @@ test("a cross slice whose every case is retired or unknown does not pass on 0 ==
   const res = await runCrossMemory(emptyVault, async () => [], [{ query: "q", expected: ["gone-1", "gone-2"] }]);
   assert.equal(res.rows.length, 0, "nothing was left to grade");
   assert.equal(res.pass, false, "an empty slice grades nothing; it must not read as PASS");
+});
+
+// #1003: what gates the verdict. A dense-only rank 1 scores ~98.4 under the weighted hybrid arm (#641).
+const highRecall = async () => [{ id: "m0", score: 98.4 }] as never;
+
+test("a hybrid anti slice is NOT EVALUABLE and does not make the verdict FAIL", async () => {
+  const anti = await runAntiHallucination(fakeVault, highRecall, 80, true);
+  assert.equal(anti.pass, false, "the median is above the cutoff");
+  assert.equal(anti.evaluable, false);
+  assert.ok(ANTI_NOT_EVALUABLE_REASON.includes("#641"));
+  assert.equal(stressVerdict({ para: { pass: true }, cross: { pass: true }, anti }, []), true);
+});
+
+test("a non-hybrid anti slice still gates the verdict", async () => {
+  const anti = await runAntiHallucination(fakeVault, highRecall, 80, false);
+  assert.equal(anti.evaluable, true);
+  assert.equal(stressVerdict({ para: { pass: true }, cross: { pass: true }, anti }, []), false);
+});
+
+test("an empty cross slice, an unknown gold id and a failing paraphrased slice still gate", () => {
+  assert.equal(stressVerdict({ cross: { pass: false } }, []), false);
+  assert.equal(stressVerdict({ para: { pass: true } }, ["gone"]), false);
+  assert.equal(stressVerdict({ para: { pass: false } }, []), false);
+});
+
+test("the verdict takes no label-shuffle null: it is reported only", () => {
+  assert.equal(stressVerdict({ para: { pass: true }, cross: { pass: true } }, []), true);
 });

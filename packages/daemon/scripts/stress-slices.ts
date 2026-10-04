@@ -370,12 +370,36 @@ export interface AntiSummary {
   rows: AntiResult[];
   histogram: Map<string, number>;
   pass: boolean;
+  /**
+   * False under `--hybrid` (#1003). The cutoff is in BM25 units; since #641 the
+   * dense arm is weighted, so a dense-only rank 1 scores about 98.4 and every
+   * query clears the one-armed floor. Such a slice is reported "NOT EVALUABLE"
+   * and does not gate the verdict.
+   */
+  evaluable: boolean;
+}
+
+export const ANTI_NOT_EVALUABLE_REASON =
+  "the one-armed floor does not apply under the weighted dense arm (#641)";
+
+/** Overall verdict: an unknown gold id fails, a not-evaluable anti slice is skipped. The null never enters. */
+export function stressVerdict(
+  slices: { para?: { pass: boolean }; cross?: { pass: boolean }; anti?: { pass: boolean; evaluable: boolean } },
+  unknownGold: readonly string[],
+): boolean {
+  const passes: boolean[] = [];
+  if (unknownGold.length > 0) passes.push(false);
+  if (slices.para) passes.push(slices.para.pass);
+  if (slices.cross) passes.push(slices.cross.pass);
+  if (slices.anti?.evaluable) passes.push(slices.anti.pass);
+  return passes.length > 0 && passes.every((p) => p);
 }
 
 export async function runAntiHallucination(
   vault: Vault,
   recall: Recaller,
   cutoff: number,
+  hybrid = false,
 ): Promise<AntiSummary> {
   const rows: AntiResult[] = [];
   for (const c of ANTI_HALLUCINATION_CASES) {
@@ -426,5 +450,6 @@ export async function runAntiHallucination(
     rows,
     histogram,
     pass: median < cutoff,
+    evaluable: !hybrid,
   };
 }
