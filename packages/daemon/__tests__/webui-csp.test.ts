@@ -160,7 +160,8 @@ test("CSP: the shipped web UI writes no inline style attribute that style-src 's
   // assigned via innerHTML is then dropped by the browser; colour and layout set
   // through the CSSOM (el.style.x = …) are not governed by the directive.
   // vendor/ctxmenu.js can set a style attribute only from an item's `style`
-  // field, which nothing in this app populates.
+  // field, which nothing in this app populates; its injected <style> element
+  // is covered by the two tests below.
   const root = resolveWebUiDir();
   const files: string[] = [join(root, "index.html")];
   const walk = async (dir: string): Promise<void> => {
@@ -180,4 +181,59 @@ test("CSP: the shipped web UI writes no inline style attribute that style-src 's
     });
   }
   assert.deepEqual(hits, [], "an inline style attribute is blocked by style-src 'self'");
+});
+
+test("CSP: the app injects no <style> element that style-src 'self' would block", async () => {
+  // A <style> element created at runtime is inline style too. The only one the
+  // shipped UI ever had is vendor/ctxmenu.js's; its rules live in overlays.css
+  // (next test), the vendor file stays untouched and is skipped here.
+  const root = resolveWebUiDir();
+  const files: string[] = [join(root, "index.html")];
+  const walk = async (dir: string): Promise<void> => {
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name !== "vendor") await walk(p);
+      } else if (e.name.endsWith(".js")) files.push(p);
+    }
+  };
+  await walk(join(root, "js"));
+  const hits: string[] = [];
+  for (const f of files) {
+    const lines = (await readFile(f, "utf8")).split("\n");
+    lines.forEach((line, i) => {
+      if (/createElement\(\s*["'`]style["'`]|<style[\s>]/i.test(line)) hits.push(`${f.slice(root.length)}:${i + 1}: ${line.trim()}`);
+    });
+  }
+  assert.deepEqual(hits, [], "an injected <style> element is blocked by style-src 'self'");
+});
+
+test("CSP: overlays.css carries every base rule ctxmenu.js would inject", async () => {
+  // vendor/ctxmenu.js injects its base stylesheet as a <style> element, which
+  // style-src 'self' blocks. Without these rules the right-click menu loses
+  // position:fixed and its z-index and lands in the page flow. The test reads
+  // the rules out of the vendor file, so a vendor update cannot drift past it.
+  const root = resolveWebUiDir();
+  const vendor = await readFile(join(root, "vendor", "ctxmenu.js"), "utf8");
+  const injected = /var styles = '([^']*)'/.exec(vendor)?.[1];
+  assert.ok(injected, "ctxmenu.js no longer carries its styles string — re-check what it injects");
+
+  const norm = (d: string): string => d.trim().replace(/\s*([:,])\s*/g, "$1").replace(/\s+/g, " ");
+  const rulesOf = (css: string): Map<string, Set<string>> => {
+    const rules = new Map<string, Set<string>>();
+    for (const m of css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      const sel = m[1].trim().replace(/\s+/g, " ");
+      const decls = rules.get(sel) ?? new Set<string>();
+      for (const d of m[2].split(";")) if (d.trim()) decls.add(norm(d));
+      rules.set(sel, decls);
+    }
+    return rules;
+  };
+  const shipped = rulesOf(await readFile(join(root, "css", "overlays.css"), "utf8"));
+  const missing: string[] = [];
+  for (const [sel, decls] of rulesOf(injected)) {
+    if (sel === "html") continue; // html{min-height:100%}: base.css gives html height:100%
+    for (const d of decls) if (!shipped.get(sel)?.has(d)) missing.push(`${sel} { ${d} }`);
+  }
+  assert.deepEqual(missing, [], "a ctxmenu base rule is missing from overlays.css");
 });
