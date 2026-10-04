@@ -870,6 +870,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - ci(#1019): the `max(bm25, dense)` overlap test decides through a gated fake arm and a 1 ms deadline instead of a stopwatch, and the in-flight test catches a sequential dispatch again (#1029).
 
+- **Five design-level splits, behaviour-neutral** (#1039). Code moved verbatim, public exports unchanged. `segments/renderer.ts` (1020 → 754, #1062, output pinned by a golden test), `telemetry.ts` (1093 → 605, #1063, event-log format pinned byte for byte), `powerline.ts` (1084 → 301, #1064, ANSI output pinned by a snapshot test), core `search.ts` (1748 → 795, #1065, result order of 20 fixed queries pinned by a hash test), daemon `index.ts` (1110 → 256, #1067, start-up side effects in the same order, proven by boot-trace diffs). The new neighbour modules are listed in the module map in `docs/architecture.md`.
+
+- ci: the #458 session-budget and #539 session-state tests wait on an explicit write sync point and assert properties instead of elapsed time, so they no longer flake under parallel load (#1056, #1061).
+
 ## [1.0.0] — 2026-09-14
 
 ### Added
