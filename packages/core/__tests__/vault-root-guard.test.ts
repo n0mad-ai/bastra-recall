@@ -122,3 +122,24 @@ test("a root never seen: a save creates it, a side writer does not", async (t) =
   assert.equal(existsSync(fresh), true, "created on first save");
   assert.notEqual(vaultRootFirstSeen(fresh), null, "and known from then on");
 });
+
+test("a root never seen is created only under an existing parent: a missing parent may be an unmounted drive", async (t) => {
+  const parent = await mkdtemp(path.join(tmpdir(), "bastra-guard-"));
+  t.after(() => rm(parent, { recursive: true, force: true }));
+  const drive = path.join(parent, "Volumes", "Drive");
+  const deep = path.join(drive, "vault");
+  await assert.rejects(saveMemory(deep, input()), (err: unknown) => {
+    assert.ok(err instanceof VaultRootMissingError);
+    assert.ok(err.message.includes(`parent directory ${drive} does not exist`), err.message);
+    assert.match(err.message, /mount the drive or create the parent directory first/);
+    return true;
+  });
+  assert.equal(existsSync(path.join(parent, "Volumes")), false, "nothing of the path was created");
+  assert.equal(vaultRootFirstSeen(deep), null);
+
+  await mkdir(drive, { recursive: true });
+  await saveMemory(deep, input());
+  assert.equal(existsSync(deep), true, "created once its parent exists");
+  const marker = JSON.parse(await readFile(vaultRootsPath(), "utf8")) as Record<string, unknown>;
+  assert.ok(marker[path.resolve(deep)], "and the marker records it");
+});
