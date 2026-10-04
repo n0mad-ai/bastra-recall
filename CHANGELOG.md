@@ -466,6 +466,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Stop transcript diagnostics now check the opened file handle, closing the path-check/open race flagged by CodeQL.
+
 - Vault writes now refuse corrupt or unreadable root history and require a durable marker; child creation cannot recursively rebuild a root lost after the presence check.
 - Prompt, Stop and bridge readers now reject noncanonical `system-reminder` tags instead of treating harness text as an owner turn.
 - Injection scanning now folds Cyrillic Supplement look-alikes already in its mapping table, including `ԁ` in `ԁisregard`.
