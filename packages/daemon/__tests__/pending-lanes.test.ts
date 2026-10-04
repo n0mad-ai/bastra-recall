@@ -5,7 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -15,6 +15,7 @@ import {
   PENDING_BLOCK_CHAR_BUDGET,
   PENDING_MAX_AGE_MS,
   PENDING_TRENDS_SESSIONS_DEFAULT,
+  type PendingSuggestion,
   takePendingRelay,
   writePendingSuggestion,
 } from "../src/pending-suggestions.js";
@@ -228,6 +229,98 @@ test("#771: tombstones take no slot in the trends cap and are never reported as 
       }
     },
     { BASTRA_PENDING_TRENDS_SESSIONS: "1" },
+  );
+});
+
+// #997: taxonomy-drift passes its cluster keys with their sizes; the text
+// (counts, example ids) changes with every save, so it is no identity.
+const drift = (clusters: Record<string, number>) =>
+  writePendingSuggestion(
+    `<taxonomy-drift>${Object.entries(clusters).map(([k, n]) => `${n} share ${k}`).join("; ")}</taxonomy-drift>`,
+    { lane: "trends", key: "taxonomy-drift", clusters },
+  );
+
+/** Shows the drift trend until it retires (N = 2), then returns its tombstone. */
+async function retire(path: string, clusters: Record<string, number>): Promise<PendingSuggestion> {
+  await drift(clusters);
+  await start("r-1");
+  await start("r-2");
+  assert.equal((await start("r-3")).trends.length, 0, "aged out");
+  const rows = JSON.parse(await readFile(path, "utf8")) as PendingSuggestion[];
+  return rows.find((e) => e.retired)!;
+}
+
+test("#997: a count bump does not revive a retired drift hint, and does not restart a live one", async () => {
+  await withRelay(
+    async (path) => {
+      await drift({ "tag:foo": 8 });
+      assert.equal((await start("s-1")).trends[0].sessions, 1);
+      await drift({ "tag:foo": 9 });
+      const live = await start("s-2");
+      assert.equal(live.trends[0].sessions, 2, "8 → 9 on a live hint keeps the counter");
+      assert.match(live.trends[0].blocks, /9 share tag:foo/, "and shows the current numbers");
+      assert.equal((await start("s-3")).trends.length, 0, "aged out");
+      const tomb = JSON.parse(await readFile(path, "utf8")) as PendingSuggestion[];
+      assert.deepEqual(tomb[0].clusters, { "tag:foo": 9 }, "the tombstone carries the keys and the size at retirement");
+      for (const n of [10, 17, 12]) {
+        await drift({ "tag:foo": n });
+        assert.equal((await start(`s-n${n}`)).trends.length, 0, `${n} < 2 × 9 stays retired`);
+      }
+      // Clusters swapping order or one dropping out is not news either.
+      await drift({ "tag:foo": 9, "topic:bar": 8 });
+      assert.equal((await start("s-4")).trends.length, 1, "a new key is news (see the next test)");
+      await start("s-5"); // retire it again, now with both keys
+      await start("s-6");
+      await drift({ "topic:bar": 9 });
+      await drift({ "tag:foo": 8, "topic:bar": 8 });
+      assert.equal((await start("s-7")).trends.length, 0, "a known key dropping out and back in is not news");
+    },
+    { BASTRA_PENDING_TRENDS_SESSIONS: "2" },
+  );
+});
+
+test("#997: a retired drift hint returns when a cluster doubles or a new cluster key appears", async () => {
+  await withRelay(
+    async (path) => {
+      await retire(path, { "tag:foo": 8 });
+      await drift({ "tag:foo": 16 });
+      const grown = await start("s-1");
+      assert.equal(grown.trends.length, 1, "growth to 2× revives");
+      assert.equal(grown.trends[0].sessions, 1, "with a fresh counter");
+    },
+    { BASTRA_PENDING_TRENDS_SESSIONS: "2" },
+  );
+  await withRelay(
+    async (path) => {
+      await retire(path, { "tag:foo": 8 });
+      await drift({ "tag:foo": 8, "topic:bar": 8 });
+      const added = await start("s-1");
+      assert.equal(added.trends.length, 1, "a new key revives");
+      assert.deepEqual(added.trends[0].clusters, { "tag:foo": 8, "topic:bar": 8 });
+    },
+    { BASTRA_PENDING_TRENDS_SESSIONS: "2" },
+  );
+});
+
+test("#997: a tombstone written by the text rule is compared by text once, then carries the keys", async () => {
+  await withRelay(
+    async (path) => {
+      // Pre-#997 tombstone: no `clusters`.
+      const legacy = { ts: Date.now(), blocks: "<taxonomy-drift>8 share tag:foo</taxonomy-drift>", lane: "trends", key: "taxonomy-drift", sessions: 0, retired: true };
+      await writeFile(path, JSON.stringify([legacy]), "utf8");
+      await drift({ "tag:foo": 8 }); // same text → stays retired and learns its keys
+      assert.equal((await start("s-1")).trends.length, 0);
+      const rows = JSON.parse(await readFile(path, "utf8")) as PendingSuggestion[];
+      assert.deepEqual(rows[0].clusters, { "tag:foo": 8 });
+      await drift({ "tag:foo": 9 });
+      assert.equal((await start("s-2")).trends.length, 0, "from here on the keys decide");
+
+      // A legacy tombstone meeting changed text revives once (unknown size).
+      await writeFile(path, JSON.stringify([legacy]), "utf8");
+      await drift({ "tag:foo": 9 });
+      assert.equal((await start("s-3")).trends.length, 1);
+    },
+    { BASTRA_PENDING_TRENDS_SESSIONS: "2" },
   );
 });
 
