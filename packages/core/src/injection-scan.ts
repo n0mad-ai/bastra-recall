@@ -40,18 +40,6 @@ interface Pattern {
   re: RegExp;
 }
 
-// The same "ignore your previous instructions" ask in further languages —
-// #707: per-language data keyed by ISO-639-1 (regex sources). Distinctive verb
-// + qualifier + object, like the English signatures below. An unlisted language
-// is read by the English signatures and the fold (foldForScan) only; the scan
-// is flag-only, so a missing language costs a flag, never a write.
-const IGNORE_PREVIOUS_BY_LANGUAGE: Readonly<Record<string, readonly string[]>> = {
-  de: [String.raw`(?:ignorier|missachte|vergiss)\p{L}*\s+(?:alle\s+|jegliche\s+)?(?:vorherigen|vorigen|früheren|bisherigen|obigen|deine)\s+(?:anweisungen|instruktionen|regeln|befehle|vorgaben)`],
-  ru: [String.raw`(?:игнорир|забуд|не\s+учитыва)\p{L}*\s+(?:все\s+|любые\s+|всё\s+)?(?:предыдущ|прежн|прошл|вышеуказанн|выш\p{L}+\s+)\p{L}*\s+(?:инструкци|указани|правил|команд|промпт)\p{L}*`],
-  es: [String.raw`ignora\s+(?:todas\s+)?(?:las\s+)?(?:instrucciones|indicaciones|reglas)\s+(?:anteriores|previas)`],
-  fr: [String.raw`ignore[zr]?\s+(?:toutes\s+)?(?:les\s+)?(?:instructions|consignes|règles)\s+(?:précédentes|antérieures|ci-dessus)`],
-};
-
 // Instructions addressed to the AI. Each regex is anchored on a distinctive
 // verb+object pair so ordinary technical prose ("ignore previous errors and
 // retry") does not flag.
@@ -63,9 +51,6 @@ const AI_INSTRUCTION: Pattern[] = [
   { category: "ai-instruction", re: /<\|im_start\|>|\[\/?INST\]|<<SYS>>/g },
   { category: "ai-instruction", re: /(?:^|\n)#{1,4}\s*(?:system\s+prompt|new\s+instructions?)\b/gi },
   { category: "ai-instruction", re: /do\s+not\s+(?:tell|inform|alert)\s+the\s+user/gi },
-  ...Object.values(IGNORE_PREVIOUS_BY_LANGUAGE)
-    .flat()
-    .map((source): Pattern => ({ category: "ai-instruction", re: new RegExp(source, "giu") })),
 ];
 
 // Authority / urgency / pre-authorization framing.
@@ -97,7 +82,7 @@ const ALL_PATTERNS: Pattern[] = [...AI_INSTRUCTION, ...AUTHORITY, ...EXFIL];
 
 // Look-alike letters that let "ignore" pass as "іgnоre". Applied only
 // inside a word that ALSO holds Latin letters, so genuine Cyrillic or Greek
-// text is left alone for the per-language patterns above.
+// text is left alone.
 const CONFUSABLES: Readonly<Record<string, string>> = {
   а: "a", е: "e", о: "o", р: "p", с: "c", х: "x", у: "y", і: "i", ј: "j", ѕ: "s", ԁ: "d", һ: "h", ԛ: "q", ԝ: "w",
   А: "A", В: "B", Е: "E", К: "K", М: "M", Н: "H", О: "O", Р: "P", С: "C", Т: "T", Х: "X", І: "I",
@@ -105,16 +90,23 @@ const CONFUSABLES: Readonly<Record<string, string>> = {
 };
 const INVISIBLE_RE = /[\u00AD\u200B-\u200D\u2060\uFEFF]/g;
 const LATIN_LETTER_RE = /\p{Script=Latin}/u;
+const NON_ASCII_RE = /[^\x00-\x7F]/;
+const FOLD_CANDIDATE_RE = /[­​-‍⁠﻿Ͱ-ϿЀ-ӿ]/;
 
 /**
  * The text as the matchers should read it: fullwidth and compatibility forms
  * folded (NFKC), invisible characters removed, and look-alike letters inside
- * Latin words mapped to Latin. Identity for plain ASCII. `at[k]` is the index
- * in `text` of the character that produced `folded[k]` (`at[folded.length]`
- * is `text.length`), so a match in the folded copy maps back to the text as
- * delivered.
+ * Latin words mapped to Latin. `at[k]` is the index in `text` of the
+ * character that produced `folded[k]` (`at[folded.length]` is `text.length`),
+ * so a match in the folded copy maps back to the text as delivered. A text the
+ * fold would not change — plain ASCII, or nothing invisible, no Greek or
+ * Cyrillic letter and already NFKC — comes back as is without `at`: the
+ * per-character walk below is the scan's main cost and is skipped for it.
  */
-function foldForScan(text: string): { folded: string; at: number[] } {
+function foldForScan(text: string): { folded: string; at?: number[] } {
+  if (!NON_ASCII_RE.test(text) || (!FOLD_CANDIDATE_RE.test(text) && text.normalize("NFKC") === text)) {
+    return { folded: text };
+  }
   let folded = "";
   const at: number[] = [];
   // One base character with its combining marks at a time, so a decomposed
@@ -155,8 +147,8 @@ export function scanForInjection(text: string): InjectionFinding[] {
     p.re.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = p.re.exec(folded)) !== null && findings.length < MAX_FINDINGS) {
-      const index = at[m.index];
-      const end = at[m.index + m[0].length];
+      const index = at ? at[m.index] : m.index;
+      const end = at ? at[m.index + m[0].length] : m.index + m[0].length;
       findings.push({ category: p.category, excerpt: excerptAt(text, index, end - index), index });
       if (m.index === p.re.lastIndex) p.re.lastIndex++; // zero-width safety
     }
