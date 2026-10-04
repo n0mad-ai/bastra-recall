@@ -1,6 +1,6 @@
 {
   "name": "@bastra-recall/daemon",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server over a markdown vault: recall, load_memory, save_memory, edit_memory, archive_memory and document tools — plus the REST gateway, the quiet hook lanes and the bastra CLI.",
   "type": "module",
   "license": "MIT",
@@ -58,8 +58,8 @@
     "build:stub": "node scripts/build-stub.mjs"
   },
   "dependencies": {
-    "@bastra-recall/core": "1.0.0",
-    "@bastra-recall/statusline": "1.0.0",
+    "@bastra-recall/core": "1.0.1",
+    "@bastra-recall/statusline": "1.0.1",
     "@clack/prompts": "^1.8.1",
     "@modelcontextprotocol/sdk": "^1.31.0",
     "zod": "^4.6.5"

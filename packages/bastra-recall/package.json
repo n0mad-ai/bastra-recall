@@ -1,6 +1,6 @@
 {
   "name": "bastra-recall",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Shared memory for Claude Code, Claude Desktop, Codex/ChatGPT Desktop, and Cursor. Keep preferences, decisions and lessons in local Markdown files; includes the bastra installer.",
   "type": "module",
   "license": "MIT",
@@ -24,7 +24,7 @@
     "README.md"
   ],
   "dependencies": {
-    "@bastra-recall/daemon": "1.0.0"
+    "@bastra-recall/daemon": "1.0.1"
   },
   "keywords": [
     "bastra",

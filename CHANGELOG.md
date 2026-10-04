@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-10-04
+
 ### Added
 
 - **Archive limits** (#934). `bastra config set archive.cap <size>` sets what
@@ -3105,7 +3107,8 @@ edges. Dogfooded daily against a real vault.
 - CI (GitHub Actions): `npm ci` → build → type-check → test on a Node 20/22
   matrix, on every push and PR.
 
-[Unreleased]: https://github.com/n0mad-ai/bastra-recall/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/n0mad-ai/bastra-recall/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v1.0.1
 [1.0.0]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v1.0.0
 [0.9.2]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.9.2
 [0.9.1]: https://github.com/n0mad-ai/bastra-recall/releases/tag/v0.9.1
