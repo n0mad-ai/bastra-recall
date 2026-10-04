@@ -13,7 +13,9 @@
  * The neighbor scan is O(n²·dim); `buildSemanticLayout` is `async` and
  * yields to the event loop every {@link YIELD_EVERY_ROWS} rows so a large
  * vault's computation (measured 16s+ at n≈3900) does not block every other
- * hook lane on the daemon for the whole run.
+ * hook lane on the daemon for the whole run. The PCA before it yields once
+ * per power iteration (#939): in one piece it blocked ~250ms of CPU at the
+ * live vault size (n=1360, dim=768), over a second on a loaded host.
  */
 import type { VaultGraph } from "./graph.js";
 import { cosine } from "./embeddings.js";
@@ -60,7 +62,7 @@ export async function buildSemanticLayout(
     }
   }
 
-  const pts = project3d(mat);
+  const pts = await project3d(mat);
   const positions = ids.map((id, i) => ({ id, x: pts[i][0], y: pts[i][1], z: pts[i][2] }));
 
   // unwritten connections: top-k cosine neighbors with no explicit edge
@@ -99,7 +101,7 @@ export async function buildSemanticLayout(
  *  deflation for the second), then scale into the unit square with a SHARED
  *  factor so the semantic geometry keeps its aspect ratio. Deterministic —
  *  fixed start vector, no randomness. */
-function project3d(mat: Float32Array[]): Array<[number, number, number]> {
+async function project3d(mat: Float32Array[]): Promise<Array<[number, number, number]>> {
   const n = mat.length;
   if (n === 0) return [];
   const dim = mat[0].length;
@@ -114,9 +116,9 @@ function project3d(mat: Float32Array[]): Array<[number, number, number]> {
     return r;
   });
 
-  const pc1 = powerIteration(centered, []);
-  const pc2 = powerIteration(centered, [pc1]);
-  const pc3 = powerIteration(centered, [pc1, pc2]);
+  const pc1 = await powerIteration(centered, []);
+  const pc2 = await powerIteration(centered, [pc1]);
+  const pc3 = await powerIteration(centered, [pc1, pc2]);
   const raw = centered.map(
     (r) => [dot(r, pc1), dot(r, pc2), dot(r, pc3)] as [number, number, number],
   );
@@ -142,7 +144,10 @@ function project3d(mat: Float32Array[]): Array<[number, number, number]> {
 
 /** Dominant eigenvector of Xᵀ·X without materializing the (dim×dim) matrix:
  *  v ← Σᵢ (xᵢ·v)·xᵢ, re-orthogonalized against every `deflates` entry. */
-function powerIteration(centered: Float64Array[], deflates: Float64Array[]): Float64Array {
+async function powerIteration(
+  centered: Float64Array[],
+  deflates: Float64Array[],
+): Promise<Float64Array> {
   const dim = centered[0].length;
   let v = new Float64Array(dim);
   for (let d = 0; d < dim; d++) v[d] = Math.sin(d + 1); // fixed, non-degenerate start
@@ -162,6 +167,7 @@ function powerIteration(centered: Float64Array[], deflates: Float64Array[]): Flo
     }
     if (!normalize(next)) break; // no variance left along this direction
     v = next;
+    await yieldToEventLoop(); // one pass over all n rows per stretch (#939)
   }
   if (deflates.length > 0) {
     deflateAgainst(v);
