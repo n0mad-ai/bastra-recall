@@ -160,7 +160,28 @@ function hasExactIdentifier(input: DecisionInput): boolean {
   ]
     .join(" \n ")
     .toLowerCase();
-  return candidates.some((t) => haystack.includes(t.toLowerCase()));
+  return candidates.some((t) => startsWhole(haystack, t.toLowerCase()));
+}
+
+/**
+ * `term` beginnt im Text an einer Identifier-Grenze: Direkt davor steht kein
+ * Buchstabe, keine Ziffer und kein `_`. Sonst trifft `1.0` in `11.0.3`,
+ * `e-com` in `pre-commit` und `app.config.ts` in `my_app.config.ts` (#868).
+ * Ausnahme: ein einzelnes `v` vor einem Term, der mit einer Ziffer beginnt —
+ * `1.0` meint `v1.0`.
+ *
+ * `-` und `.` davor bleiben erlaubt: `falsifikations-run` in
+ * `244-falsifikations-run` und `in_use` in `.in_use` sind echte Anker
+ * (Goldsatz-Messung zu #869). Die RECHTE Seite bleibt ganz offen: `1.0` auf
+ * `1.0.1`, `09.09` auf `09.09.2026`, `import-vault` auf `import-vault.ts` sind
+ * die Kurzform eines echten Identifiers. `/` ist Grenze — Pfade sind
+ * Identifier mit Segmenten.
+ */
+function startsWhole(text: string, term: string): boolean {
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const edge = String.raw`(?<![\p{L}\p{N}_])`;
+  const left = /^\p{N}/u.test(term) ? `(?:${edge}|(?<=${edge}v))` : edge;
+  return new RegExp(left + escaped, "u").test(text);
 }
 
 /**
