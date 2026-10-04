@@ -298,7 +298,11 @@ async function evaluateStop(
       }
     }
     if (drift.length > 0) {
-      await writePendingSuggestion(formatDriftBlock(drift), { lane: "trends", key: "taxonomy-drift" });
+      await writePendingSuggestion(formatDriftBlock(drift), {
+        lane: "trends",
+        key: "taxonomy-drift",
+        clusters: Object.fromEntries(drift.map((c) => [`${c.kind}:${c.key}`, c.count])),
+      });
     }
   }
 

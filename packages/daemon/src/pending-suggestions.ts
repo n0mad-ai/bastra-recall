@@ -44,10 +44,31 @@ export interface PendingSuggestion {
   last_session?: string;
   /** Trends only: tombstone left when the entry aged out. It is never shown
    *  and takes no slot in the trends cap; it only stops an unchanged re-write
-   *  of the same text from reviving the trend. Changed text starts a fresh
-   *  row. Each unchanged re-write restarts the tombstone's own `sessions`;
+   *  of the same text (or, with `clusters`, of the same clusters) from
+   *  reviving the trend. News starts a fresh row. Each unchanged re-write restarts the tombstone's own `sessions`;
    *  once that passes the same N without a re-write, the tombstone is dropped. */
   retired?: boolean;
+  /** Trends only (#997): the cluster keys the trend reports with their sizes.
+   *  When the writer passes them, they — not the text — decide whether a
+   *  re-write is news (see {@link clusterNews}). Live: the last sizes written.
+   *  Tombstone: the sizes at retirement, kept while the trend stays retired. */
+  clusters?: Record<string, number>;
+}
+
+/**
+ * How much a reported cluster must grow before a retired trend comes back
+ * (#997): to at least twice the size it had at retirement. A count moving by
+ * one or two is the live vault breathing, not news.
+ */
+export const TREND_CLUSTER_GROWTH_FACTOR = 2;
+
+/** #997: a re-write is news when it names a cluster key the row has not seen,
+ *  or a known cluster grew to {@link TREND_CLUSTER_GROWTH_FACTOR} times its
+ *  stored size. Shrinking, a cluster dropping out or two swapping order is not. */
+function clusterNews(stored: Record<string, number>, next: Record<string, number>): boolean {
+  return Object.entries(next).some(
+    ([k, n]) => stored[k] === undefined || n >= TREND_CLUSTER_GROWTH_FACTOR * stored[k],
+  );
 }
 
 function isTombstone(e: PendingSuggestion): boolean {
@@ -139,7 +160,7 @@ export function pendingSuggestionsPath(): string {
  */
 export async function writePendingSuggestion(
   blocks: string,
-  opts: { lane?: PendingLane; key?: string } = {},
+  opts: { lane?: PendingLane; key?: string; clusters?: Record<string, number> } = {},
 ): Promise<void> {
   const lane: PendingLane = opts.lane ?? "recency";
   const path = pendingSuggestionsPath();
@@ -170,17 +191,29 @@ export async function writePendingSuggestion(
         // a STANDING trend, e.g. taxonomy-drift on every Stop, never age out)
         // and a tombstone stays one, with its expiry pushed back. Changed text
         // is news, live or aged out: a fresh row with a fresh counter.
+        // #997: a writer that passes its cluster keys is compared by those
+        // instead — the drift text changes with every count. A row written
+        // before #997 has no keys; it is compared by text once and then
+        // carries the keys (an unchanged text means the sizes are exact).
         const dup = entries.find(
           (e) => laneOf(e) === "trends" && (opts.key ? e.key === opts.key : e.blocks === capped),
         );
         if (dup) entries.splice(entries.indexOf(dup), 1);
-        if (dup && dup.blocks === capped) {
+        const same =
+          dup !== undefined &&
+          (opts.clusters && dup.clusters ? !clusterNews(dup.clusters, opts.clusters) : dup.blocks === capped);
+        if (dup && same) {
           dup.ts = Date.now();
           if (dup.retired) dup.sessions = 0;
+          else dup.blocks = capped; // live: show the current numbers
+          // A tombstone keeps its sizes at retirement; a live row merges, so a
+          // cluster flickering in and out of the report is not a new key.
+          if (opts.clusters && !(dup.retired && dup.clusters)) dup.clusters = { ...dup.clusters, ...opts.clusters };
           entries.push(dup);
         } else {
           const row: PendingSuggestion = { ts: Date.now(), blocks: capped, lane: "trends", sessions: 0 };
           if (opts.key) row.key = opts.key;
+          if (opts.clusters) row.clusters = { ...opts.clusters };
           entries.push(row);
         }
       } else {

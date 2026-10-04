@@ -727,21 +727,30 @@ with no taxonomy convention covering it, and surfaces at most two clusters as a
 `<taxonomy-drift>` suggestion — see [taxonomy.md](taxonomy.md). Same contract:
 suggestion only, the agent decides.
 
-**How long a trend is shown (#513, #771).** The drift block does not go back in
+**How long a trend is shown (#513, #771, #997).** The drift block does not go back in
 the same turn. It sits in the pending relay's `trends` lane: every session
 start shows it in a `<pending-trends>` block, and reading does not consume it.
 Its lifetime is counted in real session starts, not in days. After N starts
 (default 6, `BASTRA_PENDING_TRENDS_SESSIONS`) it is gone, even while the
-condition lasts and the Stop hook keeps writing the same text. It comes back
-only when its text changes, and changed text always gets its N starts again,
-whether the previous text was still being shown or was already gone. Resumed,
+condition lasts and the Stop hook keeps writing it. The drift block is
+identified by its cluster keys (the tags and topics it names), not by its
+text: counts and example ids change with every save, and a changed number
+alone neither restarts the N starts nor brings a retired block back. It comes
+back, with N fresh starts, only when a new cluster key appears or a cluster
+has grown to at least twice the size it had when the block retired; a cluster
+shrinking, dropping out or swapping places is not news. While the block is
+shown it carries the current numbers. A marker written before #997 has no
+keys: it is compared by text once, so a changed text brings the block back one
+more time, and from then on the keys decide. Other trends keep the text rule:
+they come back only when their text changes, and changed text gets its N
+starts again, whether the previous text was still being shown or was already
+gone. Resumed,
 compacted and cleared sessions, a repeated session id and ids with an
 eval/test prefix do not count. To keep a retired trend from coming back, the
 relay file holds an invisible marker for it, which takes no slot in the
 five-entry cap. The marker is dropped after N session starts in a row without
 the trend being written, and the file is removed when nothing else is left in
-it. The drift text carries counts and example ids, so it changes whenever a
-cluster gains or loses a memory, and the block then starts over.
+it.
 
 Budget 1000 ms. Telemetry: `save_eval_call` with `heuristic, suggested_count,
 drift_clusters, drift_keys, turn_count, latency_ms_total`, plus `delivery`
@@ -1677,24 +1686,32 @@ zeigt höchstens zwei Cluster als `<taxonomy-drift>`-Vorschlag an — siehe
 [taxonomy.md](taxonomy.md). Gleicher Vertrag: nur ein Vorschlag, der Agent
 entscheidet.
 
-**Wie lange ein Trend gezeigt wird (#513, #771).** Der Drift-Block geht nicht
+**Wie lange ein Trend gezeigt wird (#513, #771, #997).** Der Drift-Block geht nicht
 im selben Turn zurück. Er liegt in der `trends`-Spur des Pending-Relays: Jeder
 Session-Start zeigt ihn in einem `<pending-trends>`-Block, und das Lesen
 verbraucht ihn nicht. Seine Lebensdauer wird in echten Session-Starts gezählt,
 nicht in Tagen. Nach N Starts (Standard 6, `BASTRA_PENDING_TRENDS_SESSIONS`)
-ist er weg, auch wenn der Zustand anhält und der Stop-Hook denselben Text
-weiter schreibt. Er kommt nur zurück, wenn sich sein Text ändert, und
-geänderter Text bekommt immer wieder seine N Starts, egal ob der vorherige
-Text noch gezeigt wurde oder schon weg war. Fortgesetzte, kompaktierte und
+ist er weg, auch wenn der Zustand anhält und der Stop-Hook ihn weiter
+schreibt. Der Drift-Block wird an seinen Cluster-Schlüsseln erkannt (den Tags
+und Topics, die er nennt), nicht an seinem Text: Zählwerte und Beispiel-IDs
+ändern sich mit jedem Speichern, und eine geänderte Zahl allein startet die N
+Starts weder neu noch holt sie einen ausgelaufenen Block zurück. Er kommt mit
+N frischen Starts nur zurück, wenn ein neuer Cluster-Schlüssel auftaucht oder
+ein Cluster auf mindestens das Doppelte der Größe gewachsen ist, die er beim
+Auslaufen hatte; ein Cluster, der schrumpft, herausfällt oder den Platz
+tauscht, ist keine Neuigkeit. Solange der Block gezeigt wird, trägt er die
+aktuellen Zahlen. Ein Merker von vor #997 hat keine Schlüssel: Er wird einmal
+am Text verglichen, ein geänderter Text holt den Block also noch ein Mal
+zurück, danach entscheiden die Schlüssel. Andere Trends behalten die
+Text-Regel: Sie kommen nur zurück, wenn sich ihr Text ändert, und geänderter
+Text bekommt immer wieder seine N Starts, egal ob der vorherige Text noch
+gezeigt wurde oder schon weg war. Fortgesetzte, kompaktierte und
 geleerte Sessions, eine wiederholte Session-ID und IDs mit einem
 Eval-/Test-Präfix zählen nicht. Damit ein ausgelaufener Trend nicht
 zurückkommt, hält die Relay-Datei einen unsichtbaren Merker für ihn, der
 keinen Platz in der Fünf-Einträge-Grenze belegt. Der Merker fällt weg, wenn N
 Session-Starts in Folge vergangen sind, ohne dass der Trend geschrieben wurde,
-und die Datei wird entfernt, wenn sonst nichts mehr in ihr steht. Der
-Drift-Text enthält Zählwerte und Beispiel-IDs; er ändert sich also, sobald ein
-Cluster eine Erinnerung gewinnt oder verliert, und der Block beginnt dann von
-vorn.
+und die Datei wird entfernt, wenn sonst nichts mehr in ihr steht.
 
 Budget 1000 ms. Telemetrie: `save_eval_call` mit `heuristic, suggested_count,
 drift_clusters, drift_keys, turn_count, latency_ms_total`, dazu `delivery`
