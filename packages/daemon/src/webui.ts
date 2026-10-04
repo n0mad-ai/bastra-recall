@@ -38,9 +38,12 @@ import { getUiEnabled } from "./settings.js";
  *                         and inspector.js are set through the CSSOM after
  *                         insertion; the .style assignments across the
  *                         managers are CSSOM writes and were never governed
- *                         by this directive. ctxmenu.js can still set an
- *                         inline style attribute from an item's `style`
- *                         field, but nothing in this app populates it.
+ *                         by this directive. ctxmenu.js injects a <style>
+ *                         element with its base rules, which this blocks;
+ *                         those rules live in css/overlays.css instead. It
+ *                         can also set an inline style attribute from an
+ *                         item's `style` field, but nothing in this app
+ *                         populates it.
  *   object-src 'none' · frame-ancestors 'none' · base-uri 'self' — the page
  *                         embeds no plugins, must not be framed, and must not
  *                         let an injected <base> retarget its relative URLs.
