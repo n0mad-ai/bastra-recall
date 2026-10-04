@@ -18,7 +18,7 @@ import { buildTelemetryReport, readEventWindow, type ReportThresholds } from "./
 
 export const TELEMETRY_DEFAULT_DAYS = 7;
 
-/** Dieselben Cut-Points wie stats.ts und telemetry.ts (bandForScore). */
+/** Dieselben Cut-Points wie stats.ts und telemetry-join-state.ts (bandForScore). */
 export function reportThresholds(env: NodeJS.ProcessEnv = process.env): ReportThresholds {
   const n = (v: string | undefined, fallback: number): number => {
     const x = Number(v);
