@@ -125,7 +125,8 @@ Live mode reads the native Claude statusline snapshot published by
 `dist/claude-panel-feed.mjs --renderer '<original statusLine.command>'`.
 This wrapper receives Claude's JSON on stdin, writes only the small session
 metadata snapshot under `~/.bastra/panels/claude/`, and delegates to the original
-renderer so the existing footer stays intact. It is configured as Claude's
+renderer so the existing footer stays intact. Without `--renderer` it only publishes the snapshot and prints nothing, for
+setups where the panel replaces the footer. It is configured as Claude's
 `statusLine.command`, with `refreshInterval: 1`; back up settings before changing
 that command. Claude reloads it automatically. Replacing that command later
 also removes the feed, which the panel reports as stale instead of keeping old values.
