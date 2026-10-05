@@ -17,7 +17,9 @@
   },
   "main": "./dist/index.mjs",
   "bin": {
-    "bastra-statusline": "./bin/claude-powerline"
+    "bastra-statusline": "./bin/claude-powerline",
+    "bastra-codex-statusline": "./bin/bastra-codex-statusline",
+    "bastra-recall-panel": "./bin/bastra-recall-panel"
   },
   "files": [
     "dist",

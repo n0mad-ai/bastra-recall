@@ -46,7 +46,9 @@ Every hook path is fail-open: an unreachable daemon must not block a Codex turn.
 
 While a hook is running, the adapter uses Codex's native blinking status line through `statusMessage`, for example `Bastra Recall · loading context`, `Bastra Recall · recalling for patch`, or `Bastra Recall · evaluating memory save`. The message is deliberately brief and disappears when the hook finishes.
 
-A persistent second row in the ChatGPT desktop app is not currently a documented extension surface. `tui.status_line` belongs to the Codex terminal UI only and supports built-in segment IDs, not an external Bastra renderer. The installer therefore leaves this personal TUI preference unchanged. Persistent health and diagnostics remain available through `bastra status` and `bastra doctor codex`; a future official plugin/command provider can connect to the existing Bastra status-line renderer.
+For a persistent terminal display, `bastra-codex-statusline --cmux` opens a compact Powerline panel below the Codex surface. It shows model, reported quota windows, context usage, vault size, and per-turn Recall activity (searches, candidates, loads, saves/edits, tool time and errors). Use `--session <id> --watch` in a separate terminal without cmux. The panel binds to an explicit session and reads its JSONL transcript plus the existing Bastra feed; it does not send messages or resume the session. Paginated-only histories are not supported. See [statusline details](../packages/statusline/README.md#codex-powerline-panel).
+
+This panel is separate from Codex's native footer. `tui.status_line` supports built-in segment IDs, so the installer still leaves that personal preference unchanged. The ChatGPT desktop app has no documented persistent second-row extension surface. Persistent health and diagnostics remain available through `bastra status` and `bastra doctor codex`.
 
 ### Verification and removal
 
@@ -106,7 +108,9 @@ Alle Hook-Pfade sind fail-open: Ein nicht erreichbarer Daemon darf keinen Codex-
 
 Während ein Hook läuft, verwendet der Adapter Codex' native, blinkende Statuszeile über `statusMessage`, zum Beispiel `Bastra Recall · loading context`, `Bastra Recall · recalling for patch` oder `Bastra Recall · evaluating memory save`. Die Meldung ist bewusst kurz und verschwindet nach dem Hook.
 
-Eine dauerhafte zweite Zeile in der ChatGPT-Desktop-App ist derzeit keine dokumentierte Erweiterungsfläche. `tui.status_line` gehört ausschließlich zur Codex-Terminaloberfläche und unterstützt eingebaute Segment-IDs, aber keinen externen Bastra-Renderer. Der Installer verändert diese persönliche TUI-Einstellung deshalb nicht. Dauerzustand und Diagnose bleiben über `bastra status` und `bastra doctor codex` abrufbar; eine spätere offizielle Plugin-/Command-Schnittstelle kann an den vorhandenen Bastra-Statusline-Renderer angebunden werden.
+`bastra-codex-statusline --cmux` öffnet ein kompaktes Powerline-Panel unter der Codex-Surface: Modell, gemeldete Nutzungsfenster, Kontextbelegung, Vault-Größe und Recall-Aktivität pro Turn (Suchen, Treffer, Laden, Speichern/Bearbeiten, Laufzeit und Fehler). Ohne cmux läuft `--session <id> --watch` in einem separaten Terminal. Das Panel liest das JSONL-Transcript der ausdrücklich gewählten Sitzung und den vorhandenen Bastra-Feed. Es sendet keine Nachrichten und nimmt die Sitzung nicht selbst wieder auf. Rein paginierte Historien werden noch nicht unterstützt. [Details zur Statusline](../packages/statusline/README.md#codex-powerline-panel).
+
+Das Panel läuft getrennt von Codex' eingebauter Fußzeile. `tui.status_line` unterstützt vorgegebene Segment-IDs; der Installer lässt diese persönliche Einstellung weiterhin unverändert. Für die ChatGPT-Desktop-App gibt es keine dokumentierte dauerhafte zweite Zeile. Diagnose bleibt über `bastra status` und `bastra doctor codex` verfügbar.
 
 ### Prüfung und Entfernung
 
