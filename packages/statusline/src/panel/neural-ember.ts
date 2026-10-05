@@ -2,19 +2,23 @@ import { codePointWidth, visibleLength } from '../utils/terminal';
 import { resetCountdown } from './reset-time';
 import { contextRemaining } from './context-remaining';
 import { gitLabel, timingLabel } from './details';
+import { CONTEXT_STOPS, contextLevel, contextWarning } from './context-level';
 import type { NeuralData } from './types';
 import type { PanelView } from './view';
 export { toggleHit } from './view';
 
 type RGB = readonly [number, number, number];
-interface Skin { INK: RGB; BONE: RGB; ASH: RGB; DUSK: RGB; BAND: RGB; HOT: RGB; VIOLET: RGB; MAGENTA: RGB; EMBER: RGB; GOLD: RGB }
+interface Skin { INK: RGB; BONE: RGB; ASH: RGB; DUSK: RGB; BAND: RGB; HOT: RGB; VIOLET: RGB; MAGENTA: RGB; EMBER: RGB; GOLD: RGB;
+  GREEN: RGB; YELLOW: RGB; ORANGE: RGB; RED: RGB }
 const DARK: Skin = { INK: [13, 10, 20], BONE: [243, 236, 223], ASH: [143, 134, 163], DUSK: [62, 52, 80], BAND: [36, 23, 50], HOT: [255, 92, 112],
-  VIOLET: [109, 75, 255], MAGENTA: [224, 72, 155], EMBER: [255, 122, 69], GOLD: [255, 210, 122] };
+  VIOLET: [109, 75, 255], MAGENTA: [224, 72, 155], EMBER: [255, 122, 69], GOLD: [255, 210, 122],
+  GREEN: [86, 212, 140], YELLOW: [245, 214, 80], ORANGE: [255, 150, 60], RED: [255, 82, 96] };
 /** Warm paper with the same hues, darkened until they carry on a light ground. */
 const LIGHT: Skin = { INK: [247, 242, 233], BONE: [38, 29, 48], ASH: [112, 101, 126], DUSK: [186, 176, 192], BAND: [236, 226, 238], HOT: [208, 36, 66],
-  VIOLET: [96, 66, 232], MAGENTA: [204, 48, 136], EMBER: [228, 92, 36], GOLD: [196, 134, 14] };
+  VIOLET: [96, 66, 232], MAGENTA: [204, 48, 136], EMBER: [228, 92, 36], GOLD: [196, 134, 14],
+  GREEN: [22, 150, 84], YELLOW: [186, 142, 0], ORANGE: [214, 104, 10], RED: [200, 32, 56] };
 // The active skin, set at the start of every render. INK is the canvas.
-let { INK, BONE, ASH, DUSK, BAND, HOT, VIOLET, MAGENTA, EMBER, GOLD } = DARK;
+let { INK, BONE, ASH, DUSK, BAND, HOT, VIOLET, MAGENTA, EMBER, GOLD, GREEN, YELLOW, ORANGE, RED } = DARK;
 /** The light skin's canvas, for the CLI to tint the pane around the panel. */
 export { LIGHT_CANVAS } from './view';
 /** What the CLI controls: the terminal's own background as the dark canvas, the compact view, the light skin. */
@@ -118,12 +122,26 @@ const FONT: Record<string, string[]> = {
   '6': ['111', '100', '111', '101', '111'], '7': ['111', '001', '001', '001', '001'], '8': ['111', '101', '111', '101', '111'],
   '9': ['111', '101', '111', '001', '111'], '—': ['000', '000', '111', '000', '000'],
 };
-/** Solid block numerals, five rows tall, gold at the top cooling to magenta. Returns the column after them. */
+/** How full the context is, as a colour: green, yellow from 40 %, orange from 60 %, red from 70 % (see context-level.ts). */
+function heat(percent: number): RGB {
+  const { caution, warning, critical } = CONTEXT_STOPS;
+  return percent >= critical ? RED : percent >= warning ? mix(ORANGE, RED, (percent - warning) / (critical - warning))
+    : percent >= caution ? mix(YELLOW, ORANGE, (percent - caution) / (warning - caution)) : mix(GREEN, YELLOW, (percent - caution + 10) / 10);
+}
+/** The context bar is its own scale: every cell carries the colour of its share, the part not yet used faintly. */
+function heatBar(grid: Grid, x: number, y: number, width: number, value: number | null): void {
+  const filled = value === null ? 0 : Math.round(Math.min(100, Math.max(0, value)) / 100 * width);
+  for (let i = 0; i < width; i++) {
+    const tone = heat((i + 0.5) / width * 100);
+    grid.put(x + i, y, i < filled ? '━' : '─', value === null ? DUSK : i < filled ? tone : mix(INK, tone, 0.3));
+  }
+}
+/** Solid block numerals, five rows tall, in the context's heat colour, lighter at the top. Returns the column after them. */
 function numerals(grid: Grid, x: number, y: number, value: number | null): number {
   const chars = value === null ? ['—'] : String(Math.round(Math.min(100, Math.max(0, value)))).split('');
   for (const ch of chars) {
     FONT[ch]!.forEach((line, py) => [...line].forEach((bit, px) => {
-      if (bit === '1') for (let i = 0; i < 2; i++) grid.put(x + px * 2 + i, y + py, '█', value === null ? mix(DUSK, ASH, 0.4) : mix(GOLD, MAGENTA, py / 4));
+      if (bit === '1') for (let i = 0; i < 2; i++) grid.put(x + px * 2 + i, y + py, '█', value === null ? mix(DUSK, ASH, 0.4) : mix(mix(heat(value), BONE, 0.35), heat(value), py / 4));
     }));
     x += 8;
   }
@@ -208,7 +226,7 @@ const DEMO_EXTRAS: Partial<NeuralData> = { usage5h: 38, loadedTitles: ['Beispiel
  */
 export function renderNeural(data: NeuralData, width = 120, frame = 0, color = true, { paper, compact, light }: EmberView = {}): string[] {
   width = Math.max(1, Math.floor(width));
-  ({ INK, BONE, ASH, DUSK, BAND, HOT, VIOLET, MAGENTA, EMBER, GOLD } = light ? LIGHT : DARK);
+  ({ INK, BONE, ASH, DUSK, BAND, HOT, VIOLET, MAGENTA, EMBER, GOLD, GREEN, YELLOW, ORANGE, RED } = light ? LIGHT : DARK);
   // Dark canvas is the terminal's own background, so pane padding and leftover pixels are part of the panel.
   if (!light && paper?.length === 3) INK = paper as unknown as RGB;
   if (data.mode === 'demo') data = { ...DEMO_EXTRAS, ...data };
@@ -244,12 +262,15 @@ export function renderNeural(data: NeuralData, width = 120, frame = 0, color = t
   if (compact) {
     // One line: the three gauges, then the Recall chain as far as it fits
     let gx = m;
+    gx = g.text(gx, 2, 'Kontext ', ASH);
+    gx = g.text(gx, 2, `${number(data.context)} %`, data.context === null ? BONE : heat(data.context), true) + 2;
+    heatBar(g, gx, 2, 10, data.context); gx += 14;
     const gauge = (name: string, value: number | null | undefined, from: RGB, to: RGB) => {
       gx = g.text(gx, 2, name + ' ', ASH);
       gx = g.text(gx, 2, `${number(value)} %`, typeof value === 'number' && value >= 90 ? HOT : BONE, true) + 2;
       bar(g, gx, 2, 10, value, from, to); gx += 14;
     };
-    gauge('Kontext', data.context, EMBER, GOLD); gauge('5 Std', data.usage5h, MAGENTA, EMBER); gauge('7 Tage', data.usage, VIOLET, MAGENTA);
+    gauge('5 Std', data.usage5h, MAGENTA, EMBER); gauge('7 Tage', data.usage, VIOLET, MAGENTA);
     const chain: [string, string, RGB][] = [['Erinnerungen', number(data.vault), mix(VIOLET, BONE, 0.45)], ['gefunden', number(data.hits), EMBER], ['geladen', number(data.loads), GOLD]];
     let cx = end;
     for (const [word, value, tone] of chain.reverse()) {
@@ -276,7 +297,9 @@ export function renderNeural(data: NeuralData, width = 120, frame = 0, color = t
     g.text(tx, 4, '% Kontext belegt', BONE, true);
     g.text(tx, 5, `${free} frei`, ASH);
     g.text(tx, 6, `von ${total}`, ASH);
-    bar(g, tx, 8, end - tx, data.context, EMBER, GOLD);
+    const warning = contextWarning(data.context);
+    if (warning) g.text(tx, 7, warning, heat(data.context!), contextLevel(data.context) === 3, end);
+    heatBar(g, tx, 8, end - tx, data.context);
     const limit = (y: number, name: string, value: number | null | undefined, at: number | null | undefined, from: RGB, to: RGB) => {
       g.text(px, y, name, ASH);
       g.textRight(px + 12, y, `${number(value)} %`, typeof value === 'number' && value >= 90 ? HOT : BONE, true);

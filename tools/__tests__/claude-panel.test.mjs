@@ -9,6 +9,7 @@ import { visibleLength } from '../../packages/statusline/src/utils/terminal.ts';
 import { TerminalFrame } from '../../packages/statusline/src/panel/terminal-frame.ts';
 import { resetCountdown } from '../../packages/statusline/src/panel/reset-time.ts';
 import { sessionForSurface } from '../../packages/statusline/src/panel/follow.ts';
+import { contextLevel, contextWarning } from '../../packages/statusline/src/panel/context-level.ts';
 
 const row = (type, content, extra = {}) => ({ type, sessionId: 's', timestamp: '2026-10-04T18:00:00Z', message: { content }, ...extra });
 const call = (id, name) => row('assistant', [{ type: 'tool_use', id, name: 'mcp__bastra-recall__' + name }]);
@@ -229,4 +230,23 @@ test('a finished turn stops the activity signal although cmux still reports the 
   assert.equal(cmuxWorking({ agentLifecycle: 'idle', hookEventName: 'PreToolUse' }), false);
   assert.equal(cmuxWorking({ agentLifecycle: 'idle', activePromptDepth: 1 }), true); assert.equal(cmuxWorking({ runtimeStatus: 'thinking' }), true);
   assert.equal(cmuxWorking(undefined), false); assert.equal(cmuxWorking({ agentLifecycle: 'running' }), false);
+});
+
+test('ember colours the context by fill level and warns in words from 40 %', () => {
+  assert.deepEqual([null, 0, 39.9, 40, 59.9, 60, 69.9, 70, 100, NaN].map(contextLevel), [0, 0, 0, 1, 1, 2, 2, 3, 3, 0]);
+  const live = { ...NEURAL_DEMO, mode: 'live', fresh: true, contextFree: 1, contextTotal: 1_000_000 };
+  const at = (context, view = {}) => renderNeural({ ...live, context }, 145, 0, true, 'ember', { compact: false, ...view });
+  const tone = (rows, y, ch) => new RegExp(`38;2;(\\d+;\\d+;\\d+)m[^\\x1b]*${ch}`).exec(rows[y])?.[1];
+  // numerals: green, then exactly yellow at 40, orange at 60, red from 70 (bottom row carries the pure tone)
+  assert.equal(tone(at(20), 8, '█'), '86;212;140'); assert.equal(tone(at(40), 8, '█'), '245;214;80');
+  assert.equal(tone(at(60), 8, '█'), '255;150;60'); assert.equal(tone(at(70), 8, '█'), '255;82;96'); assert.equal(tone(at(95), 8, '█'), '255;82;96');
+  assert.equal(tone(at(70, { light: true }), 8, '█'), '200;32;56'); // light skin has its own, darker tones
+  const plain = context => renderNeural({ ...live, context }, 145, 0, false, 'ember').join('\n');
+  assert.doesNotMatch(plain(39), /Qualität|Sitzung|Context Rot/);
+  assert.match(plain(40), /von 1\.000\.000 *\n.*Qualität lässt nach/); assert.match(plain(60), /Bald neue Sitzung starten/); assert.match(plain(70), /Context Rot: neu starten/);
+  assert.doesNotMatch(plain(null), /Qualität|Sitzung|Context Rot/); assert.equal(contextWarning(null), null);
+  // the bar is its own scale: the first cell is green and the last one red, whatever the fill
+  const bar = at(50)[8].slice(at(50)[8].lastIndexOf('█'));
+  assert.match(bar, /38;2;86;212;140m━/); assert.match(bar, /─(?!.*─)/); assert.doesNotMatch(bar, /38;2;255;82;96m━/);
+  assert.match(renderNeural({ ...live, context: 70 }, 145, 0, true, 'ember', { compact: true })[2], /Kontext .*38;2;255;82;96m70 %/);
 });
