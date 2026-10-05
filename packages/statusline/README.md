@@ -89,6 +89,14 @@ bastra-recall-panel --client codex --session <codex-session-id> --watch --design
 bastra-recall-panel --client codex --cmux
 ```
 
+Ember colours the context readout by how full the window is: green, yellow from
+40 %, orange from 60 %, red from 70 %, and from 40 % a line of text below the
+free tokens says what to do. The bar is its own scale, so the colour of the
+part still ahead is visible. These stops are a working convention against
+context rot, not measured thresholds: published measurements describe a gradual
+decline that depends on token count and task, not a share of the window. They
+live in `src/panel/context-level.ts` for the other designs to share.
+
 All three designs have a compact view: header, one line with the context, five-hour and
 seven-day gauges plus the Recall counts, and the activity row. Click the arrow
 at the right of the header or press `m` in the panel; `--compact` starts in it.
