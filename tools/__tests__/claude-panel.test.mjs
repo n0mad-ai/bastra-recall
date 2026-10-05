@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm, appendFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { nativeSnapshot, publishNative, snapshotPath, ClaudeCalls, ClaudeLiveSource } from '../../packages/statusline/src/panel/claude-data.ts';
+import { nativeSnapshot, publishNative, snapshotPath, ClaudeCalls, ClaudeLiveSource, cmuxWorking } from '../../packages/statusline/src/panel/claude-data.ts';
 import { renderNeural, toggleHit, NEURAL_DEMO } from '../../packages/statusline/src/panel/neural.ts';
 import { visibleLength } from '../../packages/statusline/src/utils/terminal.ts';
 import { TerminalFrame } from '../../packages/statusline/src/panel/terminal-frame.ts';
@@ -219,4 +219,14 @@ test('unknown Recall counts are a dash in every design, never a zero-padded dash
     assert.doesNotMatch(text, /0—/); assert.match(text, /— S|Suchen —/i);
   }
   assert.match(renderNeural(NEURAL_DEMO, 130, 0, false, 'orbital').join('\n'), /02 SUCHEN {2}→ {2}06 TREFFER/);
+});
+
+test('a finished turn stops the activity signal although cmux still reports the agent process as running', () => {
+  assert.equal(cmuxWorking({ agentLifecycle: 'running', hookEventName: 'Stop' }), false);
+  assert.equal(cmuxWorking({ agentLifecycle: 'running', hookEventName: 'Notification' }), false); // waiting for the user
+  assert.equal(cmuxWorking({ agentLifecycle: 'running', hookEventName: 'SessionStart' }), false);
+  for (const hookEventName of ['UserPromptSubmit', 'PreToolUse', 'PostToolUse']) assert.equal(cmuxWorking({ agentLifecycle: 'running', hookEventName }), true);
+  assert.equal(cmuxWorking({ agentLifecycle: 'idle', hookEventName: 'PreToolUse' }), false);
+  assert.equal(cmuxWorking({ agentLifecycle: 'idle', activePromptDepth: 1 }), true); assert.equal(cmuxWorking({ runtimeStatus: 'thinking' }), true);
+  assert.equal(cmuxWorking(undefined), false); assert.equal(cmuxWorking({ agentLifecycle: 'running' }), false);
 });

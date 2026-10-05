@@ -126,6 +126,16 @@ export class ClaudeCalls {
   }
 }
 
+/**
+ * Whether cmux's record says the agent is in the middle of a turn. `agentLifecycle: 'running'` only means the
+ * process is alive: it stays set after the turn's Stop hook, so the last hook event decides.
+ */
+export function cmuxWorking(record: any): boolean {
+  if (record?.activePromptDepth > 0 || ['running', 'working', 'thinking'].includes(record?.runtimeStatus)) return true;
+  return record?.agentLifecycle === 'running' && typeof record.hookEventName === 'string' &&
+    !['Stop', 'SessionStart', 'SessionEnd', 'Notification'].includes(record.hookEventName);
+}
+
 /** Incremental transcript reader; native metadata chooses the session/path. */
 export class ClaudeLiveSource {
   private calls: ClaudeCalls;
@@ -171,8 +181,7 @@ export class ClaudeLiveSource {
       const store = JSON.parse(await readFile(path.join(os.homedir(), '.cmuxterm', 'claude-hook-sessions.json'), 'utf8'));
       const record = store.sessions?.[this.session];
       // Match identity; never treat an unrelated workspace's activity as ours.
-      if (record?.sessionId === this.session) agentWorking = record.activePromptDepth > 0 ||
-        ['running', 'working', 'thinking'].includes(record.runtimeStatus) || record.agentLifecycle === 'running';
+      if (record?.sessionId === this.session) agentWorking = cmuxWorking(record);
     } catch { /* cmux is optional; transcript remains the fallback */ }
     try {
       const native = JSON.parse(await readFile(snapshotPath(this.session, this.directory), 'utf8')) as ClaudePanelSnapshot;
