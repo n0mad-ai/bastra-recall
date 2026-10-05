@@ -9,16 +9,20 @@ export { toggleHit } from './view';
 
 type RGB = readonly [number, number, number];
 interface Skin { INK: RGB; BONE: RGB; ASH: RGB; DUSK: RGB; BAND: RGB; HOT: RGB; VIOLET: RGB; MAGENTA: RGB; EMBER: RGB; GOLD: RGB;
-  GREEN: RGB; YELLOW: RGB; ORANGE: RGB; RED: RGB }
+  GREEN: RGB; YELLOW: RGB; ORANGE: RGB; RED: RGB;
+  /** Per heat family, the light and the deep tone the big numerals shade between. */
+  SHADES: readonly (readonly [RGB, RGB])[] }
 const DARK: Skin = { INK: [13, 10, 20], BONE: [243, 236, 223], ASH: [143, 134, 163], DUSK: [62, 52, 80], BAND: [36, 23, 50], HOT: [255, 92, 112],
   VIOLET: [109, 75, 255], MAGENTA: [224, 72, 155], EMBER: [255, 122, 69], GOLD: [255, 210, 122],
-  GREEN: [86, 212, 140], YELLOW: [245, 214, 80], ORANGE: [255, 150, 60], RED: [255, 82, 96] };
+  GREEN: [86, 212, 140], YELLOW: [245, 214, 80], ORANGE: [255, 150, 60], RED: [255, 82, 96],
+  SHADES: [[[176, 242, 150], [28, 168, 132]], [[255, 240, 140], [232, 164, 38]], [[255, 204, 112], [240, 94, 40]], [[255, 156, 124], [214, 38, 92]]] };
 /** Warm paper with the same hues, darkened until they carry on a light ground. */
 const LIGHT: Skin = { INK: [247, 242, 233], BONE: [38, 29, 48], ASH: [112, 101, 126], DUSK: [186, 176, 192], BAND: [236, 226, 238], HOT: [208, 36, 66],
   VIOLET: [96, 66, 232], MAGENTA: [204, 48, 136], EMBER: [228, 92, 36], GOLD: [196, 134, 14],
-  GREEN: [22, 150, 84], YELLOW: [186, 142, 0], ORANGE: [214, 104, 10], RED: [200, 32, 56] };
+  GREEN: [22, 150, 84], YELLOW: [186, 142, 0], ORANGE: [214, 104, 10], RED: [200, 32, 56],
+  SHADES: [[[70, 176, 96], [8, 108, 92]], [[208, 164, 16], [158, 104, 0]], [[232, 128, 34], [188, 68, 10]], [[222, 76, 74], [162, 18, 62]]] };
 // The active skin, set at the start of every render. INK is the canvas.
-let { INK, BONE, ASH, DUSK, BAND, HOT, VIOLET, MAGENTA, EMBER, GOLD, GREEN, YELLOW, ORANGE, RED } = DARK;
+let { INK, BONE, ASH, DUSK, BAND, HOT, VIOLET, MAGENTA, EMBER, GOLD, GREEN, YELLOW, ORANGE, RED, SHADES } = DARK;
 /** The light skin's canvas, for the CLI to tint the pane around the panel. */
 export { LIGHT_CANVAS } from './view';
 /** What the CLI controls: the terminal's own background as the dark canvas, the compact view, the light skin. */
@@ -122,12 +126,14 @@ const FONT: Record<string, string[]> = {
   '6': ['111', '100', '111', '101', '111'], '7': ['111', '001', '001', '001', '001'], '8': ['111', '101', '111', '101', '111'],
   '9': ['111', '101', '111', '001', '111'], '—': ['000', '000', '111', '000', '000'],
 };
-/** How full the context is, as a colour: green, yellow from 40 %, orange from 60 %, red from 70 % (see context-level.ts). */
-function heat(percent: number): RGB {
+/** Blends four family colours along the fill level: green, yellow from 40 %, orange from 60 %, red from 70 % (see context-level.ts). */
+function scale(percent: number, [green, yellow, orange, red]: readonly RGB[]): RGB {
   const { caution, warning, critical } = CONTEXT_STOPS;
-  return percent >= critical ? RED : percent >= warning ? mix(ORANGE, RED, (percent - warning) / (critical - warning))
-    : percent >= caution ? mix(YELLOW, ORANGE, (percent - caution) / (warning - caution)) : mix(GREEN, YELLOW, (percent - caution + 10) / 10);
+  return percent >= critical ? red! : percent >= warning ? mix(orange!, red!, (percent - warning) / (critical - warning))
+    : percent >= caution ? mix(yellow!, orange!, (percent - caution) / (warning - caution)) : mix(green!, yellow!, (percent - caution + 10) / 10);
 }
+/** How full the context is, as one colour. */
+const heat = (percent: number): RGB => scale(percent, [GREEN, YELLOW, ORANGE, RED]);
 /** The context bar is its own scale: every cell carries the colour of its share, the part not yet used faintly. */
 function heatBar(grid: Grid, x: number, y: number, width: number, value: number | null): void {
   const filled = value === null ? 0 : Math.round(Math.min(100, Math.max(0, value)) / 100 * width);
@@ -136,12 +142,13 @@ function heatBar(grid: Grid, x: number, y: number, width: number, value: number 
     grid.put(x + i, y, i < filled ? '━' : '─', value === null ? DUSK : i < filled ? tone : mix(INK, tone, 0.3));
   }
 }
-/** Solid block numerals, five rows tall, in the context's heat colour, lighter at the top. Returns the column after them. */
+/** Solid block numerals, five rows tall, shaded from the light to the deep tone of the context's heat family. Returns the column after them. */
 function numerals(grid: Grid, x: number, y: number, value: number | null): number {
   const chars = value === null ? ['—'] : String(Math.round(Math.min(100, Math.max(0, value)))).split('');
   for (const ch of chars) {
     FONT[ch]!.forEach((line, py) => [...line].forEach((bit, px) => {
-      if (bit === '1') for (let i = 0; i < 2; i++) grid.put(x + px * 2 + i, y + py, '█', value === null ? mix(DUSK, ASH, 0.4) : mix(mix(heat(value), BONE, 0.35), heat(value), py / 4));
+      if (bit === '1') for (let i = 0; i < 2; i++) grid.put(x + px * 2 + i, y + py, '█', value === null ? mix(DUSK, ASH, 0.4) :
+        mix(scale(value, SHADES.map(pair => pair[0])), scale(value, SHADES.map(pair => pair[1])), py / 4));
     }));
     x += 8;
   }
@@ -226,7 +233,7 @@ const DEMO_EXTRAS: Partial<NeuralData> = { usage5h: 38, loadedTitles: ['Beispiel
  */
 export function renderNeural(data: NeuralData, width = 120, frame = 0, color = true, { paper, compact, light }: EmberView = {}): string[] {
   width = Math.max(1, Math.floor(width));
-  ({ INK, BONE, ASH, DUSK, BAND, HOT, VIOLET, MAGENTA, EMBER, GOLD, GREEN, YELLOW, ORANGE, RED } = light ? LIGHT : DARK);
+  ({ INK, BONE, ASH, DUSK, BAND, HOT, VIOLET, MAGENTA, EMBER, GOLD, GREEN, YELLOW, ORANGE, RED, SHADES } = light ? LIGHT : DARK);
   // Dark canvas is the terminal's own background, so pane padding and leftover pixels are part of the panel.
   if (!light && paper?.length === 3) INK = paper as unknown as RGB;
   if (data.mode === 'demo') data = { ...DEMO_EXTRAS, ...data };

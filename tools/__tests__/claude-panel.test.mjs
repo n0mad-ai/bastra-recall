@@ -237,10 +237,11 @@ test('ember colours the context by fill level and warns in words from 40 %', () 
   const live = { ...NEURAL_DEMO, mode: 'live', fresh: true, contextFree: 1, contextTotal: 1_000_000 };
   const at = (context, view = {}) => renderNeural({ ...live, context }, 145, 0, true, 'ember', { compact: false, ...view });
   const tone = (rows, y, ch) => new RegExp(`38;2;(\\d+;\\d+;\\d+)m[^\\x1b]*${ch}`).exec(rows[y])?.[1];
-  // numerals: green, then exactly yellow at 40, orange at 60, red from 70 (bottom row carries the pure tone)
-  assert.equal(tone(at(20), 8, '█'), '86;212;140'); assert.equal(tone(at(40), 8, '█'), '245;214;80');
-  assert.equal(tone(at(60), 8, '█'), '255;150;60'); assert.equal(tone(at(70), 8, '█'), '255;82;96'); assert.equal(tone(at(95), 8, '█'), '255;82;96');
-  assert.equal(tone(at(70, { light: true }), 8, '█'), '200;32;56'); // light skin has its own, darker tones
+  // numerals shade from the light to the deep tone of their family: green, yellow at 40, orange at 60, red from 70
+  const shade = context => [tone(at(context), 4, '█'), tone(at(context), 8, '█')];
+  assert.deepEqual(shade(20), ['176;242;150', '28;168;132']); assert.deepEqual(shade(40), ['255;240;140', '232;164;38']);
+  assert.deepEqual(shade(60), ['255;204;112', '240;94;40']); assert.deepEqual(shade(70), ['255;156;124', '214;38;92']); assert.deepEqual(shade(95), shade(70));
+  assert.equal(tone(at(70, { light: true }), 8, '█'), '162;18;62'); // light skin has its own, darker tones
   const plain = context => renderNeural({ ...live, context }, 145, 0, false, 'ember').join('\n');
   assert.doesNotMatch(plain(39), /Qualität|Sitzung|Context Rot/);
   assert.match(plain(40), /von 1\.000\.000 *\n.*Qualität lässt nach/); assert.match(plain(60), /Bald neue Sitzung starten/); assert.match(plain(70), /Context Rot: neu starten/);
