@@ -14,7 +14,7 @@ export class CodexLiveSource {
     await this.source.poll();
     const s = this.source.projection.state;
     const [feed, vault, git] = await Promise.all([readRecallFeed(this.feedDirectory, this.session), readVaultSize(this.feedDirectory), this.git.read(s.cwd, now)]);
-    const week = s.limits.find(l => l.minutes === 10080);
+    const week = s.limits.find(l => l.minutes === 10080), block = s.limits.find(l => l.minutes === 300);
     const known = !this.source.error && s.sessionId === this.session;
     const context = known && s.contextUsed !== null && s.contextWindow !== null && s.contextWindow > 0 ? Math.min(100, s.contextUsed / s.contextWindow * 100) : null;
     const recent = known && s.lastAt !== null && now - s.lastAt >= 0 && now - s.lastAt < 5000;
@@ -24,6 +24,7 @@ export class CodexLiveSource {
       context, contextTotal: known ? s.contextWindow : null,
       contextFree: known && s.contextWindow !== null && s.contextUsed !== null ? Math.max(0, s.contextWindow - s.contextUsed) : null,
       usage: known ? week?.used ?? null : null, usageResetsAt: known ? week?.resetsAt ?? null : null,
+      usage5h: known ? block?.used ?? null : null, usage5hResetsAt: known ? block?.resetsAt ?? null : null,
       vault: vault ?? s.vaultSize, searches: known ? s.searches : null, hits: known ? s.hits : null, loads: known ? s.loads : null, saves: known ? s.saves : null,
       errors: known ? s.errors : 0, latency: known ? s.ms : null, clientLatency: known ? s.ms : null, timingSource: 'client',
       now, git, tokens: known ? s.tokens : null,

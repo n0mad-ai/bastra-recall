@@ -29,6 +29,11 @@ export interface NeuralData {
   contextFree?: number | null;
   usage: number | null;
   usageResetsAt?: number | null;
+  usage5h?: number | null;
+  usage5hResetsAt?: number | null;
+  apiDurationMs?: number | null;
+  /** Titles of the memories loaded in this turn, oldest first. */
+  loadedTitles?: string[];
   now?: number;
   vault: number | null;
   searches: number | null;
@@ -95,6 +100,7 @@ function meter(value: number | null, width: number, tone: Tone): Run[] {
   return [r('━'.repeat(n), tone), r('─'.repeat(width - n), 'frame')];
 }
 const number = (n: number | null) => n === null ? '—' : String(Math.round(n));
+const count = (n: number | null) => n === null ? '—' : number(n).padStart(2, '0');
 
 /** A terminal instrument panel, deliberately separate from the Powerline design. */
 export function renderNeural(data: NeuralData, width = 120, frame = 0, color = true): string[] {
@@ -139,8 +145,8 @@ export function renderNeural(data: NeuralData, width = 120, frame = 0, color = t
   rows.push(cols(meter(data.context, cell - 1, 'cyan'), meter(data.usage, cell - 1, 'amber'), [r(`${number(data.vault)} ERINNERUNGEN`, 'white', true)]));
   rows.push(content([r('─'.repeat(inner), 'frame')]));
   rows.push(content([r(gitLabel(data), data.git?.conflicts ? 'pink' : 'cyan'), r('   /   ', 'frame'), r(sessionLabel(data), 'soft')]));
-  const stats = `${number(data.searches).padStart(2, '0')} SUCHEN  →  ${number(data.hits).padStart(2, '0')} TREFFER  →  ${number(data.loads).padStart(2, '0')} GELADEN`;
-  rows.push(content([r('↳  ', 'purple'), r(stats, 'white', true), r(`    ${number(data.saves).padStart(2, '0')} GESPEICHERT`, 'cyan'), r('    ' + timingLabel(data), 'soft')]));
+  const stats = `${count(data.searches)} SUCHEN  →  ${count(data.hits)} TREFFER  →  ${count(data.loads)} GELADEN`;
+  rows.push(content([r('↳  ', 'purple'), r(stats, 'white', true), r(`    ${count(data.saves)} GESPEICHERT`, 'cyan'), r('    ' + timingLabel(data), 'soft')]));
   const demoWave = ['▁', '▂', '▃', '▄', '▅', '▆', '▅', '▄', '▃', '▂'];
   const wave = data.mode === 'demo' || (data.mode === 'live' && Boolean(data.agentActive || data.active || data.recent)) ? Array.from({ length: 20 }, (_, i) => demoWave[(i + frame) % demoWave.length]).join('') : '─'.repeat(20);
   rows.push(content([r(wave, 'purple'), r(data.mode === 'demo' ? '  DEMO-WELLE  /  ' : data.mode === 'live' ? '  LIVE  /  ' : '  SNAPSHOT  /  ', 'soft'), r(data.stage, data.errors ? 'pink' : 'cyan'), r(data.mode === 'demo' ? '   ·   keine Live-Messung' : '', 'soft')]));

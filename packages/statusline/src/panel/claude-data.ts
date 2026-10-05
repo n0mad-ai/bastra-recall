@@ -12,6 +12,7 @@ export interface ClaudePanelSnapshot {
   cwd: string | null; promptId: string | null; effort: string | null;
   durationMs: number | null; costUsd: number | null; cacheHitRatio: number | null;
   linesAdded: number | null; linesRemoved: number | null;
+  usage5h?: number | null; usage5hResetsAt?: number | null; apiDurationMs?: number | null;
 }
 const num = (v: unknown): number | null => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
 const percent = (v: unknown): number | null => { const n = num(v); return n !== null && n <= 100 ? n : null; };
@@ -52,6 +53,8 @@ export function nativeSnapshot(input: any, now = Date.now()): ClaudePanelSnapsho
     durationMs: num(input.cost?.total_duration_ms), costUsd: num(input.cost?.total_cost_usd),
     cacheHitRatio: typeof input.prompt_cache?.hit_ratio === 'number' && input.prompt_cache.hit_ratio >= 0 && input.prompt_cache.hit_ratio <= 1 ? input.prompt_cache.hit_ratio : null,
     linesAdded: num(input.cost?.total_lines_added), linesRemoved: num(input.cost?.total_lines_removed),
+    usage5h: percent(input.rate_limits?.five_hour?.used_percentage), usage5hResetsAt: num(input.rate_limits?.five_hour?.resets_at),
+    apiDurationMs: num(input.cost?.total_api_duration_ms),
   };
 }
 
@@ -68,6 +71,7 @@ export class ClaudeCalls {
   promptId: string | null = null;
   calls = 0;
   lastAt = 0; lastTool: string | null = null;
+  loaded: string[] = [];
   pendingTools = new Map<string, string>();
   private doneTools = new Set<string>();
   pending = new Map<string, { name: string; at: number }>();
@@ -84,7 +88,7 @@ export class ClaudeCalls {
     if (human && row.promptId && row.promptId !== this.promptId && Number.isFinite(time) && time >= this.startedAt) {
       this.searches = this.hits = this.loads = this.saves = this.errors = 0;
       this.ms = 0; this.calls = 0; this.promptId = row.promptId;
-      this.lastAt = 0; this.lastTool = null;
+      this.lastAt = 0; this.lastTool = null; this.loaded = [];
       this.pending.clear(); this.pendingTools.clear(); this.doneTools.clear(); this.seen.clear(); this.startedAt = time;
     }
     for (const block of blocks) {
@@ -112,7 +116,11 @@ export class ClaudeCalls {
       try { result = JSON.parse(text); } catch { /* loads need no body */ }
       if (result?.error || result?.isError === true) { this.errors++; continue; }
       if (call.name === 'recall') { this.searches++; this.hits += Array.isArray(result.hits) ? result.hits.length : 0; }
-      if (['load_memory', 'read_document'].includes(call.name)) this.loads++;
+      if (['load_memory', 'read_document'].includes(call.name)) {
+        this.loads++;
+        const title = result?.frontmatter?.title ?? result?.title ?? result?.id;
+        if (typeof title === 'string' && title) this.loaded = [...this.loaded, title].slice(-8);
+      }
       if (['save_memory', 'edit_memory', 'save_document', 'save_product_doc'].includes(call.name)) this.saves++;
     }
   }
@@ -178,6 +186,8 @@ export class ClaudeLiveSource {
       data.effort = native.effort;
       data.durationMs = num(native.durationMs); data.costUsd = num(native.costUsd); data.cacheHitRatio = num(native.cacheHitRatio);
       data.linesAdded = num(native.linesAdded); data.linesRemoved = num(native.linesRemoved);
+      data.usage5h = percent(native.usage5h); data.usage5hResetsAt = num(native.usage5hResetsAt);
+      data.apiDurationMs = num(native.apiDurationMs);
       data.git = await this.git.read(native.cwd, now);
       let transcriptOk = false;
       if (native.transcript) {
@@ -185,6 +195,7 @@ export class ClaudeLiveSource {
       }
       if (transcriptOk) {
         data.searches = this.calls.searches; data.hits = this.calls.hits; data.loads = this.calls.loads; data.saves = this.calls.saves; data.errors = this.calls.errors; data.latency = this.calls.ms;
+        data.loadedTitles = this.calls.loaded;
         data.clientLatency = this.calls.ms; data.timingSource = 'client';
         const pending = [...this.calls.pending.values()].at(-1);
         data.active = Boolean(pending);

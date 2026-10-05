@@ -95,6 +95,7 @@ function meter(value: number | null, width: number, tone: Tone): Run[] {
   return [r('━'.repeat(n), tone), r('─'.repeat(width - n), 'frame')];
 }
 const number = (n: number | null) => n === null ? '—' : String(Math.round(n));
+const count = (n: number | null) => n === null ? '—' : number(n).padStart(2, '0');
 
 /** Orbital diagram: moves for demo, real activity or a labelled completion afterglow. */
 function reactor(frame: number, moving: boolean, width: number): Run[][] {
@@ -169,8 +170,8 @@ export function renderNeural(data: NeuralData, width = 120, frame = 0, color = t
   rows.push(cols([r(contextRemaining(data.contextFree, data.contextTotal), 'cyan')], [r(`${number(data.vault)} ERINNERUNGEN  ·  `, 'white', true), r(['LEX', 'VECTOR', 'RANK'][scanner] ?? (data.active ? 'AKTIV' : data.recent ? 'NACHKLANG' : 'BEREIT'), 'pink')], [r(resetCountdown(data.usageResetsAt, data.now), 'amber')]));
   rows.push(content([r('─'.repeat(inner), 'frame')]));
   rows.push(content([r(gitLabel(data), data.git?.conflicts ? 'pink' : 'cyan'), r('   /   ', 'frame'), r(sessionLabel(data), 'soft')]));
-  const stats = `${number(data.searches).padStart(2, '0')} SUCHEN  →  ${number(data.hits).padStart(2, '0')} TREFFER  →  ${number(data.loads).padStart(2, '0')} GELADEN`;
-  rows.push(content([r('↳  ', 'purple'), r(stats, 'white', true), r(`    ${number(data.saves).padStart(2, '0')} GESPEICHERT`, 'cyan'), r('    ' + timingLabel(data), 'soft')]));
+  const stats = `${count(data.searches)} SUCHEN  →  ${count(data.hits)} TREFFER  →  ${count(data.loads)} GELADEN`;
+  rows.push(content([r('↳  ', 'purple'), r(stats, 'white', true), r(`    ${count(data.saves)} GESPEICHERT`, 'cyan'), r('    ' + timingLabel(data), 'soft')]));
   const wave = data.mode === 'demo' || (data.mode === 'live' && Boolean(data.agentActive || data.active || data.recent)) ? Array.from({ length: 22 }, (_, i) =>
     ['⡀', '⣀', '⣄', '⣤', '⣦', '⣶', '⣾', '⣿'][Math.round((Math.sin(i / 3 + frame / 4) + 1) * 3.5)]).join('') : '─'.repeat(22);
   rows.push(content([r(wave, 'purple'), r(data.mode === 'demo' ? '  DEMO-SIGNAL  /  ' : data.mode === 'live' ? '  LIVE  /  ' : '  SNAPSHOT  /  ', 'soft'), r(data.stage, data.errors ? 'pink' : 'cyan'), r(data.mode === 'demo' ? '   ·   keine Live-Messung' : '', 'soft')]));

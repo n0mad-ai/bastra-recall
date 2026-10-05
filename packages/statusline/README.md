@@ -66,14 +66,48 @@ are shown as unavailable, and no missing measurement is replaced with a fake zer
 ## Experimental Neural Console
 
 `--design classic` preserves the first Neural Console; `--design orbital`
-selects the alien cockpit. Both read the same data and are independently selectable.
+selects the alien cockpit; `--design ember` selects the borderless ember field.
+All three read the same data and are independently selectable.
+
+Ember is borderless and structured by tinted bands: header, the Recall sieve
+with context and limits, a Recall row for the current activity, and a two-line
+footer for repository and session. The sieve reads left to right as a sentence in
+one visual language, every dot is a memory: the vault as a cloud of small dots,
+then exactly one large dot per memory found since the last human prompt, then
+one per loaded memory (capped by the available room; the numbers above stay
+exact). Next to it Ember lists the titles of the
+memories loaded in this turn, newest first. Titles come from the tool results
+in the local transcript and are only held in the panel's memory. Ember also
+shows the five-hour limit and API time when the client reports them. The cloud shimmers and sparks fly between the stages only during real Recall activity or its
+labelled afterglow. Ember needs truecolor and at least 90 columns; narrower
+panes get a seven-line text summary.
 
 ```sh
 bastra-recall-panel --session <claude-session-id> --watch --design orbital
 bastra-recall-panel --session <claude-session-id> --watch --design classic
+bastra-recall-panel --session <claude-session-id> --watch --design ember
 bastra-recall-panel --client codex --session <codex-session-id> --watch --design orbital
 bastra-recall-panel --client codex --cmux
 ```
+
+Ember has a compact view: header, one line with the context, five-hour and
+seven-day gauges plus the Recall counts, and the activity row. Click the arrow
+at the right of the header or press `m` in the panel; `--compact` starts in it.
+The half-moon next to it (or `h`, or `--light`) changes to a light skin on warm paper.
+While the panel listens for clicks, select text with Shift held.
+
+`bastra-recall-panel --ensure --design ember --compact` is meant for a Claude
+Code `SessionStart` hook: inside cmux it opens the panel under the session's
+pane unless one is already running there, prints nothing and never fails;
+outside cmux it does nothing. A panel opened
+with `--cmux` resizes its pane to the rows it draws whenever the view changes.
+
+Opened with `--cmux` and without `--session`, the panel follows the pane it was
+opened under instead of one session: once per second it asks cmux which tab is
+selected there and shows the Claude or Codex session cmux last recorded for
+that tab. A new session in the same tab, or switching tabs, rebinds the panel;
+a tab without an agent shows a waiting state. `--session` keeps the old fixed
+binding.
 
 Live mode reads the native Claude statusline snapshot published by
 `dist/claude-panel-feed.mjs --renderer '<original statusLine.command>'`.
