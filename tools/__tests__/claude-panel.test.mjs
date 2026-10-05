@@ -90,7 +90,7 @@ test('general Claude tools animate the activity signal without animating Recall 
   const d = { ...NEURAL_DEMO, mode: 'live', fresh: true, active: false, recent: false, agentActive: true };
   const a = renderNeural(d, 130, 1, false, 'orbital'), z = renderNeural(d, 130, 15, false, 'orbital');
   assert.deepEqual(a.slice(5, 10), z.slice(5, 10)); // core stays quiet
-  assert.notEqual(a.at(-2), z.at(-2)); // activity signal moves
+  assert.notEqual(a.find(line => /LIVE\s+\//.test(line)), z.find(line => /LIVE\s+\//.test(line))); // activity signal moves
 });
 
 test('incremental painter skips idle frames, batches changes, never clears the screen or the last corner', () => {

@@ -12,8 +12,11 @@ export function sessionLabel(data: NeuralData): string {
     const mins = Math.floor(data.durationMs / 60000);
     items.push(`Session ${Math.floor(mins / 60)}h ${mins % 60}m`);
   }
+  items.push(`API ${data.apiDurationMs == null ? '—' : Math.round(data.apiDurationMs / 1000) + ' s'}`);
   if (typeof data.costUsd === 'number') items.push(data.costUsd > 0 && data.costUsd < 0.01 ? 'Kosten <$0.01' : `Kosten ≈$${data.costUsd.toFixed(2)}`);
+  else if (data.client === 'codex' && data.mode === 'live') items.push('Kosten —');
   if (typeof data.cacheHitRatio === 'number') items.push(`Cache ${Math.round(data.cacheHitRatio * 100)}%`);
+  if (typeof data.cachedInputRatio === 'number') items.push(`Cache-Eingabe ${Math.round(data.cachedInputRatio * 100)}%`);
   if (typeof data.linesAdded === 'number' && typeof data.linesRemoved === 'number') items.push(`Zeilen +${data.linesAdded}/−${data.linesRemoved}`);
   if (typeof data.tokens === 'number') items.push(`Tokens ${(data.tokens / 1e6).toFixed(2)}M`);
   return items.join(' · ');

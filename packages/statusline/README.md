@@ -77,8 +77,7 @@ then exactly one large dot per memory found since the last human prompt, then
 one per loaded memory (capped by the available room; the numbers above stay
 exact). Next to it Ember lists the titles of the
 memories loaded in this turn, newest first. Titles come from the tool results
-in the local transcript and are only held in the panel's memory. Ember also
-shows the five-hour limit and API time when the client reports them. The cloud shimmers and sparks fly between the stages only during real Recall activity or its
+in the local transcript and are only held in the panel's memory. All three designs show loaded titles, the five-hour limit and API time when the client reports them. The cloud shimmers and sparks fly between the stages only during real Recall activity or its
 labelled afterglow. Ember needs truecolor and at least 90 columns; narrower
 panes get a seven-line text summary.
 
@@ -90,7 +89,7 @@ bastra-recall-panel --client codex --session <codex-session-id> --watch --design
 bastra-recall-panel --client codex --cmux
 ```
 
-Ember has a compact view: header, one line with the context, five-hour and
+All three designs have a compact view: header, one line with the context, five-hour and
 seven-day gauges plus the Recall counts, and the activity row. Click the arrow
 at the right of the header or press `m` in the panel; `--compact` starts in it.
 The half-moon next to it (or `h`, or `--light`) changes to a light skin on warm paper.
@@ -101,6 +100,19 @@ Code `SessionStart` hook: inside cmux it opens the panel under the session's
 pane unless one is already running there, prints nothing and never fails;
 outside cmux it does nothing. A panel opened
 with `--cmux` resizes its pane to the rows it draws whenever the view changes.
+
+Codex autostart is installed with `bastra-recall-panel --install-codex-hook --design ember --compact`.
+It preserves existing hooks, backs up the hook file, and adds a normal `SessionStart`
+hook for startup/resume. Review and enable it in Codex `/hooks`; the installer never
+writes trust hashes. `--ensure --client codex` uses the exact hook session's cmux
+registration when a shared daemon does not supply a surface environment variable.
+If that registration is absent it quietly waits for a later start instead of
+opening under an unrelated tab. Existing panels are reused.
+
+The Codex reader uses local JSONL history, whose format is version-dependent;
+paginated-only history is still unsupported. Model-reported token and rate-limit
+fields are used as supplied. See the official [Codex hooks guide](https://learn.chatgpt.com/docs/hooks)
+and [app-server protocol](https://learn.chatgpt.com/docs/app-server).
 
 Opened with `--cmux` and without `--session`, the panel follows the pane it was
 opened under instead of one session: once per second it asks cmux which tab is
@@ -123,7 +135,7 @@ Weekly usage comes only from `rate_limits.seven_day.used_percentage`. Missing
 measurements stay unknown. After ten seconds without a native update, values
 are marked unavailable. Recall counts are deduplicated from this session's
 main-thread transcript, reset on each new human prompt, and count successful
-searches, returned candidates, loads/reads and saves/edits. Failed calls appear
+Recall/document searches, returned candidates, loads/reads and saves/edits. Automatic prompt hints are not completed tool searches; directly loading a hinted memory can therefore show a load with zero searches or hits. Failed calls appear
 in the activity text. `Recall` uses the exact same forwarder duration as the old
 Bastra footer when the session, turn and completed-call count match. `Client`
 measures invocation-to-result time including the client's transport/dispatch
@@ -136,7 +148,7 @@ network or index locks, at most once per five seconds. It does not fetch remote
 changes; unavailable Git data is unknown, not a clean tree. When supplied by the
 client, session duration, reasoning effort, estimated list-price cost, cache-hit
 ratio and changed-line counts are displayed. Codex also reports cumulative
-session tokens. Costs/cache values not present in Codex's stream are not guessed.
+session tokens. Cost and API duration missing from Codex's stream remain unknown. Its reported cached input tokens divided by cumulative input tokens appear as `Cache-Eingabe`; this is distinct from Claude's reported request cache-hit ratio.
 The Codex context readout uses its own reported effective context window and
 latest request token usage; it does not borrow Claude's window size or quota.
 The shared vault count remains current across sessions. A matching fresh feed

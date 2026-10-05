@@ -2,7 +2,9 @@ import { codePointWidth, visibleLength } from '../utils/terminal';
 import { resetCountdown } from './reset-time';
 import { contextRemaining } from './context-remaining';
 import { gitLabel, timingLabel } from './details';
-import type { NeuralData } from './neural-classic';
+import type { NeuralData } from './types';
+import type { PanelView } from './view';
+export { toggleHit } from './view';
 
 type RGB = readonly [number, number, number];
 interface Skin { INK: RGB; BONE: RGB; ASH: RGB; DUSK: RGB; BAND: RGB; HOT: RGB; VIOLET: RGB; MAGENTA: RGB; EMBER: RGB; GOLD: RGB }
@@ -14,9 +16,9 @@ const LIGHT: Skin = { INK: [247, 242, 233], BONE: [38, 29, 48], ASH: [112, 101, 
 // The active skin, set at the start of every render. INK is the canvas.
 let { INK, BONE, ASH, DUSK, BAND, HOT, VIOLET, MAGENTA, EMBER, GOLD } = DARK;
 /** The light skin's canvas, for the CLI to tint the pane around the panel. */
-export const LIGHT_CANVAS = LIGHT.INK;
+export { LIGHT_CANVAS } from './view';
 /** What the CLI controls: the terminal's own background as the dark canvas, the compact view, the light skin. */
-export interface EmberView { paper?: readonly number[]; compact?: boolean; light?: boolean }
+export type EmberView = PanelView;
 const mix = (a: RGB, b: RGB, t: number): RGB => [0, 1, 2].map(i => Math.round(a[i]! + (b[i]! - a[i]!) * Math.min(1, Math.max(0, t)))) as unknown as RGB;
 /** Cold storage (violet) warms up on its way into the context (gold). */
 function spectrum(t: number): RGB {
@@ -200,12 +202,6 @@ const duration = (ms: number) => { const mins = Math.floor(ms / 60000); return m
 const tokens = (n: number) => n >= 1e6 ? (n / 1e6).toFixed(2).replace('.', ',') + ' Mio.' : n >= 1000 ? Math.round(n / 1000) + 'k' : String(Math.round(n));
 const DEMO_EXTRAS: Partial<NeuralData> = { usage5h: 38, loadedTitles: ['Beispiel: Deploy-Kette lokal', 'Beispiel: klare Borders statt Box-in-Box', 'Beispiel: Statusline-Mechanik'] };
 
-/** Which header switch a click (0-based cell) lands on: the view icon at the right edge, the skin icon left of it. */
-export function toggleHit(width: number, x: number, y: number): 'view' | 'skin' | null {
-  const end = width - 3;
-  return width < 90 || y > 2 || x < end - 6 ? null : x >= end - 2 ? 'view' : 'skin';
-}
-
 /**
  * Borderless truecolor panel: tinted bands for structure, dots for what Recall did.
  * Without `compact` it draws the full view and no switches; true/false draws the switches and that view.
@@ -319,11 +315,13 @@ export function renderNeural(data: NeuralData, width = 120, frame = 0, color = t
   g.band(16, BAND); g.seam(17, BAND, INK, 3);
   const dim = mix(INK, ASH, 0.6), session: [string, string][] = [];
   if (typeof data.durationMs === 'number') session.push(['Session', duration(data.durationMs)]);
-  if (typeof data.apiDurationMs === 'number') session.push(['davon API', duration(data.apiDurationMs)]);
+  session.push(['davon API', typeof data.apiDurationMs === 'number' ? duration(data.apiDurationMs) : '—']);
   if (typeof data.linesAdded === 'number' && typeof data.linesRemoved === 'number') session.push(['Zeilen', `+${data.linesAdded} −${data.linesRemoved}`]);
   const cost: [string, string][] = [];
   if (typeof data.costUsd === 'number') cost.push(['Kosten', data.costUsd > 0 && data.costUsd < 0.01 ? '<$0.01' : `≈$${data.costUsd.toFixed(2)}`]);
+  else if (data.client === 'codex' && data.mode === 'live') cost.push(['Kosten', '—']);
   if (typeof data.cacheHitRatio === 'number') cost.push(['Cache', `${Math.round(data.cacheHitRatio * 100)} %`]);
+  if (typeof data.cachedInputRatio === 'number') cost.push(['Cache-Eingabe', `${Math.round(data.cachedInputRatio * 100)} %`]);
   if (typeof data.tokens === 'number') cost.push(['Gesamt', tokens(data.tokens) + ' Tokens']);
   g.text(m, 16, gitLabel(data), data.git?.conflicts ? HOT : ASH, false, pairs(16, end, session, dim, ASH));
   pairs(18, end, cost, dim, ASH);

@@ -12,6 +12,9 @@ import { TerminalFrame } from './panel/terminal-frame';
 import { CodexLiveSource } from './panel/codex-data';
 import { findRollout } from './codex/source';
 import { PaneFollower } from './panel/follow';
+import { panelAir } from './panel/view';
+import { ensureTarget } from './panel/ensure-target';
+import { installCodexPanelHook } from './panel/install-codex-hook';
 
 // cmux's tab bar and terminal padding in points, measured on a pane sized by hand to its rows (373.7 pt for
 // 20 rows of 17 pt). Deriving it from a fresh split instead counts that pane's leftover partial row.
@@ -58,8 +61,9 @@ async function main(): Promise<void> {
     design: { type: 'string', default: 'orbital' },
     session: { type: 'string' }, follow: { type: 'string' }, fit: { type: 'string' }, compact: { type: 'boolean' }, light: { type: 'boolean' }, ensure: { type: 'boolean' },
     client: { type: 'string', default: 'claude' }, transcript: { type: 'string' },
+    'install-codex-hook': { type: 'boolean' },
   }});
-  if (v.help) { console.log(`bastra-recall-panel — Neural Console (experimenteller Design-Prototyp)
+  if (v.help) { console.log(`bastra-recall-panel — Live-Panels für Claude und Codex
 
   --demo                 Deutlich markierte Design-Demo
   --watch                Animierte Vorschau im eigenen Terminal
@@ -71,19 +75,36 @@ async function main(): Promise<void> {
   --design classic       Erste Neural Console
   --design orbital       Alien-Cockpit (Standard)
   --design ember         Randloses Glutfeld mit Verläufen
-  --compact              Ember: mit der kleinen Ansicht starten (im Panel: Klick oben rechts oder Taste m)
-  --light                Ember: mit dem hellen Skin starten (im Panel: Klick oben rechts oder Taste h)
+  --compact              Mit der kleinen Ansicht starten (Kopf-Symbol oder Taste m)
+  --light                Mit dem hellen Skin starten (Kopf-Symbol oder Taste h)
   --ensure               Für einen SessionStart-Hook: unter dem eigenen cmux-Pane öffnen, falls dort noch
                          kein Panel läuft; ohne Ausgabe, außerhalb von cmux ohne Wirkung
+  --install-codex-hook   Codex-SessionStart-Autostart mit Sicherung einrichten; danach /hooks prüfen
   --cmux                 Unter einer Surface öffnen; ohne --session folgt das Panel deren Pane
   --surface UUID         Explizite Ziel-Surface
   --workspace UUID       Expliziter Ziel-Workspace
   --no-color             Ohne Farben
 
-Dies ist ein Design-Prototyp. --demo zeigt keine Live-Nutzung von Claude Code.
+--demo zeigt markierte Beispieldaten, keine Live-Nutzung.
 `); return; }
+  if (v['install-codex-hook']) {
+    if (!['classic', 'orbital', 'ember'].includes(v.design)) throw new Error('Unbekanntes Design');
+    const command = [process.execPath, fileURLToPath(import.meta.url), '--ensure', '--client', 'codex', '--design', v.design];
+    if (v.compact) command.push('--compact');
+    if (v.light) command.push('--light');
+    await installCodexPanelHook(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), command);
+    console.log('Codex-Autostart eingerichtet. Den neuen Hook in /hooks prüfen und vertrauen.'); return;
+  }
   if (v.ensure) {
-    if (!process.env.CMUX_SURFACE_ID || !process.env.CMUX_WORKSPACE_ID) return;
+    let payload: unknown = null;
+    if (!process.env.CMUX_SURFACE_ID && !process.stdin.isTTY) {
+      let input = '';
+      for await (const chunk of process.stdin) { input += chunk; if (input.length > 65536) return; }
+      try { payload = JSON.parse(input); } catch { /* optional hook payload */ }
+    }
+    const target = await ensureTarget(process.env, payload, os.homedir(), v.client === 'codex' ? 'codex' : 'claude');
+    if (!target) return;
+    v.surface = target.surface; v.workspace = target.workspace;
     v.cmux = true;
   }
   if (v.client !== 'claude' && v.client !== 'codex') throw new Error('--client muss claude oder codex sein');
@@ -142,11 +163,11 @@ Dies ist ein Design-Prototyp. --demo zeigt keine Live-Nutzung von Claude Code.
   const painter = new TerminalFrame();
   if (v.watch) process.stdout.write('\x1b[?1049h\x1b[?25l\x1b[?7l');
   const paper = v.watch && color ? await terminalBackground() : undefined;
-  // Ember has two views and two skins. In a terminal of its own the header carries the switches: click, or press m / h.
-  let compact = v.design === 'ember' && v.watch && process.stdin.isTTY ? Boolean(v.compact) : undefined, light = Boolean(v.light), fitted = 0;
+  // Every design has two views and two skins. In a terminal of its own the header carries the switches: click, or press m / h.
+  let compact = v.watch && process.stdin.isTTY ? Boolean(v.compact) : v.compact, light = Boolean(v.light), fitted = 0;
   // The pane's own background follows the skin (OSC 11 / 111), so unpainted rows match the canvas.
   const tint = () => process.stdout.write(light ? `\x1b]11;rgb:${LIGHT_CANVAS.map(c => c.toString(16).padStart(2, '0')).join('/')}\x1b\\` : '\x1b]111\x1b\\');
-  if (compact !== undefined) {
+  if (v.watch && process.stdin.isTTY) {
     process.stdin.setRawMode(true); process.stdin.resume();
     process.stdout.write('\x1b[?1000h\x1b[?1006h');
     if (light) tint();
@@ -180,8 +201,8 @@ Dies ist ein Design-Prototyp. --demo zeigt keine Live-Nutzung von Claude Code.
       if (output) process.stdout.write(output);
       if (v.fit && process.env.CMUX_SURFACE_ID && lines.length !== fitted) {
         fitted = lines.length;
-        // Ember's full view ends on a row without a band; six points below centre it between band and pane edge.
-        await fitPane(v.workspace!, v.fit, process.env.CMUX_SURFACE_ID, fitted, v.design === 'ember' && fitted === 19 ? 6 : 0).catch(() => { /* sizing is best-effort */ });
+        // Full views share the measured bottom inset; compact views fit their six rows.
+        await fitPane(v.workspace!, v.fit, process.env.CMUX_SURFACE_ID, fitted, panelAir(compact, fitted)).catch(() => { /* sizing is best-effort */ });
       }
     } else console.log(lines.join('\n'));
     if (v.watch && !stop) timer = setTimeout(() => { tick().catch(err => { restore(); console.error(err.message); process.exitCode = 1; }); }, 180);

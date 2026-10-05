@@ -25,7 +25,7 @@ test('Git failure is unknown, never a clean tree or a guessed ahead/behind', asy
 test('tiny costs are not false zeroes and absent client metrics are omitted', () => {
   assert.match(sessionLabel({ costUsd: 0.004 }), /<\$0.01/);
   assert.match(sessionLabel({ costUsd: 0 }), /\$0.00/);
-  assert.equal(sessionLabel({}), '');
+  assert.equal(sessionLabel({}), 'API —');
 });
 test('same-turn forwarder time matches the old footer while client overhead remains separate', async t => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'panel-timing-')); t.after(() => rm(dir, { recursive: true, force: true }));

@@ -23,13 +23,16 @@ export interface CodexStatus {
   lastTool: string | null;
   lastAt: number | null;
   vaultSize: number | null;
+  loadedTitles: string[];
+  cachedInputTokens: number | null;
+  inputTokens: number | null;
 }
 
 export function emptyStatus(): CodexStatus {
   return { sessionId: null, cwd: '', branch: null, model: null, effort: null,
     turnId: null, active: false, startedAt: null, turnStartedAt: null, contextUsed: null, contextWindow: null,
     tokens: null, limits: [], calls: 0, searches: 0, loads: 0, saves: 0,
-    hits: 0, ms: 0, errors: 0, lastTool: null, lastAt: null, vaultSize: null };
+    hits: 0, ms: 0, errors: 0, lastTool: null, lastAt: null, vaultSize: null, loadedTitles: [], cachedInputTokens: null, inputTokens: null };
 }
 
 function object(value: unknown): Record<string, any> {
@@ -78,7 +81,7 @@ export class CodexProjection {
       const id = text(p.turn_id);
       if (id !== s.turnId || id === null) {
         Object.assign(s, { turnId: id, calls: 0, searches: 0, loads: 0, saves: 0,
-          hits: 0, ms: 0, errors: 0, lastTool: null, lastAt: null });
+          hits: 0, ms: 0, errors: 0, lastTool: null, lastAt: null, loadedTitles: [] });
         this.completed.clear();
       }
       s.active = true;
@@ -90,6 +93,8 @@ export class CodexProjection {
     if (p.type === 'token_count') {
       const info = object(p.info);
       s.tokens = finite(object(info.total_token_usage).total_tokens) ?? s.tokens;
+      s.cachedInputTokens = finite(object(info.total_token_usage).cached_input_tokens) ?? s.cachedInputTokens;
+      s.inputTokens = finite(object(info.total_token_usage).input_tokens) ?? s.inputTokens;
       s.contextUsed = finite(object(info.last_token_usage).total_tokens) ?? s.contextUsed;
       s.contextWindow = finite(info.model_context_window) ?? s.contextWindow;
       // Null/missing limits mean "no update", never 0%.
@@ -116,12 +121,17 @@ export class CodexProjection {
     this.completed.add(id);
     const tool = text(item.tool) ?? 'tool';
     const result = toolResult(item.result);
-    const error = item.status === 'failed' || item.status === 'error' || Boolean(item.error) || object(item.result).isError === true;
+    const error = item.status === 'failed' || item.status === 'error' || Boolean(item.error) || object(item.result).isError === true || Boolean(result.error) || result.isError === true;
     s.calls++;
     if (error) s.errors++;
     else {
-      if (tool === 'recall') { s.searches++; s.hits += Array.isArray(result.hits) ? result.hits.length : 0; }
-      if (tool === 'load_memory' || tool === 'read_document') s.loads++;
+      if (tool === 'recall' || tool === 'find_document') { s.searches++; s.hits += Array.isArray(result.hits) ? result.hits.length : 0; }
+      if (tool === 'load_memory' || tool === 'read_document') {
+        s.loads++;
+        const title = text(object(result.frontmatter).title) ?? text(result.title) ?? text(result.id);
+        if (title && !s.loadedTitles.includes(title)) s.loadedTitles.push(title);
+        if (s.loadedTitles.length > 32) s.loadedTitles.shift();
+      }
       if (tool === 'save_memory' || tool === 'save_document' || tool === 'save_product_doc' || tool === 'edit_memory') s.saves++;
     }
     const duration = object(item.duration);

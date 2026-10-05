@@ -115,7 +115,7 @@ export class ClaudeCalls {
         (Array.isArray(block.content) ? block.content.find((b: any) => b.type === 'text')?.text : null);
       try { result = JSON.parse(text); } catch { /* loads need no body */ }
       if (result?.error || result?.isError === true) { this.errors++; continue; }
-      if (call.name === 'recall') { this.searches++; this.hits += Array.isArray(result.hits) ? result.hits.length : 0; }
+      if (call.name === 'recall' || call.name === 'find_document') { this.searches++; this.hits += Array.isArray(result.hits) ? result.hits.length : 0; }
       if (['load_memory', 'read_document'].includes(call.name)) {
         this.loads++;
         const title = result?.frontmatter?.title ?? result?.title ?? result?.id;
