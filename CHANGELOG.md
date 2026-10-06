@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Save notice in Claude Code.** After `save_memory`, `edit_memory`,
+  `save_document` and `save_product_doc` Recall prints one line under the
+  collapsed "Called bastra-recall": the action, the title, the type and, where
+  it fits, the first `recall_when` cue or what the edit changed — in
+  `language.primary`, opening with the product name on the brand colour. A
+  refused call gets no line; a save held at the claim gate or turned into a
+  conflict mark says so instead of "saved". It is a `PostToolUse` entry on the
+  existing post-tool client, so `bastra install claude-code` has to run once
+  to register it (`bastra doctor` reports the missing registration until
+  then). `BASTRA_SAVE_NOTICE=0` turns it off. Telemetry: `save_notice_call`.
+
 ## [1.0.1] — 2026-10-04
 
 ### Added

@@ -28,6 +28,7 @@ import { spawnSync } from "node:child_process";
 import { collectFeatureState, featureLines, paraphrasingState, type FeatureState } from "../src/cli/features-note.js";
 import { mcpEnvFeatures, type DaemonProbe } from "../src/cli/helpers.js";
 import { buildHealthPayload } from "../src/http-health.js";
+import { SAVE_NOTICE_MATCHER } from "../src/save-notice-lane.js";
 
 function allOff(): FeatureState {
   return {
@@ -297,7 +298,7 @@ test("claude-code: disableAllHooks, a missing Stop hook and a missing skill reac
         { matcher: "TodoWrite|TaskCreate|ExitPlanMode", ...lane("todo") },
         { matcher: "Bash", ...lane("bash-pre") },
       ],
-      PostToolUse: [{ matcher: "Bash", ...lane("bash-fail") }],
+      PostToolUse: [{ matcher: "Bash", ...lane("bash-fail") }, { matcher: SAVE_NOTICE_MATCHER, ...lane("bash-fail") }],
       PostToolUseFailure: [{ matcher: "Bash", ...lane("bash-fail") }],
     },
   }));

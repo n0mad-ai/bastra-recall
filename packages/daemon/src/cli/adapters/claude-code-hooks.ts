@@ -25,6 +25,7 @@ import {
   readJsonConfig,
 } from "../helpers.js";
 import { checkForwarderRegistration } from "../stable-runtime.js";
+import { SAVE_NOTICE_MATCHER } from "../../save-notice-lane.js";
 import {
   existingHookWrapper,
   fileOf,
@@ -113,6 +114,12 @@ export function hookDefinitions(opts: { includeStop?: boolean } = {}): HookDef[]
     { event: "PreToolUse", matcher: "Bash", bin: BASH_PRE_HOOK_BIN, timeout: 2, note: "bastra-recall Bash-pre hook (safety, #34)", stubSubcommand: "bash-pre" },
     { event: "PostToolUse", matcher: "Bash", bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall Bash post hook (act-signal #144 + lesson recall on fail #37)", stubSubcommand: "bash-fail" },
     { event: "PostToolUseFailure", matcher: "Bash", bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall Bash failure hook (act-signal #144 + lesson recall on fail #37)", stubSubcommand: "bash-fail" },
+    // The line that says what was saved or edited, right under the collapsed
+    // MCP call. Same post-tool client as the two Bash entries: it forwards any
+    // payload unread, and the daemon route tells a Recall write tool from Bash
+    // — so the lane needs no subcommand a host's compiled stub may not have
+    // yet. PostToolUse only: a refused save gets no line.
+    { event: "PostToolUse", matcher: SAVE_NOTICE_MATCHER, bin: BASH_FAIL_HOOK_BIN, timeout: 2, note: "bastra-recall save notice (one line after save_memory / edit_memory)", stubSubcommand: "bash-fail" },
   ];
   if (opts.includeStop) defs.push(STOP_HOOK_DEF, SESSION_END_HOOK_DEF);
   return defs;
@@ -355,10 +362,11 @@ export function missingRequiredHookRegistrations(hooks: Record<string, unknown>,
       const handlers = Array.isArray(record.hooks) ? record.hooks : [];
       return handlers.some((handler) => {
         if (!handler || typeof handler !== "object") return false;
-        const command = (handler as Record<string, unknown>).command;
-        if (typeof command !== "string") return false;
-        return slashes(command).includes(`/${file}`) ||
-          (def.stubSubcommand ? stubLaneCommandPath(command, def.stubSubcommand) !== null : false);
+        const h = handler as Record<string, unknown>;
+        const command = h.command;
+        if (h.type !== "command" || typeof command !== "string") return false;
+        const marked = h.__bastraRecall === true || h.__nexusRecall === true;
+        return runsOurHookRunner(marked ? CLIENT_MARKER + command : command, [file], CLIENT_MARKER.trim(), def.stubSubcommand);
       });
     });
     if (!found) missing.push(`${def.event}${def.matcher ? `:${def.matcher}` : ""}`);
@@ -511,7 +519,7 @@ export async function patchClaudeCodeHooks(
   return action === "install"
     ? {
         status: "installed",
-        detail: `${sourceDefs.length} hooks registered (SessionStart, UserPromptSubmit, PreToolUse×3, PostToolUse, PostToolUseFailure${includeStop ? ", Stop, SessionEnd" : stopPreserved ? "; Stop + SessionEnd kept at current path" : "; Stop optional/off"})`,
+        detail: `${sourceDefs.length} hooks registered (SessionStart, UserPromptSubmit, PreToolUse×3, PostToolUse×2, PostToolUseFailure${includeStop ? ", Stop, SessionEnd" : stopPreserved ? "; Stop + SessionEnd kept at current path" : "; Stop optional/off"})`,
         backupPath: backupPath ?? undefined,
         note,
       }

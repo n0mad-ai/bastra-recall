@@ -175,9 +175,9 @@ case "$ACTION" in
   install)
     echo "✓ bastra-recall reflex layer registered in ${SETTINGS_FILE}"
     if [[ "${WITH_STOP}" == "1" ]]; then
-      echo "  Hooks: SessionStart · UserPromptSubmit · PreToolUse(Write/Edit, TodoWrite|TaskCreate|ExitPlanMode, Bash) · PostToolUse(Bash) · PostToolUseFailure(Bash) · Stop · SessionEnd"
+      echo "  Hooks: SessionStart · UserPromptSubmit · PreToolUse(Write/Edit, TodoWrite|TaskCreate|ExitPlanMode, Bash) · PostToolUse(Bash, Recall write tools) · PostToolUseFailure(Bash) · Stop · SessionEnd"
     else
-      echo "  Hooks: SessionStart · UserPromptSubmit · PreToolUse(Write/Edit, TodoWrite|TaskCreate|ExitPlanMode, Bash) · PostToolUse(Bash) · PostToolUseFailure(Bash)"
+      echo "  Hooks: SessionStart · UserPromptSubmit · PreToolUse(Write/Edit, TodoWrite|TaskCreate|ExitPlanMode, Bash) · PostToolUse(Bash, Recall write tools) · PostToolUseFailure(Bash)"
       echo "  Stop hook skipped (--no-stop-hook); an already-registered one is kept."
     fi
     echo "  Binaries: ${DAEMON_DIST}"

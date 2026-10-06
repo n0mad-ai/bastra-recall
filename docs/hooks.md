@@ -94,6 +94,7 @@ After `npm run build` the daemon package exposes these bin entries:
 | `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`/`TaskCreate`/`ExitPlanMode`   | Topology recall before multi-step plans (#36 #506 #698)   |
 | `bastra-recall-bash-pre-hook`     | `PreToolUse`       | `Bash` (destructive/risky)                | Safety recall before destructive shell ops (#34)          |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse` / `PostToolUseFailure` | `Bash` (every completed or failed command) | Act-signal for acted_on (#144); lesson recall on failure (#37) |
+| `bastra-recall-bash-fail-hook`    | `PostToolUse`      | Recall's own write tools (`save_memory`, `edit_memory`, `save_document`, `save_product_doc`) | Save notice: one line that says what was saved or edited |
 | `bastra-recall-stop-hook`         | `Stop` / `SessionEnd` | —                                      | Optional autonomous save-eval at end of session (#35); SessionEnd books the finished session for the harvest (#675) |
 
 ### Activation snippet for `~/.claude/settings.json`
@@ -131,6 +132,10 @@ Default shape written by `bastra install claude-code`:
     "PostToolUse": [
       {
         "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "bastra-recall-bash-fail-hook", "timeout": 2 }]
+      },
+      {
+        "matcher": "^mcp__(plugin_.+_)?bastra-recall__(save_memory|edit_memory|save_document|save_product_doc)$",
         "hooks": [{ "type": "command", "command": "bastra-recall-bash-fail-hook", "timeout": 2 }]
       }
     ],
@@ -646,6 +651,53 @@ top_score, status` (hook side) and dimensioned `hook_act` with `tool_name,
 excerpt_chars, matched_episodes, exit_code`, plus `client`, `hook_source` and
 the pseudonymous experiment session (daemon side).
 
+#### Save notice (`PostToolUse` on Recall's write tools)
+
+Claude Code shows an MCP call collapsed to "Called bastra-recall", so what was
+saved is only visible to someone who expands the call. After `save_memory`,
+`edit_memory`, `save_document` and `save_product_doc` Recall therefore prints
+one line right under the call:
+
+```
+  Called bastra-recall (ctrl+o to expand)
+  ⎿  PostToolUse:mcp__bastra-recall__save_memory says:  bastra-recall  saved: “Staging deploy needs the VPN” (lesson) · recalled when: staging deploy times out
+  ⎿  PostToolUse:mcp__bastra-recall__edit_memory says:  bastra-recall  edited: “Staging deploy needs the VPN” (lesson) · text appended
+```
+
+The line is the hook's `systemMessage`. The part up to "says:" is Claude
+Code's; Recall's part opens with its name in white on the purple of the
+status-line segment (measured on Claude Code 2.1.291: colour sequences in a
+`systemMessage` reach the terminal unchanged) and stays one line: the action
+(saved / updated / edited), the title (clipped at 60 characters), the type,
+and, where it fits, the first `recall_when` cue or what the edit changed
+(passage replaced, text appended, the frontmatter fields). The wording follows
+your `language.primary` (shipped: English, German, Russian; any other language
+gets English).
+
+- A **refused** call gets no line. Claude Code already shows the failed call,
+  and the error text is the agent's to act on; a refusal arrives as
+  `PostToolUseFailure`, which this entry is not registered on.
+- Two results succeed as calls without writing a new memory, and the line
+  says so instead of "saved": a save held because another memory already
+  declares the situation ("not saved, already covered", with the title of
+  that memory), and a save that became a conflict mark ("conflict noted on").
+- The reading tools (`recall`, `load_memory`, `find_*`, `read_document`) never
+  get a line.
+- Claude Code only. The line of a call made by a subagent is not shown in the
+  main conversation (measured on 2.1.291).
+- `BASTRA_SAVE_NOTICE=0` in the daemon's environment turns it off.
+
+There is no client of its own behind it: the entry reuses
+`bastra-recall-bash-fail-hook`, which forwards any payload unread, and the
+daemon tells a Recall write tool from Bash. The matcher is a regular
+expression (Claude Code treats a matcher as one as soon as it holds a
+character outside letters, digits, `_`, `-`, space, `,` and `|`) and also
+covers the plugin-scoped tool name `mcp__plugin_<plugin>_bastra-recall__…`.
+A server registered under another key than `bastra-recall` is not matched.
+
+Telemetry: `save_notice_call` with `tool, action, shown, latency_ms_total`
+and the `client` / `hook_source: save-notice` dimensions. No title, no id.
+
 #### `bastra-recall-stop-hook` (#35, default on)
 
 Fires on `Stop` by default; opt out during installation with `--no-stop-hook`
@@ -1065,6 +1117,7 @@ Nach `npm run build` stellt das Daemon-Paket diese Bin-Einträge bereit:
 | `bastra-recall-todo-hook`         | `PreToolUse`       | `TodoWrite`/`TaskCreate`/`ExitPlanMode`   | Topologie-Recall vor mehrstufigen Plänen (#36 #506 #698)  |
 | `bastra-recall-bash-pre-hook`     | `PreToolUse`       | `Bash` (destruktiv/riskant)               | Sicherheits-Recall vor destruktiven Shell-Befehlen (#34)  |
 | `bastra-recall-bash-fail-hook`    | `PostToolUse` / `PostToolUseFailure` | `Bash` (jeder abgeschlossene oder fehlgeschlagene Befehl) | Handlungssignal für acted_on (#144); Lesson-Recall bei Fehlern (#37) |
+| `bastra-recall-bash-fail-hook`    | `PostToolUse`      | Recalls eigene Schreib-Tools (`save_memory`, `edit_memory`, `save_document`, `save_product_doc`) | Speicherzeile: eine Zeile, die sagt, was gespeichert oder bearbeitet wurde |
 | `bastra-recall-stop-hook`         | `Stop` / `SessionEnd` | —                                      | Optionale autonome Speicherbewertung am Session-Ende (#35); SessionEnd trägt die beendete Session für den Harvest ein (#675) |
 
 ### Aktivierungs-Snippet für `~/.claude/settings.json`
@@ -1102,6 +1155,10 @@ Standardform, die `bastra install claude-code` schreibt:
     "PostToolUse": [
       {
         "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "bastra-recall-bash-fail-hook", "timeout": 2 }]
+      },
+      {
+        "matcher": "^mcp__(plugin_.+_)?bastra-recall__(save_memory|edit_memory|save_document|save_product_doc)$",
         "hooks": [{ "type": "command", "command": "bastra-recall-bash-fail-hook", "timeout": 2 }]
       }
     ],
@@ -1603,6 +1660,57 @@ Telemetrie: `bash_fail_hook_call` mit `exit_code, command_head, hit_count,
 top_score, status` (Hook-Seite) und das dimensionierte `hook_act` mit
 `tool_name, excerpt_chars, matched_episodes, exit_code`, dazu `client`,
 `hook_source` und die pseudonyme Experiment-Session (Daemon-Seite).
+
+#### Speicherzeile (`PostToolUse` auf Recalls Schreib-Tools)
+
+Claude Code zeigt einen MCP-Aufruf eingeklappt als „Called bastra-recall“; was
+gespeichert wurde, sieht nur, wer den Aufruf aufklappt. Nach `save_memory`,
+`edit_memory`, `save_document` und `save_product_doc` schreibt Recall deshalb
+eine Zeile direkt unter den Aufruf:
+
+```
+  Called bastra-recall (ctrl+o to expand)
+  ⎿  PostToolUse:mcp__bastra-recall__save_memory says:  bastra-recall  gespeichert: „Staging-Deploy braucht VPN“ (lesson) · Abruf bei: Staging-Deploy bricht mit Timeout ab
+  ⎿  PostToolUse:mcp__bastra-recall__edit_memory says:  bastra-recall  bearbeitet: „Staging-Deploy braucht VPN“ (lesson) · Text angehängt
+```
+
+Die Zeile ist die `systemMessage` des Hooks. Der Teil bis „says:“ stammt von
+Claude Code; Recalls Teil beginnt mit dem Namen in Weiß auf dem Lila des
+Statusline-Segments (gemessen mit Claude Code 2.1.291: Farbsequenzen in einer
+`systemMessage` erreichen das Terminal unverändert) und bleibt eine Zeile: die
+Aktion (gespeichert / aktualisiert / bearbeitet), der Titel (bei 60 Zeichen
+gekürzt), der Typ und, wenn es passt, der erste `recall_when`-Auslöser oder
+was die Bearbeitung geändert hat (Passage ersetzt, Text angehängt, die
+Frontmatter-Felder). Der Wortlaut folgt deiner `language.primary`
+(ausgeliefert: Englisch, Deutsch, Russisch; jede andere Sprache bekommt
+Englisch).
+
+- Ein **abgelehnter** Aufruf bekommt keine Zeile. Claude Code zeigt den
+  fehlgeschlagenen Aufruf ohnehin, und der Fehlertext ist Sache des Agenten;
+  eine Ablehnung kommt als `PostToolUseFailure` an, und dort ist dieser
+  Eintrag nicht registriert.
+- Zwei Ergebnisse gelingen als Aufruf, ohne ein neues Memory zu schreiben, und
+  die Zeile sagt das statt „gespeichert“: ein Save, der angehalten wurde, weil
+  ein anderes Memory die Situation schon erklärt („nicht gespeichert, schon
+  abgedeckt“, mit dem Titel dieses Memorys), und ein Save, der zu einem
+  Widerspruchsvermerk wurde („Widerspruch vermerkt an“).
+- Die lesenden Tools (`recall`, `load_memory`, `find_*`, `read_document`)
+  bekommen nie eine Zeile.
+- Nur Claude Code. Die Zeile zu einem Aufruf aus einem Subagenten erscheint
+  nicht im Hauptgespräch (gemessen mit 2.1.291).
+- `BASTRA_SAVE_NOTICE=0` in der Umgebung des Daemons schaltet sie ab.
+
+Dahinter steht kein eigener Client: Der Eintrag nutzt
+`bastra-recall-bash-fail-hook`, der jeden Payload ungelesen weiterreicht, und
+der Daemon unterscheidet ein Schreib-Tool von Recall von Bash. Der Matcher ist
+ein regulärer Ausdruck (Claude Code behandelt einen Matcher als solchen,
+sobald er ein Zeichen außerhalb von Buchstaben, Ziffern, `_`, `-`, Leerzeichen,
+`,` und `|` enthält) und deckt auch den Plugin-Namen
+`mcp__plugin_<plugin>_bastra-recall__…` ab. Ein Server, der unter einem
+anderen Schlüssel als `bastra-recall` registriert ist, wird nicht erfasst.
+
+Telemetrie: `save_notice_call` mit `tool, action, shown, latency_ms_total` und
+den Dimensionen `client` / `hook_source: save-notice`. Kein Titel, keine Id.
 
 #### `bastra-recall-stop-hook` (#35, standardmäßig an)
 

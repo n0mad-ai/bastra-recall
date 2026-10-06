@@ -15,6 +15,8 @@
  * Runner: `tsx --test __tests__/webui-csp.test.ts`
  */
 import { test } from "node:test";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -189,12 +191,15 @@ test("CSP: the app injects no <style> element that style-src 'self' would block"
   // (next test), the vendor file stays untouched and is skipped here.
   const root = resolveWebUiDir();
   const files: string[] = [join(root, "index.html")];
+  // The local-only recording choreography (.gitignore: not shipped, loaded
+  // behind ?demo=1) is not part of the UI this pins.
+  const localDemo = join(root, "js", "demo.js");
   const walk = async (dir: string): Promise<void> => {
     for (const e of await readdir(dir, { withFileTypes: true })) {
       const p = join(dir, e.name);
       if (e.isDirectory()) {
         if (e.name !== "vendor") await walk(p);
-      } else if (e.name.endsWith(".js")) files.push(p);
+      } else if (e.name.endsWith(".js") && p !== localDemo) files.push(p);
     }
   };
   await walk(join(root, "js"));
@@ -236,4 +241,25 @@ test("CSP: overlays.css carries every base rule ctxmenu.js would inject", async 
     for (const d of decls) if (!shipped.get(sel)?.has(d)) missing.push(`${sel} { ${d} }`);
   }
   assert.deepEqual(missing, [], "a ctxmenu base rule is missing from overlays.css");
+});
+
+
+test("CSP exclusion: the local demo is excluded from the npm package, not just git", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-demo-pack-"));
+  try {
+    await mkdir(join(dir, "webui", "js"), { recursive: true });
+    await writeFile(join(dir, "package.json"), await readFile(new URL("../package.json", import.meta.url), "utf8"));
+    const ignore = await readFile(new URL("../webui/js/.npmignore", import.meta.url), "utf8").catch(() => "");
+    await writeFile(join(dir, "webui", "js", ".npmignore"), ignore);
+    await writeFile(join(dir, "webui", "js", "main.js"), "export const shipped = true;");
+    await writeFile(join(dir, "webui", "js", "demo.js"), 'document.createElement("style");');
+    const { stdout } = await promisify(execFile)("npm", ["pack", "--ignore-scripts", "--dry-run", "--json"], {
+      cwd: dir, env: { ...process.env, npm_config_cache: join(dir, "cache") },
+    });
+    const paths = (JSON.parse(stdout) as Array<{ files: Array<{ path: string }> }>)[0].files.map((f) => f.path);
+    assert.ok(paths.includes("webui/js/main.js"), "the regular web UI must still ship");
+    assert.ok(!paths.includes("webui/js/demo.js"), "a file skipped by the shipped-code CSP test must not ship");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

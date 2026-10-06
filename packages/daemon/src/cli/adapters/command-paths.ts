@@ -158,7 +158,7 @@ export function existingHookWrapper(
  * the rename), or one of our hook scripts — under `…/daemon/dist/`, or in any
  * directory when the command carries the installer's client marker.
  */
-export function runsOurHookRunner(cmd: string, files: string[], clientMarker: string): boolean {
+export function runsOurHookRunner(cmd: string, files: string[], clientMarker: string, stubSubcommand?: string): boolean {
   const words = [...cmd.matchAll(/"[^"]*"|'[^']*'|\S+/g)].map((m) => m[0]);
   const pathAt = (at: number): string => slashes(unquote(words[at] ?? ""));
   const baseAt = (at: number): string => fileOf(pathAt(at));
@@ -188,7 +188,8 @@ export function runsOurHookRunner(cmd: string, files: string[], clientMarker: st
     return files.includes(fileOf(script)) && (marked || script.includes("/daemon/dist/"));
   }
   if (/^bastra-hook(\.exe)?$/.test(program)) {
-    return new Set(["session", "prompt", "write", "todo", "bash-pre", "bash-fail", "stop"]).has(words[at + 1] ?? "");
+    return new Set(["session", "prompt", "write", "todo", "bash-pre", "bash-fail", "stop"]).has(words[at + 1] ?? "") &&
+      (stubSubcommand === undefined || words[at + 1] === stubSubcommand);
   }
   const bin = /^(?:bastra|nexus)-recall-(.+?)(?:\.cmd)?$/.exec(program);
   if (bin && files.includes(`${bin[1]}.js`)) return true;

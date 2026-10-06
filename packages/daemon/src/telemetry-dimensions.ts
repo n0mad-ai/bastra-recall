@@ -74,6 +74,7 @@ export const HOOK_SOURCES = [
   "stop",
   "bash-pre",
   "bash-fail",
+  "save-notice",
   "todo",
   "mcp",
   // #265: der geteilte Session-Assembler. Kein Hook, aber eine eigene
