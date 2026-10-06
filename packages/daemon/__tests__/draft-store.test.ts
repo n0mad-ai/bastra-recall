@@ -232,7 +232,7 @@ test("opaque session and memory identifiers survive token-shaped UUIDs", () => i
 test("path explanations and situation survive storage", () => isolated(async () => {
   const d = draft();
   d.quote = "Der Key liegt unter /etc/bastra/keys/deploy_ed25519 auf dem Buildserver.";
-  d.situation.cwd = "/Users/n0mad/Projekte/bastra-recall/packages/daemon";
+  d.situation.cwd = join(homedir(), "Projekte/bastra-recall/packages/daemon");
   d.situation.before = ["ssh deploy@build-box-03.eu-central-1.internal.example.com"];
   d.situation.after = ["mysql --password=hunter2 -h db.internal"];
   d.situation.reads = ["/etc/bastra/keys/deploy_ed25519"];
@@ -240,7 +240,7 @@ test("path explanations and situation survive storage", () => isolated(async () 
   const saved = await upsertDraft(d, now);
   assert.ok(saved);
   assert.equal(saved.quote, d.quote);
-  assert.equal(saved.situation.cwd, "~/Projekte/bastra-recall/packages/daemon");
+  assert.equal(saved.situation.cwd, join("~", "Projekte/bastra-recall/packages/daemon"));
   assert.deepEqual(saved.situation.before, d.situation.before);
   assert.deepEqual(saved.situation.reads, d.situation.reads);
   assert.deepEqual(saved.situation.lits, d.situation.lits);
