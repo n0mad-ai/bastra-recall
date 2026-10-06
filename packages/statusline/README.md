@@ -161,7 +161,10 @@ session tokens. Cost and API duration missing from Codex's stream remain unknown
 The Codex context readout uses its own reported effective context window and
 latest request token usage; it does not borrow Claude's window size or quota.
 The shared vault count remains current across sessions. A matching fresh feed
-supplies in-flight stages. The activity signal moves during general Claude work;
+supplies in-flight stages. In all three themes, the activity signal follows the
+current Claude or Codex turn. A Codex final answer or completion event, or a Claude
+Stop hook, ends the signal immediately; fresh stage data, pending transcript tools
+and a tool completion afterglow cannot keep a finished turn moving. During a turn,
 the orbital core reacts to Recall tools and keeps a labelled five-second
 completion afterglow, so a fast call is visible even between refreshes. An idle
 panel emits no redraw. Changed rows are painted with synchronized terminal

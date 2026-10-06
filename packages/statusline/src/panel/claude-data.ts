@@ -130,10 +130,14 @@ export class ClaudeCalls {
  * Whether cmux's record says the agent is in the middle of a turn. `agentLifecycle: 'running'` only means the
  * process is alive: it stays set after the turn's Stop hook, so the last hook event decides.
  */
+function cmuxTurnEnded(record: any): boolean {
+  return ['Stop', 'SessionStart', 'SessionEnd', 'Notification'].includes(record?.hookEventName);
+}
 export function cmuxWorking(record: any): boolean {
+  // Terminal hooks override lingering depth/runtime markers from the process.
+  if (cmuxTurnEnded(record)) return false;
   if (record?.activePromptDepth > 0 || ['running', 'working', 'thinking'].includes(record?.runtimeStatus)) return true;
-  return record?.agentLifecycle === 'running' && typeof record.hookEventName === 'string' &&
-    !['Stop', 'SessionStart', 'SessionEnd', 'Notification'].includes(record.hookEventName);
+  return record?.agentLifecycle === 'running' && typeof record.hookEventName === 'string';
 }
 
 /** Incremental transcript reader; native metadata chooses the session/path. */
@@ -176,12 +180,15 @@ export class ClaudeLiveSource {
       searches: null, hits: null, loads: null, saves: null, latency: null, usageResetsAt: null, contextTotal: null, contextFree: null, now, stage: 'Warte auf native Sitzungsdaten', active: false, recent: false, agentActive: false, errors: 0, fresh: false };
     const [feed, vault] = await Promise.all([readRecallFeed(this.feedDirectory, this.session), readVaultSize(this.feedDirectory)]);
     data.vault = vault;
-    let agentWorking = false;
+    let agentWorking = false, turnEnded = false;
     try {
       const store = JSON.parse(await readFile(path.join(os.homedir(), '.cmuxterm', 'claude-hook-sessions.json'), 'utf8'));
       const record = store.sessions?.[this.session];
       // Match identity; never treat an unrelated workspace's activity as ours.
-      if (record?.sessionId === this.session) agentWorking = cmuxWorking(record);
+      if (record?.sessionId === this.session) {
+        agentWorking = cmuxWorking(record);
+        turnEnded = cmuxTurnEnded(record);
+      }
     } catch { /* cmux is optional; transcript remains the fallback */ }
     try {
       const native = JSON.parse(await readFile(snapshotPath(this.session, this.directory), 'utf8')) as ClaudePanelSnapshot;
@@ -207,17 +214,18 @@ export class ClaudeLiveSource {
         data.loadedTitles = this.calls.loaded;
         data.clientLatency = this.calls.ms; data.timingSource = 'client';
         const pending = [...this.calls.pending.values()].at(-1);
-        data.active = Boolean(pending);
-        data.agentActive = agentWorking || this.calls.pendingTools.size > 0;
+        data.active = !turnEnded && Boolean(pending);
+        data.agentActive = !turnEnded && (agentWorking || this.calls.pendingTools.size > 0);
         const age = now - this.calls.lastAt;
-        data.recent = this.calls.lastAt > 0 && age >= 0 && age < 5000;
+        data.recent = !turnEnded && this.calls.lastAt > 0 && age >= 0 && age < 5000;
         const names: Record<string, string> = { recall: 'Erinnerungen suchen', load_memory: 'Erinnerung laden', read_document: 'Dokument laden', save_memory: 'Erinnerung speichern', edit_memory: 'Erinnerung bearbeiten' };
         const otherTool = [...this.calls.pendingTools.values()].at(-1);
-        data.stage = pending ? ({ recall: 'Erinnerungen suchen', load_memory: 'Erinnerung laden', save_memory: 'Erinnerung speichern' }[pending.name] ?? pending.name) :
+        data.stage = turnEnded ? (this.calls.errors ? `${this.calls.errors} fehlgeschlagene Aufrufe` : 'Recall bereit') :
+          pending ? ({ recall: 'Erinnerungen suchen', load_memory: 'Erinnerung laden', save_memory: 'Erinnerung speichern' }[pending.name] ?? pending.name) :
           data.recent ? `Zuletzt: ${names[this.calls.lastTool!] ?? this.calls.lastTool}${this.calls.errors ? ' · Fehler' : ''}` :
           otherTool ? `Claude aktiv · ${otherTool}` : agentWorking ? 'Claude arbeitet · Recall bereit' : this.calls.errors ? `${this.calls.errors} fehlgeschlagene Aufrufe` : 'Recall bereit';
       }
-      if (feed && feed.ts >= this.calls.startedAt && now - feed.ts >= 0 && now - feed.ts < 15000) {
+      if (!turnEnded && feed && feed.ts >= this.calls.startedAt && now - feed.ts >= 0 && now - feed.ts < 15000) {
         if (feed.current_stage) { data.stage = feed.current_message ?? feed.current_stage; data.active = true; }
         else if (feed.last_phrase_at && now - feed.last_phrase_at >= 0 && now - feed.last_phrase_at < 5000 && (feed.recall_count ?? 0) > 0) {
           data.recent = true;

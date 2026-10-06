@@ -89,7 +89,8 @@ export class CodexProjection {
       s.turnStartedAt = Number.isFinite(started) ? started : null;
       s.contextWindow = finite(p.model_context_window) ?? s.contextWindow;
     }
-    if (p.type === 'task_complete' || p.type === 'task_interrupted' || p.type === 'turn_completed') s.active = false;
+    if ((p.type === 'task_complete' || p.type === 'task_interrupted' || p.type === 'turn_completed') &&
+        (!s.turnId || typeof p.turn_id !== 'string' || p.turn_id === s.turnId)) s.active = false;
     if (p.type === 'token_count') {
       const info = object(p.info);
       s.tokens = finite(object(info.total_token_usage).total_tokens) ?? s.tokens;
@@ -112,6 +113,12 @@ export class CodexProjection {
     if (p.type !== 'item_completed') return;
     if (s.turnId && typeof p.turn_id === 'string' && p.turn_id !== s.turnId) return;
     const item = object(p.item);
+    // The final answer is already visible when the terminal lifecycle event is
+    // delayed or absent. Commentary must keep the current turn active.
+    if (['AgentMessage', 'agentMessage'].includes(item.type) && item.phase === 'final_answer') {
+      s.active = false;
+      return;
+    }
     if (!['McpToolCall', 'mcpToolCall'].includes(item.type)) return;
     if (typeof item.server !== 'string' || !/^bastra[-_]recall$/.test(item.server)) return;
     const id = text(item.id);

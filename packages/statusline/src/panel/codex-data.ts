@@ -17,8 +17,9 @@ export class CodexLiveSource {
     const week = s.limits.find(l => l.minutes === 10080), block = s.limits.find(l => l.minutes === 300);
     const known = !this.source.error && s.sessionId === this.session;
     const context = known && s.contextUsed !== null && s.contextWindow !== null && s.contextWindow > 0 ? Math.min(100, s.contextUsed / s.contextWindow * 100) : null;
-    const recent = known && s.lastAt !== null && now - s.lastAt >= 0 && now - s.lastAt < 5000;
-    const active = known && Boolean(feed?.current_stage) && feed!.ts >= (s.turnStartedAt ?? Infinity) && now - feed!.ts >= 0 && now - feed!.ts < 15000;
+    // A completed turn is idle even if its last tool/feed is still fresh.
+    const recent = known && s.active && s.lastAt !== null && now - s.lastAt >= 0 && now - s.lastAt < 5000;
+    const active = known && s.active && Boolean(feed?.current_stage) && feed!.ts >= (s.turnStartedAt ?? Infinity) && now - feed!.ts >= 0 && now - feed!.ts < 15000;
     const data: NeuralData = {
       mode: 'live', client: 'codex', fresh: known, project: path.basename(s.cwd) || 'Codex', model: s.model ?? 'Codex', effort: s.effort,
       context, contextTotal: known ? s.contextWindow : null,
