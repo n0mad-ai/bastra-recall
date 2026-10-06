@@ -319,7 +319,9 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
 
   const locations: SecretSpan[] = [];
   for (const m of text.matchAll(/[^\s"'`<>]+/g)) {
-    const value = m[0].replace(/[(),;]+$/, "");
+    let end = m[0].length;
+    while (end > 0 && "(),;".includes(m[0][end - 1])) end--;
+    const value = m[0].slice(0, end);
     if (isLocator(value)) locations.push([m.index!, m.index! + value.length]);
   }
   // Some non-RFC userinfo uses a literal slash or @ in its password. Take
@@ -351,7 +353,7 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
     }
     assignments.lastIndex = Math.max(assignments.lastIndex, markValue(start, credentialKey(key), /[?&]/.test(text[assignment.index - 1] ?? ""), /^(?:key|pwd)$/i.test(key.trim())));
   }
-  for (const m of text.matchAll(/--([a-z][a-z0-9_-]*)(?:=|[ \t]+)/gi)) if (credentialKey(m[1])) markValue(m.index! + m[0].length, true, false, /^key$/i.test(m[1]));
+  for (const m of text.matchAll(/(?<![a-z0-9_-])--([a-z][a-z0-9_-]*)(?:=|[ \t]+)/gi)) if (credentialKey(m[1])) markValue(m.index! + m[0].length, true, false, /^key$/i.test(m[1]));
   // Track command context once, rather than repeatedly rescanning a long line.
   const commands = [...text.matchAll(/(?:^|[ \t])(mysql|mariadb|sshpass|docker[ \t]+login|ssh)(?=[ \t]|$)|[;&|\r\n]/gmi)];
   let commandIndex = 0;

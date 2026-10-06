@@ -233,3 +233,12 @@ test("YAML credential scalars hide every indented line and keep following locati
     assert.equal(redactSecrets(out).redactedChars, 0);
   }
 });
+
+
+test("suffix punctuation and adjacent flag-like text do not trigger repeated scans", () => {
+  for (const text of ["(".repeat(50_000) + "x", "--a".repeat(17_000)]) {
+    const started = performance.now();
+    assert.deepEqual(redactSecrets(text), { text, redactedChars: 0 });
+    assert.ok(performance.now() - started < 1000, "plain text cannot take a second to scan");
+  }
+});
