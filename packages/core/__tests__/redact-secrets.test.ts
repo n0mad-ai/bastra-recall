@@ -275,3 +275,56 @@ test("URL userinfo placeholders are idempotent and never counted twice", () => {
     assert.deepEqual(redactSecrets(first.text), { text: first.text, redactedChars: 0 });
   }
 });
+
+test("nested credentials inside neutral bindings are redacted", () => {
+  for (const text of ["run: DB_PASS=pw1 ./deploy.sh", "--from-literal=password=abc", "CMD=PASSWORD=abc", '"cmd": "export API_KEY=abc123"', "x:password=abc12"]) {
+    assert.ok(redactSecrets(text).text.includes("[REDACTED]"), text);
+    assert.ok(!/pw1|abc/.test(redactSecrets(text).text), text);
+  }
+});
+
+test("userinfo delimiters do not hide credentials or consume URL paths", () => {
+  for (const value of ["pw?extra", "pw#extra", "pw/extra", "pw@extra"]) {
+    assert.equal(redactSecrets(`pg://u:${value}@db.internal/x`).text, "pg://[REDACTED]@db.internal/x");
+  }
+  for (const text of ["http://localhost:4873/@bastra-recall/core", "https://host.internal:443/a/@scope/pkg", "https://host.internal/a?email=a@b.internal"]) {
+    assert.deepEqual(redactSecrets(text), { text, redactedChars: 0 });
+  }
+});
+
+test("random tokens cannot use incidental camelCase segments as an exemption", () => {
+  const value = ["abCdef", "GhijKlm", "noPqrsT", "uvwxYz1", "23456789"].join("");
+  for (const text of [value, `VALUE=${value}`]) assert.ok(!redactSecrets(text).text.includes(value));
+});
+
+test("neutral key names and prose-like labels keep useful settings", () => {
+  for (const text of ['{"key": "theme", "value": "dark"}', "sort key = created_at", "primary key: id", "max token: 4000", "secret: db-credentials", "Token: see the vault"]) {
+    assert.deepEqual(redactSecrets(text), { text, redactedChars: 0 });
+  }
+  for (const text of ["token: abc123", "secret: abc123", "API_TOKEN=4000"]) assert.ok(redactSecrets(text).text.includes("[REDACTED]"));
+});
+
+test("dotless segmented technical identifiers survive", () => {
+  for (const text of ["ssh srv-db01-prod-euc1-replica02", "kubectl logs recall-daemon-7d9f8b6c5d-x2k4q", "aarch64-unknown-linux-gnu", "model: gpt-4o-mini-2024-07-18"]) {
+    assert.deepEqual(redactSecrets(text), { text, redactedChars: 0 });
+  }
+});
+
+test("short password flags obey each command's case and spacing", () => {
+  for (const text of ["mysql -h db.internal -P 3306", "mysql -u root -p appdb", "mariadb -p appdb"]) assert.deepEqual(redactSecrets(text), { text, redactedChars: 0 });
+  assert.equal(redactSecrets("mysql -ppw1 appdb").text, "mysql -p[REDACTED] appdb");
+  assert.equal(redactSecrets("sshpass -p pw1 ssh host.internal").text, "sshpass -p [REDACTED] ssh host.internal");
+});
+
+test("Digest authorization redacts quoted parameters as a whole", () => {
+  const text = 'authorization: Digest username="fixture-user", response="fixture-response"';
+  assert.equal(redactSecrets(text).text, "authorization: Digest [REDACTED]");
+  assert.equal(redactSecrets(redactSecrets(text).text).redactedChars, 0);
+});
+
+test("repeated JWT-looking prefixes are scanned in bounded time", () => {
+  const text = "eyJa-".repeat(80_000);
+  const started = performance.now();
+  redactSecrets(text);
+  assert.ok(performance.now() - started < 1000, "400k characters must not trigger repeated suffix scans");
+});
