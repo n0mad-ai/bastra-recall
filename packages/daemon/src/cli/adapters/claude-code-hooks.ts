@@ -362,10 +362,11 @@ export function missingRequiredHookRegistrations(hooks: Record<string, unknown>,
       const handlers = Array.isArray(record.hooks) ? record.hooks : [];
       return handlers.some((handler) => {
         if (!handler || typeof handler !== "object") return false;
-        const command = (handler as Record<string, unknown>).command;
-        if (typeof command !== "string") return false;
-        return slashes(command).includes(`/${file}`) ||
-          (def.stubSubcommand ? stubLaneCommandPath(command, def.stubSubcommand) !== null : false);
+        const h = handler as Record<string, unknown>;
+        const command = h.command;
+        if (h.type !== "command" || typeof command !== "string") return false;
+        const marked = h.__bastraRecall === true || h.__nexusRecall === true;
+        return runsOurHookRunner(marked ? CLIENT_MARKER + command : command, [file], CLIENT_MARKER.trim(), def.stubSubcommand);
       });
     });
     if (!found) missing.push(`${def.event}${def.matcher ? `:${def.matcher}` : ""}`);

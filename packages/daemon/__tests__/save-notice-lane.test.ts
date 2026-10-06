@@ -20,6 +20,8 @@
  * Run: node --import tsx --import ./scripts/test-env.mjs --test packages/daemon/__tests__/save-notice-lane.test.ts
  */
 import test from "node:test";
+import { spawn } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
 import assert from "node:assert/strict";
 import { createServer, request, type Server } from "node:http";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -34,7 +36,7 @@ import {
   type SaveNoticePayload,
 } from "../src/save-notice-lane.js";
 import { formatSaveNotice } from "../src/save-notice.js";
-import { hookDefinitions } from "../src/cli/adapters/claude-code.js";
+import { hookDefinitions, missingRequiredHookRegistrations, planHookEntries } from "../src/cli/adapters/claude-code.js";
 import { dispatchLocalRoutes, type LocalRouteCtx } from "../src/http-local-routes.js";
 
 const SERVER = "mcp__bastra-recall__";
@@ -286,9 +288,14 @@ test("telemetry: one save_notice_call row per write-tool call, without the title
       VAULT,
     );
     const logDir = join(dir, "logs");
-    const rows: Array<Record<string, unknown>> = [];
-    for (const f of await readdir(logDir)) {
-      for (const l of (await readFile(join(logDir, f), "utf8")).split("\n")) if (l.trim()) rows.push(JSON.parse(l));
+    let rows: Array<Record<string, unknown>> = [];
+    for (let attempt = 0; attempt < 100; attempt++) {
+      rows = [];
+      for (const f of await readdir(logDir).catch(() => [] as string[])) {
+        for (const l of (await readFile(join(logDir, f), "utf8")).split("\n")) if (l.trim()) rows.push(JSON.parse(l));
+      }
+      if (rows.length === 2) break;
+      await delay(5);
     }
     const calls = rows.filter((r) => r.kind === "save_notice_call");
     assert.deepEqual(
@@ -347,5 +354,99 @@ test("the post-tool route hands a Recall write tool to this lane, title looked u
     } finally {
       await new Promise<void>((ok) => server.close(() => ok()));
     }
+  });
+});
+
+
+test("unknown or error-shaped write responses never affirm that a file was written", async () => {
+  await german(async () => {
+    for (const response of [
+      { id: ID }, { id: ID, error: "denied" }, { id: ID, created: true, error: "denied" },
+      { id: ID, created: true, claim_gate: null },
+    ]) {
+      assert.equal(await notice({ tool_name: `${SERVER}save_memory`, tool_response: blocks(response) }), undefined, JSON.stringify(response));
+    }
+    assert.equal(await notice({ tool_name: `${SERVER}save_product_doc`, tool_response: blocks({ id: ID }) }), undefined);
+    assert.equal(await notice({ tool_name: `${SERVER}edit_memory`, tool_response: blocks({ id: ID }) }), undefined);
+    assert.equal(await notice({ tool_name: `${SERVER}save_document`, tool_response: blocks({ id: ID }) }), undefined);
+  });
+});
+
+test("slow telemetry never holds back a valid notice", async () => {
+  await german(async () => {
+    let release!: () => void;
+    const stalled = new Promise<void>((ok) => { release = ok; });
+    const run = runSaveNoticeLane(
+      { hook_event_name: "PostToolUse", bastra_client: "claude-code", tool_name: `${SERVER}save_memory`, tool_response: blocks({ id: ID, created: true }) },
+      VAULT,
+      { language: async () => "de", telemetry: () => stalled },
+    );
+    let out: string;
+    try { out = await Promise.race([run, delay(100, "timeout")]); }
+    finally { release(); await run; }
+    assert.notEqual(out, "timeout", "telemetry cannot consume the client deadline and erase the notice");
+    assert.match(plain(JSON.parse(out).systemMessage), /gespeichert/);
+  });
+});
+
+test("doctor needs a command that actually runs the required notice lane", () => {
+  const def = hookDefinitions().find((d) => d.matcher === SAVE_NOTICE_MATCHER)!;
+  const check = (command: string, type = "command") => missingRequiredHookRegistrations({ PostToolUse: [{ matcher: SAVE_NOTICE_MATCHER, hooks: [{ type, command }] }] }, [def]);
+  for (const command of ["echo /pkg/bash-fail-hook.js", "echo /pkg/bastra-hook bash-fail", "node /pkg/daemon/dist/other.js /pkg/bash-fail-hook.js", "/pkg/bastra-hook prompt /pkg/bash-fail-hook.js"]) {
+    assert.equal(check(command).length, 1, command);
+  }
+  assert.equal(check("node /pkg/daemon/dist/bash-fail-hook.js", "prompt").length, 1);
+  for (const command of ["BASTRA_HOOK_CLIENT=claude-code node /pkg/bash-fail-hook.js", "/pkg/bastra-hook bash-fail", "bastra-recall-bash-fail-hook"]) assert.deepEqual(check(command), [], command);
+});
+
+test("installation replaces duplicate notice handlers and keeps one registration", () => {
+  const first = planHookEntries("install", {}, { includeStop: false, stubPresent: false });
+  const noticeEntry = first.after.PostToolUse.find((entry) => (entry as { matcher?: string }).matcher === SAVE_NOTICE_MATCHER);
+  const duplicate = { ...first.after, PostToolUse: [...first.after.PostToolUse, noticeEntry] };
+  const next = planHookEntries("install", duplicate, { includeStop: false, stubPresent: false });
+  assert.equal(next.after.PostToolUse.filter((entry) => (entry as { matcher?: string }).matcher === SAVE_NOTICE_MATCHER).length, 1);
+  assert.deepEqual(missingRequiredHookRegistrations(next.after), []);
+});
+
+
+test("telemetry exceptions never erase a valid notice", async () => {
+  await german(async () => {
+    for (const telemetry of [() => { throw new Error("sink unavailable"); }, async () => { throw new Error("sink unavailable"); }]) {
+      const out = await runSaveNoticeLane(
+        { hook_event_name: "PostToolUse", bastra_client: "claude-code", tool_name: `${SERVER}save_memory`, tool_response: blocks({ id: ID, created: true }) },
+        VAULT,
+        { telemetry },
+      );
+      assert.match(plain(JSON.parse(out).systemMessage), /gespeichert/);
+    }
+    await delay(0); // the rejected sink must not become an unhandled rejection
+  });
+});
+
+test("the reused node client fails open on unreachable and stalled daemons", async () => {
+  await german(async () => {
+    const server = createServer(() => {});
+    await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const endpoint = `http://127.0.0.1:${address.port}`;
+    const invoke = async () => {
+      const started = Date.now();
+      const child = spawn(process.execPath, [new URL("../dist/bash-fail-hook.js", import.meta.url).pathname], {
+        env: { ...process.env, BASTRA_DAEMON_URL: endpoint, BASTRA_HOOK_TIMEOUT_MS: "100", BASTRA_HOOK_CLIENT: "claude-code" },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      let stdout = "";
+      child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
+      child.stderr.resume();
+      const exit = new Promise<number | null>((ok, ko) => { child.once("exit", ok); child.once("error", ko); });
+      child.stdin.end(JSON.stringify({ hook_event_name: "PostToolUse", tool_name: `${SERVER}save_memory`, tool_response: blocks({ id: ID, created: true }) }));
+      assert.equal(await exit, 0);
+      assert.equal(stdout, "{}");
+      assert.ok(Date.now() - started < 2000, "an optional notice hook cannot keep the tool turn blocked");
+    };
+    try { await invoke(); }
+    finally { server.closeAllConnections(); await new Promise<void>((ok) => server.close(() => ok())); }
+    await invoke();
   });
 });

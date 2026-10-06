@@ -74,7 +74,11 @@ export type EntryLookup = (id: string) => { title?: unknown; type?: unknown } | 
  * Run the lane; return the exact stdout document for the thin client — `{}`
  * or `{"systemMessage": …}`.
  */
-export async function runSaveNoticeLane(payload: SaveNoticePayload, lookup: EntryLookup): Promise<string> {
+export async function runSaveNoticeLane(
+  payload: SaveNoticePayload,
+  lookup: EntryLookup,
+  opts: { language?: () => Promise<string | undefined>; telemetry?: (payload: SaveNoticeTelemetry) => Promise<void> } = {},
+): Promise<string> {
   const startedAt = Date.now();
   let tool: WriteTool | null = null;
   let action: SaveNoticeAction | null = null;
@@ -87,7 +91,7 @@ export async function runSaveNoticeLane(payload: SaveNoticePayload, lookup: Entr
     if (hookClientEvidence(payload) === "codex") return "{}";
     if (envOff("BASTRA_SAVE_NOTICE")) return "{}";
 
-    const language = await getPrimaryLanguage().catch(() => undefined);
+    const language = await (opts.language ?? getPrimaryLanguage)().catch(() => undefined);
     const notice = describeWrite(tool, payload.tool_input ?? {}, readToolResult(payload.tool_response), lookup, language);
     if (notice !== null) {
       action = notice.action;
@@ -97,7 +101,8 @@ export async function runSaveNoticeLane(payload: SaveNoticePayload, lookup: Entr
     stdout = "{}";
   }
   if (tool !== null) {
-    await writeTelemetry({
+    // Observability cannot consume the client deadline and discard a valid line.
+    void Promise.resolve().then(() => (opts.telemetry ?? writeTelemetry)({
       session_id: typeof payload.session_id === "string" ? payload.session_id : null,
       client: hookClientEvidence(payload),
       agent: hookAgent(payload),
@@ -105,7 +110,7 @@ export async function runSaveNoticeLane(payload: SaveNoticePayload, lookup: Entr
       action,
       shown: stdout !== "{}",
       latency_ms_total: Date.now() - startedAt,
-    });
+    })).catch(() => undefined);
   }
   return stdout;
 }
@@ -134,8 +139,8 @@ export function readToolResult(value: unknown): Record<string, unknown> | null {
   }
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
-  if (record.isError === true) return null;
-  if (typeof record.id === "string" && record.id.length > 0) return record;
+  if (record.isError === true || record.error !== undefined) return null;
+  if (typeof record.id === "string" && record.id.trim().length > 0) return record;
   if (Array.isArray(record.content)) return readToolResult(record.content);
   return null;
 }
@@ -149,6 +154,12 @@ export function describeWrite(
   language: string | undefined,
 ): SaveNotice | null {
   if (result === null) return null;
+  // An id alone is not a write acknowledgement. Use each tool's result contract.
+  if (tool === "save_document") {
+    if (typeof result.sidecar_path !== "string" || !result.sidecar_path.trim() || typeof result.reindexed !== "boolean") return null;
+  } else if (typeof result.created !== "boolean" || (tool === "edit_memory" && result.created !== false)) {
+    return null;
+  }
   const id = result.id as string;
   const str = (v: unknown): string | undefined => (typeof v === "string" && v.trim() ? v : undefined);
   const entry = lookup(id);
@@ -158,7 +169,8 @@ export function describeWrite(
   // title is the one the save carried.
   if (result.claim_gate !== undefined) {
     const claimed = (result.claim_gate as { claimed?: Array<{ id?: unknown }> } | null)?.claimed;
-    const covering = Array.isArray(claimed) ? str(claimed[0]?.id) : undefined;
+    if (result.created !== false || !Array.isArray(claimed) || claimed.length === 0 || !claimed.every((c) => str(c?.id))) return null;
+    const covering = str(claimed[0]?.id);
     return {
       action: "held",
       title: str(input.title) ?? id,
@@ -168,6 +180,7 @@ export function describeWrite(
   }
   // #205: `id` names the EXISTING memory the conflict was marked on.
   if (result.conflict_marked === true) {
+    if (result.created !== false) return null;
     return { action: "conflict", title: str(entry?.title) ?? id, type: str(entry?.type) };
   }
 
