@@ -4,7 +4,7 @@ import { redactSecrets } from "../src/scrub.js";
 
 const fixtures = [
   "-----BEGIN PRIVATE KEY-----\nabc123\n-----END PRIVATE KEY-----",
-  
+
   "sk-proj-AbCdeFgHiJkLmNoPqRsT1234", "ghp_abcdefghijklmno1234567890",
   "github_pat_abcdefghijklmno1234567890", "AKIA1234567890ABCDEF",
   "xoxb-1234567890-abcdefghijk", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature",
