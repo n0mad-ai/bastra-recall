@@ -69,12 +69,12 @@ test('classic/orbital are interchangeable and snapshots do not animate fake acti
 test('short calls between polls leave a visible afterglow without claiming to be running', async t => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'claude-pulse-')); t.after(() => rm(dir, { recursive: true, force: true }));
   const file = path.join(dir, 'transcript.jsonl');
-  const now = Date.now();
+  const now = 1_800_000_000_000;
   const records = [row('user', 'Hi', { promptId: 'p', timestamp: new Date(now - 200).toISOString() }),
     { ...call('a', 'recall'), timestamp: new Date(now - 60).toISOString() },
     { ...result('a', { hits: [{}, {}] }), timestamp: new Date(now - 10).toISOString() }];
   await writeFile(file, records.map(JSON.stringify).join('\n') + '\n');
-  await publishNative({ ...native, transcript_path: file }, dir);
+  await writeFile(snapshotPath('s', dir), JSON.stringify(nativeSnapshot({ ...native, transcript_path: file }, now)));
   const source = new ClaudeLiveSource('s', dir, dir);
   const d = await source.poll(now + 5);
   assert.equal(d.active, false); assert.equal(d.recent, true); assert.equal(d.searches, 1); assert.equal(d.hits, 2);
