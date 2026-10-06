@@ -183,7 +183,9 @@ export function dispatchLocalRoutes(
     return true;
   }
   if (method === "POST" && url === "/hook/bash-fail") {
-    readJsonBody(req, MAX_BODY_BYTES)
+    // A PostToolUse envelope carries a full tool input plus its result.
+    // Give the acknowledgement bounded headroom without changing the API cap.
+    readJsonBody(req, 2 * MAX_BODY_BYTES)
       .then(async (body) => {
         const payload = (body.payload ?? {}) as BashFailPayload;
         // The post-tool client carries one more registration: Recall's own

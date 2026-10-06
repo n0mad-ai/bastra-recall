@@ -37,6 +37,7 @@ import {
 } from "../src/save-notice-lane.js";
 import { formatSaveNotice } from "../src/save-notice.js";
 import { hookDefinitions, missingRequiredHookRegistrations, planHookEntries } from "../src/cli/adapters/claude-code.js";
+import { MAX_BODY_BYTES } from "../src/http-util.js";
 import { dispatchLocalRoutes, type LocalRouteCtx } from "../src/http-local-routes.js";
 
 const SERVER = "mcp__bastra-recall__";
@@ -325,32 +326,40 @@ test("the post-tool route hands a Recall write tool to this lane, title looked u
     const addr = server.address();
     const port = typeof addr === "object" && addr ? addr.port : 0;
     try {
-      const body = await new Promise<string>((ok, ko) => {
-        const req = request(
-          { method: "POST", hostname: "127.0.0.1", port, path: "/hook/bash-fail", headers: { "Content-Type": "application/json" } },
-          (res) => {
-            let data = "";
-            res.on("data", (c: Buffer) => (data += c.toString()));
-            res.on("end", () => ok(data));
-          },
-        );
-        req.on("error", ko);
-        req.end(
-          JSON.stringify({
-            payload: {
-              hook_event_name: "PostToolUse",
-              bastra_client: "claude-code",
-              tool_name: `${SERVER}edit_memory`,
-              tool_input: { id: ID, append: "x" },
-              tool_response: blocks({ id: ID, created: false }),
+      for (const append of ["x", "x".repeat(MAX_BODY_BYTES - 500), "x".repeat(2 * MAX_BODY_BYTES)]) {
+        const body = await new Promise<string>((ok, ko) => {
+          const req = request(
+            { method: "POST", hostname: "127.0.0.1", port, path: "/hook/bash-fail", headers: { "Content-Type": "application/json" } },
+            (res) => {
+              let data = "";
+              res.on("data", (c: Buffer) => (data += c.toString()));
+              res.on("end", () => ok(data));
             },
-          }),
+          );
+          req.on("error", ko);
+          req.end(
+            JSON.stringify({
+              payload: {
+                hook_event_name: "PostToolUse",
+                bastra_client: "claude-code",
+                tool_name: `${SERVER}edit_memory`,
+                tool_input: { id: ID, append },
+                tool_response: blocks({ id: ID, created: false, warning: "x".repeat(2048) }),
+              },
+            }),
+          );
+        });
+        if (append.length > MAX_BODY_BYTES) {
+          assert.equal(body, "{}", "oversized hook envelopes still fail open under a finite limit");
+          continue;
+        }
+        assert.ok(Buffer.byteLength(JSON.stringify({ id: ID, append })) < MAX_BODY_BYTES);
+        assert.ok((JSON.parse(body) as { systemMessage?: string }).systemMessage, `a valid tool input plus its result must fit: ${body}`);
+        assert.equal(
+          plain((JSON.parse(body) as { systemMessage: string }).systemMessage),
+          " bastra-recall  bearbeitet: „Staging-Deploy braucht VPN“ (lesson) · Text angehängt",
         );
-      });
-      assert.equal(
-        plain((JSON.parse(body) as { systemMessage: string }).systemMessage),
-        " bastra-recall  bearbeitet: „Staging-Deploy braucht VPN“ (lesson) · Text angehängt",
-      );
+      }
     } finally {
       await new Promise<void>((ok) => server.close(() => ok()));
     }
