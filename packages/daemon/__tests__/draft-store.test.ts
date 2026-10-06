@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
-  draftsPath, draftFingerprint, draftId, upsertDraft, listDrafts, expireDrafts, purgeDrafts,
+  DRAFT_STORE_VERSION, draftStoreDiagnostics, draftsPath, draftFingerprint, draftId, upsertDraft, listDrafts, expireDrafts, purgeDrafts,
   DRAFT_MAX_ROWS, DRAFT_MAX_BYTES, DRAFT_OPEN_AGE_MS, DRAFT_RETAIN_AGE_MS, type Draft,
 } from "../src/draft-store.js";
 
@@ -53,7 +53,9 @@ test("draft identity is deterministic and Unicode normalization is language inde
 test("40 parallel upserts persist every row in an atomic 0600 JSON array", () => isolated(async (path, dir) => {
   assert.deepEqual(await listDrafts(now), []);
   await Promise.all(Array.from({ length: 40 }, (_, i) => upsertDraft(draft(i), now)));
-  const stored = JSON.parse(await readFile(path, "utf8")) as Draft[];
+  const file = JSON.parse(await readFile(path, "utf8")) as { version: number; rows: Draft[] };
+  assert.equal(file.version, DRAFT_STORE_VERSION);
+  const stored = file.rows;
   assert.equal(new Set(stored.map((d) => d.id)).size, 40);
   if (process.platform !== "win32") assert.equal((await stat(path)).mode & 0o777, 0o600);
   assert.deepEqual(await readdir(dir), ["drafts.json"]);
@@ -71,16 +73,16 @@ test("30 day expiry uses newest evidence or display; list never refreshes access
   a.evidence.push({ session_id: "later", turn: 2, ts: now + 10 });
   const b = draft(2);
   b.surfaced.push({ session_id: "display", ts: now + 20, novel: ["VPN"] });
-  await upsertDraft(a, now);
-  await upsertDraft(b, now);
-  await upsertDraft(draft(3), now);
+  await upsertDraft(a, now + 20);
+  await upsertDraft(b, now + 20);
+  await upsertDraft(draft(3), now + 20);
   const before = await readFile(path, "utf8");
   assert.equal((await listDrafts(now + DRAFT_OPEN_AGE_MS - 1)).length, 3);
   assert.equal(await readFile(path, "utf8"), before);
   assert.equal(await expireDrafts({ now: now + DRAFT_OPEN_AGE_MS }), 1);
   assert.equal(await expireDrafts({ now: now + DRAFT_OPEN_AGE_MS + 10 }), 1);
   assert.equal(await expireDrafts({ now: now + DRAFT_OPEN_AGE_MS + 20 }), 1);
-  assert.deepEqual(JSON.parse(await readFile(path, "utf8")), []);
+  assert.deepEqual(JSON.parse(await readFile(path, "utf8")).rows, []);
 }));
 
 test("promoted/rejected retention and missing-note tombstone", () => isolated(async () => {
@@ -170,7 +172,7 @@ test("cache notices another process writing or purging, and concurrent processes
 }));
 
 test("corrupt and oversized stores surface an error without overwriting the file", () => isolated(async (path) => {
-  for (const text of ["not json", "{}", "[{}]", " ".repeat(DRAFT_MAX_BYTES + 1)]) {
+  for (const text of ["not json", "{}", " ".repeat(DRAFT_MAX_BYTES + 1)]) {
     await writeFile(path, text);
     await assert.rejects(upsertDraft(draft(), now));
     assert.equal(await readFile(path, "utf8"), text);
@@ -224,4 +226,112 @@ test("opaque session and memory identifiers survive token-shaped UUIDs", () => i
   assert.equal(saved.evidence[0].session_id, session);
   assert.equal(saved.surfaced[0].session_id, session);
   assert.equal(saved.memory_id, memory);
+}));
+
+
+test("path explanations and situation survive storage", () => isolated(async () => {
+  const d = draft();
+  d.quote = "Der Key liegt unter /etc/bastra/keys/deploy_ed25519 auf dem Buildserver.";
+  d.situation.cwd = "/Users/n0mad/Projekte/bastra-recall/packages/daemon";
+  d.situation.before = ["ssh deploy@build-box-03.eu-central-1.internal.example.com"];
+  d.situation.after = ["mysql --password=hunter2 -h db.internal"];
+  d.situation.reads = ["/etc/bastra/keys/deploy_ed25519"];
+  d.situation.lits = ["db-primary-01.prod.eu-central-1.rds.amazonaws.com"];
+  const saved = await upsertDraft(d, now);
+  assert.ok(saved);
+  assert.equal(saved.quote, d.quote);
+  assert.equal(saved.situation.cwd, "~/Projekte/bastra-recall/packages/daemon");
+  assert.deepEqual(saved.situation.before, d.situation.before);
+  assert.deepEqual(saved.situation.reads, d.situation.reads);
+  assert.deepEqual(saved.situation.lits, d.situation.lits);
+  assert.ok(!saved.situation.after[0].includes("hunter2"));
+}));
+
+test("malformed neighbours do not disable valid drafts", () => isolated(async (path) => {
+  await writeFile(path, JSON.stringify([draft(1), { broken: true }, draft(2)]));
+  assert.equal((await listDrafts(now)).length, 2);
+  assert.equal(draftStoreDiagnostics().skippedRows, 1);
+  await upsertDraft(draft(3), now);
+  assert.equal((await listDrafts(now)).length, 3);
+}));
+
+test("listing never waits for a foreign writer lock", () => isolated(async (path) => {
+  await upsertDraft(draft(), now);
+  await writeFile(path + ".lock", JSON.stringify({ pid: 1, host: "foreign", ts: Date.now(), token: "foreign" }));
+  const started = performance.now();
+  assert.equal((await listDrafts(now)).length, 1);
+  assert.ok(performance.now() - started < 500, "a draft read cannot spend five seconds in the writer lock");
+}));
+
+test("future timestamps cannot extend retention indefinitely", () => isolated(async () => {
+  const d = draft();
+  d.last_touched = now + 400 * 86400000;
+  d.evidence[0].ts = now + 400 * 86400000;
+  d.surfaced = [{ session_id: "future", ts: now + 400 * 86400000, novel: [] }];
+  const saved = (await upsertDraft(d, now))!;
+  assert.ok(saved.last_touched <= now);
+  assert.ok(saved.evidence[0].ts <= now);
+  assert.ok(saved.surfaced[0].ts <= now);
+  assert.equal((await listDrafts(now + DRAFT_OPEN_AGE_MS)).length, 0);
+}));
+
+
+test("legacy arrays migrate and unknown fields survive a rewrite", () => isolated(async (path) => {
+  const row = { ...draft(), extension: { keep: true }, situation: { ...draft().situation, host: "host.internal" } };
+  const { surfaced: _surface, ...older } = row;
+  await writeFile(path, JSON.stringify([older]));
+  assert.equal((await listDrafts(now))[0].surfaced.length, 0);
+  assert.equal(draftStoreDiagnostics().version, 0);
+  await upsertDraft(draft(2), now);
+  const migrated = JSON.parse(await readFile(path, "utf8"));
+  assert.equal(migrated.version, DRAFT_STORE_VERSION);
+  assert.deepEqual(migrated.rows[0].extension, { keep: true });
+  assert.equal(migrated.rows[0].situation.host, "host.internal");
+  migrated.extension = { root: true };
+  await writeFile(path, JSON.stringify(migrated));
+  await upsertDraft(draft(3), now);
+  assert.deepEqual(JSON.parse(await readFile(path, "utf8")).extension, { root: true });
+}));
+
+test("future versions and truncated files are never overwritten", () => isolated(async (path) => {
+  for (const text of [JSON.stringify({ version: DRAFT_STORE_VERSION + 1, rows: [{ ...draft(), next: true }], extension: true }), JSON.stringify({ version: DRAFT_STORE_VERSION + 2, items: ["future layout"] }), '[{"id":"truncated']) {
+    await writeFile(path, text);
+    assert.deepEqual(await listDrafts(now), []);
+    assert.ok(draftStoreDiagnostics().corrupt || draftStoreDiagnostics().unsupportedVersion);
+    await assert.rejects(upsertDraft(draft(2), now), /original file preserved/);
+    await assert.rejects(expireDrafts({ now }), /original file preserved/);
+    assert.equal(await readFile(path, "utf8"), text);
+  }
+}));
+
+test("imported future clocks use a stable file timestamp, not each read time", () => isolated(async (path) => {
+  const current = Date.now();
+  const future = current + 400 * 86400000;
+  await writeFile(path, JSON.stringify([{ ...draft(), created: future, last_touched: future, evidence: [{ session_id: "future", turn: 1, ts: future }] }]));
+  const touched = (await listDrafts(current))[0].last_touched;
+  assert.ok(touched <= current);
+  assert.equal((await listDrafts(current))[0].last_touched, touched);
+  assert.deepEqual(await listDrafts(touched + DRAFT_OPEN_AGE_MS), []);
+}));
+
+
+test("an empty file initializes like a legacy empty array", () => isolated(async (path) => {
+  await writeFile(path, "");
+  assert.deepEqual(await listDrafts(now), []);
+  assert.equal(draftStoreDiagnostics().corrupt, false);
+  await upsertDraft(draft(), now);
+  assert.equal(JSON.parse(await readFile(path, "utf8")).version, DRAFT_STORE_VERSION);
+}));
+
+test("the suite supplies an isolated drafts path without overriding a deliberate one", () => isolated(async (path) => {
+  const env = { ...process.env };
+  delete env.BASTRA_TEST_RUN_ROOT;
+  delete env.BASTRA_DRAFTS_PATH;
+  const setup = new URL("../../../scripts/test-env.mjs", import.meta.url).pathname;
+  const code = 'import {relative,isAbsolute} from "node:path"; const p=process.env.BASTRA_DRAFTS_PATH; const r=relative(process.env.BASTRA_TEST_RUN_ROOT,p); console.error(JSON.stringify({p,isolated:!r.startsWith("..")&&!isAbsolute(r)}));';
+  const first = JSON.parse((await run(process.execPath, ["--import", setup, "--input-type=module", "-e", code], { env })).stderr);
+  assert.equal(first.isolated, true);
+  assert.notEqual(first.p, join(homedir(), ".bastra", "drafts.json"));
+  const override = JSON.parse((await run(process.execPath, ["--import", setup, "--input-type=module", "-e", code], { env: { ...env, BASTRA_TEST_KEEP_ENV: "1", BASTRA_DRAFTS_PATH: path } })).stderr);
+  assert.equal(override.p, path);
 }));

@@ -131,6 +131,11 @@ if (!process.env.BASTRA_HARVEST_QUEUE_PATH) {
   process.env.BASTRA_HARVEST_QUEUE_PATH = join(throwawayDir("bastra-test-harvest-"), "harvest-queue.json");
 }
 
+/** Draft capture tests must never write to the operator's local draft store. */
+if (!process.env.BASTRA_DRAFTS_PATH) {
+  process.env.BASTRA_DRAFTS_PATH = join(throwawayDir("bastra-test-drafts-"), "drafts.json");
+}
+
 /** #892: the vault-root marker (core's vault-root-guard.ts) records every vault
  *  a test opens; those temp paths must not land in the real ~/.bastra — also
  *  for a CLI child a test spawns without NODE_TEST_CONTEXT. */

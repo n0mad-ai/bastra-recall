@@ -101,6 +101,8 @@ const ALLOWLIST: Readonly<Record<string, string>> = {
   "packages/daemon/src/code-graph/impact-intent.ts :: words /stop|no longer|won't/": "#676 experimental impact intent",
   "packages/daemon/src/code-graph/impact-intent.ts :: words /call|caller|usage/": "#676 experimental impact intent",
 
+  "packages/core/src/scrub.ts :: words /mysql|mariadb|sshpass/": "#1084 CLI command names define the meaning of -p; technical syntax, not conversation language",
+
   // ── #679: detector false positives — not natural language, or not user text ──
   "packages/core/src/recall-banter.ts :: keyed STAGE_PHRASES": "#679 output phrases the product writes, never matched against user text",
   "packages/core/src/recall-banter.ts :: keyed SLOW_PHRASES": "#679 output phrases the product writes, never matched against user text",
