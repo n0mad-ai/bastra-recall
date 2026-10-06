@@ -43,6 +43,7 @@ Commands:
                              default — it otherwise starts on demand and shuts
                              down after 30 min idle). 'on' writes a LaunchAgent;
                              a hand-written one is never replaced without --force
+  drafts <list|purge>         Inspect or clear local session drafts
   patches <list|add <file>|remove <id>|status>
                              Local patches that survive an update: an ordered
                              series reapplied onto the fresh install. One that
@@ -197,6 +198,18 @@ const SURFACE_ARG = `Surfaces:
  * whichever spelling the user typed is the one echoed back.
  */
 export const COMMAND_HELP: Record<string, string> = {
+  drafts: `bastra drafts — local session drafts
+
+Usage:
+  bastra drafts [list] [--json]   List unexpired drafts without refreshing them
+  bastra drafts purge [--json]    Remove all drafts and retained tombstones
+
+Drafts stay on this device, outside the vault. Secrets are redacted before
+storage. Open drafts expire after 30 days without evidence or display;
+promoted and rejected rows are retained for 180 days.
+BASTRA_DRAFTS_PATH overrides the default ~/.bastra/drafts.json location.
+This command manages the store; automatic capture follows separately.
+`,
   code: `bastra code — code awareness for a repository (experimental)
 
 Usage:

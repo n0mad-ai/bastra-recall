@@ -98,8 +98,8 @@ export type { VaultGraph, GraphNode, GraphEdge, GraphCluster } from "./graph.js"
 export { buildSemanticLayout } from "./graph-semantic.js";
 export type { SemanticLayout } from "./graph-semantic.js";
 
-export { scrubInjectedBlocks, containsInjectedBlock, INJECTED_BLOCK_TAGS } from "./scrub.js";
-export type { ScrubResult, InjectedBlockTag } from "./scrub.js";
+export { scrubInjectedBlocks, containsInjectedBlock, INJECTED_BLOCK_TAGS, redactSecrets } from "./scrub.js";
+export type { ScrubResult, InjectedBlockTag, SecretRedactionResult } from "./scrub.js";
 
 export { detectTopics, detectProject, detectProjectDetailed, extractContentExcerpt, hookQueryVocabulary } from "./topics.js";
 export type { ToolIntent, TopicResult, DetectedProject, HookQueryVocabulary } from "./topics.js";
