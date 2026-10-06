@@ -24,6 +24,7 @@ import { runPromptLane, type ClaudeHookPayload } from "./prompt-lane.js";
 import { runWriteLane, type WriteHookPayload } from "./write-lane.js";
 import { runBashPreLane, type BashHookPayload } from "./bash-pre-lane.js";
 import { runBashFailLane, type BashFailPayload } from "./bash-fail-lane.js";
+import { recallWriteTool, runSaveNoticeLane, type SaveNoticePayload } from "./save-notice-lane.js";
 import { dispatchLaneRoutes } from "./http-lane-routes.js";
 import { distinctiveTokensForActedOn, type ToolDeps } from "./tool-handlers.js";
 import { handleHookCare } from "./webui.js";
@@ -184,10 +185,13 @@ export function dispatchLocalRoutes(
   if (method === "POST" && url === "/hook/bash-fail") {
     readJsonBody(req, MAX_BODY_BYTES)
       .then(async (body) => {
-        const out = await runBashFailLane(
-          (body.payload ?? {}) as BashFailPayload,
-          `http://127.0.0.1:${req.socket.localPort ?? 6723}`,
-        );
+        const payload = (body.payload ?? {}) as BashFailPayload;
+        // The post-tool client carries one more registration: Recall's own
+        // write tools, answered with the line that says what was saved
+        // (save-notice-lane.ts says why it has no client of its own).
+        const out = recallWriteTool(payload.tool_name)
+          ? await runSaveNoticeLane(payload as SaveNoticePayload, (id) => vault.get(id)?.fm)
+          : await runBashFailLane(payload, `http://127.0.0.1:${req.socket.localPort ?? 6723}`);
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         res.end(out);
       })

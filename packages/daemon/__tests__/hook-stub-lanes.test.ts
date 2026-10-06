@@ -54,20 +54,21 @@ function allCommands(stubPresent: boolean): string[] {
 
 // ─── every lane is on the stub ───────────────────────────────────────────────
 
-test("all seven lanes register across all nine hook entries when the binary is there", () => {
+test("all seven lanes register across all ten hook entries when the binary is there", () => {
   const cmds = allCommands(true);
-  assert.equal(cmds.length, 9, `expected nine hook entries, got ${cmds.length}`);
+  assert.equal(cmds.length, 10, `expected ten hook entries, got ${cmds.length}`);
   for (const cmd of cmds) {
     assert.ok(cmd.startsWith(`${CC}${HOOK_STUB_BIN} `), `still on node: ${cmd}`);
   }
   const subs = cmds.map((c) => c.slice(CC.length + HOOK_STUB_BIN.length + 1)).sort();
-  // #675: SessionEnd rides the stop lane, so "stop" appears twice.
-  assert.deepEqual(subs, ["bash-fail", "bash-fail", "bash-pre", "prompt", "session", "stop", "stop", "todo", "write"]);
+  // #675: SessionEnd rides the stop lane, so "stop" appears twice. The save
+  // notice rides the post-tool client beside the two Bash entries.
+  assert.deepEqual(subs, ["bash-fail", "bash-fail", "bash-fail", "bash-pre", "prompt", "session", "stop", "stop", "todo", "write"]);
 });
 
 test("without the binary every lane falls back to its node client", () => {
   const cmds = allCommands(false);
-  assert.equal(cmds.length, 9);
+  assert.equal(cmds.length, 10);
   for (const cmd of cmds) assert.ok(cmd.startsWith(`${CC}node /`), `not the node client: ${cmd}`);
 });
 

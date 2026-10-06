@@ -189,12 +189,15 @@ test("CSP: the app injects no <style> element that style-src 'self' would block"
   // (next test), the vendor file stays untouched and is skipped here.
   const root = resolveWebUiDir();
   const files: string[] = [join(root, "index.html")];
+  // The local-only recording choreography (.gitignore: not shipped, loaded
+  // behind ?demo=1) is not part of the UI this pins.
+  const localDemo = join(root, "js", "demo.js");
   const walk = async (dir: string): Promise<void> => {
     for (const e of await readdir(dir, { withFileTypes: true })) {
       const p = join(dir, e.name);
       if (e.isDirectory()) {
         if (e.name !== "vendor") await walk(p);
-      } else if (e.name.endsWith(".js")) files.push(p);
+      } else if (e.name.endsWith(".js") && p !== localDemo) files.push(p);
     }
   };
   await walk(join(root, "js"));
