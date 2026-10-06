@@ -335,3 +335,17 @@ test("the suite supplies an isolated drafts path without overriding a deliberate
   const override = JSON.parse((await run(process.execPath, ["--import", setup, "--input-type=module", "-e", code], { env: { ...env, BASTRA_TEST_KEEP_ENV: "1", BASTRA_DRAFTS_PATH: path } })).stderr);
   assert.equal(override.p, path);
 }));
+
+
+test("a persisted redacted URL draft remains valid in a second process", () => isolated(async (path) => {
+  const d = draft();
+  d.quote = "pg://u:p@db1.internal und pg://u:p@db2.internal";
+  assert.ok(await upsertDraft(d, now));
+  const module = new URL("../src/draft-store.ts", import.meta.url).href;
+  const code = `import {listDrafts,draftStoreDiagnostics} from ${JSON.stringify(module)}; const rows=await listDrafts(${now}); console.error(JSON.stringify({rows,diagnostics:draftStoreDiagnostics()}));`;
+  const out = await run(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code], { env: { ...process.env, BASTRA_DRAFTS_PATH: path } });
+  const result = JSON.parse(out.stderr.trim().split("\n").at(-1)!);
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.diagnostics.skippedRows, 0);
+  assert.equal(result.rows[0].quote, "pg://[REDACTED]@db1.internal und pg://[REDACTED]@db2.internal");
+}));

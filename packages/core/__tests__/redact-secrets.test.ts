@@ -242,3 +242,36 @@ test("suffix punctuation and adjacent flag-like text do not trigger repeated sca
     assert.ok(performance.now() - started < 1000, "plain text cannot take a second to scan");
   }
 });
+
+
+test("authorization headers mask values with any scheme and header qualifier", () => {
+  for (const [header, scheme, secret] of [
+    ["Authorization", "Token", "abc123"], ["Authorization", "ApiKey", "abc123"],
+    ["Authorization", "token", "abc123"], ["Proxy-Authorization", "Basic", "dummy-value"],
+    ["X-Authorization", "Bearer", "dummy-value"],
+    ["Authorization", "AWS4-HMAC-SHA256", "Credential=dummy, SignedHeaders=host, Signature=fake"],
+  ]) {
+    const out = redactSecrets(`${header}: ${scheme} ${secret}`).text;
+    assert.equal(out, `${header}: ${scheme} [REDACTED]`);
+  }
+});
+
+test("credential-labelled locations and variable references remain useful", () => {
+  for (const text of [
+    "private_key: /etc/bastra/keys/deploy_ed25519",
+    "ansible-playbook --private-key ~/.ssh/deploy_ed25519 site.yml",
+    "SSH_PRIVATE_KEY=~/.ssh/deploy_ed25519",
+    "token: /run/secrets/api_token",
+    "nimm --password=$DB_PASSWORD",
+    'API_KEY="${NAME}"',
+    'PASSWORD=${NAME}',
+  ]) assert.deepEqual(redactSecrets(text), { text, redactedChars: 0 });
+});
+
+test("URL userinfo placeholders are idempotent and never counted twice", () => {
+  for (const text of ["pg://u:p@db1.internal und pg://u:p@db2.internal", "https://u:p@host.internal/x"]) {
+    const first = redactSecrets(text);
+    assert.ok(first.redactedChars > 0);
+    assert.deepEqual(redactSecrets(first.text), { text: first.text, redactedChars: 0 });
+  }
+});

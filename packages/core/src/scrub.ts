@@ -213,6 +213,11 @@ function isLocator(value: string): boolean {
   return /^(?:[a-z]{2,}[A-Z]|[A-Z][a-z]{2,})/.test(value) && (value.match(/[A-Z][a-z]{2,}/g)?.length ?? 0) >= 2;
 }
 
+function isReference(value: string): boolean {
+  return /^(?:[a-z][a-z0-9+.-]*:\/\/|[~.]?[\/\\]|\.\.[\/\\]|[a-z]:[\/\\])/i.test(value) ||
+    /^\$(?:[a-z_][a-z0-9_]*|\{[a-z_][a-z0-9_]*\})$/i.test(value);
+}
+
 function opaqueValue(value: string, minimum: number): boolean {
   if (value.length < minimum || isLocator(value) || !/^[a-z0-9_+\/=.\-\p{Cf}]+$/iu.test(value)) return false;
   const classes = [/[a-z]/, /[A-Z]/, /[0-9]/].filter((re) => re.test(value)).length;
@@ -249,6 +254,10 @@ function valueSpans(text: string, start: number, query = false): { spans: Secret
       const begin = pos;
       if (text.startsWith("[REDACTED]", pos)) pos += "[REDACTED]".length;
       else while (pos < text.length) {
+        if (text.startsWith("${", pos)) {
+          const variable = /^\$\{[a-z_][a-z0-9_]*\}/i.exec(text.slice(pos));
+          if (variable) { pos += variable[0].length; continue; }
+        }
         if (text[pos] === "\\" && pos + 1 < text.length && !/[\r\n]/.test(text[pos + 1])) { pos += 2; continue; }
         if (/[\s,;'"`<>}\]]/.test(text[pos]) || (query && /[&#]/.test(text[pos]))) break;
         pos++;
@@ -282,8 +291,10 @@ function valueSpans(text: string, start: number, query = false): { spans: Secret
 /** Structural heuristics; no language-dependent password/prose word lists. */
 export function redactSecrets(text: string, home?: string): SecretRedactionResult {
   const spans: SecretSpan[] = [];
-  const mark = (start: number, length: number) => { if (length > 0) spans.push([start, start + length]); };
-  const markValue = (start: number, strong: boolean, query = false, reference = false): number => {
+  const mark = (start: number, length: number) => {
+    if (length > 0 && text.slice(start, start + length) !== "[REDACTED]") spans.push([start, start + length]);
+  };
+  const markValue = (start: number, strong: boolean, query = false, reference = true): number => {
     const scalar = /^[|>](?:[1-9][+-]?|[+-][1-9]?)?[ \t]*\r?\n/.exec(text.slice(start));
     if (strong && scalar) {
       const lineStart = text.lastIndexOf("\n", start) + 1;
@@ -300,16 +311,15 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
         end = stop < 0 ? text.length : stop + 1;
       }
       const contents = body.map(([a, b]) => text.slice(a, b)).join("\n");
-      if (!(reference && body.length === 1 && isLocator(contents))) {
+      if (!(reference && body.length === 1 && isReference(contents))) {
         for (const [a, b] of body) if (text.slice(a, b) !== "[REDACTED]") mark(a, b - a);
       }
       return end;
     }
     const parsed = valueSpans(text, start, query);
     const joined = parsed.spans.map(([a, b]) => text.slice(a, b)).join("").replace(/\p{Cf}/gu, "");
-    // KEY and POSIX PWD may explicitly name a file location. An access value
-    // in API_KEY/password/token fields remains confidential even if it looks like an id.
-    if (reference && /^(?:[a-z][a-z0-9+.-]*:\/\/|[~.]?[\/\\]|\.\.[\/\\]|[a-z]:[\/\\])/i.test(joined)) strong = false;
+    // A reference names where a credential comes from; it is not the value.
+    if (reference && isReference(joined)) strong = false;
     if (strong || opaqueValue(joined, 16)) for (const [a, b] of parsed.spans) {
       if (text.slice(a, b) !== "[REDACTED]") mark(a, b - a);
     }
@@ -346,14 +356,29 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
       while (start < text.length && /\s/.test(text[start])) start++;
       if (/^(?:"[^"\r\n]{1,80}"|'[^'\r\n]{1,80}'|[\p{L}\p{N}_.-]{1,128})[ \t]*[=:]/u.test(text.slice(start))) continue;
     }
-    // HTTP auth schemes describe the credential encoding; keep that label.
-    if (key.toLowerCase() === "authorization") {
-      const scheme = /^(?:Bearer|Basic)[ \t]+/i.exec(text.slice(start));
-      if (scheme) start += scheme[0].length;
+    if (key.toLowerCase().endsWith("authorization")) {
+      let parsed: { spans: SecretSpan[]; end: number };
+      if (/^\\*["'`]/.test(text.slice(start))) parsed = valueSpans(text, start);
+      else {
+        let end = start;
+        while (end < text.length && !/[\r\n"'`<>}]/.test(text[end])) end++;
+        parsed = { spans: [[start, end]], end };
+      }
+      for (let i = 0; i < parsed.spans.length; i++) {
+        let [a, b] = parsed.spans[i];
+        if (i === 0) {
+          const scheme = /^[a-z][a-z0-9._-]*[ \t]+(?=\S)/i.exec(text.slice(a, b));
+          if (scheme) a += scheme[0].length;
+        }
+        const value = text.slice(a, b);
+        if (!isReference(value)) mark(a, b - a);
+      }
+      assignments.lastIndex = Math.max(assignments.lastIndex, parsed.end);
+      continue;
     }
-    assignments.lastIndex = Math.max(assignments.lastIndex, markValue(start, credentialKey(key), /[?&]/.test(text[assignment.index - 1] ?? ""), /^(?:key|pwd)$/i.test(key.trim())));
+    assignments.lastIndex = Math.max(assignments.lastIndex, markValue(start, credentialKey(key), /[?&]/.test(text[assignment.index - 1] ?? "")));
   }
-  for (const m of text.matchAll(/(?<![a-z0-9_-])--([a-z][a-z0-9_-]*)(?:=|[ \t]+)/gi)) if (credentialKey(m[1])) markValue(m.index! + m[0].length, true, false, /^key$/i.test(m[1]));
+  for (const m of text.matchAll(/(?<![a-z0-9_-])--([a-z][a-z0-9_-]*)(?:=|[ \t]+)/gi)) if (credentialKey(m[1])) markValue(m.index! + m[0].length, true);
   // Track command context once, rather than repeatedly rescanning a long line.
   const commands = [...text.matchAll(/(?:^|[ \t])(mysql|mariadb|sshpass|docker[ \t]+login|ssh)(?=[ \t]|$)|[;&|\r\n]/gmi)];
   let commandIndex = 0;
