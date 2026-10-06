@@ -38,11 +38,12 @@ export function draftsPath(): string {
 
 export function draftFingerprint(quote: string): string {
   const normalized = quote.normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]+/gu)?.join(" ") ?? "";
-  return createHash("sha1").update(normalized).digest("hex");
+  return createHash("sha256").update(normalized).digest("hex").slice(0, 40);
 }
 
+// SHA-256 keeps the planned label lengths without relying on SHA-1.
 export function draftId(sessionId: string, turn: number, fp: string): string {
-  return "d-" + createHash("sha1").update(`${sessionId}:${turn}:${fp}`).digest("hex").slice(0, 12);
+  return "d-" + createHash("sha256").update(`${sessionId}:${turn}:${fp}`).digest("hex").slice(0, 12);
 }
 
 function sanitize(input: unknown): Draft | null {

@@ -47,3 +47,17 @@ test("home abbreviation only replaces a full directory prefix", () => {
 test("unterminated PEM blocks redact the remaining text", () => {
   assert.equal(redactSecrets("before -----BEGIN RSA PRIVATE KEY-----\nabc123 after").text, "before [REDACTED]");
 });
+
+
+test("home prefixes are abbreviated before generic token matching", () => {
+  assert.equal(redactSecrets("cd /Users/n0mad/project-with-a-long-name/file", "/Users/n0mad").text, "cd ~/project-with-a-long-name/file");
+});
+
+test("long ordinary words need no secret and do not cause repeated prefix scans", () => {
+  for (const char of ["z", "-"]) {
+    const text = char.repeat(50_000);
+    const started = performance.now();
+    assert.deepEqual(redactSecrets(text), { text, redactedChars: 0 });
+    assert.ok(performance.now() - started < 1000, "plain text must not take a second to scan");
+  }
+});

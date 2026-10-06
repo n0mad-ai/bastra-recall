@@ -1,4 +1,5 @@
 import test from "node:test";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, chmod, stat, readdir, rm } from "node:fs/promises";
 import { tmpdir, homedir } from "node:os";
@@ -37,7 +38,11 @@ async function isolated(fn: (path: string, dir: string) => Promise<void>): Promi
 
 test("draft identity is deterministic and Unicode normalization is language independent", () => {
   assert.equal(draftFingerprint("CAFÉ—ключ 42!"), draftFingerprint("cafe\u0301 ключ 42"));
-  assert.match(draftId("session", 2, draftFingerprint("hello")), /^d-[a-f0-9]{12}$/);
+  const fp = draftFingerprint("Hello!");
+  assert.equal(fp, createHash("sha256").update("hello").digest("hex").slice(0, 40));
+  assert.match(fp, /^[a-f0-9]{40}$/);
+  assert.equal(draftId("session", 2, fp), "d-" + createHash("sha256").update(`session:2:${fp}`).digest("hex").slice(0, 12));
+  assert.match(draftId("session", 2, fp), /^d-[a-f0-9]{12}$/);
   assert.equal(draftId("session", 2, "fp"), draftId("session", 2, "fp"));
   const prev = process.env.BASTRA_DRAFTS_PATH;
   delete process.env.BASTRA_DRAFTS_PATH;

@@ -178,24 +178,28 @@ const MAX_STRIP_PASSES = 10;
 // Secret redaction (#1084) is independent of injected-context scrubbing.
 export interface SecretRedactionResult {
   text: string;
-  /** Original characters hidden, excluding home-directory abbreviation. */
+  /** Characters hidden by secret matches, excluding home-directory abbreviation. */
   redactedChars: number;
 }
 
 /** Structural heuristics, deliberately independent of the conversation language. */
 export function redactSecrets(text: string, home?: string): SecretRedactionResult {
+  if (home && home !== "/") {
+    // Abbreviate before token matching so a home prefix is not itself a token.
+    text = text.split(home).map((part, i) => i === 0 ? part : (/^(?:[\\/\s'"\x60),;:]|$)/.test(part) ? "~" : home) + part).join("");
+  }
   const spans: [number, number][] = [];
   const mark = (start: number, length: number) => spans.push([start, start + length]);
   for (const m of text.matchAll(/-----BEGIN ([A-Z0-9 ]+)-----[\s\S]*?(?:-----END \1-----|$)/g)) {
     mark(m.index!, m[0].length);
   }
-  for (const m of text.matchAll(/[a-z][a-z0-9+.-]*:\/\/([^\s/@]+)@/gi)) {
+  for (const m of text.matchAll(/(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\/\/([^\s/@]+)@/gi)) {
     mark(m.index! + m[0].length - m[1].length - 1, m[1].length);
   }
   for (const m of text.matchAll(/\b(?:sk-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9_]{8,}|github_pat_[A-Za-z0-9_]{8,}|AKIA[A-Z0-9]{16}|xox[baprs]-[A-Za-z0-9-]{8,}|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/g)) {
     mark(m.index!, m[0].length);
   }
-  for (const m of text.matchAll(/[\p{L}\p{N}_.-]+\s*[=:]\s*(?:"([^"\r\n]*)"|'([^'\r\n]*)'|([^\s,;]+))/gu)) {
+  for (const m of text.matchAll(/(?<![\p{L}\p{N}_.-])[\p{L}\p{N}_.-]+\s*[=:]\s*(?:"([^"\r\n]*)"|'([^'\r\n]*)'|([^\s,;]+))/gu)) {
     const value = m[1] ?? m[2] ?? m[3];
     if (value.startsWith("//") || value.length < 16 || entropy(value) < 3.5) continue;
     const quoted = m[1] !== undefined || m[2] !== undefined;
@@ -222,10 +226,6 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
     end = stop;
   }
   out += text.slice(end);
-  if (home && home !== "/") {
-    // Only a full directory prefix, never /home/name-other.
-    out = out.split(home).map((part, i) => i === 0 ? part : (/^(?:[\\/\s'"\x60),;:]|$)/.test(part) ? "~" : home) + part).join("");
-  }
   return { text: out, redactedChars };
 }
 
