@@ -82,8 +82,8 @@ test("B1 fixes: telemetry counts only retained new rows and appended evidence, w
 }));
 
 
-test("B1 fixes: observed Codex harness forms are structural injected turns, including short variants",()=>isolated(async()=>{
- const messages=["# AGENTS.md instructions for /work/fixture\n\nKeep generated outputs outside this directory.","<turn_aborted>The user stopped the previous turn before completion.</turn_aborted>"];
+test("B1 fixes: observed Codex harness forms are structural injected turns, complete observed blocks",()=>isolated(async()=>{
+ const messages=["# AGENTS.md instructions for /work/fixture\n\nKeep generated outputs outside this directory.","<turn_aborted>\nThe previous operation was interrupted.\n</turn_aborted>"];
  for(const content of messages){assert.equal(isSystemInjectedTurn(content),true);const turns=parseTranscriptFile(JSON.stringify({type:"response_item",payload:{type:"message",role:"user",content:[{type:"input_text",text:content}]}}));assert.equal(turns[0].role,"system-injected");await captureTypedDrafts(turns,{session_id:"harness"},now,[]);}
  assert.deepEqual(await listDrafts(now),[]);
  assert.equal(isSystemInjectedTurn("Please explain # AGENTS.md instructions for this directory."),false);

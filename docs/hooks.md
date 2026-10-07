@@ -901,8 +901,9 @@ environment.
 
 **Local drafts (#1084, B1).** In parallel with the unchanged relay, the job
 captures every typed user turn with at least 20 letters and fewer than 2,000
-characters. Interrupt markers and injected turns are excluded, as are turns
-saved later in the session or already held by the vault. The letter threshold
+characters. Interrupt markers, injected turns and quotes already held by the
+vault are excluded. A later save call does not suppress draft capture; the
+relay keeps its existing later-save exclusion. The letter threshold
 is unmeasured. A matching shape labels the draft; otherwise its kind is `typed`.
 When evidence merges, the first matching shape replaces `typed` and is then
 retained.
@@ -923,9 +924,34 @@ harvest-tick cleanup. Fingerprints use secret-redacted text, so changing only
 a credential does not create another draft. Telemetry reports retained new
 rows as `draft_count` and additional retained evidence as `draft_evidence_count`.
 `draft_ids` contains at most 20 affected retained row IDs; `draft_ids_omitted`
-counts the rest. `draft_stored_count` and `draft_error` remain text-free.
+counts the rest. `draft_evicted_count` counts newly captured rows evicted by
+the store bounds, including when closed tombstones occupy the whole store.
+`draft_stored_count` and `draft_error` remain text-free.
 A draft-store error leaves the relay working and records `draft_error: true`; that session's failed
 draft capture is not retried automatically.
+
+**Situation (B2, Claude Code).** Reversible assumption proposed by the main
+session, pending owner confirmation: a typed turn is labelled `after-failure`
+when the last tool result since the preceding typed turn explicitly failed.
+Assistant prose in between does not reset it; a later successful or unknown
+result suppresses the label. Each draft carries
+up to three preceding shell commands and file reads, and up to three following
+commands, bounded by the adjacent typed turns. Short replies still delimit that
+window. The situation also keeps cwd/project/branch when the transcript supplies
+them, and literal cues from commands, read basenames and the project. Flags and
+redaction placeholders do not become cues. Cues come only from the redacted,
+bounded fields actually stored: preceding commands first (newest first), then
+project and read basenames, then following commands, up to 32. Context merging
+uses the same priority. Commands and paths are secret-redacted;
+the current home directory becomes `~`. Later evidence merges context within the
+existing field limits: latest preceding commands/reads, earliest following
+commands, and latest supplied cwd/project/branch. Replaying old evidence does not
+overwrite newer context. When a continued session supplies application commands
+in a later harvest, the last previously captured typed turn can gain its `after`
+window without another row or evidence. Original evidence keeps its turn time;
+creation and last touch reflect capture time. A changed cwd with no supplied
+branch clears the old branch. Codex parsing remains unchanged; without the Claude
+metadata, drafts keep an empty situation.
 
 #### Taxonomy injection (session hook, #66)
 
@@ -1968,8 +1994,9 @@ mit `BASTRA_SESSION_HARVEST=0` in der Umgebung des Daemons.
 
 **Lokale Entwürfe (#1084, B1).** Parallel zum unveränderten Relay erfasst der
 Job jeden getippten Nutzer-Turn mit mindestens 20 Buchstaben und weniger als
-2.000 Zeichen. Abbruchmarker und eingespielte Turns fallen weg, ebenso Turns,
-die die Session später gespeichert hat oder deren Worte der Vault schon hält.
+2.000 Zeichen. Abbruchmarker, eingespielte Turns und Zitate, deren Worte der
+Vault schon hält, fallen weg. Ein späterer Speicheraufruf unterdrückt die
+Erfassung nicht mehr; das Relay behält seine bisherige Ausschlussregel.
 Die Buchstabenschwelle ist ungemessen. Passt eine Form, bezeichnet sie den
 Entwurf; sonst heißt seine Art `typed`. Beim Zusammenführen ersetzt die erste
 passende Form `typed` und bleibt danach erhalten. Die Ablage schwärzt
@@ -1992,10 +2019,38 @@ aus geschwärztem Text; ein geänderter Zugangswert allein ergibt deshalb keinen
 weiteren Entwurf. Die Telemetrie zählt behaltene neue Zeilen in `draft_count`
 und zusätzlich behaltene Belege in `draft_evidence_count`. `draft_ids` enthält
 höchstens 20 betroffene behaltene Zeilen-IDs, `draft_ids_omitted` zählt die übrigen.
-`draft_stored_count` und `draft_error` enthalten weiterhin keinen Zitattext.
+`draft_evicted_count` zählt neue Zeilen, die die Ablagegrenzen verdrängen, auch
+wenn geschlossene Grabsteine die ganze Ablage belegen. `draft_stored_count`
+und `draft_error` enthalten weiterhin keinen Zitattext.
 Bei einem Fehler der Ablage arbeitet das Relay weiter und meldet
 `draft_error: true`; die fehlgeschlagene Erfassung dieser Session wird nicht
 automatisch wiederholt.
+
+**Situation (B2, Claude Code).** Umkehrbare Annahme der Hauptsession, noch nicht
+vom Owner bestätigt: Ein getippter Turn erhält `after-failure`, wenn das letzte
+Tool-Ergebnis seit dem vorherigen getippten Turn ausdrücklich fehlgeschlagen ist.
+Assistenten-Text dazwischen ändert das nicht; ein späteres erfolgreiches oder
+unbekanntes Ergebnis hebt die Form auf. Jeder Entwurf
+hält bis zu drei vorherige Befehle und Lesezugriffe sowie bis zu drei folgende
+Befehle fest, begrenzt durch die benachbarten getippten Turns. Auch kurze Antworten
+begrenzen dieses Fenster. Wenn das Transcript sie liefert, bleiben cwd, Projekt
+und Branch erhalten. Wörtliche Hinweise stammen aus Befehlen, Dateibasisnamen
+und dem Projekt; Flags und Schwärz-Platzhalter werden keine Hinweise. Die Hinweise
+stammen nur aus den tatsächlich gespeicherten, geschwärzten und begrenzten
+Feldern: zuerst vorherige Befehle (jüngster zuerst), dann Projekt und
+Dateibasisnamen, zuletzt folgende Befehle, höchstens 32. Beim Zusammenführen gilt
+dieselbe Reihenfolge. Befehle
+und Pfade werden geschwärzt, das aktuelle Home-Verzeichnis wird `~`. Spätere
+Belege ergänzen die Situation innerhalb der bestehenden Feldgrenzen: neueste
+vorherige Befehle/Lesezugriffe, früheste folgende Befehle und zuletzt gelieferte
+cwd-/Projekt-/Branch-Werte. Erneutes Lesen alter Belege überschreibt keinen
+neueren Kontext. Liefert eine fortgesetzte Session Folgebefehle erst in einem
+späteren Harvest, wird das `after`-Fenster des letzten zuvor erfassten getippten
+Turns ergänzt, ohne zweite Zeile oder weiteren Beleg. Belege behalten die Turn-Zeit;
+Erstellung und letzte Berührung richten sich nach der Erfassung. Wechselt cwd
+ohne mitgelieferten Branch, wird der alte Branch entfernt. Der Codex-Parser
+bleibt unverändert; ohne die Claude-Metadaten
+bleibt die Situation leer.
 
 #### Taxonomie-Einblendung (Session-Hook, #66)
 

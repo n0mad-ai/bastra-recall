@@ -43,7 +43,8 @@ import { withPathLock } from "./path-lock.js";
 import { envFirst, envOff } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { writePendingSuggestion } from "./pending-suggestions.js";
-import { captureTypedDrafts, INTERRUPT_PREFIX, PASTE_MIN_CHARS, SAVE_TOOL_RE } from "./draft-capture.js";
+import { captureTypedDrafts, INTERRUPT_PREFIX, PASTE_MIN_CHARS } from "./draft-capture.js";
+import type { TranscriptTurn } from "./stop-transcript.js";
 import { restatementIndices } from "./stop-lane-repeat.js";
 
 /** Without a SessionEnd, a session counts as finished once no Stop arrived for this long. */
@@ -57,14 +58,10 @@ const QUOTE_MAX_CHARS = 280;
 const CONTEXT_MAX_CHARS = 160;
 /** An answer shorter than this is a yes/no or an acknowledgement. */
 const ANSWER_MIN_LETTERS = 20;
+const SAVE_TOOL_RE = /(?:^|__)(?:save_memory|edit_memory|save_hold)$/;
 const QUESTION_END_RE = /[?？؟]\s*$/u;
 
-export interface HarvestTurn {
-  role: string;
-  content: string;
-  /** Tool names the turn called (Claude `tool_use.name`, Codex function name). */
-  tools?: string[];
-}
+export type HarvestTurn = TranscriptTurn;
 
 export type HarvestKind = "restated" | "correction" | "answer";
 
@@ -100,6 +97,10 @@ export function sessionHarvestEnabled(): boolean {
   return !envOff("BASTRA_SESSION_HARVEST");
 }
 
+function savedAfter(turns: HarvestTurn[], i: number): boolean {
+  return turns.slice(i + 1).some((t) => (t.tools ?? []).some((name) => SAVE_TOOL_RE.test(name)));
+}
+
 function letters(s: string): number {
   return (s.match(/\p{L}/gu) ?? []).length;
 }
@@ -118,7 +119,9 @@ function lastLine(s: string): string {
  * Pure extraction over a normalized transcript. `from` skips turns an earlier
  * pass already harvested.
  */
-export function harvestCandidates(turns: HarvestTurn[], from = 0, max = HARVEST_MAX_CANDIDATES): HarvestCandidate[] {
+export function harvestCandidates(
+  turns: HarvestTurn[], from = 0, max = HARVEST_MAX_CANDIDATES, includeSaved = false,
+): HarvestCandidate[] {
   const userIdx: number[] = [];
   for (let i = 0; i < turns.length; i++) if (turns[i].role === "user") userIdx.push(i);
 
@@ -126,12 +129,10 @@ export function harvestCandidates(turns: HarvestTurn[], from = 0, max = HARVEST_
     const c = turns[i].content.trim();
     return c.length > 0 && c.length < PASTE_MIN_CHARS && !c.startsWith(INTERRUPT_PREFIX);
   };
-  const savedAfter = (i: number): boolean =>
-    turns.slice(i + 1).some((t) => (t.tools ?? []).some((name) => SAVE_TOOL_RE.test(name)));
 
   const found = new Map<number, HarvestCandidate>();
   const add = (c: HarvestCandidate): void => {
-    if (c.turn < from || found.has(c.turn) || savedAfter(c.turn)) return;
+    if (c.turn < from || found.has(c.turn) || (!includeSaved && savedAfter(turns, c.turn))) return;
     found.set(c.turn, c);
   };
 
@@ -318,8 +319,9 @@ export async function runSessionHarvest(opts: {
       const turns = await opts.loadTurns(e.transcript_path);
       // Every candidate is checked against the vault before the cap, so a
       // stored one does not take the place of a new one.
-      const shapes = harvestCandidates(turns, e.harvested_upto ?? 0, Infinity);
-      let candidates = shapes;
+      // Saved turns still receive their shape in draft capture; only the relay excludes them.
+      const shapes = harvestCandidates(turns, e.harvested_upto ?? 0, Infinity, true);
+      let candidates = shapes.filter((c) => !savedAfter(turns, c.turn));
       let stored = 0;
       if (candidates.length > 0 && opts.storedIn) {
         storedIn ??= opts.storedIn();
@@ -329,7 +331,7 @@ export async function runSessionHarvest(opts: {
         candidates = fresh;
       }
       // Draft capture is independent of shape selection and the relay cap.
-      let drafts = { count: 0, appended: 0, ids: [] as string[], omitted: 0, stored: 0, error: false };
+      let drafts = { count: 0, appended: 0, evicted: 0, ids: [] as string[], omitted: 0, stored: 0, error: false };
       try {
         drafts = { ...await captureTypedDrafts(turns, e, now, shapes, opts.storedIn ? (storedIn ??= opts.storedIn()) : undefined), error: false };
       } catch {
@@ -371,7 +373,7 @@ async function writeHarvestTelemetry(
   stored: number,
   ended: boolean,
   skippedReason?: string,
-  drafts?: { count: number; appended: number; ids: string[]; omitted: number; stored: number; error: boolean },
+  drafts?: { count: number; appended: number; evicted: number; ids: string[]; omitted: number; stored: number; error: boolean },
 ): Promise<void> {
   if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
@@ -390,7 +392,7 @@ async function writeHarvestTelemetry(
       candidate_kinds: kinds,
       stored_count: stored,
       trigger: ended ? "session_end" : "idle",
-      ...(drafts ? { draft_count: drafts.count, draft_evidence_count: drafts.appended, draft_ids_omitted: drafts.omitted, draft_ids: drafts.ids, draft_stored_count: drafts.stored, draft_error: drafts.error } : {}),
+      ...(drafts ? { draft_count: drafts.count, draft_evicted_count: drafts.evicted, draft_evidence_count: drafts.appended, draft_ids_omitted: drafts.omitted, draft_ids: drafts.ids, draft_stored_count: drafts.stored, draft_error: drafts.error } : {}),
       ...(skippedReason ? { skipped_reason: skippedReason } : {}),
     };
     await appendFile(join(logDir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify(event) + "\n", "utf8");

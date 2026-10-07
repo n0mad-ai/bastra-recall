@@ -22,7 +22,7 @@ export function claudeToolUseCommands(content: unknown): string[] {
 
 /**
  * Claude Code: the names of the tools a turn called (#675 — the after-session
- * harvest skips what the session already saved).
+ * relay skips what the session already saved).
  */
 export function claudeToolUseNames(content: unknown): string[] {
   if (!Array.isArray(content)) return [];
