@@ -192,7 +192,10 @@ export function dispatchLocalRoutes(
         // write tools, answered with the line that says what was saved
         // (save-notice-lane.ts says why it has no client of its own).
         const out = recallWriteTool(payload.tool_name)
-          ? await runSaveNoticeLane(payload as SaveNoticePayload, (id) => vault.get(id)?.fm)
+          ? await runSaveNoticeLane(payload as SaveNoticePayload, (id) => {
+            const fm = vault.get(id)?.fm;
+            return fm?.sensitivity === "private" ? undefined : fm;
+          })
           : await runBashFailLane(payload, `http://127.0.0.1:${req.socket.localPort ?? 6723}`);
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         res.end(out);

@@ -315,7 +315,7 @@ test("telemetry: one save_notice_call row per write-tool call, without the title
 test("the post-tool route hands a Recall write tool to this lane, title looked up in the vault", async () => {
   await german(async () => {
     const ctx = {
-      vault: { get: (id: string) => (VAULT(id) ? { fm: VAULT(id) } : undefined) },
+      vault: { get: (id: string) => id === "private-fixture" ? { fm: { title: "Private fixture title", type: "user-fact", sensitivity: "private" } } : (VAULT(id) ? { fm: VAULT(id) } : undefined) },
       toolDeps: {},
     } as unknown as LocalRouteCtx;
     const server: Server = createServer((req, res) => {
@@ -326,7 +326,7 @@ test("the post-tool route hands a Recall write tool to this lane, title looked u
     const addr = server.address();
     const port = typeof addr === "object" && addr ? addr.port : 0;
     try {
-      for (const append of ["x", "x".repeat(MAX_BODY_BYTES - 500), "x".repeat(2 * MAX_BODY_BYTES)]) {
+      for (const id of [ID, "private-fixture"]) for (const append of ["x", "x".repeat(MAX_BODY_BYTES - 500), "x".repeat(2 * MAX_BODY_BYTES)]) {
         const body = await new Promise<string>((ok, ko) => {
           const req = request(
             { method: "POST", hostname: "127.0.0.1", port, path: "/hook/bash-fail", headers: { "Content-Type": "application/json" } },
@@ -343,8 +343,8 @@ test("the post-tool route hands a Recall write tool to this lane, title looked u
                 hook_event_name: "PostToolUse",
                 bastra_client: "claude-code",
                 tool_name: `${SERVER}edit_memory`,
-                tool_input: { id: ID, append },
-                tool_response: blocks({ id: ID, created: false, warning: "x".repeat(2048) }),
+                tool_input: { id, append },
+                tool_response: blocks({ id, created: false, warning: "x".repeat(2048) }),
               },
             }),
           );
@@ -355,10 +355,14 @@ test("the post-tool route hands a Recall write tool to this lane, title looked u
         }
         assert.ok(Buffer.byteLength(JSON.stringify({ id: ID, append })) < MAX_BODY_BYTES);
         assert.ok((JSON.parse(body) as { systemMessage?: string }).systemMessage, `a valid tool input plus its result must fit: ${body}`);
+        if (id === "private-fixture") {
+          assert.doesNotMatch(body, /Private fixture title|user-fact/);
+        } else {
         assert.equal(
           plain((JSON.parse(body) as { systemMessage: string }).systemMessage),
           " bastra-recall  bearbeitet: „Staging-Deploy braucht VPN“ (lesson) · Text angehängt",
         );
+        }
       }
     } finally {
       await new Promise<void>((ok) => server.close(() => ok()));
