@@ -7,8 +7,9 @@ password word lists. Existing `[REDACTED]` placeholders are idempotent.
 
 Paths and `$NAME` / `${NAME}` references remain visible. Draft fields are clipped
 before redaction (quote: 600 characters; context: 160; other fields: 160 or 200).
-A token crossing the bound is discarded rather than persisted as incomplete URL
-userinfo. Nested bindings are scanned without repeatedly parsing the same
+Where a whitespace boundary exists, a token crossing the bound is discarded.
+Without whitespace, clipping returns a shortened prefix and never splits a
+surrogate pair. The same character-boundary check applies after redaction. Nested bindings are scanned without repeatedly parsing the same
 neutral wrapper. Query and flag scans skip already processed value spans.
 
 URL userinfo is separated from its host before considering later `@` characters
@@ -23,7 +24,8 @@ credential binding.
 `packages/core/__tests__/redact-secrets-corpus.test.ts` retains every literal and
 performance input from the seven reviewer scripts (`verify-a/adv`,
 `verify-a2/adv` and `adv2`, `verify-a3/red`, `verify-1091/classes`, `reach` and
-`port`). Duplicate inputs are retained with their source labels. Provider-shaped
+`port`). The 46-row `reach` secrets table and the one-character `red` result-key probe
+are included. Duplicate inputs are retained with their source labels. Provider-shaped
 fixtures are assembled from short chunks.
 
 The seeded `port` samples reproduce seed `0x1091abcd`, all eight families and all
@@ -40,10 +42,10 @@ The remaining limits below are recorded, not expanded into more filter rules.
 
 | Corpus section | Entries | Worse than main | Known limits |
 | --- | ---: | ---: | ---: |
-| Literal/property rows | 748 | 0 | 76 |
+| Literal/property rows | 795 | 0 | 80 |
 | Seeded token rows | 226,000 | 0 | 17,965 |
 | Runtime rows | 66 | 0 | 0 |
-| Total | 226,814 | 0 | 18,041 |
+| Total | 226,861 | 0 | 18,045 |
 
 The runtime rows must finish below two seconds each. Local measurements after
 the correction: 50k `a=` characters about 4 ms, 100k about 8 ms (the previous PR
@@ -52,6 +54,13 @@ about 14,924 ms). These are individual local measurements, not universal speed
 guarantees.
 
 ## Known limits, with examples
+
+The added `reach` table pins four unchanged leaks as limits: `password=$ecr3t`
+(has variable-reference syntax); `redis://:12?34@cache.internal:6379`
+(numeric password/query ambiguity); `jwt_eyJ…` (underscore-prefixed JWT);
+and `echo S3cret | docker login --password-stdin` (value passed through stdin).
+The filter is unchanged by the corpus/Unicode-clipping follow-up.
+
 
 This is a heuristic, not a guarantee that a conversation contains no secrets.
 Avoid placing actual credentials in conversations.
@@ -82,11 +91,11 @@ private vault content are included in these examples.
 
 ## Deutsch: fester Maßstab und Grenzen
 
-Der feste Korpus prüft 226.814 Einträge in beiden Richtungen gegen `226dd628`:
-keine Verschlechterung, 18.041 markierte Grenzen einschließlich synthetischer
+Der feste Korpus prüft 226.861 Einträge in beiden Richtungen gegen `226dd628`:
+keine Verschlechterung, 18.045 markierte Grenzen einschließlich synthetischer
 Zufallstoken. Die Grenzen werden nicht durch weitere Sonderregeln verfolgt.
 Ein slashbeginnendes Passwort ist auch ein gültiger Pfad; nackte Labels wie
 `Token: <Prosa>` sind mehrdeutig. Zusätzliche Befehlsgrammatiken, kurze Werte,
 Signaturfelder und manche öffentliche Bezeichner bleiben ebenfalls Grenzen.
-Entwurfsfelder werden vor dem Schwärzen gekürzt; angeschnittene Tokens werden
-weggelassen. Tatsächliche Zugangsdaten gehören nicht in ein Gespräch.
+Entwurfsfelder werden vor dem Schwärzen gekürzt; angeschnittene Tokens werden bei vorhandener Leerzeichengrenze weggelassen.
+Ohne Leerzeichen bleibt ein gekürzter Präfix stehen, ohne Surrogatpaar zu teilen. Tatsächliche Zugangsdaten gehören nicht in ein Gespräch.
