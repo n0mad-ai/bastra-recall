@@ -140,7 +140,7 @@ test("#537 — with the client selected, every Claude Code command runs on the b
 
 test("#537 — with the client deselected, every Codex command runs on node", () => {
   const cmds = codexCommands(false);
-  assert.equal(cmds.length, 7);
+  assert.equal(cmds.length, 8);
   for (const cmd of cmds) {
     assert.ok(cmd.startsWith("BASTRA_HOOK_CLIENT=codex node "), `not on the node client: ${cmd}`);
     assert.ok(!cmd.includes(HOOK_STUB_BIN), `still points at the compiled binary: ${cmd}`);
@@ -149,7 +149,7 @@ test("#537 — with the client deselected, every Codex command runs on node", ()
 
 test("#537 — with the client selected, every Codex command runs on the binary", () => {
   const cmds = codexCommands(true);
-  assert.equal(cmds.length, 7);
+  assert.equal(cmds.length, 8);
   for (const cmd of cmds) assert.ok(cmd.includes(HOOK_STUB_BIN), `not on the compiled client: ${cmd}`);
 });
 

@@ -683,8 +683,12 @@ gets English).
   that memory), and a save that became a conflict mark ("conflict noted on").
 - The reading tools (`recall`, `load_memory`, `find_*`, `read_document`) never
   get a line.
-- Claude Code only. The line of a call made by a subagent is not shown in the
+- In Claude Code, the line of a call made by a subagent is not shown in the
   main conversation (measured on 2.1.291).
+- Codex receives the same `systemMessage`, with a plain `bastra-recall` prefix
+  by default. Re-run `bastra install codex` and trust the new write-tool entry
+  in `/hooks`. Colours are an unverified opt-in: `BASTRA_SAVE_NOTICE_COLOR=1`
+  in the daemon environment. See [the Codex compatibility check](codex-save-notice.md).
 - `BASTRA_SAVE_NOTICE=0` in the daemon's environment turns it off.
 
 There is no client of its own behind it: the entry reuses
@@ -1696,7 +1700,12 @@ Englisch).
   Widerspruchsvermerk wurde („Widerspruch vermerkt an“).
 - Die lesenden Tools (`recall`, `load_memory`, `find_*`, `read_document`)
   bekommen nie eine Zeile.
-- Nur Claude Code. Die Zeile zu einem Aufruf aus einem Subagenten erscheint
+- Auch Codex bekommt die Zeile, standardmäßig farblos mit festem
+  `bastra-recall`-Präfix. Nach `bastra install codex` den neuen Schreib-Tool-Hook
+  in `/hooks` freigeben. Farbe ist ein ungeprüftes Opt-in über
+  `BASTRA_SAVE_NOTICE_COLOR=1` in der Daemon-Umgebung; siehe
+  [Codex-Prüfung](codex-save-notice.md).
+- Bei Claude Code: Die Zeile zu einem Aufruf aus einem Subagenten erscheint
   nicht im Hauptgespräch (gemessen mit 2.1.291).
 - `BASTRA_SAVE_NOTICE=0` in der Umgebung des Daemons schaltet sie ab.
 

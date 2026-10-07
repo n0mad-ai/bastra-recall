@@ -230,13 +230,12 @@ test("a call that succeeded without writing a new memory does not say saved", as
   });
 });
 
-test("Codex and the off switch stay silent", async () => {
+test("the off switch stays silent", async () => {
   const payload = {
     tool_name: `${SERVER}save_memory`,
     tool_input: SAVE_INPUT,
     tool_response: blocks({ id: ID, created: true }),
   };
-  await german(async () => assert.equal(await notice({ ...payload, bastra_client: "codex" }), undefined));
   for (const off of ["0", "off", "false", "no"]) {
     await german(async () => assert.equal(await notice(payload), undefined, off), { BASTRA_SAVE_NOTICE: off });
   }
@@ -462,4 +461,31 @@ test("the reused node client fails open on unreachable and stalled daemons", asy
     finally { server.closeAllConnections(); await new Promise<void>((ok) => server.close(() => ok())); }
     await invoke();
   });
+});
+
+test("Codex canonical MCP names share the write matcher", () => {
+  assert.equal(recallWriteTool("mcp__bastra_recall__save_memory"), "save_memory");
+  assert.equal(recallWriteTool("mcp__plugin_bastra_recall_bastra_recall__edit_memory"), "edit_memory");
+  assert.equal(recallWriteTool("mcp__bastra_recall__recall"), null);
+});
+
+test("Codex gets a plain fixed prefix after successful writes and nothing after reads", async () => {
+  await german(async () => {
+    for (const tool of ["save_memory", "edit_memory"] as const) {
+      const output = await runSaveNoticeLane({hook_event_name: "PostToolUse", bastra_client: "codex", tool_name: `mcp__bastra_recall__${tool}`, tool_input: SAVE_INPUT, tool_response: {content: blocks({id: ID, created: tool === "save_memory"})}}, VAULT);
+      const line = JSON.parse(output).systemMessage;
+      assert.match(line, /^bastra-recall (?:gespeichert|bearbeitet):/);
+      assert.doesNotMatch(line, /\x1b/);
+    }
+    for (const tool of ["recall", "load_memory"]) {
+      assert.equal(await runSaveNoticeLane({hook_event_name: "PostToolUse", bastra_client: "codex", tool_name: `mcp__bastra_recall__${tool}`, tool_response: {content: blocks({id: ID, created: true})}}, VAULT), "{}");
+    }
+  }, {BASTRA_SAVE_NOTICE_COLOR: "0"});
+});
+
+test("Codex colour is an explicit daemon opt-in, with the same plain wording", async () => {
+  await german(async () => {
+    const out = await runSaveNoticeLane({hook_event_name: "PostToolUse", bastra_client: "codex", tool_name: "mcp__bastra_recall__save_memory", tool_input: SAVE_INPUT, tool_response: {content: blocks({id: ID, created: true})}}, VAULT);
+    assert.match(JSON.parse(out).systemMessage, /^\x1b\[/);
+  }, {BASTRA_SAVE_NOTICE_COLOR: "1"});
 });

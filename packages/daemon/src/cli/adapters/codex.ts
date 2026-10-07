@@ -51,6 +51,7 @@ import {
   slashes,
   type HookWrapper,
 } from "./command-paths.js";
+import { CODEX_SAVE_NOTICE_MATCHER } from "../../save-notice-lane.js";
 import type { Adapter, DoctorResult, InstallOpts, InstallResult, UninstallResult } from "../types.js";
 
 type HookEvent = "SessionStart" | "UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "Stop";
@@ -80,6 +81,7 @@ function codexHookDefinitions(includeStop: boolean): CodexHookDef[] {
     { event: "PreToolUse", matcher: "^update_plan$", bin: TODO_HOOK_BIN, timeout: 2, label: "recalling for plan", stubSubcommand: "todo" },
     { event: "PreToolUse", matcher: "^Bash$", bin: BASH_PRE_HOOK_BIN, timeout: 2, label: "checking shell command", stubSubcommand: "bash-pre" },
     { event: "PostToolUse", matcher: "^Bash$", bin: BASH_FAIL_HOOK_BIN, timeout: 2, label: "learning from shell result", stubSubcommand: "bash-fail" },
+    { event: "PostToolUse", matcher: CODEX_SAVE_NOTICE_MATCHER, bin: BASH_FAIL_HOOK_BIN, timeout: 2, label: "announcing saved memory", stubSubcommand: "bash-fail" },
   ];
   if (includeStop) defs.push(STOP_DEF);
   return defs;
@@ -531,6 +533,19 @@ async function describePlanTool(): Promise<{ detail: string; broken: boolean }> 
   }
 }
 
+/** A shared runner file alone does not prove the write-tool matcher is installed. */
+export function codexSaveNoticeRegistered(hooks: Record<string, unknown>): boolean {
+  const entries = Array.isArray(hooks.PostToolUse) ? hooks.PostToolUse : [];
+  return entries.some(entry => {
+    const group = entry as { matcher?: unknown; hooks?: unknown } | null;
+    return group?.matcher === CODEX_SAVE_NOTICE_MATCHER && Array.isArray(group.hooks) && group.hooks.some(handler => {
+      const hook = handler as { type?: unknown; command?: unknown } | null;
+      return hook?.type === "command" && typeof hook.command === "string" &&
+        runsOurHookRunner(hook.command, [fileOf(BASH_FAIL_HOOK_BIN)], CLIENT_MARKER, "bash-fail");
+    });
+  });
+}
+
 async function codexDoctor(): Promise<DoctorResult> {
   const details: Record<string, string> = {};
   const bin = findCodexExecutable();
@@ -576,13 +591,14 @@ async function codexDoctor(): Promise<DoctorResult> {
       : {};
     const found = registeredCodexHookFiles(hooks);
     const missing = REQUIRED_HOOK_FILES.filter((file) => !found.has(file));
-    hooksBroken = missing.length > 0;
+    hooksBroken = missing.length > 0 || !codexSaveNoticeRegistered(hooks);
     stopHookRegistered = found.has("stop-hook.js");
     details.hooks = missing.length > 0
       ? `${found.size}/${OUR_HOOK_FILES.length} registered (missing required: ${missing.join(", ")})`
       : found.has("stop-hook.js")
         ? `${OUR_HOOK_FILES.length}/${OUR_HOOK_FILES.length} registered`
         : `${REQUIRED_HOOK_FILES.length}/${OUR_HOOK_FILES.length} registered (optional Stop disabled)`;
+    details["save-notice-hook"] = codexSaveNoticeRegistered(hooks) ? "registered" : "MISSING — re-run bastra install codex";
     if (!hooksBroken) details["hook-trust"] = "Codex-owned; use '/hooks' to confirm registered hooks are active";
   }
   // #506 — the plan hook lane is silent unless Codex's planning tool is on.
