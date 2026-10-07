@@ -5,7 +5,8 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { redactSecrets } from "@bastra-recall/core/scrub";
-import { mergeSituations } from "./draft-situation.js";
+import { cleanDraftText, clipDraftText } from "./draft-text.js";
+import { mergeSituations, situationLiterals } from "./draft-situation.js";
 import { bigramSet, dice } from "./stop-lane-repeat.js";
 import { withPathLock } from "./path-lock.js";
 
@@ -53,28 +54,18 @@ export function draftId(sessionId: string, turn: number, fp: string): string {
   return "d-" + createHash("sha256").update(`${sessionId}:${turn}:${fp}`).digest("hex").slice(0, 12);
 }
 
-function clip(text: string, max: number): string {
-  if (text.length <= max) return text;
-  let prefix = text.slice(0, max);
-  const last = prefix.charCodeAt(prefix.length - 1);
-  const next = text.charCodeAt(max);
-  if (last >= 0xd800 && last <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) prefix = prefix.slice(0, -1);
-  if (/\s/.test(text[prefix.length]) || /\s$/.test(prefix)) return prefix;
-  const boundary = prefix.search(/\s+\S*$/u);
-  return boundary < 0 ? prefix : prefix.slice(0, boundary);
-}
 
 function sanitize(input: unknown, now: number, fallback = now): Draft | null {
   const d = draftSchema.parse(input);
   const time = (ts: number) => ts > now ? Math.min(now, fallback) : ts;
-  const quoteInput = clip(d.quote, 600);
+  const quoteInput = clipDraftText(d.quote, 600);
   const quote = redactSecrets(quoteInput, homedir());
   if (quote.redactedChars > quoteInput.length * 0.3) return null;
-  const clean = (text: string, max = 200) => clip(redactSecrets(clip(text, max), homedir()).text, max);
+  const clean = cleanDraftText;
   const optional = (text: string | undefined) => text === undefined ? undefined : clean(text);
   const strings = (items: string[], count: number, max = 200) => items.slice(-count).map((s) => clean(s, max));
   return {
-    ...d, created: time(d.created), quote: clip(quote.text, 600), context: d.context === undefined ? undefined : clean(d.context, 160),
+    ...d, created: time(d.created), quote: clipDraftText(quote.text, 600), context: d.context === undefined ? undefined : clean(d.context, 160),
     situation: {
       ...d.situation,
       cwd: optional(d.situation.cwd), project: optional(d.situation.project), branch: optional(d.situation.branch),
@@ -258,12 +249,18 @@ export interface DraftCaptureResult {
   ids: string[];
 }
 
+export interface DraftAfterUpdate {
+  session_id: string;
+  turn: number;
+  after: string[];
+}
+
 /** One session, one lock and at most one write. Exact fingerprints match across
  * sessions; Dice matches only inside a session. Closed rows stay tombstones. */
-async function captureBatch(inputs: Draft[], now: number): Promise<DraftCaptureResult & { matches: (Draft | null)[] }> {
+async function captureBatch(inputs: Draft[], now: number, afterUpdates: DraftAfterUpdate[] = []): Promise<DraftCaptureResult & { matches: (Draft | null)[] }> {
   const drafts = inputs.map(input => sanitize(input, now));
   const empty = { count: 0, appended: 0, evicted: 0, ids: [] as string[], matches: inputs.map(() => null) as (Draft | null)[] };
-  if (!drafts.some(Boolean)) return empty;
+  if (!drafts.some(Boolean) && afterUpdates.length === 0) return empty;
   const path = draftsPath();
   return withPathLock(path, async () => {
     const store = await load(path, now);
@@ -297,7 +294,7 @@ async function captureBatch(inputs: Draft[], now: number): Promise<DraftCaptureR
           if (!hit.evidence.some(e => e.session_id === evidence.session_id && e.turn === evidence.turn)) {
             hit.evidence.push(evidence);
             appended = true;
-            hit.last_touched = Math.max(hit.last_touched, evidence.ts);
+            hit.last_touched = Math.max(hit.last_touched, now);
           }
         }
         if (appended) hit.situation = mergeSituations(hit.situation, draft.situation);
@@ -307,11 +304,26 @@ async function captureBatch(inputs: Draft[], now: number): Promise<DraftCaptureR
       }
       return (hit ?? draft).id;
     });
+    // A resumed transcript may supply the application commands after a turn
+    // already captured. Enrich only that existing open row, never add evidence.
+    const updatedIds: string[] = [];
+    for (const update of afterUpdates) {
+      const row = rows.find(row => row.state === "open" && row.evidence.some(e =>
+        e.session_id === update.session_id.slice(0, 200) && e.turn === update.turn));
+      if (!row) continue;
+      const additions = update.after.map(command => cleanDraftText(command)).filter(command => !row.situation.after.includes(command));
+      const after = [...row.situation.after, ...additions].slice(0, 3);
+      if (JSON.stringify(after) === JSON.stringify(row.situation.after)) continue;
+      row.situation.after = after;
+      row.situation.lits = situationLiterals(row.situation);
+      row.last_touched = Math.max(row.last_touched, now);
+      updatedIds.push(row.id);
+    }
     const kept = bounded(rows, now, store.metadata);
     if (JSON.stringify(kept) !== before) await write(path, kept, store.metadata);
     const byId = new Map(kept.map(row => [row.id, row]));
     const result: DraftCaptureResult = { count: 0, appended: 0, evicted: 0, ids: [] };
-    for (const id of new Set(matchedIds)) {
+    for (const id of new Set([...matchedIds, ...updatedIds])) {
       if (id === null) continue;
       const row = byId.get(id);
       if (!row) {
@@ -328,8 +340,10 @@ async function captureBatch(inputs: Draft[], now: number): Promise<DraftCaptureR
   }, { crossProcess: true });
 }
 
-export async function captureDrafts(inputs: Draft[], now = Date.now()): Promise<DraftCaptureResult> {
-  const { matches: _matches, ...result } = await captureBatch(inputs, now);
+export async function captureDrafts(
+  inputs: Draft[], now = Date.now(), afterUpdates: DraftAfterUpdate[] = [],
+): Promise<DraftCaptureResult> {
+  const { matches: _matches, ...result } = await captureBatch(inputs, now, afterUpdates);
   return result;
 }
 

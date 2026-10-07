@@ -1,0 +1,18 @@
+/** The existing Phase-A text bounds, shared by storage and literal extraction. */
+import { homedir } from "node:os";
+import { redactSecrets } from "@bastra-recall/core/scrub";
+
+export function clipDraftText(text: string, max: number): string {
+  if (text.length <= max) return text;
+  let prefix = text.slice(0, max);
+  const last = prefix.charCodeAt(prefix.length - 1);
+  const next = text.charCodeAt(max);
+  if (last >= 0xd800 && last <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) prefix = prefix.slice(0, -1);
+  if (/\s/.test(text[prefix.length]) || /\s$/.test(prefix)) return prefix;
+  const boundary = prefix.search(/\s+\S*$/u);
+  return boundary < 0 ? prefix : prefix.slice(0, boundary);
+}
+
+export function cleanDraftText(text: string, max = 200): string {
+  return clipDraftText(redactSecrets(clipDraftText(text, max), homedir()).text, max);
+}
