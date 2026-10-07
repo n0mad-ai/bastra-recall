@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, readdir, stat, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, readdir, stat, rm, rename } from "node:fs/promises";
+import fs from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault, SearchIndex, EmbeddingIndex, type EmbeddingProvider } from "@bastra-recall/core";
@@ -264,4 +267,25 @@ test("B3 default telemetry writes only scores/IDs and cache invalidates a change
   await runDraftShadow({provider:changed,ollama:{...local,model:'changed'},now,emit:()=>{}});
   assert.equal(provider.calls.length,2);
   assert.equal(JSON.parse(await readFile(draftVectorsPath(),'utf8')).provider,'ollama-changed');
+}));
+
+
+test("B3 cache validates and reads the same opened file despite a pathname replacement", t => isolated(async dir => {
+  const d=draft(firstQuote,'file-race');await upsertDraft(d,now);
+  const path=draftVectorsPath();
+  await writeFile(path,JSON.stringify({version:1,provider:'ollama-fixture',dim:2,rows:[{id:d.id,fp:d.fp,quoteHash:createHash('sha256').update(d.quote).digest('hex'),measured:true,vaultMeasured:true,vector:Buffer.from(new Float32Array([1,0]).buffer).toString('base64')}]}));
+  const realStat=fs.stat,realOpen=fs.open;
+  let swapped=false;
+  const swap=async()=>{if(!swapped){swapped=true;await rename(path,join(dir,'original-cache.json'));await writeFile(path,JSON.stringify({version:99}));}};
+  const statSpy=t.mock.method(fs,'stat',async(...args:Parameters<typeof realStat>)=>{const info=await realStat(...args);if(args[0]===path)await swap();return info;});
+  const openSpy=t.mock.method(fs,'open',async(...args:Parameters<typeof realOpen>)=>{const handle=await realOpen(...args);if(args[0]===path){const checked=handle.stat.bind(handle);t.mock.method(handle,'stat',async()=>{const info=await checked();await swap();return info;});}return handle;});
+  syncBuiltinESMExports();
+  try {
+    const provider=providerFor(()=>new Float32Array([1,0]));
+    const result=await runDraftShadow({provider,ollama:local,now,emit:()=>{}});
+    assert.equal(swapped,true);
+    assert.equal(result.errors,0);
+    assert.equal(provider.calls.length,0,'the validated original cache must be reused');
+    assert.equal(JSON.parse(await readFile(path,'utf8')).version,99,'an unrelated replacement must not be rewritten');
+  } finally {statSpy.mock.restore();openSpy.mock.restore();syncBuiltinESMExports();}
 }));

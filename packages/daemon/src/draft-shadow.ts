@@ -1,6 +1,6 @@
 /** Local-only repeat measurements (#1084, B3); never modifies drafts or vault notes. */
 import { createHash, randomBytes } from "node:crypto";
-import { appendFile, chmod, mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, open, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { setImmediate } from "node:timers/promises";
 import { cosine, isLoopbackHost, type EmbeddingProvider, type Vault } from "@bastra-recall/core";
@@ -67,23 +67,30 @@ function localProvider(opts: DraftShadowOptions): EmbeddingProvider | null {
 }
 async function loadCache(path: string): Promise<VectorCache | null> {
   try {
-    const info = await stat(path);
-    if (info.size > VECTOR_MAX_BYTES) return null;
-    const raw = JSON.parse(await readFile(path, "utf8"));
-    if (raw.version !== 1 || typeof raw.provider !== "string" || !Number.isInteger(raw.dim) || raw.dim <= 0 || !Array.isArray(raw.rows)) return null;
-    if ((info.mode & 0o777) !== 0o600) await chmod(path, 0o600);
-    const entries = new Map<string, DraftVectorEntry>();
-    for (const row of raw.rows.slice(-500)) {
-      if (!/^d-[a-f0-9]{12}$/.test(row?.id ?? '') || typeof row.fp !== 'string' || typeof row.quoteHash !== 'string' || typeof row.vector !== 'string') continue;
-      const bytes = Buffer.from(row.vector, "base64");
-      if (bytes.length !== raw.dim * 4) continue;
-      const vector = new Float32Array(raw.dim);
-      new Uint8Array(vector.buffer).set(bytes);
-      if (validVector(vector, raw.dim)) entries.set(row.id, { fp: row.fp, quoteHash: row.quoteHash, vector, measured: row.measured === true, vaultMeasured: row.vaultMeasured === true });
-    }
-    return { provider: raw.provider, dim: raw.dim, entries };
+    const handle = await open(path, "r");
+    try {
+      // Validate/read/chmod the same inode, even if the pathname is replaced.
+      const info = await handle.stat();
+      if (!info.isFile() || info.size > VECTOR_MAX_BYTES) return null;
+      const text = await handle.readFile({ encoding: "utf8" });
+      if (Buffer.byteLength(text) > VECTOR_MAX_BYTES) return null;
+      const raw = JSON.parse(text);
+      if (raw.version !== 1 || typeof raw.provider !== "string" || !Number.isInteger(raw.dim) || raw.dim <= 0 || !Array.isArray(raw.rows)) return null;
+      if ((info.mode & 0o777) !== 0o600) await handle.chmod(0o600);
+      const entries = new Map<string, DraftVectorEntry>();
+      for (const row of raw.rows.slice(-500)) {
+        if (!/^d-[a-f0-9]{12}$/.test(row?.id ?? '') || typeof row.fp !== 'string' || typeof row.quoteHash !== 'string' || typeof row.vector !== 'string') continue;
+        const bytes = Buffer.from(row.vector, "base64");
+        if (bytes.length !== raw.dim * 4) continue;
+        const vector = new Float32Array(raw.dim);
+        new Uint8Array(vector.buffer).set(bytes);
+        if (validVector(vector, raw.dim)) entries.set(row.id, { fp: row.fp, quoteHash: row.quoteHash, vector, measured: row.measured === true, vaultMeasured: row.vaultMeasured === true });
+      }
+      return { provider: raw.provider, dim: raw.dim, entries };
+    } finally { await handle.close(); }
   } catch { return null; }
 }
+
 async function saveCache(path: string, cache: VectorCache): Promise<void> {
   if (cache.entries.size === 0) {
     await unlink(path).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
