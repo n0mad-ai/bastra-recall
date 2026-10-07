@@ -18,7 +18,7 @@ export async function captureTypedDrafts(
   now: number,
   candidates: HarvestCandidate[],
   storedIn?: (quote: string) => string | null,
-): Promise<{ count: number; appended: number; ids: string[]; omitted: number; stored: number }> {
+): Promise<{ count: number; appended: number; evicted: number; ids: string[]; omitted: number; stored: number }> {
   const drafts: Draft[] = [];
   let stored = 0;
   const shapes = new Map(candidates.map(c => [c.turn, c]));

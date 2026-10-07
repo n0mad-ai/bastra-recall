@@ -330,7 +330,7 @@ export async function runSessionHarvest(opts: {
         candidates = fresh;
       }
       // Draft capture is independent of shape selection and the relay cap.
-      let drafts = { count: 0, appended: 0, ids: [] as string[], omitted: 0, stored: 0, error: false };
+      let drafts = { count: 0, appended: 0, evicted: 0, ids: [] as string[], omitted: 0, stored: 0, error: false };
       try {
         drafts = { ...await captureTypedDrafts(turns, e, now, shapes, opts.storedIn ? (storedIn ??= opts.storedIn()) : undefined), error: false };
       } catch {
@@ -372,7 +372,7 @@ async function writeHarvestTelemetry(
   stored: number,
   ended: boolean,
   skippedReason?: string,
-  drafts?: { count: number; appended: number; ids: string[]; omitted: number; stored: number; error: boolean },
+  drafts?: { count: number; appended: number; evicted: number; ids: string[]; omitted: number; stored: number; error: boolean },
 ): Promise<void> {
   if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
@@ -391,7 +391,7 @@ async function writeHarvestTelemetry(
       candidate_kinds: kinds,
       stored_count: stored,
       trigger: ended ? "session_end" : "idle",
-      ...(drafts ? { draft_count: drafts.count, draft_evidence_count: drafts.appended, draft_ids_omitted: drafts.omitted, draft_ids: drafts.ids, draft_stored_count: drafts.stored, draft_error: drafts.error } : {}),
+      ...(drafts ? { draft_count: drafts.count, draft_evicted_count: drafts.evicted, draft_evidence_count: drafts.appended, draft_ids_omitted: drafts.omitted, draft_ids: drafts.ids, draft_stored_count: drafts.stored, draft_error: drafts.error } : {}),
       ...(skippedReason ? { skipped_reason: skippedReason } : {}),
     };
     await appendFile(join(logDir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify(event) + "\n", "utf8");

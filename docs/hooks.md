@@ -924,7 +924,9 @@ harvest-tick cleanup. Fingerprints use secret-redacted text, so changing only
 a credential does not create another draft. Telemetry reports retained new
 rows as `draft_count` and additional retained evidence as `draft_evidence_count`.
 `draft_ids` contains at most 20 affected retained row IDs; `draft_ids_omitted`
-counts the rest. `draft_stored_count` and `draft_error` remain text-free.
+counts the rest. `draft_evicted_count` counts newly captured rows evicted by
+the store bounds, including when closed tombstones occupy the whole store.
+`draft_stored_count` and `draft_error` remain text-free.
 A draft-store error leaves the relay working and records `draft_error: true`; that session's failed
 draft capture is not retried automatically.
 
@@ -1994,7 +1996,9 @@ aus geschwärztem Text; ein geänderter Zugangswert allein ergibt deshalb keinen
 weiteren Entwurf. Die Telemetrie zählt behaltene neue Zeilen in `draft_count`
 und zusätzlich behaltene Belege in `draft_evidence_count`. `draft_ids` enthält
 höchstens 20 betroffene behaltene Zeilen-IDs, `draft_ids_omitted` zählt die übrigen.
-`draft_stored_count` und `draft_error` enthalten weiterhin keinen Zitattext.
+`draft_evicted_count` zählt neue Zeilen, die die Ablagegrenzen verdrängen, auch
+wenn geschlossene Grabsteine die ganze Ablage belegen. `draft_stored_count`
+und `draft_error` enthalten weiterhin keinen Zitattext.
 Bei einem Fehler der Ablage arbeitet das Relay weiter und meldet
 `draft_error: true`; die fehlgeschlagene Erfassung dieser Session wird nicht
 automatisch wiederholt.

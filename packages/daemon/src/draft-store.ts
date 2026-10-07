@@ -252,6 +252,8 @@ export interface DraftCaptureResult {
   /** New rows and additional evidence that survived the final store bounds. */
   count: number;
   appended: number;
+  /** Newly captured rows removed by the final row or byte bound. */
+  evicted: number;
   ids: string[];
 }
 
@@ -259,7 +261,7 @@ export interface DraftCaptureResult {
  * sessions; Dice matches only inside a session. Closed rows stay tombstones. */
 async function captureBatch(inputs: Draft[], now: number): Promise<DraftCaptureResult & { matches: (Draft | null)[] }> {
   const drafts = inputs.map(input => sanitize(input, now));
-  const empty = { count: 0, appended: 0, ids: [] as string[], matches: inputs.map(() => null) as (Draft | null)[] };
+  const empty = { count: 0, appended: 0, evicted: 0, ids: [] as string[], matches: inputs.map(() => null) as (Draft | null)[] };
   if (!drafts.some(Boolean)) return empty;
   const path = draftsPath();
   return withPathLock(path, async () => {
@@ -304,11 +306,15 @@ async function captureBatch(inputs: Draft[], now: number): Promise<DraftCaptureR
     const kept = bounded(rows, now, store.metadata);
     if (JSON.stringify(kept) !== before) await write(path, kept, store.metadata);
     const byId = new Map(kept.map(row => [row.id, row]));
-    const result: DraftCaptureResult = { count: 0, appended: 0, ids: [] };
+    const result: DraftCaptureResult = { count: 0, appended: 0, evicted: 0, ids: [] };
     for (const id of new Set(matchedIds)) {
       if (id === null) continue;
       const row = byId.get(id);
-      if (!row || row.state !== "open") continue;
+      if (!row) {
+        if (!original.has(id)) result.evicted++;
+        continue;
+      }
+      if (row.state !== "open") continue;
       const prior = original.get(id);
       if (!prior) result.count++;
       result.appended += row.evidence.length - (prior?.evidence.length ?? 1);
