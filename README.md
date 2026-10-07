@@ -21,6 +21,8 @@ We’re building with the ambition to create the best personal memory for everyd
 
 Keep your preferences, decisions and hard-won fixes available beyond a single chat. Bastra Recall stores them as readable Markdown files on your computer and makes them available to your connected AI assistants.
 
+[What you can use Recall for](./docs/use-cases.md#english) gives practical examples for conversations, rules, tasks, documents and shared work.
+
 Supported integrations help assistants save useful lessons and retrieve relevant memories before starting work. You can inspect and edit the files yourself, with Obsidian or any text editor. Automatic recall depends on the client integration and the assistant; it does not guarantee that every instruction will be followed.
 
 ### Why not just CLAUDE.md?
@@ -153,6 +155,8 @@ Built by [Daniel / @n0mad-ai](https://github.com/n0mad-ai).
 Wir bauen mit dem Anspruch, das beste persönliche Gedächtnis für die tägliche Arbeit mit KI zu schaffen – offen, nachvollziehbar und unter deiner Kontrolle.
 
 Bewahre deine Vorlieben, Entscheidungen und erarbeiteten Lösungen über einzelne Chats hinweg. Bastra Recall speichert sie als lesbare Markdown-Dateien auf deinem Rechner und macht sie deinen verbundenen KI-Assistenten zugänglich.
+
+[Wofür du Recall nutzen kannst](./docs/use-cases.md#deutsch) zeigt Beispiele für Gespräche, Regeln, Aufgaben, Dokumente und gemeinsame Arbeit.
 
 Unterstützte Integrationen helfen Assistenten, wichtige Erkenntnisse zu speichern und relevante Erinnerungen vor neuen Aufgaben abzurufen. Du kannst die Dateien selbst prüfen und bearbeiten – mit Obsidian oder jedem Texteditor. Automatischer Abruf hängt von der Integration und dem Assistenten ab; er garantiert nicht, dass jede Anweisung befolgt wird.
 
