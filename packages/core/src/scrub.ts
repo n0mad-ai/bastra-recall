@@ -456,8 +456,11 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
       const command = commands[commandIndex++][1]?.toLowerCase().replace(/[ \t]+/g, " ");
       passwordCommand = command;
     }
+    const attached = m[0] === "-p" && !!text[m.index! + 2] && !/\s/.test(text[m.index! + 2]);
+    const separated = /^[a-z][a-z0-9]*(?=\s|$)/i.exec(text.slice(m.index! + m[0].length));
+    const mixed = separated !== null && /[0-9]/.test(separated[0]);
     if (passwordCommand === "sshpass" || passwordCommand === "docker login" ||
-        ((passwordCommand === "mysql" || passwordCommand === "mariadb") && (m[0] === "-p" && !!text[m.index! + 2] && !/\s/.test(text[m.index! + 2]) || /^[a-z][a-z0-9]*[0-9][a-z0-9]*(?=\s|$)/i.test(text.slice(m.index! + m[0].length))))) markValue(m.index! + m[0].length, true);
+        ((passwordCommand === "mysql" || passwordCommand === "mariadb") && (attached || mixed))) markValue(m.index! + m[0].length, true);
   }
   let locationIndex = 0;
   for (const m of text.matchAll(/[a-z0-9_+\/.\-\p{Cf}]{24,}={0,2}/giu)) {
