@@ -255,6 +255,8 @@ test("B3 default telemetry writes only scores/IDs and cache invalidates a change
   const text=(await Promise.all((await readdir(join(dir,'logs'))).map(name=>readFile(join(dir,'logs',name),'utf8')))).join('');
   const event=JSON.parse(text.trim());
   assert.equal(event.kind,'draft_repeat_shadow');
+  assert.equal(event.provider_id,'ollama-fixture');
+  assert.equal(event.dimensions,2);
   assert.equal(typeof event.dice,'number');
   assert.equal(typeof event.cosine,'number');
   assert.doesNotMatch(text,/Staging uses|Every testing|isolated database/);

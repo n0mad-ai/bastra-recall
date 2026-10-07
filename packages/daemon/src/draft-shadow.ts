@@ -30,13 +30,13 @@ export interface VaultVectorSnapshot {
   dim: number;
   vectors: ReadonlyMap<string, Float32Array>;
 }
-export type DraftShadowEvent = {
+export type DraftShadowEvent = ({
   kind: "draft_repeat_shadow";
   draft_id: string; other_draft_id: string; dice: number; cosine: number;
 } | {
   kind: "draft_vault_shadow";
   draft_id: string; memory_id: string | null; cosine: number; containment: number;
-};
+}) & { provider_id?: string; dimensions?: number };
 export interface DraftShadowOptions {
   /** The already resolved boot provider; no cloud factory/fallback on this path. */
   provider: EmbeddingProvider | null;
@@ -204,7 +204,11 @@ export async function runDraftShadow(opts: DraftShadowOptions): Promise<DraftSha
       }
       const pending = new Set([...cache.entries].filter(([, row]) => !row.measured).map(([id]) => id));
       const events: DraftShadowEvent[] = [];
-      const emit = opts.emit ?? ((event: DraftShadowEvent) => events.push(event));
+      const emit = (event: DraftShadowEvent): void => {
+        const record = { ...event, provider_id: cache!.provider, dimensions: cache!.dim };
+        if (opts.emit) opts.emit(record);
+        else events.push(record);
+      };
       result.pairs = await compareDraftPairs(drafts, cache.entries, pending, emit);
       const pendingVault = new Set([...cache.entries].filter(([, row]) => !row.vaultMeasured).map(([id]) => id));
       const measuredVault: string[] = [];
