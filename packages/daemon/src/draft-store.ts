@@ -49,10 +49,13 @@ export function draftId(sessionId: string, turn: number, fp: string): string {
 
 function clip(text: string, max: number): string {
   if (text.length <= max) return text;
-  const prefix = text.slice(0, max);
-  if (/\s/.test(text[max]) || /\s$/.test(prefix)) return prefix;
+  let prefix = text.slice(0, max);
+  const last = prefix.charCodeAt(prefix.length - 1);
+  const next = text.charCodeAt(max);
+  if (last >= 0xd800 && last <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) prefix = prefix.slice(0, -1);
+  if (/\s/.test(text[prefix.length]) || /\s$/.test(prefix)) return prefix;
   const boundary = prefix.search(/\s+\S*$/u);
-  return boundary < 0 ? "" : prefix.slice(0, boundary);
+  return boundary < 0 ? prefix : prefix.slice(0, boundary);
 }
 
 function sanitize(input: unknown, now: number, fallback = now): Draft | null {
@@ -61,11 +64,11 @@ function sanitize(input: unknown, now: number, fallback = now): Draft | null {
   const quoteInput = clip(d.quote, 600);
   const quote = redactSecrets(quoteInput, homedir());
   if (quote.redactedChars > quoteInput.length * 0.3) return null;
-  const clean = (text: string, max = 200) => redactSecrets(clip(text, max), homedir()).text.slice(0, max);
+  const clean = (text: string, max = 200) => clip(redactSecrets(clip(text, max), homedir()).text, max);
   const optional = (text: string | undefined) => text === undefined ? undefined : clean(text);
   const strings = (items: string[], count: number, max = 200) => items.slice(-count).map((s) => clean(s, max));
   return {
-    ...d, created: time(d.created), quote: quote.text.slice(0, 600), context: d.context === undefined ? undefined : clean(d.context, 160),
+    ...d, created: time(d.created), quote: clip(quote.text, 600), context: d.context === undefined ? undefined : clean(d.context, 160),
     situation: {
       ...d.situation,
       cwd: optional(d.situation.cwd), project: optional(d.situation.project), branch: optional(d.situation.branch),

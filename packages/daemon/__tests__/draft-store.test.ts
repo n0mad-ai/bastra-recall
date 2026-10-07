@@ -101,7 +101,7 @@ test("promoted/rejected retention and missing-note tombstone", () => isolated(as
 
 test("bounds every text field, commands, reads and surfaced history", () => isolated(async (path) => {
   const d = draft();
-  d.quote = "ü ".repeat(450);
+  d.quote = "ü".repeat(900);
   d.context = "x ".repeat(150);
   d.situation.before = Array(6).fill("x ".repeat(200));
   d.situation.after = Array(6).fill("x ".repeat(200));
@@ -360,4 +360,20 @@ test("draft fields are clipped before redaction without retaining a partial URL 
   const clipped = await upsertDraft(d, now);
   assert.ok(clipped);
   assert.ok(!clipped.quote.includes("shortValue") && !clipped.context?.includes("shortValue"));
+}));
+
+test("clipping keeps spaced Unicode text and never cuts a surrogate pair", () => isolated(async () => {
+  const spaced = await upsertDraft({...draft(20),quote:"ü ".repeat(450)},now);
+  assert.ok(spaced);
+  assert.equal(spaced.quote.length,600);
+  const d = draft(21);
+  d.quote = "x".repeat(599) + "😀".repeat(100);
+  d.context = "x".repeat(159) + "😀".repeat(100);
+  d.situation.before = ["x".repeat(199) + "😀".repeat(100)];
+  const saved = await upsertDraft(d,now);
+  assert.ok(saved);
+  assert.equal(saved.quote,"x".repeat(599));
+  assert.equal(saved.context,"x".repeat(159));
+  assert.equal(saved.situation.before[0],"x".repeat(199));
+  for (const text of [saved.quote,saved.context!,...saved.situation.before]) assert.equal(Buffer.from(text).toString("utf8"),text);
 }));
