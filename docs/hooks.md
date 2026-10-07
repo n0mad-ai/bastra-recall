@@ -901,8 +901,9 @@ environment.
 
 **Local drafts (#1084, B1).** In parallel with the unchanged relay, the job
 captures every typed user turn with at least 20 letters and fewer than 2,000
-characters. Interrupt markers and injected turns are excluded, as are turns
-saved later in the session or already held by the vault. The letter threshold
+characters. Interrupt markers, injected turns and quotes already held by the
+vault are excluded. A later save call does not suppress draft capture; the
+relay keeps its existing later-save exclusion. The letter threshold
 is unmeasured. A matching shape labels the draft; otherwise its kind is `typed`.
 When evidence merges, the first matching shape replaces `typed` and is then
 retained.
@@ -1968,8 +1969,9 @@ mit `BASTRA_SESSION_HARVEST=0` in der Umgebung des Daemons.
 
 **Lokale Entwürfe (#1084, B1).** Parallel zum unveränderten Relay erfasst der
 Job jeden getippten Nutzer-Turn mit mindestens 20 Buchstaben und weniger als
-2.000 Zeichen. Abbruchmarker und eingespielte Turns fallen weg, ebenso Turns,
-die die Session später gespeichert hat oder deren Worte der Vault schon hält.
+2.000 Zeichen. Abbruchmarker, eingespielte Turns und Zitate, deren Worte der
+Vault schon hält, fallen weg. Ein späterer Speicheraufruf unterdrückt die
+Erfassung nicht mehr; das Relay behält seine bisherige Ausschlussregel.
 Die Buchstabenschwelle ist ungemessen. Passt eine Form, bezeichnet sie den
 Entwurf; sonst heißt seine Art `typed`. Beim Zusammenführen ersetzt die erste
 passende Form `typed` und bleibt danach erhalten. Die Ablage schwärzt

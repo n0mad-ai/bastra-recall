@@ -95,14 +95,14 @@ test("B1 leaves the vault byte-identical and the existing shape relay unchanged"
   assert.equal((await listDrafts(now + 1))[0].kind, "answer");
 }));
 
-test("B1 applies the already-saved and vault matcher rules to unshaped typed turns", () => isolated(async (dir, harvest) => {
+test("B2 captures typed turns even after saves, while the vault matcher still excludes stored quotes", () => isolated(async (dir, harvest) => {
   await harvest("saved", [u(task), { type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name: "mcp__bastra_recall__save_memory", input: {} }] } }]);
-  assert.deepEqual(await listDrafts(now + 1), []);
+  assert.equal((await listDrafts(now + 1)).length, 1);
   const path = join(dir, "stored.jsonl");
   await writeFile(path, JSON.stringify(u(task)));
   await noteSessionForHarvest({ session_id: "stored", transcript_path: path, ended: true, now });
   await runSessionHarvest({ loadTurns: async p => parseTranscriptFile(await readFile(p,"utf8")), storedIn: () => () => "fixture", now: now + 1 });
-  assert.deepEqual(await listDrafts(now + 1), []);
+  assert.equal((await listDrafts(now + 1)).length, 1);
 }));
 
 test("B1 has no ten-draft cap and keeps distinct texts in different sessions", () => isolated(async (_, harvest) => {

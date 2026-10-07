@@ -43,7 +43,7 @@ import { withPathLock } from "./path-lock.js";
 import { envFirst, envOff } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { writePendingSuggestion } from "./pending-suggestions.js";
-import { captureTypedDrafts, INTERRUPT_PREFIX, PASTE_MIN_CHARS, SAVE_TOOL_RE } from "./draft-capture.js";
+import { captureTypedDrafts, INTERRUPT_PREFIX, PASTE_MIN_CHARS } from "./draft-capture.js";
 import { restatementIndices } from "./stop-lane-repeat.js";
 
 /** Without a SessionEnd, a session counts as finished once no Stop arrived for this long. */
@@ -57,6 +57,7 @@ const QUOTE_MAX_CHARS = 280;
 const CONTEXT_MAX_CHARS = 160;
 /** An answer shorter than this is a yes/no or an acknowledgement. */
 const ANSWER_MIN_LETTERS = 20;
+const SAVE_TOOL_RE = /(?:^|__)(?:save_memory|edit_memory|save_hold)$/;
 const QUESTION_END_RE = /[?？؟]\s*$/u;
 
 export interface HarvestTurn {
