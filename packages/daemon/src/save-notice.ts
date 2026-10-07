@@ -135,12 +135,12 @@ export function coveredByDetail(title: string, language: string | undefined): st
 }
 
 /** The line. Without colour the product name still stands in front as a fixed prefix. */
-export function formatSaveNotice(notice: SaveNotice, language: string | undefined): string {
+export function formatSaveNotice(notice: SaveNotice, language: string | undefined, colour = true): string {
   const w = wordingFor(language);
   const title = oneLine(notice.title, MAX_TITLE);
   const type = notice.type ? ` (${oneLine(notice.type, 24)})` : "";
   const head = `${w.action[notice.action]}: ${w.quote[0]}${title}${w.quote[1]}${type}`;
   const detail = notice.detail ? oneLine(notice.detail, MAX_DETAIL) : "";
   const text = detail && [...`${PRODUCT} ${head} · ${detail}`].length <= MAX_LINE ? `${head} · ${detail}` : head;
-  return `${BADGE_ON} ${PRODUCT} ${BADGE_OFF} ${text}`;
+  return colour ? `${BADGE_ON} ${PRODUCT} ${BADGE_OFF} ${text}` : `${PRODUCT} ${text}`;
 }

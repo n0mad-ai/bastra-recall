@@ -3,7 +3,8 @@
  * returned, tell the user in one line what was saved or edited.
  *
  * Claude Code shows the call collapsed ("Called bastra-recall"); the line is
- * the hook's `systemMessage`, which it prints right under it. The wording
+ * the hook's `systemMessage`, which it prints right under it. Codex also
+ * accepts this field; it defaults to a plain product prefix there. The wording
  * lives in save-notice.ts.
  *
  * Transport: no client of its own. The registration reuses the post-tool
@@ -28,7 +29,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { envFirst, envOff } from "./env.js";
+import { envFirst, envOff, isOnValue } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { getPrimaryLanguage } from "./settings.js";
 import { hookAgent, hookClientEvidence, type HookAgent, type HookClientEvidence } from "./hook-surface.js";
@@ -44,12 +45,14 @@ type WriteTool = (typeof WRITE_TOOLS)[number];
 /**
  * Claude Code names an MCP tool `mcp__<server>__<tool>`, and
  * `mcp__plugin_<plugin>_<server>__<tool>` when a plugin bundles the server.
+ * Codex canonicalizes the server separator to `bastra_recall` (0.160.0).
  * A matcher with a character outside `[A-Za-z0-9_\-, |]` is a regular
- * expression, so this one string is both the registered matcher and the
- * lane's own check.
+ * expression. Claude keeps its original registration; the lane also accepts
+ * Codex's spelling.
  */
 export const SAVE_NOTICE_MATCHER = `^mcp__(plugin_.+_)?bastra-recall__(${WRITE_TOOLS.join("|")})$`;
-const TOOL_NAME = new RegExp(SAVE_NOTICE_MATCHER);
+export const CODEX_SAVE_NOTICE_MATCHER = SAVE_NOTICE_MATCHER.replace("bastra-recall", "bastra[-_]recall");
+const TOOL_NAME = new RegExp(CODEX_SAVE_NOTICE_MATCHER);
 
 /** The Recall write tool a hook payload is about, or null. */
 export function recallWriteTool(toolName: unknown): WriteTool | null {
@@ -87,15 +90,14 @@ export async function runSaveNoticeLane(
     if (payload.hook_event_name !== "PostToolUse") return "{}";
     tool = recallWriteTool(payload.tool_name);
     if (tool === null) return "{}";
-    // The line is Claude Code's `systemMessage`; Codex has no place for it.
-    if (hookClientEvidence(payload) === "codex") return "{}";
     if (envOff("BASTRA_SAVE_NOTICE")) return "{}";
 
     const language = await (opts.language ?? getPrimaryLanguage)().catch(() => undefined);
     const notice = describeWrite(tool, payload.tool_input ?? {}, readToolResult(payload.tool_response), lookup, language);
     if (notice !== null) {
       action = notice.action;
-      stdout = JSON.stringify({ systemMessage: formatSaveNotice(notice, language) });
+      const colour = hookClientEvidence(payload) !== "codex" || isOnValue(envFirst("BASTRA_SAVE_NOTICE_COLOR"));
+      stdout = JSON.stringify({ systemMessage: formatSaveNotice(notice, language, colour) });
     }
   } catch {
     stdout = "{}";

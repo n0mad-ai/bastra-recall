@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { parseCodexMcpServer, codexServerMatches } from "../src/cli/codex-cli.js";
-import { planCodexHooks, patchCodexHooks } from "../src/cli/adapters/codex.js";
+import { planCodexHooks, patchCodexHooks, codexSaveNoticeRegistered } from "../src/cli/adapters/codex.js";
 import { applyPatchPaths, normalizeWritePayload, type WritePayloadShape } from "../src/hook-write-input.js";
 import { hookClient } from "../src/hook-surface.js";
 import { codeTargets, MAX_CODE_TARGETS } from "../src/write-lane.js";
@@ -43,7 +43,7 @@ test("Codex MCP JSON matches the same stable stdio block ChatGPT desktop reads",
   }), false);
 });
 
-test("Codex hook planner installs seven native lanes and preserves foreign hooks", () => {
+test("Codex hook planner installs eight native lanes and preserves foreign hooks", () => {
   const foreign = { matcher: "foreign", hooks: [{ type: "command", command: "foreign-hook" }] };
   const installed = planCodexHooks("install", { PreToolUse: [foreign] }, {
     includeStop: true,
@@ -53,7 +53,7 @@ test("Codex hook planner installs seven native lanes and preserves foreign hooks
   assert.equal(installed.after.SessionStart.length, 1);
   assert.equal(installed.after.UserPromptSubmit.length, 1);
   assert.equal(installed.after.PreToolUse.length, 4);
-  assert.equal(installed.after.PostToolUse.length, 1);
+  assert.equal(installed.after.PostToolUse.length, 2);
   assert.equal(installed.after.Stop.length, 1);
   assert.equal(installed.after.PreToolUse[0], foreign);
   const serialized = JSON.stringify(installed.after);
@@ -226,4 +226,22 @@ test("#572 the normalized notebook path does not put a .ipynb under the size con
   assert.equal(thresholdsFor("/work/repo/notebooks/train.ipynb"), null);
   assert.notEqual(thresholdsFor("/work/repo/src/train.ts"), null);
   assert.equal(await fileSizeNote("/work/repo/notebooks/train.ipynb"), null);
+});
+
+test("Codex installs exactly one Recall write notice on the reused post-tool client", () => {
+  const first = planCodexHooks("install", {}, {includeStop:false,stubPresent:true});
+  const notices = first.after.PostToolUse.filter(entry => (entry as {matcher?:string}).matcher?.includes("save_memory"));
+  assert.equal(notices.length,1);
+  assert.match(JSON.stringify(notices), /bash-fail/);
+  const duplicate = {...first.after,PostToolUse:[...first.after.PostToolUse,...notices]};
+  const next = planCodexHooks("install", duplicate, {includeStop:false,stubPresent:true});
+  assert.equal(next.after.PostToolUse.filter(entry => (entry as {matcher?:string}).matcher?.includes("save_memory")).length,1);
+});
+
+test("Codex doctor requires a real notice handler and its write matcher", () => {
+  const installed = planCodexHooks("install", {}, {includeStop:false,stubPresent:true}).after;
+  assert.equal(codexSaveNoticeRegistered(installed),true);
+  const notice = installed.PostToolUse.find(entry => (entry as {matcher?:string}).matcher?.includes("save_memory")) as {matcher:string};
+  assert.equal(codexSaveNoticeRegistered({PostToolUse:installed.PostToolUse.filter(entry=>entry!==notice)}),false);
+  for (const command of ["echo /pkg/bash-fail-hook.js", "/pkg/bastra-hook prompt", "node /pkg/other.js /pkg/bash-fail-hook.js"]) assert.equal(codexSaveNoticeRegistered({PostToolUse:[{matcher:notice.matcher,hooks:[{type:"command",command}]}]}),false);
 });
