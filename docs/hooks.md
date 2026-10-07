@@ -953,6 +953,29 @@ creation and last touch reflect capture time. A changed cwd with no supplied
 branch clears the old branch. Codex parsing remains unchanged; without the Claude
 metadata, drafts keep an empty situation.
 
+**Local repeat shadow (B3).** The harvest tick embeds redacted draft quotes using
+only the already selected local Ollama provider at a loopback endpoint. An
+explicit cloud choice, no provider or a remote Ollama URL produces no draft
+embedding request. The disposable `<draft-store-name>.vectors.json` sidecar is
+private (0600), model-bound, and pruned when drafts expire or disappear;
+`bastra drafts purge` removes it too. A failing local model leaves capture intact.
+
+For drafts from different sessions, `draft_repeat_shadow` logs both character
+bigram Dice and cosine when either is at least its logging threshold: Dice 0.6,
+cosine 0.35 (**unmeasured, logging only**). It does not merge, reject or promote
+anything. A draft quote version is measured once per model; unavailable providers
+can leave a backlog that is processed later. Cached vectors are reused.
+
+`draft_vault_shadow` compares each new draft vector with the closest currently
+available note vector from the same local model/dimension. It reuses the index
+snapshot and never embeds notes for this measurement. The row includes cosine
+and the existing IDF-weighted word containment for that same note. Private note
+IDs are always omitted; text, titles and commands are never logged. A missing or
+incompatible vault snapshot postpones this measurement without re-embedding the
+draft. Expired-repeat counts cannot be recovered after both the row and its cache
+entry are removed; no historical fingerprint ledger is added in B3. The existing
+`BASTRA_SESSION_HARVEST=0` gates capture, cleanup and shadow work together.
+
 #### Taxonomy injection (session hook, #66)
 
 The session hook also fetches `GET /hook/taxonomy` (budget 150 ms within the
@@ -2051,6 +2074,33 @@ Erstellung und letzte Berührung richten sich nach der Erfassung. Wechselt cwd
 ohne mitgelieferten Branch, wird der alte Branch entfernt. Der Codex-Parser
 bleibt unverändert; ohne die Claude-Metadaten
 bleibt die Situation leer.
+
+**Lokaler Wiederholungs-Schattenlauf (B3).** Der Harvest-Tick bettet geschwärzte
+Entwurfszitate ausschließlich über den bereits gewählten lokalen Ollama-Anbieter
+an einer Loopback-Adresse ein. Bei Cloud-Wahl, ohne Anbieter oder mit entfernter
+Ollama-Adresse gibt es keinen Embedding-Aufruf für Entwürfe. Die löschbare Datei
+`<Name-der-Entwurfsablage>.vectors.json` ist privat (0600), an das Modell gebunden
+und wird beim Verfall oder Entfernen der Entwürfe bereinigt; `bastra drafts purge`
+entfernt sie ebenfalls. Ein ausgefallenes lokales Modell lässt die Erfassung
+weiterlaufen.
+
+Für Entwürfe verschiedener Sessions protokolliert `draft_repeat_shadow`
+Bigramm-Dice und Cosinus, wenn mindestens einer die Protokollschwelle erreicht:
+Dice 0,6, Cosinus 0,35 (**ungemessen, nur fürs Protokoll**). Dabei wird nichts
+zusammengeführt, verworfen oder befördert. Jede Zitatversion wird einmal je Modell
+gemessen; ein ausgefallener Anbieter kann einen später abgearbeiteten Rückstand
+hinterlassen. Gespeicherte Vektoren werden wiederverwendet.
+
+`draft_vault_shadow` vergleicht jeden neuen Entwurfsvektor mit dem nächstliegenden
+aktuell verfügbaren Notizvektor desselben lokalen Modells und derselben Dimension.
+Dafür wird der vorhandene Index-Snapshot gelesen, keine Notiz neu eingebettet.
+Die Zeile enthält Cosinus und die bestehende IDF-gewichtete Wortüberdeckung für
+dieselbe Notiz. IDs privater Notizen bleiben immer weg; Texte, Titel und Befehle
+werden nie protokolliert. Ein fehlender oder inkompatibler Vault-Snapshot verschiebt
+diese Messung, ohne den Entwurf neu einzubetten. Wiederholungen nach Verfall sind
+nach dem Entfernen von Zeile und Cache-Eintrag nicht mehr zählbar; B3 ergänzt kein
+historisches Fingerprint-Register. Der bestehende Schalter
+`BASTRA_SESSION_HARVEST=0` schaltet Erfassung, Aufräumen und Schattenlauf gemeinsam ab.
 
 #### Taxonomie-Einblendung (Session-Hook, #66)
 

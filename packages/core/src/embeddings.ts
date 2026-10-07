@@ -313,6 +313,11 @@ export class EmbeddingIndex {
     return this.vectors.size;
   }
 
+  /** Identity of the vectors in snapshot(); no provider calls or mutation. */
+  providerIdentity(): { id: string; dim: number } {
+    return { id: this.provider.id, dim: this.provider.dim };
+  }
+
   /** Read-only view of all stored vectors (id → vector), for consumers that
    *  do pure math over the whole set (#207 semantic map). Live map — do not
    *  mutate, and don't hold it across awaits (the index keeps writing). */

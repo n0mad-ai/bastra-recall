@@ -212,6 +212,7 @@ export {
   RRF_K,
   RRF_SCALE,
   rrfVectorWeight,
+  cosine,
 } from "./embeddings.js";
 export type {
   EmbeddingProvider,
@@ -241,3 +242,5 @@ export {
   type InjectionFinding,
 } from "./injection-scan.js";
 export type { TriggerExpanderOptions, ChatFn, SelfTestFn } from "./trigger-expand.js";
+
+export { isLoopbackHost } from "./ollama-egress.js";

@@ -5,7 +5,7 @@
  * gating and logging. All timers unref() so none of them ever keeps the
  * process alive on its own.
  */
-import type { EmbeddingIndex, SearchIndex, Vault } from "@bastra-recall/core";
+import type { EmbeddingIndex, EmbeddingProvider, SearchIndex, Vault } from "@bastra-recall/core";
 import { envInt } from "./env.js";
 import type { Telemetry } from "./telemetry.js";
 import type { ToolDeps } from "./tool-deps.js";
@@ -18,6 +18,7 @@ import { BATTERY_UNLOAD_MS, type PowerMonitor } from "./power-source.js";
 import { runCuratorPass } from "./curator-run.js";
 import { pruneEventLogs } from "./log-retention.js";
 import { observeCodeGraphRefresh, startCodeAwareness } from "./code-graph/service.js";
+import { runDraftShadow } from "./draft-shadow.js";
 import { expireDrafts } from "./draft-store.js";
 import { sessionHarvestEnabled, runSessionHarvest } from "./session-harvest.js";
 import { storedQuoteMatcher } from "./harvest-vault-match.js";
@@ -38,6 +39,8 @@ export interface BackgroundJobDeps {
   clearStagedRestartPending: () => void;
   ollama: { baseURL: string; model: string } | null;
   embIdx: () => EmbeddingIndex | null;
+  /** Already resolved at boot; draft shadow must never select a cloud fallback. */
+  rawProvider?: EmbeddingProvider | null;
   /**
    * #493: Das Modell hat den Speicher verlassen — an den Warmup-Koordinator,
    * der den gemeinsamen Lifecycle-Zustand hält.
@@ -72,25 +75,47 @@ export function startBackgroundJobs(deps: BackgroundJobDeps): void {
 // they have gone quiet, and what the user said that the session did not save
 // goes to the pending relay as suggestions. Off the hook path entirely; the
 // pass is never-throw, and it writes nothing to the vault.
+export async function runSessionHarvestTick(
+  deps: Pick<BackgroundJobDeps, "vault" | "search" | "embIdx" | "ollama" | "rawProvider">,
+  now = Date.now(),
+) {
+  if (!sessionHarvestEnabled()) return null;
+  const harvest = await runSessionHarvest({
+    loadTurns: transcript_path => loadTranscript({ transcript_path }),
+    storedIn: () => storedQuoteMatcher(deps.vault, deps.search),
+    now,
+  });
+  await expireDrafts({ now });
+  const shadow = await runDraftShadow({
+    provider: deps.rawProvider ?? null, ollama: deps.ollama, vault: deps.vault, now,
+    vaultVectors: () => {
+      const index = deps.embIdx();
+      if (!index) return null;
+      const identity = index.providerIdentity();
+      return { provider: identity.id, dim: identity.dim, vectors: index.snapshot() };
+    },
+  });
+  return { harvest, shadow };
+}
+
 function startSessionHarvest(deps: BackgroundJobDeps): void {
+  let running = false;
   setInterval(() => {
-    if (!sessionHarvestEnabled()) return;
-    void runSessionHarvest({
-      loadTurns: (transcript_path) => loadTranscript({ transcript_path }),
-      // A quote the vault already holds in the same words is not relayed.
-      storedIn: () => storedQuoteMatcher(deps.vault, deps.search),
-    })
-      .then(async (r) => {
-        if (r.harvested > 0) {
-          console.error(
-            `[bastra-recall] session harvest: ${r.harvested} session(s), ${r.candidates} candidate(s) relayed, ${r.stored} already stored`,
-          );
+    if (running || !sessionHarvestEnabled()) return;
+    running = true;
+    void runSessionHarvestTick(deps)
+      .then(result => {
+        if (result && result.harvest.harvested > 0) {
+          const r = result.harvest;
+          console.error(`[bastra-recall] session harvest: ${r.harvested} session(s), ${r.candidates} candidate(s) relayed, ${r.stored} already stored`);
         }
-        await expireDrafts();
+        if (result && (result.shadow.embedded > 0 || result.shadow.errors > 0)) {
+          const r = result.shadow;
+          console.error(`[bastra-recall] draft shadow: ${r.embedded} vector(s), ${r.pairs} pair(s), ${r.vaultMatches} note comparison(s), ${r.errors} error(s)`);
+        }
       })
-      .catch((err) => {
-        console.error(`[bastra-recall] session harvest error (non-fatal): ${(err as Error)?.message ?? err}`);
-      });
+      .catch(err => console.error(`[bastra-recall] session harvest error (non-fatal): ${(err as Error)?.message ?? err}`))
+      .finally(() => { running = false; });
   }, 5 * 60_000).unref();
 }
 
