@@ -140,6 +140,7 @@ async function sandbox<T>(fn: (dir: string) => Promise<T>): Promise<T> {
     BASTRA_TELEMETRY: "on",
     BASTRA_LOG_PATH: join(dir, "logs"),
     BASTRA_PENDING_SUGGESTIONS_PATH: join(dir, "pending.json"),
+    BASTRA_DRAFTS_PATH: join(dir, "drafts.json"),
     BASTRA_HARVEST_QUEUE_PATH: join(dir, "queue.json"),
     BASTRA_HOOK_STATE_DIR: join(dir, "state"),
   };

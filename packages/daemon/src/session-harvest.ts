@@ -16,7 +16,8 @@
  *     finished (`ended: true`), so it does not wait for the idle window.
  *  2. A daemon job (`runSessionHarvest`, daemon-jobs.ts) picks the sessions
  *     that ended or have been quiet for {@link HARVEST_IDLE_MS}, reads their
- *     transcript and extracts candidates (`harvestCandidates`).
+ *     transcript, captures typed turns into the local draft store, and extracts
+ *     shape candidates (`harvestCandidates`) for the unchanged relay.
  *  3. Candidates the vault already holds in the same words are dropped
  *     (`harvest-vault-match.ts`); the rest go into the pending-suggestions
  *     relay (#513, recency lane) as verbatim quotes. The next session start
@@ -42,6 +43,7 @@ import { withPathLock } from "./path-lock.js";
 import { envFirst, envOff } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { writePendingSuggestion } from "./pending-suggestions.js";
+import { captureTypedDrafts, INTERRUPT_PREFIX, PASTE_MIN_CHARS, SAVE_TOOL_RE } from "./draft-capture.js";
 import { restatementIndices } from "./stop-lane-repeat.js";
 
 /** Without a SessionEnd, a session counts as finished once no Stop arrived for this long. */
@@ -55,17 +57,14 @@ const QUOTE_MAX_CHARS = 280;
 const CONTEXT_MAX_CHARS = 160;
 /** An answer shorter than this is a yes/no or an acknowledgement. */
 const ANSWER_MIN_LETTERS = 20;
-/** Longer user turns are pastes (logs, files), not something the user said. */
-const PASTE_MIN_CHARS = 2000;
 const QUESTION_END_RE = /[?？؟]\s*$/u;
-const INTERRUPT_PREFIX = "[Request interrupted by user";
-const SAVE_TOOL_RE = /(?:^|__)(?:save_memory|edit_memory|save_hold)$/;
 
 export interface HarvestTurn {
   role: string;
   content: string;
   /** Tool names the turn called (Claude `tool_use.name`, Codex function name). */
   tools?: string[];
+  isMeta?: boolean;
 }
 
 export type HarvestKind = "restated" | "correction" | "answer";
@@ -320,7 +319,8 @@ export async function runSessionHarvest(opts: {
       const turns = await opts.loadTurns(e.transcript_path);
       // Every candidate is checked against the vault before the cap, so a
       // stored one does not take the place of a new one.
-      let candidates = harvestCandidates(turns, e.harvested_upto ?? 0, Infinity);
+      const shapes = harvestCandidates(turns, e.harvested_upto ?? 0, Infinity);
+      let candidates = shapes;
       let stored = 0;
       if (candidates.length > 0 && opts.storedIn) {
         storedIn ??= opts.storedIn();
@@ -329,13 +329,21 @@ export async function runSessionHarvest(opts: {
         stored = candidates.length - fresh.length;
         candidates = fresh;
       }
+      // Draft capture is independent of shape selection and the relay cap.
+      let drafts = { count: 0, ids: [] as string[], stored: 0, error: false };
+      try {
+        drafts = { ...await captureTypedDrafts(turns, e, now, shapes, opts.storedIn ? (storedIn ??= opts.storedIn()) : undefined), error: false };
+      } catch {
+        // A malformed/newer draft store must not stop the existing relay.
+        drafts.error = true;
+      }
       candidates = candidates.slice(0, HARVEST_MAX_CANDIDATES);
       if (candidates.length > 0) await writePendingSuggestion(formatHarvestBlock(e, candidates));
       progress.set(e.session_id, { upto: turns.length, at: now });
       result.harvested += 1;
       result.candidates += candidates.length;
       result.stored += stored;
-      await writeHarvestTelemetry(e, turns.length, candidates, stored, ended);
+      await writeHarvestTelemetry(e, turns.length, candidates, stored, ended, undefined, drafts);
     }
     await withPathLock(path, async () => {
       const entries = await readQueue(path);
@@ -364,6 +372,7 @@ async function writeHarvestTelemetry(
   stored: number,
   ended: boolean,
   skippedReason?: string,
+  drafts?: { count: number; ids: string[]; stored: number; error: boolean },
 ): Promise<void> {
   if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   try {
@@ -382,6 +391,7 @@ async function writeHarvestTelemetry(
       candidate_kinds: kinds,
       stored_count: stored,
       trigger: ended ? "session_end" : "idle",
+      ...(drafts ? { draft_count: drafts.count, draft_ids: drafts.ids, draft_stored_count: drafts.stored, draft_error: drafts.error } : {}),
       ...(skippedReason ? { skipped_reason: skippedReason } : {}),
     };
     await appendFile(join(logDir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify(event) + "\n", "utf8");

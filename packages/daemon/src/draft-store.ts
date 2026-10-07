@@ -5,19 +5,24 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { redactSecrets } from "@bastra-recall/core/scrub";
+import { bigramSet, dice } from "./stop-lane-repeat.js";
 import { withPathLock } from "./path-lock.js";
 
 export const DRAFT_STORE_VERSION = 1;
 export const DRAFT_MAX_ROWS = 500;
 export const DRAFT_MAX_BYTES = 1024 * 1024;
 export const DRAFT_OPEN_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+/** Unmeasured: early expiry for an unshown draft with only one evidence row. */
+export const DRAFT_UNCONFIRMED_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+/** Structural within-session similarity threshold from the harvest design. */
+export const DRAFT_SESSION_DICE_MIN = 0.6;
 export const DRAFT_RETAIN_AGE_MS = 180 * 24 * 60 * 60 * 1000;
 
 const timestamp = z.number().finite().nonnegative();
 const draftSchema = z.object({
   id: z.string().regex(/^d-[a-f0-9]{12}$/),
   fp: z.string().regex(/^[a-f0-9]{40}$/),
-  kind: z.enum(["restated", "correction", "answer", "after-failure"]),
+  kind: z.enum(["restated", "correction", "answer", "after-failure", "typed"]),
   quote: z.string(), context: z.string().optional(),
   situation: z.object({
     cwd: z.string().optional(), project: z.string().optional(), branch: z.string().optional(),
@@ -102,7 +107,11 @@ function documentOf(rows: Draft[], metadata: Record<string, unknown>): Record<st
 }
 
 function bounded(rows: Draft[], now: number, metadata: Record<string, unknown> = {}): Draft[] {
-  const kept = rows.filter((d) => now - d.last_touched < (d.state === "open" ? DRAFT_OPEN_AGE_MS : DRAFT_RETAIN_AGE_MS));
+  const kept = rows.filter((d) => {
+    const age = d.state !== "open" ? DRAFT_RETAIN_AGE_MS
+      : d.evidence.length === 1 && d.surfaced.length === 0 ? DRAFT_UNCONFIRMED_AGE_MS : DRAFT_OPEN_AGE_MS;
+    return now - d.last_touched < age;
+  });
   kept.sort((a, b) => a.last_touched - b.last_touched);
   if (kept.length > DRAFT_MAX_ROWS) kept.splice(0, kept.length - DRAFT_MAX_ROWS);
   let bytes = Buffer.byteLength(JSON.stringify(documentOf([], metadata))) + kept.reduce((sum, d) => sum + Buffer.byteLength(JSON.stringify(d)) + 1, 0);
@@ -219,7 +228,7 @@ export async function listDrafts(now = Date.now()): Promise<Draft[]> {
   return bounded(store.rows, now, store.metadata);
 }
 
-/** Replace by id; cross-session matching and situation merging belong to phase B. */
+/** Replace by id; captureDraft owns evidence deduplication during harvest. */
 export async function upsertDraft(input: Draft, now = Date.now()): Promise<Draft | null> {
   const draft = sanitize(input, now);
   if (!draft) return null;
@@ -236,7 +245,39 @@ export async function upsertDraft(input: Draft, now = Date.now()): Promise<Draft
   }, { crossProcess: true });
 }
 
-/** Phase B will call this from the harvest tick. A missing promoted note leaves a tombstone. */
+/** Capture atomically: exact fingerprints across sessions, Dice only within
+ * the same session. Existing closed rows remain tombstones, never reopened. */
+export async function captureDraft(input: Draft, now = Date.now()): Promise<Draft | null> {
+  const draft = sanitize(input, now);
+  if (!draft) return null;
+  const path = draftsPath();
+  return withPathLock(path, async () => {
+    const store = await load(path, now);
+    assertWritable(store);
+    const rows = bounded(store.rows, now, store.metadata);
+    const session = draft.evidence[0].session_id;
+    const grams = bigramSet(draft.quote);
+    const hit = rows.find(row => row.fp === draft.fp) ?? rows.find(row => {
+      if (row.state !== "open" || !row.evidence.some(e => e.session_id === session) || !grams) return false;
+      const previous = bigramSet(row.quote);
+      return previous !== null && dice(previous, grams) >= DRAFT_SESSION_DICE_MIN;
+    });
+    if (hit) {
+      if (hit.state !== "open") return structuredClone(hit);
+      for (const evidence of draft.evidence) {
+        if (!hit.evidence.some(e => e.session_id === evidence.session_id && e.turn === evidence.turn)) {
+          hit.evidence.push(evidence);
+          hit.last_touched = Math.max(hit.last_touched, evidence.ts);
+        }
+      }
+    } else rows.push(draft);
+    const kept = bounded(rows, now, store.metadata);
+    await write(path, kept, store.metadata);
+    return structuredClone(kept.find(row => row.id === (hit ?? draft).id) ?? null);
+  }, { crossProcess: true });
+}
+
+/** Called from the harvest tick. A missing promoted note leaves a tombstone. */
 export async function expireDrafts(opts: { now?: number; memoryExists?: (id: string) => Promise<boolean> } = {}): Promise<number> {
   const now = opts.now ?? Date.now();
   const path = draftsPath();

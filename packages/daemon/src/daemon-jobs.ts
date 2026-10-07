@@ -18,7 +18,8 @@ import { BATTERY_UNLOAD_MS, type PowerMonitor } from "./power-source.js";
 import { runCuratorPass } from "./curator-run.js";
 import { pruneEventLogs } from "./log-retention.js";
 import { observeCodeGraphRefresh, startCodeAwareness } from "./code-graph/service.js";
-import { runSessionHarvest } from "./session-harvest.js";
+import { expireDrafts } from "./draft-store.js";
+import { sessionHarvestEnabled, runSessionHarvest } from "./session-harvest.js";
 import { storedQuoteMatcher } from "./harvest-vault-match.js";
 import { loadTranscript } from "./stop-lane.js";
 
@@ -73,17 +74,19 @@ export function startBackgroundJobs(deps: BackgroundJobDeps): void {
 // pass is never-throw, and it writes nothing to the vault.
 function startSessionHarvest(deps: BackgroundJobDeps): void {
   setInterval(() => {
+    if (!sessionHarvestEnabled()) return;
     void runSessionHarvest({
       loadTurns: (transcript_path) => loadTranscript({ transcript_path }),
       // A quote the vault already holds in the same words is not relayed.
       storedIn: () => storedQuoteMatcher(deps.vault, deps.search),
     })
-      .then((r) => {
+      .then(async (r) => {
         if (r.harvested > 0) {
           console.error(
             `[bastra-recall] session harvest: ${r.harvested} session(s), ${r.candidates} candidate(s) relayed, ${r.stored} already stored`,
           );
         }
+        await expireDrafts();
       })
       .catch((err) => {
         console.error(`[bastra-recall] session harvest error (non-fatal): ${(err as Error)?.message ?? err}`);

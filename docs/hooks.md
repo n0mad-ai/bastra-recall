@@ -899,6 +899,25 @@ save of the session that got the block, so it bounds the harvest's effect from
 above. Switch it off with `BASTRA_SESSION_HARVEST=0` in the daemon's
 environment.
 
+**Local drafts (#1084, B1).** In parallel with the unchanged relay, the job
+captures every typed user turn with at least 20 letters and fewer than 2,000
+characters. Interrupt markers and injected turns are excluded, as are turns
+saved later in the session or already held by the vault. The letter threshold
+is unmeasured. A matching shape labels the draft; otherwise its kind is `typed`.
+Drafts are secret-redacted and stored locally outside the vault. There is no
+per-session capture cap; the store's 500-row and 1 MiB limits still apply.
+Within one session, equal normalized fingerprints or bigram Dice >= 0.6 append
+evidence to one row. Across sessions only equal fingerprints merge for now.
+An open draft with one evidence row and no display expires after 7 days
+(unmeasured); other open drafts retain the 30-day expiry. The harvest tick
+removes expired rows even when no session is due. `bastra drafts list|purge`
+lets you inspect or clear the store. Drafts are not yet shown by recall or
+promoted into notes. `BASTRA_SESSION_HARVEST=0` also disables draft capture and
+harvest-tick cleanup. Telemetry adds `draft_count`, `draft_ids`,
+`draft_stored_count` and `draft_error`, without quote text. A draft-store error
+leaves the relay working and records `draft_error: true`; that session's failed
+draft capture is not retried automatically.
+
 #### Taxonomy injection (session hook, #66)
 
 The session hook also fetches `GET /hook/taxonomy` (budget 150 ms within the
@@ -1937,6 +1956,28 @@ welche, endet die erste Zeile mit „, X skipped (transcript not readable on
 this host)". „Saved afterwards" zählt jeden Save der Session, die den Block
 bekam, und ist damit eine Obergrenze für die Wirkung des Harvests. Abschalten
 mit `BASTRA_SESSION_HARVEST=0` in der Umgebung des Daemons.
+
+**Lokale Entwürfe (#1084, B1).** Parallel zum unveränderten Relay erfasst der
+Job jeden getippten Nutzer-Turn mit mindestens 20 Buchstaben und weniger als
+2.000 Zeichen. Abbruchmarker und eingespielte Turns fallen weg, ebenso Turns,
+die die Session später gespeichert hat oder deren Worte der Vault schon hält.
+Die Buchstabenschwelle ist ungemessen. Passt eine Form, bezeichnet sie den
+Entwurf; sonst heißt seine Art `typed`. Die Ablage schwärzt Zugangsdaten und
+speichert lokal außerhalb des Vaults. Es gibt keine Erfassungsgrenze je Session;
+die Grenzen von 500 Zeilen und 1 MiB für die Ablage gelten weiterhin.
+Innerhalb einer Session hängen gleiche normalisierte Fingerprints oder eine
+Bigramm-Dice-Ähnlichkeit ab 0,6 einen Beleg an dieselbe Zeile. Zwischen Sessions
+werden vorerst nur gleiche Fingerprints zusammengeführt. Ein offener Entwurf
+mit einem Beleg, der nie gezeigt wurde, verfällt nach 7 Tagen (ungemessen),
+andere offene Entwürfe weiterhin nach 30 Tagen. Der Harvest-Tick entfernt
+verfallene Zeilen auch ohne fällige Session. Mit `bastra drafts list|purge`
+kannst Du die Ablage ansehen oder leeren. Recall zeigt Entwürfe noch nicht an;
+sie werden noch nicht zu Notizen befördert. `BASTRA_SESSION_HARVEST=0` schaltet
+auch die Erfassung und das Aufräumen im Harvest-Tick ab. Die Telemetrie ergänzt
+`draft_count`, `draft_ids`, `draft_stored_count` und `draft_error`, ohne
+Zitattext. Bei einem Fehler der Ablage arbeitet das Relay weiter und meldet
+`draft_error: true`; die fehlgeschlagene Erfassung dieser Session wird nicht
+automatisch wiederholt.
 
 #### Taxonomie-Einblendung (Session-Hook, #66)
 
