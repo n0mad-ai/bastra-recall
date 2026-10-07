@@ -899,6 +899,34 @@ save of the session that got the block, so it bounds the harvest's effect from
 above. Switch it off with `BASTRA_SESSION_HARVEST=0` in the daemon's
 environment.
 
+**Local drafts (#1084, B1).** In parallel with the unchanged relay, the job
+captures every typed user turn with at least 20 letters and fewer than 2,000
+characters. Interrupt markers and injected turns are excluded, as are turns
+saved later in the session or already held by the vault. The letter threshold
+is unmeasured. A matching shape labels the draft; otherwise its kind is `typed`.
+When evidence merges, the first matching shape replaces `typed` and is then
+retained.
+Drafts are secret-redacted and stored locally outside the vault. There is no
+per-session capture cap; the store's 500-row and 1 MiB limits still apply.
+Both limits evict unshown single-evidence open drafts first, then other open
+drafts, and closed tombstones last; oldest within each group goes first.
+Capture writes at most once per session; cleanup writes only when it changes
+the stored rows.
+Within one session, equal normalized fingerprints or bigram Dice >= 0.6 append
+evidence to one row. Across sessions only equal fingerprints merge for now.
+An open draft with one evidence row and no display expires after 7 days
+(unmeasured); other open drafts retain the 30-day expiry. The harvest tick
+removes expired rows even when no session is due. `bastra drafts list|purge`
+lets you inspect or clear the store. Drafts are not yet shown by recall or
+promoted into notes. `BASTRA_SESSION_HARVEST=0` also disables draft capture and
+harvest-tick cleanup. Fingerprints use secret-redacted text, so changing only
+a credential does not create another draft. Telemetry reports retained new
+rows as `draft_count` and additional retained evidence as `draft_evidence_count`.
+`draft_ids` contains at most 20 affected retained row IDs; `draft_ids_omitted`
+counts the rest. `draft_stored_count` and `draft_error` remain text-free.
+A draft-store error leaves the relay working and records `draft_error: true`; that session's failed
+draft capture is not retried automatically.
+
 #### Taxonomy injection (session hook, #66)
 
 The session hook also fetches `GET /hook/taxonomy` (budget 150 ms within the
@@ -1937,6 +1965,37 @@ welche, endet die erste Zeile mit „, X skipped (transcript not readable on
 this host)". „Saved afterwards" zählt jeden Save der Session, die den Block
 bekam, und ist damit eine Obergrenze für die Wirkung des Harvests. Abschalten
 mit `BASTRA_SESSION_HARVEST=0` in der Umgebung des Daemons.
+
+**Lokale Entwürfe (#1084, B1).** Parallel zum unveränderten Relay erfasst der
+Job jeden getippten Nutzer-Turn mit mindestens 20 Buchstaben und weniger als
+2.000 Zeichen. Abbruchmarker und eingespielte Turns fallen weg, ebenso Turns,
+die die Session später gespeichert hat oder deren Worte der Vault schon hält.
+Die Buchstabenschwelle ist ungemessen. Passt eine Form, bezeichnet sie den
+Entwurf; sonst heißt seine Art `typed`. Beim Zusammenführen ersetzt die erste
+passende Form `typed` und bleibt danach erhalten. Die Ablage schwärzt
+Zugangsdaten und speichert lokal außerhalb des Vaults. Es gibt keine Erfassungsgrenze je Session;
+die Grenzen von 500 Zeilen und 1 MiB für die Ablage gelten weiterhin. Beide
+Grenzen verdrängen zuerst offene Entwürfe mit einem Beleg ohne Anzeige, dann
+andere offene Entwürfe und zuletzt geschlossene Grabsteine, jeweils die
+ältesten zuerst. Die Erfassung schreibt höchstens einmal je Session; das
+Aufräumen schreibt nur, wenn es gespeicherte Zeilen verändert.
+Innerhalb einer Session hängen gleiche normalisierte Fingerprints oder eine
+Bigramm-Dice-Ähnlichkeit ab 0,6 einen Beleg an dieselbe Zeile. Zwischen Sessions
+werden vorerst nur gleiche Fingerprints zusammengeführt. Ein offener Entwurf
+mit einem Beleg, der nie gezeigt wurde, verfällt nach 7 Tagen (ungemessen),
+andere offene Entwürfe weiterhin nach 30 Tagen. Der Harvest-Tick entfernt
+verfallene Zeilen auch ohne fällige Session. Mit `bastra drafts list|purge`
+kannst Du die Ablage ansehen oder leeren. Recall zeigt Entwürfe noch nicht an;
+sie werden noch nicht zu Notizen befördert. `BASTRA_SESSION_HARVEST=0` schaltet
+auch die Erfassung und das Aufräumen im Harvest-Tick ab. Fingerprints entstehen
+aus geschwärztem Text; ein geänderter Zugangswert allein ergibt deshalb keinen
+weiteren Entwurf. Die Telemetrie zählt behaltene neue Zeilen in `draft_count`
+und zusätzlich behaltene Belege in `draft_evidence_count`. `draft_ids` enthält
+höchstens 20 betroffene behaltene Zeilen-IDs, `draft_ids_omitted` zählt die übrigen.
+`draft_stored_count` und `draft_error` enthalten weiterhin keinen Zitattext.
+Bei einem Fehler der Ablage arbeitet das Relay weiter und meldet
+`draft_error: true`; die fehlgeschlagene Erfassung dieser Session wird nicht
+automatisch wiederholt.
 
 #### Taxonomie-Einblendung (Session-Hook, #66)
 

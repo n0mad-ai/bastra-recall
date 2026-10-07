@@ -29,7 +29,9 @@
  * (a JSON array of `{question, answer}` — the answer is the user's, the row
  * is not a statement they typed).
  */
-const CODEX_HARNESS_TAG = /^<(?:environment_context|recommended_plugins|codex_internal_context|send_user_message_question_reply)[\s>]/;
+const CODEX_HARNESS_TAG = /^<(?:environment_context|recommended_plugins|codex_internal_context|send_user_message_question_reply|turn_aborted)[\s>]/;
+// Observed in local Codex rollouts: repository instructions are harness rows.
+const AGENTS_INSTRUCTIONS = /^# AGENTS\.md instructions(?:\s|$)/;
 const TASK_NOTIFICATION = /^<task-notification[\s>]/;
 const AGENT_MAIL_WRAPPER = "Another Claude session sent a message:";
 const AGENT_MAIL_TAG = /^<(?:teammate|agent|cross-session)-message[\s>]/;
@@ -66,6 +68,7 @@ export function isSystemInjectedTurn(text: string): boolean {
     TASK_NOTIFICATION.test(head) ||
     isAgentMail(head) ||
     CODEX_HARNESS_TAG.test(head) ||
+    AGENTS_INSTRUCTIONS.test(head) ||
     REMINDER_TAG_START.test(head) ||
     isCommandEcho(head) ||
     INJECTED_PREFIXES.some((p) => head.startsWith(p))

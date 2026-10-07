@@ -5,19 +5,24 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { redactSecrets } from "@bastra-recall/core/scrub";
+import { bigramSet, dice } from "./stop-lane-repeat.js";
 import { withPathLock } from "./path-lock.js";
 
 export const DRAFT_STORE_VERSION = 1;
 export const DRAFT_MAX_ROWS = 500;
 export const DRAFT_MAX_BYTES = 1024 * 1024;
 export const DRAFT_OPEN_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+/** Unmeasured: early expiry for an unshown draft with only one evidence row. */
+export const DRAFT_UNCONFIRMED_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+/** Structural within-session similarity threshold from the harvest design. */
+export const DRAFT_SESSION_DICE_MIN = 0.6;
 export const DRAFT_RETAIN_AGE_MS = 180 * 24 * 60 * 60 * 1000;
 
 const timestamp = z.number().finite().nonnegative();
 const draftSchema = z.object({
   id: z.string().regex(/^d-[a-f0-9]{12}$/),
   fp: z.string().regex(/^[a-f0-9]{40}$/),
-  kind: z.enum(["restated", "correction", "answer", "after-failure"]),
+  kind: z.enum(["restated", "correction", "answer", "after-failure", "typed"]),
   quote: z.string(), context: z.string().optional(),
   situation: z.object({
     cwd: z.string().optional(), project: z.string().optional(), branch: z.string().optional(),
@@ -38,7 +43,7 @@ export function draftsPath(): string {
 }
 
 export function draftFingerprint(quote: string): string {
-  const normalized = quote.normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]+/gu)?.join(" ") ?? "";
+  const normalized = redactSecrets(quote, homedir()).text.normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]+/gu)?.join(" ") ?? "";
   return createHash("sha256").update(normalized).digest("hex").slice(0, 40);
 }
 
@@ -102,13 +107,20 @@ function documentOf(rows: Draft[], metadata: Record<string, unknown>): Record<st
 }
 
 function bounded(rows: Draft[], now: number, metadata: Record<string, unknown> = {}): Draft[] {
-  const kept = rows.filter((d) => now - d.last_touched < (d.state === "open" ? DRAFT_OPEN_AGE_MS : DRAFT_RETAIN_AGE_MS));
-  kept.sort((a, b) => a.last_touched - b.last_touched);
+  const kept = rows.filter((d) => {
+    const age = d.state !== "open" ? DRAFT_RETAIN_AGE_MS
+      : d.evidence.length === 1 && d.surfaced.length === 0 ? DRAFT_UNCONFIRMED_AGE_MS : DRAFT_OPEN_AGE_MS;
+    return now - d.last_touched < age;
+  });
+  // Preserve tombstones and confirmed drafts before disposable first captures.
+  const priority = (d: Draft): number => d.state !== "open" ? 2
+    : d.evidence.length === 1 && d.surfaced.length === 0 ? 0 : 1;
+  kept.sort((a, b) => priority(a) - priority(b) || a.last_touched - b.last_touched);
   if (kept.length > DRAFT_MAX_ROWS) kept.splice(0, kept.length - DRAFT_MAX_ROWS);
   let bytes = Buffer.byteLength(JSON.stringify(documentOf([], metadata))) + kept.reduce((sum, d) => sum + Buffer.byteLength(JSON.stringify(d)) + 1, 0);
   while (bytes > DRAFT_MAX_BYTES && kept.length) bytes -= Buffer.byteLength(JSON.stringify(kept.shift()!)) + 1;
   if (bytes > DRAFT_MAX_BYTES) throw new Error("draft metadata exceeds store byte limit");
-  return kept;
+  return kept.sort((a, b) => a.last_touched - b.last_touched);
 }
 
 // Atomic rename gives readers a complete snapshot without waiting for a writer.
@@ -219,7 +231,7 @@ export async function listDrafts(now = Date.now()): Promise<Draft[]> {
   return bounded(store.rows, now, store.metadata);
 }
 
-/** Replace by id; cross-session matching and situation merging belong to phase B. */
+/** Replace by id; captureDraft owns evidence deduplication during harvest. */
 export async function upsertDraft(input: Draft, now = Date.now()): Promise<Draft | null> {
   const draft = sanitize(input, now);
   if (!draft) return null;
@@ -236,7 +248,87 @@ export async function upsertDraft(input: Draft, now = Date.now()): Promise<Draft
   }, { crossProcess: true });
 }
 
-/** Phase B will call this from the harvest tick. A missing promoted note leaves a tombstone. */
+export interface DraftCaptureResult {
+  /** New rows and additional evidence that survived the final store bounds. */
+  count: number;
+  appended: number;
+  ids: string[];
+}
+
+/** One session, one lock and at most one write. Exact fingerprints match across
+ * sessions; Dice matches only inside a session. Closed rows stay tombstones. */
+async function captureBatch(inputs: Draft[], now: number): Promise<DraftCaptureResult & { matches: (Draft | null)[] }> {
+  const drafts = inputs.map(input => sanitize(input, now));
+  const empty = { count: 0, appended: 0, ids: [] as string[], matches: inputs.map(() => null) as (Draft | null)[] };
+  if (!drafts.some(Boolean)) return empty;
+  const path = draftsPath();
+  return withPathLock(path, async () => {
+    const store = await load(path, now);
+    assertWritable(store);
+    const before = JSON.stringify(store.rows);
+    const rows = bounded(store.rows, now, store.metadata);
+    const original = new Map(rows.map(row => [row.id, structuredClone(row)]));
+    const byFingerprint = new Map(rows.map(row => [row.fp, row]));
+    const grams = new Map<string, Set<string> | null>();
+    const gramsOf = (row: Draft): Set<string> | null => {
+      if (!grams.has(row.id)) grams.set(row.id, bigramSet(row.quote));
+      return grams.get(row.id)!;
+    };
+    const matchedIds = drafts.map(draft => {
+      if (!draft) return null;
+      const session = draft.evidence[0].session_id;
+      const current = gramsOf(draft);
+      const hit = byFingerprint.get(draft.fp) ?? rows.find(row => {
+        if (row.state !== "open" || !row.evidence.some(e => e.session_id === session) || !current) return false;
+        const previous = gramsOf(row);
+        return previous !== null && dice(previous, current) >= DRAFT_SESSION_DICE_MIN;
+      });
+      if (hit) {
+        if (hit.state !== "open") return hit.id;
+        if (hit.kind === "typed" && draft.kind !== "typed") {
+          hit.kind = draft.kind;
+          if (draft.context !== undefined) hit.context = draft.context;
+        }
+        for (const evidence of draft.evidence) {
+          if (!hit.evidence.some(e => e.session_id === evidence.session_id && e.turn === evidence.turn)) {
+            hit.evidence.push(evidence);
+            hit.last_touched = Math.max(hit.last_touched, evidence.ts);
+          }
+        }
+      } else {
+        rows.push(draft);
+        byFingerprint.set(draft.fp, draft);
+      }
+      return (hit ?? draft).id;
+    });
+    const kept = bounded(rows, now, store.metadata);
+    if (JSON.stringify(kept) !== before) await write(path, kept, store.metadata);
+    const byId = new Map(kept.map(row => [row.id, row]));
+    const result: DraftCaptureResult = { count: 0, appended: 0, ids: [] };
+    for (const id of new Set(matchedIds)) {
+      if (id === null) continue;
+      const row = byId.get(id);
+      if (!row || row.state !== "open") continue;
+      const prior = original.get(id);
+      if (!prior) result.count++;
+      result.appended += row.evidence.length - (prior?.evidence.length ?? 1);
+      if (!prior || JSON.stringify(row) !== JSON.stringify(prior)) result.ids.push(id);
+    }
+    return { ...result, matches: matchedIds.map(id => id === null ? null : byId.get(id) ?? null) };
+  }, { crossProcess: true });
+}
+
+export async function captureDrafts(inputs: Draft[], now = Date.now()): Promise<DraftCaptureResult> {
+  const { matches: _matches, ...result } = await captureBatch(inputs, now);
+  return result;
+}
+
+/** Single-row entry point for callers outside the session batch. */
+export async function captureDraft(input: Draft, now = Date.now()): Promise<Draft | null> {
+  return structuredClone((await captureBatch([input], now)).matches[0]);
+}
+
+/** Called from the harvest tick. A missing promoted note leaves a tombstone. */
 export async function expireDrafts(opts: { now?: number; memoryExists?: (id: string) => Promise<boolean> } = {}): Promise<number> {
   const now = opts.now ?? Date.now();
   const path = draftsPath();
@@ -244,6 +336,7 @@ export async function expireDrafts(opts: { now?: number; memoryExists?: (id: str
     const store = await load(path, now);
     assertWritable(store);
     const rows = store.rows;
+    const before = JSON.stringify(rows);
     if (opts.memoryExists) {
       for (const row of rows) {
         if (row.state === "promoted" && row.memory_id && !await opts.memoryExists(row.memory_id)) {
@@ -254,7 +347,7 @@ export async function expireDrafts(opts: { now?: number; memoryExists?: (id: str
       }
     }
     const kept = bounded(rows, now, store.metadata);
-    if (rows.length || (await fileInfo(path)).stamp !== "missing") await write(path, kept, store.metadata);
+    if (JSON.stringify(kept) !== before || store.diagnostics.skippedRows > 0) await write(path, kept, store.metadata);
     return rows.length - kept.length;
   }, { crossProcess: true });
 }

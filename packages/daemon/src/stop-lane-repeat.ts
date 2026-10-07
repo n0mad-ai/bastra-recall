@@ -20,7 +20,7 @@ const REPEAT_MIN_LETTERS = 12;
 /** Long pastes (logs) are compared on their head only — keeps the lane cheap. */
 const REPEAT_COMPARE_CHARS = 1000;
 
-function bigramSet(content: string): Set<string> | null {
+export function bigramSet(content: string): Set<string> | null {
   const text = (content.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).join(" ").slice(0, REPEAT_COMPARE_CHARS);
   if ((text.match(/\p{L}/gu) ?? []).length < REPEAT_MIN_LETTERS) return null;
   const out = new Set<string>();
@@ -28,7 +28,7 @@ function bigramSet(content: string): Set<string> | null {
   return out;
 }
 
-function dice(a: Set<string>, b: Set<string>): number {
+export function dice(a: Set<string>, b: Set<string>): number {
   let shared = 0;
   for (const x of a) if (b.has(x)) shared += 1;
   return (2 * shared) / (a.size + b.size);

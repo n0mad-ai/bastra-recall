@@ -75,7 +75,9 @@ test("30 day expiry uses newest evidence or display; list never refreshes access
   b.surfaced.push({ session_id: "display", ts: now + 20, novel: ["VPN"] });
   await upsertDraft(a, now + 20);
   await upsertDraft(b, now + 20);
-  await upsertDraft(draft(3), now + 20);
+  const c = draft(3);
+  c.surfaced.push({ session_id: "display", ts: now, novel: [] });
+  await upsertDraft(c, now + 20);
   const before = await readFile(path, "utf8");
   assert.equal((await listDrafts(now + DRAFT_OPEN_AGE_MS - 1)).length, 3);
   assert.equal(await readFile(path, "utf8"), before);
