@@ -2240,3 +2240,51 @@ Alle `BASTRA_*`-Variablen akzeptieren für die Migration einen alten
 `NEXUS_*`-Fallback (außer den oben genannten Stellschrauben für Größen-Hook,
 Übernahme und Stichproben-Untergrenze, die ihre Umgebungsvariable direkt
 lesen).
+
+### Local draft hints / Lokale Entwurfshinweise
+
+Typed messages that pass the structural noise filter are already captured by the
+local session harvest with their redacted situation. Recall now searches those
+local drafts lexically, without an embedding call or cloud request. Matches are
+returned separately in `draft_hits`, without scores, and displayed in a
+`<draft-hints>` block after memory sections: unconfirmed quotes from an earlier
+session, with date and project. Verify a quote before relying on it. Drafts never
+become ranked or required memories. Prompt and PreTool show at most one draft;
+SessionStart and MCP return at most two. Each draft is displayed once per session.
+Even harmless Bash commands can match two situation literals, one rare in the
+store. A returned note covering at least 0.7 of the draft's weighted words takes
+precedence and removes that open draft. Drafts use only leftover response budget.
+Quotes with findings from the existing injection scan are withheld; frame markers
+are removed, and the band is excluded from harvest capture.
+
+**Assumption, not confirmed by the owner:** the band is on by default;
+`BASTRA_DRAFT_HINTS=0` disables both draft search and display. Text containment
+0.5 (at least two shared tokens) and situation rarity 5% are named, unmeasured
+thresholds. IDF uses a positive logarithmic weight so a one-row store and words
+shared by all drafts still have a defined containment. No promotion is included
+in this phase. `bastra drafts list` does not refresh expiry: unshown drafts with
+one evidence row expire after 7 days (unmeasured), other open drafts after 30 days;
+closed rows stay as tombstones for 180 days.
+
+Getippte Nachrichten hinter dem strukturellen Rauschfilter werden bereits im
+lokalen Harvest samt geschwärzter Situation erfasst. Recall sucht jetzt auch in
+diesen Entwürfen, rein nach Worten und ohne Cloud-Aufruf. Treffer stehen separat
+in `draft_hits` und im Band `<draft-hints>` nach den Notiz-Abschnitten: unbestätigte
+Zitate aus einer früheren Sitzung, mit Datum und Projekt. Vor der Verwendung
+prüfen. Entwürfe werden nie gerankte oder verpflichtende Notizen. Prompt und
+PreTool zeigen höchstens einen, SessionStart und MCP höchstens zwei. Jeder Entwurf
+erscheint einmal je Sitzung. Auch harmlose Bash-Befehle können über zwei
+Situationsliterale treffen, von denen eines selten ist. Eine zurückgegebene Notiz
+mit mindestens 0,7 gewichteter Überdeckung verdrängt und entfernt den offenen
+Entwurf. Entwürfe nutzen nur das verbleibende Antwortbudget. Bei einem Befund der
+bestehenden Injektionsprüfung wird das Zitat nicht angezeigt; Rahmenmarker werden
+entfernt und das Band wird nicht erneut erfasst.
+
+**Annahme, nicht vom Eigentümer bestätigt:** Das Band ist standardmäßig an;
+`BASTRA_DRAFT_HINTS=0` schaltet Suche und Anzeige ab. Textüberdeckung 0,5 (mindestens
+zwei gemeinsame Tokens) und Seltenheit 5 % sind benannte, ungemessene Schwellen.
+Positive logarithmische IDF-Gewichte erhalten eine definierte Überdeckung auch bei
+nur einem Entwurf und bei gemeinsamen Wörtern. Diese Phase befördert nichts.
+`bastra drafts list` verlängert keinen Verfall: unangezeigte Entwürfe mit nur einem
+Beleg verfallen nach 7 Tagen (ungemessen), andere offene nach 30 Tagen; geschlossene
+Zeilen bleiben 180 Tage als Grabsteine.

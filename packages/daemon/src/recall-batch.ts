@@ -15,6 +15,7 @@
  * bedeutungslos; dann bestimmen die Ränge die Reihenfolge und der Response sagt
  * das ausdrücklich — siehe `mergeBatchResults`.
  */
+import type { DraftHit } from "./draft-search.js";
 
 import { RRF_K } from "@bastra-recall/core/rrf";
 
@@ -104,6 +105,7 @@ export interface BatchSubResult {
   vault_missing?: string;
   /** #421: Pool-Reflexe dieser Phrasierung (`recall-pipeline.ts`). */
   reflex_hits?: BatchHit[];
+  draft_hits?: DraftHit[];
 }
 
 export interface BatchMerged {
@@ -130,6 +132,7 @@ export interface BatchMerged {
    *  ohne die, die schon als gerankter Treffer dastehen. Nur gesetzt, wenn
    *  nicht leer. */
   reflex_hits?: BatchHit[];
+  draft_hits?: DraftHit[];
   /** Woraus die Reihenfolge entstanden ist — `"score"` nur, wenn alle
    *  Sub-Ergebnisse im selben Raum lagen. */
   merged_by: "score" | "query-rank-fusion";
@@ -226,6 +229,7 @@ export function mergeBatchResults(queries: string[], subs: BatchSubResult[], k: 
   const hitIds = new Set(hits.map((h) => h.id));
   const reflexHits = mergeByScore(subs.map((s) => ({ hits: s.reflex_hits })), Infinity)
     .filter((h) => !hitIds.has(h.id));
+  const draftHits = [...new Map(subs.flatMap(s => s.draft_hits ?? []).map(hit => [hit.id, hit])).values()].slice(0, 2);
   return {
     query: queries.join(" | "),
     query_count: queries.length,
@@ -240,6 +244,7 @@ export function mergeBatchResults(queries: string[], subs: BatchSubResult[], k: 
     ...(mixed ? {} : { score_arms: subs[0]?.score_arms, score_version: subs[0]?.score_version }),
     ...(scoreKind === "bm25" ? { unfused: true as const } : {}),
     ...(reflexHits.length > 0 ? { reflex_hits: reflexHits } : {}),
+    ...(draftHits.length > 0 ? { draft_hits: draftHits } : {}),
     merged_by: mixed ? "query-rank-fusion" : "score",
   };
 }
@@ -328,6 +333,7 @@ export function projectRecallResult(
 ): Record<string, unknown> {
   return {
     query,
+    ...(Array.isArray(payload.draft_hits) && payload.draft_hits.length > 0 ? { draft_hits: payload.draft_hits } : {}),
     vault_size: payload.vault_size,
     hits: payload.hits,
     recall_id: payload.recall_id,

@@ -16,6 +16,7 @@
  * empty-streak backoff. The tripwire is a safety warning — the warning itself
  * is the point, and it must emit unconditionally.
  */
+import { appendLaneDrafts, draftHintsEnabled, type DraftNote } from "./draft-search.js";
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -78,7 +79,7 @@ type RecallResponse = HookRecallResponse;
  * Run the tripwire pipeline; return the exact stdout document for the thin
  * client. Never throws — every failure degrades to `{}` plus telemetry.
  */
-export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: string): Promise<string> {
+export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: string, draftNotes?: (query: string) => DraftNote[]): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
   // #507 Nachbesserung: nur für die Telemetrie-Dimension — `client` oben bleibt
@@ -105,7 +106,7 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
   // they rewrite and allow only a call that proves it is Claude Code — an
   // unmarked payload is weighed as "unknown", never as claude-code.
   const match = hintFor(command, clientEvidence, await getArchiveEnabled().catch(() => false));
-  if (!match) return "{}";
+  if (!match) return appendLaneDrafts("{}", "PreToolUse", command, payload.session_id, draftHintsEnabled() ? draftNotes?.(command) ?? [] : []);
 
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
 
@@ -304,7 +305,7 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
   await reportHinted(selfBaseUrl, emitted.map((h) => h.id), payload.session_id ?? null);
 
-  return stdout;
+  return appendLaneDrafts(stdout, "PreToolUse", command, payload.session_id, emitted);
 }
 
 function formatHintLine(h: RecallHit, hideScore = false): string {

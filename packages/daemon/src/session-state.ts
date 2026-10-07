@@ -104,6 +104,7 @@ export interface TakenBoundary {
 
 export interface SessionState {
   shown: Record<string, ShownEntry>;
+  draftShown?: string[];
   /** #161: keyed by hook source ("write-edit", "bash-tripwire", …) */
   sources?: Record<string, SourceBackoff>;
   /**
@@ -164,6 +165,7 @@ export type ReadonlySourceBackoff = Readonly<Omit<SourceBackoff, "ids">> & {
 };
 export interface ReadonlySessionState {
   readonly shown: Readonly<Record<string, Readonly<ShownEntry>>>;
+  readonly draftShown?: readonly string[];
   readonly sources?: Readonly<Record<string, ReadonlySourceBackoff>>;
   readonly boundary?: Readonly<ParkedBoundary>;
   readonly touchedChars?: number;
@@ -231,6 +233,7 @@ async function readSessionState(sessionId: string): Promise<SessionState> {
       return { shown: {} };
     }
     const state: SessionState = { shown: parsed.shown as Record<string, ShownEntry> };
+    if (Array.isArray(parsed.draftShown)) state.draftShown = parsed.draftShown.filter((id): id is string => typeof id === "string");
     // #161: carry the backoff section through — dropping it here would reset
     // every streak on the next dedup save.
     if (parsed.sources && typeof parsed.sources === "object") {

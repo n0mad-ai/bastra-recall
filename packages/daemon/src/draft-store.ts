@@ -229,6 +229,19 @@ export async function listDrafts(now = Date.now()): Promise<Draft[]> {
   return bounded(store.rows, now, store.metadata);
 }
 
+/** Internal read-only retrieval view. Unlike CLI listing it does not copy every
+ * quote on each hook. Atomic writes and the file stamp invalidate the view;
+ * bounds are reapplied so expiry works even without a harvest tick. */
+export async function draftSearchSnapshot(now = Date.now()): Promise<{ key: string; rows: readonly Draft[] }> {
+  const path = draftsPath();
+  const info = await fileInfo(path);
+  if (cache?.path !== path || cache.stamp !== info.stamp) await load(path, now);
+  const store = cache?.path === path ? cache.store : undefined;
+  if (!store) return { key: `${path}:missing`, rows: [] };
+  const rows = bounded(store.rows, now, store.metadata);
+  return { key: `${path}:${cache!.stamp}:${rows.map(row => row.id).join(",")}`, rows };
+}
+
 /** Replace by id; captureDraft owns evidence deduplication during harvest. */
 export async function upsertDraft(input: Draft, now = Date.now()): Promise<Draft | null> {
   const draft = sanitize(input, now);
@@ -388,5 +401,27 @@ export async function purgeDrafts(): Promise<void> {
     await unlink(path).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
     await unlink(draftVectorsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
     cache = undefined;
+  }, { crossProcess: true });
+}
+
+/** Retrieval mutations preserve concurrent harvest evidence and retained tombstones. */
+export async function updateRetrievedDrafts(
+  removeIds: string[], displays: { id: string; session_id: string; novel: string[] }[], now = Date.now(),
+): Promise<void> {
+  if (!removeIds.length && !displays.length) return;
+  const path = draftsPath();
+  await withPathLock(path, async () => {
+    const store = await load(path, now);
+    assertWritable(store);
+    const removed = new Set(removeIds);
+    const rows = store.rows.filter(row => row.state !== "open" || !removed.has(row.id));
+    for (const display of displays) {
+      const row = rows.find(row => row.id === display.id && row.state === "open");
+      if (!row || row.surfaced.some(s => s.session_id === display.session_id)) continue;
+      row.surfaced.push({ session_id: display.session_id, ts: now, novel: display.novel });
+      row.surfaced = row.surfaced.slice(-5);
+      row.last_touched = now;
+    }
+    await write(path, bounded(rows, now, store.metadata), store.metadata);
   }, { crossProcess: true });
 }

@@ -6,6 +6,7 @@
  */
 import { type RecallStage } from "@bastra-recall/core";
 import { mergeBatchResults, projectRecallResult } from "./recall-batch.js";
+import { withDraftBudget } from "./draft-search.js";
 import { fitRecallWithReflexToBudget } from "./recall-budget.js";
 import { projectForFilter } from "./scope-filter.js";
 import { envInt, envOff } from "./env.js";
@@ -138,6 +139,7 @@ const VALID_STAGE_NAMES: ReadonlySet<RecallStage["name"]> = new Set([
  */
 interface HookRecallDonePayload {
   hits: unknown[];
+  draft_hits?: import("./draft-search.js").DraftHit[];
   vault_size: number;
   latency_ms: number;
   recall_id: string;
@@ -194,17 +196,20 @@ export async function callRecallStreaming(
     )) as Parameters<typeof mergeBatchResults>[1];
     const merged = mergeBatchResults(queries, subs, typeof a.k === "number" ? a.k : 5);
     // #421: Die Pool-Reflexe zählen wie auf der Einzelquery ins Budget.
-    return fitRecallWithReflexToBudget(
+    const { draft_hits: draftHits, ...notesOnly } = merged;
+    const budget = typeof a.max_tokens === "number" ? a.max_tokens : 0;
+    const payload = fitRecallWithReflexToBudget(
       merged.hits,
       merged.reflex_hits ?? [],
-      typeof a.max_tokens === "number" ? a.max_tokens : 0,
+      budget,
       (emitted, emittedReflex, dropped) => ({
-        ...merged,
+        ...notesOnly,
         hits: emitted,
         reflex_hits: emittedReflex.length > 0 ? emittedReflex : undefined,
         ...(dropped > 0 ? { truncated_by_budget: true, dropped_by_budget: dropped } : {}),
       }),
     ).payload;
+    return withDraftBudget(payload, draftHits ?? [], budget);
   }
   const body: Record<string, unknown> = {
     query: typeof a.query === "string" ? a.query : "",

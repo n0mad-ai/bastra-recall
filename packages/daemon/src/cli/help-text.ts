@@ -205,10 +205,13 @@ Usage:
   bastra drafts purge [--json]    Remove all drafts and retained tombstones
 
 Drafts stay on this device, outside the vault. Secrets are redacted before
-storage. Open drafts expire after 30 days without evidence or display;
+storage. Unshown drafts with one evidence row expire after 7 days (unmeasured);
+other open drafts expire after 30 days without evidence or display;
 promoted and rejected rows are retained for 180 days.
 BASTRA_DRAFTS_PATH overrides the default ~/.bastra/drafts.json location.
-This command manages the store; automatic capture follows separately.
+Typed messages passing the structural noise filter are captured automatically
+by the local session harvest, with their redacted situation. Retrieval shows
+unconfirmed quotes separately; BASTRA_DRAFT_HINTS=0 disables that band.
 `,
   code: `bastra code — code awareness for a repository (experimental)
 

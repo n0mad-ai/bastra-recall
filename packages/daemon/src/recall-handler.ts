@@ -3,6 +3,7 @@
  * Split out of tool-handlers.ts (file-size convention); tool-handlers
  * re-exports everything, so the existing import paths keep working.
  */
+import { searchDrafts, withDraftBudget, type DraftHit } from "./draft-search.js";
 import { missingVaultReason } from "./vault-presence.js";
 import { z } from "zod";
 import { scopeEquals } from "@bastra-recall/core/scope";
@@ -161,6 +162,7 @@ export interface RecallResult {
    *  Liste (`PoolReflexHit`), die `/hook/recall` den Lanes liefert. Nur
    *  gesetzt, wenn nicht leer. */
   reflex_hits?: unknown[];
+  draft_hits?: DraftHit[];
 }
 
 /**
@@ -336,8 +338,9 @@ async function recallAgainstVault(
     // #421: Reflex-Treffer bleiben im Batch erhalten — sonst verlöre ein
     // Modell, das mehrere Phrasierungen schickt, genau die Verdrahtung, die
     // eine Einzelquery liefert.
-    return fitRecallWithReflexToBudget(merged.hits, merged.reflex_hits ?? [], max_tokens, (emitted, emittedReflex, dropped) => ({
-      ...merged,
+    const { draft_hits: batchDrafts, ...notesOnly } = merged;
+    const batchPayload = fitRecallWithReflexToBudget(merged.hits, merged.reflex_hits ?? [], max_tokens, (emitted, emittedReflex, dropped) => ({
+      ...notesOnly,
       hits: emitted,
       reflex_hits: emittedReflex.length > 0 ? emittedReflex : undefined,
       query_count: queries.length,
@@ -349,6 +352,7 @@ async function recallAgainstVault(
         : {}),
       ...(dropped > 0 ? { truncated_by_budget: true, dropped_by_budget: dropped } : {}),
     })).payload;
+    return withDraftBudget(batchPayload, batchDrafts ?? [], max_tokens);
   }
   const query = parsed.data.query;
   if (!query) throw new Error("query or queries required");
@@ -631,5 +635,5 @@ async function recallAgainstVault(
     }),
   );
 
-  return result;
+  return withDraftBudget(result, await searchDrafts(query, hits.map(hit => ({ ...hit, body: deps.vault.get(hit.id)?.body }))), parsed.data.max_tokens);
 }

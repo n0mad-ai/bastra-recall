@@ -30,6 +30,7 @@
  * Discipline unchanged: hard wall-clock budget, fail-silent on every error
  * path, telemetry best-effort.
  */
+import { appendLaneDrafts } from "./draft-search.js";
 // #305: subpath leafs, never the core barrel — measured +40ms of process
 // start against +0.8ms for the three leafs, on a fresh spawn per event.
 import { detectProjectDetailed } from "@bastra-recall/core/topics";
@@ -742,7 +743,7 @@ export async function runSessionLane(
       // already assembled when its directory is unavailable.
     }
   }
-  return out;
+  return appendLaneDrafts(out, "SessionStart", queries.map(q => q.query), payload.session_id, top, 2);
 }
 
 // spawnStagedUpdate / stagedToday / markStagedToday wohnen seit #81 in
