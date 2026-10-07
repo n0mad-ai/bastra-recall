@@ -25,8 +25,6 @@ import { setTimeout as delay } from "node:timers/promises";
 import assert from "node:assert/strict";
 import { createServer, request, type Server } from "node:http";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import fs from "node:fs/promises";
-import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -278,21 +276,9 @@ test("readToolResult takes the result out of every shape a client may hand over"
   assert.equal(readToolResult({ created: true }), null);
 });
 
-test("telemetry: one save_notice_call row per write-tool call, without the title", async (t) => {
-  // Writes are deliberately fire-and-forget. Force edit to reach disk before
-  // save so the assertion checks membership, not accidental I/O ordering.
-  const append = fs.appendFile;
-  let release!: () => void;
-  const first = new Promise<void>(resolve => { release = resolve; });
-  const spy = t.mock.method(fs, "appendFile", async (...args: Parameters<typeof append>) => {
-    const event = typeof args[1] === "string" ? JSON.parse(args[1]) : null;
-    if (event?.kind === "save_notice_call" && event.tool === "save_memory") await first;
-    const result = await append(...args);
-    if (event?.kind === "save_notice_call" && event.tool === "edit_memory") release();
-    return result;
-  });
-  syncBuiltinESMExports();
-  try { await german(async (dir) => {
+test("telemetry: one save_notice_call row per write-tool call, without the title", async () => {
+  // Writes are fire-and-forget; compare exact records independent of I/O order.
+  await german(async (dir) => {
     await notice({
       tool_name: `${SERVER}save_memory`,
       tool_input: SAVE_INPUT,
@@ -323,7 +309,7 @@ test("telemetry: one save_notice_call row per write-tool call, without the title
       ["claude-code", "save-notice"],
     );
     assert.doesNotMatch(JSON.stringify(calls), /VPN/);
-  }); } finally { release(); spy.mock.restore(); syncBuiltinESMExports(); }
+  });
 });
 
 test("the post-tool route hands a Recall write tool to this lane, title looked up in the vault", async () => {

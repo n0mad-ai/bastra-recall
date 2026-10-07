@@ -963,9 +963,10 @@ private (0600), model-bound, and pruned when drafts expire or disappear;
 For drafts from different sessions, `draft_repeat_shadow` logs both character
 bigram Dice and cosine when either is at least its logging threshold: Dice 0.6,
 cosine 0.35 (**unmeasured, logging only**). Rows include provider/model identity
-and dimension so measurements from different models stay distinguishable. It
-does not merge, reject or promote
-anything. A draft quote version is measured once per model; unavailable providers
+and dimension so measurements from different models stay distinguishable.
+There is no measurement-volume cap per tick or per draft. Losing the cache file
+or switching models causes all eligible pairs to be logged again. It does not
+merge, reject or promote anything. A draft quote version is measured once per model; unavailable providers
 can leave a backlog that is processed later. Cached vectors are reused.
 
 `draft_vault_shadow` compares each new draft vector with the closest currently
@@ -2090,8 +2091,10 @@ Für Entwürfe verschiedener Sessions protokolliert `draft_repeat_shadow`
 Bigramm-Dice und Cosinus, wenn mindestens einer die Protokollschwelle erreicht:
 Dice 0,6, Cosinus 0,35 (**ungemessen, nur fürs Protokoll**). Anbieter-/Modellkennung
 und Dimension stehen in jeder Zeile, damit Messungen verschiedener Modelle
-unterscheidbar bleiben. Dabei wird nichts
-zusammengeführt, verworfen oder befördert. Jede Zitatversion wird einmal je Modell
+unterscheidbar bleiben. Es gibt keine Mengengrenze je Tick oder je Entwurf.
+Nach Verlust der Cache-Datei oder einem Modellwechsel werden alle zulässigen
+Paare erneut protokolliert. Dabei wird nichts zusammengeführt, verworfen oder
+befördert. Jede Zitatversion wird einmal je Modell
 gemessen; ein ausgefallener Anbieter kann einen später abgearbeiteten Rückstand
 hinterlassen. Gespeicherte Vektoren werden wiederverwendet.
 
