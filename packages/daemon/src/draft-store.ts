@@ -44,6 +44,12 @@ export function draftsPath(): string {
   return resolve(process.env.BASTRA_DRAFTS_PATH ?? join(homedir(), ".bastra", "drafts.json"));
 }
 
+/** Derived local cache shares the chosen draft store's lifetime and location. */
+export function draftVectorsPath(): string {
+  const path = draftsPath();
+  return path.endsWith(".json") ? path.slice(0, -5) + ".vectors.json" : path + ".vectors.json";
+}
+
 export function draftFingerprint(quote: string): string {
   const normalized = redactSecrets(quote, homedir()).text.normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]+/gu)?.join(" ") ?? "";
   return createHash("sha256").update(normalized).digest("hex").slice(0, 40);
@@ -380,6 +386,7 @@ export async function purgeDrafts(): Promise<void> {
   const path = draftsPath();
   await withPathLock(path, async () => {
     await unlink(path).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
+    await unlink(draftVectorsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
     cache = undefined;
   }, { crossProcess: true });
 }

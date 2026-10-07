@@ -31,7 +31,7 @@
  */
 const CODEX_HARNESS_TAG = /^<(?:environment_context|recommended_plugins|codex_internal_context|send_user_message_question_reply)[\s>]/;
 // Observed in local Codex rollouts: repository instructions are harness rows.
-const AGENTS_INSTRUCTIONS = /^# AGENTS\.md instructions for [^\r\n]*\S[ \t]*\r?\n[ \t]*\r?\n[\s\S]*\S\s*$/;
+const AGENTS_INSTRUCTIONS = /^# AGENTS\.md instructions for (?:\/|\\|~|\.|[A-Za-z]:)[^\r\n]*\r?\n[ \t]*\r?\n[\s\S]*\S\s*$/;
 const TURN_ABORTED = /^<turn_aborted>\r?\n[^\r\n]+\r?\n<\/turn_aborted>\s*$/;
 const TASK_NOTIFICATION = /^<task-notification[\s>]/;
 const AGENT_MAIL_WRAPPER = "Another Claude session sent a message:";

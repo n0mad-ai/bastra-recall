@@ -59,29 +59,38 @@ export function weightedContainment(quote: Set<string>, inside: Set<string>, idf
  * built on the first call and reused for the rest of the pass.
  */
 export function storedQuoteMatcher(vault: Vault, search: SearchIndex): (quote: string) => string | null {
-  let sets: Map<string, Set<string>> | null = null;
-  let df: Map<string, number> | null = null;
-  const build = (): void => {
-    sets = new Map();
-    df = new Map();
-    for (const m of vault.list()) {
-      const s = new Set(tokens(memoryText(m)));
-      sets.set(m.fm.id, s);
-      for (const t of s) df.set(t, (df.get(t) ?? 0) + 1);
-    }
-  };
+  let words: ReturnType<typeof vaultWords> | null = null;
   return (quote: string): string | null => {
     const q = new Set(tokens(quote));
     if (q.size === 0) return null;
     const hits = search.recall([...q].join(" "), { k: CANDIDATES_K, allow_private: true });
     if (hits.length === 0) return null;
-    if (sets === null) build();
-    const n = sets!.size;
-    const idf = (t: string): number => Math.log((n + 1) / ((df!.get(t) ?? 0) + 1));
+    words ??= vaultWords(vault);
     for (const hit of hits) {
-      const inside = sets!.get(hit.id);
-      if (inside && weightedContainment(q, inside, idf) >= STORED_CONTAINMENT_MIN) return hit.id;
+      const inside = words.sets.get(hit.id);
+      if (inside && weightedContainment(q, inside, words.idf) >= STORED_CONTAINMENT_MIN) return hit.id;
     }
     return null;
+  };
+}
+
+
+function vaultWords(vault: Vault): { sets: Map<string, Set<string>>; idf: (token: string) => number } {
+  const sets = new Map<string, Set<string>>();
+  const df = new Map<string, number>();
+  for (const memory of vault.list()) {
+    const words = new Set(tokens(memoryText(memory)));
+    sets.set(memory.fm.id, words);
+    for (const word of words) df.set(word, (df.get(word) ?? 0) + 1);
+  }
+  return { sets, idf: token => Math.log((sets.size + 1) / ((df.get(token) ?? 0) + 1)) };
+}
+
+/** The existing word measure for a specific note, beside semantic shadow scores. */
+export function storedQuoteScorer(vault: Vault): (quote: string, id: string) => number {
+  const words = vaultWords(vault);
+  return (quote, id) => {
+    const inside = words.sets.get(id);
+    return inside ? weightedContainment(new Set(tokens(quote)), inside, words.idf) : 0;
   };
 }

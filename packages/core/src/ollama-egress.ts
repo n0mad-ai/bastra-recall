@@ -45,7 +45,7 @@ export function assertLocalOrOptIn(rawUrl: string): void {
  * name resolving wherever its owner points it. So: decide with `net.isIP`, and
  * treat anything that is NOT an IP literal as a name that may resolve anywhere.
  */
-function isLoopbackHost(host: string): boolean {
+export function isLoopbackHost(host: string): boolean {
   // `URL.hostname` keeps IPv6 literals bracketed ("[::1]"); net.isIP does not
   // accept the brackets.
   const bare = host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;

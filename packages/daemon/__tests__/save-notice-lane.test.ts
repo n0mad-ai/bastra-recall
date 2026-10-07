@@ -277,6 +277,7 @@ test("readToolResult takes the result out of every shape a client may hand over"
 });
 
 test("telemetry: one save_notice_call row per write-tool call, without the title", async () => {
+  // Writes are fire-and-forget; compare exact records independent of I/O order.
   await german(async (dir) => {
     await notice({
       tool_name: `${SERVER}save_memory`,
@@ -297,7 +298,7 @@ test("telemetry: one save_notice_call row per write-tool call, without the title
       if (rows.length === 2) break;
       await delay(5);
     }
-    const calls = rows.filter((r) => r.kind === "save_notice_call");
+    const calls = rows.filter((r) => r.kind === "save_notice_call").sort((a, b) => String(b.tool).localeCompare(String(a.tool)));
     assert.deepEqual(
       calls.map((r) => [r.tool, r.action, r.shown]),
       [["save_memory", "created", true], ["edit_memory", null, false]],

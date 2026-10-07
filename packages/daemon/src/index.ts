@@ -225,6 +225,7 @@ async function main(): Promise<void> {
     },
     ollama: ollama ? { baseURL: ollama.baseURL, model: ollama.model } : null,
     embIdx: () => embIdxForHealth,
+    rawProvider,
     // #493: Der Idle-Unload ist die einzige Stelle, an der wir das Modell
     // selbst aus dem Speicher werfen — also die einzige, die Grundwahrheit
     // darüber hat. Sie geht in denselben Lifecycle-Zustand wie Warmups.
