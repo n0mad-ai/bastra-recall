@@ -3,23 +3,26 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { noteSessionForHarvest, runSessionHarvest, harvestCandidates, formatHarvestBlock } from "../src/session-harvest.js";
+import { noteSessionForHarvest, runSessionHarvest, harvestCandidates, formatHarvestBlock, type HarvestPassResult } from "../src/session-harvest.js";
 import { listDrafts, expireDrafts, upsertDraft, captureDraft } from "../src/draft-store.js";
 import { parseTranscriptFile } from "../src/stop-transcript.js";
 
 const now = 1_800_000_000_000;
 const day = 24 * 60 * 60 * 1000;
 const task = "Please update the deployment script because staging uses its own isolated database.";
-async function isolated(fn: (dir: string, harvest: (id: string, rows: object[]) => Promise<void>) => Promise<void>) {
+async function isolated(fn: (dir: string, harvest: (id: string, rows: object[]) => Promise<HarvestPassResult>) => Promise<void>) {
   const dir = await mkdtemp(join(tmpdir(), "bastra-capture-"));
   const env = { BASTRA_VAULT_PATH: join(dir, "vault"), BASTRA_DRAFTS_PATH: join(dir, "drafts.json"), BASTRA_HARVEST_QUEUE_PATH: join(dir, "queue.json"), BASTRA_PENDING_SUGGESTIONS_PATH: join(dir, "pending.json"), BASTRA_LOG_PATH: join(dir, "logs") };
   const prev = new Map(Object.keys(env).map(k => [k, process.env[k]]));
   Object.assign(process.env, env);
+  let clock = now;
   const harvest = async (id: string, rows: object[]) => {
+    const booked = clock;
+    clock += 2;
     const path = join(dir, `${id}.jsonl`);
     await writeFile(path, rows.map(r => JSON.stringify(r)).join("\n"));
-    await noteSessionForHarvest({ session_id: id, transcript_path: path, ended: true, now });
-    await runSessionHarvest({ loadTurns: async p => parseTranscriptFile(await readFile(p, "utf8")), now: now + 1 });
+    await noteSessionForHarvest({ session_id: id, transcript_path: path, ended: true, now: booked });
+    return runSessionHarvest({ loadTurns: async p => parseTranscriptFile(await readFile(p, "utf8")), now: booked + 1 });
   };
   try { await fn(dir, harvest); } finally {
     for (const [k,v] of prev) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
@@ -29,14 +32,20 @@ async function isolated(fn: (dir: string, harvest: (id: string, rows: object[]) 
 const u = (content: string, isMeta = false) => ({ type: "user", isMeta, message: { role: "user", content } });
 const a = (text: string) => ({ type: "assistant", message: { role: "assistant", content: [{type: "text", text}] } });
 
-test("B1 captures a typed task outside the shapes, replays once, and appends evidence across sessions", () => isolated(async (_, harvest) => {
+test("B1 captures a typed task outside the shapes, replays once, and appends evidence across sessions", () => isolated(async (dir, harvest) => {
   await harvest("one", [u(task)]);
   let rows = await listDrafts(now + 1);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].kind, "typed");
   assert.equal(rows[0].quote, task);
-  await harvest("one", [u(task)]);
-  assert.equal((await listDrafts(now + 1))[0].evidence.length, 1);
+  // Simulate lost queue progress: the same turn really reaches the store twice.
+  const queuePath = join(dir, "queue.json");
+  const queue = JSON.parse(await readFile(queuePath, "utf8"));
+  queue[0].harvested_upto = 0;
+  await writeFile(queuePath, JSON.stringify(queue));
+  const replay = await harvest("one", [u(task)]);
+  assert.equal(replay.harvested, 1, "the replay must actually process the session");
+  assert.equal((await listDrafts(now + 3))[0].evidence.length, 1);
   await harvest("two", [u(task)]);
   rows = await listDrafts(now + 1);
   assert.equal(rows.length, 1);
@@ -131,8 +140,16 @@ test("B1 capture writes redacted bounded text and telemetry contains only counts
   assert.doesNotMatch(logs, /Please inspect|fixture:password|own database/);
   const event = logs.trim().split("\n").map(l => JSON.parse(l)).find(e => e.kind === "session_harvest");
   assert.equal(event.draft_count, 1);
+  assert.equal(event.draft_evidence_count, 0);
+  assert.equal(event.draft_ids_omitted, 0);
   assert.deepEqual(event.draft_ids, [rows[0].id]);
   assert.equal(event.draft_error, false);
+  await harvest("privacy-repeat", [u(quote)]);
+  const repeatedLog = (await Promise.all(files.map(f => readFile(join(dir, "logs", f), "utf8")))).join("");
+  const repeated = repeatedLog.trim().split("\n").map(l => JSON.parse(l)).find(e => e.session_id === "privacy-repeat");
+  assert.equal(repeated.draft_count, 0);
+  assert.equal(repeated.draft_evidence_count, 1);
+  assert.deepEqual(repeated.draft_ids, [rows[0].id]);
 }));
 
 test("B1 draft-store errors preserve the shape relay and record a text-free failure", () => isolated(async (dir, harvest) => {
