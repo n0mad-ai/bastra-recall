@@ -47,12 +47,21 @@ export function draftId(sessionId: string, turn: number, fp: string): string {
   return "d-" + createHash("sha256").update(`${sessionId}:${turn}:${fp}`).digest("hex").slice(0, 12);
 }
 
+function clip(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const prefix = text.slice(0, max);
+  if (/\s/.test(text[max]) || /\s$/.test(prefix)) return prefix;
+  const boundary = prefix.search(/\s+\S*$/u);
+  return boundary < 0 ? "" : prefix.slice(0, boundary);
+}
+
 function sanitize(input: unknown, now: number, fallback = now): Draft | null {
   const d = draftSchema.parse(input);
   const time = (ts: number) => ts > now ? Math.min(now, fallback) : ts;
-  const quote = redactSecrets(d.quote, homedir());
-  if (quote.redactedChars > d.quote.length * 0.3) return null;
-  const clean = (text: string, max = 200) => redactSecrets(text, homedir()).text.slice(0, max);
+  const quoteInput = clip(d.quote, 600);
+  const quote = redactSecrets(quoteInput, homedir());
+  if (quote.redactedChars > quoteInput.length * 0.3) return null;
+  const clean = (text: string, max = 200) => redactSecrets(clip(text, max), homedir()).text.slice(0, max);
   const optional = (text: string | undefined) => text === undefined ? undefined : clean(text);
   const strings = (items: string[], count: number, max = 200) => items.slice(-count).map((s) => clean(s, max));
   return {

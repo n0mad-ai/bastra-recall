@@ -187,7 +187,7 @@ type SecretSpan = [number, number];
 /** Technical credential names, not words used to classify a conversation. */
 function credentialKey(key: string): boolean {
   const normalized = key.toLowerCase().replace(/[\p{Cf}\s_-]/gu, "");
-  return /(?:password|passwd|passphrase|cookie|token|secret|apikey|accesskey|accesskeyid|secretkey|privatekey|accountkey|authorization|credential)$/.test(normalized) || /(?:^|[_.\s-])(?:pwd|pass)$/i.test(key) || /(?:Pwd|Pass)$/.test(key);
+  return /(?:password|passwd|passphrase|cookie|token|secret|apikey|accesskey|accesskeyid|secretkey|privatekey|accountkey|authorization|credential)$/.test(normalized) || normalized === "key" || /(?:^|[_.\s-])(?:pwd|pass)$/i.test(key) || /(?:Pwd|Pass)$/.test(key);
 }
 
 /** Locations and identifiers are the useful content of a draft, not access values. */
@@ -207,11 +207,39 @@ function isLocator(value: string): boolean {
   if (/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/.test(value)) return true;
   if (value.includes("-") || value.includes("_")) {
     const parts = value.split(/[-_]/);
-    if (parts.length >= 3 && parts.every((p) => /^[a-z0-9]{2,}$/.test(p))) return true;
-    if (parts.length > 1 && parts.every((p) => /^(?:[A-Z]?[a-z]{2,}[0-9]*|[A-Z]{1,4}|[0-9]+)$/.test(p))) return true;
+    if (parts.length > 1 && parts.every((p) => /^(?:[A-Z]?[a-z]{2,}|[A-Z]{1,4}|[0-9]+)$/.test(p))) return true;
   }
   // Ordinary camelCase code symbols carry several readable word segments.
-  return /^[a-z]{2,}(?:[A-Z][a-z]{2,}|[A-Z][0-9]+){2,}$/.test(value);
+  return codeSymbol(value);
+}
+
+// Disjoint character runs keep symbol recognition linear; nested uppercase
+// alternatives in a repeated regexp could backtrack on long acronym runs.
+function codeSymbol(value: string): boolean {
+  const runs = value.match(/[A-Z]+|[a-z]+|[0-9]+|[^A-Za-z0-9]+/g) ?? [];
+  let segments = 0;
+  for (let i = 0; i < runs.length; i++) {
+    const run = runs[i];
+    if (/^[a-z]+$/.test(run)) {
+      if (i !== 0 || run.length < 2) return false;
+      segments++;
+    } else if (/^[A-Z]+$/.test(run)) {
+      const next = runs[i + 1] ?? "";
+      if (/^[a-z]+$/.test(next)) {
+        if (next.length < 2 || i === 0 && run.length === 2) return false;
+        segments += Math.ceil((run.length - 1) / 2) + 1;
+        i++;
+      } else if (/^[0-9]+$/.test(next)) {
+        if (run.length === 2 || i === 0 && run.length < 3) return false;
+        segments += Math.floor((run.length - 1) / 2) + 1;
+        i++;
+      } else {
+        if (run.length < 2) return false;
+        segments += Math.floor(run.length / 2);
+      }
+    } else return false;
+  }
+  return segments >= 3;
 }
 
 function isReference(value: string): boolean {
@@ -292,6 +320,7 @@ function valueSpans(text: string, start: number, query = false): { spans: Secret
 /** Structural heuristics; no language-dependent password/prose word lists. */
 export function redactSecrets(text: string, home?: string): SecretRedactionResult {
   const spans: SecretSpan[] = [];
+  const namedContext = (start: number): boolean => /(?:^|\s)(?:ssh|kubectl[ \t]+logs|(?:model|target|host)[ \t]*[:=])[ \t]+$/.test(text.slice(Math.max(0, start - 128), start));
   const mark = (start: number, length: number) => {
     if (length > 0 && text.slice(start, start + length) !== "[REDACTED]") spans.push([start, start + length]);
   };
@@ -321,6 +350,7 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
     const joined = parsed.spans.map(([a, b]) => text.slice(a, b)).join("").replace(/\p{Cf}/gu, "");
     // A reference names where a credential comes from; it is not the value.
     if (reference && isReference(joined)) strong = false;
+    if (!strong && namedContext(start)) return parsed.end;
     if (strong || opaqueValue(joined, 16)) for (const [a, b] of parsed.spans) {
       if (text.slice(a, b) !== "[REDACTED]") mark(a, b - a);
     }
@@ -333,33 +363,45 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
     let end = m[0].length;
     while (end > 0 && "(),;".includes(m[0][end - 1])) end--;
     const value = m[0].slice(0, end);
-    if (isLocator(value)) locations.push([m.index!, m.index! + value.length]);
+    if (isLocator(value) || namedContext(m.index!)) locations.push([m.index!, m.index! + value.length]);
   }
-  // Prefer authority syntax over an @ in a package path or query. Literal
-  // ?, #, / and @ inside a password are tolerated when user:password is clear.
+  // Find the first @ followed by a host boundary, rather than the last @ in
+  // the entire URL (a path or query may contain more). A literal @ in the
+  // password is not a host boundary when another @ follows it directly.
   for (const m of text.matchAll(/(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\/\/[^\s"'`<>]+/gi)) {
     const offset = m[0].indexOf("://") + 3;
     const rest = m[0].slice(offset);
-    const at = rest.lastIndexOf("@");
-    if (at < 0) continue;
-    const userinfo = rest.slice(0, at);
-    const colon = userinfo.indexOf(":");
-    const delimiter = userinfo.search(/[/?#]/);
-    const authority = rest.split(/[/?#]/, 1)[0];
-    if (delimiter >= 0 && (colon < 0 || colon > delimiter || /:\d+$/.test(authority))) continue;
-    mark(m.index! + offset, at);
+    const delimiter = rest.search(/[/?#]/);
+    const authority = delimiter < 0 ? rest : rest.slice(0, delimiter);
+    if (/:(?:\d+)$/.test(authority) && !authority.includes("@")) continue;
+    const colon = rest.indexOf(":");
+    let at = rest.indexOf("@");
+    if (delimiter >= 0 && delimiter < at && (colon < 0 || colon > delimiter)) continue;
+    while (at >= 0) {
+      if (/^(?:[\p{L}\p{N}_.-]+|\[[a-f0-9:]+\])(?::\d+)?(?=[/?#]|$)/iu.test(rest.slice(at + 1))) {
+        mark(m.index! + offset, at);
+        break;
+      }
+      at = rest.indexOf("@", at + 1);
+    }
   }
   // Provider-issued prefixes remain decisive even inside an otherwise useful URL.
   for (const m of text.matchAll(/\b(?:sk-[a-z0-9_\-\p{Cf}]{8,}|sk_(?:live|test)_[a-z0-9_\p{Cf}]{8,}|gh[pousr]_[a-z0-9_\p{Cf}]{8,}|github_pat_[a-z0-9_\p{Cf}]{8,}|(?:AKIA|ASIA)[A-Z0-9]{16}|xox[baprs]-[a-z0-9\-\p{Cf}]{8,}|AIza[a-z0-9_\-]{20,}|glpat-[a-z0-9_\-]{8,}|npm_[a-z0-9_]{8,}|hf_[a-z0-9_]{8,}|dckr_pat_[a-z0-9_]{8,}|SG\.[a-z0-9_\-]+\.[a-z0-9_\-]+|[0-9]{6,12}:[a-z0-9_\-]{30,})/giu)) mark(m.index!, m[0].length);
 
-  // A boundary before the entire JWT prevents retries at each eyJ inside one
-  // long token when its dot-separated signature is absent.
-  for (const m of text.matchAll(/(?<![a-z0-9_-])eyJ[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+/gi)) mark(m.index!, m[0].length);
+  // Scan complete dotted tokens once. Looking for eyJ within the first
+  // segment permits a hyphen prefix without retrying every eyJ in a long run.
+  for (const m of text.matchAll(/(?<![a-z0-9_.-])[a-z0-9_-]+(?:\.[a-z0-9_-]+){2}/gi)) {
+    const first = m[0].slice(0, m[0].indexOf("."));
+    const jwt = /(?:^|[^a-z0-9_])(eyJ[a-z0-9_-]+)/i.exec(first);
+    if (jwt) mark(m.index! + jwt.index + jwt[0].length - jwt[1].length, m[0].length - jwt.index - jwt[0].length + jwt[1].length);
+  }
 
   // URL query credentials are scanned separately, including inside an env URL.
-  for (const m of text.matchAll(/[?&]([a-z0-9_-]+)=/gi)) if (credentialKey(m[1])) markValue(m.index! + m[0].length, true, true);
+  let queryEnd = 0;
+  for (const m of text.matchAll(/[?&]([a-z0-9_-]+)=/gi)) if (m.index! >= queryEnd && credentialKey(m[1])) queryEnd = markValue(m.index! + m[0].length, true, true);
   const assignments = /(?<![\p{L}\p{N}_.-])(?:"([^"\r\n]{1,80})"|'([^'\r\n]{1,80})'|([\p{L}\p{N}_.\-\p{Cf}]{1,128}))[ \t]*[=:][ \t]*(?!\/\/)/gu;
   let assignment: RegExpExecArray | null;
+  let neutralEnd = 0;
   while ((assignment = assignments.exec(text))) {
     const key = (assignment[1] ?? assignment[2] ?? assignment[3]).replace(/\\/g, "");
     let start = assignment.index + assignment[0].length;
@@ -370,9 +412,13 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
     if (key.toLowerCase().endsWith("authorization")) {
       let parsed: { spans: SecretSpan[]; end: number };
       if (/^\\*["'`]/.test(text.slice(start))) parsed = valueSpans(text, start);
-      else {
+      else if (/^["'`]/.test(text[assignment.index - 1] ?? "")) {
+        const enclosing = valueSpans(text, assignment.index - 1);
+        parsed = { spans: [[start, enclosing.spans[0][1]]], end: enclosing.end };
+      } else {
         let end = start;
-        while (end < text.length && !/[\r\n'`<>}]/.test(text[end])) end++;
+        const digest = /^Digest[ \t]/i.test(text.slice(start));
+        while (end < text.length && !(digest ? /[\r\n<>}]/ : /[\r\n"'`<>}]/).test(text[end])) end++;
         parsed = { spans: [[start, end]], end };
       }
       for (let i = 0; i < parsed.spans.length; i++) {
@@ -388,19 +434,19 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
       continue;
     }
     let strong = credentialKey(key);
-    if (/^(?:token|secret)$/i.test(key)) {
-      const parsed = valueSpans(text, start);
-      const value = parsed.spans.map(([a, b]) => text.slice(a, b)).join("");
-      // Ambiguous bare labels can describe counts, named resources or prose.
-      // Qualified API_TOKEN/client_secret bindings still require redaction.
-      if (/^\d+$/.test(value) || (isLocator(value) && !/^[a-f0-9-]+$/i.test(value)) ||
-          (/^[\p{L}]+$/u.test(value) && /^[ \t]+[\p{L}]+[ \t]+[\p{L}]+/u.test(text.slice(parsed.end)))) strong = false;
-    }
+    // A key in an object with a separate value field names that field, and a
+    // lower-case key after another word can name a sort/database key.
+    if (key === "key" && (/\p{L}[ \t]+$/u.test(text.slice(Math.max(0, assignment.index - 80), assignment.index)) ||
+        /^"key"[ \t]*:/.test(assignment[0]) && /^[^}\r\n]{0,200}"value"[ \t]*:/.test(text.slice(start)))) strong = false;
+    if (!strong && start < neutralEnd) continue;
     const end = markValue(start, strong, /[?&]/.test(text[assignment.index - 1] ?? ""));
-    // A neutral wrapper may contain its own credential binding. Scan inside it.
+    // Cache a neutral wrapper's end, so its inner neutral bindings do not
+    // rescan the same suffix. Credential bindings inside it still run.
     if (strong) assignments.lastIndex = Math.max(assignments.lastIndex, end);
+    else neutralEnd = end;
   }
-  for (const m of text.matchAll(/(?<![a-z0-9_-])--([a-z][a-z0-9_-]*)(?:=|[ \t]+)/gi)) if (credentialKey(m[1])) markValue(m.index! + m[0].length, true);
+  let flagEnd = 0;
+  for (const m of text.matchAll(/(?<![a-z0-9_-])--([a-z][a-z0-9_-]*)(?:=|[ \t]+)/gi)) if (m.index! >= flagEnd && credentialKey(m[1])) flagEnd = markValue(m.index! + m[0].length, true);
   // Track command context once, rather than repeatedly rescanning a long line.
   const commands = [...text.matchAll(/(?:^|[ \t])(mysql|mariadb|sshpass|docker[ \t]+login|ssh)(?=[ \t]|$)|[;&|\r\n]/gmi)];
   let commandIndex = 0;
@@ -411,7 +457,7 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
       passwordCommand = command;
     }
     if (passwordCommand === "sshpass" || passwordCommand === "docker login" ||
-        ((passwordCommand === "mysql" || passwordCommand === "mariadb") && m[0] === "-p" && !!text[m.index! + 2] && !/\s/.test(text[m.index! + 2]))) markValue(m.index! + m[0].length, true);
+        ((passwordCommand === "mysql" || passwordCommand === "mariadb") && (m[0] === "-p" && !!text[m.index! + 2] && !/\s/.test(text[m.index! + 2]) || /^[a-z][a-z0-9]*[0-9][a-z0-9]*(?=\s|$)/i.test(text.slice(m.index! + m[0].length))))) markValue(m.index! + m[0].length, true);
   }
   let locationIndex = 0;
   for (const m of text.matchAll(/[a-z0-9_+\/.\-\p{Cf}]{24,}={0,2}/giu)) {

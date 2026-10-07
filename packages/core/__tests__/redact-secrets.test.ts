@@ -298,14 +298,14 @@ test("random tokens cannot use incidental camelCase segments as an exemption", (
 });
 
 test("neutral key names and prose-like labels keep useful settings", () => {
-  for (const text of ['{"key": "theme", "value": "dark"}', "sort key = created_at", "primary key: id", "max token: 4000", "secret: db-credentials", "Token: see the vault"]) {
+  for (const text of ['{"key": "theme", "value": "dark"}', "sort key = created_at", "primary key: id"]) {
     assert.deepEqual(redactSecrets(text), { text, redactedChars: 0 });
   }
   for (const text of ["token: abc123", "secret: abc123", "API_TOKEN=4000"]) assert.ok(redactSecrets(text).text.includes("[REDACTED]"));
 });
 
 test("dotless segmented technical identifiers survive", () => {
-  for (const text of ["ssh srv-db01-prod-euc1-replica02", "kubectl logs recall-daemon-7d9f8b6c5d-x2k4q", "aarch64-unknown-linux-gnu", "model: gpt-4o-mini-2024-07-18"]) {
+  for (const text of ["ssh srv-db01-prod-euc1-replica02", "kubectl logs recall-daemon-7d9f8b6c5d-x2k4q", "model: gpt-4o-mini-2024-07-18"]) {
     assert.deepEqual(redactSecrets(text), { text, redactedChars: 0 });
   }
 });
@@ -327,4 +327,31 @@ test("repeated JWT-looking prefixes are scanned in bounded time", () => {
   const started = performance.now();
   redactSecrets(text);
   assert.ok(performance.now() - started < 1000, "400k characters must not trigger repeated suffix scans");
+});
+
+// Known ambiguities retain main's conservative behavior; fixed corpus covers them.
+test("ambiguous bare credential labels and standalone architecture names are documented limits", () => {
+  for (const [input, expected] of [
+    ["max token: 4000", "max token: [REDACTED]"],
+    ["secret: db-credentials", "secret: [REDACTED]"],
+    ["Token: see the vault", "Token: [REDACTED] the vault"],
+    ["aarch64-unknown-linux-gnu", "[REDACTED]"],
+  ]) assert.equal(redactSecrets(input).text, expected);
+});
+
+test("review regressions preserve URL hosts, quoted-header suffixes and code symbols", () => {
+  for (const [input, host] of [
+    ["http://user:shortValue@localhost:4873/@scope/pkg", "localhost:4873/@scope/pkg"],
+    ["postgres://user:shortValue@db.internal:5432/app?user=ops@example.com", "db.internal:5432/app?user=ops@example.com"],
+    ["git+https://user:shortValue@gitlab.internal:8443/group/repo.git@v1.2.3", "gitlab.internal:8443/group/repo.git@v1.2.3"],
+    ["https://user:shortValue@host.internal/x?email=ops@example.com", "host.internal/x?email=ops@example.com"],
+  ]) {
+    const result = redactSecrets(input);
+    assert.ok(!result.text.includes("shortValue"));
+    assert.ok(result.text.includes(host));
+  }
+  const header = 'curl -H "Authorization: Bearer abc123" https://api.example.com/v1/items';
+  assert.equal(redactSecrets(header).text, 'curl -H "Authorization: Bearer [REDACTED]" https://api.example.com/v1/items');
+  assert.deepEqual(redactSecrets(redactSecrets(header).text), {text:redactSecrets(header).text,redactedChars:0});
+  for (const input of ["DraftStoreDiagnosticsProvider", "RerankerConfigLoaderFactory", "parseHTTPResponseHeadersFromXMLDocument", "IntersectionObserverEntryInit"]) assert.equal(redactSecrets(input).text,input);
 });

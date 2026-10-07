@@ -101,13 +101,13 @@ test("promoted/rejected retention and missing-note tombstone", () => isolated(as
 
 test("bounds every text field, commands, reads and surfaced history", () => isolated(async (path) => {
   const d = draft();
-  d.quote = "ü".repeat(900);
-  d.context = "x".repeat(300);
-  d.situation.before = Array(6).fill("x".repeat(400));
-  d.situation.after = Array(6).fill("x".repeat(400));
-  d.situation.reads = Array(6).fill("x".repeat(400));
-  d.situation.lits = Array(80).fill("x".repeat(400));
-  d.surfaced = Array.from({ length: 10 }, (_, i) => ({ session_id: "s", ts: now + i, novel: Array(80).fill("x".repeat(400)) }));
+  d.quote = "ü ".repeat(450);
+  d.context = "x ".repeat(150);
+  d.situation.before = Array(6).fill("x ".repeat(200));
+  d.situation.after = Array(6).fill("x ".repeat(200));
+  d.situation.reads = Array(6).fill("x ".repeat(200));
+  d.situation.lits = Array(80).fill("x ".repeat(200));
+  d.surfaced = Array.from({ length: 10 }, (_, i) => ({ session_id: "s", ts: now + i, novel: Array(80).fill("x ".repeat(200)) }));
   const saved = (await upsertDraft(d, now))!;
   assert.equal(saved.quote.length, 600);
   assert.equal(saved.context!.length, 160);
@@ -141,7 +141,7 @@ test("byte cap includes Unicode and evidence and evicts older rows", () => isola
   assert.ok((await listDrafts(now)).length < 4);
 }));
 
-test("secrets are scrubbed before clipping in all fields; >30% quote is dropped", () => isolated(async (path) => {
+test("retained fields are scrubbed; >30% of the retained quote is dropped", () => isolated(async (path) => {
   const secret = "ghp_abcdefghijklmno1234567890";
   const d = draft();
   d.quote = "The VPN address is documented here; use the credential only locally on this device and do not share it: " + secret;
@@ -196,16 +196,14 @@ test("compiled CLI lists JSON, honors help and purges; invalid subcommand fails"
 }));
 
 
-test("redaction occurs before quote and command limits, and exactly 30% is accepted", () => isolated(async (path) => {
+test("bounds precede redaction, incomplete tokens are omitted, and exactly 30% is accepted", () => isolated(async (path) => {
   const token = "ghp_abcdefghijklmno1234567890";
   const d = draft();
   d.quote = "x".repeat(589) + " " + token;
   d.situation.before = ["x".repeat(189) + " " + token];
   const saved = (await upsertDraft(d, now))!;
-  assert.equal(saved.quote.length, 600);
-  assert.ok(saved.quote.endsWith("[REDACTED]"));
-  assert.equal(saved.situation.before[0].length, 200);
-  assert.ok(saved.situation.before[0].endsWith("[REDACTED]"));
+  assert.equal(saved.quote, "x".repeat(589));
+  assert.equal(saved.situation.before[0], "x".repeat(189));
   assert.ok(!(await readFile(path, "utf8")).includes(token));
   const secret = "0123456789abcdef".repeat(2) + "abcd";
   const quote = "x ".repeat(42) + secret;
@@ -348,4 +346,18 @@ test("a persisted redacted URL draft remains valid in a second process", () => i
   assert.equal(result.rows.length, 1);
   assert.equal(result.diagnostics.skippedRows, 0);
   assert.equal(result.rows[0].quote, "pg://[REDACTED]@db1.internal und pg://[REDACTED]@db2.internal");
+}));
+
+test("draft fields are clipped before redaction without retaining a partial URL credential", () => isolated(async () => {
+  const d = draft();
+  d.quote = "Useful public instruction. " + "x ".repeat(280) + "password=shortValue ".repeat(10_000);
+  const saved = await upsertDraft(d, now);
+  assert.ok(saved, "secret text beyond the quote bound cannot cause the retained quote to be discarded");
+  assert.ok(saved.quote.length <= 600);
+  assert.ok(!saved.quote.includes("shortValue"));
+  d.quote = "Useful public instruction. " + "x ".repeat(280) + "pg://user:shortValue@" + "host".repeat(200);
+  d.context = "Useful context. " + "x ".repeat(70) + "pg://user:shortValue@" + "host".repeat(200);
+  const clipped = await upsertDraft(d, now);
+  assert.ok(clipped);
+  assert.ok(!clipped.quote.includes("shortValue") && !clipped.context?.includes("shortValue"));
 }));
