@@ -1,4 +1,5 @@
 /** Broad local capture (#1084, B1). No vault writes and no language word lists. */
+import { situationForTurn } from "./draft-situation.js";
 import { isSystemInjectedTurn } from "./system-turn.js";
 import { captureDrafts, draftFingerprint, draftId, type Draft } from "./draft-store.js";
 import type { HarvestCandidate, HarvestTurn } from "./session-harvest.js";
@@ -22,20 +23,25 @@ export async function captureTypedDrafts(
   const drafts: Draft[] = [];
   let stored = 0;
   const shapes = new Map(candidates.map(c => [c.turn, c]));
+  // Short typed replies still delimit the command window, even if not drafted.
+  const typed = (turn: HarvestTurn): boolean => {
+    const text = turn.content.trim();
+    return turn.role === "user" && text.length > 0 && text.length < PASTE_MIN_CHARS
+      && !text.startsWith(INTERRUPT_PREFIX) && !isSystemInjectedTurn(text);
+  };
   for (let i = entry.harvested_upto ?? 0; i < turns.length; i++) {
     const turn = turns[i];
     const text = turn.content.trim();
-    if (turn.role !== "user" || isSystemInjectedTurn(text)
-      || text.length >= PASTE_MIN_CHARS || text.startsWith(INTERRUPT_PREFIX)
-      || (text.match(/\p{L}/gu) ?? []).length < DRAFT_MIN_LETTERS) continue;
+    if (!typed(turn) || (text.match(/\p{L}/gu) ?? []).length < DRAFT_MIN_LETTERS) continue;
     if (storedIn && storedIn(text) !== null) { stored++; continue; }
     const shape = shapes.get(i);
     const fp = draftFingerprint(text);
     drafts.push({
-      id: draftId(entry.session_id, i, fp), fp, kind: shape?.kind ?? "typed",
+      id: draftId(entry.session_id, i, fp), fp,
+      kind: turns[i - 1]?.role === "tool" && turns[i - 1].failed === true ? "after-failure" : shape?.kind ?? "typed",
       quote: text, ...(shape?.context ? { context: shape.context } : {}),
-      situation: { before: [], after: [], reads: [], lits: [] },
-      evidence: [{ session_id: entry.session_id, turn: i, ts: now, ...(entry.client ? { client: entry.client } : {}) }],
+      situation: situationForTurn(turns, i, typed),
+      evidence: [{ session_id: entry.session_id, turn: i, ts: turn.at ?? now, ...(entry.client ? { client: entry.client } : {}) }],
       created: now, last_touched: now, surfaced: [], state: "open",
     });
   }

@@ -36,8 +36,14 @@ export interface TranscriptTurn {
   commands?: string[];
   /** #572: files the agent read from this turn (Claude `Read`), with the row's time. */
   reads?: ProvenRead[];
-  /** #675: tool names the turn called — the after-session harvest skips what was saved. */
+  /** #675: tool names the turn called — the after-session relay skips what was saved. */
   tools?: string[];
+  /** Claude tool_result.is_error, when explicitly present. */
+  failed?: boolean;
+  cwd?: string;
+  branch?: string;
+  /** Claude row timestamp in milliseconds; absent when not parseable. */
+  at?: number;
 }
 
 export async function loadTranscript(payload: ClaudeStopPayload): Promise<TranscriptTurn[]> {
@@ -214,6 +220,14 @@ export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
       const role = typeof m.role === "string" ? m.role : "unknown";
       const eff = effectiveRole(role, m.content, obj.isMeta === true);
       const turn: TranscriptTurn = { role: eff, content: turnContent(eff, m.content) };
+      if (typeof obj.cwd === "string" && obj.cwd.trim()) turn.cwd = obj.cwd;
+      if (typeof obj.gitBranch === "string") turn.branch = obj.gitBranch;
+      const at = typeof obj.timestamp === "string" ? Date.parse(obj.timestamp) : Number.NaN;
+      if (Number.isFinite(at) && at >= 0) turn.at = at;
+      if (eff === "tool" && Array.isArray(m.content)) {
+        const results = m.content.filter((b) => b && typeof b === "object" && b.type === "tool_result" && typeof b.is_error === "boolean");
+        if (results.length > 0) turn.failed = results.some((b) => b.is_error === true);
+      }
       const commands = claudeToolUseCommands(m.content);
       if (commands.length > 0) turn.commands = commands;
       const tools = claudeToolUseNames(m.content);

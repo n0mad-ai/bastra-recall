@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { redactSecrets } from "@bastra-recall/core/scrub";
+import { mergeSituations } from "./draft-situation.js";
 import { bigramSet, dice } from "./stop-lane-repeat.js";
 import { withPathLock } from "./path-lock.js";
 
@@ -291,12 +292,15 @@ async function captureBatch(inputs: Draft[], now: number): Promise<DraftCaptureR
           hit.kind = draft.kind;
           if (draft.context !== undefined) hit.context = draft.context;
         }
+        let appended = false;
         for (const evidence of draft.evidence) {
           if (!hit.evidence.some(e => e.session_id === evidence.session_id && e.turn === evidence.turn)) {
             hit.evidence.push(evidence);
+            appended = true;
             hit.last_touched = Math.max(hit.last_touched, evidence.ts);
           }
         }
+        if (appended) hit.situation = mergeSituations(hit.situation, draft.situation);
       } else {
         rows.push(draft);
         byFingerprint.set(draft.fp, draft);

@@ -930,6 +930,19 @@ the store bounds, including when closed tombstones occupy the whole store.
 A draft-store error leaves the relay working and records `draft_error: true`; that session's failed
 draft capture is not retried automatically.
 
+**Situation (B2, Claude Code).** A typed explanation immediately after an
+explicitly failed tool result is labelled `after-failure`. Each draft carries
+up to three preceding shell commands and file reads, and up to three following
+commands, bounded by the adjacent typed turns. Short replies still delimit that
+window. The situation also keeps cwd/project/branch when the transcript supplies
+them, and literal cues from commands, read basenames and the project. Flags and
+redaction placeholders do not become cues. Commands and paths are secret-redacted;
+the current home directory becomes `~`. Later evidence merges context within the
+existing field limits: latest preceding commands/reads, earliest following
+commands, and latest supplied cwd/project/branch. Replaying old evidence does not
+overwrite newer context. Codex parsing remains unchanged; without the Claude
+metadata, drafts keep an empty situation.
+
 #### Taxonomy injection (session hook, #66)
 
 The session hook also fetches `GET /hook/taxonomy` (budget 150 ms within the
@@ -2002,6 +2015,20 @@ und `draft_error` enthalten weiterhin keinen Zitattext.
 Bei einem Fehler der Ablage arbeitet das Relay weiter und meldet
 `draft_error: true`; die fehlgeschlagene Erfassung dieser Session wird nicht
 automatisch wiederholt.
+
+**Situation (B2, Claude Code).** Eine getippte Erklärung direkt nach einem
+explizit fehlgeschlagenen Tool-Ergebnis erhält `after-failure`. Jeder Entwurf
+hält bis zu drei vorherige Befehle und Lesezugriffe sowie bis zu drei folgende
+Befehle fest, begrenzt durch die benachbarten getippten Turns. Auch kurze Antworten
+begrenzen dieses Fenster. Wenn das Transcript sie liefert, bleiben cwd, Projekt
+und Branch erhalten. Wörtliche Hinweise stammen aus Befehlen, Dateibasisnamen
+und dem Projekt; Flags und Schwärz-Platzhalter werden keine Hinweise. Befehle
+und Pfade werden geschwärzt, das aktuelle Home-Verzeichnis wird `~`. Spätere
+Belege ergänzen die Situation innerhalb der bestehenden Feldgrenzen: neueste
+vorherige Befehle/Lesezugriffe, früheste folgende Befehle und zuletzt gelieferte
+cwd-/Projekt-/Branch-Werte. Erneutes Lesen alter Belege überschreibt keinen
+neueren Kontext. Der Codex-Parser bleibt unverändert; ohne die Claude-Metadaten
+bleibt die Situation leer.
 
 #### Taxonomie-Einblendung (Session-Hook, #66)
 
