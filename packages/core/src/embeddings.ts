@@ -326,6 +326,15 @@ export class EmbeddingIndex {
   }
 
   /** Anzahl Memories die noch auf Embedding warten (Backfill-Queue). */
+  /** Current-content vectors only. Automatic writers must not use an old
+   * vector while a note's changed text is waiting in the embedding queue. */
+  currentSnapshot(): ReadonlyMap<string, Float32Array> {
+    return new Map([...this.vectors].filter(([id]) => {
+      const memory = this.vault.get(id);
+      return memory !== undefined && !this.cache.isStale(id, hashEmbedContent(memory));
+    }));
+  }
+
   pendingSize(): number {
     return this.pendingQueue.size;
   }

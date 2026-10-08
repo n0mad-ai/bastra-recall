@@ -18,6 +18,7 @@ import { BATTERY_UNLOAD_MS, type PowerMonitor } from "./power-source.js";
 import { runCuratorPass } from "./curator-run.js";
 import { pruneEventLogs } from "./log-retention.js";
 import { observeCodeGraphRefresh, startCodeAwareness } from "./code-graph/service.js";
+import { runDraftPromote, draftVaultId } from "./draft-promote.js";
 import { runDraftShadow } from "./draft-shadow.js";
 import { expireDrafts } from "./draft-store.js";
 import { sessionHarvestEnabled, runSessionHarvest } from "./session-harvest.js";
@@ -81,11 +82,13 @@ export async function runSessionHarvestTick(
 ) {
   if (!sessionHarvestEnabled()) return null;
   const harvest = await runSessionHarvest({
+    vaultId: await draftVaultId(deps.vault.root).catch(() => undefined),
     loadTurns: transcript_path => loadTranscript({ transcript_path }),
     storedIn: () => storedQuoteMatcher(deps.vault, deps.search),
     now,
   });
-  await expireDrafts({ now });
+  await deps.vault.reconcile();
+  await expireDrafts({ now, memoryExists: async id => deps.vault.get(id) !== undefined });
   const shadow = await runDraftShadow({
     provider: deps.rawProvider ?? null, ollama: deps.ollama, vault: deps.vault, now,
     vaultVectors: () => {
@@ -95,7 +98,16 @@ export async function runSessionHarvestTick(
       return { provider: identity.id, dim: identity.dim, vectors: index.snapshot() };
     },
   });
-  return { harvest, shadow };
+  const promotion = await runDraftPromote({
+    provider: deps.rawProvider ?? null, ollama: deps.ollama, vault: deps.vault, now,
+    vaultVectors: () => {
+      const index = deps.embIdx();
+      if (!index) return null;
+      const identity = index.providerIdentity();
+      return { provider: identity.id, dim: identity.dim, vectors: index.currentSnapshot() };
+    },
+  });
+  return { harvest, shadow, promotion };
 }
 
 function startSessionHarvest(deps: BackgroundJobDeps): void {

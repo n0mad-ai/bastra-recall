@@ -35,6 +35,7 @@ const draftSchema = z.object({
   created: timestamp, last_touched: timestamp,
   surfaced: z.array(z.object({ session_id: z.string(), ts: timestamp, novel: z.array(z.string()) }).passthrough()).default([]),
   state: z.enum(["open", "promoted", "rejected"]).default("open"),
+  vault_id: z.string().optional(),
   memory_id: z.string().optional(), evidence_key: z.string().optional(), announce: z.boolean().optional(),
 }).passthrough();
 
@@ -304,6 +305,8 @@ async function captureBatch(inputs: Draft[], now: number, afterUpdates: DraftAft
       });
       if (hit) {
         if (hit.state !== "open") return hit.id;
+        // Mixed or legacy provenance must never inherit a new vault identity.
+        if (hit.vault_id !== draft.vault_id) hit.vault_id = "mixed";
         if (hit.kind === "typed" && draft.kind !== "typed") {
           hit.kind = draft.kind;
           if (draft.context !== undefined) hit.context = draft.context;
@@ -423,5 +426,20 @@ export async function updateRetrievedDrafts(
       row.last_touched = now;
     }
     await write(path, bounded(rows, now, store.metadata), store.metadata);
+  }, { crossProcess: true });
+}
+
+/** Promotion and undo serialize with capture/purge. Keep the draft lock across
+ * the audited vault mutation; a purge cannot race a late note publication. */
+export async function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, now = Date.now()): Promise<T> {
+  const path = draftsPath();
+  return withPathLock(path, async () => {
+    const store = await load(path, now);
+    assertWritable(store);
+    const rows = bounded(store.rows, now, store.metadata);
+    const before = JSON.stringify(rows);
+    const result = await mutate(rows);
+    if (JSON.stringify(rows) !== before) await write(path, bounded(rows, now, store.metadata), store.metadata);
+    return result;
   }, { crossProcess: true });
 }

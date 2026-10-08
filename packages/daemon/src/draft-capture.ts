@@ -19,6 +19,7 @@ export async function captureTypedDrafts(
   now: number,
   candidates: HarvestCandidate[],
   storedIn?: (quote: string) => string | null,
+  vaultId?: string,
 ): Promise<{ count: number; appended: number; evicted: number; ids: string[]; omitted: number; stored: number }> {
   const drafts: Draft[] = [];
   let stored = 0;
@@ -38,6 +39,7 @@ export async function captureTypedDrafts(
     const fp = draftFingerprint(text);
     drafts.push({
       id: draftId(entry.session_id, i, fp), fp,
+      ...(vaultId ? { vault_id: vaultId } : {}),
       kind: afterFailureForTurn(turns, i, typed) ? "after-failure" : shape?.kind ?? "typed",
       quote: text, ...(shape?.context ? { context: shape.context } : {}),
       situation: situationForTurn(turns, i, typed),

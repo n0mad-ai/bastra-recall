@@ -208,3 +208,33 @@ test("embed-cache: an incompatible cache (version / provider / dim) is dropped W
     await rmSettled(dir);
   }
 });
+
+test("currentSnapshot withholds a changed note's old vector until the new content is embedded", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "bastra-current-vectors-"));
+  const filePath = path.join(dir, "mem.md");
+  await writeFile(filePath, memoryMd("mem", "Original Title"));
+  const vault = new Vault(dir); await vault.init();
+  let hold = false;
+  let release: (() => void) | undefined;
+  const provider: EmbeddingProvider = {
+    id: "fixture-current", dim: 2,
+    async embed(texts) {
+      if (hold) await new Promise<void>(resolve => { release = resolve; });
+      return texts.map(() => new Float32Array([1, 0]));
+    },
+  };
+  const idx = new EmbeddingIndex(vault, provider, path.join(dir, ".bastra", "embeddings.json"));
+  try {
+    await idx.start(); await waitFor(() => idx.size() === 1);
+    assert.equal(idx.currentSnapshot().has("mem"), true);
+    hold = true;
+    await writeFile(filePath, memoryMd("mem", "Changed Title")); await vault.reindexFile(filePath);
+    await waitFor(() => release !== undefined);
+    assert.equal(idx.snapshot().has("mem"), true);
+    assert.equal(idx.currentSnapshot().has("mem"), false);
+    hold = false; release!(); release = undefined;
+    await waitFor(() => idx.currentSnapshot().has("mem"));
+  } finally {
+    hold = false; release?.(); await idx.stop(); await vault.stop(); await rmSettled(dir);
+  }
+});

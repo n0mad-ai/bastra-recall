@@ -57,7 +57,7 @@ function quoteHash(quote: string): string {
 function validVector(vector: Float32Array, dim: number): boolean {
   return vector.length === dim && [...vector].every(Number.isFinite) && vector.some(value => value !== 0);
 }
-function localProvider(opts: DraftShadowOptions): EmbeddingProvider | null {
+export function localDraftProvider(opts: DraftShadowOptions): EmbeddingProvider | null {
   if (!opts.provider || !opts.ollama || opts.provider.id !== `ollama-${opts.ollama.model}`) return null;
   try {
     const url = new URL(opts.ollama.baseURL);
@@ -171,7 +171,7 @@ async function writeEvents(events: DraftShadowEvent[]): Promise<void> {
 /** Harvest-tick only. Cache is disposable, local, model-bound and separate from drafts. */
 export async function runDraftShadow(opts: DraftShadowOptions): Promise<DraftShadowResult> {
   const result: DraftShadowResult = { enabled: false, embedded: 0, pairs: 0, vaultMatches: 0, errors: 0 };
-  const provider = localProvider(opts);
+  const provider = localDraftProvider(opts);
   const path = draftVectorsPath();
   if (!provider) {
     try { await stat(path); } catch (error) {
@@ -254,4 +254,18 @@ export async function runDraftShadow(opts: DraftShadowOptions): Promise<DraftSha
       return result;
     }, { crossProcess: true });
   } catch { result.errors++; return result; } // no provider error bodies, quotes or commands in telemetry
+}
+
+/** Reuse only valid, model-bound vectors produced by the local shadow pass. */
+export async function readDraftVectors(opts: DraftShadowOptions, drafts: Draft[]): Promise<ReadonlyMap<string, Float32Array> | null> {
+  const provider = localDraftProvider(opts);
+  if (!provider) return null;
+  const cache = await loadCache(draftVectorsPath());
+  if (!cache || cache.provider !== provider.id || cache.dim !== provider.dim) return null;
+  const vectors = new Map<string, Float32Array>();
+  for (const draft of drafts) {
+    const entry = cache.entries.get(draft.id);
+    if (entry && entry.fp === draft.fp && entry.quoteHash === quoteHash(draft.quote)) vectors.set(draft.id, entry.vector);
+  }
+  return vectors;
 }

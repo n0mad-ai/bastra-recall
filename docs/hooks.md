@@ -2288,3 +2288,90 @@ nur einem Entwurf und bei gemeinsamen Wörtern. Diese Phase befördert nichts.
 `bastra drafts list` verlängert keinen Verfall: unangezeigte Entwürfe mit nur einem
 Beleg verfallen nach 7 Tagen (ungemessen), andere offene nach 30 Tagen; geschlossene
 Zeilen bleiben 180 Tage als Grabsteine.
+
+### Repeated draft promotion / Beförderung wiederholter Entwürfe
+
+The local harvest tick now checks for repetition after the embedding shadow pass.
+Evidence from two distinct sessions, either an exact fingerprint or local cosine
+similarity at least 0.70, can produce a derived note. The quote must contain at
+least four tokens occurring in no more than two open drafts; this structural guard
+has no language word lists. Before any write, the complete outgoing quote,
+situation and cues are redacted again and scanned for injection markers.
+
+**Assumptions, not confirmed by the owner:** promotion is a dry-run by default.
+Only `BASTRA_DRAFT_PROMOTE=1` in the daemon environment permits a vault write.
+Without that switch, `draft_would_promote` records IDs, counts and a reason; the
+vault is unchanged. The old harvest relay remains enabled in dry-run and stops
+adding harvest suggestions only when that switch is set. Even with the switch,
+a missing/non-local provider, missing draft vectors, or incomplete/different-model
+vault vectors keep promotion in dry-run. Current-content vault vectors are required;
+an older vector waiting for a changed note to be embedded does not count.
+
+A matching existing note blocks promotion: weighted word containment at least
+0.7, or local cosine similarity at least 0.60. Private notes participate; their IDs
+never enter promotion telemetry. The corresponding drafts become closed tombstones
+pointing to the existing note. They cannot undo that existing note. The cosine and
+rare-token thresholds are named, **unmeasured** constants.
+
+A promoted note keeps verbatim quotes, situation and session/date/client evidence.
+Its ID is deterministic, `draft-<evidence_key>` (SHA-256 truncated to 12 hex digits),
+with `source: draft:<evidence_key>`, tag `derived`, confidence 0.6,
+`write_origin: capture-review`, and team visibility. There is no text model or
+inferred generalization. A note committed before an interrupted draft-state write
+is recognized on retry. A newly created note without its fresh vector prevents
+further unchecked writes in that tick; later ticks retry after indexing.
+
+Newly captured drafts carry a hashed identity of the canonical origin vault path
+in the local store, outside the vault. Legacy drafts without a verified identity,
+and exact captures with mixed vault origins, cannot be sharply promoted. A vault
+change or move therefore leaves those drafts in dry-run; it does not guess their
+origin. This is the conservative safeguard for the previously unbound store.
+
+`bastra drafts undo <draft-id-or-note-id> [--vault <path>]` removes a generated note
+through the existing identity-checked delete path and records the deletion in the
+audit trail. Its contributing fingerprints remain rejected for 180 days. Undo
+refuses another vault or a note whose source no longer matches. Housekeeping also
+rejects promoted drafts when the corresponding note was deleted externally.
+
+Der lokale Harvest prüft jetzt nach dem Schattenlauf auf Wiederholung. Belege aus
+zwei verschiedenen Sitzungen können bei gleichem Fingerprint oder lokaler
+Cosinus-Ähnlichkeit ab 0,70 eine abgeleitete Notiz ergeben. Das Zitat muss mindestens
+vier Tokens enthalten, die in höchstens zwei offenen Entwürfen vorkommen. Der
+Schutz kommt ohne Sprachwortlisten aus. Vor jedem Schreiben werden Zitat,
+Situation und Auslöser erneut geschwärzt und auf Injektionsmarker geprüft.
+
+**Annahmen, nicht vom Eigentümer bestätigt:** Standard ist der Probelauf. Erst
+`BASTRA_DRAFT_PROMOTE=1` in der Daemon-Umgebung erlaubt einen Schreibvorgang. Ohne
+Schalter protokolliert `draft_would_promote` nur IDs, Zahlen und den Grund; der Vault
+bleibt unverändert. Die bisherige Harvest-Weitergabe bleibt im Probelauf an und
+fügt nur bei gesetztem Schalter keine neuen Harvest-Vorschläge hinzu. Auch mit
+Schalter bleibt die Beförderung im Probelauf, wenn der Anbieter fehlt oder nicht
+lokal ist, Entwurfsvektoren fehlen oder die Vault-Vektoren unvollständig bzw. von
+einem anderen Modell sind. Veraltete Vektoren eines inzwischen geänderten
+Notiztexts werden nicht zum Abgleich zugelassen.
+
+Eine bestehende Notiz verhindert die Beförderung ab 0,7 gewichteter
+Wortüberdeckung oder 0,60 lokaler Cosinus-Ähnlichkeit. Private Notizen zählen mit;
+ihre IDs erscheinen nicht in der Promotions-Telemetrie. Die Entwürfe werden als
+Grabsteine gegen die bestehende Notiz geschlossen. Diese Notiz lässt sich dadurch
+nicht rückgängig löschen. Cosinus- und Seltenheitsschwellen sind benannte,
+**ungemessene** Konstanten.
+
+Die abgeleitete Notiz enthält unveränderte Zitate, Situation und Belege mit
+Sitzung, Datum und Client. Ihre ID ist deterministisch; sie trägt `source`, Tag
+`derived`, Konfidenz 0,6, `write_origin: capture-review` und Team-Sichtbarkeit.
+Kein Textmodell formuliert sie um. Ein bereits geschriebener Eintrag wird nach
+einem unterbrochenen Zustandsschreibvorgang wiedererkannt. Fehlt einer gerade
+angelegten Notiz noch ihr frischer Vektor, warten weitere scharfe Beförderungen
+auf einen späteren Tick.
+
+Neue Entwürfe halten im lokalen Speicher den Hash des kanonischen Ursprungs-Vaultpfads.
+Alte Entwürfe ohne belegbare Bindung sowie zusammengeführte Belege aus verschiedenen
+Vaults werden nicht scharf befördert. Auch ein Vault-Wechsel oder Verschieben des
+Vaults bleibt konservativ im Probelauf; der Ursprung wird nicht geraten.
+
+`bastra drafts undo <entwurfs-id-oder-notiz-id> [--vault <pfad>]` entfernt eine
+beförderte Notiz über den bestehenden Löschpfad mit Identitätsprüfung und Audit.
+Die beteiligten Fingerprints bleiben 180 Tage als abgelehnte Grabsteine. Ein
+anderer Vault oder geänderte Herkunft der Notiz blockiert Undo. Housekeeping lehnt
+beförderte Entwürfe auch dann ab, wenn ihre Notiz außerhalb von Undo gelöscht wurde.

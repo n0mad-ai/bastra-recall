@@ -276,6 +276,7 @@ export async function runSessionHarvest(opts: {
   /** The id of a memory that already holds this quote, or null (#675).
    *  Absent = no vault check. */
   storedIn?: () => (quote: string) => string | null;
+  vaultId?: string;
   now?: number;
 }): Promise<HarvestPassResult> {
   const result: HarvestPassResult = { harvested: 0, candidates: 0, stored: 0 };
@@ -333,13 +334,14 @@ export async function runSessionHarvest(opts: {
       // Draft capture is independent of shape selection and the relay cap.
       let drafts = { count: 0, appended: 0, evicted: 0, ids: [] as string[], omitted: 0, stored: 0, error: false };
       try {
-        drafts = { ...await captureTypedDrafts(turns, e, now, shapes, opts.storedIn ? (storedIn ??= opts.storedIn()) : undefined), error: false };
+        drafts = { ...await captureTypedDrafts(turns, e, now, shapes, opts.storedIn ? (storedIn ??= opts.storedIn()) : undefined, opts.vaultId), error: false };
       } catch {
         // A malformed/newer draft store must not stop the existing relay.
         drafts.error = true;
       }
       candidates = candidates.slice(0, HARVEST_MAX_CANDIDATES);
-      if (candidates.length > 0) await writePendingSuggestion(formatHarvestBlock(e, candidates));
+      // Assumption, not confirmed by the owner: relay yields only in sharp mode.
+      if (process.env.BASTRA_DRAFT_PROMOTE !== "1" && candidates.length > 0) await writePendingSuggestion(formatHarvestBlock(e, candidates));
       progress.set(e.session_id, { upto: turns.length, at: now });
       result.harvested += 1;
       result.candidates += candidates.length;

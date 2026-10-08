@@ -1,15 +1,27 @@
-/** Local draft administration (#1084). No daemon or vault connection needed. */
+/** Local draft administration (#1084). Local store operations; undo resolves a vault without contacting the daemon. */
+import { Vault } from "@bastra-recall/core";
+import { undoDraftPromotion } from "../draft-promote.js";
+import { resolveVault } from "./helpers.js";
 import { listDrafts, purgeDrafts } from "../draft-store.js";
 import type { ParsedArgs } from "./types.js";
 
 export async function cmdDrafts(args: ParsedArgs): Promise<number> {
   const sub = args.positional[1] ?? "list";
-  if (!["list", "purge"].includes(sub) || args.positional.length > 2) {
-    process.stderr.write("usage: bastra drafts [list|purge] [--json]\n");
+  if (!["list", "purge", "undo"].includes(sub) || args.positional.length > (sub === "undo" ? 3 : 2) || sub === "undo" && !args.positional[2]) {
+    process.stderr.write("usage: bastra drafts [list|purge|undo <id>] [--json]\n");
     return 2;
   }
   try {
-    if (sub === "purge") {
+    if (sub === "undo") {
+      const resolved = await resolveVault(args);
+      if ("error" in resolved) { process.stderr.write("error: configure a vault or pass --vault\n"); return 1; }
+      const vault = new Vault(resolved.path);
+      try {
+        await vault.init();
+        const memoryId = await undoDraftPromotion(vault, args.positional[2]);
+        process.stdout.write(args.json ? JSON.stringify({ undone: memoryId }) + "\n" : `Draft promotion undone: ${memoryId}\n`);
+      } finally { await vault.stop(); }
+    } else if (sub === "purge") {
       await purgeDrafts();
       process.stdout.write(args.json ? '{"purged":true}\n' : "Local drafts purged.\n");
     } else {
