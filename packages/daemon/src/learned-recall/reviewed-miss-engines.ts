@@ -16,8 +16,8 @@
 import { realpathSync } from "node:fs";
 import { open, readdir, readFile } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
-import { occupantOfRaw } from "@bastra-recall/core";
-import { hash, type ReviewedMissCandidate, type ReviewedMissChain, toCandidate } from "./reviewed-miss-harvest.js";
+import { occupantOfRaw, redactSecrets } from "@bastra-recall/core";
+import { hash, parseRecord, type ReviewedMissCandidate, type ReviewedMissChain, toCandidate } from "./reviewed-miss-harvest.js";
 import {
   classifyReviewedMissObservation,
   type CandidatePoolScoreSpace,
@@ -42,7 +42,7 @@ export interface TelemetryPool {
    * Not `session_id`: an MCP `recall` stamps that with the daemon run id.
    */
   session: string | null;
-  /** The daemon's own query text for this call (hook lane: derived from the tool input). */
+  /** The daemon's own query text for this call (hook lane: derived from the tool input), secrets redacted. */
   query: string | null;
   orderedIds: string[];
   servedIds: string[];
@@ -100,6 +100,11 @@ function idsOf(value: unknown): string[] {
   return out;
 }
 
+/** The daemon's event files in a telemetry dir, sorted; throws when `dir` cannot be listed. */
+export async function telemetryFiles(dir: string): Promise<string[]> {
+  return (await readdir(dir)).filter((f) => f.startsWith("events-") && f.endsWith(".jsonl")).sort();
+}
+
 /** Read every recall-class event with a `recall_id` and a candidate pool, and every `load_memory` event. */
 export async function loadTelemetry(dir: string, options: { sinceMs?: number } = {}): Promise<Telemetry> {
   const pools = new Map<string, TelemetryPool>();
@@ -107,20 +112,15 @@ export async function loadTelemetry(dir: string, options: { sinceMs?: number } =
   const since = options.sinceMs ?? 0;
   let files: string[];
   try {
-    files = (await readdir(dir)).filter((f) => f.startsWith("events-") && f.endsWith(".jsonl")).sort();
+    files = await telemetryFiles(dir);
   } catch {
     return { pools, loads };
   }
   for (const file of files) {
     const raw = await readFile(join(dir, file), "utf8");
     for (const line of raw.split("\n")) {
-      if (!line.trim()) continue;
-      let event: Record<string, unknown>;
-      try {
-        event = JSON.parse(line) as Record<string, unknown>;
-      } catch {
-        continue;
-      }
+      const event = parseRecord(line);
+      if (event === null) continue;
       if (typeof event.ts !== "string" || (since > 0 && Date.parse(event.ts) < since)) continue;
       if (event.kind === "load_memory") {
         if (typeof event.id !== "string" || !event.id) continue;
@@ -148,7 +148,7 @@ export async function loadTelemetry(dir: string, options: { sinceMs?: number } =
         ts: event.ts,
         lane: event.kind,
         session: clientSessionOf(event),
-        query: typeof event.query === "string" && event.query ? event.query : null,
+        query: typeof event.query === "string" && event.query ? redactSecrets(event.query).text : null,
         orderedIds,
         servedIds: idsOf(event.hits),
         scoreSpace,
@@ -424,8 +424,45 @@ export interface ReviewedMissObservedCandidate extends ReviewedMissCandidate {
   observation: ReviewedMissObservation;
 }
 
+function sameScoreSpace(a: CandidatePoolScoreSpace, b: CandidatePoolScoreSpace): boolean {
+  return a.kind === b.kind && a.formulaVersion === b.formulaVersion && a.arms.join("\0") === b.arms.join("\0");
+}
+
+/**
+ * The pool a chain is judged against: the one pool of its recall, or — for a
+ * batch, or several recalls made for one intent — the union of all of them,
+ * in recorded order, under the first recall's identity.
+ *
+ * Served is what the session was shown: the ids the envelopes listed, plus
+ * what telemetry recorded as served for each joined recall. A batch cuts its
+ * merged list to `k`, so a phrasing's own hit may not have reached the
+ * envelope; it still counts as served here, because the error that way
+ * withholds a proposal and the other way invents one.
+ *
+ * Null when any of the recalls has no recorded pool, or when their score
+ * spaces differ: "not in the pool" is only a proof over the whole pool, and
+ * one index identity cannot be derived from two score spaces.
+ */
+export function joinedPool(chain: ReviewedMissChain, pools: Map<string, TelemetryPool> | null): TelemetryPool | null {
+  if (!pools || chain.recallIds.length === 0) return null;
+  const joined: TelemetryPool[] = [];
+  for (const recallId of chain.recallIds) {
+    const pool = pools.get(recallId);
+    if (!pool) return null;
+    joined.push(pool);
+  }
+  const first = joined[0];
+  if (joined.some((pool) => !sameScoreSpace(pool.scoreSpace, first.scoreSpace))) return null;
+  const union = (lists: string[][]): string[] => [...new Set(lists.flat())];
+  return {
+    ...first,
+    orderedIds: union(joined.map((pool) => pool.orderedIds)),
+    servedIds: union([chain.servedIds, ...joined.map((pool) => pool.servedIds)]),
+  };
+}
+
 export function assembleObservation(chain: ReviewedMissChain, engines: ObservationEngines): ReviewedMissObservation {
-  const telemetry = chain.recallId && engines.pools ? engines.pools.get(chain.recallId) ?? null : null;
+  const telemetry = joinedPool(chain, engines.pools);
   const pool = telemetry ? frozenPoolOf(telemetry) : null;
   const frozen = telemetry && engines.snapshot ? frozenIdsOf(telemetry, engines.snapshot) : null;
   const candidate = toCandidate(chain);
@@ -449,15 +486,9 @@ export function observeChain(chain: ReviewedMissChain, engines: ObservationEngin
 export function parseReviewerLabels(text: string): Map<string, ReviewerLabel> {
   const labels = new Map<string, ReviewerLabel>();
   for (const line of text.split("\n")) {
-    if (!line.trim()) continue;
-    let entry: unknown;
-    try {
-      entry = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (typeof entry !== "object" || entry === null) continue;
-    const { ref, durable } = entry as { ref?: unknown; durable?: unknown };
+    const entry = parseRecord(line);
+    if (entry === null) continue;
+    const { ref, durable } = entry;
     if (typeof ref !== "string" || !ref) continue;
     labels.set(ref, typeof durable === "boolean" ? { durable } : {});
   }
