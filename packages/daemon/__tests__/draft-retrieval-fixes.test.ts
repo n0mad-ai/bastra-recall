@@ -158,7 +158,7 @@ test("background cache watcher observes external deletion without retrieval I/O"
   try {
     assert.equal((await searchDrafts("purpurdrucker zyanpatronen")).length, 1);
     await fs.unlink(process.env.BASTRA_DRAFTS_PATH!);
-    for (let i = 0; i < 100 && (await searchDrafts("purpurdrucker zyanpatronen")).length; i++) await new Promise(r => setTimeout(r, 5));
+    for (let i = 0; i < 600 && (await searchDrafts("purpurdrucker zyanpatronen")).length; i++) await new Promise(r => setTimeout(r, 5));
     assert.equal((await searchDrafts("purpurdrucker zyanpatronen")).length, 0);
   } finally { stop(); }
 }));

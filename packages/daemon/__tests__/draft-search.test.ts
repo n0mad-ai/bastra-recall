@@ -32,7 +32,8 @@ function draft(i: number, quote = "The amber cluster requires a tunnel before de
 async function isolated(fn: (dir: string) => Promise<void>) {
   const dir = await mkdtemp(join(tmpdir(), "bastra-draft-search-"));
   const changes = { BASTRA_DRAFTS_PATH: join(dir, "drafts.json"), BASTRA_HOOK_STATE_DIR: join(dir, "state"),
-    BASTRA_TELEMETRY: "off", BASTRA_DRAFT_HINTS: "1", BASTRA_PROMPT_IMPACT: "0" };
+    BASTRA_TELEMETRY: "off", BASTRA_DRAFT_HINTS: "1", BASTRA_PROMPT_IMPACT: "0",
+    BASTRA_PENDING_SUGGESTIONS_PATH: join(dir, "pending.json"), BASTRA_HARVEST_QUEUE_PATH: join(dir, "harvest.json") };
   const prev = new Map(Object.keys(changes).map(key => [key, process.env[key]]));
   Object.assign(process.env, changes);
   try { await fn(dir); }

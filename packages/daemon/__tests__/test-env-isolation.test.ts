@@ -36,6 +36,7 @@ console.log(JSON.stringify({
   ollama: process.env.BASTRA_OLLAMA_URL ?? null,
   hookState: process.env.BASTRA_HOOK_STATE_DIR ?? null,
   logs: process.env.BASTRA_LOG_PATH,
+  pending: process.env.BASTRA_PENDING_SUGGESTIONS_PATH,
   runs: process.env.BASTRA_EVAL_RUNS_DIR,
   root: process.env.BASTRA_TEST_RUN_ROOT,
   made,
@@ -117,4 +118,11 @@ test("BASTRA_TEST_KEEP_ENV=1 keeps a deliberately chosen vault", () => {
 test("inside a run, what a test hands its child is not stripped", () => {
   const seen = probe({ ...process.env, BASTRA_TEST_RUN_ROOT: tmpdir(), BASTRA_VAULT_PATH: "/tmp/fixture-vault", NODE_TEST_CONTEXT: "" });
   assert.equal(seen.vault, "/tmp/fixture-vault");
+});
+
+
+test("the consuming relay queue is isolated even when a developer configured a real path", () => {
+  const seen = probe(outsideRun({ BASTRA_PENDING_SUGGESTIONS_PATH: "/home/someone/real-pending.json" }));
+  assert.ok(seen.pending!.startsWith(seen.root!));
+  assert.notEqual(seen.pending, "/home/someone/real-pending.json");
 });
