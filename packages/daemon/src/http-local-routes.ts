@@ -276,7 +276,7 @@ export function dispatchLocalRoutes(
           );
         }
         const draftIds = Array.isArray(body.draft_ids) ? body.draft_ids.filter((id): id is string => typeof id === "string") : [];
-        const draftCount = await recordDraftHints(draftIds, hintedSession, typeof body.draft_input === "string" ? body.draft_input.slice(0, 4096) : null);
+        const draftCount = await recordDraftHints(draftIds, hintedSession, typeof body.draft_input === "string" ? body.draft_input : null);
         sendJson(res, 200, { ok: true, counted: ids.length, ...(draftCount > 0 ? { drafts_counted: draftCount } : {}) });
       })
       .catch(() => sendJson(res, 400, { error: "invalid body" }));

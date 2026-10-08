@@ -37,7 +37,7 @@ export function reportHinted(
       resolve();
       return;
     }
-    const payload = Buffer.from(JSON.stringify({ ids, session_id: sessionId, ...(drafts?.ids.length ? { draft_ids: drafts.ids.slice(0, 2), draft_input: drafts.input.slice(0, 4096) } : {}) }), "utf8");
+    const payload = Buffer.from(JSON.stringify({ ids, session_id: sessionId, ...(drafts?.ids.length ? { draft_ids: drafts.ids.slice(0, 2), draft_input: drafts.input } : {}) }), "utf8");
     const req = request(
       {
         method: "POST",

@@ -5,21 +5,26 @@ import { transactDrafts, type Draft } from "./draft-store.js";
 import { tokens } from "./save-similarity.js";
 import { cleanDraftText } from "./draft-text.js";
 
+/** Unmeasured heuristics; use the existing acted-on time window. */
+export const DRAFT_USE_MIN_WORD_TOKENS = 3;
+export const DRAFT_USE_LITERAL_MIN_CHARS = 4;
+
 function literals(text: string): string[] {
-  return text.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}._@\/:-]*/gu) ?? [];
+  return text.toLowerCase().match(/[\p{L}\p{N}/@:_][\p{L}\p{N}._@\/:-]*/gu) ?? [];
 }
 function literalShape(token: string): boolean {
-  return token.length >= 4 && /[\p{N}./_@:-]/u.test(token);
+  return [...token].length >= DRAFT_USE_LITERAL_MIN_CHARS && /[\p{N}./_@:-]/u.test(token);
 }
 
 /** Both words and command literals come from the quote and application commands.
  * Trigger tokens are removed on both tokenizations; matches are whole tokens. */
+function sourceTokens(draft: Draft): string[] {
+  const source=[draft.quote,...draft.situation.after].join("\n").replace(/\S*\[REDACTED(?:[^\]]*)\]\S*/gi," ");
+  return [...new Set([...literals(source).filter(literalShape),...tokens(source).filter(token=>!literalShape(token)&&/\p{L}/u.test(token))])].map(token=>cleanDraftText(token,160));
+}
 export function draftNovelTokens(draft: Draft, triggeringInput: string): string[] {
-  const source = [draft.quote, ...draft.situation.after].join("\n");
-  const input = new Set([...tokens(triggeringInput), ...literals(triggeringInput)]);
-  return [...new Set([
-    ...literals(source).filter(literalShape), ...tokens(source).filter(token => !literalShape(token)),
-  ])].filter(token => !input.has(token)).slice(0, 32).map(token => cleanDraftText(token, 160));
+  const input=new Set([...tokens(triggeringInput),...literals(triggeringInput)]);
+  return sourceTokens(draft).filter(token=>!input.has(token)).slice(0,32);
 }
 
 /** Shared by actual in-process lane delivery and /hook/hinted. A replay cannot
@@ -65,9 +70,11 @@ export async function recordDraftUse(input: DraftUseInput): Promise<number> {
         if (row.state !== "open" || row.evidence.some(e => e.session_id === sessionId)) continue;
         const surface = row.surfaced.find(s => s.session_id === sessionId);
         if (!surface || surface.used || now <= surface.ts || now - surface.ts > ACTED_ON_WINDOW_MS) continue;
-        const literalMatches = surface.novel.filter(token => literalShape(token) && literalInput.has(token));
-        const wordMatches = surface.novel.filter(token => !literalShape(token) && wordInput.has(token));
-        if (!literalMatches.length && wordMatches.length < 3) continue;
+        const eligible=new Set(sourceTokens(row));
+        const novel=surface.novel.filter(token=>eligible.has(token));
+        const literalMatches = [...new Set(novel.filter(token => literalShape(token) && literalInput.has(token)))];
+        const wordMatches = [...new Set(novel.filter(token => !literalShape(token) && /\p{L}/u.test(token) && wordInput.has(token)))];
+        if (!literalMatches.length && wordMatches.length < DRAFT_USE_MIN_WORD_TOKENS) continue;
         surface.used = { ts: now, tool: cleanDraftText(toolName, 80), exit_code: 0,
           matched: (literalMatches.length ? literalMatches : wordMatches).slice(0, 3) };
         row.last_touched = now; count++;
@@ -81,5 +88,7 @@ export async function recordDraftUse(input: DraftUseInput): Promise<number> {
 export function draftUseProof(draft: Draft): Draft["surfaced"][number] | undefined {
   return draft.surfaced.find(surface => surface.used && surface.used.exit_code === 0
     && surface.used.ts > surface.ts && surface.used.ts - surface.ts <= ACTED_ON_WINDOW_MS
-    && !draft.evidence.some(e => e.session_id === surface.session_id));
+    && !draft.evidence.some(e => e.session_id === surface.session_id)
+    && surface.used.matched.length > 0 && surface.used.matched.every(token => surface.novel.includes(token) && sourceTokens(draft).includes(token))
+    && (surface.used.matched.some(literalShape) || new Set(surface.used.matched.filter(token => /\p{L}/u.test(token))).size >= DRAFT_USE_MIN_WORD_TOKENS));
 }
