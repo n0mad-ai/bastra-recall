@@ -188,7 +188,7 @@ type SecretSpan = [number, number];
 /** Technical credential names, not words used to classify a conversation. */
 function credentialKey(key: string): boolean {
   const normalized = key.toLowerCase().replace(/[\p{Cf}\s_-]/gu, "");
-  return /(?:password|passwd|passphrase|cookie|token|secret|apikey|accesskey|accesskeyid|secretkey|privatekey|accountkey|authorization|credential)$/.test(normalized) || normalized === "key" || /(?:^|[_.\s-])(?:pwd|pass)$/i.test(key) || /(?:Pwd|Pass)$/.test(key);
+  return /(?:password|passwd|passphrase|psk|presharedkey|cookie|token|secret|apikey|accesskey|accesskeyid|secretkey|privatekey|accountkey|authorization|credential)$/.test(normalized) || normalized === "key" || /(?:^|[_.\s-])(?:pwd|pass)$/i.test(key) || /(?:Pwd|Pass)$/.test(key);
 }
 
 /** Locations and identifiers are the useful content of a draft, not access values. */
