@@ -153,9 +153,10 @@ async function main(): Promise<number> {
 }
 
 main().then(
-  (code) => process.exit(code),
+  // Let stdout/stderr finish flushing, including large output to slow pipes.
+  (code) => { process.exitCode = code; },
   (err) => {
     process.stderr.write(`fatal: ${(err as Error).stack ?? err}\n`);
-    process.exit(1);
+    process.exitCode = 1;
   },
 );
