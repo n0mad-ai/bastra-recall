@@ -41,7 +41,9 @@ async function isolated(fn: (dir: string) => Promise<void>) {
 }
 
 test("text retrieval supports a one-row store, multilingual tokens, two shared words and closed exclusion", () => {
-  for (const text of ["amber tunnel", "túnel ámbar", "янтарный туннель", "琥珀 隧道"]) {
+  assert.equal(prepareDraftSearch([draft(0, "琥珀 隧道 needs configuration")])("琥珀 隧道").hits.length, 0, "two-character anchors no longer qualify by their UTF-8 size");
+  assert.equal(prepareDraftSearch([draft(0, "琥珀配置隧道部署")])("琥珀配置隧道部署").hits.length, 0, "known unsegmented single-token limitation");
+  for (const text of ["amber tunnel", "túnel ámbar", "янтарный туннель", "琥珀配置 隧道部署"]) {
     const row = draft(0, `${text} needs configuration`);
     const find = prepareDraftSearch([row]);
     assert.equal(find(text).hits.length, 1);

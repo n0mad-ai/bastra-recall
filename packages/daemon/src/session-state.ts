@@ -791,6 +791,12 @@ export function recordSourceSuppressed(state: SessionState, source: string): voi
 // Only this daemon's claims are synchronous. Loaded persistent state and the
 // draft store's last five surfaced sessions seed them without hook-path I/O.
 const draftClaims = new Map<string, { at: number; ids: Set<string> }>();
+/** Non-mutating preflight, before the Bash lane pays for a note lookup. */
+export function availableDraftHints(sessionId: string, ids: string[], alreadyShown: string[]): string[] {
+  const entry = draftClaims.get(`${sessionStateDir()}:${sessionId}`);
+  const stored = new Set(alreadyShown);
+  return ids.filter(id => !stored.has(id) && !(entry && Date.now() - entry.at <= STATE_MAX_AGE_MS && entry.ids.has(id)));
+}
 export function claimDraftHints(sessionId: string, ids: string[], alreadyShown: string[], limit: number): string[] {
   const key = `${sessionStateDir()}:${sessionId}`;
   const now = Date.now();

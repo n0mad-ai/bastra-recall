@@ -1,6 +1,6 @@
 /** Broad local capture (#1084, B1). No vault writes and no language word lists. */
 import { afterFailureForTurn, situationForTurn } from "./draft-situation.js";
-import { isSystemInjectedTurn } from "./system-turn.js";
+import { isSystemInjectedTurn, textBeforeDraftBand } from "./system-turn.js";
 import { captureDrafts, draftFingerprint, draftId, type Draft, type DraftAfterUpdate } from "./draft-store.js";
 import type { HarvestCandidate, HarvestTurn } from "./session-harvest.js";
 
@@ -25,13 +25,13 @@ export async function captureTypedDrafts(
   const shapes = new Map(candidates.map(c => [c.turn, c]));
   // Short typed replies still delimit the command window, even if not drafted.
   const typed = (turn: HarvestTurn): boolean => {
-    const text = turn.content.trim();
+    const text = textBeforeDraftBand(turn.content).trim();
     return turn.role === "user" && text.length > 0 && text.length < PASTE_MIN_CHARS
       && !text.startsWith(INTERRUPT_PREFIX) && !isSystemInjectedTurn(text);
   };
   for (let i = entry.harvested_upto ?? 0; i < turns.length; i++) {
     const turn = turns[i];
-    const text = turn.content.trim();
+    const text = textBeforeDraftBand(turn.content).trim();
     if (!typed(turn) || (text.match(/\p{L}/gu) ?? []).length < DRAFT_MIN_LETTERS) continue;
     if (storedIn && storedIn(text) !== null) { stored++; continue; }
     const shape = shapes.get(i);
