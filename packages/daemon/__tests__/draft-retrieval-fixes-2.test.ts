@@ -26,7 +26,7 @@ async function isolated(fn: () => Promise<void>) {
 
 test("C2 vault vocabulary rejects common linguistic anchors; empty vault limit remains explicit", () => {
   const rows = [row("germination tests are repeated every three years")];
-  const vocabulary = { count: 40, df: new Map([["tests",30],["three",20]]) };
+  const vocabulary = { count: 150, df: new Map([["tests",30],["three",20]]) };
   assert.equal(prepareDraftSearch(rows, Date.now(), vocabulary)("Please write three unit tests for the new discount calculation").hits.length,0);
   assert.equal(prepareDraftSearch(rows)("Please write three unit tests for the new discount calculation").hits.length,1,"known empty-vault vocabulary limitation");
 });
@@ -84,7 +84,7 @@ test("C2 an already shown Bash draft avoids repeated note lookup",()=>isolated(a
 }));
 
 
-test("C2 both frozen corpora report 40/100/200 rates, with and without vault vocabulary",t=>{
+test("C2 both frozen corpora report fallback rates with empty and undersized vocabularies",t=>{
   const df=new Map<string,number>();
   const common="please write three unit tests new calculation briefly explain remember later change continue richtig bitte weiter schon lassen vorher nachher immer nur nicht werden with before after always only using the and this that what how";
   for(const word of new Set(tokens(common))) df.set(word,30);
@@ -100,7 +100,7 @@ test("C2 both frozen corpora report 40/100/200 rates, with and without vault voc
         if(query.kind==="topical") {stats.topical.total++;if(hits[0]&&corpus.topicOf.get(hits[0].id)===query.topic)stats.topical.right++;}
         else {stats[query.kind].total++;if(hits.length)stats[query.kind].hits++;}
       }
-      t.diagnostic(JSON.stringify({corpus:name,drafts:count,vault:!!vocabulary,...stats}));
+      t.diagnostic(JSON.stringify({corpus:name,drafts:count,vault:vocabulary?.count??0,...stats}));
       assert.ok(stats.unrelated.hits/stats.unrelated.total<=0.02,`${name}/${count}/unrelated`);
       assert.ok(stats.short.hits/stats.short.total<=0.02,`${name}/${count}/short`);
       assert.ok(stats.topical.right>0,`${name}/${count}/topical`);
@@ -111,17 +111,17 @@ test("C2 both frozen corpora report 40/100/200 rates, with and without vault voc
 test("C2 vocabulary snapshot follows add/change/remove without rescan on query",()=>{
   let listener:((e:VaultEvent)=>void)|undefined,scans=0;
   const memory=(id:string,body:string)=>({fm:{id,title:"fixture",summary:"fixture",recall_when:[]},body});
-  const memories=[memory("v1","germination tests every three years"),memory("v2","three tests"),memory("v3","three tests")];
+  const memories=[memory("v1","germination tests every three years"),memory("v2","three tests"),memory("v3","three tests"),memory("v4","three tests"),...Array.from({length:146},(_,i)=>memory(`filler${i}`,"unrelated geometry"))];
   const vault={list:()=>{scans++;return memories;},on:(fn:typeof listener)=>{listener=fn;return ()=>{listener=undefined;};}} as unknown as Vault;
   startDraftVocabulary(vault);
   const find=prepareDraftSearch([row("germination tests every three years")]);
   assert.equal(find("three tests").hits.length,0);
-  listener!({kind:"change",memory:memory("v3","different mechanics") as any});
+  listener!({kind:"change",memory:memory("v4","different mechanics") as any});
   assert.equal(find("three tests").hits.length,1);
-  listener!({kind:"add",memory:memory("v4","three tests") as any});
+  listener!({kind:"add",memory:memory("extra","three tests") as any});
   assert.equal(find("three tests").hits.length,0);
-  listener!({kind:"remove",id:"v4",filePath:"fixture"});
-  assert.equal(draftVocabularySnapshot().count,3);
+  listener!({kind:"remove",id:"extra",filePath:"fixture"});
+  assert.equal(draftVocabularySnapshot().count,150);
   assert.equal(find("three tests").hits.length,1);assert.equal(scans,1);
   // Leave later isolated tests with the empty-vault fallback.
   startDraftVocabulary({list:()=>[],on:()=>()=>{}} as unknown as Vault);
