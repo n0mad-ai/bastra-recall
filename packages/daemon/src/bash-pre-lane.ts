@@ -16,7 +16,7 @@
  * empty-streak backoff. The tripwire is a safety warning — the warning itself
  * is the point, and it must emit unconditionally.
  */
-import { appendLaneDrafts, draftHintsEnabled, type DraftNote } from "./draft-search.js";
+import { appendLaneDrafts, type DraftNote } from "./draft-search.js";
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -106,7 +106,7 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
   // they rewrite and allow only a call that proves it is Claude Code — an
   // unmarked payload is weighed as "unknown", never as claude-code.
   const match = hintFor(command, clientEvidence, await getArchiveEnabled().catch(() => false));
-  if (!match) return appendLaneDrafts("{}", "PreToolUse", command, payload.session_id, draftHintsEnabled() ? draftNotes?.(command) ?? [] : []);
+  if (!match) return appendLaneDrafts("{}", "PreToolUse", command, payload.session_id, [], 1, false, draftNotes ? () => draftNotes(command) : undefined, startedAt + HOOK_TIMEOUT_MS);
 
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
 
@@ -305,7 +305,7 @@ export async function runBashPreLane(payload: BashHookPayload, selfBaseUrl: stri
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
   await reportHinted(selfBaseUrl, emitted.map((h) => h.id), payload.session_id ?? null);
 
-  return appendLaneDrafts(stdout, "PreToolUse", command, payload.session_id, emitted);
+  return appendLaneDrafts(stdout, "PreToolUse", command, payload.session_id, emitted, 1, false, undefined, startedAt + HOOK_TIMEOUT_MS);
 }
 
 function formatHintLine(h: RecallHit, hideScore = false): string {

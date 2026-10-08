@@ -561,7 +561,7 @@ export async function runWriteLane(
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
   await reportHinted(selfBaseUrl, hintedIds, payload.session_id ?? null);
 
-  return appendLaneDrafts(stdout, "PreToolUse", topics.query, payload.session_id, presentedHits, 1, true);
+  return appendLaneDrafts(stdout, "PreToolUse", topics.query, payload.session_id, presentedHits, 1, true, undefined, startedAt + HOOK_TIMEOUT_MS);
 }
 
 // ─── loopback self-call ─────────────────────────────────────────────────────

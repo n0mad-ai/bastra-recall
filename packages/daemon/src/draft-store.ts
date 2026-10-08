@@ -1,6 +1,8 @@
 /** Local, bounded draft storage (#1084, phase A); never reads or writes a vault. */
 import { createHash, randomBytes } from "node:crypto";
 import { chmod, mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { watch } from "node:fs";
+import { basename } from "node:path";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
@@ -8,7 +10,7 @@ import { redactSecrets } from "@bastra-recall/core/scrub";
 import { cleanDraftText, clipDraftText } from "./draft-text.js";
 import { mergeSituations, situationLiterals } from "./draft-situation.js";
 import { bigramSet, dice } from "./stop-lane-repeat.js";
-import { withPathLock } from "./path-lock.js";
+import { withPathLock, tryWithPathLock } from "./path-lock.js";
 
 export const DRAFT_STORE_VERSION = 1;
 export const DRAFT_MAX_ROWS = 500;
@@ -232,16 +234,16 @@ export async function listDrafts(now = Date.now()): Promise<Draft[]> {
   return bounded(store.rows, now, store.metadata);
 }
 
-/** Internal read-only retrieval view. Unlike CLI listing it does not copy every
- * quote on each hook. Atomic writes and the file stamp invalidate the view;
- * bounds are reapplied so expiry works even without a harvest tick. */
-export async function draftSearchSnapshot(now = Date.now()): Promise<{ key: string; rows: readonly Draft[] }> {
+/** Hook retrieval reads only the last completed in-memory snapshot. The
+ * background loader/capture refreshes it; a cold cache simply omits drafts. */
+export function draftSearchSnapshot(now = Date.now()): { key: string; rows: readonly Draft[] } {
   const path = draftsPath();
-  const info = await fileInfo(path);
-  if (cache?.path !== path || cache.stamp !== info.stamp) await load(path, now);
   const store = cache?.path === path ? cache.store : undefined;
-  if (!store) return { key: `${path}:missing`, rows: [] };
-  const rows = bounded(store.rows, now, store.metadata);
+  if (!store || store.diagnostics.corrupt || store.diagnostics.unsupportedVersion) return { key: `${path}:cold`, rows: [] };
+  const rows = store.rows.filter(row => {
+    const age = row.state !== "open" ? DRAFT_RETAIN_AGE_MS : row.evidence.length === 1 && row.surfaced.length === 0 ? DRAFT_UNCONFIRMED_AGE_MS : DRAFT_OPEN_AGE_MS;
+    return now - row.last_touched < age;
+  }).slice(-DRAFT_MAX_ROWS);
   return { key: `${path}:${cache!.stamp}:${rows.map(row => row.id).join(",")}`, rows };
 }
 
@@ -411,11 +413,12 @@ export async function purgeDrafts(): Promise<void> {
 
 /** Retrieval mutations preserve concurrent harvest evidence and retained tombstones. */
 export async function updateRetrievedDrafts(
-  removeIds: string[], displays: { id: string; session_id: string; novel: string[] }[], now = Date.now(),
+  removeIds: string[], displays: { id: string; session_id: string; novel: string[] }[], now = Date.now(), tryOnly = false,
 ): Promise<void> {
   if (!removeIds.length && !displays.length) return;
   const path = draftsPath();
-  await withPathLock(path, async () => {
+  const lock = tryOnly ? tryWithPathLock : withPathLock;
+  await lock(path, async () => {
     const store = await load(path, now);
     assertWritable(store);
     const removed = new Set(removeIds);
@@ -433,9 +436,12 @@ export async function updateRetrievedDrafts(
 
 /** Promotion and undo serialize with capture/purge. Keep the draft lock across
  * the audited vault mutation; a purge cannot race a late note publication. */
-export async function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, now = Date.now()): Promise<T> {
+export function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, now?: number, tryOnly?: false): Promise<T>;
+export function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, now: number, tryOnly: true): Promise<T | undefined>;
+export async function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, now = Date.now(), tryOnly = false): Promise<T | undefined> {
   const path = draftsPath();
-  return withPathLock(path, async () => {
+  const lock = tryOnly ? tryWithPathLock : withPathLock;
+  return lock(path, async () => {
     const store = await load(path, now);
     assertWritable(store);
     const rows = bounded(store.rows, now, store.metadata);
@@ -444,4 +450,35 @@ export async function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, n
     if (JSON.stringify(rows) !== before) await write(path, bounded(rows, now, store.metadata), store.metadata);
     return result;
   }, { crossProcess: true });
+}
+
+/** Prime and refresh outside every hook/recall path, including external CLI
+ * purge/atomic writes. The watcher is local and never keeps the daemon alive. */
+export function startDraftSearchCache(): () => void {
+  const path = draftsPath();
+  let busy = false, pending = false, stopped = false;
+  const refresh = () => {
+    pending = true;
+    if (busy || stopped || draftsPath() !== path) return;
+    busy = true;
+    void (async () => {
+      do {
+        pending = false;
+        try { await listDrafts(); } catch { if (cache?.path === path) cache = undefined; }
+      } while (pending && !stopped && draftsPath() === path);
+    })().finally(() => { busy = false; });
+  };
+  refresh();
+  try {
+    const watcher = watch(dirname(path), { persistent: false }, (_event, name) => {
+      if (name === null || name.toString() === basename(path)) refresh();
+    });
+    watcher.on("error", () => { if (cache?.path === path) cache = undefined; });
+    return () => { stopped = true; watcher.close(); };
+  } catch {
+    // First use before the parent directory exists. Capture also refreshes
+    // the cache directly; the background fallback notices external changes.
+    const timer = setInterval(refresh, 1000); timer.unref();
+    return () => { stopped = true; clearInterval(timer); };
+  }
 }

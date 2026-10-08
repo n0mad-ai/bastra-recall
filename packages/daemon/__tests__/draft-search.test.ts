@@ -61,12 +61,12 @@ test("situation retrieval needs two exact literals and one rare literal; no subs
   assert.equal(find("amber-box.invalid").hits.length, 0);
 });
 
-test("real notes at 0.7 containment suppress and delete drafts, including full note bodies", () => isolated(async () => {
+test("real notes at 0.7 containment suppress drafts without deleting, including full note bodies", () => isolated(async () => {
   const row = draft(0, "alpha beta gamma delta epsilon zeta eta theta iota kappa");
   await captureDrafts([row]);
   const note = { id: "note", body: "alpha beta gamma delta epsilon zeta eta" };
   assert.equal((await searchDrafts("alpha beta", [note])).length, 0);
-  assert.equal((await listDrafts()).length, 0);
+  assert.equal((await listDrafts()).length, 1);
   const find = prepareDraftSearch([row]);
   assert.equal(find("alpha beta", [{ body: "alpha beta gamma delta epsilon zeta" }]).hits.length, 1);
 }));
@@ -96,6 +96,7 @@ test("display once per session across concurrent lanes, preserving state and ref
   await captureDrafts([row]);
   const outputs = await Promise.all(Array.from({ length: 8 }, () => appendLaneDrafts("{}", "PreToolUse", "amber tunnel", "new")));
   assert.equal(outputs.filter(output => output.includes("draft-hints")).length, 1);
+  for (let i = 0; i < 50 && !(await listDrafts())[0].surfaced.length; i++) await new Promise(r => setTimeout(r, 5));
   const rows = await listDrafts();
   assert.equal(rows[0].surfaced.length, 1);
   assert.equal(rows[0].surfaced[0].session_id, "new");
@@ -109,6 +110,7 @@ test("harmless Bash lookup is in-process and before the tripwire return", () => 
   const rows = Array.from({ length: 20 }, (_, i) => draft(i, `other text topic${i}`));
   rows[0].situation.lits = ["ssh", "amber-box.invalid"];
   await writeFile(process.env.BASTRA_DRAFTS_PATH!, JSON.stringify({ version: 1, rows }));
+  await listDrafts();
   const payload = { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "ssh amber-box.invalid" }, session_id: "bash-new" };
   const out = await runBashPreLane(payload, "http://127.0.0.1:1");
   assert.match(out, /draft-hints/);
@@ -204,6 +206,7 @@ test("500 drafts × 1000 queries: prepared linear search p95 below 5 ms", t => {
 test("500 drafts × 1000 queries: measure full cached retrieval including filesystem wait", t => isolated(async () => {
   const rows = Array.from({ length: 500 }, (_, i) => draft(i, `amber cluster topic${i} requires tunnel${i} before deploying builds through gateway${i}`));
   await writeFile(process.env.BASTRA_DRAFTS_PATH!, JSON.stringify({ version: 1, rows }));
+  await listDrafts();
   await searchDrafts("topic0 tunnel0");
   const elapsed: number[] = [];
   for (let i = 0; i < 1000; i++) {
@@ -225,14 +228,16 @@ test("rendered draft band does not become a new draft through transcript harvest
   assert.deepEqual(await listDrafts(), []);
 }));
 
-test("cached retrieval observes another writer and expiry without a harvest tick", () => isolated(async () => {
+test("background loader observes another writer and expiry, retrieval remains memory-only", () => isolated(async () => {
   const row = draft(0);
   await captureDrafts([row]);
   assert.equal((await searchDrafts("amber tunnel")).length, 1);
   const old = { ...row, last_touched: 0, created: 0, evidence: [{ session_id: "old", turn: 0, ts: 0 }] };
   await writeFile(process.env.BASTRA_DRAFTS_PATH!, JSON.stringify({ version: 1, rows: [old] }));
+  await listDrafts();
   assert.equal((await searchDrafts("amber tunnel")).length, 0);
   await writeFile(process.env.BASTRA_DRAFTS_PATH!, "invalid json");
+  await listDrafts();
   assert.equal((await searchDrafts("amber tunnel")).length, 0);
 }));
 

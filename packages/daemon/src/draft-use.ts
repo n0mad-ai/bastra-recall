@@ -1,4 +1,5 @@
 /** Causal local draft usage (#1084, E), separate from the note usage sidecar. */
+import { envOff } from "./env.js";
 import { ACTED_ON_WINDOW_MS } from "./telemetry-join-state.js";
 import { transactDrafts, type Draft } from "./draft-store.js";
 import { tokens } from "./save-similarity.js";
@@ -24,7 +25,7 @@ export function draftNovelTokens(draft: Draft, triggeringInput: string): string[
 /** Shared by actual in-process lane delivery and /hook/hinted. A replay cannot
  * reset the original novelty set/window; origin sessions never qualify. */
 export async function recordDraftHints(ids: string[], sessionId: string | null, triggeringInput: string | null, now = Date.now()): Promise<number> {
-  if (!sessionId || triggeringInput === null || process.env.BASTRA_DRAFT_HINTS === "0") return 0;
+  if (!sessionId || triggeringInput === null || envOff("BASTRA_DRAFT_HINTS")) return 0;
   try {
     const selected = new Set(ids.filter(id => /^d-[a-f0-9]{12}$/.test(id)).slice(0, 2));
     if (!selected.size) return 0;
@@ -37,7 +38,7 @@ export async function recordDraftHints(ids: string[], sessionId: string | null, 
         row.surfaced = row.surfaced.slice(-5); row.last_touched = now; count++;
       }
       return count;
-    }, now);
+    }, now, true) ?? 0;
   } catch { return 0; } // local feedback never breaks a hook
 }
 
@@ -72,7 +73,7 @@ export async function recordDraftUse(input: DraftUseInput): Promise<number> {
         row.last_touched = now; count++;
       }
       return count;
-    }, now);
+    }, now, true) ?? 0;
   } catch { return 0; }
 }
 

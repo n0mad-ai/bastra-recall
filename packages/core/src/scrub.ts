@@ -67,7 +67,7 @@ export type InjectedBlockTag = (typeof INJECTED_BLOCK_TAGS)[number];
  * per stop-hook run).
  */
 function blockRe(tag: string): RegExp {
-  return new RegExp(`<${tag}(?:\\s[^>]*)?>[\\s\\S]*?</${tag}>`, "g");
+  return new RegExp(`<${tag}(?:\\s[^>]*)?>[\\s\\S]*?</${tag}>`, "gi");
 }
 
 export interface ScrubResult {
@@ -86,7 +86,7 @@ export function scrubInjectedBlocks(text: string): ScrubResult {
   let out = text;
   for (const tag of INJECTED_BLOCK_TAGS) {
     // Quick reject before paying for the regex — most texts carry no marker.
-    if (!out.includes(`<${tag}`)) continue;
+    if (!out.toLowerCase().includes(`<${tag}`)) continue;
     const next = out.replace(blockRe(tag), "");
     if (next !== out) {
       removed.push(tag);
@@ -151,7 +151,7 @@ export const FROZEN_FRAME_NOTES: readonly string[] = [HINT_FRAME_NOTE];
  */
 export function stripFenceMarkers(text: string): string {
   if (!text.includes("<")) return text;
-  const re = new RegExp(`</?(?:${INJECTED_BLOCK_TAGS.join("|")})(?:\\s[^>]*)?>`, "g");
+  const re = new RegExp(`</?(?:${INJECTED_BLOCK_TAGS.join("|")})(?:\\s[^>]*)?>`, "gi");
   let out = text;
   for (let pass = 0; pass < MAX_STRIP_PASSES; pass++) {
     const next = out.replace(re, "");
