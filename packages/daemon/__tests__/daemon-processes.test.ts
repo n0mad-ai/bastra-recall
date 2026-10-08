@@ -94,6 +94,8 @@ test("the message names the pids and how to stop them", () => {
 
 test("daemonPort honours the env, falls back to 6723", () => {
   const before = process.env.BASTRA_HTTP_PORT;
+  const url = process.env.BASTRA_DAEMON_URL;
+  delete process.env.BASTRA_DAEMON_URL;
   try {
     delete process.env.BASTRA_HTTP_PORT;
     assert.equal(daemonPort(), 6723);
@@ -102,6 +104,7 @@ test("daemonPort honours the env, falls back to 6723", () => {
     process.env.BASTRA_HTTP_PORT = "nonsense";
     assert.equal(daemonPort(), 6723);
   } finally {
+    if (url === undefined) delete process.env.BASTRA_DAEMON_URL; else process.env.BASTRA_DAEMON_URL = url;
     if (before === undefined) delete process.env.BASTRA_HTTP_PORT;
     else process.env.BASTRA_HTTP_PORT = before;
   }
