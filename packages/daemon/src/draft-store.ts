@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { redactSecrets } from "@bastra-recall/core/scrub";
+import { writeDraftEvent } from "./draft-events.js";
 import { cleanDraftText, clipDraftText } from "./draft-text.js";
 import { mergeSituations, situationLiterals } from "./draft-situation.js";
 import { bigramSet, dice } from "./stop-lane-repeat.js";
@@ -112,12 +113,12 @@ function documentOf(rows: Draft[], metadata: Record<string, unknown>): Record<st
   return { ...metadata, version: DRAFT_STORE_VERSION, rows };
 }
 
+function expired(row:Draft,now:number):boolean {
+ const age=row.state!=="open"?DRAFT_RETAIN_AGE_MS:row.evidence.length===1&&row.surfaced.length===0?DRAFT_UNCONFIRMED_AGE_MS:DRAFT_OPEN_AGE_MS;
+ return !(now-row.last_touched<age);
+}
 function bounded(rows: Draft[], now: number, metadata: Record<string, unknown> = {}): Draft[] {
-  const kept = rows.filter((d) => {
-    const age = d.state !== "open" ? DRAFT_RETAIN_AGE_MS
-      : d.evidence.length === 1 && d.surfaced.length === 0 ? DRAFT_UNCONFIRMED_AGE_MS : DRAFT_OPEN_AGE_MS;
-    return now - d.last_touched < age;
-  });
+  const kept=rows.filter(row=>!expired(row,now));
   // Preserve tombstones and confirmed drafts before disposable first captures.
   const priority = (d: Draft): number => d.state !== "open" ? 2
     : d.evidence.length === 1 && d.surfaced.length === 0 ? 0 : 1;
@@ -211,7 +212,9 @@ function assertWritable(store: StoreSnapshot): void {
   if (store.diagnostics.unsupportedVersion) throw new Error("draft store version is newer; original file preserved");
 }
 
-async function write(path: string, rows: Draft[], metadata: Record<string, unknown>): Promise<void> {
+async function write(path: string, rows: Draft[], metadata: Record<string, unknown>, now=Date.now()): Promise<void> {
+  const retained=new Set(rows.map(row=>row.id));
+  const expiredCount=cache?.path===path?cache.store.rows.filter(row=>!retained.has(row.id)&&expired(row,now)).length:0;
   const payload = JSON.stringify(documentOf(rows, metadata));
   if (Buffer.byteLength(payload) > DRAFT_MAX_BYTES) throw new Error("draft store exceeds its byte limit");
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
@@ -221,6 +224,7 @@ async function write(path: string, rows: Draft[], metadata: Record<string, unkno
     await chmod(tmp, 0o600);
     await rename(tmp, path);
     const info = await fileInfo(path);
+    if(expiredCount)void writeDraftEvent({kind:"draft_expired",count:expiredCount});
     cache = {
       path, stamp: info.stamp,
       store: { rows: structuredClone(rows), metadata, diagnostics: { version: DRAFT_STORE_VERSION, skippedRows: 0, corrupt: false, unsupportedVersion: false } },
@@ -262,7 +266,7 @@ export async function upsertDraft(input: Draft, now = Date.now()): Promise<Draft
     const rows = store.rows.filter((row) => row.id !== draft.id);
     rows.push(draft);
     const kept = bounded(rows, now, store.metadata);
-    await write(path, kept, store.metadata);
+    await write(path, kept, store.metadata, now);
     return structuredClone(kept.find((row) => row.id === draft.id) ?? null);
   }, { crossProcess: true });
 }
@@ -349,7 +353,7 @@ async function captureBatch(inputs: Draft[], now: number, afterUpdates: DraftAft
       updatedIds.push(row.id);
     }
     const kept = bounded(rows, now, store.metadata);
-    if (JSON.stringify(kept) !== before) await write(path, kept, store.metadata);
+    if (JSON.stringify(kept) !== before) await write(path, kept, store.metadata, now);
     const byId = new Map(kept.map(row => [row.id, row]));
     const result: DraftCaptureResult = { count: 0, appended: 0, evicted: 0, ids: [] };
     for (const id of new Set([...matchedIds, ...updatedIds])) {
@@ -400,7 +404,7 @@ export async function expireDrafts(opts: { now?: number; memoryExists?: (id: str
       }
     }
     const kept = bounded(rows, now, store.metadata);
-    if (JSON.stringify(kept) !== before || store.diagnostics.skippedRows > 0) await write(path, kept, store.metadata);
+    if (JSON.stringify(kept) !== before || store.diagnostics.skippedRows > 0) await write(path, kept, store.metadata, now);
     return rows.length - kept.length;
   }, { crossProcess: true });
 }
@@ -436,7 +440,7 @@ export async function updateRetrievedDrafts(
       row.last_touched = now;
       changed = true;
     }
-    if (changed) await write(path, bounded(rows, now, store.metadata), store.metadata);
+    if (changed) await write(path, bounded(rows, now, store.metadata), store.metadata, now);
   }, { crossProcess: true });
 }
 
@@ -453,7 +457,7 @@ export async function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, n
     const rows = bounded(store.rows, now, store.metadata);
     const before = JSON.stringify(rows);
     const result = await mutate(rows);
-    if (JSON.stringify(rows) !== before) await write(path, bounded(rows, now, store.metadata), store.metadata);
+    if (JSON.stringify(rows) !== before) await write(path, bounded(rows, now, store.metadata), store.metadata, now);
     return result;
   }, { crossProcess: true });
 }

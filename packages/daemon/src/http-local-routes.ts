@@ -43,6 +43,7 @@ import {
 import { ALL_TOOL_DEFS, filterToolDefsForSurface, toolSurfaceFrom } from "./tool-defs.js";
 import { MAX_BODY_BYTES, readJsonBody, sendJson } from "./http-util.js";
 import { handleHookRecall } from "./http-hook-routes.js";
+import { appendDraftNotice } from "./draft-notice.js";
 import { recordDraftHints } from "./draft-use.js";
 import { handleHookAct } from "./http-hook-act.js";
 
@@ -200,7 +201,7 @@ export function dispatchLocalRoutes(
           })
           : await runBashFailLane(payload, `http://127.0.0.1:${req.socket.localPort ?? 6723}`);
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(out);
+        res.end(await appendDraftNotice(out,payload as SaveNoticePayload,id=>vault.get(id)?.fm));
       })
       .catch(() => {
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
@@ -214,7 +215,7 @@ export function dispatchLocalRoutes(
   // convention) — the contract is identical to the four above.
   // #490: the session lane among them takes the shared embedding warm-up,
   // injected here the same way the prompt lane takes its prewarmer.
-  if (dispatchLaneRoutes(req, res, method, url, toolDeps.warmupEmbedding)) return true;
+  if (dispatchLaneRoutes(req, res, method, url, toolDeps.warmupEmbedding, (out,payload)=>appendDraftNotice(out,payload,id=>vault.get(id)?.fm))) return true;
 
   // #144: lightweight act-signal (PostToolUse:Bash). No recall, no injection —
   // only matches the excerpt against open loadedMemories episodes so

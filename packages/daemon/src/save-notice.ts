@@ -17,6 +17,8 @@
 export type SaveNoticeAction =
   /** A new entry was written. */
   | "created"
+  /** A local draft became a derived note automatically. */
+  | "promoted"
   /** An existing entry was written again as a whole. */
   | "updated"
   /** Part of an existing entry was changed (edit_memory). */
@@ -62,7 +64,7 @@ interface Wording {
  *  never matched against anything. An unlisted language gets English. */
 const WORDING_BY_LANGUAGE: Readonly<Record<string, Wording>> = {
   en: {
-    action: { created: "saved", updated: "updated", edited: "edited", held: "not saved, already covered", conflict: "conflict noted on" },
+    action: { promoted: "saved from draft", created: "saved", updated: "updated", edited: "edited", held: "not saved, already covered", conflict: "conflict noted on" },
     quote: ["“", "”"],
     cue: "recalled when",
     coveredBy: "see",
@@ -71,7 +73,7 @@ const WORDING_BY_LANGUAGE: Readonly<Record<string, Wording>> = {
     fields: "fields",
   },
   de: {
-    action: { created: "gespeichert", updated: "aktualisiert", edited: "bearbeitet", held: "nicht gespeichert, schon abgedeckt", conflict: "Widerspruch vermerkt an" },
+    action: { promoted: "aus Entwurf gespeichert", created: "gespeichert", updated: "aktualisiert", edited: "bearbeitet", held: "nicht gespeichert, schon abgedeckt", conflict: "Widerspruch vermerkt an" },
     quote: ["„", "“"],
     cue: "Abruf bei",
     coveredBy: "siehe",
@@ -80,7 +82,7 @@ const WORDING_BY_LANGUAGE: Readonly<Record<string, Wording>> = {
     fields: "Felder",
   },
   ru: {
-    action: { created: "сохранено", updated: "обновлено", edited: "изменено", held: "не сохранено, уже есть", conflict: "противоречие отмечено в" },
+    action: { promoted: "сохранено из черновика", created: "сохранено", updated: "обновлено", edited: "изменено", held: "не сохранено, уже есть", conflict: "противоречие отмечено в" },
     quote: ["«", "»"],
     cue: "вспомнить при",
     coveredBy: "см.",

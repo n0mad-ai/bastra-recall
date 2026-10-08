@@ -13,6 +13,7 @@
  * it surfaced something, and where the latency sits against the hook budget.
  * Read-only, no daemon needed.
  */
+import { aggregateDrafts, renderDrafts, type DraftStats } from "../draft-stats.js";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { defaultLogDir } from "../learned-recall/harvest.js";
@@ -71,6 +72,7 @@ export interface Percentiles {
 }
 
 export interface LogStats {
+  drafts: DraftStats | null;
   from: string | null;
   to: string | null;
   lanes: LaneStats[];
@@ -294,6 +296,7 @@ export function aggregate(rawEvents: Array<Record<string, unknown>>): LogStats {
   const restartLanes = finish(byModeRestart);
 
   return {
+    drafts: aggregateDrafts(events),
     codeRoi: aggregateCodeRoi(
       events.filter((e) => e.kind === "hook_call") as Array<Record<string, unknown>>,
     ),
@@ -474,6 +477,7 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
     out.push(...renderSaves(stats.saves));
     out.push(...renderSaveSuggestions(stats.saveSuggestions));
     out.push(...renderHarvest(stats.harvest));
+    out.push(...renderDrafts(stats.drafts));
     out.push(...renderHintSuppression(stats.hintSuppression));
     out.push(...renderSessionStart(stats.sessionStart));
     // #579: a window can hold tool calls and refreshes without a single hook
@@ -547,6 +551,7 @@ export function renderStats(stats: LogStats, budgetMs: number): string {
     ...renderSaves(stats.saves),
     ...renderSaveSuggestions(stats.saveSuggestions),
     ...renderHarvest(stats.harvest),
+    ...renderDrafts(stats.drafts),
   ];
   if (saveLines.length > 0) {
     out.push("");

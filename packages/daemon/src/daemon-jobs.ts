@@ -1,3 +1,4 @@
+import { envOff } from "./env.js";
 import { randomUUID } from "node:crypto";
 /**
  * Background jobs of the daemon process — every periodic setInterval/
@@ -147,7 +148,8 @@ export async function runSessionHarvestTick(
 }
 
 function startSessionHarvest(deps: BackgroundJobDeps): void {
-  if (draftHintsEnabled()) { startDraftVocabulary(deps.vault); startDraftSearchCache(); }
+  if (draftHintsEnabled()) startDraftVocabulary(deps.vault);
+  if(draftHintsEnabled()||!envOff("BASTRA_SAVE_NOTICE"))startDraftSearchCache();
   let running = false;
   setInterval(() => {
     if (running || !sessionHarvestEnabled()) return;
