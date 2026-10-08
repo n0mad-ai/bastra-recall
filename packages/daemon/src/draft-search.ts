@@ -18,8 +18,10 @@ export const DRAFT_TEXT_MIN_RARE = 2;
 export const DRAFT_TEXT_MIN_ANCHOR_CHARS = 4;
 export const DRAFT_TEXT_STRONG_CHARS = 10;
 export const DRAFT_RARE_MAX_ROWS = 2;
-/** At <3 notes, every word is rare under the same fixed DF rule. */
-export const DRAFT_VOCABULARY_MIN_NOTES = 3;
+/** Unmeasured: below 50 notes the vocabulary is only a fallback sample. */
+export const DRAFT_VOCABULARY_MIN_NOTES = 50;
+/** Unmeasured: a rare anchor occurs in at most 2% of this user's notes. */
+export const DRAFT_VAULT_RARE_MAX_FRACTION = 0.02;
 /** Unmeasured advisory ceiling, always bounded by the normal lane deadline. */
 export const DRAFT_BAND_MAX_MS = 50;
 export interface DraftHit {
@@ -45,10 +47,16 @@ export function prepareDraftSearch(rows: readonly Draft[], now = Date.now(), voc
     return { row, words, lits, safe };
   });
   const rareMax = DRAFT_RARE_MAX_ROWS;
-  const idf = (word: string) => Math.log(1 + (open.length + 1) / ((df.get(word) ?? 0) + 1));
+  const draftIdf = (word: string) => Math.log(1 + (open.length + 1) / ((df.get(word) ?? 0) + 1));
   return (query: string, notes: DraftNote[] = [], limit = 2, sessionId?: string): { hits: DraftHit[] } => {
     const vaultWords = vocabulary ?? draftVocabularySnapshot();
-    const rareInVault = (word: string) => vaultWords.count < DRAFT_VOCABULARY_MIN_NOTES || (vaultWords.df.get(word) ?? 0) <= DRAFT_RARE_MAX_ROWS;
+    const usableVault = vaultWords.count >= DRAFT_VOCABULARY_MIN_NOTES;
+    const rareAnchor = (word: string) => usableVault
+      ? (vaultWords.df.get(word) ?? 0) / vaultWords.count <= DRAFT_VAULT_RARE_MAX_FRACTION
+      : (df.get(word) ?? 0) <= rareMax;
+    const idf = usableVault
+      ? (word: string) => Math.log((vaultWords.count + 1) / ((vaultWords.df.get(word) ?? 0) + 1))
+      : draftIdf;
     const q = new Set(tokens(query));
     const literals = new Set(query.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}._@\/:-]*/gu) ?? []);
     const noteWords = notes.map(note => new Set(tokens([note.title, note.summary, note.body].filter(Boolean).join("\n"))));
@@ -57,7 +65,7 @@ export function prepareDraftSearch(rows: readonly Draft[], now = Date.now(), voc
       if (!safe || sessionId && row.evidence.some(e => e.session_id === sessionId)) continue;
       let shared = 0, rareShared = 0, weight = 0, strong = false;
       for (const word of q) if (words.has(word)) {
-        shared++; if ((df.get(word) ?? 0) <= rareMax && rareInVault(word) && [...word].length >= DRAFT_TEXT_MIN_ANCHOR_CHARS) {
+        shared++; if (rareAnchor(word) && [...word].length >= DRAFT_TEXT_MIN_ANCHOR_CHARS) {
           rareShared++; weight += idf(word); if ([...word].length >= DRAFT_TEXT_STRONG_CHARS) strong = true;
         }
       }

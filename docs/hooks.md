@@ -2280,29 +2280,34 @@ drafts. A covering returned note suppresses only query-matching drafts in that
 response; promotion owns closing and tombstones.
 
 A text match needs two shared tokens and either two rare anchors of at least four
-Unicode characters, or one rare anchor of at least ten characters. Rarity is a
-fixed DF <= 2 in the open drafts and also DF <= 2 in the vault vocabulary. The cap
-never grows with the store. With fewer than three notes, the vault cannot exclude
-common words under this rule; only draft rarity is effective. Unknown words carry
-no negative weight. A situation match needs two shared literals, including a rare
-literal of at least four characters containing a digit or `./_@:-`; `git status`
-and `npm test` alone do not qualify, including at 5/20 drafts. These thresholds
-remain **unmeasured on real data** and this is the final synthetic tuning round.
+Unicode characters, or one rare anchor of at least ten characters. With at least
+50 notes, rarity depends **only on the user's vault vocabulary**: an anchor occurs
+in at most 2% of notes. Its IDF weight uses that same vault; repetition among drafts
+does not penalize it. Both the 50-note minimum and 2% cutoff are **unmeasured on real
+data**. Two occurrences among 60 notes are not rare here; two among 2,000 are.
+Below 50 notes, the emergency fallback is fixed draft DF <=2, with its weaknesses
+in both directions. Unknown words carry no negative weight. Situation matching
+stays unchanged: two shared literals, one with stored-situation DF <=2 and at least
+four characters containing a digit or `./_@:-`; everyday `git status`/`npm test`
+alone do not qualify. There is no further synthetic tuning after this correction.
 
-Both frozen DE/EN corpora were measured at 40/100/200 drafts, with and without a
-populated vault vocabulary. In the original technical corpus, correct topical
-queries were 2/20, 2/50, 4/100; unrelated 0/60 and short 0/40 at every size. The
-second, separately authored 50-topic corpus gave 20/20, 49/50, 98/100 topical,
-with unrelated 0/50 and short 0/50 at every size. Both vocabulary variants gave
-these same counts. The original corpus has five same-language variants per topic:
-the fixed cap now treats most of their anchors as common, costing 96/100 topical
-queries at 200 drafts (previous rule: 69/100 correct). This is deliberately
-conservative; the second corpus's high rate does not establish real-world recall.
-An empty/small vault can still admit common words that happen to be rare among
-drafts, such as the unrelated “three unit tests” / “germination tests every three
-years” pair. Measure the remaining errors on real data, without further synthetic
-retuning. There is no stemming or translation. Chinese/Japanese without spaces
-remain one tokenizer token and do not match this two-token rule (#711).
+Both frozen draft corpora were measured at 40/100/200 drafts, with and without a
+separate 150-note invented DE/EN vault of everyday language on other topics (75
+notes per language). Original technical corpus: with vault 13/20, 34/50, 69/100
+correct topical matches; without usable vault 2/20, 2/50, 4/100. Independent
+50-topic corpus: with vault 20/20, 49/50, 99/100; fallback 20/20, 49/50, 98/100.
+Unrelated/short matches stayed 0 at every size: original 0/60 and 0/40, independent
+0/50 and 0/50, both vocabulary modes. Vault-based rarity restores frequently
+explained themes that the draft cap suppressed; the original corpus still misses
+31/100 topical queries because lexical anchors/lengths remain strict. The fallback
+still costs 96/100 in that corpus and can admit accidental rare everyday words,
+like “three unit tests” against “germination tests every three years”; the populated
+vault rejects that pair. Words common in vault notes are not anchors, letting
+canonical notes take precedence. A note count alone does not prove coverage of the
+query's language. These synthetic rates do not establish real-world quality;
+remaining errors will be measured on real data without further invented retuning.
+There is no stemming or translation. Chinese/Japanese without spaces remain one
+token and do not match the two-token rule (#711).
 
 Hook lanes deliver once per session; MCP and `/hook/recall` return per request.
 Bash checks whether any draft remains unseen before looking up covering notes.
@@ -2328,21 +2333,27 @@ IDs, Anzahl, Tokens und Bandlatenz, keinen Text. Suche löscht oder schließt ni
 überdeckende Notizen unterdrücken nur passende Entwürfe dieser Antwort.
 
 Zwei gemeinsame Tokens sind nötig, davon zwei seltene Anker ab vier Zeichen oder
-einer ab zehn Zeichen. DF <= 2 gilt fest in Ablage und Vault; keine wachsende
-Prozentgrenze. Bei weniger als drei Notizen wirkt nur Ablage-Seltenheit. Ein
-Situationsmatch braucht zwei gemeinsame Literale, davon ein seltenes ab vier
-Zeichen mit Ziffer oder `./_@:-`. Alltagsbefehle allein treffen nicht. Die Schwellen
-sind **ungemessen an echten Daten**. Dies ist die letzte synthetische Abstimmrunde.
+einer ab zehn Zeichen. Ab 50 Notizen entscheidet **allein der Vault-Wortschatz**:
+selten ist ein Wort in höchstens 2 % der Notizen; auch IDF-Gewichte kommen dann
+vom Vault. Fünf ähnliche Entwürfe machen ihr Thema nicht häufig. Mindestzahl 50
+und Grenze 2 % sind **ungemessen**: 2/60 Vorkommen gelten nicht als selten, 2/2.000
+schon. Unter 50 gilt Draft-DF <=2 als Notbehelf mit Schwächen in beide Richtungen.
+Situationsmatch bleibt unverändert: zwei Literale, davon ein seltenes in höchstens
+zwei gespeicherten Situationen, ab vier Zeichen mit Ziffer oder `./_@:-`.
 
-Bei 40/100/200 Entwürfen, mit und ohne Vault-Wortschatz: ursprünglicher Korpus
-2/20, 2/50, 4/100 passende Treffer, themenfremd immer 0/60, kurz immer 0/40.
-Unabhängiger zweiter Korpus mit 50 anderen Themen: 20/20, 49/50, 98/100 passend,
-themenfremd und kurz jeweils 0/50. Im ersten Korpus macht die feste Grenze viele
-Anker der fünf gleichsprachigen Varianten je Thema häufig: 96/100 passende Abfragen
-gehen verloren, gegenüber zuvor 69/100 Treffern. Die hohe Quote des zweiten Korpus
-beweist keine Alltagstauglichkeit. Ohne hinreichenden Vault können zufällig seltene
-Alltagswörter weiter falsch treffen, etwa „three unit tests“ gegen „germination
-tests … every three years“. Restfehler werden an echten Daten gemessen.
+Bei 40/100/200 Entwürfen, mit einem separaten erfundenen 150-Notizen-Vault aus
+Alltagssprache (75 DE/75 EN, andere Themen): ursprünglicher Korpus 13/20 (65 %),
+34/50 (68 %), 69/100 (69 %) passende Treffer. Ohne brauchbaren Vault 2/20, 2/50,
+4/100. Zweiter Korpus: mit Vault 20/20, 49/50, 99/100; Notbehelf 20/20, 49/50,
+98/100. Themenfremd und kurz bei jeder Größe in beiden Varianten null: ursprünglich
+0/60 bzw. 0/40, unabhängig je 0/50. Die bessere Fassung bleibt: Vault-Seltenheit
+stellt wiederholt erklärte Themen wieder her. Es fehlen weiterhin 31/100 passende
+Abfragen im ersten Korpus; beim Notbehelf 96/100. Dieser kann zufällig seltene
+Alltagswörter falsch treffen („three unit tests“/„germination tests … every three
+years“); mit Vault nicht. Häufige Vault-Themenwörter sind keine Anker, die Notiz
+hat Vorrang. Anzahl allein beweist keine Abdeckung der jeweiligen Sprache. Die
+Korpora beweisen keine Alltagstauglichkeit; verbleibende Fehler werden an echten
+Daten gemessen. Keine weitere Abstimmung an erfundenen Daten nach dieser Korrektur.
 
 Kein Stemming/Übersetzen; Chinesisch/Japanisch ohne Leerzeichen bleiben ein Token
 und scheitern am Zwei-Token-Match (#711). Bash prüft ungezeigte Treffer vor erneutem
