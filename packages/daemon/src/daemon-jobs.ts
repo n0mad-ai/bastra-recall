@@ -21,6 +21,7 @@ import { observeCodeGraphRefresh, startCodeAwareness } from "./code-graph/servic
 import { runDraftPromote, draftVaultId, draftPromotionReady } from "./draft-promote.js";
 import { runDraftShadow } from "./draft-shadow.js";
 import { draftHintsEnabled } from "./draft-search.js";
+import { startDraftVocabulary } from "./draft-vocabulary.js";
 import { startDraftSearchCache, expireDrafts } from "./draft-store.js";
 import { sessionHarvestEnabled, runSessionHarvest, formatHarvestBlock, type HarvestCandidate } from "./session-harvest.js";
 import { writePendingSuggestion } from "./pending-suggestions.js";
@@ -126,7 +127,7 @@ export async function runSessionHarvestTick(
 }
 
 function startSessionHarvest(deps: BackgroundJobDeps): void {
-  if (draftHintsEnabled()) startDraftSearchCache();
+  if (draftHintsEnabled()) { startDraftVocabulary(deps.vault); startDraftSearchCache(); }
   let running = false;
   setInterval(() => {
     if (running || !sessionHarvestEnabled()) return;

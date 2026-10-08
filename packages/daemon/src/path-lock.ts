@@ -217,10 +217,9 @@ function tryFileLock(path: string): string | null {
   finally { if (fd !== undefined) closeSync(fd); }
 }
 
-/** Advisory feedback never queues behind a writer, takes over an orphan, or
+/** Advisory feedback serializes behind local writers off the response path. It never takes over an orphan or
  * writes without the cross-process lock. Busy/unwritable means no mutation. */
 export function tryWithPathLock<T>(path: string, fn: () => Promise<T>, opts: PathLockOptions = {}): Promise<T | undefined> {
-  if (depths.has(path)) return Promise.resolve(undefined);
   return withPathLock(path, async () => {
     const token = opts.crossProcess ? tryFileLock(path) : null;
     if (opts.crossProcess && token === null) return undefined;

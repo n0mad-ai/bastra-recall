@@ -2264,65 +2264,95 @@ mit einem Beleg 7 Tage (ungemessen), sonst offen 30 Tage, Grabsteine 180 Tage.
 
 ### Draft retrieval corrections / Nachbesserung der Entwurfssuche
 
-Draft search reads only the completed in-memory snapshot. Startup/background loading
-and a local file watcher refresh it after capture, external writes or CLI purge;
-a cold or failed cache yields no draft. Response paths perform no draft-file I/O
-and take no draft-store lock. Delivery booking runs after the response, tries the
-lock once and is dropped if busy/unwritable. Normal note and tripwire output is
-already final before the band is appended. An advisory 50 ms ceiling (unmeasured
-on real data) is also bounded by the normal lane deadline; an expired budget leaves
-the original response unchanged. Separate `draft_hint` telemetry records
-shown draft IDs, count, estimated tokens and band latency; no text.
+Draft search reads only completed in-memory snapshots. Background loading and a
+file watcher refresh drafts (with a one-second reconciliation fallback). The vault
+word measure uses the existing note vocabulary/IDF reference and is maintained at
+startup and on add/change/remove events. A cold/failed draft cache yields no draft.
+Response paths perform no draft-file I/O and take no draft-store lock. Delivery
+booking runs after the response: same-process bookings serialize; against another
+process the lock is attempted once, without waiting or orphan takeover. Normal note
+and tripwire output is already final before the band is appended. An advisory 50 ms
+ceiling, unmeasured on real data, is bounded by the normal lane deadline. Separate
+`draft_hint` telemetry records IDs, count, estimated tokens and band latency, no text.
 
-**Assumption, not confirmed by the owner (replaces the earlier deletion rule):**
-retrieval never deletes or closes drafts. A covering returned note suppresses only
-query-matching drafts for that response. Closing with a tombstone belongs to the
-promotion comparison, not to retrieval.
+**Assumption, not confirmed by the owner:** retrieval never deletes or closes
+drafts. A covering returned note suppresses only query-matching drafts in that
+response; promotion owns closing and tombstones.
 
-Rare shared anchors replace query containment. A text match needs two shared tokens
-and either two rare anchors of at least 4 UTF-8 bytes, or one rare anchor of at
-least 10 bytes. Rarity is DF <= max(2, 5% of open drafts); the same floor permits
-small-store situation matches. Unknown query words contribute no negative weight.
-These named thresholds are **unmeasured on real data**. On the fixed synthetic
-200-draft/200-query DE/EN corpus, correct topical recall is 69/100 (previously
-17/100); short everyday queries 0/40 and unrelated sentences 0/60 get a draft.
-The cost is 31 missed topical queries, especially short technical names and queries
-with just one short anchor. This is lexical matching, without stemming or translation.
+A text match needs two shared tokens and either two rare anchors of at least four
+Unicode characters, or one rare anchor of at least ten characters. Rarity is a
+fixed DF <= 2 in the open drafts and also DF <= 2 in the vault vocabulary. The cap
+never grows with the store. With fewer than three notes, the vault cannot exclude
+common words under this rule; only draft rarity is effective. Unknown words carry
+no negative weight. A situation match needs two shared literals, including a rare
+literal of at least four characters containing a digit or `./_@:-`; `git status`
+and `npm test` alone do not qualify, including at 5/20 drafts. These thresholds
+remain **unmeasured on real data** and this is the final synthetic tuning round.
 
-Each draft is delivered once per session by the **hook lanes**; direct MCP and
-`/hook/recall` are per-request results. There is no project/client filter: a draft
-captured in one project can surface in another. `0`, `off`, `false` and `no` (any
-case) disable the band. Uppercase fences are stripped, control/bidi characters
-removed, quotes/context placed on single quoted lines and project labels restricted
-to directory-name characters. Uppercase/incomplete leading draft blocks are treated
-as injected transcript content. The existing injection scan recognizes English
-patterns; other-language instruction sentences remain a known limit, without a new
-language word list.
+Both frozen DE/EN corpora were measured at 40/100/200 drafts, with and without a
+populated vault vocabulary. In the original technical corpus, correct topical
+queries were 2/20, 2/50, 4/100; unrelated 0/60 and short 0/40 at every size. The
+second, separately authored 50-topic corpus gave 20/20, 49/50, 98/100 topical,
+with unrelated 0/50 and short 0/50 at every size. Both vocabulary variants gave
+these same counts. The original corpus has five same-language variants per topic:
+the fixed cap now treats most of their anchors as common, costing 96/100 topical
+queries at 200 drafts (previous rule: 69/100 correct). This is deliberately
+conservative; the second corpus's high rate does not establish real-world recall.
+An empty/small vault can still admit common words that happen to be rare among
+drafts, such as the unrelated “three unit tests” / “germination tests every three
+years” pair. Measure the remaining errors on real data, without further synthetic
+retuning. There is no stemming or translation. Chinese/Japanese without spaces
+remain one tokenizer token and do not match this two-token rule (#711).
 
-Die Suche liest nur den abgeschlossenen Speicher-Snapshot. Laden im Hintergrund und
-ein lokaler Dateiwächter aktualisieren ihn nach Erfassung, externen Schreibvorgängen
-oder CLI-Purge. Ein kalter oder fehlerhafter Cache zeigt keinen Entwurf. Suche und
-Recall warten auf keine Ablagesperre und greifen auf keine Draft-Datei zu. Buchungen
-erfolgen nach der Antwort; eine belegte oder nicht schreibbare Ablage kostet nur
-diese Buchung. Normale Hinweise und Tripwire-Warnungen sind vorher fertig. Das
-separate Ereignis `draft_hint` zählt gezeigte IDs, Anzahl, Tokens und Bandlatenz,
-keinen Text.
+Hook lanes deliver once per session; MCP and `/hook/recall` return per request.
+Bash checks whether any draft remains unseen before looking up covering notes.
+After a lost booking and daemon restart, a harmless Bash request may show the same
+ID again in the same session. There is no project/client filter. Off values are
+`0`, `off`, `false`, `no`, case-insensitive. Fence/control/bidi stripping and quoted
+single-line fields protect the band. Leading incomplete draft bands are injected
+content; a line-start band after owner text is cut before draft capture even if
+unclosed. Inline quoted tag names remain prose. English-only injection patterns
+remain a known limit. First search after a 500-draft cache change was measured by
+review at 10.7 ms on the response path. Fence scrubbing of 1 MB cost 3.5 ms versus
+0.46 ms previously and also removes literal `<draft-hints>` from note titles.
+These are documented limits, without new machinery.
 
-**Annahme, nicht vom Eigentümer bestätigt:** Die Suche löscht und schließt niemals.
-Eine überdeckende Notiz unterdrückt nur passende Entwürfe in dieser Antwort. Das
-Schließen mit Grabstein gehört zur Promotionsprüfung.
+Die Suche nutzt nur abgeschlossene Speicher-Snapshots. Entwürfe werden im
+Hintergrund aktualisiert, mit einer einsekündigen Nachprüfung; der Vault-Wortschatz
+wird beim Start und bei Notizereignissen gepflegt. Antwortpfade lesen keine
+Draft-Datei und warten auf keine Ablagesperre. Buchungen liegen hinter der Antwort:
+im selben Prozess werden sie nacheinander ausgeführt; bei fremder Sperre nur ein
+Versuch ohne Warten oder Übernahme. Normale Notizen und Tripwire-Warnungen sind
+vorher fertig, die 50-ms-Grenze bleibt innerhalb der Lane-Deadline. Telemetrie zählt
+IDs, Anzahl, Tokens und Bandlatenz, keinen Text. Suche löscht oder schließt nie;
+überdeckende Notizen unterdrücken nur passende Entwürfe dieser Antwort.
 
-Texttreffer brauchen zwei gemeinsame Tokens und entweder zwei seltene Anker ab
-4 UTF-8-Bytes oder einen seltenen Anker ab 10 Bytes. Seltenheit: DF <= max(2, 5 %
-der offenen Entwürfe), auch beim Situationsmatch. Unbekannte Abfragewörter senken
-keinen Treffer. Die Schwellen sind **ungemessen an echten Daten**. Im festen
-synthetischen Korpus treffen 69/100 thematisch passende Abfragen korrekt (vorher
-17/100); kurze Alltagsabfragen 0/40, themenfremde Sätze 0/60. Dafür fehlen 31 passende
-Abfragen, besonders kurze technische Namen/einzelne kurze Anker. Kein Stemming,
-keine Übersetzung. Einmal je Sitzung gilt für Hook-Bänder; direkter MCP-Recall und
-`/hook/recall` antworten je Aufruf. Projekt und Client filtern nicht. Schalterwerte,
-einzeilige Zitate, Marker-/Steuerzeichen-Schutz und Grenzen des englischen
-Injektionsscanners gelten wie oben beschrieben.
+Zwei gemeinsame Tokens sind nötig, davon zwei seltene Anker ab vier Zeichen oder
+einer ab zehn Zeichen. DF <= 2 gilt fest in Ablage und Vault; keine wachsende
+Prozentgrenze. Bei weniger als drei Notizen wirkt nur Ablage-Seltenheit. Ein
+Situationsmatch braucht zwei gemeinsame Literale, davon ein seltenes ab vier
+Zeichen mit Ziffer oder `./_@:-`. Alltagsbefehle allein treffen nicht. Die Schwellen
+sind **ungemessen an echten Daten**. Dies ist die letzte synthetische Abstimmrunde.
+
+Bei 40/100/200 Entwürfen, mit und ohne Vault-Wortschatz: ursprünglicher Korpus
+2/20, 2/50, 4/100 passende Treffer, themenfremd immer 0/60, kurz immer 0/40.
+Unabhängiger zweiter Korpus mit 50 anderen Themen: 20/20, 49/50, 98/100 passend,
+themenfremd und kurz jeweils 0/50. Im ersten Korpus macht die feste Grenze viele
+Anker der fünf gleichsprachigen Varianten je Thema häufig: 96/100 passende Abfragen
+gehen verloren, gegenüber zuvor 69/100 Treffern. Die hohe Quote des zweiten Korpus
+beweist keine Alltagstauglichkeit. Ohne hinreichenden Vault können zufällig seltene
+Alltagswörter weiter falsch treffen, etwa „three unit tests“ gegen „germination
+tests … every three years“. Restfehler werden an echten Daten gemessen.
+
+Kein Stemming/Übersetzen; Chinesisch/Japanisch ohne Leerzeichen bleiben ein Token
+und scheitern am Zwei-Token-Match (#711). Bash prüft ungezeigte Treffer vor erneutem
+Notiz-Lookup. Nach verlorener Buchung und Neustart kann dieselbe ID erneut erscheinen.
+Einmal je Sitzung gilt für Hook-Bänder, direkter Recall je Anfrage. Keine
+Projekt-/Clientfilter. Angefügte Bands ab Zeilenanfang werden vor Erfassung auch
+unvollständig abgeschnitten; inline zitierte Tagnamen bleiben Text. Englischer
+Injektionsscanner bleibt begrenzt. Prüfermessungen: erste Suche nach Änderung bei
+500 Entwürfen 10,7 ms; Scrub für 1 MB 3,5 statt 0,46 ms, mit Entfernung des wörtlichen
+Tags auch aus Notiztiteln. Diese Grenzen sind dokumentiert, ohne Zusatzbau.
 
 ### Repeated draft promotion / Beförderung wiederholter Entwürfe
 
