@@ -44,6 +44,15 @@ console.log(JSON.stringify({
   userProfile: process.env.USERPROFILE,
   bridges: process.env.BASTRA_BRIDGES_PATH,
   commons: process.env.BASTRA_COMMONS_PATH,
+  npmCache: process.env.npm_config_cache,
+  npmCacheUpper: process.env.NPM_CONFIG_CACHE,
+  npmUserConfig: process.env.npm_config_userconfig,
+  claudeConfig: process.env.CLAUDE_CONFIG_DIR ?? null,
+  codexHome: process.env.CODEX_HOME ?? null,
+  xdgConfig: process.env.XDG_CONFIG_HOME ?? null,
+  xdgCache: process.env.XDG_CACHE_HOME ?? null,
+  appData: process.env.APPDATA ?? null,
+  localAppData: process.env.LOCALAPPDATA ?? null,
 }));
 if (process.argv.includes("--hang")) setInterval(() => {}, 1000);
 `;
@@ -190,4 +199,28 @@ test("whole-run home audit accepts Deno's fixture cache and rejects unexpected f
     assert.equal(r.status, unexpected ? 1 : 0, r.stderr);
     if (unexpected) assert.match(r.stderr,/unexpected-user-data/);
   }
+});
+
+
+test("tool-specific homes and inherited npm locations cannot escape the run home",()=>{
+  const seen=probe(outsideRun({CLAUDE_CONFIG_DIR:"/fixture/operator/claude",CODEX_HOME:"/fixture/operator/codex",XDG_CONFIG_HOME:"/fixture/operator/config",XDG_CACHE_HOME:"/fixture/operator/cache",APPDATA:"/fixture/operator/appdata",LOCALAPPDATA:"/fixture/operator/local",npm_config_cache:"/fixture/operator/npm",NPM_CONFIG_CACHE:"/fixture/operator/npm-upper",npm_config_userconfig:"/fixture/operator/npmrc"}));
+  assert.deepEqual([seen.claudeConfig,seen.codexHome,seen.xdgConfig,seen.xdgCache,seen.appData,seen.localAppData],[null,null,null,null,null,null]);
+  assert.equal(seen.npmCache,join(seen.root!,"home",".npm"));assert.equal(seen.npmCacheUpper,seen.npmCache);
+  assert.equal(seen.npmUserConfig,join(seen.root!,"home",".npmrc"));
+});
+
+test("every host spelling of forbidden port 6723 is rejected before connection",()=>{
+  for(const host of ["0.0.0.0","127.0.0.2","LOCALHOST","localhost.","::","0:0:0:0:0:0:0:1","::ffff:7f00:1","fixture.invalid"]) {
+    const script=`require("node:net").connect(6723,${JSON.stringify(host)}).on("error",error=>console.error(error.message));`;
+    const r=spawnSync(process.execPath,["--import",TEST_ENV,"-e",script],{env:outsideRun({}),encoding:"utf8"});
+    assert.equal(r.status,1,`${host}: whole-run audit must fail`);assert.match(r.stderr,/refusing the operator daemon/);
+  }
+});
+
+test("single CLI-help test from an empty shell uses an allowed isolated npm cache",{skip:process.platform==="win32"},()=>{
+  const fixtureHome=mkdtempSync(join(tmpdir(),"empty-shell-home-"));
+  try {
+    const r=spawnSync("env",["-i",`HOME=${fixtureHome}`,`PATH=${process.env.PATH}`,process.execPath,"--import","tsx","--import",TEST_ENV,"--test",join(REPO,"packages/daemon/__tests__/cli-help.test.ts")],{cwd:REPO,encoding:"utf8"});
+    assert.equal(r.status,0,r.stderr);assert.deepEqual(readdirSync(fixtureHome),[]);
+  }finally{rmSync(fixtureHome,{recursive:true,force:true});}
 });
