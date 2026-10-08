@@ -478,7 +478,8 @@ describe("test-map: select over a real repo and a real map", () => {
     assert.ok(ran("t/a.test.mjs", at("    * 2;")) && !ran("t/c.test.mjs", at("    * 2;")));
     assert.ok(ran("t/b.test.mjs", at('    return "pos";')) && !ran("t/a.test.mjs", at('    return "pos";')));
     for (const t of ["t/a.test.mjs", "t/b.test.mjs", "t/c.test.mjs"]) assert.ok(!ran(t, at('  return "neg"; // no test takes this branch')));
-    assert.deepEqual(Object.keys(m.sources), ["src/m.mjs"]);
+    // The inherited isolation preload also executes in these fixture children.
+    assert.deepEqual(Object.keys(m.sources).filter(f => !f.endsWith("/test-network-guard.mjs")), ["src/m.mjs"]);
   });
 
   // The invariant, over seeded random edits of real lines: every test the map says

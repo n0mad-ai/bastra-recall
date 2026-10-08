@@ -15,7 +15,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,7 +25,7 @@ const TEST_ENV = join(REPO, "scripts", "test-env.mjs");
 
 const PROBE = `
 const { mkdtempSync } = require("node:fs");
-const { tmpdir } = require("node:os");
+const { tmpdir, homedir } = require("node:os");
 const { join } = require("node:path");
 const made = mkdtempSync(join(tmpdir(), "probe-"));
 console.log(JSON.stringify({
@@ -39,6 +39,19 @@ console.log(JSON.stringify({
   runs: process.env.BASTRA_EVAL_RUNS_DIR,
   root: process.env.BASTRA_TEST_RUN_ROOT,
   made,
+  home: homedir(),
+  userProfile: process.env.USERPROFILE,
+  bridges: process.env.BASTRA_BRIDGES_PATH,
+  commons: process.env.BASTRA_COMMONS_PATH,
+  npmCache: process.env.npm_config_cache,
+  npmCacheUpper: process.env.NPM_CONFIG_CACHE,
+  npmUserConfig: process.env.npm_config_userconfig,
+  claudeConfig: process.env.CLAUDE_CONFIG_DIR ?? null,
+  codexHome: process.env.CODEX_HOME ?? null,
+  xdgConfig: process.env.XDG_CONFIG_HOME ?? null,
+  xdgCache: process.env.XDG_CACHE_HOME ?? null,
+  appData: process.env.APPDATA ?? null,
+  localAppData: process.env.LOCALAPPDATA ?? null,
 }));
 if (process.argv.includes("--hang")) setInterval(() => {}, 1000);
 `;
@@ -70,9 +83,11 @@ const DEVELOPER_SHELL = {
 test("a developer's vault, daemon, token, model and state settings do not reach a test process", () => {
   const seen = probe(outsideRun(DEVELOPER_SHELL));
   assert.deepEqual(
-    [seen.vault, seen.nexusVault, seen.daemonUrl, seen.token, seen.ollama, seen.hookState],
-    [null, null, null, null, null, null],
+    [seen.vault, seen.nexusVault, seen.token, seen.ollama, seen.hookState],
+    [null, null, null, null, null],
   );
+  assert.match(seen.daemonUrl!, /^http:\/\/127\.0\.0\.1:\d+$/);
+  assert.notEqual(new URL(seen.daemonUrl!).port, "6723");
 });
 
 test("everything the run put under tmpdir() is removed when it exits", () => {
@@ -117,4 +132,88 @@ test("BASTRA_TEST_KEEP_ENV=1 keeps a deliberately chosen vault", () => {
 test("inside a run, what a test hands its child is not stripped", () => {
   const seen = probe({ ...process.env, BASTRA_TEST_RUN_ROOT: tmpdir(), BASTRA_VAULT_PATH: "/tmp/fixture-vault", NODE_TEST_CONTEXT: "" });
   assert.equal(seen.vault, "/tmp/fixture-vault");
+});
+
+
+test("filled developer home stays byte-identical while grandchildren use run home and dead endpoint", () => {
+  const developerHome = mkdtempSync(join(tmpdir(), "developer-home-fixture-"));
+  try {
+    mkdirSync(join(developerHome, ".bastra", "bridges"), { recursive: true });
+    const sentinel = join(developerHome, ".bastra", "bridges", "last-mint.json");
+    writeFileSync(sentinel, '{"real":true}');
+    const script = `
+      const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
+      const child = require("node:child_process").spawnSync(process.execPath, ["-e", \`
+        const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
+        fs.mkdirSync(process.env.BASTRA_BRIDGES_PATH, {recursive:true});
+        fs.writeFileSync(path.join(process.env.BASTRA_BRIDGES_PATH,"last-mint.json"),"fixture");
+        fs.mkdirSync(process.env.BASTRA_COMMONS_PATH, {recursive:true});
+        fs.writeFileSync(path.join(process.env.BASTRA_COMMONS_PATH,"fixture.json"),"fixture");
+        console.log(JSON.stringify({home:os.homedir(),url:process.env.BASTRA_DAEMON_URL}));
+      \`], {env:process.env,encoding:"utf8"});
+      if (child.status !== 0) throw new Error(child.stderr);
+      console.log(JSON.stringify({root:process.env.BASTRA_TEST_RUN_ROOT, grandchild:JSON.parse(child.stdout), entries:fs.readdirSync(os.homedir())}));
+    `;
+    const r = spawnSync(process.execPath, ["--import", TEST_ENV, "-e", script], {
+      env: outsideRun({ ...DEVELOPER_SHELL, HOME: developerHome, USERPROFILE: developerHome,
+        BASTRA_BRIDGES_PATH: join(developerHome, ".bastra", "bridges"), BASTRA_COMMONS_PATH: join(developerHome, ".bastra", "commons") }), encoding: "utf8",
+    });
+    assert.equal(r.status, 0, r.stderr);
+    const seen = JSON.parse(r.stdout.trim());
+    assert.equal(seen.grandchild.home, join(seen.root, "home"));
+    assert.notEqual(new URL(seen.grandchild.url).port, "6723");
+    assert.deepEqual(seen.entries, [".bastra"]);
+    assert.equal(existsSync(seen.root), false);
+    assert.equal(readFileSync(sentinel, "utf8"), '{"real":true}');
+    assert.deepEqual(readdirSync(join(developerHome, ".bastra", "bridges")), ["last-mint.json"]);
+  } finally { rmSync(developerHome, { recursive: true, force: true }); }
+});
+
+test("run audit catches a grandchild attempting port 6723 without contacting a listener", () => {
+  const script = `
+    const child = require("node:child_process").spawnSync(process.execPath, ["-e", 'require("node:net").connect(6723,"127.0.0.1").on("error",e=>console.error(e.message))'], {env:process.env,encoding:"utf8"});
+    console.log(JSON.stringify({root:process.env.BASTRA_TEST_RUN_ROOT,error:child.stderr}));
+  `;
+  const r = spawnSync(process.execPath, ["--import", TEST_ENV, "-e", script], {env:outsideRun({}),encoding:"utf8"});
+  assert.equal(r.status, 1, "whole-run audit must fail a forbidden child connection");
+  const seen = JSON.parse(r.stdout.trim());
+  assert.match(seen.error, /refusing the operator daemon/);
+  assert.match(r.stderr, /test isolation audit failed/);
+  assert.equal(existsSync(seen.root), false);
+});
+
+
+test("whole-run home audit accepts Deno's fixture cache and rejects unexpected files", () => {
+  for (const unexpected of [false, true]) {
+    const script = `const fs=require("node:fs"),path=require("node:path"),home=require("node:os").homedir();
+      fs.mkdirSync(path.join(home,".cache","deno"),{recursive:true});
+      ${unexpected ? 'fs.writeFileSync(path.join(home,"unexpected-user-data"),"fixture");' : ''}`;
+    const r = spawnSync(process.execPath, ["--import",TEST_ENV,"-e",script], {env:outsideRun({}),encoding:"utf8"});
+    assert.equal(r.status, unexpected ? 1 : 0, r.stderr);
+    if (unexpected) assert.match(r.stderr,/unexpected-user-data/);
+  }
+});
+
+
+test("tool-specific homes and inherited npm locations cannot escape the run home",()=>{
+  const seen=probe(outsideRun({CLAUDE_CONFIG_DIR:"/fixture/operator/claude",CODEX_HOME:"/fixture/operator/codex",XDG_CONFIG_HOME:"/fixture/operator/config",XDG_CACHE_HOME:"/fixture/operator/cache",APPDATA:"/fixture/operator/appdata",LOCALAPPDATA:"/fixture/operator/local",npm_config_cache:"/fixture/operator/npm",NPM_CONFIG_CACHE:"/fixture/operator/npm-upper",npm_config_userconfig:"/fixture/operator/npmrc"}));
+  assert.deepEqual([seen.claudeConfig,seen.codexHome,seen.xdgConfig,seen.xdgCache,seen.appData,seen.localAppData],[null,null,null,null,null,null]);
+  assert.equal(seen.npmCache,join(seen.root!,"home",".npm"));assert.equal(seen.npmCacheUpper,seen.npmCache);
+  assert.equal(seen.npmUserConfig,join(seen.root!,"home",".npmrc"));
+});
+
+test("every host spelling of forbidden port 6723 is rejected before connection",()=>{
+  for(const host of ["0.0.0.0","127.0.0.2","LOCALHOST","localhost.","::","0:0:0:0:0:0:0:1","::ffff:7f00:1","fixture.invalid"]) {
+    const script=`require("node:net").connect(6723,${JSON.stringify(host)}).on("error",error=>console.error(error.message));`;
+    const r=spawnSync(process.execPath,["--import",TEST_ENV,"-e",script],{env:outsideRun({}),encoding:"utf8"});
+    assert.equal(r.status,1,`${host}: whole-run audit must fail`);assert.match(r.stderr,/refusing the operator daemon/);
+  }
+});
+
+test("single CLI-help test from an empty shell uses an allowed isolated npm cache",{skip:process.platform==="win32"},()=>{
+  const fixtureHome=mkdtempSync(join(tmpdir(),"empty-shell-home-"));
+  try {
+    const r=spawnSync("env",["-i",`HOME=${fixtureHome}`,`PATH=${process.env.PATH}`,process.execPath,"--import","tsx","--import",TEST_ENV,"--test",join(REPO,"packages/daemon/__tests__/cli-help.test.ts")],{cwd:REPO,encoding:"utf8"});
+    assert.equal(r.status,0,r.stderr);assert.deepEqual(readdirSync(fixtureHome),[]);
+  }finally{rmSync(fixtureHome,{recursive:true,force:true});}
 });
