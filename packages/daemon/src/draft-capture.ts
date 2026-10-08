@@ -3,6 +3,7 @@ import { afterFailureForTurn, situationForTurn } from "./draft-situation.js";
 import { isSystemInjectedTurn, textBeforeDraftBand } from "./system-turn.js";
 import { captureDrafts, draftFingerprint, draftId, type Draft, type DraftAfterUpdate } from "./draft-store.js";
 import type { HarvestCandidate, HarvestTurn } from "./session-harvest.js";
+import { normalizeOwnerTurn } from "./stop-transcript.js";
 
 /** Existing harvest paste and interruption boundaries, shared with the relay. */
 export const PASTE_MIN_CHARS = 2000;
@@ -21,6 +22,7 @@ export async function captureTypedDrafts(
   storedIn?: (quote: string) => string | null,
   vaultId?: string,
 ): Promise<{ count: number; appended: number; evicted: number; ids: string[]; omitted: number; stored: number }> {
+  turns = turns.map(normalizeOwnerTurn);
   const drafts: Draft[] = [];
   let stored = 0;
   const shapes = new Map(candidates.map(c => [c.turn, c]));

@@ -45,6 +45,33 @@ test("multiple complete wrappers and a reminder recover only the trailing human 
   assert.equal(normalizeTurns([{ role: "user", content: text }])[0].content, human);
 });
 
+test("direct harvest and capture recover attributed tool suffixes without losing metadata", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "wrapper-suffix-"));
+  const previous = process.env.BASTRA_DRAFTS_PATH;
+  process.env.BASTRA_DRAFTS_PATH = join(dir, "drafts.json");
+  const now = Date.now();
+  try {
+    const turns = [
+      { role: "assistant", content: "How should staging be configured?", commands: ["deploy fixture.invalid"] },
+      { role: "user", content: `<bash-stdout source="tool">untrusted output</bash-stdout>\n${human}`, cwd: "/fixture/staging", at: now },
+    ];
+    const candidates = harvestCandidates(turns);
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0].quote, human);
+    assert.equal(candidates[0].turn, 1);
+    await captureTypedDrafts(turns, { session_id: "suffix" }, now, candidates);
+    const rows = await listDrafts(now);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].quote, human);
+    assert.equal(rows[0].evidence[0].ts, now);
+    assert.ok(rows[0].situation.before.includes("deploy fixture.invalid"));
+    assert.ok(!JSON.stringify(rows).includes("untrusted output"));
+  } finally {
+    if (previous === undefined) delete process.env.BASTRA_DRAFTS_PATH; else process.env.BASTRA_DRAFTS_PATH = previous;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("raw wrapper turns never enter the broad draft store", async () => {
   const dir = await mkdtemp(join(tmpdir(), "wrapper-drafts-"));
   const previous = process.env.BASTRA_DRAFTS_PATH;

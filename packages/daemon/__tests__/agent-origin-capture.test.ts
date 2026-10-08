@@ -5,10 +5,11 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { normalizeTurns, parseTranscriptFile } from "../src/stop-transcript.js";
+import { loadTranscript, normalizeTurns, parseTranscriptFile } from "../src/stop-transcript.js";
 import { ownerPromptText } from "../src/system-turn.js";
 import { harvestCandidates, noteSessionForHarvest, runSessionHarvest } from "../src/session-harvest.js";
 import { listDrafts } from "../src/draft-store.js";
+import { captureTypedDrafts } from "../src/draft-capture.js";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const human = "Please use a separate staging database for every production deployment.";
@@ -58,8 +59,46 @@ test("Claude/Codex cmux loop is excluded from both persisted drafts and harvest 
     let pending = "";
     try { pending = await readFile(env.BASTRA_PENDING_SUGGESTIONS_PATH, "utf8"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     assert.ok(!pending.includes("Codex:"));
+    // Restart/replay: already-seen input neither repeats evidence nor creates relay credit.
+    for (const client of ["claude", "codex"]) {
+      await noteSessionForHarvest({ session_id: client, transcript_path: join(dir, client + ".jsonl"), client, ended: true, now: now + 2 });
+    }
+    await runSessionHarvest({ loadTurns: async path => parseTranscriptFile(await readFile(path, "utf8")), now: now + 3 });
+    assert.deepEqual(await listDrafts(now + 3), drafts);
   } finally {
     for (const [key, value] of prev) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("remote inline and direct harvest input cannot give agent prose draft or relay evidence", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agent-direct-"));
+  const previous = process.env.BASTRA_DRAFTS_PATH;
+  process.env.BASTRA_DRAFTS_PATH = join(dir, "drafts.json");
+  try {
+    const turns = [
+      { role: "assistant", content: "What should deployment use?" },
+      { role: "user", content: marked() },
+      { role: "user", content: marked() },
+      { role: "user", content: human },
+    ];
+    const candidates = harvestCandidates(turns, 0, Infinity, true);
+    assert.deepEqual(candidates, []);
+    const remote = await loadTranscript({ transcript: turns });
+    assert.deepEqual(remote.map(t => t.role), ["assistant", "system-injected", "system-injected", "user"]);
+    // Rendering may remove envelopes only AFTER structural classification;
+    // retained system-injected roles must never become human on another read.
+    const rendered = remote.map(t => t.role === "system-injected" ? { ...t, content: agent } : t);
+    assert.deepEqual(harvestCandidates(rendered, 0, Infinity, true), []);
+    await captureTypedDrafts(turns, { session_id: "direct" }, Date.now(), candidates);
+    const rows = await listDrafts();
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].quote, human);
+    assert.equal(rows[0].evidence.length, 1);
+    assert.equal(rows[0].evidence[0].turn, 3);
+    assert.deepEqual(rows[0].surfaced, []);
+  } finally {
+    if (previous === undefined) delete process.env.BASTRA_DRAFTS_PATH; else process.env.BASTRA_DRAFTS_PATH = previous;
     await rm(dir, { recursive: true, force: true });
   }
 });

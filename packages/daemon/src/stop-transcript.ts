@@ -172,6 +172,14 @@ function turnContent(role: string, content: unknown): string {
   return scrubTurnContent(role === "user" ? typedText(content) : stringifyContent(content));
 }
 
+/** Direct harvest callers must enforce the same owner boundary as JSONL readers.
+ * Preserve commands, timestamps and turn indices; never upgrade a non-user role. */
+export function normalizeOwnerTurn(turn: TranscriptTurn): TranscriptTurn {
+  if (turn.role !== "user") return turn;
+  const role = effectiveRole(turn.role, turn.content);
+  return { ...turn, role, content: turnContent(role, turn.content) };
+}
+
 export function normalizeTurns(items: unknown[]): TranscriptTurn[] {
   const out: TranscriptTurn[] = [];
   for (const item of items) {
