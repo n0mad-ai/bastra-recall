@@ -2374,7 +2374,8 @@ literals (digits, / @ : _, or an internal dot); a hyphen alone is ordinary prose
 Duplicate blocking has no literal condition, including quote tombstones and current
 notes. It deliberately prefers a false block over a second note. Command cues use a program head plus a rare literal actually
 present in that command; the stored question stays verbatim, and quote cues use
-up to five rare words with DF <=2 in that same vocabulary. Pure numbers and
+up to five rare words with DF <=2 in that same vocabulary, at least four
+characters long and preferring longer tokens when equally rare. Pure numbers and
 redacted spans are excluded; a candidate without any useful command/question/word
 cue is held rather than creating a noisy trigger.
 
@@ -2390,7 +2391,9 @@ and reasons. Hash-only decision receipts beside vectors deduplicate each candida
 state and pair. The vector file is loaded once per pass; small hash-only receipts
 are committed once beside it. An unchanged full input state skips candidate math
 (the 480/100/2000 benchmark fell from about 3.6 s per unchanged pass to 23 ms).
-A vault/draft/model/vector/mode change invalidates that pass receipt.
+A vault/draft/model/vector/mode or decision-threshold change invalidates that
+pass receipt; it includes a rule version and all decision threshold constants.
+Timing is reported only; tests assert skipped math and one load, not host wall time.
 Pair/vocabulary/duplicate computation yields outside the draft lock;
 only identity/state changes take it. Publication/undo/purge have separate serialization,
 so capture and hook feedback do not queue behind background math or note publication.
@@ -2400,7 +2403,10 @@ provenance and complete same-model local comparison. The legacy relay remains on
 at its original harvest seam when actual sharp comparison is unavailable or the
 mode is probe. Even a potentially sharp pass first stores the ordinary relay
 before advancing harvest progress, then withdraws that exact block only after
-a fully successful sharp pass. Failure or process termination leaves it available;
+a fully successful sharp pass **and successful capture of that session**.
+Provisional blocks do not count against the ordinary recency cap, so withdrawing
+them cannot evict a foreign block. Retained fallbacks become ordinary relay at
+settlement and use its usual cap. Failure or process termination leaves them readable;
 the daemon reports the remaining forwarded count. No local provider, failed local embedding, incomplete
 or wrong-model vault vectors cannot create a note. Legacy/mixed vault provenance
 is never guessed. No cloud provider embeds draft text.
@@ -2427,8 +2433,11 @@ remain unmeasured on real data and unchanged: 0.70 repeat / 0.60 duplicate. The
 review's weakest genuine duplicate was 0.615; a new fact wrongly blocked was 0.645.
 Removing the literal bypass blocks 6/13 new same-topic facts in the reviewer
 counterprobe, versus 2/13 with the bypass; the duplicate threshold stays 0.60.
-The stacked-branch workflow filter is temporary for this chain; Claude removes it
-after the stack merges.
+Material matters: a further review blocked 1/15 broadly different new facts but
+11/13 sharing hosts/paths/versions, including two contradictory statements. Genuine
+duplicates from 0.736 and new facts up to 0.791 overlap; no single cosine cutoff
+separates them.
+
 
 #### Before enabling sharp mode / Bevor du scharf schaltest
 
@@ -2438,14 +2447,18 @@ summary, triggers, body and `.bastra/audit-log.ndjson`. Undo removes the note bu
 URL userinfo with special characters, “the password is …”, “die PIN ist …”, `pw=…`,
 `mysqldump -p…`, `curl -u user:…`, `redis-cli -a …`, `password=$…`, `--password-stdin`
 with `echo`, `user:pass@host` in scp, `secret_key_base: …`, `credentials: …`.
+The review also observed an unredacted password becoming a word cue in 1/15
+cases at the known German “das Passwort ist …” boundary.
 The fixed redaction corpus remains the standard; its filter was not changed here.
 The operator decides whether to enable sharp mode with these known limits. Default remains probe.
 The routine guard remains weak: the independent reviewer corpus would promote
 10/15 routine sentences and 15/15 orders, while holding 0/15 factual statements.
 This is not a factuality classifier. Sharp mode still suppresses one-off statements
 from the ordinary relay after a successful sharp pass: 24/207 quotes in 31 sharp
-review samples received neither forwarding nor promotion. Whether to retain that
-policy is an open operator decision. A session starting during the pass may consume
+review samples received neither forwarding nor promotion. This includes repeated quotes blocked by routine vocabulary, missing useful cues
+or duplicate comparison, not just one-off statements. A falsely blocked new fact
+remains a rejected tombstone for 180 days. Whether to retain this policy is an open
+operator decision. A session starting during the pass may consume
 the already durable fallback before withdrawal; forwarding in doubt is intentional.
 
 An den bekannten Grenzen des Schwärz-Filters können **Geheimnisse im Klartext den
@@ -2455,13 +2468,17 @@ Beobachtet für: `--password=/…`, URL-Userinfo mit Sonderzeichen, „the passw
 „die PIN ist …“, `pw=…`, `mysqldump -p…`, `curl -u user:…`, `redis-cli -a …`,
 `password=$…`, `--password-stdin` mit `echo`, `user:pass@host` bei scp,
 `secret_key_base: …`, `credentials: …`. Der Filter bleibt am festen Korpus gemessen
-und wurde hier nicht verändert. Ob scharf geschaltet wird, entscheidet der Betreiber.
+und wurde hier nicht verändert. Zusätzlich wurde bei „das Passwort ist …“ in
+1/15 Fällen ein ungeschwärztes Passwort zum Wort-Auslöser.
+Ob scharf geschaltet wird, entscheidet der Betreiber.
 Standard bleibt der Probelauf. Der Routineschutz ist schwach: Im unabhängigen
 Prüferkorpus würden 10/15 Routinesätze und 15/15 Aufträge befördert; 0/15 Tatsachen
 werden aufgehalten. Das ist kein Tatsachenklassifikator. Scharf werden einmalige
 Aussagen nach erfolgreichem Pass weiterhin aus der alten Weitergabe entfernt:
 24/207 Zitate in 31 scharfen Prüffällen hatten weder Weitergabe noch Beförderung.
-Diese Regel ist eine offene Betreiberentscheidung. Eine während des Passes startende
+Das betrifft auch Wiederholungen, die am Routineschutz, an fehlenden Auslösern
+oder an der Dublettensperre hängen. Falsch gesperrte neue Tatsachen bleiben 180 Tage
+abgelehnter Grabstein. Diese Regel ist eine offene Betreiberentscheidung. Eine während des Passes startende
 Sitzung kann den bereits gesicherten Fallback vor dem Zurückziehen konsumieren;
 im Zweifel weiterzugeben ist beabsichtigt.
 
@@ -2471,7 +2488,8 @@ Ziffern-/Pfad-/Host-Literale verhindern nur den Wiederholungs-Auslöser; ein
 Bindestrich allein nicht. Die Dublettensperre hat keine Literal-Bedingung und
 sperrt im Zweifel lieber zu viel. Auslöser bestehen aus
 Befehlskopf plus passendem seltenen Literal, der gespeicherten Frage und den fünf
-seltensten Zitattokens mit DF <=2, ohne reine Zahlen oder geschwärzte Stellen.
+seltensten Zitattokens mit DF <=2, mindestens vier Zeichen, bei Gleichstand
+längere zuerst; ohne reine Zahlen oder geschwärzte Stellen.
 Ohne brauchbare Auslöser wird keine Rausch-Notiz erzeugt. Abgeleitete Notizen und abgelehnte Zeilen behalten reine
 Zitatvektoren 180 Tage: Das verhindert zweite Notizen trotz verwässertem Notiztext
 und Umformulierungen/Übersetzungen nach Undo trotz anderer Literale. Private IDs erscheinen nicht in der Telemetrie.
@@ -2481,12 +2499,17 @@ und Wiederaufnahme werden nur protokolliert. Entscheidungshashes neben den Vekto
 verhindern wiederholte Messzeilen. Vektoren werden einmal je Tick geladen,
 Hash-Merker gesammelt einmal gespeichert. Ein unveränderter Vollzustand überspringt
 die Berechnung: Lastfall 480/100/2000 von etwa 3,6 s auf 23 ms. Änderungen an
-Notizen, Entwürfen, Modell, Vektoren oder Modus invalidieren den Merker.
+Notizen, Entwürfen, Modell, Vektoren, Modus oder Entscheidungsschwellen invalidieren
+den Merker; Regelversion und alle Schwellen sind enthalten. Zeiten nur ausgeben,
+Abnahme prüft Skip und eine Vektorladung statt fremder CPU-Last.
 Die Berechnung gibt den Event-Loop frei und läuft
 außerhalb der Ablagesperre. Capture/Hooks warten nicht auf Notiz-Publikation. Bei
 fehlendem scharfem Abgleich bleibt die Weitergabe an ihrer alten Stelle, bevor
 weitere Draft-Arbeiten laufen. Auch potenziell scharf wird sie dort zuerst dauerhaft
-gespeichert und erst nach vollständig erfolgreichem scharfem Pass zurückgezogen.
+gespeichert und erst nach vollständig erfolgreichem scharfem Pass und gelungener
+Erfassung genau dieser Sitzung zurückgezogen. Vorläufige Blöcke liegen außerhalb
+der normalen Recency-Grenze; Rücknahme verliert keine fremden Vorschläge. Bleibende
+Fallbacks werden danach normale Weitergabe mit deren üblicher Grenze.
 Fehler/Prozessende verlieren diesen Fallback nicht. Der Zähler nennt die verbleibende
 Weitergabe.
 
@@ -2502,5 +2525,8 @@ nicht zu einer Tatsache. Der englische Injektionsscanner blockiert zudem legitim
 `curl … | sh`-Fakten oder lange `sha256:`-Digests. Die ungemessenen Schwellen bleiben
 0,70/0,60; echte Dublette 0,615 und zu Unrecht gesperrte neue Tatsache 0,645 liegen
 eng zusammen. Ohne Literal-Bypass werden in der Prüfer-Gegenprobe 6/13 neue
-Tatsachen zum gleichen Thema gesperrt, zuvor 2/13. Schwelle 0,60 unverändert.
+Tatsachen zum gleichen Thema gesperrt, zuvor 2/13. Weiterer Prüferkorpus: 1/15 bei
+breit gestreuten neuen Tatsachen, 11/13 mit denselben Hosts/Pfaden/Versionen,
+darunter zwei widersprechende Aussagen. Echte Dubletten ab 0,736 und neue Tatsachen
+bis 0,791 überlappen. Schwelle 0,60 unverändert.
 Keine neue Wortliste, kein weiterer Testdaten-Abstimmungsloop.

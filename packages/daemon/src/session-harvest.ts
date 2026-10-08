@@ -277,7 +277,7 @@ export async function runSessionHarvest(opts: {
    *  Absent = no vault check. */
   storedIn?: () => (quote: string) => string | null;
   vaultId?: string;
-  relay?: (entry: { session_id: string; cwd?: string }, candidates: HarvestCandidate[]) => Promise<void>;
+  relay?: (entry: { session_id: string; cwd?: string }, candidates: HarvestCandidate[], captured: boolean) => Promise<void>;
   now?: number;
 }): Promise<HarvestPassResult> {
   const result: HarvestPassResult = { harvested: 0, candidates: 0, stored: 0 };
@@ -342,7 +342,7 @@ export async function runSessionHarvest(opts: {
       }
       candidates = candidates.slice(0, HARVEST_MAX_CANDIDATES);
       if (candidates.length > 0) {
-        if (opts.relay) await opts.relay(e, candidates);
+        if (opts.relay) await opts.relay(e, candidates, !drafts.error);
         else await writePendingSuggestion(formatHarvestBlock(e, candidates));
       }
       progress.set(e.session_id, { upto: turns.length, at: now });

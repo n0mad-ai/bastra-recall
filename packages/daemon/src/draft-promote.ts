@@ -21,6 +21,8 @@ export const DRAFT_REPEAT_COSINE_MIN = 0.70;
 export const DRAFT_VAULT_COSINE_MIN = 0.60;
 export const DRAFT_RARE_TOKEN_MAX_ROWS = 2;
 export const DRAFT_RARE_TOKEN_MIN = 4;
+export const DRAFT_CUE_MIN_CHARS = 4;
+export const DRAFT_PROMOTION_RULE_VERSION = 3;
 const YIELD_EVERY = 32;
 export interface DraftPromotionEvent {
   kind: "draft_would_promote" | "draft_would_block" | "draft_promoted" | "draft_duplicate_blocked" | "draft_promote_blocked";
@@ -72,7 +74,7 @@ export function buildDraftNote(rows: Draft[], df: ReadonlyMap<string, number>): 
   const scopeName = first.situation.project ?? "all-projects";
   const scope = /^[\p{L}\p{N}][\p{L}\p{N} _.-]*$/u.test(scopeName) && !scopeName.includes("..") ? scopeName : "all-projects";
   const rareWords = [...new Set(tokens(first.quote.replace(/\S*\[REDACTED(?:[^\]]*)\]\S*/gi, " ")))]
-    .filter(word => !/^\p{N}+$/u.test(word) && (df.get(word) ?? 0) <= DRAFT_RARE_TOKEN_MAX_ROWS).sort((a, b) => (df.get(a) ?? 0) - (df.get(b) ?? 0) || a.localeCompare(b)).slice(0, 5);
+    .filter(word => [...word].length >= DRAFT_CUE_MIN_CHARS && !/^\p{N}+$/u.test(word) && (df.get(word) ?? 0) <= DRAFT_RARE_TOKEN_MAX_ROWS).sort((a, b) => (df.get(a) ?? 0) - (df.get(b) ?? 0) || [...b].length - [...a].length || a.localeCompare(b)).slice(0, 5);
   const literalCues: string[] = [];
   for (const row of rows) for (const command of [...row.situation.before, ...row.situation.after]) {
     const head = commandHead(command);
@@ -98,9 +100,9 @@ async function writeEvent(event: DraftPromotionEvent): Promise<void> {
   const dir = logDirFor(); await mkdir(dir, { recursive: true }); const ts = new Date().toISOString();
   await appendFile(join(dir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify({ ...event, ts }) + "\n", "utf8");
 }
-const PASS_KEY = hash("draft-promotion-pass:v2");
+const PASS_KEY = hash("draft-promotion-pass:v3");
 function passSignature(opts: DraftPromoteOptions, rows: Draft[], notes: ReturnType<Vault["list"]>, vectors: ReadonlyMap<string,Float32Array> | null, snapshot: ReturnType<NonNullable<DraftPromoteOptions["vaultVectors"]>> | undefined, sharp: boolean, vaultId: string): string {
-  const state = createHash("sha256").update(JSON.stringify({ vaultId, sharp, allowSharp: opts.allowSharp, provider: opts.provider?.id, dim: opts.provider?.dim, ollama: opts.ollama ? [opts.ollama.baseURL, opts.ollama.model] : null,
+  const state = createHash("sha256").update(JSON.stringify({ rules: [DRAFT_PROMOTION_RULE_VERSION,DRAFT_REPEAT_COSINE_MIN,DRAFT_VAULT_COSINE_MIN,DRAFT_RARE_TOKEN_MAX_ROWS,DRAFT_RARE_TOKEN_MIN,DRAFT_CUE_MIN_CHARS,STORED_CONTAINMENT_MIN], vaultId, sharp, allowSharp: opts.allowSharp, provider: opts.provider?.id, dim: opts.provider?.dim, ollama: opts.ollama ? [opts.ollama.baseURL, opts.ollama.model] : null,
     rows: rows.map(({ last_touched: _touched, created: _created, ...row }) => row), notes: notes.map(note => [note.fm.id, note.fm.title, note.fm.summary, note.fm.recall_when, note.fm.source, note.fm.write_origin, note.body.slice(0,4000)]),
     snapshotProvider: snapshot?.provider, snapshotDim: snapshot?.dim }));
   for (const [id,vector] of vectors ?? []) state.update(id).update(Buffer.from(vector.buffer,vector.byteOffset,vector.byteLength));
