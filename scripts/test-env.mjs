@@ -29,9 +29,12 @@
  * test files guard against it by hand. Guarding the 27th is a convention nobody
  * can enforce; the pipe itself can be.
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, parse } from "node:path";
+import { createServer } from "node:net";
+import { fileURLToPath } from "node:url";
+import "./test-network-guard.mjs";
 
 /**
  * One temp root per test run, and the developer's own bastra settings kept out.
@@ -68,6 +71,25 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
   }
   const root = mkdtempSync(join(tmpdir(), "bastra-test-run-"));
   process.env.BASTRA_TEST_RUN_ROOT = root;
+  // Isolate every homedir-based fallback, including tools' configuration.
+  const runHome = join(root, "home");
+  mkdirSync(runHome);
+  process.env.HOME = runHome;
+  process.env.USERPROFILE = runHome;
+  process.env.HOMEDRIVE = parse(runHome).root.replace(/[\\/]$/, "");
+  process.env.HOMEPATH = runHome.slice(process.env.HOMEDRIVE.length);
+  process.env.BASTRA_BRIDGES_PATH = join(runHome, ".bastra", "bridges");
+  process.env.BASTRA_COMMONS_PATH = join(runHome, ".bastra", "commons");
+  // Obtain a currently unused loopback port; never probe the operator's daemon.
+  const reservation = createServer();
+  await new Promise((resolve, reject) => { reservation.once("error", reject); reservation.listen(0, "127.0.0.1", resolve); });
+  const port = reservation.address().port;
+  await new Promise(resolve => reservation.close(resolve));
+  process.env.BASTRA_DAEMON_URL = `http://127.0.0.1:${port}`;
+  process.env.BASTRA_HTTP_PORT = String(port);
+  // CLI grandchildren do not inherit --import arguments, but do inherit this.
+  const guard = fileURLToPath(new URL("./test-network-guard.mjs", import.meta.url));
+  process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS ?? ""} --import ${JSON.stringify(guard)}`.trim();
   process.env.TMPDIR = root;
   process.env.TEMP = root;
   process.env.TMP = root;
@@ -79,6 +101,16 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
   process.env.BASTRA_RM_ARCHIVES = "0";
   process.env.BASTRA_ARCHIVE_DIR = join(root, "archive");
   const removeRoot = () => {
+    // This is checked once for the entire process tree, before cleanup.
+    const expected = new Set([".bastra", ".claude", ".claude.json", ".codex", ".cursor", ".cmuxterm", ".config", ".cache"]);
+    const unexpected = existsSync(runHome) ? readdirSync(runHome).filter(name => !expected.has(name)) : [];
+    const cacheDir = join(runHome, ".cache");
+    if (existsSync(cacheDir)) unexpected.push(...readdirSync(cacheDir).filter(name => name !== "deno").map(name => `.cache/${name}`));
+    const blocked = existsSync(join(root, "blocked-daemon-connections.jsonl"));
+    if (unexpected.length || blocked) {
+      process.stderr.write(`test isolation audit failed: unexpected home entries ${JSON.stringify(unexpected)}; blocked daemon connection ${blocked}\n`);
+      process.exitCode = 1;
+    }
     try {
       rmSync(root, { recursive: true, force: true, maxRetries: 3 });
     } catch {

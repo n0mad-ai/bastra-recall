@@ -338,11 +338,13 @@ test("#531 the update hint probes the configured endpoint and never the default 
   const configured = await make("configured");
   const decoy = await make("decoy");
   const home = await mkdtemp(join(tmpdir(), "bastra-531-hint-"));
-  const saved = { port: process.env.BASTRA_HTTP_PORT, home: process.env.HOME, check: process.env.BASTRA_UPDATE_CHECK };
+  const saved = { url: process.env.BASTRA_DAEMON_URL, port: process.env.BASTRA_HTTP_PORT, home: process.env.HOME, check: process.env.BASTRA_UPDATE_CHECK };
+  process.env.BASTRA_DAEMON_URL = `http://127.0.0.1:${configured.port}`;
   process.env.BASTRA_HTTP_PORT = String(configured.port);
   process.env.HOME = home;
   delete process.env.BASTRA_UPDATE_CHECK;
   t.after(async () => {
+    if (saved.url === undefined) delete process.env.BASTRA_DAEMON_URL; else process.env.BASTRA_DAEMON_URL = saved.url;
     if (saved.port === undefined) delete process.env.BASTRA_HTTP_PORT; else process.env.BASTRA_HTTP_PORT = saved.port;
     if (saved.home === undefined) delete process.env.HOME; else process.env.HOME = saved.home;
     if (saved.check !== undefined) process.env.BASTRA_UPDATE_CHECK = saved.check;
@@ -386,12 +388,15 @@ test("#531 a chosen endpoint survives registration — and a hand-set one surviv
 test("#531 serverBlockEndpoint reads the endpoint an existing registration already carries", () => {
   const existing = { command: "node", args: ["/fwd.js"], env: { BASTRA_DAEMON_URL: "http://127.0.0.1:26723" } };
   const saved = process.env.BASTRA_HTTP_PORT;
+  const url = process.env.BASTRA_DAEMON_URL;
+  delete process.env.BASTRA_DAEMON_URL;
   delete process.env.BASTRA_HTTP_PORT;
   try {
     assert.equal(serverBlockEndpoint(existing), "http://127.0.0.1:26723");
     assert.equal(serverBlockEndpoint({ env: {} }), null);
     assert.equal(serverBlockEndpoint(null), null);
   } finally {
+    if (url === undefined) delete process.env.BASTRA_DAEMON_URL; else process.env.BASTRA_DAEMON_URL = url;
     if (saved !== undefined) process.env.BASTRA_HTTP_PORT = saved;
   }
 });

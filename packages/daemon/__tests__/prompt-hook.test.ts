@@ -47,7 +47,7 @@ function runHook(
 ): Promise<{ stdout: string; code: number }> {
   return new Promise((ok, ko) => {
     const child = spawn("npx", ["tsx", HOOK_PATH], {
-      env: { ...process.env, ...env, BASTRA_TELEMETRY: "off" },
+      env: { ...process.env, ...env, ...(env.BASTRA_HTTP_URL && !env.BASTRA_DAEMON_URL ? { BASTRA_DAEMON_URL: env.BASTRA_HTTP_URL } : {}), BASTRA_TELEMETRY: "off" },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
