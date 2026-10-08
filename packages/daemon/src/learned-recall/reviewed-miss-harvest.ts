@@ -1,18 +1,187 @@
-import {
-  hash,
-  humanIntent,
-  isEvidenceRead,
-  isRecall,
-  matchingResults,
-  readEnvelope,
-  resultText,
-  sourceRef,
-  toolUses,
-  type Envelope,
-  type ToolUse,
-} from "./reviewed-miss-shared.js";
+import { createHash } from "node:crypto";
+import { basename } from "node:path";
+import { pseudonymousSession } from "../telemetry-dimensions.js";
 
-export { hash };
+interface ToolUse {
+  id?: unknown;
+  name?: unknown;
+  input?: unknown;
+}
+
+export function hash(value: string): string {
+  return "sha256:" + createHash("sha256").update(value).digest("hex").slice(0, 32);
+}
+
+/**
+ * The one session ref every lane writes. Its input is the client session as
+ * the daemon pseudonymizes it (`pseudonymousSession`, stamped on recall
+ * events as `dimensions.experiment_session`) — the only spelling of a session
+ * that both a transcript and the telemetry can produce. A transcript knows the
+ * raw Claude session id and derives the pseudonym (`transcriptSession`);
+ * telemetry never holds the raw id for a load.
+ */
+export function sessionRef(session: string): string {
+  return hash("session:" + session);
+}
+
+/**
+ * The client session a raw transcript belongs to, as its daemon pseudonym:
+ * the `sessionId` its records carry, else the file name, which Claude Code
+ * names after the same id.
+ */
+export function transcriptSession(jsonl: string, fileName: string): string {
+  let raw: string | null = null;
+  for (const line of jsonl.split("\n")) {
+    if (!line.includes('"sessionId"')) continue;
+    try {
+      const id = (JSON.parse(line) as { sessionId?: unknown }).sessionId;
+      if (typeof id === "string" && id) {
+        raw = id;
+        break;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return pseudonymousSession(raw ?? basename(fileName).replace(/\.jsonl$/i, "")) ?? "";
+}
+
+function contentText(content: unknown): string | null {
+  if (typeof content === "string") return content.trim() || null;
+  if (!Array.isArray(content) || content.some((part) => typeof part === "object" && part !== null && "tool_use_id" in part)) {
+    return null;
+  }
+  const text = content
+    .filter((part): part is { type?: unknown; text?: unknown } => typeof part === "object" && part !== null)
+    .filter((part) => part.type === "text" && typeof part.text === "string")
+    .map((part) => part.text)
+    .join("\n")
+    .trim();
+  return text || null;
+}
+
+function humanIntent(record: Record<string, unknown>): string | null {
+  if (record.isMeta === true || "sourceToolUseID" in record) return null;
+  const text = contentText((record.message as { content?: unknown } | undefined)?.content);
+  if (!text || /^\[Image:\s*source:/i.test(text)) return null;
+  return text;
+}
+
+function toolUses(record: Record<string, unknown>): ToolUse[] {
+  const content = (record.message as { content?: unknown } | undefined)?.content;
+  if (!Array.isArray(content)) return [];
+  return content.filter((part): part is ToolUse & { type: "tool_use" } =>
+    typeof part === "object" && part !== null && (part as { type?: unknown }).type === "tool_use",
+  );
+}
+
+function isRecall(tool: ToolUse): boolean {
+  return typeof tool.name === "string" && /(?:^|__)recall$/i.test(tool.name);
+}
+
+function isEvidenceRead(tool: ToolUse): boolean {
+  // Same MCP-prefix rule as `isRecall`: a real transcript names the tool
+  // `mcp__bastra-recall__find_document`, never the bare name.
+  return typeof tool.name === "string" && /(?:^|__)(Read|Glob|Grep|Search|find_document|read_document)$/i.test(tool.name);
+}
+
+function sourceRef(tool: ToolUse): string | null {
+  if (!tool.input || typeof tool.input !== "object") return null;
+  const input = tool.input as Record<string, unknown>;
+  for (const key of ["file_path", "path", "id", "query"]) {
+    if (typeof input[key] === "string" && input[key]) return hash(key + ":" + input[key]);
+  }
+  return null;
+}
+
+/** The text a tool_result part carries: a plain string or joined text parts. */
+function resultText(part: Record<string, unknown>): string | null {
+  const content = part.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return null;
+  const text = content
+    .filter((item): item is { type?: unknown; text?: unknown } => typeof item === "object" && item !== null)
+    .filter((item) => item.type === "text" && typeof item.text === "string")
+    .map((item) => item.text)
+    .join("\n");
+  return text || null;
+}
+
+function matchingResults(record: Record<string, unknown>, toolIds: Set<string>): Record<string, unknown>[] {
+  const content = (record.message as { content?: unknown } | undefined)?.content;
+  if (!Array.isArray(content)) return [];
+  return content.filter((part): part is Record<string, unknown> =>
+    typeof part === "object" && part !== null &&
+    typeof (part as { tool_use_id?: unknown }).tool_use_id === "string" &&
+    toolIds.has((part as { tool_use_id: string }).tool_use_id),
+  );
+}
+
+/**
+ * The served envelope is a JSON object that a transport may follow with
+ * trailing context text (the session-context block). Parse the leading object
+ * only; anything after its closing brace is not the envelope.
+ */
+function leadingJsonObject(text: string): Record<string, unknown> | null {
+  const start = text.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < text.length; index += 1) {
+    const ch = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          const parsed: unknown = JSON.parse(text.slice(start, index + 1));
+          return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+interface Envelope {
+  explicitMiss: boolean;
+  recallId: string | null;
+  servedIds: string[];
+}
+
+/**
+ * Read the served Recall envelope and nothing below it. A miss is what the
+ * envelope itself states — `weak_result`, `no_home`, or an empty `hits` —
+ * never a sentence found inside a hit's summary and never a nested `hits`
+ * array. Text that does not parse as an envelope carries no miss signal.
+ */
+function readEnvelope(text: string | null): Envelope {
+  const none: Envelope = { explicitMiss: false, recallId: null, servedIds: [] };
+  if (!text) return none;
+  const parsed = leadingJsonObject(text);
+  if (parsed === null) return none;
+  const record = parsed as Record<string, unknown>;
+  const hits = Array.isArray(record.hits) ? record.hits : null;
+  const servedIds = (hits ?? [])
+    .map((hit) => (typeof hit === "object" && hit !== null ? (hit as { id?: unknown }).id : undefined))
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  return {
+    explicitMiss: record.weak_result === true || record.no_home === true || (hits !== null && hits.length === 0),
+    recallId: typeof record.recall_id === "string" && record.recall_id ? record.recall_id : null,
+    servedIds,
+  };
+}
+
 
 /**
  * The chain a raw session proves on its own: human intent, the exact Recall
@@ -23,7 +192,8 @@ export { hash };
  */
 export interface ReviewedMissChain {
   query: string;
-  sessionIdentity: string;
+  /** Client session pseudonym; see `sessionRef`. */
+  session: string;
   /** `recall_id` from the served envelope, when the envelope carried one. */
   recallId: string | null;
   /** Envelope-level miss signal: `weak_result`, `no_home` or an empty `hits`. */
@@ -160,7 +330,7 @@ export interface RecallCallStats {
   withRecallId: number;
 }
 
-export function extractReviewedMissChains(jsonl: string, sessionIdentity: string, stats?: RecallCallStats): ReviewedMissChain[] {
+export function extractReviewedMissChains(jsonl: string, session: string, stats?: RecallCallStats): ReviewedMissChain[] {
   const chains: ReviewedMissChain[] = [];
   let intent: string | null = null;
   let pending: {
@@ -187,7 +357,7 @@ export function extractReviewedMissChains(jsonl: string, sessionIdentity: string
     if (!pending || found === null) return;
     chains.push({
       query: pending.query,
-      sessionIdentity,
+      session,
       recallId: pending.envelope.recallId,
       explicitMiss: pending.envelope.explicitMiss,
       servedIds: pending.envelope.servedIds,
@@ -273,7 +443,7 @@ export function toCandidate(chain: ReviewedMissChain): ReviewedMissCandidate {
     kind: "reviewed-recall-miss-candidate/v1",
     status: chain.explicitMiss ? "candidate" : "needs-relevance-label",
     query: chain.query,
-    sessionRef: hash(chain.sessionIdentity),
+    sessionRef: sessionRef(chain.session),
     sourceRef: ref,
     evidence: {
       recall: chain.explicitMiss ? "explicit-miss" : "nonempty-or-unclassified",
@@ -287,6 +457,6 @@ export function toCandidate(chain: ReviewedMissChain): ReviewedMissCandidate {
  * paths, payloads, or tool output. A later source read does not prove a
  * nonempty Recall irrelevant, so only an envelope-level miss is a candidate.
  */
-export function harvestReviewedMisses(jsonl: string, sessionIdentity: string): ReviewedMissCandidate[] {
-  return extractReviewedMissChains(jsonl, sessionIdentity).map(toCandidate);
+export function harvestReviewedMisses(jsonl: string, session: string): ReviewedMissCandidate[] {
+  return extractReviewedMissChains(jsonl, session).map(toCandidate);
 }
