@@ -62,7 +62,9 @@ export function intentTerms(query: string): string[] {
 /** The clear vault id a chain resolved to, or null when it did not resolve to one. */
 export function resolvedMemoryId(chain: ReviewedMissChain, engines: ObservationEngines): string | null {
   if (chain.evidence.kind === "load-memory") return chain.evidence.memoryId;
-  if (chain.evidence.kind === "file-read" && engines.snapshot) {
+  // `bash-read` resolves exactly like `file-read` in `resolveTarget`; leaving it
+  // out here made the same path through `cat` produce no cue proposal at all.
+  if ((chain.evidence.kind === "file-read" || chain.evidence.kind === "bash-read") && engines.snapshot) {
     return engines.snapshot.idByPath.get(resolve(chain.evidence.path)) ?? null;
   }
   return null;
