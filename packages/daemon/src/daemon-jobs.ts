@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * Background jobs of the daemon process — every periodic setInterval/
  * setTimeout that index.ts used to inline lives here. index.ts wires the
@@ -24,7 +25,7 @@ import { draftHintsEnabled } from "./draft-search.js";
 import { startDraftVocabulary } from "./draft-vocabulary.js";
 import { startDraftSearchCache, expireDrafts } from "./draft-store.js";
 import { sessionHarvestEnabled, runSessionHarvest, formatHarvestBlock, type HarvestCandidate } from "./session-harvest.js";
-import { discardPendingSuggestion, writePendingSuggestion } from "./pending-suggestions.js";
+import { settleProvisionalSuggestions, writePendingSuggestion } from "./pending-suggestions.js";
 import { storedQuoteMatcher } from "./harvest-vault-match.js";
 import { loadTranscript } from "./stop-lane.js";
 
@@ -94,19 +95,21 @@ export async function runSessionHarvestTick(
     },
   };
   const canBeSharp = await draftPromotionReady(endpointOptions);
-  const relays: { block: string; count: number }[] = [];
+  const relayToken=canBeSharp ? randomUUID() : null;
+  const relays: { block: string; count: number; captured: boolean }[] = [];
   const harvest = await runSessionHarvest({
     // Probe/unavailable modes use the original harvest relay at its old seam.
     // Sharp mode uses that same durable write before advancing the queue cursor.
-    ...(canBeSharp ? { relay: async (entry: { session_id: string; cwd?: string }, candidates: HarvestCandidate[]) => {
+    ...(canBeSharp ? { relay: async (entry: { session_id: string; cwd?: string }, candidates: HarvestCandidate[], captured: boolean) => {
       const block = formatHarvestBlock(entry, candidates);
-      await writePendingSuggestion(block); relays.push({ block, count: candidates.length });
+      await writePendingSuggestion(block,{provisional:relayToken!}); relays.push({ block, count: candidates.length, captured });
     } } : {}),
     vaultId: await draftVaultId(deps.vault.root).catch(() => undefined),
     loadTurns: transcript_path => loadTranscript({ transcript_path }),
     storedIn: () => storedQuoteMatcher(deps.vault, deps.search),
     now,
   });
+  try {
   await deps.vault.reconcile();
   await expireDrafts({ now });
   const shadow = await runDraftShadow({
@@ -130,11 +133,17 @@ export async function runSessionHarvestTick(
   };
   const promotion = await runDraftPromote(promoteOptions);
   let relayed = harvest.candidates;
-  if (canBeSharp && !promotion.probeOnly && promotion.errors === 0 && promotion.wouldPromote === 0) {
-    for (const relay of relays) if (await discardPendingSuggestion(relay.block)) relayed -= relay.count;
+  if (relayToken) {
+    const withdraw=new Set(!promotion.probeOnly && promotion.errors===0 && promotion.wouldPromote===0 ? relays.filter(row=>row.captured).map(row=>row.block) : []);
+    const removed=await settleProvisionalSuggestions(relayToken,withdraw);
+    for(const relay of relays)if(removed.has(relay.block))relayed-=relay.count;
   }
   if (await draftPromotionReady(promoteOptions)) await expireDrafts({ now, memoryExists: async id => deps.vault.get(id) !== undefined });
   return { harvest, shadow, promotion, relayed };
+  } catch(error) {
+    if(relayToken)await settleProvisionalSuggestions(relayToken,new Set());
+    throw error;
+  }
 }
 
 function startSessionHarvest(deps: BackgroundJobDeps): void {
