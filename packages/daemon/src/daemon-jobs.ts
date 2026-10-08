@@ -18,11 +18,12 @@ import { BATTERY_UNLOAD_MS, type PowerMonitor } from "./power-source.js";
 import { runCuratorPass } from "./curator-run.js";
 import { pruneEventLogs } from "./log-retention.js";
 import { observeCodeGraphRefresh, startCodeAwareness } from "./code-graph/service.js";
-import { runDraftPromote, draftVaultId } from "./draft-promote.js";
+import { runDraftPromote, draftVaultId, draftPromotionReady } from "./draft-promote.js";
 import { runDraftShadow } from "./draft-shadow.js";
 import { draftHintsEnabled } from "./draft-search.js";
 import { startDraftSearchCache, expireDrafts } from "./draft-store.js";
-import { sessionHarvestEnabled, runSessionHarvest } from "./session-harvest.js";
+import { sessionHarvestEnabled, runSessionHarvest, formatHarvestBlock, type HarvestCandidate } from "./session-harvest.js";
+import { writePendingSuggestion } from "./pending-suggestions.js";
 import { storedQuoteMatcher } from "./harvest-vault-match.js";
 import { loadTranscript } from "./stop-lane.js";
 
@@ -76,20 +77,22 @@ export function startBackgroundJobs(deps: BackgroundJobDeps): void {
 // After-session harvest (#675): sessions the Stop lane booked are read once
 // they have gone quiet, and what the user said that the session did not save
 // goes to the pending relay as suggestions. Off the hook path entirely; the
-// pass is never-throw, and it writes nothing to the vault.
+// capture is vault-read-only; explicit sharp promotion can write a derived note.
 export async function runSessionHarvestTick(
   deps: Pick<BackgroundJobDeps, "vault" | "search" | "embIdx" | "ollama" | "rawProvider">,
   now = Date.now(),
 ) {
   if (!sessionHarvestEnabled()) return null;
+  const relays: { entry: { session_id: string; cwd?: string }; candidates: HarvestCandidate[] }[] = [];
   const harvest = await runSessionHarvest({
+    relay: async (entry, candidates) => { relays.push({ entry, candidates }); },
     vaultId: await draftVaultId(deps.vault.root).catch(() => undefined),
     loadTurns: transcript_path => loadTranscript({ transcript_path }),
     storedIn: () => storedQuoteMatcher(deps.vault, deps.search),
     now,
   });
   await deps.vault.reconcile();
-  await expireDrafts({ now, memoryExists: async id => deps.vault.get(id) !== undefined });
+  await expireDrafts({ now });
   const shadow = await runDraftShadow({
     provider: deps.rawProvider ?? null, ollama: deps.ollama, vault: deps.vault, now,
     vaultVectors: () => {
@@ -99,16 +102,27 @@ export async function runSessionHarvestTick(
       return { provider: identity.id, dim: identity.dim, vectors: index.snapshot() };
     },
   });
-  const promotion = await runDraftPromote({
+  const promoteOptions = {
     provider: deps.rawProvider ?? null, ollama: deps.ollama, vault: deps.vault, now,
+    allowSharp: shadow.enabled && shadow.errors === 0,
     vaultVectors: () => {
       const index = deps.embIdx();
       if (!index) return null;
       const identity = index.providerIdentity();
       return { provider: identity.id, dim: identity.dim, vectors: index.currentSnapshot() };
     },
-  });
-  return { harvest, shadow, promotion };
+  };
+  const promotion = await runDraftPromote(promoteOptions);
+  let relayed = 0;
+  if (!await draftPromotionReady(promoteOptions) || promotion.probeOnly || promotion.errors > 0 || promotion.wouldPromote > 0) {
+    const stored = storedQuoteMatcher(deps.vault, deps.search);
+    for (const relay of relays) {
+      const fresh = relay.candidates.filter(candidate => stored(candidate.quote) === null);
+      if (fresh.length) { await writePendingSuggestion(formatHarvestBlock(relay.entry, fresh)); relayed += fresh.length; }
+    }
+  }
+  if (await draftPromotionReady(promoteOptions)) await expireDrafts({ now, memoryExists: async id => deps.vault.get(id) !== undefined });
+  return { harvest, shadow, promotion, relayed };
 }
 
 function startSessionHarvest(deps: BackgroundJobDeps): void {
@@ -121,7 +135,7 @@ function startSessionHarvest(deps: BackgroundJobDeps): void {
       .then(result => {
         if (result && result.harvest.harvested > 0) {
           const r = result.harvest;
-          console.error(`[bastra-recall] session harvest: ${r.harvested} session(s), ${r.candidates} candidate(s) relayed, ${r.stored} already stored`);
+          console.error(`[bastra-recall] session harvest: ${r.harvested} session(s), ${result.relayed} candidate(s) relayed, ${r.stored} already stored`);
         }
         if (result && (result.shadow.embedded > 0 || result.shadow.errors > 0)) {
           const r = result.shadow;

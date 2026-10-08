@@ -203,8 +203,9 @@ export const COMMAND_HELP: Record<string, string> = {
 Usage:
   bastra drafts [list] [--json]   List unexpired drafts without refreshing them
   bastra drafts purge [--json]    Remove all drafts and retained tombstones
-  bastra drafts undo <id> [--json] [--vault <path>]
-                                Remove a promoted note; keep a 180-day tombstone
+  bastra drafts undo <id> [--json] [--vault <path>] [--force]
+                                Remove an unchanged promoted note; keep a 180-day tombstone
+                                --force permits removing a reviewed edited note
 
 Drafts stay on this device, outside the vault. Secrets are redacted before
 storage. Unshown drafts with one evidence row expire after 7 days (unmeasured);

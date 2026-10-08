@@ -38,6 +38,7 @@ const draftSchema = z.object({
   surfaced: z.array(z.object({ session_id: z.string(), ts: timestamp, novel: z.array(z.string()), used: z.object({ ts: timestamp, tool: z.string(), exit_code: z.literal(0), matched: z.array(z.string()) }).optional() }).passthrough()).default([]),
   state: z.enum(["open", "promoted", "rejected"]).default("open"),
   vault_id: z.string().optional(),
+  promoted_hash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   memory_id: z.string().optional(), evidence_key: z.string().optional(), announce: z.boolean().optional(),
 }).passthrough();
 
@@ -404,11 +405,11 @@ export async function expireDrafts(opts: { now?: number; memoryExists?: (id: str
 
 export async function purgeDrafts(): Promise<void> {
   const path = draftsPath();
-  await withPathLock(path, async () => {
+  await withDraftPublication(() => withPathLock(path, async () => {
     await unlink(path).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
     await unlink(draftVectorsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
     cache = undefined;
-  }, { crossProcess: true });
+  }, { crossProcess: true }));
 }
 
 /** Retrieval mutations preserve concurrent harvest evidence and retained tombstones. */
@@ -485,4 +486,9 @@ export function startDraftSearchCache(): () => void {
     // the cache directly; the background fallback notices external changes.
     return () => { stopped = true; clearInterval(timer); };
   }
+}
+
+/** Serialize publication/undo/purge without blocking capture or hint feedback. */
+export function withDraftPublication<T>(publish: () => Promise<T>): Promise<T> {
+  return withPathLock(`${draftsPath()}.publish`, publish, { crossProcess: true });
 }

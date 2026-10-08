@@ -24,7 +24,7 @@ export interface DraftVectorEntry {
   measured: boolean;
   vaultMeasured: boolean;
 }
-interface VectorCache { provider: string; dim: number; entries: Map<string, DraftVectorEntry> }
+interface VectorCache { provider: string; dim: number; entries: Map<string, DraftVectorEntry>; decisions: Map<string, string> }
 export interface VaultVectorSnapshot {
   provider: string;
   dim: number;
@@ -86,19 +86,23 @@ async function loadCache(path: string): Promise<VectorCache | null> {
         new Uint8Array(vector.buffer).set(bytes);
         if (validVector(vector, raw.dim)) entries.set(row.id, { fp: row.fp, quoteHash: row.quoteHash, vector, measured: row.measured === true, vaultMeasured: row.vaultMeasured === true });
       }
-      return { provider: raw.provider, dim: raw.dim, entries };
+      const decisions = new Map<string, string>();
+      for (const pair of Array.isArray(raw.decisions) ? raw.decisions.slice(-1000) : []) {
+        if (Array.isArray(pair) && /^[a-f0-9]{64}$/.test(pair[0]) && /^[a-f0-9]{64}$/.test(pair[1])) decisions.set(pair[0], pair[1]);
+      }
+      return { provider: raw.provider, dim: raw.dim, entries, decisions };
     } finally { await handle.close(); }
   } catch { return null; }
 }
 
 async function saveCache(path: string, cache: VectorCache): Promise<void> {
-  if (cache.entries.size === 0) {
+  if (cache.entries.size === 0 && cache.decisions.size === 0) {
     await unlink(path).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
     return;
   }
   const rows = [...cache.entries].map(([id, row]) => ({ id, fp: row.fp, quoteHash: row.quoteHash, measured: row.measured, vaultMeasured: row.vaultMeasured,
     vector: Buffer.from(row.vector.buffer, row.vector.byteOffset, row.vector.byteLength).toString("base64") }));
-  const payload = JSON.stringify({ version: 1, provider: cache.provider, dim: cache.dim, rows });
+  const payload = JSON.stringify({ version: 1, provider: cache.provider, dim: cache.dim, rows, decisions: [...cache.decisions] });
   if (Buffer.byteLength(payload) > VECTOR_MAX_BYTES) throw new Error("draft vector byte bound");
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const tmp = `${path}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
@@ -115,7 +119,8 @@ async function saveCache(path: string, cache: VectorCache): Promise<void> {
  * not resurrect a derived vector file after the user has deleted the drafts. */
 async function persistCache(path: string, cache: VectorCache, now?: number): Promise<void> {
   await withPathLock(draftsPath(), async () => {
-    const current = new Map((await listDrafts(now)).filter(row => row.state === "open").map(row => [row.id, row]));
+    const current = new Map((await listDrafts(now)).map(row => [row.id, row]));
+    if (current.size === 0) cache.decisions.clear();
     for (const [id, entry] of cache.entries) {
       const row = current.get(id);
       if (!row || row.fp !== entry.fp || quoteHash(row.quote) !== entry.quoteHash) cache.entries.delete(id);
@@ -181,8 +186,9 @@ export async function runDraftShadow(opts: DraftShadowOptions): Promise<DraftSha
   }
   try {
     return await withPathLock(path, async () => {
-      const drafts = (await listDrafts(opts.now)).filter(row => row.state === "open");
-      const byId = new Map(drafts.map(row => [row.id, row]));
+      const allDrafts = await listDrafts(opts.now);
+      const drafts = allDrafts.filter(row => row.state === "open");
+      const byId = new Map(allDrafts.map(row => [row.id, row]));
       let cache = await loadCache(path);
       let dirty = false;
       if (cache) for (const [id, entry] of cache.entries) {
@@ -195,10 +201,10 @@ export async function runDraftShadow(opts: DraftShadowOptions): Promise<DraftSha
       }
       result.enabled = true;
       if (!cache || cache.provider !== provider.id || cache.dim !== provider.dim) {
-        cache = { provider: provider.id, dim: provider.dim, entries: new Map() };
+        cache = { provider: provider.id, dim: provider.dim, entries: new Map(), decisions: cache?.decisions ?? new Map() };
         dirty = true;
       }
-      const missing = drafts.filter(row => !cache!.entries.has(row.id));
+      const missing = allDrafts.filter(row => !cache!.entries.has(row.id));
       for (let offset = 0; offset < missing.length; offset += EMBED_BATCH_SIZE) {
         const batch = missing.slice(offset, offset + EMBED_BATCH_SIZE);
         try {
@@ -209,7 +215,7 @@ export async function runDraftShadow(opts: DraftShadowOptions): Promise<DraftSha
           dirty = true;
         } catch { result.errors++; break; } // unavailable local model never undoes capture
       }
-      const pending = new Set([...cache.entries].filter(([, row]) => !row.measured).map(([id]) => id));
+      const pending = new Set([...cache.entries].filter(([id, row]) => byId.get(id)?.state === "open" && !row.measured).map(([id]) => id));
       const events: DraftShadowEvent[] = [];
       const emit = (event: DraftShadowEvent): void => {
         const record = { ...event, provider_id: cache!.provider, dimensions: cache!.dim };
@@ -217,7 +223,7 @@ export async function runDraftShadow(opts: DraftShadowOptions): Promise<DraftSha
         else events.push(record);
       };
       result.pairs = await compareDraftPairs(drafts, cache.entries, pending, emit);
-      const pendingVault = new Set([...cache.entries].filter(([, row]) => !row.vaultMeasured).map(([id]) => id));
+      const pendingVault = new Set([...cache.entries].filter(([id, row]) => byId.get(id)?.state === "open" && !row.vaultMeasured).map(([id]) => id));
       const measuredVault: string[] = [];
       const snapshot = opts.vault && pendingVault.size > 0 ? opts.vaultVectors?.() : null;
       if (opts.vault && snapshot?.provider === provider.id && snapshot.dim === provider.dim) {
@@ -268,4 +274,18 @@ export async function readDraftVectors(opts: DraftShadowOptions, drafts: Draft[]
     if (entry && entry.fp === draft.fp && entry.quoteHash === quoteHash(draft.quote)) vectors.set(draft.id, entry.vector);
   }
   return vectors;
+}
+
+/** Decision receipts are adjacent to vectors, never in draft state. The key and
+ * signature are hashes; no quotes, commands or private memory ids are stored. */
+export async function recordDraftDecision(key: string, signature: string): Promise<boolean> {
+  const path = draftVectorsPath();
+  return withPathLock(path, async () => {
+    const cache = await loadCache(path) ?? { provider: "decisions-only", dim: 1, entries: new Map(), decisions: new Map() };
+    if (cache.decisions.get(key) === signature) return false;
+    cache.decisions.delete(key); cache.decisions.set(key, signature);
+    while (cache.decisions.size > 1000) cache.decisions.delete(cache.decisions.keys().next().value!);
+    await saveCache(path, cache);
+    return true;
+  }, { crossProcess: true });
 }
