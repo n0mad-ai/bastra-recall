@@ -1038,6 +1038,18 @@ remaining errors will be measured on real data without further invented retuning
 There is no stemming or translation. Chinese/Japanese without spaces remain one
 token and do not match the two-token rule (#711).
 
+**Independent review, different material:** on 200 drafts covering 50 topics and
+a 300-note vault representing both languages: short 0/50, unrelated 0/50, topical
+49/50. The emergency fallback (fewer than 50 notes or none) gave up to 3/50 (6%)
+unrelated and 34/50 topical. With a one-language vault and queries in the other,
+unrelated matches were 16–36%. If topic words themselves occur in more than 2% of
+vault notes, draft topical recall falls to 0/50 — the conservative direction,
+leaving the ordinary note path to handle the topic. The 50-note boundary is a real
+step: 49 notes gave 34/50 topical and 3/50 unrelated; 50 notes 49/50 and 0/50.
+Thus “zero at every size” above describes only the two fixed corpora and their
+invented bilingual vocabulary, not a general false-match guarantee. No thresholds
+were changed in response to these figures.
+
 Hook lanes deliver once per session; MCP and `/hook/recall` return per request.
 Bash checks whether any draft remains unseen before looking up covering notes.
 After a lost booking and daemon restart, a harmless Bash request may show the same
@@ -2373,6 +2385,17 @@ years“); mit Vault nicht. Häufige Vault-Themenwörter sind keine Anker, die N
 hat Vorrang. Anzahl allein beweist keine Abdeckung der jeweiligen Sprache. Die
 Korpora beweisen keine Alltagstauglichkeit; verbleibende Fehler werden an echten
 Daten gemessen. Keine weitere Abstimmung an erfundenen Daten nach dieser Korrektur.
+
+**Unabhängige Prüfung an anderem Material:** 200 Entwürfe, 50 Themen, 300 Notizen
+in beiden Sprachen: kurz 0/50, themenfremd 0/50, passend 49/50. Notbehelf (unter
+50 Notizen oder keiner): bis 3/50 (6 %) themenfremd, 34/50 passend. Einsprachiger
+Vault und Abfragen in der anderen Sprache: 16–36 % themenfremde Treffer. Stehen
+Themenwörter selbst in mehr als 2 % der Vault-Notizen, fallen passende Draft-Treffer
+auf 0/50; das ist die sichere Richtung, der normale Notizpfad bleibt zuständig.
+Der Sprung ist sichtbar: bei 49 Notizen 34/50 passend und 3/50 themenfremd, bei
+50 Notizen 49/50 und 0/50. „Null bei jeder Größe“ oben gilt nur für die beiden
+festen Korpora mit ihrem erfundenen zweisprachigen Wortschatz, nicht allgemein.
+Diese Zahlen ändern keine Regel oder Schwelle.
 
 Kein Stemming/Übersetzen; Chinesisch/Japanisch ohne Leerzeichen bleiben ein Token
 und scheitern am Zwei-Token-Match (#711). Bash prüft ungezeigte Treffer vor erneutem
