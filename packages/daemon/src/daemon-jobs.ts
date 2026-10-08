@@ -20,7 +20,8 @@ import { pruneEventLogs } from "./log-retention.js";
 import { observeCodeGraphRefresh, startCodeAwareness } from "./code-graph/service.js";
 import { runDraftPromote, draftVaultId } from "./draft-promote.js";
 import { runDraftShadow } from "./draft-shadow.js";
-import { expireDrafts } from "./draft-store.js";
+import { draftHintsEnabled } from "./draft-search.js";
+import { startDraftSearchCache, expireDrafts } from "./draft-store.js";
 import { sessionHarvestEnabled, runSessionHarvest } from "./session-harvest.js";
 import { storedQuoteMatcher } from "./harvest-vault-match.js";
 import { loadTranscript } from "./stop-lane.js";
@@ -111,6 +112,7 @@ export async function runSessionHarvestTick(
 }
 
 function startSessionHarvest(deps: BackgroundJobDeps): void {
+  if (draftHintsEnabled()) startDraftSearchCache();
   let running = false;
   setInterval(() => {
     if (running || !sessionHarvestEnabled()) return;

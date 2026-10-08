@@ -2243,51 +2243,86 @@ lesen).
 
 ### Local draft hints / Lokale Entwurfshinweise
 
-Typed messages that pass the structural noise filter are already captured by the
-local session harvest with their redacted situation. Recall now searches those
-local drafts lexically, without an embedding call or cloud request. Matches are
-returned separately in `draft_hits`, without scores, and displayed in a
-`<draft-hints>` block after memory sections: unconfirmed quotes from an earlier
-session, with date and project. Verify a quote before relying on it. Drafts never
-become ranked or required memories. Prompt and PreTool show at most one draft;
-SessionStart and MCP return at most two. Each draft is displayed once per session.
-Even harmless Bash commands can match two situation literals, one rare in the
-store. A returned note covering at least 0.7 of the draft's weighted words takes
-precedence and removes that open draft. Drafts use only leftover response budget.
-Quotes with findings from the existing injection scan are withheld; frame markers
-are removed, and the band is excluded from harvest capture.
+Typed messages that pass the structural noise filter are captured by the local
+session harvest with their redacted situation. Recall searches local drafts
+lexically, with no embedding or cloud request. Matches stay in `draft_hits`
+without scores and in a separate `<draft-hints>` band after memory sections.
+They are unconfirmed user quotes; verify before relying on them. Drafts never
+enter ranked/required hits. Prompt/PreTool display at most one; SessionStart/MCP
+at most two. Notes retain their budget priority. CLI listing does not refresh
+expiry: unshown single-evidence drafts expire after 7 days (unmeasured), other
+open drafts after 30 days and closed tombstones after 180 days.
 
-**Assumption, not confirmed by the owner:** the band is on by default;
-`BASTRA_DRAFT_HINTS=0` disables both draft search and display. Text containment
-0.5 (at least two shared tokens) and situation rarity 5% are named, unmeasured
-thresholds. IDF uses a positive logarithmic weight so a one-row store and words
-shared by all drafts still have a defined containment. No promotion is included
-in this phase. `bastra drafts list` does not refresh expiry: unshown drafts with
-one evidence row expire after 7 days (unmeasured), other open drafts after 30 days;
-closed rows stay as tombstones for 180 days.
+Getippte Nachrichten hinter dem strukturellen Rauschfilter werden samt geschwärzter
+Situation im lokalen Harvest erfasst. Recall sucht rein lexikalisch, ohne Cloud
+oder Embedding-Aufruf. Treffer stehen separat in `draft_hits` ohne Score und im
+Band `<draft-hints>` nach den Notiz-Abschnitten. Unbestätigte Nutzerzitate vor der
+Verwendung prüfen. Sie werden nie gerankte oder verpflichtende Treffer.
+Prompt/PreTool zeigen höchstens einen, SessionStart/MCP höchstens zwei. Notizen
+haben Budgetvorrang. CLI-Listing verlängert keinen Verfall: unangezeigte Entwürfe
+mit einem Beleg 7 Tage (ungemessen), sonst offen 30 Tage, Grabsteine 180 Tage.
 
-Getippte Nachrichten hinter dem strukturellen Rauschfilter werden bereits im
-lokalen Harvest samt geschwärzter Situation erfasst. Recall sucht jetzt auch in
-diesen Entwürfen, rein nach Worten und ohne Cloud-Aufruf. Treffer stehen separat
-in `draft_hits` und im Band `<draft-hints>` nach den Notiz-Abschnitten: unbestätigte
-Zitate aus einer früheren Sitzung, mit Datum und Projekt. Vor der Verwendung
-prüfen. Entwürfe werden nie gerankte oder verpflichtende Notizen. Prompt und
-PreTool zeigen höchstens einen, SessionStart und MCP höchstens zwei. Jeder Entwurf
-erscheint einmal je Sitzung. Auch harmlose Bash-Befehle können über zwei
-Situationsliterale treffen, von denen eines selten ist. Eine zurückgegebene Notiz
-mit mindestens 0,7 gewichteter Überdeckung verdrängt und entfernt den offenen
-Entwurf. Entwürfe nutzen nur das verbleibende Antwortbudget. Bei einem Befund der
-bestehenden Injektionsprüfung wird das Zitat nicht angezeigt; Rahmenmarker werden
-entfernt und das Band wird nicht erneut erfasst.
+### Draft retrieval corrections / Nachbesserung der Entwurfssuche
 
-**Annahme, nicht vom Eigentümer bestätigt:** Das Band ist standardmäßig an;
-`BASTRA_DRAFT_HINTS=0` schaltet Suche und Anzeige ab. Textüberdeckung 0,5 (mindestens
-zwei gemeinsame Tokens) und Seltenheit 5 % sind benannte, ungemessene Schwellen.
-Positive logarithmische IDF-Gewichte erhalten eine definierte Überdeckung auch bei
-nur einem Entwurf und bei gemeinsamen Wörtern. Diese Phase befördert nichts.
-`bastra drafts list` verlängert keinen Verfall: unangezeigte Entwürfe mit nur einem
-Beleg verfallen nach 7 Tagen (ungemessen), andere offene nach 30 Tagen; geschlossene
-Zeilen bleiben 180 Tage als Grabsteine.
+Draft search reads only the completed in-memory snapshot. Startup/background loading
+and a local file watcher refresh it after capture, external writes or CLI purge;
+a cold or failed cache yields no draft. Response paths perform no draft-file I/O
+and take no draft-store lock. Delivery booking runs after the response, tries the
+lock once and is dropped if busy/unwritable. Normal note and tripwire output is
+already final before the band is appended. An advisory 50 ms ceiling (unmeasured
+on real data) is also bounded by the normal lane deadline; an expired budget leaves
+the original response unchanged. Separate `draft_hint` telemetry records
+shown draft IDs, count, estimated tokens and band latency; no text.
+
+**Assumption, not confirmed by the owner (replaces the earlier deletion rule):**
+retrieval never deletes or closes drafts. A covering returned note suppresses only
+query-matching drafts for that response. Closing with a tombstone belongs to the
+promotion comparison, not to retrieval.
+
+Rare shared anchors replace query containment. A text match needs two shared tokens
+and either two rare anchors of at least 4 UTF-8 bytes, or one rare anchor of at
+least 10 bytes. Rarity is DF <= max(2, 5% of open drafts); the same floor permits
+small-store situation matches. Unknown query words contribute no negative weight.
+These named thresholds are **unmeasured on real data**. On the fixed synthetic
+200-draft/200-query DE/EN corpus, correct topical recall is 69/100 (previously
+17/100); short everyday queries 0/40 and unrelated sentences 0/60 get a draft.
+The cost is 31 missed topical queries, especially short technical names and queries
+with just one short anchor. This is lexical matching, without stemming or translation.
+
+Each draft is delivered once per session by the **hook lanes**; direct MCP and
+`/hook/recall` are per-request results. There is no project/client filter: a draft
+captured in one project can surface in another. `0`, `off`, `false` and `no` (any
+case) disable the band. Uppercase fences are stripped, control/bidi characters
+removed, quotes/context placed on single quoted lines and project labels restricted
+to directory-name characters. Uppercase/incomplete leading draft blocks are treated
+as injected transcript content. The existing injection scan recognizes English
+patterns; other-language instruction sentences remain a known limit, without a new
+language word list.
+
+Die Suche liest nur den abgeschlossenen Speicher-Snapshot. Laden im Hintergrund und
+ein lokaler Dateiwächter aktualisieren ihn nach Erfassung, externen Schreibvorgängen
+oder CLI-Purge. Ein kalter oder fehlerhafter Cache zeigt keinen Entwurf. Suche und
+Recall warten auf keine Ablagesperre und greifen auf keine Draft-Datei zu. Buchungen
+erfolgen nach der Antwort; eine belegte oder nicht schreibbare Ablage kostet nur
+diese Buchung. Normale Hinweise und Tripwire-Warnungen sind vorher fertig. Das
+separate Ereignis `draft_hint` zählt gezeigte IDs, Anzahl, Tokens und Bandlatenz,
+keinen Text.
+
+**Annahme, nicht vom Eigentümer bestätigt:** Die Suche löscht und schließt niemals.
+Eine überdeckende Notiz unterdrückt nur passende Entwürfe in dieser Antwort. Das
+Schließen mit Grabstein gehört zur Promotionsprüfung.
+
+Texttreffer brauchen zwei gemeinsame Tokens und entweder zwei seltene Anker ab
+4 UTF-8-Bytes oder einen seltenen Anker ab 10 Bytes. Seltenheit: DF <= max(2, 5 %
+der offenen Entwürfe), auch beim Situationsmatch. Unbekannte Abfragewörter senken
+keinen Treffer. Die Schwellen sind **ungemessen an echten Daten**. Im festen
+synthetischen Korpus treffen 69/100 thematisch passende Abfragen korrekt (vorher
+17/100); kurze Alltagsabfragen 0/40, themenfremde Sätze 0/60. Dafür fehlen 31 passende
+Abfragen, besonders kurze technische Namen/einzelne kurze Anker. Kein Stemming,
+keine Übersetzung. Einmal je Sitzung gilt für Hook-Bänder; direkter MCP-Recall und
+`/hook/recall` antworten je Aufruf. Projekt und Client filtern nicht. Schalterwerte,
+einzeilige Zitate, Marker-/Steuerzeichen-Schutz und Grenzen des englischen
+Injektionsscanners gelten wie oben beschrieben.
 
 ### Repeated draft promotion / Beförderung wiederholter Entwürfe
 

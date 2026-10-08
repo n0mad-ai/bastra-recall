@@ -751,7 +751,7 @@ export async function runPromptLane(
     recall_skipped: recallSkipped,
   });
 
-  return appendLaneDrafts(stdout, "UserPromptSubmit", prompt, payload.session_id, [...(resp?.hits ?? []), ...reflexKept]);
+  return appendLaneDrafts(stdout, "UserPromptSubmit", prompt, payload.session_id, [...(resp?.hits ?? []), ...reflexKept], 1, false, undefined, startedAt + laneBudgetMs(detectedMode));
 }
 
 /**
