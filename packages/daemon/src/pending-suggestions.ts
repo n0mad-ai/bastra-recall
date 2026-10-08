@@ -464,3 +464,24 @@ export async function takePendingRelay(
 export async function consumePendingSuggestions(now: number = Date.now()): Promise<PendingSuggestion[]> {
   return (await takePendingRelay({ now })).recency;
 }
+
+
+/** Sharp harvest first writes the ordinary relay durably, then withdraws only
+ * its exact recency block after the complete successful promotion pass. A crash
+ * or any failure before this point leaves the original suggestion available. */
+export async function discardPendingSuggestion(blocks: string): Promise<boolean> {
+  const path = pendingSuggestionsPath();
+  const capped = blocks.length > PENDING_ENTRY_CHAR_CAP ? blocks.slice(0, PENDING_ENTRY_CHAR_CAP - 1) + "…" : blocks;
+  try {
+    return await withPathLock(path, async () => {
+      const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
+      if (!Array.isArray(parsed)) return false;
+      const entries = parsed as PendingSuggestion[];
+      const kept = entries.filter(entry => laneOf(entry) !== "recency" || entry.blocks !== capped);
+      if (kept.length === entries.length) return false;
+      const tmp = `${path}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
+      await writeFile(tmp, JSON.stringify(kept), "utf8"); await rename(tmp, path);
+      return true;
+    });
+  } catch { return false; } // Failure retains the durable block, never a loss.
+}

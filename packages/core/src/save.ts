@@ -646,7 +646,7 @@ export async function deleteMemoryFile(
         throw new Error(`memory file not found: ${filePath}`);
       }
       if (opts.expectedSha256 !== undefined && createHash("sha256").update(await readFile(filePath)).digest("hex") !== opts.expectedSha256) {
-        throw new Error("note changed since promotion; review it and use --force to undo");
+        throw Object.assign(new Error("memory file content changed since the expected snapshot"), { code: "MEMORY_CONTENT_CHANGED" });
       }
       const occupant = readOccupant(filePath);
       if (occupant.kind !== "memory" || occupant.id !== id) {
