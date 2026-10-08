@@ -295,3 +295,21 @@ test("a second recall in the same turn does not drop the finished chain before i
   assert.equal(chains.length, 2, "both recalls of the turn are reported");
   assert.deepEqual(chains.map((c) => (c.evidence as { path: string }).path), ["/w/rail-v1.md", "/w/rail-v2.md"]);
 });
+
+test("a find_document reached through the MCP prefix is an evidence step, like a bare one", () => {
+  // Real transcripts name the tool `mcp__bastra-recall__find_document`; `isRecall`
+  // and `isLoadMemory` accept that prefix, `isEvidenceRead` did not. A recall
+  // whose only follow-up was an MCP find_document vanished instead of reporting
+  // itself as opaque (the `unresolved-evidence` gap names find_document as its
+  // source). Revert-check: drop `(?:^|__)` from `isEvidenceRead`.
+  const session = (tool: string) => [
+    line({ type: "user", message: { content: "where is the deployment rail" } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall", input: { query: "rail" } }] } }),
+    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"weak_result":true,"hits":[]}' }] } }),
+    line({ type: "assistant", message: { content: [{ type: "tool_use", name: tool, input: { query: "rail" } }] } }),
+  ].join("\n");
+  const bare = extractReviewedMissChains(session("find_document"), "s.jsonl");
+  const prefixed = extractReviewedMissChains(session("mcp__bastra-recall__find_document"), "s.jsonl");
+  assert.equal(bare.length, 1);
+  assert.deepEqual(prefixed.map((c) => c.evidence), bare.map((c) => c.evidence));
+});
