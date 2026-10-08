@@ -10,7 +10,7 @@ export const DRAFT_USE_MIN_WORD_TOKENS = 3;
 export const DRAFT_USE_LITERAL_MIN_CHARS = 4;
 
 function literals(text: string): string[] {
-  return (text.toLowerCase().match(/[\p{L}\p{N}/@:_][\p{L}\p{N}._@\/:-]*/gu) ?? []).map(t=>t.replace(/[.:]+$/u,""));
+  return (text.toLowerCase().match(/[\p{L}\p{N}/@:_][\p{L}\p{N}._@\/:-]*/gu) ?? []).map(t=>{let end=t.length;while(end>0&&(t[end-1]==="."||t[end-1]===":"))end--;return t.slice(0,end);});
 }
 function literalShape(token: string): boolean {
   return [...token].length >= DRAFT_USE_LITERAL_MIN_CHARS && /[\p{N}./_@:-]/u.test(token);

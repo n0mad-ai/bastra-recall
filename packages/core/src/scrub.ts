@@ -1,3 +1,4 @@
+import { pskLineEnd, scanPskForms } from "./scrub-psk.js";
 /**
  * Injected-context scrubbing (#149) — the single inventory of block markers
  * that bastra's own hooks (and the Claude Code harness) inject into
@@ -372,8 +373,7 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
     if (valueSpans(text,start).spans.length>1) return markValue(start,true);
     if (/^(?:true|false|[01]|WPA[23])(?=\s|[,;}]|$)/i.test(tail) || /^(?:bitte|siehe)\b/i.test(tail)) return start;
     if (!wholeLine || /^["'`$|>\\]/.test(tail) || isReference(tail.split(/\s/)[0])) return markValue(start,true);
-    const boundary = /[\r\n,;<>}\]]|[ \t]+(?=--?[a-z]|[a-z_][a-z0-9_.-]*[ \t]*=)/i.exec(tail);
-    const value = tail.slice(0,boundary?.index ?? tail.length).trimEnd();
+    const value = text.slice(start,pskLineEnd(text,start)).trimEnd();
     if (value && value !== "[REDACTED]") mark(start,value.length);
     return start+value.length;
   };
@@ -487,16 +487,7 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
     const colon=value.indexOf(":");
     if(colon>=0 && !isReference(value.slice(colon+1))) for(const[a,b]of parsed.spans)mark(a,b-a);
   }
-  // Positional/option credential syntax observed in the review corpus.
-  for(const m of text.matchAll(/(?:^|[\s;])(?:wifi-sec\.psk|802-11-wireless-security\.psk|-psk|pre-shared-key)[ \t]+/gi))markPsk(m.index!+m[0].length);
-  for(const m of text.matchAll(/(?:^|\r?\n)[ \t]*wpa-psk[ \t]+/gi))markPsk(m.index!+m[0].length);
-  for(const m of text.matchAll(/\bwpa_passphrase[ \t]+(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)[ \t]+/gi))markPsk(m.index!+m[0].length);
-  for(const m of text.matchAll(/:[ \t]*PSK[ \t]+/gi))markPsk(m.index!+m[0].length,true);
-  for(const m of text.matchAll(/<(psk|keyMaterial)>[\s\S]*?<\/\1>/gi)) {
-    const start=m.index!+m[0].indexOf(">")+1,end=m.index!+m[0].lastIndexOf("<");
-    if(!isReference(text.slice(start,end).trim()))mark(start,end-start);
-  }
-  for(const m of text.matchAll(/\b(?:PSK|Pre[ -]Shared[ -]Key)(?:[ \t]+[^\r\n:]{1,48}?)?[ \t]+(?:ist|lautet|is)[ \t]*:?[ \t]+/gi))markPsk(m.index!+m[0].length,true);
+  scanPskForms(text,markPsk,mark,isReference);
   let commandIndex = 0;
   let passwordCommand: string | undefined;
   for (const m of text.matchAll(/(?<![a-z0-9_-])-p[ \t]*/g)) {

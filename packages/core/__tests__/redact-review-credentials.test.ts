@@ -12,3 +12,9 @@ test('PSK continuations remain covered while mode prose is not a binding',()=>{
  assert.equal(redactSecrets('Das WLAN nutzt wpa-psk statt enterprise und das bleibt so.').text,'Das WLAN nutzt wpa-psk statt enterprise und das bleibt so.');
  const value='psk=fixture\\\nphrase2019x';assert.ok(!redactSecrets(value).text.includes('phrase2019x'));
 });
+test('credential scanning stays bounded on adversarial whitespace and XML runs',async()=>{
+ const {execFile}=await import('node:child_process');const{promisify}=await import('node:util');
+ const source=new URL('../src/scrub.ts',import.meta.url).href;
+ const code=`const {redactSecrets}=await import(${JSON.stringify(source)});for(const text of ['psk=fixture'+ '\\t'.repeat(100000)+'end','<psk>'.repeat(15000)+'x','PSK'+ '\\t'.repeat(100000)+'unknown'])redactSecrets(text);`;
+ await promisify(execFile)(process.execPath,['--import','tsx','--input-type=module','-e',code],{timeout:10000});
+});
