@@ -267,11 +267,11 @@ test("streaming MCP forwarder keeps drafts through batches and spends note budge
   process.env.BASTRA_DAEMON_URL = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   try {
     const { callRecallStreaming } = await import("../src/mcp-forwarder-calls.js");
-    const single = await callRecallStreaming({ query: "amber tunnel" }, () => {});
+    const single = await callRecallStreaming({ query: "amber tunnel" }, () => {}) as Record<string, unknown>;
     assert.deepEqual(single.draft_hits, draftHits);
-    const batch = await callRecallStreaming({ queries: ["amber tunnel", "other cluster"] }, () => {});
+    const batch = await callRecallStreaming({ queries: ["amber tunnel", "other cluster"] }, () => {}) as Record<string, unknown>;
     assert.deepEqual(batch.draft_hits, draftHits);
-    const budgeted = await callRecallStreaming({ queries: ["amber tunnel", "other cluster"], max_tokens: 180 }, () => {});
+    const budgeted = await callRecallStreaming({ queries: ["amber tunnel", "other cluster"], max_tokens: 180 }, () => {}) as Record<string, unknown>;
     assert.deepEqual(budgeted.hits, [note]);
     assert.equal("draft_hits" in budgeted, false);
   } finally {
