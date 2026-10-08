@@ -43,6 +43,15 @@ import { cmdPanel } from "./cli/panel.js";
 import { cmdAutostart } from "./cli/autostart.js";
 import { maybeEmitUpdateHint } from "./cli/update-hint.js";
 
+// A reader such as `head` intentionally closes its pipe. Stop producing output
+// quietly; other stream errors retain the ordinary failure path.
+const pipeError = (error: NodeJS.ErrnoException): void => {
+  if (error.code === "EPIPE") process.exit(0);
+  throw error;
+};
+process.stdout.on("error",pipeError);
+process.stderr.on("error",pipeError);
+
 async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
   if (args.showVersion) { showVersion(); return 0; }
   // #330 — this guard runs BEFORE the switch and carries no `!args.command`

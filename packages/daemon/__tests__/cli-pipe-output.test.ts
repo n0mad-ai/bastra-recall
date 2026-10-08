@@ -122,3 +122,8 @@ test("real logs follow remains alive until SIGINT/SIGTERM, then drains and exits
     assert.equal(finite.code, 0);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test('early-closing stdout pipe exits quietly with success',async()=>{
+ const child=spawn(process.execPath,[cli,'help'],{env:{...process.env,BASTRA_UPDATE_CHECK:'off'},stdio:['ignore','pipe','pipe']});let err='';child.stderr.on('data',b=>err+=b);const done=once(child,'close');child.stdout.destroy();const timeout=setTimeout(()=>child.kill('SIGKILL'),5000);
+ try{const[code,signal]=await done;assert.equal(signal,null);assert.equal(code,0);assert.equal(err,'');}finally{clearTimeout(timeout);child.kill();}
+});
