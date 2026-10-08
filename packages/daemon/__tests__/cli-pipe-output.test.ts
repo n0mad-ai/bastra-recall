@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { resolve, join } from "node:path";
@@ -83,4 +83,42 @@ test("usage errors keep exit code 2; fatal stderr drains fully and the CLI relea
   assert.equal(slow.code, 1);
   assert.deepEqual(slow.err, baseline.err);
   assert.match(slow.err.toString("utf8"), /FATAL-END/);
+});
+
+test("real logs follow remains alive until SIGINT/SIGTERM, then drains and exits", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cli-follow-"));
+  try {
+    const file = join(dir, `events-${new Date().toISOString().slice(0, 10)}.jsonl`);
+    await writeFile(file, JSON.stringify({ ts: new Date().toISOString(), kind: "fixture_event", status: "ready" }) + "\n");
+    for (const signal of ["SIGINT", "SIGTERM"] as const) {
+      const child = spawn(process.execPath, [cli, "logs", "--source", "hook", "--follow"], {
+        env: { ...process.env, BASTRA_UPDATE_CHECK: "off", BASTRA_LOG_PATH: dir }, stdio: ["ignore", "pipe", "pipe"],
+      });
+      const closed = once(child, "close");
+      const timeout = setTimeout(() => child.kill("SIGKILL"), 15_000);
+      let output = "", error = "";
+      child.stderr.on("data", chunk => { error += chunk; });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          child.stdout.on("data", chunk => {
+            output += chunk;
+            if (output.includes("following") && output.includes("fixture_event")) resolve();
+          });
+          child.once("error", reject);
+          child.once("close", () => reject(new Error("follow exited before being stopped")));
+        });
+        // A finite command would have exited here; follow must keep its tail handles alive.
+        await new Promise(resolve => setTimeout(resolve, 100));
+        assert.equal(child.exitCode, null);
+        assert.ok(child.kill(signal));
+        const [code, terminated] = await closed;
+        assert.equal(terminated, null, "signal should close resources through the handler");
+        assert.equal(code, 0);
+        assert.match(output, /status=ready/);
+        assert.equal(error, "");
+      } finally { clearTimeout(timeout); child.kill(); }
+    }
+    const finite = await run(["logs", "--source", "hook"]);
+    assert.equal(finite.code, 0);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

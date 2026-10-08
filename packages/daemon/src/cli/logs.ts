@@ -333,6 +333,8 @@ export async function cmdLogs(opts: LogsOpts): Promise<number> {
 
   await new Promise<void>((resolve) => {
     const stop = (): void => {
+      process.off("SIGINT", stop);
+      process.off("SIGTERM", stop);
       for (const s of stops) s();
       resolve();
     };
