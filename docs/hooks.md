@@ -882,8 +882,9 @@ most notes of that language and weigh almost nothing, so no stopword list is
 involved; a rephrased or translated note is not matched, and that pick is
 relayed. The rest go into the pending relay (recency lane, #513) as one
 `<session-harvest>` block of verbatim quotes, which the next session start
-shows. **The harvest never writes to the vault**: the agent recalls, judges
-and saves. A resumed session is harvested again only for its new turns.
+shows. **The ordinary harvest relay does not save notes**: the agent recalls,
+judges and saves. The separate draft-promotion step in that tick can write only
+with explicit sharp opt-in and the guards described below. A resumed session is harvested again only for its new turns.
 Telemetry: `session_harvest` with `session_id, client, turn_count,
 candidate_count, candidate_kinds, stored_count, trigger` (`session_end` or
 `idle`); the session start that delivers a harvest block records
@@ -2237,7 +2238,9 @@ nichts, deshalb braucht es keine Stoppwortliste; eine umformulierte oder
 übersetzte Notiz wird nicht erkannt, und diese Auswahl wird weitergereicht. Der
 Rest landet als ein `<session-harvest>`-Block mit wörtlichen Zitaten im
 Pending-Relay (Recency-Spur, #513), den der nächste Session-Start zeigt.
-**Der Harvest schreibt nie in den Vault**: Der Agent sucht per recall, prüft
+**Der normale Relay-Weg legt keine Notizen an; die getrennte Draft-Beförderung
+kann im selben Tick nur nach ausdrücklichem Scharf-Opt-in und den unten genannten
+Prüfungen schreiben.** Beim Relay sucht der Agent per recall, prüft
 und speichert. Eine fortgesetzte Session wird nur für ihre neuen Turns erneut
 ausgewertet. Telemetrie: `session_harvest` mit `session_id, client,
 turn_count, candidate_count, candidate_kinds, stored_count, trigger`
