@@ -913,32 +913,43 @@ retained.
 Drafts are secret-redacted and stored locally outside the vault. There is no
 per-session capture cap; the store's 500-row and 1 MiB limits still apply.
 
-Leading `local-command-stdout`, `bash-input`, `bash-stdout` and `command-message`
-wrappers are tool content, including attributed tags. Complete canonical pairs
-can be followed by a genuine owner prompt: only that suffix is captured.
-Broken, nested or noncanonical wrappers are excluded; inline/backtick tag quotes
-and ordinary human-typed shell commands remain owner text. The same boundary
-applies to prompt, transcript and direct harvest input. For agent-to-agent cmux
-traffic, both senders must use the [marked sender](./agent-messages.md).
+Leading `local-command-stdout`, `local-command-stderr`, `bash-input`,
+`bash-stdout`, `bash-stderr` and `command-message` wrappers are tool content,
+including the stdout/stderr pair emitted by Claude Code. Only prose after complete
+canonical wrappers is eligible; remaining unquoted wrapper tags invalidate the
+suffix. Complete backtick quotations remain prose. A line-start agent marker ends
+owner evidence there; a genuine prefix survives. Markers are case-insensitive and
+accept U+200B/U+200D/U+2060 before the tag. Inline and backtick quotations stay
+human text. Both cmux senders must use the [marked sender](./agent-messages.md).
 
-Credential redaction includes PSK/pre-shared-key assignments (PowerShell,
-environment variables, JSON, query parameters and supported CLI flags), even
-with low-entropy values. Quote, question context and command situation are
-cleaned before cues are derived; promoted title, summary, body and recall cues
-are redacted again. This does not repair older rows, notes, transcripts or
-backups. If a real key was stored, rotate it first. Inspect affected drafts and
-derived notes locally as the owner; remove confirmed affected data through the
-supported draft/vault tools, preserving human quotes and audit history. `drafts
-purge` clears the whole local store and is not a selective repair; do not use it
-as an automatic migration. Review changed promoted notes before `drafts undo`;
-it refuses changes by default. Do not paste secrets into bug reports.
+**Credential coverage and limits.** Structural redaction covers the supported
+assignment/JSON/query/flag syntax, PSK_KEY/psk1/wifi_key aliases, curl `-u`/`--user`
+userinfo, `wpa_passphrase`'s key argument, line-start `wpa-psk`, nmcli
+wifi-sec.psk/802-11-wireless-security.psk, `-psk`, `pre-shared-key`, IPsec `: PSK`,
+and `<psk>`/`<keyMaterial>` values. Bare PSK assignment passphrases extend to the
+line/field boundary; quoted values and existing continuations retain their parser.
+The explicitly supported prose bindings are German PSK/Pre-Shared-Key
+“ist/lautet” and English “is”. This is not a language-general prose detector.
+Benign PSK booleans/mode questions and supported references stay readable.
+
+Deliberately unsupported: netsh keyMaterial assignments, Cisco `crypto isakmp key`,
+OpenWrt `option key`, German WLAN-Passwort/WLAN-Schlüssel labels, parenthesized PSK
+prose, PSK arrows, Markdown tables/bold PSK labels, Wi-Fi QR strings and fullwidth
+colons. Generic entropy scanning may remove a particular value there, but no full
+redaction guarantee is made. Never paste real keys into prompts expecting this
+filter to make them safe. Rotation and owner-reviewed repair are still needed if a
+real key was stored; no automatic vault/audit/transcript/backups repair is performed.
+During an ordinary local store write, credential-bearing command values are also
+removed from derived legacy literal/novel/matched fields when their source context
+identifies them. Bare old secrets without recognizable source context remain a
+limit. Existing promoted notes and audit history are not rewritten.
 Both limits evict unshown single-evidence open drafts first, then other open
 drafts, and closed tombstones last; oldest within each group goes first.
 Capture writes at most once per session; cleanup writes only when it changes
 the stored rows.
 Within one session, equal normalized fingerprints or bigram Dice >= 0.6 append
 evidence to one row. Across sessions only equal fingerprints merge for now.
-An open draft with one evidence row and no display expires after 7 days
+An open draft with one evidence row and no valid use proof expires after 7 days
 (unmeasured); other open drafts retain the 30-day expiry. The harvest tick
 removes expired rows even when no session is due. `bastra drafts list|purge`
 lets you inspect or clear the store. Recall shows a separate unconfirmed draft band; promotion defaults to probe,
@@ -1011,7 +1022,7 @@ without scores and in a separate `<draft-hints>` band after memory sections.
 They are unconfirmed user quotes; verify before relying on them. Drafts never
 enter ranked/required hits. Prompt/PreTool display at most one; SessionStart/MCP
 at most two. Notes retain their budget priority. CLI listing does not refresh
-expiry: unshown single-evidence drafts expire after 7 days (unmeasured), other
+expiry: single-evidence drafts without valid use proof expire after 7 days (unmeasured), other
 open drafts after 30 days and closed tombstones after 180 days.
 
 Draft search reads only completed in-memory snapshots. Background loading and a
@@ -1192,7 +1203,7 @@ records novel tokens from the redacted quote and its originating session's `afte
 commands, excluding both word and literal tokens of the complete triggering input.
 `/hook/hinted` keeps draft IDs/input separate from ordinary note IDs. In-process
 hook bands book the same proof after rendering. Replays do not reset the first
-novelty set or window; only the last five surfaced sessions remain stored.
+novelty set or window; at most five surfaced sessions remain stored, preserving the first valid use receipt. A display acknowledgement alone does not refresh lifetime.
 
 A later successful tool input in that same non-origin session must contain one
 whole novel literal (digit or `./_@:-`, at least four Unicode characters), or three
@@ -1210,8 +1221,8 @@ capture evidence plus the display/use session, dates, tool and successful matche
 success; only explicit exit 0 qualifies. Clients omitting that field therefore
 produce no use proof. This is conservative and does not infer success from an
 absent error. Novel matching is a causal heuristic, not proof that a statement is
-true or that a command applied it meaningfully. Known D duplicate/secret/routine
-limits continue to apply. A foreign busy/unwritable store loses only the feedback,
+true or that a command applied it meaningfully. The quote rarity guard also applies to use-triggered promotion; known D duplicate/secret/routine
+limits continue to apply. Client display feedback requires a session/ID actually rendered by this daemon; it cannot authorize an unissued ID or empty triggering input. Authoritative novelty comes from the rendered query, with full client input excluding further tokens. Receipts are bounded and memory-only; a daemon restart can lose pending feedback, never invent it. This proves server rendering, not human receipt or genuine semantic use. A foreign busy/unwritable store loses only the feedback,
 without waiting on the response. Announcements and recorded lifecycle counts are described below.
 
 #### Promotion line and statistics
@@ -1221,16 +1232,16 @@ After a real promotion, one line uses the existing save-line builder, for exampl
 a plain prefix unless save-line colour was enabled. Stop, SessionStart or the
 post-tool hook delivers at most one pending promotion at a time, in the configured
 primary language. Multiple draft rows for one note share one durable claim. Missing,
-changed-provenance or private notes are not announced; subagents do not consume a
+changed-provenance or private notes are not announced; newly private pending notes are retired without displaying them. Subagents do not consume a
 main-thread line. `BASTRA_SAVE_NOTICE=0` disables the line without consuming it.
-A cold cache postpones delivery; busy foreign storage leaves it pending. As with
+A cold cache postpones delivery; busy local chains or foreign storage skip this response immediately and leave the claim pending. A peer already disconnected before the claim does not consume it. As with
 hook feedback generally, a client disappearing after the durable claim can lose
 the display; there is no acknowledgement/retry protocol that could show it twice.
 
 `bastra logs --stats` includes recorded draft capture, added evidence, expiry,
 eviction, hook displays, actual promotions, would-promote decisions, duplicate
-blocks (actual and would), other block decisions, capture errors and announcements.
-Counts cover the selected log window, not current store size or unique shown IDs.
+blocks (actual and would), other block decisions, capture errors, undo events and announcement claims (the counter remains `announced`). Recovery of a landed promotion records `draft_promoted`; it does not create another note.
+`announced` counts committed claims, not lines received by clients. Counts cover the selected log window, not current store size or unique shown IDs.
 A promoted pair counts as one note; showing a draft in two sessions counts as two
 deliveries. Direct MCP results do not book hook-display telemetry. Expiry events
 start with this implementation and count committed age removals, including removals
@@ -2297,7 +2308,7 @@ Aufräumen schreibt nur, wenn es gespeicherte Zeilen verändert.
 Innerhalb einer Session hängen gleiche normalisierte Fingerprints oder eine
 Bigramm-Dice-Ähnlichkeit ab 0,6 einen Beleg an dieselbe Zeile. Zwischen Sessions
 werden vorerst nur gleiche Fingerprints zusammengeführt. Ein offener Entwurf
-mit einem Beleg, der nie gezeigt wurde, verfällt nach 7 Tagen (ungemessen),
+mit einem Beleg ohne gültige Nutzung verfällt nach 7 Tagen (ungemessen),
 andere offene Entwürfe weiterhin nach 30 Tagen. Der Harvest-Tick entfernt
 verfallene Zeilen auch ohne fällige Session. Mit `bastra drafts list|purge`
 kannst Du die Ablage ansehen oder leeren. Recall zeigt ein eigenes unbestätigtes Band; die Beförderung läuft standardmäßig
@@ -2520,7 +2531,7 @@ merkt neue Tokens aus geschwärztem Zitat und den `after`-Befehlen der Ursprungs
 Wort- und Literal-Tokens des vollständigen auslösenden Eingangs werden ausgeschlossen.
 Draft-IDs/Eingang bleiben bei `/hook/hinted` getrennt von Notiz-IDs. Wiederholte
 Meldungen verändern weder erstes Fenster noch Novel-Liste; gespeichert bleiben
-höchstens fünf angezeigte Sitzungen.
+höchstens fünf angezeigte Sitzungen; der erste gültige Nutzungsbeleg bleibt erhalten. Ein Hinted-Aufruf allein verlängert die sieben Tage nicht auf dreißig.
 
 Ein späterer Tool-Eingang in derselben Sitzung, außerhalb der Ursprungssitzung,
 muss ein vollständiges neues Literal (Ziffer oder `./_@:-`, mindestens vier Zeichen)
@@ -2535,9 +2546,39 @@ Neustarts; erfundene Matches außerhalb Novel/Quelle gelten nicht.
 
 **Annahme, nicht vom Eigentümer bestätigt:** Nur ausdrücklich Exit 0 gilt als Erfolg,
 unbekannte Exit-Codes nicht. Clients ohne dieses Feld liefern keine Nutzungsbelege.
-Das Tokenmatch beweist weder Wahrheit noch sinnvolle Anwendung; bekannte D-Grenzen
+Auch bei Nutzung gilt der Routineschutz für das Zitat. HTTP-Feedback akzeptiert nur in dieser Sitzung vom Daemon gerenderte IDs und keinen leeren Eingang. Serverseitige Novel-Tokens stammen aus der gerenderten Anfrage; der volle Client-Eingang schließt weitere Tokens aus. Die begrenzten Belege liegen nur im Speicher: Ein Daemon-Neustart kann ausstehendes Feedback verlieren, nicht erfinden. Rendern beweist keinen menschlichen Empfang. Das Tokenmatch beweist weder Wahrheit noch sinnvolle Anwendung; bekannte D-Grenzen
 bleiben. Fremde belegte/nicht schreibbare Ablage kostet nur Feedback, kein Warten
 auf die Antwort. Ansage und protokollierte Lifecycle-Zahlen stehen unten.
+#### Schwärzung und ihre Grenzen
+
+Unterstützt sind die belegten Zuweisungs-/JSON-/Query-/Flag-Formen, PSK_KEY/psk1/
+wifi_key, curl `-u`/`--user`, der Schlüsselparameter von `wpa_passphrase`,
+`wpa-psk` am Zeilenanfang, die nmcli-Felder wifi-sec.psk und
+802-11-wireless-security.psk, `-psk`, `pre-shared-key`, IPsec `: PSK` sowie
+`<psk>`/`<keyMaterial>`. Unquotierte PSK-Passphrasen werden bis zur Zeilen-/Feldgrenze
+geschwärzt; quotierte Werte und bestehende Fortsetzungen nutzen denselben Parser.
+Für Prosa sind ausdrücklich deutsche PSK/Pre-Shared-Key-Bindungen mit „ist/lautet“
+und englische mit „is“ belegt. Das ist keine allgemeine mehrsprachige Prosa-Erkennung.
+Harmlose Boolean-/Modusfragen und unterstützte Referenzen bleiben lesbar.
+
+Bewusst nicht abgedeckt: netsh-keyMaterial-Zuweisungen, Cisco `crypto isakmp key`,
+OpenWrt `option key`, deutsche WLAN-Passwort/WLAN-Schlüssel-Bezeichnungen,
+PSK in Klammer-Prosa, PSK-Pfeile, Markdown-Tabellen/fett gesetzte PSK-Bezeichnungen,
+Wi-Fi-QR-Zeichenfolgen und Vollbreiten-Doppelpunkte. Der allgemeine Entropiefilter
+kann einzelne Werte dort entfernen, garantiert aber keine vollständige Schwärzung.
+Echte Schlüssel nicht in Prompts kopieren und auf den Filter vertrauen. Wurde ein
+Schlüssel gespeichert, ersetzen/widerrufen und den Altbestand als Eigentümer prüfen.
+Keine automatische Vault-/Audit-/Transcript-/Backup-Reparatur. Beim normalen Schreiben
+werden auch aus erkennbarem Credential-Kontext stammende alte Literal-/Novel-/Matched-
+Werte bereinigt; alte nackte Werte ohne erkennbaren Ursprung bleiben eine Grenze.
+Bereits beförderte Notizen und Audit-Verlauf werden nicht umgeschrieben.
+
+Werkzeughüllen umfassen auch bash-stderr/local-command-stderr und stdout/stderr-Paare.
+Nach vollständigen Hüllen bleibt nur echter Nutzertext; verbliebene unquotierte Tags
+verwerfen den Suffix. Backtick-Zitate bleiben Text. Ab einem Agenten-Marker am
+Zeilenanfang wird nichts als Nutzertext erfasst; echter Text davor bleibt. Groß-/
+Kleinschreibung und U+200B/U+200D/U+2060 vor dem Marker werden berücksichtigt.
+
 #### Speicherzeile und Statistik
 
 Nach tatsächlicher Beförderung erscheint eine Zeile aus dem bestehenden Bau der
@@ -2547,14 +2588,12 @@ Stop, SessionStart oder PostToolUse liefert höchstens eine ausstehende Beförde
 je Hook in der eingestellten Sprache. Mehrere Draft-Zeilen derselben Notiz teilen
 einen dauerhaften Anspruch. Fehlende/private Notizen oder falsche Herkunft werden
 nicht angesagt; Subagents konsumieren keine Hauptthread-Zeile. `BASTRA_SAVE_NOTICE=0`
-schaltet die Zeile aus, ohne sie zu verbuchen. Kalter Cache/fremde Sperre verschiebt
-sie. Verschwindet der Client nach dem dauerhaften Anspruch, kann die Anzeige fehlen;
+schaltet die Zeile aus, ohne sie zu verbuchen. Kalter Cache verschiebt sie. Ist die lokale Schreibkette oder eine fremde Sperre belegt, wartet diese Antwort nicht und verbraucht nichts. War der Client vor dem Verbuchen bereits weg, wird kein Anspruch verbraucht. Nachträglich private Notizen werden ohne Anzeige dauerhaft abgeräumt. Verschwindet der Client nach dem dauerhaften Anspruch, kann die Anzeige fehlen;
 kein Bestätigungs-/Wiederholungsprotokoll, das sie doppelt zeigen könnte.
 
 `bastra logs --stats` zeigt protokollierte Erfassung, zusätzliche Belege, Verfall,
 Verdrängung, Hook-Anzeigen, scharfe Beförderungen, would-promote-Entscheidungen,
-Dubletten-Sperren (scharf/Probe), weitere Sperrentscheidungen, Erfassungsfehler und
-Ansagen. Das sind Ereignisse im gewählten Fenster, kein aktueller Bestand oder
+Dubletten-Sperren (scharf/Probe), weitere Sperrentscheidungen, Erfassungsfehler, Undo-Ereignisse und Ansage-Ansprüche. Der Zähler `announced` zählt verbuchte Ansprüche, keine sicher angekommenen Zeilen. Wiederherstellung einer bereits gelandeten Beförderung protokolliert `draft_promoted`, ohne eine weitere Notiz zu erzeugen. Das sind Ereignisse im gewählten Fenster, kein aktueller Bestand oder
 Anzahl unterschiedlicher gezeigter IDs. Ein Paar ergibt eine Notiz; zwei Anzeigen
 zählen zwei Lieferungen. MCP-Ergebnisse buchen keine Hook-Anzeige. Verfallsereignisse
 beginnen mit dieser Umsetzung und zählen dauerhaft entfernte altersbedingt

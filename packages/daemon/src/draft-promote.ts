@@ -17,6 +17,7 @@ import { logDirFor } from "./telemetry.js";
 import { envOff } from "./env.js";
 import { ACTED_ON_WINDOW_MS } from "./telemetry-join-state.js";
 import { readDraftDecisions, recordDraftDecisions } from "./draft-decisions.js";
+import { writeDraftEvent } from "./draft-events.js";
 
 /** Unmeasured on real data, unchanged after review. */
 export const DRAFT_REPEAT_COSINE_MIN = 0.70;
@@ -194,6 +195,7 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
           if (latest) closeRows([latest], "promoted", recovery.id, recovery.key, now);
         }, now);
         closeRows([row], "promoted", recovery.id, recovery.key, now);
+        await emitOnce([row], { kind: "draft_promoted", ...base });
         continue;
       }
       const use = draftUseProof(row);
@@ -247,7 +249,7 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
           ...(duplicate.cosine === undefined ? {} : { cosine: duplicate.cosine }), ...(duplicate.containment === undefined ? {} : { containment: duplicate.containment }) });
         continue;
       }
-      if (!use && !selected.every(rareEnough)) { result.blocked++; await emitOnce(selected, { kind: "draft_would_block", ...base, reason: "routine-vocabulary" }); continue; }
+      if (!selected.every(rareEnough)) { result.blocked++; await emitOnce(selected, { kind: "draft_would_block", ...base, reason: "routine-vocabulary" }); continue; }
       const input = buildDraftNote(selected, df, use ? "use" : "repeat");
       if (!input.recall_when.length) { result.blocked++; await emitOnce(selected, { kind: "draft_would_block", ...base, reason: "no-useful-cues" }); continue; }
       for (const field of ["title", "summary", "body"] as const) input[field] = redactSecrets(input[field], homedir()).text;
@@ -291,7 +293,7 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
 /** A manual delete is authorized separately from automatic promotion. */
 export async function undoDraftPromotion(vault: Vault, id: string, now = Date.now(), force = false): Promise<string> {
   const vaultId = await draftVaultId(vault.root); await vault.reconcile();
-  return withDraftPublication(() => transactDrafts(async rows => {
+  const memoryId=await withDraftPublication(() => transactDrafts(async rows => {
     const row = rows.find(d => d.id === id || d.memory_id === id && d.state === "promoted");
     if (!row || row.state !== "promoted" || !row.memory_id || !row.evidence_key) throw new Error("draft is not a promoted note");
     if (row.vault_id !== vaultId) throw new Error("draft belongs to a different or unconfirmed vault");
@@ -310,4 +312,6 @@ export async function undoDraftPromotion(vault: Vault, id: string, now = Date.no
     closeRows(rows.filter(d => d.state === "promoted" && d.memory_id === row.memory_id), "rejected", row.memory_id, row.evidence_key, now);
     return row.memory_id;
   }, now));
+  void writeDraftEvent({kind:"draft_undone",count:1});
+  return memoryId;
 }

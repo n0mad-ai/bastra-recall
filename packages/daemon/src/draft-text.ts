@@ -20,3 +20,8 @@ export function clipDraftText(text: string, max: number): string {
 export function cleanDraftText(text: string, max = 200): string {
   return clipDraftText(redactSecrets(clipDraftText(text, max), homedir()).text, max);
 }
+
+/** Opaque client metadata is single-line, bounded and secret-redacted. */
+export function cleanDraftField(text: string, max = 200): string {
+  return redactSecrets(text.replace(/[\p{Cc}\p{Cf}]/gu,""),homedir()).text.slice(0,max);
+}

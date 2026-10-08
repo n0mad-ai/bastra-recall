@@ -37,11 +37,13 @@
  *
  * PROMISE: mutations of the same path are fully serialised — guaranteed within
  * this process, and across processes as long as every writer sees the same
- * local file and asked for `crossProcess`. An orphaned lock file (owner died)
- * is taken over after {@link LOCK_STALE_MS}; a writer that cannot get the lock
+ * local file, asked for `crossProcess` and actually acquired the lease.
+ * Takeover after {@link LOCK_STALE_MS} uses age only, not owner liveness;
+ * a paused live process can therefore still own a stale snapshot. A writer that cannot get the lock
  * within {@link LOCK_WAIT_MS} proceeds WITHOUT the cross-process lock and says
  * so on stderr. That fail-open is deliberate: the worst case is exactly the
- * behaviour from before this module, while a setting that can no longer be
+ * behaviour from before this module (including an acknowledged update or
+ * rejected/undone draft tombstone lost to a later stale rename), while a setting that can no longer be
  * saved — or a Stop hook that hangs on a wedged lock — would be the more
  * expensive failure.
  *
@@ -55,7 +57,7 @@ import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
-/** When a lock left behind counts as orphaned and may be taken over. */
+/** Age-only lease takeover; this does not establish that the owner died. */
 const LOCK_STALE_MS = 10_000;
 /** How long a writer waits for the lock before continuing fail-open. */
 const LOCK_WAIT_MS = 5_000;
@@ -64,6 +66,8 @@ const chains = new Map<string, Promise<unknown>>();
 const depths = new Map<string, number>();
 
 export interface PathLockOptions {
+  /** Response-path claims skip a busy local chain rather than joining it. */
+  noQueue?: boolean;
   /**
    * Also take an O_EXCL lock file, so writers in OTHER processes queue too.
    * Only switch this on where a second process demonstrably writes the same
@@ -217,9 +221,11 @@ function tryFileLock(path: string): string | null {
   finally { if (fd !== undefined) closeSync(fd); }
 }
 
-/** Advisory feedback serializes behind local writers off the response path. It never takes over an orphan or
- * writes without the cross-process lock. Busy/unwritable means no mutation. */
+/** Advisory feedback normally queues off the response path. `noQueue` skips a
+ * busy local chain immediately. Neither mode takes over an aged lease or
+ * writes without the cross-process lock; busy/unwritable means no mutation. */
 export function tryWithPathLock<T>(path: string, fn: () => Promise<T>, opts: PathLockOptions = {}): Promise<T | undefined> {
+  if (opts.noQueue && (depths.get(path) ?? 0) > 0) return Promise.resolve(undefined);
   return withPathLock(path, async () => {
     const token = opts.crossProcess ? tryFileLock(path) : null;
     if (opts.crossProcess && token === null) return undefined;

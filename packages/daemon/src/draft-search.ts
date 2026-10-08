@@ -1,3 +1,4 @@
+import { markDraftDelivery } from './draft-delivery.js';
 /** Local, read-only draft retrieval. Advisory feedback never delays recall. */
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -171,6 +172,7 @@ export async function appendLaneDrafts(
     output.additionalContext = output.additionalContext ? `${output.additionalContext}\n${block}` : block;
     envelope.hookSpecificOutput = output;
     const rendered = JSON.stringify(envelope);
+    markDraftDelivery(sessionId,selected.map(hit=>hit.id),queries.join(" "));
     deferDraftFeedback(selected, queries.join(" "), sessionId, event, block, performance.now() - started);
     return rendered;
   } catch { return stdout; }

@@ -369,6 +369,7 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
   const markPsk = (start: number, wholeLine = false): number => {
     const tail = text.slice(start);
     if (tail.startsWith("[REDACTED]")) return start+"[REDACTED]".length;
+    if (valueSpans(text,start).spans.length>1) return markValue(start,true);
     if (/^(?:true|false|[01]|WPA[23])(?=\s|[,;}]|$)/i.test(tail) || /^(?:bitte|siehe)\b/i.test(tail)) return start;
     if (!wholeLine || /^["'`$|>\\]/.test(tail) || isReference(tail.split(/\s/)[0])) return markValue(start,true);
     const boundary = /[\r\n,;<>}\]]|[ \t]+(?=--?[a-z]|[a-z_][a-z0-9_.-]*[ \t]*=)/i.exec(tail);
@@ -487,7 +488,8 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
     if(colon>=0 && !isReference(value.slice(colon+1))) for(const[a,b]of parsed.spans)mark(a,b-a);
   }
   // Positional/option credential syntax observed in the review corpus.
-  for(const m of text.matchAll(/(?:^|[\s;])(?:wpa-psk|wifi-sec\.psk|802-11-wireless-security\.psk|-psk|pre-shared-key)[ \t]+/gi))markPsk(m.index!+m[0].length);
+  for(const m of text.matchAll(/(?:^|[\s;])(?:wifi-sec\.psk|802-11-wireless-security\.psk|-psk|pre-shared-key)[ \t]+/gi))markPsk(m.index!+m[0].length);
+  for(const m of text.matchAll(/(?:^|\r?\n)[ \t]*wpa-psk[ \t]+/gi))markPsk(m.index!+m[0].length);
   for(const m of text.matchAll(/\bwpa_passphrase[ \t]+(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)[ \t]+/gi))markPsk(m.index!+m[0].length);
   for(const m of text.matchAll(/:[ \t]*PSK[ \t]+/gi))markPsk(m.index!+m[0].length,true);
   for(const m of text.matchAll(/<(psk|keyMaterial)>[\s\S]*?<\/\1>/gi)) {

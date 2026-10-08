@@ -102,3 +102,19 @@ test("remote inline and direct harvest input cannot give agent prose draft or re
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('line-start agent bands preserve only the human prefix, including injected context and zero-width/case variants',()=>{
+ for(const marker of ['<agent-message from="codex">','\u200b<Agent-Message from="codex">','\u200d<teammate-message>','\u2060<cross-session-message>']){
+  const text=human+'\n'+marker+'agent report</agent-message>';
+  assert.equal(ownerPromptText(text),human);
+  const first=normalizeTurns([{role:'user',content:text}]);assert.equal(first[0].content,human);assert.deepEqual(normalizeTurns(first),first);
+  assert.equal(ownerPromptText('<recall-hints>fixture</recall-hints>\n'+marker+'agent report'),null);
+  assert.equal(ownerPromptText('Explain `'+marker+'` as a literal'), 'Explain `'+marker+'` as a literal');
+ }
+});
+
+test('bridge teachers see only the human prefix, not appended agent mail',async()=>{
+ const {bridgeTeachingEvents}=await import('../src/learned-recall/harvest.js');
+ const events=[{origin:'owner',kind:'hook_recall',ts:'2026-10-08T00:00:00Z',query:human+'\n<Agent-Message>agent report',dimensions:{hook_source:'prompt'}},{origin:'owner',kind:'hook_recall',ts:'2026-10-08T00:00:00Z',query:'<recall-hints>hook</recall-hints>\n<agent-message>agent report',dimensions:{hook_source:'prompt'}}];
+ const filtered=bridgeTeachingEvents(events);assert.equal(filtered.length,1);assert.equal(filtered[0].query,human);
+});

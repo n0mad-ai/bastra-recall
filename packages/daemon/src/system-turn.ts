@@ -1,3 +1,4 @@
+import { scrubInjectedBlocks } from "@bastra-recall/core/scrub";
 /**
  * Turns Claude Code and Codex deliver with role "user" although nobody typed
  * them (#639, #649, #703, #701). One predicate for every reader of user turns —
@@ -35,7 +36,7 @@ const AGENTS_INSTRUCTIONS = /^# AGENTS\.md instructions for (?:\/|\\|~|\.|[A-Za-
 const TURN_ABORTED = /^<turn_aborted>\r?\n[^\r\n]+\r?\n<\/turn_aborted>\s*$/;
 const TASK_NOTIFICATION = /^<task-notification[\s>]/;
 const AGENT_MAIL_WRAPPER = "Another Claude session sent a message:";
-const AGENT_MAIL_TAG = /^<(?:teammate|agent|cross-session)-message[\s>]/;
+const AGENT_MAIL_TAG = /^<(?:teammate|agent|cross-session)-message(?:[\s>]|$)/i;
 
 function isAgentMail(head: string): boolean {
   const body = head.startsWith(AGENT_MAIL_WRAPPER) ? head.slice(AGENT_MAIL_WRAPPER.length).trimStart() : head;
@@ -67,7 +68,7 @@ function isCommandEcho(head: string): boolean {
  *  harness context, skill body, reminder, command echo, hand-back), not typed
  *  text. */
 export function isSystemInjectedTurn(text: string): boolean {
-  const head = text.trimStart();
+  const head = text.trimStart().replace(/^[\u200b\u200d\u2060]+/,"");
   return (
     /^<draft-hints\b/i.test(head) ||
     TASK_NOTIFICATION.test(head) ||
@@ -99,7 +100,17 @@ export function ownerPromptText(prompt: string): string | null {
   const head = textAfterToolWrappers(prompt);
   if (head === null) return null;
   if (isCommandEcho(head)) return head;
-  return isSystemInjectedTurn(head) ? null : head;
+  if(isSystemInjectedTurn(head))return null;
+  const owner=textBeforeAgentBand(scrubInjectedBlocks(head).text);
+  return owner && !isSystemInjectedTurn(owner)?owner:null;
+}
+
+/** A line-start agent band ends owner evidence. Backtick quotations are data. */
+export function textBeforeAgentBand(text:string):string|null {
+  const unquoted=text.replace(/(`+)[\s\S]*?\1/g,m=>m.replace(/[^\r\n]/g," "));
+  const marker=/(?:^|\r?\n)[ \t\u200b\u200d\u2060]*<(?:agent|teammate|cross-session)-message(?=[\s>]|$)/i.exec(unquoted);
+  const owner=(marker?text.slice(0,marker.index):text).trimStart();
+  return owner.trim() && !(marker && owner.trim()===AGENT_MAIL_WRAPPER)?owner.trimEnd():null;
 }
 
 /** Recover owner prose after complete leading tool wrappers. Never use the

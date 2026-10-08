@@ -600,3 +600,13 @@ test("D3 a changed repeat threshold invalidates the completed-pass receipt",()=>
   const modified=await import(changed);
   assert.equal((await modified.runDraftPromote(options)).wouldPromote,1,"same state, newly eligible pair");
 }));
+
+test('review routine vocabulary guard applies to valid use proofs too',()=>isolated(async(vault,_dir,vaultId)=>{
+ const text='Fixture calibration consistently follows normal deployment procedure.';await captureDraft(row(text,'origin',vaultId));const d=(await listDrafts())[0];const {recordDraftHints,recordDraftUse}=await import('../src/draft-use.js');await recordDraftHints([d.id],'reader','calibration',now+10);assert.equal(await recordDraftUse({sessionId:'reader',toolName:'Bash',excerpt:'echo normal deployment procedure',exitCode:0,now:now+20}),1);
+ const words=text.toLowerCase().replace('.','').split(' ');const notes=words.flatMap((word,i)=>Array.from({length:3},(_,n)=>({fm:{id:`fixture-${i}-${n}`,title:word,summary:'Neutral reference',recall_when:['neutral reference'],tags:['fixture']},body:word}))) as any;
+ const original=vault.list.bind(vault);vault.list=()=>notes;const provider=providerFor();try{const opts={vault,provider,ollama:local,vaultVectors:()=>({provider:provider.id,dim:2,vectors:new Map<string,Float32Array>(notes.map((n:any)=>[n.fm.id,new Float32Array([0,1])]))})};await runDraftShadow(opts);const result=await runDraftPromote(opts);assert.equal(result.promoted,0);assert.equal(result.blocked,1);}finally{vault.list=original;}
+}));
+
+test('review recovery records the landed promotion without another vault save',()=>isolated(async(vault,_dir,vaultId)=>{
+ await repeat(vaultId);const open=(await listDrafts())[0],provider=providerFor();await runDraftShadow({provider,ollama:local,vault});const opts={provider,ollama:local,vault,vaultVectors:vectors(vault,provider)};await runDraftPromote(opts);await upsertDraft(open);const events:DraftPromotionEvent[]=[];await runDraftPromote({...opts,emit:e=>events.push(e)});assert.equal(events.filter(e=>e.kind==='draft_promoted'&&e.reason==='committed-note-recovery').length,1);assert.equal(vault.size(),1);
+}));

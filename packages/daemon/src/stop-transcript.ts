@@ -8,7 +8,7 @@ import { open } from "node:fs/promises";
 // #305: the scrub leaf, never the core barrel — the barrel costs +40ms of
 // process start for a function that lives in a dependency-free module.
 import { scrubInjectedBlocks } from "@bastra-recall/core/scrub";
-import { isSystemInjectedTurn, textAfterToolWrappers } from "./system-turn.js";
+import { isSystemInjectedTurn, textAfterToolWrappers, textBeforeAgentBand } from "./system-turn.js";
 import type { ProvenRead } from "./code-graph/boundary-block.js";
 import {
   claudeToolUseCommands,
@@ -156,7 +156,7 @@ function isToolResultContent(content: unknown): boolean {
  */
 function effectiveRole(role: string, content: unknown, meta = false): string {
   if (role === "user" && isToolResultContent(content)) return "tool";
-  if (role === "user" && (meta || isSystemInjectedTurn(typedText(content)))) return "system-injected";
+  if (role === "user" && (meta || isSystemInjectedTurn(typedText(content)) || (stringifyContent(content).trim().length>0 && typedText(content).trim().length===0))) return "system-injected";
   return role;
 }
 
@@ -164,7 +164,8 @@ function effectiveRole(role: string, content: unknown, meta = false): string {
  *  typed after it is theirs (#994; the prompt lane reads it the same way, #769). */
 function typedText(content: unknown): string {
   const text = stringifyContent(content);
-  return textAfterToolWrappers(text) ?? text;
+  const owner=textAfterToolWrappers(text);
+  return owner===null?text:isSystemInjectedTurn(owner)?owner:(textBeforeAgentBand(scrubTurnContent(owner))??"");
 }
 
 /** Turn text: for a user turn without harness-only content, the typed part. */

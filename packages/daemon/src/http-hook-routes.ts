@@ -1,3 +1,5 @@
+import { markDraftDelivery } from './draft-delivery.js';
+import { cleanDraftField } from './draft-text.js';
 /**
  * Handler for the loopback-only /hook/recall endpoint (JSON + SSE).
  * Routing stays in http.ts; the handler logic lives here.
@@ -95,6 +97,8 @@ export function handleHookRecall(
 
   readJsonBody(req, MAX_BODY_BYTES)
     .then(async (body) => {
+      for(const field of ["session_id","tool_name","client","project","cwd","agent_id"])
+        if(typeof body[field]==="string")body[field]=cleanDraftField(body[field] as string,field==="tool_name"?80:200);
       const query = typeof body.query === "string" ? body.query.trim() : "";
       if (!query) {
         if (wantsSse) {
@@ -133,6 +137,8 @@ export function handleHookRecall(
             }
           : undefined,
       );
+      if (!res.destroyed && !req.socket.destroyed && typeof body.session_id === "string")
+        markDraftDelivery(cleanDraftField(body.session_id),Array.isArray(payload.draft_hits)?payload.draft_hits.map((hit:{id:string})=>hit.id):[],query);
       if (wantsSse) {
         writeSseEvent(res, "done", payload);
         res.end();

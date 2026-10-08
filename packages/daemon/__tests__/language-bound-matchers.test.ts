@@ -46,7 +46,10 @@ const SCAN_ROOTS = ["packages/daemon/src", "packages/core/src"];
 
 /** file :: finding → why it may stay (must reference an issue). */
 const ALLOWLIST: Readonly<Record<string, string>> = {
-  "packages/daemon/src/system-turn.ts :: words /local-command-stdout|bash-input|bash-stdout/": "#1106 transcript protocol tags, not natural-language authorship cues",
+  "packages/daemon/src/system-turn.ts :: words /teammate|agent|cross-session/": "#1105 structural protocol tags, not conversation vocabulary",
+  "packages/daemon/src/system-turn.ts :: words /agent|teammate|cross-session/": "#1105 structural protocol tags, not conversation vocabulary",
+  "packages/core/src/scrub.ts :: words /true|false|[01]/": "#1107 boolean and protocol-mode control values are not credential disclosures",
+  "packages/daemon/src/system-turn.ts :: words /local-command-stdout|local-command-stderr|bash-input/": "#1106 transcript protocol tags, not natural-language authorship cues",
   // ── #707: detection only FILES a bridge (bridges/<lang>/, else "und"); mint and fire are language-neutral ──
   "packages/daemon/src/learned-recall/language.ts :: name SUPPORTED_LANGUAGES": "#707 names the filing folder and the override values; an unknown language files under und and still mints/fires",
   "packages/daemon/src/learned-recall/language.ts :: name DE_STOPWORDS": "#707 filing-folder detection only, never a gate",

@@ -94,10 +94,12 @@ test("E actual hinted/act endpoints store separate drafts and preserve full trig
  const server=await startHttpServer({port:0,vault,search,telemetry,version:"fixture",toolDeps:{vault,search,telemetry,vaultPath:vault.root},documentWriteEnabled:false,embedding:{on:false,providerId:null,source:"none"}});
  const url=`http://127.0.0.1:${server.port}`;
  try{
+  await (await fetch(url+"/hook/recall",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({query:"spectrometer calibration",session_id:"reader"})})).json();
   await reportHinted(url,[],"reader",500,{ids:[row.id],input:"spectrometer calibration"});
   const response=await fetch(url+"/hook/act",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({session_id:"reader",tool_name:"Bash",tool_input_excerpt:"cat packet7.conf",exit_code:0})});
   assert.equal(response.status,200);assert.equal((await response.json() as {drafts_used:number}).drafts_used,1);assert.equal(vault.size(),0);
   const longInput="x ".repeat(3000)+"packet7.conf";
+  await (await fetch(url+"/hook/recall",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({query:"spectrometer calibration",session_id:"long-reader"})})).json();
   await reportHinted(url,[],"long-reader",500,{ids:[row.id],input:longInput});
   assert.equal(await acted("cat packet7.conf","long-reader",0,Date.now()+1),0,"input suffix must not be truncated into novelty");
  }finally{await server.close();search.stop();}

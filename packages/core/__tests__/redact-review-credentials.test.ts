@@ -8,3 +8,7 @@ test('review credential forms remove complete PSKs and curl userinfo',()=>{
 test('PSK mode flags, questions, prose and references survive',()=>{
  for(const text of ['psk: true','use_psk=1','Ist PSK = WPA2 Personal oder brauche ich Enterprise?','Zum PSK: bitte nie im Klartext speichern','PSK=$VPN_PSK','PSK=/etc/fixture/key','PSK: siehe Passwortmanager'])assert.equal(redactSecrets(text).text,text,text);
 });
+test('PSK continuations remain covered while mode prose is not a binding',()=>{
+ assert.equal(redactSecrets('Das WLAN nutzt wpa-psk statt enterprise und das bleibt so.').text,'Das WLAN nutzt wpa-psk statt enterprise und das bleibt so.');
+ const value='psk=fixture\\\nphrase2019x';assert.ok(!redactSecrets(value).text.includes('phrase2019x'));
+});
