@@ -521,3 +521,89 @@ test("a cue proposal resolves a Bash read the same way it resolves a Read", asyn
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// ─── review/pr454: gaps found in an adversarial pass ─────────────
+
+import { rename, symlink as symlinkAt } from "node:fs/promises";
+
+test("a symlinked vault resolves to its memory when the snapshot is taken the way the CLI takes it", async () => {
+  // The CLI snapshots `--vault` itself, so `idByPath` is keyed by that
+  // spelling. `insideVault` dereferenced both sides, the lookup did not: a Read
+  // through the other spelling passed as "inside" and then found no object —
+  // `served-hit` became `unknown`. The earlier symlink test reused a snapshot
+  // taken through the real path, which hid it. Revert-check: key `idByPath`
+  // by the unresolved path again, or look it up with `resolve`.
+  const { dir, vault, events } = await fixture();
+  try {
+    const link = join(dir, "vault-link");
+    await symlinkAt(vault, link);
+    const pools = await loadTelemetryPools(events);
+    const cliWay = async (root: string): Promise<ObservationEngines> =>
+      ({ pools, vaultRoot: resolve(root), snapshot: await snapshotVault(root), labels: new Map() });
+    const read = (path: string) => extractReviewedMissChains(
+      session("r-inpool", ["served-one"], { name: "Read", input: { file_path: path } }), "s.jsonl")[0];
+    // --vault is the link, the session read the real path
+    assert.equal(observeChain(read(join(vault, "memories", "served-one.md")), await cliWay(link)).classification, "served-hit");
+    // --vault is the real path, the session read through the link
+    assert.equal(observeChain(read(join(link, "memories", "served-one.md")), await cliWay(vault)).classification, "served-hit");
+    // and the cue side agrees with the classifier
+    assert.equal(resolvedMemoryId(read(join(link, "memories", "deep-two.md")), await cliWay(vault)), "deep-two");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a memory rewritten after the observation is not reported as born after it", async () => {
+  // The daemon rewrites memories by tmp+rename (`memory-mutate.ts`, used by
+  // edit_memory, trigger expansion, related enrichment), which gives the file a
+  // fresh inode and a fresh birth time. A memory that existed — and declares
+  // so in `created` — was classified `unindexed-vault-object` and fed a cue
+  // proposal. Revert-check: ignore `created` in `snapshotVault`.
+  const { dir, vault, events } = await fixture();
+  try {
+    const file = join(vault, "memories", "old-four.md");
+    const body = ["---", "id: old-four", "title: old-four", "type: lesson", "scope: test", "summary: lesson old-four", "created: '1999-06-01'", "---", "", "body", ""].join("\n");
+    await writeFile(file + ".tmp", body);
+    await rename(file + ".tmp", file); // birth time: now, i.e. after the 2000-01-01 observation
+    const engines: ObservationEngines = { pools: await loadTelemetryPools(events), vaultRoot: vault, snapshot: await snapshotVault(vault), labels: new Map() };
+    const [chain] = extractReviewedMissChains(
+      session("r-before", ["served-one"], { name: "mcp__bastra-recall__load_memory", input: { id: "old-four" } }), "s.jsonl");
+    assert.equal(observeChain(chain, engines).classification, "genuine-out-of-pool");
+    // a memory with no declared creation keeps the birth-time answer (fixture: far-three)
+    const [fresh] = extractReviewedMissChains(
+      session("r-before", ["served-one"], { name: "mcp__bastra-recall__load_memory", input: { id: "far-three" } }), "s.jsonl");
+    assert.equal(observeChain(fresh, engines).classification, "unindexed-vault-object");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("cli: one load after an MCP recall is one observation, not one per lane", async () => {
+  // `load_memory` telemetry carries `follows_recall` = the MCP recall's id, the
+  // same id the transcript envelope carries. The transcript lane observed the
+  // load as its evidence step and the hook lane observed it again through
+  // `follows_recall`: class counts doubled and a single episode reached the
+  // proposal file twice, under two session refs (support 2 from one session).
+  // Revert-check: stop passing the transcript-covered keys to observeHookLane.
+  const { dir, vault, events } = await fixture();
+  const script = resolve(import.meta.dirname, "..", "scripts", "harvest-reviewed-misses.ts");
+  try {
+    const later = new Date(Date.now() + 3_600_000 + 60_000).toISOString();
+    await writeFile(join(events, "events-2026-09-15.jsonl"), [
+      JSON.stringify({ ...JSON.parse(event("r-mcp", later, ["served-one", "deep-two"], ["served-one"])), kind: "recall", session_id: "sess-1" }),
+      loadEvent("deep-two", later, "sess-1", { follows_recall: "r-mcp" }),
+    ].join("\n") + "\n");
+    const sessionFile = join(dir, "sess-1.jsonl");
+    await writeFile(sessionFile, session("r-mcp", ["served-one"], { name: "mcp__bastra-recall__load_memory", input: { id: "deep-two" } }) + "\n");
+    const proposals = join(dir, "proposals.json");
+    const run = spawnSync(process.execPath, ["--import", "tsx", script, "--hook-lane", "--events", events, "--vault", vault, "--out", join(dir, "q.json"), "--proposals", proposals, sessionFile], { encoding: "utf8" });
+    assert.equal(run.status, 0, run.stderr);
+    const report = JSON.parse(run.stderr.trim().split("\n").pop() ?? "{}") as { observed: { by_class: { transcript: Record<string, number>; hook: Record<string, number> } } };
+    assert.equal(report.observed.by_class.transcript["in-pool-not-selected"], 1);
+    assert.equal(report.observed.by_class.hook["in-pool-not-selected"], 0, "the transcript lane already owns this load");
+    const written = JSON.parse(await readFile(proposals, "utf8")) as Array<{ targetId: string; support: number; episodes: unknown[] }>;
+    assert.deepEqual(written.map((p) => [p.targetId, p.episodes.length, p.support]), [["deep-two", 1, 1]]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

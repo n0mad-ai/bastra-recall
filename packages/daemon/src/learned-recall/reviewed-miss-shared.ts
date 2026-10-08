@@ -51,7 +51,9 @@ export function isRecall(tool: ToolUse): boolean {
 }
 
 export function isEvidenceRead(tool: ToolUse): boolean {
-  return typeof tool.name === "string" && /^(Read|Glob|Grep|Search|find_document|read_document)$/i.test(tool.name);
+  // Same MCP-prefix rule as `isRecall`: a real transcript names the tool
+  // `mcp__bastra-recall__find_document`, never the bare name.
+  return typeof tool.name === "string" && /(?:^|__)(Read|Glob|Grep|Search|find_document|read_document)$/i.test(tool.name);
 }
 
 export function sourceRef(tool: ToolUse): string | null {

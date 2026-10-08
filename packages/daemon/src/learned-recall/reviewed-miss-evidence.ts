@@ -59,6 +59,13 @@ export interface HookLaneResult {
   /** The chain behind each record, for cue proposals (same index as `records`). */
   chains: ReviewedMissChain[];
   gaps: GapEvent[];
+  /** Loads skipped because the transcript lane already observed them (same recall_id and memory). */
+  coveredByTranscript: number;
+}
+
+/** Key of one observed load: the recall it followed and the memory it loaded. */
+export function loadKey(recallId: string, memoryId: string): string {
+  return recallId + "\0" + memoryId;
 }
 
 /**
@@ -66,15 +73,29 @@ export interface HookLaneResult {
  * not link, or whose recall has no recorded pool, is a gap — counted, never
  * classified.
  */
-export function observeHookLane(telemetry: Telemetry, engines: ObservationEngines): HookLaneResult {
+export function observeHookLane(
+  telemetry: Telemetry,
+  engines: ObservationEngines,
+  /**
+   * `loadKey`s the transcript lane already observed. `follows_recall` carries
+   * the MCP recall's id, so without this one load after an MCP recall is
+   * counted once per lane and proposes itself twice.
+   */
+  coveredByTranscript: ReadonlySet<string> = new Set(),
+): HookLaneResult {
   const records: HookLaneRecord[] = [];
   const chains: ReviewedMissChain[] = [];
   const gaps: GapEvent[] = [];
+  let covered = 0;
   for (const load of telemetry.loads) {
     const sessionRef = load.sessionId ? hash("session:" + load.sessionId) : null;
     const recallId = load.fromHookRecall ?? load.followsRecall;
     if (!recallId) {
       gaps.push({ kind: "load-without-recall-link", sessionRef });
+      continue;
+    }
+    if (coveredByTranscript.has(loadKey(recallId, load.memoryId))) {
+      covered += 1;
       continue;
     }
     const pool = telemetry.pools.get(recallId);
@@ -123,7 +144,7 @@ export function observeHookLane(telemetry: Telemetry, engines: ObservationEngine
     });
     chains.push(chain);
   }
-  return { records, chains, gaps };
+  return { records, chains, gaps, coveredByTranscript: covered };
 }
 
 // ─── heatmap ─────────────────────────────────────────────────────
@@ -310,6 +331,8 @@ export interface EvidenceReport {
     telemetry_pools_by_lane: { recall: number; hook_recall: number };
     telemetry_loads: number;
     telemetry_loads_linked: number;
+    /** Hook-lane loads left to the transcript lane, which already observed them. */
+    hook_loads_covered_by_transcript: number;
     vault_ids: number | null;
   };
   observed: {

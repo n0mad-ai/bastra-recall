@@ -18,6 +18,7 @@ import {
   heatmap,
   hotPaths,
   liveClasses,
+  loadKey,
   observeHookLane,
   poolsByLane,
   specimensOf,
@@ -116,7 +117,11 @@ async function main(): Promise<void> {
   const transcriptRecords = pairs.map((pair) => pair.record);
 
   // Hook lane (telemetry only) and the evidence layers.
-  const hook = args.hookLane && telemetry ? observeHookLane(telemetry, engines) : { records: [], chains: [], gaps: [] };
+  const transcriptLoads = new Set(pairs.flatMap(({ chain }) =>
+    chain.recallId && chain.evidence.kind === "load-memory" ? [loadKey(chain.recallId, chain.evidence.memoryId)] : []));
+  const hook = args.hookLane && telemetry
+    ? observeHookLane(telemetry, engines, transcriptLoads)
+    : { records: [], chains: [], gaps: [], coveredByTranscript: 0 };
   gaps.push(...hook.gaps);
   const heat = telemetry ? heatmap(telemetry, { hubSessions }) : [];
   const hubs = new Set(heat.filter((row) => row.hub).map((row) => row.memoryId));
@@ -140,6 +145,7 @@ async function main(): Promise<void> {
       telemetry_pools_by_lane: telemetry ? poolsByLane(telemetry.pools) : { recall: 0, hook_recall: 0 },
       telemetry_loads: telemetry?.loads.length ?? 0,
       telemetry_loads_linked: telemetry?.loads.filter((load) => load.fromHookRecall ?? load.followsRecall).length ?? 0,
+      hook_loads_covered_by_transcript: hook.coveredByTranscript,
       vault_ids: engines.snapshot?.idCount ?? null,
     },
     observed: {
