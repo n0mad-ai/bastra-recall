@@ -322,6 +322,8 @@ test("D fix: cue heads, literal host and rare vocabulary do not include cut-off 
   const df = new Map([...["alle", "den", "der", "in", "läuft", "run"].map(word => [word, 100] as const), ["seltengranit", 1] as const, ["kupferportal", 1] as const, ["azurarchiv", 1] as const]);
   const input = buildDraftNote([draft], df);
   assert.ok(input.recall_when.includes(draft.context));
+  assert.ok(input.recall_when.includes("psql db7.example.invalid"));
+  assert.ok(input.recall_when.includes("ssh dock.example.invalid"));
   assert.ok(input.recall_when.some(cue => cue.startsWith("ssh ") && !cue.includes("systemctl") && !cue.includes("crane@")));
   assert.ok(input.recall_when.some(cue => cue.includes("seltengranit kupferportal") || cue.includes("azurarchiv")));
   assert.ok(input.recall_when.every(cue => !cue.includes("psql -h") && !cue.includes("'systemctl")));
