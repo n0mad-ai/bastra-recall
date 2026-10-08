@@ -117,3 +117,11 @@ export function textAfterReminders(text: string): string | null {
   if (rest.length === 0) return null;
   return rest;
 }
+
+
+/** A line-start band appended to typed owner prose is never owner evidence,
+ * even if delivery was cut before its closing tag. Inline quoted tags stay prose. */
+export function textBeforeDraftBand(text: string): string {
+  const start = /(?:^|\r?\n)[ \t]*<draft-hints\b[^>\r\n]*(?:>|$)/i.exec(text);
+  return start ? text.slice(0, start.index).trimEnd() : text;
+}

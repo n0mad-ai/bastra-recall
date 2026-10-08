@@ -7,18 +7,20 @@ import { draftSearchSnapshot, draftsPath, type Draft } from "./draft-store.js";
 import { weightedContainment, STORED_CONTAINMENT_MIN } from "./harvest-vault-match.js";
 import { tokens } from "./save-similarity.js";
 import { measurePayload } from "./recall-budget.js";
-import { claimDraftHints, persistDraftHintClaims, sessionStateDir } from "./session-state.js";
+import { availableDraftHints, claimDraftHints, persistDraftHintClaims, sessionStateDir } from "./session-state.js";
 import { recordDraftHints } from "./draft-use.js";
 import { envOff } from "./env.js";
 import { logDirFor } from "./telemetry.js";
+import { draftVocabularySnapshot, type DraftVocabulary } from "./draft-vocabulary.js";
 
 /** Unmeasured on real data; measured against the fixed 200-draft DE/EN corpus. */
 export const DRAFT_TEXT_MIN_SHARED = 2;
 export const DRAFT_TEXT_MIN_RARE = 2;
-export const DRAFT_TEXT_MIN_ANCHOR_BYTES = 4;
-export const DRAFT_TEXT_STRONG_BYTES = 10;
-export const DRAFT_RARE_FRACTION = 0.05;
-export const DRAFT_RARE_MIN_ROWS = 2;
+export const DRAFT_TEXT_MIN_ANCHOR_CHARS = 4;
+export const DRAFT_TEXT_STRONG_CHARS = 10;
+export const DRAFT_RARE_MAX_ROWS = 2;
+/** At <3 notes, every word is rare under the same fixed DF rule. */
+export const DRAFT_VOCABULARY_MIN_NOTES = 3;
 /** Unmeasured advisory ceiling, always bounded by the normal lane deadline. */
 export const DRAFT_BAND_MAX_MS = 50;
 export interface DraftHit {
@@ -33,7 +35,7 @@ function singleLine(text: string): string {
 }
 function projectLabel(text: string): string { return singleLine(text).replace(/[^\p{L}\p{N}._-]/gu, "").slice(0, 80); }
 
-export function prepareDraftSearch(rows: readonly Draft[], now = Date.now()) {
+export function prepareDraftSearch(rows: readonly Draft[], now = Date.now(), vocabulary?: DraftVocabulary) {
   const open = rows.filter(row => row.state === "open");
   const df = new Map<string, number>(), litDf = new Map<string, number>();
   const prepared = open.map(row => {
@@ -43,9 +45,11 @@ export function prepareDraftSearch(rows: readonly Draft[], now = Date.now()) {
     const safe = scanForInjection([row.quote, row.context ?? "", row.situation.project ?? ""].join("\n")).length === 0;
     return { row, words, lits, safe };
   });
-  const rareMax = Math.max(DRAFT_RARE_MIN_ROWS, open.length * DRAFT_RARE_FRACTION);
+  const rareMax = DRAFT_RARE_MAX_ROWS;
   const idf = (word: string) => Math.log(1 + (open.length + 1) / ((df.get(word) ?? 0) + 1));
   return (query: string, notes: DraftNote[] = [], limit = 2, sessionId?: string): { hits: DraftHit[] } => {
+    const vaultWords = vocabulary ?? draftVocabularySnapshot();
+    const rareInVault = (word: string) => vaultWords.count < DRAFT_VOCABULARY_MIN_NOTES || (vaultWords.df.get(word) ?? 0) <= DRAFT_RARE_MAX_ROWS;
     const q = new Set(tokens(query));
     const literals = new Set(query.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}._@\/:-]*/gu) ?? []);
     const noteWords = notes.map(note => new Set(tokens([note.title, note.summary, note.body].filter(Boolean).join("\n"))));
@@ -54,13 +58,13 @@ export function prepareDraftSearch(rows: readonly Draft[], now = Date.now()) {
       if (!safe || sessionId && row.evidence.some(e => e.session_id === sessionId)) continue;
       let shared = 0, rareShared = 0, weight = 0, strong = false;
       for (const word of q) if (words.has(word)) {
-        shared++; if ((df.get(word) ?? 0) <= rareMax && Buffer.byteLength(word) >= DRAFT_TEXT_MIN_ANCHOR_BYTES) {
-          rareShared++; weight += idf(word); if (Buffer.byteLength(word) >= DRAFT_TEXT_STRONG_BYTES) strong = true;
+        shared++; if ((df.get(word) ?? 0) <= rareMax && rareInVault(word) && [...word].length >= DRAFT_TEXT_MIN_ANCHOR_CHARS) {
+          rareShared++; weight += idf(word); if ([...word].length >= DRAFT_TEXT_STRONG_CHARS) strong = true;
         }
       }
       const textMatch = shared >= DRAFT_TEXT_MIN_SHARED && (rareShared >= DRAFT_TEXT_MIN_RARE || strong);
       let litShared = 0, rareLit = false;
-      for (const lit of lits) if (literals.has(lit)) { litShared++; if ((litDf.get(lit) ?? 0) <= rareMax) rareLit = true; }
+      for (const lit of lits) if (literals.has(lit)) { litShared++; if ((litDf.get(lit) ?? 0) <= rareMax && [...lit].length >= 4 && /[\p{N}./_@:-]/u.test(lit)) rareLit = true; }
       const situationMatch = litShared >= 2 && rareLit;
       if (!textMatch && !situationMatch) continue;
       // Assumption, not confirmed by the owner: retrieval never deletes.
@@ -108,7 +112,7 @@ export function formatDraftHints(hits: DraftHit[]): string {
 }
 
 /** Runs after the completed stdout/HTTP response is handed to its caller.
- * Busy/unwritable stores lose only this booking; never wait or retry it. */
+ * Local bookings serialize off the response path; foreign busy/unwritable stores lose only this booking. */
 export function deferDraftFeedback(hits: DraftHit[], input: string, sessionId: string, event: string, block: string, latencyMs: number): void {
   const path = draftsPath(), stateDir = sessionStateDir();
   const logDir = envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ? null : logDirFor();
@@ -139,6 +143,11 @@ export async function appendLaneDrafts(
     const queries = typeof query === "string" ? [query] : query;
     let hits = [...new Map((await Promise.all(queries.map(q => searchDrafts(q, notes, 500, sessionId)))).flat().map(hit => [hit.id, hit])).values()];
     if (!hits.length || Date.now() >= deadline) return stdout;
+    const rows = draftSearchSnapshot().rows;
+    const shown = rows.filter(row => row.surfaced.some(s => s.session_id === sessionId)).map(row => row.id);
+    const available = new Set(availableDraftHints(sessionId, hits.map(hit => hit.id), shown));
+    hits = hits.filter(hit => available.has(hit.id));
+    if (!hits.length) return stdout;
     if (getNotes) {
       const localNotes = getNotes();
       hits = [...new Map((await Promise.all(queries.map(q => searchDrafts(q, localNotes, 500, sessionId)))).flat().map(hit => [hit.id, hit])).values()];
@@ -146,8 +155,6 @@ export async function appendLaneDrafts(
     }
     if (Date.now() >= deadline) return stdout;
     const envelope = JSON.parse(stdout);
-    const rows = draftSearchSnapshot().rows;
-    const shown = rows.filter(row => row.surfaced.some(s => s.session_id === sessionId)).map(row => row.id);
     const ids = new Set(claimDraftHints(sessionId, hits.map(hit => hit.id), shown, limit));
     const selected = hits.filter(hit => ids.has(hit.id));
     if (!selected.length) return stdout;
