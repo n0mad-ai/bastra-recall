@@ -14,7 +14,7 @@
  * None of them ranks, writes, or calls a model. All ids leave as hashes.
  */
 import { realpathSync } from "node:fs";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { open, readdir, readFile } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import { occupantOfRaw } from "@bastra-recall/core";
 import { hash, type ReviewedMissCandidate, type ReviewedMissChain, toCandidate } from "./reviewed-miss-harvest.js";
@@ -222,9 +222,17 @@ export async function snapshotVault(root: string): Promise<VaultSnapshot> {
     let bornAtMs: number;
     let raw: string;
     try {
-      const s = await stat(file);
-      bornAtMs = s.birthtimeMs > 0 ? s.birthtimeMs : s.mtimeMs;
-      raw = await readFile(file, "utf8");
+      // One descriptor for both the birth time and the text: a stat and a
+      // read by path could see two different files if the daemon renamed a
+      // rewrite into place between them.
+      const handle = await open(file, "r");
+      try {
+        const s = await handle.stat();
+        bornAtMs = s.birthtimeMs > 0 ? s.birthtimeMs : s.mtimeMs;
+        raw = await handle.readFile("utf8");
+      } finally {
+        await handle.close();
+      }
     } catch {
       continue;
     }
