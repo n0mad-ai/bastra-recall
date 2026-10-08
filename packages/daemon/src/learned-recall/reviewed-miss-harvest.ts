@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { basename } from "node:path";
+import { basename, isAbsolute, resolve } from "node:path";
 import { pseudonymousSession } from "../telemetry-dimensions.js";
 
 interface ToolUse {
@@ -231,11 +231,17 @@ function isBash(tool: ToolUse): boolean {
   return typeof tool.name === "string" && /^Bash$/i.test(tool.name);
 }
 
-function evidenceOf(tool: ToolUse): ReviewedMissEvidence {
+/**
+ * `cwd` is the working directory the transcript recorded for this tool call.
+ * A relative `file_path` resolves against it, never against the harvester's
+ * own cwd; without a recorded absolute cwd it stays opaque.
+ */
+function evidenceOf(tool: ToolUse, cwd: string | null): ReviewedMissEvidence {
   const input = (tool.input && typeof tool.input === "object" ? tool.input : {}) as Record<string, unknown>;
   if (isLoadMemory(tool) && typeof input.id === "string" && input.id) return { kind: "load-memory", memoryId: input.id };
   if (typeof tool.name === "string" && /^Read$/i.test(tool.name) && typeof input.file_path === "string" && input.file_path) {
-    return { kind: "file-read", path: input.file_path };
+    if (isAbsolute(input.file_path)) return { kind: "file-read", path: input.file_path };
+    if (cwd !== null && isAbsolute(cwd)) return { kind: "file-read", path: resolve(cwd, input.file_path) };
   }
   return { kind: "opaque", sourceRef: sourceRef(tool) };
 }
@@ -399,6 +405,7 @@ export function extractReviewedMissChains(jsonl: string, session: string, stats?
       }
     }
     if (record.type !== "assistant") continue;
+    const cwd = typeof record.cwd === "string" ? record.cwd : null;
     for (const tool of toolUses(record)) {
       if (isRecall(tool) && intent) {
         // A finished chain is handed over before the next recall replaces it.
@@ -415,7 +422,7 @@ export function extractReviewedMissChains(jsonl: string, session: string, stats?
         evidence = null;
         opaque = null;
       } else if (pending?.resultSeen && (isEvidenceRead(tool) || isLoadMemory(tool)) && evidence === null) {
-        const found = evidenceOf(tool);
+        const found = evidenceOf(tool, cwd);
         if (found.kind === "opaque") opaque = opaque ?? found;
         else evidence = found;
       } else if (pending?.resultSeen && isBash(tool) && evidence === null) {

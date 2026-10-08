@@ -3,8 +3,8 @@ import test from "node:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { sessionRef } from "../src/learned-recall/reviewed-miss-harvest.js";
-import { loadTelemetry, snapshotVault, type ObservationEngines, type Telemetry } from "../src/learned-recall/reviewed-miss-engines.js";
+import { extractReviewedMissChains, sessionRef } from "../src/learned-recall/reviewed-miss-harvest.js";
+import { loadTelemetry, observeChain, snapshotVault, type ObservationEngines, type Telemetry } from "../src/learned-recall/reviewed-miss-engines.js";
 import { observeLanes, type TranscriptInput } from "../src/learned-recall/reviewed-miss-evidence.js";
 import { pseudonymousSession } from "../src/telemetry-dimensions.js";
 
@@ -36,7 +36,7 @@ function loadEvent(id: string, ts: string, link: { from_hook_recall?: string; fo
 }
 
 /** A transcript whose MCP recall `recallId` is followed by `evidence`. */
-function transcript(recallId: string, evidence: { name: string; input: Record<string, unknown> }, meta: { sessionId?: string } = {}): string {
+function transcript(recallId: string, evidence: { name: string; input: Record<string, unknown> }, meta: { sessionId?: string; cwd?: string } = {}): string {
   const envelope = JSON.stringify({ query: "rail", hits: [{ id: "served-one" }], recall_id: recallId });
   return [
     line({ type: "user", ...meta, message: { content: "where is the deployment rail owner" } }),
@@ -147,6 +147,25 @@ test("hot paths and the heatmap count client sessions, not daemon runs", async (
     assert.equal(edge.support, 2);
     assert.deepEqual(edge.sessionRefs, ["sess-A", "sess-B"].map(refOf).sort());
     assert.equal(heat.find((r) => r.memoryId === "deep-two")?.loadedSessions, 2);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a relative Read resolves against the session's recorded cwd, never the harvester's", async () => {
+  // Same defect the Bash branch already refused: `resolveTarget` runs in the
+  // harvester's process, so `memories/deep-two.md` resolved against wherever
+  // the harvester was started and a vault read came out `external-source`.
+  const { dir, vault, engines } = await world([recallEvent("recall", "r-mcp", later(0), "sess-A")]);
+  try {
+    const relative = { name: "Read", input: { file_path: "memories/deep-two.md" } };
+    const [withCwd] = extractReviewedMissChains(transcript("r-mcp", relative, { cwd: vault }), "s");
+    assert.deepEqual(withCwd.evidence, { kind: "file-read", path: join(vault, "memories", "deep-two.md") });
+    assert.equal(observeChain(withCwd, engines).classification, "in-pool-not-selected");
+    // no recorded cwd: nothing honest to resolve against
+    const [without] = extractReviewedMissChains(transcript("r-mcp", relative), "s");
+    assert.equal(without.evidence.kind, "opaque");
+    assert.equal(observeChain(without, engines).classification, "unknown");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
