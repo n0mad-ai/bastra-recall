@@ -75,7 +75,7 @@ export function buildDraftNote(rows: Draft[], df: ReadonlyMap<string, number>): 
   for (const row of rows) for (const command of [...row.situation.before, ...row.situation.after]) {
     const head = commandHead(command);
     const literals = row.situation.lits.map(lit => lit.replace(/^.*@/, ""))
-      .filter(lit => lit !== head && [...new Set(tokens(lit))].some(word => (df.get(word) ?? 0) <= DRAFT_RARE_TOKEN_MAX_ROWS))
+      .filter(lit => lit !== head && command.toLowerCase().includes(lit.toLowerCase()) && [...new Set(tokens(lit))].some(word => (df.get(word) ?? 0) <= DRAFT_RARE_TOKEN_MAX_ROWS))
       .sort((a, b) => Math.min(...tokens(a).map(t => df.get(t) ?? 0)) - Math.min(...tokens(b).map(t => df.get(t) ?? 0)) || b.length - a.length);
     if (head && literals[0]) literalCues.push(`${head} ${literals[0]}`);
   }
