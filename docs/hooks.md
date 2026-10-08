@@ -1018,7 +1018,12 @@ Below 50 notes, the emergency fallback is fixed draft DF <=2, with its weaknesse
 in both directions. Unknown words carry no negative weight. Situation matching
 stays unchanged: two shared literals, one with stored-situation DF <=2 and at least
 four characters containing a digit or `./_@:-`; everyday `git status`/`npm test`
-alone do not qualify. There is no further synthetic tuning after this correction.
+alone do not qualify. This does not exclude everyday commands that contain literal-shaped parts:
+`npm run test:unit` or `git checkout feature/x-1` can match when that command occurs
+in at most two stored situations (independent check: 2/30 at 20 drafts). “Same file”
+alone never matches: two common literals are required, and read paths contribute
+only their basename. These are limits of the fixed rule, not further tuning.
+There is no further synthetic tuning after this correction.
 
 Both frozen draft corpora were measured at 40/100/200 drafts, with and without a
 separate 150-note invented DE/EN vault of everyday language on other topics (75
@@ -2371,6 +2376,10 @@ und Grenze 2 % sind **ungemessen**: 2/60 Vorkommen gelten nicht als selten, 2/2.
 schon. Unter 50 gilt Draft-DF <=2 als Notbehelf mit Schwächen in beide Richtungen.
 Situationsmatch bleibt unverändert: zwei Literale, davon ein seltenes in höchstens
 zwei gespeicherten Situationen, ab vier Zeichen mit Ziffer oder `./_@:-`.
+Alltagsbefehle mit Literalform können trotzdem treffen: `npm run test:unit` und
+`git checkout feature/x-1`, wenn der Befehl in höchstens zwei Situationen steht
+(unabhängig 2/30 bei 20 Entwürfen). „Gleiche Datei“ allein trifft nie: zwei gemeinsame
+Literale sind nötig, Lesezugriffe liefern nur Dateibasisnamen. Grenze bleibt unverändert.
 
 Bei 40/100/200 Entwürfen, mit einem separaten erfundenen 150-Notizen-Vault aus
 Alltagssprache (75 DE/75 EN, andere Themen): ursprünglicher Korpus 13/20 (65 %),
