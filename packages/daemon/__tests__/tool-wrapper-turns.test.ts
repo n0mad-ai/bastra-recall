@@ -85,3 +85,17 @@ test("raw wrapper turns never enter the broad draft store", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('stderr pairs exclude both streams and preserve only the genuine suffix', () => {
+  for (const [out, err] of [['bash-stdout','bash-stderr'],['local-command-stdout','local-command-stderr']]) {
+    const pair=`<${out}>fixture output</${out}><${err}>fixture warning</${err}>`;
+    assert.equal(ownerPromptText(pair),null);
+    assert.equal(ownerPromptText(pair+'\n'+human),human);
+    assert.equal(normalizeTurns([{role:'user',content:pair}])[0].role,'system-injected');
+    assert.equal(ownerPromptText(`<${err}></${err}>`),null);
+    const malformed=`<${out}>printed </${out}>${human}</${out}>`;
+    assert.equal(ownerPromptText(malformed),null);
+    assert.equal(ownerPromptText(pair+`\nExplain \`</${out}>\` in this fixture.`),`Explain \`</${out}>\` in this fixture.`);
+    assert.equal(ownerPromptText(pair+`\n${human} <${err}>leftover`),null);
+  }
+});

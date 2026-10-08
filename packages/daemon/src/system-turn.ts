@@ -55,8 +55,8 @@ const REMINDER_CLOSE = "</system-reminder>";
 const REMINDER_TAG_START = /^<\s*system(?:\s*-\s*|&#(?:x0*2d|0*45);?|&hyphen;?)\s*reminder(?=[\s/>])/i;
 const REMINDER_TAG_ANY = /<\s*\/?\s*system(?:\s*-\s*|&#(?:x0*2d|0*45);?|&hyphen;?)\s*reminder(?=[\s/>])/gi;
 // Raw CLI/tool output sometimes arrives as a user-role text wrapper (#1106).
-const TOOL_WRAPPER_START = /^<(local-command-stdout|bash-input|bash-stdout|command-message)(?=[\s/>])/i;
-const TOOL_WRAPPER_TAG = /<\s*\/?\s*(?:local-command-stdout|bash-input|bash-stdout|command-message)(?=[\s/>])/i;
+const TOOL_WRAPPER_START = /^<(local-command-stdout|local-command-stderr|bash-input|bash-stdout|bash-stderr|command-message)(?=[\s/>])/i;
+const TOOL_WRAPPER_TAG = /<\s*\/?\s*(?:local-command-stdout|local-command-stderr|bash-input|bash-stdout|bash-stderr|command-message)(?=[\s/>])/i;
 const COMMAND_ECHO_PREFIXES = ["<command-name>", "<local-command-caveat>"];
 
 function isCommandEcho(head: string): boolean {
@@ -107,9 +107,15 @@ export function ownerPromptText(prompt: string): string | null {
  * inline/backtick tag quotes are untouched. Bounded to avoid a parsing budget hole. */
 export function textAfterToolWrappers(text: string): string | null {
   let rest = textAfterReminders(text);
+  let stripped = false;
   for (let i = 0; i < 16 && rest !== null; i++) {
     const match = TOOL_WRAPPER_START.exec(rest);
-    if (!match) return rest;
+    if (!match) {
+      // A printed closing delimiter must not promote the rest of tool output.
+      // Complete backtick quotations in a genuine suffix remain ordinary text.
+      const unquoted = rest.replace(/(`+)[\s\S]*?\1/g, "");
+      return stripped && TOOL_WRAPPER_TAG.test(unquoted) ? null : rest;
+    }
     const tag = match[1];
     // Detection is case-insensitive, but only canonical pairs can recover prose.
     const open = new RegExp(`^<${tag}(?:[ \t]+[^>\r\n]*)?>`).exec(rest);
@@ -117,6 +123,7 @@ export function textAfterToolWrappers(text: string): string | null {
     const close = `</${tag}>`;
     const end = rest.indexOf(close, open[0].length);
     if (end < 0 || TOOL_WRAPPER_TAG.test(rest.slice(open[0].length, end))) return null;
+    stripped = true;
     rest = textAfterReminders(rest.slice(end + close.length));
   }
   return null;
