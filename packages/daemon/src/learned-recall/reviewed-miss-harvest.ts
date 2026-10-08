@@ -171,9 +171,20 @@ export function extractReviewedMissChains(jsonl: string, sessionIdentity: string
     toolIds: Set<string>;
   } | null = null;
   let evidence: ReviewedMissEvidence | null = null;
+  /**
+   * An evidence step that produced nothing inspectable. It used to be written
+   * straight into `evidence`, which froze the slot: a `Grep(pattern)` with no
+   * path, a `find_document`, a `load_memory` with the undocumented plural
+   * `ids` key — each of them shut the chain before the real `Read` that
+   * followed. The Bash branch below already refused to do that; this is the
+   * same rule for the rest. Kept as a fallback rather than dropped, so a chain
+   * whose only step really is opaque still reports itself as opaque.
+   */
+  let opaque: ReviewedMissEvidence | null = null;
 
   const emit = (): void => {
-    if (!pending || evidence === null) return;
+    const found = evidence ?? opaque;
+    if (!pending || found === null) return;
     chains.push({
       query: pending.query,
       sessionIdentity,
@@ -181,7 +192,7 @@ export function extractReviewedMissChains(jsonl: string, sessionIdentity: string
       explicitMiss: pending.envelope.explicitMiss,
       servedIds: pending.envelope.servedIds,
       resultTs: pending.resultTs,
-      evidence,
+      evidence: found,
     });
   };
 
@@ -200,6 +211,7 @@ export function extractReviewedMissChains(jsonl: string, sessionIdentity: string
         intent = intentText;
         pending = null;
         evidence = null;
+        opaque = null;
       }
       if (pending) {
         for (const part of matchingResults(record, pending.toolIds)) {
@@ -219,6 +231,10 @@ export function extractReviewedMissChains(jsonl: string, sessionIdentity: string
     if (record.type !== "assistant") continue;
     for (const tool of toolUses(record)) {
       if (isRecall(tool) && intent) {
+        // A finished chain is handed over before the next recall replaces it.
+        // Without this, a second recall in the same turn dropped the first one
+        // whole — result, envelope, explicit miss and all.
+        emit();
         pending = {
           query: intent,
           envelope: { explicitMiss: false, recallId: null, servedIds: [] },
@@ -227,8 +243,11 @@ export function extractReviewedMissChains(jsonl: string, sessionIdentity: string
           toolIds: new Set(typeof tool.id === "string" ? [tool.id] : []),
         };
         evidence = null;
+        opaque = null;
       } else if (pending?.resultSeen && (isEvidenceRead(tool) || isLoadMemory(tool)) && evidence === null) {
-        evidence = evidenceOf(tool);
+        const found = evidenceOf(tool);
+        if (found.kind === "opaque") opaque = opaque ?? found;
+        else evidence = found;
       } else if (pending?.resultSeen && isBash(tool) && evidence === null) {
         // Most Bash calls are not evidence reads at all (uptime, find, ps…).
         // Unlike Read/load_memory, an unrecognized shape does not consume the
