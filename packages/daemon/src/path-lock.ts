@@ -48,6 +48,7 @@
  * NOT covered: a state file on a network share where O_EXCL is not atomic.
  * That would need a lease with a heartbeat, which these files are not worth.
  */
+import { openSync, writeFileSync, closeSync } from "node:fs";
 import { mkdir, open, readFile, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
@@ -97,7 +98,7 @@ interface LockBody {
  * lock files can carry the same pid+host+ts down to the millisecond, but never
  * the same random token.
  */
-async function acquireFileLock(path: string, tryOnly = false): Promise<string | null> {
+async function acquireFileLock(path: string): Promise<string | null> {
   const lockPath = pathLockFilePath(path);
   const token = randomUUID();
   const body = JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token });
@@ -117,14 +118,12 @@ async function acquireFileLock(path: string, tryOnly = false): Promise<string | 
     } catch (err) {
       if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") {
         // No writable directory or similar — then without the lock, as before.
-        if (tryOnly) return null;
         process.stderr.write(
           `[bastra-recall] cannot create lock ${lockPath} (${(err as Error).message}) — writing unserialized\n`,
         );
         return null;
       }
     }
-    if (tryOnly) return null;
     // Orphaned? Age is the only indicator that needs no extra state; the loser
     // of a takeover race lands in the old behaviour, not in something worse.
     try {
@@ -204,12 +203,26 @@ export function withPathLock<T>(path: string, fn: () => Promise<T>, opts: PathLo
   return next;
 }
 
+/** Reserve advisory feedback immediately when its deferred callback starts.
+ * No mkdir/queued open before the attempt: a busy lock must not become a late
+ * booking after its owner releases it. Called only off the response path. */
+function tryFileLock(path: string): string | null {
+  let fd: number | undefined;
+  try {
+    const token = randomUUID();
+    fd = openSync(pathLockFilePath(path), "wx", 0o600);
+    writeFileSync(fd, JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token }), "utf8");
+    return token;
+  } catch { return null; }
+  finally { if (fd !== undefined) closeSync(fd); }
+}
+
 /** Advisory feedback never queues behind a writer, takes over an orphan, or
  * writes without the cross-process lock. Busy/unwritable means no mutation. */
 export function tryWithPathLock<T>(path: string, fn: () => Promise<T>, opts: PathLockOptions = {}): Promise<T | undefined> {
   if (depths.has(path)) return Promise.resolve(undefined);
   return withPathLock(path, async () => {
-    const token = opts.crossProcess ? await acquireFileLock(path, true) : null;
+    const token = opts.crossProcess ? tryFileLock(path) : null;
     if (opts.crossProcess && token === null) return undefined;
     try { return await fn(); }
     finally { if (token) await releaseFileLock(path, token); }

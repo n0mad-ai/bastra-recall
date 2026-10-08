@@ -421,14 +421,16 @@ export async function updateRetrievedDrafts(
     assertWritable(store);
     const removed = new Set(removeIds);
     const rows = store.rows.filter(row => row.state !== "open" || !removed.has(row.id));
+    let changed = rows.length !== store.rows.length;
     for (const display of displays) {
       const row = rows.find(row => row.id === display.id && row.state === "open");
       if (!row || row.surfaced.some(s => s.session_id === display.session_id)) continue;
       row.surfaced.push({ session_id: display.session_id, ts: now, novel: display.novel });
       row.surfaced = row.surfaced.slice(-5);
       row.last_touched = now;
+      changed = true;
     }
-    await write(path, bounded(rows, now, store.metadata), store.metadata);
+    if (changed) await write(path, bounded(rows, now, store.metadata), store.metadata);
   }, { crossProcess: true });
 }
 
@@ -464,16 +466,18 @@ export function startDraftSearchCache(): () => void {
     })().finally(() => { busy = false; });
   };
   refresh();
+  // Folder watchers may coalesce rapid create/delete events. Reconcile only
+  // in the background as well; retrieval itself never probes the file.
+  const timer = setInterval(refresh, 1000); timer.unref();
   try {
     const watcher = watch(dirname(path), { persistent: false }, (_event, name) => {
       if (name === null || name.toString() === basename(path)) refresh();
     });
     watcher.on("error", () => { if (cache?.path === path) cache = undefined; });
-    return () => { stopped = true; watcher.close(); };
+    return () => { stopped = true; watcher.close(); clearInterval(timer); };
   } catch {
     // First use before the parent directory exists. Capture also refreshes
     // the cache directly; the background fallback notices external changes.
-    const timer = setInterval(refresh, 1000); timer.unref();
     return () => { stopped = true; clearInterval(timer); };
   }
 }
