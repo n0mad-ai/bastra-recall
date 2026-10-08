@@ -77,18 +77,21 @@ function sanitize(input: unknown, now: number, fallback = now): Draft | null {
   const clean = cleanDraftText;
   const optional = (text: string | undefined) => text === undefined ? undefined : clean(text);
   const strings = (items: string[], count: number, max = 200) => items.slice(-count).map((s) => clean(s, max));
+  const rawSituation = [...d.situation.before,...d.situation.after].join("\n");
+  const safeSituation = [...strings(d.situation.before,3),...strings(d.situation.after.slice(0,3),3)].join("\n");
+  const safeToken = (value:string):boolean => !value.includes("[REDACTED]") && !(rawSituation.includes(value) && !safeSituation.includes(value));
   return {
     ...d, created: time(d.created), quote: clipDraftText(quote.text, 600), context: d.context === undefined ? undefined : clean(d.context, 160),
     situation: {
       ...d.situation,
       cwd: optional(d.situation.cwd), project: optional(d.situation.project), branch: optional(d.situation.branch),
       before: strings(d.situation.before, 3), after: strings(d.situation.after.slice(0, 3), 3),
-      reads: strings(d.situation.reads, 3), lits: strings(d.situation.lits, 32, 160),
+      reads: strings(d.situation.reads, 3), lits: strings(d.situation.lits, 32, 160).filter(safeToken),
     },
     // Opaque identifiers (often UUIDs) must keep their identity across sessions.
     evidence: d.evidence.map((e) => ({ ...e, ts: time(e.ts), session_id: e.session_id.slice(0, 200), client: optional(e.client) })),
-    surfaced: d.surfaced.slice(-5).map((s) => ({ ...s, ts: time(s.ts), session_id: s.session_id.slice(0, 200), novel: strings(s.novel, 32, 160),
-      ...(s.used ? { used: { ...s.used, ts: time(s.used.ts), tool: clean(s.used.tool, 80), matched: strings(s.used.matched, 3, 160) } } : {}),
+    surfaced: d.surfaced.slice(-5).map((s) => ({ ...s, ts: time(s.ts), session_id: s.session_id.slice(0, 200), novel: strings(s.novel, 32, 160).filter(safeToken),
+      ...(s.used ? { used: { ...s.used, ts: time(s.used.ts), tool: clean(s.used.tool, 80), matched: strings(s.used.matched, 3, 160).filter(safeToken) } } : {}),
     })),
     memory_id: d.memory_id?.slice(0, 200), evidence_key: d.evidence_key?.slice(0, 200),
     last_touched: Math.max(time(d.last_touched), time(d.created), ...d.evidence.map((e) => time(e.ts)), ...d.surfaced.map((s) => time(s.ts))),

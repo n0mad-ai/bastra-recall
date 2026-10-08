@@ -188,7 +188,13 @@ type SecretSpan = [number, number];
 /** Technical credential names, not words used to classify a conversation. */
 function credentialKey(key: string): boolean {
   const normalized = key.toLowerCase().replace(/[\p{Cf}\s_-]/gu, "");
+  if (/usepsk$|psk(?:enabled|mode|identity)$/.test(normalized)) return false;
+  if (pskKey(key)) return true;
   return /(?:password|passwd|passphrase|psk|presharedkey|cookie|token|secret|apikey|accesskey|accesskeyid|secretkey|privatekey|accountkey|authorization|credential)$/.test(normalized) || normalized === "key" || /(?:^|[_.\s-])(?:pwd|pass)$/i.test(key) || /(?:Pwd|Pass)$/.test(key);
+}
+
+function pskKey(key: string): boolean {
+  return /(?:psk(?:\d+|key|value)?|presharedkey|wifikey)$/.test(key.toLowerCase().replace(/[\p{Cf}\s_-]/gu, ""));
 }
 
 /** Locations and identifiers are the useful content of a draft, not access values. */
@@ -318,7 +324,8 @@ function valueSpans(text: string, start: number, query = false): { spans: Secret
   return { spans, end: pos };
 }
 
-/** Structural heuristics; no language-dependent password/prose word lists. */
+/** Structural credential syntax plus explicitly supported DE/EN PSK bindings.
+ * This is not a language-dependent classification of owner intent. */
 export function redactSecrets(text: string, home?: string): SecretRedactionResult {
   const spans: SecretSpan[] = [];
   const namedContext = (start: number): boolean => /(?:^|\s)(?:ssh|kubectl[ \t]+logs|(?:model|target|host)[ \t]*[:=])[ \t]+$/.test(text.slice(Math.max(0, start - 128), start));
@@ -356,6 +363,18 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
       if (text.slice(a, b) !== "[REDACTED]") mark(a, b - a);
     }
     return parsed.end;
+  };
+  // Bare PSK passphrases may contain spaces. Stop at a line/field/flag boundary;
+  // quoted values, references and block scalars keep the existing parser.
+  const markPsk = (start: number, wholeLine = false): number => {
+    const tail = text.slice(start);
+    if (tail.startsWith("[REDACTED]")) return start+"[REDACTED]".length;
+    if (/^(?:true|false|[01]|WPA[23])(?=\s|[,;}]|$)/i.test(tail) || /^(?:bitte|siehe)\b/i.test(tail)) return start;
+    if (!wholeLine || /^["'`$|>\\]/.test(tail) || isReference(tail.split(/\s/)[0])) return markValue(start,true);
+    const boundary = /[\r\n,;<>}\]]|[ \t]+(?=--?[a-z]|[a-z_][a-z0-9_.-]*[ \t]*=)/i.exec(tail);
+    const value = tail.slice(0,boundary?.index ?? tail.length).trimEnd();
+    if (value && value !== "[REDACTED]") mark(start,value.length);
+    return start+value.length;
   };
   for (const m of text.matchAll(/-----BEGIN ([A-Z0-9 ]+)-----[\s\S]*?(?:-----END \1-----|$)/g)) mark(m.index!, m[0].length);
 
@@ -435,6 +454,14 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
       continue;
     }
     let strong = credentialKey(key);
+    if (pskKey(key)) {
+      // Protocol comparisons/questions are not disclosed credential values.
+      if (/(?:\bist|\bzum)[ \t]+$/i.test(text.slice(Math.max(0,assignment.index-12),assignment.index))) continue;
+      const query = /[?&]/.test(text[assignment.index-1] ?? "");
+      const end = query ? markValue(start,true,true) : markPsk(start,true);
+      assignments.lastIndex = Math.max(assignments.lastIndex,end);
+      continue;
+    }
     // A key in an object with a separate value field names that field, and a
     // lower-case key after another word can name a sort/database key.
     if (key === "key" && (/\p{L}[ \t]+$/u.test(text.slice(Math.max(0, assignment.index - 80), assignment.index)) ||
@@ -449,7 +476,25 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
   let flagEnd = 0;
   for (const m of text.matchAll(/(?<![a-z0-9_-])--([a-z][a-z0-9_-]*)(?:=|[ \t]+)/gi)) if (m.index! >= flagEnd && credentialKey(m[1])) flagEnd = markValue(m.index! + m[0].length, true);
   // Track command context once, rather than repeatedly rescanning a long line.
-  const commands = [...text.matchAll(/(?:^|[ \t])(mysql|mariadb|sshpass|docker[ \t]+login|ssh)(?=[ \t]|$)|[;&|\r\n]/gmi)];
+  const commands = [...text.matchAll(/(?:^|[ \t\/])(mysql|mariadb|sshpass|docker[ \t]+login|ssh|curl)(?=[ \t]|$)|[;&|\r\n]/gmi)];
+  let curlIndex=0, curlContext=false;
+  for (const m of text.matchAll(/(?<![a-z0-9_-])(?:-u|--user)(?:=|[ \t]+)/gi)) {
+    while(curlIndex<commands.length && commands[curlIndex].index!<m.index!) curlContext=commands[curlIndex++][1]?.toLowerCase()==="curl";
+    if(!curlContext)continue;
+    const start=m.index!+m[0].length, parsed=valueSpans(text,start);
+    const value=parsed.spans.map(([a,b])=>text.slice(a,b)).join("");
+    const colon=value.indexOf(":");
+    if(colon>=0 && !isReference(value.slice(colon+1))) for(const[a,b]of parsed.spans)mark(a,b-a);
+  }
+  // Positional/option credential syntax observed in the review corpus.
+  for(const m of text.matchAll(/(?:^|[\s;])(?:wpa-psk|wifi-sec\.psk|802-11-wireless-security\.psk|-psk|pre-shared-key)[ \t]+/gi))markPsk(m.index!+m[0].length);
+  for(const m of text.matchAll(/\bwpa_passphrase[ \t]+(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)[ \t]+/gi))markPsk(m.index!+m[0].length);
+  for(const m of text.matchAll(/:[ \t]*PSK[ \t]+/gi))markPsk(m.index!+m[0].length,true);
+  for(const m of text.matchAll(/<(psk|keyMaterial)>[\s\S]*?<\/\1>/gi)) {
+    const start=m.index!+m[0].indexOf(">")+1,end=m.index!+m[0].lastIndexOf("<");
+    if(!isReference(text.slice(start,end).trim()))mark(start,end-start);
+  }
+  for(const m of text.matchAll(/\b(?:PSK|Pre[ -]Shared[ -]Key)(?:[ \t]+[^\r\n:]{1,48}?)?[ \t]+(?:ist|lautet|is)[ \t]*:?[ \t]+/gi))markPsk(m.index!+m[0].length,true);
   let commandIndex = 0;
   let passwordCommand: string | undefined;
   for (const m of text.matchAll(/(?<![a-z0-9_-])-p[ \t]*/g)) {
