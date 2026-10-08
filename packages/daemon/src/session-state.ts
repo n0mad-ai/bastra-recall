@@ -35,7 +35,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { createHash } from "node:crypto";
 import { envInt } from "./env.js";
-import { withPathLock } from "./path-lock.js";
+import { withPathLock, tryWithPathLock } from "./path-lock.js";
 
 export interface ShownEntry {
   count: number;
@@ -224,16 +224,19 @@ export async function loadSessionState(sessionId: string): Promise<ReadonlySessi
 
 /** The same read, typed mutable. Only `mutateSessionState` may have it — a
  *  lane's early snapshot must not be mutable (see ReadonlySessionState). */
-async function readSessionState(sessionId: string): Promise<SessionState> {
+async function readSessionState(sessionId: string, dir = sessionStateDir()): Promise<SessionState> {
   if (!sessionId) return { shown: {} };
   try {
-    const raw = await readFile(sessionFile(sessionId), "utf8");
+    const raw = await readFile(sessionFile(sessionId, dir), "utf8");
     const parsed = JSON.parse(raw) as Partial<SessionState>;
     if (!parsed || typeof parsed !== "object" || !parsed.shown) {
       return { shown: {} };
     }
     const state: SessionState = { shown: parsed.shown as Record<string, ShownEntry> };
-    if (Array.isArray(parsed.draftShown)) state.draftShown = parsed.draftShown.filter((id): id is string => typeof id === "string");
+    if (Array.isArray(parsed.draftShown)) {
+      state.draftShown = parsed.draftShown.filter((id): id is string => typeof id === "string");
+      claimDraftHints(sessionId, [], state.draftShown, 0);
+    }
     // #161: carry the backoff section through — dropping it here would reset
     // every streak on the next dedup save.
     if (parsed.sources && typeof parsed.sources === "object") {
@@ -319,9 +322,8 @@ export async function mutateSessionState(
 }
 
 /** The bare atomic write. Only ever called with the session lock held. */
-async function writeSessionState(sessionId: string, state: SessionState): Promise<void> {
+async function writeSessionState(sessionId: string, state: SessionState, dir = sessionStateDir()): Promise<void> {
   try {
-    const dir = sessionStateDir();
     // mode 0700/0600: on Linux os.tmpdir() is world-writable (/tmp), so a
     // private dir + owner-only files block symlink/TOCTOU races from other
     // local users. macOS already gives a per-user temp dir.
@@ -784,4 +786,29 @@ export function recordSourceSuppressed(state: SessionState, source: string): voi
   const entry = state.sources?.[source];
   if (!entry || typeof entry.skipped !== "number") return; // decide() required an entry
   entry.skipped += 1;
+}
+
+// Only this daemon's claims are synchronous. Loaded persistent state and the
+// draft store's last five surfaced sessions seed them without hook-path I/O.
+const draftClaims = new Map<string, { at: number; ids: Set<string> }>();
+export function claimDraftHints(sessionId: string, ids: string[], alreadyShown: string[], limit: number): string[] {
+  const key = `${sessionStateDir()}:${sessionId}`;
+  const now = Date.now();
+  for (const [oldKey, entry] of draftClaims) if (now - entry.at > STATE_MAX_AGE_MS) draftClaims.delete(oldKey);
+  while (draftClaims.size >= 500 && !draftClaims.has(key)) draftClaims.delete(draftClaims.keys().next().value!);
+  const entry = draftClaims.get(key) ?? { at: now, ids: new Set<string>() };
+  for (const id of alreadyShown) entry.ids.add(id);
+  const selected = ids.filter(id => !entry.ids.has(id)).slice(0, limit);
+  for (const id of selected) entry.ids.add(id);
+  entry.at = now; draftClaims.set(key, entry);
+  return selected;
+}
+
+/** Delivery bookkeeping is advisory and never queues behind another lane. */
+export async function persistDraftHintClaims(sessionId: string, ids: string[], dir = sessionStateDir()): Promise<void> {
+  await tryWithPathLock(sessionFile(sessionId, dir), async () => {
+    const state = await readSessionState(sessionId, dir);
+    state.draftShown = [...new Set([...(state.draftShown ?? []), ...ids])].slice(-500);
+    await writeSessionState(sessionId, state, dir);
+  });
 }

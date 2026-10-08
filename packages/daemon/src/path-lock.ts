@@ -60,6 +60,7 @@ const LOCK_STALE_MS = 10_000;
 const LOCK_WAIT_MS = 5_000;
 
 const chains = new Map<string, Promise<unknown>>();
+const depths = new Map<string, number>();
 
 export interface PathLockOptions {
   /**
@@ -96,7 +97,7 @@ interface LockBody {
  * lock files can carry the same pid+host+ts down to the millisecond, but never
  * the same random token.
  */
-async function acquireFileLock(path: string): Promise<string | null> {
+async function acquireFileLock(path: string, tryOnly = false): Promise<string | null> {
   const lockPath = pathLockFilePath(path);
   const token = randomUUID();
   const body = JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token });
@@ -116,12 +117,14 @@ async function acquireFileLock(path: string): Promise<string | null> {
     } catch (err) {
       if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") {
         // No writable directory or similar — then without the lock, as before.
+        if (tryOnly) return null;
         process.stderr.write(
           `[bastra-recall] cannot create lock ${lockPath} (${(err as Error).message}) — writing unserialized\n`,
         );
         return null;
       }
     }
+    if (tryOnly) return null;
     // Orphaned? Age is the only indicator that needs no extra state; the loser
     // of a takeover race lands in the old behaviour, not in something worse.
     try {
@@ -184,8 +187,12 @@ export function withPathLock<T>(path: string, fn: () => Promise<T>, opts: PathLo
         }
       }
     : fn;
+  depths.set(path, (depths.get(path) ?? 0) + 1);
   const prev = chains.get(path) ?? Promise.resolve();
-  const next = prev.then(guarded, guarded);
+  const next = prev.then(guarded, guarded).finally(() => {
+    const depth = (depths.get(path) ?? 1) - 1;
+    if (depth === 0) depths.delete(path); else depths.set(path, depth);
+  });
   // Keep the chain alive but never hand a rejection to the next waiter.
   chains.set(
     path,
@@ -195,4 +202,16 @@ export function withPathLock<T>(path: string, fn: () => Promise<T>, opts: PathLo
     ),
   );
   return next;
+}
+
+/** Advisory feedback never queues behind a writer, takes over an orphan, or
+ * writes without the cross-process lock. Busy/unwritable means no mutation. */
+export function tryWithPathLock<T>(path: string, fn: () => Promise<T>, opts: PathLockOptions = {}): Promise<T | undefined> {
+  if (depths.has(path)) return Promise.resolve(undefined);
+  return withPathLock(path, async () => {
+    const token = opts.crossProcess ? await acquireFileLock(path, true) : null;
+    if (opts.crossProcess && token === null) return undefined;
+    try { return await fn(); }
+    finally { if (token) await releaseFileLock(path, token); }
+  });
 }

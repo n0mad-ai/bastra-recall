@@ -743,7 +743,7 @@ export async function runSessionLane(
       // already assembled when its directory is unavailable.
     }
   }
-  return appendLaneDrafts(out, "SessionStart", queries.map(q => q.query), payload.session_id, top, 2);
+  return appendLaneDrafts(out, "SessionStart", queries.map(q => q.query), payload.session_id, top, 2, false, undefined, startedAt + HOOK_TIMEOUT_MS);
 }
 
 // spawnStagedUpdate / stagedToday / markStagedToday wohnen seit #81 in

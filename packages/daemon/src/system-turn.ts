@@ -66,6 +66,7 @@ function isCommandEcho(head: string): boolean {
 export function isSystemInjectedTurn(text: string): boolean {
   const head = text.trimStart();
   return (
+    /^<draft-hints\b/i.test(head) ||
     TASK_NOTIFICATION.test(head) ||
     isAgentMail(head) ||
     CODEX_HARNESS_TAG.test(head) ||
