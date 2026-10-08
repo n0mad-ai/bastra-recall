@@ -35,13 +35,13 @@ test("nonempty Recall chains remain unreviewed rather than becoming false misses
 });
 
 test("evidence before the matching Recall result cannot form a candidate", () => {
-  const session = [
-    line({ type: "user", message: { content: "where is the deployment rail" } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] } }),
-    line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] } }),
-    line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"hits":[]}' }] } }),
-  ].join("\n");
-  assert.deepEqual(harvestReviewedMisses(session, "session.jsonl"), []);
+  const recall = line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall-1", name: "mcp__bastra-recall__recall" }] } });
+  const read = line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] } });
+  const result = line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall-1", content: '{"hits":[]}' }] } });
+  const intent = line({ type: "user", message: { content: "where is the deployment rail" } });
+  // control: the same lines in causal order do form one, so [] below is the ordering, not a broken fixture
+  assert.equal(harvestReviewedMisses([intent, recall, result, read].join("\n"), "session.jsonl").length, 1);
+  assert.deepEqual(harvestReviewedMisses([intent, recall, read, result].join("\n"), "session.jsonl"), []);
 });
 
 test("a source read without an inspectable identity still records the review boundary", () => {
@@ -139,13 +139,15 @@ test("transcript control envelopes cannot become a Recall intent", () => {
 });
 
 test("image placeholders cannot become a Recall intent", () => {
-  const session = [
-    line({ type: "user", isMeta: true, message: { content: [{ type: "text", text: "[Image: source: /private/screenshot.png]" }] } }),
+  const session = (first: unknown) => [
+    line(first),
     line({ type: "assistant", message: { content: [{ type: "tool_use", id: "recall", name: "mcp__bastra-recall__recall" }] } }),
     line({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "recall", content: '{"hits":[]}' }] } }),
     line({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/private/rail.md" } }] } }),
   ].join("\n");
-  assert.deepEqual(harvestReviewedMisses(session, "session.jsonl"), []);
+  // control: a human line in the same slot does become the intent
+  assert.equal(harvestReviewedMisses(session({ type: "user", message: { content: "where is the deployment rail" } }), "session.jsonl").length, 1);
+  assert.deepEqual(harvestReviewedMisses(session({ type: "user", message: { content: "[Image: source: /private/screenshot.png]" } }), "session.jsonl"), []);
 });
 
 test("seeded raw transcript preserves the expected candidate ledger", async () => {
@@ -209,6 +211,8 @@ test("a Bash call outside the closed cat/head/tail/grep shape does not manufactu
     "cat ./notes.log", // same, with an explicit leading dot
     "tail -20 ../reading/notes.log", // same, parent-relative
   ];
+  // control: the fixture forms a chain for an accepted shape, so [] below is the rejection
+  assert.equal(extractReviewedMissChains(bashChain("cat /home/user/notes.log"), "session.jsonl").length, 1);
   for (const command of rejected) {
     // an unrecognized Bash call never consumes the evidence slot (unlike a
     // failed Read/load_memory match, which does): with nothing else to find,
