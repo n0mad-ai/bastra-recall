@@ -1,30 +1,24 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
-import { extractReviewedMissChains, hash, type RecallCallStats } from "../src/learned-recall/reviewed-miss-harvest.js";
+import { hash } from "../src/learned-recall/reviewed-miss-harvest.js";
 import {
   loadTelemetry,
-  observeChain,
   parseReviewerLabels,
   snapshotVault,
   type ObservationEngines,
   type Telemetry,
 } from "../src/learned-recall/reviewed-miss-engines.js";
-import { deriveCueProposals, type ObservedPair } from "../src/learned-recall/reviewed-miss-cues.js";
 import {
   countClasses,
   dens,
   emptyClassCounts,
-  heatmap,
-  hotPaths,
   liveClasses,
-  loadKey,
-  observeHookLane,
+  observeLanes,
   poolsByLane,
   specimensOf,
   thinClasses,
   type EvidenceReport,
-  type GapEvent,
 } from "../src/learned-recall/reviewed-miss-evidence.js";
 
 const FLAGS_WITH_VALUE = new Set(["--out", "--events", "--vault", "--labels", "--proposals", "--evidence", "--hub-sessions", "--since", "--specimens"]);
@@ -97,38 +91,9 @@ async function main(): Promise<void> {
     labels: args.labels ? parseReviewerLabels(await readFile(args.labels, "utf8")) : new Map(),
   };
 
-  // Transcript lane.
-  const stats: RecallCallStats = { recalls: 0, withRecallId: 0 };
-  const gaps: GapEvent[] = [];
-  const pairs: ObservedPair[] = [];
-  for (const input of args.inputs) {
-    const perFile: RecallCallStats = { recalls: 0, withRecallId: 0 };
-    const chains = extractReviewedMissChains(await readFile(input, "utf8"), basename(resolve(input)), perFile);
-    stats.recalls += perFile.recalls;
-    stats.withRecallId += perFile.withRecallId;
-    const sessionRef = hash(basename(resolve(input)));
-    for (let n = perFile.recalls - perFile.withRecallId; n > 0; n -= 1) gaps.push({ kind: "envelope-without-recall-id", sessionRef });
-    for (const chain of chains) {
-      const record = observeChain(chain, engines);
-      if (record.observation.target.kind === "unresolved") gaps.push({ kind: "unresolved-evidence", sessionRef });
-      pairs.push({ chain, record });
-    }
-  }
+  const transcripts = await Promise.all(args.inputs.map(async (input) => ({ jsonl: await readFile(input, "utf8"), fileName: basename(resolve(input)) })));
+  const { transcript: pairs, hook, stats, gaps, heat, hubs, paths, proposals } = observeLanes(transcripts, telemetry, engines, { hookLane: args.hookLane, hubSessions });
   const transcriptRecords = pairs.map((pair) => pair.record);
-
-  // Hook lane (telemetry only) and the evidence layers.
-  const transcriptLoads = new Set(pairs.flatMap(({ chain }) =>
-    chain.recallId && chain.evidence.kind === "load-memory" ? [loadKey(chain.recallId, chain.evidence.memoryId)] : []));
-  const hook = args.hookLane && telemetry
-    ? observeHookLane(telemetry, engines, transcriptLoads)
-    : { records: [], chains: [], gaps: [], coveredByTranscript: 0 };
-  gaps.push(...hook.gaps);
-  const heat = telemetry ? heatmap(telemetry, { hubSessions }) : [];
-  const hubs = new Set(heat.filter((row) => row.hub).map((row) => row.memoryId));
-  const paths = telemetry ? hotPaths(telemetry.loads) : [];
-  // Both lanes feed proposals: a hook-lane miss is as much an episode as a transcript one.
-  const hookPairs: ObservedPair[] = hook.records.map((record, index) => ({ chain: hook.chains[index], record }));
-  const proposals = deriveCueProposals([...pairs, ...hookPairs], engines, new Date(), hubs);
 
   const byTranscript = countClasses(transcriptRecords);
   const byHook = args.hookLane ? countClasses(hook.records) : emptyClassCounts();
