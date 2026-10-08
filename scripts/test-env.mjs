@@ -102,10 +102,13 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
   process.env.BASTRA_ARCHIVE_DIR = join(root, "archive");
   const removeRoot = () => {
     // This is checked once for the entire process tree, before cleanup.
-    const expected = new Set([".bastra", ".claude", ".claude.json", ".codex", ".cursor", ".cmuxterm", ".config"]);
+    const expected = new Set([".bastra", ".claude", ".claude.json", ".codex", ".cursor", ".cmuxterm", ".config", ".cache"]);
     const unexpected = existsSync(runHome) ? readdirSync(runHome).filter(name => !expected.has(name)) : [];
-    if (unexpected.length || existsSync(join(root, "blocked-daemon-connections.jsonl"))) {
-      process.stderr.write(`test isolation audit failed: unexpected home entries ${JSON.stringify(unexpected)}; blocked daemon connection log ${join(root, "blocked-daemon-connections.jsonl")}\n`);
+    const cacheDir = join(runHome, ".cache");
+    if (existsSync(cacheDir)) unexpected.push(...readdirSync(cacheDir).filter(name => name !== "deno").map(name => `.cache/${name}`));
+    const blocked = existsSync(join(root, "blocked-daemon-connections.jsonl"));
+    if (unexpected.length || blocked) {
+      process.stderr.write(`test isolation audit failed: unexpected home entries ${JSON.stringify(unexpected)}; blocked daemon connection ${blocked}\n`);
       process.exitCode = 1;
     }
     try {

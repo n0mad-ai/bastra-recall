@@ -172,3 +172,15 @@ test("run audit catches a grandchild attempting port 6723 without contacting a l
   assert.match(r.stderr, /test isolation audit failed/);
   assert.equal(existsSync(seen.root), false);
 });
+
+
+test("whole-run home audit accepts Deno's fixture cache and rejects unexpected files", () => {
+  for (const unexpected of [false, true]) {
+    const script = `const fs=require("node:fs"),path=require("node:path"),home=require("node:os").homedir();
+      fs.mkdirSync(path.join(home,".cache","deno"),{recursive:true});
+      ${unexpected ? 'fs.writeFileSync(path.join(home,"unexpected-user-data"),"fixture");' : ''}`;
+    const r = spawnSync(process.execPath, ["--import",TEST_ENV,"-e",script], {env:outsideRun({}),encoding:"utf8"});
+    assert.equal(r.status, unexpected ? 1 : 0, r.stderr);
+    if (unexpected) assert.match(r.stderr,/unexpected-user-data/);
+  }
+});
