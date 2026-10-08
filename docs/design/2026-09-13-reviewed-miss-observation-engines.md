@@ -13,7 +13,9 @@ does not claim. Measurements and the history behind this design live on #459.
 | Daemon telemetry `events-*.jsonl` | `recall` / `hook_recall` events with `recall_id`, `candidate_pool` (ordered, below-floor included), score kind/arms/version, `vault_size`, `k`; `load_memory` events with `from_hook_recall` / `follows_recall` | `recall_id` |
 
 `recall_id` is written into the served envelope and into the telemetry event
-by the same call, so the join is exact, never adjacency.
+by the same call, so the join is exact, never adjacency. A batch recall
+(`queries: [...]`) writes one telemetry event per phrasing and lists every id
+in the envelope under `recall_ids`.
 
 The daemon does not stamp an index snapshot identity. The engine derives one
 from the telemetry fields it has and labels its basis `telemetry-derived`; a
@@ -39,6 +41,11 @@ produce anything but `unknown`.
 
 - **pool-join** — `--events DIR`: telemetry indexed by `recall_id`; attaches
   the pool, served ids, score space and `vault_size`. Without it, `unknown`.
+  A chain with several recalls — each phrasing of a batch, several recalls
+  made for one intent — is judged against the union of their pools; served is
+  what the envelopes listed plus what telemetry recorded as served. One recall
+  of the chain without a recorded pool, or two with different score spaces,
+  and there is no pool: `unknown`.
 - **vault-snapshot** — `--vault DIR`, enumerated once: hashed relative paths,
   parsed ids (`occupantOfRaw` from core), per-file birth time read from the
   same descriptor as the text, declared `created`. The snapshot id is the hash
@@ -54,16 +61,23 @@ produce anything but `unknown`.
   `indexSnapshotId`; two observations compare only when both match.
 
 The served envelope alone decides `explicitMiss`: `weak_result`, `no_home`, or
-an empty top-level `hits`. Text inside a hit, a nested `hits`, or text that is
-not an envelope is never a miss.
+an empty top-level `hits` — on every result of the chain. Text inside a hit, a
+nested `hits`, or text that is not an envelope is never a miss.
 
 ## 4. Two lanes, one session identity (`reviewed-miss-evidence.ts`)
 
-- **Transcript lane** — intent → recall → envelope → evidence step, from the
-  session JSONL.
+- **Transcript lane** — intent → recall(s) → envelope(s) → evidence step, from
+  the session JSONL. Recalls with no evidence step between them are one chain:
+  two in one assistant message, or one asked again before anything was read.
+  The intent is the text the owner typed: user-role turns the harness wrote
+  (`system-turn.ts`: task notification, agent mail, reminder) neither end a
+  chain nor enter the query, injected blocks are removed from a typed turn,
+  and secrets are redacted (`redactSecrets`) before the text is kept. A slash
+  command ends the chain; its echo and its printed output are no query.
 - **Hook lane** (`--hook-lane`) — every daemon-joined `load_memory` against the
   pool of the recall it followed; no transcript needed. A load the transcript
-  lane already observed (same `recall_id` and memory) is left to it.
+  lane already observed (any `recall_id` of the chain, same memory) is left to
+  it. Its query is the daemon's own, redacted the same way.
 
 Both lanes feed one proposal list (`reviewed-miss-cues.ts`), so they must
 spell a session the same way. Telemetry never holds the raw client session
@@ -108,10 +122,16 @@ it.
 
 | Output | Carries | Consumer |
 | --- | --- | --- |
-| queue (`--out` or stdout) | hashed ids and refs, verbatim query | owner review → `--labels` (the only path to `vault-gap`) |
+| queue (`--out` or stdout) | hashed ids and refs, the redacted query | owner review → `--labels` (the only path to `vault-gap`) |
 | `--proposals` | clear memory ids, local | curator editing `recall_when`; hub targets flagged |
 | `--evidence` | clear memory ids, local | heatmap and hot paths |
 | `--specimens` | one hashed, query-free observation per (lane, class) | this repo's tests (`__fixtures__/reviewed-miss-harvest/live-specimens.jsonl`) |
+
+A `--events` path that is not a directory or holds no `events-*.jsonl`, a
+`--vault` path that is not a directory or holds no memory, and an unreadable
+session file end the run with exit 1 and no output. The five modules and the
+script are a repository tool: `package.json` keeps
+`dist/learned-recall/reviewed-miss-*` out of the published package.
 
 ## 7. Non-goals
 

@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { basename, isAbsolute, resolve } from "node:path";
+import { redactSecrets, scrubInjectedBlocks } from "@bastra-recall/core";
+import { isSystemInjectedTurn, textAfterReminders } from "../system-turn.js";
 import { pseudonymousSession } from "../telemetry-dimensions.js";
 
 interface ToolUse {
@@ -10,6 +12,20 @@ interface ToolUse {
 
 export function hash(value: string): string {
   return "sha256:" + createHash("sha256").update(value).digest("hex").slice(0, 32);
+}
+
+/**
+ * One JSONL line as a record, or null. `null`, a number, a string and an
+ * array are valid JSON and not records; reading a field off them threw.
+ */
+export function parseRecord(line: string): Record<string, unknown> | null {
+  if (!line.trim()) return null;
+  try {
+    const parsed: unknown = JSON.parse(line);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -33,38 +49,68 @@ export function transcriptSession(jsonl: string, fileName: string): string {
   let raw: string | null = null;
   for (const line of jsonl.split("\n")) {
     if (!line.includes('"sessionId"')) continue;
-    try {
-      const id = (JSON.parse(line) as { sessionId?: unknown }).sessionId;
-      if (typeof id === "string" && id) {
-        raw = id;
-        break;
-      }
-    } catch {
-      continue;
+    const id = parseRecord(line)?.sessionId;
+    if (typeof id === "string" && id) {
+      raw = id;
+      break;
     }
   }
   return pseudonymousSession(raw ?? basename(fileName).replace(/\.jsonl$/i, "")) ?? "";
 }
 
-function contentText(content: unknown): string | null {
-  if (typeof content === "string") return content.trim() || null;
+/** The text parts of a user record, or null when it is a tool result. */
+function textParts(content: unknown): string[] | null {
+  if (typeof content === "string") return [content];
   if (!Array.isArray(content) || content.some((part) => typeof part === "object" && part !== null && "tool_use_id" in part)) {
     return null;
   }
-  const text = content
+  return content
     .filter((part): part is { type?: unknown; text?: unknown } => typeof part === "object" && part !== null)
-    .filter((part) => part.type === "text" && typeof part.text === "string")
-    .map((part) => part.text)
-    .join("\n")
-    .trim();
-  return text || null;
+    .filter((part): part is { type: "text"; text: string } => part.type === "text" && typeof part.text === "string")
+    .map((part) => part.text);
 }
 
-function humanIntent(record: Record<string, unknown>): string | null {
-  if (record.isMeta === true || "sourceToolUseID" in record) return null;
-  const text = contentText((record.message as { content?: unknown } | undefined)?.content);
-  if (!text || /^\[Image:\s*source:/i.test(text)) return null;
-  return text;
+/** A slash command as the transcript records it: its echo, or the output it printed. */
+const COMMAND_ECHO = /^<(?:command-name|command-message|command-args|local-command-stdout|local-command-stderr)[\s>]/;
+
+/**
+ * What a user-role record says about the human:
+ *
+ * - `owner`   typed text, with harness blocks removed and secrets redacted —
+ *             the only spelling of the intent that leaves this function, so
+ *             the queue's `query` and a proposal's `cue`/`terms` cannot carry
+ *             a token the owner pasted into a prompt;
+ * - `command` a slash-command echo or its printed output: the owner's turn,
+ *             so the chain before it is over, but its text is no query;
+ * - `none`    a tool result, or a turn the harness wrote (task notification,
+ *             agent mail, reminder, skill body). It is not a turn of the
+ *             human and must not end the chain it arrives in.
+ *
+ * The harness list is `system-turn.ts`, the one every other reader of user
+ * turns uses.
+ */
+type UserTurn = { kind: "owner"; text: string } | { kind: "command" } | { kind: "none" };
+
+function userTurn(record: Record<string, unknown>): UserTurn {
+  if (record.isMeta === true || "sourceToolUseID" in record) return { kind: "none" };
+  const parts = textParts((record.message as { content?: unknown } | undefined)?.content);
+  if (parts === null) return { kind: "none" };
+  const typed: string[] = [];
+  let command = false;
+  for (const part of parts) {
+    if (COMMAND_ECHO.test(part.trimStart())) {
+      command = true;
+      continue;
+    }
+    // A leading reminder may stand in front of typed text; what follows it is
+    // read on its own, and a turn that is harness text throughout is dropped.
+    const afterReminder = textAfterReminders(part);
+    if (afterReminder === null || isSystemInjectedTurn(afterReminder)) continue;
+    const text = scrubInjectedBlocks(afterReminder).text.trim();
+    if (text && !/^\[Image:\s*source:/i.test(text)) typed.push(text);
+  }
+  if (typed.length > 0) return { kind: "owner", text: redactSecrets(typed.join("\n")).text };
+  return command ? { kind: "command" } : { kind: "none" };
 }
 
 function toolUses(record: Record<string, unknown>): ToolUse[] {
@@ -76,13 +122,14 @@ function toolUses(record: Record<string, unknown>): ToolUse[] {
 }
 
 function isRecall(tool: ToolUse): boolean {
-  return typeof tool.name === "string" && /(?:^|__)recall$/i.test(tool.name);
+  return typeof tool.name === "string" && /(?:^|__)recall$/.test(tool.name);
 }
 
 function isEvidenceRead(tool: ToolUse): boolean {
   // Same MCP-prefix rule as `isRecall`: a real transcript names the tool
-  // `mcp__bastra-recall__find_document`, never the bare name.
-  return typeof tool.name === "string" && /(?:^|__)(Read|Glob|Grep|Search|find_document|read_document)$/i.test(tool.name);
+  // `mcp__bastra-recall__find_document`, never the bare name. Tool names are
+  // identifiers, matched in the case the client writes them.
+  return typeof tool.name === "string" && /(?:^|__)(Read|Glob|Grep|Search|find_document|read_document)$/.test(tool.name);
 }
 
 function sourceRef(tool: ToolUse): string | null {
@@ -155,7 +202,11 @@ function leadingJsonObject(text: string): Record<string, unknown> | null {
 
 interface Envelope {
   explicitMiss: boolean;
-  recallId: string | null;
+  /**
+   * Every daemon recall this result stands for: `recall_id`, and for a batch
+   * (`queries: [...]`) one id per phrasing under `recall_ids`.
+   */
+  recallIds: string[];
   servedIds: string[];
 }
 
@@ -166,7 +217,7 @@ interface Envelope {
  * array. Text that does not parse as an envelope carries no miss signal.
  */
 function readEnvelope(text: string | null): Envelope {
-  const none: Envelope = { explicitMiss: false, recallId: null, servedIds: [] };
+  const none: Envelope = { explicitMiss: false, recallIds: [], servedIds: [] };
   if (!text) return none;
   const parsed = leadingJsonObject(text);
   if (parsed === null) return none;
@@ -175,17 +226,22 @@ function readEnvelope(text: string | null): Envelope {
   const servedIds = (hits ?? [])
     .map((hit) => (typeof hit === "object" && hit !== null ? (hit as { id?: unknown }).id : undefined))
     .filter((id): id is string => typeof id === "string" && id.length > 0);
+  const recallIds: string[] = [];
+  for (const id of [record.recall_id, ...(Array.isArray(record.recall_ids) ? (record.recall_ids as unknown[]) : [])]) {
+    if (typeof id === "string" && id && !recallIds.includes(id)) recallIds.push(id);
+  }
   return {
     explicitMiss: record.weak_result === true || record.no_home === true || (hits !== null && hits.length === 0),
-    recallId: typeof record.recall_id === "string" && record.recall_id ? record.recall_id : null,
+    recallIds,
     servedIds,
   };
 }
 
 
 /**
- * The chain a raw session proves on its own: human intent, the exact Recall
- * call, its result envelope, and the first evidence step after that result.
+ * The chain a raw session proves on its own: human intent, the Recall calls
+ * made for it, their result envelopes, and the first evidence step after
+ * those results.
  * Nothing here is classified; the offline engines attach the frozen pool and
  * the vault proofs, and the classifier decides. Raw identifiers stay inside
  * this process — the queue record only ever carries their hashes.
@@ -194,11 +250,18 @@ export interface ReviewedMissChain {
   query: string;
   /** Client session pseudonym; see `sessionRef`. */
   session: string;
-  /** `recall_id` from the served envelope, when the envelope carried one. */
+  /** The first of `recallIds`, or null: the chain's name in the queue. */
   recallId: string | null;
-  /** Envelope-level miss signal: `weak_result`, `no_home` or an empty `hits`. */
+  /**
+   * Every daemon recall whose result the session held when it took the
+   * evidence step: each phrasing of a batch, each of several recalls issued
+   * for the same intent. The evidence is judged against all of their pools —
+   * a hit served by any of them was served.
+   */
+  recallIds: string[];
+  /** Envelope-level miss signal — `weak_result`, `no_home` or an empty `hits` — on every result. */
   explicitMiss: boolean;
-  /** Ids the served envelope listed under `hits`, in served order. */
+  /** Ids the served envelopes listed under `hits`, in served order. */
   servedIds: string[];
   /** Transcript timestamp of the matching tool_result, if the record had one. */
   resultTs: string | null;
@@ -224,11 +287,11 @@ export interface ReviewedMissCandidate {
 }
 
 function isLoadMemory(tool: ToolUse): boolean {
-  return typeof tool.name === "string" && /(?:^|__)load_memory$/i.test(tool.name);
+  return typeof tool.name === "string" && /(?:^|__)load_memory$/.test(tool.name);
 }
 
 function isBash(tool: ToolUse): boolean {
-  return typeof tool.name === "string" && /^Bash$/i.test(tool.name);
+  return typeof tool.name === "string" && /^Bash$/.test(tool.name);
 }
 
 /**
@@ -239,7 +302,7 @@ function isBash(tool: ToolUse): boolean {
 function evidenceOf(tool: ToolUse, cwd: string | null): ReviewedMissEvidence {
   const input = (tool.input && typeof tool.input === "object" ? tool.input : {}) as Record<string, unknown>;
   if (isLoadMemory(tool) && typeof input.id === "string" && input.id) return { kind: "load-memory", memoryId: input.id };
-  if (typeof tool.name === "string" && /^Read$/i.test(tool.name) && typeof input.file_path === "string" && input.file_path) {
+  if (typeof tool.name === "string" && /^Read$/.test(tool.name) && typeof input.file_path === "string" && input.file_path) {
     if (isAbsolute(input.file_path)) return { kind: "file-read", path: input.file_path };
     if (cwd !== null && isAbsolute(cwd)) return { kind: "file-read", path: resolve(cwd, input.file_path) };
   }
@@ -330,7 +393,7 @@ function bashReadPath(command: string): string | null {
  * only shape that leaves the process.
  */
 export interface RecallCallStats {
-  /** Recall calls whose result arrived. */
+  /** Recall calls whose result arrived, each counted once. */
   recalls: number;
   /** Of those, results whose envelope carried a `recall_id`. */
   withRecallId: number;
@@ -339,12 +402,23 @@ export interface RecallCallStats {
 export function extractReviewedMissChains(jsonl: string, session: string, stats?: RecallCallStats): ReviewedMissChain[] {
   const chains: ReviewedMissChain[] = [];
   let intent: string | null = null;
+  /**
+   * The recalls made for the current intent that no evidence step has
+   * answered yet. More than one when the assistant issues several in one
+   * message, or asks again before reading anything: their results are all in
+   * front of the session when it takes the evidence step, so they are one
+   * chain. Replacing the earlier recall with the later one dropped its result
+   * and judged a load of its hit against a pool that never held it.
+   */
   let pending: {
     query: string;
-    envelope: Envelope;
-    resultSeen: boolean;
-    resultTs: string | null;
     toolIds: Set<string>;
+    /** Tool ids whose result arrived. */
+    resulted: Set<string>;
+    misses: number;
+    recallIds: string[];
+    servedIds: string[];
+    resultTs: string | null;
   } | null = null;
   let evidence: ReviewedMissEvidence | null = null;
   /**
@@ -364,68 +438,64 @@ export function extractReviewedMissChains(jsonl: string, session: string, stats?
     chains.push({
       query: pending.query,
       session,
-      recallId: pending.envelope.recallId,
-      explicitMiss: pending.envelope.explicitMiss,
-      servedIds: pending.envelope.servedIds,
+      recallId: pending.recallIds[0] ?? null,
+      recallIds: pending.recallIds,
+      explicitMiss: pending.resulted.size > 0 && pending.misses === pending.resulted.size,
+      servedIds: pending.servedIds,
       resultTs: pending.resultTs,
       evidence: found,
     });
   };
+  const close = (): void => {
+    emit();
+    pending = null;
+    evidence = null;
+    opaque = null;
+  };
 
   for (const line of jsonl.split("\n")) {
-    if (!line.trim()) continue;
-    let record: Record<string, unknown>;
-    try {
-      record = JSON.parse(line) as Record<string, unknown>;
-    } catch {
-      continue;
-    }
+    const record = parseRecord(line);
+    if (record === null) continue;
     if (record.type === "user") {
-      const intentText = humanIntent(record);
-      if (intentText) {
-        emit();
-        intent = intentText;
-        pending = null;
-        evidence = null;
-        opaque = null;
+      const turn = userTurn(record);
+      if (turn.kind !== "none") {
+        close();
+        intent = turn.kind === "owner" ? turn.text : null;
       }
       if (pending) {
         for (const part of matchingResults(record, pending.toolIds)) {
-          if (!pending.resultSeen && stats) stats.recalls += 1;
-          pending.resultSeen = true;
+          const toolId = part.tool_use_id as string;
+          if (pending.resulted.has(toolId)) continue;
+          pending.resulted.add(toolId);
           pending.resultTs = typeof record.timestamp === "string" ? record.timestamp : pending.resultTs;
           const envelope = readEnvelope(resultText(part));
-          if (stats && envelope.recallId && !pending.envelope.recallId) stats.withRecallId += 1;
-          pending.envelope = {
-            explicitMiss: pending.envelope.explicitMiss || envelope.explicitMiss,
-            recallId: pending.envelope.recallId ?? envelope.recallId,
-            servedIds: pending.envelope.servedIds.length > 0 ? pending.envelope.servedIds : envelope.servedIds,
-          };
+          if (stats) {
+            stats.recalls += 1;
+            if (envelope.recallIds.length > 0) stats.withRecallId += 1;
+          }
+          if (envelope.explicitMiss) pending.misses += 1;
+          for (const id of envelope.recallIds) if (!pending.recallIds.includes(id)) pending.recallIds.push(id);
+          for (const id of envelope.servedIds) if (!pending.servedIds.includes(id)) pending.servedIds.push(id);
         }
       }
     }
     if (record.type !== "assistant") continue;
     const cwd = typeof record.cwd === "string" ? record.cwd : null;
     for (const tool of toolUses(record)) {
+      const resultSeen = pending !== null && pending.resulted.size > 0;
       if (isRecall(tool) && intent) {
-        // A finished chain is handed over before the next recall replaces it.
-        // Without this, a second recall in the same turn dropped the first one
-        // whole — result, envelope, explicit miss and all.
-        emit();
-        pending = {
-          query: intent,
-          envelope: { explicitMiss: false, recallId: null, servedIds: [] },
-          resultSeen: false,
-          resultTs: null,
-          toolIds: new Set(typeof tool.id === "string" ? [tool.id] : []),
-        };
-        evidence = null;
-        opaque = null;
-      } else if (pending?.resultSeen && (isEvidenceRead(tool) || isLoadMemory(tool)) && evidence === null) {
+        // A chain that already has its evidence step is handed over; a recall
+        // still waiting for one is joined, not replaced.
+        if (pending === null || evidence !== null || opaque !== null) {
+          close();
+          pending = { query: intent, toolIds: new Set(), resulted: new Set(), misses: 0, recallIds: [], servedIds: [], resultTs: null };
+        }
+        if (typeof tool.id === "string") pending.toolIds.add(tool.id);
+      } else if (resultSeen && (isEvidenceRead(tool) || isLoadMemory(tool)) && evidence === null) {
         const found = evidenceOf(tool, cwd);
         if (found.kind === "opaque") opaque = opaque ?? found;
         else evidence = found;
-      } else if (pending?.resultSeen && isBash(tool) && evidence === null) {
+      } else if (resultSeen && isBash(tool) && evidence === null) {
         // Most Bash calls are not evidence reads at all (uptime, find, ps…).
         // Unlike Read/load_memory, an unrecognized shape does not consume the
         // slot — it would otherwise freeze every chain on the first `find`.
@@ -439,7 +509,7 @@ export function extractReviewedMissChains(jsonl: string, session: string, stats?
   return chains;
 }
 
-/** The pathless v1 queue record: hashed identities, verbatim query, no payload. */
+/** The pathless v1 queue record: hashed identities, the redacted query, no payload. */
 export function toCandidate(chain: ReviewedMissChain): ReviewedMissCandidate {
   const ref = chain.evidence.kind === "load-memory"
     ? hash("id:" + chain.evidence.memoryId)

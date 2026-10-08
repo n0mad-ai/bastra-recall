@@ -141,6 +141,7 @@ export function observeHookLane(
       query: pool.query ?? "",
       session: load.session ?? UNKNOWN_SESSION,
       recallId,
+      recallIds: [recallId],
       explicitMiss: pool.servedIds.length === 0,
       servedIds: pool.servedIds,
       resultTs: pool.ts,
@@ -297,7 +298,7 @@ export interface DenRow {
 }
 
 const GAP_EXITS: Record<GapKind, string> = {
-  "envelope-without-recall-id": "served envelope had no recall_id: batch or error result — extend readEnvelope for that shape or count it as unjoinable",
+  "envelope-without-recall-id": "served envelope had no recall_id or recall_ids: an error result, or text that is not an envelope — unjoinable",
   "load-without-recall-link": "daemon did not join this load to a recall (join store lost across idle respawn, or a direct load) — see telemetry-join-store",
   "link-without-pool": "load links a recall_id with no recorded candidate_pool — event outside the window or pool not captured on that path",
   "load-not-found": "load_memory for an id the vault did not hold — moved or deleted memory; nothing to classify",
@@ -484,8 +485,12 @@ export function observeLanes(
       transcript.push({ chain, record });
     }
   }
-  const covered = new Set(transcript.flatMap(({ chain }) =>
-    chain.recallId && chain.evidence.kind === "load-memory" ? [loadKey(chain.recallId, chain.evidence.memoryId)] : []));
+  // The daemon links a load to the most recent recall before it, which for a
+  // batch or a group is any one of the chain's recalls.
+  const covered = new Set(transcript.flatMap(({ chain }) => {
+    const evidence = chain.evidence;
+    return evidence.kind === "load-memory" ? chain.recallIds.map((recallId) => loadKey(recallId, evidence.memoryId)) : [];
+  }));
   const hook = options.hookLane && telemetry
     ? observeHookLane(telemetry, engines, covered)
     : { records: [], chains: [], gaps: [], coveredByTranscript: 0 };

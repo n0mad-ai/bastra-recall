@@ -1,8 +1,8 @@
 /**
  * Cue proposals and accounting derived mechanically from observed chains.
  *
- * A proposal pairs the human intent (its content terms, the verbatim query
- * capped) with the vault object the session actually used, for the classes
+ * A proposal pairs the human intent (its content terms, the query capped,
+ * secrets already redacted where the chain was read) with the vault object the session actually used, for the classes
  * that can become memory-system proposals under #459: in-pool-not-selected,
  * genuine-out-of-pool, unindexed-vault-object. One episode proposes; support
  * counts distinct sessions. Nothing here writes `recall_when`; the output is
@@ -46,10 +46,10 @@ export interface CueProposal {
   confidence: null;
 }
 
-/** Content terms of an intent: tokenized, stopwords and short tokens dropped. */
+/** Content terms of an intent: tokenized, stopwords and short tokens dropped. A redaction marker is not a term. */
 export function intentTerms(query: string): string[] {
   const out: string[] = [];
-  for (const token of tokenizeWithIdentifiers(query)) {
+  for (const token of tokenizeWithIdentifiers(query.replaceAll("[REDACTED]", " "))) {
     const term = token.toLowerCase();
     if (term.length < MIN_SIGNIFICANT_TOKEN_LEN || PHRASE_STOPWORDS.has(term) || out.includes(term)) continue;
     out.push(term);

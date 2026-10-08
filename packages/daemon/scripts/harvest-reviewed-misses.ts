@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import { hash } from "../src/learned-recall/reviewed-miss-harvest.js";
 import {
   loadTelemetry,
   parseReviewerLabels,
   snapshotVault,
+  telemetryFiles,
   type ObservationEngines,
   type Telemetry,
 } from "../src/learned-recall/reviewed-miss-engines.js";
@@ -75,8 +76,24 @@ function parseArgs(argv: string[]): Args {
   return args;
 }
 
+/** A path that is wrong is an error, never a run that reports zero. */
+function fail(message: string): never {
+  console.error("harvest-reviewed-misses: " + message);
+  process.exit(1);
+}
+
+async function requireDir(flag: string, path: string): Promise<void> {
+  const info = await stat(path).catch(() => null);
+  if (!info?.isDirectory()) fail(`${flag} ${path}: not a directory`);
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  if (args.events) {
+    await requireDir("--events", args.events);
+    if ((await telemetryFiles(args.events)).length === 0) fail(`--events ${args.events}: no events-*.jsonl in it`);
+  }
+  if (args.vault) await requireDir("--vault", args.vault);
   const hubSessions = args["hub-sessions"] ? Number(args["hub-sessions"]) : 3;
   if (!Number.isInteger(hubSessions) || hubSessions < 1) usage();
   const sinceDays = args.since ? Number(args.since) : 0;
@@ -90,6 +107,7 @@ async function main(): Promise<void> {
     snapshot: args.vault ? await snapshotVault(args.vault) : null,
     labels: args.labels ? parseReviewerLabels(await readFile(args.labels, "utf8")) : new Map(),
   };
+  if (args.vault && engines.snapshot?.idCount === 0) fail(`--vault ${args.vault}: no memory in it`);
 
   const transcripts = await Promise.all(args.inputs.map(async (input) => ({ jsonl: await readFile(input, "utf8"), fileName: basename(resolve(input)) })));
   const { transcript: pairs, hook, stats, gaps, heat, hubs, paths, proposals } = observeLanes(transcripts, telemetry, engines, { hookLane: args.hookLane, hubSessions });
@@ -152,4 +170,4 @@ async function main(): Promise<void> {
   else process.stdout.write(rendered);
 }
 
-void main();
+main().catch((error: unknown) => fail(error instanceof Error ? error.message : String(error)));
