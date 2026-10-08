@@ -1,10 +1,14 @@
 import test from "node:test";
+import fs from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { syncBuiltinESMExports } from "node:module";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, readdir, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault, SearchIndex, type EmbeddingIndex, type EmbeddingProvider } from "@bastra-recall/core";
-import { runDraftPromote, undoDraftPromotion, draftVaultId, buildDraftNote, type DraftPromotionEvent } from "../src/draft-promote.js";
+import { runDraftPromote, undoDraftPromotion, draftVaultId, buildDraftNote, draftLiterals, type DraftPromotionEvent } from "../src/draft-promote.js";
 import { runDraftShadow } from "../src/draft-shadow.js";
 import { captureDraft, upsertDraft, listDrafts, expireDrafts, draftFingerprint, draftId, type Draft } from "../src/draft-store.js";
 import { runSessionHarvestTick } from "../src/daemon-jobs.js";
@@ -195,7 +199,7 @@ test("harvest tick captures provenance then promotes two transcript sessions aft
     }
     const index = { providerIdentity: () => ({ id: provider.id, dim: 2 }), snapshot: () => new Map<string, Float32Array>(), currentSnapshot: () => new Map<string, Float32Array>() } as unknown as EmbeddingIndex;
     const result = await runSessionHarvestTick({ vault, search, rawProvider: provider, ollama: local, embIdx: () => index }, now + 1000);
-    assert.equal(result?.promotion.promoted, 1); assert.equal(vault.size(), 1);
+    assert.equal(result?.promotion.promoted, 1); assert.equal(result?.relayed, 0); assert.equal(vault.size(), 1);
     assert.equal((await listDrafts())[0].vault_id, await draftVaultId(vault.root));
   } finally { search.stop(); }
 }));
@@ -400,15 +404,127 @@ test("D fix: 480 drafts/100 candidates/2000 notes yield and do not hold the draf
   let maxLag = 0, last = performance.now();
   const ticker = setInterval(() => { const n = performance.now(); maxLag = Math.max(maxLag, n - last - 5); last = n; }, 5);
   try {
-    const result = await runDraftPromote({ provider, ollama: local, vault, emit: () => {}, vaultVectors: () => {
+    const options = { provider, ollama: local, vault, emit: () => {}, vaultVectors: () => {
       if (!requested) { requested = true; const scheduled = performance.now(); setTimeout(() => {
         void upsertDraft(rows[479]).then(() => { writerMs = performance.now() - scheduled; resolveWriter(); });
       }, 0); }
       return { provider: provider.id, dim, vectors };
-    } });
+    } };
+    const result = await runDraftPromote(options);
     await writer;
     assert.equal(result.wouldPromote, 100); assert.equal(result.errors, 0);
     t.diagnostic(`event-loop max lag ${maxLag.toFixed(1)}ms; scheduled writer ${writerMs.toFixed(1)}ms`);
     assert.ok(maxLag < 500, `event loop ${maxLag}ms`); assert.ok(writerMs < 500, `writer ${writerMs}ms`);
+    await runDraftPromote(options); // Any concurrent writer's changed state settles.
+    const originalOpen = fs.open; let vectorReads = 0;
+    fs.open = (async (...args: Parameters<typeof fs.open>) => { if(String(args[0]) === draftVectorsPath()) vectorReads++; return originalOpen(...args); }) as typeof fs.open;
+    syncBuiltinESMExports();
+    try {
+      const started = performance.now(), unchanged = await runDraftPromote(options), elapsed = performance.now()-started;
+      assert.equal(unchanged.errors,0); assert.equal(vectorReads,1,"one vector-file load per tick");
+      t.diagnostic(`unchanged 480/100/2000 tick ${elapsed.toFixed(1)}ms; vector loads ${vectorReads}`);
+      assert.ok(elapsed < 100,`unchanged tick ${elapsed}ms`);
+    } finally { fs.open=originalOpen; syncBuiltinESMExports(); }
   } finally { clearInterval(ticker); }
+}));
+
+test("D2 quote duplicate blocking ignores changed literals across paraphrase, translation and undo",()=>isolated(async(vault,_dir,vaultId)=>{
+  const original="The amber staging database uses a tunnel on dock7.invalid before deployment";
+  const changed="Die Bernstein Testdatenbank braucht einen Tunnel auf dock8.invalid vor dem Deployment";
+  const provider=providerFor();
+  const opts={provider,ollama:local,vault,vaultVectors:()=>({provider:provider.id,dim:2,vectors:new Map(vault.list().map(n=>[n.fm.id,new Float32Array([0,1])]))})};
+  await repeat(vaultId,original);await runDraftShadow({provider,ollama:local,vault});
+  assert.equal((await runDraftPromote(opts)).promoted,1);
+  await captureDraft(row(changed,"translated-one",vaultId));await captureDraft(row(changed,"translated-two",vaultId));
+  await runDraftShadow({provider,ollama:local,vault});
+  assert.equal((await runDraftPromote(opts)).promoted,0);assert.equal(vault.size(),1);
+  const promoted=(await listDrafts()).find(d=>d.state==="promoted")!;
+  await undoDraftPromotion(vault,promoted.id);
+  const paraphraseWithHyphen="The staging-database connection uses dock9.invalid with an isolated deployment tunnel";
+  await captureDraft(row(paraphraseWithHyphen,"after-undo-one",vaultId));await captureDraft(row(paraphraseWithHyphen,"after-undo-two",vaultId));
+  await runDraftShadow({provider,ollama:local,vault});
+  assert.equal((await runDraftPromote(opts)).promoted,0);assert.equal(vault.size(),0);
+}));
+
+test("D2 same-tick equivalent repeats with differing literals create one note",()=>isolated(async(vault,_dir,vaultId)=>{
+  await repeat(vaultId,"The amber configuration uses staging-node7.invalid with isolated deployment resources");
+  await captureDraft(row("The translated configuration uses test-node8.invalid with separate deployment resources","three",vaultId));
+  await captureDraft(row("The translated configuration uses test-node8.invalid with separate deployment resources","four",vaultId));
+  const provider=providerFor();await runDraftShadow({provider,ollama:local,vault});
+  const opts={provider,ollama:local,vault,vaultVectors:()=>({provider:provider.id,dim:2,vectors:new Map(vault.list().map(n=>[n.fm.id,new Float32Array([0,1])]))})};
+  assert.equal((await runDraftPromote(opts)).promoted,1);assert.equal(vault.size(),1);
+}));
+
+test("D2 hyphenated prose does not veto the repeat trigger; numeric identifiers still do",()=>isolated(async(vault,_dir,vaultId)=>{
+  assert.deepEqual([...draftLiterals("E-Mail stand-up /etc _cache dock.invalid Package1 port:55 name@host")], ["/etc","_cache","dock.invalid","package1","port:55","name@host"]);
+  await captureDraft(row("The E-Mail processing workflow uses isolated staging resources before launch","one",vaultId));
+  await captureDraft(row("The Email processing workflow uses separate staging resources before launch","two",vaultId));
+  const provider=providerFor();await runDraftShadow({provider,ollama:local,vault});
+  assert.equal((await runDraftPromote({provider,ollama:local,vault,vaultVectors:vectors(vault,provider)})).promoted,1);
+}));
+
+test("D2 corrupt and future draft stores cannot delay or consume the default relay",()=>isolated(async(vault,dir)=>{
+  delete process.env.BASTRA_DRAFT_PROMOTE;
+  const search=new SearchIndex(vault);search.start();
+  try {for(const [i,data] of ["{broken",JSON.stringify({version:99,rows:[]})].entries()) {
+    await unlink(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!).catch(()=>{});
+    await writeFile(process.env.BASTRA_DRAFTS_PATH!,data);
+    const path=join(dir,`broken-relay-${i}.jsonl`);
+    await writeFile(path,[JSON.stringify({role:"assistant",content:"What connection does fixture staging need?"}),JSON.stringify({role:"user",content:"The fixture staging database uses an isolated connection",cwd:"/tmp/projects/fixture"})].join("\n"));
+    await noteSessionForHarvest({session_id:`broken-${i}`,transcript_path:path,ended:true,now});
+    await runSessionHarvestTick({vault,search,rawProvider:null,ollama:null,embIdx:()=>null},now+1000).catch(()=>{});
+    const pending=JSON.parse(await readFile(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!,"utf8"));
+    assert.equal(pending.length,1);assert.match(pending[0].blocks,/isolated connection/);
+  }}finally{search.stop();}
+}));
+
+test("D2 relay is durable before an embedding pass can be interrupted",()=>isolated(async(vault,dir)=>{
+  delete process.env.BASTRA_DRAFT_PROMOTE;
+  const path=join(dir,"interrupted-relay.jsonl");
+  await writeFile(path,[JSON.stringify({role:"assistant",content:"What connection does fixture staging need?"}),JSON.stringify({role:"user",content:"The fixture staging database uses an isolated connection",cwd:"/tmp/projects/fixture"})].join("\n"));
+  await noteSessionForHarvest({session_id:"interrupted",transcript_path:path,ended:true,now});
+  let entered!:()=>void,release!:()=>void;
+  const began=new Promise<void>(r=>{entered=r;}),resume=new Promise<void>(r=>{release=r;});
+  const provider=providerFor();provider.embed=async texts=>{entered();await resume;return texts.map(()=>new Float32Array([1,0]));};
+  const search=new SearchIndex(vault);search.start();
+  const tick=runSessionHarvestTick({vault,search,rawProvider:provider,ollama:local,embIdx:()=>null},now+1000);
+  try{
+    await began;
+    const durable=await readFile(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!,"utf8").catch(()=>"");
+    release();await tick;
+    assert.match(durable,/isolated connection/,"survives process termination while embeddings are in flight");
+  }finally{release();await tick.catch(()=>{});search.stop();}
+}));
+
+test("D2 word cues exclude common vault words, numeric fragments and redacted spans",()=>{
+  const candidate=row("cache dann den erst leeren 23 4711 [REDACTED]", "cue");candidate.context=undefined;
+  candidate.situation={before:[],after:[],reads:[],lits:[]};
+  const df=new Map(["cache","dann","den","erst","leeren"].map(w=>[w,30]));
+  assert.deepEqual(buildDraftNote([candidate],df).recall_when,[]);
+  candidate.quote="cache spectrometer tungsten calibration 23 4711 [REDACTED]";
+  assert.deepEqual(buildDraftNote([candidate],df).recall_when,["calibration spectrometer tungsten"]);
+});
+
+
+test("D2 terminating the embedding process preserves relay in default and sharp modes",()=>isolated(async(vault,dir)=>{
+  for(const mode of ["0","1"]) {
+    await unlink(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!).catch(()=>{});
+    const path=join(dir,`process-abort-${mode}.jsonl`);
+    await writeFile(path,[JSON.stringify({role:"assistant",content:"What connection does fixture staging need?"}),JSON.stringify({role:"user",content:"The fixture staging database uses an isolated connection",cwd:"/tmp/projects/fixture"})].join("\n"));
+    await noteSessionForHarvest({session_id:`process-abort-${mode}`,transcript_path:path,ended:true,now});
+    const child=spawn(process.execPath,["--import","tsx",fileURLToPath(new URL("./fixtures/draft-relay-abort.ts",import.meta.url)),String(now+1000)],{env:{...process.env,BASTRA_DRAFT_PROMOTE:mode,NODE_TEST_CONTEXT:""},stdio:["ignore","pipe","pipe"]});
+    let output="",errors="";child.stdout.on("data",data=>{output+=data;});child.stderr.on("data",data=>{errors+=data;});
+    const exited=new Promise<void>(resolve=>child.once("exit",()=>resolve()));
+    try {
+      const deadline=Date.now()+10000;
+      while(!errors.includes("embedding-started")&&Date.now()<deadline&&child.exitCode===null)await new Promise(r=>setTimeout(r,10));
+      assert.match(errors,/embedding-started/,`mode ${mode}; stdout ${output}`);
+      child.kill("SIGTERM");await exited;
+      const durable=JSON.parse(await readFile(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!,"utf8"));
+      assert.equal(durable.length,1);assert.match(durable[0].blocks,/isolated connection/);
+      const search=new SearchIndex(vault);search.start();
+      try {await runSessionHarvestTick({vault,search,rawProvider:null,ollama:null,embIdx:()=>null},now+2000);}finally{search.stop();}
+      assert.deepEqual(JSON.parse(await readFile(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!,"utf8")),durable);
+    }finally{child.kill("SIGTERM");await exited;}
+  }
 }));

@@ -7,13 +7,14 @@ import { setImmediate } from "node:timers/promises";
 import { cosine, deleteMemoryFile, type SaveMemoryInput, type Vault } from "@bastra-recall/core";
 import { redactSecrets } from "@bastra-recall/core/scrub";
 import { scanForInjection } from "@bastra-recall/core";
-import { localDraftProvider, readDraftVectors, recordDraftDecision, type DraftShadowOptions } from "./draft-shadow.js";
+import { localDraftProvider, readDraftVectorState, type DraftShadowOptions } from "./draft-shadow.js";
 import { listDrafts, transactDrafts, withDraftPublication, type Draft } from "./draft-store.js";
 import { tokens } from "./save-similarity.js";
 import { weightedContainment, STORED_CONTAINMENT_MIN } from "./harvest-vault-match.js";
 import { saveMemoryWithAuditTrail, recordAudit } from "./audit-trail.js";
 import { logDirFor } from "./telemetry.js";
 import { envOff } from "./env.js";
+import { readDraftDecisions, recordDraftDecisions } from "./draft-decisions.js";
 
 /** Unmeasured on real data, unchanged after review. */
 export const DRAFT_REPEAT_COSINE_MIN = 0.70;
@@ -46,8 +47,8 @@ function noteText(note: ReturnType<Vault["list"]>[number]): string {
 }
 /** Language-neutral technical literals; sentence punctuation is not an identifier. */
 export function draftLiterals(quote: string): Set<string> {
-  return new Set((quote.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}._@\/:-]*/gu) ?? [])
-    .map(t => t.replace(/[.:]+$/u, "")).filter(t => /[\p{N}./_@:-]/u.test(t)));
+  return new Set((quote.toLowerCase().match(/[\p{L}\p{N}/@:_][\p{L}\p{N}._@\/:-]*/gu) ?? [])
+    .map(t => t.replace(/[.:]+$/u, "")).filter(t => /[\p{N}/@:_]/u.test(t) || /[\p{L}\p{N}]\.[\p{L}\p{N}]/u.test(t)));
 }
 function conflictingLiterals(a: string, b: string): boolean {
   const left = draftLiterals(a), right = draftLiterals(b);
@@ -70,7 +71,8 @@ export function buildDraftNote(rows: Draft[], df: ReadonlyMap<string, number>): 
   const key = draftEvidenceKey(rows), first = rows[0];
   const scopeName = first.situation.project ?? "all-projects";
   const scope = /^[\p{L}\p{N}][\p{L}\p{N} _.-]*$/u.test(scopeName) && !scopeName.includes("..") ? scopeName : "all-projects";
-  const rareWords = [...new Set(tokens(first.quote))].sort((a, b) => (df.get(a) ?? 0) - (df.get(b) ?? 0) || a.localeCompare(b)).slice(0, 5);
+  const rareWords = [...new Set(tokens(first.quote.replace(/\S*\[REDACTED(?:[^\]]*)\]\S*/gi, " ")))]
+    .filter(word => !/^\p{N}+$/u.test(word) && (df.get(word) ?? 0) <= DRAFT_RARE_TOKEN_MAX_ROWS).sort((a, b) => (df.get(a) ?? 0) - (df.get(b) ?? 0) || a.localeCompare(b)).slice(0, 5);
   const literalCues: string[] = [];
   for (const row of rows) for (const command of [...row.situation.before, ...row.situation.after]) {
     const head = commandHead(command);
@@ -87,7 +89,7 @@ export function buildDraftNote(rows: Draft[], df: ReadonlyMap<string, number>): 
     "", "Evidence:", ...evidenceOf(rows).map(e => `- session ${e.session_id}; turn ${e.turn}; ${new Date(e.ts).toISOString()}; client ${e.client ?? "unknown"}`),
   ].join("\n");
   return { id: `draft-${key}`, title: first.quote.replace(/\s+/g, " ").slice(0, 100), summary: first.quote, body,
-    type: "project-fact", scope, topic_path: [scope, "derived"], tags: ["derived"], recall_when: cues.length ? cues : [first.quote],
+    type: "project-fact", scope, topic_path: [scope, "derived"], tags: ["derived"], recall_when: cues,
     sensitivity: "team", write_origin: "capture-review", source: `draft:${key}`, confidence: 0.6 };
 }
 
@@ -96,11 +98,14 @@ async function writeEvent(event: DraftPromotionEvent): Promise<void> {
   const dir = logDirFor(); await mkdir(dir, { recursive: true }); const ts = new Date().toISOString();
   await appendFile(join(dir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify({ ...event, ts }) + "\n", "utf8");
 }
-async function emitOnce(opts: DraftPromoteOptions, rows: Draft[], event: DraftPromotionEvent): Promise<void> {
-  const key = hash([...event.draft_ids].sort().join("\n"));
-  const signature = hash(JSON.stringify({ event, evidence: draftEvidenceKey(rows), provider: opts.provider?.id ?? null, dim: opts.provider?.dim ?? null }));
-  if (!await recordDraftDecision(key, signature)) return;
-  if (opts.emit) opts.emit(event); else await writeEvent(event);
+const PASS_KEY = hash("draft-promotion-pass:v2");
+function passSignature(opts: DraftPromoteOptions, rows: Draft[], notes: ReturnType<Vault["list"]>, vectors: ReadonlyMap<string,Float32Array> | null, snapshot: ReturnType<NonNullable<DraftPromoteOptions["vaultVectors"]>> | undefined, sharp: boolean, vaultId: string): string {
+  const state = createHash("sha256").update(JSON.stringify({ vaultId, sharp, allowSharp: opts.allowSharp, provider: opts.provider?.id, dim: opts.provider?.dim, ollama: opts.ollama ? [opts.ollama.baseURL, opts.ollama.model] : null,
+    rows: rows.map(({ last_touched: _touched, created: _created, ...row }) => row), notes: notes.map(note => [note.fm.id, note.fm.title, note.fm.summary, note.fm.recall_when, note.fm.source, note.fm.write_origin, note.body.slice(0,4000)]),
+    snapshotProvider: snapshot?.provider, snapshotDim: snapshot?.dim }));
+  for (const [id,vector] of vectors ?? []) state.update(id).update(Buffer.from(vector.buffer,vector.byteOffset,vector.byteLength));
+  for (const [id,vector] of snapshot?.vectors ?? []) state.update(id).update(Buffer.from(vector.buffer,vector.byteOffset,vector.byteLength));
+  return state.digest("hex");
 }
 
 /** Match the original persisted evidence receipt, so a later appended session
@@ -139,16 +144,29 @@ export async function draftPromotionReady(opts: DraftPromoteOptions): Promise<bo
 export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftPromoteResult> {
   const result: DraftPromoteResult = { promoted: 0, wouldPromote: 0, duplicates: 0, blocked: 0, errors: 0 };
   const now = opts.now ?? Date.now();
+  let decisions = new Map<string,string>();
+  const changes = new Map<string,string>(), events = new Map<string,DraftPromotionEvent>();
   try {
     await opts.vault.reconcile();
     const vaultId = await draftVaultId(opts.vault.root), all = await listDrafts(now);
     const localOpts = { provider: opts.provider, ollama: opts.ollama }, provider = localDraftProvider(localOpts);
-    const vectors = await readDraftVectors(localOpts, all);
+    const vectorState = await readDraftVectorState(localOpts, all);
+    const vectors = vectorState.vectors;
+    decisions = await readDraftDecisions(vectorState.decisions);
     const sharp = await draftPromotionReady(opts); result.probeOnly = !sharp;
     const snapshot = opts.vaultVectors?.();
+    const notes = opts.vault.list();
+    const signature = passSignature(opts, all, notes, vectors, snapshot, sharp, vaultId);
+    if (decisions.get(PASS_KEY) === signature) return result;
+    const emitOnce = async (rows: Draft[], event: DraftPromotionEvent): Promise<void> => {
+      const key = hash([...event.draft_ids].sort().join("\n"));
+      const value = hash(JSON.stringify({ event, evidence: draftEvidenceKey(rows), provider: opts.provider?.id, dim: opts.provider?.dim, state: rows.map(row => [row.state,row.vault_id]) }));
+      if (decisions.get(key) === value) return;
+      changes.set(key,value); events.set(key,event);
+    };
     const compatible = provider && snapshot?.provider === provider.id && snapshot.dim === provider.dim;
     const noteVectors = compatible ? new Map([...snapshot.vectors].map(([id, v]) => [id, new Float32Array(v)])) : null;
-    const notes = opts.vault.list(), noteWords = new Map<string, Set<string>>(), df = new Map<string, number>();
+    const noteWords = new Map<string, Set<string>>(), df = new Map<string, number>();
     let comparisons = 0, comparisonComplete = !!compatible;
     for (const note of notes) {
       if (!provider || !validVector(noteVectors?.get(note.fm.id), provider.dim)) comparisonComplete = false;
@@ -165,7 +183,7 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
       const recovery = row.evidence.map(e => receipts.get(`${e.session_id}:${e.turn}`)).find(Boolean);
       if (recovery) {
         const base = { draft_ids: [row.id], evidence_count: row.evidence.length, reason: "committed-note-recovery" };
-        if (!sharp || row.vault_id !== vaultId) { result.wouldPromote++; await emitOnce(opts, [row], { kind: "draft_would_promote", ...base }); continue; }
+        if (!sharp || row.vault_id !== vaultId) { result.wouldPromote++; await emitOnce([row], { kind: "draft_would_promote", ...base }); continue; }
         await transactDrafts(async current => {
           const latest = current.find(d => d.id === row.id && d.state === "open" && d.vault_id === vaultId);
           if (latest) closeRows([latest], "promoted", recovery.id, recovery.key, now);
@@ -194,7 +212,7 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
         const b = vectors?.get(closed.id);
         for (const source of selected) {
           const a = vectors?.get(source.id);
-          if (!conflictingLiterals(source.quote, closed.quote) && validVector(a, provider.dim) && validVector(b, provider.dim)) {
+          if (validVector(a, provider.dim) && validVector(b, provider.dim)) {
             const value = cosine(a, b); if (value >= DRAFT_VAULT_COSINE_MIN) { duplicate = { id: closed.memory_id, cosine: value }; break; }
           }
         }
@@ -219,16 +237,17 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
           closeRows(selected, "rejected", duplicate.id, undefined, now);
         }
         result.duplicates++;
-        await emitOnce(opts, selected, { kind: gateReason ? "draft_would_block" : "draft_duplicate_blocked", ...base, reason: "existing-note-or-quote-tombstone",
+        await emitOnce(selected, { kind: gateReason ? "draft_would_block" : "draft_duplicate_blocked", ...base, reason: "existing-note-or-quote-tombstone",
           ...(duplicate.cosine === undefined ? {} : { cosine: duplicate.cosine }), ...(duplicate.containment === undefined ? {} : { containment: duplicate.containment }) });
         continue;
       }
-      if (!selected.every(rareEnough)) { result.blocked++; await emitOnce(opts, selected, { kind: "draft_would_block", ...base, reason: "routine-vocabulary" }); continue; }
+      if (!selected.every(rareEnough)) { result.blocked++; await emitOnce(selected, { kind: "draft_would_block", ...base, reason: "routine-vocabulary" }); continue; }
       const input = buildDraftNote(selected, df);
+      if (!input.recall_when.length) { result.blocked++; await emitOnce(selected, { kind: "draft_would_block", ...base, reason: "no-useful-cues" }); continue; }
       for (const field of ["title", "summary", "body"] as const) input[field] = redactSecrets(input[field], homedir()).text;
       input.recall_when = input.recall_when.map(c => redactSecrets(c, homedir()).text);
-      if (scanForInjection([input.title, input.summary, input.body, ...input.recall_when].join("\n")).length) { result.blocked++; await emitOnce(opts, selected, { kind: "draft_would_block", ...base, reason: "injection-scan" }); continue; }
-      if (gateReason) { result.wouldPromote++; await emitOnce(opts, selected, { kind: "draft_would_promote", ...base, reason: gateReason }); continue; }
+      if (scanForInjection([input.title, input.summary, input.body, ...input.recall_when].join("\n")).length) { result.blocked++; await emitOnce(selected, { kind: "draft_would_block", ...base, reason: "injection-scan" }); continue; }
+      if (gateReason) { result.wouldPromote++; await emitOnce(selected, { kind: "draft_would_promote", ...base, reason: gateReason }); continue; }
       const committed = await withDraftPublication(async () => {
         const prepared = await transactDrafts(async current => {
         const latest = selected.map(d => current.find(c => c.id === d.id && c.state === "open" && c.fp === d.fp && c.vault_id === vaultId));
@@ -249,10 +268,17 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
         }, now);
         return { id: saved.id, sha };
       });
-      if (committed) { closeRows(selected, "promoted", committed.id, draftEvidenceKey(selected), now, committed.sha); result.promoted++; await emitOnce(opts, selected, { kind: "draft_promoted", ...base }); }
+      if (committed) { closeRows(selected, "promoted", committed.id, draftEvidenceKey(selected), now, committed.sha); result.promoted++; await emitOnce(selected, { kind: "draft_promoted", ...base }); }
       await setImmediate();
     }
+    changes.set(PASS_KEY,signature);
   } catch { result.errors++; result.probeOnly = true; }
+  finally {
+    try {
+      const accepted = await recordDraftDecisions(changes,decisions);
+      for (const [key,event] of events) if (accepted.has(key)) { if (opts.emit) opts.emit(event); else await writeEvent(event); }
+    } catch { result.errors++; result.probeOnly = true; }
+  }
   return result;
 }
 
@@ -267,7 +293,11 @@ export async function undoDraftPromotion(vault: Vault, id: string, now = Date.no
     if (note) {
       if (note.fm.source !== `draft:${row.evidence_key}` || note.fm.write_origin !== "capture-review") throw new Error("note no longer matches draft provenance");
       if (!force && !row.promoted_hash) throw new Error("promotion receipt missing; review the note and use --force to undo");
-      await deleteMemoryFile(note.filePath, note.fm.id, { vaultRoot: vault.root, ...(force ? {} : { expectedSha256: row.promoted_hash }) });
+      try { await deleteMemoryFile(note.filePath, note.fm.id, { vaultRoot: vault.root, ...(force ? {} : { expectedSha256: row.promoted_hash }) }); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "MEMORY_CONTENT_CHANGED") throw new Error("note changed since promotion");
+        throw error;
+      }
       vault.forgetFile(note.filePath);
       await recordAudit({ vaultRoot: vault.root, memoryId: note.fm.id, operation: "delete", actor: "user", actorDetail: "cli:drafts-undo", diffBefore: note.fm as unknown as Record<string, unknown>, diffAfter: null, filePath: note.filePath });
     }

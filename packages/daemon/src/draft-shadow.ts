@@ -262,30 +262,20 @@ export async function runDraftShadow(opts: DraftShadowOptions): Promise<DraftSha
   } catch { result.errors++; return result; } // no provider error bodies, quotes or commands in telemetry
 }
 
-/** Reuse only valid, model-bound vectors produced by the local shadow pass. */
-export async function readDraftVectors(opts: DraftShadowOptions, drafts: Draft[]): Promise<ReadonlyMap<string, Float32Array> | null> {
+/** Load the vector file once for a promotion pass, including legacy receipts. */
+export async function readDraftVectorState(opts: DraftShadowOptions, drafts: Draft[]): Promise<{ vectors: ReadonlyMap<string, Float32Array> | null; decisions: ReadonlyMap<string,string> }> {
   const provider = localDraftProvider(opts);
-  if (!provider) return null;
   const cache = await loadCache(draftVectorsPath());
-  if (!cache || cache.provider !== provider.id || cache.dim !== provider.dim) return null;
+  if (!provider || !cache || cache.provider !== provider.id || cache.dim !== provider.dim) return { vectors: null, decisions: cache?.decisions ?? new Map() };
   const vectors = new Map<string, Float32Array>();
   for (const draft of drafts) {
     const entry = cache.entries.get(draft.id);
     if (entry && entry.fp === draft.fp && entry.quoteHash === quoteHash(draft.quote)) vectors.set(draft.id, entry.vector);
   }
-  return vectors;
+  return { vectors, decisions: cache.decisions };
 }
 
-/** Decision receipts are adjacent to vectors, never in draft state. The key and
- * signature are hashes; no quotes, commands or private memory ids are stored. */
-export async function recordDraftDecision(key: string, signature: string): Promise<boolean> {
-  const path = draftVectorsPath();
-  return withPathLock(path, async () => {
-    const cache = await loadCache(path) ?? { provider: "decisions-only", dim: 1, entries: new Map(), decisions: new Map() };
-    if (cache.decisions.get(key) === signature) return false;
-    cache.decisions.delete(key); cache.decisions.set(key, signature);
-    while (cache.decisions.size > 1000) cache.decisions.delete(cache.decisions.keys().next().value!);
-    await saveCache(path, cache);
-    return true;
-  }, { crossProcess: true });
+/** Compatibility reader for callers that only need the same-model vectors. */
+export async function readDraftVectors(opts: DraftShadowOptions, drafts: Draft[]): Promise<ReadonlyMap<string, Float32Array> | null> {
+  return (await readDraftVectorState(opts, drafts)).vectors;
 }

@@ -34,7 +34,8 @@ export async function cmdDrafts(args: ParsedArgs): Promise<number> {
     }
     return 0;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "";
+    let message = error instanceof Error ? error.message : "";
+    if (message === "note changed since promotion") message += "; review it and use --force to undo";
     const known = ["draft is not a promoted note", "draft belongs to a different or unconfirmed vault", "note no longer matches draft provenance", "promotion receipt missing; review the note and use --force to undo", "note changed since promotion; review it and use --force to undo"];
     process.stderr.write(`error: ${sub === "undo" && known.includes(message) ? message : "cannot access local drafts"}\n`);
     return 1;

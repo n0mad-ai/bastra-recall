@@ -24,7 +24,7 @@ import { draftHintsEnabled } from "./draft-search.js";
 import { startDraftVocabulary } from "./draft-vocabulary.js";
 import { startDraftSearchCache, expireDrafts } from "./draft-store.js";
 import { sessionHarvestEnabled, runSessionHarvest, formatHarvestBlock, type HarvestCandidate } from "./session-harvest.js";
-import { writePendingSuggestion } from "./pending-suggestions.js";
+import { discardPendingSuggestion, writePendingSuggestion } from "./pending-suggestions.js";
 import { storedQuoteMatcher } from "./harvest-vault-match.js";
 import { loadTranscript } from "./stop-lane.js";
 
@@ -84,9 +84,24 @@ export async function runSessionHarvestTick(
   now = Date.now(),
 ) {
   if (!sessionHarvestEnabled()) return null;
-  const relays: { entry: { session_id: string; cwd?: string }; candidates: HarvestCandidate[] }[] = [];
+  const endpointOptions = {
+    provider: deps.rawProvider ?? null, ollama: deps.ollama, vault: deps.vault,
+    vaultVectors: () => {
+      const index = deps.embIdx();
+      if (!index) return null;
+      const identity = index.providerIdentity();
+      return { provider: identity.id, dim: identity.dim, vectors: index.currentSnapshot() };
+    },
+  };
+  const canBeSharp = await draftPromotionReady(endpointOptions);
+  const relays: { block: string; count: number }[] = [];
   const harvest = await runSessionHarvest({
-    relay: async (entry, candidates) => { relays.push({ entry, candidates }); },
+    // Probe/unavailable modes use the original harvest relay at its old seam.
+    // Sharp mode uses that same durable write before advancing the queue cursor.
+    ...(canBeSharp ? { relay: async (entry: { session_id: string; cwd?: string }, candidates: HarvestCandidate[]) => {
+      const block = formatHarvestBlock(entry, candidates);
+      await writePendingSuggestion(block); relays.push({ block, count: candidates.length });
+    } } : {}),
     vaultId: await draftVaultId(deps.vault.root).catch(() => undefined),
     loadTurns: transcript_path => loadTranscript({ transcript_path }),
     storedIn: () => storedQuoteMatcher(deps.vault, deps.search),
@@ -114,13 +129,9 @@ export async function runSessionHarvestTick(
     },
   };
   const promotion = await runDraftPromote(promoteOptions);
-  let relayed = 0;
-  if (!await draftPromotionReady(promoteOptions) || promotion.probeOnly || promotion.errors > 0 || promotion.wouldPromote > 0) {
-    const stored = storedQuoteMatcher(deps.vault, deps.search);
-    for (const relay of relays) {
-      const fresh = relay.candidates.filter(candidate => stored(candidate.quote) === null);
-      if (fresh.length) { await writePendingSuggestion(formatHarvestBlock(relay.entry, fresh)); relayed += fresh.length; }
-    }
+  let relayed = harvest.candidates;
+  if (canBeSharp && !promotion.probeOnly && promotion.errors === 0 && promotion.wouldPromote === 0) {
+    for (const relay of relays) if (await discardPendingSuggestion(relay.block)) relayed -= relay.count;
   }
   if (await draftPromotionReady(promoteOptions)) await expireDrafts({ now, memoryExists: async id => deps.vault.get(id) !== undefined });
   return { harvest, shadow, promotion, relayed };

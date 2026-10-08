@@ -54,6 +54,8 @@ export function draftVectorsPath(): string {
   return path.endsWith(".json") ? path.slice(0, -5) + ".vectors.json" : path + ".vectors.json";
 }
 
+export function draftDecisionsPath(): string { return draftsPath() + ".decisions.json"; }
+
 export function draftFingerprint(quote: string): string {
   const normalized = redactSecrets(quote, homedir()).text.normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]+/gu)?.join(" ") ?? "";
   return createHash("sha256").update(normalized).digest("hex").slice(0, 40);
@@ -406,6 +408,7 @@ export async function purgeDrafts(): Promise<void> {
   await withDraftPublication(() => withPathLock(path, async () => {
     await unlink(path).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
     await unlink(draftVectorsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
+    await unlink(draftDecisionsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
     cache = undefined;
   }, { crossProcess: true }));
 }
