@@ -420,10 +420,16 @@ test("D fix: 480 drafts/100 candidates/2000 notes yield and do not hold the draf
     fs.open = (async (...args: Parameters<typeof fs.open>) => { if(String(args[0]) === draftVectorsPath()) vectorReads++; return originalOpen(...args); }) as typeof fs.open;
     syncBuiltinESMExports();
     try {
-      const started = performance.now(), unchanged = await runDraftPromote(options), elapsed = performance.now()-started;
-      assert.equal(unchanged.errors,0); assert.equal(vectorReads,1,"one vector-file load per tick");
-      t.diagnostic(`unchanged 480/100/2000 tick ${elapsed.toFixed(1)}ms; vector loads ${vectorReads}`);
-      assert.ok(elapsed < 100,`unchanged tick ${elapsed}ms`);
+      const samples:number[]=[];
+      for(let sample=0;sample<3;sample++) {
+        const started=performance.now(), unchanged=await runDraftPromote(options);
+        samples.push(performance.now()-started);
+        assert.equal(unchanged.errors,0); assert.equal(unchanged.wouldPromote,0,"unchanged pass skips candidate math");
+      }
+      assert.equal(vectorReads,3,"one vector-file load per tick");
+      const median=[...samples].sort((a,b)=>a-b)[1];
+      t.diagnostic(`unchanged 480/100/2000 ticks ${samples.map(n=>n.toFixed(1)).join("/")}ms; median ${median.toFixed(1)}ms; one vector load each`);
+      assert.ok(median < 100,`unchanged tick median ${median}ms`);
     } finally { fs.open=originalOpen; syncBuiltinESMExports(); }
   } finally { clearInterval(ticker); }
 }));
