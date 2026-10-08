@@ -912,6 +912,26 @@ When evidence merges, the first matching shape replaces `typed` and is then
 retained.
 Drafts are secret-redacted and stored locally outside the vault. There is no
 per-session capture cap; the store's 500-row and 1 MiB limits still apply.
+
+Leading `local-command-stdout`, `bash-input`, `bash-stdout` and `command-message`
+wrappers are tool content, including attributed tags. Complete canonical pairs
+can be followed by a genuine owner prompt: only that suffix is captured.
+Broken, nested or noncanonical wrappers are excluded; inline/backtick tag quotes
+and ordinary human-typed shell commands remain owner text. The same boundary
+applies to prompt, transcript and direct harvest input. For agent-to-agent cmux
+traffic, both senders must use the [marked sender](./agent-messages.md).
+
+Credential redaction includes PSK/pre-shared-key assignments (PowerShell,
+environment variables, JSON, query parameters and supported CLI flags), even
+with low-entropy values. Quote, question context and command situation are
+cleaned before cues are derived; promoted title, summary, body and recall cues
+are redacted again. This does not repair older rows, notes, transcripts or
+backups. If a real key was stored, rotate it first. Inspect affected drafts and
+derived notes locally as the owner; remove confirmed affected data through the
+supported draft/vault tools, preserving human quotes and audit history. `drafts
+purge` clears the whole local store and is not a selective repair; do not use it
+as an automatic migration. Review changed promoted notes before `drafts undo`;
+it refuses changes by default. Do not paste secrets into bug reports.
 Both limits evict unshown single-evidence open drafts first, then other open
 drafts, and closed tombstones last; oldest within each group goes first.
 Capture writes at most once per session; cleanup writes only when it changes
