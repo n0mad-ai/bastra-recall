@@ -61,7 +61,7 @@ interface LoadedMemoryTrace {
 // bleibt. 180s war zu kurz für die reale Load→Edit-Kadenz: an recall-
 // lastigen Tagen fiel KEIN einziger Load in das Fenster (Audit 26.6.). 600s
 // = 10 min, konsistent mit HOOK_HINT_WINDOW_MS; env-tunbar.
-const ACTED_ON_WINDOW_MS = envInt("BASTRA_ACTED_ON_WINDOW_MS", 600_000);
+export const ACTED_ON_WINDOW_MS = envInt("BASTRA_ACTED_ON_WINDOW_MS", 600_000);
 const SCORE_FLOOR = envInt("BASTRA_RECALL_FLOOR", 30);
 const MUST_LOAD_SCORE = envInt("BASTRA_MUST_LOAD_SCORE", 100);
 

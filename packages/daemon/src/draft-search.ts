@@ -5,6 +5,7 @@ import { draftSearchSnapshot, updateRetrievedDrafts, type Draft } from "./draft-
 import { weightedContainment, STORED_CONTAINMENT_MIN } from "./harvest-vault-match.js";
 import { tokens } from "./save-similarity.js";
 import { measurePayload } from "./recall-budget.js";
+import { recordDraftHints } from "./draft-use.js";
 import { mutateSessionState } from "./session-state.js";
 
 /** Unmeasured retrieval thresholds from #1084; not semantic similarity. */
@@ -134,10 +135,7 @@ export async function appendLaneDrafts(
       state.draftShown = [...shown].slice(-500);
     });
     if (!selected.length) return stdout;
-    const input = new Set(tokens(queries.join(" ")));
-    await updateRetrievedDrafts([], selected.map(hit => ({ id: hit.id, session_id: sessionId,
-      novel: tokens(hit.quote).filter(token => !input.has(token)).slice(0, 32),
-    })));
+    await recordDraftHints(selected.map(hit => hit.id), sessionId, queries.join(" "));
     const envelope = JSON.parse(stdout);
     const output = envelope.hookSpecificOutput ?? { hookEventName: event };
     const block = formatDraftHints(selected);

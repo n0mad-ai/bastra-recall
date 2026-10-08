@@ -33,7 +33,7 @@ const draftSchema = z.object({
   }).passthrough().default({ before: [], after: [], reads: [], lits: [] }),
   evidence: z.array(z.object({ session_id: z.string(), turn: z.number().int().nonnegative(), ts: timestamp, client: z.string().optional() }).passthrough()).min(1),
   created: timestamp, last_touched: timestamp,
-  surfaced: z.array(z.object({ session_id: z.string(), ts: timestamp, novel: z.array(z.string()) }).passthrough()).default([]),
+  surfaced: z.array(z.object({ session_id: z.string(), ts: timestamp, novel: z.array(z.string()), used: z.object({ ts: timestamp, tool: z.string(), exit_code: z.literal(0), matched: z.array(z.string()) }).optional() }).passthrough()).default([]),
   state: z.enum(["open", "promoted", "rejected"]).default("open"),
   vault_id: z.string().optional(),
   memory_id: z.string().optional(), evidence_key: z.string().optional(), announce: z.boolean().optional(),
@@ -81,7 +81,9 @@ function sanitize(input: unknown, now: number, fallback = now): Draft | null {
     },
     // Opaque identifiers (often UUIDs) must keep their identity across sessions.
     evidence: d.evidence.map((e) => ({ ...e, ts: time(e.ts), session_id: e.session_id.slice(0, 200), client: optional(e.client) })),
-    surfaced: d.surfaced.slice(-5).map((s) => ({ ...s, ts: time(s.ts), session_id: s.session_id.slice(0, 200), novel: strings(s.novel, 32, 160) })),
+    surfaced: d.surfaced.slice(-5).map((s) => ({ ...s, ts: time(s.ts), session_id: s.session_id.slice(0, 200), novel: strings(s.novel, 32, 160),
+      ...(s.used ? { used: { ...s.used, ts: time(s.used.ts), tool: clean(s.used.tool, 80), matched: strings(s.used.matched, 3, 160) } } : {}),
+    })),
     memory_id: d.memory_id?.slice(0, 200), evidence_key: d.evidence_key?.slice(0, 200),
     last_touched: Math.max(time(d.last_touched), time(d.created), ...d.evidence.map((e) => time(e.ts)), ...d.surfaced.map((s) => time(s.ts))),
   };

@@ -9,6 +9,7 @@ import { redactSecrets } from "@bastra-recall/core/scrub";
 import { scanForInjection } from "@bastra-recall/core";
 import { localDraftProvider, readDraftVectors, type DraftShadowOptions } from "./draft-shadow.js";
 import { transactDrafts, type Draft } from "./draft-store.js";
+import { draftUseProof } from "./draft-use.js";
 import { tokens } from "./save-similarity.js";
 import { weightedContainment, STORED_CONTAINMENT_MIN } from "./harvest-vault-match.js";
 import { saveMemoryWithAuditTrail, recordAudit } from "./audit-trail.js";
@@ -55,7 +56,7 @@ function closeRows(rows: Draft[], state: "promoted" | "rejected", memoryId: stri
 }
 
 /** Verbatim evidence, deterministic cues; never generalizes or calls a text model. */
-export function buildDraftNote(rows: Draft[], df: ReadonlyMap<string, number>): SaveMemoryInput {
+export function buildDraftNote(rows: Draft[], df: ReadonlyMap<string, number>, trigger: "repeat" | "use" = "repeat"): SaveMemoryInput {
   const key = draftEvidenceKey(rows);
   const first = rows[0];
   const candidateScope = first.situation.project ?? "all-projects";
@@ -69,12 +70,17 @@ export function buildDraftNote(rows: Draft[], df: ReadonlyMap<string, number>): 
   const recallWhen = [...new Set([...literalCues.slice(0, 8), ...rows.flatMap(row => row.context ? [row.context] : []), rareWords.join(" ")])].filter(Boolean);
   const evidence = evidenceOf(rows);
   const body = [
-    "User quotes from separate sessions; derived from repetition. Verify before relying on them.",
+    trigger === "use" ? "User quote from an earlier session; derived from successful use in another session. Verify before relying on it."
+      : "User quotes from separate sessions; derived from repetition. Verify before relying on them.",
     ...rows.map(row => ["", `Quote (${row.kind}):`, row.quote, ...(row.context ? ["Context:", row.context] : []),
       "Situation:", ...[row.situation.project, row.situation.cwd, row.situation.branch].filter(Boolean),
       ...row.situation.before.map(command => `Before: ${command}`), ...row.situation.after.map(command => `After: ${command}`),
       ...row.situation.reads.map(path => `Read: ${path}`)].join("\n")),
     "", "Evidence:", ...evidence.map(e => `- session ${e.session_id}; turn ${e.turn}; ${new Date(e.ts).toISOString()}; client ${e.client ?? "unknown"}`),
+    ...(trigger === "use" ? rows.flatMap(row => {
+      const proof = draftUseProof(row);
+      return proof?.used ? ["", "Use evidence:", `- session ${proof.session_id}; displayed ${new Date(proof.ts).toISOString()}; used ${new Date(proof.used.ts).toISOString()}; tool ${proof.used.tool}; exit 0; tokens ${proof.used.matched.join(", ")}`] : [];
+    }) : []),
   ].join("\n");
   return {
     id: `draft-${key}`, title: first.quote.replace(/\s+/g, " ").slice(0, 100), summary: first.quote,
@@ -118,15 +124,16 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
       let complete = compatible && notes.every(note => validVector(noteVectors?.get(note.fm.id), provider.dim));
       for (const row of rows) {
         if (row.state !== "open") continue;
+        const use = draftUseProof(row);
         const pair = distinctSessions([row]) >= 2 ? [row] : rows.filter(other => {
           if (other.id === row.id || other.state !== "open" || other.evidence.some(e => row.evidence.some(a => a.session_id === e.session_id))) return false;
           if (row.fp === other.fp) return true;
           const a = vectors?.get(row.id), b = vectors?.get(other.id);
           return !!provider && validVector(a, provider.dim) && validVector(b, provider.dim) && cosine(a, b) >= DRAFT_REPEAT_COSINE_MIN;
         }).slice(0, 1).map(other => other);
-        const evidenceRows = pair.length === 1 && pair[0] === row ? [row] : pair.length ? [row, pair[0]] : [];
-        if (!evidenceRows.length || !evidenceRows.every(rareEnough)) continue;
-        const input = buildDraftNote(evidenceRows, df);
+        const evidenceRows = use ? [row] : pair.length === 1 && pair[0] === row ? [row] : pair.length ? [row, pair[0]] : [];
+        if (!evidenceRows.length || !use && !evidenceRows.every(rareEnough)) continue;
+        const input = buildDraftNote(evidenceRows, df, use ? "use" : "repeat");
         // Redact the complete outgoing note, not only its first quote.
         for (const field of ["title", "summary", "body"] as const) input[field] = redactSecrets(input[field], homedir()).text;
         input.recall_when = input.recall_when.map(cue => redactSecrets(cue, homedir()).text);
@@ -167,7 +174,7 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
           : evidenceRows.some(d => !validVector(vectors?.get(d.id), provider.dim)) ? "draft-vectors-missing"
           : process.env.BASTRA_DRAFT_PROMOTE !== "1" ? "dry-run" : null;
         if (reason) { result.wouldPromote++; events.push({ kind: "draft_would_promote", ...eventBase, reason }); continue; }
-        const saved = await saveMemoryWithAuditTrail({ vaultRoot: opts.vault.root, input, actor: "system", actorDetail: "draft:repeat-promotion", sessionId: evidenceRows[0].evidence[0].session_id });
+        const saved = await saveMemoryWithAuditTrail({ vaultRoot: opts.vault.root, input, actor: "system", actorDetail: use ? "draft:use-promotion" : "draft:repeat-promotion", sessionId: evidenceRows[0].evidence[0].session_id });
         await opts.vault.reindexFile(saved.file_path);
         closeRows(evidenceRows, "promoted", saved.id, draftEvidenceKey(evidenceRows), now);
         // Subsequent candidates in this tick see the newly written note. Missing
