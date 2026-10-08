@@ -192,8 +192,7 @@ test("engines: a Bash cat/tail of a real file classifies the same as an equivale
     };
     const bash = (command: string) => ({ name: "Bash", input: { command } });
 
-    // the exact shape docs/design/2026-09-17-...-three-days-measured.md §4
-    // named as invisible: a hook-style recall, then a plain `cat`/`tail` of a
+    // the shape a measured run found invisible (#459): a hook-style recall, then a plain `cat`/`tail` of a
     // log outside the vault. It must land where the equivalent Read would.
     const readPath = join(dir, "elsewhere.md");
     assert.equal(
@@ -463,7 +462,6 @@ test("live specimens: real hashed observations replay to their recorded class, a
   const seen = new Set<string>();
   for (const specimen of specimens) {
     assert.equal(classifyReviewedMissObservation(specimen.observation), specimen.classification, specimen.lane + ":" + specimen.classification);
-    assert.equal(classifyReviewedMissObservation(specimen.observation), classifyReviewedMissObservation(structuredClone(specimen.observation)));
     seen.add(specimen.classification);
     if (specimen.observation.target.kind === "vault-object" && specimen.observation.pool) {
       // revert-check on the real shape: flip the one proof the class rests on and the class must move
@@ -479,6 +477,15 @@ test("live specimens: real hashed observations replay to their recorded class, a
       const erased = structuredClone(specimen.observation);
       erased.pool = null;
       assert.equal(classifyReviewedMissObservation(erased), "unknown");
+    }
+    if (specimen.observation.target.kind === "external-read") {
+      // the recorded class came from this classifier; the flip is what makes the replay bite
+      const durable = structuredClone(specimen.observation);
+      if (durable.target.kind === "external-read") {
+        durable.target.reviewerDurable = true;
+        durable.target.vaultChecked = { snapshotId: hash("vault:checked"), idCount: 1 };
+      }
+      assert.equal(classifyReviewedMissObservation(durable), "vault-gap", "a durable label against a checked snapshot turns the read into a vault gap");
     }
   }
   // fixture-only classes are named, not assumed: this list is the current live coverage
