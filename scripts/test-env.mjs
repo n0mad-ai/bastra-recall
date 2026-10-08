@@ -69,6 +69,11 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
       if (/^(BASTRA|NEXUS)_/.test(key) && !CALLER_CHOSEN_OUTPUTS.has(key)) delete process.env[key];
     }
   }
+  // Tool-specific homes can bypass os.homedir(). A child inside this run may
+  // deliberately supply its own fixture, but developer exports never reach it.
+  for (const key of Object.keys(process.env)) {
+    if (["CLAUDE_CONFIG_DIR", "CODEX_HOME", "APPDATA", "LOCALAPPDATA"].includes(key) || key.startsWith("XDG_")) delete process.env[key];
+  }
   const root = mkdtempSync(join(tmpdir(), "bastra-test-run-"));
   process.env.BASTRA_TEST_RUN_ROOT = root;
   // Isolate every homedir-based fallback, including tools' configuration.
@@ -78,6 +83,10 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
   process.env.USERPROFILE = runHome;
   process.env.HOMEDRIVE = parse(runHome).root.replace(/[\\/]$/, "");
   process.env.HOMEPATH = runHome.slice(process.env.HOMEDRIVE.length);
+  // npm exports its resolved cache/userconfig into npx children; changing HOME
+  // alone cannot override those exports. Both spellings are valid npm inputs.
+  process.env.npm_config_cache = process.env.NPM_CONFIG_CACHE = join(runHome, ".npm");
+  process.env.npm_config_userconfig = process.env.NPM_CONFIG_USERCONFIG = join(runHome, ".npmrc");
   process.env.BASTRA_BRIDGES_PATH = join(runHome, ".bastra", "bridges");
   process.env.BASTRA_COMMONS_PATH = join(runHome, ".bastra", "commons");
   // Obtain a currently unused loopback port; never probe the operator's daemon.
@@ -102,7 +111,7 @@ if (!process.env.BASTRA_TEST_RUN_ROOT) {
   process.env.BASTRA_ARCHIVE_DIR = join(root, "archive");
   const removeRoot = () => {
     // This is checked once for the entire process tree, before cleanup.
-    const expected = new Set([".bastra", ".claude", ".claude.json", ".codex", ".cursor", ".cmuxterm", ".config", ".cache"]);
+    const expected = new Set([".bastra", ".claude", ".claude.json", ".codex", ".cursor", ".cmuxterm", ".config", ".cache", ".npm", "Library", "AppData"]);
     const unexpected = existsSync(runHome) ? readdirSync(runHome).filter(name => !expected.has(name)) : [];
     const cacheDir = join(runHome, ".cache");
     if (existsSync(cacheDir)) unexpected.push(...readdirSync(cacheDir).filter(name => name !== "deno").map(name => `.cache/${name}`));
