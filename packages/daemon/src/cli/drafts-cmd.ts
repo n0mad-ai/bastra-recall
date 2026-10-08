@@ -8,7 +8,7 @@ import type { ParsedArgs } from "./types.js";
 export async function cmdDrafts(args: ParsedArgs): Promise<number> {
   const sub = args.positional[1] ?? "list";
   if (!["list", "purge", "undo"].includes(sub) || args.positional.length > (sub === "undo" ? 3 : 2) || sub === "undo" && !args.positional[2]) {
-    process.stderr.write("usage: bastra drafts [list|purge|undo <id>] [--json]\n");
+    process.stderr.write("usage: bastra drafts [list|purge|undo <id>] [--json] [--vault <path>] [--force]\n");
     return 2;
   }
   try {
@@ -18,7 +18,7 @@ export async function cmdDrafts(args: ParsedArgs): Promise<number> {
       const vault = new Vault(resolved.path);
       try {
         await vault.init();
-        const memoryId = await undoDraftPromotion(vault, args.positional[2]);
+        const memoryId = await undoDraftPromotion(vault, args.positional[2], Date.now(), args.force);
         process.stdout.write(args.json ? JSON.stringify({ undone: memoryId }) + "\n" : `Draft promotion undone: ${memoryId}\n`);
       } finally { await vault.stop(); }
     } else if (sub === "purge") {
@@ -33,9 +33,10 @@ export async function cmdDrafts(args: ParsedArgs): Promise<number> {
       }
     }
     return 0;
-  } catch {
-    // Do not echo malformed file content or a secret-bearing override path.
-    process.stderr.write("error: cannot access local drafts\n");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const known = ["draft is not a promoted note", "draft belongs to a different or unconfirmed vault", "note no longer matches draft provenance", "promotion receipt missing; review the note and use --force to undo", "note changed since promotion; review it and use --force to undo"];
+    process.stderr.write(`error: ${sub === "undo" && known.includes(message) ? message : "cannot access local drafts"}\n`);
     return 1;
   }
 }

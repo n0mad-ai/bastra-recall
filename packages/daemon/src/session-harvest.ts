@@ -277,6 +277,7 @@ export async function runSessionHarvest(opts: {
    *  Absent = no vault check. */
   storedIn?: () => (quote: string) => string | null;
   vaultId?: string;
+  relay?: (entry: { session_id: string; cwd?: string }, candidates: HarvestCandidate[]) => Promise<void>;
   now?: number;
 }): Promise<HarvestPassResult> {
   const result: HarvestPassResult = { harvested: 0, candidates: 0, stored: 0 };
@@ -340,8 +341,10 @@ export async function runSessionHarvest(opts: {
         drafts.error = true;
       }
       candidates = candidates.slice(0, HARVEST_MAX_CANDIDATES);
-      // Assumption, not confirmed by the owner: relay yields only in sharp mode.
-      if (process.env.BASTRA_DRAFT_PROMOTE !== "1" && candidates.length > 0) await writePendingSuggestion(formatHarvestBlock(e, candidates));
+      if (candidates.length > 0) {
+        if (opts.relay) await opts.relay(e, candidates);
+        else await writePendingSuggestion(formatHarvestBlock(e, candidates));
+      }
       progress.set(e.session_id, { upto: turns.length, at: now });
       result.harvested += 1;
       result.candidates += candidates.length;

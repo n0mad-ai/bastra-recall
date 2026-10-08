@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 /**
  * The save orchestration: build the frontmatter, resolve the target, commit the
  * file, report what happened.
@@ -7,7 +8,7 @@
  * (the id-level claim) and `save-target.ts` (where the file goes). They were
  * split out when this file passed 800 lines; nothing changed but the location.
  */
-import { writeFile, unlink, rename, link } from "node:fs/promises";
+import { writeFile, unlink, rename, link, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import matter from "gray-matter";
 import { SUMMARY_MAX } from "./summary.js";
@@ -636,13 +637,16 @@ export interface DeleteMemoryResult {
 export async function deleteMemoryFile(
   filePath: string,
   id: string,
-  opts: { vaultRoot: string },
+  opts: { vaultRoot: string; expectedSha256?: string },
 ): Promise<DeleteMemoryResult> {
   return withIdClaim(
     { vaultRoot: opts.vaultRoot, id, filePath, op: "delete_memory_file" },
     async () => {
       if (!(await fileExists(filePath))) {
         throw new Error(`memory file not found: ${filePath}`);
+      }
+      if (opts.expectedSha256 !== undefined && createHash("sha256").update(await readFile(filePath)).digest("hex") !== opts.expectedSha256) {
+        throw new Error("note changed since promotion; review it and use --force to undo");
       }
       const occupant = readOccupant(filePath);
       if (occupant.kind !== "memory" || occupant.id !== id) {

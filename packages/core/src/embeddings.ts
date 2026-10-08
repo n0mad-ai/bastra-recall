@@ -325,7 +325,6 @@ export class EmbeddingIndex {
     return this.vectors;
   }
 
-  /** Anzahl Memories die noch auf Embedding warten (Backfill-Queue). */
   /** Current-content vectors only. Automatic writers must not use an old
    * vector while a note's changed text is waiting in the embedding queue. */
   currentSnapshot(): ReadonlyMap<string, Float32Array> {
@@ -335,6 +334,7 @@ export class EmbeddingIndex {
     }));
   }
 
+  /** Anzahl Memories die noch auf Embedding warten (Backfill-Queue). */
   pendingSize(): number {
     return this.pendingQueue.size;
   }
