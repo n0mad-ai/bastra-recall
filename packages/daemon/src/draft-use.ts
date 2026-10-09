@@ -80,7 +80,7 @@ export async function recordDraftUse(input: DraftUseInput): Promise<number> {
         const literalMatches = [...new Set(novel.filter(token => literalShape(token) && literalInput.has(token)))];
         const wordMatches = [...new Set(novel.filter(token => !literalShape(token) && /\p{L}/u.test(token) && wordInput.has(token)))];
         if (!literalMatches.length && wordMatches.length < DRAFT_USE_MIN_WORD_TOKENS) continue;
-        surface.used = { ts: now, tool: cleanDraftText(toolName, 80), exit_code: 0,
+        surface.used = { ts: now, tool: toolName, exit_code: 0,
           matched: (literalMatches.length ? literalMatches : wordMatches).slice(0, 3) };
         row.last_touched = now; count++;
       }

@@ -97,8 +97,12 @@ export function handleHookRecall(
 
   readJsonBody(req, MAX_BODY_BYTES)
     .then(async (body) => {
-      for(const field of ["session_id","tool_name","client","project","cwd","agent_id"])
+      for(const field of ["session_id","tool_name","client","agent_id"])
         if(typeof body[field]==="string")body[field]=cleanDraftField(body[field] as string,field==="tool_name"?80:200);
+      // project and cwd are paths the recall itself reads: single-line, but
+      // neither clipped nor stripped of the joiners a folder name may carry.
+      for(const field of ["project","cwd"])
+        if(typeof body[field]==="string")body[field]=(body[field] as string).replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu,"");
       const query = typeof body.query === "string" ? body.query.trim() : "";
       if (!query) {
         if (wantsSse) {

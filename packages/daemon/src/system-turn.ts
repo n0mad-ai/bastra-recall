@@ -1,4 +1,4 @@
-import { scrubInjectedBlocks } from "@bastra-recall/core/scrub";
+import { INJECTED_BLOCK_TAGS, scrubInjectedBlocks } from "@bastra-recall/core/scrub";
 /**
  * Turns Claude Code and Codex deliver with role "user" although nobody typed
  * them (#639, #649, #703, #701). One predicate for every reader of user turns —
@@ -100,17 +100,115 @@ export function ownerPromptText(prompt: string): string | null {
   const head = textAfterToolWrappers(prompt);
   if (head === null) return null;
   if (isCommandEcho(head)) return head;
-  if(isSystemInjectedTurn(head))return null;
-  const owner=textBeforeAgentBand(scrubInjectedBlocks(head).text);
-  return owner && !isSystemInjectedTurn(owner)?owner:null;
+  if (isSystemInjectedTurn(head)) return null;
+  const owner = textBeforeAgentBand(head);
+  if (owner === null || isSystemInjectedTurn(owner)) return null;
+  if (!carriesInjectedBlock(owner)) return owner;
+  // A block the daemon injected can hide a band behind it. Only then is the
+  // prompt cut; a block the owner quotes comes back as they typed it.
+  const scrubbed = scrubInjectedBlocks(owner).text;
+  const typed = textBeforeAgentBand(scrubbed);
+  if (typed === null || isSystemInjectedTurn(typed)) return null;
+  return typed === scrubbed.trim() ? owner : typed;
 }
 
-/** A line-start agent band ends owner evidence. Backtick quotations are data. */
-export function textBeforeAgentBand(text:string):string|null {
-  const unquoted=text.replace(/(`+)[\s\S]*?\1/g,m=>m.replace(/[^\r\n]/g," "));
-  const marker=/(?:^|\r?\n)[ \t\u200b\u200d\u2060]*<(?:agent|teammate|cross-session)-message(?=[\s>]|$)/i.exec(unquoted);
-  const owner=(marker?text.slice(0,marker.index):text).trimStart();
-  return owner.trim() && !(marker && owner.trim()===AGENT_MAIL_WRAPPER)?owner.trimEnd():null;
+/**
+ * Linear gate in front of `scrubInjectedBlocks`: its block pattern rescans the
+ * rest of the text for every opening tag that never closes, which is quadratic
+ * on a megabyte of them. No closing tag after an opening one, nothing to remove.
+ */
+export function carriesInjectedBlock(text: string): boolean {
+  const lower = text.toLowerCase();
+  if (!lower.includes("</")) return false;
+  return INJECTED_BLOCK_TAGS.some((tag) => {
+    const open = lower.indexOf(`<${tag}`);
+    return open >= 0 && lower.indexOf(`</${tag}>`, open) >= 0;
+  });
+}
+
+/**
+ * Complete backtick quotations blanked to spaces; offsets and line breaks are
+ * kept. A run of backticks closes at the next run of the same length, a run
+ * without one is literal. A scanner, not a back-referencing pattern: that one
+ * took 47 s on a megabyte of shrinking runs.
+ */
+function maskBacktickQuotes(text: string): string {
+  const runs: Array<{ start: number; length: number }> = [];
+  for (let i = text.indexOf("`"); i >= 0; ) {
+    let end = i + 1;
+    while (text[end] === "`") end++;
+    runs.push({ start: i, length: end - i });
+    i = text.indexOf("`", end);
+  }
+  if (runs.length < 2) return text;
+  const sameLength = new Map<number, number[]>();
+  runs.forEach((run, r) => {
+    const list = sameLength.get(run.length);
+    if (list) list.push(r);
+    else sameLength.set(run.length, [r]);
+  });
+  // Per length, the position in its list only moves forward.
+  const cursor = new Map<number, number>();
+  const parts: string[] = [];
+  let last = 0;
+  for (let r = 0; r < runs.length; r++) {
+    const { start, length } = runs[r];
+    const list = sameLength.get(length)!;
+    let c = cursor.get(length) ?? 0;
+    while (c < list.length && list[c] <= r) c++;
+    cursor.set(length, c);
+    if (c === list.length) continue;
+    const close = runs[list[c]];
+    parts.push(text.slice(last, start), text.slice(start, close.start + length).replace(/[^\r\n]/g, " "));
+    last = close.start + length;
+    r = list[c];
+  }
+  parts.push(text.slice(last));
+  return parts.join("");
+}
+
+// An attribute or the end of the text (cut delivery) makes the tag a band on
+// its own. A bare tag followed by a space and more words, never closed, is a
+// sentence about the tag.
+const AGENT_BAND = /(^|\r?\n)([ \t\u200b\u200d\u2060]*)<(?:agent|teammate|cross-session)-message(?:(?=(\s+[\w-]+=|\s*$))|(?=[\s>]))/gi;
+const AGENT_BAND_PROSE = />[ \t]+\S/y;
+const AGENT_BAND_CLOSE = /<\/(?:agent|teammate|cross-session)-message\s*>/gi;
+
+/** Four columns of indentation after a blank line: a Markdown code block. */
+function isIndentedCode(text: string, lineBreak: number, indent: string): boolean {
+  if (!indent.includes("\t") && indent.split(" ").length <= 4) return false;
+  let i = lineBreak - 1;
+  while (i >= 0 && (text[i] === " " || text[i] === "\t" || text[i] === "\r")) i--;
+  return i >= 0 && text[i] === "\n";
+}
+
+/**
+ * A line-start agent band ends owner evidence. The line start is the one in
+ * the text as written: a tag after a backtick quotation on the same line, or
+ * inside one, is data, and so is one in an indented code block.
+ */
+export function textBeforeAgentBand(text: string): string | null {
+  let unquoted: string | undefined;
+  let lastClose: number | undefined;
+  let marker: number | undefined;
+  for (const match of text.matchAll(AGENT_BAND)) {
+    const tag = match.index + match[1].length + match[2].length;
+    if (match[1] && isIndentedCode(text, match.index, match[2])) continue;
+    unquoted ??= maskBacktickQuotes(text);
+    if (unquoted[tag] !== "<") continue;
+    AGENT_BAND_PROSE.lastIndex = match.index + match[0].length;
+    if (match[3] === undefined && AGENT_BAND_PROSE.test(text)) {
+      if (lastClose === undefined) {
+        lastClose = -1;
+        for (const close of unquoted.matchAll(AGENT_BAND_CLOSE)) lastClose = close.index;
+      }
+      if (lastClose < tag) continue;
+    }
+    marker = match.index;
+    break;
+  }
+  const owner = (marker === undefined ? text : text.slice(0, marker)).trimStart();
+  return owner.trim() && !(marker !== undefined && owner.trim() === AGENT_MAIL_WRAPPER) ? owner.trimEnd() : null;
 }
 
 /** Recover owner prose after complete leading tool wrappers. Never use the
@@ -124,8 +222,7 @@ export function textAfterToolWrappers(text: string): string | null {
     if (!match) {
       // A printed closing delimiter must not promote the rest of tool output.
       // Complete backtick quotations in a genuine suffix remain ordinary text.
-      const unquoted = rest.replace(/(`+)[\s\S]*?\1/g, "");
-      return stripped && TOOL_WRAPPER_TAG.test(unquoted) ? null : rest;
+      return stripped && TOOL_WRAPPER_TAG.test(rest) && TOOL_WRAPPER_TAG.test(maskBacktickQuotes(rest)) ? null : rest;
     }
     const tag = match[1];
     // Detection is case-insensitive, but only canonical pairs can recover prose.

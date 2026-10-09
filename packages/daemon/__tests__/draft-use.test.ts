@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Vault, SearchIndex, type EmbeddingProvider } from "@bastra-recall/core";
 import { draftNovelTokens, recordDraftHints, recordDraftUse, draftUseProof } from "../src/draft-use.js";
 import { ACTED_ON_WINDOW_MS } from "../src/telemetry-join-state.js";
+import { cleanDraftField } from "../src/draft-text.js";
 import { captureDraft, listDrafts, draftFingerprint, draftId, transactDrafts, type Draft } from "../src/draft-store.js";
 import { runDraftPromote, draftVaultId, undoDraftPromotion } from "../src/draft-promote.js";
 import { runDraftShadow } from "../src/draft-shadow.js";
@@ -129,4 +130,20 @@ test("E a private existing note in other words blocks used-draft promotion witho
 test("E an after-command literal qualifies while a before-command literal does not",()=>isolated(async(_v,row)=>{
  await transactDrafts(async rows=>{rows[0].situation.after=["cat after-only9.cfg"];});await hinted(row);
  assert.equal(await acted("cat secret-before9.cfg"),0);assert.equal(await acted("cat after-only9.cfg"),1);
+}));
+test("E opaque session ids keep their identity: two hex or ULID sessions are two readers",()=>isolated(async(_v,row)=>{
+ for(const[a,b]of[["9f8e7d6c5b4a39281706f5e4d3c2b1a0","0a1b2c3d4e5f60718293a4b5c6d7e8f9"],["01JABCDEFGHJKMNPQRSTVWXYZ0","01JABCDEFGHJKMNPQRSTVWXYZ1"],["ses_6f2a9b1c3d4e5f6a7b8c9d0e","ses_6f2a9b1c3d4e5f6a7b8c9d0f"]]){
+  assert.equal(cleanDraftField(a),a);assert.notEqual(cleanDraftField(a),cleanDraftField(b));
+  assert.equal(await hinted(row,"spectrometer calibration",a),1);assert.equal(await hinted(row,"spectrometer calibration",b),1,"a second session is not the first");
+  assert.equal(await acted("cat packet7.conf",b),1);
+  const surfaced=(await listDrafts())[0].surfaced;assert.ok(surfaced.some(s=>s.session_id===a&&!s.used));assert.ok(surfaced.some(s=>s.session_id===b&&s.used));
+ }
+}));
+test("E line separators in session_id and tool_name never reach the stored proof or the note body",()=>isolated(async(vault,row)=>{
+ assert.equal(cleanDraftField("rea\u2028d\u2029e\nr\u200b"),"reader");
+ assert.equal(await hinted(row,"spectrometer calibration","rea\u2028der"),1);
+ assert.equal(await recordDraftUse({sessionId:"rea\u2028der",toolName:"Ba\u2028s\u2029h",excerpt:"cat packet7.conf",exitCode:0,now:clock+20}),1);
+ const surface=(await listDrafts())[0].surfaced[0];assert.equal(surface.session_id,"reader");assert.equal(surface.used?.tool,"Bash");
+ await runDraftShadow({provider,ollama:local,vault});assert.equal((await runDraftPromote(options(vault))).promoted,1);
+ const body=vault.list()[0].body;assert.doesNotMatch(body,/[\u2028\u2029]/);assert.match(body,/session reader/);
 }));

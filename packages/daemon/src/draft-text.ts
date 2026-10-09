@@ -21,7 +21,16 @@ export function cleanDraftText(text: string, max = 200): string {
   return clipDraftText(redactSecrets(clipDraftText(text, max), homedir()).text, max);
 }
 
-/** Opaque client metadata is single-line, bounded and secret-redacted. */
+const UNPRINTED = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+
+/** Opaque client identifiers (session_id, tool_name, client) must keep their
+ * identity: single-line and bounded, never secret-redacted. A redacted id makes
+ * distinct sessions collapse into one "[REDACTED]". */
 export function cleanDraftField(text: string, max = 200): string {
-  return redactSecrets(text.replace(/[\p{Cc}\p{Cf}]/gu,""),homedir()).text.slice(0,max);
+  return text.replace(UNPRINTED, "").slice(0, max);
+}
+
+/** Client-supplied paths and names: single-line, bounded and secret-redacted. */
+export function cleanDraftLine(text: string, max = 200): string {
+  return redactSecrets(text.replace(UNPRINTED, ""), homedir()).text.slice(0, max);
 }

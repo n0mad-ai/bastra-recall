@@ -118,3 +118,51 @@ test('bridge teachers see only the human prefix, not appended agent mail',async(
  const events=[{origin:'owner',kind:'hook_recall',ts:'2026-10-08T00:00:00Z',query:human+'\n<Agent-Message>agent report',dimensions:{hook_source:'prompt'}},{origin:'owner',kind:'hook_recall',ts:'2026-10-08T00:00:00Z',query:'<recall-hints>hook</recall-hints>\n<agent-message>agent report',dimensions:{hook_source:'prompt'}}];
  const filtered=bridgeTeachingEvents(events);assert.equal(filtered.length,1);assert.equal(filtered[0].query,human);
 });
+
+test("a tag quoted after backticks, in an indented code block or explained in prose stays owner text", () => {
+  for (const text of [
+    '`tail log` <agent-message from="x"> shows up, please explain.',
+    human + '\n`npm test` <agent-message from="x"> was in the log afterwards, why?',
+    human + '\n\n    <agent-message from="x">\n\nIs that the envelope?',
+    human + "\n<agent-message> is the marker, right?",
+    human + " it`s so.\nThen `<agent-message>` is a literal",
+    "What does `<recall-hints>fixture</recall-hints>` in my log mean?",
+  ]) {
+    assert.equal(ownerPromptText(text), text);
+    const turns = normalizeTurns([{ role: "user", content: text }]);
+    assert.equal(turns[0].role, "user");
+    assert.deepEqual(normalizeTurns(turns), turns);
+  }
+  const quoted = human + '\n`npm test` <agent-message from="x"> was in the log afterwards, why?';
+  assert.equal(normalizeTurns([{ role: "user", content: quoted }])[0].content, quoted);
+  // The band itself still ends owner evidence, indented or behind a block.
+  const envelope = marked();
+  for (const text of [human + "\n" + envelope, human + "\n    " + envelope, human + "\n<recall-hints>fixture</recall-hints>" + envelope, human + "\n<agent-message"]) {
+    assert.equal(ownerPromptText(text), human);
+    assert.equal(normalizeTurns([{ role: "user", content: text }])[0].content, human);
+  }
+});
+
+test("a megabyte of backtick runs, unclosed blocks or band candidates is read in linear time", () => {
+  const size = 1_000_000;
+  const repeat = (part: string) => part.repeat(Math.ceil(size / part.length)).slice(0, size);
+  const shrinking = Array.from({ length: 1400 }, (_, i) => "`".repeat(1400 - i) + "a").join("");
+  for (const [shape, text] of [
+    ["shrinking backtick runs after a wrapper", "<bash-stdout>a</bash-stdout>" + shrinking],
+    ["shrinking backtick runs before a band", "hello " + shrinking + "\n<agent-message from=\"x\">"],
+    ["single backticks before a wrapper tag", "<bash-stdout>a</bash-stdout>" + repeat("a` ") + "<bash-stderr>"],
+    ["unclosed recall-hints", "hello " + repeat("<recall-hints>")],
+    ["unclosed system-reminder", "hello " + repeat("<system-reminder>")],
+    ["bare band candidates", "hello " + repeat("\n<agent-message>")],
+    ["quoted band candidates", "hello " + repeat("`a`\n<agent-message x=`\n")],
+  ] as const) {
+    const start = performance.now();
+    ownerPromptText(text);
+    const prompt = performance.now() - start;
+    normalizeTurns([{ role: "user", content: text }]);
+    const turn = performance.now() - start - prompt;
+    // Measured 1-20 ms; the quadratic forms took 10-140 s.
+    assert.ok(prompt < 2000, `${shape}: ownerPromptText took ${Math.round(prompt)} ms`);
+    assert.ok(turn < 4000, `${shape}: normalizeTurns took ${Math.round(turn)} ms`);
+  }
+});
