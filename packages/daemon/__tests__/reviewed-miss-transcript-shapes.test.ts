@@ -157,6 +157,38 @@ test("a recall asked again before any evidence step joins the chain; one after t
   assert.deepEqual(apart.map((chain) => chain.explicitMiss), [false, true]);
 });
 
+test("a recall that returned no candidate is an empty pool; a recall with no recorded pool is still none", async () => {
+  // The daemon's own shape for an empty result: `hits: []`, no `candidate_pool`,
+  // and the score space under the event's own `score_kind` / `score_arms`.
+  const noPool = (extra: Record<string, unknown>): string =>
+    line({ kind: "recall", ts: later(0), recall_id: "r2", vault_size: 3, k: 4, session_id: "run-1", score_kind: "bm25", score_arms: ["bm25"], ...extra });
+  const second = [uses({ id: "t2", name: RECALL, input: { query: "owner" } }), results({ id: "t2", envelope: envelope([], { recall_id: "r2" }) })];
+  const lanesOf = async (r2: string[], loaded: string): Promise<{ classes: string[]; targets: string[]; gaps: string[] }> => {
+    const { dir, engines } = await world([TWO_POOLS[0], ...r2]);
+    try {
+      const jsonl = single("r1", ["served-one"], ...second, load(loaded));
+      const lanes = observeLanes([{ jsonl, fileName: "sess-A.jsonl" }], null, engines, { hookLane: false, hubSessions: 3 });
+      return { classes: lanes.transcript.map((pair) => pair.record.classification), targets: lanes.proposals.map((p) => p.targetId), gaps: lanes.gaps.map((gap) => gap.kind) };
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  };
+  const empty = [noPool({ hit_count: 0, hits: [] })];
+  assert.deepEqual(await lanesOf(empty, "served-one"), { classes: ["served-hit"], targets: [], gaps: [] });
+  // The union of one pool and an empty one is still a whole pool: absence from it is a proof.
+  assert.deepEqual(await lanesOf(empty, "third"), { classes: ["genuine-out-of-pool"], targets: ["third"], gaps: [] });
+  // No pool to judge against, and the gap says so: the evidence step was a load_memory, not an opaque read.
+  const missing: Array<[string, string[]]> = [
+    ["no event for the recall", []],
+    ["hits served, no pool recorded", [noPool({ hit_count: 1, hits: [{ id: "deep-two", score: 10 }] })]],
+    ["neither hits nor pool on the event", [noPool({})]],
+    ["no score space on the event", [line({ kind: "recall", ts: later(0), recall_id: "r2", vault_size: 3, k: 4, hits: [] })]],
+  ];
+  for (const [name, r2] of missing) {
+    assert.deepEqual(await lanesOf(r2, "served-one"), { classes: ["unknown"], targets: [], gaps: ["chain-without-pool"] }, name);
+  }
+});
+
 test("a harness-written user turn neither ends the chain nor becomes the query", () => {
   const harnessTurns: Array<[string, unknown]> = [
     ["task notification", "<task-notification>\n<task-id>a1</task-id>\n<status>completed</status>\n</task-notification>"],

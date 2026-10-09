@@ -45,7 +45,11 @@ produce anything but `unknown`.
   made for one intent — is judged against the union of their pools; served is
   what the envelopes listed plus what telemetry recorded as served. One recall
   of the chain without a recorded pool, or two with different score spaces,
-  and there is no pool: `unknown`.
+  and there is no pool: `unknown`, reported as the gap `chain-without-pool`.
+  The daemon writes no `candidate_pool` for a search that returned no
+  candidate. Such an event is a known empty pool when it says so itself — no
+  pool, `hits: []`, its own `score_kind` / `score_arms` — and joins like any
+  other; an event with hits and no pool, or with no `hits`, is no pool.
 - **vault-snapshot** — `--vault DIR`, enumerated once: hashed relative paths,
   parsed ids (`occupantOfRaw` from core), per-file birth time read from the
   same descriptor as the text, declared `created`. The snapshot id is the hash
