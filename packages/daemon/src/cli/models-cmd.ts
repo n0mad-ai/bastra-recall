@@ -9,12 +9,13 @@
  *   bastra models set <tag>  pull <tag> + persist it as the generation model
  *
  * And the answers to a release's model recommendation (model-recommendation.ts),
- * as plain subcommands so an agent can run them once the user has decided:
+ * as plain subcommands so an agent can run them once the user has decided. Each
+ * names the recommendation it answers — the notice prints the full command:
  *
- *   bastra models switch     pull the recommended model, test it, then switch
- *   bastra models later      ask again in 7 days
- *   bastra models dismiss    do not ask again for this recommendation
- *   bastra models ask        the question itself — what `bastra update` ends with
+ *   bastra models switch <id> <model>   pull the recommended model, test it, then switch
+ *   bastra models later <id>            ask again in 7 days
+ *   bastra models dismiss <id>          do not ask again for this recommendation
+ *   bastra models ask                   the question itself — what `bastra update` ends with
  */
 import { detectHardware, recommendTextModel } from "./hardware.js";
 import { resolveGenerationModel, readSettings, GENERATION_MODEL_DEFAULT } from "../settings.js";
@@ -24,8 +25,10 @@ import {
   DISMISS_STILL_OPEN,
   DISMISS_WARNING,
   currentModelOffer,
+  decisionCommand,
   envOverrideNote,
   formatModelNotice,
+  machineRecommendation,
   modelOfferFacts,
   pendingModelNotice,
   recordModelAnswer,
@@ -36,6 +39,8 @@ import {
 function write(line: string): void {
   process.stdout.write(line + "\n");
 }
+
+type Choice = "switch" | "later" | "dismiss";
 
 /** Injected by tests only: a recommendation, the machine, the pull and the prompt. */
 export interface ModelsDeps extends OfferOptions {
@@ -68,20 +73,14 @@ export async function cmdModels(opts: {
     }
     case "switch":
     case "later":
-    case "dismiss": {
-      // Open at any time, whatever was answered before: a "dismiss" must not
-      // lock the user out of switching later.
-      const offer = await currentModelOffer(deps);
-      if (!offer) {
-        write("Nothing to decide: there is no model recommendation open for this machine.");
-        return 0;
-      }
-      return answer(opts.sub as "switch" | "later" | "dismiss", offer, deps);
-    }
+    case "dismiss":
+      return cmdAnswer(opts.sub as Choice, opts.positional?.[2], opts.positional?.[3], deps);
     case "ask":
       return cmdAsk(deps);
     default:
-      process.stderr.write("usage: bastra models [status | recommend | set <tag> | switch | later | dismiss]\n");
+      process.stderr.write(
+        "usage: bastra models [status | recommend | set <tag> | switch <id> <model> | later <id> | dismiss <id>]\n",
+      );
       return 2;
   }
 }
@@ -122,52 +121,110 @@ async function cmdSet(model: string, settingsPath?: string): Promise<number> {
 }
 
 /**
- * Carries out one of the three answers. A failed switch records nothing — the
+ * `bastra models switch | later | dismiss`, typed by the user or run by an
+ * agent on the user's say-so.
+ *
+ * The answer is checked against what THIS release recommends for this machine
+ * — not against the model in effect in this shell. The daemon that showed the
+ * notice may run with a different environment (a model pinned here is not
+ * pinned there) or still be the previous version with a different
+ * recommendation. So the command has to name what it answers, and an answer to
+ * anything else is refused without changing a thing: a yes to model A must
+ * never download model B.
+ *
+ * Open at any time, whatever was answered before: a "dismiss" must not lock
+ * the user out of switching later.
+ */
+async function cmdAnswer(choice: Choice, id: string | undefined, model: string | undefined, deps: ModelsDeps): Promise<number> {
+  const offer = await machineRecommendation(deps);
+  const answered = id ? `${id}${model ? ` (${model})` : ""}` : null;
+  if (!offer) {
+    if (!answered) {
+      write("Nothing to decide: there is no model recommendation open for this machine.");
+      return 0;
+    }
+    write(`✗ ${answered} is not a recommendation of this bastra version for this machine.`);
+    write("Nothing was changed.");
+    return 1;
+  }
+  if (!id || (choice === "switch" && !model)) {
+    process.stderr.write(
+      `Say which recommendation you are answering — the full command is:\n  ${decisionCommand(choice, offer)}\nNothing was changed.\n`,
+    );
+    return 2;
+  }
+  if (id !== offer.id || (choice === "switch" && model !== offer.model)) {
+    write(`✗ ${answered} is not the current recommendation. This bastra version recommends ${offer.model} (${offer.id}, about ${offer.sizeGB} GB download).`);
+    write("Nothing was changed. 'bastra models' shows the current recommendation and its commands.");
+    return 1;
+  }
+  return answer(choice, offer, deps);
+}
+
+/**
+ * Carries out one of the three answers to `offer` — the offer the user was
+ * shown, never one recomputed here. A failed switch records nothing — the
  * setting is unchanged, so the question is still open.
  */
-async function answer(choice: "switch" | "later" | "dismiss", offer: ModelOffer, deps: ModelsDeps): Promise<number> {
-  if (choice === "later") {
-    await recordModelAnswer(offer.id, "later", deps.settingsPath, deps.now);
-    write(`OK — the generation model stays ${offer.current}. You will be asked again in 7 days; 'bastra models switch' works any time.`);
-    return 0;
-  }
-  if (choice === "dismiss") {
-    await recordModelAnswer(offer.id, "dismissed", deps.settingsPath, deps.now);
-    write(`OK — the generation model stays ${offer.current}. From now on ${DISMISS_WARNING}.`);
-    write(`Still open to you: ${DISMISS_STILL_OPEN}.`);
+async function answer(choice: Choice, offer: ModelOffer, deps: ModelsDeps): Promise<number> {
+  if (choice !== "switch") {
+    try {
+      await recordModelAnswer(offer.id, choice === "later" ? "later" : "dismissed", deps.settingsPath, deps.now);
+    } catch (e) {
+      write(`✗ ${(e as Error).message}`);
+      write("Nothing was changed.");
+      return 1;
+    }
+    if (choice === "later") {
+      write(`OK — the generation model stays ${offer.current}. You will be asked again in 7 days; until then 'bastra models' shows the recommendation.`);
+    } else {
+      write(`OK — the generation model stays ${offer.current}. From now on ${DISMISS_WARNING}.`);
+      write(`Still open to you: ${DISMISS_STILL_OPEN}.`);
+    }
     return 0;
   }
   // What `bastra models set <previous>` has to name: the stored choice, not a
   // model an env variable currently pins over it.
   const previous = (await readSettings(deps.settingsPath)).generation?.model ?? GENERATION_MODEL_DEFAULT;
   write(`Switching the generation model to ${offer.model} (about ${offer.sizeGB} GB download if it is not present yet) …`);
-  const r = await (deps.enable ?? enableGenerationModel)(offer.model, { dryRun: false, verify: true }, deps.settingsPath);
+  // The model and the answer "switched" are stored together, inside enable.
+  const r = await (deps.enable ?? enableGenerationModel)(
+    offer.model,
+    { dryRun: false, verify: true, recommendationId: offer.id },
+    deps.settingsPath,
+  );
   if (!r.activated) {
     write(`✗ ${r.message}`);
     write(`Nothing was changed — the generation model stays ${offer.current}.`);
     return 1;
   }
-  await recordModelAnswer(offer.id, "switched", deps.settingsPath, deps.now);
   write(`✓ ${r.message}`);
-  write(`The previous model ${previous} is still installed. Switch back any time: bastra models set ${previous}`);
+  if (previous !== offer.model) {
+    write(`The previous model ${previous} is still installed. Switch back any time: bastra models set ${previous}`);
+  }
   const env = envOverrideNote(offer);
   if (env) write(`Note: ${env}`);
   return 0;
 }
 
 /**
- * The question, for whoever has not answered yet. On a terminal it waits for
- * one of three answers; anywhere else it only prints the notice, and no answer
- * (Ctrl-C, EOF) records nothing — silence is never consent to a download.
+ * Puts the question to the user on a terminal and carries out the answer.
+ * Enter or anything unclear is "later" — never a download. No answer at all
+ * (Ctrl-C, EOF) records no answer.
+ *
+ * What IS recorded, before the question, is that it was asked: the terminal
+ * asks about one recommendation once. Without that note, a user who waves the
+ * question away would get it again after every command.
  */
-async function cmdAsk(deps: ModelsDeps): Promise<number> {
-  const offer = await pendingModelNotice(deps);
-  if (!offer) return 0;
-  write("");
-  if (!(deps.interactive ?? isInteractive())) {
-    write(formatModelNotice(offer));
+async function askQuestion(offer: ModelOffer, deps: ModelsDeps): Promise<number> {
+  try {
+    await recordModelAnswer(offer.id, "asked", deps.settingsPath, deps.now);
+  } catch {
+    // The settings file cannot take a note (it is corrupt, and says so on every
+    // run). Asking without being able to remember it would ask forever.
     return 0;
   }
+  write("");
   for (const line of modelOfferFacts(offer)) write(line);
   const env = envOverrideNote(offer);
   if (env) write(`Note: ${env}`);
@@ -179,4 +236,18 @@ async function cmdAsk(deps: ModelsDeps): Promise<number> {
   if (/^s(witch)?$/i.test(reply)) return answer("switch", offer, deps);
   if (/^n(o|ever)?$/i.test(reply)) return answer("dismiss", offer, deps);
   return answer("later", offer, deps);
+}
+
+/**
+ * `bastra models ask` — what `bastra update` ends with, for whoever has not
+ * answered yet. On a terminal it asks; anywhere else it only prints the notice
+ * and never waits.
+ */
+async function cmdAsk(deps: ModelsDeps): Promise<number> {
+  const offer = await pendingModelNotice(deps);
+  if (!offer) return 0;
+  if (deps.interactive ?? isInteractive()) return askQuestion(offer, deps);
+  write("");
+  write(formatModelNotice(offer));
+  return 0;
 }

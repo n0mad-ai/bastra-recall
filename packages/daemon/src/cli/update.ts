@@ -360,13 +360,18 @@ export function patchReapplyRoot(
  * none. Best-effort: if the installed cli cannot be found or started, the
  * SessionStart block and the CLI hint still carry the notice.
  */
-function askModelRecommendation(installed: InstalledRuntime | null): void {
-  if (!installed) return;
+export function askModelRecommendation(
+  installed: InstalledRuntime | null,
+  /** Tests capture the child's output; `bastra update` hands it the terminal. */
+  stdio: "inherit" | "pipe" = "inherit",
+): ReturnType<typeof spawnSync> | null {
+  if (!installed) return null;
   const cli = existsFile(resolve(dirname(installed.script), "cli.js"));
-  if (!cli) return;
+  if (!cli) return null;
   // An hour: the answer may start a multi-GB pull. Without a terminal the
   // child prints and returns at once, so nothing unattended waits on this.
-  spawnSync(installed.node, [cli, "models", "ask"], { stdio: "inherit", timeout: 3_600_000 });
+  // Its exit code is not the update's: the update is done at this point.
+  return spawnSync(installed.node, [cli, "models", "ask"], { stdio, timeout: 3_600_000 });
 }
 
 function existsFile(path: string): string | null {

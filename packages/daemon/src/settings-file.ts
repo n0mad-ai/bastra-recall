@@ -171,7 +171,10 @@ export interface CliSettings {
   promptImpact?: { enabled?: boolean };
 }
 
-export const MODEL_RECOMMENDATION_ANSWERS = ["switched", "later", "dismissed"] as const;
+// "asked" is not an answer: the question was put to the user on a terminal and
+// got none (Ctrl-C). It keeps every other surface asking and only stops the
+// terminal from asking a second time for the same recommendation.
+export const MODEL_RECOMMENDATION_ANSWERS = ["switched", "later", "dismissed", "asked"] as const;
 export type ModelRecommendationAnswer = (typeof MODEL_RECOMMENDATION_ANSWERS)[number];
 
 /**
@@ -275,6 +278,28 @@ function warnAboutUnknownKeys(data: unknown, path: string): void {
   process.stderr.write(
     `[bastra-recall] cli-settings.json: unknown key(s) ${unknown.join(", ")} — this build does not understand them and the next write will drop them (${path})\n`,
   );
+}
+
+/**
+ * True when the file exists, has content, and is not valid JSON — the one
+ * state in which `readSettings` hands out defaults for settings that are
+ * really there, and a write would replace the file with those defaults. A
+ * caller that must not lose the user's other settings asks this first.
+ */
+export async function settingsFileIsCorrupt(path: string = settingsFilePath()): Promise<boolean> {
+  let raw: string;
+  try {
+    raw = await readFile(path, "utf8");
+  } catch {
+    return false;
+  }
+  if (raw.trim() === "") return false;
+  try {
+    JSON.parse(raw);
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 /**

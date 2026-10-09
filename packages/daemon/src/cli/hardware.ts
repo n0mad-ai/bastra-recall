@@ -70,30 +70,53 @@ const HIGH_GB = 32;
  * themselves (model-recommendation.ts) — nothing ever switches on its own.
  */
 export interface ModelRecommendation {
-  /** Stable identifier. "Don't ask again" is remembered per id, so a NEW
-   *  recommendation needs a NEW id — and an unchanged one must keep its id. */
+  /** Stable identifier. "Don't ask again" is remembered per id, and the answer
+   *  commands name it — so a NEW recommendation needs a NEW id, and an unchanged
+   *  one must keep its id. */
   id: string;
-  /** One sentence, user-facing: what gets better with the recommended model. */
-  improves: string;
-  /** The recommended model per hardware tier (no entry below the 16 GB baseline:
-   *  those machines run no text model). `sizeGB` is the download size. */
-  models: Record<Exclude<TextModelRec["tier"], "keyword-only">, { model: string; sizeGB: number }>;
+  /**
+   * The recommended model per hardware tier. A tier without an entry gets no
+   * recommendation (and below the 16 GB baseline there is none to give: those
+   * machines run no text model). `sizeGB` is the download size; `improves` is
+   * one honest, user-facing sentence on what gets better with THIS model — per
+   * tier, because a 12B is not better in the same way a 4B is.
+   */
+  models: Partial<
+    Record<Exclude<TextModelRec["tier"], "keyword-only">, { model: string; sizeGB: number; improves: string }>
+  >;
 }
 
 /**
  * THE active recommendation of this release, or null for "none".
  *
- * null is the shipped state: no notice anywhere, and the ladder below is what
- * the installer offers. To activate a recommendation, replace null with the
- * data — this is the only place:
+ * null is the shipped state: existing installs see no notice anywhere. To
+ * activate the recommendation, replace `null` with the block below — this is
+ * the only place. The `improves` sentences are covered by
+ * docs/local-model-comparison.md (measured against gemma3:4b on one 24 GB
+ * machine); keep them in step with that page, and give a changed
+ * recommendation a new id.
  *
  *   export const MODEL_RECOMMENDATION: ModelRecommendation | null = {
- *     id: "2026-11-example",
- *     improves: "Sharper search keywords and a stricter draft check.",
+ *     id: "2026-10-tev1",
  *     models: {
- *       baseline: { model: "example:4b", sizeGB: 3.3 },
- *       enhanced: { model: "example:4b", sizeGB: 3.3 },
- *       high: { model: "example:12b", sizeGB: 8.1 },
+ *       baseline: {
+ *         model: "tev1:4b",
+ *         sizeGB: 4.5,
+ *         improves:
+ *           "Compared with gemma3:4b: fewer wrong verdicts in the draft check, much harder to steer with injected text, and a more accurate reranker — at a similar answer time.",
+ *       },
+ *       enhanced: {
+ *         model: "tev1:4b",
+ *         sizeGB: 4.5,
+ *         improves:
+ *           "Compared with gemma3:4b: fewer wrong verdicts in the draft check, much harder to steer with injected text, and a more accurate reranker — at a similar answer time.",
+ *       },
+ *       high: {
+ *         model: "gemma4:12b",
+ *         sizeGB: 8.1,
+ *         improves:
+ *           "Compared with gemma3:4b: fewer wrong verdicts in the draft check, harder to steer with injected text, and a clearly more accurate reranker — at about three times the answer time.",
+ *       },
  *     },
  *   };
  *
@@ -131,8 +154,10 @@ export function recommendTextModel(
   const ladder = ladderTextModel(ramGB);
   if (!recommendation || ladder.tier === "keyword-only") return ladder;
   const pick = recommendation.models[ladder.tier];
+  if (!pick) return ladder;
   return {
-    ...pick,
+    model: pick.model,
+    sizeGB: pick.sizeGB,
     tier: ladder.tier,
     note: `${ramGB} GB — ${pick.model} is the current bastra-recall recommendation for this machine.`,
     ...(ladder.alt && ladder.alt.model !== pick.model ? { alt: ladder.alt } : {}),

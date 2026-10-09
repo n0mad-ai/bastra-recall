@@ -25,7 +25,9 @@
 import { spawn } from "node:child_process";
 import { findExecutable, run, type RunResult } from "./exec.js";
 import { ollamaChat } from "../learned-recall/reranker.js";
-import { getOllamaAutostart, setEmbeddingProvider, setGenerationModel } from "../settings.js";
+import { getOllamaAutostart, setEmbeddingProvider, setGenerationModel, settingsFilePath } from "../settings.js";
+import { settingsFileIsCorrupt } from "../settings-file.js";
+import { recordModelAnswer } from "../model-recommendation.js";
 
 const OLLAMA_URL = (process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434").replace(/\/+$/, "");
 const EMBED_MODEL = process.env.BASTRA_EMBEDDING_MODEL ?? "embeddinggemma";
@@ -200,14 +202,20 @@ export async function ollamaModelPresent(name: string): Promise<boolean> {
  * the pull, the new model has to answer one short real call before the setting
  * changes. Files on disk are not proof a model loads on this machine. Whatever
  * fails, the stored choice is untouched — it is written last, and nothing here
- * removes a model.
+ * removes a model. A settings file that is not valid JSON is refused up front
+ * (before a multi-GB pull): writing to it would replace every other setting
+ * with defaults.
+ *
+ * `recommendationId` makes the switch the answer to that recommendation: the
+ * model and "switched" go into the file in ONE write (recordModelAnswer), so
+ * there is never a new model without its answer or the reverse.
  *
  * Idempotent: an already-present model skips the pull. `settingsPath` and
  * `cli` (where the `ollama` binary is, how a pull runs) are injectable for tests.
  */
 export async function enableGenerationModel(
   model: string,
-  opts: { dryRun: boolean; verify?: boolean } = { dryRun: false },
+  opts: { dryRun: boolean; verify?: boolean; recommendationId?: string } = { dryRun: false },
   settingsPath?: string,
   cli: { find: () => string | null; pull: (ollamaPath: string, model: string) => RunResult } = {
     find: () => findExecutable("ollama"),
@@ -216,6 +224,13 @@ export async function enableGenerationModel(
 ): Promise<EnsureResult> {
   if (opts.dryRun) {
     return { status: "would-install", activated: false, message: `would pull ${model} + persist generation.model` };
+  }
+  if (opts.verify && (await settingsFileIsCorrupt(settingsPath))) {
+    return {
+      status: "error",
+      activated: false,
+      message: `the settings file is not valid JSON — fix or delete ${settingsPath ?? settingsFilePath()} first`,
+    };
   }
   const ollamaPath = cli.find();
   if (!ollamaPath || !(await serverVersion())) {
@@ -239,7 +254,15 @@ export async function enableGenerationModel(
       return { status: "error", activated: false, message: `${model} is downloaded but did not answer a test call (${failure})` };
     }
   }
-  await setGenerationModel(model, settingsPath);
+  if (opts.recommendationId) {
+    try {
+      await recordModelAnswer(opts.recommendationId, "switched", settingsPath, Date.now(), model);
+    } catch (e) {
+      return { status: "error", activated: false, message: `${model} is ready, but the setting could not be saved (${(e as Error).message})` };
+    }
+  } else {
+    await setGenerationModel(model, settingsPath);
+  }
   return {
     status: "activated",
     activated: true,
@@ -247,14 +270,26 @@ export async function enableGenerationModel(
   };
 }
 
-/** One short real generation. Null when the model answered, else the reason.
- *  The timeout covers a cold load of a 12B model, not just the few tokens. */
-async function testCallFailure(model: string): Promise<string | null> {
+/**
+ * One short real generation. Null when the model answered, else the reason.
+ * The timeout covers a cold load of a 12B model, not just the few tokens.
+ *
+ * It has to be THIS machine's Ollama that answers, or the check proves nothing
+ * about the model that was just pulled here: loopback only, and a redirect is
+ * a failure, not something to follow (same rule as the draft check).
+ * `baseURL` is a parameter for tests.
+ */
+export async function testCallFailure(model: string, baseURL: string = OLLAMA_URL): Promise<string | null> {
+  if (!isLoopbackOllamaURL(baseURL)) {
+    return `the test call only runs against a local Ollama, not ${baseURL} — use 'bastra models set ${model}' to switch without it`;
+  }
   try {
-    const answer = await ollamaChat({ baseURL: OLLAMA_URL, model, timeoutMs: 180_000 })("Reply with the single word: ok");
+    const answer = await ollamaChat({ baseURL, model, timeoutMs: 180_000, redirect: "error" })("Reply with the single word: ok");
     return answer.trim().length > 0 ? null : "empty answer";
   } catch (e) {
-    return (e as Error).message;
+    // fetch reports a refused redirect as a bare "fetch failed"; the cause names it.
+    const cause = (e as { cause?: { message?: string } }).cause?.message;
+    return cause ? `${(e as Error).message}: ${cause}` : (e as Error).message;
   }
 }
 

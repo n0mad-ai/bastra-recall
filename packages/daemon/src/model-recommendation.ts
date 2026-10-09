@@ -26,7 +26,7 @@ import {
   resolveGenerationModel,
   settingsFilePath,
 } from "./settings.js";
-import type { ModelRecommendationAnswer } from "./settings-file.js";
+import { settingsFileIsCorrupt, type ModelRecommendationAnswer } from "./settings-file.js";
 
 export const MODEL_COMPARISON_URL =
   "https://github.com/n0mad-ai/bastra-recall/blob/main/docs/local-model-comparison.md";
@@ -56,26 +56,39 @@ export interface OfferOptions {
 }
 
 /**
- * The recommendation as it applies to this machine, or null when there is
- * nothing to offer: no active recommendation, a machine below the 16 GB tier
- * (it runs no text model), or the recommended model is already in effect.
+ * What the release recommends for THIS machine, whatever model runs on it —
+ * or null: no active recommendation, a machine below the 16 GB tier (it runs no
+ * text model), or a recommendation that has nothing for this tier.
+ *
+ * This is what an answer is checked against. It deliberately does not look at
+ * the model in effect: that depends on the environment of the process asking,
+ * and the shell that answers is not the daemon that asked.
+ */
+export async function machineRecommendation(opts: OfferOptions = {}): Promise<ModelOffer | null> {
+  const recommendation = opts.recommendation === undefined ? MODEL_RECOMMENDATION : opts.recommendation;
+  if (!recommendation) return null;
+  const { tier } = recommendTextModel(opts.ramGB ?? detectRamGB(), null);
+  if (tier === "keyword-only") return null;
+  const pick = recommendation.models[tier];
+  if (!pick) return null;
+  const current = await resolveGenerationModel(opts.settingsPath);
+  // Same order as resolveGenerationModel, so the name is the variable that won.
+  const envName = process.env.BASTRA_EXPAND_MODEL !== undefined ? "BASTRA_EXPAND_MODEL" : "BASTRA_RERANK_MODEL";
+  const envOverride = (process.env[envName] ?? "").trim().length > 0 ? envName : null;
+  return { id: recommendation.id, ...pick, current, envOverride };
+}
+
+/**
+ * The recommendation as an offer: null as well when the recommended model is
+ * already the one in effect here.
  *
  * A deliberately chosen model — stored or pinned by env — is offered the
  * recommendation like any other. Ignores the user's earlier answer: this is
  * what `bastra models` shows at any time.
  */
 export async function currentModelOffer(opts: OfferOptions = {}): Promise<ModelOffer | null> {
-  const recommendation = opts.recommendation === undefined ? MODEL_RECOMMENDATION : opts.recommendation;
-  if (!recommendation) return null;
-  const { tier } = recommendTextModel(opts.ramGB ?? detectRamGB(), null);
-  if (tier === "keyword-only") return null;
-  const pick = recommendation.models[tier];
-  const current = await resolveGenerationModel(opts.settingsPath);
-  if (current === pick.model) return null;
-  // Same order as resolveGenerationModel, so the name is the variable that won.
-  const envName = process.env.BASTRA_EXPAND_MODEL !== undefined ? "BASTRA_EXPAND_MODEL" : "BASTRA_RERANK_MODEL";
-  const envOverride = (process.env[envName] ?? "").trim().length > 0 ? envName : null;
-  return { id: recommendation.id, model: pick.model, sizeGB: pick.sizeGB, improves: recommendation.improves, current, envOverride };
+  const offer = await machineRecommendation(opts);
+  return offer && offer.current !== offer.model ? offer : null;
 }
 
 /**
@@ -84,34 +97,67 @@ export async function currentModelOffer(opts: OfferOptions = {}): Promise<ModelO
  *
  * Silent when update notices are off (`BASTRA_UPDATE_CHECK=off` or
  * `update.mode off`: this notice arrives with an update, and whoever turned
- * those off did not ask to hear about this one), when the generation model
- * never runs here (it needs Ollama as the embedding provider — an 8 GB
- * download for a model nothing calls is not a recommendation), and when the
- * user has answered: "switched" and "dismissed" for good, "later" for 7 days.
- * An answer to an older recommendation id does not count.
+ * those off did not ask to hear about this one), when nothing on this install
+ * uses a text model (see textModelInUse), and when the user has answered:
+ * "switched" and "dismissed" for good, "later" for 7 days. An answer to an
+ * older recommendation id does not count, and "asked" is not an answer.
  */
 export async function pendingModelNotice(opts: OfferOptions = {}): Promise<ModelOffer | null> {
   if ((await effectiveUpdateMode(opts.settingsPath)) === "off") return null;
   const offer = await currentModelOffer(opts);
   if (!offer) return null;
-  if ((await resolveEmbeddingChoice({ path: opts.settingsPath })).provider !== "ollama") return null;
+  if (!(await textModelInUse(offer, opts.settingsPath))) return null;
   const note = (await readSettings(opts.settingsPath)).modelRecommendation;
-  if (note?.id === offer.id) {
+  if (note?.id === offer.id && note.answer !== "asked") {
     if (note.answer !== "later") return null;
-    if ((opts.now ?? Date.now()) - Date.parse(note.at) < REMIND_AFTER_MS) return null;
+    // A timestamp that is unreadable or lies in the future (a clock that was
+    // set back) must not silence the reminder for good: only a real, elapsed
+    // wait of under 7 days does.
+    const waited = (opts.now ?? Date.now()) - Date.parse(note.at);
+    if (waited >= 0 && waited < REMIND_AFTER_MS) return null;
   }
   return offer;
 }
 
-/** Remembers the user's answer to recommendation `id`. */
+/**
+ * Does anything on this install run the text model?
+ *
+ * Inside the daemon all three jobs (trigger expansion, the draft check, the
+ * search copilot) start only when Ollama is the embedding provider. Outside it,
+ * `bastra bridges harvest` reranks with the same model whatever the embedding
+ * provider is — but only for someone who set a text model up. So: Ollama
+ * embeddings, or a text model the user chose (stored, or pinned by env). An
+ * install with neither would be recommended a multi-GB download nothing calls.
+ */
+async function textModelInUse(offer: ModelOffer, settingsPath?: string): Promise<boolean> {
+  if (offer.envOverride) return true;
+  if ((await readSettings(settingsPath)).generation?.model !== undefined) return true;
+  return (await resolveEmbeddingChoice({ path: settingsPath })).provider === "ollama";
+}
+
+/**
+ * Remembers the user's answer to recommendation `id` — and, for a switch, the
+ * new model in the SAME write. One transaction under the settings lock: a
+ * crash or a full disk leaves both or neither, and two processes cannot end
+ * with one's model next to the other's answer.
+ *
+ * Throws instead of writing when the settings file is not valid JSON: the
+ * normal write path would replace it with defaults plus this one field and
+ * lose every other setting, which is no way to record a model decision.
+ */
 export async function recordModelAnswer(
   id: string,
   answer: ModelRecommendationAnswer,
   path: string = settingsFilePath(),
   now: number = Date.now(),
+  model?: string,
 ): Promise<void> {
+  if (await settingsFileIsCorrupt(path)) {
+    throw new Error(`${path} is not valid JSON — fix or delete it first`);
+  }
   await mutateSettings(path, (current) => ({
     ...current,
+    ...(model ? { generation: { model } } : {}),
     modelRecommendation: { id, answer, at: new Date(now).toISOString() },
   }));
 }
@@ -142,14 +188,19 @@ export function modelOfferFacts(offer: ModelOffer): string[] {
 export const DISMISS_WARNING =
   "this notice will not come back for this recommendation, and you may be giving up better recall quality";
 /** …and what stays possible afterwards. Always said together with the warning. */
-export const DISMISS_STILL_OPEN = "'bastra models' keeps showing the recommendation and 'bastra models switch' works any time";
+export const DISMISS_STILL_OPEN = "'bastra models' keeps showing the recommendation and you can still switch later";
 
-/** The three answers as commands, one per line. */
-export const MODEL_DECISION_COMMANDS = [
-  "bastra models switch    switch now",
-  "bastra models later     keep the current model, ask again in 7 days",
-  `bastra models dismiss   stop asking — ${DISMISS_WARNING}; ${DISMISS_STILL_OPEN}`,
-];
+/**
+ * The command for one of the three answers. It names the recommendation — and
+ * for a switch the model — so the answer can only be carried out on what the
+ * user was shown: a CLI that meanwhile ships a different recommendation than
+ * the daemon that printed this refuses it instead of pulling something else.
+ */
+export function decisionCommand(choice: "switch" | "later" | "dismiss", offer: ModelOffer): string {
+  return choice === "switch"
+    ? `bastra models switch ${offer.id} ${offer.model}`
+    : `bastra models ${choice} ${offer.id}`;
+}
 
 /** The plain notice for a terminal: the CLI hint and `bastra update` without a TTY. */
 export function formatModelNotice(offer: ModelOffer): string {
@@ -158,7 +209,9 @@ export function formatModelNotice(offer: ModelOffer): string {
     ...modelOfferFacts(offer),
     ...(env ? [`Note: ${env}`] : []),
     "Decide with:",
-    ...MODEL_DECISION_COMMANDS.map((c) => `  ${c}`),
+    `  ${decisionCommand("switch", offer)}   switch now`,
+    `  ${decisionCommand("later", offer)}   keep the current model, ask again in 7 days`,
+    `  ${decisionCommand("dismiss", offer)}   stop asking — ${DISMISS_WARNING}; ${DISMISS_STILL_OPEN}`,
   ].join("\n");
 }
 
@@ -176,13 +229,14 @@ export function formatModelSessionBlock(offer: ModelOffer): string {
     modelOfferFacts(offer).join("\n") +
     `\n` +
     `Tell the user about this recommendation, including the download size, and ASK whether they want to switch. ` +
-    `Never switch on your own: run none of the commands below before the user has answered explicitly.\n` +
-    `- The user says yes → run \`bastra models switch\`. It downloads ${offer.model}, checks it with a short test call ` +
+    `Never switch on your own: run none of the commands below before the user has answered explicitly, ` +
+    `and run them exactly as written — they name this recommendation, and bastra refuses them if it has changed.\n` +
+    `- The user says yes → run \`${decisionCommand("switch", offer)}\`. It downloads ${offer.model}, checks it with a short test call ` +
     `and only then changes the setting; if anything fails, nothing changes. The old model stays installed ` +
     `(switch back: \`bastra models set ${offer.current}\`).\n` +
-    `- The user says later → run \`bastra models later\` (asks again in 7 days).\n` +
+    `- The user says later → run \`${decisionCommand("later", offer)}\` (asks again in 7 days).\n` +
     `- The user says no / stop asking → FIRST tell them what that means: ${DISMISS_WARNING}; ${DISMISS_STILL_OPEN}. ` +
-    `Only when they confirm after hearing that, run \`bastra models dismiss\` (a future, new recommendation asks again).\n` +
+    `Only when they confirm after hearing that, run \`${decisionCommand("dismiss", offer)}\` (a future, new recommendation asks again).\n` +
     (env ? `Also tell the user: ${env}\n` : "") +
     `</bastra-model-recommendation>`
   );

@@ -1,23 +1,27 @@
 /**
  * The model-recommendation notice for existing users (model-recommendation.ts):
  * when there is something to say, the one note of the answer, the texts, and
- * the four places that speak — `bastra models`, the question `bastra update`
- * ends with, the CLI hint and the SessionStart block.
+ * the places that speak — `bastra models`, the question `bastra update` ends
+ * with, the CLI hint and the SessionStart block.
  *
  * The shipped state is "no recommendation", so every case that needs one
- * injects REC. No Ollama here: the switch itself is injected (its own file,
- * model-switch-safe.test.ts, covers it against a fake server).
+ * injects REC. No Ollama here: the switch itself is injected (its own files,
+ * model-switch-safe.test.ts and model-decision-binding.test.ts, cover it
+ * against a fake server).
  *
  * Runner: node --import tsx --test packages/daemon/__tests__/model-recommendation.test.ts
  */
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
+import { existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { MODEL_RECOMMENDATION, recommendTextModel, type ModelRecommendation } from "../src/cli/hardware.js";
 import { cmdModels, type ModelsDeps } from "../src/cli/models-cmd.js";
+import { askModelRecommendation } from "../src/cli/update.js";
 import { maybeEmitModelHint } from "../src/cli/update-hint.js";
 import {
   DISMISS_STILL_OPEN,
@@ -34,17 +38,19 @@ import {
 import { runSessionLane } from "../src/session-lane.js";
 import { readSettings, resolveGenerationModel, setEmbeddingProvider, setGenerationModel, setUpdateMode } from "../src/settings.js";
 
+const IMPROVES = "Sharper search keywords and a stricter draft check.";
 const REC: ModelRecommendation = {
   id: "test-rec-1",
-  improves: "Sharper search keywords and a stricter draft check.",
   models: {
-    baseline: { model: "new:4b", sizeGB: 3.3 },
-    enhanced: { model: "new:4b", sizeGB: 3.3 },
-    high: { model: "new:12b", sizeGB: 8.1 },
+    baseline: { model: "new:4b", sizeGB: 3.3, improves: IMPROVES },
+    enhanced: { model: "new:4b", sizeGB: 3.3, improves: IMPROVES },
+    high: { model: "new:12b", sizeGB: 8.1, improves: "More accurate, at about three times the answer time." },
   },
 };
 const NOW = Date.parse("2026-10-09T12:00:00Z");
 const DAY = 24 * 60 * 60 * 1000;
+const WARN = "this notice will not come back for this recommendation, and you may be giving up better recall quality";
+const OPEN = "'bastra models' keeps showing the recommendation and you can still switch later";
 
 /** A settings file of an existing Ollama user, and the env this feature reads, cleared. */
 async function existingUser(fn: (path: string, dir: string) => Promise<void>): Promise<void> {
@@ -82,6 +88,7 @@ async function captured(fn: () => Promise<unknown>): Promise<{ out: string; err:
 }
 
 const opts = (path: string, extra: Partial<ModelsDeps> = {}) => ({ recommendation: REC, ramGB: 16, settingsPath: path, now: NOW, ...extra });
+const answerOf = async (path: string) => (await readSettings(path)).modelRecommendation?.answer;
 
 // ── the shipped state ────────────────────────────────────────────────────────
 
@@ -95,7 +102,8 @@ test("shipped: no recommendation is active — nothing is offered and nothing is
     assert.equal(hint.err, "");
     const status = await captured(() => cmdModels({ sub: "status", settingsPath: path }));
     assert.doesNotMatch(status.out, /recommends a different/);
-    const ask = await captured(() => cmdModels({ sub: "ask", settingsPath: path, deps: { interactive: true, ask: async () => "s" } }));
+    const neverAsk = async () => { throw new Error("must not ask"); };
+    const ask = await captured(() => cmdModels({ sub: "ask", settingsPath: path, deps: { interactive: true, ask: neverAsk } }));
     assert.equal(ask.out, "", "`bastra update` ends without a question");
   });
 });
@@ -130,11 +138,13 @@ test("offer: the recommended model of this machine's tier, against the model in 
       id: "test-rec-1",
       model: "new:4b",
       sizeGB: 3.3,
-      improves: REC.improves,
+      improves: IMPROVES,
       current: "gemma3:4b",
       envOverride: null,
     });
-    assert.equal((await pendingModelNotice(opts(path, { ramGB: 32 })))?.model, "new:12b");
+    const high = await pendingModelNotice(opts(path, { ramGB: 32 }));
+    assert.equal(high?.model, "new:12b");
+    assert.equal(high?.improves, "More accurate, at about three times the answer time.", "the sentence belongs to the tier's model");
   });
 });
 
@@ -191,11 +201,21 @@ test("opt-out: BASTRA_UPDATE_CHECK=off and update.mode off silence the notice, n
   });
 });
 
-test("no notice where the text model never runs (Ollama is not the embedding provider)", async () => {
+test("the notice goes to installs that use a text model: Ollama embeddings, or a model the user set up", async () => {
   await existingUser(async (path) => {
+    // Neither: nothing in the daemon runs the text model, and nobody chose one.
     await setEmbeddingProvider("none", path);
     assert.equal(await pendingModelNotice(opts(path)), null);
     assert.equal((await currentModelOffer(opts(path)))?.model, "new:4b", "`bastra models` still shows it");
+    // A stored text model without Ollama embeddings: `bastra bridges harvest`
+    // reranks with it whatever the embedding provider is.
+    await setGenerationModel("my-own:7b", path);
+    assert.equal((await pendingModelNotice(opts(path)))?.current, "my-own:7b");
+  });
+  await existingUser(async (path) => {
+    await setEmbeddingProvider("none", path);
+    process.env.BASTRA_RERANK_MODEL = "pinned:9b";
+    assert.equal((await pendingModelNotice(opts(path)))?.envOverride, "BASTRA_RERANK_MODEL");
   });
 });
 
@@ -207,6 +227,11 @@ test("later: silent for 7 days, then asked again", async () => {
     assert.equal(REMIND_AFTER_MS, 7 * DAY);
     assert.equal(await pendingModelNotice(opts(path, { now: NOW + 7 * DAY - 1 })), null);
     assert.equal((await pendingModelNotice(opts(path, { now: NOW + 7 * DAY })))?.model, "new:4b");
+    // A note from the future (clock set back) or with an unreadable time does
+    // not silence the reminder for good.
+    assert.equal((await pendingModelNotice(opts(path, { now: NOW - DAY })))?.model, "new:4b");
+    await writeFile(path, JSON.stringify({ embedding: { provider: "ollama" }, modelRecommendation: { id: REC.id, answer: "later", at: "bad-time" } }));
+    assert.equal((await pendingModelNotice(opts(path)))?.model, "new:4b");
   });
 });
 
@@ -223,9 +248,16 @@ test("dismissed: never again for this id — a new id asks again", async () => {
 test("switched: not asked again even while an env variable keeps the old model in effect", async () => {
   await existingUser(async (path) => {
     process.env.BASTRA_EXPAND_MODEL = "pinned:9b";
-    await setGenerationModel("new:4b", path);
-    await recordModelAnswer(REC.id, "switched", path, NOW);
+    await recordModelAnswer(REC.id, "switched", path, NOW, "new:4b");
+    assert.equal((await readSettings(path)).generation?.model, "new:4b", "model and answer arrive in one write");
     assert.equal(await pendingModelNotice(opts(path, { now: NOW + 30 * DAY })), null);
+  });
+});
+
+test("asked is not an answer: every other place keeps asking", async () => {
+  await existingUser(async (path) => {
+    await recordModelAnswer(REC.id, "asked", path, NOW);
+    assert.equal((await pendingModelNotice(opts(path)))?.model, "new:4b");
   });
 });
 
@@ -244,29 +276,42 @@ test("the note lives in cli-settings.json and survives other settings writes", a
 
 // ── the texts ────────────────────────────────────────────────────────────────
 
-const OFFER: ModelOffer = { id: REC.id, model: "new:4b", sizeGB: 3.3, improves: REC.improves, current: "gemma3:4b", envOverride: null };
+const OFFER: ModelOffer = { id: REC.id, model: "new:4b", sizeGB: 3.3, improves: IMPROVES, current: "gemma3:4b", envOverride: null };
+const NOTICE =
+  `bastra-recall recommends a different local text model for this machine: new:4b (you run gemma3:4b).\n` +
+  `What gets better: Sharper search keywords and a stricter draft check.\n` +
+  `Download: about 3.3 GB. Comparison: ${MODEL_COMPARISON_URL}\n` +
+  `Decide with:\n` +
+  `  bastra models switch test-rec-1 new:4b   switch now\n` +
+  `  bastra models later test-rec-1   keep the current model, ask again in 7 days\n` +
+  `  bastra models dismiss test-rec-1   stop asking — ${WARN}; ${OPEN}`;
 
-test("SessionStart block: facts, ask first, the three commands — and no order to switch", () => {
+test("SessionStart block: facts, ask first, the three bound commands — and no order to switch", () => {
+  const block = formatModelSessionBlock(OFFER);
   assert.equal(
-    formatModelSessionBlock(OFFER),
+    block,
     `\n<bastra-model-recommendation>\n` +
       `bastra-recall recommends a different local text model for this machine: new:4b (you run gemma3:4b).\n` +
       `What gets better: Sharper search keywords and a stricter draft check.\n` +
       `Download: about 3.3 GB. Comparison: ${MODEL_COMPARISON_URL}\n` +
       `Tell the user about this recommendation, including the download size, and ASK whether they want to switch. ` +
-      `Never switch on your own: run none of the commands below before the user has answered explicitly.\n` +
-      `- The user says yes → run \`bastra models switch\`. It downloads new:4b, checks it with a short test call ` +
+      `Never switch on your own: run none of the commands below before the user has answered explicitly, ` +
+      `and run them exactly as written — they name this recommendation, and bastra refuses them if it has changed.\n` +
+      `- The user says yes → run \`bastra models switch test-rec-1 new:4b\`. It downloads new:4b, checks it with a short test call ` +
       `and only then changes the setting; if anything fails, nothing changes. The old model stays installed ` +
       `(switch back: \`bastra models set gemma3:4b\`).\n` +
-      `- The user says later → run \`bastra models later\` (asks again in 7 days).\n` +
-      `- The user says no / stop asking → FIRST tell them what that means: this notice will not come back for this recommendation, and you may be giving up better recall quality; 'bastra models' keeps showing the recommendation and 'bastra models switch' works any time. ` +
-      `Only when they confirm after hearing that, run \`bastra models dismiss\` (a future, new recommendation asks again).\n` +
+      `- The user says later → run \`bastra models later test-rec-1\` (asks again in 7 days).\n` +
+      `- The user says no / stop asking → FIRST tell them what that means: ${WARN}; ${OPEN}. ` +
+      `Only when they confirm after hearing that, run \`bastra models dismiss test-rec-1\` (a future, new recommendation asks again).\n` +
       `</bastra-model-recommendation>`,
   );
   // The warning comes before the command it guards, in the same instruction.
-  const block = formatModelSessionBlock(OFFER);
   assert.ok(block.indexOf(DISMISS_WARNING) < block.indexOf("bastra models dismiss"));
   assert.match(MODEL_COMPARISON_URL, /docs\/local-model-comparison\.md$/);
+});
+
+test("the terminal notice: facts and the three bound commands, one per line", () => {
+  assert.equal(formatModelNotice(OFFER), NOTICE);
 });
 
 test("with an env pin, both texts say that the variable wins and what to do about it", () => {
@@ -279,8 +324,8 @@ test("with an env pin, both texts say that the variable wins and what to do abou
 });
 
 test("wherever `dismiss` is offered, the warning and what stays possible stand next to it", () => {
-  assert.equal(DISMISS_WARNING, "this notice will not come back for this recommendation, and you may be giving up better recall quality");
-  assert.equal(DISMISS_STILL_OPEN, "'bastra models' keeps showing the recommendation and 'bastra models switch' works any time");
+  assert.equal(DISMISS_WARNING, WARN);
+  assert.equal(DISMISS_STILL_OPEN, OPEN);
   // `bastra models`, the CLI hint and `bastra update` without a terminal all print this text.
   for (const text of [formatModelNotice(OFFER), formatModelSessionBlock(OFFER)]) {
     assert.ok(text.includes(DISMISS_WARNING));
@@ -296,16 +341,7 @@ test("CLI hint: one dim notice on stderr, at most once per day", async () => {
     const first = await captured(() => maybeEmitModelHint(hintOpts));
     assert.equal(first.result, true);
     assert.equal(first.out, "", "stdout stays clean for pipes");
-    assert.equal(
-      first.err,
-      `\n\x1b[2mℹ bastra-recall recommends a different local text model for this machine: new:4b (you run gemma3:4b).\n` +
-        `  What gets better: Sharper search keywords and a stricter draft check.\n` +
-        `  Download: about 3.3 GB. Comparison: ${MODEL_COMPARISON_URL}\n` +
-        `  Decide with:\n` +
-        `    bastra models switch    switch now\n` +
-        `    bastra models later     keep the current model, ask again in 7 days\n` +
-        `    bastra models dismiss   stop asking — this notice will not come back for this recommendation, and you may be giving up better recall quality; 'bastra models' keeps showing the recommendation and 'bastra models switch' works any time\x1b[0m\n`,
-    );
+    assert.equal(first.err, `\n\x1b[2mℹ ${NOTICE.split("\n").join("\n  ")}\x1b[0m\n`);
     const second = await captured(() => maybeEmitModelHint(hintOpts));
     assert.equal(second.result, false);
     assert.equal(second.err, "");
@@ -327,15 +363,20 @@ test("CLI hint: silent when opted out or already answered — and that spends no
 
 // ── bastra models ────────────────────────────────────────────────────────────
 
-/** The switch, injected: records what it was asked and answers as told. */
+/** The switch, injected: records what it was asked and, like the real one,
+ *  stores model and answer together when it succeeds. */
 function fakeEnable(result: { activated: boolean; message: string }) {
   const calls: unknown[][] = [];
-  const enable = (async (...args: unknown[]) => {
-    calls.push(args);
+  const enable = (async (model: string, o: { recommendationId?: string }, path: string) => {
+    calls.push([model, o, path]);
+    if (result.activated && o.recommendationId) await recordModelAnswer(o.recommendationId, "switched", path, NOW, model);
     return { status: result.activated ? "activated" : "error", ...result };
   }) as unknown as NonNullable<ModelsDeps["enable"]>;
   return { calls, enable };
 }
+
+const run = (path: string, argv: string[], extra: Partial<ModelsDeps> = {}) =>
+  captured(() => cmdModels({ sub: argv[0], positional: ["models", ...argv], settingsPath: path, deps: opts(path, extra) }));
 
 test("bastra models: shows the recommendation at any time, also after `dismiss`", async () => {
   await existingUser(async (path) => {
@@ -344,49 +385,46 @@ test("bastra models: shows the recommendation at any time, also after `dismiss`"
     assert.equal(result, 0);
     assert.match(out, /^generation model: gemma3:4b \(default\)\n/);
     assert.match(out, /recommended: new:4b {2}\[baseline\]/);
-    assert.ok(out.endsWith(`\n\n${formatModelNotice(OFFER)}\n`));
+    assert.ok(out.endsWith(`\n\n${NOTICE}\n`));
   });
 });
 
 test("bastra models later / dismiss: recorded, model untouched, usable without a terminal", async () => {
   await existingUser(async (path) => {
-    const later = await captured(() => cmdModels({ sub: "later", settingsPath: path, deps: opts(path) }));
+    const later = await run(path, ["later", "test-rec-1"]);
     assert.equal(later.result, 0);
-    assert.equal(later.out, "OK — the generation model stays gemma3:4b. You will be asked again in 7 days; 'bastra models switch' works any time.\n");
-    assert.equal((await readSettings(path)).modelRecommendation?.answer, "later");
+    assert.equal(later.out, "OK — the generation model stays gemma3:4b. You will be asked again in 7 days; until then 'bastra models' shows the recommendation.\n");
+    assert.equal(await answerOf(path), "later");
 
-    const dismiss = await captured(() => cmdModels({ sub: "dismiss", settingsPath: path, deps: opts(path) }));
-    assert.equal(
-      dismiss.out,
-      "OK — the generation model stays gemma3:4b. From now on this notice will not come back for this recommendation, and you may be giving up better recall quality.\n" +
-        "Still open to you: 'bastra models' keeps showing the recommendation and 'bastra models switch' works any time.\n",
-    );
-    assert.equal((await readSettings(path)).modelRecommendation?.answer, "dismissed");
+    const dismiss = await run(path, ["dismiss", "test-rec-1"]);
+    assert.equal(dismiss.out, `OK — the generation model stays gemma3:4b. From now on ${WARN}.\nStill open to you: ${OPEN}.\n`);
+    assert.equal(await answerOf(path), "dismissed");
     assert.equal((await readSettings(path)).generation, undefined);
   });
 });
 
-test("bastra models switch: the verified switch, the answer recorded, the way back named", async () => {
+test("bastra models switch: the verified switch, the answer recorded with it, the way back named", async () => {
   await existingUser(async (path) => {
     await setGenerationModel("my-own:7b", path);
     const sw = fakeEnable({ activated: true, message: "text model new:4b ready + saved — restart the daemon to apply" });
-    const { out, result } = await captured(() => cmdModels({ sub: "switch", settingsPath: path, deps: opts(path, { enable: sw.enable }) }));
+    const { out, result } = await run(path, ["switch", "test-rec-1", "new:4b"], { enable: sw.enable });
     assert.equal(result, 0);
-    assert.deepEqual(sw.calls, [["new:4b", { dryRun: false, verify: true }, path]]);
+    assert.deepEqual(sw.calls, [["new:4b", { dryRun: false, verify: true, recommendationId: "test-rec-1" }, path]]);
     assert.equal(
       out,
       "Switching the generation model to new:4b (about 3.3 GB download if it is not present yet) …\n" +
         "✓ text model new:4b ready + saved — restart the daemon to apply\n" +
         "The previous model my-own:7b is still installed. Switch back any time: bastra models set my-own:7b\n",
     );
-    assert.equal((await readSettings(path)).modelRecommendation?.answer, "switched");
+    assert.equal(await answerOf(path), "switched");
+    assert.equal(await pendingModelNotice(opts(path)), null);
   });
 });
 
 test("bastra models switch: a failed switch says why, changes nothing and leaves the question open", async () => {
   await existingUser(async (path) => {
     const sw = fakeEnable({ activated: false, message: "new:4b is downloaded but did not answer a test call (Ollama chat HTTP 500)" });
-    const { out, result } = await captured(() => cmdModels({ sub: "switch", settingsPath: path, deps: opts(path, { enable: sw.enable }) }));
+    const { out, result } = await run(path, ["switch", "test-rec-1", "new:4b"], { enable: sw.enable });
     assert.equal(result, 1);
     assert.ok(out.endsWith(
       "✗ new:4b is downloaded but did not answer a test call (Ollama chat HTTP 500)\n" +
@@ -401,17 +439,16 @@ test("bastra models switch with an env pin: switches the saved choice and says i
   await existingUser(async (path) => {
     process.env.BASTRA_EXPAND_MODEL = "pinned:9b";
     const sw = fakeEnable({ activated: true, message: "saved" });
-    const { out } = await captured(() => cmdModels({ sub: "switch", settingsPath: path, deps: opts(path, { enable: sw.enable }) }));
+    const { out } = await run(path, ["switch", "test-rec-1", "new:4b"], { enable: sw.enable });
     assert.match(out, /previous model gemma3:4b is still installed/, "the way back names the stored model, not the pinned one");
     assert.ok(out.endsWith("Note: BASTRA_EXPAND_MODEL=pinned:9b is set in the environment and overrides the saved choice: the switch only takes effect once that variable is removed and the daemon restarted.\n"));
   });
 });
 
-test("bastra models switch / later / dismiss: nothing open → says so, records nothing", async () => {
+test("bastra models switch / later / dismiss: no recommendation for this machine → says so, records nothing", async () => {
   await existingUser(async (path) => {
-    await setGenerationModel("new:4b", path);
     for (const sub of ["switch", "later", "dismiss"]) {
-      const { out, result } = await captured(() => cmdModels({ sub, settingsPath: path, deps: opts(path) }));
+      const { out, result } = await run(path, [sub], { ramGB: 8 });
       assert.equal(result, 0);
       assert.equal(out, "Nothing to decide: there is no model recommendation open for this machine.\n");
     }
@@ -423,46 +460,46 @@ test("bastra models switch / later / dismiss: nothing open → says so, records 
 
 const QUESTION = "[s] switch now   [l] later (ask again in 7 days)   [n] never ask again for this recommendation — your choice [s/l/n]: ";
 
-test("bastra update, on a terminal: asks once, and each answer does what it says", async () => {
+test("bastra update, on a terminal: asks, and each answer does what it says", async () => {
   await existingUser(async (path) => {
     const asked: string[] = [];
     const reply = (text: string | null) => async (q: string) => { asked.push(q); return text; };
     const sw = fakeEnable({ activated: true, message: "saved" });
-    const run = (text: string | null) =>
+    const ask = (text: string | null) =>
       captured(() => cmdModels({ sub: "ask", settingsPath: path, deps: opts(path, { interactive: true, ask: reply(text), enable: sw.enable }) }));
 
-    // No answer (Ctrl-C / EOF) is not a choice: nothing recorded, asked again.
-    const none = await run(null);
+    // No answer (Ctrl-C / EOF) is not a choice: only "asked" is noted, and the
+    // question stays open everywhere.
+    const none = await ask(null);
     assert.ok(none.out.startsWith("\nbastra-recall recommends a different local text model for this machine: new:4b (you run gemma3:4b).\n"));
     assert.deepEqual(asked, [QUESTION]);
-    assert.ok(
-      none.out.endsWith("\nAbout [n]: this notice will not come back for this recommendation, and you may be giving up better recall quality; 'bastra models' keeps showing the recommendation and 'bastra models switch' works any time.\n"),
-      "the cost of [n] is on screen before the question is asked",
-    );
-    assert.equal((await readSettings(path)).modelRecommendation, undefined);
+    assert.ok(none.out.endsWith(`\nAbout [n]: ${WARN}; ${OPEN}.\n`), "the cost of [n] is on screen before the question is asked");
+    assert.equal(none.result, 0);
+    assert.equal(await answerOf(path), "asked");
+    assert.equal((await pendingModelNotice(opts(path)))?.model, "new:4b");
 
     // Enter / anything unclear is "later" — never a download.
-    await run("");
-    assert.equal((await readSettings(path)).modelRecommendation?.answer, "later");
+    await ask("");
+    assert.equal(await answerOf(path), "later");
     assert.equal(sw.calls.length, 0);
 
     // Answered: `bastra update` does not ask a second time.
-    const again = await run("s");
+    const again = await ask("s");
     assert.equal(again.out, "");
     assert.equal(asked.length, 2);
 
     await recordModelAnswer(REC.id, "later", path, NOW - 8 * DAY);
-    await run("n");
-    assert.equal((await readSettings(path)).modelRecommendation?.answer, "dismissed");
+    await ask("n");
+    assert.equal(await answerOf(path), "dismissed");
 
     await recordModelAnswer(REC.id, "later", path, NOW - 8 * DAY);
-    await run("s");
-    assert.equal(sw.calls.length, 1);
-    assert.equal((await readSettings(path)).modelRecommendation?.answer, "switched");
+    await ask("s");
+    assert.deepEqual(sw.calls, [["new:4b", { dryRun: false, verify: true, recommendationId: "test-rec-1" }, path]], "the switch is for the offer that was on screen");
+    assert.equal(await answerOf(path), "switched");
   });
 });
 
-test("bastra update, without a terminal: only the notice — no question, no answer recorded", async () => {
+test("bastra update, without a terminal: only the notice — no question, nothing recorded", async () => {
   await existingUser(async (path) => {
     const { out, result } = await captured(() =>
       cmdModels({
@@ -472,7 +509,7 @@ test("bastra update, without a terminal: only the notice — no question, no ans
       }),
     );
     assert.equal(result, 0);
-    assert.equal(out, `\n${formatModelNotice(OFFER)}\n`);
+    assert.equal(out, `\n${NOTICE}\n`);
     assert.equal((await readSettings(path)).modelRecommendation, undefined);
   });
 });
@@ -485,6 +522,37 @@ test("bastra update: opted out → the closing question is not asked either", as
   });
 });
 
+test("bastra update: the closing question is asked by the installed cli, as `models ask`", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "bastra-update-ask-"));
+  try {
+    // A stand-in for the freshly installed dist/: cli.js next to index.js.
+    await writeFile(join(dir, "index.js"), "");
+    await writeFile(join(dir, "cli.js"), `require("node:fs").writeFileSync(${JSON.stringify(join(dir, "argv.json"))}, JSON.stringify(process.argv.slice(2)));\nprocess.exit(7);\n`);
+    await writeFile(join(dir, "package.json"), '{"type":"commonjs"}');
+    const r = askModelRecommendation({ node: process.execPath, script: join(dir, "index.js"), version: "9.9.9" }, "pipe");
+    assert.deepEqual(JSON.parse(await readFile(join(dir, "argv.json"), "utf8")), ["models", "ask"]);
+    assert.equal(r?.status, 7, "the child's exit code is handed back, never thrown — the update's own result stands");
+    // No installed runtime, or one without a cli: nothing is started, nothing throws.
+    assert.equal(askModelRecommendation(null, "pipe"), null);
+    assert.equal(askModelRecommendation({ node: process.execPath, script: join(dir, "missing", "index.js"), version: null }, "pipe"), null);
+    // And cmdUpdate ends with it on both of its successful exits.
+    const src = await readFile(fileURLToPath(new URL("../src/cli/update.ts", import.meta.url)), "utf8");
+    assert.equal(src.split("askModelRecommendation(installed);\n    return 0;").length - 1, 1, "source-checkout exit");
+    assert.equal(src.split("askModelRecommendation(installed);\n  return 0;").length - 1, 1, "installer exit");
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("bastra update: the real built cli answers `models ask` without a terminal and without waiting", { skip: !existsSync(fileURLToPath(new URL("../dist/cli.js", import.meta.url))) }, () => {
+  // What the spawn above starts, for real: the built cli, stdin closed, output
+  // piped. With the shipped state it has nothing to say and must return at once.
+  const dist = fileURLToPath(new URL("../dist/index.js", import.meta.url));
+  const r = askModelRecommendation({ node: process.execPath, script: dist, version: null }, "pipe");
+  assert.equal(r?.status, 0, String(r?.stderr));
+  assert.equal(String(r?.stdout), "");
+});
+
 // ── the installer ────────────────────────────────────────────────────────────
 
 test("installer: a new install is offered the recommended model for its tier directly", () => {
@@ -495,8 +563,10 @@ test("installer: a new install is offered the recommended model for its tier dir
   // Without an active recommendation the installer offers the ladder's pick.
   assert.equal(recommendTextModel(16, null).model, "tev1:4b");
   assert.equal(recommendTextModel(32, REC).model, "new:12b");
-  assert.equal(recommendTextModel(64, { ...REC, models: { ...REC.models, high: { model: "gemma4:12b", sizeGB: 8.1 } } }).alt, undefined);
+  assert.equal(recommendTextModel(64, { ...REC, models: { ...REC.models, high: { model: "gemma4:12b", sizeGB: 8.1, improves: "x" } } }).alt, undefined);
   assert.equal(recommendTextModel(8, REC).model, null);
+  // A recommendation with nothing for this tier leaves the ladder's pick.
+  assert.equal(recommendTextModel(32, { id: "partial", models: { baseline: REC.models.baseline } }).model, "gemma4:12b");
 });
 
 // ── SessionStart ─────────────────────────────────────────────────────────────
@@ -534,9 +604,11 @@ async function sessionStart(modelNotice?: () => Promise<ModelOffer | null>): Pro
   }
 }
 
-test("SessionStart: an open recommendation reaches the agent as its own block", async () => {
-  const context = await sessionStart(async () => OFFER);
-  assert.ok(context.includes(formatModelSessionBlock(OFFER).trimStart()));
+test("SessionStart: an open recommendation reaches the agent as its own block — at every start, no day throttle", async () => {
+  for (let i = 0; i < 2; i++) {
+    const context = await sessionStart(async () => OFFER);
+    assert.ok(context.includes(formatModelSessionBlock(OFFER).trimStart()));
+  }
 });
 
 test("SessionStart: with the shipped state (and after an answer) the block is absent", async () => {
