@@ -106,12 +106,28 @@ function idsOf(value: unknown): string[] {
   return out;
 }
 
+/**
+ * The daemon writes no `candidate_pool` when the search returned no candidate,
+ * so an event without one is either an empty pool or a pool nobody recorded.
+ * It is a known empty pool only when the event says so itself: no pool, and a
+ * `hits` list that is there and empty. The caller has already required a
+ * score space, which on such an event can only be its own `score_kind` and
+ * `score_arms` — and a daemon that names its arms records the pool on every
+ * path, a warm query cache included (#121, #365). Hits without a pool, or no
+ * `hits` at all, prove nothing about the pool.
+ */
+function provesEmptyPool(event: Record<string, unknown>): boolean {
+  const pool = event.candidate_pool;
+  if (pool !== undefined && !(Array.isArray(pool) && pool.length === 0)) return false;
+  return Array.isArray(event.hits) && event.hits.length === 0;
+}
+
 /** The daemon's event files in a telemetry dir, sorted; throws when `dir` cannot be listed. */
 export async function telemetryFiles(dir: string): Promise<string[]> {
   return (await readdir(dir)).filter((f) => f.startsWith("events-") && f.endsWith(".jsonl")).sort();
 }
 
-/** Read every recall-class event with a `recall_id` and a candidate pool, and every `load_memory` event. */
+/** Read every recall-class event with a `recall_id` and a candidate pool — recorded, or proven empty — and every `load_memory` event. */
 export async function loadTelemetry(dir: string, options: { sinceMs?: number } = {}): Promise<Telemetry> {
   const pools = new Map<string, TelemetryPool>();
   const loads: TelemetryLoad[] = [];
@@ -146,7 +162,7 @@ export async function loadTelemetry(dir: string, options: { sinceMs?: number } =
       if (typeof event.recall_id !== "string" || !event.recall_id) continue;
       const scoreSpace = scoreSpaceOf(event);
       const orderedIds = idsOf(event.candidate_pool);
-      if (!scoreSpace || orderedIds.length === 0) continue;
+      if (!scoreSpace || (orderedIds.length === 0 && !provesEmptyPool(event))) continue;
       const scoreSpaceFormulaOk = scoreSpace.kind === "bm25" || scoreSpace.formulaVersion !== null;
       if (!scoreSpaceFormulaOk) continue;
       pools.set(event.recall_id, {

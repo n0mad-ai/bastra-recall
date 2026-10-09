@@ -58,6 +58,7 @@ export type GapKind =
   | "batch-link-without-sibling-pools"
   | "load-not-found"
   | "unresolved-evidence"
+  | "chain-without-pool"
   | "no-vault-snapshot";
 
 export interface GapEvent {
@@ -314,6 +315,7 @@ const GAP_EXITS: Record<GapKind, string> = {
   "batch-link-without-sibling-pools": "load links one phrasing of a batch recall; telemetry names the batch width (query_count), not its other phrasings — the session's transcript carries them (recall_ids), a batch id on the events would",
   "load-not-found": "load_memory for an id the vault did not hold — moved or deleted memory; nothing to classify",
   "unresolved-evidence": "the evidence step had no inspectable identity (Grep/Glob/find_document) — nothing to check against the vault",
+  "chain-without-pool": "the evidence step named a vault object, but its recalls joined no pool to judge it against: no --events, an envelope without recall_id, a recall with no recorded pool, or recalls in two score spaces",
   "no-vault-snapshot": "no --vault given: vault membership cannot be proven, hook-lane loads stay unclassified",
 };
 
@@ -332,6 +334,7 @@ const GAP_RECOUNT: Record<GapKind, string> = {
   "batch-link-without-sibling-pools": "harvester only: linked recall_id whose event carries query_count",
   "load-not-found": "grep -h '\"kind\":\"load_memory\"' {events}/events-*.jsonl | grep -c '\"found\":false'",
   "unresolved-evidence": "harvester only: chains whose evidence step had no file_path or memory id",
+  "chain-without-pool": "harvester only: chains with a load_memory or an in-vault read whose recalls joined no pool",
   "no-vault-snapshot": "harvester only: --vault not given",
 };
 
@@ -468,6 +471,16 @@ export interface LanesResult {
 }
 
 /**
+ * Why a chain's target stayed unresolved, named by the proof that is missing:
+ * an evidence step with an identity is not `unresolved-evidence` because the
+ * snapshot or the pool it would be checked against is not there.
+ */
+function unresolvedGap(chain: ReviewedMissChain, engines: ObservationEngines): GapKind {
+  if (chain.evidence.kind === "opaque") return "unresolved-evidence";
+  return engines.snapshot ? "chain-without-pool" : "no-vault-snapshot";
+}
+
+/**
  * Observe the transcript lane and, when asked, the hook lane, and derive one
  * proposal list from both. A load the transcript lane already observed is
  * left out of the hook lane, and both lanes write the same `sessionRef` for
@@ -493,7 +506,7 @@ export function observeLanes(
     for (let n = perFile.recalls - perFile.withRecallId; n > 0; n -= 1) gaps.push({ kind: "envelope-without-recall-id", witness });
     for (const chain of chains) {
       const record = observeChain(chain, engines);
-      if (record.observation.target.kind === "unresolved") gaps.push({ kind: "unresolved-evidence", witness });
+      if (record.observation.target.kind === "unresolved") gaps.push({ kind: unresolvedGap(chain, engines), witness });
       transcript.push({ chain, record });
     }
   }
