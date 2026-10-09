@@ -133,8 +133,10 @@ export function observeHookLane(
     // whichever recall id it drew last. The hit may have come from any
     // phrasing, and the events do not say which recalls were one batch: each
     // carries the width (`query_count`), none a batch id. One phrasing's pool
-    // is not the pool the session was served from, so nothing is judged.
-    if (pool.batchOf !== null) {
+    // is not the pool the session was served from, so nothing is judged. A
+    // batch the daemon collapsed to one phrasing has no sibling: its pool is
+    // the whole pool.
+    if (pool.phrasingsRun > 1) {
       gaps.push({ kind: "batch-link-without-sibling-pools", witness });
       continue;
     }
@@ -312,7 +314,7 @@ const GAP_EXITS: Record<GapKind, string> = {
   "envelope-without-recall-id": "served envelope had no recall_id or recall_ids: an error result, or text that is not an envelope — unjoinable",
   "load-without-recall-link": "daemon did not join this load to a recall (join store lost across idle respawn, or a direct load) — see telemetry-join-store",
   "link-without-pool": "load links a recall_id with no recorded candidate_pool — event outside the window or pool not captured on that path",
-  "batch-link-without-sibling-pools": "load links one phrasing of a batch recall; telemetry names the batch width (query_count), not its other phrasings — the session's transcript carries them (recall_ids), a batch id on the events would",
+  "batch-link-without-sibling-pools": "load links one of several phrasings a batch recall ran (query_count minus batch_collapsed > 1); telemetry names that count, not the other phrasings — the session's transcript carries them (recall_ids), a batch id on the events would",
   "load-not-found": "load_memory for an id the vault did not hold — moved or deleted memory; nothing to classify",
   "unresolved-evidence": "the evidence step had no inspectable identity (Grep/Glob/find_document) — nothing to check against the vault",
   "chain-without-pool": "the evidence step named a vault object, but its recalls joined no pool to judge it against: no --events, an envelope without recall_id, a recall with no recorded pool, or recalls in two score spaces",
@@ -331,7 +333,7 @@ const GAP_RECOUNT: Record<GapKind, string> = {
   "envelope-without-recall-id": "harvester only: transcript_recalls - transcript_recalls_with_recall_id",
   "load-without-recall-link": "grep -h '\"kind\":\"load_memory\"' {events}/events-*.jsonl | grep -vc 'from_hook_recall\\|follows_recall'",
   "link-without-pool": "harvester only: linked recall_id with no candidate_pool event in the window",
-  "batch-link-without-sibling-pools": "harvester only: linked recall_id whose event carries query_count",
+  "batch-link-without-sibling-pools": "harvester only: linked recall_id whose event has query_count - batch_collapsed > 1",
   "load-not-found": "grep -h '\"kind\":\"load_memory\"' {events}/events-*.jsonl | grep -c '\"found\":false'",
   "unresolved-evidence": "harvester only: chains whose evidence step had no file_path or memory id",
   "chain-without-pool": "harvester only: chains with a load_memory or an in-vault read whose recalls joined no pool",

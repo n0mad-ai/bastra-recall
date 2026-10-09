@@ -124,6 +124,40 @@ test("hook lane: a load after a batch recall is not judged against the one phras
   assert.deepEqual(await hookLane(TWO_POOLS), { classes: ["genuine-out-of-pool"], targets: ["served-one"], gaps: [] });
 });
 
+test("hook lane: only a batch that ran more than one phrasing has sibling pools to miss", async () => {
+  // One recall event and the load of the hit it served. What the event says about
+  // its batch decides whether its pool is the whole pool.
+  const hookLane = async (batch: Record<string, unknown>): Promise<{ classes: string[]; gaps: string[] }> => {
+    const { dir, eventsDir, engines } = await world([
+      line({ ...JSON.parse(recallEvent("r1", ["served-one"], ["served-one"])), ...batch }),
+      line({ kind: "load_memory", ts: later(1), session_id: "run-1", id: "served-one", found: true, follows_recall: "r1" }),
+    ]);
+    try {
+      const lanes = observeLanes([], await loadTelemetry(eventsDir), engines, { hookLane: true, hubSessions: 3 });
+      return { classes: lanes.hook.records.map((record) => record.classification), gaps: lanes.gaps.map((gap) => gap.kind) };
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  };
+  const judged = { classes: ["served-hit"], gaps: [] };
+  const alone: Array<[string, Record<string, unknown>]> = [
+    ["a plain recall", {}],
+    // The daemon's own event for `queries: [q, q]`: two submitted, one collapsed, one recall run.
+    ["two identical queries, collapsed to one", { query_count: 2, batch_overlap: 1, batch_collapsed: 1 }],
+    ["four submitted, three collapsed", { query_count: 4, batch_overlap: 0.9, batch_collapsed: 3 }],
+    ["a width of one", { query_count: 1 }],
+    ["a width of zero", { query_count: 0 }],
+  ];
+  for (const [name, batch] of alone) assert.deepEqual(await hookLane(batch), judged, name);
+  const siblings: Array<[string, Record<string, unknown>]> = [
+    ["two phrasings ran", { query_count: 2, batch_overlap: 0.2, batch_collapsed: 0 }],
+    ["the forwarder's event: the width alone", { query_count: 2 }],
+    ["three submitted, one collapsed, two ran", { query_count: 3, batch_collapsed: 1 }],
+    ["a collapsed count that is no number", { query_count: 2, batch_collapsed: "1" }],
+  ];
+  for (const [name, batch] of siblings) assert.deepEqual(await hookLane(batch), { classes: [], gaps: ["batch-link-without-sibling-pools"] }, name);
+});
+
 test("two recalls in one assistant message: both are counted, and a load is judged against both pools", async () => {
   const { dir, engines } = await world(TWO_POOLS);
   try {
