@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { basename, isAbsolute, resolve } from "node:path";
 import { redactSecrets, scrubInjectedBlocks } from "@bastra-recall/core";
+import { INTERRUPT_PREFIX } from "../draft-capture.js";
 import { isSystemInjectedTurn, textAfterReminders } from "../system-turn.js";
 import { pseudonymousSession } from "../telemetry-dimensions.js";
 
@@ -80,8 +81,10 @@ const COMMAND_ECHO = /^<(?:command-name|command-message|command-args|local-comma
  *             the only spelling of the intent that leaves this function, so
  *             the queue's `query` and a proposal's `cue`/`terms` cannot carry
  *             a token the owner pasted into a prompt;
- * - `command` a slash-command echo or its printed output: the owner's turn,
- *             so the chain before it is over, but its text is no query;
+ * - `command` a slash-command echo or its printed output, or the marker the
+ *             client writes when the owner interrupts (`INTERRUPT_PREFIX`,
+ *             the daemon's own constant): the owner's turn, so the chain
+ *             before it is over, but its text is no query;
  * - `none`    a tool result, or a turn the harness wrote (task notification,
  *             agent mail, reminder, skill body). It is not a turn of the
  *             human and must not end the chain it arrives in.
@@ -98,7 +101,7 @@ function userTurn(record: Record<string, unknown>): UserTurn {
   const typed: string[] = [];
   let command = false;
   for (const part of parts) {
-    if (COMMAND_ECHO.test(part.trimStart())) {
+    if (COMMAND_ECHO.test(part.trimStart()) || part.trimStart().startsWith(INTERRUPT_PREFIX)) {
       command = true;
       continue;
     }

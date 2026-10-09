@@ -232,6 +232,27 @@ test("a slash command is the owner's turn: it ends the chain, and its echo is no
   }
 });
 
+test("an interrupt marker is the owner's turn: it ends the chain, and its text is no query", () => {
+  // What the client writes into the transcript when the owner presses escape.
+  const markers: unknown[] = [
+    "[Request interrupted by user]",
+    "[Request interrupted by user for tool use]",
+    [{ type: "text", text: "[Request interrupted by user]" }],
+  ];
+  const after = [uses({ id: "t2", name: RECALL, input: { query: "rail" } }), results({ id: "t2", envelope: envelope(["served-one"], { recall_id: "r2" }) }), load("third")];
+  for (const marker of markers) {
+    const name = JSON.stringify(marker);
+    const chains = extractReviewedMissChains(single("r1", ["served-one"], load("deep-two"), user(marker), ...after), "sess-A");
+    assert.deepEqual(chains.map((chain) => chain.query), [PROMPT], name);
+    // Without an evidence step before the interrupt, its recall is not carried past it.
+    assert.deepEqual(extractReviewedMissChains(single("r1", ["served-one"], user(marker), load("deep-two")), "sess-A"), [], name);
+  }
+  // Text typed beside the marker is the next intent; the marker stays out of it.
+  const typed = "use the staging rail instead";
+  const redirected = extractReviewedMissChains(single("r1", ["served-one"], user([{ type: "text", text: markers[0] }, { type: "text", text: typed }]), ...after), "sess-A");
+  assert.deepEqual(redirected.map((chain) => chain.query), [typed]);
+});
+
 test("cli: a token typed into the prompt reaches neither the queue nor the proposals", async () => {
   const { dir, vault, eventsDir } = await world([recallEvent("r1", ["served-one"], ["served-one", "deep-two"])]);
   try {
