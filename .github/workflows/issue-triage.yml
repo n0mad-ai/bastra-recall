@@ -1,0 +1,60 @@
+name: Issue triage check
+
+# Every issue carries a milestone and at least one label. An issue that lacks
+# either gets the `needs-triage` label; the label comes off again as soon as
+# both are set. The first time, a comment names what is missing. That comment
+# carries a hidden marker and is posted once per issue, however often the
+# label comes and goes afterwards.
+
+on:
+  issues:
+    types: [opened, reopened, milestoned, demilestoned, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-triage-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE: ${{ github.event.issue.number }}
+    steps:
+      - name: Flag an issue without milestone or label
+        run: |
+          set -euo pipefail
+          state=$(gh issue view "$ISSUE" --json state,milestone,labels)
+          [ "$(jq -r .state <<<"$state")" = "OPEN" ] || exit 0
+          flagged=$(jq '[.labels[].name] | index("needs-triage") != null' <<<"$state")
+          missing=()
+          [ "$(jq -r '.milestone.title // ""' <<<"$state")" != "" ] || missing+=("a milestone")
+          [ "$(jq '[.labels[].name | select(. != "needs-triage")] | length' <<<"$state")" -gt 0 ] || missing+=("at least one label")
+
+          if [ ${#missing[@]} -eq 0 ]; then
+            [ "$flagged" = "false" ] || gh issue edit "$ISSUE" --remove-label needs-triage
+            exit 0
+          fi
+
+          # The label and the comment are checked independently: a run that
+          # failed between the two, or a label set by hand, still gets the
+          # one comment on a later run.
+          if [ "$flagged" = "false" ]; then
+            gh label create needs-triage --color FBCA04 \
+              --description "Issue lacks a milestone or a label" 2>/dev/null || true
+            gh issue edit "$ISSUE" --add-label needs-triage
+          fi
+
+          list=$(printf '%s and ' "${missing[@]}"); list=${list% and }
+
+          commented=$(gh api --paginate "repos/$GH_REPO/issues/$ISSUE/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- issue-triage-check -->"))) | .id')
+          [ -z "$commented" ] || exit 0
+          gh issue comment "$ISSUE" --body "This issue is missing ${list}. Every issue in this repository carries a milestone and at least one label; a maintainer will set them. If you have write access, set them now and the \`needs-triage\` label is removed automatically.
+          <!-- issue-triage-check -->"
