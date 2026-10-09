@@ -28,6 +28,7 @@ import { ollamaChat } from "../learned-recall/reranker.js";
 import { getOllamaAutostart, setEmbeddingProvider, setGenerationModel } from "../settings.js";
 import { settingsFileRefusal, settingsFileState } from "../settings-file.js";
 import { recordModelAnswer } from "../model-recommendation.js";
+import { PathLockUnavailableError } from "../path-lock.js";
 
 const OLLAMA_URL = (process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434").replace(/\/+$/, "");
 const EMBED_MODEL = process.env.BASTRA_EMBEDDING_MODEL ?? "embeddinggemma";
@@ -266,9 +267,10 @@ export async function enableGenerationModel(
     try {
       await recordModelAnswer(opts.recommendationId, "switched", settingsPath, Date.now(), model);
     } catch (e) {
-      // The error code, not the message: fs messages quote full paths.
-      const code = (e as NodeJS.ErrnoException).code;
-      return { status: "error", activated: false, message: `${model} is ready, but the setting could not be saved (${code ?? "write failed"})` };
+      // The error code, not the message: fs messages quote full paths. The
+      // lock refusal is our own text and says what to do.
+      const reason = e instanceof PathLockUnavailableError ? e.message : ((e as NodeJS.ErrnoException).code ?? "write failed");
+      return { status: "error", activated: false, message: `${model} is ready, but the setting could not be saved (${reason})` };
     }
   } else {
     await setGenerationModel(model, settingsPath);

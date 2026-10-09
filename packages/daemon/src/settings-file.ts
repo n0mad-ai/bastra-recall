@@ -634,7 +634,7 @@ async function writeSettings(next: CliSettings, path: string): Promise<void> {
 export async function mutateSettings(
   path: string,
   mutate: (current: CliSettings) => CliSettings | null,
-  opts: { refuseCorrupt?: boolean } = {},
+  opts: { refuseCorrupt?: boolean; requireLock?: boolean } = {},
 ): Promise<void> {
   await withPathLock(
     path,
@@ -647,6 +647,9 @@ export async function mutateSettings(
       const next = mutate(settings);
       if (next !== null) await writeSettings(next, path);
     },
-    { crossProcess: true },
+    // `requireLock`: reject instead of writing without the cross-process lock
+    // (path-lock.ts). For the model answers and the question claim; every
+    // other setter keeps path-lock's fail-open.
+    { crossProcess: true, requireLock: opts.requireLock },
   );
 }

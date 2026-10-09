@@ -10,13 +10,14 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import fs from "node:fs/promises";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, utimes, writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { cmdModels, maybeAskModelCatchUp, modelNoticeAfterCommand } from "../src/cli/models-cmd.js";
 import { claimModelQuestion, pendingModelNotice, recordModelAnswer } from "../src/model-recommendation.js";
+import { pathLockFilePath } from "../src/path-lock.js";
 import { readSettings } from "../src/settings.js";
-import { ARGS, deps, quiet, withDir } from "./fixtures/model-decision-helpers.js";
+import { ARGS, ORIGINAL, deps, quiet, withDir } from "./fixtures/model-decision-helpers.js";
 // ── P2: "asked" is claimed, never written over a decision ───────────────────
 
 test("P2 claim: `asked` is only noted where there is no note for this recommendation", async () => {
@@ -111,5 +112,50 @@ test("P2 claim: a settings file that is not valid JSON takes no note — and is 
     await assert.rejects(quiet(() => claimModelQuestion("fixture-rec", path)), /not valid JSON/);
     assert.equal(await readFile(path, "utf8"), CORRUPT);
     assert.equal(await quiet(() => maybeAskModelCatchUp(deps(path, { interactive: true, ask: async () => "s" }))).then((r) => r.result), false);
+  });
+});
+
+// ── without the lock, no claim and no answer ─────────────────────────────────
+
+/** The lock file a holder left behind when it was killed: nobody releases it. */
+async function orphanedLock(path: string, ageMs = 0): Promise<void> {
+  const lock = pathLockFilePath(path);
+  await writeFile(lock, JSON.stringify({ pid: 999_999, host: "elsewhere", ts: Date.now() - ageMs, token: "orphan" }));
+  const then = new Date(Date.now() - ageMs);
+  await utimes(lock, then, then);
+}
+
+test("P2 lock: while the settings lock cannot be had, the question is not put and no answer is written", async () => {
+  // The counter-review killed a lock holder and started three catch-ups: after
+  // the 5 s wait each went on WITHOUT the lock, and each asked. path-lock's
+  // fail-open stays as it is for other writers (#1114); the question claim and
+  // the model answers must not use it.
+  await withDir(async (_dir, path) => {
+    await orphanedLock(path);
+    let questions = 0;
+    const ask = async () => { questions++; return null; };
+    // One after the other, so neither result depends on which came first.
+    const catchUp = await quiet(() => maybeAskModelCatchUp(deps(path, { interactive: true, ask })));
+    assert.equal(catchUp.result, false, "no claim without the lock");
+    assert.equal(questions, 0, "…so no question; it comes back with the next command");
+    assert.equal(await readFile(path, "utf8"), ORIGINAL);
+    await orphanedLock(path); // a fresh one: the first has aged towards takeover while the catch-up waited
+    const later = await quiet(() => cmdModels({ sub: "later", positional: ["models", "later", "fixture-rec"], settingsPath: path, deps: deps(path) }));
+    assert.equal(later.result, 1, "an answer is refused, not written unserialized");
+    assert.match(later.out, /could not get the lock on the settings file/);
+    assert.match(later.out, /Nothing was changed/);
+    assert.equal(await readFile(path, "utf8"), ORIGINAL);
+  });
+});
+
+test("P2 lock: a lock old enough to be orphaned is taken over — then one question, as usual", async () => {
+  await withDir(async (_dir, path) => {
+    await orphanedLock(path, 60_000);
+    let questions = 0;
+    const ask = async () => { questions++; return null; };
+    const { result } = await quiet(() => Promise.all([1, 2, 3].map(() => maybeAskModelCatchUp(deps(path, { interactive: true, ask })))));
+    assert.deepEqual([...result].sort(), [false, false, true]);
+    assert.equal(questions, 1);
+    assert.equal((await readSettings(path)).modelRecommendation?.answer, "asked");
   });
 });

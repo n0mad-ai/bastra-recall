@@ -144,7 +144,9 @@ async function textModelInUse(offer: ModelOffer, settingsPath?: string): Promise
  * Throws instead of writing when the settings file is there but unreadable or
  * not valid JSON (checked inside the lock): the write would replace it with
  * defaults plus this one field and lose every other setting, which is no way
- * to record a model decision.
+ * to record a model decision. Throws as well when the cross-process lock
+ * cannot be had (PathLockUnavailableError): writing without it could put this
+ * answer over another process's, and the user can simply answer again.
  */
 export async function recordModelAnswer(
   id: string,
@@ -160,7 +162,7 @@ export async function recordModelAnswer(
       ...(model ? { generation: { model } } : {}),
       modelRecommendation: { id, answer, at: new Date(now).toISOString() },
     }),
-    { refuseCorrupt: true },
+    { refuseCorrupt: true, requireLock: true },
   );
 }
 
@@ -174,6 +176,11 @@ export async function recordModelAnswer(
  * would be turned back into "asked" and the user asked again; and two commands
  * finishing at the same moment would both ask. "asked" never replaces
  * anything: it is not an answer and must not take one back.
+ *
+ * A claim made without the lock is no claim — every process that gave up
+ * waiting would hold it. So this throws (PathLockUnavailableError) rather than
+ * fall back to path-lock's fail-open; the caller then does not ask, and the
+ * question comes back with the next command.
  */
 export async function claimModelQuestion(id: string, path: string = settingsFilePath(), now: number = Date.now()): Promise<boolean> {
   let claimed = false;
@@ -184,7 +191,7 @@ export async function claimModelQuestion(id: string, path: string = settingsFile
       claimed = true;
       return { ...current, modelRecommendation: { id, answer: "asked", at: new Date(now).toISOString() } };
     },
-    { refuseCorrupt: true },
+    { refuseCorrupt: true, requireLock: true },
   );
   return claimed;
 }

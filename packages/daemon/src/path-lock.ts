@@ -74,6 +74,25 @@ export interface PathLockOptions {
    * path — it costs a create/unlink per mutation.
    */
   crossProcess?: boolean;
+  /**
+   * With `crossProcess`: do NOT fall back to running without the lock. If the
+   * lock file cannot be had within {@link LOCK_WAIT_MS}, `fn` is not called
+   * and the returned promise rejects with {@link PathLockUnavailableError}.
+   *
+   * For the few writers where "unserialized" is worse than "not written": an
+   * exclusive claim (two holders of a claim are no claim), or a write the user
+   * is told about and can simply repeat. Off by default — every existing
+   * caller keeps the fail-open described above (#1114 is about that default).
+   */
+  requireLock?: boolean;
+}
+
+/** The cross-process lock was required (`requireLock`) and not acquired. */
+export class PathLockUnavailableError extends Error {
+  constructor() {
+    super("could not get the lock on the settings file — another bastra process holds it, or one was interrupted; nothing was written. Try again in a few seconds");
+    this.name = "PathLockUnavailableError";
+  }
 }
 
 export function pathLockFilePath(path: string): string {
@@ -102,7 +121,7 @@ interface LockBody {
  * lock files can carry the same pid+host+ts down to the millisecond, but never
  * the same random token.
  */
-async function acquireFileLock(path: string): Promise<string | null> {
+async function acquireFileLock(path: string, giveUp = "writing unserialized"): Promise<string | null> {
   const lockPath = pathLockFilePath(path);
   const token = randomUUID();
   const body = JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token });
@@ -123,7 +142,7 @@ async function acquireFileLock(path: string): Promise<string | null> {
       if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") {
         // No writable directory or similar — then without the lock, as before.
         process.stderr.write(
-          `[bastra-recall] cannot create lock ${lockPath} (${(err as Error).message}) — writing unserialized\n`,
+          `[bastra-recall] cannot create lock ${lockPath} (${(err as Error).message}) — ${giveUp}\n`,
         );
         return null;
       }
@@ -141,7 +160,7 @@ async function acquireFileLock(path: string): Promise<string | null> {
     }
     if (Date.now() >= deadline) {
       process.stderr.write(
-        `[bastra-recall] lock ${lockPath} busy for ${LOCK_WAIT_MS}ms — writing unserialized\n`,
+        `[bastra-recall] lock ${lockPath} busy for ${LOCK_WAIT_MS}ms — ${giveUp}\n`,
       );
       return null;
     }
@@ -182,7 +201,8 @@ async function releaseFileLock(path: string, token: string): Promise<void> {
 export function withPathLock<T>(path: string, fn: () => Promise<T>, opts: PathLockOptions = {}): Promise<T> {
   const guarded = opts.crossProcess
     ? async (): Promise<T> => {
-        const token = await acquireFileLock(path);
+        const token = await acquireFileLock(path, opts.requireLock ? "not writing" : undefined);
+        if (token === null && opts.requireLock) throw new PathLockUnavailableError();
         try {
           return await fn();
         } finally {
