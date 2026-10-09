@@ -1,8 +1,10 @@
 name: Issue triage check
 
 # Every issue carries a milestone and at least one label. An issue that lacks
-# either gets the `needs-triage` label and, once, a comment naming what is
-# missing; the label comes off again as soon as both are set.
+# either gets the `needs-triage` label; the label comes off again as soon as
+# both are set. The first time, a comment names what is missing. That comment
+# carries a hidden marker and is posted once per issue, however often the
+# label comes and goes afterwards.
 
 on:
   issues:
@@ -45,4 +47,9 @@ jobs:
           gh label create needs-triage --color FBCA04 \
             --description "Issue lacks a milestone or a label" 2>/dev/null || true
           gh issue edit "$ISSUE" --add-label needs-triage
-          gh issue comment "$ISSUE" --body "This issue is missing ${list}. Every issue in this repository carries a milestone and at least one label; a maintainer will set them. If you have write access, set them now and the \`needs-triage\` label is removed automatically."
+
+          commented=$(gh api --paginate "repos/$GH_REPO/issues/$ISSUE/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- issue-triage-check -->"))) | .id')
+          [ -z "$commented" ] || exit 0
+          gh issue comment "$ISSUE" --body "This issue is missing ${list}. Every issue in this repository carries a milestone and at least one label; a maintainer will set them. If you have write access, set them now and the \`needs-triage\` label is removed automatically.
+          <!-- issue-triage-check -->"
