@@ -50,6 +50,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   choice the daemon keeps running `gemma3:4b`, and only the `recommended:`
   line of `bastra models` shows the new suggestion.
 
+### Fixed
+
+- **A settings file that cannot be read is no longer written over.** With
+  `~/.bastra/cli-settings.json` present but unreadable (wrong permissions),
+  any command that stores a setting used to replace it with defaults plus the
+  one changed value. They now stop with "the settings file exists but cannot
+  be read" and leave the file alone.
+
 ## [1.0.1] — 2026-10-04
 
 ### Added
