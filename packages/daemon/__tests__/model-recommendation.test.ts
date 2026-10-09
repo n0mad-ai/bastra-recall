@@ -31,6 +31,7 @@ import {
   DISMISS_WARNING,
   MODEL_COMPARISON_URL,
   REMIND_AFTER_MS,
+  claimModelQuestion,
   currentModelOffer,
   formatModelNotice,
   formatModelSessionBlock,
@@ -264,7 +265,8 @@ test("switched: not asked again even while an env variable keeps the old model i
 
 test("asked is not an answer: every other place keeps asking", async () => {
   await existingUser(async (path) => {
-    await recordModelAnswer(REC.id, "asked", path, NOW);
+    assert.equal(await claimModelQuestion(REC.id, path, NOW), true);
+    assert.equal(await answerOf(path), "asked");
     assert.equal((await pendingModelNotice(opts(path)))?.model, "new:4b");
   });
 });

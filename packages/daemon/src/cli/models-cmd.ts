@@ -26,6 +26,7 @@ import type { ParsedArgs } from "./types.js";
 import {
   DISMISS_STILL_OPEN,
   DISMISS_WARNING,
+  claimModelQuestion,
   currentModelOffer,
   decisionCommand,
   envOverrideNote,
@@ -219,18 +220,12 @@ async function answer(choice: Choice, offer: ModelOffer, deps: ModelsDeps): Prom
  * Enter or anything unclear is "later" — never a download. No answer at all
  * (Ctrl-C, EOF) records no answer.
  *
- * What IS recorded, before the question, is that it was asked: the terminal
- * asks about one recommendation once. Without that note, a user who waves the
- * question away would get it again after every command.
+ * Callers claim the question first (claimModelQuestion): that it was asked is
+ * noted before it is put, so the terminal asks about one recommendation once.
+ * Without that note, a user who waves the question away would get it again
+ * after every command.
  */
 async function askQuestion(offer: ModelOffer, deps: ModelsDeps): Promise<number> {
-  try {
-    await recordModelAnswer(offer.id, "asked", deps.settingsPath, deps.now);
-  } catch {
-    // The settings file cannot take a note (it is corrupt, and says so on every
-    // run). Asking without being able to remember it would ask forever.
-    return 0;
-  }
   write("");
   for (const line of modelOfferFacts(offer)) write(line);
   const env = envOverrideNote(offer);
@@ -253,10 +248,23 @@ async function askQuestion(offer: ModelOffer, deps: ModelsDeps): Promise<number>
 async function cmdAsk(deps: ModelsDeps): Promise<number> {
   const offer = await pendingModelNotice(deps);
   if (!offer) return 0;
-  if (deps.interactive ?? isInteractive()) return askQuestion(offer, deps);
-  write("");
-  write(formatModelNotice(offer));
-  return 0;
+  if (!(deps.interactive ?? isInteractive())) {
+    write("");
+    write(formatModelNotice(offer));
+    return 0;
+  }
+  // `bastra update` asks whenever the question is open, also a second time
+  // (an unanswered "asked", a "later" that has come due). It only must not ask
+  // over a decision that landed while this was starting: if a note for this id
+  // already exists, look again before asking.
+  let claimed: boolean;
+  try {
+    claimed = await claimModelQuestion(offer.id, deps.settingsPath, deps.now);
+  } catch {
+    return 0; // the settings file cannot take a note — asking would ask forever
+  }
+  if (!claimed && !(await pendingModelNotice(deps))) return 0;
+  return askQuestion(offer, deps);
 }
 
 /**
@@ -272,13 +280,19 @@ async function cmdAsk(deps: ModelsDeps): Promise<number> {
  * Only for a recommendation that has no note at all yet: asked before (here or
  * by `bastra update`), or answered anywhere — chat, CLI, a "later" that has
  * come due — means the terminal stays quiet and the dim hint does the
- * reminding. Returns true if the question was put.
+ * reminding. "No note yet" is decided by the claim itself, inside the settings
+ * lock, so a decision that lands a moment earlier is never overwritten and two
+ * commands finishing together ask once. Returns true if the question was put.
  */
 export async function maybeAskModelCatchUp(deps: ModelsDeps = {}): Promise<boolean> {
   if (!(deps.interactive ?? isInteractive())) return false;
   const offer = await pendingModelNotice(deps);
   if (!offer) return false;
-  if ((await readSettings(deps.settingsPath)).modelRecommendation?.id === offer.id) return false;
+  try {
+    if (!(await claimModelQuestion(offer.id, deps.settingsPath, deps.now))) return false;
+  } catch {
+    return false; // the settings file cannot take a note — asking would ask forever
+  }
   await askQuestion(offer, deps);
   return true;
 }

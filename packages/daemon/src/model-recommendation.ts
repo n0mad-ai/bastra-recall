@@ -148,7 +148,7 @@ async function textModelInUse(offer: ModelOffer, settingsPath?: string): Promise
  */
 export async function recordModelAnswer(
   id: string,
-  answer: ModelRecommendationAnswer,
+  answer: Exclude<ModelRecommendationAnswer, "asked">,
   path: string = settingsFilePath(),
   now: number = Date.now(),
   model?: string,
@@ -162,6 +162,31 @@ export async function recordModelAnswer(
     }),
     { refuseCorrupt: true },
   );
+}
+
+/**
+ * Claims the terminal question for recommendation `id`: notes "asked" — but
+ * only if there is no note for this id yet, decided inside the settings lock.
+ * Returns whether the claim was made.
+ *
+ * Check and write are one step on purpose. Checked outside and written
+ * afterwards, a decision that lands in between ("dismissed", from the chat)
+ * would be turned back into "asked" and the user asked again; and two commands
+ * finishing at the same moment would both ask. "asked" never replaces
+ * anything: it is not an answer and must not take one back.
+ */
+export async function claimModelQuestion(id: string, path: string = settingsFilePath(), now: number = Date.now()): Promise<boolean> {
+  let claimed = false;
+  await mutateSettings(
+    path,
+    (current) => {
+      if (current.modelRecommendation?.id === id) return null;
+      claimed = true;
+      return { ...current, modelRecommendation: { id, answer: "asked", at: new Date(now).toISOString() } };
+    },
+    { refuseCorrupt: true },
+  );
+  return claimed;
 }
 
 /** Why a switch alone does not take effect while the variable is set. */
