@@ -165,10 +165,30 @@ export async function recordModelAnswer(
 /** Why a switch alone does not take effect while the variable is set. */
 export function envOverrideNote(offer: ModelOffer): string | null {
   if (!offer.envOverride) return null;
+  // Without the value when it is not a plain model tag (see blockSafe).
+  const assignment = isModelTag(offer.current) ? `${offer.envOverride}=${offer.current}` : offer.envOverride;
   return (
-    `${offer.envOverride}=${offer.current} is set in the environment and overrides the saved choice: ` +
+    `${assignment} is set in the environment and overrides the saved choice: ` +
     `the switch only takes effect once that variable is removed and the daemon restarted.`
   );
+}
+
+/** What an Ollama model tag looks like: letters, digits and . _ - : / */
+function isModelTag(value: string): boolean {
+  return /^[A-Za-z0-9._:/-]{1,128}$/.test(value);
+}
+
+/**
+ * The offer as the SessionStart block may show it. The model in effect comes
+ * from the settings file or an environment variable — free text that would
+ * otherwise go verbatim into instructions an agent reads. Anything that is not
+ * a plain model tag is replaced by a neutral placeholder; the recommendation
+ * itself (id, model) ships with the release and is checked the same way, so a
+ * block is never built around a value that could close its own tag.
+ */
+function blockSafe(offer: ModelOffer): ModelOffer & { currentIsTag: boolean } {
+  const currentIsTag = isModelTag(offer.current);
+  return { ...offer, current: currentIsTag ? offer.current : "a custom model", currentIsTag };
 }
 
 /** The facts, shared by every text: what, how big, what for, where to read more. */
@@ -222,8 +242,12 @@ export function formatModelNotice(offer: ModelOffer): string {
  * deliberately without a day throttle — so the one way to end it for good,
  * `dismiss`, comes with the warning the agent has to pass on first.
  */
-export function formatModelSessionBlock(offer: ModelOffer): string {
-  const env = envOverrideNote(offer);
+export function formatModelSessionBlock(shown: ModelOffer): string {
+  // A recommendation whose own id or model is not a plain tag is not announced
+  // in a block at all (it cannot happen with shipped data; this is the guard).
+  if (!isModelTag(shown.id) || !isModelTag(shown.model)) return "";
+  const env = envOverrideNote(shown);
+  const offer = blockSafe(shown);
   return (
     `\n<bastra-model-recommendation>\n` +
     modelOfferFacts(offer).join("\n") +
@@ -233,7 +257,9 @@ export function formatModelSessionBlock(offer: ModelOffer): string {
     `and run them exactly as written — they name this recommendation, and bastra refuses them if it has changed.\n` +
     `- The user says yes → run \`${decisionCommand("switch", offer)}\`. It downloads ${offer.model}, checks it with a short test call ` +
     `and only then changes the setting; if anything fails, nothing changes. The old model stays installed ` +
-    `(switch back: \`bastra models set ${offer.current}\`).\n` +
+    (offer.currentIsTag
+      ? `(switch back: \`bastra models set ${offer.current}\`).\n`
+      : `(switch back with \`bastra models set\` and the old model's tag, which the switch prints).\n`) +
     `- The user says later → run \`${decisionCommand("later", offer)}\` (asks again in 7 days).\n` +
     `- The user says no / stop asking → FIRST tell them what that means: ${DISMISS_WARNING}; ${DISMISS_STILL_OPEN}. ` +
     `Only when they confirm after hearing that, run \`${decisionCommand("dismiss", offer)}\` (a future, new recommendation asks again).\n` +
