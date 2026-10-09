@@ -50,11 +50,28 @@ export interface TelemetryPool {
   vaultSize: number;
   k: number | null;
   /**
-   * The batch width (`query_count`) when this recall is one phrasing of a
-   * batch, else null. The width is all an event says about its batch: no
-   * field names the other phrasings.
+   * How many recalls the daemon ran for the call this one belongs to: 1 for a
+   * plain recall, for a batch the phrasings that were searched (see
+   * `phrasingsRun`). The count is all an event says about its batch: no field
+   * names the other phrasings.
    */
-  batchOf: number | null;
+  phrasingsRun: number;
+}
+
+/**
+ * `query_count` is the number of queries a batch call submitted, written on
+ * every phrasing that ran; `batch_collapsed` is how many of them the daemon
+ * dropped as near-duplicates before searching (`dedupeQueries`), so the
+ * difference is the number of recalls that exist for the batch. Two identical
+ * queries are `query_count: 2, batch_collapsed: 1`: one recall, no sibling.
+ * `batch_overlap` is a similarity measure and says nothing about the count.
+ * The forwarder's `hook_recall` events carry the width alone; it collapses
+ * nothing. A `batch_collapsed` that is no positive number counts as none.
+ */
+function phrasingsRun(event: Record<string, unknown>): number {
+  if (typeof event.query_count !== "number") return 1;
+  const collapsed = typeof event.batch_collapsed === "number" && event.batch_collapsed > 0 ? event.batch_collapsed : 0;
+  return event.query_count - collapsed;
 }
 
 /** A `load_memory` telemetry event, the hook lane's evidence step. */
@@ -176,7 +193,7 @@ export async function loadTelemetry(dir: string, options: { sinceMs?: number } =
         scoreSpace,
         vaultSize: typeof event.vault_size === "number" ? event.vault_size : 0,
         k: typeof event.k === "number" ? event.k : null,
-        batchOf: typeof event.query_count === "number" ? event.query_count : null,
+        phrasingsRun: phrasingsRun(event),
       });
     }
   }
