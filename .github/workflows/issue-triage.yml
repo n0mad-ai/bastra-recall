@@ -1,0 +1,48 @@
+name: Issue triage check
+
+# Every issue carries a milestone and at least one label. An issue that lacks
+# either gets the `needs-triage` label and, once, a comment naming what is
+# missing; the label comes off again as soon as both are set.
+
+on:
+  issues:
+    types: [opened, reopened, milestoned, demilestoned, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-triage-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE: ${{ github.event.issue.number }}
+    steps:
+      - name: Flag an issue without milestone or label
+        run: |
+          set -euo pipefail
+          state=$(gh issue view "$ISSUE" --json state,milestone,labels)
+          [ "$(jq -r .state <<<"$state")" = "OPEN" ] || exit 0
+          flagged=$(jq '[.labels[].name] | index("needs-triage") != null' <<<"$state")
+          missing=()
+          [ "$(jq -r '.milestone.title // ""' <<<"$state")" != "" ] || missing+=("a milestone")
+          [ "$(jq '[.labels[].name | select(. != "needs-triage")] | length' <<<"$state")" -gt 0 ] || missing+=("at least one label")
+
+          if [ ${#missing[@]} -eq 0 ]; then
+            [ "$flagged" = "false" ] || gh issue edit "$ISSUE" --remove-label needs-triage
+            exit 0
+          fi
+          [ "$flagged" = "false" ] || exit 0
+
+          list=$(printf '%s and ' "${missing[@]}"); list=${list% and }
+          gh label create needs-triage --color FBCA04 \
+            --description "Issue lacks a milestone or a label" 2>/dev/null || true
+          gh issue edit "$ISSUE" --add-label needs-triage
+          gh issue comment "$ISSUE" --body "This issue is missing ${list}. Every issue in this repository carries a milestone and at least one label; a maintainer will set them. If you have write access, set them now and the \`needs-triage\` label is removed automatically."
