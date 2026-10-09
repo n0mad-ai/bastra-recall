@@ -10,15 +10,17 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, writeFile, rm } from "node:fs/promises";
+import { createHash, createHmac } from "node:crypto";
+import { mkdtemp, readFile, readdir, stat, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Vault, SearchIndex, EmbeddingIndex, type EmbeddingProvider, type RecallHit } from "@bastra-recall/core";
+import { Vault, SearchIndex, EmbeddingIndex, type EmbeddingProvider, type Memory, type RecallHit } from "@bastra-recall/core";
+import { callerSessionStore } from "../src/caller-session.js";
 import { recallHandler, loadMemoryHandler, type ToolDeps } from "../src/tool-handlers.js";
 import { Telemetry } from "../src/telemetry.js";
 import { writeDraftEvent } from "../src/draft-events.js";
 import { harvestFarBridges, type MemoryInfo } from "../src/learned-recall/harvest.js";
-import { evalRunMark, noteContentHash, recordRerankVerdicts, telemetryCandidatePool, type RerankVerdict } from "../src/training-signal.js";
+import { evalRunMark, noteContentHash, recordRerankVerdicts, telemetryCandidatePool, CONTENT_KEY_FILE, type RerankVerdict } from "../src/training-signal.js";
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const BODY = "Synthetic body about the flux compensator calibration bench.";
@@ -53,6 +55,9 @@ async function fixtureVault(dir: string): Promise<{ vault: Vault; search: Search
   const search = new SearchIndex(vault); search.start();
   return { vault, search, root };
 }
+
+const recallRow = { recall_id: "r", query: "q", k: 5, scope: null, type: null, vault_size: 1, hit_count: 0, top_score: null, hits: [], latency_ms: 1 };
+const loadRow = { id: "m1", found: true, follows_recall: null, from_hook_recall: null, hook_hint_rank: null };
 
 // ─── D: candidate pool ───────────────────────────────────────────────────────
 
@@ -108,21 +113,86 @@ test("D — the hash follows the note's content, and a private note gets none", 
   } finally { search.stop(); await vault.stop(); }
 }));
 
+test("D — the hash is keyed with a local secret: candidate texts cannot be tried against it, another machine gives another value", async () => {
+  const note = (port: number) => ({ fm: { id: "fixture-port", title: "Fixture database port", summary: "Permanent configuration", recall_when: ["database port"], sensitivity: "team" }, body: `The fixture database port is ${port}.` }) as unknown as Memory;
+  const hit = { id: "fixture-port", score: 20 } as RecallHit;
+  let first = "";
+  await withEnv({}, async (dir) => {
+    const actual = note(5432);
+    first = telemetryCandidatePool([hit], { get: () => actual })[0].content_hash!;
+    assert.match(first, /^[a-f0-9]{16}$/);
+    // The reviewer's dictionary attack: hash every candidate the way the code did before.
+    const guess = [3000, 4381, 5432, 8080].find((port) => createHash("sha256").update(JSON.stringify([actual.fm.title, actual.fm.summary, actual.fm.recall_when, note(port).body])).digest("hex").slice(0, 16) === first);
+    assert.equal(guess, undefined, "an unkeyed hash of the right candidate must not match");
+    // Same content, same machine: recognised again — also as a fresh object.
+    assert.equal(noteContentHash(note(5432)), first);
+    assert.notEqual(noteContentHash(note(8080)), first);
+    // The key: one file beside the log, 0600, 32 random bytes, in no event row.
+    const keyPath = join(dir, "logs", CONTENT_KEY_FILE);
+    const key = (await readFile(keyPath, "utf8")).trim();
+    assert.match(key, /^[a-f0-9]{64}$/);
+    if (process.platform !== "win32") assert.equal((await stat(keyPath)).mode & 0o777, 0o600);
+    assert.equal(createHmac("sha256", Buffer.from(key, "hex")).update(JSON.stringify([actual.fm.title, actual.fm.summary, actual.fm.recall_when, actual.body])).digest("hex").slice(0, 16), first);
+    const telemetry = new Telemetry();
+    await telemetry.logRecall({ ...recallRow, candidate_pool: telemetryCandidatePool([hit], { get: () => actual }) });
+    assert.ok(!JSON.stringify(await rows(dir)).includes(key));
+  });
+  await withEnv({}, async () => {
+    assert.notEqual(noteContentHash(note(5432)), first, "a second log directory has its own key");
+  });
+});
+
+test("D — no key, no hash: a linked key file is refused and left untouched; telemetry off creates no key", async () => {
+  const note = { fm: { id: "n", title: "Fixture", summary: "Fixture", recall_when: [], sensitivity: "team" }, body: "Synthetic body." } as unknown as Memory;
+  const hit = { id: "n", score: 1 } as RecallHit;
+  await withEnv({}, async (dir) => {
+    const { mkdir, symlink } = await import("node:fs/promises");
+    await mkdir(join(dir, "logs"));
+    const outside = join(dir, "outside.txt");
+    await writeFile(outside, "a".repeat(64));
+    await symlink(outside, join(dir, "logs", CONTENT_KEY_FILE));
+    assert.deepEqual(telemetryCandidatePool([hit], { get: () => note }), [{ id: "n", score: 1 }]);
+    assert.equal(noteContentHash(note), null);
+    assert.equal(await readFile(outside, "utf8"), "a".repeat(64));
+  });
+  await withEnv({ BASTRA_TELEMETRY: "0" }, async (dir) => {
+    assert.deepEqual(telemetryCandidatePool([hit], { get: () => note }), [{ id: "n", score: 1 }]);
+    assert.deepEqual(await readdir(join(dir, "logs")).catch(() => []), []);
+  });
+});
+
 // ─── E: the recall that served a load ────────────────────────────────────────
 
-test("E — load_memory names the recall that served the note; the time window stays as the fallback", () => withEnv({}, async (dir) => {
+type Served = { recall_id: string; recall_ids?: string[]; hits: { id: string }[] };
+/** Three notes that all answer one question, so a budget or a batch can leave one out. */
+async function amberVault(dir: string): Promise<{ vault: Vault; search: SearchIndex; deps: ToolDeps; telemetry: Telemetry }> {
+  const root = join(dir, "vault");
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir(root);
+  for (let i = 0; i < 3; i++) await writeFile(join(root, `note-${i}.md`), memoryMd(`fixture-note-${i}`, "amber deployment isolated database", `Invented amber deployment database ${i}.`));
+  const vault = new Vault(root); await vault.init();
+  const search = new SearchIndex(vault); search.start();
+  const telemetry = new Telemetry();
+  return { vault, search, telemetry, deps: { vault, search, telemetry, vaultPath: root } };
+}
+const AMBER = { query: "amber deployment isolated database", k: 3, min_score: 0 };
+async function loadRows(dir: string): Promise<Record<string, any>[]> {
+  await sleep(30);
+  return (await rows(dir)).filter((row) => row.kind === "load_memory");
+}
+
+test("E — load_memory names the recall that delivered the note to this caller; the time window stays as the fallback", () => withEnv({}, async (dir) => {
   const { vault, search, root } = await fixtureVault(dir);
   try {
     const telemetry = new Telemetry();
     const deps: ToolDeps = { vault, search, telemetry, vaultPath: root };
-    const first = (await recallHandler(deps, { query: "flux compensator drift tuning", k: 5 })) as unknown as { recall_id: string; hits: { id: string }[] };
+    const first = (await recallHandler(deps, { query: "flux compensator drift tuning", k: 5 }, { session_id: "session-A" })) as unknown as Served;
     assert.equal(first.hits[0].id, "flux-note");
-    // A second, newer recall that does NOT return the flux note.
-    const second = (await recallHandler(deps, { query: "tomato bed watering plan", k: 5 })) as unknown as { recall_id: string; hits: { id: string }[] };
+    // A second, newer recall of the same caller that does NOT return the flux note.
+    const second = (await recallHandler(deps, { query: "tomato bed watering plan", k: 5 }, { session_id: "session-A" })) as unknown as Served;
     assert.ok(!second.hits.some((h) => h.id === "flux-note"));
-    await loadMemoryHandler(deps, { id: "flux-note" });
-    await sleep(30);
-    const load = (await rows(dir)).find((row) => row.kind === "load_memory")!;
+    await loadMemoryHandler(deps, { id: "flux-note" }, { sessionId: "session-A" });
+    const [load] = await loadRows(dir);
     assert.equal(load.from_recall, first.recall_id, "the recall that actually returned the note");
     assert.equal(load.recall_rank, 1);
     assert.equal(load.follows_recall, second.recall_id, "the window link still names the newest recall");
@@ -130,25 +200,88 @@ test("E — load_memory names the recall that served the note; the time window s
   } finally { search.stop(); await vault.stop(); }
 }));
 
-test("E — a load no recent recall served carries no recall link", () => withEnv({}, async (dir) => {
-  const { vault, search, root } = await fixtureVault(dir);
+test("E — a forwarded call's session links recall and load without being passed by hand", () => withEnv({}, async (dir) => {
+  const { vault, search, deps } = await amberVault(dir);
   try {
-    const telemetry = new Telemetry();
-    const deps: ToolDeps = { vault, search, telemetry, vaultPath: root };
-    await recallHandler(deps, { query: "tomato bed watering plan", k: 1 });
-    await loadMemoryHandler(deps, { id: "flux-note" });
-    await sleep(30);
-    const load = (await rows(dir)).find((row) => row.kind === "load_memory")!;
+    const served = await callerSessionStore.run("forwarded-session", () => recallHandler(deps, AMBER)) as unknown as Served;
+    await callerSessionStore.run("forwarded-session", () => loadMemoryHandler(deps, { id: served.hits[0].id }));
+    await callerSessionStore.run("other-session", () => loadMemoryHandler(deps, { id: served.hits[0].id }));
+    const loads = await loadRows(dir);
+    assert.deepEqual(loads.map((row) => row.from_recall), [served.recall_id, null]);
+  } finally { search.stop(); await vault.stop(); }
+}));
+
+test("E — two sessions served the same note are never linked to each other's recall", () => withEnv({}, async (dir) => {
+  const { vault, search, deps, telemetry } = await amberVault(dir);
+  try {
+    const a = (await recallHandler(deps, AMBER, { session_id: "session-A", client: "claude-code" })) as unknown as Served;
+    const b = (await recallHandler(deps, AMBER, { session_id: "session-B", client: "claude-code" })) as unknown as Served;
+    const id = a.hits[0].id;
+    assert.ok(b.hits.some((h) => h.id === id), "B was served the same note, later");
+    await loadMemoryHandler(deps, { id }, { sessionId: "session-A" });
+    await loadMemoryHandler(deps, { id }, { sessionId: "session-B" });
+    await loadMemoryHandler(deps, { id }); // a caller that names no session
+    await loadMemoryHandler(deps, { id }, { sessionId: "session-C" }); // a session that was served nothing
+    const loads = await loadRows(dir);
+    assert.deepEqual(loads.map((row) => row.from_recall), [a.recall_id, b.recall_id, null, null]);
+    assert.ok(loads.every((row) => row.follows_recall === b.recall_id), "the window link is the fallback on every row");
+    assert.equal(telemetry.findRecallFor(id, null), null);
+  } finally { search.stop(); await vault.stop(); }
+}));
+
+test("E — a recall or a load without a caller session leaves no link, only the time window", () => withEnv({}, async (dir) => {
+  const { vault, search, deps } = await amberVault(dir);
+  try {
+    const anonymous = (await recallHandler(deps, AMBER)) as unknown as Served;
+    await loadMemoryHandler(deps, { id: anonymous.hits[0].id });
+    await loadMemoryHandler(deps, { id: anonymous.hits[0].id }, { sessionId: "session-A" });
+    const loads = await loadRows(dir);
+    assert.deepEqual(loads.map((row) => [row.from_recall, row.recall_rank]), [[null, null], [null, null]]);
+    assert.ok(loads.every((row) => row.follows_recall === anonymous.recall_id));
+  } finally { search.stop(); await vault.stop(); }
+}));
+
+test("E — a note the token budget cut from the answer is not linked to that recall", () => withEnv({}, async (dir) => {
+  const { vault, search, deps, telemetry } = await amberVault(dir);
+  try {
+    const cut = (await recallHandler(deps, { ...AMBER, max_tokens: 1 }, { session_id: "session-A" })) as unknown as Served;
+    assert.deepEqual(cut.hits, [], "the budget delivered nothing");
+    await loadMemoryHandler(deps, { id: "fixture-note-2" }, { sessionId: "session-A" });
+    const [load] = await loadRows(dir);
     assert.equal(load.from_recall, null); assert.equal(load.recall_rank, null);
-    assert.equal(typeof load.follows_recall, "string");
-    assert.equal(telemetry.findRecallFor("never-served"), null);
+    assert.equal(load.follows_recall, cut.recall_id);
+    for (let i = 0; i < 3; i++) assert.equal(telemetry.findRecallFor(`fixture-note-${i}`, "session-A"), null);
+  } finally { search.stop(); await vault.stop(); }
+}));
+
+test("E — a batch links only what the merged answer delivered, under the phrasing that ranked it", () => withEnv({}, async (dir) => {
+  const { vault, search, deps, telemetry } = await amberVault(dir);
+  try {
+    await writeFile(join(vault.root, "note-2.md"), memoryMd("fixture-note-2", "cobalt relay diagnostics", "Invented cobalt relay diagnostics."));
+    await vault.reconcile();
+    const batch = (await recallHandler(deps, { queries: ["amber deployment isolated database", "cobalt relay diagnostics"], k: 1, min_score: 0 }, { session_id: "session-A" })) as unknown as Served;
+    assert.equal(batch.hits.length, 1);
+    const delivered = batch.hits[0].id;
+    const left = ["fixture-note-0", "fixture-note-1", "fixture-note-2"].filter((id) => id !== delivered);
+    const link = telemetry.findRecallFor(delivered, "session-A");
+    assert.ok(link && batch.recall_ids!.includes(link.recall_id)); assert.equal(link.rank, 1);
+    for (const id of left) assert.equal(telemetry.findRecallFor(id, "session-A"), null, `${id} was ranked by a phrasing but not delivered`);
+  } finally { search.stop(); await vault.stop(); }
+}));
+
+test("E — a repeated question answered from the query cache is linked to the repeat, with what it delivered", () => withEnv({}, async (dir) => {
+  const { vault, search, deps, telemetry } = await amberVault(dir);
+  try {
+    const first = (await recallHandler(deps, AMBER, { session_id: "session-A" })) as unknown as Served;
+    const again = (await recallHandler(deps, AMBER, { session_id: "session-A" })) as unknown as Served;
+    assert.notEqual(again.recall_id, first.recall_id);
+    assert.deepEqual(again.hits.map((h) => h.id), first.hits.map((h) => h.id));
+    again.hits.forEach((hit, i) => assert.deepEqual(telemetry.findRecallFor(hit.id, "session-A"), { recall_id: again.recall_id, rank: i + 1 }));
   } finally { search.stop(); await vault.stop(); }
 }));
 
 // ─── F: measurement runs ─────────────────────────────────────────────────────
 
-const recallRow = { recall_id: "r", query: "q", k: 5, scope: null, type: null, vault_size: 1, hit_count: 0, top_score: null, hits: [], latency_ms: 1 };
-const loadRow = { id: "m1", found: true, follows_recall: null, from_hook_recall: null, hook_hint_rank: null };
 
 test("F — a call that declares client eval is flagged; real traffic carries no flag", () => withEnv({}, async (dir) => {
   const telemetry = new Telemetry();
@@ -160,6 +293,22 @@ test("F — a call that declares client eval is flagged; real traffic carries no
   assert.ok(!("eval_run" in written.find((row) => row.recall_id === "real")!));
   assert.ok(!("eval_run" in written.find((row) => row.kind === "load_memory")!));
   assert.deepEqual(evalRunMark({ dimensions: { client: "unknown" } }), {});
+}));
+
+test("F — a batch recall that declares client eval flags every row its phrasings write", () => withEnv({}, async (dir) => {
+  const { vault, search, deps } = await amberVault(dir);
+  try {
+    const queries = ["amber deployment isolated database", "invented cobalt relay diagnostics"];
+    const measured = (await recallHandler(deps, { queries, k: 1, min_score: 0 }, { client: "eval" })) as unknown as Served;
+    const real = (await recallHandler(deps, { queries, k: 1, min_score: 0 }, { client: "claude-code" })) as unknown as Served;
+    await sleep(30);
+    const written = (await rows(dir)).filter((row) => row.kind === "recall");
+    const of = (ids: string[]) => written.filter((row) => ids.includes(row.recall_id));
+    assert.equal(of(measured.recall_ids!).length, 2);
+    assert.ok(of(measured.recall_ids!).every((row) => row.eval_run === true && row.dimensions.client === "eval"));
+    assert.equal(of(real.recall_ids!).length, 2);
+    assert.ok(of(real.recall_ids!).every((row) => !("eval_run" in row) && row.dimensions.client === "unknown"), "real batch rows are written as before");
+  } finally { search.stop(); await vault.stop(); }
 }));
 
 test("F — a process started as a measurement run flags every row, also those without a dimensions column", () => withEnv({ BASTRA_EVAL_RUN: "1" }, async (dir) => {

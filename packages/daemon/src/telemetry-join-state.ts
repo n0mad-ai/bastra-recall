@@ -185,22 +185,29 @@ export class JoinState {
   }
 
   /**
-   * #1128-capture: which `recall` served which note, so a later load_memory
-   * names the recall that actually returned it instead of whichever recall was
-   * newest (`follows_recall`). One slot per note, the newest recall wins, as
-   * with the hook hints. In memory only: after a daemon restart the time
-   * window is the fallback it always was.
+   * #1128-capture: which `recall` DELIVERED which note to which caller, so a
+   * later load_memory by that caller names the recall that actually returned
+   * it instead of whichever recall was newest (`follows_recall`).
+   *
+   * Better no link than a wrong one. A slot is `session + note`: without a
+   * caller session on BOTH sides nothing is recorded and nothing is found, so
+   * two sessions that were served the same note never answer for each other,
+   * and a caller that names no session keeps the time window as its only link.
+   * Callers pass what the caller finally received, not what was ranked.
+   * In memory only: after a daemon restart there is no link either.
    */
   private recallHits = new Map<string, { recall_id: string; rank: number; ts: number }>();
 
-  recordRecallHits(recall_id: string, hits: Array<{ id: string }>): void {
+  recordRecallHits(session: string | null, delivered: Array<{ id: string; recall_id: string; rank: number }>): void {
+    if (!session) return;
     const ts = Date.now();
-    for (const [id, trace] of this.recallHits) if (ts - trace.ts > HOOK_HINT_WINDOW_MS) this.recallHits.delete(id);
-    hits.forEach((hit, i) => this.recallHits.set(hit.id, { recall_id, rank: i + 1, ts }));
+    for (const [key, trace] of this.recallHits) if (ts - trace.ts > HOOK_HINT_WINDOW_MS) this.recallHits.delete(key);
+    for (const hit of delivered) this.recallHits.set(`${session}\0${hit.id}`, { recall_id: hit.recall_id, rank: hit.rank, ts });
   }
 
-  findRecallFor(id: string): { recall_id: string; rank: number } | null {
-    const trace = this.recallHits.get(id);
+  findRecallFor(id: string, session: string | null): { recall_id: string; rank: number } | null {
+    if (!session) return null;
+    const trace = this.recallHits.get(`${session}\0${id}`);
     if (!trace || Date.now() - trace.ts > HOOK_HINT_WINDOW_MS) return null;
     return { recall_id: trace.recall_id, rank: trace.rank };
   }

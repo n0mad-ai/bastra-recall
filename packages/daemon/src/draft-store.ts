@@ -251,6 +251,12 @@ export async function listDrafts(now = Date.now()): Promise<Draft[]> {
   return bounded(store.rows, now, store.metadata);
 }
 
+/** #1128-capture: every row still in the file, including one that is already
+ *  due to expire and that `listDrafts` no longer returns. Read-only. */
+export async function storedDrafts(now = Date.now()): Promise<Draft[]> {
+  return (await load(draftsPath(), now)).rows;
+}
+
 /** Hook retrieval reads only the last completed in-memory snapshot. The
  * background loader/capture refreshes it; a cold cache simply omits drafts. */
 export function draftSearchSnapshot(now = Date.now()): { key: string; rows: readonly Draft[] } {

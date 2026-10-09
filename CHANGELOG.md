@@ -24,9 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   local fine-tuning evaluation needs data the daemon did not keep. Without any
   switch, the local event log gains ids, hashes and ranks only, never text:
   each `candidate_pool` entry of `recall` / `hook_recall` carries a
-  `content_hash` of the note and its rank in the keyword and the vector arm;
-  `load_memory` names the recall that actually served the note (`from_recall`,
-  `recall_rank`; the time-window link `follows_recall` stays); rows written by
+  `content_hash` of the note (an HMAC keyed with a secret that stays on the
+  machine, `training-signal.key` beside the log) and its rank in the keyword
+  and the vector arm; `load_memory` names the recall that delivered the note to
+  the same caller session (`from_recall`, `recall_rank`; without a certain
+  match it stays empty and the time-window link `follows_recall` is the
+  fallback it was); rows written by
   a measurement run carry `eval_run: true` (`client: "eval"` or
   `BASTRA_EVAL_RUN=1`); and `bastra bridges harvest` writes one
   `rerank_verdict` row per judged question. With `BASTRA_TRAINING_CAPTURE=1`
