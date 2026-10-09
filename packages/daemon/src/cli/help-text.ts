@@ -439,6 +439,10 @@ embedding model ('bastra embeddings' owns that one).
   recommend   What this machine can carry, without changing anything
   set <tag>   Pull a model and persist it (e.g. gemma4:12b on a 24 GB+ box)
 
+New installs are offered tev1:4b from 16 GB of RAM (gemma4:12b as the
+alternative from 24 GB, and as the suggestion from 32 GB). An install that
+never stored a choice keeps running the built-in fallback gemma3:4b.
+
 A release can recommend a different model. bastra never switches on its own:
 'bastra update', the session start and a line after CLI commands tell you until
 you have answered — at every session start, on purpose — and 'status' shows

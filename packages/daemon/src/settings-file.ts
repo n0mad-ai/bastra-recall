@@ -175,10 +175,14 @@ export const MODEL_RECOMMENDATION_ANSWERS = ["switched", "later", "dismissed"] a
 export type ModelRecommendationAnswer = (typeof MODEL_RECOMMENDATION_ANSWERS)[number];
 
 /**
- * Default generation (doc2query + rerank) model — the 16 GB baseline pick.
- * A 4B text model with strong instruction-following, chosen over the older
- * qwen3-vl:4b (a vision-language model doing text work). The install wizard may
- * persist a heavier model for roomier machines (see cli/hardware.ts).
+ * Default generation (doc2query + rerank) model: what runs when NO choice was
+ * ever stored and no env variable names one.
+ *
+ * It is not what a new install is offered — that is cli/hardware.ts
+ * (tev1:4b from 16 GB, gemma4:12b from 32 GB), and the installer stores the
+ * pick it pulled. This constant stays gemma3:4b on purpose: changing it would
+ * silently switch every existing install without a stored choice to a model
+ * that is not on their disk.
  */
 export const GENERATION_MODEL_DEFAULT = "gemma3:4b";
 

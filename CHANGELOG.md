@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   stays installed. New installs are offered the recommended model directly.
   `BASTRA_UPDATE_CHECK=off` silences the notice as well. This release ships the
   mechanism with no active recommendation, so nothing changes yet.
+- **New installs are offered `tev1:4b` as the local text model** from 16 GB of
+  RAM (4.5 GB download); `gemma4:12b` stays the alternative from 24 GB and the
+  suggestion from 32 GB. Existing installs are not touched: without a stored
+  choice the daemon keeps running `gemma3:4b`, and only the `recommended:`
+  line of `bastra models` shows the new suggestion.
 
 ## [1.0.1] — 2026-10-04
 

@@ -123,6 +123,27 @@ export function buildSurfaceChoices(present: Record<string, boolean>): {
 }
 
 /** "74 memories" / "1 memory" — used by the prompt and the log line. */
+/**
+ * The text-model step's choices for a machine with `ramGB`: the tier's
+ * suggestion first and preselected, the heavier alternative where the tier has
+ * one, and Skip. Null below the 16 GB tier — the step is not shown there.
+ */
+export function buildTextModelChoices(ramGB: number): {
+  options: { value: string; label: string; hint?: string }[];
+  initialValue: string;
+} | null {
+  const rec = recommendTextModel(ramGB);
+  if (!rec.model) return null;
+  const options: { value: string; label: string; hint?: string }[] = [
+    { value: rec.model, label: `${rec.model} — recommended for ${ramGB} GB`, hint: `~${rec.sizeGB} GB download` },
+  ];
+  if (rec.alt) {
+    options.push({ value: rec.alt.model, label: `${rec.alt.model} — ${rec.alt.note}`, hint: `~${rec.alt.sizeGB} GB download` });
+  }
+  options.push({ value: "", label: "Skip — keyword + semantic recall only", hint: "add later: bastra models set <model>" });
+  return { options, initialValue: rec.model };
+}
+
 export function memoryCountPhrase(n: number): string {
   return `${n} ${n === 1 ? "memory" : "memories"}`;
 }
@@ -378,20 +399,11 @@ export async function runInstallWizard(args: ParsedArgs): Promise<number> {
     }
   }
   if (offerTextModel) {
-    const hw = detectHardware();
-    const rec = recommendTextModel(hw.ramGB);
-    if (rec.model) {
-      const options: { value: string; label: string; hint?: string }[] = [
-        { value: rec.model, label: `${rec.model} — recommended for ${hw.ramGB} GB`, hint: `~${rec.sizeGB} GB download` },
-      ];
-      if (rec.alt) {
-        options.push({ value: rec.alt.model, label: `${rec.alt.model} — ${rec.alt.note}`, hint: `~${rec.alt.sizeGB} GB download` });
-      }
-      options.push({ value: "", label: "Skip — keyword + semantic recall only", hint: "add later: bastra models set <model>" });
+    const choices = buildTextModelChoices(detectHardware().ramGB);
+    if (choices) {
       const ans = await p.select({
         message: "Text model for memory rewriting (doc2query + rerank)?",
-        options,
-        initialValue: rec.model,
+        ...choices,
       });
       if (bailed(ans)) { p.cancel(CANCEL_MSG); return 1; }
       textModel = (ans as string) || null;

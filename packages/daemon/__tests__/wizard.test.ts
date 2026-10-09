@@ -16,6 +16,7 @@ import { join, resolve } from "node:path";
 import {
   shouldRunWizard,
   buildSurfaceChoices,
+  buildTextModelChoices,
   defaultVaultOption,
   detectSurfaces,
   expandUserPath,
@@ -243,4 +244,23 @@ test("probeVaultPresence: counts what the daemon indexes — memories, not plain
     assert.equal(opt.label, "Use ~/BastraVault");
     assert.equal(opt.hint, "2 memories already there");
   });
+});
+
+test("text model step: a new install is offered tev1:4b first and preselected", () => {
+  const c16 = buildTextModelChoices(16);
+  assert.equal(c16?.initialValue, "tev1:4b");
+  assert.deepEqual(c16?.options.map((o) => o.value), ["tev1:4b", ""]);
+  assert.equal(c16?.options[0].label, "tev1:4b — recommended for 16 GB");
+  assert.equal(c16?.options[0].hint, "~4.5 GB download");
+  // 24 GB: the same suggestion, gemma4:12b stays the alternative.
+  const c24 = buildTextModelChoices(24);
+  assert.equal(c24?.initialValue, "tev1:4b");
+  assert.deepEqual(c24?.options.map((o) => o.value), ["tev1:4b", "gemma4:12b", ""]);
+  assert.equal(c24?.options[1].hint, "~8.1 GB download");
+  // 32 GB and up: gemma4:12b, as before.
+  assert.equal(buildTextModelChoices(32)?.initialValue, "gemma4:12b");
+  // Below the 16 GB tier the step is not shown at all.
+  assert.equal(buildTextModelChoices(8), null);
+  // No option in any tier offers the runtime fallback as the suggestion.
+  for (const ram of [16, 24, 32]) assert.ok(!buildTextModelChoices(ram)?.options.some((o) => o.value === "gemma3:4b"));
 });

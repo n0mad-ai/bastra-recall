@@ -148,3 +148,13 @@ test("`bastra models set` / the installer are unchanged: without `verify` there 
   assert.deepEqual(fake.chatCalls, []);
   assert.equal(await stored(), "new:4b");
 });
+
+test("installer: the suggested tev1:4b is pulled and stored once the user picked it", async () => {
+  // What the wizard runs after the text-model step: enableGenerationModel(pick).
+  const c = cli();
+  const r = await enableGenerationModel("tev1:4b", { dryRun: false }, settingsPath, c);
+  assert.equal(r.activated, true);
+  assert.deepEqual(c.calls, ["tev1:4b"], "pulled through the ollama binary");
+  assert.ok(fake.pulled.includes("tev1:4b"));
+  assert.equal(await stored(), "tev1:4b");
+});

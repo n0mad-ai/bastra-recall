@@ -32,7 +32,7 @@ import {
   type ModelOffer,
 } from "../src/model-recommendation.js";
 import { runSessionLane } from "../src/session-lane.js";
-import { readSettings, setEmbeddingProvider, setGenerationModel, setUpdateMode } from "../src/settings.js";
+import { readSettings, resolveGenerationModel, setEmbeddingProvider, setGenerationModel, setUpdateMode } from "../src/settings.js";
 
 const REC: ModelRecommendation = {
   id: "test-rec-1",
@@ -97,6 +97,28 @@ test("shipped: no recommendation is active — nothing is offered and nothing is
     assert.doesNotMatch(status.out, /recommends a different/);
     const ask = await captured(() => cmdModels({ sub: "ask", settingsPath: path, deps: { interactive: true, ask: async () => "s" } }));
     assert.equal(ask.out, "", "`bastra update` ends without a question");
+  });
+});
+
+test("shipped: tev1:4b is what new installs are offered — an existing install keeps running what it has", async () => {
+  await existingUser(async (path) => {
+    // No stored choice: the daemon still resolves the runtime default, not the
+    // new suggestion — so nothing points at a model that was never pulled.
+    assert.equal(await resolveGenerationModel(path), "gemma3:4b");
+    assert.equal(await pendingModelNotice({ ramGB: 16, settingsPath: path }), null);
+    assert.equal(await currentModelOffer({ ramGB: 16, settingsPath: path }), null);
+    // `bastra models` is the one place that shows the new suggestion, and it
+    // only shows: nothing is written.
+    const before = await readFile(path, "utf8");
+    const { out } = await captured(() => cmdModels({ sub: "status", settingsPath: path, deps: { ramGB: 16 } }));
+    const lines = out.split("\n");
+    assert.equal(lines[0], "generation model: gemma3:4b (default)");
+    assert.equal(lines[2], "recommended: tev1:4b  [baseline]");
+    assert.equal(lines[lines.length - 2], "to switch: bastra models set tev1:4b");
+    assert.equal(await readFile(path, "utf8"), before);
+    // A stored choice is untouched as well.
+    await setGenerationModel("gemma3:4b", path);
+    assert.equal(await resolveGenerationModel(path), "gemma3:4b");
   });
 });
 
@@ -470,6 +492,8 @@ test("installer: a new install is offered the recommended model for its tier dir
   assert.equal(recommendTextModel(16, REC).model, "new:4b");
   assert.equal(recommendTextModel(16, REC).sizeGB, 3.3);
   assert.deepEqual(recommendTextModel(24, REC).alt?.model, "gemma4:12b", "the heavier opt-in stays on offer");
+  // Without an active recommendation the installer offers the ladder's pick.
+  assert.equal(recommendTextModel(16, null).model, "tev1:4b");
   assert.equal(recommendTextModel(32, REC).model, "new:12b");
   assert.equal(recommendTextModel(64, { ...REC, models: { ...REC.models, high: { model: "gemma4:12b", sizeGB: 8.1 } } }).alt, undefined);
   assert.equal(recommendTextModel(8, REC).model, null);

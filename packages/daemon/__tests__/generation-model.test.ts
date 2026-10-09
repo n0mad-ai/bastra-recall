@@ -20,13 +20,18 @@ test("recommendTextModel: RAM tiers map to the right model", () => {
   // Below the 16 GB baseline → no generation model.
   assert.equal(recommendTextModel(8).model, null);
   assert.equal(recommendTextModel(8).tier, "keyword-only");
-  // Baseline → the 4B default.
-  assert.equal(recommendTextModel(16).model, "gemma3:4b");
+  // Baseline → tev1:4b, the small model new installs are offered.
+  assert.equal(recommendTextModel(16).model, "tev1:4b");
+  assert.equal(recommendTextModel(16).sizeGB, 4.5);
   assert.equal(recommendTextModel(16).tier, "baseline");
-  // 24 GB → safe 4B default, 12B offered as opt-in alternative.
-  assert.equal(recommendTextModel(24).model, "gemma3:4b");
+  assert.equal(recommendTextModel(16).alt, undefined);
+  // …and the note claims nothing that was not measured.
+  assert.match(recommendTextModel(16).note, /follows from its size \(4\.5 GB\); it was not measured on a 16 GB machine/);
+  // 24 GB → tev1:4b, 12B offered as opt-in alternative.
+  assert.equal(recommendTextModel(24).model, "tev1:4b");
   assert.equal(recommendTextModel(24).tier, "enhanced");
   assert.equal(recommendTextModel(24).alt?.model, "gemma4:12b");
+  assert.equal(recommendTextModel(31).model, "tev1:4b");
   // 32 GB+ → 12B default.
   assert.equal(recommendTextModel(32).model, "gemma4:12b");
   assert.equal(recommendTextModel(64).model, "gemma4:12b");
@@ -40,9 +45,12 @@ test("resolveGenerationModel: env > cli-settings > default", async () => {
   delete process.env.BASTRA_EXPAND_MODEL;
   delete process.env.BASTRA_RERANK_MODEL;
   try {
-    // 3. nothing set → the baseline default.
+    // 3. nothing set → the runtime default. NOT the model new installs are
+    // offered (tev1:4b): an existing install without a stored choice must keep
+    // running the model it has pulled.
     assert.equal(await resolveGenerationModel(path), GENERATION_MODEL_DEFAULT);
     assert.equal(GENERATION_MODEL_DEFAULT, "gemma3:4b");
+    assert.notEqual(GENERATION_MODEL_DEFAULT, recommendTextModel(16).model);
 
     // 2. cli-settings wins over the default.
     await setGenerationModel("gemma4:12b", path);
