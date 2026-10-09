@@ -43,7 +43,7 @@ Commands:
                              default — it otherwise starts on demand and shuts
                              down after 30 min idle). 'on' writes a LaunchAgent;
                              a hand-written one is never replaced without --force
-  drafts <list|purge>         Inspect or clear local session drafts
+  drafts <list|purge|undo>         Inspect or clear local session drafts
   patches <list|add <file>|remove <id>|status>
                              Local patches that survive an update: an ordered
                              series reapplied onto the fresh install. One that
@@ -203,6 +203,9 @@ export const COMMAND_HELP: Record<string, string> = {
 Usage:
   bastra drafts [list] [--json]   List unexpired drafts without refreshing them
   bastra drafts purge [--json]    Remove all drafts and retained tombstones
+  bastra drafts undo <id> [--json] [--vault <path>] [--force]
+                                Remove an unchanged promoted note; keep a 180-day tombstone
+                                --force permits removing a reviewed edited note
 
 Drafts stay on this device, outside the vault. Secrets are redacted before
 storage. Unshown drafts with one evidence row expire after 7 days (unmeasured);

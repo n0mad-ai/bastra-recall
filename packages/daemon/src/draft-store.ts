@@ -37,6 +37,8 @@ const draftSchema = z.object({
   created: timestamp, last_touched: timestamp,
   surfaced: z.array(z.object({ session_id: z.string(), ts: timestamp, novel: z.array(z.string()) }).passthrough()).default([]),
   state: z.enum(["open", "promoted", "rejected"]).default("open"),
+  vault_id: z.string().optional(),
+  promoted_hash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   memory_id: z.string().optional(), evidence_key: z.string().optional(), announce: z.boolean().optional(),
 }).passthrough();
 
@@ -51,6 +53,8 @@ export function draftVectorsPath(): string {
   const path = draftsPath();
   return path.endsWith(".json") ? path.slice(0, -5) + ".vectors.json" : path + ".vectors.json";
 }
+
+export function draftDecisionsPath(): string { return draftsPath() + ".decisions.json"; }
 
 export function draftFingerprint(quote: string): string {
   const normalized = redactSecrets(quote, homedir()).text.normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]+/gu)?.join(" ") ?? "";
@@ -306,6 +310,8 @@ async function captureBatch(inputs: Draft[], now: number, afterUpdates: DraftAft
       });
       if (hit) {
         if (hit.state !== "open") return hit.id;
+        // Mixed or legacy provenance must never inherit a new vault identity.
+        if (hit.vault_id !== draft.vault_id) hit.vault_id = "mixed";
         if (hit.kind === "typed" && draft.kind !== "typed") {
           hit.kind = draft.kind;
           if (draft.context !== undefined) hit.context = draft.context;
@@ -399,11 +405,12 @@ export async function expireDrafts(opts: { now?: number; memoryExists?: (id: str
 
 export async function purgeDrafts(): Promise<void> {
   const path = draftsPath();
-  await withPathLock(path, async () => {
+  await withDraftPublication(() => withPathLock(path, async () => {
     await unlink(path).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
     await unlink(draftVectorsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
+    await unlink(draftDecisionsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
     cache = undefined;
-  }, { crossProcess: true });
+  }, { crossProcess: true }));
 }
 
 /** Retrieval mutations preserve concurrent harvest evidence and retained tombstones. */
@@ -428,6 +435,21 @@ export async function updateRetrievedDrafts(
       changed = true;
     }
     if (changed) await write(path, bounded(rows, now, store.metadata), store.metadata);
+  }, { crossProcess: true });
+}
+
+/** Promotion and undo serialize with capture/purge. Keep the draft lock across
+ * the audited vault mutation; a purge cannot race a late note publication. */
+export async function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, now = Date.now()): Promise<T> {
+  const path = draftsPath();
+  return withPathLock(path, async () => {
+    const store = await load(path, now);
+    assertWritable(store);
+    const rows = bounded(store.rows, now, store.metadata);
+    const before = JSON.stringify(rows);
+    const result = await mutate(rows);
+    if (JSON.stringify(rows) !== before) await write(path, bounded(rows, now, store.metadata), store.metadata);
+    return result;
   }, { crossProcess: true });
 }
 
@@ -462,4 +484,9 @@ export function startDraftSearchCache(): () => void {
     // the cache directly; the background fallback notices external changes.
     return () => { stopped = true; clearInterval(timer); };
   }
+}
+
+/** Serialize publication/undo/purge without blocking capture or hint feedback. */
+export function withDraftPublication<T>(publish: () => Promise<T>): Promise<T> {
+  return withPathLock(`${draftsPath()}.publish`, publish, { crossProcess: true });
 }

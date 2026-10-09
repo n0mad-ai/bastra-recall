@@ -33,6 +33,8 @@ export interface PendingSuggestion {
   ts: number;
   blocks: string;
   lane?: PendingLane;
+  /** Sharp harvest owns this transient block; it cannot evict ordinary rows. */
+  provisional?: string;
   /** Trends only: dedupe key. A refreshed trend (same key, new counts in the
    *  text) replaces its row instead of stacking next to it. */
   key?: string;
@@ -160,7 +162,7 @@ export function pendingSuggestionsPath(): string {
  */
 export async function writePendingSuggestion(
   blocks: string,
-  opts: { lane?: PendingLane; key?: string; clusters?: Record<string, number> } = {},
+  opts: { lane?: PendingLane; key?: string; clusters?: Record<string, number>; provisional?: string } = {},
 ): Promise<void> {
   const lane: PendingLane = opts.lane ?? "recency";
   const path = pendingSuggestionsPath();
@@ -218,18 +220,19 @@ export async function writePendingSuggestion(
         }
       } else {
         const dup = entries.find((e) => laneOf(e) === "recency" && e.blocks === capped);
-        if (dup) dup.ts = Date.now();
-        else entries.push({ ts: Date.now(), blocks: capped });
+        if (dup) { if (!opts.provisional || dup.provisional === opts.provisional) dup.ts = Date.now(); }
+        else entries.push({ ts: Date.now(), blocks: capped, ...(opts.provisional ? {provisional:opts.provisional} : {}) });
       }
       // The cap holds per lane: a burst of hot suggestions must not evict a
       // trend that is still alive, nor the other way round. Tombstones are
       // nothing a session would see, so they take no slot in the trends lane;
       // they are bounded on their own and dropping one is not a loss.
       const keep = new Set<PendingSuggestion>();
-      const live = (l: PendingLane) => entries.filter((x) => laneOf(x) === l && !isTombstone(x));
+      const live = (l: PendingLane) => entries.filter((x) => laneOf(x) === l && !isTombstone(x) && !x.provisional);
       for (const rows of [live("recency"), live("trends"), entries.filter(isTombstone)]) {
         for (const e of rows.slice(-MAX_ENTRIES)) keep.add(e);
       }
+      for (const row of entries) if (row.provisional) keep.add(row);
       const kept = entries.filter((e) => keep.has(e));
       // Dropping the oldest is the documented contract, not a bug — but it IS
       // a durable loss, so it gets a line instead of happening in silence.
@@ -463,4 +466,36 @@ export async function takePendingRelay(
  */
 export async function consumePendingSuggestions(now: number = Date.now()): Promise<PendingSuggestion[]> {
   return (await takePendingRelay({ now })).recency;
+}
+
+
+/** Settle one sharp pass atomically. Provisional rows are outside the ordinary
+ * recency cap until this point, so a successful withdrawal never loses a foreign
+ * suggestion. Failed/uncaptured rows become ordinary relay and use its usual cap.
+ * A killed process leaves its durable rows readable as fallback suggestions. */
+export async function settleProvisionalSuggestions(token: string, withdraw: ReadonlySet<string>): Promise<Set<string>> {
+  const path = pendingSuggestionsPath(), removed = new Set<string>();
+  const capped = (blocks: string) => blocks.length > PENDING_ENTRY_CHAR_CAP ? blocks.slice(0,PENDING_ENTRY_CHAR_CAP-1)+"…" : blocks;
+  const requested = new Set([...withdraw].map(capped));
+  try {
+    return await withPathLock(path, async () => {
+      const parsed:unknown = JSON.parse(await readFile(path,"utf8"));
+      if (!Array.isArray(parsed)) return removed;
+      const entries:PendingSuggestion[]=[];
+      for (const entry of parsed as PendingSuggestion[]) {
+        if(entry.provisional===token) {
+          if(requested.has(entry.blocks)) {removed.add(entry.blocks);continue;}
+          delete entry.provisional;
+        }
+        entries.push(entry);
+      }
+      const ordinary=entries.filter(entry=>laneOf(entry)==="recency"&&!entry.provisional);
+      const allowed=new Set(ordinary.slice(-MAX_ENTRIES));
+      const kept=entries.filter(entry=>laneOf(entry)!=="recency"||entry.provisional||allowed.has(entry));
+      if(ordinary.length>MAX_ENTRIES)reportLoss(`${ordinary.length-MAX_ENTRIES} oldest entries dropped when fallback became ordinary relay`);
+      const tmp=`${path}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
+      await writeFile(tmp,JSON.stringify(kept),"utf8");await rename(tmp,path);
+      return removed;
+    });
+  } catch {return new Set();} // Fallback stays readable if settlement fails.
 }

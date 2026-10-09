@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * Background jobs of the daemon process — every periodic setInterval/
  * setTimeout that index.ts used to inline lives here. index.ts wires the
@@ -18,11 +19,13 @@ import { BATTERY_UNLOAD_MS, type PowerMonitor } from "./power-source.js";
 import { runCuratorPass } from "./curator-run.js";
 import { pruneEventLogs } from "./log-retention.js";
 import { observeCodeGraphRefresh, startCodeAwareness } from "./code-graph/service.js";
+import { runDraftPromote, draftVaultId, draftPromotionReady } from "./draft-promote.js";
 import { runDraftShadow } from "./draft-shadow.js";
 import { draftHintsEnabled } from "./draft-search.js";
 import { startDraftVocabulary } from "./draft-vocabulary.js";
 import { startDraftSearchCache, expireDrafts } from "./draft-store.js";
-import { sessionHarvestEnabled, runSessionHarvest } from "./session-harvest.js";
+import { sessionHarvestEnabled, runSessionHarvest, formatHarvestBlock, type HarvestCandidate } from "./session-harvest.js";
+import { settleProvisionalSuggestions, writePendingSuggestion } from "./pending-suggestions.js";
 import { storedQuoteMatcher } from "./harvest-vault-match.js";
 import { loadTranscript } from "./stop-lane.js";
 
@@ -76,17 +79,38 @@ export function startBackgroundJobs(deps: BackgroundJobDeps): void {
 // After-session harvest (#675): sessions the Stop lane booked are read once
 // they have gone quiet, and what the user said that the session did not save
 // goes to the pending relay as suggestions. Off the hook path entirely; the
-// pass is never-throw, and it writes nothing to the vault.
+// capture is vault-read-only; explicit sharp promotion can write a derived note.
 export async function runSessionHarvestTick(
   deps: Pick<BackgroundJobDeps, "vault" | "search" | "embIdx" | "ollama" | "rawProvider">,
   now = Date.now(),
 ) {
   if (!sessionHarvestEnabled()) return null;
+  const endpointOptions = {
+    provider: deps.rawProvider ?? null, ollama: deps.ollama, vault: deps.vault,
+    vaultVectors: () => {
+      const index = deps.embIdx();
+      if (!index) return null;
+      const identity = index.providerIdentity();
+      return { provider: identity.id, dim: identity.dim, vectors: index.currentSnapshot() };
+    },
+  };
+  const canBeSharp = await draftPromotionReady(endpointOptions);
+  const relayToken=canBeSharp ? randomUUID() : null;
+  const relays: { block: string; count: number; captured: boolean }[] = [];
   const harvest = await runSessionHarvest({
+    // Probe/unavailable modes use the original harvest relay at its old seam.
+    // Sharp mode uses that same durable write before advancing the queue cursor.
+    ...(canBeSharp ? { relay: async (entry: { session_id: string; cwd?: string }, candidates: HarvestCandidate[], captured: boolean) => {
+      const block = formatHarvestBlock(entry, candidates);
+      await writePendingSuggestion(block,{provisional:relayToken!}); relays.push({ block, count: candidates.length, captured });
+    } } : {}),
+    vaultId: await draftVaultId(deps.vault.root).catch(() => undefined),
     loadTurns: transcript_path => loadTranscript({ transcript_path }),
     storedIn: () => storedQuoteMatcher(deps.vault, deps.search),
     now,
   });
+  try {
+  await deps.vault.reconcile();
   await expireDrafts({ now });
   const shadow = await runDraftShadow({
     provider: deps.rawProvider ?? null, ollama: deps.ollama, vault: deps.vault, now,
@@ -97,7 +121,29 @@ export async function runSessionHarvestTick(
       return { provider: identity.id, dim: identity.dim, vectors: index.snapshot() };
     },
   });
-  return { harvest, shadow };
+  const promoteOptions = {
+    provider: deps.rawProvider ?? null, ollama: deps.ollama, vault: deps.vault, now,
+    allowSharp: shadow.enabled && shadow.errors === 0,
+    vaultVectors: () => {
+      const index = deps.embIdx();
+      if (!index) return null;
+      const identity = index.providerIdentity();
+      return { provider: identity.id, dim: identity.dim, vectors: index.currentSnapshot() };
+    },
+  };
+  const promotion = await runDraftPromote(promoteOptions);
+  let relayed = harvest.candidates;
+  if (relayToken) {
+    const withdraw=new Set(!promotion.probeOnly && promotion.errors===0 && promotion.wouldPromote===0 ? relays.filter(row=>row.captured).map(row=>row.block) : []);
+    const removed=await settleProvisionalSuggestions(relayToken,withdraw);
+    for(const relay of relays)if(removed.has(relay.block))relayed-=relay.count;
+  }
+  if (await draftPromotionReady(promoteOptions)) await expireDrafts({ now, memoryExists: async id => deps.vault.get(id) !== undefined });
+  return { harvest, shadow, promotion, relayed };
+  } catch(error) {
+    if(relayToken)await settleProvisionalSuggestions(relayToken,new Set());
+    throw error;
+  }
 }
 
 function startSessionHarvest(deps: BackgroundJobDeps): void {
@@ -110,7 +156,7 @@ function startSessionHarvest(deps: BackgroundJobDeps): void {
       .then(result => {
         if (result && result.harvest.harvested > 0) {
           const r = result.harvest;
-          console.error(`[bastra-recall] session harvest: ${r.harvested} session(s), ${r.candidates} candidate(s) relayed, ${r.stored} already stored`);
+          console.error(`[bastra-recall] session harvest: ${r.harvested} session(s), ${result.relayed} candidate(s) relayed, ${r.stored} already stored`);
         }
         if (result && (result.shadow.embedded > 0 || result.shadow.errors > 0)) {
           const r = result.shadow;

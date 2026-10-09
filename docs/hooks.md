@@ -2364,3 +2364,169 @@ unvollständig abgeschnitten; inline zitierte Tagnamen bleiben Text. Englischer
 Injektionsscanner bleibt begrenzt. Prüfermessungen: erste Suche nach Änderung bei
 500 Entwürfen 10,7 ms; Scrub für 1 MB 3,5 statt 0,46 ms, mit Entfernung des wörtlichen
 Tags auch aus Notiztiteln. Diese Grenzen sind dokumentiert, ohne Zusatzbau.
+
+### Repeated draft promotion / Beförderung wiederholter Entwürfe
+
+Repeat evidence must come from distinct sessions. The routine guard measures rare
+quote tokens against the vault vocabulary **and** all retained drafts, not just
+compressed open rows. The repeat trigger rejects different numeric/path/host
+literals (digits, / @ : _, or an internal dot); a hyphen alone is ordinary prose.
+Duplicate blocking has no literal condition, including quote tombstones and current
+notes. It deliberately prefers a false block over a second note. Command cues use a program head plus a rare literal actually
+present in that command; the stored question stays verbatim, and quote cues use
+up to five rare words with DF <=2 in that same vocabulary, at least four
+characters long and preferring longer tokens when equally rare. Pure numbers and
+redacted spans are excluded; a candidate without any useful command/question/word
+cue is held rather than creating a noisy trigger.
+
+Duplicate blocking compares full current notes and **pure quote vectors**. Promoted
+and rejected rows retain their quote vectors for the 180-day tombstone lifetime.
+This avoids diluted derived-note embeddings, duplicate pairs in one tick and
+paraphrases/translations after undo even when their literals differ. Private note IDs stay out of promotion telemetry. Purge
+removes drafts, vectors and decision receipts.
+
+Dry-run changes no draft state, memory ID or tombstone, including duplicate hits
+and recovery. It logs `draft_would_promote` / `draft_would_block` with IDs, numbers
+and reasons. Hash-only decision receipts beside vectors deduplicate each candidate
+state and pair. The vector file is loaded once per pass; small hash-only receipts
+are committed once beside it. An unchanged full input state skips candidate math
+(the 480/100/2000 benchmark fell from about 3.6 s per unchanged pass to 23 ms).
+A vault/draft/model/vector/mode or decision-threshold change invalidates that
+pass receipt; it includes a rule version and all decision threshold constants.
+Timing is reported only; tests assert skipped math and one load, not host wall time.
+Pair/vocabulary/duplicate computation yields outside the draft lock;
+only identity/state changes take it. Publication/undo/purge have separate serialization,
+so capture and hook feedback do not queue behind background math or note publication.
+
+Sharp mode still requires exactly `BASTRA_DRAFT_PROMOTE=1`, verified origin-vault
+provenance and complete same-model local comparison. The legacy relay remains on
+at its original harvest seam when actual sharp comparison is unavailable or the
+mode is probe. Even a potentially sharp pass first stores the ordinary relay
+before advancing harvest progress, then withdraws that exact block only after
+a fully successful sharp pass **and successful capture of that session**.
+Provisional blocks do not count against the ordinary recency cap, so withdrawing
+them cannot evict a foreign block. Retained fallbacks become ordinary relay at
+settlement and use its usual cap. Failure or process termination leaves them readable;
+the daemon reports the remaining forwarded count. No local provider, failed local embedding, incomplete
+or wrong-model vault vectors cannot create a note. Legacy/mixed vault provenance
+is never guessed. No cloud provider embeds draft text.
+
+Derived notes preserve quotes, situation and session/date/client evidence, with a
+deterministic SHA-256-derived ID, `source`, tag `derived`, confidence 0.6,
+`capture-review` origin and team visibility. Original saved evidence receipts recover
+a landed note even if a third session was appended before restart. If its original
+content receipt is missing, undo requires explicit `--force`.
+
+`bastra drafts undo <draft-id-or-note-id> [--vault <path>] [--force] [--json]` refuses
+notes edited since promotion, including automatic file edits, unless `--force` is
+explicitly supplied. The content hash is checked under the existing delete identity
+claim. Force still cannot delete another vault's note or an existing-note duplicate.
+Deletion is audited; rejected fingerprints and quote tombstones persist for 180 days.
+The CLI reports the actual refusal reason.
+
+**Known limits, not a new language classifier:** on a fixed small DE/EN guard corpus,
+2/6 routine/low-content quotes would still promote; 2/6 factual quotes expressed
+in common vocabulary were held. Rare-word orders and content-poor rare sentences
+can pass. The existing injection scanner recognizes English patterns; legitimate
+`curl … | sh` facts and long `sha256:` digests can be blocked. Cosine thresholds
+remain unmeasured on real data and unchanged: 0.70 repeat / 0.60 duplicate. The
+review's weakest genuine duplicate was 0.615; a new fact wrongly blocked was 0.645.
+Removing the literal bypass blocks 6/13 new same-topic facts in the reviewer
+counterprobe, versus 2/13 with the bypass; the duplicate threshold stays 0.60.
+Material matters: a further review blocked 1/15 broadly different new facts but
+11/13 sharing hosts/paths/versions, including two contradictory statements. Genuine
+duplicates from 0.736 and new facts up to 0.791 overlap; no single cosine cutoff
+separates them.
+
+
+#### Before enabling sharp mode / Bevor du scharf schaltest
+
+Known secret-redaction limits can put **plaintext secrets in the vault**: title,
+summary, triggers, body and `.bastra/audit-log.ndjson`. Undo removes the note but
+**does not remove its audit history**. Observed boundary forms: `--password=/…`,
+URL userinfo with special characters, “the password is …”, “die PIN ist …”, `pw=…`,
+`mysqldump -p…`, `curl -u user:…`, `redis-cli -a …`, `password=$…`, `--password-stdin`
+with `echo`, `user:pass@host` in scp, `secret_key_base: …`, `credentials: …`.
+The review also observed an unredacted password becoming a word cue in 1/15
+cases at the known German “das Passwort ist …” boundary.
+The fixed redaction corpus remains the standard; its filter was not changed here.
+The operator decides whether to enable sharp mode with these known limits. Default remains probe.
+The routine guard remains weak: the independent reviewer corpus would promote
+10/15 routine sentences and 15/15 orders, while holding 0/15 factual statements.
+This is not a factuality classifier. Sharp mode still suppresses one-off statements
+from the ordinary relay after a successful sharp pass: 24/207 quotes in 31 sharp
+review samples received neither forwarding nor promotion. This includes repeated quotes blocked by routine vocabulary, missing useful cues
+or duplicate comparison, not just one-off statements. A falsely blocked new fact
+remains a rejected tombstone for 180 days. Whether to retain this policy is an open
+operator decision. A session starting during the pass may consume
+the already durable fallback before withdrawal; forwarding in doubt is intentional.
+
+An den bekannten Grenzen des Schwärz-Filters können **Geheimnisse im Klartext den
+Vault erreichen**: Titel, Zusammenfassung, Auslöser, Text und
+`.bastra/audit-log.ndjson`. Undo entfernt die Notiz, **nicht die Audit-Historie**.
+Beobachtet für: `--password=/…`, URL-Userinfo mit Sonderzeichen, „the password is …“,
+„die PIN ist …“, `pw=…`, `mysqldump -p…`, `curl -u user:…`, `redis-cli -a …`,
+`password=$…`, `--password-stdin` mit `echo`, `user:pass@host` bei scp,
+`secret_key_base: …`, `credentials: …`. Der Filter bleibt am festen Korpus gemessen
+und wurde hier nicht verändert. Zusätzlich wurde bei „das Passwort ist …“ in
+1/15 Fällen ein ungeschwärztes Passwort zum Wort-Auslöser.
+Ob scharf geschaltet wird, entscheidet der Betreiber.
+Standard bleibt der Probelauf. Der Routineschutz ist schwach: Im unabhängigen
+Prüferkorpus würden 10/15 Routinesätze und 15/15 Aufträge befördert; 0/15 Tatsachen
+werden aufgehalten. Das ist kein Tatsachenklassifikator. Scharf werden einmalige
+Aussagen nach erfolgreichem Pass weiterhin aus der alten Weitergabe entfernt:
+24/207 Zitate in 31 scharfen Prüffällen hatten weder Weitergabe noch Beförderung.
+Das betrifft auch Wiederholungen, die am Routineschutz, an fehlenden Auslösern
+oder an der Dublettensperre hängen. Falsch gesperrte neue Tatsachen bleiben 180 Tage
+abgelehnter Grabstein. Diese Regel ist eine offene Betreiberentscheidung. Eine während des Passes startende
+Sitzung kann den bereits gesicherten Fallback vor dem Zurückziehen konsumieren;
+im Zweifel weiterzugeben ist beabsichtigt.
+
+Wiederholung braucht Belege aus verschiedenen Sitzungen. Seltenheit wird am
+Vault-Wortschatz und allen erhaltenen Entwürfen gemessen; unterschiedliche
+Ziffern-/Pfad-/Host-Literale verhindern nur den Wiederholungs-Auslöser; ein
+Bindestrich allein nicht. Die Dublettensperre hat keine Literal-Bedingung und
+sperrt im Zweifel lieber zu viel. Auslöser bestehen aus
+Befehlskopf plus passendem seltenen Literal, der gespeicherten Frage und den fünf
+seltensten Zitattokens mit DF <=2, mindestens vier Zeichen, bei Gleichstand
+längere zuerst; ohne reine Zahlen oder geschwärzte Stellen.
+Ohne brauchbare Auslöser wird keine Rausch-Notiz erzeugt. Abgeleitete Notizen und abgelehnte Zeilen behalten reine
+Zitatvektoren 180 Tage: Das verhindert zweite Notizen trotz verwässertem Notiztext
+und Umformulierungen/Übersetzungen nach Undo trotz anderer Literale. Private IDs erscheinen nicht in der Telemetrie.
+
+Im Probelauf ändern sich Zustand, `memory_id` und Grabsteine niemals; auch Dubletten
+und Wiederaufnahme werden nur protokolliert. Entscheidungshashes neben den Vektoren
+verhindern wiederholte Messzeilen. Vektoren werden einmal je Tick geladen,
+Hash-Merker gesammelt einmal gespeichert. Ein unveränderter Vollzustand überspringt
+die Berechnung: Lastfall 480/100/2000 von etwa 3,6 s auf 23 ms. Änderungen an
+Notizen, Entwürfen, Modell, Vektoren, Modus oder Entscheidungsschwellen invalidieren
+den Merker; Regelversion und alle Schwellen sind enthalten. Zeiten nur ausgeben,
+Abnahme prüft Skip und eine Vektorladung statt fremder CPU-Last.
+Die Berechnung gibt den Event-Loop frei und läuft
+außerhalb der Ablagesperre. Capture/Hooks warten nicht auf Notiz-Publikation. Bei
+fehlendem scharfem Abgleich bleibt die Weitergabe an ihrer alten Stelle, bevor
+weitere Draft-Arbeiten laufen. Auch potenziell scharf wird sie dort zuerst dauerhaft
+gespeichert und erst nach vollständig erfolgreichem scharfem Pass und gelungener
+Erfassung genau dieser Sitzung zurückgezogen. Vorläufige Blöcke liegen außerhalb
+der normalen Recency-Grenze; Rücknahme verliert keine fremden Vorschläge. Bleibende
+Fallbacks werden danach normale Weitergabe mit deren üblicher Grenze.
+Fehler/Prozessende verlieren diesen Fallback nicht. Der Zähler nennt die verbleibende
+Weitergabe.
+
+Undo verweigert seit der Beförderung veränderte Notizen mit zutreffender Meldung;
+`--force` löscht nach ausdrücklicher Prüfung trotzdem, ohne Herkunfts-/Vault-Grenzen
+aufzuheben. Eine unterbrochene Zustandsbuchung wird über die ursprünglichen Belege
+wiederaufgenommen, auch nach einer dritten Session. Fehlt der ursprüngliche
+Inhaltshash, verlangt Undo `--force`. Das Audit bleibt erhalten.
+
+Im kleinen DE/EN-Korpus würden 2/6 Routine-/inhaltsarme Sätze befördert und 2/6
+Tatsachen mit häufigen Wörtern blockiert. Seltene Wörter machen einen Auftrag noch
+nicht zu einer Tatsache. Der englische Injektionsscanner blockiert zudem legitime
+`curl … | sh`-Fakten oder lange `sha256:`-Digests. Die ungemessenen Schwellen bleiben
+0,70/0,60; echte Dublette 0,615 und zu Unrecht gesperrte neue Tatsache 0,645 liegen
+eng zusammen. Ohne Literal-Bypass werden in der Prüfer-Gegenprobe 6/13 neue
+Tatsachen zum gleichen Thema gesperrt, zuvor 2/13. Weiterer Prüferkorpus: 1/15 bei
+breit gestreuten neuen Tatsachen, 11/13 mit denselben Hosts/Pfaden/Versionen,
+darunter zwei widersprechende Aussagen. Echte Dubletten ab 0,736 und neue Tatsachen
+bis 0,791 überlappen. Schwelle 0,60 unverändert.
+Keine neue Wortliste, kein weiterer Testdaten-Abstimmungsloop.
