@@ -22,6 +22,7 @@ import { runStopLane, type ClaudeStopPayload } from "./stop-lane.js";
 import { runSessionLane, type SessionPayload } from "./session-lane.js";
 import { runTodoLane, type ClaudeHookPayload as TodoPayload } from "./todo-lane.js";
 import { MAX_BODY_BYTES, readJsonBody } from "./http-util.js";
+import type { SaveNoticePayload } from "./save-notice-lane.js";
 import type { WarmupCoordinator } from "./embedding-warmup.js";
 
 /** The one shape all three share: read `{payload}`, run the lane, answer with
@@ -30,6 +31,7 @@ function runLane<P>(
   req: IncomingMessage,
   res: ServerResponse,
   run: (payload: P, self: string) => Promise<string>,
+  notice?: (out:string,payload:SaveNoticePayload)=>Promise<string>,
 ): void {
   const answer = (body: string): void => {
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
@@ -38,7 +40,9 @@ function runLane<P>(
   readJsonBody(req, MAX_BODY_BYTES)
     .then(async (body) => {
       const self = `http://127.0.0.1:${req.socket.localPort ?? 6723}`;
-      answer(await run((body.payload ?? {}) as P, self));
+      const payload=(body.payload??{}) as P;
+      const out=await run(payload,self);
+      answer(notice?await notice(out,payload as SaveNoticePayload):out);
     })
     .catch(() => answer("{}"));
 }
@@ -54,19 +58,21 @@ export function dispatchLaneRoutes(
    *  http.ts). Absent = no embedding provider, and the lane behaves exactly
    *  as it did before #490. */
   warmupEmbedding?: WarmupCoordinator,
+  notice?: (out:string,payload:SaveNoticePayload)=>Promise<string>,
 ): boolean {
   if (method !== "POST") return false;
 
   // Stop (#35/#48/#67): the highest-frequency lane — one call at the end of
   // every answer. Always answers `{}`; the suggestions go to the pending file.
   if (url === "/hook/stop") {
-    runLane<ClaudeStopPayload>(req, res, runStopLane);
+    runLane<ClaudeStopPayload>(req, res, runStopLane,notice);
     return true;
   }
   // SessionStart: the recall + floors + taxonomy + care/import/update block.
   if (url === "/hook/session") {
     runLane<SessionPayload>(req, res, (payload, self) =>
       runSessionLane(payload, self, warmupEmbedding),
+      notice,
     );
     return true;
   }

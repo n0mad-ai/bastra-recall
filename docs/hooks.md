@@ -882,8 +882,9 @@ most notes of that language and weigh almost nothing, so no stopword list is
 involved; a rephrased or translated note is not matched, and that pick is
 relayed. The rest go into the pending relay (recency lane, #513) as one
 `<session-harvest>` block of verbatim quotes, which the next session start
-shows. **The harvest never writes to the vault**: the agent recalls, judges
-and saves. A resumed session is harvested again only for its new turns.
+shows. **The ordinary harvest relay does not save notes**: the agent recalls,
+judges and saves. The separate draft-promotion step in that tick can write only
+with explicit sharp opt-in and the guards described below. A resumed session is harvested again only for its new turns.
 Telemetry: `session_harvest` with `session_id, client, turn_count,
 candidate_count, candidate_kinds, stored_count, trigger` (`session_end` or
 `idle`); the session start that delivers a harvest block records
@@ -899,7 +900,9 @@ save of the session that got the block, so it bounds the harvest's effect from
 above. Switch it off with `BASTRA_SESSION_HARVEST=0` in the daemon's
 environment.
 
-**Local drafts (#1084, B1).** In parallel with the unchanged relay, the job
+### Local drafts (#1084)
+
+**Capture and storage.** Alongside the harvest relay (probe/default; sharp handling below), the job
 captures every typed user turn with at least 20 letters and fewer than 2,000
 characters. Interrupt markers, injected turns and quotes already held by the
 vault are excluded. A later save call does not suppress draft capture; the
@@ -918,8 +921,8 @@ evidence to one row. Across sessions only equal fingerprints merge for now.
 An open draft with one evidence row and no display expires after 7 days
 (unmeasured); other open drafts retain the 30-day expiry. The harvest tick
 removes expired rows even when no session is due. `bastra drafts list|purge`
-lets you inspect or clear the store. Drafts are not yet shown by recall or
-promoted into notes. `BASTRA_SESSION_HARVEST=0` also disables draft capture and
+lets you inspect or clear the store. Recall shows a separate unconfirmed draft band; promotion defaults to probe,
+with explicit sharp mode described below. `BASTRA_SESSION_HARVEST=0` also disables draft capture and
 harvest-tick cleanup. Fingerprints use secret-redacted text, so changing only
 a credential does not create another draft. Telemetry reports retained new
 rows as `draft_count` and additional retained evidence as `draft_evidence_count`.
@@ -930,7 +933,7 @@ the store bounds, including when closed tombstones occupy the whole store.
 A draft-store error leaves the relay working and records `draft_error: true`; that session's failed
 draft capture is not retried automatically.
 
-**Situation (B2, Claude Code).** Reversible assumption proposed by the main
+**Situation (Claude Code).** Reversible assumption proposed by the main
 session, pending owner confirmation: a typed turn is labelled `after-failure`
 when the last tool result since the preceding typed turn explicitly failed.
 Assistant prose in between does not reset it; a later successful or unknown
@@ -953,7 +956,7 @@ creation and last touch reflect capture time. A changed cwd with no supplied
 branch clears the old branch. Codex parsing remains unchanged; without the Claude
 metadata, drafts keep an empty situation.
 
-**Local repeat shadow (B3).** The harvest tick embeds redacted draft quotes using
+**Local repeat measurements.** The harvest tick embeds redacted draft quotes using
 only the already selected local Ollama provider at a loopback endpoint. An
 explicit cloud choice, no provider or a remote Ollama URL produces no draft
 embedding request. The disposable `<draft-store-name>.vectors.json` sidecar is
@@ -976,8 +979,243 @@ and the existing IDF-weighted word containment for that same note. Private note
 IDs are always omitted; text, titles and commands are never logged. A missing or
 incompatible vault snapshot postpones this measurement without re-embedding the
 draft. Expired-repeat counts cannot be recovered after both the row and its cache
-entry are removed; no historical fingerprint ledger is added in B3. The existing
+entry are removed; no historical expired-fingerprint ledger is present. The existing
 `BASTRA_SESSION_HARVEST=0` gates capture, cleanup and shadow work together.
+
+#### Retrieval and unconfirmed hints
+
+Typed messages that pass the structural noise filter are captured by the local
+session harvest with their redacted situation. Recall searches local drafts
+lexically, with no embedding or cloud request. Matches stay in `draft_hits`
+without scores and in a separate `<draft-hints>` band after memory sections.
+They are unconfirmed user quotes; verify before relying on them. Drafts never
+enter ranked/required hits. Prompt/PreTool display at most one; SessionStart/MCP
+at most two. Notes retain their budget priority. CLI listing does not refresh
+expiry: unshown single-evidence drafts expire after 7 days (unmeasured), other
+open drafts after 30 days and closed tombstones after 180 days.
+
+Draft search reads only completed in-memory snapshots. Background loading and a
+file watcher refresh drafts (with a one-second reconciliation fallback). The vault
+word measure uses the existing note vocabulary/IDF reference and is maintained at
+startup and on add/change/remove events. A cold/failed draft cache yields no draft.
+Response paths perform no draft-file I/O and take no draft-store lock. Delivery
+booking runs after the response: same-process bookings serialize; against another
+process the lock is attempted once, without waiting or orphan takeover. Normal note
+and tripwire output is already final before the band is appended. An advisory 50 ms
+ceiling, unmeasured on real data, is bounded by the normal lane deadline. Separate
+`draft_hint` telemetry records IDs, count, estimated tokens and band latency, no text.
+
+**Assumption, not confirmed by the owner:** retrieval never deletes or closes
+drafts. A covering returned note suppresses only query-matching drafts in that
+response; promotion owns closing and tombstones.
+
+A text match needs two shared tokens and either two rare anchors of at least four
+Unicode characters, or one rare anchor of at least ten characters. With at least
+50 notes, rarity depends **only on the user's vault vocabulary**: an anchor occurs
+in at most 2% of notes. Its IDF weight uses that same vault; repetition among drafts
+does not penalize it. Both the 50-note minimum and 2% cutoff are **unmeasured on real
+data**. Two occurrences among 60 notes are not rare here; two among 2,000 are.
+Below 50 notes, the emergency fallback is fixed draft DF <=2, with its weaknesses
+in both directions. Unknown words carry no negative weight. Situation matching
+stays unchanged: two shared literals, one with stored-situation DF <=2 and at least
+four characters containing a digit or `./_@:-`; everyday `git status`/`npm test`
+alone do not qualify. This does not exclude everyday commands that contain literal-shaped parts:
+`npm run test:unit` or `git checkout feature/x-1` can match when that command occurs
+in at most two stored situations (independent check: 2/30 at 20 drafts). “Same file”
+alone never matches: two common literals are required, and read paths contribute
+only their basename. These are limits of the fixed rule, not further tuning.
+There is no further synthetic tuning after this correction.
+
+Both frozen draft corpora were measured at 40/100/200 drafts, with and without a
+separate 150-note invented DE/EN vault of everyday language on other topics (75
+notes per language). Original technical corpus: with vault 13/20, 34/50, 69/100
+correct topical matches; without usable vault 2/20, 2/50, 4/100. Independent
+50-topic corpus: with vault 20/20, 49/50, 99/100; fallback 20/20, 49/50, 98/100.
+Unrelated/short matches stayed 0 at every size: original 0/60 and 0/40, independent
+0/50 and 0/50, both vocabulary modes. Vault-based rarity restores frequently
+explained themes that the draft cap suppressed; the original corpus still misses
+31/100 topical queries because lexical anchors/lengths remain strict. The fallback
+still costs 96/100 in that corpus and can admit accidental rare everyday words,
+like “three unit tests” against “germination tests every three years”; the populated
+vault rejects that pair. Words common in vault notes are not anchors, letting
+canonical notes take precedence. A note count alone does not prove coverage of the
+query's language. These synthetic rates do not establish real-world quality;
+remaining errors will be measured on real data without further invented retuning.
+There is no stemming or translation. Chinese/Japanese without spaces remain one
+token and do not match the two-token rule (#711).
+
+**Independent review, different material:** on 200 drafts covering 50 topics and
+a 300-note vault representing both languages: short 0/50, unrelated 0/50, topical
+49/50. The emergency fallback (fewer than 50 notes or none) gave up to 3/50 (6%)
+unrelated and 34/50 topical. With a one-language vault and queries in the other,
+unrelated matches were 16–36%. If topic words themselves occur in more than 2% of
+vault notes, draft topical recall falls to 0/50 — the conservative direction,
+leaving the ordinary note path to handle the topic. The 50-note boundary is a real
+step: 49 notes gave 34/50 topical and 3/50 unrelated; 50 notes 49/50 and 0/50.
+Thus “zero at every size” above describes only the two fixed corpora and their
+invented bilingual vocabulary, not a general false-match guarantee. No thresholds
+were changed in response to these figures.
+
+Hook lanes deliver once per session; MCP and `/hook/recall` return per request.
+Bash checks whether any draft remains unseen before looking up covering notes.
+After a lost booking and daemon restart, a harmless Bash request may show the same
+ID again in the same session. There is no project/client filter. Off values are
+`0`, `off`, `false`, `no`, case-insensitive. Fence/control/bidi stripping and quoted
+single-line fields protect the band. Leading incomplete draft bands are injected
+content; a line-start band after owner text is cut before draft capture even if
+unclosed. Inline quoted tag names remain prose. English-only injection patterns
+remain a known limit. First search after a 500-draft cache change was measured by
+review at 10.7 ms on the response path. Fence scrubbing of 1 MB cost 3.5 ms versus
+0.46 ms previously and also removes literal `<draft-hints>` from note titles.
+These are documented limits, without new machinery.
+
+#### Promotion by repetition
+
+Repeat evidence must come from distinct sessions. The routine guard measures rare
+quote tokens against the vault vocabulary **and** all retained drafts, not just
+compressed open rows. The repeat trigger rejects different numeric/path/host
+literals (digits, / @ : _, or an internal dot); a hyphen alone is ordinary prose.
+Duplicate blocking has no literal condition, including quote tombstones and current
+notes. It deliberately prefers a false block over a second note. Command cues use a program head plus a rare literal actually
+present in that command; the stored question stays verbatim, and quote cues use
+up to five rare words with DF <=2 in that same vocabulary, at least four
+characters long and preferring longer tokens when equally rare. Pure numbers and
+redacted spans are excluded; a candidate without any useful command/question/word
+cue is held rather than creating a noisy trigger.
+
+Duplicate blocking compares full current notes and **pure quote vectors**. Promoted
+and rejected rows retain their quote vectors for the 180-day tombstone lifetime.
+This avoids diluted derived-note embeddings, duplicate pairs in one tick and
+paraphrases/translations after undo even when their literals differ. Private note IDs stay out of promotion telemetry. Purge
+removes drafts, vectors and decision receipts.
+
+Dry-run changes no draft state, memory ID or tombstone, including duplicate hits
+and recovery. It logs `draft_would_promote` / `draft_would_block` with IDs, numbers
+and reasons. Hash-only decision receipts beside vectors deduplicate each candidate
+state and pair. The vector file is loaded once per pass; small hash-only receipts
+are committed once beside it. An unchanged full input state skips candidate math
+(the 480/100/2000 benchmark fell from about 3.6 s per unchanged pass to 23 ms).
+A vault/draft/model/vector/mode or decision-threshold change invalidates that
+pass receipt; it includes a rule version and all decision threshold constants.
+Timing is reported only; tests assert skipped math and one load, not host wall time.
+Pair/vocabulary/duplicate computation yields outside the draft lock;
+only identity/state changes take it. Publication/undo/purge have separate serialization,
+so capture and hook feedback do not queue behind background math or note publication.
+
+Sharp mode still requires exactly `BASTRA_DRAFT_PROMOTE=1`, verified origin-vault
+provenance and complete same-model local comparison. The legacy relay remains on
+at its original harvest seam when actual sharp comparison is unavailable or the
+mode is probe. Even a potentially sharp pass first stores the ordinary relay
+before advancing harvest progress, then withdraws that exact block only after
+a fully successful sharp pass **and successful capture of that session**.
+Provisional blocks do not count against the ordinary recency cap, so withdrawing
+them cannot evict a foreign block. Retained fallbacks become ordinary relay at
+settlement and use its usual cap. Failure or process termination leaves them readable;
+the daemon reports the remaining forwarded count. No local provider, failed local embedding, incomplete
+or wrong-model vault vectors cannot create a note. Legacy/mixed vault provenance
+is never guessed. No cloud provider embeds draft text.
+
+Derived notes preserve quotes, situation and session/date/client evidence, with a
+deterministic SHA-256-derived ID, `source`, tag `derived`, confidence 0.6,
+`capture-review` origin and team visibility. Original saved evidence receipts recover
+a landed note even if a third session was appended before restart. If its original
+content receipt is missing, undo requires explicit `--force`.
+
+`bastra drafts undo <draft-id-or-note-id> [--vault <path>] [--force] [--json]` refuses
+notes edited since promotion, including automatic file edits, unless `--force` is
+explicitly supplied. The content hash is checked under the existing delete identity
+claim. Force still cannot delete another vault's note or an existing-note duplicate.
+Deletion is audited; rejected fingerprints and quote tombstones persist for 180 days.
+The CLI reports the actual refusal reason.
+
+**Known limits, not a new language classifier:** on a fixed small DE/EN guard corpus,
+2/6 routine/low-content quotes would still promote; 2/6 factual quotes expressed
+in common vocabulary were held. Rare-word orders and content-poor rare sentences
+can pass. The existing injection scanner recognizes English patterns; legitimate
+`curl … | sh` facts and long `sha256:` digests can be blocked. Cosine thresholds
+remain unmeasured on real data and unchanged: 0.70 repeat / 0.60 duplicate. The
+review's weakest genuine duplicate was 0.615; a new fact wrongly blocked was 0.645.
+Removing the literal bypass blocks 6/13 new same-topic facts in the reviewer
+counterprobe, versus 2/13 with the bypass; the duplicate threshold stays 0.60.
+Material matters: a further review blocked 1/15 broadly different new facts but
+11/13 sharing hosts/paths/versions, including two contradictory statements. Genuine
+duplicates from 0.736 and new facts up to 0.791 overlap; no single cosine cutoff
+separates them.
+
+
+#### Before enabling sharp mode
+
+Known secret-redaction limits can put **plaintext secrets in the vault**: title,
+summary, triggers, body and `.bastra/audit-log.ndjson`. Undo removes the note but
+**does not remove its audit history**. Observed boundary forms: `--password=/…`,
+URL userinfo with special characters, “the password is …”, “die PIN ist …”, `pw=…`,
+`mysqldump -p…`, `curl -u user:…`, `redis-cli -a …`, `password=$…`, `--password-stdin`
+with `echo`, `user:pass@host` in scp, `secret_key_base: …`, `credentials: …`.
+The review also observed an unredacted password becoming a word cue in 1/15
+cases at the known German “das Passwort ist …” boundary.
+The fixed redaction corpus remains the standard; its filter was not changed here.
+The operator decides whether to enable sharp mode with these known limits. Default remains probe.
+The routine guard remains weak: the independent reviewer corpus would promote
+10/15 routine sentences and 15/15 orders, while holding 0/15 factual statements.
+This is not a factuality classifier. Sharp mode still suppresses one-off statements
+from the ordinary relay after a successful sharp pass: 24/207 quotes in 31 sharp
+review samples received neither forwarding nor promotion. This includes repeated quotes blocked by routine vocabulary, missing useful cues
+or duplicate comparison, not just one-off statements. A falsely blocked new fact
+remains a rejected tombstone for 180 days. Whether to retain this policy is an open
+operator decision. A session starting during the pass may consume
+the already durable fallback before withdrawal; forwarding in doubt is intentional.
+
+#### Promotion by use
+
+A displayed draft can also qualify without a second explanation. The delivery
+records novel tokens from the redacted quote and its originating session's `after`
+commands, excluding both word and literal tokens of the complete triggering input.
+`/hook/hinted` keeps draft IDs/input separate from ordinary note IDs. In-process
+hook bands book the same proof after rendering. Replays do not reset the first
+novelty set or window; only the last five surfaced sessions remain stored.
+
+A later successful tool input in that same non-origin session must contain one
+whole novel literal (digit or `./_@:-`, at least four Unicode characters), or three
+distinct novel word tokens, within the existing acted-on window (default ten
+minutes). The heuristics are **unmeasured**. Redaction markers, substrings, repeated
+words, missing/foreign/origin sessions and commands before the hint do not qualify.
+The use hook books only local evidence, never a vault note. The next harvest uses
+the same local semantic/word duplicate gates, provenance, secret/injection filters,
+probe default and explicit sharp switch as repeat promotion. Valid persisted
+proof remains usable at a later tick; fabrication outside the recorded novel set
+or source does not qualify. The resulting note preserves quote/situation/original
+capture evidence plus the display/use session, dates, tool and successful matches.
+
+**Assumption, not confirmed by the owner:** unknown exit codes do not count as
+success; only explicit exit 0 qualifies. Clients omitting that field therefore
+produce no use proof. This is conservative and does not infer success from an
+absent error. Novel matching is a causal heuristic, not proof that a statement is
+true or that a command applied it meaningfully. Known D duplicate/secret/routine
+limits continue to apply. A foreign busy/unwritable store loses only the feedback,
+without waiting on the response. Announcements and recorded lifecycle counts are described below.
+
+#### Promotion line and statistics
+
+After a real promotion, one line uses the existing save-line builder, for example
+“bastra-recall saved from draft: …”. Claude Code uses its usual badge; Codex uses
+a plain prefix unless save-line colour was enabled. Stop, SessionStart or the
+post-tool hook delivers at most one pending promotion at a time, in the configured
+primary language. Multiple draft rows for one note share one durable claim. Missing,
+changed-provenance or private notes are not announced; subagents do not consume a
+main-thread line. `BASTRA_SAVE_NOTICE=0` disables the line without consuming it.
+A cold cache postpones delivery; busy foreign storage leaves it pending. As with
+hook feedback generally, a client disappearing after the durable claim can lose
+the display; there is no acknowledgement/retry protocol that could show it twice.
+
+`bastra logs --stats` includes recorded draft capture, added evidence, expiry,
+eviction, hook displays, actual promotions, would-promote decisions, duplicate
+blocks (actual and would), other block decisions, capture errors and announcements.
+Counts cover the selected log window, not current store size or unique shown IDs.
+A promoted pair counts as one note; showing a draft in two sessions counts as two
+deliveries. Direct MCP results do not book hook-display telemetry. Expiry events
+start with this implementation and count committed age removals, including removals
+on other store writes; purges/size evictions are not expiry. Disabled telemetry,
+missing logs or a crash can leave gaps; this is not a reconstructed lifetime total.
 
 #### Taxonomy injection (session hook, #66)
 
@@ -2000,7 +2238,9 @@ nichts, deshalb braucht es keine Stoppwortliste; eine umformulierte oder
 übersetzte Notiz wird nicht erkannt, und diese Auswahl wird weitergereicht. Der
 Rest landet als ein `<session-harvest>`-Block mit wörtlichen Zitaten im
 Pending-Relay (Recency-Spur, #513), den der nächste Session-Start zeigt.
-**Der Harvest schreibt nie in den Vault**: Der Agent sucht per recall, prüft
+**Der normale Relay-Weg legt keine Notizen an; die getrennte Draft-Beförderung
+kann im selben Tick nur nach ausdrücklichem Scharf-Opt-in und den unten genannten
+Prüfungen schreiben.** Beim Relay sucht der Agent per recall, prüft
 und speichert. Eine fortgesetzte Session wird nur für ihre neuen Turns erneut
 ausgewertet. Telemetrie: `session_harvest` mit `session_id, client,
 turn_count, candidate_count, candidate_kinds, stored_count, trigger`
@@ -2018,7 +2258,9 @@ this host)". „Saved afterwards" zählt jeden Save der Session, die den Block
 bekam, und ist damit eine Obergrenze für die Wirkung des Harvests. Abschalten
 mit `BASTRA_SESSION_HARVEST=0` in der Umgebung des Daemons.
 
-**Lokale Entwürfe (#1084, B1).** Parallel zum unveränderten Relay erfasst der
+### Lokale Entwürfe (#1084)
+
+**Erfassung und Ablage.** Neben dem Harvest-Relay (standardmäßig Probe; scharfe Behandlung siehe unten) erfasst der
 Job jeden getippten Nutzer-Turn mit mindestens 20 Buchstaben und weniger als
 2.000 Zeichen. Abbruchmarker, eingespielte Turns und Zitate, deren Worte der
 Vault schon hält, fallen weg. Ein späterer Speicheraufruf unterdrückt die
@@ -2038,8 +2280,8 @@ werden vorerst nur gleiche Fingerprints zusammengeführt. Ein offener Entwurf
 mit einem Beleg, der nie gezeigt wurde, verfällt nach 7 Tagen (ungemessen),
 andere offene Entwürfe weiterhin nach 30 Tagen. Der Harvest-Tick entfernt
 verfallene Zeilen auch ohne fällige Session. Mit `bastra drafts list|purge`
-kannst Du die Ablage ansehen oder leeren. Recall zeigt Entwürfe noch nicht an;
-sie werden noch nicht zu Notizen befördert. `BASTRA_SESSION_HARVEST=0` schaltet
+kannst Du die Ablage ansehen oder leeren. Recall zeigt ein eigenes unbestätigtes Band; die Beförderung läuft standardmäßig
+im Probelauf, scharf nach ausdrücklichem Einschalten. `BASTRA_SESSION_HARVEST=0` schaltet
 auch die Erfassung und das Aufräumen im Harvest-Tick ab. Fingerprints entstehen
 aus geschwärztem Text; ein geänderter Zugangswert allein ergibt deshalb keinen
 weiteren Entwurf. Die Telemetrie zählt behaltene neue Zeilen in `draft_count`
@@ -2052,7 +2294,7 @@ Bei einem Fehler der Ablage arbeitet das Relay weiter und meldet
 `draft_error: true`; die fehlgeschlagene Erfassung dieser Session wird nicht
 automatisch wiederholt.
 
-**Situation (B2, Claude Code).** Umkehrbare Annahme der Hauptsession, noch nicht
+**Situation (Claude Code).** Umkehrbare Annahme der Hauptsession, noch nicht
 vom Owner bestätigt: Ein getippter Turn erhält `after-failure`, wenn das letzte
 Tool-Ergebnis seit dem vorherigen getippten Turn ausdrücklich fehlgeschlagen ist.
 Assistenten-Text dazwischen ändert das nicht; ein späteres erfolgreiches oder
@@ -2078,7 +2320,7 @@ ohne mitgelieferten Branch, wird der alte Branch entfernt. Der Codex-Parser
 bleibt unverändert; ohne die Claude-Metadaten
 bleibt die Situation leer.
 
-**Lokaler Wiederholungs-Schattenlauf (B3).** Der Harvest-Tick bettet geschwärzte
+**Lokale Wiederholungsmessung.** Der Harvest-Tick bettet geschwärzte
 Entwurfszitate ausschließlich über den bereits gewählten lokalen Ollama-Anbieter
 an einer Loopback-Adresse ein. Bei Cloud-Wahl, ohne Anbieter oder mit entfernter
 Ollama-Adresse gibt es keinen Embedding-Aufruf für Entwürfe. Die löschbare Datei
@@ -2105,9 +2347,200 @@ Die Zeile enthält Cosinus und die bestehende IDF-gewichtete Wortüberdeckung f�
 dieselbe Notiz. IDs privater Notizen bleiben immer weg; Texte, Titel und Befehle
 werden nie protokolliert. Ein fehlender oder inkompatibler Vault-Snapshot verschiebt
 diese Messung, ohne den Entwurf neu einzubetten. Wiederholungen nach Verfall sind
-nach dem Entfernen von Zeile und Cache-Eintrag nicht mehr zählbar; B3 ergänzt kein
-historisches Fingerprint-Register. Der bestehende Schalter
+nach dem Entfernen von Zeile und Cache-Eintrag nicht mehr zählbar; ein historisches Register verfallener Fingerprints ist nicht vorhanden. Der bestehende Schalter
 `BASTRA_SESSION_HARVEST=0` schaltet Erfassung, Aufräumen und Schattenlauf gemeinsam ab.
+
+#### Suche und unbestätigte Hinweise
+
+Getippte Nachrichten hinter dem strukturellen Rauschfilter werden samt geschwärzter
+Situation im lokalen Harvest erfasst. Recall sucht rein lexikalisch, ohne Cloud
+oder Embedding-Aufruf. Treffer stehen separat in `draft_hits` ohne Score und im
+Band `<draft-hints>` nach den Notiz-Abschnitten. Unbestätigte Nutzerzitate vor der
+Verwendung prüfen. Sie werden nie gerankte oder verpflichtende Treffer.
+Prompt/PreTool zeigen höchstens einen, SessionStart/MCP höchstens zwei. Notizen
+haben Budgetvorrang. CLI-Listing verlängert keinen Verfall: unangezeigte Entwürfe
+mit einem Beleg 7 Tage (ungemessen), sonst offen 30 Tage, Grabsteine 180 Tage.
+
+Die Suche nutzt nur abgeschlossene Speicher-Snapshots. Entwürfe werden im
+Hintergrund aktualisiert, mit einer einsekündigen Nachprüfung; der Vault-Wortschatz
+wird beim Start und bei Notizereignissen gepflegt. Antwortpfade lesen keine
+Draft-Datei und warten auf keine Ablagesperre. Buchungen liegen hinter der Antwort:
+im selben Prozess werden sie nacheinander ausgeführt; bei fremder Sperre nur ein
+Versuch ohne Warten oder Übernahme. Normale Notizen und Tripwire-Warnungen sind
+vorher fertig, die 50-ms-Grenze bleibt innerhalb der Lane-Deadline. Telemetrie zählt
+IDs, Anzahl, Tokens und Bandlatenz, keinen Text. Suche löscht oder schließt nie;
+überdeckende Notizen unterdrücken nur passende Entwürfe dieser Antwort.
+
+Zwei gemeinsame Tokens sind nötig, davon zwei seltene Anker ab vier Zeichen oder
+einer ab zehn Zeichen. Ab 50 Notizen entscheidet **allein der Vault-Wortschatz**:
+selten ist ein Wort in höchstens 2 % der Notizen; auch IDF-Gewichte kommen dann
+vom Vault. Fünf ähnliche Entwürfe machen ihr Thema nicht häufig. Mindestzahl 50
+und Grenze 2 % sind **ungemessen**: 2/60 Vorkommen gelten nicht als selten, 2/2.000
+schon. Unter 50 gilt Draft-DF <=2 als Notbehelf mit Schwächen in beide Richtungen.
+Situationsmatch bleibt unverändert: zwei Literale, davon ein seltenes in höchstens
+zwei gespeicherten Situationen, ab vier Zeichen mit Ziffer oder `./_@:-`.
+Alltagsbefehle mit Literalform können trotzdem treffen: `npm run test:unit` und
+`git checkout feature/x-1`, wenn der Befehl in höchstens zwei Situationen steht
+(unabhängig 2/30 bei 20 Entwürfen). „Gleiche Datei“ allein trifft nie: zwei gemeinsame
+Literale sind nötig, Lesezugriffe liefern nur Dateibasisnamen. Grenze bleibt unverändert.
+
+Bei 40/100/200 Entwürfen, mit einem separaten erfundenen 150-Notizen-Vault aus
+Alltagssprache (75 DE/75 EN, andere Themen): ursprünglicher Korpus 13/20 (65 %),
+34/50 (68 %), 69/100 (69 %) passende Treffer. Ohne brauchbaren Vault 2/20, 2/50,
+4/100. Zweiter Korpus: mit Vault 20/20, 49/50, 99/100; Notbehelf 20/20, 49/50,
+98/100. Themenfremd und kurz bei jeder Größe in beiden Varianten null: ursprünglich
+0/60 bzw. 0/40, unabhängig je 0/50. Die bessere Fassung bleibt: Vault-Seltenheit
+stellt wiederholt erklärte Themen wieder her. Es fehlen weiterhin 31/100 passende
+Abfragen im ersten Korpus; beim Notbehelf 96/100. Dieser kann zufällig seltene
+Alltagswörter falsch treffen („three unit tests“/„germination tests … every three
+years“); mit Vault nicht. Häufige Vault-Themenwörter sind keine Anker, die Notiz
+hat Vorrang. Anzahl allein beweist keine Abdeckung der jeweiligen Sprache. Die
+Korpora beweisen keine Alltagstauglichkeit; verbleibende Fehler werden an echten
+Daten gemessen. Keine weitere Abstimmung an erfundenen Daten nach dieser Korrektur.
+
+**Unabhängige Prüfung an anderem Material:** 200 Entwürfe, 50 Themen, 300 Notizen
+in beiden Sprachen: kurz 0/50, themenfremd 0/50, passend 49/50. Notbehelf (unter
+50 Notizen oder keiner): bis 3/50 (6 %) themenfremd, 34/50 passend. Einsprachiger
+Vault und Abfragen in der anderen Sprache: 16–36 % themenfremde Treffer. Stehen
+Themenwörter selbst in mehr als 2 % der Vault-Notizen, fallen passende Draft-Treffer
+auf 0/50; das ist die sichere Richtung, der normale Notizpfad bleibt zuständig.
+Der Sprung ist sichtbar: bei 49 Notizen 34/50 passend und 3/50 themenfremd, bei
+50 Notizen 49/50 und 0/50. „Null bei jeder Größe“ oben gilt nur für die beiden
+festen Korpora mit ihrem erfundenen zweisprachigen Wortschatz, nicht allgemein.
+Diese Zahlen ändern keine Regel oder Schwelle.
+
+Kein Stemming/Übersetzen; Chinesisch/Japanisch ohne Leerzeichen bleiben ein Token
+und scheitern am Zwei-Token-Match (#711). Bash prüft ungezeigte Treffer vor erneutem
+Notiz-Lookup. Nach verlorener Buchung und Neustart kann dieselbe ID erneut erscheinen.
+Einmal je Sitzung gilt für Hook-Bänder, direkter Recall je Anfrage. Keine
+Projekt-/Clientfilter. Angefügte Bands ab Zeilenanfang werden vor Erfassung auch
+unvollständig abgeschnitten; inline zitierte Tagnamen bleiben Text. Englischer
+Injektionsscanner bleibt begrenzt. Prüfermessungen: erste Suche nach Änderung bei
+500 Entwürfen 10,7 ms; Scrub für 1 MB 3,5 statt 0,46 ms, mit Entfernung des wörtlichen
+Tags auch aus Notiztiteln. Diese Grenzen sind dokumentiert, ohne Zusatzbau.
+
+#### Beförderung durch Wiederholung
+
+Wiederholung braucht Belege aus verschiedenen Sitzungen. Seltenheit wird am
+Vault-Wortschatz und allen erhaltenen Entwürfen gemessen; unterschiedliche
+Ziffern-/Pfad-/Host-Literale verhindern nur den Wiederholungs-Auslöser; ein
+Bindestrich allein nicht. Die Dublettensperre hat keine Literal-Bedingung und
+sperrt im Zweifel lieber zu viel. Auslöser bestehen aus
+Befehlskopf plus passendem seltenen Literal, der gespeicherten Frage und den fünf
+seltensten Zitattokens mit DF <=2, mindestens vier Zeichen, bei Gleichstand
+längere zuerst; ohne reine Zahlen oder geschwärzte Stellen.
+Ohne brauchbare Auslöser wird keine Rausch-Notiz erzeugt. Abgeleitete Notizen und abgelehnte Zeilen behalten reine
+Zitatvektoren 180 Tage: Das verhindert zweite Notizen trotz verwässertem Notiztext
+und Umformulierungen/Übersetzungen nach Undo trotz anderer Literale. Private IDs erscheinen nicht in der Telemetrie.
+
+Im Probelauf ändern sich Zustand, `memory_id` und Grabsteine niemals; auch Dubletten
+und Wiederaufnahme werden nur protokolliert. Entscheidungshashes neben den Vektoren
+verhindern wiederholte Messzeilen. Vektoren werden einmal je Tick geladen,
+Hash-Merker gesammelt einmal gespeichert. Ein unveränderter Vollzustand überspringt
+die Berechnung: Lastfall 480/100/2000 von etwa 3,6 s auf 23 ms. Änderungen an
+Notizen, Entwürfen, Modell, Vektoren, Modus oder Entscheidungsschwellen invalidieren
+den Merker; Regelversion und alle Schwellen sind enthalten. Zeiten nur ausgeben,
+Abnahme prüft Skip und eine Vektorladung statt fremder CPU-Last.
+Die Berechnung gibt den Event-Loop frei und läuft
+außerhalb der Ablagesperre. Capture/Hooks warten nicht auf Notiz-Publikation. Bei
+fehlendem scharfem Abgleich bleibt die Weitergabe an ihrer alten Stelle, bevor
+weitere Draft-Arbeiten laufen. Auch potenziell scharf wird sie dort zuerst dauerhaft
+gespeichert und erst nach vollständig erfolgreichem scharfem Pass und gelungener
+Erfassung genau dieser Sitzung zurückgezogen. Vorläufige Blöcke liegen außerhalb
+der normalen Recency-Grenze; Rücknahme verliert keine fremden Vorschläge. Bleibende
+Fallbacks werden danach normale Weitergabe mit deren üblicher Grenze.
+Fehler/Prozessende verlieren diesen Fallback nicht. Der Zähler nennt die verbleibende
+Weitergabe.
+
+Undo verweigert seit der Beförderung veränderte Notizen mit zutreffender Meldung;
+`--force` löscht nach ausdrücklicher Prüfung trotzdem, ohne Herkunfts-/Vault-Grenzen
+aufzuheben. Eine unterbrochene Zustandsbuchung wird über die ursprünglichen Belege
+wiederaufgenommen, auch nach einer dritten Session. Fehlt der ursprüngliche
+Inhaltshash, verlangt Undo `--force`. Das Audit bleibt erhalten.
+
+Im kleinen DE/EN-Korpus würden 2/6 Routine-/inhaltsarme Sätze befördert und 2/6
+Tatsachen mit häufigen Wörtern blockiert. Seltene Wörter machen einen Auftrag noch
+nicht zu einer Tatsache. Der englische Injektionsscanner blockiert zudem legitime
+`curl … | sh`-Fakten oder lange `sha256:`-Digests. Die ungemessenen Schwellen bleiben
+0,70/0,60; echte Dublette 0,615 und zu Unrecht gesperrte neue Tatsache 0,645 liegen
+eng zusammen. Ohne Literal-Bypass werden in der Prüfer-Gegenprobe 6/13 neue
+Tatsachen zum gleichen Thema gesperrt, zuvor 2/13. Weiterer Prüferkorpus: 1/15 bei
+breit gestreuten neuen Tatsachen, 11/13 mit denselben Hosts/Pfaden/Versionen,
+darunter zwei widersprechende Aussagen. Echte Dubletten ab 0,736 und neue Tatsachen
+bis 0,791 überlappen. Schwelle 0,60 unverändert.
+Keine neue Wortliste, kein weiterer Testdaten-Abstimmungsloop.
+
+#### Bevor du scharf schaltest
+
+An den bekannten Grenzen des Schwärz-Filters können **Geheimnisse im Klartext den
+Vault erreichen**: Titel, Zusammenfassung, Auslöser, Text und
+`.bastra/audit-log.ndjson`. Undo entfernt die Notiz, **nicht die Audit-Historie**.
+Beobachtet für: `--password=/…`, URL-Userinfo mit Sonderzeichen, „the password is …“,
+„die PIN ist …“, `pw=…`, `mysqldump -p…`, `curl -u user:…`, `redis-cli -a …`,
+`password=$…`, `--password-stdin` mit `echo`, `user:pass@host` bei scp,
+`secret_key_base: …`, `credentials: …`. Der Filter bleibt am festen Korpus gemessen
+und wurde hier nicht verändert. Zusätzlich wurde bei „das Passwort ist …“ in
+1/15 Fällen ein ungeschwärztes Passwort zum Wort-Auslöser.
+Ob scharf geschaltet wird, entscheidet der Betreiber.
+Standard bleibt der Probelauf. Der Routineschutz ist schwach: Im unabhängigen
+Prüferkorpus würden 10/15 Routinesätze und 15/15 Aufträge befördert; 0/15 Tatsachen
+werden aufgehalten. Das ist kein Tatsachenklassifikator. Scharf werden einmalige
+Aussagen nach erfolgreichem Pass weiterhin aus der alten Weitergabe entfernt:
+24/207 Zitate in 31 scharfen Prüffällen hatten weder Weitergabe noch Beförderung.
+Das betrifft auch Wiederholungen, die am Routineschutz, an fehlenden Auslösern
+oder an der Dublettensperre hängen. Falsch gesperrte neue Tatsachen bleiben 180 Tage
+abgelehnter Grabstein. Diese Regel ist eine offene Betreiberentscheidung. Eine während des Passes startende
+Sitzung kann den bereits gesicherten Fallback vor dem Zurückziehen konsumieren;
+im Zweifel weiterzugeben ist beabsichtigt.
+
+#### Beförderung durch Nutzung
+
+Ein gezeigter Entwurf kann auch ohne zweite Erklärung befördert werden. Die Anzeige
+merkt neue Tokens aus geschwärztem Zitat und den `after`-Befehlen der Ursprungssitzung;
+Wort- und Literal-Tokens des vollständigen auslösenden Eingangs werden ausgeschlossen.
+Draft-IDs/Eingang bleiben bei `/hook/hinted` getrennt von Notiz-IDs. Wiederholte
+Meldungen verändern weder erstes Fenster noch Novel-Liste; gespeichert bleiben
+höchstens fünf angezeigte Sitzungen.
+
+Ein späterer Tool-Eingang in derselben Sitzung, außerhalb der Ursprungssitzung,
+muss ein vollständiges neues Literal (Ziffer oder `./_@:-`, mindestens vier Zeichen)
+oder drei unterschiedliche neue Worttokens enthalten. Es gilt das vorhandene
+Acted-on-Fenster, standardmäßig zehn Minuten; Heuristiken **ungemessen**. Marker,
+Teilstrings, doppelte Wörter, falsche/fehlende Sitzungen und frühere Befehle zählen
+nicht. Der Hook schreibt nur lokale Belege. Erst der Harvest-Tick nutzt dieselben
+Wort-/Bedeutungs-Sperren, Herkunftsprüfung, Schwärzung/Injektionsprüfung und den
+Probelauf wie D; scharf nur mit ausdrücklichem Schalter. Die Notiz enthält Original-
+und Nutzungsbelege, keine erfundene Verallgemeinerung. Gültige Belege überstehen
+Neustarts; erfundene Matches außerhalb Novel/Quelle gelten nicht.
+
+**Annahme, nicht vom Eigentümer bestätigt:** Nur ausdrücklich Exit 0 gilt als Erfolg,
+unbekannte Exit-Codes nicht. Clients ohne dieses Feld liefern keine Nutzungsbelege.
+Das Tokenmatch beweist weder Wahrheit noch sinnvolle Anwendung; bekannte D-Grenzen
+bleiben. Fremde belegte/nicht schreibbare Ablage kostet nur Feedback, kein Warten
+auf die Antwort. Ansage und protokollierte Lifecycle-Zahlen stehen unten.
+#### Speicherzeile und Statistik
+
+Nach tatsächlicher Beförderung erscheint eine Zeile aus dem bestehenden Bau der
+Speicherzeile, etwa „bastra-recall aus Entwurf gespeichert: …“. Claude Code nutzt
+die übliche Plakette, Codex den Klartext-Präfix (Farbe nur nach bestehendem Opt-in).
+Stop, SessionStart oder PostToolUse liefert höchstens eine ausstehende Beförderung
+je Hook in der eingestellten Sprache. Mehrere Draft-Zeilen derselben Notiz teilen
+einen dauerhaften Anspruch. Fehlende/private Notizen oder falsche Herkunft werden
+nicht angesagt; Subagents konsumieren keine Hauptthread-Zeile. `BASTRA_SAVE_NOTICE=0`
+schaltet die Zeile aus, ohne sie zu verbuchen. Kalter Cache/fremde Sperre verschiebt
+sie. Verschwindet der Client nach dem dauerhaften Anspruch, kann die Anzeige fehlen;
+kein Bestätigungs-/Wiederholungsprotokoll, das sie doppelt zeigen könnte.
+
+`bastra logs --stats` zeigt protokollierte Erfassung, zusätzliche Belege, Verfall,
+Verdrängung, Hook-Anzeigen, scharfe Beförderungen, would-promote-Entscheidungen,
+Dubletten-Sperren (scharf/Probe), weitere Sperrentscheidungen, Erfassungsfehler und
+Ansagen. Das sind Ereignisse im gewählten Fenster, kein aktueller Bestand oder
+Anzahl unterschiedlicher gezeigter IDs. Ein Paar ergibt eine Notiz; zwei Anzeigen
+zählen zwei Lieferungen. MCP-Ergebnisse buchen keine Hook-Anzeige. Verfallsereignisse
+beginnen mit dieser Umsetzung und zählen dauerhaft entfernte altersbedingt
+verfallene Zeilen, auch bei anderen Schreibvorgängen; Purge/Größengrenze sind kein
+Verfall. Abgeschaltete Telemetrie, fehlende Logs oder Absturz hinterlassen Lücken;
+keine rekonstruierte Gesamtzahl über die ganze Laufzeit.
 
 #### Taxonomie-Einblendung (Session-Hook, #66)
 
@@ -2240,346 +2673,3 @@ Alle `BASTRA_*`-Variablen akzeptieren für die Migration einen alten
 `NEXUS_*`-Fallback (außer den oben genannten Stellschrauben für Größen-Hook,
 Übernahme und Stichproben-Untergrenze, die ihre Umgebungsvariable direkt
 lesen).
-
-### Local draft hints / Lokale Entwurfshinweise
-
-Typed messages that pass the structural noise filter are captured by the local
-session harvest with their redacted situation. Recall searches local drafts
-lexically, with no embedding or cloud request. Matches stay in `draft_hits`
-without scores and in a separate `<draft-hints>` band after memory sections.
-They are unconfirmed user quotes; verify before relying on them. Drafts never
-enter ranked/required hits. Prompt/PreTool display at most one; SessionStart/MCP
-at most two. Notes retain their budget priority. CLI listing does not refresh
-expiry: unshown single-evidence drafts expire after 7 days (unmeasured), other
-open drafts after 30 days and closed tombstones after 180 days.
-
-Getippte Nachrichten hinter dem strukturellen Rauschfilter werden samt geschwärzter
-Situation im lokalen Harvest erfasst. Recall sucht rein lexikalisch, ohne Cloud
-oder Embedding-Aufruf. Treffer stehen separat in `draft_hits` ohne Score und im
-Band `<draft-hints>` nach den Notiz-Abschnitten. Unbestätigte Nutzerzitate vor der
-Verwendung prüfen. Sie werden nie gerankte oder verpflichtende Treffer.
-Prompt/PreTool zeigen höchstens einen, SessionStart/MCP höchstens zwei. Notizen
-haben Budgetvorrang. CLI-Listing verlängert keinen Verfall: unangezeigte Entwürfe
-mit einem Beleg 7 Tage (ungemessen), sonst offen 30 Tage, Grabsteine 180 Tage.
-
-### Draft retrieval corrections / Nachbesserung der Entwurfssuche
-
-Draft search reads only completed in-memory snapshots. Background loading and a
-file watcher refresh drafts (with a one-second reconciliation fallback). The vault
-word measure uses the existing note vocabulary/IDF reference and is maintained at
-startup and on add/change/remove events. A cold/failed draft cache yields no draft.
-Response paths perform no draft-file I/O and take no draft-store lock. Delivery
-booking runs after the response: same-process bookings serialize; against another
-process the lock is attempted once, without waiting or orphan takeover. Normal note
-and tripwire output is already final before the band is appended. An advisory 50 ms
-ceiling, unmeasured on real data, is bounded by the normal lane deadline. Separate
-`draft_hint` telemetry records IDs, count, estimated tokens and band latency, no text.
-
-**Assumption, not confirmed by the owner:** retrieval never deletes or closes
-drafts. A covering returned note suppresses only query-matching drafts in that
-response; promotion owns closing and tombstones.
-
-A text match needs two shared tokens and either two rare anchors of at least four
-Unicode characters, or one rare anchor of at least ten characters. With at least
-50 notes, rarity depends **only on the user's vault vocabulary**: an anchor occurs
-in at most 2% of notes. Its IDF weight uses that same vault; repetition among drafts
-does not penalize it. Both the 50-note minimum and 2% cutoff are **unmeasured on real
-data**. Two occurrences among 60 notes are not rare here; two among 2,000 are.
-Below 50 notes, the emergency fallback is fixed draft DF <=2, with its weaknesses
-in both directions. Unknown words carry no negative weight. Situation matching
-stays unchanged: two shared literals, one with stored-situation DF <=2 and at least
-four characters containing a digit or `./_@:-`; everyday `git status`/`npm test`
-alone do not qualify. There is no further synthetic tuning after this correction.
-
-Both frozen draft corpora were measured at 40/100/200 drafts, with and without a
-separate 150-note invented DE/EN vault of everyday language on other topics (75
-notes per language). Original technical corpus: with vault 13/20, 34/50, 69/100
-correct topical matches; without usable vault 2/20, 2/50, 4/100. Independent
-50-topic corpus: with vault 20/20, 49/50, 99/100; fallback 20/20, 49/50, 98/100.
-Unrelated/short matches stayed 0 at every size: original 0/60 and 0/40, independent
-0/50 and 0/50, both vocabulary modes. Vault-based rarity restores frequently
-explained themes that the draft cap suppressed; the original corpus still misses
-31/100 topical queries because lexical anchors/lengths remain strict. The fallback
-still costs 96/100 in that corpus and can admit accidental rare everyday words,
-like “three unit tests” against “germination tests every three years”; the populated
-vault rejects that pair. Words common in vault notes are not anchors, letting
-canonical notes take precedence. A note count alone does not prove coverage of the
-query's language. These synthetic rates do not establish real-world quality;
-remaining errors will be measured on real data without further invented retuning.
-There is no stemming or translation. Chinese/Japanese without spaces remain one
-token and do not match the two-token rule (#711).
-
-Hook lanes deliver once per session; MCP and `/hook/recall` return per request.
-Bash checks whether any draft remains unseen before looking up covering notes.
-After a lost booking and daemon restart, a harmless Bash request may show the same
-ID again in the same session. There is no project/client filter. Off values are
-`0`, `off`, `false`, `no`, case-insensitive. Fence/control/bidi stripping and quoted
-single-line fields protect the band. Leading incomplete draft bands are injected
-content; a line-start band after owner text is cut before draft capture even if
-unclosed. Inline quoted tag names remain prose. English-only injection patterns
-remain a known limit. First search after a 500-draft cache change was measured by
-review at 10.7 ms on the response path. Fence scrubbing of 1 MB cost 3.5 ms versus
-0.46 ms previously and also removes literal `<draft-hints>` from note titles.
-These are documented limits, without new machinery.
-
-Die Suche nutzt nur abgeschlossene Speicher-Snapshots. Entwürfe werden im
-Hintergrund aktualisiert, mit einer einsekündigen Nachprüfung; der Vault-Wortschatz
-wird beim Start und bei Notizereignissen gepflegt. Antwortpfade lesen keine
-Draft-Datei und warten auf keine Ablagesperre. Buchungen liegen hinter der Antwort:
-im selben Prozess werden sie nacheinander ausgeführt; bei fremder Sperre nur ein
-Versuch ohne Warten oder Übernahme. Normale Notizen und Tripwire-Warnungen sind
-vorher fertig, die 50-ms-Grenze bleibt innerhalb der Lane-Deadline. Telemetrie zählt
-IDs, Anzahl, Tokens und Bandlatenz, keinen Text. Suche löscht oder schließt nie;
-überdeckende Notizen unterdrücken nur passende Entwürfe dieser Antwort.
-
-Zwei gemeinsame Tokens sind nötig, davon zwei seltene Anker ab vier Zeichen oder
-einer ab zehn Zeichen. Ab 50 Notizen entscheidet **allein der Vault-Wortschatz**:
-selten ist ein Wort in höchstens 2 % der Notizen; auch IDF-Gewichte kommen dann
-vom Vault. Fünf ähnliche Entwürfe machen ihr Thema nicht häufig. Mindestzahl 50
-und Grenze 2 % sind **ungemessen**: 2/60 Vorkommen gelten nicht als selten, 2/2.000
-schon. Unter 50 gilt Draft-DF <=2 als Notbehelf mit Schwächen in beide Richtungen.
-Situationsmatch bleibt unverändert: zwei Literale, davon ein seltenes in höchstens
-zwei gespeicherten Situationen, ab vier Zeichen mit Ziffer oder `./_@:-`.
-
-Bei 40/100/200 Entwürfen, mit einem separaten erfundenen 150-Notizen-Vault aus
-Alltagssprache (75 DE/75 EN, andere Themen): ursprünglicher Korpus 13/20 (65 %),
-34/50 (68 %), 69/100 (69 %) passende Treffer. Ohne brauchbaren Vault 2/20, 2/50,
-4/100. Zweiter Korpus: mit Vault 20/20, 49/50, 99/100; Notbehelf 20/20, 49/50,
-98/100. Themenfremd und kurz bei jeder Größe in beiden Varianten null: ursprünglich
-0/60 bzw. 0/40, unabhängig je 0/50. Die bessere Fassung bleibt: Vault-Seltenheit
-stellt wiederholt erklärte Themen wieder her. Es fehlen weiterhin 31/100 passende
-Abfragen im ersten Korpus; beim Notbehelf 96/100. Dieser kann zufällig seltene
-Alltagswörter falsch treffen („three unit tests“/„germination tests … every three
-years“); mit Vault nicht. Häufige Vault-Themenwörter sind keine Anker, die Notiz
-hat Vorrang. Anzahl allein beweist keine Abdeckung der jeweiligen Sprache. Die
-Korpora beweisen keine Alltagstauglichkeit; verbleibende Fehler werden an echten
-Daten gemessen. Keine weitere Abstimmung an erfundenen Daten nach dieser Korrektur.
-
-Kein Stemming/Übersetzen; Chinesisch/Japanisch ohne Leerzeichen bleiben ein Token
-und scheitern am Zwei-Token-Match (#711). Bash prüft ungezeigte Treffer vor erneutem
-Notiz-Lookup. Nach verlorener Buchung und Neustart kann dieselbe ID erneut erscheinen.
-Einmal je Sitzung gilt für Hook-Bänder, direkter Recall je Anfrage. Keine
-Projekt-/Clientfilter. Angefügte Bands ab Zeilenanfang werden vor Erfassung auch
-unvollständig abgeschnitten; inline zitierte Tagnamen bleiben Text. Englischer
-Injektionsscanner bleibt begrenzt. Prüfermessungen: erste Suche nach Änderung bei
-500 Entwürfen 10,7 ms; Scrub für 1 MB 3,5 statt 0,46 ms, mit Entfernung des wörtlichen
-Tags auch aus Notiztiteln. Diese Grenzen sind dokumentiert, ohne Zusatzbau.
-
-### Repeated draft promotion / Beförderung wiederholter Entwürfe
-
-Repeat evidence must come from distinct sessions. The routine guard measures rare
-quote tokens against the vault vocabulary **and** all retained drafts, not just
-compressed open rows. The repeat trigger rejects different numeric/path/host
-literals (digits, / @ : _, or an internal dot); a hyphen alone is ordinary prose.
-Duplicate blocking has no literal condition, including quote tombstones and current
-notes. It deliberately prefers a false block over a second note. Command cues use a program head plus a rare literal actually
-present in that command; the stored question stays verbatim, and quote cues use
-up to five rare words with DF <=2 in that same vocabulary, at least four
-characters long and preferring longer tokens when equally rare. Pure numbers and
-redacted spans are excluded; a candidate without any useful command/question/word
-cue is held rather than creating a noisy trigger.
-
-Duplicate blocking compares full current notes and **pure quote vectors**. Promoted
-and rejected rows retain their quote vectors for the 180-day tombstone lifetime.
-This avoids diluted derived-note embeddings, duplicate pairs in one tick and
-paraphrases/translations after undo even when their literals differ. Private note IDs stay out of promotion telemetry. Purge
-removes drafts, vectors and decision receipts.
-
-Dry-run changes no draft state, memory ID or tombstone, including duplicate hits
-and recovery. It logs `draft_would_promote` / `draft_would_block` with IDs, numbers
-and reasons. Hash-only decision receipts beside vectors deduplicate each candidate
-state and pair. The vector file is loaded once per pass; small hash-only receipts
-are committed once beside it. An unchanged full input state skips candidate math
-(the 480/100/2000 benchmark fell from about 3.6 s per unchanged pass to 23 ms).
-A vault/draft/model/vector/mode or decision-threshold change invalidates that
-pass receipt; it includes a rule version and all decision threshold constants.
-Timing is reported only; tests assert skipped math and one load, not host wall time.
-Pair/vocabulary/duplicate computation yields outside the draft lock;
-only identity/state changes take it. Publication/undo/purge have separate serialization,
-so capture and hook feedback do not queue behind background math or note publication.
-
-Sharp mode still requires exactly `BASTRA_DRAFT_PROMOTE=1`, verified origin-vault
-provenance and complete same-model local comparison. The legacy relay remains on
-at its original harvest seam when actual sharp comparison is unavailable or the
-mode is probe. Even a potentially sharp pass first stores the ordinary relay
-before advancing harvest progress, then withdraws that exact block only after
-a fully successful sharp pass **and successful capture of that session**.
-Provisional blocks do not count against the ordinary recency cap, so withdrawing
-them cannot evict a foreign block. Retained fallbacks become ordinary relay at
-settlement and use its usual cap. Failure or process termination leaves them readable;
-the daemon reports the remaining forwarded count. No local provider, failed local embedding, incomplete
-or wrong-model vault vectors cannot create a note. Legacy/mixed vault provenance
-is never guessed. No cloud provider embeds draft text.
-
-Derived notes preserve quotes, situation and session/date/client evidence, with a
-deterministic SHA-256-derived ID, `source`, tag `derived`, confidence 0.6,
-`capture-review` origin and team visibility. Original saved evidence receipts recover
-a landed note even if a third session was appended before restart. If its original
-content receipt is missing, undo requires explicit `--force`.
-
-`bastra drafts undo <draft-id-or-note-id> [--vault <path>] [--force] [--json]` refuses
-notes edited since promotion, including automatic file edits, unless `--force` is
-explicitly supplied. The content hash is checked under the existing delete identity
-claim. Force still cannot delete another vault's note or an existing-note duplicate.
-Deletion is audited; rejected fingerprints and quote tombstones persist for 180 days.
-The CLI reports the actual refusal reason.
-
-**Known limits, not a new language classifier:** on a fixed small DE/EN guard corpus,
-2/6 routine/low-content quotes would still promote; 2/6 factual quotes expressed
-in common vocabulary were held. Rare-word orders and content-poor rare sentences
-can pass. The existing injection scanner recognizes English patterns; legitimate
-`curl … | sh` facts and long `sha256:` digests can be blocked. Cosine thresholds
-remain unmeasured on real data and unchanged: 0.70 repeat / 0.60 duplicate. The
-review's weakest genuine duplicate was 0.615; a new fact wrongly blocked was 0.645.
-Removing the literal bypass blocks 6/13 new same-topic facts in the reviewer
-counterprobe, versus 2/13 with the bypass; the duplicate threshold stays 0.60.
-Material matters: a further review blocked 1/15 broadly different new facts but
-11/13 sharing hosts/paths/versions, including two contradictory statements. Genuine
-duplicates from 0.736 and new facts up to 0.791 overlap; no single cosine cutoff
-separates them.
-
-
-#### Before enabling sharp mode / Bevor du scharf schaltest
-
-Known secret-redaction limits can put **plaintext secrets in the vault**: title,
-summary, triggers, body and `.bastra/audit-log.ndjson`. Undo removes the note but
-**does not remove its audit history**. Observed boundary forms: `--password=/…`,
-URL userinfo with special characters, “the password is …”, “die PIN ist …”, `pw=…`,
-`mysqldump -p…`, `curl -u user:…`, `redis-cli -a …`, `password=$…`, `--password-stdin`
-with `echo`, `user:pass@host` in scp, `secret_key_base: …`, `credentials: …`.
-The review also observed an unredacted password becoming a word cue in 1/15
-cases at the known German “das Passwort ist …” boundary.
-The fixed redaction corpus remains the standard; its filter was not changed here.
-The operator decides whether to enable sharp mode with these known limits. Default remains probe.
-The routine guard remains weak: the independent reviewer corpus would promote
-10/15 routine sentences and 15/15 orders, while holding 0/15 factual statements.
-This is not a factuality classifier. Sharp mode still suppresses one-off statements
-from the ordinary relay after a successful sharp pass: 24/207 quotes in 31 sharp
-review samples received neither forwarding nor promotion. This includes repeated quotes blocked by routine vocabulary, missing useful cues
-or duplicate comparison, not just one-off statements. A falsely blocked new fact
-remains a rejected tombstone for 180 days. Whether to retain this policy is an open
-operator decision. A session starting during the pass may consume
-the already durable fallback before withdrawal; forwarding in doubt is intentional.
-
-An den bekannten Grenzen des Schwärz-Filters können **Geheimnisse im Klartext den
-Vault erreichen**: Titel, Zusammenfassung, Auslöser, Text und
-`.bastra/audit-log.ndjson`. Undo entfernt die Notiz, **nicht die Audit-Historie**.
-Beobachtet für: `--password=/…`, URL-Userinfo mit Sonderzeichen, „the password is …“,
-„die PIN ist …“, `pw=…`, `mysqldump -p…`, `curl -u user:…`, `redis-cli -a …`,
-`password=$…`, `--password-stdin` mit `echo`, `user:pass@host` bei scp,
-`secret_key_base: …`, `credentials: …`. Der Filter bleibt am festen Korpus gemessen
-und wurde hier nicht verändert. Zusätzlich wurde bei „das Passwort ist …“ in
-1/15 Fällen ein ungeschwärztes Passwort zum Wort-Auslöser.
-Ob scharf geschaltet wird, entscheidet der Betreiber.
-Standard bleibt der Probelauf. Der Routineschutz ist schwach: Im unabhängigen
-Prüferkorpus würden 10/15 Routinesätze und 15/15 Aufträge befördert; 0/15 Tatsachen
-werden aufgehalten. Das ist kein Tatsachenklassifikator. Scharf werden einmalige
-Aussagen nach erfolgreichem Pass weiterhin aus der alten Weitergabe entfernt:
-24/207 Zitate in 31 scharfen Prüffällen hatten weder Weitergabe noch Beförderung.
-Das betrifft auch Wiederholungen, die am Routineschutz, an fehlenden Auslösern
-oder an der Dublettensperre hängen. Falsch gesperrte neue Tatsachen bleiben 180 Tage
-abgelehnter Grabstein. Diese Regel ist eine offene Betreiberentscheidung. Eine während des Passes startende
-Sitzung kann den bereits gesicherten Fallback vor dem Zurückziehen konsumieren;
-im Zweifel weiterzugeben ist beabsichtigt.
-
-Wiederholung braucht Belege aus verschiedenen Sitzungen. Seltenheit wird am
-Vault-Wortschatz und allen erhaltenen Entwürfen gemessen; unterschiedliche
-Ziffern-/Pfad-/Host-Literale verhindern nur den Wiederholungs-Auslöser; ein
-Bindestrich allein nicht. Die Dublettensperre hat keine Literal-Bedingung und
-sperrt im Zweifel lieber zu viel. Auslöser bestehen aus
-Befehlskopf plus passendem seltenen Literal, der gespeicherten Frage und den fünf
-seltensten Zitattokens mit DF <=2, mindestens vier Zeichen, bei Gleichstand
-längere zuerst; ohne reine Zahlen oder geschwärzte Stellen.
-Ohne brauchbare Auslöser wird keine Rausch-Notiz erzeugt. Abgeleitete Notizen und abgelehnte Zeilen behalten reine
-Zitatvektoren 180 Tage: Das verhindert zweite Notizen trotz verwässertem Notiztext
-und Umformulierungen/Übersetzungen nach Undo trotz anderer Literale. Private IDs erscheinen nicht in der Telemetrie.
-
-Im Probelauf ändern sich Zustand, `memory_id` und Grabsteine niemals; auch Dubletten
-und Wiederaufnahme werden nur protokolliert. Entscheidungshashes neben den Vektoren
-verhindern wiederholte Messzeilen. Vektoren werden einmal je Tick geladen,
-Hash-Merker gesammelt einmal gespeichert. Ein unveränderter Vollzustand überspringt
-die Berechnung: Lastfall 480/100/2000 von etwa 3,6 s auf 23 ms. Änderungen an
-Notizen, Entwürfen, Modell, Vektoren, Modus oder Entscheidungsschwellen invalidieren
-den Merker; Regelversion und alle Schwellen sind enthalten. Zeiten nur ausgeben,
-Abnahme prüft Skip und eine Vektorladung statt fremder CPU-Last.
-Die Berechnung gibt den Event-Loop frei und läuft
-außerhalb der Ablagesperre. Capture/Hooks warten nicht auf Notiz-Publikation. Bei
-fehlendem scharfem Abgleich bleibt die Weitergabe an ihrer alten Stelle, bevor
-weitere Draft-Arbeiten laufen. Auch potenziell scharf wird sie dort zuerst dauerhaft
-gespeichert und erst nach vollständig erfolgreichem scharfem Pass und gelungener
-Erfassung genau dieser Sitzung zurückgezogen. Vorläufige Blöcke liegen außerhalb
-der normalen Recency-Grenze; Rücknahme verliert keine fremden Vorschläge. Bleibende
-Fallbacks werden danach normale Weitergabe mit deren üblicher Grenze.
-Fehler/Prozessende verlieren diesen Fallback nicht. Der Zähler nennt die verbleibende
-Weitergabe.
-
-Undo verweigert seit der Beförderung veränderte Notizen mit zutreffender Meldung;
-`--force` löscht nach ausdrücklicher Prüfung trotzdem, ohne Herkunfts-/Vault-Grenzen
-aufzuheben. Eine unterbrochene Zustandsbuchung wird über die ursprünglichen Belege
-wiederaufgenommen, auch nach einer dritten Session. Fehlt der ursprüngliche
-Inhaltshash, verlangt Undo `--force`. Das Audit bleibt erhalten.
-
-Im kleinen DE/EN-Korpus würden 2/6 Routine-/inhaltsarme Sätze befördert und 2/6
-Tatsachen mit häufigen Wörtern blockiert. Seltene Wörter machen einen Auftrag noch
-nicht zu einer Tatsache. Der englische Injektionsscanner blockiert zudem legitime
-`curl … | sh`-Fakten oder lange `sha256:`-Digests. Die ungemessenen Schwellen bleiben
-0,70/0,60; echte Dublette 0,615 und zu Unrecht gesperrte neue Tatsache 0,645 liegen
-eng zusammen. Ohne Literal-Bypass werden in der Prüfer-Gegenprobe 6/13 neue
-Tatsachen zum gleichen Thema gesperrt, zuvor 2/13. Weiterer Prüferkorpus: 1/15 bei
-breit gestreuten neuen Tatsachen, 11/13 mit denselben Hosts/Pfaden/Versionen,
-darunter zwei widersprechende Aussagen. Echte Dubletten ab 0,736 und neue Tatsachen
-bis 0,791 überlappen. Schwelle 0,60 unverändert.
-Keine neue Wortliste, kein weiterer Testdaten-Abstimmungsloop.
-
-### Draft promotion from use / Beförderung durch Nutzung
-
-A displayed draft can also qualify without a second explanation. The delivery
-records novel tokens from the redacted quote and its originating session's `after`
-commands, excluding both word and literal tokens of the complete triggering input.
-`/hook/hinted` keeps draft IDs/input separate from ordinary note IDs. In-process
-hook bands book the same proof after rendering. Replays do not reset the first
-novelty set or window; only the last five surfaced sessions remain stored.
-
-A later successful tool input in that same non-origin session must contain one
-whole novel literal (digit or `./_@:-`, at least four Unicode characters), or three
-distinct novel word tokens, within the existing acted-on window (default ten
-minutes). The heuristics are **unmeasured**. Redaction markers, substrings, repeated
-words, missing/foreign/origin sessions and commands before the hint do not qualify.
-The use hook books only local evidence, never a vault note. The next harvest uses
-the same local semantic/word duplicate gates, provenance, secret/injection filters,
-probe default and explicit sharp switch as repeat promotion. Valid persisted
-proof remains usable at a later tick; fabrication outside the recorded novel set
-or source does not qualify. The resulting note preserves quote/situation/original
-capture evidence plus the display/use session, dates, tool and successful matches.
-
-**Assumption, not confirmed by the owner:** unknown exit codes do not count as
-success; only explicit exit 0 qualifies. Clients omitting that field therefore
-produce no use proof. This is conservative and does not infer success from an
-absent error. Novel matching is a causal heuristic, not proof that a statement is
-true or that a command applied it meaningfully. Known D duplicate/secret/routine
-limits continue to apply. A foreign busy/unwritable store loses only the feedback,
-without waiting on the response. Announcements/statistics are a separate package.
-
-Ein gezeigter Entwurf kann auch ohne zweite Erklärung befördert werden. Die Anzeige
-merkt neue Tokens aus geschwärztem Zitat und den `after`-Befehlen der Ursprungssitzung;
-Wort- und Literal-Tokens des vollständigen auslösenden Eingangs werden ausgeschlossen.
-Draft-IDs/Eingang bleiben bei `/hook/hinted` getrennt von Notiz-IDs. Wiederholte
-Meldungen verändern weder erstes Fenster noch Novel-Liste; gespeichert bleiben
-höchstens fünf angezeigte Sitzungen.
-
-Ein späterer Tool-Eingang in derselben Sitzung, außerhalb der Ursprungssitzung,
-muss ein vollständiges neues Literal (Ziffer oder `./_@:-`, mindestens vier Zeichen)
-oder drei unterschiedliche neue Worttokens enthalten. Es gilt das vorhandene
-Acted-on-Fenster, standardmäßig zehn Minuten; Heuristiken **ungemessen**. Marker,
-Teilstrings, doppelte Wörter, falsche/fehlende Sitzungen und frühere Befehle zählen
-nicht. Der Hook schreibt nur lokale Belege. Erst der Harvest-Tick nutzt dieselben
-Wort-/Bedeutungs-Sperren, Herkunftsprüfung, Schwärzung/Injektionsprüfung und den
-Probelauf wie D; scharf nur mit ausdrücklichem Schalter. Die Notiz enthält Original-
-und Nutzungsbelege, keine erfundene Verallgemeinerung. Gültige Belege überstehen
-Neustarts; erfundene Matches außerhalb Novel/Quelle gelten nicht.
-
-**Annahme, nicht vom Eigentümer bestätigt:** Nur ausdrücklich Exit 0 gilt als Erfolg,
-unbekannte Exit-Codes nicht. Clients ohne dieses Feld liefern keine Nutzungsbelege.
-Das Tokenmatch beweist weder Wahrheit noch sinnvolle Anwendung; bekannte D-Grenzen
-bleiben. Fremde belegte/nicht schreibbare Ablage kostet nur Feedback, kein Warten
-auf die Antwort. Ansage und Statistik gehören ins nächste Paket.
