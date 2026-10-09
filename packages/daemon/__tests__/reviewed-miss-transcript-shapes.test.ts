@@ -287,6 +287,28 @@ test("an interrupt marker is the owner's turn: it ends the chain, and its text i
   assert.deepEqual(redirected.map((chain) => chain.query), [typed]);
 });
 
+test("text behind an interrupt marker in the same block is the next intent; a marker anywhere else is text", () => {
+  const marker = "[Request interrupted by user]";
+  const typed = "Please use the staging rail";
+  const second = [uses({ id: "t2", name: RECALL, input: { query: "rail" } }), results({ id: "t2", envelope: envelope(["served-one"], { recall_id: "r2" }) }), load("third")];
+  // A first recall without an evidence step, then the turn under test, then a full chain.
+  const queries = (content: unknown): string[] =>
+    extractReviewedMissChains(single("r1", ["served-one"], user(content), ...second), "sess-A").map((chain) => chain.query);
+  const leading: Array<[string, unknown]> = [
+    ["marker and text in one string", marker + "\n" + typed],
+    ["the tool-use spelling of the marker", "[Request interrupted by user for tool use]\n" + typed],
+    ["marker and text in one text block", [{ type: "text", text: marker + " " + typed }]],
+    ["marker and text in two text blocks", [{ type: "text", text: marker }, { type: "text", text: typed }]],
+  ];
+  for (const [name, content] of leading) assert.deepEqual(queries(content), [typed], name);
+  // The marker alone still ends the chain and starts none.
+  assert.deepEqual(queries(marker), []);
+  // Not at the start of a block, the marker is something the owner wrote: the whole turn is the intent.
+  for (const text of [`Explain ${marker} for me`, `"${marker}"`, "```\n" + marker + "\n```"]) assert.deepEqual(queries(text), [text], text);
+  // Inside a tool result it is payload: the turn is no turn of the owner, and the first chain goes on.
+  assert.deepEqual(queries([{ type: "tool_result", tool_use_id: "other", content: marker }]), [PROMPT]);
+});
+
 test("cli: a token typed into the prompt reaches neither the queue nor the proposals", async () => {
   const { dir, vault, eventsDir } = await world([recallEvent("r1", ["served-one"], ["served-one", "deep-two"])]);
   try {
