@@ -31,6 +31,7 @@
   "main": "./dist/index.js",
   "files": [
     "dist",
+    "!dist/learned-recall/reviewed-miss-*",
     "webui",
     "skill",
     "shims",
@@ -49,6 +50,7 @@
     "smoke:telemetry": "tsx scripts/telemetry-smoke.ts",
     "stress:save62": "node --import tsx scripts/stress-save-62.mjs",
     "backfill:related": "tsx scripts/backfill-related.ts",
+    "harvest:reviewed-misses": "tsx scripts/harvest-reviewed-misses.ts",
     "cues:batch": "tsx scripts/cue-batch.ts",
     "eval:robust": "tsx scripts/eval-stress.ts --slice all",
     "test:update": "node --import tsx --import ../../scripts/test-env.mjs --test scripts/update-check.test.ts",

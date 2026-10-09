@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- Upgrade `proxy-addr` to 2.0.8 (GHSA-jqcg-44mw-7w3h) and override the
+  repository's YAML CLI dependency `argparse` to 2.0.1, removing `sprintf-js`
+  (GHSA-hp3w-g68c-fv3c) from the workspace lockfile. The frontmatter parser
+  stays on `gray-matter` 4.0.3 / `js-yaml` 3.15.2; existing fixture
+  roundtrips serialize identically. This root override applies to repository
+  installs, not to consumers' independently resolved dependency trees.
+  The development-only MCPB dependency still contains the unpatched
+  `node-forge` advisory GHSA-86w9-cpqp-85rv; see the
+  [reachability assessment](docs/security-alerts-2026-10.md).
+
 ### Added
 
 - **Save notice in Claude Code.** After `save_memory`, `edit_memory`,
