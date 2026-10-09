@@ -18,6 +18,7 @@ import { envOff } from "./env.js";
 import { ACTED_ON_WINDOW_MS } from "./telemetry-join-state.js";
 import { readDraftDecisions, recordDraftDecisions } from "./draft-decisions.js";
 import { writeDraftEvent } from "./draft-events.js";
+import { noteJudgeText, parseVerdict, relationPrompt, statementPrompt, DRAFT_JUDGE_RETRY_MS, RELATIONS, STATEMENT_KINDS, type DraftJudge, type Relation, type StatementKind } from "./draft-judge.js";
 
 /** Unmeasured on real data, unchanged after review. */
 export const DRAFT_REPEAT_COSINE_MIN = 0.70;
@@ -25,18 +26,25 @@ export const DRAFT_VAULT_COSINE_MIN = 0.60;
 export const DRAFT_RARE_TOKEN_MAX_ROWS = 2;
 export const DRAFT_RARE_TOKEN_MIN = 4;
 export const DRAFT_CUE_MIN_CHARS = 4;
-export const DRAFT_PROMOTION_RULE_VERSION = 3;
+export const DRAFT_PROMOTION_RULE_VERSION = 4;
 const YIELD_EVERY = 32;
 export interface DraftPromotionEvent {
   kind: "draft_would_promote" | "draft_would_block" | "draft_promoted" | "draft_duplicate_blocked" | "draft_promote_blocked";
   draft_ids: string[]; evidence_count: number; reason?: string; cosine?: number; containment?: number;
+  /** Meaning check: classes and ids only, never text. "none" = no verdict. */
+  judge_statement?: StatementKind | "none"; judge_repeat?: Relation | "none"; judge_note?: Relation | "none";
+  judge_model?: string; judge_ms?: number; note_id?: string;
 }
 export interface DraftPromoteOptions extends Omit<DraftShadowOptions, "emit"> {
   vault: Vault; emit?: (event: DraftPromotionEvent) => void;
   /** Background tick may fall back after the actual local embedding pass failed. */
   allowSharp?: boolean;
+  /** Loopback chat model for the meaning check. Absent = no verdict, nothing is promoted or closed. */
+  judge?: DraftJudge | null;
 }
-export interface DraftPromoteResult { promoted: number; wouldPromote: number; duplicates: number; blocked: number; errors: number; probeOnly?: boolean }
+export interface DraftPromoteResult { promoted: number; wouldPromote: number; duplicates: number; blocked: number; errors: number; probeOnly?: boolean;
+  /** Candidates the meaning check could not judge in this pass. */
+  unjudged: number }
 const hash = (text: string | Buffer) => createHash("sha256").update(text).digest("hex");
 export async function draftVaultId(root: string): Promise<string> { return hash(await realpath(root)); }
 function evidenceOf(rows: Draft[]): Draft["evidence"] {
@@ -106,7 +114,7 @@ async function writeEvent(event: DraftPromotionEvent): Promise<void> {
 }
 const PASS_KEY = hash("draft-promotion-pass:repeat-use:v4");
 function passSignature(opts: DraftPromoteOptions, rows: Draft[], notes: ReturnType<Vault["list"]>, vectors: ReadonlyMap<string,Float32Array> | null, snapshot: ReturnType<NonNullable<DraftPromoteOptions["vaultVectors"]>> | undefined, sharp: boolean, vaultId: string): string {
-  const state = createHash("sha256").update(JSON.stringify({ rules: [DRAFT_PROMOTION_RULE_VERSION,DRAFT_REPEAT_COSINE_MIN,DRAFT_VAULT_COSINE_MIN,DRAFT_RARE_TOKEN_MAX_ROWS,DRAFT_RARE_TOKEN_MIN,DRAFT_CUE_MIN_CHARS,STORED_CONTAINMENT_MIN,DRAFT_USE_MIN_WORD_TOKENS,DRAFT_USE_LITERAL_MIN_CHARS,ACTED_ON_WINDOW_MS], vaultId, sharp, allowSharp: opts.allowSharp, provider: opts.provider?.id, dim: opts.provider?.dim, ollama: opts.ollama ? [opts.ollama.baseURL, opts.ollama.model] : null,
+  const state = createHash("sha256").update(JSON.stringify({ rules: [DRAFT_PROMOTION_RULE_VERSION,DRAFT_REPEAT_COSINE_MIN,DRAFT_VAULT_COSINE_MIN,DRAFT_RARE_TOKEN_MAX_ROWS,DRAFT_RARE_TOKEN_MIN,DRAFT_CUE_MIN_CHARS,STORED_CONTAINMENT_MIN,DRAFT_USE_MIN_WORD_TOKENS,DRAFT_USE_LITERAL_MIN_CHARS,ACTED_ON_WINDOW_MS], vaultId, sharp, allowSharp: opts.allowSharp, provider: opts.provider?.id, dim: opts.provider?.dim, ollama: opts.ollama ? [opts.ollama.baseURL, opts.ollama.model] : null, judge: opts.judge?.model ?? null,
     rows: rows.map(({ last_touched: _touched, created: _created, ...row }) => row), notes: notes.map(note => [note.fm.id, note.fm.title, note.fm.summary, note.fm.recall_when, note.fm.source, note.fm.write_origin, note.body.slice(0,4000)]),
     snapshotProvider: snapshot?.provider, snapshotDim: snapshot?.dim }));
   for (const [id,vector] of vectors ?? []) state.update(id).update(Buffer.from(vector.buffer,vector.byteOffset,vector.byteLength));
@@ -148,7 +156,7 @@ export async function draftPromotionReady(opts: DraftPromoteOptions): Promise<bo
 /** Pair math/vocabulary/duplicates are outside the lock and yield to hooks.
  * Under the short commit lock, identity, provenance and state are rechecked. */
 export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftPromoteResult> {
-  const result: DraftPromoteResult = { promoted: 0, wouldPromote: 0, duplicates: 0, blocked: 0, errors: 0 };
+  const result: DraftPromoteResult = { promoted: 0, wouldPromote: 0, duplicates: 0, blocked: 0, errors: 0, unjudged: 0 };
   const now = opts.now ?? Date.now();
   let decisions = new Map<string,string>();
   const changes = new Map<string,string>(), events = new Map<string,DraftPromotionEvent>();
@@ -163,12 +171,32 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
     const snapshot = opts.vaultVectors?.();
     const notes = opts.vault.list();
     const signature = passSignature(opts, all, notes, vectors, snapshot, sharp, vaultId);
-    if (decisions.get(PASS_KEY) === signature) return result;
-    const emitOnce = async (rows: Draft[], event: DraftPromotionEvent): Promise<void> => {
+    // A pass that left candidates unjudged is repeated once per retry window.
+    const retrySignature = hash(`${signature}:unjudged:${Math.floor(now / DRAFT_JUDGE_RETRY_MS)}`);
+    if ([signature, retrySignature].includes(decisions.get(PASS_KEY)!)) return result;
+    const emitOnce = async (rows: Draft[], { judge_ms, ...stable }: DraftPromotionEvent): Promise<void> => {
+      const event = judge_ms === undefined ? stable : { ...stable, judge_ms };
       const key = hash([...event.draft_ids].sort().join("\n"));
-      const value = hash(JSON.stringify({ event, evidence: draftEvidenceKey(rows), provider: opts.provider?.id, dim: opts.provider?.dim, state: rows.map(row => [row.state,row.vault_id]) }));
+      const value = hash(JSON.stringify({ event: stable, evidence: draftEvidenceKey(rows), provider: opts.provider?.id, dim: opts.provider?.dim, state: rows.map(row => [row.state,row.vault_id]) }));
       if (decisions.get(key) === value) return;
       changes.set(key,value); events.set(key,event);
+    };
+    const judge = opts.judge ?? null;
+    // A verdict is kept as a hash beside the pass receipts: the same texts and
+    // model are never asked twice, and a failed call waits for the next window.
+    // An unreachable model ends the asking for this pass: one timeout, not one per candidate.
+    let offline = false;
+    const ask = async <T extends string>(prompt: string, allowed: readonly T[], spent: { ms?: number }): Promise<T | "none"> => {
+      const key = hash(`draft-judge:${judge?.model}:${prompt}`), stored = changes.get(key) ?? decisions.get(key);
+      const known = allowed.find(value => stored === hash(`${key}:${value}`));
+      if (known) return known;
+      const retry = hash(`${key}:none:${Math.floor(now / DRAFT_JUDGE_RETRY_MS)}`);
+      if (!judge || offline || stored === retry) return "none";
+      const started = Date.now(); let verdict: T | null = null;
+      try { verdict = parseVerdict(await judge.chat(prompt), allowed); } catch { offline = true; }
+      spent.ms = (spent.ms ?? 0) + Date.now() - started;
+      changes.set(key, verdict ? hash(`${key}:${verdict}`) : retry);
+      return verdict ?? "none";
     };
     const compatible = provider && snapshot?.provider === provider.id && snapshot.dim === provider.dim;
     const noteVectors = compatible ? new Map([...snapshot.vectors].map(([id, v]) => [id, new Float32Array(v)])) : null;
@@ -213,7 +241,8 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
       const gateReason = selected.some(d => d.vault_id !== vaultId) ? "vault-provenance-unconfirmed" : !provider ? "no-local-provider"
         : !compatible ? "vault-vector-model-mismatch" : !comparisonComplete ? "vault-vectors-incomplete" : selected.some(d => !validVector(vectors?.get(d.id), provider.dim)) ? "draft-vectors-missing"
         : opts.allowSharp === false ? "meaning-comparison-unavailable" : !sharp ? "dry-run" : null;
-      let duplicate: { id: string; cosine?: number; containment?: number } | undefined;
+      // The strongest hit, not the first: the meaning check reads exactly one.
+      let duplicate: { id: string; text: string; note?: boolean; cosine?: number; containment?: number } | undefined, best = 0;
       // Pure quote vectors survive closed draft state for the complete tombstone lifetime.
       if (provider) for (const closed of all) {
         if (closed.state === "open" || !closed.memory_id) continue;
@@ -221,10 +250,9 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
         for (const source of selected) {
           const a = vectors?.get(source.id);
           if (validVector(a, provider.dim) && validVector(b, provider.dim)) {
-            const value = cosine(a, b); if (value >= DRAFT_VAULT_COSINE_MIN) { duplicate = { id: closed.memory_id, cosine: value }; break; }
+            const value = cosine(a, b); if (value >= DRAFT_VAULT_COSINE_MIN && value > best) { best = value; duplicate = { id: closed.memory_id, text: closed.quote, cosine: value }; }
           }
         }
-        if (duplicate) break;
         if (++comparisons % YIELD_EVERY === 0) await setImmediate();
       }
       if (!duplicate) for (const note of notes) {
@@ -233,8 +261,37 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
         if (provider && validVector(noteVectors?.get(note.fm.id), provider.dim)) for (const source of selected) {
           const v = vectors?.get(source.id); if (validVector(v, provider.dim)) semantic = Math.max(semantic ?? -1, cosine(v, noteVectors!.get(note.fm.id)!));
         }
-        if (containment >= STORED_CONTAINMENT_MIN || semantic !== undefined && semantic >= DRAFT_VAULT_COSINE_MIN) { duplicate = { id: note.fm.id, containment, cosine: semantic }; break; }
+        const score = Math.max(containment >= STORED_CONTAINMENT_MIN ? 1 + containment : 0, semantic !== undefined && semantic >= DRAFT_VAULT_COSINE_MIN ? semantic : 0);
+        if (score > best) { best = score; duplicate = { id: note.fm.id, text: noteJudgeText(note), note: true, containment, cosine: semantic }; }
         if (++comparisons % YIELD_EVERY === 0) await setImmediate();
+      }
+      // The model is asked only when the pass could write or is the plain dry
+      // run, after the cheap gates, outside every lock; at most four calls.
+      const judging = !gateReason || gateReason === "dry-run", spent: { ms?: number } = {};
+      const judged: Pick<DraftPromotionEvent, "judge_statement" | "judge_repeat" | "judge_note"> = {};
+      const verdicts = () => judging ? { ...judged, ...(judge ? { judge_model: judge.model } : {}), ...(spent.ms === undefined ? {} : { judge_ms: spent.ms }) } : {};
+      const statement = async () => judged.judge_statement ??= await ask(statementPrompt(row.quote), STATEMENT_KINDS, spent);
+      const hold = async (reason: string, noteId?: string): Promise<void> => {
+        result.blocked++; if (reason === "meaning-check-unavailable") result.unjudged++;
+        await emitOnce(selected, { kind: "draft_would_block", ...base, reason, ...verdicts(), ...(noteId ? { note_id: noteId } : {}) });
+      };
+      if (duplicate && judging) {
+        judged.judge_note = await ask(relationPrompt(row.quote, duplicate.text, "note"), RELATIONS, spent);
+        if (judged.judge_note === "none") { await hold("meaning-check-unavailable"); continue; }
+        if (judged.judge_note === "contradiction") {
+          // Left open for a later suggestion; a private note's id stays out of telemetry.
+          const kind = await statement(), note = opts.vault.get(duplicate.id);
+          await hold(kind === "none" ? "meaning-check-unavailable" : kind !== "durable" ? "not-durable-statement" : "contradicts-existing-note",
+            kind === "durable" && note && note.fm.sensitivity !== "private" ? note.fm.id : undefined);
+          continue;
+        }
+        if (judged.judge_note === "different") duplicate = undefined;
+        // The verdict is about the text that was read. A note rewritten while
+        // the model answered gets no closing from it; the next pass asks again.
+        else if (duplicate.note) {
+          const current = opts.vault.get(duplicate.id);
+          if (!current || noteJudgeText(current) !== duplicate.text) { await hold("meaning-check-unavailable"); continue; }
+        }
       }
       if (duplicate) {
         if (!gateReason) {
@@ -245,7 +302,7 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
           closeRows(selected, "rejected", duplicate.id, undefined, now);
         }
         result.duplicates++;
-        await emitOnce(selected, { kind: gateReason ? "draft_would_block" : "draft_duplicate_blocked", ...base, reason: "existing-note-or-quote-tombstone",
+        await emitOnce(selected, { kind: gateReason ? "draft_would_block" : "draft_duplicate_blocked", ...base, reason: "existing-note-or-quote-tombstone", ...verdicts(),
           ...(duplicate.cosine === undefined ? {} : { cosine: duplicate.cosine }), ...(duplicate.containment === undefined ? {} : { containment: duplicate.containment }) });
         continue;
       }
@@ -255,7 +312,19 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
       for (const field of ["title", "summary", "body"] as const) input[field] = redactSecrets(input[field], homedir()).text;
       input.recall_when = input.recall_when.map(c => redactSecrets(c, homedir()).text);
       if (scanForInjection([input.title, input.summary, input.body, ...input.recall_when].join("\n")).length) { result.blocked++; await emitOnce(selected, { kind: "draft_would_block", ...base, reason: "injection-scan" }); continue; }
-      if (gateReason) { result.wouldPromote++; await emitOnce(selected, { kind: "draft_would_promote", ...base, reason: gateReason }); continue; }
+      if (judging) {
+        const kind = await statement();
+        if (kind !== "durable") { await hold(kind === "none" ? "meaning-check-unavailable" : "not-durable-statement"); continue; }
+        // One row seen in two sessions, or two rows with one fingerprint, is verbatim.
+        if (new Set(selected.map(d => d.fp)).size > 1) {
+          // Both quotes end up in the note, so the second one is classified too.
+          const partner = await ask(statementPrompt(selected[1].quote), STATEMENT_KINDS, spent);
+          if (partner !== "durable") { await hold(partner === "none" ? "meaning-check-unavailable" : "not-durable-statement"); continue; }
+          judged.judge_repeat = await ask(relationPrompt(selected[0].quote, selected[1].quote), RELATIONS, spent);
+          if (judged.judge_repeat !== "same") { await hold(judged.judge_repeat === "none" ? "meaning-check-unavailable" : "repeat-not-same-statement"); continue; }
+        }
+      }
+      if (gateReason) { result.wouldPromote++; await emitOnce(selected, { kind: "draft_would_promote", ...base, reason: gateReason, ...verdicts() }); continue; }
       const committed = await withDraftPublication(async () => {
         const prepared = await transactDrafts(async current => {
         const latest = selected.map(d => current.find(c => c.id === d.id && c.state === "open" && c.fp === d.fp && c.vault_id === vaultId));
@@ -276,10 +345,10 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
         }, now);
         return { id: saved.id, sha };
       });
-      if (committed) { closeRows(selected, "promoted", committed.id, draftEvidenceKey(selected), now, committed.sha); result.promoted++; await emitOnce(selected, { kind: "draft_promoted", ...base }); }
+      if (committed) { closeRows(selected, "promoted", committed.id, draftEvidenceKey(selected), now, committed.sha); result.promoted++; await emitOnce(selected, { kind: "draft_promoted", ...base, ...verdicts() }); }
       await setImmediate();
     }
-    changes.set(PASS_KEY,signature);
+    changes.set(PASS_KEY, result.unjudged ? retrySignature : signature);
   } catch { result.errors++; result.probeOnly = true; }
   finally {
     try {

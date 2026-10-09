@@ -2,7 +2,7 @@ name: Dependency Review
 
 on:
   pull_request:
-    branches: [main, "codex/draft-phase-*", "codex/zzalli-fixes-1105-1108"]
+    branches: [main]
 
 permissions:
   contents: read
