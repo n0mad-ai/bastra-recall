@@ -41,12 +41,17 @@ jobs:
             [ "$flagged" = "false" ] || gh issue edit "$ISSUE" --remove-label needs-triage
             exit 0
           fi
-          [ "$flagged" = "false" ] || exit 0
+
+          # The label and the comment are checked independently: a run that
+          # failed between the two, or a label set by hand, still gets the
+          # one comment on a later run.
+          if [ "$flagged" = "false" ]; then
+            gh label create needs-triage --color FBCA04 \
+              --description "Issue lacks a milestone or a label" 2>/dev/null || true
+            gh issue edit "$ISSUE" --add-label needs-triage
+          fi
 
           list=$(printf '%s and ' "${missing[@]}"); list=${list% and }
-          gh label create needs-triage --color FBCA04 \
-            --description "Issue lacks a milestone or a label" 2>/dev/null || true
-          gh issue edit "$ISSUE" --add-label needs-triage
 
           commented=$(gh api --paginate "repos/$GH_REPO/issues/$ISSUE/comments" \
             --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- issue-triage-check -->"))) | .id')
