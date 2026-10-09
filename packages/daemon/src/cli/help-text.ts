@@ -441,14 +441,18 @@ embedding model ('bastra embeddings' owns that one).
 
 A release can recommend a different model. bastra never switches on its own:
 'bastra update', the session start and a line after CLI commands tell you until
-you have answered, and 'status' shows the recommendation at any time.
+you have answered — at every session start, on purpose — and 'status' shows
+the recommendation at any time.
 
   switch      Pull the recommended model, check it with a short test call, and
               only then change the setting. If anything fails, nothing changes.
               The old model stays installed; 'set <old tag>' switches back.
   later       Keep the current model and ask again in 7 days
   dismiss     Keep the current model and do not ask again for this
-              recommendation (a later, new recommendation asks again)
+              recommendation (a later, new recommendation asks again). The
+              notice then does not come back, and you may be giving up better
+              recall quality; 'status' keeps showing the recommendation and
+              'switch' works any time.
 
 BASTRA_UPDATE_CHECK=off (or update.mode off) silences the notice as well.
 `,

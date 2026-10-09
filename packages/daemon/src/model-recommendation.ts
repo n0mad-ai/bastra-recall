@@ -134,19 +134,40 @@ export function modelOfferFacts(offer: ModelOffer): string[] {
   ];
 }
 
-export const MODEL_DECISION_COMMANDS =
-  "bastra models switch   |   bastra models later (ask again in 7 days)   |   bastra models dismiss (not for this recommendation)";
+/**
+ * What "don't ask again" costs. The notice is repeated on purpose until the
+ * user answers, so turning it off has to be an informed choice: this sentence
+ * stands wherever `dismiss` is offered and wherever it is confirmed.
+ */
+export const DISMISS_WARNING =
+  "this notice will not come back for this recommendation, and you may be giving up better recall quality";
+/** …and what stays possible afterwards. Always said together with the warning. */
+export const DISMISS_STILL_OPEN = "'bastra models' keeps showing the recommendation and 'bastra models switch' works any time";
+
+/** The three answers as commands, one per line. */
+export const MODEL_DECISION_COMMANDS = [
+  "bastra models switch    switch now",
+  "bastra models later     keep the current model, ask again in 7 days",
+  `bastra models dismiss   stop asking — ${DISMISS_WARNING}; ${DISMISS_STILL_OPEN}`,
+];
 
 /** The plain notice for a terminal: the CLI hint and `bastra update` without a TTY. */
 export function formatModelNotice(offer: ModelOffer): string {
   const env = envOverrideNote(offer);
-  return [...modelOfferFacts(offer), ...(env ? [`Note: ${env}`] : []), `Decide with: ${MODEL_DECISION_COMMANDS}`].join("\n");
+  return [
+    ...modelOfferFacts(offer),
+    ...(env ? [`Note: ${env}`] : []),
+    "Decide with:",
+    ...MODEL_DECISION_COMMANDS.map((c) => `  ${c}`),
+  ].join("\n");
 }
 
 /**
  * The SessionStart block. The agent may run the switch, but only after the
  * user said yes — the block is written so that it cannot be read as an order
- * to switch.
+ * to switch. It is sent at every session start until the user has answered —
+ * deliberately without a day throttle — so the one way to end it for good,
+ * `dismiss`, comes with the warning the agent has to pass on first.
  */
 export function formatModelSessionBlock(offer: ModelOffer): string {
   const env = envOverrideNote(offer);
@@ -160,7 +181,8 @@ export function formatModelSessionBlock(offer: ModelOffer): string {
     `and only then changes the setting; if anything fails, nothing changes. The old model stays installed ` +
     `(switch back: \`bastra models set ${offer.current}\`).\n` +
     `- The user says later → run \`bastra models later\` (asks again in 7 days).\n` +
-    `- The user says no / stop asking → run \`bastra models dismiss\` (silences this recommendation; a future one asks again).\n` +
+    `- The user says no / stop asking → FIRST tell them what that means: ${DISMISS_WARNING}; ${DISMISS_STILL_OPEN}. ` +
+    `Only when they confirm after hearing that, run \`bastra models dismiss\` (a future, new recommendation asks again).\n` +
     (env ? `Also tell the user: ${env}\n` : "") +
     `</bastra-model-recommendation>`
   );

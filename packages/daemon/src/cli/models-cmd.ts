@@ -21,6 +21,8 @@ import { resolveGenerationModel, readSettings, GENERATION_MODEL_DEFAULT } from "
 import { enableGenerationModel } from "./ollama.js";
 import { ask, isInteractive } from "./prompt.js";
 import {
+  DISMISS_STILL_OPEN,
+  DISMISS_WARNING,
   currentModelOffer,
   envOverrideNote,
   formatModelNotice,
@@ -131,7 +133,8 @@ async function answer(choice: "switch" | "later" | "dismiss", offer: ModelOffer,
   }
   if (choice === "dismiss") {
     await recordModelAnswer(offer.id, "dismissed", deps.settingsPath, deps.now);
-    write(`OK — the generation model stays ${offer.current} and this recommendation will not come up again. 'bastra models' still shows it.`);
+    write(`OK — the generation model stays ${offer.current}. From now on ${DISMISS_WARNING}.`);
+    write(`Still open to you: ${DISMISS_STILL_OPEN}.`);
     return 0;
   }
   // What `bastra models set <previous>` has to name: the stored choice, not a
@@ -168,8 +171,9 @@ async function cmdAsk(deps: ModelsDeps): Promise<number> {
   for (const line of modelOfferFacts(offer)) write(line);
   const env = envOverrideNote(offer);
   if (env) write(`Note: ${env}`);
+  write(`About [n]: ${DISMISS_WARNING}; ${DISMISS_STILL_OPEN}.`);
   const reply = await (deps.ask ?? ask)(
-    "[s] switch now   [l] later (ask again in 7 days)   [n] not for this recommendation — your choice [s/l/n]: ",
+    "[s] switch now   [l] later (ask again in 7 days)   [n] never ask again for this recommendation — your choice [s/l/n]: ",
   );
   if (reply === null) return 0;
   if (/^s(witch)?$/i.test(reply)) return answer("switch", offer, deps);

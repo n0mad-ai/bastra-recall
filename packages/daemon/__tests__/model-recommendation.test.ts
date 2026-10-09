@@ -20,6 +20,8 @@ import { MODEL_RECOMMENDATION, recommendTextModel, type ModelRecommendation } fr
 import { cmdModels, type ModelsDeps } from "../src/cli/models-cmd.js";
 import { maybeEmitModelHint } from "../src/cli/update-hint.js";
 import {
+  DISMISS_STILL_OPEN,
+  DISMISS_WARNING,
   MODEL_COMPARISON_URL,
   REMIND_AFTER_MS,
   currentModelOffer,
@@ -235,9 +237,13 @@ test("SessionStart block: facts, ask first, the three commands — and no order 
       `and only then changes the setting; if anything fails, nothing changes. The old model stays installed ` +
       `(switch back: \`bastra models set gemma3:4b\`).\n` +
       `- The user says later → run \`bastra models later\` (asks again in 7 days).\n` +
-      `- The user says no / stop asking → run \`bastra models dismiss\` (silences this recommendation; a future one asks again).\n` +
+      `- The user says no / stop asking → FIRST tell them what that means: this notice will not come back for this recommendation, and you may be giving up better recall quality; 'bastra models' keeps showing the recommendation and 'bastra models switch' works any time. ` +
+      `Only when they confirm after hearing that, run \`bastra models dismiss\` (a future, new recommendation asks again).\n` +
       `</bastra-model-recommendation>`,
   );
+  // The warning comes before the command it guards, in the same instruction.
+  const block = formatModelSessionBlock(OFFER);
+  assert.ok(block.indexOf(DISMISS_WARNING) < block.indexOf("bastra models dismiss"));
   assert.match(MODEL_COMPARISON_URL, /docs\/local-model-comparison\.md$/);
 });
 
@@ -248,6 +254,16 @@ test("with an env pin, both texts say that the variable wins and what to do abou
     "the switch only takes effect once that variable is removed and the daemon restarted.";
   assert.ok(formatModelSessionBlock(pinned).includes(`Also tell the user: ${note}\n</bastra-model-recommendation>`));
   assert.ok(formatModelNotice(pinned).includes(`\nNote: ${note}\n`));
+});
+
+test("wherever `dismiss` is offered, the warning and what stays possible stand next to it", () => {
+  assert.equal(DISMISS_WARNING, "this notice will not come back for this recommendation, and you may be giving up better recall quality");
+  assert.equal(DISMISS_STILL_OPEN, "'bastra models' keeps showing the recommendation and 'bastra models switch' works any time");
+  // `bastra models`, the CLI hint and `bastra update` without a terminal all print this text.
+  for (const text of [formatModelNotice(OFFER), formatModelSessionBlock(OFFER)]) {
+    assert.ok(text.includes(DISMISS_WARNING));
+    assert.ok(text.includes(DISMISS_STILL_OPEN));
+  }
 });
 
 // ── the CLI hint ─────────────────────────────────────────────────────────────
@@ -263,7 +279,10 @@ test("CLI hint: one dim notice on stderr, at most once per day", async () => {
       `\n\x1b[2mℹ bastra-recall recommends a different local text model for this machine: new:4b (you run gemma3:4b).\n` +
         `  What gets better: Sharper search keywords and a stricter draft check.\n` +
         `  Download: about 3.3 GB. Comparison: ${MODEL_COMPARISON_URL}\n` +
-        `  Decide with: bastra models switch   |   bastra models later (ask again in 7 days)   |   bastra models dismiss (not for this recommendation)\x1b[0m\n`,
+        `  Decide with:\n` +
+        `    bastra models switch    switch now\n` +
+        `    bastra models later     keep the current model, ask again in 7 days\n` +
+        `    bastra models dismiss   stop asking — this notice will not come back for this recommendation, and you may be giving up better recall quality; 'bastra models' keeps showing the recommendation and 'bastra models switch' works any time\x1b[0m\n`,
     );
     const second = await captured(() => maybeEmitModelHint(hintOpts));
     assert.equal(second.result, false);
@@ -315,7 +334,11 @@ test("bastra models later / dismiss: recorded, model untouched, usable without a
     assert.equal((await readSettings(path)).modelRecommendation?.answer, "later");
 
     const dismiss = await captured(() => cmdModels({ sub: "dismiss", settingsPath: path, deps: opts(path) }));
-    assert.equal(dismiss.out, "OK — the generation model stays gemma3:4b and this recommendation will not come up again. 'bastra models' still shows it.\n");
+    assert.equal(
+      dismiss.out,
+      "OK — the generation model stays gemma3:4b. From now on this notice will not come back for this recommendation, and you may be giving up better recall quality.\n" +
+        "Still open to you: 'bastra models' keeps showing the recommendation and 'bastra models switch' works any time.\n",
+    );
     assert.equal((await readSettings(path)).modelRecommendation?.answer, "dismissed");
     assert.equal((await readSettings(path)).generation, undefined);
   });
@@ -376,7 +399,7 @@ test("bastra models switch / later / dismiss: nothing open → says so, records 
 
 // ── the question `bastra update` ends with (`bastra models ask`) ─────────────
 
-const QUESTION = "[s] switch now   [l] later (ask again in 7 days)   [n] not for this recommendation — your choice [s/l/n]: ";
+const QUESTION = "[s] switch now   [l] later (ask again in 7 days)   [n] never ask again for this recommendation — your choice [s/l/n]: ";
 
 test("bastra update, on a terminal: asks once, and each answer does what it says", async () => {
   await existingUser(async (path) => {
@@ -390,6 +413,10 @@ test("bastra update, on a terminal: asks once, and each answer does what it says
     const none = await run(null);
     assert.ok(none.out.startsWith("\nbastra-recall recommends a different local text model for this machine: new:4b (you run gemma3:4b).\n"));
     assert.deepEqual(asked, [QUESTION]);
+    assert.ok(
+      none.out.endsWith("\nAbout [n]: this notice will not come back for this recommendation, and you may be giving up better recall quality; 'bastra models' keeps showing the recommendation and 'bastra models switch' works any time.\n"),
+      "the cost of [n] is on screen before the question is asked",
+    );
     assert.equal((await readSettings(path)).modelRecommendation, undefined);
 
     // Enter / anything unclear is "later" — never a download.
