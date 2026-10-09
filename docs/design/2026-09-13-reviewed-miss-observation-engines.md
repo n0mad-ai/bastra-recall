@@ -77,7 +77,10 @@ nested `hits`, or text that is not an envelope is never a miss.
 - **Hook lane** (`--hook-lane`) — every daemon-joined `load_memory` against the
   pool of the recall it followed; no transcript needed. A load the transcript
   lane already observed (any `recall_id` of the chain, same memory) is left to
-  it. Its query is the daemon's own, redacted the same way.
+  it. Its query is the daemon's own, redacted the same way. A load linked to
+  one phrasing of a batch (`query_count` on the recall event) is a gap, not a
+  verdict: the events name the batch width and nothing that ties its phrasings
+  together, so the pool the session was served from cannot be assembled here.
 
 Both lanes feed one proposal list (`reviewed-miss-cues.ts`), so they must
 spell a session the same way. Telemetry never holds the raw client session

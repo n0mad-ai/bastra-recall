@@ -55,6 +55,7 @@ export type GapKind =
   | "envelope-without-recall-id"
   | "load-without-recall-link"
   | "link-without-pool"
+  | "batch-link-without-sibling-pools"
   | "load-not-found"
   | "unresolved-evidence"
   | "no-vault-snapshot";
@@ -125,6 +126,15 @@ export function observeHookLane(
     const pool = telemetry.pools.get(recallId);
     if (!pool) {
       gaps.push({ kind: "link-without-pool", witness });
+      continue;
+    }
+    // The daemon runs a batch's phrasings in parallel and links the load to
+    // whichever recall id it drew last. The hit may have come from any
+    // phrasing, and the events do not say which recalls were one batch: each
+    // carries the width (`query_count`), none a batch id. One phrasing's pool
+    // is not the pool the session was served from, so nothing is judged.
+    if (pool.batchOf !== null) {
+      gaps.push({ kind: "batch-link-without-sibling-pools", witness });
       continue;
     }
     if (!load.found) {
@@ -301,6 +311,7 @@ const GAP_EXITS: Record<GapKind, string> = {
   "envelope-without-recall-id": "served envelope had no recall_id or recall_ids: an error result, or text that is not an envelope — unjoinable",
   "load-without-recall-link": "daemon did not join this load to a recall (join store lost across idle respawn, or a direct load) — see telemetry-join-store",
   "link-without-pool": "load links a recall_id with no recorded candidate_pool — event outside the window or pool not captured on that path",
+  "batch-link-without-sibling-pools": "load links one phrasing of a batch recall; telemetry names the batch width (query_count), not its other phrasings — the session's transcript carries them (recall_ids), a batch id on the events would",
   "load-not-found": "load_memory for an id the vault did not hold — moved or deleted memory; nothing to classify",
   "unresolved-evidence": "the evidence step had no inspectable identity (Grep/Glob/find_document) — nothing to check against the vault",
   "no-vault-snapshot": "no --vault given: vault membership cannot be proven, hook-lane loads stay unclassified",
@@ -318,6 +329,7 @@ const GAP_RECOUNT: Record<GapKind, string> = {
   "envelope-without-recall-id": "harvester only: transcript_recalls - transcript_recalls_with_recall_id",
   "load-without-recall-link": "grep -h '\"kind\":\"load_memory\"' {events}/events-*.jsonl | grep -vc 'from_hook_recall\\|follows_recall'",
   "link-without-pool": "harvester only: linked recall_id with no candidate_pool event in the window",
+  "batch-link-without-sibling-pools": "harvester only: linked recall_id whose event carries query_count",
   "load-not-found": "grep -h '\"kind\":\"load_memory\"' {events}/events-*.jsonl | grep -c '\"found\":false'",
   "unresolved-evidence": "harvester only: chains whose evidence step had no file_path or memory id",
   "no-vault-snapshot": "harvester only: --vault not given",
