@@ -70,7 +70,9 @@ for an unknown flag, a missing value, no input at all, or `--hook-lane` without
   batch — are one chain. Turns written by the harness (task notifications,
   agent mail, reminders) neither end a chain nor enter the intent. A slash
   command and the marker the client writes when the owner interrupts
-  (`[Request interrupted by user…`) end the chain and are no intent. Secrets in
+  (`[Request interrupted by user…]`, at the start of a text block) end the
+  chain and are no intent; text the owner typed behind the marker is the next
+  intent. The same words elsewhere in a turn are ordinary text. Secrets in
   the typed text are redacted before it is kept.
 - **Telemetry.** `recall` and `hook_recall` events with their `recall_id`,
   served `hits`, `candidate_pool` and score space; `load_memory` events with
@@ -124,7 +126,7 @@ and a verdict: `den` when at least 2 witnesses showed it, `noise` for fewer,
 | `envelope-without-recall-id` | A recall result carried no `recall_id`. |
 | `load-without-recall-link` | Hook lane: the daemon linked the load to no recall. |
 | `link-without-pool` | Hook lane: the linked recall has no pool in the telemetry read. |
-| `batch-link-without-sibling-pools` | Hook lane: the linked recall is one phrasing of a batch. Not judged, see limits. |
+| `batch-link-without-sibling-pools` | Hook lane: the linked recall is one of several phrasings a batch ran. Not judged, see limits. |
 | `load-not-found` | Hook lane: the vault did not hold the loaded id. |
 | `unresolved-evidence` | The step after the recall named nothing inspectable (a search, for example). |
 | `chain-without-pool` | The step named a vault object, but the chain's recalls joined no pool. |
@@ -137,17 +139,23 @@ and a verdict: `den` when at least 2 witnesses showed it, `noise` for fewer,
   `external-source`, also a file that lies in the vault.
 - **Out of pool means out of the recorded pool.** The harvester does not
   re-run the search; a memory that would have appeared deeper is not seen.
-- **Hook lane, one recall per load.** A load is judged against the single
-  recall the daemon linked it to — its hook hint, or the most recent recall
-  within five minutes. Several recalls for one question are not grouped there.
-  A hit that an earlier recall served can therefore come out
-  `genuine-out-of-pool` and be proposed. A transcript of the same session
-  avoids this: loads the transcript lane observed are left out of the hook
-  lane.
-- **Hook lane, batch recalls.** Telemetry records the batch width
-  (`query_count`) on each phrasing and nothing that names the other phrasings.
-  A load linked to a batch phrasing is therefore reported as a gap and not
-  classified.
+- **Hook lane, one recall per load: it can propose wrongly.** A load is
+  judged only against the recall the daemon linked it to last — its hook hint,
+  or the most recent recall within five minutes. Several recalls for one
+  question are not grouped there. A hit that an earlier recall served
+  therefore comes out `genuine-out-of-pool` and is proposed when a later
+  recall did not hold it — also when that later recall returned nothing at
+  all. This is a known error of the hook lane, not yet fixed. A transcript of
+  the same session avoids it: loads the transcript lane observed are left out
+  of the hook lane. Proposals from the hook lane need the same human check as
+  all others.
+- **Hook lane, batch recalls.** The daemon drops near-duplicate queries of a
+  batch before searching. Each phrasing that ran records how many queries were
+  submitted (`query_count`) and how many were dropped (`batch_collapsed`), and
+  nothing that names the other phrasings. When more than one phrasing ran
+  (`query_count` minus `batch_collapsed` is above 1), a load linked to one of
+  them is reported as a gap and not classified. A batch that was collapsed to
+  a single phrasing is judged like a plain recall.
 - **A step in the same message as the recall** is not taken as evidence; only
   steps after the recall's result count.
 - **After a slash command or an interrupt** recalls are ignored until the
@@ -229,9 +237,11 @@ Wert, ganz ohne Eingabe oder bei `--hook-lane` ohne `--events` und `--vault`.
   Kette. Vom Harness geschriebene Nachrichten (Aufgaben-Meldungen, Agentenpost,
   Erinnerungsblöcke) beenden keine Kette und gehen nicht in die Absicht ein.
   Ein Slash-Befehl und die Marke, die der Client bei einem Abbruch durch den
-  Besitzer schreibt (`[Request interrupted by user…`), beenden die Kette und
-  sind keine Absicht. Geheimnisse im getippten Text werden geschwärzt, bevor er
-  übernommen wird.
+  Besitzer schreibt (`[Request interrupted by user…]`, am Anfang eines
+  Textblocks), beenden die Kette und sind keine Absicht; Text, den der Besitzer
+  hinter die Marke getippt hat, ist die nächste Absicht. Dieselben Wörter an
+  anderer Stelle einer Nachricht sind gewöhnlicher Text. Geheimnisse im
+  getippten Text werden geschwärzt, bevor er übernommen wird.
 - **Telemetrie.** `recall`- und `hook_recall`-Ereignisse mit `recall_id`,
   gelieferten `hits`, `candidate_pool` und Score-Raum; `load_memory`-Ereignisse
   mit dem Recall, dem der Daemon sie zugeordnet hat. Ein Recall-Ereignis ohne
@@ -286,7 +296,7 @@ mindestens 2 Zeugen sie gezeigt haben, `noise` bei weniger, `none` bei null.
 | `envelope-without-recall-id` | Ein Recall-Ergebnis trug keine `recall_id`. |
 | `load-without-recall-link` | Telemetrie-Spur: Der Daemon hat den Load keinem Recall zugeordnet. |
 | `link-without-pool` | Telemetrie-Spur: Der zugeordnete Recall hat in der gelesenen Telemetrie keinen Pool. |
-| `batch-link-without-sibling-pools` | Telemetrie-Spur: Der zugeordnete Recall ist eine Formulierung eines Batches. Wird nicht beurteilt, siehe Grenzen. |
+| `batch-link-without-sibling-pools` | Telemetrie-Spur: Der zugeordnete Recall ist eine von mehreren Formulierungen, die ein Batch ausgeführt hat. Wird nicht beurteilt, siehe Grenzen. |
 | `load-not-found` | Telemetrie-Spur: Der Vault kannte die geladene Id nicht. |
 | `unresolved-evidence` | Der Schritt nach dem Recall hat nichts Prüfbares benannt (zum Beispiel eine Suche). |
 | `chain-without-pool` | Der Schritt hat ein Vault-Objekt benannt, aber die Recalls der Kette ergaben keinen Pool. |
@@ -300,17 +310,27 @@ mindestens 2 Zeugen sie gezeigt haben, `noise` bei weniger, `none` bei null.
 - **Außerhalb des Pools heißt außerhalb des aufgezeichneten Pools.** Der
   Harvester führt die Suche nicht erneut aus; eine Erinnerung, die tiefer
   aufgetaucht wäre, sieht er nicht.
-- **Telemetrie-Spur, ein Recall je Load.** Ein Load wird gegen den einen Recall
-  beurteilt, dem der Daemon ihn zugeordnet hat — seinen Hook-Hinweis oder den
-  jüngsten Recall innerhalb von fünf Minuten. Mehrere Recalls zu einer Frage
-  werden dort nicht zusammengefasst. Ein Treffer, den ein früherer Recall
-  geliefert hat, kann deshalb als `genuine-out-of-pool` herauskommen und
-  vorgeschlagen werden. Ein Protokoll derselben Sitzung vermeidet das: Loads,
+- **Telemetrie-Spur, ein Recall je Load: sie kann falsch vorschlagen.** Ein
+  Load wird nur gegen den Recall beurteilt, dem der Daemon ihn zuletzt
+  zugeordnet hat — seinen Hook-Hinweis oder den jüngsten Recall innerhalb von
+  fünf Minuten. Mehrere Recalls zu einer Frage werden dort nicht
+  zusammengefasst. Ein Treffer, den ein früherer Recall geliefert hat, kommt
+  deshalb als `genuine-out-of-pool` heraus und wird vorgeschlagen, wenn ein
+  späterer Recall ihn nicht enthielt — auch dann, wenn dieser spätere Recall
+  gar nichts geliefert hat. Das ist ein bekannter, noch nicht behobener Fehler
+  der Telemetrie-Spur. Ein Protokoll derselben Sitzung vermeidet ihn: Loads,
   die die Protokoll-Spur beobachtet hat, lässt die Telemetrie-Spur aus.
-- **Telemetrie-Spur, Batch-Recalls.** Die Telemetrie hält an jeder
-  Formulierung die Batch-Breite fest (`query_count`) und nichts, was die
-  anderen Formulierungen benennt. Ein Load, der einer Batch-Formulierung
-  zugeordnet ist, wird deshalb als Lücke gemeldet und nicht eingeordnet.
+  Vorschläge aus der Telemetrie-Spur brauchen dieselbe Prüfung durch einen
+  Menschen wie alle anderen.
+- **Telemetrie-Spur, Batch-Recalls.** Der Daemon streicht fast gleiche
+  Formulierungen eines Batches vor der Suche. Jede ausgeführte Formulierung
+  hält fest, wie viele Formulierungen eingereicht (`query_count`) und wie viele
+  gestrichen wurden (`batch_collapsed`), und nichts, was die anderen
+  Formulierungen benennt. Wurde mehr als eine Formulierung ausgeführt
+  (`query_count` minus `batch_collapsed` ist größer als 1), wird ein Load, der
+  einer von ihnen zugeordnet ist, als Lücke gemeldet und nicht eingeordnet. Ein
+  Batch, der auf eine einzige Formulierung zusammengestrichen wurde, wird wie
+  ein einfacher Recall beurteilt.
 - **Ein Schritt in derselben Nachricht wie der Recall** gilt nicht als Beleg;
   es zählen nur Schritte nach dem Ergebnis des Recalls.
 - **Nach einem Slash-Befehl oder einem Abbruch** werden Recalls ignoriert, bis

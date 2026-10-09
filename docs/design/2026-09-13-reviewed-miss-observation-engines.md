@@ -80,13 +80,24 @@ nested `hits`, or text that is not an envelope is never a miss.
   command ends the chain; its echo and its printed output are no query. The
   marker the client writes when the owner interrupts (`INTERRUPT_PREFIX` from
   `draft-capture.ts`) is read the same way: it ends the chain and is no query.
+  Only the marker itself is removed, from the prefix to its closing bracket at
+  the start of a text block; text typed behind it is the next intent, and the
+  same words anywhere else in a turn are text.
 - **Hook lane** (`--hook-lane`) — every daemon-joined `load_memory` against the
   pool of the recall it followed; no transcript needed. A load the transcript
   lane already observed (any `recall_id` of the chain, same memory) is left to
   it. Its query is the daemon's own, redacted the same way. A load linked to
-  one phrasing of a batch (`query_count` on the recall event) is a gap, not a
-  verdict: the events name the batch width and nothing that ties its phrasings
-  together, so the pool the session was served from cannot be assembled here.
+  one of several phrasings a batch ran is a gap, not a verdict: the events
+  name how many queries were submitted (`query_count`) and how many the daemon
+  collapsed as near-duplicates before searching (`batch_collapsed`), and
+  nothing that ties the phrasings together, so the pool the session was served
+  from cannot be assembled here. The difference of the two is the number of
+  recalls that ran; a batch collapsed to one is judged like a plain recall.
+  Known limit, not fixed here: the lane judges a load only against the recall
+  the daemon linked it to last and does not group several recalls made for one
+  intent. A hit an earlier recall served is therefore `genuine-out-of-pool`,
+  with a proposal, when a later recall did not hold it — also when that later
+  recall returned nothing. The transcript lane does not have this error.
 
 Both lanes feed one proposal list (`reviewed-miss-cues.ts`), so they must
 spell a session the same way. Telemetry never holds the raw client session
