@@ -23,11 +23,9 @@
  * see there).
  */
 import { spawn } from "node:child_process";
-import { homedir } from "node:os";
-import { redactSecrets } from "@bastra-recall/core";
 import { findExecutable, run, type RunResult } from "./exec.js";
 import { ollamaChat } from "../learned-recall/reranker.js";
-import { getOllamaAutostart, setEmbeddingProvider, setGenerationModel, settingsFilePath } from "../settings.js";
+import { getOllamaAutostart, setEmbeddingProvider, setGenerationModel } from "../settings.js";
 import { settingsFileIsCorrupt } from "../settings-file.js";
 import { recordModelAnswer } from "../model-recommendation.js";
 
@@ -231,7 +229,7 @@ export async function enableGenerationModel(
     return {
       status: "error",
       activated: false,
-      message: `the settings file is not valid JSON — fix or delete ${printable(settingsPath ?? settingsFilePath())} first`,
+      message: "the settings file is not valid JSON — fix or delete it first (bastra names the file on every run)",
     };
   }
   const ollamaPath = cli.find();
@@ -260,7 +258,9 @@ export async function enableGenerationModel(
     try {
       await recordModelAnswer(opts.recommendationId, "switched", settingsPath, Date.now(), model);
     } catch (e) {
-      return { status: "error", activated: false, message: `${model} is ready, but the setting could not be saved (${printable((e as Error).message)})` };
+      // The error code, not the message: fs messages quote full paths.
+      const code = (e as NodeJS.ErrnoException).code;
+      return { status: "error", activated: false, message: `${model} is ready, but the setting could not be saved (${code ?? "write failed"})` };
     }
   } else {
     await setGenerationModel(model, settingsPath);
@@ -279,33 +279,41 @@ export async function enableGenerationModel(
  * It has to be THIS machine's Ollama that answers, or the check proves nothing
  * about the model that was just pulled here: loopback only, and a redirect is
  * a failure, not something to follow (same rule as the draft check).
- * `baseURL` is a parameter for tests.
+ *
+ * The configured URL is parsed ONCE, and both the request and every message
+ * are built from that one parsed form — never from the configured string. A
+ * URL may carry credentials or a token (user:pass@host, ?token=…), and what
+ * this returns is printed to the terminal and, when an agent ran the command,
+ * lands in a chat transcript. Cleaning the string by pattern would have to
+ * agree with how `new URL()` and fetch read it in every spelling; using only
+ * what the parser produced cannot disagree with it. What does not parse is
+ * not shown at all. `baseURL` is a parameter for tests.
  */
 export async function testCallFailure(model: string, baseURL: string = OLLAMA_URL): Promise<string | null> {
-  if (!isLoopbackOllamaURL(baseURL)) {
-    // Host only: a configured URL may carry credentials (user:pass@host).
-    let host = "the configured host";
-    try { host = new URL(baseURL).host; } catch { /* keep the neutral wording */ }
-    return `the test call only runs against a local Ollama, not ${host} — use 'bastra models set ${model}' to switch without it`;
+  let url: URL;
+  try {
+    url = new URL(baseURL);
+  } catch {
+    return "the configured Ollama URL cannot be read";
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return "the configured Ollama URL is not an http(s) URL";
+  // fetch refuses a URL with credentials — and quotes it in full when it does.
+  if (url.username !== "" || url.password !== "") {
+    return "the configured Ollama URL carries credentials, which the test call cannot use";
+  }
+  // Origin and path only: no credentials, no query, no fragment.
+  const target = `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+  if (!isLoopbackOllamaURL(target)) {
+    return `the test call only runs against a local Ollama, not ${url.host} — use 'bastra models set ${model}' to switch without it`;
   }
   try {
-    const answer = await ollamaChat({ baseURL, model, timeoutMs: 180_000, redirect: "error" })("Reply with the single word: ok");
+    const answer = await ollamaChat({ baseURL: target, model, timeoutMs: 180_000, redirect: "error" })("Reply with the single word: ok");
     return answer.trim().length > 0 ? null : "empty answer";
   } catch (e) {
     // fetch reports a refused redirect as a bare "fetch failed"; the cause names it.
     const cause = (e as { cause?: { message?: string } }).cause?.message;
-    return printable(cause ? `${(e as Error).message}: ${cause}` : (e as Error).message);
+    return cause ? `${(e as Error).message}: ${cause}` : (e as Error).message;
   }
-}
-
-/**
- * An error text or path on its way to the terminal — and from there, when an
- * agent ran the command, into a chat transcript. fetch quotes the whole URL
- * when it refuses one with credentials in it, and fs errors quote the full
- * path; neither belongs in that output verbatim.
- */
-function printable(text: string): string {
-  return redactSecrets(text, homedir()).text;
 }
 
 // ── Ollama HTTP probes ───────────────────────────────────────────────────────

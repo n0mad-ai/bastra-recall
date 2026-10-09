@@ -220,7 +220,7 @@ test("P1 half switch: a full disk on the commit leaves the old model AND no answ
     syncBuiltinESMExports();
   }
   assert.equal(run.result, 1, "reported as a failure, not thrown");
-  assert.match(run.out, /disk full/);
+  assert.match(run.out, /could not be saved \(ENOSPC\)/);
   assert.match(run.out, /Nothing was changed/);
   const s = await readSettings(path);
   assert.equal(s.generation?.model, "old:4b", "no new model without its answer");
@@ -280,23 +280,53 @@ test("P2: the test call runs against a local Ollama only", async () => {
   assert.equal(await testCallFailure("new:4b", ollamaUrl), null);
 });
 
-test("no credentials or home paths in what a failed switch prints", async () => {
+test("a configured URL with credentials or a token never reaches a message, in any spelling", async () => {
   const { testCallFailure } = await import("../src/cli/ollama.js");
-  // A remote URL with credentials: only the host is named.
-  const remote = (await testCallFailure("new:4b", "http://alice:s3cretpw@ollama.example.invalid:11434")) ?? "";
-  assert.match(remote, /not ollama\.example\.invalid:11434/);
-  assert.doesNotMatch(remote, /alice|s3cretpw/);
-  // A loopback URL with credentials: fetch refuses it and quotes the URL in
-  // its error — that quote must not reach the message.
-  const local = (await testCallFailure("new:4b", ollamaUrl.replace("http://", "http://alice:s3cretpw@"))) ?? "";
-  assert.notEqual(local, "", "a URL with credentials is not a working test call");
-  assert.doesNotMatch(local, /s3cretpw/);
-  // The refusal of a corrupt settings file names no content of that file.
+  const port = new URL(ollamaUrl).port;
+  const SECRETS = /alice|s3cret|p%40ss|p@ss|tok-9f3a|bob/;
+  // Each of these is read by `new URL()` in its own way; the message is built
+  // from what the parser returned, so it cannot quote what the parser hid.
+  const spellings = [
+    `http://alice:s3cretpw@127.0.0.1:${port}`, // user:pass@ on loopback — fetch would quote the whole URL
+    `http://alice:s3cretpw@ollama.example.invalid:11434`, // …and on a remote host
+    `http://alice:p%40ss-s3cret@127.0.0.1:${port}`, // encoded characters in the password
+    `http://alice:p@ss@s3cret@127.0.0.1:${port}`, // several @ — the last one starts the host
+    `http:\\\\alice:s3cretpw@127.0.0.1:${port}`, // backslashes, read as slashes
+    `http://alice:s3cretpw@[::1]:${port}`, // IPv6 brackets
+    `http://bob@127.0.0.1:${port}`, // user name only
+    `alice:s3cretpw@127.0.0.1:${port}`, // no scheme: "alice:" is parsed as one
+    `http://ollama.example.invalid:11434/?token=tok-9f3a`, // a token in the query, remote
+    `http://alice:s3cretpw@`, // does not parse at all
+  ];
+  for (const spelled of spellings) {
+    const message = await testCallFailure("new:4b", spelled);
+    assert.equal(typeof message, "string", `${spelled}: not a working test call`);
+    assert.doesNotMatch(message ?? "", SECRETS, spelled);
+  }
+  assert.equal(await testCallFailure("new:4b", "http://ollama.example.invalid:11434/?token=tok-9f3a"),
+    "the test call only runs against a local Ollama, not ollama.example.invalid:11434 — use 'bastra models set new:4b' to switch without it");
+  // A token in the query of a LOCAL URL: the request is built from origin and
+  // path, so the call works and the token is neither sent nor shown.
+  assert.equal(await testCallFailure("new:4b", `${ollamaUrl}/?token=tok-9f3a`), null);
+  // A failing call against that URL names no part of the query either.
+  chatMode = "redirect";
+  try {
+    assert.doesNotMatch((await testCallFailure("new:4b", `${ollamaUrl}/?token=tok-9f3a`)) ?? "", SECRETS);
+  } finally {
+    chatMode = "ok";
+  }
+});
+
+test("a refused switch quotes neither the settings file's content nor its path", async () => {
   const path = await settingsFile('{"api":{"token":"invented-token"},BROKEN');
   const { result: r } = await quiet(() => enableGenerationModel("new:4b", { dryRun: false, verify: true }, path, fakeCli));
-  assert.doesNotMatch(r.message, /invented-token|BROKEN/);
+  assert.equal(r.message, "the settings file is not valid JSON — fix or delete it first (bastra names the file on every run)");
   const { out } = await runShown("dismiss", REC_A, REC_A, path);
   assert.doesNotMatch(out, /invented-token|BROKEN/);
+  // (The settings reader's own, older warning names the file on stderr — that
+  // is where "bastra names the file" points. The refusal itself does not.)
+  const refusal = out.split("\n").filter((l) => !l.startsWith("[bastra-recall]")).join("\n");
+  assert.ok(!refusal.includes(dir), "no path in the refusal");
 });
 
 // ── P2: the answer does not depend on this shell's environment ───────────────
