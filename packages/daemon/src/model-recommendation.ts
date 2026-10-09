@@ -153,7 +153,7 @@ export async function recordModelAnswer(
   model?: string,
 ): Promise<void> {
   if (await settingsFileIsCorrupt(path)) {
-    throw new Error(`${path} is not valid JSON — fix or delete it first`);
+    throw new Error("the settings file is not valid JSON — fix or delete it first (bastra names the file on every run)");
   }
   await mutateSettings(path, (current) => ({
     ...current,

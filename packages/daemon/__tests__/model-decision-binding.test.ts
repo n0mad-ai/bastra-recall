@@ -280,6 +280,25 @@ test("P2: the test call runs against a local Ollama only", async () => {
   assert.equal(await testCallFailure("new:4b", ollamaUrl), null);
 });
 
+test("no credentials or home paths in what a failed switch prints", async () => {
+  const { testCallFailure } = await import("../src/cli/ollama.js");
+  // A remote URL with credentials: only the host is named.
+  const remote = (await testCallFailure("new:4b", "http://alice:s3cretpw@ollama.example.invalid:11434")) ?? "";
+  assert.match(remote, /not ollama\.example\.invalid:11434/);
+  assert.doesNotMatch(remote, /alice|s3cretpw/);
+  // A loopback URL with credentials: fetch refuses it and quotes the URL in
+  // its error — that quote must not reach the message.
+  const local = (await testCallFailure("new:4b", ollamaUrl.replace("http://", "http://alice:s3cretpw@"))) ?? "";
+  assert.notEqual(local, "", "a URL with credentials is not a working test call");
+  assert.doesNotMatch(local, /s3cretpw/);
+  // The refusal of a corrupt settings file names no content of that file.
+  const path = await settingsFile('{"api":{"token":"invented-token"},BROKEN');
+  const { result: r } = await quiet(() => enableGenerationModel("new:4b", { dryRun: false, verify: true }, path, fakeCli));
+  assert.doesNotMatch(r.message, /invented-token|BROKEN/);
+  const { out } = await runShown("dismiss", REC_A, REC_A, path);
+  assert.doesNotMatch(out, /invented-token|BROKEN/);
+});
+
 // ── P2: the answer does not depend on this shell's environment ───────────────
 
 test("P2 env split: the model is pinned in this shell, the daemon asked — the answer is still recorded", async () => {
