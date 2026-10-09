@@ -2621,7 +2621,7 @@ Keine neue Wortliste, kein weiterer Testdaten-Abstimmungsloop.
 zweimal getippten Einmalauftrag (gemessener Kosinus: Tatsache gegen Gegenteil
 0,77–0,99, Tatsache gegen Umformulierung 0,69–0,97). Jeden Kandidaten, der die
 billigen Sperren bestanden hat, liest deshalb das **lokale** Textmodell, bevor
-etwas geschrieben oder geschlossen wird. Es beantwortet höchstens drei
+etwas geschrieben oder geschlossen wird. Es beantwortet höchstens vier
 geschlossene Fragen mit je einem Wort:
 
 | Frage | Gestellt | Antworten | Folge |
