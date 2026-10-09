@@ -21,6 +21,8 @@ import { detectHardware, recommendTextModel } from "./hardware.js";
 import { resolveGenerationModel, readSettings, GENERATION_MODEL_DEFAULT } from "../settings.js";
 import { enableGenerationModel } from "./ollama.js";
 import { ask, isInteractive } from "./prompt.js";
+import { maybeEmitModelHint } from "./update-hint.js";
+import type { ParsedArgs } from "./types.js";
 import {
   DISMISS_STILL_OPEN,
   DISMISS_WARNING,
@@ -47,6 +49,8 @@ export interface ModelsDeps extends OfferOptions {
   enable?: typeof enableGenerationModel;
   interactive?: boolean;
   ask?: typeof ask;
+  /** The CLI hint's day marker (update-hint.ts). */
+  shownPath?: string;
 }
 
 export async function cmdModels(opts: {
@@ -250,4 +254,52 @@ async function cmdAsk(deps: ModelsDeps): Promise<number> {
   write("");
   write(formatModelNotice(offer));
   return 0;
+}
+
+/**
+ * The catch-up question: the first interactive command after an update asks,
+ * once per recommendation.
+ *
+ * It exists because an update is run by the updater that was installed BEFORE
+ * it — and no updater shipped so far runs anything from the new installation
+ * on the user's terminal (only `brew upgrade` / `npm install -g` with stdin
+ * closed, and a detached daemon). So the release that first carries a
+ * recommendation cannot ask at the end of its own update.
+ *
+ * Only for a recommendation that has no note at all yet: asked before (here or
+ * by `bastra update`), or answered anywhere — chat, CLI, a "later" that has
+ * come due — means the terminal stays quiet and the dim hint does the
+ * reminding. Returns true if the question was put.
+ */
+export async function maybeAskModelCatchUp(deps: ModelsDeps = {}): Promise<boolean> {
+  if (!(deps.interactive ?? isInteractive())) return false;
+  const offer = await pendingModelNotice(deps);
+  if (!offer) return false;
+  if ((await readSettings(deps.settingsPath)).modelRecommendation?.id === offer.id) return false;
+  await askQuestion(offer, deps);
+  return true;
+}
+
+/** Commands that never get a model notice of any kind after them: they carry
+ *  it themselves (update, models), or their output is not a place for it. */
+const NO_NOTICE_AFTER = new Set(["update", "models", "config", "token", "help", "version", "completion"]);
+
+/**
+ * The model notice after a `bastra` command has finished and printed: the
+ * catch-up question where a question is possible, else the dim hint.
+ *
+ * A question needs a real terminal on both ends (maybeAskModelCatchUp checks
+ * that, which also rules out pipes, hooks and detached runs) and a command a
+ * person is reading: not `--json`, not `--help` / `--version`, not a command
+ * whose output is a script, not `uninstall`. It runs after the command, and
+ * its outcome is deliberately not returned as an exit code — the command's
+ * own result stands.
+ */
+export async function modelNoticeAfterCommand(
+  args: Pick<ParsedArgs, "command" | "json" | "showHelp" | "showVersion">,
+  deps: ModelsDeps = {},
+): Promise<"asked" | "hinted" | "none"> {
+  if (!args.command || NO_NOTICE_AFTER.has(args.command) || args.showHelp || args.showVersion) return "none";
+  if (!args.json && args.command !== "uninstall" && (await maybeAskModelCatchUp(deps))) return "asked";
+  return (await maybeEmitModelHint(deps)) ? "hinted" : "none";
 }

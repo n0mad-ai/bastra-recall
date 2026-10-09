@@ -2,7 +2,8 @@
  * The model-recommendation notice for existing users (model-recommendation.ts):
  * when there is something to say, the one note of the answer, the texts, and
  * the places that speak — `bastra models`, the question `bastra update` ends
- * with, the CLI hint and the SessionStart block.
+ * with, the catch-up question after a command, the CLI hint and the
+ * SessionStart block.
  *
  * The shipped state is "no recommendation", so every case that needs one
  * injects REC. No Ollama here: the switch itself is injected (its own files,
@@ -18,9 +19,11 @@ import { createServer } from "node:http";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { MODEL_RECOMMENDATION, recommendTextModel, type ModelRecommendation } from "../src/cli/hardware.js";
-import { cmdModels, type ModelsDeps } from "../src/cli/models-cmd.js";
+import { cmdModels, maybeAskModelCatchUp, modelNoticeAfterCommand, type ModelsDeps } from "../src/cli/models-cmd.js";
+import { askOn } from "../src/cli/prompt.js";
 import { askModelRecommendation } from "../src/cli/update.js";
 import { maybeEmitModelHint } from "../src/cli/update-hint.js";
 import {
@@ -105,6 +108,11 @@ test("shipped: no recommendation is active — nothing is offered and nothing is
     const neverAsk = async () => { throw new Error("must not ask"); };
     const ask = await captured(() => cmdModels({ sub: "ask", settingsPath: path, deps: { interactive: true, ask: neverAsk } }));
     assert.equal(ask.out, "", "`bastra update` ends without a question");
+    const after = await captured(() =>
+      modelNoticeAfterCommand({ command: "status", json: false, showHelp: false, showVersion: false }, { settingsPath: path, interactive: true, ask: neverAsk, shownPath: join(dir, "shown.txt") }),
+    );
+    assert.equal(after.result, "none", "no catch-up question after a command either");
+    assert.equal(after.out + after.err, "");
   });
 });
 
@@ -551,6 +559,135 @@ test("bastra update: the real built cli answers `models ask` without a terminal 
   const r = askModelRecommendation({ node: process.execPath, script: dist, version: null }, "pipe");
   assert.equal(r?.status, 0, String(r?.stderr));
   assert.equal(String(r?.stdout), "");
+});
+
+// ── the catch-up question after a command ────────────────────────────────────
+
+const ARGS = { command: "status", json: false, showHelp: false, showVersion: false };
+
+test("catch-up: the first interactive command asks, after the command, exactly once per recommendation", async () => {
+  await existingUser(async (path, dir) => {
+    const asked: string[] = [];
+    const deps = (text: string | null, extra: Partial<ModelsDeps> = {}) =>
+      opts(path, { interactive: true, ask: async (q: string) => { asked.push(q); return text; }, shownPath: join(dir, "shown.txt"), ...extra });
+
+    // Ctrl-C / EOF: no answer is recorded, nothing throws, nothing is switched.
+    const first = await captured(() => modelNoticeAfterCommand(ARGS, deps(null)));
+    assert.equal(first.result, "asked");
+    assert.deepEqual(asked, [QUESTION]);
+    assert.ok(first.out.includes(`About [n]: ${WARN}; ${OPEN}.`), "the dismiss warning is part of the catch-up question");
+    assert.equal(await answerOf(path), "asked");
+    assert.equal((await readSettings(path)).generation, undefined);
+
+    // The next command does not ask again; the dim hint takes over (once a day).
+    const second = await captured(() => modelNoticeAfterCommand(ARGS, deps("s")));
+    assert.equal(second.result, "hinted");
+    assert.equal(asked.length, 1);
+    assert.match(second.err, /recommends a different local text model/);
+    assert.equal((await captured(() => modelNoticeAfterCommand(ARGS, deps("s")))).result, "none");
+
+    // A new recommendation id is a new question.
+    const next = await captured(() => modelNoticeAfterCommand(ARGS, deps("", { recommendation: { ...REC, id: "test-rec-2" } })));
+    assert.equal(next.result, "asked");
+    assert.deepEqual((await readSettings(path)).modelRecommendation?.id, "test-rec-2");
+    assert.equal(await answerOf(path), "later", "Enter is later");
+  });
+});
+
+test("catch-up: each answer does what it says, bound to the offer on screen", async () => {
+  for (const [reply, expected] of [["s", "switched"], ["l", "later"], ["", "later"], ["what?", "later"], ["n", "dismissed"]] as const) {
+    await existingUser(async (path, dir) => {
+      const sw = fakeEnable({ activated: true, message: "saved" });
+      const r = await captured(() =>
+        modelNoticeAfterCommand(ARGS, opts(path, { interactive: true, ask: async () => reply, enable: sw.enable, shownPath: join(dir, "shown.txt") })),
+      );
+      assert.equal(r.result, "asked");
+      assert.equal(await answerOf(path), expected);
+      assert.deepEqual(sw.calls.map((c) => c[0]), expected === "switched" ? ["new:4b"] : []);
+      if (expected === "dismissed") assert.ok(r.out.includes(`From now on ${WARN}.`));
+    });
+  }
+});
+
+test("catch-up: a failing switch does not fail the command it follows", async () => {
+  await existingUser(async (path, dir) => {
+    const sw = fakeEnable({ activated: false, message: "`ollama pull new:4b` failed (exit 1)" });
+    const r = await captured(() =>
+      modelNoticeAfterCommand(ARGS, opts(path, { interactive: true, ask: async () => "s", enable: sw.enable, shownPath: join(dir, "shown.txt") })),
+    );
+    assert.equal(r.result, "asked", "an outcome, not an exit code — the command's own code is already set");
+    assert.match(r.out, /Nothing was changed — the generation model stays gemma3:4b/);
+    assert.equal(await answerOf(path), "asked");
+  });
+});
+
+test("catch-up: never without a terminal — the dim hint instead", async () => {
+  await existingUser(async (path, dir) => {
+    const never = async () => { throw new Error("must not ask"); };
+    const r = await captured(() => modelNoticeAfterCommand(ARGS, opts(path, { interactive: false, ask: never, shownPath: join(dir, "shown.txt") })));
+    assert.equal(r.result, "hinted");
+    assert.equal(r.out, "", "nothing on stdout: a pipe gets the command's output only");
+    assert.equal((await readSettings(path)).modelRecommendation, undefined);
+    assert.equal(await maybeAskModelCatchUp(opts(path, { interactive: false, ask: never })), false);
+  });
+});
+
+test("catch-up: never after output a script reads, nor after help, version, update, models, completion, uninstall", async () => {
+  await existingUser(async (path, dir) => {
+    const never = async () => { throw new Error("must not ask"); };
+    const deps = () => opts(path, { interactive: true, ask: never, shownPath: join(dir, `shown-${Math.random()}.txt`) });
+    // --json and uninstall: no question; the stderr hint is all there is.
+    for (const args of [{ ...ARGS, json: true }, { ...ARGS, command: "uninstall" }]) {
+      const r = await captured(() => modelNoticeAfterCommand(args, deps()));
+      assert.equal(r.result, "hinted");
+      assert.equal(r.out, "");
+    }
+    // Nothing at all, not even the hint.
+    const silent = [
+      { ...ARGS, showHelp: true },
+      { ...ARGS, showVersion: true },
+      { ...ARGS, command: null },
+      ...["help", "version", "update", "models", "completion", "config", "token"].map((command) => ({ ...ARGS, command })),
+    ];
+    for (const args of silent) {
+      const r = await captured(() => modelNoticeAfterCommand(args, deps()));
+      assert.equal(r.result, "none", JSON.stringify(args));
+      assert.equal(r.out + r.err, "");
+    }
+    assert.equal((await readSettings(path)).modelRecommendation, undefined);
+  });
+});
+
+test("catch-up: not when the updater already asked, and not when the user already answered elsewhere", async () => {
+  const never = async () => { throw new Error("must not ask"); };
+  // `bastra update` (new updater) asked and got no answer.
+  await existingUser(async (path) => {
+    await captured(() => cmdModels({ sub: "ask", settingsPath: path, deps: opts(path, { interactive: true, ask: async () => null }) }));
+    assert.equal(await maybeAskModelCatchUp(opts(path, { interactive: true, ask: never })), false);
+  });
+  // Answered in chat or on the CLI — also a "later" that has come due: the hint reminds, the terminal does not ask.
+  for (const [answer, at] of [["dismissed", NOW], ["switched", NOW], ["later", NOW], ["later", NOW - 8 * DAY]] as const) {
+    await existingUser(async (path) => {
+      await recordModelAnswer(REC.id, answer, path, at);
+      assert.equal(await maybeAskModelCatchUp(opts(path, { interactive: true, ask: never })), false, `${answer}`);
+    });
+  }
+  // Opted out.
+  await existingUser(async (path) => {
+    process.env.BASTRA_UPDATE_CHECK = "off";
+    assert.equal(await maybeAskModelCatchUp(opts(path, { interactive: true, ask: never })), false);
+  });
+});
+
+test("the prompt: an answer is trimmed; EOF ends the question with no answer instead of hanging", async () => {
+  const answered = new PassThrough();
+  const p1 = askOn("? ", answered, new PassThrough());
+  answered.write("  s \n");
+  assert.equal(await p1, "s");
+  const closed = new PassThrough();
+  const p2 = askOn("? ", closed, new PassThrough());
+  closed.end();
+  assert.equal(await p2, null);
 });
 
 // ── the installer ────────────────────────────────────────────────────────────
