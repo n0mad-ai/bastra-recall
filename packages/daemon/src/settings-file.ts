@@ -281,25 +281,44 @@ function warnAboutUnknownKeys(data: unknown, path: string): void {
 }
 
 /**
- * True when the file exists, has content, and is not valid JSON — the one
- * state in which `readSettings` hands out defaults for settings that are
- * really there, and a write would replace the file with those defaults. A
- * caller that must not lose the user's other settings asks this first.
+ * What is on disk, as far as a WRITER has to know before it replaces the file:
+ *
+ *   - "ok"          readable, valid JSON
+ *   - "missing"     not there (or empty) — defaults are the truth
+ *   - "corrupt"     there, readable, not valid JSON
+ *   - { unreadable } there, but it could not be read (EACCES, EISDIR, EIO …)
+ *
+ * `readSettings` hands out defaults in the last two cases as well, and for a
+ * reader that is the right fallback. For a writer it is not: defaults plus one
+ * changed field, written back, erase every setting that IS in the file. Only
+ * "the file does not exist" (ENOENT, or a missing parent: ENOTDIR) may be read
+ * as "there are no settings".
  */
-export async function settingsFileIsCorrupt(path: string = settingsFilePath()): Promise<boolean> {
+export type SettingsFileState = "ok" | "missing" | "corrupt" | { unreadable: string };
+
+export async function settingsFileState(path: string = settingsFilePath()): Promise<SettingsFileState> {
   let raw: string;
   try {
     raw = await readFile(path, "utf8");
-  } catch {
-    return false;
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code ?? "read failed";
+    return code === "ENOENT" || code === "ENOTDIR" ? "missing" : { unreadable: code };
   }
-  if (raw.trim() === "") return false;
+  if (raw.trim() === "") return "missing";
   try {
     JSON.parse(raw);
-    return false;
+    return "ok";
   } catch {
-    return true;
+    return "corrupt";
   }
+}
+
+/** Why a writer that must not lose settings refuses this file, or null. No
+ *  path in the text: it is printed, and may end up in a chat transcript. */
+export function settingsFileRefusal(state: SettingsFileState, opts: { refuseCorrupt?: boolean } = {}): string | null {
+  if (typeof state === "object") return `the settings file exists but cannot be read (${state.unreadable}) — nothing was written to it`;
+  if (state === "corrupt" && opts.refuseCorrupt) return "the settings file is not valid JSON — fix or delete it first (bastra names the file on every run)";
+  return null;
 }
 
 /**
@@ -566,6 +585,16 @@ async function writeSettings(next: CliSettings, path: string): Promise<void> {
  * `readSettings` + `writeSettings` vorbei direkt schreibt, bringt das Rennen
  * zurück.
  *
+ * Eine vorhandene, aber NICHT LESBARE Datei (EACCES, EISDIR …) wird nie
+ * überschrieben: `readSettings` liefert dafür Defaults, und Defaults plus ein
+ * geändertes Feld zurückzuschreiben löscht jede Einstellung, die in der Datei
+ * steht (Gegenreview #1118: Modus 0200, ein Setter, und Generation/Embedding/
+ * API-Token waren weg). Das gilt für JEDEN Setter — der Fehler ist nicht
+ * modellspezifisch. Geprüft wird unter dem Lock, also am selben Stand, der
+ * danach ersetzt würde. Eine KORRUPTE Datei reparieren die bisherigen Setter
+ * weiterhin (dokumentiertes Verhalten von `readSettings`); wer auch das nicht
+ * darf, setzt `refuseCorrupt`.
+ *
  * `mutate` bekommt den frisch gelesenen Stand und gibt den zu schreibenden
  * zurück, oder `null` für "nichts zu tun" (z.B. ein CORS-Origin, das schon
  * erlaubt ist). Rückgabewerte für den Aufrufer laufen über den Closure.
@@ -580,10 +609,13 @@ async function writeSettings(next: CliSettings, path: string): Promise<void> {
 export async function mutateSettings(
   path: string,
   mutate: (current: CliSettings) => CliSettings | null,
+  opts: { refuseCorrupt?: boolean } = {},
 ): Promise<void> {
   await withPathLock(
     path,
     async () => {
+      const refusal = settingsFileRefusal(await settingsFileState(path), opts);
+      if (refusal) throw new Error(refusal);
       const next = mutate(await readSettings(path));
       if (next !== null) await writeSettings(next, path);
     },

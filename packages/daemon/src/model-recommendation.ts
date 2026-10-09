@@ -26,7 +26,7 @@ import {
   resolveGenerationModel,
   settingsFilePath,
 } from "./settings.js";
-import { settingsFileIsCorrupt, type ModelRecommendationAnswer } from "./settings-file.js";
+import type { ModelRecommendationAnswer } from "./settings-file.js";
 
 export const MODEL_COMPARISON_URL =
   "https://github.com/n0mad-ai/bastra-recall/blob/main/docs/local-model-comparison.md";
@@ -141,9 +141,10 @@ async function textModelInUse(offer: ModelOffer, settingsPath?: string): Promise
  * crash or a full disk leaves both or neither, and two processes cannot end
  * with one's model next to the other's answer.
  *
- * Throws instead of writing when the settings file is not valid JSON: the
- * normal write path would replace it with defaults plus this one field and
- * lose every other setting, which is no way to record a model decision.
+ * Throws instead of writing when the settings file is there but unreadable or
+ * not valid JSON (checked inside the lock): the write would replace it with
+ * defaults plus this one field and lose every other setting, which is no way
+ * to record a model decision.
  */
 export async function recordModelAnswer(
   id: string,
@@ -152,14 +153,15 @@ export async function recordModelAnswer(
   now: number = Date.now(),
   model?: string,
 ): Promise<void> {
-  if (await settingsFileIsCorrupt(path)) {
-    throw new Error("the settings file is not valid JSON — fix or delete it first (bastra names the file on every run)");
-  }
-  await mutateSettings(path, (current) => ({
-    ...current,
-    ...(model ? { generation: { model } } : {}),
-    modelRecommendation: { id, answer, at: new Date(now).toISOString() },
-  }));
+  await mutateSettings(
+    path,
+    (current) => ({
+      ...current,
+      ...(model ? { generation: { model } } : {}),
+      modelRecommendation: { id, answer, at: new Date(now).toISOString() },
+    }),
+    { refuseCorrupt: true },
+  );
 }
 
 /** Why a switch alone does not take effect while the variable is set. */

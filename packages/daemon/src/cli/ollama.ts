@@ -26,7 +26,7 @@ import { spawn } from "node:child_process";
 import { findExecutable, run, type RunResult } from "./exec.js";
 import { ollamaChat } from "../learned-recall/reranker.js";
 import { getOllamaAutostart, setEmbeddingProvider, setGenerationModel } from "../settings.js";
-import { settingsFileIsCorrupt } from "../settings-file.js";
+import { settingsFileRefusal, settingsFileState } from "../settings-file.js";
 import { recordModelAnswer } from "../model-recommendation.js";
 
 const OLLAMA_URL = (process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434").replace(/\/+$/, "");
@@ -225,12 +225,9 @@ export async function enableGenerationModel(
   if (opts.dryRun) {
     return { status: "would-install", activated: false, message: `would pull ${model} + persist generation.model` };
   }
-  if (opts.verify && (await settingsFileIsCorrupt(settingsPath))) {
-    return {
-      status: "error",
-      activated: false,
-      message: "the settings file is not valid JSON — fix or delete it first (bastra names the file on every run)",
-    };
+  if (opts.verify) {
+    const refusal = settingsFileRefusal(await settingsFileState(settingsPath), { refuseCorrupt: true });
+    if (refusal) return { status: "error", activated: false, message: refusal };
   }
   const ollamaPath = cli.find();
   if (!ollamaPath || !(await serverVersion())) {
