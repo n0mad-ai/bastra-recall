@@ -33,6 +33,7 @@ export const INJECTED_BLOCK_TAGS = [
   "pinned-memories",
   "vault-taxonomy",
   "bastra-update",
+  "bastra-model-recommendation",
   "pending-save-suggestions",
   "bastra-product-docs",
   "save-eval",
