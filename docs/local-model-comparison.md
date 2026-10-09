@@ -369,8 +369,7 @@ with recall without any expansion.
 <!-- /table -->
 
 Not one model moves hybrid recall reliably, up or down; the values scatter
-within a few points around recall without expansion. The same was measured in
-August with fewer models. The reliable effects that did appear are all on
+within a few points around recall without expansion. The reliable effects that did appear are all on
 keyword-only search (`qwen3.5:4b` at first place, as shown; `qwen3.5:4b` and
 `gemma4:12b-it-q4_K_M` in the top 5), which matters only where no embedding
 model runs. Compared with the default's expansion or with that of `tev1:4b`, no
@@ -899,8 +898,7 @@ Die Punkte vergleichen mit der Suche ganz ohne Erweiterung.
 <!-- /table -->
 
 Kein einziges Modell bewegt die Hybrid-Suche verlässlich, weder nach oben noch
-nach unten; die Werte streuen wenige Punkte um die Suche ohne Erweiterung.
-Dasselbe wurde im August mit weniger Modellen gemessen. Die verlässlichen
+nach unten; die Werte streuen wenige Punkte um die Suche ohne Erweiterung. Die verlässlichen
 Effekte, die es gab, betreffen alle die reine Stichwortsuche (`qwen3.5:4b` auf
 Platz 1, wie gezeigt; `qwen3.5:4b` und `gemma4:12b-it-q4_K_M` in den Top 5),
 die nur dort zählt, wo kein Einbettungsmodell läuft. Auch gegenüber der
