@@ -77,7 +77,9 @@ nested `hits`, or text that is not an envelope is never a miss.
   (`system-turn.ts`: task notification, agent mail, reminder) neither end a
   chain nor enter the query, injected blocks are removed from a typed turn,
   and secrets are redacted (`redactSecrets`) before the text is kept. A slash
-  command ends the chain; its echo and its printed output are no query.
+  command ends the chain; its echo and its printed output are no query. The
+  marker the client writes when the owner interrupts (`INTERRUPT_PREFIX` from
+  `draft-capture.ts`) is read the same way: it ends the chain and is no query.
 - **Hook lane** (`--hook-lane`) — every daemon-joined `load_memory` against the
   pool of the recall it followed; no transcript needed. A load the transcript
   lane already observed (any `recall_id` of the chain, same memory) is left to
