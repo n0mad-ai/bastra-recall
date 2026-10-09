@@ -250,26 +250,55 @@ To reach this daemon from a hosted web app (e.g. a site's admin talking to the u
 
 > **Status:** the ChatGPT Custom GPT Actions path does **not work end-to-end yet**. The REST API and the OpenAPI starter spec are in place; the packaged Custom-GPT action is tracked in [#13](https://github.com/n0mad-ai/bastra-recall/issues/13).
 
-### The local text model — and what happens when a release recommends a different one
+### Model recommendations — when a release suggests a different local text model
 
-`bastra models` shows the local text model behind keyword expansion, reranking and the draft check, plus what this machine's RAM tier can carry (below 16 GB: none). `bastra models set <tag>` pulls a model and stores the choice in `~/.bastra/cli-settings.json`; `BASTRA_EXPAND_MODEL` / `BASTRA_RERANK_MODEL` override it. The embedding model is a separate thing (`bastra embeddings`) and is not touched by any of this.
+**The local text model.** `bastra models` shows the local text model behind keyword expansion, reranking and the draft check, plus what this machine's RAM tier can carry (below 16 GB: none). `bastra models set <tag>` pulls a model and stores the choice in `~/.bastra/cli-settings.json`; the environment variables `BASTRA_EXPAND_MODEL` / `BASTRA_RERANK_MODEL` override the stored choice. The embedding model is a separate thing (`bastra embeddings`) and is not touched by anything described here.
 
-A release can carry a **recommendation**: a different model per hardware tier, with its download size and one sentence on what gets better. New installs are offered it directly by the installer. Existing installs are **never switched automatically** — not in `update.mode auto` either. You are told instead, and the answer is yours:
+**What a recommendation is.** A release can carry a recommendation: one model per hardware tier (16 GB, 24 GB, 32 GB and up), its download size, and one sentence on what gets better. It ships inside the release, so showing it needs **no additional network access**. A release without a recommendation shows nothing and changes nothing.
+
+**Never switched automatically.** bastra never changes your model on its own — not on update, not with `update.mode auto`, not through the agent. New installs are simply offered the recommended model by the installer. Existing installs are told, and the answer is yours.
+
+**When the notice appears.** All of these have to hold:
+
+- the installed release carries a recommendation;
+- the machine is at or above the 16 GB tier (below it, no text model runs);
+- Ollama is the embedding provider (only then does the text model run at all);
+- the model in effect is not already the one recommended for this machine;
+- update notices are not switched off (see "Switching it off" below);
+- you have not answered yet — or you answered `later` and 7 days have passed, or the release carries a new recommendation.
+
+**When it does not appear.** If any of the points above fails. In particular: once the recommended model is in effect, after `switch`, after `dismiss`, and for 7 days after `later`. A model you chose yourself is not an exception: you get the same notice as everyone else.
+
+**Where it appears.** Four places, all reading one shared note of your answer in `~/.bastra/cli-settings.json`, so an answer given in one place silences the others:
+
+1. **`bastra update`** asks at the end. On a terminal it waits for one of three keys; without a terminal it only prints the notice and never waits. Updaters ask from this version on — the update that first brings this version onto a Homebrew or npm install is still run by the previous updater, which cannot ask; the other three places cover that case.
+2. **`bastra models`** shows the recommendation at any time, also after you dismissed it.
+3. **The agent's session start** carries the notice at every session start until you have answered — on purpose, with no daily limit. The agent is instructed to tell you about it, name the download size and ask. It may run the commands below for you, but only after your explicit answer.
+4. **One dim line after CLI commands**, on stderr, at most once per day. Not after `bastra update`, `models`, `config`, `token`, `help` and `version`.
+
+**The three answers.**
 
 ```bash
-bastra models            # shows the recommendation at any time
-bastra models switch     # pull it, check it with a short test call, then switch
+bastra models switch     # pull the recommended model, check it, then switch
 bastra models later      # keep the current model, ask again in 7 days
-bastra models dismiss    # keep it, and do not ask again for this recommendation
+bastra models dismiss    # keep it, never ask again for this recommendation
 ```
 
-Until you have answered, the notice shows up in three places that share one note of your answer, so nobody is asked twice: `bastra update` ends with the question (on a terminal; otherwise it prints the notice), the agent's session start carries it — the agent asks you first and only runs `bastra models switch` after an explicit yes — and one dim line follows CLI commands, at most once a day. The session-start notice is repeated at every session start, on purpose, until you answer. `dismiss` is remembered per recommendation; a later, new recommendation asks again. Dismissing means the notice does not come back for this recommendation, and you may be giving up better recall quality — every place that offers or confirms `dismiss` says so, and the agent tells you before it runs the command. `bastra models` keeps showing the recommendation and `bastra models switch` works any time.
+- `switch` — see "The safe switch" below. Afterwards nothing asks again for this recommendation.
+- `later` — nothing changes; every place stays silent for 7 days and then asks again.
+- `dismiss` — nothing changes, and the notice does **not come back** for this recommendation. You may be giving up better recall quality. Every place that offers or confirms `dismiss` says so, and the agent tells you before it runs the command. `bastra models` keeps showing the recommendation, `bastra models switch` works any time, and a later, new recommendation asks again.
 
-The switch is safe by construction: the new model is pulled, has to answer one short real call, and only then the setting changes. If the pull or the test call fails, nothing changes and the reason is printed. The old model is not deleted; `bastra models set <old tag>` switches back. The daemon reads the model at start, so restart it afterwards.
+All three work without a terminal. If there is nothing to decide, they say so and change nothing.
 
-You get the same notice with a model you chose yourself. If `BASTRA_EXPAND_MODEL` or `BASTRA_RERANK_MODEL` pins the model, the notice says so: the switch changes the stored choice, but the variable keeps winning until you remove it.
+**The safe switch.** `bastra models switch` does three things in this order: it pulls the new model (skipped if it is already there), sends it one short real request, and only when that was answered stores the new choice. The daemon reads the model at start, so restart it afterwards (`bastra update` restarts it, or restart your AI clients).
 
-The notice is silent when the recommended model is already in effect, on machines below the 16 GB tier, when Ollama is not the embedding provider (the text model never runs there), and with `BASTRA_UPDATE_CHECK=off` or `update.mode off`. It needs no network access: the recommendation ships with the release.
+**When something fails.** If Ollama is not running, the pull fails or is interrupted, or the test request fails or comes back empty, the command prints the reason, exits with code 1 and changes nothing: your model stays as it was, and the question stays open.
+
+**Switching back.** The old model is never deleted. After a switch the command prints the exact way back: `bastra models set <previous tag>`. Removing an unused model from disk is yours to do (`ollama rm <tag>`).
+
+**With `BASTRA_EXPAND_MODEL` or `BASTRA_RERANK_MODEL` set.** You get the notice as well. It names the variable and says that it overrides the stored choice: `switch` stores the new model, but the variable keeps winning until you remove it and restart the daemon. If the variable already names the recommended model, there is no notice.
+
+**Switching it off.** `BASTRA_UPDATE_CHECK=off` silences the notice at the session start, after CLI commands and at the end of `bastra update`; so does `bastra config set update.mode off`. `bastra models dismiss` silences one recommendation. `bastra models` always shows it, whatever is switched off.
 
 ### Battery mode — keep background Ollama work off the battery (macOS)
 
@@ -568,26 +597,55 @@ Um diesen Daemon aus einer gehosteten Web-App zu erreichen (z.B. das Admin einer
 
 > **Status:** Der ChatGPT-Custom-GPT-Actions-Weg **funktioniert noch nicht end-to-end**. REST-API und OpenAPI-Starter-Spec stehen; die verpackte Custom-GPT-Action wird in [#13](https://github.com/n0mad-ai/bastra-recall/issues/13) verfolgt.
 
-### Das lokale Textmodell — und was passiert, wenn ein Release ein anderes empfiehlt
+### Modell-Empfehlungen — wenn ein Release ein anderes lokales Textmodell vorschlägt
 
-`bastra models` zeigt das lokale Textmodell hinter Stichwort-Erweiterung, Nachsortierung und Entwurfs-Prüfung und dazu, was die RAM-Stufe dieser Maschine trägt (unter 16 GB: keines). `bastra models set <tag>` lädt ein Modell und speichert die Wahl in `~/.bastra/cli-settings.json`; `BASTRA_EXPAND_MODEL` / `BASTRA_RERANK_MODEL` überstimmen sie. Das Einbettungsmodell ist etwas anderes (`bastra embeddings`) und bleibt von all dem unberührt.
+**Das lokale Textmodell.** `bastra models` zeigt das lokale Textmodell hinter Stichwort-Erweiterung, Nachsortierung und Entwurfs-Prüfung und dazu, was die RAM-Stufe dieser Maschine trägt (unter 16 GB: keines). `bastra models set <tag>` lädt ein Modell und speichert die Wahl in `~/.bastra/cli-settings.json`; die Umgebungsvariablen `BASTRA_EXPAND_MODEL` / `BASTRA_RERANK_MODEL` überstimmen die gespeicherte Wahl. Das Einbettungsmodell ist etwas anderes (`bastra embeddings`) und bleibt von allem hier Beschriebenen unberührt.
 
-Ein Release kann eine **Empfehlung** mitbringen: je Hardware-Stufe ein anderes Modell, mit Downloadgröße und einem Satz dazu, was besser wird. Neuinstallationen bekommen es vom Installer direkt vorgeschlagen. Bestehende Installationen werden **nie automatisch umgestellt** — auch nicht mit `update.mode auto`. Du wirst stattdessen informiert, und die Antwort gehört dir:
+**Was eine Empfehlung ist.** Ein Release kann eine Empfehlung mitbringen: je Hardware-Stufe (16 GB, 24 GB, ab 32 GB) ein Modell, dessen Downloadgröße und einen Satz dazu, was besser wird. Sie steckt im Release selbst, ihre Anzeige braucht also **keinen zusätzlichen Netzzugriff**. Ein Release ohne Empfehlung zeigt nichts und ändert nichts.
+
+**Nie automatisch umgestellt.** bastra wechselt dein Modell nie von sich aus — nicht beim Update, nicht mit `update.mode auto`, nicht über den Agenten. Neuinstallationen bekommen das empfohlene Modell einfach vom Installer vorgeschlagen. Bestehende Installationen werden informiert, und die Antwort gehört dir.
+
+**Wann der Hinweis erscheint.** Alle diese Punkte müssen zutreffen:
+
+- das installierte Release bringt eine Empfehlung mit;
+- die Maschine liegt auf oder über der 16-GB-Stufe (darunter läuft kein Textmodell);
+- Ollama ist der Embedding-Provider (nur dann läuft das Textmodell überhaupt);
+- das wirksame Modell ist nicht schon das für diese Maschine empfohlene;
+- Update-Hinweise sind nicht abgeschaltet (siehe „Abschalten“ unten);
+- du hast noch nicht geantwortet — oder du hast `later` geantwortet und 7 Tage sind vergangen, oder das Release bringt eine neue Empfehlung mit.
+
+**Wann er nicht erscheint.** Sobald einer der Punkte oben nicht zutrifft. Insbesondere: sobald das empfohlene Modell wirksam ist, nach `switch`, nach `dismiss` und 7 Tage lang nach `later`. Ein selbst gewähltes Modell ist keine Ausnahme: Du bekommst denselben Hinweis wie alle anderen.
+
+**Wo er erscheint.** An vier Stellen, die alle einen gemeinsamen Merkzettel deiner Antwort in `~/.bastra/cli-settings.json` lesen — eine Antwort an einer Stelle lässt die anderen verstummen:
+
+1. **`bastra update`** fragt am Ende. Im Terminal wartet es auf eine von drei Tasten; ohne Terminal gibt es nur den Hinweis aus und wartet nie. Updater fragen ab dieser Version — das Update, das diese Version erstmals auf eine Homebrew- oder npm-Installation bringt, führt noch der vorherige Updater aus, und der kann nicht fragen; diesen Fall decken die drei anderen Stellen ab.
+2. **`bastra models`** zeigt die Empfehlung jederzeit, auch nachdem du sie abgestellt hast.
+3. **Der Sitzungsstart des Agenten** trägt den Hinweis bei jedem Sitzungsstart, bis du geantwortet hast — bewusst, ohne Tagesgrenze. Der Agent ist angewiesen, dir davon zu erzählen, die Downloadgröße zu nennen und zu fragen. Er darf die Befehle unten für dich ausführen, aber erst nach deiner ausdrücklichen Antwort.
+4. **Eine gedimmte Zeile nach CLI-Befehlen**, auf stderr, höchstens einmal am Tag. Nicht nach `bastra update`, `models`, `config`, `token`, `help` und `version`.
+
+**Die drei Antworten.**
 
 ```bash
-bastra models            # zeigt die Empfehlung jederzeit
-bastra models switch     # laden, mit einem kurzen Testaufruf prüfen, dann umstellen
+bastra models switch     # empfohlenes Modell laden, prüfen, dann umstellen
 bastra models later      # beim aktuellen Modell bleiben, in 7 Tagen erneut fragen
-bastra models dismiss    # dabei bleiben und für diese Empfehlung nicht mehr fragen
+bastra models dismiss    # dabei bleiben, für diese Empfehlung nie mehr fragen
 ```
 
-Solange du nicht geantwortet hast, erscheint der Hinweis an drei Stellen, die sich einen Merkzettel teilen — niemand wird doppelt gefragt: `bastra update` endet mit der Frage (im Terminal; sonst gibt es nur den Hinweistext aus), der Sitzungsstart des Agenten trägt ihn — der Agent fragt dich zuerst und führt `bastra models switch` nur nach einem ausdrücklichen Ja aus — und nach CLI-Befehlen folgt eine gedimmte Zeile, höchstens einmal am Tag. Der Hinweis beim Sitzungsstart kommt bewusst bei jedem Sitzungsstart, bis du geantwortet hast. `dismiss` gilt je Empfehlung; eine spätere, neue Empfehlung fragt wieder. Abstellen heißt: Der Hinweis kommt für diese Empfehlung nicht wieder, und du verzichtest damit möglicherweise auf bessere Recall-Qualität — das steht überall, wo `dismiss` angeboten oder bestätigt wird, und der Agent sagt es dir, bevor er den Befehl ausführt. `bastra models` zeigt die Empfehlung weiterhin, und `bastra models switch` geht jederzeit.
+- `switch` — siehe „Der sichere Wechsel“ unten. Danach fragt für diese Empfehlung nichts mehr.
+- `later` — nichts ändert sich; alle Stellen schweigen 7 Tage und fragen dann wieder.
+- `dismiss` — nichts ändert sich, und der Hinweis **kommt** für diese Empfehlung **nicht wieder**. Du verzichtest damit möglicherweise auf bessere Recall-Qualität. Das steht überall, wo `dismiss` angeboten oder bestätigt wird, und der Agent sagt es dir, bevor er den Befehl ausführt. `bastra models` zeigt die Empfehlung weiterhin, `bastra models switch` geht jederzeit, und eine spätere, neue Empfehlung fragt wieder.
 
-Der Wechsel ist sicher gebaut: Das neue Modell wird geladen, muss einen kurzen echten Aufruf beantworten, und erst dann ändert sich die Einstellung. Scheitert das Laden oder der Testaufruf, bleibt alles beim Alten und der Grund wird ausgegeben. Das alte Modell wird nicht gelöscht; `bastra models set <alter tag>` wechselt zurück. Der Daemon liest das Modell beim Start, danach also neu starten.
+Alle drei funktionieren ohne Terminal. Gibt es nichts zu entscheiden, sagen sie das und ändern nichts.
 
-Denselben Hinweis bekommst du auch mit einem selbst gewählten Modell. Legt `BASTRA_EXPAND_MODEL` oder `BASTRA_RERANK_MODEL` das Modell fest, sagt der Hinweis das dazu: Der Wechsel ändert die gespeicherte Wahl, aber die Variable gewinnt weiter, bis du sie entfernst.
+**Der sichere Wechsel.** `bastra models switch` tut drei Dinge in dieser Reihenfolge: Es lädt das neue Modell (entfällt, wenn es schon da ist), schickt ihm eine kurze echte Anfrage und speichert die neue Wahl erst, wenn diese beantwortet wurde. Der Daemon liest das Modell beim Start, danach also neu starten (`bastra update` startet ihn neu, oder du startest deine KI-Clients neu).
 
-Der Hinweis bleibt aus, wenn das empfohlene Modell bereits wirksam ist, auf Maschinen unter der 16-GB-Stufe, wenn Ollama nicht der Embedding-Provider ist (das Textmodell läuft dort nie) und mit `BASTRA_UPDATE_CHECK=off` oder `update.mode off`. Er braucht keinen Netzzugriff: Die Empfehlung wird mit dem Release ausgeliefert.
+**Wenn etwas scheitert.** Läuft Ollama nicht, scheitert das Laden oder wird es abgebrochen, oder scheitert die Testanfrage oder kommt leer zurück, gibt der Befehl den Grund aus, endet mit Code 1 und ändert nichts: Dein Modell bleibt, wie es war, und die Frage bleibt offen.
+
+**Zurückwechseln.** Das alte Modell wird nie gelöscht. Nach einem Wechsel gibt der Befehl den genauen Weg zurück aus: `bastra models set <vorheriger tag>`. Ein ungenutztes Modell von der Platte zu entfernen ist deine Sache (`ollama rm <tag>`).
+
+**Mit gesetztem `BASTRA_EXPAND_MODEL` oder `BASTRA_RERANK_MODEL`.** Du bekommst den Hinweis ebenfalls. Er nennt die Variable und sagt, dass sie die gespeicherte Wahl überstimmt: `switch` speichert das neue Modell, aber die Variable gewinnt weiter, bis du sie entfernst und den Daemon neu startest. Nennt die Variable bereits das empfohlene Modell, gibt es keinen Hinweis.
+
+**Abschalten.** `BASTRA_UPDATE_CHECK=off` lässt den Hinweis beim Sitzungsstart, nach CLI-Befehlen und am Ende von `bastra update` verstummen; `bastra config set update.mode off` ebenso. `bastra models dismiss` stellt eine einzelne Empfehlung ab. `bastra models` zeigt sie immer, egal was abgeschaltet ist.
 
 ### Akkumodus — Ollama-Hintergrundarbeit nicht auf dem Akku (macOS)
 
