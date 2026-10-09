@@ -184,6 +184,27 @@ export class JoinState {
     this.scheduleFlush();
   }
 
+  /**
+   * #1128-capture: which `recall` served which note, so a later load_memory
+   * names the recall that actually returned it instead of whichever recall was
+   * newest (`follows_recall`). One slot per note, the newest recall wins, as
+   * with the hook hints. In memory only: after a daemon restart the time
+   * window is the fallback it always was.
+   */
+  private recallHits = new Map<string, { recall_id: string; rank: number; ts: number }>();
+
+  recordRecallHits(recall_id: string, hits: Array<{ id: string }>): void {
+    const ts = Date.now();
+    for (const [id, trace] of this.recallHits) if (ts - trace.ts > HOOK_HINT_WINDOW_MS) this.recallHits.delete(id);
+    hits.forEach((hit, i) => this.recallHits.set(hit.id, { recall_id, rank: i + 1, ts }));
+  }
+
+  findRecallFor(id: string): { recall_id: string; rank: number } | null {
+    const trace = this.recallHits.get(id);
+    if (!trace || Date.now() - trace.ts > HOOK_HINT_WINDOW_MS) return null;
+    return { recall_id: trace.recall_id, rank: trace.rank };
+  }
+
   /** Usage moment "surfaced" (#154) — fed by POST /hook/hinted with the ids a
    *  hook ACTUALLY injected after its client-side filtering. */
   recordSurfacedUsage(ids: string[]): void {

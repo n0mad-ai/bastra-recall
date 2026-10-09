@@ -10,6 +10,7 @@ import { scopeEquals } from "@bastra-recall/core/scope";
 import { truncateSummaryTo, hasUnresolvedConflict, type StageListener, type RecallStage, type RecallHit } from "@bastra-recall/core";
 import { envInt } from "./env.js";
 import { fireAndForget } from "./telemetry.js";
+import { telemetryCandidatePool, type TelemetryPoolCandidate } from "./training-signal.js"; // #1128-capture
 import type { RecallStageBuckets } from "./telemetry-events.js";
 import { isWeakResult, isNoHome } from "@bastra-recall/core";
 import { armsOf, currentScoreVersion } from "./score-space.js";
@@ -360,7 +361,7 @@ async function recallAgainstVault(
   const t0 = Date.now();
   const collector = makeStageCollector(options.onStage);
   // #121: capture the deeper candidate pool (incl. below-floor) for the far slice.
-  let candidatePool: { id: string; score: number }[] = [];
+  let candidatePool: TelemetryPoolCandidate[] = [];
   const recallOpts = {
     // Codex-Gegenreview: Der Anker misst AUTORENABSICHT — ein hand-geschriebener
     // Trigger trifft ein selbst getipptes Wort. Ohne `authored_query` galten die
@@ -380,7 +381,7 @@ async function recallAgainstVault(
     expand_hops: parsed.data.expand_hops as 0 | 1 | undefined,
     onStage: collector.listener,
     onCandidatePool: (pool: RecallHit[]) => {
-      candidatePool = pool.map((h) => ({ id: h.id, score: h.score }));
+      candidatePool = telemetryCandidatePool(pool, deps.vault); // #1128-capture
     },
   };
   // Shared learned-recall (#120): widen the query with language-matched bridge
@@ -509,6 +510,7 @@ async function recallAgainstVault(
   );
 
   const recallId = deps.telemetry.newRecallId();
+  deps.telemetry.recordRecallHits(recallId, hits); // #1128-capture
   // #160: would-be order under the usage-driven trust multiplier. Reads the
   // cached aggregate synchronously and refreshes it in the background, so the
   // telemetry event is written exactly as promptly as before — see

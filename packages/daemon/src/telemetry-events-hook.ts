@@ -13,6 +13,7 @@ import type { SalienceShadow } from "./salience-shadow.js";
 import type { TrustShadow } from "./trust-shadow.js";
 import type { ReflexNearMiss } from "./reflex.js";
 import type { RecallOrigin } from "./telemetry-dimensions.js";
+import type { TelemetryPoolCandidate } from "./training-signal.js"; // #1128-capture
 
 export interface HookActEvent extends BaseEvent, DimensionedEvent {
   kind: "hook_act";
@@ -300,8 +301,9 @@ export interface HookRecallEvent extends BaseEvent, DimensionedEvent {
   dropped_scopes?: string[];
   filter_project?: string | null;
   scope_filter_skipped?: CallerScopeFilterTelemetry["scope_filter_skipped"];
-  /** #121: the deeper candidate pool (incl. below-floor ranks) behind this recall. */
-  candidate_pool?: { id: string; score: number }[];
+  /** #121: the deeper candidate pool (incl. below-floor ranks) behind this recall.
+   *  #1128-capture: per-arm rank and content hash per candidate, no text. */
+  candidate_pool?: TelemetryPoolCandidate[];
   /** #282: opt-in second recall over tool_input_excerpt. The excerpt itself is
    *  intentionally not logged; only the arm's yield and cost are observable. */
   content_recall?: {

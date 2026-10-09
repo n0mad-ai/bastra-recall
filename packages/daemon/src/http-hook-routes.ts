@@ -9,6 +9,7 @@ import { searchDrafts, withDraftBudget } from "./draft-search.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type {
   LateSettleSample,
+  RecallHit,
   Vault,
   SearchIndex,
   RecallStage,
@@ -16,6 +17,7 @@ import type {
 } from "@bastra-recall/core";
 import { routeRetrieval, routeQueryArms, type QueryRoute } from "@bastra-recall/core";
 import { fireAndForget, type Telemetry } from "./telemetry.js";
+import { telemetryCandidatePool, type TelemetryPoolCandidate } from "./training-signal.js"; // #1128-capture
 import { isOffValue } from "./env.js";
 import { computeSalienceShadow } from "./salience-shadow.js";
 import { computeTrustShadow, trustRankMode, usageForShadow } from "./trust-shadow.js";
@@ -310,9 +312,9 @@ export async function runHookRecall(
         configuredLang: sharedRecallLang ?? null,
       });
       // #121: capture the deeper candidate pool (incl. below-floor) for the far slice.
-      let candidatePool: { id: string; score: number }[] = [];
-      const onQueryCandidatePool = (pool: { id: string; score: number }[]): void => {
-        candidatePool = pool.map((h) => ({ id: h.id, score: h.score }));
+      let candidatePool: TelemetryPoolCandidate[] = [];
+      const onQueryCandidatePool = (pool: RecallHit[]): void => {
+        candidatePool = telemetryCandidatePool(pool, vault); // #1128-capture
       };
       const tRecall0 = Date.now();
       // #362 Phase 0: Wie lange blockiert der synchrone lexikalische Arm den

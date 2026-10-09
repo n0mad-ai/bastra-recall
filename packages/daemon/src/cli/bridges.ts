@@ -48,6 +48,7 @@ import { runInBandMint, readLastMint, recordHarvestRun, LAST_MINT_FILE, memoryTe
 import { contributionVerdict, verifyBridges, STRATA, SERVING_K, type VerifyReport } from "../learned-recall/verify.js";
 import { ollamaChat, listOllamaModels, resolveRerankModel } from "../learned-recall/reranker.js";
 import { isSupportedLanguage, SUPPORTED_LANGUAGES } from "../learned-recall/language.js";
+import { recordRerankVerdicts, type RerankVerdict } from "../training-signal.js"; // #1128-capture
 
 /** #648: the local pool (`bridges/`, `last-mint.json`) is per-box state and
  *  lives in its own directory, not inside the git checkout of the shared
@@ -323,9 +324,12 @@ export async function cmdBridges(opts: { sub: string | null; positional?: string
       // Tokens. In 4096 schneidet Ollama vorn ab — also Query und Top-
       // Kandidaten — und `parseRerankAnswer(answer, 80)` mintet die Bridge
       // stillschweigend aus der beschnittenen Liste.
+      const verdicts: RerankVerdict[] = []; // #1128-capture
       const result = await harvestFarBridges(pools, getMemoryInfo, ollamaChat({ model, numCtx: 8192 }), {
         onProgress: (done, total) => process.stderr.write(`  judged ${done}/${total}\r`),
+        onVerdict: (verdict) => verdicts.push(verdict), // #1128-capture
       });
+      await recordRerankVerdicts(verdicts, model); // #1128-capture
       // Same evidence gate as the in-band mint (#672: a first judged reach is
       // written unconfirmed; the next mint pass expires it unless confirmed).
       const written = await writeBridges(

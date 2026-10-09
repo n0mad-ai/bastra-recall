@@ -165,6 +165,16 @@ export class Telemetry {
     this.joins.recordHookHints(recall_id, hits);
   }
 
+  /** #1128-capture: see `JoinState.recordRecallHits`. */
+  recordRecallHits(recall_id: string, hits: Array<{ id: string }>): void {
+    this.joins.recordRecallHits(recall_id, hits);
+  }
+
+  /** #1128-capture: see `JoinState.findRecallFor`. */
+  findRecallFor(id: string): { recall_id: string; rank: number } | null {
+    return this.joins.findRecallFor(id);
+  }
+
   /** Usage moment "surfaced" (#154) — fed by POST /hook/hinted with the ids a
    *  hook ACTUALLY injected after its client-side filtering. */
   recordSurfacedUsage(ids: string[]): void {

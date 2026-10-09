@@ -1,6 +1,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { TelemetryEvent } from "./telemetry-events.js";
+import { evalRunMark } from "./training-signal.js"; // #1128-capture
 
 /**
  * The event log sink of `Telemetry`: one `events-YYYY-MM-DD.jsonl` per UTC day
@@ -28,7 +29,8 @@ export class EventSink {
       await this.ensureDir();
       const day = event.ts.slice(0, 10);
       const file = join(this.logDir, `events-${day}.jsonl`);
-      await appendFile(file, JSON.stringify(event) + "\n", "utf8");
+      // #1128-capture: a row a measurement run wrote says so.
+      await appendFile(file, JSON.stringify({ ...event, ...evalRunMark(event) }) + "\n", "utf8");
     } catch (err) {
       // Telemetry must never break a tool call.
       console.error(`[bastra-recall] telemetry write failed: ${(err as Error).message}`);

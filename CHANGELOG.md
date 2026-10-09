@@ -20,6 +20,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Training signal capture, a temporary tool for #1128.** Step 0 of the
+  local fine-tuning evaluation needs data the daemon did not keep. Without any
+  switch, the local event log gains ids, hashes and ranks only, never text:
+  each `candidate_pool` entry of `recall` / `hook_recall` carries a
+  `content_hash` of the note and its rank in the keyword and the vector arm;
+  `load_memory` names the recall that actually served the note (`from_recall`,
+  `recall_rank`; the time-window link `follows_recall` stays); rows written by
+  a measurement run carry `eval_run: true` (`client: "eval"` or
+  `BASTRA_EVAL_RUN=1`); and `bastra bridges harvest` writes one
+  `rerank_verdict` row per judged question. With `BASTRA_TRAINING_CAPTURE=1`
+  (off by default) the daemon also keeps the texts its draft check judges,
+  with the verdicts, in `training-capture.jsonl` beside the event log (0600,
+  never in the vault, never sent anywhere, not touched by log retention), and
+  asks the local model about every new draft in shadow, with no effect on
+  which drafts become notes. Private notes never reach that file. The whole
+  feature will be removed once #1128 no longer needs it. See
+  [training signal capture](docs/training-capture.md).
 - **Save notice in Claude Code.** After `save_memory`, `edit_memory`,
   `save_document` and `save_product_doc` Recall prints one line under the
   collapsed "Called bastra-recall": the action, the title, the type and, where

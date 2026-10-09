@@ -10,6 +10,9 @@ import { withPathLock } from "./path-lock.js";
 import { storedQuoteScorer } from "./harvest-vault-match.js";
 import { envOff } from "./env.js";
 import { logDirFor } from "./telemetry.js";
+import { noteJudgeText } from "./draft-judge.js"; // #1128-capture
+import type { TrainingItem } from "./training-capture.js"; // #1128-capture
+import { evalRunMark } from "./training-signal.js"; // #1128-capture
 
 export const DRAFT_SHADOW_DICE_MIN = 0.6;
 /** Unmeasured, logging only: low enough to expose the cosine distribution. */
@@ -44,6 +47,8 @@ export interface DraftShadowOptions {
   vault?: Vault;
   vaultVectors?: () => VaultVectorSnapshot | null;
   emit?: (event: DraftShadowEvent) => void;
+  /** #1128-capture: the texts behind a measured pair, for the opt-in local label store. Never telemetry. */
+  capturePair?: (pair: TrainingItem) => void;
   now?: number;
 }
 export interface DraftShadowResult {
@@ -133,6 +138,7 @@ async function persistCache(path: string, cache: VectorCache, now?: number): Pro
 export async function compareDraftPairs(
   drafts: Draft[], entries: ReadonlyMap<string, DraftVectorEntry>, pending: ReadonlySet<string>,
   emit: (event: DraftShadowEvent) => void,
+  capturePair?: (pair: TrainingItem) => void, // #1128-capture
 ): Promise<number> {
   const grams = new Map(drafts.map(row => [row.id, bigramSet(row.quote)]));
   const sessions = new Map(drafts.map(row => [row.id, new Set(row.evidence.map(e => e.session_id))]));
@@ -151,6 +157,7 @@ export async function compareDraftPairs(
       const semantic = cosine(a.vector, b.vector);
       if (lexical >= DRAFT_SHADOW_DICE_MIN || semantic >= DRAFT_SHADOW_COSINE_MIN) {
         emit({ kind: "draft_repeat_shadow", draft_id: row.id, other_draft_id: other.id, dice: lexical, cosine: semantic });
+        capturePair?.({ type: "relation", a: row.quote, b: other.quote, b_is: "statement", source: "draft_repeat_shadow", dice: lexical, cosine: semantic }); // #1128-capture
         count++;
       }
     }
@@ -167,7 +174,7 @@ async function writeEvents(events: DraftShadowEvent[]): Promise<void> {
   const path = join(dir, `events-${ts.slice(0, 10)}.jsonl`);
   let buffer = '';
   for (const event of events) {
-    buffer += JSON.stringify({ ...event, ts }) + '\n';
+    buffer += JSON.stringify({ ...event, ts, ...evalRunMark() }) + '\n';
     if (buffer.length >= 64 * 1024) { await appendFile(path, buffer, "utf8"); buffer = ''; }
   }
   if (buffer) await appendFile(path, buffer, "utf8");
@@ -222,7 +229,7 @@ export async function runDraftShadow(opts: DraftShadowOptions): Promise<DraftSha
         if (opts.emit) opts.emit(record);
         else events.push(record);
       };
-      result.pairs = await compareDraftPairs(drafts, cache.entries, pending, emit);
+      result.pairs = await compareDraftPairs(drafts, cache.entries, pending, emit, opts.capturePair);
       const pendingVault = new Set([...cache.entries].filter(([id, row]) => byId.get(id)?.state === "open" && !row.vaultMeasured).map(([id]) => id));
       const measuredVault: string[] = [];
       const snapshot = opts.vault && pendingVault.size > 0 ? opts.vaultVectors?.() : null;
@@ -244,6 +251,9 @@ export async function runDraftShadow(opts: DraftShadowOptions): Promise<DraftSha
             const privateNote = notes.get(nearest.id)!.fm.sensitivity === "private" || opts.vault.get(nearest.id)?.fm.sensitivity === "private";
             emit({ kind: "draft_vault_shadow", draft_id: id, memory_id: privateNote ? null : nearest.id,
               cosine: nearest.cosine, containment: score(draft.quote, nearest.id) });
+            // #1128-capture: a private note's text never reaches the label store.
+            if (!privateNote) opts.capturePair?.({ type: "relation", a: draft.quote, b: noteJudgeText(notes.get(nearest.id)!), b_is: "note", source: "draft_vault_shadow",
+              note_id: nearest.id, cosine: nearest.cosine, containment: score(draft.quote, nearest.id) });
             result.vaultMatches++;
             measuredVault.push(id);
           }

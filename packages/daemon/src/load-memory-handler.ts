@@ -114,6 +114,7 @@ export async function loadMemoryHandler(
   const fromCommons = !own && m !== undefined;
   const hookHint = deps.telemetry.findHookHintFor(parsed.data.id);
   const followsRecall = deps.telemetry.recentRecallId();
+  const servedBy = deps.telemetry.findRecallFor(parsed.data.id); // #1128-capture
   // #457: das Ereignis trägt die GELIEFERTE Größe, also erst nach der
   // Projektion — ein Load, der nichts liefert, trägt keine.
   const logLoad = (delivered?: {
@@ -128,6 +129,8 @@ export async function loadMemoryHandler(
         follows_recall: followsRecall,
         from_hook_recall: hookHint?.recall_id ?? null,
         hook_hint_rank: hookHint?.rank ?? null,
+        from_recall: servedBy?.recall_id ?? null, // #1128-capture
+        recall_rank: servedBy?.rank ?? null, // #1128-capture
         ...(delivered
           ? {
               delivered_chars: delivered.delivered_chars,
