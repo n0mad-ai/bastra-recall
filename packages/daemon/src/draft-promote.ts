@@ -242,7 +242,7 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
         : !compatible ? "vault-vector-model-mismatch" : !comparisonComplete ? "vault-vectors-incomplete" : selected.some(d => !validVector(vectors?.get(d.id), provider.dim)) ? "draft-vectors-missing"
         : opts.allowSharp === false ? "meaning-comparison-unavailable" : !sharp ? "dry-run" : null;
       // The strongest hit, not the first: the meaning check reads exactly one.
-      let duplicate: { id: string; text: string; cosine?: number; containment?: number } | undefined, best = 0;
+      let duplicate: { id: string; text: string; note?: boolean; cosine?: number; containment?: number } | undefined, best = 0;
       // Pure quote vectors survive closed draft state for the complete tombstone lifetime.
       if (provider) for (const closed of all) {
         if (closed.state === "open" || !closed.memory_id) continue;
@@ -262,11 +262,11 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
           const v = vectors?.get(source.id); if (validVector(v, provider.dim)) semantic = Math.max(semantic ?? -1, cosine(v, noteVectors!.get(note.fm.id)!));
         }
         const score = Math.max(containment >= STORED_CONTAINMENT_MIN ? 1 + containment : 0, semantic !== undefined && semantic >= DRAFT_VAULT_COSINE_MIN ? semantic : 0);
-        if (score > best) { best = score; duplicate = { id: note.fm.id, text: noteJudgeText(note), containment, cosine: semantic }; }
+        if (score > best) { best = score; duplicate = { id: note.fm.id, text: noteJudgeText(note), note: true, containment, cosine: semantic }; }
         if (++comparisons % YIELD_EVERY === 0) await setImmediate();
       }
       // The model is asked only when the pass could write or is the plain dry
-      // run, after the cheap gates, outside every lock; at most three calls.
+      // run, after the cheap gates, outside every lock; at most four calls.
       const judging = !gateReason || gateReason === "dry-run", spent: { ms?: number } = {};
       const judged: Pick<DraftPromotionEvent, "judge_statement" | "judge_repeat" | "judge_note"> = {};
       const verdicts = () => judging ? { ...judged, ...(judge ? { judge_model: judge.model } : {}), ...(spent.ms === undefined ? {} : { judge_ms: spent.ms }) } : {};
@@ -286,6 +286,12 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
           continue;
         }
         if (judged.judge_note === "different") duplicate = undefined;
+        // The verdict is about the text that was read. A note rewritten while
+        // the model answered gets no closing from it; the next pass asks again.
+        else if (duplicate.note) {
+          const current = opts.vault.get(duplicate.id);
+          if (!current || noteJudgeText(current) !== duplicate.text) { await hold("meaning-check-unavailable"); continue; }
+        }
       }
       if (duplicate) {
         if (!gateReason) {
@@ -311,6 +317,9 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
         if (kind !== "durable") { await hold(kind === "none" ? "meaning-check-unavailable" : "not-durable-statement"); continue; }
         // One row seen in two sessions, or two rows with one fingerprint, is verbatim.
         if (new Set(selected.map(d => d.fp)).size > 1) {
+          // Both quotes end up in the note, so the second one is classified too.
+          const partner = await ask(statementPrompt(selected[1].quote), STATEMENT_KINDS, spent);
+          if (partner !== "durable") { await hold(partner === "none" ? "meaning-check-unavailable" : "not-durable-statement"); continue; }
           judged.judge_repeat = await ask(relationPrompt(selected[0].quote, selected[1].quote), RELATIONS, spent);
           if (judged.judge_repeat !== "same") { await hold(judged.judge_repeat === "none" ? "meaning-check-unavailable" : "repeat-not-same-statement"); continue; }
         }

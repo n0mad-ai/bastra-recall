@@ -57,7 +57,7 @@ export const DEFAULT_NUM_CTX = 4096;
 
 /** A live Ollama chat client (POST /api/chat, non-streaming). */
 export function ollamaChat(
-  opts: { baseURL?: string; model?: string; timeoutMs?: number; numCtx?: number } = {},
+  opts: { baseURL?: string; model?: string; timeoutMs?: number; numCtx?: number; redirect?: "follow" | "error" } = {},
 ): ChatFn {
   const baseURL = (opts.baseURL ?? process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434").replace(/\/+$/, "");
   assertLocalOrOptIn(baseURL);
@@ -85,6 +85,9 @@ export function ollamaChat(
           options: { temperature: 0, num_ctx: numCtx },
         }),
         signal: ctrl.signal,
+        // The base URL was checked, a redirect target was not: a caller that
+        // must stay on loopback refuses to follow one.
+        redirect: opts.redirect ?? "follow",
       });
       if (!resp.ok) throw new Error(`Ollama chat HTTP ${resp.status}`);
       const json = (await resp.json()) as { message?: { content?: string } };

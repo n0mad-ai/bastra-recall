@@ -635,7 +635,7 @@ for (const relation of ["contradiction", "different"]) test(`judge: two wordings
   const events = await reasons(emit => runDraftPromote({ provider, ollama: local, judge: asked, vault, vaultVectors: vectors(vault, provider), emit }));
   assert.equal(vault.size(), 0); assert.ok((await listDrafts()).every(draft => draft.state === "open"));
   assert.deepEqual(events.map(e => [e.kind, e.reason, e.judge_statement, e.judge_repeat]), [["draft_would_block", "repeat-not-same-statement", "durable", relation]]);
-  assert.equal(asked.prompts.length, 2); assert.ok(asked.prompts[1].includes(JSON.stringify(first)) && asked.prompts[1].includes(JSON.stringify(paraphrase)));
+  assert.equal(asked.prompts.length, 3, "kind of both quotes, then their relation"); assert.ok(asked.prompts[2].includes(JSON.stringify(first)) && asked.prompts[2].includes(JSON.stringify(paraphrase)));
 }));
 
 test("judge: a contradicted existing note is neither closed as duplicate nor promoted over", () => isolated(async (vault, _dir, vaultId) => {
@@ -699,14 +699,14 @@ test("judge: an unchanged candidate is never asked twice; a changed draft is; a 
   const provider = providerFor(text => text.includes("crane") ? new Float32Array([0, 1]) : text.includes("turbine") ? new Float32Array([-1, 0]) : new Float32Array([1, 0]));
   const asked = judgeFor(); await runDraftShadow({ provider, ollama: local, vault });
   const options = { provider, ollama: local, judge: asked, vault, vaultVectors: vectors(vault, provider), emit: () => {} };
-  assert.equal((await runDraftPromote(options)).wouldPromote, 1); assert.equal(asked.prompts.length, 2);
-  await runDraftPromote(options); assert.equal(asked.prompts.length, 2, "same state: the pass is skipped");
+  assert.equal((await runDraftPromote(options)).wouldPromote, 1); assert.equal(asked.prompts.length, 3);
+  await runDraftPromote(options); assert.equal(asked.prompts.length, 3, "same state: the pass is skipped");
   // Another draft changes the pass state; the old pair keeps its stored verdicts.
   await captureDraft(row("The fixture harbour crane needs a certified quartz operator on duty.", "three", vaultId)); await runDraftShadow({ provider, ollama: local, vault });
-  assert.equal((await runDraftPromote(options)).wouldPromote, 1); assert.equal(asked.prompts.length, 2, "stored verdicts answer the rerun");
+  assert.equal((await runDraftPromote(options)).wouldPromote, 1); assert.equal(asked.prompts.length, 3, "stored verdicts answer the rerun");
   await captureDraft(row("The fixture harbour crane needs a certified quartz operator on duty.", "four", vaultId));
-  await runDraftPromote(options); assert.equal(asked.prompts.length, 3, "a new candidate is asked once");
-  assert.ok(asked.prompts[2].includes("quartz operator"));
+  await runDraftPromote(options); assert.equal(asked.prompts.length, 4, "a new candidate is asked once");
+  assert.ok(asked.prompts[3].includes("quartz operator"));
 
   const failing = { model: "failing-chat", calls: 0, chat: async (): Promise<string> => { failing.calls++; return "no idea"; } };
   const retry = { ...options, judge: failing };
@@ -722,7 +722,7 @@ test("judge: the dry run asks the model, logs classes only and writes neither va
   const provider = providerFor(), asked = judgeFor(); await runDraftShadow({ provider, ollama: local, vault });
   const before = await tree(vault.root), drafts = await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8");
   const result = await runDraftPromote({ provider, ollama: local, judge: asked, vault, vaultVectors: vectors(vault, provider) });
-  assert.equal(result.wouldPromote, 1); assert.equal(asked.prompts.length, 2);
+  assert.equal(result.wouldPromote, 1); assert.equal(asked.prompts.length, 3);
   assert.deepEqual(await tree(vault.root), before); assert.equal(await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8"), drafts);
   const log = (await Promise.all((await readdir(join(dir, "logs"))).map(path => readFile(join(dir, "logs", path), "utf8")))).join("\n");
   const event = JSON.parse(log.trim().split("\n").at(-1)!);
@@ -744,4 +744,29 @@ test("judge: an unjudged sharp pass keeps the harvest relay", () => isolated(asy
     assert.equal(result?.promotion.promoted, 0); assert.equal(result?.promotion.unjudged, 1); assert.equal(vault.size(), 0);
     assert.ok(result!.relayed > 0); assert.match(await readFile(process.env.BASTRA_PENDING_SUGGESTIONS_PATH!, "utf8"), /isolated amber database/);
   } finally { search.stop(); }
+}));
+
+test("judge: a one-time request repeated beside a durable wording is not promoted with it", () => isolated(async (vault, _dir, vaultId) => {
+  await captureDraft(row(first, "one", vaultId)); await captureDraft(row(paraphrase, "two", vaultId));
+  const provider = providerFor(), prompts: string[] = []; await runDraftShadow({ provider, ollama: local, vault });
+  const mixed = { model: "fixture-chat", chat: async (prompt: string) => { prompts.push(prompt); return !prompt.startsWith("Classify") ? "same" : prompts.length === 1 ? "durable" : "request"; } };
+  const events = await reasons(emit => runDraftPromote({ provider, ollama: local, judge: mixed, vault, vaultVectors: vectors(vault, provider), emit }));
+  assert.equal(vault.size(), 0); assert.ok((await listDrafts()).every(draft => draft.state === "open"));
+  assert.deepEqual(events.map(e => [e.kind, e.reason]), [["draft_would_block", "not-durable-statement"]]);
+  assert.equal(prompts.length, 2, "the relation is not asked once a quote is no durable statement");
+}));
+
+test("judge: a note rewritten while the model answered is not used to close the drafts", () => isolated(async (vault, _dir, vaultId) => {
+  await existingNote(vault, "stored-fact", "Fixture deployments use a separate amber database for every release."); await repeat(vaultId);
+  const provider = providerFor(); await runDraftShadow({ provider, ollama: local, vault });
+  // The answer is right for the text that was read; the note says the opposite by the time it arrives.
+  const slow = { model: "fixture-chat", chat: async (prompt: string) => {
+    if (!prompt.startsWith("Classify")) await existingNote(vault, "stored-fact", "Fixture deployments share one amber database across every release.");
+    return prompt.startsWith("Classify") ? "durable" : "same";
+  } };
+  let result!: Awaited<ReturnType<typeof runDraftPromote>>;
+  const events = await reasons(async emit => { result = await runDraftPromote({ provider, ollama: local, judge: slow, vault, vaultVectors: vectors(vault, provider), emit }); });
+  assert.equal(result.duplicates, 0); assert.equal(result.promoted, 0);
+  const draft = (await listDrafts())[0]; assert.equal(draft.state, "open"); assert.equal(draft.memory_id, undefined);
+  assert.deepEqual(events.map(e => [e.kind, e.reason]), [["draft_would_block", "meaning-check-unavailable"]]);
 }));

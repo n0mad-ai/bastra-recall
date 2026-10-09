@@ -13,13 +13,14 @@ export interface DraftJudge { model: string; chat: ChatFn }
 export const DRAFT_JUDGE_RETRY_MS = 60 * 60_000;
 const NOTE_BODY_MAX = 1200;
 
-/** Same strict rule as localDraftProvider: loopback only, no remote opt-in. */
+/** Same strict rule as localDraftProvider: loopback only, no remote opt-in.
+ * A redirect would carry the whole prompt to another host, so none is followed. */
 export function localDraftJudge(ollama: { baseURL: string } | null, model: string): DraftJudge | null {
   if (!ollama) return null;
   try {
     const url = new URL(ollama.baseURL);
     if (!["http:", "https:"].includes(url.protocol) || !isLoopbackHost(url.hostname.toLowerCase())) return null;
-    return { model, chat: ollamaChat({ baseURL: ollama.baseURL, model }) };
+    return { model, chat: ollamaChat({ baseURL: ollama.baseURL, model, redirect: "error" }) };
   } catch { return null; }
 }
 
