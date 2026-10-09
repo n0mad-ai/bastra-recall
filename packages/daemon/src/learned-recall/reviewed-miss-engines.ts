@@ -49,6 +49,12 @@ export interface TelemetryPool {
   scoreSpace: CandidatePoolScoreSpace;
   vaultSize: number;
   k: number | null;
+  /**
+   * The batch width (`query_count`) when this recall is one phrasing of a
+   * batch, else null. The width is all an event says about its batch: no
+   * field names the other phrasings.
+   */
+  batchOf: number | null;
 }
 
 /** A `load_memory` telemetry event, the hook lane's evidence step. */
@@ -154,6 +160,7 @@ export async function loadTelemetry(dir: string, options: { sinceMs?: number } =
         scoreSpace,
         vaultSize: typeof event.vault_size === "number" ? event.vault_size : 0,
         k: typeof event.k === "number" ? event.k : null,
+        batchOf: typeof event.query_count === "number" ? event.query_count : null,
       });
     }
   }

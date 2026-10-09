@@ -105,6 +105,25 @@ test("batch recall: one phrasing without a recorded pool proves nothing about th
   }
 });
 
+test("hook lane: a load after a batch recall is not judged against the one phrasing it is linked to", async () => {
+  // The daemon's own shapes: each phrasing's event carries the batch width, and
+  // the load is linked to one of them — here the one that did not serve it.
+  const loadEvent = line({ kind: "load_memory", ts: later(1), session_id: "run-1", id: "served-one", found: true, follows_recall: "r2" });
+  const hookLane = async (recalls: string[]): Promise<{ classes: string[]; targets: string[]; gaps: string[] }> => {
+    const { dir, eventsDir, engines } = await world([...recalls, loadEvent]);
+    try {
+      const lanes = observeLanes([], await loadTelemetry(eventsDir), engines, { hookLane: true, hubSessions: 3 });
+      return { classes: lanes.hook.records.map((record) => record.classification), targets: lanes.proposals.map((p) => p.targetId), gaps: lanes.gaps.map((gap) => gap.kind) };
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  };
+  const batch = TWO_POOLS.map((event) => line({ ...JSON.parse(event), query_count: 2 }));
+  assert.deepEqual(await hookLane(batch), { classes: [], targets: [], gaps: ["batch-link-without-sibling-pools"] });
+  // Control: the same two recalls, not a batch — the linked pool is the pool, and the load is judged.
+  assert.deepEqual(await hookLane(TWO_POOLS), { classes: ["genuine-out-of-pool"], targets: ["served-one"], gaps: [] });
+});
+
 test("two recalls in one assistant message: both are counted, and a load is judged against both pools", async () => {
   const { dir, engines } = await world(TWO_POOLS);
   try {
