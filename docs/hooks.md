@@ -923,17 +923,47 @@ accept U+200B/U+200D/U+2060 before the tag. Inline and backtick quotations stay
 human text. Both cmux senders must use the [marked sender](./agent-messages.md).
 
 **Credential coverage and limits.** Structural redaction covers the supported
-assignment/JSON/query/flag syntax, PSK_KEY/psk1/wifi_key aliases, curl `-u`/`--user`
-userinfo, `wpa_passphrase`'s key argument, line-start `wpa-psk`, nmcli
+assignment/JSON/query/flag syntax, PSK_KEY/psk1/wifi_key aliases, curl userinfo,
+`wpa_passphrase`'s key argument, line-start `wpa-psk`, nmcli
 wifi-sec.psk/802-11-wireless-security.psk, `-psk`, `pre-shared-key`, IPsec `: PSK`,
-and `<psk>`/`<keyMaterial>` values. Bare PSK assignment passphrases extend to the
-line/field boundary; quoted values and existing continuations retain their parser.
-The explicitly supported prose bindings are German PSK/Pre-Shared-Key
-“ist/lautet” and English “is”. This is not a language-general prose detector.
-Benign PSK booleans/mode questions and supported references stay readable.
+and `<psk>`/`<keyMaterial>` values. Benign PSK booleans/mode questions and
+supported references (`$NAME`, paths, `{{ … }}` inside the XML tags) stay readable.
+
+Assignment forms at the key name (`psk=…`, `PSK_KEY=…`, `psk: "…"`,
+`<psk>…</psk>`) redact to the end of the value; a bare multi-word passphrase
+extends to the line/field boundary, quoted values and existing continuations
+retain their parser.
+
+Prose and forms without `=` redact only a value that looks like a secret. These
+are the German PSK/Pre-Shared-Key bindings “ist/lautet”, the English “is”,
+`: PSK X`, `-psk X`, line-start `wpa-psk X`, the two nmcli fields and
+`pre-shared-key X`. A value looks like a secret when it is quoted, or when the
+single token directly after the binding has letters with a digit or one of
+`!#$%*+^~?`, two or more lower-to-upper changes, or at least eight digits.
+**A word-only passphrase in prose stays readable** (“Der PSK lautet
+kartoffelsalat”, “the PSK is blauer elefant tanzt”), and so does a key that
+follows another word (“Der PSK ist jetzt sommerhaus2019”). This is the chosen
+boundary: the same rule is what leaves “Der PSK ist abgelaufen.” and
+“TODO: PSK rotieren” intact. It is not a language-general prose detector.
+`pre-shared-key` inspects up to five following tokens, so vendor sub-keywords
+stay and the key goes (`pre-shared-key local …`,
+`pre-shared-key address 0.0.0.0 0.0.0.0 key …`, `pre-shared-key ascii-text "…"`).
+`wpa_passphrase <ssid> <key>` redacts the key position whatever its shape, but
+only when exactly these two arguments are followed by the line end or a shell
+operator; `wpa_passphrase net | tee file` keeps its pipe.
+
+curl userinfo is redacted for `-u`, `--user`, `--proxy-user`/`-U`, bundled short
+options ending in `u` (`-su`, `-sSLu`), the attached `-uname:pw`, `curl.exe`,
+backslash-continued lines, and calls inside `$(…)`, backticks or a quoted
+`sh -c "…"`. It only counts as an argument of the curl call itself: from `curl`
+onwards only options, one operand per option, quoted strings and URL-like
+operands may precede it, so `docker run -u 1000:1000` later in the same prose
+line is untouched. Not covered: a value attached to a bundle
+(`curl -sufixture:pw`) and other clients' flags (`http -a user:pw`).
 
 Deliberately unsupported: netsh keyMaterial assignments, Cisco `crypto isakmp key`,
-OpenWrt `option key`, German WLAN-Passwort/WLAN-Schlüssel labels, parenthesized PSK
+OpenWrt `option key`, nmcli `wifi connect … password …`, German
+WLAN-Passwort/WLAN-Schlüssel labels, parenthesized PSK
 prose, PSK arrows, Markdown tables/bold PSK labels, Wi-Fi QR strings and fullwidth
 colons. Generic entropy scanning may remove a particular value there, but no full
 redaction guarantee is made. Never paste real keys into prompts expecting this
@@ -941,7 +971,8 @@ filter to make them safe. Rotation and owner-reviewed repair are still needed if
 real key was stored; no automatic vault/audit/transcript/backups repair is performed.
 During an ordinary local store write, credential-bearing command values are also
 removed from derived legacy literal/novel/matched fields when their source context
-identifies them. Bare old secrets without recognizable source context remain a
+identifies them; the comparison ignores case, because derived tokens are stored
+lower-cased. Bare old secrets without recognizable source context remain a
 limit. Existing promoted notes and audit history are not rewritten.
 Both limits evict unshown single-evidence open drafts first, then other open
 drafts, and closed tombstones last; oldest within each group goes first.
@@ -1180,11 +1211,13 @@ Known secret-redaction limits can put **plaintext secrets in the vault**: title,
 summary, triggers, body and `.bastra/audit-log.ndjson`. Undo removes the note but
 **does not remove its audit history**. Observed boundary forms: `--password=/…`,
 URL userinfo with special characters, “the password is …”, “die PIN ist …”, `pw=…`,
-`mysqldump -p…`, `curl -u user:…`, `redis-cli -a …`, `password=$…`, `--password-stdin`
-with `echo`, `user:pass@host` in scp, `secret_key_base: …`, `credentials: …`.
+`mysqldump -p…`, `redis-cli -a …`, `password=$…`, `--password-stdin`
+with `echo`, `user:pass@host` in scp, `secret_key_base: …`, `credentials: …`, and a
+word-only PSK passphrase in prose (“the PSK is blauer elefant tanzt”).
 The review also observed an unredacted password becoming a word cue in 1/15
 cases at the known German “das Passwort ist …” boundary.
-The fixed redaction corpus remains the standard; its filter was not changed here.
+The fixed redaction corpus remains the standard; PSK and curl forms are listed
+under “Credential coverage and limits”.
 The operator decides whether to enable sharp mode with these known limits. Default remains probe.
 The routine guard remains weak: the independent reviewer corpus would promote
 10/15 routine sentences and 15/15 orders, while holding 0/15 factual statements.
@@ -2507,10 +2540,12 @@ An den bekannten Grenzen des Schwärz-Filters können **Geheimnisse im Klartext 
 Vault erreichen**: Titel, Zusammenfassung, Auslöser, Text und
 `.bastra/audit-log.ndjson`. Undo entfernt die Notiz, **nicht die Audit-Historie**.
 Beobachtet für: `--password=/…`, URL-Userinfo mit Sonderzeichen, „the password is …“,
-„die PIN ist …“, `pw=…`, `mysqldump -p…`, `curl -u user:…`, `redis-cli -a …`,
+„die PIN ist …“, `pw=…`, `mysqldump -p…`, `redis-cli -a …`,
 `password=$…`, `--password-stdin` mit `echo`, `user:pass@host` bei scp,
-`secret_key_base: …`, `credentials: …`. Der Filter bleibt am festen Korpus gemessen
-und wurde hier nicht verändert. Zusätzlich wurde bei „das Passwort ist …“ in
+`secret_key_base: …`, `credentials: …` sowie eine reine Wort-Passphrase in
+PSK-Prosa („der PSK lautet blauer elefant tanzt“). Der Filter bleibt am festen
+Korpus gemessen; PSK- und curl-Formen stehen unter „Schwärzung und ihre Grenzen“.
+Zusätzlich wurde bei „das Passwort ist …“ in
 1/15 Fällen ein ungeschwärztes Passwort zum Wort-Auslöser.
 Ob scharf geschaltet wird, entscheidet der Betreiber.
 Standard bleibt der Probelauf. Der Routineschutz ist schwach: Im unabhängigen
@@ -2552,17 +2587,48 @@ auf die Antwort. Ansage und protokollierte Lifecycle-Zahlen stehen unten.
 #### Schwärzung und ihre Grenzen
 
 Unterstützt sind die belegten Zuweisungs-/JSON-/Query-/Flag-Formen, PSK_KEY/psk1/
-wifi_key, curl `-u`/`--user`, der Schlüsselparameter von `wpa_passphrase`,
+wifi_key, curl-Userinfo, der Schlüsselparameter von `wpa_passphrase`,
 `wpa-psk` am Zeilenanfang, die nmcli-Felder wifi-sec.psk und
 802-11-wireless-security.psk, `-psk`, `pre-shared-key`, IPsec `: PSK` sowie
-`<psk>`/`<keyMaterial>`. Unquotierte PSK-Passphrasen werden bis zur Zeilen-/Feldgrenze
-geschwärzt; quotierte Werte und bestehende Fortsetzungen nutzen denselben Parser.
-Für Prosa sind ausdrücklich deutsche PSK/Pre-Shared-Key-Bindungen mit „ist/lautet“
-und englische mit „is“ belegt. Das ist keine allgemeine mehrsprachige Prosa-Erkennung.
-Harmlose Boolean-/Modusfragen und unterstützte Referenzen bleiben lesbar.
+`<psk>`/`<keyMaterial>`. Harmlose Boolean-/Modusfragen und unterstützte Referenzen
+(`$NAME`, Pfade, `{{ … }}` in den XML-Tags) bleiben lesbar.
+
+Zuweisungen direkt am Schlüsselnamen (`psk=…`, `PSK_KEY=…`, `psk: "…"`,
+`<psk>…</psk>`) werden bis zum Wertende geschwärzt; eine unquotierte Passphrase
+aus mehreren Wörtern reicht bis zur Zeilen-/Feldgrenze, quotierte Werte und
+bestehende Fortsetzungen nutzen denselben Parser.
+
+Prosa und Formen ohne `=` schwärzen nur einen Wert, der wie ein Geheimnis
+aussieht. Das sind die deutschen PSK/Pre-Shared-Key-Bindungen mit „ist/lautet“,
+die englische mit „is“, `: PSK X`, `-psk X`, `wpa-psk X` am Zeilenanfang, die
+beiden nmcli-Felder und `pre-shared-key X`. Wie ein Geheimnis sieht ein Wert aus,
+wenn er in Anführungszeichen steht oder wenn das eine Token direkt nach der
+Bindung Buchstaben mit einer Ziffer oder einem der Zeichen `!#$%*+^~?` enthält,
+mindestens zwei Wechsel von Klein- zu Großbuchstaben hat oder aus mindestens acht
+Ziffern besteht. **Eine reine Wort-Passphrase in Prosa bleibt lesbar** („Der PSK
+lautet kartoffelsalat“, „the PSK is blauer elefant tanzt“), ebenso ein Schlüssel
+hinter einem weiteren Wort („Der PSK ist jetzt sommerhaus2019“). Das ist die
+bewusst gewählte Grenze: Dieselbe Regel lässt „Der PSK ist abgelaufen.“ und
+„TODO: PSK rotieren“ unverändert. Das ist keine allgemeine mehrsprachige
+Prosa-Erkennung. `pre-shared-key` prüft bis zu fünf folgende Tokens; Unterwörter
+der Hersteller bleiben, der Schlüssel wird geschwärzt (`pre-shared-key local …`,
+`pre-shared-key address 0.0.0.0 0.0.0.0 key …`, `pre-shared-key ascii-text "…"`).
+`wpa_passphrase <ssid> <key>` schwärzt die Schlüsselposition unabhängig von der
+Form, aber nur wenn auf genau diese zwei Argumente das Zeilenende oder ein
+Shell-Operator folgt; bei `wpa_passphrase net | tee datei` bleibt die Pipe stehen.
+
+curl-Userinfo wird geschwärzt bei `-u`, `--user`, `--proxy-user`/`-U`, gebündelten
+Kurzoptionen mit `u` am Ende (`-su`, `-sSLu`), angehängtem `-uname:pw`, `curl.exe`,
+mit `\` fortgesetzten Zeilen sowie Aufrufen in `$(…)`, Backticks oder einem
+quotierten `sh -c "…"`. Sie zählt nur als Argument des curl-Aufrufs selbst: Ab
+`curl` dürfen davor nur Optionen, je Option ein Operand, quotierte Zeichenketten
+und URL-artige Operanden stehen; ein `docker run -u 1000:1000` später in derselben
+Prosazeile bleibt unberührt. Nicht abgedeckt: ein an ein Bündel angehängter Wert
+(`curl -sufixture:pw`) und Optionen anderer Clients (`http -a user:pw`).
 
 Bewusst nicht abgedeckt: netsh-keyMaterial-Zuweisungen, Cisco `crypto isakmp key`,
-OpenWrt `option key`, deutsche WLAN-Passwort/WLAN-Schlüssel-Bezeichnungen,
+OpenWrt `option key`, nmcli `wifi connect … password …`, deutsche
+WLAN-Passwort/WLAN-Schlüssel-Bezeichnungen,
 PSK in Klammer-Prosa, PSK-Pfeile, Markdown-Tabellen/fett gesetzte PSK-Bezeichnungen,
 Wi-Fi-QR-Zeichenfolgen und Vollbreiten-Doppelpunkte. Der allgemeine Entropiefilter
 kann einzelne Werte dort entfernen, garantiert aber keine vollständige Schwärzung.
@@ -2570,7 +2636,8 @@ Echte Schlüssel nicht in Prompts kopieren und auf den Filter vertrauen. Wurde e
 Schlüssel gespeichert, ersetzen/widerrufen und den Altbestand als Eigentümer prüfen.
 Keine automatische Vault-/Audit-/Transcript-/Backup-Reparatur. Beim normalen Schreiben
 werden auch aus erkennbarem Credential-Kontext stammende alte Literal-/Novel-/Matched-
-Werte bereinigt; alte nackte Werte ohne erkennbaren Ursprung bleiben eine Grenze.
+Werte bereinigt (Vergleich ohne Groß-/Kleinschreibung, weil abgeleitete Tokens
+kleingeschrieben gespeichert sind); alte nackte Werte ohne erkennbaren Ursprung bleiben eine Grenze.
 Bereits beförderte Notizen und Audit-Verlauf werden nicht umgeschrieben.
 
 Werkzeughüllen umfassen auch bash-stderr/local-command-stderr und stdout/stderr-Paare.

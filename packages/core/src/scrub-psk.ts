@@ -12,11 +12,26 @@ export function pskLineEnd(text:string,start:number):number {
   }
   return text.length;
 }
-export function scanPskForms(text:string,markPsk:(start:number,wholeLine?:boolean)=>number,mark:(start:number,length:number)=>void,isReference:(value:string)=>boolean):void {
-  for(const m of text.matchAll(/(?:^|[\s;])(?:wifi-sec\.psk|802-11-wireless-security\.psk|-psk|pre-shared-key)[ \t]+/gi))markPsk(m.index!+m[0].length);
-  for(const m of text.matchAll(/(?:^|\r?\n)[ \t]*wpa-psk[ \t]+/gi))markPsk(m.index!+m[0].length);
-  for(const m of text.matchAll(/\bwpa_passphrase[ \t]+(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s]+)[ \t]+/gi))markPsk(m.index!+m[0].length);
-  for(const m of text.matchAll(/:[ \t]*PSK[ \t]+/gi))markPsk(m.index!+m[0].length,true);
+/** A lone token that reads as a key rather than a word: letters with a digit
+ * or symbol, two or more lower-to-upper changes, or at least eight digits. */
+export function secretShaped(value:string):boolean {
+  if(/^\d+$/.test(value))return value.length>=8;
+  return /\p{L}/u.test(value)&&(/[\d!#$%*+^~?]/.test(value)||(value.match(/\p{Ll}\p{Lu}/gu)?.length??0)>=2);
+}
+/** `markLoose` redacts only quoted or secret-shaped tokens (prose and commands
+ * without `=`); `markKey` redacts a fixed argument position whatever its shape. */
+export function scanPskForms(text:string,markLoose:(start:number,tokens?:number)=>void,markKey:(start:number)=>void,mark:(start:number,length:number)=>void,isReference:(value:string)=>boolean):void {
+  for(const m of text.matchAll(/(?:^|[\s;])(?:wifi-sec\.psk|802-11-wireless-security\.psk|-psk)[ \t]+/gi))markLoose(m.index!+m[0].length);
+  // Vendor sub-keywords (`local`, `ascii-text`, `address <ip> <mask> key`) precede the key.
+  for(const m of text.matchAll(/(?:^|[\s;])pre-shared-key[ \t]+/gi))markLoose(m.index!+m[0].length,5);
+  for(const m of text.matchAll(/(?:^|\r?\n)[ \t]*wpa-psk[ \t]+/gi))markLoose(m.index!+m[0].length);
+  // Exactly `<ssid> <key>`: more words mean prose, a shell operator is not a key.
+  const commandEnd=/[ \t]*(?:$|[\r\n|;&>#)`])/my;
+  for(const m of text.matchAll(/(\bwpa_passphrase[ \t]+(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s|;&<>]+)[ \t]+)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s|;&<>"'`)]+)/gi)){
+    commandEnd.lastIndex=m.index!+m[0].length;
+    if(commandEnd.test(text))markKey(m.index!+m[1].length);
+  }
+  for(const m of text.matchAll(/:[ \t]*PSK[ \t]+/gi))markLoose(m.index!+m[0].length);
   // One failed closing-tag search per tag kind, not per repeated opener.
   const asciiLower=text.replace(/[A-Z]/g,c=>c.toLowerCase()),missing=new Set<string>();
   const tags=/<(psk|keyMaterial)>/gi;let opening:RegExpExecArray|null;
@@ -24,7 +39,8 @@ export function scanPskForms(text:string,markPsk:(start:number,wholeLine?:boolea
     const tag=opening[1].toLowerCase();if(missing.has(tag))continue;
     const start=opening.index+opening[0].length,close=`</${tag}>`,end=asciiLower.indexOf(close,start);
     if(end<0){missing.add(tag);continue;}
-    if(!isReference(text.slice(start,end).trim()))mark(start,end-start);
+    const value=text.slice(start,end).trim();
+    if(!isReference(value)&&!/^\{\{[^{}]*\}\}$/.test(value))mark(start,end-start);
     tags.lastIndex=end+close.length;
   }
   // DE ist/lautet and EN is are explicitly supported binding words. The
@@ -40,7 +56,7 @@ export function scanPskForms(text:string,markPsk:(start:number,wholeLine?:boolea
       if(verb==='ist'||verb==='lautet'||verb==='is'){
         let start=end;while(text[start]===' '||text[start]==='\t')start++;
         const colon=text[start]===':';if(colon){start++;while(text[start]===' '||text[start]==='\t')start++;}
-        if(start>end||colon)markPsk(start,true);
+        if(start>end||colon)markLoose(start);
         break;
       }
       pos=end;while(text[pos]===' '||text[pos]==='\t')pos++;

@@ -1,4 +1,4 @@
-import { pskLineEnd, scanPskForms } from "./scrub-psk.js";
+import { pskLineEnd, scanPskForms, secretShaped } from "./scrub-psk.js";
 /**
  * Injected-context scrubbing (#149) — the single inventory of block markers
  * that bastra's own hooks (and the Claude Code harness) inject into
@@ -61,14 +61,30 @@ export const INJECTED_BLOCK_TAGS = [
 
 export type InjectedBlockTag = (typeof INJECTED_BLOCK_TAGS)[number];
 
+/** ASCII-only lowering keeps offsets aligned with the original text. */
+function asciiLower(text: string): string {
+  return text.replace(/[A-Z]/g, (c) => c.toLowerCase());
+}
+
 /**
- * Fresh regex per call — a shared global-flagged RegExp carries lastIndex
- * state across calls, which is a classic source of skipped matches. The
- * construction cost is negligible at this call volume (≤ ~30 turns × 13 tags
- * per stop-hook run).
+ * Next complete `<tag …>` … `</tag>` block at or after `pos` in lower-cased
+ * text, as [start, end). Found by indexOf so every character is passed once; a
+ * regex rescans to the end of the text for each opener that is never closed.
  */
-function blockRe(tag: string): RegExp {
-  return new RegExp(`<${tag}(?:\\s[^>]*)?>[\\s\\S]*?</${tag}>`, "gi");
+function nextBlock(lower: string, tag: string, pos: number): [number, number] | undefined {
+  const open = `<${tag}`, close = `</${tag}>`;
+  let start: number;
+  while ((start = lower.indexOf(open, pos)) >= 0) {
+    let gt = start + open.length;
+    if (lower[gt] !== ">") {
+      if (!/\s/.test(lower[gt] ?? "")) { pos = gt; continue; }
+      gt = lower.indexOf(">", gt);
+      if (gt < 0) return undefined;
+    }
+    const end = lower.indexOf(close, gt + 1);
+    return end < 0 ? undefined : [start, end + close.length];
+  }
+  return undefined;
 }
 
 export interface ScrubResult {
@@ -85,13 +101,17 @@ export interface ScrubResult {
 export function scrubInjectedBlocks(text: string): ScrubResult {
   const removed: InjectedBlockTag[] = [];
   let out = text;
+  let lower = asciiLower(text);
   for (const tag of INJECTED_BLOCK_TAGS) {
-    // Quick reject before paying for the regex — most texts carry no marker.
-    if (!out.toLowerCase().includes(`<${tag}`)) continue;
-    const next = out.replace(blockRe(tag), "");
-    if (next !== out) {
+    let kept = "", from = 0, block: [number, number] | undefined;
+    while ((block = nextBlock(lower, tag, from))) {
+      kept += out.slice(from, block[0]);
+      from = block[1];
+    }
+    if (from > 0) {
       removed.push(tag);
-      out = next;
+      out = kept + out.slice(from);
+      lower = asciiLower(out);
     }
   }
   // A quoted frame note (#152) outside its block is scaffolding too — drop
@@ -111,12 +131,8 @@ export function scrubInjectedBlocks(text: string): ScrubResult {
  * (save_quality) where content must never be silently modified.
  */
 export function containsInjectedBlock(text: string): InjectedBlockTag[] {
-  const found: InjectedBlockTag[] = [];
-  for (const tag of INJECTED_BLOCK_TAGS) {
-    if (!text.includes(`<${tag}`)) continue;
-    if (blockRe(tag).test(text)) found.push(tag);
-  }
-  return found;
+  const lower = asciiLower(text);
+  return INJECTED_BLOCK_TAGS.filter((tag) => nextBlock(lower, tag, 0) !== undefined);
 }
 
 /**
@@ -155,7 +171,10 @@ export function stripFenceMarkers(text: string): string {
   const re = new RegExp(`</?(?:${INJECTED_BLOCK_TAGS.join("|")})(?:\\s[^>]*)?>`, "gi");
   let out = text;
   for (let pass = 0; pass < MAX_STRIP_PASSES; pass++) {
-    const next = out.replace(re, "");
+    // Nothing after the last `>` can complete a marker; cutting there keeps an
+    // attribute scan from running to the end of the text for every opener.
+    const last = out.lastIndexOf(">") + 1;
+    const next = out.slice(0, last).replace(re, "") + out.slice(last);
     if (next === out) return out; // fixpoint: nothing left that could re-form
     out = next;
   }
@@ -325,6 +344,52 @@ function valueSpans(text: string, start: number, query = false): { spans: Secret
   return { spans, end: pos };
 }
 
+/** curl userinfo: `-u`, `--user`, `--proxy-user`, bundled (`-sSLu`) or attached
+ * (`-uname:pw`). The walk from `curl` passes only options, one operand per
+ * option, quoted strings and URL-like operands, so the `-u` of a later command
+ * in the same prose line is not read as curl's. */
+function scanCurlUser(text: string, mark: (start: number, length: number) => void): void {
+  const calls = /(?<![\p{L}\p{N}_.-])curl(?:\.exe)?(?=[ \t])/giu;
+  const gap = /(?:[ \t]|\\\r?\n)*/y, bare = /[^\s;&|"'`]+/y;
+  let call: RegExpExecArray | null;
+  while ((call = calls.exec(text))) {
+    let pos = call.index + call[0].length, operand = true;
+    for (;;) {
+      gap.lastIndex = pos;
+      pos += gap.exec(text)![0].length;
+      let end = pos;
+      for (;;) {
+        if (text[end] === '"' || text[end] === "'") {
+          const close = text.indexOf(text[end], end + 1);
+          if (close < 0) break;
+          end = close + 1;
+        } else {
+          bare.lastIndex = end;
+          const part = bare.exec(text);
+          if (!part) break;
+          end += part[0].length;
+        }
+      }
+      if (end === pos) break;
+      const word = text.slice(pos, end);
+      const user = /^(?:--(?:proxy-)?user(?:=|$)|-[a-z]*u$|-u)/i.exec(word);
+      if (user) {
+        let start = pos + user[0].length;
+        if (start === end && !user[0].endsWith("=")) { gap.lastIndex = start; start += gap.exec(text)![0].length; }
+        const parsed = valueSpans(text, start);
+        const value = parsed.spans.map(([a, b]) => text.slice(a, b)).join("");
+        const colon = value.indexOf(":");
+        if (colon >= 0 && colon < value.length - 1 && !isReference(value.slice(colon + 1))) for (const [a, b] of parsed.spans) mark(a, b - a);
+        pos = Math.max(parsed.end, end);
+        operand = false;
+      } else if (word.startsWith("-")) { operand = true; pos = end; }
+      else if (operand || /[.:\/]|^["'$]/.test(word)) { operand = false; pos = end; }
+      else break;
+    }
+    calls.lastIndex = Math.max(calls.lastIndex, pos);
+  }
+}
+
 /** Structural credential syntax plus explicitly supported DE/EN PSK bindings.
  * This is not a language-dependent classification of owner intent. */
 export function redactSecrets(text: string, home?: string): SecretRedactionResult {
@@ -365,17 +430,34 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
     }
     return parsed.end;
   };
-  // Bare PSK passphrases may contain spaces. Stop at a line/field/flag boundary;
-  // quoted values, references and block scalars keep the existing parser.
-  const markPsk = (start: number, wholeLine = false): number => {
+  // Bare PSK assignment passphrases may contain spaces. Stop at a line/field/flag
+  // boundary; quoted values, references and block scalars keep the existing parser.
+  const markPsk = (start: number): number => {
     const tail = text.slice(start);
     if (tail.startsWith("[REDACTED]")) return start+"[REDACTED]".length;
     if (valueSpans(text,start).spans.length>1) return markValue(start,true);
     if (/^(?:true|false|[01]|WPA[23])(?=\s|[,;}]|$)/i.test(tail) || /^(?:bitte|siehe)\b/i.test(tail)) return start;
-    if (!wholeLine || /^["'`$|>\\]/.test(tail) || isReference(tail.split(/\s/)[0])) return markValue(start,true);
+    if (/^["'`$|>\\]/.test(tail) || isReference(/^\S*/.exec(tail)![0])) return markValue(start,true);
     const value = text.slice(start,pskLineEnd(text,start)).trimEnd();
     if (value && value !== "[REDACTED]") mark(start,value.length);
     return start+value.length;
+  };
+  // Prose and command forms without `=` name no value boundary, so only a quoted
+  // value or a secret-shaped token is redacted; plain words stay readable.
+  const looseToken = /[^\s,;"'`<>|&()]+/y;
+  const markLoose = (start: number, tokens = 1): void => {
+    for (let pos = start, i = 0; i < tokens; i++) {
+      if (/["'`]/.test(text[pos] ?? "")) pos = markValue(pos, true);
+      else {
+        looseToken.lastIndex = pos;
+        const raw = looseToken.exec(text)?.[0];
+        if (!raw) return;
+        const value = raw.replace(/[.:!?]+$/, "");
+        if (secretShaped(value) && !isReference(value) && !/^WPA[23]$/i.test(value)) mark(pos, raw.length);
+        pos += raw.length;
+      }
+      while (text[pos] === " " || text[pos] === "\t") pos++;
+    }
   };
   for (const m of text.matchAll(/-----BEGIN ([A-Z0-9 ]+)-----[\s\S]*?(?:-----END \1-----|$)/g)) mark(m.index!, m[0].length);
 
@@ -459,7 +541,7 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
       // Protocol comparisons/questions are not disclosed credential values.
       if (/(?:\bist|\bzum)[ \t]+$/i.test(text.slice(Math.max(0,assignment.index-12),assignment.index))) continue;
       const query = /[?&]/.test(text[assignment.index-1] ?? "");
-      const end = query ? markValue(start,true,true) : markPsk(start,true);
+      const end = query ? markValue(start,true,true) : markPsk(start);
       assignments.lastIndex = Math.max(assignments.lastIndex,end);
       continue;
     }
@@ -478,16 +560,8 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
   for (const m of text.matchAll(/(?<![a-z0-9_-])--([a-z][a-z0-9_-]*)(?:=|[ \t]+)/gi)) if (m.index! >= flagEnd && credentialKey(m[1])) flagEnd = markValue(m.index! + m[0].length, true);
   // Track command context once, rather than repeatedly rescanning a long line.
   const commands = [...text.matchAll(/(?:^|[ \t\/])(mysql|mariadb|sshpass|docker[ \t]+login|ssh|curl)(?=[ \t]|$)|[;&|\r\n]/gmi)];
-  let curlIndex=0, curlContext=false;
-  for (const m of text.matchAll(/(?<![a-z0-9_-])(?:-u|--user)(?:=|[ \t]+)/gi)) {
-    while(curlIndex<commands.length && commands[curlIndex].index!<m.index!) curlContext=commands[curlIndex++][1]?.toLowerCase()==="curl";
-    if(!curlContext)continue;
-    const start=m.index!+m[0].length, parsed=valueSpans(text,start);
-    const value=parsed.spans.map(([a,b])=>text.slice(a,b)).join("");
-    const colon=value.indexOf(":");
-    if(colon>=0 && !isReference(value.slice(colon+1))) for(const[a,b]of parsed.spans)mark(a,b-a);
-  }
-  scanPskForms(text,markPsk,mark,isReference);
+  scanCurlUser(text, mark);
+  scanPskForms(text,markLoose,(start)=>{markValue(start,true);},mark,isReference);
   let commandIndex = 0;
   let passwordCommand: string | undefined;
   for (const m of text.matchAll(/(?<![a-z0-9_-])-p[ \t]*/g)) {

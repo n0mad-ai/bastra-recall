@@ -8,7 +8,7 @@ import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { redactSecrets } from "@bastra-recall/core/scrub";
 import { writeDraftEvent } from "./draft-events.js";
-import { cleanDraftText, cleanDraftField, clipDraftText } from "./draft-text.js";
+import { cleanDraftText, cleanDraftField, cleanDraftLine, clipDraftText } from "./draft-text.js";
 import { mergeSituations, situationLiterals } from "./draft-situation.js";
 import { bigramSet, dice } from "./stop-lane-repeat.js";
 import { withPathLock, tryWithPathLock } from "./path-lock.js";
@@ -79,21 +79,22 @@ function sanitize(input: unknown, now: number, fallback = now): Draft | null {
   const quote = redactSecrets(quoteInput, homedir());
   if (quote.redactedChars > quoteInput.length * 0.3) return null;
   const clean = cleanDraftText;
-  const optional = (text: string | undefined) => text === undefined ? undefined : cleanDraftField(text);
+  const optional = (text: string | undefined, clean = cleanDraftLine) => text === undefined ? undefined : clean(text);
   const strings = (items: string[], count: number, max = 200) => items.slice(-count).map((s) => clean(s, max));
-  const rawSituation = [...d.situation.before,...d.situation.after].join("\n");
-  const safeSituation = [...strings(d.situation.before,3),...strings(d.situation.after.slice(0,3),3)].join("\n");
-  const safeToken = (value:string):boolean => !value.includes("[REDACTED]") && !(rawSituation.includes(value) && !safeSituation.includes(value));
+  // Derived tokens are stored lower-cased; the commands they came from are not.
+  const rawSituation = [...d.situation.before,...d.situation.after].join("\n").toLowerCase();
+  const safeSituation = [...strings(d.situation.before,3),...strings(d.situation.after.slice(0,3),3)].join("\n").toLowerCase();
+  const safeToken = (value:string):boolean => !value.includes("[REDACTED]") && !(rawSituation.includes(value.toLowerCase()) && !safeSituation.includes(value.toLowerCase()));
   const result:Draft = {
     ...d, created: time(d.created), quote: clipDraftText(quote.text, 600), context: d.context === undefined ? undefined : clean(d.context, 160),
     situation: {
       ...d.situation,
       cwd: optional(d.situation.cwd), project: optional(d.situation.project), branch: optional(d.situation.branch),
       before: strings(d.situation.before, 3), after: strings(d.situation.after.slice(0, 3), 3),
-      reads: d.situation.reads.slice(-3).map(s=>cleanDraftField(s)), lits: strings(d.situation.lits, 32, 160).filter(safeToken),
+      reads: d.situation.reads.slice(-3).map(s=>cleanDraftLine(s)), lits: strings(d.situation.lits, 32, 160).filter(safeToken),
     },
     // Opaque identifiers (often UUIDs) must keep their identity across sessions.
-    evidence: d.evidence.map((e) => ({ ...e, ts: time(e.ts), session_id: cleanDraftField(e.session_id), client: optional(e.client) })),
+    evidence: d.evidence.map((e) => ({ ...e, ts: time(e.ts), session_id: cleanDraftField(e.session_id), client: optional(e.client, cleanDraftField) })),
     surfaced: d.surfaced.map((s) => ({ ...s, ts: proofTime(s.ts), session_id: cleanDraftField(s.session_id), novel: strings(s.novel, 32, 160).filter(safeToken),
       ...(s.used ? { used: { ...s.used, ts: proofTime(s.used.ts), tool: cleanDraftField(s.used.tool, 80), matched: strings(s.used.matched, 3, 160).filter(safeToken) } } : {}),
     })),
@@ -351,7 +352,7 @@ async function captureBatch(inputs: Draft[], now: number, afterUpdates: DraftAft
     const updatedIds: string[] = [];
     for (const update of afterUpdates) {
       const row = rows.find(row => row.state === "open" && row.evidence.some(e =>
-        e.session_id === update.session_id.slice(0, 200) && e.turn === update.turn));
+        e.session_id === cleanDraftField(update.session_id) && e.turn === update.turn));
       if (!row) continue;
       const additions = update.after.map(command => cleanDraftText(command)).filter(command => !row.situation.after.includes(command));
       const after = [...row.situation.after, ...additions].slice(0, 3);
