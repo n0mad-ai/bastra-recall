@@ -940,6 +940,8 @@ are the German PSK/Pre-Shared-Key bindings “ist/lautet”, the English “is�
 `pre-shared-key X`. A value looks like a secret when it is quoted, or when the
 single token directly after the binding has letters with a digit or one of
 `!#$%*+^~?`, two or more lower-to-upper changes, or at least eight digits.
+Sentence punctuation at the end of the token (`.`, `:`, `!`, `?`) is not counted,
+so “… lautet kartoffelsalat!” stays as readable as “Der PSK ist abgelaufen!”.
 **A word-only passphrase in prose stays readable** (“Der PSK lautet
 kartoffelsalat”, “the PSK is blauer elefant tanzt”), and so does a key that
 follows another word (“Der PSK ist jetzt sommerhaus2019”). This is the chosen
@@ -2605,7 +2607,9 @@ beiden nmcli-Felder und `pre-shared-key X`. Wie ein Geheimnis sieht ein Wert aus
 wenn er in Anführungszeichen steht oder wenn das eine Token direkt nach der
 Bindung Buchstaben mit einer Ziffer oder einem der Zeichen `!#$%*+^~?` enthält,
 mindestens zwei Wechsel von Klein- zu Großbuchstaben hat oder aus mindestens acht
-Ziffern besteht. **Eine reine Wort-Passphrase in Prosa bleibt lesbar** („Der PSK
+Ziffern besteht. Satzzeichen am Ende des Tokens (`.`, `:`, `!`, `?`) zählen dabei
+nicht; „… lautet kartoffelsalat!“ bleibt deshalb so lesbar wie „Der PSK ist
+abgelaufen!“. **Eine reine Wort-Passphrase in Prosa bleibt lesbar** („Der PSK
 lautet kartoffelsalat“, „the PSK is blauer elefant tanzt“), ebenso ein Schlüssel
 hinter einem weiteren Wort („Der PSK ist jetzt sommerhaus2019“). Das ist die
 bewusst gewählte Grenze: Dieselbe Regel lässt „Der PSK ist abgelaufen.“ und

@@ -185,7 +185,7 @@ function isIndentedCode(text: string, lineBreak: number, indent: string): boolea
 /**
  * A line-start agent band ends owner evidence. The line start is the one in
  * the text as written: a tag after a backtick quotation on the same line, or
- * inside one, is data, and so is one in an indented code block.
+ * inside one, is data, and so is a never-closed one in an indented code block.
  */
 export function textBeforeAgentBand(text: string): string | null {
   let unquoted: string | undefined;
@@ -193,11 +193,13 @@ export function textBeforeAgentBand(text: string): string | null {
   let marker: number | undefined;
   for (const match of text.matchAll(AGENT_BAND)) {
     const tag = match.index + match[1].length + match[2].length;
-    if (match[1] && isIndentedCode(text, match.index, match[2])) continue;
     unquoted ??= maskBacktickQuotes(text);
     if (unquoted[tag] !== "<") continue;
     AGENT_BAND_PROSE.lastIndex = match.index + match[0].length;
-    if (match[3] === undefined && AGENT_BAND_PROSE.test(text)) {
+    const indented = match[1] !== "" && isIndentedCode(text, match.index, match[2]);
+    if (indented || (match[3] === undefined && AGENT_BAND_PROSE.test(text))) {
+      // Either reading holds only for a tag that never closes: a complete
+      // envelope is a delivered message wherever it was pasted.
       if (lastClose === undefined) {
         lastClose = -1;
         for (const close of unquoted.matchAll(AGENT_BAND_CLOSE)) lastClose = close.index;

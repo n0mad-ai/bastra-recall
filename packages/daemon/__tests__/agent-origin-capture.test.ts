@@ -166,3 +166,14 @@ test("a megabyte of backtick runs, unclosed blocks or band candidates is read in
     assert.ok(turn < 4000, `${shape}: normalizeTurns took ${Math.round(turn)} ms`);
   }
 });
+
+test("a complete sender envelope stays agent mail when it lands indented after owner text", async () => {
+  const { agentEnvelope } = await import(resolve(root, "tools/cmux-agent-send.mjs"));
+  const envelope = agentEnvelope(agent, "codex");
+  for (const indent of ["    ", "\t"]) {
+    assert.equal(ownerPromptText(`${human}\n\n${indent}${envelope}`), human);
+  }
+  // An indented tag that never closes is still a quotation in a code block.
+  const quoted = `${human}\n\n    <agent-message from="x"> opens the envelope`;
+  assert.equal(ownerPromptText(quoted), quoted);
+});

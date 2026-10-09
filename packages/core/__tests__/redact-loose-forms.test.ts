@@ -146,3 +146,12 @@ test("redaction time grows linearly on repeated PSK and curl shapes", () => {
     assert.ok(large < 8 * small + 100, `${name}: 50 KB ${small.toFixed(0)} ms, 200 KB ${large.toFixed(0)} ms`);
   }
 });
+
+test("sentence punctuation after a loose token is trimmed in linear time and is not a secret shape", () => {
+  assert.equal(scrub(`Der PSK lautet ${LOW}!`), "Der PSK lautet [REDACTED]");
+  assert.equal(scrub("Der PSK ist abgelaufen!"), "Der PSK ist abgelaufen!");
+  assert.equal(scrub("Der PSK lautet kartoffelsalat?"), "Der PSK lautet kartoffelsalat?");
+  const started = performance.now();
+  redactSecrets(`Der PSK ist ${"!".repeat(200_000)}a`);
+  assert.ok(performance.now() - started < 1_000);
+});
