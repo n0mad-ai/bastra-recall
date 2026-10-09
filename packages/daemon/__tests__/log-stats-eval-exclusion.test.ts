@@ -13,10 +13,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cmdLogStats } from "../src/cli/log-stats.js";
 
+// Yesterday, not a fixed date: the report reads a 30-day window, and a literal
+// day in the fixture walks out of it — the test turned red 30 days after it
+// was written.
+const DAY = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+
 const EVENTS = [
   {
     kind: "hook_call",
-    ts: "2026-09-09T10:00:00.000Z",
+    ts: `${DAY}T10:00:00.000Z`,
     session_id: "prod-1",
     status: "ok",
     hint_count: 1,
@@ -28,7 +33,7 @@ const EVENTS = [
   // (#619 acceptance: "per-client and per-lane splits use the same filter").
   {
     kind: "hook_call",
-    ts: "2026-09-09T10:01:00.000Z",
+    ts: `${DAY}T10:01:00.000Z`,
     session_id: "eval-1",
     status: "ok",
     hint_count: 1,
@@ -59,7 +64,7 @@ test("#619: bastra logs --stats excludes eval-marked rows by default and reports
   process.env.BASTRA_LOG_PATH = logDir;
   try {
     await writeFile(
-      join(logDir, "events-2026-09-09.jsonl"),
+      join(logDir, `events-${DAY}.jsonl`),
       EVENTS.map((e) => JSON.stringify(e)).join("\n") + "\n",
       "utf8",
     );
