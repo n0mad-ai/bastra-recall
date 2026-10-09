@@ -7105,34 +7105,38 @@
     }
    }
   },
-  "prefix_input": "other-layout",
+  "prefix_input": "production",
   "prefix": {
    "embeddinggemma raw": {
     "near": {
-     "R@1": 0.989,
-     "R@5": 1.0,
-     "MRR": 0.994
+     "n": 180,
+     "R@1": 1,
+     "R@5": 1,
+     "MRR": 1
     },
     "far": {
+     "n": 180,
      "R@1": 0.567,
-     "R@5": 0.85,
-     "MRR": 0.683
+     "R@5": 0.844,
+     "MRR": 0.687
     },
     "far_xlang": {
-     "R@1": 0.472,
-     "R@5": 0.706,
-     "MRR": 0.587
+     "n": 180,
+     "R@1": 0.444,
+     "R@5": 0.7,
+     "MRR": 0.571
     }
    },
    "embeddinggemma prefix": {
     "near": {
-     "R@1": 1.0,
-     "R@5": 1.0,
-     "MRR": 1.0,
+     "n": 180,
+     "R@1": 0.994,
+     "R@5": 1,
+     "MRR": 0.997,
      "top1 vs raw": {
-      "wins": 2,
-      "losses": 0,
-      "p": 0.5
+      "wins": 0,
+      "losses": 1,
+      "p": 1.0
      },
      "top5 vs raw": {
       "wins": 0,
@@ -7141,57 +7145,63 @@
      }
     },
     "far": {
-     "R@1": 0.628,
-     "R@5": 0.833,
-     "MRR": 0.721,
+     "n": 180,
+     "R@1": 0.667,
+     "R@5": 0.85,
+     "MRR": 0.748,
      "top1 vs raw": {
-      "wins": 17,
-      "losses": 6,
-      "p": 0.0347
+      "wins": 22,
+      "losses": 4,
+      "p": 0.0005
      },
      "top5 vs raw": {
-      "wins": 6,
-      "losses": 9,
-      "p": 0.6072
+      "wins": 8,
+      "losses": 7,
+      "p": 1.0
      }
     },
     "far_xlang": {
-     "R@1": 0.517,
-     "R@5": 0.75,
-     "MRR": 0.629,
+     "n": 180,
+     "R@1": 0.506,
+     "R@5": 0.772,
+     "MRR": 0.625,
      "top1 vs raw": {
-      "wins": 15,
-      "losses": 7,
-      "p": 0.1338
+      "wins": 16,
+      "losses": 5,
+      "p": 0.0266
      },
      "top5 vs raw": {
-      "wins": 12,
-      "losses": 4,
-      "p": 0.0768
+      "wins": 18,
+      "losses": 5,
+      "p": 0.0106
      }
     }
    },
    "embeddinggemma-2 raw": {
     "near": {
+     "n": 180,
      "R@1": 0.994,
-     "R@5": 1.0,
+     "R@5": 1,
      "MRR": 0.997
     },
     "far": {
-     "R@1": 0.478,
+     "n": 180,
+     "R@1": 0.467,
      "R@5": 0.75,
-     "MRR": 0.601
+     "MRR": 0.594
     },
     "far_xlang": {
-     "R@1": 0.383,
-     "R@5": 0.633,
-     "MRR": 0.505
+     "n": 180,
+     "R@1": 0.372,
+     "R@5": 0.622,
+     "MRR": 0.488
     }
    },
    "embeddinggemma-2 prefix": {
     "near": {
+     "n": 180,
      "R@1": 0.994,
-     "R@5": 1.0,
+     "R@5": 1,
      "MRR": 0.997,
      "top1 vs raw": {
       "wins": 0,
@@ -7205,48 +7215,50 @@
      }
     },
     "far": {
-     "R@1": 0.417,
-     "R@5": 0.717,
-     "MRR": 0.55,
+     "n": 180,
+     "R@1": 0.439,
+     "R@5": 0.744,
+     "MRR": 0.576,
      "top1 vs raw": {
-      "wins": 13,
-      "losses": 24,
-      "p": 0.0989
-     },
-     "top5 vs raw": {
-      "wins": 10,
-      "losses": 16,
-      "p": 0.3269
-     }
-    },
-    "far_xlang": {
-     "R@1": 0.361,
-     "R@5": 0.622,
-     "MRR": 0.479,
-     "top1 vs raw": {
-      "wins": 13,
+      "wins": 12,
       "losses": 17,
-      "p": 0.5847
+      "p": 0.4583
      },
      "top5 vs raw": {
       "wins": 11,
+      "losses": 12,
+      "p": 1.0
+     }
+    },
+    "far_xlang": {
+     "n": 180,
+     "R@1": 0.394,
+     "R@5": 0.667,
+     "MRR": 0.51,
+     "top1 vs raw": {
+      "wins": 17,
       "losses": 13,
-      "p": 0.8388
+      "p": 0.5847
+     },
+     "top5 vs raw": {
+      "wins": 13,
+      "losses": 5,
+      "p": 0.0963
      }
     }
    }
   },
   "prefix_raw_vs_dense_arm": {
    "near": {
-    "same_top1": 178,
+    "same_top1": 180,
     "n": 180
    },
    "far": {
-    "same_top1": 170,
+    "same_top1": 180,
     "n": 180
    },
    "far_xlang": {
-    "same_top1": 169,
+    "same_top1": 180,
     "n": 180
    }
   },

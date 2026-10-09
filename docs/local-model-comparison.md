@@ -88,9 +88,10 @@ dot refers to the 59 new ones.
   wrote it.** That is no proof that it has no effect; this sample shows none.
 - **The new embedding model is reliably worse on the invented notes** when the
   query uses other wording. On the public LongMemEval benchmark there is no
-  reliable difference. Sending `embeddinggemma` its documented task prefixes
-  helped in a first measurement, but that one used another text layout than
-  production; a re-measurement with the production text is pending.
+  reliable difference. What does help needs no new model: with its documented
+  task prefixes `embeddinggemma` puts the right note first reliably more often
+  (other wording 66.7 % against 56.7 %, other language 50.6 % against 44.4 %,
+  vectors only). Every note would have to be embedded again.
 - **Refreshed `gemma4:12b` weights show one reliable difference** to the
   current ones across the draft check, the injection probes and the reranker:
   as a reranker they say "none" more often when the right note is missing and
@@ -320,31 +321,30 @@ every note.
 
 EmbeddingGemma documents a prefix for queries (`task: search result | query: …`)
 and one for documents (`title: … | text: …`). bastra-recall sends raw text
-today. Vector only, dots compare with raw text of the same model.
-
-**These numbers were measured with a note text laid out differently from
-production** (summary before the recall phrases, phrases joined with " · ", no
-tag line; production embeds title, tags, recall phrases, summary and body in
-that order). The raw rows therefore do not reproduce the production vector
-path: for queries in the other language they show 47.2 %, the table above
-44.4 %. A re-measurement with the production text is pending.
+today. Vector only, dots compare with raw text of the same model. The raw text
+is the one production embeds (title, tags, recall phrases, summary, body); for
+`embeddinggemma` the raw rows give the same first place as the production
+vector path for all 540 queries.
 
 <!-- table:prefix -->
 | Embedding model | Input | Other wording: first place | Other language: first place |
 | --- | --- | ---: | ---: |
-| `embeddinggemma` | raw text (earlier layout, not production) | `██████░░░░` 56.7 % | `█████░░░░░` 47.2 % |
-| `embeddinggemma` | with task prefixes | `██████░░░░` 62.8 % 🟢 | `█████░░░░░` 51.7 % ⚪ |
-| `embeddinggemma-2` | raw text (earlier layout, not production) | `█████░░░░░` 47.8 % | `████░░░░░░` 38.3 % |
-| `embeddinggemma-2` | with task prefixes | `████░░░░░░` 41.7 % ⚪ | `████░░░░░░` 36.1 % ⚪ |
+| `embeddinggemma` | raw text (as today) | `██████░░░░` 56.7 % | `████░░░░░░` 44.4 % |
+| `embeddinggemma` | with task prefixes | `███████░░░` 66.7 % 🟢 | `█████░░░░░` 50.6 % 🟢 |
+| `embeddinggemma-2` | raw text (as today) | `█████░░░░░` 46.7 % | `████░░░░░░` 37.2 % |
+| `embeddinggemma-2` | with task prefixes | `████░░░░░░` 43.9 % ⚪ | `████░░░░░░` 39.4 % ⚪ |
 <!-- /table -->
 
-With that other layout the prefixes put the right note first more often for
-`embeddinggemma` when the query uses other wording (62.8 % against 56.7 %;
-17 queries won, 6 lost, p = 0.035); across languages the gain is not reliable.
-`embeddinggemma-2` does not benefit. Whether this holds for the text production
-embeds is open until the re-measurement. Adopting the prefixes would need no
-new model, but every note has to be embedded again, so it is a migration and
-not a switch to flip.
+With the prefixes `embeddinggemma` puts the right note first reliably more
+often: for queries with other wording 66.7 % against 56.7 % (22 queries won,
+4 lost, p = 0.0005), for queries in the other language 50.6 % against 44.4 %
+(16 won, 5 lost, p = 0.027). In the top 5 the gain is reliable only across
+languages (77.2 % against 70.0 %); with other wording it is not (85.0 % against
+84.4 %). Queries that share words with the note stay at 99–100 %.
+`embeddinggemma-2` shows no reliable change. This is the vector half alone; the
+production hybrid path with prefixes was not measured, and the result rests on
+180 invented notes. Adopting the prefixes needs no new model, but every note
+has to be embedded again, so it is a migration and not a switch to flip.
 
 ## 3. Trigger expansion
 
@@ -601,9 +601,10 @@ bezieht sich auf die 59 neuen.
 - **Das neue Einbettungsmodell ist auf den erfundenen Notizen verlässlich
   schlechter**, wenn die Anfrage anders formuliert ist. Auf dem öffentlichen
   Benchmark LongMemEval gibt es keinen verlässlichen Unterschied.
-  `embeddinggemma` seine dokumentierten Aufgaben-Präfixe mitzugeben half in
-  einer ersten Messung; die nutzte aber eine andere Textdarstellung als die
-  Produktion. Eine Nachmessung mit dem Produktions-Text steht aus.
+  Was hilft, braucht kein neues Modell: Mit seinen dokumentierten
+  Aufgaben-Präfixen setzt `embeddinggemma` die richtige Notiz verlässlich öfter
+  auf Platz 1 (andere Formulierung 66,7 % gegen 56,7 %, andere Sprache 50,6 %
+  gegen 44,4 %, nur Vektor). Dafür müsste jede Notiz neu eingebettet werden.
 - **Die aufgefrischten Gewichte von `gemma4:12b` zeigen einen verlässlichen
   Unterschied** zu den heutigen, über Entwurfs-Prüfung, Einschleusproben und
   Nachsortierung hinweg: Beim Nachsortieren sagen sie öfter „keine“, wenn die
@@ -849,33 +850,31 @@ zu wechseln, und ein Wechsel hieße, jede Notiz neu einzubetten.
 EmbeddingGemma dokumentiert ein Präfix für Anfragen
 (`task: search result | query: …`) und eines für Dokumente
 (`title: … | text: …`). bastra-recall schickt heute Rohtext. Nur Vektor, die
-Punkte vergleichen mit dem Rohtext desselben Modells.
-
-**Diese Zahlen wurden mit einem Notiztext gemessen, der anders aufgebaut ist als
-in der Produktion** (Summary vor den Recall-Phrasen, Phrasen mit „ · “
-verbunden, keine Tag-Zeile; die Produktion bettet Titel, Tags, Recall-Phrasen,
-Summary und Text in dieser Reihenfolge ein). Die Rohtext-Zeilen geben den
-Produktions-Vektorweg deshalb nicht wieder: Für Anfragen in der anderen Sprache
-zeigen sie 47,2 %, die Tabelle oben 44,4 %. Eine Nachmessung mit dem
-Produktions-Text steht aus.
+Punkte vergleichen mit dem Rohtext desselben Modells. Der Rohtext ist der, den
+die Produktion einbettet (Titel, Tags, Recall-Phrasen, Summary, Text); für
+`embeddinggemma` ergeben die Rohtext-Zeilen bei allen 540 Anfragen denselben
+Platz 1 wie der Produktions-Vektorweg.
 
 <!-- table:prefix-de -->
 | Einbettungsmodell | Eingabe | Andere Formulierung: Platz 1 | Andere Sprache: Platz 1 |
 | --- | --- | ---: | ---: |
-| `embeddinggemma` | Rohtext (frühere Darstellung, nicht Produktion) | `██████░░░░` 56.7 % | `█████░░░░░` 47.2 % |
-| `embeddinggemma` | mit Aufgaben-Präfixen | `██████░░░░` 62.8 % 🟢 | `█████░░░░░` 51.7 % ⚪ |
-| `embeddinggemma-2` | Rohtext (frühere Darstellung, nicht Produktion) | `█████░░░░░` 47.8 % | `████░░░░░░` 38.3 % |
-| `embeddinggemma-2` | mit Aufgaben-Präfixen | `████░░░░░░` 41.7 % ⚪ | `████░░░░░░` 36.1 % ⚪ |
+| `embeddinggemma` | Rohtext (wie heute) | `██████░░░░` 56.7 % | `████░░░░░░` 44.4 % |
+| `embeddinggemma` | mit Aufgaben-Präfixen | `███████░░░` 66.7 % 🟢 | `█████░░░░░` 50.6 % 🟢 |
+| `embeddinggemma-2` | Rohtext (wie heute) | `█████░░░░░` 46.7 % | `████░░░░░░` 37.2 % |
+| `embeddinggemma-2` | mit Aufgaben-Präfixen | `████░░░░░░` 43.9 % ⚪ | `████░░░░░░` 39.4 % ⚪ |
 <!-- /table -->
 
-Mit dieser anderen Darstellung setzen die Präfixe bei `embeddinggemma` die
-richtige Notiz öfter auf Platz 1, wenn die Anfrage anders formuliert ist
-(62,8 % gegen 56,7 %; 17 Anfragen gewonnen, 6 verloren, p = 0,035); über
-Sprachgrenzen ist der Gewinn nicht verlässlich. `embeddinggemma-2` profitiert
-nicht. Ob das für den Text gilt, den die Produktion einbettet, ist bis zur
-Nachmessung offen. Die Präfixe zu übernehmen bräuchte kein neues Modell, aber
-jede Notiz muss neu eingebettet werden; es ist also eine Migration und kein
-Schalter.
+Mit den Präfixen setzt `embeddinggemma` die richtige Notiz verlässlich öfter auf
+Platz 1: bei Anfragen mit anderer Formulierung 66,7 % gegen 56,7 % (22 Anfragen
+gewonnen, 4 verloren, p = 0,0005), bei Anfragen in der anderen Sprache 50,6 %
+gegen 44,4 % (16 gewonnen, 5 verloren, p = 0,027). Bei den Top 5 ist der Gewinn
+nur über Sprachgrenzen verlässlich (77,2 % gegen 70,0 %); bei anderer
+Formulierung ist er es nicht (85,0 % gegen 84,4 %). Anfragen mit gemeinsamen
+Wörtern bleiben bei 99–100 %. `embeddinggemma-2` zeigt keine verlässliche
+Veränderung. Das ist allein die Vektor-Hälfte; der Produktions-Hybridweg mit
+Präfixen wurde nicht gemessen, und das Ergebnis beruht auf 180 erfundenen
+Notizen. Die Präfixe zu übernehmen braucht kein neues Modell, aber jede Notiz
+muss neu eingebettet werden; es ist also eine Migration und kein Schalter.
 
 ### 3. Stichwort-Erweiterung
 
