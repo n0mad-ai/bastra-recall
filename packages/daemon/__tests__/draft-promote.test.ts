@@ -72,6 +72,26 @@ test("two exact fixture sessions promote one audited derived note; third session
   assert.equal((await listDrafts())[0].state, "promoted");
 }));
 
+test("PSK intake stays redacted in promoted title, summary, body, cues and audit", () => isolated(async (vault, dir, vaultId) => {
+  const secret = "invented-vpn-fixture-739";
+  const quote = `Fixture deployments require an isolated amber database with PSK='${secret}' before the release starts.`;
+  const input = row(quote, "psk-one", vaultId);
+  input.context = `$psk='${secret}' is the staging configuration?`;
+  input.situation.before = [`vpn --pre-shared-key '${secret}' --host fixture.invalid`];
+  input.situation.after = [`PSK='${secret}' deploy amber-db`];
+  await captureDraft(input);
+  await captureDraft({ ...input, id: draftId("psk-two", 1, input.fp), evidence: [{ session_id: "psk-two", turn: 1, ts: now }] });
+  const provider = providerFor();
+  await runDraftShadow({ provider, ollama: local, vault });
+  assert.equal((await runDraftPromote({ provider, ollama: local, vault, vaultVectors: vectors(vault, provider) })).promoted, 1);
+  const note = vault.list()[0];
+  assert.ok(!JSON.stringify([note.fm.title, note.fm.summary, note.body, note.fm.recall_when]).includes(secret));
+  assert.match(note.body, /\[REDACTED\]/);
+  assert.ok(!(await readFile(note.filePath, "utf8")).includes(secret));
+  assert.ok(!(await readFile(join(vault.root, ".bastra", "audit-log.ndjson"), "utf8")).includes(secret));
+  assert.ok(!(await readFile(join(dir, "drafts.json"), "utf8")).includes(secret));
+}));
+
 test("semantic repeat uses same-model local vectors and keeps both verbatim quotes", () => isolated(async (vault, _dir, vaultId) => {
   await captureDraft(row(first, "one", vaultId)); await captureDraft(row(paraphrase, "two", vaultId));
   const provider = providerFor(); await runDraftShadow({ provider, ollama: local, vault });

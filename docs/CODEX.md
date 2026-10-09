@@ -125,3 +125,7 @@ bastra uninstall codex
 Das optionale Paket unter `plugins/bastra-recall/` verteilt denselben proaktiven Skill über OpenAIs Plugin-Format. MCP, Hooks und Vault-Pfad bleiben bewusst beim CLI-Adapter, damit Plugin und Installer keine doppelten Hooks registrieren.
 
 Offizielle Grundlagen: [MCP in ChatGPT und Codex](https://learn.chatgpt.com/docs/extend/mcp), [Codex Hooks](https://learn.chatgpt.com/docs/hooks), [Codex Skills](https://learn.chatgpt.com/docs/build-skills), [Plugin-Architektur](https://developers.openai.com/plugins/concepts/plugins).
+
+For agent-to-agent cmux handovers, use the [marked sender](agent-messages.md) so the recipient does not capture agent prose as owner evidence.
+
+Für Agenten-Übergaben über cmux den [markierten Sender](agent-messages.md) verwenden, damit der Empfänger Agententext nicht als Nutzeräußerung erfasst.

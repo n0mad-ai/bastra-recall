@@ -8,7 +8,7 @@ import { open } from "node:fs/promises";
 // #305: the scrub leaf, never the core barrel — the barrel costs +40ms of
 // process start for a function that lives in a dependency-free module.
 import { scrubInjectedBlocks } from "@bastra-recall/core/scrub";
-import { isSystemInjectedTurn, textAfterReminders } from "./system-turn.js";
+import { isSystemInjectedTurn, textAfterToolWrappers } from "./system-turn.js";
 import type { ProvenRead } from "./code-graph/boundary-block.js";
 import {
   claudeToolUseCommands,
@@ -164,12 +164,20 @@ function effectiveRole(role: string, content: unknown, meta = false): string {
  *  typed after it is theirs (#994; the prompt lane reads it the same way, #769). */
 function typedText(content: unknown): string {
   const text = stringifyContent(content);
-  return textAfterReminders(text) ?? text;
+  return textAfterToolWrappers(text) ?? text;
 }
 
 /** Turn text: for a user turn without harness-only content, the typed part. */
 function turnContent(role: string, content: unknown): string {
   return scrubTurnContent(role === "user" ? typedText(content) : stringifyContent(content));
+}
+
+/** Direct harvest callers must enforce the same owner boundary as JSONL readers.
+ * Preserve commands, timestamps and turn indices; never upgrade a non-user role. */
+export function normalizeOwnerTurn(turn: TranscriptTurn): TranscriptTurn {
+  if (turn.role !== "user") return turn;
+  const role = effectiveRole(turn.role, turn.content);
+  return { ...turn, role, content: turnContent(role, turn.content) };
 }
 
 export function normalizeTurns(items: unknown[]): TranscriptTurn[] {

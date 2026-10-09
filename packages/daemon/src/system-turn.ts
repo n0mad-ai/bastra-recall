@@ -54,6 +54,9 @@ const REMINDER_CLOSE = "</system-reminder>";
 // above may be stripped to recover owner text; other spellings fail closed.
 const REMINDER_TAG_START = /^<\s*system(?:\s*-\s*|&#(?:x0*2d|0*45);?|&hyphen;?)\s*reminder(?=[\s/>])/i;
 const REMINDER_TAG_ANY = /<\s*\/?\s*system(?:\s*-\s*|&#(?:x0*2d|0*45);?|&hyphen;?)\s*reminder(?=[\s/>])/gi;
+// Raw CLI/tool output sometimes arrives as a user-role text wrapper (#1106).
+const TOOL_WRAPPER_START = /^<(local-command-stdout|bash-input|bash-stdout|command-message)(?=[\s/>])/i;
+const TOOL_WRAPPER_TAG = /<\s*\/?\s*(?:local-command-stdout|bash-input|bash-stdout|command-message)(?=[\s/>])/i;
 const COMMAND_ECHO_PREFIXES = ["<command-name>", "<local-command-caveat>"];
 
 function isCommandEcho(head: string): boolean {
@@ -74,6 +77,7 @@ export function isSystemInjectedTurn(text: string): boolean {
     TURN_ABORTED.test(head) ||
     REMINDER_TAG_START.test(head) ||
     isCommandEcho(head) ||
+    TOOL_WRAPPER_START.test(head) ||
     INJECTED_PREFIXES.some((p) => head.startsWith(p))
   );
 }
@@ -92,10 +96,30 @@ export function isSystemInjectedTurn(text: string): boolean {
  *   never closes, is a harness turn.
  */
 export function ownerPromptText(prompt: string): string | null {
-  const head = textAfterReminders(prompt);
+  const head = textAfterToolWrappers(prompt);
   if (head === null) return null;
   if (isCommandEcho(head)) return head;
   return isSystemInjectedTurn(head) ? null : head;
+}
+
+/** Recover owner prose after complete leading tool wrappers. Never use the
+ * wrapper body as evidence. Broken/noncanonical/nested wrappers fail closed;
+ * inline/backtick tag quotes are untouched. Bounded to avoid a parsing budget hole. */
+export function textAfterToolWrappers(text: string): string | null {
+  let rest = textAfterReminders(text);
+  for (let i = 0; i < 16 && rest !== null; i++) {
+    const match = TOOL_WRAPPER_START.exec(rest);
+    if (!match) return rest;
+    const tag = match[1];
+    // Detection is case-insensitive, but only canonical pairs can recover prose.
+    const open = new RegExp(`^<${tag}(?:[ \t]+[^>\r\n]*)?>`).exec(rest);
+    if (!open || tag !== tag.toLowerCase()) return null;
+    const close = `</${tag}>`;
+    const end = rest.indexOf(close, open[0].length);
+    if (end < 0 || TOOL_WRAPPER_TAG.test(rest.slice(open[0].length, end))) return null;
+    rest = textAfterReminders(rest.slice(end + close.length));
+  }
+  return null;
 }
 
 /**

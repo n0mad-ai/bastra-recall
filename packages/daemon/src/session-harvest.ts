@@ -44,7 +44,7 @@ import { envFirst, envOff } from "./env.js";
 import { defaultLogDir } from "./telemetry.js";
 import { writePendingSuggestion } from "./pending-suggestions.js";
 import { captureTypedDrafts, INTERRUPT_PREFIX, PASTE_MIN_CHARS } from "./draft-capture.js";
-import type { TranscriptTurn } from "./stop-transcript.js";
+import { normalizeOwnerTurn, type TranscriptTurn } from "./stop-transcript.js";
 import { restatementIndices } from "./stop-lane-repeat.js";
 
 /** Without a SessionEnd, a session counts as finished once no Stop arrived for this long. */
@@ -122,6 +122,7 @@ function lastLine(s: string): string {
 export function harvestCandidates(
   turns: HarvestTurn[], from = 0, max = HARVEST_MAX_CANDIDATES, includeSaved = false,
 ): HarvestCandidate[] {
+  turns = turns.map(normalizeOwnerTurn);
   const userIdx: number[] = [];
   for (let i = 0; i < turns.length; i++) if (turns[i].role === "user") userIdx.push(i);
 
