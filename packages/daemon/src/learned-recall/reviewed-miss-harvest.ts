@@ -75,6 +75,20 @@ function textParts(content: unknown): string[] | null {
 const COMMAND_ECHO = /^<(?:command-name|command-message|command-args|local-command-stdout|local-command-stderr)[\s>]/;
 
 /**
+ * The text behind an interrupt marker that opens a block, or null when the
+ * block does not open with one. The marker runs from the daemon's
+ * `INTERRUPT_PREFIX` to its closing bracket, which covers every spelling the
+ * client writes (`…by user]`, `…by user for tool use]`). A marker further in —
+ * quoted, in a code block, mid-sentence — is text the owner wrote.
+ */
+function textAfterInterrupt(part: string): string | null {
+  const text = part.trimStart();
+  if (!text.startsWith(INTERRUPT_PREFIX)) return null;
+  const end = text.indexOf("]", INTERRUPT_PREFIX.length);
+  return end < 0 ? "" : text.slice(end + 1);
+}
+
+/**
  * What a user-role record says about the human:
  *
  * - `owner`   typed text, with harness blocks removed and secrets redacted —
@@ -101,13 +115,17 @@ function userTurn(record: Record<string, unknown>): UserTurn {
   const typed: string[] = [];
   let command = false;
   for (const part of parts) {
-    if (COMMAND_ECHO.test(part.trimStart()) || part.trimStart().startsWith(INTERRUPT_PREFIX)) {
+    if (COMMAND_ECHO.test(part.trimStart())) {
       command = true;
       continue;
     }
+    // The marker is the client's; what the owner typed behind it in the same
+    // block is theirs and is read like any other typed text.
+    const afterInterrupt = textAfterInterrupt(part);
+    if (afterInterrupt !== null) command = true;
     // A leading reminder may stand in front of typed text; what follows it is
     // read on its own, and a turn that is harness text throughout is dropped.
-    const afterReminder = textAfterReminders(part);
+    const afterReminder = textAfterReminders(afterInterrupt ?? part);
     if (afterReminder === null || isSystemInjectedTurn(afterReminder)) continue;
     const text = scrubInjectedBlocks(afterReminder).text.trim();
     if (text && !/^\[Image:\s*source:/i.test(text)) typed.push(text);
