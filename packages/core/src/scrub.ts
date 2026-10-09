@@ -452,7 +452,10 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
         looseToken.lastIndex = pos;
         const raw = looseToken.exec(text)?.[0];
         if (!raw) return;
-        const value = raw.replace(/[.:!?]+$/, "");
+        // Sentence punctuation after the token; a loop, not a `+$` pattern.
+        let end = raw.length;
+        while (end > 0 && ".:!?".includes(raw[end - 1])) end--;
+        const value = raw.slice(0, end);
         if (secretShaped(value) && !isReference(value) && !/^WPA[23]$/i.test(value)) mark(pos, raw.length);
         pos += raw.length;
       }

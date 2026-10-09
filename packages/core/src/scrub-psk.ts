@@ -26,10 +26,12 @@ export function scanPskForms(text:string,markLoose:(start:number,tokens?:number)
   for(const m of text.matchAll(/(?:^|[\s;])pre-shared-key[ \t]+/gi))markLoose(m.index!+m[0].length,5);
   for(const m of text.matchAll(/(?:^|\r?\n)[ \t]*wpa-psk[ \t]+/gi))markLoose(m.index!+m[0].length);
   // Exactly `<ssid> <key>`: more words mean prose, a shell operator is not a key.
-  const commandEnd=/[ \t]*(?:$|[\r\n|;&>#)`])/my;
+  const commandEnds=(pos:number):boolean=>{
+    while(text[pos]===' '||text[pos]==='\t')pos++;
+    return pos>=text.length||"\r\n|;&>#)`".includes(text[pos]);
+  };
   for(const m of text.matchAll(/(\bwpa_passphrase[ \t]+(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s|;&<>]+)[ \t]+)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s|;&<>"'`)]+)/gi)){
-    commandEnd.lastIndex=m.index!+m[0].length;
-    if(commandEnd.test(text))markKey(m.index!+m[1].length);
+    if(commandEnds(m.index!+m[0].length))markKey(m.index!+m[1].length);
   }
   for(const m of text.matchAll(/:[ \t]*PSK[ \t]+/gi))markLoose(m.index!+m[0].length);
   // One failed closing-tag search per tag kind, not per repeated opener.
