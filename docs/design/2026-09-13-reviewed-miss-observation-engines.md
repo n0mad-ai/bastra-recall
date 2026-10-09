@@ -1,0 +1,162 @@
+# Reviewed-miss observation: six classes from offline engines
+
+Workstream A of #459. What the offline harvester
+(`packages/daemon/scripts/harvest-reviewed-misses.ts`) needs to land a trace
+in exactly one class, where each proof comes from, and what it deliberately
+does not claim. Measurements and the history behind this design live on #459.
+
+## 1. Where the frozen evidence already exists
+
+| Artifact | Carries | Join key |
+| --- | --- | --- |
+| Raw session JSONL (client transcript) | human intent, the `recall` tool_use, its tool_result envelope, the evidence step after it, the recorded `cwd` | `tool_use_id`; `recall_id` inside the envelope |
+| Daemon telemetry `events-*.jsonl` | `recall` / `hook_recall` events with `recall_id`, `candidate_pool` (ordered, below-floor included), score kind/arms/version, `vault_size`, `k`; `load_memory` events with `from_hook_recall` / `follows_recall` | `recall_id` |
+
+`recall_id` is written into the served envelope and into the telemetry event
+by the same call, so the join is exact, never adjacency. A batch recall
+(`queries: [...]`) writes one telemetry event per phrasing and lists every id
+in the envelope under `recall_ids`.
+
+The daemon does not stamp an index snapshot identity. The engine derives one
+from the telemetry fields it has and labels its basis `telemetry-derived`; a
+daemon-side `index_snapshot_id` belongs to the #388 event spine.
+
+## 2. Classes
+
+| Class | Proof required |
+| --- | --- |
+| `served-hit` (not a miss) | the target is among the served hits of the same call |
+| `in-pool-not-selected` | the target is in the recorded `candidate_pool`, not served |
+| `genuine-out-of-pool` | the target is a memory that existed before the call (birth time, or its own `created` when a tmp+rename rewrite reset the birth time) and is absent from the pool at its recorded depth |
+| `unindexed-vault-object` | the target is in the vault but could not have been indexed at the call: born after it, or not a memory |
+| `external-source` | the evidence step read a path outside `--vault` |
+| `vault-gap` | an external read a reviewer labelled durable, against a named vault snapshot |
+| `unknown` | any missing or contradictory proof: no telemetry join, no vault snapshot, index-present but vault-absent, in-pool but index-absent, an evidence step with no inspectable identity |
+
+`classifyReviewedMissObservation` is a pure function over an assembled
+observation; engines only assemble proofs. A partial observation cannot
+produce anything but `unknown`.
+
+## 3. Engines (`reviewed-miss-engines.ts`)
+
+- **pool-join** — `--events DIR`: telemetry indexed by `recall_id`; attaches
+  the pool, served ids, score space and `vault_size`. Without it, `unknown`.
+  A chain with several recalls — each phrasing of a batch, several recalls
+  made for one intent — is judged against the union of their pools; served is
+  what the envelopes listed plus what telemetry recorded as served. One recall
+  of the chain without a recorded pool, or two with different score spaces,
+  and there is no pool: `unknown`, reported as the gap `chain-without-pool`.
+  The daemon writes no `candidate_pool` for a search that returned no
+  candidate. Such an event is a known empty pool when it says so itself — no
+  pool, `hits: []`, its own `score_kind` / `score_arms` — and joins like any
+  other; an event with hits and no pool, or with no `hits`, is no pool.
+- **vault-snapshot** — `--vault DIR`, enumerated once: hashed relative paths,
+  parsed ids (`occupantOfRaw` from core), per-file birth time read from the
+  same descriptor as the text, declared `created`. The snapshot id is the hash
+  of the sorted hashed listing. Paths are dereferenced, so a symlinked vault
+  is the same vault through either spelling.
+- **target-resolve** — the first evidence step with an inspectable identity:
+  a `load_memory` id; a `Read` path (a relative one resolved against the
+  transcript's recorded `cwd`, opaque without one); a single-file Bash read
+  (`cat` / `head` / `tail` / `grep PATTERN FILE`, absolute path only, no
+  pipes, globs or expansion). An evidence step with no identity does not take
+  the slot from a later one that has one.
+- **identity** — `profileSnapshotId` and the telemetry-derived
+  `indexSnapshotId`; two observations compare only when both match.
+
+The served envelope alone decides `explicitMiss`: `weak_result`, `no_home`, or
+an empty top-level `hits` — on every result of the chain. Text inside a hit, a
+nested `hits`, or text that is not an envelope is never a miss.
+
+## 4. Two lanes, one session identity (`reviewed-miss-evidence.ts`)
+
+- **Transcript lane** — intent → recall(s) → envelope(s) → evidence step, from
+  the session JSONL. Recalls with no evidence step between them are one chain:
+  two in one assistant message, or one asked again before anything was read.
+  The intent is the text the owner typed: user-role turns the harness wrote
+  (`system-turn.ts`: task notification, agent mail, reminder) neither end a
+  chain nor enter the query, injected blocks are removed from a typed turn,
+  and secrets are redacted (`redactSecrets`) before the text is kept. A slash
+  command ends the chain; its echo and its printed output are no query. The
+  marker the client writes when the owner interrupts (`INTERRUPT_PREFIX` from
+  `draft-capture.ts`) is read the same way: it ends the chain and is no query.
+  Only the marker itself is removed, from the prefix to its closing bracket at
+  the start of a text block; text typed behind it is the next intent, and the
+  same words anywhere else in a turn are text.
+- **Hook lane** (`--hook-lane`) — every daemon-joined `load_memory` against the
+  pool of the recall it followed; no transcript needed. A load the transcript
+  lane already observed (any `recall_id` of the chain, same memory) is left to
+  it. Its query is the daemon's own, redacted the same way. A load linked to
+  one of several phrasings a batch ran is a gap, not a verdict: the events
+  name how many queries were submitted (`query_count`) and how many the daemon
+  collapsed as near-duplicates before searching (`batch_collapsed`), and
+  nothing that ties the phrasings together, so the pool the session was served
+  from cannot be assembled here. The difference of the two is the number of
+  recalls that ran; a batch collapsed to one is judged like a plain recall.
+  Known limit, not fixed here: the lane judges a load only against the recall
+  the daemon linked it to last and does not group several recalls made for one
+  intent. A hit an earlier recall served is therefore `genuine-out-of-pool`,
+  with a proposal, when a later recall did not hold it — also when that later
+  recall returned nothing. The transcript lane does not have this error.
+
+Both lanes feed one proposal list (`reviewed-miss-cues.ts`), so they must
+spell a session the same way. Telemetry never holds the raw client session
+for a load: `load_memory` and MCP `recall` stamp `session_id` with the daemon
+run. The one spelling both lanes can produce is the daemon's pseudonym,
+`dimensions.experiment_session` (`pseudonymousSession`). The transcript lane
+derives it from the records' `sessionId` (else the file name); a load takes it
+from the recall it followed. `sessionRef()` hashes that pseudonym and is the
+only session ref the harvester writes. Support, hub and hot-path counts are
+distinct client sessions, never daemon runs.
+
+A load joined to no recall has no client session. For gap accounting only,
+its daemon run witnesses the repeat (`GapEvent.witness`).
+
+## 5. Report
+
+One JSON line on stderr, three axes kept apart so that zero misses and no
+telemetry never look alike:
+
+- **coverage** — recalls seen, envelopes with `recall_id`, pools by lane,
+  loads and how many the daemon linked, vault ids;
+- **observed** — classes per lane; `live_classes` (n ≥ 3) vs `observed_thin`
+  (1–2); heatmap top; hubs; surfaced-never-loaded; established hot paths;
+  proposals;
+- **gaps** — one row per unjoinable kind: count, distinct witnesses, verdict
+  (`den` = repeated across ≥ 2 witnesses, else `noise`, or `none`), the named
+  exit, and a recount command or why only the harvester can recount.
+
+Non-use is censored: a memory surfaced and never loaded is a density, not a
+negative label. A hot-path edge from one session is proposed; two establish
+it.
+
+| Threshold | Value | Provenance |
+| --- | --- | --- |
+| den: distinct witnesses | 2 | ported rule, not measured on this corpus |
+| live class: specimens | 3 | ported rule, not measured here |
+| hub: distinct sessions surfaced | 3 (`--hub-sessions`) | chosen by eye |
+| hot path: gap between loads | 30 min | chosen by eye |
+| hot path: established | 2 sessions | #459 |
+
+## 6. Outputs
+
+| Output | Carries | Consumer |
+| --- | --- | --- |
+| queue (`--out` or stdout) | hashed ids and refs, the redacted query | owner review → `--labels` (the only path to `vault-gap`) |
+| `--proposals` | clear memory ids, local | curator editing `recall_when`; hub targets flagged |
+| `--evidence` | clear memory ids, local | heatmap and hot paths |
+| `--specimens` | one hashed, query-free observation per (lane, class) | this repo's tests (`__fixtures__/reviewed-miss-harvest/live-specimens.jsonl`) |
+
+A `--events` path that is not a directory or holds no `events-*.jsonl`, a
+`--vault` path that is not a directory or holds no memory, and an unreadable
+session file end the run with exit 1 and no output. The five modules and the
+script are a repository tool: `package.json` keeps
+`dist/learned-recall/reviewed-miss-*` out of the published package.
+
+## 7. Non-goals
+
+No daemon, MCP, hook, ranking, `recall_when`, bridge or vault write. No model
+call. No re-ranking: out-of-pool is claimed only at the depth the daemon
+recorded. A replay engine that re-runs the production retriever against a
+rebuilt snapshot would measure beyond that depth; it depends on the daemon
+and is not here. Access clusters (Workstream B) are not here.
