@@ -2530,3 +2530,56 @@ breit gestreuten neuen Tatsachen, 11/13 mit denselben Hosts/Pfaden/Versionen,
 darunter zwei widersprechende Aussagen. Echte Dubletten ab 0,736 und neue Tatsachen
 bis 0,791 überlappen. Schwelle 0,60 unverändert.
 Keine neue Wortliste, kein weiterer Testdaten-Abstimmungsloop.
+
+### Draft promotion from use / Beförderung durch Nutzung
+
+A displayed draft can also qualify without a second explanation. The delivery
+records novel tokens from the redacted quote and its originating session's `after`
+commands, excluding both word and literal tokens of the complete triggering input.
+`/hook/hinted` keeps draft IDs/input separate from ordinary note IDs. In-process
+hook bands book the same proof after rendering. Replays do not reset the first
+novelty set or window; only the last five surfaced sessions remain stored.
+
+A later successful tool input in that same non-origin session must contain one
+whole novel literal (digit or `./_@:-`, at least four Unicode characters), or three
+distinct novel word tokens, within the existing acted-on window (default ten
+minutes). The heuristics are **unmeasured**. Redaction markers, substrings, repeated
+words, missing/foreign/origin sessions and commands before the hint do not qualify.
+The use hook books only local evidence, never a vault note. The next harvest uses
+the same local semantic/word duplicate gates, provenance, secret/injection filters,
+probe default and explicit sharp switch as repeat promotion. Valid persisted
+proof remains usable at a later tick; fabrication outside the recorded novel set
+or source does not qualify. The resulting note preserves quote/situation/original
+capture evidence plus the display/use session, dates, tool and successful matches.
+
+**Assumption, not confirmed by the owner:** unknown exit codes do not count as
+success; only explicit exit 0 qualifies. Clients omitting that field therefore
+produce no use proof. This is conservative and does not infer success from an
+absent error. Novel matching is a causal heuristic, not proof that a statement is
+true or that a command applied it meaningfully. Known D duplicate/secret/routine
+limits continue to apply. A foreign busy/unwritable store loses only the feedback,
+without waiting on the response. Announcements/statistics are a separate package.
+
+Ein gezeigter Entwurf kann auch ohne zweite Erklärung befördert werden. Die Anzeige
+merkt neue Tokens aus geschwärztem Zitat und den `after`-Befehlen der Ursprungssitzung;
+Wort- und Literal-Tokens des vollständigen auslösenden Eingangs werden ausgeschlossen.
+Draft-IDs/Eingang bleiben bei `/hook/hinted` getrennt von Notiz-IDs. Wiederholte
+Meldungen verändern weder erstes Fenster noch Novel-Liste; gespeichert bleiben
+höchstens fünf angezeigte Sitzungen.
+
+Ein späterer Tool-Eingang in derselben Sitzung, außerhalb der Ursprungssitzung,
+muss ein vollständiges neues Literal (Ziffer oder `./_@:-`, mindestens vier Zeichen)
+oder drei unterschiedliche neue Worttokens enthalten. Es gilt das vorhandene
+Acted-on-Fenster, standardmäßig zehn Minuten; Heuristiken **ungemessen**. Marker,
+Teilstrings, doppelte Wörter, falsche/fehlende Sitzungen und frühere Befehle zählen
+nicht. Der Hook schreibt nur lokale Belege. Erst der Harvest-Tick nutzt dieselben
+Wort-/Bedeutungs-Sperren, Herkunftsprüfung, Schwärzung/Injektionsprüfung und den
+Probelauf wie D; scharf nur mit ausdrücklichem Schalter. Die Notiz enthält Original-
+und Nutzungsbelege, keine erfundene Verallgemeinerung. Gültige Belege überstehen
+Neustarts; erfundene Matches außerhalb Novel/Quelle gelten nicht.
+
+**Annahme, nicht vom Eigentümer bestätigt:** Nur ausdrücklich Exit 0 gilt als Erfolg,
+unbekannte Exit-Codes nicht. Clients ohne dieses Feld liefern keine Nutzungsbelege.
+Das Tokenmatch beweist weder Wahrheit noch sinnvolle Anwendung; bekannte D-Grenzen
+bleiben. Fremde belegte/nicht schreibbare Ablage kostet nur Feedback, kein Warten
+auf die Antwort. Ansage und Statistik gehören ins nächste Paket.

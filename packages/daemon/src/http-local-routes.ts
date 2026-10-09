@@ -43,6 +43,7 @@ import {
 import { ALL_TOOL_DEFS, filterToolDefsForSurface, toolSurfaceFrom } from "./tool-defs.js";
 import { MAX_BODY_BYTES, readJsonBody, sendJson } from "./http-util.js";
 import { handleHookRecall } from "./http-hook-routes.js";
+import { recordDraftHints } from "./draft-use.js";
 import { handleHookAct } from "./http-hook-act.js";
 
 export interface LocalRouteCtx {
@@ -229,7 +230,7 @@ export function dispatchLocalRoutes(
   // als "surfaced" im Usage-Sidecar. Loopback-only wie /hook/act.
   if (method === "POST" && url === "/hook/hinted") {
     readJsonBody(req, MAX_BODY_BYTES)
-      .then((body) => {
+      .then(async (body) => {
         const ids = Array.isArray((body as { ids?: unknown })?.ids)
           ? ((body as { ids: unknown[] }).ids.filter((x) => typeof x === "string") as string[])
           : [];
@@ -274,7 +275,9 @@ export function dispatchLocalRoutes(
             hintedSession,
           );
         }
-        sendJson(res, 200, { ok: true, counted: ids.length });
+        const draftIds = Array.isArray(body.draft_ids) ? body.draft_ids.filter((id): id is string => typeof id === "string") : [];
+        const draftCount = await recordDraftHints(draftIds, hintedSession, typeof body.draft_input === "string" ? body.draft_input : null);
+        sendJson(res, 200, { ok: true, counted: ids.length, ...(draftCount > 0 ? { drafts_counted: draftCount } : {}) });
       })
       .catch(() => sendJson(res, 400, { error: "invalid body" }));
     return true;

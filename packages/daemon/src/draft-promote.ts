@@ -9,11 +9,13 @@ import { redactSecrets } from "@bastra-recall/core/scrub";
 import { scanForInjection } from "@bastra-recall/core";
 import { localDraftProvider, readDraftVectorState, type DraftShadowOptions } from "./draft-shadow.js";
 import { listDrafts, transactDrafts, withDraftPublication, type Draft } from "./draft-store.js";
+import { draftUseProof, DRAFT_USE_MIN_WORD_TOKENS, DRAFT_USE_LITERAL_MIN_CHARS } from "./draft-use.js";
 import { tokens } from "./save-similarity.js";
 import { weightedContainment, STORED_CONTAINMENT_MIN } from "./harvest-vault-match.js";
 import { saveMemoryWithAuditTrail, recordAudit } from "./audit-trail.js";
 import { logDirFor } from "./telemetry.js";
 import { envOff } from "./env.js";
+import { ACTED_ON_WINDOW_MS } from "./telemetry-join-state.js";
 import { readDraftDecisions, recordDraftDecisions } from "./draft-decisions.js";
 
 /** Unmeasured on real data, unchanged after review. */
@@ -69,7 +71,7 @@ function commandHead(command: string): string {
   return program ? basename(program.replace(/^['"]|['"]$/g, "")) : "";
 }
 
-export function buildDraftNote(rows: Draft[], df: ReadonlyMap<string, number>): SaveMemoryInput {
+export function buildDraftNote(rows: Draft[], df: ReadonlyMap<string, number>, trigger: "repeat" | "use" = "repeat"): SaveMemoryInput {
   const key = draftEvidenceKey(rows), first = rows[0];
   const scopeName = first.situation.project ?? "all-projects";
   const scope = /^[\p{L}\p{N}][\p{L}\p{N} _.-]*$/u.test(scopeName) && !scopeName.includes("..") ? scopeName : "all-projects";
@@ -84,11 +86,12 @@ export function buildDraftNote(rows: Draft[], df: ReadonlyMap<string, number>): 
     if (head && literals[0]) literalCues.push(`${head} ${literals[0]}`);
   }
   const cues = [...new Set([...literalCues.slice(0, 8), ...rows.flatMap(row => row.context ? [row.context] : []), rareWords.join(" ")])].filter(Boolean);
-  const body = ["User quotes from separate sessions; derived from repetition. Verify before relying on them.",
+  const body = [trigger === "use" ? "User quote from an earlier session; derived from successful use in another session. Verify before relying on it." : "User quotes from separate sessions; derived from repetition. Verify before relying on them.",
     ...rows.map(row => ["", `Quote (${row.kind}):`, row.quote, ...(row.context ? ["Context:", row.context] : []), "Situation:",
       ...[row.situation.project, row.situation.cwd, row.situation.branch].filter(Boolean),
       ...row.situation.before.map(c => `Before: ${c}`), ...row.situation.after.map(c => `After: ${c}`), ...row.situation.reads.map(p => `Read: ${p}`)].join("\n")),
     "", "Evidence:", ...evidenceOf(rows).map(e => `- session ${e.session_id}; turn ${e.turn}; ${new Date(e.ts).toISOString()}; client ${e.client ?? "unknown"}`),
+    ...(trigger === "use" ? rows.flatMap(row => { const proof = draftUseProof(row); return proof?.used ? ["", "Use evidence:", `- session ${proof.session_id}; displayed ${new Date(proof.ts).toISOString()}; used ${new Date(proof.used.ts).toISOString()}; tool ${proof.used.tool}; exit 0; tokens ${proof.used.matched.join(", ")}`] : []; }) : []),
   ].join("\n");
   return { id: `draft-${key}`, title: first.quote.replace(/\s+/g, " ").slice(0, 100), summary: first.quote, body,
     type: "project-fact", scope, topic_path: [scope, "derived"], tags: ["derived"], recall_when: cues,
@@ -100,9 +103,9 @@ async function writeEvent(event: DraftPromotionEvent): Promise<void> {
   const dir = logDirFor(); await mkdir(dir, { recursive: true }); const ts = new Date().toISOString();
   await appendFile(join(dir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify({ ...event, ts }) + "\n", "utf8");
 }
-const PASS_KEY = hash("draft-promotion-pass:v3");
+const PASS_KEY = hash("draft-promotion-pass:repeat-use:v4");
 function passSignature(opts: DraftPromoteOptions, rows: Draft[], notes: ReturnType<Vault["list"]>, vectors: ReadonlyMap<string,Float32Array> | null, snapshot: ReturnType<NonNullable<DraftPromoteOptions["vaultVectors"]>> | undefined, sharp: boolean, vaultId: string): string {
-  const state = createHash("sha256").update(JSON.stringify({ rules: [DRAFT_PROMOTION_RULE_VERSION,DRAFT_REPEAT_COSINE_MIN,DRAFT_VAULT_COSINE_MIN,DRAFT_RARE_TOKEN_MAX_ROWS,DRAFT_RARE_TOKEN_MIN,DRAFT_CUE_MIN_CHARS,STORED_CONTAINMENT_MIN], vaultId, sharp, allowSharp: opts.allowSharp, provider: opts.provider?.id, dim: opts.provider?.dim, ollama: opts.ollama ? [opts.ollama.baseURL, opts.ollama.model] : null,
+  const state = createHash("sha256").update(JSON.stringify({ rules: [DRAFT_PROMOTION_RULE_VERSION,DRAFT_REPEAT_COSINE_MIN,DRAFT_VAULT_COSINE_MIN,DRAFT_RARE_TOKEN_MAX_ROWS,DRAFT_RARE_TOKEN_MIN,DRAFT_CUE_MIN_CHARS,STORED_CONTAINMENT_MIN,DRAFT_USE_MIN_WORD_TOKENS,DRAFT_USE_LITERAL_MIN_CHARS,ACTED_ON_WINDOW_MS], vaultId, sharp, allowSharp: opts.allowSharp, provider: opts.provider?.id, dim: opts.provider?.dim, ollama: opts.ollama ? [opts.ollama.baseURL, opts.ollama.model] : null,
     rows: rows.map(({ last_touched: _touched, created: _created, ...row }) => row), notes: notes.map(note => [note.fm.id, note.fm.title, note.fm.summary, note.fm.recall_when, note.fm.source, note.fm.write_origin, note.body.slice(0,4000)]),
     snapshotProvider: snapshot?.provider, snapshotDim: snapshot?.dim }));
   for (const [id,vector] of vectors ?? []) state.update(id).update(Buffer.from(vector.buffer,vector.byteOffset,vector.byteLength));
@@ -193,7 +196,8 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
         closeRows([row], "promoted", recovery.id, recovery.key, now);
         continue;
       }
-      let selected: Draft[] = new Set(row.evidence.map(e => e.session_id)).size >= 2 ? [row] : [];
+      const use = draftUseProof(row);
+      let selected: Draft[] = use ? [row] : new Set(row.evidence.map(e => e.session_id)).size >= 2 ? [row] : [];
       if (!selected.length) for (const other of all) {
         if (++comparisons % YIELD_EVERY === 0) await setImmediate();
         if (other.id === row.id || other.state !== "open" || other.evidence.some(e => row.evidence.some(a => a.session_id === e.session_id)) || conflictingLiterals(row.quote, other.quote)) continue;
@@ -243,8 +247,8 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
           ...(duplicate.cosine === undefined ? {} : { cosine: duplicate.cosine }), ...(duplicate.containment === undefined ? {} : { containment: duplicate.containment }) });
         continue;
       }
-      if (!selected.every(rareEnough)) { result.blocked++; await emitOnce(selected, { kind: "draft_would_block", ...base, reason: "routine-vocabulary" }); continue; }
-      const input = buildDraftNote(selected, df);
+      if (!use && !selected.every(rareEnough)) { result.blocked++; await emitOnce(selected, { kind: "draft_would_block", ...base, reason: "routine-vocabulary" }); continue; }
+      const input = buildDraftNote(selected, df, use ? "use" : "repeat");
       if (!input.recall_when.length) { result.blocked++; await emitOnce(selected, { kind: "draft_would_block", ...base, reason: "no-useful-cues" }); continue; }
       for (const field of ["title", "summary", "body"] as const) input[field] = redactSecrets(input[field], homedir()).text;
       input.recall_when = input.recall_when.map(c => redactSecrets(c, homedir()).text);
@@ -262,7 +266,7 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
         return true;
         }, now);
         if (!prepared) return null;
-        const saved = await saveMemoryWithAuditTrail({ vaultRoot: opts.vault.root, input, actor: "system", actorDetail: "draft:repeat-promotion", sessionId: selected[0].evidence[0].session_id });
+        const saved = await saveMemoryWithAuditTrail({ vaultRoot: opts.vault.root, input, actor: "system", actorDetail: use ? "draft:use-promotion" : "draft:repeat-promotion", sessionId: selected[0].evidence[0].session_id });
         const sha = hash(await readFile(saved.file_path)); await opts.vault.reindexFile(saved.file_path);
         await transactDrafts(async current => {
           const latest = selected.map(d => current.find(c => c.id === d.id && c.fp === d.fp && c.state === "open" && c.vault_id === vaultId));

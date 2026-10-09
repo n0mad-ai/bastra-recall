@@ -3,11 +3,12 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { scanForInjection } from "@bastra-recall/core";
 import { HINT_FRAME_NOTE, stripFenceMarkers } from "@bastra-recall/core/scrub";
-import { draftSearchSnapshot, draftsPath, updateRetrievedDrafts, type Draft } from "./draft-store.js";
+import { draftSearchSnapshot, draftsPath, type Draft } from "./draft-store.js";
 import { weightedContainment, STORED_CONTAINMENT_MIN } from "./harvest-vault-match.js";
 import { tokens } from "./save-similarity.js";
 import { measurePayload } from "./recall-budget.js";
 import { availableDraftHints, claimDraftHints, persistDraftHintClaims, sessionStateDir } from "./session-state.js";
+import { recordDraftHints } from "./draft-use.js";
 import { envOff } from "./env.js";
 import { logDirFor } from "./telemetry.js";
 import { draftVocabularySnapshot, type DraftVocabulary } from "./draft-vocabulary.js";
@@ -125,9 +126,7 @@ export function deferDraftFeedback(hits: DraftHit[], input: string, sessionId: s
   const logDir = envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY") ? null : logDirFor();
   setImmediate(() => {
     if (draftsPath() !== path) return;
-    const incoming = new Set(tokens(input));
-    void updateRetrievedDrafts([], hits.map(hit => ({ id: hit.id, session_id: sessionId,
-      novel: tokens(hit.quote).filter(token => !incoming.has(token)).slice(0, 32) })), Date.now(), true).catch(() => undefined);
+    void recordDraftHints(hits.map(hit => hit.id), sessionId, input).catch(() => undefined);
     void persistDraftHintClaims(sessionId, hits.map(hit => hit.id), stateDir).catch(() => undefined);
     if (logDir) void (async () => {
       await mkdir(logDir, { recursive: true }); const ts = new Date().toISOString();

@@ -1,5 +1,6 @@
 /** Loopback-only `/hook/act`: closes loaded-memory episodes after Bash. */
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { recordDraftUse } from "./draft-use.js";
 import { fireAndForget, type Telemetry } from "./telemetry.js";
 import { MAX_BODY_BYTES, readJsonBody, sendJson } from "./http-util.js";
 import { dimensionHints } from "./telemetry-dimensions.js";
@@ -32,7 +33,8 @@ export function handleHookAct(req: IncomingMessage, res: ServerResponse, telemet
         ...(sessionId ? { session_id: sessionId } : {}),
         ...dimensionHints(body),
       }));
-      sendJson(res, 200, { matched: episodes.length });
+      const draftsUsed = await recordDraftUse({ sessionId, toolName, excerpt, exitCode });
+      sendJson(res, 200, { matched: episodes.length, ...(draftsUsed > 0 ? { drafts_used: draftsUsed } : {}) });
     })
     .catch(() => sendJson(res, 400, { error: "invalid JSON body" }));
 }
