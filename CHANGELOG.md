@@ -30,6 +30,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   existing post-tool client, so `bastra install claude-code` has to run once
   to register it (`bastra doctor` reports the missing registration until
   then). `BASTRA_SAVE_NOTICE=0` turns it off. Telemetry: `save_notice_call`.
+- **Model recommendations for existing installs.** A release can now carry a
+  recommendation for the local text model (per hardware tier, with download
+  size and what gets better). Nothing switches on its own, not in
+  `update.mode auto` either: `bastra update` asks at the end, the session start
+  lets the agent ask, the first command on a terminal after an update asks once
+  (an updater from before this feature cannot), and a dim line follows CLI
+  commands at most once a day — until you answer with `bastra models switch`,
+  `later` (asked again in 7 days) or `dismiss` (not for this recommendation;
+  the notice says what that costs). The commands name the recommendation they
+  answer, and an answer to a different one is refused. The switch pulls the
+  model, checks it with a short local test call and only then stores model and
+  answer in one write; the old model stays installed. New installs are offered the recommended model directly.
+  `BASTRA_UPDATE_CHECK=off` silences the notice as well. This release ships the
+  mechanism with no active recommendation, so nothing changes yet.
+- **New installs are offered `tev1:4b` as the local text model** from 16 GB of
+  RAM (4.5 GB download); `gemma4:12b` stays the alternative from 24 GB and the
+  suggestion from 32 GB. Existing installs are not touched: without a stored
+  choice the daemon keeps running `gemma3:4b`, and only the `recommended:`
+  line of `bastra models` shows the new suggestion.
+
+### Fixed
+
+- **A settings file that cannot be read is no longer written over — a
+  behaviour change for every command that stores a setting** (`bastra config
+  set`, `embeddings on|off`, `models set`, `token`, the installer, the
+  daemon's own setters). With `~/.bastra/cli-settings.json` present but
+  unreadable (wrong permissions, a transient I/O error), they used to replace
+  it with defaults plus the one changed value. They now read the file once,
+  change exactly what they read, and stop with "the settings file exists but
+  cannot be read" when that read failed. Reading settings is unchanged.
 
 ## [1.0.1] — 2026-10-04
 

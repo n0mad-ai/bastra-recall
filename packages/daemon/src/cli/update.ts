@@ -348,6 +348,32 @@ export function patchReapplyRoot(
   return null;
 }
 
+/**
+ * The closing question of `bastra update`: is there a model recommendation the
+ * user has not answered yet? (`bastra models ask` — a question on a terminal,
+ * a plain notice anywhere else, nothing at all when there is nothing to say.)
+ *
+ * Asked by the INSTALLED cli, not by this process, for the reason
+ * `resolveInstalledRuntime` exists: after the installer ran, this process is
+ * still the old code, and a recommendation ships with the release — the old
+ * process would ask about the recommendation that was just replaced, or about
+ * none. Best-effort: if the installed cli cannot be found or started, the
+ * SessionStart block and the CLI hint still carry the notice.
+ */
+export function askModelRecommendation(
+  installed: InstalledRuntime | null,
+  /** Tests capture the child's output; `bastra update` hands it the terminal. */
+  stdio: "inherit" | "pipe" = "inherit",
+): ReturnType<typeof spawnSync> | null {
+  if (!installed) return null;
+  const cli = existsFile(resolve(dirname(installed.script), "cli.js"));
+  if (!cli) return null;
+  // An hour: the answer may start a multi-GB pull. Without a terminal the
+  // child prints and returns at once, so nothing unattended waits on this.
+  // Its exit code is not the update's: the update is done at this point.
+  return spawnSync(installed.node, [cli, "models", "ask"], { stdio, timeout: 3_600_000 });
+}
+
 function existsFile(path: string): string | null {
   return existsSync(path) ? path : null;
 }
@@ -638,9 +664,10 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
   //    umbiegen". Staged biegt um (`reload: false`), kickstartet aber nicht.
   //    Und die Laufzeit, auf die umgebogen wird, kommt vom Installer, nicht von
   //    diesem Prozess (#435) — siehe resolveInstalledRuntime.
+  const installed = args.dryRun ? null : resolveInstalledRuntime(mode);
   if (!args.dryRun) {
     const autostart = await refreshManagedAutostart((s) => process.stdout.write(s), {
-      target: resolveInstalledRuntime(mode),
+      target: installed,
       reload: !args.staged,
     });
     if (!autostart.ok) {
@@ -695,11 +722,13 @@ export async function cmdUpdate(args: ParsedArgs): Promise<number> {
     const said = describeLiveRevision(verdict, { state: sourceState, daemonRevision });
     process.stdout.write(said.report);
     process.stdout.write(said.closing);
+    askModelRecommendation(installed);
     return 0;
   }
 
   process.stdout.write(
     "→ done. Restart any open AI clients (Claude Code, Claude Desktop, Codex, ChatGPT Desktop, Cursor) to pick up the new code.\n",
   );
+  askModelRecommendation(installed);
   return 0;
 }

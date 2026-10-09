@@ -44,6 +44,7 @@ import { buildOnboardingBlock } from "./session-onboarding-block.js";
 import { recordBudgetShadow, resetBudgetOnSource } from "./session-budget.js";
 import { spawnStagedUpdate, stagedToday, markStagedToday } from "./update-check.js";
 import { formatBlockedUpdate, readBlockedUpdate } from "./update-blocked.js";
+import { formatModelSessionBlock, pendingModelNotice, type ModelOffer } from "./model-recommendation.js";
 import { pendingPatchNotice } from "./patch-report.js";
 import { formatPendingRelay, isCountableSessionStart, takePendingRelay } from "./pending-suggestions.js";
 import { bumpShown, clearShown, mutateSessionState, takeConstantCadence } from "./session-state.js";
@@ -160,6 +161,8 @@ export async function runSessionLane(
   /** #490: der gemeinsame Warmup. Fehlt er (keine Embeddings, Tests), verhält
    *  sich die Lane exakt wie vor #490 — volle 350 ms für den dichten Arm. */
   warmup?: WarmupCoordinator,
+  /** Tests inject an open model recommendation; the shipped one is the default. */
+  modelNotice: () => Promise<ModelOffer | null> = pendingModelNotice,
 ): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
@@ -525,6 +528,17 @@ export async function runSessionLane(
     } catch {
       // Update hint is best-effort — never block session start.
     }
+  }
+
+  // A model recommendation the user has not answered yet. Unlike the update
+  // above it needs no daemon answer — it ships with this release and is decided
+  // from the settings file. Repeated every session start until the user says
+  // switch, later or no; the block tells the agent to ask, never to switch.
+  try {
+    const offer = await modelNotice();
+    if (offer) updateBlock += formatModelSessionBlock(offer);
+  } catch {
+    // Best-effort, like the update hint — never block session start.
   }
 
   // #269 — local patches the last update could not put back. Read from the

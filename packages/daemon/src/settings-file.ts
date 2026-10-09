@@ -99,6 +99,12 @@ export interface CliSettings {
   // Persisted cross-platform here (not a LaunchAgent env var) so Windows/Linux
   // installs carry the choice too. Written by `bastra models` / the install wizard.
   generation?: { model: string };
+  // The user's answer to a release's model recommendation (cli/hardware.ts
+  // MODEL_RECOMMENDATION), the ONE note every surface that asks shares:
+  // `bastra update`, `bastra models`, the SessionStart block and the CLI hint.
+  // Keyed by the recommendation's id, so a later recommendation asks again.
+  // undefined = not answered. Written by model-recommendation.ts.
+  modelRecommendation?: { id: string; answer: ModelRecommendationAnswer; at: string };
   // Vault map web UI (#207): undefined = disabled (opt-in). Enabled via the
   // install wizard or `bastra config set ui.enabled true`; the daemon then
   // serves the static viewer on /ui (loopback-only). Read per-request, so
@@ -165,11 +171,21 @@ export interface CliSettings {
   promptImpact?: { enabled?: boolean };
 }
 
+// "asked" is not an answer: the question was put to the user on a terminal and
+// got none (Ctrl-C). It keeps every other surface asking and only stops the
+// terminal from asking a second time for the same recommendation.
+export const MODEL_RECOMMENDATION_ANSWERS = ["switched", "later", "dismissed", "asked"] as const;
+export type ModelRecommendationAnswer = (typeof MODEL_RECOMMENDATION_ANSWERS)[number];
+
 /**
- * Default generation (doc2query + rerank) model — the 16 GB baseline pick.
- * A 4B text model with strong instruction-following, chosen over the older
- * qwen3-vl:4b (a vision-language model doing text work). The install wizard may
- * persist a heavier model for roomier machines (see cli/hardware.ts).
+ * Default generation (doc2query + rerank) model: what runs when NO choice was
+ * ever stored and no env variable names one.
+ *
+ * It is not what a new install is offered — that is cli/hardware.ts
+ * (tev1:4b from 16 GB, gemma4:12b from 32 GB), and the installer stores the
+ * pick it pulled. This constant stays gemma3:4b on purpose: changing it would
+ * silently switch every existing install without a stored choice to a model
+ * that is not on their disk.
  */
 export const GENERATION_MODEL_DEFAULT = "gemma3:4b";
 
@@ -243,6 +259,7 @@ const KNOWN_SETTINGS_KEYS: readonly string[] = [
   "experiment",
   "docs",
   "generation",
+  "modelRecommendation",
   "ui",
   "reflex",
   "size",
@@ -264,19 +281,83 @@ function warnAboutUnknownKeys(data: unknown, path: string): void {
 }
 
 /**
+ * What is on disk, as far as a WRITER has to know before it replaces the file:
+ *
+ *   - "ok"          readable, valid JSON
+ *   - "missing"     not there (or empty) — defaults are the truth
+ *   - "corrupt"     there, readable, not valid JSON
+ *   - { unreadable } there, but it could not be read (EACCES, EISDIR, EIO …)
+ *
+ * `readSettings` hands out defaults in the last two cases as well, and for a
+ * reader that is the right fallback. For a writer it is not: defaults plus one
+ * changed field, written back, erase every setting that IS in the file. Only
+ * "the file does not exist" (ENOENT, or a missing parent: ENOTDIR) may be read
+ * as "there are no settings".
+ */
+export type SettingsFileState = "ok" | "missing" | "corrupt" | { unreadable: string };
+
+export async function settingsFileState(path: string = settingsFilePath()): Promise<SettingsFileState> {
+  const file = await readSettingsText(path);
+  if (file.state !== "text") return file.state;
+  try {
+    JSON.parse(file.raw);
+    return "ok";
+  } catch {
+    return "corrupt";
+  }
+}
+
+/** The ONE read of the file: its text, or why there is none. */
+async function readSettingsText(
+  path: string,
+): Promise<{ state: "missing" } | { state: { unreadable: string } } | { state: "text"; raw: string }> {
+  let raw: string;
+  try {
+    raw = await readFile(path, "utf8");
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code ?? "read failed";
+    return code === "ENOENT" || code === "ENOTDIR" ? { state: "missing" } : { state: { unreadable: code } };
+  }
+  return raw.trim() === "" ? { state: "missing" } : { state: "text", raw };
+}
+
+/**
+ * The file as ONE consistent snapshot: what state it is in, and the settings
+ * parsed from the very text that state was judged on.
+ *
+ * This is what a writer has to work from. Judging the file with one read and
+ * taking the settings from a second leaves a gap: a transient error (EAGAIN,
+ * EBUSY, EIO) or a file damaged in between gives the second read defaults,
+ * and the writer puts them back over the user's settings. With a single read
+ * there is no second answer to disagree with the first.
+ */
+async function readSettingsSnapshot(path: string): Promise<{ state: SettingsFileState; settings: CliSettings }> {
+  const file = await readSettingsText(path);
+  if (file.state !== "text") return { state: file.state, settings: { update: { mode: DEFAULT_UPDATE_MODE } } };
+  const parsed = parseSettingsText(file.raw, path);
+  return { state: parsed.corrupt ? "corrupt" : "ok", settings: parsed.settings };
+}
+
+/** Why a writer that must not lose settings refuses this file, or null. No
+ *  path in the text: it is printed, and may end up in a chat transcript. */
+export function settingsFileRefusal(state: SettingsFileState, opts: { refuseCorrupt?: boolean } = {}): string | null {
+  if (typeof state === "object") return `the settings file exists but cannot be read (${state.unreadable}) — nothing was written to it`;
+  if (state === "corrupt" && opts.refuseCorrupt) return "the settings file is not valid JSON — fix or delete it first (bastra names the file on every run)";
+  return null;
+}
+
+/**
  * Reads stored settings. A missing file → silent defaults (normal: not created
  * yet). A *corrupt* file → loud warning + defaults, and we do NOT silently
  * revert (callers that write will repair it). Never throws.
  */
 export async function readSettings(path: string = settingsFilePath()): Promise<CliSettings> {
-  let raw: string;
-  try {
-    raw = await readFile(path, "utf8");
-  } catch {
-    return { update: { mode: DEFAULT_UPDATE_MODE } };
-  }
-  if (raw.trim() === "") return { update: { mode: DEFAULT_UPDATE_MODE } };
+  return (await readSettingsSnapshot(path)).settings;
+}
 
+/** Validates the file's text into settings. `corrupt` = not JSON at all (and
+ *  said so on stderr); the settings are the defaults then. */
+function parseSettingsText(raw: string, path: string): { settings: CliSettings; corrupt: boolean } {
   let data: { update?: { mode?: unknown }; embedding?: { provider?: unknown }; ollama?: { autostart?: unknown }; api?: { token?: unknown }; cors?: { origins?: unknown }; commons?: { enabled?: unknown }; sharedRecall?: { enabled?: unknown; language?: unknown; live?: unknown }; docs?: { mode?: unknown; language?: unknown }; generation?: { model?: unknown }; ui?: { enabled?: unknown }; reflex?: { enabled?: unknown; maxPerTurn?: unknown }; evidenceGate?: { enabled?: unknown } };
   try {
     data = JSON.parse(raw);
@@ -286,7 +367,7 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
     process.stderr.write(
       `[bastra-recall] cli-settings.json is corrupt (${(e as Error).message}) — using defaults. Fix or delete ${path}\n`,
     );
-    return { update: { mode: DEFAULT_UPDATE_MODE } };
+    return { settings: { update: { mode: DEFAULT_UPDATE_MODE } }, corrupt: true };
   }
 
   warnAboutUnknownKeys(data, path);
@@ -377,6 +458,14 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
     process.stderr.write(
       `[bastra-recall] cli-settings.json: ignoring invalid generation.model ${JSON.stringify(data?.generation?.model)}\n`,
     );
+  }
+  const recData = (data as { modelRecommendation?: { id?: unknown; answer?: unknown; at?: unknown } }).modelRecommendation;
+  if (
+    typeof recData?.id === "string" &&
+    typeof recData.at === "string" &&
+    (MODEL_RECOMMENDATION_ANSWERS as readonly unknown[]).includes(recData.answer)
+  ) {
+    settings.modelRecommendation = { id: recData.id, answer: recData.answer as ModelRecommendationAnswer, at: recData.at };
   }
   if (typeof data?.ui?.enabled === "boolean") {
     settings.ui = { enabled: data.ui.enabled };
@@ -497,7 +586,7 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
       );
     }
   }
-  return settings;
+  return { settings, corrupt: false };
 }
 
 /** Atomic tmp+rename. Random suffix (not just pid — PIDs recycle on macOS). */
@@ -519,6 +608,18 @@ async function writeSettings(next: CliSettings, path: string): Promise<void> {
  * `readSettings` + `writeSettings` vorbei direkt schreibt, bringt das Rennen
  * zurück.
  *
+ * Eine vorhandene, aber NICHT LESBARE Datei (EACCES, EISDIR …) wird nie
+ * überschrieben: `readSettings` liefert dafür Defaults, und Defaults plus ein
+ * geändertes Feld zurückzuschreiben löscht jede Einstellung, die in der Datei
+ * steht (Gegenreview #1118: Modus 0200, ein Setter, und Generation/Embedding/
+ * API-Token waren weg). Das gilt für JEDEN Setter — der Fehler ist nicht
+ * modellspezifisch. Geprüft wird unter dem Lock, und zwar an GENAU DER einen
+ * Lesung, deren geparster Inhalt danach mutiert wird — eine zweite Lesung
+ * (`readSettings`) kommt im Schreibpfad nicht vor, denn ihre Leser-Defaults
+ * wären bei einem kurzzeitigen Lesefehler wieder das, was zurückgeschrieben wird. Eine KORRUPTE Datei reparieren die bisherigen Setter
+ * weiterhin (dokumentiertes Verhalten von `readSettings`); wer auch das nicht
+ * darf, setzt `refuseCorrupt`.
+ *
  * `mutate` bekommt den frisch gelesenen Stand und gibt den zu schreibenden
  * zurück, oder `null` für "nichts zu tun" (z.B. ein CORS-Origin, das schon
  * erlaubt ist). Rückgabewerte für den Aufrufer laufen über den Closure.
@@ -533,13 +634,22 @@ async function writeSettings(next: CliSettings, path: string): Promise<void> {
 export async function mutateSettings(
   path: string,
   mutate: (current: CliSettings) => CliSettings | null,
+  opts: { refuseCorrupt?: boolean; requireLock?: boolean } = {},
 ): Promise<void> {
   await withPathLock(
     path,
     async () => {
-      const next = mutate(await readSettings(path));
+      // One read: the state that decides whether to write and the settings
+      // that get changed come from the same text (readSettingsSnapshot).
+      const { state, settings } = await readSettingsSnapshot(path);
+      const refusal = settingsFileRefusal(state, opts);
+      if (refusal) throw new Error(refusal);
+      const next = mutate(settings);
       if (next !== null) await writeSettings(next, path);
     },
-    { crossProcess: true },
+    // `requireLock`: reject instead of writing without the cross-process lock
+    // (path-lock.ts). For the model answers and the question claim; every
+    // other setter keeps path-lock's fail-open.
+    { crossProcess: true, requireLock: opts.requireLock },
   );
 }

@@ -23,8 +23,12 @@
  * see there).
  */
 import { spawn } from "node:child_process";
-import { findExecutable, run } from "./exec.js";
+import { findExecutable, run, type RunResult } from "./exec.js";
+import { ollamaChat } from "../learned-recall/reranker.js";
 import { getOllamaAutostart, setEmbeddingProvider, setGenerationModel } from "../settings.js";
+import { settingsFileRefusal, settingsFileState } from "../settings-file.js";
+import { recordModelAnswer } from "../model-recommendation.js";
+import { PathLockUnavailableError } from "../path-lock.js";
 
 const OLLAMA_URL = (process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434").replace(/\/+$/, "");
 const EMBED_MODEL = process.env.BASTRA_EMBEDDING_MODEL ?? "embeddinggemma";
@@ -173,9 +177,9 @@ export async function enableSemanticRecall(
 
 /** Is a specific Ollama model pulled? Null when the server did not answer:
  *  "not reachable" is not "not pulled". */
-export async function ollamaModelPulled(name: string): Promise<boolean | null> {
+export async function ollamaModelPulled(name: string, local?: string): Promise<boolean | null> {
   try {
-    const res = await fetch(`${OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(4000) });
+    const res = await fetch(`${local ?? OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(4000), ...(local ? { redirect: "error" as const } : {}) });
     if (!res.ok) return null;
     const data = (await res.json()) as { models?: { name: string }[] };
     return (data.models ?? []).some((m) => m.name === name || m.name === `${name}:latest`);
@@ -185,8 +189,8 @@ export async function ollamaModelPulled(name: string): Promise<boolean | null> {
 }
 
 /** Is a specific Ollama model already pulled? Best-effort via /api/tags. */
-export async function ollamaModelPresent(name: string): Promise<boolean> {
-  return (await ollamaModelPulled(name)) === true;
+export async function ollamaModelPresent(name: string, local?: string): Promise<boolean> {
+  return (await ollamaModelPulled(name, local)) === true;
 }
 
 /**
@@ -195,37 +199,82 @@ export async function ollamaModelPresent(name: string): Promise<boolean> {
  * semantic-recall step already provisions — so this does NOT install Ollama; it
  * requires a running server and fails clearly if there isn't one.
  *
- * Idempotent: an already-present model skips the pull. `settingsPath` is
- * injectable for tests.
+ * `verify` is the safe switch for a machine that already runs a model: after
+ * the pull, the new model has to answer one short real call before the setting
+ * changes. Files on disk are not proof a model loads on this machine. Whatever
+ * fails, the stored choice is untouched — it is written last, and nothing here
+ * removes a model. A settings file that is not valid JSON is refused up front
+ * (before a multi-GB pull): writing to it would replace every other setting
+ * with defaults.
+ *
+ * `recommendationId` makes the switch the answer to that recommendation: the
+ * model and "switched" go into the file in ONE write (recordModelAnswer), so
+ * there is never a new model without its answer or the reverse.
+ *
+ * Idempotent: an already-present model skips the pull. `settingsPath` and
+ * `cli` (where the `ollama` binary is, how a pull runs) are injectable for tests.
  */
 export async function enableGenerationModel(
   model: string,
-  opts: { dryRun: boolean } = { dryRun: false },
+  opts: { dryRun: boolean; verify?: boolean; recommendationId?: string } = { dryRun: false },
   settingsPath?: string,
+  cli: { find: () => string | null; pull: (ollamaPath: string, model: string) => RunResult } = {
+    find: () => findExecutable("ollama"),
+    pull: (ollamaPath, m) => run(ollamaPath, ["pull", m], { timeoutMs: 1_800_000, showProgress: true }),
+  },
 ): Promise<EnsureResult> {
   if (opts.dryRun) {
     return { status: "would-install", activated: false, message: `would pull ${model} + persist generation.model` };
   }
-  const probe = await probeOllama();
-  if (!probe.ok) {
+  // The safe switch talks to ONE address, fixed before the first request: the
+  // local, credential-free, query-free form of the configured URL. The probes
+  // below (is the server up, is the model there) are requests too — sent to
+  // the raw configured URL they would carry its token to a remote host and
+  // follow redirects, before the test call ever got to refuse it.
+  let local: string | undefined;
+  if (opts.verify) {
+    const refusal = settingsFileRefusal(await settingsFileState(settingsPath), { refuseCorrupt: true });
+    if (refusal) return { status: "error", activated: false, message: refusal };
+    const target = localOllamaTarget(OLLAMA_URL);
+    if (!target.ok) {
+      return { status: "error", activated: false, message: `${model} cannot be checked with a test call: ${target.reason} — use 'bastra models set ${model}' to switch without it` };
+    }
+    local = target.url;
+  }
+  const ollamaPath = cli.find();
+  if (!ollamaPath || !(await serverVersion(local))) {
     return {
       status: "error",
       activated: false,
       message: `Ollama isn't running — enable semantic recall first (that installs + starts it), then set the text model`,
     };
   }
-  const ollamaPath = findExecutable("ollama");
-  if (!ollamaPath) {
-    return { status: "error", activated: false, message: "`ollama` is not on PATH — install it, then re-run" };
-  }
-  if (!(await ollamaModelPresent(model))) {
+  if (!(await ollamaModelPresent(model, local))) {
     process.stdout.write(`  → pulling ${model} (text model for doc2query + rerank)\n`);
-    const r = run(ollamaPath, ["pull", model], { timeoutMs: 1_800_000, showProgress: true });
+    const r = cli.pull(ollamaPath, model);
     if (r.signal) return { status: "error", activated: false, message: `pull of ${model} was interrupted — re-run when ready` };
     if (!r.ok) return { status: "error", activated: false, message: `\`ollama pull ${model}\` failed (${r.detail})` };
-    if (!(await ollamaModelPresent(model))) return { status: "error", activated: false, message: `${model} not present after pull — re-run \`ollama pull ${model}\`` };
+    if (!(await ollamaModelPresent(model, local))) return { status: "error", activated: false, message: `${model} not present after pull — re-run \`ollama pull ${model}\`` };
   }
-  await setGenerationModel(model, settingsPath);
+  if (local) {
+    process.stdout.write(`  → checking ${model} with a short test call\n`);
+    const failure = await testCallFailure(model, local);
+    if (failure) {
+      return { status: "error", activated: false, message: `${model} is downloaded but did not answer a test call (${failure})` };
+    }
+  }
+  if (opts.recommendationId) {
+    try {
+      await recordModelAnswer(opts.recommendationId, "switched", settingsPath, Date.now(), model);
+    } catch (e) {
+      // The error code, not the message: fs messages quote full paths. The
+      // lock refusal is our own text and says what to do.
+      const reason = e instanceof PathLockUnavailableError ? e.message : ((e as NodeJS.ErrnoException).code ?? "write failed");
+      return { status: "error", activated: false, message: `${model} is ready, but the setting could not be saved (${reason})` };
+    }
+  } else {
+    await setGenerationModel(model, settingsPath);
+  }
   return {
     status: "activated",
     activated: true,
@@ -233,11 +282,68 @@ export async function enableGenerationModel(
   };
 }
 
+/**
+ * The one address the safe switch may talk to, derived from the configured
+ * Ollama URL — or the reason there is none.
+ *
+ * It has to be THIS machine's Ollama that answers, or the check proves nothing
+ * about the model that was just pulled here: loopback only.
+ *
+ * The configured URL is parsed ONCE, and both the requests and every message
+ * are built from that one parsed form — never from the configured string. A
+ * URL may carry credentials or a token (user:pass@host, ?token=…), and what
+ * this returns is printed to the terminal and, when an agent ran the command,
+ * lands in a chat transcript. Cleaning the string by pattern would have to
+ * agree with how `new URL()` and fetch read it in every spelling; using only
+ * what the parser produced cannot disagree with it. What does not parse is
+ * not shown at all.
+ */
+export function localOllamaTarget(configured: string): { ok: true; url: string } | { ok: false; reason: string } {
+  let url: URL;
+  try {
+    url = new URL(configured);
+  } catch {
+    return { ok: false, reason: "the configured Ollama URL cannot be read" };
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return { ok: false, reason: "the configured Ollama URL is not an http(s) URL" };
+  // fetch refuses a URL with credentials — and quotes it in full when it does.
+  if (url.username !== "" || url.password !== "") {
+    return { ok: false, reason: "the configured Ollama URL carries credentials, which the test call cannot use" };
+  }
+  // Origin and path only: no credentials, no query, no fragment.
+  const target = `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+  if (!isLoopbackOllamaURL(target)) {
+    return { ok: false, reason: `the test call only runs against a local Ollama, not ${url.host}` };
+  }
+  return { ok: true, url: target };
+}
+
+/**
+ * One short real generation. Null when the model answered, else the reason.
+ * The timeout covers a cold load of a 12B model, not just the few tokens.
+ * A redirect is a failure, not something to follow (same rule as the draft
+ * check). `configured` goes through localOllamaTarget — also when it already
+ * is one — so nothing reaches fetch that was not built from the parsed URL.
+ */
+export async function testCallFailure(model: string, configured: string = OLLAMA_URL): Promise<string | null> {
+  const target = localOllamaTarget(configured);
+  if (!target.ok) return target.reason;
+  try {
+    const answer = await ollamaChat({ baseURL: target.url, model, timeoutMs: 180_000, redirect: "error" })("Reply with the single word: ok");
+    return answer.trim().length > 0 ? null : "empty answer";
+  } catch (e) {
+    // fetch reports a refused redirect as a bare "fetch failed"; the cause names it.
+    const cause = (e as { cause?: { message?: string } }).cause?.message;
+    return cause ? `${(e as Error).message}: ${cause}` : (e as Error).message;
+  }
+}
+
 // ── Ollama HTTP probes ───────────────────────────────────────────────────────
 
-async function serverVersion(): Promise<string | null> {
+/** `local` (a localOllamaTarget) replaces the configured URL and refuses redirects. */
+async function serverVersion(local?: string): Promise<string | null> {
   try {
-    const res = await fetch(`${OLLAMA_URL}/api/version`, { signal: AbortSignal.timeout(1500) });
+    const res = await fetch(`${local ?? OLLAMA_URL}/api/version`, { signal: AbortSignal.timeout(1500), ...(local ? { redirect: "error" as const } : {}) });
     if (!res.ok) return null;
     const data = (await res.json()) as { version?: string };
     // Truthiness fallback (not ??): a 200 with version:"" still means reachable,

@@ -21,7 +21,7 @@ import { cmdStatus } from "./cli/status.js";
 import { cmdUpdate } from "./cli/update.js";
 import { cmdConfig } from "./cli/config-cmd.js";
 import { cmdEmbeddings } from "./cli/embeddings-cmd.js";
-import { cmdModels } from "./cli/models-cmd.js";
+import { cmdModels, modelNoticeAfterCommand } from "./cli/models-cmd.js";
 import { cmdToken } from "./cli/token.js";
 import { cmdCommons } from "./cli/commons.js";
 import { cmdCode } from "./cli/code-cmd.js";
@@ -165,6 +165,10 @@ async function main(): Promise<number> {
     args.showVersion;
   if (!skipHint) {
     try { await maybeEmitUpdateHint(); } catch { /* never break the CLI over this */ }
+    // A model recommendation the user has not answered: the catch-up question
+    // on a terminal, else a dim hint. After the command's own output, and never
+    // touching its exit code (set above).
+    try { await modelNoticeAfterCommand(args); } catch { /* never break the CLI over this */ }
   }
   return code;
 }
