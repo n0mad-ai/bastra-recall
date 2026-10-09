@@ -10,12 +10,13 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { embedBody } from "../../packages/core/src/embed-cache.ts";
 import { normalizeQuery } from "../../packages/core/src/query-normalize.ts";
-import { fixture } from "./common.mts";
+import { fixture, loopbackUrl, outputTarget } from "./common.mts";
 
 const arg = (name: string) => { const i = process.argv.indexOf(`--${name}`); return i < 0 ? undefined : process.argv[i + 1]; };
 const notes: any[] = JSON.parse(await readFile(arg("corpus")!, "utf8")).notes.filter((n: any) => (n.sensitivity ?? "team") !== "private");
 const ids: Set<string> | null = arg("ids") ? new Set(JSON.parse(await readFile(arg("ids")!, "utf8"))) : null;
 const kinds = (arg("kinds") ?? "near,far,far_xlang").split(",");
+const out = await outputTarget(arg("out")!, [arg("corpus"), arg("ids")]);
 const queried = notes.filter(n => !ids || ids.has(n.id)), index = new Map(notes.map((n, i) => [n.id, i]));
 
 async function embed(url: string, model: string, texts: string[]): Promise<Float32Array[]> {
@@ -33,8 +34,9 @@ const loaded = new Map(vault.vault.list().map(m => [m.fm.id, m]));
 await vault.close();
 const rest = (n: any) => { const m = loaded.get(n.id)!; return [m.fm.tags.join(" "), m.fm.recall_when.join(" "), m.fm.summary, embedBody(m)].filter(p => p && p.length > 0).join("\n"); };
 const result: Record<string, unknown> = {};
-for (const [label, url, model] of [["embeddinggemma", "http://127.0.0.1:11434", "embeddinggemma"], ["embeddinggemma-2", "http://127.0.0.1:11435", "embeddinggemma-2:270m"]]) {
-  if (!await fetch(`${url}/api/version`).then(r => r.ok).catch(() => false)) { console.error(`${label}: no server on ${url}, skipped`); continue; }
+for (const [label, server, model] of [["embeddinggemma", "http://127.0.0.1:11434", "embeddinggemma"], ["embeddinggemma-2", "http://127.0.0.1:11435", "embeddinggemma-2:270m"]]) {
+  const url = loopbackUrl(server);
+  if (!await fetch(`${url}/api/version`, { redirect: "error" }).then(r => r.ok).catch(() => false)) { console.error(`${label}: no server on ${url}, skipped`); continue; }
   for (const mode of ["raw", "prefix"]) {
     const docs = await embed(url, model, notes.map(n => mode === "prefix" ? `title: ${loaded.get(n.id)!.fm.title} | text: ${rest(n)}` : `${loaded.get(n.id)!.fm.title}\n${rest(n)}`));
     const row: Record<string, unknown> = {};
@@ -50,6 +52,6 @@ for (const [label, url, model] of [["embeddinggemma", "http://127.0.0.1:11434", 
     }
     result[`${label} ${mode}`] = row;
     console.log(label, mode, JSON.stringify(Object.fromEntries(Object.entries(row).map(([k, v]: any) => [k, { n: v.n, "R@1": v["R@1"], "R@5": v["R@5"], MRR: v.MRR }]))));
-    await writeFile(arg("out")!, JSON.stringify(result));
+    await writeFile(out, JSON.stringify(result));
   }
 }

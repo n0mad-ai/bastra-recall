@@ -5,6 +5,15 @@ They need Node ≥ 22, the installed workspace dependencies and Ollama on
 `127.0.0.1:11434`. They pull no model, build a throwaway vault and never touch a
 real vault or a running daemon. Run one job at a time.
 
+The tools send corpus and probe text only to a model server on this machine.
+Every model and embedding URL (`--url`, `--chat-url`, `--embedding-url` and the
+fixed addresses of `prefix.mts`) has to be a loopback address: `127.0.0.1`,
+`::1` or `localhost`, without credentials or a query. Any other host stops the
+tool before the first request, and a redirect is an error instead of being
+followed. That matters when you run them on a corpus of your own notes. A result
+file is refused inside `~/.bastra` and over an input file, also when a symlink
+leads there.
+
 | File | Purpose |
 | --- | --- |
 | `draft-judge.mts` | draft meaning check through the production prompts (or the decision endpoint) |
@@ -27,6 +36,16 @@ Die Skripte laden den normalen Test-Isolations-/Port-Guard selbst, bauen einen
 Wegwerf-Vault und löschen ihn auch nach Fehlern. Nur explizite Ergebnisdateien
 und Erweiterungs-Caches bleiben erhalten. Alle Inferenzaufrufe innerhalb eines
 Laufs sind seriell. **Mehrere Läufe über dieselbe externe Warteschlange starten.**
+
+Die Werkzeuge schicken Korpus- und Probentext nur an einen Modellserver auf
+diesem Rechner. Jede Modell- und Embedding-URL (`--url`, `--chat-url`,
+`--embedding-url` und die festen Adressen von `prefix.mts`) muss eine
+Loopback-Adresse sein: `127.0.0.1`, `::1` oder `localhost`, ohne Zugangsdaten
+und ohne Query. Jeder andere Host beendet das Werkzeug vor der ersten Anfrage,
+und eine Weiterleitung ist ein Fehler, statt dass ihr gefolgt wird. Das zählt,
+wenn die Werkzeuge auf einem Korpus aus eigenen Notizen laufen. Eine
+Ergebnisdatei wird in `~/.bastra` und über einer Eingabedatei abgelehnt, auch
+wenn ein Symlink dorthin führt.
 
 ## Recall: neue Erweiterungen und drei Suchwege
 

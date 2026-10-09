@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 
 // The normal repository guard isolates all user-state fallbacks and refuses 6723.
 const operatorHome = homedir(), scratchBase = tmpdir();
@@ -10,11 +10,24 @@ export const core = await import("../../packages/core/src/index.ts");
 export const { FIELD_BOOST } = await import("../../packages/core/src/search.ts");
 export const generation = await import("../../packages/daemon/src/learned-recall/reranker.ts");
 export const BASE_URL = "http://127.0.0.1:11434";
+/**
+ * The one check for every model and embedding URL of these tools. They can run
+ * on a private corpus and the URL can come from the command line, so a foreign
+ * host would receive that text. Parsed once; the requests and the messages use
+ * only the parsed form, and what does not parse is not shown.
+ */
 export function loopbackUrl(raw: unknown = BASE_URL): string {
-  const url = new URL(String(raw));
-  if (!["http:", "https:"].includes(url.protocol) || !core.isLoopbackHost(url.hostname.toLowerCase()) || url.username || url.password || url.search || url.hash || url.port === "6723") throw Error("Only a plain loopback Ollama URL is allowed (never port 6723)");
+  let url: URL;
+  try { url = new URL(String(raw)); } catch { throw Error("The model URL cannot be read; expected a loopback URL such as http://127.0.0.1:11434"); }
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw Error("The model URL must be an http(s) URL");
+  if (url.username || url.password || url.search || url.hash) throw Error("The model URL must not carry credentials, a query or a fragment");
+  // The parser has normalized the host: 127.1 and LOCALHOST arrive here as 127.0.0.1 and localhost.
+  if (!["127.0.0.1", "[::1]", "localhost"].includes(url.hostname)) throw Error(`Refusing the model URL on ${url.host}: these tools send corpus text only to this machine (127.0.0.1, ::1 or localhost)`);
+  if (url.port === "6723") throw Error("Port 6723 is the Bastra daemon, not a model server");
   return url.href.replace(/\/+$/, "");
 }
+/** One terminal line: text from a model, a file or the command line, without line breaks and control characters. */
+export const logLine = (text: unknown) => String(text).replace(/\r|\n/g, "").replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, "");
 export const QUERY_TYPES = ["near", "far", "far_xlang"] as const;
 export type QueryType = typeof QUERY_TYPES[number];
 export interface Note {
@@ -50,18 +63,32 @@ export function positive(value: unknown, fallback: number): number {
   if (!Number.isSafeInteger(n) || n < 1) throw Error(`Expected positive integer, got ${value}`);
   return n;
 }
+const bastraHome = join(operatorHome, ".bastra");
+const inside = (path: string, dir: string) => path === dir || path.startsWith(dir + sep);
+// Where a path really leads: its deepest existing part with symlinks resolved, the rest appended.
+const reach = async (path: string): Promise<string> => {
+  try { return await realpath(path); } catch { const up = dirname(path); return up === path ? path : join(await reach(up), basename(path)); }
+};
 export function validatePaths(outputs: Array<string | undefined>, inputs: Array<string | undefined>) {
   const targets = outputs.filter((p): p is string => p !== undefined).map(p => resolve(p));
   const sources = inputs.filter((p): p is string => p !== undefined).map(p => resolve(p));
   if (new Set(targets).size !== targets.length || targets.some(p => sources.includes(p))) throw Error("Result/cache outputs must be distinct and must not overwrite inputs");
-  for (const p of targets) if (p === join(operatorHome, ".bastra") || p.startsWith(join(operatorHome, ".bastra") + "/")) throw Error("Output in the operator's .bastra is forbidden");
+  for (const p of targets) if (inside(p, bastraHome)) throw Error("Output in the operator's .bastra is forbidden");
+}
+/**
+ * The path a result file is written to. Refuses an input file and the
+ * operator's .bastra, by name and by where the path really leads:
+ * `resolve` only reads the spelling, a symlinked directory or file does not show in it.
+ */
+export async function outputTarget(file: string, inputs: Array<string | undefined> = []): Promise<string> {
+  const target = resolve(file), reached = await reach(target);
+  for (const input of inputs) if (input !== undefined && await reach(resolve(input)) === reached) throw Error("Output must not overwrite an input file");
+  if ([target, reached].some(p => inside(p, bastraHome)) || inside(reached, await reach(bastraHome))) throw Error("Output in the operator's .bastra is forbidden");
+  await mkdir(dirname(target), { recursive: true });
+  return target;
 }
 export async function jsonOut(file: string, value: unknown, corpus?: string) {
-  const target = resolve(file);
-  if (corpus && target === resolve(corpus)) throw Error("Output must not overwrite the corpus");
-  if (target === join(operatorHome, ".bastra") || target.startsWith(join(operatorHome, ".bastra") + "/")) throw Error("Output in the operator's .bastra is forbidden");
-  await mkdir(dirname(target), { recursive: true });
-  await writeFile(target, JSON.stringify(value, null, 2) + "\n");
+  await writeFile(await outputTarget(file, [corpus]), JSON.stringify(value, null, 2) + "\n");
 }
 export async function corpus(file: string, limit?: unknown) {
   const raw = await readFile(file, "utf8"), parsed = JSON.parse(raw);

@@ -480,7 +480,11 @@ wording) is 1.5 s with or without them.
 
 Tools, the invented corpus and the frozen probes live in
 [`tools/model-compare/`](../tools/model-compare/). They build a throwaway vault,
-never touch a real vault or a running daemon, and pull no model.
+never touch a real vault or a running daemon, and pull no model. They send text
+only to a model server on this machine: a model URL that is not a loopback
+address (`127.0.0.1`, `::1`, `localhost`) stops the tool before the first
+request, so a run on a corpus of your own notes cannot send them to another
+host.
 
 ```sh
 # draft meaning check: known set, then the fresh set
@@ -1020,7 +1024,11 @@ und ohne sie 1,5 s.
 Werkzeuge, das erfundene Korpus und die eingefrorenen Proben liegen in
 [`tools/model-compare/`](../tools/model-compare/). Sie bauen einen
 Wegwerf-Vault, fassen nie einen echten Vault oder einen laufenden Daemon an und
-laden kein Modell herunter. Die Aufrufe stehen im englischen Abschnitt
+laden kein Modell herunter. Text schicken sie nur an einen Modellserver auf
+diesem Rechner: Eine Modell-URL, die keine Loopback-Adresse ist (`127.0.0.1`,
+`::1`, `localhost`), beendet das Werkzeug vor der ersten Anfrage, sodass ein
+Lauf auf einem Korpus aus eigenen Notizen sie nicht an einen anderen Host
+schicken kann. Die Aufrufe stehen im englischen Abschnitt
 [Reproduce](#reproduce); die Zahlen dieser Seite liegen in
 [`tools/model-compare/results/summary.json`](../tools/model-compare/results/summary.json),
 `collect.py` baut diese Datei aus den Rohergebnissen und `render.py` füllt

@@ -1,5 +1,5 @@
 /** Synthetic recall comparison. No real vault, daemon, pull or cloud fallback. */
-import { args, required, positive, corpus, core, FIELD_BOOST, generation, fixture, digest, timing, forecast, metrics, jsonOut, validatePaths, modelInfo, loopbackUrl, rank, QUERY_TYPES, BASE_URL, errorText, applyExpansions, type ExpansionEntry } from "./common.mts";
+import { args, required, positive, corpus, core, FIELD_BOOST, generation, fixture, digest, timing, forecast, metrics, jsonOut, validatePaths, modelInfo, loopbackUrl, logLine, rank, QUERY_TYPES, BASE_URL, errorText, applyExpansions, type ExpansionEntry } from "./common.mts";
 
 const a = args(["corpus", "expand-model", "embedding-model", "out", "limit", "embedding-dim", "expansions-in", "expansions-out", "timeout-ms", "chat-url", "embedding-url"], ["help"]);
 if (a.help) {
@@ -90,6 +90,6 @@ if (a.help) {
     result.embedding_stats = f.embeddingStats();
     result.status = result.issues.length ? "completed-with-issues" : "completed";
     console.table(result.summary.map(({ lane, kind, n, r_at_1, r_at_3, r_at_5, mrr }: any) => ({ lane, kind, n, "R@1": r_at_1.toFixed(3), "R@3": r_at_3.toFixed(3), "R@5": r_at_5.toFixed(3), MRR: mrr.toFixed(3) })));
-  } catch (e) { result.status = "failed"; result.error = errorText(e); process.exitCode = 1; console.error(result.error); }
+  } catch (e) { result.status = "failed"; result.error = errorText(e); process.exitCode = 1; console.error(logLine(result.error)); }
   finally { result.total_ms = performance.now() - started; await jsonOut(out, result, file); if (f) await f.close(); }
 }
