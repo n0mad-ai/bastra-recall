@@ -43,6 +43,21 @@ import { cmdPanel } from "./cli/panel.js";
 import { cmdAutostart } from "./cli/autostart.js";
 import { maybeEmitUpdateHint } from "./cli/update-hint.js";
 
+// A reader such as `head` intentionally closes its pipe. Stop producing output
+// quietly, but never turn a failure into success: a closed stderr leaves the
+// command to finish with its own exit code, and a closed stdout ends it one
+// turn of the event loop later, so the code of a failure that was just
+// reported is already set. Other stream errors retain the ordinary failure path.
+let readerGone = false;
+const pipeError = (stream: NodeJS.WriteStream) => (error: NodeJS.ErrnoException): void => {
+  if (error.code !== "EPIPE") throw error;
+  if (stream === process.stderr || readerGone) return;
+  readerGone = true;
+  setImmediate(() => process.exit(process.exitCode ?? 0));
+};
+process.stdout.on("error", pipeError(process.stdout));
+process.stderr.on("error", pipeError(process.stderr));
+
 async function dispatch(args: ReturnType<typeof parseArgs>): Promise<number> {
   if (args.showVersion) { showVersion(); return 0; }
   // #330 — this guard runs BEFORE the switch and carries no `!args.command`
@@ -132,6 +147,8 @@ async function main(): Promise<number> {
   }
 
   const code = await dispatch(args);
+  // Known from here on, also to a reader-gone exit during the update hint.
+  process.exitCode = code;
 
   // After every subcommand: optionally emit a dim update hint to stderr.
   // Skip for `bastra update` itself (the user is already mid-update), for

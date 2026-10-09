@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { bridgeLanguage } from "./language.js";
-import { isSystemInjectedTurn } from "../system-turn.js";
+import { isSystemInjectedTurn, ownerPromptText } from "../system-turn.js";
 import { isExpiredUnconfirmed, isMachineVocabulary, mintBridge, UNCONFIRMED_BRIDGE_TTL_DAYS, type Bridge } from "./bridges.js";
 import { rerank, type ChatFn, type RerankCandidate } from "./reranker.js";
 import { testRunLogDir } from "../env.js";
@@ -140,7 +140,7 @@ export function queryOrigin(e: TelemetryEvent): QueryOrigin {
   const explicit = [e.origin, e.query_origin, dims.origin].find((v) => typeof v === "string") as string | undefined;
   if (explicit === "system") return "system";
   if (explicit === "tool") return "tool";
-  if (typeof e.query === "string" && isSystemTurnText(e.query)) return "system";
+  if (typeof e.query === "string" && (isSystemTurnText(e.query)||ownerPromptText(e.query)===null)) return "system";
   if (explicit === "owner" || explicit === "user") return "owner";
   if (explicit === "agent") return "agent";
   const source = dims.hook_source;
@@ -167,7 +167,10 @@ export function teachesBridges(e: TelemetryEvent): boolean {
  * recall, and neither depends on who phrased the query.
  */
 export function bridgeTeachingEvents(events: TelemetryEvent[]): TelemetryEvent[] {
-  return events.filter((e) => (e.kind !== "hook_recall" && e.kind !== "recall") || teachesBridges(e));
+  return events.filter((e) => (e.kind !== "hook_recall" && e.kind !== "recall") || teachesBridges(e)).map(e=>{
+    if((e.kind==="hook_recall"||e.kind==="recall")&&typeof e.query==="string")return {...e,query:ownerPromptText(e.query)??e.query};
+    return e;
+  });
 }
 
 /**

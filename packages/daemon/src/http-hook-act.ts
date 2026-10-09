@@ -1,3 +1,4 @@
+import { cleanDraftField } from './draft-text.js';
 /** Loopback-only `/hook/act`: closes loaded-memory episodes after Bash. */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { recordDraftUse } from "./draft-use.js";
@@ -15,8 +16,8 @@ export function handleHookAct(req: IncomingMessage, res: ServerResponse, telemet
         sendJson(res, 400, { error: "tool_input_excerpt is required" });
         return;
       }
-      const toolName = typeof body.tool_name === "string" ? body.tool_name : null;
-      const sessionId = typeof body.session_id === "string" ? body.session_id : null;
+      const toolName = typeof body.tool_name === "string" ? cleanDraftField(body.tool_name,80) : null;
+      const sessionId = typeof body.session_id === "string" ? cleanDraftField(body.session_id) : null;
       const exitCode = typeof body.exit_code === "number" ? body.exit_code : null;
       const episodes = telemetry.matchLoadedMemories({
         tool_name: toolName,

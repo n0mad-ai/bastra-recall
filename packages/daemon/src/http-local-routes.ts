@@ -1,3 +1,5 @@
+import { recordDeliveredDraftHints } from './draft-delivery.js';
+import { cleanDraftField } from './draft-text.js';
 /**
  * Route dispatch for the loopback-only surface: the liveness/introspection
  * doors (/health, /tools, /vault/count), the hook lanes that still answer
@@ -44,7 +46,6 @@ import { ALL_TOOL_DEFS, filterToolDefsForSurface, toolSurfaceFrom } from "./tool
 import { MAX_BODY_BYTES, readJsonBody, sendJson } from "./http-util.js";
 import { handleHookRecall } from "./http-hook-routes.js";
 import { appendDraftNotice } from "./draft-notice.js";
-import { recordDraftHints } from "./draft-use.js";
 import { handleHookAct } from "./http-hook-act.js";
 
 export interface LocalRouteCtx {
@@ -201,7 +202,7 @@ export function dispatchLocalRoutes(
           })
           : await runBashFailLane(payload, `http://127.0.0.1:${req.socket.localPort ?? 6723}`);
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(await appendDraftNotice(out,payload as SaveNoticePayload,id=>vault.get(id)?.fm));
+        res.end(await appendDraftNotice(out,payload as SaveNoticePayload,id=>vault.get(id)?.fm,undefined,()=>!res.destroyed&&!req.socket.destroyed));
       })
       .catch(() => {
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
@@ -215,7 +216,7 @@ export function dispatchLocalRoutes(
   // convention) — the contract is identical to the four above.
   // #490: the session lane among them takes the shared embedding warm-up,
   // injected here the same way the prompt lane takes its prewarmer.
-  if (dispatchLaneRoutes(req, res, method, url, toolDeps.warmupEmbedding, (out,payload)=>appendDraftNotice(out,payload,id=>vault.get(id)?.fm))) return true;
+  if (dispatchLaneRoutes(req, res, method, url, toolDeps.warmupEmbedding, (out,payload,connected)=>appendDraftNotice(out,payload,id=>vault.get(id)?.fm,undefined,connected))) return true;
 
   // #144: lightweight act-signal (PostToolUse:Bash). No recall, no injection —
   // only matches the excerpt against open loadedMemories episodes so
@@ -263,7 +264,7 @@ export function dispatchLocalRoutes(
         const hintedSession =
           typeof (body as { session_id?: unknown })?.session_id === "string"
             && (body as { session_id: string }).session_id.length > 0
-            ? (body as { session_id: string }).session_id
+            ? cleanDraftField((body as { session_id: string }).session_id)
             : null;
         if (hintedSession) {
           telemetry.recordSurfacedHints(
@@ -277,7 +278,7 @@ export function dispatchLocalRoutes(
           );
         }
         const draftIds = Array.isArray(body.draft_ids) ? body.draft_ids.filter((id): id is string => typeof id === "string") : [];
-        const draftCount = await recordDraftHints(draftIds, hintedSession, typeof body.draft_input === "string" ? body.draft_input : null);
+        const draftCount = await recordDeliveredDraftHints(draftIds, hintedSession, typeof body.draft_input === "string" ? body.draft_input : null);
         sendJson(res, 200, { ok: true, counted: ids.length, ...(draftCount > 0 ? { drafts_counted: draftCount } : {}) });
       })
       .catch(() => sendJson(res, 400, { error: "invalid body" }));

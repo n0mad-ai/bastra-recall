@@ -122,3 +122,34 @@ test("real logs follow remains alive until SIGINT/SIGTERM, then drains and exits
     assert.equal(finite.code, 0);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test('early-closing stdout pipe exits quietly with success',async()=>{
+ const child=spawn(process.execPath,[cli,'help'],{env:{...process.env,BASTRA_UPDATE_CHECK:'off'},stdio:['ignore','pipe','pipe']});let err='';child.stderr.on('data',b=>err+=b);const done=once(child,'close');child.stdout.destroy();const timeout=setTimeout(()=>child.kill('SIGKILL'),5000);
+ try{const[code,signal]=await done;assert.equal(signal,null);assert.equal(code,0);assert.equal(err,'');}finally{clearTimeout(timeout);child.kill();}
+});
+
+test("a failure keeps its exit code when the reader of stdout and stderr is already gone", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cli-gone-"));
+  const gone = async (args: string[]) => {
+    const child = spawn(process.execPath, [cli, ...args], {
+      env: { ...process.env, BASTRA_UPDATE_CHECK: "off", BASTRA_DRAFTS_PATH: join(dir, "drafts.json") }, stdio: ["ignore", "pipe", "pipe"],
+    });
+    const done = once(child, "close");
+    child.stdout.destroy();
+    child.stderr.destroy();
+    const timeout = setTimeout(() => child.kill("SIGKILL"), 15_000);
+    try {
+      const [code, signal] = await done;
+      assert.equal(signal, null);
+      return code;
+    } finally { clearTimeout(timeout); child.kill(); }
+  };
+  try {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      assert.equal(await gone(["drafts", "undo", "d-000000000000"]), 1, "failed command");
+      assert.equal(await gone(["not-a-command"]), 2, "unknown command");
+      assert.equal(await gone(["drafts", "list", "--no-such-flag"]), 2, "usage error");
+      assert.equal(await gone(["help"]), 0, "successful command");
+    }
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

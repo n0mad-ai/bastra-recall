@@ -64,7 +64,7 @@ test("B1 deduplicates within a session by normalized fingerprint and bigram Dice
   assert.equal(rows[0].evidence.length, 3);
 }));
 
-test("B1 expires unshown single evidence at seven days, keeps repeated and displayed drafts", () => isolated(async (dir, harvest) => {
+test("B1 expires single evidence at seven days even when merely displayed", () => isolated(async (dir, harvest) => {
   await harvest("early", [u(task)]);
   assert.equal((await listDrafts(now + 1 + 7 * day - 1)).length, 1);
   assert.equal(await expireDrafts({ now: now + 1 + 7 * day }), 1);
@@ -74,7 +74,7 @@ test("B1 expires unshown single evidence at seven days, keeps repeated and displ
   assert.equal(await expireDrafts({ now: now + 1 + 7 * day }), 0);
   const repeated = (await listDrafts(now + 1))[0];
   await upsertDraft({ ...repeated, evidence: repeated.evidence.slice(0, 1), surfaced: [{ session_id: "shown", ts: now + 1, novel: [] }] }, now + 1);
-  assert.equal(await expireDrafts({ now: now + 1 + 7 * day }), 0);
+  assert.equal(await expireDrafts({ now: now + 1 + 7 * day }), 1);
 }));
 
 async function tree(dir: string): Promise<unknown> {

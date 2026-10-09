@@ -8,10 +8,11 @@ import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { redactSecrets } from "@bastra-recall/core/scrub";
 import { writeDraftEvent } from "./draft-events.js";
-import { cleanDraftText, clipDraftText } from "./draft-text.js";
+import { cleanDraftText, cleanDraftField, cleanDraftLine, clipDraftText } from "./draft-text.js";
 import { mergeSituations, situationLiterals } from "./draft-situation.js";
 import { bigramSet, dice } from "./stop-lane-repeat.js";
 import { withPathLock, tryWithPathLock } from "./path-lock.js";
+import { retainDraftSurfaces, draftUseProof } from "./draft-use.js";
 
 export const DRAFT_STORE_VERSION = 1;
 export const DRAFT_MAX_ROWS = 500;
@@ -70,29 +71,38 @@ export function draftId(sessionId: string, turn: number, fp: string): string {
 
 function sanitize(input: unknown, now: number, fallback = now): Draft | null {
   const d = draftSchema.parse(input);
+  // A background tick's start clock may precede concurrent hint/use writes.
+  // Only timestamps beyond the real wall clock are untrusted future values.
   const time = (ts: number) => ts > now ? Math.min(now, fallback) : ts;
+  const proofTime=(ts:number)=>ts>Math.max(now,Date.now())?Math.min(now,fallback):ts;
   const quoteInput = clipDraftText(d.quote, 600);
   const quote = redactSecrets(quoteInput, homedir());
   if (quote.redactedChars > quoteInput.length * 0.3) return null;
   const clean = cleanDraftText;
-  const optional = (text: string | undefined) => text === undefined ? undefined : clean(text);
+  const optional = (text: string | undefined, clean = cleanDraftLine) => text === undefined ? undefined : clean(text);
   const strings = (items: string[], count: number, max = 200) => items.slice(-count).map((s) => clean(s, max));
-  return {
+  // Derived tokens are stored lower-cased; the commands they came from are not.
+  const rawSituation = [...d.situation.before,...d.situation.after].join("\n").toLowerCase();
+  const safeSituation = [...strings(d.situation.before,3),...strings(d.situation.after.slice(0,3),3)].join("\n").toLowerCase();
+  const safeToken = (value:string):boolean => !value.includes("[REDACTED]") && !(rawSituation.includes(value.toLowerCase()) && !safeSituation.includes(value.toLowerCase()));
+  const result:Draft = {
     ...d, created: time(d.created), quote: clipDraftText(quote.text, 600), context: d.context === undefined ? undefined : clean(d.context, 160),
     situation: {
       ...d.situation,
       cwd: optional(d.situation.cwd), project: optional(d.situation.project), branch: optional(d.situation.branch),
       before: strings(d.situation.before, 3), after: strings(d.situation.after.slice(0, 3), 3),
-      reads: strings(d.situation.reads, 3), lits: strings(d.situation.lits, 32, 160),
+      reads: d.situation.reads.slice(-3).map(s=>cleanDraftLine(s)), lits: strings(d.situation.lits, 32, 160).filter(safeToken),
     },
     // Opaque identifiers (often UUIDs) must keep their identity across sessions.
-    evidence: d.evidence.map((e) => ({ ...e, ts: time(e.ts), session_id: e.session_id.slice(0, 200), client: optional(e.client) })),
-    surfaced: d.surfaced.slice(-5).map((s) => ({ ...s, ts: time(s.ts), session_id: s.session_id.slice(0, 200), novel: strings(s.novel, 32, 160),
-      ...(s.used ? { used: { ...s.used, ts: time(s.used.ts), tool: clean(s.used.tool, 80), matched: strings(s.used.matched, 3, 160) } } : {}),
+    evidence: d.evidence.map((e) => ({ ...e, ts: time(e.ts), session_id: cleanDraftField(e.session_id), client: optional(e.client, cleanDraftField) })),
+    surfaced: d.surfaced.map((s) => ({ ...s, ts: proofTime(s.ts), session_id: cleanDraftField(s.session_id), novel: strings(s.novel, 32, 160).filter(safeToken),
+      ...(s.used ? { used: { ...s.used, ts: proofTime(s.used.ts), tool: cleanDraftField(s.used.tool, 80), matched: strings(s.used.matched, 3, 160).filter(safeToken) } } : {}),
     })),
     memory_id: d.memory_id?.slice(0, 200), evidence_key: d.evidence_key?.slice(0, 200),
-    last_touched: Math.max(time(d.last_touched), time(d.created), ...d.evidence.map((e) => time(e.ts)), ...d.surfaced.map((s) => time(s.ts))),
+    last_touched: Math.max(time(d.last_touched), time(d.created), ...d.evidence.map((e) => time(e.ts)), ...d.surfaced.flatMap(s=>s.used?[proofTime(s.used.ts)]:[])),
   };
+  result.surfaced=retainDraftSurfaces(result);
+  return result;
 }
 
 
@@ -114,7 +124,7 @@ function documentOf(rows: Draft[], metadata: Record<string, unknown>): Record<st
 }
 
 function expired(row:Draft,now:number):boolean {
- const age=row.state!=="open"?DRAFT_RETAIN_AGE_MS:row.evidence.length===1&&row.surfaced.length===0?DRAFT_UNCONFIRMED_AGE_MS:DRAFT_OPEN_AGE_MS;
+ const age=row.state!=="open"?DRAFT_RETAIN_AGE_MS:row.evidence.length===1&&!draftUseProof(row)?DRAFT_UNCONFIRMED_AGE_MS:DRAFT_OPEN_AGE_MS;
  return !(now-row.last_touched<age);
 }
 function bounded(rows: Draft[], now: number, metadata: Record<string, unknown> = {}): Draft[] {
@@ -248,7 +258,7 @@ export function draftSearchSnapshot(now = Date.now()): { key: string; rows: read
   const store = cache?.path === path ? cache.store : undefined;
   if (!store || store.diagnostics.corrupt || store.diagnostics.unsupportedVersion) return { key: `${path}:cold`, rows: [] };
   const rows = store.rows.filter(row => {
-    const age = row.state !== "open" ? DRAFT_RETAIN_AGE_MS : row.evidence.length === 1 && row.surfaced.length === 0 ? DRAFT_UNCONFIRMED_AGE_MS : DRAFT_OPEN_AGE_MS;
+    const age = row.state !== "open" ? DRAFT_RETAIN_AGE_MS : row.evidence.length === 1 && !draftUseProof(row) ? DRAFT_UNCONFIRMED_AGE_MS : DRAFT_OPEN_AGE_MS;
     return now - row.last_touched < age;
   }).slice(-DRAFT_MAX_ROWS);
   return { key: `${path}:${cache!.stamp}:${rows.map(row => row.id).join(",")}`, rows };
@@ -342,7 +352,7 @@ async function captureBatch(inputs: Draft[], now: number, afterUpdates: DraftAft
     const updatedIds: string[] = [];
     for (const update of afterUpdates) {
       const row = rows.find(row => row.state === "open" && row.evidence.some(e =>
-        e.session_id === update.session_id.slice(0, 200) && e.turn === update.turn));
+        e.session_id === cleanDraftField(update.session_id) && e.turn === update.turn));
       if (!row) continue;
       const additions = update.after.map(command => cleanDraftText(command)).filter(command => !row.situation.after.includes(command));
       const after = [...row.situation.after, ...additions].slice(0, 3);
@@ -447,8 +457,8 @@ export async function updateRetrievedDrafts(
 /** Promotion and undo serialize with capture/purge. Keep the draft lock across
  * the audited vault mutation; a purge cannot race a late note publication. */
 export function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, now?: number, tryOnly?: false): Promise<T>;
-export function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, now: number, tryOnly: true): Promise<T | undefined>;
-export async function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, now = Date.now(), tryOnly = false): Promise<T | undefined> {
+export function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, now: number, tryOnly: true, noQueue?: boolean): Promise<T | undefined>;
+export async function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, now = Date.now(), tryOnly = false, noQueue = false): Promise<T | undefined> {
   const path = draftsPath();
   const lock = tryOnly ? tryWithPathLock : withPathLock;
   return lock(path, async () => {
@@ -459,7 +469,7 @@ export async function transactDrafts<T>(mutate: (rows: Draft[]) => Promise<T>, n
     const result = await mutate(rows);
     if (JSON.stringify(rows) !== before) await write(path, bounded(rows, now, store.metadata), store.metadata, now);
     return result;
-  }, { crossProcess: true });
+  }, { crossProcess: true, noQueue });
 }
 
 /** Prime and refresh outside every hook/recall path, including external CLI

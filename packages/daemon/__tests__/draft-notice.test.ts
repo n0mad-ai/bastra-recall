@@ -28,7 +28,7 @@ test("F Codex is plain, Claude uses the existing badge; an earlier system line s
 }));
 test("F off, subagent, wrong event, missing/private/foreign note never consume a notice",()=>isolated(async()=>{
  process.env.BASTRA_SAVE_NOTICE="off";assert.equal(await appendDraftNotice("{}",payload,()=>entry),"{}");process.env.BASTRA_SAVE_NOTICE="1";
- for(const [p,lookup]of [[{...payload,agent_id:"worker"},()=>entry],[{...payload,hook_event_name:"PreToolUse"},()=>entry],[payload,()=>undefined],[payload,()=>({...entry,sensitivity:"private"})],[payload,()=>({...entry,source:"manual"})]] as const)assert.equal(await appendDraftNotice("{}",p,lookup),"{}");
+ for(const [p,lookup]of [[{...payload,agent_id:"worker"},()=>entry],[{...payload,hook_event_name:"PreToolUse"},()=>entry],[payload,()=>undefined],[payload,()=>({...entry,source:"manual"})]] as const)assert.equal(await appendDraftNotice("{}",p,lookup),"{}");
  assert.equal((await listDrafts())[0].announce,true);
 }));
 test("F malformed output and a foreign lock leave baseline bytes and receipt intact",()=>isolated(async()=>{
@@ -71,3 +71,16 @@ test("F actual post-tool route delivers a pending line once for Codex",()=>isola
  const second=await post();assert.equal((await second.json() as {systemMessage?:string}).systemMessage,undefined);
  }finally{await server.close();search.stop();await vault.stop();}
 }));
+
+test('notice skips a busy local writer rather than queuing the hook response',()=>isolated(async()=>{
+ const {withPathLock}=await import('../src/path-lock.js');let release!:()=>void,entered!:()=>void;const ready=new Promise<void>(r=>entered=r);const writer=withPathLock(process.env.BASTRA_DRAFTS_PATH!,async()=>{entered();await new Promise<void>(r=>release=r);});await ready;
+ let result:string|undefined;const pending=appendDraftNotice('{}',payload,()=>entry,async()=>'en').then(out=>result=out);
+ try{await new Promise(r=>setImmediate(r));assert.equal(result,'{}');assert.equal((await listDrafts())[0].announce,true);}finally{release();await writer;await pending;}
+}));
+test('a private pending note is permanently retired without announcing',()=>isolated(async()=>{
+ assert.equal(await appendDraftNotice('{}',payload,()=>({...entry,sensitivity:'private'}),async()=>'en'),'{}');assert.equal((await listDrafts())[0].announce,false);
+}));
+test('disconnected clients never consume a notice before claim',()=>isolated(async()=>{
+ const out=await appendDraftNotice('{}',payload,()=>entry,async()=>'en',()=>false);assert.equal(out,'{}');assert.equal((await listDrafts())[0].announce,true);
+}));
+test('undo has its own recorded counter',()=>{const stats=aggregateDrafts([{kind:'draft_undone',count:1}]);assert.equal(stats?.undone,1);});

@@ -31,7 +31,7 @@ function runLane<P>(
   req: IncomingMessage,
   res: ServerResponse,
   run: (payload: P, self: string) => Promise<string>,
-  notice?: (out:string,payload:SaveNoticePayload)=>Promise<string>,
+  notice?: (out:string,payload:SaveNoticePayload,isConnected:()=>boolean)=>Promise<string>,
 ): void {
   const answer = (body: string): void => {
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
@@ -42,7 +42,8 @@ function runLane<P>(
       const self = `http://127.0.0.1:${req.socket.localPort ?? 6723}`;
       const payload=(body.payload??{}) as P;
       const out=await run(payload,self);
-      answer(notice?await notice(out,payload as SaveNoticePayload):out);
+      const connected=()=>!res.destroyed&&!res.writableEnded&&!req.socket.destroyed;
+      if(connected())answer(notice?await notice(out,payload as SaveNoticePayload,connected):out);
     })
     .catch(() => answer("{}"));
 }
@@ -58,7 +59,7 @@ export function dispatchLaneRoutes(
    *  http.ts). Absent = no embedding provider, and the lane behaves exactly
    *  as it did before #490. */
   warmupEmbedding?: WarmupCoordinator,
-  notice?: (out:string,payload:SaveNoticePayload)=>Promise<string>,
+  notice?: (out:string,payload:SaveNoticePayload,isConnected:()=>boolean)=>Promise<string>,
 ): boolean {
   if (method !== "POST") return false;
 

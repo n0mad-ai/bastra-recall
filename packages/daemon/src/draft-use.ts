@@ -3,14 +3,14 @@ import { envOff } from "./env.js";
 import { ACTED_ON_WINDOW_MS } from "./telemetry-join-state.js";
 import { transactDrafts, type Draft } from "./draft-store.js";
 import { tokens } from "./save-similarity.js";
-import { cleanDraftText } from "./draft-text.js";
+import { cleanDraftText, cleanDraftField } from "./draft-text.js";
 
 /** Unmeasured heuristics; use the existing acted-on time window. */
 export const DRAFT_USE_MIN_WORD_TOKENS = 3;
 export const DRAFT_USE_LITERAL_MIN_CHARS = 4;
 
 function literals(text: string): string[] {
-  return text.toLowerCase().match(/[\p{L}\p{N}/@:_][\p{L}\p{N}._@\/:-]*/gu) ?? [];
+  return (text.toLowerCase().match(/[\p{L}\p{N}/@:_][\p{L}\p{N}._@\/:-]*/gu) ?? []).map(t=>{let end=t.length;while(end>0&&(t[end-1]==="."||t[end-1]===":"))end--;return t.slice(0,end);});
 }
 function literalShape(token: string): boolean {
   return [...token].length >= DRAFT_USE_LITERAL_MIN_CHARS && /[\p{N}./_@:-]/u.test(token);
@@ -29,8 +29,10 @@ export function draftNovelTokens(draft: Draft, triggeringInput: string): string[
 
 /** Shared by actual in-process lane delivery and /hook/hinted. A replay cannot
  * reset the original novelty set/window; origin sessions never qualify. */
-export async function recordDraftHints(ids: string[], sessionId: string | null, triggeringInput: string | null, now = Date.now()): Promise<number> {
+export async function recordDraftHints(ids: string[], sessionId: string | null, triggeringInput: string | null, now = Date.now(), offeredNovel?: ReadonlyMap<string,string[]>): Promise<number> {
   if (!sessionId || triggeringInput === null || envOff("BASTRA_DRAFT_HINTS")) return 0;
+  sessionId=cleanDraftField(sessionId);
+  const inputTokens=new Set([...tokens(triggeringInput),...literals(triggeringInput)]);
   try {
     const selected = new Set(ids.filter(id => /^d-[a-f0-9]{12}$/.test(id)).slice(0, 2));
     if (!selected.size) return 0;
@@ -39,8 +41,9 @@ export async function recordDraftHints(ids: string[], sessionId: string | null, 
       for (const row of rows) {
         if (row.state !== "open" || !selected.has(row.id) || row.evidence.some(e => e.session_id === sessionId)) continue;
         if (row.surfaced.some(surface => surface.session_id === sessionId)) continue;
-        row.surfaced.push({ session_id: sessionId, ts: now, novel: draftNovelTokens(row, triggeringInput) });
-        row.surfaced = row.surfaced.slice(-5); row.last_touched = now; count++;
+        const novel=offeredNovel?.get(row.id)?.filter(t=>!inputTokens.has(t)) ?? draftNovelTokens(row, triggeringInput);
+        row.surfaced.push({ session_id: sessionId, ts: now, novel });
+        row.surfaced = retainDraftSurfaces(row); count++;
       }
       return count;
     }, now, true) ?? 0;
@@ -58,7 +61,9 @@ export interface DraftUseInput {
 /** Strict success evidence: unknown exit codes do not qualify. Assumption, not
  * confirmed by the owner; preserves the phase-E acceptance's explicit exit 0. */
 export async function recordDraftUse(input: DraftUseInput): Promise<number> {
-  const { sessionId, toolName, excerpt, exitCode } = input;
+  const sessionId=input.sessionId===null?null:cleanDraftField(input.sessionId);
+  const toolName=input.toolName===null?null:cleanDraftField(input.toolName,80);
+  const { excerpt, exitCode } = input;
   if (!sessionId || !toolName || !excerpt || exitCode !== 0) return 0;
   const now = input.now ?? Date.now();
   const literalInput = new Set(literals(excerpt));
@@ -75,7 +80,7 @@ export async function recordDraftUse(input: DraftUseInput): Promise<number> {
         const literalMatches = [...new Set(novel.filter(token => literalShape(token) && literalInput.has(token)))];
         const wordMatches = [...new Set(novel.filter(token => !literalShape(token) && /\p{L}/u.test(token) && wordInput.has(token)))];
         if (!literalMatches.length && wordMatches.length < DRAFT_USE_MIN_WORD_TOKENS) continue;
-        surface.used = { ts: now, tool: cleanDraftText(toolName, 80), exit_code: 0,
+        surface.used = { ts: now, tool: toolName, exit_code: 0,
           matched: (literalMatches.length ? literalMatches : wordMatches).slice(0, 3) };
         row.last_touched = now; count++;
       }
@@ -91,4 +96,10 @@ export function draftUseProof(draft: Draft): Draft["surfaced"][number] | undefin
     && !draft.evidence.some(e => e.session_id === surface.session_id)
     && surface.used.matched.length > 0 && surface.used.matched.every(token => surface.novel.includes(token) && sourceTokens(draft).includes(token))
     && (surface.used.matched.some(literalShape) || new Set(surface.used.matched.filter(token => /\p{L}/u.test(token))).size >= DRAFT_USE_MIN_WORD_TOKENS));
+}
+
+/** Keep the first valid causal receipt while retaining the five-entry bound. */
+export function retainDraftSurfaces(draft:Draft):Draft["surfaced"] {
+  const proof=draftUseProof(draft);
+  return proof?[proof,...draft.surfaced.filter(s=>s!==proof).slice(-4)]:draft.surfaced.slice(-5);
 }

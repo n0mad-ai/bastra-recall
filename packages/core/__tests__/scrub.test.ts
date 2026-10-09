@@ -201,3 +201,39 @@ test("scrubInjectedBlocks still leaves an orphaned closer alone (module contract
   assert.equal(text, input);
   assert.deepEqual(removed, []);
 });
+
+test("scrubInjectedBlocks and containsInjectedBlock stay linear on unclosed openers", () => {
+  for (const [input, expected] of [
+    ["<recall-hints>".repeat(72_000) + "<draft-hints>x</draft-hints>", ["draft-hints"]],
+    // The only `>` belongs to the closing tag, so no opener is complete.
+    ["<recall-hints ".repeat(72_000) + "</recall-hints>", []],
+    ["<draft-hints>x</draft-hints>".repeat(36_000), ["draft-hints"]],
+  ] as const) {
+    const started = performance.now();
+    const { removed } = scrubInjectedBlocks(input);
+    const found = containsInjectedBlock(input);
+    const ms = performance.now() - started;
+    assert.deepEqual(removed, expected);
+    assert.deepEqual(found, expected);
+    assert.ok(ms < 500, `${input.slice(0, 20)}: ${ms.toFixed(0)} ms`);
+  }
+});
+
+test("stripFenceMarkers stays linear on openers whose attributes never close", () => {
+  const input = "<recall-hints ".repeat(72_000);
+  const started = performance.now();
+  assert.equal(stripFenceMarkers(input), input);
+  assert.equal(stripFenceMarkers(input + ">"), "");
+  const ms = performance.now() - started;
+  assert.ok(ms < 500, `${ms.toFixed(0)} ms`);
+});
+
+test("scrubInjectedBlocks matches the block regex on attributes, case and nesting", () => {
+  for (const [input, expected] of [
+    ['a<Recall-Hints kind="x">b</RECALL-HINTS>c', "ac"],
+    ["a<recall-hints>b<recall-hints>c</recall-hints>d</recall-hints>e", "ad</recall-hints>e"],
+    ["a<recall-hintsx>b</recall-hints>c", "a<recall-hintsx>b</recall-hints>c"],
+    ["a<recall-hints>b", "a<recall-hints>b"],
+    ["a<recall-hints\nid=1>b</recall-hints>c<recall-hints>d", "ac<recall-hints>d"],
+  ]) assert.equal(scrubInjectedBlocks(input).text, expected, input);
+});

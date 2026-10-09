@@ -68,7 +68,7 @@ test("40 parallel upserts persist every row in an atomic 0600 JSON array", () =>
   assert.equal((await listDrafts(now)).length, 40);
 }));
 
-test("30 day expiry uses newest evidence or display; list never refreshes access", () => isolated(async (path) => {
+test("expiry uses capture/use evidence, not a display; list never refreshes access", () => isolated(async (path) => {
   const a = draft(1);
   a.evidence.push({ session_id: "later", turn: 2, ts: now + 10 });
   const b = draft(2);
@@ -79,11 +79,11 @@ test("30 day expiry uses newest evidence or display; list never refreshes access
   c.surfaced.push({ session_id: "display", ts: now, novel: [] });
   await upsertDraft(c, now + 20);
   const before = await readFile(path, "utf8");
-  assert.equal((await listDrafts(now + DRAFT_OPEN_AGE_MS - 1)).length, 3);
+  assert.equal((await listDrafts(now + DRAFT_OPEN_AGE_MS - 1)).length, 1);
   assert.equal(await readFile(path, "utf8"), before);
-  assert.equal(await expireDrafts({ now: now + DRAFT_OPEN_AGE_MS }), 1);
+  assert.equal(await expireDrafts({ now: now + DRAFT_OPEN_AGE_MS }), 2);
   assert.equal(await expireDrafts({ now: now + DRAFT_OPEN_AGE_MS + 10 }), 1);
-  assert.equal(await expireDrafts({ now: now + DRAFT_OPEN_AGE_MS + 20 }), 1);
+  assert.equal(await expireDrafts({ now: now + DRAFT_OPEN_AGE_MS + 20 }), 0);
   assert.deepEqual(JSON.parse(await readFile(path, "utf8")).rows, []);
 }));
 

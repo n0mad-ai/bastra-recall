@@ -8,7 +8,7 @@ import { open } from "node:fs/promises";
 // #305: the scrub leaf, never the core barrel — the barrel costs +40ms of
 // process start for a function that lives in a dependency-free module.
 import { scrubInjectedBlocks } from "@bastra-recall/core/scrub";
-import { isSystemInjectedTurn, textAfterToolWrappers } from "./system-turn.js";
+import { carriesInjectedBlock, isSystemInjectedTurn, textAfterToolWrappers, textBeforeAgentBand } from "./system-turn.js";
 import type { ProvenRead } from "./code-graph/boundary-block.js";
 import {
   claudeToolUseCommands,
@@ -155,8 +155,11 @@ function isToolResultContent(content: unknown): boolean {
  * words.
  */
 function effectiveRole(role: string, content: unknown, meta = false): string {
-  if (role === "user" && isToolResultContent(content)) return "tool";
-  if (role === "user" && (meta || isSystemInjectedTurn(typedText(content)))) return "system-injected";
+  if (role !== "user") return role;
+  if (isToolResultContent(content)) return "tool";
+  if (meta) return "system-injected";
+  const typed = typedText(content);
+  if (isSystemInjectedTurn(typed) || (typed.trim().length === 0 && stringifyContent(content).trim().length > 0)) return "system-injected";
   return role;
 }
 
@@ -164,7 +167,8 @@ function effectiveRole(role: string, content: unknown, meta = false): string {
  *  typed after it is theirs (#994; the prompt lane reads it the same way, #769). */
 function typedText(content: unknown): string {
   const text = stringifyContent(content);
-  return textAfterToolWrappers(text) ?? text;
+  const owner=textAfterToolWrappers(text);
+  return owner===null?text:isSystemInjectedTurn(owner)?owner:(textBeforeAgentBand(scrubTurnContent(owner))??"");
 }
 
 /** Turn text: for a user turn without harness-only content, the typed part. */
@@ -281,7 +285,8 @@ function attachCommands(out: TranscriptTurn[], commands: string[]): void {
 // prefix match in effectiveRole needs the raw text) so every heuristic sees
 // clean prose.
 function scrubTurnContent(text: string): string {
-  return scrubInjectedBlocks(text).text;
+  // The gate keeps a megabyte of unclosed tags linear; frame notes have no tag.
+  return carriesInjectedBlock(text) || text.includes("[reference-only") ? scrubInjectedBlocks(text).text : text;
 }
 
 function stringifyContent(content: unknown): string {

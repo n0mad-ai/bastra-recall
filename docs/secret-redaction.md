@@ -53,6 +53,11 @@ measured 6,879 / 27,595 ms); 400k `eyJa-` characters about 21 ms (main measured
 about 14,924 ms). These are individual local measurements, not universal speed
 guarantees.
 
+`packages/core/__tests__/redact-loose-forms.test.ts` additionally runs twelve
+repeated PSK and curl shapes at 50 KB and 200 KB. The larger input must finish
+below two seconds and within eight times the smaller one plus 100 ms; a
+quadratic scan needs about sixteen times as long.
+
 ## Known limits, with examples
 
 The added `reach` table pins four unchanged leaks as limits: `password=$ecr3t`
@@ -70,8 +75,9 @@ Avoid placing actual credentials in conversations.
 | Slash-leading password / path | `--password=/Sommer2024!` stays visible: it is also a valid absolute filename. Filesystem checks would lose remote or planned paths. Slash-leading Base64 shares this ambiguity. |
 | Numeric password with literal URL delimiter | `https://user:12?34@host.internal/x` stays visible because `user:12` can be a host/port preceding a query. |
 | Ordinary prose, short PIN | `the password is tiny123`, `die PIN ist 482913` stay visible. No language-specific interpretation is attempted. |
+| Word-only PSK passphrase in prose | `Der PSK lautet kartoffelsalat`, `the PSK is blauer elefant tanzt`, `: PSK kartoffelsalat` stay visible. Prose and forms without `=` only redact a quoted value or a single secret-shaped token; `psk=…` assignments still redact to the end of the value. Details in [hooks.md](./hooks.md). |
 | Credential name outside the recognized syntax | `secret_key_base: abc999xyz`, `pw=hunter2`, `credentials: hunter2` can stay visible. |
-| Other command grammars | `mysqldump -phunter2`, `/usr/bin/mysql -ppw1`, `curl -u admin:hunter2`, `redis-cli -a hunter2`, netrc prose, scp-like `me:password@host` can stay visible. |
+| Other command grammars | `mysqldump -phunter2`, `/usr/bin/mysql -ppw1`, `curl -sufixture:pw` (value attached to a bundle), `http -a user:pw`, `redis-cli -a hunter2`, netrc prose, scp-like `me:password@host` can stay visible. |
 | Other encoded/signature fields | A short JSON `auth` Base64 value, a non-JWT dotted token, URL `sig=` / `X-Amz-Signature=` may stay visible. |
 | Short bare opaque values | Unqualified Base62 of 20 characters and lowercase/digit strings of 16 characters may stay visible. Hex values shaped like 40/64-character public hashes survive unqualified contexts. |
 | Symbol or path shaped opaque values | A value conforming to a code-symbol or locator exemption can stay visible; explicit credential bindings still take priority except for paths/references. |
