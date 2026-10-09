@@ -103,7 +103,10 @@ async function cmdStatus(deps: ModelsDeps): Promise<number> {
     write("");
     write(formatModelNotice(offer));
   } else if (rec.model && active !== rec.model && rec.tier !== "keyword-only") {
-    write(`\nto switch: bastra models set ${rec.alt?.model ?? rec.model}`);
+    // The command for the model named on the `recommended:` line. The heavier
+    // alternative gets its own line, labelled as what it is.
+    write(`\nto switch: bastra models set ${rec.model}`);
+    if (rec.alt && active !== rec.alt.model) write(`alternative: bastra models set ${rec.alt.model}`);
   }
   return 0;
 }
