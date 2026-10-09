@@ -9,7 +9,9 @@
  */
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
+import fs from "node:fs/promises";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { cmdModels, modelNoticeAfterCommand } from "../src/cli/models-cmd.js";
 import { recordModelAnswer } from "../src/model-recommendation.js";
@@ -83,5 +85,77 @@ test("a corrupt file: ordinary setters still repair it (unchanged), model answer
     assert.equal(await readFile(path, "utf8"), CORRUPT);
     await quiet(() => setUpdateMode("auto", path));
     assert.equal((await quiet(() => readSettings(path))).result.update.mode, "auto");
+  });
+});
+
+// ── the write path reads the file once ───────────────────────────────────────
+
+/** Runs `fn` with every read of `path` after the first one going through `later`. */
+async function withLaterReads<T>(path: string, later: (read: () => Promise<unknown>) => Promise<unknown>, fn: () => Promise<T>): Promise<T> {
+  const realRead = fs.readFile;
+  let reads = 0;
+  fs.readFile = (async (p: never, ...args: never[]) => {
+    const read = () => (realRead as (...a: unknown[]) => Promise<unknown>)(p, ...args);
+    return p === path && ++reads > 1 ? later(read) : read();
+  }) as typeof fs.readFile;
+  syncBuiltinESMExports();
+  try {
+    return await fn();
+  } finally {
+    fs.readFile = realRead;
+    syncBuiltinESMExports();
+  }
+}
+
+test("P1 one read: a read that fails AFTER the first one cannot empty the file — ordinary setter and model answer", async () => {
+  // The counter-review's second pass: the state was checked with one read and
+  // the settings taken from a second. A transient error on that second read
+  // gave the writer defaults, and they were written back.
+  for (const code of ["EAGAIN", "EBUSY", "ETIMEDOUT", "EIO"]) {
+    for (const kind of ["ordinary setter", "model answer"] as const) {
+      await withDir(async (_dir, path) => {
+        const fail = async () => { throw Object.assign(new Error("injected: later read failed"), { code }); };
+        // Whether the write goes through or is refused, the settings survive.
+        await withLaterReads(path, fail, () =>
+          quiet(() => (kind === "ordinary setter" ? setUpdateMode("off", path) : recordModelAnswer("fixture-rec", "later", path))).catch(() => undefined),
+        );
+        const stored = JSON.parse(await readFile(path, "utf8"));
+        assert.equal(stored.generation?.model, "old:4b", `${code}, ${kind}: generation.model`);
+        assert.equal(stored.embedding?.provider, "ollama", `${code}, ${kind}: embedding.provider`);
+        assert.equal(stored.api?.token, "invented-token", `${code}, ${kind}: api.token`);
+      });
+    }
+  }
+});
+
+test("P1 one read: a file that turns corrupt right after it was read is not answered with defaults", async () => {
+  await withDir(async (_dir, path) => {
+    // Every later read would see broken JSON. The one read the writer makes saw
+    // the valid file, and that snapshot is what it changes and writes.
+    const corruptNow = async (read: () => Promise<unknown>) => { await writeFile(path, '{"api":{"token":"invented-token"},BROKEN'); return read(); };
+    await withLaterReads(path, corruptNow, () => quiet(() => recordModelAnswer("fixture-rec", "later", path)).catch(() => undefined));
+    const stored = JSON.parse(await readFile(path, "utf8"));
+    assert.equal(stored.api?.token, "invented-token");
+    assert.equal(stored.generation?.model, "old:4b");
+    assert.equal(stored.modelRecommendation?.answer, "later");
+  });
+});
+
+test("P1 one read: a transient error on the one read refuses the write and leaves the file alone", async () => {
+  await withDir(async (_dir, path) => {
+    const realRead = fs.readFile;
+    fs.readFile = (async (p: never, ...args: never[]) => {
+      if (p === path) throw Object.assign(new Error("injected: read failed"), { code: "EIO" });
+      return (realRead as (...a: unknown[]) => Promise<unknown>)(p, ...args);
+    }) as typeof fs.readFile;
+    syncBuiltinESMExports();
+    try {
+      await assert.rejects(setUpdateMode("off", path), /exists but cannot be read \(EIO\)/);
+      await assert.rejects(recordModelAnswer("fixture-rec", "later", path), /exists but cannot be read \(EIO\)/);
+    } finally {
+      fs.readFile = realRead;
+      syncBuiltinESMExports();
+    }
+    assert.equal(await readFile(path, "utf8"), ORIGINAL);
   });
 });

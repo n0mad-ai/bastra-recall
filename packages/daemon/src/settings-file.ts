@@ -297,20 +297,45 @@ function warnAboutUnknownKeys(data: unknown, path: string): void {
 export type SettingsFileState = "ok" | "missing" | "corrupt" | { unreadable: string };
 
 export async function settingsFileState(path: string = settingsFilePath()): Promise<SettingsFileState> {
+  const file = await readSettingsText(path);
+  if (file.state !== "text") return file.state;
+  try {
+    JSON.parse(file.raw);
+    return "ok";
+  } catch {
+    return "corrupt";
+  }
+}
+
+/** The ONE read of the file: its text, or why there is none. */
+async function readSettingsText(
+  path: string,
+): Promise<{ state: "missing" } | { state: { unreadable: string } } | { state: "text"; raw: string }> {
   let raw: string;
   try {
     raw = await readFile(path, "utf8");
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code ?? "read failed";
-    return code === "ENOENT" || code === "ENOTDIR" ? "missing" : { unreadable: code };
+    return code === "ENOENT" || code === "ENOTDIR" ? { state: "missing" } : { state: { unreadable: code } };
   }
-  if (raw.trim() === "") return "missing";
-  try {
-    JSON.parse(raw);
-    return "ok";
-  } catch {
-    return "corrupt";
-  }
+  return raw.trim() === "" ? { state: "missing" } : { state: "text", raw };
+}
+
+/**
+ * The file as ONE consistent snapshot: what state it is in, and the settings
+ * parsed from the very text that state was judged on.
+ *
+ * This is what a writer has to work from. Judging the file with one read and
+ * taking the settings from a second leaves a gap: a transient error (EAGAIN,
+ * EBUSY, EIO) or a file damaged in between gives the second read defaults,
+ * and the writer puts them back over the user's settings. With a single read
+ * there is no second answer to disagree with the first.
+ */
+async function readSettingsSnapshot(path: string): Promise<{ state: SettingsFileState; settings: CliSettings }> {
+  const file = await readSettingsText(path);
+  if (file.state !== "text") return { state: file.state, settings: { update: { mode: DEFAULT_UPDATE_MODE } } };
+  const parsed = parseSettingsText(file.raw, path);
+  return { state: parsed.corrupt ? "corrupt" : "ok", settings: parsed.settings };
 }
 
 /** Why a writer that must not lose settings refuses this file, or null. No
@@ -327,14 +352,12 @@ export function settingsFileRefusal(state: SettingsFileState, opts: { refuseCorr
  * revert (callers that write will repair it). Never throws.
  */
 export async function readSettings(path: string = settingsFilePath()): Promise<CliSettings> {
-  let raw: string;
-  try {
-    raw = await readFile(path, "utf8");
-  } catch {
-    return { update: { mode: DEFAULT_UPDATE_MODE } };
-  }
-  if (raw.trim() === "") return { update: { mode: DEFAULT_UPDATE_MODE } };
+  return (await readSettingsSnapshot(path)).settings;
+}
 
+/** Validates the file's text into settings. `corrupt` = not JSON at all (and
+ *  said so on stderr); the settings are the defaults then. */
+function parseSettingsText(raw: string, path: string): { settings: CliSettings; corrupt: boolean } {
   let data: { update?: { mode?: unknown }; embedding?: { provider?: unknown }; ollama?: { autostart?: unknown }; api?: { token?: unknown }; cors?: { origins?: unknown }; commons?: { enabled?: unknown }; sharedRecall?: { enabled?: unknown; language?: unknown; live?: unknown }; docs?: { mode?: unknown; language?: unknown }; generation?: { model?: unknown }; ui?: { enabled?: unknown }; reflex?: { enabled?: unknown; maxPerTurn?: unknown }; evidenceGate?: { enabled?: unknown } };
   try {
     data = JSON.parse(raw);
@@ -344,7 +367,7 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
     process.stderr.write(
       `[bastra-recall] cli-settings.json is corrupt (${(e as Error).message}) — using defaults. Fix or delete ${path}\n`,
     );
-    return { update: { mode: DEFAULT_UPDATE_MODE } };
+    return { settings: { update: { mode: DEFAULT_UPDATE_MODE } }, corrupt: true };
   }
 
   warnAboutUnknownKeys(data, path);
@@ -563,7 +586,7 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
       );
     }
   }
-  return settings;
+  return { settings, corrupt: false };
 }
 
 /** Atomic tmp+rename. Random suffix (not just pid — PIDs recycle on macOS). */
@@ -590,8 +613,10 @@ async function writeSettings(next: CliSettings, path: string): Promise<void> {
  * geändertes Feld zurückzuschreiben löscht jede Einstellung, die in der Datei
  * steht (Gegenreview #1118: Modus 0200, ein Setter, und Generation/Embedding/
  * API-Token waren weg). Das gilt für JEDEN Setter — der Fehler ist nicht
- * modellspezifisch. Geprüft wird unter dem Lock, also am selben Stand, der
- * danach ersetzt würde. Eine KORRUPTE Datei reparieren die bisherigen Setter
+ * modellspezifisch. Geprüft wird unter dem Lock, und zwar an GENAU DER einen
+ * Lesung, deren geparster Inhalt danach mutiert wird — eine zweite Lesung
+ * (`readSettings`) kommt im Schreibpfad nicht vor, denn ihre Leser-Defaults
+ * wären bei einem kurzzeitigen Lesefehler wieder das, was zurückgeschrieben wird. Eine KORRUPTE Datei reparieren die bisherigen Setter
  * weiterhin (dokumentiertes Verhalten von `readSettings`); wer auch das nicht
  * darf, setzt `refuseCorrupt`.
  *
@@ -614,9 +639,12 @@ export async function mutateSettings(
   await withPathLock(
     path,
     async () => {
-      const refusal = settingsFileRefusal(await settingsFileState(path), opts);
+      // One read: the state that decides whether to write and the settings
+      // that get changed come from the same text (readSettingsSnapshot).
+      const { state, settings } = await readSettingsSnapshot(path);
+      const refusal = settingsFileRefusal(state, opts);
       if (refusal) throw new Error(refusal);
-      const next = mutate(await readSettings(path));
+      const next = mutate(settings);
       if (next !== null) await writeSettings(next, path);
     },
     { crossProcess: true },
