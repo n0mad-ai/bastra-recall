@@ -22,6 +22,8 @@ import { pruneEventLogs } from "./log-retention.js";
 import { observeCodeGraphRefresh, startCodeAwareness } from "./code-graph/service.js";
 import { runDraftPromote, draftVaultId, draftPromotionReady } from "./draft-promote.js";
 import { runDraftShadow } from "./draft-shadow.js";
+import { localDraftJudge, type DraftJudge } from "./draft-judge.js";
+import { resolveGenerationModel } from "./settings.js";
 import { draftHintsEnabled } from "./draft-search.js";
 import { startDraftVocabulary } from "./draft-vocabulary.js";
 import { startDraftSearchCache, expireDrafts } from "./draft-store.js";
@@ -82,7 +84,7 @@ export function startBackgroundJobs(deps: BackgroundJobDeps): void {
 // goes to the pending relay as suggestions. Off the hook path entirely; the
 // capture is vault-read-only; explicit sharp promotion can write a derived note.
 export async function runSessionHarvestTick(
-  deps: Pick<BackgroundJobDeps, "vault" | "search" | "embIdx" | "ollama" | "rawProvider">,
+  deps: Pick<BackgroundJobDeps, "vault" | "search" | "embIdx" | "ollama" | "rawProvider"> & { draftJudge?: DraftJudge | null },
   now = Date.now(),
 ) {
   if (!sessionHarvestEnabled()) return null;
@@ -124,7 +126,7 @@ export async function runSessionHarvestTick(
   });
   const promoteOptions = {
     provider: deps.rawProvider ?? null, ollama: deps.ollama, vault: deps.vault, now,
-    allowSharp: shadow.enabled && shadow.errors === 0,
+    allowSharp: shadow.enabled && shadow.errors === 0, judge: deps.draftJudge,
     vaultVectors: () => {
       const index = deps.embIdx();
       if (!index) return null;
@@ -135,7 +137,7 @@ export async function runSessionHarvestTick(
   const promotion = await runDraftPromote(promoteOptions);
   let relayed = harvest.candidates;
   if (relayToken) {
-    const withdraw=new Set(!promotion.probeOnly && promotion.errors===0 && promotion.wouldPromote===0 ? relays.filter(row=>row.captured).map(row=>row.block) : []);
+    const withdraw=new Set(!promotion.probeOnly && promotion.errors===0 && promotion.wouldPromote===0 && promotion.unjudged===0 ? relays.filter(row=>row.captured).map(row=>row.block) : []);
     const removed=await settleProvisionalSuggestions(relayToken,withdraw);
     for(const relay of relays)if(removed.has(relay.block))relayed-=relay.count;
   }
@@ -154,7 +156,10 @@ function startSessionHarvest(deps: BackgroundJobDeps): void {
   setInterval(() => {
     if (running || !sessionHarvestEnabled()) return;
     running = true;
-    void runSessionHarvestTick(deps)
+    // The meaning check is background model work: on battery (saver on) it
+    // gives no verdict, so nothing is promoted until AC is back (#632).
+    void resolveGenerationModel()
+      .then(model => runSessionHarvestTick({ ...deps, draftJudge: deps.power?.saving() ? null : localDraftJudge(deps.ollama, model) }))
       .then(result => {
         if (result && result.harvest.harvested > 0) {
           const r = result.harvest;

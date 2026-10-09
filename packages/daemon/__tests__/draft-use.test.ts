@@ -26,7 +26,8 @@ async function isolated(fn:(vault:Vault,row:Draft,dir:string)=>Promise<void>){
  try{await fn(vault,row,dir);}finally{await vault.stop();for(const[k,v]of previous)if(v===undefined)delete process.env[k];else process.env[k]=v;}
 }
 const provider:EmbeddingProvider={id:"ollama-fixture",dim:2,embed:async texts=>texts.map(()=>new Float32Array([1,0]))};
-function options(vault:Vault){return{vault,provider,ollama:local,vaultVectors:()=>({provider:provider.id,dim:2,vectors:new Map(vault.list().map(n=>[n.fm.id,new Float32Array([0,1])]))})};}
+const judge={model:"fixture-chat",chat:async(prompt:string)=>prompt.startsWith("Classify")?"durable":"same"};
+function options(vault:Vault){return{vault,provider,ollama:local,judge,vaultVectors:()=>({provider:provider.id,dim:2,vectors:new Map(vault.list().map(n=>[n.fm.id,new Float32Array([0,1])]))})};}
 async function hinted(row:Draft,input="spectrometer calibration",session="reader"){return recordDraftHints([row.id],session,input,clock+10);}
 async function acted(excerpt="cat packet7.conf",session="reader",exitCode:number|null=0,now=clock+20){return recordDraftUse({sessionId:session,toolName:"Bash",excerpt,exitCode,now});}
 async function tree(root:string):Promise<unknown>{return Promise.all((await readdir(root,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name)).map(async e=>[e.name,e.isDirectory()?await tree(join(root,e.name)):(await readFile(join(root,e.name))).toString("hex")]));}
@@ -146,4 +147,12 @@ test("E line separators in session_id and tool_name never reach the stored proof
  const surface=(await listDrafts())[0].surfaced[0];assert.equal(surface.session_id,"reader");assert.equal(surface.used?.tool,"Bash");
  await runDraftShadow({provider,ollama:local,vault});assert.equal((await runDraftPromote(options(vault))).promoted,1);
  const body=vault.list()[0].body;assert.doesNotMatch(body,/[\u2028\u2029]/);assert.match(body,/session reader/);
+}));
+test("judge: a used draft that is a one-time request or cannot be judged is not promoted",()=>isolated(async(vault,row)=>{
+ await hinted(row);await acted();await runDraftShadow({provider,ollama:local,vault});
+ const events:{reason?:string}[]=[];
+ assert.equal((await runDraftPromote({...options(vault),judge:{model:"fixture-chat",chat:async()=>"request"},emit:e=>events.push(e)})).promoted,0);
+ assert.equal((await runDraftPromote({...options(vault),judge:undefined,emit:e=>events.push(e)})).promoted,0);
+ assert.deepEqual(events.map(e=>e.reason),["not-durable-statement","meaning-check-unavailable"]);
+ assert.equal(vault.size(),0);assert.equal((await listDrafts())[0].state,"open");
 }));

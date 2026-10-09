@@ -1207,6 +1207,72 @@ duplicates from 0.736 and new facts up to 0.791 overlap; no single cosine cutoff
 separates them.
 
 
+#### Meaning check before a draft is promoted
+
+Similarity cannot tell a fact from its opposite or from a one-time task that was
+typed twice (measured cosine: fact against its opposite 0.77–0.99, fact against a
+rewording 0.69–0.97). Every candidate that passed the cheap gates is therefore
+read by the **local** generation model before anything is written or closed. It
+answers at most three closed questions with one word each:
+
+| Question | Asked | Answers | Effect |
+| --- | --- | --- | --- |
+| What kind of statement is the quote? | every candidate, repeat and use | `durable` (lasting fact, rule, preference, decision), `request` (one-time task or question), `other` | anything but `durable`: not promoted, reason `not-durable-statement` |
+| How do the two wordings relate? | repeat trigger with two different quotes; skipped for a verbatim repeat | `same`, `contradiction`, `different` | anything but `same`: no repetition, reason `repeat-not-same-statement` |
+| How does the quote relate to the existing note? | the duplicate gate reports a hit; only the strongest hit is read (title, summary and the first 1,200 body characters, or the retained quote of a tombstone) | `same`, `contradiction`, `different` | `same`: closed as a duplicate as before. `contradiction`: neither closed nor promoted, reason `contradicts-existing-note` with the `note_id` (omitted for a private note). `different`: no duplicate, the candidate continues |
+
+In all held cases the draft stays open and expires normally.
+
+- **Fail-closed.** No verdict — no local chat model, a timeout or HTTP error, the
+  battery saver on battery, or a reply that is not exactly one allowed lowercase
+  word — means reason `meaning-check-unavailable`: nothing is promoted and nothing
+  is closed as a duplicate. The check can only withhold. It never promotes a
+  candidate the other gates would have held.
+- **Local only.** The endpoint follows the same loopback rule as the draft
+  embeddings; `BASTRA_ALLOW_REMOTE_OLLAMA` does not apply. Quotes enter the prompt
+  as JSON strings and are declared as data, not instructions.
+- **Model.** The generation model from the settings (`bastra models`, or
+  `BASTRA_EXPAND_MODEL`; default `gemma3:4b`), temperature 0, thinking off.
+- **Dry-run is identical.** The check also runs in the default probe mode and adds
+  `judge_statement`, `judge_repeat`, `judge_note`, `judge_model` and `judge_ms`
+  to `draft_would_promote`, `draft_would_block`, `draft_duplicate_blocked` and
+  `draft_promoted`: classes and IDs, never text. `none` means no verdict.
+- **Cost.** At most three calls per candidate, only in the five-minute background
+  tick, never on the recall or hook path and outside every lock. A verdict is kept
+  as a hash-only receipt keyed by model and prompt, so an unchanged candidate is
+  not asked again and a changed quote, note or model is. A failed call is retried
+  at most once per hour. Under a hard gate (no local embeddings, wrong or
+  incomplete vault vectors, unconfirmed provenance) the model is not asked.
+- **Relay.** A sharp pass that left a candidate unjudged keeps the ordinary relay,
+  like a pass without local comparison.
+
+**Measured, invented statements only** (German, English, mixed;
+`tools/draft-judge-eval/run.mts`, not part of `npm test`). The prompts were written
+against 32 topics; 22 further topics and 29 hard single cases were held out and
+never used to change a prompt. "Before" is the cosine-only decision on the first
+12 topics, run through the real promotion with real embeddings.
+
+| Outcome | Before | `gemma3:4b` | `gemma4:12b` |
+| --- | --- | --- | --- |
+| Reworded fact promoted (wanted), same 12 topics | 11/12 | 10/12 | 11/12 |
+| One-time task promoted, same 12 topics | 12/12 | 2/12 | 0/12 |
+| Contradiction counted as a repeat, same 12 topics | 10–12/12 | 0/12 | 0/12 |
+| Counter-fact closed as a duplicate of the note, same 12 topics | 12/12 | 1/12 | 0/12 |
+| The same four on the 22 held-out topics (rule applied to the verdicts) | not measured | 20/22, 0/22, 0/22, 0/22 | 22/22, 0/22, 0/22, 0/22 |
+| Warm call, median / p95 | — | 0.38 s / 0.44 s | 1.24 s / 1.44 s |
+| First call after a model load | — | 3.4 s | 5.9 s |
+| Unreadable replies | — | 0/747 | 0/747 |
+
+**Known limits.** The default `gemma3:4b` is not reliable on every question: on
+the 12 design topics it still promoted 2 one-time tasks and closed 1 counter-fact
+as a duplicate, and on the held-out topics it read 18/22 merely related notes
+whose title matched the subject as `same` (the draft is then closed as a duplicate,
+as it was before the check). `gemma4:12b` made none of these errors on all 54
+topics but takes about three times as long per call. The corpus is small and
+invented; nothing here is measured on real drafts. Only the first matching partner
+of a repeat and the strongest duplicate hit are read, so a third wording behind a
+contradicting pair can be missed.
+
 #### Before enabling sharp mode
 
 Known secret-redaction limits can put **plaintext secrets in the vault**: title,
@@ -1247,7 +1313,9 @@ minutes). The heuristics are **unmeasured**. Redaction markers, substrings, repe
 words, missing/foreign/origin sessions and commands before the hint do not qualify.
 The use hook books only local evidence, never a vault note. The next harvest uses
 the same local semantic/word duplicate gates, provenance, secret/injection filters,
-probe default and explicit sharp switch as repeat promotion. Valid persisted
+probe default and explicit sharp switch as repeat promotion, and the same local
+meaning check: a used quote that the model reads as a one-time request, or cannot
+judge, is not promoted. Valid persisted
 proof remains usable at a later tick; fabrication outside the recorded novel set
 or source does not qualify. The resulting note preserves quote/situation/original
 capture evidence plus the display/use session, dates, tool and successful matches.
@@ -1384,6 +1452,7 @@ and `live` for `BASTRA_QUERY_ROUTER` and `BASTRA_SALIENCE_RANK`, a size for
 | `BASTRA_REFLEX_MAX_PER_TURN`  | `2`              | Reflex injection budget per prompt (clamp 1–5)                |
 | `BASTRA_REFLEX_PROMOTION_MIN` | `3`              | Acted-on recalls (30d) before the curator proposes a reflex promotion |
 | `BASTRA_ADOPTION_PROMOTION_MIN` | `2`            | Acted-on recalls (30d) before the curator proposes adopting an intake memory (#217) |
+| `BASTRA_DRAFT_PROMOTE`        | _unset_          | Only the exact value `1` lets the background tick write derived notes from drafts (repeat or use); every other value, including `true` and `on`, keeps the dry run. Each candidate also needs the local meaning check — see "Meaning check before a draft is promoted" |
 | `BASTRA_SCOPE_FILTER_LANES`   | `shadow`         | `shadow` \| `enforce` — project scope filter for the prompt and todo lanes and, since #421, for MCP `recall` (forwarder and stdio server, same parameters as the prompt lane). `shadow` only measures (`dropped_scope_count`, `dropped_scopes`, `project_confidence` in the telemetry), `enforce` drops. The write lane and SessionStart filter independently of this since #110 |
 | `BASTRA_QUERY_ROUTER`        | `live`           | `off` \| `shadow` \| `live` — query router (#362): short (≤ 2 words, Unicode word segmentation) and identifier-shaped queries run on the BM25 arm only. Default `live` since v1.0.1 (owner decision). `shadow` records `query_route` (reason, `would_save_ms`) on `hook_recall` and changes nothing; `live` skips the dense arm for routed queries (`score_kind: "bm25"`, `unfused`, no `degraded`). Measured with `npm run router-lift` (eval) on gold-set run A |
 | `BASTRA_SALIENCE_RANK`        | `shadow`         | `off` \| `shadow` \| `live` — salience ranking multiplier (#217, lift-gated) |
@@ -2536,6 +2605,79 @@ darunter zwei widersprechende Aussagen. Echte Dubletten ab 0,736 und neue Tatsac
 bis 0,791 überlappen. Schwelle 0,60 unverändert.
 Keine neue Wortliste, kein weiterer Testdaten-Abstimmungsloop.
 
+#### Bedeutungsprüfung vor der Beförderung
+
+Ähnlichkeit unterscheidet eine Tatsache weder von ihrem Gegenteil noch von einem
+zweimal getippten Einmalauftrag (gemessener Kosinus: Tatsache gegen Gegenteil
+0,77–0,99, Tatsache gegen Umformulierung 0,69–0,97). Jeden Kandidaten, der die
+billigen Sperren bestanden hat, liest deshalb das **lokale** Textmodell, bevor
+etwas geschrieben oder geschlossen wird. Es beantwortet höchstens drei
+geschlossene Fragen mit je einem Wort:
+
+| Frage | Gestellt | Antworten | Folge |
+| --- | --- | --- | --- |
+| Welche Art Aussage ist das Zitat? | bei jedem Kandidaten, Wiederholung und Nutzung | `durable` (dauerhafte Tatsache, Regel, Vorliebe, Entscheidung), `request` (einmaliger Auftrag oder Frage), `other` | alles außer `durable`: keine Beförderung, Grund `not-durable-statement` |
+| Wie verhalten sich die zwei Formulierungen? | Wiederholung mit zwei verschiedenen Zitaten; entfällt bei wortgleicher Wiederholung | `same`, `contradiction`, `different` | alles außer `same`: keine Wiederholung, Grund `repeat-not-same-statement` |
+| Wie verhält sich das Zitat zur bestehenden Notiz? | die Dublettensperre meldet einen Treffer; gelesen wird nur der stärkste (Titel, Summary und die ersten 1.200 Zeichen des Texts, bei einem Tombstone das aufbewahrte Zitat) | `same`, `contradiction`, `different` | `same`: wie bisher als Dublette geschlossen. `contradiction`: weder geschlossen noch befördert, Grund `contradicts-existing-note` mit `note_id` (bei privaten Notizen ohne). `different`: keine Dublette, der Kandidat läuft weiter |
+
+In allen zurückgehaltenen Fällen bleibt der Entwurf offen und verfällt normal.
+
+- **Im Zweifel nicht.** Kein Urteil — kein lokales Textmodell, Zeitüberschreitung
+  oder HTTP-Fehler, Akkusparmodus im Akkubetrieb oder eine Antwort, die nicht genau
+  ein erlaubtes kleingeschriebenes Wort ist — ergibt den Grund
+  `meaning-check-unavailable`: Es wird nichts befördert und nichts als Dublette
+  geschlossen. Die Prüfung kann nur zurückhalten. Sie befördert nie etwas, das die
+  übrigen Sperren aufgehalten hätten.
+- **Nur lokal.** Für den Endpunkt gilt dieselbe Loopback-Regel wie für die
+  Entwurfs-Embeddings; `BASTRA_ALLOW_REMOTE_OLLAMA` gilt hier nicht. Zitate stehen
+  als JSON-Zeichenketten im Prompt und sind dort als Daten ausgewiesen, nicht als
+  Anweisungen.
+- **Modell.** Das Textmodell aus den Einstellungen (`bastra models` oder
+  `BASTRA_EXPAND_MODEL`; Standard `gemma3:4b`), Temperatur 0, ohne Thinking.
+- **Probelauf gleich.** Die Prüfung läuft auch im Standard-Probelauf und ergänzt
+  `draft_would_promote`, `draft_would_block`, `draft_duplicate_blocked` und
+  `draft_promoted` um `judge_statement`, `judge_repeat`, `judge_note`,
+  `judge_model` und `judge_ms`: Klassen und IDs, nie Text. `none` heißt kein Urteil.
+- **Kosten.** Höchstens drei Aufrufe je Kandidat, nur im Hintergrund-Tick alle fünf
+  Minuten, nie im Recall- oder Hook-Pfad und außerhalb jeder Sperre. Ein Urteil
+  bleibt als reiner Hash-Beleg je Modell und Prompt gespeichert: Ein unveränderter
+  Kandidat wird nicht erneut gefragt, ein geändertes Zitat, eine geänderte Notiz
+  oder ein anderes Modell schon. Ein fehlgeschlagener Aufruf wird höchstens einmal
+  je Stunde wiederholt. Unter einer harten Sperre (keine lokalen Embeddings, falsche
+  oder unvollständige Vault-Vektoren, unbestätigte Herkunft) wird das Modell nicht
+  gefragt.
+- **Weitergabe.** Ein scharfer Lauf mit unbeurteiltem Kandidaten behält die
+  gewöhnliche Weitergabe, wie ein Lauf ohne lokalen Vergleich.
+
+**Gemessen, ausschließlich erfundene Aussagen** (Deutsch, Englisch, gemischt;
+`tools/draft-judge-eval/run.mts`, läuft nicht in `npm test`). Die Prompts wurden an
+32 Sachverhalten entwickelt; 22 weitere Sachverhalte und 29 schwierige Einzelfälle
+wurden zurückgehalten und nie für eine Prompt-Änderung benutzt. „Vorher“ ist die
+reine Kosinus-Entscheidung an den ersten 12 Sachverhalten, durch die echte
+Beförderung mit echten Embeddings gelaufen.
+
+| Ergebnis | Vorher | `gemma3:4b` | `gemma4:12b` |
+| --- | --- | --- | --- |
+| Umformulierte Tatsache befördert (erwünscht), dieselben 12 Sachverhalte | 11/12 | 10/12 | 11/12 |
+| Einmalauftrag befördert, dieselben 12 | 12/12 | 2/12 | 0/12 |
+| Widerspruch als Wiederholung gezählt, dieselben 12 | 10–12/12 | 0/12 | 0/12 |
+| Gegenfakt als Dublette der Notiz geschlossen, dieselben 12 | 12/12 | 1/12 | 0/12 |
+| Dieselben vier an den 22 zurückgehaltenen Sachverhalten (Regel auf die Urteile angewandt) | nicht gemessen | 20/22, 0/22, 0/22, 0/22 | 22/22, 0/22, 0/22, 0/22 |
+| Warmer Aufruf, Median / p95 | — | 0,38 s / 0,44 s | 1,24 s / 1,44 s |
+| Erster Aufruf nach dem Laden des Modells | — | 3,4 s | 5,9 s |
+| Unlesbare Antworten | — | 0/747 | 0/747 |
+
+**Bekannte Grenzen.** Das Standardmodell `gemma3:4b` beantwortet nicht jede Frage
+verlässlich: An den 12 Entwicklungs-Sachverhalten beförderte es noch 2
+Einmalaufträge und schloss 1 Gegenfakt als Dublette; an den zurückgehaltenen las es
+18/22 nur verwandte Notizen, deren Titel zum Thema passte, als `same` (der Entwurf
+wird dann wie vor der Prüfung als Dublette geschlossen). `gemma4:12b` machte an
+allen 54 Sachverhalten keinen dieser Fehler, braucht je Aufruf aber etwa dreimal so
+lange. Der Korpus ist klein und erfunden; an echten Entwürfen ist nichts gemessen.
+Gelesen werden nur der erste passende Partner einer Wiederholung und der stärkste
+Dublettentreffer; eine dritte Formulierung hinter einem widersprechenden Paar kann
+deshalb übersehen werden.
+
 #### Bevor du scharf schaltest
 
 An den bekannten Grenzen des Schwärz-Filters können **Geheimnisse im Klartext den
@@ -2577,7 +2719,9 @@ Acted-on-Fenster, standardmäßig zehn Minuten; Heuristiken **ungemessen**. Mark
 Teilstrings, doppelte Wörter, falsche/fehlende Sitzungen und frühere Befehle zählen
 nicht. Der Hook schreibt nur lokale Belege. Erst der Harvest-Tick nutzt dieselben
 Wort-/Bedeutungs-Sperren, Herkunftsprüfung, Schwärzung/Injektionsprüfung und den
-Probelauf wie D; scharf nur mit ausdrücklichem Schalter. Die Notiz enthält Original-
+Probelauf wie D sowie dieselbe lokale Bedeutungsprüfung: Ein genutztes Zitat, das
+das Modell als Einmalauftrag liest oder nicht beurteilen kann, wird nicht befördert.
+Scharf nur mit ausdrücklichem Schalter. Die Notiz enthält Original-
 und Nutzungsbelege, keine erfundene Verallgemeinerung. Gültige Belege überstehen
 Neustarts; erfundene Matches außerhalb Novel/Quelle gelten nicht.
 
@@ -2789,6 +2933,7 @@ vier Wörtern.
 | `BASTRA_REFLEX_MAX_PER_TURN`  | `2`              | Reflex-Einblendungsbudget pro Prompt (begrenzt auf 1–5)        |
 | `BASTRA_REFLEX_PROMOTION_MIN` | `3`              | Umgesetzte Recalls (30 Tage), bevor der Curator eine Reflex-Hochstufung vorschlägt |
 | `BASTRA_ADOPTION_PROMOTION_MIN` | `2`            | Umgesetzte Recalls (30 Tage), bevor der Curator vorschlägt, eine Intake-Erinnerung zu übernehmen (#217) |
+| `BASTRA_DRAFT_PROMOTE`        | _nicht gesetzt_  | Nur der genaue Wert `1` lässt den Hintergrund-Tick abgeleitete Notizen aus Entwürfen schreiben (Wiederholung oder Nutzung); jeder andere Wert, auch `true` und `on`, bleibt Probelauf. Jeder Kandidat braucht zusätzlich die lokale Bedeutungsprüfung — siehe „Bedeutungsprüfung vor der Beförderung“ |
 | `BASTRA_SCOPE_FILTER_LANES`   | `shadow`         | `shadow` \| `enforce` — Projekt-Scope-Filter für Prompt- und Todo-Lane und seit #421 für den MCP-`recall` (Forwarder und stdio-Server, dieselben Parameter wie die Prompt-Lane). `shadow` misst nur (`dropped_scope_count`, `dropped_scopes`, `project_confidence` in der Telemetrie), `enforce` verwirft. Write-Lane und SessionStart filtern unabhängig davon seit #110 |
 | `BASTRA_QUERY_ROUTER`        | `live`           | `off` \| `shadow` \| `live` — Query-Router (#362): kurze (≤ 2 Wörter, Unicode-Wortsegmentierung) und bezeichnerförmige Anfragen laufen nur über den BM25-Arm. Default `live` seit v1.0.1 (Owner-Entscheid). `shadow` schreibt `query_route` (Grund, `would_save_ms`) an `hook_recall` und ändert nichts; `live` lässt den dichten Arm für geroutete Anfragen weg (`score_kind: "bm25"`, `unfused`, kein `degraded`). Gemessen mit `npm run router-lift` (eval) auf Gold-Set-Lauf A |
 | `BASTRA_SALIENCE_RANK`        | `shadow`         | `off` \| `shadow` \| `live` — Salienz-Multiplikator fürs Ranking (#217, hinter Lift-Gate) |
