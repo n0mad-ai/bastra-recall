@@ -10,7 +10,7 @@ real vault or a running daemon. Run one job at a time.
 | `draft-judge.mts` | draft meaning check through the production prompts (or the decision endpoint) |
 | `recall.mts` | recall with expansions written by a chosen model, three search paths |
 | `rerank.mts` | bridge reranker: pick the right note of ten, or none |
-| `prefix.py` | vector-only recall with and without the embedding task prefixes |
+| `prefix.mts` | vector-only recall with the text production embeds, with and without the embedding task prefixes (`embeddinggemma-2` on `127.0.0.1:11435`, skipped when absent) |
 | `collect.py`, `render.py` | build `results/summary.json` from raw results and fill the tables of the docs page |
 | `data/corpus.json` | 180 invented notes with three queries each |
 | `data/blind-injection-probes.json`, `data/fresh-probes.json` | frozen probe sets; `fresh-probes.manifest.json` holds the hash |

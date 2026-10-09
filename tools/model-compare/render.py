@@ -9,7 +9,7 @@ D = json.load(open(sys.argv[1]))
 PAGE = sys.argv[2]
 SMALL, LARGE = "gemma3:4b", "gemma4:12b"
 LANG = "en"
-DE = {'Model': 'Modell', 'Questions answered correctly': 'Fragen richtig beantwortet', 'Rewording promoted ↑': 'Umformulierung befördert ↑', 'One-time task kept as durable ↓': 'Einmalauftrag als dauerhaft gewertet ↓', 'Fact + task promoted ↓': 'Fakt + Auftrag befördert ↓', 'Contradiction read as repeat ↓': 'Widerspruch als Wiederholung gelesen ↓', 'Counter-fact closed as duplicate ↓': 'Gegenfakt als Dublette geschlossen ↓', 'Same fact recognised ↑': 'Gleicher Fakt erkannt ↑', 'No verdict': 'Kein Urteil', 'Resisted (bar) · dangerous flips, 66 new probes ↓': 'Widerstanden (Balken) · gefährlich gekippt, 66 neue Proben ↓', 'Dangerous flips, 30 earlier probes ↓': 'Gefährlich gekippt, 30 frühere Proben ↓', 'Harmless direction flipped, 10 probes': 'In harmloser Richtung gekippt, 10 Proben', 'Typical answer (median, shorter bar is faster)': 'Typische Antwort (Median, kürzerer Balken ist schneller)', 'Slow answer (p95)': 'Langsame Antwort (p95)', 'First answer after loading': 'Erste Antwort nach dem Laden', 'Embedding model': 'Einbettungsmodell', 'Hybrid, other wording: first place': 'Hybrid, andere Formulierung: Platz 1', 'Hybrid, other wording: top 5': 'Hybrid, andere Formulierung: Top 5', 'Vector only, other wording: first place': 'Nur Vektor, andere Formulierung: Platz 1', 'Vector only, other language: first place': 'Nur Vektor, andere Sprache: Platz 1', 'First place': 'Platz 1', 'Top 5': 'Top 5', 'Top 10': 'Top 10', 'MRR': 'MRR', 'Input': 'Eingabe', 'Other wording: first place': 'Andere Formulierung: Platz 1', 'Other language: first place': 'Andere Sprache: Platz 1', 'raw text (as today)': 'Rohtext (wie heute)', 'with task prefixes': 'mit Aufgaben-Präfixen', 'Expansion written by': 'Erweiterung geschrieben von', 'Hybrid, other language: first place': 'Hybrid, andere Sprache: Platz 1', 'Keyword only, other wording: first place': 'Nur Stichwort, andere Formulierung: Platz 1', 'Notes left without phrases (of 180)': 'Notizen ohne Phrasen (von 180)', 'Time per note': 'Zeit je Notiz', 'none (no expansion)': 'keine (ohne Erweiterung)', 'Picks the right note: same words': 'Wählt die richtige Notiz: gleiche Wörter', '… other wording': '… andere Formulierung', '… other language': '… andere Sprache', 'Says “none” when the right note is missing: other wording': 'Sagt „keine“, wenn die richtige Notiz fehlt: andere Formulierung', 'Unusable answers (of 1080)': 'Unbrauchbare Antworten (von 1080)', 'Time per decision': 'Zeit je Entscheidung', 'Draft check: questions right': 'Entwurfs-Prüfung: Fragen richtig', 'Draft check: dangerous injection flips ↓': 'Entwurfs-Prüfung: gefährlich gekippt ↓', 'Reranker: right note picked': 'Nachsortierung: richtige Notiz gewählt', 'Reranker: “none” when missing': 'Nachsortierung: „keine“, wenn sie fehlt', 'Expansion: hybrid first place (vs none)': 'Erweiterung: Hybrid Platz 1 (gegen ohne)', 'Draft check: typical answer': 'Entwurfs-Prüfung: typische Antwort', ' · default': ' · Standard', ' · 24 GB+ option': ' · Option ab 24 GB', ' · today': ' · heute', 'decision, short criteria': 'Entscheidung, kurze Kriterien', 'decision': 'Entscheidung'}
+DE = {'Model': 'Modell', 'Questions answered correctly': 'Fragen richtig beantwortet', 'Rewording promoted ↑': 'Umformulierung befördert ↑', 'One-time task kept as durable ↓': 'Einmalauftrag als dauerhaft gewertet ↓', 'Fact + task promoted ↓': 'Fakt + Auftrag befördert ↓', 'Contradiction read as repeat ↓': 'Widerspruch als Wiederholung gelesen ↓', 'Counter-fact closed as duplicate ↓': 'Gegenfakt als Dublette geschlossen ↓', 'Same fact recognised ↑': 'Gleicher Fakt erkannt ↑', 'No verdict (of the questions)': 'Kein Urteil (von den Fragen)', 'Within production limits, 59 new probes: dangerous flips ↓': 'Innerhalb der Produktionsgrenzen, 59 neue Proben: gefährlich gekippt ↓', 'All 66 new probes: dangerous flips · no verdict · resisted': 'Alle 66 neuen Proben: gefährlich gekippt · kein Urteil · widerstanden', 'Earlier probes: dangerous flips within limits (all 30)': 'Frühere Proben: gefährlich gekippt innerhalb der Grenzen (alle 30)', 'Harmless direction flipped, 10 probes': 'In harmloser Richtung gekippt, 10 Proben', 'raw text (earlier layout, not production)': 'Rohtext (frühere Darstellung, nicht Produktion)', 'Typical answer (median, shorter bar is faster)': 'Typische Antwort (Median, kürzerer Balken ist schneller)', 'Slow answer (p95)': 'Langsame Antwort (p95)', 'First answer after loading': 'Erste Antwort nach dem Laden', 'Embedding model': 'Einbettungsmodell', 'Hybrid, other wording: first place': 'Hybrid, andere Formulierung: Platz 1', 'Hybrid, other wording: top 5': 'Hybrid, andere Formulierung: Top 5', 'Vector only, other wording: first place': 'Nur Vektor, andere Formulierung: Platz 1', 'Vector only, other language: first place': 'Nur Vektor, andere Sprache: Platz 1', 'First place': 'Platz 1', 'Top 5': 'Top 5', 'Top 10': 'Top 10', 'MRR': 'MRR', 'Input': 'Eingabe', 'Other wording: first place': 'Andere Formulierung: Platz 1', 'Other language: first place': 'Andere Sprache: Platz 1', 'raw text (as today)': 'Rohtext (wie heute)', 'with task prefixes': 'mit Aufgaben-Präfixen', 'Expansion written by': 'Erweiterung geschrieben von', 'Hybrid, other language: first place': 'Hybrid, andere Sprache: Platz 1', 'Keyword only, other wording: first place': 'Nur Stichwort, andere Formulierung: Platz 1', 'Notes left without phrases (of 180)': 'Notizen ohne Phrasen (von 180)', 'Time per note': 'Zeit je Notiz', 'none (no expansion)': 'keine (ohne Erweiterung)', 'Picks the right note: same words': 'Wählt die richtige Notiz: gleiche Wörter', '… other wording': '… andere Formulierung', '… other language': '… andere Sprache', 'Says “none” when the right note is missing: other wording': 'Sagt „keine“, wenn die richtige Notiz fehlt: andere Formulierung', 'Unusable answers (of 1080)': 'Unbrauchbare Antworten (von 1080)', 'Time per decision': 'Zeit je Entscheidung', 'Draft check: questions right': 'Entwurfs-Prüfung: Fragen richtig', 'Draft check: dangerous injection flips within production limits ↓': 'Entwurfs-Prüfung: gefährlich gekippt, innerhalb der Produktionsgrenzen ↓', 'Reranker: right note picked': 'Nachsortierung: richtige Notiz gewählt', 'Reranker: “none” when missing': 'Nachsortierung: „keine“, wenn sie fehlt', 'Expansion: hybrid first place (vs none)': 'Erweiterung: Hybrid Platz 1 (gegen ohne)', 'Draft check: typical answer': 'Entwurfs-Prüfung: typische Antwort', ' · default': ' · Standard', ' · 24 GB+ option': ' · Option ab 24 GB', ' · today': ' · heute', 'decision, short criteria': 'Entscheidung, kurze Kriterien', 'decision': 'Entscheidung'}
 
 def T(text):
     """German table wording for the German half of the page."""
@@ -21,6 +21,11 @@ def T(text):
 def bar(frac):
     full = round(max(0.0, min(1.0, frac)) * 10)
     return "`" + "█" * full + "░" * (10 - full) + "`"
+
+def bar3(x):
+    """Injection probes in three states: resisted █, no verdict ▒, dangerous flip ░."""
+    empty, grey = round(10 * x["flipped"] / x["probes"]), round(10 * x["no_verdict"] / x["probes"])
+    return "`" + "█" * (10 - empty - grey) + "▒" * grey + "░" * empty + "`"
 
 def pct(num, den):
     return f"{100 * num / den:.0f} %"
@@ -56,22 +61,26 @@ def judge_rows(corpus):
                      "–" if base and j["model"] == LARGE else mark(x[f"vs {LARGE}"]["facts"]),
                      "/".join(map(str, m["paraphrase_promoted"])), m["task_as_durable"][0], m["fact_plus_task_promoted"][0],
                      m["contradiction_as_repeat"][0], m["counterfact_as_duplicate"][0],
-                     "/".join(map(str, m["same_fact_as_duplicate"])), x["unreadable"]])
+                     "/".join(map(str, m["same_fact_as_duplicate"])), x["no_verdict"]["facts"]])
     return table(["Model", "Questions answered correctly", f"vs `{SMALL}`", f"vs `{LARGE}`", "Rewording promoted ↑",
                   "One-time task kept as durable ↓", "Fact + task promoted ↓", "Contradiction read as repeat ↓",
-                  "Counter-fact closed as duplicate ↓", "Same fact recognised ↑", "No verdict"], rows)
+                  "Counter-fact closed as duplicate ↓", "Same fact recognised ↑", "No verdict (of the questions)"], rows)
 
 def inject_rows():
     rows = []
-    for j in sorted((j for j in JUDGE if j["fresh"]), key=lambda j: j["fresh"]["inject"][0]):
+    for j in sorted((j for j in JUDGE if j["fresh"]), key=lambda j: j["fresh"]["inject"]["within_limits"]["flipped"]):
         s, f = j["standard"], j["fresh"]
-        held = f["inject"][1] - f["inject"][0]
+        w, a = f["inject"]["within_limits"], f["inject"]["all"]
+        assert w["no_verdict"] == 0, j["model"]  # the 59-probe column shows two states only
         base_s = j["model"] == SMALL and j["mode"] == "chat"; base_l = j["model"] == LARGE and j["mode"] == "chat"
-        rows.append([label(j), f"{bar(held / f['inject'][1])} {f['inject'][0]}/{f['inject'][1]}",
-                     "–" if base_s else mark(f[f"vs {SMALL}"]["inject"]), "–" if base_l else mark(f[f"vs {LARGE}"]["inject"]),
-                     f"{s['inject'][0]}/{s['inject'][1]}" if s else "–", f"{f['inject_reverse'][0]}/{f['inject_reverse'][1]}"])
-    return table(["Model", "Resisted (bar) · dangerous flips, 66 new probes ↓", f"vs `{SMALL}`", f"vs `{LARGE}`",
-                  "Dangerous flips, 30 earlier probes ↓", "Harmless direction flipped, 10 probes"], rows)
+        rows.append([label(j), f"{bar3(w)} {w['flipped']}/{w['probes']}",
+                     "–" if base_s else mark(f[f"vs {SMALL}"]["inject_within_limits"]), "–" if base_l else mark(f[f"vs {LARGE}"]["inject_within_limits"]),
+                     f"{bar3(a)} {a['flipped']} · {a['no_verdict']} · {a['probes'] - a['flipped'] - a['no_verdict']}",
+                     f"{s['inject']['within_limits']['flipped']}/{s['inject']['within_limits']['probes']} ({s['inject']['all']['flipped']}/{s['inject']['all']['probes']})" if s else "–",
+                     f"{f['inject_reverse'][0]}/{f['inject_reverse'][1]}"])
+    return table(["Model", "Within production limits, 59 new probes: dangerous flips ↓", f"vs `{SMALL}`", f"vs `{LARGE}`",
+                  "All 66 new probes: dangerous flips · no verdict · resisted",
+                  "Earlier probes: dangerous flips within limits (all 30)", "Harmless direction flipped, 10 probes"], rows)
 
 def speed_rows():
     rows = []
@@ -98,9 +107,9 @@ COLS_E = [("hybrid/far", "r_at_1"), ("hybrid/far", "r_at_5"), ("vector/far", "r_
 def lme_rows():
     rows = []
     for name, x in R["longmemeval_100"].items():
-        h = x["summary"]["hybrid"]
-        rows.append([f"`{name}`" + (T(" · today") if name == "embeddinggemma" else ""), f"{bar(h['r@1'])} {100 * h['r@1']:.0f} %",
-                     f"{bar(h['r@5'])} {100 * h['r@5']:.0f} %", f"{100 * h['r@10']:.0f} %", f"{h['mrr']:.3f}"])
+        h, vs = x["summary"]["hybrid"], x.get("vs embeddinggemma", {})
+        rows.append([f"`{name}`" + (T(" · today") if name == "embeddinggemma" else ""), f"{bar(h['r@1'])} {100 * h['r@1']:.0f} % {mark(vs.get('top1'))}".rstrip(),
+                     f"{bar(h['r@5'])} {100 * h['r@5']:.0f} % {mark(vs.get('top5'))}".rstrip(), f"{100 * h['r@10']:.0f} %", f"{h['mrr']:.3f}"])
     return table(["Embedding model", "First place", "Top 5", "Top 10", "MRR"], rows)
 
 def prefix_rows():
@@ -111,7 +120,8 @@ def prefix_rows():
         for kind in ("far", "far_xlang"):
             m = row[kind]
             cells.append(f"{bar(m['R@1'])} {100 * m['R@1']:.1f} % {mark(m.get('top1 vs raw'))}".rstrip())
-        rows.append([f"`{model}`", "raw text (as today)" if mode == "raw" else "with task prefixes", *cells])
+        raw = "raw text (as today)" if R["prefix_input"] == "production" else "raw text (earlier layout, not production)"
+        rows.append([f"`{model}`", raw if mode == "raw" else "with task prefixes", *cells])
     return table(["Embedding model", "Input", "Other wording: first place", "Other language: first place"], rows, ["---", "---", "---:", "---:"])
 
 def expander_rows():
@@ -152,10 +162,11 @@ def scorecard_rows():
         f, s = fresh[name], std.get(name)
         base = name == SMALL
         both = [s["overall"][0] + f["overall"][0], s["overall"][1] + f["overall"][1]] if s else f["overall"]
-        inj = [f["inject"][0] + (s["inject"][0] if s else 0), f["inject"][1] + (s["inject"][1] if s else 0)]
+        within = [x["inject"]["within_limits"] for x in (f, s) if x]
+        inj = [sum(x["flipped"] for x in within), sum(x["probes"] for x in within)]
         row = [f"`{name}`" + (T(" · default") if base else T(" · 24 GB+ option") if name == LARGE else ""),
                f"{pct(*both)} {'' if base else mark(s[f'vs {SMALL}']['facts'] if s else None)}",
-               f"{inj[0]}/{inj[1]} {'' if base else mark(f[f'vs {SMALL}']['inject'])}"]
+               f"{inj[0]}/{inj[1]} {'' if base else mark(f[f'vs {SMALL}']['inject_within_limits'])}"]
         if name in RR:
             p, a = RR[name]["present/far"], RR[name]["absent/far"]
             row += [f"{pct(p['correct'], p['n'])} {'' if base else mark(RR[name][f'vs {SMALL}']['present/far'])}",
@@ -165,7 +176,7 @@ def scorecard_rows():
         row.append(f"{100 * e['summary']['hybrid/far']['r_at_1']:.1f} % {mark(e['vs none']['hybrid/far']['top1'])}" if e else "–")
         row.append(f"{s['latency']['median_ms']} ms" if s else "–")
         rows.append(row)
-    return table(["Model", "Draft check: questions right", "Draft check: dangerous injection flips ↓", "Reranker: right note picked",
+    return table(["Model", "Draft check: questions right", "Draft check: dangerous injection flips within production limits ↓", "Reranker: right note picked",
                   "Reranker: “none” when missing", "Expansion: hybrid first place (vs none)", "Draft check: typical answer"], rows)
 
 TABLES = {"scorecard": scorecard_rows, "judge-standard": lambda: judge_rows("standard"), "judge-fresh": lambda: judge_rows("fresh"),
