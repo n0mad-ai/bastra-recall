@@ -3,6 +3,7 @@
  * Routing stays in http.ts; the handler logic lives here.
  * Split out of http.ts (file-size convention).
  */
+import { searchDrafts, withDraftBudget } from "./draft-search.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type {
   LateSettleSample,
@@ -580,7 +581,8 @@ export async function runHookRecall(
         hits, candidatePool, vault, maxTokens, totalLatencyMs, recallId, weakResult, noHome,
         hookProject, hybridActiveAtRecall, degradedReason,
       });
-      const payload = budgeted.payload;
+      const draftHits = await searchDrafts(query, hits.map(hit => ({ ...hit, body: vault.get(hit.id)?.body })), 2, hookSessionId ?? undefined);
+      const payload = withDraftBudget(budgeted.payload, draftHits, maxTokens);
       // #487: Gemessen wird nur, wo ein Budget galt — die Serialisierung
       // kostet, und dieser Endpunkt läuft an jedem Bash und jedem Edit.
       const budgetSize = maxTokens > 0 ? measurePayload(payload) : null;

@@ -29,7 +29,7 @@ const BODY_COMPARE_CHARS = 4000;
 
 type MemoryLike = ReturnType<Vault["list"]>[number];
 
-function memoryText(m: MemoryLike): string {
+export function memoryText(m: MemoryLike): string {
   const fm = m.fm as { title?: unknown; summary?: unknown; tags?: unknown; recall_when?: unknown };
   const list = (v: unknown): string => (Array.isArray(v) ? v.filter((x) => typeof x === "string").join(" ") : "");
   return [
@@ -75,7 +75,7 @@ export function storedQuoteMatcher(vault: Vault, search: SearchIndex): (quote: s
 }
 
 
-function vaultWords(vault: Vault): { sets: Map<string, Set<string>>; idf: (token: string) => number } {
+export function vaultWords(vault: Vault): { sets: Map<string, Set<string>>; df: Map<string, number>; idf: (token: string) => number } {
   const sets = new Map<string, Set<string>>();
   const df = new Map<string, number>();
   for (const memory of vault.list()) {
@@ -83,7 +83,7 @@ function vaultWords(vault: Vault): { sets: Map<string, Set<string>>; idf: (token
     sets.set(memory.fm.id, words);
     for (const word of words) df.set(word, (df.get(word) ?? 0) + 1);
   }
-  return { sets, idf: token => Math.log((sets.size + 1) / ((df.get(token) ?? 0) + 1)) };
+  return { sets, df, idf: token => Math.log((sets.size + 1) / ((df.get(token) ?? 0) + 1)) };
 }
 
 /** The existing word measure for a specific note, beside semantic shadow scores. */

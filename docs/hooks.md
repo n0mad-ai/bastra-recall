@@ -2240,3 +2240,127 @@ Alle `BASTRA_*`-Variablen akzeptieren für die Migration einen alten
 `NEXUS_*`-Fallback (außer den oben genannten Stellschrauben für Größen-Hook,
 Übernahme und Stichproben-Untergrenze, die ihre Umgebungsvariable direkt
 lesen).
+
+### Local draft hints / Lokale Entwurfshinweise
+
+Typed messages that pass the structural noise filter are captured by the local
+session harvest with their redacted situation. Recall searches local drafts
+lexically, with no embedding or cloud request. Matches stay in `draft_hits`
+without scores and in a separate `<draft-hints>` band after memory sections.
+They are unconfirmed user quotes; verify before relying on them. Drafts never
+enter ranked/required hits. Prompt/PreTool display at most one; SessionStart/MCP
+at most two. Notes retain their budget priority. CLI listing does not refresh
+expiry: unshown single-evidence drafts expire after 7 days (unmeasured), other
+open drafts after 30 days and closed tombstones after 180 days.
+
+Getippte Nachrichten hinter dem strukturellen Rauschfilter werden samt geschwärzter
+Situation im lokalen Harvest erfasst. Recall sucht rein lexikalisch, ohne Cloud
+oder Embedding-Aufruf. Treffer stehen separat in `draft_hits` ohne Score und im
+Band `<draft-hints>` nach den Notiz-Abschnitten. Unbestätigte Nutzerzitate vor der
+Verwendung prüfen. Sie werden nie gerankte oder verpflichtende Treffer.
+Prompt/PreTool zeigen höchstens einen, SessionStart/MCP höchstens zwei. Notizen
+haben Budgetvorrang. CLI-Listing verlängert keinen Verfall: unangezeigte Entwürfe
+mit einem Beleg 7 Tage (ungemessen), sonst offen 30 Tage, Grabsteine 180 Tage.
+
+### Draft retrieval corrections / Nachbesserung der Entwurfssuche
+
+Draft search reads only completed in-memory snapshots. Background loading and a
+file watcher refresh drafts (with a one-second reconciliation fallback). The vault
+word measure uses the existing note vocabulary/IDF reference and is maintained at
+startup and on add/change/remove events. A cold/failed draft cache yields no draft.
+Response paths perform no draft-file I/O and take no draft-store lock. Delivery
+booking runs after the response: same-process bookings serialize; against another
+process the lock is attempted once, without waiting or orphan takeover. Normal note
+and tripwire output is already final before the band is appended. An advisory 50 ms
+ceiling, unmeasured on real data, is bounded by the normal lane deadline. Separate
+`draft_hint` telemetry records IDs, count, estimated tokens and band latency, no text.
+
+**Assumption, not confirmed by the owner:** retrieval never deletes or closes
+drafts. A covering returned note suppresses only query-matching drafts in that
+response; promotion owns closing and tombstones.
+
+A text match needs two shared tokens and either two rare anchors of at least four
+Unicode characters, or one rare anchor of at least ten characters. With at least
+50 notes, rarity depends **only on the user's vault vocabulary**: an anchor occurs
+in at most 2% of notes. Its IDF weight uses that same vault; repetition among drafts
+does not penalize it. Both the 50-note minimum and 2% cutoff are **unmeasured on real
+data**. Two occurrences among 60 notes are not rare here; two among 2,000 are.
+Below 50 notes, the emergency fallback is fixed draft DF <=2, with its weaknesses
+in both directions. Unknown words carry no negative weight. Situation matching
+stays unchanged: two shared literals, one with stored-situation DF <=2 and at least
+four characters containing a digit or `./_@:-`; everyday `git status`/`npm test`
+alone do not qualify. There is no further synthetic tuning after this correction.
+
+Both frozen draft corpora were measured at 40/100/200 drafts, with and without a
+separate 150-note invented DE/EN vault of everyday language on other topics (75
+notes per language). Original technical corpus: with vault 13/20, 34/50, 69/100
+correct topical matches; without usable vault 2/20, 2/50, 4/100. Independent
+50-topic corpus: with vault 20/20, 49/50, 99/100; fallback 20/20, 49/50, 98/100.
+Unrelated/short matches stayed 0 at every size: original 0/60 and 0/40, independent
+0/50 and 0/50, both vocabulary modes. Vault-based rarity restores frequently
+explained themes that the draft cap suppressed; the original corpus still misses
+31/100 topical queries because lexical anchors/lengths remain strict. The fallback
+still costs 96/100 in that corpus and can admit accidental rare everyday words,
+like “three unit tests” against “germination tests every three years”; the populated
+vault rejects that pair. Words common in vault notes are not anchors, letting
+canonical notes take precedence. A note count alone does not prove coverage of the
+query's language. These synthetic rates do not establish real-world quality;
+remaining errors will be measured on real data without further invented retuning.
+There is no stemming or translation. Chinese/Japanese without spaces remain one
+token and do not match the two-token rule (#711).
+
+Hook lanes deliver once per session; MCP and `/hook/recall` return per request.
+Bash checks whether any draft remains unseen before looking up covering notes.
+After a lost booking and daemon restart, a harmless Bash request may show the same
+ID again in the same session. There is no project/client filter. Off values are
+`0`, `off`, `false`, `no`, case-insensitive. Fence/control/bidi stripping and quoted
+single-line fields protect the band. Leading incomplete draft bands are injected
+content; a line-start band after owner text is cut before draft capture even if
+unclosed. Inline quoted tag names remain prose. English-only injection patterns
+remain a known limit. First search after a 500-draft cache change was measured by
+review at 10.7 ms on the response path. Fence scrubbing of 1 MB cost 3.5 ms versus
+0.46 ms previously and also removes literal `<draft-hints>` from note titles.
+These are documented limits, without new machinery.
+
+Die Suche nutzt nur abgeschlossene Speicher-Snapshots. Entwürfe werden im
+Hintergrund aktualisiert, mit einer einsekündigen Nachprüfung; der Vault-Wortschatz
+wird beim Start und bei Notizereignissen gepflegt. Antwortpfade lesen keine
+Draft-Datei und warten auf keine Ablagesperre. Buchungen liegen hinter der Antwort:
+im selben Prozess werden sie nacheinander ausgeführt; bei fremder Sperre nur ein
+Versuch ohne Warten oder Übernahme. Normale Notizen und Tripwire-Warnungen sind
+vorher fertig, die 50-ms-Grenze bleibt innerhalb der Lane-Deadline. Telemetrie zählt
+IDs, Anzahl, Tokens und Bandlatenz, keinen Text. Suche löscht oder schließt nie;
+überdeckende Notizen unterdrücken nur passende Entwürfe dieser Antwort.
+
+Zwei gemeinsame Tokens sind nötig, davon zwei seltene Anker ab vier Zeichen oder
+einer ab zehn Zeichen. Ab 50 Notizen entscheidet **allein der Vault-Wortschatz**:
+selten ist ein Wort in höchstens 2 % der Notizen; auch IDF-Gewichte kommen dann
+vom Vault. Fünf ähnliche Entwürfe machen ihr Thema nicht häufig. Mindestzahl 50
+und Grenze 2 % sind **ungemessen**: 2/60 Vorkommen gelten nicht als selten, 2/2.000
+schon. Unter 50 gilt Draft-DF <=2 als Notbehelf mit Schwächen in beide Richtungen.
+Situationsmatch bleibt unverändert: zwei Literale, davon ein seltenes in höchstens
+zwei gespeicherten Situationen, ab vier Zeichen mit Ziffer oder `./_@:-`.
+
+Bei 40/100/200 Entwürfen, mit einem separaten erfundenen 150-Notizen-Vault aus
+Alltagssprache (75 DE/75 EN, andere Themen): ursprünglicher Korpus 13/20 (65 %),
+34/50 (68 %), 69/100 (69 %) passende Treffer. Ohne brauchbaren Vault 2/20, 2/50,
+4/100. Zweiter Korpus: mit Vault 20/20, 49/50, 99/100; Notbehelf 20/20, 49/50,
+98/100. Themenfremd und kurz bei jeder Größe in beiden Varianten null: ursprünglich
+0/60 bzw. 0/40, unabhängig je 0/50. Die bessere Fassung bleibt: Vault-Seltenheit
+stellt wiederholt erklärte Themen wieder her. Es fehlen weiterhin 31/100 passende
+Abfragen im ersten Korpus; beim Notbehelf 96/100. Dieser kann zufällig seltene
+Alltagswörter falsch treffen („three unit tests“/„germination tests … every three
+years“); mit Vault nicht. Häufige Vault-Themenwörter sind keine Anker, die Notiz
+hat Vorrang. Anzahl allein beweist keine Abdeckung der jeweiligen Sprache. Die
+Korpora beweisen keine Alltagstauglichkeit; verbleibende Fehler werden an echten
+Daten gemessen. Keine weitere Abstimmung an erfundenen Daten nach dieser Korrektur.
+
+Kein Stemming/Übersetzen; Chinesisch/Japanisch ohne Leerzeichen bleiben ein Token
+und scheitern am Zwei-Token-Match (#711). Bash prüft ungezeigte Treffer vor erneutem
+Notiz-Lookup. Nach verlorener Buchung und Neustart kann dieselbe ID erneut erscheinen.
+Einmal je Sitzung gilt für Hook-Bänder, direkter Recall je Anfrage. Keine
+Projekt-/Clientfilter. Angefügte Bands ab Zeilenanfang werden vor Erfassung auch
+unvollständig abgeschnitten; inline zitierte Tagnamen bleiben Text. Englischer
+Injektionsscanner bleibt begrenzt. Prüfermessungen: erste Suche nach Änderung bei
+500 Entwürfen 10,7 ms; Scrub für 1 MB 3,5 statt 0,46 ms, mit Entfernung des wörtlichen
+Tags auch aus Notiztiteln. Diese Grenzen sind dokumentiert, ohne Zusatzbau.

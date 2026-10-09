@@ -17,6 +17,7 @@
  * loopback self-call (the hook_call telemetry series keeps measuring the same
  * thing mid-migration), session state stays on the file bus.
  */
+import { appendLaneDrafts } from "./draft-search.js";
 import { isAbsolute, resolve } from "node:path";
 import { request } from "node:http";
 import { detectTopics, extractContentExcerpt } from "@bastra-recall/core";
@@ -560,7 +561,7 @@ export async function runWriteLane(
   // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
   await reportHinted(selfBaseUrl, hintedIds, payload.session_id ?? null);
 
-  return stdout;
+  return appendLaneDrafts(stdout, "PreToolUse", topics.query, payload.session_id, presentedHits, 1, true, undefined, startedAt + HOOK_TIMEOUT_MS);
 }
 
 // ─── loopback self-call ─────────────────────────────────────────────────────

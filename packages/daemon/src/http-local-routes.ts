@@ -172,6 +172,7 @@ export function dispatchLocalRoutes(
         const out = await runBashPreLane(
           (body.payload ?? {}) as BashHookPayload,
           `http://127.0.0.1:${req.socket.localPort ?? 6723}`,
+          query => search.recall(query, { k: 5 }).map(hit => ({ ...hit, body: toolDeps.vault.get(hit.id)?.body })),
         );
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         res.end(out);

@@ -28,6 +28,7 @@ export interface HookRecallHit {
 
 export interface HookRecallResponse {
   hits: HookRecallHit[];
+  draft_hits?: import("./draft-search.js").DraftHit[];
   vault_size: number;
   latency_ms: number;
   recall_id: string;

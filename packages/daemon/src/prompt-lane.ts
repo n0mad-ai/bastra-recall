@@ -26,6 +26,7 @@
  * deletes a hidden per-call cost: the old hook paid one `ps` exec on every
  * single prompt.
  */
+import { appendLaneDrafts } from "./draft-search.js";
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
 import { applyLaneScopeFilter, projectConfidence, projectForFilter, projectForLane } from "./scope-filter.js";
 
@@ -750,7 +751,7 @@ export async function runPromptLane(
     recall_skipped: recallSkipped,
   });
 
-  return stdout;
+  return appendLaneDrafts(stdout, "UserPromptSubmit", prompt, payload.session_id, [...(resp?.hits ?? []), ...reflexKept], 1, false, undefined, startedAt + laneBudgetMs(detectedMode));
 }
 
 /**

@@ -1,6 +1,8 @@
 /** Local, bounded draft storage (#1084, phase A); never reads or writes a vault. */
 import { createHash, randomBytes } from "node:crypto";
 import { chmod, mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { watch } from "node:fs";
+import { basename } from "node:path";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
@@ -8,7 +10,7 @@ import { redactSecrets } from "@bastra-recall/core/scrub";
 import { cleanDraftText, clipDraftText } from "./draft-text.js";
 import { mergeSituations, situationLiterals } from "./draft-situation.js";
 import { bigramSet, dice } from "./stop-lane-repeat.js";
-import { withPathLock } from "./path-lock.js";
+import { withPathLock, tryWithPathLock } from "./path-lock.js";
 
 export const DRAFT_STORE_VERSION = 1;
 export const DRAFT_MAX_ROWS = 500;
@@ -229,6 +231,19 @@ export async function listDrafts(now = Date.now()): Promise<Draft[]> {
   return bounded(store.rows, now, store.metadata);
 }
 
+/** Hook retrieval reads only the last completed in-memory snapshot. The
+ * background loader/capture refreshes it; a cold cache simply omits drafts. */
+export function draftSearchSnapshot(now = Date.now()): { key: string; rows: readonly Draft[] } {
+  const path = draftsPath();
+  const store = cache?.path === path ? cache.store : undefined;
+  if (!store || store.diagnostics.corrupt || store.diagnostics.unsupportedVersion) return { key: `${path}:cold`, rows: [] };
+  const rows = store.rows.filter(row => {
+    const age = row.state !== "open" ? DRAFT_RETAIN_AGE_MS : row.evidence.length === 1 && row.surfaced.length === 0 ? DRAFT_UNCONFIRMED_AGE_MS : DRAFT_OPEN_AGE_MS;
+    return now - row.last_touched < age;
+  }).slice(-DRAFT_MAX_ROWS);
+  return { key: `${path}:${cache!.stamp}:${rows.map(row => row.id).join(",")}`, rows };
+}
+
 /** Replace by id; captureDraft owns evidence deduplication during harvest. */
 export async function upsertDraft(input: Draft, now = Date.now()): Promise<Draft | null> {
   const draft = sanitize(input, now);
@@ -389,4 +404,62 @@ export async function purgeDrafts(): Promise<void> {
     await unlink(draftVectorsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
     cache = undefined;
   }, { crossProcess: true });
+}
+
+/** Retrieval mutations preserve concurrent harvest evidence and retained tombstones. */
+export async function updateRetrievedDrafts(
+  removeIds: string[], displays: { id: string; session_id: string; novel: string[] }[], now = Date.now(), tryOnly = false,
+): Promise<void> {
+  if (!removeIds.length && !displays.length) return;
+  const path = draftsPath();
+  const lock = tryOnly ? tryWithPathLock : withPathLock;
+  await lock(path, async () => {
+    const store = await load(path, now);
+    assertWritable(store);
+    const removed = new Set(removeIds);
+    const rows = store.rows.filter(row => row.state !== "open" || !removed.has(row.id));
+    let changed = rows.length !== store.rows.length;
+    for (const display of displays) {
+      const row = rows.find(row => row.id === display.id && row.state === "open");
+      if (!row || row.surfaced.some(s => s.session_id === display.session_id)) continue;
+      row.surfaced.push({ session_id: display.session_id, ts: now, novel: display.novel });
+      row.surfaced = row.surfaced.slice(-5);
+      row.last_touched = now;
+      changed = true;
+    }
+    if (changed) await write(path, bounded(rows, now, store.metadata), store.metadata);
+  }, { crossProcess: true });
+}
+
+/** Prime and refresh outside every hook/recall path, including external CLI
+ * purge/atomic writes. The watcher is local and never keeps the daemon alive. */
+export function startDraftSearchCache(): () => void {
+  const path = draftsPath();
+  let busy = false, pending = false, stopped = false;
+  const refresh = () => {
+    pending = true;
+    if (busy || stopped || draftsPath() !== path) return;
+    busy = true;
+    void (async () => {
+      do {
+        pending = false;
+        try { await listDrafts(); } catch { if (cache?.path === path) cache = undefined; }
+      } while (pending && !stopped && draftsPath() === path);
+    })().finally(() => { busy = false; });
+  };
+  refresh();
+  // Folder watchers may coalesce rapid create/delete events. Reconcile only
+  // in the background as well; retrieval itself never probes the file.
+  const timer = setInterval(refresh, 1000); timer.unref();
+  try {
+    const watcher = watch(dirname(path), { persistent: false }, (_event, name) => {
+      if (name === null || name.toString() === basename(path)) refresh();
+    });
+    watcher.on("error", () => { if (cache?.path === path) cache = undefined; });
+    return () => { stopped = true; watcher.close(); clearInterval(timer); };
+  } catch {
+    // First use before the parent directory exists. Capture also refreshes
+    // the cache directly; the background fallback notices external changes.
+    return () => { stopped = true; clearInterval(timer); };
+  }
 }

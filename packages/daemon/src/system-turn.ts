@@ -66,6 +66,7 @@ function isCommandEcho(head: string): boolean {
 export function isSystemInjectedTurn(text: string): boolean {
   const head = text.trimStart();
   return (
+    /^<draft-hints\b/i.test(head) ||
     TASK_NOTIFICATION.test(head) ||
     isAgentMail(head) ||
     CODEX_HARNESS_TAG.test(head) ||
@@ -115,4 +116,12 @@ export function textAfterReminders(text: string): string | null {
   const rest = head.slice(end + REMINDER_CLOSE.length).trimStart();
   if (rest.length === 0) return null;
   return rest;
+}
+
+
+/** A line-start band appended to typed owner prose is never owner evidence,
+ * even if delivery was cut before its closing tag. Inline quoted tags stay prose. */
+export function textBeforeDraftBand(text: string): string {
+  const start = /(?:^|\r?\n)[ \t]*<draft-hints\b[^>\r\n]*(?:>|$)/i.exec(text);
+  return start ? text.slice(0, start.index).trimEnd() : text;
 }

@@ -172,6 +172,11 @@ if (!process.env.BASTRA_HARVEST_QUEUE_PATH) {
   process.env.BASTRA_HARVEST_QUEUE_PATH = join(throwawayDir("bastra-test-harvest-"), "harvest-queue.json");
 }
 
+/** Session lanes consume relay delivery counters; never use the real queue. */
+if (!process.env.BASTRA_PENDING_SUGGESTIONS_PATH) {
+  process.env.BASTRA_PENDING_SUGGESTIONS_PATH = join(throwawayDir("bastra-test-pending-"), "pending-suggestions.json");
+}
+
 /** Draft capture tests must never write to the operator's local draft store. */
 if (!process.env.BASTRA_DRAFTS_PATH) {
   process.env.BASTRA_DRAFTS_PATH = join(throwawayDir("bastra-test-drafts-"), "drafts.json");
