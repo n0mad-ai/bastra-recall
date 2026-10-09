@@ -304,7 +304,7 @@ test("a configured URL with credentials or a token never reaches a message, in a
     assert.doesNotMatch(message ?? "", SECRETS, spelled);
   }
   assert.equal(await testCallFailure("new:4b", "http://ollama.example.invalid:11434/?token=tok-9f3a"),
-    "the test call only runs against a local Ollama, not ollama.example.invalid:11434 — use 'bastra models set new:4b' to switch without it");
+    "the test call only runs against a local Ollama, not ollama.example.invalid:11434");
   // A token in the query of a LOCAL URL: the request is built from origin and
   // path, so the call works and the token is neither sent nor shown.
   assert.equal(await testCallFailure("new:4b", `${ollamaUrl}/?token=tok-9f3a`), null);
