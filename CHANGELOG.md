@@ -18,6 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   existing post-tool client, so `bastra install claude-code` has to run once
   to register it (`bastra doctor` reports the missing registration until
   then). `BASTRA_SAVE_NOTICE=0` turns it off. Telemetry: `save_notice_call`.
+- **Model recommendations for existing installs.** A release can now carry a
+  recommendation for the local text model (per hardware tier, with download
+  size and what gets better). Nothing switches on its own, not in
+  `update.mode auto` either: `bastra update` asks at the end, the session start
+  lets the agent ask, and a dim line follows CLI commands at most once a day —
+  until you answer with `bastra models switch`, `later` (asked again in 7 days)
+  or `dismiss` (not for this recommendation). The switch pulls the model, checks
+  it with a short test call and only then changes the setting; the old model
+  stays installed. New installs are offered the recommended model directly.
+  `BASTRA_UPDATE_CHECK=off` silences the notice as well. This release ships the
+  mechanism with no active recommendation, so nothing changes yet.
 
 ## [1.0.1] — 2026-10-04
 

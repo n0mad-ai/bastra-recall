@@ -60,6 +60,9 @@ Commands:
     set <tag>]               rerank). 'status' shows the active model + this
                              machine's RAM-tier recommendation; 'set' pulls a
                              model + persists it (e.g. gemma4:12b on a 24 GB+ box)
+  models <switch|later|      Answer a release's model recommendation: switch to
+    dismiss>                 it (pulled + tested first), ask again in 7 days,
+                             or not for this recommendation
   config get <key>           Read a setting (e.g. update.mode)
   config set <key> <value>   Write a setting (update.mode = notify|auto|off,
                              docs.mode = off|suggest|auto, docs.language = en|de|…)
@@ -427,6 +430,7 @@ Usage:
   bastra models [status]
   bastra models recommend
   bastra models set <tag>
+  bastra models switch | later | dismiss
 
 The model behind doc2query trigger expansion and the local reranker — not the
 embedding model ('bastra embeddings' owns that one).
@@ -434,6 +438,19 @@ embedding model ('bastra embeddings' owns that one).
   status      Active model plus this machine's RAM-tier recommendation
   recommend   What this machine can carry, without changing anything
   set <tag>   Pull a model and persist it (e.g. gemma4:12b on a 24 GB+ box)
+
+A release can recommend a different model. bastra never switches on its own:
+'bastra update', the session start and a line after CLI commands tell you until
+you have answered, and 'status' shows the recommendation at any time.
+
+  switch      Pull the recommended model, check it with a short test call, and
+              only then change the setting. If anything fails, nothing changes.
+              The old model stays installed; 'set <old tag>' switches back.
+  later       Keep the current model and ask again in 7 days
+  dismiss     Keep the current model and do not ask again for this
+              recommendation (a later, new recommendation asks again)
+
+BASTRA_UPDATE_CHECK=off (or update.mode off) silences the notice as well.
 `,
 
   token: `bastra token — the REST API token for browser and REST clients

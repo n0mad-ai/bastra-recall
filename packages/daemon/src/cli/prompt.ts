@@ -32,3 +32,19 @@ export async function confirm(question: string, opts: { defaultYes?: boolean } =
     rl.close();
   }
 }
+
+/**
+ * One free-text answer, trimmed. Null in any non-interactive context and on
+ * EOF / Ctrl-C — "no answer", which a caller must never read as a choice.
+ */
+export async function ask(question: string): Promise<string | null> {
+  if (!isInteractive()) return null;
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return (await rl.question(question)).trim();
+  } catch {
+    return null;
+  } finally {
+    rl.close();
+  }
+}

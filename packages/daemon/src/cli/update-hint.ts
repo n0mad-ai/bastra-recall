@@ -16,6 +16,7 @@ import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { isOptedOut } from "../update-check.js";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
+import { formatModelNotice, pendingModelNotice, type OfferOptions } from "../model-recommendation.js";
 
 const PROBE_TIMEOUT_MS = 700;
 
@@ -111,5 +112,27 @@ export async function maybeEmitUpdateHint(): Promise<boolean> {
   );
 
   await markShownToday(shownFilePath());
+  return true;
+}
+
+/**
+ * The same kind of line for a model recommendation the user has not answered
+ * yet (model-recommendation.ts): dim, on stderr, at most once per day — its own
+ * day marker, so it neither hides the update hint nor is hidden by it. Needs no
+ * daemon: the recommendation ships with this release. Returns true if printed.
+ *
+ * `opts` is for tests (a recommendation, the settings file, the marker file).
+ */
+export async function maybeEmitModelHint(opts: OfferOptions & { shownPath?: string } = {}): Promise<boolean> {
+  const shownPath = opts.shownPath ?? join(homedir(), ".bastra", "model-hint-shown.txt");
+  if (await alreadyShownToday(shownPath)) return false;
+
+  const offer = await pendingModelNotice(opts);
+  if (!offer) return false;
+
+  const lines = formatModelNotice(offer).split("\n");
+  process.stderr.write(`\n\x1b[2mℹ ${lines.join("\n  ")}\x1b[0m\n`);
+
+  await markShownToday(shownPath);
   return true;
 }

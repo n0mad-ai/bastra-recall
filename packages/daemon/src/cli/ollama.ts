@@ -23,7 +23,8 @@
  * see there).
  */
 import { spawn } from "node:child_process";
-import { findExecutable, run } from "./exec.js";
+import { findExecutable, run, type RunResult } from "./exec.js";
+import { ollamaChat } from "../learned-recall/reranker.js";
 import { getOllamaAutostart, setEmbeddingProvider, setGenerationModel } from "../settings.js";
 
 const OLLAMA_URL = (process.env.BASTRA_OLLAMA_URL ?? "http://localhost:11434").replace(/\/+$/, "");
@@ -195,35 +196,48 @@ export async function ollamaModelPresent(name: string): Promise<boolean> {
  * semantic-recall step already provisions — so this does NOT install Ollama; it
  * requires a running server and fails clearly if there isn't one.
  *
- * Idempotent: an already-present model skips the pull. `settingsPath` is
- * injectable for tests.
+ * `verify` is the safe switch for a machine that already runs a model: after
+ * the pull, the new model has to answer one short real call before the setting
+ * changes. Files on disk are not proof a model loads on this machine. Whatever
+ * fails, the stored choice is untouched — it is written last, and nothing here
+ * removes a model.
+ *
+ * Idempotent: an already-present model skips the pull. `settingsPath` and
+ * `cli` (where the `ollama` binary is, how a pull runs) are injectable for tests.
  */
 export async function enableGenerationModel(
   model: string,
-  opts: { dryRun: boolean } = { dryRun: false },
+  opts: { dryRun: boolean; verify?: boolean } = { dryRun: false },
   settingsPath?: string,
+  cli: { find: () => string | null; pull: (ollamaPath: string, model: string) => RunResult } = {
+    find: () => findExecutable("ollama"),
+    pull: (ollamaPath, m) => run(ollamaPath, ["pull", m], { timeoutMs: 1_800_000, showProgress: true }),
+  },
 ): Promise<EnsureResult> {
   if (opts.dryRun) {
     return { status: "would-install", activated: false, message: `would pull ${model} + persist generation.model` };
   }
-  const probe = await probeOllama();
-  if (!probe.ok) {
+  const ollamaPath = cli.find();
+  if (!ollamaPath || !(await serverVersion())) {
     return {
       status: "error",
       activated: false,
       message: `Ollama isn't running — enable semantic recall first (that installs + starts it), then set the text model`,
     };
   }
-  const ollamaPath = findExecutable("ollama");
-  if (!ollamaPath) {
-    return { status: "error", activated: false, message: "`ollama` is not on PATH — install it, then re-run" };
-  }
   if (!(await ollamaModelPresent(model))) {
     process.stdout.write(`  → pulling ${model} (text model for doc2query + rerank)\n`);
-    const r = run(ollamaPath, ["pull", model], { timeoutMs: 1_800_000, showProgress: true });
+    const r = cli.pull(ollamaPath, model);
     if (r.signal) return { status: "error", activated: false, message: `pull of ${model} was interrupted — re-run when ready` };
     if (!r.ok) return { status: "error", activated: false, message: `\`ollama pull ${model}\` failed (${r.detail})` };
     if (!(await ollamaModelPresent(model))) return { status: "error", activated: false, message: `${model} not present after pull — re-run \`ollama pull ${model}\`` };
+  }
+  if (opts.verify) {
+    process.stdout.write(`  → checking ${model} with a short test call\n`);
+    const failure = await testCallFailure(model);
+    if (failure) {
+      return { status: "error", activated: false, message: `${model} is downloaded but did not answer a test call (${failure})` };
+    }
   }
   await setGenerationModel(model, settingsPath);
   return {
@@ -231,6 +245,17 @@ export async function enableGenerationModel(
     activated: true,
     message: `text model ${model} ready + saved — restart the daemon to apply`,
   };
+}
+
+/** One short real generation. Null when the model answered, else the reason.
+ *  The timeout covers a cold load of a 12B model, not just the few tokens. */
+async function testCallFailure(model: string): Promise<string | null> {
+  try {
+    const answer = await ollamaChat({ baseURL: OLLAMA_URL, model, timeoutMs: 180_000 })("Reply with the single word: ok");
+    return answer.trim().length > 0 ? null : "empty answer";
+  } catch (e) {
+    return (e as Error).message;
+  }
 }
 
 // ── Ollama HTTP probes ───────────────────────────────────────────────────────

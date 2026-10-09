@@ -36,9 +36,14 @@ export interface TextModelRec {
   alt?: { model: string; sizeGB: number; note: string };
 }
 
+/** Installed RAM in whole GB — the one signal the model ladder reads. */
+export function detectRamGB(): number {
+  return Math.round(totalmem() / 1024 ** 3);
+}
+
 /** Detect the running machine. Pure read; never throws (chip probe is best-effort). */
 export function detectHardware(): HardwareInfo {
-  const ramGB = Math.round(totalmem() / 1024 ** 3);
+  const ramGB = detectRamGB();
   let chip: string | null = null;
   if (process.platform === "darwin") {
     try {
@@ -60,13 +65,71 @@ const ENHANCED_GB = 24;
 const HIGH_GB = 32;
 
 /**
+ * A model recommendation that ships with a release: "we now think this model is
+ * the better pick for your tier". Existing users are told about it and decide
+ * themselves (model-recommendation.ts) — nothing ever switches on its own.
+ */
+export interface ModelRecommendation {
+  /** Stable identifier. "Don't ask again" is remembered per id, so a NEW
+   *  recommendation needs a NEW id — and an unchanged one must keep its id. */
+  id: string;
+  /** One sentence, user-facing: what gets better with the recommended model. */
+  improves: string;
+  /** The recommended model per hardware tier (no entry below the 16 GB baseline:
+   *  those machines run no text model). `sizeGB` is the download size. */
+  models: Record<Exclude<TextModelRec["tier"], "keyword-only">, { model: string; sizeGB: number }>;
+}
+
+/**
+ * THE active recommendation of this release, or null for "none".
+ *
+ * null is the shipped state: no notice anywhere, and the ladder below is what
+ * the installer offers. To activate a recommendation, replace null with the
+ * data — this is the only place:
+ *
+ *   export const MODEL_RECOMMENDATION: ModelRecommendation | null = {
+ *     id: "2026-11-example",
+ *     improves: "Sharper search keywords and a stricter draft check.",
+ *     models: {
+ *       baseline: { model: "example:4b", sizeGB: 3.3 },
+ *       enhanced: { model: "example:4b", sizeGB: 3.3 },
+ *       high: { model: "example:12b", sizeGB: 8.1 },
+ *     },
+ *   };
+ *
+ * GENERATION_MODEL_DEFAULT (settings-file.ts) deliberately stays as it is when
+ * a recommendation is activated: it is the fallback of every user who never
+ * stored a choice, so changing it would switch their model without asking.
+ */
+export const MODEL_RECOMMENDATION: ModelRecommendation | null = null;
+
+/**
  * Recommend a generation (doc2query + rerank) model for `ramGB`.
  *
  * Below the 16 GB baseline: no generation model — embedding + BM25 recall still
  * work and don't need it. At/above baseline: a 4B text model. On roomy machines
  * a 12B is offered as the quality alternative.
+ *
+ * An active release recommendation replaces the ladder's pick for its tier, so
+ * the installer and `bastra models` offer new installs the recommended model
+ * directly. `recommendation` is a parameter for tests only.
  */
-export function recommendTextModel(ramGB: number): TextModelRec {
+export function recommendTextModel(
+  ramGB: number,
+  recommendation: ModelRecommendation | null = MODEL_RECOMMENDATION,
+): TextModelRec {
+  const ladder = ladderTextModel(ramGB);
+  if (!recommendation || ladder.tier === "keyword-only") return ladder;
+  const pick = recommendation.models[ladder.tier];
+  return {
+    ...pick,
+    tier: ladder.tier,
+    note: `${ramGB} GB — ${pick.model} is the current bastra-recall recommendation for this machine.`,
+    ...(ladder.alt && ladder.alt.model !== pick.model ? { alt: ladder.alt } : {}),
+  };
+}
+
+function ladderTextModel(ramGB: number): TextModelRec {
   if (ramGB < BASELINE_GB) {
     return {
       model: null,

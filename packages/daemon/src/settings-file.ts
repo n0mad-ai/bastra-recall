@@ -99,6 +99,12 @@ export interface CliSettings {
   // Persisted cross-platform here (not a LaunchAgent env var) so Windows/Linux
   // installs carry the choice too. Written by `bastra models` / the install wizard.
   generation?: { model: string };
+  // The user's answer to a release's model recommendation (cli/hardware.ts
+  // MODEL_RECOMMENDATION), the ONE note every surface that asks shares:
+  // `bastra update`, `bastra models`, the SessionStart block and the CLI hint.
+  // Keyed by the recommendation's id, so a later recommendation asks again.
+  // undefined = not answered. Written by model-recommendation.ts.
+  modelRecommendation?: { id: string; answer: ModelRecommendationAnswer; at: string };
   // Vault map web UI (#207): undefined = disabled (opt-in). Enabled via the
   // install wizard or `bastra config set ui.enabled true`; the daemon then
   // serves the static viewer on /ui (loopback-only). Read per-request, so
@@ -164,6 +170,9 @@ export interface CliSettings {
   // above).
   promptImpact?: { enabled?: boolean };
 }
+
+export const MODEL_RECOMMENDATION_ANSWERS = ["switched", "later", "dismissed"] as const;
+export type ModelRecommendationAnswer = (typeof MODEL_RECOMMENDATION_ANSWERS)[number];
 
 /**
  * Default generation (doc2query + rerank) model — the 16 GB baseline pick.
@@ -243,6 +252,7 @@ const KNOWN_SETTINGS_KEYS: readonly string[] = [
   "experiment",
   "docs",
   "generation",
+  "modelRecommendation",
   "ui",
   "reflex",
   "size",
@@ -377,6 +387,14 @@ export async function readSettings(path: string = settingsFilePath()): Promise<C
     process.stderr.write(
       `[bastra-recall] cli-settings.json: ignoring invalid generation.model ${JSON.stringify(data?.generation?.model)}\n`,
     );
+  }
+  const recData = (data as { modelRecommendation?: { id?: unknown; answer?: unknown; at?: unknown } }).modelRecommendation;
+  if (
+    typeof recData?.id === "string" &&
+    typeof recData.at === "string" &&
+    (MODEL_RECOMMENDATION_ANSWERS as readonly unknown[]).includes(recData.answer)
+  ) {
+    settings.modelRecommendation = { id: recData.id, answer: recData.answer as ModelRecommendationAnswer, at: recData.at };
   }
   if (typeof data?.ui?.enabled === "boolean") {
     settings.ui = { enabled: data.ui.enabled };

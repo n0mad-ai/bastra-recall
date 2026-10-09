@@ -250,6 +250,27 @@ To reach this daemon from a hosted web app (e.g. a site's admin talking to the u
 
 > **Status:** the ChatGPT Custom GPT Actions path does **not work end-to-end yet**. The REST API and the OpenAPI starter spec are in place; the packaged Custom-GPT action is tracked in [#13](https://github.com/n0mad-ai/bastra-recall/issues/13).
 
+### The local text model — and what happens when a release recommends a different one
+
+`bastra models` shows the local text model behind keyword expansion, reranking and the draft check, plus what this machine's RAM tier can carry (below 16 GB: none). `bastra models set <tag>` pulls a model and stores the choice in `~/.bastra/cli-settings.json`; `BASTRA_EXPAND_MODEL` / `BASTRA_RERANK_MODEL` override it. The embedding model is a separate thing (`bastra embeddings`) and is not touched by any of this.
+
+A release can carry a **recommendation**: a different model per hardware tier, with its download size and one sentence on what gets better. New installs are offered it directly by the installer. Existing installs are **never switched automatically** — not in `update.mode auto` either. You are told instead, and the answer is yours:
+
+```bash
+bastra models            # shows the recommendation at any time
+bastra models switch     # pull it, check it with a short test call, then switch
+bastra models later      # keep the current model, ask again in 7 days
+bastra models dismiss    # keep it, and do not ask again for this recommendation
+```
+
+Until you have answered, the notice shows up in three places that share one note of your answer, so nobody is asked twice: `bastra update` ends with the question (on a terminal; otherwise it prints the notice), the agent's session start carries it — the agent asks you first and only runs `bastra models switch` after an explicit yes — and one dim line follows CLI commands, at most once a day. `dismiss` is remembered per recommendation; a later, new recommendation asks again.
+
+The switch is safe by construction: the new model is pulled, has to answer one short real call, and only then the setting changes. If the pull or the test call fails, nothing changes and the reason is printed. The old model is not deleted; `bastra models set <old tag>` switches back. The daemon reads the model at start, so restart it afterwards.
+
+You get the same notice with a model you chose yourself. If `BASTRA_EXPAND_MODEL` or `BASTRA_RERANK_MODEL` pins the model, the notice says so: the switch changes the stored choice, but the variable keeps winning until you remove it.
+
+The notice is silent when the recommended model is already in effect, on machines below the 16 GB tier, when Ollama is not the embedding provider (the text model never runs there), and with `BASTRA_UPDATE_CHECK=off` or `update.mode off`. It needs no network access: the recommendation ships with the release.
+
 ### Battery mode — keep background Ollama work off the battery (macOS)
 
 Opt-in, off by default: `bastra config set battery.saver on` (or
@@ -546,6 +567,27 @@ Auth und CORS:
 Um diesen Daemon aus einer gehosteten Web-App zu erreichen (z.B. das Admin einer Seite, das aus dem Browser auf den *lokalen* Vault des Users zugreift): `BASTRA_CORS_ORIGIN` auf die Seiten-Origin setzen, `bastra token` ausführen und das Token in der Seite hinterlegen. Läuft die Seite über **HTTPS** (z.B. `https://bastra.io`), schickt Chrome für den Public-Origin-→-localhost-Call einen **Private-Network-Access**-Preflight; der Daemon beantwortet ihn für erlaubte Origins automatisch mit `Access-Control-Allow-Private-Network: true` — ohne Zusatzkonfiguration. Für einen serverseitigen Client: einen Tunnel (Cloudflare Tunnel / ngrok / eigener Reverse-Proxy) auf `127.0.0.1:6723` legen und mit Tunnel-URL + Token konfigurieren. Eine OpenAPI-3.0-Starter-Spec liegt in [openapi.yaml](./openapi.yaml).
 
 > **Status:** Der ChatGPT-Custom-GPT-Actions-Weg **funktioniert noch nicht end-to-end**. REST-API und OpenAPI-Starter-Spec stehen; die verpackte Custom-GPT-Action wird in [#13](https://github.com/n0mad-ai/bastra-recall/issues/13) verfolgt.
+
+### Das lokale Textmodell — und was passiert, wenn ein Release ein anderes empfiehlt
+
+`bastra models` zeigt das lokale Textmodell hinter Stichwort-Erweiterung, Nachsortierung und Entwurfs-Prüfung und dazu, was die RAM-Stufe dieser Maschine trägt (unter 16 GB: keines). `bastra models set <tag>` lädt ein Modell und speichert die Wahl in `~/.bastra/cli-settings.json`; `BASTRA_EXPAND_MODEL` / `BASTRA_RERANK_MODEL` überstimmen sie. Das Einbettungsmodell ist etwas anderes (`bastra embeddings`) und bleibt von all dem unberührt.
+
+Ein Release kann eine **Empfehlung** mitbringen: je Hardware-Stufe ein anderes Modell, mit Downloadgröße und einem Satz dazu, was besser wird. Neuinstallationen bekommen es vom Installer direkt vorgeschlagen. Bestehende Installationen werden **nie automatisch umgestellt** — auch nicht mit `update.mode auto`. Du wirst stattdessen informiert, und die Antwort gehört dir:
+
+```bash
+bastra models            # zeigt die Empfehlung jederzeit
+bastra models switch     # laden, mit einem kurzen Testaufruf prüfen, dann umstellen
+bastra models later      # beim aktuellen Modell bleiben, in 7 Tagen erneut fragen
+bastra models dismiss    # dabei bleiben und für diese Empfehlung nicht mehr fragen
+```
+
+Solange du nicht geantwortet hast, erscheint der Hinweis an drei Stellen, die sich einen Merkzettel teilen — niemand wird doppelt gefragt: `bastra update` endet mit der Frage (im Terminal; sonst gibt es nur den Hinweistext aus), der Sitzungsstart des Agenten trägt ihn — der Agent fragt dich zuerst und führt `bastra models switch` nur nach einem ausdrücklichen Ja aus — und nach CLI-Befehlen folgt eine gedimmte Zeile, höchstens einmal am Tag. `dismiss` gilt je Empfehlung; eine spätere, neue Empfehlung fragt wieder.
+
+Der Wechsel ist sicher gebaut: Das neue Modell wird geladen, muss einen kurzen echten Aufruf beantworten, und erst dann ändert sich die Einstellung. Scheitert das Laden oder der Testaufruf, bleibt alles beim Alten und der Grund wird ausgegeben. Das alte Modell wird nicht gelöscht; `bastra models set <alter tag>` wechselt zurück. Der Daemon liest das Modell beim Start, danach also neu starten.
+
+Denselben Hinweis bekommst du auch mit einem selbst gewählten Modell. Legt `BASTRA_EXPAND_MODEL` oder `BASTRA_RERANK_MODEL` das Modell fest, sagt der Hinweis das dazu: Der Wechsel ändert die gespeicherte Wahl, aber die Variable gewinnt weiter, bis du sie entfernst.
+
+Der Hinweis bleibt aus, wenn das empfohlene Modell bereits wirksam ist, auf Maschinen unter der 16-GB-Stufe, wenn Ollama nicht der Embedding-Provider ist (das Textmodell läuft dort nie) und mit `BASTRA_UPDATE_CHECK=off` oder `update.mode off`. Er braucht keinen Netzzugriff: Die Empfehlung wird mit dem Release ausgeliefert.
 
 ### Akkumodus — Ollama-Hintergrundarbeit nicht auf dem Akku (macOS)
 

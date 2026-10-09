@@ -41,7 +41,7 @@ import { cmdDrafts } from "./cli/drafts-cmd.js";
 import { cmdPatches } from "./cli/patches-cmd.js";
 import { cmdPanel } from "./cli/panel.js";
 import { cmdAutostart } from "./cli/autostart.js";
-import { maybeEmitUpdateHint } from "./cli/update-hint.js";
+import { maybeEmitModelHint, maybeEmitUpdateHint } from "./cli/update-hint.js";
 
 // A reader such as `head` intentionally closes its pipe. Stop producing output
 // quietly, but never turn a failure into success: a closed stderr leaves the
@@ -165,6 +165,10 @@ async function main(): Promise<number> {
     args.showVersion;
   if (!skipHint) {
     try { await maybeEmitUpdateHint(); } catch { /* never break the CLI over this */ }
+    // `bastra models` shows and answers the recommendation itself.
+    if (args.command !== "models") {
+      try { await maybeEmitModelHint(); } catch { /* never break the CLI over this */ }
+    }
   }
   return code;
 }
