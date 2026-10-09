@@ -8,6 +8,15 @@ import json, re, sys
 D = json.load(open(sys.argv[1]))
 PAGE = sys.argv[2]
 SMALL, LARGE = "gemma3:4b", "gemma4:12b"
+LANG = "en"
+DE = {'Model': 'Modell', 'Questions answered correctly': 'Fragen richtig beantwortet', 'Rewording promoted ↑': 'Umformulierung befördert ↑', 'One-time task kept as durable ↓': 'Einmalauftrag als dauerhaft gewertet ↓', 'Fact + task promoted ↓': 'Fakt + Auftrag befördert ↓', 'Contradiction read as repeat ↓': 'Widerspruch als Wiederholung gelesen ↓', 'Counter-fact closed as duplicate ↓': 'Gegenfakt als Dublette geschlossen ↓', 'Same fact recognised ↑': 'Gleicher Fakt erkannt ↑', 'No verdict': 'Kein Urteil', 'Resisted (bar) · dangerous flips, 66 new probes ↓': 'Widerstanden (Balken) · gefährlich gekippt, 66 neue Proben ↓', 'Dangerous flips, 30 earlier probes ↓': 'Gefährlich gekippt, 30 frühere Proben ↓', 'Harmless direction flipped, 10 probes': 'In harmloser Richtung gekippt, 10 Proben', 'Typical answer (median, shorter bar is faster)': 'Typische Antwort (Median, kürzerer Balken ist schneller)', 'Slow answer (p95)': 'Langsame Antwort (p95)', 'First answer after loading': 'Erste Antwort nach dem Laden', 'Embedding model': 'Einbettungsmodell', 'Hybrid, other wording: first place': 'Hybrid, andere Formulierung: Platz 1', 'Hybrid, other wording: top 5': 'Hybrid, andere Formulierung: Top 5', 'Vector only, other wording: first place': 'Nur Vektor, andere Formulierung: Platz 1', 'Vector only, other language: first place': 'Nur Vektor, andere Sprache: Platz 1', 'First place': 'Platz 1', 'Top 5': 'Top 5', 'Top 10': 'Top 10', 'MRR': 'MRR', 'Input': 'Eingabe', 'Other wording: first place': 'Andere Formulierung: Platz 1', 'Other language: first place': 'Andere Sprache: Platz 1', 'raw text (as today)': 'Rohtext (wie heute)', 'with task prefixes': 'mit Aufgaben-Präfixen', 'Expansion written by': 'Erweiterung geschrieben von', 'Hybrid, other language: first place': 'Hybrid, andere Sprache: Platz 1', 'Keyword only, other wording: first place': 'Nur Stichwort, andere Formulierung: Platz 1', 'Notes left without phrases (of 180)': 'Notizen ohne Phrasen (von 180)', 'Time per note': 'Zeit je Notiz', 'none (no expansion)': 'keine (ohne Erweiterung)', 'Picks the right note: same words': 'Wählt die richtige Notiz: gleiche Wörter', '… other wording': '… andere Formulierung', '… other language': '… andere Sprache', 'Says “none” when the right note is missing: other wording': 'Sagt „keine“, wenn die richtige Notiz fehlt: andere Formulierung', 'Unusable answers (of 1080)': 'Unbrauchbare Antworten (von 1080)', 'Time per decision': 'Zeit je Entscheidung', 'Draft check: questions right': 'Entwurfs-Prüfung: Fragen richtig', 'Draft check: dangerous injection flips ↓': 'Entwurfs-Prüfung: gefährlich gekippt ↓', 'Reranker: right note picked': 'Nachsortierung: richtige Notiz gewählt', 'Reranker: “none” when missing': 'Nachsortierung: „keine“, wenn sie fehlt', 'Expansion: hybrid first place (vs none)': 'Erweiterung: Hybrid Platz 1 (gegen ohne)', 'Draft check: typical answer': 'Entwurfs-Prüfung: typische Antwort', ' · default': ' · Standard', ' · 24 GB+ option': ' · Option ab 24 GB', ' · today': ' · heute', 'decision, short criteria': 'Entscheidung, kurze Kriterien', 'decision': 'Entscheidung'}
+
+def T(text):
+    """German table wording for the German half of the page."""
+    if LANG != "de": return text
+    if text.startswith("vs "): return "ggü. " + text[3:]
+    return DE.get(text, text)
+
 
 def bar(frac):
     full = round(max(0.0, min(1.0, frac)) * 10)
@@ -25,15 +34,15 @@ def mark(pair):
 
 def table(head, rows, align=None):
     align = align or ["---"] + ["---:"] * (len(head) - 1)
-    out = ["| " + " | ".join(head) + " |", "| " + " | ".join(align) + " |"]
-    out += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
+    out = ["| " + " | ".join(T(h) for h in head) + " |", "| " + " | ".join(align) + " |"]
+    out += ["| " + " | ".join(T(c) if isinstance(c, str) else str(c) for c in r) + " |" for r in rows]
     return "\n".join(out)
 
 def label(j):
     name = f"`{j['model']}`"
-    if j["mode"] != "chat": name += f" ({j['mode']})"
-    if j["model"] == SMALL and j["mode"] == "chat": name += " · default"
-    if j["model"] == LARGE and j["mode"] == "chat": name += " · 24 GB+ option"
+    if j["mode"] != "chat": name += f" ({T(j['mode'])})"
+    if j["model"] == SMALL and j["mode"] == "chat": name += T(" · default")
+    if j["model"] == LARGE and j["mode"] == "chat": name += T(" · 24 GB+ option")
     return name
 
 JUDGE = D["draft_meaning_check"]
@@ -79,7 +88,7 @@ def cell(r, key, base=None, metric="r_at_1"):
     return f"{bar(v)} {100 * v:.1f} %{m}"
 
 def embedding_rows():
-    rows = [["`embeddinggemma` · today"] + [cell(R["none"], k, None, m) for k, m in COLS_E]]
+    rows = [["`embeddinggemma`" + T(" · today")] + [cell(R["none"], k, None, m) for k, m in COLS_E]]
     for name, r in R["embedding"].items():
         if r: rows.append([f"`{name}`"] + [cell(r, k, True, m) for k, m in COLS_E])
     return table(["Embedding model", "Hybrid, other wording: first place", "Hybrid, other wording: top 5",
@@ -90,7 +99,7 @@ def lme_rows():
     rows = []
     for name, x in R["longmemeval_100"].items():
         h = x["summary"]["hybrid"]
-        rows.append([f"`{name}`" + (" · today" if name == "embeddinggemma" else ""), f"{bar(h['r@1'])} {100 * h['r@1']:.0f} %",
+        rows.append([f"`{name}`" + (T(" · today") if name == "embeddinggemma" else ""), f"{bar(h['r@1'])} {100 * h['r@1']:.0f} %",
                      f"{bar(h['r@5'])} {100 * h['r@5']:.0f} %", f"{100 * h['r@10']:.0f} %", f"{h['mrr']:.3f}"])
     return table(["Embedding model", "First place", "Top 5", "Top 10", "MRR"], rows)
 
@@ -111,7 +120,7 @@ def expander_rows():
     for name, r in R["expander"].items():
         if not r: continue
         e = r.get("expansion", {})
-        tag = " · default" if name == SMALL else ""
+        tag = T(" · default") if name == SMALL else ""
         rows.append([f"`{name}`{tag}", cell(r, "hybrid/far", True), cell(r, "hybrid/far", True, "r_at_5"), cell(r, "hybrid/far_xlang", True),
                      cell(r, "bm25/far", True), e.get("notes_without_phrases", "–"), f"{e['median_ms'] / 1000:.1f} s" if e else "–"])
     return table(["Expansion written by", "Hybrid, other wording: first place", "Hybrid, other wording: top 5",
@@ -129,7 +138,7 @@ def reranker_rows():
     rows = []
     for name in order:
         unusable = sum(v["unusable"] for k, v in RR[name].items() if "/" in k)
-        tag = " · default" if name == SMALL else " · 24 GB+ option" if name == LARGE else ""
+        tag = T(" · default") if name == SMALL else T(" · 24 GB+ option") if name == LARGE else ""
         rows.append([f"`{name}`{tag}", rr(name, "present/near", SMALL), rr(name, "present/far", SMALL), rr(name, "present/far_xlang", SMALL),
                      rr(name, "absent/far", SMALL), rr(name, "absent/far_xlang", SMALL), unusable, f"{RR[name]['present/far']['median_ms'] / 1000:.1f} s"])
     return table(["Model", "Picks the right note: same words", "… other wording", "… other language",
@@ -144,7 +153,7 @@ def scorecard_rows():
         base = name == SMALL
         both = [s["overall"][0] + f["overall"][0], s["overall"][1] + f["overall"][1]] if s else f["overall"]
         inj = [f["inject"][0] + (s["inject"][0] if s else 0), f["inject"][1] + (s["inject"][1] if s else 0)]
-        row = [f"`{name}`" + (" · default" if base else " · 24 GB+ option" if name == LARGE else ""),
+        row = [f"`{name}`" + (T(" · default") if base else T(" · 24 GB+ option") if name == LARGE else ""),
                f"{pct(*both)} {'' if base else mark(s[f'vs {SMALL}']['facts'] if s else None)}",
                f"{inj[0]}/{inj[1]} {'' if base else mark(f[f'vs {SMALL}']['inject'])}"]
         if name in RR:
@@ -165,8 +174,10 @@ TABLES = {"scorecard": scorecard_rows, "judge-standard": lambda: judge_rows("sta
 
 page = open(PAGE).read()
 def fill(match):
+    global LANG
     name = match.group(1)
-    return f"<!-- table:{name} -->\n{TABLES[name]()}\n<!-- /table -->"
+    LANG = "de" if name.endswith("-de") else "en"
+    return f"<!-- table:{name} -->\n{TABLES[name.removesuffix('-de')]()}\n<!-- /table -->"
 page, n = re.subn(r"<!-- table:([a-z-]+) -->.*?<!-- /table -->", fill, page, flags=re.S)
 open(PAGE, "w").write(page)
 print(f"{n} tables filled")
