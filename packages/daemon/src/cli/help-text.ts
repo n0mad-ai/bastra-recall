@@ -61,8 +61,9 @@ Commands:
                              machine's RAM-tier recommendation; 'set' pulls a
                              model + persists it (e.g. gemma4:12b on a 24 GB+ box)
   models <switch|later|      Answer a release's model recommendation: switch to
-    dismiss>                 it (pulled + tested first), ask again in 7 days,
-                             or not for this recommendation
+    dismiss> <id> [model]    it (pulled + tested first), ask again in 7 days,
+                             or not for this recommendation. The notice prints
+                             the exact command
   config get <key>           Read a setting (e.g. update.mode)
   config set <key> <value>   Write a setting (update.mode = notify|auto|off,
                              docs.mode = off|suggest|auto, docs.language = en|de|…)
@@ -430,7 +431,9 @@ Usage:
   bastra models [status]
   bastra models recommend
   bastra models set <tag>
-  bastra models switch | later | dismiss
+  bastra models switch <recommendation> <model>
+  bastra models later <recommendation>
+  bastra models dismiss <recommendation>
 
 The model behind doc2query trigger expansion and the local reranker — not the
 embedding model ('bastra embeddings' owns that one).
@@ -444,19 +447,22 @@ alternative from 24 GB, and as the suggestion from 32 GB). An install that
 never stored a choice keeps running the built-in fallback gemma3:4b.
 
 A release can recommend a different model. bastra never switches on its own:
-'bastra update', the session start and a line after CLI commands tell you until
-you have answered — at every session start, on purpose — and 'status' shows
-the recommendation at any time.
+'bastra update', the first command on a terminal after an update, the session
+start and a line after CLI commands tell you until you have answered — at every
+session start, on purpose — and 'status' shows the recommendation at any time.
+Every notice prints the exact commands; they name the recommendation they
+answer, and bastra refuses an answer to a different one.
 
   switch      Pull the recommended model, check it with a short test call, and
-              only then change the setting. If anything fails, nothing changes.
-              The old model stays installed; 'set <old tag>' switches back.
+              only then store it together with your answer. If anything fails,
+              nothing changes. The old model stays installed; 'set <old tag>'
+              switches back.
   later       Keep the current model and ask again in 7 days
   dismiss     Keep the current model and do not ask again for this
               recommendation (a later, new recommendation asks again). The
               notice then does not come back, and you may be giving up better
               recall quality; 'status' keeps showing the recommendation and
-              'switch' works any time.
+              you can still switch later.
 
 BASTRA_UPDATE_CHECK=off (or update.mode off) silences the notice as well.
 `,

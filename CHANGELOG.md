@@ -22,11 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   recommendation for the local text model (per hardware tier, with download
   size and what gets better). Nothing switches on its own, not in
   `update.mode auto` either: `bastra update` asks at the end, the session start
-  lets the agent ask, and a dim line follows CLI commands at most once a day —
-  until you answer with `bastra models switch`, `later` (asked again in 7 days)
-  or `dismiss` (not for this recommendation). The switch pulls the model, checks
-  it with a short test call and only then changes the setting; the old model
-  stays installed. New installs are offered the recommended model directly.
+  lets the agent ask, the first command on a terminal after an update asks once
+  (an updater from before this feature cannot), and a dim line follows CLI
+  commands at most once a day — until you answer with `bastra models switch`,
+  `later` (asked again in 7 days) or `dismiss` (not for this recommendation;
+  the notice says what that costs). The commands name the recommendation they
+  answer, and an answer to a different one is refused. The switch pulls the
+  model, checks it with a short local test call and only then stores model and
+  answer in one write; the old model stays installed. New installs are offered the recommended model directly.
   `BASTRA_UPDATE_CHECK=off` silences the notice as well. This release ships the
   mechanism with no active recommendation, so nothing changes yet.
 - **New installs are offered `tev1:4b` as the local text model** from 16 GB of

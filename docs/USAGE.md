@@ -256,51 +256,54 @@ To reach this daemon from a hosted web app (e.g. a site's admin talking to the u
 
 **What a new install is offered, and what runs without a choice.** These are two different things. The installer suggests `tev1:4b` (4.5 GB download) from 16 GB of RAM, offers `gemma4:12b` (8.1 GB) as the more accurate, slower alternative from 24 GB, and suggests `gemma4:12b` from 32 GB; it pulls and stores what you pick. That `tev1:4b` fits a 16 GB machine next to the embedding model is derived from its size — the comparison behind the suggestion ran on one 24 GB machine. An install that never stored a choice keeps running `gemma3:4b`, the built-in fallback, exactly as before: the new suggestion changes nothing on an existing install except the `recommended:` line (and the `to switch:` hint under it) that `bastra models` prints.
 
-**What a recommendation is.** A release can carry a recommendation: one model per hardware tier (16 GB, 24 GB, 32 GB and up), its download size, and one sentence on what gets better. It ships inside the release, so showing it needs **no additional network access**. A release without a recommendation shows nothing and changes nothing.
+**What a recommendation is.** A release can carry a recommendation: per hardware tier (16 GB, 24 GB, 32 GB and up) a model, its download size, and one sentence on what gets better with that model. It ships inside the release, so showing it needs **no additional network access**. A release without a recommendation shows nothing and changes nothing.
 
 **Never switched automatically.** bastra never changes your model on its own — not on update, not with `update.mode auto`, not through the agent. New installs are simply offered the recommended model by the installer. Existing installs are told, and the answer is yours.
 
 **When the notice appears.** All of these have to hold:
 
-- the installed release carries a recommendation;
+- the installed release carries a recommendation, and it has an entry for this machine's tier;
 - the machine is at or above the 16 GB tier (below it, no text model runs);
-- Ollama is the embedding provider (only then does the text model run at all);
+- a text model is in use on this install: Ollama is the embedding provider (only then does the daemon run trigger expansion, the draft check and the search copilot), or you set a text model up yourself — stored with `bastra models set` or pinned by environment variable — which `bastra bridges harvest` uses whatever the embedding provider is;
 - the model in effect is not already the one recommended for this machine;
 - update notices are not switched off (see "Switching it off" below);
 - you have not answered yet — or you answered `later` and 7 days have passed, or the release carries a new recommendation.
 
 **When it does not appear.** If any of the points above fails. In particular: once the recommended model is in effect, after `switch`, after `dismiss`, and for 7 days after `later`. A model you chose yourself is not an exception: you get the same notice as everyone else.
 
-**Where it appears.** Four places, all reading one shared note of your answer in `~/.bastra/cli-settings.json`, so an answer given in one place silences the others:
+**Where it appears.** Five places, all reading one shared note of your answer in `~/.bastra/cli-settings.json`, so an answer given in one place silences the others:
 
-1. **`bastra update`** asks at the end. On a terminal it waits for one of three keys; without a terminal it only prints the notice and never waits. Updaters ask from this version on — the update that first brings this version onto a Homebrew or npm install is still run by the previous updater, which cannot ask; the other three places cover that case.
-2. **`bastra models`** shows the recommendation at any time, also after you dismissed it.
-3. **The agent's session start** carries the notice at every session start until you have answered — on purpose, with no daily limit. The agent is instructed to tell you about it, name the download size and ask. It may run the commands below for you, but only after your explicit answer.
-4. **One dim line after CLI commands**, on stderr, at most once per day. Not after `bastra update`, `models`, `config`, `token`, `help` and `version`.
+1. **`bastra update`** asks at the end. On a terminal it waits for one of three keys; without a terminal it only prints the notice and never waits.
+2. **The catch-up question.** An update is run by the updater that was installed before it, and an updater from before this feature cannot ask. So the first `bastra` command you run on a terminal afterwards asks instead — after the command's own output, without changing its exit code, and once per recommendation. It does not ask when `bastra update` already asked, or when you already answered in the chat or on the command line. It never asks without a terminal on both ends (so not in pipes, scripts, hooks or background runs), and never after `--json`, `--help`, `--version`, `bastra update`, `models`, `config`, `token`, `completion` or `uninstall`. Enter, or anything it does not recognise, counts as `later`. Ctrl-C or end of input records no answer: the other places keep asking, the terminal does not ask a second time.
+3. **`bastra models`** shows the recommendation at any time, also after you dismissed it.
+4. **The agent's session start** carries the notice at every session start until you have answered — on purpose, with no daily limit. The agent is instructed to tell you about it, name the download size and ask. It may run the commands below for you, but only after your explicit answer.
+5. **One dim line after CLI commands**, on stderr, at most once per day — wherever the catch-up question does not apply. Not after `bastra update`, `models`, `config`, `token`, `completion`, `help` and `version`.
 
-**The three answers.**
+**The three answers.** Every notice prints the exact commands; they name the recommendation they answer (and, for a switch, the model):
 
 ```bash
-bastra models switch     # pull the recommended model, check it, then switch
-bastra models later      # keep the current model, ask again in 7 days
-bastra models dismiss    # keep it, never ask again for this recommendation
+bastra models switch <recommendation> <model>   # pull the recommended model, check it, then switch
+bastra models later <recommendation>            # keep the current model, ask again in 7 days
+bastra models dismiss <recommendation>          # keep it, never ask again for this recommendation
 ```
 
 - `switch` — see "The safe switch" below. Afterwards nothing asks again for this recommendation.
-- `later` — nothing changes; every place stays silent for 7 days and then asks again.
-- `dismiss` — nothing changes, and the notice does **not come back** for this recommendation. You may be giving up better recall quality. Every place that offers or confirms `dismiss` says so, and the agent tells you before it runs the command. `bastra models` keeps showing the recommendation, `bastra models switch` works any time, and a later, new recommendation asks again.
+- `later` — nothing changes; every place stays silent for 7 days and then reminds you (the session start and the dim line; the terminal question is not repeated).
+- `dismiss` — nothing changes, and the notice does **not come back** for this recommendation. You may be giving up better recall quality. Every place that offers or confirms `dismiss` says so, and the agent tells you before it runs the command. `bastra models` keeps showing the recommendation, you can still switch later, and a later, new recommendation asks again.
 
-All three work without a terminal. If there is nothing to decide, they say so and change nothing.
+All three work without a terminal.
 
-**The safe switch.** `bastra models switch` does three things in this order: it pulls the new model (skipped if it is already there), sends it one short real request, and only when that was answered stores the new choice. The daemon reads the model at start, so restart it afterwards (`bastra update` restarts it, or restart your AI clients).
+**An answer only counts for what you were shown.** The commands carry the recommendation's name because the notice and the command can come from two different programs: a daemon that is still the previous version, and a command line that is already the new one. If the recommendation has changed in between, or the command names none, bastra refuses it, says what the current recommendation is, and changes nothing — a yes to one model never downloads another. For the same reason the answer does not depend on the shell it is typed in: if the recommended model happens to be pinned by an environment variable in your shell but not in the daemon, the answer is still recorded and the daemon stops asking.
 
-**When something fails.** If Ollama is not running, the pull fails or is interrupted, or the test request fails or comes back empty, the command prints the reason, exits with code 1 and changes nothing: your model stays as it was, and the question stays open.
+**The safe switch.** `bastra models switch …` does these things in this order: it pulls the new model (skipped if it is already there), sends it one short real request, and only when that was answered stores the new model together with your answer — in one write, so there is never a new model without the answer or the reverse. The test request goes to the Ollama on this machine only and does not follow redirects; with a remote Ollama, use `bastra models set <tag>` instead. The daemon reads the model at start, so restart it afterwards (`bastra update` restarts it, or restart your AI clients).
+
+**When something fails.** If Ollama is not running, the pull fails or is interrupted, the test request fails or comes back empty, or the setting cannot be saved, the command prints the reason, exits with code 1 and changes nothing: your model stays as it was, and the question stays open. The same holds when `~/.bastra/cli-settings.json` is not valid JSON: bastra refuses to write to it rather than replace your other settings with defaults — repair or delete the file first.
 
 **Switching back.** The old model is never deleted. After a switch the command prints the exact way back: `bastra models set <previous tag>`. Removing an unused model from disk is yours to do (`ollama rm <tag>`).
 
-**With `BASTRA_EXPAND_MODEL` or `BASTRA_RERANK_MODEL` set.** You get the notice as well. It names the variable and says that it overrides the stored choice: `switch` stores the new model, but the variable keeps winning until you remove it and restart the daemon. If the variable already names the recommended model, there is no notice.
+**With `BASTRA_EXPAND_MODEL` or `BASTRA_RERANK_MODEL` set.** You get the notice as well. It names the variable and says that it overrides the stored choice: a switch stores the new model, but the variable keeps winning until you remove it and restart the daemon. If the variable already names the recommended model, there is no notice.
 
-**Switching it off.** `BASTRA_UPDATE_CHECK=off` silences the notice at the session start, after CLI commands and at the end of `bastra update`; so does `bastra config set update.mode off`. `bastra models dismiss` silences one recommendation. `bastra models` always shows it, whatever is switched off.
+**Switching it off.** `BASTRA_UPDATE_CHECK=off` silences the notice at the session start, after CLI commands (the catch-up question and the dim line) and at the end of `bastra update`; so does `bastra config set update.mode off`. `bastra models dismiss <recommendation>` silences one recommendation. `bastra models` always shows it, whatever is switched off.
 
 ### Battery mode — keep background Ollama work off the battery (macOS)
 
@@ -605,51 +608,54 @@ Um diesen Daemon aus einer gehosteten Web-App zu erreichen (z.B. das Admin einer
 
 **Was eine Neuinstallation vorgeschlagen bekommt, und was ohne Wahl läuft.** Das sind zwei verschiedene Dinge. Der Installer schlägt ab 16 GB RAM `tev1:4b` vor (4,5 GB Download), bietet ab 24 GB `gemma4:12b` (8,1 GB) als genauere, langsamere Alternative an und schlägt ab 32 GB `gemma4:12b` vor; er lädt und speichert, was du auswählst. Dass `tev1:4b` auf einen 16-GB-Rechner neben das Einbettungsmodell passt, ist aus seiner Größe abgeleitet — der Vergleich hinter dem Vorschlag lief auf einem einzelnen 24-GB-Rechner. Eine Installation, die nie eine Wahl gespeichert hat, läuft weiter mit `gemma3:4b`, dem eingebauten Rückfallwert, genau wie bisher: Der neue Vorschlag ändert an einer bestehenden Installation nichts außer der Zeile `recommended:` (und dem Hinweis `to switch:` darunter), die `bastra models` ausgibt.
 
-**Was eine Empfehlung ist.** Ein Release kann eine Empfehlung mitbringen: je Hardware-Stufe (16 GB, 24 GB, ab 32 GB) ein Modell, dessen Downloadgröße und einen Satz dazu, was besser wird. Sie steckt im Release selbst, ihre Anzeige braucht also **keinen zusätzlichen Netzzugriff**. Ein Release ohne Empfehlung zeigt nichts und ändert nichts.
+**Was eine Empfehlung ist.** Ein Release kann eine Empfehlung mitbringen: je Hardware-Stufe (16 GB, 24 GB, ab 32 GB) ein Modell, dessen Downloadgröße und einen Satz dazu, was mit diesem Modell besser wird. Sie steckt im Release selbst, ihre Anzeige braucht also **keinen zusätzlichen Netzzugriff**. Ein Release ohne Empfehlung zeigt nichts und ändert nichts.
 
 **Nie automatisch umgestellt.** bastra wechselt dein Modell nie von sich aus — nicht beim Update, nicht mit `update.mode auto`, nicht über den Agenten. Neuinstallationen bekommen das empfohlene Modell einfach vom Installer vorgeschlagen. Bestehende Installationen werden informiert, und die Antwort gehört dir.
 
 **Wann der Hinweis erscheint.** Alle diese Punkte müssen zutreffen:
 
-- das installierte Release bringt eine Empfehlung mit;
+- das installierte Release bringt eine Empfehlung mit, und sie hat einen Eintrag für die Stufe dieser Maschine;
 - die Maschine liegt auf oder über der 16-GB-Stufe (darunter läuft kein Textmodell);
-- Ollama ist der Embedding-Provider (nur dann läuft das Textmodell überhaupt);
+- auf dieser Installation wird ein Textmodell genutzt: Ollama ist der Embedding-Provider (nur dann führt der Daemon Stichwort-Erweiterung, Entwurfs-Prüfung und Such-Copilot aus), oder du hast selbst ein Textmodell eingerichtet — mit `bastra models set` gespeichert oder per Umgebungsvariable festgelegt —, das `bastra bridges harvest` unabhängig vom Embedding-Provider verwendet;
 - das wirksame Modell ist nicht schon das für diese Maschine empfohlene;
 - Update-Hinweise sind nicht abgeschaltet (siehe „Abschalten“ unten);
 - du hast noch nicht geantwortet — oder du hast `later` geantwortet und 7 Tage sind vergangen, oder das Release bringt eine neue Empfehlung mit.
 
 **Wann er nicht erscheint.** Sobald einer der Punkte oben nicht zutrifft. Insbesondere: sobald das empfohlene Modell wirksam ist, nach `switch`, nach `dismiss` und 7 Tage lang nach `later`. Ein selbst gewähltes Modell ist keine Ausnahme: Du bekommst denselben Hinweis wie alle anderen.
 
-**Wo er erscheint.** An vier Stellen, die alle einen gemeinsamen Merkzettel deiner Antwort in `~/.bastra/cli-settings.json` lesen — eine Antwort an einer Stelle lässt die anderen verstummen:
+**Wo er erscheint.** An fünf Stellen, die alle einen gemeinsamen Merkzettel deiner Antwort in `~/.bastra/cli-settings.json` lesen — eine Antwort an einer Stelle lässt die anderen verstummen:
 
-1. **`bastra update`** fragt am Ende. Im Terminal wartet es auf eine von drei Tasten; ohne Terminal gibt es nur den Hinweis aus und wartet nie. Updater fragen ab dieser Version — das Update, das diese Version erstmals auf eine Homebrew- oder npm-Installation bringt, führt noch der vorherige Updater aus, und der kann nicht fragen; diesen Fall decken die drei anderen Stellen ab.
-2. **`bastra models`** zeigt die Empfehlung jederzeit, auch nachdem du sie abgestellt hast.
-3. **Der Sitzungsstart des Agenten** trägt den Hinweis bei jedem Sitzungsstart, bis du geantwortet hast — bewusst, ohne Tagesgrenze. Der Agent ist angewiesen, dir davon zu erzählen, die Downloadgröße zu nennen und zu fragen. Er darf die Befehle unten für dich ausführen, aber erst nach deiner ausdrücklichen Antwort.
-4. **Eine gedimmte Zeile nach CLI-Befehlen**, auf stderr, höchstens einmal am Tag. Nicht nach `bastra update`, `models`, `config`, `token`, `help` und `version`.
+1. **`bastra update`** fragt am Ende. Im Terminal wartet es auf eine von drei Tasten; ohne Terminal gibt es nur den Hinweis aus und wartet nie.
+2. **Die Nachhol-Abfrage.** Ein Update führt der Updater aus, der vorher installiert war, und ein Updater aus der Zeit vor dieser Funktion kann nicht fragen. Deshalb fragt stattdessen der erste `bastra`-Befehl, den du danach in einem Terminal ausführst — nach der eigenen Ausgabe des Befehls, ohne dessen Exit-Code zu ändern, und einmal je Empfehlung. Sie fragt nicht, wenn `bastra update` schon gefragt hat oder du im Chat oder auf der Kommandozeile schon geantwortet hast. Sie fragt nie ohne Terminal an beiden Enden (also nicht in Pipes, Skripten, Hooks oder Hintergrundläufen) und nie nach `--json`, `--help`, `--version`, `bastra update`, `models`, `config`, `token`, `completion` oder `uninstall`. Enter oder alles, was sie nicht erkennt, zählt als `later`. Strg-C oder Eingabeende merkt keine Antwort: Die anderen Stellen fragen weiter, das Terminal fragt kein zweites Mal.
+3. **`bastra models`** zeigt die Empfehlung jederzeit, auch nachdem du sie abgestellt hast.
+4. **Der Sitzungsstart des Agenten** trägt den Hinweis bei jedem Sitzungsstart, bis du geantwortet hast — bewusst, ohne Tagesgrenze. Der Agent ist angewiesen, dir davon zu erzählen, die Downloadgröße zu nennen und zu fragen. Er darf die Befehle unten für dich ausführen, aber erst nach deiner ausdrücklichen Antwort.
+5. **Eine gedimmte Zeile nach CLI-Befehlen**, auf stderr, höchstens einmal am Tag — überall dort, wo die Nachhol-Abfrage nicht greift. Nicht nach `bastra update`, `models`, `config`, `token`, `completion`, `help` und `version`.
 
-**Die drei Antworten.**
+**Die drei Antworten.** Jeder Hinweis gibt die genauen Befehle aus; sie nennen die Empfehlung, auf die sie antworten (und beim Wechsel das Modell):
 
 ```bash
-bastra models switch     # empfohlenes Modell laden, prüfen, dann umstellen
-bastra models later      # beim aktuellen Modell bleiben, in 7 Tagen erneut fragen
-bastra models dismiss    # dabei bleiben, für diese Empfehlung nie mehr fragen
+bastra models switch <empfehlung> <modell>   # empfohlenes Modell laden, prüfen, dann umstellen
+bastra models later <empfehlung>             # beim aktuellen Modell bleiben, in 7 Tagen erneut fragen
+bastra models dismiss <empfehlung>           # dabei bleiben, für diese Empfehlung nie mehr fragen
 ```
 
 - `switch` — siehe „Der sichere Wechsel“ unten. Danach fragt für diese Empfehlung nichts mehr.
-- `later` — nichts ändert sich; alle Stellen schweigen 7 Tage und fragen dann wieder.
-- `dismiss` — nichts ändert sich, und der Hinweis **kommt** für diese Empfehlung **nicht wieder**. Du verzichtest damit möglicherweise auf bessere Recall-Qualität. Das steht überall, wo `dismiss` angeboten oder bestätigt wird, und der Agent sagt es dir, bevor er den Befehl ausführt. `bastra models` zeigt die Empfehlung weiterhin, `bastra models switch` geht jederzeit, und eine spätere, neue Empfehlung fragt wieder.
+- `later` — nichts ändert sich; alle Stellen schweigen 7 Tage und erinnern dich dann (der Sitzungsstart und die gedimmte Zeile; die Frage im Terminal wird nicht wiederholt).
+- `dismiss` — nichts ändert sich, und der Hinweis **kommt** für diese Empfehlung **nicht wieder**. Du verzichtest damit möglicherweise auf bessere Recall-Qualität. Das steht überall, wo `dismiss` angeboten oder bestätigt wird, und der Agent sagt es dir, bevor er den Befehl ausführt. `bastra models` zeigt die Empfehlung weiterhin, du kannst später immer noch wechseln, und eine spätere, neue Empfehlung fragt wieder.
 
-Alle drei funktionieren ohne Terminal. Gibt es nichts zu entscheiden, sagen sie das und ändern nichts.
+Alle drei funktionieren ohne Terminal.
 
-**Der sichere Wechsel.** `bastra models switch` tut drei Dinge in dieser Reihenfolge: Es lädt das neue Modell (entfällt, wenn es schon da ist), schickt ihm eine kurze echte Anfrage und speichert die neue Wahl erst, wenn diese beantwortet wurde. Der Daemon liest das Modell beim Start, danach also neu starten (`bastra update` startet ihn neu, oder du startest deine KI-Clients neu).
+**Eine Antwort gilt nur für das, was dir gezeigt wurde.** Die Befehle tragen den Namen der Empfehlung, weil Hinweis und Befehl von zwei verschiedenen Programmen kommen können: von einem Daemon, der noch die vorige Version ist, und einer Kommandozeile, die schon die neue ist. Hat sich die Empfehlung dazwischen geändert oder nennt der Befehl keine, lehnt bastra ihn ab, sagt, was die aktuelle Empfehlung ist, und ändert nichts — ein Ja zu einem Modell lädt nie ein anderes. Aus demselben Grund hängt die Antwort nicht von der Shell ab, in der sie getippt wird: Ist das empfohlene Modell zufällig in deiner Shell per Umgebungsvariable festgelegt, im Daemon aber nicht, wird die Antwort trotzdem gespeichert und der Daemon hört auf zu fragen.
 
-**Wenn etwas scheitert.** Läuft Ollama nicht, scheitert das Laden oder wird es abgebrochen, oder scheitert die Testanfrage oder kommt leer zurück, gibt der Befehl den Grund aus, endet mit Code 1 und ändert nichts: Dein Modell bleibt, wie es war, und die Frage bleibt offen.
+**Der sichere Wechsel.** `bastra models switch …` tut diese Dinge in dieser Reihenfolge: Es lädt das neue Modell (entfällt, wenn es schon da ist), schickt ihm eine kurze echte Anfrage und speichert erst, wenn diese beantwortet wurde, das neue Modell zusammen mit deiner Antwort — in einem Schreibvorgang, sodass es nie ein neues Modell ohne die Antwort gibt oder umgekehrt. Die Testanfrage geht nur an das Ollama auf diesem Rechner und folgt keinen Weiterleitungen; mit einem entfernten Ollama nimmst du stattdessen `bastra models set <tag>`. Der Daemon liest das Modell beim Start, danach also neu starten (`bastra update` startet ihn neu, oder du startest deine KI-Clients neu).
+
+**Wenn etwas scheitert.** Läuft Ollama nicht, scheitert das Laden oder wird es abgebrochen, scheitert die Testanfrage oder kommt leer zurück, oder lässt sich die Einstellung nicht speichern, gibt der Befehl den Grund aus, endet mit Code 1 und ändert nichts: Dein Modell bleibt, wie es war, und die Frage bleibt offen. Dasselbe gilt, wenn `~/.bastra/cli-settings.json` kein gültiges JSON ist: bastra schreibt dann nicht hinein, statt deine anderen Einstellungen durch Standardwerte zu ersetzen — repariere oder lösche die Datei zuerst.
 
 **Zurückwechseln.** Das alte Modell wird nie gelöscht. Nach einem Wechsel gibt der Befehl den genauen Weg zurück aus: `bastra models set <vorheriger tag>`. Ein ungenutztes Modell von der Platte zu entfernen ist deine Sache (`ollama rm <tag>`).
 
-**Mit gesetztem `BASTRA_EXPAND_MODEL` oder `BASTRA_RERANK_MODEL`.** Du bekommst den Hinweis ebenfalls. Er nennt die Variable und sagt, dass sie die gespeicherte Wahl überstimmt: `switch` speichert das neue Modell, aber die Variable gewinnt weiter, bis du sie entfernst und den Daemon neu startest. Nennt die Variable bereits das empfohlene Modell, gibt es keinen Hinweis.
+**Mit gesetztem `BASTRA_EXPAND_MODEL` oder `BASTRA_RERANK_MODEL`.** Du bekommst den Hinweis ebenfalls. Er nennt die Variable und sagt, dass sie die gespeicherte Wahl überstimmt: ein Wechsel speichert das neue Modell, aber die Variable gewinnt weiter, bis du sie entfernst und den Daemon neu startest. Nennt die Variable bereits das empfohlene Modell, gibt es keinen Hinweis.
 
-**Abschalten.** `BASTRA_UPDATE_CHECK=off` lässt den Hinweis beim Sitzungsstart, nach CLI-Befehlen und am Ende von `bastra update` verstummen; `bastra config set update.mode off` ebenso. `bastra models dismiss` stellt eine einzelne Empfehlung ab. `bastra models` zeigt sie immer, egal was abgeschaltet ist.
+**Abschalten.** `BASTRA_UPDATE_CHECK=off` lässt den Hinweis beim Sitzungsstart, nach CLI-Befehlen (Nachhol-Abfrage und gedimmte Zeile) und am Ende von `bastra update` verstummen; `bastra config set update.mode off` ebenso. `bastra models dismiss <empfehlung>` stellt eine einzelne Empfehlung ab. `bastra models` zeigt sie immer, egal was abgeschaltet ist.
 
 ### Akkumodus — Ollama-Hintergrundarbeit nicht auf dem Akku (macOS)
 
