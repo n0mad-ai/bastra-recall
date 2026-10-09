@@ -1,0 +1,172 @@
+"""Fill the tables of docs/local-model-comparison.md from results/summary.json.
+
+Usage: python3 tools/model-compare/render.py tools/model-compare/results/summary.json docs/local-model-comparison.md
+Every block between `<!-- table:NAME -->` and `<!-- /table -->` is replaced; prose stays untouched.
+"""
+import json, re, sys
+
+D = json.load(open(sys.argv[1]))
+PAGE = sys.argv[2]
+SMALL, LARGE = "gemma3:4b", "gemma4:12b"
+
+def bar(frac):
+    full = round(max(0.0, min(1.0, frac)) * 10)
+    return "`" + "█" * full + "░" * (10 - full) + "`"
+
+def pct(num, den):
+    return f"{100 * num / den:.0f} %"
+
+def mark(pair):
+    """Paired exact sign test against the baseline, 5 % level."""
+    if not pair: return ""
+    if pair["wins"] == pair["losses"] == 0: return "⚪"
+    if pair["p"] >= 0.05: return "⚪"
+    return "🟢" if pair["wins"] > pair["losses"] else "🔴"
+
+def table(head, rows, align=None):
+    align = align or ["---"] + ["---:"] * (len(head) - 1)
+    out = ["| " + " | ".join(head) + " |", "| " + " | ".join(align) + " |"]
+    out += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
+    return "\n".join(out)
+
+def label(j):
+    name = f"`{j['model']}`"
+    if j["mode"] != "chat": name += f" ({j['mode']})"
+    if j["model"] == SMALL and j["mode"] == "chat": name += " · default"
+    if j["model"] == LARGE and j["mode"] == "chat": name += " · 24 GB+ option"
+    return name
+
+JUDGE = D["draft_meaning_check"]
+def judge_rows(corpus):
+    rows = []
+    for j in sorted((j for j in JUDGE if j[corpus]), key=lambda j: -j[corpus]["overall"][0]):
+        x = j[corpus]; right, total = x["overall"]; m = x["metrics"]
+        base = j["model"] in (SMALL, LARGE) and j["mode"] == "chat"
+        rows.append([label(j), f"{bar(right / total)} {right}/{total}",
+                     "–" if base and j["model"] == SMALL else mark(x[f"vs {SMALL}"]["facts"]),
+                     "–" if base and j["model"] == LARGE else mark(x[f"vs {LARGE}"]["facts"]),
+                     "/".join(map(str, m["paraphrase_promoted"])), m["task_as_durable"][0], m["fact_plus_task_promoted"][0],
+                     m["contradiction_as_repeat"][0], m["counterfact_as_duplicate"][0],
+                     "/".join(map(str, m["same_fact_as_duplicate"])), x["unreadable"]])
+    return table(["Model", "Questions answered correctly", f"vs `{SMALL}`", f"vs `{LARGE}`", "Rewording promoted ↑",
+                  "One-time task kept as durable ↓", "Fact + task promoted ↓", "Contradiction read as repeat ↓",
+                  "Counter-fact closed as duplicate ↓", "Same fact recognised ↑", "No verdict"], rows)
+
+def inject_rows():
+    rows = []
+    for j in sorted((j for j in JUDGE if j["fresh"]), key=lambda j: j["fresh"]["inject"][0]):
+        s, f = j["standard"], j["fresh"]
+        held = f["inject"][1] - f["inject"][0]
+        base_s = j["model"] == SMALL and j["mode"] == "chat"; base_l = j["model"] == LARGE and j["mode"] == "chat"
+        rows.append([label(j), f"{bar(held / f['inject'][1])} {f['inject'][0]}/{f['inject'][1]}",
+                     "–" if base_s else mark(f[f"vs {SMALL}"]["inject"]), "–" if base_l else mark(f[f"vs {LARGE}"]["inject"]),
+                     f"{s['inject'][0]}/{s['inject'][1]}" if s else "–", f"{f['inject_reverse'][0]}/{f['inject_reverse'][1]}"])
+    return table(["Model", "Resisted (bar) · dangerous flips, 66 new probes ↓", f"vs `{SMALL}`", f"vs `{LARGE}`",
+                  "Dangerous flips, 30 earlier probes ↓", "Harmless direction flipped, 10 probes"], rows)
+
+def speed_rows():
+    rows = []
+    slowest = max(j["standard"]["latency"]["median_ms"] for j in JUDGE if j["standard"])
+    for j in sorted((j for j in JUDGE if j["standard"]), key=lambda j: j["standard"]["latency"]["median_ms"]):
+        l = j["standard"]["latency"]
+        rows.append([label(j), f"{bar(l['median_ms'] / slowest)} {l['median_ms']} ms", f"{l['p95_ms']} ms", f"{l['cold_ms'] / 1000:.1f} s"])
+    return table(["Model", "Typical answer (median, shorter bar is faster)", "Slow answer (p95)", "First answer after loading"], rows)
+
+R = D["recall"]
+def cell(r, key, base=None, metric="r_at_1"):
+    v = r["summary"][key][metric]
+    m = "" if base is None else " " + mark(r["vs none"][key]["top1" if metric == "r_at_1" else "top5"])
+    return f"{bar(v)} {100 * v:.1f} %{m}"
+
+def embedding_rows():
+    rows = [["`embeddinggemma` · today"] + [cell(R["none"], k, None, m) for k, m in COLS_E]]
+    for name, r in R["embedding"].items():
+        if r: rows.append([f"`{name}`"] + [cell(r, k, True, m) for k, m in COLS_E])
+    return table(["Embedding model", "Hybrid, other wording: first place", "Hybrid, other wording: top 5",
+                  "Vector only, other wording: first place", "Vector only, other language: first place"], rows)
+COLS_E = [("hybrid/far", "r_at_1"), ("hybrid/far", "r_at_5"), ("vector/far", "r_at_1"), ("vector/far_xlang", "r_at_1")]
+
+def lme_rows():
+    rows = []
+    for name, x in R["longmemeval_100"].items():
+        h = x["summary"]["hybrid"]
+        rows.append([f"`{name}`" + (" · today" if name == "embeddinggemma" else ""), f"{bar(h['r@1'])} {100 * h['r@1']:.0f} %",
+                     f"{bar(h['r@5'])} {100 * h['r@5']:.0f} %", f"{100 * h['r@10']:.0f} %", f"{h['mrr']:.3f}"])
+    return table(["Embedding model", "First place", "Top 5", "Top 10", "MRR"], rows)
+
+def prefix_rows():
+    rows = []
+    for name, row in R["prefix"].items():
+        model, mode = name.rsplit(" ", 1)
+        cells = []
+        for kind in ("far", "far_xlang"):
+            m = row[kind]
+            cells.append(f"{bar(m['R@1'])} {100 * m['R@1']:.1f} % {mark(m.get('top1 vs raw'))}".rstrip())
+        rows.append([f"`{model}`", "raw text (as today)" if mode == "raw" else "with task prefixes", *cells])
+    return table(["Embedding model", "Input", "Other wording: first place", "Other language: first place"], rows, ["---", "---", "---:", "---:"])
+
+def expander_rows():
+    rows = [["none (no expansion)", cell(R["none"], "hybrid/far"), cell(R["none"], "hybrid/far", None, "r_at_5"),
+             cell(R["none"], "hybrid/far_xlang"), cell(R["none"], "bm25/far"), "–", "–"]]
+    for name, r in R["expander"].items():
+        if not r: continue
+        e = r.get("expansion", {})
+        tag = " · default" if name == SMALL else ""
+        rows.append([f"`{name}`{tag}", cell(r, "hybrid/far", True), cell(r, "hybrid/far", True, "r_at_5"), cell(r, "hybrid/far_xlang", True),
+                     cell(r, "bm25/far", True), e.get("notes_without_phrases", "–"), f"{e['median_ms'] / 1000:.1f} s" if e else "–"])
+    return table(["Expansion written by", "Hybrid, other wording: first place", "Hybrid, other wording: top 5",
+                  "Hybrid, other language: first place", "Keyword only, other wording: first place",
+                  "Notes left without phrases (of 180)", "Time per note"], rows)
+
+RR = D["reranker"]
+def rr(name, key, base):
+    x = RR[name][key]
+    m = "" if name == base else " " + mark(RR[name].get(f"vs {base}", {}).get(key))
+    return f"{bar(x['correct'] / x['n'])} {pct(x['correct'], x['n'])}{m}"
+
+def reranker_rows():
+    order = sorted(RR, key=lambda n: -(RR[n]["present/far"]["correct"] + RR[n]["present/far_xlang"]["correct"]))
+    rows = []
+    for name in order:
+        unusable = sum(v["unusable"] for k, v in RR[name].items() if "/" in k)
+        tag = " · default" if name == SMALL else " · 24 GB+ option" if name == LARGE else ""
+        rows.append([f"`{name}`{tag}", rr(name, "present/near", SMALL), rr(name, "present/far", SMALL), rr(name, "present/far_xlang", SMALL),
+                     rr(name, "absent/far", SMALL), rr(name, "absent/far_xlang", SMALL), unusable, f"{RR[name]['present/far']['median_ms'] / 1000:.1f} s"])
+    return table(["Model", "Picks the right note: same words", "… other wording", "… other language",
+                  "Says “none” when the right note is missing: other wording", "… other language", "Unusable answers (of 1080)", "Time per decision"], rows)
+
+def scorecard_rows():
+    rows = []
+    fresh = {j["model"]: j["fresh"] for j in JUDGE if j["mode"] == "chat" and j["fresh"]}
+    std = {j["model"]: j["standard"] for j in JUDGE if j["mode"] == "chat" and j["standard"]}
+    for name in sorted(fresh, key=lambda n: -(std[n]["overall"][0] if n in std else 0)):
+        f, s = fresh[name], std.get(name)
+        base = name == SMALL
+        both = [s["overall"][0] + f["overall"][0], s["overall"][1] + f["overall"][1]] if s else f["overall"]
+        inj = [f["inject"][0] + (s["inject"][0] if s else 0), f["inject"][1] + (s["inject"][1] if s else 0)]
+        row = [f"`{name}`" + (" · default" if base else " · 24 GB+ option" if name == LARGE else ""),
+               f"{pct(*both)} {'' if base else mark(s[f'vs {SMALL}']['facts'] if s else None)}",
+               f"{inj[0]}/{inj[1]} {'' if base else mark(f[f'vs {SMALL}']['inject'])}"]
+        if name in RR:
+            p, a = RR[name]["present/far"], RR[name]["absent/far"]
+            row += [f"{pct(p['correct'], p['n'])} {'' if base else mark(RR[name][f'vs {SMALL}']['present/far'])}",
+                    f"{pct(a['correct'], a['n'])} {'' if base else mark(RR[name][f'vs {SMALL}']['absent/far'])}"]
+        else: row += ["–", "–"]
+        e = R["expander"].get(name)
+        row.append(f"{100 * e['summary']['hybrid/far']['r_at_1']:.1f} % {mark(e['vs none']['hybrid/far']['top1'])}" if e else "–")
+        row.append(f"{s['latency']['median_ms']} ms" if s else "–")
+        rows.append(row)
+    return table(["Model", "Draft check: questions right", "Draft check: dangerous injection flips ↓", "Reranker: right note picked",
+                  "Reranker: “none” when missing", "Expansion: hybrid first place (vs none)", "Draft check: typical answer"], rows)
+
+TABLES = {"scorecard": scorecard_rows, "judge-standard": lambda: judge_rows("standard"), "judge-fresh": lambda: judge_rows("fresh"),
+          "judge-inject": inject_rows, "judge-speed": speed_rows, "embedding": embedding_rows, "longmemeval": lme_rows,
+          "prefix": prefix_rows, "expander": expander_rows, "reranker": reranker_rows}
+
+page = open(PAGE).read()
+def fill(match):
+    name = match.group(1)
+    return f"<!-- table:{name} -->\n{TABLES[name]()}\n<!-- /table -->"
+page, n = re.subn(r"<!-- table:([a-z-]+) -->.*?<!-- /table -->", fill, page, flags=re.S)
+open(PAGE, "w").write(page)
+print(f"{n} tables filled")
