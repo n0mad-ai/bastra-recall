@@ -691,6 +691,11 @@ gets English).
   in the daemon environment. See [the Codex compatibility check](codex-save-notice.md).
 - `BASTRA_SAVE_NOTICE=0` in the daemon's environment turns it off.
 
+If only the new save-notice registration is missing, `bastra doctor claude-code`
+keeps the installation healthy and recall hooks on, and suggests
+`bastra install claude-code`. Missing required recall registrations or malformed
+settings still need repair. Doctor never changes the registration itself.
+
 There is no client of its own behind it: the entry reuses
 `bastra-recall-bash-fail-hook`, which forwards any payload unread, and the
 daemon tells a Recall write tool from Bash. The matcher is a regular
@@ -2173,6 +2178,12 @@ Englisch).
 - Bei Claude Code: Die Zeile zu einem Aufruf aus einem Subagenten erscheint
   nicht im Hauptgespräch (gemessen mit 2.1.291).
 - `BASTRA_SAVE_NOTICE=0` in der Umgebung des Daemons schaltet sie ab.
+
+Fehlt nur die neue Registrierung für die Speicherzeile, meldet
+`bastra doctor claude-code` die Installation weiter als gesund und die Recall-Hooks
+als an und empfiehlt `bastra install claude-code`. Fehlende erforderliche
+Recall-Registrierungen oder beschädigte Einstellungen brauchen weiterhin eine
+Reparatur. Doctor verändert die Registrierung nicht selbst.
 
 Dahinter steht kein eigener Client: Der Eintrag nutzt
 `bastra-recall-bash-fail-hook`, der jeden Payload ungelesen weiterreicht, und
