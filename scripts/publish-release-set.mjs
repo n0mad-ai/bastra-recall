@@ -91,8 +91,8 @@ function readPkg(dir) {
   return { dir, name: json.name, version: json.version, dependencies: json.dependencies ?? {} };
 }
 
-function npm(args) {
-  return spawnSync("npm", args, { cwd: repoRoot, encoding: "utf8" });
+function npm(args, timeout) {
+  return spawnSync("npm", args, { cwd: repoRoot, encoding: "utf8", ...(timeout === undefined ? {} : { timeout }) });
 }
 
 /**
@@ -101,8 +101,8 @@ function npm(args) {
  * and must not be mistaken for "not published" — publishing over a network
  * blip is how a set gets half-written in the first place.
  */
-function fetchPublished(name, version) {
-  const res = npm(["view", `${name}@${version}`, "--json"]);
+function fetchPublished(name, version, timeout) {
+  const res = npm(["view", `${name}@${version}`, "--json", ...(verifyOnly ? ["--prefer-online"] : [])], timeout);
   if (res.status === 0) {
     const text = (res.stdout ?? "").trim();
     if (!text) return null;
@@ -111,12 +111,13 @@ function fetchPublished(name, version) {
   }
   const err = `${res.stdout ?? ""}${res.stderr ?? ""}`;
   if (/E404|is not in this registry|no such package/i.test(err)) return null;
-  throw new Error(`npm view ${name}@${version} failed (${res.status}):\n${err.trim()}`);
+  throw new Error(`npm view ${name}@${version} failed (${res.status}):\n${err.trim()}`, { cause: res.error });
 }
 
 /** The version the registry currently serves as `latest` for `name`. */
-function fetchLatestTag(name) {
-  const res = npm(["view", name, "dist-tags.latest"]);
+function fetchLatestTag(name, timeout) {
+  const res = npm(["view", name, "dist-tags.latest", ...(verifyOnly ? ["--prefer-online"] : [])], timeout);
+  if (res.error?.code === "ETIMEDOUT") throw new Error(`npm view ${name} timed out`, { cause: res.error });
   if (res.status !== 0) return null;
   return (res.stdout ?? "").trim() || null;
 }
@@ -207,8 +208,10 @@ function verifySetting(name, fallback, minimum) {
   }
   return value;
 }
-const VERIFY_ATTEMPTS = verifySetting("BASTRA_VERIFY_ATTEMPTS", 12, 1);
+const VERIFY_ATTEMPTS = verifySetting("BASTRA_VERIFY_ATTEMPTS", 60, 1);
 const VERIFY_INTERVAL_MS = verifySetting("BASTRA_VERIFY_INTERVAL_MS", 5000, 0);
+const VERIFY_WINDOW_MS = VERIFY_ATTEMPTS * VERIFY_INTERVAL_MS;
+if (!Number.isSafeInteger(VERIFY_WINDOW_MS)) throw new Error("The verification window must be a finite integer number of milliseconds");
 
 /** Block this process without a timer — the script is synchronous throughout. */
 function sleepSync(ms) {
@@ -216,26 +219,40 @@ function sleepSync(ms) {
 }
 
 /**
- * Wait until the registry shows `pkg` at this version AND serves it as
- * `latest`. Only ever converges toward success: it re-asks while the answer is
- * "not there", and the last answer is what gets reported. `published` is the
- * preflight's reading, so a set that is already visible costs no extra call.
+ * One five-minute window for the whole set, not one slot per package. Only
+ * unfinished packages are polled again; a later package is never left waiting
+ * behind an earlier one. Read requests share the remaining time budget too.
+ * The existing test controls bound poll rounds; interval zero disables waits
+ * and the wall-clock deadline so tests exercise propagation without sleeping.
  */
-function awaitVisible(pkg, published) {
-  let seen = published;
-  for (let attempt = 1; ; attempt++) {
-    if (seen) {
-      const latest = fetchLatestTag(pkg.name);
-      if (latest === pkg.version) return { ok: true };
-      if (attempt >= VERIFY_ATTEMPTS) {
-        return { ok: false, reason: `dist-tag latest is ${latest ?? "unset"}, expected ${pkg.version}` };
+function awaitVisibleSet(packages) {
+  const rows = packages.map(pkg => ({ pkg, ok: false, reason: "is not on the registry" }));
+  const deadline = VERIFY_WINDOW_MS === 0 ? Infinity : performance.now() + VERIFY_WINDOW_MS;
+  const remaining = () => Number.isFinite(deadline) ? Math.max(1, Math.ceil(deadline - performance.now())) : undefined;
+  let delay = VERIFY_INTERVAL_MS;
+  for (let attempt = 1; attempt <= VERIFY_ATTEMPTS; attempt++) {
+    for (const row of rows.filter(row => !row.ok)) {
+      if (performance.now() >= deadline) break;
+      try {
+        const seen = fetchPublished(row.pkg.name, row.pkg.version, remaining());
+        if (!seen) { row.reason = "is not on the registry"; continue; }
+        const mismatch = mismatchReason(row.pkg, seen, null);
+        if (mismatch) throw new Error(`${row.pkg.name}@${row.pkg.version} is already published but is NOT this release: ${mismatch}`);
+        if (performance.now() >= deadline) break;
+        const latest = fetchLatestTag(row.pkg.name, remaining());
+        row.ok = latest === row.pkg.version;
+        row.reason = `dist-tag latest is ${latest ?? "unset"}, expected ${row.pkg.version}`;
+      } catch (error) {
+        if (error.cause?.code !== "ETIMEDOUT" && performance.now() < deadline) throw error;
+        row.reason = "registry lookup exceeded the verification window";
+        break;
       }
-    } else if (attempt >= VERIFY_ATTEMPTS) {
-      return { ok: false, reason: "is not on the registry" };
     }
-    sleepSync(VERIFY_INTERVAL_MS);
-    seen = fetchPublished(pkg.name, pkg.version);
+    if (rows.every(row => row.ok) || attempt === VERIFY_ATTEMPTS || performance.now() >= deadline) break;
+    sleepSync(Math.min(delay, deadline - performance.now()));
+    delay = Math.min(delay * 2, 30_000);
   }
+  return rows;
 }
 
 console.log(`Release set v${version} — ${verifyOnly ? "verifying" : "publishing"} ${pkgs.length} package(s).`);
@@ -267,6 +284,15 @@ if (!verifyOnly) {
   console.log(`Release ${tag} carries every required asset — safe to move npm latest.`);
 }
 
+if (verifyOnly) {
+  const results = awaitVisibleSet(pkgs);
+  for (const { pkg, ok, reason } of results) {
+    if (ok) console.log(`✓ ${pkg.name}@${pkg.version} published and tagged latest`);
+    else console.error(`✗ ${pkg.name}@${pkg.version} ${reason}`);
+  }
+  process.exit(results.every(row => row.ok) ? 0 : 1);
+}
+
 // Preflight every target before the first publish, so a set that is already
 // inconsistent fails without adding another immutable version to the mess.
 const state = [];
@@ -286,20 +312,6 @@ for (const pkg of pkgs) {
     }
   }
   state.push({ pkg, published: Boolean(published) });
-}
-
-if (verifyOnly) {
-  let failed = false;
-  for (const { pkg, published } of state) {
-    const seen = awaitVisible(pkg, published);
-    if (seen.ok) {
-      console.log(`✓ ${pkg.name}@${pkg.version} published and tagged latest`);
-      continue;
-    }
-    console.error(`✗ ${pkg.name}@${pkg.version} ${seen.reason}`);
-    failed = true;
-  }
-  process.exit(failed ? 1 : 0);
 }
 
 for (const { pkg, published } of state) {
