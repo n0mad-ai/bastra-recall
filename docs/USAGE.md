@@ -211,6 +211,10 @@ Details worth knowing:
   worktree is its own repository and is enabled on its own.
 - `BASTRA_CODE_AWARENESS=off` turns the whole feature off without changing
   what you enabled.
+- In telemetry, the delivered-block count and token cost use the same delivery
+  records. The passive code share means the share of Write/Edit injection,
+  not all hook lanes. Build duration includes successful and failed builds,
+  excluding lock checks and skipped runs.
 - macOS and Linux for now.
 
 If something looks wrong, `bastra doctor` reports the state of every enabled
@@ -566,6 +570,11 @@ Was du wissen solltest:
   eigenes Repository und wird für sich aktiviert.
 - `BASTRA_CODE_AWARENESS=off` schaltet die ganze Funktion ab, ohne deine
   Aktivierungen zu verändern.
+- In der Telemetrie stammen Zahl und Tokenkosten ausgelieferter Blöcke aus
+  denselben Auslieferungen. Der passive Code-Anteil bezieht sich auf die
+  Write/Edit-Einblendung, nicht auf alle Hook-Spuren. Die Build-Dauer umfasst
+  erfolgreiche und fehlgeschlagene Builds, ohne Sperrprüfungen und ausgelassene
+  Läufe.
 - Vorerst macOS und Linux.
 
 Wenn etwas nicht stimmt: `bastra doctor` nennt den Zustand jedes aktivierten

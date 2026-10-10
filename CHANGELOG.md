@@ -72,6 +72,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Code-awareness telemetry uses delivery records for both headline block count
+  and token cost, labels the passive code share as a share of Write/Edit
+  injection, and excludes lock checks/skipped runs from build duration
+  (Refs #663, #665). No event schema or historical data is changed.
 - **A settings file that cannot be read is no longer written over — a
   behaviour change for every command that stores a setting** (`bastra config
   set`, `embeddings on|off`, `models set`, `token`, the installer, the

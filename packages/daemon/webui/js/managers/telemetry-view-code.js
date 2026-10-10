@@ -113,12 +113,9 @@ export function renderCodeAwareness(ca) {
       h(
         "div",
         { class: "tv-figs center" },
-        // #606: the headline figure is what Recall DELIVERED, because that is
-        // the channel the change made; the injected-block cost below it is the
-        // price. `active.delivered` and the hook_call fold count the same write
-        // -lane blocks from two different rows, so they are shown as cost and
-        // channel rather than added up.
-        fig("delivered blocks", fmt(dl.blocks), `${fmt(b.codeTokensTotal)} tokens · ${pct(b.codeTokensTotal, b.hintTokensTotal)} of everything injected`),
+        // Headline count and cost come from the same delivery records (#663).
+        // Passive hook_call cost and its Write/Edit denominator appear below.
+        fig("delivered blocks", fmt(dl.blocks), `${fmt(dl.tokensTotal)} tokens`),
         fig("followed by an edit", pct(b.blocksFollowed, b.blocksWithListed), `${fmt(b.blocksFollowed)} of ${fmt(b.blocksWithListed)} blocks`, b.blocksFollowed > 0),
       ),
     ),
@@ -156,10 +153,11 @@ export function renderCodeAwareness(ca) {
                 h("tr", null, td("ok"), td(fmt(rf.ok), rf.ok > 0 ? "ok" : null)),
                 h("tr", null, td("failed"), td(fmt(rf.failed), rf.failed > 0 ? "warn" : "dim")),
                 h("tr", null, td("locked · skipped · given up"), td(`${fmt(rf.locked)} · ${fmt(rf.skipped)} · ${fmt(rf.givenUp)}`, "dim")),
-                h("tr", null, td("duration p50 / p90"), td(`${ms(rf.p50)} / ${ms(rf.p90)}`)),
+                h("tr", null, td("build duration p50 / p90"), td(`${ms(rf.p50)} / ${ms(rf.p90)}`)),
               ],
             )
           : empty("no refresh run in this window"),
+        note("Build duration covers successful and failed builds; lock checks and skipped runs are excluded."),
         rf.byReason.length ? note(`triggered by: ${rf.byReason.map((r) => `${r.key} ${fmt(r.count)}`).join(" · ")}`) : null,
         rf.failures.length ? note(`failures: ${rf.failures.map((r) => `${r.key} ${fmt(r.count)}`).join(" · ")}`, true) : null,
         h3("Repositories"),
@@ -190,6 +188,7 @@ export function renderCodeAwareness(ca) {
               [
                 h("tr", null, td("dependents block"), td(`${fmt(b.withCodeBlock)} of ${fmt(b.calls)} write/edit calls (${pct(b.withCodeBlock, b.calls)})`)),
                 h("tr", null, td("cost"), td(`${fmt(b.codeTokensTotal)} tokens · ${fmt(b.codeTokensMedian)} median`)),
+                h("tr", null, td("share of Write/Edit injection"), td(pct(b.codeTokensTotal, b.hintTokensTotal))),
                 h("tr", null, td("reach"), td(`${fmt(b.dependentsTotal)} dependants named · ${fmt(b.dependentsMedian)} median`)),
                 h("tr", null, td("marked possibly out of date"), td(fmt(b.staleBlocks), b.staleBlocks > 0 ? "warn" : "dim")),
                 h("tr", null, td("affects_files block"), td(`${fmt(b.withAppliesTo)} calls · ${fmt(b.appliesToTokensTotal)} tokens · ${fmt(b.appliesToCount)} memories`)),
