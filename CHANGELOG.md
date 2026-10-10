@@ -106,6 +106,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   and token cost, labels the passive code share as a share of Write/Edit
   injection, and excludes lock checks/skipped runs from build duration
   (Refs #663, #665). No event schema or historical data is changed.
+- Draft secret redaction recognizes the network command/field forms listed in
+  #1113: nmcli/networksetup/netsh, WiFi.begin/WIFI_PSK literals, vendor PSK
+  configuration, PSK binding variants/XML/string arrays, Wi-Fi QR passwords,
+  attached curl auth bundles and HTTPie auth. The frozen corpus adds 17
+  positive/negative pairs. Only the named scalar grammars are recognized, with
+  no arbitrary shell/C evaluation: unquoted `WiFi.begin` password values and
+  other vendor grammars can remain readable. See the
+  [coverage and limits](docs/secret-redaction.md) (Refs #1113).
 - **A settings file that cannot be read is no longer written over — a
   behaviour change for every command that stores a setting** (`bastra config
   set`, `embeddings on|off`, `models set`, `token`, the installer, the

@@ -960,13 +960,19 @@ backslash-continued lines, and calls inside `$(…)`, backticks or a quoted
 `sh -c "…"`. It only counts as an argument of the curl call itself: from `curl`
 onwards only options, one operand per option, quoted strings and URL-like
 operands may precede it, so `docker run -u 1000:1000` later in the same prose
-line is untouched. Not covered: a value attached to a bundle
-(`curl -sufixture:pw`) and other clients' flags (`http -a user:pw`).
+line is untouched. Attached bundles (`curl -sufixture:pw`) and HTTPie
+authentication (`http -a user:pw`) are also covered.
 
-Deliberately unsupported: netsh keyMaterial assignments, Cisco `crypto isakmp key`,
-OpenWrt `option key`, nmcli `wifi connect … password …`, German
+The explicit network password positions also cover nmcli `wifi connect … password`,
+networksetup, netsh `Key Content`, quoted `WiFi.begin`/`WIFI_PSK` literals,
+Fortinet, VyOS, uci, XML pre-shared keys, PSK underscore bindings, flat `psks`
+arrays, Cisco `crypto isakmp key`, OpenWrt `option key` and complete Wi-Fi QR
+strings. These are scalar grammars, not arbitrary shell/C evaluation; see
+[network credentials and limits](./secret-redaction.md#network-credentials).
+
+Deliberately unsupported: netsh keyMaterial assignments, German
 WLAN-Passwort/WLAN-Schlüssel labels, parenthesized PSK
-prose, PSK arrows, Markdown tables/bold PSK labels, Wi-Fi QR strings and fullwidth
+prose, PSK arrows, Markdown tables/bold PSK labels and fullwidth
 colons. Generic entropy scanning may remove a particular value there, but no full
 redaction guarantee is made. Never paste real keys into prompts expecting this
 filter to make them safe. Rotation and owner-reviewed repair are still needed if a
@@ -2795,14 +2801,20 @@ mit `\` fortgesetzten Zeilen sowie Aufrufen in `$(…)`, Backticks oder einem
 quotierten `sh -c "…"`. Sie zählt nur als Argument des curl-Aufrufs selbst: Ab
 `curl` dürfen davor nur Optionen, je Option ein Operand, quotierte Zeichenketten
 und URL-artige Operanden stehen; ein `docker run -u 1000:1000` später in derselben
-Prosazeile bleibt unberührt. Nicht abgedeckt: ein an ein Bündel angehängter Wert
-(`curl -sufixture:pw`) und Optionen anderer Clients (`http -a user:pw`).
+Prosazeile bleibt unberührt. Angehängte Bündel (`curl -sufixture:pw`) und
+HTTPie-Authentifizierung (`http -a user:pw`) sind ebenfalls abgedeckt.
 
-Bewusst nicht abgedeckt: netsh-keyMaterial-Zuweisungen, Cisco `crypto isakmp key`,
-OpenWrt `option key`, nmcli `wifi connect … password …`, deutsche
+Die expliziten Netzwerk-Passwortpositionen decken ebenso nmcli `wifi connect … password`,
+networksetup, netsh `Key Content`, quotierte `WiFi.begin`-/`WIFI_PSK`-Literale,
+Fortinet, VyOS, uci, XML-Pre-Shared-Keys, PSK-Unterstrich-Bindungen, flache `psks`-
+Arrays, Cisco `crypto isakmp key`, OpenWrt `option key` und vollständige WLAN-QR-
+Zeichenfolgen ab. Das sind skalare Grammatiken, keine beliebige Shell-/C-Ausführung;
+siehe [Netzwerk-Zugangsdaten und Grenzen](./secret-redaction.md#deutsch-fester-maßstab-und-grenzen).
+
+Bewusst nicht abgedeckt: netsh-keyMaterial-Zuweisungen, deutsche
 WLAN-Passwort/WLAN-Schlüssel-Bezeichnungen,
-PSK in Klammer-Prosa, PSK-Pfeile, Markdown-Tabellen/fett gesetzte PSK-Bezeichnungen,
-Wi-Fi-QR-Zeichenfolgen und Vollbreiten-Doppelpunkte. Der allgemeine Entropiefilter
+PSK in Klammer-Prosa, PSK-Pfeile, Markdown-Tabellen/fett gesetzte PSK-Bezeichnungen
+und Vollbreiten-Doppelpunkte. Der allgemeine Entropiefilter
 kann einzelne Werte dort entfernen, garantiert aber keine vollständige Schwärzung.
 Echte Schlüssel nicht in Prompts kopieren und auf den Filter vertrauen. Wurde ein
 Schlüssel gespeichert, ersetzen/widerrufen und den Altbestand als Eigentümer prüfen.
