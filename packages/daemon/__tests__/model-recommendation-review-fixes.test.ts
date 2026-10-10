@@ -16,9 +16,15 @@ async function fixture(work: (dir: string, settingsPath: string) => Promise<void
   const path = join(dir, "settings.json");
   const keys = ["BASTRA_EXPAND_MODEL", "BASTRA_RERANK_MODEL", "BASTRA_UPDATE_CHECK"];
   const saved = keys.map(key => process.env[key]);
+  const previousHome = process.env.HOME;
+  const previousProfile = process.env.USERPROFILE;
+  process.env.HOME = dir;
+  process.env.USERPROFILE = dir;
   keys.forEach(key => delete process.env[key]);
   try { await setEmbeddingProvider("ollama", path); await work(dir, path); }
   finally {
+    if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+    if (previousProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = previousProfile;
     keys.forEach((key, i) => { if (saved[i] === undefined) delete process.env[key]; else process.env[key] = saved[i]; });
     await rm(dir, { recursive: true, force: true });
   }

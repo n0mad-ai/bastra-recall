@@ -16,13 +16,16 @@ const notice = async () => offer;
 async function fixture(work: (dir: string) => Promise<void>) {
   const dir = await mkdtemp(join(tmpdir(), "bastra-model-session-day-"));
   const previousHome = process.env.HOME;
+  const previousProfile = process.env.USERPROFILE;
   const keys = ["BASTRA_UPDATE_CHECK", "BASTRA_EXPAND_MODEL", "BASTRA_RERANK_MODEL", "BASTRA_EMBEDDING_PROVIDER"];
   const saved = keys.map(k => [k, process.env[k]] as const);
   process.env.HOME = dir;
+  process.env.USERPROFILE = dir;
   for (const key of keys) delete process.env[key];
   try { await work(dir); }
   finally {
     if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+    if (previousProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = previousProfile;
     for (const [key,value] of saved) if (value === undefined) delete process.env[key]; else process.env[key] = value;
     await rm(dir, { recursive: true, force: true });
   }
