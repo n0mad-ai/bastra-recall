@@ -61,18 +61,61 @@ change it. Colour is optional and does not affect what is saved.
 
 ## Deutsch
 
-Codex bekommt nach bestätigtem Speichern oder Ändern dieselbe kurze Zeile,
-standardmäßig farblos mit festem `bastra-recall`-Präfix. Nach dem Update
-`bastra install codex` erneut ausführen und den neuen Hook in `/hooks` prüfen.
-Suchen, Laden und verweigerte Schreibaufrufe bleiben ohne Zeile. Fehlt nur der
-Eintrag für die Speicherzeile, meldet doctor die Installation weiter als gesund
-und die Recall-Hooks als an, mit einem gezielten Hinweis auf
-`bastra install codex`. Fehlende erforderliche Recall-Hooks werden weiterhin
-als reparaturbedürftig gemeldet.
+Nach erfolgreichem `save_memory`, `edit_memory`, `save_document` oder
+`save_product_doc` liefert Recall eine kurze `systemMessage` über Codex'
+PostToolUse-Hook. Leseaufrufe und verweigerte Schreibvorgänge bleiben still.
+Formatter, Parser der Schreibbestätigung und lokale Route werden mit Claude Code
+geteilt.
 
-Der isolierte Lauf mit Codex CLI 0.160.0 hat die Aufrufe, normalisierten
-Toolnamen und Ergebnisform bestätigt. Die interaktive Sicht- und Farbprüfung
-wurde ausgelassen; die exec-Ausgabe zeigte nur den Hook-Abschluss. Farbe kann
-mit `BASTRA_SAVE_NOTICE_COLOR=1` in der Daemon-Umgebung selbst geprüft werden:
-Daemon neu starten, eine harmlose Notiz speichern oder ändern, bei sichtbaren
-Escape-Zeichen wieder auf `0` stellen und den Daemon erneut starten.
+Codex nutzt standardmäßig ein farbloses festes Präfix. Formatbeispiele:
+
+```text
+bastra-recall saved: “Synthetic fixture” (lesson)
+bastra-recall edited: “Synthetic fixture” (lesson)
+```
+
+Nach dem Recall-Update `bastra install codex` erneut ausführen. In einer neuen
+Codex-Sitzung den Schreib-Tool-Eintrag in `/hooks` prüfen und freigeben. Der
+Installer verwendet den bestehenden Post-Tool-Client und fügt keinen Panel-Eintrag
+hinzu. `bastra doctor` prüft den Schreib-Matcher getrennt von der gemeinsam
+verwendeten Runner-Datei. Fehlt nur der Eintrag für die Speicherzeile, bleiben
+Installation und Recall-Hooks gesund und aktiv, mit dem gezielten Hinweis
+`bastra install codex`. Fehlende erforderliche Recall-Hooks brauchen weiterhin
+Reparatur. `BASTRA_SAVE_NOTICE=0` in der Daemon-Umgebung schaltet die Meldungen ab.
+
+### Kompatibilitätsprüfung
+
+Die [offizielle Hooks-Dokumentation](https://learn.chatgpt.com/docs/hooks)
+unterstützt `systemMessage` bei PostToolUse und beschreibt sie als Warnung in
+Oberfläche/Ereignisstrom. Ein isolierter exec-Lauf mit Codex CLI **0.160.0**
+bestätigte vier erfolgreiche Fixture-Aufrufe und ihre Post-Tool-Hooks. Er
+verwendete einen Stub-Server, kurzlebige Sitzungen und keine echten Vault-
+Schreibvorgänge. Erfasst wurden `mcp__bastra_recall__save_memory` und
+`mcp__bastra_recall__edit_memory`; der Matcher behält außerdem Claudes Schreibweise
+`bastra-recall` und Namen mit Plugin-Präfix bei.
+
+Die beobachtete Ergebnisform war ein Objekt mit Inhaltsblöcken:
+
+```json
+{"tool_name":"mcp__bastra_recall__save_memory","tool_response":{"content":[{"type":"text","text":"{\"id\":\"notice-fixture\",\"created\":true}"}]}}
+```
+
+`readToolResult` akzeptiert diese Hülle bereits. Hook-Payloads enthalten in den
+Regressionstests ausschließlich synthetische Fixture-Daten. Der native exec-
+Renderer zeigte den Hook-Abschluss, druckte aber den Meldungstext nicht in die
+Text-/JSON-Ausgabe. Interaktive Darstellung und ANSI-Farbe wurden **nicht visuell
+geprüft**. Deshalb verwendet Codex standardmäßig die farblose Variante, ohne
+Farbunterstützung vorauszusetzen. Diese Kompatibilitätsprüfung behauptet keine
+identische Darstellung in allen Codex-Clients.
+
+### Optionale Farbprüfung
+
+1. In einer eigenen interaktiven Codex-Sitzung nach harmlosem Speichern oder
+   Bearbeiten die farblose Meldung prüfen; der Hook muss in `/hooks` freigegeben sein.
+2. Den Recall-Daemon mit `BASTRA_SAVE_NOTICE_COLOR=1` starten/neustarten und den
+   harmlosen Vorgang wiederholen. Die optionale Plakette nutzt die Recall-Farben.
+3. Erscheinen Escape-Zeichen oder hilft die Plakette nicht, die Variable entfernen
+   oder auf `0` setzen und den Daemon neustarten. Das feste Präfix bleibt lesbar.
+
+Claude Code behält sein bisheriges Farbverhalten; Codex' Opt-in verändert es
+nicht. Farbe ist optional und hat keinen Einfluss darauf, was gespeichert wird.

@@ -24,6 +24,14 @@ What this actually looks like in a working week.
 
 Memories are plain files — write them by hand in Obsidian if you'd rather, or let the AI save them and correct what it got wrong.
 
+### Reviewed-miss harvester (repository tool)
+
+The [offline harvester](./reviewed-miss-harvester.md) reviews recorded recall
+misses and produces a review queue and cue proposals. Run it manually from a
+repository checkout; it calls no model, uploads nothing and never writes to the
+vault. It is excluded from the published npm package and applies no proposal
+by itself.
+
 ### The Claude Code reflex layer in detail
 
 Seven quiet hooks ship by default, all speaking to the daemon's loopback HTTP endpoint:
@@ -396,6 +404,14 @@ Wie sich das in einer Arbeitswoche tatsächlich anfühlt.
 **5. Recall vor dem Plan, nicht danach.** Frag nach einem mehrstufigen Plan in einem Bereich, den du seit Wochen nicht angefasst hast: Der Session-Hook zieht zuerst die Topologie-Memory dieses Subsystems — welche Dateien zählen, was bewusst offen blieb. Der Plan setzt dort an, wo du aufgehört hast, statt beim Neulesen des Repos.
 
 Memories sind einfache Dateien — schreib sie von Hand in Obsidian, wenn dir das lieber ist, oder lass die AI speichern und korrigiere, was sie falsch verstanden hat.
+
+### Reviewed-Miss-Harvester (Repo-Werkzeug)
+
+Der [Offline-Harvester](./reviewed-miss-harvester.md#deutsch) prüft aufgezeichnete
+Abruflücken und erzeugt eine Prüfwarteschlange und Cue-Vorschläge. Er wird von
+Hand aus einem Repo-Checkout gestartet, ruft kein Modell auf, lädt nichts hoch
+und schreibt nie in den Vault. Er ist aus dem veröffentlichten npm-Paket
+ausgeschlossen und wendet keinen Vorschlag selbst an.
 
 ### Der Claude-Code-Reflex-Layer im Detail
 
