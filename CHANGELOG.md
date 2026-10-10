@@ -56,22 +56,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `update.mode auto` either: `bastra update` asks at the end, the session start
   lets the agent ask, the first command on a terminal after an update asks once
   (an updater from before this feature cannot), and a dim line follows CLI
-  commands at most once a day — until you answer with `bastra models switch`,
+  commands normally once a day — until you answer with `bastra models switch`,
   `later` (asked again in 7 days) or `dismiss` (not for this recommendation;
   the notice says what that costs). The commands name the recommendation they
   answer, and an answer to a different one is refused. The switch pulls the
   model, checks it with a short local test call and only then stores model and
   answer in one write; the old model stays installed. New installs are offered the recommended model directly.
-  `BASTRA_UPDATE_CHECK=off` silences the notice as well. This release ships the
-  mechanism with no active recommendation, so nothing changes yet.
+  `BASTRA_UPDATE_CHECK=off` silences the notice as well. This release carries
+  the first recommendation (`2026-10-tev1`): `tev1:4b` (4.5 GB download) on
+  machines with 16 GB to under 32 GB of RAM, `gemma4:12b` (8.1 GB) from 32 GB,
+  none below 16 GB. It reaches installs that use a local text model outside
+  that set, and rests on the
+  [local model comparison](docs/local-model-comparison.md).
+  Existing users of either recommended model are not prompted to switch
+  between them. The notice distinguishes similar draft-check/reranker answer
+  times from slower, less consistent keyword expansion. Parallel CLI commands
+  share the daily model claim without waiting; simultaneous reclaim of an
+  orphaned day lock can rarely duplicate the line. Fresh or unwritable locks
+  silently skip that hint, while the other notice surfaces remain independent.
+  Listed model tags are matched case-insensitively, including `-` suffixes;
+  bare names, `:latest` and other sizes remain distinct.
 - **New installs are offered `tev1:4b` as the local text model** from 16 GB of
   RAM (4.5 GB download); `gemma4:12b` stays the alternative from 24 GB and the
-  suggestion from 32 GB. Existing installs are not touched: without a stored
-  choice the daemon keeps running `gemma3:4b`, and only the `recommended:`
-  line of `bastra models` shows the new suggestion.
+  suggestion from 32 GB. Existing installs are not switched: without a stored
+  choice the daemon keeps running `gemma3:4b` until you answer the
+  recommendation above with `switch`.
 
 ### Fixed
 
+- The daily CLI model hint reclaims a day lock older than ten seconds in a
+  single silent attempt, so an interrupted command cannot suppress it forever.
+  Fresh or unwritable locks still skip the hint without waiting; other
+  advisory claims retain their existing policy.
 - **A settings file that cannot be read is no longer written over — a
   behaviour change for every command that stores a setting** (`bastra config
   set`, `embeddings on|off`, `models set`, `token`, the installer, the
