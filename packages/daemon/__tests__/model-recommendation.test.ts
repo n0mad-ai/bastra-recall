@@ -439,7 +439,7 @@ test("CLI hint: parallel commands claim the day's notice only once", async () =>
   await existingUser(async (path, dir) => {
     const hintOpts = { ...opts(path), shownPath: join(dir, "model-hint-shown.txt") };
     const shown = await captured(() => Promise.all(Array.from({ length: 4 }, () => maybeEmitModelHint(hintOpts))));
-    assert.deepEqual((shown.result as boolean[]).toSorted(), [false, false, false, true]);
+    assert.deepEqual((shown.result as boolean[]).sort(), [false, false, false, true]);
     assert.equal(shown.err.split("recommends a different").length - 1, 1);
   });
 });
@@ -460,7 +460,7 @@ test("CLI hint: separate processes emit the day's notice only once", async () =>
       });
     });
     const results = await Promise.all([run(), run(), run()]);
-    assert.deepEqual(results.map(r => r.code).toSorted(), [0, 0, 10]);
+    assert.deepEqual(results.map(r => r.code).sort(), [0, 0, 10]);
     assert.equal(results.map(r => r.err).join("").split("recommends a different").length - 1, 1);
   });
 });
