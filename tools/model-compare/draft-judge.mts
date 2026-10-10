@@ -10,7 +10,10 @@
  * --probes replaces both with one probe file, e.g. data/fresh-probes.json.
  * The summary keys are German; results/collect.py maps them to the documented names.
  */
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+// First: it loads the repository's isolation guard before the daemon modules read their settings.
+import { loopbackUrl, logLine, outputGuard } from "./common.mts";
 import { ollamaChat } from "../../packages/daemon/src/learned-recall/reranker.js";
 import { STATEMENT_KINDS, RELATIONS, statementPrompt, relationPrompt, noteJudgeText, parseVerdict } from "../../packages/daemon/src/draft-judge.js";
 const here = (path: string) => new URL(path, import.meta.url);
@@ -18,7 +21,8 @@ const here = (path: string) => new URL(path, import.meta.url);
 const arg = (name: string) => { const i = process.argv.indexOf(`--${name}`); return i < 0 ? undefined : process.argv[i + 1]; };
 const model = arg("model")!, mode = arg("mode") ?? "chat", out = arg("out")!;
 const limit = Number(arg("limit") ?? 0);
-const baseURL = arg("url") ?? "http://127.0.0.1:11434";
+const baseURL = loopbackUrl(arg("url"));
+const write = outputGuard([out], [arg("probes"), fileURLToPath(here("../draft-judge-eval/cases.json")), fileURLToPath(here("data/blind-injection-probes.json"))]);
 
 interface Probe { q: "a" | "b" | "c"; set: string; id: string; expect: string; a: string; b?: string }
 const probes: Probe[] = [];
@@ -69,20 +73,20 @@ const decisionQuestion = (p: Probe) => SHORT ? shortQuestion(p) : p.q === "a"
 
 async function decide(p: Probe): Promise<{ verdict: string | null; raw: string }> {
   const { state, question } = decisionQuestion(p);
-  const resp = await fetch(`${baseURL}/v1/systemone`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model, state, questions: { verdict: question } }), signal: AbortSignal.timeout(120_000) });
+  const resp = await fetch(`${baseURL}/v1/systemone`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model, state, questions: { verdict: question } }), signal: AbortSignal.timeout(120_000), redirect: "error" });
   const text = await resp.text();
   if (!resp.ok) return { verdict: null, raw: `HTTP ${resp.status} ${text.slice(0, 200)}` };
   const json = JSON.parse(text), answer = Array.isArray(json.answers) ? json.answers[0] : json.answers?.verdict;
   return { verdict: typeof answer?.choice === "string" ? answer.choice : null, raw: JSON.stringify(answer).slice(0, 300) };
 }
-const chat = ollamaChat({ baseURL, model, timeoutMs: 120_000 });
+const chat = ollamaChat({ baseURL, model, timeoutMs: 120_000, redirect: "error" });
 async function ask(p: Probe): Promise<{ verdict: string | null; raw: string }> {
   if (mode === "decision") return decide(p);
   const raw = await chat(p.q === "a" ? statementPrompt(p.a) : relationPrompt(p.a, p.b!, p.q === "c" ? "note" : "statement"));
   return { verdict: parseVerdict(raw, p.q === "a" ? STATEMENT_KINDS : RELATIONS), raw: raw.slice(0, 300) };
 }
 
-await fetch(`${baseURL}/api/generate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model, keep_alive: 0 }) }).then(r => r.text()).catch(() => "");
+await fetch(`${baseURL}/api/generate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model, keep_alive: 0 }), redirect: "error" }).then(r => r.text()).catch(() => "");
 const todo = limit ? probes.filter((_, i) => i % Math.ceil(probes.length / limit) === 0) : probes;
 const answers: (Probe & { verdict: string | null; raw: string; ms: number })[] = [];
 for (const p of todo) {
@@ -90,7 +94,7 @@ for (const p of todo) {
   let r: { verdict: string | null; raw: string };
   try { r = await ask(p); } catch (error) { r = { verdict: null, raw: `ERROR ${(error as Error).message}` }; }
   answers.push({ ...p, ...r, ms: Math.round(performance.now() - started) });
-  if (answers.length % 100 === 0) { console.error(`${model} ${answers.length}/${todo.length}`); await writeFile(out, JSON.stringify({ model, mode, partial: true, answers }, null, 1)); }
+  if (answers.length % 100 === 0) { console.error(`${logLine(model)} ${answers.length}/${todo.length}`); await write(out, JSON.stringify({ model, mode, partial: true, answers }, null, 1)); }
 }
 
 const v = (id: string) => answers.find(r => r.id === id)?.verdict;
@@ -136,4 +140,4 @@ summary.overall = frac(total.filter(ok).length, total.length);
 const warm = answers.slice(1).map(r => r.ms).sort((x, y) => x - y);
 summary.latency = { cold_ms: answers[0].ms, median_ms: warm[Math.floor(warm.length / 2)], p95_ms: warm[Math.floor(warm.length * 0.95)] };
 console.log(JSON.stringify(summary, null, 1));
-await writeFile(out, JSON.stringify({ summary, answers }, null, 1));
+await write(out, JSON.stringify({ summary, answers }, null, 1));

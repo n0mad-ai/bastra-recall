@@ -5,6 +5,34 @@ They need Node ≥ 22, the installed workspace dependencies and Ollama on
 `127.0.0.1:11434`. They pull no model, build a throwaway vault and never touch a
 real vault or a running daemon. Run one job at a time.
 
+The tools send corpus and probe text only to a model server on this machine.
+Every model and embedding URL (`--url`, `--chat-url`, `--embedding-url` and the
+fixed addresses of `prefix.mts`) has to be a loopback address: `127.0.0.1`,
+`::1` or `localhost`, without credentials or a query. Any other host stops the
+tool before the first request, and a redirect is an error instead of being
+followed. That matters when you run them on a corpus of your own notes.
+
+Result files are checked before the measurement starts and again at every
+write. A result is refused inside `~/.bastra`, when its name is a symlink, and
+when it is the same file as an input (corpus, probes, ids, expansion cache) or
+as another output, also when a symlinked directory, a hardlink or another
+spelling of the name leads there. The content goes to a new file that is then
+renamed onto the target. A new result file is readable and writable for its
+owner only (0600), because it can hold corpus and probe text; a result that
+replaces an existing file keeps that file's owner, group and permissions, and
+is refused when owner or group cannot be kept. Not covered: another
+process that swaps a parent directory for a symlink between the last check and
+the rename.
+
+An error that ends a tool is printed as one line without a stack trace.
+
+`draft-judge.mts` loads the repository's isolation guard like the other tools.
+`BASTRA_*` variables of the shell do not reach it, so its chat mode always asks
+with the production default of 4,096 tokens of context; `BASTRA_OLLAMA_NUM_CTX`
+changed that before. Decision mode sends no context size. What is known about
+the published numbers in this respect is in the
+[limits of the comparison](../../docs/local-model-comparison.md#limits-of-this-comparison).
+
 | File | Purpose |
 | --- | --- |
 | `draft-judge.mts` | draft meaning check through the production prompts (or the decision endpoint) |
@@ -27,6 +55,37 @@ Die Skripte laden den normalen Test-Isolations-/Port-Guard selbst, bauen einen
 Wegwerf-Vault und löschen ihn auch nach Fehlern. Nur explizite Ergebnisdateien
 und Erweiterungs-Caches bleiben erhalten. Alle Inferenzaufrufe innerhalb eines
 Laufs sind seriell. **Mehrere Läufe über dieselbe externe Warteschlange starten.**
+
+Die Werkzeuge schicken Korpus- und Probentext nur an einen Modellserver auf
+diesem Rechner. Jede Modell- und Embedding-URL (`--url`, `--chat-url`,
+`--embedding-url` und die festen Adressen von `prefix.mts`) muss eine
+Loopback-Adresse sein: `127.0.0.1`, `::1` oder `localhost`, ohne Zugangsdaten
+und ohne Query. Jeder andere Host beendet das Werkzeug vor der ersten Anfrage,
+und eine Weiterleitung ist ein Fehler, statt dass ihr gefolgt wird. Das zählt,
+wenn die Werkzeuge auf einem Korpus aus eigenen Notizen laufen.
+
+Ergebnisdateien werden vor Beginn der Messung und bei jedem Schreiben erneut
+geprüft. Ein Ergebnis wird abgelehnt, wenn es in `~/.bastra` liegt, wenn sein
+Name ein Symlink ist und wenn es dieselbe Datei ist wie eine Eingabe (Korpus,
+Proben, IDs, Erweiterungs-Cache) oder wie eine andere Ausgabe, auch wenn ein
+verlinktes Verzeichnis, ein Hardlink oder eine andere Schreibweise des Namens
+dorthin führt. Der Inhalt geht in eine neue Datei, die danach auf das Ziel
+umbenannt wird. Eine neue Ergebnisdatei ist nur für ihren Besitzer les- und
+schreibbar (0600), weil sie Korpus- und Probentext enthalten kann; ein
+Ergebnis, das eine vorhandene Datei ersetzt, behält deren Besitzer, Gruppe und
+Rechte und wird abgelehnt, wenn Besitzer oder Gruppe sich nicht erhalten lassen. Nicht
+abgedeckt: ein anderer Prozess, der zwischen der letzten Prüfung und dem
+Umbenennen ein Elternverzeichnis gegen einen Symlink tauscht.
+
+Ein Fehler, der ein Werkzeug beendet, erscheint als eine Zeile ohne
+Stack-Trace.
+
+`draft-judge.mts` lädt wie die anderen Werkzeuge den Isolations-Guard des
+Repos. `BASTRA_*`-Variablen der Shell erreichen es nicht; der Chat-Modus fragt
+deshalb immer mit dem Produktionsstandard von 4.096 Token Kontext, vorher
+änderte `BASTRA_OLLAMA_NUM_CTX` das. Der Entscheidungs-Modus schickt keine
+Kontextgröße mit. Was dazu über die veröffentlichten Zahlen bekannt ist, steht bei den
+[Grenzen des Vergleichs](../../docs/local-model-comparison.md#grenzen-dieses-vergleichs).
 
 ## Recall: neue Erweiterungen und drei Suchwege
 

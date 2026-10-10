@@ -1,5 +1,5 @@
 /** Bridge reranker comparison: production prompt/parser, numCtx=8192. */
-import { args, required, positive, corpus, generation, fixture, rank, timing, forecast, jsonOut, validatePaths, modelInfo, loopbackUrl, digest, QUERY_TYPES, BASE_URL, applyExpansions, errorText } from "./common.mts";
+import { args, required, positive, corpus, generation, fixture, rank, timing, forecast, outputGuard, pretty, modelInfo, loopbackUrl, logLine, digest, QUERY_TYPES, BASE_URL, applyExpansions, errorText } from "./common.mts";
 
 const a = args(["corpus", "model", "embedding-model", "embedding-dim", "pool", "expansions-in", "out", "limit", "timeout-ms", "chat-url", "embedding-url"], ["help"]);
 if (a.help) {
@@ -7,7 +7,7 @@ if (a.help) {
 } else {
   const file = required(a, "corpus"), out = required(a, "out"), model = required(a, "model");
   const chatURL = loopbackUrl(a["chat-url"]), embeddingURL = loopbackUrl(a["embedding-url"]);
-  validatePaths([out], [file, a["expansions-in"] as string | undefined]);
+  const write = outputGuard([out], [file, a["expansions-in"] as string | undefined]);
   const pool = (a.pool ?? "hybrid") as "hybrid" | "bm25";
   if (!["hybrid", "bm25"].includes(pool)) throw Error("--pool must be hybrid or bm25");
   const embeddingModel = (a["embedding-model"] ?? (pool === "hybrid" ? "embeddinggemma" : "none")) as string;
@@ -62,6 +62,6 @@ if (a.help) {
     result.embedding_stats = current.embeddingStats();
     console.table(result.summary.map((r: any) => ({ condition: r.condition, kind: r.kind, correct: `${r.correct}/${r.n}`, unusable: r.unusable,
       median_ms: r.latency.median_ms === null ? null : Math.round(r.latency.median_ms), p95_ms: r.latency.p95_ms === null ? null : Math.round(r.latency.p95_ms) })));
-  } catch (e) { result.status = "failed"; result.error = errorText(e); process.exitCode = 1; console.error(result.error); }
-  finally { result.total_ms = performance.now() - started; await jsonOut(out, result, file); if (f) await f.close(); }
+  } catch (e) { result.status = "failed"; result.error = errorText(e); process.exitCode = 1; console.error(logLine(result.error)); }
+  finally { result.total_ms = performance.now() - started; await write(out, pretty(result)); if (f) await f.close(); }
 }

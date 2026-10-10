@@ -1,7 +1,8 @@
-import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { lstatSync } from "node:fs";
+import { mkdir, mkdtemp, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 
 // The normal repository guard isolates all user-state fallbacks and refuses 6723.
 const operatorHome = homedir(), scratchBase = tmpdir();
@@ -10,11 +11,31 @@ export const core = await import("../../packages/core/src/index.ts");
 export const { FIELD_BOOST } = await import("../../packages/core/src/search.ts");
 export const generation = await import("../../packages/daemon/src/learned-recall/reranker.ts");
 export const BASE_URL = "http://127.0.0.1:11434";
+/**
+ * The one check for every model and embedding URL of these tools. They can run
+ * on a private corpus and the URL can come from the command line, so a foreign
+ * host would receive that text. Parsed once; the requests and the messages use
+ * only the parsed form, and what does not parse is not shown.
+ */
 export function loopbackUrl(raw: unknown = BASE_URL): string {
-  const url = new URL(String(raw));
-  if (!["http:", "https:"].includes(url.protocol) || !core.isLoopbackHost(url.hostname.toLowerCase()) || url.username || url.password || url.search || url.hash || url.port === "6723") throw Error("Only a plain loopback Ollama URL is allowed (never port 6723)");
+  let url: URL;
+  try { url = new URL(String(raw)); } catch { throw Error("The model URL cannot be read; expected a loopback URL such as http://127.0.0.1:11434"); }
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw Error("The model URL must be an http(s) URL");
+  if (url.username || url.password || url.search || url.hash) throw Error("The model URL must not carry credentials, a query or a fragment");
+  // The parser has normalized the host: 127.1 and LOCALHOST arrive here as 127.0.0.1 and localhost.
+  if (!["127.0.0.1", "[::1]", "localhost"].includes(url.hostname)) throw Error(`Refusing the model URL on ${url.host}: these tools send corpus text only to this machine (127.0.0.1, ::1 or localhost)`);
+  if (url.port === "6723") throw Error("Port 6723 is the Bastra daemon, not a model server");
   return url.href.replace(/\/+$/, "");
 }
+/** One terminal line: text from a model, a file or the command line, without line breaks and control characters. */
+export const logLine = (text: unknown) => String(text).replace(/\r|\n/g, "").replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, "");
+// An error that ends a tool can carry text from a corpus, a probe file or a model reply (an invalid
+// id, a JSON parse error quoting the file). It is printed as one cleaned line. No stack: its frames
+// quote file paths, a path can hold a line break, and nothing marks where a frame really ends.
+process.on("uncaughtException", error => {
+  console.error(`Error: ${logLine(error instanceof Error ? error.message : error)}`);
+  process.exit(1);
+});
 export const QUERY_TYPES = ["near", "far", "far_xlang"] as const;
 export type QueryType = typeof QUERY_TYPES[number];
 export interface Note {
@@ -50,19 +71,72 @@ export function positive(value: unknown, fallback: number): number {
   if (!Number.isSafeInteger(n) || n < 1) throw Error(`Expected positive integer, got ${value}`);
   return n;
 }
-export function validatePaths(outputs: Array<string | undefined>, inputs: Array<string | undefined>) {
-  const targets = outputs.filter((p): p is string => p !== undefined).map(p => resolve(p));
-  const sources = inputs.filter((p): p is string => p !== undefined).map(p => resolve(p));
-  if (new Set(targets).size !== targets.length || targets.some(p => sources.includes(p))) throw Error("Result/cache outputs must be distinct and must not overwrite inputs");
-  for (const p of targets) if (p === join(operatorHome, ".bastra") || p.startsWith(join(operatorHome, ".bastra") + "/")) throw Error("Output in the operator's .bastra is forbidden");
+const bastraHome = join(operatorHome, ".bastra");
+// Inside by spelling, or because a directory on the way up IS that directory (dev/ino): a
+// case-insensitive volume reaches ~/.bastra as ~/.BASTRA, and no path comparison shows it.
+const inside = (path: string, dir: string): boolean => {
+  if (path === dir || path.startsWith(dir + sep) || core.sameFile(path, dir)) return true;
+  const up = dirname(path);
+  return up !== path && inside(up, dir);
+};
+/**
+ * The one way these tools write a file. `outputs` are all files the run may
+ * write, `inputs` all files it reads (corpus, probes, ids, expansion cache).
+ * Checked here, before anything is measured, and again at every write, by what
+ * the file system says and not by the spelling of the path:
+ *   - the directory is resolved through its symlinks; nothing lands in the operator's .bastra, however it is spelled;
+ *   - the output itself must not be a symlink (a dangling one included) and, if it exists, must be a regular file;
+ *   - it must not be another input or output: same resolved path, or same file (dev/ino, which also sees a hardlink).
+ * The write goes to a new file beside the target and is renamed onto it. A
+ * rename replaces the name and follows no link, so whatever the name turned
+ * into in the meantime, no other file receives the content.
+ * Results can hold corpus and probe text, so a rewrite must never make a file
+ * readable for more users than it was. The new file is created 0600 and stays
+ * that way for a result that did not exist. One that replaces a file first
+ * gets that file's owner and group and only then its permission bits (never
+ * setuid, setgid or sticky); if owner or group cannot be kept, nothing is written.
+ * Not covered: a parent directory swapped for a symlink by another process
+ * between the last check and the rename.
+ */
+export function outputGuard(outputs: Array<string | undefined>, inputs: Array<string | undefined>) {
+  const named = (files: Array<string | undefined>) => files.filter((f): f is string => f !== undefined).map(f => resolve(f));
+  const outs = named(outputs), ins = named(inputs);
+  if (new Set(outs).size !== outs.length) throw Error("Result/cache outputs must be distinct");
+  const place = (target: string) => {
+    const dir = core.realpathOfNearestExisting(dirname(target)), path = join(dir, basename(target));
+    if (inside(target, bastraHome) || inside(path, bastraHome)) throw Error("Output in the operator's .bastra is forbidden");
+    const found = lstatSync(path, { throwIfNoEntry: false });
+    if (found?.isSymbolicLink()) throw Error(`Output ${target} is a symlink; name the file itself`);
+    if (found && !found.isFile()) throw Error(`Output ${target} is not a regular file`);
+    for (const other of [...ins, ...outs.filter(o => o !== target)]) {
+      if (core.realpathOfNearestExisting(other) === path || core.sameFile(other, path)) throw Error(`Output ${target} is the same file as ${other}; an output must not overwrite an input or another output`);
+    }
+    // Known before the measurement: only root can hand a file back to another owner.
+    if (found && process.getuid && process.getuid() !== 0 && found.uid !== process.getuid()) throw Error(`Output ${target} belongs to another user (uid ${found.uid}); replacing it would change who owns it`);
+    return { dir, path, found };
+  };
+  outs.forEach(place);
+  return async (file: string, text: string) => {
+    const target = resolve(file);
+    await mkdir(place(target).dir, { recursive: true });
+    const { dir, path } = place(target), tmp = join(dir, `.${basename(path)}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`);
+    const handle = await open(tmp, "wx", 0o600);
+    try {
+      await handle.writeFile(text);
+      const now = place(target);
+      if (now.path !== path) throw Error(`Output ${target} moved during the write`);
+      if (now.found) {
+        const { uid, gid, mode } = now.found, mine = await handle.stat();
+        // A new file takes its group from the directory; only a difference needs the change.
+        if (mine.uid !== uid || mine.gid !== gid) await handle.chown(uid, gid).catch(error => { throw Error(`Output ${target} was not written: owner and group of the existing file (uid ${uid}, gid ${gid}) cannot be kept (${errorText(error)})`); });
+        await handle.chmod(mode & 0o777);
+      }
+      await handle.close();
+      await rename(tmp, path);
+    } catch (error) { await handle.close().catch(() => {}); await rm(tmp, { force: true }); throw error; }
+  };
 }
-export async function jsonOut(file: string, value: unknown, corpus?: string) {
-  const target = resolve(file);
-  if (corpus && target === resolve(corpus)) throw Error("Output must not overwrite the corpus");
-  if (target === join(operatorHome, ".bastra") || target.startsWith(join(operatorHome, ".bastra") + "/")) throw Error("Output in the operator's .bastra is forbidden");
-  await mkdir(dirname(target), { recursive: true });
-  await writeFile(target, JSON.stringify(value, null, 2) + "\n");
-}
+export const pretty = (value: unknown) => JSON.stringify(value, null, 2) + "\n";
 export async function corpus(file: string, limit?: unknown) {
   const raw = await readFile(file, "utf8"), parsed = JSON.parse(raw);
   if (!Array.isArray(parsed.notes) || !parsed.notes.length) throw Error("Corpus requires a nonempty notes array");
