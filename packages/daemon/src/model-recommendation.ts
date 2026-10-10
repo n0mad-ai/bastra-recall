@@ -79,8 +79,8 @@ export async function machineRecommendation(opts: OfferOptions = {}): Promise<Mo
 }
 
 /**
- * The recommendation as an offer: null as well when the recommended model is
- * already the one in effect here.
+ * The recommendation as an offer: null as well when any model of the active
+ * recommendation is already in effect, regardless of its hardware tier.
  *
  * A deliberately chosen model — stored or pinned by env — is offered the
  * recommendation like any other. Ignores the user's earlier answer: this is
@@ -88,7 +88,9 @@ export async function machineRecommendation(opts: OfferOptions = {}): Promise<Mo
  */
 export async function currentModelOffer(opts: OfferOptions = {}): Promise<ModelOffer | null> {
   const offer = await machineRecommendation(opts);
-  return offer && offer.current !== offer.model ? offer : null;
+  if (!offer) return null;
+  const recommendation = opts.recommendation === undefined ? MODEL_RECOMMENDATION : opts.recommendation;
+  return Object.values(recommendation?.models ?? {}).some((pick) => pick?.model === offer.current) ? null : offer;
 }
 
 /**

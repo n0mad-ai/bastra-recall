@@ -16,7 +16,8 @@ import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { existsSync } from "node:fs";
 import { createServer } from "node:http";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -97,11 +98,11 @@ const answerOf = async (path: string) => (await readSettings(path)).modelRecomme
 // ── the shipped state ────────────────────────────────────────────────────────
 
 const TEV1_IMPROVES =
-  "Compared with gemma3:4b: fewer wrong verdicts in the draft check, much harder to steer with injected text, and a more accurate reranker — at a similar answer time.";
+  "Compared with gemma3:4b: fewer wrong verdicts in the draft check, much harder to steer with injected text, and a more accurate reranker. Similar draft-check and reranker answer times; keyword expansion was slower and more often produced no phrases.";
 
 test("shipped: the active recommendation is 2026-10-tev1 — tev1:4b up to 24 GB, gemma4:12b from 32 GB", () => {
   // Pinned on purpose: whoever changes a model, a size or a sentence has to come
-  // through here — and a changed recommendation needs a NEW id (hardware.ts).
+  // through here — and a changed shipped recommendation needs a NEW id (hardware.ts).
   // The sentences are the ones docs/local-model-comparison.md covers.
   assert.deepEqual(MODEL_RECOMMENDATION, {
     id: "2026-10-tev1",
@@ -156,11 +157,11 @@ test("shipped: an existing install is told and asked — per tier, never below 1
   });
 });
 
-test("shipped: whoever already runs the recommended model of their tier hears nothing", async () => {
+test("shipped: whoever already runs a model of the recommendation hears nothing, in any tier", async () => {
   await existingUser(async (path, dir) => {
     const shipped = (ramGB: number) => ({ ramGB, settingsPath: path, now: NOW });
     await setGenerationModel("tev1:4b", path);
-    for (const ramGB of [16, 24]) {
+    for (const ramGB of [16, 24, 32]) {
       assert.equal(await currentModelOffer(shipped(ramGB)), null);
       assert.equal(await pendingModelNotice(shipped(ramGB)), null);
     }
@@ -169,11 +170,21 @@ test("shipped: whoever already runs the recommended model of their tier hears no
     assert.equal(hint.err, "");
     const status = await captured(() => cmdModels({ sub: "status", settingsPath: path, deps: shipped(16) }));
     assert.doesNotMatch(status.out, /recommends a different|to switch/);
-    // From 32 GB the pick is the 12B: the same stored model is offered that one…
-    assert.equal((await pendingModelNotice(shipped(32)))?.model, "gemma4:12b");
-    // …and whoever runs it there hears nothing either.
     await setGenerationModel("gemma4:12b", path);
-    assert.equal(await pendingModelNotice(shipped(32)), null);
+    for (const ramGB of [16, 24, 32]) {
+      assert.equal(await currentModelOffer(shipped(ramGB)), null);
+      assert.equal(await pendingModelNotice(shipped(ramGB)), null);
+    }
+    const manual = await captured(() => cmdModels({ sub: "status", settingsPath: path, deps: shipped(24) }));
+    assert.match(manual.out, /recommended: tev1:4b/);
+    assert.match(manual.out, /to switch: bastra models set tev1:4b/);
+    assert.doesNotMatch(manual.out, /recommends a different/);
+    await setGenerationModel("gemma3:4b", path);
+    for (const key of ["BASTRA_EXPAND_MODEL", "BASTRA_RERANK_MODEL"]) {
+      process.env[key] = "gemma4:12b";
+      try { assert.equal(await pendingModelNotice(shipped(24)), null); }
+      finally { delete process.env[key]; }
+    }
   });
 });
 
@@ -234,8 +245,8 @@ test("no offer when the model in effect already is the recommended one", async (
   await existingUser(async (path) => {
     await setGenerationModel("new:4b", path);
     assert.equal(await currentModelOffer(opts(path)), null);
-    // …for this tier: the same stored model on a 32 GB machine is not its pick.
-    assert.equal((await currentModelOffer(opts(path, { ramGB: 32 })))?.model, "new:12b");
+    // A model listed for another tier is already an accepted choice as well.
+    assert.equal(await currentModelOffer(opts(path, { ramGB: 32 })), null);
   });
 });
 
@@ -421,6 +432,46 @@ test("CLI hint: one dim notice on stderr, at most once per day", async () => {
     const second = await captured(() => maybeEmitModelHint(hintOpts));
     assert.equal(second.result, false);
     assert.equal(second.err, "");
+  });
+});
+
+test("CLI hint: parallel commands claim the day's notice only once", async () => {
+  await existingUser(async (path, dir) => {
+    const hintOpts = { ...opts(path), shownPath: join(dir, "model-hint-shown.txt") };
+    const shown = await captured(() => Promise.all(Array.from({ length: 4 }, () => maybeEmitModelHint(hintOpts))));
+    assert.deepEqual((shown.result as boolean[]).toSorted(), [false, false, false, true]);
+    assert.equal(shown.err.split("recommends a different").length - 1, 1);
+  });
+});
+
+test("CLI hint: separate processes emit the day's notice only once", async () => {
+  await existingUser(async (path, dir) => {
+    const worker = fileURLToPath(new URL("./fixtures/model-hint-worker.mts", import.meta.url));
+    const shown = join(dir, "shown.txt");
+    const run = () => new Promise<{ code: number; err: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, ["--import", "tsx", worker, path, shown], { stdio: ["ignore", "ignore", "pipe"] });
+      let err = "";
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk: string) => { err += chunk; });
+      child.once("error", reject);
+      child.once("close", code => {
+        if (code !== 0 && code !== 10) reject(new Error(`worker exited ${code}: ${err}`));
+        else resolve({ code, err });
+      });
+    });
+    const results = await Promise.all([run(), run(), run()]);
+    assert.deepEqual(results.map(r => r.code).toSorted(), [0, 0, 10]);
+    assert.equal(results.map(r => r.err).join("").split("recommends a different").length - 1, 1);
+  });
+});
+
+test("CLI hint: a day marker that cannot be written does not emit an unclaimed notice", async () => {
+  await existingUser(async (path, dir) => {
+    const shownPath = join(dir, "shown.txt");
+    await mkdir(shownPath);
+    const result = await captured(() => maybeEmitModelHint({ ...opts(path), shownPath }));
+    assert.equal(result.result, false);
+    assert.equal(result.err, "");
   });
 });
 

@@ -263,10 +263,10 @@ To reach this daemon from a hosted web app (e.g. a site's admin talking to the u
 | RAM of the machine | Recommended model | Download | What the notice says gets better, compared with `gemma3:4b` |
 | --- | --- | ---: | --- |
 | below 16 GB | none | – | – |
-| 16 GB to under 32 GB | `tev1:4b` | 4.5 GB | fewer wrong verdicts in the draft check, much harder to steer with injected text, a more accurate reranker — at a similar answer time |
+| 16 GB to under 32 GB | `tev1:4b` | 4.5 GB | fewer wrong verdicts in the draft check, much harder to steer with injected text, a more accurate reranker; similar draft-check/reranker answer times, but slower keyword expansion and more notes without phrases |
 | 32 GB and up | `gemma4:12b` | 8.1 GB | fewer wrong verdicts in the draft check, harder to steer with injected text, a clearly more accurate reranker — at about three times the answer time |
 
-The numbers behind these sentences are in the [local model comparison](local-model-comparison.md), measured against `gemma3:4b` on one 24 GB machine with invented data. The sentence always compares with `gemma3:4b`, also when you run another model: on a 24 GB machine with `gemma4:12b`, for example, the notice suggests `tev1:4b`, which in that comparison was reliably behind `gemma4:12b` as a reranker and took about a third of the time per decision — `later` or `dismiss` keeps what you have.
+The numbers behind these sentences are in the [local model comparison](local-model-comparison.md), measured against `gemma3:4b` on one 24 GB machine with invented data. The sentence compares with `gemma3:4b`, also when you run a custom model. If you already use any model named in the active recommendation, no automatic switch notice appears, regardless of the tier: a 24 GB install using `gemma4:12b` is not prompted to move to `tev1:4b`, and a 32 GB install using `tev1:4b` is not prompted to move to `gemma4:12b`. `bastra models` still shows the tier’s pick and a manual switch command. Keyword expansion took 1.5 s instead of 0.9 s with `tev1:4b`, and 16 of 180 notes received no phrases instead of 1; the similar answer times refer to the draft check and reranking.
 
 **Never switched automatically.** bastra never changes your model on its own — not on update, not with `update.mode auto`, not through the agent. New installs are simply offered the recommended model by the installer. Existing installs are told, and the answer is yours.
 
@@ -275,11 +275,11 @@ The numbers behind these sentences are in the [local model comparison](local-mod
 - the installed release carries a recommendation, and it has an entry for this machine's tier;
 - the machine is at or above the 16 GB tier (below it, no text model runs);
 - a text model is in use on this install: Ollama is the embedding provider (only then does the daemon run trigger expansion, the draft check and the search copilot), or you set a text model up yourself — stored with `bastra models set` or pinned by environment variable — which `bastra bridges harvest` uses whatever the embedding provider is;
-- the model in effect is not already the one recommended for this machine;
+- the model in effect is not already any model named in the active recommendation;
 - update notices are not switched off (see "Switching it off" below);
 - you have not answered yet — or you answered `later` and 7 days have passed, or the release carries a new recommendation.
 
-**When it does not appear.** If any of the points above fails. In particular: once the recommended model is in effect, after `switch`, after `dismiss`, and for 7 days after `later`. A model you chose yourself is not an exception: you get the same notice as everyone else.
+**When it does not appear.** If any of the points above fails. In particular: once a model of the active recommendation is in effect, after `switch`, after `dismiss`, and for 7 days after `later`. A model outside that set gets the notice even if you chose it yourself.
 
 **Where it appears.** Five places, all reading one shared note of your answer in `~/.bastra/cli-settings.json`, so an answer given in one place silences the others:
 
@@ -287,7 +287,7 @@ The numbers behind these sentences are in the [local model comparison](local-mod
 2. **The catch-up question.** An update is run by the updater that was installed before it, and an updater from before this feature cannot ask. So the first `bastra` command you run on a terminal afterwards asks instead — after the command's own output, without changing its exit code, and once per recommendation. It does not ask when `bastra update` already asked, or when you already answered in the chat or on the command line. It never asks without a terminal on both ends (so not in pipes, scripts, hooks or background runs), and never after `--json`, `--help`, `--version`, `bastra update`, `models`, `config`, `token`, `completion` or `uninstall`. Enter, or anything it does not recognise, counts as `later`. Ctrl-C or end of input records no answer: the other places keep asking, the terminal does not ask a second time. An answer you gave elsewhere a moment earlier is never replaced by the question, and two commands finishing at the same moment ask once: the question is claimed under a lock on the settings file. If that lock cannot be had within a few seconds — another bastra process holds it, or one was interrupted and left it behind — nothing is asked and nothing is written; the question comes with the next command.
 3. **`bastra models`** shows the recommendation at any time, also after you dismissed it.
 4. **The agent's session start** carries the notice at every session start until you have answered — on purpose, with no daily limit. The agent is instructed to tell you about it, name the download size and ask. It may run the commands below for you, but only after your explicit answer.
-5. **One dim line after CLI commands**, on stderr, at most once per day — wherever the catch-up question does not apply. Not after `bastra update`, `models`, `config`, `token`, `completion`, `help` and `version`.
+5. **One dim line after CLI commands**, on stderr, at most once per day, including parallel commands — wherever the catch-up question does not apply. Not after `bastra update`, `models`, `config`, `token`, `completion`, `help` and `version`.
 
 **The three answers.** Every notice prints the exact commands; they name the recommendation they answer (and, for a switch, the model):
 
@@ -313,7 +313,7 @@ All three work without a terminal.
 
 **Switching back.** The old model is never deleted. After a switch the command prints the exact way back: `bastra models set <previous tag>`. Removing an unused model from disk is yours to do (`ollama rm <tag>`).
 
-**With `BASTRA_EXPAND_MODEL` or `BASTRA_RERANK_MODEL` set.** You get the notice as well. It names the variable and says that it overrides the stored choice: a switch stores the new model, but the variable keeps winning until you remove it and restart the daemon. If the variable already names the recommended model, there is no notice. The agent's session-start notice shows your current model only when it is a plain model tag (letters, digits and `. _ - : /`); anything else appears as "a custom model", and the variable is named without its value.
+**With `BASTRA_EXPAND_MODEL` or `BASTRA_RERANK_MODEL` set.** You get the notice as well. It names the variable and says that it overrides the stored choice: a switch stores the new model, but the variable keeps winning until you remove it and restart the daemon. If the variable already names any model of the active recommendation, there is no notice. The agent's session-start notice shows your current model only when it is a plain model tag (letters, digits and `. _ - : /`); anything else appears as "a custom model", and the variable is named without its value.
 
 **Switching it off.** `BASTRA_UPDATE_CHECK=off` silences the notice at the session start, after CLI commands (the catch-up question and the dim line) and at the end of `bastra update`; so does `bastra config set update.mode off`. `bastra models dismiss <recommendation>` silences one recommendation. `bastra models` always shows it, whatever is switched off.
 
@@ -629,10 +629,10 @@ Um diesen Daemon aus einer gehosteten Web-App zu erreichen (z.B. das Admin einer
 | RAM der Maschine | Empfohlenes Modell | Download | Was laut Hinweis besser wird, verglichen mit `gemma3:4b` |
 | --- | --- | ---: | --- |
 | unter 16 GB | keines | – | – |
-| 16 GB bis unter 32 GB | `tev1:4b` | 4,5 GB | weniger falsche Urteile in der Entwurfs-Prüfung, deutlich schwerer durch eingeschleusten Text zu lenken, eine genauere Nachsortierung — bei ähnlicher Antwortzeit |
+| 16 GB bis unter 32 GB | `tev1:4b` | 4,5 GB | weniger falsche Urteile in der Entwurfs-Prüfung, deutlich schwerer durch eingeschleusten Text zu lenken, eine genauere Nachsortierung; ähnliche Antwortzeiten bei Entwurfs-Prüfung/Nachsortierung, aber langsamere Stichwort-Erweiterung und mehr Notizen ohne Phrasen |
 | ab 32 GB | `gemma4:12b` | 8,1 GB | weniger falsche Urteile in der Entwurfs-Prüfung, schwerer durch eingeschleusten Text zu lenken, eine klar genauere Nachsortierung — bei etwa dreifacher Antwortzeit |
 
-Die Zahlen hinter diesen Sätzen stehen im [Vergleich lokaler Modelle](local-model-comparison.md#deutsch), gemessen gegen `gemma3:4b` auf einem einzelnen 24-GB-Rechner mit erfundenen Daten. Der Hinweis selbst erscheint auf Englisch. Der Satz vergleicht immer mit `gemma3:4b`, auch wenn bei dir ein anderes Modell läuft: Auf einem 24-GB-Rechner mit `gemma4:12b` zum Beispiel schlägt der Hinweis `tev1:4b` vor, das in diesem Vergleich bei der Nachsortierung verlässlich hinter `gemma4:12b` lag und etwa ein Drittel der Zeit je Entscheidung brauchte — mit `later` oder `dismiss` bleibst du bei dem, was du hast.
+Die Zahlen hinter diesen Sätzen stehen im [Vergleich lokaler Modelle](local-model-comparison.md#deutsch), gemessen gegen `gemma3:4b` auf einem einzelnen 24-GB-Rechner mit erfundenen Daten. Der Hinweis selbst erscheint auf Englisch. Der Satz vergleicht mit `gemma3:4b`, auch wenn bei dir ein eigenes Modell läuft. Wer bereits ein Modell der aktiven Empfehlung nutzt, bekommt unabhängig von der Stufe keinen automatischen Wechsel-Hinweis: Eine 24-GB-Installation mit `gemma4:12b` wird nicht zu `tev1:4b` aufgefordert, und eine 32-GB-Installation mit `tev1:4b` nicht zu `gemma4:12b`. `bastra models` zeigt den Vorschlag der Stufe und einen manuellen Wechselbefehl weiterhin. Die Stichwort-Erweiterung dauerte mit `tev1:4b` 1,5 statt 0,9 s, und 16 von 180 Notizen erhielten keine Phrasen statt 1; die ähnlichen Antwortzeiten beziehen sich auf Entwurfs-Prüfung und Nachsortierung.
 
 **Nie automatisch umgestellt.** bastra wechselt dein Modell nie von sich aus — nicht beim Update, nicht mit `update.mode auto`, nicht über den Agenten. Neuinstallationen bekommen das empfohlene Modell einfach vom Installer vorgeschlagen. Bestehende Installationen werden informiert, und die Antwort gehört dir.
 
@@ -641,11 +641,11 @@ Die Zahlen hinter diesen Sätzen stehen im [Vergleich lokaler Modelle](local-mod
 - das installierte Release bringt eine Empfehlung mit, und sie hat einen Eintrag für die Stufe dieser Maschine;
 - die Maschine liegt auf oder über der 16-GB-Stufe (darunter läuft kein Textmodell);
 - auf dieser Installation wird ein Textmodell genutzt: Ollama ist der Embedding-Provider (nur dann führt der Daemon Stichwort-Erweiterung, Entwurfs-Prüfung und Such-Copilot aus), oder du hast selbst ein Textmodell eingerichtet — mit `bastra models set` gespeichert oder per Umgebungsvariable festgelegt —, das `bastra bridges harvest` unabhängig vom Embedding-Provider verwendet;
-- das wirksame Modell ist nicht schon das für diese Maschine empfohlene;
+- das wirksame Modell ist nicht schon eines der Modelle der aktiven Empfehlung;
 - Update-Hinweise sind nicht abgeschaltet (siehe „Abschalten“ unten);
 - du hast noch nicht geantwortet — oder du hast `later` geantwortet und 7 Tage sind vergangen, oder das Release bringt eine neue Empfehlung mit.
 
-**Wann er nicht erscheint.** Sobald einer der Punkte oben nicht zutrifft. Insbesondere: sobald das empfohlene Modell wirksam ist, nach `switch`, nach `dismiss` und 7 Tage lang nach `later`. Ein selbst gewähltes Modell ist keine Ausnahme: Du bekommst denselben Hinweis wie alle anderen.
+**Wann er nicht erscheint.** Sobald einer der Punkte oben nicht zutrifft. Insbesondere: sobald ein Modell der aktiven Empfehlung wirksam ist, nach `switch`, nach `dismiss` und 7 Tage lang nach `later`. Ein Modell außerhalb dieses Satzes bekommt den Hinweis auch dann, wenn du es selbst gewählt hast.
 
 **Wo er erscheint.** An fünf Stellen, die alle einen gemeinsamen Merkzettel deiner Antwort in `~/.bastra/cli-settings.json` lesen — eine Antwort an einer Stelle lässt die anderen verstummen:
 
@@ -653,7 +653,7 @@ Die Zahlen hinter diesen Sätzen stehen im [Vergleich lokaler Modelle](local-mod
 2. **Die Nachhol-Abfrage.** Ein Update führt der Updater aus, der vorher installiert war, und ein Updater aus der Zeit vor dieser Funktion kann nicht fragen. Deshalb fragt stattdessen der erste `bastra`-Befehl, den du danach in einem Terminal ausführst — nach der eigenen Ausgabe des Befehls, ohne dessen Exit-Code zu ändern, und einmal je Empfehlung. Sie fragt nicht, wenn `bastra update` schon gefragt hat oder du im Chat oder auf der Kommandozeile schon geantwortet hast. Sie fragt nie ohne Terminal an beiden Enden (also nicht in Pipes, Skripten, Hooks oder Hintergrundläufen) und nie nach `--json`, `--help`, `--version`, `bastra update`, `models`, `config`, `token`, `completion` oder `uninstall`. Enter oder alles, was sie nicht erkennt, zählt als `later`. Strg-C oder Eingabeende merkt keine Antwort: Die anderen Stellen fragen weiter, das Terminal fragt kein zweites Mal. Eine Antwort, die du einen Moment vorher anderswo gegeben hast, wird von der Frage nie ersetzt, und zwei Befehle, die gleichzeitig fertig werden, fragen einmal: Der Anspruch auf die Frage wird unter einer Sperre auf die Einstellungsdatei vergeben. Ist diese Sperre binnen weniger Sekunden nicht zu bekommen — ein anderer bastra-Prozess hält sie, oder einer wurde abgebrochen und hat sie zurückgelassen —, wird nichts gefragt und nichts geschrieben; die Frage kommt beim nächsten Befehl.
 3. **`bastra models`** zeigt die Empfehlung jederzeit, auch nachdem du sie abgestellt hast.
 4. **Der Sitzungsstart des Agenten** trägt den Hinweis bei jedem Sitzungsstart, bis du geantwortet hast — bewusst, ohne Tagesgrenze. Der Agent ist angewiesen, dir davon zu erzählen, die Downloadgröße zu nennen und zu fragen. Er darf die Befehle unten für dich ausführen, aber erst nach deiner ausdrücklichen Antwort.
-5. **Eine gedimmte Zeile nach CLI-Befehlen**, auf stderr, höchstens einmal am Tag — überall dort, wo die Nachhol-Abfrage nicht greift. Nicht nach `bastra update`, `models`, `config`, `token`, `completion`, `help` und `version`.
+5. **Eine gedimmte Zeile nach CLI-Befehlen**, auf stderr, höchstens einmal am Tag, auch bei parallelen Befehlen — überall dort, wo die Nachhol-Abfrage nicht greift. Nicht nach `bastra update`, `models`, `config`, `token`, `completion`, `help` und `version`.
 
 **Die drei Antworten.** Jeder Hinweis gibt die genauen Befehle aus; sie nennen die Empfehlung, auf die sie antworten (und beim Wechsel das Modell):
 
@@ -679,7 +679,7 @@ Alle drei funktionieren ohne Terminal.
 
 **Zurückwechseln.** Das alte Modell wird nie gelöscht. Nach einem Wechsel gibt der Befehl den genauen Weg zurück aus: `bastra models set <vorheriger tag>`. Ein ungenutztes Modell von der Platte zu entfernen ist deine Sache (`ollama rm <tag>`).
 
-**Mit gesetztem `BASTRA_EXPAND_MODEL` oder `BASTRA_RERANK_MODEL`.** Du bekommst den Hinweis ebenfalls. Er nennt die Variable und sagt, dass sie die gespeicherte Wahl überstimmt: ein Wechsel speichert das neue Modell, aber die Variable gewinnt weiter, bis du sie entfernst und den Daemon neu startest. Nennt die Variable bereits das empfohlene Modell, gibt es keinen Hinweis. Der Hinweis beim Sitzungsstart des Agenten zeigt dein aktuelles Modell nur, wenn es ein schlichter Modell-Tag ist (Buchstaben, Ziffern und `. _ - : /`); alles andere erscheint als „a custom model“, und die Variable wird ohne ihren Wert genannt.
+**Mit gesetztem `BASTRA_EXPAND_MODEL` oder `BASTRA_RERANK_MODEL`.** Du bekommst den Hinweis ebenfalls. Er nennt die Variable und sagt, dass sie die gespeicherte Wahl überstimmt: ein Wechsel speichert das neue Modell, aber die Variable gewinnt weiter, bis du sie entfernst und den Daemon neu startest. Nennt die Variable bereits ein Modell der aktiven Empfehlung, gibt es keinen Hinweis. Der Hinweis beim Sitzungsstart des Agenten zeigt dein aktuelles Modell nur, wenn es ein schlichter Modell-Tag ist (Buchstaben, Ziffern und `. _ - : /`); alles andere erscheint als „a custom model“, und die Variable wird ohne ihren Wert genannt.
 
 **Abschalten.** `BASTRA_UPDATE_CHECK=off` lässt den Hinweis beim Sitzungsstart, nach CLI-Befehlen (Nachhol-Abfrage und gedimmte Zeile) und am Ende von `bastra update` verstummen; `bastra config set update.mode off` ebenso. `bastra models dismiss <empfehlung>` stellt eine einzelne Empfehlung ab. `bastra models` zeigt sie immer, egal was abgeschaltet ist.
 

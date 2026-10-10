@@ -93,7 +93,7 @@ export interface ModelRecommendation {
  * text model are told about it (model-recommendation.ts) and decide
  * themselves. This is the only place that holds it.
  *
- * - To change it — another model, size or sentence for any tier — edit the
+ * - To change an already shipped recommendation — another model, size or sentence — edit the
  *   block and give it a NEW id: answers are remembered per id, so under the
  *   old id everyone who answered "dismiss" or "switch" would never hear of the
  *   change. An unchanged recommendation keeps its id across releases.
@@ -115,13 +115,13 @@ export const MODEL_RECOMMENDATION: ModelRecommendation | null = {
       model: "tev1:4b",
       sizeGB: 4.5,
       improves:
-        "Compared with gemma3:4b: fewer wrong verdicts in the draft check, much harder to steer with injected text, and a more accurate reranker — at a similar answer time.",
+        "Compared with gemma3:4b: fewer wrong verdicts in the draft check, much harder to steer with injected text, and a more accurate reranker. Similar draft-check and reranker answer times; keyword expansion was slower and more often produced no phrases.",
     },
     enhanced: {
       model: "tev1:4b",
       sizeGB: 4.5,
       improves:
-        "Compared with gemma3:4b: fewer wrong verdicts in the draft check, much harder to steer with injected text, and a more accurate reranker — at a similar answer time.",
+        "Compared with gemma3:4b: fewer wrong verdicts in the draft check, much harder to steer with injected text, and a more accurate reranker. Similar draft-check and reranker answer times; keyword expansion was slower and more often produced no phrases.",
     },
     high: {
       model: "gemma4:12b",

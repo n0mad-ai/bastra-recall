@@ -65,9 +65,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `BASTRA_UPDATE_CHECK=off` silences the notice as well. This release carries
   the first recommendation (`2026-10-tev1`): `tev1:4b` (4.5 GB download) on
   machines with 16 GB to under 32 GB of RAM, `gemma4:12b` (8.1 GB) from 32 GB,
-  none below 16 GB. It reaches installs that use a local text model other than
-  the recommended one, and rests on the
+  none below 16 GB. It reaches installs that use a local text model outside
+  that set, and rests on the
   [local model comparison](docs/local-model-comparison.md).
+  Existing users of either recommended model are not prompted to switch
+  between them. The notice distinguishes similar draft-check/reranker answer
+  times from slower, less consistent keyword expansion. Parallel CLI commands
+  claim the daily model notice under a lock, so it is printed only once.
 - **New installs are offered `tev1:4b` as the local text model** from 16 GB of
   RAM (4.5 GB download); `gemma4:12b` stays the alternative from 24 GB and the
   suggestion from 32 GB. Existing installs are not switched: without a stored
