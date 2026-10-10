@@ -49,8 +49,9 @@
  * daemon, or `bastra code index` in a terminal — is building this very repo.
  * That is the system working, but a stranded lock must not retry forever.
  * Six retries with doubling pauses cover an ordinary build's ten-minute
- * timeout, then stop until a manual request. Busy locks do not count as build
- * failures, and automatic triggers cannot shorten their retry pause.
+ * timeout, then pause and try at most once per hour until the lock is free.
+ * Busy locks do not count as build failures, and automatic triggers cannot
+ * shorten their retry pause.
  */
 
 import { buildCodeGraph, scanFileState, type BuildResult } from "./build.js";
@@ -74,6 +75,8 @@ export const DEFAULT_MAX_FAILURES = 3;
 export const DEFAULT_LOCK_RETRY_MS = 10_000;
 /** Six waits total 10.5 minutes at the default base interval. */
 const MAX_LOCK_RETRIES = 6;
+/** Rare recovery after lock contention exhausts the initial retry burst. */
+const LOCK_RECOVERY_MS = 60 * 60_000;
 
 export type RefreshState = "idle" | "waiting" | "running";
 
@@ -85,7 +88,7 @@ export interface RepoStatus {
   /** Consecutive failures. Reset by any success. */
   failures: number;
   lastError: string | null;
-  /** Backoff exhausted: nothing automatic will retry until asked. */
+  /** Build errors stop; exhausted lock retries pause until hourly recovery. */
   givenUp: boolean;
   lastReason: RefreshReason | null;
   /** Completed successful builds since the daemon started. */
@@ -308,6 +311,7 @@ export class CodeGraphRefresher {
     entry.running = false;
 
     if (result.ok) {
+      entry.givenUp = false;
       entry.failures = 0;
       entry.lockAttempts = 0;
       entry.lastError = null;
@@ -322,11 +326,14 @@ export class CodeGraphRefresher {
         entry.givenUp = true;
         entry.lastError = `locked after ${entry.lockAttempts} attempts: ${result.detail}`;
         this.emit({ repoRoot, reason, outcome: "given-up", detail: entry.lastError });
-        return this.settle();
+        this.schedule(repoRoot, entry, LOCK_RECOVERY_MS);
+        return;
       }
       this.schedule(repoRoot, entry, this.lockRetryMs * 2 ** (entry.lockAttempts - 1));
       return;
     } else {
+      // Leaving a lock pause restores the existing build-error policy.
+      entry.givenUp = false;
       entry.lockAttempts = 0;
       entry.failures++;
       entry.lastError = `${result.reason}: ${result.detail}`;

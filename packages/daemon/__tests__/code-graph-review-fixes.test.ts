@@ -16,7 +16,7 @@ const ok: BuildResult = { ok: true, durationMs: 1, tookOverLock: false, manifest
   repoRoot: "/fixture", command: "fixture", fileState: { count: 1, newestMtimeMs: 1 }, lastError: null, dirty: false,
 } };
 
-test("#670: lock waits double, automatic bursts cannot accelerate them, and retries stop", async t => {
+test("#670: lock waits double, automatic bursts cannot accelerate them, and initial retries pause", async t => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let calls = 0, locked = true;
   const refresher = new CodeGraphRefresher({ lockRetryMs: 10, build: async () => {
