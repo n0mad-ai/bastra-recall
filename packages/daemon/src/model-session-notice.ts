@@ -10,8 +10,8 @@ export function modelSessionHintPath(): string {
 }
 
 /** Only claim a day when its block is part of the prepared hook response.
- * Busy (including an orphaned lease), inaccessible or invalid output skips
- * silently. No queue, lease takeover or unlocked fallback on the hook path.
+ * Fresh busy leases, inaccessible or invalid output skip silently. A stale
+ * lease gets one immediate takeover attempt; no queue or unlocked fallback.
  * Like the CLI day marker, this is per user/day, not per recommendation ID. */
 export async function appendModelSessionNotice(
   stdout: string,
@@ -43,6 +43,6 @@ export async function appendModelSessionNotice(
       const next = JSON.stringify({ ...output, hookSpecificOutput: { ...hook, hookEventName: "SessionStart", additionalContext: context } });
       await writeFile(path, [...days, day].slice(-30).join("\n") + "\n", { encoding: "utf8", mode: 0o600 });
       return { stdout: next, block };
-    }, { crossProcess: true, noQueue: true })) ?? skipped;
+    }, { crossProcess: true, noQueue: true, takeOverStale: true })) ?? skipped;
   } catch { return skipped; }
 }

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, chmod, readFile, writeFile, unlink, stat, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, chmod, readFile, writeFile, unlink, stat, utimes, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendModelSessionNotice, modelSessionHintPath } from "../src/model-session-notice.js";
@@ -98,6 +98,24 @@ test("a busy local chain is not queued and produces no late claim", () => fixtur
   finally { release();await writer; }
   await assert.rejects(stat(shownPath),{code:"ENOENT"});
   assert.ok((await appendModelSessionNotice("{}",notice,{shownPath,now:day})).block);
+}));
+
+for (const marked of [false, true]) test(`a stale lease is reclaimed once and today's marker is checked under lock (marked=${marked})`, t => fixture(async dir => {
+  const shownPath = join(dir,"days.txt"), lock = shownPath + ".lock";
+  await writeFile(lock,"invented interrupted owner");
+  const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  await utimes(lock,old,old);
+  if (marked) await writeFile(shownPath,"2026-10-10\n");
+  let err = "";
+  t.mock.method(process.stderr,"write",(text:unknown)=>{err+=String(text);return true;});
+  const started = performance.now();
+  const delivered = await appendModelSessionNotice("{}",notice,{shownPath,now:day});
+  assert.ok(performance.now()-started < 100,"one attempt, never a lease wait");
+  assert.equal(Boolean(delivered.block),!marked);
+  assert.equal(await readFile(shownPath,"utf8"),"2026-10-10\n");
+  await assert.rejects(stat(lock),{code:"ENOENT"});
+  assert.equal(err,"");
+  assert.equal((await appendModelSessionNotice("{}",notice,{shownPath,now:day})).block,"");
 }));
 
 test("only an inserted, well-formed block creates a marker; existing context is retained", () => fixture(async dir => {
