@@ -154,6 +154,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The model recommendation at SessionStart is limited to one prepared hook
+  response per user and UTC day, shared across Claude Code and Codex. A separate
+  day marker keeps the CLI line independent; busy or inaccessible locks skip
+  silently without queueing, and skipped blocks do not spend the day.
+
 - Terminal panels show Git ahead/behind arrows only for positive counts.
   Missing behind arrows do not claim the remote is current; the panel still
   never fetches or accesses the network (#1135).

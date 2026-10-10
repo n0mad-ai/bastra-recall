@@ -861,11 +861,9 @@ async function sessionStart(modelNotice?: () => Promise<ModelOffer | null>): Pro
   }
 }
 
-test("SessionStart: an open recommendation reaches the agent as its own block — at every start, no day throttle", async () => {
-  for (let i = 0; i < 2; i++) {
-    const context = await sessionStart(async () => OFFER);
-    assert.ok(context.includes(formatModelSessionBlock(OFFER).trimStart()));
-  }
+test("SessionStart: an open recommendation reaches the agent once per day", async () => {
+  assert.ok((await sessionStart(async () => OFFER)).includes(formatModelSessionBlock(OFFER).trimStart()));
+  assert.doesNotMatch(await sessionStart(async () => OFFER), /bastra-model-recommendation/);
 });
 
 test("SessionStart: on an install that uses no text model (and after an answer) the block is absent", async () => {
