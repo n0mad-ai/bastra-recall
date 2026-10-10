@@ -165,7 +165,8 @@ async function writePendingRows(path: string, rows: PendingSuggestion[]): Promis
 }
 
 /**
- * Append (capped, atomic). Best-effort — never throws.
+ * Append (capped, atomic). Best-effort — never throws. Only ENOENT starts an
+ * empty store; unreadable or malformed existing files are preserved.
  *
  * #532: this was an UNLOCKED read-modify-write on one shared file, the same
  * bug #240/A9 fixed for the floor registry. Overlapping Stop-hook and curator
@@ -210,9 +211,16 @@ export async function writePendingSuggestion(
       let entries: PendingSuggestion[] = [];
       try {
         const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
-        if (Array.isArray(parsed)) entries = parsed as PendingSuggestion[];
-      } catch {
-        /* missing/corrupt → start fresh */
+        if (!Array.isArray(parsed)) {
+          reportLoss("existing file is not a JSON array — write skipped; original preserved");
+          return;
+        }
+        entries = parsed as PendingSuggestion[];
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          reportLoss("existing file unreadable or invalid — write skipped; original preserved");
+          return;
+        }
       }
       scrubPendingRows(entries);
       if (lane === "trends") {

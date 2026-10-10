@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { formatPendingRelay, PENDING_ENTRY_CHAR_CAP, settleProvisionalSuggestions, takePendingRelay, writePendingSuggestion } from "../src/pending-suggestions.js";
@@ -22,6 +22,39 @@ async function fixture(work: (dir: string, path: string) => Promise<void>): Prom
 async function privateFile(path: string): Promise<void> {
   if (process.platform !== "win32") assert.equal((await stat(path)).mode & 0o777, 0o600);
 }
+
+test("an unreadable existing relay is preserved and warns without text or paths", {
+  skip: process.platform === "win32" || process.getuid?.() === 0,
+}, t => fixture(async (_dir, path) => {
+  await writeFile(path, "[]"); await takePendingRelay(); // Reset the diagnostic budget.
+  const original = JSON.stringify([{ ts: Date.now(), blocks: "Invented old relay observation" }]);
+  await writeFile(path, original); await chmod(path, 0o200);
+  let warning = "";
+  t.mock.method(process.stderr, "write", (chunk: unknown) => { warning += String(chunk); return true; });
+  try { await writePendingSuggestion("Invented new relay observation"); }
+  finally { await chmod(path, 0o600); }
+  assert.equal(await readFile(path, "utf8"), original);
+  assert.match(warning, /write skipped; original preserved/);
+  assert.ok(!warning.includes(path)); assert.doesNotMatch(warning, /Invented/);
+}));
+
+test("invalid JSON or a non-array relay is preserved, while a missing file is created", t => fixture(async (_dir, path) => {
+  await writeFile(path, "[]"); await takePendingRelay();
+  let warning = "";
+  t.mock.method(process.stderr, "write", (chunk: unknown) => { warning += String(chunk); return true; });
+  for (const original of ['{"blocks":"Invented broken relay"', '{"blocks":"Invented wrong shape"}']) {
+    await writeFile(path, original);
+    await writePendingSuggestion("Invented new relay observation");
+    assert.equal(await readFile(path, "utf8"), original);
+  }
+  assert.match(warning, /write skipped; original preserved/);
+  assert.ok(!warning.includes(path)); assert.doesNotMatch(warning, /Invented/);
+  await rm(path);
+  await writePendingSuggestion("Invented fresh relay observation");
+  const rows = JSON.parse(await readFile(path, "utf8"));
+  assert.equal(rows.length, 1); assert.equal(rows[0].blocks, "Invented fresh relay observation");
+  await privateFile(path);
+}));
 
 test("relay writes redact and deduplicate repeated input; references stay readable", () => fixture(async (_dir, path) => {
   await writePendingSuggestion(block); await writePendingSuggestion(block);

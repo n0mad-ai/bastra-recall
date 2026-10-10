@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   writes, and uses 0600 files. Vault comparisons still see original quotes;
   provisional withdrawals retain caller identity. No schema migration runs
   (Refs #513, #675, #1084).
+  Existing relay files that cannot be read or parsed as a JSON array are
+  preserved: the write is skipped with a text-free warning. Only a missing
+  file starts an empty relay.
 - Upgrade `proxy-addr` to 2.0.8 (GHSA-jqcg-44mw-7w3h) and override the
   repository's YAML CLI dependency `argparse` to 2.0.1, removing `sprintf-js`
   (GHSA-hp3w-g68c-fv3c) from the workspace lockfile. The frontmatter parser

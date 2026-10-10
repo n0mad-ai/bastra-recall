@@ -34,6 +34,9 @@ The suggestion relay keeps earlier session excerpts in
 It removes recognizable credentials with the same heuristic as local drafts
 before writing or delivering the text to your assistant. Existing rows are
 cleaned on their next ordinary write and before delivery, without a migration.
+An unreadable or malformed existing relay is left untouched: the new write is
+skipped with a warning that contains no excerpts or paths. A missing file is
+created normally.
 Recency entries are consumed at the next session start; entries older than
 seven days are dropped on that read. Trends retire by their configured session
 counter; their tombstones remain for that many further counted starts unless
@@ -78,7 +81,10 @@ Der Vorschlags-Relay hält Auszüge früherer Sitzungen außerhalb des Vaults in
 `~/.bastra/pending-suggestions.json`, mit Rechten 0600. Vor dem Schreiben und der
 Übergabe an deinen Assistenten entfernt er erkennbare Zugangsdaten mit derselben
 Heuristik wie lokale Entwürfe. Alte Zeilen werden beim nächsten normalen
-Schreiben und vor der Auslieferung geschwärzt, ohne Migration. Recency-Einträge
+Schreiben und vor der Auslieferung geschwärzt, ohne Migration. Eine vorhandene,
+aber unlesbare oder beschädigte Relay-Datei bleibt unverändert: Der neue
+Schreibvorgang entfällt mit einer Warnung ohne Auszüge oder Pfade. Eine fehlende
+Datei wird normal angelegt. Recency-Einträge
 werden beim nächsten Session-Start konsumiert; dabei werden Einträge über sieben
 Tage verworfen. Trends werden nach dem eingestellten Sitzungszähler stillgelegt;
 ihre Tombstones bleiben für ebenso viele weitere gezählte Starts, solange sie
