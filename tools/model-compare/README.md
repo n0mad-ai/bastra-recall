@@ -17,14 +17,19 @@ write. A result is refused inside `~/.bastra`, when its name is a symlink, and
 when it is the same file as an input (corpus, probes, ids, expansion cache) or
 as another output, also when a symlinked directory, a hardlink or another
 spelling of the name leads there. The content goes to a new file that is then
-renamed onto the target. Not covered: another process that swaps a parent
-directory for a symlink between the last check and the rename.
+renamed onto the target. A new result file is readable and writable for its
+owner only (0600), because it can hold corpus and probe text; a result that
+replaces an existing file keeps that file's permissions. Not covered: another
+process that swaps a parent directory for a symlink between the last check and
+the rename.
+
+An error that ends a tool is printed as one line without a stack trace.
 
 `draft-judge.mts` loads the repository's isolation guard like the other tools.
 `BASTRA_*` variables of the shell do not reach it, so its chat mode always asks
 with the production default of 4,096 tokens of context; `BASTRA_OLLAMA_NUM_CTX`
-changed that before. Decision mode sends no context size. What this means for
-the published numbers is in the
+changed that before. Decision mode sends no context size. What is known about
+the published numbers in this respect is in the
 [limits of the comparison](../../docs/local-model-comparison.md#limits-of-this-comparison).
 
 | File | Purpose |
@@ -64,14 +69,20 @@ Name ein Symlink ist und wenn es dieselbe Datei ist wie eine Eingabe (Korpus,
 Proben, IDs, Erweiterungs-Cache) oder wie eine andere Ausgabe, auch wenn ein
 verlinktes Verzeichnis, ein Hardlink oder eine andere Schreibweise des Namens
 dorthin führt. Der Inhalt geht in eine neue Datei, die danach auf das Ziel
-umbenannt wird. Nicht abgedeckt: ein anderer Prozess, der zwischen der letzten
-Prüfung und dem Umbenennen ein Elternverzeichnis gegen einen Symlink tauscht.
+umbenannt wird. Eine neue Ergebnisdatei ist nur für ihren Besitzer les- und
+schreibbar (0600), weil sie Korpus- und Probentext enthalten kann; ein
+Ergebnis, das eine vorhandene Datei ersetzt, behält deren Rechte. Nicht
+abgedeckt: ein anderer Prozess, der zwischen der letzten Prüfung und dem
+Umbenennen ein Elternverzeichnis gegen einen Symlink tauscht.
+
+Ein Fehler, der ein Werkzeug beendet, erscheint als eine Zeile ohne
+Stack-Trace.
 
 `draft-judge.mts` lädt wie die anderen Werkzeuge den Isolations-Guard des
 Repos. `BASTRA_*`-Variablen der Shell erreichen es nicht; der Chat-Modus fragt
 deshalb immer mit dem Produktionsstandard von 4.096 Token Kontext, vorher
 änderte `BASTRA_OLLAMA_NUM_CTX` das. Der Entscheidungs-Modus schickt keine
-Kontextgröße mit. Was das für die veröffentlichten Zahlen heißt, steht bei den
+Kontextgröße mit. Was dazu über die veröffentlichten Zahlen bekannt ist, steht bei den
 [Grenzen des Vergleichs](../../docs/local-model-comparison.md#grenzen-dieses-vergleichs).
 
 ## Recall: neue Erweiterungen und drei Suchwege

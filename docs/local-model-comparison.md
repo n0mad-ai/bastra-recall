@@ -476,16 +476,16 @@ wording) is 1.5 s with or without them.
   overlapped with a second model run (see [section 4](#4-reranker)).
 - The context size of the draft check runs was not recorded. In chat mode
   `draft-judge.mts` asks through the production client, which uses 4,096 tokens
-  unless `BASTRA_OLLAMA_NUM_CTX` is set. When the numbers on this page were
-  measured the tool still read that variable from the shell, and the result
-  files do not say whether it was set; 4,096 is therefore the expected value,
-  not a proven one. For almost every prompt it cannot matter: all but six have
-  at most 4,300 characters and fit several times. The six are padded stress
-  probes of the fresh set (18,000 to 40,000 characters), outside the production
-  limits and counted only in the "All 66 new probes" column; whether another
-  context size changes their outcome was not measured. Since #1130 the tool
-  ignores `BASTRA_*` variables of the shell and always asks with 4,096. Decision
-  mode sends no context size in either version.
+  unless `BASTRA_OLLAMA_NUM_CTX` sets another value, larger or smaller. When the
+  numbers on this page were measured the tool still read that variable from the
+  shell, and the result files do not say whether it was set. What is known are
+  the prompt lengths: of the 1,303 prompts (957 in the default run, 346 in the
+  fresh set) six have 18,263 to 39,840 characters, all of them padded stress
+  probes of the fresh set, and every other prompt has at most 4,280 characters.
+  How many tokens that is for each model was not counted, and whether another
+  context size would have changed a result was not measured. Since #1130 the
+  tool ignores `BASTRA_*` variables of the shell and always asks with 4,096.
+  Decision mode sends no context size in either version.
 - Not tested: models that do not fit a 24 GB machine.
 
 ## Reproduce
@@ -1031,18 +1031,17 @@ und ohne sie 1,5 s.
   sich mit einem zweiten Modelllauf (siehe [Abschnitt 4](#4-nachsortierung)).
 - Die Kontextgröße der Läufe zur Entwurfs-Prüfung wurde nicht festgehalten. Im
   Chat-Modus fragt `draft-judge.mts` über den Produktions-Client, der 4.096
-  Token nutzt, solange `BASTRA_OLLAMA_NUM_CTX` nicht gesetzt ist. Als die Zahlen
-  dieser Seite gemessen wurden, las das Werkzeug diese Variable noch aus der
-  Shell, und die Ergebnisdateien sagen nicht, ob sie gesetzt war; 4.096 ist
-  deshalb der erwartete Wert, kein belegter. Für fast jeden Prompt kann es
-  keinen Unterschied machen: Alle bis auf sechs haben höchstens 4.300 Zeichen
-  und passen mehrfach hinein. Die sechs sind gepolsterte Belastungsproben des
-  frischen Satzes (18.000 bis 40.000 Zeichen), außerhalb der
-  Produktionsgrenzen und nur in der Spalte „Alle 66 neuen Proben“ gezählt; ob
-  eine andere Kontextgröße ihren Ausgang ändert, wurde nicht gemessen. Seit
-  #1130 ignoriert das Werkzeug `BASTRA_*`-Variablen der Shell und fragt immer
-  mit 4.096. Der Entscheidungs-Modus schickt in beiden Fassungen keine
-  Kontextgröße mit.
+  Token nutzt, solange `BASTRA_OLLAMA_NUM_CTX` keinen anderen Wert setzt,
+  größer oder kleiner. Als die Zahlen dieser Seite gemessen wurden, las das
+  Werkzeug diese Variable noch aus der Shell, und die Ergebnisdateien sagen
+  nicht, ob sie gesetzt war. Bekannt sind die Längen der Prompts: Von den 1.303
+  Prompts (957 im Standardlauf, 346 im frischen Satz) haben sechs 18.263 bis
+  39.840 Zeichen, alle davon gepolsterte Belastungsproben des frischen Satzes,
+  und jeder andere Prompt hat höchstens 4.280 Zeichen. Wie viele Token das je
+  Modell sind, wurde nicht gezählt, und ob eine andere Kontextgröße ein
+  Ergebnis geändert hätte, wurde nicht gemessen. Seit #1130 ignoriert das
+  Werkzeug `BASTRA_*`-Variablen der Shell und fragt immer mit 4.096. Der
+  Entscheidungs-Modus schickt in beiden Fassungen keine Kontextgröße mit.
 - Nicht getestet: Modelle, die nicht auf einen 24-GB-Rechner passen.
 
 ### Nachmessen
