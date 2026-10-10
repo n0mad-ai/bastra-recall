@@ -122,6 +122,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   no arbitrary shell/C evaluation: unquoted `WiFi.begin` password values and
   other vendor grammars can remain readable. See the
   [coverage and limits](docs/secret-redaction.md) (Refs #1113).
+- Claude Code doctor keeps healthy recall hooks enabled when only the new
+  save-notice registration is missing, reports that entry separately and points
+  to `bastra install claude-code`. Missing required recall hooks and malformed
+  settings still need repair (Refs #1094).
 - **A settings file that cannot be read is no longer written over — a
   behaviour change for every command that stores a setting** (`bastra config
   set`, `embeddings on|off`, `models set`, `token`, the installer, the
