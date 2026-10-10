@@ -88,6 +88,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   single silent attempt, so an interrupted command cannot suppress it forever.
   Fresh or unwritable locks still skip the hint without waiting; other
   advisory claims retain their existing policy.
+- **Release verification waits for the complete npm set in one window** (#1076).
+  `--verify` polls only unfinished packages for up to five minutes, with a
+  growing pause capped at 30 seconds, instead of giving each package a short
+  fixed slot. Registry reads share that deadline; late-visible manifests still
+  have to match the release. On expiry it lists every unfinished package.
+  Verification never publishes; publishing order and asset checks are unchanged.
+
 - **A settings file that cannot be read is no longer written over — a
   behaviour change for every command that stores a setting** (`bastra config
   set`, `embeddings on|off`, `models set`, `token`, the installer, the
