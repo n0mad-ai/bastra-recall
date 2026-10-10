@@ -19,7 +19,8 @@ as another output, also when a symlinked directory, a hardlink or another
 spelling of the name leads there. The content goes to a new file that is then
 renamed onto the target. A new result file is readable and writable for its
 owner only (0600), because it can hold corpus and probe text; a result that
-replaces an existing file keeps that file's permissions. Not covered: another
+replaces an existing file keeps that file's owner, group and permissions, and
+is refused when owner or group cannot be kept. Not covered: another
 process that swaps a parent directory for a symlink between the last check and
 the rename.
 
@@ -71,7 +72,8 @@ verlinktes Verzeichnis, ein Hardlink oder eine andere Schreibweise des Namens
 dorthin führt. Der Inhalt geht in eine neue Datei, die danach auf das Ziel
 umbenannt wird. Eine neue Ergebnisdatei ist nur für ihren Besitzer les- und
 schreibbar (0600), weil sie Korpus- und Probentext enthalten kann; ein
-Ergebnis, das eine vorhandene Datei ersetzt, behält deren Rechte. Nicht
+Ergebnis, das eine vorhandene Datei ersetzt, behält deren Besitzer, Gruppe und
+Rechte und wird abgelehnt, wenn Besitzer oder Gruppe sich nicht erhalten lassen. Nicht
 abgedeckt: ein anderer Prozess, der zwischen der letzten Prüfung und dem
 Umbenennen ein Elternverzeichnis gegen einen Symlink tauscht.
 

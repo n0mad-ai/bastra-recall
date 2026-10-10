@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { lstatSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 
@@ -90,9 +90,11 @@ const inside = (path: string, dir: string): boolean => {
  * The write goes to a new file beside the target and is renamed onto it. A
  * rename replaces the name and follows no link, so whatever the name turned
  * into in the meantime, no other file receives the content.
- * Results can hold corpus and probe text: the new file is created 0600, and
- * a result that replaces an existing file takes over that file's permission
- * bits, so a rewrite never makes a file readable for more users than it was.
+ * Results can hold corpus and probe text, so a rewrite must never make a file
+ * readable for more users than it was. The new file is created 0600 and stays
+ * that way for a result that did not exist. One that replaces a file first
+ * gets that file's owner and group and only then its permission bits (never
+ * setuid, setgid or sticky); if owner or group cannot be kept, nothing is written.
  * Not covered: a parent directory swapped for a symlink by another process
  * between the last check and the rename.
  */
@@ -109,20 +111,29 @@ export function outputGuard(outputs: Array<string | undefined>, inputs: Array<st
     for (const other of [...ins, ...outs.filter(o => o !== target)]) {
       if (core.realpathOfNearestExisting(other) === path || core.sameFile(other, path)) throw Error(`Output ${target} is the same file as ${other}; an output must not overwrite an input or another output`);
     }
-    return { dir, path, mode: found ? found.mode & 0o777 : 0o600 };
+    // Known before the measurement: only root can hand a file back to another owner.
+    if (found && process.getuid && process.getuid() !== 0 && found.uid !== process.getuid()) throw Error(`Output ${target} belongs to another user (uid ${found.uid}); replacing it would change who owns it`);
+    return { dir, path, found };
   };
   outs.forEach(place);
   return async (file: string, text: string) => {
     const target = resolve(file);
     await mkdir(place(target).dir, { recursive: true });
     const { dir, path } = place(target), tmp = join(dir, `.${basename(path)}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`);
+    const handle = await open(tmp, "wx", 0o600);
     try {
-      await writeFile(tmp, text, { flag: "wx", mode: 0o600 });
+      await handle.writeFile(text);
       const now = place(target);
       if (now.path !== path) throw Error(`Output ${target} moved during the write`);
-      await chmod(tmp, now.mode);
+      if (now.found) {
+        const { uid, gid, mode } = now.found, mine = await handle.stat();
+        // A new file takes its group from the directory; only a difference needs the change.
+        if (mine.uid !== uid || mine.gid !== gid) await handle.chown(uid, gid).catch(error => { throw Error(`Output ${target} was not written: owner and group of the existing file (uid ${uid}, gid ${gid}) cannot be kept (${errorText(error)})`); });
+        await handle.chmod(mode & 0o777);
+      }
+      await handle.close();
       await rename(tmp, path);
-    } catch (error) { await rm(tmp, { force: true }); throw error; }
+    } catch (error) { await handle.close().catch(() => {}); await rm(tmp, { force: true }); throw error; }
   };
 }
 export const pretty = (value: unknown) => JSON.stringify(value, null, 2) + "\n";
