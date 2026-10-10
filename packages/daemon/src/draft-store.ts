@@ -426,15 +426,17 @@ export async function expireDrafts(opts: { now?: number; memoryExists?: (id: str
   }, { crossProcess: true });
 }
 
-export async function purgeDrafts(): Promise<void> {
+export async function purgeDrafts(): Promise<{ pendingRelay: boolean }> {
   const path = draftsPath();
-  await withDraftPublication(() => withPathLock(path, async () => {
-    await purgePendingSuggestions();
-    await unlink(path).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
-    await unlink(draftVectorsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
-    await unlink(draftDecisionsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
-    cache = undefined;
-  }, { crossProcess: true }));
+  return withDraftPublication(() => withPathLock(path, async () => {
+    const pendingRelay = await purgePendingSuggestions(async () => {
+      await unlink(path).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
+      await unlink(draftVectorsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
+      await unlink(draftDecisionsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
+      cache = undefined;
+    });
+    return { pendingRelay };
+  }, { crossProcess: true, requireLock: true }));
 }
 
 /** Retrieval mutations preserve concurrent harvest evidence and retained tombstones. */

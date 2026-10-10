@@ -87,6 +87,13 @@ content: it can be retrieved by connected clients and processed by the chosen
 vault embedding provider, including a non-local provider. That provider path
 is separate from the assistant; draft embeddings themselves remain local.
 
+
+Busy relay reads are skipped immediately and retain their entries for the next
+start. Stop-hook writes skip contention on the response path and are retried
+in the daemon background under a real lock, without normal busy-lock warnings.
+The in-memory deferred write can be lost if the daemon is killed before it is
+persisted; this is not a second durable queue.
+
 #### Switching off and clearing drafts
 
 Set the switches in the **daemon's environment** and restart it; changing only
@@ -101,9 +108,11 @@ For draft capture and hints to stay off, set **both** draft switches; add
 `BASTRA_PENDING_RELAY=0` to stop shared relay writes and delivery as well.
 `bastra drafts list` inspects the store. `bastra drafts purge` removes the draft
 store, vectors and decision receipts, and clears the pending relay to an empty
-0600 file under its usual lock, even when relay delivery is disabled. An unreadable
-or malformed relay is preserved and the command fails before deleting drafts.
-The command reports the cleared stores; it does not clear the harvest queue,
+0600 file under its usual lock, even when relay delivery is disabled. The relay is validated first, then drafts are deleted, then the relay is cleared.
+An unreadable or malformed relay is preserved and the command fails before
+deleting drafts; an empty relay is accepted. Failed draft deletion leaves the
+relay unchanged.
+The command reports the cleared stores and marks an absent relay as not present; it does not clear the harvest queue,
 optional training capture or already promoted vault notes. Stop capture before
 clearing to prevent new entries. The harvest queue can resume queued sessions
 when harvest is reenabled; its session/path metadata is retained.
@@ -226,6 +235,14 @@ können sie abrufen, und der gewählte Vault-Embedding-Anbieter kann sie verarbe
 auch ein nicht-lokaler Anbieter. Dieser Anbieterweg läuft getrennt vom Assistenten;
 die Embeddings der Entwürfe selbst bleiben lokal.
 
+
+Belegte Relay-Sperren werden beim Lesen sofort übersprungen; die Einträge bleiben
+für den nächsten Start. Stop-Hook-Schreibvorgänge warten auf dem Antwortweg
+nicht auf die Sperre und werden im Daemon-Hintergrund unter einer echten Sperre
+wiederholt, ohne Störmeldung bei normaler Belegung. Ein noch nicht gespeicherter
+Auftrag im Arbeitsspeicher kann bei einem harten Daemon-Abbruch verloren gehen;
+das ist keine zweite dauerhafte Warteschlange.
+
 #### Abschalten und Entwürfe entfernen
 
 Die Schalter in der **Umgebung des Daemons** setzen und ihn neustarten;
@@ -242,8 +259,11 @@ setzen; zusätzlich `BASTRA_PENDING_RELAY=0` schaltet die gemeinsame Weitergabe
 vollständig ab. `bastra drafts list` zeigt die Ablage. `bastra drafts purge`
 entfernt Entwurfsablage, Vektoren und Entscheidungsmerker und leert den Relay
 unter derselben Sperre in eine leere 0600-Datei, auch bei abgeschalteter
-Weitergabe. Ein unlesbarer oder beschädigter Relay bleibt erhalten; der Befehl
-scheitert vor dem Löschen der Entwürfe. Die Ausgabe nennt die geleerten Ablagen.
+Weitergabe. Zuerst wird der Relay geprüft, dann werden Entwürfe gelöscht, danach wird der Relay
+geleert. Ein unlesbarer oder beschädigter Relay bleibt erhalten; der Befehl
+scheitert vor dem Löschen der Entwürfe. Eine leere Relay-Datei wird akzeptiert;
+scheitert das Löschen der Entwürfe, bleibt der Relay unverändert. Die Ausgabe
+nennt die geleerten Ablagen und kennzeichnet einen fehlenden Relay als nicht vorhanden.
 Harvest-Queue, optionale Trainingsdaten und bereits beförderte Vault-Notizen
 bleiben erhalten. Vor dem Leeren die Erfassung abschalten, damit keine neuen
 Einträge entstehen. Die Harvest-Queue behält Sitzungs-/Pfadmetadaten und kann

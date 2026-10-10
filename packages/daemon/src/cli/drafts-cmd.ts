@@ -1,4 +1,5 @@
 /** Local draft administration (#1084). Local store operations; undo resolves a vault without contacting the daemon. */
+import { PendingRelayAccessError } from "../pending-suggestions.js";
 import { Vault } from "@bastra-recall/core";
 import { undoDraftPromotion } from "../draft-promote.js";
 import { resolveVault } from "./helpers.js";
@@ -22,8 +23,11 @@ export async function cmdDrafts(args: ParsedArgs): Promise<number> {
         process.stdout.write(args.json ? JSON.stringify({ undone: memoryId }) + "\n" : `Draft promotion undone: ${memoryId}\n`);
       } finally { await vault.stop(); }
     } else if (sub === "purge") {
-      await purgeDrafts();
-      process.stdout.write(args.json ? '{"purged":true,"cleared":["drafts","vectors","decisions","pending-relay"]}\n' : "Local drafts, vectors, decision receipts and pending relay cleared.\n");
+      const { pendingRelay } = await purgeDrafts();
+      const cleared = ["drafts", "vectors", "decisions", ...(pendingRelay ? ["pending-relay"] : [])];
+      process.stdout.write(args.json ? JSON.stringify({ purged: true, cleared, ...(!pendingRelay ? { pending_relay: "absent" } : {}) }) + "\n"
+        : `Local drafts, vectors and decision receipts cleared; pending relay ${pendingRelay ? "cleared" : "not present"}.\n`);
+
     } else {
       const rows = await listDrafts();
       if (args.json) process.stdout.write(JSON.stringify(rows) + "\n");
@@ -37,7 +41,7 @@ export async function cmdDrafts(args: ParsedArgs): Promise<number> {
     let message = error instanceof Error ? error.message : "";
     if (message === "note changed since promotion") message += "; review it and use --force to undo";
     const known = ["draft is not a promoted note", "draft belongs to a different or unconfirmed vault", "note no longer matches draft provenance", "promotion receipt missing; review the note and use --force to undo", "note changed since promotion; review it and use --force to undo"];
-    process.stderr.write(`error: ${sub === "undo" && known.includes(message) ? message : "cannot access local drafts"}\n`);
+    process.stderr.write(`error: ${error instanceof PendingRelayAccessError || sub === "undo" && known.includes(message) ? message : "cannot access local drafts"}\n`);
     return 1;
   }
 }
