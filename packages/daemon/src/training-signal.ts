@@ -12,10 +12,10 @@
  * `#1128-capture` are the whole feature. Delete them once #1128 is decided.
  */
 import { createHmac, randomBytes } from "node:crypto";
-import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, writeSync, type Stats } from "node:fs";
-import { appendFile, mkdir } from "node:fs/promises";
+import { constants, type Stats } from "node:fs";
+import { appendFile, lstat, mkdir, open, type FileHandle } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Memory, RecallHit, Vault } from "@bastra-recall/core";
 import { envFirst, envOff, isOnValue, testRunLogDir } from "./env.js";
 
@@ -23,8 +23,13 @@ const logDir = (): string => envFirst("BASTRA_LOG_PATH", "NEXUS_LOG_PATH") ?? te
 
 // ─── This feature's own files ────────────────────────────────────────────────
 
-/** Open flag that refuses a symbolic link as the last path component (absent on Windows). */
-export const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
+/** Refuse a symbolic link as the last path component (absent on Windows). */
+const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
+/** Never wait in `open`: a FIFO opened for reading waits for a writer otherwise. */
+const NONBLOCK = constants.O_NONBLOCK ?? 0;
+
+/** The path holds something that is not this feature's own regular file. */
+export class RefusedFile extends Error {}
 
 /**
  * Is the file behind an open handle this feature's own regular file? Asked of
@@ -34,8 +39,31 @@ export const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
  * has a different inode — the check that also holds without O_NOFOLLOW).
  * A linked parent directory is not refused: a log directory may be one.
  */
-export function isOwnRegularFile(info: Stats, at: Stats | null): boolean {
+function isOwnRegularFile(info: Stats, at: Stats | null): boolean {
   return info.isFile() && info.nlink === 1 && !!at && at.ino === info.ino && at.dev === info.dev;
+}
+
+/**
+ * The one way this feature opens its two files. Three steps, none of which
+ * can wait on a file that is not one: look first (`lstat` — a FIFO, socket,
+ * device, directory or link is refused unopened), open without following a
+ * link and without blocking, then ask the open handle again, because the path
+ * may have changed between the look and the open. A path that does not exist
+ * is the caller's case (`ENOENT`, or a create via `flags`).
+ */
+export async function openOwnFile(path: string, flags: number, mode = 0o600): Promise<FileHandle> {
+  const before = await lstat(path).catch(() => null);
+  if (before && !before.isFile()) throw new RefusedFile();
+  let handle: FileHandle;
+  try { handle = await open(path, flags | NOFOLLOW | NONBLOCK, mode); } catch (error) {
+    // A link (ELOOP/EMLINK), a FIFO without a reader (ENXIO) or a directory that appeared since the look.
+    if (["ELOOP", "EMLINK", "ENXIO", "EISDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) throw new RefusedFile();
+    throw error;
+  }
+  try {
+    if (!isOwnRegularFile(await handle.stat(), await lstat(path).catch(() => null))) throw new RefusedFile();
+    return handle;
+  } catch (error) { await handle.close(); throw error; }
 }
 
 const warned = new Set<string>();
@@ -43,7 +71,7 @@ const warned = new Set<string>();
 export function warnRefusedFile(name: string): void {
   if (warned.has(name)) return;
   warned.add(name);
-  console.error(`[bastra-recall] ${name} is not a regular file of its own (a link, or unreadable) — it is left untouched and nothing is written`);
+  console.error(`[bastra-recall] ${name} is not a regular file of its own (a link, a pipe, or unreadable) — it is left untouched and nothing is written`);
 }
 
 // ─── Candidate pool: note state and per-arm rank ─────────────────────────────
@@ -57,46 +85,64 @@ export interface TelemetryPoolCandidate {
   /** 1-based rank in the vector arm; null = that arm did not carry the note. */
   rank_vector?: number | null;
   /** {@link noteContentHash} of the note as it was ranked. Absent for a private
-   *  note, with telemetry off, and when the local key is unavailable. */
+   *  note, with telemetry off, and while the local key is not in memory. */
   content_hash?: string;
 }
 
 export const CONTENT_KEY_FILE = "training-signal.key";
-let contentKey: { path: string; key: Buffer } | undefined;
+/** How long a key (or the lack of one) is used before the file is looked at again. */
+export const CONTENT_KEY_RECHECK_MS = 60_000;
+let contentKey: { path: string; key: Buffer | null; checked: number } | undefined;
+let loading: { path: string; done: Promise<Buffer | null> } | undefined;
+
+async function readOrCreateKey(path: string): Promise<Buffer> {
+  await mkdir(dirname(path), { recursive: true });
+  try {
+    // O_EXCL creates or fails; it never opens what is already there, whatever that is.
+    const fresh = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NOFOLLOW | NONBLOCK, 0o600);
+    try { const key = randomBytes(32); await fresh.writeFile(key.toString("hex")); return key; } finally { await fresh.close(); }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  }
+  const handle = await openOwnFile(path, constants.O_RDONLY);
+  let text: string;
+  try { text = (await handle.readFile("utf8")).trim(); } finally { await handle.close(); }
+  if (!/^[a-f0-9]{64}$/.test(text)) throw new RefusedFile();
+  return Buffer.from(text, "hex");
+}
 
 /**
- * The local secret the content hash is keyed with: 32 random bytes, created
- * once, 0600, beside the event log. Never in the vault, never in an event row.
- * Null when it cannot be had as a regular file of its own — then no hash is
- * written at all, rather than an unkeyed one. Only a success is remembered, so
- * a key another process is still writing is simply read on the next recall.
+ * Read the local secret the content hash is keyed with, creating it if there
+ * is none: 32 random bytes, 0600, beside the event log. Never in the vault,
+ * never in an event row. Resolves to null when the file cannot be had as a
+ * regular file of its own. Always asynchronous and never on a recall's path —
+ * a recall only reads what this has put in memory ({@link noteContentHash}).
  */
-function loadContentKey(): Buffer | null {
-  const dir = logDir(), path = join(dir, CONTENT_KEY_FILE);
-  if (contentKey?.path === path) return contentKey.key;
-  let fd = -1;
-  try {
-    mkdirSync(dir, { recursive: true });
-    let key: Buffer | undefined;
-    try {
-      // O_EXCL never follows a link: an existing one is EEXIST, and the read below refuses it.
-      fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NOFOLLOW, 0o600);
-      key = randomBytes(32);
-      writeSync(fd, key.toString("hex"));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      fd = openSync(path, constants.O_RDONLY | NOFOLLOW);
-      if (!isOwnRegularFile(fstatSync(fd), lstatSync(path))) throw new Error("not a regular file");
-      const text = readFileSync(fd, "utf8").trim();
-      if (!/^[a-f0-9]{64}$/.test(text)) throw new Error("not a key");
-      key = Buffer.from(text, "hex");
-    }
-    contentKey = { path, key };
-    return key;
-  } catch {
+export function loadContentKey(): Promise<Buffer | null> {
+  const path = join(logDir(), CONTENT_KEY_FILE);
+  if (loading?.path === path) return loading.done;
+  const done = readOrCreateKey(path).then((key) => {
+    // Unchanged bytes keep their Buffer, so hashes already computed stay valid.
+    const kept = contentKey?.path === path && contentKey.key?.equals(key) ? contentKey.key : key;
+    contentKey = { path, key: kept, checked: Date.now() };
+    return kept;
+  }, () => {
     warnRefusedFile(CONTENT_KEY_FILE);
+    contentKey = { path, key: null, checked: Date.now() };
     return null;
-  } finally { if (fd >= 0) closeSync(fd); }
+  }).finally(() => { if (loading?.done === done) loading = undefined; });
+  loading = { path, done };
+  return done;
+}
+
+/** The key in memory, or null. Starts a background read when there is none yet
+ *  or the last look at the file is older than {@link CONTENT_KEY_RECHECK_MS} —
+ *  that is how a deleted or replaced key file takes effect in a running process. */
+function keyInMemory(): Buffer | null {
+  const path = join(logDir(), CONTENT_KEY_FILE);
+  const known = contentKey?.path === path ? contentKey : undefined;
+  if (!known || Date.now() - known.checked > CONTENT_KEY_RECHECK_MS) void loadContentKey();
+  return known?.key ?? null;
 }
 
 const hashes = new WeakMap<Memory, { key: Buffer; hash: string }>();
@@ -107,10 +153,14 @@ const hashes = new WeakMap<Memory, { key: Buffer; hash: string }>();
  * machine the same content gives the same value, so a later or archived copy
  * of the note can be recognised as the one a recall ranked. Without the key
  * the value says nothing about the content: trying candidate texts against it
- * (a short note, a known title) does not work. Null without a key.
+ * (a short note, a known title) does not work.
+ *
+ * Does no file I/O and never waits: null while the key is not in memory, which
+ * includes the first recall after a start. Better a row without a hash than a
+ * recall that waits for one.
  */
 export function noteContentHash(note: Memory): string | null {
-  const key = loadContentKey();
+  const key = keyInMemory();
   if (!key) return null;
   const known = hashes.get(note);
   if (known?.key === key) return known.hash;

@@ -8,10 +8,11 @@
  *
  * Runner: `node --import tsx --import ./scripts/test-env.mjs --test packages/daemon/__tests__/training-signal.test.ts`
  */
-import { test } from "node:test";
+import { test, mock } from "node:test";
+import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { createHash, createHmac } from "node:crypto";
-import { mkdtemp, readFile, readdir, stat, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, stat, unlink, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Vault, SearchIndex, EmbeddingIndex, type EmbeddingProvider, type Memory, type RecallHit } from "@bastra-recall/core";
@@ -20,7 +21,7 @@ import { recallHandler, loadMemoryHandler, type ToolDeps } from "../src/tool-han
 import { Telemetry } from "../src/telemetry.js";
 import { writeDraftEvent } from "../src/draft-events.js";
 import { harvestFarBridges, type MemoryInfo } from "../src/learned-recall/harvest.js";
-import { evalRunMark, noteContentHash, recordRerankVerdicts, telemetryCandidatePool, CONTENT_KEY_FILE, type RerankVerdict } from "../src/training-signal.js";
+import { evalRunMark, loadContentKey, noteContentHash, recordRerankVerdicts, telemetryCandidatePool, CONTENT_KEY_FILE, CONTENT_KEY_RECHECK_MS, type RerankVerdict } from "../src/training-signal.js";
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const BODY = "Synthetic body about the flux compensator calibration bench.";
@@ -66,6 +67,7 @@ test("D — a recall's candidate pool names the note's content hash, and still n
   try {
     const telemetry = new Telemetry();
     const deps: ToolDeps = { vault, search, telemetry, vaultPath: root };
+    await loadContentKey();
     await recallHandler(deps, { query: "flux compensator drift tuning", k: 5 });
     await sleep(30);
     const recall = (await rows(dir)).find((row) => row.kind === "recall")!;
@@ -100,7 +102,9 @@ test("D — on the hybrid path each candidate carries its rank in the keyword an
 test("D — the hash follows the note's content, and a private note gets none", () => withEnv({}, async (dir) => {
   const { vault, search, root } = await fixtureVault(dir);
   try {
+    await loadContentKey();
     const before = noteContentHash(vault.get("flux-note")!);
+    assert.match(before!, /^[a-f0-9]{16}$/);
     await writeFile(join(root, "flux.md"), memoryMd("flux-note", "flux compensator drift tuning", BODY + " Revised."));
     await writeFile(join(root, "secret.md"), memoryMd("secret-note", "payroll ledger", "Synthetic private body.", "private"));
     await vault.reconcile();
@@ -119,6 +123,7 @@ test("D — the hash is keyed with a local secret: candidate texts cannot be tri
   let first = "";
   await withEnv({}, async (dir) => {
     const actual = note(5432);
+    await loadContentKey();
     first = telemetryCandidatePool([hit], { get: () => actual })[0].content_hash!;
     assert.match(first, /^[a-f0-9]{16}$/);
     // The reviewer's dictionary attack: hash every candidate the way the code did before.
@@ -138,6 +143,8 @@ test("D — the hash is keyed with a local secret: candidate texts cannot be tri
     assert.ok(!JSON.stringify(await rows(dir)).includes(key));
   });
   await withEnv({}, async () => {
+    await loadContentKey();
+    assert.match(noteContentHash(note(5432))!, /^[a-f0-9]{16}$/);
     assert.notEqual(noteContentHash(note(5432)), first, "a second log directory has its own key");
   });
 });
@@ -146,11 +153,12 @@ test("D — no key, no hash: a linked key file is refused and left untouched; te
   const note = { fm: { id: "n", title: "Fixture", summary: "Fixture", recall_when: [], sensitivity: "team" }, body: "Synthetic body." } as unknown as Memory;
   const hit = { id: "n", score: 1 } as RecallHit;
   await withEnv({}, async (dir) => {
-    const { mkdir, symlink } = await import("node:fs/promises");
+    const { symlink } = await import("node:fs/promises");
     await mkdir(join(dir, "logs"));
     const outside = join(dir, "outside.txt");
     await writeFile(outside, "a".repeat(64));
     await symlink(outside, join(dir, "logs", CONTENT_KEY_FILE));
+    assert.equal(await loadContentKey(), null);
     assert.deepEqual(telemetryCandidatePool([hit], { get: () => note }), [{ id: "n", score: 1 }]);
     assert.equal(noteContentHash(note), null);
     assert.equal(await readFile(outside, "utf8"), "a".repeat(64));
@@ -160,6 +168,81 @@ test("D — no key, no hash: a linked key file is refused and left untouched; te
     assert.deepEqual(await readdir(join(dir, "logs")).catch(() => []), []);
   });
 });
+
+/** Fails instead of hanging when `work` does not settle: the proof that nothing waits on a pipe. */
+async function promptly<T>(work: Promise<T>, ms = 2000): Promise<T> {
+  let timer!: NodeJS.Timeout;
+  const late = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`still waiting after ${ms} ms`)), ms); });
+  try { return await Promise.race([work, late]); } finally { clearTimeout(timer); }
+}
+const plainNote = { fm: { id: "n", title: "Invented", summary: "Invented", recall_when: [], sensitivity: "team" }, body: "Invented port is 5432." } as unknown as Memory;
+
+test("D — a recall never waits for the key: the first one after a start has no hash and answers, a later one has it", () => withEnv({}, async (dir) => {
+  const { vault, search, root } = await fixtureVault(dir);
+  try {
+    const telemetry = new Telemetry();
+    const deps: ToolDeps = { vault, search, telemetry, vaultPath: root };
+    const first = (await recallHandler(deps, { query: "flux compensator drift tuning", k: 5 })) as unknown as { hits: { id: string }[] };
+    assert.equal(first.hits[0].id, "flux-note");
+    await loadContentKey();
+    await recallHandler(deps, { query: "flux compensator drift tuning", k: 5 });
+    await sleep(30);
+    const pools = (await rows(dir)).filter((row) => row.kind === "recall").map((row) => row.candidate_pool.find((c: { id: string }) => c.id === "flux-note"));
+    assert.ok(!("content_hash" in pools[0]), "nothing was read on the first recall's path");
+    assert.match(pools[1].content_hash, /^[a-f0-9]{16}$/);
+  } finally { search.stop(); await vault.stop(); }
+}));
+
+test("D — a named pipe in place of the key blocks nothing: the recall answers, no hash is written, the pipe is left alone", { skip: process.platform === "win32", timeout: 15_000 }, () => withEnv({}, async (dir) => {
+  await mkdir(join(dir, "logs"));
+  const pipe = join(dir, "logs", CONTENT_KEY_FILE);
+  execFileSync("mkfifo", [pipe]);
+  const { vault, search, root } = await fixtureVault(dir);
+  try {
+    const telemetry = new Telemetry();
+    const deps: ToolDeps = { vault, search, telemetry, vaultPath: root };
+    const answer = (await promptly(recallHandler(deps, { query: "flux compensator drift tuning", k: 5 }))) as unknown as { hits: { id: string }[] };
+    assert.equal(answer.hits[0].id, "flux-note");
+    assert.equal(await promptly(loadContentKey()), null);
+    assert.equal(noteContentHash(plainNote), null);
+    await promptly(recallHandler(deps, { query: "flux compensator drift tuning", k: 5 }));
+    await sleep(30);
+    const recalls = (await rows(dir)).filter((row) => row.kind === "recall");
+    assert.equal(recalls.length, 2);
+    assert.ok(recalls.every((row) => row.candidate_pool.every((c: object) => !("content_hash" in c))));
+    assert.ok((await stat(pipe)).isFIFO());
+  } finally { search.stop(); await vault.stop(); }
+}));
+
+test("D — a directory in place of the key is refused the same way", { timeout: 15_000 }, () => withEnv({}, async (dir) => {
+  await mkdir(join(dir, "logs", CONTENT_KEY_FILE), { recursive: true });
+  assert.equal(await promptly(loadContentKey()), null);
+  assert.equal(noteContentHash(plainNote), null);
+}));
+
+test("D — deleting the key file takes effect in the running process: a new key, a new file, other hashes", () => withEnv({}, async (dir) => {
+  const keyPath = join(dir, "logs", CONTENT_KEY_FILE);
+  await loadContentKey();
+  const before = noteContentHash(plainNote)!;
+  const oldKey = await readFile(keyPath, "utf8");
+  await unlink(keyPath);
+  // Within the recheck window the key in memory is still used and no file is touched.
+  assert.equal(noteContentHash(plainNote), before);
+  mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  try {
+    mock.timers.tick(CONTENT_KEY_RECHECK_MS + 1);
+    assert.equal(noteContentHash(plainNote), before, "the call that notices does not wait either");
+    await loadContentKey(); // the background read that call started
+  } finally { mock.timers.reset(); }
+  const after = noteContentHash(plainNote)!;
+  assert.match(after, /^[a-f0-9]{16}$/);
+  assert.notEqual(after, before);
+  const newKey = await readFile(keyPath, "utf8");
+  assert.match(newKey, /^[a-f0-9]{64}$/); assert.notEqual(newKey, oldKey);
+  // An unchanged file keeps its key across a recheck.
+  await loadContentKey();
+  assert.equal(noteContentHash(plainNote), after);
+}));
 
 // ─── E: the recall that served a load ────────────────────────────────────────
 

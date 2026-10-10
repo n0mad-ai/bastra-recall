@@ -37,9 +37,21 @@ can be recognised as the one a recall ranked. What it does not allow: without
 the key, nobody can test guesses about a note's content against the value, not
 even for a short note with a known title. The key is 32 random bytes in
 `training-signal.key` in the log directory, created on first use with
-permissions 0600. It is never written to the vault or into an event row. If you
-delete it, a new one is created and earlier hashes can no longer be matched. If
-the key file is a link or cannot be read, no hash is written at all.
+permissions 0600. It is never written to the vault or into an event row.
+
+A recall never waits for the key. It is read in the background and kept in
+memory, so the first recall after a start, and any recall while the key is not
+in memory, is written without a hash. If something other than a regular file
+is found under the key's name (a link, a pipe, a directory), it is left
+untouched and no hash is written at all.
+
+If you delete the key file, a new key is created and earlier hashes can no
+longer be matched. A running process does not notice at once: it looks at the
+file again at most once a minute, during a recall, and until that look is done
+keeps using the key it has in memory. Every process that writes hashes (the
+daemon, a stdio server, a measurement script) does this on its own. To be sure
+no row is written with the old key after the deletion, stop those processes
+first, delete the file, then start them again.
 
 **The recall link.** `from_recall` is set only when it is certain: the recall
 and the load must carry the same caller session, and the note must be one the
@@ -74,8 +86,9 @@ texts that its draft check judges, together with the verdicts.
 with permissions 0600 (readable by your user only). It is not inside the vault
 and is not synchronised with it. Log retention does not delete it: retention
 only removes `events-<date>.jsonl` files. If something else is found under that
-name, a symbolic link or a file that has a second name, Recall writes nothing,
-leaves it untouched and prints one warning to the daemon's log.
+name, a symbolic link, a pipe, a directory or a file that has a second name,
+Recall writes nothing, does not wait on it, leaves it untouched and prints one
+warning to the daemon's log.
 
 **This file contains text.** Unlike the event log, it holds what you typed and
 excerpts of your notes. Recall never sends it anywhere and no part of Recall
@@ -144,7 +157,9 @@ removes the drafts but not this file, because keeping the text after a draft is
 gone is what the file is for. If the switch is still on, the next background
 pass starts a new file from the drafts that exist then. The hash key is a
 separate file (`~/.bastra/logs/training-signal.key`) and holds no text; delete
-it as well if you want earlier content hashes to become unmatchable.
+it as well if you want earlier content hashes to become unmatchable. A running
+daemon keeps the old key until its next look at the file (see "The content hash
+and its key"); stop it before deleting if that matters.
 
 <a id="deutsch"></a>
 
@@ -185,9 +200,23 @@ Schlüssel kann niemand Vermutungen über den Inhalt einer Notiz gegen den Wert
 prüfen, auch nicht bei einer kurzen Notiz mit bekanntem Titel. Der Schlüssel
 sind 32 zufällige Bytes in `training-signal.key` im Protokollverzeichnis, beim
 ersten Gebrauch mit den Rechten 0600 angelegt. Er wird nie in den Vault und nie
-in eine Ereigniszeile geschrieben. Löschst du ihn, entsteht ein neuer, und
-frühere Hashes lassen sich nicht mehr zuordnen. Ist die Schlüsseldatei eine
-Verknüpfung oder nicht lesbar, wird gar kein Hash geschrieben.
+in eine Ereigniszeile geschrieben.
+
+Ein Recall wartet nie auf den Schlüssel. Er wird im Hintergrund gelesen und im
+Arbeitsspeicher gehalten; der erste Recall nach einem Start und jeder Recall,
+bei dem der Schlüssel nicht im Arbeitsspeicher liegt, wird deshalb ohne Hash
+geschrieben. Liegt unter dem Namen des Schlüssels etwas anderes als eine
+reguläre Datei (eine Verknüpfung, eine Pipe, ein Verzeichnis), bleibt es
+unangetastet, und es wird gar kein Hash geschrieben.
+
+Löschst du die Schlüsseldatei, entsteht ein neuer Schlüssel, und frühere Hashes
+lassen sich nicht mehr zuordnen. Ein laufender Prozess merkt das nicht sofort:
+Er sieht höchstens einmal pro Minute wieder nach der Datei, während eines
+Recalls, und verwendet, bis das erledigt ist, den Schlüssel aus dem Arbeitsspeicher
+weiter. Jeder Prozess, der Hashes schreibt (der Daemon, ein stdio-Server, ein
+Messskript), tut das für sich. Wer sicher sein will, dass nach dem Löschen
+keine Zeile mehr mit dem alten Schlüssel geschrieben wird, stoppt diese
+Prozesse zuerst, löscht die Datei und startet sie dann wieder.
 
 **Die Recall-Verknüpfung.** `from_recall` wird nur gesetzt, wenn es sicher ist:
 Recall und Ladevorgang müssen dieselbe Sitzung des Aufrufers tragen, und die
@@ -229,9 +258,9 @@ mit den Rechten 0600 angelegt (nur für dein Benutzerkonto lesbar). Sie liegt
 nicht im Vault und wird nicht mit ihm synchronisiert. Die Löschfrist der
 Protokolle erfasst sie nicht: Gelöscht werden nur Dateien namens
 `events-<Datum>.jsonl`. Liegt unter diesem Namen etwas anderes, eine
-symbolische Verknüpfung oder eine Datei mit einem zweiten Namen, schreibt
-Recall nichts, lässt es unangetastet und gibt eine Warnung ins Protokoll des
-Daemons aus.
+symbolische Verknüpfung, eine Pipe, ein Verzeichnis oder eine Datei mit einem
+zweiten Namen, schreibt Recall nichts, wartet nicht darauf, lässt es
+unangetastet und gibt eine Warnung ins Protokoll des Daemons aus.
 
 **Diese Datei enthält Text.** Anders als das Ereignisprotokoll enthält sie, was
 du getippt hast, und Auszüge deiner Notizen. Recall schickt sie nirgendwohin,
@@ -305,4 +334,7 @@ nachdem ein Entwurf weg ist, ist ihr Zweck. Ist der Schalter noch an, beginnt
 der nächste Hintergrundlauf eine neue Datei aus den Entwürfen, die es dann
 gibt. Der Hash-Schlüssel ist eine eigene Datei
 (`~/.bastra/logs/training-signal.key`) und enthält keinen Text; lösche auch
-ihn, wenn sich frühere Inhalts-Hashes nicht mehr zuordnen lassen sollen.
+ihn, wenn sich frühere Inhalts-Hashes nicht mehr zuordnen lassen sollen. Ein
+laufender Daemon behält den alten Schlüssel bis zu seinem nächsten Blick auf die Datei
+(siehe „Der Inhalts-Hash und sein Schlüssel“); stoppe ihn vor dem Löschen, wenn
+es darauf ankommt.

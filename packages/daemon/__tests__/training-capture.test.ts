@@ -7,6 +7,7 @@
  * Runner: `node --import tsx --import ./scripts/test-env.mjs --test packages/daemon/__tests__/training-capture.test.ts`
  */
 import test from "node:test";
+import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, readdir, stat, lstat, link, symlink, rm, appendFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -365,4 +366,30 @@ test("two shadow checks at once ask each item once and write one verdict", () =>
   } };
   assert.deepEqual(await judgeTrainingBacklog(racing, { now }), { judged: 0, pending: 0 });
   assert.deepEqual((await records()).filter(row => row.type === "verdict" && row.key === item.key).map(row => row.verdict), ["other"]);
+}));
+
+// ─── Delta review: a file that is not one must not hold anything up ─────────
+
+test("a named pipe in place of the store holds nothing up: nothing is written, no model is asked, the tick completes", { skip: process.platform === "win32", timeout: 15_000 }, () => isolated(true, async dir => {
+  await mkdir(join(dir, "logs"));
+  execFileSync("mkfifo", [trainingCapturePath()]);
+  const promptly = async <T>(work: Promise<T>): Promise<T> => {
+    let timer!: NodeJS.Timeout;
+    const late = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("still waiting after 2000 ms")), 2000); });
+    try { return await Promise.race([work, late]); } finally { clearTimeout(timer); }
+  };
+  assert.equal(await promptly(captureTrainingItems([{ type: "statement", quote: "Invented balloons are always amber." }], now)), 0);
+  assert.equal(await promptly(recordTrainingVerdicts([{ item: { type: "statement", quote: amber }, verdict: "durable", model: "m" }], now)), 0);
+  const judge = judgeFor();
+  assert.deepEqual(await promptly(judgeTrainingBacklog(judge, { now })), { judged: 0, pending: 0 });
+  assert.deepEqual(judge.prompts, []);
+  await upsertDraft(draft(amber, "one"), now);
+  assert.ok(await promptly(tick(dir, judge, apart)));
+  assert.ok((await stat(trainingCapturePath())).isFIFO());
+}));
+
+test("a directory in place of the store is refused without an error reaching the caller", () => isolated(true, async () => {
+  await mkdir(trainingCapturePath(), { recursive: true });
+  assert.equal(await captureTrainingItems([{ type: "statement", quote: amber }], now), 0);
+  assert.deepEqual(await judgeTrainingBacklog(judgeFor(), { now }), { judged: 0, pending: 0 });
 }));

@@ -22,7 +22,7 @@
  */
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, type FileHandle } from "node:fs/promises";
+import { mkdir, type FileHandle } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { setImmediate } from "node:timers/promises";
@@ -32,7 +32,7 @@ import { isOnValue } from "./env.js";
 import { logDirFor } from "./telemetry.js";
 import { withPathLock } from "./path-lock.js";
 import { storedDrafts } from "./draft-store.js";
-import { isOwnRegularFile, warnRefusedFile, NOFOLLOW } from "./training-signal.js";
+import { openOwnFile, warnRefusedFile, RefusedFile } from "./training-signal.js";
 import { parseVerdict, relationPrompt, statementPrompt, RELATIONS, STATEMENT_KINDS, type DraftJudge } from "./draft-judge.js";
 
 export const TRAINING_CAPTURE_FILE = "training-capture.jsonl";
@@ -86,28 +86,18 @@ function prepare(item: TrainingItem, now: number): StoredItem | null {
 
 const judgedKey = (key: string, model: string, promptVersion: string): string => `${key}\n${model}\n${promptVersion}`;
 
-/** The store is not this feature's own regular file: a link, or a file with a second name. */
-class StoreRefused extends Error {}
-
 /**
- * Open the store without following a link, then ask the OPEN file what it is.
- * A symbolic link at the path would otherwise send the appended text into
- * whatever it points at — the draft store, for one. Null = no store yet.
+ * Open the store the one safe way (`openOwnFile`): a link at the path would
+ * otherwise send the appended text into whatever it points at — the draft
+ * store, for one — and a pipe there would hold the pass up. Null = no store yet.
  */
 async function openStore(path: string, write: boolean): Promise<FileHandle | null> {
-  let handle: FileHandle;
   try {
-    handle = await open(path, (write ? constants.O_RDWR | constants.O_APPEND | constants.O_CREAT : constants.O_RDONLY) | NOFOLLOW, 0o600);
+    return await openOwnFile(path, write ? constants.O_RDWR | constants.O_APPEND | constants.O_CREAT : constants.O_RDONLY);
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (!write && code === "ENOENT") return null;
-    if (code === "ELOOP" || code === "EMLINK") throw new StoreRefused();
+    if (!write && (error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }
-  try {
-    if (!isOwnRegularFile(await handle.stat(), await lstat(path).catch(() => null))) throw new StoreRefused();
-    return handle;
-  } catch (error) { await handle.close(); throw error; }
 }
 
 async function readStore(path: string): Promise<Store> {
@@ -151,7 +141,7 @@ async function append(path: string, records: object[]): Promise<void> {
 /** A refused store costs this one write, with one text-free line; the daemon goes on. */
 async function unlessRefused<T>(fallback: T, work: () => Promise<T>): Promise<T> {
   try { return await work(); } catch (error) {
-    if (!(error instanceof StoreRefused)) throw error;
+    if (!(error instanceof RefusedFile)) throw error;
     warnRefusedFile(TRAINING_CAPTURE_FILE);
     return fallback;
   }
