@@ -54,8 +54,13 @@
 > The product-owner decisions in Section 31 have been taken and bind
 > the implementation.
 >
-> Next available ID: C-096. A new delta is carried forward in this file and is
+> Next available ID: C-097. A new delta is carried forward in this file and is
 > no longer kept as a separate revision file.
+
+> **Addition C-096, 2026-10-10:** Section 44 attaches decision assumptions and
+> reconsideration, approach checks, error recurrence and evidenced connections to
+> existing components. Planned behavior, not implementation or benefit evidence;
+> C-095 release and measurement rules remain unchanged.
 
 ## 0. Decision and Review Status
 
@@ -214,6 +219,7 @@ reopened only with new evidence.
 | C-093 | contract addition | `graph.json` is untrusted input and not an artifact of our own: produced by a foreign tool, without a schema version (the field `graph` is `{}`), in a repository that need not belong to the user, and its content ends up verbatim in the agent context. Quantified limits apply before every use: 64 MB file size, 500,000 nodes, 2,000,000 edges, 512 bytes per string; only normalized repo-relative paths, no `..` escape, no absolute paths, no control or bidi characters; output solely through a field allowlist. Any violation leads only to "code awareness not available"; Recall itself is never impaired. In addition the deliberately fixed relation allowlist: the measured graph contains fifteen relation types, not four. Counting as a dependency edge, and only with origin `EXTRACTED`: `calls`, `imports`, `imports_from`, `inherits`, `re_exports`, `dynamic_import`, `implements`. Structure without dependency: `contains`, `method`. Excluded: `indirect_call` (100 % `INFERRED`), `references`, `rationale_for`, `defines`, `cites` and `extends` — the latter denotes tsconfig inheritance in the measured graph, not class inheritance. The trust filter runs per **edge**, not per relation: `calls` mixes 4,363 extracted with 153 inferred edges. Even under `--code-only` the graph contains non-code nodes (`concept` 220, `rationale` 24); they stay within the code-only boundary but are not navigable locations and never reach a hook context. |
 | C-094 | contract addition | The platform scope of this sub-release is macOS and Linux. Windows is explicitly not promised while locking, git path resolution, worktrees and process termination have not been checked in a Windows CI; until then the feature reports itself as unavailable there instead of half working. Reason: Graphify's process lock rests on `fcntl` and is a no-op on Windows, `nice` is not portable, and `.git` is a file rather than a directory in worktrees — git paths are therefore resolved via `git rev-parse --git-path`. Recall brings its own cross-platform repository lock. Also recorded: the graph provides no `rename` or `move` relation; renames are detected solely through git evidence (`git diff --name-status -M`) and never inferred from similar symbol sets. Without evidence no rename is claimed. |
 | C-095 | Product-owner decision | Unified V2 roadmap, parallel measurements in #30, beta delivery before complete evidence, stable V2 after confirmation and at least two adversarial review rounds; code awareness exclusively in #29. See §42–43. |
+| C-096 | Product-owner addition | Attach decision assumptions/reconsideration, approach checks, post-correction recurrence and evidenced cross-project connections to existing V2 components. No second graph, trigger, proposal or outcome infrastructure; ownership and acceptance in §44. |
 
 **Sign-off status 24 July 2026:** full reconciliation of ledger C-001–C-027,
 gate measurability, current-state claim sweep (58 claims, all covered),
@@ -427,7 +433,7 @@ to a relation allowlist. C-094 limits the platform scope of this sub-release to
 macOS and Linux and binds renames to git evidence. No verdict from C-001–C-090
 is reinterpreted.
 
-**Next available ID: C-096.** New delta reviews begin there. A verdict
+**Next available ID: C-097.** New delta reviews begin there. A verdict
 changes only with new code, telemetry, or run evidence; matters of taste
 are marked as an architectural decision instead of a factual error.
 
@@ -7793,3 +7799,147 @@ Each step reports the values that apply to it:
 - accuracy of provenance and attribution,
 - echo amplification, duplicate work and lease recovery across agents,
 - latency, resource use and behavior offline or in degraded mode.
+
+## 44. Contract addition C-096 – Carry experience forward effectively
+
+**Daniel's request, 2026-10-10:** Attach the missing product flows to existing V2
+components, especially decision rationale and reconsideration. This section extends
+§42–43; it claims neither implementation nor measured benefit. German governs;
+C-095 release and measurement rules are unchanged.
+
+### 44.1 Decisions, assumptions and reconsideration
+
+A decision may include the chosen option, considered alternatives, evidenced reasons,
+load-bearing assumptions and applicability limits. Missing information stays unknown;
+an agent's reconstruction remains a proposal, not a historical user decision.
+
+- #394 owns representation: stable decision ID and content version, assumption/claim
+  IDs, evidence versions, provenance and validity. Assumptions use existing claims;
+  there is no separate belief system.
+- #395 owns explicit versioned relations between decision, assumption and evidence.
+  The relation is decided within the shared typed-graph schema; cosine similarity
+  cannot create it. Load-bearing assumptions remain distinct from contextual facts.
+- Monitoring is explicitly registered as a #403 commitment: owner, decision/assumption
+  version, deterministic predicate, named source and resolution condition. Saving
+  alone establishes neither monitoring nor permission.
+- #404 checks authorized events and fresh sources under #475. Unknown, stale or
+  unavailable sources do not prove an assumption changed. A new document or release
+  alone does not establish substantive refutation.
+- An evidenced change to a load-bearing assumption surfaces **reconsideration**:
+  original decision and reason, changed premise, old/new evidence with version and
+  timestamp, affected alternatives and remaining uncertainty. It neither declares
+  the original decision wrong nor selects a replacement.
+- #403 owns resurfacing and acknowledged delivery; #389/#390 own change proposals
+  and review, #395 confirmed reconsolidation. Keep, change, snooze and stop monitoring
+  remain distinct. A change takes effect only through a confirmed new version.
+
+Firing is bound to commitment, decision/assumption version and material event. Replay,
+restart and multiple agents cannot create a second logical reconsideration. Snooze,
+cancellation and version changes use existing states; rejected change proposals retain
+§14.4's fingerprint/hash/material-change rule. Keep does not fire again on every load.
+A historical commitment is never silently rebound to a new decision version.
+
+**Acceptance:** “A rejected for maintenance cost; an authorized fresh source now
+establishes that premise no longer holds” produces one explainable reconsideration.
+Unchanged, irrelevant, unconfirmed, stale and failed sources cannot yield a falsely
+confirmed assumption change. Keep, snooze, cancel, supersession and rollback preserve
+history and delivery. Similar decisions do not inherit monitoring. #402 measures
+triggers/delivery, #598 review comprehension, #410 the complete chain.
+
+### 44.2 Check a proposed approach before action
+
+#391 extends the existing exact/reflex/hook cascade with a bounded check of an
+**explicitly available** proposed approach against lessons and evidenced past failures.
+Without an available approach or applicable experience, the check is empty or
+incomplete. There is no second planner or general shell/read hook. Action-time delivery
+and client parity attach to the delivery decision in #1119.
+
+A hint names relevant shared conditions, the past failure, evidenced remedy and
+differences limiting transfer. Similar wording is insufficient. #394/#396 supply
+episodes and reviewed lessons; #395 evidenced relations. Cues open candidates, not
+evidence. Existing budgets, deduplication and abstention apply; the hint creates
+neither a new blocking mechanism nor permission.
+
+**Acceptance:** Matching failure conditions are recognized under different wording;
+matching words with different conditions do not warn. Counterexamples and superseded
+lessons are considered. #387 registers missed/false hints, context cost and latency
+against the existing cascade. #406 records an avoided error only with suitable
+evidence; its absence alone does not prove avoidance.
+
+### 44.3 Check recurrence after a correction
+
+#388/#589 extend the existing event chain with correction ID and memory/claim version,
+a testable error definition and the later applicable action context:
+
+1. correction stored;
+2. retrievable at a relevant opportunity;
+3. actually delivered;
+4. applied or rejected with a reason;
+5. error repeated, demonstrably avoided or outcome unknown.
+
+#406 evaluates recurrence **per observed relevant opportunity** and distinguishes
+retrieval, delivery, application and knowledge errors. No later opportunity is not
+success; missing delivery is not rejection; loading/token overlap does not prove
+application. Versions, client, time and evidence remain attributable. New error types
+remain proposals until review. #389/#390 own improvement proposals; #407 adopts only
+evidenced procedures.
+
+**Acceptance:** Controls cover missed recall, undelivered candidate, ignored hint,
+inapplicable/stale rule, recurrence and no later opportunity. Reports separate observed
+rates from causal effects and use held-out situations with different wording.
+Cross-client joins and deduplication prevent duplicate successes. #387 registers,
+#410 checks the chain. Graphify-specific compliance study #666 remains in experimental #29.
+
+### 44.4 Surface evidenced cross-project connections as insights
+
+#396 extends its consolidation pass with **reviewable insight proposals** across
+projects. #391/#459 discover candidates using bridge/horizon cues and observed access
+paths; #393 may check evidence through Deep Recall. There is no second graph, insight
+store or autonomous research agent.
+
+A proposal states the shared pattern, source IDs and versions, substantive similarities,
+differences/counterexamples, applicability limits and a practical consequence. Novel
+insight and paraphrase of an existing lesson remain distinct. Similarity remains a
+hypothesis, not a cause; copies of one source are not independent corroboration.
+Accept, edit and reject use #389/#390 and §14.4; durable lessons and strong edges
+require their review.
+
+Proposals appear in a bounded review batch or on explicit request, with deduplication
+and an off switch. Similarity alone does not interrupt an action. Project scope within
+the personal vault means findability, not an artificial access barrier; actual
+permission/sensitivity boundaries still apply. Graphify may later supply optional
+extracted structural evidence. Its code-only/EXTRACTED boundaries remain; it does not
+become a mandatory V2 component.
+
+**Acceptance:** Controls include useful transfer, superficial similarity, contradiction,
+known lesson and one source copied across projects. #387 registers novelty/usefulness,
+false transfer and review/context cost against consolidation without this proposal type.
+#598 tests comprehension/correction effort. Repeated display does not confirm a proposal;
+acceptance alone does not establish benefit.
+
+### 44.5 Ownership, confirmation and change record
+
+| Product flow | Implementation in existing issues | Evidence in existing issues |
+|---|---|---|
+| Decision assumptions/reconsideration | #394 claims; #395 relations/versions; #403 resurfacing; #404 firing; #475 freshness; #389/#390 change review | #402 trigger/delivery; #598 review; #410 end-to-end |
+| Approach check | #391 cascade; #1119 delivery decision; #394/#396 experience | #387 retrieval/cost; #406 outcomes; #410 end-to-end |
+| Error recurrence | #388 events; #589 feedback; #406 analysis | #387 registration; #410 cross-client chain |
+| Cross-project connections | #396 proposal type; #391/#459 candidates; #393 evidence search; #395 confirmed links | #387 transfer/controls; #598 review; #410 combined system |
+
+#386 tracks these additions; #400 incorporates their feature/evidence mapping into
+stable V2 approval. #387/#402/#598/#410 remain measurement work in #30; implementation
+remains in #19. C-095 allows parallel development and safe opted-in beta; there is no
+new blanket measurement gate. Existing partial functions are reused, not presented as
+complete end-to-end capabilities.
+
+Version/conflict/write-origin mechanisms are not replanned. Bitemporal queries and
+claim provenance remain §6.3/§15 and #394/#395/#359. `valid_until` remains damping;
+it is not migrated to `valid_to` and does not establish world validity. Historical
+inconsistent issue wording must be aligned.
+
+**C-096 delta record:** §44 and references in preamble, ledger and unified V2 plan;
+English translation synchronized. Existing issue bodies receive only their respective
+contract and links; #359's inconsistent temporal semantics are corrected. No new
+infrastructure or milestone. No product implementation.
+
+**Next available ID: C-097.**

@@ -7,6 +7,11 @@
 > [der gemeinsame V2-Plan](./Evolution%20Plan%20V2.md) und §42 dieses Dokuments.
 > Die folgenden Status-/Ledgerangaben bis C-094 beschreiben den historischen Stand.
 
+> **Ergänzung C-096, 10.10.2026:** §44 ergänzt Entscheidungsannahmen und
+> Neubewertung, Vorgehensprüfung, Fehlerwiederholung und belegte Querverbindungen
+> an den vorhandenen Bausteinen. Dies ist geplantes Produktverhalten, kein
+> Implementierungs- oder Nutzenbeleg. Die Release- und Messregeln C-095 bleiben.
+
 > Status: Release- und Zielarchitektur; der V1.0-Releasevertrag ist erfüllt und
 > mit Bastra Recall 1.0.0 am 14. September 2026 ausgeliefert, V2.0 ist das
 > langfristige, messungsabhängige Zielbild
@@ -56,7 +61,7 @@
 > Die Product-Owner-Entscheidungen in Abschnitt 31 sind getroffen und binden
 > die Umsetzung.
 >
-> Nächste freie ID: C-096. Ein neues Delta wird in dieser Datei fortgeschrieben
+> Nächste freie ID: C-097. Ein neues Delta wird in dieser Datei fortgeschrieben
 > und nicht mehr als eigene Revisionsdatei geführt.
 
 ## 0. Entscheidungs- und Reviewstatus
@@ -217,6 +222,7 @@ neuer Evidenz erneut geöffnet.
 | C-093 | Vertragsergänzung | `graph.json` ist unvertrauenswürdige Eingabe und kein eigenes Artefakt: fremderzeugt, ohne Schemaversion (das Feld `graph` ist `{}`), in einem Repository, das dem Nutzer nicht gehören muss, und sein Inhalt landet wörtlich im Agentenkontext. Vor jeder Nutzung gelten bezifferte Grenzen: 64 MB Dateigröße, 500.000 Knoten, 2.000.000 Kanten, 512 Byte je String; nur normalisierte repo-relative Pfade, keine `..`-Flucht, keine absoluten Pfade, keine Steuer- und Bidi-Zeichen; Ausgabe ausschließlich über eine Feld-Allowlist. Jeder Verstoß führt allein zu „Code-Awareness nicht verfügbar“; Recall selbst wird nie beeinträchtigt. Dazu die bewusst festgelegte Relations-Allowlist: Der gemessene Graph enthält fünfzehn Relationstypen, nicht vier. Als Abhängigkeitskante zählen, und nur mit Herkunft `EXTRACTED`: `calls`, `imports`, `imports_from`, `inherits`, `re_exports`, `dynamic_import`, `implements`. Struktur ohne Abhängigkeit: `contains`, `method`. Ausgeschlossen: `indirect_call` (zu 100 % `INFERRED`), `references`, `rationale_for`, `defines`, `cites` und `extends` — letzteres ist im gemessenen Graphen tsconfig-Vererbung, nicht Klassenvererbung. Der Vertrauensfilter läuft je **Kante**, nicht je Relation: `calls` mischt 4.363 extrahierte mit 153 erschlossenen Kanten. Auch unter `--code-only` enthält der Graph Nicht-Code-Knoten (`concept` 220, `rationale` 24); sie bleiben innerhalb der Code-only-Grenze, sind aber keine navigierbaren Orte und erreichen nie einen Hook-Kontext. |
 | C-094 | Vertragsergänzung | Plattform-Scope dieses Unter-Releases sind macOS und Linux. Windows wird ausdrücklich nicht zugesagt, solange Locking, Git-Pfadauflösung, Worktrees und Prozessabbruch nicht in einer Windows-CI geprüft sind; bis dahin meldet sich die Funktion dort als nicht verfügbar, statt halb zu funktionieren. Begründung: Graphifys Prozess-Lock beruht auf `fcntl` und ist unter Windows ein No-op, `nice` ist nicht portabel, und `.git` ist in Worktrees eine Datei statt eines Verzeichnisses — Git-Pfade werden deshalb über `git rev-parse --git-path` aufgelöst. Recall bringt einen eigenen, plattformübergreifenden Repo-Lock mit. Ebenfalls festgehalten: Der Graph liefert keine `rename`- oder `move`-Relation; Umbenennungen werden ausschließlich über Git-Evidenz (`git diff --name-status -M`) erkannt und nie aus ähnlichen Symbolmengen geschlossen. Ohne Evidenz wird kein Rename behauptet. |
 | C-095 | Product-Owner-Entscheidung | Gemeinsame V2-Roadmap, Messungen parallel in #30, Beta-Auslieferung vor vollständigem Nachweis, stabile V2 erst nach Bestätigung und mindestens zwei adversariellen Reviewrunden; Code-Awareness ausschließlich #29. Siehe §42–43. |
+| C-096 | Product-Owner-Ergänzung | Fehlende Produktabläufe werden an bestehende V2-Bausteine angeschlossen: Entscheidungsannahmen und überprüfbare Neubewertung, Vorgehensprüfung gegen Erfahrungen, Fehlerwiederholung nach Korrektur sowie belegte projektübergreifende Querverbindungen. Keine zweite Graph-, Trigger-, Vorschlags- oder Outcome-Infrastruktur; Teilzuständigkeiten und Abnahme in §44. |
 
 **Abnahmestand 24.07.2026:** Vollabgleich Ledger C-001–C-027,
 Gate-Messbarkeit, Ist-Behauptungs-Sweep (58 Aussagen, alle gedeckt),
@@ -434,7 +440,7 @@ und an eine Relations-Allowlist. C-094 begrenzt den Plattform-Scope dieses
 Unter-Releases auf macOS und Linux und bindet Umbenennungen an Git-Evidenz.
 Kein Urteil aus C-001–C-090 wird umgedeutet.
 
-**Nächste freie ID: C-096.** Neue Delta-Reviews beginnen dort. Ein Urteil
+**Nächste freie ID: C-097.** Neue Delta-Reviews beginnen dort. Ein Urteil
 ändert sich nur mit neuer Code-, Telemetrie- oder Run-Evidenz; Geschmacksfragen
 werden als Architekturentscheidung statt als Faktenfehler markiert.
 
@@ -7684,7 +7690,7 @@ Umbenennungen werden nur über Git-Evidenz erkannt (C-094).
 4. Wann die Windows-CI über Locking, Git-Pfadauflösung, Worktrees und
    Prozessabbruch entsteht, die den Scope aus C-094 erweitern würde.
 
-**Nächste freie ID: C-096.**
+**Nächste freie ID: C-096.** *(Historischer Stand von §41; aktuell §44.)*
 
 ## 42. Vertragsänderung C-095 – Gemeinsame V2-Roadmap und Beta-Freigaben
 
@@ -7995,3 +8001,155 @@ Jeder Schritt berichtet die zu ihm passenden Werte:
   Agenten,
 - Latenz, Ressourcenverbrauch und Verhalten ohne Netz oder im
   eingeschränkten Betrieb.
+
+## 44. Vertragsergänzung C-096 – Erfahrungen wirksam weitertragen
+
+**Auftrag von Daniel am 10.10.2026:** Fehlende Produktabläufe werden an bestehende
+V2-Bausteine angeschlossen, besonders Entscheidungsgründe und Neubewertung.
+Dieser Abschnitt ergänzt §42–43; er behauptet weder Umsetzung noch gemessenen
+Nutzen. Deutsche Fassung maßgeblich; Release- und Messregeln C-095 unverändert.
+
+### 44.1 Entscheidungen, Annahmen und Neubewertung
+
+Eine Entscheidung kann gewählte Lösung, erwogene Alternativen, belegte Gründe,
+tragende Annahmen und Anwendungsgrenzen enthalten. Fehlende Angaben bleiben
+unbekannt; eine Rekonstruktion durch den Agenten bleibt Vorschlag und wird nicht
+als damalige Nutzerentscheidung ausgegeben.
+
+- #394 besitzt die Darstellung: stabile Entscheidungs-ID und Inhaltsversion,
+  Annahme-/Claim-IDs, Evidenzversionen, Herkunft und Gültigkeit. Annahmen sind
+  vorhandene Claims; es entsteht kein separates Belief-System.
+- #395 besitzt explizite, versionierte Verbindungen zwischen Entscheidung,
+  Annahme und Evidenz. Die Relation wird im gemeinsamen Typed-Graph-Schema
+  entschieden; Cosine-Nähe erzeugt sie nicht. Tragende Annahme und bloßer Kontext
+  bleiben unterscheidbar.
+- Überwachung wird ausdrücklich als Zusage nach #403 registriert: Owner,
+  Entscheidungs-/Annahmeversion, deterministisches Prädikat, benannte Quelle und
+  Erledigungsbedingung. Speichern allein erzeugt keine Überwachung oder Rechte.
+- #404 prüft autorisierte Ereignisse und frische Quellen nach #475. Unbekannte,
+  veraltete oder ausgefallene Quellen beweisen keine Annahmenänderung. Ein neues
+  Dokument oder Release allein beweist keine inhaltliche Widerlegung.
+- Ein belegter Wechsel einer tragenden Annahme legt eine **Neubewertung** vor:
+  damalige Entscheidung und Grund, veränderte Voraussetzung, alter/neuer Beleg
+  mit Version und Zeitpunkt, betroffene Alternativen und verbleibende Ungewissheit.
+  Er erklärt nicht die alte Entscheidung für falsch und wählt keine neue Lösung.
+- #403 besitzt Wiedervorlage und quittierbare Zustellung; #389/#390 besitzen
+  Änderungsvorschläge und Review, #395 die bestätigte Rekonsolidierung.
+  Beibehalten, ändern, zurückstellen und Überwachung beenden sind unterscheidbar.
+  Eine Änderung wird erst durch bestätigte neue Version gültig.
+
+Auslösung wird an Zusage, Entscheidungs-/Annahmeversion und materielles Ereignis
+gebunden. Replay, Neustart und mehrere Agenten erzeugen keine zweite logische
+Wiedervorlage. Snooze, Abbruch und Versionswechsel nutzen vorhandene Zustände;
+abgelehnte Änderungsvorschläge folgen der Fingerprint-/Hash-/Materialänderungsregel
+aus §14.4. Beibehalten feuert nicht bei jedem Abruf erneut. Eine historische Zusage
+wird nicht still auf eine neue Entscheidungsversion umgebunden.
+
+**Abnahme:** „A wegen Wartungsaufwand verworfen; autorisierte frische Quelle belegt
+nun Entfall dieser Voraussetzung“ erzeugt genau eine erklärbare Wiedervorlage.
+Unveränderte, irrelevante, unbestätigte, veraltete und ausgefallene Quellen erzeugen
+keine fälschlich bestätigte Annahmenänderung. Beibehalten, Snooze, Abbruch,
+Supersession und Rollback erhalten Historie und Zustellung. Ähnliche Entscheidungen
+erben keine Überwachung. #402 misst Trigger/Zustellung, #598 Review-Verständlichkeit,
+#410 die gesamte Kette.
+
+### 44.2 Vorgehensprüfung vor einer Handlung
+
+#391 ergänzt die vorhandene Exact-/Reflex-/Hook-Kaskade um eine begrenzte Prüfung
+eines **explizit verfügbaren** geplanten Vorgehens gegen Lessons und belegte frühere
+Fehlschläge. Ohne verfügbares Vorgehen oder passende Erfahrung bleibt die Prüfung
+leer beziehungsweise unvollständig. Kein zweiter Planner und kein allgemeiner
+Shell-/Read-Hook entsteht. Der Aktionszeitpunkt und Client-Parität docken an die
+Zustellentscheidung in #1119 an.
+
+Ein Hinweis benennt relevante gemeinsame Bedingungen, damaliges Fehlerbild,
+belegte Abhilfe und Unterschiede, die die Übertragung begrenzen. Ähnlicher Wortlaut
+genügt nicht. #394/#396 liefern Episoden und geprüfte Lessons; #395 belegte
+Relationen. Cues öffnen Kandidaten, sind keine Evidenz. Bestehende Budgets,
+Deduplizierung und Abstention gelten; der Hinweis schafft keine neue Sperre oder
+Berechtigung.
+
+**Abnahme:** Gleiche Fehlerbedingungen werden auch bei anderer Formulierung erkannt;
+gleiche Wörter bei anderen Bedingungen warnen nicht. Gegenbeispiele und ersetzte
+Lessons werden berücksichtigt. #387 registriert verpasste/unnötige Hinweise,
+Kontextkosten und Latenz gegen die bestehende Kaskade. #406 erfasst einen vermiedenen
+Fehler nur mit passendem Beleg; sein bloßes Ausbleiben beweist ihn nicht.
+
+### 44.3 Wiederholung nach einer Korrektur prüfen
+
+#388/#589 ergänzen die vorhandene Ereigniskette um Korrektur-ID und Memory-/Claim-
+Version, prüfbare Fehlerdefinition und spätere passende Handlungssituation:
+
+1. Korrektur gespeichert;
+2. bei relevanter Gelegenheit auffindbar;
+3. tatsächlich zugestellt;
+4. berücksichtigt oder mit Begründung verworfen;
+5. Fehler wiederholt, nachweislich vermieden oder Ergebnis unbekannt.
+
+#406 wertet Wiederholung **pro beobachteter relevanter Gelegenheit** aus und trennt
+Retrieval-, Zustell-, Anwendungs- und Wissensfehler. Keine spätere Gelegenheit ist
+kein Erfolg; fehlende Zustellung ist keine Ablehnung; Laden/Token-Overlap beweist
+keine Anwendung. Versionen, Client, Zeitpunkt und Evidenz bleiben zuordenbar.
+Neue Fehlertypen bleiben bis Review Vorschlag. #389/#390 besitzen Verbesserungs-
+vorschläge; #407 übernimmt nur belegte Abläufe.
+
+**Abnahme:** Kontrollfälle decken fehlenden Recall, nicht zugestellten Treffer,
+ignorierten Hinweis, ungeeignete/veraltete Regel, Wiederholung und keine erneute
+Gelegenheit ab. Berichte trennen beobachtete Raten von kausaler Wirkung und nutzen
+zurückgehaltene Situationen mit anderer Formulierung. Clientübergreifende Joins und
+Deduplizierung verhindern doppelte Erfolge. #387 registriert, #410 prüft die Kette.
+Die Graphify-spezifische Befolgungsstudie #666 bleibt im experimentellen #29.
+
+### 44.4 Belegte Querverbindungen als Einsicht vorlegen
+
+#396 ergänzt den Konsolidierungspass um **reviewbare Einsichtsvorschläge** über
+Projektgrenzen. #391/#459 entdecken Kandidaten mit Bridge-/Horizon-Cues und
+beobachteten Zugriffswegen; #393 kann im Deep Recall Belege prüfen. Kein zweiter
+Graph, Insight-Store oder autonomer Forschungsagent entsteht.
+
+Ein Vorschlag nennt gemeinsames Muster, Quell-IDs und Versionen, tragende
+Gemeinsamkeiten, Unterschiede/Gegenbeispiele, Anwendungsgrenzen und eine praktische
+Konsequenz. Neue Einsicht und Paraphrase einer vorhandenen Lesson werden getrennt.
+Bloße Ähnlichkeit bleibt Hypothese, keine Ursache; Kopien derselben Quelle zählen
+nicht als unabhängige Bestätigung. Annahme, Änderung und Ablehnung nutzen #389/#390
+und §14.4; dauerhafte Lessons und starke Kanten benötigen deren Review.
+
+Vorschläge erscheinen gebündelt im Review oder auf ausdrücklichen Abruf, mit Budget,
+Deduplizierung und Abschaltmöglichkeit. Ähnlichkeit allein unterbricht keine Handlung.
+Projekt-Scope im persönlichen Vault bedeutet Findbarkeit, keine künstliche
+Zugriffssperre; tatsächliche Berechtigungs-/Sensitivitätsgrenzen gelten weiter.
+Graphify kann später optionale extrahierte Strukturbelege beitragen. Seine Code-only-
+und EXTRACTED-Grenzen gelten; er wird dadurch kein V2-Pflichtbaustein.
+
+**Abnahme:** Kontrollfälle enthalten hilfreichen Transfer, oberflächliche Ähnlichkeit,
+Widerspruch, bekannte Lesson und dieselbe Quelle in mehreren Projekten. #387
+registriert Neuheit/Nützlichkeit, falsche Übertragung, Review-/Kontextkosten gegen
+Konsolidierung ohne diesen Vorschlagstyp. #598 prüft Verständnis/Korrekturaufwand.
+Wiederholte Anzeige bestätigt keinen Vorschlag; Zustimmung allein beweist Nutzen nicht.
+
+### 44.5 Zuständigkeit, Bestätigung und Änderungsnachweis
+
+| Produktablauf | Umsetzung in vorhandenen Issues | Nachweis in vorhandenen Issues |
+|---|---|---|
+| Entscheidungsannahmen/Neubewertung | #394 Claims; #395 Relationen/Versionen; #403 Wiedervorlage; #404 Auslösung; #475 Aktualität; #389/#390 Änderungsreview | #402 Trigger/Zustellung; #598 Review; #410 Ende-zu-Ende |
+| Vorgehensprüfung | #391 Kaskade; #1119 Zustellentscheidung; #394/#396 Erfahrungen | #387 Retrieval/Kosten; #406 Outcomes; #410 Ende-zu-Ende |
+| Fehlerwiederholung | #388 Ereignisse; #589 Feedback; #406 Auswertung | #387 Registrierung; #410 clientübergreifende Kette |
+| Querverbindungen | #396 Vorschlagstyp; #391/#459 Kandidaten; #393 Evidenzsuche; #395 bestätigte Links | #387 Transfer/Kontrollfälle; #598 Review; #410 Gesamtsystem |
+
+#386 führt die Ergänzungen; #400 übernimmt ihre Funktions-/Evidenzzuordnung in die
+stabile V2-Abnahme. #387/#402/#598/#410 bleiben Messarbeit in #30, Implementierung
+bleibt in #19. C-095 erlaubt parallele Entwicklung und sichere Opt-in-Beta; keine
+neue pauschale Messblockade entsteht. Vorhandene Teilfunktionen werden wiederverwendet
+und nicht als vollständige Ende-zu-Ende-Fähigkeit ausgegeben.
+
+Versions-/Konflikt-/Schreibherkunftsmechanismen werden nicht neu geplant. Der Ausbau
+bi-temporaler Abfragen und Claim-Herkunft bleibt §6.3/§15 und #394/#395/#359.
+`valid_until` bleibt Dämpfung, wird nicht nach `valid_to` migriert und beweist keine
+Weltgültigkeit. Historische abweichende Issueformulierungen sind anzupassen.
+
+**Delta-Nachweis C-096:** §44 und Referenzen in Präambel, Ledger und gemeinsamem
+V2-Plan; englische Übersetzung synchron. Bestehende Issue-Bodies erhalten nur ihren
+Teilvertrag und Querverweise; #359s abweichende Zeitsemantik wird korrigiert.
+Keine neue Infrastruktur und kein neuer Milestone. Keine Produktimplementierung.
+
+**Nächste freie ID: C-097.**

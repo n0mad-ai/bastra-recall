@@ -45,7 +45,8 @@ import { buildOnboardingBlock } from "./session-onboarding-block.js";
 import { recordBudgetShadow, resetBudgetOnSource } from "./session-budget.js";
 import { spawnStagedUpdate, stagedToday, markStagedToday } from "./update-check.js";
 import { formatBlockedUpdate, readBlockedUpdate } from "./update-blocked.js";
-import { formatModelSessionBlock, pendingModelNotice, type ModelOffer } from "./model-recommendation.js";
+import { pendingModelNotice, type ModelOffer } from "./model-recommendation.js";
+import { appendModelSessionNotice } from "./model-session-notice.js";
 import { pendingPatchNotice } from "./patch-report.js";
 import { PENDING_BLOCK_CHAR_BUDGET, formatPendingRelay, isCountableSessionStart, takePendingRelay } from "./pending-suggestions.js";
 import { bumpShown, clearShown, mutateSessionState, takeConstantCadence } from "./session-state.js";
@@ -532,17 +533,6 @@ export async function runSessionLane(
     }
   }
 
-  // A model recommendation the user has not answered yet. Unlike the update
-  // above it needs no daemon answer — it ships with this release and is decided
-  // from the settings file. Repeated every session start until the user says
-  // switch, later or no; the block tells the agent to ask, never to switch.
-  try {
-    const offer = await modelNotice();
-    if (offer) updateBlock += formatModelSessionBlock(offer);
-  } catch {
-    // Best-effort, like the update hint — never block session start.
-  }
-
   // #269 — local patches the last update could not put back. Read from the
   // record the update path wrote, never probed here: this hook runs inside a
   // hard latency budget and `git apply --check` per patch is a process spawn per
@@ -699,6 +689,15 @@ export async function runSessionLane(
         additionalContext: injected,
       },
     });
+  }
+
+  // The agent's model notice has its own user-wide day marker. Claim only
+  // after assembling the response, with an immediate, silent try-lock.
+  const modelNoticeOutput = await appendModelSessionNotice(out, modelNotice);
+  if (modelNoticeOutput.block) {
+    out = modelNoticeOutput.stdout;
+    injected = String(JSON.parse(out).hookSpecificOutput.additionalContext);
+    updateBlock += modelNoticeOutput.block;
   }
 
   // #458 (shadow): den fertigen Block ans Sitzungsbudget anrechnen und den
