@@ -43,7 +43,7 @@ function worker(env:NodeJS.ProcessEnv,platform:NodeJS.Platform,wait?:number,disa
 
 test("#758 managed service recognition is file-only, macOS-only and excludes foreign/corrupt XML",()=>fixture(async(_dir,env)=>{
  assert.equal(await managedAutostartInstalled({platform:"darwin",home:env.HOME}),false);await plist(env);assert.equal(await managedAutostartInstalled({platform:"darwin",home:env.HOME}),true);assert.equal(await managedAutostartInstalled({platform:"linux",home:env.HOME}),false);
- for(const text of ["{broken",'<plist><dict><key>Other</key><string>1</string></dict></plist>',`<!-- ${managedXml} -->`]){await writeFile(managedAutostartPlistPath(env.HOME),text);assert.equal(await managedAutostartInstalled({platform:"darwin",home:env.HOME}),false);}
+ for(const text of ["{broken",'<plist><dict><key>Other</key><string>1</string></dict></plist>',`<!-- ${managedXml} -->`,managedXml.replace("EnvironmentVariables","Environment<!-- split -->Variables"),managedXml.replace("BASTRA_AUTOSTART_MANAGED","BASTRA_AUTO<!-- split -->START_MANAGED")]){await writeFile(managedAutostartPlistPath(env.HOME),text);assert.equal(await managedAutostartInstalled({platform:"darwin",home:env.HOME}),false);}
 }));
 
 test("#758 service arrives after 2 s: forwarder holds a real tool call and never spawns",()=>fixture(async(_dir,env)=>{
