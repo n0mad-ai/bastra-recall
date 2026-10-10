@@ -9,7 +9,7 @@
 **Owner decision: 2026-10-04, C-095.** This is the shared roadmap for the former
 V2 and V3 scopes. It describes planned work, not shipped capabilities. The
 [technical architecture](./Evolution%20Architecture%20V1%20to%20V2.md), especially
-sections 42–43, preserves the detailed contracts. German is the governing version.
+sections 42–44, preserves the detailed contracts. German is the governing version.
 
 ### One roadmap, three kinds of work
 
@@ -67,6 +67,36 @@ No measurement issue or final release approval is a blanket prerequisite for sta
 a workstream. Baselines must be recorded before interpreting a comparison, not before
 writing a new feature. Feature-specific security and integrity dependencies remain.
 
+### Product-flow additions — C-096, 2026-10-10
+
+The missing parts of five product ideas attach to existing workstreams; there is
+no second graph, trigger engine or learning pipeline. Detailed contracts and
+acceptance controls are in architecture §44. These are planned, not shipped.
+
+- **Decision assumptions and reconsideration:** #394 represents evidenced reasons,
+  alternatives and load-bearing assumption claims; #395 links their versions.
+  Explicit #403 commitments and #404 predicates monitor authorized fresh sources
+  (#475). A changed premise surfaces a review with old/new evidence, not an
+  automatic reversal. Keep/change/snooze/stop and deduplicated recovery use existing
+  lifecycle, delivery and #389/#390 review.
+- **Approach checks before action:** #391 reuses the bounded hook/cue cascade to
+  match an available proposed approach against evidenced failures. #1119 owns the
+  action-time delivery decision. Conditions and counterexamples matter, not words.
+- **Recurrence after correction:** #388/#589 trace correction → relevant opportunity
+  → retrieval → actual delivery → application → outcome; #406 distinguishes where
+  repetition arose. No later opportunity or missing outcome is not success.
+- **Evidenced cross-project insights:** #396 extends consolidation with reviewable
+  patterns, sources, differences and counterexamples; #391/#459/#393 discover and
+  inspect candidates. Durable lessons/links still use existing reviewed operators.
+- **Current vs historical knowledge:** reuse existing version/conflict/write-origin
+  mechanisms; complete bitemporal/provenance work stays #394/#395/#359. Memory
+  expiry is not world validity. No duplicate feature is created.
+
+#387 registers controls/costs, #402 reconsideration triggers/delivery, #598 review
+comprehension and #410 end-to-end confirmation, all in #30. #400 includes this
+feature/evidence mapping in stable V2 approval; C-095 beta/parallel-measurement rules
+remain. Graphify and its specific compliance study #666 remain experimental in #29.
+
 ### First slice: measurement follow-ups
 
 Create a project task with source, owner, start/due timestamp, timezone, resolution
@@ -101,7 +131,7 @@ provenance and no-data-loss invariants apply continuously, including in beta.
 **Product-Owner-Entscheidung: 04.10.2026, C-095.** Dies ist die gemeinsame Roadmap
 für die bisherigen V2- und V3-Umfänge. Sie beschreibt geplante Arbeit, keine bereits
 ausgelieferten Fähigkeiten. Die [technische Architektur](./Evolutionsarchitektur%20V1%20zu%20V2.md),
-insbesondere Abschnitte 42–43, erhält die detaillierten Verträge. Deutsch ist maßgeblich.
+insbesondere Abschnitte 42–44, erhält die detaillierten Verträge. Deutsch ist maßgeblich.
 
 ### Eine Roadmap, drei Arten von Arbeit
 
@@ -164,6 +194,36 @@ Kein Messissue und keine finale Releasefreigabe ist eine pauschale Voraussetzung
 um einen Arbeitsbereich anzufangen. Baselines werden vor der Interpretation eines
 Vergleichs erfasst, nicht vor dem Schreiben einer neuen Funktion. Funktionsbezogene
 Sicherheits- und Integritätsabhängigkeiten bleiben bestehen.
+
+### Ergänzte Produktabläufe — C-096, 10.10.2026
+
+Die fehlenden Teile der fünf Produktideen docken an vorhandene Arbeitsbereiche an;
+kein zweiter Graph, keine zweite Trigger-Engine oder Lernpipeline. Detailverträge
+und Abnahme-Kontrollfälle stehen in Architektur §44. Geplant, nicht ausgeliefert.
+
+- **Entscheidungsannahmen und Neubewertung:** #394 erfasst belegte Gründe,
+  Alternativen und tragende Annahmen als Claims; #395 verknüpft ihre Versionen.
+  Ausdrückliche Zusagen #403 und Prädikate #404 überwachen autorisierte frische
+  Quellen (#475). Eine geänderte Voraussetzung legt einen Review mit altem/neuem
+  Beleg vor, keine automatische Umkehr. Beibehalten/ändern/zurückstellen/beenden
+  und deduplizierte Wiederaufnahme nutzen Lebenszyklus, Zustellung und #389/#390.
+- **Vorgehensprüfung vor einer Handlung:** #391 nutzt die begrenzte Hook-/Cue-Kaskade
+  für ein verfügbares Vorgehen und belegte Fehlschläge. #1119 besitzt die Entscheidung
+  zur Aktionszustellung. Bedingungen und Gegenbeispiele zählen, nicht gleiche Wörter.
+- **Wiederholung nach einer Korrektur:** #388/#589 verbinden Korrektur → relevante
+  Gelegenheit → Retrieval → tatsächliche Zustellung → Anwendung → Ergebnis;
+  #406 unterscheidet die Fehlerstelle. Keine Gelegenheit/Beobachtung ist kein Erfolg.
+- **Belegte projektübergreifende Einsichten:** #396 erweitert Konsolidierung um
+  reviewbare Muster, Quellen, Unterschiede und Gegenbeispiele; #391/#459/#393 finden
+  und prüfen Kandidaten. Dauerhafte Lessons/Links nutzen die reviewten Operatoren.
+- **Aktuelles und historisches Wissen:** vorhandene Versions-/Konflikt-/
+  Schreibherkunftsmechanismen wiederverwenden; bi-temporaler Ausbau und Provenienz
+  bleiben #394/#395/#359. Memory-Ablauf ist keine Weltgültigkeit. Kein Doppelprojekt.
+
+#387 registriert Kontrollen/Kosten, #402 Neubewertungstrigger/Zustellung, #598
+Review-Verständlichkeit und #410 Ende-zu-Ende-Bestätigung, alle in #30. #400 nimmt
+Funktions-/Evidenzzuordnung in die stabile V2-Abnahme auf; C-095s Beta-/Parallelregeln
+bleiben. Graphify und seine Befolgungsstudie #666 bleiben experimentell in #29.
 
 ### Erster Funktionsschnitt: Messauswertungen wieder vorlegen
 
