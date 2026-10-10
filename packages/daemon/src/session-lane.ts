@@ -30,6 +30,7 @@
  * Discipline unchanged: hard wall-clock budget, fail-silent on every error
  * path, telemetry best-effort.
  */
+import { suppressReviewedHarvestQuotes, type DraftReviewDelivery } from "./draft-review.js";
 import { appendLaneDrafts } from "./draft-search.js";
 // #305: subpath leafs, never the core barrel — measured +40ms of process
 // start against +0.8ms for the three leafs, on a fresh spawn per event.
@@ -46,7 +47,7 @@ import { spawnStagedUpdate, stagedToday, markStagedToday } from "./update-check.
 import { formatBlockedUpdate, readBlockedUpdate } from "./update-blocked.js";
 import { formatModelSessionBlock, pendingModelNotice, type ModelOffer } from "./model-recommendation.js";
 import { pendingPatchNotice } from "./patch-report.js";
-import { formatPendingRelay, isCountableSessionStart, takePendingRelay } from "./pending-suggestions.js";
+import { PENDING_BLOCK_CHAR_BUDGET, formatPendingRelay, isCountableSessionStart, takePendingRelay } from "./pending-suggestions.js";
 import { bumpShown, clearShown, mutateSessionState, takeConstantCadence } from "./session-state.js";
 import { formatPinnedBlock, dropPinnedFromRanked, type PinnedFloorLean } from "./pinned-block.js";
 import { reportHinted } from "./hook-hinted.js";
@@ -163,6 +164,7 @@ export async function runSessionLane(
   warmup?: WarmupCoordinator,
   /** Tests inject an open model recommendation; the shipped one is the default. */
   modelNotice: () => Promise<ModelOffer | null> = pendingModelNotice,
+  draftReview?: () => Promise<DraftReviewDelivery>,
 ): Promise<string> {
   const startedAt = Date.now();
   const client = hookClient(payload);
@@ -567,6 +569,7 @@ export async function runSessionLane(
   // einsammeln (consume-once, max 7 Tage alt) — der Agent sieht sie als
   // additionalContext, der Chat bleibt sauber.
   let pendingBlock = "";
+  let reviewBlock = "";
   let pendingLanes: SessionHookTelemetry["pending_lanes"] = { recency: 0, trends: 0, recency_chars: 0, trends_chars: 0 };
   let pendingHarvest = 0;
   try {
@@ -579,7 +582,13 @@ export async function runSessionLane(
     // #510: der Block wird auf ein Zeichen-Budget rationiert (größter Einzel-
     // Part im #462-Baseline). Formatierung + Truncation liegen im Modul, damit
     // sie ohne CLI-Seiteneffekte testbar sind — dieselbe Trennung wie pinned.
-    const rendered = formatPendingRelay(relay);
+    const review = await draftReview?.().catch(() => undefined);
+    if (review?.block) {
+      reviewBlock = "\n" + review.block;
+      for (const row of relay.recency) row.blocks = suppressReviewedHarvestQuotes(row.blocks, review.fingerprints);
+      relay.recency = relay.recency.filter(row => row.blocks.trim());
+    }
+    const rendered = formatPendingRelay(relay, Math.max(0, PENDING_BLOCK_CHAR_BUDGET - (review?.block.length ?? 0)));
     if (rendered.text) pendingBlock = `\n${rendered.text}`;
     // #675: counted in what was rendered, after the char budget.
     pendingHarvest = (rendered.text.match(/<session-harvest /g) ?? []).length;
@@ -649,7 +658,7 @@ export async function runSessionLane(
     /* cadence is best-effort — a failed read re-sends, it never drops */
   }
 
-  const extras = taxonomyBlock + languageBlock + careBlock + importBlock + onboardingBlock + updateBlock + patchBlock + pendingBlock + dokuBlock;
+  const extras = taxonomyBlock + languageBlock + careBlock + importBlock + onboardingBlock + updateBlock + patchBlock + reviewBlock + pendingBlock + dokuBlock;
   // #141/#142: der Pinned-Block steht VOR den score-gated Hints — die
   // garantierten Einträge zuerst, die relevanz-gerankte Liste dahinter.
   const pinnedHead = pinnedBlock === "" ? "" : pinnedBlock + "\n";

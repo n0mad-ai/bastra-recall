@@ -396,9 +396,9 @@ export function formatPendingBlock(entries: PendingSuggestion[]): string {
  * trends get what is left, so the relay as a whole never grows past it. A trend
  * squeezed out this way is announced and stays alive for the next start.
  */
-export function formatPendingRelay(relay: PendingRelay): { text: string; recencyChars: number; trendsChars: number } {
-  const recency = renderLane(relay.recency, "recency", PENDING_BLOCK_CHAR_BUDGET);
-  const trends = renderLane(relay.trends, "trends", Math.max(0, PENDING_BLOCK_CHAR_BUDGET - recency.used));
+export function formatPendingRelay(relay: PendingRelay, budget = PENDING_BLOCK_CHAR_BUDGET): { text: string; recencyChars: number; trendsChars: number } {
+  const recency = renderLane(relay.recency, "recency", Math.min(PENDING_BLOCK_CHAR_BUDGET, Math.max(0, budget)));
+  const trends = renderLane(relay.trends, "trends", Math.max(0, Math.min(PENDING_BLOCK_CHAR_BUDGET, budget) - recency.used));
   return {
     text: [recency.text, trends.text].filter(Boolean).join("\n"),
     recencyChars: recency.text.length,

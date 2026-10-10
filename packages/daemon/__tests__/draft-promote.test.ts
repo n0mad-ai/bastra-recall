@@ -16,6 +16,12 @@ import { noteSessionForHarvest } from "../src/session-harvest.js";
 import { parseArgs } from "../src/cli/commands.js";
 import { cmdDrafts } from "../src/cli/drafts-cmd.js";
 
+/** Candidate metadata is expected in a dry run; every preexisting field stays identical. */
+function withoutCandidateMetadata(raw: string): unknown {
+  const parsed = JSON.parse(raw);
+  for (const row of parsed.rows ?? parsed) delete row.review_candidate;
+  return parsed;
+}
 const local = { baseURL: "http://127.0.0.1:11434", model: "fixture" };
 const first = "Fixture deployments require an isolated amber database before the release starts.";
 const paraphrase = "Use a separate data store for each staging launch in the fixture environment.";
@@ -280,14 +286,15 @@ test("D fix: undo blocks a paraphrase through retained semantic tombstones", () 
   assert.equal((await listDrafts()).find(d => d.quote === paraphrase)?.state, "rejected");
 }));
 
-test("D fix: dry duplicate/recovery decisions leave draft bytes unchanged", () => isolated(async (vault, _dir, vaultId) => {
+test("D fix: dry duplicate/recovery decisions preserve draft state and attach only candidate metadata", () => isolated(async (vault, _dir, vaultId) => {
   await existingNote(vault, "stored-note", first); await repeat(vaultId);
   const provider = providerFor(); await runDraftShadow({ provider, ollama: local, vault });
   delete process.env.BASTRA_DRAFT_PROMOTE;
   const before = await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8");
   const events: DraftPromotionEvent[] = [];
   await runDraftPromote({ provider, ollama: local, judge, vault, vaultVectors: vectors(vault, provider), emit: e => events.push(e) });
-  assert.equal(await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8"), before);
+  assert.deepEqual(withoutCandidateMetadata(await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8")), withoutCandidateMetadata(before));
+  assert.ok((await listDrafts()).some(row => row.review_candidate));
   assert.ok(events.some(e => e.kind === "draft_would_block" as string));
 }));
 
@@ -341,7 +348,8 @@ test("D fix: dry recovery does not change state even for an already landed note"
   const opts = { provider, ollama: local, judge, vault, vaultVectors: vectors(vault, provider) }; await runDraftPromote(opts); await upsertDraft(open);
   delete process.env.BASTRA_DRAFT_PROMOTE;
   const before = await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8"); await runDraftPromote(opts);
-  assert.equal(await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8"), before);
+  assert.deepEqual(withoutCandidateMetadata(await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8")), withoutCandidateMetadata(before));
+  assert.ok((await listDrafts()).some(row => row.review_candidate));
 }));
 
 test("D fix: cue heads, literal host and rare vocabulary do not include cut-off command tails", () => {
@@ -717,13 +725,14 @@ test("judge: an unchanged candidate is never asked twice; a changed draft is; a 
   await runDraftPromote({ ...retry, now: now + 61 * 60_000 }); assert.equal(failing.calls, 4, "next hour: one retry per candidate");
 }));
 
-test("judge: the dry run asks the model, logs classes only and writes neither vault nor drafts", () => isolated(async (vault, dir, vaultId) => {
+test("judge: the dry run asks the model, logs classes only and writes no vault or draft lifecycle fields", () => isolated(async (vault, dir, vaultId) => {
   await captureDraft(row(first, "one", vaultId)); await captureDraft(row(paraphrase, "two", vaultId)); delete process.env.BASTRA_DRAFT_PROMOTE;
   const provider = providerFor(), asked = judgeFor(); await runDraftShadow({ provider, ollama: local, vault });
   const before = await tree(vault.root), drafts = await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8");
   const result = await runDraftPromote({ provider, ollama: local, judge: asked, vault, vaultVectors: vectors(vault, provider) });
   assert.equal(result.wouldPromote, 1); assert.equal(asked.prompts.length, 3);
-  assert.deepEqual(await tree(vault.root), before); assert.equal(await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8"), drafts);
+  assert.deepEqual(await tree(vault.root), before); assert.deepEqual(withoutCandidateMetadata(await readFile(process.env.BASTRA_DRAFTS_PATH!, "utf8")), withoutCandidateMetadata(drafts));
+  assert.equal(((await listDrafts())[0].review_candidate as {kind:string}).kind, "draft_would_promote");
   const log = (await Promise.all((await readdir(join(dir, "logs"))).map(path => readFile(join(dir, "logs", path), "utf8")))).join("\n");
   const event = JSON.parse(log.trim().split("\n").at(-1)!);
   assert.equal(event.kind, "draft_would_promote"); assert.equal(event.reason, "dry-run");

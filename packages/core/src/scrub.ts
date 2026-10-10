@@ -30,6 +30,7 @@ export const INJECTED_BLOCK_TAGS = [
   // bastra hook output
   "recall-hints",
   "draft-hints",
+  "draft-review",
   "session-context",
   "pinned-memories",
   "vault-taxonomy",

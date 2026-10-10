@@ -64,10 +64,12 @@ test("E replay cannot reset novel/window and each successful use is booked once"
  assert.equal(await recordDraftHints([row.id],"reader","different",clock+100),0);assert.equal(JSON.stringify((await listDrafts())[0].surfaced),before);
  assert.equal(await acted(),0);assert.equal(await acted("echo tungsten reference lamps"),1);assert.equal(await acted("echo tungsten reference lamps"),0);
 }));
-test("E dry-run preserves vault and draft bytes despite valid use",()=>isolated(async(vault,row)=>{
+test("E dry-run preserves vault and every draft field except candidate metadata despite valid use",()=>isolated(async(vault,row)=>{
  await hinted(row);await acted();await runDraftShadow({provider,ollama:local,vault});delete process.env.BASTRA_DRAFT_PROMOTE;
  const before=await tree(vault.root),draft=await readFile(process.env.BASTRA_DRAFTS_PATH!,"utf8");
- const result=await runDraftPromote(options(vault));assert.equal(result.wouldPromote,1);assert.deepEqual(await tree(vault.root),before);assert.equal(await readFile(process.env.BASTRA_DRAFTS_PATH!,"utf8"),draft);
+ const result=await runDraftPromote(options(vault));assert.equal(result.wouldPromote,1);assert.deepEqual(await tree(vault.root),before);const after=JSON.parse(await readFile(process.env.BASTRA_DRAFTS_PATH!,"utf8"));
+ assert.equal(after.rows[0].review_candidate.kind,"draft_would_promote");for(const row of after.rows)delete row.review_candidate;
+ assert.deepEqual(after,JSON.parse(draft));
 }));
 test("E existing semantic note and undo tombstone prevent another use note",()=>isolated(async(vault,row)=>{
  await hinted(row);await acted();await runDraftShadow({provider,ollama:local,vault});await runDraftPromote(options(vault));

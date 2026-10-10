@@ -4,6 +4,7 @@
  *
  * Moved verbatim out of `main()` in `index.ts`, with its `errorResult` helper.
  */
+import { draftReviewTools, reviewDraftHandler } from "./draft-review-handler.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -77,6 +78,7 @@ export async function startStdioServer(opts: {
   server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: [
       ...MEMORY_TOOL_DEFS,
+      ...draftReviewTools,
       ...documentTools,
       ...(documentWriteEnabled ? documentWriteTools : []),
       ...productDocTools,
@@ -160,6 +162,11 @@ export async function startStdioServer(opts: {
       } catch (err) {
         return errorResult((err as Error).message);
       }
+    }
+
+    if (name === "review_draft") {
+      try { return { content: [{ type: "text", text: JSON.stringify(await reviewDraftHandler(toolDeps, args ?? {})) }] }; }
+      catch (err) { return errorResult((err as Error).message); }
     }
 
     if (name === "save_memory") {

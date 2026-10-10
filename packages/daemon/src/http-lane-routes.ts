@@ -17,6 +17,7 @@
  * (/hook/recall, /hook/floors, /hook/drift, …) — read off the socket, not the
  * environment, so a daemon on a non-default port calls itself correctly.
  */
+import type { DraftReviewDelivery } from "./draft-review.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { runStopLane, type ClaudeStopPayload } from "./stop-lane.js";
 import { runSessionLane, type SessionPayload } from "./session-lane.js";
@@ -60,6 +61,7 @@ export function dispatchLaneRoutes(
    *  as it did before #490. */
   warmupEmbedding?: WarmupCoordinator,
   notice?: (out:string,payload:SaveNoticePayload,isConnected:()=>boolean)=>Promise<string>,
+  draftReview?: () => Promise<DraftReviewDelivery>,
 ): boolean {
   if (method !== "POST") return false;
 
@@ -72,7 +74,7 @@ export function dispatchLaneRoutes(
   // SessionStart: the recall + floors + taxonomy + care/import/update block.
   if (url === "/hook/session") {
     runLane<SessionPayload>(req, res, (payload, self) =>
-      runSessionLane(payload, self, warmupEmbedding),
+      runSessionLane(payload, self, warmupEmbedding, undefined, draftReview),
       notice,
     );
     return true;

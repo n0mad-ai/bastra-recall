@@ -1,3 +1,5 @@
+import { takeDraftReview } from "./draft-review.js";
+import { draftVaultId } from "./draft-promote.js";
 import { recordDeliveredDraftHints } from './draft-delivery.js';
 import { cleanDraftField } from './draft-text.js';
 /**
@@ -216,7 +218,7 @@ export function dispatchLocalRoutes(
   // convention) — the contract is identical to the four above.
   // #490: the session lane among them takes the shared embedding warm-up,
   // injected here the same way the prompt lane takes its prewarmer.
-  if (dispatchLaneRoutes(req, res, method, url, toolDeps.warmupEmbedding, (out,payload,connected)=>appendDraftNotice(out,payload,id=>vault.get(id)?.fm,undefined,connected))) return true;
+  if (dispatchLaneRoutes(req, res, method, url, toolDeps.warmupEmbedding, (out,payload,connected)=>appendDraftNotice(out,payload,id=>vault.get(id)?.fm,undefined,connected), async () => takeDraftReview(await draftVaultId(vault.root), toolDeps.primaryLanguage ?? "en"))) return true;
 
   // #144: lightweight act-signal (PostToolUse:Bash). No recall, no injection —
   // only matches the excerpt against open loadedMemories episodes so
