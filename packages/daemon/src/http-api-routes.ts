@@ -4,6 +4,7 @@
  * The auth/CORS gate and the GET routes stay in http.ts.
  * Split out of http.ts (file-size convention).
  */
+import { reviewDraftHandler } from "./draft-review-handler.js";
 import {
   recallHandler,
   loadMemoryHandler,
@@ -77,6 +78,7 @@ async function dispatchTool(
   body = recoverCallArguments(tool, body, TOOL_ARG_EXPECTATIONS) as Record<string, unknown>;
 
   switch (tool) {
+    case "review_draft": return reviewDraftHandler(toolDeps, body);
     case "recall":
       return await recallHandler(toolDeps, body);
     case "load_memory":

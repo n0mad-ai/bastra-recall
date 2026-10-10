@@ -13,6 +13,7 @@
  * always matches the validator; this constant is the fallback when the daemon
  * isn't reachable yet.
  */
+import { draftReviewTools } from "./draft-review-handler.js";
 import { requiredFieldsOf } from "./call-corruption.js";
 import { MEMORY_TOOL_DEFS } from "./tool-handlers.js";
 import { documentTools } from "./documents-handler.js";
@@ -28,6 +29,7 @@ export const ALL_TOOL_DEFS = [
   ...productDocTools,
   ...codeTools,
   ...affectedTools,
+  ...draftReviewTools,
 ];
 
 /**
@@ -84,6 +86,7 @@ const WRITE_SURFACE_TOOLS = [
   "edit_memory",
   "save_document",
   "save_product_doc",
+  "review_draft",
 ] as const;
 
 export function toolSurfaceFrom(raw: string | undefined): ToolSurface {

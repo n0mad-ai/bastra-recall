@@ -33,10 +33,10 @@ export interface DraftHit {
 export type DraftNote = { id?: string; title?: string; summary?: string; body?: string };
 
 export function draftHintsEnabled(): boolean { return !envOff("BASTRA_DRAFT_HINTS"); }
-function singleLine(text: string): string {
+export function singleLine(text: string): string {
   return stripFenceMarkers(text.replace(/\s+/gu, " ").replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/gu, "")).trim();
 }
-function projectLabel(text: string): string { return singleLine(text).replace(/[^\p{L}\p{N}._-]/gu, "").slice(0, 80); }
+export function projectLabel(text: string): string { return singleLine(text).replace(/[^\p{L}\p{N}._-]/gu, "").slice(0, 80); }
 
 export function prepareDraftSearch(rows: readonly Draft[], now = Date.now(), vocabulary?: DraftVocabulary) {
   const open = rows.filter(row => row.state === "open");

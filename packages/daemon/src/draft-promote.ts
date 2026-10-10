@@ -1,4 +1,4 @@
-/** Local-only promotion. Compute/yield outside the store lock; mutate only in sharp mode. */
+/** Local-only promotion. Lifecycle changes require sharp mode; dry runs can attach review metadata. */
 import { createHash } from "node:crypto";
 import { appendFile, mkdir, realpath, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -20,6 +20,7 @@ import { readDraftDecisions, recordDraftDecisions } from "./draft-decisions.js";
 import { writeDraftEvent } from "./draft-events.js";
 import type { TrainingItem, TrainingVerdict } from "./training-capture.js"; // #1128-capture
 import { evalRunMark } from "./training-signal.js"; // #1128-capture
+import { recordDraftReviewCandidates } from "./draft-review.js";
 import { noteJudgeText, parseVerdict, relationPrompt, statementPrompt, DRAFT_JUDGE_RETRY_MS, RELATIONS, STATEMENT_KINDS, type DraftJudge, type Relation, type StatementKind } from "./draft-judge.js";
 
 /** Unmeasured on real data, unchanged after review. */
@@ -118,8 +119,8 @@ async function writeEvent(event: DraftPromotionEvent): Promise<void> {
 }
 const PASS_KEY = hash("draft-promotion-pass:repeat-use:v4");
 function passSignature(opts: DraftPromoteOptions, rows: Draft[], notes: ReturnType<Vault["list"]>, vectors: ReadonlyMap<string,Float32Array> | null, snapshot: ReturnType<NonNullable<DraftPromoteOptions["vaultVectors"]>> | undefined, sharp: boolean, vaultId: string): string {
-  const state = createHash("sha256").update(JSON.stringify({ rules: [DRAFT_PROMOTION_RULE_VERSION,DRAFT_REPEAT_COSINE_MIN,DRAFT_VAULT_COSINE_MIN,DRAFT_RARE_TOKEN_MAX_ROWS,DRAFT_RARE_TOKEN_MIN,DRAFT_CUE_MIN_CHARS,STORED_CONTAINMENT_MIN,DRAFT_USE_MIN_WORD_TOKENS,DRAFT_USE_LITERAL_MIN_CHARS,ACTED_ON_WINDOW_MS], vaultId, sharp, allowSharp: opts.allowSharp, provider: opts.provider?.id, dim: opts.provider?.dim, ollama: opts.ollama ? [opts.ollama.baseURL, opts.ollama.model] : null, judge: opts.judge?.model ?? null,
-    rows: rows.map(({ last_touched: _touched, created: _created, ...row }) => row), notes: notes.map(note => [note.fm.id, note.fm.title, note.fm.summary, note.fm.recall_when, note.fm.source, note.fm.write_origin, note.body.slice(0,4000)]),
+  const state = createHash("sha256").update(JSON.stringify({ reviewMetadata: 2, rules: [DRAFT_PROMOTION_RULE_VERSION,DRAFT_REPEAT_COSINE_MIN,DRAFT_VAULT_COSINE_MIN,DRAFT_RARE_TOKEN_MAX_ROWS,DRAFT_RARE_TOKEN_MIN,DRAFT_CUE_MIN_CHARS,STORED_CONTAINMENT_MIN,DRAFT_USE_MIN_WORD_TOKENS,DRAFT_USE_LITERAL_MIN_CHARS,ACTED_ON_WINDOW_MS], vaultId, sharp, allowSharp: opts.allowSharp, provider: opts.provider?.id, dim: opts.provider?.dim, ollama: opts.ollama ? [opts.ollama.baseURL, opts.ollama.model] : null, judge: opts.judge?.model ?? null,
+    rows: rows.map(({ last_touched: _touched, created: _created, review_candidate: _candidate, review_shown_vaults: _shown, agent_review: _review, ...row }) => row), notes: notes.map(note => [note.fm.id, note.fm.title, note.fm.summary, note.fm.recall_when, note.fm.source, note.fm.write_origin, note.body.slice(0,4000)]),
     snapshotProvider: snapshot?.provider, snapshotDim: snapshot?.dim }));
   for (const [id,vector] of vectors ?? []) state.update(id).update(Buffer.from(vector.buffer,vector.byteOffset,vector.byteLength));
   for (const [id,vector] of snapshot?.vectors ?? []) state.update(id).update(Buffer.from(vector.buffer,vector.byteOffset,vector.byteLength));
@@ -163,10 +164,14 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
   const result: DraftPromoteResult = { promoted: 0, wouldPromote: 0, duplicates: 0, blocked: 0, errors: 0, unjudged: 0 };
   const now = opts.now ?? Date.now();
   let decisions = new Map<string,string>();
+  let reviewVaultId: string | undefined;
+  let reviewPassCompleted = false;
+  const reviewCandidates = new Map<string, DraftPromotionEvent>();
   const changes = new Map<string,string>(), events = new Map<string,DraftPromotionEvent>();
   try {
     await opts.vault.reconcile();
     const vaultId = await draftVaultId(opts.vault.root), all = await listDrafts(now);
+    reviewVaultId = vaultId;
     const localOpts = { provider: opts.provider, ollama: opts.ollama }, provider = localDraftProvider(localOpts);
     const vectorState = await readDraftVectorState(localOpts, all);
     const vectors = vectorState.vectors;
@@ -180,6 +185,7 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
     if ([signature, retrySignature].includes(decisions.get(PASS_KEY)!)) return result;
     const emitOnce = async (rows: Draft[], { judge_ms, ...stable }: DraftPromotionEvent): Promise<void> => {
       const event = judge_ms === undefined ? stable : { ...stable, judge_ms };
+      if (event.kind === "draft_would_promote" || event.kind === "draft_would_block") for (const row of rows) reviewCandidates.set(row.id, event);
       const key = hash([...event.draft_ids].sort().join("\n"));
       const value = hash(JSON.stringify({ event: stable, evidence: draftEvidenceKey(rows), provider: opts.provider?.id, dim: opts.provider?.dim, state: rows.map(row => [row.state,row.vault_id]) }));
       if (decisions.get(key) === value) return;
@@ -363,9 +369,11 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
       if (committed) { closeRows(selected, "promoted", committed.id, draftEvidenceKey(selected), now, committed.sha); result.promoted++; await emitOnce(selected, { kind: "draft_promoted", ...base, ...verdicts() }); }
       await setImmediate();
     }
+    reviewPassCompleted = true;
     changes.set(PASS_KEY, result.unjudged ? retrySignature : signature);
   } catch { result.errors++; result.probeOnly = true; }
   finally {
+    if (reviewPassCompleted && reviewVaultId) await recordDraftReviewCandidates(reviewCandidates, reviewVaultId, now).catch(() => undefined);
     try {
       const accepted = await recordDraftDecisions(changes,decisions);
       for (const [key,event] of events) if (accepted.has(key)) { if (opts.emit) opts.emit(event); else await writeEvent(event); }

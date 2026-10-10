@@ -28,6 +28,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- SessionStart can show up to three secret-redacted local draft candidates for
+  agent review, once per vault, with injection filtering and the three checks
+  for correctness, durability and existing notes. `review_draft` records a
+  confirmation without saving/promoting, or rejects with the existing retained
+  fingerprint marker. Review metadata does not gate promotion; the old quote
+  block stays on, suppressing only same-start duplicates. All three draft/relay
+  off switches disable the new presentation path. Text-free review telemetry
+  and complete EN/DE privacy, usage and hook guidance are included (Refs #157,
+  steps 1–2 only). Confirmation/rejection/uncertainty advice shares one
+  canonical EN/DE rule across tool, block and skills. Candidate verdicts now
+  follow the latest completed local pass; obsolete verdicts are removed without
+  clearing prior answers.
+
 - `BASTRA_PENDING_RELAY=0` disables every shared suggestion-relay writer and
   SessionStart delivery without reading or deleting retained entries. Explicit
   `bastra drafts purge` now clears the relay as well as drafts, vectors and

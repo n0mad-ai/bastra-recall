@@ -32,6 +32,7 @@ import { fileURLToPath } from "node:url";
 
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const CANONICAL_DIR = resolve(REPO_ROOT, "packages", "skill");
+export const DRAFT_REVIEW_RULE_PATH = resolve(REPO_ROOT, "packages", "daemon", "src", "draft-review-rule.json");
 export const REFERENCE_FILES = ["topology.md", "taxonomy.md", "intake.md", "commons.md"];
 export const PROJECTIONS = {
   cursor: resolve(CANONICAL_DIR, "cursor-rules.mdc"),
@@ -91,8 +92,30 @@ export function renderPluginSkill(canonical) {
   );
 }
 
+/** Decision text is shared with the runtime JSON import. Only these marked
+ * prose regions are generated; surrounding skill/doc content stays authored. */
+export function renderDraftReviewRule(text, rule, language) {
+  const start = `<!-- draft-review-decision-rule:${language} -->`;
+  const end = `<!-- /draft-review-decision-rule:${language} -->`;
+  const a = text.indexOf(start), b = text.indexOf(end, a);
+  if (a < 0 || b < 0) throw new Error(`missing draft review rule region: ${language}`);
+  const body = language === "both" ? `${rule.en}\n**Deutsch:** ${rule.de}` : rule[language];
+  return text.slice(0, a) + start + "\n" + body + "\n" + text.slice(b);
+}
+
 export async function buildSkillProjections({ write = true } = {}) {
-  const canonical = await readFile(resolve(CANONICAL_DIR, "SKILL.md"), "utf8");
+  const rule = JSON.parse(await readFile(DRAFT_REVIEW_RULE_PATH, "utf8"));
+  if (![rule.en, rule.de].every(value => typeof value === "string" && value.length > 0)) throw new Error("invalid draft review decision rule");
+  const source = await readFile(resolve(CANONICAL_DIR, "SKILL.md"), "utf8");
+  const canonical = renderDraftReviewRule(source, rule, "both");
+  if (write) {
+    if (canonical !== source) await writeFile(resolve(CANONICAL_DIR, "SKILL.md"), canonical, "utf8");
+    for (const name of ["PRIVACY.md", "USAGE.md", "hooks.md"]) {
+      const path = resolve(REPO_ROOT, "docs", name), before = await readFile(path, "utf8");
+      const after = renderDraftReviewRule(renderDraftReviewRule(before, rule, "en"), rule, "de");
+      if (after !== before) await writeFile(path, after, "utf8");
+    }
+  }
   const out = {
     cursor: renderCursorRule(canonical),
     pluginSkill: renderPluginSkill(canonical),

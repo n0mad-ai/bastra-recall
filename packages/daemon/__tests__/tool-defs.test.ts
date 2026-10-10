@@ -95,7 +95,7 @@ test("the search surface lists exactly the read tools", () => {
   }
 });
 
-test("the write surface adds the save tools and keeps lifecycle out", () => {
+test("the write surface adds save and draft review tools and keeps lifecycle out", () => {
   const names = filterToolDefsForSurface(ALL_TOOL_DEFS as ToolDef[], "write").map((d) => d.name);
   assert.deepEqual(
     [...names].sort(),
@@ -107,6 +107,7 @@ test("the write surface adds the save tools and keeps lifecycle out", () => {
       "load_memory",
       "read_document",
       "recall",
+      "review_draft",
       "save_document",
       "save_memory",
       "save_product_doc",
@@ -115,7 +116,7 @@ test("the write surface adds the save tools and keeps lifecycle out", () => {
     // and moves nothing, so it is not lifecycle — and leaving it out of the
     // surface a fresh install gets would push agents back to editing vault
     // files by hand, which is the hole it closes.
-    "write is search + the save tools",
+    "write is search + save and draft review tools",
   );
   for (const t of LIFECYCLE_TOOLS) {
     assert.equal(isToolAllowed(t, "write"), false, `${t} is full-only — it reshapes the vault`);

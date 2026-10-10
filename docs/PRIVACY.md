@@ -94,6 +94,61 @@ in the daemon background under a real lock, without normal busy-lock warnings.
 The in-memory deferred write can be lost if the daemon is killed before it is
 persisted; this is not a second durable queue.
 
+#### Agent review of local candidates (#157, steps 1–2)
+
+At SessionStart, Claude Code and Codex can receive a separate `<draft-review>`
+block with up to three open drafts evaluated locally as `would_promote` or
+`would_block`. Review and old relay content share the existing 3,000-character
+budget: review is first, the old block receives what remains (plus its fixed
+frame and truncation notice). The review block includes the
+secret-redacted quote, project, date and available local verdicts. Only drafts
+with confirmed provenance for the current vault and a candidate verdict from
+the latest completed local pass are eligible. A later pass removes obsolete
+verdicts or replaces changed verdicts; shown and answered markers stay. Injection findings
+exclude the whole candidate; quoted text is untrusted data, never instructions.
+Each draft is presented once per vault while its record is retained. If more
+candidates fit later, they wait for another start. Busy or inaccessible stores
+are skipped rather than blocking the session. Presentation is a durable claim
+when the hook response is prepared, not proof that the agent read it.
+
+<!-- draft-review-decision-rule:en -->
+confirm only if the statement is correct, durable beyond that session and not already in the vault. confirm saves nothing; if worth saving, save it yourself with save_memory as usual. reject if it is false, outdated, a one-off request, or already in the vault. If unsure and the question fits the current task, briefly ask the user once, in one sentence including the quote, then send confirm or reject based on their answer. Do not guess or repeat the question. If the user is busy with another task or does not answer, leave the draft unanswered to expire normally.
+<!-- /draft-review-decision-rule:en -->
+
+The agent should recall first and check three things: is it correct, is it
+durable, does the vault already hold it? Answer with MCP `review_draft`, passing
+`id` and `decision: "confirm"` or `decision: "reject"`. The write/full tool
+surfaces expose it; the search-only surface does not. Confirmation records only
+an agent verdict on the draft. It never saves a note, starts promotion or adds
+a promotion gate. Rejection closes the draft with the retained fingerprint
+that blocks an identical recapture. Repeated identical answers are idempotent.
+Already promoted drafts cannot be rejected with this tool; use the existing
+undo workflow for those. A confirmation is evidence, not proof.
+
+The old sentence-quote block remains enabled. A quote shown in the new block is
+removed only from the old harvest block in that same SessionStart; other old
+quotes remain eligible within the shared budget. The independent recall hint band keeps its existing rules.
+The new block is off if any of `BASTRA_PENDING_RELAY=0`,
+`BASTRA_SESSION_HARVEST=0` or `BASTRA_DRAFT_HINTS=0` is set in the daemon's
+environment (restart after changes); retained candidates stay unread by this
+presentation path. Verdict capture and explicit answers can still update draft
+metadata. `drafts purge` clears these records together with the other stores.
+
+Review verdicts, the shown-vault marker and the answer use optional fields in
+the existing draft file, without a schema migration. Local evaluation receipts
+are refreshed once to attach candidate metadata; cached local model verdicts
+remain reusable. Review metadata does not invalidate promotion decisions.
+Shown/confirmed/rejected telemetry contains draft IDs and counts, never quotes.
+The redacted quote reaches the session's assistant, including its cloud provider
+when applicable. Redaction is heuristic and has the documented limits.
+
+An agent's separate `save_memory` does **not** directly close the draft. In the
+standard dry run, even a subsequent existing-note duplicate check keeps it open;
+only the existing sharp-mode duplicate path can close it when all its gates
+pass. No additional closing logic was added. Automatic promotion remains off
+by default; neither sharp-mode confirmation gating nor retirement of the old
+quote block is part of steps 1–2.
+
 #### Switching off and clearing drafts
 
 Set the switches in the **daemon's environment** and restart it; changing only
@@ -242,6 +297,66 @@ nicht auf die Sperre und werden im Daemon-Hintergrund unter einer echten Sperre
 wiederholt, ohne Störmeldung bei normaler Belegung. Ein noch nicht gespeicherter
 Auftrag im Arbeitsspeicher kann bei einem harten Daemon-Abbruch verloren gehen;
 das ist keine zweite dauerhafte Warteschlange.
+
+#### Agent prüft lokale Kandidaten (#157, Schritte 1–2)
+
+Bei SessionStart können Claude Code und Codex einen eigenen `<draft-review>`-
+Block mit höchstens drei offenen Entwürfen erhalten, die lokal als
+`would_promote` oder `would_block` beurteilt wurden. Review und alter Relay-Inhalt
+teilen das vorhandene Budget von 3.000 Zeichen: zuerst Review, der alte Block
+bekommt den Rest (zuzüglich seines festen Rahmens und Kürzungshinweises).
+Der Review-Block enthält geschwärztes Zitat, Projekt, Datum und vorhandene
+lokale Urteile. Nur Entwürfe mit bestätigter Herkunft für den aktuellen Vault
+und Kandidatenurteil aus dem letzten vollständig abgeschlossenen lokalen Pass
+kommen infrage. Ein späterer Pass entfernt überholte Vermerke oder ersetzt
+geänderte Urteile; Gezeigt- und Antwortvermerke bleiben erhalten. Ein Injection-Fund schließt den ganzen Kandidaten aus;
+Zitattext ist unbestätigtes Material, keine Anweisung. Jeder Entwurf wird je
+Vault einmal vorgelegt, solange sein Datensatz erhalten bleibt. Weitere
+Kandidaten warten auf einen späteren Start. Eine belegte oder unzugängliche
+Ablage wird übersprungen, statt den Sitzungsstart aufzuhalten. „Vorgelegt“ ist
+ein dauerhafter Vermerk beim Vorbereiten der Hook-Antwort, kein Lesebeweis.
+
+<!-- draft-review-decision-rule:de -->
+confirm nur, wenn die Aussage stimmt, über die damalige Sitzung hinaus gilt und noch nicht im Vault steht. confirm speichert nichts; falls speichernswert, speichere selbst wie gewohnt mit save_memory. reject, wenn sie falsch oder überholt ist, ein einmaliger Auftrag war oder schon im Vault steht. Bei Unsicherheit, wenn die Frage gerade passt, den Nutzer einmal kurz in einem Satz mit dem Zitat fragen und nach seiner Antwort confirm oder reject senden. Nicht raten oder die Frage wiederholen. Passt die Frage gerade nicht, weil der Nutzer mit einer anderen Aufgabe beschäftigt ist, oder antwortet er nicht, bleibt der Entwurf unbeantwortet und verfällt regulär.
+<!-- /draft-review-decision-rule:de -->
+
+Der Agent soll zuerst Recall nutzen und drei Fragen prüfen: Stimmt das? Ist es
+dauerhaft? Hat der Vault es schon? Er antwortet über MCP `review_draft` mit `id`
+und `decision: "confirm"` oder `decision: "reject"`. Die Werkzeugoberflächen
+write/full bieten den Aufruf, die reine Suchoberfläche nicht. Bestätigen hält
+nur das Agentenurteil am Entwurf fest. Es speichert keine Notiz, startet keine
+Übernahme und fügt keine Übernahmesperre hinzu. Ablehnen schließt den Entwurf
+mit dem vorhandenen Fingerprint-Sperrvermerk gegen identische Neuerfassung.
+Gleiche Antworten sind wiederholbar, ohne doppelte Wirkung. Bereits beförderte
+Entwürfe lassen sich hier nicht ablehnen; dafür bleibt der vorhandene
+Undo-Ablauf. Eine Bestätigung ist ein Indiz, kein Beweis.
+
+Der alte Satz-Zitat-Block bleibt an. Ein im neuen Block gezeigtes Zitat entfällt
+nur im alten Harvest-Block desselben SessionStart; andere alte Zitate bleiben im gemeinsamen Budget zulässig.
+Das unabhängige Recall-Hinweisband behält seine bisherigen Regeln. Der neue
+Block ist aus, sobald einer von `BASTRA_PENDING_RELAY=0`,
+`BASTRA_SESSION_HARVEST=0` oder `BASTRA_DRAFT_HINTS=0` in der Daemon-Umgebung
+steht (nach Änderungen neustarten). Aufbewahrte Kandidaten werden durch diesen
+Vorlageweg nicht gelesen. Lokale Urteile und ausdrückliche Antworten können
+weiter Entwurfsmetadaten aktualisieren. `drafts purge` leert diese Datensätze
+mit den anderen Ablagen.
+
+Lokale Urteile, der Vorlagevermerk je Vault und die Antwort nutzen Zusatzfelder
+in der vorhandenen Entwurfsdatei, ohne Schema-Migration. Lokale Prüfmerker werden
+einmal erneuert, um Kandidatenmetadaten anzuhängen; zwischengespeicherte lokale
+Modellurteile bleiben verwendbar. Review-Metadaten machen Übernahmeentscheidungen
+nicht ungültig. Telemetrie für gezeigt/bestätigt/abgelehnt enthält Entwurfs-IDs
+und Zähler, keine Zitate. Das geschwärzte Zitat erreicht den Sitzungsassistenten
+und gegebenenfalls dessen Cloud-Anbieter. Die Schwärzung ist eine Heuristik mit
+den dokumentierten Grenzen.
+
+Ein gesondertes `save_memory` des Agenten schließt den Entwurf **nicht** direkt.
+Im standardmäßigen Probelauf hält ihn auch die spätere bestehende
+Dublettenprüfung offen. Nur der vorhandene scharfe Dublettenweg kann ihn bei
+erfüllten Sperren schließen. Keine zusätzliche Schließlogik wurde gebaut.
+Automatische Übernahme bleibt standardmäßig aus; eine Bestätigungssperre im
+scharfen Modus und das Abschalten des alten Zitatblocks gehören nicht zu den
+Schritten 1–2.
 
 #### Abschalten und Entwürfe entfernen
 
