@@ -217,8 +217,8 @@ function credentialKey(key: string): boolean {
 
 function pskKey(key: string): boolean {
   const raw = key.replace(/\p{Cf}/gu, ""), normalized = raw.toLowerCase().replace(/[\s_-]/g, "");
-  if (/usepsk$|psk(?:enabled|mode|identity)$/.test(normalized)) return false;
-  return /(?:psk(?:\d+|key|value)?|presharedkey|wifikey)$/.test(normalized) || /^psk(?:_[a-z0-9]+)+$/i.test(raw);
+  return /(?:psk(?:\d+|key|value)?|presharedkey|wifikey)$/.test(normalized) ||
+    (/^psk(?:_[a-z0-9]+)+$/i.test(raw) && !/^psk(?:enabled|mode|identity)$/.test(normalized));
 }
 
 /** Locations and identifiers are the useful content of a draft, not access values. */
