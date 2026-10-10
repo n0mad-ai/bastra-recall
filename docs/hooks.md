@@ -881,8 +881,13 @@ document frequency over the vault. Function words of any language occur in
 most notes of that language and weigh almost nothing, so no stopword list is
 involved; a rephrased or translated note is not matched, and that pick is
 relayed. The rest go into the pending relay (recency lane, #513) as one
-`<session-harvest>` block of verbatim quotes, which the next session start
-shows. **The ordinary harvest relay does not save notes**: the agent recalls,
+`<session-harvest>` block of quotes, with recognizable credentials removed by
+the same filter as local drafts before storage. The vault comparison runs on the
+original quotes first. `pending-suggestions.json` is written with permissions
+0600; retained legacy rows are cleaned on every ordinary write, and old rows are
+also cleaned before delivery. Recency is consumed once and expires after seven
+days; trends keep their existing session counters. The next session start shows
+the remaining text. **The ordinary harvest relay does not save notes**: the agent recalls,
 judges and saves. The separate draft-promotion step in that tick can write only
 with explicit sharp opt-in and the guards described below. A resumed session is harvested again only for its new turns.
 Telemetry: `session_harvest` with `session_id, client, turn_count,
@@ -2389,8 +2394,14 @@ Wort gewichtet mit seiner inversen Dokumenthäufigkeit im Vault. Funktionswörte
 jeder Sprache stehen in den meisten Notizen dieser Sprache und wiegen fast
 nichts, deshalb braucht es keine Stoppwortliste; eine umformulierte oder
 übersetzte Notiz wird nicht erkannt, und diese Auswahl wird weitergereicht. Der
-Rest landet als ein `<session-harvest>`-Block mit wörtlichen Zitaten im
-Pending-Relay (Recency-Spur, #513), den der nächste Session-Start zeigt.
+Rest landet als ein `<session-harvest>`-Block mit Zitaten im Pending-Relay
+(Recency-Spur, #513). Erkennbare Zugangsdaten werden vor dem Speichern mit
+demselben Filter wie bei lokalen Entwürfen entfernt; der Vault-Abgleich läuft
+zuvor auf den ursprünglichen Zitaten. `pending-suggestions.json` wird mit Rechten
+0600 geschrieben. Verbliebene alte Zeilen werden bei jedem normalen Schreiben
+und vor der Auslieferung geschwärzt. Recency wird einmal konsumiert und verfällt
+nach sieben Tagen; Trends behalten ihre bestehenden Sitzungszähler. Der nächste
+Session-Start zeigt den verbliebenen Text.
 **Der normale Relay-Weg legt keine Notizen an; die getrennte Draft-Beförderung
 kann im selben Tick nur nach ausdrücklichem Scharf-Opt-in und den unten genannten
 Prüfungen schreiben.** Beim Relay sucht der Agent per recall, prüft

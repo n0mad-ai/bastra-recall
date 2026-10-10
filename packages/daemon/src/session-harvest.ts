@@ -20,9 +20,11 @@
  *     shape candidates (`harvestCandidates`) for the unchanged relay.
  *  3. Candidates the vault already holds in the same words are dropped
  *     (`harvest-vault-match.ts`); the rest go into the pending-suggestions
- *     relay (#513, recency lane) as verbatim quotes. The next session start
- *     shows them; the agent judges and saves. Nothing here writes to the
- *     vault.
+ *     relay (#513, recency lane) as quotes with recognizable secrets removed
+ *     at storage. The vault comparison above uses the original quote first.
+ *     The next session start shows them; the agent judges and saves. This
+ *     pass writes local drafts/relay only; later opt-in draft promotion can
+ *     write notes into the vault.
  *
  * Extraction is structural and language-neutral (#676): no word lists, only
  * the shape of the conversation.
