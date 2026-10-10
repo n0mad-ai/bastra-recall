@@ -119,7 +119,7 @@ async function writeEvent(event: DraftPromotionEvent): Promise<void> {
 }
 const PASS_KEY = hash("draft-promotion-pass:repeat-use:v4");
 function passSignature(opts: DraftPromoteOptions, rows: Draft[], notes: ReturnType<Vault["list"]>, vectors: ReadonlyMap<string,Float32Array> | null, snapshot: ReturnType<NonNullable<DraftPromoteOptions["vaultVectors"]>> | undefined, sharp: boolean, vaultId: string): string {
-  const state = createHash("sha256").update(JSON.stringify({ reviewMetadata: 1, rules: [DRAFT_PROMOTION_RULE_VERSION,DRAFT_REPEAT_COSINE_MIN,DRAFT_VAULT_COSINE_MIN,DRAFT_RARE_TOKEN_MAX_ROWS,DRAFT_RARE_TOKEN_MIN,DRAFT_CUE_MIN_CHARS,STORED_CONTAINMENT_MIN,DRAFT_USE_MIN_WORD_TOKENS,DRAFT_USE_LITERAL_MIN_CHARS,ACTED_ON_WINDOW_MS], vaultId, sharp, allowSharp: opts.allowSharp, provider: opts.provider?.id, dim: opts.provider?.dim, ollama: opts.ollama ? [opts.ollama.baseURL, opts.ollama.model] : null, judge: opts.judge?.model ?? null,
+  const state = createHash("sha256").update(JSON.stringify({ reviewMetadata: 2, rules: [DRAFT_PROMOTION_RULE_VERSION,DRAFT_REPEAT_COSINE_MIN,DRAFT_VAULT_COSINE_MIN,DRAFT_RARE_TOKEN_MAX_ROWS,DRAFT_RARE_TOKEN_MIN,DRAFT_CUE_MIN_CHARS,STORED_CONTAINMENT_MIN,DRAFT_USE_MIN_WORD_TOKENS,DRAFT_USE_LITERAL_MIN_CHARS,ACTED_ON_WINDOW_MS], vaultId, sharp, allowSharp: opts.allowSharp, provider: opts.provider?.id, dim: opts.provider?.dim, ollama: opts.ollama ? [opts.ollama.baseURL, opts.ollama.model] : null, judge: opts.judge?.model ?? null,
     rows: rows.map(({ last_touched: _touched, created: _created, review_candidate: _candidate, review_shown_vaults: _shown, agent_review: _review, ...row }) => row), notes: notes.map(note => [note.fm.id, note.fm.title, note.fm.summary, note.fm.recall_when, note.fm.source, note.fm.write_origin, note.body.slice(0,4000)]),
     snapshotProvider: snapshot?.provider, snapshotDim: snapshot?.dim }));
   for (const [id,vector] of vectors ?? []) state.update(id).update(Buffer.from(vector.buffer,vector.byteOffset,vector.byteLength));
@@ -165,6 +165,7 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
   const now = opts.now ?? Date.now();
   let decisions = new Map<string,string>();
   let reviewVaultId: string | undefined;
+  let reviewPassCompleted = false;
   const reviewCandidates = new Map<string, DraftPromotionEvent>();
   const changes = new Map<string,string>(), events = new Map<string,DraftPromotionEvent>();
   try {
@@ -368,10 +369,11 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
       if (committed) { closeRows(selected, "promoted", committed.id, draftEvidenceKey(selected), now, committed.sha); result.promoted++; await emitOnce(selected, { kind: "draft_promoted", ...base, ...verdicts() }); }
       await setImmediate();
     }
+    reviewPassCompleted = true;
     changes.set(PASS_KEY, result.unjudged ? retrySignature : signature);
   } catch { result.errors++; result.probeOnly = true; }
   finally {
-    if (reviewVaultId) await recordDraftReviewCandidates(reviewCandidates, reviewVaultId, now).catch(() => undefined);
+    if (reviewPassCompleted && reviewVaultId) await recordDraftReviewCandidates(reviewCandidates, reviewVaultId, now).catch(() => undefined);
     try {
       const accepted = await recordDraftDecisions(changes,decisions);
       for (const [key,event] of events) if (accepted.has(key)) { if (opts.emit) opts.emit(event); else await writeEvent(event); }

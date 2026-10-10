@@ -36,7 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   block stays on, suppressing only same-start duplicates. All three draft/relay
   off switches disable the new presentation path. Text-free review telemetry
   and complete EN/DE privacy, usage and hook guidance are included (Refs #157,
-  steps 1–2 only).
+  steps 1–2 only). Confirmation/rejection/uncertainty advice shares one
+  canonical EN/DE rule across tool, block and skills. Candidate verdicts now
+  follow the latest completed local pass; obsolete verdicts are removed without
+  clearing prior answers.
 
 - `BASTRA_PENDING_RELAY=0` disables every shared suggestion-relay writer and
   SessionStart delivery without reading or deleting retained entries. Explicit

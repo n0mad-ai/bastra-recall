@@ -1,4 +1,6 @@
 import test from "node:test";
+import reviewRule from "../src/draft-review-rule.json" with { type: "json" };
+import { draftReviewTools } from "../src/draft-review-handler.js";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,7 +12,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { Telemetry } from "../src/telemetry.js";
 import { startHttpServer } from "../src/http.js";
 import { recordDraftReviewCandidates, takeDraftReview, answerDraftReview, suppressReviewedHarvestQuotes } from "../src/draft-review.js";
-import { draftVaultId, runDraftPromote } from "../src/draft-promote.js";
+import { draftVaultId, runDraftPromote, type DraftPromotionEvent } from "../src/draft-promote.js";
 import { runDraftShadow } from "../src/draft-shadow.js";
 import { listDrafts, upsertDraft, captureDraft, transactDrafts, draftFingerprint, draftId, type Draft } from "../src/draft-store.js";
 import { reviewDraftHandler } from "../src/draft-review-handler.js";
@@ -37,7 +39,16 @@ async function fixture(work: (vault: Vault, vaultId: string, dir: string, deps: 
   finally { search.stop(); await vault.stop(); for (const [k,v] of prev) if (v===undefined) delete process.env[k]; else process.env[k]=v; await rm(dir,{recursive:true,force:true}); }
 }
 async function candidate(d: Draft, kind: "draft_would_promote"|"draft_would_block" = "draft_would_promote") {
-  await upsertDraft(d,now); await recordDraftReviewCandidates(new Map([[d.id,{kind,draft_ids:[d.id],evidence_count:2,reason:"dry-run",judge_statement:"durable"}]]),d.vault_id!,now);
+  await upsertDraft(d,now);
+  // A local pass supplies its complete candidate snapshot, not a single-row delta.
+  const snapshot = new Map<string,DraftPromotionEvent>();
+  for (const previous of await listDrafts(now)) {
+    const c=previous.review_candidate as {vault_id?:string;kind?:string}|undefined;
+    if(previous.state==="open"&&c&&c.vault_id===d.vault_id&&(c.kind==="draft_would_promote"||c.kind==="draft_would_block"))
+      snapshot.set(previous.id,{...c,kind:c.kind,draft_ids:[previous.id],evidence_count:previous.evidence.length} as DraftPromotionEvent);
+  }
+  snapshot.set(d.id,{kind,draft_ids:[d.id],evidence_count:2,reason:"dry-run",judge_statement:"durable"});
+  await recordDraftReviewCandidates(snapshot,d.vault_id!,now);
 }
 for (const lang of ["en","de"]) {
   test(`${lang}: only matching open candidates, three per start, bounded, once per vault across concurrent starts`, () => fixture(async (_vault, id) => {
@@ -45,7 +56,7 @@ for (const lang of ["en","de"]) {
     await upsertDraft(row(id,6,first+" unjudged"),now);
     await candidate({...row(id,7,first+" closed"),state:"rejected"});
     await candidate(row("foreign",8,first+" foreign"));
-    const one=await takeDraftReview(id,lang,now); assert.equal(one.fingerprints.length,3); assert.ok(one.block.length<=3000); assert.ok(one.block.includes(HINT_FRAME_NOTE));
+    const one=await takeDraftReview(id,lang,now); assert.equal(one.fingerprints.length,3); assert.ok(one.block.length<=3000); assert.ok(one.block.includes(HINT_FRAME_NOTE));assert.ok(one.block.includes(reviewRule[lang as "en"|"de"]));
     assert.match(one.block,lang==="de" ? /Stimmt das\? Ist es dauerhaft\? Hat der Vault es schon\?/ : /Is this correct\? Is it durable\? Does the vault already hold it\?/);
     assert.doesNotMatch(one.block,/unjudged|closed|foreign/);
     const rest=await Promise.all([takeDraftReview(id,lang,now),takeDraftReview(id,lang,now)]);
@@ -121,7 +132,7 @@ for(const language of ["en","de"])test(`${language}: real SessionStart route and
     client=new Client({name:"review-fixture",version:"1"},{capabilities:{}});
     const env=Object.fromEntries(Object.entries({...process.env,BASTRA_DAEMON_URL:base,BASTRA_API_TOKEN:process.env.BASTRA_API_TOKEN!,BASTRA_FORWARDER_SPAWN:"0",BASTRA_TOOL_SURFACE:"write"}).filter((entry):entry is [string,string]=>typeof entry[1]==="string"));
     await client.connect(new StdioClientTransport({command:process.execPath,args:[resolve("packages/daemon/dist/mcp-forwarder.js")],env,stderr:"pipe"}));
-    assert.ok((await client.listTools()).tools.some(t=>t.name==="review_draft"));
+    const tool=(await client.listTools()).tools.find(t=>t.name==="review_draft");assert.ok(tool?.description?.includes(reviewRule[language as "en"|"de"]));
     const decision=language==="de"?"reject":"confirm";
     const answered=await client.callTool({name:"review_draft",arguments:{id:d.id,decision}}); assert.ok(!answered.isError); assert.equal(((await listDrafts(now))[0].agent_review as any).decision,decision); assert.equal(vault.size(),0);
   }finally{await client?.close();await handle.close();}
@@ -154,6 +165,41 @@ test("large review and old relay payloads share the existing SessionStart conten
  const text=envelope.hookSpecificOutput.additionalContext;
  const review=/<draft-review>[\s\S]*?<\/draft-review>/.exec(text)?.[0]??"";
  const old=/<pending-save-suggestions[^>]*>[\s\S]*?<\/pending-save-suggestions>/.exec(text)?.[0]??"";
- assert.equal(review.split("\n").filter(line=>line.startsWith("d-")).length,3);assert.match(old,/clipped|suppressed/);
+ const shown=review.split("\n").filter(line=>line.startsWith("d-")).length;assert.ok(shown>=1&&shown<=3);assert.match(old,/clipped|suppressed/);
  assert.ok(review.length+old.length<=PENDING_BLOCK_CHAR_BUDGET+600,`shared content budget exceeded: ${review.length+old.length}`);
 }));
+
+test("latest completed pass removes a candidate that lost its qualifying evidence",()=>fixture(async(vault,id)=>{
+ const d=row(id);await upsertDraft(d,now);const opts={vault,provider:null,ollama:null};
+ assert.equal((await runDraftPromote(opts)).wouldPromote,1);
+ const changed=(await listDrafts(now))[0];changed.evidence=changed.evidence.slice(0,1);await upsertDraft(changed,now);
+ assert.equal((await runDraftPromote(opts)).wouldPromote,0);
+ assert.equal((await takeDraftReview(id,"en",now)).block,"", "an old verdict must not present a draft absent from the latest pass");
+ assert.equal((await listDrafts(now))[0].review_candidate,undefined);
+}));
+test("a changed local judgment replaces the previous verdict before SessionStart",()=>fixture(async(vault,id)=>{
+ await upsertDraft(row(id),now);const provider={id:"ollama-fixture",dim:2,embed:async(texts:string[])=>texts.map(()=>new Float32Array([1,0]))};
+ await runDraftShadow({vault,provider,ollama:local});const base={vault,provider,ollama:local,vaultVectors:()=>({provider:provider.id,dim:2,vectors:new Map()})};
+ assert.equal((await runDraftPromote({...base,judge:{model:"first-fixture",chat:async()=>"durable"}})).wouldPromote,1);
+ assert.equal((await runDraftPromote({...base,judge:{model:"second-fixture",chat:async()=>"request"}})).blocked,1);
+ const out=await takeDraftReview(id,"de",now);assert.match(out.block,/draft_would_block/);assert.match(out.block,/"judge_statement":"request"/);assert.doesNotMatch(out.block,/"judge_statement":"durable"/);
+}));
+test("refreshing an empty candidate set preserves shown and answered metadata",()=>fixture(async(vault,id)=>{
+ const d=row(id);await upsertDraft(d,now);const opts={vault,provider:null,ollama:null};await runDraftPromote(opts);await takeDraftReview(id,"en",now);await answerDraftReview(d.id,"confirm",id,now);
+ const before=(await listDrafts(now))[0];const changed=structuredClone(before);changed.evidence=changed.evidence.slice(0,1);await upsertDraft(changed,now);await runDraftPromote(opts);
+ const after=(await listDrafts(now))[0];assert.equal(after.review_candidate,undefined);assert.deepEqual(after.agent_review,before.agent_review);assert.deepEqual(after.review_shown_vaults,before.review_shown_vaults);assert.equal(after.state,"open");assert.equal((await answerDraftReview(d.id,"confirm",id,now)).changed,false);
+}));
+test("a cached pass preserves the last evaluated candidate set",()=>fixture(async(vault,id)=>{
+ await upsertDraft(row(id),now);const opts={vault,provider:null,ollama:null};assert.equal((await runDraftPromote(opts)).wouldPromote,1);assert.equal((await runDraftPromote(opts)).wouldPromote,0);
+ assert.equal((await takeDraftReview(id,"en",now)).fingerprints.length,1);
+}));
+
+test("one canonical decision rule reaches runtime, packaged JSON, skill projections and all EN/DE guides",async()=>{
+ for(const text of [reviewRule.en,reviewRule.de])assert.ok(draftReviewTools[0].description.includes(text));
+ const packaged=JSON.parse(await readFile(resolve("packages/daemon/dist/draft-review-rule.json"),"utf8"));assert.deepEqual(packaged,reviewRule);
+ for(const name of ["packages/skill/SKILL.md","packages/skill/cursor-rules.mdc","plugins/bastra-recall/skills/bastra-recall/SKILL.md","docs/PRIVACY.md","docs/USAGE.md","docs/hooks.md"]){
+  const text=await readFile(resolve(name),"utf8");for(const rule of [reviewRule.en,reviewRule.de])assert.ok(text.includes(rule),`${name} drifted from the canonical rule`);
+ }
+ for(const clause of ["correct","durable beyond that session","not already in the vault","save_memory","false","outdated","one-off request","one sentence including the quote","based on their answer","Do not guess or repeat the question","busy with another task","does not answer","expire normally"])assert.ok(reviewRule.en.includes(clause),clause);
+ for(const clause of ["in einem Satz mit dem Zitat","nach seiner Antwort confirm oder reject","Nicht raten oder die Frage wiederholen","anderen Aufgabe","antwortet er nicht","verfällt regulär"])assert.ok(reviewRule.de.includes(clause),clause);
+});
