@@ -33,7 +33,8 @@ Curl user arguments include attached bundles such as `-sufixture:pw`; HTTPie
 `http -a user:pw` is also recognized. Existing path/variable-reference exemptions
 and idempotent placeholders apply. This recognizes these scalar grammars, not
 arbitrary shell/C evaluation; word-only PSK values in ordinary prose keep their
-existing readable boundary.
+existing readable boundary. Unquoted `WiFi.begin` password values and other
+vendor grammars can remain visible.
 
 ## Fixed acceptance corpus
 
@@ -57,8 +58,9 @@ Both new regressions and changes to a known limit fail the acceptance test.
 The frozen #1113 extension lives in `__tests__/fixtures/network-redaction-corpus.ts`
 and is included by this same test: 17 positive/negative pairs. On pre-filter main
 `75a469de`, all 17 positive targets failed and all 17 negative cases passed; after
-the change all 34 pass. Its source hash is recorded in the handover. No further
-counterexample search or language-specific word list was added.
+the change all 34 pass. The fixture SHA-256 is
+`30161c0e8753cddcd2c14f716ccb0c2b009de0639b98de801f12eeea0e6da1d0`.
+No further counterexample search or language-specific word list was added.
 The remaining limits below are recorded, not expanded into more filter rules.
 
 | Corpus section | Entries | Worse than main | Known limits |
@@ -140,9 +142,12 @@ Angehängte curl-Bündel wie `-sufixture:pw` sowie HTTPie `http -a user:pw` werd
 erkannt. Die bisherigen Pfad-/Variablenreferenzen und Platzhalter bleiben erhalten.
 Erkannt werden diese skalaren Grammatiken, keine beliebige Shell-/C-Ausführung;
 reine Wort-Passphrasen in gewöhnlicher PSK-Prosa bleiben wie bisher lesbar.
+Unquotierte `WiFi.begin`-Passwortwerte und andere Hersteller-Grammatiken können
+lesbar bleiben.
 
 Die Erweiterung umfasst 17 feste Positiv-/Negativpaare in
 `__tests__/fixtures/network-redaction-corpus.ts`, eingebunden in denselben Test.
 Vor der Filteränderung auf main `75a469de`: 17 Positivziele verfehlt, alle 17
-Negativfälle bestanden; danach 34/34 bestanden. Quell-Hash im Rück-Handover.
+Negativfälle bestanden; danach 34/34 bestanden. Die Fixture-SHA-256 lautet:
+`30161c0e8753cddcd2c14f716ccb0c2b009de0639b98de801f12eeea0e6da1d0`.
 Keine weitere Gegenbeispielsuche und keine Wortliste natürlicher Sprache.
