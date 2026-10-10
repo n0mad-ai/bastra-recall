@@ -26,7 +26,7 @@ test("#670: lock waits double, automatic bursts cannot accelerate them, and retr
     refresher.enqueue("/fixture", "git"); t.mock.timers.tick(0); await settled();
     assert.equal(calls, 1);
     for (const wait of [10, 20, 40, 80, 160, 320]) {
-      const before = calls;
+      const before: number = calls;
       for (const reason of ["watcher", "git", "stop-hook", "startup"] as const)
         for (let i = 0; i < 20; i++) refresher.enqueue("/fixture", reason);
       t.mock.timers.tick(wait - 1); await settled(); assert.equal(calls, before);
