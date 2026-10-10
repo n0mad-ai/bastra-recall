@@ -137,6 +137,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Terminal panels show Git ahead/behind arrows only for positive counts.
+  Missing behind arrows do not claim the remote is current; the panel still
+  never fetches or accesses the network (#1135).
+
 - The daily CLI model hint reclaims a day lock older than ten seconds in a
   single silent attempt, so an interrupted command cannot suppress it forever.
   Fresh or unwritable locks still skip the hint without waiting; other

@@ -166,12 +166,13 @@ If the forwarder feed cannot be matched safely, only Client time is shown.
 The metadata row shows Git branch and short SHA, staged/modified/new files,
 conflicts and ahead/behind relative to local upstream refs. Git is read without
 network or index locks, at most once per five seconds. It does not fetch remote
-changes; failed Git reads are shown as unavailable. The ahead/behind arrows are
-not proof of synchronization with the remote: the known open issue #1135 can
-show `↑0 ↓0` without a reliable comparison. The value after `↓` reflects new
-remote commits only after you manually run `git fetch` in this repository.
-Check Git separately when that
-distinction matters. When supplied by the
+changes; failed Git reads are shown as unavailable. Only positive ahead/behind counts are shown: `↑N` means local commits ahead of
+the local upstream copy, and `↓M` is a known minimum from that copy. Zero and
+unknown counts are omitted; if both are zero the whole arrow part disappears.
+A missing `↓` means the remote state is not known, not that the repository is
+current. The panel never fetches: new remote commits can be reflected only
+after you manually run `git fetch` in this repository. Check Git separately
+when that distinction matters. When supplied by the
 client, session duration, reasoning effort, estimated list-price cost, cache-hit
 ratio and changed-line counts are displayed. Codex also reports cumulative
 session tokens. Cost and API duration missing from Codex's stream remain unknown. Its reported cached input tokens divided by cumulative input tokens appear as `Cache-Eingabe`; this is distinct from Claude's reported request cache-hit ratio.
@@ -386,11 +387,12 @@ Die Metadatenzeile zeigt Git-Branch und kurze SHA, gestagte/geänderte/neue Date
 Konflikte sowie voraus/zurück relativ zu lokalen Upstream-Refs. Git wird ohne
 Netzwerk- oder Indexsperren höchstens einmal alle fünf Sekunden gelesen.
 Entfernte Änderungen werden nicht abgerufen; fehlgeschlagene Git-Lesungen
-erscheinen als nicht verfügbar. Die Pfeile für voraus/zurück belegen keine
-Synchronisierung mit dem Remote: Der bekannte offene Fehler #1135 kann
-`↑0 ↓0` ohne verlässlichen Vergleich anzeigen. Der Wert hinter `↓` berücksichtigt
-neue Remote-Commits erst, nachdem du in diesem Ordner manuell `git fetch`
-ausgeführt hast. Prüfe Git separat, wenn diese
+erscheinen als nicht verfügbar. Nur positive voraus/zurück-Zähler werden gezeigt: `↑N` nennt lokale Commits
+relativ zur lokalen Upstream-Kopie, `↓M` einen belegten Mindestwert aus dieser
+Kopie. Null und unbekannte Werte entfallen; sind beide null, entfällt der ganze
+Pfeilteil. Ein fehlendes `↓` heißt „Remote-Stand nicht bekannt“, nicht „aktuell“.
+Das Panel holt nie selbst: Neue Remote-Commits werden erst nach einem manuellen
+`git fetch` in diesem Ordner berücksichtigt. Prüfe Git separat, wenn diese
 Unterscheidung wichtig ist. Soweit der Client sie liefert, erscheinen
 Sitzungsdauer, Reasoning-Aufwand, geschätzte Kosten nach Listenpreis,
 Cache-Trefferquote und geänderte Zeilen. Codex meldet außerdem kumulierte
