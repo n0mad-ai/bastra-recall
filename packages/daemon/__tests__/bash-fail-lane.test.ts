@@ -64,6 +64,11 @@ describe("bash-fail-hook: extractCommandHead", () => {
   it("stops at pipeline operators", () => {
     assert.equal(extractCommandHead("ls -la | grep foo"), "ls -la");
   });
+  it("skips a leading cd, so the query names the program, not the directory", () => {
+    assert.equal(extractCommandHead('cd ~/proj && grep -nE "exit 1|fail" file | head'), 'grep -nE "exit');
+    assert.equal(extractCommandHead("cd /a; cd b && npm test"), "npm test");
+    assert.equal(extractCommandHead("cd ~/proj"), "cd ~/proj");
+  });
 });
 
 describe("bash-fail-hook: extractErrorContext", () => {
