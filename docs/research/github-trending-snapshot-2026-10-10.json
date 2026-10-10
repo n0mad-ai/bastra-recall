@@ -1,0 +1,71 @@
+{
+  "observed_on": "2026-10-10",
+  "date_timezone": "Europe/Madrid",
+  "method": "GitHub Trending HTML fetched directly; repository names parsed from article h2 links; daily, weekly and monthly snapshots; not a quality ranking",
+  "snapshots": {
+    "daily": {
+      "url": "https://github.com/trending?since=daily",
+      "repos": [
+        "morluto/rea",
+        "boykopovar/AnyPS5",
+        "storytold/artcraft",
+        "cathrynlavery/diagram-design",
+        "mksglu/context-mode",
+        "mattpocock/skills",
+        "flutter/flutter",
+        "tensorflow/tensorflow",
+        "hugohe3/ppt-master",
+        "pytorch/pytorch",
+        "huggingface/transformers",
+        "anthropics/knowledge-work-plugins",
+        "multica-ai/andrej-karpathy-skills"
+      ]
+    },
+    "weekly": {
+      "url": "https://github.com/trending?since=weekly",
+      "repos": [
+        "boykopovar/AnyPS5",
+        "mattpocock/skills",
+        "EpicGames/raddebugger",
+        "thedotmack/claude-mem",
+        "heygen-com/hyperframes",
+        "mvschwarz/openrig",
+        "cursor/plugins",
+        "earthtojake/text-to-cad",
+        "flutter/flutter",
+        "pingdotgg/t3code",
+        "ranxianglei/billion-context",
+        "DuarteSantos8/openGym",
+        "tester-army/e2e"
+      ]
+    },
+    "monthly": {
+      "url": "https://github.com/trending?since=monthly",
+      "repos": [
+        "alibaba/open-code-review",
+        "debpalash/VoiceStudio",
+        "anthropics/financial-services",
+        "paperclipai/paperclip",
+        "affaan-m/ECC",
+        "vectorize-io/hindsight",
+        "Tencent/WeKnora",
+        "anthropics/claude-code",
+        "anthropics/knowledge-work-plugins",
+        "TencentCloud/Octop",
+        "bilawalsidhu/gods-eye-view",
+        "agent-substrate/substrate",
+        "heygen-com/hyperframes",
+        "NVIDIA/OpenShell",
+        "JustVugg/colibri",
+        "mksglu/context-mode",
+        "trycua/cua",
+        "tashfeenahmed/freellmapi",
+        "addyosmani/agent-skills",
+        "cursor/plugins",
+        "NationalSecurityAgency/ghidra",
+        "DietrichGebert/ponytail",
+        "longbridge/gpui-kit"
+      ]
+    }
+  }
+}
