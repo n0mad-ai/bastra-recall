@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `BASTRA_PENDING_RELAY=0` disables every shared suggestion-relay writer and
+  SessionStart delivery without reading or deleting retained entries. Explicit
+  `bastra drafts purge` now clears the relay as well as drafts, vectors and
+  decision receipts, preserving unreadable/invalid relay files and using the
+  same cross-process lock and private 0600 writes as the daemon.
+
 - **Local drafts capture unsaved context automatically** (#1084) while the
   after-session harvest is enabled. Typed turns passing the noise filter
   (at least 20 letters, fewer than 2,000 characters) enter a secret-redacted

@@ -17,7 +17,7 @@ import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { withPathLock } from "./path-lock.js";
-import { envInt } from "./env.js";
+import { envInt, envOff } from "./env.js";
 import { redactSecrets } from "@bastra-recall/core/scrub";
 import { clipDraftText } from "./draft-text.js";
 
@@ -136,6 +136,24 @@ export function pendingSuggestionsPath(): string {
   return process.env.BASTRA_PENDING_SUGGESTIONS_PATH ?? join(homedir(), ".bastra", "pending-suggestions.json");
 }
 
+/** One gate for every relay producer, reader and settlement. Existing files stay untouched. */
+export function pendingRelayEnabled(): boolean { return !envOff("BASTRA_PENDING_RELAY"); }
+
+/** Explicit administration works even when delivery is disabled. Preserve unreadable/invalid files. */
+export async function purgePendingSuggestions(): Promise<void> {
+  const path = pendingSuggestionsPath();
+  await withPathLock(path, async () => {
+    let parsed: unknown;
+    try { parsed = JSON.parse(await readFile(path, "utf8")); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw new Error("cannot clear pending relay; original preserved");
+    }
+    if (!Array.isArray(parsed)) throw new Error("cannot clear pending relay; original preserved");
+    await writePendingRows(path, []);
+  }, { crossProcess: true });
+}
+
 function capPendingBlocks(blocks: string): string {
   return blocks.length > PENDING_ENTRY_CHAR_CAP
     ? clipDraftText(blocks, PENDING_ENTRY_CHAR_CAP - 1) + "…" : blocks;
@@ -181,20 +199,15 @@ async function writePendingRows(path: string, rows: PendingSuggestion[]): Promis
  * stays non-blocking because the Stop lane already awaits this off the
  * session's critical path.
  *
- * In-process only, deliberately: every writer and the consumer live in the
- * daemon. `writePendingSuggestion` is called from stop-lane.ts and
- * curator-run.ts, `consumePendingSuggestions` from session-lane.ts, and all
- * three lanes are reached exclusively through the daemon's HTTP routes
- * (http-lane-routes.ts, daemon-jobs.ts) — the hook CLI (hook.ts) is a thin
- * client that POSTs and never imports a lane. So there is no second process to
- * lock against, and the relay does not pay for a lock file it has no writer
- * for. If a lane ever runs in the hook process (the local fallback #346
- * sketches), this call gains `{ crossProcess: true }` and nothing else.
+ * Every relay mutation uses the same cross-process path lock: the daemon
+ * produces/consumes entries and the drafts CLI can explicitly clear the file.
+ * Clearing must serialize with those daemon operations too.
  */
 export async function writePendingSuggestion(
   blocks: string,
   opts: { lane?: PendingLane; key?: string; clusters?: Record<string, number>; provisional?: string } = {},
 ): Promise<void> {
+  if (!pendingRelayEnabled()) return;
   const lane: PendingLane = opts.lane ?? "recency";
   const path = pendingSuggestionsPath();
   const clipped = capPendingBlocks(blocks);
@@ -281,7 +294,7 @@ export async function writePendingSuggestion(
         );
       }
       await writePendingRows(path, kept);
-    });
+    }, { crossProcess: true });
   } catch (e) {
     // The relay stays best-effort — never break the Stop hook — but a write
     // that failed outright is a lost suggestion and must not be invisible.
@@ -446,6 +459,7 @@ export interface PendingRelay {
 export async function takePendingRelay(
   opts: { now?: number; sessionId?: string | null; countable?: boolean } = {},
 ): Promise<PendingRelay> {
+  if (!pendingRelayEnabled()) return { recency: [], trends: [] };
   const now = opts.now ?? Date.now();
   const path = pendingSuggestionsPath();
   const advanceFor = opts.countable && opts.sessionId ? opts.sessionId : null;
@@ -488,7 +502,7 @@ export async function takePendingRelay(
         await unlink(path).catch(() => {});
       }
       return { recency, trends };
-    });
+    }, { crossProcess: true });
   } catch {
     return { recency: [], trends: [] };
   }
@@ -508,6 +522,7 @@ export async function consumePendingSuggestions(now: number = Date.now()): Promi
  * suggestion. Failed/uncaptured rows become ordinary relay and use its usual cap.
  * A killed process leaves its durable rows readable as fallback suggestions. */
 export async function settleProvisionalSuggestions(token: string, withdraw: ReadonlySet<string>): Promise<Set<string>> {
+  if (!pendingRelayEnabled()) return new Set();
   const path = pendingSuggestionsPath(), removed = new Set<string>();
   const requested = new Map<string, string[]>();
   for (const original of withdraw) {
@@ -534,6 +549,6 @@ export async function settleProvisionalSuggestions(token: string, withdraw: Read
       if(ordinary.length>MAX_ENTRIES)reportLoss(`${ordinary.length-MAX_ENTRIES} oldest entries dropped when fallback became ordinary relay`);
       await writePendingRows(path, kept);
       return removed;
-    });
+    }, { crossProcess: true });
   } catch {return new Set();} // Fallback stays readable if settlement fails.
 }

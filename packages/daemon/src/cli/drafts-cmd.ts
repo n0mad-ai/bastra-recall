@@ -23,7 +23,7 @@ export async function cmdDrafts(args: ParsedArgs): Promise<number> {
       } finally { await vault.stop(); }
     } else if (sub === "purge") {
       await purgeDrafts();
-      process.stdout.write(args.json ? '{"purged":true}\n' : "Local drafts purged.\n");
+      process.stdout.write(args.json ? '{"purged":true,"cleared":["drafts","vectors","decisions","pending-relay"]}\n' : "Local drafts, vectors, decision receipts and pending relay cleared.\n");
     } else {
       const rows = await listDrafts();
       if (args.json) process.stdout.write(JSON.stringify(rows) + "\n");

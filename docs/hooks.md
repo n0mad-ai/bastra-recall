@@ -1478,6 +1478,7 @@ and `live` for `BASTRA_QUERY_ROUTER` and `BASTRA_SALIENCE_RANK`, a size for
 | `BASTRA_REFLEX_MAX_PER_TURN`  | `2`              | Reflex injection budget per prompt (clamp 1–5)                |
 | `BASTRA_REFLEX_PROMOTION_MIN` | `3`              | Acted-on recalls (30d) before the curator proposes a reflex promotion |
 | `BASTRA_ADOPTION_PROMOTION_MIN` | `2`            | Acted-on recalls (30d) before the curator proposes adopting an intake memory (#217) |
+| `BASTRA_PENDING_RELAY` | `on` | `0`, `false`, `off` or `no` stops all shared relay writes and delivery; existing files stay unread; explicit `drafts purge` still clears them |
 | `BASTRA_DRAFT_HINTS` | `on` | `0`, `false`, `off` or `no` disables the separate unconfirmed draft hint band and its use tracking; capture and the pending relay remain enabled independently |
 | `BASTRA_DRAFTS_PATH` | `~/.bastra/drafts.json` | Local draft-store path; vector and decision sidecars follow it. Set this in the daemon environment; it does not change the vault path |
 | `BASTRA_PANEL_DIR` | `~/.bastra/panels/claude` | Claude panel-feed writer's environment: changes its snapshot directory only. The built-in live panel still reads the default directory; this override alone does not relocate that reader |
@@ -2994,6 +2995,7 @@ vier Wörtern.
 | `BASTRA_REFLEX_MAX_PER_TURN`  | `2`              | Reflex-Einblendungsbudget pro Prompt (begrenzt auf 1–5)        |
 | `BASTRA_REFLEX_PROMOTION_MIN` | `3`              | Umgesetzte Recalls (30 Tage), bevor der Curator eine Reflex-Hochstufung vorschlägt |
 | `BASTRA_ADOPTION_PROMOTION_MIN` | `2`            | Umgesetzte Recalls (30 Tage), bevor der Curator vorschlägt, eine Intake-Erinnerung zu übernehmen (#217) |
+| `BASTRA_PENDING_RELAY` | `on` | `0`, `false`, `off` oder `no` stoppt alle gemeinsamen Relay-Schreibvorgänge und die Auslieferung; vorhandene Dateien bleiben ungelesen; ausdrückliches `drafts purge` leert sie dennoch |
 | `BASTRA_DRAFT_HINTS` | `on` | `0`, `false`, `off` oder `no` schaltet das eigene unbestätigte Entwurfs-Hinweisband und dessen Nutzungserfassung ab; Erfassung und Pending-Relay bleiben unabhängig davon eingeschaltet |
 | `BASTRA_DRAFTS_PATH` | `~/.bastra/drafts.json` | Pfad der lokalen Entwurfsablage; Vektor- und Entscheidungsdateien folgen ihm. In der Daemon-Umgebung setzen; verändert nicht den Vault-Pfad |
 | `BASTRA_PANEL_DIR` | `~/.bastra/panels/claude` | Umgebung des Claude-Panel-Feed-Schreibers: verändert nur dessen Snapshot-Verzeichnis. Das eingebaute Live-Panel liest weiterhin das Standardverzeichnis; dieser Override allein verlegt den Leser nicht |

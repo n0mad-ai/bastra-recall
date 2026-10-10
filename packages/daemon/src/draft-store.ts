@@ -12,6 +12,7 @@ import { cleanDraftText, cleanDraftField, cleanDraftLine, clipDraftText } from "
 import { mergeSituations, situationLiterals } from "./draft-situation.js";
 import { bigramSet, dice } from "./stop-lane-repeat.js";
 import { withPathLock, tryWithPathLock } from "./path-lock.js";
+import { purgePendingSuggestions } from "./pending-suggestions.js";
 import { retainDraftSurfaces, draftUseProof } from "./draft-use.js";
 
 export const DRAFT_STORE_VERSION = 1;
@@ -428,6 +429,7 @@ export async function expireDrafts(opts: { now?: number; memoryExists?: (id: str
 export async function purgeDrafts(): Promise<void> {
   const path = draftsPath();
   await withDraftPublication(() => withPathLock(path, async () => {
+    await purgePendingSuggestions();
     await unlink(path).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
     await unlink(draftVectorsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
     await unlink(draftDecisionsPath()).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
