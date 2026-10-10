@@ -177,19 +177,34 @@ async function promptly<T>(work: Promise<T>, ms = 2000): Promise<T> {
 }
 const plainNote = { fm: { id: "n", title: "Invented", summary: "Invented", recall_when: [], sensitivity: "team" }, body: "Invented port is 5432." } as unknown as Memory;
 
-test("D — a recall never waits for the key: the first one after a start has no hash and answers, a later one has it", () => withEnv({}, async (dir) => {
+test("D — a recall never waits for the key: the first one after a start has no hash and answers, a later one has it", (t) => withEnv({}, async (dir) => {
   const { vault, search, root } = await fixtureVault(dir);
   try {
     const telemetry = new Telemetry();
+    const writes: Promise<void>[] = [];
+    const logRecall = telemetry.logRecall.bind(telemetry);
+    let releaseFirst!: () => void;
+    const firstMayWrite = new Promise<void>(resolve => { releaseFirst = resolve; });
+    t.mock.method(telemetry, "logRecall", (payload: Parameters<Telemetry["logRecall"]>[0]) => {
+      // Force the legitimate completion order that made the ordinal assertion flaky.
+      const write = writes.length === 0
+        ? firstMayWrite.then(() => logRecall(payload))
+        : logRecall(payload).finally(releaseFirst);
+      writes.push(write); return write;
+    });
     const deps: ToolDeps = { vault, search, telemetry, vaultPath: root };
-    const first = (await recallHandler(deps, { query: "flux compensator drift tuning", k: 5 })) as unknown as { hits: { id: string }[] };
+    const first = (await promptly(recallHandler(deps, { query: "flux compensator drift tuning", k: 5 }))) as unknown as { recall_id: string; hits: { id: string }[] };
     assert.equal(first.hits[0].id, "flux-note");
     await loadContentKey();
-    await recallHandler(deps, { query: "flux compensator drift tuning", k: 5 });
-    await sleep(30);
-    const pools = (await rows(dir)).filter((row) => row.kind === "recall").map((row) => row.candidate_pool.find((c: { id: string }) => c.id === "flux-note"));
-    assert.ok(!("content_hash" in pools[0]), "nothing was read on the first recall's path");
-    assert.match(pools[1].content_hash, /^[a-f0-9]{16}$/);
+    const second = (await recallHandler(deps, { query: "flux compensator drift tuning", k: 5 })) as unknown as { recall_id: string };
+    await Promise.all(writes);
+    // Fire-and-forget appends may finish out of order; use the serving ID.
+    const recalls = (await rows(dir)).filter((row) => row.kind === "recall");
+    assert.equal(recalls[0].recall_id, second.recall_id, "later recall is deliberately persisted first");
+    const candidate = (id: string) => recalls.find(row => row.recall_id === id)?.candidate_pool.find((c: { id: string }) => c.id === "flux-note");
+    assert.ok(candidate(first.recall_id)); assert.ok(candidate(second.recall_id));
+    assert.ok(!("content_hash" in candidate(first.recall_id)), "nothing was read on the first recall's path");
+    assert.match(candidate(second.recall_id).content_hash, /^[a-f0-9]{16}$/);
   } finally { search.stop(); await vault.stop(); }
 }));
 

@@ -1,3 +1,4 @@
+import { scanNetworkForms } from "./scrub-network.js";
 import { pskLineEnd, scanPskForms, secretShaped } from "./scrub-psk.js";
 /**
  * Injected-context scrubbing (#149) — the single inventory of block markers
@@ -215,7 +216,9 @@ function credentialKey(key: string): boolean {
 }
 
 function pskKey(key: string): boolean {
-  return /(?:psk(?:\d+|key|value)?|presharedkey|wifikey)$/.test(key.toLowerCase().replace(/[\p{Cf}\s_-]/gu, ""));
+  const raw = key.replace(/\p{Cf}/gu, ""), normalized = raw.toLowerCase().replace(/[\s_-]/g, "");
+  if (/usepsk$|psk(?:enabled|mode|identity)$/.test(normalized)) return false;
+  return /(?:psk(?:\d+|key|value)?|presharedkey|wifikey)$/.test(normalized) || /^psk(?:_[a-z0-9]+)+$/i.test(raw);
 }
 
 /** Locations and identifiers are the useful content of a draft, not access values. */
@@ -345,12 +348,12 @@ function valueSpans(text: string, start: number, query = false): { spans: Secret
   return { spans, end: pos };
 }
 
-/** curl userinfo: `-u`, `--user`, `--proxy-user`, bundled (`-sSLu`) or attached
- * (`-uname:pw`). The walk from `curl` passes only options, one operand per
- * option, quoted strings and URL-like operands, so the `-u` of a later command
- * in the same prose line is not read as curl's. */
-function scanCurlUser(text: string, mark: (start: number, length: number) => void): void {
-  const calls = /(?<![\p{L}\p{N}_.-])curl(?:\.exe)?(?=[ \t])/giu;
+/** curl/HTTPie userinfo: curl `-u`, `--user`, `--proxy-user`, bundled/attached
+ * (`-sSLu`, `-sufixture:pw`), or HTTPie `-a`/`--auth`. The walk from each
+ * command passes only options, one operand per option, quoted strings and
+ * URL-like operands, so auth flags of a later command are not borrowed. */
+function scanUserAuth(text: string, mark: (start: number, length: number) => void): void {
+  const calls = /(?<![\p{L}\p{N}_.-])(curl(?:\.exe)?|http)(?=[ \t])/giu;
   const gap = /(?:[ \t]|\\\r?\n)*/y, bare = /[^\s;&|"'`]+/y;
   let call: RegExpExecArray | null;
   while ((call = calls.exec(text))) {
@@ -373,7 +376,9 @@ function scanCurlUser(text: string, mark: (start: number, length: number) => voi
       }
       if (end === pos) break;
       const word = text.slice(pos, end);
-      const user = /^(?:--(?:proxy-)?user(?:=|$)|-[a-z]*u$|-u)/i.exec(word);
+      const user = (call[1].toLowerCase() === "http"
+        ? /^(?:--auth(?:=|$)|-a)/i
+        : /^(?:--(?:proxy-)?user(?:=|$)|-[a-z]*?u)/i).exec(word);
       if (user) {
         let start = pos + user[0].length;
         if (start === end && !user[0].endsWith("=")) { gap.lastIndex = start; start += gap.exec(text)![0].length; }
@@ -564,7 +569,8 @@ export function redactSecrets(text: string, home?: string): SecretRedactionResul
   for (const m of text.matchAll(/(?<![a-z0-9_-])--([a-z][a-z0-9_-]*)(?:=|[ \t]+)/gi)) if (m.index! >= flagEnd && credentialKey(m[1])) flagEnd = markValue(m.index! + m[0].length, true);
   // Track command context once, rather than repeatedly rescanning a long line.
   const commands = [...text.matchAll(/(?:^|[ \t\/])(mysql|mariadb|sshpass|docker[ \t]+login|ssh|curl)(?=[ \t]|$)|[;&|\r\n]/gmi)];
-  scanCurlUser(text, mark);
+  scanUserAuth(text, mark);
+  scanNetworkForms(text, mark, isReference);
   scanPskForms(text,markLoose,(start)=>{markValue(start,true);},mark,isReference);
   let commandIndex = 0;
   let passwordCommand: string | undefined;

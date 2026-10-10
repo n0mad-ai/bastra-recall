@@ -36,7 +36,7 @@ export function scanPskForms(text:string,markLoose:(start:number,tokens?:number)
   for(const m of text.matchAll(/:[ \t]*PSK[ \t]+/gi))markLoose(m.index!+m[0].length);
   // One failed closing-tag search per tag kind, not per repeated opener.
   const asciiLower=text.replace(/[A-Z]/g,c=>c.toLowerCase()),missing=new Set<string>();
-  const tags=/<(psk|keyMaterial)>/gi;let opening:RegExpExecArray|null;
+  const tags=/<(psk|keyMaterial|pre-shared-key)>/gi;let opening:RegExpExecArray|null;
   while((opening=tags.exec(text))){
     const tag=opening[1].toLowerCase();if(missing.has(tag))continue;
     const start=opening.index+opening[0].length,close=`</${tag}>`,end=asciiLower.indexOf(close,start);

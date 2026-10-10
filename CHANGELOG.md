@@ -72,6 +72,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Draft secret redaction recognizes the network command/field forms listed in
+  #1113: nmcli/networksetup/netsh, WiFi.begin/WIFI_PSK literals, vendor PSK
+  configuration, PSK binding variants/XML/string arrays, Wi-Fi QR passwords,
+  attached curl auth bundles and HTTPie auth. The frozen corpus adds 17
+  positive/negative pairs; its existing limits are unchanged (Refs #1113).
 - **A settings file that cannot be read is no longer written over — a
   behaviour change for every command that stores a setting** (`bastra config
   set`, `embeddings on|off`, `models set`, `token`, the installer, the
