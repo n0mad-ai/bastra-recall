@@ -30,6 +30,7 @@ export async function appendModelSessionNotice(
     const path = opts.shownPath ?? modelSessionHintPath();
     const day = new Date(opts.now ?? Date.now()).toISOString().slice(0, 10);
     await mkdir(dirname(path), { recursive: true });
+    // Simultaneous stale-lease takeovers can rarely prepare two blocks for one UTC day.
     return (await tryWithPathLock(path, async () => {
       let raw = "";
       try { raw = await readFile(path, "utf8"); }

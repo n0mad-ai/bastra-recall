@@ -55,6 +55,10 @@ The default local files are:
 - `~/.bastra/pending-suggestions.json`: the shared suggestion relay, with redacted text; ordinary writes in the prepared 1.1 release use 0600. Legacy rows are redacted before delivery and on their next ordinary write.
 - `~/.bastra/harvest-queue.json`: session/transcript paths and harvest progress, not quotes. This is separate from the draft store and is not deleted by draft purge.
 
+New draft-store writes use 0600. An existing draft store with broader
+permissions is tightened on its next write; reading alone does not change
+its permissions.
+
 `BASTRA_DRAFTS_PATH` relocates the draft store and its vector/decision sidecars;
 `BASTRA_PENDING_SUGGESTIONS_PATH` and `BASTRA_HARVEST_QUEUE_PATH` can relocate the
 relay and queue. Normal harvest relay entries are consumed at the next session
@@ -252,6 +256,10 @@ Die lokalen Standarddateien sind:
 - `~/.bastra/drafts.json.decisions.json`: Entscheidungsmerker nur als Hashes, keine Zitate; Rechte 0600.
 - `~/.bastra/pending-suggestions.json`: der gemeinsame Vorschlags-Relay mit geschwärztem Text; normale Schreibvorgänge des vorbereiteten 1.1-Releases verwenden 0600. Alte Zeilen werden vor der Auslieferung und beim nächsten normalen Schreiben geschwärzt.
 - `~/.bastra/harvest-queue.json`: Sitzungs-/Transcript-Pfade und Harvest-Fortschritt, keine Zitate. Diese Datei liegt getrennt von der Entwurfsablage und wird durch draft purge nicht gelöscht.
+
+Neue Schreibvorgänge in der Entwurfsablage verwenden 0600. Eine vorhandene
+Entwurfsablage mit weiter gefassten Rechten wird beim nächsten Schreibzugriff
+auf 0600 begrenzt; reines Lesen ändert ihre Rechte nicht.
 
 `BASTRA_DRAFTS_PATH` verlegt die Entwurfsablage samt Vektor-/Entscheidungsdateien;
 `BASTRA_PENDING_SUGGESTIONS_PATH` und `BASTRA_HARVEST_QUEUE_PATH` können Relay und
