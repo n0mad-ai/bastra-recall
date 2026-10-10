@@ -31,8 +31,9 @@
  *      onboarding wizard, daemon), for the skills registry (`bastra skills
  *      add|remove` next to the daemon's POST /ui/skills) and for both import
  *      stores (#529: `bastra import` next to the daemon's POST /ui/import,
- *      and every `bastra import mine` step its own process). Off by default
- *      so the in-process-only call sites (floors, the pending relay) do not
+ *      and every `bastra import mine` step its own process), and for the pending
+ *      relay (daemon plus `bastra drafts purge`). Off by default
+ *      so the in-process-only call sites (such as floors) do not
  *      pay a filesystem round trip they have no writer for.
  *
  * PROMISE: mutations of the same path are fully serialised — guaranteed within

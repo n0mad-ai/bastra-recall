@@ -18,8 +18,9 @@ all pending-relay writes and SessionStart delivery. Existing entries remain on
 disk and are not read while disabled. This is independent of capture
 (`BASTRA_SESSION_HARVEST=0`) and the unconfirmed hint band (`BASTRA_DRAFT_HINTS=0`).
 `bastra drafts purge` clears drafts, vectors, decision receipts and the pending
-relay, even when relay delivery is disabled. It preserves an unreadable or
-malformed relay and reports failure before deleting drafts. Retained relay files
+relay, even when relay delivery is disabled. It validates the relay first, then deletes drafts, then clears the relay.
+It preserves an unreadable or malformed relay and reports failure before deleting
+drafts; an empty relay is accepted. Failed draft deletion leaves the relay unchanged. Retained relay files
 have permissions 0600. It does not clear the harvest queue, optional training
 capture or promoted notes; stop capture before clearing to prevent new entries.
 See [privacy and retention](./PRIVACY.md#switching-off-and-clearing-drafts).
@@ -417,8 +418,11 @@ Einträge bleiben auf der Platte und werden bei abgeschaltetem Relay nicht geles
 Das ist unabhängig von Erfassung (`BASTRA_SESSION_HARVEST=0`) und unbestätigtem
 Hinweisband (`BASTRA_DRAFT_HINTS=0`). `bastra drafts purge` leert Entwürfe,
 Vektoren, Entscheidungsmerker und den Pending-Relay, auch bei abgeschalteter
-Auslieferung. Ein unlesbarer oder beschädigter Relay bleibt erhalten; der Befehl
-meldet einen Fehler vor dem Löschen der Entwürfe. Verbliebene Relay-Dateien haben
+Auslieferung. Zuerst wird der Relay geprüft, dann werden Entwürfe gelöscht, danach wird der Relay
+geleert. Ein unlesbarer oder beschädigter Relay bleibt erhalten; der Befehl
+meldet einen Fehler vor dem Löschen der Entwürfe. Eine leere Relay-Datei wird
+akzeptiert; scheitert das Löschen der Entwürfe, bleibt der Relay unverändert.
+Ein fehlender Relay wird in der Ausgabe als nicht vorhanden gekennzeichnet. Verbliebene Relay-Dateien haben
 Rechte 0600. Harvest-Queue, optionale Trainingsdaten und beförderte Notizen
 bleiben erhalten; vor dem Leeren die Erfassung abschalten, damit keine neuen
 Einträge entstehen. Siehe [Datenschutz und Aufbewahrung](./PRIVACY.md#abschalten-und-entwürfe-entfernen).

@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `bastra drafts purge` now clears the relay as well as drafts, vectors and
   decision receipts, preserving unreadable/invalid relay files and using the
   same cross-process lock and private 0600 writes as the daemon.
+  Busy hook reads skip immediately; Stop writes defer contention to the daemon
+  background instead of waiting or writing without a lock. Purge validates the
+  relay before deleting drafts, accepts an empty file and marks a missing relay
+  as absent.
 
 - **Local drafts capture unsaved context automatically** (#1084) while the
   after-session harvest is enabled. Typed turns passing the noise filter
@@ -136,6 +140,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   recommendation above with `switch`.
 
 ### Fixed
+
+- Terminal panels show Git ahead/behind arrows only for positive counts.
+  Missing behind arrows do not claim the remote is current; the panel still
+  never fetches or accesses the network (#1135).
 
 - The daily CLI model hint reclaims a day lock older than ten seconds in a
   single silent attempt, so an interrupted command cannot suppress it forever.

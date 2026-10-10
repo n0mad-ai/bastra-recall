@@ -12,11 +12,13 @@
  * #513: zwei Spuren in derselben Datei — `recency` (einmal zeigen, dann weg)
  * und `trends` (bei jedem Start zeigen, nach N gezählten Sessions weg).
  */
-import { chmod, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { withPathLock } from "./path-lock.js";
+import { withPathLock, tryWithPathLock } from "./path-lock.js";
 import { envInt, envOff } from "./env.js";
 import { redactSecrets } from "@bastra-recall/core/scrub";
 import { clipDraftText } from "./draft-text.js";
@@ -139,19 +141,37 @@ export function pendingSuggestionsPath(): string {
 /** One gate for every relay producer, reader and settlement. Existing files stay untouched. */
 export function pendingRelayEnabled(): boolean { return !envOff("BASTRA_PENDING_RELAY"); }
 
-/** Explicit administration works even when delivery is disabled. Preserve unreadable/invalid files. */
-export async function purgePendingSuggestions(): Promise<void> {
+/** Relay failures are distinguishable from draft-store failures at the CLI. */
+export class PendingRelayAccessError extends Error {
+  constructor() { super("cannot clear pending relay; original preserved"); this.name = "PendingRelayAccessError"; }
+}
+/** Validate under the relay lock, clear drafts, then clear the relay. The callback
+ * failing leaves the relay unchanged. Missing relay files are not created. */
+export async function purgePendingSuggestions(clearDrafts: () => Promise<void> = async () => {}): Promise<boolean> {
   const path = pendingSuggestionsPath();
-  await withPathLock(path, async () => {
-    let parsed: unknown;
-    try { parsed = JSON.parse(await readFile(path, "utf8")); }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-      throw new Error("cannot clear pending relay; original preserved");
+  let draftError: unknown;
+  return withPathLock(path, async () => {
+    let present = true;
+    try {
+      const raw = await readFile(path, "utf8");
+      if (raw.trim() && !Array.isArray(JSON.parse(raw))) throw new PendingRelayAccessError();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") present = false;
+      else throw new PendingRelayAccessError();
     }
-    if (!Array.isArray(parsed)) throw new Error("cannot clear pending relay; original preserved");
-    await writePendingRows(path, []);
-  }, { crossProcess: true });
+    try { await clearDrafts(); } catch (error) { draftError = error; throw error; }
+    if (present) await writePendingRows(path, []);
+    return present;
+  }, { crossProcess: true, requireLock: true }).catch(error => {
+    if (error === draftError) throw error;
+    throw new PendingRelayAccessError();
+  });
+}
+
+/** Stop's response does not await disk contention. The daemon retains this
+ * promise and retries under a real lock; no busy-lock diagnostics or fail-open. */
+export function writePendingFromHook(blocks: string, opts: Parameters<typeof writePendingSuggestion>[1] = {}): Promise<void> {
+  return writePendingSuggestion(blocks, { ...opts, deferOnBusy: true });
 }
 
 function capPendingBlocks(blocks: string): string {
@@ -196,8 +216,8 @@ async function writePendingRows(path: string, rows: PendingSuggestion[]): Promis
  * Fix: the shared per-path lock (path-lock.ts) plus an operation-unique temp
  * name. Serialising costs nothing the hook can feel — the file holds at most
  * five short entries and one write is a read plus a rename — and the hook
- * stays non-blocking because the Stop lane already awaits this off the
- * session's critical path.
+ * has no lock wait on the Stop response path: that wrapper defers a busy
+ * write, while background callers retry until they hold the real lock.
  *
  * Every relay mutation uses the same cross-process path lock: the daemon
  * produces/consumes entries and the drafts CLI can explicitly clear the file.
@@ -205,7 +225,7 @@ async function writePendingRows(path: string, rows: PendingSuggestion[]): Promis
  */
 export async function writePendingSuggestion(
   blocks: string,
-  opts: { lane?: PendingLane; key?: string; clusters?: Record<string, number>; provisional?: string } = {},
+  opts: { lane?: PendingLane; key?: string; clusters?: Record<string, number>; provisional?: string; deferOnBusy?: boolean } = {},
 ): Promise<void> {
   if (!pendingRelayEnabled()) return;
   const lane: PendingLane = opts.lane ?? "recency";
@@ -219,8 +239,11 @@ export async function writePendingSuggestion(
     );
   }
   try {
-    await withPathLock(path, async () => {
-      await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    while (pendingRelayEnabled()) {
+      let ran = false;
+      await tryWithPathLock(path, async () => {
+      ran = true;
       let entries: PendingSuggestion[] = [];
       try {
         const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
@@ -294,7 +317,18 @@ export async function writePendingSuggestion(
         );
       }
       await writePendingRows(path, kept);
-    }, { crossProcess: true });
+      }, { crossProcess: true, noQueue: true, takeOverStale: true });
+      if (ran) return;
+      if (opts.deferOnBusy) {
+        const { deferOnBusy: _defer, ...background } = opts;
+        void writePendingSuggestion(blocks, background);
+        return;
+      }
+      // A busy writable directory is ordinary contention; retain the write.
+      // Permanent filesystem denial is a real failure, not an endless retry.
+      await access(dirname(path), constants.W_OK);
+      await delay(25);
+    }
   } catch (e) {
     // The relay stays best-effort — never break the Stop hook — but a write
     // that failed outright is a lost suggestion and must not be invisible.
@@ -465,7 +499,7 @@ export async function takePendingRelay(
   const advanceFor = opts.countable && opts.sessionId ? opts.sessionId : null;
   const maxSessions = pendingTrendsSessions();
   try {
-    return await withPathLock(path, async () => {
+    return (await tryWithPathLock(path, async () => {
       const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
       lossDiagnostics = 0;
       const valid = Array.isArray(parsed)
@@ -502,7 +536,7 @@ export async function takePendingRelay(
         await unlink(path).catch(() => {});
       }
       return { recency, trends };
-    }, { crossProcess: true });
+    }, { crossProcess: true, noQueue: true })) ?? { recency: [], trends: [] };
   } catch {
     return { recency: [], trends: [] };
   }
@@ -549,6 +583,6 @@ export async function settleProvisionalSuggestions(token: string, withdraw: Read
       if(ordinary.length>MAX_ENTRIES)reportLoss(`${ordinary.length-MAX_ENTRIES} oldest entries dropped when fallback became ordinary relay`);
       await writePendingRows(path, kept);
       return removed;
-    }, { crossProcess: true });
+    }, { crossProcess: true, requireLock: true });
   } catch {return new Set();} // Fallback stays readable if settlement fails.
 }
