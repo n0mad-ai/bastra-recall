@@ -98,6 +98,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Codex doctor keeps healthy recall hooks enabled when only the newer
   save-notice registration is missing, and reports a specific reinstall hint
   instead of calling the installation broken (Refs #1094).
+- Code awareness retries busy build locks with growing waits and pauses after
+  six retries instead of looping forever, then tries at most once per hour
+  until a successful build restores normal refreshes (Refs #670). CRLF diffs now expose changed lines (Refs #605), and declared
+  function anchors resolve with or without Graphify's `()` suffix (Refs #594).
 - **A settings file that cannot be read is no longer written over — a
   behaviour change for every command that stores a setting** (`bastra config
   set`, `embeddings on|off`, `models set`, `token`, the installer, the
