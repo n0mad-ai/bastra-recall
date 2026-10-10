@@ -4,7 +4,8 @@ export function gitLabel(data: NeuralData): string {
   const g = data.git;
   if (!g?.known) return 'Git —';
   const counts = [g.staged ? `${g.staged} staged` : '', g.changed ? `${g.changed} geändert` : '', g.untracked ? `${g.untracked} neu` : '', g.conflicts ? `${g.conflicts} Konflikte` : ''].filter(Boolean);
-  return `⑂ ${g.branch ?? 'detached'}${g.sha ? ' @' + g.sha.slice(0, 7) : ''} · ${counts.join(' · ') || 'sauber'}${g.ahead === null ? '' : ` · ↑${g.ahead} ↓${g.behind}`}`;
+  const arrows = [g.ahead !== null && g.ahead > 0 ? `↑${g.ahead}` : '', g.behind !== null && g.behind > 0 ? `↓${g.behind}` : ''].filter(Boolean).join(' ');
+  return `⑂ ${g.branch ?? 'detached'}${g.sha ? ' @' + g.sha.slice(0, 7) : ''} · ${counts.join(' · ') || 'sauber'}${arrows ? ' · ' + arrows : ''}`;
 }
 export function sessionLabel(data: NeuralData): string {
   const items: string[] = [];
