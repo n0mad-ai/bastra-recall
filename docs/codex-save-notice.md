@@ -5,17 +5,20 @@ After a successful `save_memory`, `edit_memory`, `save_document` or
 PostToolUse hook. Reads and refused writes stay silent. The existing formatter,
 write acknowledgement parser and local route are shared with Claude Code.
 
-Codex defaults to a plain fixed prefix:
+Codex defaults to a plain fixed prefix. Example formatting:
 
 ```text
 bastra-recall saved: “Synthetic fixture” (lesson)
-bastra-recall edited: “Synthetic fixture” (lesson) · text appended
+bastra-recall edited: “Synthetic fixture” (lesson)
 ```
 
 Run `bastra install codex` again after updating Recall. In a new Codex session,
 open `/hooks` and review/trust the write-tool registration. The installer reuses
 the post-tool client; it does not add a panel entry. `bastra doctor` checks the
-write matcher separately from the shared runner file. `BASTRA_SAVE_NOTICE=0` in
+write matcher separately from the shared runner file. If only the save-notice
+entry is missing, doctor keeps the installation healthy and recall hooks on,
+with a specific `bastra install codex` hint. Missing required recall hooks
+still need repair. `BASTRA_SAVE_NOTICE=0` in
 the daemon environment disables notices.
 
 ## Compatibility check
@@ -61,7 +64,11 @@ change it. Colour is optional and does not affect what is saved.
 Codex bekommt nach bestätigtem Speichern oder Ändern dieselbe kurze Zeile,
 standardmäßig farblos mit festem `bastra-recall`-Präfix. Nach dem Update
 `bastra install codex` erneut ausführen und den neuen Hook in `/hooks` prüfen.
-Suchen, Laden und verweigerte Schreibaufrufe bleiben ohne Zeile.
+Suchen, Laden und verweigerte Schreibaufrufe bleiben ohne Zeile. Fehlt nur der
+Eintrag für die Speicherzeile, meldet doctor die Installation weiter als gesund
+und die Recall-Hooks als an, mit einem gezielten Hinweis auf
+`bastra install codex`. Fehlende erforderliche Recall-Hooks werden weiterhin
+als reparaturbedürftig gemeldet.
 
 Der isolierte Lauf mit Codex CLI 0.160.0 hat die Aufrufe, normalisierten
 Toolnamen und Ergebnisform bestätigt. Die interaktive Sicht- und Farbprüfung
