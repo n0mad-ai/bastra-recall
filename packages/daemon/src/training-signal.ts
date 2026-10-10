@@ -44,20 +44,21 @@ function isOwnRegularFile(info: Stats, at: Stats | null): boolean {
 }
 
 /**
- * The one way this feature opens its two files. Three steps, none of which
- * can wait on a file that is not one: look first (`lstat` — a FIFO, socket,
- * device, directory or link is refused unopened), open without following a
- * link and without blocking, then ask the open handle again, because the path
- * may have changed between the look and the open. A path that does not exist
- * is the caller's case (`ENOENT`, or a create via `flags`).
+ * The one way this feature opens its two files: open first, then ask the open
+ * handle what it is — never the path beforehand, which could change in
+ * between (CodeQL js/file-system-race; the repo's rule since
+ * rm-archive-reconcile.ts). What keeps the open itself harmless is its flags:
+ * O_NOFOLLOW does not go through a link, and O_NONBLOCK does not wait — a
+ * FIFO opened for reading would otherwise wait for a writer, on the event
+ * loop if the call were synchronous. A pipe, socket, device or directory is
+ * then refused on the handle, without a byte read or written. A path that
+ * does not exist is the caller's case (`ENOENT`, or a create via `flags`).
  */
 export async function openOwnFile(path: string, flags: number, mode = 0o600): Promise<FileHandle> {
-  const before = await lstat(path).catch(() => null);
-  if (before && !before.isFile()) throw new RefusedFile();
   let handle: FileHandle;
   try { handle = await open(path, flags | NOFOLLOW | NONBLOCK, mode); } catch (error) {
-    // A link (ELOOP/EMLINK), a FIFO without a reader (ENXIO) or a directory that appeared since the look.
-    if (["ELOOP", "EMLINK", "ENXIO", "EISDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) throw new RefusedFile();
+    // A link (ELOOP/EMLINK), a pipe or socket nobody serves (ENXIO/EOPNOTSUPP), a directory opened for writing (EISDIR).
+    if (["ELOOP", "EMLINK", "ENXIO", "EOPNOTSUPP", "EISDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) throw new RefusedFile();
     throw error;
   }
   try {
