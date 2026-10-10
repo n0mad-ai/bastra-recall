@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Security
 
+- The pending suggestion relay now redacts recognizable credentials with the
+  draft filter before storage and delivery, including legacy rows on ordinary
+  writes, and uses 0600 files. Vault comparisons still see original quotes;
+  provisional withdrawals retain caller identity. No schema migration runs
+  (Refs #513, #675, #1084).
+  Existing relay files that cannot be read or parsed as a JSON array are
+  preserved: the write is skipped with a text-free warning. Only a missing
+  file starts an empty relay.
 - Upgrade `proxy-addr` to 2.0.8 (GHSA-jqcg-44mw-7w3h) and override the
   repository's YAML CLI dependency `argparse` to 2.0.1, removing `sprintf-js`
   (GHSA-hp3w-g68c-fv3c) from the workspace lockfile. The frontmatter parser
@@ -20,6 +28,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Local drafts capture unsaved context automatically** (#1084) while the
+  after-session harvest is enabled. Typed turns passing the noise filter
+  (at least 20 letters, fewer than 2,000 characters) enter a secret-redacted
+  local store outside the vault (0600, 500 rows / 1 MiB). Recall can show a
+  separate unconfirmed hint band; `BASTRA_DRAFT_HINTS=0` disables that band,
+  `BASTRA_SESSION_HARVEST=0` disables capture and the background tick.
+  Automatic note promotion stays off unless exactly `BASTRA_DRAFT_PROMOTE=1`.
+  A local meaning check can still run in the default dry run. Capture/rarity
+  thresholds and 7-day single-evidence expiry are unmeasured on real use;
+  other open drafts expire after 30 days, closed records after 180. See the
+  [draft workflow](docs/hooks.md#local-drafts-1084) and
+  [privacy boundaries](docs/PRIVACY.md#local-drafts).
+- **Reviewed-miss harvester, an offline repository tool** (#454). It reads
+  recorded session/telemetry evidence, classifies missed recall opportunities
+  and produces a review queue and cue proposals. It calls no model, uploads
+  nothing, never writes to the vault and applies no proposal automatically.
+  The script/modules are excluded from the published npm package. See the
+  [guide](docs/reviewed-miss-harvester.md).
+- **Save notices for Codex.** After confirmed save/edit tools, a PostToolUse
+  hook supplies a short line with a plain prefix by default. Re-run
+  `bastra install codex` and trust the write-tool entry in `/hooks`.
+  `BASTRA_SAVE_NOTICE=0` disables the notice; colour is an explicit opt-in.
+  Calls and hook envelopes were checked with Codex CLI 0.160.0, but interactive
+  appearance and colour remain visually unverified. See the
+  [compatibility and setup guide](docs/codex-save-notice.md) (Refs #1094).
+- **Terminal panels for Claude Code and Codex**, started manually with
+  `bastra-codex-statusline --cmux` or `bastra-recall-panel --cmux`.
+  The Codex Powerline panel binds to an explicit session and shows reported
+  usage/context and Recall activity; paginated-only histories are unsupported.
+  The Neural Console offers `classic`, `orbital` (default) and `ember` designs,
+  session/pane following and a Claude statusline feed. Missing measurements
+  stay unavailable; demo data is labeled. Panels read local transcripts/feed
+  metadata and do not send messages or resume sessions. See
+  [panel details](packages/statusline/README.md#experimental-neural-console).
 - **Training signal capture, a temporary tool for #1128.** Step 0 of the
   local fine-tuning evaluation needs data the daemon did not keep. Without any
   switch, the local event log gains ids, hashes and ranks only, never text:
@@ -56,22 +98,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `update.mode auto` either: `bastra update` asks at the end, the session start
   lets the agent ask, the first command on a terminal after an update asks once
   (an updater from before this feature cannot), and a dim line follows CLI
-  commands at most once a day — until you answer with `bastra models switch`,
+  commands normally once a day — until you answer with `bastra models switch`,
   `later` (asked again in 7 days) or `dismiss` (not for this recommendation;
   the notice says what that costs). The commands name the recommendation they
   answer, and an answer to a different one is refused. The switch pulls the
   model, checks it with a short local test call and only then stores model and
   answer in one write; the old model stays installed. New installs are offered the recommended model directly.
-  `BASTRA_UPDATE_CHECK=off` silences the notice as well. This release ships the
-  mechanism with no active recommendation, so nothing changes yet.
+  `BASTRA_UPDATE_CHECK=off` silences the notice as well. This release carries
+  the first recommendation (`2026-10-tev1`): `tev1:4b` (4.5 GB download) on
+  machines with 16 GB to under 32 GB of RAM, `gemma4:12b` (8.1 GB) from 32 GB,
+  none below 16 GB. It reaches installs that use a local text model outside
+  that set, and rests on the
+  [local model comparison](docs/local-model-comparison.md).
+  Existing users of either recommended model are not prompted to switch
+  between them. The notice distinguishes similar draft-check/reranker answer
+  times from slower, less consistent keyword expansion. Parallel CLI commands
+  share the daily model claim without waiting; simultaneous reclaim of an
+  orphaned day lock can rarely duplicate the line. Fresh or unwritable locks
+  silently skip that hint, while the other notice surfaces remain independent.
+  Listed model tags are matched case-insensitively, including `-` suffixes;
+  bare names, `:latest` and other sizes remain distinct.
 - **New installs are offered `tev1:4b` as the local text model** from 16 GB of
   RAM (4.5 GB download); `gemma4:12b` stays the alternative from 24 GB and the
-  suggestion from 32 GB. Existing installs are not touched: without a stored
-  choice the daemon keeps running `gemma3:4b`, and only the `recommended:`
-  line of `bastra models` shows the new suggestion.
+  suggestion from 32 GB. Existing installs are not switched: without a stored
+  choice the daemon keeps running `gemma3:4b` until you answer the
+  recommendation above with `switch`.
 
 ### Fixed
 
+- The daily CLI model hint reclaims a day lock older than ten seconds in a
+  single silent attempt, so an interrupted command cannot suppress it forever.
+  Fresh or unwritable locks still skip the hint without waiting; other
+  advisory claims retain their existing policy.
+- **Release verification waits for the complete npm set in one window** (#1076).
+  `--verify` polls only unfinished packages for up to five minutes, with a
+  growing pause capped at 30 seconds, instead of giving each package a short
+  fixed slot. Registry reads share that deadline; late-visible manifests still
+  have to match the release. On expiry it lists every unfinished package.
+  Verification never publishes; publishing order and asset checks are unchanged.
+
+- Codex doctor keeps healthy recall hooks enabled when only the newer
+  save-notice registration is missing, and reports a specific reinstall hint
+  instead of calling the installation broken (Refs #1094).
+- Code awareness retries busy build locks with growing waits and pauses after
+  six retries instead of looping forever, then tries at most once per hour
+  until a successful build restores normal refreshes (Refs #670). CRLF diffs now expose changed lines (Refs #605), and declared
+  function anchors resolve with or without Graphify's `()` suffix (Refs #594).
+- Code-awareness telemetry uses delivery records for both headline block count
+  and token cost, labels the passive code share as a share of Write/Edit
+  injection, and excludes lock checks/skipped runs from build duration
+  (Refs #663, #665). No event schema or historical data is changed.
+- Draft secret redaction recognizes the network command/field forms listed in
+  #1113: nmcli/networksetup/netsh, WiFi.begin/WIFI_PSK literals, vendor PSK
+  configuration, PSK binding variants/XML/string arrays, Wi-Fi QR passwords,
+  attached curl auth bundles and HTTPie auth. The frozen corpus adds 17
+  positive/negative pairs. Only the named scalar grammars are recognized, with
+  no arbitrary shell/C evaluation: unquoted `WiFi.begin` password values and
+  other vendor grammars can remain readable. See the
+  [coverage and limits](docs/secret-redaction.md) (Refs #1113).
+- Claude Code doctor keeps healthy recall hooks enabled when only the new
+  save-notice registration is missing, reports that entry separately and points
+  to `bastra install claude-code`. Missing required recall hooks and malformed
+  settings still need repair (Refs #1094).
 - **A settings file that cannot be read is no longer written over — a
   behaviour change for every command that stores a setting** (`bastra config
   set`, `embeddings on|off`, `models set`, `token`, the installer, the

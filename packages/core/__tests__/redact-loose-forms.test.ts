@@ -109,8 +109,12 @@ test("curl userinfo is redacted in attached, bundled, multi-line and wrapped cal
     assert.ok(out.includes("fixture.invalid") || out.includes("localhost"), text);
     assert.equal(scrub(out), out, text);
   }
-  // Recorded limits: a value attached to a bundle, and other clients' flags.
-  for (const text of [`curl -sufixture:${KEY} ${URL}`, `http -a fixture:${KEY} GET ${URL}`]) assert.equal(scrub(text), text, text);
+  // #1113's frozen corpus now requires these formerly recorded limits to redact.
+  for (const text of [`curl -sufixture:${KEY} ${URL}`, `http -a fixture:${KEY} GET ${URL}`]) {
+    const out = scrub(text);
+    assert.ok(!out.includes(KEY), text); assert.ok(out.includes(URL), text);
+    assert.equal(scrub(out), out, text);
+  }
 });
 
 // Each shape was quadratic at some point or sits on a scan added with these

@@ -65,7 +65,7 @@ export interface CodeRoiStats {
   staleBlocks: number;
   appliesToTokensTotal: number;
   appliesToCount: number;
-  /** Tokens of everything injected, so the code share is readable. */
+  /** Tokens injected by the Write/Edit lane, the denominator of its code share. */
   hintTokensTotal: number;
   /** Blocks that logged the files they named (rows from before #588 did not). */
   blocksWithListed: number;
@@ -193,7 +193,7 @@ export function renderCodeRoi(s: CodeRoiStats): string[] {
     lines.push(
       `    cost: ${s.codeTokensTotal} tokens total, ${s.codeTokensMedian} median` +
         (s.hintTokensTotal > 0
-          ? ` — ${pct(s.codeTokensTotal, s.hintTokensTotal)} of everything injected`
+          ? ` — ${pct(s.codeTokensTotal, s.hintTokensTotal)} of Write/Edit injection`
           : ""),
     );
     lines.push(
@@ -267,7 +267,7 @@ export function renderCodeAwareness(s: CodeAwarenessStats): string[] {
       `  graph refresh: ${s.refresh.started} run(s) — ${s.refresh.ok} ok, ${s.refresh.failed} failed, ` +
         `${s.refresh.locked} locked, ${s.refresh.skipped} skipped, ${s.refresh.givenUp} given up`,
     );
-    lines.push(`    duration: p50 ${Math.round(s.refresh.p50)}ms, p90 ${Math.round(s.refresh.p90)}ms`);
+    lines.push(`    build duration (successful or failed): p50 ${Math.round(s.refresh.p50)}ms, p90 ${Math.round(s.refresh.p90)}ms`);
     if (s.refresh.byReason.length > 0) lines.push(`    triggered by: ${list(s.refresh.byReason)}`);
     if (s.refresh.failures.length > 0) lines.push(`    failures: ${list(s.refresh.failures)}`);
   }

@@ -17,6 +17,7 @@ import { join, dirname } from "node:path";
 import { isOptedOut } from "../update-check.js";
 import { resolveDaemonEndpoint } from "../daemon-endpoint.js";
 import { formatModelNotice, pendingModelNotice, type OfferOptions } from "../model-recommendation.js";
+import { tryWithPathLock } from "../path-lock.js";
 
 const PROBE_TIMEOUT_MS = 700;
 
@@ -49,7 +50,7 @@ async function alreadyShownToday(path: string): Promise<boolean> {
   }
 }
 
-async function markShownToday(path: string): Promise<void> {
+async function markShownToday(path: string): Promise<boolean> {
   try {
     await mkdir(dirname(path), { recursive: true });
     let existing = "";
@@ -64,8 +65,9 @@ async function markShownToday(path: string): Promise<void> {
     // Keep last 30 entries — bounded growth.
     const trimmed = lines.slice(-30);
     await writeFile(path, trimmed.join("\n") + "\n", "utf8");
+    return true;
   } catch {
-    // Best-effort.
+    return false; // Never fail a command over the day marker.
   }
 }
 
@@ -125,14 +127,19 @@ export async function maybeEmitUpdateHint(): Promise<boolean> {
  */
 export async function maybeEmitModelHint(opts: OfferOptions & { shownPath?: string } = {}): Promise<boolean> {
   const shownPath = opts.shownPath ?? join(homedir(), ".bastra", "model-hint-shown.txt");
-  if (await alreadyShownToday(shownPath)) return false;
-
-  const offer = await pendingModelNotice(opts);
-  if (!offer) return false;
-
-  const lines = formatModelNotice(offer).split("\n");
-  process.stderr.write(`\n\x1b[2mℹ ${lines.join("\n  ")}\x1b[0m\n`);
-
-  await markShownToday(shownPath);
-  return true;
+  if (await alreadyShownToday(shownPath) || !(await pendingModelNotice(opts))) return false;
+  try {
+    await mkdir(dirname(shownPath), { recursive: true });
+    return (await tryWithPathLock(shownPath, async () => {
+      if (await alreadyShownToday(shownPath)) return false;
+      const offer = await pendingModelNotice(opts);
+      if (!offer) return false;
+      if (!(await markShownToday(shownPath))) return false;
+      const lines = formatModelNotice(offer).split("\n");
+      process.stderr.write(`\n\x1b[2mℹ ${lines.join("\n  ")}\x1b[0m\n`);
+      return true;
+    }, { crossProcess: true, noQueue: true, takeOverStale: true })) ?? false;
+  } catch {
+    return false; // A hint must neither interrupt the command nor bypass its day claim.
+  }
 }

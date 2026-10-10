@@ -35,7 +35,7 @@
  */
 
 import type { LoadedGraph } from "./reader.js";
-import { dependentFilesOf, symbolsOfFile } from "./reader.js";
+import { bareLabel, dependentFilesOf, symbolsOfFile } from "./reader.js";
 
 /** One parsed `affects_files` entry. */
 export interface AppliesToRef {
@@ -260,8 +260,8 @@ export function unresolvedEntries(
       if (ref.symbol === null || graph === null) continue;
       const known = symbolsOfFile(graph, ref.file);
       if (known.length === 0) continue; // the graph does not cover this file
-      const wanted = ref.symbol.toLowerCase();
-      if (!known.some((s) => s.label.toLowerCase() === wanted)) {
+      const wanted = bareLabel(ref.symbol).toLowerCase();
+      if (!known.some((s) => bareLabel(s.label).toLowerCase() === wanted)) {
         out.push({ memoryId: m.id, ...ref, reason: "symbol-missing" });
       }
     }

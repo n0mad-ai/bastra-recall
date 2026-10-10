@@ -127,6 +127,7 @@ If a vault root recorded in `~/.bastra/vault-roots.json` later disappears (for e
 - [Vault map](https://github.com/n0mad-ai/bastra-recall/wiki/Vault-Map) — explore, search and flag memories for care.
 - [Updates](https://github.com/n0mad-ai/bastra-recall/wiki/Updating) — update with `bastra update`, or opt into automatic updates.
 - [Model recommendations](./docs/USAGE.md#model-recommendations--when-a-release-suggests-a-different-local-text-model) — a release can suggest a better local text model; you are asked, never switched automatically.
+- [Reviewed-miss harvester](./docs/reviewed-miss-harvester.md) — an offline repository tool for reviewing missed recall opportunities; it applies nothing automatically.
 - [Product docs](https://github.com/n0mad-ai/bastra-recall/wiki/Product-Docs) — let the assistant maintain user guides for your projects.
 - [Bastra Commons](https://github.com/n0mad-ai/bastra-recall/wiki/Bastra-Commons) — optional community recipes with verification records.
 - [Usage and troubleshooting](./docs/USAGE.md) · [Memory format](./docs/memory-schema.md) · [Architecture](./docs/architecture.md) · [Hooks](./docs/hooks.md) · [Archiving `rm` and git snapshots](./docs/archiving-rm-and-git-snapshots.md) · [Save and recall triggers](./docs/triggers.md) · [Taxonomy](./docs/taxonomy.md) · [Valence and reflex](https://github.com/n0mad-ai/bastra-recall/wiki/Valence-and-Reflex)
@@ -263,6 +264,7 @@ Verschwindet ein in `~/.bastra/vault-roots.json` vermerkter Vault-Root später (
 - [Vault-Map](https://github.com/n0mad-ai/bastra-recall/wiki/Vault-Map) – Erinnerungen erkunden, suchen und zur Pflege markieren.
 - [Updates](https://github.com/n0mad-ai/bastra-recall/wiki/Updating) – mit `bastra update` aktualisieren oder automatische Updates aktivieren.
 - [Modell-Empfehlungen](./docs/USAGE.md#modell-empfehlungen--wenn-ein-release-ein-anderes-lokales-textmodell-vorschlägt) – ein Release kann ein besseres lokales Textmodell vorschlagen; du wirst gefragt, nie automatisch umgestellt.
+- [Reviewed-Miss-Harvester](./docs/reviewed-miss-harvester.md#deutsch) — ein Offline-Repo-Werkzeug zum Prüfen verpasster Abrufchancen; es wendet nichts automatisch an.
 - [Produkt-Dokumentation](https://github.com/n0mad-ai/bastra-recall/wiki/Product-Docs) – Anleitungen deiner Projekte vom Assistenten pflegen lassen.
 - [Bastra Commons](https://github.com/n0mad-ai/bastra-recall/wiki/Bastra-Commons) – optionale Community-Rezepte mit Prüfnachweisen.
 - [Nutzung und Fehlerbehebung](./docs/USAGE.md) · [Memory-Format](./docs/memory-schema.md) · [Architektur](./docs/architecture.md) · [Hooks](./docs/hooks.md) · [Archivierendes `rm` und Git-Schnappschüsse](./docs/archiving-rm-and-git-snapshots.md#deutsch) · [Speicher- und Abrufauslöser](./docs/triggers.md) · [Taxonomie](./docs/taxonomy.md) · [Valenz und Reflex](https://github.com/n0mad-ai/bastra-recall/wiki/Valence-and-Reflex)

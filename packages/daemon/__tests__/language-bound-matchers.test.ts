@@ -46,6 +46,7 @@ const SCAN_ROOTS = ["packages/daemon/src", "packages/core/src"];
 
 /** file :: finding → why it may stay (must reference an issue). */
 const ALLOWLIST: Readonly<Record<string, string>> = {
+  "packages/core/src/scrub-psk.ts :: words /psk|keyMaterial|pre-shared-key/": "#1113 XML credential element names, not conversation vocabulary or intent classification",
   "packages/daemon/src/system-turn.ts :: words /teammate|agent|cross-session/": "#1105 structural protocol tags, not conversation vocabulary",
   "packages/daemon/src/system-turn.ts :: words /agent|teammate|cross-session/": "#1105 structural protocol tags, not conversation vocabulary",
   "packages/core/src/scrub.ts :: words /true|false|[01]/": "#1107 boolean and protocol-mode control values are not credential disclosures",
