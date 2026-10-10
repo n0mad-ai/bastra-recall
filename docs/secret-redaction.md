@@ -151,3 +151,37 @@ Vor der Filteränderung auf main `75a469de`: 17 Positivziele verfehlt, alle 17
 Negativfälle bestanden; danach 34/34 bestanden. Die Fixture-SHA-256 lautet:
 `30161c0e8753cddcd2c14f716ccb0c2b009de0639b98de801f12eeea0e6da1d0`.
 Keine weitere Gegenbeispielsuche und keine Wortliste natürlicher Sprache.
+
+### Bekannte Grenzen mit Beispielen
+
+Die zusätzliche `reach`-Tabelle hält vier unveränderte lesbare Fälle als Grenzen
+fest: `password=$ecr3t` (Syntax einer Variablenreferenz),
+`redis://:12?34@cache.internal:6379` (mehrdeutiges numerisches Passwort/Query),
+`jwt_eyJ…` (JWT mit Unterstrich-Präfix) und
+`echo S3cret | docker login --password-stdin` (Wert über stdin).
+Der Korpus-/Unicode-Kürzungsnachtrag verändert den Filter nicht.
+Das ist eine Heuristik, keine Garantie für ein Gespräch ohne Zugangsdaten.
+Echte Zugangsdaten nicht in Gespräche schreiben.
+
+| Mehrdeutigkeit oder nicht unterstützte Form | Beispiel und aktuelles Verhalten |
+| --- | --- |
+| Slashbeginnendes Passwort / Pfad | `--password=/Sommer2024!` bleibt sichtbar: Das ist auch ein gültiger absoluter Dateiname. Dateisystemprüfungen würden entfernte oder geplante Pfade verlieren. Slashbeginnendes Base64 ist ebenso mehrdeutig. |
+| Numerisches Passwort mit wörtlichem URL-Trennzeichen | `https://user:12?34@host.internal/x` bleibt sichtbar, weil `user:12` ein Host/Port vor einer Query sein kann. |
+| Gewöhnliche Prosa, kurze PIN | `the password is tiny123`, `die PIN ist 482913` bleiben sichtbar. Es gibt keine sprachspezifische Interpretation. |
+| PSK-Passphrase nur aus Wörtern in Prosa | `Der PSK lautet kartoffelsalat`, `the PSK is blauer elefant tanzt`, `: PSK kartoffelsalat` bleiben sichtbar. Prosa und nicht positionale Formen ohne `=` schwärzen nur quotierte Werte oder ein einzelnes Token mit Geheimnisform; die oben ausdrücklich benannten Passwortpositionen schwärzen auch reine Wörter. `psk=…`-Zuweisungen schwärzen weiterhin bis zum Wertende. Details in [hooks.md](./hooks.md). |
+| Credential-Name außerhalb erkannter Syntax | `secret_key_base: abc999xyz`, `pw=hunter2`, `credentials: hunter2` können sichtbar bleiben. |
+| Andere Befehlsgrammatiken | `mysqldump -phunter2`, `/usr/bin/mysql -ppw1`, `redis-cli -a hunter2`, netrc-Prosa und scp-artiges `me:password@host` können sichtbar bleiben. |
+| Andere kodierte Felder / Signaturfelder | Ein kurzer JSON-`auth`-Base64-Wert, ein gepunktetes Token ohne JWT-Form sowie URL-`sig=` / `X-Amz-Signature=` können sichtbar bleiben. |
+| Kurze nackte opake Werte | Nicht näher bezeichnetes Base62 mit 20 Zeichen sowie Zeichenfolgen aus Kleinbuchstaben/Ziffern mit 16 Zeichen können sichtbar bleiben. Hexwerte in Form öffentlicher 40-/64-Zeichen-Hashes bleiben ohne Credential-Kontext erhalten. |
+| Opake Werte in Symbol- oder Pfadform | Ein Wert, der eine Code-Symbol- oder Ortsausnahme erfüllt, kann sichtbar bleiben; explizite Credential-Bindungen haben weiterhin Vorrang, außer bei Pfaden/Referenzen. |
+| Nackte Key-/Ressourcen-/Prosa-Labels | `key: value`, `secret: db-credentials`, `max token: 4000`, `Token: see the vault` werden vorsichtig geschwärzt. Ein kurzer Zugangswert in derselben Syntax darf keine neue Ausnahme erhalten. |
+| Komplexere Variablen-/Code-Referenzen | `${{ secrets.GITHUB_TOKEN }}`, `process.env.OPENAI_API_KEY`, `os.environ['GH_TOKEN']` und `password: !vault \|` können beschädigt werden. Nur `$NAME` / `${NAME}` werden als Variablenreferenzen erkannt. |
+| URL-Authority nur mit Nutzername | `ssh://deploy@build-box.internal:2222/srv/app` verliert den Nutzer, weil Nutzername und Token-Zugang dieselbe Form haben. Der Host bleibt. |
+| Alleinstehende technische Bezeichner | `aarch64-unknown-linux-gnu`, `srv_db01_prod_euc1_replica02`, manche EC2-/VPC-/Runner-Namen, `base64EncodedStringWithOptions`, `kCFStreamPropertyHTTPProxyHost` können außerhalb eines erkannten Kontexts geschwärzt werden. |
+| Öffentliche Hashes, Versionen und Request-IDs | `md5 d41d8cd98f00b204e9800998ecf8427e`, eine `trace_id`, ein `sha512-`-Wert, `v1.0.1-rc.2+build.20261007` oder eine Request-ID können die Heuristik für opake Werte auslösen. |
+
+Eine ursprüngliche Unverändert-Zeile enthält einen Credential-förmigen Header
+(`curl -H "Authorization: Bearer abc123" …`). Sein Zugangswert wird absichtlich
+geschwärzt; die ursprüngliche Unverändert-Erwartung gilt als Grenze, während ein
+separater Regressionstest den URL-Suffix erhält. Diese Beispiele enthalten keine
+echten Zugangsdaten oder Inhalte eines privaten Vaults.
