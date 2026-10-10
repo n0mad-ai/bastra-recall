@@ -7,16 +7,16 @@
  * the production normalization. No expansion, as in the vector lane of recall.mts.
  * embeddinggemma on 127.0.0.1:11434, embeddinggemma-2:270m on 127.0.0.1:11435 (skipped when that server is absent).
  */
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { embedBody } from "../../packages/core/src/embed-cache.ts";
 import { normalizeQuery } from "../../packages/core/src/query-normalize.ts";
-import { fixture, loopbackUrl, outputTarget } from "./common.mts";
+import { fixture, loopbackUrl, outputGuard } from "./common.mts";
 
 const arg = (name: string) => { const i = process.argv.indexOf(`--${name}`); return i < 0 ? undefined : process.argv[i + 1]; };
 const notes: any[] = JSON.parse(await readFile(arg("corpus")!, "utf8")).notes.filter((n: any) => (n.sensitivity ?? "team") !== "private");
 const ids: Set<string> | null = arg("ids") ? new Set(JSON.parse(await readFile(arg("ids")!, "utf8"))) : null;
 const kinds = (arg("kinds") ?? "near,far,far_xlang").split(",");
-const out = await outputTarget(arg("out")!, [arg("corpus"), arg("ids")]);
+const write = outputGuard([arg("out")!], [arg("corpus"), arg("ids")]);
 const queried = notes.filter(n => !ids || ids.has(n.id)), index = new Map(notes.map((n, i) => [n.id, i]));
 
 async function embed(url: string, model: string, texts: string[]): Promise<Float32Array[]> {
@@ -52,6 +52,6 @@ for (const [label, server, model] of [["embeddinggemma", "http://127.0.0.1:11434
     }
     result[`${label} ${mode}`] = row;
     console.log(label, mode, JSON.stringify(Object.fromEntries(Object.entries(row).map(([k, v]: any) => [k, { n: v.n, "R@1": v["R@1"], "R@5": v["R@5"], MRR: v.MRR }]))));
-    await writeFile(out, JSON.stringify(result));
+    await write(arg("out")!, JSON.stringify(result));
   }
 }

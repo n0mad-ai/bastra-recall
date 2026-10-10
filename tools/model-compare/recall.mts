@@ -1,5 +1,5 @@
 /** Synthetic recall comparison. No real vault, daemon, pull or cloud fallback. */
-import { args, required, positive, corpus, core, FIELD_BOOST, generation, fixture, digest, timing, forecast, metrics, jsonOut, validatePaths, modelInfo, loopbackUrl, logLine, rank, QUERY_TYPES, BASE_URL, errorText, applyExpansions, type ExpansionEntry } from "./common.mts";
+import { args, required, positive, corpus, core, FIELD_BOOST, generation, fixture, digest, timing, forecast, metrics, outputGuard, pretty, modelInfo, loopbackUrl, logLine, rank, QUERY_TYPES, BASE_URL, errorText, applyExpansions, type ExpansionEntry } from "./common.mts";
 
 const a = args(["corpus", "expand-model", "embedding-model", "out", "limit", "embedding-dim", "expansions-in", "expansions-out", "timeout-ms", "chat-url", "embedding-url"], ["help"]);
 if (a.help) {
@@ -7,7 +7,7 @@ if (a.help) {
 } else {
   const file = required(a, "corpus"), out = required(a, "out"), expandModel = required(a, "expand-model"), embeddingModel = required(a, "embedding-model");
   const chatURL = loopbackUrl(a["chat-url"]), embeddingURL = loopbackUrl(a["embedding-url"]);
-  validatePaths([out, a["expansions-out"] as string | undefined], [file, a["expansions-in"] as string | undefined]);
+  const write = outputGuard([out, a["expansions-out"] as string | undefined], [file, a["expansions-in"] as string | undefined]);
   if (expandModel !== "none" && embeddingModel === "none" && !a["expansions-in"]) throw Error("Production expansion self-test requires an embedding model");
   if (a["expansions-in"] && expandModel !== "none") throw Error("Cache replay uses --expand-model none; it never regenerates");
   const c = await corpus(file, a.limit), started = performance.now();
@@ -57,7 +57,7 @@ if (a.help) {
         } catch (e) { entry.status = "error"; entry.error = errorText(e); failures++; result.issues.push({ id: m.fm.id, issue: entry.error }); }
         entry.duration_ms = performance.now() - t; entry.generation_ms = generationMs;
         await current.drain();
-        console.error(`[model-compare] expanded ${entries.length}/${c.notes.length}: ${m.fm.id} (${entry.phrases.length} phrases)`);
+        console.error(`[model-compare] expanded ${entries.length}/${c.notes.length}: ${logLine(m.fm.id)} (${entry.phrases.length} phrases)`);
       }
       result.expansion_mode = "generated";
       result.expansion_selection_provider = embeddingModel;
@@ -73,9 +73,9 @@ if (a.help) {
       per_note_timing: timing(result.expansion_mode === "generated" ? entries.flatMap(e => e.duration_ms === undefined ? [] : [e.duration_ms]) : []),
       cached_source_timing: result.expansion_mode === "replay" ? timing(entries.flatMap(e => e.duration_ms === undefined ? [] : [e.duration_ms])) : null };
     result.estimate_180_expansions = forecast(result.expansion_mode === "generated" ? entries.filter(e => e.status === "written").flatMap(e => e.duration_ms === undefined ? [] : [e.duration_ms]) : [], 180);
-    if (a["expansions-out"]) await jsonOut(a["expansions-out"] as string, { schema: 1, corpus_sha256: c.sha256,
+    if (a["expansions-out"]) await write(a["expansions-out"] as string, pretty({ schema: 1, corpus_sha256: c.sha256,
       model: result.expansion_source_model ?? expandModel, model_metadata: expansionInfo, selection_embedding_model: result.expansion_selection_provider ?? null,
-      parameters: result.parameters, entries }, file);
+      parameters: result.parameters, entries }));
     const lanes = embeddingModel === "none" ? ["bm25"] as const : ["bm25", "hybrid", "vector"] as const;
     for (const n of c.notes) for (const kind of QUERY_TYPES) for (const lane of lanes) {
       const query = n.queries[kind], t = performance.now(), hits = await rank(f, query, lane, c.notes.length);
@@ -91,5 +91,5 @@ if (a.help) {
     result.status = result.issues.length ? "completed-with-issues" : "completed";
     console.table(result.summary.map(({ lane, kind, n, r_at_1, r_at_3, r_at_5, mrr }: any) => ({ lane, kind, n, "R@1": r_at_1.toFixed(3), "R@3": r_at_3.toFixed(3), "R@5": r_at_5.toFixed(3), MRR: mrr.toFixed(3) })));
   } catch (e) { result.status = "failed"; result.error = errorText(e); process.exitCode = 1; console.error(logLine(result.error)); }
-  finally { result.total_ms = performance.now() - started; await jsonOut(out, result, file); if (f) await f.close(); }
+  finally { result.total_ms = performance.now() - started; await write(out, pretty(result)); if (f) await f.close(); }
 }

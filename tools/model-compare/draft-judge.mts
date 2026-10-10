@@ -10,18 +10,19 @@
  * --probes replaces both with one probe file, e.g. data/fresh-probes.json.
  * The summary keys are German; results/collect.py maps them to the documented names.
  */
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 // First: it loads the repository's isolation guard before the daemon modules read their settings.
-import { loopbackUrl, logLine, outputTarget } from "./common.mts";
+import { loopbackUrl, logLine, outputGuard } from "./common.mts";
 import { ollamaChat } from "../../packages/daemon/src/learned-recall/reranker.js";
 import { STATEMENT_KINDS, RELATIONS, statementPrompt, relationPrompt, noteJudgeText, parseVerdict } from "../../packages/daemon/src/draft-judge.js";
 const here = (path: string) => new URL(path, import.meta.url);
 
 const arg = (name: string) => { const i = process.argv.indexOf(`--${name}`); return i < 0 ? undefined : process.argv[i + 1]; };
-const model = arg("model")!, mode = arg("mode") ?? "chat";
+const model = arg("model")!, mode = arg("mode") ?? "chat", out = arg("out")!;
 const limit = Number(arg("limit") ?? 0);
 const baseURL = loopbackUrl(arg("url"));
-const out = await outputTarget(arg("out")!, [arg("probes")]);
+const write = outputGuard([out], [arg("probes"), fileURLToPath(here("../draft-judge-eval/cases.json")), fileURLToPath(here("data/blind-injection-probes.json"))]);
 
 interface Probe { q: "a" | "b" | "c"; set: string; id: string; expect: string; a: string; b?: string }
 const probes: Probe[] = [];
@@ -93,7 +94,7 @@ for (const p of todo) {
   let r: { verdict: string | null; raw: string };
   try { r = await ask(p); } catch (error) { r = { verdict: null, raw: `ERROR ${(error as Error).message}` }; }
   answers.push({ ...p, ...r, ms: Math.round(performance.now() - started) });
-  if (answers.length % 100 === 0) { console.error(`${logLine(model)} ${answers.length}/${todo.length}`); await writeFile(out, JSON.stringify({ model, mode, partial: true, answers }, null, 1)); }
+  if (answers.length % 100 === 0) { console.error(`${logLine(model)} ${answers.length}/${todo.length}`); await write(out, JSON.stringify({ model, mode, partial: true, answers }, null, 1)); }
 }
 
 const v = (id: string) => answers.find(r => r.id === id)?.verdict;
@@ -139,4 +140,4 @@ summary.overall = frac(total.filter(ok).length, total.length);
 const warm = answers.slice(1).map(r => r.ms).sort((x, y) => x - y);
 summary.latency = { cold_ms: answers[0].ms, median_ms: warm[Math.floor(warm.length / 2)], p95_ms: warm[Math.floor(warm.length * 0.95)] };
 console.log(JSON.stringify(summary, null, 1));
-await writeFile(out, JSON.stringify({ summary, answers }, null, 1));
+await write(out, JSON.stringify({ summary, answers }, null, 1));
