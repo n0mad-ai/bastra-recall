@@ -279,9 +279,9 @@ export function formatModelNotice(offer: ModelOffer): string {
 /**
  * The SessionStart block. The agent may run the switch, but only after the
  * user said yes — the block is written so that it cannot be read as an order
- * to switch. It is sent at every session start until the user has answered —
- * deliberately without a day throttle — so the one way to end it for good,
- * `dismiss`, comes with the warning the agent has to pass on first.
+ * to switch. model-session-notice.ts limits delivery to one prepared response
+ * per user/UTC day. The one way to end it for good, `dismiss`, comes with the
+ * warning the agent has to pass on first.
  */
 export function formatModelSessionBlock(shown: ModelOffer): string {
   // A recommendation whose own id or model is not a plain tag is not announced
