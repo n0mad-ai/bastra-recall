@@ -18,6 +18,8 @@ import { envOff } from "./env.js";
 import { ACTED_ON_WINDOW_MS } from "./telemetry-join-state.js";
 import { readDraftDecisions, recordDraftDecisions } from "./draft-decisions.js";
 import { writeDraftEvent } from "./draft-events.js";
+import type { TrainingItem, TrainingVerdict } from "./training-capture.js"; // #1128-capture
+import { evalRunMark } from "./training-signal.js"; // #1128-capture
 import { noteJudgeText, parseVerdict, relationPrompt, statementPrompt, DRAFT_JUDGE_RETRY_MS, RELATIONS, STATEMENT_KINDS, type DraftJudge, type Relation, type StatementKind } from "./draft-judge.js";
 
 /** Unmeasured on real data, unchanged after review. */
@@ -41,6 +43,8 @@ export interface DraftPromoteOptions extends Omit<DraftShadowOptions, "emit"> {
   allowSharp?: boolean;
   /** Loopback chat model for the meaning check. Absent = no verdict, nothing is promoted or closed. */
   judge?: DraftJudge | null;
+  /** #1128-capture: each verdict this pass reached, with the texts it read. Observed only; nothing here reads it back. */
+  onVerdict?: (verdict: TrainingVerdict) => void;
 }
 export interface DraftPromoteResult { promoted: number; wouldPromote: number; duplicates: number; blocked: number; errors: number; probeOnly?: boolean;
   /** Candidates the meaning check could not judge in this pass. */
@@ -110,7 +114,7 @@ export function buildDraftNote(rows: Draft[], df: ReadonlyMap<string, number>, t
 async function writeEvent(event: DraftPromotionEvent): Promise<void> {
   if (envOff("BASTRA_TELEMETRY", "NEXUS_TELEMETRY")) return;
   const dir = logDirFor(); await mkdir(dir, { recursive: true }); const ts = new Date().toISOString();
-  await appendFile(join(dir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify({ ...event, ts }) + "\n", "utf8");
+  await appendFile(join(dir, `events-${ts.slice(0, 10)}.jsonl`), JSON.stringify({ ...event, ts, ...evalRunMark() }) + "\n", "utf8");
 }
 const PASS_KEY = hash("draft-promotion-pass:repeat-use:v4");
 function passSignature(opts: DraftPromoteOptions, rows: Draft[], notes: ReturnType<Vault["list"]>, vectors: ReadonlyMap<string,Float32Array> | null, snapshot: ReturnType<NonNullable<DraftPromoteOptions["vaultVectors"]>> | undefined, sharp: boolean, vaultId: string): string {
@@ -198,6 +202,9 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
       changes.set(key, verdict ? hash(`${key}:${verdict}`) : retry);
       return verdict ?? "none";
     };
+    // #1128-capture: report a verdict to the opt-in label store; "none" is no verdict.
+    const learned = (item: TrainingItem, verdict: string): void => { if (judge && verdict !== "none") opts.onVerdict?.({ item, verdict, model: judge.model }); };
+    const statementItem = (draft: Draft): TrainingItem => ({ type: "statement", quote: draft.quote, draft_kind: draft.kind, ...(draft.context ? { context: draft.context } : {}) });
     const compatible = provider && snapshot?.provider === provider.id && snapshot.dim === provider.dim;
     const noteVectors = compatible ? new Map([...snapshot.vectors].map(([id, v]) => [id, new Float32Array(v)])) : null;
     const noteWords = new Map<string, Set<string>>(), df = new Map<string, number>();
@@ -270,13 +277,19 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
       const judging = !gateReason || gateReason === "dry-run", spent: { ms?: number } = {};
       const judged: Pick<DraftPromotionEvent, "judge_statement" | "judge_repeat" | "judge_note"> = {};
       const verdicts = () => judging ? { ...judged, ...(judge ? { judge_model: judge.model } : {}), ...(spent.ms === undefined ? {} : { judge_ms: spent.ms }) } : {};
-      const statement = async () => judged.judge_statement ??= await ask(statementPrompt(row.quote), STATEMENT_KINDS, spent);
+      const statement = async () => {
+        if (judged.judge_statement === undefined) { judged.judge_statement = await ask(statementPrompt(row.quote), STATEMENT_KINDS, spent); learned(statementItem(row), judged.judge_statement); } // #1128-capture
+        return judged.judge_statement;
+      };
       const hold = async (reason: string, noteId?: string): Promise<void> => {
         result.blocked++; if (reason === "meaning-check-unavailable") result.unjudged++;
         await emitOnce(selected, { kind: "draft_would_block", ...base, reason, ...verdicts(), ...(noteId ? { note_id: noteId } : {}) });
       };
       if (duplicate && judging) {
         judged.judge_note = await ask(relationPrompt(row.quote, duplicate.text, "note"), RELATIONS, spent);
+        // #1128-capture: a private note's text never reaches the label store.
+        if (!duplicate.note || (opts.vault.get(duplicate.id)?.fm.sensitivity ?? "private") !== "private") learned({ type: "relation", a: row.quote, b: duplicate.text, b_is: "note", source: "promotion",
+          ...(duplicate.note ? { note_id: duplicate.id } : {}), ...(duplicate.cosine === undefined ? {} : { cosine: duplicate.cosine }), ...(duplicate.containment === undefined ? {} : { containment: duplicate.containment }) }, judged.judge_note);
         if (judged.judge_note === "none") { await hold("meaning-check-unavailable"); continue; }
         if (judged.judge_note === "contradiction") {
           // Left open for a later suggestion; a private note's id stays out of telemetry.
@@ -319,8 +332,10 @@ export async function runDraftPromote(opts: DraftPromoteOptions): Promise<DraftP
         if (new Set(selected.map(d => d.fp)).size > 1) {
           // Both quotes end up in the note, so the second one is classified too.
           const partner = await ask(statementPrompt(selected[1].quote), STATEMENT_KINDS, spent);
+          learned(statementItem(selected[1]), partner); // #1128-capture
           if (partner !== "durable") { await hold(partner === "none" ? "meaning-check-unavailable" : "not-durable-statement"); continue; }
           judged.judge_repeat = await ask(relationPrompt(selected[0].quote, selected[1].quote), RELATIONS, spent);
+          learned({ type: "relation", a: selected[0].quote, b: selected[1].quote, b_is: "statement", source: "promotion" }, judged.judge_repeat); // #1128-capture
           if (judged.judge_repeat !== "same") { await hold(judged.judge_repeat === "none" ? "meaning-check-unavailable" : "repeat-not-same-statement"); continue; }
         }
       }

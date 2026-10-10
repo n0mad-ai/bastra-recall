@@ -27,6 +27,8 @@ Bastra Recall stores memories as files in your chosen vault. Keyword search runs
 
 These requests are distinct from uploading a vault. Local telemetry records activity and timings; the map's telemetry view reads local logs. Before sharing logs or a bug report, check for personal information, tokens and private paths.
 
+One local file can hold text you typed and excerpts of your notes: `training-capture.jsonl` in the log directory. It exists only if you set `BASTRA_TRAINING_CAPTURE=1`, which is off by default; it is a temporary tool for the evaluation in #1128 and is never sent anywhere. See [training signal capture](./training-capture.md).
+
 ### Your control
 
 Inspect and edit the Markdown files directly, or use the memory tools through your assistant. Use `bastra embeddings off` for keyword-only search and `bastra embeddings on` to set up local embeddings. Removing client registrations with `bastra uninstall all` keeps your vault; uninstalling the package is a separate step.
@@ -59,6 +61,8 @@ Bastra Recall speichert Erinnerungen als Dateien in deinem gewählten Vault. Die
 - Die optionale Wetter-/Geocoding-Funktion der Map sendet nach deiner Ortswahl einen groben Standort. Sie benötigt keine Erinnerungsinhalte.
 
 Diese Anfragen sind vom Hochladen eines Vaults zu unterscheiden. Lokale Telemetrie zeichnet Aktivitäten und Laufzeiten auf; die Telemetrieansicht der Map liest lokale Logs. Prüfe Logs und Fehlerberichte vor dem Teilen auf persönliche Angaben, Tokens und private Pfade.
+
+Eine lokale Datei kann Text enthalten, den du getippt hast, und Auszüge deiner Notizen: `training-capture.jsonl` im Protokollverzeichnis. Es gibt sie nur, wenn du `BASTRA_TRAINING_CAPTURE=1` setzt, und das ist standardmäßig aus; sie ist ein befristetes Werkzeug für die Prüfung in #1128 und wird nirgendwohin gesendet. Siehe [Trainingssignal mitschreiben](./training-capture.md#deutsch).
 
 ### Deine Kontrolle
 

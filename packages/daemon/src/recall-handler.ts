@@ -10,6 +10,8 @@ import { scopeEquals } from "@bastra-recall/core/scope";
 import { truncateSummaryTo, hasUnresolvedConflict, type StageListener, type RecallStage, type RecallHit } from "@bastra-recall/core";
 import { envInt } from "./env.js";
 import { fireAndForget } from "./telemetry.js";
+import { telemetryCandidatePool, type TelemetryPoolCandidate } from "./training-signal.js"; // #1128-capture
+import { callerSessionStore } from "./caller-session.js"; // #1128-capture
 import type { RecallStageBuckets } from "./telemetry-events.js";
 import { isWeakResult, isNoHome } from "@bastra-recall/core";
 import { armsOf, currentScoreVersion } from "./score-space.js";
@@ -316,7 +318,9 @@ async function recallAgainstVault(
     // Teil-Recall.
     // #421: das Aufrufer-Projekt ebenso — es ist eine Eigenschaft des
     // Transports wie die Capability, nicht des gemergten Aufrufs.
-    const subOptions = { trustedPrivate: options.trustedPrivate, project: options.project };
+    const subOptions = { trustedPrivate: options.trustedPrivate, project: options.project,
+      // #1128-capture: a measurement run stays one — its rows are written by the sub-recalls.
+      ...(options.client === "eval" ? { client: "eval" } : {}) };
     const subs = await Promise.all(
       kept.map((q) =>
         recallHandler(deps, {
@@ -352,6 +356,13 @@ async function recallAgainstVault(
         : {}),
       ...(dropped > 0 ? { truncated_by_budget: true, dropped_by_budget: dropped } : {}),
     })).payload;
+    // #1128-capture: what the caller finally received, each note under the
+    // phrasing that ranked it best — the sub-recalls record nothing themselves.
+    deps.telemetry.recordRecallHits(options.session_id ?? callerSessionStore.getStore() ?? null, (batchPayload.hits as { id: string }[]).flatMap((hit) => {
+      const ranked = subs.map((sub) => ({ recall_id: sub.recall_id, rank: (sub.hits as { id: string }[]).findIndex((h) => h.id === hit.id) + 1 })).filter((r) => r.recall_id && r.rank > 0);
+      const best = ranked.sort((x, y) => x.rank - y.rank)[0];
+      return best ? [{ id: hit.id, recall_id: best.recall_id!, rank: best.rank }] : [];
+    }));
     return withDraftBudget(batchPayload, batchDrafts ?? [], max_tokens);
   }
   const query = parsed.data.query;
@@ -360,7 +371,7 @@ async function recallAgainstVault(
   const t0 = Date.now();
   const collector = makeStageCollector(options.onStage);
   // #121: capture the deeper candidate pool (incl. below-floor) for the far slice.
-  let candidatePool: { id: string; score: number }[] = [];
+  let candidatePool: TelemetryPoolCandidate[] = [];
   const recallOpts = {
     // Codex-Gegenreview: Der Anker misst AUTORENABSICHT — ein hand-geschriebener
     // Trigger trifft ein selbst getipptes Wort. Ohne `authored_query` galten die
@@ -380,7 +391,7 @@ async function recallAgainstVault(
     expand_hops: parsed.data.expand_hops as 0 | 1 | undefined,
     onStage: collector.listener,
     onCandidatePool: (pool: RecallHit[]) => {
-      candidatePool = pool.map((h) => ({ id: h.id, score: h.score }));
+      candidatePool = telemetryCandidatePool(pool, deps.vault); // #1128-capture
     },
   };
   // Shared learned-recall (#120): widen the query with language-matched bridge
@@ -555,6 +566,12 @@ async function recallAgainstVault(
     ...(dropped > 0 ? { truncated_by_budget: true, dropped_by_budget: dropped } : {}),
   }));
   const result = budgeted.payload;
+  // #1128-capture: only what this caller finally received, after the budget cut.
+  // One phrasing of a batch records nothing; the batch does, for the merged answer.
+  if (parsed.data.batch_of === undefined) {
+    deps.telemetry.recordRecallHits(options.session_id ?? callerSessionStore.getStore() ?? null,
+      (result.hits as { id: string }[]).map((hit, i) => ({ id: hit.id, recall_id: recallId, rank: i + 1 })));
+  }
   // #457: Größe erst NACH dem Bau des Ergebnisses — das Ereignis beschreibt
   // den gelieferten Payload, nicht die interne Trefferliste.
   const payloadChars = JSON.stringify(result, null, 2).length;

@@ -184,6 +184,34 @@ export class JoinState {
     this.scheduleFlush();
   }
 
+  /**
+   * #1128-capture: which `recall` DELIVERED which note to which caller, so a
+   * later load_memory by that caller names the recall that actually returned
+   * it instead of whichever recall was newest (`follows_recall`).
+   *
+   * Better no link than a wrong one. A slot is `session + note`: without a
+   * caller session on BOTH sides nothing is recorded and nothing is found, so
+   * two sessions that were served the same note never answer for each other,
+   * and a caller that names no session keeps the time window as its only link.
+   * Callers pass what the caller finally received, not what was ranked.
+   * In memory only: after a daemon restart there is no link either.
+   */
+  private recallHits = new Map<string, { recall_id: string; rank: number; ts: number }>();
+
+  recordRecallHits(session: string | null, delivered: Array<{ id: string; recall_id: string; rank: number }>): void {
+    if (!session) return;
+    const ts = Date.now();
+    for (const [key, trace] of this.recallHits) if (ts - trace.ts > HOOK_HINT_WINDOW_MS) this.recallHits.delete(key);
+    for (const hit of delivered) this.recallHits.set(`${session}\0${hit.id}`, { recall_id: hit.recall_id, rank: hit.rank, ts });
+  }
+
+  findRecallFor(id: string, session: string | null): { recall_id: string; rank: number } | null {
+    if (!session) return null;
+    const trace = this.recallHits.get(`${session}\0${id}`);
+    if (!trace || Date.now() - trace.ts > HOOK_HINT_WINDOW_MS) return null;
+    return { recall_id: trace.recall_id, rank: trace.rank };
+  }
+
   /** Usage moment "surfaced" (#154) — fed by POST /hook/hinted with the ids a
    *  hook ACTUALLY injected after its client-side filtering. */
   recordSurfacedUsage(ids: string[]): void {

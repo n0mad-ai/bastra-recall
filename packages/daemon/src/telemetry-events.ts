@@ -15,6 +15,7 @@ import type {
 } from "./telemetry-events-embedding.js";
 import type { CodeToolCallEvent, CodeGraphRefreshEvent } from "./telemetry-events-code.js";
 import type { HookActEvent, HookRecallEvent, HookReflexEvent } from "./telemetry-events-hook.js";
+import type { TelemetryPoolCandidate } from "./training-signal.js"; // #1128-capture
 
 // Nur die Events, die DIESE Klasse via write() schreibt. Die Hook-CLIs
 // (hook_call, session_hook_call, prompt_hook_call, bash_hook_call,
@@ -175,8 +176,10 @@ export interface RecallEvent extends BaseEvent, DimensionedEvent {
   filter_project?: string | null;
   scope_filter_skipped?: CallerScopeFilterTelemetry["scope_filter_skipped"];
   /** #121: the deeper candidate pool (incl. below-floor ranks) behind this recall,
-   *  so the far slice is observable for offline harvesting. Lean {id, score} only. */
-  candidate_pool?: { id: string; score: number }[];
+   *  so the far slice is observable for offline harvesting. Lean {id, score} only.
+   *  #1128-capture adds, per candidate and still without text: the rank in each
+   *  arm and a hash of the note's content (`TelemetryPoolCandidate`). */
+  candidate_pool?: TelemetryPoolCandidate[];
   /**
    * Zweiter Gegenreview: In welchem Raum `top_score` und `hits[].score` liegen
    * — `"rrf"` = fusionierte Rang-Summe, die Bänder 30/50/100 beschreiben
@@ -292,6 +295,12 @@ export interface LoadMemoryEvent extends BaseEvent {
   from_hook_recall: string | null;
   /** Rank (1-based) at which this id appeared in that hook_recall's hits[]. */
   hook_hint_rank: number | null;
+  /** #1128-capture: recall_id of the recent `recall` that actually served this
+   *  id, and its 1-based rank there. Unlike `follows_recall` (the newest recall
+   *  in a time window, whatever it returned) this is a real link; null when no
+   *  recent recall served the id. Absent on rows from before the field. */
+  from_recall?: string | null;
+  recall_rank?: number | null;
   /**
    * #457: Größe des tatsächlich gelieferten Payloads NACH der lean/full-
    * Projektion (nicht die Vault-Datei). `delivered_chars` ist das

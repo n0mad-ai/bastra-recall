@@ -31,6 +31,7 @@ import { sessionHarvestEnabled, runSessionHarvest, formatHarvestBlock, type Harv
 import { settleProvisionalSuggestions, writePendingSuggestion } from "./pending-suggestions.js";
 import { storedQuoteMatcher } from "./harvest-vault-match.js";
 import { loadTranscript } from "./stop-lane.js";
+import { runTrainingCaptureTick, type TrainingTick } from "./training-capture.js"; // #1128-capture
 
 export interface BackgroundJobDeps {
   vault: Vault;
@@ -112,11 +113,15 @@ export async function runSessionHarvestTick(
     storedIn: () => storedQuoteMatcher(deps.vault, deps.search),
     now,
   });
+  // #1128-capture: null unless the opt-in switch is on. Texts are kept here,
+  // before the expiry below can drop a draft.
+  const training: TrainingTick | null = await runTrainingCaptureTick(now);
   try {
   await deps.vault.reconcile();
   await expireDrafts({ now });
   const shadow = await runDraftShadow({
     provider: deps.rawProvider ?? null, ollama: deps.ollama, vault: deps.vault, now,
+    capturePair: training?.pair, // #1128-capture
     vaultVectors: () => {
       const index = deps.embIdx();
       if (!index) return null;
@@ -127,6 +132,7 @@ export async function runSessionHarvestTick(
   const promoteOptions = {
     provider: deps.rawProvider ?? null, ollama: deps.ollama, vault: deps.vault, now,
     allowSharp: shadow.enabled && shadow.errors === 0, judge: deps.draftJudge,
+    onVerdict: training?.verdict, // #1128-capture
     vaultVectors: () => {
       const index = deps.embIdx();
       if (!index) return null;
@@ -142,6 +148,7 @@ export async function runSessionHarvestTick(
     for(const relay of relays)if(removed.has(relay.block))relayed-=relay.count;
   }
   if (await draftPromotionReady(promoteOptions)) await expireDrafts({ now, memoryExists: async id => deps.vault.get(id) !== undefined });
+  await training?.finish(deps.draftJudge ?? null); // #1128-capture
   return { harvest, shadow, promotion, relayed };
   } catch(error) {
     if(relayToken)await settleProvisionalSuggestions(relayToken,new Set());

@@ -22,6 +22,7 @@ import { isSystemInjectedTurn, ownerPromptText } from "../system-turn.js";
 import { isExpiredUnconfirmed, isMachineVocabulary, mintBridge, UNCONFIRMED_BRIDGE_TTL_DAYS, type Bridge } from "./bridges.js";
 import { rerank, type ChatFn, type RerankCandidate } from "./reranker.js";
 import { testRunLogDir } from "../env.js";
+import type { RerankVerdict } from "../training-signal.js"; // #1128-capture
 
 export interface TelemetryEvent {
   kind: string;
@@ -387,7 +388,9 @@ export async function harvestFarBridges(
   pools: CandidatePoolEntry[],
   getMemoryInfo: (id: string) => MemoryInfo | null,
   chat: ChatFn,
-  opts: { maxScore?: number; maxJudge?: number; date?: string; onProgress?: (done: number, total: number) => void } = {},
+  opts: { maxScore?: number; maxJudge?: number; date?: string; onProgress?: (done: number, total: number) => void;
+    /** #1128-capture: every judgement, ids only. Observed; the harvest does not read it back. */
+    onVerdict?: (verdict: RerankVerdict) => void } = {},
 ): Promise<DeepHarvestResult> {
   const maxScore = opts.maxScore ?? 100; // only cases without a strong (REQUIRED-band) hit
   const maxJudge = opts.maxJudge ?? 50;
@@ -416,6 +419,7 @@ export async function harvestFarBridges(
     judged++;
     opts.onProgress?.(judged, Math.min(maxJudge, pools.length));
     const { bestId, chosenRank } = await rerank(entry.query, candidates, chat);
+    opts.onVerdict?.({ recall_id: entry.recallId ?? null, candidate_ids: candidates.map((c) => c.id), chosen_id: bestId, chosen_rank: chosenRank }); // #1128-capture
     if (!bestId || chosenRank === null || chosenRank <= 1) continue; // none, or top already → no rescue
     const info = getMemoryInfo(bestId);
     if (!info) continue;
