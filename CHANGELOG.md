@@ -6,13 +6,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
-
-- The daily CLI model hint reclaims a day lock older than ten seconds in a
-  single silent attempt, so an interrupted command cannot suppress it forever.
-  Fresh or unwritable locks still skip the hint without waiting; other
-  advisory claims retain their existing policy.
-
 ### Security
 
 - Upgrade `proxy-addr` to 2.0.8 (GHSA-jqcg-44mw-7w3h) and override the
@@ -78,7 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   Existing users of either recommended model are not prompted to switch
   between them. The notice distinguishes similar draft-check/reranker answer
   times from slower, less consistent keyword expansion. Parallel CLI commands
-  claim the daily model notice once without waiting; busy or unwritable locks
+  claim the daily model notice once without waiting; fresh or unwritable locks
   silently skip that hint, while the other notice surfaces remain independent.
   Listed model tags are matched case-insensitively, including `-` suffixes;
   bare names, `:latest` and other sizes remain distinct.
@@ -90,6 +83,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The daily CLI model hint reclaims a day lock older than ten seconds in a
+  single silent attempt, so an interrupted command cannot suppress it forever.
+  Fresh or unwritable locks still skip the hint without waiting; other
+  advisory claims retain their existing policy.
 - **A settings file that cannot be read is no longer written over — a
   behaviour change for every command that stores a setting** (`bastra config
   set`, `embeddings on|off`, `models set`, `token`, the installer, the
