@@ -27,7 +27,43 @@ Bastra Recall stores memories as files in your chosen vault. Keyword search runs
 
 These requests are distinct from uploading a vault. Local telemetry records activity and timings; the map's telemetry view reads local logs. Before sharing logs or a bug report, check for personal information, tokens and private paths.
 
-One local file can hold text you typed and excerpts of your notes: `training-capture.jsonl` in the log directory. It exists only if you set `BASTRA_TRAINING_CAPTURE=1`, which is off by default; it is a temporary tool for the evaluation in #1128 and is never sent anywhere. See [training signal capture](./training-capture.md).
+One local file can hold text you typed and excerpts of your notes: `training-capture.jsonl` in the log directory. It is written only when `BASTRA_TRAINING_CAPTURE` is enabled (`1`, `true`, `on` or `yes`), which is off by default; it is a temporary tool for the evaluation in #1128 and is never sent anywhere. See [training signal capture](./training-capture.md).
+
+### Local drafts
+
+While the after-session harvest is enabled and sessions are booked by its hooks,
+it captures each typed user message that passes the noise filter, has at least
+20 letters and fewer than 2,000 characters. Injected turns, interruptions, large
+pastes and quotes already held by the vault are excluded. A later save does not
+suppress draft capture. Drafts are unconfirmed quotes, separate from vault notes.
+
+The local store is `~/.bastra/drafts.json` (`BASTRA_DRAFTS_PATH` overrides it),
+with its model-bound `.vectors.json` sidecar. Both use permissions 0600.
+Recognizable credentials are redacted before storage; useful paths and variable
+references remain. The filter is a heuristic with [known limits](./secret-redaction.md):
+word-only passwords in ordinary prose and unsupported forms can remain visible.
+It does not repair the original client transcript, old vault notes or backups.
+Quotes are clipped to 600 characters and context to 160; the store holds at most
+500 rows and 1 MiB, so its limits can evict rows earlier.
+
+Open drafts with one evidence row and no valid use proof expire after 7 days;
+other open drafts after 30 days, closed/rejected/promotion records after 180 days,
+measured from their last touch. Active harvest ticks and ordinary store writes
+remove expired rows. If that work is disabled, old data can remain on disk.
+`bastra drafts list` inspects the store; `bastra drafts purge` clears it and its
+sidecars. Draft telemetry contains IDs, counts and metrics, not the captured quote.
+
+Capture, draft embeddings and meaning checks run locally, without uploading
+these files. The meaning check can call a local model even in the default dry
+run. Without exactly `BASTRA_DRAFT_PROMOTE=1`, automatic draft promotion writes
+no vault note. Unconfirmed hints and relay excerpts are passed to the connected
+assistant; a cloud-based assistant may process that content remotely under its
+own policy, just like the other hook context described above.
+
+`BASTRA_DRAFT_HINTS=0` disables the unconfirmed hint band and its use tracking;
+it does not disable capture or the pending relay. `BASTRA_SESSION_HARVEST=0`
+disables capture, harvest-tick cleanup, shadow comparisons and promotion.
+Neither switch deletes existing files; purge them explicitly if wanted.
 
 ### Your control
 
@@ -35,7 +71,7 @@ Inspect and edit the Markdown files directly, or use the memory tools through yo
 
 The `sensitivity` field filters access through specific Bastra interfaces. It is not file encryption or a substitute for operating-system permissions. See the [memory schema](./memory-schema.md#privacy-field). Report suspected vulnerabilities through [SECURITY.md](../SECURITY.md).
 
-This page describes the 1.0 release line. Check the [changelog](../CHANGELOG.md) for version-specific changes.
+This page includes the changes prepared for 1.1.0. Check the [changelog](../CHANGELOG.md) for version-specific changes.
 
 <a id="deutsch"></a>
 
@@ -62,7 +98,49 @@ Bastra Recall speichert Erinnerungen als Dateien in deinem gewählten Vault. Die
 
 Diese Anfragen sind vom Hochladen eines Vaults zu unterscheiden. Lokale Telemetrie zeichnet Aktivitäten und Laufzeiten auf; die Telemetrieansicht der Map liest lokale Logs. Prüfe Logs und Fehlerberichte vor dem Teilen auf persönliche Angaben, Tokens und private Pfade.
 
-Eine lokale Datei kann Text enthalten, den du getippt hast, und Auszüge deiner Notizen: `training-capture.jsonl` im Protokollverzeichnis. Es gibt sie nur, wenn du `BASTRA_TRAINING_CAPTURE=1` setzt, und das ist standardmäßig aus; sie ist ein befristetes Werkzeug für die Prüfung in #1128 und wird nirgendwohin gesendet. Siehe [Trainingssignal mitschreiben](./training-capture.md#deutsch).
+Eine lokale Datei kann Text enthalten, den du getippt hast, und Auszüge deiner Notizen: `training-capture.jsonl` im Protokollverzeichnis. Sie wird nur geschrieben, wenn `BASTRA_TRAINING_CAPTURE` eingeschaltet ist (`1`, `true`, `on` oder `yes`), und das ist standardmäßig aus; sie ist ein befristetes Werkzeug für die Prüfung in #1128 und wird nirgendwohin gesendet. Siehe [Trainingssignal mitschreiben](./training-capture.md#deutsch).
+
+### Lokale Entwürfe
+
+Solange der nachträgliche Sitzungs-Harvest eingeschaltet ist und seine Hooks
+Sitzungen vormerken, erfasst er jede getippte Nutzernachricht hinter dem
+Rauschfilter mit mindestens 20 Buchstaben und weniger als 2.000 Zeichen.
+Eingespielte Turns, Abbrüche, große eingefügte Texte und Zitate, die der Vault
+bereits hält, fallen weg. Ein späterer Speicheraufruf unterdrückt die Erfassung
+nicht. Entwürfe sind unbestätigte Zitate, getrennt von Vault-Notizen.
+
+Die lokale Ablage liegt in `~/.bastra/drafts.json` (`BASTRA_DRAFTS_PATH`
+überschreibt den Ort), daneben die modellgebundene `.vectors.json`-Datei.
+Beide verwenden Rechte 0600. Erkennbare Zugangsdaten werden vor dem Speichern
+geschwärzt; nützliche Pfade und Variablenreferenzen bleiben erhalten. Der Filter
+ist eine Heuristik mit [bekannten Grenzen](./secret-redaction.md#deutsch-fester-maßstab-und-grenzen):
+Passwörter nur aus Wörtern in gewöhnlicher Prosa und nicht unterstützte Formen
+können lesbar bleiben. Er repariert weder das ursprüngliche Client-Transcript
+noch alte Vault-Notizen oder Backups. Zitate werden auf 600 Zeichen und Kontext
+auf 160 gekürzt; die Ablage hält höchstens 500 Zeilen und 1 MiB, sodass diese
+Grenzen Zeilen früher verdrängen können.
+
+Offene Entwürfe mit einem Beleg ohne gültigen Nutzungsnachweis verfallen nach
+7 Tagen, andere offene nach 30 Tagen, geschlossene/abgelehnte/Beförderungs-
+Datensätze nach 180 Tagen, gerechnet ab der letzten Berührung. Aktive Harvest-
+Ticks und normale Ablage-Schreibvorgänge entfernen verfallene Zeilen. Ist diese
+Arbeit abgeschaltet, können alte Daten auf der Platte bleiben. `bastra drafts list`
+zeigt die Ablage; `bastra drafts purge` leert sie und ihre Begleitdateien.
+Die Entwurfs-Telemetrie enthält IDs, Zähler und Messwerte, nicht das erfasste Zitat.
+
+Erfassung, Entwurfs-Embeddings und Bedeutungsprüfungen laufen lokal, ohne diese
+Dateien hochzuladen. Die Bedeutungsprüfung kann auch im standardmäßigen Probelauf
+ein lokales Modell aufrufen. Ohne exakt `BASTRA_DRAFT_PROMOTE=1` schreibt die
+automatische Übernahme keine Vault-Notiz. Unbestätigte Hinweise und Relay-Auszüge
+werden dem verbundenen Assistenten übergeben; ein cloudbasierter Assistent kann
+diese Inhalte nach seinen eigenen Regeln beim Anbieter verarbeiten, ebenso wie
+den oben beschriebenen übrigen Hook-Kontext.
+
+`BASTRA_DRAFT_HINTS=0` schaltet das unbestätigte Hinweisband und dessen
+Nutzungserfassung ab, nicht die Erfassung oder den Pending-Relay.
+`BASTRA_SESSION_HARVEST=0` schaltet Erfassung, Aufräumen im Harvest-Tick,
+Shadow-Vergleiche und Übernahme ab. Beide Schalter löschen keine vorhandenen
+Dateien; diese bei Bedarf ausdrücklich mit purge leeren.
 
 ### Deine Kontrolle
 
@@ -70,4 +148,4 @@ Prüfe und bearbeite Markdown-Dateien direkt oder nutze die Memory-Tools über d
 
 Das Feld `sensitivity` filtert den Zugriff über bestimmte Bastra-Schnittstellen. Es verschlüsselt keine Dateien und ersetzt keine Betriebssystemrechte. Siehe [Memory-Schema](./memory-schema.md#privacy-field). Vermutete Sicherheitslücken melde über [SECURITY.md](../SECURITY.md).
 
-Diese Seite beschreibt die Release-Linie 1.0. Versionsspezifische Änderungen stehen im [Changelog](../CHANGELOG.md).
+Diese Seite enthält die für 1.1.0 vorbereiteten Änderungen. Versionsspezifische Änderungen stehen im [Changelog](../CHANGELOG.md).

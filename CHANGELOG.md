@@ -20,6 +20,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Local drafts capture unsaved context automatically** (#1084) while the
+  after-session harvest is enabled. Typed turns passing the noise filter
+  (at least 20 letters, fewer than 2,000 characters) enter a secret-redacted
+  local store outside the vault (0600, 500 rows / 1 MiB). Recall can show a
+  separate unconfirmed hint band; `BASTRA_DRAFT_HINTS=0` disables that band,
+  `BASTRA_SESSION_HARVEST=0` disables capture and the background tick.
+  Automatic note promotion stays off unless exactly `BASTRA_DRAFT_PROMOTE=1`.
+  A local meaning check can still run in the default dry run. Capture/rarity
+  thresholds and 7-day single-evidence expiry are unmeasured on real use;
+  other open drafts expire after 30 days, closed records after 180. See the
+  [draft workflow](docs/hooks.md#local-drafts-1084) and
+  [privacy boundaries](docs/PRIVACY.md#local-drafts).
+- **Reviewed-miss harvester, an offline repository tool** (#454). It reads
+  recorded session/telemetry evidence, classifies missed recall opportunities
+  and produces a review queue and cue proposals. It calls no model, uploads
+  nothing, never writes to the vault and applies no proposal automatically.
+  The script/modules are excluded from the published npm package. See the
+  [guide](docs/reviewed-miss-harvester.md).
+- **Save notices for Codex.** After confirmed save/edit tools, a PostToolUse
+  hook supplies a short line with a plain prefix by default. Re-run
+  `bastra install codex` and trust the write-tool entry in `/hooks`.
+  `BASTRA_SAVE_NOTICE=0` disables the notice; colour is an explicit opt-in.
+  Calls and hook envelopes were checked with Codex CLI 0.160.0, but interactive
+  appearance and colour remain visually unverified. See the
+  [compatibility and setup guide](docs/codex-save-notice.md) (Refs #1094).
+- **Terminal panels for Claude Code and Codex**, started manually with
+  `bastra-codex-statusline --cmux` or `bastra-recall-panel --cmux`.
+  The Codex Powerline panel binds to an explicit session and shows reported
+  usage/context and Recall activity; paginated-only histories are unsupported.
+  The Neural Console offers `classic`, `orbital` (default) and `ember` designs,
+  session/pane following and a Claude statusline feed. Missing measurements
+  stay unavailable; demo data is labeled. Panels read local transcripts/feed
+  metadata and do not send messages or resume sessions. See
+  [panel details](packages/statusline/README.md#experimental-neural-console).
 - **Training signal capture, a temporary tool for #1128.** Step 0 of the
   local fine-tuning evaluation needs data the daemon did not keep. Without any
   switch, the local event log gains ids, hashes and ranks only, never text:
