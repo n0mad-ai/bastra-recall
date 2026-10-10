@@ -62,13 +62,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   answer, and an answer to a different one is refused. The switch pulls the
   model, checks it with a short local test call and only then stores model and
   answer in one write; the old model stays installed. New installs are offered the recommended model directly.
-  `BASTRA_UPDATE_CHECK=off` silences the notice as well. This release ships the
-  mechanism with no active recommendation, so nothing changes yet.
+  `BASTRA_UPDATE_CHECK=off` silences the notice as well. This release carries
+  the first recommendation (`2026-10-tev1`): `tev1:4b` (4.5 GB download) on
+  machines with 16 GB to under 32 GB of RAM, `gemma4:12b` (8.1 GB) from 32 GB,
+  none below 16 GB. It reaches installs that use a local text model other than
+  the recommended one, and rests on the
+  [local model comparison](docs/local-model-comparison.md).
 - **New installs are offered `tev1:4b` as the local text model** from 16 GB of
   RAM (4.5 GB download); `gemma4:12b` stays the alternative from 24 GB and the
-  suggestion from 32 GB. Existing installs are not touched: without a stored
-  choice the daemon keeps running `gemma3:4b`, and only the `recommended:`
-  line of `bastra models` shows the new suggestion.
+  suggestion from 32 GB. Existing installs are not switched: without a stored
+  choice the daemon keeps running `gemma3:4b` until you answer the
+  recommendation above with `switch`.
 
 ### Fixed
 

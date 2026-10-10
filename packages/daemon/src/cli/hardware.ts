@@ -89,42 +89,48 @@ export interface ModelRecommendation {
 /**
  * THE active recommendation of this release, or null for "none".
  *
- * null is the shipped state: existing installs see no notice anywhere. To
- * activate the recommendation, replace `null` with the block below — this is
- * the only place. The `improves` sentences are covered by
- * docs/local-model-comparison.md (measured against gemma3:4b on one 24 GB
- * machine); keep them in step with that page, and give a changed
- * recommendation a new id.
+ * Active since 1.1.0: existing installs on a 16 GB+ machine that run another
+ * text model are told about it (model-recommendation.ts) and decide
+ * themselves. This is the only place that holds it.
  *
- *   export const MODEL_RECOMMENDATION: ModelRecommendation | null = {
- *     id: "2026-10-tev1",
- *     models: {
- *       baseline: {
- *         model: "tev1:4b",
- *         sizeGB: 4.5,
- *         improves:
- *           "Compared with gemma3:4b: fewer wrong verdicts in the draft check, much harder to steer with injected text, and a more accurate reranker — at a similar answer time.",
- *       },
- *       enhanced: {
- *         model: "tev1:4b",
- *         sizeGB: 4.5,
- *         improves:
- *           "Compared with gemma3:4b: fewer wrong verdicts in the draft check, much harder to steer with injected text, and a more accurate reranker — at a similar answer time.",
- *       },
- *       high: {
- *         model: "gemma4:12b",
- *         sizeGB: 8.1,
- *         improves:
- *           "Compared with gemma3:4b: fewer wrong verdicts in the draft check, harder to steer with injected text, and a clearly more accurate reranker — at about three times the answer time.",
- *       },
- *     },
- *   };
+ * - To change it — another model, size or sentence for any tier — edit the
+ *   block and give it a NEW id: answers are remembered per id, so under the
+ *   old id everyone who answered "dismiss" or "switch" would never hear of the
+ *   change. An unchanged recommendation keeps its id across releases.
+ * - To switch it off, set the constant to `null`: no notice anywhere, and new
+ *   installs are offered the ladder's pick below.
  *
- * GENERATION_MODEL_DEFAULT (settings-file.ts) deliberately stays as it is when
- * a recommendation is activated: it is the fallback of every user who never
+ * The `improves` sentences are covered by docs/local-model-comparison.md
+ * (measured against gemma3:4b on one 24 GB machine); keep them in step with
+ * that page.
+ *
+ * GENERATION_MODEL_DEFAULT (settings-file.ts) deliberately stays as it is
+ * while a recommendation is active: it is the fallback of every user who never
  * stored a choice, so changing it would switch their model without asking.
  */
-export const MODEL_RECOMMENDATION: ModelRecommendation | null = null;
+export const MODEL_RECOMMENDATION: ModelRecommendation | null = {
+  id: "2026-10-tev1",
+  models: {
+    baseline: {
+      model: "tev1:4b",
+      sizeGB: 4.5,
+      improves:
+        "Compared with gemma3:4b: fewer wrong verdicts in the draft check, much harder to steer with injected text, and a more accurate reranker — at a similar answer time.",
+    },
+    enhanced: {
+      model: "tev1:4b",
+      sizeGB: 4.5,
+      improves:
+        "Compared with gemma3:4b: fewer wrong verdicts in the draft check, much harder to steer with injected text, and a more accurate reranker — at a similar answer time.",
+    },
+    high: {
+      model: "gemma4:12b",
+      sizeGB: 8.1,
+      improves:
+        "Compared with gemma3:4b: fewer wrong verdicts in the draft check, harder to steer with injected text, and a clearly more accurate reranker — at about three times the answer time.",
+    },
+  },
+};
 
 /**
  * Recommend a generation (doc2query + rerank) model for `ramGB`.
@@ -145,7 +151,9 @@ export const MODEL_RECOMMENDATION: ModelRecommendation | null = null;
  *
  * An active release recommendation replaces the ladder's pick for its tier, so
  * the installer and `bastra models` offer new installs the recommended model
- * directly. `recommendation` is a parameter for tests only.
+ * directly. Where it names the ladder's own model, the ladder's note stays: it
+ * carries what was and was not measured. `recommendation` is a parameter for
+ * tests only.
  */
 export function recommendTextModel(
   ramGB: number,
@@ -159,7 +167,10 @@ export function recommendTextModel(
     model: pick.model,
     sizeGB: pick.sizeGB,
     tier: ladder.tier,
-    note: `${ramGB} GB — ${pick.model} is the current bastra-recall recommendation for this machine.`,
+    note:
+      pick.model === ladder.model
+        ? ladder.note
+        : `${ramGB} GB — ${pick.model} is the current bastra-recall recommendation for this machine.`,
     ...(ladder.alt && ladder.alt.model !== pick.model ? { alt: ladder.alt } : {}),
   };
 }

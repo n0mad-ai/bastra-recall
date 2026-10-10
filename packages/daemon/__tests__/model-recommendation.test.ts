@@ -5,10 +5,10 @@
  * with, the catch-up question after a command, the CLI hint and the
  * SessionStart block.
  *
- * The shipped state is "no recommendation", so every case that needs one
- * injects REC. No Ollama here: the switch itself is injected (its own files,
- * model-switch-safe.test.ts and model-decision-binding.test.ts, cover it
- * against a fake server).
+ * The shipped recommendation has its own cases ("shipped: …"). Every other
+ * case injects REC, so it does not change when the shipped one does. No Ollama
+ * here: the switch itself is injected (its own files, model-switch-safe.test.ts
+ * and model-decision-binding.test.ts, cover it against a fake server).
  *
  * Runner: node --import tsx --test packages/daemon/__tests__/model-recommendation.test.ts
  */
@@ -96,46 +96,112 @@ const answerOf = async (path: string) => (await readSettings(path)).modelRecomme
 
 // ── the shipped state ────────────────────────────────────────────────────────
 
-test("shipped: no recommendation is active — nothing is offered and nothing is said", async () => {
-  assert.equal(MODEL_RECOMMENDATION, null);
-  await existingUser(async (path, dir) => {
-    assert.equal(await currentModelOffer({ ramGB: 16, settingsPath: path }), null);
-    assert.equal(await pendingModelNotice({ ramGB: 32, settingsPath: path }), null);
-    const hint = await captured(() => maybeEmitModelHint({ ramGB: 16, settingsPath: path, shownPath: join(dir, "shown.txt") }));
-    assert.equal(hint.result, false);
-    assert.equal(hint.err, "");
-    const status = await captured(() => cmdModels({ sub: "status", settingsPath: path }));
-    assert.doesNotMatch(status.out, /recommends a different/);
-    const neverAsk = async () => { throw new Error("must not ask"); };
-    const ask = await captured(() => cmdModels({ sub: "ask", settingsPath: path, deps: { interactive: true, ask: neverAsk } }));
-    assert.equal(ask.out, "", "`bastra update` ends without a question");
-    const after = await captured(() =>
-      modelNoticeAfterCommand({ command: "status", json: false, showHelp: false, showVersion: false }, { settingsPath: path, interactive: true, ask: neverAsk, shownPath: join(dir, "shown.txt") }),
-    );
-    assert.equal(after.result, "none", "no catch-up question after a command either");
-    assert.equal(after.out + after.err, "");
+const TEV1_IMPROVES =
+  "Compared with gemma3:4b: fewer wrong verdicts in the draft check, much harder to steer with injected text, and a more accurate reranker — at a similar answer time.";
+
+test("shipped: the active recommendation is 2026-10-tev1 — tev1:4b up to 24 GB, gemma4:12b from 32 GB", () => {
+  // Pinned on purpose: whoever changes a model, a size or a sentence has to come
+  // through here — and a changed recommendation needs a NEW id (hardware.ts).
+  // The sentences are the ones docs/local-model-comparison.md covers.
+  assert.deepEqual(MODEL_RECOMMENDATION, {
+    id: "2026-10-tev1",
+    models: {
+      baseline: { model: "tev1:4b", sizeGB: 4.5, improves: TEV1_IMPROVES },
+      enhanced: { model: "tev1:4b", sizeGB: 4.5, improves: TEV1_IMPROVES },
+      high: {
+        model: "gemma4:12b",
+        sizeGB: 8.1,
+        improves:
+          "Compared with gemma3:4b: fewer wrong verdicts in the draft check, harder to steer with injected text, and a clearly more accurate reranker — at about three times the answer time.",
+      },
+    },
   });
 });
 
-test("shipped: tev1:4b is what new installs are offered — an existing install keeps running what it has", async () => {
-  await existingUser(async (path) => {
-    // No stored choice: the daemon still resolves the runtime default, not the
-    // new suggestion — so nothing points at a model that was never pulled.
-    assert.equal(await resolveGenerationModel(path), "gemma3:4b");
-    assert.equal(await pendingModelNotice({ ramGB: 16, settingsPath: path }), null);
-    assert.equal(await currentModelOffer({ ramGB: 16, settingsPath: path }), null);
-    // `bastra models` is the one place that shows the new suggestion, and it
-    // only shows: nothing is written.
+test("shipped: an existing install is told and asked — per tier, never below 16 GB, and nothing switches", async () => {
+  await existingUser(async (path, dir) => {
+    const shipped = (ramGB: number) => ({ ramGB, settingsPath: path, now: NOW });
+    assert.deepEqual(await pendingModelNotice(shipped(16)), {
+      id: "2026-10-tev1",
+      model: "tev1:4b",
+      sizeGB: 4.5,
+      improves: TEV1_IMPROVES,
+      current: "gemma3:4b",
+      envOverride: null,
+    });
+    assert.equal((await pendingModelNotice(shipped(24)))?.model, "tev1:4b");
+    assert.equal((await pendingModelNotice(shipped(32)))?.model, "gemma4:12b");
+    // Below the 16 GB tier no text model runs, so there is nothing to offer.
+    assert.equal(await currentModelOffer(shipped(8)), null);
+    assert.equal(await pendingModelNotice(shipped(8)), null);
+
+    // Every place that speaks carries the bound commands of this recommendation.
+    const hint = await captured(() => maybeEmitModelHint({ ...shipped(16), shownPath: join(dir, "shown.txt") }));
+    assert.equal(hint.result, true);
+    assert.match(hint.err, /bastra models switch 2026-10-tev1 tev1:4b/);
     const before = await readFile(path, "utf8");
-    const { out } = await captured(() => cmdModels({ sub: "status", settingsPath: path, deps: { ramGB: 16 } }));
+    const { out } = await captured(() => cmdModels({ sub: "status", settingsPath: path, deps: shipped(16) }));
     const lines = out.split("\n");
+    assert.equal(lines[0], "generation model: gemma3:4b (default)");
+    assert.equal(lines[2], "recommended: tev1:4b  [baseline]");
+    assert.match(lines[3], /it was not measured on a 16 GB machine/, "the tier's caveat stays next to the recommendation");
+    assert.ok(out.includes("\n  bastra models switch 2026-10-tev1 tev1:4b   switch now\n"));
+    assert.ok(out.includes("\n  bastra models later 2026-10-tev1   "));
+    assert.ok(out.includes("\n  bastra models dismiss 2026-10-tev1   "));
+
+    // Told, not switched: nothing was written, and without a stored choice the
+    // daemon still resolves the runtime default — never a model nobody pulled.
+    assert.equal(await readFile(path, "utf8"), before);
+    assert.equal(await resolveGenerationModel(path), "gemma3:4b");
+  });
+});
+
+test("shipped: whoever already runs the recommended model of their tier hears nothing", async () => {
+  await existingUser(async (path, dir) => {
+    const shipped = (ramGB: number) => ({ ramGB, settingsPath: path, now: NOW });
+    await setGenerationModel("tev1:4b", path);
+    for (const ramGB of [16, 24]) {
+      assert.equal(await currentModelOffer(shipped(ramGB)), null);
+      assert.equal(await pendingModelNotice(shipped(ramGB)), null);
+    }
+    const hint = await captured(() => maybeEmitModelHint({ ...shipped(16), shownPath: join(dir, "shown.txt") }));
+    assert.equal(hint.result, false);
+    assert.equal(hint.err, "");
+    const status = await captured(() => cmdModels({ sub: "status", settingsPath: path, deps: shipped(16) }));
+    assert.doesNotMatch(status.out, /recommends a different|to switch/);
+    // From 32 GB the pick is the 12B: the same stored model is offered that one…
+    assert.equal((await pendingModelNotice(shipped(32)))?.model, "gemma4:12b");
+    // …and whoever runs it there hears nothing either.
+    await setGenerationModel("gemma4:12b", path);
+    assert.equal(await pendingModelNotice(shipped(32)), null);
+  });
+});
+
+test("no recommendation (null, the off switch): nothing is offered and nothing is said", async () => {
+  await existingUser(async (path, dir) => {
+    const off = { recommendation: null, ramGB: 16, settingsPath: path };
+    assert.equal(await currentModelOffer(off), null);
+    assert.equal(await pendingModelNotice({ ...off, ramGB: 32 }), null);
+    const hint = await captured(() => maybeEmitModelHint({ ...off, shownPath: join(dir, "shown.txt") }));
+    assert.equal(hint.result, false);
+    assert.equal(hint.err, "");
+    // `bastra models` shows the ladder's suggestion, and it only shows: nothing is written.
+    const before = await readFile(path, "utf8");
+    const status = await captured(() => cmdModels({ sub: "status", settingsPath: path, deps: off }));
+    assert.doesNotMatch(status.out, /recommends a different/);
+    const lines = status.out.split("\n");
     assert.equal(lines[0], "generation model: gemma3:4b (default)");
     assert.equal(lines[2], "recommended: tev1:4b  [baseline]");
     assert.equal(lines[lines.length - 2], "to switch: bastra models set tev1:4b");
     assert.equal(await readFile(path, "utf8"), before);
-    // A stored choice is untouched as well.
-    await setGenerationModel("gemma3:4b", path);
-    assert.equal(await resolveGenerationModel(path), "gemma3:4b");
+    const neverAsk = async () => { throw new Error("must not ask"); };
+    const ask = await captured(() => cmdModels({ sub: "ask", settingsPath: path, deps: { ...off, interactive: true, ask: neverAsk } }));
+    assert.equal(ask.out, "", "`bastra update` ends without a question");
+    const after = await captured(() =>
+      modelNoticeAfterCommand({ command: "status", json: false, showHelp: false, showVersion: false }, { ...off, interactive: true, ask: neverAsk, shownPath: join(dir, "shown.txt") }),
+    );
+    assert.equal(after.result, "none", "no catch-up question after a command either");
+    assert.equal(after.out + after.err, "");
   });
 });
 
@@ -556,7 +622,8 @@ test("bastra update: the closing question is asked by the installed cli, as `mod
 
 test("bastra update: the real built cli answers `models ask` without a terminal and without waiting", { skip: !existsSync(fileURLToPath(new URL("../dist/cli.js", import.meta.url))) }, () => {
   // What the spawn above starts, for real: the built cli, stdin closed, output
-  // piped. With the shipped state it has nothing to say and must return at once.
+  // piped. The test home has no settings — no Ollama embeddings, no text model
+  // set up — so it has nothing to say and must return at once.
   const dist = fileURLToPath(new URL("../dist/index.js", import.meta.url));
   const r = askModelRecommendation({ node: process.execPath, script: dist, version: null }, "pipe");
   assert.equal(r?.status, 0, String(r?.stderr));
@@ -750,7 +817,8 @@ test("SessionStart: an open recommendation reaches the agent as its own block �
   }
 });
 
-test("SessionStart: with the shipped state (and after an answer) the block is absent", async () => {
+test("SessionStart: on an install that uses no text model (and after an answer) the block is absent", async () => {
+  // The default notice, against the test home: no settings, so no text model in use.
   assert.doesNotMatch(await sessionStart(), /bastra-model-recommendation/);
   assert.doesNotMatch(await sessionStart(async () => null), /bastra-model-recommendation/);
 });
