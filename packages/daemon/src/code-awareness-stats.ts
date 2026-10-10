@@ -80,7 +80,7 @@ export interface RefreshStats {
   skipped: number;
   givenUp: number;
   byReason: Counted[];
-  /** Milliseconds a repository was behind, start → terminal outcome. */
+  /** Build duration, start → ok/failed; lock checks and skipped runs excluded. */
   p50: number;
   p90: number;
   /** Short failure details, biggest first — never a path or a command line. */
@@ -320,7 +320,7 @@ export function aggregateCodeAwareness(rows: readonly CodeEventRow[]): CodeAware
     else if (outcome === "skipped") skipped++;
     else if (outcome === "given-up") givenUp++;
     const d = num(e.duration_ms);
-    if (d !== null) durations.push(d);
+    if (d !== null && (outcome === "ok" || outcome === "failed")) durations.push(d);
   }
 
   const order = [...CODE_TOOLS, ...[...tools.keys()].filter((k) => !CODE_TOOLS.includes(k as never))];

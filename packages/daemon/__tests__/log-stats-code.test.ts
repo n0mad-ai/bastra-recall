@@ -133,11 +133,11 @@ describe("code search ROI: rendering", () => {
     assert.doesNotMatch(lines, /\bsaves\b/i);
   });
 
-  it("puts the code cost in proportion to everything injected", () => {
+  it("puts the code cost in proportion to Write/Edit injection", () => {
     const lines = renderCodeRoi(
       aggregateCodeRoi([call({ hint_tokens_est: 1000, code_block_tokens_est: 250 })]),
     ).join("\n");
-    assert.match(lines, /25% of everything injected/);
+    assert.match(lines, /25% of Write\/Edit injection/);
   });
 
   it("reports the stale share only when there is one", () => {

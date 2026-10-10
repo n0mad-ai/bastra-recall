@@ -133,7 +133,8 @@ describe("code awareness: graph refresh", () => {
     assert.equal(s.refresh.failed, 1);
     assert.equal(s.refresh.locked, 1);
     assert.deepEqual(s.refresh.failures, [{ key: "graphify exited 1", count: 1 }]);
-    assert.equal(s.refresh.p50, 1000);
+    assert.equal(s.refresh.p50, 3000, "locked checks are not build durations");
+    assert.equal(s.refresh.p90, 3000);
   });
 
   it("carries the newest external nodes / resolved per repository (#582)", () => {
