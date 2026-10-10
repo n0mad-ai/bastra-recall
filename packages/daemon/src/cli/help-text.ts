@@ -451,8 +451,10 @@ never stored a choice keeps running the built-in fallback gemma3:4b.
 A release can recommend a different model. bastra never switches on its own:
 'bastra update', the first command on a terminal after an update, the session
 start and a line after CLI commands tell you until you have answered. Session
-start is limited to once per UTC day across Claude Code and Codex, with its own
-marker independent of the CLI line. 'status' shows the recommendation at any time.
+start normally shows it once per UTC day across Claude Code and Codex, with its
+own marker independent of the CLI line. Simultaneous session starts reclaiming
+an orphaned lock can rarely show it twice on the same day. 'status' shows the
+recommendation at any time.
 Every notice prints the exact commands; they name the recommendation they
 answer, and bastra refuses an answer to a different one.
 

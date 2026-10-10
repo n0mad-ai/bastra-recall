@@ -161,12 +161,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   exit even with a registered LaunchAgent, allowing the service to take over.
   No shutdown handshake; Linux managed setup remains tracked in #566 (Refs #758).
 
-- The model recommendation at SessionStart is limited to one prepared hook
-  response per user and UTC day, shared across Claude Code and Codex. A separate
-  day marker keeps the CLI line independent; busy or inaccessible locks skip
+- The model recommendation at SessionStart normally appears in one prepared
+  hook response per user and UTC day, shared across Claude Code and Codex.
+  A separate day marker keeps the CLI line independent; busy or inaccessible locks skip
   silently without queueing, and skipped blocks do not spend the day. An aged
   lease is reclaimed in one non-waiting attempt, with the day marker checked
-  under the lock (#1153).
+  under the lock. Simultaneous session starts reclaiming an orphaned lock can
+  rarely show the notice twice on the same day (#1153).
 
 - Terminal panels show Git ahead/behind arrows only for positive counts.
   Missing behind arrows do not claim the remote is current; the panel still
