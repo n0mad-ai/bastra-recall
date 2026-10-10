@@ -135,9 +135,14 @@ is_published() {
     n=$(grep -c "npm view \${LATE_PACKAGE}" "$NPM_LOG" 2>/dev/null || echo 0)
     if [ "$n" -ge "\${LATE_AFTER:-3}" ]; then return 0; fi
   fi
+  if [ -n "\${LATE_PACKAGE_TWO:-}" ] && [ "$1" = "\${LATE_PACKAGE_TWO}" ]; then
+    n=$(grep -c "npm view \${LATE_PACKAGE_TWO}" "$NPM_LOG" 2>/dev/null || echo 0)
+    if [ "$n" -ge "\${LATE_TWO_AFTER:-3}" ]; then return 0; fi
+  fi
   return 1
 }
 if [ "$1" = "view" ]; then
+  if [ "\${SLOW_VIEW:-}" = "1" ]; then exec sleep 2; fi
   if [ "\${3:-}" = "dist-tags.latest" ]; then
     if is_published "$2"; then echo "\${LATEST_TAG:-$SET_VERSION}"; exit 0; fi
     exit 1
@@ -147,6 +152,7 @@ if [ "$1" = "view" ]; then
   version="\${spec##*@}"
   if is_published "$name"; then
     pin="\${PUBLISHED_PIN:-$version}"
+    if [ "\${BAD_PIN_PACKAGE:-}" = "$name" ]; then pin="0.0.1"; fi
     dist="\${PUBLISHED_INTEGRITY-sha512-SAMEBYTES==}"
     dsum="\${PUBLISHED_SHASUM-abc123}"
     echo "{\\"name\\":\\"$name\\",\\"version\\":\\"$version\\",\\"dependencies\\":{\\"@bastra-recall/core\\":\\"$pin\\",\\"@bastra-recall/statusline\\":\\"$pin\\",\\"@bastra-recall/daemon\\":\\"$pin\\"},\\"dist\\":{\\"integrity\\":\\"$dist\\",\\"shasum\\":\\"$dsum\\"}}"
@@ -329,6 +335,56 @@ test("#553 publish set: --verify still fails a package that never appears", asyn
   });
   assert.notEqual(code, 0, `a missing package verified as present:\n${out}`);
   assert.match(out, /bastra-recall@.*is not on the registry/);
+});
+
+test("#1076 verify: a package can appear beyond the old twelve-attempt slot", async () => {
+  const { code, out, calls } = await runPublish(["--verify"], {
+    PUBLISHED: "@bastra-recall/statusline @bastra-recall/daemon bastra-recall",
+    LATE_PACKAGE: "@bastra-recall/core",
+    LATE_AFTER: "13",
+    BASTRA_VERIFY_ATTEMPTS: undefined,
+  });
+  assert.equal(code, 0, out);
+  assert.deepEqual(publishedWorkspaces(calls), []);
+  assert.ok(calls.split("\n").filter(line => line.startsWith("npm view ")).every(line => line.includes("--prefer-online")), "verification must revalidate registry data rather than reuse a stale npm cache");
+});
+
+test("#1076 verify: pending packages are polled together and visible packages are not re-polled", async () => {
+  const { code, out, calls } = await runPublish(["--verify"], {
+    PUBLISHED: "@bastra-recall/statusline bastra-recall",
+    LATE_PACKAGE: "@bastra-recall/core", LATE_AFTER: "3",
+    LATE_PACKAGE_TWO: "@bastra-recall/daemon", LATE_TWO_AFTER: "2",
+    BASTRA_VERIFY_ATTEMPTS: "5",
+  });
+  assert.equal(code, 0, out);
+  const lines = calls.trim().split("\n");
+  const reads = name => lines.flatMap((line, i) => line.startsWith(`npm view ${name}@`) ? [i] : []);
+  const core = reads("@bastra-recall/core"), daemon = reads("@bastra-recall/daemon");
+  assert.ok(daemon[1] < core[2], "daemon must be checked again before core's third poll");
+  assert.equal(reads("@bastra-recall/statusline").length, 1);
+  assert.equal(reads("bastra-recall").length, 1);
+  assert.deepEqual(publishedWorkspaces(calls), []);
+});
+
+test("#1076 verify: a late-visible manifest is still validated, never just accepted as present", async () => {
+  const { code, out, calls } = await runPublish(["--verify"], {
+    PUBLISHED: "@bastra-recall/core @bastra-recall/statusline @bastra-recall/daemon",
+    LATE_PACKAGE: "bastra-recall", LATE_AFTER: "2", BAD_PIN_PACKAGE: "bastra-recall",
+  });
+  assert.notEqual(code, 0);
+  assert.match(out, /NOT this release: dependency/);
+  assert.deepEqual(publishedWorkspaces(calls), []);
+});
+
+test("#1076 verify: the global deadline bounds an npm lookup and lists every unfinished package", async () => {
+  const start = performance.now();
+  const { code, out, calls } = await runPublish(["--verify"], {
+    SLOW_VIEW: "1", BASTRA_VERIFY_ATTEMPTS: "2", BASTRA_VERIFY_INTERVAL_MS: "40",
+  });
+  assert.notEqual(code, 0);
+  assert.ok(performance.now() - start < 1000, "a slow registry request must not occupy one slot per package");
+  for (const name of ["@bastra-recall/core", "@bastra-recall/statusline", "@bastra-recall/daemon", "bastra-recall"]) assert.ok(out.includes(`✗ ${name}@`), out);
+  assert.deepEqual(publishedWorkspaces(calls), []);
 });
 
 test("#553 publish set: invalid retry settings fail instead of looping forever", async () => {

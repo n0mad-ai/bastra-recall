@@ -27,6 +27,7 @@ import { copySkill, describeSkillInstall, inspectSkillInstall } from "../skill.j
 import { checkForwarderRegistration, ensureStableForwarder, mapBinToStableRuntime } from "../stable-runtime.js";
 import { archiveMode } from "../../bash-pre-patterns.js";
 import { getArchiveEnabled } from "../../settings.js";
+import { SAVE_NOTICE_MATCHER } from "../../save-notice-lane.js";
 import type { Adapter, DoctorResult, InstallOpts, InstallResult, UninstallResult } from "../types.js";
 import {
   CLIENT_MARKER,
@@ -357,6 +358,7 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
   // Hooks. Stop is optional: some users intentionally disable autonomous
   // save-eval while keeping the rest of the reflex layer active.
   let requiredHooksMissing = false;
+  let saveNoticeMissing = false;
   let hookPathBroken = false;
   let stopHookRegistered = false;
   let hooksDisabledBy: string | undefined;
@@ -371,7 +373,13 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
     const found = registeredHookBins(hooks);
     const registeredCommands = registeredHookCommands(hooks);
     const requiredMissing = REQUIRED_HOOK_FILES.filter((f) => !found.has(f));
-    const registrationMissing = missingRequiredHookRegistrations(hooks);
+    const allMissing = missingRequiredHookRegistrations(hooks);
+    const noticeRegistration = `PostToolUse:${SAVE_NOTICE_MATCHER}`;
+    saveNoticeMissing = allMissing.includes(noticeRegistration);
+    const registrationMissing = allMissing.filter(registration => registration !== noticeRegistration);
+    details["save-notice-hook"] = saveNoticeMissing
+      ? "MISSING — re-run bastra install claude-code"
+      : "registered";
     const optionalMissing = OUR_HOOK_FILES
       .filter((f) => !REQUIRED_HOOK_FILES.includes(f))
       .filter((f) => !found.has(f));
@@ -431,7 +439,14 @@ async function claudeCodeDoctor(): Promise<DoctorResult> {
     hookPathBroken ||
     (details["skill"] === "missing" || details["skill"].startsWith("STALE"));
   if (broken) return { status: "broken", message: "registered but some pieces need repair — re-run 'bastra install claude-code'", details, features };
-  return { status: "ok", message: "MCP + skill + required hooks registered and healthy", details, features };
+  return {
+    status: "ok",
+    message: saveNoticeMissing
+      ? "MCP + skill + required recall hooks healthy; save notice missing — re-run 'bastra install claude-code'"
+      : "MCP + skill + required hooks registered and healthy",
+    details,
+    features,
+  };
 }
 
 export const claudeCodeAdapter: Adapter = {

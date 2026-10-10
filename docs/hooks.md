@@ -691,6 +691,11 @@ gets English).
   in the daemon environment. See [the Codex compatibility check](codex-save-notice.md).
 - `BASTRA_SAVE_NOTICE=0` in the daemon's environment turns it off.
 
+If only the new save-notice registration is missing, `bastra doctor claude-code`
+keeps the installation healthy and recall hooks on, and suggests
+`bastra install claude-code`. Missing required recall registrations or malformed
+settings still need repair. Doctor never changes the registration itself.
+
 There is no client of its own behind it: the entry reuses
 `bastra-recall-bash-fail-hook`, which forwards any payload unread, and the
 daemon tells a Recall write tool from Bash. The matcher is a regular
@@ -881,8 +886,13 @@ document frequency over the vault. Function words of any language occur in
 most notes of that language and weigh almost nothing, so no stopword list is
 involved; a rephrased or translated note is not matched, and that pick is
 relayed. The rest go into the pending relay (recency lane, #513) as one
-`<session-harvest>` block of verbatim quotes, which the next session start
-shows. **The ordinary harvest relay does not save notes**: the agent recalls,
+`<session-harvest>` block of quotes, with recognizable credentials removed by
+the same filter as local drafts before storage. The vault comparison runs on the
+original quotes first. `pending-suggestions.json` is written with permissions
+0600; retained legacy rows are cleaned on every ordinary write, and old rows are
+also cleaned before delivery. Recency is consumed once and expires after seven
+days; trends keep their existing session counters. The next session start shows
+the remaining text. **The ordinary harvest relay does not save notes**: the agent recalls,
 judges and saves. The separate draft-promotion step in that tick can write only
 with explicit sharp opt-in and the guards described below. A resumed session is harvested again only for its new turns.
 Telemetry: `session_harvest` with `session_id, client, turn_count,
@@ -960,13 +970,19 @@ backslash-continued lines, and calls inside `$(…)`, backticks or a quoted
 `sh -c "…"`. It only counts as an argument of the curl call itself: from `curl`
 onwards only options, one operand per option, quoted strings and URL-like
 operands may precede it, so `docker run -u 1000:1000` later in the same prose
-line is untouched. Not covered: a value attached to a bundle
-(`curl -sufixture:pw`) and other clients' flags (`http -a user:pw`).
+line is untouched. Attached bundles (`curl -sufixture:pw`) and HTTPie
+authentication (`http -a user:pw`) are also covered.
 
-Deliberately unsupported: netsh keyMaterial assignments, Cisco `crypto isakmp key`,
-OpenWrt `option key`, nmcli `wifi connect … password …`, German
+The explicit network password positions also cover nmcli `wifi connect … password`,
+networksetup, netsh `Key Content`, quoted `WiFi.begin`/`WIFI_PSK` literals,
+Fortinet, VyOS, uci, XML pre-shared keys, PSK underscore bindings, flat `psks`
+arrays, Cisco `crypto isakmp key`, OpenWrt `option key` and complete Wi-Fi QR
+strings. These are scalar grammars, not arbitrary shell/C evaluation; see
+[network credentials and limits](./secret-redaction.md#network-credentials).
+
+Deliberately unsupported: netsh keyMaterial assignments, German
 WLAN-Passwort/WLAN-Schlüssel labels, parenthesized PSK
-prose, PSK arrows, Markdown tables/bold PSK labels, Wi-Fi QR strings and fullwidth
+prose, PSK arrows, Markdown tables/bold PSK labels and fullwidth
 colons. Generic entropy scanning may remove a particular value there, but no full
 redaction guarantee is made. Never paste real keys into prompts expecting this
 filter to make them safe. Rotation and owner-reviewed repair are still needed if a
@@ -1462,6 +1478,9 @@ and `live` for `BASTRA_QUERY_ROUTER` and `BASTRA_SALIENCE_RANK`, a size for
 | `BASTRA_REFLEX_MAX_PER_TURN`  | `2`              | Reflex injection budget per prompt (clamp 1–5)                |
 | `BASTRA_REFLEX_PROMOTION_MIN` | `3`              | Acted-on recalls (30d) before the curator proposes a reflex promotion |
 | `BASTRA_ADOPTION_PROMOTION_MIN` | `2`            | Acted-on recalls (30d) before the curator proposes adopting an intake memory (#217) |
+| `BASTRA_DRAFT_HINTS` | `on` | `0`, `false`, `off` or `no` disables the separate unconfirmed draft hint band and its use tracking; capture and the pending relay remain enabled independently |
+| `BASTRA_DRAFTS_PATH` | `~/.bastra/drafts.json` | Local draft-store path; vector and decision sidecars follow it. Set this in the daemon environment; it does not change the vault path |
+| `BASTRA_PANEL_DIR` | `~/.bastra/panels/claude` | Claude panel-feed writer's environment: changes its snapshot directory only. The built-in live panel still reads the default directory; this override alone does not relocate that reader |
 | `BASTRA_DRAFT_PROMOTE`        | _unset_          | Only the exact value `1` lets the background tick write derived notes from drafts (repeat or use); every other value, including `true` and `on`, keeps the dry run. Each candidate also needs the local meaning check — see "Meaning check before a draft is promoted" |
 | `BASTRA_TRAINING_CAPTURE`    | _unset_          | Temporary, for #1128: `1` \| `true` \| `on` \| `yes` keeps the texts the draft check judges, with the verdicts, in `training-capture.jsonl` beside the event log (0600, local only) and asks the local model about every new draft in shadow. Off by default; see [training signal capture](./training-capture.md) |
 | `BASTRA_EVAL_RUN`            | _unset_          | Temporary, for #1128: `1` marks every event row this process writes with `eval_run: true`, so a benchmark run can be told apart from real use |
@@ -2174,6 +2193,12 @@ Englisch).
   nicht im Hauptgespräch (gemessen mit 2.1.291).
 - `BASTRA_SAVE_NOTICE=0` in der Umgebung des Daemons schaltet sie ab.
 
+Fehlt nur die neue Registrierung für die Speicherzeile, meldet
+`bastra doctor claude-code` die Installation weiter als gesund und die Recall-Hooks
+als an und empfiehlt `bastra install claude-code`. Fehlende erforderliche
+Recall-Registrierungen oder beschädigte Einstellungen brauchen weiterhin eine
+Reparatur. Doctor verändert die Registrierung nicht selbst.
+
 Dahinter steht kein eigener Client: Der Eintrag nutzt
 `bastra-recall-bash-fail-hook`, der jeden Payload ungelesen weiterreicht, und
 der Daemon unterscheidet ein Schreib-Tool von Recall von Bash. Der Matcher ist
@@ -2383,8 +2408,14 @@ Wort gewichtet mit seiner inversen Dokumenthäufigkeit im Vault. Funktionswörte
 jeder Sprache stehen in den meisten Notizen dieser Sprache und wiegen fast
 nichts, deshalb braucht es keine Stoppwortliste; eine umformulierte oder
 übersetzte Notiz wird nicht erkannt, und diese Auswahl wird weitergereicht. Der
-Rest landet als ein `<session-harvest>`-Block mit wörtlichen Zitaten im
-Pending-Relay (Recency-Spur, #513), den der nächste Session-Start zeigt.
+Rest landet als ein `<session-harvest>`-Block mit Zitaten im Pending-Relay
+(Recency-Spur, #513). Erkennbare Zugangsdaten werden vor dem Speichern mit
+demselben Filter wie bei lokalen Entwürfen entfernt; der Vault-Abgleich läuft
+zuvor auf den ursprünglichen Zitaten. `pending-suggestions.json` wird mit Rechten
+0600 geschrieben. Verbliebene alte Zeilen werden bei jedem normalen Schreiben
+und vor der Auslieferung geschwärzt. Recency wird einmal konsumiert und verfällt
+nach sieben Tagen; Trends behalten ihre bestehenden Sitzungszähler. Der nächste
+Session-Start zeigt den verbliebenen Text.
 **Der normale Relay-Weg legt keine Notizen an; die getrennte Draft-Beförderung
 kann im selben Tick nur nach ausdrücklichem Scharf-Opt-in und den unten genannten
 Prüfungen schreiben.** Beim Relay sucht der Agent per recall, prüft
@@ -2795,14 +2826,20 @@ mit `\` fortgesetzten Zeilen sowie Aufrufen in `$(…)`, Backticks oder einem
 quotierten `sh -c "…"`. Sie zählt nur als Argument des curl-Aufrufs selbst: Ab
 `curl` dürfen davor nur Optionen, je Option ein Operand, quotierte Zeichenketten
 und URL-artige Operanden stehen; ein `docker run -u 1000:1000` später in derselben
-Prosazeile bleibt unberührt. Nicht abgedeckt: ein an ein Bündel angehängter Wert
-(`curl -sufixture:pw`) und Optionen anderer Clients (`http -a user:pw`).
+Prosazeile bleibt unberührt. Angehängte Bündel (`curl -sufixture:pw`) und
+HTTPie-Authentifizierung (`http -a user:pw`) sind ebenfalls abgedeckt.
 
-Bewusst nicht abgedeckt: netsh-keyMaterial-Zuweisungen, Cisco `crypto isakmp key`,
-OpenWrt `option key`, nmcli `wifi connect … password …`, deutsche
+Die expliziten Netzwerk-Passwortpositionen decken ebenso nmcli `wifi connect … password`,
+networksetup, netsh `Key Content`, quotierte `WiFi.begin`-/`WIFI_PSK`-Literale,
+Fortinet, VyOS, uci, XML-Pre-Shared-Keys, PSK-Unterstrich-Bindungen, flache `psks`-
+Arrays, Cisco `crypto isakmp key`, OpenWrt `option key` und vollständige WLAN-QR-
+Zeichenfolgen ab. Das sind skalare Grammatiken, keine beliebige Shell-/C-Ausführung;
+siehe [Netzwerk-Zugangsdaten und Grenzen](./secret-redaction.md#deutsch-fester-maßstab-und-grenzen).
+
+Bewusst nicht abgedeckt: netsh-keyMaterial-Zuweisungen, deutsche
 WLAN-Passwort/WLAN-Schlüssel-Bezeichnungen,
-PSK in Klammer-Prosa, PSK-Pfeile, Markdown-Tabellen/fett gesetzte PSK-Bezeichnungen,
-Wi-Fi-QR-Zeichenfolgen und Vollbreiten-Doppelpunkte. Der allgemeine Entropiefilter
+PSK in Klammer-Prosa, PSK-Pfeile, Markdown-Tabellen/fett gesetzte PSK-Bezeichnungen
+und Vollbreiten-Doppelpunkte. Der allgemeine Entropiefilter
 kann einzelne Werte dort entfernen, garantiert aber keine vollständige Schwärzung.
 Echte Schlüssel nicht in Prompts kopieren und auf den Filter vertrauen. Wurde ein
 Schlüssel gespeichert, ersetzen/widerrufen und den Altbestand als Eigentümer prüfen.
@@ -2957,6 +2994,9 @@ vier Wörtern.
 | `BASTRA_REFLEX_MAX_PER_TURN`  | `2`              | Reflex-Einblendungsbudget pro Prompt (begrenzt auf 1–5)        |
 | `BASTRA_REFLEX_PROMOTION_MIN` | `3`              | Umgesetzte Recalls (30 Tage), bevor der Curator eine Reflex-Hochstufung vorschlägt |
 | `BASTRA_ADOPTION_PROMOTION_MIN` | `2`            | Umgesetzte Recalls (30 Tage), bevor der Curator vorschlägt, eine Intake-Erinnerung zu übernehmen (#217) |
+| `BASTRA_DRAFT_HINTS` | `on` | `0`, `false`, `off` oder `no` schaltet das eigene unbestätigte Entwurfs-Hinweisband und dessen Nutzungserfassung ab; Erfassung und Pending-Relay bleiben unabhängig davon eingeschaltet |
+| `BASTRA_DRAFTS_PATH` | `~/.bastra/drafts.json` | Pfad der lokalen Entwurfsablage; Vektor- und Entscheidungsdateien folgen ihm. In der Daemon-Umgebung setzen; verändert nicht den Vault-Pfad |
+| `BASTRA_PANEL_DIR` | `~/.bastra/panels/claude` | Umgebung des Claude-Panel-Feed-Schreibers: verändert nur dessen Snapshot-Verzeichnis. Das eingebaute Live-Panel liest weiterhin das Standardverzeichnis; dieser Override allein verlegt den Leser nicht |
 | `BASTRA_DRAFT_PROMOTE`        | _nicht gesetzt_  | Nur der genaue Wert `1` lässt den Hintergrund-Tick abgeleitete Notizen aus Entwürfen schreiben (Wiederholung oder Nutzung); jeder andere Wert, auch `true` und `on`, bleibt Probelauf. Jeder Kandidat braucht zusätzlich die lokale Bedeutungsprüfung — siehe „Bedeutungsprüfung vor der Beförderung“ |
 | `BASTRA_TRAINING_CAPTURE`    | _nicht gesetzt_  | Befristet, für #1128: `1` \| `true` \| `on` \| `yes` bewahrt die Texte, die die Entwurfs-Prüfung beurteilt, samt Urteilen in `training-capture.jsonl` neben dem Ereignisprotokoll auf (0600, nur lokal) und legt dem lokalen Modell jeden neuen Entwurf im Schatten vor. Standardmäßig aus; siehe [Trainingssignal mitschreiben](./training-capture.md#deutsch) |
 | `BASTRA_EVAL_RUN`            | _nicht gesetzt_  | Befristet, für #1128: `1` kennzeichnet jede Ereigniszeile, die dieser Prozess schreibt, mit `eval_run: true`, damit sich ein Messlauf von echter Nutzung unterscheiden lässt |

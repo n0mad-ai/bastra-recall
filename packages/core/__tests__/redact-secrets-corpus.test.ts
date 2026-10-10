@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { redactSecrets } from "../src/scrub.js";
+import { NETWORK_ROWS } from "./fixtures/network-redaction-corpus.js";
 
 // Fixed acceptance corpus from the seven reviewer scripts listed below.
 // Provider-shaped fixtures are assembled from short chunks at runtime.
@@ -804,6 +805,7 @@ const rows: Row[] = [
 {"source":["verify-1091/","reach.mjs"].join(""),"label":"secrets 45","input":["echo S3cret ","| docker log","in --passwor","d-stdin"].join(""),"absent":["S3cret"],"baselinePass":false,"knownLimit":true},
 {"source":["verify-a3/re","d.mjs"].join(""),"label":["result-key p","robe x"].join(""),"input":"x","unchanged":true,"baselinePass":true,"knownLimit":false}
 ];
+rows.push(...NETWORK_ROWS);
 function passes(row: Row, out: string): boolean {
   return (row.expected === undefined || out === row.expected) && (!row.unchanged || out === row.input.split(HOME_PREFIX).join("~")) &&
     (row.absent ?? []).every(s => !out.includes(s)) && (row.present ?? []).every(s => out.includes(s));

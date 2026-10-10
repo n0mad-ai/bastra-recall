@@ -581,6 +581,7 @@ async function codexDoctor(): Promise<DoctorResult> {
 
   let hooksBroken = false;
   let stopHookRegistered = false;
+  let saveNoticeRegistered = false;
   const hookRead = await readJsonConfig(CODEX_HOOKS);
   if ("error" in hookRead) {
     details.hooks = hookRead.error;
@@ -591,14 +592,15 @@ async function codexDoctor(): Promise<DoctorResult> {
       : {};
     const found = registeredCodexHookFiles(hooks);
     const missing = REQUIRED_HOOK_FILES.filter((file) => !found.has(file));
-    hooksBroken = missing.length > 0 || !codexSaveNoticeRegistered(hooks);
+    hooksBroken = missing.length > 0;
+    saveNoticeRegistered = codexSaveNoticeRegistered(hooks);
     stopHookRegistered = found.has("stop-hook.js");
     details.hooks = missing.length > 0
       ? `${found.size}/${OUR_HOOK_FILES.length} registered (missing required: ${missing.join(", ")})`
       : found.has("stop-hook.js")
         ? `${OUR_HOOK_FILES.length}/${OUR_HOOK_FILES.length} registered`
         : `${REQUIRED_HOOK_FILES.length}/${OUR_HOOK_FILES.length} registered (optional Stop disabled)`;
-    details["save-notice-hook"] = codexSaveNoticeRegistered(hooks) ? "registered" : "MISSING — re-run bastra install codex";
+    details["save-notice-hook"] = saveNoticeRegistered ? "registered" : "MISSING — re-run bastra install codex";
     if (!hooksBroken) details["hook-trust"] = "Codex-owned; use '/hooks' to confirm registered hooks are active";
   }
   // #506 — the plan hook lane is silent unless Codex's planning tool is on.
@@ -617,7 +619,14 @@ async function codexDoctor(): Promise<DoctorResult> {
   const broken = forwarderBroken || hooksBroken || planTool.broken || (details.skill === "missing" || details.skill.startsWith("STALE")) ||
     details["vault-path"]?.includes("MISSING") === true || details["vault-path"]?.startsWith("not ") === true;
   if (broken) return { status: "broken", message: "registered but some pieces need repair — re-run 'bastra install codex'", details, features };
-  return { status: "ok", message: "MCP + Codex/ChatGPT skill + required hooks registered and healthy", details, features };
+  return {
+    status: "ok",
+    message: saveNoticeRegistered
+      ? "MCP + Codex/ChatGPT skill + required hooks registered and healthy"
+      : "MCP + Codex/ChatGPT skill + required hooks healthy; save notice missing — re-run 'bastra install codex'",
+    details,
+    features,
+  };
 }
 
 export const codexAdapter: Adapter = {
