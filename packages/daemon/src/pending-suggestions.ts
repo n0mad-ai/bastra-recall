@@ -12,12 +12,14 @@
  * #513: zwei Spuren in derselben Datei — `recency` (einmal zeigen, dann weg)
  * und `trends` (bei jedem Start zeigen, nach N gezählten Sessions weg).
  */
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { withPathLock } from "./path-lock.js";
 import { envInt } from "./env.js";
+import { redactSecrets } from "@bastra-recall/core/scrub";
+import { clipDraftText } from "./draft-text.js";
 
 /**
  * The two jobs the relay serves (#513). `recency`: something just happened —
@@ -134,6 +136,34 @@ export function pendingSuggestionsPath(): string {
   return process.env.BASTRA_PENDING_SUGGESTIONS_PATH ?? join(homedir(), ".bastra", "pending-suggestions.json");
 }
 
+function capPendingBlocks(blocks: string): string {
+  return blocks.length > PENDING_ENTRY_CHAR_CAP
+    ? clipDraftText(blocks, PENDING_ENTRY_CHAR_CAP - 1) + "…" : blocks;
+}
+
+/** Same credential inventory and clipping boundary as local drafts. */
+function safePendingBlocks(blocks: string): string {
+  return capPendingBlocks(redactSecrets(capPendingBlocks(blocks), homedir()).text);
+}
+
+function scrubPendingRows(rows: PendingSuggestion[]): void {
+  for (const row of rows) if (typeof row?.blocks === "string") row.blocks = safePendingBlocks(row.blocks);
+}
+
+/** Every write, including write-back/settlement, cleans legacy rows in place. */
+async function writePendingRows(path: string, rows: PendingSuggestion[]): Promise<void> {
+  scrubPendingRows(rows);
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  const tmp = `${path}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
+  try {
+    await writeFile(tmp, JSON.stringify(rows), { encoding: "utf8", mode: 0o600, flag: "wx" });
+    await chmod(tmp, 0o600);
+    await rename(tmp, path);
+  } finally {
+    await unlink(tmp).catch((err: NodeJS.ErrnoException) => { if (err.code !== "ENOENT") throw err; });
+  }
+}
+
 /**
  * Append (capped, atomic). Best-effort — never throws.
  *
@@ -166,11 +196,9 @@ export async function writePendingSuggestion(
 ): Promise<void> {
   const lane: PendingLane = opts.lane ?? "recency";
   const path = pendingSuggestionsPath();
-  const capped =
-    blocks.length > PENDING_ENTRY_CHAR_CAP
-      ? blocks.slice(0, PENDING_ENTRY_CHAR_CAP - 1) + "…"
-      : blocks;
-  if (capped !== blocks) {
+  const clipped = capPendingBlocks(blocks);
+  const capped = safePendingBlocks(clipped);
+  if (clipped !== blocks) {
     reportLoss(
       `one suggestion of ${blocks.length} chars clipped to the ` +
         `${PENDING_ENTRY_CHAR_CAP}-char per-entry cap before it was stored`,
@@ -178,7 +206,7 @@ export async function writePendingSuggestion(
   }
   try {
     await withPathLock(path, async () => {
-      await mkdir(dirname(path), { recursive: true });
+      await mkdir(dirname(path), { recursive: true, mode: 0o700 });
       let entries: PendingSuggestion[] = [];
       try {
         const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
@@ -186,6 +214,7 @@ export async function writePendingSuggestion(
       } catch {
         /* missing/corrupt → start fresh */
       }
+      scrubPendingRows(entries);
       if (lane === "trends") {
         // #513/#771: one row per trend, and one rule for its counter — the N
         // session starts belong to the TEXT. An unchanged re-write says
@@ -243,9 +272,7 @@ export async function writePendingSuggestion(
             `at the ${MAX_ENTRIES}-entry cap`,
         );
       }
-      const tmp = `${path}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
-      await writeFile(tmp, JSON.stringify(kept), "utf8");
-      await rename(tmp, path);
+      await writePendingRows(path, kept);
     });
   } catch (e) {
     // The relay stays best-effort — never break the Stop hook — but a write
@@ -422,6 +449,7 @@ export async function takePendingRelay(
       const valid = Array.isArray(parsed)
         ? (parsed as PendingSuggestion[]).filter((e) => typeof e?.blocks === "string" && typeof e?.ts === "number")
         : [];
+      scrubPendingRows(valid); // Old entries must also be safe on their first delivery.
       const recency = valid.filter((e) => laneOf(e) === "recency" && now - e.ts <= PENDING_MAX_AGE_MS);
       const trends: PendingSuggestion[] = [];
       const tombstones: PendingSuggestion[] = [];
@@ -447,9 +475,7 @@ export async function takePendingRelay(
         }
       }
       if (trends.length + tombstones.length > 0) {
-        const tmp = `${path}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
-        await writeFile(tmp, JSON.stringify([...tombstones, ...trends]), "utf8");
-        await rename(tmp, path);
+        await writePendingRows(path, [...tombstones, ...trends]);
       } else {
         await unlink(path).catch(() => {});
       }
@@ -475,16 +501,21 @@ export async function consumePendingSuggestions(now: number = Date.now()): Promi
  * A killed process leaves its durable rows readable as fallback suggestions. */
 export async function settleProvisionalSuggestions(token: string, withdraw: ReadonlySet<string>): Promise<Set<string>> {
   const path = pendingSuggestionsPath(), removed = new Set<string>();
-  const capped = (blocks: string) => blocks.length > PENDING_ENTRY_CHAR_CAP ? blocks.slice(0,PENDING_ENTRY_CHAR_CAP-1)+"…" : blocks;
-  const requested = new Set([...withdraw].map(capped));
+  const requested = new Map<string, string[]>();
+  for (const original of withdraw) {
+    const safe = safePendingBlocks(original);
+    requested.set(safe, [...(requested.get(safe) ?? []), original]);
+  }
   try {
     return await withPathLock(path, async () => {
       const parsed:unknown = JSON.parse(await readFile(path,"utf8"));
       if (!Array.isArray(parsed)) return removed;
+      const rows = parsed as PendingSuggestion[];
+      scrubPendingRows(rows);
       const entries:PendingSuggestion[]=[];
-      for (const entry of parsed as PendingSuggestion[]) {
+      for (const entry of rows) {
         if(entry.provisional===token) {
-          if(requested.has(entry.blocks)) {removed.add(entry.blocks);continue;}
+          if(requested.has(entry.blocks)) {for (const original of requested.get(entry.blocks)!) removed.add(original);continue;}
           delete entry.provisional;
         }
         entries.push(entry);
@@ -493,8 +524,7 @@ export async function settleProvisionalSuggestions(token: string, withdraw: Read
       const allowed=new Set(ordinary.slice(-MAX_ENTRIES));
       const kept=entries.filter(entry=>laneOf(entry)!=="recency"||entry.provisional||allowed.has(entry));
       if(ordinary.length>MAX_ENTRIES)reportLoss(`${ordinary.length-MAX_ENTRIES} oldest entries dropped when fallback became ordinary relay`);
-      const tmp=`${path}.${process.pid}-${randomBytes(6).toString("hex")}.tmp`;
-      await writeFile(tmp,JSON.stringify(kept),"utf8");await rename(tmp,path);
+      await writePendingRows(path, kept);
       return removed;
     });
   } catch {return new Set();} // Fallback stays readable if settlement fails.

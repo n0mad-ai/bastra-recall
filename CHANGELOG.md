@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Security
 
+- The pending suggestion relay now redacts recognizable credentials with the
+  draft filter before storage and delivery, including legacy rows on ordinary
+  writes, and uses 0600 files. Vault comparisons still see original quotes;
+  provisional withdrawals retain caller identity. No schema migration runs
+  (Refs #513, #675, #1084).
 - Upgrade `proxy-addr` to 2.0.8 (GHSA-jqcg-44mw-7w3h) and override the
   repository's YAML CLI dependency `argparse` to 2.0.1, removing `sprintf-js`
   (GHSA-hp3w-g68c-fv3c) from the workspace lockfile. The frontmatter parser

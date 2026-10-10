@@ -1,4 +1,4 @@
-# Secret redaction in local drafts
+# Secret redaction in local drafts and the suggestion relay
 
 The local draft store removes recognizable credential values and keeps useful
 locations. It uses technical binding names, provider prefixes, private-key
@@ -18,6 +18,18 @@ Digest parameters inside that quote are removed together. Code-symbol shape
 exemptions include PascalCase and acronyms. Named command/field contexts can
 retain technical identifiers; those exemptions never suppress an explicit
 credential binding.
+
+## Suggestion relay
+
+The pending suggestion relay uses this same filter on its text blocks before
+storage, including retained legacy rows on every write. It also cleans old rows
+before delivery. Its file remains the same JSON array, now written with mode
+0600 like `drafts.json`; no migration runs. Bounds apply before and after
+redaction, using the draft character/placeholder boundary. Dedupe compares the
+safe relay text; credential-only differences therefore do not stack identical
+visible suggestions, as with draft fingerprints. The harvest's already-stored
+vault comparison still sees the original quote before relay storage. Provisional
+withdrawal compares safe text and returns the original caller strings.
 
 ## Fixed acceptance corpus
 
@@ -105,3 +117,17 @@ Ein slashbeginnendes Passwort ist auch ein gültiger Pfad; nackte Labels wie
 Signaturfelder und manche öffentliche Bezeichner bleiben ebenfalls Grenzen.
 Entwurfsfelder werden vor dem Schwärzen gekürzt; angeschnittene Tokens werden bei vorhandener Leerzeichengrenze weggelassen.
 Ohne Leerzeichen bleibt ein gekürzter Präfix stehen, ohne Surrogatpaar zu teilen. Tatsächliche Zugangsdaten gehören nicht in ein Gespräch.
+
+## Deutsch: Vorschlags-Relay
+
+Der Pending-Relay nutzt denselben Filter für seine Textblöcke vor dem Speichern,
+auch für verbliebene alte Zeilen bei jedem Schreiben. Alte Zeilen werden ebenso
+vor der Auslieferung geschwärzt. Die Datei bleibt dasselbe JSON-Array und wird
+wie `drafts.json` mit Rechten 0600 geschrieben; es läuft keine Migration.
+Grenzen gelten vor und nach der Schwärzung, mit derselben Zeichen-/Platzhaltergrenze
+wie bei Entwürfen. Die Dublettensuche vergleicht den sicheren Relay-Text;
+Unterschiede nur in Zugangsdaten stapeln deshalb keine gleich sichtbaren
+Vorschläge, wie bei Entwurfs-Fingerprints. Der Harvester-Abgleich „schon im Vault“
+sieht weiterhin das ursprüngliche Zitat vor der Relay-Speicherung. Die vorläufige
+Rücknahme vergleicht sicheren Text und gibt die ursprünglichen Aufrufer-Strings
+zurück.
