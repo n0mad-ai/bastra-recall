@@ -72,6 +72,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Codex doctor keeps healthy recall hooks enabled when only the newer
+  save-notice registration is missing, and reports a specific reinstall hint
+  instead of calling the installation broken (Refs #1094).
 - **A settings file that cannot be read is no longer written over — a
   behaviour change for every command that stores a setting** (`bastra config
   set`, `embeddings on|off`, `models set`, `token`, the installer, the
