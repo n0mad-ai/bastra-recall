@@ -43,7 +43,7 @@ export interface HunkHeader {
 
 /** Parses a `@@ -a,b +c,d @@ …` line, or `null` when `raw` is not one. */
 export function parseHunkHeader(raw: string): HunkHeader | null {
-  const m = HUNK_HEADER.exec(raw);
+  const m = HUNK_HEADER.exec(raw.endsWith("\r") ? raw.slice(0, -1) : raw);
   if (m === null) return null;
   return { old: parseRange(m[1]), new: parseRange(m[2]), trailer: m[3] };
 }
@@ -72,7 +72,7 @@ export type DiffLine =
  */
 export function* diffLines(diff: string): Generator<DiffLine> {
   let inHunk = false;
-  for (const raw of diff.split("\n")) {
+  for (const raw of diff.split(/\r?\n/)) {
     if (raw.startsWith("diff --git ")) {
       inHunk = false;
       yield { kind: "file-boundary", raw };

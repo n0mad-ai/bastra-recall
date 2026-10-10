@@ -38,8 +38,8 @@
  * waited on.
  *
  * REPEATED FAILURES STOP. After {@link DEFAULT_MAX_FAILURES} consecutive
- * failures a repository is given up on, with the reason kept for `bastra
- * doctor`. Retrying a broken Graphify install every few seconds forever would
+ * failures a repository is given up on, with the reason kept in coordinator
+ * status and refresh events. Retrying a broken Graphify install every few seconds forever would
  * spend the user's CPU to produce the same error; recall meanwhile keeps
  * working on the last good graph with the staleness marker (#577). An explicit
  * `manual` request always clears that state — the user asking again is the one
@@ -47,8 +47,10 @@
  *
  * A BUSY LOCK IS NOT A FAILURE. `locked` means another process — a second
  * daemon, or `bastra code index` in a terminal — is building this very repo.
- * That is the system working. It schedules one retry and does not count
- * towards the backoff.
+ * That is the system working, but a stranded lock must not retry forever.
+ * Six retries with doubling pauses cover an ordinary build's ten-minute
+ * timeout, then stop until a manual request. Busy locks do not count as build
+ * failures, and automatic triggers cannot shorten their retry pause.
  */
 
 import { buildCodeGraph, scanFileState, type BuildResult } from "./build.js";
@@ -70,6 +72,8 @@ export const DEFAULT_MAX_FAILURES = 3;
 
 /** How long to wait before retrying a repo another process is building. */
 export const DEFAULT_LOCK_RETRY_MS = 10_000;
+/** Six waits total 10.5 minutes at the default base interval. */
+const MAX_LOCK_RETRIES = 6;
 
 export type RefreshState = "idle" | "waiting" | "running";
 
@@ -123,6 +127,7 @@ export interface RefreshEvent {
 }
 
 interface RepoEntry {
+  lockAttempts: number;
   running: boolean;
   pending: boolean;
   timer: NodeJS.Timeout | null;
@@ -172,6 +177,7 @@ export class CodeGraphRefresher {
       // The user asking is the one signal that the world may have changed.
       entry.givenUp = false;
       entry.failures = 0;
+      entry.lockAttempts = 0;
     }
     if (entry.givenUp) {
       this.emit({ repoRoot, reason, outcome: "skipped", detail: entry.lastError ?? "given up" });
@@ -185,6 +191,7 @@ export class CodeGraphRefresher {
 
     const wait = IMMEDIATE_REASONS.has(reason) ? 0 : this.debounceMs;
     if (entry.timer !== null) {
+      if (entry.lockAttempts > 0 && reason !== "manual") return;
       // Already waiting. A git event overtakes a debounced watcher batch
       // rather than queueing behind it.
       if (wait > 0) return;
@@ -302,16 +309,25 @@ export class CodeGraphRefresher {
 
     if (result.ok) {
       entry.failures = 0;
+      entry.lockAttempts = 0;
       entry.lastError = null;
       entry.builds++;
       this.emit({ repoRoot, reason, outcome: "ok" });
     } else if (result.reason === "locked") {
-      // Someone else is building this repo. Not our failure, not our backoff.
+      // Keep lock contention separate from actual build failures, but bounded.
+      entry.lockAttempts++;
       this.emit({ repoRoot, reason, outcome: "locked", detail: result.detail });
       entry.pending = false;
-      this.schedule(repoRoot, entry, this.lockRetryMs);
+      if (entry.lockAttempts > MAX_LOCK_RETRIES) {
+        entry.givenUp = true;
+        entry.lastError = `locked after ${entry.lockAttempts} attempts: ${result.detail}`;
+        this.emit({ repoRoot, reason, outcome: "given-up", detail: entry.lastError });
+        return this.settle();
+      }
+      this.schedule(repoRoot, entry, this.lockRetryMs * 2 ** (entry.lockAttempts - 1));
       return;
     } else {
+      entry.lockAttempts = 0;
       entry.failures++;
       entry.lastError = `${result.reason}: ${result.detail}`;
       this.emit({ repoRoot, reason, outcome: "failed", detail: entry.lastError });
@@ -354,6 +370,7 @@ export class CodeGraphRefresher {
     let entry = this.repos.get(repoRoot);
     if (entry === undefined) {
       entry = {
+        lockAttempts: 0,
         running: false,
         pending: false,
         timer: null,

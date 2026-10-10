@@ -215,6 +215,12 @@ Details worth knowing:
 
 If something looks wrong, `bastra doctor` reports the state of every enabled
 repository, and `bastra code rebuild` repairs a broken map after asking.
+A busy build lock is retried after 10, 20, 40, 80, 160 and 320 seconds; further
+automatic triggers do not shorten these waits. After the seventh locked attempt,
+automatic refreshes stop until the daemon restarts; `bastra code index` or
+`bastra code rebuild` can still update the map manually in the meantime.
+The refresh log records the give-up. Function anchors accept `file.ts#name` and `file.ts#name()`
+equally; Windows-style CRLF diffs are read normally.
 
 ### REST API (for non-MCP clients)
 
@@ -570,7 +576,13 @@ Was du wissen solltest:
 
 Wenn etwas nicht stimmt: `bastra doctor` nennt den Zustand jedes aktivierten
 Repositories, und `bastra code rebuild` repariert eine kaputte Karte nach
-Rückfrage.
+Rückfrage. Eine belegte Build-Sperre wird nach 10, 20, 40, 80, 160 und 320
+Sekunden erneut versucht; weitere automatische Auslöser verkürzen diese Pausen
+nicht. Nach dem siebten gesperrten Versuch ruhen automatische Aktualisierungen
+bis zum Daemon-Neustart. `bastra code index` oder `bastra code rebuild` können
+die Karte in der Zwischenzeit weiterhin manuell aktualisieren. Das
+Aktualisierungslog hält den Abbruch fest. Funktionsanker akzeptieren `datei.ts#name` und `datei.ts#name()` gleichwertig;
+Diffs mit Windows-Zeilenenden (CRLF) werden normal gelesen.
 
 ### REST API (für Nicht-MCP-Clients)
 
