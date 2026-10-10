@@ -90,7 +90,12 @@ export async function currentModelOffer(opts: OfferOptions = {}): Promise<ModelO
   const offer = await machineRecommendation(opts);
   if (!offer) return null;
   const recommendation = opts.recommendation === undefined ? MODEL_RECOMMENDATION : opts.recommendation;
-  return Object.values(recommendation?.models ?? {}).some((pick) => pick?.model === offer.current) ? null : offer;
+  const current = offer.current.toLowerCase();
+  const accepted = Object.values(recommendation?.models ?? {}).some((pick) => {
+    const tag = pick?.model.toLowerCase();
+    return tag !== undefined && (current === tag || current.startsWith(`${tag}-`));
+  });
+  return accepted ? null : offer;
 }
 
 /**

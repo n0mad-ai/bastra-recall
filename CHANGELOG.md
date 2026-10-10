@@ -71,7 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   Existing users of either recommended model are not prompted to switch
   between them. The notice distinguishes similar draft-check/reranker answer
   times from slower, less consistent keyword expansion. Parallel CLI commands
-  claim the daily model notice under a lock, so it is printed only once.
+  claim the daily model notice once without waiting; busy or unwritable locks
+  silently skip that hint, while the other notice surfaces remain independent.
+  Listed model tags are matched case-insensitively, including `-` suffixes;
+  bare names, `:latest` and other sizes remain distinct.
 - **New installs are offered `tev1:4b` as the local text model** from 16 GB of
   RAM (4.5 GB download); `gemma4:12b` stays the alternative from 24 GB and the
   suggestion from 32 GB. Existing installs are not switched: without a stored
