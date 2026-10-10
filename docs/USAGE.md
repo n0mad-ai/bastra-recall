@@ -8,6 +8,9 @@
 
 Set up your clients, bring in existing memories and use Bastra Recall in everyday work. Start with the [README](../README.md#install) for guided installation; this guide covers examples, manual configuration, the REST API and troubleshooting.
 
+For the Claude Code statusline and Claude/Codex terminal panels, see the
+[setup, controls and data limits](../packages/statusline/README.md#english).
+
 ### Cookbook
 
 What this actually looks like in a working week.
@@ -359,6 +362,10 @@ Ollama clients; an idle Ollama server without a loaded model costs little.
 ## Deutsch
 
 Verbinde deine Clients, übernimm vorhandene Erinnerungen und nutze Bastra Recall im Alltag. Das geführte Setup steht in der [README](../README.md#installation); hier findest du Beispiele, manuelle Konfiguration, REST-API und Fehlerbehebung.
+
+Für die Claude-Code-Statusline und die Claude-/Codex-Terminal-Panels findest du
+[Einrichtung, Bedienung und Datengrenzen](../packages/statusline/README.md#deutsch)
+in der Panel-Anleitung.
 
 ### Kochbuch
 

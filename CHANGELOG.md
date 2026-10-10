@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Complete German statusline and terminal-panel user guide alongside English
+  in the packaged README, linked from both README and usage-guide languages.
+  Both versions clarify the decorative vault cloud, changing idle values,
+  selected demo design and known ahead/behind-arrow limitation (#1135);
+  panel code is unchanged.
 - **Training signal capture, a temporary tool for #1128.** Step 0 of the
   local fine-tuning evaluation needs data the daemon did not keep. Without any
   switch, the local event log gains ids, hashes and ranks only, never text:
