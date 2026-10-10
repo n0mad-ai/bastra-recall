@@ -39,7 +39,6 @@
 import { spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync } from "node:fs";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DAEMON_SCRIPT_PATH } from "./paths.js";
@@ -51,10 +50,11 @@ import {
 } from "../daemon-endpoint.js";
 import type { ParsedArgs } from "./types.js";
 import { isOnValue } from "../env.js";
+import { LAUNCH_AGENT_LABEL, MANAGED_AUTOSTART_MARKER as MANAGED_MARKER, managedAutostartPlistPath as plistPath } from "../autostart-service.js";
 
 /** Dasselbe Label, das `index.ts` und `update.ts` kennen. Ein zweites wäre ein
  *  zweiter Daemon auf demselben Port. */
-export const LAUNCH_AGENT_LABEL = "ai.n0mad.bastra-recall";
+export { LAUNCH_AGENT_LABEL, plistPath };
 
 /**
  * Die Marke, an der bastra seinen EIGENEN plist wiedererkennt.
@@ -64,7 +64,6 @@ export const LAUNCH_AGENT_LABEL = "ai.n0mad.bastra-recall";
  * die Variable ist nebenbei nützlich — der Daemon weiß damit, dass er als
  * Autostart läuft und nicht als Autospawn.
  */
-const MANAGED_MARKER = "BASTRA_AUTOSTART_MANAGED";
 
 /** launchd's CLI. Absolute on purpose — never resolved through PATH. The
  *  parameter that carries it exists so the #435/#441 regressions can run
@@ -75,10 +74,6 @@ const LAUNCHCTL = "/bin/launchctl";
  *  carries it exists so those regressions also run on a runner without one
  *  (#940 — CI is Linux, where there is no plutil). */
 const PLUTIL = "/usr/bin/plutil";
-
-export function plistPath(home: string = homedir()): string {
-  return join(home, "Library", "LaunchAgents", `${LAUNCH_AGENT_LABEL}.plist`);
-}
 
 export interface AutostartState {
   path: string;

@@ -154,6 +154,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- On macOS the MCP forwarder gives an installed managed autostart service up
+  to ten seconds before fallback spawn, without a new user setting. Headless
+  service starters wait for a forwarder-owned port before opening storage,
+  retrying with intervals capped at thirty seconds. Client daemons still idle
+  exit even with a registered LaunchAgent, allowing the service to take over.
+  No shutdown handshake; Linux managed setup remains tracked in #566 (Refs #758).
+
 - Terminal panels show Git ahead/behind arrows only for positive counts.
   Missing behind arrows do not claim the remote is current; the panel still
   never fetches or accesses the network (#1135).

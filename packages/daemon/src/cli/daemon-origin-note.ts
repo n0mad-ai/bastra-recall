@@ -50,6 +50,9 @@ export function daemonOriginLines(probe: DaemonProbe, configured?: ConfiguredSta
       ? "the spawning client's env plus daemon.env from ~/.bastra/cli-settings.json"
       : "the spawning client's env (no daemon.env pins in ~/.bastra/cli-settings.json)";
     lines.push(`  · started by an MCP client's forwarder (auto-spawn); env: ${env}`);
+    if (configured?.sources.includes("the bastra LaunchAgent env")) {
+      lines.push("    a managed service is installed, but a client daemon holds the port; the service can take over after that daemon exits (normally after 30 minutes idle)");
+    }
     lines.push(
       "    settings a service (systemd unit, LaunchAgent) sets only in its own env do not apply here — " +
         "pin them under daemon.env in cli-settings.json, or set BASTRA_FORWARDER_SPAWN=0 in the client entry (docs/architecture.md, MCP Forwarder)",
