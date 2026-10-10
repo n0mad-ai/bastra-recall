@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The daily CLI model hint reclaims a day lock older than ten seconds in a
+  single silent attempt, so an interrupted command cannot suppress it forever.
+  Fresh or unwritable locks still skip the hint without waiting; other
+  advisory claims retain their existing policy.
+
 ### Security
 
 - Upgrade `proxy-addr` to 2.0.8 (GHSA-jqcg-44mw-7w3h) and override the

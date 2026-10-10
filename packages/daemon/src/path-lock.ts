@@ -50,7 +50,7 @@
  * NOT covered: a state file on a network share where O_EXCL is not atomic.
  * That would need a lease with a heartbeat, which these files are not worth.
  */
-import { openSync, writeFileSync, closeSync } from "node:fs";
+import { openSync, writeFileSync, closeSync, statSync, unlinkSync } from "node:fs";
 import { mkdir, open, readFile, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
@@ -230,24 +230,35 @@ export function withPathLock<T>(path: string, fn: () => Promise<T>, opts: PathLo
 /** Reserve advisory feedback immediately when its deferred callback starts.
  * No mkdir/queued open before the attempt: a busy lock must not become a late
  * booking after its owner releases it. Called only off the response path. */
-function tryFileLock(path: string): string | null {
-  let fd: number | undefined;
-  try {
-    const token = randomUUID();
-    fd = openSync(pathLockFilePath(path), "wx", 0o600);
-    writeFileSync(fd, JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token }), "utf8");
-    return token;
-  } catch { return null; }
-  finally { if (fd !== undefined) closeSync(fd); }
+function tryFileLock(path: string, takeOverStale: boolean): string | null {
+  const lockPath = pathLockFilePath(path);
+  // At most one age-only takeover and one retry; never wait or diagnose.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let fd: number | undefined;
+    try {
+      const token = randomUUID();
+      fd = openSync(lockPath, "wx", 0o600);
+      writeFileSync(fd, JSON.stringify({ pid: process.pid, host: hostnameSafe(), ts: Date.now(), token }), "utf8");
+      return token;
+    } catch (err) {
+      if (!takeOverStale || attempt !== 0 || (err as NodeJS.ErrnoException)?.code !== "EEXIST") return null;
+      try {
+        if (Date.now() - statSync(lockPath).mtimeMs <= LOCK_STALE_MS) return null;
+        unlinkSync(lockPath);
+      } catch { return null; }
+    } finally { if (fd !== undefined) closeSync(fd); }
+  }
+  return null;
 }
 
 /** Advisory feedback normally queues off the response path. `noQueue` skips a
- * busy local chain immediately. Neither mode takes over an aged lease or
- * writes without the cross-process lock; busy/unwritable means no mutation. */
-export function tryWithPathLock<T>(path: string, fn: () => Promise<T>, opts: PathLockOptions = {}): Promise<T | undefined> {
+ * busy local chain immediately. An aged lease is left alone unless the caller
+ * explicitly opts into age-only takeover. Never writes without the
+ * cross-process lock; busy/unwritable means no mutation. */
+export function tryWithPathLock<T>(path: string, fn: () => Promise<T>, opts: PathLockOptions & { takeOverStale?: boolean } = {}): Promise<T | undefined> {
   if (opts.noQueue && (depths.get(path) ?? 0) > 0) return Promise.resolve(undefined);
   return withPathLock(path, async () => {
-    const token = opts.crossProcess ? tryFileLock(path) : null;
+    const token = opts.crossProcess ? tryFileLock(path, opts.takeOverStale === true) : null;
     if (opts.crossProcess && token === null) return undefined;
     try { return await fn(); }
     finally { if (token) await releaseFileLock(path, token); }

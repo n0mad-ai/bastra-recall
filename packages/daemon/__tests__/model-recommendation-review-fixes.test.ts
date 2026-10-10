@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cmdModels, maybeAskModelCatchUp } from "../src/cli/models-cmd.js";
@@ -97,4 +97,22 @@ test("review K2: unqualified names, latest and other sizes are not treated as li
     await setGenerationModel(tag, settingsPath);
     assert.ok(await pendingModelNotice({ ramGB, settingsPath }), `${ramGB}: ${tag} must remain a distinct choice`);
   }
+}));
+
+
+test("review K4: a stale day lock is reclaimed promptly, then the day stays claimed", () => fixture(async (dir, settingsPath) => {
+  const shownPath = join(dir, "shown.txt"), lock = pathLockFilePath(shownPath);
+  await writeFile(lock, JSON.stringify({ pid: process.pid + 1000, token: "invented-stale", ts: Date.now() - 60_000 }));
+  const old = new Date(Date.now() - 60_000);
+  await utimes(lock, old, old);
+  const start = performance.now();
+  const hint = await captured(() => maybeEmitModelHint({ ramGB: 24, settingsPath, shownPath }));
+  assert.ok(performance.now() - start < 200, "stale takeover must not wait");
+  assert.equal(hint.result, true);
+  assert.match(hint.err, /bastra-recall recommends/);
+  assert.doesNotMatch(hint.err, /lock .*busy|cannot create lock/);
+  await assert.rejects(readFile(lock), { code: "ENOENT" });
+  assert.match((await readFile(shownPath, "utf8")).trim(), /^\d{4}-\d{2}-\d{2}$/);
+  const again = await captured(() => maybeEmitModelHint({ ramGB: 24, settingsPath, shownPath }));
+  assert.equal(again.result, false); assert.equal(again.out + again.err, "");
 }));

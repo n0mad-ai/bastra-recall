@@ -138,7 +138,7 @@ export async function maybeEmitModelHint(opts: OfferOptions & { shownPath?: stri
       const lines = formatModelNotice(offer).split("\n");
       process.stderr.write(`\n\x1b[2mℹ ${lines.join("\n  ")}\x1b[0m\n`);
       return true;
-    }, { crossProcess: true, noQueue: true })) ?? false;
+    }, { crossProcess: true, noQueue: true, takeOverStale: true })) ?? false;
   } catch {
     return false; // A hint must neither interrupt the command nor bypass its day claim.
   }
