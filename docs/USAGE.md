@@ -136,7 +136,7 @@ Codex and ChatGPT Desktop share TOML rather than these JSON blocks. Use `bastra 
 }
 ```
 
-The forwarder is a thin stdio-MCP wrapper that talks to a single local HTTP daemon (port 6723 by default). All MCP clients — Claude Code, Claude Desktop, Codex/ChatGPT Desktop, Cursor, additional sessions — share the same vault state, embedding index, and telemetry. The forwarder auto-spawns the daemon on first run if no one is listening yet.
+The forwarder is a thin stdio-MCP wrapper that talks to a single local HTTP daemon (port 6723 by default). All MCP clients — Claude Code, Claude Desktop, Codex/ChatGPT Desktop, Cursor, additional sessions — share the same vault state, embedding index, and telemetry. The forwarder starts a daemon on demand, giving an installed managed macOS service a 10-second chance first.
 
 **Standalone mode (one MCP client only, no sharing):**
 
@@ -160,6 +160,37 @@ bash packages/skill/install-hook.sh   # registers all 7 reflex-layer hooks (opt 
 `bastra install claude-code` does both of these for you. Re-run `install.sh` whenever a skill file changes; re-run `install-hook.sh` only if hook binary paths move. To remove the hooks again: `bash packages/skill/install-hook.sh --uninstall` (no daemon build needed).
 
 Every adapter write is **idempotent** (re-runs are no-ops), **atomic** (tmp file + rename), **backed up** (timestamped `.bak-…` next to the original), and **parse-safe** (broken JSON aborts the run instead of corrupting it). Vault path resolves in this order: `--vault <path>` flag → `BASTRA_VAULT_PATH` env → auto-detect from an existing Claude or Codex registration. If none of those produce a path (a fresh machine), an interactive `bastra install` offers to create `~/BastraVault` for you; non-interactive runs (piped, `--yes`, `--dry-run`) keep the clear deterministic error.
+
+### Autostart and daemon ownership
+
+On macOS, `bastra autostart on` installs an optional managed service;
+`bastra autostart status` checks it and `bastra autostart off` removes it.
+If the daemon is already healthy, clients use it immediately. Otherwise a
+forwarder that finds the managed plist waits up to 10 seconds for the service
+before starting its own fallback daemon. No extra setting is needed. The file
+is checked without `launchctl`; an installed but unloaded or broken service
+therefore gets the same short chance. Fallback is recorded once per forwarder
+process in its debug log, without turning the waiting tool call into an error.
+The MCP connection opens immediately; a tool call remains pending while the
+service starts. Existing cold-start and request deadlines still apply.
+
+On all systems, a headless service encountering a forwarder-owned daemon waits
+for its port to become free. It never shuts the client daemon down and does not
+open the vault or index while waiting. Checks start after one second, double
+the interval, and stop growing at 30 seconds; there is no total wait deadline.
+Health checks do not prolong the client daemon's idle lifetime. Normally that
+daemon exits after 30 minutes without real work, then the service takes over
+at its next check. An explicit idle-shutdown override still applies. Foreign
+listeners and other service/direct daemons keep the previous behavior; terminal
+and standalone stdio starts are unchanged. Under launchd the waiting process
+stays alive instead of repeatedly exiting under `KeepAlive`.
+
+Linux still has no bastra-managed service installation; that follows in
+[#566](https://github.com/n0mad-ai/bastra-recall/issues/566). A client can start
+first there, but an already running headless service can take over after the
+client daemon's idle exit. `BASTRA_FORWARDER_SPAWN=0` remains a workaround when
+you want only your service to start the daemon. `bastra doctor` explains when a
+client daemon owns the port despite an installed managed macOS service.
 
 ### Vault care — flag it now, groom it later
 
@@ -443,6 +474,7 @@ Ollama clients; an idle Ollama server without a loaded model costs little.
 - **`the settings file exists but cannot be read`** — `~/.bastra/cli-settings.json` is there, but your user may not read it (or it is a directory). bastra stops instead of writing a fresh file over it, because that would drop every setting in it. Fix the permissions (`chmod 600 ~/.bastra/cli-settings.json`) and run the command again. This holds for every command that stores a setting.
 - **`could not get the lock on the settings file`** — a model answer or switch found `~/.bastra/cli-settings.json.lock` held by another bastra process, or left behind by one that was interrupted. Nothing was written. Wait a few seconds and repeat the command; a lock nobody holds any more is taken over after about ten seconds.
 - **Vault path missing or not writable** — pass `--vault <path>` during install or set `BASTRA_VAULT_PATH`. The directory must exist and your user must be able to create `.md` files in it; use a throwaway vault while testing.
+- **Client daemon running despite autostart** — on macOS the forwarder first waits up to 10 seconds for the installed managed service, then falls back if needed. `bastra doctor` names the client owner. A headless service waits for that daemon to finish its idle lifetime, without interrupting your session. Linux service setup remains separate (#566); `BASTRA_FORWARDER_SPAWN=0` still prevents client starts.
 - **Port `6723` already in use** — find the owner with `lsof -i :6723 -P -n`. Either stop the stale process or move the daemon with `BASTRA_HTTP_PORT=<port>` and point forwarders/hooks at the same endpoint via `BASTRA_DAEMON_URL` / `BASTRA_HTTP_URL`.
 - **Recall returns nothing, or hits from the wrong vault** — confirm the registered vault with `bastra doctor`. Memory files need valid YAML frontmatter; files that fail validation are skipped. Weak or missing `recall_when` values are the other common cause — that field carries the most search weight.
 - **Semantic recall shows `degraded`** — the daemon booted with embeddings on, but the provider stopped answering (Ollama not running, model deleted). `/health` reports `semantic_recall: "degraded"` plus the underlying error; recall keeps working on BM25 alone. Fix with `ollama serve` / `bastra embeddings on`.
@@ -622,6 +654,40 @@ bash packages/skill/install-hook.sh   # registriert alle 7 Reflex-Layer-Hooks (S
 `bastra install claude-code` erledigt beides für dich. `install.sh` neu ausführen, wenn sich eine Skill-Datei ändert; `install-hook.sh` nur, wenn sich Hook-Binärpfade verschieben. Hooks wieder entfernen: `bash packages/skill/install-hook.sh --uninstall` (ohne gebauten Daemon möglich).
 
 Jeder Adapter-Write ist **idempotent** (Re-Runs sind No-Ops), **atomar** (Tmp-File + Rename), **gesichert** (timestamped `.bak-…` neben dem Original) und **parse-safe** (kaputtes JSON bricht den Lauf ab statt es zu zerstören). Vault-Pfad-Auflösung in dieser Reihenfolge: `--vault <pfad>`-Flag → `BASTRA_VAULT_PATH`-ENV → Auto-Detect aus bestehender Claude- oder Codex-Registrierung. Greift nichts davon (frische Maschine), bietet ein interaktives `bastra install` an, `~/BastraVault` anzulegen; nicht-interaktive Läufe (gepiped, `--yes`, `--dry-run`) behalten die klare, deterministische Fehlermeldung.
+
+### Autostart und Besitz des Daemons
+
+Auf macOS installiert `bastra autostart on` einen optionalen verwalteten Dienst;
+`bastra autostart status` prüft ihn, `bastra autostart off` entfernt ihn.
+Ist der Daemon bereits erreichbar, verwenden Clients ihn sofort. Sonst wartet
+ein Forwarder mit vorhandener verwalteter plist bis zu 10 Sekunden auf den
+Dienst, bevor er selbst einen Ersatz-Daemon startet. Keine zusätzliche
+Einstellung nötig. Die Datei wird ohne `launchctl` geprüft; ein installierter,
+aber nicht geladener oder defekter Dienst bekommt deshalb dieselbe kurze
+Chance. Der Ersatzstart wird einmal je Forwarder-Prozess im Debug-Log
+vermerkt, ohne den wartenden Werkzeugaufruf als Fehler zurückzugeben. Die
+MCP-Verbindung öffnet sich sofort; ein Werkzeugaufruf bleibt während des
+Dienststarts offen. Bestehende Fristen für Kaltstart und Anfragen gelten weiter.
+
+Auf allen Systemen wartet ein Dienst ohne Terminal, wenn ein Forwarder-Daemon
+seinen Port hält. Er fährt den Client-Daemon nicht herunter und öffnet während
+des Wartens weder Vault noch Index. Die Prüfungen beginnen nach einer Sekunde,
+der Abstand verdoppelt sich bis höchstens 30 Sekunden; es gibt keine
+Gesamtwartefrist. Health-Abfragen verlängern den Leerlauf des Client-Daemons
+nicht. Normalerweise endet dieser nach 30 Minuten ohne echte Arbeit; der Dienst
+übernimmt bei seiner nächsten Prüfung. Ein ausdrücklich gesetzter
+Leerlauf-Override gilt weiter. Fremde Listener und andere Dienst-/Direkt-Daemons
+behalten das bisherige Verhalten; Terminal- und eigenständige stdio-Starts
+bleiben unverändert. Unter launchd bleibt der wartende Prozess am Leben,
+statt unter `KeepAlive` ständig neu gestartet zu werden.
+
+Unter Linux richtet bastra noch keinen Dienst ein; das folgt mit
+[#566](https://github.com/n0mad-ai/bastra-recall/issues/566). Ein Client kann dort
+zuerst starten; ein bereits laufender Dienst ohne Terminal übernimmt nach dem
+Leerlauf-Ende des Client-Daemons. `BASTRA_FORWARDER_SPAWN=0` bleibt eine
+Notlösung, wenn ausschließlich dein Dienst den Daemon starten soll.
+`bastra doctor` erklärt, wenn ein Client-Daemon den Port hält, obwohl auf macOS
+ein verwalteter Dienst eingerichtet ist.
 
 ### Vault-Pflege — jetzt markieren, später aufräumen
 
@@ -911,6 +977,7 @@ bastra nicht anhalten; ein untätiger Ollama-Server ohne geladenes Modell kostet
 - **`the settings file exists but cannot be read`** — `~/.bastra/cli-settings.json` ist da, aber dein User darf sie nicht lesen (oder sie ist ein Verzeichnis). bastra hält an, statt eine frische Datei darüberzuschreiben, weil dabei jede Einstellung darin verloren ginge. Rechte korrigieren (`chmod 600 ~/.bastra/cli-settings.json`) und den Befehl erneut ausführen. Das gilt für jeden Befehl, der eine Einstellung speichert.
 - **`could not get the lock on the settings file`** — eine Modell-Antwort oder ein Wechsel hat `~/.bastra/cli-settings.json.lock` von einem anderen bastra-Prozess gehalten vorgefunden, oder von einem abgebrochenen zurückgelassen. Es wurde nichts geschrieben. Ein paar Sekunden warten und den Befehl wiederholen; eine Sperre, die niemand mehr hält, wird nach etwa zehn Sekunden übernommen.
 - **Vault-Pfad fehlt oder ist nicht beschreibbar** — beim Installieren `--vault <pfad>` übergeben oder `BASTRA_VAULT_PATH` setzen. Der Ordner muss existieren und dein User dort `.md`-Dateien anlegen dürfen; zum Testen einen Wegwerf-Vault nehmen.
+- **Client-Daemon läuft trotz Autostart** — auf macOS wartet der Forwarder zuerst bis zu 10 Sekunden auf den eingerichteten verwalteten Dienst und startet bei Bedarf selbst. `bastra doctor` nennt den Client als Besitzer. Ein Dienst ohne Terminal wartet dessen Leerlauf-Ende ab, ohne deine Sitzung zu unterbrechen. Die Linux-Einrichtung folgt separat (#566); `BASTRA_FORWARDER_SPAWN=0` verhindert weiterhin Client-Starts.
 - **Port `6723` ist belegt** — Besitzer finden mit `lsof -i :6723 -P -n`. Entweder den alten Prozess stoppen oder den Daemon per `BASTRA_HTTP_PORT=<port>` umziehen und Forwarder/Hooks über `BASTRA_DAEMON_URL` / `BASTRA_HTTP_URL` auf denselben Endpoint zeigen lassen.
 - **Recall liefert nichts oder Treffer aus dem falschen Vault** — den registrierten Vault mit `bastra doctor` prüfen. Memory-Dateien brauchen gültiges YAML-Frontmatter; ungültige werden übersprungen. Die zweite häufige Ursache sind schwache oder fehlende `recall_when`-Werte — dieses Feld hat das größte Suchgewicht.
 - **Semantischer Recall steht auf `degraded`** — der Daemon ist mit Embeddings gestartet, aber der Provider antwortet nicht mehr (Ollama läuft nicht, Modell gelöscht). `/health` meldet `semantic_recall: "degraded"` samt Fehler; Recall läuft auf BM25 weiter. Beheben mit `ollama serve` bzw. `bastra embeddings on`.

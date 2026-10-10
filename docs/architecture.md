@@ -199,7 +199,7 @@ HTTP can be disabled with `BASTRA_HTTP=off`. The endpoint is resolved in exactly
 `bastra-recall-mcp` is a thin stdio MCP wrapper. It does not load the vault or hold an index. It:
 
 1. probes `GET /health` on `BASTRA_DAEMON_URL` (default `http://127.0.0.1:6723`);
-2. auto-spawns the daemon unless `BASTRA_FORWARDER_SPAWN=0`;
+2. after failed health, gives a managed macOS service up to 10 seconds before auto-spawning; `BASTRA_FORWARDER_SPAWN=0` still disables spawn and this service wait;
 3. exposes MCP tools over stdio;
 4. proxies each tool call to `/api/v1/<tool>`.
 
@@ -227,9 +227,15 @@ service-started daemon keeps its own env; this only shapes the forwarder's
 spawn. `/health` reports `started_by` (`forwarder`, `launchagent`, `systemd`
 — detected by `INVOCATION_ID` — or `direct`) and `env_origin` (`own`,
 `client`, `client+settings`), and `bastra doctor` prints them under "daemon
-origin". A forwarder-spawned daemon still holds the port until it exits (idle
-shutdown after 30 min); a service that must own it needs
-`BASTRA_FORWARDER_SPAWN=0` in the client entry.
+origin". On macOS an installed managed XML plist gets a 10-second health window
+without checking the loaded job or adding a setting; an unsuccessful window
+falls back once with a stderr debug-log diagnosis. A forwarder daemon holds the
+port until idle exit (30 min by default), even with a registered LaunchAgent.
+A headless non-forwarder starter retries before storage boot: 1/2/4/8/16/30-second
+intervals, capped at 30 seconds, without a total deadline. Health probes do not
+count as activity. No shutdown handshake. Linux client-first starts remain
+possible until managed setup arrives in #566; `BASTRA_FORWARDER_SPAWN=0` remains
+a workaround.
 
 Who started the daemon does not say whether its config differs, so `/health`
 also reports `config_fingerprint`: twelve hex characters over the daemon's
@@ -578,7 +584,7 @@ HTTP lässt sich mit `BASTRA_HTTP=off` abschalten. Der Endpunkt wird seit #531 a
 `bastra-recall-mcp` ist ein schlanker stdio-MCP-Wrapper. Er lädt weder den Vault noch hält er einen Index. Er:
 
 1. prüft `GET /health` auf `BASTRA_DAEMON_URL` (Standard `http://127.0.0.1:6723`);
-2. startet den Daemon automatisch, außer bei `BASTRA_FORWARDER_SPAWN=0`;
+2. gibt nach fehlgeschlagenem Health-Check einem verwalteten macOS-Dienst bis zu 10 Sekunden, bevor er selbst startet; `BASTRA_FORWARDER_SPAWN=0` schaltet Start und dieses Dienst-Warten weiterhin aus;
 3. stellt MCP-Werkzeuge über stdio bereit;
 4. leitet jeden Werkzeugaufruf an `/api/v1/<tool>` weiter.
 
@@ -607,9 +613,7 @@ gestarteter Daemon behält seine eigene Umgebung; das hier formt nur den Start
 durch den Forwarder. `/health` meldet `started_by` (`forwarder`, `launchagent`,
 `systemd` — erkannt an `INVOCATION_ID` — oder `direct`) und `env_origin`
 (`own`, `client`, `client+settings`), und `bastra doctor` zeigt beides unter
-„daemon origin". Ein vom Forwarder gestarteter Daemon hält den Port weiter, bis
-er endet (Idle-Shutdown nach 30 min); soll ein Service ihn besitzen, braucht der
-Client-Eintrag `BASTRA_FORWARDER_SPAWN=0`.
+„daemon origin". Auf macOS bekommt eine installierte verwaltete XML-plist eine Health-Frist von 10 Sekunden, ohne Prüfung des geladenen Jobs oder neue Einstellung; danach erfolgt bei Bedarf der Ersatzstart mit einmaliger Diagnose im stderr-Debug-Log. Ein Forwarder-Daemon hält den Port bis zum Leerlauf-Ende (standardmäßig 30 min), auch bei registriertem LaunchAgent. Ein Starter ohne Terminal, der kein Forwarder ist, versucht es vor dem Storage-Start erneut: Abstände 1/2/4/8/16/30 Sekunden, höchstens 30 Sekunden, ohne Gesamtfrist. Health-Abfragen gelten nicht als Aktivität. Kein Shutdown-Handschlag. Unter Linux kann bis zur verwalteten Einrichtung aus #566 weiter der Client zuerst starten; `BASTRA_FORWARDER_SPAWN=0` bleibt eine Notlösung.
 
 Wer den Daemon gestartet hat, sagt noch nicht, ob seine Konfiguration abweicht.
 Deshalb meldet `/health` zusätzlich `config_fingerprint`: zwölf Hex-Zeichen über

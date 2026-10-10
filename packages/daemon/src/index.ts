@@ -28,6 +28,8 @@ import { buildToolDeps } from "./boot-tool-deps.js";
 import { startHttp } from "./boot-http.js";
 import { startStdioServer } from "./boot-stdio.js";
 import { registerShutdown } from "./boot-shutdown.js";
+import { daemonOrigin } from "./daemon-spawn-env.js";
+import { waitForForwarderPort } from "./daemon-port-wait.js";
 
 // Triage Issue #24: Write-Tools sind Pro-Feature. Aktuelles Gate ist ein
 // env-Flag — wenn ein Pro-License-Service kommt, ersetzt der das hier.
@@ -90,10 +92,15 @@ async function main(): Promise<void> {
   // three a second time against the same vault. `BASTRA_HTTP=off` is a
   // deliberate no-server mode and must never be probed away.
   if (!HTTP_DISABLED && MAY_EXIT_ON_BUSY_PORT && (await probeDaemonPort(HTTP_PORT)) === "in-use") {
-    console.error(
-      `[bastra-recall] port ${HTTP_PORT} is already in use — exiting; if another bastra-recall daemon owns it, the forwarder will use that one.`,
-    );
-    process.exit(0);
+    const freed = daemonOrigin().startedBy !== "forwarder" && await waitForForwarderPort(HTTP_PORT, {
+      onWaiting: () => console.error(`[bastra-recall] port ${HTTP_PORT} belongs to a forwarder daemon — waiting for its idle exit before starting the service`),
+    });
+    if (!freed) {
+      console.error(
+        `[bastra-recall] port ${HTTP_PORT} is already in use — exiting; if another bastra-recall daemon owns it, the forwarder will use that one.`,
+      );
+      process.exit(0);
+    }
   }
 
   // The start-up phases (#1039), in their original order. Each module holds
@@ -236,8 +243,12 @@ async function main(): Promise<void> {
 
 const LAUNCH_AGENT_LABEL = "ai.n0mad.bastra-recall";
 
-/** true wenn der bastra-LaunchAgent in der gui-Domain registriert ist (#78). */
+/** A registered job does not own a client-spawned process (#758). Otherwise
+ * that fallback would never idle-exit and the waiting service could not win. */
 function launchAgentOwnsDaemon(): boolean {
+  const starter = daemonOrigin().startedBy;
+  if (starter === "forwarder") return false;
+  if (starter === "launchagent") return true;
   if (process.platform !== "darwin") return false;
   try {
     const uid = process.getuid?.() ?? 0;

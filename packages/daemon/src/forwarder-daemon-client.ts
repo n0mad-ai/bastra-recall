@@ -11,6 +11,7 @@ import { resolveDaemonEndpoint, type DaemonEndpoint } from "./daemon-endpoint.js
 import { daemonSpawnEnv } from "./daemon-spawn-env.js";
 import { readSettings } from "./settings.js";
 import { envOff } from "./env.js";
+import { managedAutostartInstalled } from "./autostart-service.js";
 
 // #531 — the same resolver the CLI, the daemon and the LaunchAgent use, so a
 // registration that carries only BASTRA_HTTP_PORT reaches the same instance a
@@ -30,6 +31,7 @@ export function canAutoSpawnAt(endpoint: DaemonEndpoint): boolean {
 /** Cold Ollama load can take a while on first boot — generous on purpose. */
 const HEALTH_TIMEOUT_MS = 60_000;
 const HEALTH_POLL_INTERVAL_MS = 200;
+export const SERVICE_WAIT_MS = 10_000;
 export const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
@@ -70,15 +72,18 @@ export async function fetchWithTimeout(
   }
 }
 
-export async function probeHealth(): Promise<boolean> {
+export async function probeHealth(timeoutMs = 1500): Promise<boolean> {
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const resp = await fetchWithTimeout(`${DAEMON_URL}/health`, {}, 1500);
+    // Keep the body read inside the deadline too: headers alone are not health.
+    const resp = await fetch(`${DAEMON_URL}/health`, { signal: ctrl.signal });
     if (!resp.ok) return false;
     const body = (await resp.json()) as { ok?: boolean };
     return body.ok === true;
   } catch {
     return false;
-  }
+  } finally { clearTimeout(tid); }
 }
 
 async function spawnDaemon(): Promise<void> {
@@ -99,16 +104,20 @@ async function spawnDaemon(): Promise<void> {
   child.unref();
 }
 
-async function waitForHealth(): Promise<boolean> {
-  const t0 = Date.now();
-  while (Date.now() - t0 < HEALTH_TIMEOUT_MS) {
-    if (await probeHealth()) return true;
-    await sleep(HEALTH_POLL_INTERVAL_MS);
+async function waitForHealth(timeoutMs = HEALTH_TIMEOUT_MS): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await probeHealth(Math.min(1500, deadline - Date.now()))) return true;
+    const remaining = deadline - Date.now();
+    if (remaining > 0) await sleep(Math.min(HEALTH_POLL_INTERVAL_MS, remaining));
   }
   return false;
 }
 
-export async function ensureDaemonRunning(): Promise<boolean> {
+/** Test options only; no new user setting or environment variable. */
+export interface DaemonStartOptions { platform?: NodeJS.Platform; serviceWaitMs?: number }
+let serviceFallbackReported = false;
+export async function ensureDaemonRunning(opts: DaemonStartOptions = {}): Promise<boolean> {
   if (await probeHealth()) return true;
   if (!SPAWN_ENABLED) {
     console.error(
@@ -119,6 +128,16 @@ export async function ensureDaemonRunning(): Promise<boolean> {
   if (!canAutoSpawnAt(ENDPOINT)) {
     console.error(`[bastra-recall-mcp] ${DAEMON_URL} is not a local plain-HTTP endpoint; not spawning a different local daemon`);
     return false;
+  }
+  if (await managedAutostartInstalled({ platform: opts.platform })) {
+    const waitMs = opts.serviceWaitMs ?? SERVICE_WAIT_MS;
+    if (await waitForHealth(waitMs)) return true;
+    if (!serviceFallbackReported) {
+      serviceFallbackReported = true;
+      // Same stderr debug-log channel as existing boot diagnostics, never a
+      // protocol error or a failed tool response while boot is held.
+      console.error(`[bastra-recall-mcp] managed service not healthy after ${waitMs}ms; falling back to a client-started daemon`);
+    }
   }
   console.error("[bastra-recall-mcp] daemon not running, spawning…");
   await spawnDaemon();
@@ -135,8 +154,8 @@ export async function ensureDaemonRunning(): Promise<boolean> {
 let daemonReady: Promise<boolean> = Promise.resolve(false);
 
 /** Kick off (or retry) the boot; main() calls this once at startup. */
-export function primeDaemon(): Promise<boolean> {
-  daemonReady = ensureDaemonRunning();
+export function primeDaemon(opts: DaemonStartOptions = {}): Promise<boolean> {
+  daemonReady = ensureDaemonRunning(opts);
   return daemonReady;
 }
 

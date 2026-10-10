@@ -20,7 +20,7 @@ For project-level docs (vision, install, REST API, roadmap), see the [top-level 
 | Surface | Entry point | Use case |
 |---|---|---|
 | MCP (stdio, standalone) | `dist/index.js` | Single-client setup; each session spawns its own embedded daemon |
-| MCP forwarder (stdio → loopback HTTP) | `dist/mcp-forwarder.js` | **Default for multi-client setups.** Auto-spawns the daemon on first call if none is listening. All sessions share one vault state, one index, one telemetry stream |
+| MCP forwarder (stdio → loopback HTTP) | `dist/mcp-forwarder.js` | **Default for multi-client setups.** Starts a missing daemon on demand, first giving an installed managed macOS service up to ten seconds. All sessions share one vault state, one index, one telemetry stream |
 | HTTP REST | `http://127.0.0.1:6723/api/v1/{tool}` | Non-MCP clients (ChatGPT Custom GPT Actions, web apps, scripts). Bearer auth + CORS supported |
 | Hooks | `dist/hook.js` (PreToolUse), `dist/session-hook.js` (SessionStart) | Both POST to the daemon's `/hook/recall` |
 | CLI | `dist/cli.js` (`bastra` bin) | Install / uninstall / doctor across every supported AI client |
@@ -67,7 +67,7 @@ Exactly one PID should be listed. Two means a stale daemon is running in paralle
 
 ## Daemon startup
 
-The MCP forwarder auto-spawns one shared daemon on first use. For REST clients
+The MCP forwarder uses one shared daemon, giving an installed managed macOS service up to ten seconds before fallback spawn. For REST clients
 that need the daemon before an MCP client connects, start it explicitly:
 
 ```bash
@@ -105,7 +105,7 @@ Every on/off switch reads `0`, `false`, `off` or `no` as off and `1`, `true`, `o
 | `BASTRA_OLLAMA_IDLE_UNLOAD_MS` | no | `600000` (10 min) | unload the embedding model from Ollama RAM after this long without an embed (battery saver); `0` disables |
 | `BASTRA_BATTERY_SAVER` | no | unset (→ `battery.saver`, default off) | battery mode on macOS (#632): `1` / `0` override the settings file. On battery, doc2query waits for AC, warm-ups are skipped and the idle unload fires after 60 s — see [USAGE](../../docs/USAGE.md) |
 | `OPENAI_API_KEY` | no | unset | required when `BASTRA_EMBEDDING_PROVIDER=openai` |
-| `BASTRA_FORWARDER_SPAWN` | no | `1` | when `0`, the MCP forwarder will not auto-spawn the daemon. Set this when a service manager (launchd, systemd) owns the daemon, together with `BASTRA_DAEMON_URL` naming that owner — a spawned second process exits as soon as it sees the port taken (#483), but not starting it at all is cheaper |
+| `BASTRA_FORWARDER_SPAWN` | no | `1` | when `0`, the MCP forwarder will not auto-spawn the daemon. This remains a workaround for service-only starts, with `BASTRA_DAEMON_URL` naming that owner. macOS managed services now get a ten-second chance automatically; a headless service behind a forwarder waits for its idle exit (#758). Linux managed setup follows in #566 |
 | `BASTRA_DAEMON_URL` | no | `http://127.0.0.1:6723` | which daemon this machine means — highest-precedence input to the single endpoint resolver every surface uses since #531 (CLI, doctor, map, hooks, forwarder, bridge, and the daemon's own bind), and what `bastra install` writes into a client registration |
 | `BASTRA_HOOK_TIMEOUT_MS` | no | per lane | overrides the lane's wall-clock budget before fail-silent — the per-lane defaults are in [docs/hooks.md](../../docs/hooks.md#budgets-and-the-release-threshold-305) (#305) |
 | `BASTRA_VECTOR_DEADLINE_MS` | no | `150` | hook path only: how long a recall waits for the dense arm before serving BM25-only. Bounds that stage, not the call — measured warm the arm costs 87–96ms (total 106–113ms), cold 668ms (total 694ms), so 150ms passes every warm call and caps a cold one near 180ms. The embed is abandoned, not cancelled, so the model still finishes loading and the next call is warm. Degradations are visible as `degraded: "vector-arm-timeout"`; `0` disables (kill switch) |
