@@ -13,8 +13,8 @@ with a `bastra-status` segment that surfaces live recall/save activity from the 
 
 ### Install
 
-It is wired up automatically by `bastra install claude-code`. To add it by hand, point your
-Claude Code `statusLine` setting at the binary:
+It is wired up automatically by `bastra install claude-code`. To add it by hand,
+set your Claude Code `statusLine` command to run the Node.js script:
 
 ```jsonc
 // ~/.claude/settings.json
@@ -37,7 +37,8 @@ surface's registered Codex session, never whichever session happens to be newest
 The first row shows project/branch, model/reasoning, reported usage windows,
 context usage, and the live vault size. The second shows successful searches,
 returned candidates, memory/document loads, saves/edits, elapsed tool time, and
-failures. Calls include other Bastra tools as well. Counters reset each user turn.
+failures. Calls include other Bastra tools as well. Counters reset when Codex
+reports `task_started` or `turn_started` with a changed or missing turn ID.
 The live search stage comes from the existing Bastra feed; finished calls come
 from Codex's transcript, so they are not counted twice.
 
@@ -62,7 +63,8 @@ The panel reads local metadata only, never evaluates tool arguments and never
 sends messages to Codex. It refreshes at 200 ms, reads JSONL incrementally and
 supports resize, `--ascii`, `--no-color` and `NO_COLOR`. Close its tab or press
 Ctrl-C to stop it. Start it again for a new session; it stays pinned to its original
-session. cmux may enforce a minimum pane height larger than the two display rows.
+session. cmux may enforce a minimum height for a pane (a split terminal area)
+larger than the two display rows.
 
 This is a separate panel, not a custom item in Codex's native footer. It requires
 legacy JSONL history; paginated-only histories are not supported. Codex's rollout
@@ -82,8 +84,11 @@ small dots represents the vault, then one large dot per returned candidate
 since the last human prompt, then one per load (capped by the available room; the numbers above stay
 exact). Next to it Ember lists the titles of the
 memories loaded in this turn, newest first. Titles come from the tool results
-in the local transcript and are only held in the panel's memory. All three designs show loaded titles, the five-hour limit and API time when the client reports them. In live mode, the cloud shimmers and sparks fly between the stages only during real Recall activity or its
-labelled afterglow. Ember's full colour appearance needs truecolor and at least 90 columns; narrower
+in the local transcript and are only held in the panel's memory. All three designs
+show loaded titles. The five-hour limit and API time appear when the client
+reports them. In live mode, the cloud shimmers and sparks fly between the stages
+only during real Recall activity or its labelled afterglow. Ember's full color
+appearance needs truecolor and at least 90 columns; narrower
 panes get a seven-line text summary.
 
 ```sh
@@ -94,13 +99,13 @@ bastra-recall-panel --client codex --session <codex-session-id> --watch --design
 bastra-recall-panel --client codex --cmux
 ```
 
-Ember colours the context readout by how full the window is: green, yellow from
+Ember colors the context readout by how full the window is: green, yellow from
 40 %, orange from 60 %, red from 70 %, and from 40 % a line of text below the
-free tokens says what to do. The bar is its own scale, so the colour of the
+free tokens says what to do. The bar is its own scale, so the color of the
 part still ahead is visible. These stops are a working convention against
 context rot, not measured thresholds: published measurements describe a gradual
 decline that depends on token count and task, not a share of the window. They
-live in `src/panel/context-level.ts` for the other designs to share.
+live in `src/panel/context-level.ts`; currently only Ember imports them.
 
 All three designs have a compact view: header, one line with the context, five-hour and
 seven-day gauges plus the Recall counts, and the activity row. Click the arrow
@@ -148,8 +153,10 @@ Context is Claude's native **used** percentage, not the footer's remaining value
 Weekly usage comes only from `rate_limits.seven_day.used_percentage`. Missing
 measurements stay unknown. After ten seconds without a native update, values
 are marked unavailable. Recall counts are deduplicated from this session's
-main-thread transcript, reset on each new human prompt, and count successful
-Recall/document searches, returned candidates, loads/reads and saves/edits. Automatic prompt hints are not completed tool searches; directly loading a hinted memory can therefore show a load with zero searches or hits. Failed calls appear
+main-thread transcript and count successful Recall/document searches, returned
+candidates, loads/reads and saves/edits. Claude resets them on a new human prompt;
+Codex resets them on `task_started` or `turn_started` with a changed or missing
+turn ID. Automatic prompt hints are not completed tool searches; directly loading a hinted memory can therefore show a load with zero searches or hits. Failed calls appear
 in the activity text. `Recall` uses the exact same forwarder duration as the old
 Bastra footer when the session, turn and completed-call count match. `Client`
 measures invocation-to-result time including the client's transport/dispatch
@@ -161,7 +168,9 @@ conflicts and ahead/behind relative to local upstream refs. Git is read without
 network or index locks, at most once per five seconds. It does not fetch remote
 changes; failed Git reads are shown as unavailable. The ahead/behind arrows are
 not proof of synchronization with the remote: the known open issue #1135 can
-show `↑0 ↓0` without a reliable comparison. Check Git separately when that
+show `↑0 ↓0` without a reliable comparison. The value after `↓` reflects new
+remote commits only after you manually run `git fetch` in this repository.
+Check Git separately when that
 distinction matters. When supplied by the
 client, session duration, reasoning effort, estimated list-price cost, cache-hit
 ratio and changed-line counts are displayed. Codex also reports cumulative
@@ -207,7 +216,7 @@ Abruf- und Speicheraktivität des bastra-recall-Daemons.
 ### Installation
 
 `bastra install claude-code` richtet sie automatisch ein. Für die manuelle
-Einrichtung setzt du Claudes Einstellung `statusLine` auf die ausführbare Datei:
+Einrichtung setzt du Claudes `statusLine`-Befehl auf den Aufruf des Node.js-Skripts:
 
 ```jsonc
 // ~/.claude/settings.json
@@ -232,7 +241,8 @@ Die erste Zeile zeigt Projekt/Branch, Modell/Reasoning, gemeldete Nutzungsfenste
 Kontextbelegung und die aktuelle Vault-Größe. Die zweite zeigt erfolgreiche
 Suchen, zurückgegebene Kandidaten, geladene Erinnerungen/Dokumente,
 Speicher-/Änderungsaufrufe, Werkzeuglaufzeit und Fehler. Die Aufrufzahl umfasst
-auch andere Bastra-Werkzeuge. Die Zähler beginnen mit jedem Nutzer-Turn neu.
+auch andere Bastra-Werkzeuge. Die Zähler beginnen neu, wenn Codex `task_started`
+oder `turn_started` mit einer geänderten oder fehlenden Turn-ID meldet.
 Die laufende Suchphase stammt aus dem bestehenden Bastra-Feed, abgeschlossene
 Aufrufe aus dem Codex-Transcript; so werden sie nicht doppelt gezählt.
 
@@ -243,9 +253,8 @@ bastra-codex-statusline --transcript /path/to/rollout.jsonl --json
 bastra-codex-statusline --demo
 ```
 
-Aus einem Quellcode-Checkout startest du
-`node packages/statusline/bin/bastra-codex-statusline` nach
-`npm run build --workspace=@bastra-recall/statusline`.
+Nach `npm run build --workspace=@bastra-recall/statusline` startest du aus einem
+Quellcode-Checkout `node packages/statusline/bin/bastra-codex-statusline`.
 
 Nutzungsprozente bedeuten **verbraucht**; Kontingentfenster tragen ihre tatsächliche
 Dauer als Beschriftung. Fehlende Fenster werden ausgelassen, fehlender Kontext
@@ -260,7 +269,8 @@ sendet keine Nachrichten an Codex. Es aktualisiert alle 200 ms, liest JSONL
 fortlaufend und unterstützt Größenänderungen, `--ascii`, `--no-color` und
 `NO_COLOR`. Schließe seinen Tab oder drücke Ctrl-C, um es zu beenden. Für eine neue
 Sitzung startest du es erneut; es bleibt an seine ursprüngliche Sitzung gebunden.
-cmux kann eine Mindesthöhe des Panes vorgeben, die über den zwei Anzeigezeilen liegt.
+cmux kann für einen Pane (einen aufgeteilten Terminalbereich) eine Mindesthöhe
+vorgeben, die über den zwei Anzeigezeilen liegt.
 
 Es ist ein separates Panel, kein eigener Eintrag in Codex' nativer Fußzeile.
 Es braucht die bisherige JSONL-Historie; ausschließlich paginierte Historien
@@ -283,7 +293,7 @@ einer je Ladevorgang (begrenzt durch den Platz; die Zahlen darüber bleiben exak
 Daneben zeigt Ember die Titel der in diesem Turn geladenen Erinnerungen, neueste
 zuerst. Die Titel stammen aus den Werkzeugergebnissen im lokalen Transcript und
 bleiben nur im Arbeitsspeicher des Panels. Alle drei Designs zeigen geladene
-Titel, das Fünf-Stunden-Limit und die API-Zeit, soweit der Client sie meldet.
+Titel. Das Fünf-Stunden-Limit und die API-Zeit erscheinen, soweit der Client sie meldet.
 Im Live-Modus schimmert die Wolke und Funken fliegen zwischen den Stufen nur während echter
 Recall-Aktivität oder ihres gekennzeichneten Nachklangs. Für die vollständige
 Farbdarstellung braucht Ember Truecolor und mindestens 90 Spalten; schmalere
@@ -303,8 +313,8 @@ Handlungsempfehlung. Der Balken hat eine eigene Skala, damit die Farbe des noch
 vor dir liegenden Bereichs sichtbar ist. Diese Stufen sind eine Arbeitskonvention
 gegen Kontextverfall, keine gemessenen Schwellen: Veröffentlichte Messungen
 beschreiben einen allmählichen Rückgang, abhängig von Tokenzahl und Aufgabe,
-nicht vom Anteil des Fensters. Die Stufen stehen in `src/panel/context-level.ts`,
-damit die anderen Designs sie ebenfalls verwenden können.
+nicht vom Anteil des Fensters. Die Stufen stehen in `src/panel/context-level.ts`;
+derzeit importiert nur Ember sie.
 
 Alle drei Designs haben eine kompakte Ansicht: Kopfzeile, eine Zeile mit Kontext,
 Fünf-Stunden- und Sieben-Tage-Anzeige samt Recall-Zählern sowie die Aktivitätszeile.
@@ -359,9 +369,10 @@ der Fußzeile. Die Wochennutzung stammt ausschließlich aus
 `rate_limits.seven_day.used_percentage`. Fehlende Messwerte bleiben unbekannt.
 Nach zehn Sekunden ohne native Aktualisierung werden Werte als nicht verfügbar
 markiert. Die Recall-Zähler werden aus dem Haupt-Transcript dieser Sitzung
-dedupliziert, mit jedem neuen menschlichen Prompt zurückgesetzt und zählen
-erfolgreiche Recall-/Dokumentsuchen, zurückgegebene Kandidaten, Lade-/Leseaufrufe
-und Speicher-/Änderungsaufrufe. Automatische Prompt-Hinweise sind keine
+dedupliziert und zählen erfolgreiche Recall-/Dokumentsuchen, zurückgegebene
+Kandidaten, Lade-/Leseaufrufe und Speicher-/Änderungsaufrufe. Claude setzt sie mit
+einem neuen menschlichen Prompt zurück; Codex bei `task_started` oder
+`turn_started` mit einer geänderten oder fehlenden Turn-ID. Automatische Prompt-Hinweise sind keine
 abgeschlossenen Werkzeugsuchen; lädst du eine direkt vorgeschlagene Erinnerung,
 kann daher ein Ladevorgang bei null Suchen und Treffern erscheinen. Fehlgeschlagene
 Aufrufe stehen im Aktivitätstext. `Recall` verwendet dieselbe Forwarder-Laufzeit
@@ -377,7 +388,9 @@ Netzwerk- oder Indexsperren höchstens einmal alle fünf Sekunden gelesen.
 Entfernte Änderungen werden nicht abgerufen; fehlgeschlagene Git-Lesungen
 erscheinen als nicht verfügbar. Die Pfeile für voraus/zurück belegen keine
 Synchronisierung mit dem Remote: Der bekannte offene Fehler #1135 kann
-`↑0 ↓0` ohne verlässlichen Vergleich anzeigen. Prüfe Git separat, wenn diese
+`↑0 ↓0` ohne verlässlichen Vergleich anzeigen. Der Wert hinter `↓` berücksichtigt
+neue Remote-Commits erst, nachdem du in diesem Ordner manuell `git fetch`
+ausgeführt hast. Prüfe Git separat, wenn diese
 Unterscheidung wichtig ist. Soweit der Client sie liefert, erscheinen
 Sitzungsdauer, Reasoning-Aufwand, geschätzte Kosten nach Listenpreis,
 Cache-Trefferquote und geänderte Zeilen. Codex meldet außerdem kumulierte
