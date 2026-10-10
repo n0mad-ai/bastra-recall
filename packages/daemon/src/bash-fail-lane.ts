@@ -35,11 +35,14 @@ import { extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { callReport, reconcileDue, stampReconcile } from "./rm-archive.js";
 import {
+  bumpShown,
   decideBackoff,
+  getLoadedMarkerMtime,
   loadSessionState,
   recordSourceEmit,
   recordSourceSuppressed,
   mutateSessionState,
+  shouldDropHit,
   wasEmitConsumed,
 } from "./session-state.js";
 
@@ -199,7 +202,7 @@ async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Prom
   const remainingMs = Math.max(50, HOOK_TIMEOUT_MS - (Date.now() - startedAt));
 
   let resp: RecallResponse | null = null;
-  let status: "ok" | "no-hits" | "daemon-unreachable" | "timeout" | "error" = "ok";
+  let status: "ok" | "no-hits" | "deduped" | "daemon-unreachable" | "timeout" | "error" = "ok";
   let errMsg: string | null = null;
   try {
     resp = JSON.parse(
@@ -246,6 +249,22 @@ async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Prom
   }
   if (resp && hits.length === 0) status = "no-hits";
 
+  // Session dedup — the shown-state bash-pre, prompt and write use (#106 MAX_SHOW; a load_memory marker,
+  // compact and clear reset it, #354). Without it one memory rode under every failure of a session.
+  // The command still failed; only the repeated memory line is dropped.
+  const realSession = typeof payload.session_id === "string" && payload.session_id !== "";
+  let droppedDedupCount = 0;
+  if (realSession && hits.length > 0) {
+    const shownState = await loadSessionState(sessionId);
+    const fresh: RecallHit[] = [];
+    for (const h of hits) {
+      if (shouldDropHit(shownState.shown[h.id], await getLoadedMarkerMtime(h.id))) droppedDedupCount++;
+      else fresh.push(h);
+    }
+    hits.splice(0, hits.length, ...fresh);
+    if (hits.length === 0) status = "deduped";
+  }
+
   // No hits above floor → no value in interrupting Claude.
   let backoffStreak = 0;
   let suppressed = false;
@@ -284,7 +303,11 @@ async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Prom
       // Usage sidecar (#154): only what was ACTUALLY injected counts as surfaced.
       await reportHinted(selfBaseUrl, hits.map((h) => h.id), typeof payload.session_id === "string" ? payload.session_id : null);
       const emitted = hits.map((h) => h.id);
-      await mutateSessionState(sessionId, (s) => recordSourceEmit(s, BACKOFF_SOURCE, emitted, consumed));
+      const now = Date.now();
+      await mutateSessionState(sessionId, (s) => {
+        recordSourceEmit(s, BACKOFF_SOURCE, emitted, consumed);
+        if (realSession) for (const id of emitted) bumpShown(s, id, now);
+      });
       stdout = JSON.stringify({
         hookSpecificOutput: {
           hookEventName,
@@ -306,6 +329,7 @@ async function bashPostLane(payload: BashFailPayload, selfBaseUrl: string): Prom
     daemon_url: selfBaseUrl,
     daemon_reachable: resp !== null,
     hit_count: suppressed ? 0 : hits.length,
+    dropped_dedup_count: droppedDedupCount,
     top_score: resp?.hits?.[0]?.score ?? null,
     latency_ms_total: Date.now() - startedAt,
     backoff_streak: backoffStreak,
@@ -339,6 +363,9 @@ export function invokesOwnBinary(command: string): boolean {
   return false;
 }
 
+const EXIT_STATUS_RX =
+  /(?:exit(?:ed)?(?:\s+with)?(?:\s+(?:non-zero\s+)?status)?(?:\s+code)?|status\s+code|exit_code)\D{0,8}(-?\d+)/i;
+
 export function readExitCode(result: Record<string, unknown>): number | null {
   for (const key of ["exit_code", "exitCode", "returncode", "return_code", "status"]) {
     const v = result[key];
@@ -348,11 +375,15 @@ export function readExitCode(result: Record<string, unknown>): number | null {
       if (Number.isFinite(n)) return n;
     }
   }
-  const text = ["stderr", "error", "output", "stdout", "content"]
-    .map((key) => result[key])
-    .filter((value): value is string => typeof value === "string")
-    .join("\n");
-  const match = /(?:exit(?:ed)?(?:\s+with)?(?:\s+(?:non-zero\s+)?status)?(?:\s+code)?|status\s+code|exit_code)\D{0,8}(-?\d+)/i.exec(text);
+  // Text fallback reads only where a STATUS is written, never the command's own output: `error` is
+  // PostToolUseFailure's wording, the head line of a plain-text `output` is where Codex puts
+  // "Process exited with code N". Scanning stdout/stderr/content made every successful `cat`/`sed`
+  // of a log or source mentioning "Exit code 1" / "exitCode": 1 a "failed" command — the lane then
+  // injected failure-mode recall after rc 0.
+  const sources: string[] = [];
+  if (typeof result.error === "string") sources.push(result.error);
+  if (typeof result.output === "string") sources.push(result.output.split("\n", 1)[0] ?? "");
+  const match = EXIT_STATUS_RX.exec(sources.join("\n"));
   if (match) {
     const parsed = Number.parseInt(match[1] ?? "", 10);
     if (Number.isFinite(parsed)) return parsed;
@@ -396,10 +427,13 @@ export function extractErrorContext(result: Record<string, unknown>): string {
   return interesting || tail;
 }
 
-/** First non-pipeline token of the command — usually the binary. */
+/** First non-pipeline clause of the command — usually the binary. A leading
+ *  `cd <dir> &&` is skipped: agents prefix most commands with it, and a query
+ *  built from `cd <dir>` names a directory, not the program that failed. */
 export function extractCommandHead(command: string): string {
-  const firstClause = command.split(/[\n;&|]/)[0] ?? "";
-  const tokens = firstClause.trim().split(/\s+/).slice(0, 3);
+  const clauses = command.split(/[\n;&|]/).map((c) => c.trim()).filter(Boolean);
+  const firstClause = clauses.find((c) => !/^(?:cd|pushd)(?:\s|$)/.test(c)) ?? clauses[0] ?? "";
+  const tokens = firstClause.split(/\s+/).slice(0, 3);
   return tokens.join(" ").slice(0, 80);
 }
 
@@ -524,7 +558,9 @@ interface BashFailHookTelemetry {
   suppressed_tokens_est: number;
   /** #457: est. tokens of the injected block; 0 when nothing was emitted. */
   hint_tokens_est: number;
-  status: "ok" | "no-hits" | "suppressed" | "daemon-unreachable" | "timeout" | "error";
+  status: "ok" | "no-hits" | "deduped" | "suppressed" | "daemon-unreachable" | "timeout" | "error";
+  /** Hits dropped because this session already showed them (MAX_SHOW in the 4h window). */
+  dropped_dedup_count: number;
   error: string | null;
 }
 

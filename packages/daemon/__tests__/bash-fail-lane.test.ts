@@ -41,6 +41,17 @@ describe("bash-fail-hook: readExitCode", () => {
   it("reads Codex plain-text tool responses", () => {
     assert.equal(readExitCode(normalizeToolResponse("Process exited with code 17\nError: failed")), 17);
   });
+  it("never reads an exit code out of the command's own stdout/stderr", () => {
+    // 2026-10-01: `sed` over this very file printed `"exitCode": 1` and `Exit code 1` — rc 0, yet the lane
+    // parsed 1 from stdout and injected failure recall. Revert check: scan stdout again → this goes red.
+    assert.equal(readExitCode({ stdout: '{"exitCode": 1}\nExit code 1', stderr: "", interrupted: false }), null);
+    assert.equal(readExitCode({ stderr: "make: exited with status 2 (quoted from a log)" }), null);
+    assert.equal(readExitCode({ content: "Exit code 3" }), null);
+  });
+  it("reads a Codex status only from the head line of plain output", () => {
+    assert.equal(readExitCode(normalizeToolResponse("Exit code: 4\nWall time: 1s")), 4);
+    assert.equal(readExitCode(normalizeToolResponse("ok\nlog line: exited with code 9")), null);
+  });
   it("reads Claude Code PostToolUseFailure's official non-zero status wording", () => {
     assert.equal(readExitCode({ error: "Command exited with non-zero status code 7" }), 7);
   });
@@ -52,6 +63,11 @@ describe("bash-fail-hook: extractCommandHead", () => {
   });
   it("stops at pipeline operators", () => {
     assert.equal(extractCommandHead("ls -la | grep foo"), "ls -la");
+  });
+  it("skips a leading cd, so the query names the program, not the directory", () => {
+    assert.equal(extractCommandHead('cd ~/proj && grep -nE "exit 1|fail" file | head'), 'grep -nE "exit');
+    assert.equal(extractCommandHead("cd /a; cd b && npm test"), "npm test");
+    assert.equal(extractCommandHead("cd ~/proj"), "cd ~/proj");
   });
 });
 
@@ -188,6 +204,55 @@ describe("bash-fail-hook: #144 act-signal", () => {
       assert.equal(daemon.seen[0].body.hook_source, "bash-fail");
     } finally {
       await daemon.close();
+    }
+  });
+
+  it("successful command whose stdout quotes an exit code stays act-only", async () => {
+    // Revert check: put "stdout" back into readExitCode's text sources → paths gain "/hook/recall".
+    const daemon = await startRecordingDaemon();
+    try {
+      const stdout = await runFailHook(
+        {
+          hook_event_name: "PostToolUse",
+          tool_name: "Bash",
+          session_id: `act-quoted-${Date.now()}`,
+          tool_input: { command: "sed -n 1,40p hook.log" },
+          tool_response: { stdout: 'attachment {"exitCode": 1}\nExit code 1', stderr: "", interrupted: false },
+        },
+        daemon.port,
+      );
+      assert.equal(stdout.trim(), "{}");
+      assert.deepEqual(daemon.seen.map((r) => r.path), ["/hook/act"]);
+      assert.equal(daemon.seen[0].body.exit_code, null);
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  it("the same memory rides under one failure per session, not under every failure", async () => {
+    // Before the cap, one memory rode under every failure of a session.
+    // Revert check: drop the shouldDropHit filter → the second failure carries "same-lesson" again.
+    const stateDir = await mkdtemp(join(tmpdir(), "bastra-bashfail-dedup-"));
+    const prev = process.env.BASTRA_HOOK_STATE_DIR;
+    process.env.BASTRA_HOOK_STATE_DIR = stateDir;
+    const sid = `dedup-fail-${Date.now()}`;
+    const daemon = await startRecordingDaemon([{
+      id: "same-lesson", title: "Known build failure", type: "lesson", scope: "all",
+      summary: "Use the generated type before building.", score: 80,
+    }]);
+    const fail = {
+      hook_event_name: "PostToolUseFailure", tool_name: "Bash", bastra_client: "claude-code", session_id: sid,
+      tool_input: { command: "npm run build" }, error: "Command exited with non-zero status code 1: TS2304", is_interrupt: false,
+    };
+    try {
+      assert.match(await runFailHook(fail, daemon.port), /same-lesson/, "first failure carries the memory");
+      await rm(throttleFile(sid), { force: true });
+      assert.doesNotMatch(await runFailHook(fail, daemon.port), /same-lesson/, "second failure: already shown");
+    } finally {
+      await daemon.close();
+      if (prev === undefined) delete process.env.BASTRA_HOOK_STATE_DIR;
+      else process.env.BASTRA_HOOK_STATE_DIR = prev;
+      await rm(stateDir, { recursive: true, force: true });
     }
   });
 
