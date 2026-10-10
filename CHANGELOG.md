@@ -56,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `update.mode auto` either: `bastra update` asks at the end, the session start
   lets the agent ask, the first command on a terminal after an update asks once
   (an updater from before this feature cannot), and a dim line follows CLI
-  commands at most once a day — until you answer with `bastra models switch`,
+  commands normally once a day — until you answer with `bastra models switch`,
   `later` (asked again in 7 days) or `dismiss` (not for this recommendation;
   the notice says what that costs). The commands name the recommendation they
   answer, and an answer to a different one is refused. The switch pulls the
@@ -71,7 +71,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   Existing users of either recommended model are not prompted to switch
   between them. The notice distinguishes similar draft-check/reranker answer
   times from slower, less consistent keyword expansion. Parallel CLI commands
-  claim the daily model notice once without waiting; fresh or unwritable locks
+  share the daily model claim without waiting; simultaneous reclaim of an
+  orphaned day lock can rarely duplicate the line. Fresh or unwritable locks
   silently skip that hint, while the other notice surfaces remain independent.
   Listed model tags are matched case-insensitively, including `-` suffixes;
   bare names, `:latest` and other sizes remain distinct.
