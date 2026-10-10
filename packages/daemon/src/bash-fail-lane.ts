@@ -427,10 +427,13 @@ export function extractErrorContext(result: Record<string, unknown>): string {
   return interesting || tail;
 }
 
-/** First non-pipeline token of the command — usually the binary. */
+/** First non-pipeline clause of the command — usually the binary. A leading
+ *  `cd <dir> &&` is skipped: agents prefix most commands with it, and a query
+ *  built from `cd <dir>` names a directory, not the program that failed. */
 export function extractCommandHead(command: string): string {
-  const firstClause = command.split(/[\n;&|]/)[0] ?? "";
-  const tokens = firstClause.trim().split(/\s+/).slice(0, 3);
+  const clauses = command.split(/[\n;&|]/).map((c) => c.trim()).filter(Boolean);
+  const firstClause = clauses.find((c) => !/^(?:cd|pushd)(?:\s|$)/.test(c)) ?? clauses[0] ?? "";
+  const tokens = firstClause.split(/\s+/).slice(0, 3);
   return tokens.join(" ").slice(0, 80);
 }
 
